@@ -12,6 +12,7 @@
       "default": "./src/index.js"
     },
     "./vitest": "./src/vitest.js",
+    "./vitest/reset": "./src/vitest-reset.js",
     "./package.json": "./package.json"
   },
   "files": [

@@ -179,6 +179,25 @@ warpdom follows the standard. Each has a test. To publish in the docs.
 
 ## Decisions
 
+- **2026-10-09: Prove the switch is worth it before pushing adoption.**
+  So far: about 2.5x faster than jsdom with the VM pool and about 3x with
+  fast mode, identical results, on 3 suites; barely faster than happy-dom
+  by default (its users would switch for correctness, not speed); no Jest.
+  The claim that would convince: one config line, 2-3x faster, zero
+  failures, on 10+ well-known projects across Jest and Vitest, plus a
+  public conformance number. Plan: (1) 8-10 more corpus suites, isolated
+  and VM pool, median speedup and failures; (2) a Jest adapter and 3-4 Jest
+  suites; (3) one large real-world application suite. Kill criterion: a
+  median under ~1.8x, or most suites needing large compatibility work,
+  means rethinking the product.
+
+- **2026-10-09: Fast mode: no isolation plus warpdom's per-file reset.**
+  `warpdom/vitest/reset` resets the window in place before each test file.
+  With `--no-isolate`, Radix runs in 6.1 s and Vuetify in 3.0 s with exactly
+  the isolated results (jsdom isolated: 20.0 s and 15.0 s, so 3.3x and 5x).
+  It does not fix module-state leaks (emoji-picker), so it is opt-in per
+  suite. Details in docs/no-isolate-experiment.md.
+
 - **2026-10-09: The next speed lever is per-file reset without isolation,
   not a faster DOM.** `docs/no-isolate-experiment.md`: on Radix the DOM is
   now a few percent of CPU (jsdom: 50%); the rest is per-file processes,
@@ -380,8 +399,8 @@ warpdom follows the standard. Each has a test. To publish in the docs.
    - emoji-picker-element (custom elements + shadow DOM, Vitest 3, 160
      tests): needed custom elements, template content cloning and
      transformMode for Vitest 3. jsdom 21.7 s, warpdom 19.3 s (waits).
-   Next: the per-file reset experiment (docs/no-isolate-experiment.md) on
-   Radix, Vuetify and emoji-picker.
+   Per-file reset (fast mode): Radix 6.1 s and Vuetify 3.0 s with isolated
+   results; emoji-picker leaks module state and stays isolated.
    Later: enumerated attributes limited to only known values beyond the
    common ones (referrerPolicy, loading, decoding, fetchPriority, ...
    return their raw value), links (anchor URL members, activation), on* handler properties,

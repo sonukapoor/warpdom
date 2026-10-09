@@ -55,3 +55,47 @@ to): a new document, no leftover listeners, timers, storage or location,
 but the same `HTMLElement`, `customElements` and prototypes. That should fix
 both kinds of failure, and only a DOM with near-free setup can do it per
 file. To try once warpdom passes Vuetify and emoji-picker isolated.
+
+## Result: warpdom's per-file reset
+
+`warpdom/vitest/reset` (a setup file listed first) resets the window in
+place before each test file (`src/reset.js`): the same document, window,
+interface objects and custom element definitions, but an emptied initial
+tree (the same `html`, `head` and `body` elements, since Testing Library's
+`screen` holds `document.body`), no listeners, handlers, attributes or
+added properties on them (libraries mark a document they have set up),
+focus, selection, observers, animation frames, URL, history and viewport
+back to their initial state.
+
+warpdom, Vitest, two workers:
+
+| Suite | Isolated | `--no-isolate` | `--no-isolate` + reset |
+| --- | --- | --- | --- |
+| Radix | 10.4 s, 976 pass | 5.7 s, same | 6.1 s, same tests pass |
+| Vuetify | 10.8 s, 943 pass / 4 fail | 32.6 s, 914 / 33 | **3.0 s, same tests as isolated** |
+| emoji-picker | 19.7 s, 157 pass | 29.2 s, 123 / 34 | 28.1 s, 123 / 34 |
+
+Against jsdom isolated (Radix 20.0 s, Vuetify 15.0 s) that is 3.3x and 5x
+with identical results. emoji-picker's failures are module state the
+reset cannot reach: it detects ResizeObserver once, when its module loads
+(`resizeObserverSupported`), and one test file removes it; with shared
+modules, later files inherit that.
+
+So a suite can use the fast mode when its tests do not depend on per-file
+module state; the reset covers the DOM side, which is the common leak
+(Vuetify's listeners). Suites that leak module state stay isolated.
+
+Found along the way: Vitest 3 cannot load an environment from outside the
+project root a second time with `--no-isolate` (its resolve call times
+out, even for an empty environment). Installed as a package, warpdom is
+inside the project, so this only affected the experiment setup.
+
+## Follow-up: Vitest state between files
+
+In the head-to-head (docs/head-to-head.md), one round in three had 5
+Vuetify tests time out in reset mode. Cause: `ripple.spec.ts` and
+`helpers.spec.ts` turn on fake timers and never turn them off; without
+isolation, a later file in the same worker inherits frozen timers. The
+reset setup file now also undoes Vitest's per-file runtime state (real
+timers, restored spies, unstubbed globals and environment variables), as
+isolation would.
