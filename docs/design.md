@@ -32,6 +32,26 @@ checked against `spikes/fast-start/shapes.json` in dom-api-tracer.
 **No Node built-ins in the core**, so the same code can later run in edge
 runtimes and SSR.
 
+## Performance rules
+
+Speed is the product, so these hold for all code:
+
+- **Hot operations are O(1):** tree navigation (`parentNode`, `firstChild`,
+  `lastChild`, `nextSibling`, `previousSibling`, `nodeType`), insertion and
+  removal, attribute get/set, listener add/remove. The tree is linked nodes
+  (parent, first/last child, previous/next sibling, child count), never
+  arrays searched with `indexOf` or changed with `splice`.
+- **Repeated reads are O(1) through caches that update on change:** element
+  child lists, live collections and `childNodes[i]` reuse arrays rebuilt
+  only after the tree changes (version counters).
+- **Indexes for hot lookups:** `getElementById` uses a per-document id index
+  kept current on id changes and attach/detach.
+- **Selectors are compiled once and cached**, matched right to left.
+- **No allocation in hot getters**; inherently O(n) operations
+  (`querySelectorAll`, a subtree's `textContent`) do one pass.
+- **Measured:** micro-benchmarks for the hot members (from the tracer data)
+  against jsdom and happy-dom, and `bench/load.js`, on significant changes.
+
 ## Load-time budget
 
 Cold load in a fresh process, measured by `npm run bench:load`:

@@ -6,6 +6,7 @@ import {
 } from './internal.js';
 import { INTERFACES, SVG_ELEMENTS, HTML_NS, SVG_NS } from './interfaces.js';
 import { HTML_ELEMENTS, PLAIN_TAGS } from './html-elements.js';
+import { setupWindow } from './window-features.js';
 
 // Once per module load: descriptors per interface, parents before children.
 const DESCRIPTORS = new Map();
@@ -54,7 +55,7 @@ function interfaceFor(ns, tag) {
   return 'Element';
 }
 
-export function createWindow() {
+export function createWindow(options = {}) {
   // Starts as a plain object; becomes a Window once the interfaces exist.
   const window = {};
   const protos = Object.create(null);
@@ -98,6 +99,7 @@ export function createWindow() {
   };
   Object.setPrototypeOf(window, protos.Window);
   Object.defineProperty(window, S, { value: internals });
+  setupWindow(window, options);
 
   document = internals.initDocument(Object.create(protos.Document));
   const ds = document[S];

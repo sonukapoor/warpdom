@@ -167,3 +167,39 @@ test('closest, attribute helpers and getElementsBy*', () => {
   assert.equal(items.length, 2, 'live');
   assert.equal(document.getElementsByClassName('menu')[0], list);
 });
+
+test('getElementById follows id changes, attach and detach, and tree order', () => {
+  const { document } = createWindow();
+  const a = document.createElement('div');
+  a.id = 'x';
+  assert.equal(document.getElementById('x'), null, 'not connected yet');
+  const wrapper = document.createElement('section');
+  wrapper.appendChild(a);
+  document.body.appendChild(wrapper);
+  assert.equal(document.getElementById('x'), a, 'connected with its parent');
+  a.setAttribute('id', 'y');
+  assert.equal(document.getElementById('x'), null);
+  assert.equal(document.getElementById('y'), a);
+  const b = document.createElement('p');
+  b.id = 'y';
+  document.body.insertBefore(b, wrapper); // b precedes a in tree order
+  assert.equal(document.getElementById('y'), b);
+  b.remove();
+  assert.equal(document.getElementById('y'), a);
+  a.removeAttribute('id');
+  assert.equal(document.getElementById('y'), null);
+  wrapper.remove();
+  a.id = 'z';
+  assert.equal(document.getElementById('z'), null, 'detached elements are not found');
+});
+
+test('live collections follow attribute changes', () => {
+  const { document } = createWindow();
+  const el = document.body.appendChild(document.createElement('div'));
+  const active = document.getElementsByClassName('active');
+  assert.equal(active.length, 0);
+  el.className = 'active';
+  assert.equal(active.length, 1);
+  el.removeAttribute('class');
+  assert.equal(active.length, 0);
+});

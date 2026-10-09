@@ -2,7 +2,7 @@
 // CSSStyleProperties (an accessor per CSS property name), as in jsdom 30.
 // Declarations are kept in order in a Map, and every change is written back to
 // the element's style attribute; a new style attribute re-parses them.
-import { S, state } from './internal.js';
+import { S, state, domError, ELEMENT_NODE } from './internal.js';
 import { STYLE_ACCESSORS } from './css-properties.js';
 
 // backgroundColor -> background-color, webkitAnimation/WebkitAnimation ->
@@ -56,8 +56,79 @@ function sync(style) {
   if (s.element) s.element[S].attrs.set('style', serialize(s.decls));
 }
 
+// --- computed style ---------------------------------------------------------
+// Computed only for the properties that are read: inline value, else the
+// nearest ancestor's for inherited properties, else the default. Rules from
+// style sheets are not applied yet.
+
+const INHERITED = new Set(['visibility', 'color', 'cursor', 'pointer-events', 'direction', 'font', 'font-family',
+  'font-size', 'font-style', 'font-weight', 'font-variant', 'letter-spacing', 'line-height', 'list-style',
+  'list-style-type', 'quotes', 'text-align', 'text-indent', 'text-transform', 'white-space', 'word-spacing',
+  'writing-mode', 'caret-color', 'user-select', 'border-collapse', 'empty-cells', 'caption-side']);
+
+const INITIAL = { visibility: 'visible', 'pointer-events': 'auto', cursor: 'auto', direction: 'ltr', color: 'rgb(0, 0, 0)' };
+
+// The HTML standard's rendering section (user agent style sheet), display only.
+const DISPLAY = {
+  none: ['head', 'script', 'style', 'template', 'title', 'meta', 'link', 'base', 'noscript', 'area', 'datalist', 'param', 'rp'],
+  block: ['html', 'body', 'div', 'p', 'section', 'article', 'aside', 'header', 'footer', 'nav', 'main', 'address',
+    'blockquote', 'figure', 'figcaption', 'form', 'fieldset', 'legend', 'details', 'summary', 'dialog', 'hr', 'pre',
+    'ul', 'ol', 'menu', 'dl', 'dd', 'dt', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hgroup', 'search', 'center', 'listing',
+    'plaintext', 'xmp', 'optgroup'],
+  'list-item': ['li'],
+  table: ['table'], 'table-row': ['tr'], 'table-cell': ['td', 'th'], 'table-caption': ['caption'],
+  'table-row-group': ['tbody'], 'table-header-group': ['thead'], 'table-footer-group': ['tfoot'],
+  'table-column': ['col'], 'table-column-group': ['colgroup'],
+  'inline-block': ['button', 'input', 'select', 'textarea', 'meter', 'progress', 'img', 'video', 'audio', 'iframe', 'canvas', 'embed', 'object'],
+  ruby: ['ruby'], 'ruby-text': ['rt'],
+};
+const DEFAULT_DISPLAY = new Map();
+for (const [display, tags] of Object.entries(DISPLAY)) for (const tag of tags) DEFAULT_DISPLAY.set(tag, display);
+
+function inlineValue(element, name) {
+  const es = element[S];
+  if (es.style) return es.style[S].decls.get(name)?.value;
+  const attr = es.attrs.get('style');
+  if (!attr || !attr.includes(name)) return undefined;
+  const decls = new Map();
+  parseInto(decls, attr);
+  return decls.get(name)?.value;
+}
+
+function computedValue(element, name) {
+  const inline = inlineValue(element, name);
+  if (inline !== undefined && inline !== 'inherit') return inline;
+  if (INHERITED.has(name) || inline === 'inherit') {
+    const parent = element[S].parent;
+    if (parent && parent[S].type === ELEMENT_NODE) return computedValue(parent, name);
+    return INITIAL[name] ?? '';
+  }
+  if (name === 'display') {
+    const es = element[S];
+    if (es.attrs.has('hidden')) return 'none';
+    return DEFAULT_DISPLAY.get(es.tag) ?? 'inline';
+  }
+  return INITIAL[name] ?? '';
+}
+
+export function computedStyle(element, proto) {
+  const style = Object.create(proto);
+  style[S] = { element, computed: true, decls: new Map() };
+  return style;
+}
+
+function readOnly() {
+  throw domError("Failed to execute on 'CSSStyleDeclaration': These styles are computed, and therefore read-only.", 'NoModificationAllowedError');
+}
+
+const valueOf = (style, name) => {
+  const s = state(style);
+  return s.computed ? computedValue(s.element, name) : s.decls.get(name)?.value ?? '';
+};
+
 function setDeclaration(style, name, value, priority = '') {
   const s = state(style);
+  if (s.computed) readOnly();
   const text = value == null ? '' : String(value).trim();
   if (text === '') s.decls.delete(name);
   else s.decls.set(name, { value: text, important: String(priority).toLowerCase() === 'important' });
@@ -69,11 +140,11 @@ export const CSS_INTERFACES = [
     name: 'CSSStyleDeclaration',
     members: {
       get cssText() { return serialize(state(this).decls); },
-      set cssText(text) { parseInto(state(this).decls, text); sync(this); },
+      set cssText(text) { if (state(this).computed) readOnly(); parseInto(state(this).decls, text); sync(this); },
       get length() { return state(this).decls.size; },
       get parentRule() { state(this); return null; },
       item(index) { return [...state(this).decls.keys()][index] ?? ''; },
-      getPropertyValue(name) { return state(this).decls.get(String(name).toLowerCase())?.value ?? ''; },
+      getPropertyValue(name) { return valueOf(this, String(name).toLowerCase()); },
       getPropertyPriority(name) { return state(this).decls.get(String(name).toLowerCase())?.important ? 'important' : ''; },
       setProperty(name, value, priority) { setDeclaration(this, String(name).toLowerCase(), value, priority); },
       removeProperty(name) {
@@ -90,7 +161,7 @@ export const CSS_INTERFACES = [
     members: Object.fromEntries(STYLE_ACCESSORS.map((accessor) => {
       const name = cssName(accessor);
       return [accessor, {
-        get() { return state(this).decls.get(name)?.value ?? ''; },
+        get() { return valueOf(this, name); },
         set(value) { setDeclaration(this, name, value); },
       }];
     })),

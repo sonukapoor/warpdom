@@ -175,6 +175,12 @@ web-components package).
   lock so only one run is active, and removes wrapper configs left by killed
   runs. Large suites (Handsontable core, AG Grid) are run by Sonu when
   convenient, not started from a chat session.
+- **2026-10-09: Performance rules.** Hot operations O(1) (linked-node tree,
+  caches invalidated by version counters, id index, compiled selectors, no
+  allocation in hot getters), measured with micro-benchmarks against jsdom
+  and happy-dom. Rules in `docs/design.md`. The first implementation used
+  child arrays (O(n) sibling access, insertion and removal); replaced before
+  further features are built on it.
 - **2026-10-09: Build warpdom.** Product decided after the measurements
   and the fast-start spike: a new test DOM, jsdom-compatible, near-free
   startup. Name chosen: warpdom (free on npm and GitHub). Private repository
@@ -292,19 +298,20 @@ web-components package).
 
 1. Milestone 1 (`docs/design.md`): Radix Primitives' suite passes on warpdom
    with the same results as on jsdom. Progress (2026-10-09): Vitest adapter,
-   inline styles, all HTML element interfaces, tree APIs and live
-   collections, events; 126 of 982 Radix tests pass (jsdom: 976). Remaining
-   batches, in order of blocked tests:
-   - window basics: getComputedStyle, MutationObserver (Testing Library's
-     waitFor needs it), requestAnimationFrame, TreeWalker/NodeFilter, Image
-   - HTML serialization and parsing: innerHTML/outerHTML via parse5
-     (Testing Library's prettyDOM requires outerHTML)
+   inline styles, all HTML element interfaces, linked-node tree with O(1)
+   navigation and id index, live collections, events, MutationObserver,
+   window features, on-demand getComputedStyle, TreeWalker/NodeIterator,
+   HTML serialization and lazily loaded parsing (parse5), Attr/NamedNodeMap,
+   classList, dataset, a compiled and cached CSS selector engine. 691 of 982
+   Radix tests pass (jsdom: 976). Remaining batches, by blocked tests:
+   - layout stubs: getBoundingClientRect/getClientRects returning zeros (75)
    - form controls: value/checked/selected accessors on the prototypes
-     (React and Radix call the native setters), select.options, validity
-   - focus: focus()/blur(), document.activeElement, focus events
-   - classList, dataset, attributes (NamedNodeMap/Attr)
-   - a real CSS selector engine (attribute selectors, :not, combinators)
-   - insertAdjacent*, the remaining members axe-core needs
+     (React and Radix call the native setters; 56), select.options (49),
+     validity, label association (labels/control, ~14)
+   - focus: focus()/blur(), document.activeElement, focus events, :focus
+   - STACK_TRACE_ERROR (28): not yet diagnosed
+   - style sheet rules in getComputedStyle
+   - attachShadow, and the rest axe-core needs
    Then timings against jsdom and happy-dom, and the load-time budget.
 2. Reserve the npm name `warpdom` (placeholder package; Sonu's call, since
    publishing is public).

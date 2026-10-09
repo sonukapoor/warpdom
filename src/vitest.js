@@ -4,7 +4,7 @@
 // become globals (functions bound to the window), window/self/top/parent and
 // document.defaultView point at the global, and teardown restores the
 // global. No dependency on Vitest itself, so any Vitest version works.
-import { createWindow } from './window.js';
+import { createWindow } from './node.js';
 import { S } from './internal.js';
 
 const SELF_KEYS = ['window', 'self', 'top', 'parent'];
@@ -50,7 +50,8 @@ export default {
   name: 'warpdom',
   viteEnvironment: 'client',
   setup(global) {
-    const window = createWindow();
+    // Vitest's jsdom environment defaults to this URL as well.
+    const window = createWindow({ url: 'http://localhost:3000' });
     // Like Vitest's jsdom environment: an error thrown in an event listener
     // fails the test, unless the test listens for 'error' on the window.
     window[S].onUnhandledError = (error) => {
