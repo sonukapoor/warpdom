@@ -31,6 +31,7 @@ function writeAttributeValue(element, key, value) {
   if (value === undefined) {
     if (old === undefined) return;
     attrs.delete(key);
+    es.attrNS?.delete(key);
     attributeRemoved(element, key, old);
   } else attrs.set(key, value);
   es.attrsRev = (es.attrsRev ?? 0) + 1;
@@ -40,6 +41,64 @@ function writeAttributeValue(element, key, value) {
   if (step !== undefined) step(element, old, value);
   if (observed(element)) hooks.attribute(element, key, old);
   if (hooks.ce !== null) hooks.ce.attributeChanged(element, key, old, value);
+  if ((key === 'slot' || key === 'name') && hooks.slots !== null && es.doc[S].slotCount) hooks.slots.attributeChanged(element, key);
+}
+
+// --- namespaced attributes (DOM 4.9) ---------------------------------------------
+// Attributes are keyed by qualified name; those set with a namespace keep
+// it, their prefix and local name in es.attrNS. (So two attributes with the
+// same qualified name in different namespaces cannot coexist.)
+
+export const XML_NS = 'http://www.w3.org/XML/1998/namespace';
+export const XMLNS_NS = 'http://www.w3.org/2000/xmlns/';
+
+const nsOrNull = (ns) => (ns == null || ns === '' ? null : String(ns));
+
+// "Validate and extract" a namespace and qualified name.
+export function validateAndExtract(namespace, qualifiedName) {
+  const ns = nsOrNull(namespace);
+  const qn = String(qualifiedName);
+  if (!/^[^\s"'>/=\u0000]+$/.test(qn)) throw domError(`'${qn}' is not a valid qualified name.`, 'InvalidCharacterError');
+  let prefix = null;
+  let local = qn;
+  const colon = qn.indexOf(':');
+  if (colon >= 0) {
+    prefix = qn.slice(0, colon);
+    local = qn.slice(colon + 1);
+    if (prefix === '' || local === '' || local.includes(':')) throw domError(`'${qn}' is not a valid qualified name.`, 'InvalidCharacterError');
+  }
+  const fail = () => { throw domError(`The namespace '${ns}' is not valid for the qualified name '${qn}'.`, 'NamespaceError'); };
+  if (prefix !== null && ns === null) fail();
+  if (prefix === 'xml' && ns !== XML_NS) fail();
+  if ((qn === 'xmlns' || prefix === 'xmlns') && ns !== XMLNS_NS) fail();
+  if (ns === XMLNS_NS && qn !== 'xmlns' && prefix !== 'xmlns') fail();
+  return { ns, prefix, local, qn };
+}
+
+// The qualified name of the element's attribute with this namespace and
+// local name, or null.
+export function findAttributeNS(element, namespace, localName) {
+  const es = element[S];
+  const ns = nsOrNull(namespace);
+  const local = String(localName);
+  if (es.attrNS) {
+    for (const [name, info] of es.attrNS) if (info.ns === ns && info.local === local) return name;
+  }
+  return ns === null && es.attrs.has(local) && !es.attrNS?.has(local) ? local : null;
+}
+
+export function setAttributeNS(element, namespace, qualifiedName, value) {
+  const { ns, prefix, local, qn } = validateAndExtract(namespace, qualifiedName);
+  const existing = findAttributeNS(element, ns, local);
+  if (existing !== null) { writeAttribute(element, existing, String(value)); return; }
+  const es = element[S];
+  if (ns !== null) (es.attrNS ?? (es.attrNS = new Map())).set(qn, { ns, prefix, local });
+  writeAttribute(element, qn, String(value));
+}
+
+// An attribute's namespace, prefix and local name.
+export function attributeNamespace(element, name) {
+  return element?.[S].attrNS?.get(name) ?? null;
 }
 
 // Attribute names are lowercased on HTML elements only (SVG keeps viewBox).
@@ -207,10 +266,10 @@ export const ATTRIBUTE_INTERFACES = [
     parent: 'Node',
     members: {
       get name() { return state(this).name; },
-      get localName() { return state(this).name; },
+      get localName() { const s = state(this); return attributeNamespace(s.element, s.name)?.local ?? s.name; },
       get nodeName() { return state(this).name; },
-      get namespaceURI() { state(this); return null; },
-      get prefix() { state(this); return null; },
+      get namespaceURI() { const s = state(this); return attributeNamespace(s.element, s.name)?.ns ?? null; },
+      get prefix() { const s = state(this); return attributeNamespace(s.element, s.name)?.prefix ?? null; },
       get specified() { state(this); return true; },
       get ownerElement() { return state(this).element; },
       get value() { const s = state(this); return s.element ? s.element[S].attrs.get(s.name) ?? '' : s.detachedValue; },
@@ -235,12 +294,21 @@ export const ATTRIBUTE_INTERFACES = [
         const key = el[S].ns === HTML_NS ? String(name).toLowerCase() : String(name);
         return el[S].attrs.has(key) ? attrNode(el, key) : null;
       },
-      getNamedItemNS(ns, localName) { return this.getNamedItem(localName); },
+      getNamedItemNS(ns, localName) {
+        const el = state(this).element;
+        const name = findAttributeNS(el, ns, localName);
+        return name === null ? null : attrNode(el, name);
+      },
       setNamedItem(attr) { return setAttributeNode(state(this).element, attr); },
       setNamedItemNS(attr) { return setAttributeNode(state(this).element, attr); },
       removeNamedItem(name) {
         const attr = this.getNamedItem(name);
         if (!attr) throw domError(`No item with name '${name}' was found.`, 'NotFoundError');
+        return removeAttributeNode(state(this).element, attr);
+      },
+      removeNamedItemNS(ns, localName) {
+        const attr = this.getNamedItemNS(ns, localName);
+        if (!attr) throw domError(`No item with namespace '${ns}' and name '${localName}' was found.`, 'NotFoundError');
         return removeAttributeNode(state(this).element, attr);
       },
       [Symbol.iterator]() { return attributeArray(state(this).element)[Symbol.iterator](); },

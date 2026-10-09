@@ -114,3 +114,34 @@ parity('NamedNodeMap named properties', (w) => {
   };
 });
 
+
+const XLINK = 'http://www.w3.org/1999/xlink';
+
+parity('namespaced attributes', (w) => {
+  const d = w.document;
+  const svg = d.createElementNS('http://www.w3.org/2000/svg', 'use');
+  svg.setAttributeNS(XLINK, 'xlink:href', '#a');
+  svg.setAttributeNS(null, 'viewBox', '0 0 1 1');
+  svg.setAttributeNS(XLINK, 'other:href', '#b');
+  const attr = svg.getAttributeNodeNS(XLINK, 'href');
+  const out = {
+    get: [svg.getAttributeNS(XLINK, 'href'), svg.getAttribute('xlink:href'), svg.getAttributeNS(null, 'viewBox'), svg.getAttributeNS('', 'viewBox'), svg.getAttributeNS(XLINK, 'nope')],
+    has: [svg.hasAttributeNS(XLINK, 'href'), svg.hasAttributeNS(null, 'href'), svg.hasAttribute('xlink:href')],
+    attr: [attr.name, attr.localName, attr.prefix, attr.namespaceURI, attr.value],
+    plain: [svg.getAttributeNode('viewBox').namespaceURI, svg.getAttributeNode('viewBox').prefix, svg.getAttributeNode('viewBox').localName],
+    names: svg.getAttributeNames(),
+    map: [svg.attributes.getNamedItemNS(XLINK, 'href')?.value, svg.attributes.getNamedItemNS(null, 'viewBox')?.value],
+    html: svg.outerHTML,
+  };
+  svg.removeAttributeNS(XLINK, 'href');
+  out.removed = [svg.hasAttributeNS(XLINK, 'href'), svg.getAttributeNames()];
+  const div = d.createElement('div');
+  div.setAttributeNS(null, 'Data-X', '1');
+  out.htmlElement = [div.getAttributeNames(), div.getAttribute('data-x'), div.getAttributeNS(null, 'Data-X')];
+  const errors = [];
+  for (const [ns, qn] of [[null, 'a:b'], [XLINK, 'xml:x'], [XLINK, 'xmlns'], ['http://www.w3.org/2000/xmlns/', 'x'], [XLINK, ':x'], [XLINK, 'a b']]) {
+    try { div.setAttributeNS(ns, qn, ''); errors.push('ok'); } catch (e) { errors.push(e.name); }
+  }
+  out.errors = errors;
+  return out;
+});

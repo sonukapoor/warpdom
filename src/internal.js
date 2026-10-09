@@ -23,7 +23,7 @@ export const SVG_NS = 'http://www.w3.org/2000/svg';
 // Change notifications for MutationObserver (set by mutation.js). Called only
 // when the document has observers: see observed().
 export const hooks = {
-  childList: null, attribute: null, characterData: null, activation: null,
+  childList: null, attribute: null, characterData: null, activation: null, frames: null, slots: null,
   // Live range updates (ranges.js); called only when a document has live ranges.
   rangeInsert: null, rangeRemove: null, rangeReplaceData: null,
   // Custom element reactions (custom-elements.js); set once something is defined.
@@ -133,6 +133,10 @@ function insertNode(parent, node, ref) {
   if (isConnected(parent)) indexIds(node, true);
   if (observed(parent)) hooks.childList(parent, [node], [], ns.prev, ns.next);
   if (hooks.ce !== null) hooks.ce.inserted(node);
+  // Iframes get nested windows (frames.js), only in documents that have any.
+  if (doc[S].frameCount && hooks.frames !== null && isConnected(parent)) hooks.frames.inserted(node);
+  // Slot assignment changes (slots.js), only in documents with slots.
+  if (doc[S].slotCount && hooks.slots !== null) hooks.slots.inserted(parent, node);
   return node;
 }
 
@@ -142,6 +146,8 @@ export function adopt(node, doc) {
   for (let n = node; n; n = nextInTree(n, node)) {
     const s = n[S];
     s.doc = doc;
+    if (s.tag === 'iframe' && s.ns === HTML_NS) doc[S].frameCount = (doc[S].frameCount ?? 0) + 1;
+    if (s.tag === 'slot' && s.ns === HTML_NS) doc[S].slotCount = (doc[S].slotCount ?? 0) + 1;
     if (s.attrNodes) for (const attr of s.attrNodes.values()) attr[S].doc = doc;
     if (s.content) adopt(s.content, doc);
   }
@@ -174,6 +180,8 @@ function removeNode(parent, node) {
   if (focused && focused !== ownerDoc && shadowIncludingContains(node, focused)) ownerDoc[S].focused = ownerDoc;
   if (observed(parent)) hooks.childList(parent, [], [node], prev, next);
   if (hooks.ce !== null) hooks.ce.removed(node, wasConnected);
+  if (ownerDoc[S].frameCount && hooks.frames !== null && connected) hooks.frames.removed(node);
+  if (ownerDoc[S].slotCount && hooks.slots !== null) hooks.slots.removed(parent, node);
   return node;
 }
 

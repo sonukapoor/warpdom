@@ -1,10 +1,12 @@
 // Window-level features: requestAnimationFrame, viewport and scrolling,
 // navigator, location and history, the Image/Audio/Option constructors.
 // Values follow jsdom's defaults so tests see the same environment.
-import { S, state } from './internal.js';
+import { S, state, domError } from './internal.js';
 import { computedStyle, cssNamespace } from './css.js';
 import './cascade.js';
 import { compile } from './selectors.js';
+import { QuotaExceededError } from './storage.js';
+import { navigate } from './navigation.js';
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
@@ -29,17 +31,26 @@ const animationFrames = {
       frames.scheduled = true;
       s.setTimeout(() => {
         frames.scheduled = false;
-        const callbacks = [...frames.queue.values()];
-        frames.queue.clear();
+        // This frame's callbacks; one canceled by an earlier callback in the
+        // same frame does not run.
+        const current = frames.current = frames.queue;
+        frames.queue = new Map();
         const t = now();
-        for (const cb of callbacks) {
+        for (const [id, cb] of current) {
+          if (!current.has(id)) continue;
+          current.delete(id);
           try { cb(t); } catch (error) { s.onUnhandledError(error); }
         }
+        frames.current = null;
       }, 1000 / 60);
     }
     return id;
   },
-  cancelAnimationFrame(id) { state(this).frames?.queue.delete(id); },
+  cancelAnimationFrame(id) {
+    const frames = state(this).frames;
+    frames?.queue.delete(id);
+    frames?.current?.delete(id);
+  },
 };
 
 // Window methods jsdom does not implement either: they report "Not
@@ -51,11 +62,30 @@ const notImplementedMethods = Object.fromEntries(['alert', 'blur', 'confirm', 'f
 
 export const WINDOW_MEMBERS = {
   ...animationFrames,
+  // The current event (DOM 2.10), set while listeners run (events.js);
+  // [Replaceable]: assigning it replaces it with an own property.
+  get event() { return state(this).currentEvent; },
+  set event(value) { Object.defineProperty(this, 'event', { value, writable: true, enumerable: true, configurable: true }); },
   ...notImplementedMethods,
   getComputedStyle(element) {
     const ws = state(this);
     if (!element?.[S]?.attrs) throw new TypeError("Failed to execute 'getComputedStyle' on 'Window': parameter 1 is not of type 'Element'.");
     return computedStyle(element, ws.protos.CSSStyleProperties);
+  },
+  // postMessage to this window, as jsdom does it: the message (not cloned)
+  // arrives in a task as a MessageEvent with origin '' and source null;
+  // a targetOrigin other than '*', '/' or this window's origin drops it.
+  postMessage(...args) {
+    const ws = state(this);
+    if (args.length < 2) throw new TypeError("'postMessage' requires 2 arguments: 'message' and 'targetOrigin'");
+    const [message, targetOrigin] = args;
+    const target = String(targetOrigin);
+    if (target !== '*' && target !== '/') {
+      let origin;
+      try { origin = new URL(target).origin; } catch { throw domError(`Failed to execute 'postMessage' on 'Window': Invalid target origin '${target}' in a call to 'postMessage'.`, 'SyntaxError'); }
+      if (origin !== ws.url.origin) return;
+    }
+    ws.setTimeout(() => this.dispatchEvent(new this.MessageEvent('message', { data: message })), 0);
   },
   get customElements() { return state(this).customElements; },
   getSelection() { return state(this) && this.document.getSelection(); },
@@ -72,22 +102,25 @@ function make(window, iface, data) {
   return object;
 }
 
-// "jsdom" is a compatibility token, as "like Gecko" is for browsers:
-// libraries test the user agent for it to skip layout-dependent checks
-// (MUI's anchor and tab indicator warnings) in a DOM without layout.
+// "jsdom/30.0.0" is a compatibility token, as "like Gecko" is for
+// browsers, in the form jsdom's own user agent has: libraries test the
+// user agent for "jsdom" (MUI's layout warnings) or "jsdom/" (floating-ui's
+// isJSDOM) to skip layout-dependent behavior in a DOM without layout.
 const userAgent = () => {
   const platform = globalThis.process?.platform ?? 'unknown OS';
-  return `Mozilla/5.0 (${platform}) AppleWebKit/537.36 (KHTML, like Gecko) warpdom/0.0.0 (compatible; jsdom)`;
+  return `Mozilla/5.0 (${platform}) AppleWebKit/537.36 (KHTML, like Gecko) jsdom/30.0.0 warpdom/0.0.0`;
 };
 
 const url = (self) => state(self).window[S].url;
 const setURL = (self, next) => { state(self).window[S].url = next; };
+// Location's setters navigate (navigation.js).
+const go = (self, next, replace) => navigate(state(self).window, next, replace);
 const urlPart = (part) => ({
   get() { return url(this)[part]; },
   set(v) {
     const next = new URL(url(this).href);
     next[part] = v;
-    setURL(this, next);
+    go(this, next);
   },
 });
 
@@ -123,7 +156,7 @@ export const FEATURE_INTERFACES = [
     members: {
       href: {
         get() { return url(this).href; },
-        set(v) { setURL(this, new URL(String(v), url(this).href)); },
+        set(v) { go(this, new URL(String(v), url(this).href)); },
       },
       get origin() { return url(this).origin; },
       protocol: urlPart('protocol'),
@@ -133,8 +166,8 @@ export const FEATURE_INTERFACES = [
       pathname: urlPart('pathname'),
       search: urlPart('search'),
       hash: urlPart('hash'),
-      assign(v) { this.href = v; },
-      replace(v) { this.href = v; },
+      assign(v) { go(this, new URL(String(v), url(this).href)); },
+      replace(v) { go(this, new URL(String(v), url(this).href), true); },
       reload() { state(this); },
       toString() { return url(this).href; },
     },
@@ -171,6 +204,9 @@ export const FEATURE_INTERFACES = [
 export function setupWindow(window, { url: initial = 'about:blank' } = {}) {
   const ws = window[S];
   ws.url = new URL(initial);
+  // DOMException is the platform's (shared by all windows); its subclass too.
+  window.DOMException = DOMException;
+  window.QuotaExceededError = QuotaExceededError;
   ws.setTimeout = globalThis.setTimeout.bind(globalThis);
   ws.location = make(window, 'Location', {});
   ws.history = make(window, 'History', { entries: [{ state: null, url: ws.url }], index: 0 });

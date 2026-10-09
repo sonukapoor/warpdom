@@ -79,6 +79,34 @@ function invoke(event, index, phase) {
   es.currentTarget = node;
   const list = node[S]?.listeners?.get(es.type);
   if (!list) return;
+  // The window's current event (window.event) while these listeners run:
+  // the event, or undefined for a target in a shadow tree; restored after.
+  const window = windowOf(node);
+  let previous;
+  if (window !== null) {
+    if (item.inShadowTree === undefined) item.inShadowTree = inShadowTree(node);
+    previous = window[S].currentEvent;
+    window[S].currentEvent = item.inShadowTree ? undefined : event;
+  }
+  try {
+    invokeListeners(node, event, es, list, phase);
+  } finally {
+    if (window !== null) window[S].currentEvent = previous;
+  }
+}
+
+// The window of a node's document (null without a browsing context), or the
+// window itself.
+function windowOf(target) {
+  const s = target[S];
+  if (s === undefined) return null;
+  if (s.isWindow === true) return target;
+  const doc = s.type === DOCUMENT_NODE ? target : s.doc;
+  if (doc === undefined) return null;
+  return doc[S].noView ? null : doc[S].window ?? null;
+}
+
+function invokeListeners(node, event, es, list, phase) {
   for (const entry of list.slice()) {
     if (entry.removed) continue;
     if (phase === 'capturing' && !entry.capture) continue;
@@ -114,6 +142,7 @@ function appendToPath(path, target, shadowTarget, relatedTarget, slotInClosedTre
     relatedTarget,
     rootOfClosedTree: s?.shadow === true && s.mode === 'closed',
     slotInClosedTree,
+    inShadowTree: undefined, // computed when listeners run (invoke)
   });
 }
 
@@ -359,6 +388,17 @@ function constructTouchEvent(w, self, args) {
 
 const touchListGetters = Object.fromEntries(TOUCH_LISTS.map((key) => [key, { get() { return state(this)[key]; } }]));
 
+// MessageEvent: source is not checked to be a window or port (as in
+// jsdom: tests pass stand-ins); ports is a copy of the given sequence.
+const MESSAGE_FIELDS = { data: null, origin: '', lastEventId: '', source: null, ports: null };
+const messageEventFields = eventConstruct('MessageEvent', MESSAGE_FIELDS);
+function constructMessageEvent(w, self, args) {
+  messageEventFields(w, self, args);
+  const ports = args[1]?.ports;
+  self[S].ports = ports == null ? [] : Array.from(ports);
+  return self;
+}
+
 const own = (fields, parentFields) => Object.fromEntries(Object.entries(fields).filter(([k]) => !(k in parentFields)));
 const MOUSE_OWN = own(MOUSE_FIELDS, UI_FIELDS);
 
@@ -427,6 +467,13 @@ export const EVENT_INTERFACES = [
     ...fieldGetters(own(INPUT_FIELDS, UI_FIELDS)),
     getTargetRanges() { return []; },
   } },
+  { name: 'MessageEvent', parent: 'Event', construct: constructMessageEvent, members: {
+    ...fieldGetters(own(MESSAGE_FIELDS, { ports: null })),
+    get ports() { return state(this).ports; },
+  } },
+  { name: 'ToggleEvent', parent: 'Event', construct: eventConstruct('ToggleEvent', { oldState: '', newState: '' }), members: fieldGetters({ oldState: '', newState: '' }) },
+  { name: 'PopStateEvent', parent: 'Event', construct: eventConstruct('PopStateEvent', { state: null }), members: fieldGetters({ state: null }) },
+  { name: 'HashChangeEvent', parent: 'Event', construct: eventConstruct('HashChangeEvent', { oldURL: '', newURL: '' }), members: fieldGetters({ oldURL: '', newURL: '' }) },
   { name: 'SubmitEvent', parent: 'Event', construct: eventConstruct('SubmitEvent', { submitter: null }), members: fieldGetters({ submitter: null }) },
   { name: 'ErrorEvent', parent: 'Event', construct: eventConstruct('ErrorEvent', ERROR_FIELDS), members: fieldGetters(ERROR_FIELDS) },
 ];

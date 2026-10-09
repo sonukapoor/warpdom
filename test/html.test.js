@@ -107,3 +107,109 @@ htmlParity('cloning a template copies its contents when deep', (w) => {
   const shallow = t.cloneNode(false);
   return [deep.content.childNodes.length, deep.content.firstElementChild.id, deep.content.firstChild !== t.content.firstChild, shallow.content.childNodes.length, deep.innerHTML];
 });
+
+htmlParity('hyperlinks: URL members of <a> and <area>', (w) => {
+  const d = w.document;
+  const read = (el) => ['href', 'origin', 'protocol', 'username', 'password', 'host', 'hostname', 'port', 'pathname', 'search', 'hash']
+    .map((k) => el[k]).concat(String(el));
+  const a = (href) => { const el = d.createElement('a'); if (href !== undefined) el.setAttribute('href', href); return el; };
+  const out = {};
+  for (const href of [undefined, '', '#', '#x', '/p?q=1#h', 'other', 'https://u:p@example.com:8080/a/b?c#d', 'mailto:me@example.com',
+    'http://[bad', 'javascript:void(0)', 'file:///tmp/x']) out[String(href)] = read(a(href));
+  const set = a('https://example.com/a?b#c');
+  set.protocol = 'http';
+  set.username = 'me';
+  set.password = 'pw';
+  set.host = 'other.org:81';
+  set.hostname = 'third.org';
+  set.port = '82';
+  set.pathname = 'x/y';
+  set.search = 'k=v';
+  set.hash = 'top';
+  out.set = [set.getAttribute('href'), ...read(set)];
+  const mail = a('mailto:me@example.com');
+  mail.host = 'nope';
+  mail.pathname = 'nope';
+  mail.username = 'nope';
+  out.opaque = [mail.getAttribute('href')];
+  const none = a();
+  none.search = 'x';
+  none.href = '/new';
+  out.none = [none.getAttribute('href'), none.href];
+  const area = d.createElement('area');
+  area.href = '#z';
+  out.area = read(area);
+  return out;
+});
+
+const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+htmlParity('hyperlinks: following links', async (w) => {
+  const d = w.document;
+  d.body.innerHTML = '<a id=h href="#sec">h</a><a id=o href="/other">o</a><a id=n>n</a><a id=p href="#prev">p</a>'
+    + '<a id=x href="https://example.org/">x</a><a id=same href="">s</a><a id=q href="?q=1">q</a>'
+    + '<a id=t href="#t" target=_blank>t</a><a id=dl href="#dl" download>d</a><map><area id=ar href="#area"></map>';
+  const log = [];
+  w.addEventListener('hashchange', (e) => log.push(['hashchange', e.constructor.name, e.oldURL, e.newURL, e.bubbles, e.cancelable, w.history.length]));
+  w.addEventListener('popstate', (e) => log.push(['popstate', e.constructor.name, w.location.hash]));
+  d.getElementById('p').addEventListener('click', (e) => e.preventDefault());
+  for (const id of ['h', 'o', 'p', 'x', 'same', 'q', 't', 'dl', 'ar']) {
+    d.getElementById(id).click();
+    log.push([id, w.location.href]);
+    await tick();
+  }
+  d.getElementById('dl').click();
+  await tick();
+  log.push(['same fragment again', w.location.href, w.history.length]);
+  return log;
+});
+
+htmlParity('location: fragment navigation and other documents', async (w) => {
+  const log = [];
+  w.addEventListener('hashchange', (e) => log.push(['hashchange', e.oldURL, e.newURL]));
+  w.addEventListener('popstate', () => log.push(['popstate', w.location.hash]));
+  w.location.hash = 'one';
+  log.push(['sync', w.location.href, w.history.length]);
+  await tick();
+  w.location.href = '#two';
+  w.location.assign('/x');
+  w.location.hash = 'two';
+  log.push(['sync', w.location.href, w.history.length]);
+  await tick();
+  w.location.replace('#three');
+  log.push(['replace', w.location.href, w.history.length]);
+  await tick();
+  w.location.pathname = '/elsewhere';
+  w.location.search = '?a=1';
+  log.push(['other documents', w.location.href]);
+  const pop = new w.PopStateEvent('popstate', { state: { a: 1 } });
+  const hash = new w.HashChangeEvent('hashchange', { oldURL: 'a', newURL: 'b' });
+  log.push([pop.state, hash.oldURL, hash.newURL, new w.HashChangeEvent('x').oldURL]);
+  return log;
+});
+
+// Deliberate deviation: jsdom navigates to the document's URL (dropping
+// the fragment) when an <a> without href is clicked; the standard does
+// nothing.
+test('hyperlinks: an <a> without href is not followed', async () => {
+  const w = createWindow({ url: 'http://localhost:3000/page#start' });
+  const a = w.document.body.appendChild(w.document.createElement('a'));
+  let changes = 0;
+  w.addEventListener('hashchange', () => changes++);
+  a.click();
+  await tick();
+  assert.equal(w.location.href, 'http://localhost:3000/page#start');
+  assert.equal(changes, 0);
+});
+
+// Deliberate deviation: jsdom's fragment navigations leave history.state
+// (and popstate's state) undefined; the standard's new entry has null.
+test('fragment navigation: history.state is null', async () => {
+  const w = createWindow({ url: 'http://localhost:3000/page' });
+  const states = [];
+  w.addEventListener('popstate', (e) => states.push(e.state));
+  w.location.hash = 'a';
+  assert.equal(w.history.state, null);
+  await tick();
+  assert.deepEqual(states, [null]);
+});

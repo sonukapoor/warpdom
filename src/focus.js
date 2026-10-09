@@ -102,6 +102,14 @@ function updateFocus(doc, target) {
     if (doc[S].focused) return;
   }
   doc[S].focused = target;
+  // Focus inside a frame: the frame element is its parent document's focused
+  // area, up to the top window.
+  if (newElement) {
+    for (let w = doc[S].window; w && w[S].frameElement; w = w[S].parentWindow) {
+      const frame = w[S].frameElement;
+      frame[S].doc[S].focused = frame;
+    }
+  }
   // Platform convention at focus: the selection collapses to the element.
   if (newElement) selectionFocused(doc, newElement);
   if (newElement) {

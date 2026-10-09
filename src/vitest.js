@@ -12,6 +12,16 @@ import { resetWindow, snapshotWindow } from './reset.js';
 const SELF_KEYS = ['window', 'self', 'top', 'parent'];
 const isClassLike = (key) => /^[A-Z]/.test(key);
 
+// The value of a data property found on the object or its prototypes;
+// undefined for accessors.
+function dataValue(object, key) {
+  for (let o = object; o; o = Object.getPrototypeOf(o)) {
+    const descriptor = Object.getOwnPropertyDescriptor(o, key);
+    if (descriptor) return 'value' in descriptor ? descriptor.value : undefined;
+  }
+  return undefined;
+}
+
 export function installWindow(global, window) {
   const originals = new Map();
   // The window's own members and those it inherits (Window.prototype,
@@ -25,7 +35,9 @@ export function installWindow(global, window) {
   for (const key of keys) {
     const original = Object.getOwnPropertyDescriptor(global, key);
     if (original) originals.set(key, original);
-    const value = window[key];
+    // Methods (data properties) are bound once; accessors are read live and
+    // not called here (localStorage throws for opaque origins).
+    const value = dataValue(window, key);
     const bound = typeof value === 'function' && !isClassLike(key) ? value.bind(window) : null;
     Object.defineProperty(global, key, {
       get() { return overrides.has(key) ? overrides.get(key) : bound ?? window[key]; },

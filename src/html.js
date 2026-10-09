@@ -7,6 +7,7 @@ import {
   ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE,
 } from './internal.js';
 import { eventHandlerAttributesAdded } from './event-handlers.js';
+import { attributeSteps } from './attributes.js';
 
 // --- parser loading -------------------------------------------------------------
 
@@ -86,6 +87,13 @@ export function parseFragment(doc, contextElement, html) {
   return fragment;
 }
 
+// Parses a whole HTML document into doc (an empty document).
+export function parseDocument(doc, html) {
+  const ast = getParser().parse(String(html));
+  appendAst(doc[S].window[S], doc, ast.childNodes, doc);
+  return doc;
+}
+
 // Parsed elements are created plainly, get their attributes, then queue an
 // upgrade if they are defined custom elements (not inside templates).
 function appendAst(internals, parent, astNodes, doc, inTemplate = false) {
@@ -93,6 +101,7 @@ function appendAst(internals, parent, astNodes, doc, inTemplate = false) {
     let node;
     if (n.nodeName === '#text') node = internals.createText(n.value, doc);
     else if (n.nodeName === '#comment') node = internals.createComment(n.data, doc);
+    else if (n.nodeName === '#documentType') node = internals.createDoctype(n.name ?? '', n.publicId ?? '', n.systemId ?? '', doc);
     else if (n.tagName) {
       let is = null;
       for (const a of n.attrs) if (a.name === 'is' && !a.prefix) is = a.value;
@@ -100,10 +109,19 @@ function appendAst(internals, parent, astNodes, doc, inTemplate = false) {
       const attrs = node[S].attrs;
       let handlers = false;
       for (const a of n.attrs) {
-        attrs.set(a.prefix ? `${a.prefix}:${a.name}` : a.name, a.value);
+        const name = a.prefix ? `${a.prefix}:${a.name}` : a.name;
+        attrs.set(name, a.value);
+        // Foreign attributes (xlink:href, xml:lang) keep their namespace.
+        if (a.namespace) {
+          const ns = node[S].attrNS ?? (node[S].attrNS = new Map());
+          ns.set(name, { ns: a.namespace, prefix: a.prefix || null, local: a.name });
+        }
         if (a.name.startsWith('on')) handlers = true;
       }
       if (handlers) eventHandlerAttributesAdded(node);
+      // A parsed <details open> queues its toggle event, as adding the
+      // attribute would.
+      if (n.tagName === 'details' && n.namespaceURI === HTML_NS && attrs.has('open')) attributeSteps.get('open')?.(node, undefined, attrs.get('open'));
       if (!inTemplate && hooks.ce !== null) hooks.ce.created(node);
       if (n.content) appendAst(internals, templateContent(node), n.content.childNodes, doc, true);
       else appendAst(internals, node, n.childNodes, doc, inTemplate);

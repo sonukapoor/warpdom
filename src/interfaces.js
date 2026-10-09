@@ -18,6 +18,12 @@ import { FOCUS_MEMBERS, DOCUMENT_FOCUS_MEMBERS } from './focus.js';
 import { FORM_INTERFACES, FORM_MEMBERS, clickMember } from './forms.js';
 import { GEOMETRY_INTERFACES, ELEMENT_LAYOUT, HTML_ELEMENT_LAYOUT } from './layout.js';
 import { querySelectorAll as selectAll, matches as matchSelector, closest as closestMatch } from './selectors.js';
+import { DOM_PARSING_INTERFACES } from './dom-parsing.js';
+import { IFRAME_MEMBERS, WINDOW_FRAME_MEMBERS } from './frames.js';
+import { STORAGE_INTERFACE, STORAGE_WINDOW_MEMBERS } from './storage.js';
+import { PROGRESS_MEMBERS, METER_MEMBERS } from './progress-meter.js';
+import { SLOT_MEMBERS, SLOTTABLE_MEMBERS } from './slots.js';
+import { HYPERLINK_MEMBERS } from './hyperlinks.js';
 import { COLLECTION_INTERFACES, liveList } from './collections.js';
 import { HTML_ELEMENTS } from './html-elements.js';
 import { EVENT_INTERFACES, createEvent, retarget } from './events.js';
@@ -27,7 +33,7 @@ import { TRAVERSAL_INTERFACES, createTreeWalker, createNodeIterator } from './tr
 import { parseFragment, serializeChildren, serializeOuter, setInnerHTML, setOuterHTML, insertAdjacentHTML, templateContent } from './html.js';
 import {
   ATTRIBUTE_INTERFACES, writeAttribute, attrName, attrNode, namedNodeMap, tokenList, domStringMap,
-  setAttributeNode, removeAttributeNode, createAttribute,
+  setAttributeNode, removeAttributeNode, createAttribute, findAttributeNS, setAttributeNS,
 } from './attributes.js';
 
 // Merge member objects by descriptor: object spread would call getters.
@@ -218,6 +224,8 @@ export const INTERFACES = [
   ...COLLECTION_INTERFACES,
   ...FORM_INTERFACES,
   ...EVENT_INTERFACES,
+  ...DOM_PARSING_INTERFACES,
+  STORAGE_INTERFACE,
   ...MUTATION_INTERFACES,
   ...FEATURE_INTERFACES,
   ...TRAVERSAL_INTERFACES,
@@ -226,7 +234,7 @@ export const INTERFACES = [
   ...CSSOM_INTERFACES,
   ...RANGE_INTERFACES,
   ...CUSTOM_ELEMENT_INTERFACES,
-  { name: 'Window', parent: 'EventTarget', members: mix(GLOBAL_HANDLER_MEMBERS, WINDOW_HANDLER_MEMBERS, WINDOW_MEMBERS) },
+  { name: 'Window', parent: 'EventTarget', members: mix(GLOBAL_HANDLER_MEMBERS, WINDOW_HANDLER_MEMBERS, WINDOW_MEMBERS, WINDOW_FRAME_MEMBERS, STORAGE_WINDOW_MEMBERS) },
   {
     name: 'Node',
     parent: 'EventTarget',
@@ -508,6 +516,7 @@ export const INTERFACES = [
     parent: 'CharacterData',
     members: {
       splitText(offset) { state(this); return splitText(this, Number(offset) >>> 0); },
+      ...SLOTTABLE_MEMBERS,
       // The data of the contiguous Text nodes, in tree order.
       get wholeText() {
         let first = state(this) && this;
@@ -529,6 +538,9 @@ export const INTERFACES = [
       attachShadow(init) { state(this); return attachShadow(this, init); },
       get shadowRoot() { const shadow = state(this).shadowRoot; return shadow && shadow[S].mode === 'open' ? shadow : null; },
       get localName() { return state(this).tag; },
+      ...SLOTTABLE_MEMBERS,
+      get slot() { return state(this).attrs.get('slot') ?? ''; },
+      set slot(v) { state(this); writeAttribute(this, 'slot', String(v)); },
       get id() { return state(this).attrs.get('id') ?? ''; },
       set id(v) { this.setAttribute('id', v); },
       className: reflect('class'),
@@ -536,7 +548,11 @@ export const INTERFACES = [
       getAttributeNames() { return [...state(this).attrs.keys()]; },
       get attributes() { return namedNodeMap(this); },
       getAttributeNode(name) { const key = attrName(this, name); return state(this).attrs.has(key) ? attrNode(this, key) : null; },
-      getAttributeNodeNS(ns, name) { return this.getAttributeNode(name); },
+      getAttributeNodeNS(ns, localName) { state(this); const name = findAttributeNS(this, ns, localName); return name === null ? null : attrNode(this, name); },
+      getAttributeNS(ns, localName) { state(this); const name = findAttributeNS(this, ns, localName); return name === null ? null : this[S].attrs.get(name); },
+      hasAttributeNS(ns, localName) { state(this); return findAttributeNS(this, ns, localName) !== null; },
+      setAttributeNS(ns, qualifiedName, value) { state(this); setAttributeNS(this, ns, qualifiedName, value); },
+      removeAttributeNS(ns, localName) { state(this); const name = findAttributeNS(this, ns, localName); if (name !== null) writeAttribute(this, name, undefined); },
       setAttributeNode(attr) { state(this); return setAttributeNode(this, attr); },
       setAttributeNodeNS(attr) { state(this); return setAttributeNode(this, attr); },
       removeAttributeNode(attr) { state(this); return removeAttributeNode(this, attr); },
@@ -651,6 +667,13 @@ INTERFACES.push({
     toBlob() { state(this); canvasNotImplemented(this, 'toBlob'); },
   },
 });
+// The HTMLHyperlinkElementUtils mixin (hyperlinks.js).
+INTERFACES.push({ name: 'HTMLAnchorElement', parent: 'HTMLElement', members: HYPERLINK_MEMBERS });
+INTERFACES.push({ name: 'HTMLAreaElement', parent: 'HTMLElement', members: HYPERLINK_MEMBERS });
+INTERFACES.push({ name: 'HTMLIFrameElement', parent: 'HTMLElement', members: IFRAME_MEMBERS });
+INTERFACES.push({ name: 'HTMLSlotElement', parent: 'HTMLElement', members: SLOT_MEMBERS });
+INTERFACES.push({ name: 'HTMLProgressElement', parent: 'HTMLElement', members: PROGRESS_MEMBERS });
+INTERFACES.push({ name: 'HTMLMeterElement', parent: 'HTMLElement', members: METER_MEMBERS });
 INTERFACES.push({ name: 'HTMLTemplateElement', parent: 'HTMLElement', members: { get content() { return templateContent(this); } } });
 for (const [name, parent] of HTML_ELEMENTS) {
   if (!INTERFACES.some((i) => i.name === name)) INTERFACES.push({ name, parent, members: {} });

@@ -165,3 +165,11 @@ test('getComputedStyle: var() and disabled style sheets', () => {
   d.styleSheets[0].disabled = true;
   assert.equal(cs.width, 'auto');
 });
+
+parity('getComputedStyle: shorthands', (w) => {
+  const d = w.document;
+  d.head.innerHTML = '<style>.r{background:red;border:1px solid red;outline:2px solid blue;color:red}</style>';
+  d.body.innerHTML = '<div class=r id=a></div><div id=b style="background:red;border:1px solid red;outline:2px solid blue;color:red;border-color:green"></div><div id=c></div>';
+  const props = ['background', 'border', 'outline', 'color', 'border-color', 'border-top-color', 'background-color', 'border-top', 'border-width', 'margin'];
+  return ['a', 'b', 'c'].map((id) => { const cs = w.getComputedStyle(d.getElementById(id)); return props.map((p) => cs.getPropertyValue(p)); });
+});

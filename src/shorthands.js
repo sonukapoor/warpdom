@@ -30,6 +30,22 @@ export function segments(value) {
   return out;
 }
 
+// Splits at commas outside parentheses and quotes (background layers).
+function topLevelCommaSplit(value) {
+  const parts = [];
+  let depth = 0, quote = null, start = 0;
+  for (let i = 0; i < value.length; i++) {
+    const c = value[i];
+    if (quote) { if (c === '\\') i++; else if (c === quote) quote = null; continue; }
+    if (c === '"' || c === "'") quote = c;
+    else if (c === '(') depth++;
+    else if (c === ')') depth = Math.max(0, depth - 1);
+    else if (c === ',' && depth === 0) { parts.push(value.slice(start, i)); start = i + 1; }
+  }
+  parts.push(value.slice(start));
+  return parts;
+}
+
 const words = (value) => segments(value).filter((_, i) => i % 2 === 0 && _ !== '');
 
 export const CSS_WIDE = new Set(['inherit', 'initial', 'unset', 'revert', 'revert-layer']);
@@ -104,7 +120,7 @@ function expandShorthand(name, value) {
   }
   if (name === 'background') {
     // The color, from the final layer; the other longhands reset.
-    const layers = value.split(',');
+    const layers = topLevelCommaSplit(value);
     const color = words(layers[layers.length - 1]).find((w) => w.toLowerCase() === 'currentcolor' || resolveColor(w) !== null);
     return longhands.map((l) => [l, l === 'background-color' ? color ?? initialOf(l) : initialOf(l)]);
   }

@@ -192,3 +192,71 @@ test('TouchEvent: lists are TouchLists (jsdom uses arrays)', () => {
   assert.equal(e.changedTouches.item(1), null);
   assert.equal(w.document.createEvent('TouchEvent') instanceof w.TouchEvent, true);
 });
+
+parity('window.event: the current event while listeners run', (w) => {
+  const d = w.document;
+  d.body.innerHTML = '<button id=a></button><button id=b></button>';
+  const seen = [];
+  d.getElementById('a').addEventListener('click', () => {
+    seen.push(w.event?.type);
+    d.getElementById('b').dispatchEvent(new w.MouseEvent('mousedown'));
+    seen.push(w.event?.type);
+  });
+  d.getElementById('b').addEventListener('mousedown', () => seen.push(w.event?.type));
+  const before = w.event;
+  d.getElementById('a').click();
+  const host = d.body.appendChild(d.createElement('div'));
+  const inner = host.attachShadow({ mode: 'open' }).appendChild(d.createElement('span'));
+  inner.addEventListener('click', () => seen.push(['shadow', w.event]));
+  host.addEventListener('click', () => seen.push(['host', w.event?.type]));
+  inner.dispatchEvent(new w.MouseEvent('click', { bubbles: true, composed: true }));
+  w.addEventListener('custom', () => seen.push(['window', w.event?.type]));
+  w.dispatchEvent(new w.Event('custom'));
+  return { before, seen, after: w.event, own: 'event' in w };
+});
+
+parity('animation frames: a callback canceled earlier in the same frame does not run', async (w) => {
+  const ran = [];
+  await new Promise((resolve) => {
+    let b = 0;
+    w.requestAnimationFrame(() => {
+      ran.push('a');
+      w.cancelAnimationFrame(b);
+      w.requestAnimationFrame(() => resolve());
+    });
+    b = w.requestAnimationFrame(() => ran.push('b'));
+  });
+  return ran;
+});
+
+parity('MessageEvent and window.postMessage', async (w) => {
+  const e = new w.MessageEvent('message', { data: { a: 1 }, origin: 'http://x', lastEventId: '7', source: w, ports: [] });
+  const d = new w.MessageEvent('m');
+  const out = {
+    event: [e.data, e.origin, e.lastEventId, e.source === w, e.ports, e.bubbles, e instanceof w.Event],
+    defaults: [d.data, d.origin, d.lastEventId, d.source, d.ports],
+    stand_in_source: new w.MessageEvent('m', { source: { postMessage() {} } }).source !== null,
+  };
+  const log = [];
+  const obj = { k: 1 };
+  w.addEventListener('message', (ev) => log.push([ev.data, ev.origin, ev.source, ev.constructor.name, ev.data === obj, ev.bubbles]));
+  w.postMessage(obj, '*');
+  w.postMessage('to own origin', 'http://localhost:3000');
+  w.postMessage('dropped', 'http://other.org');
+  log.push('sync');
+  try { w.postMessage('x'); } catch (err) { log.push([err.constructor.name, err.message]); }
+  await new Promise((r) => setTimeout(r, 20));
+  out.log = log;
+  return out;
+});
+
+// Deliberate deviation: jsdom drops a message posted with targetOrigin '/';
+// the standard delivers it ('/' means the window's own origin).
+test('postMessage: targetOrigin / is the window\'s own origin', async () => {
+  const w = createWindow({ url: 'http://localhost:3000/' });
+  const got = [];
+  w.addEventListener('message', (e) => got.push(e.data));
+  w.postMessage('self', '/');
+  await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(got, ['self']);
+});

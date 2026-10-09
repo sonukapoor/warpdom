@@ -7,6 +7,8 @@
 // explicit state on the element (value, checked, selectedness). Results
 // that need a tree scan (form.elements, labels, select options) are cached
 // until the document changes (treeRev).
+import { urlOf } from './hyperlinks.js';
+import { followHyperlink } from './navigation.js';
 import {
   S, state, domError, hooks, HTML_NS, ELEMENT_NODE, TEXT_NODE, DOCUMENT_NODE,
   rootOf, nextInTree, contains, elementById, connected
@@ -494,6 +496,22 @@ function deselectOthers(option, select) {
 }
 
 // The selected attribute sets selectedness while the option is not dirty.
+// The details element's open attribute (HTML 4.11.1): adding or removing it
+// queues one toggle event task; changes made before the task runs fold
+// into it (the details toggle task tracker).
+attributeSteps.set('open', (el, old, value) => {
+  const s = el[S];
+  if (s.ns !== HTML_NS || s.tag !== 'details' || (old === undefined) === (value === undefined)) return;
+  const newState = value === undefined ? 'closed' : 'open';
+  if (s.toggleTask) { s.toggleTask.newState = newState; return; }
+  const task = s.toggleTask = { oldState: old === undefined ? 'closed' : 'open', newState };
+  const window = s.doc[S].window;
+  window[S].setTimeout(() => {
+    s.toggleTask = null;
+    el.dispatchEvent(new window.ToggleEvent('toggle', { oldState: task.oldState, newState: task.newState }));
+  }, 0);
+});
+
 attributeSteps.set('selected', (el) => {
   const s = el[S];
   if (!isTag(el, 'option') || s.dirtySelected) return;
@@ -866,6 +884,17 @@ function activationBehavior(node) {
         sendClick(control, { bubbles: true, cancelable: true, view: windowOf(node), detail: 1 });
       },
     };
+    // Links follow their url (hyperlinks.js, navigation.js); an <a> or
+    // <area> without one is not a link.
+    case 'a': case 'area': {
+      if (!s.attrs.has('href')) return null;
+      return {
+        run() {
+          const url = urlOf(node);
+          if (url) followHyperlink(node, url);
+        },
+      };
+    }
     // The summary for its parent details toggles the details' open attribute.
     case 'summary': return {
       run() {

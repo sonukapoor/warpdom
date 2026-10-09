@@ -105,6 +105,8 @@ export function createWindow(options = {}) {
         if (custom) return custom;
       }
       const element = create(proto ?? protos[interfaceFor(ns, tag)], ELEMENT_NODE, { tag, ns, attrs: new Map() }, doc);
+      if (tag === 'iframe' && ns === HTML_NS) doc[S].frameCount = (doc[S].frameCount ?? 0) + 1;
+      if (tag === 'slot' && ns === HTML_NS) doc[S].slotCount = (doc[S].slotCount ?? 0) + 1;
       if (ns === HTML_NS && ((tag.includes('-') && isValidCustomElementName(tag)) || is !== null)) {
         element[S].ceState = 'undefined';
         element[S].ceIs = is;
@@ -126,6 +128,10 @@ export function createWindow(options = {}) {
     // As jsdom reports unimplemented features (form submission, navigation)
     // through its virtual console.
     notImplemented: (message) => console.error(`Not implemented: ${message}`),
+    // An iframe's nested window (frames.js).
+    createNestedWindow: ({ url, parent, frameElement }) => createWindow({ url, nested: { parent, frameElement } }),
+    parentWindow: options.nested?.parent ?? null,
+    frameElement: options.nested?.frameElement ?? null,
   };
   Object.setPrototypeOf(window, protos.Window);
   Object.defineProperty(window, S, { value: internals });
@@ -133,7 +139,8 @@ export function createWindow(options = {}) {
   internals.customElements = createRegistry(window);
 
   document = internals.initDocument(Object.create(protos.Document));
-  insert(document, internals.createDoctype('html', '', ''), null);
+  // A nested window's about:blank document has no doctype.
+  if (!options.nested) insert(document, internals.createDoctype('html', '', ''), null);
   const html = insert(document, internals.createElementNS(HTML_NS, 'html'), null);
   insert(html, internals.createElementNS(HTML_NS, 'head'), null);
   insert(html, internals.createElementNS(HTML_NS, 'body'), null);

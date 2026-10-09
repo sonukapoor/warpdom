@@ -173,6 +173,16 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   standard's IDL: `<search>` and `<menuitem>` are HTMLElement (jsdom:
   HTMLUnknownElement), `<selectedcontent>` exists, and reflections jsdom
   lacks (inert, srcset, relList, sandbox, ...) are present.
+- `postMessage(message, '/')` is delivered ('/' is the window's own
+  origin); jsdom drops it.
+- The details `toggle` event is a ToggleEvent (oldState, newState), and
+  ToggleEvent exists; jsdom fires a plain Event.
+- A removed iframe's `contentWindow` and `contentDocument` are null (its
+  window is discarded); jsdom keeps returning the old ones.
+- After a fragment navigation `history.state` (and popstate's `state`) is
+  null; jsdom leaves it undefined.
+- Clicking an `<a>` without `href` does nothing; jsdom navigates to the
+  document's URL without its fragment.
 - A TouchEvent's touch lists are TouchLists (length, item(), indexing,
   iteration), and TouchList exists; jsdom uses arrays.
 - getComputedStyle expands the `flex-flow` shorthand (jsdom ignores it)
@@ -421,6 +431,28 @@ warpdom follows the standard. Each has a test. To publish in the docs.
      suites need, and load stays well inside the 30-40 ms budget. Tried
      emitting the CSS data as a JSON string parsed on first use: -2% cold
      load (within noise), -3% heap; below the 3% bar, reverted.
+3. Survey of the other 11 Vitest corpus suites (2026-10-09), each run
+   once on warpdom (isolated) against jsdom: svelte (7,818 passing) and
+   analog (187) identical; floating-ui, ariakit, element-plus, CopilotKit,
+   ark-ui, solid with differences, fixed since in: user agent token form
+   (jsdom/), link URL members and navigation, namespaced attributes,
+   DOMParser (HTML) and XMLSerializer, iframes, details toggle,
+   window.event, same-frame cancelAnimationFrame, Web Storage,
+   MessageEvent and postMessage, progress/meter, slots, shorthand and
+   declared color serialization. Reruns pending. Not comparable yet:
+   ag-grid (behavioural suite timed out; two export tests take 420 s and
+   180 s on jsdom), kobalte (workspace package not built: most files fail
+   on both DOMs), nuxt-ui (jsdom baseline broken), element-plus pins
+   jsdom 16 (some of its tests rely on behavior jsdom 30 dropped).
+   Harness: warpdom now runs from a copy inside the package (Vitest hangs
+   loading an environment from outside the root with isolate: false).
+   Load cost of this round (bench/load.js, Node 22.17.1, median of 5
+   against eafface): cold load 19.5 -> 20.6 ms, heap 2.84 -> 2.99 MB,
+   window creation unchanged; hot members unchanged (bench:hot, all
+   within +-2.4%). Accepted: the new interfaces are what the suites use;
+   still well inside the budget. Lazy interface creation is the next
+   candidate if load grows. Style writes regressed 88.6 -> 196.8 ns with
+   declared color serialization; fixed with a cache (92.0 ns).
    Per-file reset (fast mode): Radix 6.1 s and Vuetify 3.0 s with isolated
    results; emoji-picker leaks module state and stays isolated.
    Later: enumerated attributes limited to only known values beyond the

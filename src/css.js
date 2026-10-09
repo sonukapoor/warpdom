@@ -4,8 +4,9 @@
 // the element's style attribute; a new style attribute re-parses them.
 import { S, state, domError, ELEMENT_NODE, cssomChanges, attributesChanged } from './internal.js';
 import { STYLE_ACCESSORS } from './css-properties.js';
-import { LONGHANDS, SHORTHANDS } from './css-data.js';
-import { expand } from './shorthands.js';
+import { LONGHANDS, SHORTHANDS, COLOR_SHORTHANDS } from './css-data.js';
+import { expand, segments } from './shorthands.js';
+import { resolveColor } from './colors.js';
 
 // backgroundColor -> background-color, webkitAnimation/WebkitAnimation ->
 // -webkit-animation, cssFloat -> float; dashed names map to themselves.
@@ -48,7 +49,46 @@ function isLengthProperty(name) {
   return result;
 }
 
+// Colors in declared values serialize as CSSOM (and jsdom) gives them:
+// hex, rgb() and hsl() as rgb()/rgba(), keywords lowercased. Not inside
+// shadows, which jsdom keeps as written.
+const holdsColors = new Map();
+function isColorProperty(name) {
+  let result = holdsColors.get(name);
+  if (result === undefined) {
+    result = name !== 'box-shadow' && name !== 'text-shadow' && (LONGHANDS[name]?.[2] === 1 || COLOR_SHORTHANDS.includes(name));
+    holdsColors.set(name, result);
+  }
+  return result;
+}
+
+// Serialized color values by raw value: the same few strings are written
+// over and over (style.color = '#f00' on every render).
+const colorCache = new Map();
+function declaredColors(value) {
+  let out = colorCache.get(value);
+  if (out === undefined) {
+    out = serializeColors(value);
+    if (colorCache.size >= 2000) colorCache.clear();
+    colorCache.set(value, out);
+  }
+  return out;
+}
+
+function serializeColors(value) {
+  const parts = segments(value);
+  for (let i = 0; i < parts.length; i += 2) {
+    const token = parts[i];
+    if (!token) continue;
+    const lower = token.toLowerCase();
+    if (lower[0] === '#' || /^(rgba?|hsla?)\(/.test(lower)) parts[i] = resolveColor(token) ?? token;
+    else if (resolveColor(lower) !== null || lower === 'currentcolor') parts[i] = lower;
+  }
+  return parts.join('');
+}
+
 function declaredValue(name, value) {
+  if (isColorProperty(name)) value = declaredColors(value);
   if (!value.includes('0') || value.includes('(') || !isLengthProperty(name)) return value;
   const tokens = value.split(/\s+/).map((t) => (ZERO.test(t) ? '0px' : t));
   if (BOX_SHORTHANDS.has(name) && tokens.length > 1 && tokens.length <= 4) {

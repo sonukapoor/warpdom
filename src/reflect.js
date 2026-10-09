@@ -23,7 +23,7 @@ const parseNonNegativeInteger = (value) => {
 
 // The rules for parsing floating-point number values.
 const LEADING_FLOAT = /^[\t\n\f\r ]*([+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?)/;
-const parseFloatingPoint = (value) => {
+export const parseFloatingPoint = (value) => {
   const m = LEADING_FLOAT.exec(value);
   const n = m ? Number(m[1]) : NaN;
   return Number.isFinite(n) ? n : null;

@@ -14,7 +14,7 @@
 // not applied, and the hidden attribute hides an element whatever its
 // display rules say (but not over its style attribute).
 import { S, ELEMENT_NODE, HTML_NS, rootOf, nextInTree, cssomChanges } from './internal.js';
-import { LONGHANDS, SHORTHANDS, COLOR_SHORTHANDS, ALIASES } from './css-data.js';
+import { LONGHANDS, SHORTHANDS, ALIASES } from './css-data.js';
 import { resolveColor } from './colors.js';
 import { segments, expand, serializeBox, BOX, PAIRS, CSS_WIDE } from './shorthands.js';
 import { compileRuleSelector } from './selectors.js';
@@ -258,11 +258,22 @@ function shorthandValue(element, name) {
     const [a, b] = longhands.map((l) => computedValue(element, l));
     return a === b ? a : `${a} ${b}`;
   }
+  // The border shorthands, from their computed longhands (width, style,
+  // color); border itself only when all four sides agree.
+  if (name === 'border' || BORDER_SIDE.test(name)) {
+    const sides = name === 'border' ? ['top', 'right', 'bottom', 'left'] : [name.slice(7)];
+    const values = sides.map((side) => ['width', 'style', 'color'].map((p) => computedValue(element, `border-${side}-${p}`)).join(' '));
+    return values.every((v) => v === values[0]) ? values[0] : '';
+  }
+  // Other shorthands as declared, as jsdom gives them (so jest-dom's
+  // toHaveStyle({ background: 'red' }) compares like with like).
   let value = cascaded(element, name);
   if (value === undefined || CSS_WIDE.has(value.toLowerCase())) return '';
   if (value.includes('var(')) value = substitute(element, value) ?? '';
-  return COLOR_SHORTHANDS.includes(name) ? computeValue(element, name, value, [null, 0, 1, 0]) : value;
+  return value;
 }
+
+const BORDER_SIDE = /^border-(top|right|bottom|left)$/;
 
 // getComputedStyle(element).getPropertyValue(property).
 export function computedValue(element, property) {

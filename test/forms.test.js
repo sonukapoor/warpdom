@@ -379,3 +379,58 @@ test('FormData follows the standard entry list', () => {
   assert.deepEqual([...fd], [['_charset_', 'UTF-8']], 'disabled options are skipped; _charset_ is the encoding');
   assert.deepEqual(events, [['FormDataEvent', true, true]], 'a formdata event is fired');
 });
+
+parity('details: one toggle event per task', async (w) => {
+  const d = w.document;
+  d.body.innerHTML = '<details><summary>s</summary><p>x</p></details><details id=b open><summary>t</summary></details>';
+  const det = d.querySelector('details');
+  const log = [];
+  for (const el of d.querySelectorAll('details')) {
+    el.addEventListener('toggle', (e) => log.push([el.id, e.type, e.bubbles, e.cancelable, el.open]));
+  }
+  d.querySelector('summary').click();
+  log.push(['sync', det.open]);
+  await new Promise((r) => setTimeout(r, 20));
+  det.open = false;
+  det.open = true;
+  det.open = false;
+  d.getElementById('b').open = false;
+  await new Promise((r) => setTimeout(r, 20));
+  return log;
+});
+
+// Deliberate deviation: jsdom fires a plain Event; the standard's toggle
+// event is a ToggleEvent with the old and new state.
+test('details: toggle is a ToggleEvent', async () => {
+  const w = createWindow();
+  const det = w.document.body.appendChild(w.document.createElement('details'));
+  const events = [];
+  det.addEventListener('toggle', (e) => events.push(e));
+  det.open = true;
+  await new Promise((r) => setTimeout(r, 10));
+  assert.ok(events[0] instanceof w.ToggleEvent);
+  assert.deepEqual([events[0].oldState, events[0].newState], ['closed', 'open']);
+});
+
+parity('progress and meter values', (w) => {
+  const d = w.document;
+  const read = (el, props) => props.map((p) => el[p]);
+  const progress = (attrs) => { const el = d.createElement('progress'); for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v); return read(el, ['value', 'max', 'position']); };
+  const meter = (attrs) => { const el = d.createElement('meter'); for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v); return read(el, ['min', 'max', 'value', 'low', 'high', 'optimum']); };
+  const set = d.createElement('progress');
+  set.value = 0.25;
+  set.max = 2;
+  const m = d.createElement('meter');
+  m.value = 3; m.min = 1; m.max = 10; m.low = 2; m.high = 8; m.optimum = 5;
+  const errors = [];
+  for (const fn of [() => { set.value = NaN; }, () => { m.min = Infinity; }]) { try { fn(); errors.push('ok'); } catch (e) { errors.push(e.constructor.name); } }
+  return {
+    progress: [progress({}), progress({ value: '0.5' }), progress({ value: '148', max: '400' }), progress({ value: '500', max: '400' }), progress({ value: '-1' }),
+      progress({ value: 'x' }), progress({ value: '3', max: '0' }), progress({ value: ' 2e1', max: 'abc' })],
+    set: [set.getAttribute('value'), set.getAttribute('max'), ...read(set, ['value', 'position'])],
+    meter: [meter({}), meter({ value: '0.4' }), meter({ min: '5', max: '2', value: '9' }), meter({ min: '0', max: '100', low: '-5', high: '200', optimum: '150', value: '50' }),
+      meter({ min: '0', max: '10', low: '7', high: '3' }), meter({ value: 'x', min: 'y' })],
+    meterSet: [m.getAttribute('value'), ...read(m, ['min', 'max', 'value', 'low', 'high', 'optimum'])],
+    errors,
+  };
+});

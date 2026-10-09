@@ -120,3 +120,11 @@ cssParity('declared zero lengths serialize as 0px', (w) => {
     [b.style.width, b.style.right, b.style.margin, b.style.top, b.style.left, b.style.flexBasis, b.style.height, b.style.opacity, b.style.cssText],
   ];
 });
+
+cssParity('declared colors serialize as rgb()', (w) => {
+  const e = w.document.createElement('div');
+  const cases = [['color', '#f00'], ['color', '#ff000080'], ['color', 'rgb(1,2,3)'], ['color', 'rgba(1,2,3,1)'], ['color', 'hsl(120,100%,25%)'],
+    ['color', 'red'], ['color', 'Red'], ['color', 'transparent'], ['color', 'currentcolor'], ['border', '1px solid #0f0'],
+    ['box-shadow', '0 0 2px #000'], ['background-color', 'RGB(1 2 3)'], ['outline-color', '#abc'], ['fill', '#f00'], ['width', '10px']];
+  return cases.map(([p, v]) => { e.removeAttribute('style'); e.style.setProperty(p, v); return e.style.getPropertyValue(p); });
+});
