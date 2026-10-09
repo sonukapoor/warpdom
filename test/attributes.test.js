@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createWindow } from '../src/node.js';
+import { parity } from './parity.js';
 
 test('attributes is a live NamedNodeMap of Attr nodes', () => {
   const w = createWindow();
@@ -90,3 +91,26 @@ test('dataset maps data-* attributes to camelCase properties', () => {
   assert.equal(el.hasAttribute('data-foo-bar'), false);
   assert.deepEqual({ ...ds }, { helloWorld: 'x' });
 });
+
+parity('NamedNodeMap named properties', (w) => {
+  const d = w.document;
+  const el = d.createElement('button');
+  el.setAttribute('tabindex', '0');
+  el.setAttribute('data-x', '1');
+  el.setAttribute('length', 'shadowed');
+  const svg = d.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 1 1');
+  const xml = d.implementation.createDocument(null, 'root');
+  xml.documentElement.setAttribute('Mixed', 'y');
+  const a = el.attributes;
+  return {
+    tabindex: a.tabindex?.value, dataX: a['data-x']?.value, camel: a.tabIndex?.value, upper: a.TABINDEX?.value, missing: a.nope,
+    inCamel: 'tabIndex' in a,
+    inTab: 'tabindex' in a, inMissing: 'nope' in a, length: a.length,
+    afterRemove: (el.removeAttribute('tabindex'), a.tabindex),
+    svgViewBox: svg.attributes.viewBox?.value, svgLower: svg.attributes.viewbox,
+    xmlMixed: xml.documentElement.attributes.Mixed?.value,
+    keys: Object.keys(a),
+  };
+});
+

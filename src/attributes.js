@@ -112,7 +112,15 @@ function attributeArray(element) {
 export function namedNodeMap(element) {
   const es = state(element);
   if (!es.namedNodeMap) {
-    es.namedNodeMap = liveList(es.doc[S].window[S].protos.NamedNodeMap, () => attributeArray(element));
+    // Named properties: attributes by name, looked up as getNamedItem does
+    // (lowercased on HTML elements). The standard leaves names with
+    // uppercase letters out there, but tests rely on attributes.tabIndex,
+    // which jsdom finds.
+    const namedProperty = (name) => {
+      const key = attrName(element, name);
+      return es.attrs.has(key) ? attrNode(element, key) : null;
+    };
+    es.namedNodeMap = liveList(es.doc[S].window[S].protos.NamedNodeMap, () => attributeArray(element), namedProperty);
     es.namedNodeMap[S].element = element;
   }
   return es.namedNodeMap;

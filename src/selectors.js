@@ -497,6 +497,50 @@ export function compile(selector) {
   return entry;
 }
 
+// --- specificity (Selectors 4, 17) -----------------------------------------------------
+// As one number: ids * 1e6 + classes, attributes and pseudo-classes * 1e3 + types.
+
+const listSpecificity = (list) => Math.max(0, ...list.map(complexSpecificity));
+
+function complexSpecificity({ parts }) {
+  let total = 0;
+  for (const { type, tests } of parts) {
+    if (type !== null && type !== '*') total += 1;
+    for (const t of tests) {
+      switch (t.kind) {
+        case 'id': total += 1e6; break;
+        case 'class': case 'attr': total += 1e3; break;
+        case 'never': total += 1; break; // a pseudo-element
+        case 'pseudo':
+          if (t.name === 'where') break;
+          if (t.name === 'is' || t.name === 'not' || t.name === 'has') total += listSpecificity(t.arg);
+          else total += 1e3 + (t.arg?.of ? listSpecificity(t.arg.of) : 0);
+          break;
+        default: total += 1e3;
+      }
+    }
+  }
+  return total;
+}
+
+// A selector list as the cascade uses it: each complex selector compiled on
+// its own, with its specificity. Throws on an invalid selector.
+const ruleCache = new Map();
+
+export function compileRuleSelector(selector) {
+  const text = String(selector);
+  let entries = ruleCache.get(text);
+  if (!entries) {
+    const parser = new Parser(text);
+    const list = parser.list();
+    if (parser.i < text.length) throw invalid(text);
+    entries = list.map((complex) => ({ match: compileComplex(complex), specificity: complexSpecificity(complex) }));
+    if (ruleCache.size >= CACHE_LIMIT) ruleCache.clear();
+    ruleCache.set(text, entries);
+  }
+  return entries;
+}
+
 export function matches(el, selector) {
   return compile(selector).match(el, { scope: el });
 }

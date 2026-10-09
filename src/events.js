@@ -4,6 +4,7 @@
 // An exception in a listener is reported as an `error` event on the window
 // and dispatch continues, as in browsers and jsdom.
 import { S, state, domError, DOCUMENT_NODE, hooks } from './internal.js';
+import { liveList } from './collections.js';
 
 // --- EventTarget -------------------------------------------------------------
 
@@ -334,6 +335,30 @@ const INPUT_FIELDS = { ...UI_FIELDS, data: null, inputType: '', isComposing: fal
 const WHEEL_FIELDS = { ...MOUSE_FIELDS, deltaX: 0, deltaY: 0, deltaZ: 0, deltaMode: 0 };
 const ERROR_FIELDS = { message: '', filename: '', lineno: 0, colno: 0, error: undefined };
 
+// TouchEvent (Touch Events): modifier keys and three touch lists. The
+// lists take any objects, as in jsdom: there is no Touch constructor, so
+// tests polyfill Touch with their own class.
+const TOUCH_FIELDS = { ...UI_FIELDS, ...MODIFIER_FIELDS };
+const TOUCH_LISTS = ['touches', 'targetTouches', 'changedTouches'];
+const touchEventFields = eventConstruct('TouchEvent', TOUCH_FIELDS);
+
+function constructTouchEvent(w, self, args) {
+  touchEventFields(w, self, args);
+  const dict = args[1] ?? {};
+  const es = self[S];
+  for (const key of TOUCH_LISTS) {
+    const value = dict[key];
+    if (value !== undefined && (value === null || typeof value[Symbol.iterator] !== 'function')) {
+      throw new TypeError(`Failed to construct 'TouchEvent': parameter 2 has member '${key}' that is not an iterable object.`);
+    }
+    const touches = value === undefined ? [] : Array.from(value);
+    es[key] = liveList(w[S].protos.TouchList, () => touches);
+  }
+  return self;
+}
+
+const touchListGetters = Object.fromEntries(TOUCH_LISTS.map((key) => [key, { get() { return state(this)[key]; } }]));
+
 const own = (fields, parentFields) => Object.fromEntries(Object.entries(fields).filter(([k]) => !(k in parentFields)));
 const MOUSE_OWN = own(MOUSE_FIELDS, UI_FIELDS);
 
@@ -394,6 +419,9 @@ export const EVENT_INTERFACES = [
     construct: eventConstruct('WheelEvent', WHEEL_FIELDS), members: fieldGetters(own(WHEEL_FIELDS, MOUSE_FIELDS)) },
   { name: 'KeyboardEvent', parent: 'UIEvent', statics: { DOM_KEY_LOCATION_STANDARD: 0, DOM_KEY_LOCATION_LEFT: 1, DOM_KEY_LOCATION_RIGHT: 2, DOM_KEY_LOCATION_NUMPAD: 3 },
     construct: eventConstruct('KeyboardEvent', KEYBOARD_FIELDS), members: { ...fieldGetters(own(KEYBOARD_FIELDS, UI_FIELDS)), ...modifierState } },
+  { name: 'TouchEvent', parent: 'UIEvent', construct: constructTouchEvent, members: {
+    ...fieldGetters(own(TOUCH_FIELDS, UI_FIELDS)), ...touchListGetters, ...modifierState,
+  } },
   { name: 'FocusEvent', parent: 'UIEvent', construct: eventConstruct('FocusEvent', FOCUS_FIELDS), members: fieldGetters(own(FOCUS_FIELDS, UI_FIELDS)) },
   { name: 'InputEvent', parent: 'UIEvent', construct: eventConstruct('InputEvent', INPUT_FIELDS), members: {
     ...fieldGetters(own(INPUT_FIELDS, UI_FIELDS)),
@@ -408,6 +436,7 @@ const LEGACY_EVENT_NAMES = {
   event: 'Event', events: 'Event', htmlevents: 'Event', customevent: 'CustomEvent', uievent: 'UIEvent', uievents: 'UIEvent',
   mouseevent: 'MouseEvent', mouseevents: 'MouseEvent', keyboardevent: 'KeyboardEvent', focusevent: 'FocusEvent',
   inputevent: 'InputEvent', wheelevent: 'WheelEvent', pointerevent: 'PointerEvent', errorevent: 'ErrorEvent',
+  touchevent: 'TouchEvent',
 };
 
 export function createEvent(window, name) {

@@ -93,3 +93,30 @@ cssParity('removing an absent style property does not add a style attribute', (w
   out.push(other.outerHTML);
   return out;
 });
+
+cssParity('style property writes are seen by cached queries', (w) => {
+  const d = w.document;
+  const e = d.body.appendChild(d.createElement('div'));
+  const before = d.querySelectorAll('[style*="red"]').length;
+  e.style.color = 'red';
+  return [before, d.querySelectorAll('[style*="red"]').length];
+});
+
+cssParity('declared zero lengths serialize as 0px', (w) => {
+  const d = w.document;
+  d.body.innerHTML = '<div id=a style="width:0;margin:0;opacity:0;line-height:0;z-index:0;flex-grow:0;padding:0 0"></div>';
+  const a = d.getElementById('a');
+  const b = d.createElement('div');
+  b.style.width = '0';
+  b.style.right = 0;
+  b.style.margin = '0 auto';
+  b.style.top = '00';
+  b.style.left = '-0';
+  b.style.flexBasis = '0';
+  b.style.setProperty('height', '0');
+  b.style.opacity = '0';
+  return [
+    [a.style.width, a.style.margin, a.style.marginTop, a.style.opacity, a.style.lineHeight, a.style.zIndex, a.style.flexGrow, a.style.padding, a.getAttribute('style')],
+    [b.style.width, b.style.right, b.style.margin, b.style.top, b.style.left, b.style.flexBasis, b.style.height, b.style.opacity, b.style.cssText],
+  ];
+});

@@ -80,6 +80,8 @@ export function createWindow(options = {}) {
     Object.defineProperty(ctor, 'name', { value: iface.name });
     Object.defineProperty(ctor, 'prototype', { value: proto, writable: false });
     Object.defineProperty(proto, 'constructor', { value: ctor, writable: true, configurable: true });
+    // The class string (WebIDL): Object.prototype.toString gives [object Name].
+    if (!Object.hasOwn(proto, Symbol.toStringTag)) Object.defineProperty(proto, Symbol.toStringTag, { value: iface.name, configurable: true });
     if (parent) Object.setPrototypeOf(ctor, parent);
     for (const [key, value] of Object.entries(iface.statics ?? {})) {
       Object.defineProperty(ctor, key, { value, enumerable: true, writable: false, configurable: false });

@@ -5,7 +5,7 @@
 //
 // Values are kept as written: unlike jsdom 30 they are not normalized
 // (jsdom serializes `margin: 0` as `0px`).
-import { S, state, domError, ELEMENT_NODE, DOCUMENT_NODE, TEXT_NODE, HTML_NS, rootOf, nextInTree, connected } from './internal.js';
+import { S, state, domError, cssomChanges, ELEMENT_NODE, DOCUMENT_NODE, TEXT_NODE, HTML_NS, rootOf, nextInTree, connected } from './internal.js';
 import { declarationBlock, serializeDeclarations } from './css.js';
 import { liveList } from './collections.js';
 
@@ -222,6 +222,7 @@ function insertRule(owner, text, index, sheet, parentRule) {
     throw domError('Cannot insert a rule before @import or @namespace rules.', 'HierarchyRequestError');
   }
   s.rules.splice(i, 0, rule);
+  cssomChanges.rev++;
   return i;
 }
 
@@ -230,6 +231,7 @@ function deleteRule(owner, index) {
   const i = index >>> 0;
   if (i >= s.rules.length) throw domError(`The index provided (${i}) is larger than the maximum index (${s.rules.length - 1}).`, 'IndexSizeError');
   const [rule] = s.rules.splice(i, 1);
+  cssomChanges.rev++;
   rule[S].sheet = null;
   rule[S].parentRule = null;
 }
@@ -351,7 +353,7 @@ export const CSSOM_INTERFACES = [
     parent: 'CSSGroupingRule',
     members: {
       get selectorText() { return state(this).selectorText; },
-      set selectorText(v) { const t = String(v).trim(); if (t) state(this).selectorText = t; },
+      set selectorText(v) { const t = String(v).trim(); if (t) { state(this).selectorText = t; cssomChanges.rev++; } },
       get style() { return state(this).style; },
       set style(v) { state(this).style.cssText = v; },
     },
@@ -464,7 +466,7 @@ export const CSSOM_INTERFACES = [
       get title() { return state(this).title; },
       get media() { return state(this).media; },
       get disabled() { return state(this).disabled; },
-      set disabled(v) { state(this).disabled = !!v; },
+      set disabled(v) { state(this).disabled = !!v; cssomChanges.rev++; },
     },
   },
   {

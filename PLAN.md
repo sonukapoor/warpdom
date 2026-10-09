@@ -173,6 +173,10 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   standard's IDL: `<search>` and `<menuitem>` are HTMLElement (jsdom:
   HTMLUnknownElement), `<selectedcontent>` exists, and reflections jsdom
   lacks (inert, srcset, relList, sandbox, ...) are present.
+- A TouchEvent's touch lists are TouchLists (length, item(), indexing,
+  iteration), and TouchList exists; jsdom uses arrays.
+- getComputedStyle expands the `flex-flow` shorthand (jsdom ignores it)
+  and does not apply a disabled style sheet (jsdom does).
 - `option.form` is its select's form owner (jsdom: the nearest ancestor
   form), and the list of options follows the standard's current
   definition (options nested in other elements inside the select count).
@@ -399,13 +403,31 @@ warpdom follows the standard. Each has a test. To publish in the docs.
    - emoji-picker-element (custom elements + shadow DOM, Vitest 3, 160
      tests): needed custom elements, template content cloning and
      transformMode for Vitest 3. jsdom 21.7 s, warpdom 19.3 s (waits).
+   - MUI (mui-material, mui-system, mui-utils, mui-lab; React + emotion,
+     6,751 tests, 2026-10-09): same status as jsdom for every test. Needed
+     class strings (Symbol.toStringTag; Vitest's diff deep-clones objects
+     that stringify as [object Object]), a "jsdom" user agent token
+     (libraries skip layout checks by it), NamedNodeMap named properties,
+     the cascade in getComputedStyle (emotion's style elements), computed
+     colors, TouchEvent, and 0px for declared zero lengths.
+     Timings (median of 3, docs/head-to-head.md): jsdom 89.4 s, warpdom
+     51.5 s; vmThreads: jsdom 29.1 s, warpdom 23.1 s, all with jsdom's results.
+     jsdom works with vmThreads here, so warpdom's lead over the pool alone
+     is 1.26x.
+     Load cost of the MUI work (bench/load.js, Node 22.17.1, median of 5
+     interleaved runs against 43b97a4): cold load 19.3 -> 20.0 ms, heap
+     after load and one window 2.60 -> 2.83 MB; later windows unchanged.
+     Accepted: the cascade, colors and CSS property data are what emotion
+     suites need, and load stays well inside the 30-40 ms budget. Tried
+     emitting the CSS data as a JSON string parsed on first use: -2% cold
+     load (within noise), -3% heap; below the 3% bar, reverted.
    Per-file reset (fast mode): Radix 6.1 s and Vuetify 3.0 s with isolated
    results; emoji-picker leaks module state and stays isolated.
    Later: enumerated attributes limited to only known values beyond the
    common ones (referrerPolicy, loading, decoding, fetchPriority, ...
    return their raw value), links (anchor URL members, activation), on* handler properties,
-   style sheet rules in getComputedStyle (the CSSOM is now there), value
-   normalization in the CSSOM, the XML serializer for XML documents.
+   value normalization in the CSSOM beyond zero lengths, the XML
+   serializer for XML documents.
    Then timings against jsdom and happy-dom, and the load-time budget.
 2. Reserve the npm name `warpdom` (placeholder package; Sonu's call, since
    publishing is public).

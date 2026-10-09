@@ -2,8 +2,10 @@
 // CSSStyleProperties (an accessor per CSS property name), as in jsdom 30.
 // Declarations are kept in order in a Map, and every change is written back to
 // the element's style attribute; a new style attribute re-parses them.
-import { S, state, domError, ELEMENT_NODE } from './internal.js';
+import { S, state, domError, ELEMENT_NODE, cssomChanges, attributesChanged } from './internal.js';
 import { STYLE_ACCESSORS } from './css-properties.js';
+import { LONGHANDS, SHORTHANDS } from './css-data.js';
+import { expand } from './shorthands.js';
 
 // backgroundColor -> background-color, webkitAnimation/WebkitAnimation ->
 // -webkit-animation, cssFloat -> float; dashed names map to themselves.
@@ -30,6 +32,34 @@ function splitOutside(text, sep) {
   return parts;
 }
 
+// Declared values as CSSOM serializes them: a unitless zero length is
+// 0px (width: 0, margin: 0 auto), and a box shorthand takes its shortest
+// form (padding: 0 0 is 0px). Numbers stay (opacity: 0, line-height: 0).
+const ZERO = /^[+-]?(0+\.?0*|\.0+)$/;
+const BOX_SHORTHANDS = new Set(['margin', 'padding', 'inset', 'border-width', 'border-radius', 'scroll-margin', 'scroll-padding', 'gap']);
+const zeroIsLength = new Map();
+function isLengthProperty(name) {
+  let result = zeroIsLength.get(name);
+  if (result === undefined) {
+    const data = LONGHANDS[name];
+    result = data ? data[3] === 1 : !!SHORTHANDS[name]?.every((l) => LONGHANDS[l]?.[3] === 1);
+    zeroIsLength.set(name, result);
+  }
+  return result;
+}
+
+function declaredValue(name, value) {
+  if (!value.includes('0') || value.includes('(') || !isLengthProperty(name)) return value;
+  const tokens = value.split(/\s+/).map((t) => (ZERO.test(t) ? '0px' : t));
+  if (BOX_SHORTHANDS.has(name) && tokens.length > 1 && tokens.length <= 4) {
+    const [top, right = top, bottom = top, left = right] = tokens;
+    if (left !== right) return `${top} ${right} ${bottom} ${left}`;
+    if (bottom !== top) return `${top} ${right} ${bottom}`;
+    return right !== top ? `${top} ${right}` : top;
+  }
+  return tokens.join(' ');
+}
+
 function parseInto(decls, text) {
   decls.clear();
   for (const part of splitOutside(String(text ?? ''), ';')) {
@@ -40,8 +70,15 @@ function parseInto(decls, text) {
     let important = false;
     const bang = value.match(/\s*!\s*important\s*$/i);
     if (bang) { important = true; value = value.slice(0, bang.index).trim(); }
-    if (name && value) decls.set(name, { value, important });
+    if (name && value) decls.set(name, { value: declaredValue(name, value), important });
   }
+}
+
+// A declaration list's declarations (a style attribute's value).
+export function parseDeclarations(text) {
+  const decls = new Map();
+  parseInto(decls, text);
+  return decls;
 }
 
 function serialize(decls) {
@@ -50,65 +87,18 @@ function serialize(decls) {
   return out;
 }
 
-// Write the declarations back to the element's style attribute.
+// Computed values come from cascade.js, which registers itself here (it
+// imports the selector engine, which imports back into this module).
+export const computed = { value: null };
+
+// Write the declarations back to the element's style attribute; a style
+// rule's declarations changed the cascade.
 function sync(style) {
   const s = state(style);
-  if (s.element) s.element[S].attrs.set('style', serialize(s.decls));
-}
-
-// --- computed style ---------------------------------------------------------
-// Computed only for the properties that are read: inline value, else the
-// nearest ancestor's for inherited properties, else the default. Rules from
-// style sheets are not applied yet.
-
-const INHERITED = new Set(['visibility', 'color', 'cursor', 'pointer-events', 'direction', 'font', 'font-family',
-  'font-size', 'font-style', 'font-weight', 'font-variant', 'letter-spacing', 'line-height', 'list-style',
-  'list-style-type', 'quotes', 'text-align', 'text-indent', 'text-transform', 'white-space', 'word-spacing',
-  'writing-mode', 'caret-color', 'user-select', 'border-collapse', 'empty-cells', 'caption-side']);
-
-const INITIAL = { visibility: 'visible', 'pointer-events': 'auto', cursor: 'auto', direction: 'ltr', color: 'rgb(0, 0, 0)' };
-
-// The HTML standard's rendering section (user agent style sheet), display only.
-const DISPLAY = {
-  none: ['head', 'script', 'style', 'template', 'title', 'meta', 'link', 'base', 'noscript', 'area', 'datalist', 'param', 'rp'],
-  block: ['html', 'body', 'div', 'p', 'section', 'article', 'aside', 'header', 'footer', 'nav', 'main', 'address',
-    'blockquote', 'figure', 'figcaption', 'form', 'fieldset', 'legend', 'details', 'summary', 'dialog', 'hr', 'pre',
-    'ul', 'ol', 'menu', 'dl', 'dd', 'dt', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hgroup', 'search', 'center', 'listing',
-    'plaintext', 'xmp', 'optgroup'],
-  'list-item': ['li'],
-  table: ['table'], 'table-row': ['tr'], 'table-cell': ['td', 'th'], 'table-caption': ['caption'],
-  'table-row-group': ['tbody'], 'table-header-group': ['thead'], 'table-footer-group': ['tfoot'],
-  'table-column': ['col'], 'table-column-group': ['colgroup'],
-  'inline-block': ['button', 'input', 'select', 'textarea', 'meter', 'progress', 'img', 'video', 'audio', 'iframe', 'canvas', 'embed', 'object'],
-  ruby: ['ruby'], 'ruby-text': ['rt'],
-};
-const DEFAULT_DISPLAY = new Map();
-for (const [display, tags] of Object.entries(DISPLAY)) for (const tag of tags) DEFAULT_DISPLAY.set(tag, display);
-
-function inlineValue(element, name) {
-  const es = element[S];
-  if (es.style) return es.style[S].decls.get(name)?.value;
-  const attr = es.attrs.get('style');
-  if (!attr || !attr.includes(name)) return undefined;
-  const decls = new Map();
-  parseInto(decls, attr);
-  return decls.get(name)?.value;
-}
-
-function computedValue(element, name) {
-  const inline = inlineValue(element, name);
-  if (inline !== undefined && inline !== 'inherit') return inline;
-  if (INHERITED.has(name) || inline === 'inherit') {
-    const parent = element[S].parent;
-    if (parent && parent[S].type === ELEMENT_NODE) return computedValue(parent, name);
-    return INITIAL[name] ?? '';
-  }
-  if (name === 'display') {
-    const es = element[S];
-    if (es.attrs.has('hidden')) return 'none';
-    return DEFAULT_DISPLAY.get(es.tag) ?? 'inline';
-  }
-  return INITIAL[name] ?? '';
+  if (s.element) {
+    s.element[S].attrs.set('style', serialize(s.decls));
+    attributesChanged(s.element);
+  } else cssomChanges.rev++;
 }
 
 // --- the CSS namespace ---------------------------------------------------------
@@ -211,8 +201,6 @@ export function cssNamespace(matchesSelector) {
   return namespace;
 }
 
-export const isDisplayNone = (element) => computedValue(element, 'display') === 'none';
-
 export function computedStyle(element, proto) {
   const style = Object.create(proto);
   style[S] = { element, computed: true, decls: new Map() };
@@ -225,13 +213,27 @@ function readOnly() {
 
 const valueOf = (style, name) => {
   const s = state(style);
-  return s.computed ? computedValue(s.element, name) : s.decls.get(name)?.value ?? '';
+  if (s.computed) return computed.value(s.element, name);
+  const decl = s.decls.get(name);
+  if (decl) return decl.value;
+  return LONGHANDS[name] ? fromShorthand(s.decls, name) : '';
 };
+
+// A longhand set by a declared shorthand (margin-top from margin: 0 auto);
+// the last such shorthand wins.
+function fromShorthand(decls, longhand) {
+  let found = '';
+  for (const [name, { value }] of decls) {
+    if (!SHORTHANDS[name]) continue;
+    for (const [part, v] of expand(name, value)) if (part === longhand) found = v;
+  }
+  return found;
+}
 
 function setDeclaration(style, name, value, priority = '') {
   const s = state(style);
   if (s.computed) readOnly();
-  const text = value == null ? '' : String(value).trim();
+  const text = value == null ? '' : declaredValue(name, String(value).trim());
   // The style attribute is updated only when a declaration changed (CSSOM).
   if (text === '') {
     if (s.decls.delete(name)) sync(style);

@@ -292,8 +292,14 @@ export function replaceData(node, offset, count, data) {
   if (offset + count > length) count = length - offset;
   if (observed(node)) hooks.characterData(node, old);
   s.data = old.slice(0, offset) + data + old.slice(offset + count);
+  // A style element's text: its style sheet changes.
+  if (s.parent && s.parent[S].tag === 'style') s.doc[S].styleRev = (s.doc[S].styleRev ?? 0) + 1;
   if (hasRanges(s.doc)) hooks.rangeReplaceData(s.doc, node, offset, count, data.length);
 }
+
+// Changes to style rules (insertRule, deleteRule, a rule's declarations,
+// a sheet's disabled flag), for computed style caches.
+export const cssomChanges = { rev: 0 };
 
 export const setData = (node, value) => replaceData(node, 0, node[S].data.length, value);
 

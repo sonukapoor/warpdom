@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createWindow } from '../src/index.js';
+import { parity } from './parity.js';
 
 function tree() {
   const w = createWindow();
@@ -163,4 +164,31 @@ test('re-dispatching an event that is being dispatched throws', () => {
     assert.throws(() => inner.dispatchEvent(e), { name: 'InvalidStateError' });
   });
   inner.dispatchEvent(new w.Event('r'));
+});
+
+parity('TouchEvent: touch lists from the init dictionary', (w) => {
+  const touch = { identifier: 1, clientX: 5 };
+  const e = new w.TouchEvent('touchstart', { changedTouches: [touch], bubbles: true, altKey: true, detail: 2 });
+  let error = null;
+  try { new w.TouchEvent('touchstart', { changedTouches: 5 }); } catch (err) { error = [err.constructor.name, err.message]; }
+  const seen = [];
+  w.document.body.addEventListener('touchstart', (event) => seen.push(event.changedTouches[0].clientX));
+  w.document.body.dispatchEvent(e);
+  return {
+    lists: [e.changedTouches.length, e.changedTouches[0] === touch, e.changedTouches === e.changedTouches,
+      [...e.changedTouches].length, e.touches.length, e.targetTouches.length],
+    fields: [e.altKey, e.ctrlKey, e.detail, e.bubbles, e instanceof w.UIEvent, Object.prototype.toString.call(e)],
+    error,
+    seen,
+  };
+});
+
+test('TouchEvent: lists are TouchLists (jsdom uses arrays)', () => {
+  const w = createWindow();
+  const touch = { identifier: 1 };
+  const e = new w.TouchEvent('touchend', { changedTouches: [touch] });
+  assert.ok(e.changedTouches instanceof w.TouchList);
+  assert.equal(e.changedTouches.item(0), touch);
+  assert.equal(e.changedTouches.item(1), null);
+  assert.equal(w.document.createEvent('TouchEvent') instanceof w.TouchEvent, true);
 });

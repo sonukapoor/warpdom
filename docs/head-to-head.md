@@ -85,6 +85,21 @@ through `setupVM` (Node's host globals copied into the context).
 | Vuetify | 15.7 s | 10.0 s | 5.4 s, 0 differ | breaks (754 differ) |
 | emoji-picker | 22.2 s | 19.6 s | 18.2 s, 6 differ | breaks (140 differ) |
 
+MUI (mui-material, mui-system, mui-utils, mui-lab; 6,751 tests, React and
+emotion), 2026-10-09, Node 22.23.3, 2 workers, median of 3 interleaved
+rounds; every run has the same status as jsdom isolated for every test:
+
+| Configuration | Rounds | Median | vs jsdom default |
+| --- | --- | --- | --- |
+| jsdom default | 88.3, 89.4, 91.0 s | 89.4 s | 1.0x |
+| warpdom default | 49.3, 51.5, 51.6 s | 51.5 s | 1.7x |
+| jsdom vmThreads | 28.1, 29.3, 29.1 s | 29.1 s | 3.1x |
+| warpdom vmThreads | 23.4, 23.1, 22.8 s | 23.1 s | 3.9x |
+
+Unlike Vuetify and emoji-picker, MUI runs correctly on jsdom with
+vmThreads, so most of the gain there comes from the pool: warpdom adds
+1.26x on top. warpdom's lead is largest where jsdom cannot use the pool.
+
 `--pool=threads` was no faster than the default forks pool (Radix: jsdom
 17.3 s, warpdom 10.2 s): the cost is reloading modules per file, not
 starting processes.

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createWindow } from '../src/index.js';
+import { parity } from './parity.js';
 
 test('each window has its own interfaces: patches do not leak', () => {
   const a = createWindow();
@@ -185,4 +186,18 @@ test('every HTML element interface exists and tags create the right one', async 
   is('my-widget', 'HTMLElement');
   is('foo', 'HTMLUnknownElement');
   is('H2', 'HTMLHeadingElement');
+});
+
+parity('class strings: Object.prototype.toString names the interface', (w) => {
+  const d = w.document;
+  const e = d.createElement('div');
+  e.innerHTML = '<input><select><option></option></select>';
+  const objects = [
+    w, d, d.doctype, d.implementation, e, e.firstChild, e.style, e.classList, e.attributes, e.childNodes, e.children,
+    d.createTextNode('x'), d.createComment('x'), d.createDocumentFragment(), d.createRange(), w.getSelection(),
+    new w.Event('x'), new w.MouseEvent('click'), new w.CustomEvent('x'), w.navigator, w.location, w.history,
+    w.screen, d.createElementNS('http://www.w3.org/2000/svg', 'svg'), e.querySelectorAll('*'), e.querySelector('select').options,
+    d.createTreeWalker(d), new w.MutationObserver(() => {}),
+  ];
+  return objects.map((o) => Object.prototype.toString.call(o));
 });

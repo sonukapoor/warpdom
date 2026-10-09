@@ -8,7 +8,7 @@
 // single blur and a single focus.
 import { S, state, ELEMENT_NODE, DOCUMENT_NODE, HTML_NS, SVG_NS, rootOf, connected } from './internal.js';
 import { isDisabled, inputType } from './forms.js';
-import { isDisplayNone } from './css.js';
+import { isDisplayNone } from './cascade.js';
 import { dispatch, retarget } from './events.js';
 import { writeAttribute } from './attributes.js';
 import { parseInteger } from './reflect.js';

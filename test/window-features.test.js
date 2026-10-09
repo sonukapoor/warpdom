@@ -28,6 +28,8 @@ test('navigator', () => {
   const w = createWindow();
   assert.ok(w.navigator instanceof w.Navigator);
   assert.match(w.navigator.userAgent, /warpdom/);
+  // Libraries detect a DOM without layout by this token.
+  assert.match(w.navigator.userAgent, /jsdom/);
   assert.equal(w.navigator.language, 'en-US');
   assert.deepEqual([...w.navigator.languages], ['en-US', 'en']);
   assert.equal(w.navigator.onLine, true);

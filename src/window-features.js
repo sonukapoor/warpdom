@@ -3,6 +3,7 @@
 // Values follow jsdom's defaults so tests see the same environment.
 import { S, state } from './internal.js';
 import { computedStyle, cssNamespace } from './css.js';
+import './cascade.js';
 import { compile } from './selectors.js';
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -71,9 +72,12 @@ function make(window, iface, data) {
   return object;
 }
 
+// "jsdom" is a compatibility token, as "like Gecko" is for browsers:
+// libraries test the user agent for it to skip layout-dependent checks
+// (MUI's anchor and tab indicator warnings) in a DOM without layout.
 const userAgent = () => {
   const platform = globalThis.process?.platform ?? 'unknown OS';
-  return `Mozilla/5.0 (${platform}) AppleWebKit/537.36 (KHTML, like Gecko) warpdom/0.0.0`;
+  return `Mozilla/5.0 (${platform}) AppleWebKit/537.36 (KHTML, like Gecko) warpdom/0.0.0 (compatible; jsdom)`;
 };
 
 const url = (self) => state(self).window[S].url;
