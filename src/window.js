@@ -2,7 +2,7 @@
 // every interface (so patches made in one window cannot leak into another),
 // built from property descriptors that are prepared once per module load.
 import {
-  S, initNode, insert, ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE,
+  S, initNode, insert, ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, DOCUMENT_TYPE_NODE,
 } from './internal.js';
 import { INTERFACES, SVG_ELEMENTS, HTML_NS, SVG_NS } from './interfaces.js';
 import { HTML_ELEMENTS, PLAIN_TAGS } from './html-elements.js';
@@ -82,30 +82,40 @@ export function createWindow(options = {}) {
   }
 
   let document;
-  const create = (proto, type, extra) => initNode(Object.create(proto), type, document, extra);
+  const create = (proto, type, extra, doc) => initNode(Object.create(proto), type, doc, extra);
   const internals = {
     protos,
-    createElementNS(ns, qualifiedName) {
+    isWindow: true,
+    // Node factories; doc is the owner document (the window's by default).
+    createElementNS(ns, qualifiedName, doc = document) {
       const tag = qualifiedName.includes(':') ? qualifiedName.slice(qualifiedName.indexOf(':') + 1) : qualifiedName;
-      return create(protos[interfaceFor(ns, tag)], ELEMENT_NODE, { tag, ns, attrs: new Map() });
+      return create(protos[interfaceFor(ns, tag)], ELEMENT_NODE, { tag, ns, attrs: new Map() }, doc);
     },
-    createText: (data) => create(protos.Text, TEXT_NODE, { data }),
-    createComment: (data) => create(protos.Comment, COMMENT_NODE, { data }),
-    createFragment: () => create(protos.DocumentFragment, DOCUMENT_FRAGMENT_NODE),
-    initDocument: (doc) => initNode(doc, DOCUMENT_NODE, doc, { window }),
+    createText: (data, doc = document) => create(protos.Text, TEXT_NODE, { data }, doc),
+    createComment: (data, doc = document) => create(protos.Comment, COMMENT_NODE, { data }, doc),
+    createFragment: (doc = document) => create(protos.DocumentFragment, DOCUMENT_FRAGMENT_NODE, undefined, doc),
+    createDoctype: (name, publicId, systemId, doc = document) => create(protos.DocumentType, DOCUMENT_TYPE_NODE, { name, publicId, systemId }, doc),
+    initDocument: (doc, extra) => initNode(doc, DOCUMENT_NODE, doc, { window, contentType: 'text/html', ...extra }),
+    // A document without a browsing context (defaultView null), as made by
+    // DOMImplementation and new Document(); XML documents keep names as given.
+    createDocument: ({ contentType = 'text/html', xml = false } = {}) => internals.initDocument(
+      Object.create(xml ? protos.XMLDocument : protos.Document), { noView: true, url: 'about:blank', contentType, xml }),
     // Errors from event listeners that no 'error' listener handled. Logged
     // like jsdom does; test environments replace this to fail the test.
     onUnhandledError: (error) => console.error(error),
+    // As jsdom reports unimplemented features (form submission, navigation)
+    // through its virtual console.
+    notImplemented: (message) => console.error(`Not implemented: ${message}`),
   };
   Object.setPrototypeOf(window, protos.Window);
   Object.defineProperty(window, S, { value: internals });
   setupWindow(window, options);
 
   document = internals.initDocument(Object.create(protos.Document));
-  const ds = document[S];
+  insert(document, internals.createDoctype('html', '', ''), null);
   const html = insert(document, internals.createElementNS(HTML_NS, 'html'), null);
-  ds.head = insert(html, internals.createElementNS(HTML_NS, 'head'), null);
-  ds.body = insert(html, internals.createElementNS(HTML_NS, 'body'), null);
+  insert(html, internals.createElementNS(HTML_NS, 'head'), null);
+  insert(html, internals.createElementNS(HTML_NS, 'body'), null);
 
   window.document = document;
   window.window = window;

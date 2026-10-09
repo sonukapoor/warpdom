@@ -111,6 +111,8 @@ function computedValue(element, name) {
   return INITIAL[name] ?? '';
 }
 
+export const isDisplayNone = (element) => computedValue(element, 'display') === 'none';
+
 export function computedStyle(element, proto) {
   const style = Object.create(proto);
   style[S] = { element, computed: true, decls: new Map() };
@@ -142,7 +144,7 @@ export const CSS_INTERFACES = [
       get cssText() { return serialize(state(this).decls); },
       set cssText(text) { if (state(this).computed) readOnly(); parseInto(state(this).decls, text); sync(this); },
       get length() { return state(this).decls.size; },
-      get parentRule() { state(this); return null; },
+      get parentRule() { return state(this).parentRule ?? null; },
       item(index) { return [...state(this).decls.keys()][index] ?? ''; },
       getPropertyValue(name) { return valueOf(this, String(name).toLowerCase()); },
       getPropertyPriority(name) { return state(this).decls.get(String(name).toLowerCase())?.important ? 'important' : ''; },
@@ -167,6 +169,16 @@ export const CSS_INTERFACES = [
     })),
   },
 ];
+
+// A declaration block owned by a CSS rule (CSSStyleRule.style, ...).
+export function declarationBlock(proto, text, parentRule) {
+  const style = Object.create(proto);
+  style[S] = { element: null, decls: new Map(), parentRule };
+  parseInto(style[S].decls, text);
+  return style;
+}
+
+export const serializeDeclarations = (style) => serialize(style[S].decls);
 
 // The element's style object, created on first use from its style attribute.
 export function styleOf(element, proto) {

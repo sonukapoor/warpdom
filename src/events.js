@@ -3,7 +3,7 @@
 // subclasses with their init dictionaries, and legacy createEvent/initEvent.
 // An exception in a listener is reported as an `error` event on the window
 // and dispatch continues, as in browsers and jsdom.
-import { S, state, domError, DOCUMENT_NODE } from './internal.js';
+import { S, state, domError, DOCUMENT_NODE, hooks } from './internal.js';
 
 // --- EventTarget -------------------------------------------------------------
 
@@ -18,15 +18,47 @@ function flatten(options) {
   return { capture: !!o.capture, once: !!o.once, passive: !!o.passive, signal: o.signal };
 }
 
-// The parent used for event paths: nodes -> parent node, document -> window.
-function eventParent(target) {
-  const s = target[S];
-  if (!s) return null;
-  if (s.type === DOCUMENT_NODE) return s.window ?? null;
-  return s.parent ?? null;
+// --- shadow trees -------------------------------------------------------------------
+
+const isNode = (t) => t?.[S]?.type !== undefined;
+const rootOf = (node) => { let n = node; while (n[S].parent) n = n[S].parent; return n; };
+const isShadowRoot = (node) => node[S].shadow === true;
+
+// A is a shadow-including inclusive ancestor of B.
+function shadowIncludingInclusiveAncestor(a, b) {
+  for (let n = b; n;) {
+    if (n === a) return true;
+    const s = n[S];
+    n = s.parent ?? (s.shadow ? s.host : null);
+  }
+  return false;
 }
 
-function reportError(target, error) {
+// Retargeting A against B: A, or the host of the shadow tree hiding A from B.
+export function retarget(a, b) {
+  for (let target = a; ;) {
+    if (!isNode(target)) return target;
+    const root = rootOf(target);
+    if (!isShadowRoot(root)) return target;
+    if (isNode(b) && shadowIncludingInclusiveAncestor(root, b)) return target;
+    target = root[S].host;
+  }
+}
+
+// Get the parent: a node's parent, a shadow root's host (unless the event
+// is not composed and started in that shadow tree), a document's window.
+function getTheParent(target, event) {
+  const s = target[S];
+  if (!s || s.type === undefined) return null; // windows and plain EventTargets
+  if (s.type === DOCUMENT_NODE) return event[S].type === 'load' || s.noView ? null : s.window ?? null;
+  if (s.shadow) {
+    const first = event[S].path[0].target;
+    return !event[S].composed && isNode(first) && rootOf(first) === target ? null : s.host;
+  }
+  return s.parent;
+}
+
+export function reportError(target, error) {
   const window = target[S]?.type === DOCUMENT_NODE ? target[S].window : target[S]?.doc?.[S]?.window ?? target;
   const ErrorEvent = window?.ErrorEvent;
   if (!ErrorEvent) throw error;
@@ -35,15 +67,21 @@ function reportError(target, error) {
   if (!handled && window[S]?.onUnhandledError) window[S].onUnhandledError(error);
 }
 
-function invoke(event, node, phase) {
+// Invoke the listeners of a path item for a phase ("capturing" or "bubbling").
+function invoke(event, index, phase) {
   const es = event[S];
+  const item = es.path[index];
+  es.target = item.eventTarget;
+  es.relatedTarget = item.relatedTarget;
+  if (es.stopped) return;
+  const node = item.target;
+  es.currentTarget = node;
   const list = node[S]?.listeners?.get(es.type);
   if (!list) return;
-  es.currentTarget = node;
   for (const entry of list.slice()) {
     if (entry.removed) continue;
-    if (phase === 'capture' && !entry.capture) continue;
-    if (phase === 'bubble' && entry.capture) continue;
+    if (phase === 'capturing' && !entry.capture) continue;
+    if (phase === 'bubbling' && entry.capture) continue;
     if (entry.once) removeEntry(node, es.type, entry);
     es.inPassiveListener = entry.passive;
     try {
@@ -66,30 +104,80 @@ function removeEntry(target, type, entry) {
   entry.removed = true;
 }
 
+function appendToPath(path, target, shadowTarget, relatedTarget, slotInClosedTree) {
+  const s = target[S];
+  path.push({
+    target,
+    shadowTarget,
+    eventTarget: null,
+    relatedTarget,
+    rootOfClosedTree: s?.shadow === true && s.mode === 'closed',
+    slotInClosedTree,
+  });
+}
+
+const inShadowTree = (t) => isNode(t) && isShadowRoot(rootOf(t));
+
+// Dispatch (DOM standard 2.9), including activation behavior for clicks.
 export function dispatch(target, event) {
   const es = state(event);
   if (es.dispatching) throw domError('The event is already being dispatched.', 'InvalidStateError');
   if (!es.initialized) throw domError('The event provided is uninitialized.', 'InvalidStateError');
   es.dispatching = true;
-  es.target = target;
   es.isTrusted = false;
+  const originalRelated = es.relatedTarget ?? null;
   const path = [];
-  for (let t = target; t; t = eventParent(t)) path.push(t);
   es.path = path;
+  let activation = null;
+  let clearTargets = false;
+  const isActivationEvent = es.type === 'click' && 'clientX' in es && hooks.activation !== null;
   try {
-    for (let i = path.length - 1; i > 0 && !es.stopped; i--) {
-      es.eventPhase = 1;
-      invoke(event, path[i], 'capture');
-    }
-    if (!es.stopped) {
-      es.eventPhase = 2;
-      invoke(event, target, 'capture');
-      if (!es.stopped) invoke(event, target, 'bubble');
-    }
-    if (es.bubbles) {
-      for (let i = 1; i < path.length && !es.stopped; i++) {
-        es.eventPhase = 3;
-        invoke(event, path[i], 'bubble');
+    let relatedTarget = retarget(originalRelated, target);
+    if (target !== relatedTarget || target === originalRelated) {
+      appendToPath(path, target, target, relatedTarget, false);
+      if (isActivationEvent) activation = hooks.activation(target);
+      let current = target;
+      // The root of current's tree, while it may be a shadow root (computed
+      // only when shadow roots are involved; light-tree paths skip it).
+      let currentRoot = isNode(target) ? rootOf(target) : null;
+      let parent = getTheParent(target, event);
+      while (parent) {
+        if (originalRelated !== null) relatedTarget = retarget(originalRelated, parent);
+        const inCurrentTree = parent[S]?.isWindow || (isNode(parent) && currentRoot !== null
+          && (!isShadowRoot(currentRoot) || shadowIncludingInclusiveAncestor(currentRoot, parent)));
+        if (inCurrentTree) {
+          if (isActivationEvent && es.bubbles && !activation) activation = hooks.activation(parent);
+          appendToPath(path, parent, null, relatedTarget, false);
+        } else if (parent === relatedTarget) {
+          parent = null;
+        } else {
+          current = parent;
+          currentRoot = isNode(current) ? rootOf(current) : null;
+          if (isActivationEvent && !activation) activation = hooks.activation(current);
+          appendToPath(path, parent, current, relatedTarget, false);
+        }
+        if (parent) parent = getTheParent(parent, event);
+      }
+      // Each item's event target: the shadow-adjusted target of the nearest
+      // item at or before it.
+      let clearItem = null;
+      for (const item of path) {
+        if (item.shadowTarget !== null) clearItem = item;
+        item.eventTarget = clearItem.shadowTarget;
+      }
+      clearTargets = inShadowTree(clearItem.shadowTarget) || inShadowTree(clearItem.relatedTarget);
+      activation?.pre?.();
+      for (let i = path.length - 1; i >= 0; i--) {
+        es.eventPhase = path[i].shadowTarget !== null ? 2 : 1;
+        invoke(event, i, 'capturing');
+      }
+      for (let i = 0; i < path.length; i++) {
+        if (path[i].shadowTarget !== null) es.eventPhase = 2;
+        else {
+          if (!es.bubbles) continue;
+          es.eventPhase = 3;
+        }
+        invoke(event, i, 'bubbling');
       }
     }
   } finally {
@@ -100,7 +188,72 @@ export function dispatch(target, event) {
     es.stopped = false;
     es.stopImmediate = false;
   }
+  if (clearTargets) {
+    es.target = null;
+    es.relatedTarget = null;
+  }
+  if (activation) {
+    if (!es.canceled) activation.run(event);
+    else activation.cancel?.();
+  }
   return !es.canceled;
+}
+
+// composedPath(): the path, without targets in closed shadow trees the
+// current target cannot see.
+function composedPath(event) {
+  const es = event[S];
+  const path = es.path;
+  if (path.length === 0) return [];
+  const currentTarget = es.currentTarget;
+  const out = [currentTarget];
+  let currentIndex = 0;
+  let hiddenLevel = 0;
+  for (let i = path.length - 1; i >= 0; i--) {
+    if (path[i].rootOfClosedTree) hiddenLevel++;
+    if (path[i].target === currentTarget) { currentIndex = i; break; }
+    if (path[i].slotInClosedTree) hiddenLevel--;
+  }
+  let level = hiddenLevel;
+  let max = hiddenLevel;
+  for (let i = currentIndex - 1; i >= 0; i--) {
+    if (path[i].rootOfClosedTree) level++;
+    if (level <= max) out.unshift(path[i].target);
+    if (path[i].slotInClosedTree) {
+      level--;
+      if (level < max) max = level;
+    }
+  }
+  level = hiddenLevel;
+  max = hiddenLevel;
+  for (let i = currentIndex + 1; i < path.length; i++) {
+    if (path[i].slotInClosedTree) level++;
+    if (level <= max) out.push(path[i].target);
+    if (path[i].rootOfClosedTree) {
+      level--;
+      if (level < max) max = level;
+    }
+  }
+  return out;
+}
+
+// Internal listener registration (event handlers use these, not the public
+// methods, which tests may replace).
+export function addListener(target, type, callback) {
+  const map = listenersOf(target);
+  const list = map.get(type) ?? [];
+  const entry = { callback, capture: false, once: false, passive: false, removed: false };
+  list.push(entry);
+  map.set(type, list);
+  return entry;
+}
+
+export const removeListener = (target, type, entry) => removeEntry(target, type, entry);
+
+// Set the canceled flag, as preventDefault() does.
+export function cancel(event) {
+  const s = event[S];
+  if (s.cancelable && !s.inPassiveListener) s.canceled = true;
 }
 
 const eventTarget = {
@@ -141,18 +294,23 @@ function initEventState(self, type, init, initialized = true) {
 
 // Builds a constructor body for an event interface: validates the type
 // argument, sets the base state, then copies the subclass's init fields.
-function eventConstruct(name, fields = {}) {
+export function eventConstruct(name, fields = {}) {
+  const entries = Object.entries(fields);
   return (w, self, [type, init]) => {
     if (type === undefined) throw new TypeError(`Failed to construct '${name}': 1 argument required, but only 0 present.`);
     const dict = init ?? {};
     initEventState(self, type, dict);
-    for (const [key, fallback] of Object.entries(fields)) self[S][key] = dict[key] ?? fallback;
+    const es = self[S];
+    for (let i = 0; i < entries.length; i++) {
+      const key = entries[i][0];
+      es[key] = dict[key] ?? entries[i][1];
+    }
     return self;
   };
 }
 
 // Read-only accessors for init fields.
-const fieldGetters = (fields) => Object.fromEntries(Object.keys(fields).map((key) => [key, { get() { return state(this)[key]; } }]));
+export const fieldGetters = (fields) => Object.fromEntries(Object.keys(fields).map((key) => [key, { get() { return state(this)[key]; } }]));
 
 const MODIFIERS = { Control: 'ctrlKey', Shift: 'shiftKey', Alt: 'altKey', Meta: 'metaKey' };
 const modifierState = { getModifierState(key) { const field = MODIFIERS[key]; return field ? !!state(this)[field] : false; } };
@@ -202,7 +360,7 @@ export const EVENT_INTERFACES = [
       set cancelBubble(v) { if (v) state(this).stopped = true; },
       get isTrusted() { return state(this).isTrusted; },
       get timeStamp() { return state(this).timeStamp; },
-      composedPath() { return state(this).path.slice(); },
+      composedPath() { state(this); return composedPath(this); },
       preventDefault() { const s = state(this); if (s.cancelable && !s.inPassiveListener) s.canceled = true; },
       stopPropagation() { state(this).stopped = true; },
       stopImmediatePropagation() { const s = state(this); s.stopped = true; s.stopImmediate = true; },
@@ -241,6 +399,7 @@ export const EVENT_INTERFACES = [
     ...fieldGetters(own(INPUT_FIELDS, UI_FIELDS)),
     getTargetRanges() { return []; },
   } },
+  { name: 'SubmitEvent', parent: 'Event', construct: eventConstruct('SubmitEvent', { submitter: null }), members: fieldGetters({ submitter: null }) },
   { name: 'ErrorEvent', parent: 'Event', construct: eventConstruct('ErrorEvent', ERROR_FIELDS), members: fieldGetters(ERROR_FIELDS) },
 ];
 

@@ -26,6 +26,8 @@
     "bench:hot": "node bench/hot.js"
   },
   "devDependencies": {
+    "@webref/elements": "^2.9.1",
+    "@webref/idl": "^3.85.1",
     "happy-dom": "^20.14.6",
     "jsdom": "^30.1.2",
     "vitest": "^5.0.3"

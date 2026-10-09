@@ -78,6 +78,13 @@ const cases = {
     const { document } = w;
     return [N, () => { let n = 0; for (let i = 0; i < N; i++) n += document.getElementById(`item-${i}`) ? 1 : 0; return n; }];
   },
+  'dispatchEvent (depth 20, document listener)': (w) => {
+    let node = w.document.body;
+    for (let i = 0; i < 20; i++) node = node.appendChild(w.document.createElement('div'));
+    let n = 0;
+    w.document.addEventListener('click', () => { n++; });
+    return [1, () => { node.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); return n; }];
+  },
   // Selector cases: one query over the 1000-element container per op.
   'querySelector #id': (w) => {
     container(w);

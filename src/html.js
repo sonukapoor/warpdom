@@ -6,6 +6,7 @@ import {
   S, state, insert, remove, domError, HTML_NS,
   ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE,
 } from './internal.js';
+import { eventHandlerAttributesAdded } from './event-handlers.js';
 
 // --- parser loading -------------------------------------------------------------
 
@@ -77,22 +78,27 @@ export function parseFragment(doc, contextElement, html) {
   const context = p5.defaultTreeAdapter.createElement(cs.tag, cs.ns ?? HTML_NS, []);
   const ast = p5.parseFragment(context, String(html));
   const internals = doc[S].window[S];
-  const fragment = internals.createFragment();
-  appendAst(internals, fragment, ast.childNodes);
+  const fragment = internals.createFragment(doc);
+  appendAst(internals, fragment, ast.childNodes, doc);
   return fragment;
 }
 
-function appendAst(internals, parent, astNodes) {
+function appendAst(internals, parent, astNodes, doc) {
   for (const n of astNodes) {
     let node;
-    if (n.nodeName === '#text') node = internals.createText(n.value);
-    else if (n.nodeName === '#comment') node = internals.createComment(n.data);
+    if (n.nodeName === '#text') node = internals.createText(n.value, doc);
+    else if (n.nodeName === '#comment') node = internals.createComment(n.data, doc);
     else if (n.tagName) {
-      node = internals.createElementNS(n.namespaceURI, n.tagName);
+      node = internals.createElementNS(n.namespaceURI, n.tagName, doc);
       const attrs = node[S].attrs;
-      for (const a of n.attrs) attrs.set(a.prefix ? `${a.prefix}:${a.name}` : a.name, a.value);
-      if (n.content) appendAst(internals, templateContent(node), n.content.childNodes);
-      else appendAst(internals, node, n.childNodes);
+      let handlers = false;
+      for (const a of n.attrs) {
+        attrs.set(a.prefix ? `${a.prefix}:${a.name}` : a.name, a.value);
+        if (a.name.startsWith('on')) handlers = true;
+      }
+      if (handlers) eventHandlerAttributesAdded(node);
+      if (n.content) appendAst(internals, templateContent(node), n.content.childNodes, doc);
+      else appendAst(internals, node, n.childNodes, doc);
     } else continue;
     insert(parent, node, null);
   }
@@ -101,7 +107,7 @@ function appendAst(internals, parent, astNodes) {
 // A template's contents live in a separate fragment, not its children.
 export function templateContent(template) {
   const s = state(template);
-  return s.content ?? (s.content = s.doc[S].window[S].createFragment());
+  return s.content ?? (s.content = s.doc[S].window[S].createFragment(s.doc));
 }
 
 const isTemplate = (el) => el[S].ns === HTML_NS && el[S].tag === 'template';

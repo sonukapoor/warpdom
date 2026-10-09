@@ -14,6 +14,7 @@ export const ELEMENT_NODE = 1;
 export const TEXT_NODE = 3;
 export const COMMENT_NODE = 8;
 export const DOCUMENT_NODE = 9;
+export const DOCUMENT_TYPE_NODE = 10;
 export const DOCUMENT_FRAGMENT_NODE = 11;
 
 export const HTML_NS = 'http://www.w3.org/1999/xhtml';
@@ -21,7 +22,14 @@ export const SVG_NS = 'http://www.w3.org/2000/svg';
 
 // Change notifications for MutationObserver (set by mutation.js). Called only
 // when the document has observers: see observed().
-export const hooks = { childList: null, attribute: null, characterData: null };
+export const hooks = {
+  childList: null, attribute: null, characterData: null, activation: null,
+  // Live range updates (ranges.js); called only when a document has live ranges.
+  rangeInsert: null, rangeRemove: null, rangeReplaceData: null,
+};
+
+// The live ranges of a document, if any (a Set of WeakRefs, see ranges.js).
+const hasRanges = (doc) => { const r = doc[S].ranges; return r !== undefined && r.size !== 0; };
 
 const ownerDocument = (node) => (node[S].type === DOCUMENT_NODE ? node : node[S].doc);
 export const observed = (node) => ownerDocument(node)[S].observerCount > 0;
@@ -55,7 +63,28 @@ export function rootOf(node) {
   return n;
 }
 
+// In the document tree (not in a shadow tree): what the id index covers.
 const isConnected = (node) => rootOf(node)[S].type === DOCUMENT_NODE;
+
+// The shadow-including root: through shadow roots to their hosts.
+export function shadowIncludingRoot(node) {
+  let root = rootOf(node);
+  while (root[S].shadow) root = rootOf(root[S].host);
+  return root;
+}
+
+// Connected (DOM): the shadow-including root is a document.
+export const connected = (node) => shadowIncludingRoot(node)[S].type === DOCUMENT_NODE;
+
+// a is a shadow-including inclusive ancestor of b.
+export function shadowIncludingContains(a, b) {
+  for (let n = b; n;) {
+    if (n === a) return true;
+    const s = n[S];
+    n = s.parent ?? (s.shadow ? s.host : null);
+  }
+  return false;
+}
 
 function changed(parent) {
   const ps = parent[S];
@@ -77,8 +106,12 @@ export function insert(parent, node, ref) {
     while (ns.first) insert(parent, ns.first, ref);
     return node;
   }
+  if (ns.type === DOCUMENT_NODE) throw domError('Nodes of type #document may not be inserted.', 'HierarchyRequestError');
   if (ref === node) ref = ns.next;
   if (ns.parent) remove(ns.parent, node);
+  const doc = ps.type === DOCUMENT_NODE ? parent : ps.doc;
+  if (ns.doc !== doc) adopt(node, doc);
+  if (ref && hasRanges(doc)) hooks.rangeInsert(doc, parent, ref);
   const prev = ref ? ref[S].prev : ps.last;
   ns.prev = prev;
   ns.next = ref ?? null;
@@ -92,10 +125,22 @@ export function insert(parent, node, ref) {
   return node;
 }
 
+// Moves node and its subtree to another document (DOM "adopt").
+export function adopt(node, doc) {
+  for (let n = node; n; n = nextInTree(n, node)) {
+    const s = n[S];
+    s.doc = doc;
+    if (s.attrNodes) for (const attr of s.attrNodes.values()) attr[S].doc = doc;
+    if (s.content) adopt(s.content, doc);
+  }
+}
+
 export function remove(parent, node) {
   const ps = state(parent);
   const ns = state(node);
   if (ns.parent !== parent) throw domError('The node to be removed is not a child of this node.', 'NotFoundError');
+  const ownerDoc = ps.type === DOCUMENT_NODE ? parent : ps.doc;
+  if (hasRanges(ownerDoc)) hooks.rangeRemove(ownerDoc, parent, node);
   const connected = isConnected(parent);
   const prev = ns.prev;
   const next = ns.next;
@@ -105,6 +150,10 @@ export function remove(parent, node) {
   ps.count--;
   changed(parent);
   if (connected) indexIds(node, false);
+  // Focus fixup: removing the focused element (also from inside a shadow
+  // tree of the removed subtree) focuses the document, without events.
+  const focused = ownerDoc[S].focused;
+  if (focused && focused !== ownerDoc && shadowIncludingContains(node, focused)) ownerDoc[S].focused = ownerDoc;
   if (observed(parent)) hooks.childList(parent, [], [node], prev, next);
   return node;
 }
@@ -214,11 +263,33 @@ export function collectElements(root, test, first = false) {
 }
 
 // The one path for changing text or comment data.
-export function setData(node, value) {
+// Replace data (DOM): the one path for changing text, comment and other
+// character data. Offsets are UTF-16 code units, as in the standard.
+export function replaceData(node, offset, count, data) {
   const s = node[S];
   const old = s.data;
-  s.data = value;
+  const length = old.length;
+  if (offset > length) throw domError(`The offset ${offset} is greater than the node's length (${length}).`, 'IndexSizeError');
+  if (offset + count > length) count = length - offset;
   if (observed(node)) hooks.characterData(node, old);
+  s.data = old.slice(0, offset) + data + old.slice(offset + count);
+  if (hasRanges(s.doc)) hooks.rangeReplaceData(s.doc, node, offset, count, data.length);
+}
+
+export const setData = (node, value) => replaceData(node, 0, node[S].data.length, value);
+
+// The index of node among its parent's children (O(siblings)).
+export function indexOf(node) {
+  let i = 0;
+  for (let n = node[S].prev; n; n = n[S].prev) i++;
+  return i;
+}
+
+// The DOM "length" of a node: data length, child count, or 0 for doctypes.
+export function nodeLength(node) {
+  const s = node[S];
+  if (s.data !== undefined) return s.data.length;
+  return s.type === 10 ? 0 : s.count;
 }
 
 export function textOf(node) {

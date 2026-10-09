@@ -140,6 +140,41 @@ final-form, TanStack table/virtual/form (too little DOM use).
 corpus will be thin there (emoji-picker-element, plus CopilotKit's
 web-components package).
 
+## Deliberate deviations from jsdom
+
+Where jsdom departs from the standard in ways no realistic test relies on,
+warpdom follows the standard. Each has a test. To publish in the docs.
+
+- `tabIndex` parses the attribute with the rules for parsing integers:
+  `tabindex="abc"` gives the element's default (-1 on a div); jsdom gives 0.
+- A disabled `fieldset` is not focusable even with a `tabindex`; jsdom
+  focuses it.
+- A submit button with `formnovalidate` submits without validating the
+  form; jsdom only honors the form's `novalidate`.
+- The `input` event fired by clicking a checkbox or radio button is
+  composed; jsdom's is not.
+- `Selection.containsNode(node, true)` follows the Selection API's partial
+  containment (jsdom returns false for a selection inside the node);
+  `Selection.direction` exists (jsdom lacks it).
+- Additive, to watch in the corpus: Range `getClientRects()` and
+  `getBoundingClientRect()` (CSSOM View) exist and return empty results;
+  jsdom lacks them, so code that feature-detects them takes another path.
+- An event handler set again after being set to null is registered anew,
+  after listeners added since (the standard's own example); jsdom keeps
+  its old position.
+- `new FormData(form)` skips disabled options, gives `_charset_` the
+  encoding and fires `formdata`; jsdom includes them, gives '' and fires
+  nothing.
+- ShadowRoot has delegatesFocus, slotAssignment, clonable and
+  serializable (jsdom lacks the first two).
+- Element interfaces and reflected attributes come from the current
+  standard's IDL: `<search>` and `<menuitem>` are HTMLElement (jsdom:
+  HTMLUnknownElement), `<selectedcontent>` exists, and reflections jsdom
+  lacks (inert, srcset, relList, sandbox, ...) are present.
+- `option.form` is its select's form owner (jsdom: the nearest ancestor
+  form), and the list of options follows the standard's current
+  definition (options nested in other elements inside the select count).
+
 ## Decisions
 
 - **2026-10-07: Outermost counting for every environment.** jsdom calls its
@@ -294,6 +329,17 @@ web-components package).
 - **2026-10-07: `DOM_TRACE_PROJECT`** names the project so monorepo packages
   count as one project in breadth metrics.
 
+- **2026-10-09: warpdom is written from the specs, not from jsdom.**
+  Algorithms come from the DOM/HTML/CSSOM/Selection specs, designed for
+  warpdom's tree; jsdom's and happy-dom's source is not read or copied, even
+  though their licenses would allow it. Their code carries their
+  architecture's costs, and an independent implementation is part of the
+  pitch. jsdom remains the black-box reference for behavior (parity tests),
+  and data tables are generated from the specs' WebIDL (@webref/idl).
+  Cleanup: focus update steps rewritten from the HTML standard, select and
+  form activation reviewed against the spec, reflection and element tables
+  regenerated from @webref/idl.
+
 ## Next steps
 
 1. Milestone 1 (`docs/design.md`): Radix Primitives' suite passes on warpdom
@@ -302,16 +348,25 @@ web-components package).
    navigation and id index, live collections, events, MutationObserver,
    window features, on-demand getComputedStyle, TreeWalker/NodeIterator,
    HTML serialization and lazily loaded parsing (parse5), Attr/NamedNodeMap,
-   classList, dataset, a compiled and cached CSS selector engine. 691 of 982
-   Radix tests pass (jsdom: 976). Remaining batches, by blocked tests:
-   - layout stubs: getBoundingClientRect/getClientRects returning zeros (75)
-   - form controls: value/checked/selected accessors on the prototypes
-     (React and Radix call the native setters; 56), select.options (49),
-     validity, label association (labels/control, ~14)
-   - focus: focus()/blur(), document.activeElement, focus events, :focus
-   - STACK_TRACE_ERROR (28): not yet diagnosed
-   - style sheet rules in getComputedStyle
-   - attachShadow, and the rest axe-core needs
+   classList, dataset, a compiled and cached CSS selector engine, layout
+   stubs and DOMRect, reflected attributes (280, generated from data), form
+   controls (values, checkedness, selectedness, labels, validation,
+   submit/reset, click() with activation behavior; tested for parity
+   against jsdom scenario by scenario), focus (focusing steps, events,
+   activeElement, tabIndex), documents without a window and
+   DOMImplementation with adoption, screen, canvas stubs, and the CSS object
+   model (style sheets, rules, insertRule), ranges and selection, event
+   handlers, FormData, shadow DOM core with dispatch per the DOM standard.
+   **Done (2026-10-09): all 982 Radix tests have the same status on
+   warpdom as on jsdom** (976 pass, 6 skipped/todo, 0 differences).
+   Timings (Radix, Vitest, 2 workers, median of 3 interleaved runs):
+   jsdom 20.0 s, happy-dom 13.0 s (18 tests fail), warpdom 11.5 s
+   (1.75x faster than jsdom, 12% faster than happy-dom).
+   Later: enumerated attributes limited to only known values beyond the
+   common ones (referrerPolicy, loading, decoding, fetchPriority, ...
+   return their raw value), links (anchor URL members, activation), on* handler properties,
+   style sheet rules in getComputedStyle (the CSSOM is now there), value
+   normalization in the CSSOM, the XML serializer for XML documents.
    Then timings against jsdom and happy-dom, and the load-time budget.
 2. Reserve the npm name `warpdom` (placeholder package; Sonu's call, since
    publishing is public).

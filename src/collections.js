@@ -6,15 +6,23 @@ import { S, state } from './internal.js';
 const isIndex = (key) => typeof key === 'string' && /^(0|[1-9]\d*)$/.test(key);
 const items = (list) => state(list).items();
 
+// Collections with namedItem (HTMLCollection and its subclasses) also
+// expose items by id or name as properties, behind the prototype's members.
+const named = (t, key) => typeof key === 'string' && key !== '' && typeof t.namedItem === 'function' && !(key in t);
+
 export function liveList(proto, getItems) {
   const target = Object.create(proto);
   target[S] = { items: getItems };
   return new Proxy(target, {
     get(t, key, receiver) {
-      return isIndex(key) ? t[S].items()[key] : Reflect.get(t, key, receiver);
+      if (isIndex(key)) return t[S].items()[key];
+      if (named(t, key)) return t.namedItem(key) ?? undefined;
+      return Reflect.get(t, key, receiver);
     },
     has(t, key) {
-      return isIndex(key) ? Number(key) < t[S].items().length : Reflect.has(t, key);
+      if (isIndex(key)) return Number(key) < t[S].items().length;
+      if (named(t, key) && t.namedItem(key) !== null) return true;
+      return Reflect.has(t, key);
     },
     ownKeys(t) {
       return [...t[S].items().keys()].map(String).concat(Reflect.ownKeys(t).filter((k) => typeof k !== 'symbol' || k !== S));

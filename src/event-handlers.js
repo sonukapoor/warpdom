@@ -1,0 +1,169 @@
+// Event handlers, from the HTML standard (8.1.8): onclick and friends as
+// IDL attributes on elements, documents and windows, and as content
+// attributes on elements (compiled on first use). Each event handler owns
+// one internal listener, added when it first gets a value, so it keeps its
+// place among the target's listeners.
+import { S, HTML_NS, SVG_NS, ELEMENT_NODE } from './internal.js';
+import { attributeSteps } from './attributes.js';
+import { addListener, removeListener, cancel, reportError } from './events.js';
+import { formOwner } from './forms.js';
+import { GLOBAL_EVENT_HANDLERS, WINDOW_EVENT_HANDLERS } from './event-handler-names.js';
+
+// The event handler event type: the name without "on", except four
+// prefixed animation and transition handlers.
+const EVENT_TYPES = {
+  onwebkitanimationend: 'webkitAnimationEnd',
+  onwebkitanimationiteration: 'webkitAnimationIteration',
+  onwebkitanimationstart: 'webkitAnimationStart',
+  onwebkittransitionend: 'webkitTransitionEnd',
+};
+const eventType = (name) => EVENT_TYPES[name] ?? name.slice(2);
+
+const WINDOW_HANDLERS = new Set(WINDOW_EVENT_HANDLERS);
+// Handlers body and frameset forward to their window.
+const WINDOW_REFLECTING_BODY = new Set(['onblur', 'onerror', 'onfocus', 'onload', 'onresize', 'onscroll']);
+
+// An internal raw uncompiled handler: the content attribute's script body.
+const RAW = Symbol('raw handler');
+
+const isWindow = (target) => target[S].isWindow === true;
+const isBodyOrFrameset = (s) => s.type === ELEMENT_NODE && s.ns === HTML_NS && (s.tag === 'body' || s.tag === 'frameset');
+
+// Determining the target of an event handler.
+function handlerTarget(target, name) {
+  const s = target[S];
+  if (!isBodyOrFrameset(s) || !(WINDOW_HANDLERS.has(name) || WINDOW_REFLECTING_BODY.has(name))) return target;
+  return s.doc[S].noView ? null : s.doc[S].window;
+}
+
+function handlerEntry(target, name) {
+  const s = target[S];
+  const map = s.handlers ?? (s.handlers = new Map());
+  let entry = map.get(name);
+  if (!entry) map.set(name, entry = { value: null, listener: null });
+  return entry;
+}
+
+function activate(target, name) {
+  const entry = handlerEntry(target, name);
+  if (entry.listener) return;
+  entry.listener = addListener(target, eventType(name), (event) => processHandler(target, name, event));
+}
+
+function deactivate(target, name) {
+  const entry = target[S].handlers?.get(name);
+  if (!entry) return;
+  entry.value = null;
+  if (entry.listener) {
+    removeListener(target, eventType(name), entry.listener);
+    entry.listener = null;
+  }
+}
+
+function setHandler(target, name, value) {
+  handlerEntry(target, name).value = value;
+  activate(target, name);
+}
+
+// Getting the current value of the event handler, compiling a content
+// attribute's body on first use.
+function currentValue(target, name) {
+  const entry = target[S].handlers?.get(name);
+  if (!entry) return null;
+  if (entry.value && entry.value[RAW] !== undefined) entry.value = compile(target, name, entry.value[RAW]);
+  return entry.value;
+}
+
+const FORM_ASSOCIATED = new Set(['button', 'fieldset', 'input', 'object', 'output', 'select', 'textarea', 'img']);
+
+// The handler function: a function of (event), or the five onerror
+// arguments on a window, whose scope is the element, then its form owner,
+// then its document, then the global scope.
+function compile(target, name, body) {
+  const element = isWindow(target) ? null : target;
+  const doc = element ? element[S].doc : target.document;
+  if (!doc || doc[S].noView) return null;
+  const params = !element && name === 'onerror' ? 'event, source, lineno, colno, error' : 'event';
+  const source = `return function ${name}(${params}) {\n${body}\n};`;
+  // The with statements give the standard's scope chain. The window comes
+  // first: it stands in for the global scope, since it is not the JS global.
+  const window = doc[S].window;
+  try {
+    if (!element) return new Function('__window', `with (__window) { ${source} }`)(window);
+    const s = element[S];
+    const form = s.ns === HTML_NS && FORM_ASSOCIATED.has(s.tag) ? formOwner(element) : null;
+    return new Function('__window', '__document', '__form', '__element',
+      `with (__window) with (__document) with (__form) with (__element) { ${source} }`)(
+      window, doc, form ?? Object.create(null), element,
+    );
+  } catch (error) {
+    handlerEntry(target, name).value = null;
+    reportError(element ?? target, error);
+    return null;
+  }
+}
+
+// The event handler processing algorithm.
+function processHandler(target, name, event) {
+  const callback = currentValue(target, name);
+  if (typeof callback !== 'function') return; // null, or an object that is not callable
+  const es = event[S];
+  const current = es.currentTarget;
+  const special = es.type === 'error' && current !== null && isWindow(current) && es.message !== undefined && 'lineno' in es;
+  const result = special
+    ? callback.call(current, es.message, es.filename, es.lineno, es.colno, es.error)
+    : callback.call(current, event);
+  if (special ? result === true : result === false) cancel(event);
+}
+
+// --- IDL attributes -----------------------------------------------------------------------
+
+function idlAttribute(name) {
+  return {
+    get() {
+      if (!this?.[S]) throw new TypeError('Illegal invocation');
+      const target = handlerTarget(this, name);
+      return target ? currentValue(target, name) : null;
+    },
+    set(value) {
+      if (!this?.[S]) throw new TypeError('Illegal invocation');
+      const target = handlerTarget(this, name);
+      if (!target) return;
+      // [LegacyTreatNonObjectAsNull]
+      if (typeof value === 'function' || (typeof value === 'object' && value !== null)) setHandler(target, name, value);
+      else deactivate(target, name);
+    },
+  };
+}
+
+const members = (names) => Object.fromEntries(names.map((name) => [name, idlAttribute(name)]));
+
+export const GLOBAL_HANDLER_MEMBERS = members(GLOBAL_EVENT_HANDLERS);
+export const WINDOW_HANDLER_MEMBERS = members(WINDOW_EVENT_HANDLERS);
+
+// --- content attributes ---------------------------------------------------------------------
+
+const GLOBAL = new Set(GLOBAL_EVENT_HANDLERS);
+
+// Attribute change steps for event handler content attributes of HTML
+// (and SVG) elements; body and frameset also have the window's.
+function contentAttributeChanged(element, name, value) {
+  const s = element[S];
+  const applies = (s.ns === HTML_NS || s.ns === SVG_NS) && (GLOBAL.has(name) || (isBodyOrFrameset(s) && WINDOW_HANDLERS.has(name)));
+  if (!applies) return;
+  const target = handlerTarget(element, name);
+  if (!target) return;
+  if (value === undefined) deactivate(target, name);
+  else setHandler(target, name, { [RAW]: value });
+}
+
+for (const name of new Set([...GLOBAL_EVENT_HANDLERS, ...WINDOW_EVENT_HANDLERS])) {
+  attributeSteps.set(name, (element, old, value) => contentAttributeChanged(element, name, value));
+}
+
+// For attributes set without the attribute write path (parsing, cloning).
+export function eventHandlerAttributesAdded(element) {
+  for (const [name, value] of element[S].attrs) {
+    if (name.startsWith('on')) contentAttributeChanged(element, name, value);
+  }
+}

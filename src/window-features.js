@@ -40,20 +40,23 @@ const animationFrames = {
   cancelAnimationFrame(id) { state(this).frames?.queue.delete(id); },
 };
 
-const scrolling = {
-  scroll() { state(this); },
-  scrollTo() { state(this); },
-  scrollBy() { state(this); },
-};
+// Window methods jsdom does not implement either: they report "Not
+// implemented" on the console, as jsdom's default virtual console does.
+const notImplementedMethods = Object.fromEntries(['alert', 'blur', 'confirm', 'focus', 'moveBy', 'moveTo', 'open', 'print',
+  'prompt', 'resizeBy', 'resizeTo', 'scroll', 'scrollBy', 'scrollTo'].map((name) => [name, {
+  [name]() { state(this).notImplemented(`Window's ${name}() method`); },
+}[name]]));
 
 export const WINDOW_MEMBERS = {
   ...animationFrames,
-  ...scrolling,
+  ...notImplementedMethods,
   getComputedStyle(element) {
     const ws = state(this);
     if (!element?.[S]?.attrs) throw new TypeError("Failed to execute 'getComputedStyle' on 'Window': parameter 1 is not of type 'Element'.");
     return computedStyle(element, ws.protos.CSSStyleProperties);
   },
+  getSelection() { return state(this) && this.document.getSelection(); },
+  get screen() { const s = state(this); return s.screen ?? (s.screen = make(this, 'Screen', {})); },
   get navigator() { const s = state(this); return s.navigator ?? (s.navigator = make(this, 'Navigator', {})); },
   get location() { return state(this).location; },
   get history() { return state(this).history; },
@@ -83,6 +86,12 @@ const urlPart = (part) => ({
 });
 
 export const FEATURE_INTERFACES = [
+  // Values as in jsdom (no screen; no orientation).
+  {
+    name: 'Screen',
+    members: Object.fromEntries(Object.entries({ availWidth: 0, availHeight: 0, width: 0, height: 0, colorDepth: 24, pixelDepth: 24 })
+      .map(([key, value]) => [key, { get() { state(this); return value; } }])),
+  },
   {
     name: 'Navigator',
     members: {
@@ -181,11 +190,12 @@ export function setupWindow(window, { url: initial = 'about:blank' } = {}) {
     if (src !== undefined) audio.setAttribute('src', String(src));
     return audio;
   });
-  factory('Option', ws.protos.HTMLOptionElement, (doc, [text = '', value, defaultSelected = false]) => {
+  factory('Option', ws.protos.HTMLOptionElement, (doc, [text = '', value, defaultSelected = false, selected = false]) => {
     const option = doc.createElement('option');
     if (text !== '') option.textContent = String(text);
     if (value !== undefined) option.setAttribute('value', String(value));
     if (defaultSelected) option.setAttribute('selected', '');
+    option[S].selectedness = !!selected; // not dirty, per the Option constructor
     return option;
   });
 }

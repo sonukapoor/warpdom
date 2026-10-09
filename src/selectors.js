@@ -2,6 +2,7 @@
 // small matching functions (compound selectors checked right to left through
 // the combinators) and cached, so querySelector, matches and closest never
 // re-parse. Walks use the linked tree directly.
+import { matchesChecked } from './forms.js';
 import { S, domError, ELEMENT_NODE, DOCUMENT_NODE, HTML_NS, nextInTree, rootOf } from './internal.js';
 
 // --- tokens and parsing --------------------------------------------------------
@@ -252,15 +253,6 @@ function isDisabled(el) {
   return false;
 }
 
-// Form state (checked, selected) moves to element state with the form
-// controls batch; until then it follows the attributes.
-const isChecked = (el) => {
-  const s = el[S];
-  if (!isHTML(el)) return false;
-  if (s.tag === 'input') return s.checked ?? s.attrs.has('checked');
-  if (s.tag === 'option') return s.selected ?? s.attrs.has('selected');
-  return false;
-};
 
 // Element positions among siblings, computed for all children at once and
 // cached on the parent until its child list changes (rev), so :nth-* and
@@ -381,7 +373,7 @@ function compilePseudo({ name, arg }) {
     case 'empty': return (el) => { for (let c = el[S].first; c; c = c[S].next) { const t = c[S].type; if (t === ELEMENT_NODE || (t === 3 && c[S].data !== '')) return false; } return true; };
     case 'root': return (el) => { const p = el[S].parent; return !!p && p[S].type === DOCUMENT_NODE; };
     case 'scope': return (el, ctx) => (ctx?.scope ? el === ctx.scope : !!el[S].parent && el[S].parent[S].type === DOCUMENT_NODE);
-    case 'checked': return isChecked;
+    case 'checked': return matchesChecked;
     case 'disabled': return isDisabled;
     case 'enabled': return (el) => isHTML(el) && FORM_DISABLE.has(el[S].tag) && !isDisabled(el);
     case 'required': return (el) => isHTML(el) && FORM_REQUIRED.has(el[S].tag) && el[S].attrs.has('required');

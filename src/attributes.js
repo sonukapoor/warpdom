@@ -11,6 +11,10 @@ import { styleAttributeChanged } from './css.js';
 
 const ATTRIBUTE_NODE = 2;
 
+// Attribute change steps by attribute name (form controls register theirs:
+// checked, selected, ...), run after the attribute map is updated.
+export const attributeSteps = new Map();
+
 // The one path for attribute writes (undefined removes): keeps the id index,
 // live collections, the style object, Attr nodes and attribute views in step,
 // and reports to MutationObservers.
@@ -27,6 +31,8 @@ export function writeAttribute(element, key, value) {
   es.attrsRev = (es.attrsRev ?? 0) + 1;
   attributesChanged(element);
   if (key === 'style') styleAttributeChanged(element);
+  const step = attributeSteps.get(key);
+  if (step !== undefined) step(element, old, value);
   if (observed(element)) hooks.attribute(element, key, old);
 }
 
