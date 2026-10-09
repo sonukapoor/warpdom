@@ -1,0 +1,29 @@
+{
+  "name": "warpdom",
+  "version": "0.0.0",
+  "description": "A DOM for unit tests that loads almost instantly and behaves like jsdom.",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "author": "Sonu Kapoor",
+  "exports": {
+    ".": "./src/index.js",
+    "./vitest": "./src/vitest.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test",
+    "bench:load": "node bench/load.js"
+  },
+  "devDependencies": {
+    "happy-dom": "^20.14.6",
+    "jsdom": "^30.1.2",
+    "vitest": "^5.0.3"
+  }
+}

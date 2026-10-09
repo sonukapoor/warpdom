@@ -1,0 +1,312 @@
+# warpdom plan
+
+> This plan lives in the warpdom repository (private:
+> github.com/sonukapoor/warpdom) since 2026-10-09. Measurement tools and
+> reports stay in the dom-api-tracer repository; `docs/...` paths below that
+> are not in this repo refer to it.
+
+## Goal
+
+A new DOM implementation for JavaScript testing: faster than happy-dom, with
+near-jsdom spec correctness, shipped as a drop-in Vitest/Jest environment.
+Long term: replace jsdom and happy-dom for unit tests, then expand to SSR and
+edge runtimes (the core must not depend on Node built-ins).
+
+Adoption evidence matters as much as code: reproducible benchmarks, public
+WPT conformance numbers, and real projects migrating.
+
+## Roadmap
+
+1. **Measure** (current): trace which DOM APIs real test suites use, across
+   20-30 popular open-source component libraries; publish the aggregated
+   report.
+2. **Build the DOM** (separate repo): pure-JS core, compact internal tree,
+   lazily materialized node objects, near-free environment startup, parse5
+   for parsing at first. Scope and hot paths come from stage 1 data.
+3. **Prove it**: Vitest + Jest environments, WPT pass-rate dashboard,
+   benchmarks on real suites vs jsdom/happy-dom/linkedom, including losses.
+4. **Adoption**: migration PRs to well-known OSS projects showing CI time saved.
+
+## Product
+
+**warpdom: a DOM for unit tests that loads almost instantly and behaves like
+jsdom**, shipped as a drop-in Vitest and Jest environment. An independent
+implementation of the WHATWG DOM/HTML standards (not a fork or wrapper),
+jsdom-compatible where tests can observe it, scoped by measured usage.
+
+## Status
+
+Stage 1 data collection is complete (2026-10-08): 20 projects, 4,151 test
+files, ~80,000 tests, jsdom and happy-dom, traced with the final tracer on
+Node 22.23.3; every project passes the same tests with and without the
+tracer. First report draft: `docs/stage1-report.md` (figures from
+`scripts/report-data.mjs`).
+
+Corpus result (`.corpus/report/`, regenerate with the harness):
+
+- 1,159 DOM members used. The catalog (7,431) is the union of several jsdom
+  and happy-dom versions, so per-environment coverage is the fairer figure
+  for the report.
+- 1,148 members used; per environment 17.1% of jsdom's catalog, 17.4% of
+  happy-dom's. 165 members are used by at least half of the projects
+  ("core"); 815 by at least two.
+- 56 members cover 90% of the 282M recorded operations; 8 cover 50%. Three
+  projects (AG Grid, React Spectrum, Mantine) make 76% of operations, so the
+  report ranks members with every project weighted equally.
+- Used by every project except Svelte's runtime suite (which reads almost
+  nothing outside its own compiled output): `Document#body`,
+  `Document#createElement`, `Node#appendChild`,
+  `EventTarget#addEventListener`, `Node#parentNode`, `Element#setAttribute`,
+  `Element#getAttribute`, `Element#querySelectorAll`, `Node#nodeType`,
+  `Element#attributes`, `Element#innerHTML`, ...
+- `window#navigator` is read by all 20, probably environment detection in
+  test tooling (runner and library code is counted).
+- Raw operation counts are concentrated in a few files and suites (see the
+  Testing Library `waitFor` finding and the grid findings below).
+- Tracer overhead: mostly 0-20%; Jest + jsdom suites with heavy DOM work
+  up to ~2x (Handsontable core 2.1x, Mantine 1.9x).
+
+## Corpus
+
+Run with `node scripts/trace-corpus.mjs --repos-dir ~/Projects`. Why each
+package is included or excluded is in the `notes` field of `corpus/corpus.json`.
+
+| Project | Framework / kind | DOM | Status (2026-10-08) | Files | Tests | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| floating-ui | React, Vue positioning | jsdom | traced | 24 | 340 | |
+| solid | Solid runtime | jsdom | traced | 27 | 482 | `isolate: false` |
+| analog | Angular | jsdom | traced | 18 | 194 | needs release build; 1 package browser-only |
+| CopilotKit | React, Vue, Angular, web components | jsdom | traced | 327 | 3,860 | needs build; some files fail in both runs |
+| handsontable | data grid | jsdom | traced | 554 | 8,082 | core + React/Vue/Angular wrappers |
+| ag-grid | data grid | happy-dom | traced | 717 | 11,694 | release branch b36.2.0 |
+| material-ui | React design system | jsdom | traced | 266 | 6,770 | needs Node >= 22.23.3 |
+| ariakit | React + Solid a11y | happy-dom (+ some jsdom files) | traced | 264 | 1,857 | |
+| element-plus | Vue design system | jsdom (+ some happy-dom files) | traced | 161 | 2,634 | |
+| ngx-formly | Angular forms | happy-dom (Jest) | traced | 60 | 854 | |
+| kobalte | Solid headless | jsdom | traced | 23 | 192 | one early run showed 182 vs 189 passing; all later runs 189/189 |
+| radix-primitives | React headless | jsdom | traced | 45 | 982 | |
+| react-hook-form | React forms | jsdom (Jest) | traced | 124 | 1,515 | |
+| vuetify | Vue design system | jsdom | traced | 73 | 947 | browser project excluded |
+| svelte | Svelte runtime | jsdom | traced | 9 | 7,879 | coarse: few files, many samples |
+| react-spectrum | React design system, a11y | jsdom (Jest) | traced | 384 | 8,456 | |
+| emoji-picker-element | web component, shadow DOM | jsdom | traced | 31 | 160 | only jsdom-tested WC library found |
+| mantine | React design system | jsdom (Jest) | traced | 727 | 17,861 | TS Jest config; tracer overhead 1.9x |
+| nuxt-ui | Vue/Nuxt design system | happy-dom | traced | 143 | 4,056 | needs `dev:prepare` |
+| ark-ui | React/Vue/Solid/Svelte headless | happy-dom + jsdom | traced | 174 | 1,245 | needs bun 1.4 (via npx) |
+| taiga-ui | Angular design system | jsdom (Jest) | deferred | | | needs Node >= 26 and an Nx build |
+| motion | React | | candidate | | | Jest, not installed |
+| preact | Preact | | rejected | | | Vitest browser mode |
+| cve-lite-cli `examples/*` | - | | rejected | | | lockfile-only fixtures |
+| Angular Material, Chart.js | Angular, - | | rejected | | | Karma (real browser) |
+
+All traced projects pass the same tests with and without the tracer. Every
+project was (re-)traced on 2026-10-08 with the final tracer on Node 22.23.3.
+
+**Shortlist (2026-10-07 survey of 45 repos on GitHub; not cloned yet).**
+Verdicts are from configs only; builds and per-file environments unverified.
+
+| # | Project | Framework / kind | Runner, DOM | Notes |
+| --- | --- | --- | --- | --- |
+| 1 | mui/material-ui | React design system | Vitest, jsdom | ~380 files; needs `TEST_SCOPE=node`, `TZ=UTC` |
+| 2 | adobe/react-spectrum | React design system, a11y | Jest, jsdom | ~460 files; yarn 4; `STRICT_MODE=1 VIRT_ON=1` |
+| 3 | ariakit/ariakit | React + Solid a11y | Vitest, **happy-dom** | ~480 files |
+| 4 | element-plus/element-plus | Vue design system | Vitest, jsdom | ~160 files |
+| 5 | nuxt/ui | Vue/Nuxt design system | Vitest, **happy-dom** | ~150 files; `--project vue`; may need `nuxt prepare` |
+| 6 | chakra-ui/ark | React/Vue/Solid/Svelte headless | Vitest, happy-dom (React, Vue), jsdom (Solid, Svelte) | ~176 files; bun |
+| 7 | mantinedev/mantine | React design system | Jest, jsdom | ~725 files; `jest.config.ts` |
+| 8 | taiga-family/taiga-ui | Angular design system | Jest, jsdom | ~300 files; config in package.json, run via nx |
+| 9 | ngx-formly/ngx-formly | Angular forms | Jest, **happy-dom** | ~60 files; first Jest + happy-dom suite |
+| 10 | react-hook-form | React forms | Jest, jsdom | ~124 files; `TEST_ENV=web` |
+| 11 | sveltejs/svelte | Svelte runtime | Vitest, jsdom (per-file comment) | ~20 files driving ~2,300 samples; coarse per-file data |
+| 12 | radix-ui/primitives | React headless | Vitest, jsdom | ~45 files |
+| 13 | vuetifyjs/vuetify | Vue design system | Vitest, jsdom | ~73 unit files; `--project unit` |
+| 14 | primevue or reka-ui | Vue | Vitest, jsdom | ~80 files each |
+| 15 | kobaltedev/kobalte | Solid headless | Vitest, jsdom, no-isolate | ~42 files |
+| 16 | vuejs/core | Vue runtime | Vitest, jsdom | ~32 files; `--project unit-jsdom` |
+| 17 | ant-design/ant-design | React design system | Jest, jsdom | ~640 files; huge |
+| 18 | emoji-picker-element | vanilla custom element, shadow DOM | Vitest, jsdom | ~31 files; only usable web-component suite found |
+| 19 | vueuse or vee-validate | Vue composables / forms | Vitest, jsdom | |
+
+Alternates: chakra-ui, solid-primitives, melt-ui, TanStack/router (build
+first), headlessui (Jest 26 / jsdom 16), formkit (build first).
+
+Rejected by the survey: lit, shoelace/webawesome, FAST, LWC, Ionic core
+(real browser or Stencil mock-doc); angular/components, ng-bootstrap,
+ng-zorro, primeng, spartan (real browser); skeleton, bits-ui components,
+primer/react, preact, @preact/signals (Vitest browser mode); formik,
+final-form, TanStack table/virtual/form (too little DOM use).
+
+**Gap:** web components and Lit are almost all tested in real browsers, so the
+corpus will be thin there (emoji-picker-element, plus CopilotKit's
+web-components package).
+
+## Decisions
+
+- **2026-10-07: Outermost counting for every environment.** jsdom calls its
+  own public API for selector matching and style resolution (one
+  `getComputedStyle` call reads ~1,000 `Node`/`Element` getters). Under the
+  old count-all default, 92% of recorded operations on floating-ui + solid
+  were jsdom internals (8.29M vs 675k). Counting re-opens inside event
+  dispatch and custom element lifecycle callbacks so user code is still
+  measured. Traces made before this change overcount and should be discarded.
+- **2026-10-07: Inject the tracer via a temporary wrapper config** next to
+  each package's own Vitest/Jest config, never editing project files. Run the
+  project's own runner binary (npx picked up a stray global Vitest 4), and
+  always compare against an untraced baseline (two checkouts had broken
+  installs that looked like tracer failures).
+- **2026-10-07: Data grids as priority targets.** Sonu reports Handsontable
+  is very slow under jsdom and AG Grid likely too, while Playwright (real
+  browser) is fast on both. Grids are DOM-heavy (many cells, measurement,
+  scroll virtualization), so they (a) show which hot paths matter beyond
+  typical component tests and (b) make strong stage 3 benchmarks with three
+  reference points: jsdom, happy-dom and a real browser via Playwright.
+  Caveat: jsdom has no layout, so grids may take different code paths than
+  in a browser; the trace will show which.
+- **2026-10-07: Report breadth first; treat raw ops as concentrated.** Raw
+  operation totals are dominated by a few test files (see Status), so the
+  stage 1 report ranks members by how many projects and files use them, and
+  shows per-member concentration (share of ops from the top file). Testing
+  Library's `waitFor` + `getBy*` error dumps are real, hot test work: fast
+  attribute iteration and text reads matter, and the pattern is a stage 3
+  benchmark candidate.
+- **2026-10-07: Corpus runs are throttled and exclusive.** Two full
+  Handsontable runs overlapped (one had been moved to the background) and
+  overheated the machine. The harness now defaults to 2 test workers, holds a
+  lock so only one run is active, and removes wrapper configs left by killed
+  runs. Large suites (Handsontable core, AG Grid) are run by Sonu when
+  convenient, not started from a chat session.
+- **2026-10-09: Build warpdom.** Product decided after the measurements
+  and the fast-start spike: a new test DOM, jsdom-compatible, near-free
+  startup. Name chosen: warpdom (free on npm and GitHub). Private repository
+  for now; public once milestone 1 works and has a benchmark. The DOM is
+  written fresh (jsdom and happy-dom are compatibility references, not code
+  sources); parse5 may be reused for HTML parsing.
+- **2026-10-09: Fast-start spike succeeded.** `docs/fast-start-spike.md`:
+  the per-file cost is loading the DOM library (jsdom 176 ms, happy-dom ~85
+  ms per fresh worker), not creating windows. A jsdom-shaped prototype (219
+  interfaces, 3,710 members, per-window prototypes for isolation) loads in
+  11 ms; on 100 trivial test files in Vitest it removed 93% of jsdom's cost
+  and 85% of happy-dom's (3.9 s vs 15.2 s and 8.5 s). Compatibility is not
+  yet tested and remains the main risk.
+- **2026-10-09: Per-file setup is half of test time; the DOM owns the
+  bigger part of it.** `docs/setup-cost.md`: across 33 Vitest packages,
+  environment setup is a median 29% of time and module imports 15%; tests
+  24%. Skipping setup with `--no-isolate` gives 2-7x where safe, but only 5
+  of 16 large packages kept all tests passing. Environment setup (fresh DOM
+  window per file) can be made cheap without sharing state, so it is DOM
+  product territory; import cost is runner territory (Vitest is active
+  there). Product direction under consideration: a test DOM built for
+  near-free startup and jsdom compatibility (sharpened Product A), rather
+  than a test runtime (Product B).
+- **2026-10-08: The case is jsdom compatibility at happy-dom speed, not
+  "faster than happy-dom".** Experiment on 9 suites (`docs/env-experiment.md`):
+  jsdom is a median 37% of CPU time in jsdom suites, happy-dom 9%; switching
+  to happy-dom gives a median 1.4x wall-time speedup but every jsdom suite
+  lost tests (behavior gaps, plus tests coupled to jsdom's object shapes such
+  as spying on prototype getters). A DOM faster than happy-dom could save at
+  most ~10% of test time. Routes to weigh: improve happy-dom's compatibility,
+  speed up jsdom, or build a jsdom-shaped, happy-dom-fast DOM.
+- **2026-10-08: Report review decisions.** An independent fact-check
+  verified ~190 figures and flagged overstated wording, all fixed: causal
+  claims about tooling are framed as measured in a controlled test, "returns
+  zero" is qualified (mocks are invisible to the tracer), host share is given
+  per project (median 5.4%, raw 29% is mostly two Jest suites), pass parity
+  is stated as identical pass/fail/skip counts with the 369 pre-existing
+  failures disclosed, and merged CSSStyleProperties/CSSStyleDeclaration
+  figures are given. `performance.now` was confirmed by stack sampling to
+  come from React's scheduler; it is only visible under Jest because Vitest
+  supplies its own `performance`. Constructors are not counted for this
+  report (it would mean replacing global constructors and risks breaking
+  `instanceof` checks). Aggregated data is in `docs/data/`; per-file traces
+  go in a release at publication; figures wait for the publication venue.
+- **2026-10-08: Every window on a shared global is instrumented.** Vitest 2
+  with `isolate: false` (solid) installs a new jsdom window per test file on
+  the same global; the tracer only instrumented the first, so solid recorded
+  nothing. Fixed; solid re-traced.
+- **2026-10-08: Private-symbol members are not DOM API.** happy-dom keys
+  ~50 internal methods with private symbols (`[getTokenList]`, ...). The
+  report leaves them out of every figure; only well-known symbols count.
+- **2026-10-08: Host APIs reported separately.** `Performance#now` (62.5M
+  calls, React Spectrum and Mantine) and `navigator` are host services, not
+  the document tree: 29% of operations.
+- **2026-10-08: Listener wrappers are transparent.** zone.js stores what
+  `addEventListener` receives and Angular's DebugElement identifies its own
+  listeners by their source text (`__ngUnwrap__`); the wrappers broke 18
+  ngx-formly tests. Wrappers now report the original listener's
+  `toString()`, name and length.
+- **2026-10-08: Count only listener code during event dispatch.** Counting
+  used to re-open for the whole `dispatchEvent`/`click`/... call, so the DOM
+  implementation's own dispatch work was counted (AG Grid on happy-dom:
+  millions of `Event#eventPhase`, `Event#type`, `[getTokenList]`). Fixed:
+  listeners and `on*` handlers are wrapped at registration and counting
+  re-opens only while they run. Traces made before this fix (all projects so
+  far) are re-run in the final pass.
+- **2026-10-08: Corpus runs use Node 22.23.3** (`nvm exec 22.23.3`), which
+  newer repos require (material-ui needs >=22.23.3, AG Grid ^22.21.1); Sonu's
+  default Node stays 22.17.1. All projects are re-run on it in the final pass
+  so the dataset uses one Node version.
+- **2026-10-08: pnpm 12 needs a newer Corepack.** Corepack 0.33 (bundled
+  with Node 22.17) looks for pnpm 12's removed `bin/pnpm.cjs`. Sonu upgraded
+  to Corepack 0.36 (engine warning on Node 22.17, works); the stale cached
+  pnpm 12 downloads also had to be deleted from
+  `~/.cache/node/corepack/v1/pnpm/`.
+- **2026-10-08: Grids do far more DOM work per test.** AG Grid: 155k
+  operations per test file vs 46k (CopilotKit) and 1k-28k for other
+  component libraries; `HTMLElement#style` 9,655 and `requestAnimationFrame`
+  113 per file. Both grids share members no component library uses:
+  `before`, `prepend`, `childElementCount`, `offsetTop`/`offsetLeft`,
+  `border*Width`, `queueMicrotask`.
+- **2026-10-08: Handsontable is layout- and style-heavy.** Per test file it
+  calls `getComputedStyle` 940 times and reads `clientHeight`/`clientWidth`/
+  `offsetWidth`/`scrollWidth`/... 150-260 times each, far more than any other
+  project. jsdom has no layout, so every one of those reads returns 0; grid
+  code under jsdom measures nothing. `HTMLElement#style` alone is 13.6% of its
+  operations. Candidates for the new DOM: a cheap `getComputedStyle` and an
+  optional simple layout model.
+- **2026-10-08: Tracer never instruments ECMAScript built-ins of any realm.**
+  jsdom's window has its own realm; the prototype walk stopped only at this
+  realm's `Object.prototype`, so jsdom's `Object.prototype` (11 methods) was
+  wrapped in every jsdom run. Under Jest, test code runs in that realm, so
+  `hasOwnProperty`/`valueOf`/... calls were counted as DOM use and slowed the
+  suites. Fixed (walk stops at any prototype-less root); all jsdom projects
+  were re-run on 2026-10-08 (floating-ui, solid, analog, CopilotKit,
+  Handsontable), all matching their baselines. Handsontable's core suite
+  overhead dropped from 3.2x to 2.2x. happy-dom shares Node's realm and was
+  unaffected.
+- **2026-10-07: Tracer never wraps test framework globals.** Found on
+  Handsontable: Jest installs `describe`/`it`/... on the jsdom window, the
+  tracer wrapped them as window functions and the wrappers hid `it.each`,
+  breaking 38 of 520 files. Known framework globals are excluded by name, and
+  any window function with extra own properties is skipped (DOM functions
+  never have them).
+- **2026-10-07: Corpus builds.** Monorepos often test against built
+  workspace packages; corpus entries can declare a `build` command (run with
+  `NX_NO_CLOUD=true` so results do not depend on other projects' remote
+  caches).
+- **2026-10-07: Tracer is a no-op in non-DOM files.** Found on CopilotKit:
+  files with `// @vitest-environment node` used to fail under the tracer.
+- **2026-10-07: `DOM_TRACE_PROJECT`** names the project so monorepo packages
+  count as one project in breadth metrics.
+
+## Next steps
+
+1. Milestone 1 (`docs/design.md`): Radix Primitives' suite passes on warpdom
+   with the same results as on jsdom. Progress (2026-10-09): Vitest adapter,
+   inline styles, all HTML element interfaces, tree APIs and live
+   collections, events; 126 of 982 Radix tests pass (jsdom: 976). Remaining
+   batches, in order of blocked tests:
+   - window basics: getComputedStyle, MutationObserver (Testing Library's
+     waitFor needs it), requestAnimationFrame, TreeWalker/NodeFilter, Image
+   - HTML serialization and parsing: innerHTML/outerHTML via parse5
+     (Testing Library's prettyDOM requires outerHTML)
+   - form controls: value/checked/selected accessors on the prototypes
+     (React and Radix call the native setters), select.options, validity
+   - focus: focus()/blur(), document.activeElement, focus events
+   - classList, dataset, attributes (NamedNodeMap/Attr)
+   - a real CSS selector engine (attribute selectors, :not, combinators)
+   - insertAdjacent*, the remaining members axe-core needs
+   Then timings against jsdom and happy-dom, and the load-time budget.
+2. Reserve the npm name `warpdom` (placeholder package; Sonu's call, since
+   publishing is public).
+3. Publish the stage 1 report (venue, figures, raw traces) around the time
+   warpdom goes public.
