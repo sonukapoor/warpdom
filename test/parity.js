@@ -8,20 +8,20 @@ import { createWindow } from '../src/node.js';
 const URL_ = 'http://localhost:3000/page';
 
 export function parity(name, scenario) {
-  test(name, () => {
-    const run = (window) => {
+  test(name, async () => {
+    const run = async (window) => {
       const errors = [];
       const original = console.error;
       console.error = (...args) => errors.push(args.map(String).join(' '));
       try {
-        return { result: scenario(window), errors };
+        return { result: await scenario(window), errors };
       } finally {
         console.error = original;
       }
     };
     // As Vitest's jsdom environment creates it.
-    const expected = run(new JSDOM('<!doctype html><html><head></head><body></body></html>', { url: URL_, runScripts: 'dangerously', pretendToBeVisual: true }).window);
-    const actual = run(createWindow({ url: URL_ }));
+    const expected = await run(new JSDOM('<!doctype html><html><head></head><body></body></html>', { url: URL_, runScripts: 'dangerously', pretendToBeVisual: true }).window);
+    const actual = await run(createWindow({ url: URL_ }));
     assert.deepEqual(actual, expected);
   });
 }

@@ -5,12 +5,13 @@
 // tests spy on them there.
 import {
   S, state, initNode, insert, remove, textOf, contains, domError, rootOf, nextInTree,
-  childArray, elementChildArray, collectElements, elementById, setData, replaceData, adopt, shadowIncludingRoot,
+  childArray, elementChildArray, collectElements, elementById, setData, replaceData, adopt, shadowIncludingRoot, reactionScope,
   ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, DOCUMENT_TYPE_NODE, HTML_NS, SVG_NS, connected
 } from './internal.js';
 import { CSS_INTERFACES, styleOf } from './css.js';
 import { REFLECTED } from './reflect.js';
 import { GLOBAL_HANDLER_MEMBERS, WINDOW_HANDLER_MEMBERS, eventHandlerAttributesAdded } from './event-handlers.js';
+import { CUSTOM_ELEMENT_INTERFACES } from './custom-elements.js';
 import { RANGE_INTERFACES, newRange, getSelection, splitText, normalize } from './ranges.js';
 import { CSSOM_INTERFACES, styleElementSheet, documentStyleSheets } from './cssom.js';
 import { FOCUS_MEMBERS, DOCUMENT_FOCUS_MEMBERS } from './focus.js';
@@ -134,12 +135,14 @@ function compareDocumentPosition(a, b) {
 
 const hasOnAttribute = (attrs) => { for (const name of attrs.keys()) if (name.startsWith('on')) return true; return false; };
 
-export function clone(node, deep, doc) {
+export const clone = (node, deep, doc) => reactionScope(cloneNode, node, deep, doc);
+
+function cloneNode(node, deep, doc) {
   const s = state(node);
   const w = doc[S].window[S];
   let copy;
   if (s.type === ELEMENT_NODE) {
-    copy = w.createElementNS(s.ns, s.tag, doc);
+    copy = w.createElementNS(s.ns, s.tag, doc, false, null, false, s.ceIs ?? null);
     copy[S].attrs = new Map(s.attrs);
     if (s.handlers || hasOnAttribute(s.attrs)) eventHandlerAttributesAdded(copy);
   } else if (s.type === TEXT_NODE) copy = w.createText(s.data, doc);
@@ -147,7 +150,14 @@ export function clone(node, deep, doc) {
   else if (s.type === DOCUMENT_FRAGMENT_NODE) copy = w.createFragment(doc);
   else if (s.type === DOCUMENT_TYPE_NODE) copy = w.createDoctype(s.name, s.publicId, s.systemId, doc);
   else throw domError('Cloning this node is not supported yet.', 'NotSupportedError');
-  if (deep) for (let c = s.first; c; c = c[S].next) insert(copy, clone(c, true, doc), null);
+  if (deep) {
+    for (let c = s.first; c; c = c[S].next) insert(copy, cloneNode(c, true, doc), null);
+    // Template cloning steps (HTML): a deep clone copies the template contents.
+    if (s.type === ELEMENT_NODE && isTemplateEl(node) && s.content) {
+      const content = templateContent(copy);
+      for (let c = s.content[S].first; c; c = c[S].next) insert(content, cloneNode(c, true, content[S].doc), null);
+    }
+  }
   return copy;
 }
 
@@ -215,6 +225,7 @@ export const INTERFACES = [
   ...GEOMETRY_INTERFACES,
   ...CSSOM_INTERFACES,
   ...RANGE_INTERFACES,
+  ...CUSTOM_ELEMENT_INTERFACES,
   { name: 'Window', parent: 'EventTarget', members: mix(GLOBAL_HANDLER_MEMBERS, WINDOW_HANDLER_MEMBERS, WINDOW_MEMBERS) },
   {
     name: 'Node',
@@ -326,6 +337,15 @@ export const INTERFACES = [
       },
       get styleSheets() { state(this); return documentStyleSheets(this); },
       createRange() { const s = state(this); return newRange(s.window, this, 0); },
+      // Scripts never run, so there is no currently executing script.
+      get currentScript() { state(this); return null; },
+      get scripts() { return documentCollection(this, 'scripts', (el) => isHTMLTag(el, 'script')); },
+      get forms() { return documentCollection(this, 'forms', (el) => isHTMLTag(el, 'form')); },
+      get images() { return documentCollection(this, 'images', (el) => isHTMLTag(el, 'img')); },
+      get embeds() { return documentCollection(this, 'embeds', (el) => isHTMLTag(el, 'embed')); },
+      get plugins() { return this.embeds; },
+      get links() { return documentCollection(this, 'links', (el) => (isHTMLTag(el, 'a') || isHTMLTag(el, 'area')) && el[S].attrs.has('href')); },
+      get anchors() { return documentCollection(this, 'anchors', (el) => isHTMLTag(el, 'a') && el[S].attrs.has('name')); },
       getSelection() { state(this); return getSelection(this); },
       get implementation() {
         const s = state(this);
@@ -341,14 +361,19 @@ export const INTERFACES = [
       get charset() { state(this); return 'UTF-8'; },
       get inputEncoding() { state(this); return 'UTF-8'; },
       get readyState() { state(this); return 'complete'; },
-      createElement(tagName) {
+      createElement(tagName, options) {
         const s = state(this);
         const name = String(tagName);
+        const is = typeof options === 'object' && options !== null && options.is !== undefined ? String(options.is) : null;
         // HTML documents lowercase and use the HTML namespace; XML documents do neither.
-        return s.xml ? internals(this).createElementNS(s.contentType === 'application/xhtml+xml' ? HTML_NS : null, name, this)
-          : internals(this).createElementNS(HTML_NS, name.toLowerCase(), this);
+        return s.xml ? internals(this).createElementNS(s.contentType === 'application/xhtml+xml' ? HTML_NS : null, name, this, false, null, true, is)
+          : internals(this).createElementNS(HTML_NS, name.toLowerCase(), this, false, null, true, is);
       },
-      createElementNS(ns, qualifiedName) { state(this); return internals(this).createElementNS(ns == null || ns === '' ? null : String(ns), String(qualifiedName), this); },
+      createElementNS(ns, qualifiedName, options) {
+        state(this);
+        const is = typeof options === 'object' && options !== null && options.is !== undefined ? String(options.is) : null;
+        return internals(this).createElementNS(ns == null || ns === '' ? null : String(ns), String(qualifiedName), this, false, null, true, is);
+      },
       createTextNode(data) { state(this); return internals(this).createText(String(data), this); },
       createComment(data) { state(this); return internals(this).createComment(String(data), this); },
       createDocumentFragment() { state(this); return internals(this).createFragment(this); },
@@ -583,6 +608,14 @@ function liveElements(root, test) {
     if (rev !== current) { cache = collectElements(root, test); rev = current; }
     return cache;
   });
+}
+
+// The document's named collections (scripts, forms, ...): one live
+// HTMLCollection each, created on first use.
+function documentCollection(doc, key, test) {
+  const s = state(doc);
+  const collections = s.collections ?? (s.collections = {});
+  return collections[key] ?? (collections[key] = liveElements(doc, test));
 }
 
 function byTagName(root, tag) {

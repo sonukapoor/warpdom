@@ -71,3 +71,25 @@ test('cssText parsing handles semicolons inside url() and quotes', () => {
   assert.equal(el.style.getPropertyPriority('color'), 'important');
   assert.equal(el.style.length, 3);
 });
+
+import { parity as cssParity } from './parity.js';
+
+cssParity('CSS.escape and CSS.supports', (w) => [
+  w.CSS.escape('#a.b:c'), w.CSS.escape('1x'), w.CSS.escape('-'), w.CSS.escape('-1a'), w.CSS.escape('\0'), w.CSS.escape('a\x7fb'),
+  w.CSS.supports('display', 'grid'), w.CSS.supports('(display: grid)'), w.CSS.supports('foo', 'bar'), w.CSS.supports('display: grid'),
+  w.CSS.supports('(display: grid) and (color: red)'), w.CSS.supports('(foo: x) or (color: red)'), w.CSS.supports('--x', '1'), String(w.CSS),
+]);
+
+cssParity('removing an absent style property does not add a style attribute', (w) => {
+  const div = w.document.createElement('div');
+  div.style.color = '';
+  div.style.removeProperty('margin');
+  const out = [div.outerHTML];
+  div.style.color = 'red';
+  div.style.color = '';
+  out.push(div.outerHTML);
+  const other = w.document.createElement('div');
+  other.style.cssText = '';
+  out.push(other.outerHTML);
+  return out;
+});

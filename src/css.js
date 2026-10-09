@@ -111,6 +111,106 @@ function computedValue(element, name) {
   return INITIAL[name] ?? '';
 }
 
+// --- the CSS namespace ---------------------------------------------------------
+
+// CSS.escape(): serialize an identifier (CSSOM).
+export function escapeIdentifier(value) {
+  const input = String(value);
+  let out = '';
+  for (let i = 0; i < input.length; i++) {
+    const c = input.charCodeAt(i);
+    const ch = input[i];
+    if (c === 0) out += '\ufffd';
+    else if ((c >= 0x1 && c <= 0x1f) || c === 0x7f
+      || (i === 0 && c >= 0x30 && c <= 0x39)
+      || (i === 1 && c >= 0x30 && c <= 0x39 && input.charCodeAt(0) === 0x2d)) out += `\\${c.toString(16)} `;
+    else if (i === 0 && ch === '-' && input.length === 1) out += `\\${ch}`;
+    else if (c >= 0x80 || ch === '-' || ch === '_' || /[0-9A-Za-z]/.test(ch)) out += ch;
+    else out += `\\${ch}`;
+  }
+  return out;
+}
+
+let knownProperties = null;
+const isKnownProperty = (name) => {
+  knownProperties ??= new Set(STYLE_ACCESSORS.map(cssName));
+  return name.startsWith('--') || knownProperties.has(name.toLowerCase());
+};
+
+// CSS.supports(property, value): a supported property with a value. Values
+// are not validated (no CSS value parser yet).
+const supportsDeclaration = (property, value) => isKnownProperty(String(property).trim()) && String(value).trim() !== '';
+
+// A <supports-condition> (CSS Conditional Rules): not / and / or, (decl),
+// nested conditions and selector(); unknown syntax is false.
+function supportsCondition(text, matchesSelector) {
+  let i = 0;
+  const ws = () => { while (/\s/.test(text[i] ?? '')) i++; };
+  const group = () => {
+    // Text up to the matching closing parenthesis.
+    let depth = 1;
+    const start = i;
+    while (i < text.length && depth > 0) {
+      if (text[i] === '(') depth++;
+      else if (text[i] === ')') depth--;
+      i++;
+    }
+    return depth === 0 ? text.slice(start, i - 1) : null;
+  };
+  const inParens = () => {
+    ws();
+    if (text.startsWith('not ', i) || text.startsWith('not(', i)) { i += 3; return !inParens(); }
+    if (/^selector\(/i.test(text.slice(i))) {
+      i += 9;
+      const inner = group();
+      return inner !== null && matchesSelector(inner);
+    }
+    if (text[i] !== '(') return null;
+    i++;
+    const inner = group();
+    if (inner === null) return null;
+    const colon = inner.indexOf(':');
+    if (/^\s*(not\b|\()/i.test(inner) || colon < 0) return condition(inner);
+    return supportsDeclaration(inner.slice(0, colon), inner.slice(colon + 1));
+  };
+  const condition = (sub) => {
+    if (sub !== undefined) return supportsCondition(sub, matchesSelector);
+    let result = inParens();
+    if (result === null) return null;
+    for (;;) {
+      ws();
+      const op = /^(and|or)\b/i.exec(text.slice(i))?.[1]?.toLowerCase();
+      if (!op) break;
+      i += op.length;
+      const next = inParens();
+      if (next === null) return null;
+      result = op === 'and' ? result && next : result || next;
+    }
+    return result;
+  };
+  const result = condition();
+  ws();
+  return result === true && i >= text.length;
+}
+
+export function cssNamespace(matchesSelector) {
+  const namespace = {
+    escape(ident) {
+      if (arguments.length === 0) throw new TypeError("Failed to execute 'escape' on 'CSS': 1 argument required, but only 0 present.");
+      return escapeIdentifier(ident);
+    },
+    supports(...args) {
+      if (args.length === 0) throw new TypeError("Failed to execute 'supports' on 'CSS': 1 argument required, but only 0 present.");
+      if (args.length >= 2) return supportsDeclaration(args[0], args[1]);
+      const text = String(args[0]);
+      // A bare declaration is treated as if wrapped in parentheses.
+      return supportsCondition(text, matchesSelector) || supportsCondition(`(${text})`, matchesSelector);
+    },
+  };
+  Object.defineProperty(namespace, Symbol.toStringTag, { value: 'CSS', configurable: true });
+  return namespace;
+}
+
 export const isDisplayNone = (element) => computedValue(element, 'display') === 'none';
 
 export function computedStyle(element, proto) {
@@ -132,8 +232,15 @@ function setDeclaration(style, name, value, priority = '') {
   const s = state(style);
   if (s.computed) readOnly();
   const text = value == null ? '' : String(value).trim();
-  if (text === '') s.decls.delete(name);
-  else s.decls.set(name, { value: text, important: String(priority).toLowerCase() === 'important' });
+  // The style attribute is updated only when a declaration changed (CSSOM).
+  if (text === '') {
+    if (s.decls.delete(name)) sync(style);
+    return;
+  }
+  const important = String(priority).toLowerCase() === 'important';
+  const old = s.decls.get(name);
+  if (old && old.value === text && old.important === important) return;
+  s.decls.set(name, { value: text, important });
   sync(style);
 }
 

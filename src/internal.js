@@ -26,7 +26,13 @@ export const hooks = {
   childList: null, attribute: null, characterData: null, activation: null,
   // Live range updates (ranges.js); called only when a document has live ranges.
   rangeInsert: null, rangeRemove: null, rangeReplaceData: null,
+  // Custom element reactions (custom-elements.js); set once something is defined.
+  ce: null,
 };
+
+// Runs fn as one custom element reactions scope (a [CEReactions] operation
+// made of several tree changes), or directly when nothing is defined.
+export const reactionScope = (fn, a, b, c, d) => (hooks.ce === null ? fn(a, b, c, d) : hooks.ce.scope(fn, a, b, c, d));
 
 // The live ranges of a document, if any (a Set of WeakRefs, see ranges.js).
 const hasRanges = (doc) => { const r = doc[S].ranges; return r !== undefined && r.size !== 0; };
@@ -94,6 +100,10 @@ function changed(parent) {
 }
 
 export function insert(parent, node, ref) {
+  return hooks.ce === null ? insertNode(parent, node, ref) : hooks.ce.scope(insertNode, parent, node, ref);
+}
+
+function insertNode(parent, node, ref) {
   const ps = state(parent);
   const ns = state(node);
   if (ref != null && state(ref).parent !== parent) {
@@ -122,26 +132,34 @@ export function insert(parent, node, ref) {
   changed(parent);
   if (isConnected(parent)) indexIds(node, true);
   if (observed(parent)) hooks.childList(parent, [node], [], ns.prev, ns.next);
+  if (hooks.ce !== null) hooks.ce.inserted(node);
   return node;
 }
 
 // Moves node and its subtree to another document (DOM "adopt").
 export function adopt(node, doc) {
+  const oldDoc = node[S].doc;
   for (let n = node; n; n = nextInTree(n, node)) {
     const s = n[S];
     s.doc = doc;
     if (s.attrNodes) for (const attr of s.attrNodes.values()) attr[S].doc = doc;
     if (s.content) adopt(s.content, doc);
   }
+  if (hooks.ce !== null && oldDoc !== doc) hooks.ce.adopted(node, oldDoc, doc);
 }
 
 export function remove(parent, node) {
+  return hooks.ce === null ? removeNode(parent, node) : hooks.ce.scope(removeNode, parent, node);
+}
+
+function removeNode(parent, node) {
   const ps = state(parent);
   const ns = state(node);
   if (ns.parent !== parent) throw domError('The node to be removed is not a child of this node.', 'NotFoundError');
   const ownerDoc = ps.type === DOCUMENT_NODE ? parent : ps.doc;
   if (hasRanges(ownerDoc)) hooks.rangeRemove(ownerDoc, parent, node);
   const connected = isConnected(parent);
+  const wasConnected = hooks.ce !== null && shadowIncludingRoot(parent)[S].type === DOCUMENT_NODE;
   const prev = ns.prev;
   const next = ns.next;
   if (ns.prev) ns.prev[S].next = ns.next; else ps.first = ns.next;
@@ -155,6 +173,7 @@ export function remove(parent, node) {
   const focused = ownerDoc[S].focused;
   if (focused && focused !== ownerDoc && shadowIncludingContains(node, focused)) ownerDoc[S].focused = ownerDoc;
   if (observed(parent)) hooks.childList(parent, [], [node], prev, next);
+  if (hooks.ce !== null) hooks.ce.removed(node, wasConnected);
   return node;
 }
 

@@ -3,7 +3,7 @@
 // lazily the first time something is parsed, so test files that never
 // parse HTML do not pay for loading it).
 import {
-  S, state, insert, remove, domError, HTML_NS,
+  S, state, insert, remove, domError, hooks, reactionScope, HTML_NS,
   ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE,
 } from './internal.js';
 import { eventHandlerAttributesAdded } from './event-handlers.js';
@@ -43,6 +43,8 @@ const escapeAttribute = (s) => (/[&" ]/.test(s)
 function serializeElement(el) {
   const s = el[S];
   let out = `<${s.tag}`;
+  // An is value is serialized as an attribute if there is none.
+  if (s.ceIs && !s.attrs.has('is')) out += ` is="${escapeAttribute(s.ceIs)}"`;
   for (const [name, value] of s.attrs) out += ` ${name}="${escapeAttribute(value)}"`;
   out += '>';
   if (s.ns === HTML_NS && VOID.has(s.tag)) return out;
@@ -79,17 +81,22 @@ export function parseFragment(doc, contextElement, html) {
   const ast = p5.parseFragment(context, String(html));
   const internals = doc[S].window[S];
   const fragment = internals.createFragment(doc);
-  appendAst(internals, fragment, ast.childNodes, doc);
+  // Content parsed for a template goes into its inert contents: no upgrades.
+  appendAst(internals, fragment, ast.childNodes, doc, isTemplate(contextElement));
   return fragment;
 }
 
-function appendAst(internals, parent, astNodes, doc) {
+// Parsed elements are created plainly, get their attributes, then queue an
+// upgrade if they are defined custom elements (not inside templates).
+function appendAst(internals, parent, astNodes, doc, inTemplate = false) {
   for (const n of astNodes) {
     let node;
     if (n.nodeName === '#text') node = internals.createText(n.value, doc);
     else if (n.nodeName === '#comment') node = internals.createComment(n.data, doc);
     else if (n.tagName) {
-      node = internals.createElementNS(n.namespaceURI, n.tagName, doc);
+      let is = null;
+      for (const a of n.attrs) if (a.name === 'is' && !a.prefix) is = a.value;
+      node = internals.createElementNS(n.namespaceURI, n.tagName, doc, true, null, false, n.namespaceURI === HTML_NS ? is : null);
       const attrs = node[S].attrs;
       let handlers = false;
       for (const a of n.attrs) {
@@ -97,8 +104,9 @@ function appendAst(internals, parent, astNodes, doc) {
         if (a.name.startsWith('on')) handlers = true;
       }
       if (handlers) eventHandlerAttributesAdded(node);
-      if (n.content) appendAst(internals, templateContent(node), n.content.childNodes, doc);
-      else appendAst(internals, node, n.childNodes, doc);
+      if (!inTemplate && hooks.ce !== null) hooks.ce.created(node);
+      if (n.content) appendAst(internals, templateContent(node), n.content.childNodes, doc, true);
+      else appendAst(internals, node, n.childNodes, doc, inTemplate);
     } else continue;
     insert(parent, node, null);
   }
@@ -112,7 +120,9 @@ export function templateContent(template) {
 
 const isTemplate = (el) => el[S].ns === HTML_NS && el[S].tag === 'template';
 
-export function setInnerHTML(element, html) {
+export const setInnerHTML = (element, html) => reactionScope(innerHTML, element, html);
+
+function innerHTML(element, html) {
   const s = state(element);
   const target = isTemplate(element) ? templateContent(element) : element;
   const doc = s.type === DOCUMENT_NODE ? element : s.doc;
@@ -122,7 +132,9 @@ export function setInnerHTML(element, html) {
   insert(target, fragment, null);
 }
 
-export function setOuterHTML(element, html) {
+export const setOuterHTML = (element, html) => reactionScope(outerHTML, element, html);
+
+function outerHTML(element, html) {
   const s = state(element);
   const parent = s.parent;
   if (!parent) return;
@@ -134,7 +146,9 @@ export function setOuterHTML(element, html) {
   insert(parent, fragment, next);
 }
 
-export function insertAdjacentHTML(element, position, html) {
+export const insertAdjacentHTML = (element, position, html) => reactionScope(adjacentHTML, element, position, html);
+
+function adjacentHTML(element, position, html) {
   const s = state(element);
   const where = String(position).toLowerCase();
   let context;

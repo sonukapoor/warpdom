@@ -97,3 +97,13 @@ test('template content is a separate fragment', () => {
   host.innerHTML = '<template><b>x</b></template>';
   assert.equal(host.firstChild.content.firstChild.tagName, 'B');
 });
+
+import { parity as htmlParity } from './parity.js';
+
+htmlParity('cloning a template copies its contents when deep', (w) => {
+  const t = w.document.createElement('template');
+  t.innerHTML = '<p id="a">x</p><b>y</b>';
+  const deep = t.cloneNode(true);
+  const shallow = t.cloneNode(false);
+  return [deep.content.childNodes.length, deep.content.firstElementChild.id, deep.content.firstChild !== t.content.firstChild, shallow.content.childNodes.length, deep.innerHTML];
+});

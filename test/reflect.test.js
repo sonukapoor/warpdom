@@ -54,3 +54,17 @@ test('reflection kinds', () => {
   progress.setAttribute('max', '-3');
   assert.equal(progress.max, 1, 'double limited to only positive numbers');
 });
+
+import { parity } from './parity.js';
+
+parity('ARIA reflection (ARIAMixin)', (w) => {
+  const div = w.document.createElement('div');
+  const out = ['ariaLabel' in div, div.ariaLabel, div.role, 'ariaHidden' in div];
+  div.ariaLabel = 'Close';
+  div.role = 'button';
+  div.ariaExpanded = 'true';
+  out.push(div.getAttribute('aria-label'), div.getAttribute('role'), div.getAttribute('aria-expanded'));
+  div.ariaLabel = null;
+  out.push(div.hasAttribute('aria-label'));
+  return out;
+});

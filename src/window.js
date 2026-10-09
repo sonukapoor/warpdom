@@ -2,11 +2,12 @@
 // every interface (so patches made in one window cannot leak into another),
 // built from property descriptors that are prepared once per module load.
 import {
-  S, initNode, insert, ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, DOCUMENT_TYPE_NODE,
+  S, hooks, initNode, insert, ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, DOCUMENT_TYPE_NODE,
 } from './internal.js';
 import { INTERFACES, SVG_ELEMENTS, HTML_NS, SVG_NS } from './interfaces.js';
 import { HTML_ELEMENTS, PLAIN_TAGS } from './html-elements.js';
 import { setupWindow } from './window-features.js';
+import { createCustomElement, createRegistry, htmlConstruct, isValidCustomElementName } from './custom-elements.js';
 
 // Once per module load: descriptors per interface, parents before children.
 const DESCRIPTORS = new Map();
@@ -41,6 +42,9 @@ const ORDER = [];
     DESCRIPTORS.set(iface.name, descriptors);
   }
 }
+// Interfaces with the HTML element constructor: HTMLElement and its element interfaces.
+const HTML_CONSTRUCTOR = new Set(['HTMLElement', ...HTML_ELEMENTS.map(([name]) => name)]);
+
 const TAG_INTERFACE = new Map();
 for (const [name, , tags] of HTML_ELEMENTS) for (const tag of tags) TAG_INTERFACE.set(tag, name);
 for (const tag of PLAIN_TAGS) TAG_INTERFACE.set(tag, 'HTMLElement');
@@ -69,7 +73,10 @@ export function createWindow(options = {}) {
         if (!new.target) throw new TypeError(`Failed to construct '${iface.name}': Please use the 'new' operator.`);
         return iface.construct(window, this, args);
       }
-      : function () { throw new TypeError('Illegal constructor'); };
+      : HTML_CONSTRUCTOR.has(iface.name)
+        // [HTMLConstructor]: custom element classes construct through super().
+        ? function () { return htmlConstruct(window, ctor, new.target); }
+        : function () { throw new TypeError('Illegal constructor'); };
     Object.defineProperty(ctor, 'name', { value: iface.name });
     Object.defineProperty(ctor, 'prototype', { value: proto, writable: false });
     Object.defineProperty(proto, 'constructor', { value: ctor, writable: true, configurable: true });
@@ -87,9 +94,20 @@ export function createWindow(options = {}) {
     protos,
     isWindow: true,
     // Node factories; doc is the owner document (the window's by default).
-    createElementNS(ns, qualifiedName, doc = document) {
+    // raw: skip custom element handling; proto: the interface to use;
+    // sync: run a custom element's constructor now (createElement).
+    createElementNS(ns, qualifiedName, doc = document, raw = false, proto = null, sync = false, is = null) {
       const tag = qualifiedName.includes(':') ? qualifiedName.slice(qualifiedName.indexOf(':') + 1) : qualifiedName;
-      return create(protos[interfaceFor(ns, tag)], ELEMENT_NODE, { tag, ns, attrs: new Map() }, doc);
+      if (!raw && ns === HTML_NS && hooks.ce !== null) {
+        const custom = createCustomElement(doc, tag, is, sync);
+        if (custom) return custom;
+      }
+      const element = create(proto ?? protos[interfaceFor(ns, tag)], ELEMENT_NODE, { tag, ns, attrs: new Map() }, doc);
+      if (ns === HTML_NS && ((tag.includes('-') && isValidCustomElementName(tag)) || is !== null)) {
+        element[S].ceState = 'undefined';
+        element[S].ceIs = is;
+      }
+      return element;
     },
     createText: (data, doc = document) => create(protos.Text, TEXT_NODE, { data }, doc),
     createComment: (data, doc = document) => create(protos.Comment, COMMENT_NODE, { data }, doc),
@@ -110,6 +128,7 @@ export function createWindow(options = {}) {
   Object.setPrototypeOf(window, protos.Window);
   Object.defineProperty(window, S, { value: internals });
   setupWindow(window, options);
+  internals.customElements = createRegistry(window);
 
   document = internals.initDocument(Object.create(protos.Document));
   insert(document, internals.createDoctype('html', '', ''), null);

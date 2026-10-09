@@ -180,11 +180,12 @@ const PROSE_REFLECTIONS = [
 ];
 
 // The autocomplete getter of form controls returns the IDL-exposed autofill
-// value; for the common single-token values that is the token, lowercased.
+// value; approximated as the attribute's tokens, lowercased (section,
+// shipping/billing and field names), or '' for anything else.
 const autofill = {
   get() {
-    const value = (get(this, 'autocomplete') ?? '').trim().toLowerCase();
-    return /^[a-z-]+$/.test(value) ? value : '';
+    const tokens = (get(this, 'autocomplete') ?? '').trim().toLowerCase().split(/[\t\n\f\r ]+/).filter(Boolean);
+    return tokens.length > 0 && tokens.every((t) => /^[a-z0-9-]+$/.test(t)) ? tokens.join(' ') : '';
   },
   set(v) { set(this, 'autocomplete', String(v)); },
 };

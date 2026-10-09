@@ -19,6 +19,11 @@ export const attributeSteps = new Map();
 // live collections, the style object, Attr nodes and attribute views in step,
 // and reports to MutationObservers.
 export function writeAttribute(element, key, value) {
+  if (hooks.ce === null) writeAttributeValue(element, key, value);
+  else hooks.ce.scope(writeAttributeValue, element, key, value);
+}
+
+function writeAttributeValue(element, key, value) {
   const es = state(element);
   const attrs = es.attrs;
   const old = attrs.get(key);
@@ -34,6 +39,7 @@ export function writeAttribute(element, key, value) {
   const step = attributeSteps.get(key);
   if (step !== undefined) step(element, old, value);
   if (observed(element)) hooks.attribute(element, key, old);
+  if (hooks.ce !== null) hooks.ce.attributeChanged(element, key, old, value);
 }
 
 // Attribute names are lowercased on HTML elements only (SVG keeps viewBox).

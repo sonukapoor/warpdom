@@ -385,7 +385,8 @@ function compilePseudo({ name, arg }) {
     case 'focus-visible': return (el) => el[S].doc[S].focused === el;
     case 'focus-within': return (el) => { const f = el[S].doc[S].focused; for (let n = f; n; n = n[S].parent) if (n === el) return true; return false; };
     case 'link': case 'any-link': return (el) => isHTML(el) && (el[S].tag === 'a' || el[S].tag === 'area') && el[S].attrs.has('href');
-    case 'defined': return (el) => !isHTML(el) || !el[S].tag.includes('-') || !!el[S].defined;
+    // Defined: uncustomized (no state) or custom.
+    case 'defined': return (el) => { const st = el[S].ceState; return st === undefined || st === 'custom'; };
     case 'indeterminate': return (el) => !!el[S].indeterminate;
     case 'open': return (el) => isHTML(el) && (el[S].tag === 'details' || el[S].tag === 'dialog') && el[S].attrs.has('open');
     case 'lang': { const lang = String(arg).toLowerCase(); return (el) => { for (let n = el; n; n = parentElement(n)) { const l = n[S].attrs.get('lang'); if (l !== undefined) return l.toLowerCase() === lang || l.toLowerCase().startsWith(`${lang}-`); } return false; }; }

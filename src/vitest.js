@@ -49,6 +49,8 @@ const userErrorListeners = (window) => window[S].listeners?.get('error')?.length
 export default {
   name: 'warpdom',
   viteEnvironment: 'client',
+  // Vitest 3 and earlier name the transform mode instead.
+  transformMode: 'web',
   setup(global) {
     // Vitest's jsdom environment defaults to this URL as well.
     const window = createWindow({ url: 'http://localhost:3000' });

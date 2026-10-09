@@ -2,7 +2,8 @@
 // navigator, location and history, the Image/Audio/Option constructors.
 // Values follow jsdom's defaults so tests see the same environment.
 import { S, state } from './internal.js';
-import { computedStyle } from './css.js';
+import { computedStyle, cssNamespace } from './css.js';
+import { compile } from './selectors.js';
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
@@ -55,6 +56,7 @@ export const WINDOW_MEMBERS = {
     if (!element?.[S]?.attrs) throw new TypeError("Failed to execute 'getComputedStyle' on 'Window': parameter 1 is not of type 'Element'.");
     return computedStyle(element, ws.protos.CSSStyleProperties);
   },
+  get customElements() { return state(this).customElements; },
   getSelection() { return state(this) && this.document.getSelection(); },
   get screen() { const s = state(this); return s.screen ?? (s.screen = make(this, 'Screen', {})); },
   get navigator() { const s = state(this); return s.navigator ?? (s.navigator = make(this, 'Navigator', {})); },
@@ -189,6 +191,11 @@ export function setupWindow(window, { url: initial = 'about:blank' } = {}) {
     audio.setAttribute('preload', 'auto');
     if (src !== undefined) audio.setAttribute('src', String(src));
     return audio;
+  });
+  // The CSS namespace object (CSS.escape, CSS.supports).
+  Object.defineProperty(window, 'CSS', {
+    value: cssNamespace((selector) => { try { compile(selector); return true; } catch { return false; } }),
+    writable: true, configurable: true,
   });
   factory('Option', ws.protos.HTMLOptionElement, (doc, [text = '', value, defaultSelected = false, selected = false]) => {
     const option = doc.createElement('option');

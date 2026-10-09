@@ -167,6 +167,8 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   nothing.
 - ShadowRoot has delegatesFocus, slotAssignment, clonable and
   serializable (jsdom lacks the first two).
+- A custom element whose constructor threw is "failed" and does not match
+  `:defined`; jsdom matches it.
 - Element interfaces and reflected attributes come from the current
   standard's IDL: `<search>` and `<menuitem>` are HTMLElement (jsdom:
   HTMLUnknownElement), `<selectedcontent>` exists, and reflections jsdom
@@ -176,6 +178,15 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   definition (options nested in other elements inside the select count).
 
 ## Decisions
+
+- **2026-10-09: The next speed lever is per-file reset without isolation,
+  not a faster DOM.** `docs/no-isolate-experiment.md`: on Radix the DOM is
+  now a few percent of CPU (jsdom: 50%); the rest is per-file processes,
+  module loading and React. With `--no-isolate` and a fresh jsdom window per
+  file, Vuetify ran 4.25x faster with identical results; emoji-picker
+  (custom elements defined once by shared modules) got worse. Direction: a
+  warpdom reset that gives each file a clean document and window state but
+  keeps the window's interface objects and registries.
 
 - **2026-10-07: Outermost counting for every environment.** jsdom calls its
   own public API for selector matching and style resolution (one
@@ -362,6 +373,15 @@ warpdom follows the standard. Each has a test. To publish in the docs.
    Timings (Radix, Vitest, 2 workers, median of 3 interleaved runs):
    jsdom 20.0 s, happy-dom 13.0 s (18 tests fail), warpdom 11.5 s
    (1.75x faster than jsdom, 12% faster than happy-dom).
+2. Second suites (2026-10-09), same status as jsdom for every test:
+   - Vuetify (Vue, 947 tests): needed the CSS namespace, ARIA reflection
+     (Vue sets ariaLabel as a property), the style attribute rule, document
+     collections, multi-token autocomplete. jsdom 15.0 s, warpdom 10.0 s.
+   - emoji-picker-element (custom elements + shadow DOM, Vitest 3, 160
+     tests): needed custom elements, template content cloning and
+     transformMode for Vitest 3. jsdom 21.7 s, warpdom 19.3 s (waits).
+   Next: the per-file reset experiment (docs/no-isolate-experiment.md) on
+   Radix, Vuetify and emoji-picker.
    Later: enumerated attributes limited to only known values beyond the
    common ones (referrerPolicy, loading, decoding, fetchPriority, ...
    return their raw value), links (anchor URL members, activation), on* handler properties,

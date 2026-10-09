@@ -60,3 +60,12 @@ parity('screen and canvas', (w) => {
   out.push(canvas.width, canvas.height, canvas.getContext('2d'), canvas.toDataURL());
   return out;
 });
+
+parity('document collections and currentScript', (w) => {
+  const d = html(w, '<form id="f1"></form><img id="i"><a id="l" href="#">x</a><a name="n" id="n">y</a><area href="#" id="ar"><embed id="e"><form id="f2"></form>');
+  const names = (c) => [...c].map((el) => el.id);
+  const out = [d.currentScript, names(d.forms), names(d.images), names(d.links), names(d.anchors), names(d.embeds), d.plugins.length, d.scripts.length, d.forms === d.forms];
+  d.body.appendChild(d.createElement('form')).id = 'f3';
+  out.push(names(d.forms), d.forms.f1?.id ?? null);
+  return out;
+});
