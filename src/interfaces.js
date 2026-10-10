@@ -24,6 +24,7 @@ import { STORAGE_INTERFACE, STORAGE_WINDOW_MEMBERS } from './storage.js';
 import { PROGRESS_MEMBERS, METER_MEMBERS } from './progress-meter.js';
 import { SLOT_MEMBERS, SLOTTABLE_MEMBERS } from './slots.js';
 import { MEDIA_MEMBERS, MEDIA_STATICS, VIDEO_MEMBERS, TIME_RANGES_INTERFACE } from './media.js';
+import { TABLE_MEMBERS, SECTION_MEMBERS, ROW_MEMBERS, CELL_MEMBERS } from './tables.js';
 import { HYPERLINK_MEMBERS } from './hyperlinks.js';
 import { COLLECTION_INTERFACES, liveList } from './collections.js';
 import { HTML_ELEMENTS } from './html-elements.js';
@@ -702,6 +703,10 @@ INTERFACES.push({ name: 'HTMLIFrameElement', parent: 'HTMLElement', members: IFR
 INTERFACES.push({ name: 'HTMLSlotElement', parent: 'HTMLElement', members: SLOT_MEMBERS });
 INTERFACES.push({ name: 'HTMLMediaElement', parent: 'HTMLElement', members: MEDIA_MEMBERS, statics: MEDIA_STATICS });
 INTERFACES.push({ name: 'HTMLVideoElement', parent: 'HTMLMediaElement', members: VIDEO_MEMBERS });
+INTERFACES.push({ name: 'HTMLTableElement', parent: 'HTMLElement', members: TABLE_MEMBERS });
+INTERFACES.push({ name: 'HTMLTableSectionElement', parent: 'HTMLElement', members: SECTION_MEMBERS });
+INTERFACES.push({ name: 'HTMLTableRowElement', parent: 'HTMLElement', members: ROW_MEMBERS });
+INTERFACES.push({ name: 'HTMLTableCellElement', parent: 'HTMLElement', members: CELL_MEMBERS });
 INTERFACES.push({ name: 'HTMLProgressElement', parent: 'HTMLElement', members: PROGRESS_MEMBERS });
 INTERFACES.push({ name: 'HTMLMeterElement', parent: 'HTMLElement', members: METER_MEMBERS });
 INTERFACES.push({ name: 'HTMLTemplateElement', parent: 'HTMLElement', members: { get content() { return templateContent(this); } } });

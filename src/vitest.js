@@ -115,7 +115,8 @@ export default {
     const sandbox = {};
     const restore = installWindow(sandbox, window);
     for (const name of nodeHostGlobals()) {
-      if (!(name in sandbox)) Object.defineProperty(sandbox, name, Object.getOwnPropertyDescriptor(globalThis, name));
+      // Values, not descriptors: some are lazy getters bound to Node's global (crypto).
+      if (!(name in sandbox)) Object.defineProperty(sandbox, name, { value: globalThis[name], writable: true, configurable: true });
     }
     vm.createContext(sandbox);
     const globalProxy = vm.runInContext('this', sandbox);

@@ -434,3 +434,17 @@ parity('progress and meter values', (w) => {
     errors,
   };
 });
+
+parity('FileList and input.files', (w) => {
+  const d = w.document;
+  const f = d.createElement('input');
+  f.type = 'file';
+  const t = d.createElement('input');
+  let error = null;
+  try { new w.FileList(); } catch (e) { error = [e.constructor.name, e.message]; }
+  const out = [typeof w.FileList, f.files instanceof w.FileList, f.files.length, f.files.item(0), f.files[0], t.files,
+    Object.prototype.toString.call(f.files), f.files === f.files, error];
+  f.type = 'text';
+  out.push(f.files);
+  return out;
+});

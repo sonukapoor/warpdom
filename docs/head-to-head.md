@@ -199,3 +199,23 @@ that pass only on warpdom; ark-ui's signature pad), the same as isolated.
 Large wins need suites whose time is DOM work and whose files do not leak
 module state (MUI, Vuetify, Radix); where many files leak (ark-ui 138,
 CopilotKit 273, ariakit 41) fast mode cannot help and isolated is kept.
+
+## Jest (2026-10-10)
+
+warpdom's Jest environment (`testEnvironment: 'warpdom/jest'`), Jest 30,
+2 workers, median of 3 rounds with jsdom (jest-environment-jsdom) and
+warpdom run back to back per round. Jest always isolates test files, so
+there is no fast mode: the gain is the environment's setup and the DOM.
+
+| Suite | jsdom | warpdom | Speedup | Differ |
+| --- | --- | --- | --- | --- |
+| handsontable | 560.1 s | 217.6 s | 2.54x | 34 |
+| react-spectrum | 156.2 s | 100.8 s | 1.48x | 304 |
+| react-hook-form | 6.5 s | 5.4 s | 1.20x | 0 |
+
+handsontable by package (round 3): core 336.4 s against 25.7 s (13x, 520
+files of table rendering), React wrapper 14.7 s against 7.8 s, Vue
+wrapper 4.0 s against 2.6 s, Angular wrapper 189.2 s against 181.5 s (its
+time is compiling Angular). Open: react-spectrum's 304 differences;
+handsontable's 34 (CSS value validation, its theme-stylesheet parse error
+that only jsdom reports, computed style details).

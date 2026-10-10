@@ -59,6 +59,15 @@ export const COLLECTION_INTERFACES = [
       ...iterate,
     },
   },
+  // File API: an input's selected files.
+  {
+    name: 'FileList',
+    members: {
+      get length() { return items(this).length; },
+      item(index) { return items(this)[index] ?? null; },
+      ...iterate,
+    },
+  },
   // Touch Events: a TouchEvent's touch lists.
   {
     name: 'TouchList',

@@ -224,9 +224,11 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   withFastMode (one Vitest project becomes a fast and an isolated one) and
   `warpdom vitest run` (learns once, reruns files that fail without
   isolation, isolated, so results are never wrong); tried on Vuetify and
-  mui-material with jsdom's results. Next: Vitest < 3.2 (no inline
-  projects), the Vitest 3 environment-loading bug report (public, Sonu's
-  call), then Jest.
+  mui-material with jsdom's results. Jest environment built (warpdom/jest):
+  react-hook-form identical, handsontable 2.54x (core 13x), react-spectrum
+  1.48x with 304 differences to fix. Next: react-spectrum, CSS value
+  validation, a WPT conformance number, a real application's suite;
+  Vitest < 3.2 and the Vitest 3 bug report (public, Sonu's call) later.
 - **2026-10-09: Fast mode: no isolation plus warpdom's per-file reset.**
   `warpdom/vitest/reset` resets the window in place before each test file.
   With `--no-isolate`, Radix runs in 6.1 s and Vuetify in 3.0 s with exactly

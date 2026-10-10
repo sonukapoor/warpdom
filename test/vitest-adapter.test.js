@@ -42,3 +42,15 @@ test('an error thrown in an event listener fails the run, as with jsdom', () => 
     assert.match(out, /thrown in a listener/);
   }
 });
+
+test('setupVM: Node globals that are lazy getters work in the context (crypto)', async () => {
+  const { default: environment } = await import('../src/vitest.js');
+  const vmModule = await import('node:vm');
+  const result = await environment.setupVM();
+  try {
+    const types = vmModule.runInContext('[typeof crypto, typeof crypto.randomUUID, typeof performance.now, typeof setTimeout]', result.getVmContext());
+    assert.deepEqual([...types], ['object', 'function', 'function', 'function']);
+  } finally {
+    result.teardown();
+  }
+});

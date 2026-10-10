@@ -25,6 +25,7 @@ const attr = (el, name) => el[S].attrs.get(name);
 const has = (el, name) => el[S].attrs.has(name);
 const windowOf = (el) => el[S].doc[S].window;
 const internalsOf = (el) => windowOf(el)[S];
+const NO_FILES = Object.freeze([]);
 const isConnected = connected;
 const str = (v) => (v === null ? '' : String(v)); // [LegacyNullToEmptyString]
 
@@ -1103,7 +1104,13 @@ export const FORM_MEMBERS = new Map([
       set checked(v) { const s = state(this); s.dirtyChecked = true; setCheckedness(this, !!v); },
       get indeterminate() { return !!state(this).indeterminate; },
       set indeterminate(v) { state(this).indeterminate = !!v; },
-      get files() { state(this); return null; },
+      // A file input's selected files: none (there is no file picker); the
+      // same FileList each time. Null for other types.
+      get files() {
+        const s = state(this);
+        if (inputType(this) !== 'file') return null;
+        return s.fileList ?? (s.fileList = liveList(internalsOf(this).protos.FileList, () => NO_FILES));
+      },
       get list() {
         state(this);
         const id = attr(this, 'list');

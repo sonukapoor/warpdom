@@ -14,6 +14,7 @@
     "./vitest": "./src/vitest.js",
     "./vitest/reset": "./src/vitest-reset.js",
     "./vitest/fast": "./src/vitest-fast.js",
+    "./jest": "./src/jest.js",
     "./package.json": "./package.json"
   },
   "files": [

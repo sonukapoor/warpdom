@@ -282,3 +282,68 @@ test('media elements: TimeRanges', () => {
   assert.throws(() => v.seekable.end(0), { name: 'IndexSizeError' });
   assert.equal(v.error, null);
 });
+
+htmlParity('tables: sections, rows and cells', (w) => {
+  const d = w.document;
+  const t = d.createElement('table');
+  const out = [];
+  const shape = () => t.outerHTML.replace(/\s+/g, ' ');
+  t.insertRow();
+  out.push(shape());
+  const head = t.createTHead();
+  head.insertRow().insertCell().textContent = 'h';
+  t.createCaption().textContent = 'c';
+  t.createTFoot().insertRow(0).insertCell(0);
+  const body2 = t.createTBody();
+  body2.insertRow().insertCell();
+  t.insertRow(1);
+  out.push(shape(), t.rows.length, t.tBodies.length, t.caption?.tagName, t.tHead === head, t.createTHead() === head);
+  out.push([...t.rows].map((r) => [r.rowIndex, r.sectionRowIndex, r.parentNode.tagName]));
+  const row = t.rows[1];
+  row.insertCell(); row.insertCell(0); row.insertCell(-1);
+  out.push(row.cells.length, [...row.cells].map((c) => c.cellIndex), row.cells[0] === row.cells[0]);
+  const live = t.rows;
+  t.deleteRow(-1); t.deleteRow(0); row.deleteCell(0); row.deleteCell(-1);
+  out.push(live.length, row.cells.length, shape());
+  t.deleteCaption(); t.deleteTHead(); t.deleteTFoot();
+  out.push(shape());
+  const errors = [];
+  for (const fn of [() => t.insertRow(99), () => t.deleteRow(99), () => row.insertCell(-2), () => head.insertRow(5), () => { t.tHead = d.createElement('div'); }]) {
+    try { fn(); errors.push('ok'); } catch (e) { errors.push(e.name); }
+  }
+  out.push(errors);
+  const td = d.createElement('td');
+  td.setAttribute('scope', 'ROW');
+  const th = d.createElement('th');
+  th.setAttribute('scope', 'nope');
+  out.push(td.scope, th.scope, d.createElement('td').cellIndex, d.createElement('tr').rowIndex);
+  return out;
+});
+
+htmlParity('legacy event initializers', (w) => {
+  const d = w.document;
+  const m = d.createEvent('MouseEvents');
+  m.initMouseEvent('click', true, true, w, 2, 1, 2, 3, 4, true, false, true, false, 1, d.body);
+  const k = d.createEvent('KeyboardEvent');
+  k.initKeyboardEvent('keydown', true, false, w, 'Enter', 0, false, true, false, true);
+  const u = d.createEvent('UIEvent');
+  u.initUIEvent('resize', false, false, w, 5);
+  const c = d.createEvent('CompositionEvent');
+  c.initCompositionEvent('compositionend', true, false, w, 'á');
+  const msg = new w.MessageEvent('x');
+  msg.initMessageEvent('message', false, false, { a: 1 }, 'http://o', '7', null, []);
+  return [
+    [m.type, m.bubbles, m.cancelable, m.view === w, m.detail, m.screenX, m.screenY, m.clientX, m.clientY, m.ctrlKey, m.altKey, m.shiftKey, m.metaKey, m.button, m.relatedTarget === d.body],
+    [k.type, k.bubbles, k.cancelable, k.key, k.altKey, k.metaKey, k.ctrlKey],
+    [u.type, u.detail, u.view === w],
+    [c.type, c.data],
+    [msg.type, msg.data, msg.origin, msg.lastEventId],
+    'initKeyEvent' in k,
+  ];
+});
+
+test('tables: setting tHead to another kind of section', () => {
+  const w = createWindow();
+  const t = w.document.createElement('table');
+  assert.throws(() => { t.tHead = w.document.createElement('tbody'); }, { name: 'HierarchyRequestError' });
+});

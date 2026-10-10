@@ -413,6 +413,15 @@ function constructMessageEvent(w, self, args) {
   return self;
 }
 
+// The legacy init*Event methods (UI Events, HTML): initEvent, then the
+// interface's fields; nothing while the event is being dispatched.
+function legacyInit(event, type, bubbles, cancelable, fields) {
+  const es = state(event);
+  if (es.dispatching) return;
+  event.initEvent(type, bubbles, cancelable);
+  Object.assign(es, fields);
+}
+
 const own = (fields, parentFields) => Object.fromEntries(Object.entries(fields).filter(([k]) => !(k in parentFields)));
 const MOUSE_OWN = own(MOUSE_FIELDS, UI_FIELDS);
 
@@ -454,9 +463,19 @@ export const EVENT_INTERFACES = [
     get detail() { return state(this).detail; },
     initCustomEvent(type, bubbles, cancelable, detail) { this.initEvent(type, bubbles, cancelable); state(this).detail = detail ?? null; },
   } },
-  { name: 'UIEvent', parent: 'Event', construct: eventConstruct('UIEvent', UI_FIELDS), members: fieldGetters(UI_FIELDS) },
+  { name: 'UIEvent', parent: 'Event', construct: eventConstruct('UIEvent', UI_FIELDS), members: {
+    ...fieldGetters(UI_FIELDS),
+    initUIEvent(type, bubbles, cancelable, view, detail) { legacyInit(this, type, bubbles, cancelable, { view: view ?? null, detail: Number(detail) | 0 }); },
+  } },
   { name: 'MouseEvent', parent: 'UIEvent', construct: eventConstruct('MouseEvent', MOUSE_FIELDS), members: {
     ...fieldGetters(MOUSE_OWN), ...modifierState,
+    initMouseEvent(type, bubbles, cancelable, view, detail, screenX, screenY, clientX, clientY, ctrlKey, altKey, shiftKey, metaKey, button, relatedTarget) {
+      legacyInit(this, type, bubbles, cancelable, {
+        view: view ?? null, detail: Number(detail) | 0, screenX: Number(screenX) | 0, screenY: Number(screenY) | 0,
+        clientX: Number(clientX) | 0, clientY: Number(clientY) | 0, ctrlKey: !!ctrlKey, altKey: !!altKey, shiftKey: !!shiftKey,
+        metaKey: !!metaKey, button: Number(button) | 0, relatedTarget: relatedTarget ?? null,
+      });
+    },
     get pageX() { return state(this).clientX; },
     get pageY() { return state(this).clientY; },
     get x() { return state(this).clientX; },
@@ -472,11 +491,22 @@ export const EVENT_INTERFACES = [
   { name: 'WheelEvent', parent: 'MouseEvent', statics: { DOM_DELTA_PIXEL: 0, DOM_DELTA_LINE: 1, DOM_DELTA_PAGE: 2 },
     construct: eventConstruct('WheelEvent', WHEEL_FIELDS), members: fieldGetters(own(WHEEL_FIELDS, MOUSE_FIELDS)) },
   { name: 'KeyboardEvent', parent: 'UIEvent', statics: { DOM_KEY_LOCATION_STANDARD: 0, DOM_KEY_LOCATION_LEFT: 1, DOM_KEY_LOCATION_RIGHT: 2, DOM_KEY_LOCATION_NUMPAD: 3 },
-    construct: eventConstruct('KeyboardEvent', KEYBOARD_FIELDS), members: { ...fieldGetters(own(KEYBOARD_FIELDS, UI_FIELDS)), ...modifierState } },
+    construct: eventConstruct('KeyboardEvent', KEYBOARD_FIELDS), members: {
+      ...fieldGetters(own(KEYBOARD_FIELDS, UI_FIELDS)), ...modifierState,
+      initKeyboardEvent(type, bubbles, cancelable, view, key, location, ctrlKey, altKey, shiftKey, metaKey) {
+        legacyInit(this, type, bubbles, cancelable, {
+          view: view ?? null, key: key == null ? '' : String(key), location: Number(location) >>> 0,
+          ctrlKey: !!ctrlKey, altKey: !!altKey, shiftKey: !!shiftKey, metaKey: !!metaKey,
+        });
+      },
+    } },
   { name: 'TouchEvent', parent: 'UIEvent', construct: constructTouchEvent, members: {
     ...fieldGetters(own(TOUCH_FIELDS, UI_FIELDS)), ...touchListGetters, ...modifierState,
   } },
-  { name: 'CompositionEvent', parent: 'UIEvent', construct: eventConstruct('CompositionEvent', COMPOSITION_FIELDS), members: fieldGetters(own(COMPOSITION_FIELDS, UI_FIELDS)) },
+  { name: 'CompositionEvent', parent: 'UIEvent', construct: eventConstruct('CompositionEvent', COMPOSITION_FIELDS), members: {
+    ...fieldGetters(own(COMPOSITION_FIELDS, UI_FIELDS)),
+    initCompositionEvent(type, bubbles, cancelable, view, data) { legacyInit(this, type, bubbles, cancelable, { view: view ?? null, data: data == null ? '' : String(data) }); },
+  } },
   { name: 'FocusEvent', parent: 'UIEvent', construct: eventConstruct('FocusEvent', FOCUS_FIELDS), members: fieldGetters(own(FOCUS_FIELDS, UI_FIELDS)) },
   { name: 'InputEvent', parent: 'UIEvent', construct: eventConstruct('InputEvent', INPUT_FIELDS), members: {
     ...fieldGetters(own(INPUT_FIELDS, UI_FIELDS)),
@@ -485,6 +515,9 @@ export const EVENT_INTERFACES = [
   { name: 'MessageEvent', parent: 'Event', construct: constructMessageEvent, members: {
     ...fieldGetters(own(MESSAGE_FIELDS, { ports: null })),
     get ports() { return state(this).ports; },
+    initMessageEvent(type, bubbles, cancelable, data, origin, lastEventId, source, ports) {
+      legacyInit(this, type, bubbles, cancelable, { data: data ?? null, origin: String(origin ?? ''), lastEventId: String(lastEventId ?? ''), source: source ?? null, ports: Array.from(ports ?? []) });
+    },
   } },
   { name: 'ToggleEvent', parent: 'Event', construct: eventConstruct('ToggleEvent', { oldState: '', newState: '' }), members: fieldGetters({ oldState: '', newState: '' }) },
   { name: 'PopStateEvent', parent: 'Event', construct: eventConstruct('PopStateEvent', { state: null }), members: fieldGetters({ state: null }) },
