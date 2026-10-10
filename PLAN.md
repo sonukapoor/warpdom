@@ -173,6 +173,12 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   standard's IDL: `<search>` and `<menuitem>` are HTMLElement (jsdom:
   HTMLUnknownElement), `<selectedcontent>` exists, and reflections jsdom
   lacks (inert, srcset, relList, sandbox, ...) are present.
+- Media elements' buffered/played/seekable are TimeRanges (start/end throw
+  IndexSizeError out of range) and `error` is null; jsdom gives plain
+  objects returning 0, and undefined.
+- `document.write` appends to the document's input stream (several writes
+  between open() and close() add up); jsdom replaces the document with
+  each chunk.
 - `postMessage(message, '/')` is delivered ('/' is the window's own
   origin); jsdom drops it.
 - The details `toggle` event is a ToggleEvent (oldState, newState), and
@@ -205,6 +211,22 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   median under ~1.8x, or most suites needing large compatibility work,
   means rethinking the product.
 
+- **2026-10-10: Kill criterion measured; learning fast mode.** Over 11
+  suites the default pool gives a median 1.17x (best configuration 1.20x):
+  under the ~1.8x criterion. The gain follows the suite's DOM share:
+  component suites 1.5-1.7x by default, 3-6x in fast mode; compiler-,
+  wait- or logic-heavy suites ~1.0-1.2x. Fast mode with a plain safety net
+  could be slower than jsdom; a learning fast mode (time isolated and the
+  split once, keep the cheaper) is never slower: lowest 1.03x, median
+  1.20x, geometric mean 1.75x (docs/head-to-head.md). Positioning, if we
+  continue: jsdom's results, never slower, 3-6x for DOM-heavy component
+  suites; not "faster for everyone". Built (2026-10-10, docs/fast-mode.md):
+  withFastMode (one Vitest project becomes a fast and an isolated one) and
+  `warpdom vitest run` (learns once, reruns files that fail without
+  isolation, isolated, so results are never wrong); tried on Vuetify and
+  mui-material with jsdom's results. Next: Vitest < 3.2 (no inline
+  projects), the Vitest 3 environment-loading bug report (public, Sonu's
+  call), then Jest.
 - **2026-10-09: Fast mode: no isolation plus warpdom's per-file reset.**
   `warpdom/vitest/reset` resets the window in place before each test file.
   With `--no-isolate`, Radix runs in 6.1 s and Vuetify in 3.0 s with exactly

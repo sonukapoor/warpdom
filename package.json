@@ -13,6 +13,7 @@
     },
     "./vitest": "./src/vitest.js",
     "./vitest/reset": "./src/vitest-reset.js",
+    "./vitest/fast": "./src/vitest-fast.js",
     "./package.json": "./package.json"
   },
   "files": [
@@ -36,5 +37,8 @@
   },
   "dependencies": {
     "parse5": "^8.0.1"
+  },
+  "bin": {
+    "warpdom": "./bin/warpdom.js"
   }
 }

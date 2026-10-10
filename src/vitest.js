@@ -5,6 +5,8 @@
 // document.defaultView point at the global, and teardown restores the
 // global. No dependency on Vitest itself, so any Vitest version works.
 import vm from 'node:vm';
+import { createRequire } from 'node:module';
+import { join } from 'node:path';
 import { createWindow } from './node.js';
 import { S } from './internal.js';
 import { resetWindow, snapshotWindow } from './reset.js';
@@ -89,11 +91,22 @@ function createTestWindow() {
   return window;
 }
 
+// The project's Vitest major version, or 0 when it cannot be found.
+function vitestMajor() {
+  try {
+    const require = createRequire(join(process.cwd(), 'package.json'));
+    return Number(require('vitest/package.json').version.split('.')[0]) || 0;
+  } catch {
+    return 0;
+  }
+}
+
 export default {
   name: 'warpdom',
   viteEnvironment: 'client',
-  // Vitest 3 and earlier name the transform mode instead.
-  transformMode: 'web',
+  // Vitest 3 and earlier name the transform mode instead; Vitest 4 warns
+  // about it for every test file, so it is given only to older versions.
+  ...(vitestMajor() >= 4 ? {} : { transformMode: 'web' }),
   // Vitest's VM pools (vmThreads, vmForks): each test file runs in a VM
   // context whose global object is the window, as with jsdom's internal
   // context. Node's host globals are copied in, under warpdom's own members.

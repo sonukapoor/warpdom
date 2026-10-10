@@ -213,3 +213,72 @@ test('fragment navigation: history.state is null', async () => {
   await tick();
   assert.deepEqual(states, [null]);
 });
+
+htmlParity('document.open, write and close', (w) => {
+  const d = w.document;
+  const f = d.body.appendChild(d.createElement('iframe'));
+  const fd = f.contentDocument;
+  const html = (doc) => (doc.documentElement ? doc.documentElement.outerHTML : null);
+  const out = [];
+  out.push(fd.open() === fd, html(fd));
+  fd.write('<div id=a>hi</div>');
+  out.push(html(fd), fd.getElementById('a')?.textContent);
+  fd.close();
+  const g = d.body.appendChild(d.createElement('iframe')).contentDocument;
+  g.write('<p>no open</p>');
+  out.push(html(g));
+  g.close();
+  const x = d.implementation.createHTMLDocument('');
+  x.open();
+  x.write('<u>1</u>');
+  x.close();
+  out.push(x.body.innerHTML);
+  return out;
+});
+
+// Deliberate deviation: jsdom replaces the document with each written
+// chunk; the standard appends to the input stream.
+test('document.write appends to the stream', () => {
+  const w = createWindow();
+  const fd = w.document.body.appendChild(w.document.createElement('iframe')).contentDocument;
+  fd.open();
+  fd.write('<div id=a>hi</div>');
+  fd.write('<span>2</span>');
+  fd.writeln('<b>3</b>');
+  fd.close();
+  assert.equal(fd.body.innerHTML, '<div id="a">hi</div><span>2</span><b>3</b>\n');
+});
+
+htmlParity('media elements without media', (w) => {
+  const d = w.document;
+  const v = d.createElement('video');
+  const a = d.createElement('audio');
+  const out = {
+    calls: [v.play(), v.pause(), v.load(), v.canPlayType('video/mp4')],
+    state: ['paused', 'ended', 'currentTime', 'duration', 'volume', 'muted', 'readyState', 'networkState', 'playbackRate',
+      'defaultPlaybackRate', 'seeking', 'currentSrc', 'autoplay', 'loop', 'controls', 'src', 'poster'].map((k) => v[k]),
+    ranges: [v.buffered.length, a.seekable.length],
+    statics: [w.HTMLMediaElement.HAVE_NOTHING, w.HTMLMediaElement.HAVE_ENOUGH_DATA, w.HTMLMediaElement.NETWORK_NO_SOURCE, a instanceof w.HTMLMediaElement],
+    video: [v.videoWidth, v.videoHeight],
+  };
+  v.currentTime = 5; v.volume = 0.5; v.muted = true; v.playbackRate = 2;
+  out.set = [v.currentTime, v.volume, v.muted, v.playbackRate];
+  const errors = [];
+  for (const fn of [() => { v.volume = 2; }, () => { v.currentTime = NaN; }]) {
+    try { fn(); errors.push('ok'); } catch (e) { errors.push([e.constructor.name, e.name]); }
+  }
+  out.errors = errors;
+  return out;
+});
+
+// Deliberate deviations: buffered, played and seekable are TimeRanges whose
+// start()/end() throw for an index out of range, and error is null (jsdom
+// gives plain objects that return 0, and undefined).
+test('media elements: TimeRanges', () => {
+  const w = createWindow();
+  const v = w.document.createElement('video');
+  assert.ok(v.buffered instanceof w.TimeRanges);
+  assert.equal(Object.prototype.toString.call(v.played), '[object TimeRanges]');
+  assert.throws(() => v.seekable.end(0), { name: 'IndexSizeError' });
+  assert.equal(v.error, null);
+});

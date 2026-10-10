@@ -120,3 +120,82 @@ jsdom's default on Radix and Vuetify, where jsdom cannot run that pool
 on two of the three suites. The safety net makes fast mode correct
 everywhere, but costs more than it saves where many files leak
 (emoji-picker), so it needs to learn which files to keep isolated.
+
+## Seven more suites (2026-10-09)
+
+Vitest, 2 workers, Node 22.23.3; per round each suite ran jsdom and
+warpdom in the default pool and with `--pool=vmThreads`, one after another;
+median of 3 rounds. The machine was loaded by other work (Spotlight
+indexing, load average up to 14), so absolute times are noisy; the
+speedups are taken within a round, then the median. "differ" counts tests
+whose status differs from jsdom's isolated run.
+
+| Suite | jsdom | warpdom | jsdom vmThreads | warpdom vmThreads | warpdom vs jsdom | best warpdom with jsdom's results | differ (warpdom / jsdom vm / warpdom vm) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| ark-ui | 76.5 s | 50.0 s | 29.8 s | 26.9 s | 1.53x | 2.84x (vmThreads) | 3 / 1 / 4 |
+| floating-ui | 10.0 s | 6.5 s | 6.6 s | hangs | 1.52x | 1.52x | 0 / 0 / 165 |
+| analog | 13.7 s | 11.9 s | 12.9 s | 11.9 s | 1.17x | 1.20x (vmThreads) | 0 / 5 / 0 |
+| CopilotKit | 201.4 s | 172.1 s | 69.6 s | 65.3 s | 1.16x | 1.16x | 15 / 1947 / 1974 |
+| ariakit | 405.6 s | 362.6 s | 355.9 s | 360.9 s | 1.12x | 1.12x | 22 / 6 / 24 |
+| svelte | 38.2 s | 36.8 s | 33.8 s | 33.8 s | 1.02x | 1.02x | 0 / 30 / 30 |
+| solid | 1.4 s | 1.5 s | 1.4 s | 1.4 s | 1.00x | 1.00x | 1 / 0 / 0 |
+
+With Radix (1.71x), Vuetify (1.57x), MUI (1.74x) and emoji-picker (1.13x)
+from above, the median over 11 suites is **1.17x** in the default pool and
+**1.20x** for the best configuration that keeps jsdom's results (2.8-5.2x
+on Vuetify, MUI, Radix and ark-ui). That is under PLAN's kill criterion
+(~1.8x).
+
+The gain follows how much of a suite's time is DOM work: component suites
+(ark-ui, floating-ui, Radix, Vuetify, MUI) gain 1.5-1.7x by default;
+suites dominated by compiler tests (svelte), their own waits (ariakit) or
+application logic (CopilotKit) gain little, and solid's whole suite takes
+1.4 s. vmThreads breaks CopilotKit on both DOMs and does not help ariakit.
+
+floating-ui hangs with vmThreads on warpdom because of a Vitest 3 bug: an
+environment that is not built in, loaded from outside Vitest's root
+(floating-ui sets root to test/unit), times out in its worker's resolveId
+call once workers are reused (vmThreads, isolate: false), whether loaded
+by path or as the vitest-environment-warpdom package. Vitest 4 and 5 do
+not have it (Radix, Vuetify, MUI).
+
+## Fast mode that learns, so it is never slower (2026-10-10)
+
+Fast mode (no isolation plus warpdom's per-file reset) with a plain
+safety net (rerun failing files isolated) can lose to isolated runs: files
+that leak state run twice, and on emoji-picker it took 40.2 s against
+jsdom's 24.0 s. The learning version measures instead of guessing. A
+learning run per suite times warpdom isolated, finds the leaky files (they
+fail without isolation) and times the split: leaky files isolated, the
+rest without isolation. Later runs use the cheaper of the two; new
+failures still get the safety net and join the leaky list.
+
+Vitest, 2 workers, Node 22.23.3, median of 3 rounds, each round jsdom's
+default run first (also the baseline for "differ"):
+
+| Suite | jsdom default | warpdom learned | Speedup | Mode | Differ |
+| --- | --- | --- | --- | --- | --- |
+| MUI | 86.3 s | 14.2 s | 6.08x | split | 0 |
+| Vuetify | 15.1 s | 3.7 s | 4.08x | split | 0 |
+| Radix | 17.1 s | 5.2 s | 3.29x | split | 0 |
+| ark-ui | 75.8 s | 50.0 s | 1.53x | isolated | 8 |
+| analog | 13.9 s | 11.5 s | 1.21x | isolated | 0 |
+| emoji-picker | 22.9 s | 19.2 s | 1.19x | split | 0 |
+| CopilotKit | 200.1 s | 171.5 s | 1.17x | isolated | 21 |
+| ariakit | 419.6 s | 374.8 s | 1.12x | isolated | 27 |
+| solid | 1.5 s | 1.4 s | 1.07x | isolated | 2 |
+| svelte | 36.5 s | 35.4 s | 1.03x | split | 0 |
+
+(ark-ui first chose the split with too-broad exclusion patterns: its
+React, Solid, Vue and Svelte packages share test file names; with exact
+paths the split is not faster and isolated wins, timed in the default-pool
+rounds above. floating-ui is left out: Vitest 3 hangs with environments
+from outside its root once workers are reused; isolated it is 1.52x.)
+
+Never slower than jsdom (lowest 1.03x); median 1.20x, geometric mean
+1.75x; all ten suites together 888 s on jsdom, 687 s on warpdom. The
+differences are the known residuals (CopilotKit and ariakit include tests
+that pass only on warpdom; ark-ui's signature pad), the same as isolated.
+Large wins need suites whose time is DOM work and whose files do not leak
+module state (MUI, Vuetify, Radix); where many files leak (ark-ui 138,
+CopilotKit 273, ariakit 41) fast mode cannot help and isolated is kept.

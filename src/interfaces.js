@@ -23,6 +23,7 @@ import { IFRAME_MEMBERS, WINDOW_FRAME_MEMBERS } from './frames.js';
 import { STORAGE_INTERFACE, STORAGE_WINDOW_MEMBERS } from './storage.js';
 import { PROGRESS_MEMBERS, METER_MEMBERS } from './progress-meter.js';
 import { SLOT_MEMBERS, SLOTTABLE_MEMBERS } from './slots.js';
+import { MEDIA_MEMBERS, MEDIA_STATICS, VIDEO_MEMBERS, TIME_RANGES_INTERFACE } from './media.js';
 import { HYPERLINK_MEMBERS } from './hyperlinks.js';
 import { COLLECTION_INTERFACES, liveList } from './collections.js';
 import { HTML_ELEMENTS } from './html-elements.js';
@@ -30,7 +31,7 @@ import { EVENT_INTERFACES, createEvent, retarget } from './events.js';
 import { MUTATION_INTERFACES } from './mutation.js';
 import { FEATURE_INTERFACES, WINDOW_MEMBERS } from './window-features.js';
 import { TRAVERSAL_INTERFACES, createTreeWalker, createNodeIterator } from './traversal.js';
-import { parseFragment, serializeChildren, serializeOuter, setInnerHTML, setOuterHTML, insertAdjacentHTML, templateContent } from './html.js';
+import { parseFragment, parseDocument, serializeChildren, serializeOuter, setInnerHTML, setOuterHTML, insertAdjacentHTML, templateContent } from './html.js';
 import {
   ATTRIBUTE_INTERFACES, writeAttribute, attrName, attrNode, namedNodeMap, tokenList, domStringMap,
   setAttributeNode, removeAttributeNode, createAttribute, findAttributeNS, setAttributeNS,
@@ -197,6 +198,15 @@ function attachShadow(element, init) {
   return shadow;
 }
 
+function documentWrite(doc, text) {
+  const s = state(doc);
+  if (s.xml) throw domError("Failed to execute 'write' on 'Document': Only HTML documents support write().", 'InvalidStateError');
+  if (s.writeBuffer === undefined) doc.open();
+  s.writeBuffer += text;
+  while (s.first) remove(doc, s.first);
+  parseDocument(doc, s.writeBuffer);
+}
+
 const isHTMLTag = (node, tag) => { const s = node[S]; return s.type === ELEMENT_NODE && s.ns === HTML_NS && s.tag === tag; };
 const htmlElement = (doc) => { const el = firstElement(doc[S]); return el && isHTMLTag(el, 'html') ? el : null; };
 function* descendantElements(root) {
@@ -226,6 +236,7 @@ export const INTERFACES = [
   ...EVENT_INTERFACES,
   ...DOM_PARSING_INTERFACES,
   STORAGE_INTERFACE,
+  TIME_RANGES_INTERFACE,
   ...MUTATION_INTERFACES,
   ...FEATURE_INTERFACES,
   ...TRAVERSAL_INTERFACES,
@@ -347,6 +358,23 @@ export const INTERFACES = [
       createRange() { const s = state(this); return newRange(s.window, this, 0); },
       // Scripts never run, so there is no currently executing script.
       get currentScript() { state(this); return null; },
+      // document.open/write/close (HTML 8.4): open() empties the document
+      // and starts an input stream; each write appends to it and the
+      // document is reparsed from the stream, so content is there at once.
+      open() {
+        const s = state(this);
+        if (s.xml) throw domError("Failed to execute 'open' on 'Document': Only HTML documents support open().", 'InvalidStateError');
+        while (s.first) remove(this, s.first);
+        s.writeBuffer = '';
+        return this;
+      },
+      write(...text) { documentWrite(this, text.join('')); },
+      writeln(...text) { documentWrite(this, `${text.join('')}\n`); },
+      close() {
+        const s = state(this);
+        if (s.xml) throw domError("Failed to execute 'close' on 'Document': Only HTML documents support close().", 'InvalidStateError');
+        s.writeBuffer = undefined;
+      },
       get scripts() { return documentCollection(this, 'scripts', (el) => isHTMLTag(el, 'script')); },
       get forms() { return documentCollection(this, 'forms', (el) => isHTMLTag(el, 'form')); },
       get images() { return documentCollection(this, 'images', (el) => isHTMLTag(el, 'img')); },
@@ -672,6 +700,8 @@ INTERFACES.push({ name: 'HTMLAnchorElement', parent: 'HTMLElement', members: HYP
 INTERFACES.push({ name: 'HTMLAreaElement', parent: 'HTMLElement', members: HYPERLINK_MEMBERS });
 INTERFACES.push({ name: 'HTMLIFrameElement', parent: 'HTMLElement', members: IFRAME_MEMBERS });
 INTERFACES.push({ name: 'HTMLSlotElement', parent: 'HTMLElement', members: SLOT_MEMBERS });
+INTERFACES.push({ name: 'HTMLMediaElement', parent: 'HTMLElement', members: MEDIA_MEMBERS, statics: MEDIA_STATICS });
+INTERFACES.push({ name: 'HTMLVideoElement', parent: 'HTMLMediaElement', members: VIDEO_MEMBERS });
 INTERFACES.push({ name: 'HTMLProgressElement', parent: 'HTMLElement', members: PROGRESS_MEMBERS });
 INTERFACES.push({ name: 'HTMLMeterElement', parent: 'HTMLElement', members: METER_MEMBERS });
 INTERFACES.push({ name: 'HTMLTemplateElement', parent: 'HTMLElement', members: { get content() { return templateContent(this); } } });

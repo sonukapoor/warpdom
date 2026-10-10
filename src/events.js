@@ -59,13 +59,26 @@ function getTheParent(target, event) {
   return s.parent;
 }
 
+// Report an exception (HTML 8.1.4.6): an error event at the window, unless
+// one is already being reported (an error listener that throws): then the
+// error goes straight to the unhandled-error path, without recursing.
 export function reportError(target, error) {
   const window = target[S]?.type === DOCUMENT_NODE ? target[S].window : target[S]?.doc?.[S]?.window ?? target;
   const ErrorEvent = window?.ErrorEvent;
   if (!ErrorEvent) throw error;
-  const event = new ErrorEvent('error', { cancelable: true, error, message: String(error?.message ?? error) });
-  const handled = !window.dispatchEvent(event);
-  if (!handled && window[S]?.onUnhandledError) window[S].onUnhandledError(error);
+  const ws = window[S];
+  if (ws.errorReporting) {
+    ws.onUnhandledError?.(error);
+    return;
+  }
+  ws.errorReporting = true;
+  let handled;
+  try {
+    handled = !window.dispatchEvent(new ErrorEvent('error', { cancelable: true, error, message: String(error?.message ?? error) }));
+  } finally {
+    ws.errorReporting = false;
+  }
+  if (!handled && ws.onUnhandledError) ws.onUnhandledError(error);
 }
 
 // Invoke the listeners of a path item for a phase ("capturing" or "bubbling").
@@ -360,6 +373,7 @@ const KEYBOARD_FIELDS = {
   charCode: 0, keyCode: 0,
 };
 const FOCUS_FIELDS = { ...UI_FIELDS, relatedTarget: null };
+const COMPOSITION_FIELDS = { ...UI_FIELDS, data: '' };
 const INPUT_FIELDS = { ...UI_FIELDS, data: null, inputType: '', isComposing: false, dataTransfer: null };
 const WHEEL_FIELDS = { ...MOUSE_FIELDS, deltaX: 0, deltaY: 0, deltaZ: 0, deltaMode: 0 };
 const ERROR_FIELDS = { message: '', filename: '', lineno: 0, colno: 0, error: undefined };
@@ -462,6 +476,7 @@ export const EVENT_INTERFACES = [
   { name: 'TouchEvent', parent: 'UIEvent', construct: constructTouchEvent, members: {
     ...fieldGetters(own(TOUCH_FIELDS, UI_FIELDS)), ...touchListGetters, ...modifierState,
   } },
+  { name: 'CompositionEvent', parent: 'UIEvent', construct: eventConstruct('CompositionEvent', COMPOSITION_FIELDS), members: fieldGetters(own(COMPOSITION_FIELDS, UI_FIELDS)) },
   { name: 'FocusEvent', parent: 'UIEvent', construct: eventConstruct('FocusEvent', FOCUS_FIELDS), members: fieldGetters(own(FOCUS_FIELDS, UI_FIELDS)) },
   { name: 'InputEvent', parent: 'UIEvent', construct: eventConstruct('InputEvent', INPUT_FIELDS), members: {
     ...fieldGetters(own(INPUT_FIELDS, UI_FIELDS)),
@@ -483,7 +498,7 @@ const LEGACY_EVENT_NAMES = {
   event: 'Event', events: 'Event', htmlevents: 'Event', customevent: 'CustomEvent', uievent: 'UIEvent', uievents: 'UIEvent',
   mouseevent: 'MouseEvent', mouseevents: 'MouseEvent', keyboardevent: 'KeyboardEvent', focusevent: 'FocusEvent',
   inputevent: 'InputEvent', wheelevent: 'WheelEvent', pointerevent: 'PointerEvent', errorevent: 'ErrorEvent',
-  touchevent: 'TouchEvent',
+  touchevent: 'TouchEvent', compositionevent: 'CompositionEvent',
 };
 
 export function createEvent(window, name) {

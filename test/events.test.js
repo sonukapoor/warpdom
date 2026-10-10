@@ -260,3 +260,27 @@ test('postMessage: targetOrigin / is the window\'s own origin', async () => {
   await new Promise((r) => setTimeout(r, 10));
   assert.deepEqual(got, ['self']);
 });
+
+test('report an exception: an error listener that throws is not re-entered', () => {
+  const w = createWindow();
+  const logged = [];
+  const original = console.error;
+  console.error = (...args) => logged.push(String(args[0]));
+  let calls = 0;
+  try {
+    w.addEventListener('error', () => { calls++; throw new Error('in handler'); });
+    w.document.body.addEventListener('click', () => { throw new Error('first'); });
+    w.document.body.click();
+  } finally {
+    console.error = original;
+  }
+  assert.equal(calls, 1);
+  assert.deepEqual(logged.map((l) => l.split('\n')[0]), ['Error: in handler', 'Error: first']);
+});
+
+parity('CompositionEvent', (w) => {
+  const e = new w.CompositionEvent('compositionend', { data: 'á', bubbles: true, detail: 1 });
+  const d = new w.CompositionEvent('compositionstart');
+  const legacy = w.document.createEvent('CompositionEvent');
+  return [e.data, e.bubbles, e.detail, e instanceof w.UIEvent, Object.prototype.toString.call(e), d.data, legacy instanceof w.CompositionEvent];
+});
