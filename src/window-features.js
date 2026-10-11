@@ -2,7 +2,7 @@
 // navigator, location and history, the Image/Audio/Option constructors.
 // Values follow jsdom's defaults so tests see the same environment.
 import { S, state, domError } from './internal.js';
-import { dispatch } from './events.js';
+import { dispatch, reportError } from './events.js';
 import { computedStyle, cssNamespace } from './css.js';
 import './cascade.js';
 import { compile } from './selectors.js';
@@ -74,7 +74,16 @@ const timerMembers = {
   setInterval(handler, timeout = 0, ...args) { return startTimer(this, true, handler, timeout, args); },
   clearTimeout(id) { stopTimer(this, id); },
   clearInterval(id) { stopTimer(this, id); },
-  queueMicrotask(callback) { state(this); globalThis.queueMicrotask(callback); },
+  // An exception in the callback is reported (an error event at the
+  // window), as for event listeners.
+  queueMicrotask(callback) {
+    state(this);
+    if (typeof callback !== 'function') throw new TypeError("Failed to execute 'queueMicrotask' on 'Window': The callback provided as parameter 1 is not a function.");
+    const window = this;
+    globalThis.queueMicrotask(() => {
+      try { callback(); } catch (error) { reportError(window, error); }
+    });
+  },
   atob(data) { state(this); return globalThis.atob(data); },
   btoa(data) { state(this); return globalThis.btoa(data); },
 };
@@ -308,7 +317,7 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
   // hidden attribute.
   const version = parseJsdomVersion(jsdom);
   ws.compat = {
-    jsdom: version[0], legacyComputedStyle: version[0] < 29, mutableComputedStyle: version[0] < 28,
+    version: jsdom, jsdom: version[0], legacyComputedStyle: version[0] < 29, mutableComputedStyle: version[0] < 28,
     focusIgnoresRendering: before(version, [30, 1, 2]),
   };
   // DOMException is the platform's (shared by all windows); its subclass too.
@@ -318,22 +327,32 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
   ws.location = make(window, 'Location', {});
   ws.history = make(window, 'History', { entries: [{ state: null, url: ws.url }], index: 0 });
 
-  const factory = (name, proto, init) => {
-    const ctor = function (...args) {
-      if (!new.target) throw new TypeError(`Failed to construct '${name}': Please use the 'new' operator.`);
-      return init(window.document, args);
+  // Created on first use, like the interfaces (window.js), so a window
+  // that never uses them does not create their element interfaces.
+  const factory = (name, protoName, init) => {
+    const create = () => {
+      const ctor = function (...args) {
+        if (!new.target) throw new TypeError(`Failed to construct '${name}': Please use the 'new' operator.`);
+        return init(window.document, args);
+      };
+      Object.defineProperty(ctor, 'name', { value: name });
+      Object.defineProperty(ctor, 'prototype', { value: ws.protos[protoName], writable: false });
+      Object.defineProperty(window, name, { value: ctor, writable: true, configurable: true });
+      return ctor;
     };
-    Object.defineProperty(ctor, 'name', { value: name });
-    Object.defineProperty(ctor, 'prototype', { value: proto, writable: false });
-    Object.defineProperty(window, name, { value: ctor, writable: true, configurable: true });
+    Object.defineProperty(window, name, {
+      get: create,
+      set(value) { Object.defineProperty(window, name, { value, writable: true, configurable: true }); },
+      configurable: true,
+    });
   };
-  factory('Image', ws.protos.HTMLImageElement, (doc, [width, height]) => {
+  factory('Image', 'HTMLImageElement', (doc, [width, height]) => {
     const img = doc.createElement('img');
     if (width !== undefined) img.setAttribute('width', String(width));
     if (height !== undefined) img.setAttribute('height', String(height));
     return img;
   });
-  factory('Audio', ws.protos.HTMLAudioElement, (doc, [src]) => {
+  factory('Audio', 'HTMLAudioElement', (doc, [src]) => {
     const audio = doc.createElement('audio');
     audio.setAttribute('preload', 'auto');
     if (src !== undefined) audio.setAttribute('src', String(src));
@@ -344,7 +363,7 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
     value: cssNamespace((selector) => { try { compile(selector); return true; } catch { return false; } }),
     writable: true, configurable: true,
   });
-  factory('Option', ws.protos.HTMLOptionElement, (doc, [text = '', value, defaultSelected = false, selected = false]) => {
+  factory('Option', 'HTMLOptionElement', (doc, [text = '', value, defaultSelected = false, selected = false]) => {
     const option = doc.createElement('option');
     if (text !== '') option.textContent = String(text);
     if (value !== undefined) option.setAttribute('value', String(value));

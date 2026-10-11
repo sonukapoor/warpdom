@@ -148,3 +148,38 @@ parity('style: zeros in lists of values', (w) => {
   ];
   return cases.map(([name, value]) => { const s = w.document.createElement('div').style; s.setProperty(name, value); return `${name}: ${s.getPropertyValue(name)}`; });
 });
+
+// Shorthands and longhands in a declaration block, as jsdom: longhands are
+// read through the shorthands its CSS layer expands (not overflow, outline,
+// inset, gap, ...), and margin, padding, flex and background-position are
+// composed from their longhands.
+const shorthandReads = (w) => {
+  const st = () => w.document.createElement('div').style;
+  const out = [];
+  for (const [sh, v, lh] of [['overflow', 'hidden', 'overflow-x'], ['outline', '1px solid red', 'outline-style'], ['inset', '1px', 'top'], ['gap', '1px 2px', 'column-gap'],
+    ['border-radius', '3px', 'border-top-left-radius'], ['place-items', 'center', 'align-items'], ['margin', '1px 2px', 'margin-left'], ['border', '1px solid red', 'border-top-color'],
+    ['background', 'red', 'background-color'], ['flex', '2', 'flex-basis'], ['font', 'italic bold 12px/2 Arial', 'line-height'], ['font', '12px Arial', 'font-style']]) {
+    const s = st();
+    s.setProperty(sh, v);
+    out.push(`${sh}: ${v} -> ${lh}=${s.getPropertyValue(lh)}`);
+  }
+  const m = st();
+  m.marginTop = '1px'; m.marginRight = '2px'; m.marginBottom = '1px';
+  out.push(m.margin);
+  m.marginLeft = '2px';
+  out.push(m.margin, m.cssText);
+  const f = st();
+  f.flexGrow = '2'; f.flexShrink = '0'; f.flexBasis = '10px';
+  out.push(f.flex);
+  const bg = st();
+  bg.backgroundColor = 'red';
+  out.push(bg.background);
+  for (const v of ['12px Arial', 'italic bold 12px/2 Arial', 'oblique condensed 10px serif', 'bold 14px / 20px Georgia, serif']) {
+    const s = st();
+    s.font = v;
+    out.push(s.font);
+  }
+  return out;
+};
+parity('style: shorthand expansion and composition', shorthandReads);
+parity('style: shorthand expansion and composition (jsdom 26)', shorthandReads, { jsdom: 26 });

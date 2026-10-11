@@ -19,7 +19,7 @@ import { resolveColor } from './colors.js';
 import { segments, expand, serializeBox, BOX, PAIRS, CSS_WIDE } from './shorthands.js';
 import { compileRuleSelector } from './selectors.js';
 import { documentStyleSheets, styleElementSheet } from './cssom.js';
-import { parseDeclarations, computed } from './css.js';
+import { parseDeclarations, computed, validationModeOf } from './css.js';
 
 // --- the rule index ------------------------------------------------------------------
 
@@ -98,7 +98,7 @@ function inlineDeclarations(element) {
   if (text === undefined) return null;
   if (es.inlineCascade?.text === text) return es.inlineCascade.map;
   const map = new Map();
-  for (const [property, { value, important }] of parseDeclarations(text)) {
+  for (const [property, { value, important }] of parseDeclarations(text, validationModeOf(es.doc[S].window))) {
     for (const [name, v] of expand(property, value)) {
       if (!important && map.get(name)?.important) continue;
       map.set(name, { value: v, important });

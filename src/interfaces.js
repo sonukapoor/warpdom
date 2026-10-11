@@ -25,7 +25,7 @@ import { IFRAME_MEMBERS, WINDOW_FRAME_MEMBERS } from './frames.js';
 import { STORAGE_INTERFACE, STORAGE_WINDOW_MEMBERS } from './storage.js';
 import { PROGRESS_MEMBERS, METER_MEMBERS } from './progress-meter.js';
 import { SLOT_MEMBERS, SLOTTABLE_MEMBERS } from './slots.js';
-import { MEDIA_MEMBERS, MEDIA_STATICS, VIDEO_MEMBERS, TIME_RANGES_INTERFACE } from './media.js';
+import { MEDIA_MEMBERS, MEDIA_STATICS, VIDEO_MEMBERS, TIME_RANGES_INTERFACE, IMAGE_MEMBERS } from './media.js';
 import { TABLE_MEMBERS, SECTION_MEMBERS, ROW_MEMBERS, CELL_MEMBERS } from './tables.js';
 import { HYPERLINK_MEMBERS } from './hyperlinks.js';
 import { BASE_MEMBERS, nodeBaseURI } from './base-url.js';
@@ -721,6 +721,7 @@ INTERFACES.push({
 // The HTMLHyperlinkElementUtils mixin (hyperlinks.js).
 INTERFACES.push({ name: 'HTMLAnchorElement', parent: 'HTMLElement', members: HYPERLINK_MEMBERS });
 INTERFACES.push({ name: 'HTMLAreaElement', parent: 'HTMLElement', members: HYPERLINK_MEMBERS });
+INTERFACES.push({ name: 'HTMLImageElement', parent: 'HTMLElement', members: IMAGE_MEMBERS });
 INTERFACES.push({ name: 'HTMLBaseElement', parent: 'HTMLElement', members: BASE_MEMBERS });
 INTERFACES.push({ name: 'HTMLIFrameElement', parent: 'HTMLElement', members: IFRAME_MEMBERS });
 INTERFACES.push({ name: 'HTMLSlotElement', parent: 'HTMLElement', members: SLOT_MEMBERS });

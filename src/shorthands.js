@@ -65,6 +65,47 @@ const FLEX_WRAPS = new Set(['nowrap', 'wrap', 'wrap-reverse']);
 
 const initialOf = (longhand) => LONGHANDS[longhand]?.[0] ?? 'initial';
 
+// font: [ style || variant || weight || stretch ]? size [ / line-height ]?
+// family. The parts jsdom sets: style, weight, size, line-height, family.
+const FONT_STYLES = new Set(['normal', 'italic', 'oblique']);
+const FONT_WEIGHTS = new Set(['bold', 'bolder', 'lighter']);
+const FONT_VARIANTS = new Set(['small-caps']);
+const FONT_STRETCHES = new Set(['ultra-condensed', 'extra-condensed', 'condensed', 'semi-condensed', 'semi-expanded', 'expanded', 'extra-expanded', 'ultra-expanded']);
+const FONT_SIZES = new Set(['xx-small', 'x-small', 'small', 'medium', 'large', 'x-large', 'xx-large', 'xxx-large', 'larger', 'smaller']);
+export function parseFont(value) {
+  const parts = segments(value.replace(/\s*\/\s*/, ' / '));
+  let style = 'normal', weight = 'normal', size = null, lineHeight = 'normal';
+  let i = 0;
+  for (; i < parts.length; i += 2) {
+    const token = parts[i];
+    const lower = token.toLowerCase();
+    if (lower === 'normal') continue;
+    if (FONT_STYLES.has(lower)) style = token;
+    else if (FONT_WEIGHTS.has(lower) || /^\d+(\.\d+)?$/.test(token)) weight = token;
+    else if (FONT_VARIANTS.has(lower) || FONT_STRETCHES.has(lower)) continue;
+    else if (FONT_SIZES.has(lower) || isLength(token)) { size = token; i += 2; break; }
+    else return null;
+  }
+  if (size === null) return null;
+  if (parts[i] === '/') {
+    lineHeight = parts[i + 2];
+    if (!lineHeight) return null;
+    i += 4;
+  }
+  const family = parts.slice(i).join('').trim();
+  if (!family) return null;
+  return { style, weight, size, lineHeight, family };
+}
+
+// The font shorthand as jsdom serializes it: normal parts left out, a
+// spaced slash before the line height.
+export function serializeFont(value) {
+  const f = parseFont(value);
+  if (!f) return value;
+  return [f.style !== 'normal' ? f.style : '', f.weight !== 'normal' ? f.weight : '', f.size, f.lineHeight !== 'normal' ? `/ ${f.lineHeight}` : '', f.family]
+    .filter(Boolean).join(' ');
+}
+
 // The longhands a shorthand declaration sets, as [name, value] pairs, or
 // null when it is not expanded.
 function expandShorthand(name, value) {
@@ -117,6 +158,15 @@ function expandShorthand(name, value) {
       else return null;
     }
     return [['flex-direction', direction ?? 'row'], ['flex-wrap', wrap ?? 'nowrap']];
+  }
+  if (name === 'font') {
+    const f = parseFont(value);
+    if (!f) return null;
+    return [['font-style', f.style], ['font-weight', f.weight], ['font-size', f.size], ['line-height', f.lineHeight], ['font-family', f.family]];
+  }
+  if (name === 'background-position') {
+    if (t.length !== 2 || value.includes(',')) return null;
+    return [['background-position-x', t[0]], ['background-position-y', t[1]]];
   }
   if (name === 'background') {
     // The color, from the final layer; the other longhands reset.

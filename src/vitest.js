@@ -30,7 +30,12 @@ function dataValue(object, key) {
 // timers replace Node's timers).
 export const VITEST_HOST_KEYS = ['AbortController', 'AbortSignal', ...HOST_TIMER_KEYS];
 
-export function installWindow(global, window, { hostKeys = [] } = {}) {
+// Names Vitest's jsdom environment defines on the global from its key list
+// even when the window lacks them: before jsdom 30 there is no CSS, and the
+// global CSS reads undefined (Vuetify reads CSS?.supports at load).
+export const VITEST_ALWAYS_KEYS = ['CSS'];
+
+export function installWindow(global, window, { hostKeys = [], alwaysKeys = [] } = {}) {
   const originals = new Map();
   // The window's own members and those it inherits (Window.prototype,
   // EventTarget.prototype: addEventListener, dispatchEvent, ...).
@@ -38,6 +43,7 @@ export function installWindow(global, window, { hostKeys = [] } = {}) {
   for (let p = Object.getPrototypeOf(window); p && p !== Object.prototype; p = Object.getPrototypeOf(p)) {
     for (const name of Object.getOwnPropertyNames(p)) if (name !== 'constructor') names.add(name);
   }
+  for (const key of alwaysKeys) names.add(key);
   const keys = [...names].filter((k) => !SELF_KEYS.includes(k) && !hostKeys.includes(k));
   const overrides = new Map(); // key -> value assigned through the global
   for (const key of keys) {
@@ -136,7 +142,7 @@ export default {
   async setupVM(options) {
     const window = createTestWindow(options);
     const sandbox = {};
-    const restore = installWindow(sandbox, window, { hostKeys: VITEST_HOST_KEYS });
+    const restore = installWindow(sandbox, window, { hostKeys: VITEST_HOST_KEYS, alwaysKeys: VITEST_ALWAYS_KEYS });
     for (const name of nodeHostGlobals()) {
       // Values, not descriptors: some are lazy getters bound to Node's global (crypto).
       if (!(name in sandbox)) Object.defineProperty(sandbox, name, { value: globalThis[name], writable: true, configurable: true });
@@ -155,7 +161,7 @@ export default {
   },
   setup(global, options) {
     const window = createTestWindow(options);
-    const restore = installWindow(global, window, { hostKeys: VITEST_HOST_KEYS });
+    const restore = installWindow(global, window, { hostKeys: VITEST_HOST_KEYS, alwaysKeys: VITEST_ALWAYS_KEYS });
     snapshotWindow(window);
     global[RESET] = () => {
       restore.resetOverrides();

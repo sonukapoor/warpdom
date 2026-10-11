@@ -81,3 +81,22 @@ export const TIME_RANGES_INTERFACE = {
     end(index) { state(this); throw outOfRange(index); },
   },
 };
+
+// Images (HTML standard, 4.8.4.4) without loading or layout: width and
+// height are their attributes (as jsdom converts them: unsigned, 0 when
+// absent or not a number), natural sizes 0, and an image with a source
+// never completes.
+const imageSize = (el, attr) => {
+  const raw = state(el).attrs.get(attr);
+  return raw === undefined ? 0 : Number(raw) >>> 0;
+};
+export const IMAGE_MEMBERS = {
+  get width() { return imageSize(this, 'width'); },
+  set width(v) { this.setAttribute('width', String(Number(v) >>> 0)); },
+  get height() { return imageSize(this, 'height'); },
+  set height(v) { this.setAttribute('height', String(Number(v) >>> 0)); },
+  get naturalWidth() { state(this); return 0; },
+  get naturalHeight() { state(this); return 0; },
+  get complete() { const src = state(this).attrs.get('src'); return src === undefined || src === ''; },
+  get currentSrc() { state(this); return ''; },
+};

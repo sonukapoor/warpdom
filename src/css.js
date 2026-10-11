@@ -4,8 +4,9 @@
 // the element's style attribute; a new style attribute re-parses them.
 import { S, state, domError, ELEMENT_NODE, cssomChanges, attributesChanged } from './internal.js';
 import { STYLE_ACCESSORS } from './css-properties.js';
-import { LONGHANDS, SHORTHANDS, COLOR_SHORTHANDS } from './css-data.js';
-import { expand, segments } from './shorthands.js';
+import { LONGHANDS, SHORTHANDS, COLOR_SHORTHANDS, ALIASES } from './css-data.js';
+import { isValidValue } from './css-values.js';
+import { expand, segments, serializeBox, serializeFont } from './shorthands.js';
 import { resolveColor } from './colors.js';
 
 // backgroundColor -> background-color, webkitAnimation/WebkitAnimation ->
@@ -104,22 +105,97 @@ function canonicalNumbers(value) {
   return parts.join('');
 }
 
-// Declared values by property and raw value: style writes repeat the same
-// few values, so their serialization is computed once.
-const declaredCache = new Map(); // property -> (raw value -> serialized)
-function declaredValue(name, value) {
-  let byValue = declaredCache.get(name);
-  if (byValue === undefined) declaredCache.set(name, byValue = new Map());
+// Validation modes (css-values.js): 'spec' checks every property's grammar,
+// as jsdom 27 and later do; 'jsdom26' only the properties jsdom 26 checked,
+// without numeric ranges. A window's mode is set on its CSSStyleProperties
+// prototype, and each declaration block records it when created. (Of the
+// properties jsdom 26 checked, flex-basis, border-spacing, font-weight and
+// font-variant accepted values outside their ranges; they are left out, and
+// flex is checked although jsdom 26 took a negative basis.)
+const JSDOM26_VALIDATED = new Set(['-webkit-text-fill-color', '-webkit-text-stroke-color', 'background', 'background-attachment', 'background-color',
+  'background-image', 'background-position', 'background-repeat', 'border', 'border-bottom', 'border-bottom-color', 'border-bottom-style', 'border-bottom-width',
+  'border-collapse', 'border-color', 'border-left', 'border-left-color', 'border-left-style', 'border-left-width', 'border-right', 'border-right-color', 'border-right-style',
+  'border-right-width', 'border-style', 'border-top', 'border-top-color', 'border-top-style', 'border-top-width', 'border-width', 'bottom',
+  'clear', 'clip', 'color', 'flex', 'float', 'flood-color', 'font', 'font-family', 'font-size', 'font-style', 'height',
+  'left', 'lighting-color', 'line-height', 'margin', 'margin-bottom', 'margin-left', 'margin-right', 'margin-top', 'opacity', 'outline-color',
+  'padding', 'padding-bottom', 'padding-left', 'padding-right', 'padding-top', 'right', 'stop-color', 'top', 'width']);
+const modes = new WeakMap(); // CSSStyleProperties prototype -> mode
+export function setValidationMode(proto, mode) { modes.set(proto, mode); }
+const modeOf = (proto) => modes.get(proto) ?? 'spec';
+export const validationModeOf = (window) => modeOf(window[S].protos.CSSStyleProperties);
+
+// A property name CSSOM accepts: a custom property, or one the
+// specifications define. Others are dropped (style.setProperty('foo', ...)).
+const isKnownProperty = (name) => name.startsWith('--') || LONGHANDS[name] !== undefined || SHORTHANDS[name] !== undefined || ALIASES[name] !== undefined;
+
+// Declared values by mode, property and raw value: style writes repeat the
+// same few values, so each is validated and serialized once. INVALID marks
+// a value the property's grammar rejects.
+const INVALID = null;
+const declaredCaches = { spec: new Map(), jsdom26: new Map() }; // mode -> property -> (raw value -> serialized)
+function declaredValue(name, value, mode = 'spec') {
+  const cache = declaredCaches[mode];
+  let byValue = cache.get(name);
+  if (byValue === undefined) cache.set(name, byValue = new Map());
   let out = byValue.get(value);
   if (out === undefined) {
-    out = serializeDeclared(name, value);
+    if (!isKnownProperty(name)) out = INVALID;
+    else {
+      const checked = mode === 'spec' || JSDOM26_VALIDATED.has(name);
+      out = !checked || isValidValue(name, value) ? serializeDeclared(name, value, mode) : INVALID;
+    }
     if (byValue.size >= 500) byValue.clear();
     byValue.set(value, out);
   }
   return out;
 }
 
-function serializeDeclared(name, value) {
+// display's multi-keyword values serialize in their short form (CSS
+// Display 3, 2): inline flex is inline-flex, inline flow-root is
+// inline-block. jsdom 26 kept them as written.
+const OUTER = new Set(['block', 'inline', 'run-in']);
+const INNER = new Set(['flow', 'flow-root', 'table', 'flex', 'grid', 'ruby']);
+const SHORT = { 'block flow': 'block', 'inline flow': 'inline', 'run-in flow': 'run-in', 'block flow-root': 'flow-root', 'inline flow-root': 'inline-block',
+  'block flex': 'flex', 'inline flex': 'inline-flex', 'block grid': 'grid', 'inline grid': 'inline-grid', 'block table': 'table',
+  'inline table': 'inline-table', 'inline ruby': 'ruby' };
+function displayShortForm(value) {
+  const keywords = value.toLowerCase().split(/\s+/);
+  if (keywords.length < 2) return value;
+  let outer = null, inner = null, listItem = false;
+  for (const k of keywords) {
+    if (OUTER.has(k) && outer === null) outer = k;
+    else if (INNER.has(k) && inner === null) inner = k;
+    else if (k === 'list-item' && !listItem) listItem = true;
+    else return value;
+  }
+  inner ??= 'flow';
+  outer ??= inner === 'ruby' ? 'inline' : 'block';
+  if (listItem) return [outer === 'block' ? null : outer, inner === 'flow' ? null : inner, 'list-item'].filter(Boolean).join(' ');
+  return SHORT[`${outer} ${inner}`] ?? `${outer} ${inner}`;
+}
+
+// flex serializes as its three longhands (flex: 1 is 1 1 0%, auto is
+// 1 1 auto): omitted grow and shrink are 1, an omitted basis 0%.
+function flexLonghands(value) {
+  const lower = value.toLowerCase();
+  if (lower === 'none') return '0 0 auto';
+  if (lower === 'auto') return '1 1 auto';
+  const parts = segments(value).filter((part, i) => i % 2 === 0 && part !== '');
+  if (parts.length === 1 && /^(initial|inherit|unset|revert|revert-layer)$/i.test(parts[0])) return value;
+  if (/var\(|env\(|attr\(/i.test(value)) return value;
+  const numbers = [];
+  let basis = null;
+  for (const part of parts) {
+    if (/^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(part) && numbers.length < 2 && (basis === null || numbers.length > 0)) numbers.push(String(Number(part)));
+    else basis = ZERO.test(part) ? '0px' : part;
+  }
+  return `${numbers[0] ?? '1'} ${numbers[1] ?? '1'} ${basis ?? '0%'}`;
+}
+
+function serializeDeclared(name, value, mode) {
+  if (name === 'display' && mode === 'spec') return displayShortForm(value);
+  if (name === 'flex') return flexLonghands(canonicalNumbers(value));
+  if (name === 'font') return serializeFont(canonicalNumbers(value));
   value = canonicalNumbers(value);
   if (isColorProperty(name)) value = declaredColors(value);
   if (value.includes('(')) return value;
@@ -138,7 +214,7 @@ function serializeDeclared(name, value) {
   return tokens.join(' ');
 }
 
-function parseInto(decls, text) {
+function parseInto(decls, text, mode) {
   decls.clear();
   for (const part of splitOutside(String(text ?? ''), ';')) {
     const colon = part.indexOf(':');
@@ -148,20 +224,57 @@ function parseInto(decls, text) {
     let important = false;
     const bang = value.match(/\s*!\s*important\s*$/i);
     if (bang) { important = true; value = value.slice(0, bang.index).trim(); }
-    if (name && value) decls.set(name, { value: declaredValue(name, value), important });
+    if (!name || !value) continue;
+    const declared = declaredValue(name, value, mode);
+    if (declared === INVALID) continue;
+    if (MERGEABLE.has(name)) decls.mergeable = true;
+    decls.set(name, { value: declared, important });
   }
 }
 
 // A declaration list's declarations (a style attribute's value).
-export function parseDeclarations(text) {
+export function parseDeclarations(text, mode) {
   const decls = new Map();
-  parseInto(decls, text);
+  parseInto(decls, text, mode);
   return decls;
 }
 
-function serialize(decls) {
+// A declaration block serialized (CSSOM): longhands of a shorthand that are
+// all present with the same importance are written as the shorthand, at the
+// first one's place. jsdom merges margin, padding and flex (jsdom 26: margin
+// and padding, as written: 1px 2px 1px 2px).
+const MERGED = {
+  spec: ['margin', 'padding', 'flex'].map((shorthand) => [shorthand, SHORTHANDS[shorthand]]),
+  jsdom26: ['margin', 'padding'].map((shorthand) => [shorthand, SHORTHANDS[shorthand]]),
+};
+// A block that ever held one of their longhands is marked (decls.mergeable),
+// so most blocks skip merging.
+const MERGEABLE = new Set(MERGED.spec.flatMap(([, longhands]) => longhands));
+function serialize(decls, mode = 'spec') {
+  let merged = null; // longhand -> shorthand to write in its place ('' to skip)
+  if (decls.mergeable === true && decls.size >= 3) for (const [shorthand, longhands] of MERGED[mode]) {
+    const first = decls.get(longhands[0]);
+    if (first === undefined || !longhands.every((l) => decls.get(l)?.important === first.important)) continue;
+    const values = longhands.map((l) => decls.get(l).value);
+    const value = mode === 'jsdom26' ? values.join(' ') : COMPOSED[shorthand](values);
+    merged ??= new Map();
+    let place = null;
+    for (const name of decls.keys()) if (longhands.includes(name)) { place = name; break; }
+    for (const l of longhands) merged.set(l, l === place ? { name: shorthand, value, important: first.important } : '');
+  }
   let out = '';
-  for (const [name, { value, important }] of decls) out += `${out ? ' ' : ''}${name}: ${value}${important ? ' !important' : ''};`;
+  if (merged === null) {
+    for (const [name, { value, important }] of decls) out += `${out ? ' ' : ''}${name}: ${value}${important ? ' !important' : ''};`;
+    return out;
+  }
+  for (const [name, decl] of decls) {
+    let { value, important } = decl;
+    let written = name;
+    const m = merged.get(name);
+    if (m === '') continue;
+    if (m) ({ name: written, value, important } = m);
+    out += `${out ? ' ' : ''}${written}: ${value}${important ? ' !important' : ''};`;
+  }
   return out;
 }
 
@@ -174,7 +287,7 @@ export const computed = { value: null };
 function sync(style) {
   const s = state(style);
   if (s.element) {
-    s.element[S].attrs.set('style', serialize(s.decls));
+    s.element[S].attrs.set('style', serialize(s.decls, s.mode));
     attributesChanged(s.element);
   } else cssomChanges.rev++;
 }
@@ -199,15 +312,13 @@ export function escapeIdentifier(value) {
   return out;
 }
 
-let knownProperties = null;
-const isKnownProperty = (name) => {
-  knownProperties ??= new Set(STYLE_ACCESSORS.map(cssName));
-  return name.startsWith('--') || knownProperties.has(name.toLowerCase());
+// CSS.supports(property, value): a supported property with a valid value
+// (the same check as style declarations; jsdom 30 validates too).
+const supportsDeclaration = (property, value) => {
+  const name = String(property).trim().toLowerCase();
+  const text = String(value).trim();
+  return text !== '' && declaredValue(name, text, 'spec') !== INVALID;
 };
-
-// CSS.supports(property, value): a supported property with a value. Values
-// are not validated (no CSS value parser yet).
-const supportsDeclaration = (property, value) => isKnownProperty(String(property).trim()) && String(value).trim() !== '';
 
 // A <supports-condition> (CSS Conditional Rules): not / and / or, (decl),
 // nested conditions and selector(); unknown syntax is false.
@@ -281,7 +392,7 @@ export function cssNamespace(matchesSelector) {
 
 export function computedStyle(element, proto) {
   const style = Object.create(proto);
-  style[S] = { element, computed: true, decls: new Map() };
+  style[S] = { element, computed: true, decls: new Map(), mode: modeOf(proto) };
   return style;
 }
 
@@ -311,8 +422,10 @@ function writeComputed(s, name, value) {
     s.overrides.set(name, value == null ? '' : String(value).trim());
     return;
   }
-  const text = value == null ? '' : declaredValue(name, String(value).trim());
-  if (text === '') return;
+  const raw = value == null ? '' : String(value).trim();
+  if (raw === '') return;
+  const text = declaredValue(name, raw, s.mode);
+  if (text === INVALID) return;
   (s.overrides ??= new Map()).set(name, text);
   const es = s.element[S];
   const rev = es.doc[S].treeRev ?? 0;
@@ -325,18 +438,45 @@ const valueOf = (style, name) => {
   if (s.computed) return computedOverride(s, name) ?? computed.value(s.element, name);
   const decl = s.decls.get(name);
   if (decl) return decl.value;
-  return LONGHANDS[name] ? fromShorthand(s.decls, name) : '';
+  if (LONGHANDS[name]) return fromShorthand(s.decls, name);
+  // jsdom 26 read background as the background-color set alone.
+  if (name === 'background' && s.mode === 'jsdom26') return s.decls.get('background-color')?.value ?? '';
+  return COMPOSED[name] ? composeShorthand(s.decls, name) : '';
 };
+
+// Shorthands whose longhands a declaration block reads through them, as in
+// jsdom (its CSS layer expands these; overflow: hidden leaves overflow-x
+// empty there, and tests rely on that).
+const EXPANDED_SHORTHANDS = new Set(['background', 'background-position', 'border', 'border-top', 'border-right', 'border-bottom', 'border-left',
+  'border-color', 'border-style', 'border-width', 'flex', 'font', 'margin', 'padding']);
 
 // A longhand set by a declared shorthand (margin-top from margin: 0 auto);
 // the last such shorthand wins.
 function fromShorthand(decls, longhand) {
   let found = '';
   for (const [name, { value }] of decls) {
-    if (!SHORTHANDS[name]) continue;
+    if (!EXPANDED_SHORTHANDS.has(name)) continue;
     for (const [part, v] of expand(name, value)) if (part === longhand) found = v;
   }
   return found;
+}
+
+// A shorthand read from its longhands when every one is declared, as jsdom
+// composes them (margin from margin-top, -right, -bottom and -left).
+const COMPOSED = {
+  margin: (v) => serializeBox(v),
+  padding: (v) => serializeBox(v),
+  flex: ([grow, shrink, basis]) => `${grow} ${shrink} ${basis}`,
+  'background-position': ([x, y]) => `${x} ${y}`,
+};
+function composeShorthand(decls, name) {
+  const values = [];
+  for (const longhand of SHORTHANDS[name]) {
+    const value = decls.get(longhand)?.value ?? fromShorthand(decls, longhand);
+    if (!value) return '';
+    values.push(value);
+  }
+  return COMPOSED[name](values);
 }
 
 function setDeclaration(style, name, value, priority = '') {
@@ -346,15 +486,19 @@ function setDeclaration(style, name, value, priority = '') {
     writeComputed(s, name, value);
     return;
   }
-  const text = value == null ? '' : declaredValue(name, String(value).trim());
+  const raw = value == null ? '' : String(value).trim();
   // The style attribute is updated only when a declaration changed (CSSOM).
-  if (text === '') {
+  if (raw === '') {
     if (s.decls.delete(name)) sync(style);
     return;
   }
+  // Unknown properties and invalid values are ignored (CSSOM).
+  const text = declaredValue(name, raw, s.mode);
+  if (text === INVALID) return;
   const important = String(priority).toLowerCase() === 'important';
   const old = s.decls.get(name);
   if (old && old.value === text && old.important === important) return;
+  if (old === undefined && MERGEABLE.has(name)) s.decls.mergeable = true;
   s.decls.set(name, { value: text, important });
   sync(style);
 }
@@ -363,18 +507,18 @@ export const CSS_INTERFACES = [
   {
     name: 'CSSStyleDeclaration',
     members: {
-      get cssText() { return serialize(state(this).decls); },
+      get cssText() { const s = state(this); return serialize(s.decls, s.mode); },
       set cssText(text) {
         const s = state(this);
         if (s.computed) {
           if (!mutableComputed(s)) readOnly();
           const decls = new Map();
-          parseInto(decls, text);
+          parseInto(decls, text, s.mode);
           s.overrides = new Map([...decls].map(([name, { value }]) => [name, value]));
           s.replaced = true;
           return;
         }
-        parseInto(s.decls, text);
+        parseInto(s.decls, text, s.mode);
         sync(this);
       },
       get length() { return state(this).decls.size; },
@@ -412,20 +556,20 @@ export const CSS_INTERFACES = [
 // A declaration block owned by a CSS rule (CSSStyleRule.style, ...).
 export function declarationBlock(proto, text, parentRule) {
   const style = Object.create(proto);
-  style[S] = { element: null, decls: new Map(), parentRule };
-  parseInto(style[S].decls, text);
+  style[S] = { element: null, decls: new Map(), parentRule, mode: modeOf(proto) };
+  parseInto(style[S].decls, text, style[S].mode);
   return style;
 }
 
-export const serializeDeclarations = (style) => serialize(style[S].decls);
+export const serializeDeclarations = (style) => serialize(style[S].decls, style[S].mode);
 
 // The element's style object, created on first use from its style attribute.
 export function styleOf(element, proto) {
   const es = state(element);
   if (!es.style) {
     const style = Object.create(proto);
-    style[S] = { element, decls: new Map() };
-    parseInto(style[S].decls, es.attrs.get('style'));
+    style[S] = { element, decls: new Map(), mode: modeOf(proto) };
+    parseInto(style[S].decls, es.attrs.get('style'), style[S].mode);
     es.style = style;
   }
   return es.style;
@@ -434,5 +578,5 @@ export function styleOf(element, proto) {
 // Called when the style attribute is set or removed directly.
 export function styleAttributeChanged(element) {
   const es = element[S];
-  if (es.style) parseInto(es.style[S].decls, es.attrs.get('style'));
+  if (es.style) parseInto(es.style[S].decls, es.attrs.get('style'), es.style[S].mode);
 }

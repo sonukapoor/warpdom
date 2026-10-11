@@ -96,3 +96,22 @@ test('Vitest keeps Node\'s AbortController and AbortSignal, as its jsdom environ
     result.teardown();
   }
 });
+
+test('Vitest: the global CSS exists (undefined) when the jsdom profile has no CSS namespace', async () => {
+  const { default: environment } = await import('../src/vitest.js');
+  const global = {};
+  const result = environment.setup(global, { warpdom: { jsdom: '27.2.0' } });
+  try {
+    assert.equal('CSS' in global, true);
+    assert.equal(global.CSS, undefined);
+  } finally {
+    result.teardown();
+  }
+  const latest = {};
+  const r2 = environment.setup(latest, { warpdom: { jsdom: 30 } });
+  try {
+    assert.equal(typeof latest.CSS.supports, 'function');
+  } finally {
+    r2.teardown();
+  }
+});

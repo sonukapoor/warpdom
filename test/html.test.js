@@ -384,3 +384,22 @@ parity('base URLs', (w) => {
   out.push(new URL('/api/x/?s#f', d.baseURI).href);
   return out;
 });
+
+// Images without loading or layout, as in jsdom.
+parity('img: width, height, natural sizes, complete', (w) => {
+  const d = w.document;
+  const out = [];
+  for (const attrs of ['', 'width=10 height=20', 'width=abc', 'width=10.7', 'width="  7px"']) {
+    d.body.innerHTML = `<img ${attrs}>`;
+    out.push([d.body.firstChild.width, d.body.firstChild.height]);
+  }
+  const img = d.createElement('img');
+  img.width = 33;
+  img.height = '44';
+  out.push([img.getAttribute('width'), img.getAttribute('height'), img.width, img.naturalWidth, img.naturalHeight, img.complete, img.currentSrc]);
+  img.src = 'x.png';
+  out.push([img.complete, img.currentSrc]);
+  const legacy = new w.Image(5, 6);
+  out.push([legacy.width, legacy.height]);
+  return out;
+});

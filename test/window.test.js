@@ -201,3 +201,34 @@ parity('class strings: Object.prototype.toString names the interface', (w) => {
   ];
   return objects.map((o) => Object.prototype.toString.call(o));
 });
+
+test('interfaces are created on first use, once per window', () => {
+  const w = createWindow();
+  const lazy = (name) => typeof Object.getOwnPropertyDescriptor(w, name).get === 'function';
+  assert.equal(lazy('HTMLTableElement'), true);
+  assert.equal('HTMLTableElement' in w, true);
+  const table = w.document.createElement('table');
+  assert.equal(lazy('HTMLTableElement'), false);
+  assert.equal(table instanceof w.HTMLTableElement, true);
+  assert.equal(w.HTMLTableElement, w.HTMLTableElement);
+  assert.equal(Object.getPrototypeOf(w.HTMLTableElement), w.HTMLElement);
+  // Another window has its own interfaces.
+  const other = createWindow();
+  assert.notEqual(other.HTMLTableElement, w.HTMLTableElement);
+  assert.equal(table instanceof other.HTMLTableElement, false);
+  // A mock assigned before the interface exists stays.
+  const mock = function ResizeObserverMock() {};
+  w.ResizeObserver = mock;
+  w.MutationObserver = mock;
+  new w.MutationObserver(() => {});
+  assert.equal(w.MutationObserver, mock);
+  // Deleted stays deleted, also when warpdom creates the interface itself.
+  delete w.HTMLDialogElement;
+  w.document.createElement('dialog');
+  assert.equal('HTMLDialogElement' in w, false);
+  // Legacy factory constructors.
+  const img = new w.Image();
+  assert.equal(img instanceof w.HTMLImageElement, true);
+  assert.equal(w.Image.prototype, w.HTMLImageElement.prototype);
+  assert.equal(new w.Option('a', 'b').value, 'b');
+});

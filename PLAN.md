@@ -254,7 +254,38 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   parsed without knowing their window): jsdom 26 does not shorten box
   shorthands (margin: 0 0 stays 0px 0px), and jsdom before 28 keeps a lone
   0 as written for properties its CSS layer did not know (inset: 0).
-  CSS value validation (jsdom drops width: 0 10px) is still open.
+  CSS value validation (jsdom drops width: 0 10px): done 2026-10-11, see
+  below.
+- **2026-10-11: CSS value validation from the specifications' grammars.**
+  Style writes, cssText, style attributes and style sheets drop invalid
+  values and unknown properties, as CSSOM says and jsdom does (react-spectrum
+  sets width: undefined%). Grammars are generated from @webref/css
+  (src/css-grammar.js); src/css-values.js tokenizes values and matches them
+  against the value definition syntax. It fails open: a grammar it cannot
+  read, or a type defined only in prose, accepts every value. Against
+  jsdom 30, 35,420 property/value pairs: no valid value rejected; about
+  1,100 invalid ones accepted (fail-open). jsdom profile: from 27 every
+  property is checked; jsdom 26 checked about 60 (the list is in css.js,
+  observed black-box). Grammar overrides where browsers implement other
+  drafts (SVG 2 paint for fill/stroke, legacy keywords) are in the
+  generator. Not done: calc() simplification as jsdom serializes it.
+  Performance (hot path, recorded per the rules): results are cached per
+  mode, property and value (repeated writes unchanged, ~130 ns), and per
+  value shape (numbers replaced by their class), so values that change
+  every write cost one scan and a lookup: 449 -> 562 ns per write in the
+  unique-values benchmark, +25%, which validation needs.
+- **2026-10-11: Interfaces are created on first use.** A window defined
+  every interface's prototype (about 300, thousands of members) when
+  created; a test touches a few dozen. The window's constructor properties
+  and the internal protos table start as accessors that create the
+  interface (parent first) and then become data properties; each is
+  created once per window, and a deleted or replaced constructor property
+  stays so. Image, Audio and Option are lazy too, and the CSS validation
+  mode is set when CSSStyleProperties is created. createWindow 2.75 ms ->
+  0.42 ms; Vitest environment setup + teardown per test file 3.0 ms ->
+  0.63 ms. Prototypes stay per window (shared ones would be cheaper still,
+  but a prototype mock left in place would leak into the next test file).
+  Module load: 25.4 -> 26.7 ms with the CSS grammars (once per worker).
   Corpus note: solid's transition.spec fails on jsdom too when its files
   run in a certain order (isolate: false shares solid's module state), so
   its one difference is a solid flake, not warpdom.

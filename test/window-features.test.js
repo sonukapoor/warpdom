@@ -127,3 +127,14 @@ parity('legacy and document-only event handlers', (w) => {
   const names = ['onwebkitanimationend', 'onwebkitanimationiteration', 'onwebkitanimationstart', 'onwebkittransitionend', 'onanimationend', 'ontransitionend'];
   return [names.map((n) => [n in w, n in d, n in el]), 'onreadystatechange' in d, 'onreadystatechange' in el, typeof w.InputEvent.prototype.getTargetRanges];
 });
+
+// An exception in a queueMicrotask callback becomes an error event.
+parity('queueMicrotask reports exceptions', async (w) => {
+  const seen = [];
+  w.addEventListener('error', (e) => { seen.push([e.constructor.name, e.message, e.error?.message, e.cancelable]); e.preventDefault(); });
+  w.queueMicrotask(() => { throw new Error('boom'); });
+  let typeError;
+  try { w.queueMicrotask(42); } catch (e) { typeError = e.name; }
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  return [seen, typeError];
+});
