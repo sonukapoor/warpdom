@@ -67,7 +67,7 @@ test('the style attribute and the style object stay in sync', () => {
 test('cssText parsing handles semicolons inside url() and quotes', () => {
   const el = createWindow().document.createElement('div');
   el.style.cssText = 'background-image: url(data:image/png;base64,AAA); content: "a;b"; color: red !important';
-  assert.equal(el.style.backgroundImage, 'url(data:image/png;base64,AAA)');
+  assert.equal(el.style.backgroundImage, 'url("data:image/png;base64,AAA")');
   assert.equal(el.style.content, '"a;b"');
   assert.equal(el.style.getPropertyPriority('color'), 'important');
   assert.equal(el.style.length, 3);
@@ -183,3 +183,124 @@ const shorthandReads = (w) => {
 };
 parity('style: shorthand expansion and composition', shorthandReads);
 parity('style: shorthand expansion and composition (jsdom 26)', shorthandReads, { jsdom: 26 });
+
+parity('style declarations are indexed and iterable', (w) => {
+  const style = w.document.createElement('div').style;
+  style.cssText = 'color: red; margin-top: 1px';
+  const out = [Object.keys(style), style[0], style[1], style[2], 0 in style, 2 in style, [...style]];
+  style.removeProperty('color');
+  style.setProperty('width', '1px');
+  out.push(Object.keys(style), [...style]);
+  style.cssText = '';
+  out.push(Object.keys(style), style[0], typeof w.CSSStyleDeclaration.prototype[Symbol.iterator]);
+  return out;
+});
+
+for (const jsdom of [30, 26]) {
+  parity(`function arguments, lists and url() serialize as in jsdom ${jsdom}`, (w) => {
+    const style = w.document.createElement('div').style;
+    const cases = [['width', 'clamp(10px,20%,3em)'], ['width', 'min(50%,  100px)'], ['top', 'max(1px , 10vh)'],
+      ['background-image', 'linear-gradient(to right,#FFF,rgb(0,0,0))'], ['background-image', 'linear-gradient(red,blue),url(a.png)'],
+      ['background', 'url(a.png) no-repeat'], ['background-image', "url('a.png') , url(\"b.png\")"], ['border-image', 'linear-gradient(red,blue) 1'],
+      ['border-image-source', 'linear-gradient(red,blue)'], ['transform', 'translate(min(1px,5%),2px)'], ['transform', 'translate(1px,2px)'],
+      ['font-family', 'Arial ,"Helvetica Neue",  sans-serif'], ['font', 'bold 12px/1.5 Arial,sans-serif'], ['content', 'url(a.png)'],
+      ['cursor', 'url(a.png),auto'], ['filter', 'url(#f)'], ['mask-image', 'url(a.png)'], ['list-style-image', 'url(a.png)'],
+      ['box-shadow', '0 0 1px rgba(0,0,0,.5),0 1px red'], ['--x', 'url(a.png)'], ['transition', 'opacity 1s,transform 2s']];
+    return cases.map(([name, value]) => { style.cssText = ''; style.setProperty(name, value); return style.getPropertyValue(name); });
+  }, { jsdom });
+}
+
+parity('custom properties keep their value as written; integers keep their digits', (w) => {
+  const style = w.document.createElement('div').style;
+  const out = [];
+  for (const [name, value] of [['--one', '1'.repeat(25)], ['--x', '1.50'], ['--y', ' .5  px '], ['--z', '#FFF'], ['--w', '0'], ['z-index', '+007'], ['opacity', '1.0'], ['flex-grow', '+2']]) {
+    style.setProperty(name, value);
+    out.push(style.getPropertyValue(name));
+  }
+  return out;
+});
+
+parity('null, undefined and custom property names in style declarations', (w) => {
+  const style = w.document.createElement('div').style;
+  const out = [];
+  style.color = 'red';
+  style.setProperty('color', undefined);
+  out.push(style.color);
+  style.color = undefined;
+  out.push(style.color);
+  style.setProperty('color', 'blue', null);
+  out.push(style.color, style.getPropertyPriority('color'));
+  style.setProperty('color', null);
+  out.push(style.color);
+  style.setProperty('--Foo', '1');
+  out.push(style.getPropertyValue('--Foo'), style.getPropertyValue('--foo'), style.cssText, style[0]);
+  style.cssText = '--Bar: 2';
+  out.push(style.getPropertyValue('--Bar'), style.getPropertyValue('--bar'), w.CSSStyleDeclaration.prototype.setProperty.length);
+  return out;
+});
+
+parity('background-position and its longhands', (w) => {
+  const style = w.document.createElement('div').style;
+  const out = [];
+  for (const value of ['left 10px top 20px', '10px 20px', 'center', 'top', 'top left', 'right 5% bottom', 'top 10px left', 'top 10px left 20px', 'left, top, 10px', '0 0', '50% 0', '10px left']) {
+    style.cssText = '';
+    style.backgroundPosition = value;
+    out.push([style.backgroundPosition, style.backgroundPositionX, style.backgroundPositionY, style.cssText]);
+  }
+  style.cssText = '';
+  style.backgroundPositionX = 'right 10px';
+  style.backgroundPositionY = 'bottom 20px';
+  out.push(style.backgroundPosition, style.cssText);
+  return out;
+});
+
+parity('the background shorthand sets its longhands per layer', (w) => {
+  const style = w.document.createElement('div').style;
+  const names = ['image', 'position', 'position-x', 'position-y', 'size', 'repeat', 'attachment', 'origin', 'clip', 'color'];
+  return ['url(a.png) 10px 20px / 30px 40px no-repeat red', 'red', 'url(a.png)', 'url(a.png) center / cover, blue', 'none',
+    'linear-gradient(red,blue) fixed', 'url(a.png) repeat-x content-box padding-box', 'url(a.png) 10px/20px'].map((value) => {
+    style.cssText = '';
+    style.background = value;
+    return names.map((n) => style.getPropertyValue(`background-${n}`));
+  });
+});
+
+parity('computed styles: removing a value throws; CSS.supports edge cases', (w) => {
+  const cs = w.getComputedStyle(w.document.body);
+  const t = (f) => { try { return f(); } catch (e) { return e.name; } };
+  return [
+    t(() => { cs.color = ''; return cs.color; }), t(() => { cs.webkitTransition = ''; return 1; }), t(() => { cs.width = null; return 1; }),
+    t(() => { cs.width = '10px'; return cs.width; }),
+    w.CSS.supports(' color', 'red'), w.CSS.supports('color ', 'red'), w.CSS.supports('(color: red) AND (display: block)'),
+    w.CSS.supports('(color: red) OR (display: x)'), w.CSS.supports('NOT (color: x)'), w.CSS.supports('COLOR', 'red'),
+  ];
+});
+
+for (const jsdom of [30, 26]) {
+  parity(`cssText: a normal declaration after an important one (jsdom ${jsdom})`, (w) => {
+    const style = w.document.createElement('div').style;
+    style.cssText = 'color: red !important; color: blue';
+    const out = [style.color, style.getPropertyPriority('color')];
+    style.cssText = 'padding: 10px !important; padding-left: 20px;';
+    out.push(style.getPropertyValue('padding-left'));
+    return out;
+  }, { jsdom });
+}
+
+parity('CSS-wide keywords serialize lowercased', (w) => {
+  const style = w.document.createElement('div').style;
+  return [['color', 'INHERIT'], ['margin', 'Initial'], ['display', 'UNSET'], ['flex', 'INITIAL'], ['--x', 'INHERIT']].map(([name, value]) => {
+    style.cssText = '';
+    style.setProperty(name, value);
+    return style.getPropertyValue(name);
+  });
+});
+
+parity('background-repeat serializes in its shortest form', (w) => {
+  const style = w.document.createElement('div').style;
+  return ['repeat repeat', 'repeat no-repeat', 'no-repeat repeat', 'space round', 'no-repeat no-repeat', 'repeat-x', 'round round, repeat no-repeat'].map((value) => {
+    style.cssText = '';
+    style.backgroundRepeat = value;
+    return style.backgroundRepeat;
+  });
+});

@@ -25,12 +25,12 @@ export const SVG_NS = 'http://www.w3.org/2000/svg';
 // Change notifications for MutationObserver (set by mutation.js). Called only
 // when the document has observers: see observed().
 export const hooks = {
-  childList: null, attribute: null, characterData: null, activation: null, frames: null, slots: null,
+  childList: null, attribute: null, characterData: null, removed: null, activation: null, frames: null, slots: null,
   // Live range updates (ranges.js); called only when a document has live ranges.
   rangeInsert: null, rangeRemove: null, rangeReplaceData: null,
   // NodeIterator pre-removing steps (traversal.js); called only when a
-  // document has NodeIterators.
-  iteratorRemove: null,
+  // document has node iterators.
+  nodeIteratorRemove: null,
   // Custom element reactions (custom-elements.js); set once something is defined.
   ce: null,
 };
@@ -57,6 +57,64 @@ export function initNode(node, type, doc, extra) {
   };
   return node;
 }
+
+// ASCII lowercase (DOM names): other characters keep their case. Names that
+// are already lowercase (the usual case) cost one toLowerCase, which returns
+// the same string.
+export function asciiLowercase(name) {
+  const lower = name.toLowerCase();
+  if (lower === name) return name;
+  for (let i = 0; i < name.length; i++) {
+    if (name.charCodeAt(i) > 127) return name.replace(/[A-Z]+/g, (m) => m.toLowerCase());
+  }
+  return lower;
+}
+
+// Name validation (DOM, "valid element local name", "valid attribute local
+// name", "valid namespace prefix"): a loop over the characters for the usual
+// names, a regular expression for names that do not start with a letter.
+const SPECIAL_ELEMENT_NAME = /^[:_\u0080-\u{10FFFF}][A-Za-z0-9\-.:_\u0080-\u{10FFFF}]*$/u;
+export function validElementLocalName(name) {
+  const n = name.length;
+  if (n === 0) return false;
+  const c = name.charCodeAt(0) | 32;
+  if (c < 97 || c > 122) return SPECIAL_ELEMENT_NAME.test(name);
+  for (let i = 1; i < n; i++) {
+    const d = name.charCodeAt(i);
+    if (d <= 32 ? d === 0 || d === 9 || d === 10 || d === 12 || d === 13 || d === 32 : d === 47 || d === 62) return false;
+  }
+  return true;
+}
+// createElement in an HTML document: the name validated and ASCII
+// lowercased in one pass, or null when it is not a valid element local name.
+export function htmlElementName(name) {
+  const n = name.length;
+  if (n === 0) return null;
+  const c = name.charCodeAt(0);
+  if (((c | 32) < 97 || (c | 32) > 122)) return SPECIAL_ELEMENT_NAME.test(name) ? asciiLowercase(name) : null;
+  let upper = c < 97;
+  for (let i = 1; i < n; i++) {
+    const d = name.charCodeAt(i);
+    if (d <= 32) {
+      if (d === 0 || d === 9 || d === 10 || d === 12 || d === 13 || d === 32) return null;
+    } else if (d === 47 || d === 62) return null;
+    else if (d >= 65 && d <= 90) upper = true;
+  }
+  return upper ? asciiLowercase(name) : name;
+}
+
+// Attribute local names: no ASCII whitespace, NULL, "/", "=" or ">".
+export function validAttributeLocalName(name) {
+  const n = name.length;
+  if (n === 0) return false;
+  for (let i = 0; i < n; i++) {
+    const d = name.charCodeAt(i);
+    if (d <= 32 ? d === 0 || d === 9 || d === 10 || d === 12 || d === 13 || d === 32 : d === 47 || d === 61 || d === 62) return false;
+  }
+  return true;
+}
+// Namespace prefixes allow "=".
+export const validNamespacePrefix = (name) => name !== '' && validAttributeLocalName(name.replace(/=/g, 'a'));
 
 // DOMException is a web standard global (browsers, Node, Deno, edge runtimes).
 export function domError(message, name) {
@@ -108,24 +166,207 @@ export function insert(parent, node, ref) {
   return hooks.ce === null ? insertNode(parent, node, ref) : hooks.ce.scope(insertNode, parent, node, ref);
 }
 
-function insertNode(parent, node, ref) {
-  const ps = state(parent);
-  const ns = state(node);
-  if (ref != null && state(ref).parent !== parent) {
-    throw domError('The node before which the new node is to be inserted is not a child of this node.', 'NotFoundError');
+const hierarchyError = (message) => domError(message, 'HierarchyRequestError');
+
+// The host of a shadow root or of a template's contents, or null.
+const hostOf = (s) => (s.shadow === true ? s.host : s.templateHost ?? null);
+
+// node is a host-including inclusive ancestor of other.
+function hostIncludingContains(node, other) {
+  for (let n = other; n !== null;) {
+    if (n === node) return true;
+    const s = n[S];
+    n = s.parent ?? hostOf(s);
   }
-  // One walk from parent to its root: node must not be an inclusive ancestor
-  // of parent, and the root tells whether parent is connected.
+  return false;
+}
+
+// Steps shared by "ensure pre-insertion validity" and "replace" (DOM 4.2.3),
+// in the standard's order: parent's type, node not a host-including inclusive
+// ancestor of parent, child a child of parent, node's type. Returns parent's
+// root: the walk to it is the ancestor check, and the caller needs the root.
+// Inserting an element or text into an element (the common case) costs that
+// walk and a few type tests; the document rules only run for a document.
+function checkInsert(parent, ps, node, ns, child, replacing) {
+  const pt = ps.type;
+  if (pt !== ELEMENT_NODE && pt !== DOCUMENT_NODE && pt !== DOCUMENT_FRAGMENT_NODE) {
+    throw hierarchyError('This node type does not support this method.');
+  }
   let root = parent;
   for (let n = parent; n !== null; n = n[S].parent) {
-    if (n === node) throw domError('The new child element contains the parent.', 'HierarchyRequestError');
+    if (n === node) throw hierarchyError('The new child element contains the parent.');
     root = n;
   }
-  if (ns.type === DOCUMENT_FRAGMENT_NODE) {
-    while (ns.first) insert(parent, ns.first, ref);
+  // Through shadow hosts and template hosts (roots that are fragments), only
+  // for a node with children.
+  if (ns.first !== null && root[S].type === DOCUMENT_FRAGMENT_NODE) {
+    const host = hostOf(root[S]);
+    if (host !== null && hostIncludingContains(node, host)) throw hierarchyError('The new child element contains the parent.');
+  }
+  if (child !== null && state(child).parent !== parent) {
+    throw domError(replacing
+      ? 'The node to be replaced is not a child of this node.'
+      : 'The node before which the new node is to be inserted is not a child of this node.', 'NotFoundError');
+  }
+  const nt = ns.type;
+  if (nt === ELEMENT_NODE || nt === TEXT_NODE) {
+    if (pt !== DOCUMENT_NODE) return root;
+  } else if (nt === DOCUMENT_TYPE_NODE) {
+    if (pt !== DOCUMENT_NODE) throw hierarchyError('Nodes of type #doctype may only be inserted into a document.');
+  } else if (nt !== DOCUMENT_FRAGMENT_NODE && ns.data === undefined) {
+    throw hierarchyError(nt === DOCUMENT_NODE ? 'Nodes of type #document may not be inserted.' : 'This node type may not be inserted.');
+  }
+  if (pt === DOCUMENT_NODE) {
+    // replaceChildren: the document's current children are going away.
+    if (replacing === 'all') checkDocumentChild(NO_CHILDREN, ns, null, null, null);
+    else if (replacing) checkDocumentChild(ps, ns, child, child[S].next, child[S].prev);
+    else checkDocumentChild(ps, ns, null, child, child !== null ? child[S].prev : ps.last);
+  }
+  return root;
+}
+
+// The document rules: no text, one element child, at most one doctype, the
+// doctype before the element. replaced: the child being replaced (it does not
+// count); after: the first node that must not be a doctype or have one after
+// it; before: the last node that must not be an element or have one before it.
+function checkDocumentChild(ds, ns, replaced, after, before) {
+  const nt = ns.type;
+  if (nt === TEXT_NODE) throw hierarchyError('Text nodes may not be inserted into a document.');
+  let element = nt === ELEMENT_NODE;
+  if (nt === DOCUMENT_FRAGMENT_NODE) {
+    let elements = 0;
+    for (let c = ns.first; c !== null; c = c[S].next) {
+      const t = c[S].type;
+      if (t === ELEMENT_NODE) elements++;
+      else if (t === TEXT_NODE) throw hierarchyError('Text nodes may not be inserted into a document.');
+    }
+    if (elements > 1) throw hierarchyError('A document may have only one element child.');
+    element = elements === 1;
+  }
+  if (element) {
+    for (let c = ds.first; c !== null; c = c[S].next) {
+      if (c[S].type === ELEMENT_NODE && c !== replaced) throw hierarchyError('A document may have only one element child.');
+    }
+    for (let c = after; c !== null; c = c[S].next) {
+      if (c[S].type === DOCUMENT_TYPE_NODE) throw hierarchyError('An element may not be inserted before the doctype.');
+    }
+  } else if (nt === DOCUMENT_TYPE_NODE) {
+    for (let c = ds.first; c !== null; c = c[S].next) {
+      if (c[S].type === DOCUMENT_TYPE_NODE && c !== replaced) throw hierarchyError('A document may have only one doctype.');
+    }
+    for (let c = before; c !== null; c = c[S].prev) {
+      if (c[S].type === ELEMENT_NODE) throw hierarchyError('A doctype must come before the document element.');
+    }
+  }
+}
+
+const NO_CHILDREN = { first: null, last: null };
+
+// The validity checks of replaceChildren, before it removes the children:
+// pre-insertion validity, with the document rules applied to the document
+// as it will be.
+export function checkReplaceAll(parent, node) {
+  checkInsert(parent, state(parent), node, state(node), null, 'all');
+}
+
+// Replace (DOM): replaceChild.
+export function replace(parent, node, child) {
+  return hooks.ce === null ? replaceNode(parent, node, child) : hooks.ce.scope(replaceNode, parent, node, child);
+}
+
+function replaceNode(parent, node, child) {
+  state(child);
+  const root = checkInsert(parent, state(parent), node, state(node), child, true);
+  let ref = child[S].next;
+  if (ref === node) ref = node[S].next;
+  let prev = child[S].prev;
+  if (prev === node) prev = node[S].prev;
+  // One mutation record for the removal and the insertion.
+  const record = observed(parent);
+  const nodes = record ? (node[S].type === DOCUMENT_FRAGMENT_NODE ? childArray(node).slice() : [node]) : null;
+  // Adopting node removes it from its parent first, with a record of its own.
+  if (node[S].parent !== null) remove(node[S].parent, node);
+  const removed = child[S].parent === parent;
+  if (removed) removeNode(parent, child, true);
+  if (node[S].type === DOCUMENT_FRAGMENT_NODE) insertFragment(parent, node, ref, root, true);
+  else insertChecked(parent, node, ref, root, true);
+  if (record) hooks.childList(parent, nodes, removed ? [child] : [], prev, ref);
+  return child;
+}
+
+// Replace all (DOM): parent's children replaced by node (or none), with one
+// mutation record. Callers have checked node (replaceChildren) or made it.
+export function replaceAll(parent, node) {
+  return hooks.ce === null ? replaceAllNode(parent, node) : hooks.ce.scope(replaceAllNode, parent, node);
+}
+
+function replaceAllNode(parent, node) {
+  const ps = state(parent);
+  if (node === null && ps.first === null) return;
+  const record = observed(parent);
+  const removed = record ? childArray(parent).slice() : null;
+  let added = null;
+  if (record) added = node === null ? [] : node[S].type === DOCUMENT_FRAGMENT_NODE ? childArray(node).slice() : [node];
+  while (ps.first !== null) removeNode(parent, ps.first, true);
+  if (node !== null) {
+    if (node[S].type === DOCUMENT_FRAGMENT_NODE) insertFragment(parent, node, null, rootOf(parent), true);
+    else insertChecked(parent, node, null, rootOf(parent), true);
+  }
+  if (record && (added.length || removed.length)) hooks.childList(parent, added, removed, null, null);
+}
+
+function insertNode(parent, node, ref) {
+  const child = ref ?? null;
+  const ps = state(parent);
+  const ns = state(node);
+  // The common case, an element or text into an element, checked inline:
+  // the ancestor walk (which also finds the root) and the reference child.
+  const nt = ns.type;
+  if (ps.type === ELEMENT_NODE && (nt === ELEMENT_NODE || nt === TEXT_NODE)) {
+    let root = parent;
+    for (let n = parent; n !== null; n = n[S].parent) {
+      if (n === node) throw hierarchyError('The new child element contains the parent.');
+      root = n;
+    }
+    if (ns.first !== null && root[S].type === DOCUMENT_FRAGMENT_NODE) {
+      const host = hostOf(root[S]);
+      if (host !== null && hostIncludingContains(node, host)) throw hierarchyError('The new child element contains the parent.');
+    }
+    if (child !== null && state(child).parent !== parent) {
+      throw domError('The node before which the new node is to be inserted is not a child of this node.', 'NotFoundError');
+    }
+    return insertChecked(parent, node, child, root, false);
+  }
+  const root = checkInsert(parent, ps, node, ns, child, false);
+  return ns.type === DOCUMENT_FRAGMENT_NODE ? insertFragment(parent, node, child, root, false) : insertChecked(parent, node, child, root, false);
+}
+
+// Insert a fragment's children (DOM "insert" for a DocumentFragment).
+function insertFragment(parent, node, ref, root, quiet) {
+  const ns = node[S];
+  if (ns.first === null) return node;
+  const recordParent = !quiet && observed(parent);
+  if (!recordParent && !observed(node)) {
+    while (ns.first) insertChecked(parent, ns.first, ref, root, true);
     return node;
   }
-  if (ns.type === DOCUMENT_NODE) throw domError('Nodes of type #document may not be inserted.', 'HierarchyRequestError');
+  // One record for the fragment's children leaving it, one for their
+  // insertion (DOM "insert" steps 4 and 9).
+  const nodes = childArray(node).slice();
+  const prev = ref !== null ? ref[S].prev : parent[S].last;
+  for (let i = 0; i < nodes.length; i++) removeNode(node, nodes[i], true);
+  if (observed(node)) hooks.childList(node, [], nodes, null, null);
+  for (let i = 0; i < nodes.length; i++) insertChecked(parent, nodes[i], ref, root, true);
+  if (recordParent) hooks.childList(parent, nodes, [], prev, ref);
+  return node;
+}
+
+// Insert a node that is not a fragment, after the validity checks; root is
+// parent's root. quiet: the "suppress observers" flag (the caller queues the
+// mutation record).
+function insertChecked(parent, node, ref, root, quiet) {
+  const ps = parent[S];
+  const ns = node[S];
   if (ref === node) ref = ns.next;
   const moved = ns.parent !== null;
   if (moved) remove(ns.parent, node);
@@ -144,13 +385,26 @@ function insertNode(parent, node, ref) {
   ps.count++;
   changed(parent);
   if (connected) indexIds(node, true);
-  if (observed(parent)) hooks.childList(parent, [node], [], ns.prev, ns.next);
+  if (!quiet && observed(parent)) hooks.childList(parent, [node], [], ns.prev, ns.next);
   if (hooks.ce !== null) hooks.ce.inserted(node);
   // Iframes get nested windows (frames.js), only in documents that have any.
   if (doc[S].frameCount && hooks.frames !== null && connected) hooks.frames.inserted(node);
   // Slot assignment changes (slots.js), only in documents with slots.
   if (doc[S].slotCount && hooks.slots !== null) hooks.slots.inserted(parent, node);
   return node;
+}
+
+// The appropriate template contents owner document (HTML): an inert
+// document without a browsing context, one per document, made on first use.
+export function templateContentsOwner(doc) {
+  const ds = doc[S];
+  if (ds.inertTemplate === true) return doc;
+  if (ds.templateDoc === undefined) {
+    const inert = ds.window[S].createDocument({ contentType: ds.xml ? ds.contentType : 'text/html', xml: !!ds.xml });
+    inert[S].inertTemplate = true;
+    ds.templateDoc = inert;
+  }
+  return ds.templateDoc;
 }
 
 // Moves node and its subtree to another document (DOM "adopt").
@@ -163,7 +417,7 @@ export function adopt(node, doc) {
     if (s.tag === 'slot' && s.ns === HTML_NS) doc[S].slotCount = (doc[S].slotCount ?? 0) + 1;
     if (s.tag === 'base' && s.ns === HTML_NS) doc[S].baseCount = (doc[S].baseCount ?? 0) + 1;
     if (s.attrNodes) for (const attr of s.attrNodes.values()) attr[S].doc = doc;
-    if (s.content) adopt(s.content, doc);
+    if (s.content) adopt(s.content, templateContentsOwner(doc));
   }
   if (hooks.ce !== null && oldDoc !== doc) hooks.ce.adopted(node, oldDoc, doc);
 }
@@ -172,13 +426,16 @@ export function remove(parent, node) {
   return hooks.ce === null ? removeNode(parent, node) : hooks.ce.scope(removeNode, parent, node);
 }
 
-function removeNode(parent, node) {
+function removeNode(parent, node, quiet) {
   const ps = state(parent);
   const ns = state(node);
   if (ns.parent !== parent) throw domError('The node to be removed is not a child of this node.', 'NotFoundError');
   const ownerDoc = ps.type === DOCUMENT_NODE ? parent : ps.doc;
   if (hasRanges(ownerDoc)) hooks.rangeRemove(ownerDoc, parent, node);
-  if (ownerDoc[S].iterators !== undefined) hooks.iteratorRemove(ownerDoc, node);
+  if (hooks.nodeIteratorRemove !== null) {
+    const its = ownerDoc[S].iterators;
+    if (its !== undefined && its.size !== 0) hooks.nodeIteratorRemove(ownerDoc, node);
+  }
   // Connected matters only for the id index and frames: skip the walk to the
   // root when the document has neither.
   const ods = ownerDoc[S];
@@ -198,7 +455,10 @@ function removeNode(parent, node) {
   if (focused && focused !== ownerDoc) {
     if (focusAncestors(ods, focused).has(node)) ods.focused = ownerDoc;
   } else ods.focusChainOf = null;
-  if (observed(parent)) hooks.childList(parent, [], [node], prev, next);
+  if (observed(parent)) {
+    if (!quiet) hooks.childList(parent, [], [node], prev, next);
+    hooks.removed(parent, node);
+  }
   if (hooks.ce !== null) hooks.ce.removed(node, wasConnected);
   if (ods.frameCount && hooks.frames !== null && connected) hooks.frames.removed(node);
   if (ods.slotCount && hooks.slots !== null) hooks.slots.removed(parent, node);

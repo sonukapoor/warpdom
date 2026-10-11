@@ -3,7 +3,7 @@
 // lazily the first time something is parsed, so test files that never
 // parse HTML do not pay for loading it).
 import {
-  S, state, insert, remove, domError, hooks, reactionScope, HTML_NS, SVG_NS,
+  S, state, insert, remove, replace, replaceAll, domError, hooks, reactionScope, HTML_NS, templateContentsOwner,
   ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE,
 } from './internal.js';
 import { parseXMLFragment } from './xml.js';
@@ -31,6 +31,8 @@ function getParser() {
 
 // --- serialization -------------------------------------------------------------
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const MATHML_NS = 'http://www.w3.org/1998/Math/MathML';
 const VOID = new Set(['area', 'base', 'basefont', 'bgsound', 'br', 'col', 'embed', 'frame', 'hr', 'img', 'input',
   'keygen', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
 const RAW_TEXT = new Set(['style', 'script', 'xmp', 'iframe', 'noembed', 'noframes', 'plaintext']);
@@ -43,7 +45,6 @@ const escapeAttribute = (s) => (/[&" ]/.test(s)
   : s);
 
 // Elements outside the HTML, SVG and MathML namespaces keep their prefix.
-const MATHML_NS = 'http://www.w3.org/1998/Math/MathML';
 const tagNameOf = (s) => (s.prefix === undefined || s.ns === HTML_NS || s.ns === SVG_NS || s.ns === MATHML_NS ? s.tag : `${s.prefix}:${s.tag}`);
 
 function serializeElement(el) {
@@ -97,9 +98,12 @@ export function parseFragment(doc, contextElement, html) {
   return fragment;
 }
 
-// Parses a whole HTML document into doc (an empty document).
-export function parseDocument(doc, html) {
-  const ast = getParser().parse(String(html));
+// Parses a whole HTML document into doc (an empty document), and sets its
+// mode (quirks without a doctype). scripting: the scripting flag (noscript
+// content is raw text when it is set).
+export function parseDocument(doc, html, scripting = true) {
+  const ast = getParser().parse(String(html), scripting ? undefined : { scriptingEnabled: false });
+  doc[S].mode = ast.mode;
   appendAst(doc[S].window[S], doc, ast.childNodes, doc);
   return doc;
 }
@@ -133,17 +137,26 @@ function appendAst(internals, parent, astNodes, doc, inTemplate = false) {
       // attribute would.
       if (n.tagName === 'details' && n.namespaceURI === HTML_NS && attrs.has('open')) attributeSteps.get('open')?.(node, undefined, attrs.get('open'));
       if (!inTemplate && hooks.ce !== null) hooks.ce.created(node);
-      if (n.content) appendAst(internals, templateContent(node), n.content.childNodes, doc, true);
+      if (n.content) {
+        const content = templateContent(node);
+        appendAst(internals, content, n.content.childNodes, content[S].doc, true);
+      }
       else appendAst(internals, node, n.childNodes, doc, inTemplate);
     } else continue;
     insert(parent, node, null);
   }
 }
 
-// A template's contents live in a separate fragment, not its children.
+// A template's contents live in a separate fragment, not its children, owned
+// by the document's inert template document; its host is the template.
 export function templateContent(template) {
   const s = state(template);
-  return s.content ?? (s.content = s.doc[S].window[S].createFragment(s.doc));
+  if (s.content === undefined) {
+    const content = s.doc[S].window[S].createFragment(templateContentsOwner(s.doc));
+    content[S].templateHost = template;
+    s.content = content;
+  }
+  return s.content;
 }
 
 const isTemplate = (el) => el[S].ns === HTML_NS && el[S].tag === 'template';
@@ -153,11 +166,8 @@ export const setInnerHTML = (element, html) => reactionScope(innerHTML, element,
 function innerHTML(element, html) {
   const s = state(element);
   const target = isTemplate(element) ? templateContent(element) : element;
-  const doc = s.type === DOCUMENT_NODE ? element : s.doc;
-  const fragment = parseFragment(doc, element, html);
-  const ts = target[S];
-  while (ts.first) remove(target, ts.first);
-  insert(target, fragment, null);
+  const doc = s.type === DOCUMENT_NODE ? element : target[S].doc;
+  replaceAll(target, parseFragment(doc, element, html));
 }
 
 export const setOuterHTML = (element, html) => reactionScope(outerHTML, element, html);
@@ -168,10 +178,7 @@ function outerHTML(element, html) {
   if (!parent) return;
   if (parent[S].type === DOCUMENT_NODE) throw domError('Failed to set the \'outerHTML\' property on \'Element\': This element\'s parent is of type \'#document\'.', 'NoModificationAllowedError');
   const context = parent[S].type === DOCUMENT_FRAGMENT_NODE ? s.doc.createElement('body') : parent;
-  const fragment = parseFragment(s.doc, context, html);
-  const next = s.next;
-  remove(parent, element);
-  insert(parent, fragment, next);
+  replace(parent, parseFragment(s.doc, context, html), element);
 }
 
 export const insertAdjacentHTML = (element, position, html) => reactionScope(adjacentHTML, element, position, html);

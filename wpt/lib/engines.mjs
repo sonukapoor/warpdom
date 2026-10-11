@@ -40,6 +40,10 @@ async function createWarpdom(url, warpdomDir, log) {
     if (typeof value !== 'function' && typeof value !== 'object') continue;
     Object.defineProperty(globalThis, key, 'value' in descriptor ? descriptor : { value, writable: true, enumerable: false, configurable: true });
   }
+  // Named access (window[id], and ids as global variables): the global is
+  // the window here, as in a browser. Checkouts before named access lack it.
+  const namedAccess = await src('named-access.js').catch(() => null);
+  namedAccess?.installNamedAccess(globalThis, window);
   // Events at the window report the global as their target and current target.
   window[S].globalProxy = globalThis;
   window[S].onUnhandledError = (error) => log(`unhandled error: ${error?.stack ?? error}`);

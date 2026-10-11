@@ -13,6 +13,7 @@ import { S, insert } from './internal.js';
 import { clearStorage } from './storage.js';
 import { clearCookies } from './cookies.js';
 import { clearWindowTimers } from './window-features.js';
+import { clearDeclarations } from './css.js';
 
 // Own properties (string and symbol keys) of an object, as descriptors.
 const ownProperties = (object) => new Map(Reflect.ownKeys(object).map((key) => [key, Object.getOwnPropertyDescriptor(object, key)]));
@@ -104,7 +105,7 @@ export function resetWindow(window) {
     }
     detachChildren(node);
     if (ns.attrs) ns.attrs.clear();
-    if (ns.style) ns.style[S].decls.clear();
+    if (ns.style) clearDeclarations(ns.style);
     ns.listeners = undefined;
     ns.handlers = undefined;
     ns.observers = undefined;

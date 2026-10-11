@@ -3,7 +3,7 @@
 // subclasses with their init dictionaries, and legacy createEvent/initEvent.
 // An exception in a listener is reported as an `error` event on the window
 // and dispatch continues, as in browsers and jsdom.
-import { S, state, domError, DOCUMENT_NODE, hooks } from './internal.js';
+import { S, state, domError, DOCUMENT_NODE, ELEMENT_NODE, HTML_NS, hooks } from './internal.js';
 import { liveList } from './collections.js';
 
 // --- EventTarget -------------------------------------------------------------
@@ -13,10 +13,41 @@ const listenersOf = (target) => {
   return s.listeners ?? (s.listeners = new Map());
 };
 
+// passive is null when not given (the default passive value applies).
+// Options other than objects (and null or undefined) are the capture
+// boolean (WebIDL union of a dictionary and boolean).
 function flatten(options) {
-  if (typeof options === 'boolean') return { capture: options, once: false, passive: false, signal: undefined };
+  if (options !== null && typeof options !== 'object' && typeof options !== 'function' && options !== undefined) {
+    return { capture: !!options, once: false, passive: null, signal: undefined };
+  }
   const o = options ?? {};
-  return { capture: !!o.capture, once: !!o.once, passive: !!o.passive, signal: o.signal };
+  const signal = o.signal;
+  // signal is an AbortSignal, not nullable (warpdom's or the host's).
+  if (signal !== undefined && (signal === null || typeof signal !== 'object')) {
+    throw new TypeError("Failed to read the 'signal' property from 'AddEventListenerOptions': Failed to convert value to 'AbortSignal'.");
+  }
+  return { capture: !!o.capture, once: !!o.once, passive: o.passive === undefined ? null : !!o.passive, signal };
+}
+
+const PASSIVE_BY_DEFAULT = new Set(['touchstart', 'touchmove', 'wheel', 'mousewheel']);
+
+// The default passive value (DOM): true for touch and wheel listeners on the
+// window, a document, and a document's root and body elements.
+function defaultPassive(type, target) {
+  if (!PASSIVE_BY_DEFAULT.has(type)) return false;
+  const s = target[S];
+  if (s === undefined) return false;
+  if (s.isWindow === true || s.type === DOCUMENT_NODE) return true;
+  if (s.type !== ELEMENT_NODE || s.parent === null) return false;
+  const p = s.parent[S];
+  if (p.type === DOCUMENT_NODE) return true; // the document element
+  // The body: the first body or frameset child of the html document element.
+  if (s.ns !== HTML_NS || s.tag !== 'body' || p.type !== ELEMENT_NODE || p.parent === null || p.parent[S].type !== DOCUMENT_NODE) return false;
+  for (let c = p.first; c !== null; c = c[S].next) {
+    const cs = c[S];
+    if (cs.type === ELEMENT_NODE && cs.ns === HTML_NS && (cs.tag === 'body' || cs.tag === 'frameset')) return c === target;
+  }
+  return false;
 }
 
 // --- shadow trees -------------------------------------------------------------------
@@ -94,7 +125,8 @@ function invoke(event, index, phase) {
   if (!list) return;
   // The window's current event (window.event) while these listeners run:
   // the event, or undefined for a target in a shadow tree; restored after.
-  const window = windowOf(node);
+  // The window is the same for the whole path (found once per dispatch).
+  const window = es.realm;
   let previous;
   if (window !== null) {
     if (item.inShadowTree === undefined) item.inShadowTree = inShadowTree(node);
@@ -108,15 +140,25 @@ function invoke(event, index, phase) {
   }
 }
 
-// The window of a node's document (null without a browsing context), or the
-// window itself.
+// The global whose current event (window.event) a listener sees (DOM "inner
+// invoke": the listener callback's realm's global). Listeners are written in
+// the realm where warpdom's top-level window is installed (frames' windows
+// share it: warpdom runs no scripts in them), so it is the top-level window
+// of the target's window: a node's document's (with or without a browsing
+// context), a constructed EventTarget's, or the window itself.
 function windowOf(target) {
   const s = target[S];
   if (s === undefined) return null;
-  if (s.isWindow === true) return target;
-  const doc = s.type === DOCUMENT_NODE ? target : s.doc;
-  if (doc === undefined) return null;
-  return doc[S].noView ? null : doc[S].window ?? null;
+  let w;
+  if (s.isWindow === true) w = target;
+  else if (s.type === undefined) w = s.window ?? null;
+  else {
+    const doc = s.type === DOCUMENT_NODE ? target : s.doc;
+    w = doc === undefined ? null : doc[S].window ?? null;
+  }
+  if (w === null || w === undefined) return null;
+  while (w[S].parentWindow) w = w[S].parentWindow;
+  return w;
 }
 
 // The object scripts see for an event target: a window installed as a VM
@@ -175,6 +217,7 @@ export function dispatch(target, event, trusted = true) {
   if (!es.initialized) throw domError('The event provided is uninitialized.', 'InvalidStateError');
   es.dispatching = true;
   es.isTrusted = trusted;
+  es.realm = windowOf(target);
   const originalRelated = es.relatedTarget ?? null;
   const path = [];
   es.path = path;
@@ -308,11 +351,12 @@ export function cancel(event) {
 
 const eventTarget = {
   addEventListener(type, callback, options) {
-    if (callback == null) return;
-    const { capture, once, passive, signal } = flatten(options);
+    const { capture, once, passive: given, signal } = flatten(options);
     if (signal?.aborted) return;
+    if (callback == null) return;
     const map = listenersOf(this);
     const key = String(type);
+    const passive = given !== null ? given : defaultPassive(key, this);
     const list = map.get(key) ?? [];
     if (list.some((e) => e.callback === callback && e.capture === capture)) return;
     const entry = { callback, capture, once, passive, removed: false };
@@ -321,7 +365,8 @@ const eventTarget = {
     signal?.addEventListener?.('abort', () => removeEntry(this, key, entry), { once: true });
   },
   removeEventListener(type, callback, options) {
-    const { capture } = flatten(options);
+    // EventListenerOptions: only capture is read.
+    const capture = options !== null && (typeof options === 'object' || typeof options === 'function') ? !!options.capture : !!options;
     const list = this[S]?.listeners?.get(String(type));
     const entry = list?.find((e) => e.callback === callback && e.capture === capture);
     if (entry) removeEntry(this, String(type), entry);
@@ -338,7 +383,7 @@ function initEventState(self, type, init, initialized = true) {
   self[S] = {
     type: String(type), bubbles: !!init.bubbles, cancelable: !!init.cancelable, composed: !!init.composed,
     target: null, currentTarget: null, eventPhase: 0, canceled: false, stopped: false, stopImmediate: false,
-    dispatching: false, initialized, isTrusted: false, inPassiveListener: false, timeStamp: now(), path: [],
+    dispatching: false, initialized, isTrusted: false, inPassiveListener: false, timeStamp: now(), path: [], realm: null,
   };
 }
 
@@ -430,10 +475,13 @@ function legacyInit(event, type, bubbles, cancelable, fields) {
 }
 
 const own = (fields, parentFields) => Object.fromEntries(Object.entries(fields).filter(([k]) => !(k in parentFields)));
+const STORAGE_FIELDS = { key: null, oldValue: null, newValue: null, url: '', storageArea: null };
+const DEVICE_MOTION_FIELDS = { acceleration: null, accelerationIncludingGravity: null, rotationRate: null, interval: 0 };
+const DEVICE_ORIENTATION_FIELDS = { alpha: null, beta: null, gamma: null, absolute: false };
 const MOUSE_OWN = own(MOUSE_FIELDS, UI_FIELDS);
 
 export const EVENT_INTERFACES = [
-  { name: 'EventTarget', members: eventTarget, construct: (w, self) => { self[S] = {}; return self; } },
+  { name: 'EventTarget', members: eventTarget, construct: (w, self) => { self[S] = { window: w }; return self; } },
   {
     name: 'Event',
     statics: PHASES,
@@ -468,7 +516,12 @@ export const EVENT_INTERFACES = [
   },
   { name: 'CustomEvent', parent: 'Event', construct: eventConstruct('CustomEvent', { detail: null }), members: {
     get detail() { return state(this).detail; },
-    initCustomEvent(type, bubbles, cancelable, detail) { this.initEvent(type, bubbles, cancelable); state(this).detail = detail ?? null; },
+    initCustomEvent(type, bubbles, cancelable, detail) {
+      const s = state(this);
+      if (s.dispatching) return;
+      this.initEvent(type, bubbles, cancelable);
+      s.detail = detail ?? null;
+    },
   } },
   { name: 'UIEvent', parent: 'Event', construct: eventConstruct('UIEvent', UI_FIELDS), members: {
     ...fieldGetters(UI_FIELDS),
@@ -530,20 +583,45 @@ export const EVENT_INTERFACES = [
   { name: 'HashChangeEvent', parent: 'Event', construct: eventConstruct('HashChangeEvent', { oldURL: '', newURL: '' }), members: fieldGetters({ oldURL: '', newURL: '' }) },
   { name: 'SubmitEvent', parent: 'Event', construct: eventConstruct('SubmitEvent', { submitter: null }), members: fieldGetters({ submitter: null }) },
   { name: 'ErrorEvent', parent: 'Event', construct: eventConstruct('ErrorEvent', ERROR_FIELDS), members: fieldGetters(ERROR_FIELDS) },
+  { name: 'StorageEvent', parent: 'Event', construct: eventConstruct('StorageEvent', STORAGE_FIELDS), members: {
+    ...fieldGetters(STORAGE_FIELDS),
+    initStorageEvent(type, bubbles = false, cancelable = false, key = null, oldValue = null, newValue = null, url = '', storageArea = null) {
+      legacyInit(this, type, bubbles, cancelable, {
+        key: key === null ? null : String(key), oldValue: oldValue === null ? null : String(oldValue),
+        newValue: newValue === null ? null : String(newValue), url: String(url), storageArea,
+      });
+    },
+  } },
+  { name: 'DeviceMotionEvent', parent: 'Event', construct: eventConstruct('DeviceMotionEvent', DEVICE_MOTION_FIELDS), members: fieldGetters(DEVICE_MOTION_FIELDS) },
+  { name: 'DeviceOrientationEvent', parent: 'Event', construct: eventConstruct('DeviceOrientationEvent', DEVICE_ORIENTATION_FIELDS), members: fieldGetters(DEVICE_ORIENTATION_FIELDS) },
+  // Not constructible: only createEvent (and navigation, not modeled) make one.
+  { name: 'BeforeUnloadEvent', parent: 'Event', members: {
+    get returnValue() { return state(this).unloadReturnValue ?? ''; },
+    set returnValue(v) { state(this).unloadReturnValue = String(v); },
+  } },
 ];
 
 // document.createEvent(interface): an uninitialized event of that interface.
+// The DOM standard's createEvent table (ASCII case-insensitive), for the
+// interfaces warpdom has (dragevent and textevent: no DragEvent, TextEvent).
 const LEGACY_EVENT_NAMES = {
-  event: 'Event', events: 'Event', htmlevents: 'Event', customevent: 'CustomEvent', uievent: 'UIEvent', uievents: 'UIEvent',
-  mouseevent: 'MouseEvent', mouseevents: 'MouseEvent', keyboardevent: 'KeyboardEvent', focusevent: 'FocusEvent',
-  inputevent: 'InputEvent', wheelevent: 'WheelEvent', pointerevent: 'PointerEvent', errorevent: 'ErrorEvent',
-  touchevent: 'TouchEvent', compositionevent: 'CompositionEvent',
+  beforeunloadevent: 'BeforeUnloadEvent', compositionevent: 'CompositionEvent', customevent: 'CustomEvent',
+  devicemotionevent: 'DeviceMotionEvent', deviceorientationevent: 'DeviceOrientationEvent', event: 'Event', events: 'Event',
+  focusevent: 'FocusEvent', hashchangeevent: 'HashChangeEvent', htmlevents: 'Event', keyboardevent: 'KeyboardEvent',
+  messageevent: 'MessageEvent', mouseevent: 'MouseEvent', mouseevents: 'MouseEvent', storageevent: 'StorageEvent',
+  svgevents: 'Event', touchevent: 'TouchEvent', uievent: 'UIEvent', uievents: 'UIEvent',
 };
 
 export function createEvent(window, name) {
-  const iface = LEGACY_EVENT_NAMES[String(name).toLowerCase()];
+  const iface = Object.hasOwn(LEGACY_EVENT_NAMES, String(name).toLowerCase()) ? LEGACY_EVENT_NAMES[String(name).toLowerCase()] : undefined;
   if (!iface) throw domError(`The provided event type ("${name}") is invalid.`, 'NotSupportedError');
-  const event = new window[iface]('');
+  let event;
+  if (iface === 'BeforeUnloadEvent') {
+    event = Object.create(window[S].protos.BeforeUnloadEvent);
+    initEventState(event, '', {}, false);
+    return event;
+  }
+  event = new window[iface]('');
   event[S].initialized = false;
   return event;
 }

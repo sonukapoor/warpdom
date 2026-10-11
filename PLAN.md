@@ -229,6 +229,31 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   (`line:column: message`) has other messages and positions than jsdom's.
 - NodeIterator follows the pre-removing steps, also for nodes its own
   filter removes (WPT NodeIterator-removal: 25/25; jsdom 6/25).
+- CSSOM rule lists follow CSS Cascade/Namespaces: @import and @namespace
+  rules after other rules, and inside grouping rules, are dropped (jsdom 30
+  keeps the late ones); keyframes outside 0%-100% are dropped (jsdom keeps
+  120%); invalid @page selectors drop the rule (jsdom keeps `@page foo
+  :left`); insertRule('{}') is a SyntaxError (jsdom 30 inserts it).
+- `new CSSStyleSheet({ media, disabled, baseURL })` applies its options
+  (jsdom ignores them); an invalid baseURL throws NotAllowedError.
+- @page rules are grouping rules with CSSMarginRule children and a
+  CSSPageDescriptors style that keeps size, page-orientation, marks and
+  bleed (jsdom 30 has neither interface and drops size).
+- Style declarations' indexed properties (style[0]) are writable data
+  properties, as in jsdom 26; jsdom 30 makes them read-only (read-only
+  ones made every style write ~15% slower).
+- MediaList normalization (lowercase, "not all" for invalid queries) is
+  jsdom 30's in every profile; jsdom 26 kept media text as written, so the
+  jsdom 26 profile also applies `@media SCREEN` rules (jsdom 26 matched
+  "screen" case-sensitively).
+- An element in the HTML, SVG or MathML namespace with a prefix
+  (`createElementNS(HTML, 'h:div')`) serializes with its local name, as the
+  HTML serialization algorithm says; jsdom writes the qualified name.
+- MutationObserver follows the DOM standard where jsdom does not:
+  transient registered observers (a removed subtree stays observed through
+  the old ancestors' subtree registrations until observers are next
+  notified), observers notified in the order they were created, and an
+  `attributeFilter` that lets no namespaced attribute through.
 
 ## Decisions
 
@@ -373,6 +398,46 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   Corpus note: solid's transition.spec fails on jsdom too when its files
   run in a certain order (isolate: false shares solid's module state), so
   its one difference is a solid flake, not warpdom.
+- **2026-10-11: Collections and named access per WebIDL and HTML.**
+  Live collections (src/collections.js) stay one Proxy each: a live object
+  can only show own properties for indices that appeared since its last
+  read through a trap, and defining them eagerly would cost every tree
+  mutation a pass over every live collection. The traps now follow
+  WebIDL's legacy platform objects: indices and names (HTMLCollection,
+  NamedNodeMap; unenumerable) are own properties in order, read-only and
+  undeletable (TypeError in strict mode), names are hidden by own and
+  inherited properties, ids like "0" or "-1" are names, internal state is
+  not visible through an object inheriting from a collection; plus
+  HTMLOptionsCollection's indexed setter and item() with ToUint32. An
+  array index is found by a character scan instead of a regex, so reads
+  got faster (focused bench, Node 22.17.1, median of 5 alternating runs
+  against main, ns per element): children[i] loop 122 -> 100,
+  childNodes[i] loop 129 -> 103, children.item(i) 56 -> 39, attributes[i]
+  loop 145 -> 113, children.length 70 -> 60, attributes.length 74 -> 62,
+  attributes.type 66 -> 61, getElementsByClassName index loop 376 -> 355,
+  for-of unchanged; bench:hot childNodes[i] -15%, querySelectorAll -20%.
+  Named access on the Window (src/named-access.js): a WindowProperties
+  proxy between Window.prototype and EventTarget.prototype, answering from
+  a map of the document's named objects rebuilt after tree changes. Reads
+  of the window's own members and Window.prototype are unchanged; reads
+  that pass it on the window object itself get slower: inherited
+  EventTarget members 7 -> 24 ns, Object.prototype members 7 -> 26 ns,
+  missing names 6 -> 36 ns. Accepted: test code does not read the window
+  object (the environments install bound copies of its members on the
+  global, and document.defaultView is the global), and warpdom's own code
+  does not read EventTarget members through it. Load (bench/load.js,
+  median of 7 alternating): cold 18.6 -> 18.8 ms, first window 1.37 ->
+  1.40 ms, next windows 0.182 -> 0.183 ms. The environment globals get no
+  named access: under Vitest that is what jsdom's environment does
+  (window is Node's global, checked: window.foo for an id is undefined);
+  under Jest, jsdom's window is the global and has it, but a named
+  properties object in the VM context's sandbox chain breaks the
+  context's built-in lookups (Math read undefined in a probe) and every
+  global lookup there would pass a trap, so it is left out until a suite
+  needs it. The WPT runner installs it on its global (the window there).
+  WPT (dom, html/dom, domparsing, css/cssom): dom/collections score 54.2%
+  -> 97.4% (left: getElementsByTagNameNS), total 52.4% -> 55.0%, harness
+  OK 870 -> 877 files.
 - **2026-10-10: Kill criterion measured; learning fast mode.** Over 11
   suites the default pool gives a median 1.17x (best configuration 1.20x):
   under the ~1.8x criterion. The gain follows the suite's DOM share:
@@ -569,6 +634,56 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   Cleanup: focus update steps rewritten from the HTML standard, select and
   form activation reviewed against the spec, reflection and element tables
   regenerated from @webref/idl.
+- **2026-10-11: CSSOM conformance (WPT css/cssom).** Full directory, 250
+  files, warpdom 45.4% -> 59.4% score, 58.8% -> 66.5% subtests (2,523 ->
+  2,854 of 4,294; jsdom 30.1.2: 63.8%, 66.6%), no file worse. Fixed from the
+  specs, with parity tests where jsdom agrees: rule parsing and mutation
+  (insertRule/appendRule take exactly one rule, @import/@namespace
+  constraints, detached rules, argument counts, @import layer/supports and
+  an empty imported styleSheet as in jsdom 30, keyframes keyText and
+  indexed getter, @page with margin rules and CSSPageDescriptors,
+  @container, @scope, @counter-style), selectorText validation (loose, as
+  jsdom 30), MediaList normalization, style elements re-parsed on child
+  changes, HTMLStyleElement.disabled, indexed and iterable
+  CSSStyleDeclaration. Behaviors where warpdom differed from jsdom and now
+  matches it per profile: rules in top-level `@media all/screen` apply in
+  getComputedStyle (jsdom 26: screen only); style writes queue
+  MutationObserver records and attributeChangedCallback (and
+  el.attributes saw a style attribute added by a style write late);
+  `style.x = undefined` is ignored (warpdom removed the declaration);
+  custom properties keep their text and case; integers keep their digits;
+  `, ` in min()/max()/clamp()/gradients (27+), between font families and
+  background layers; url() quoted in background(-image) (27+: also
+  content, list-style-image, mask-image, filter); background-position
+  split into -x/-y and serialized as x y per layer, the background
+  shorthand setting all its longhands, background-repeat shortest form
+  (27+); `color: red !important; color: blue` keeps red (27+); writing ''
+  to a computed style throws (28+); CSS-wide keywords lowercased; jsdom 26
+  profile: insertRule ignores text after the rule.
+  Performance (bench/style-bench.mjs, bench/style-miss-bench.mjs, cold
+  import; medians of 7 alternating runs against main 6c3e472, Node
+  22.17.1, shared machine): style write 93.9 -> 90.4 ns, repeated writes
+  126.9 -> 126.6 ns, unique values 515.5 -> 524.0 ns (+1.6%), cold load
+  15.68 -> 15.86 ms. The unique-value cost is the declared-value checks
+  added on cache misses (function arguments, url(), CSS-wide keywords) and
+  the attribute bookkeeping each write now does for MutationObservers,
+  custom element reactions and el.attributes, which correctness needs.
+  Left as is, deliberately: the declaration block's shorthand model
+  (jsdom 30 expands padding into longhands, merges border/overflow/
+  outline/list-style; warpdom keeps the jsdom-generation behavior already
+  chosen), computed-style length and indexed names (jsdom 30 lists
+  cascaded properties, jsdom 26 more), adoptedStyleSheets and
+  ShadowRoot.styleSheets (jsdom lacks them and Lit feature-detects
+  adoptedStyleSheets), <link rel=stylesheet> loading and load/error events
+  (jsdom does not fetch by default either: link.sheet is null, the
+  HTMLLinkElement-disabled tests wait for a load that never comes, and
+  cross-origin SecurityError needs a fetched sheet). Not done: computed
+  lengths absolutized (em, rem, vh, in, calc() simplified), which jsdom
+  30 does and 26-29 do not (checked black-box with 27.2, 27.4, 29.1): the
+  next CSS parity item, best checked on a jsdom 30 corpus suite; system
+  colors beyond the grammar's list (mark), oklch() serialization. Many
+  remaining css/cssom failures need window named access (`target`,
+  `iframe` as globals), which is another branch's area.
 
 ## Next steps
 
@@ -650,3 +765,48 @@ warpdom follows the standard. Each has a test. To publish in the docs.
    publishing is public).
 3. Publish the stage 1 report (venue, figures, raw traces) around the time
    warpdom goes public.
+
+## 2026-10-11: DOM methods, insertion checks, events (branch wpt-dom-methods)
+
+WPT (warpdom, score per file / subtests passed): dom/nodes 56.9% -> 64.0%
+(3,803 -> 4,606), dom/events 70.8% -> 75.8% (515 -> 586), dom/traversal
+73.5% -> 76.5%, domparsing 63.2% -> 64.9%; no file lost a subtest. Most of
+the rest of dom/nodes and dom/traversal (Node-contains, Node-properties,
+NodeIterator, TreeWalker: ~3,900 subtests) stops at createCDATASection and
+createProcessingInstruction in the shared setup (XML branch).
+Done: pre-insertion and replace validity in the standard's order (parents
+that cannot have children, the document's one element and doctype, host-
+including ancestors through shadow and template hosts), one mutation record
+per replaceChild / replaceChildren / textContent / innerHTML / outerHTML /
+fragment insertion, ChildNode viable siblings, isEqualNode, element
+prefixes (tagName "X:B"), getElementsByTagName(NS) by qualified name,
+document and Attr cloning, name validation (DOM's valid element/attribute
+local names), createAttributeNS, namespace lookups, template contents in an
+inert document, NodeIterator pre-removing steps, :valid/:invalid,
+DOMTokenList iterators from Array.prototype, window.event for every target
+(the top-level window: listeners run in its realm), default passive touch
+and wheel listeners, createEvent's table, listener option conversions,
+@@unscopables, DOMParser quirks mode / scripting disabled / URL, transient
+MutationObserver registrations.
+Environment: on* handler properties on the global now read the window
+(Vitest-style installs kept a separate override, so `window.onblur = null`
+hid a handler set by `<body onblur>`).
+Hot paths (Node 22.17.1, medians of 7 alternating runs against main;
+shared machine): insertion and removal (bench/insert-bench.mjs) 55.6 ->
+58.0 ns per operation (+4%); createElement + appendChild + text + Event
+(create-bench) 179.5 -> 176.6 ns; bench:hot (5 runs) insertBefore first
++5%, removeChild all +5%, appendChild build +2%, setAttribute and
+dispatchEvent unchanged; cold load 15.8 -> 15.7 ms. Reason for the
+insertion cost: the standard's validity checks (parent and node types,
+host-including ancestors, the document rules) and one mutation record per
+operation; the element-or-text-into-element case is checked inline in
+O(depth) (the existing ancestor walk) and the document rules run only for
+a document parent. Name validation is paid once per distinct name
+(createElement and attribute names are remembered after the first check).
+Not done: setAttribute/removeAttribute on several attributes with the same
+qualified name in different namespaces (attributes are keyed by qualified
+name: Element-setAttribute, Element-removeAttribute, attributes.html,
+getElementById-namespaced-id, Element-setAttributeNodeNS),
+Node.moveBefore (jsdom lacks it; libraries feature-detect it), document
+character sets, live-collection and named-property cases (collections
+branch), DragEvent and TextEvent (jsdom lacks them too).

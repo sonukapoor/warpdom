@@ -2,7 +2,7 @@
 // small matching functions (compound selectors checked right to left through
 // the combinators) and cached, so querySelector, matches and closest never
 // re-parse. Walks use the linked tree directly.
-import { matchesChecked } from './forms.js';
+import { matchesChecked, matchesValidity } from './forms.js';
 import { S, domError, ELEMENT_NODE, DOCUMENT_NODE, HTML_NS, nextInTree, rootOf } from './internal.js';
 
 // --- tokens and parsing --------------------------------------------------------
@@ -342,7 +342,7 @@ function compileAttribute({ name, op, value, insensitive }) {
 // Pseudo-classes whose result can change without a tree or attribute change
 // (form state, focus, text data): selectors using them are never result-cached.
 const DYNAMIC = new Set(['empty', 'checked', 'focus', 'focus-visible', 'focus-within', 'indeterminate',
-  'placeholder-shown', 'defined', 'read-only', 'read-write']);
+  'placeholder-shown', 'defined', 'read-only', 'read-write', 'valid', 'invalid']);
 let compilingDynamic = false;
 
 function compilePseudo({ name, arg }) {
@@ -374,6 +374,8 @@ function compilePseudo({ name, arg }) {
     case 'root': return (el) => { const p = el[S].parent; return !!p && p[S].type === DOCUMENT_NODE; };
     case 'scope': return (el, ctx) => (ctx?.scope ? el === ctx.scope : !!el[S].parent && el[S].parent[S].type === DOCUMENT_NODE);
     case 'checked': return matchesChecked;
+    case 'valid': return (el) => matchesValidity(el, false);
+    case 'invalid': return (el) => matchesValidity(el, true);
     case 'disabled': return isDisabled;
     case 'enabled': return (el) => isHTML(el) && FORM_DISABLE.has(el[S].tag) && !isDisabled(el);
     case 'required': return (el) => isHTML(el) && FORM_REQUIRED.has(el[S].tag) && el[S].attrs.has('required');
@@ -390,7 +392,7 @@ function compilePseudo({ name, arg }) {
     case 'indeterminate': return (el) => !!el[S].indeterminate;
     case 'open': return (el) => isHTML(el) && (el[S].tag === 'details' || el[S].tag === 'dialog') && el[S].attrs.has('open');
     case 'lang': { const lang = String(arg).toLowerCase(); return (el) => { for (let n = el; n; n = parentElement(n)) { const l = n[S].attrs.get('lang'); if (l !== undefined) return l.toLowerCase() === lang || l.toLowerCase().startsWith(`${lang}-`); } return false; }; }
-    default: return () => false; // hover, active, visited, target, valid/invalid until form state, ...
+    default: return () => false; // hover, active, visited, target, ...
   }
 }
 

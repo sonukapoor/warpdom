@@ -5,6 +5,7 @@
 | `load.js` (`npm run bench:load`) | cold module load in fresh processes, first window, later windows | ms |
 | `hot.js` (`npm run bench:hot`) | hot members from the tracer data, against jsdom and happy-dom | ns per op |
 | `create-bench.mjs` | createElement + appendChild + createTextNode + new Event | ns per node |
+| `insert-bench.mjs` | appendChild, removeChild, insertBefore, remove(), append and replaceChildren of elements and text in a connected element | ns per insertion + removal |
 | `style-bench.mjs` | inline style writes with repeated values (cache hits) | ns per write |
 | `style-miss-bench.mjs` | inline style writes, repeated vs unique values (unique: CSS value validation and serialization run) | ns per write, both cases |
 | `cascade-bench.mjs` | getComputedStyle with 300 style sheets and 500 elements, per pass and per pass after a class change; warpdom and jsdom | ms per pass |

@@ -10,6 +10,7 @@ import { INTERFACES, SVG_ELEMENTS, HTML_NS, SVG_NS } from './interfaces.js';
 import { HTML_ELEMENTS, PLAIN_TAGS } from './html-elements.js';
 import { setupWindow } from './window-features.js';
 import { setValidationMode } from './css.js';
+import { namedPropertiesObject } from './named-access.js';
 import { createCustomElement, createRegistry, htmlConstruct, isValidCustomElementName } from './custom-elements.js';
 
 // Once per module load: the interfaces in order, parents before children.
@@ -60,7 +61,13 @@ function addDescriptors(descriptors, members) {
   for (const key of Reflect.ownKeys(members)) {
     const d = Object.getOwnPropertyDescriptor(members, key);
     const v = d.value;
-    if (v && typeof v === 'object' && 'constant' in v) {
+    if (v && typeof v === 'object' && 'unscopables' in v) {
+      // @@unscopables (WebIDL): a null-prototype object, frozen since it is
+      // shared by every window.
+      const value = Object.create(null);
+      for (const name of v.unscopables) value[name] = true;
+      descriptors[key] = { value: Object.freeze(value), enumerable: false, writable: false, configurable: true };
+    } else if (v && typeof v === 'object' && 'constant' in v) {
       // Constants such as Node.ELEMENT_NODE: read-only, as in WebIDL.
       descriptors[key] = { value: v.constant, enumerable: true, writable: false, configurable: false };
     } else if (v && typeof v === 'object' && (v.get || v.set)) {
@@ -250,6 +257,9 @@ export function createWindow(options = {}) {
     frameElement: options.nested?.frameElement ?? null,
   };
   Object.setPrototypeOf(window, protos.Window);
+  // Named access (window[id]): the named properties object between
+  // Window.prototype and EventTarget.prototype.
+  Object.setPrototypeOf(protos.Window, namedPropertiesObject(window, window, Object.getPrototypeOf(protos.Window)));
   Object.defineProperty(window, S, { value: internals });
   setupWindow(window, options);
   applyCompat(window, protos);

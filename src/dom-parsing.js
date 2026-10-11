@@ -23,8 +23,10 @@ function parseFromString(parser, string, type) {
   const ws = window[S];
   if (t === 'text/html') {
     const doc = ws.createDocument({ contentType: 'text/html' });
-    doc[S].url = ws.url.href;
-    return parseDocument(doc, string);
+    // The URL of the parser's window's document (DOM Parsing); scripting is
+    // disabled in the new document, so noscript content is parsed as markup.
+    doc[S].url = window.document.URL;
+    return parseDocument(doc, string, false);
   }
   // An XML document, though not an XMLDocument object (as browsers and
   // the DOM Parsing tests have it).

@@ -14,7 +14,7 @@ import {
   rootOf, nextInTree, contains, elementById, connected
 } from './internal.js';
 import { writeAttribute, attributeSteps, tokenList } from './attributes.js';
-import { liveList } from './collections.js';
+import { liveList, htmlCollectionNames } from './collections.js';
 import { dispatch, eventConstruct, fieldGetters } from './events.js';
 import { parseInteger } from './reflect.js';
 
@@ -713,6 +713,25 @@ function validityFlags(el) {
 
 const isValid = (el) => { const f = validityFlags(el); return VALIDITY_FLAGS.every((k) => !f[k]); };
 
+const isCandidate = (el) => el[S].type === 1 && el[S].ns === HTML_NS && SUBMITTABLE.has(el[S].tag) && willValidate(el);
+const candidateInvalid = (el) => isCandidate(el) && !isValid(el);
+
+// :valid and :invalid (HTML selectors): candidates for constraint validation
+// by their validity; a form by the candidates it owns, a fieldset by those it
+// contains. Other elements match neither.
+export function matchesValidity(el, invalid) {
+  const s = el[S];
+  if (s.ns !== HTML_NS) return false;
+  let found;
+  if (s.tag === 'form') found = formElements(el).some(candidateInvalid);
+  else if (s.tag === 'fieldset') {
+    found = false;
+    for (let n = s.first; n; n = nextInTree(n, el)) if (candidateInvalid(n)) { found = true; break; }
+  } else if (isCandidate(el)) found = !isValid(el);
+  else return false;
+  return found === invalid;
+}
+
 function checkValidity(el) {
   if (!willValidate(el) || isValid(el)) return true;
   fire(el, 'invalid', { cancelable: true });
@@ -1080,11 +1099,11 @@ const mix = (...objects) => {
 
 const formMember = { get form() { state(this); return formOwner(this); } };
 
-const collection = (el, key, protoName, items) => {
+const collection = (el, key, protoName, items, named = undefined, setIndex = null) => {
   const s = state(el);
   if (!s[key]) {
     const protos = internalsOf(el).protos;
-    s[key] = liveList(protos[protoName], items);
+    s[key] = liveList(protos[protoName], items, named, setIndex);
     s[key][S].protos = protos;
   }
   return s[key];
@@ -1187,7 +1206,7 @@ export const FORM_MEMBERS = new Map([
     {
       get type() { state(this); return has(this, 'multiple') ? 'select-multiple' : 'select-one'; },
       get options() {
-        const options = collection(this, 'optionsList', 'HTMLOptionsCollection', () => listOfOptions(this));
+        const options = collection(this, 'optionsList', 'HTMLOptionsCollection', () => listOfOptions(this), undefined, (i, v) => setOption(this, i, v));
         options[S].select = this;
         return options;
       },
@@ -1280,7 +1299,7 @@ export const FORM_MEMBERS = new Map([
   )],
   ['HTMLFormElement', {
     get elements() {
-      const list = collection(this, 'elementsList', 'HTMLFormControlsCollection', () => formElements(this));
+      const list = collection(this, 'elementsList', 'HTMLFormControlsCollection', () => formElements(this), FORM_CONTROLS_NAMED);
       return list;
     },
     get length() { state(this); return formElements(this).length; },
@@ -1396,6 +1415,35 @@ function stepBy(el, n) {
 
 const items = (list) => state(list).items();
 
+// HTMLFormControlsCollection's named getter: one element, or a RadioNodeList
+// when several have the name.
+function formControlsNamedItem(list, name) {
+  const key = String(name);
+  if (key === '') return null;
+  const found = items(list).filter((el) => attr(el, 'id') === key || attr(el, 'name') === key);
+  if (found.length === 0) return null;
+  if (found.length === 1) return found[0];
+  return liveList(state(list).protos.RadioNodeList, () => items(list).filter((el) => attr(el, 'id') === key || attr(el, 'name') === key));
+}
+
+const FORM_CONTROLS_NAMED = { get: formControlsNamedItem, names: htmlCollectionNames, unenumerable: true };
+
+// HTMLOptionsCollection's indexed setter (select.options[i] = option).
+function setOption(select, index, option) {
+  if (option == null) { listOfOptions(select)[index]?.remove(); return; }
+  if (!option?.[S] || !isTag(option, 'option')) throw new TypeError("Failed to set an indexed property on 'HTMLOptionsCollection': parameter 2 is not of type 'HTMLOptionElement'.");
+  const options = listOfOptions(select);
+  const n = index - options.length;
+  if (n > 0) {
+    const doc = select.ownerDocument;
+    const frag = doc.createDocumentFragment();
+    for (let i = 0; i < n; i++) frag.appendChild(doc.createElement('option'));
+    select.appendChild(frag);
+  }
+  if (n >= 0) select.appendChild(option);
+  else options[index].replaceWith(option);
+}
+
 export const FORM_INTERFACES = [
   ...FORM_DATA_INTERFACES,
   {
@@ -1432,14 +1480,7 @@ export const FORM_INTERFACES = [
     name: 'HTMLFormControlsCollection',
     parent: 'HTMLCollection',
     members: {
-      namedItem(name) {
-        const key = String(name);
-        if (key === '') return null;
-        const found = items(this).filter((el) => attr(el, 'id') === key || attr(el, 'name') === key);
-        if (found.length === 0) return null;
-        if (found.length === 1) return found[0];
-        return liveList(state(this).protos.RadioNodeList, () => items(this).filter((el) => attr(el, 'id') === key || attr(el, 'name') === key));
-      },
+      namedItem(name) { return formControlsNamedItem(this, name); },
     },
   },
   {

@@ -4,7 +4,7 @@
 // createWindow(). Members sit on the same interface as in jsdom, because
 // tests spy on them there.
 import {
-  S, state, initNode, insert, remove, textOf, contains, domError, rootOf, nextInTree,
+  S, state, initNode, insert, remove, asciiLowercase, validElementLocalName, htmlElementName, replace, replaceAll, checkReplaceAll, textOf, contains, domError, rootOf, nextInTree,
   childArray, elementChildArray, collectElements, elementById, setData, replaceData, adopt, shadowIncludingRoot, reactionScope,
   ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, DOCUMENT_TYPE_NODE, HTML_NS, SVG_NS, connected,
   CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE, isCharacterData,
@@ -15,7 +15,7 @@ import { hasReflections, reflectedMembers } from './reflect.js';
 import { GLOBAL_HANDLER_MEMBERS, WINDOW_HANDLER_MEMBERS, eventHandlerAttributesAdded, handlerMembers } from './event-handlers.js';
 import { CUSTOM_ELEMENT_INTERFACES } from './custom-elements.js';
 import { RANGE_INTERFACES, newRange, getSelection, splitText, normalize } from './ranges.js';
-import { CSSOM_INTERFACES, styleElementSheet, documentStyleSheets } from './cssom.js';
+import { CSSOM_INTERFACES, STYLE_ELEMENT_MEMBERS, documentStyleSheets } from './cssom.js';
 import { FOCUS_MEMBERS, DOCUMENT_FOCUS_MEMBERS } from './focus.js';
 import { FORM_INTERFACES, FORM_MEMBERS, clickMember } from './forms.js';
 import { GEOMETRY_INTERFACES, ELEMENT_LAYOUT, HTML_ELEMENT_LAYOUT } from './layout.js';
@@ -41,7 +41,7 @@ import { TRAVERSAL_INTERFACES, createTreeWalker, createNodeIterator } from './tr
 import { parseFragment, parseDocument, serializeChildren, setInnerHTML, setOuterHTML, insertAdjacentHTML, templateContent } from './html.js';
 import {
   ATTRIBUTE_INTERFACES, writeAttribute, attrName, attrNode, namedNodeMap, tokenList, domStringMap,
-  setAttributeNode, removeAttributeNode, createAttribute, findAttributeNS, setAttributeNS,
+  setAttributeNode, removeAttributeNode, createAttribute, findAttributeNS, setAttributeNS, checkAttributeName, validateAndExtract, createAttributeNS, attrInfo,
 } from './attributes.js';
 
 // Member objects merged in order, as a list window.js reads when it first
@@ -79,6 +79,7 @@ function toNode(node, items) {
 
 // ParentNode mixin (Document, DocumentFragment, Element).
 const parentNode = mix(queries, {
+  [Symbol.unscopables]: { unscopables: ['prepend', 'append', 'replaceChildren'] },
   get children() {
     const s = state(this);
     return s.childElements ?? (s.childElements = liveList(internals(this).protos.HTMLCollection, () => elementChildArray(this)));
@@ -90,22 +91,46 @@ const parentNode = mix(queries, {
   prepend(...items) { if (items.length) insert(this, toNode(this, items), state(this).first); },
   replaceChildren(...items) {
     const node = items.length ? toNode(this, items) : null;
-    const s = state(this);
-    while (s.first) remove(this, s.first);
-    if (node) insert(this, node, null);
+    state(this);
+    if (node) checkReplaceAll(this, node);
+    replaceAll(this, node);
   },
 });
 
-// ChildNode mixin (Element, CharacterData).
+// The first sibling of node in direction dir ('prev' or 'next') that is not
+// one of items (ChildNode's viable previous and next siblings).
+function viableSibling(node, dir, items) {
+  let n = node[S][dir];
+  while (n !== null && items.includes(n)) n = n[S][dir];
+  return n;
+}
+
+// ChildNode mixin (Element, CharacterData, DocumentType).
 const childNode = {
-  before(...items) { const p = state(this).parent; if (p && items.length) insert(p, toNode(this, items), this); },
-  after(...items) { const s = state(this); if (s.parent && items.length) insert(s.parent, toNode(this, items), s.next); },
+  [Symbol.unscopables]: { unscopables: ['before', 'after', 'replaceWith', 'remove'] },
+  before(...items) {
+    const p = state(this).parent;
+    if (!p || !items.length) return;
+    const prev = viableSibling(this, 'prev', items);
+    const node = toNode(this, items);
+    insert(p, node, prev === null ? p[S].first : prev[S].next);
+  },
+  after(...items) {
+    const p = state(this).parent;
+    if (!p || !items.length) return;
+    const next = viableSibling(this, 'next', items);
+    insert(p, toNode(this, items), next);
+  },
   replaceWith(...items) {
     const p = state(this).parent;
     if (!p) return;
-    const next = state(this).next;
-    remove(p, this);
-    if (items.length) insert(p, toNode(this, items), next);
+    const next = viableSibling(this, 'next', items);
+    const node = items.length ? toNode(this, items) : null;
+    // this may have moved into the new nodes' fragment.
+    if (this[S].parent === p) {
+      if (node) replace(p, node, this);
+      else remove(p, this);
+    } else if (node) insert(p, node, next);
   },
   remove() { const p = state(this).parent; if (p) remove(p, this); },
 };
@@ -145,6 +170,114 @@ function compareDocumentPosition(a, b) {
   return 2;
 }
 
+const ATTRIBUTE_NODE = 2;
+const XML_NAMESPACE = 'http://www.w3.org/XML/1998/namespace';
+const XMLNS_NAMESPACE = 'http://www.w3.org/2000/xmlns/';
+
+// The element namespace lookups start from (DOM "locate a namespace" and
+// "locate a namespace prefix"): the node itself, a document's element, an
+// attribute's element, or a character data node's parent element.
+function namespaceElement(node) {
+  const s = node[S];
+  switch (s.type) {
+    case ELEMENT_NODE: return node;
+    case DOCUMENT_NODE: return firstElement(s);
+    case DOCUMENT_TYPE_NODE: case DOCUMENT_FRAGMENT_NODE: return null;
+    case ATTRIBUTE_NODE: return s.element ?? null;
+    default: { const p = s.parent; return p !== null && p[S].type === ELEMENT_NODE ? p : null; }
+  }
+}
+
+// Locate a namespace (DOM) for prefix (null: the default namespace).
+function locateNamespace(node, prefix) {
+  for (let el = namespaceElement(node); el !== null;) {
+    const s = el[S];
+    if (prefix === 'xml') return XML_NAMESPACE;
+    if (prefix === 'xmlns') return XMLNS_NAMESPACE;
+    if (s.ns !== null && (s.prefix ?? null) === prefix) return s.ns;
+    if (s.attrNS) {
+      for (const [name, info] of s.attrNS) {
+        if (info.ns !== XMLNS_NAMESPACE) continue;
+        if ((info.prefix === 'xmlns' && info.local === prefix) || (prefix === null && info.prefix === null && info.local === 'xmlns')) {
+          const value = s.attrs.get(name);
+          return value === '' ? null : value;
+        }
+      }
+    }
+    const p = s.parent;
+    el = p !== null && p[S].type === ELEMENT_NODE ? p : null;
+  }
+  return null;
+}
+
+// Locate a namespace prefix (DOM) for namespace, from element up.
+function locatePrefix(element, namespace) {
+  for (let el = element; el !== null;) {
+    const s = el[S];
+    if (s.ns === namespace && s.prefix !== undefined) return s.prefix;
+    if (s.attrNS) {
+      for (const [name, info] of s.attrNS) {
+        if (info.ns === XMLNS_NAMESPACE && info.prefix === 'xmlns' && s.attrs.get(name) === namespace) return info.local;
+      }
+    }
+    const p = s.parent;
+    el = p !== null && p[S].type === ELEMENT_NODE ? p : null;
+  }
+  return null;
+}
+
+// An attribute's namespace and local name (Attr views: attributes.js).
+const elementAttrInfo = (s, name) => s.attrNS?.get(name) ?? null;
+
+// Node equality (DOM "equals").
+function isEqualNode(a, b) {
+  const as = a[S];
+  const bs = b[S];
+  if (as.type !== bs.type) return false;
+  switch (as.type) {
+    case DOCUMENT_TYPE_NODE:
+      if (as.name !== bs.name || as.publicId !== bs.publicId || as.systemId !== bs.systemId) return false;
+      break;
+    case ELEMENT_NODE: {
+      if (as.ns !== bs.ns || as.tag !== bs.tag || (as.prefix ?? null) !== (bs.prefix ?? null) || as.attrs.size !== bs.attrs.size) return false;
+      for (const [name, value] of as.attrs) {
+        const info = elementAttrInfo(as, name);
+        const ns = info?.ns ?? null;
+        const local = info?.local ?? name;
+        let found = false;
+        for (const [otherName, otherValue] of bs.attrs) {
+          const other = elementAttrInfo(bs, otherName);
+          if (otherValue === value && (other?.ns ?? null) === ns && (other?.local ?? otherName) === local) { found = true; break; }
+        }
+        if (!found) return false;
+      }
+      break;
+    }
+    case ATTRIBUTE_NODE:
+      return a.namespaceURI === b.namespaceURI && a.localName === b.localName && a.value === b.value;
+    default:
+      // Character data (and processing instructions: target too).
+      if (as.data !== bs.data || as.target !== bs.target) return false;
+  }
+  if (as.count !== bs.count) return false;
+  for (let x = as.first, y = bs.first; x !== null; x = x[S].next, y = y[S].next) if (!isEqualNode(x, y)) return false;
+  return true;
+}
+
+// ASCII lowercase (DOM names): other characters keep their case.
+const asciiLower = asciiLowercase;
+const invalidName = (name) => domError(`'${name}' is not a valid name.`, 'InvalidCharacterError');
+const throwInvalidName = (name) => { throw invalidName(name); };
+// createElement names seen before (validated and lowercased), so the usual
+// call costs one map lookup.
+const HTML_NAMES = new Map();
+function htmlName(name) {
+  const lower = htmlElementName(name);
+  if (lower === null) throwInvalidName(name);
+  if (HTML_NAMES.size < 10000) HTML_NAMES.set(name, lower);
+  return lower;
+}
+
 const hasOnAttribute = (attrs) => { for (const name of attrs.keys()) if (name.startsWith('on')) return true; return false; };
 
 export const clone = (node, deep, doc) => reactionScope(cloneNode, node, deep, doc);
@@ -156,6 +289,7 @@ function cloneNode(node, deep, doc) {
   if (s.type === ELEMENT_NODE) {
     copy = w.createElementNS(s.ns, s.prefix ? `${s.prefix}:${s.tag}` : s.tag, doc, false, null, false, s.ceIs ?? null);
     copy[S].attrs = new Map(s.attrs);
+    if (s.attrNS) copy[S].attrNS = new Map(s.attrNS);
     if (s.handlers || hasOnAttribute(s.attrs)) eventHandlerAttributesAdded(copy);
   } else if (s.type === TEXT_NODE) copy = w.createText(s.data, doc);
   else if (s.type === COMMENT_NODE) copy = w.createComment(s.data, doc);
@@ -163,7 +297,16 @@ function cloneNode(node, deep, doc) {
   else if (s.type === PROCESSING_INSTRUCTION_NODE) copy = w.createPI(s.target, s.data, doc);
   else if (s.type === DOCUMENT_FRAGMENT_NODE) copy = w.createFragment(doc);
   else if (s.type === DOCUMENT_TYPE_NODE) copy = w.createDoctype(s.name, s.publicId, s.systemId, doc);
-  else throw domError('Cloning this node is not supported yet.', 'NotSupportedError');
+  else if (s.type === DOCUMENT_NODE) {
+    // A document of the same interface, type, URL and mode, without a
+    // browsing context; its children belong to it.
+    copy = w.initDocument(Object.create(Object.getPrototypeOf(node)), {
+      noView: true, url: node.URL, contentType: s.contentType, xml: !!s.xml, mode: s.mode ?? 'no-quirks',
+    });
+    doc = copy;
+  } else if (s.type === ATTRIBUTE_NODE) {
+    copy = initNode(Object.create(w.protos.Attr), ATTRIBUTE_NODE, doc, { name: s.name, element: null, detachedValue: node.value, info: attrInfo(s) });
+  } else throw domError('Cloning this node is not supported yet.', 'NotSupportedError');
   if (deep) {
     for (let c = s.first; c; c = c[S].next) insert(copy, cloneNode(c, true, doc), null);
     // Template cloning steps (HTML): a deep clone copies the template contents.
@@ -182,13 +325,10 @@ function cloneNode(node, deep, doc) {
   return copy;
 }
 
-// The qualified name, uppercased for HTML elements in HTML documents only
-// (cached per element).
-const qualifiedTagName = (s) => {
-  if (s.prefix === undefined) return s.ns === HTML_NS && !s.doc[S].xml ? (s.upper ?? (s.upper = s.tag.toUpperCase())) : s.tag;
-  const name = `${s.prefix}:${s.tag}`;
-  return s.ns === HTML_NS && !s.doc[S].xml ? name.toUpperCase() : name;
-};
+// An element's qualified name: prefix (set only when there is one) and local name.
+const qualifiedName = (s) => (s.prefix === undefined ? s.tag : `${s.prefix}:${s.tag}`);
+// Uppercased for HTML elements in HTML documents only (cached per element).
+const qualifiedTagName = (s) => (s.ns === HTML_NS && !s.doc[S].xml ? (s.upper ?? (s.upper = qualifiedName(s).toUpperCase())) : qualifiedName(s));
 const shadowState = (self) => {
   const s = state(self);
   if (!s.shadow) throw new TypeError('Illegal invocation');
@@ -312,24 +452,38 @@ export const INTERFACES = [
         const s = state(this);
         if (s.type === DOCUMENT_NODE || s.type === DOCUMENT_TYPE_NODE) return;
         if (isCharacterData(s.type)) { setData(this, String(value ?? '')); return; }
-        while (s.first) remove(this, s.first);
         const text = value == null ? '' : String(value);
-        if (text) insert(this, s.doc.createTextNode(text), null);
+        replaceAll(this, text ? internals(this).createText(text, s.doc) : null);
       },
       appendChild(node) { return insert(this, node, null); },
-      insertBefore(node, ref) { return insert(this, node, ref ?? null); },
-      removeChild(node) { return remove(this, node); },
-      replaceChild(node, old) {
-        if (state(old).parent !== this) throw domError('The node to be replaced is not a child of this node.', 'NotFoundError');
-        const next = old[S].next;
-        remove(this, old);
-        insert(this, node, next === node ? node[S].next : next);
-        return old;
+      insertBefore(node, ref) {
+        // The child argument is required (it may be null or undefined).
+        if (ref === undefined && arguments.length < 2) throw new TypeError("Failed to execute 'insertBefore' on 'Node': 2 arguments required, but only 1 present.");
+        return insert(this, node, ref ?? null);
       },
+      removeChild(node) { return remove(this, node); },
+      replaceChild(node, child) { return replace(this, node, child); },
       cloneNode(deep = false) { const s = state(this); return clone(this, deep, s.type === DOCUMENT_NODE ? this : s.doc); },
       contains(node) { return node != null && contains(this, node); },
       compareDocumentPosition(other) { return compareDocumentPosition(this, other); },
       isSameNode(other) { return this === other; },
+      lookupNamespaceURI(prefix) {
+        state(this);
+        const p = prefix == null || prefix === '' ? null : String(prefix);
+        return locateNamespace(this, p);
+      },
+      lookupPrefix(namespace) {
+        state(this);
+        if (namespace == null || namespace === '') return null;
+        const start = namespaceElement(this);
+        return start === null ? null : locatePrefix(start, String(namespace));
+      },
+      isDefaultNamespace(namespace) {
+        state(this);
+        const ns = namespace == null || namespace === '' ? null : String(namespace);
+        return locateNamespace(this, null) === ns;
+      },
+      isEqualNode(other) { state(this); return other != null && isEqualNode(this, state(other) && other); },
       hasChildNodes() { return state(this).count > 0; },
       normalize() { state(this); normalize(this); },
     },
@@ -427,7 +581,7 @@ export const INTERFACES = [
         }
         return s.implementation;
       },
-      get compatMode() { state(this); return 'CSS1Compat'; },
+      get compatMode() { return state(this).mode === 'quirks' ? 'BackCompat' : 'CSS1Compat'; },
       get contentType() { return state(this).contentType; },
       get characterSet() { state(this); return 'UTF-8'; },
       get charset() { state(this); return 'UTF-8'; },
@@ -438,13 +592,18 @@ export const INTERFACES = [
         const name = String(tagName);
         const is = typeof options === 'object' && options !== null && options.is !== undefined ? String(options.is) : null;
         // HTML documents lowercase and use the HTML namespace; XML documents do neither.
+        if (s.xml && !validElementLocalName(name)) throwInvalidName(name);
         return s.xml ? internals(this).createElementNS(s.contentType === 'application/xhtml+xml' ? HTML_NS : null, name, this, false, null, true, is)
-          : internals(this).createElementNS(HTML_NS, name.toLowerCase(), this, false, null, true, is);
+          : internals(this).createElementNS(HTML_NS, HTML_NAMES.get(name) ?? htmlName(name), this, false, null, true, is);
       },
       createElementNS(ns, qualifiedName, options) {
         state(this);
+        const { ns: namespace, prefix, qn } = validateAndExtract(ns, qualifiedName, true);
         const is = typeof options === 'object' && options !== null && options.is !== undefined ? String(options.is) : null;
-        return internals(this).createElementNS(ns == null || ns === '' ? null : String(ns), String(qualifiedName), this, false, null, true, is);
+        const element = internals(this).createElementNS(namespace, qn, this, false, null, true, is);
+        // The prefix is kept only when there is one (most elements have none).
+        if (prefix !== null) element[S].prefix = prefix;
+        return element;
       },
       createTextNode(data) { state(this); return internals(this).createText(String(data), this); },
       createComment(data) { state(this); return internals(this).createComment(String(data), this); },
@@ -458,16 +617,19 @@ export const INTERFACES = [
         state(this);
         const s = state(node);
         if (s.type === DOCUMENT_NODE) throw domError('The node provided is a document, which may not be adopted.', 'NotSupportedError');
+        if (s.shadow === true) throw domError('The node provided is a shadow root, which may not be adopted.', 'HierarchyRequestError');
         if (s.parent) remove(s.parent, node);
         adopt(node, this);
         return node;
       },
       createEvent(name) { return createEvent(state(this).window, name); },
       createAttribute(name) { state(this); return createAttribute(this, name); },
+      createAttributeNS(ns, qualifiedName) { state(this); return createAttributeNS(this, ns, qualifiedName); },
       createTreeWalker(root, whatToShow, filter) { return createTreeWalker(state(this).window, root, whatToShow, filter); },
       createNodeIterator(root, whatToShow, filter) { return createNodeIterator(state(this).window, root, whatToShow, filter); },
       getElementById(id) { state(this); return elementById(this, String(id)); },
       getElementsByTagName(tag) { return byTagName(this, tag); },
+      getElementsByTagNameNS(ns, localName) { return byTagNameNS(this, ns, localName); },
       getElementsByClassName(names) { return byClassName(this, names); },
     }),
   },
@@ -487,6 +649,8 @@ export const INTERFACES = [
       hasFeature() { return true; },
       createDocumentType(name, publicId, systemId) {
         const doc = state(this).doc;
+        // A valid doctype name: no ASCII whitespace, NULL or ">".
+        if (/[\t\n\f\r \0>]/.test(String(name))) throw invalidName(name);
         return internals(doc).createDoctype(String(name), String(publicId), String(systemId), doc);
       },
       createHTMLDocument(title) {
@@ -504,12 +668,16 @@ export const INTERFACES = [
       },
       createDocument(namespace, qualifiedName, doctype = null) {
         const w = internals(state(this).doc);
-        const ns = namespace == null || namespace === '' ? null : String(namespace);
+        if (arguments.length < 2) throw new TypeError("Failed to execute 'createDocument' on 'DOMImplementation': 2 arguments required.");
+        const name = qualifiedName === null ? '' : String(qualifiedName);
+        const { ns, prefix } = name === '' ? { ns: namespace == null || namespace === '' ? null : String(namespace), prefix: null } : validateAndExtract(namespace, name, true);
         const contentType = ns === HTML_NS ? 'application/xhtml+xml' : ns === SVG_NS ? 'image/svg+xml' : 'application/xml';
         const doc = w.createDocument({ contentType, xml: true });
         if (doctype !== null) insert(doc, doctype, null);
-        const name = qualifiedName == null ? '' : String(qualifiedName);
-        if (name !== '') insert(doc, w.createElementNS(ns, name, doc), null);
+        if (name !== '') {
+          const element = insert(doc, w.createElementNS(ns, name, doc), null);
+          if (prefix !== null) element[S].prefix = prefix;
+        }
         return doc;
       },
     },
@@ -564,12 +732,17 @@ export const INTERFACES = [
       set data(value) { state(this); setData(this, value === null ? '' : String(value)); },
       get length() { return state(this).data.length; },
       substringData(offset, count) {
+        if (arguments.length < 2) throw new TypeError("Failed to execute 'substringData' on 'CharacterData': 2 arguments required.");
         const data = state(this).data;
         const o = Number(offset) >>> 0;
         if (o > data.length) throw domError(`The offset ${o} is greater than the node's length (${data.length}).`, 'IndexSizeError');
         return data.substr(o, Number(count) >>> 0);
       },
-      appendData(data) { const s = state(this); replaceData(this, s.data.length, 0, String(data)); },
+      appendData(data) {
+        const s = state(this);
+        if (arguments.length < 1) throw new TypeError("Failed to execute 'appendData' on 'CharacterData': 1 argument required, but only 0 present.");
+        replaceData(this, s.data.length, 0, String(data));
+      },
       insertData(offset, data) { state(this); replaceData(this, Number(offset) >>> 0, 0, String(data)); },
       deleteData(offset, count) { state(this); replaceData(this, Number(offset) >>> 0, Number(count) >>> 0, ''); },
       replaceData(offset, count, data) { state(this); replaceData(this, Number(offset) >>> 0, Number(count) >>> 0, String(data)); },
@@ -596,6 +769,7 @@ export const INTERFACES = [
     name: 'Element',
     parent: 'Node',
     members: mix(parentNode, childNode, elementSiblings, ELEMENT_LAYOUT, {
+      [Symbol.unscopables]: { unscopables: ['slot', 'before', 'after', 'replaceWith', 'remove', 'prepend', 'append', 'replaceChildren'] },
       get namespaceURI() { return state(this).ns; },
       get prefix() { return state(this).prefix ?? null; },
       get tagName() { return qualifiedTagName(state(this)); },
@@ -622,7 +796,7 @@ export const INTERFACES = [
       removeAttributeNode(attr) { state(this); return removeAttributeNode(this, attr); },
       get classList() { state(this); return tokenList(this, 'class', writeAttribute); },
       set classList(v) { this.classList.value = v; },
-      setAttribute(name, value) { state(this); writeAttribute(this, attrName(this, name), String(value)); },
+      setAttribute(name, value) { state(this); writeAttribute(this, attrName(this, name), String(value), true); },
       hasAttribute(name) { return state(this).attrs.has(attrName(this, name)); },
       hasAttributes() { return state(this).attrs.size > 0; },
       removeAttribute(name) { state(this); writeAttribute(this, attrName(this, name), undefined); },
@@ -632,6 +806,7 @@ export const INTERFACES = [
       set outerHTML(html) { setOuterHTML(this, html == null ? '' : html); },
       insertAdjacentHTML(position, html) { insertAdjacentHTML(this, position, html); },
       toggleAttribute(name, force) {
+        checkAttributeName(String(name));
         const has = this.hasAttribute(name);
         const want = force === undefined ? !has : !!force;
         if (want && !has) this.setAttribute(name, '');
@@ -642,6 +817,7 @@ export const INTERFACES = [
       webkitMatchesSelector(selector) { state(this); return matchSelector(this, selector); },
       closest(selector) { state(this); return closestMatch(this, selector); },
       getElementsByTagName(tag) { return byTagName(this, tag); },
+      getElementsByTagNameNS(ns, localName) { return byTagNameNS(this, ns, localName); },
       getElementsByClassName(names) { return byClassName(this, names); },
       insertAdjacentElement(position, element) { return insertAdjacent(this, position, element); },
       insertAdjacentText(position, data) { insertAdjacent(this, position, state(this).doc.createTextNode(String(data))); },
@@ -698,22 +874,35 @@ function documentCollection(doc, key, test) {
   return collections[key] ?? (collections[key] = liveElements(doc, test));
 }
 
-// Elements by qualified name (DOM): in HTML documents, HTML elements match
-// the name lowercased and other elements match it as given.
-const qualifiedName = (s) => (s.prefix === undefined ? s.tag : `${s.prefix}:${s.tag}`);
+// Elements with this qualified name (DOM "list of elements with qualified
+// name"): in an HTML document, HTML elements match it lowercased.
 function byTagName(root, tag) {
   const name = String(tag);
   if (name === '*') return liveElements(root, () => true);
-  const rs = state(root);
-  if ((rs.type === DOCUMENT_NODE ? rs : rs.doc[S]).xml) return liveElements(root, (el) => qualifiedName(el[S]) === name);
-  const lower = name.toLowerCase();
-  return liveElements(root, (el) => { const s = el[S]; return qualifiedName(s) === (s.ns === HTML_NS ? lower : name); });
+  const s = state(root);
+  // Whether root's document is an HTML document is decided when the list is
+  // made; it keeps matching that way if root moves to another document.
+  if ((s.type === DOCUMENT_NODE ? s : s.doc[S]).xml) return liveElements(root, (el) => qualifiedName(el[S]) === name);
+  const lower = asciiLower(name);
+  return liveElements(root, (el) => { const es = el[S]; return qualifiedName(es) === (es.ns === HTML_NS ? lower : name); });
 }
 
-function byClassName(root, names) {
-  const wanted = String(names).split(/\s+/).filter(Boolean);
+// Elements with this namespace and local name ("*" matches any).
+function byTagNameNS(root, namespace, localName) {
+  state(root);
+  const ns = namespace == null || namespace === '' ? null : String(namespace);
+  const local = String(localName);
   return liveElements(root, (el) => {
-    const classes = ` ${el[S].attrs.get('class') ?? ''} `.replace(/\s+/g, ' ');
+    const es = el[S];
+    return (ns === '*' || es.ns === ns) && (local === '*' || es.tag === local);
+  });
+}
+
+// Class names are split on ASCII whitespace only (DOM ordered sets).
+function byClassName(root, names) {
+  const wanted = String(names).split(/[\t\n\f\r ]+/).filter(Boolean);
+  return liveElements(root, (el) => {
+    const classes = ` ${el[S].attrs.get('class') ?? ''} `.replace(/[\t\n\f\r ]+/g, ' ');
     return wanted.length > 0 && wanted.every((c) => classes.includes(` ${c} `));
   });
 }
@@ -726,7 +915,7 @@ const canvasNotImplemented = (el, method) => win(el)[S].notImplemented(`HTMLCanv
 // Window event handlers, forwarded to the window (event-handlers.js).
 INTERFACES.push({ name: 'HTMLBodyElement', parent: 'HTMLElement', members: WINDOW_HANDLER_MEMBERS });
 INTERFACES.push({ name: 'HTMLFrameSetElement', parent: 'HTMLElement', members: WINDOW_HANDLER_MEMBERS });
-INTERFACES.push({ name: 'HTMLStyleElement', parent: 'HTMLElement', members: { get sheet() { state(this); return styleElementSheet(this); } } });
+INTERFACES.push({ name: 'HTMLStyleElement', parent: 'HTMLElement', members: STYLE_ELEMENT_MEMBERS });
 // Linked style sheets are not fetched (jsdom's default), so they have no sheet.
 INTERFACES.push({ name: 'HTMLLinkElement', parent: 'HTMLElement', members: { get sheet() { state(this); return null; } } });
 INTERFACES.push({

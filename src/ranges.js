@@ -623,6 +623,7 @@ export const RANGE_INTERFACES = [
       // DOM Parsing: parse in the context of the start node's element.
       createContextualFragment(markup) {
         const r = rangeState(this);
+        if (arguments.length === 0) throw new TypeError("Failed to execute 'createContextualFragment' on 'Range': 1 argument required, but only 0 present.");
         const node = r.startNode;
         const t = node[S].type;
         let element = t === ELEMENT_NODE ? node

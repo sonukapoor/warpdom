@@ -53,6 +53,16 @@ export function installWindow(global, window, { hostKeys = [], alwaysKeys = [] }
     // not called here (localStorage throws for opaque origins).
     const value = dataValue(window, key);
     const bound = typeof value === 'function' && !isClassLike(key) ? value.bind(window) : null;
+    // Event handler attributes (onclick, ...) are read from the window: body
+    // and frameset elements set the window's handlers too.
+    if (value === undefined && key.startsWith('on') && !alwaysKeys.includes(key)) {
+      Object.defineProperty(global, key, {
+        get() { return window[key]; },
+        set(v) { window[key] = v; },
+        configurable: true,
+      });
+      continue;
+    }
     Object.defineProperty(global, key, {
       get() { return overrides.has(key) ? overrides.get(key) : bound ?? window[key]; },
       set(v) { overrides.set(key, v); window[key] = v; },

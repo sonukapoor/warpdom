@@ -36,17 +36,33 @@ function addDeclarations(index, decls, entries, counter) {
 
 const bySpecificityThenOrder = (a, b) => b.specificity - a.specificity || b.order - a.order;
 
-function buildIndex(sheets) {
+// Whether the style rules of a top-level @media rule apply, as in jsdom
+// (which evaluates no media features): jsdom 27 and later apply a list
+// with an empty, "all" or "screen" query; jsdom 26 one with "screen".
+// Rules inside other grouping rules never apply, as in jsdom.
+function mediaApplies(rule, mode) {
+  const list = rule[S].media[S].list;
+  if (mode === 'jsdom26') return list.includes('screen');
+  return list.length === 0 || list.includes('all') || list.includes('screen');
+}
+
+function buildIndex(sheets, mode) {
   const index = new Map();
   const counter = { n: 0 };
+  const addRule = (rule) => {
+    let entries;
+    try { entries = compileRuleSelector(rule[S].selectorText); } catch { return; }
+    addDeclarations(index, rule[S].style[S].decls, entries, counter);
+  };
   for (const sheet of sheets) {
     const ss = sheet[S];
     if (ss.disabled) continue;
     for (const rule of ss.rules) {
-      if (Object.getPrototypeOf(rule) !== ss.protos.CSSStyleRule) continue;
-      let entries;
-      try { entries = compileRuleSelector(rule[S].selectorText); } catch { continue; }
-      addDeclarations(index, rule[S].style[S].decls, entries, counter);
+      const proto = Object.getPrototypeOf(rule);
+      if (proto === ss.protos.CSSStyleRule) addRule(rule);
+      else if (proto === ss.protos.CSSMediaRule && mediaApplies(rule, mode)) {
+        for (const inner of rule[S].rules) if (Object.getPrototypeOf(inner) === ss.protos.CSSStyleRule) addRule(inner);
+      }
     }
   }
   for (const lists of index.values()) {
@@ -84,7 +100,7 @@ function ruleIndex(element) {
   const sheets = holder === ds ? documentStyleSheets(es.doc)[S].items() : shadowSheets(root);
   const index = cached && cached.cssomRev === cssomChanges.rev && sameSheets(cached.sheets, sheets)
     ? cached.index
-    : sheets.length ? buildIndex(sheets) : EMPTY;
+    : sheets.length ? buildIndex(sheets, validationModeOf(ds.window)) : EMPTY;
   holder.cascade = { treeRev, styleRev, cssomRev: cssomChanges.rev, sheets: sheets.slice(), index };
   return index;
 }

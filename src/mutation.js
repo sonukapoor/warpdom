@@ -6,6 +6,7 @@ import { S, state, hooks } from './internal.js';
 import { liveList } from './collections.js';
 
 const windowOf = (node) => node[S].doc[S].window;
+let observerIds = 0;
 
 // Observers interested in a change at target: registrations on target, and
 // on its ancestors with subtree. One record per observer.
@@ -16,7 +17,7 @@ function interested(target, accepts) {
     if (!regs) continue;
     for (const { observer, options } of regs) {
       if (n !== target && !options.subtree) continue;
-      const want = accepts(options);
+      const want = accepts(options, n);
       if (want === false) continue;
       found.set(observer, (found.get(observer) ?? false) || want === 'old');
     }
@@ -36,18 +37,24 @@ function queue(target, fields, accepts, oldValue) {
   }
 }
 
+// Queue a mutation observer microtask (one per window at a time), then
+// notify observers in the order they were created; transient registered
+// observers go away at notification, records or not.
 function scheduleDelivery(window, observer) {
   const ws = window[S];
   const pending = ws.pendingObservers ?? (ws.pendingObservers = new Set());
-  pending.add(observer);
+  if (observer !== null) pending.add(observer);
   if (ws.deliveryScheduled) return;
   ws.deliveryScheduled = true;
   queueMicrotask(() => {
     ws.deliveryScheduled = false;
-    const observers = [...pending];
+    const transient = ws.transientObservers;
+    if (transient !== undefined) for (const obs of transient) pending.add(obs);
+    const observers = [...pending].sort((a, b) => a[S].id - b[S].id);
     pending.clear();
     for (const obs of observers) {
       const os = obs[S];
+      clearTransients(obs, ws);
       if (!os.records.length) continue;
       const records = os.records;
       os.records = [];
@@ -60,16 +67,54 @@ function scheduleDelivery(window, observer) {
   });
 }
 
+// Transient registered observers (DOM "remove"): registrations with subtree
+// on the removed node's former inclusive ancestors follow it until the
+// observers are next notified.
+hooks.removed = (parent, node) => {
+  let added = false;
+  for (let n = parent; n; n = n[S].parent) {
+    const regs = n[S].observers;
+    if (!regs) continue;
+    for (const registered of regs) {
+      if (!registered.options.subtree) continue;
+      const ns = node[S];
+      (ns.observers ?? (ns.observers = [])).push({ observer: registered.observer, options: registered.options, source: registered.source ?? registered });
+      const os = registered.observer[S];
+      (os.transientNodes ?? (os.transientNodes = new Set())).add(node);
+      const ws = windowOf(node)[S];
+      (ws.transientObservers ?? (ws.transientObservers = new Set())).add(registered.observer);
+      added = true;
+    }
+  }
+  if (added) scheduleDelivery(windowOf(node), null);
+};
+
+function clearTransients(observer, ws) {
+  const os = observer[S];
+  if (os.transientNodes === undefined || os.transientNodes.size === 0) return;
+  for (const node of os.transientNodes) {
+    const ns = node[S];
+    if (ns.observers) ns.observers = ns.observers.filter((r) => !(r.source && r.observer === observer));
+  }
+  os.transientNodes.clear();
+  ws?.transientObservers?.delete(observer);
+}
+
 hooks.childList = (target, added, removed, previousSibling, nextSibling) => {
   queue(target, { type: 'childList', added, removed, previousSibling, nextSibling },
     (o) => (o.childList ? true : false), null);
 };
 
+// name is the attribute's qualified name; records carry its local name and
+// namespace.
 hooks.attribute = (element, name, oldValue) => {
-  queue(element, { type: 'attributes', attributeName: name },
+  const info = element[S].attrNS?.get(name);
+  const local = info?.local ?? name;
+  const namespace = info?.ns ?? null;
+  queue(element, { type: 'attributes', attributeName: local, attributeNamespace: namespace },
     (o) => {
       if (!o.attributes) return false;
-      if (o.attributeFilter && !o.attributeFilter.includes(name)) return false;
+      if (o.attributeFilter && (namespace !== null || !o.attributeFilter.includes(local))) return false;
       return o.attributeOldValue ? 'old' : true;
     }, oldValue ?? null);
 };
@@ -105,7 +150,7 @@ export const MUTATION_INTERFACES = [
       if (typeof callback !== 'function') {
         throw new TypeError("Failed to construct 'MutationObserver': The callback provided as parameter 1 is not a function.");
       }
-      self[S] = { callback, records: [], targets: new Set() };
+      self[S] = { callback, records: [], targets: new Set(), id: ++observerIds, transientNodes: undefined };
       return self;
     },
     members: {
@@ -115,8 +160,17 @@ export const MUTATION_INTERFACES = [
         const opts = normalize(options);
         const ts = target[S];
         const regs = ts.observers ?? (ts.observers = []);
-        const existing = regs.find((r) => r.observer === this);
-        if (existing) existing.options = opts;
+        const existing = regs.find((r) => r.observer === this && !r.source);
+        if (existing) {
+          // Transient registrations from this one end.
+          if (os.transientNodes) {
+            for (const node of os.transientNodes) {
+              const ns = node[S];
+              if (ns.observers) ns.observers = ns.observers.filter((r) => r.source !== existing);
+            }
+          }
+          existing.options = opts;
+        }
         else {
           regs.push({ observer: this, options: opts });
           os.targets.add(target);
@@ -133,6 +187,7 @@ export const MUTATION_INTERFACES = [
           doc[S].observerCount--;
         }
         os.targets.clear();
+        clearTransients(this, null);
         os.records = [];
       },
       takeRecords() {
@@ -153,7 +208,7 @@ export const MUTATION_INTERFACES = [
       get previousSibling() { return state(this).previousSibling ?? null; },
       get nextSibling() { return state(this).nextSibling ?? null; },
       get attributeName() { return state(this).attributeName ?? null; },
-      get attributeNamespace() { state(this); return null; },
+      get attributeNamespace() { return state(this).attributeNamespace ?? null; },
       get oldValue() { return state(this).oldValue; },
     },
   },

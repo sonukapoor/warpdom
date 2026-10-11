@@ -89,7 +89,8 @@ function enqueueUpgrade(element, definition) {
 
 // --- definitions -------------------------------------------------------------------
 
-const registryOf = (doc) => doc[S].window?.[S].customElements?.[S] ?? null;
+// Inert template documents have no browsing context: no definitions apply.
+const registryOf = (doc) => (doc[S].inertTemplate === true ? null : doc[S].window?.[S].customElements?.[S] ?? null);
 
 // Look up a custom element definition (HTML namespace only).
 export function lookUp(doc, ns, localName, is) {

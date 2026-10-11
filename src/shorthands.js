@@ -106,6 +106,113 @@ export function serializeFont(value) {
     .filter(Boolean).join(' ');
 }
 
+// A <bg-position> (CSS Backgrounds 3) as its horizontal and vertical
+// parts, as jsdom 27 and later split it: one value is centered on the
+// other axis (top is center top), keywords name their axis, an offset
+// stays with its keyword (right 5% bottom is right 5% and bottom). Null
+// when the tokens are not a position.
+const HORIZONTAL = new Set(['left', 'right']);
+const VERTICAL = new Set(['top', 'bottom']);
+const POSITION_KEYWORDS = new Set(['left', 'right', 'top', 'bottom', 'center']);
+export function splitPosition(tokens) {
+  const lower = tokens.map((token) => token.toLowerCase());
+  const keyword = (i) => POSITION_KEYWORDS.has(lower[i]);
+  if (!lower.every((token, i) => keyword(i) || isLength(tokens[i]))) return null;
+  if (tokens.length === 1) return VERTICAL.has(lower[0]) ? ['center', tokens[0]] : [tokens[0], 'center'];
+  if (tokens.length === 2) {
+    // [ left | center | right | <length> ] [ top | center | bottom | <length> ],
+    // or the keywords the other way round.
+    if (!VERTICAL.has(lower[0]) && !HORIZONTAL.has(lower[1])) return [tokens[0], tokens[1]];
+    if (keyword(0) && keyword(1) && !HORIZONTAL.has(lower[0]) && !VERTICAL.has(lower[1])) return [tokens[1], tokens[0]];
+    return null;
+  }
+  // Three or four values: keywords, each optionally followed by an offset.
+  const groups = [];
+  for (let i = 0; i < tokens.length; i++) {
+    if (!keyword(i)) return null;
+    if (i + 1 < tokens.length && !keyword(i + 1)) {
+      if (lower[i] === 'center') return null;
+      groups.push([lower[i], `${tokens[i]} ${tokens[i + 1]}`]);
+      i++;
+    } else groups.push([lower[i], tokens[i]]);
+  }
+  if (groups.length !== 2) return null;
+  const [a, b] = groups;
+  if (HORIZONTAL.has(a[0]) || VERTICAL.has(b[0])) return HORIZONTAL.has(b[0]) || VERTICAL.has(a[0]) ? null : [a[1], b[1]];
+  if (VERTICAL.has(a[0]) || HORIZONTAL.has(b[0])) return [b[1], a[1]];
+  return null;
+}
+
+// background-position's layers as [x, y] pairs, or null.
+export function positionLayers(value) {
+  const layers = [];
+  for (const layer of topLevelCommaSplit(value)) {
+    const position = splitPosition(words(layer));
+    if (!position) return null;
+    layers.push(position);
+  }
+  return layers;
+}
+
+// The background shorthand's layers (CSS Backgrounds 3), each longhand as
+// a list, as jsdom 27 and later expand it. Null when it does not parse.
+const REPEATS = new Set(['repeat-x', 'repeat-y', 'repeat', 'space', 'round', 'no-repeat']);
+const ATTACHMENTS = new Set(['scroll', 'fixed', 'local']);
+const BOXES = new Set(['border-box', 'padding-box', 'content-box']);
+const isImage = (token) => /^(none|(url|image|image-set|cross-fade|element|paint|(-webkit-)?(repeating-)?(linear|radial|conic)-gradient)\()/i.test(token) || token.toLowerCase() === 'none';
+function backgroundLayers(value) {
+  const layers = topLevelCommaSplit(value);
+  const out = { image: [], x: [], y: [], size: [], repeat: [], attachment: [], origin: [], clip: [], color: null };
+  for (let n = 0; n < layers.length; n++) {
+    const tokens = [];
+    for (const word of words(layers[n])) {
+      if (word.includes('/') && !word.includes('(')) {
+        word.split('/').forEach((part, i) => { if (i) tokens.push('/'); if (part) tokens.push(part); });
+      } else tokens.push(word);
+    }
+    let image = null, position = null, size = null, repeat = null, attachment = null, origin = null, clip = null;
+    for (let i = 0; i < tokens.length;) {
+      const token = tokens[i];
+      const lower = token.toLowerCase();
+      if (image === null && isImage(token)) { image = token; i++; continue; }
+      if (repeat === null && REPEATS.has(lower)) {
+        repeat = token;
+        if (lower !== 'repeat-x' && lower !== 'repeat-y' && REPEATS.has(tokens[i + 1]?.toLowerCase()) && !/^repeat-[xy]$/i.test(tokens[i + 1])) { repeat += ` ${tokens[i + 1]}`; i++; }
+        i++;
+        continue;
+      }
+      if (attachment === null && ATTACHMENTS.has(lower)) { attachment = token; i++; continue; }
+      if (BOXES.has(lower) && clip === null) { if (origin === null) origin = token; else clip = token; i++; continue; }
+      if (position === null && (POSITION_KEYWORDS.has(lower) || isLength(token))) {
+        let j = i;
+        while (j < tokens.length && j - i < 4 && (POSITION_KEYWORDS.has(tokens[j].toLowerCase()) || isLength(tokens[j]))) j++;
+        position = splitPosition(tokens.slice(i, j));
+        if (!position) return null;
+        i = j;
+        if (tokens[i] === '/') {
+          let k = i + 1;
+          while (k < tokens.length && k - i <= 2 && (isLength(tokens[k]) || /^(auto|cover|contain)$/i.test(tokens[k]))) k++;
+          if (k === i + 1) return null;
+          size = tokens.slice(i + 1, k).join(' ');
+          i = k;
+        }
+        continue;
+      }
+      if (n === layers.length - 1 && out.color === null && (lower === 'currentcolor' || lower === 'transparent' || resolveColor(token) !== null)) { out.color = token; i++; continue; }
+      return null;
+    }
+    out.image.push(image ?? 'none');
+    out.x.push(position ? position[0] : '0%');
+    out.y.push(position ? position[1] : '0%');
+    out.size.push(size ?? 'auto');
+    out.repeat.push(repeat ?? 'repeat');
+    out.attachment.push(attachment ?? 'scroll');
+    out.origin.push(origin ?? 'padding-box');
+    out.clip.push(clip ?? origin ?? 'border-box');
+  }
+  return out;
+}
+
 // The longhands a shorthand declaration sets, as [name, value] pairs, or
 // null when it is not expanded.
 function expandShorthand(name, value) {
@@ -165,14 +272,21 @@ function expandShorthand(name, value) {
     return [['font-style', f.style], ['font-weight', f.weight], ['font-size', f.size], ['line-height', f.lineHeight], ['font-family', f.family]];
   }
   if (name === 'background-position') {
-    if (t.length !== 2 || value.includes(',')) return null;
-    return [['background-position-x', t[0]], ['background-position-y', t[1]]];
+    const layers = positionLayers(value);
+    if (!layers) return null;
+    return [['background-position-x', layers.map((l) => l[0]).join(', ')], ['background-position-y', layers.map((l) => l[1]).join(', ')]];
   }
   if (name === 'background') {
-    // The color, from the final layer; the other longhands reset.
-    const layers = topLevelCommaSplit(value);
-    const color = words(layers[layers.length - 1]).find((w) => w.toLowerCase() === 'currentcolor' || resolveColor(w) !== null);
-    return longhands.map((l) => [l, l === 'background-color' ? color ?? initialOf(l) : initialOf(l)]);
+    const layers = backgroundLayers(value);
+    if (!layers) {
+      // The color, from the final layer; the other longhands reset.
+      const parts = topLevelCommaSplit(value);
+      const color = words(parts[parts.length - 1]).find((w) => w.toLowerCase() === 'currentcolor' || resolveColor(w) !== null);
+      return longhands.map((l) => [l, l === 'background-color' ? color ?? initialOf(l) : initialOf(l)]);
+    }
+    const list = { 'background-image': layers.image, 'background-position-x': layers.x, 'background-position-y': layers.y, 'background-size': layers.size,
+      'background-repeat': layers.repeat, 'background-attachment': layers.attachment, 'background-origin': layers.origin, 'background-clip': layers.clip };
+    return longhands.map((l) => [l, l === 'background-color' ? layers.color ?? initialOf(l) : list[l].join(', ')]);
   }
   return null;
 }

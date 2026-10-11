@@ -76,3 +76,33 @@ test('observe requires at least one of childList, attributes, characterData', ()
   const observer = new w.MutationObserver(() => {});
   assert.throws(() => observer.observe(w.document.body, {}), TypeError);
 });
+
+import { parity as styleParity } from './parity.js';
+
+for (const jsdom of [30, 26]) {
+  styleParity(`style writes queue attribute records and custom element reactions (jsdom ${jsdom})`, async (w) => {
+    const d = w.document;
+    const el = d.createElement('div');
+    d.body.appendChild(el);
+    const records = [];
+    const observer = new w.MutationObserver((list) => records.push(...list.map((r) => `${r.attributeName}:${r.oldValue}`)));
+    observer.observe(el, { attributes: true, attributeOldValue: true });
+    const attributes = el.attributes;
+    el.style.height = '100px'; await Promise.resolve();
+    el.style.height = '100px'; await Promise.resolve();
+    el.style.cssText = 'height:100px'; await Promise.resolve();
+    el.style.removeProperty('width'); await Promise.resolve();
+    el.style.removeProperty('height'); await Promise.resolve();
+    const calls = [];
+    class X extends w.HTMLElement {
+      static get observedAttributes() { return ['style']; }
+      attributeChangedCallback(name, old, value) { calls.push(`${name}:${old}->${value}`); }
+    }
+    w.customElements.define('x-el', X);
+    const x = d.createElement('x-el');
+    d.body.appendChild(x);
+    x.style.color = 'red';
+    x.style.color = 'blue';
+    return [records, calls, attributes.length];
+  }, { jsdom });
+}
