@@ -1,0 +1,7 @@
+SURVEY floating-ui            jsdom passed 333 | warpdom passed 285 | differ 48 | tests 339
+SURVEY ariakit                jsdom passed 1811 | warpdom passed 1829 | differ 26 | tests 1852
+SURVEY solid                  jsdom passed 480 | warpdom passed 479 | differ 1 | tests 480
+SURVEY CopilotKit             jsdom passed 3750 | warpdom passed 3725 | differ 25 | tests 3910
+SURVEY ark-ui                 jsdom passed 1188 | warpdom passed 1185 | differ 3 | tests 1244
+SURVEY element-plus           jsdom passed 2599 | warpdom passed 2442 | differ 157 | tests 2604
+SURVEY done

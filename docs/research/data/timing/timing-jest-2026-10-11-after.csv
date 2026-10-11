@@ -1,0 +1,13 @@
+round,project,config,seconds,differs
+1,react-spectrum,jsdom-default,140.4,0
+1,react-spectrum,warpdom-default,98.6,0
+1,handsontable,jsdom-default,476.3,0
+1,handsontable,warpdom-default,156.7,3
+2,react-spectrum,jsdom-default,138.0,0
+2,react-spectrum,warpdom-default,98.9,0
+2,handsontable,jsdom-default,475.8,0
+2,handsontable,warpdom-default,157.6,3
+3,react-spectrum,jsdom-default,136.6,0
+3,react-spectrum,warpdom-default,103.3,0
+3,handsontable,jsdom-default,474.3,0
+3,handsontable,warpdom-default,156.1,3

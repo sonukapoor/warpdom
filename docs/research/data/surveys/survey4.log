@@ -1,0 +1,6 @@
+SURVEY emoji-picker-element   jsdom passed 157 | warpdom passed 157 | differ 0 | tests 160
+SURVEY ark-ui                 jsdom passed 1189 | warpdom passed 1186 | differ 3 | tests 1244
+SURVEY CopilotKit             jsdom passed 3750 | warpdom passed 3739 | differ 11 | tests 3910
+SURVEY react-spectrum         jsdom passed 8317 | warpdom passed 8280 | differ 37 | tests 8446
+SURVEY done
+SURVEY done

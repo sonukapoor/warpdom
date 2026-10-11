@@ -1,0 +1,76 @@
+{
+  "projects": {
+    "material-ui": {
+      "name": "material-ui",
+      "repo": "https://github.com/mui/material-ui",
+      "startedAt": "2026-10-11T21:16:24.807Z",
+      "packages": [
+        {
+          "dir": "packages/mui-material",
+          "runner": "vitest",
+          "environment": "warpdom",
+          "status": "ran",
+          "run": {
+            "files": 185,
+            "failedFiles": 0,
+            "tests": 5817,
+            "passed": 5022,
+            "failed": 0,
+            "skipped": 795,
+            "ms": 42276,
+            "exitCode": 0
+          }
+        },
+        {
+          "dir": "packages/mui-system",
+          "runner": "vitest",
+          "environment": "warpdom",
+          "status": "ran",
+          "run": {
+            "files": 37,
+            "failedFiles": 0,
+            "tests": 579,
+            "passed": 558,
+            "failed": 0,
+            "skipped": 21,
+            "ms": 4925,
+            "exitCode": 0
+          }
+        },
+        {
+          "dir": "packages/mui-utils",
+          "runner": "vitest",
+          "environment": "warpdom",
+          "status": "ran",
+          "run": {
+            "files": 37,
+            "failedFiles": 0,
+            "tests": 229,
+            "passed": 215,
+            "failed": 0,
+            "skipped": 14,
+            "ms": 4311,
+            "exitCode": 0
+          }
+        },
+        {
+          "dir": "packages/mui-lab",
+          "runner": "vitest",
+          "environment": "warpdom",
+          "status": "ran",
+          "run": {
+            "files": 14,
+            "failedFiles": 0,
+            "tests": 145,
+            "passed": 99,
+            "failed": 0,
+            "skipped": 46,
+            "ms": 3305,
+            "exitCode": 0
+          }
+        }
+      ],
+      "commit": "edb9f2df1694fae5f04d027c785f0c4d10e492b5"
+    }
+  }
+}

@@ -1,0 +1,80 @@
+{
+  "projects": {
+    "handsontable": {
+      "name": "handsontable",
+      "repo": "https://github.com/handsontable/handsontable",
+      "startedAt": "2026-10-11T20:37:27.351Z",
+      "packages": [
+        {
+          "dir": "handsontable",
+          "runner": "jest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 520,
+            "failedFiles": 0,
+            "tests": 7615,
+            "passed": 7615,
+            "failed": 0,
+            "skipped": 0,
+            "ms": 330782,
+            "exitCode": 0
+          }
+        },
+        {
+          "dir": "wrappers/react-wrapper",
+          "runner": "jest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 18,
+            "failedFiles": 0,
+            "tests": 111,
+            "passed": 111,
+            "failed": 0,
+            "skipped": 0,
+            "ms": 14176,
+            "exitCode": 0
+          }
+        },
+        {
+          "dir": "wrappers/vue3",
+          "runner": "jest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 6,
+            "failedFiles": 0,
+            "tests": 42,
+            "passed": 42,
+            "failed": 0,
+            "skipped": 0,
+            "ms": 3889,
+            "exitCode": 0
+          }
+        },
+        {
+          "dir": "wrappers/angular-wrapper",
+          "runner": "jest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 14,
+            "failedFiles": 0,
+            "tests": 314,
+            "passed": 314,
+            "failed": 0,
+            "skipped": 0,
+            "ms": 125382,
+            "exitCode": 0
+          }
+        }
+      ],
+      "build": {
+        "exitCode": 0,
+        "ms": 3714
+      },
+      "commit": "fff66b1a306479df42a53fc9f7f6ce39231ec138"
+    }
+  }
+}

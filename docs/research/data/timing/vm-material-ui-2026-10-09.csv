@@ -1,0 +1,13 @@
+round,config,seconds,differs
+1,jsdom-default,88.3,0
+1,warpdom-default,49.3,0
+1,warpdom-vm,23.4,0
+1,jsdom-vm,28.1,0
+2,jsdom-default,89.4,0
+2,warpdom-default,51.5,0
+2,warpdom-vm,23.1,0
+2,jsdom-vm,29.3,0
+3,jsdom-default,91.0,0
+3,warpdom-default,51.6,0
+3,warpdom-vm,22.8,0
+3,jsdom-vm,29.1,0

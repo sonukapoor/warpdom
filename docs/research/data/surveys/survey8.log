@@ -1,0 +1,17 @@
+SURVEY handsontable           jsdom passed 8062 | warpdom passed 8059 | differ 3 | tests 8062
+SURVEY react-spectrum         jsdom passed 8317 | warpdom passed 8317 | differ 0 | tests 8446
+SURVEY react-hook-form        jsdom passed 1505 | warpdom passed 1505 | differ 0 | tests 1505
+SURVEY vuetify                jsdom passed 818 | warpdom passed 818 | differ 0 | tests 822
+SURVEY solid                  jsdom passed 480 | warpdom passed 479 | differ 1 | tests 480
+SURVEY svelte                 jsdom passed 7818 | warpdom passed 7818 | differ 0 | tests 7873
+SURVEY floating-ui            jsdom passed 333 | warpdom passed 333 | differ 0 | tests 339
+SURVEY emoji-picker-element   jsdom passed 157 | warpdom passed 157 | differ 0 | tests 160
+SURVEY analog                 jsdom passed 187 | warpdom passed 187 | differ 0 | tests 196
+  analog:   skipped libs/my-package: runs in browser mode
+SURVEY radix-primitives       jsdom passed 976 | warpdom passed 976 | differ 0 | tests 982
+SURVEY material-ui            jsdom passed 5878 | warpdom passed 5878 | differ 0 | tests 6751
+SURVEY ark-ui                 jsdom passed 1189 | warpdom passed 1187 | differ 2 | tests 1244
+SURVEY CopilotKit             jsdom passed 2275 | warpdom passed 2275 | differ 0 | tests 3427
+SURVEY ariakit                jsdom passed 1811 | warpdom passed 1820 | differ 9 | tests 1852
+SURVEY done
+SURVEY done

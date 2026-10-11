@@ -1,0 +1,4 @@
+SURVEY react-hook-form        jsdom passed 1505 | warpdom passed 1505 | differ 0 | tests 1505
+SURVEY react-spectrum         jsdom passed 8317 | warpdom passed 8316 | differ 1 | tests 8446
+SURVEY handsontable           jsdom passed 8062 | warpdom passed 8046 | differ 16 | tests 8062
+SURVEY done

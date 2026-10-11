@@ -1,0 +1,154 @@
+{
+  "recordedAt": "2026-10-11T21:29:56.726Z",
+  "node": "v22.17.1",
+  "os": {
+    "platform": "darwin",
+    "release": "25.6.0",
+    "version": "Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+    "arch": "arm64"
+  },
+  "cpu": {
+    "model": "Apple M4 Pro",
+    "cores": 14,
+    "availableParallelism": 14
+  },
+  "memory": {
+    "totalBytes": 25769803776,
+    "totalGiB": 24
+  },
+  "loadAverage": [
+    8.623046875,
+    10.14794921875,
+    8.05029296875
+  ],
+  "warpdom": {
+    "dir": "/Users/sonukapoor/Projects/warpdom",
+    "commit": "2e60a7867ee2d7a64390c0800c5fc48fd3e07a08",
+    "branch": "main",
+    "dirty": false
+  },
+  "domApiTracer": {
+    "dir": "/Users/sonukapoor/Projects/dom-api-tracer",
+    "commit": "9671576ff6a2b014d6e54242a66ba927c100cc47",
+    "branch": "main",
+    "dirty": true
+  },
+  "projects": {
+    "floating-ui": {
+      "dir": "/Users/sonukapoor/Projects/floating-ui",
+      "commit": "414e093d7cc8762ae0c207784aa98110bf67c9e6",
+      "branch": "ci/add-cve-lite-vulnerability-scan",
+      "dirty": false
+    },
+    "solid": {
+      "dir": "/Users/sonukapoor/Projects/solid",
+      "commit": "aa123525b0421d63ad2476680b4444bc1fb30b4a",
+      "branch": "ci/add-cve-lite-vulnerability-scan",
+      "dirty": false
+    },
+    "analog": {
+      "dir": "/Users/sonukapoor/Projects/cve-lite-cli-v1.0.1/examples/analog",
+      "commit": "3b9463ecf9782dc792a049c2e1741060cfdf2dcc",
+      "branch": "beta",
+      "dirty": false
+    },
+    "CopilotKit": {
+      "dir": "/Users/sonukapoor/Projects/CopilotKit",
+      "commit": "0e715aadb93e4ce2936117e81451c691a2ac38b2",
+      "branch": "fix/7166-refresh-stale-override-floors",
+      "dirty": false
+    },
+    "handsontable": {
+      "dir": "/Users/sonukapoor/Projects/handsontable",
+      "commit": "fff66b1a306479df42a53fc9f7f6ce39231ec138",
+      "branch": "develop",
+      "dirty": false
+    },
+    "ag-grid": {
+      "dir": "/Users/sonukapoor/Projects/ag-grid",
+      "commit": "73997c5528d5f9333c42f474f95650af9f223992",
+      "branch": "HEAD",
+      "dirty": false
+    },
+    "material-ui": {
+      "dir": "/Users/sonukapoor/Projects/material-ui",
+      "commit": "edb9f2df1694fae5f04d027c785f0c4d10e492b5",
+      "branch": "master",
+      "dirty": false
+    },
+    "ariakit": {
+      "dir": "/Users/sonukapoor/Projects/ariakit",
+      "commit": "51eb28a7ca75b5d9f722fa5035137c5ec69e0c3a",
+      "branch": "main",
+      "dirty": false
+    },
+    "element-plus": {
+      "dir": "/Users/sonukapoor/Projects/element-plus",
+      "commit": "6f7016e434cc64d152940698a5fd3bc5f373ec97",
+      "branch": "dev",
+      "dirty": false
+    },
+    "ngx-formly": {
+      "dir": "/Users/sonukapoor/Projects/ngx-formly",
+      "missing": true
+    },
+    "kobalte": {
+      "dir": "/Users/sonukapoor/Projects/kobalte",
+      "commit": "675b4a11f4f074007c98b47a573760a1b60849ff",
+      "branch": "main",
+      "dirty": false
+    },
+    "radix-primitives": {
+      "dir": "/Users/sonukapoor/Projects/radix-primitives",
+      "commit": "4e8b0dbc76d3e0189ab1a0ef0ff2245758506840",
+      "branch": "main",
+      "dirty": false
+    },
+    "react-hook-form": {
+      "dir": "/Users/sonukapoor/Projects/react-hook-form",
+      "commit": "e76876b02550b3ad48a351c638845d9dc1aaa3c8",
+      "branch": "master",
+      "dirty": false
+    },
+    "vuetify": {
+      "dir": "/Users/sonukapoor/Projects/vuetify",
+      "commit": "e23a3c152930e9d504130ee194adfce63f84d66e",
+      "branch": "master",
+      "dirty": false
+    },
+    "svelte": {
+      "dir": "/Users/sonukapoor/Projects/svelte",
+      "commit": "707c28146b0f0a6d5404a1bd4769874c3c24851a",
+      "branch": "main",
+      "dirty": false
+    },
+    "mantine": {
+      "dir": "/Users/sonukapoor/Projects/mantine",
+      "missing": true
+    },
+    "react-spectrum": {
+      "dir": "/Users/sonukapoor/Projects/react-spectrum",
+      "commit": "2691598d3efcdaf6f49f29ad1a44bbc1741765a3",
+      "branch": "main",
+      "dirty": false
+    },
+    "nuxt-ui": {
+      "dir": "/Users/sonukapoor/Projects/nuxt-ui",
+      "commit": "9c4e33b7e076aa6bd59b5bd99d8621d9dc1bcf60",
+      "branch": "v4",
+      "dirty": false
+    },
+    "ark-ui": {
+      "dir": "/Users/sonukapoor/Projects/ark-ui",
+      "commit": "eb6abb07f619022e2f42ae258f61b0c123166cd7",
+      "branch": "main",
+      "dirty": false
+    },
+    "emoji-picker-element": {
+      "dir": "/Users/sonukapoor/Projects/emoji-picker-element",
+      "commit": "5d1c8bfc21e737c03a3cb14e06b4e472e2275ff1",
+      "branch": "master",
+      "dirty": false
+    }
+  }
+}
