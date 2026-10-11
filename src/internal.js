@@ -109,8 +109,12 @@ function insertNode(parent, node, ref) {
   if (ref != null && state(ref).parent !== parent) {
     throw domError('The node before which the new node is to be inserted is not a child of this node.', 'NotFoundError');
   }
-  if (contains(node, parent)) {
-    throw domError('The new child element contains the parent.', 'HierarchyRequestError');
+  // One walk from parent to its root: node must not be an inclusive ancestor
+  // of parent, and the root tells whether parent is connected.
+  let root = parent;
+  for (let n = parent; n !== null; n = n[S].parent) {
+    if (n === node) throw domError('The new child element contains the parent.', 'HierarchyRequestError');
+    root = n;
   }
   if (ns.type === DOCUMENT_FRAGMENT_NODE) {
     while (ns.first) insert(parent, ns.first, ref);
@@ -118,7 +122,11 @@ function insertNode(parent, node, ref) {
   }
   if (ns.type === DOCUMENT_NODE) throw domError('Nodes of type #document may not be inserted.', 'HierarchyRequestError');
   if (ref === node) ref = ns.next;
-  if (ns.parent) remove(ns.parent, node);
+  const moved = ns.parent !== null;
+  if (moved) remove(ns.parent, node);
+  // Removing node from elsewhere cannot change parent's ancestors (node is not
+  // one of them); recheck anyway after a move, which can run more code.
+  const connected = moved ? isConnected(parent) : root[S].type === DOCUMENT_NODE;
   const doc = ps.type === DOCUMENT_NODE ? parent : ps.doc;
   if (ns.doc !== doc) adopt(node, doc);
   if (ref && hasRanges(doc)) hooks.rangeInsert(doc, parent, ref);
@@ -130,11 +138,11 @@ function insertNode(parent, node, ref) {
   ns.parent = parent;
   ps.count++;
   changed(parent);
-  if (isConnected(parent)) indexIds(node, true);
+  if (connected) indexIds(node, true);
   if (observed(parent)) hooks.childList(parent, [node], [], ns.prev, ns.next);
   if (hooks.ce !== null) hooks.ce.inserted(node);
   // Iframes get nested windows (frames.js), only in documents that have any.
-  if (doc[S].frameCount && hooks.frames !== null && isConnected(parent)) hooks.frames.inserted(node);
+  if (doc[S].frameCount && hooks.frames !== null && connected) hooks.frames.inserted(node);
   // Slot assignment changes (slots.js), only in documents with slots.
   if (doc[S].slotCount && hooks.slots !== null) hooks.slots.inserted(parent, node);
   return node;
@@ -165,7 +173,10 @@ function removeNode(parent, node) {
   if (ns.parent !== parent) throw domError('The node to be removed is not a child of this node.', 'NotFoundError');
   const ownerDoc = ps.type === DOCUMENT_NODE ? parent : ps.doc;
   if (hasRanges(ownerDoc)) hooks.rangeRemove(ownerDoc, parent, node);
-  const connected = isConnected(parent);
+  // Connected matters only for the id index and frames: skip the walk to the
+  // root when the document has neither.
+  const ods = ownerDoc[S];
+  const connected = ((ods.ids !== undefined && ods.ids.size !== 0) || ods.frameCount) ? isConnected(parent) : false;
   const wasConnected = hooks.ce !== null && shadowIncludingRoot(parent)[S].type === DOCUMENT_NODE;
   const prev = ns.prev;
   const next = ns.next;
@@ -177,13 +188,44 @@ function removeNode(parent, node) {
   if (connected) indexIds(node, false);
   // Focus fixup: removing the focused element (also from inside a shadow
   // tree of the removed subtree) focuses the document, without events.
-  const focused = ownerDoc[S].focused;
-  if (focused && focused !== ownerDoc && shadowIncludingContains(node, focused)) ownerDoc[S].focused = ownerDoc;
+  const focused = ods.focused;
+  if (focused && focused !== ownerDoc) {
+    if (focusAncestors(ods, focused).has(node)) ods.focused = ownerDoc;
+  } else ods.focusChainOf = null;
   if (observed(parent)) hooks.childList(parent, [], [node], prev, next);
   if (hooks.ce !== null) hooks.ce.removed(node, wasConnected);
-  if (ownerDoc[S].frameCount && hooks.frames !== null && connected) hooks.frames.removed(node);
-  if (ownerDoc[S].slotCount && hooks.slots !== null) hooks.slots.removed(parent, node);
+  if (ods.frameCount && hooks.frames !== null && connected) hooks.frames.removed(node);
+  if (ods.slotCount && hooks.slots !== null) hooks.slots.removed(parent, node);
   return node;
+}
+
+// The focused element's shadow-including inclusive ancestors, cached per
+// document. They cannot change while it stays focused: any change removes one
+// of them from its parent, which runs the focus fixup above and unfocuses it.
+// A removal without a focused element drops the cache, so changes made while
+// the element was not focused are never missed (reset.js drops it too).
+function focusAncestors(ds, focused) {
+  if (ds.focusChainOf === focused) return ds.focusChain;
+  const chain = new Set();
+  let light = true;
+  for (let n = focused; n;) {
+    chain.add(n);
+    const s = n[S];
+    if (s.parent === null && s.shadow) light = false;
+    n = s.parent ?? (s.shadow ? s.host : null);
+  }
+  ds.focusChain = chain;
+  ds.focusChainOf = focused;
+  ds.focusChainLight = light;
+  return chain;
+}
+
+// contains(ancestor, node) for removal hooks, in O(1) when node is the
+// focused element with its ancestors cached and outside shadow trees (the
+// usual place of the selection after focus).
+export function containsFromDoc(ds, ancestor, node) {
+  if (node === ds.focused && ds.focusChainOf === node && ds.focusChainLight) return ds.focusChain.has(ancestor);
+  return contains(ancestor, node);
 }
 
 // --- id index -----------------------------------------------------------------

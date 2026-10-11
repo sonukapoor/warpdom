@@ -208,3 +208,149 @@ test('documents without live ranges keep no registry; ranges register on creatio
   r.selectNode(d.body);
   assert.equal(d[S].ranges.size, 1, 'one entry per range');
 });
+
+// Live range updates when ranges are few, dropped or elsewhere (the cases the
+// range bookkeeping's shortcuts must keep exact).
+parity('live ranges: created after the nodes, collapsed, in a detached tree', (w) => {
+  const d = html(w, '<ul id="u"><li id="a">a</li><li id="b">b</li><li id="c">c</li></ul>');
+  const u = d.getElementById('u');
+  const r = d.createRange();
+  r.setStart(u, 2);
+  const collapsedRange = d.createRange();
+  collapsedRange.setStart(d.getElementById('c').firstChild, 1);
+  const out = [describe(r), describe(collapsedRange)];
+  u.insertBefore(d.createElement('li'), u.firstChild);
+  out.push('insert before', describe(r), describe(collapsedRange));
+  u.removeChild(u.firstChild);
+  d.getElementById('a').remove();
+  out.push('remove before', describe(r), describe(collapsedRange));
+  const detached = d.createElement('div');
+  detached.innerHTML = '<i id="x">x</i><i id="y">y</i>';
+  const inDetached = d.createRange();
+  inDetached.setStart(detached.lastChild.firstChild, 1);
+  detached.firstChild.remove();
+  out.push('detached', describe(inDetached));
+  detached.lastChild.remove();
+  out.push('boundary removed', describe(inDetached));
+  detached.textContent = 'z';
+  out.push('replaced', describe(inDetached), describe(r));
+  return out;
+});
+
+parity('live ranges: the selection range across focus changes', (w) => {
+  const d = html(w, '<div id="f"><input id="i1"><input id="i2"></div><p id="p">text</p>');
+  const s = d.getSelection();
+  const state = () => [point(s.anchorNode), s.anchorOffset, point(s.focusNode), s.focusOffset, s.rangeCount];
+  d.getElementById('i1').focus();
+  const first = s.getRangeAt(0);
+  d.getElementById('i2').focus();
+  const second = s.getRangeAt(0);
+  d.getElementById('i1').focus();
+  const out = [first === second, describe(first), describe(second), state()];
+  d.getElementById('f').insertBefore(d.createElement('span'), d.getElementById('i1'));
+  out.push('insert', describe(first), describe(second), state());
+  d.getElementById('f').remove();
+  out.push('remove', describe(first), describe(second), state());
+  s.collapse(d.getElementById('p').firstChild, 3);
+  const third = s.getRangeAt(0);
+  d.getElementById('p').firstChild.splitText(2);
+  out.push('splitText', describe(third), state());
+  return out;
+});
+
+parity('live ranges: other documents and template contents', (w) => {
+  const d = html(w, '<template id="t"><p id="tp">a<b>b</b>c</p></template><div id="host"></div>');
+  const other = d.implementation.createHTMLDocument('x');
+  other.body.innerHTML = '<p id="op">one<b>two</b>three</p>';
+  const op = other.getElementById('op');
+  const ro = other.createRange();
+  ro.setStart(op, 2);
+  ro.setEnd(op.lastChild, 3);
+  const tp = d.getElementById('t').content.firstChild;
+  const rt = d.createRange();
+  rt.setStart(tp, 1);
+  rt.setEnd(tp, 3);
+  const main = d.createRange();
+  main.setStart(d.getElementById('host'), 0);
+  const out = [describe(ro), describe(rt)];
+  d.getElementById('host').appendChild(d.createElement('span'));
+  op.firstChild.remove();
+  tp.firstChild.remove();
+  out.push(describe(ro), describe(rt), describe(main));
+  d.getElementById('host').appendChild(tp);
+  out.push('adopted', describe(rt), rt.toString());
+  d.getElementById('host').prepend(d.createElement('em'));
+  out.push(describe(rt), describe(main));
+  return out;
+});
+
+test('ranges the selection drops before script sees them stop being updated', () => {
+  const w = createWindow();
+  const d = html(w, '<input id="i1"><input id="i2"><p id="p">abc<b>d</b>ef</p>');
+  const S = Object.getOwnPropertySymbols(d)[0];
+  const s = d.getSelection();
+  for (let i = 0; i < 50; i++) d.getElementById(i % 2 ? 'i1' : 'i2').focus();
+  assert.equal(d[S].ranges.size, 1, 'only the current selection range is live');
+  const seen = s.getRangeAt(0);
+  d.getElementById('i1').focus();
+  d.getElementById('i2').focus();
+  assert.equal(d[S].ranges.size, 2, 'a range script has seen stays live');
+  d.getElementById('i1').remove();
+  assert.deepEqual([seen.startContainer, seen.startOffset], [d.body, 0]);
+  s.removeAllRanges();
+  assert.equal(d[S].ranges.size, 1);
+  const r = d.createRange();
+  r.setStart(d.getElementById('p').firstChild, 1);
+  r.setEnd(d.getElementById('p').lastChild, 1);
+  r.cloneContents();
+  r.extractContents();
+  assert.equal(d[S].ranges.size, 2, 'no temporary ranges left from clone and extract');
+});
+
+test('a dropped range still in the registry only costs time', () => {
+  const w = createWindow();
+  const d = html(w, '<div id="x"><i></i><i></i></div>');
+  const S = Object.getOwnPropertySymbols(d)[0];
+  let dropped = d.createRange();
+  dropped.setStart(d.getElementById('x'), 2);
+  dropped = null;
+  const kept = d.createRange();
+  kept.setStart(d.getElementById('x'), 1);
+  assert.equal(d[S].ranges.size, 2, 'the dropped range is still registered');
+  d.getElementById('x').firstChild.remove();
+  assert.equal(kept.startOffset, 0);
+});
+
+// Removal checks ranges at the focused element through its cached ancestors.
+parity('live ranges: the selection at the focused element as its ancestors go', (w) => {
+  const d = html(w, '<div id="outer"><section id="mid"><p id="p"><input id="i"></p></section><b id="sib"></b></div>');
+  const s = d.getSelection();
+  d.getElementById('i').focus();
+  const r = s.getRangeAt(0);
+  const other = d.createRange();
+  other.setStart(d.getElementById('i'), 0);
+  const out = [describe(r)];
+  d.getElementById('sib').remove();
+  d.getElementById('p').appendChild(d.createElement('em')).remove();
+  out.push(describe(r), describe(other), point(d.activeElement));
+  d.getElementById('mid').remove();
+  out.push(describe(r), describe(other), point(d.activeElement), s.rangeCount);
+  return out;
+});
+
+test('a range at a focused element in a shadow tree is not moved by removing the host\'s ancestors', () => {
+  const w = createWindow();
+  const d = w.document;
+  const wrap = d.body.appendChild(d.createElement('div'));
+  const host = wrap.appendChild(d.createElement('div'));
+  const root = host.attachShadow({ mode: 'open' });
+  const input = root.appendChild(d.createElement('input'));
+  input.focus();
+  const r = d.createRange();
+  r.setStart(input, 0);
+  d.body.appendChild(d.createElement('p')).remove();
+  d.body.appendChild(d.createElement('p')).remove();
+  wrap.remove();
+  assert.deepEqual([r.startContainer, r.startOffset], [input, 0], 'the shadow tree is not inside wrap');
+  assert.equal(d.activeElement, d.body);
+});

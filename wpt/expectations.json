@@ -1,0 +1,53 @@
+{
+  "comment": "Tests not run, with the reason. A path ending in / skips a directory; otherwise a file (all its variants; for .any.js/.window.js the .js path or the generated .html id) or one variant (path?query). 'engines' limits an entry to some engines. Tests using testdriver.js and tentative tests are skipped by run.mjs itself (see --include-testdriver, --include-tentative). Keep entries to tests that cannot work in a DOM-only runner (network, other origins, iframes loading pages, layout, user input) or that hang; a test that runs and fails is a result, not a skip.",
+  "skip": [
+    {
+      "path": "dom/events/scrolling/",
+      "reason": "scrolling and scrollend need layout and user input"
+    },
+    {
+      "path": "dom/events/EventListener-incumbent-global-1.sub.html",
+      "reason": "cross-origin iframe loading a page"
+    },
+    {
+      "path": "dom/events/EventListener-incumbent-global-2.sub.html",
+      "reason": "cross-origin iframe loading a page"
+    },
+    {
+      "path": "dom/events/EventListener-addEventListener.sub.window.js",
+      "reason": "cross-origin iframe loading a page (hangs waiting for its load)"
+    },
+    {
+      "path": "dom/traversal/TreeWalker-acceptNode-filter-cross-realm-null-browsing-context.html",
+      "reason": "iframe loading a page (hangs waiting for its load)"
+    },
+    {
+      "path": "domparsing/DOMParser-parseFromString-url-moretests.html",
+      "reason": "iframes loading pages (hangs waiting for their load)"
+    },
+    {
+      "path": "domparsing/DOMParser-parseFromString-encoding.html",
+      "reason": "document character encoding from the response bytes and meta charset (the page is not decoded by a loader)"
+    },
+    {
+      "path": "css/cssom/CSSImportRule-layer-media.html",
+      "reason": "@import style sheet loading (hangs waiting for the sheet)"
+    },
+    {
+      "path": "css/cssom/stylesheet-cross-origin-redirect-quirks.sub.html",
+      "reason": "cross-origin style sheets through the server's redirects, quirks mode document"
+    },
+    {
+      "path": "html/dom/render-blocking/",
+      "reason": "render blocking needs a rendering pipeline (frames, style sheet loading)"
+    },
+    {
+      "path": "html/dom/elements/global-attributes/the-lang-attribute-005.html",
+      "reason": "Content-Language from HTTP headers, measured through layout"
+    },
+    {
+      "path": "html/dom/elements/global-attributes/the-lang-attribute-006.html",
+      "reason": "Content-Language from HTTP headers, measured through layout"
+    }
+  ]
+}

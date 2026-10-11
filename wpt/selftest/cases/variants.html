@@ -1,0 +1,9 @@
+<!doctype html>
+<meta name="variant" content="?a">
+<meta name="variant" content="?b">
+<title>Variants are separate tests with their query</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => assert_in_array(location.search, ["?a", "?b"]), "location.search is the variant");
+</script>

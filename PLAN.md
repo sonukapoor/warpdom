@@ -286,6 +286,25 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   0.63 ms. Prototypes stay per window (shared ones would be cheaper still,
   but a prototype mock left in place would leak into the next test file).
   Module load: 25.4 -> 26.7 ms with the CSS grammars (once per worker).
+- **2026-10-11: Descriptors are built on first use too.** A CPU profile of
+  MUI (a fresh worker per test file) showed ~21% of warpdom's time in
+  module initialization and ~11% in creating prototypes. Now an interface's
+  descriptors are built the first time any window creates it (mixins and
+  reflected attributes merged then, CSSStyleProperties' 1,639 accessors
+  built directly), and prototypes take their members before their
+  prototype: V8 builds a hidden class per member on an object that has a
+  prototype, and those were not shared between windows (Object.create(null),
+  members one by one, then setPrototypeOf; same keys, order, descriptors
+  and chain). Node 22.17.1, medians of alternating fresh processes against
+  main, noisy shared machine: module load 22.4 -> 15.0 ms; createWindow
+  0.38 -> 0.18 ms; Vitest setup + touch + teardown 2.20 -> 0.54 ms; one
+  simulated test file in a fresh process 39.0 -> 31.3 ms; hot members
+  unchanged (+-4%, noise). Tried and dropped (< 3%): CSS property names as
+  one string, a shared lazy protos table, a dictionary window object,
+  Object.getOwnPropertyDescriptors for members. Next: V8 compiling the
+  modules is ~8 ms of the load (Node's compile cache cut the import
+  17.5 -> 12.5 ms in a quick test), then the first style write (grammar
+  parsing in css-values.js, ~1.3 ms cold).
 - **2026-10-11: Suite timings before and after validation and lazy
   interfaces** (median of 3, 2 workers, jsdom and warpdom alternating;
   .corpus-env/timing*-2026-10-11*.csv). The machine ran faster in the

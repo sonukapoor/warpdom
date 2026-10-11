@@ -503,6 +503,27 @@ function setDeclaration(style, name, value, priority = '') {
   sync(style);
 }
 
+// CSSStyleProperties' accessors, one per name in STYLE_ACCESSORS. The
+// descriptor map has no prototype: V8 keeps it as a dictionary instead of
+// building a hidden class per key.
+function styleDescriptors() {
+  const descriptors = Object.create(null);
+  for (const accessor of STYLE_ACCESSORS) {
+    const name = cssName(accessor);
+    descriptors[accessor] = {
+      get() { return valueOf(this, name); },
+      set(value) {
+        const s = state(this);
+        if (s.computed) writeComputed(s, name, value);
+        else setDeclaration(this, name, value);
+      },
+      enumerable: true,
+      configurable: true,
+    };
+  }
+  return descriptors;
+}
+
 export const CSS_INTERFACES = [
   {
     name: 'CSSStyleDeclaration',
@@ -539,17 +560,9 @@ export const CSS_INTERFACES = [
   {
     name: 'CSSStyleProperties',
     parent: 'CSSStyleDeclaration',
-    members: Object.fromEntries(STYLE_ACCESSORS.map((accessor) => {
-      const name = cssName(accessor);
-      return [accessor, {
-        get() { return valueOf(this, name); },
-        set(value) {
-          const s = state(this);
-          if (s.computed) writeComputed(s, name, value);
-          else setDeclaration(this, name, value);
-        },
-      }];
-    })),
+    // About 1,600 accessors: their property descriptors are built directly,
+    // the first time a window creates the interface.
+    descriptors: styleDescriptors,
   },
 ];
 

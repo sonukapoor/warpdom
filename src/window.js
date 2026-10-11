@@ -1,6 +1,7 @@
 // createWindow(): a fresh window with its own prototypes and constructors for
 // every interface (so patches made in one window cannot leak into another),
-// built from property descriptors that are prepared once per module load.
+// built from property descriptors that are prepared once per module load,
+// each interface's the first time any window creates it.
 import {
   S, hooks, initNode, insert, ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, DOCUMENT_TYPE_NODE,
 } from './internal.js';
@@ -10,39 +11,65 @@ import { setupWindow } from './window-features.js';
 import { setValidationMode } from './css.js';
 import { createCustomElement, createRegistry, htmlConstruct, isValidCustomElementName } from './custom-elements.js';
 
-// Once per module load: descriptors per interface, parents before children.
-const DESCRIPTORS = new Map();
+// Once per module load: the interfaces in order, parents before children.
 const ORDER = [];
 const BY_NAME = new Map(); // interface name -> definition
 {
   const byName = new Map(INTERFACES.map((i) => [i.name, i]));
-  const seen = new Set();
   const visit = (iface) => {
-    if (seen.has(iface.name)) return;
-    seen.add(iface.name);
+    if (BY_NAME.has(iface.name)) return;
     if (iface.parent) visit(byName.get(iface.parent));
     ORDER.push(iface);
     BY_NAME.set(iface.name, iface);
   };
   for (const iface of INTERFACES) visit(iface);
-  for (const iface of INTERFACES) {
-    const descriptors = {};
-    for (const key of Reflect.ownKeys(iface.members)) {
-      const d = Object.getOwnPropertyDescriptor(iface.members, key);
-      const v = d.value;
-      if (v && typeof v === 'object' && 'constant' in v) {
-        // Constants such as Node.ELEMENT_NODE: read-only, as in WebIDL.
-        descriptors[key] = { value: v.constant, enumerable: true, writable: false, configurable: false };
-      } else if (v && typeof v === 'object' && (v.get || v.set)) {
-        // Accessors given as { get, set } objects (from helpers).
-        descriptors[key] = { get: v.get, set: v.set, enumerable: true, configurable: true };
-      } else if (d.get || d.set) {
-        descriptors[key] = { get: d.get, set: d.set, enumerable: true, configurable: true };
-      } else {
-        descriptors[key] = { value: v, writable: true, enumerable: true, configurable: true };
-      }
+}
+
+// An interface's property descriptors, built the first time a window
+// creates it (a test touches a few dozen of about 300 interfaces) and then
+// shared by every window. Members are an object, or a list of objects
+// merged in order (mixins; a later member replaces an earlier one in its
+// place), where a function stands for the object it builds (reflected
+// attributes). An interface may also build its descriptors itself
+// (CSSStyleProperties' accessors). Kept as parallel lists of keys and
+// descriptors: defining them one by one is faster than
+// Object.defineProperties (about 30% for CSSStyleProperties).
+const DESCRIPTORS = new Map(); // interface name -> { keys, descriptors }
+function descriptorsOf(iface) {
+  let table = DESCRIPTORS.get(iface.name);
+  if (table) return table;
+  let descriptors;
+  if (iface.descriptors) {
+    descriptors = iface.descriptors();
+  } else {
+    // Without a prototype: V8 keeps it as a dictionary rather than building
+    // a hidden class per key.
+    descriptors = Object.create(null);
+    const { members } = iface;
+    if (Array.isArray(members)) for (const m of members) addDescriptors(descriptors, typeof m === 'function' ? m() : m);
+    else addDescriptors(descriptors, members);
+  }
+  const keys = Reflect.ownKeys(descriptors);
+  table = { keys, descriptors: keys.map((key) => descriptors[key]) };
+  DESCRIPTORS.set(iface.name, table);
+  return table;
+}
+
+function addDescriptors(descriptors, members) {
+  for (const key of Reflect.ownKeys(members)) {
+    const d = Object.getOwnPropertyDescriptor(members, key);
+    const v = d.value;
+    if (v && typeof v === 'object' && 'constant' in v) {
+      // Constants such as Node.ELEMENT_NODE: read-only, as in WebIDL.
+      descriptors[key] = { value: v.constant, enumerable: true, writable: false, configurable: false };
+    } else if (v && typeof v === 'object' && (v.get || v.set)) {
+      // Accessors given as { get, set } objects (from helpers).
+      descriptors[key] = { get: v.get, set: v.set, enumerable: true, configurable: true };
+    } else if (d.get || d.set) {
+      descriptors[key] = { get: d.get, set: d.set, enumerable: true, configurable: true };
+    } else {
+      descriptors[key] = { value: v, writable: true, enumerable: true, configurable: true };
     }
-    DESCRIPTORS.set(iface.name, descriptors);
   }
 }
 // Interfaces with the HTML element constructor: HTMLElement and its element interfaces.
@@ -115,8 +142,15 @@ export function createWindow(options = {}) {
     if (existing) return existing;
     const iface = BY_NAME.get(name);
     const parent = iface.parent ? materialize(iface.parent) : null;
-    const proto = Object.create(parent ? parent.prototype : Object.prototype);
-    Object.defineProperties(proto, DESCRIPTORS.get(name));
+    // Members are defined on an object without a prototype, which V8 keeps
+    // as a dictionary: defining them on an object with a prototype walks
+    // through a new hidden class per member, rebuilt for every window
+    // (CSSStyleProperties' 1,600 accessors took ~1.5 ms). The prototype is
+    // set afterwards; own keys, their order and descriptors are the same.
+    const proto = Object.create(null);
+    const { keys, descriptors } = descriptorsOf(iface);
+    for (let i = 0; i < keys.length; i++) Object.defineProperty(proto, keys[i], descriptors[i]);
+    Object.setPrototypeOf(proto, parent ? parent.prototype : Object.prototype);
     const ctor = iface.construct
       ? function (...args) {
         if (!new.target) throw new TypeError(`Failed to construct '${name}': Please use the 'new' operator.`);

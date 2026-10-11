@@ -128,6 +128,25 @@ test('inserting a node into its own descendant throws', () => {
   const outer = document.createElement('div');
   const inner = outer.appendChild(document.createElement('div'));
   assert.throws(() => inner.appendChild(outer), { name: 'HierarchyRequestError' });
+  assert.throws(() => outer.appendChild(outer), { name: 'HierarchyRequestError' });
+  assert.equal(inner.parentNode, outer, 'nothing moved');
+});
+
+test('insertion indexes ids by where the parent is, for new and moved nodes', () => {
+  const { document } = createWindow();
+  const detached = document.createElement('div');
+  const a = detached.appendChild(document.createElement('p'));
+  a.id = 'a';
+  const attached = document.body.appendChild(document.createElement('div'));
+  assert.equal(document.getElementById('a'), null);
+  attached.appendChild(a);
+  assert.equal(document.getElementById('a'), a, 'moved into the document');
+  detached.appendChild(a);
+  assert.equal(document.getElementById('a'), null, 'moved out of it');
+  const b = document.createElement('p');
+  b.id = 'b';
+  attached.appendChild(b);
+  assert.equal(document.getElementById('b'), b, 'a new node');
 });
 
 test('namespaces: HTML elements and SVG through createElementNS', () => {
@@ -191,6 +210,23 @@ test('getElementById follows id changes, attach and detach, and tree order', () 
   wrapper.remove();
   a.id = 'z';
   assert.equal(document.getElementById('z'), null, 'detached elements are not found');
+});
+
+test('the id index stays exact when removals skip it (a document without ids)', () => {
+  const { document } = createWindow();
+  const list = document.body.appendChild(document.createElement('ul'));
+  for (let i = 0; i < 3; i++) list.appendChild(document.createElement('li')).remove();
+  const item = list.appendChild(document.createElement('li'));
+  item.appendChild(document.createElement('span')).id = 'deep';
+  assert.equal(document.getElementById('deep'), item.firstChild);
+  list.remove();
+  assert.equal(document.getElementById('deep'), null, 'a removal with ids in the document updates the index');
+  document.body.appendChild(list);
+  assert.equal(document.getElementById('deep'), item.firstChild);
+  item.firstChild.id = '';
+  list.remove();
+  item.firstChild.id = 'again';
+  assert.equal(document.getElementById('again'), null);
 });
 
 test('live collections follow attribute changes', () => {

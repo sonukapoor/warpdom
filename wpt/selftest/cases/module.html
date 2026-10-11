@@ -1,0 +1,13 @@
+<!doctype html>
+<title>Module scripts and fetch of checkout files</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script type="module">
+import { value } from "./support/module.js";
+test(() => assert_equals(value, 42), "module script imports");
+promise_test(async () => {
+  const response = await fetch("support/data.txt");
+  assert_equals(response.status, 200);
+  assert_equals((await response.text()).trim(), "data");
+}, "fetch serves files of the checkout");
+</script>

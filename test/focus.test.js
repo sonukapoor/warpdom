@@ -62,6 +62,35 @@ parity('removing the focused element focuses the document without events', (w) =
   return log;
 });
 
+// Removal checks the focused element's ancestors through a cache; these move
+// the element while it is not focused, then remove its new ancestors.
+parity('the focus fixup follows elements moved while not focused', (w) => {
+  const d = html(w, '<div id="one"><input id="a"></div><div id="two"></div><div id="three"><input id="b"></div>');
+  const [one, two, three, a, b] = ['one', 'two', 'three', 'a', 'b'].map((x) => d.getElementById(x));
+  const out = [];
+  a.focus();
+  two.appendChild(d.createElement('span')).remove(); // a removal while a is focused
+  a.blur();
+  two.appendChild(a);
+  a.focus();
+  one.remove();
+  out.push(id(d.activeElement));
+  two.remove();
+  out.push(id(d.activeElement));
+  d.body.append(two);
+  a.focus();
+  b.focus();
+  two.firstChild.remove(); // a is moved while b is focused
+  three.appendChild(a);
+  a.focus();
+  three.appendChild(d.createElement('i')).remove();
+  d.body.appendChild(d.createElement('div')).appendChild(three);
+  out.push(id(d.activeElement));
+  three.parentNode.remove();
+  out.push(id(d.activeElement));
+  return out;
+});
+
 parity('focus moved by a blur or focus listener wins', (w) => {
   const d = html(w, '<input id="a"><input id="b"><input id="c">');
   const [a, b, c] = ['a', 'b', 'c'].map((x) => d.getElementById(x));
@@ -145,4 +174,29 @@ test('focus: the rendering check starts with jsdom 30.1.2', () => {
     return w.document.activeElement === input;
   };
   assert.deepEqual(['26.1.0', '30.1.1', '30.1.2', '31.0.0', 29, 30, 31].map(focusesHidden), [true, true, false, false, true, false, false]);
+});
+
+test('the focus fixup sees through shadow roots and across a window reset', async () => {
+  const { resetWindow, snapshotWindow } = await import('../src/reset.js');
+  const w = createWindow();
+  snapshotWindow(w);
+  const d = w.document;
+  const host = d.body.appendChild(d.createElement('div'));
+  const input = host.attachShadow({ mode: 'open' }).appendChild(d.createElement('input'));
+  input.focus();
+  assert.equal(d.activeElement, host);
+  d.body.appendChild(d.createElement('p')).remove();
+  host.remove();
+  assert.equal(d.activeElement, d.body, 'removing the host unfocuses the shadow tree');
+  const wrap = d.body.appendChild(d.createElement('div'));
+  const a = wrap.appendChild(d.createElement('input'));
+  a.focus();
+  d.body.appendChild(d.createElement('p')).remove();
+  resetWindow(w);
+  const other = d.body.appendChild(d.createElement('section'));
+  other.appendChild(wrap); // wrap was detached by the reset: no removal runs
+  a.focus();
+  assert.equal(d.activeElement, a);
+  other.remove();
+  assert.equal(d.activeElement, d.body, 'the ancestors cached before the reset are not used');
 });

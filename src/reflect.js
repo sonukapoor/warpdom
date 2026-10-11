@@ -204,20 +204,38 @@ const OTHER = [
   ['HTMLSelectElement', { autocomplete: autofill }],
 ];
 
-// Interface name -> member object of accessors (as {get,set} value objects,
-// the form DESCRIPTORS accepts).
-export const REFLECTED = new Map();
-for (const [iface, entries] of [...REFLECTIONS, ...PROSE_REFLECTIONS]) {
-  const members = REFLECTED.get(iface) ?? {};
-  for (const entry of entries) members[entry[0]] = accessor(entry);
-  REFLECTED.set(iface, members);
-}
-for (const [iface, extra] of OTHER) REFLECTED.set(iface, { ...REFLECTED.get(iface), ...extra });
-
 // Members left out although the standard has them: libraries test for them
 // to pick a code path, and warpdom does not implement what they mean.
 // inert: react-aria hides content outside a dialog or drag with the inert
 // attribute when HTMLElement.prototype has inert, else with aria-hidden,
 // which Testing Library's role queries honour (jsdom has no inert).
 const FEATURE_DETECTED = [['HTMLElement', 'inert']];
-for (const [iface, name] of FEATURE_DETECTED) delete REFLECTED.get(iface)?.[name];
+
+// Interface name -> its reflection entries and other members; the accessors
+// are made when the interface is first created (reflectedMembers).
+const SOURCES = new Map();
+for (const [iface, entries] of [...REFLECTIONS, ...PROSE_REFLECTIONS]) {
+  const source = SOURCES.get(iface);
+  if (source) source.entries.push(entries);
+  else SOURCES.set(iface, { entries: [entries], extra: null });
+}
+for (const [iface, extra] of OTHER) {
+  const source = SOURCES.get(iface);
+  if (source) source.extra = extra;
+  else SOURCES.set(iface, { entries: [], extra });
+}
+
+// Does the interface have reflected attributes (or the members above)?
+export const hasReflections = (iface) => SOURCES.has(iface);
+
+// The interface's member object of accessors (as {get,set} value objects,
+// the form window.js accepts), or undefined.
+export function reflectedMembers(iface) {
+  const source = SOURCES.get(iface);
+  if (!source) return undefined;
+  const members = {};
+  for (const entries of source.entries) for (const entry of entries) members[entry[0]] = accessor(entry);
+  if (source.extra) Object.assign(members, source.extra);
+  for (const [name, member] of FEATURE_DETECTED) if (name === iface) delete members[member];
+  return members;
+}

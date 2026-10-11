@@ -1,0 +1,29 @@
+<!doctype html>
+<title>Scripts run as the parser reaches them</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="before"></div>
+<script>
+var seenAtFirstScript = { before: !!document.getElementById("before"), after: !!document.getElementById("after") };
+var events = [];
+document.addEventListener("DOMContentLoaded", (e) => events.push("DOMContentLoaded:" + e.isTrusted));
+window.addEventListener("load", () => events.push("load"));
+</script>
+<script defer src="support/deferred.js"></script>
+<div id="after"></div>
+<script>
+test(() => {
+  assert_true(seenAtFirstScript.before, "element before the script");
+  assert_false(seenAtFirstScript.after, "element after the script");
+  assert_true(!!document.getElementById("after"), "element before this script");
+}, "a script sees the elements before it, not those after it");
+async_test((t) => {
+  window.addEventListener("load", t.step_func_done(() => {
+    assert_equals(self.deferredRan, true, "deferred script ran");
+    assert_equals(self.deferredSawEnd, true, "deferred script ran after parsing");
+    assert_equals(events[0].split(":")[0], "DOMContentLoaded");
+    assert_equals(events[1], "load");
+  }));
+}, "deferred scripts, then DOMContentLoaded, then load");
+</script>
+<div id="end"></div>

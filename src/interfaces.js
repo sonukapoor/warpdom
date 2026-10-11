@@ -9,7 +9,7 @@ import {
   ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, DOCUMENT_TYPE_NODE, HTML_NS, SVG_NS, connected
 } from './internal.js';
 import { CSS_INTERFACES, styleOf } from './css.js';
-import { REFLECTED } from './reflect.js';
+import { hasReflections, reflectedMembers } from './reflect.js';
 import { GLOBAL_HANDLER_MEMBERS, WINDOW_HANDLER_MEMBERS, eventHandlerAttributesAdded, handlerMembers } from './event-handlers.js';
 import { CUSTOM_ELEMENT_INTERFACES } from './custom-elements.js';
 import { RANGE_INTERFACES, newRange, getSelection, splitText, normalize } from './ranges.js';
@@ -42,12 +42,10 @@ import {
   setAttributeNode, removeAttributeNode, createAttribute, findAttributeNS, setAttributeNS,
 } from './attributes.js';
 
-// Merge member objects by descriptor: object spread would call getters.
-const mix = (...objects) => {
-  const out = {};
-  for (const o of objects) Object.defineProperties(out, Object.getOwnPropertyDescriptors(o));
-  return out;
-};
+// Member objects merged in order, as a list window.js reads when it first
+// creates the interface (a later object's member replaces an earlier one's
+// in its place). Nothing is copied at load.
+const mix = (...objects) => objects.flat();
 
 const win = (node) => state(node).doc[S].window;
 const internals = (node) => win(node)[S];
@@ -734,14 +732,17 @@ INTERFACES.push({ name: 'HTMLTableCellElement', parent: 'HTMLElement', members: 
 INTERFACES.push({ name: 'HTMLProgressElement', parent: 'HTMLElement', members: PROGRESS_MEMBERS });
 INTERFACES.push({ name: 'HTMLMeterElement', parent: 'HTMLElement', members: METER_MEMBERS });
 INTERFACES.push({ name: 'HTMLTemplateElement', parent: 'HTMLElement', members: { get content() { return templateContent(this); } } });
-for (const [name, parent] of HTML_ELEMENTS) {
-  if (!INTERFACES.some((i) => i.name === name)) INTERFACES.push({ name, parent, members: {} });
+{
+  const defined = new Set(INTERFACES.map((i) => i.name));
+  for (const [name, parent] of HTML_ELEMENTS) if (!defined.has(name)) INTERFACES.push({ name, parent, members: {} });
 }
 // Reflected attributes, then form control behavior, under the members above.
+// The reflected accessors are made when the interface is first created.
 for (const iface of INTERFACES) {
-  const reflected = REFLECTED.get(iface.name);
-  const form = FORM_MEMBERS.get(iface.name);
-  if (reflected || form) iface.members = mix(reflected ?? {}, form ?? {}, iface.members);
+  const { name } = iface;
+  const reflected = hasReflections(name) ? () => reflectedMembers(name) : {};
+  const form = FORM_MEMBERS.get(name);
+  if (hasReflections(name) || form) iface.members = mix(reflected, form ?? {}, iface.members);
 }
 
 // SVG elements with an interface of their own; others are SVGElement.

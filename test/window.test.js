@@ -3,6 +3,66 @@ import assert from 'node:assert/strict';
 import { createWindow } from '../src/index.js';
 import { parity } from './parity.js';
 
+// An interface's prototype as tests can observe it: own keys in order, each
+// descriptor's kind and attributes, and the prototype chain by name.
+function shape(proto) {
+  const members = Reflect.ownKeys(proto).map((key) => {
+    const d = Object.getOwnPropertyDescriptor(proto, key);
+    const kind = 'value' in d ? `value:${typeof d.value}:${d.writable}` : `accessor:${typeof d.get}:${typeof d.set}`;
+    return `${String(key)} ${kind} ${d.enumerable} ${d.configurable}`;
+  });
+  const chain = [];
+  for (let p = Object.getPrototypeOf(proto); p; p = Object.getPrototypeOf(p)) chain.push(Object.hasOwn(p, 'constructor') ? p.constructor.name : '?');
+  return { members, chain };
+}
+
+test('an interface created first in a later window has the same members, descriptors and chain', async () => {
+  // In a fresh process, so no other test has built these interfaces yet.
+  const { execFileSync } = await import('node:child_process');
+  const script = `
+    import { createWindow } from ${JSON.stringify(new URL('../src/index.js', import.meta.url).href)};
+    const shape = ${shape.toString()};
+    const names = ['CSSStyleProperties', 'HTMLInputElement', 'HTMLTableCellElement', 'HTMLElement', 'Element', 'Node', 'KeyboardEvent', 'Range'];
+    const early = createWindow();
+    const late = createWindow();
+    const lateShapes = names.map((n) => shape(late[n].prototype));
+    const earlyShapes = names.map((n) => shape(early[n].prototype));
+    console.log(JSON.stringify({ lateShapes, earlyShapes, fresh: names.map((n) => shape(createWindow()[n].prototype)) }));
+  `;
+  const out = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' }));
+  assert.deepEqual(out.earlyShapes, out.lateShapes);
+  assert.deepEqual(out.fresh, out.lateShapes);
+  // And as in this process.
+  const w = createWindow();
+  const names = ['CSSStyleProperties', 'HTMLInputElement', 'HTMLTableCellElement', 'HTMLElement', 'Element', 'Node', 'KeyboardEvent', 'Range'];
+  assert.deepEqual(names.map((n) => shape(w[n].prototype)), out.lateShapes);
+  const [style, input, cell] = out.lateShapes;
+  assert.deepEqual(style.chain, ['CSSStyleDeclaration', 'Object']);
+  assert.ok(style.members.length > 1000);
+  assert.ok(style.members.includes('backgroundColor accessor:function:function true true'));
+  assert.ok(style.members.includes('cssFloat accessor:function:function true true'));
+  assert.deepEqual(input.chain, ['HTMLElement', 'Element', 'Node', 'EventTarget', 'Object']);
+  for (const member of ['value accessor:function:function true true', 'required accessor:function:function true true',
+    'autocomplete accessor:function:function true true', 'select value:function:true true true']) {
+    assert.ok(input.members.includes(member), member);
+  }
+  assert.ok(cell.members.includes('colSpan accessor:function:function true true'));
+  assert.equal(input.members.at(-2), 'constructor value:function:true false true');
+  assert.equal(input.members.at(-1), 'Symbol(Symbol.toStringTag) value:string:false false true');
+});
+
+test('prototypes are ordinary objects on the expected chain', () => {
+  const w = createWindow();
+  const style = w.document.createElement('div').style;
+  assert.equal(Object.getPrototypeOf(w.CSSStyleProperties.prototype), w.CSSStyleDeclaration.prototype);
+  assert.equal(Object.getPrototypeOf(w.EventTarget.prototype), Object.prototype);
+  assert.equal(style instanceof w.CSSStyleDeclaration, true);
+  assert.equal('color' in style, true);
+  assert.equal(typeof w.HTMLElement.prototype.hasOwnProperty, 'function');
+  assert.equal(String(w.HTMLElement.prototype), '[object HTMLElement]');
+  assert.equal(Object.keys(w.Node.prototype).includes('appendChild'), true);
+});
+
 test('each window has its own interfaces: patches do not leak', () => {
   const a = createWindow();
   const b = createWindow();

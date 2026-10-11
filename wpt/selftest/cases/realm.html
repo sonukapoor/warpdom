@@ -1,0 +1,12 @@
+<!doctype html>
+<title>DOM errors and built-ins share the test's realm</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+test(() => {
+  assert_equals(document.body, null, "no body yet while the head is parsed");
+  assert_throws_js(TypeError, () => document.head.appendChild(null));
+  assert_true(document.querySelectorAll("script").length > 0);
+  assert_true(Array.isArray(Array.from(document.head.childNodes)));
+}, "assert_throws_js sees the DOM's TypeError as the page's");
+</script>

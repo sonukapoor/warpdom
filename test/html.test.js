@@ -143,7 +143,9 @@ htmlParity('hyperlinks: URL members of <a> and <area>', (w) => {
   return out;
 });
 
-const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
+// After tasks queued so far (navigation events are zero-delay timer tasks,
+// and timers with the same delay run in order): no fixed wait to outrun.
+const tick = () => new Promise((resolve) => setTimeout(() => setTimeout(resolve, 0), 0));
 
 htmlParity('hyperlinks: following links', async (w) => {
   const d = w.document;

@@ -122,6 +122,7 @@ export function resetWindow(window) {
   ds.listeners = undefined;
   ds.handlers = undefined;
   ds.focused = null;
+  ds.focusChainOf = null;
   if (ds.selection) {
     ds.selection[S].range = null;
     ds.selection[S].direction = 'none';

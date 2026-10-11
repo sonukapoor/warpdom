@@ -9,6 +9,7 @@
 import {
   S, state, domError, hooks, ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE,
   DOCUMENT_TYPE_NODE, HTML_NS, rootOf, insert, remove, replaceData, indexOf, nodeLength, contains, nextInTree,
+  containsFromDoc,
 } from './internal.js';
 import { parseFragment } from './html.js';
 import { dispatch } from './events.js';
@@ -58,9 +59,19 @@ function checkBoundary(node, offset) {
 function register(range, doc) {
   const rs = range[S];
   if (rs.doc === doc) return;
-  if (rs.doc) rs.doc[S].ranges.delete(rs.ref);
+  if (rs.doc) rs.doc[S].ranges?.delete(rs.ref);
   rs.doc = doc;
   (doc[S].ranges ?? (doc[S].ranges = new Set())).add(rs.ref);
+}
+
+// Stops updating a range nothing can observe any more (a selection range
+// script never saw, after the selection moved on; a temporary range). Until
+// garbage collection clears its WeakRef, a dropped range would otherwise cost
+// every tree change in its document.
+function release(range) {
+  const rs = range[S];
+  if (rs.doc) rs.doc[S].ranges?.delete(rs.ref);
+  rs.doc = null;
 }
 
 // Calls fn with the state of each live range of doc.
@@ -86,32 +97,60 @@ function setEndPoint(range, node, offset) {
   rs.endOffset = offset;
 }
 
+// A range the selection creates for itself: script sees it only through
+// getRangeAt, so until then it can be released when the selection drops it.
+function selectionRange(window, startNode, startOffset, endNode = startNode, endOffset = startOffset) {
+  const range = newRange(window, startNode, startOffset, endNode, endOffset);
+  range[S].exposed = false;
+  return range;
+}
+
 export function newRange(window, startNode, startOffset, endNode = startNode, endOffset = startOffset) {
   const range = Object.create(window[S].protos.Range);
-  range[S] = { startNode, startOffset, endNode, endOffset, doc: null, ref: null, selection: null };
+  range[S] = {
+    startNode, startOffset, endNode, endOffset, doc: null, ref: null, selection: null, exposed: true,
+  };
   range[S].ref = new WeakRef(range);
   register(range, docOf(startNode));
   return range;
 }
 
-// Tree mutations (called from internal.js).
+// Tree mutations (called from internal.js). These loop over the ranges
+// directly (no callback) and find the child's index only when a range has a
+// boundary in parent, since indexOf walks the siblings.
 hooks.rangeInsert = (doc, parent, child) => {
-  const index = indexOf(child);
-  forEachRange(doc, (r) => {
+  const set = doc[S].ranges;
+  let index = -1;
+  for (const ref of set) {
+    const range = ref.deref();
+    if (range === undefined) { set.delete(ref); continue; }
+    const r = range[S];
+    if (r.startNode !== parent && r.endNode !== parent) continue;
+    if (index < 0) index = indexOf(child);
     if (r.startNode === parent && r.startOffset > index) r.startOffset++;
     if (r.endNode === parent && r.endOffset > index) r.endOffset++;
-  });
+  }
 };
 
 // The live range pre-remove steps.
 hooks.rangeRemove = (doc, parent, node) => {
-  const index = indexOf(node);
-  forEachRange(doc, (r) => {
-    if (contains(node, r.startNode)) { r.startNode = parent; r.startOffset = index; }
-    if (contains(node, r.endNode)) { r.endNode = parent; r.endOffset = index; }
+  const ds = doc[S];
+  const set = ds.ranges;
+  const leaf = node[S].first === null;
+  let index = -1;
+  for (const ref of set) {
+    const range = ref.deref();
+    if (range === undefined) { set.delete(ref); continue; }
+    const r = range[S];
+    const inStart = leaf ? r.startNode === node : containsFromDoc(ds, node, r.startNode);
+    const inEnd = r.endNode === r.startNode ? inStart : leaf ? r.endNode === node : containsFromDoc(ds, node, r.endNode);
+    if (!inStart && !inEnd && r.startNode !== parent && r.endNode !== parent) continue;
+    if (index < 0) index = indexOf(node);
+    if (inStart) { r.startNode = parent; r.startOffset = index; }
+    if (inEnd) { r.endNode = parent; r.endOffset = index; }
     if (r.startNode === parent && r.startOffset > index) r.startOffset--;
     if (r.endNode === parent && r.endOffset > index) r.endOffset--;
-  });
+  }
 };
 
 hooks.rangeReplaceData = (doc, node, offset, count, dataLength) => {
@@ -278,6 +317,7 @@ function extract(range) {
     const clone = insert(fragment, cloneNode(firstPartial), null);
     const sub = newRange(docOf(startNode)[S].window, startNode, startOffset, firstPartial, nodeLength(firstPartial));
     insert(clone, extract(sub), null);
+    release(sub);
   }
   for (const child of contained) insert(fragment, child, null);
   if (lastPartial && isCharacterData(lastPartial)) {
@@ -287,6 +327,7 @@ function extract(range) {
     const clone = insert(fragment, cloneNode(lastPartial), null);
     const sub = newRange(docOf(endNode)[S].window, lastPartial, 0, endNode, endOffset);
     insert(clone, extract(sub), null);
+    release(sub);
   }
   setStartPoint(range, newNode, newOffset);
   setEndPoint(range, newNode, newOffset);
@@ -307,14 +348,18 @@ function cloneContents(range) {
     insert(fragment, withData(cloneNode(startNode), startNode[S].data.slice(startOffset)), null);
   } else if (firstPartial) {
     const clone = insert(fragment, cloneNode(firstPartial), null);
-    insert(clone, cloneContents(newRange(docOf(startNode)[S].window, startNode, startOffset, firstPartial, nodeLength(firstPartial))), null);
+    const sub = newRange(docOf(startNode)[S].window, startNode, startOffset, firstPartial, nodeLength(firstPartial));
+    insert(clone, cloneContents(sub), null);
+    release(sub);
   }
   for (const child of contained) insert(fragment, cloneNode(child, true), null);
   if (lastPartial && isCharacterData(lastPartial)) {
     insert(fragment, withData(cloneNode(endNode), endNode[S].data.slice(0, endOffset)), null);
   } else if (lastPartial) {
     const clone = insert(fragment, cloneNode(lastPartial), null);
-    insert(clone, cloneContents(newRange(docOf(endNode)[S].window, lastPartial, 0, endNode, endOffset)), null);
+    const sub = newRange(docOf(endNode)[S].window, lastPartial, 0, endNode, endOffset);
+    insert(clone, cloneContents(sub), null);
+    release(sub);
   }
   return fragment;
 }
@@ -419,7 +464,10 @@ function boundaryChanged(range) {
 function setSelectionRange(selection, range, direction = 'forward') {
   const ss = selection[S];
   const old = ss.range;
-  if (old) old[S].selection = null;
+  if (old) {
+    old[S].selection = null;
+    if (old !== range && !old[S].exposed) release(old);
+  }
   ss.range = range;
   ss.direction = range ? direction : 'none';
   if (range) range[S].selection = selection;
@@ -456,7 +504,7 @@ function collapseSelection(selection, node, offset = 0) {
   checkBoundary(node, offset);
   const doc = selection[S].doc;
   if (!inDocument(node, doc)) return;
-  setSelectionRange(selection, newRange(doc[S].window, node, offset));
+  setSelectionRange(selection, selectionRange(doc[S].window, node, offset));
 }
 
 // Focusing an element collapses the selection to its start (the platform
@@ -610,7 +658,9 @@ export const RANGE_INTERFACES = [
       getRangeAt(index) {
         state(this);
         if (Number(index) !== 0 || !anchorFocus(this)) throw domError('The index is not in the allowed range.', 'IndexSizeError');
-        return this[S].range;
+        const range = this[S].range;
+        range[S].exposed = true;
+        return range;
       },
       addRange(range) {
         const ss = state(this);
@@ -636,13 +686,13 @@ export const RANGE_INTERFACES = [
         const ss = state(this);
         if (!ss.range) throw domError('There is no selection to collapse.', 'InvalidStateError');
         const r = ss.range[S];
-        setSelectionRange(this, newRange(ss.doc[S].window, r.startNode, r.startOffset));
+        setSelectionRange(this, selectionRange(ss.doc[S].window, r.startNode, r.startOffset));
       },
       collapseToEnd() {
         const ss = state(this);
         if (!ss.range) throw domError('There is no selection to collapse.', 'InvalidStateError');
         const r = ss.range[S];
-        setSelectionRange(this, newRange(ss.doc[S].window, r.endNode, r.endOffset));
+        setSelectionRange(this, selectionRange(ss.doc[S].window, r.endNode, r.endOffset));
       },
       extend(node, offset = 0) {
         const ss = state(this);
@@ -655,9 +705,9 @@ export const RANGE_INTERFACES = [
         const anchorOffset = af ? af.anchorOffset : ss.range[S].startOffset;
         const window = ss.doc[S].window;
         let range;
-        if (rootOf(node) !== rootOf(ss.range[S].startNode)) range = newRange(window, node, o);
-        else if (position(anchorNode, anchorOffset, node, o) <= 0) range = newRange(window, anchorNode, anchorOffset, node, o);
-        else range = newRange(window, node, o, anchorNode, anchorOffset);
+        if (rootOf(node) !== rootOf(ss.range[S].startNode)) range = selectionRange(window, node, o);
+        else if (position(anchorNode, anchorOffset, node, o) <= 0) range = selectionRange(window, anchorNode, anchorOffset, node, o);
+        else range = selectionRange(window, node, o, anchorNode, anchorOffset);
         setSelectionRange(this, range, position(node, o, anchorNode, anchorOffset) < 0 ? 'backward' : 'forward');
       },
       setBaseAndExtent(anchorNode, anchorOffset, focusNode, focusOffset) {
@@ -670,14 +720,14 @@ export const RANGE_INTERFACES = [
         checkBoundary(focusNode, fo);
         const window = ss.doc[S].window;
         const backward = position(focusNode, fo, anchorNode, ao) < 0;
-        const range = backward ? newRange(window, focusNode, fo, anchorNode, ao) : newRange(window, anchorNode, ao, focusNode, fo);
+        const range = backward ? selectionRange(window, focusNode, fo, anchorNode, ao) : selectionRange(window, anchorNode, ao, focusNode, fo);
         setSelectionRange(this, range, backward ? 'backward' : 'forward');
       },
       selectAllChildren(node) {
         const ss = state(this);
         if (state(node).type === DOCUMENT_TYPE_NODE) throw domError('DocumentType nodes cannot be selected.', 'InvalidNodeTypeError');
         if (rootOf(node) !== ss.doc) return;
-        setSelectionRange(this, newRange(ss.doc[S].window, node, 0, node, node[S].count));
+        setSelectionRange(this, selectionRange(ss.doc[S].window, node, 0, node, node[S].count));
       },
       modify() { state(this); }, // needs layout
       deleteFromDocument() {
