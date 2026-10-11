@@ -286,6 +286,18 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   0.63 ms. Prototypes stay per window (shared ones would be cheaper still,
   but a prototype mock left in place would leak into the next test file).
   Module load: 25.4 -> 26.7 ms with the CSS grammars (once per worker).
+- **2026-10-11: Suite timings before and after validation and lazy
+  interfaces** (median of 3, 2 workers, jsdom and warpdom alternating;
+  .corpus-env/timing*-2026-10-11*.csv). The machine ran faster in the
+  second session (jsdom 5-13% faster too), so compare the ratios:
+  MUI default 1.86x -> 1.88x (warpdom 49.4 -> 46.2 s), vmThreads 1.30x ->
+  1.26x; react-spectrum (Jest) 1.38x -> 1.40x (108.9 -> 98.9 s), now with
+  no difference from jsdom; handsontable (Jest) 2.59x -> 3.04x (210.7 ->
+  156.7 s; jsdom 545.7 -> 475.8 s), 16 -> 3 differences. Validation cost
+  nothing measurable on whole suites. The handsontable gain is more than
+  the cheaper startup explains (about 1.3 s over ~550 files); likely the
+  jsdom 26 code paths it now takes (no CSS namespace: its own size parser;
+  invalid declarations dropped). Not profiled yet.
   Corpus note: solid's transition.spec fails on jsdom too when its files
   run in a certain order (isolate: false shares solid's module state), so
   its one difference is a solid flake, not warpdom.
