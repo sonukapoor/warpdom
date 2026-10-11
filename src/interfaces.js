@@ -6,8 +6,10 @@
 import {
   S, state, initNode, insert, remove, textOf, contains, domError, rootOf, nextInTree,
   childArray, elementChildArray, collectElements, elementById, setData, replaceData, adopt, shadowIncludingRoot, reactionScope,
-  ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, DOCUMENT_TYPE_NODE, HTML_NS, SVG_NS, connected
+  ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, DOCUMENT_TYPE_NODE, HTML_NS, SVG_NS, connected,
+  CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE, isCharacterData,
 } from './internal.js';
+import { XML_INTERFACES, XML_DOCUMENT_MEMBERS } from './xml.js';
 import { CSS_INTERFACES, styleOf } from './css.js';
 import { hasReflections, reflectedMembers } from './reflect.js';
 import { GLOBAL_HANDLER_MEMBERS, WINDOW_HANDLER_MEMBERS, eventHandlerAttributesAdded, handlerMembers } from './event-handlers.js';
@@ -18,7 +20,7 @@ import { FOCUS_MEMBERS, DOCUMENT_FOCUS_MEMBERS } from './focus.js';
 import { FORM_INTERFACES, FORM_MEMBERS, clickMember } from './forms.js';
 import { GEOMETRY_INTERFACES, ELEMENT_LAYOUT, HTML_ELEMENT_LAYOUT } from './layout.js';
 import { querySelectorAll as selectAll, matches as matchSelector, closest as closestMatch } from './selectors.js';
-import { DOM_PARSING_INTERFACES } from './dom-parsing.js';
+import { DOM_PARSING_INTERFACES, innerMarkup, outerMarkup } from './dom-parsing.js';
 import { FILE_READER_INTERFACES } from './file-reader.js';
 import { ABORT_INTERFACES } from './abort.js';
 import { IFRAME_MEMBERS, WINDOW_FRAME_MEMBERS } from './frames.js';
@@ -36,7 +38,7 @@ import { EVENT_INTERFACES, createEvent, retarget } from './events.js';
 import { MUTATION_INTERFACES } from './mutation.js';
 import { FEATURE_INTERFACES, WINDOW_MEMBERS } from './window-features.js';
 import { TRAVERSAL_INTERFACES, createTreeWalker, createNodeIterator } from './traversal.js';
-import { parseFragment, parseDocument, serializeChildren, serializeOuter, setInnerHTML, setOuterHTML, insertAdjacentHTML, templateContent } from './html.js';
+import { parseFragment, parseDocument, serializeChildren, setInnerHTML, setOuterHTML, insertAdjacentHTML, templateContent } from './html.js';
 import {
   ATTRIBUTE_INTERFACES, writeAttribute, attrName, attrNode, namedNodeMap, tokenList, domStringMap,
   setAttributeNode, removeAttributeNode, createAttribute, findAttributeNS, setAttributeNS,
@@ -152,11 +154,13 @@ function cloneNode(node, deep, doc) {
   const w = doc[S].window[S];
   let copy;
   if (s.type === ELEMENT_NODE) {
-    copy = w.createElementNS(s.ns, s.tag, doc, false, null, false, s.ceIs ?? null);
+    copy = w.createElementNS(s.ns, s.prefix ? `${s.prefix}:${s.tag}` : s.tag, doc, false, null, false, s.ceIs ?? null);
     copy[S].attrs = new Map(s.attrs);
     if (s.handlers || hasOnAttribute(s.attrs)) eventHandlerAttributesAdded(copy);
   } else if (s.type === TEXT_NODE) copy = w.createText(s.data, doc);
   else if (s.type === COMMENT_NODE) copy = w.createComment(s.data, doc);
+  else if (s.type === CDATA_SECTION_NODE) copy = w.createCDATA(s.data, doc);
+  else if (s.type === PROCESSING_INSTRUCTION_NODE) copy = w.createPI(s.target, s.data, doc);
   else if (s.type === DOCUMENT_FRAGMENT_NODE) copy = w.createFragment(doc);
   else if (s.type === DOCUMENT_TYPE_NODE) copy = w.createDoctype(s.name, s.publicId, s.systemId, doc);
   else throw domError('Cloning this node is not supported yet.', 'NotSupportedError');
@@ -178,8 +182,13 @@ function cloneNode(node, deep, doc) {
   return copy;
 }
 
-// Uppercased for HTML elements in HTML documents only (cached per element).
-const qualifiedTagName = (s) => (s.ns === HTML_NS && !s.doc[S].xml ? (s.upper ?? (s.upper = s.tag.toUpperCase())) : s.tag);
+// The qualified name, uppercased for HTML elements in HTML documents only
+// (cached per element).
+const qualifiedTagName = (s) => {
+  if (s.prefix === undefined) return s.ns === HTML_NS && !s.doc[S].xml ? (s.upper ?? (s.upper = s.tag.toUpperCase())) : s.tag;
+  const name = `${s.prefix}:${s.tag}`;
+  return s.ns === HTML_NS && !s.doc[S].xml ? name.toUpperCase() : name;
+};
 const shadowState = (self) => {
   const s = state(self);
   if (!s.shadow) throw new TypeError('Illegal invocation');
@@ -223,6 +232,9 @@ function* descendantElements(root) {
   for (let n = root[S].first; n; n = nextInTree(n, root)) if (n[S].type === ELEMENT_NODE) yield n;
 }
 
+// Text nodes, CDATA sections included.
+const isText = (node) => { const t = node[S].type; return t === TEXT_NODE || t === CDATA_SECTION_NODE; };
+
 const isTemplateEl = (el) => el[S].ns === HTML_NS && el[S].tag === 'template';
 
 const reflect = (attr) => ({
@@ -245,6 +257,7 @@ export const INTERFACES = [
   ...FORM_INTERFACES,
   ...EVENT_INTERFACES,
   ...DOM_PARSING_INTERFACES,
+  ...XML_INTERFACES,
   ...FILE_READER_INTERFACES,
   ...ABORT_INTERFACES,
   STORAGE_INTERFACE,
@@ -271,13 +284,15 @@ export const INTERFACES = [
           case ELEMENT_NODE: return qualifiedTagName(s);
           case TEXT_NODE: return '#text';
           case COMMENT_NODE: return '#comment';
+          case CDATA_SECTION_NODE: return '#cdata-section';
+          case PROCESSING_INSTRUCTION_NODE: return s.target;
           case DOCUMENT_NODE: return '#document';
           case DOCUMENT_TYPE_NODE: return s.name;
           default: return '#document-fragment';
         }
       },
-      get nodeValue() { const s = state(this); return s.type === TEXT_NODE || s.type === COMMENT_NODE ? s.data : null; },
-      set nodeValue(v) { const s = state(this); if (s.type === TEXT_NODE || s.type === COMMENT_NODE) setData(this, String(v ?? '')); },
+      get nodeValue() { const s = state(this); return isCharacterData(s.type) ? s.data : null; },
+      set nodeValue(v) { const s = state(this); if (isCharacterData(s.type)) setData(this, String(v ?? '')); },
       get ownerDocument() { const s = state(this); return s.type === DOCUMENT_NODE ? null : s.doc; },
       get parentNode() { return state(this).parent; },
       get parentElement() { const p = state(this).parent; return p && p[S].type === ELEMENT_NODE ? p : null; },
@@ -296,7 +311,7 @@ export const INTERFACES = [
       set textContent(value) {
         const s = state(this);
         if (s.type === DOCUMENT_NODE || s.type === DOCUMENT_TYPE_NODE) return;
-        if (s.type === TEXT_NODE || s.type === COMMENT_NODE) { setData(this, String(value ?? '')); return; }
+        if (isCharacterData(s.type)) { setData(this, String(value ?? '')); return; }
         while (s.first) remove(this, s.first);
         const text = value == null ? '' : String(value);
         if (text) insert(this, s.doc.createTextNode(text), null);
@@ -324,7 +339,7 @@ export const INTERFACES = [
     parent: 'Node',
     // new Document(): an XML document without a browsing context, as in jsdom.
     construct: (w, self) => w[S].initDocument(self, { noView: true, url: 'about:blank', contentType: 'application/xml', xml: true }),
-    members: mix(parentNode, DOCUMENT_FOCUS_MEMBERS, GLOBAL_HANDLER_MEMBERS, {
+    members: mix(parentNode, DOCUMENT_FOCUS_MEMBERS, GLOBAL_HANDLER_MEMBERS, XML_DOCUMENT_MEMBERS, {
       get defaultView() { const s = state(this); return s.noView ? null : s.window; },
       get URL() { const s = state(this); return s.url ?? s.window[S].url.href; },
       get documentURI() { return this.URL; },
@@ -569,9 +584,9 @@ export const INTERFACES = [
       // The data of the contiguous Text nodes, in tree order.
       get wholeText() {
         let first = state(this) && this;
-        while (first[S].prev && first[S].prev[S].type === TEXT_NODE) first = first[S].prev;
+        while (first[S].prev && isText(first[S].prev)) first = first[S].prev;
         let text = '';
-        for (let n = first; n && n[S].type === TEXT_NODE; n = n[S].next) text += n[S].data;
+        for (let n = first; n && isText(n); n = n[S].next) text += n[S].data;
         return text;
       },
     },
@@ -582,7 +597,7 @@ export const INTERFACES = [
     parent: 'Node',
     members: mix(parentNode, childNode, elementSiblings, ELEMENT_LAYOUT, {
       get namespaceURI() { return state(this).ns; },
-      get prefix() { state(this); return null; },
+      get prefix() { return state(this).prefix ?? null; },
       get tagName() { return qualifiedTagName(state(this)); },
       attachShadow(init) { state(this); return attachShadow(this, init); },
       get shadowRoot() { const shadow = state(this).shadowRoot; return shadow && shadow[S].mode === 'open' ? shadow : null; },
@@ -611,9 +626,9 @@ export const INTERFACES = [
       hasAttribute(name) { return state(this).attrs.has(attrName(this, name)); },
       hasAttributes() { return state(this).attrs.size > 0; },
       removeAttribute(name) { state(this); writeAttribute(this, attrName(this, name), undefined); },
-      get innerHTML() { return serializeChildren(isTemplateEl(this) ? templateContent(this) : this); },
+      get innerHTML() { state(this); return innerMarkup(this); },
       set innerHTML(html) { setInnerHTML(this, html == null ? '' : html); },
-      get outerHTML() { return serializeOuter(this); },
+      get outerHTML() { state(this); return outerMarkup(this); },
       set outerHTML(html) { setOuterHTML(this, html == null ? '' : html); },
       insertAdjacentHTML(position, html) { insertAdjacentHTML(this, position, html); },
       toggleAttribute(name, force) {
@@ -683,9 +698,16 @@ function documentCollection(doc, key, test) {
   return collections[key] ?? (collections[key] = liveElements(doc, test));
 }
 
+// Elements by qualified name (DOM): in HTML documents, HTML elements match
+// the name lowercased and other elements match it as given.
+const qualifiedName = (s) => (s.prefix === undefined ? s.tag : `${s.prefix}:${s.tag}`);
 function byTagName(root, tag) {
-  const name = String(tag).toLowerCase();
-  return liveElements(root, (el) => name === '*' || el[S].tag.toLowerCase() === name);
+  const name = String(tag);
+  if (name === '*') return liveElements(root, () => true);
+  const rs = state(root);
+  if ((rs.type === DOCUMENT_NODE ? rs : rs.doc[S]).xml) return liveElements(root, (el) => qualifiedName(el[S]) === name);
+  const lower = name.toLowerCase();
+  return liveElements(root, (el) => { const s = el[S]; return qualifiedName(s) === (s.ns === HTML_NS ? lower : name); });
 }
 
 function byClassName(root, names) {

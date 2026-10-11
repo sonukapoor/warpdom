@@ -3,9 +3,10 @@
 // lazily the first time something is parsed, so test files that never
 // parse HTML do not pay for loading it).
 import {
-  S, state, insert, remove, domError, hooks, reactionScope, HTML_NS,
-  ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE,
+  S, state, insert, remove, domError, hooks, reactionScope, HTML_NS, SVG_NS,
+  ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE,
 } from './internal.js';
+import { parseXMLFragment } from './xml.js';
 import { eventHandlerAttributesAdded } from './event-handlers.js';
 import { attributeSteps } from './attributes.js';
 
@@ -41,16 +42,21 @@ const escapeAttribute = (s) => (/[&" ]/.test(s)
   ? s.replace(/&/g, '&amp;').replace(/ /g, '&nbsp;').replace(/"/g, '&quot;')
   : s);
 
+// Elements outside the HTML, SVG and MathML namespaces keep their prefix.
+const MATHML_NS = 'http://www.w3.org/1998/Math/MathML';
+const tagNameOf = (s) => (s.prefix === undefined || s.ns === HTML_NS || s.ns === SVG_NS || s.ns === MATHML_NS ? s.tag : `${s.prefix}:${s.tag}`);
+
 function serializeElement(el) {
   const s = el[S];
-  let out = `<${s.tag}`;
+  const tag = tagNameOf(s);
+  let out = `<${tag}`;
   // An is value is serialized as an attribute if there is none.
   if (s.ceIs && !s.attrs.has('is')) out += ` is="${escapeAttribute(s.ceIs)}"`;
   for (const [name, value] of s.attrs) out += ` ${name}="${escapeAttribute(value)}"`;
   out += '>';
   if (s.ns === HTML_NS && VOID.has(s.tag)) return out;
   const contentRoot = s.ns === HTML_NS && s.tag === 'template' && s.content ? s.content : el;
-  return `${out}${serializeChildren(contentRoot)}</${s.tag}>`;
+  return `${out}${serializeChildren(contentRoot)}</${tag}>`;
 }
 
 export function serializeChildren(node) {
@@ -61,8 +67,10 @@ export function serializeChildren(node) {
     const cs = c[S];
     switch (cs.type) {
       case ELEMENT_NODE: out += serializeElement(c); break;
-      case TEXT_NODE: out += raw ? cs.data : escapeText(cs.data); break;
+      // A CDATA section is a Text node to the HTML serializer.
+      case TEXT_NODE: case CDATA_SECTION_NODE: out += raw ? cs.data : escapeText(cs.data); break;
       case COMMENT_NODE: out += `<!--${cs.data}-->`; break;
+      case PROCESSING_INSTRUCTION_NODE: out += `<?${cs.target} ${cs.data}>`; break;
       default: break;
     }
   }
@@ -75,7 +83,9 @@ export const serializeOuter = (el) => serializeElement(el);
 
 // Parses html in the context of contextElement and returns a warpdom
 // DocumentFragment of the result, owned by doc.
+// In XML documents, the XML fragment parsing algorithm (xml.js).
 export function parseFragment(doc, contextElement, html) {
+  if (doc[S].xml) return parseXMLFragment(doc, contextElement, html);
   const p5 = getParser();
   const cs = contextElement[S];
   const context = p5.defaultTreeAdapter.createElement(cs.tag, cs.ns ?? HTML_NS, []);

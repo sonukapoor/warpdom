@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createWindow } from '../src/index.js';
+import { parity } from './parity.js';
 
 // <div id=root><a/>text<b><c/><d/></b><e/></div>
 function fixture() {
@@ -78,4 +79,34 @@ test('NodeIterator nextNode and previousNode', () => {
   assert.deepEqual(names(seen), ['div', 'a', 'b', 'c', 'd', 'e']);
   assert.equal(it.previousNode().nodeName, 'E');
   assert.equal(it.previousNode().nodeName, 'D');
+});
+
+parity('NodeIterator: removing nodes moves the reference', (w) => {
+  const d = w.document;
+  const root = d.createElement('div');
+  root.innerHTML = '<p><b>1</b><i>2</i></p><span>3</span><em>4</em>';
+  const it = d.createNodeIterator(root, w.NodeFilter.SHOW_ELEMENT);
+  it.nextNode(); it.nextNode(); it.nextNode(); // root, p, b
+  const out = [];
+  const record = () => out.push([it.referenceNode.nodeName, it.pointerBeforeReferenceNode]);
+  root.querySelector('b').remove(); record();
+  it.previousNode(); record();
+  root.querySelector('p').remove(); record();
+  out.push(it.nextNode().nodeName); record();
+  root.querySelector('span').remove(); record();
+  out.push(it.nextNode()?.nodeName); record();
+  return out;
+});
+
+parity('NodeIterator: a filter that removes the node it is given', (w) => {
+  const d = w.document;
+  const root = d.createElement('div');
+  root.innerHTML = '<a-el></a-el><b-el></b-el><c-el></c-el>';
+  const [a, b] = root.children;
+  const it = d.createNodeIterator(root, w.NodeFilter.SHOW_ELEMENT, {
+    acceptNode(node) { if (node === b) b.remove(); return w.NodeFilter.FILTER_ACCEPT; },
+  });
+  const out = [it.nextNode().localName, it.nextNode().localName, it.nextNode().localName];
+  out.push(it.referenceNode === a, it.pointerBeforeReferenceNode, it.nextNode().localName);
+  return out;
 });

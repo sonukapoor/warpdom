@@ -12,6 +12,8 @@ export const S = Symbol('warpdom');
 
 export const ELEMENT_NODE = 1;
 export const TEXT_NODE = 3;
+export const CDATA_SECTION_NODE = 4;
+export const PROCESSING_INSTRUCTION_NODE = 7;
 export const COMMENT_NODE = 8;
 export const DOCUMENT_NODE = 9;
 export const DOCUMENT_TYPE_NODE = 10;
@@ -26,6 +28,9 @@ export const hooks = {
   childList: null, attribute: null, characterData: null, activation: null, frames: null, slots: null,
   // Live range updates (ranges.js); called only when a document has live ranges.
   rangeInsert: null, rangeRemove: null, rangeReplaceData: null,
+  // NodeIterator pre-removing steps (traversal.js); called only when a
+  // document has NodeIterators.
+  iteratorRemove: null,
   // Custom element reactions (custom-elements.js); set once something is defined.
   ce: null,
 };
@@ -173,6 +178,7 @@ function removeNode(parent, node) {
   if (ns.parent !== parent) throw domError('The node to be removed is not a child of this node.', 'NotFoundError');
   const ownerDoc = ps.type === DOCUMENT_NODE ? parent : ps.doc;
   if (hasRanges(ownerDoc)) hooks.rangeRemove(ownerDoc, parent, node);
+  if (ownerDoc[S].iterators !== undefined) hooks.iteratorRemove(ownerDoc, node);
   // Connected matters only for the id index and frames: skip the walk to the
   // root when the document has neither.
   const ods = ownerDoc[S];
@@ -368,10 +374,17 @@ export function nodeLength(node) {
   return s.type === 10 ? 0 : s.count;
 }
 
+// Character data: Text, CDATASection, ProcessingInstruction, Comment.
+export const isCharacterData = (type) => type === TEXT_NODE || type === COMMENT_NODE || type === CDATA_SECTION_NODE || type === PROCESSING_INSTRUCTION_NODE;
+
+// Text nodes include CDATA sections (CDATASection inherits from Text).
 export function textOf(node) {
   const s = state(node);
-  if (s.type === TEXT_NODE || s.type === COMMENT_NODE) return s.data;
+  if (isCharacterData(s.type)) return s.data;
   let out = '';
-  for (let n = s.first; n; n = nextInTree(n, node)) if (n[S].type === TEXT_NODE) out += n[S].data;
+  for (let n = s.first; n; n = nextInTree(n, node)) {
+    const t = n[S].type;
+    if (t === TEXT_NODE || t === CDATA_SECTION_NODE) out += n[S].data;
+  }
   return out;
 }

@@ -217,8 +217,61 @@ warpdom follows the standard. Each has a test. To publish in the docs.
 - `option.form` is its select's form owner (jsdom: the nearest ancestor
   form), and the list of options follows the standard's current
   definition (options nested in other elements inside the select count).
+- XML: the HTML serializer (innerHTML, outerHTML) writes a processing
+  instruction as `<?target data>` and an element in the HTML, SVG or
+  MathML namespace by its local name (`h:div` as `<div>`), as the HTML
+  standard says; jsdom leaves processing instructions out and keeps the
+  prefix. `wholeText` includes adjacent CDATA sections (they are Text
+  nodes); jsdom stops at them. DOMParser reads single-quoted entity values
+  in a doctype's internal subset and expands character references in them
+  (XML 1.0 4.5); jsdom gives a parsererror document, or keeps the
+  reference as text. The text of a parsererror element
+  (`line:column: message`) has other messages and positions than jsdom's.
+- NodeIterator follows the pre-removing steps, also for nodes its own
+  filter removes (WPT NodeIterator-removal: 25/25; jsdom 6/25).
 
 ## Decisions
+
+- **2026-10-11: XML documents.** Real suites barely parse XML: in the
+  stage 1 traces only ag-grid's excel-export test (happy-dom) parses XML,
+  `DOMParser.parseFromString(..., 'text/xml')` then `querySelector` on
+  the XML; DOMParser's other callers (handsontable, mantine, element-plus,
+  analog) parse HTML; createCDATASection is never called and
+  createProcessingInstruction only by happy-dom's own XML parser (4 calls
+  in that file). The tracer records calls, not arguments, so the MIME type
+  comes from reading the tests. Built anyway because WPT needs it (dom/
+  traversal, domparsing, dom/nodes create CDATA sections, processing
+  instructions and XML documents) and because a test that does parse XML
+  must not get a parsererror document. Done: CDATASection and
+  ProcessingInstruction (creation checks, character data, cloning,
+  traversal bits, HTML and XML serialization), element prefixes,
+  DOMParser for the four XML types (namespaces, CDATA, comments,
+  processing instructions, doctype, internal-subset entities, a
+  parsererror document for input that is not well-formed), the XML
+  fragment parsing algorithm (innerHTML, outerHTML, insertAdjacentHTML,
+  createContextualFragment in XML documents) and XML serialization with
+  the well-formedness checks for their getters, getElementsByTagName by
+  qualified name, the NodeIterator pre-removing steps. Well-formedness
+  comes from **@rgrove/parse-xml** 5.0.0 (ISC, no dependencies,
+  maintained, passes the XML conformance suite's relevant tests, 12 KB
+  minified), chosen over saxes (one dependency, last release 2022) and
+  sax-js (lenient about well-formedness); it builds a tree, on which
+  warpdom resolves namespaces itself. Loaded with require the first time
+  XML is parsed (3.8 ms then, 0.1 ms per small document after), like
+  parse5; `setXmlParserLoader()` for other runtimes. It needs Node >=
+  22.12 (require of an ES module without a warning); Node 20 is past its
+  end of life. Module load (fresh processes, 15 alternating runs, medians,
+  Node 22.17.1): 18.0 -> 18.4 ms (+2%, the new module); hot members
+  unchanged (3 interleaved runs each, all within noise, none slower).
+  WPT: dom/traversal 48 -> 1,602 of 1,607 subtests (jsdom 1,583; three
+  files errored on createCDATASection), domparsing 215 -> 321 of 498
+  (score 63.2% -> 84.8%; jsdom 84.9%), dom/nodes 3,791 -> 6,454 subtests
+  passed (score 73.9% -> 78.6%). Not done: HTML named entities for XHTML
+  documents with a known public identifier (browsers read them; jsdom
+  does not), markup inside entity values (kept as text), external
+  entities and DTDs, getElementsByTagNameNS, Document.rootElement,
+  XMLDocument.load and XMLHttpRequest's responseXML, case-sensitive type
+  selectors for HTML elements in XML documents.
 
 - **2026-10-09: Prove the switch is worth it before pushing adoption.**
   So far: about 2.5x faster than jsdom with the VM pool and about 3x with
@@ -591,8 +644,7 @@ warpdom follows the standard. Each has a test. To publish in the docs.
    Later: enumerated attributes limited to only known values beyond the
    common ones (referrerPolicy, loading, decoding, fetchPriority, ...
    return their raw value), links (anchor URL members, activation), on* handler properties,
-   value normalization in the CSSOM beyond zero lengths, the XML
-   serializer for XML documents.
+   value normalization in the CSSOM beyond zero lengths.
    Then timings against jsdom and happy-dom, and the load-time budget.
 2. Reserve the npm name `warpdom` (placeholder package; Sonu's call, since
    publishing is public).

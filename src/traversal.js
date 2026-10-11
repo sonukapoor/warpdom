@@ -1,6 +1,6 @@
 // TreeWalker, NodeIterator and NodeFilter, following the DOM standard's
 // traversal algorithms on the linked tree (no arrays, no allocation per step).
-import { S, state, domError } from './internal.js';
+import { S, state, domError, hooks, contains } from './internal.js';
 
 const ACCEPT = 1, REJECT = 2, SKIP = 3;
 
@@ -86,8 +86,47 @@ export function createTreeWalker(window, root, whatToShow, filterArg) {
 export function createNodeIterator(window, root, whatToShow, filterArg) {
   if (!root?.[S]) throw new TypeError("Failed to execute 'createNodeIterator' on 'Document': parameter 1 is not of type 'Node'.");
   const it = Object.create(window[S].protos.NodeIterator);
-  it[S] = { ...createState(root, whatToShow, filterArg), reference: root, beforeReference: true };
+  it[S] = { ...createState(root, whatToShow, filterArg), reference: root, beforeReference: true, pending: null };
+  // Iterators are kept per document (weakly) for the pre-removing steps;
+  // removals in documents without iterators pay nothing.
+  const rs = root[S];
+  const doc = rs.type === 9 ? root : rs.doc;
+  (doc[S].iterators ?? (doc[S].iterators = new Set())).add(new WeakRef(it));
+  hooks.iteratorRemove = preRemove;
   return it;
+}
+
+// The NodeIterator pre-removing steps (DOM 6.1), for each iterator of the
+// document, before node is removed.
+function preRemove(doc, node) {
+  const set = doc[S].iterators;
+  for (const ref of set) {
+    const it = ref.deref();
+    if (it === undefined) { set.delete(ref); continue; }
+    const s = it[S];
+    if (contains(node, s.root)) continue;
+    const moved = movePosition(s.root, node, s.reference, s.beforeReference);
+    if (moved) { s.reference = moved.node; s.beforeReference = moved.before; }
+    const p = s.pending;
+    if (p) {
+      const m = movePosition(s.root, node, p.node, p.before);
+      if (m) { p.node = m.node; p.before = m.before; }
+    }
+  }
+}
+
+// Where a position (reference, pointer before it) goes when node is
+// removed, or null if it stays.
+function movePosition(root, node, reference, before) {
+  if (!contains(node, reference)) return null;
+  if (before) {
+    // The first node following node's subtree, inside root.
+    for (let n = node; n && n !== root; n = parent(n)) if (n[S].next) return { node: n[S].next, before: true };
+  }
+  let p = prev(node);
+  if (!p) return { node: parent(node), before: false };
+  while (last(p)) p = last(p);
+  return { node: p, before: false };
 }
 
 // Following/preceding node in tree order, bounded by root.
@@ -104,19 +143,28 @@ function preceding(node, root) {
   return p;
 }
 
+// The traverse algorithm. The candidate being filtered is a position of its
+// own: a filter that removes it (or an ancestor) moves it as the removing
+// steps move the reference, and the iterator ends at the moved position
+// while returning the node it filtered.
 function iterate(it, forward) {
   const s = it[S];
-  let node = s.reference;
-  let before = s.beforeReference;
+  const pending = { node: s.reference, before: s.beforeReference };
   for (;;) {
+    let node = pending.node;
     if (forward) {
-      if (!before) { node = following(node, s.root); if (!node) return null; } else before = false;
-    } else if (before) { node = preceding(node, s.root); if (!node) return null; } else before = true;
-    if (filter(it, node) === ACCEPT) break;
+      if (!pending.before) { node = following(node, s.root); if (!node) return null; } else pending.before = false;
+    } else if (pending.before) { node = preceding(node, s.root); if (!node) return null; } else pending.before = true;
+    pending.node = node;
+    s.pending = pending;
+    let result;
+    try { result = filter(it, node); } finally { s.pending = null; }
+    if (result === ACCEPT) {
+      s.reference = pending.node;
+      s.beforeReference = pending.before;
+      return node;
+    }
   }
-  s.reference = node;
-  s.beforeReference = before;
-  return node;
 }
 
 // Merge member objects by descriptor: object spread would call getters.

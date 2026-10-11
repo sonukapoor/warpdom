@@ -1,6 +1,3 @@
-import { test } from 'node:test';
-import assert from 'node:assert/strict';
-import { createWindow } from '../src/node.js';
 import { parity } from './parity.js';
 
 parity('XMLSerializer: elements, namespaces, text and documents', (w) => {
@@ -45,16 +42,14 @@ parity('DOMParser: text/html documents', (w) => {
   };
 });
 
-test('DOMParser: XML types report that they are not implemented', () => {
-  const w = createWindow();
-  const messages = [];
-  const original = console.error;
-  console.error = (...args) => messages.push(args.map(String).join(' '));
-  try {
-    const doc = new w.DOMParser().parseFromString('<a/>', 'application/xml');
-    assert.equal(doc.documentElement.localName, 'parsererror');
-  } finally {
-    console.error = original;
-  }
-  assert.match(messages.join('\n'), /Not implemented: DOMParser's parseFromString\(\) for XML documents/);
+parity('XMLSerializer: void elements with children, tabs and line breaks in attribute values', (w) => {
+  const d = w.document;
+  const s = new w.XMLSerializer();
+  const img = d.createElement('img');
+  img.append(d.createElement('style'), d.createElement('style'));
+  const root = d.createElementNS(null, 'root');
+  root.setAttribute('a', '\t\n\r<>&"x');
+  const roundTrip = new w.DOMParser().parseFromString(s.serializeToString(root), 'text/xml').documentElement.getAttribute('a');
+  return [s.serializeToString(img), s.serializeToString(d.createElement('br')), s.serializeToString(root), roundTrip,
+    s.serializeToString(d.createTextNode('\t\n\r<>&"'))];
 });

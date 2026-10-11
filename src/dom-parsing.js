@@ -1,17 +1,18 @@
 // DOMParser and XMLSerializer (DOM Parsing and Serialization).
-// parseFromString parses HTML with parse5 into a new document; XML parsing
-// is not implemented yet. serializeToString follows the standard's XML
-// serialization algorithm, without the well-formedness checks (as
-// serializeToString requires).
-import { S, state, HTML_NS, ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, DOCUMENT_TYPE_NODE } from './internal.js';
+// parseFromString parses HTML with parse5 and XML with the XML parser
+// (xml.js) into a new document. serializeToString follows the standard's
+// XML serialization algorithm, without the well-formedness checks (as
+// serializeToString requires); innerHTML and outerHTML of nodes in XML
+// documents use it with them.
+import {
+  S, state, domError, HTML_NS, ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, DOCUMENT_TYPE_NODE,
+  CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE,
+} from './internal.js';
 import { XML_NS, XMLNS_NS } from './attributes.js';
-import { parseDocument, templateContent } from './html.js';
-
-const PROCESSING_INSTRUCTION_NODE = 7;
-const CDATA_SECTION_NODE = 4;
+import { parseDocument, templateContent, serializeChildren, serializeOuter } from './html.js';
+import { parseXMLDocument, isXmlName } from './xml.js';
 
 const SUPPORTED_TYPES = new Set(['text/html', 'text/xml', 'application/xml', 'application/xhtml+xml', 'image/svg+xml']);
-const PARSER_ERROR_NS = 'http://www.mozilla.org/newlayout/xml/parsererror.xml';
 
 function parseFromString(parser, string, type) {
   const window = state(parser).window;
@@ -25,12 +26,29 @@ function parseFromString(parser, string, type) {
     doc[S].url = ws.url.href;
     return parseDocument(doc, string);
   }
-  // XML: not parsed yet. The result is what a failed parse gives: a
-  // document whose element is a parsererror.
-  ws.notImplemented("DOMParser's parseFromString() for XML documents");
-  const doc = ws.createDocument({ contentType: t, xml: true });
-  doc.appendChild(doc.createElementNS(PARSER_ERROR_NS, 'parsererror'));
-  return doc;
+  // An XML document, though not an XMLDocument object (as browsers and
+  // the DOM Parsing tests have it).
+  const doc = ws.createDocument({ contentType: t, xml: true, plain: true });
+  doc[S].url = ws.url.href;
+  return parseXMLDocument(doc, string);
+}
+
+// The fragment serializing algorithm: HTML for nodes in HTML documents,
+// XML (requiring well-formed markup) in XML documents.
+export function innerMarkup(node) {
+  const s = node[S];
+  const root = s.type === ELEMENT_NODE && s.ns === HTML_NS && s.tag === 'template' ? templateContent(node) : node;
+  if (!(s.type === DOCUMENT_NODE ? s : s.doc[S]).xml) return serializeChildren(root);
+  const ctx = { n: 1, wellFormed: true };
+  const map = new Map([[XML_NS, ['xml']]]);
+  let out = '';
+  for (let c = root[S].first; c; c = c[S].next) out += serializeNode(c, null, map, ctx);
+  return out;
+}
+
+export function outerMarkup(element) {
+  if (!element[S].doc[S].xml) return serializeOuter(element);
+  return serializeNode(element, null, new Map([[XML_NS, ['xml']]]), { n: 1, wellFormed: true });
 }
 
 // --- XML serialization --------------------------------------------------------------
@@ -39,7 +57,10 @@ const VOID = new Set(['area', 'base', 'basefont', 'bgsound', 'br', 'col', 'embed
   'keygen', 'link', 'menuitem', 'meta', 'param', 'source', 'track', 'wbr']);
 
 const escapeText = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const escapeAttribute = (s) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+// Tabs and line breaks in attribute values are written as character
+// references, so they survive attribute value normalization when parsed.
+const ATTRIBUTE_ESCAPES = { '&': '&amp;', '"': '&quot;', '<': '&lt;', '>': '&gt;', '\t': '&#x9;', '\n': '&#xA;', '\r': '&#xD;' };
+const escapeAttribute = (s) => (/[&"<>\t\n\r]/.test(s) ? s.replace(/[&"<>\t\n\r]/g, (c) => ATTRIBUTE_ESCAPES[c]) : s);
 
 // The namespace prefix map: namespace -> prefixes, copied per element.
 const copyMap = (map) => new Map([...map].map(([ns, prefixes]) => [ns, prefixes.slice()]));
@@ -74,11 +95,24 @@ function recordNamespaces(element, map, localPrefixes) {
   return defaultNs;
 }
 
+// XML 1.0 Char production (no lone surrogates, no C0 controls but tab, LF, CR).
+const NOT_CHAR = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+const notWellFormed = (what) => domError(`Failed to serialize: ${what} is not well-formed.`, 'InvalidStateError');
+
 function serializeAttributes(element, map, index, localPrefixes, ignoreDefaultNsAttribute) {
   let out = '';
+  const seen = index.wellFormed ? new Set() : null;
   for (const attr of element.attributes) {
     const ns = attr.namespaceURI;
     let prefix = null;
+    if (seen !== null) {
+      const key = `${ns} ${attr.localName}`;
+      if (seen.has(key)) throw notWellFormed('an element with duplicate attributes');
+      seen.add(key);
+      if (attr.localName.includes(':') || !isXmlName(attr.localName) || (attr.localName === 'xmlns' && ns === null)) throw notWellFormed(`the attribute name ${attr.localName}`);
+      if (NOT_CHAR.test(attr.value)) throw notWellFormed('an attribute value');
+      if (ns === XMLNS_NS && (attr.value === XMLNS_NS || (attr.prefix !== null && attr.value === ''))) throw notWellFormed('a namespace declaration');
+    }
     if (ns !== null) {
       prefix = preferredPrefix(map, ns, attr.prefix);
       if (ns === XMLNS_NS) {
@@ -98,6 +132,7 @@ function serializeAttributes(element, map, index, localPrefixes, ignoreDefaultNs
 }
 
 function serializeElement(element, contextNs, parentMap, index) {
+  if (index.wellFormed && (element.localName.includes(':') || !isXmlName(element.localName))) throw notWellFormed(`the element name ${element.localName}`);
   const map = copyMap(parentMap);
   const localPrefixes = new Map();
   const localDefaultNs = recordNamespaces(element, map, localPrefixes);
@@ -142,13 +177,14 @@ function serializeElement(element, contextNs, parentMap, index) {
   if (ns === HTML_NS && empty && VOID.has(local)) return `${markup} />`;
   if (ns !== HTML_NS && empty) return `${markup}/>`;
   markup += '>';
-  if (ns === HTML_NS && VOID.has(local)) return markup;
   for (let c = contentRoot[S].first; c; c = c[S].next) markup += serializeNode(c, inheritedNs, map, index);
   return `${markup}</${qualifiedName}>`;
 }
 
-function serializeDoctype(node) {
+function serializeDoctype(node, wellFormed) {
   const { name, publicId, systemId } = node;
+  if (wellFormed && (/[^\x20\x0D\x0Aa-zA-Z0-9\-'()+,./:=?;!*#@$_%]/.test(publicId) || NOT_CHAR.test(systemId)
+    || (systemId.includes('"') && systemId.includes("'")))) throw notWellFormed('the doctype');
   let out = `<!DOCTYPE ${name}`;
   if (publicId !== '') out += ` PUBLIC "${publicId}"`;
   else if (systemId !== '') out += ' SYSTEM';
@@ -158,14 +194,22 @@ function serializeDoctype(node) {
 
 function serializeNode(node, contextNs, map, index) {
   const s = node[S];
+  const wellFormed = index.wellFormed === true;
   switch (s.type) {
     case ELEMENT_NODE: return serializeElement(node, contextNs, map, index);
-    case TEXT_NODE: return escapeText(s.data);
+    case TEXT_NODE:
+      if (wellFormed && NOT_CHAR.test(s.data)) throw notWellFormed('a text node');
+      return escapeText(s.data);
     case CDATA_SECTION_NODE: return `<![CDATA[${s.data}]]>`;
-    case COMMENT_NODE: return `<!--${s.data}-->`;
-    case PROCESSING_INSTRUCTION_NODE: return `<?${node.target} ${s.data}?>`;
-    case DOCUMENT_TYPE_NODE: return serializeDoctype(node);
+    case COMMENT_NODE:
+      if (wellFormed && (NOT_CHAR.test(s.data) || s.data.includes('--') || s.data.endsWith('-'))) throw notWellFormed('a comment');
+      return `<!--${s.data}-->`;
+    case PROCESSING_INSTRUCTION_NODE:
+      if (wellFormed && (s.target.includes(':') || s.target.toLowerCase() === 'xml' || NOT_CHAR.test(s.data) || s.data.includes('?>'))) throw notWellFormed('a processing instruction');
+      return `<?${s.target} ${s.data}?>`;
+    case DOCUMENT_TYPE_NODE: return serializeDoctype(node, wellFormed);
     case DOCUMENT_NODE: case DOCUMENT_FRAGMENT_NODE: {
+      if (wellFormed && s.type === DOCUMENT_NODE && node.documentElement === null) throw notWellFormed('a document without an element');
       let out = '';
       for (let c = s.first; c; c = c[S].next) out += serializeNode(c, contextNs, map, index);
       return out;

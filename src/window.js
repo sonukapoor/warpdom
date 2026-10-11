@@ -4,6 +4,7 @@
 // each interface's the first time any window creates it.
 import {
   S, hooks, initNode, insert, ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, DOCUMENT_TYPE_NODE,
+  CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE,
 } from './internal.js';
 import { INTERFACES, SVG_ELEMENTS, HTML_NS, SVG_NS } from './interfaces.js';
 import { HTML_ELEMENTS, PLAIN_TAGS } from './html-elements.js';
@@ -205,12 +206,15 @@ export function createWindow(options = {}) {
     // raw: skip custom element handling; proto: the interface to use;
     // sync: run a custom element's constructor now (createElement).
     createElementNS(ns, qualifiedName, doc = document, raw = false, proto = null, sync = false, is = null) {
-      const tag = qualifiedName.includes(':') ? qualifiedName.slice(qualifiedName.indexOf(':') + 1) : qualifiedName;
+      const colon = qualifiedName.indexOf(':');
+      const tag = colon >= 0 ? qualifiedName.slice(colon + 1) : qualifiedName;
       if (!raw && ns === HTML_NS && hooks.ce !== null) {
         const custom = createCustomElement(doc, tag, is, sync);
         if (custom) return custom;
       }
       const element = create(proto ?? protos[interfaceFor(ns, tag)], ELEMENT_NODE, { tag, ns, attrs: new Map() }, doc);
+      // The namespace prefix (createElementNS('...', 'svg:rect'), XML parsing).
+      if (colon >= 0) element[S].prefix = qualifiedName.slice(0, colon);
       if (tag === 'iframe' && ns === HTML_NS) doc[S].frameCount = (doc[S].frameCount ?? 0) + 1;
       if (tag === 'slot' && ns === HTML_NS) doc[S].slotCount = (doc[S].slotCount ?? 0) + 1;
       if (tag === 'base' && ns === HTML_NS) doc[S].baseCount = (doc[S].baseCount ?? 0) + 1;
@@ -224,11 +228,15 @@ export function createWindow(options = {}) {
     createComment: (data, doc = document) => create(protos.Comment, COMMENT_NODE, { data }, doc),
     createFragment: (doc = document) => create(protos.DocumentFragment, DOCUMENT_FRAGMENT_NODE, undefined, doc),
     createDoctype: (name, publicId, systemId, doc = document) => create(protos.DocumentType, DOCUMENT_TYPE_NODE, { name, publicId, systemId }, doc),
+    createCDATA: (data, doc = document) => create(protos.CDATASection, CDATA_SECTION_NODE, { data }, doc),
+    createPI: (target, data, doc = document) => create(protos.ProcessingInstruction, PROCESSING_INSTRUCTION_NODE, { data, target }, doc),
     initDocument: (doc, extra) => initNode(doc, DOCUMENT_NODE, doc, { window, contentType: 'text/html', ...extra }),
     // A document without a browsing context (defaultView null), as made by
     // DOMImplementation and new Document(); XML documents keep names as given.
-    createDocument: ({ contentType = 'text/html', xml = false } = {}) => internals.initDocument(
-      Object.create(xml ? protos.XMLDocument : protos.Document), { noView: true, url: 'about:blank', contentType, xml }),
+    // DOMParser's XML documents are XML documents but not XMLDocument
+    // objects (plain: true).
+    createDocument: ({ contentType = 'text/html', xml = false, plain = false } = {}) => internals.initDocument(
+      Object.create(xml && !plain ? protos.XMLDocument : protos.Document), { noView: true, url: 'about:blank', contentType, xml }),
     // Errors from event listeners that no 'error' listener handled. Logged
     // like jsdom does; test environments replace this to fail the test.
     onUnhandledError: (error) => console.error(error),
