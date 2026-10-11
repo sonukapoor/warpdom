@@ -5,7 +5,7 @@
 // place among the target's listeners.
 import { S, HTML_NS, SVG_NS, ELEMENT_NODE } from './internal.js';
 import { attributeSteps } from './attributes.js';
-import { addListener, removeListener, cancel, reportError } from './events.js';
+import { addListener, removeListener, cancel, reportError, exposed } from './events.js';
 import { formOwner } from './forms.js';
 import { GLOBAL_EVENT_HANDLERS, WINDOW_EVENT_HANDLERS } from './event-handler-names.js';
 
@@ -111,8 +111,8 @@ function processHandler(target, name, event) {
   const current = es.currentTarget;
   const special = es.type === 'error' && current !== null && isWindow(current) && es.message !== undefined && 'lineno' in es;
   const result = special
-    ? callback.call(current, es.message, es.filename, es.lineno, es.colno, es.error)
-    : callback.call(current, event);
+    ? callback.call(exposed(current), es.message, es.filename, es.lineno, es.colno, es.error)
+    : callback.call(exposed(current), event);
   if (special ? result === true : result === false) cancel(event);
 }
 
@@ -136,7 +136,8 @@ function idlAttribute(name) {
   };
 }
 
-const members = (names) => Object.fromEntries(names.map((name) => [name, idlAttribute(name)]));
+export const handlerMembers = (names) => Object.fromEntries(names.map((name) => [name, idlAttribute(name)]));
+const members = handlerMembers;
 
 export const GLOBAL_HANDLER_MEMBERS = members(GLOBAL_EVENT_HANDLERS);
 export const WINDOW_HANDLER_MEMBERS = members(WINDOW_EVENT_HANDLERS);

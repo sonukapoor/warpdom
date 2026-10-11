@@ -20,7 +20,8 @@ import { S } from './internal.js';
 import { installWindow } from './vitest.js';
 
 // Node globals jest-environment-jsdom exposes too (beyond the DOM's own).
-const HOST_GLOBALS = ['Buffer', 'URL', 'URLSearchParams', 'AbortController', 'AbortSignal', 'queueMicrotask', 'atob', 'btoa',
+// AbortController and AbortSignal are the window's, as jsdom's are there.
+const HOST_GLOBALS = ['Buffer', 'URL', 'URLSearchParams', 'queueMicrotask', 'atob', 'btoa',
   'Blob', 'File', 'Performance', 'performance', 'Headers', 'WebSocket', 'crypto', 'Crypto'];
 
 // Jest's packages, through the project's jest (they are not hoisted with
@@ -31,6 +32,11 @@ function jestRequire(rootDir) {
     require.resolve('@jest/fake-timers');
     return require;
   } catch { /* through jest's dependencies */ }
+  try {
+    require.resolve('jest/package.json');
+  } catch {
+    return require;
+  }
   for (const name of ['jest', '@jest/core', 'jest-config', 'jest-environment-node']) {
     require = createRequire(require.resolve(`${name}/package.json`));
   }
@@ -65,6 +71,18 @@ function numericTimers(target) {
   return () => { for (const h of handles.values()) { clearTimeout(h); clearInterval(h); } handles.clear(); };
 }
 
+// The jsdom generation to behave like: testEnvironmentOptions.jsdom, else
+// the jsdom jest-environment-jsdom brings (26 with Jest 30), else 26.
+function jsdomVersion(rootDir, options) {
+  if (options.jsdom != null) return options.jsdom;
+  try {
+    const envRequire = createRequire(createRequire(join(rootDir, 'package.json')).resolve('jest-environment-jsdom/package.json'));
+    return envRequire('jsdom/package.json').version;
+  } catch {
+    return 26;
+  }
+}
+
 const userErrorListeners = (window) => window[S].listeners?.get('error')?.length ?? 0;
 
 export default class WarpdomEnvironment {
@@ -78,7 +96,7 @@ export default class WarpdomEnvironment {
     const options = projectConfig.testEnvironmentOptions ?? {};
 
     // jest-environment-jsdom's default URL.
-    const window = createWindow({ url: options.url ?? 'http://localhost/' });
+    const window = createWindow({ url: options.url ?? 'http://localhost/', jsdom: jsdomVersion(projectConfig.rootDir ?? process.cwd(), options) });
     // An error thrown in an event listener fails the test, unless the test
     // listens for 'error' on the window (as with jest-environment-jsdom).
     window[S].onUnhandledError = (error) => {
@@ -97,6 +115,8 @@ export default class WarpdomEnvironment {
       Object.defineProperty(sandbox, key, { value: global, writable: true, configurable: true });
     }
     Object.defineProperty(window.document, 'defaultView', { get: () => global, configurable: true });
+    // Events at the window show the global as their target, as with jsdom.
+    window[S].globalProxy = global;
     this.context = sandbox;
     this.global = global;
     this.window = window;

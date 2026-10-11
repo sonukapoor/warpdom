@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { createWindow } from './node.js';
 import { S } from './internal.js';
 import { resetWindow, snapshotWindow } from './reset.js';
+import { HOST_TIMER_KEYS } from './window-features.js';
 
 const SELF_KEYS = ['window', 'self', 'top', 'parent'];
 const isClassLike = (key) => /^[A-Z]/.test(key);
@@ -24,7 +25,12 @@ function dataValue(object, key) {
   return undefined;
 }
 
-export function installWindow(global, window) {
+// Window members a Vitest environment leaves to Node, as Vitest's jsdom
+// environment does (so fetch accepts the signals tests create, and fake
+// timers replace Node's timers).
+export const VITEST_HOST_KEYS = ['AbortController', 'AbortSignal', ...HOST_TIMER_KEYS];
+
+export function installWindow(global, window, { hostKeys = [] } = {}) {
   const originals = new Map();
   // The window's own members and those it inherits (Window.prototype,
   // EventTarget.prototype: addEventListener, dispatchEvent, ...).
@@ -32,7 +38,7 @@ export function installWindow(global, window) {
   for (let p = Object.getPrototypeOf(window); p && p !== Object.prototype; p = Object.getPrototypeOf(p)) {
     for (const name of Object.getOwnPropertyNames(p)) if (name !== 'constructor') names.add(name);
   }
-  const keys = [...names].filter((k) => !SELF_KEYS.includes(k));
+  const keys = [...names].filter((k) => !SELF_KEYS.includes(k) && !hostKeys.includes(k));
   const overrides = new Map(); // key -> value assigned through the global
   for (const key of keys) {
     const original = Object.getOwnPropertyDescriptor(global, key);
@@ -80,9 +86,26 @@ function nodeHostGlobals() {
   return hostGlobals;
 }
 
-function createTestWindow() {
+// The jsdom generation to behave like: environmentOptions.warpdom.jsdom,
+// else the jsdom Vitest's jsdom environment would load (the project's,
+// else one Vitest itself resolves), else warpdom's default.
+export function jsdomVersion(options, root = process.cwd()) {
+  const set = options?.warpdom?.jsdom;
+  if (set != null) return set;
+  const project = createRequire(join(root, 'package.json'));
+  try {
+    return project('jsdom/package.json').version;
+  } catch { /* not a dependency of the project */ }
+  try {
+    return createRequire(project.resolve('vitest/package.json'))('jsdom/package.json').version;
+  } catch {
+    return undefined;
+  }
+}
+
+function createTestWindow(options) {
   // Vitest's jsdom environment defaults to this URL as well.
-  const window = createWindow({ url: 'http://localhost:3000' });
+  const window = createWindow({ url: 'http://localhost:3000', jsdom: jsdomVersion(options) });
   // Like Vitest's jsdom environment: an error thrown in an event listener
   // fails the test, unless the test listens for 'error' on the window.
   window[S].onUnhandledError = (error) => {
@@ -110,10 +133,10 @@ export default {
   // Vitest's VM pools (vmThreads, vmForks): each test file runs in a VM
   // context whose global object is the window, as with jsdom's internal
   // context. Node's host globals are copied in, under warpdom's own members.
-  async setupVM() {
-    const window = createTestWindow();
+  async setupVM(options) {
+    const window = createTestWindow(options);
     const sandbox = {};
-    const restore = installWindow(sandbox, window);
+    const restore = installWindow(sandbox, window, { hostKeys: VITEST_HOST_KEYS });
     for (const name of nodeHostGlobals()) {
       // Values, not descriptors: some are lazy getters bound to Node's global (crypto).
       if (!(name in sandbox)) Object.defineProperty(sandbox, name, { value: globalThis[name], writable: true, configurable: true });
@@ -124,14 +147,15 @@ export default {
       Object.defineProperty(sandbox, key, { value: globalProxy, writable: true, configurable: true });
     }
     Object.defineProperty(window.document, 'defaultView', { get: () => globalProxy, configurable: true });
+    window[S].globalProxy = globalProxy;
     return {
       getVmContext() { return sandbox; },
       teardown() { restore(); },
     };
   },
-  setup(global) {
-    const window = createTestWindow();
-    const restore = installWindow(global, window);
+  setup(global, options) {
+    const window = createTestWindow(options);
+    const restore = installWindow(global, window, { hostKeys: VITEST_HOST_KEYS });
     snapshotWindow(window);
     global[RESET] = () => {
       restore.resetOverrides();

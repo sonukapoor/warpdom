@@ -203,3 +203,17 @@ test('live collections follow attribute changes', () => {
   el.removeAttribute('class');
   assert.equal(active.length, 0);
 });
+
+test('cloneNode: the internal state of clones is not enumerable (test runners walk copies)', () => {
+  const w = createWindow();
+  const el = w.document.createElement('div');
+  el.append(w.document.createElement('span'), 'text');
+  el.firstChild.textContent = 'a';
+  const copy = el.cloneNode(true);
+  for (const n of [copy, copy.firstChild, copy.lastChild]) {
+    assert.deepEqual(Object.getOwnPropertySymbols(n).filter((s) => Object.prototype.propertyIsEnumerable.call(n, s)), []);
+  }
+  assert.equal(copy.firstChild.textContent, 'a');
+  copy.firstChild.textContent = 'b';
+  assert.equal(copy.outerHTML, '<div><span>b</span>text</div>');
+});

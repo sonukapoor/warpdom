@@ -30,8 +30,10 @@ test('reflection kinds', () => {
   td.colSpan = -1;
   assert.equal(td.getAttribute('colspan'), '1', 'out of range: the default');
   const div = d.createElement('div');
-  div.inert = true;
-  assert.equal(div.getAttribute('inert'), '');
+  div.hidden = true;
+  assert.equal(div.getAttribute('hidden'), '');
+  // Left out on purpose: libraries feature-detect it (see reflect.js).
+  assert.equal('inert' in d.defaultView.HTMLElement.prototype, false);
   const img = d.createElement('img');
   assert.equal(img.crossOrigin, null);
   img.setAttribute('crossorigin', '');

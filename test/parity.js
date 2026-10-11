@@ -3,11 +3,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
+import { JSDOM as JSDOM26 } from 'jsdom26';
 import { createWindow } from '../src/node.js';
 
 const URL_ = 'http://localhost:3000/page';
 
-export function parity(name, scenario) {
+export function parity(name, scenario, { jsdom = 30, url = URL_ } = {}) {
+  const Dom = jsdom === 26 ? JSDOM26 : JSDOM;
   test(name, async () => {
     const run = async (window) => {
       const errors = [];
@@ -20,8 +22,8 @@ export function parity(name, scenario) {
       }
     };
     // As Vitest's jsdom environment creates it.
-    const expected = await run(new JSDOM('<!doctype html><html><head></head><body></body></html>', { url: URL_, runScripts: 'dangerously', pretendToBeVisual: true }).window);
-    const actual = await run(createWindow({ url: URL_ }));
+    const expected = await run(new Dom('<!doctype html><html><head></head><body></body></html>', { url, runScripts: 'dangerously', pretendToBeVisual: true }).window);
+    const actual = await run(createWindow({ url, jsdom }));
     assert.deepEqual(actual, expected);
   });
 }

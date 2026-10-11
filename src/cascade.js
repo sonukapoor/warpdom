@@ -275,6 +275,30 @@ function shorthandValue(element, name) {
 
 const BORDER_SIDE = /^border-(top|right|bottom|left)$/;
 
+// jsdom before 29 (the jsdom bundled with jest-environment-jsdom up to
+// Jest 30): an undeclared property computes to '', except display (the
+// user agent's, '' for inline elements), visibility, pointer-events and
+// color (inherited), background-color and the border colors.
+const LEGACY_INLINE = new Set(['img']);
+const LEGACY_INHERITED = { visibility: 'visible', 'pointer-events': 'auto' };
+const BORDER_COLOR = /^border-(top|right|bottom|left)-color$/;
+
+function legacyDefault(element, name) {
+  if (name === 'display') {
+    const tag = element[S].tag;
+    return LEGACY_INLINE.has(tag) ? '' : DEFAULT_DISPLAY.get(tag) ?? '';
+  }
+  if (name === 'color' || name in LEGACY_INHERITED) {
+    const parent = inheritParent(element);
+    if (parent) return computedValue(parent, name);
+    if (name !== 'color') return LEGACY_INHERITED[name];
+    return element[S].doc[S].window[S].compat.jsdom < 27 ? 'canvastext' : 'rgb(0, 0, 0)';
+  }
+  if (name === 'background-color') return 'rgba(0, 0, 0, 0)';
+  if (BORDER_COLOR.test(name)) return computedValue(element, 'color');
+  return '';
+}
+
 // getComputedStyle(element).getPropertyValue(property).
 export function computedValue(element, property) {
   const custom = property.startsWith('--');
@@ -286,6 +310,7 @@ export function computedValue(element, property) {
   // the style attribute.
   if (name === 'display' && element[S].ns === HTML_NS && element[S].attrs.has('hidden') && !inlineDeclarations(element)?.has('display')) return 'none';
   let value = cascaded(element, name);
+  if (value === undefined && !custom && element[S].doc[S].window[S].compat?.legacyComputedStyle) return legacyDefault(element, name);
   if (value !== undefined && !custom && value.includes('var(')) value = substitute(element, value);
   const keyword = value === undefined ? (data[1] ? 'inherit' : 'initial') : value.toLowerCase();
   switch (keyword) {

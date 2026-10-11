@@ -71,6 +71,17 @@ Corpus result (`.corpus/report/`, regenerate with the harness):
 Run with `node scripts/trace-corpus.mjs --repos-dir ~/Projects`. Why each
 package is included or excluded is in the `notes` field of `corpus/corpus.json`.
 
+Same-status survey on warpdom (2026-10-11, after the jsdom profile, cookies,
+base URLs, FileReader, AbortSignal, trusted events, window operations and
+targets): tests whose status differs from jsdom's. 0 in react-hook-form,
+Vuetify, svelte, floating-ui, emoji-picker-element, analog, Radix, MUI,
+CopilotKit. react-spectrum 1 (304 a day earlier; left: CSS value validation,
+ProgressBar width undefined%). handsontable 16 (CSS value validation).
+ark-ui 1 (Editable: a typing race that fails about 1 run in 3 under load).
+solid 1 (fails on jsdom too in some file orders, isolate: false). ariakit:
+9 tests fail on jsdom and pass on warpdom (proxy defineProperty, a
+CompositionEvent view check).
+
 | Project | Framework / kind | DOM | Status (2026-10-08) | Files | Tests | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | floating-ui | React, Vue positioning | jsdom | traced | 24 | 340 | |
@@ -149,6 +160,12 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   `tabindex="abc"` gives the element's default (-1 on a div); jsdom gives 0.
 - A disabled `fieldset` is not focusable even with a `tabindex`; jsdom
   focuses it.
+- A document without a browsing context has `visibilityState` 'hidden'
+  (jsdom: 'prerender', no longer a state in the standard), and
+  `document.onvisibilitychange` runs (jsdom does not call it).
+- A document from DOMParser is cookie-averse (no browsing context):
+  `document.cookie` is empty and ignores writes; jsdom gives it a cookie
+  store of its own.
 - A submit button with `formnovalidate` submits without validating the
   form; jsdom only honors the form's `novalidate`.
 - The `input` event fired by clicking a checkbox or radio button is
@@ -172,7 +189,11 @@ warpdom follows the standard. Each has a test. To publish in the docs.
 - Element interfaces and reflected attributes come from the current
   standard's IDL: `<search>` and `<menuitem>` are HTMLElement (jsdom:
   HTMLUnknownElement), `<selectedcontent>` exists, and reflections jsdom
-  lacks (inert, srcset, relList, sandbox, ...) are present.
+  lacks (srcset, relList, sandbox, ...) are present. Not `inert`:
+  libraries feature-detect it (react-aria then uses the inert attribute
+  instead of aria-hidden) and warpdom does not implement inertness, so it
+  is left out, as in jsdom (src/reflect.js FEATURE_DETECTED). Members that
+  change a library's code path only get added with their behavior.
 - Media elements' buffered/played/seekable are TimeRanges (start/end throw
   IndexSizeError out of range) and `error` is null; jsdom gives plain
   objects returning 0, and undefined.
@@ -211,6 +232,32 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   median under ~1.8x, or most suites needing large compatibility work,
   means rethinking the product.
 
+- **2026-10-11: Behave like the jsdom generation the tests were written
+  for.** "Like jsdom" is not one target: getComputedStyle left most
+  undeclared values empty before jsdom 29 and gives initial values since,
+  and tests encode whichever they ran on (react-aria relies on the empty
+  values, MUI on opacity 1). jest-environment-jsdom (Jest 30) bundles jsdom
+  26. So warpdom takes a jsdom major version (createWindow({ jsdom })),
+  detected by the adapters (Jest: the jsdom jest-environment-jsdom brings;
+  Vitest: the project's jsdom), default current. Only behaviors that
+  changed in ways tests observe go into the profile; computed-style
+  defaults are the first. Also: members jsdom lacks that libraries
+  feature-detect are added only with their behavior (inert left out).
+  In the profile so far: before 29, empty computed-style defaults; before
+  27, no PointerEvent or pointer handlers, and click() fires a MouseEvent;
+  before 30.1.2 (a patch release, 2026-10-04), focus() ignores display:
+  none and [hidden] (ark-ui's signature pad focuses a [hidden] input). So
+  the option takes a full version too ('30.1.1'); the adapters pass the
+  installed one, and a bare major means its latest release.
+  Also before 28: computed styles accept writes (react-aria fakes
+  position: relative on them). Not in the profile yet (declared values are
+  parsed without knowing their window): jsdom 26 does not shorten box
+  shorthands (margin: 0 0 stays 0px 0px), and jsdom before 28 keeps a lone
+  0 as written for properties its CSS layer did not know (inset: 0).
+  CSS value validation (jsdom drops width: 0 10px) is still open.
+  Corpus note: solid's transition.spec fails on jsdom too when its files
+  run in a certain order (isolate: false shares solid's module state), so
+  its one difference is a solid flake, not warpdom.
 - **2026-10-10: Kill criterion measured; learning fast mode.** Over 11
   suites the default pool gives a median 1.17x (best configuration 1.20x):
   under the ~1.8x criterion. The gain follows the suite's DOM share:

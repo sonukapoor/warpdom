@@ -148,6 +148,7 @@ export function adopt(node, doc) {
     s.doc = doc;
     if (s.tag === 'iframe' && s.ns === HTML_NS) doc[S].frameCount = (doc[S].frameCount ?? 0) + 1;
     if (s.tag === 'slot' && s.ns === HTML_NS) doc[S].slotCount = (doc[S].slotCount ?? 0) + 1;
+    if (s.tag === 'base' && s.ns === HTML_NS) doc[S].baseCount = (doc[S].baseCount ?? 0) + 1;
     if (s.attrNodes) for (const attr of s.attrNodes.values()) attr[S].doc = doc;
     if (s.content) adopt(s.content, doc);
   }

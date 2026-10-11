@@ -4,6 +4,7 @@
 // the element's url (the href attribute parsed against the document's
 // URL) and writing changes back to the href attribute.
 import { S, state } from './internal.js';
+import { documentBaseURL } from './base-url.js';
 import { writeAttribute } from './attributes.js';
 
 // The element's url: its href attribute parsed against the document's URL,
@@ -13,8 +14,7 @@ export function urlOf(element) {
   const es = element[S];
   const raw = es.attrs.get('href');
   if (raw === undefined) return null;
-  const ds = es.doc[S];
-  const base = ds.url ?? ds.window[S].url;
+  const base = documentBaseURL(es.doc);
   const cached = es.hyperlink;
   if (cached && cached.raw === raw && cached.base === base) return cached.url;
   let url;

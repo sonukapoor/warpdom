@@ -284,3 +284,45 @@ parity('CompositionEvent', (w) => {
   const legacy = w.document.createEvent('CompositionEvent');
   return [e.data, e.bubbles, e.detail, e instanceof w.UIEvent, Object.prototype.toString.call(e), d.data, legacy instanceof w.CompositionEvent];
 });
+
+// jsdom before 27 had no PointerEvent or pointer handlers; libraries test
+// for them (react-aria picks pointer or mouse events).
+parity('jsdom 26 profile: no PointerEvent', (w) => {
+  const d = w.document;
+  return [typeof w.PointerEvent, 'onpointerdown' in d.body, 'onpointerenter' in d, 'onpointermove' in w, 'ongotpointercapture' in d.body,
+    typeof w.MouseEvent, 'onmouseenter' in d.body, typeof w.TouchEvent];
+}, { jsdom: 26 });
+
+// click() fires a MouseEvent there.
+parity('jsdom 26 profile: click() event', (w) => {
+  const b = w.document.createElement('button');
+  let seen;
+  b.addEventListener('click', (e) => { seen = [Object.prototype.toString.call(e), e instanceof w.MouseEvent, e.bubbles, e.cancelable, e.composed, e.detail]; });
+  b.click();
+  return seen;
+}, { jsdom: 26 });
+
+// Events the platform fires are trusted; dispatchEvent() and click() are not.
+parity('isTrusted', async (w) => {
+  const d = w.document;
+  d.body.innerHTML = '<input type="checkbox" id="c"><input id="t"><details id="d"><summary>s</summary></details><form id="f"><input name="a" required></form>';
+  const seen = [];
+  const on = (target, types) => { for (const type of types) target.addEventListener(type, (e) => seen.push(`${type}:${e.isTrusted}`)); };
+  on(d.getElementById('c'), ['click', 'input', 'change']);
+  d.getElementById('c').click();
+  on(d.getElementById('t'), ['focus', 'focusin', 'blur', 'custom']);
+  d.getElementById('t').focus();
+  d.getElementById('t').blur();
+  d.getElementById('t').dispatchEvent(new w.Event('custom'));
+  on(d.getElementById('f').elements.a, ['invalid']);
+  d.getElementById('f').checkValidity();
+  on(w, ['hashchange', 'popstate']);
+  w.location.hash = '#x';
+  on(d.getElementById('d'), ['toggle']);
+  d.getElementById('d').open = true;
+  const c = new w.AbortController();
+  on(c.signal, ['abort']);
+  c.abort();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  return seen.sort();
+});

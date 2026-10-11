@@ -52,3 +52,33 @@ test('iframes: no work for documents without iframes', () => {
   w.document.body.appendChild(w.document.createElement('div'));
   assert.equal(w.document[Object.getOwnPropertySymbols(w.document)[0]].frameCount, undefined);
 });
+
+// Window operations are own properties of the window and work unbound,
+// also on a frame's window (react-aria: const { getComputedStyle } = win).
+parity('window operations called without this', (w) => {
+  const iframe = w.document.createElement('iframe');
+  w.document.body.append(iframe);
+  const fw = iframe.contentWindow;
+  const div = fw.document.createElement('div');
+  fw.document.body.append(div);
+  const { getComputedStyle, getSelection, setTimeout: frameSetTimeout } = fw;
+  return [
+    getComputedStyle(div).display, typeof getSelection(), typeof frameSetTimeout(() => {}, 0),
+    ['getComputedStyle', 'getSelection', 'postMessage', 'scrollTo', 'close'].map((n) => !!Object.getOwnPropertyDescriptor(fw, n)),
+    w.getComputedStyle.length,
+  ];
+});
+
+parity('a frame window\'s timers', async (w) => {
+  const iframe = w.document.createElement('iframe');
+  w.document.body.append(iframe);
+  const fw = iframe.contentWindow;
+  const log = [];
+  const a = fw.setTimeout((x) => log.push(['timeout', x]), 0, 'arg');
+  const b = fw.setTimeout(() => log.push('cleared'), 0);
+  fw.clearTimeout(b);
+  const c = fw.setInterval(() => { log.push('interval'); fw.clearInterval(c); }, 1);
+  fw.queueMicrotask(() => log.push('microtask'));
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  return [typeof a, a > 0, b > a, log, fw.atob(fw.btoa('hi'))];
+});

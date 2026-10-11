@@ -8,6 +8,7 @@
 // is non-zero (counted at creation and adoption, in window.js and
 // internal.js).
 import { S, HTML_NS, ELEMENT_NODE, hooks, nextInTree } from './internal.js';
+import { dispatch } from './events.js';
 
 const isIframe = (n) => { const s = n[S]; return s.type === ELEMENT_NODE && s.ns === HTML_NS && s.tag === 'iframe'; };
 
@@ -48,7 +49,7 @@ function createFrame(iframe) {
   syncIndexes(parent, frames.length - 1);
   // The iframe load event steps run once the (empty) document is ready.
   parent[S].setTimeout(() => {
-    if (es.frameWindow === child) iframe.dispatchEvent(new parent.Event('load'));
+    if (es.frameWindow === child) dispatch(iframe, new parent.Event('load'));
   }, 0);
 }
 

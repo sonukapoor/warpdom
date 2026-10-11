@@ -10,7 +10,7 @@ import {
 } from './internal.js';
 import { CSS_INTERFACES, styleOf } from './css.js';
 import { REFLECTED } from './reflect.js';
-import { GLOBAL_HANDLER_MEMBERS, WINDOW_HANDLER_MEMBERS, eventHandlerAttributesAdded } from './event-handlers.js';
+import { GLOBAL_HANDLER_MEMBERS, WINDOW_HANDLER_MEMBERS, eventHandlerAttributesAdded, handlerMembers } from './event-handlers.js';
 import { CUSTOM_ELEMENT_INTERFACES } from './custom-elements.js';
 import { RANGE_INTERFACES, newRange, getSelection, splitText, normalize } from './ranges.js';
 import { CSSOM_INTERFACES, styleElementSheet, documentStyleSheets } from './cssom.js';
@@ -19,6 +19,8 @@ import { FORM_INTERFACES, FORM_MEMBERS, clickMember } from './forms.js';
 import { GEOMETRY_INTERFACES, ELEMENT_LAYOUT, HTML_ELEMENT_LAYOUT } from './layout.js';
 import { querySelectorAll as selectAll, matches as matchSelector, closest as closestMatch } from './selectors.js';
 import { DOM_PARSING_INTERFACES } from './dom-parsing.js';
+import { FILE_READER_INTERFACES } from './file-reader.js';
+import { ABORT_INTERFACES } from './abort.js';
 import { IFRAME_MEMBERS, WINDOW_FRAME_MEMBERS } from './frames.js';
 import { STORAGE_INTERFACE, STORAGE_WINDOW_MEMBERS } from './storage.js';
 import { PROGRESS_MEMBERS, METER_MEMBERS } from './progress-meter.js';
@@ -26,6 +28,8 @@ import { SLOT_MEMBERS, SLOTTABLE_MEMBERS } from './slots.js';
 import { MEDIA_MEMBERS, MEDIA_STATICS, VIDEO_MEMBERS, TIME_RANGES_INTERFACE } from './media.js';
 import { TABLE_MEMBERS, SECTION_MEMBERS, ROW_MEMBERS, CELL_MEMBERS } from './tables.js';
 import { HYPERLINK_MEMBERS } from './hyperlinks.js';
+import { BASE_MEMBERS, nodeBaseURI } from './base-url.js';
+import { documentCookie, setDocumentCookie } from './cookies.js';
 import { COLLECTION_INTERFACES, liveList } from './collections.js';
 import { HTML_ELEMENTS } from './html-elements.js';
 import { EVENT_INTERFACES, createEvent, retarget } from './events.js';
@@ -166,6 +170,13 @@ function cloneNode(node, deep, doc) {
       for (let c = s.content[S].first; c; c = c[S].next) insert(content, cloneNode(c, true, content[S].doc), null);
     }
   }
+  // A clone's internal state is not enumerable. Jest's assertion messages
+  // copy a DOM node with cloneNode(true), then walk the copy's enumerable
+  // properties, symbols included; through an enumerable state they reached
+  // the whole document and React's frozen props, and threw. Only clones:
+  // defining the property is several times slower than assigning it, so
+  // nodes created otherwise keep the fast assignment.
+  Object.defineProperty(copy, S, { value: copy[S], writable: true, configurable: true, enumerable: false });
   return copy;
 }
 
@@ -236,6 +247,8 @@ export const INTERFACES = [
   ...FORM_INTERFACES,
   ...EVENT_INTERFACES,
   ...DOM_PARSING_INTERFACES,
+  ...FILE_READER_INTERFACES,
+  ...ABORT_INTERFACES,
   STORAGE_INTERFACE,
   TIME_RANGES_INTERFACE,
   ...MUTATION_INTERFACES,
@@ -279,6 +292,7 @@ export const INTERFACES = [
       get nextSibling() { return state(this).next; },
       get previousSibling() { return state(this).prev; },
       get isConnected() { state(this); return connected(this); },
+      get baseURI() { return nodeBaseURI(this); },
       getRootNode(options) { state(this); return options?.composed ? shadowIncludingRoot(this) : rootOf(this); },
       get textContent() { const t = state(this).type; return t === DOCUMENT_NODE || t === DOCUMENT_TYPE_NODE ? null : textOf(this); },
       set textContent(value) {
@@ -316,6 +330,14 @@ export const INTERFACES = [
       get defaultView() { const s = state(this); return s.noView ? null : s.window; },
       get URL() { const s = state(this); return s.url ?? s.window[S].url.href; },
       get documentURI() { return this.URL; },
+      // Page visibility: a document in a window is always visible (as in jsdom
+      // with pretendToBeVisual, which test environments use); one without a
+      // browsing context is hidden.
+      get visibilityState() { return state(this).noView ? 'hidden' : 'visible'; },
+      get hidden() { return !!state(this).noView; },
+      ...handlerMembers(['onreadystatechange', 'onvisibilitychange']),
+      get cookie() { state(this); return documentCookie(this); },
+      set cookie(v) { state(this); setDocumentCookie(this, v); },
       get location() { const s = state(this); return s.noView ? null : s.window[S].location; },
       get documentElement() { return firstElement(state(this)); },
       get doctype() {
@@ -699,6 +721,7 @@ INTERFACES.push({
 // The HTMLHyperlinkElementUtils mixin (hyperlinks.js).
 INTERFACES.push({ name: 'HTMLAnchorElement', parent: 'HTMLElement', members: HYPERLINK_MEMBERS });
 INTERFACES.push({ name: 'HTMLAreaElement', parent: 'HTMLElement', members: HYPERLINK_MEMBERS });
+INTERFACES.push({ name: 'HTMLBaseElement', parent: 'HTMLElement', members: BASE_MEMBERS });
 INTERFACES.push({ name: 'HTMLIFrameElement', parent: 'HTMLElement', members: IFRAME_MEMBERS });
 INTERFACES.push({ name: 'HTMLSlotElement', parent: 'HTMLElement', members: SLOT_MEMBERS });
 INTERFACES.push({ name: 'HTMLMediaElement', parent: 'HTMLElement', members: MEDIA_MEMBERS, statics: MEDIA_STATICS });

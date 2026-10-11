@@ -173,3 +173,47 @@ parity('getComputedStyle: shorthands', (w) => {
   const props = ['background', 'border', 'outline', 'color', 'border-color', 'border-top-color', 'background-color', 'border-top', 'border-width', 'margin'];
   return ['a', 'b', 'c'].map((id) => { const cs = w.getComputedStyle(d.getElementById(id)); return props.map((p) => cs.getPropertyValue(p)); });
 });
+
+// jsdom 26 (bundled with jest-environment-jsdom in Jest 30): undeclared
+// properties compute to '' apart from a few.
+const legacyScenario = (w) => {
+  const d = w.document;
+  d.head.innerHTML = '<style>.r{width:10px;transform:scale(2);color:red;font-size:20px}.p{font-size:14px;visibility:hidden;cursor:pointer}</style>';
+  d.body.innerHTML = '<div class=p id=p><span id=c></span></div><div class=r id=r></div><div id=i style="opacity:.5;margin:0 auto;color:#f00"></div><div id=h hidden></div>'
+    + '<div id=par style="color:blue;pointer-events:none;visibility:collapse"><b id=kid>x</b></div>';
+  const cs = (el, ...ps) => ps.map((p) => w.getComputedStyle(el).getPropertyValue(p));
+  const byId = (id) => d.getElementById(id);
+  const tags = ['div', 'span', 'p', 'li', 'table', 'td', 'button', 'input', 'a', 'section', 'script', 'img', 'ul', 'tr', 'em'];
+  return {
+    child: cs(byId('c'), 'font-size', 'visibility', 'cursor', 'color', 'display'),
+    rule: cs(byId('r'), 'width', 'transform', 'color', 'font-size', 'height', 'opacity'),
+    inline: cs(byId('i'), 'opacity', 'margin-top', 'color', 'background-color', 'pointer-events'),
+    hidden: cs(byId('h'), 'display'),
+    inherited: cs(byId('kid'), 'color', 'pointer-events', 'visibility', 'display'),
+    body: cs(d.body, 'display', 'visibility', 'color', 'background-color', 'pointer-events', 'font-family', 'border-top-width', 'border-top-color', 'outline-color', 'z-index', 'filter'),
+    displays: tags.map((t) => cs(d.body.appendChild(d.createElement(t)), 'display')[0]),
+  };
+};
+parity('getComputedStyle: jsdom 26 profile', legacyScenario, { jsdom: 26 });
+
+// Writes to computed styles (react-aria fakes a layout this way): jsdom
+// before 28 lets every write change that object; from 28, setting a
+// property changes the element's value until the document changes.
+const computedWrites = (w) => {
+  const d = w.document;
+  d.body.innerHTML = '<div id="a" style="color: red"></div><div id="b"></div>';
+  const a = d.getElementById('a');
+  const s = w.getComputedStyle(a);
+  const t = (f) => { try { return f(); } catch (e) { return `throws ${e.name}`; } };
+  const out = [
+    t(() => { s.position = 'relative'; return [s.position, s.getPropertyValue('position')]; }),
+    t(() => { s.setProperty('display', 'flex'); return s.display; }),
+    t(() => { s.removeProperty('color'); return s.color; }),
+    w.getComputedStyle(a).position, w.getComputedStyle(d.getElementById('b')).position, a.style.position,
+  ];
+  a.setAttribute('class', 'x');
+  out.push(w.getComputedStyle(a).position, s.position);
+  return out;
+};
+parity('getComputedStyle: writes (jsdom 26 profile)', computedWrites, { jsdom: 26 });
+parity('getComputedStyle: writes', computedWrites);

@@ -33,11 +33,15 @@ function splitOutside(text, sep) {
   return parts;
 }
 
-// Declared values as CSSOM serializes them: a unitless zero length is
-// 0px (width: 0, margin: 0 auto), and a box shorthand takes its shortest
-// form (padding: 0 0 is 0px). Numbers stay (opacity: 0, line-height: 0).
+// Declared values as jsdom (27 and later) serializes them: a unitless zero
+// length alone is 0px (width: 0). In a list of values, zeros become 0px only
+// in margin, padding, border-width and border-spacing, and the first three
+// take their shortest form (padding: 0 0 is 0px, margin: 1px 1px is 1px);
+// other properties keep a list as written (inset: 0 auto, view-timeline-
+// inset: 0 100dvh). Numbers stay (opacity: 0, line-height: 0).
 const ZERO = /^[+-]?(0+\.?0*|\.0+)$/;
-const BOX_SHORTHANDS = new Set(['margin', 'padding', 'inset', 'border-width', 'border-radius', 'scroll-margin', 'scroll-padding', 'gap']);
+const BOX_SHORTHANDS = new Set(['margin', 'padding', 'border-width']);
+const ZERO_LISTS = new Set(['margin', 'padding', 'border-width', 'border-spacing']);
 const zeroIsLength = new Map();
 function isLengthProperty(name) {
   let result = zeroIsLength.get(name);
@@ -87,11 +91,45 @@ function serializeColors(value) {
   return parts.join('');
 }
 
+// Numbers and dimensions at the top level serialize canonically (CSSOM):
+// .5 -> 0.5, 10.0px -> 10px, +1 -> 1. Not inside functions.
+const NUMBER_TOKEN = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)([a-z%]*)$/i;
+function canonicalNumbers(value) {
+  if (!/\d/.test(value)) return value;
+  const parts = segments(value);
+  for (let i = 0; i < parts.length; i += 2) {
+    const m = NUMBER_TOKEN.exec(parts[i]);
+    if (m) parts[i] = `${Number(m[1])}${m[2]}`;
+  }
+  return parts.join('');
+}
+
+// Declared values by property and raw value: style writes repeat the same
+// few values, so their serialization is computed once.
+const declaredCache = new Map(); // property -> (raw value -> serialized)
 function declaredValue(name, value) {
+  let byValue = declaredCache.get(name);
+  if (byValue === undefined) declaredCache.set(name, byValue = new Map());
+  let out = byValue.get(value);
+  if (out === undefined) {
+    out = serializeDeclared(name, value);
+    if (byValue.size >= 500) byValue.clear();
+    byValue.set(value, out);
+  }
+  return out;
+}
+
+function serializeDeclared(name, value) {
+  value = canonicalNumbers(value);
   if (isColorProperty(name)) value = declaredColors(value);
-  if (!value.includes('0') || value.includes('(') || !isLengthProperty(name)) return value;
-  const tokens = value.split(/\s+/).map((t) => (ZERO.test(t) ? '0px' : t));
-  if (BOX_SHORTHANDS.has(name) && tokens.length > 1 && tokens.length <= 4) {
+  if (value.includes('(')) return value;
+  const box = BOX_SHORTHANDS.has(name);
+  if (!box && !value.includes('0')) return value;
+  const tokens = value.split(/\s+/);
+  if (tokens.length === 1) return ZERO.test(value) && isLengthProperty(name) ? '0px' : value;
+  if (!ZERO_LISTS.has(name)) return value;
+  for (let i = 0; i < tokens.length; i++) if (ZERO.test(tokens[i])) tokens[i] = '0px';
+  if (box && tokens.length <= 4) {
     const [top, right = top, bottom = top, left = right] = tokens;
     if (left !== right) return `${top} ${right} ${bottom} ${left}`;
     if (bottom !== top) return `${top} ${right} ${bottom}`;
@@ -251,9 +289,40 @@ function readOnly() {
   throw domError("Failed to execute on 'CSSStyleDeclaration': These styles are computed, and therefore read-only.", 'NoModificationAllowedError');
 }
 
+// Writes to computed styles, which tests use to fake a layout (react-aria
+// sets position on the result of getComputedStyle). jsdom before 28 let
+// any write change that one object; since 28, setting a property changes
+// that object and the element's computed value until its document
+// changes, and the methods throw as the standard says.
+const mutableComputed = (s) => s.element[S].doc[S].window[S].compat.mutableComputedStyle;
+
+function computedOverride(s, name) {
+  if (s.overrides?.has(name)) return s.overrides.get(name);
+  if (s.replaced) return '';
+  const es = s.element[S];
+  const element = es.computedOverrides;
+  if (!element || element.rev !== (es.doc[S].treeRev ?? 0)) return undefined;
+  return element.values.get(name);
+}
+
+function writeComputed(s, name, value) {
+  if (mutableComputed(s)) {
+    s.overrides ??= new Map();
+    s.overrides.set(name, value == null ? '' : String(value).trim());
+    return;
+  }
+  const text = value == null ? '' : declaredValue(name, String(value).trim());
+  if (text === '') return;
+  (s.overrides ??= new Map()).set(name, text);
+  const es = s.element[S];
+  const rev = es.doc[S].treeRev ?? 0;
+  if (es.computedOverrides?.rev !== rev) es.computedOverrides = { rev, values: new Map() };
+  es.computedOverrides.values.set(name, text);
+}
+
 const valueOf = (style, name) => {
   const s = state(style);
-  if (s.computed) return computed.value(s.element, name);
+  if (s.computed) return computedOverride(s, name) ?? computed.value(s.element, name);
   const decl = s.decls.get(name);
   if (decl) return decl.value;
   return LONGHANDS[name] ? fromShorthand(s.decls, name) : '';
@@ -272,7 +341,11 @@ function fromShorthand(decls, longhand) {
 
 function setDeclaration(style, name, value, priority = '') {
   const s = state(style);
-  if (s.computed) readOnly();
+  if (s.computed) {
+    if (!mutableComputed(s)) readOnly();
+    writeComputed(s, name, value);
+    return;
+  }
   const text = value == null ? '' : declaredValue(name, String(value).trim());
   // The style attribute is updated only when a declaration changed (CSSOM).
   if (text === '') {
@@ -291,7 +364,19 @@ export const CSS_INTERFACES = [
     name: 'CSSStyleDeclaration',
     members: {
       get cssText() { return serialize(state(this).decls); },
-      set cssText(text) { if (state(this).computed) readOnly(); parseInto(state(this).decls, text); sync(this); },
+      set cssText(text) {
+        const s = state(this);
+        if (s.computed) {
+          if (!mutableComputed(s)) readOnly();
+          const decls = new Map();
+          parseInto(decls, text);
+          s.overrides = new Map([...decls].map(([name, { value }]) => [name, value]));
+          s.replaced = true;
+          return;
+        }
+        parseInto(s.decls, text);
+        sync(this);
+      },
       get length() { return state(this).decls.size; },
       get parentRule() { return state(this).parentRule ?? null; },
       item(index) { return [...state(this).decls.keys()][index] ?? ''; },
@@ -300,7 +385,8 @@ export const CSS_INTERFACES = [
       setProperty(name, value, priority) { setDeclaration(this, String(name).toLowerCase(), value, priority); },
       removeProperty(name) {
         const key = String(name).toLowerCase();
-        const previous = state(this).decls.get(key)?.value ?? '';
+        const s = state(this);
+        const previous = s.computed ? (mutableComputed(s) ? valueOf(this, key) : readOnly()) : s.decls.get(key)?.value ?? '';
         setDeclaration(this, key, '');
         return previous;
       },
@@ -313,7 +399,11 @@ export const CSS_INTERFACES = [
       const name = cssName(accessor);
       return [accessor, {
         get() { return valueOf(this, name); },
-        set(value) { setDeclaration(this, name, value); },
+        set(value) {
+          const s = state(this);
+          if (s.computed) writeComputed(s, name, value);
+          else setDeclaration(this, name, value);
+        },
       }];
     })),
   },

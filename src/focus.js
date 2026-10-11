@@ -60,10 +60,13 @@ function isActuallyDisabled(el) {
 
 // "Being rendered", without layout: in a document with a browsing context,
 // with no display: none on the element or an ancestor. Hidden inputs are
-// not rendered.
+// not rendered. jsdom before 30.1.2 ignored display (tests rely on focusing
+// a [hidden] input), so its profile does too.
 function isRendered(el) {
-  if (el[S].doc[S].noView || !connected(el)) return false;
+  const doc = el[S].doc;
+  if (doc[S].noView || !connected(el)) return false;
   if (isHTML(el, 'input') && inputType(el) === 'hidden') return false;
+  if (doc[S].window[S].compat.focusIgnoresRendering) return true;
   // Flat-tree ancestors: through shadow roots to their hosts.
   for (let n = el; n; n = n[S].parent ?? (n[S].shadow ? n[S].host : null)) {
     if (n[S].type === ELEMENT_NODE && isDisplayNone(n)) return false;

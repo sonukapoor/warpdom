@@ -509,7 +509,7 @@ attributeSteps.set('open', (el, old, value) => {
   const window = s.doc[S].window;
   window[S].setTimeout(() => {
     s.toggleTask = null;
-    el.dispatchEvent(new window.ToggleEvent('toggle', { oldState: task.oldState, newState: task.newState }));
+    dispatch(el, new window.ToggleEvent('toggle', { oldState: task.oldState, newState: task.newState }));
   }, 0);
 });
 
@@ -797,7 +797,7 @@ const outputDefault = (el) => el[S].defaultOverride ?? el.textContent;
 
 function sendClick(target, init) {
   const MouseEvent = windowOf(target).MouseEvent;
-  return dispatch(target, new MouseEvent('click', init));
+  return dispatch(target, new MouseEvent('click', init), false);
 }
 
 function inputActivation(input) {
@@ -919,10 +919,12 @@ export const clickMember = {
     if (isDisabled(this) || s.clickInProgress) return;
     s.clickInProgress = true;
     try {
-      const PointerEvent = windowOf(this).PointerEvent;
-      dispatch(this, new PointerEvent('click', {
-        bubbles: true, cancelable: true, composed: true, pointerId: -1, view: windowOf(this),
-      }));
+      const window = windowOf(this);
+      // jsdom before 27 (the profile without PointerEvent) fires a MouseEvent.
+      const ClickEvent = window[S].compat.jsdom < 27 ? window.MouseEvent : window.PointerEvent;
+      dispatch(this, new ClickEvent('click', {
+        bubbles: true, cancelable: true, composed: true, pointerId: -1, view: window,
+      }), false);
     } finally {
       s.clickInProgress = false;
     }

@@ -33,7 +33,9 @@ test('resetWindow returns a window to a fresh state, keeping its objects', () =>
   d[MARK] = true;
   d.__reactListening = true;
 
+  d.cookie = 'kept=no; path=/';
   resetWindow(w);
+  assert.equal(d.cookie, '', 'cookies cleared');
 
   assert.equal(w.document, d, 'same document object');
   assert.equal(w.HTMLElement, HTMLElementBefore, 'same interface objects');

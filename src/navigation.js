@@ -4,6 +4,7 @@
 // navigation would load another document, which is not implemented (it
 // reports so and leaves the URL alone, as jsdom does).
 import { S } from './internal.js';
+import { dispatch } from './events.js';
 
 const withoutFragment = (url) => {
   const i = url.href.indexOf('#');
@@ -31,8 +32,8 @@ export function navigate(window, url, replace = false) {
   }
   ws.url = url;
   ws.setTimeout(() => {
-    window.dispatchEvent(new window.PopStateEvent('popstate', { state: null }));
-    window.dispatchEvent(new window.HashChangeEvent('hashchange', { oldURL: current.href, newURL: url.href }));
+    dispatch(window, new window.PopStateEvent('popstate', { state: null }));
+    dispatch(window, new window.HashChangeEvent('hashchange', { oldURL: current.href, newURL: url.href }));
   }, 0);
 }
 

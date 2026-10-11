@@ -36,6 +36,12 @@ test('Jest environment: a warpdom window as the global, with what jest-environme
     assert.deepEqual(run('[typeof setTimeout(() => {}, 0), typeof setInterval(() => {}, 1000)]'), ['number', 'number']);
     assert.deepEqual(run('["Buffer", "URL", "AbortController", "Blob", "crypto", "process"].map((n) => typeof globalThis[n] !== "undefined")'), [true, true, true, true, true, true]);
     assert.deepEqual(run('["setImmediate", "TextEncoder", "structuredClone", "fetch", "require"].map((n) => typeof globalThis[n])'), ['undefined', 'undefined', 'undefined', 'undefined', 'undefined']);
+    // The window's AbortSignal, whose timeout() runs on the global's
+    // setTimeout (so Jest's fake timers control it), as jsdom's.
+    assert.equal(run('Object.prototype.toString.call(new AbortController().signal) + (AbortSignal === window.AbortSignal)'), '[object AbortSignal]true');
+    assert.equal(run('(() => { const calls = []; const real = setTimeout; globalThis.setTimeout = (fn, ms) => { calls.push(ms); fn(); }; const s = AbortSignal.timeout(600); globalThis.setTimeout = real; return calls[0] + ":" + s.aborted + ":" + s.reason.name; })()'), '600:true:TimeoutError');
+    // Events at the window have the global as target and this, as jsdom's.
+    assert.equal(run('(() => { let seen; window.addEventListener("focus", function (e) { seen = [e.target === window, e.currentTarget === globalThis, this === window, e.composedPath()[0] === window]; }); window.dispatchEvent(new Event("focus")); return seen.join(); })()'), 'true,true,true,true');
     assert.deepEqual(env.exportConditions(), ['browser']);
     assert.ok(env.moduleMocker && env.fakeTimers && env.fakeTimersModern);
     const timers = env.fakeTimers;

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createWindow } from '../src/index.js';
+import { parity } from './parity.js';
 
 test('requestAnimationFrame runs callbacks with a timestamp; cancelAnimationFrame stops them', async () => {
   const w = createWindow();
@@ -87,4 +88,42 @@ test('insertAdjacentElement and insertAdjacentText', () => {
   el.insertAdjacentText('beforeend', '!');
   assert.equal(el.lastChild.nodeValue, '!');
   assert.throws(() => el.insertAdjacentElement('nowhere', make('s')), { name: 'SyntaxError' });
+});
+
+// Page visibility: as jsdom with pretendToBeVisual (test environments).
+parity('document visibility', (w) => {
+  const d = w.document;
+  const iframe = d.createElement('iframe');
+  d.body.append(iframe);
+  return [d.visibilityState, d.hidden, iframe.contentDocument.visibilityState, iframe.contentDocument.hidden, 'onvisibilitychange' in d, 'onvisibilitychange' in d.body];
+});
+
+// Deviations: jsdom gives documents without a browsing context the old
+// 'prerender' state (the standard's states are 'visible' and 'hidden'),
+// and does not run document.onvisibilitychange.
+test('document visibility without a browsing context; onvisibilitychange', () => {
+  const w = createWindow({ url: 'http://localhost:3000/' });
+  const created = w.document.implementation.createHTMLDocument('');
+  let calls = 0;
+  w.document.onvisibilitychange = () => calls++;
+  w.document.dispatchEvent(new w.Event('visibilitychange'));
+  assert.deepEqual([created.visibilityState, created.hidden, calls], ['hidden', true, 1]);
+});
+
+// Small Window members jsdom has (react-aria's tests read the global close).
+parity('window: close, stop, bars, name, status, origin, external, webkitURL', (w) => {
+  const bars = ['locationbar', 'menubar', 'personalbar', 'scrollbars', 'statusbar', 'toolbar'].map((b) => [Object.prototype.toString.call(w[b]), w[b].visible, w[b] === w[b]]);
+  const before = [w.name, w.status, w.origin, typeof w.close, w.close(), w.stop(), w.captureEvents(), w.releaseEvents(), w.closed];
+  w.name = 'n';
+  w.status = 's';
+  const external = [Object.prototype.toString.call(w.external), w.external.AddSearchProvider(), w.external.IsSearchProviderInstalled(), w.external === w.external];
+  w.origin = 'replaced';
+  return [bars, before, w.name, w.status, external, w.origin, w.webkitURL === w.URL || w.webkitURL === URL, w.document.body.innerHTML === ''];
+});
+
+parity('legacy and document-only event handlers', (w) => {
+  const d = w.document;
+  const el = d.createElement('div');
+  const names = ['onwebkitanimationend', 'onwebkitanimationiteration', 'onwebkitanimationstart', 'onwebkittransitionend', 'onanimationend', 'ontransitionend'];
+  return [names.map((n) => [n in w, n in d, n in el]), 'onreadystatechange' in d, 'onreadystatechange' in el, typeof w.InputEvent.prototype.getTargetRanges];
 });

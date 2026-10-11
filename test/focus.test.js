@@ -118,3 +118,31 @@ test('tabIndex follows the standard for non-integer values', () => {
   div.setAttribute('tabindex', ' 7x');
   assert.equal(div.tabIndex, 7);
 });
+
+// jsdom before 30.1.2 focused elements that display: none or the hidden
+// attribute keep from being rendered (ark-ui focuses a [hidden] input).
+const renderingScenario = (w) => {
+  const d = html(w, `<input id="h" hidden><input id="n" style="display:none"><div hidden><input id="in"></div>
+    <input id="t" type="hidden"><div id="host"></div>`);
+  const result = [];
+  for (const el of [...d.querySelectorAll('input')]) { el.focus(); result.push(id(d.activeElement)); d.activeElement.blur(); }
+  const root = d.getElementById('host').attachShadow({ mode: 'open' });
+  root.innerHTML = '<input id="s" hidden>';
+  root.getElementById('s').focus();
+  result.push(id(root.activeElement));
+  return result;
+};
+parity('focus: jsdom 26 profile ignores rendering', renderingScenario, { jsdom: 26 });
+parity('focus: not rendered', renderingScenario);
+
+test('focus: the rendering check starts with jsdom 30.1.2', () => {
+  const focusesHidden = (jsdom) => {
+    const w = createWindow({ jsdom });
+    const input = w.document.createElement('input');
+    input.hidden = true;
+    w.document.body.append(input);
+    input.focus();
+    return w.document.activeElement === input;
+  };
+  assert.deepEqual(['26.1.0', '30.1.1', '30.1.2', '31.0.0', 29, 30, 31].map(focusesHidden), [true, true, false, false, true, false, false]);
+});

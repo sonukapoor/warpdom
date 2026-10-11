@@ -2,6 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { jsdomVersion } from '../src/vitest.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const run = (...args) => {
@@ -50,6 +54,44 @@ test('setupVM: Node globals that are lazy getters work in the context (crypto)',
   try {
     const types = vmModule.runInContext('[typeof crypto, typeof crypto.randomUUID, typeof performance.now, typeof setTimeout]', result.getVmContext());
     assert.deepEqual([...types], ['object', 'function', 'function', 'function']);
+  } finally {
+    result.teardown();
+  }
+});
+
+test('the jsdom profile follows the jsdom Vitest would load', () => {
+  const root = mkdtempSync(join(tmpdir(), 'warpdom-jsdom-'));
+  const pkg = (dir, json) => { mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, 'package.json'), JSON.stringify(json)); };
+  try {
+    pkg(root, { name: 'project' });
+    assert.equal(jsdomVersion({}, root), undefined);
+    // Only Vitest depends on jsdom (pnpm-style, beside Vitest).
+    pkg(join(root, 'node_modules/vitest'), { name: 'vitest', version: '3.2.4' });
+    pkg(join(root, 'node_modules/vitest/node_modules/jsdom'), { name: 'jsdom', version: '30.1.1' });
+    assert.equal(jsdomVersion({}, root), '30.1.1');
+    // The project's own jsdom comes first; the option overrides both.
+    pkg(join(root, 'node_modules/jsdom'), { name: 'jsdom', version: '26.1.0' });
+    assert.equal(jsdomVersion({}, root), '26.1.0');
+    assert.equal(jsdomVersion({ warpdom: { jsdom: 27 } }, root), 27);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Vitest keeps Node\'s AbortController and AbortSignal, as its jsdom environment does', async () => {
+  const { default: environment } = await import('../src/vitest.js');
+  const vmModule = await import('node:vm');
+  const vmResult = await environment.setupVM();
+  try {
+    assert.equal(vmModule.runInContext('AbortController === this.__nodeAbort', Object.assign(vmResult.getVmContext(), { __nodeAbort: AbortController })), true);
+  } finally {
+    vmResult.teardown();
+  }
+  const global = {};
+  const result = environment.setup(global);
+  try {
+    assert.equal('AbortController' in global, false);
+    assert.equal(typeof global.document.defaultView.AbortSignal, 'undefined');
   } finally {
     result.teardown();
   }

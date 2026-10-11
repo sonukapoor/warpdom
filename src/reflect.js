@@ -4,6 +4,7 @@
 // generated) plus the enumerated and other attributes whose reflection the
 // standard describes in prose (PROSE_REFLECTIONS below).
 import { S, state, domError } from './internal.js';
+import { documentBaseURL } from './base-url.js';
 import { writeAttribute, tokenList } from './attributes.js';
 import { REFLECTIONS } from './html-reflect.js';
 
@@ -40,8 +41,7 @@ export function resolveURL(element, attr) {
   const es = state(element);
   const raw = es.attrs.get(attr);
   if (raw === undefined) return '';
-  const ds = es.doc[S];
-  const base = ds.url ?? ds.window[S].url;
+  const base = documentBaseURL(es.doc);
   const cache = es.urls ?? (es.urls = new Map());
   const hit = cache.get(attr);
   if (hit && hit.raw === raw && hit.base === base) return hit.href;
@@ -213,3 +213,11 @@ for (const [iface, entries] of [...REFLECTIONS, ...PROSE_REFLECTIONS]) {
   REFLECTED.set(iface, members);
 }
 for (const [iface, extra] of OTHER) REFLECTED.set(iface, { ...REFLECTED.get(iface), ...extra });
+
+// Members left out although the standard has them: libraries test for them
+// to pick a code path, and warpdom does not implement what they mean.
+// inert: react-aria hides content outside a dialog or drag with the inert
+// attribute when HTMLElement.prototype has inert, else with aria-hidden,
+// which Testing Library's role queries honour (jsdom has no inert).
+const FEATURE_DETECTED = [['HTMLElement', 'inert']];
+for (const [iface, name] of FEATURE_DETECTED) delete REFLECTED.get(iface)?.[name];

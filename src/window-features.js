@@ -2,11 +2,27 @@
 // navigator, location and history, the Image/Audio/Option constructors.
 // Values follow jsdom's defaults so tests see the same environment.
 import { S, state, domError } from './internal.js';
+import { dispatch } from './events.js';
 import { computedStyle, cssNamespace } from './css.js';
 import './cascade.js';
 import { compile } from './selectors.js';
 import { QuotaExceededError } from './storage.js';
 import { navigate } from './navigation.js';
+
+// The jsdom version warpdom behaves like by default.
+export const LATEST_JSDOM = 30;
+
+// A jsdom version as [major, minor, patch]: from a version string, or a
+// major version alone, which stands for that major's latest release.
+function parseJsdomVersion(version) {
+  const [major, minor = Infinity, patch = Infinity] = String(version).split('.').map((part) => Number.parseInt(part, 10));
+  return [major, minor, patch];
+}
+
+const before = (version, target) => {
+  for (let i = 0; i < 3; i++) if (version[i] !== target[i]) return version[i] < target[i];
+  return false;
+};
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
@@ -21,6 +37,51 @@ const viewport = Object.fromEntries(Object.entries(VIEWPORT).map(([key, value]) 
 
 // One frame about every 16 ms; callbacks queued before a frame run in it
 // with the same timestamp, as in jsdom with pretendToBeVisual.
+// Timers (HTML standard, 8.6) with numeric ids, run by the platform's
+// timers; the environments install the host's on their global instead (a
+// frame's window, or a window outside a test environment, uses these).
+// Also atob, btoa and queueMicrotask, the platform's.
+function startTimer(window, repeat, handler, timeout, args) {
+  const ws = state(window);
+  const timers = ws.timers ?? (ws.timers = { next: 1, handles: new Map() });
+  const id = timers.next++;
+  const callback = typeof handler === 'function' ? handler : () => {};
+  const run = () => {
+    if (!repeat) timers.handles.delete(id);
+    callback.apply(window, args);
+  };
+  const ms = Number(timeout) || 0;
+  timers.handles.set(id, { repeat, handle: repeat ? globalThis.setInterval(run, ms) : globalThis.setTimeout(run, ms) });
+  return id;
+}
+
+function stopTimer(window, id) {
+  const timers = state(window).timers;
+  const timer = timers?.handles.get(Number(id));
+  if (!timer) return;
+  (timer.repeat ? globalThis.clearInterval : globalThis.clearTimeout)(timer.handle);
+  timers.handles.delete(Number(id));
+}
+
+export function clearWindowTimers(window) {
+  const timers = window[S].timers;
+  if (!timers) return;
+  for (const id of [...timers.handles.keys()]) stopTimer(window, id);
+}
+
+const timerMembers = {
+  setTimeout(handler, timeout = 0, ...args) { return startTimer(this, false, handler, timeout, args); },
+  setInterval(handler, timeout = 0, ...args) { return startTimer(this, true, handler, timeout, args); },
+  clearTimeout(id) { stopTimer(this, id); },
+  clearInterval(id) { stopTimer(this, id); },
+  queueMicrotask(callback) { state(this); globalThis.queueMicrotask(callback); },
+  atob(data) { state(this); return globalThis.atob(data); },
+  btoa(data) { state(this); return globalThis.btoa(data); },
+};
+
+// The window members test environments leave to the host (Node's timers).
+export const HOST_TIMER_KEYS = Object.keys(timerMembers);
+
 const animationFrames = {
   requestAnimationFrame(callback) {
     const s = state(this);
@@ -60,8 +121,40 @@ const notImplementedMethods = Object.fromEntries(['alert', 'blur', 'confirm', 'f
   [name]() { state(this).notImplemented(`Window's ${name}() method`); },
 }[name]]));
 
+// Window members that do nothing here (HTML standard, 7.2.2): close() and
+// stop() for a window scripts did not open, and the legacy captureEvents()
+// and releaseEvents().
+const noOps = { close() { state(this); }, stop() { state(this); }, captureEvents() { state(this); }, releaseEvents() { state(this); } };
+
+// The BarProp objects (locationbar, menubar, ...): one per window and bar,
+// all visible.
+const BARS = ['locationbar', 'menubar', 'personalbar', 'scrollbars', 'statusbar', 'toolbar'];
+const barMembers = Object.fromEntries(BARS.map((bar) => [bar, {
+  get() {
+    const ws = state(this);
+    const bars = ws.bars ?? (ws.bars = {});
+    return bars[bar] ?? (bars[bar] = make(this, 'BarProp', {}));
+  },
+}]));
+
+// [Replaceable] attributes: assigning one replaces it with an own property.
+const replace = (target, name, value) => Object.defineProperty(target, name, { value, writable: true, enumerable: true, configurable: true });
+
 export const WINDOW_MEMBERS = {
   ...animationFrames,
+  ...timerMembers,
+  ...noOps,
+  ...barMembers,
+  get name() { return state(this).name ?? ''; },
+  set name(v) { state(this).name = String(v); },
+  get status() { return state(this).status ?? ''; },
+  set status(v) { state(this).status = String(v); },
+  get origin() { const url = state(this).url; return url.origin; },
+  set origin(value) { replace(this, 'origin', value); },
+  get external() { const ws = state(this); return ws.external ?? (ws.external = make(this, 'External', {})); },
+  set external(value) { replace(this, 'external', value); },
+  // An alias of URL; a getter, so environments do not bind it.
+  get webkitURL() { state(this); return URL; },
   // The current event (DOM 2.10), set while listeners run (events.js);
   // [Replaceable]: assigning it replaces it with an own property.
   get event() { return state(this).currentEvent; },
@@ -85,7 +178,7 @@ export const WINDOW_MEMBERS = {
       try { origin = new URL(target).origin; } catch { throw domError(`Failed to execute 'postMessage' on 'Window': Invalid target origin '${target}' in a call to 'postMessage'.`, 'SyntaxError'); }
       if (origin !== ws.url.origin) return;
     }
-    ws.setTimeout(() => this.dispatchEvent(new this.MessageEvent('message', { data: message })), 0);
+    ws.setTimeout(() => dispatch(this, new this.MessageEvent('message', { data: message })), 0);
   },
   get customElements() { return state(this).customElements; },
   getSelection() { return state(this) && this.document.getSelection(); },
@@ -125,6 +218,9 @@ const urlPart = (part) => ({
 });
 
 export const FEATURE_INTERFACES = [
+  { name: 'BarProp', members: { get visible() { state(this); return true; } } },
+  // Obsolete search provider methods; they do nothing.
+  { name: 'External', members: { AddSearchProvider() { state(this); }, IsSearchProviderInstalled() { state(this); } } },
   // Values as in jsdom (no screen; no orientation).
   {
     name: 'Screen',
@@ -201,9 +297,20 @@ export const FEATURE_INTERFACES = [
 
 // Per-window setup: URL, location, history, and the legacy factory
 // constructors Image, Audio and Option (their prototype is the element's).
-export function setupWindow(window, { url: initial = 'about:blank' } = {}) {
+export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATEST_JSDOM } = {}) {
   const ws = window[S];
   ws.url = new URL(initial);
+  // Compatibility with the jsdom generation the tests were written for
+  // (option jsdom: its version, or its major version): behaviors that
+  // changed between versions in ways tests observe. jsdom before 29 left
+  // most computed style values empty, and before 28 let tests write to
+  // computed styles; before 30.1.2 focus() ignored display: none and the
+  // hidden attribute.
+  const version = parseJsdomVersion(jsdom);
+  ws.compat = {
+    jsdom: version[0], legacyComputedStyle: version[0] < 29, mutableComputedStyle: version[0] < 28,
+    focusIgnoresRendering: before(version, [30, 1, 2]),
+  };
   // DOMException is the platform's (shared by all windows); its subclass too.
   window.DOMException = DOMException;
   window.QuotaExceededError = QuotaExceededError;

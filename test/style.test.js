@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createWindow } from '../src/index.js';
+import { parity } from './parity.js';
 
 const own = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
 
@@ -127,4 +128,23 @@ cssParity('declared colors serialize as rgb()', (w) => {
     ['color', 'red'], ['color', 'Red'], ['color', 'transparent'], ['color', 'currentcolor'], ['border', '1px solid #0f0'],
     ['box-shadow', '0 0 2px #000'], ['background-color', 'RGB(1 2 3)'], ['outline-color', '#abc'], ['fill', '#f00'], ['width', '10px']];
   return cases.map(([p, v]) => { e.removeAttribute('style'); e.style.setProperty(p, v); return e.style.getPropertyValue(p); });
+});
+
+cssParity('declared numbers serialize canonically', (w) => {
+  const e = w.document.createElement('div');
+  const cases = [['opacity', '.5'], ['opacity', '0.50'], ['opacity', '1.0'], ['opacity', '+1'], ['width', '.5px'], ['width', '10.0px'],
+    ['line-height', '1.50'], ['margin', '.5em 0'], ['flex-grow', '2.0'], ['transform', 'scale(.5)']];
+  return cases.map(([p, v]) => { e.removeAttribute('style'); e.style.setProperty(p, v); return e.style.getPropertyValue(p); });
+});
+
+// Zeros in lists of values: 0px in margin, padding, border-width (shortest
+// form) and border-spacing; as written elsewhere (react-aria sets
+// view-timeline-inset: 0 100dvh).
+parity('style: zeros in lists of values', (w) => {
+  const cases = [
+    ['margin', '0 auto'], ['margin', '0 0'], ['margin', '1px 1px'], ['padding', '0 1px 0 1px'], ['border-width', '1px 2px 1px'],
+    ['border-spacing', '0 1px'], ['inset', '0 auto'], ['inset', '0 0'], ['view-timeline-inset', '0 100dvh'], ['scroll-padding', '0 1px'],
+    ['border-radius', '0 0'], ['gap', '0 1px'], ['transform-origin', '0 0'], ['translate', '0 1px'], ['inset', '0'], ['width', '0'], ['margin', '0'],
+  ];
+  return cases.map(([name, value]) => { const s = w.document.createElement('div').style; s.setProperty(name, value); return `${name}: ${s.getPropertyValue(name)}`; });
 });

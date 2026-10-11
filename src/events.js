@@ -74,7 +74,7 @@ export function reportError(target, error) {
   ws.errorReporting = true;
   let handled;
   try {
-    handled = !window.dispatchEvent(new ErrorEvent('error', { cancelable: true, error, message: String(error?.message ?? error) }));
+    handled = !dispatch(window, new ErrorEvent('error', { cancelable: true, error, message: String(error?.message ?? error) }));
   } finally {
     ws.errorReporting = false;
   }
@@ -119,6 +119,11 @@ function windowOf(target) {
   return doc[S].noView ? null : doc[S].window ?? null;
 }
 
+// The object scripts see for an event target: a window installed as a VM
+// context's global (Jest, Vitest's VM pools) is that global, as jsdom's
+// window is its context's global object.
+export const exposed = (target) => (target != null && target[S]?.globalProxy ? target[S].globalProxy : target);
+
 function invokeListeners(node, event, es, list, phase) {
   for (const entry of list.slice()) {
     if (entry.removed) continue;
@@ -128,7 +133,7 @@ function invokeListeners(node, event, es, list, phase) {
     es.inPassiveListener = entry.passive;
     try {
       const cb = entry.callback;
-      if (typeof cb === 'function') cb.call(node, event);
+      if (typeof cb === 'function') cb.call(exposed(node), event);
       else cb.handleEvent(event);
     } catch (error) {
       reportError(node, error);
@@ -162,12 +167,14 @@ function appendToPath(path, target, shadowTarget, relatedTarget, slotInClosedTre
 const inShadowTree = (t) => isNode(t) && isShadowRoot(rootOf(t));
 
 // Dispatch (DOM standard 2.9), including activation behavior for clicks.
-export function dispatch(target, event) {
+// Events the platform fires are trusted; those from dispatchEvent() and
+// click() (synthetic) are not.
+export function dispatch(target, event, trusted = true) {
   const es = state(event);
   if (es.dispatching) throw domError('The event is already being dispatched.', 'InvalidStateError');
   if (!es.initialized) throw domError('The event provided is uninitialized.', 'InvalidStateError');
   es.dispatching = true;
-  es.isTrusted = false;
+  es.isTrusted = trusted;
   const originalRelated = es.relatedTarget ?? null;
   const path = [];
   es.path = path;
@@ -319,7 +326,7 @@ const eventTarget = {
     const entry = list?.find((e) => e.callback === callback && e.capture === capture);
     if (entry) removeEntry(this, String(type), entry);
   },
-  dispatchEvent(event) { return dispatch(this, event); },
+  dispatchEvent(event) { return dispatch(this, event, false); },
 };
 
 // --- Event and subclasses -----------------------------------------------------
@@ -434,9 +441,9 @@ export const EVENT_INTERFACES = [
     members: {
       ...Object.fromEntries(Object.entries(PHASES).map(([k, v]) => [k, { constant: v }])),
       get type() { return state(this).type; },
-      get target() { return state(this).target; },
-      get srcElement() { return state(this).target; },
-      get currentTarget() { return state(this).currentTarget; },
+      get target() { return exposed(state(this).target); },
+      get srcElement() { return exposed(state(this).target); },
+      get currentTarget() { return exposed(state(this).currentTarget); },
       get eventPhase() { return state(this).eventPhase; },
       get bubbles() { return state(this).bubbles; },
       get cancelable() { return state(this).cancelable; },
@@ -448,7 +455,7 @@ export const EVENT_INTERFACES = [
       set cancelBubble(v) { if (v) state(this).stopped = true; },
       get isTrusted() { return state(this).isTrusted; },
       get timeStamp() { return state(this).timeStamp; },
-      composedPath() { state(this); return composedPath(this); },
+      composedPath() { state(this); return composedPath(this).map(exposed); },
       preventDefault() { const s = state(this); if (s.cancelable && !s.inPassiveListener) s.canceled = true; },
       stopPropagation() { state(this).stopped = true; },
       stopImmediatePropagation() { const s = state(this); s.stopped = true; s.stopImmediate = true; },
@@ -510,7 +517,6 @@ export const EVENT_INTERFACES = [
   { name: 'FocusEvent', parent: 'UIEvent', construct: eventConstruct('FocusEvent', FOCUS_FIELDS), members: fieldGetters(own(FOCUS_FIELDS, UI_FIELDS)) },
   { name: 'InputEvent', parent: 'UIEvent', construct: eventConstruct('InputEvent', INPUT_FIELDS), members: {
     ...fieldGetters(own(INPUT_FIELDS, UI_FIELDS)),
-    getTargetRanges() { return []; },
   } },
   { name: 'MessageEvent', parent: 'Event', construct: constructMessageEvent, members: {
     ...fieldGetters(own(MESSAGE_FIELDS, { ports: null })),

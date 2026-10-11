@@ -11,6 +11,8 @@
 // a millisecond instead of a new window.
 import { S, insert } from './internal.js';
 import { clearStorage } from './storage.js';
+import { clearCookies } from './cookies.js';
+import { clearWindowTimers } from './window-features.js';
 
 // Own properties (string and symbol keys) of an object, as descriptors.
 const ownProperties = (object) => new Map(Reflect.ownKeys(object).map((key) => [key, Object.getOwnPropertyDescriptor(object, key)]));
@@ -54,7 +56,9 @@ export function resetWindow(window) {
   ws.handlers = undefined;
   ws.viewport = undefined;
   if (ws.frames) ws.frames.queue.clear();
+  clearWindowTimers(window);
   clearStorage(window);
+  clearCookies(window);
   ws.url = new URL(ws.initialURL);
   ws.history[S].entries = [{ state: null, url: ws.url }];
   ws.history[S].index = 0;

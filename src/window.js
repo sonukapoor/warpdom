@@ -59,6 +59,38 @@ function interfaceFor(ns, tag) {
   return 'Element';
 }
 
+// Interfaces and members a jsdom generation did not have yet, removed from
+// this window (its prototypes are its own). Libraries feature-detect them:
+// react-aria listens for pointer events only when PointerEvent exists, so
+// tests written for jsdom before 27 fire mouse events only.
+const POINTER_HANDLERS = ['ongotpointercapture', 'onlostpointercapture', 'onpointercancel', 'onpointerdown', 'onpointerenter',
+  'onpointerleave', 'onpointermove', 'onpointerout', 'onpointerover', 'onpointerrawupdate', 'onpointerup'];
+
+// Window is a [Global] interface (WebIDL 3.7.6): its operations are own
+// properties of the window, and called without a this value (const
+// { getComputedStyle } = iframe.contentWindow) they act on that window.
+function installGlobalOperations(window, proto) {
+  for (const name of Object.getOwnPropertyNames(proto)) {
+    if (name === 'constructor') continue;
+    const { value } = Object.getOwnPropertyDescriptor(proto, name);
+    if (typeof value !== 'function') continue;
+    const operation = { [name](...args) { return value.apply(this ?? window, args); } }[name];
+    Object.defineProperty(operation, 'length', { value: value.length });
+    Object.defineProperty(window, name, { value: operation, writable: true, enumerable: true, configurable: true });
+  }
+}
+
+function applyCompat(window, protos) {
+  const { jsdom } = window[S].compat;
+  if (jsdom < 27) {
+    delete window.PointerEvent;
+    for (const proto of [protos.HTMLElement, protos.SVGElement, protos.Document, protos.Window, protos.ShadowRoot]) {
+      if (!proto) continue;
+      for (const name of POINTER_HANDLERS) delete proto[name];
+    }
+  }
+}
+
 export function createWindow(options = {}) {
   // Starts as a plain object; becomes a Window once the interfaces exist.
   const window = {};
@@ -86,6 +118,10 @@ export function createWindow(options = {}) {
     for (const [key, value] of Object.entries(iface.statics ?? {})) {
       Object.defineProperty(ctor, key, { value, enumerable: true, writable: false, configurable: false });
     }
+    // Static operations that need the window (AbortSignal.timeout).
+    for (const [key, value] of Object.entries(iface.staticMethods?.(window) ?? {})) {
+      Object.defineProperty(ctor, key, { value, enumerable: true, writable: true, configurable: true });
+    }
     Object.defineProperty(window, iface.name, { value: ctor, writable: true, configurable: true });
     protos[iface.name] = proto;
   }
@@ -107,6 +143,7 @@ export function createWindow(options = {}) {
       const element = create(proto ?? protos[interfaceFor(ns, tag)], ELEMENT_NODE, { tag, ns, attrs: new Map() }, doc);
       if (tag === 'iframe' && ns === HTML_NS) doc[S].frameCount = (doc[S].frameCount ?? 0) + 1;
       if (tag === 'slot' && ns === HTML_NS) doc[S].slotCount = (doc[S].slotCount ?? 0) + 1;
+      if (tag === 'base' && ns === HTML_NS) doc[S].baseCount = (doc[S].baseCount ?? 0) + 1;
       if (ns === HTML_NS && ((tag.includes('-') && isValidCustomElementName(tag)) || is !== null)) {
         element[S].ceState = 'undefined';
         element[S].ceIs = is;
@@ -136,6 +173,8 @@ export function createWindow(options = {}) {
   Object.setPrototypeOf(window, protos.Window);
   Object.defineProperty(window, S, { value: internals });
   setupWindow(window, options);
+  applyCompat(window, protos);
+  installGlobalOperations(window, protos.Window);
   internals.customElements = createRegistry(window);
 
   document = internals.initDocument(Object.create(protos.Document));

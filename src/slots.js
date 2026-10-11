@@ -9,6 +9,7 @@
 // only when the document's slotCount is non-zero (counted at creation and
 // adoption, in window.js and internal.js).
 import { S, ELEMENT_NODE, TEXT_NODE, HTML_NS, hooks, rootOf, nextInTree } from './internal.js';
+import { dispatch } from './events.js';
 
 const isSlot = (n) => { const s = n[S]; return s.type === ELEMENT_NODE && s.ns === HTML_NS && s.tag === 'slot'; };
 const isShadowRoot = (n) => n[S].shadow === true;
@@ -91,7 +92,7 @@ function check(root) {
   rs.trackedSlots = currentSet;
   for (const slot of changed) {
     const window = slot[S].doc[S].window;
-    slot.dispatchEvent(new window.Event('slotchange', { bubbles: true }));
+    dispatch(slot, new window.Event('slotchange', { bubbles: true }));
   }
 }
 

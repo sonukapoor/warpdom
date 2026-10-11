@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createWindow } from '../src/node.js';
+import { parity } from './parity.js';
 
 test('outerHTML and innerHTML serialize the tree', () => {
   const { document } = createWindow();
@@ -346,4 +347,40 @@ test('tables: setting tHead to another kind of section', () => {
   const w = createWindow();
   const t = w.document.createElement('table');
   assert.throws(() => { t.tHead = w.document.createElement('tbody'); }, { name: 'HierarchyRequestError' });
+});
+
+// Base URLs: Node.baseURI and URL attributes follow the first base element
+// with an href; base.href resolves against the document's URL.
+parity('base URLs', (w) => {
+  const d = w.document;
+  const out = [d.baseURI, d.body.baseURI, d.createTextNode('x').baseURI];
+  const b = d.createElement('base');
+  out.push(b.href);
+  b.href = '../x/';
+  out.push(b.href, d.baseURI);
+  d.head.append(b);
+  const a = d.createElement('a');
+  a.setAttribute('href', 'y');
+  const img = d.createElement('img');
+  img.setAttribute('src', 'i.png');
+  out.push(d.baseURI, b.href, a.href, img.src, a.pathname);
+  const b2 = d.createElement('base');
+  b2.href = 'https://other.test/z/';
+  d.head.prepend(b2);
+  out.push(d.baseURI, b2.href, b.href, a.href);
+  b2.removeAttribute('href');
+  out.push(d.baseURI, b2.href);
+  b2.setAttribute('href', 'http://[bad');
+  out.push(d.baseURI, b2.href);
+  b.remove(); b2.remove();
+  out.push(d.baseURI, a.href);
+  w.history.pushState(null, '', '/new/path?q#h');
+  out.push(d.baseURI, a.href);
+  const svg = d.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.append(d.createElementNS('http://www.w3.org/2000/svg', 'base'));
+  svg.firstChild.setAttribute('href', 'https://svg.test/');
+  d.body.append(svg);
+  out.push(d.baseURI, d.implementation.createHTMLDocument('').baseURI);
+  out.push(new URL('/api/x/?s#f', d.baseURI).href);
+  return out;
 });
