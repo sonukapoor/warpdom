@@ -72,6 +72,24 @@ export function killTree(child, signal = 'SIGTERM') {
   } catch { /* already gone */ }
 }
 
+// Whether any process of the child's group (the runner and its workers) is
+// still running.
+function groupAlive(child) {
+  if (process.platform === 'win32') return child.exitCode === null && child.signalCode === null;
+  try { process.kill(-child.pid, 0); return true; } catch (err) { return err.code === 'EPERM'; }
+}
+
+// Stops the runner and its workers and waits until they are gone (they may
+// still write files while shutting down), up to `ms`; then kills what is
+// left. Cleanup must come after this, or a worker can recreate files.
+export async function stopTree(child, ms = 3000) {
+  if (!child) return;
+  killTree(child, 'SIGTERM');
+  const deadline = Date.now() + ms;
+  while (groupAlive(child) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 25));
+  if (groupAlive(child)) killTree(child, 'SIGKILL');
+}
+
 // --- results ----------------------------------------------------------------
 
 const ANSI = /\x1b\[[0-9;]*m/g;

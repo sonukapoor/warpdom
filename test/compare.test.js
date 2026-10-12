@@ -884,10 +884,13 @@ test('compare end to end: SIGTERM during a run stops the runner and removes the 
     child.kill('SIGTERM');
     assert.equal(await exited, 143);
     assert.deepEqual(leftovers(dir), []);
+    // The runner's workers are gone too: nothing appears afterwards.
+    await new Promise((r) => setTimeout(r, 500));
+    assert.deepEqual(leftovers(dir), []);
     assert.ok(!fs.existsSync(pending));
     assert.ok(!fs.existsSync(path.join(dir, '.warpdom-compare', 'run.lock')));
   } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 });
 

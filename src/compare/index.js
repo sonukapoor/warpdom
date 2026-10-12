@@ -19,7 +19,7 @@ import { vitestWrapper, vitestWorkspaceWrapper, vitestReporter, jestWrapper, jes
 import { resolveVitestProjects, resolveJestProjects } from './projects.js';
 import { createRequire } from 'node:module';
 import { TempFiles, copyWarpdom, pinnedEnvironmentPackage, jestPinnedPackage, linkPackage, acquireLock, gitStatus, statusChanges } from './files.js';
-import { runnerArgs, hasMinWorkers, runProcess, currentChild, killTree, testsOf, countsOf, runnerDuration, readReport } from './run.js';
+import { runnerArgs, hasMinWorkers, runProcess, currentChild, killTree, testsOf, countsOf, runnerDuration, readReport, stopTree } from './run.js';
 import { compareRuns, groupDifferences, timingSummary, pairOrder, exitCode } from './results.js';
 import { environmentRecord } from './env.js';
 import { renderConsole, renderMarkdown, environmentLabel } from './report.js';
@@ -95,8 +95,13 @@ export async function compare(options = {}) {
     release?.();
     release = null;
   };
-  const onSignal = (signal) => {
-    killTree(currentChild());
+  let stopping = false;
+  const onSignal = async (signal) => {
+    if (stopping) return;
+    stopping = true;
+    // The runner's workers can still write while they shut down: wait until
+    // they are gone before removing the temporary files.
+    await stopTree(currentChild());
     cleanup();
     process.exit(signal === 'SIGINT' ? 130 : 143);
   };
@@ -474,6 +479,10 @@ export async function compare(options = {}) {
     }
     result.exitCode = exitCode({ regressions: c.regressions });
   } catch (err) {
+    // Stopped by a signal: the runner died because of it, not an error.
+    // The signal handler waits for the runner's processes, cleans up and
+    // exits; nothing more happens here.
+    if (stopping) await new Promise(() => {});
     if (!(err instanceof CompareError)) result.warnings.push(err.stack);
     result.error = err.message;
     result.exitCode = 2;
