@@ -6,6 +6,8 @@
 //   no-query-cache    querySelector/querySelectorAll results not cached
 //   fresh-window      warpdom/vitest/reset installs a new window per file
 //                     instead of resetting the window in place
+//   latest-profile    the latest jsdom profile for every project instead of
+//                     the detected (or configured) jsdom and cssstyle version
 const ABLATE = new Set(String(globalThis.process?.env?.WARPDOM_ABLATE ?? '').split(',').map((s) => s.trim()).filter(Boolean));
 export const ablated = (name) => ABLATE.has(name);
 

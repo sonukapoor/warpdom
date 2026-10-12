@@ -39,3 +39,13 @@ test('fresh-window: the reset installs a new window instead of resetting the old
   assert.deepEqual(run('', code), [true, true], 'in place: same document, emptied');
   assert.deepEqual(run('fresh-window', code), [false, true], 'fresh: a new document');
 });
+
+test('latest-profile: the latest jsdom profile whatever the project uses', () => {
+  // jsdom 25 (cssstyle before 4.4) leaves the root's computed color empty;
+  // the latest profile gives rgb(0, 0, 0).
+  const code = `${VITEST} const g = {}; const r = env.setup(g, { warpdom: { jsdom: '25.0.1', cssstyle: '4.1.0' } });
+    const color = g.getComputedStyle(g.document.documentElement).color; r.teardown(); console.log(JSON.stringify(color));`;
+  assert.equal(run('', code), '');
+  assert.equal(run('latest-profile', code), 'rgb(0, 0, 0)');
+});
+
