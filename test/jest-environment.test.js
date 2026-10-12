@@ -137,3 +137,32 @@ test('Jest environment: "Not implemented" reports reach the test\'s console as e
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+// As jest-environment-jsdom's teardown, which closes the window (black
+// box, jsdom 26 through Jest 30): code still running after the test file
+// (a library's promise chain, Dexie's) finds the window's members, and
+// queueMicrotask still runs; timers do nothing and return 0; the document,
+// location, history and storage read undefined; the window's listeners
+// are removed. wire-webapp's workers crashed on a ReferenceError there.
+test('Jest environment: after teardown the global keeps its members, as a closed jsdom window', async () => {
+  const rootDir = fakeJestProject();
+  let env;
+  try {
+    env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: {} } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+    await env.setup();
+    const context = env.getVmContext();
+    // Values from the test's realm, copied out.
+    const run = (code) => { const v = vm.runInContext(code, context); return typeof v === 'object' && v !== null ? JSON.parse(JSON.stringify(v)) : v; };
+    run('globalThis.seen = []; window.addEventListener("x", () => seen.push("window")); globalThis.el = document.body.appendChild(document.createElement("p")); el.addEventListener("click", () => seen.push("click"));');
+    await env.teardown();
+    assert.deepEqual(run('["document", "location", "history", "localStorage", "sessionStorage"].map((n) => typeof globalThis[n])'), Array(5).fill('undefined'));
+    assert.deepEqual(run('[typeof queueMicrotask, typeof Node, typeof Event, typeof getComputedStyle, window === globalThis, typeof navigator]'),
+      ['function', 'function', 'function', 'function', true, 'object']);
+    assert.deepEqual(run('[setTimeout(() => seen.push("timeout"), 0), setInterval(() => seen.push("interval"), 0)]'), [0, 0]);
+    run('queueMicrotask(() => seen.push("microtask")); dispatchEvent(new Event("x")); el.click();');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.deepEqual(run('seen.join()'), 'click,microtask');
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});

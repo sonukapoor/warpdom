@@ -47,12 +47,16 @@ function jestRequire(rootDir) {
   return require;
 }
 
-// Timers with numeric ids, as a browser's (and jsdom's) give them.
+// Timers with numeric ids, as a browser's (and jsdom's) give them. The
+// returned close() cancels the pending ones; after it, new timers do
+// nothing and get id 0, as on a closed jsdom window.
 function numericTimers(target) {
   const handles = new Map();
   let next = 1;
+  let closed = false;
   const wrap = (set, clear) => {
     const start = (callback, delay, ...args) => {
+      if (closed) return 0;
       const id = next++;
       const handle = set((...a) => {
         if (set === setTimeout) handles.delete(id);
@@ -72,8 +76,13 @@ function numericTimers(target) {
   Object.assign(target, { setTimeout: setT, clearTimeout: clearT, setInterval: setI, clearInterval: clearI });
   // A shared clear works for either kind, as in browsers.
   target.clearTimeout = target.clearInterval = (id) => { clearT(id); clearI(id); };
-  return () => { for (const h of handles.values()) { clearTimeout(h); clearInterval(h); } handles.clear(); };
+  return () => { closed = true; for (const h of handles.values()) { clearTimeout(h); clearInterval(h); } handles.clear(); };
 }
+
+// The members a closed jsdom window reads as undefined (black box, jsdom
+// 20 to 29 through jest-environment-jsdom, whose teardown closes the
+// window): its document and what hangs off it.
+const CLOSED_WINDOW_UNDEFINED = ['document', 'location', 'history', 'localStorage', 'sessionStorage'];
 
 // The jsdom generation to behave like: testEnvironmentOptions.jsdom, else
 // the jsdom jest-environment-jsdom brings (26 with Jest 30), else 26; and
@@ -112,7 +121,7 @@ export default class WarpdomEnvironment {
       if (!userErrorListeners(window)) process.emit('uncaughtException', error);
     };
     const sandbox = {};
-    this.restoreWindow = installWindow(sandbox, window, { unforgeable: true });
+    installWindow(sandbox, window, { unforgeable: true });
     for (const name of HOST_GLOBALS) {
       // Values, not descriptors: some are lazy getters bound to Node's global (crypto).
       if (!(name in sandbox) && name in globalThis) Object.defineProperty(sandbox, name, { value: globalThis[name], writable: true, configurable: true });
@@ -153,11 +162,22 @@ export default class WarpdomEnvironment {
 
   async setup() {}
 
+  // As jest-environment-jsdom's, which closes the window: the global keeps
+  // its members (interfaces, queueMicrotask, timers that now do nothing),
+  // so code still running after the test file (a library's promise chain
+  // calling queueMicrotask, Dexie's) does not fail with a ReferenceError
+  // that crashes the worker. The document and its parts read undefined,
+  // and the window's event listeners are gone.
   async teardown() {
     this.fakeTimers?.dispose();
     this.fakeTimersModern?.dispose();
     this.clearTimers?.();
-    this.restoreWindow?.();
+    if (this.context) {
+      for (const key of CLOSED_WINDOW_UNDEFINED) {
+        Object.defineProperty(this.context, key, { get: () => undefined, enumerable: true, configurable: true });
+      }
+    }
+    this.window?.[S].listeners?.clear();
     this.global = null;
     this.context = null;
     this.window = null;
