@@ -19,12 +19,13 @@ export function hasMinWorkers(bin) {
 // default one (Vitest) or Jest's own JSON output, no coverage (it would
 // dominate the time and write files), the worker limit, then the user's
 // runner arguments.
-export function runnerArgs(runner, { config, resultsFile, workers = null, minWorkers = false, args = [] }) {
+// reporter (Vitest): a reporter file recording each test file's project.
+export function runnerArgs(runner, { config, resultsFile, workers = null, minWorkers = false, reporter = null, args = [] }) {
   const limit = !workers ? []
     : runner === 'vitest' && minWorkers ? ['--minWorkers=1', `--maxWorkers=${workers}`]
       : [`--maxWorkers=${workers}`];
   return runner === 'vitest'
-    ? ['run', '--config', config, '--reporter=default', '--reporter=json', `--outputFile.json=${resultsFile}`, '--coverage.enabled=false', ...limit, ...args]
+    ? ['run', '--config', config, '--reporter=default', '--reporter=json', ...(reporter ? [`--reporter=${reporter}`] : []), `--outputFile.json=${resultsFile}`, '--coverage.enabled=false', ...limit, ...args]
     : ['--config', config, '--ci', '--json', `--outputFile=${resultsFile}`, '--coverage=false', ...limit, ...args];
 }
 
@@ -83,23 +84,36 @@ export function normalizeStatus(status) {
 const firstLine = (message) => (message ?? '').replace(ANSI, '').split('\n').map((s) => s.trim()).find(Boolean) ?? '';
 
 // Tests of a runner JSON report (Vitest's json reporter or Jest's --json;
-// the same shape): Map(key -> { file, name, status, message }). The key is
-// the file (relative to root), the full name (describe path and title) and
-// an index for duplicate names. A file that failed without running tests
-// (a load error) is one entry named "(file)".
-export function testsOf(report, root) {
+// the same shape): Map(key -> { project, file, name, status, message }). The
+// key is the project (when it has a name), the file (relative to root), the
+// full name (describe path and title) and an index for duplicate names. A
+// file that failed without running tests (a load error) is one entry named
+// "(file)". projects: what compare's reporter recorded ({ files: [[path,
+// project]] } in the report's order; a file in several projects appears
+// once per project, matched by occurrence).
+export function testsOf(report, root, projects = null) {
+  const byPath = new Map();
+  for (const [file, project] of projects?.files ?? []) {
+    if (!byPath.has(file)) byPath.set(file, []);
+    byPath.get(file).push(project ?? '');
+  }
+  const seen = new Map();
   const tests = new Map();
   for (const t of report?.testResults ?? []) {
+    const n = seen.get(t.name) ?? 0;
+    seen.set(t.name, n + 1);
+    const project = byPath.get(t.name)?.[n] ?? '';
     const file = path.relative(root, t.name).split(path.sep).join('/');
+    const prefix = project ? `${project}::${file}` : file;
     const results = t.assertionResults ?? [];
     if (!results.length && t.status === 'failed') {
-      tests.set(`${file}::(file)`, { file, name: '(file)', status: 'failed', message: firstLine(t.message) });
+      tests.set(`${prefix}::(file)`, { project, file, name: '(file)', status: 'failed', message: firstLine(t.message) });
     }
     for (const a of results) {
       const name = a.ancestorTitles ? [...a.ancestorTitles, a.title].join(' > ') : a.fullName;
-      let key = `${file}::${name}`;
-      for (let n = 2; tests.has(key); n++) key = `${file}::${name} #${n}`;
-      tests.set(key, { file, name, status: normalizeStatus(a.status), message: firstLine(a.failureMessages?.[0]) });
+      let key = `${prefix}::${name}`;
+      for (let i = 2; tests.has(key); i++) key = `${prefix}::${name} #${i}`;
+      tests.set(key, { project, file, name, status: normalizeStatus(a.status), message: firstLine(a.failureMessages?.[0]) });
     }
   }
   return tests;

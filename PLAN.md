@@ -1163,3 +1163,38 @@ to the mixed environments in one worker.
   first window 1.85 -> 1.84 ms, bench:hot appendChild 86.5 -> 87.4,
   insertBefore 122.8 -> 123.3, removeChild 171.4 -> 169.6, setAttribute
   45.4 -> 45.6 ns (noise).
+
+## 2026-10-12: `warpdom compare`, milestone 4: monorepos (branch feat/compare-monorepo)
+
+Compare now runs on monorepos (docs/compare.md, "Monorepos"); it exited 2
+on Vitest workspaces before. Vitest 2 to 5: `test.projects` and
+`test.workspace` (inline objects, functions, promises, `extends: true`,
+Vitest 5's inherit-by-default, `extends: '<file>'`) and workspace files
+(Vitest 2 and 3, also without a root config). Jest: inline projects and
+project paths/globs (`<rootDir>/packages/*`); a self-referencing project
+now runs through the wrapper instead of being dropped (the harness dropped
+the root project when other projects were listed). Project strings are
+resolved as the runners do (own glob, no dependency); each config found
+gets its own wrapper. Running from a package inside a monorepo uses the
+hoisted runner binary. A small temporary reporter records which project
+ran each file (neither runner's JSON has it): test keys carry the project,
+node and browser-mode projects are not compared (this fixes the open
+"Jest Node projects counted in the totals"), a DOM project left unswitched
+is reported, and report.md details have counts per project.
+Tests: unit tests for globbing, resolution, the wrappers, per-project
+results; end-to-end fixtures for Vitest projects (jsdom, node, a happy-dom
+project in its own config, a directory without one, a file in two
+projects), running from a package directory, a Vitest workspace file
+(opt-in, WARPDOM_COMPARE_VITEST_LEGACY; passed with Vitest 2.1.9 and
+3.0.9) and Jest projects (opt-in, WARPDOM_COMPARE_JEST; passed with Jest
+30). The projects fixture also passed on Vitest 4.1.7.
+Smoke tests (--correctness, 2 workers, git status unchanged after each):
+react-hook-form (Jest 30, Web + Server projects) 1,515 tests same, Server
+(9 tests, node) not compared; radix-primitives (Vitest 4.1.7, unit + rsc)
+982 same, rsc (64, node) not compared; floating-ui packages/react-dom
+(Vitest 3.0.9, run from the package, binary hoisted) 15 same; vuetify
+packages/vuetify `src/util` (Vitest 4.1.11, unit + browser) 127 same, the
+browser project (3 tests, chromium) not compared.
+Open: projects only defined in other files are known after the first
+baseline run (baseline name guessed from installed packages until then);
+nested project strings in Vitest 5 project configs are not resolved.

@@ -8,6 +8,19 @@ const plural = (n, one, many = `${one}s`) => `${n.toLocaleString('en-US')} ${n =
 const pad = (s, n) => String(s).padEnd(n);
 const INDENT = ' '.repeat(10);
 
+// A short name for an environment: Jest gives resolved paths.
+export function environmentLabel(environment) {
+  const value = String(environment ?? 'unknown');
+  if (!/^([a-zA-Z]:)?[\\/]/.test(value)) return value;
+  const parts = value.split(/[\\/]/);
+  const i = parts.lastIndexOf('node_modules');
+  const pkg = i >= 0 && parts[i + 1] ? (parts[i + 1].startsWith('@') ? `${parts[i + 1]}/${parts[i + 2]}` : parts[i + 1]) : null;
+  if (pkg === '.warpdom-compare' || pkg === 'warpdom' || (!pkg && parts.includes('warpdom'))) return 'warpdom';
+  if (pkg === '@happy-dom/jest-environment') return 'happy-dom';
+  if (pkg?.startsWith('jest-environment-')) return pkg.slice('jest-environment-'.length);
+  return pkg ?? parts.at(-1);
+}
+
 export function speedPhrase(speedup) {
   if (!speedup) return '';
   return speedup >= 1 ? `${times(speedup)} faster` : `${times(1 / speedup)} slower`;
@@ -23,7 +36,8 @@ function header(result) {
   const domText = dom?.version ? `${dom.name} ${dom.version}` : dom?.name ?? 'unknown';
   const profile = dom?.name === 'jsdom' && dom.version ? ` (warpdom's jsdom-${dom.version.split('.')[0]} profile)` : '';
   const runner = `${result.runner}${result.runnerVersion ? ` ${result.runnerVersion}` : ''}`;
-  return `warpdom compare: ${runner}, baseline ${domText}${profile}`;
+  const projects = (result.projects?.length ?? 0) > 1 ? `, ${plural(result.projects.length, 'project')}` : '';
+  return `warpdom compare: ${runner}${projects}, baseline ${domText}${profile}`;
 }
 
 // Lines about what was not compared (no names).
@@ -38,15 +52,23 @@ function notComparedLines(result) {
     const n = pinned.notSwitched ?? pinned.files;
     const why = result.runner === 'jest' ? ' (Jest reads the comment in its workers)' : '';
     lines.push(`Not compared: ${plural(n, 'file')} (${plural(pinned.tests, 'test')}) ${n === 1 ? 'chooses' : 'choose'} ${(pinned.notSwitchedEnvironments ?? pinned.environments).join('/')} with a comment and were not switched${why}`);
-    const changed = result.correctness?.notComparedChanged?.length;
-    if (changed) lines.push(`(${plural(changed, 'test')} in those files changed status between runs on ${baselineLabel(result)} anyway: listed in the report)`);
   }
-  const others = (result.projects ?? []).filter((p) => !p.dom);
+  const unswitched = (result.projects ?? []).filter((p) => p.unswitched);
+  if (unswitched.length) {
+    const byProject = result.correctness?.byProject ?? {};
+    const tests = unswitched.reduce((n, p) => n + (byProject[p.name ?? '']?.notCompared ?? 0), 0);
+    lines.push(`Not compared: ${plural(unswitched.length, 'project')} on ${[...new Set(unswitched.map((p) => environmentLabel(p.environment)))].join(', ')}${tests ? ` (${plural(tests, 'test')})` : ''} that compare could not switch`);
+  }
+  const others = (result.projects ?? []).filter((p) => !p.dom && !p.unswitched);
   if (others.length) {
-    const kinds = [...new Set(others.map((p) => (p.browser ? 'browser mode' : p.environment)))];
-    lines.push(`Not compared: ${plural(others.length, 'project')} on ${kinds.join(', ')} (ran unchanged in both runs)`);
+    const environments = [...new Set(others.filter((p) => !p.browser).map((p) => environmentLabel(p.environment)))];
+    const where = [environments.length ? `on ${environments.join(', ')}` : null, others.some((p) => p.browser) ? 'in browser mode' : null].filter(Boolean).join(' and ');
+    const byProject = result.correctness?.byProject ?? {};
+    const tests = others.reduce((n, p) => n + (byProject[p.name ?? '']?.notCompared ?? 0), 0);
+    lines.push(`Not compared: ${plural(others.length, 'project')} ${where}${tests ? ` (${plural(tests, 'test')})` : ''}, ran unchanged in both runs`);
   }
-  if (result.external) lines.push(`Not compared: ${plural(result.external, 'project')} defined in separate files (monorepo support comes later)`);
+  const changed = result.correctness?.notComparedChanged?.length;
+  if (changed) lines.push(`(${plural(changed, 'test')} not compared changed status between runs anyway: listed in the report)`);
   return lines;
 }
 
@@ -117,6 +139,27 @@ export function renderConsole(result, { reportPath = null, groupLimit = 10 } = {
   return out.join('\n').trimEnd() + '\n';
 }
 
+const testLabel = (t) => `${t.project ? `[${t.project}] ` : ''}\`${t.file}\` › ${t.name}`;
+
+// Per project (details only: project names may be private).
+function projectTable(result, md) {
+  const byProject = result.correctness.byProject ?? {};
+  const projects = result.projects ?? [];
+  const names = [...new Set([...projects.map((p) => p.name ?? ''), ...Object.keys(byProject)])];
+  if (names.length < 2 && !names.some(Boolean)) return;
+  const base = baselineLabel(result);
+  md.push('### Projects', '');
+  md.push(`| Project | Environment | Compared | Same | Pass on ${base}, fail on warpdom | Fail on ${base}, pass on warpdom | Other | Flaky | Not compared |`);
+  md.push('|---|---|---:|---:|---:|---:|---:|---:|---:|');
+  for (const name of names) {
+    const p = projects.find((x) => (x.name ?? '') === name);
+    const n = byProject[name] ?? { compared: 0, same: 0, regressions: 0, fixed: 0, other: 0, flaky: 0, notCompared: 0 };
+    const environment = !p ? '-' : p.browser ? 'browser mode' : `${environmentLabel(p.environment)}${p.unswitched ? ' (not switched, not compared)' : p.dom ? '' : ' (not compared)'}`;
+    md.push(`| ${name || '(unnamed)'} | ${environment} | ${n.compared} | ${n.same} | ${n.regressions} | ${n.fixed} | ${n.other} | ${n.flaky} | ${n.notCompared} |`);
+  }
+  md.push('');
+}
+
 function machineLine(env) {
   if (!env) return null;
   return `${env.os.platform} ${env.os.release} (${env.os.arch}), ${env.cpu.model ?? 'unknown CPU'}, ${env.cpu.cores} cores, ${env.memory.totalGiB} GiB, Node ${env.node}`;
@@ -161,6 +204,7 @@ export function renderMarkdown(result) {
   md.push('## Details', '');
   if (result.correctness) {
     const c = result.correctness;
+    projectTable(result, md);
     const titles = { regression: `Pass on ${base}, fail on warpdom`, fixed: `Fail on ${base}, pass on warpdom`, other: 'Other' };
     for (const cls of ['regression', 'fixed', 'other']) {
       const groups = c.groups.filter((g) => g.class === cls);
@@ -169,16 +213,16 @@ export function renderMarkdown(result) {
       for (const g of groups) {
         md.push(`#### ${g.tests.length} × ${g.change}`, '');
         if (g.message) md.push('```', g.message, '```', '');
-        for (const t of g.tests.slice(0, 50)) md.push(`- \`${t.file}\` › ${t.name}`);
+        for (const t of g.tests.slice(0, 50)) md.push(`- ${testLabel(t)}`);
         if (g.tests.length > 50) md.push(`- ... ${g.tests.length - 50} more (results.json)`);
         md.push('');
       }
     }
-    const unswitched = 'Changed status in files that were not switched (both runs on the baseline)';
+    const unswitched = 'Changed status in tests that were not compared (same environment in both runs)';
     for (const [title, list] of [[`Flaky on ${base} itself`, c.flakyBaseline], ['Flaky on warpdom only', c.flakyWarpdom], [unswitched, c.notComparedChanged ?? []]]) {
       if (!list.length) continue;
       md.push(`### ${title}`, '');
-      for (const t of list) md.push(`- \`${t.file}\` › ${t.name}: ${base} ${t.baseline.join(', ')}; warpdom ${t.warpdom.join(', ')}`);
+      for (const t of list) md.push(`- ${testLabel(t)}: ${base} ${t.baseline.join(', ')}; warpdom ${t.warpdom.join(', ')}`);
       md.push('');
     }
     if (result.pinned?.files) {

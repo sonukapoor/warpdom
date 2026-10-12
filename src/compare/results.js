@@ -19,33 +19,43 @@ const distinct = (values) => [...new Set(values)];
 // included). A test whose status varies between the baseline's runs is
 // flaky on the baseline itself: listed, not counted. One that varies only
 // between warpdom's runs is listed separately (it may be warpdom's).
-// Tests in skipFiles (files that pin their environment with a comment)
-// ran on the baseline both times and are not compared; those whose status
-// changed anyway are listed in notComparedChanged.
-export function compareRuns(baselineRuns, warpdomRuns, { skipFiles = new Set() } = {}) {
+// Tests in skipFiles (files that pin their environment with a comment and
+// were not switched) and in skipProjects (projects on node or in browser
+// mode, except files in keepFiles, whose comment was switched) ran the same
+// way in both runs and are not compared; those whose status changed anyway
+// are listed in notComparedChanged. byProject: the counts per project name
+// ('' for a single unnamed project).
+export function compareRuns(baselineRuns, warpdomRuns, { skipFiles = new Set(), skipProjects = new Set(), keepFiles = new Set() } = {}) {
   const keys = new Set();
   for (const run of [...baselineRuns, ...warpdomRuns]) for (const key of run.keys()) keys.add(key);
-  const out = { compared: 0, same: 0, notCompared: 0, notComparedChanged: [], flakyBaseline: [], flakyWarpdom: [], differences: [] };
+  const out = { compared: 0, same: 0, notCompared: 0, notComparedFiles: 0, notComparedChanged: [], flakyBaseline: [], flakyWarpdom: [], differences: [], byProject: {} };
+  const counts = (project) => (out.byProject[project] ??= { compared: 0, same: 0, regressions: 0, fixed: 0, other: 0, flaky: 0, notCompared: 0 });
   for (const key of keys) {
     const info = [...baselineRuns, ...warpdomRuns].map((r) => r.get(key)).find(Boolean);
     const isFile = info.name === '(file)';
+    const project = info.project ?? '';
+    const entry = { key, project, file: info.file, name: info.name };
     const bs = baselineRuns.map((r) => r.get(key)?.status ?? MISSING);
     const ws = warpdomRuns.map((r) => r.get(key)?.status ?? MISSING);
-    if (skipFiles.has(info.file)) {
-      if (!isFile) out.notCompared++;
-      // Both runs used the baseline here; a change is the test's own (or
-      // leaked state from other files), worth listing but not counting.
-      if (distinct([...bs, ...ws]).length > 1) out.notComparedChanged.push({ key, file: info.file, name: info.name, baseline: bs, warpdom: ws });
+    const pc = counts(project);
+    const pinnedFile = skipFiles.has(info.file);
+    if (pinnedFile || (skipProjects.has(project) && !keepFiles.has(info.file))) {
+      if (!isFile) { out.notCompared++; pc.notCompared++; if (pinnedFile) out.notComparedFiles++; }
+      // Both runs used the same environment here; a change is the test's own
+      // (or leaked state from other files), worth listing but not counting.
+      if (distinct([...bs, ...ws]).length > 1) out.notComparedChanged.push({ ...entry, baseline: bs, warpdom: ws });
       continue;
     }
-    if (!isFile) out.compared++;
-    if (distinct(bs).length > 1) { out.flakyBaseline.push({ key, file: info.file, name: info.name, baseline: bs, warpdom: ws }); continue; }
-    if (distinct(ws).length > 1) { out.flakyWarpdom.push({ key, file: info.file, name: info.name, baseline: bs, warpdom: ws }); continue; }
+    if (!isFile) { out.compared++; pc.compared++; }
+    if (distinct(bs).length > 1) { out.flakyBaseline.push({ ...entry, baseline: bs, warpdom: ws }); pc.flaky++; continue; }
+    if (distinct(ws).length > 1) { out.flakyWarpdom.push({ ...entry, baseline: bs, warpdom: ws }); pc.flaky++; continue; }
     const [b] = bs, [w] = ws;
-    if (b === w) { if (!isFile) out.same++; continue; }
+    if (b === w) { if (!isFile) { out.same++; pc.same++; } continue; }
     const side = w === 'failed' ? warpdomRuns : baselineRuns;
     const message = side.map((r) => r.get(key)?.message).find(Boolean) ?? '';
-    out.differences.push({ key, file: info.file, name: info.name, baseline: b, warpdom: w, class: classify(b, w, isFile), message });
+    const cls = classify(b, w, isFile);
+    pc[cls === 'regression' ? 'regressions' : cls]++;
+    out.differences.push({ ...entry, baseline: b, warpdom: w, class: cls, message });
   }
   out.regressions = out.differences.filter((d) => d.class === 'regression').length;
   out.fixed = out.differences.filter((d) => d.class === 'fixed').length;
@@ -61,7 +71,7 @@ export function groupDifferences(differences) {
     const message = d.message.slice(0, 150);
     const id = `${d.baseline} -> ${d.warpdom} | ${message.replace(/\d+/g, 'N')}`;
     if (!groups.has(id)) groups.set(id, { class: d.class, change: `${d.baseline} -> ${d.warpdom}`, message, tests: [] });
-    groups.get(id).tests.push({ file: d.file, name: d.name });
+    groups.get(id).tests.push({ project: d.project ?? '', file: d.file, name: d.name });
   }
   const order = { regression: 0, fixed: 1, other: 2 };
   return [...groups.values()].sort((a, b) => order[a.class] - order[b.class] || b.tests.length - a.tests.length);

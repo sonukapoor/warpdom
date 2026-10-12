@@ -6,12 +6,13 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { vitestWrapper, jestWrapper, wrapperName, PROBE_MARKER, PINNED_TARGET, PINNED_PACKAGE } from '../src/compare/wrappers.js';
+import { vitestWrapper, vitestWorkspaceWrapper, jestWrapper, wrapperName, workspaceWrapperName, PROBE_MARKER, PINNED_TARGET, PINNED_PACKAGE } from '../src/compare/wrappers.js';
+import { isDynamicPattern, expandBraces, globRegExp, glob, resolveVitestProjects, resolveJestProjects } from '../src/compare/projects.js';
 import { findConfig, findBin, detectRunner, environmentComments, takeConfigArg, packageDir } from '../src/compare/detect.js';
 import { TempFiles, removeEntry, copyWarpdom, pinnedEnvironmentPackage, isOwnName, acquireLock, gitStatus, statusChanges } from '../src/compare/files.js';
 import { runnerArgs, testsOf, countsOf, runnerDuration, normalizeStatus } from '../src/compare/run.js';
 import { classify, compareRuns, groupDifferences, timingSummary, median, pairOrder, exitCode } from '../src/compare/results.js';
-import { renderConsole, renderMarkdown, speedPhrase } from '../src/compare/report.js';
+import { renderConsole, renderMarkdown, speedPhrase, environmentLabel } from '../src/compare/report.js';
 import { parseArgs } from '../src/compare/cli.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -25,7 +26,11 @@ const write = (file, text) => {
 // --- wrappers --------------------------------------------------------------
 
 test('compare wrappers: file names carry the mark, TS originals get TS-capable wrappers', () => {
-  assert.equal(wrapperName('vitest', '/p/vite.config.ts', 'warpdom'), 'vitest.config.warpdom-compare.warpdom.mts');
+  assert.equal(wrapperName('vitest', '/p/vite.config.ts', 'warpdom'), 'vite.config.warpdom-compare.warpdom.mts');
+  assert.equal(wrapperName('vitest', '/p/vitest.config.unit.ts', 'warpdom'), 'vitest.config.unit.warpdom-compare.warpdom.mts', 'two configs in one directory do not collide');
+  assert.equal(wrapperName('vitest', null, 'warpdom'), 'vitest.config.warpdom-compare.warpdom.mjs', 'a workspace file without a config');
+  assert.equal(workspaceWrapperName('/p/vitest.workspace.ts', 'baseline'), 'vitest.workspace.warpdom-compare.baseline.mts');
+  assert.equal(wrapperName('jest', '/p/jest.web.config.js', 'warpdom'), 'jest.web.config.warpdom-compare.warpdom.cjs');
   assert.equal(wrapperName('vitest', '/p/vitest.config.js', 'baseline'), 'vitest.config.warpdom-compare.baseline.mjs');
   assert.equal(wrapperName('jest', '/p/jest.config.ts', 'warpdom'), 'jest.config.warpdom-compare.warpdom.ts');
   assert.equal(wrapperName('jest', '/p/package.json', 'probe'), 'jest.config.warpdom-compare.probe.cjs');
@@ -69,7 +74,7 @@ test('compare wrappers: Vitest switches DOM projects only and describes the proj
     assert.deepEqual(mixed.test.projects.slice(0, 4).map((p) => p.test.environment), [undefined, '/w/vitest.js', 'jsdom', 'node']);
     assert.equal(mixed.test.projects[4], 'packages/*');
     assert.deepEqual(JSON.parse(fs.readFileSync(meta, 'utf8')), {
-      runner: 'vitest', external: 1,
+      runner: 'vitest', root: process.cwd(), source: 'projects', workspace: null, unknown: 0, patterns: ['packages/*'], extends: [],
       projects: [
         { name: 'inherits', environment: 'happy-dom', browser: false },
         { name: 'dom', environment: 'jsdom', browser: false },
@@ -82,6 +87,146 @@ test('compare wrappers: Vitest switches DOM projects only and describes the proj
     write(path.join(dir, 'keep.config.mjs'), 'export default () => ({ test: { environment: "jsdom" } });');
     const keep = write(path.join(dir, 'keep.warpdom-compare.mjs'), vitestWrapper(path.join(dir, 'keep.config.mjs')));
     assert.equal((await (await import(pathToFileURL(keep).href)).default({})).test.environment, 'jsdom', 'config functions are called');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('compare wrappers: Vitest project strings, functions, extends, workspaces', async () => {
+  const dir = tmp('vitest-projects');
+  try {
+    let n = 0;
+    const load = async (config, options, env = {}) => {
+      const name = `c${n++}`;
+      write(path.join(dir, `${name}.config.mjs`), `export default ${config};`);
+      const wrapper = write(path.join(dir, `${name}.warpdom-compare.mjs`), vitestWrapper(path.join(dir, `${name}.config.mjs`), { environment: '/w/vitest.js', ...options }));
+      const saved = { ...process.env };
+      Object.assign(process.env, env);
+      try {
+        return await (await import(pathToFileURL(wrapper).href)).default({ mode: 'test' });
+      } finally {
+        for (const k of Object.keys(env)) delete process.env[k];
+        Object.assign(process.env, saved);
+      }
+    };
+    const links = {
+      patterns: { 'packages/*': ['/r/packages/a/vitest.config.warpdom-compare.warpdom.mjs', '/r/packages/b/'], '!packages/c': [] },
+      extends: { './base.config.ts': '/r/base.config.warpdom-compare.warpdom.mts' },
+    };
+    const out = await load(`{ test: { projects: [
+      'packages/*', '!packages/c', 'other/*',
+      () => ({ test: { name: 'fn', environment: 'jsdom' } }),
+      Promise.resolve({ test: { name: 'promise', environment: 'happy-dom' } }),
+      { extends: './base.config.ts', test: { name: 'extends' } },
+    ] } }`, { links });
+    const [a, b, other, fn, promise, ext] = out.test.projects;
+    assert.deepEqual([a, b, other], ['/r/packages/a/vitest.config.warpdom-compare.warpdom.mjs', '/r/packages/b/', 'other/*'], 'resolved strings replaced, negations dropped, others kept');
+    assert.equal(out.test.projects.length, 6);
+    assert.equal((await fn({})).test.environment, '/w/vitest.js', 'function projects switched when called');
+    assert.equal((await promise).test.environment, '/w/vitest.js');
+    assert.equal(ext.extends, '/r/base.config.warpdom-compare.warpdom.mts', 'extends points at the wrapper');
+
+    // Inheritance: Vitest 5 inherits the root config unless `extends: false`.
+    const meta = path.join(dir, 'meta.json');
+    const inherit = `{ test: { environment: 'jsdom', projects: [{ test: { name: 'plain' } }, { extends: false, test: { name: 'off' } }, { extends: './x.config.ts', test: { name: 'x' } }] } }`;
+    const describe = async (major) => {
+      await assert.rejects(load(inherit, { major }, { WARPDOM_COMPARE_META: meta, WARPDOM_COMPARE_PROBE: '1' }), (err) => err.message === PROBE_MARKER);
+      return JSON.parse(fs.readFileSync(meta, 'utf8'));
+    };
+    const v5 = await describe(5);
+    assert.deepEqual(v5.projects.map((p) => [p.name, p.environment]), [['plain', 'jsdom'], ['off', 'node'], ['x', null]]);
+    assert.deepEqual([v5.unknown, v5.extends], [1, ['./x.config.ts']], 'a project extending another file is only known when it runs');
+    assert.deepEqual((await describe(4)).projects.map((p) => p.environment), ['node', 'node', null]);
+
+    // Vitest 2 and 3: the workspace file goes through its wrapper.
+    assert.equal((await load(`{ test: { environment: 'jsdom' } }`, { links: { workspace: '/r/ws.mjs' } })).test.workspace, '/r/ws.mjs');
+    const inline = await load(`{ test: { workspace: [{ test: { environment: 'jsdom' } }, 'pkg'] } }`, { links: { workspace: '/r/ws.mjs', patterns: { pkg: ['/r/pkg/'] } } });
+    assert.deepEqual([inline.test.workspace[0].test.environment, inline.test.workspace[1]], ['/w/vitest.js', '/r/pkg/'], 'an inline workspace is switched in place');
+    const ws = write(path.join(dir, 'vitest.workspace.mjs'), `export default ['packages/*', { test: { name: 'w', environment: 'jsdom' } }];`);
+    const wsWrapper = write(path.join(dir, workspaceWrapperName(ws, 'warpdom')), vitestWorkspaceWrapper(ws, { environment: '/w/vitest.js', links }));
+    const mapped = (await import(pathToFileURL(wsWrapper).href)).default;
+    assert.ok(Array.isArray(mapped), 'Vitest wants an array');
+    assert.deepEqual([mapped[0], mapped[1], mapped[2].test.environment], [...links.patterns['packages/*'], '/w/vitest.js']);
+    // The probe reads the workspace file to describe it.
+    write(path.join(dir, 'probe.config.mjs'), 'export default { test: {} };');
+    const probe = write(path.join(dir, 'probe.warpdom-compare.mjs'), vitestWrapper(path.join(dir, 'probe.config.mjs'), { probeWorkspace: ws }));
+    process.env.WARPDOM_COMPARE_META = meta;
+    try {
+      await (await import(pathToFileURL(probe).href)).default({});
+    } finally {
+      delete process.env.WARPDOM_COMPARE_META;
+    }
+    const wsMeta = JSON.parse(fs.readFileSync(meta, 'utf8'));
+    assert.deepEqual([wsMeta.source, wsMeta.patterns, wsMeta.projects.map((p) => p.environment)], ['workspace-file', ['packages/*'], ['jsdom']]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('compare wrappers: Jest project paths become wrappers, self references become this wrapper', async () => {
+  const dir = tmp('jest-projects');
+  try {
+    const require = createRequire(path.join(dir, 'x.js'));
+    const self = path.join(dir, 'jest.config.warpdom-compare.warpdom.cjs');
+    write(path.join(dir, 'jest.config.js'), `module.exports = { projects: ['<rootDir>', '<rootDir>/packages/*', { displayName: 'inline', testEnvironment: 'jsdom' }], reporters: ['default', 'jest-junit'] };`);
+    write(self, jestWrapper(path.join(dir, 'jest.config.js'), {
+      environment: '/w/jest.js', self, reporter: '/r/reporter.cjs',
+      links: { patterns: { '<rootDir>/packages/*': ['/r/packages/a/jest.config.warpdom-compare.warpdom.cjs', '/r/packages/b'] } },
+    }));
+    const out = await require(self)();
+    assert.deepEqual(out.projects.slice(0, 3), [self, '/r/packages/a/jest.config.warpdom-compare.warpdom.cjs', '/r/packages/b'], 'the root runs as a project through this wrapper');
+    assert.equal(out.projects[3].testEnvironment, '/w/jest.js');
+    assert.deepEqual(out.reporters, ['default', 'jest-junit', '/r/reporter.cjs'], "the project's reporters are kept");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('compare projects: globs as Vitest and Jest expand them', () => {
+  assert.equal(isDynamicPattern('packages/*'), true);
+  assert.equal(isDynamicPattern('!packages/a'), true);
+  assert.equal(isDynamicPattern('packages/a/vitest.config.ts'), false);
+  assert.deepEqual(expandBraces('a/{b,c{d,e}}/f'), ['a/b/f', 'a/cd/f', 'a/ce/f']);
+  assert.deepEqual(expandBraces('a/{b}'), ['a/{b}']);
+  const re = globRegExp('packages/**/vite*.config.[jt]s');
+  assert.ok(re.test('packages/a/b/vitest.config.ts') && re.test('packages/vitest.config.js'));
+  assert.ok(!re.test('packages/a/vitest.config.mts'));
+
+  const dir = tmp('globs');
+  try {
+    write(path.join(dir, 'packages', 'a', 'vitest.config.ts'), '');
+    write(path.join(dir, 'packages', 'b', 'vite.config.mjs'), '');
+    write(path.join(dir, 'packages', 'c', 'index.js'), '');
+    write(path.join(dir, 'packages', 'README.md'), '');
+    write(path.join(dir, 'packages', 'a', 'node_modules', 'x', 'vitest.config.ts'), '');
+    write(path.join(dir, 'packages', 'd', 'package.json'), JSON.stringify({ jest: { testEnvironment: 'jsdom' } }));
+    assert.deepEqual(glob('packages/*', dir).map((f) => path.relative(dir, f) + (f.endsWith('/') ? '/' : '')),
+      ['packages/README.md', 'packages/a/', 'packages/b/', 'packages/c/', 'packages/d/']);
+    assert.deepEqual(glob('**/vitest.config.ts', dir), [path.join(dir, 'packages', 'a', 'vitest.config.ts')], 'node_modules skipped');
+    assert.deepEqual(glob(`${dir}/packages/{a,b}/*.config.*`, '/'), [path.join(dir, 'packages', 'a', 'vitest.config.ts'), path.join(dir, 'packages', 'b', 'vite.config.mjs')], 'absolute patterns');
+
+    const vitest = resolveVitestProjects(['packages/*', '!packages/README.md', 'packages/a/vitest.config.ts', './packages/c', 'missing/'], dir);
+    assert.deepEqual(vitest.get('packages/*'), [
+      { config: path.join(dir, 'packages', 'a', 'vitest.config.ts') },
+      { config: path.join(dir, 'packages', 'b', 'vite.config.mjs') },
+      { dir: `${path.join(dir, 'packages', 'c')}/` },
+      { dir: `${path.join(dir, 'packages', 'd')}/` },
+    ], 'directories through their config, or as projects without one');
+    assert.deepEqual(vitest.get('!packages/README.md'), []);
+    assert.deepEqual(vitest.get('packages/a/vitest.config.ts'), [{ config: path.join(dir, 'packages', 'a', 'vitest.config.ts') }]);
+    assert.deepEqual(vitest.get('./packages/c'), [{ dir: `${path.join(dir, 'packages', 'c')}/` }]);
+    assert.equal(vitest.has('missing/'), false, 'left for the runner to report');
+
+    write(path.join(dir, 'packages', 'a', 'jest.config.js'), '');
+    const jest = resolveJestProjects(['<rootDir>/packages/*', 'packages/a/jest.config.js', 'nothing/*'], { rootDir: dir, configDir: dir, cwd: dir });
+    assert.deepEqual(jest.get('<rootDir>/packages/*'), [
+      { config: path.join(dir, 'packages', 'a', 'jest.config.js') },
+      { dir: path.join(dir, 'packages', 'b') },
+      { dir: path.join(dir, 'packages', 'c') },
+      { config: path.join(dir, 'packages', 'd', 'package.json') },
+    ]);
+    assert.deepEqual(jest.get('packages/a/jest.config.js'), [{ config: path.join(dir, 'packages', 'a', 'jest.config.js') }]);
+    assert.deepEqual(jest.get('nothing/*'), []);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -169,7 +314,7 @@ test('compare wrappers: Jest switches jsdom-like environments, drops self-refere
     } finally {
       delete process.env.WARPDOM_COMPARE_META;
     }
-    assert.deepEqual(JSON.parse(fs.readFileSync(meta, 'utf8')), { runner: 'jest', external: 1, projects: [{ name: 'Web', environment: 'jsdom', browser: false }] });
+    assert.deepEqual(JSON.parse(fs.readFileSync(meta, 'utf8')), { runner: 'jest', external: 1, patterns: ['./other'], root: dir, projects: [{ name: 'Web', environment: 'jsdom', browser: false }] });
     const pkg = await load('package.json', JSON.stringify({ name: 'x', jest: { testEnvironment: 'jsdom' } }));
     assert.equal(pkg.testEnvironment, '/w/jest.js', 'package.json "jest"');
     assert.deepEqual(await load('none.cjs', '', null), {}, 'no config: Jest defaults');
@@ -265,6 +410,38 @@ test('compare runs: tests of a JSON report, counts, duration', () => {
   assert.equal(runnerDuration('jest', {}, ''), null);
 });
 
+test('compare runs: tests told apart by project, from what the reporter recorded', () => {
+  const sidecar = { files: [['/p/shared.test.js', 'dom'], ['/p/a.test.js', 'dom'], ['/p/shared.test.js', 'server']] };
+  const tests = testsOf(report([
+    ['/p/shared.test.js', [['works', 'passed']]],
+    ['/p/a.test.js', [['fails', 'failed', 'Error: x']]],
+    ['/p/shared.test.js', [['works', 'failed', 'Error: no document']]],
+  ]), '/p', sidecar);
+  assert.deepEqual([...tests.keys()], ['dom::shared.test.js::works', 'dom::a.test.js::fails', 'server::shared.test.js::works'], 'a file in two projects matched by occurrence');
+  assert.equal(tests.get('server::shared.test.js::works').project, 'server');
+  assert.deepEqual([...testsOf(report([['/p/a.test.js', [['t', 'passed']]]]), '/p', { files: [['/p/a.test.js', '']] }).keys()], ['a.test.js::t'], 'an unnamed project keeps plain keys');
+  assert.equal(environmentLabel('/r/node_modules/.pnpm/x/node_modules/jest-environment-jsdom/build/index.js'), 'jsdom');
+  assert.equal(environmentLabel('/r/node_modules/@happy-dom/jest-environment/lib/index.js'), 'happy-dom');
+  assert.equal(environmentLabel('/r/node_modules/jest-fixed-jsdom/index.js'), 'jest-fixed-jsdom');
+  assert.equal(environmentLabel('/r/node_modules/.warpdom-compare/src/vitest.js'), 'warpdom');
+  assert.equal(environmentLabel('happy-dom'), 'happy-dom');
+});
+
+test('compare results: projects not on a DOM are not compared, counts per project', () => {
+  const entry = (project, file, name, status) => [`${project}::${file}::${name}`, { project, file, name, status, message: '' }];
+  const base = new Map([entry('web', 'a', 't', 'passed'), entry('node', 'b', 't', 'passed'), entry('node', 'pinned', 't', 'passed'), entry('web', 'c', 't', 'passed')]);
+  const warp = new Map([entry('web', 'a', 't', 'failed'), entry('node', 'b', 't', 'failed'), entry('node', 'pinned', 't', 'failed'), entry('web', 'c', 't', 'passed')]);
+  const c = compareRuns([base], [warp], { skipProjects: new Set(['node']), keepFiles: new Set(['pinned']) });
+  assert.equal(c.compared, 3);
+  assert.equal(c.notCompared, 1);
+  assert.equal(c.notComparedFiles, 0, 'not a pinned file');
+  assert.deepEqual(c.notComparedChanged.map((t) => t.key), ['node::b::t']);
+  assert.deepEqual(c.differences.map((d) => d.key), ['web::a::t', 'node::pinned::t'], 'a file switched by its comment is compared in a node project');
+  assert.deepEqual(c.byProject.web, { compared: 2, same: 1, regressions: 1, fixed: 0, other: 0, flaky: 0, notCompared: 0 });
+  assert.deepEqual(c.byProject.node, { compared: 1, same: 0, regressions: 1, fixed: 0, other: 0, flaky: 0, notCompared: 1 });
+  assert.deepEqual(groupDifferences(c.differences)[0].tests.map((t) => t.project), ['web', 'node']);
+});
+
 const run = (entries) => new Map(entries.map(([key, status, message = '']) => [key, { file: key.split('::')[0], name: key.split('::')[1], status, message }]));
 
 test('compare results: classes, flaky tests, files not compared', () => {
@@ -345,7 +522,7 @@ function sampleResult(overrides = {}) {
 test('compare report: terminal summary and report.md', () => {
   const result = sampleResult();
   const text = renderConsole(result, { reportPath: '.warpdom-compare/report.md' });
-  assert.match(text, /^warpdom compare: vitest 2\.1\.9, baseline jsdom 25\.0\.1 \(warpdom's jsdom-25 profile\)/);
+  assert.match(text, /^warpdom compare: vitest 2\.1\.9, 2 projects, baseline jsdom 25\.0\.1 \(warpdom's jsdom-25 profile\)/);
   assert.match(text, /Results {3}120 tests, 119 tests with the same status; 1 pass on jsdom and fail on warpdom/);
   assert.match(text, /1 {2}passed -> failed {2}TypeError: nope/);
   assert.match(text, /Not compared: 2 files \(14 tests\) choose jsdom with a comment/);
@@ -353,8 +530,13 @@ test('compare report: terminal summary and report.md', () => {
   assert.match(switched, /3 files pin jsdom with a comment; switched/);
   assert.match(switched, /\(1 switched file also sets @vitest-environment-options, which stay keyed by the original name and do not reach warpdom\)/);
   assert.doesNotMatch(switched, /Not compared: \d+ files? \(/);
-  assert.match(text, /\(1 test in those files changed status between runs on jsdom anyway: listed in the report\)/);
-  assert.match(text, /Not compared: 1 project on node/);
+  assert.match(text, /\(1 test not compared changed status between runs anyway: listed in the report\)/);
+  assert.match(text, /Not compared: 1 project on node, ran unchanged in both runs/);
+  const mixed = renderConsole(sampleResult({ projects: [...result.projects, { name: 'b (chromium)', environment: 'node', browser: true, dom: false }] }));
+  assert.match(mixed, /Not compared: 2 projects on node and in browser mode, ran unchanged in both runs/);
+  const stuck = renderConsole(sampleResult({ projects: [...result.projects, { name: 'nested', environment: 'jsdom', browser: false, dom: false, unswitched: true }] }));
+  assert.match(stuck, /Not compared: 1 project on jsdom that compare could not switch/);
+  assert.match(stuck, /Not compared: 1 project on node, ran unchanged/);
   assert.match(text, /median {2}12\.2 s +10\.0 s +1\.22x faster \(spread 1\.20x-1\.24x\)/);
   assert.match(text, /Report {4}\.warpdom-compare\/report\.md/);
 
@@ -528,7 +710,7 @@ const vitestLinks = () => ({
   '.bin/vitest': '../vitest/vitest.mjs',
 });
 const leftovers = (dir) => [
-  ...fs.readdirSync(dir).filter((f) => f.includes('warpdom-compare.')),
+  ...fs.readdirSync(dir, { recursive: true }).filter((f) => !f.split(path.sep).some((s) => s === 'node_modules' || s === '.warpdom-compare') && f.includes('warpdom-compare.')),
   ...fs.readdirSync(path.join(dir, 'node_modules')).filter((f) => f.includes('warpdom-compare')),
 ];
 
@@ -615,6 +797,74 @@ test('compare end to end: SIGTERM during a run stops the runner and removes the 
   }
 });
 
+test('compare end to end (Vitest projects): inline and file projects, node projects not compared', () => {
+  const dir = fixtureProject('compare-vitest-projects', { ...vitestLinks(), 'happy-dom': path.join(root, 'node_modules', 'happy-dom') });
+  try {
+    const res = compareCli(dir, ['--correctness']);
+    assert.equal(res.status, 1, res.stdout + res.stderr);
+    assert.match(res.stdout, /warpdom compare: vitest \S+, 4 projects, baseline jsdom/);
+    assert.match(res.stdout, /5 tests, 3 tests with the same status; 1 pass on jsdom and fail on warpdom, 1 fail on jsdom and pass on warpdom/);
+    assert.match(res.stdout, /Not compared: 2 projects on node \(3 tests\), ran unchanged in both runs/);
+    assert.doesNotMatch(res.stdout, /\b(dom|server|happy|plain)\b.*spec/, 'the summary names no files');
+    const result = JSON.parse(fs.readFileSync(path.join(dir, '.warpdom-compare', 'results.json'), 'utf8'));
+    assert.deepEqual(result.projects.map((p) => [p.name, p.environment, p.dom]).sort(), [['dom', 'jsdom', true], ['happy', 'happy-dom', true], ['plain', 'node', false], ['server', 'node', false]]);
+    const envs = (run) => Object.fromEntries(run.projects.map((p) => [p.name, p.environment]));
+    assert.deepEqual(envs(result.runs[0]), { dom: 'jsdom', server: 'node', happy: 'happy-dom', plain: 'node' });
+    assert.deepEqual(envs(result.runs[1]), { dom: 'warpdom', server: 'node', happy: 'warpdom', plain: 'node' }, 'the project in its own config file is switched too');
+    const byProject = result.correctness.byProject;
+    assert.deepEqual([byProject.dom.compared, byProject.dom.regressions, byProject.dom.fixed, byProject.happy.same, byProject.server.notCompared, byProject.plain.notCompared], [4, 1, 1, 1, 2, 1]);
+    assert.deepEqual(result.correctness.differences.map((d) => d.key).sort(), ['dom::dom/differ.spec.js::passes on jsdom only', 'dom::dom/differ.spec.js::passes on warpdom only'], 'test keys carry the project');
+    const md = fs.readFileSync(path.join(dir, '.warpdom-compare', 'report.md'), 'utf8');
+    const [summary, details] = md.split('## Details');
+    assert.doesNotMatch(summary, /\| (dom|server|happy|plain) \|/, 'project names only in the details');
+    assert.match(details, /\| server \| node \(not compared\) \| 0 \| 0 \| 0 \| 0 \| 0 \| 0 \| 2 \|/);
+    assert.match(details, /- \[dom\] `dom\/differ\.spec\.js` › passes on jsdom only/);
+    assert.deepEqual(leftovers(dir), []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('compare end to end (Vitest): from a package directory of a monorepo, the runner hoisted to the root', () => {
+  const dir = fixtureProject('compare-vitest-projects', { ...vitestLinks(), 'happy-dom': path.join(root, 'node_modules', 'happy-dom') });
+  try {
+    const pkg = path.join(dir, 'packages', 'happy');
+    const res = compareCli(pkg, ['--correctness']);
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    assert.match(res.stdout, /baseline happy-dom/);
+    assert.match(res.stdout, /1 test, all with the same status on happy-dom and warpdom/);
+    const result = JSON.parse(fs.readFileSync(path.join(pkg, '.warpdom-compare', 'results.json'), 'utf8'));
+    assert.deepEqual(result.runs.map((r) => r.projects[0].environment), ['happy-dom', 'warpdom']);
+    assert.deepEqual(leftovers(dir), [], 'the copy went into the root node_modules and is gone');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Vitest 2 and 3 read workspace files (removed in 4): this runs when
+// WARPDOM_COMPARE_VITEST_LEGACY names a node_modules with vitest 2 or 3.
+const legacyModules = process.env.WARPDOM_COMPARE_VITEST_LEGACY;
+test('compare end to end (Vitest workspace file, no root config)', { skip: !legacyModules && 'set WARPDOM_COMPARE_VITEST_LEGACY to a node_modules with vitest 2 or 3' }, () => {
+  const dir = fixtureProject('compare-vitest-workspace', {
+    vitest: fs.realpathSync(path.join(legacyModules, 'vitest')),
+    jsdom: fs.existsSync(path.join(legacyModules, 'jsdom')) ? fs.realpathSync(path.join(legacyModules, 'jsdom')) : path.join(root, 'node_modules', 'jsdom'),
+    '.bin/vitest': '../vitest/vitest.mjs',
+  });
+  try {
+    const res = compareCli(dir, ['--correctness']);
+    assert.equal(res.status, 1, res.stdout + res.stderr);
+    assert.match(res.stdout, /warpdom compare: vitest [23]\.\S+, 3 projects/);
+    assert.match(res.stdout, /5 tests, 3 tests with the same status; 1 pass on jsdom and fail on warpdom, 1 fail on jsdom and pass on warpdom/);
+    assert.match(res.stdout, /Not compared: 1 project on node \(1 test\)/);
+    const result = JSON.parse(fs.readFileSync(path.join(dir, '.warpdom-compare', 'results.json'), 'utf8'));
+    const envs = (run) => Object.fromEntries(run.projects.map((p) => [p.name, p.environment]));
+    assert.deepEqual(envs(result.runs[1]), { inline: 'warpdom', server: 'node', web: 'warpdom' });
+    assert.deepEqual(leftovers(dir), []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // Jest is not a dependency of warpdom: this runs when WARPDOM_COMPARE_JEST
 // names a node_modules directory that has jest and jest-environment-jsdom.
 const jestModules = process.env.WARPDOM_COMPARE_JEST;
@@ -630,6 +880,29 @@ test('compare end to end (Jest)', { skip: !jestModules && 'set WARPDOM_COMPARE_J
     assert.match(res.stdout, /warpdom compare: jest \d/);
     assert.match(res.stdout, /1 pass on jsdom and fail on warpdom, 1 fail on jsdom and pass on warpdom/);
     assert.match(res.stdout, /Not compared: 1 file \(1 test\) chooses jsdom with a comment and were not switched \(Jest reads the comment in its workers\)/);
+    assert.deepEqual(leftovers(dir), []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('compare end to end (Jest projects): project directories by glob, inline projects', { skip: !jestModules && 'set WARPDOM_COMPARE_JEST to a node_modules with jest' }, () => {
+  const dir = fixtureProject('compare-jest-projects', {
+    jest: path.join(jestModules, 'jest'),
+    'jest-environment-jsdom': path.join(jestModules, 'jest-environment-jsdom'),
+    '.bin/jest': fs.realpathSync(path.join(jestModules, '.bin', 'jest')),
+  });
+  try {
+    const res = compareCli(dir, ['--correctness']);
+    assert.equal(res.status, 1, res.stdout + res.stderr);
+    assert.match(res.stdout, /warpdom compare: jest \S+, 3 projects/);
+    assert.match(res.stdout, /3 tests, 1 test with the same status; 1 pass on jsdom and fail on warpdom, 1 fail on jsdom and pass on warpdom/);
+    assert.match(res.stdout, /Not compared: 1 project on node \(1 test\), ran unchanged in both runs/);
+    const result = JSON.parse(fs.readFileSync(path.join(dir, '.warpdom-compare', 'results.json'), 'utf8'));
+    const envs = (run) => Object.fromEntries(run.projects.map((p) => [p.name, p.environment]));
+    assert.deepEqual(envs(result.runs[0]), { web: 'jsdom', inline: 'jsdom', server: 'node' });
+    assert.deepEqual(envs(result.runs[1]), { web: 'warpdom', inline: 'warpdom', server: 'node' });
+    assert.ok(result.correctness.differences.every((d) => d.key.startsWith('web::')));
     assert.deepEqual(leftovers(dir), []);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

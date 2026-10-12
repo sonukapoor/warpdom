@@ -11,7 +11,7 @@ const VITEST_WORKSPACES = ['vitest.workspace', 'vitest.projects'];
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 
 // The runner's own config lookup order in a directory. Vitest: vitest.config.*,
-// then vite.config.*; a vitest.workspace.* is reported (monorepos come later).
+// then vite.config.* (a vitest.workspace.* is found by findVitestWorkspace).
 // Jest: jest.config.*, then package.json "jest". Returns null when none.
 export function findConfig(dir, runner) {
   const names = runner === 'vitest' ? VITEST_CONFIGS : ['jest.config'];
@@ -75,11 +75,11 @@ export function detectRunner(dir, { runner = null, config = null } = {}) {
     const bin = findBin(dir, r);
     if (bin) found[r] = { runner: r, config: findConfig(dir, r), bin };
   }
-  const withConfig = Object.values(found).filter((f) => f.config);
+  // A Vitest workspace file without a config counts as Vitest's config.
+  const withConfig = Object.values(found).filter((f) => f.config || (f.runner === 'vitest' && findVitestWorkspace(dir)));
   if (withConfig.length === 1) return withConfig[0];
   if (withConfig.length > 1) return { error: 'both Vitest and Jest are configured here; pass --runner vitest or --runner jest' };
   if (runner && found[runner]) return found[runner];
-  if (found.vitest && !found.jest && findVitestWorkspace(dir)) return found.vitest;
   if (found.jest && !found.vitest) return found.jest;
   if (found.vitest && found.jest) return { error: 'both Vitest and Jest are installed and neither has a config here; pass --runner vitest or --runner jest' };
   if (found.vitest) return { error: 'no Vitest config found here (vitest.config.* or vite.config.*); run compare where you run vitest' };

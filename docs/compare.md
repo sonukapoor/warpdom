@@ -1,8 +1,9 @@
 # `warpdom compare` (design draft)
 
 Status: design, 2026-10-12 (open questions decided the same day).
-Milestones 1-3 implemented in `src/compare/` (branch feat/compare). See
-PLAN.md, "Reproducibility and a compare command before going public".
+Milestones 1-4 implemented in `src/compare/` (milestone 4, monorepos, on
+branch feat/compare-monorepo). See PLAN.md, "Reproducibility and a compare
+command before going public".
 
 ## Why
 
@@ -29,7 +30,8 @@ npx warpdom compare [options] [-- runner arguments]
 ```
 
 Run in the directory where `vitest` or `jest` is normally run (a package,
-or a monorepo root with a Vitest workspace or Jest projects).
+or a monorepo root with Vitest projects, a Vitest workspace or Jest
+projects).
 
 | Option | Default | Meaning |
 |---|---|---|
@@ -80,11 +82,12 @@ first, with warpdom's error message for each group.
 - **Runner:** `vitest` or `jest` from the nearest config file and the
   binary in `node_modules/.bin`. Both present: ask for `--runner`.
 - **Config:** the runner's own lookup order (`vitest.config.*`,
-  `vite.config.*`, `vitest.workspace.*`; `jest.config.*`, `package.json`
-  "jest").
+  `vite.config.*`, and with Vitest 2 and 3 `vitest.workspace.*`, also
+  without a config; `jest.config.*`, `package.json` "jest").
 - **Environment per project:** only projects on jsdom or happy-dom switch.
   Node projects and Vitest browser-mode projects run unchanged in both
-  runs, and the report says they were not compared.
+  runs; their tests are not compared, and the report says so per project
+  (see "Monorepos").
 - **jsdom version:** the installed jsdom (the same detection as the Vitest
   adapter's `jsdomVersion`), so warpdom runs with the matching profile.
   The report names it.
@@ -160,6 +163,80 @@ workers, where the wrapper config does not run. Pinned Jest files run on
 the baseline in both runs; the report says "N files choose jsdom with a
 comment and were not switched", leaves their tests out of the comparison,
 and lists any of them whose status changed between runs anyway.
+
+### Monorepos (projects, workspaces)
+
+Compare runs where the runner is configured: a monorepo root with Vitest
+projects or Jest projects, or one package inside a monorepo (pnpm, yarn or
+npm workspaces). The runner binary is found walking up from there, so a
+binary hoisted to the root is used; warpdom is copied into the package's
+own `node_modules` when it has one, else next to the runner's.
+
+**Vitest.** Supported from Vitest 2 to 5:
+
+- `test.projects` (Vitest 3.2 and later) and `test.workspace` (3.x),
+  inline: objects, functions and promises are switched like the root
+  config (functions and promises when Vitest calls them).
+- Workspace files (`vitest.workspace.*` / `vitest.projects.*`, read by
+  Vitest 2 and 3 only, also without a root config, and a `test.workspace`
+  path): compare writes a wrapper next to the file and points
+  `test.workspace` at it.
+- Strings (config files, directories, globs, `<rootDir>`, `!` negations)
+  are resolved the way Vitest does it: a directory's `vitest.config.*` or
+  `vite.config.*`, else a project with Vitest's defaults; `node_modules`
+  skipped. Each config found gets its own wrapper next to it
+  (`<name>.warpdom-compare.<role>.*`, which still matches Vitest's
+  project file name rule), and the root wrapper replaces the string with
+  the list. The root config listed as a project becomes the root wrapper.
+- Inheritance: `extends: true` (and, from Vitest 5, no `extends`) inherits
+  the switched root environment; `extends: '<file>'` is pointed at that
+  file's wrapper.
+
+**Jest.** `projects` with inline objects (switched, they do not inherit
+the root `testEnvironment`), and strings: `<rootDir>` replaced, globs
+expanded from the working directory, a directory read through its
+`jest.config.*` or `package.json` "jest". Each config found gets a wrapper;
+a directory without a config stays as it is. A project pointing back at
+the root (`<rootDir>`, `.`) runs through the root wrapper; as the only
+project it is dropped and the root config runs itself, as before.
+
+**Which project ran each test.** Neither runner's JSON report says (Vitest
+2 to 5 and Jest's `--json` list files only). Compare adds a small reporter
+(`*.warpdom-compare.reporter.*`, a temporary file like the wrappers; Vitest
+gets it with `--reporter`, Jest through the wrapper's `reporters`, after the
+project's own) that records the project of each file result and each
+project's environment, in the JSON report's order (a file in two projects
+is matched by occurrence). With it:
+
+- test keys carry the project name, so the same file in two projects is
+  two sets of tests;
+- the projects come from the first baseline run, including those in other
+  files, with their environments; projects on node or in browser mode are
+  not compared (except Vitest files whose comment switched them to a DOM),
+  and status changes there are listed in the details;
+- a DOM project still on jsdom or happy-dom in the warpdom run (one
+  compare could not reach) is reported as not switched and not compared;
+- `report.md` details have a table per project (compared, same, each
+  difference class, flaky, not compared). The summary gives counts only:
+  project names may be private, so they appear in the details only.
+
+**Limitations.**
+
+- Projects in other files are only known once they run: the "nothing to
+  compare" check for them happens after the first baseline run, and when
+  the root config defines no DOM project itself, the baseline name (jsdom
+  or happy-dom, which also decides how pinned comments switch on the
+  baseline) is taken from the installed packages, jsdom first.
+  `--baseline` overrides it.
+- Strings inside project config files (Vitest 5 nested projects) are not
+  resolved; such projects run unswitched and are reported as such.
+- Globs: `*`, `**`, `?`, `[...]`, `{a,b}` and `!` negations; no extglobs.
+- Jest projects without `displayName` are named by their `rootDir`; two
+  of them with the same `rootDir` cannot be told apart (their tests share
+  keys, numbered).
+- A `--reporters` runner argument replaces Jest's configured reporters,
+  including compare's: then every project's tests are compared, with a
+  warning.
 
 ### Timing
 
@@ -290,7 +367,8 @@ Timing in CI is noisy (shared 2- or 4-core machines). The docs recommend
    generators already have fixtures in dom-api-tracer).
 2. `--correctness` on one package (Vitest and Jest), report and exit code.
 3. Timing rounds, flaky detection, environment record.
-4. Monorepos (Vitest workspace/projects, Jest projects).
+4. Monorepos (Vitest workspace/projects, Jest projects). Done
+   2026-10-12 (see "Monorepos").
 5. `--explore`.
 6. The corpus timing on top of `compare()`; the GitHub workflow moves here.
 7. README section and CI example; then the public release.

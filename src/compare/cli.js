@@ -7,7 +7,10 @@ and report every test whose status differs and how much faster warpdom is.
 Usage:
   npx warpdom compare [options] [-- runner arguments]
 
-Run it where you run vitest or jest. Nothing in the project is edited.
+Run it where you run vitest or jest: a package, or a monorepo root with
+Vitest projects (or a workspace file) or Jest projects. Only projects on
+jsdom or happy-dom switch; the others run unchanged and are not compared.
+Nothing in the project is edited.
 
 Options:
   --rounds <n>        Timed rounds, each runs the baseline and warpdom,
