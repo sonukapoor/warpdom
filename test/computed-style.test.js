@@ -150,14 +150,34 @@ test('getComputedStyle: shadow trees use their own style sheets', () => {
   assert.equal(w.getComputedStyle(inner).color, 'rgb(0, 0, 255)', 'inherits from the host, not document rules');
 });
 
-test('getComputedStyle: var() and disabled style sheets', () => {
+// jsdom (20 to 30) does not substitute var(): a value with var() computes
+// to itself and inherits so (jest-dom's toHaveStyle({ color:
+// 'var(--accent-color)' }) passes on it; wire-webapp's tests rely on it).
+// Custom properties are inherited from jsdom 29 on; there currentcolor is
+// transparent when the color is a var() value.
+const varScenario = (w) => {
+  const d = w.document;
+  d.head.innerHTML = '<style>:root{--size:7px} .p{color:var(--c);visibility:var(--v)} .v{width:var(--size);height:var(--missing, 8px);'
+    + 'font-weight:var(--fw);display:var(--d, block);font-size:calc(var(--size) * 2);border-top-style:solid;--own:1px;--ref:var(--own)}</style>';
+  d.body.innerHTML = '<div class=p><span class=v id=a style="margin-top:var(--size);color:var(--accent-color)"></span><i id=b></i></div>';
+  return ['a', 'b'].map((id) => {
+    const cs = w.getComputedStyle(d.getElementById(id));
+    return ['width', 'height', 'font-weight', 'display', 'font-size', 'margin-top', 'color', 'visibility', 'border-top-color', '--size', '--own', '--ref']
+      .map((p) => cs.getPropertyValue(p));
+  });
+};
+parity('getComputedStyle: var() is not substituted', varScenario);
+parity('getComputedStyle: var() is not substituted (jsdom 26)', varScenario, { jsdom: 26 });
+parity('getComputedStyle: var() is not substituted (jsdom 22)', varScenario, { jsdom: 22 });
+
+test('getComputedStyle: disabled style sheets', () => {
   const w = createWindow();
   const d = w.document;
-  d.head.innerHTML = '<style>:root{--size:7px} .v{width:var(--size);height:var(--missing, 8px);color:var(--nope)}</style>';
+  d.head.innerHTML = '<style>.v{width:7px}</style>';
   const e = d.body.appendChild(d.createElement('div'));
   e.className = 'v';
   const cs = w.getComputedStyle(e);
-  assert.deepEqual([cs.width, cs.height, cs.color, cs.getPropertyValue('--size')], ['7px', '8px', 'rgb(0, 0, 0)', '7px']);
+  assert.equal(cs.width, '7px');
   // Deliberate deviations: jsdom ignores flex-flow, and still applies a
   // disabled style sheet.
   e.style.flexFlow = 'column wrap';

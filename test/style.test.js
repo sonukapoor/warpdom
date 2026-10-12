@@ -358,3 +358,57 @@ test('style: url() quotes follow the cssstyle jsdom 26 and earlier load', () => 
   assert.equal(image({ jsdom: 25 }), 'url("a.png")');
   assert.equal(image({ jsdom: 30, cssstyle: '4.1.0' }), 'url("a.png")');
 });
+
+// The font shorthand of cssstyle before 4.4 (jsdom 20 to 25): each word
+// goes to every font longhand that accepts it, and font reads as those
+// longhands in a fixed order (20px Arial is "Arial 20px 20px"); setting
+// font drops the longhands set before and moves it to the end.
+// Excalidraw's text editor snapshot (jsdom 22) records it.
+const legacyFonts = (w) => {
+  const d = w.document;
+  const out = [];
+  const read = (s) => [s.cssText, s.font, s.fontFamily, s.fontSize, s.fontStyle, s.fontVariant, s.fontWeight, s.lineHeight];
+  for (const value of ['20px Excalifont, Xiaolai, sans-serif, Segoe UI Emoji', 'bold 12px Arial', 'italic bold 12px/30px Georgia, serif',
+    '12px / 1.5 "A B"', 'normal normal 400 16px/normal system-ui', 'small-caps 1.2em serif', 'LARGE Arial', 'xxx-large a', '12px red',
+    '1 x', '0 x', '450 x', '1.5 x', 'calc(1px + 2px) x', '12px var(--a)', 'inherit', 'initial', 'caption', '12PX ARIAL']) {
+    const s = d.createElement('div').style;
+    s.font = value;
+    out.push(read(s));
+  }
+  // Excalidraw's text editor: font, then line height, set again on each update.
+  const s = d.createElement('div').style;
+  Object.assign(s, { margin: 0, zIndex: 'var(--z)' });
+  for (let i = 0; i < 2; i++) Object.assign(s, { font: '20px Excalifont, Xiaolai, sans-serif, Segoe UI Emoji', lineHeight: 1.25, width: '10px', opacity: 1 });
+  s.fontFamily = 'Excalifont, Xiaolai, sans-serif, Segoe UI Emoji';
+  out.push(read(s));
+  for (const steps of [[['fontWeight', 'bold'], ['font', '20px Arial']], [['font', '20px Arial'], ['font', '1']], [['font', '20px Arial'], ['fontWeight', 'bold'], ['font', '']],
+    [['font', '20px Arial'], ['font', 'inherit']], [['font', 'bold 20px Arial'], ['fontFamily', 'Foo']]]) {
+    const t = d.createElement('div').style;
+    for (const [k, v] of steps) t[k] = v;
+    out.push(read(t));
+  }
+  for (const text of ['font-weight: bold; font: 20px Arial; color: red', 'font: 20px Arial; color: red; font: 12px b', 'font: 20px Arial !important', 'font-weight: bold; font: inherit']) {
+    const e = d.createElement('div');
+    e.setAttribute('style', text);
+    out.push(read(e.style));
+  }
+  return out;
+};
+parity('style: the font shorthand (jsdom 22)', legacyFonts, { jsdom: 22 });
+parity('style: the font shorthand (jsdom 25)', legacyFonts, { jsdom: 25 });
+parity('style: the font shorthand (jsdom 20)', legacyFonts, { jsdom: 20 });
+
+// cssstyle 4.2.0 to 4.3.1 (black box): numbers with exponents, more units,
+// and var() is not a font family.
+test('style: the font shorthand of cssstyle 4.2 and 4.3', () => {
+  const font = (options, value) => {
+    const s = createWindow(options).document.createElement('div').style;
+    s.font = value;
+    return [s.cssText, s.fontFamily, s.lineHeight];
+  };
+  assert.deepEqual(font({ jsdom: '25.0.1', cssstyle: '4.1.0' }, '1.5e1 Arial'), ['font: Arial;', 'Arial', '']);
+  assert.deepEqual(font({ jsdom: '25.0.1', cssstyle: '4.3.0' }, '1.5e1 Arial'), ['font: Arial 1.5e1;', 'Arial', '1.5e1']);
+  assert.deepEqual(font({ jsdom: '25.0.1', cssstyle: '4.1.0' }, '12px var(--a)'), ['font: var(--a) 12px 12px;', 'var(--a)', '12px']);
+  assert.deepEqual(font({ jsdom: '26.1.0', cssstyle: '4.3.1' }, '12px var(--a)'), ['', '', '']);
+  assert.deepEqual(font({ jsdom: '25.0.1', cssstyle: '4.3.0' }, '20px 1turn'), ['', '', '']);
+});

@@ -2,7 +2,8 @@
 // the style sheets of an element's root and its style attribute,
 // shorthands expanded into longhands, inheritance, initial values and
 // computed colors. Values are otherwise kept as specified: without layout
-// there are no used values (width: 50% stays 50%).
+// there are no used values (width: 50% stays 50%), and, as in jsdom,
+// var() is not substituted.
 //
 // Each root (a document or a shadow root) keeps an index of its style
 // rules' declarations by longhand, sorted by importance, specificity and
@@ -26,7 +27,7 @@ import { parseDeclarations, computed, validationModeOf, styleSurfaceOf, isLegacy
 
 function addDeclarations(index, decls, entries, counter) {
   for (const [property, { value, important }] of decls) {
-    for (const [name, v] of expand(property, value)) {
+    for (const [name, v] of expand(property, value, decls.legacyFont)) {
       let lists = index.get(name);
       if (!lists) index.set(name, lists = { normal: [], important: [] });
       const order = counter.n++;
@@ -116,8 +117,9 @@ function inlineDeclarations(element) {
   if (text === undefined) return null;
   if (es.inlineCascade?.text === text) return es.inlineCascade.map;
   const map = new Map();
-  for (const [property, { value, important }] of parseDeclarations(text, validationModeOf(es.doc[S].window), styleSurfaceOf(es.doc[S].window))) {
-    for (const [name, v] of expand(property, value)) {
+  const decls = parseDeclarations(text, validationModeOf(es.doc[S].window), styleSurfaceOf(es.doc[S].window));
+  for (const [property, { value, important }] of decls) {
+    for (const [name, v] of expand(property, value, decls.legacyFont)) {
       if (!important && map.get(name)?.important) continue;
       map.set(name, { value: v, important });
     }
@@ -222,6 +224,14 @@ const FONT_WEIGHTS = { normal: '400', bold: '700' };
 const BORDER_WIDTHS = { thin: '1px', medium: '3px', thick: '5px' };
 const BORDER_WIDTH = /^border-(top|right|bottom|left)-width$/;
 
+// currentcolor: the computed color; transparent when that is a var()
+// value jsdom does not substitute (jsdom 29 and later; before, the
+// var() value itself).
+function currentColor(element) {
+  const color = computedValue(element, 'color');
+  return color.includes('var(') && !element[S].doc[S].window[S].compat?.legacyComputedStyle ? 'rgba(0, 0, 0, 0)' : color;
+}
+
 // Computes a specified value: colors resolved, currentcolor to the color
 // property, a 0 length to 0px, keyword font sizes, weights and border
 // widths to numbers and lengths.
@@ -232,7 +242,7 @@ function computeValue(element, name, value, data) {
       const token = parts[i];
       if (!token) continue;
       if (token.toLowerCase() === 'currentcolor') {
-        parts[i] = name === 'color' ? inheritedValue(element, 'color', data) : computedValue(element, 'color');
+        parts[i] = name === 'color' ? inheritedValue(element, 'color', data) : currentColor(element);
       } else {
         parts[i] = resolveColor(token) ?? token;
       }
@@ -263,35 +273,6 @@ function inheritedValue(element, name, data) {
   return parent ? computedValue(parent, name) : initialValue(element, name, data);
 }
 
-// var() references replaced by the custom properties' computed values;
-// undefined when one is missing and has no fallback.
-function substitute(element, value, depth = 0) {
-  if (depth > 16) return undefined;
-  let out = '';
-  let i = 0;
-  for (;;) {
-    const at = value.indexOf('var(', i);
-    if (at < 0) return out + value.slice(i);
-    out += value.slice(i, at);
-    let depthParen = 0, end = at + 3;
-    for (; end < value.length; end++) {
-      if (value[end] === '(') depthParen++;
-      else if (value[end] === ')' && --depthParen === 0) break;
-    }
-    const inner = value.slice(at + 4, end);
-    const comma = inner.indexOf(',');
-    const name = (comma < 0 ? inner : inner.slice(0, comma)).trim();
-    let replacement = computedValue(element, name);
-    if (replacement === '') {
-      if (comma < 0) return undefined;
-      replacement = substitute(element, inner.slice(comma + 1).trim(), depth + 1);
-      if (replacement === undefined) return undefined;
-    }
-    out += replacement;
-    i = end + 1;
-  }
-}
-
 const CUSTOM = [null, 1, 0, 0];
 
 
@@ -316,7 +297,6 @@ function shorthandValue(element, name) {
   // toHaveStyle({ background: 'red' }) compares like with like).
   let value = cascaded(element, name);
   if (value === undefined || CSS_WIDE.has(value.toLowerCase())) return '';
-  if (value.includes('var(')) value = substitute(element, value) ?? '';
   return value;
 }
 
@@ -397,9 +377,12 @@ export function computedValue(element, property) {
   // the style attribute.
   if (name === 'display' && element[S].ns === HTML_NS && element[S].attrs.has('hidden') && !inlineDeclarations(element)?.has('display')) return 'none';
   let value = cascaded(element, name);
-  if (value === undefined && !custom && element[S].doc[S].window[S].compat?.legacyComputedStyle) return legacyDefault(element, name);
+  // jsdom before 29: custom properties are not inherited either.
+  if (value === undefined && element[S].doc[S].window[S].compat?.legacyComputedStyle) return custom ? '' : legacyDefault(element, name);
   if (value === undefined && name === 'direction' && uaDirection(element)) return directionality(element);
-  if (value !== undefined && !custom && value.includes('var(')) value = substitute(element, value);
+  // As in jsdom (20 to 30, black box): a value with var() is not
+  // substituted, it computes to itself (and inherits so).
+  if (value !== undefined && !custom && value.includes('var(')) return value;
   const keyword = value === undefined ? (data[1] ? 'inherit' : 'initial') : value.toLowerCase();
   switch (keyword) {
     case 'inherit': return inheritedValue(element, name, data);

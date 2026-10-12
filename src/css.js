@@ -7,7 +7,7 @@ import { STYLE_ACCESSORS } from './css-properties.js';
 import { SURFACES } from './style-surface.js';
 import { LONGHANDS, SHORTHANDS, COLOR_SHORTHANDS, ALIASES } from './css-data.js';
 import { isValidValue } from './css-values.js';
-import { expand, segments, serializeBox, serializeFont, positionLayers } from './shorthands.js';
+import { expand, segments, serializeBox, serializeFont, positionLayers, legacyFont, LEGACY_FONT_LONGHANDS } from './shorthands.js';
 import { resolveColor } from './colors.js';
 
 // backgroundColor -> background-color, webkitAnimation/WebkitAnimation ->
@@ -211,9 +211,34 @@ const surfaces = new WeakMap(); // CSSStyleProperties prototype -> styleSurface 
 // style.webkitUserSelect, and assigning it creates an own data property
 // (react-spectrum's usePress tests save and restore it that way); cssstyle
 // 2 to 4.3 write it as webkit-user-select.
-export function setValidationMode(proto, mode, surfaceKey = null) {
+// fontVariant: cssstyle's font shorthand before 4.4 ('cssstyle4.1' or
+// 'cssstyle4.2', see legacyFont in shorthands.js), or null.
+export function setValidationMode(proto, mode, surfaceKey = null, fontVariant = null) {
   modes.set(proto, mode);
-  if (surfaceKey !== null) surfaces.set(proto, styleSurface(surfaceKey));
+  if (surfaceKey !== null) surfaces.set(proto, fontVariant === null ? styleSurface(surfaceKey) : legacyFontSurface(surfaceKey, fontVariant));
+}
+
+// A style surface with cssstyle's font shorthand before 4.4: the same
+// names, its own declared value caches.
+const fontSurfaces = new Map();
+function legacyFontSurface(key, variant) {
+  let surface = fontSurfaces.get(`${key} ${variant}`);
+  if (surface === undefined) {
+    surface = { ...styleSurface(key), legacyFont: variant, caches: Object.create(null) };
+    fontSurfaces.set(`${key} ${variant}`, surface);
+  }
+  return surface;
+}
+const isLegacyFont = (surface, name) => name === 'font' && surface !== null && surface.legacyFont !== undefined;
+
+// Before 4.4 cssstyle's font removes the font longhands before it is set,
+// and itself too when set through the style object (it moves to the end,
+// as a new declaration); inherit removes them all.
+function removeLegacyFont(decls, surface, itself = true) {
+  let removed = itself && decls.delete('font');
+  for (const longhand of LEGACY_FONT_LONGHANDS) removed = decls.delete(longhand) || removed;
+  decls.legacyFont = surface.legacyFont;
+  return removed;
 }
 
 // A profile's style surface, from its measured data (black box; generated
@@ -273,6 +298,7 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
     if (mode === 'page') out = pageDescriptorValue(name, value);
     else if (surface !== null && surface.extras.has(name)) out = value;
     else if (!isKnownProperty(name)) out = INVALID;
+    else if (isLegacyFont(surface, name)) out = /^inherit$/i.test(value) ? INVALID : legacyFont(value, surface.legacyFont) ?? INVALID;
     else {
       out = versionedValue(name, value, mode);
       if (out === undefined) {
@@ -542,6 +568,7 @@ function parseInto(decls, text, mode, surface = null) {
     const bang = value.match(/\s*!\s*important\s*$/i);
     if (bang) { important = true; value = value.slice(0, bang.index).trim(); }
     if (!name || !value || dropped(surface, name)) continue;
+    if (isLegacyFont(surface, name) && /^inherit$/i.test(value)) { removeLegacyFont(decls, surface); continue; }
     const declared = declaredValue(name, value, mode, surface);
     if (declared === INVALID) continue;
     if (!isLegacyMode(mode)) {
@@ -549,6 +576,7 @@ function parseInto(decls, text, mode, surface = null) {
       if (important && SHORTHANDS[name]) for (const longhand of SHORTHANDS[name]) (covered ??= new Set()).add(longhand);
     }
     if (MERGEABLE.has(name)) decls.mergeable = true;
+    if (isLegacyFont(surface, name)) removeLegacyFont(decls, surface, false);
     decls.set(name, { value: declared, important });
   }
 }
@@ -811,7 +839,7 @@ const valueOf = (style, name) => {
   if (s.computed) return computedOverride(s, name) ?? computed.value(s.element, name);
   const decl = s.decls.get(name);
   if (decl) return decl.value;
-  if (LONGHANDS[name]) return fromShorthand(s.decls, name);
+  if (LONGHANDS[name] || (s.decls.legacyFont !== undefined && LEGACY_FONT_LONGHANDS.has(name))) return fromShorthand(s.decls, name);
   // jsdom 26 read background as the background-color set alone.
   if (name === 'background' && isLegacyMode(s.mode)) return s.decls.get('background-color')?.value ?? '';
   return COMPOSED[name] ? composeShorthand(s.decls, name) : '';
@@ -829,7 +857,7 @@ function fromShorthand(decls, longhand) {
   let found = '';
   for (const [name, { value }] of decls) {
     if (!EXPANDED_SHORTHANDS.has(name)) continue;
-    for (const [part, v] of expand(name, value)) if (part === longhand) found = v;
+    for (const [part, v] of expand(name, value, decls.legacyFont)) if (part === longhand) found = v;
   }
   return found;
 }
@@ -865,16 +893,18 @@ function setDeclaration(style, name, value, priority = '') {
   }
   // [LegacyNullToEmptyString]: null removes the declaration; undefined is
   // the string "undefined", an invalid value (as in jsdom).
-  const raw = value === null ? '' : String(value).trim();
+  let raw = value === null ? '' : String(value).trim();
+  if (isLegacyFont(s.surface, name) && /^inherit$/i.test(raw)) raw = '';
   // The style attribute is updated only when a declaration changed (CSSOM).
   if (raw === '') {
-    if (s.decls.delete(name)) { reindex(style); sync(style); }
+    if (isLegacyFont(s.surface, name) ? removeLegacyFont(s.decls, s.surface) : s.decls.delete(name)) { reindex(style); sync(style); }
     return;
   }
   // Unknown properties and invalid values are ignored (CSSOM).
   const text = declaredValue(name, raw, s.mode, s.surface);
   if (text === INVALID) return;
   const important = String(priority).toLowerCase() === 'important';
+  if (isLegacyFont(s.surface, name) && removeLegacyFont(s.decls, s.surface)) reindex(style);
   const old = s.decls.get(name);
   if (old && old.value === text && old.important === important) return;
   if (old === undefined && MERGEABLE.has(name)) s.decls.mergeable = true;

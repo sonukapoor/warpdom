@@ -2,7 +2,7 @@
 // sets (margin: 0 auto -> margin-top: 0, margin-right: auto, ...), for the
 // cascade and for reading longhands from a style declaration.
 import { LONGHANDS, SHORTHANDS, ALIASES } from './css-data.js';
-import { resolveColor } from './colors.js';
+import { resolveColor, NAMED_COLORS } from './colors.js';
 
 // --- values ------------------------------------------------------------------
 
@@ -105,6 +105,107 @@ export function serializeFont(value) {
   return [f.style !== 'normal' ? f.style : '', f.weight !== 'normal' ? f.weight : '', f.size, f.lineHeight !== 'normal' ? `/ ${f.lineHeight}` : '', f.family]
     .filter(Boolean).join(' ');
 }
+
+// The font shorthand of cssstyle before 4.4 (jsdom 20 to 26; black box,
+// cssstyle 2.3.0 to 4.3.1). The value is split at whitespace outside
+// quotes and parentheses; each word is given to every longhand that
+// accepts it alone (a later word replaces an earlier one), and a word no
+// longhand accepts drops the declaration. The shorthand reads as the
+// longhands it set, in the order font-family, font-size, font-style,
+// font-variant, font-weight, line-height: 20px Arial is "Arial 20px 20px"
+// (20px is a size and a line height), and a family list keeps its last
+// word (Segoe UI Emoji gives "Emoji"). Variant 'cssstyle4.2' (4.2.0 to
+// 4.3.1) reads numbers with exponents, more length units and turn, and
+// does not take var() as a family.
+const LEGACY_FONT_ORDER = ['font-family', 'font-size', 'font-style', 'font-variant', 'font-weight', 'line-height'];
+export const LEGACY_FONT_LONGHANDS = new Set(LEGACY_FONT_ORDER);
+const LEGACY_FONT_SIZES = new Set(['xx-small', 'x-small', 'small', 'medium', 'large', 'x-large', 'xx-large', 'larger', 'smaller']);
+const NAMED = new Set([...NAMED_COLORS, 'transparent', 'currentcolor']);
+// The CSS 2 system colors, the ones cssstyle before 4.4 knows.
+const LEGACY_SYSTEM_COLORS = new Set(['activeborder', 'activecaption', 'appworkspace', 'background', 'buttonface', 'buttonhighlight',
+  'buttonshadow', 'buttontext', 'captiontext', 'graytext', 'highlight', 'highlighttext', 'inactiveborder', 'inactivecaption',
+  'inactivecaptiontext', 'infobackground', 'infotext', 'menu', 'menutext', 'scrollbar', 'threeddarkshadow', 'threedface',
+  'threedhighlight', 'threedlightshadow', 'threedshadow', 'window', 'windowframe', 'windowtext']);
+const LEGACY_HEX = /^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+const LEGACY_NUMBERS = {
+  'cssstyle4.1': { integer: /^[-+]?\d+$/, number: /^[-+]?\d*\.\d+$/, body: '[-+]?(\\d+|\\d*\\.\\d+)',
+    units: 'px|em|rem|ch|vh|vw|ex|pt|pc|in|cm|mm', angles: 'deg|grad|rad' },
+  'cssstyle4.2': { integer: /^[-+]?(0|[1-9]\d*)$/, number: /^[-+]?((0|[1-9]\d*)(\.\d*)?|\.\d+)(e-?\d+)?$/, body: '[-+]?((0|[1-9]\\d*)(\\.\\d*)?|\\.\\d+)(e-?\\d+)?',
+    units: 'px|em|rem|ch|ex|pt|pc|in|cm|mm|q|[sld]?(vw|vh|vi|vb|vmin|vmax)|lh|rlh|cap|rcap|ic|ric|rex|rch', angles: 'deg|grad|rad|turn' },
+};
+const legacyTypes = new Map();
+function legacyFontTypes(variant) {
+  let types = legacyTypes.get(variant);
+  if (!types) {
+    const n = LEGACY_NUMBERS[variant];
+    types = { ...n, variant, length: new RegExp(`^${n.body}(${n.units})$`), percent: new RegExp(`^${n.body}%$`), angle: new RegExp(`^${n.body}(${n.angles})$`) };
+    legacyTypes.set(variant, types);
+  }
+  return types;
+}
+const isLegacyNumber = (t, types) => types.number.test(t) && !types.integer.test(t);
+const isLegacyColor = (t) => LEGACY_HEX.test(t) || NAMED.has(t.toLowerCase()) || LEGACY_SYSTEM_COLORS.has(t.toLowerCase());
+// A family name: not a number, length, percentage, angle, color, url() or
+// calc() (in 4.2 and later not var() either); in a comma list one such
+// name is enough.
+function legacyFamilyName(t, types) {
+  if (t === '' || types.integer.test(t) || isLegacyNumber(t, types) || types.length.test(t) || types.percent.test(t) || types.angle.test(t)) return false;
+  if (t.startsWith('url(') || t.startsWith('calc(') || (types.variant !== 'cssstyle4.1' && t.startsWith('var('))) return false;
+  return !isLegacyColor(t);
+}
+function legacyFontAccepts(longhand, t, types) {
+  const lower = t.toLowerCase();
+  switch (longhand) {
+    case 'font-family': return t.split(',').some((name) => legacyFamilyName(name, types));
+    case 'font-size': return LEGACY_FONT_SIZES.has(lower) || types.length.test(t) || types.percent.test(t);
+    case 'font-style': return lower === 'normal' || lower === 'italic' || lower === 'oblique';
+    case 'font-variant': return lower === 'normal' || lower === 'small-caps';
+    case 'font-weight': return lower === 'normal' || lower === 'bold' || lower === 'bolder' || lower === 'lighter' || /^[1-9]00$/.test(t);
+    default: return lower === 'normal' || isLegacyNumber(t, types) || types.length.test(t) || types.percent.test(t);
+  }
+}
+function legacyFontWords(value) {
+  const out = [];
+  let depth = 0, quote = null, start = 0;
+  for (let i = 0; i <= value.length; i++) {
+    const c = value[i];
+    if (quote) { if (c === quote) quote = null; continue; }
+    if (c === '"' || c === "'") quote = c;
+    else if (c === '(') depth++;
+    else if (c === ')') depth = Math.max(0, depth - 1);
+    else if (i === value.length || (depth === 0 && /\s/.test(c))) {
+      if (i > start) out.push(value.slice(start, i));
+      start = i + 1;
+    }
+  }
+  return out;
+}
+// The longhands each legacy font value set: its words alone do not tell
+// (in "Arial 12px bold 12px" bold could be the family).
+const legacyFontParts = new Map();
+// The declared value, or null when the declaration is dropped.
+export function legacyFont(value, variant) {
+  const types = legacyFontTypes(variant);
+  const set = new Map();
+  for (const word of legacyFontWords(value)) {
+    let taken = false;
+    for (const longhand of LEGACY_FONT_ORDER) {
+      if (!legacyFontAccepts(longhand, word, types)) continue;
+      set.set(longhand, longhand === 'font-size' && LEGACY_FONT_SIZES.has(word.toLowerCase()) ? word.toLowerCase() : word);
+      taken = true;
+    }
+    if (!taken) return null;
+  }
+  const parts = LEGACY_FONT_ORDER.filter((l) => set.has(l)).map((l) => [l, set.get(l)]);
+  if (!parts.length) return null;
+  const text = parts.map(([, v]) => v).join(' ');
+  const key = `${variant} ${text}`;
+  if (legacyFontParts.size >= 1000) legacyFontParts.clear();
+  if (!legacyFontParts.has(key)) legacyFontParts.set(key, parts);
+  return text;
+}
+const legacyFontLonghands = (text, variant) => legacyFontParts.get(`${variant} ${text}`)
+  ?? (legacyFont(text, variant) === null ? [] : legacyFontParts.get(`${variant} ${text}`));
 
 // A <bg-position> (CSS Backgrounds 3) as its horizontal and vertical
 // parts, as jsdom 27 and later split it: one value is centered on the
@@ -293,10 +394,12 @@ function expandShorthand(name, value) {
 
 // A declaration as the [name, value] pairs it contributes: itself (a
 // shorthand stays readable whole) and the longhands of an expanded shorthand.
+// fontVariant: the declarations hold cssstyle's font before 4.4 (legacyFont).
 const expansions = new Map();
-export function expand(property, value) {
+export function expand(property, value, fontVariant = undefined) {
   const name = ALIASES[property] ?? property;
   if (!SHORTHANDS[name]) return [[name, value]];
+  if (fontVariant !== undefined && name === 'font') return [[name, value], ...legacyFontLonghands(value, fontVariant)];
   const key = `${name}:${value}`;
   let out = expansions.get(key);
   if (!out) {

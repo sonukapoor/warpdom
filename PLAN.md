@@ -1923,3 +1923,66 @@ Known differences (not reproduced):
   plain number (only calc()).
 - jsdom 30 (and 28.1+): setProperty('-webkit-background-clip' / -origin /
   -size) writes the unprefixed name; warpdom keeps the prefixed one.
+
+## 2026-10-12: Web application suites (branch fix/app-gaps)
+
+Two applications (dom-api-tracer corpus/apps.json, pinned in
+corpus/apps-pins.json) differed from jsdom locally: Excalidraw (Vitest
+3.0.6, jsdom 22.1) 1 test, wire-webapp (Jest 30, jsdom 26.1.0 with
+cssstyle 4.6.0 through jest-environment-jsdom) 2 tests and 2 test files
+that did not run (139 tests). All three causes measured black box; both
+apps now give every test jsdom's status (Excalidraw 2508/2556, wire-webapp
+4926/4945, 0 tests and 0 files differ).
+
+- **Jest teardown** (wire-webapp's conversations.test.tsx and
+  ConversationRepository.test.ts): warpdom/jest's teardown deleted every
+  window member from the test's global, so Dexie's promise chain, still
+  running after the file, hit `queueMicrotask is not defined` outside any
+  test and the Jest worker crashed (4 times, then both files failed).
+  jest-environment-jsdom closes the window instead: the global keeps its
+  members (interfaces, queueMicrotask, which still runs), timers return 0
+  and do nothing, document, location, history, localStorage and
+  sessionStorage read undefined, the window's listeners are gone. The
+  teardown now does that. Not modeled: animation frames still run after
+  jsdom's close (warpdom's frame waits for a timer, which no longer runs).
+- **var() in computed styles** (wire-webapp's meetingNotificationCard,
+  `toHaveStyle({ color: 'var(--accent-color)' })` on an Emotion class):
+  warpdom substituted var() in getComputedStyle; jsdom 20 to 30 never
+  does: a value with var() computes to itself and inherits so. Also from
+  the same measurement: custom properties are inherited from jsdom 29 on
+  only (before, '' unless declared on the element), and from jsdom 29 on
+  currentcolor is transparent when the color is a var() value.
+- **cssstyle's font shorthand before 4.4** (Excalidraw's text editor
+  snapshot, jsdom 22): style.font = '20px Excalifont, Xiaolai, sans-serif,
+  Segoe UI Emoji' reads "Emoji 20px 20px". cssstyle 2.3 to 4.3.1 give each
+  word to every font longhand that accepts it alone and write font as those
+  longhands (family, size, style, variant, weight, line-height); setting
+  font removes the longhands set before and moves font to the end; inherit
+  removes them all (shorthands.js legacyFont, compat.legacyFont).
+  Measured on cssstyle 2.3.0, 3.0.0, 4.1.0, 4.2.0, 4.2.1, 4.3.0, 4.3.1 with
+  ~200 words and sequences: 4.2.0 to 4.3.1 differ from earlier ones in
+  numbers (exponents), length units and var(). Not modeled: unbalanced
+  quotes; removing font or a longhand it set (cssstyle keeps implicit
+  longhands readable); getComputedStyle re-parses the serialized font in
+  jsdom 22 and 25 (family "bold" from "Arial 12px bold 12px").
+
+Found while measuring, not fixed (none seen in a suite yet):
+- A shorthand with var() (margin, padding, background, flex, font,
+  border): jsdom 26 and later drop the longhands declared before it from
+  the declaration block, and the longhands compute to their initial
+  values; warpdom keeps the earlier longhands. jsdom 22 and 25 drop the
+  shorthand; warpdom then composes margin from empty longhands ('5px  ').
+- cssstyle 4.4 to 4.6 (jsdom 26): setting font writes its longhands into
+  cssText too ("font-style: normal; ... font: 20px Arial"); warpdom writes
+  font alone.
+- Computed values: jsdom 20 to 28 keep font-weight: bold as bold (warpdom
+  700); jsdom 20 to 25 keep a declared currentcolor as written; jsdom 29
+  and 30 give outline-color rgba(0, 0, 0, 0) (warpdom auto), font-family
+  "depends on user agent" and gap '' when undeclared; jsdom 29 gives
+  medium for undeclared font-size and border widths and normal for
+  font-weight; jsdom 27 and 28 give inline for an undeclared display
+  where warpdom gives ''.
+- `VAR(--a)` (upper case) is not var() for cssstyle: the declaration is
+  dropped; warpdom keeps it.
+- In the Jest environment `String(window)` is "[object Object]" (jsdom:
+  "[object Window]").
