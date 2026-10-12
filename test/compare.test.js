@@ -908,3 +908,30 @@ test('compare end to end (Jest projects): project directories by glob, inline pr
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('compare --fast-frames: warpdom runs get the fastFrames option, baselines do not', async () => {
+  assert.equal(parseArgs(['--fast-frames']).fastFrames, true);
+  assert.equal(parseArgs([]).fastFrames, undefined);
+  const dir = tmp('fast-frames');
+  try {
+    write(path.join(dir, 'vitest.config.mjs'), `export default ${JSON.stringify({ test: { environment: 'jsdom', environmentOptions: { jsdom: { url: 'http://x/' }, warpdom: { jsdom: 26 } }, projects: [{ test: { name: 'p', environment: 'jsdom' } }, { test: { name: 'n', environment: 'node' } }] } })};`);
+    const load = async (name, opts) => {
+      const wrapper = write(path.join(dir, `${name}.warpdom-compare.mjs`), vitestWrapper(path.join(dir, 'vitest.config.mjs'), opts));
+      return (await import(pathToFileURL(wrapper).href)).default({ mode: 'test' });
+    };
+    const fast = await load('fast', { environment: '/w/vitest.js', warpdomOptions: { fastFrames: true } });
+    assert.deepEqual(fast.test.environmentOptions, { jsdom: { url: 'http://x/' }, warpdom: { jsdom: 26, fastFrames: true } }, 'merged, project options kept');
+    assert.deepEqual(fast.test.projects[0].test.environmentOptions, { warpdom: { fastFrames: true } }, 'switched inline project');
+    assert.equal(fast.test.projects[1].test.environmentOptions, undefined, 'node project untouched');
+    const plain = await load('plain', { environment: '/w/vitest.js' });
+    assert.deepEqual(plain.test.environmentOptions, { jsdom: { url: 'http://x/' }, warpdom: { jsdom: 26 } });
+
+    write(path.join(dir, 'jest.config.cjs'), `module.exports = ${JSON.stringify({ testEnvironment: 'jsdom', testEnvironmentOptions: { url: 'http://y/' } })};`);
+    const jw = write(path.join(dir, 'jest.warpdom-compare.cjs'), jestWrapper(path.join(dir, 'jest.config.cjs'), { environment: '/w/jest.js', warpdomOptions: { fastFrames: true } }));
+    const jcfg = await (await import(pathToFileURL(jw).href)).default();
+    assert.equal(jcfg.testEnvironment, '/w/jest.js');
+    assert.deepEqual(jcfg.testEnvironmentOptions, { url: 'http://y/', fastFrames: true });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

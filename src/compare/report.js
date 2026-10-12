@@ -37,7 +37,8 @@ function header(result) {
   const profile = dom?.name === 'jsdom' && dom.version ? ` (warpdom's jsdom-${dom.version.split('.')[0]} profile)` : '';
   const runner = `${result.runner}${result.runnerVersion ? ` ${result.runnerVersion}` : ''}`;
   const projects = (result.projects?.length ?? 0) > 1 ? `, ${plural(result.projects.length, 'project')}` : '';
-  return `warpdom compare: ${runner}${projects}, baseline ${domText}${profile}`;
+  const opts = result.warpdomOptions?.fastFrames ? ', warpdom with fastFrames' : '';
+  return `warpdom compare: ${runner}${projects}, baseline ${domText}${profile}${opts}`;
 }
 
 // Lines about what was not compared (no names).

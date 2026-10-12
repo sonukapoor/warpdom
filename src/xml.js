@@ -211,8 +211,13 @@ function buildElement(w, doc, n, parentScope, inTemplate) {
     const key = `${attrNs ?? ''} ${attrLocal}`;
     if (seen.has(key)) throw new XmlSyntaxError(`duplicate attribute: ${name}`, pos);
     seen.add(key);
+    if (attrNs !== null) {
+      const attrKey = `\0${attrNs}\0${attrLocal}`;
+      attrs.set(attrKey, value);
+      (es.attrNS ?? (es.attrNS = new Map())).set(attrKey, { ns: attrNs, prefix: attrPrefix, local: attrLocal, qn: name });
+      continue;
+    }
     attrs.set(name, value);
-    if (attrNs !== null) (es.attrNS ?? (es.attrNS = new Map())).set(name, { ns: attrNs, prefix: attrPrefix, local: attrLocal });
     if (name.startsWith('on')) handlers = true;
   }
   if (handlers) eventHandlerAttributesAdded(element);
@@ -281,8 +286,8 @@ function inScopeNamespaces(context) {
     const s = el[S];
     if (s.prefix && s.ns !== null && !scope.has(s.prefix)) scope.set(s.prefix, s.ns);
     if (s.attrNS) {
-      for (const info of s.attrNS.values()) {
-        if (info.ns === XMLNS_NS && info.prefix === 'xmlns' && !scope.has(info.local)) scope.set(info.local, s.attrs.get(`xmlns:${info.local}`) ?? '');
+      for (const [key, info] of s.attrNS) {
+        if (info.ns === XMLNS_NS && info.prefix === 'xmlns' && !scope.has(info.local)) scope.set(info.local, s.attrs.get(key) ?? '');
       }
     }
   }

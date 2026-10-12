@@ -74,3 +74,19 @@ test('slots: no slot bookkeeping in documents without slots', () => {
   const S = Object.getOwnPropertySymbols(w.document)[0];
   assert.equal(w.document[S].slotCount, undefined);
 });
+
+// jsdom (25 to 30) computes a slotted element's inherited properties from
+// its node-tree parent (the host), not from its slot in the flat tree as
+// browsers do; tests written for jsdom see the host's values, so warpdom
+// keeps them.
+for (const jsdom of [30, 26, 25]) {
+  parity(`slotted elements inherit from the host, as in jsdom (jsdom ${jsdom})`, (w) => {
+    const d = w.document;
+    d.body.innerHTML = '<div id=host style="color: blue; font-size: 20px; visibility: hidden"><span id=s>x</span><em id=u slot=none>y</em></div>';
+    const host = d.getElementById('host');
+    const shadow = host.attachShadow({ mode: 'open' });
+    shadow.innerHTML = '<div style="color: red; font-size: 30px; visibility: visible; cursor: text"><slot></slot></div>';
+    const style = (el) => { const c = w.getComputedStyle(el); return [c.color, c.fontSize, c.visibility, c.cursor]; };
+    return { slotted: style(d.getElementById('s')), unslotted: style(d.getElementById('u')), slot: style(shadow.querySelector('slot')) };
+  }, { jsdom });
+}

@@ -145,3 +145,149 @@ parity('namespaced attributes', (w) => {
   out.errors = errors;
   return out;
 });
+
+// Attributes are identified by namespace and local name: several with one
+// qualified name coexist, lookups by name find the first, and the change
+// steps of HTML attributes (id, style, event handlers, slot, form controls)
+// apply to attributes in no namespace only.
+for (const jsdom of [30, 26, 25]) {
+  parity(`attributes with one qualified name in different namespaces (jsdom ${jsdom})`, (w) => {
+    const d = w.document;
+    const el = d.createElement('div');
+    el.setAttributeNS('urn:a', 'x', '1');
+    el.setAttribute('x', '2');
+    el.setAttributeNS('urn:b', 'x', '3');
+    el.setAttributeNS('urn:c', 'p:x', '4');
+    el.setAttributeNS('urn:d', 'p:x', '5');
+    const list = () => [...el.attributes].map((a) => [a.name, a.prefix, a.localName, a.namespaceURI, a.value]);
+    const out = {
+      first: [el.getAttribute('x'), el.getAttribute('p:x'), el.hasAttribute('p:x'), el.getAttributeNode('x').namespaceURI],
+      byNs: [el.getAttributeNS(null, 'x'), el.getAttributeNS('urn:b', 'x'), el.getAttributeNS('urn:d', 'x'), el.attributes.getNamedItemNS('urn:c', 'x').value],
+      names: el.getAttributeNames(),
+      own: Object.getOwnPropertyNames(el.attributes),
+      named: [el.attributes.x.namespaceURI, el.attributes['p:x'].value, el.attributes.getNamedItem('x').value],
+      html: el.outerHTML,
+      list: list(),
+    };
+    el.setAttribute('x', 'changed');
+    el.toggleAttribute('p:x');
+    out.afterSet = list();
+    el.removeAttribute('x');
+    out.afterRemove = [list(), el.getAttribute('x')];
+    el.attributes.removeNamedItem('x');
+    out.afterRemoveNamed = list();
+    el.removeAttributeNS('urn:d', 'x');
+    out.afterRemoveNS = list();
+    out.equal = [el.isEqualNode(el.cloneNode()), el.cloneNode().outerHTML];
+    const other = d.createElement('div');
+    other.setAttributeNS('urn:x', 'x', '1');
+    const same = d.createElement('div');
+    same.setAttribute('x', '1');
+    out.notEqual = other.isEqualNode(same);
+    return out;
+  }, { jsdom });
+
+  parity(`setAttributeNode replaces in place and keeps order (jsdom ${jsdom})`, (w) => {
+    const d = w.document;
+    const el = d.createElement('div');
+    el.setAttribute('a', '1');
+    el.setAttributeNS('urn:x', 'p:b', '2');
+    el.setAttribute('c', '3');
+    const replacement = d.createAttributeNS('urn:x', 'q:b');
+    replacement.value = 'new';
+    const old = el.setAttributeNodeNS(replacement);
+    const plain = d.createAttribute('A');
+    plain.value = 'x';
+    const oldA = el.setAttributeNode(plain);
+    return {
+      old: [old.name, old.value, old.ownerElement, old.namespaceURI],
+      oldA: [oldA.name, oldA.value, oldA.ownerElement],
+      list: [...el.attributes].map((a) => [a.name, a.value]),
+      // (jsdom 25 and 26 still find the replaced attribute by its old
+      // qualified name, p:b; jsdom 30 does not.)
+      getB: [el.getAttribute('q:b'), jsdom === 30 ? el.getAttribute('p:b') : null],
+      same: el.setAttributeNode(plain) === null,
+      inUse: (() => { try { d.createElement('p').setAttributeNode(plain); return 'ok'; } catch (e) { return e.name; } })(),
+      detached: (() => { el.removeAttributeNode(replacement); return [replacement.ownerElement, replacement.value, replacement.prefix, replacement.name]; })(),
+    };
+  }, { jsdom });
+}
+
+parity('namespaced attributes do not run the change steps of HTML attributes', async (w) => {
+  const d = w.document;
+  const div = d.createElement('div');
+  d.body.append(div);
+  div.setAttributeNS('urn:x', 'id', 'nsid');
+  div.setAttributeNS('urn:x', 'style', 'color: red');
+  div.setAttributeNS('urn:x', 'class', 'c');
+  div.setAttributeNS('urn:x', 'onclick', 'window.clicked = true');
+  div.setAttributeNS('urn:x', 'data-foo', 'bar');
+  div.click();
+  const input = d.createElement('input');
+  input.setAttributeNS('urn:x', 'type', 'checkbox');
+  input.setAttributeNS('urn:x', 'value', 'v');
+  const out = {
+    // (jsdom's selectors match #nsid and .c against the namespaced id and
+    // class attributes; warpdom's, as the standard says, do not.)
+    id: [div.id, d.getElementById('nsid') === div],
+    style: [div.style.color, div.getAttribute('style'), div.style.cssText],
+    cls: [div.className, div.classList.length, div.matches('[class]')],
+    clicked: w.clicked ?? false,
+    input: [input.type, input.value],
+    html: div.outerHTML,
+  };
+  div.setAttribute('style', 'color: blue');
+  div.removeAttributeNS('urn:x', 'style');
+  out.after = [div.style.color, div.getAttribute('style'), div.outerHTML];
+  return out;
+});
+
+parity('namespaced attribute mutation records and custom element callbacks', async (w) => {
+  const d = w.document;
+  const calls = [];
+  w.customElements.define('ns-attr-el', class extends w.HTMLElement {
+    static get observedAttributes() { return ['x']; }
+    attributeChangedCallback(...args) { calls.push(args); }
+  });
+  const el = d.createElement('ns-attr-el');
+  const records = [];
+  const mo = new w.MutationObserver((r) => records.push(...r.map((m) => [m.attributeName, m.attributeNamespace, m.oldValue])));
+  mo.observe(el, { attributes: true, attributeOldValue: true });
+  el.setAttributeNS('urn:a', 'p:x', '1');
+  el.setAttribute('x', '2');
+  el.setAttributeNS('urn:a', 'q:x', '3');
+  el.removeAttributeNS('urn:a', 'x');
+  el.setAttributeNS('urn:a', 'y', '4');
+  await Promise.resolve();
+  return { calls, records };
+});
+
+parity('parsed foreign attributes and serialization by qualified name', (w) => {
+  const d = w.document;
+  d.body.innerHTML = '<svg><use xlink:href="#a" xml:lang="en" xmlns:foo="urn:foo" foo:bar="1" xmlns="http://www.w3.org/2000/svg"></use></svg><div xlink:href="x"></div>';
+  const use = d.querySelector('use');
+  const div = d.querySelector('div');
+  const info = (el) => [...el.attributes].map((a) => [a.name, a.prefix, a.localName, a.namespaceURI]);
+  const el = d.createElement('span');
+  el.setAttributeNS('http://www.w3.org/1999/xlink', 'foo:href', 'v');
+  el.setAttributeNS('http://www.w3.org/2000/xmlns/', 'xmlns:q', 'urn:q');
+  el.setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve');
+  const x = new w.XMLSerializer();
+  return {
+    use: info(use),
+    div: info(div),
+    html: [use.outerHTML, div.outerHTML, el.outerHTML, x.serializeToString(el)],
+    get: [use.getAttribute('xlink:href'), use.getAttributeNS('http://www.w3.org/1999/xlink', 'href'), use.getAttributeNS(null, 'href'), div.getAttributeNS(null, 'xlink:href')],
+    selectors: ['[xlink\\:href]', '[foo\\:bar]', '[xml\\:lang]', '[*|lang]'].map((s) => d.querySelectorAll(s).length),
+    clone: use.cloneNode().outerHTML,
+  };
+});
+
+parity('attribute names keep their case on HTML elements in XML documents', (w) => {
+  const x = w.document.implementation.createDocument(null, 'r');
+  const e = x.createElementNS('http://www.w3.org/1999/xhtml', 'div');
+  e.setAttribute('FOO', '1');
+  const h = w.document.createElement('div');
+  h.setAttribute('FOO', '1');
+  return [e.getAttributeNames(), e.getAttribute('foo'), e.getAttribute('FOO'), e.hasAttribute('foo'), Object.getOwnPropertyNames(e.attributes), h.getAttributeNames()];
+});

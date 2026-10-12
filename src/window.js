@@ -277,7 +277,7 @@ export function createWindow(options = {}) {
     notImplemented: (message) => console.error(`Not implemented: ${message}`),
     // An iframe's nested window (frames.js).
     // A frame's window behaves like the same jsdom generation as its parent.
-    createNestedWindow: ({ url, parent, frameElement }) => createWindow({ url, jsdom: parent[S].compat.version, cssstyle: parent[S].compat.cssstyle, nested: { parent, frameElement } }),
+    createNestedWindow: ({ url, parent, frameElement }) => createWindow({ url, jsdom: parent[S].compat.version, cssstyle: parent[S].compat.cssstyle, fastFrames: parent[S].fastFrames, nested: { parent, frameElement } }),
     parentWindow: options.nested?.parent ?? null,
     frameElement: options.nested?.frameElement ?? null,
   };

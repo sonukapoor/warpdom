@@ -5,7 +5,7 @@
 import { matchesChecked, matchesValidity } from './forms.js';
 import { directionality } from './directionality.js';
 import { S, domError, ELEMENT_NODE, DOCUMENT_NODE, HTML_NS, SVG_NS, nextInTree, rootOf } from './internal.js';
-import { XML_NS } from './attributes.js';
+import { XML_NS, valueByName } from './attributes.js';
 
 // --- tokens and parsing --------------------------------------------------------
 
@@ -150,6 +150,11 @@ class Parser {
 
   attribute() {
     this.skipWs();
+    // A namespace: *| (any) or | (none); declared prefixes need @namespace,
+    // which selectors in the DOM API cannot have.
+    let ns;
+    if (this.peek() === '*' && this.peek(1) === '|' && this.peek(2) !== '=') { ns = '*'; this.i += 2; }
+    else if (this.peek() === '|' && this.peek(1) !== '=') { ns = ''; this.i++; }
     const name = this.ident();
     if (name === null) this.fail();
     this.skipWs();
@@ -157,7 +162,7 @@ class Parser {
     let value = null;
     let insensitive = false;
     const c = this.peek();
-    if (c === ']') { this.i++; return { kind: 'attr', name, op, value, insensitive }; }
+    if (c === ']') { this.i++; return { kind: 'attr', name, op, value, insensitive, ns }; }
     if (c === '=') { op = '='; this.i++; } else if (/[~|^$*]/.test(c) && this.peek(1) === '=') { op = c + '='; this.i += 2; } else this.fail();
     this.skipWs();
     if (this.peek() === '"' || this.peek() === "'") value = this.string();
@@ -167,7 +172,7 @@ class Parser {
     if (flag === 'i' || flag === 's') { insensitive = flag === 'i'; this.i++; this.skipWs(); }
     if (this.peek() !== ']') this.fail();
     this.i++;
-    return { kind: 'attr', name, op, value, insensitive };
+    return { kind: 'attr', name, op, value, insensitive, ns };
   }
 
   skipBalanced() {
@@ -322,7 +327,7 @@ function compileTest(t) {
   }
 }
 
-function compileAttribute({ name, op, value, insensitive }) {
+function compileAttribute({ name, op, value, insensitive, ns }) {
   const norm = insensitive ? (s) => s.toLowerCase() : (s) => s;
   const v = value === null ? null : norm(value);
   const check = {
@@ -335,8 +340,31 @@ function compileAttribute({ name, op, value, insensitive }) {
     '*=': (a) => v !== '' && a.includes(v),
   }[op];
   const lower = name.toLowerCase();
+  // [|name]: the attribute in no namespace; [*|name]: an attribute with
+  // that local name in any namespace.
+  if (ns === '') {
+    return (el) => {
+      const a = el[S].attrs.get(isHTML(el) ? lower : name);
+      return a !== undefined && check(insensitive ? a.toLowerCase() : a);
+    };
+  }
+  if (ns === '*') {
+    return (el) => {
+      const s = el[S];
+      const local = isHTML(el) ? lower : name;
+      for (const [key, a] of s.attrs) {
+        const k = key.charCodeAt(0) === 0 ? s.attrNS.get(key).local : key;
+        if (k === local && check(insensitive ? a.toLowerCase() : a)) return true;
+      }
+      return false;
+    };
+  }
+  // By qualified name, as jsdom matches (an element with namespaced
+  // attributes looks for the first attribute with the name).
   return (el) => {
-    const a = el[S].attrs.get(isHTML(el) ? lower : name);
+    const s = el[S];
+    const key = isHTML(el) ? lower : name;
+    const a = s.attrNS == null ? s.attrs.get(key) : valueByName(s, key);
     return a !== undefined && check(insensitive ? a.toLowerCase() : a);
   };
 }
@@ -415,7 +443,7 @@ function languageOf(element) {
     if (s.attrNS) for (const [name, info] of s.attrNS) if (info.ns === XML_NS && info.local === 'lang') return s.attrs.get(name);
     if (s.ns === HTML_NS || s.ns === SVG_NS) {
       const lang = s.attrs.get('lang');
-      if (lang !== undefined && s.attrNS?.has('lang') !== true) return lang;
+      if (lang !== undefined) return lang;
     }
     const p = s.parent;
     if (!p) return undefined;

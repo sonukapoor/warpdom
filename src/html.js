@@ -54,7 +54,10 @@ function serializeElement(el) {
   let out = `<${tag}`;
   // An is value is serialized as an attribute if there is none.
   if (s.ceIs && !s.attrs.has('is')) out += ` is="${escapeAttribute(s.ceIs)}"`;
-  for (const [name, value] of s.attrs) out += ` ${name}="${escapeAttribute(value)}"`;
+  // Attributes by qualified name, as jsdom serializes them (the standard
+  // writes xlink: for the XLink namespace whatever the prefix).
+  if (s.attrNS == null) for (const [name, value] of s.attrs) out += ` ${name}="${escapeAttribute(value)}"`;
+  else for (const [key, value] of s.attrs) out += ` ${key.charCodeAt(0) === 0 ? s.attrNS.get(key).qn : key}="${escapeAttribute(value)}"`;
   out += '>';
   if (s.ns === HTML_NS && VOID.has(s.tag)) return out;
   const contentRoot = s.ns === HTML_NS && s.tag === 'template' && s.content ? s.content : el;
@@ -124,13 +127,16 @@ function appendAst(internals, parent, astNodes, doc, inTemplate = false) {
       const attrs = node[S].attrs;
       let handlers = false;
       for (const a of n.attrs) {
-        const name = a.prefix ? `${a.prefix}:${a.name}` : a.name;
-        attrs.set(name, a.value);
-        // Foreign attributes (xlink:href, xml:lang) keep their namespace.
+        // Foreign attributes (xlink:href, xml:lang) keep their namespace
+        // (attribute keys: attributes.js).
         if (a.namespace) {
+          const key = `\0${a.namespace}\0${a.name}`;
+          attrs.set(key, a.value);
           const ns = node[S].attrNS ?? (node[S].attrNS = new Map());
-          ns.set(name, { ns: a.namespace, prefix: a.prefix || null, local: a.name });
+          ns.set(key, { ns: a.namespace, prefix: a.prefix || null, local: a.name, qn: a.prefix ? `${a.prefix}:${a.name}` : a.name });
+          continue;
         }
+        attrs.set(a.name, a.value);
         if (a.name.startsWith('on')) handlers = true;
       }
       if (handlers) eventHandlerAttributesAdded(node);

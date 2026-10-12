@@ -6,9 +6,10 @@
 // documents use it with them.
 import {
   S, state, domError, HTML_NS, ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, DOCUMENT_TYPE_NODE,
-  CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE,
+  CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE, elementById,
 } from './internal.js';
-import { XML_NS, XMLNS_NS } from './attributes.js';
+import { XML_NS, XMLNS_NS, attrNode } from './attributes.js';
+import { reportError } from './events.js';
 import { parseDocument, templateContent, serializeChildren, serializeOuter } from './html.js';
 import { parseXMLDocument, isXmlName } from './xml.js';
 
@@ -242,5 +243,172 @@ export const DOM_PARSING_INTERFACES = [
         return serializeXML(node);
       },
     },
+  },
+];
+
+// --- XPath ----------------------------------------------------------------------------
+// The DOM standard's XPath interfaces: XPathResult, XPathExpression,
+// XPathEvaluator and the XPathEvaluatorBase members of Document
+// (evaluate, createExpression, createNSResolver). The XPath 1.0 engine
+// (src/xpath.js) is loaded the first time an expression is compiled, like
+// parse5 for HTML, through a loader the Node entry registers
+// (setXPathLoader), so these interfaces cost a few small functions until
+// then.
+
+let loadXPath = null;
+let engine = null;
+
+// Registers how to load src/xpath.js synchronously (the Node entry uses
+// require).
+export function setXPathLoader(loader) {
+  loadXPath = loader;
+  engine = null;
+}
+
+function getEngine() {
+  if (engine === null) {
+    if (!loadXPath) throw new Error('warpdom: no XPath engine available. Import warpdom from Node, or call setXPathLoader().');
+    engine = loadXPath().createXPath({ S, HTML_NS, XML_NS, XMLNS_NS, attrNode, elementById, domError });
+  }
+  return engine;
+}
+
+const RESULT_TYPES = {
+  ANY_TYPE: 0, NUMBER_TYPE: 1, STRING_TYPE: 2, BOOLEAN_TYPE: 3, UNORDERED_NODE_ITERATOR_TYPE: 4, ORDERED_NODE_ITERATOR_TYPE: 5,
+  UNORDERED_NODE_SNAPSHOT_TYPE: 6, ORDERED_NODE_SNAPSHOT_TYPE: 7, ANY_UNORDERED_NODE_TYPE: 8, FIRST_ORDERED_NODE_TYPE: 9,
+};
+
+const isNode = (v) => v != null && typeof v === 'object' && typeof v[S]?.type === 'number';
+
+function checkNode(node, method, interfaceName) {
+  if (!isNode(node)) throw new TypeError(`Failed to execute '${method}' on '${interfaceName}': parameter is not of type 'Node'.`);
+}
+
+function checkResolver(resolver, method, interfaceName) {
+  if (resolver == null) return null;
+  if (typeof resolver !== 'object' && typeof resolver !== 'function') {
+    throw new TypeError(`Failed to execute '${method}' on '${interfaceName}': The provided value is not of type 'XPathNSResolver'.`);
+  }
+  return resolver;
+}
+
+// WebIDL unsigned short.
+const unsignedShort = (v) => { const n = Number(v); return Number.isFinite(n) ? ((Math.trunc(n) % 65536) + 65536) % 65536 : 0; };
+
+// Evaluates a compiled expression and makes its XPathResult (DOM,
+// "evaluate"): node-sets for the node-set types, a type error otherwise.
+function makeResult(window, compiled, contextNode, typeArg) {
+  const type = unsignedShort(typeArg);
+  if (type > 9) throw domError('The result type is not one of the XPathResult types.', 'NotSupportedError');
+  const xp = getEngine();
+  const value = xp.run(compiled, contextNode);
+  const nodes = xp.isNodeSet(value);
+  let resultType = type;
+  let stored = value;
+  switch (type) {
+    case 0: resultType = nodes ? 4 : typeof value === 'number' ? 1 : typeof value === 'string' ? 2 : 3; break;
+    case 1: stored = xp.toNumber(value); break;
+    case 2: stored = xp.toString(value); break;
+    case 3: stored = xp.toBoolean(value); break;
+    default:
+      if (!nodes) throw new TypeError(`The expression '${compiled.text}' does not evaluate to a node-set, so it cannot be converted to the result type ${type}.`);
+  }
+  const doc = contextNode[S].doc;
+  const result = Object.create(window[S].protos.XPathResult);
+  result[S] = {
+    xpathResult: true, type: resultType, value: stored, index: 0, doc,
+    // jsdom 30 invalidates iterators on tree and attribute changes, as the
+    // standard says; earlier jsdom versions did not.
+    rev: window[S].compat?.jsdom >= 30 ? doc[S].treeRev ?? 0 : -1,
+  };
+  return result;
+}
+
+function compileWith(window, expression, resolver) {
+  return getEngine().compile(typeof expression === 'string' ? expression : String(expression), resolver, (error) => reportError(window, error));
+}
+
+function resultState(result) {
+  const s = state(result);
+  if (s.xpathResult !== true) throw new TypeError('Illegal invocation');
+  return s;
+}
+
+function expectType(s, types, member) {
+  if (!types.includes(s.type)) throw new TypeError(`Failed to read the '${member}' property from 'XPathResult': The result type is not ${types.length > 1 ? 'one of the types' : 'the type'} for which it is defined.`);
+}
+
+const iteratorInvalid = (s) => (s.type === 4 || s.type === 5) && s.rev !== -1 && (s.doc[S].treeRev ?? 0) !== s.rev;
+
+// The XPathEvaluatorBase members, for Document and XPathEvaluator (whose
+// state has the window).
+export const XPATH_EVALUATOR_MEMBERS = {
+  createExpression(expression, resolver = null) {
+    const { window } = state(this);
+    const r = checkResolver(resolver, 'createExpression', 'Document');
+    const compiled = compileWith(window, expression, r);
+    const expr = Object.create(window[S].protos.XPathExpression);
+    expr[S] = { xpathExpression: true, compiled, window };
+    return expr;
+  },
+  createNSResolver(nodeResolver) {
+    state(this);
+    checkNode(nodeResolver, 'createNSResolver', 'Document');
+    return nodeResolver;
+  },
+  evaluate(expression, contextNode, resolver = null, type = 0, result = null) {
+    const { window } = state(this);
+    const text = typeof expression === 'string' ? expression : String(expression);
+    checkNode(contextNode, 'evaluate', 'Document');
+    const r = checkResolver(resolver, 'evaluate', 'Document');
+    if (result != null && result[S]?.xpathResult !== true) throw new TypeError("Failed to execute 'evaluate' on 'Document': parameter 5 is not of type 'XPathResult'.");
+    return makeResult(window, compileWith(window, text, r), contextNode, type);
+  },
+};
+
+const constants = Object.fromEntries(Object.entries(RESULT_TYPES).map(([k, v]) => [k, { constant: v }]));
+
+export const XPATH_INTERFACES = [
+  {
+    name: 'XPathResult',
+    statics: RESULT_TYPES,
+    members: {
+      ...constants,
+      get resultType() { return resultState(this).type; },
+      get numberValue() { const s = resultState(this); expectType(s, [1], 'numberValue'); return s.value; },
+      get stringValue() { const s = resultState(this); expectType(s, [2], 'stringValue'); return s.value; },
+      get booleanValue() { const s = resultState(this); expectType(s, [3], 'booleanValue'); return s.value; },
+      get singleNodeValue() { const s = resultState(this); expectType(s, [8, 9], 'singleNodeValue'); return s.value[0] ?? null; },
+      get invalidIteratorState() { return iteratorInvalid(resultState(this)); },
+      get snapshotLength() { const s = resultState(this); expectType(s, [6, 7], 'snapshotLength'); return s.value.length; },
+      iterateNext() {
+        const s = resultState(this);
+        if (s.type !== 4 && s.type !== 5) throw new TypeError("Failed to execute 'iterateNext' on 'XPathResult': The result type is not an iterator type.");
+        if (iteratorInvalid(s)) throw domError('The document has mutated since the result was returned.', 'InvalidStateError');
+        return s.index < s.value.length ? s.value[s.index++] : null;
+      },
+      snapshotItem(index) {
+        const s = resultState(this);
+        if (s.type !== 6 && s.type !== 7) throw new TypeError("Failed to execute 'snapshotItem' on 'XPathResult': The result type is not a snapshot type.");
+        return s.value[Number(index) >>> 0] ?? null;
+      },
+    },
+  },
+  {
+    name: 'XPathExpression',
+    members: {
+      evaluate(contextNode, type = 0, result = null) {
+        const s = state(this);
+        if (s.xpathExpression !== true) throw new TypeError('Illegal invocation');
+        checkNode(contextNode, 'evaluate', 'XPathExpression');
+        if (result != null && result[S]?.xpathResult !== true) throw new TypeError("Failed to execute 'evaluate' on 'XPathExpression': parameter 3 is not of type 'XPathResult'.");
+        return makeResult(s.window, s.compiled, contextNode, type);
+      },
+    },
+  },
+  {
+    name: 'XPathEvaluator',
+    members: XPATH_EVALUATOR_MEMBERS,
+    construct: (w, self) => { self[S] = { window: w }; return self; },
   },
 ];

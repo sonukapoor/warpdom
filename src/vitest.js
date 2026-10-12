@@ -132,7 +132,7 @@ export const jsdomVersion = (options, root) => jsdomProfile(options, root).jsdom
 
 function createTestWindow(options) {
   // Vitest's jsdom environment defaults to this URL as well.
-  const window = createWindow({ url: 'http://localhost:3000', ...jsdomProfile(options) });
+  const window = createWindow({ url: 'http://localhost:3000', ...jsdomProfile(options), fastFrames: options?.warpdom?.fastFrames === true });
   // Like Vitest's jsdom environment: an error thrown in an event listener
   // fails the test, unless the test listens for 'error' on the window.
   window[S].onUnhandledError = (error) => {

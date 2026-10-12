@@ -18,6 +18,9 @@ Options:
                       more for numbers worth quoting). With 2 or more, an
                       untimed warm-up pair runs first.
   --correctness       One run each, results only, no speed claims (for CI)
+  --fast-frames       Run warpdom with its fastFrames option (animation frames
+                      without the 16.7 ms wait; opt-in because a few tests can
+                      change result): shows the speed and what changes
   --workers <n>       The runner's worker limit for every run (default: the runner's)
   --baseline <env>    jsdom or happy-dom (default: what the project uses)
   --runner <name>     vitest or jest, when both are configured
@@ -47,6 +50,7 @@ export function parseArgs(argv) {
     if (a === '--') { opts.args = argv.slice(i + 1); break; }
     if (a === '-h' || a === '--help') opts.help = true;
     else if (a === '--correctness') opts.correctness = true;
+    else if (a === '--fast-frames') opts.fastFrames = true;
     else if (a === '--rounds') opts.rounds = number(value(++i, a), a);
     else if (a === '--workers') opts.workers = number(value(++i, a), a);
     else if (a === '--timeout') opts.timeout = number(value(++i, a), a);

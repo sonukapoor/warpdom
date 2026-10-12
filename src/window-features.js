@@ -92,6 +92,15 @@ const timerMembers = {
 // The window members test environments leave to the host (Node's timers).
 export const HOST_TIMER_KEYS = Object.keys(timerMembers);
 
+// Animation frames: callbacks requested before a frame run together in it,
+// with the frame's time (performance.now() when it starts); those requested
+// during a frame run in the next one. jsdom (with pretendToBeVisual) and
+// warpdom start a frame every 16.7 ms of real time, so a test that awaits a
+// frame waits that long. With the fastFrames option a frame starts as soon
+// as the event loop gets to it (a zero-delay timer task): tests that await
+// frames run much faster (ariakit 1.61x), but a frame can now run before a
+// short timer that would have fired first, which changes the result of a
+// few tests (docs/fast-frames.md). Timestamps stay real times.
 const animationFrames = {
   requestAnimationFrame(callback) {
     const s = state(this);
@@ -113,7 +122,7 @@ const animationFrames = {
           try { cb(t); } catch (error) { s.onUnhandledError(error); }
         }
         frames.current = null;
-      }, 1000 / 60);
+      }, s.fastFrames ? 0 : 1000 / 60);
     }
     return id;
   },
@@ -309,8 +318,11 @@ export const FEATURE_INTERFACES = [
 
 // Per-window setup: URL, location, history, and the legacy factory
 // constructors Image, Audio and Option (their prototype is the element's).
-export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATEST_JSDOM, cssstyle } = {}) {
+export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATEST_JSDOM, cssstyle, fastFrames = false } = {}) {
   const ws = window[S];
+  // Opt-in (option fastFrames): animation frames run as soon as the event
+  // loop gets to them instead of every 16.7 ms of real time (see below).
+  ws.fastFrames = fastFrames === true;
   ws.url = new URL(initial);
   // Compatibility with the jsdom generation the tests were written for
   // (option jsdom: its version, or its major version): behaviors that

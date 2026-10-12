@@ -73,3 +73,18 @@ test('Jest environment: follows the jsdom and cssstyle jest-environment-jsdom lo
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+test('Jest environment: testEnvironmentOptions.fastFrames', async () => {
+  const rootDir = fakeJestProject();
+  for (const [options, fast] of [[{ fastFrames: true }, true], [{}, false]]) {
+    const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: options } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+    await env.setup();
+    try {
+      const ms = await vm.runInContext('(async () => { const t = Date.now(); for (let i = 0; i < 3; i++) await new Promise((r) => requestAnimationFrame(r)); return Date.now() - t; })()', env.getVmContext());
+      assert.equal(ms < 40, fast, `${JSON.stringify(options)}: 3 frames in ${ms} ms`);
+    } finally {
+      await env.teardown();
+    }
+  }
+  rmSync(rootDir, { recursive: true, force: true });
+});

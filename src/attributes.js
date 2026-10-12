@@ -26,8 +26,15 @@ export function writeAttribute(element, key, value, checkName) {
   else hooks.ce.scope(writeAttributeValue, element, key, value, checkName);
 }
 
+// Rare paths of writeAttributeValue, out of line so it stays small.
+function firstKeyByName(es, qn) { return keyByName(es, qn) ?? qn; }
+function forgetNamespace(es, key) { if (es.attrNS.delete(key) && es.attrNS.size === 0) es.attrNS = null; }
+
 function writeAttributeValue(element, key, value, checkName) {
   const es = state(element);
+  // setAttribute and toggleAttribute (checkName) name an attribute by its
+  // qualified name: the first one with that name, in any namespace.
+  if (checkName === true && es.attrNS != null) key = firstKeyByName(es, key);
   const attrs = es.attrs;
   const old = attrs.get(key);
   if (old === undefined && checkName === true) checkAttributeName(key);
@@ -45,19 +52,59 @@ function writeAttributeValue(element, key, value, checkName) {
   if (observed(element)) hooks.attribute(element, key, old);
   if (hooks.ce !== null) hooks.ce.attributeChanged(element, key, old, value);
   // A removed attribute's namespace is kept until the steps above ran.
-  if (value === undefined) es.attrNS?.delete(key);
+  if (value === undefined && es.attrNS != null) forgetNamespace(es, key);
   if ((key === 'slot' || key === 'name') && hooks.slots !== null && es.doc[S].slotCount) hooks.slots.attributeChanged(element, key);
 }
 
 // --- namespaced attributes (DOM 4.9) ---------------------------------------------
-// Attributes are keyed by qualified name; those set with a namespace keep
-// it, their prefix and local name in es.attrNS. (So two attributes with the
-// same qualified name in different namespaces cannot coexist.)
+// An element's attributes (es.attrs, in list order) are keyed by what
+// identifies an attribute, its namespace and local name: an attribute in no
+// namespace by its local name (which is its qualified name), a namespaced
+// one by "\0namespace\0local name", with its namespace, prefix, local name
+// and qualified name in es.attrNS (null when there is none). So the
+// attribute change steps (id, style, slot, event handlers, form controls)
+// see only attributes in no namespace, attributes with one qualified name
+// in different namespaces coexist, and lookups by namespace are O(1).
+// Lookups by qualified name (getAttribute) find the first attribute with
+// that name: a map lookup when the element has no namespaced attribute,
+// else a scan of its attributes.
 
 export const XML_NS = 'http://www.w3.org/XML/1998/namespace';
 export const XMLNS_NS = 'http://www.w3.org/2000/xmlns/';
 
 const nsOrNull = (ns) => (ns == null || ns === '' ? null : String(ns));
+
+// The attribute key for a namespace (null or a non-empty string) and local name.
+export const attrKey = (ns, local) => (ns === null ? local : `\0${ns}\0${local}`);
+
+// The qualified name of the attribute with this key.
+export const qualifiedNameOf = (es, key) => (key.charCodeAt(0) === 0 ? es.attrNS.get(key).qn : key);
+
+// The key of the element's first attribute whose qualified name is qn
+// (lowercased by the caller for HTML elements), or null.
+export function keyByName(es, qn) {
+  const info = es.attrNS;
+  if (info == null) return es.attrs.has(qn) ? qn : null;
+  for (const key of es.attrs.keys()) {
+    if (key === qn || (key.charCodeAt(0) === 0 && info.get(key).qn === qn)) return key;
+  }
+  return null;
+}
+
+// The value of the first attribute named qn, or undefined.
+export function valueByName(es, qn) {
+  if (es.attrNS == null) return es.attrs.get(qn);
+  const key = keyByName(es, qn);
+  return key === null ? undefined : es.attrs.get(key);
+}
+
+// The attributes' qualified names, in order.
+export function attributeNames(es) {
+  if (es.attrNS == null) return [...es.attrs.keys()];
+  const names = [];
+  for (const key of es.attrs.keys()) names.push(qualifiedNameOf(es, key));
+  return names;
+}
 
 // "Validate and extract" a namespace and qualified name, for an element or
 // an attribute (element: true): the prefix is what comes before the first
@@ -83,34 +130,45 @@ export function validateAndExtract(namespace, qualifiedName, element = false) {
   return { ns, prefix, local, qn };
 }
 
-// The qualified name of the element's attribute with this namespace and
-// local name, or null.
+// The key of the element's attribute with this namespace and local name,
+// or null.
 export function findAttributeNS(element, namespace, localName) {
-  const es = element[S];
-  const ns = nsOrNull(namespace);
-  const local = String(localName);
-  if (es.attrNS) {
-    for (const [name, info] of es.attrNS) if (info.ns === ns && info.local === local) return name;
-  }
-  return ns === null && es.attrs.has(local) && !es.attrNS?.has(local) ? local : null;
+  const key = attrKey(nsOrNull(namespace), String(localName));
+  return element[S].attrs.has(key) ? key : null;
+}
+
+// Records a namespaced attribute's names under its key.
+function setInfo(es, key, info) {
+  (es.attrNS ?? (es.attrNS = new Map())).set(key, info);
 }
 
 export function setAttributeNS(element, namespace, qualifiedName, value) {
   const { ns, prefix, local, qn } = validateAndExtract(namespace, qualifiedName);
-  const existing = findAttributeNS(element, ns, local);
-  if (existing !== null) { writeAttribute(element, existing, String(value)); return; }
+  const key = attrKey(ns, local);
   const es = element[S];
-  if (ns !== null) (es.attrNS ?? (es.attrNS = new Map())).set(qn, { ns, prefix, local });
-  writeAttribute(element, qn, String(value));
+  // An existing attribute keeps its prefix.
+  if (ns !== null && !es.attrs.has(key)) setInfo(es, key, { ns, prefix, local, qn });
+  writeAttribute(element, key, String(value));
 }
 
-// An attribute's namespace, prefix and local name.
-export function attributeNamespace(element, name) {
-  return element?.[S].attrNS?.get(name) ?? null;
+// removeAttribute: the first attribute with the qualified name.
+export function removeAttributeByName(element, qn) {
+  const es = element[S];
+  const key = es.attrNS == null ? qn : keyByName(es, qn);
+  if (key !== null) writeAttribute(element, key, undefined);
 }
 
-// Attribute names are lowercased on HTML elements only (SVG keeps viewBox).
-export const attrName = (element, name) => (element[S].ns === HTML_NS ? asciiLowercase(String(name)) : String(name));
+// Attribute names are lowercased on HTML elements in HTML documents only
+// (SVG keeps viewBox; an XHTML document keeps the case).
+// Kept small (it runs on every getAttribute/setAttribute): the document is
+// looked at only for a name with uppercase letters, in a separate function.
+export const attrName = (element, name) => {
+  const n = String(name);
+  if (element[S].ns !== HTML_NS) return n;
+  const lower = asciiLowercase(n);
+  return lower === n ? n : caseInDocument(element, n, lower);
+};
+const caseInDocument = (element, name, lower) => (element[S].doc[S].xml === true ? name : lower);
 
 // setAttribute and toggleAttribute: the name must be a valid attribute local
 // name.
@@ -129,14 +187,19 @@ function throwInvalidAttributeName(name) {
 
 // --- Attr ----------------------------------------------------------------------
 
-// The Attr node for an element's attribute, created once and reused.
-export function attrNode(element, name) {
+// The Attr node for an element's attribute (by key), created once and
+// reused. Its state: name (the qualified name), key, element, the value
+// while detached, and info (namespace, prefix, local name; null for an
+// attribute in no namespace).
+export function attrNode(element, key) {
   const es = element[S];
   const cache = es.attrNodes ?? (es.attrNodes = new Map());
-  let attr = cache.get(name);
+  let attr = cache.get(key);
   if (!attr) {
-    attr = initNode(Object.create(es.doc[S].window[S].protos.Attr), ATTRIBUTE_NODE, es.doc, { name, element, detachedValue: '' });
-    cache.set(name, attr);
+    const info = key.charCodeAt(0) === 0 ? es.attrNS.get(key) : null;
+    attr = initNode(Object.create(es.doc[S].window[S].protos.Attr), ATTRIBUTE_NODE, es.doc,
+      { name: info === null ? key : info.qn, key, element, detachedValue: '', info });
+    cache.set(key, attr);
   }
   return attr;
 }
@@ -147,51 +210,55 @@ export function attributeRemoved(element, name, oldValue) {
   const attr = element[S].attrNodes?.get(name);
   if (!attr) return;
   element[S].attrNodes.delete(name);
+  // A detached Attr keeps its names (in its info) and its last value.
   attr[S].element = null;
   attr[S].detachedValue = oldValue ?? '';
-  // A detached Attr keeps its namespace, prefix and local name.
-  attr[S].info = element[S].attrNS?.get(name) ?? null;
 }
 
 // An Attr's namespace, prefix and local name, or null (no namespace).
-export const attrInfo = (s) => (s.element ? attributeNamespace(s.element, s.name) : s.info ?? null);
+export const attrInfo = (s) => s.info ?? null;
 
 // document.createAttributeNS.
 export function createAttributeNS(document, namespace, qualifiedName) {
   const { ns, prefix, local, qn } = validateAndExtract(namespace, qualifiedName);
   return initNode(Object.create(document[S].window[S].protos.Attr), ATTRIBUTE_NODE, document,
-    { name: qn, element: null, detachedValue: '', info: ns === null ? null : { ns, prefix, local } });
+    { name: qn, key: attrKey(ns, local), element: null, detachedValue: '', info: ns === null ? null : { ns, prefix, local, qn } });
 }
 
 export function createAttribute(document, name) {
   const n = checkAttributeName(String(name));
+  const qn = document[S].xml ? n : asciiLowercase(n);
   return initNode(Object.create(document[S].window[S].protos.Attr), ATTRIBUTE_NODE, document,
-    { name: document[S].xml ? n : asciiLowercase(n), element: null, detachedValue: '' });
+    { name: qn, key: qn, element: null, detachedValue: '', info: null });
 }
 
+// Set an attribute (DOM): the attribute with the same namespace and local
+// name is replaced in place (the new one takes its position), else attr is
+// appended.
 export function setAttributeNode(element, attr) {
   const as = state(attr);
   if (as.element && as.element !== element) throw domError('The attribute is in use by another element.', 'InUseAttributeError');
   if (as.element === element) return attr;
   const es = element[S];
-  // The attribute with the same namespace and local name is replaced.
-  const info = as.info ?? null;
-  const oldName = findAttributeNS(element, info?.ns ?? null, info?.local ?? as.name);
-  const previous = oldName !== null ? attrNode(element, oldName) : null;
-  const value = as.detachedValue;
-  if (previous) writeAttribute(element, oldName, undefined);
-  if (info !== null) (es.attrNS ?? (es.attrNS = new Map())).set(as.name, info);
-  (es.attrNodes ?? (es.attrNodes = new Map())).set(as.name, attr);
+  const key = as.key;
+  let previous = null;
+  if (es.attrs.has(key)) {
+    previous = attrNode(element, key);
+    previous[S].element = null;
+    previous[S].detachedValue = es.attrs.get(key);
+  }
+  if (as.info !== null) setInfo(es, key, as.info);
+  (es.attrNodes ?? (es.attrNodes = new Map())).set(key, attr);
   as.element = element;
   as.doc = es.doc;
-  writeAttribute(element, as.name, value);
+  writeAttribute(element, key, as.detachedValue);
   return previous;
 }
 
 export function removeAttributeNode(element, attr) {
   const as = state(attr);
   if (as.element !== element) throw domError('The attribute is not an attribute of this element.', 'NotFoundError');
-  writeAttribute(element, as.name, undefined);
+  writeAttribute(element, as.key, undefined);
   return attr;
 }
 
@@ -217,11 +284,11 @@ export function namedNodeMap(element) {
     // names (Object.getOwnPropertyNames) follow the standard.
     const named = {
       get(map, name) {
-        const key = attrName(element, name);
-        return es.attrs.has(key) ? attrNode(element, key) : null;
+        const key = keyByName(es, attrName(element, name));
+        return key !== null ? attrNode(element, key) : null;
       },
       names() {
-        const all = [...es.attrs.keys()];
+        const all = [...new Set(attributeNames(es))];
         return es.ns === HTML_NS && !es.doc[S].xml ? all.filter((n) => !/[A-Z]/.test(n)) : all;
       },
       unenumerable: true,
@@ -291,7 +358,8 @@ export function domStringMap(element, write) {
     set(t, key, value) {
       if (typeof key !== 'string') return Reflect.set(t, key, value);
       if (!isData(key)) throw domError(`'${key}' contains a '-' followed by an ASCII lowercase letter.`, 'SyntaxError');
-      write(element, toAttribute(key), String(value), true);
+      // The attribute in no namespace (not the first with the name).
+      write(element, checkAttributeName(toAttribute(key)), String(value));
       return true;
     },
     has(t, key) { return (isData(key) && es.attrs.has(toAttribute(key))) || Reflect.has(t, key); },
@@ -325,10 +393,10 @@ export const ATTRIBUTE_INTERFACES = [
       get prefix() { return attrInfo(state(this))?.prefix ?? null; },
       get specified() { state(this); return true; },
       get ownerElement() { return state(this).element; },
-      get value() { const s = state(this); return s.element ? s.element[S].attrs.get(s.name) ?? '' : s.detachedValue; },
+      get value() { const s = state(this); return s.element ? s.element[S].attrs.get(s.key) ?? '' : s.detachedValue; },
       set value(v) {
         const s = state(this);
-        if (s.element) writeAttribute(s.element, s.name, String(v));
+        if (s.element) writeAttribute(s.element, s.key, String(v));
         else s.detachedValue = String(v);
       },
       get nodeValue() { return this.value; },
@@ -344,8 +412,8 @@ export const ATTRIBUTE_INTERFACES = [
       item(index) { return attributeArray(state(this).element)[index >>> 0] ?? null; },
       getNamedItem(name) {
         const el = state(this).element;
-        const key = el[S].ns === HTML_NS ? String(name).toLowerCase() : String(name);
-        return el[S].attrs.has(key) ? attrNode(el, key) : null;
+        const key = keyByName(el[S], attrName(el, name));
+        return key !== null ? attrNode(el, key) : null;
       },
       getNamedItemNS(ns, localName) {
         const el = state(this).element;

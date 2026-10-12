@@ -104,7 +104,7 @@ export function resetWindow(window) {
       ns.parent = ns.prev = ns.next = null;
     }
     detachChildren(node);
-    if (ns.attrs) ns.attrs.clear();
+    if (ns.attrs) { ns.attrs.clear(); if (ns.attrNS) ns.attrNS = null; }
     if (ns.style) clearDeclarations(ns.style);
     ns.listeners = undefined;
     ns.handlers = undefined;

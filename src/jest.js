@@ -100,7 +100,7 @@ export default class WarpdomEnvironment {
     const options = projectConfig.testEnvironmentOptions ?? {};
 
     // jest-environment-jsdom's default URL.
-    const window = createWindow({ url: options.url ?? 'http://localhost/', ...jsdomProfile(projectConfig.rootDir ?? process.cwd(), options) });
+    const window = createWindow({ url: options.url ?? 'http://localhost/', ...jsdomProfile(projectConfig.rootDir ?? process.cwd(), options), fastFrames: options.fastFrames === true });
     // An error thrown in an event listener fails the test, unless the test
     // listens for 'error' on the window (as with jest-environment-jsdom).
     window[S].onUnhandledError = (error) => {

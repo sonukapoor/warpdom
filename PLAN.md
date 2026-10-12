@@ -203,6 +203,34 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   serializable (jsdom lacks the first two).
 - A custom element whose constructor threw is "failed" and does not match
   `:defined`; jsdom matches it.
+- Namespaced attributes: `#id` and `.class` selectors match only the
+  attributes in no namespace (jsdom's selector engine also matches an
+  `id` or `class` attribute set with setAttributeNS); `[*|name]` and
+  `[|name]` follow Selectors 4 (jsdom 30 matches `[href]` and `[*|href]`
+  against any attribute whose qualified name ends in `:href`, and jsdom
+  25/26 reject `[|name]`); `dataset` lists only `data-*` attributes in no
+  namespace (jsdom includes namespaced ones); `:lang()` reads `xml:lang`
+  in the XML namespace (jsdom ignores it).
+- XPath follows XPath 1.0 and the DOM standard where jsdom's engine is
+  broken: `name()`, `namespace-uri()`, `lang()` and `local-name()` in
+  predicates work (jsdom throws), prefixed name tests match by namespace
+  (jsdom matches nothing), `substring()` rounds per the spec (jsdom:
+  `substring("12345", 0, 3)` is "5"), numbers never use exponents and
+  "1e3" is NaN, an unresolvable prefix is a NamespaceError (jsdom returns
+  an empty result), syntax errors are SyntaxError DOMExceptions (jsdom: a
+  plain Error), result types and contexts are converted as WebIDL says
+  (jsdom rejects `'1'` as a type), `createNSResolver(node)` returns the node
+  (jsdom 30 throws), results have their class strings
+  (`[object XPathResult]`). Kept from jsdom (tests can see it): an
+  unprefixed element name test matches elements in any namespace and any
+  case (so `//svg` and `//entry` in an Atom document find elements, as in
+  jsdom; the HTML standard matches only HTML elements, lowercased, and
+  elements in no namespace); iterators are invalidated by tree and
+  attribute changes in the jsdom 30 profile only (jsdom 25/26 never
+  invalidate them).
+- Additive: `innerText` and `outerText` exist on HTMLElement (jsdom 25 to
+  30 have neither, so there assignments are expandos and reads give
+  `undefined`; see the 2026-10-12 section below).
 - Element interfaces and reflected attributes come from the current
   standard's IDL: `<search>` and `<menuitem>` are HTMLElement (jsdom:
   HTMLUnknownElement), `<selectedcontent>` exists, and reflections jsdom
@@ -1211,3 +1239,163 @@ nested project strings in Vitest 5 project configs are not resolved.
   had one; removed). The event keeps its init dictionary and reads the key
   when asked: reading ten absent keys at construction cost 12-20% of
   `new MouseEvent`/`new KeyboardEvent`; now construction is unchanged.
+
+- **2026-10-12 (night): GitHub results and open decisions.** Details in
+  docs/research/README.md 3.6.
+  - Three-way: warpdom faster than jsdom on all 14 suites; median 1.32x
+    (13 suites) or 1.43x (with handsontable's 8.84x from the two-way run).
+    happy-dom 1.30x but changes results in 12 of 13 suites; warpdom 0-2
+    per suite (ariakit 11: 9 jsdom-fail plus 2 fixed in 0bdec62).
+  - Fast mode median 1.64x over 11 Vitest suites (MUI 8.14x, Vuetify
+    6.56x, Radix 6.03x); 0-2 differences except ariakit.
+  - WPT: score per file 72.5% vs jsdom 71.1%, subtests 85.1% vs 80.5%.
+  - **To do:** handsontable three-way rerun (its jsdom core exceeded the
+    old 20-minute harness limit; now 45 minutes, and a failed package
+    makes the round NA).
+  - **Decision pending: fast frames.** exp/fast-frames makes ariakit
+    1.61x faster than warpdom default (2.31x vs jsdom), no change
+    elsewhere, but changes 3 test results in ariakit and about 3 in ark-ui.
+    Only as an opt-in; build properly (environment option, frame
+    timestamps advancing 16.7 ms, tests) or drop.
+  - **Decision pending: feat/dom-gaps** (innerText/outerText, namespaced
+    attributes keyed by namespace, XPath 1.0 lazily loaded; worktree
+    ../warpdom-gaps). Not merged: bench:hot shows getAttribute 17.4 ->
+    19.5 ns and setAttribute 44.8 -> 50.6 ns (medians of 5). About 3 ns of
+    it is the new attrName (keeping attribute case for HTML elements in XML
+    documents); with main's attrName getAttribute is level and setAttribute
+    +3.5% (the namespace lookup). Also open: jsdom has no innerText at
+    all, so adding it can change results for code that checks for it.
+    XPath and the slot-inheritance test are independent of both issues.
+
+## 2026-10-12: innerText, namespaced attributes, XPath (branch feat/dom-gaps)
+
+WPT 87b5d13099, --jobs 1, warpdom subtests before -> after (jsdom 30.1.2
+for reference): the-innertext-and-outertext-properties 13 -> 1,401 of
+1,404, score 3.2% -> 99.9% (jsdom 13, 3.2%); domxpath 2 -> 109 of 113,
+score 3.6% -> 94.0% (jsdom 55, 56.3%; xml_xpath_runner needs
+XMLHttpRequest in the runner, both engines; run directly, its 1,024 cases
+pass on warpdom and jsdom); dom/nodes 7,103 -> 7,148 of 9,735, score
+89.1% -> 91.3% (attributes.html 56 -> 67 of 67, namespaced-attribute-
+mutations 2 -> 24 of 24, getElementById-namespaced-id, Element-
+setAttribute/removeAttribute/setAttributeNodeNS now all pass, as in
+jsdom); html/dom/elements/global-attributes 231 -> 235 of 250
+(custom-attrs, dir tests that set innerText); domparsing unchanged. No
+file lost a subtest.
+
+- **innerText / outerText** (src/layout.js). jsdom 25, 26 and 30 have
+  neither (black box: `'innerText' in HTMLElement.prototype` is false; an
+  assignment is an expando), so there is no version to key on; warpdom
+  implements them as browsers do, for code and tests written against
+  browsers (WPT, happy-dom suites, libraries that read innerText). The
+  getter runs the HTML standard's rendered text collection steps without
+  layout: rendered = connected, in a document with a browsing context, no
+  display: none on it or a flat-tree ancestor, not inside replaced
+  content, a closed details (except its summary), unslotted host children
+  or SVG outside text; display, visibility, white-space and text-transform
+  come from the computed style (a UA white-space for pre, listing, xmp,
+  plaintext, textarea, nobr); block-level boxes, p (2 line breaks), table
+  cells (tabs), rows (newlines), atomic inlines (inline-block, replaced
+  elements, select), floats and absolute positioning are approximated by
+  display and position; CSS white-space collapsing (across element
+  boundaries, at line starts and ends, around atomic inlines, pre-line
+  segment breaks) runs in one pass. Not being rendered gives textContent.
+  Setters: the rendered text fragment (br for each line break), one
+  mutation record; outerText replaces the element and merges adjacent
+  text. Left: ::first-line/::first-letter styles (3 WPT subtests).
+  Risk to watch in the corpus: code that feature-detects innerText now
+  reads the rendered text instead of textContent.
+- **Namespaced attributes** (src/attributes.js): attributes are keyed by
+  namespace and local name (no namespace: the local name, the hot case;
+  namespaced: "\0ns\0local", with prefix and qualified name in attrNS), so
+  attributes with one qualified name in different namespaces coexist,
+  getAttribute/setAttribute/removeAttribute/toggleAttribute/
+  getAttributeNode/NamedNodeMap find the first with the name, *NS lookups
+  are O(1) (were a scan), setAttributeNode(NS) replaces in place, and the
+  change steps of HTML attributes (id, style, class, slot, event
+  handlers, form controls) see attributes in no namespace only.
+  Attribute names keep their case on HTML elements in XML documents (the
+  document is looked at only for a name with uppercase letters).
+  Serialization uses the qualified name, as jsdom does (the standard
+  writes xlink: for any XLink prefix). Black-box jsdom facts: parse5
+  gives xlink:href/xml:lang namespaces on SVG, xmlns:foo and foo:bar stay
+  in no namespace; jsdom 25/26 still find a replaced attribute by its old
+  qualified name (not matched); see "Deliberate deviations".
+- **XPath** (src/xpath.js, interfaces in src/dom-parsing.js): XPath 1.0
+  (lexer with the lexical disambiguation rules, recursive descent parser,
+  tree-walking evaluator over the linked tree, document order by one tree
+  walk), XPathResult (all ten types; iterators invalidated by tree and
+  attribute changes in the jsdom 30 profile, as jsdom 30 does; jsdom 25/26
+  never invalidate), XPathExpression, XPathEvaluator,
+  Document.evaluate/createExpression/createNSResolver, callable and
+  object resolvers (exceptions reported, prefix then unresolved), HTML
+  rules for attribute name tests. The engine imports nothing and is
+  loaded on first use through setXPathLoader (the Node entry requires it,
+  like parse5), with the core's internals passed in. jsdom facts and
+  deviations: see "Deliberate deviations"; jsdom 30 vs 25/26 differ only
+  in invalidation and in TypeError vs XPathException(52).
+  `//p` in a 3-node document: 0.63 us per evaluate (jsdom 20.95 us);
+  first use (load + compile) 1.15 ms (jsdom 1.56 ms).
+- **CSS inheritance through slots: not changed.** Black box: jsdom 25, 26
+  and 30 compute a slotted element's inherited properties (color,
+  font-size, visibility, cursor) from its host, not from the slot; warpdom
+  already does the same, so flat-tree inheritance would change results
+  tests see. Locked in with a parity test (test/slots.test.js).
+
+Performance (Node 22.23.3, 5 alternating runs against main, medians):
+cold load 16.2 -> 16.2 ms (innerText and the XPath interfaces live in
+existing modules: as separate files they cost +0.3 ms), first window
+1.55 -> 1.56 ms, next windows 0.18 -> 0.18 ms; create-bench 182.9 ->
+185.5 ns (noise range 178-194), insert-bench 59.1 -> 58.9 ns; bench:hot
+within +-3% except setAttribute 45.7 -> 49.0 ns (+7%; focused bench
+22.1 -> 25.0 ns) and closest("[data-index]") 166.4 -> 156.3 (-6%).
+Reason for setAttribute: it must change the first attribute with the
+qualified name in any namespace (DOM; WPT and jsdom agree), which costs
+a check for namespaced attributes per call, and attribute name
+lowercasing now looks at the document for names with uppercase letters
+(XML documents). Variants that moved the check into the write path or
+gated it on a module flag measured the same (V8 inlining of the write
+path decides most of it). getAttribute 17.2 -> 16.7 ns.
+Left: `[ns|name]` needs @namespace (not in the DOM API); element type
+selectors with namespaces (`*|tag`, ParentNode-querySelector-namespace-
+tagname-attribute 3 subtests); HTML attribute selectors matching
+uppercase names set with setAttributeNS case-insensitively (jsdom does;
+needs a scan on misses); XPath namespace axis (empty, as in browsers);
+declarative shadow DOM (xpath-shadow-dom 1 subtest).
+
+- **2026-10-12: Attribute hot paths after namespaced attributes
+  (feat/dom-gaps, before merging).** bench:hot medians of 5-7 alternating
+  runs, main vs branch, Node 22.23.3:
+  - The agent's version: getAttribute 17.4 -> 19.5 ns, setAttribute
+    44.8 -> 50.6 ns.
+  - Fixes:
+    - attrName is small again: the document is consulted only for a name
+      with uppercase letters, in a separate function (about 3 ns of
+      getAttribute).
+    - setAttribute is main's one-liner again; the first-by-qualified-name
+      lookup moved into writeAttributeValue, behind `es.attrNS != null`.
+  - Now: getAttribute 17.1 vs 17.0, appendChild/insertBefore/removeChild
+    level, closest -7%, setAttribute 45.5 -> 48.8 (+2-3 ns).
+  - Bisecting the branch's commits puts about 1.5 ns of that at the
+    innerText commit, which does not touch the setAttribute path (layout or
+    JIT noise between checkouts). About 1 ns is the namespace handling the
+    spec requires.
+  - Tried and rejected:
+    - A per-element `lc` flag set at creation: getAttribute -0.6 ns, but
+      appendChild +12%, insertBefore +8%, removeChild +7% (a larger
+      element state shape).
+    - `attrNS: null` in the initial shape: no gain.
+  - Merged on Sonu's instruction ("optimize the attribute part, then
+    merge").
+
+- **2026-10-12: Fast frames as an opt-in** (decided by Sonu: build it, off
+  by default). Option `fastFrames` (createWindow; Vitest
+  `environmentOptions.warpdom.fastFrames`; Jest
+  `testEnvironmentOptions.fastFrames`; inherited by iframes): a frame
+  starts as soon as the event loop gets to it instead of after 16.7 ms.
+  Frame semantics are kept (batching, order, cancellation, one real
+  timestamp per frame). Timestamps stay real, so duration-based animations
+  are not shortened. `warpdom compare --fast-frames` shows a suite's speedup
+  and every test it changes. docs/fast-frames.md. The experiment branch
+  exp/fast-frames (an environment variable read in the core) is replaced
+  by this and deleted.
+

@@ -42,6 +42,9 @@ export async function compare(options = {}) {
   const cwd = path.resolve(options.cwd ?? process.cwd());
   const out = path.resolve(cwd, options.out ?? '.warpdom-compare');
   const correctness = Boolean(options.correctness);
+  // warpdom options for the warpdom runs (fastFrames: the opt-in that runs
+  // animation frames without the real-time wait), to see what they change.
+  const warpdomOptions = options.fastFrames ? { fastFrames: true } : null;
   const rounds = correctness ? 1 : Math.max(1, Number(options.rounds ?? 1));
   const timeoutMs = (options.timeout ?? 30) * 60_000;
   const log = options.log ?? (() => {});
@@ -49,6 +52,7 @@ export async function compare(options = {}) {
     version: 1, cwd, out, mode: correctness ? 'correctness' : 'timing', exitCode: 2, error: null, warnings: [],
     runner: null, runnerVersion: null, baseline: null, warpdom: null, projects: [], external: 0,
     pinned: null, warmup: false, runs: [], correctness: null, timing: null, environment: null, gitChanges: [],
+    warpdomOptions,
   };
 
   let release = null;
@@ -202,10 +206,10 @@ export async function compare(options = {}) {
       runner === 'vitest' ? vitestReporter() : jestReporter());
     const roles = {
       baseline: { environment: options.baseline ? baselineEnvironment(runner, options.baseline) : null, pinned: baselineName },
-      warpdom: { environment: warpdomEnvironment, pinned: PINNED_TARGET },
+      warpdom: { environment: warpdomEnvironment, pinned: PINNED_TARGET, warpdomOptions },
     };
     const wrappers = {};
-    for (const [role, { environment, pinned }] of Object.entries(roles)) {
+    for (const [role, { environment, pinned, warpdomOptions: wo = null }] of Object.entries(roles)) {
       const root = wrapperPath(config, role);
       const target = (file) => (isRoot(file) ? root : wrapperPath(file, role));
       const patterns = {};
@@ -215,15 +219,15 @@ export async function compare(options = {}) {
       const links = { patterns, extends: Object.fromEntries([...extendsTargets].map(([value, file]) => [value, target(file)])), workspace: null };
       if (workspace) {
         links.workspace = writeTemp(path.join(path.dirname(workspace), workspaceWrapperName(workspace, role)),
-          vitestWorkspaceWrapper(workspace, { environment, links }));
+          vitestWorkspaceWrapper(workspace, { environment, links, warpdomOptions: wo }));
       }
       for (const file of externalConfigs) {
         const own = wrapperPath(file, role);
-        writeTemp(own, runner === 'vitest' ? vitestWrapper(file, { environment, pinned, major }) : jestWrapper(file, { environment, self: own }));
+        writeTemp(own, runner === 'vitest' ? vitestWrapper(file, { environment, pinned, major, warpdomOptions: wo }) : jestWrapper(file, { environment, self: own, warpdomOptions: wo }));
       }
       wrappers[role] = writeTemp(root, runner === 'vitest'
-        ? vitestWrapper(config, { environment, pinned, major, links })
-        : jestWrapper(config, { environment, links, self: root, reporter }));
+        ? vitestWrapper(config, { environment, pinned, major, links, warpdomOptions: wo })
+        : jestWrapper(config, { environment, links, self: root, reporter, warpdomOptions: wo }));
     }
     const pinnedLogs = { baseline: [], warpdom: [] };
 

@@ -1,0 +1,7 @@
+round,project,config,seconds,differs
+1,CopilotKit,jsdom-default,458.1,0
+1,CopilotKit,warpdom-default,340.6,0
+2,CopilotKit,jsdom-default,430.1,0
+2,CopilotKit,warpdom-default,342.7,0
+3,CopilotKit,jsdom-default,432.9,0
+3,CopilotKit,warpdom-default,354.5,0

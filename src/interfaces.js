@@ -19,9 +19,9 @@ import { RANGE_INTERFACES, newRange, getSelection, splitText, normalize } from '
 import { CSSOM_INTERFACES, STYLE_ELEMENT_MEMBERS, documentStyleSheets } from './cssom.js';
 import { FOCUS_MEMBERS, DOCUMENT_FOCUS_MEMBERS } from './focus.js';
 import { FORM_INTERFACES, FORM_MEMBERS, clickMember, labelsMember } from './forms.js';
-import { GEOMETRY_INTERFACES, ELEMENT_LAYOUT, HTML_ELEMENT_LAYOUT } from './layout.js';
+import { GEOMETRY_INTERFACES, ELEMENT_LAYOUT, HTML_ELEMENT_LAYOUT, getInnerText, setInnerText, setOuterText } from './layout.js';
 import { querySelectorAll as selectAll, matches as matchSelector, closest as closestMatch } from './selectors.js';
-import { DOM_PARSING_INTERFACES, innerMarkup, outerMarkup } from './dom-parsing.js';
+import { DOM_PARSING_INTERFACES, innerMarkup, outerMarkup, XPATH_INTERFACES, XPATH_EVALUATOR_MEMBERS } from './dom-parsing.js';
 import { FILE_READER_INTERFACES } from './file-reader.js';
 import { ABORT_INTERFACES } from './abort.js';
 import { IFRAME_MEMBERS, WINDOW_FRAME_MEMBERS } from './frames.js';
@@ -44,6 +44,7 @@ import { parseFragment, parseDocument, serializeChildren, setInnerHTML, setOuter
 import {
   ATTRIBUTE_INTERFACES, writeAttribute, attrName, attrNode, namedNodeMap, tokenList, domStringMap,
   setAttributeNode, removeAttributeNode, createAttribute, findAttributeNS, setAttributeNS, checkAttributeName, validateAndExtract, createAttributeNS, attrInfo,
+  keyByName, valueByName, attributeNames, removeAttributeByName,
 } from './attributes.js';
 
 // Member objects merged in order, as a list window.js reads when it first
@@ -228,9 +229,6 @@ function locatePrefix(element, namespace) {
   return null;
 }
 
-// An attribute's namespace and local name (Attr views: attributes.js).
-const elementAttrInfo = (s, name) => s.attrNS?.get(name) ?? null;
-
 // Node equality (DOM "equals").
 function isEqualNode(a, b) {
   const as = a[S];
@@ -242,17 +240,8 @@ function isEqualNode(a, b) {
       break;
     case ELEMENT_NODE: {
       if (as.ns !== bs.ns || as.tag !== bs.tag || (as.prefix ?? null) !== (bs.prefix ?? null) || as.attrs.size !== bs.attrs.size) return false;
-      for (const [name, value] of as.attrs) {
-        const info = elementAttrInfo(as, name);
-        const ns = info?.ns ?? null;
-        const local = info?.local ?? name;
-        let found = false;
-        for (const [otherName, otherValue] of bs.attrs) {
-          const other = elementAttrInfo(bs, otherName);
-          if (otherValue === value && (other?.ns ?? null) === ns && (other?.local ?? otherName) === local) { found = true; break; }
-        }
-        if (!found) return false;
-      }
+      // Attributes are keyed by namespace and local name.
+      for (const [key, value] of as.attrs) if (bs.attrs.get(key) !== value) return false;
       break;
     }
     case ATTRIBUTE_NODE:
@@ -310,7 +299,7 @@ function cloneNode(node, deep, doc) {
     });
     doc = copy;
   } else if (s.type === ATTRIBUTE_NODE) {
-    copy = initNode(Object.create(w.protos.Attr), ATTRIBUTE_NODE, doc, { name: s.name, element: null, detachedValue: node.value, info: attrInfo(s) });
+    copy = initNode(Object.create(w.protos.Attr), ATTRIBUTE_NODE, doc, { name: s.name, key: s.key, element: null, detachedValue: node.value, info: attrInfo(s) });
   } else throw domError('Cloning this node is not supported yet.', 'NotSupportedError');
   if (deep) {
     for (let c = s.first; c; c = c[S].next) insert(copy, cloneNode(c, true, doc), null);
@@ -427,6 +416,7 @@ export const INTERFACES = [
   ...MUTATION_INTERFACES,
   ...FEATURE_INTERFACES,
   ...TRAVERSAL_INTERFACES,
+  ...XPATH_INTERFACES,
   ...ATTRIBUTE_INTERFACES,
   ...GEOMETRY_INTERFACES,
   ...CSSOM_INTERFACES,
@@ -515,7 +505,7 @@ export const INTERFACES = [
     parent: 'Node',
     // new Document(): an XML document without a browsing context, as in jsdom.
     construct: (w, self) => w[S].initDocument(self, { noView: true, url: 'about:blank', contentType: 'application/xml', xml: true }),
-    members: mix(parentNode, DOCUMENT_FOCUS_MEMBERS, GLOBAL_HANDLER_MEMBERS, XML_DOCUMENT_MEMBERS, {
+    members: mix(parentNode, DOCUMENT_FOCUS_MEMBERS, GLOBAL_HANDLER_MEMBERS, XML_DOCUMENT_MEMBERS, XPATH_EVALUATOR_MEMBERS, {
       get defaultView() { const s = state(this); return s.noView ? null : s.window; },
       get URL() { const s = state(this); return s.url ?? s.window[S].url.href; },
       get documentURI() { return this.URL; },
@@ -853,10 +843,14 @@ export const INTERFACES = [
       get id() { return state(this).attrs.get('id') ?? ''; },
       set id(v) { this.setAttribute('id', v); },
       className: reflect('class'),
-      getAttribute(name) { return state(this).attrs.get(attrName(this, name)) ?? null; },
-      getAttributeNames() { return [...state(this).attrs.keys()]; },
+      getAttribute(name) {
+        const s = state(this);
+        const qn = attrName(this, name);
+        return (s.attrNS == null ? s.attrs.get(qn) : valueByName(s, qn)) ?? null;
+      },
+      getAttributeNames() { return attributeNames(state(this)); },
       get attributes() { return namedNodeMap(this); },
-      getAttributeNode(name) { const key = attrName(this, name); return state(this).attrs.has(key) ? attrNode(this, key) : null; },
+      getAttributeNode(name) { const key = keyByName(state(this), attrName(this, name)); return key !== null ? attrNode(this, key) : null; },
       getAttributeNodeNS(ns, localName) { state(this); const name = findAttributeNS(this, ns, localName); return name === null ? null : attrNode(this, name); },
       getAttributeNS(ns, localName) { state(this); const name = findAttributeNS(this, ns, localName); return name === null ? null : this[S].attrs.get(name); },
       hasAttributeNS(ns, localName) { state(this); return findAttributeNS(this, ns, localName) !== null; },
@@ -867,10 +861,11 @@ export const INTERFACES = [
       removeAttributeNode(attr) { state(this); return removeAttributeNode(this, attr); },
       get classList() { state(this); return tokenList(this, 'class', writeAttribute); },
       set classList(v) { this.classList.value = v; },
+      // The first attribute with the name, in any namespace, else a new one in none.
       setAttribute(name, value) { state(this); writeAttribute(this, attrName(this, name), String(value), true); },
-      hasAttribute(name) { return state(this).attrs.has(attrName(this, name)); },
+      hasAttribute(name) { const s = state(this); return keyByName(s, attrName(this, name)) !== null; },
       hasAttributes() { return state(this).attrs.size > 0; },
-      removeAttribute(name) { state(this); writeAttribute(this, attrName(this, name), undefined); },
+      removeAttribute(name) { state(this); removeAttributeByName(this, attrName(this, name)); },
       get innerHTML() { state(this); return innerMarkup(this); },
       set innerHTML(html) { setInnerHTML(this, html == null ? '' : html); },
       get outerHTML() { state(this); return outerMarkup(this); },
@@ -903,6 +898,11 @@ export const INTERFACES = [
       // Translation mode (HTML 3.2.6.3).
       get translate() { state(this); return translationEnabled(this); },
       set translate(v) { state(this); writeAttribute(this, 'translate', v ? 'yes' : 'no'); },
+      // innerText and outerText (HTML 3.2.7; src/layout.js).
+      get innerText() { state(this); return getInnerText(this); },
+      set innerText(v) { state(this); setInnerText(this, v === null ? '' : String(v), internals(this)); },
+      get outerText() { state(this); return getInnerText(this); },
+      set outerText(v) { state(this); setOuterText(this, v === null ? '' : String(v), internals(this)); },
       get hidden() { return state(this).attrs.has('hidden'); },
       set hidden(v) { state(this); writeAttribute(this, 'hidden', v ? '' : undefined); },
       // The draggable attribute (HTML 6.11.7): true or false (any case),

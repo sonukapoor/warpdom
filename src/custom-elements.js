@@ -113,7 +113,10 @@ function upgrade(element, definition) {
   if (es.ceState !== 'undefined' && es.ceState !== undefined) return;
   es.ceDefinition = definition;
   es.ceState = 'failed';
-  for (const [name, value] of es.attrs) enqueueCallback(element, 'attributeChangedCallback', [name, null, value, null]);
+  for (const [key, value] of es.attrs) {
+    const info = key.charCodeAt(0) === 0 ? es.attrNS.get(key) : null;
+    enqueueCallback(element, 'attributeChangedCallback', info === null ? [key, null, value, null] : [info.local, null, value, info.ns]);
+  }
   if (connected(element)) enqueueCallback(element, 'connectedCallback', []);
   definition.constructionStack.push(element);
   try {
@@ -251,7 +254,10 @@ const ceHooks = {
     });
   },
   attributeChanged(element, name, oldValue, value) {
-    if (element[S].ceState === 'custom') enqueueCallback(element, 'attributeChangedCallback', [name, oldValue ?? null, value ?? null, null]);
+    if (element[S].ceState !== 'custom') return;
+    // name is the attribute's key (attributes.js): its local name and namespace go to the callback.
+    const info = name.charCodeAt(0) === 0 ? element[S].attrNS.get(name) : null;
+    enqueueCallback(element, 'attributeChangedCallback', info === null ? [name, oldValue ?? null, value ?? null, null] : [info.local, oldValue ?? null, value ?? null, info.ns]);
   },
   adopted(node, oldDoc, newDoc) {
     forEachShadowIncluding(node, (el) => {

@@ -418,6 +418,99 @@ Within warpdom's CPU, the top functions are the cascade (`ruleIndex`,
 `performance.now` and frames, interface creation (`materialize`, 3%) and
 event dispatch.
 
+### 3.6 GitHub Actions, 2026-10-12: three DOMs, fast mode, WPT
+
+All on hosted Linux runners (2 cores), corpus at the commits in
+`dom-api-tracer/corpus/pins.json`, warpdom main as of each run, Node
+22.23.3, 3 rounds, configurations alternating within one job. Speedups are
+medians of per-round ratios.
+
+**Three-way** (run 38201339795, warpdom 42e87b2 with the svelte fixes;
+[data/timing/ci-2026-10-12-three-way/](data/timing/ci-2026-10-12-three-way/)).
+handsontable is left out: its jsdom run of the core package exceeded the
+harness's 20-minute limit in every round, so the comparison counted all
+of warpdom's core results as differences (warpdom itself passed 7,612 of
+7,615, as before). The harness now uses a 45-minute limit and marks a round
+with a failed package as NA (dom-api-tracer b25a690).
+
+| Suite | jsdom | warpdom | happy-dom | warpdom vs jsdom | happy-dom vs jsdom | warpdom vs happy-dom | differ from jsdom: warpdom / happy-dom |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| material-ui | 472.4 s | 247.2 s | 333.8 s | 1.90x | 1.41x | 1.36x | 1 / 1,039 |
+| radix-primitives | 44.4 s | 23.6 s | 29.6 s | 1.88x | 1.51x | 1.25x | 0 / 18 |
+| ark-ui | 235.2 s | 143.0 s | 163.8 s | 1.60x | 1.45x | 1.15x | 2 / 115 |
+| floating-ui | 29.4 s | 18.8 s | 22.6 s | 1.57x | 1.30x | 1.20x | 0 / 14 |
+| ariakit | 829.6 s | 539.6 s | 462.6 s | 1.54x | 1.79x | 0.86x | 11 / 51 |
+| vuetify | 80.5 s | 52.0 s | 53.1 s | 1.54x | 1.53x | 1.01x | 0 / 4 |
+| emoji-picker-element | 53.1 s | 40.2 s | 46.0 s | 1.32x | 1.16x | 1.14x | 0 / 1 |
+| react-hook-form | 23.8 s | 17.5 s | 22.3 s | 1.32x | 1.04x | 1.28x | 0 / 7 |
+| react-spectrum | 709.9 s | 550.7 s | 628.4 s | 1.26x | 1.20x | 1.17x | 0 / 1,445 |
+| CopilotKit | 468.5 s | 373.9 s | 50.9 s | 1.25x | 9.01x | 0.13x | 0 / 4,676 |
+| analog | 41.2 s | 33.5 s | 35.9 s | 1.25x | 1.15x | 1.07x | 0 / 2 |
+| svelte | 137.9 s | 125.2 s | 126.4 s | 1.10x | 1.09x | 1.01x | 1 / 288 |
+| solid | 5.2 s | 4.8 s | 4.7 s | 1.08x | 1.11x | 0.94x | 1 / 0 |
+
+- Medians over these 13 suites: warpdom vs jsdom **1.32x**, happy-dom vs
+  jsdom 1.30x, warpdom vs happy-dom 1.14x.
+- warpdom is faster than jsdom on all 13. happy-dom is faster than warpdom on
+  ariakit, solid and (by breaking it) CopilotKit, and about level on
+  Vuetify and svelte.
+- Correctness separates them: happy-dom changes test results in 12 of 13
+  suites (CopilotKit 4,676 tests, React Spectrum 1,445, MUI 1,039, svelte
+  288, ark-ui 115). CopilotKit's 9x on happy-dom is largely the suite
+  failing fast.
+- warpdom's differences:
+  - MUI 1, ark-ui 2 and solid 1 are flaky tests that change on jsdom too.
+  - svelte's 1 is the DOMException deviation (PLAN.md).
+  - ariakit's 11 are its 9 known tests that fail on jsdom and pass on
+    warpdom, plus 2 in `shims.jsdom.test.ts`. That file is pinned to jsdom,
+    so it first ran on warpdom here. The 2 were a real gap (the
+    `modifier*` init members of `getModifierState`), fixed in 0bdec62.
+- CopilotKit was also re-run two-way after the broken rounds of run
+  38194812094: jsdom 432.9 s, warpdom 342.7 s, 1.26x, 0 differences
+  ([data/timing/ci-2026-10-12-copilotkit/](data/timing/ci-2026-10-12-copilotkit/)).
+
+**Fast mode** (run 38201346054, learned.sh, Vitest suites only;
+[data/timing/ci-2026-10-12-fastmode/](data/timing/ci-2026-10-12-fastmode/)):
+
+| Suite | jsdom default | warpdom fast mode | mode | Speedup | Differ |
+| --- | --- | --- | --- | --- | --- |
+| material-ui | 361.9 s | 44.9 s | split | 8.14x | 2 |
+| vuetify | 47.2 s | 7.2 s | split | 6.56x | 0 |
+| radix-primitives | 51.9 s | 8.6 s | split | 6.03x | 0 |
+| CopilotKit | 550.3 s | 314.0 s | split | 1.72x | 0 |
+| emoji-picker-element | 52.3 s | 31.6 s | split | 1.67x | 0 |
+| ark-ui | 351.6 s | 214.4 s | isolated | 1.64x | 2 |
+| floating-ui | 36.9 s | 23.1 s | isolated | 1.60x | 0 |
+| ariakit | 673.8 s | 468.5 s | isolated | 1.43x | 14 |
+| analog | 31.5 s | 25.7 s | isolated | 1.22x | 0 |
+| svelte | 99.4 s | 90.7 s | isolated | 1.08x | 2 |
+| solid | 4.6 s | 4.3 s | isolated | 1.05x | 2 |
+
+Median **1.64x** (was 1.20x on 2026-10-10 on the laptop, with older
+warpdom). "isolated" means learning kept per-file isolation because it was
+faster; then fast mode equals warpdom default.
+
+**Fast frames** (run 38197900923, experiment branch `exp/fast-frames`,
+before the pinned-file fix; [data/timing/ci-2026-10-12-fastframes/](data/timing/ci-2026-10-12-fastframes/)):
+ariakit 465.2 -> 291.5 s (1.61x over warpdom default, 2.31x over jsdom),
+no gain on ark-ui, floating-ui, Radix and Vuetify. It changes results:
+ariakit 12 differences instead of 9, ark-ui 6 instead of 3-4. So it can
+only be an opt-in, like fast mode (F6).
+
+**WPT** (warpdom run 38201266741, warpdom d1358bf, WPT 87b5d13099, one
+job per area; [data/wpt/ci-2026-10-12-summary.md](data/wpt/ci-2026-10-12-summary.md)):
+
+| | warpdom | jsdom 30.1.2 |
+| --- | --- | --- |
+| Subtests passed | 113,318 of 133,221 (85.1%) | 107,201 (80.5%) |
+| Score per file | **72.5%** | 71.1% |
+| Files where every subtest passes | 611 | 613 |
+| Wall clock, summed over jobs | 676 s | 1,463 s |
+
+warpdom now leads on the per-file score too (2026-10-11: 66.5% vs 71.5%);
+html/dom 71.5% vs 68.0%. Behind: the top-level `dom/` files (80.3% vs
+93.4%), `dom/events` (77.8% vs 79.8%), `dom/ranges` (87.6% vs 88.6%).
+
 ## 4. Findings
 
 **F1. "jsdom-compatible" is not one target: suites encode the jsdom
@@ -484,10 +577,11 @@ test helpers wait for animation frames, which jsdom and warpdom pace with
 real time (3.4). A faster DOM cannot shorten those waits. Making frames
 fire without the real-time wait could ("fast frames"). That changes the
 order of frames relative to short timers, so it would be an opt-in that
-needs per-test verification. An experiment branch (`exp/fast-frames`,
-`WARPDOM_FAST_FRAMES=1`) is being measured on GitHub Actions on ariakit,
-ark-ui, floating-ui, Radix and Vuetify, with test-status differences
-against jsdom.
+needs per-test verification. Measured on GitHub Actions (3.6): ariakit 1.61x faster than warpdom's
+default, no change on ark-ui, floating-ui, Radix and Vuetify, and about 6
+more test differences across ariakit and ark-ui. Built as an opt-in, the
+`fastFrames` option (docs/fast-frames.md); `warpdom compare
+--fast-frames` shows a suite's gain and the tests it changes.
 
 **F7. Why the speedup varies between suites.** A suite's time is DOM work
 plus everything else (compiling, framework, runner, test code, waiting),
@@ -542,6 +636,11 @@ gain or lose.
   Linux numbers from GitHub-hosted runners are being collected (2.4,
   2.7). Runners are shared virtual machines, so their noise differs from
   the laptop's.
+- **Harness limits can masquerade as differences.** A package that
+  times out or produces no results on one DOM made every test in it count
+  as a difference (handsontable, 2026-10-12). Rounds with a failed package
+  are now NA, and jsdom rounds that disagree with the jsdom baseline in
+  more than 5 tests are flagged.
 - **Concurrent load on the laptop** is not always visible to the
   measurement: other jobs ran on timers during some sessions, and on
   2026-10-12 a profiling run overlapped one timing round (3.2). This is

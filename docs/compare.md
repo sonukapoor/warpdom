@@ -37,6 +37,7 @@ projects).
 |---|---|---|
 | `--rounds <n>` | 1 | Timed rounds; each runs the baseline and warpdom, alternating. 1 round is labeled indicative; use 3 or more for numbers worth quoting |
 | `--correctness` | off | One round, results only, no speed claims (fast; for CI) |
+| `--fast-frames` | off | Run warpdom with its `fastFrames` option ([fast-frames.md](fast-frames.md)) to see its speedup and which tests change |
 | `--explore` | off | Also try runner settings (pool, isolation) on warpdom; see below |
 | `--workers <n>` | runner default | Passed as the runner's worker limit to every run |
 | `--baseline <env>` | detected | `jsdom` or `happy-dom`; what warpdom is compared with |
