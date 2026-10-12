@@ -143,12 +143,18 @@ htmlParity('hyperlinks: URL members of <a> and <area>', (w) => {
   return out;
 });
 
-// After tasks queued so far. Navigation events are zero-delay timer tasks
-// in both DOMs, but jsdom's can take more than two timer hops to run when
-// the machine is busy (seen with the compare end-to-end tests running in
-// parallel), so wait on the clock: a timer due later runs after every
-// zero-delay task queued before it.
-const tick = () => new Promise((resolve) => setTimeout(resolve, 25));
+// After tasks queued so far. Navigation events are timer tasks in both
+// DOMs, and jsdom's take several timer steps, each scheduling the next. A
+// single wait of any length can end between two of those steps when the
+// process stalls under load (seen with the compare end-to-end tests running
+// in parallel), so yield repeatedly: each step of ours is queued after the
+// step jsdom queued before it.
+const tick = async () => {
+  for (let i = 0; i < 10; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+};
 
 htmlParity('hyperlinks: following links', async (w) => {
   const d = w.document;
@@ -448,6 +454,17 @@ for (const jsdom of [26, 30]) {
 
 parity('PointerEvent persistentDeviceId', (w) => [new w.PointerEvent('x').persistentDeviceId, new w.PointerEvent('x', { persistentDeviceId: 5 }).persistentDeviceId]);
 
+// Whether jsdom's queued volumechange runs before or after a zero-delay
+// timer depends on the event loop phase (it passes alone and fails after
+// other tests), so wait until queued tasks have run: the point is that the
+// event is queued, not synchronous.
+const settle = async () => {
+  for (let i = 0; i < 3; i++) {
+    await new Promise((r) => setTimeout(r, 1));
+    await new Promise((r) => setImmediate(r));
+  }
+};
+
 parity('media: muted and volume changes queue volumechange (jsdom 30)', async (w) => {
   const a = w.document.createElement('audio');
   const log = [];
@@ -460,12 +477,12 @@ parity('media: muted and volume changes queue volumechange (jsdom 30)', async (w
   log.push('volume');
   a.volume = 0.5;
   a.defaultMuted = true;
-  await new Promise((r) => setTimeout(r, 0));
+  await settle();
   log.push('later');
   const v = w.document.createElement('video');
   v.onvolumechange = () => log.push('video');
   v.muted = 1;
-  await new Promise((r) => setTimeout(r, 0));
+  await settle();
   return log;
 });
 
