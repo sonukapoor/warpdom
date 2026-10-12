@@ -980,3 +980,13 @@ img width/height setter range, idlharness argument-count checks (every
 operation would need a length check) and accessor names, the global's
 addEventListener identity (Vitest-style install), readyState transitions
 and Last-Modified headers (runner), iframes loading cross-origin pages.
+- **2026-10-12: Node 22.12 or later.** `engines.node` is `>=22.12` (was
+  `>=20.19`): the XML parser dependency needs it, and Node 20 is past its
+  end of life. `.nvmrc` selects Node 22 (`nvm use` picks the newest 22.x
+  installed; 22.17.1 and 22.23.3 here).
+- **2026-10-12: html/dom after the html/dom work** (main 6fe475f, WPT
+  87b5d13099, --jobs 1; docs/research/data/wpt/htmldom-2026-10-12-summary.md):
+  per-file score warpdom 72.1% vs jsdom 69.4% (was 38.8%); subtests
+  59,796 vs 52,869 of 69,303. Ahead or level in every subdirectory except
+  innerText/outerText (both 3.2%: neither has innerText).
+

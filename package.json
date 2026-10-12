@@ -21,7 +21,7 @@
     "src"
   ],
   "engines": {
-    "node": ">=20.19"
+    "node": ">=22.12"
   },
   "scripts": {
     "test": "node --test",
