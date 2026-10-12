@@ -82,6 +82,16 @@ solid 1 (fails on jsdom too in some file orders, isolate: false). ariakit:
 9 tests fail on jsdom and pass on warpdom (proxy defineProperty, a
 CompositionEvent view check).
 
+Latest survey (after CSS validation, lazy interfaces, the range fast path,
+XML, WebIDL collections, CSSOM, DOM methods and the html/dom work; main at
+6fe475f): 0 differences in react-spectrum, react-hook-form, Vuetify, svelte,
+floating-ui, emoji-picker-element, analog, Radix, MUI, CopilotKit (its local
+checkout lacks some package builds: 231 files fail to load on both DOMs).
+handsontable 3 (all in jsdomThemeCssFilter.unit.js: a jsdom style sheet
+parse error warpdom deliberately does not reproduce). ark-ui 1 (NumberInput
+largeStep, fails on jsdom too with the current checkout). solid 1 (as
+above). ariakit 9 (as above).
+
 | Project | Framework / kind | DOM | Status (2026-10-08) | Files | Tests | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | floating-ui | React, Vue positioning | jsdom | traced | 24 | 340 | |
