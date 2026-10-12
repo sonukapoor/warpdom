@@ -285,9 +285,13 @@ export function domStringMap(element, write) {
       if (isData(key)) { const v = es.attrs.get(toAttribute(key)); if (v !== undefined) return v; }
       return Reflect.get(t, key, receiver);
     },
+    // The named property setter (HTML 3.2.6.6): a "-" followed by an ASCII
+    // lowercase letter is a SyntaxError, a name that does not make a valid
+    // attribute local name an InvalidCharacterError.
     set(t, key, value) {
-      if (!isData(key)) return Reflect.set(t, key, value);
-      write(element, toAttribute(key), String(value));
+      if (typeof key !== 'string') return Reflect.set(t, key, value);
+      if (!isData(key)) throw domError(`'${key}' contains a '-' followed by an ASCII lowercase letter.`, 'SyntaxError');
+      write(element, toAttribute(key), String(value), true);
       return true;
     },
     has(t, key) { return (isData(key) && es.attrs.has(toAttribute(key))) || Reflect.has(t, key); },

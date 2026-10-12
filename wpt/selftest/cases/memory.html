@@ -1,0 +1,19 @@
+<!doctype html>
+<title>A test that keeps allocating is stopped at the memory limit</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+// Grows by 32 MB every 50 ms (filled, so it is resident), at most 800 MB:
+// the runner's watchdog must stop it first (the self-test runs with
+// --max-memory 256).
+setup({ explicit_timeout: true });
+async_test((t) => {
+  const held = [];
+  const grow = () => {
+    if (held.length >= 25) return;
+    held.push(new Uint8Array(32 * 1048576).fill(1));
+    t.step_timeout(grow, 50);
+  };
+  grow();
+}, "grows until stopped");
+</script>

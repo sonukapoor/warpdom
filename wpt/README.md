@@ -49,7 +49,10 @@ node wpt/run.mjs dom/nodes --filter ParentNode
 node wpt/run.mjs dom/nodes --warpdom ~/Projects/warpdom
 ```
 
-Options: `--jobs N` (files in parallel, default 2), `--timeout-multiplier X`
+Options: `--jobs N` (files in parallel, default 1), `--max-memory MB`
+(resident memory per test process, default 1536: a watchdog polls it four
+times a second and stops a file that goes over, recorded as CRASH with
+the reason; the JS heap limit is set to 75% of it), `--timeout-multiplier X`
 (scales testharness.js timeouts: 10 s per file, 60 s for `timeout=long`),
 `--out <dir>` (default `wpt/results/<timestamp>/`, ignored by git),
 `--depth N` (group the tables by the first N path segments),
@@ -183,3 +186,13 @@ Skipped and not-runnable tests are listed in every results file.
   a sample's pass rate is an estimate for the directory, not its number.
 - **One machine, one run.** Results are deterministic apart from tests that
   race with timers; durations depend on the machine.
+
+## Memory
+
+A full run over dom, domparsing, html/dom and css/cssom with two engines and
+`--jobs 2` once pushed a 24 GB machine into running out of memory: html/dom
+has files with tens of thousands of generated subtests. Run large
+directories separately, keep `--jobs 1` for full runs, and keep the
+`--max-memory` limit (the runner warns at startup when jobs x limit is more
+than half of the free memory).
+

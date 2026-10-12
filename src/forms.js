@@ -17,6 +17,7 @@ import { writeAttribute, attributeSteps, tokenList } from './attributes.js';
 import { liveList, htmlCollectionNames } from './collections.js';
 import { dispatch, eventConstruct, fieldGetters } from './events.js';
 import { parseInteger } from './reflect.js';
+import { directionality } from './directionality.js';
 
 // --- helpers -------------------------------------------------------------------
 
@@ -313,7 +314,7 @@ attributeSteps.set('checked', (el) => {
 // --- text selection (input and textarea) ------------------------------------------
 
 const selectionApplies = (el) => isTag(el, 'textarea') || SELECTION_TYPES.has(inputType(el));
-const controlValue = (el) => (isTag(el, 'textarea') ? textareaValue(el) : inputValue(el));
+export const controlValue = (el) => (isTag(el, 'textarea') ? textareaValue(el) : inputValue(el));
 
 function setControlValueRaw(el, value) {
   const s = el[S];
@@ -1010,7 +1011,7 @@ function constructEntryList(form, submitter = null) {
       }
       const dirname = attr(field, 'dirname');
       if (dirname && (tag === 'textarea' || (tag === 'input' && SELECTION_TYPES.has(type)))) {
-        entries.push(createEntry(dirname, (attr(field, 'dir') ?? '').toLowerCase() === 'rtl' ? 'rtl' : 'ltr'));
+        entries.push(createEntry(dirname, directionality(field)));
       }
     }
     const formData = Object.create(internalsOf(form).protos.FormData);

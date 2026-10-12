@@ -254,6 +254,20 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   the old ancestors' subtree registrations until observers are next
   notified), observers notified in the order they were created, and an
   `attributeFilter` that lets no namespaced attribute through.
+- The directionality (`:dir()`, the computed `direction`, form
+  submission's dirname) follows the current HTML standard in every jsdom
+  profile: elements in a shadow tree take their host's directionality
+  (jsdom 30: ltr), a dir=auto slot skips assigned elements with a dir
+  attribute and bdi elements (jsdom 30 reads their text), and dirname
+  gives the control's directionality (jsdom reads only its own dir
+  attribute, so an inherited or dir=auto rtl gives ltr). jsdom 26's
+  `:dir()` (a bdi without strong characters takes its parent's direction,
+  input values ignored, results stale after changes) is not emulated;
+  before this warpdom matched neither `:dir(ltr)` nor `:dir(rtl)`.
+- `translate` inherits through non-HTML elements (jsdom 30 gives
+  undefined for an HTML element inside SVG), and `:lang()` reads `lang`
+  in no namespace only on HTML and SVG elements, `xml:lang` (XML
+  namespace) first.
 
 ## Decisions
 
@@ -810,3 +824,53 @@ getElementById-namespaced-id, Element-setAttributeNodeNS),
 Node.moveBefore (jsdom lacks it; libraries feature-detect it), document
 character sets, live-collection and named-property cases (collections
 branch), DragEvent and TextEvent (jsdom lacks them too).
+- **2026-10-11: First full WPT run** (wpt/, WPT 87b5d13099, warpdom fc9d262;
+  dom, domparsing, html/dom, css/cssom; 963 files, 133k subtests;
+  docs/research/data/wpt/full-2026-10-11-summary.md). Subtests passed:
+  warpdom 111,785 (83.9%), jsdom 30.1.2 107,191 (80.5%). Per-file score
+  (wpt.fyi style): warpdom 66.5%, jsdom 71.5%. Ahead or level: css/cssom
+  64.8 vs 63.8, dom/collections 100 vs 100, dom/lists, dom/traversal 92.5 vs
+  89.6, domparsing 86.9 vs 84.9. Behind: html/dom 38.8 vs 69.4 (more
+  subtests pass, far fewer files fully: next target), dom/ top-level files,
+  dom/abort, dom/events 77.8 vs 79.8, dom/nodes 68.0 vs 69.1, dom/ranges
+  87.6 vs 88.6. Wall clock: warpdom 393 s, jsdom 752 s. Earlier the same
+  day (sample of 139 files, before the four WPT branches): 63.6% vs 82.8%.
+
+## 2026-10-11: Global attributes, directionality (branch wpt-global-attributes)
+
+WPT html/dom/elements/global-attributes (WPT 87b5d13099): per-file score
+34.9% -> 74.8% (jsdom 30.1.2: 72.2%), subtests 109 -> 231 of 250 (jsdom
+217); no file lost a subtest.
+Done: the directionality from the HTML standard (src/directionality.js):
+dir states, dir=auto and bdi (first strong character of the contained
+text, skipping bdi/script/style/textarea and elements with a dir state),
+auto-directionality form controls (input and textarea values), slots
+(assigned nodes; a slot in a shadow tree gives its host's direction),
+shadow roots to hosts; `:dir()`; the computed `direction` from the
+rendering section's rules ([dir], bdi, input[type=tel]; jsdom 26 profile
+keeps '' as jsdom 26 does); dirname in form submission. Strong
+bidirectional types come from the UCD (scripts/generate-bidi-data.mjs ->
+src/bidi-data.js, 2.5 KB of runs decoded on first non-ASCII lookup).
+`HTMLElement.translate` (translation mode), `Document.dir`, `:lang()`
+from the language of a node (xml:lang, lang on HTML/SVG, shadow host),
+dataset setter errors (SyntaxError, InvalidCharacterError).
+Design: directionality is computed when asked and never stored, so
+insertion, removal, text and attribute changes do no work for it in any
+document (no dir=auto gate needed); a query walks the ancestors and, for
+dir=auto/bdi, the descendants up to the first strong character.
+Benchmarks (Node 22.17.1, alternating against main, medians of 5): cold
+load 17.3 -> 17.0 ms, first window 1.49 -> 1.72 ms (the sum is unchanged:
+18.8 ms; the shift follows the name of the new `translate` member, not
+work per window), later windows 0.175 -> 0.178 ms; bench:hot (5 runs each
+order) within noise; dataset set 159.0 -> 158.5 ns, dataset get 135.5 ->
+133.8 ns, an undeclared computed property 76.8 -> 76.4 ns,
+matches(':lang(en)') 30.5 -> 29.1 ns. No hot-path slowdown.
+Not done: `innerText` (jsdom lacks it; two dir-assorted and one dynamic
+test set it), manual slot assignment (`slot.assign()`, jsdom lacks it),
+CSS inheritance through slots in the flat tree (getComputedStyle of a
+slotted element inherits from its node-tree parent, as in jsdom), several
+attributes with one qualified name in different namespaces
+(custom-attrs.html; attributes are keyed by qualified name), MathML
+elements' dataset (no MathMLElement, as in jsdom), and harness limits:
+the-lang-attribute-* measure :lang through layout (offsetWidth),
+cdata-dir_auto loads an XHTML iframe.

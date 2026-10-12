@@ -521,6 +521,9 @@ export const INTERFACES = [
         if (html) for (let c = html[S].first; c; c = c[S].next) if (isHTMLTag(c, 'body') || isHTMLTag(c, 'frameset')) return c;
         return null;
       },
+      // The html element's dir attribute, limited to only known values.
+      get dir() { const html = htmlElement(this); return html ? knownDir(html[S].attrs.get('dir')) : ''; },
+      set dir(v) { const html = htmlElement(this); if (html) writeAttribute(html, 'dir', String(v)); },
       get title() {
         state(this);
         for (const el of descendantElements(this)) {
@@ -827,11 +830,11 @@ export const INTERFACES = [
     name: 'HTMLElement',
     parent: 'Element',
     members: mix(inlineStyle, htmlOrSvgElement, HTML_ELEMENT_LAYOUT, clickMember, FOCUS_MEMBERS, GLOBAL_HANDLER_MEMBERS, {
-      get dir() {
-        const dir = (state(this).attrs.get('dir') ?? '').toLowerCase();
-        return dir === 'ltr' || dir === 'rtl' || dir === 'auto' ? dir : '';
-      },
+      get dir() { return knownDir(state(this).attrs.get('dir')); },
       set dir(v) { writeAttribute(this, 'dir', String(v)); },
+      // Translation mode (HTML 3.2.6.3).
+      get translate() { state(this); return translationEnabled(this); },
+      set translate(v) { state(this); writeAttribute(this, 'translate', v ? 'yes' : 'no'); },
       get hidden() { return state(this).attrs.has('hidden'); },
       set hidden(v) { state(this); writeAttribute(this, 'hidden', v ? '' : undefined); },
     }),
@@ -841,6 +844,28 @@ export const INTERFACES = [
   { name: 'SVGSVGElement', parent: 'SVGGraphicsElement', members: {} },
   { name: 'SVGTitleElement', parent: 'SVGElement', members: {} },
 ];
+
+function knownDir(value) {
+  const dir = (value ?? '').toLowerCase();
+  return dir === 'ltr' || dir === 'rtl' || dir === 'auto' ? dir : '';
+}
+
+// An element's translation mode: its own translate attribute (HTML
+// elements; yes or empty: enabled, no: disabled), else its parent
+// element's, else enabled.
+function translationEnabled(element) {
+  for (let el = element; el; el = el[S].parent) {
+    const s = el[S];
+    if (s.type !== ELEMENT_NODE) return true;
+    if (s.ns !== HTML_NS) continue;
+    const v = s.attrs.get('translate');
+    if (v === undefined) continue;
+    const lower = v.toLowerCase();
+    if (lower === 'yes' || lower === '') return true;
+    if (lower === 'no') return false;
+  }
+  return true;
+}
 
 function insertAdjacent(element, position, node) {
   const s = state(element);

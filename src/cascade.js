@@ -18,6 +18,7 @@ import { LONGHANDS, SHORTHANDS, ALIASES } from './css-data.js';
 import { resolveColor } from './colors.js';
 import { segments, expand, serializeBox, BOX, PAIRS, CSS_WIDE } from './shorthands.js';
 import { compileRuleSelector } from './selectors.js';
+import { directionality } from './directionality.js';
 import { documentStyleSheets, styleElementSheet } from './cssom.js';
 import { parseDeclarations, computed, validationModeOf } from './css.js';
 
@@ -315,6 +316,16 @@ function legacyDefault(element, name) {
   return '';
 }
 
+// The HTML standard's rendering section sets `direction` from the
+// directionality on elements with a dir attribute, bdi and
+// input[type=tel] ([dir]:dir(ltr), bdi:dir(ltr), input[type=tel i]:dir(ltr),
+// and the rtl rules); other elements inherit it.
+function uaDirection(element) {
+  const s = element[S];
+  if (s.ns !== HTML_NS) return false;
+  return s.attrs.has('dir') || s.tag === 'bdi' || (s.tag === 'input' && s.attrs.get('type')?.toLowerCase() === 'tel');
+}
+
 // getComputedStyle(element).getPropertyValue(property).
 export function computedValue(element, property) {
   const custom = property.startsWith('--');
@@ -327,6 +338,7 @@ export function computedValue(element, property) {
   if (name === 'display' && element[S].ns === HTML_NS && element[S].attrs.has('hidden') && !inlineDeclarations(element)?.has('display')) return 'none';
   let value = cascaded(element, name);
   if (value === undefined && !custom && element[S].doc[S].window[S].compat?.legacyComputedStyle) return legacyDefault(element, name);
+  if (value === undefined && name === 'direction' && uaDirection(element)) return directionality(element);
   if (value !== undefined && !custom && value.includes('var(')) value = substitute(element, value);
   const keyword = value === undefined ? (data[1] ? 'inherit' : 'initial') : value.toLowerCase();
   switch (keyword) {

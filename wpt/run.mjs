@@ -3,18 +3,18 @@
 //
 //   node wpt/run.mjs dom/nodes dom/events [--engine warpdom,jsdom]
 //     [--wpt ~/Projects/wpt] [--warpdom <checkout>] [--sample 30 --seed 1]
-//     [--jobs 2] [--timeout-multiplier 1] [--filter text] [--no-skip]
+//     [--jobs 1] [--max-memory 1536] [--timeout-multiplier 1] [--filter text] [--no-skip]
 //     [--include-testdriver] [--include-tentative]
 //     [--out wpt/results/<name>] [--depth N]
 //
 // Writes <out>/<engine>.json (every file and subtest) and <out>/summary.md
 // (per-directory table per engine, and a side-by-side table when several
 // engines ran). See wpt/README.md.
-import { fork, execFileSync } from 'node:child_process';
+import { fork, execFile, execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { homedir, cpus, totalmem, platform, release } from 'node:os';
+import { homedir, cpus, totalmem, freemem, platform, release } from 'node:os';
 import { createRequire } from 'node:module';
 import { discover, sample } from './lib/discover.mjs';
 import { markdownTable, compareTable } from './lib/summary.mjs';
@@ -24,7 +24,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 function parseArgs(argv) {
   const opts = {
     paths: [], engines: ['warpdom'], wpt: process.env.WPT_DIR ?? join(homedir(), 'Projects/wpt'),
-    warpdom: resolve(here, '..'), sample: 0, seed: 1, jobs: 2, timeoutMultiplier: 1, filter: null,
+    warpdom: resolve(here, '..'), sample: 0, seed: 1, jobs: 1, maxMemory: 1536, timeoutMultiplier: 1, filter: null,
     skip: true, testdriver: false, tentative: false, out: null, depth: 0, quiet: false,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -36,6 +36,7 @@ function parseArgs(argv) {
     else if (a === '--sample') opts.sample = Number(next());
     else if (a === '--seed') opts.seed = Number(next());
     else if (a === '--jobs') opts.jobs = Math.max(1, Number(next()));
+    else if (a === '--max-memory') opts.maxMemory = Math.max(256, Number(next()));
     else if (a === '--timeout-multiplier') opts.timeoutMultiplier = Number(next());
     else if (a === '--filter') opts.filter = next();
     else if (a === '--no-skip') opts.skip = false;
@@ -112,8 +113,21 @@ function runOne(test, engine, opts) {
     let done = false;
     const child = fork(join(here, 'lib/child.mjs'), [], {
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
-      execArgv: ['--max-old-space-size=1024', '--experimental-vm-modules', '--no-warnings'],
+      // The JS heap limit leaves room under the memory limit for native
+      // memory (buffers, code), which the watchdog below counts too.
+      execArgv: [`--max-old-space-size=${Math.floor(opts.maxMemory * 0.75)}`, '--experimental-vm-modules', '--no-warnings'],
     });
+    // Memory watchdog: the process's resident memory, polled from here (a
+    // check inside the test process would not run during a long synchronous
+    // test). Over the limit, the file ends as a CRASH with what it reported.
+    const watchdog = setInterval(() => {
+      execFile('ps', ['-o', 'rss=', '-p', String(child.pid)], (error, out) => {
+        const kb = Number.parseInt(out, 10);
+        if (!error && kb > opts.maxMemory * 1024) {
+          end({ harness: 'CRASH', message: `runner: memory limit exceeded (${Math.round(kb / 1024)} MB resident, limit ${opts.maxMemory} MB), process killed` });
+        }
+      });
+    }, 250);
     const keep = (chunk) => { log = (log + chunk).slice(-4000); };
     child.stdout.on('data', keep);
     child.stderr.on('data', keep);
@@ -122,6 +136,7 @@ function runOne(test, engine, opts) {
       if (done) return;
       done = true;
       clearTimeout(timer);
+      clearInterval(watchdog);
       child.kill('SIGKILL');
       const durationMs = Date.now() - started;
       const result = { file: test.file, harness: record.harness, message: record.message ?? null, durationMs, subtests: record.subtests ?? streamed };
@@ -173,6 +188,13 @@ async function runEngine(engine, tests, opts, expectations, notRunnable) {
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
+  // Each test process may use up to --max-memory; warn when the parallel
+  // processes could take more than half of the memory free now.
+  const plannedMb = opts.jobs * opts.maxMemory;
+  const freeMb = Math.round(freemem() / 1048576);
+  if (plannedMb > freeMb / 2) {
+    process.stderr.write(`warning: --jobs ${opts.jobs} x --max-memory ${opts.maxMemory} MB = ${plannedMb} MB, more than half of the ${freeMb} MB free; consider --jobs 1 or running large directories (html/dom) separately\n`);
+  }
   let { tests, notRunnable } = discover(opts.wpt, opts.paths);
   if (opts.filter) tests = tests.filter((t) => t.id.includes(opts.filter));
   const expectations = loadExpectations();

@@ -3,7 +3,9 @@
 // the combinators) and cached, so querySelector, matches and closest never
 // re-parse. Walks use the linked tree directly.
 import { matchesChecked, matchesValidity } from './forms.js';
-import { S, domError, ELEMENT_NODE, DOCUMENT_NODE, HTML_NS, nextInTree, rootOf } from './internal.js';
+import { directionality } from './directionality.js';
+import { S, domError, ELEMENT_NODE, DOCUMENT_NODE, HTML_NS, SVG_NS, nextInTree, rootOf } from './internal.js';
+import { XML_NS } from './attributes.js';
 
 // --- tokens and parsing --------------------------------------------------------
 
@@ -391,8 +393,35 @@ function compilePseudo({ name, arg }) {
     case 'defined': return (el) => { const st = el[S].ceState; return st === undefined || st === 'custom'; };
     case 'indeterminate': return (el) => !!el[S].indeterminate;
     case 'open': return (el) => isHTML(el) && (el[S].tag === 'details' || el[S].tag === 'dialog') && el[S].attrs.has('open');
-    case 'lang': { const lang = String(arg).toLowerCase(); return (el) => { for (let n = el; n; n = parentElement(n)) { const l = n[S].attrs.get('lang'); if (l !== undefined) return l.toLowerCase() === lang || l.toLowerCase().startsWith(`${lang}-`); } return false; }; }
+    case 'lang': {
+      const lang = String(arg).toLowerCase();
+      return (el) => { const l = languageOf(el)?.toLowerCase(); return l !== undefined && (l === lang || l.startsWith(`${lang}-`)); };
+    }
+    case 'dir': {
+      const dir = String(arg).toLowerCase();
+      return dir === 'ltr' || dir === 'rtl' ? (el) => directionality(el) === dir : () => false;
+    }
     default: return () => false; // hover, active, visited, target, ...
+  }
+}
+
+// The language of an element (HTML 3.2.6.2): its lang attribute in the XML
+// namespace, else (HTML and SVG elements) its lang attribute in no
+// namespace, else its parent element's, through a shadow root to its host;
+// undefined when unknown.
+function languageOf(element) {
+  for (let n = element; ;) {
+    const s = n[S];
+    if (s.attrNS) for (const [name, info] of s.attrNS) if (info.ns === XML_NS && info.local === 'lang') return s.attrs.get(name);
+    if (s.ns === HTML_NS || s.ns === SVG_NS) {
+      const lang = s.attrs.get('lang');
+      if (lang !== undefined && s.attrNS?.has('lang') !== true) return lang;
+    }
+    const p = s.parent;
+    if (!p) return undefined;
+    if (p[S].type === ELEMENT_NODE) n = p;
+    else if (p[S].shadow === true) n = p[S].host;
+    else return undefined;
   }
 }
 

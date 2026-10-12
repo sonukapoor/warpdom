@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Harness self-test: runs the pages in selftest/cases with both engines and
 // checks the harness behaviors they exercise (script order, deferred and
-// module scripts, load events, variants, .any.js pages, errors, timeouts).
+// module scripts, load events, variants, .any.js pages, errors, timeouts,
+// the memory limit).
 // A failure here is a harness problem, not an engine bug.
 //
 //   node wpt/selftest/run.mjs [--wpt ~/Projects/wpt]
@@ -25,6 +26,8 @@ const EXPECTED = {
   'selftest/generated.any.html': ['OK', { 'META script and title': 'PASS' }],
   'selftest/module.html': ['OK', { 'module script imports': 'PASS', 'fetch serves files of the checkout': 'PASS' }],
   'selftest/realm.html': ['OK', { "assert_throws_js sees the DOM's TypeError as the page's": 'PASS' }],
+  // Stopped by the memory watchdog (--max-memory 256 below).
+  'selftest/memory.html': ['CRASH', {}],
 };
 
 const root = mkdtempSync(join(tmpdir(), 'wpt-selftest-'));
@@ -35,7 +38,7 @@ try {
   const out = join(root, 'out');
   // Not a git checkout: the run records no WPT commit.
   execFileSync(process.execPath, [join(here, '..', 'run.mjs'), 'selftest', '--wpt', root, '--engine', 'warpdom,jsdom',
-    '--timeout-multiplier', '0.1', '--no-skip', '--quiet', '--out', out], { stdio: ['ignore', 'ignore', 'ignore'] });
+    '--timeout-multiplier', '0.1', '--max-memory', '256', '--no-skip', '--quiet', '--out', out], { stdio: ['ignore', 'ignore', 'ignore'] });
   for (const engine of ['warpdom', 'jsdom']) {
     const run = JSON.parse(readFileSync(join(out, `${engine}.json`), 'utf8'));
     for (const [id, [harness, subtests]] of Object.entries(EXPECTED)) {
