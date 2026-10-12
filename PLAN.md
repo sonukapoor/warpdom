@@ -166,6 +166,13 @@ web-components package).
 Where jsdom departs from the standard in ways no realistic test relies on,
 warpdom follows the standard. Each has a test. To publish in the docs.
 
+- `DOMException` is an `Error` in the test realm (`e instanceof Error` is
+  true), as the standard requires. In Vitest's default pools, jsdom's
+  `DOMException` comes from jsdom's own script context, so it is not an
+  `Error` there. One known test depends on jsdom's behavior: svelte
+  `tests/hydration/test.ts::whitespace-at-block-start` (svelte appends to
+  the message of `Error`s only). Decided 2026-10-12: keep the standard;
+  matching jsdom would change error handling in every suite.
 - `tabIndex` parses the attribute with the rules for parsing integers:
   `tabindex="abc"` gives the element's default (-1 on a div); jsdom gives 0.
 - A disabled `fieldset` is not focusable even with a `tabindex`; jsdom
