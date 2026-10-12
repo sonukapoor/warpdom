@@ -27,6 +27,18 @@ import { configDefaults } from 'vitest/config';
 export const CACHE_FILE = '.warpdom/fast-mode.json';
 export const isolatedName = (name) => `${name} (isolated)`;
 const RESET = fileURLToPath(new URL('./vitest-reset.js', import.meta.url));
+// Vitest resolves an environment name as the package vitest-environment-<name>
+// or a path, so 'warpdom' becomes the path of warpdom's environment.
+const ENVIRONMENT = fileURLToPath(new URL('./vitest.js', import.meta.url));
+const named = (test) => (test?.environment === 'warpdom' ? { ...test, environment: ENVIRONMENT } : test);
+function withEnvironmentPath(config) {
+  const uses = (t) => t?.environment === 'warpdom';
+  const projects = config?.test?.projects;
+  if (!uses(config?.test) && !(Array.isArray(projects) && projects.some((p) => uses(p?.test)))) return config;
+  const test = { ...named(config.test) };
+  if (Array.isArray(projects)) test.projects = projects.map((p) => (p && typeof p === 'object' && uses(p.test) ? { ...p, test: named(p.test) } : p));
+  return { ...config, test };
+}
 
 export function readCache(file = CACHE_FILE) {
   try {
@@ -53,7 +65,8 @@ function runSettings(cacheFile) {
   return { mode, leaky, rerun: process.env.WARPDOM_FAST_RERUN === '1' };
 }
 
-function transform(config, { cache, project }) {
+function transform(original, { cache, project }) {
+  const config = withEnvironmentPath(original);
   const { mode, leaky, rerun } = runSettings(cache);
   if (mode === 'isolated') return config;
   const test = config.test ?? {};

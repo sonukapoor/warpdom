@@ -12,6 +12,7 @@
       "default": "./src/index.js"
     },
     "./vitest": "./src/vitest.js",
+    "./vitest/environment": "./src/vitest-environment.js",
     "./vitest/reset": "./src/vitest-reset.js",
     "./vitest/fast": "./src/vitest-fast.js",
     "./jest": "./src/jest.js",

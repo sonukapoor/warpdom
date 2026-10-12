@@ -1,5 +1,6 @@
-// Vitest environment: `environment: 'warpdom'` (via vitest-environment-warpdom)
-// or a path to this file. Installs a fresh warpdom window on the test file's
+// Vitest environment: test.environment set to this file's path (exported as
+// `environment` by 'warpdom/vitest/environment'; Vitest takes a path or a
+// vitest-environment-<name> package). Installs a fresh warpdom window on the test file's
 // global the way Vitest's jsdom environment installs jsdom's: window members
 // become globals (functions bound to the window), window/self/top/parent and
 // document.defaultView point at the global, and teardown restores the

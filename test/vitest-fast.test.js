@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { withFastMode } from '../src/vitest-fast.js';
+import { environment as ENVIRONMENT_PATH } from '../src/vitest-environment.js';
 import { filesOf, failedFiles, merge, summary, newlyLeaky, chooseMode, splitArgs, withoutProjects } from '../src/vitest-fast-cli.js';
 import { resolve } from 'node:path';
 
@@ -14,9 +15,11 @@ const withEnv = (env, fn) => {
 };
 
 test('withFastMode: unchanged until something is learned, or when isolated is faster', () => {
-  const config = { test: { environment: 'warpdom' } };
+  const config = { test: { environment: '/path/to/env.js' } };
   assert.equal(withFastMode(config, { cache: '/nonexistent/fast-mode.json' }), config);
   assert.equal(withEnv({ WARPDOM_FAST_MODE: 'isolated' }, () => withFastMode(config)), config);
+  // Except that the name 'warpdom' becomes the environment's path.
+  assert.equal(withFastMode({ test: { environment: 'warpdom' } }, { cache: '/nonexistent' }).test.environment, ENVIRONMENT_PATH);
 });
 
 test('withFastMode: a fast project, and an isolated one for leaky files', () => {
@@ -57,7 +60,7 @@ test('withFastMode: a named project of several is split; others keep the root se
   assert.deepEqual(out.test.projects.map((p) => p.test.name), ['browser', 'unit', 'unit (isolated)']);
   assert.deepEqual(out.test.projects[0].test.setupFiles, ['root.ts', 'browser.ts']);
   assert.deepEqual(out.test.projects[1].test.setupFiles.slice(1), ['root.ts', 'unit.ts']);
-  assert.equal(out.test.projects[1].test.environment, 'warpdom');
+  assert.equal(out.test.projects[1].test.environment, ENVIRONMENT_PATH);
   const rerun = withEnv({ ...env, WARPDOM_FAST_RERUN: '1' }, () => withFastMode(config, { project: 'unit', cache: '/nonexistent' }));
   assert.deepEqual(rerun.test.projects.map((p) => p.test.name), ['unit (isolated)']);
   assert.throws(() => withEnv(env, () => withFastMode(config, { cache: '/nonexistent' })), /name the project/);

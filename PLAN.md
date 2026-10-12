@@ -1399,3 +1399,14 @@ declarative shadow DOM (xpath-shadow-dom 1 subtest).
   exp/fast-frames (an environment variable read in the core) is replaced
   by this and deleted.
 
+
+- **2026-10-12: Configuring warpdom in Vitest.** Found while writing the
+  README: Vitest takes a package named `vitest-environment-<name>` or a path
+  as `test.environment`, so `environment: 'warpdom'` (as docs/fast-mode.md
+  showed) and `'warpdom/vitest'` both fail to resolve. Jest's
+  `testEnvironment: 'warpdom/jest'` works. Now:
+  `import { environment } from 'warpdom/vitest/environment'` gives the path
+  (a tiny module, so the config does not load the DOM), and `withFastMode`
+  turns `'warpdom'` into it. Release decision: also publish a
+  `vitest-environment-warpdom` package (name free on npm) so plain
+  `environment: 'warpdom'` works.

@@ -18,9 +18,11 @@ Vitest:
 
 ```js
 // vitest.config.js
+import { environment } from 'warpdom/vitest/environment';
+
 export default {
   test: {
-    environment: 'warpdom/vitest',
+    environment, // import { environment } from 'warpdom/vitest/environment'
     environmentOptions: { warpdom: { fastFrames: true } },
   },
 };
