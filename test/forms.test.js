@@ -448,3 +448,80 @@ parity('FileList and input.files', (w) => {
   out.push(f.files);
   return out;
 });
+
+// The selectedness setting algorithm reruns only when the select's list of
+// options changes (or an option or the select asks for a reset), not after
+// unrelated tree changes elsewhere in the document.
+parity('select with no selected option stays that way until its options change', (w) => {
+  const d = html(w, '<select id="s"><option>a</option><option>b</option></select><p id="p"></p>');
+  const s = d.getElementById('s');
+  const state = () => [s.selectedIndex, s.value, [...s.options].map((o) => o.selected)];
+  const out = [];
+  s.selectedIndex = -1;
+  out.push(state());
+  d.getElementById('p').appendChild(d.createElement('span'));
+  d.getElementById('p').textContent = 'changed';
+  out.push(state());
+  s.options[1].textContent = 'x';
+  out.push(state());
+  s.value = 'nothing';
+  d.body.appendChild(d.createElement('div'));
+  out.push(state());
+  s.appendChild(d.createElement('option'));
+  out.push(state());
+  s.selectedIndex = -1;
+  s.options[2].remove();
+  out.push(state());
+  return out;
+});
+
+parity('select: the size and multiple attributes ask for a reset', (w) => {
+  const d = html(w, '<select id="s"><option>a</option></select>');
+  const s = d.getElementById('s');
+  const out = [];
+  s.selectedIndex = -1;
+  s.setAttribute('size', '1');
+  out.push(s.selectedIndex);
+  s.selectedIndex = -1;
+  s.setAttribute('multiple', '');
+  s.removeAttribute('multiple');
+  out.push(s.selectedIndex);
+  s.selectedIndex = -1;
+  s.setAttribute('name', 'n');
+  s.options[0].setAttribute('value', 'v');
+  out.push(s.selectedIndex);
+  return out;
+});
+
+parity('select moved or wrapped keeps no selection', (w) => {
+  const d = w.document;
+  const s = d.createElement('select');
+  s.appendChild(d.createElement('option'));
+  s.selectedIndex = -1;
+  const div = d.createElement('div');
+  div.appendChild(s);
+  d.body.appendChild(div);
+  const out = [s.selectedIndex];
+  d.body.appendChild(s);
+  out.push(s.selectedIndex);
+  return out;
+});
+
+parity('select options added after the value was set', (w) => {
+  const d = html(w, '<select id="s"></select>');
+  const s = d.getElementById('s');
+  s.value = 'b';
+  const out = [s.selectedIndex];
+  for (const t of ['a', 'b', 'c']) { const o = d.createElement('option'); o.textContent = t; s.appendChild(o); }
+  out.push(s.selectedIndex, s.value);
+  s.value = 'b';
+  out.push(s.selectedIndex);
+  return out;
+});
+
+parity('select is iterable over its options', (w) => {
+  const d = html(w, '<select id="s"><option>a</option><optgroup><option>b</option></optgroup></select>');
+  const s = d.getElementById('s');
+  const [first, second] = s;
+  return [typeof w.HTMLSelectElement.prototype[Symbol.iterator], [...s].map((o) => o.textContent), first.textContent, second.textContent];
+});

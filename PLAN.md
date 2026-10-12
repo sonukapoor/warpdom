@@ -1106,3 +1106,53 @@ to the mixed environments in one worker.
   differ from 4.6 on a sweep, e.g. border: 1px solid #ff0000 keeps #ff0000,
   currentcolor stays the computed border color); jsdom 26 lowercases units
   in parsed lengths (1PX -> 1px).
+- **2026-10-12: svelte's remaining differences: select, observers,
+  scripts, media.** With all of svelte's files on warpdom, 30 tests still
+  differed after the jsdom 25 profile; now 1.
+  - select: the selectedness setting algorithm reran after any change in
+    the document (treeRev), so a select left with no selected option
+    (selectedIndex = -1, or a value matching none) got its first option
+    back at the next unrelated change. It now reruns only when the list of
+    options gained or lost options (compared lazily with the list it last
+    settled), when an option asks for a reset, or when the size or
+    multiple attribute is set (jsdom does that even for the same value).
+    jsdom also reruns it for any element inserted or removed anywhere in
+    the select; not modeled (no subtree revision counters). Like jsdom, a
+    disabled attribute change does not reset (WPT's newer
+    select-attribute-change-reset expects it: 2 subtests).
+    HTMLSelectElement is iterable over its options; select[0] (indexed
+    properties on an element) is not supported.
+  - MutationObserver: observe() counts registrations in the node's
+    document, and adoption did not move the count, so a node observed
+    while in a template's contents document (svelte clones templates) got
+    no records after moving into the page. adopt() now moves it.
+  - Scripts: a classic inline script made by script (createElement,
+    cloneNode, importNode; not the parser) runs when it becomes connected,
+    as in Vitest's jsdom (runScripts: 'dangerously'); document.currentScript;
+    errors go to the window's error event. Parser-made scripts never run but
+    their clones do; src scripts load nothing; module scripts do not run.
+    jsdom 30 runs a fragment's scripts after all its children are in, runs
+    a connected script when text is inserted into it, and runs scripts in
+    shadow trees; earlier profiles do neither. Vitest (both pools) and Jest
+    run them in the test realm (window[S].runScript); a standalone window
+    uses `with (window)` and a direct eval, so top-level var declarations
+    stay local. Insertion pays only in documents that had such a script
+    (scriptCount, like frameCount).
+  - HTMLMediaElement: muted and volume changes fire volumechange
+    (synchronously before jsdom 30, a task from 30). HTMLElement.draggable.
+  - Pre-insertion validity errors carry jsdom's messages (svelte's
+    hydration tests compare DOMExceptions), and a childless shadow host or
+    template can no longer be inserted into its own shadow tree or contents.
+  Left: hydration/whitespace-at-block-start. In Vitest's default pool,
+  jsdom's DOMException comes from jsdom's script context, so it is not
+  `instanceof Error` of the test realm and svelte does not append its
+  component stack to the message; warpdom's DOMException is Node's (an
+  Error). Matching it would mean a DOMException outside the test realm's
+  Error hierarchy only in the non-VM pools; not done (broad effect).
+  WPT (--jobs 1; the-select-element, the-option-element, dom/nodes):
+  7,339 -> 7,350 subtests (insertion-removing-steps 8 -> 19; the runner
+  now runs inserted scripts with vm.runInThisContext). Performance (Node
+  22.17.1, 5 alternating runs): cold load 18.2 -> 18.5 ms (scripts.js),
+  first window 1.85 -> 1.84 ms, bench:hot appendChild 86.5 -> 87.4,
+  insertBefore 122.8 -> 123.3, removeChild 171.4 -> 169.6, setAttribute
+  45.4 -> 45.6 ns (noise).

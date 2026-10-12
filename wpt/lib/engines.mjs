@@ -46,6 +46,8 @@ async function createWarpdom(url, warpdomDir, log) {
   namedAccess?.installNamedAccess(globalThis, window);
   // Events at the window report the global as their target and current target.
   window[S].globalProxy = globalThis;
+  // Scripts the tests insert run as global code, as in a browser.
+  window[S].runScript = (code) => vm.runInThisContext(code, { filename: window.location.href });
   window[S].onUnhandledError = (error) => log(`unhandled error: ${error?.stack ?? error}`);
   window[S].notImplemented = (message) => log(`not implemented: ${message}`);
   return {

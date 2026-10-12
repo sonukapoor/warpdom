@@ -245,6 +245,11 @@ export function createWindow(options = {}) {
       if (tag === 'iframe' && ns === HTML_NS) doc[S].frameCount = (doc[S].frameCount ?? 0) + 1;
       if (tag === 'slot' && ns === HTML_NS) doc[S].slotCount = (doc[S].slotCount ?? 0) + 1;
       if (tag === 'base' && ns === HTML_NS) doc[S].baseCount = (doc[S].baseCount ?? 0) + 1;
+      // A script made by script may run when connected (scripts.js).
+      if (tag === 'script' && ns === HTML_NS && !raw) {
+        element[S].script = 'ready';
+        doc[S].scriptCount = (doc[S].scriptCount ?? 0) + 1;
+      }
       if (ns === HTML_NS && ((tag.includes('-') && isValidCustomElementName(tag)) || is !== null)) {
         element[S].ceState = 'undefined';
         element[S].ceIs = is;

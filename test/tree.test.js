@@ -253,3 +253,44 @@ test('cloneNode: the internal state of clones is not enumerable (test runners wa
   copy.firstChild.textContent = 'b';
   assert.equal(copy.outerHTML, '<div><span>b</span>text</div>');
 });
+
+// The pre-insertion validity errors carry jsdom's messages (svelte's
+// hydration tests compare the DOMException).
+test('pre-insertion validity error messages', () => {
+  const w = createWindow();
+  const d = w.document;
+  const message = (f) => { try { f(); return 'ok'; } catch (e) { return `${e.name}: ${e.message}`; } };
+  const div = d.createElement('div');
+  const xml = d.implementation.createDocument(null, null, null);
+  xml.appendChild(xml.createElement('e'));
+  const host = d.createElement('div');
+  const shadow = host.attachShadow({ mode: 'open' });
+  const template = d.createElement('template');
+  assert.deepEqual([
+    message(() => d.createTextNode('a').appendChild(div)),
+    message(() => d.createComment('a').insertBefore(div, null)),
+    message(() => div.appendChild(div)),
+    message(() => div.insertBefore(d.createElement('a'), d.createElement('b'))),
+    message(() => div.replaceChild(d.createElement('a'), d.createElement('b'))),
+    message(() => div.appendChild(d)),
+    message(() => div.appendChild(d.implementation.createDocumentType('html', '', ''))),
+    message(() => d.appendChild(d.createTextNode('x'))),
+    message(() => d.appendChild(d.createElement('x'))),
+    message(() => xml.appendChild(xml.createElement('f'))),
+    message(() => shadow.appendChild(host)),
+    message(() => template.content.appendChild(template)),
+  ], [
+    "HierarchyRequestError: Node can't be inserted in a #text parent.",
+    "HierarchyRequestError: Node can't be inserted in a #comment parent.",
+    'HierarchyRequestError: The operation would yield an incorrect node tree.',
+    'NotFoundError: The child can not be found in the parent.',
+    'NotFoundError: The child can not be found in the parent.',
+    "HierarchyRequestError: #document node can't be inserted in parent node.",
+    "HierarchyRequestError: html node can't be inserted in DIV parent.",
+    "HierarchyRequestError: #text node can't be inserted in #document parent.",
+    'HierarchyRequestError: Invalid insertion of X node in #document node.',
+    'HierarchyRequestError: Invalid insertion of f node in #document node.',
+    'HierarchyRequestError: The operation would yield an incorrect node tree.',
+    'HierarchyRequestError: The operation would yield an incorrect node tree.',
+  ]);
+});

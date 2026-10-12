@@ -447,3 +447,53 @@ for (const jsdom of [26, 30]) {
 }
 
 parity('PointerEvent persistentDeviceId', (w) => [new w.PointerEvent('x').persistentDeviceId, new w.PointerEvent('x', { persistentDeviceId: 5 }).persistentDeviceId]);
+
+parity('media: muted and volume changes queue volumechange (jsdom 30)', async (w) => {
+  const a = w.document.createElement('audio');
+  const log = [];
+  a.addEventListener('volumechange', (e) => log.push(['volumechange', a.muted, a.volume, e.isTrusted, e.bubbles, e.cancelable]));
+  a.muted = true;
+  log.push('muted');
+  a.muted = true;
+  a.muted = false;
+  a.volume = 0.5;
+  log.push('volume');
+  a.volume = 0.5;
+  a.defaultMuted = true;
+  await new Promise((r) => setTimeout(r, 0));
+  log.push('later');
+  const v = w.document.createElement('video');
+  v.onvolumechange = () => log.push('video');
+  v.muted = 1;
+  await new Promise((r) => setTimeout(r, 0));
+  return log;
+});
+
+parity('draggable', (w) => {
+  const d = w.document;
+  const out = [];
+  for (const [tag, attrs] of [['div', {}], ['div', { draggable: 'true' }], ['div', { draggable: 'FALSE' }], ['div', { draggable: 'auto' }],
+    ['img', {}], ['img', { draggable: 'false' }], ['a', {}], ['a', { href: 'x' }], ['span', { draggable: '' }]]) {
+    const e = d.createElement(tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    out.push(e.draggable);
+  }
+  const div = d.createElement('div');
+  div.draggable = true;
+  out.push(div.getAttribute('draggable'));
+  div.draggable = 0;
+  out.push(div.getAttribute('draggable'), 'draggable' in w.HTMLElement.prototype, 'draggable' in d.createElementNS('http://www.w3.org/2000/svg', 'svg'));
+  return out;
+});
+
+parity('media: volumechange before jsdom 30 (synchronous)', async (w) => {
+  const a = w.document.createElement('audio');
+  const log = [];
+  a.addEventListener('volumechange', () => log.push(['volumechange', a.muted, a.volume]));
+  a.muted = true;
+  log.push('muted');
+  a.volume = 0.5;
+  log.push('volume');
+  await new Promise((r) => setTimeout(r, 0));
+  return log;
+}, { jsdom: 26 });

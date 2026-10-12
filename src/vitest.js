@@ -175,6 +175,8 @@ export default {
     }
     Object.defineProperty(window.document, 'defaultView', { get: () => globalProxy, configurable: true });
     window[S].globalProxy = globalProxy;
+    // Classic scripts run in the context, as jsdom's do (scripts.js).
+    window[S].runScript = (source) => vm.runInContext(source, sandbox);
     return {
       getVmContext() { return sandbox; },
       teardown() { restore(); },
@@ -183,6 +185,9 @@ export default {
   setup(global, options) {
     const window = createTestWindow(options);
     const restore = installWindow(global, window, { hostKeys: VITEST_HOST_KEYS, alwaysKeys: VITEST_ALWAYS_KEYS });
+    // Classic scripts run as global code of the realm the window is
+    // installed in (scripts.js): an indirect eval.
+    window[S].runScript = (source) => (0, eval)(source);
     snapshotWindow(window);
     global[RESET] = () => {
       restore.resetOverrides();

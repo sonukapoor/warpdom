@@ -471,16 +471,22 @@ function isOptionDisabled(option) {
 
 // The selectedness setting algorithm (single selects only): keep the last
 // selected option; with none and a display size of 1, select the first
-// enabled one.
+// enabled one. It runs when the select's list of options gained or lost
+// options since it last ran (checked lazily: the list is rebuilt after
+// tree changes and compared with the settled one), or after an option or
+// the select asked for a reset. Other tree changes in the document leave a
+// select with no selected option alone, as in jsdom.
 function settleSelectedness(select) {
   const ss = select[S];
-  const rev = docOf(select)[S].treeRev ?? 0;
-  if (ss.settledRev === rev) return;
-  ss.settledRev = rev;
+  const options = listOfOptions(select);
+  const settled = ss.settledOptions;
+  if (settled === options) return;
+  ss.settledOptions = options;
+  if (settled !== undefined && settled !== null && sameOptions(settled, options)) return;
   if (has(select, 'multiple')) return;
   let lastSelected = null;
   let firstEnabled = null;
-  for (const option of listOfOptions(select)) {
+  for (const option of options) {
     if (selectedness(option)) {
       if (lastSelected) lastSelected[S].selectedness = false;
       lastSelected = option;
@@ -490,7 +496,19 @@ function settleSelectedness(select) {
   if (!lastSelected && firstEnabled && displaySize(select) === 1) firstEnabled[S].selectedness = true;
 }
 
-const askForReset = (select) => { select[S].settledRev = -1; };
+function sameOptions(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+const askForReset = (select) => { select[S].settledOptions = null; };
+
+// Changing a select's multiple or size attribute reruns the algorithm (the
+// display size can change; jsdom also reruns it when the value is the same).
+const selectAttributeChanged = (el) => { if (isTag(el, 'select')) askForReset(el); };
+attributeSteps.set('multiple', selectAttributeChanged);
+attributeSteps.set('size', selectAttributeChanged);
 
 // In a single select, an option becoming selected deselects the others.
 function deselectOthers(option, select) {
@@ -1245,6 +1263,11 @@ export const FORM_MEMBERS = new Map([
       },
       item(index) { return this.options.item(index); },
       namedItem(name) { return this.options.namedItem(name); },
+      // Iterable over its options, as an interface with an indexed getter
+      // (WebIDL). jsdom's is Array.prototype.values over indexed properties;
+      // warpdom has no indexed properties on elements (select[0]), so it
+      // iterates the list of options directly.
+      [Symbol.iterator]() { state(this); return listOfOptions(this).slice()[Symbol.iterator](); },
       add(element, before = undefined) { this.options.add(element, before); },
       remove(...args) {
         if (args.length > 0) this.options.remove(args[0]);

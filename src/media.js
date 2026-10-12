@@ -4,6 +4,7 @@
 // same surface); the state members describe an element with no media yet,
 // and the settable ones keep what is set.
 import { S, state, domError } from './internal.js';
+import { dispatch } from './events.js';
 
 const windowOf = (el) => state(el).doc[S].window;
 const report = (el, method) => windowOf(el)[S].notImplemented(`HTMLMediaElement's ${method}() method`);
@@ -11,6 +12,16 @@ const report = (el, method) => windowOf(el)[S].notImplemented(`HTMLMediaElement'
 function media(el) {
   const s = state(el);
   return s.media ?? (s.media = { currentTime: 0, volume: 1, muted: false, playbackRate: 1, defaultPlaybackRate: 1, textTracks: null });
+}
+
+// A change of volume or muted fires volumechange at the element: in a
+// queued task (the standard; jsdom 30), or synchronously (jsdom before 30;
+// svelte's tests read the new state from the listener).
+function volumeChanged(el) {
+  const window = windowOf(el);
+  const fire = () => dispatch(el, new window.Event('volumechange'));
+  if (window[S].compat.jsdom >= 30) window[S].setTimeout(fire, 0);
+  else fire();
 }
 
 function finite(name, v) {
@@ -50,10 +61,19 @@ export const MEDIA_MEMBERS = {
   set volume(v) {
     const n = finite('volume', v);
     if (n < 0 || n > 1) throw domError(`Failed to set the 'volume' property on 'HTMLMediaElement': The volume provided (${n}) is outside the range [0, 1].`, 'IndexSizeError');
-    media(this).volume = n;
+    const m = media(this);
+    if (m.volume === n) return;
+    m.volume = n;
+    volumeChanged(this);
   },
   get muted() { return media(this).muted; },
-  set muted(v) { media(this).muted = !!v; },
+  set muted(v) {
+    const m = media(this);
+    const muted = !!v;
+    if (m.muted === muted) return;
+    m.muted = muted;
+    volumeChanged(this);
+  },
   get playbackRate() { return media(this).playbackRate; },
   set playbackRate(v) { media(this).playbackRate = finite('playbackRate', v); },
   get defaultPlaybackRate() { return media(this).defaultPlaybackRate; },

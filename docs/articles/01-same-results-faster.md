@@ -1,13 +1,15 @@
-# jsdom's test results, up to 3x faster: what we measured on 14 real suites
+# jsdom's test results, 1.5x faster in the median: what we measured on real suites
 
 <!--
 DRAFT, not published. Author: Sonu Kapoor.
 Title alternatives (pick one that the final numbers support):
-- "Your tests on jsdom's results, 1.4-3x faster" (true for the three suites
-  re-timed on 2026-10-11: react-spectrum 1.40x, MUI 1.88x, handsontable
-  3.04x; NOT true for the median over 14 suites, which is 1.30x)
+- "jsdom's test results, 1.5x faster in the median" (GitHub Actions run
+  2026-10-12, valid suites so far; range 1.26x-8.84x, all faster)
 - "Same results as jsdom, faster where the DOM is the bottleneck"
 - "A test DOM written from the specs: 42,000 tests, jsdom's results"
+Decisions (2026-10-12): projects are named (results are verifiable);
+the headline is the drop-in median with the per-suite range; mistakes
+in our own measurement are reported openly (pinned files).
 Every number has a source comment next to it. Paths are relative to the
 warpdom repository unless they start with dom-api-tracer/.
 -->
@@ -17,9 +19,9 @@ itself. When we profiled nine real open-source suites, jsdom was a median
 37% of their CPU time. happy-dom, the fast alternative, was a median 9%.
 <!-- source: dom-api-tracer/docs/env-experiment.md (2026-10-08, 9 suites); PLAN.md Decisions 2026-10-08 -->
 
-So why not switch to happy-dom? We tried that too. Of the seven jsdom
-suites we moved to happy-dom, six lost tests (Kobalte's 192 all still
-passed). React Spectrum lost 1,359 of 8,456, MUI 197
+So why not switch to happy-dom? We tried that too. Of nine suites we ran
+on both, six have tests that pass on jsdom and fail on happy-dom (ariakit,
+AG Grid and Kobalte had none). React Spectrum lost 1,359 of 8,456, MUI 197
 of 6,770 (176 of them are tests MUI skips when it is not on jsdom), Element
 Plus 133, Radix 18, react-hook-form 7. Some of these are behavior gaps.
 Many are tests coupled to jsdom's object shapes: 661 of React Spectrum's
@@ -80,14 +82,19 @@ differences, grouped by error message and investigated one at a time.
 - **Runners:** Vitest (11 projects) and Jest (3 projects). The jsdom
   baseline is the jsdom the project installs (Jest 30's
   `jest-environment-jsdom` bundles jsdom 26).
-- **Timing:** per round, jsdom then warpdom back to back on the same
-  machine; 3 rounds; medians; the speedup is the ratio of the medians.
-  2 test workers, Node 22.23.3, one corpus run at a time.
-- **Machine:** one Apple M4 Pro laptop (14 cores, 24 GiB, macOS).
-- **Scripts:** `dom-api-tracer/scripts/research/` (survey, timing, fast
-  mode, profiling, CSS parity). Raw logs and CSVs are in warpdom's
-  `docs/research/data/`.
-<!-- source: docs/research/README.md 2.1, 2.2, 2.4, 2.7; dom-api-tracer/scripts/research/README.md -->
+- **Timing:** on GitHub Actions, one job per project on a hosted Linux
+  runner, each project checked out at a pinned commit. Within a job,
+  jsdom and warpdom alternate for 3 rounds on the same machine, so a
+  ratio never mixes machines. Medians; the speedup is the median of the
+  per-round ratios. 2 test workers, Node 22.23.3. Anyone with access can
+  rerun the workflow.
+- **Correctness:** the status of every test on warpdom against the jsdom
+  baseline, in every timed run. A jsdom run that disagrees with its own
+  baseline marks the run as broken, so its time is not used.
+- **Scripts and data:** `dom-api-tracer/scripts/research/` and
+  `.github/workflows/timing.yml`; raw CSVs, logs and environment records
+  in warpdom's `docs/research/data/` and the workflow's artifacts.
+<!-- source: docs/research/README.md 2.1-2.4, 2.7; dom-api-tracer/scripts/research/README.md "Timing on GitHub Actions" -->
 
 ## Evidence 1: the same result for (almost) every test
 
@@ -99,7 +106,7 @@ The latest full survey (2026-10-11) covers 42,139 test entries across the
 | --- | --- | --- | --- | --- |
 | react-spectrum | React design system, accessibility | Jest | 8,446 | **0** (304 a day earlier) |
 | handsontable | data grid | Jest | 8,062 | 3 |
-| svelte | framework runtime | Vitest | 7,873 | **0** |
+| svelte | framework runtime | Vitest | 7,873 | being re-measured (see below) |
 | material-ui (MUI) | React design system | Vitest | 6,751 | **0** |
 | CopilotKit | app components, 4 frameworks | Vitest | 3,427 | **0** |
 | ariakit | React + Solid accessibility | Vitest | 1,852 | 9 |
@@ -107,7 +114,7 @@ The latest full survey (2026-10-11) covers 42,139 test entries across the
 | ark-ui | headless, 4 frameworks | Vitest | 1,244 | 2 |
 | radix-primitives | React headless | Vitest | 982 | **0** |
 | vuetify | Vue design system | Vitest | 822 | **0** |
-| solid | framework runtime | Vitest 2 | 480 | 1 |
+| solid | framework runtime | Vitest 2 | 482 | **0** (re-measured 2026-10-12) |
 | floating-ui | positioning | Vitest 3 | 339 | **0** |
 | analog | Angular meta-framework | Vitest | 196 | **0** |
 | emoji-picker-element | web component, shadow DOM | Vitest 3 | 160 | **0** |
@@ -115,7 +122,7 @@ The latest full survey (2026-10-11) covers 42,139 test entries across the
 "Tests" counts test entries in the jsdom baseline, including skipped ones
 (MUI has 6,751 entries, of which 5,878 pass on both).
 
-The 15 differences, and what causes each:
+The remaining differences, and what causes each:
 
 - **ariakit, 9:** all nine fail on jsdom and pass on warpdom (a proxy
   `defineProperty` case and a `CompositionEvent` view check). They count
@@ -126,9 +133,6 @@ The 15 differences, and what causes each:
 - **ark-ui, 2:** an Editable test with a typing race that fails about one
   run in three under load, and a NumberInput test that also fails on jsdom
   with the current checkout.
-- **solid, 1:** `transition.spec` also fails on jsdom when its files run
-  in a certain order (solid runs with `isolate: false`, so files share
-  module state).
 <!-- source: docs/research/README.md 3.1, "Remaining differences"; PLAN.md Corpus -->
 
 Two caveats belong right next to this table. First, CopilotKit's number is
@@ -141,6 +145,28 @@ suite warpdom has never seen. A held-out set of projects is on the list
 below.
 <!-- source: docs/research/README.md 3.1 (CopilotKit paragraph) and 5 (Selection bias) -->
 
+### A measurement mistake we caught
+
+Vitest lets a test file choose its environment with a comment,
+`/** @vitest-environment jsdom */`, and that comment wins over the config.
+Our harness switched only the config. So in every "warpdom" run before
+2026-10-12, files with that comment silently stayed on jsdom. Most suites
+have none, but svelte has 8 such files holding 84.5% of its tests, and
+solid has 14 holding 55.6%. Our earlier "0 differences" for svelte was
+largely jsdom compared with jsdom.
+<!-- source: docs/research/README.md section 3, "Correction, 2026-10-12" -->
+
+The harness now switches those files too, without editing them, and so
+does `warpdom compare`. With the fix, solid has all 482 tests with the
+same status. svelte showed 55 real differences:
+- 25 came from svelte's jsdom 25 depending on an older cssstyle (the CSS
+  library jsdom uses), whose behavior warpdom now follows. Examples: the
+  computed `color` of an element, and `url()` written without quotes.
+- 30 are `<select>`, media and hydration gaps, being fixed now.
+
+[TODO: svelte's final count after the fixes]
+<!-- source: PLAN.md 2026-10-12 entries (jsdom 25 profile, cssstyle); dom-api-tracer ceffbd6 -->
+
 The path there is in the logs: React Spectrum went from 304 differences to
 0 in a day; ariakit from 59 to 9; solid from 136 to 1; handsontable from
 8,418 on the first Jest run to 16 to 3.
@@ -148,77 +174,71 @@ The path there is in the logs: React Spectrum went from 304 differences to
 
 ## Evidence 2: speed
 
-### The three suites re-timed after the latest changes
-
-These were measured on 2026-10-11 with the current code, with jsdom and
-warpdom alternating and 3 rounds each.
-<!-- source: docs/research/data/timing/timing-2026-10-11-after.csv, timing-jest-2026-10-11-after.csv; docs/research/README.md 3.2 -->
+Measured on 2026-10-12 on GitHub Actions: one hosted Linux runner per
+project, pinned commits, 3 rounds with jsdom and warpdom alternating on
+the same machine.
+<!-- source: dom-api-tracer Actions run 38194812094; combined CSV and report in its timing-report artifact -->
 
 | Suite | Runner | jsdom | warpdom | Speedup | Tests that differ |
 | --- | --- | --- | --- | --- | --- |
-| handsontable | Jest | 475.8 s | 156.7 s | **3.04x** | 3 |
-| material-ui | Vitest | 87.0 s | 46.2 s | **1.88x** | 0 |
-| react-spectrum | Jest | 138.0 s | 98.9 s | **1.40x** | 0 |
+| handsontable | Jest | 826.1 s | 92.2 s | **8.84x** | 3 |
+| radix-primitives | Vitest | 45.5 s | 23.7 s | 1.93x | 0 |
+| material-ui | Vitest | 359.4 s | 189.9 s | 1.90x | 0 |
+| ark-ui | Vitest | [TODO] | [TODO] | [TODO] | 1 |
+| ariakit | Vitest | 830.2 s | 545.9 s | 1.52x | 9 |
+| vuetify | Vitest | 45.0 s | 30.3 s | 1.51x | 0 |
+| floating-ui | Vitest 3 | 27.7 s | 18.7 s | 1.49x | 0 |
+| emoji-picker-element | Vitest 3 | 52.9 s | 39.9 s | 1.33x | 0 |
+| react-hook-form | Jest | 20.3 s | 15.7 s | 1.29x | 0 |
+| analog | Vitest | 43.3 s | 34.4 s | 1.26x | 0 |
+| react-spectrum | Jest | 762.7 s | 620.6 s | 1.26x | 0 |
+| CopilotKit | Vitest | [TODO] | [TODO] | [TODO] | 0 |
+| svelte | Vitest | [TODO] | [TODO] | [TODO] | [TODO] |
+| solid | Vitest 2 | [TODO] | [TODO] | [TODO] | 0 |
 
-handsontable is the clearest case, and it shows where the gain comes from.
-Split by package (one round, not a median):
+[TODO: fill ark-ui and CopilotKit from their re-runs (in run 38194812094
+two of their three jsdom rounds were broken by a harness bug, caught
+because those jsdom runs disagreed with their own baseline), svelte and
+solid from their re-measurement; recompute the median.]
+
+warpdom is faster on every suite measured so far. The median over the
+ten complete rows above is **1.50x** (range 1.26x to 8.84x). That is the
+number to remember, not the 8.84x.
+[TODO: recompute over all valid rows]
+
+The GitHub runners are shared 2-core virtual machines. On my laptop
+(Apple M4 Pro, 14 cores) the same suites gain less (median 1.40x over 12
+suites, 2026-10-12, 2 rounds). The biggest change is ariakit: 1.10x on
+the laptop, 1.52x on a runner. On a fast machine its tests mostly wait on
+real-time timers and animation frames, so a faster DOM saves little; on
+a slower one, more of the run is CPU work. CI runners are where test time
+costs money, so they are the better reference.
+<!-- source: docs/research/README.md 3.2 "Re-timing, 2026-10-12", 3.4 (ariakit profile), F6 -->
+
+handsontable shows where the gain comes from. Split by package (round 3
+of the same run):
 
 | Package | Files | Tests | jsdom | warpdom | Speedup |
 | --- | --- | --- | --- | --- | --- |
-| core | 520 | 7,615 | 330.8 s | 24.1 s | 13.7x |
-| React wrapper | 18 | 111 | 14.2 s | 7.7 s | 1.84x |
-| Vue 3 wrapper | 6 | 42 | 3.9 s | 2.5 s | 1.58x |
-| Angular wrapper | 14 | 314 | 125.4 s | 121.8 s | 1.03x |
-<!-- source: docs/research/README.md 3.3; data/timing/handsontable-*-round3-2026-10-11-after.status.json -->
+| core | 520 | 7,615 | 759.4 s | 56.4 s | 13.5x |
+| React wrapper | 18 | 111 | 32.3 s | 11.6 s | 2.8x |
+| Vue 3 wrapper | 6 | 42 | 11.1 s | 6.4 s | 1.7x |
+| Angular wrapper | 14 | 314 | 22.2 s | 11.3 s | 2.0x |
+<!-- source: timing-handsontable artifact of run 38194812094, Jest summaries in timing-*/logs/handsontable/*.log -->
 
-The core package renders tables: our tracer counted 940 `getComputedStyle`
-calls per test file in it. The Angular wrapper's time is Angular
-compilation, which no DOM can speed up. One honest note on the 13.7x: the
-gain on 2026-10-11 is larger than cheaper startup explains, and the likely
-reason (warpdom now takes jsdom 26's code paths in handsontable, see the
-next article) has not been profiled yet.
-<!-- source: PLAN.md Decisions 2026-10-08 "Handsontable is layout- and style-heavy"; 2026-10-11 "Suite timings before and after" -->
+The core package renders tables: our tracer counted 940
+`getComputedStyle` calls per test file in it. On the laptop the same
+package gains 13.7x; the suite total differs between machines because the
+Angular wrapper's compile time weighs more there.
+<!-- source: PLAN.md Decisions 2026-10-08 "Handsontable is layout- and style-heavy"; docs/research/README.md 3.3 -->
 
-### All 14 suites, including where it does not win
-
-The other rows are older (2026-10-09 and 2026-10-10), measured with an
-earlier warpdom, and the 2026-10-09 Vitest rows ran while the machine was
-loaded by other work (load average up to 14). Read them as indications.
-[TODO: re-measure all 2026-10-09 and 2026-10-10 rows with current warpdom
-in one quiet session]
-<!-- source: docs/research/README.md 3.2 -->
-
-| Suite | Measured | jsdom | warpdom | Speedup |
-| --- | --- | --- | --- | --- |
-| handsontable | 2026-10-11 | 475.8 s | 156.7 s | 3.04x |
-| material-ui | 2026-10-11 | 87.0 s | 46.2 s | 1.88x |
-| radix-primitives | 2026-10-09 | 17.4 s | 10.2 s | 1.71x |
-| vuetify | 2026-10-09 | 15.7 s | 10.0 s | 1.57x |
-| floating-ui | 2026-10-09 | 10.0 s | 6.5 s | 1.54x |
-| ark-ui | 2026-10-09 | 76.5 s | 50.0 s | 1.53x |
-| react-spectrum | 2026-10-11 | 138.0 s | 98.9 s | 1.40x |
-| react-hook-form | 2026-10-10 | 6.5 s | 5.4 s | 1.20x |
-| CopilotKit | 2026-10-09 | 201.4 s | 172.1 s | 1.17x |
-| analog | 2026-10-09 | 13.7 s | 11.9 s | 1.15x |
-| emoji-picker-element | 2026-10-09 | 22.2 s | 19.6 s | 1.13x |
-| ariakit | 2026-10-09 | 405.6 s | 362.6 s | 1.12x |
-| svelte | 2026-10-09 | 38.2 s | 36.8 s | 1.04x |
-| solid | 2026-10-09 | 1.4 s | 1.5 s | **0.93x** |
-
-The median over these 14 is **1.30x**. That is the number to remember,
-not the 3x. Suites whose time goes into a compiler (svelte), their own
-waits (ariakit) or application logic (CopilotKit) gain little; solid's
-whole suite takes 1.4 seconds and is level at best (0.93x by ratio of
-medians, 1.00x by median of per-round ratios). In the 2026-10-09 runs,
-ariakit, CopilotKit, ark-ui and solid still had differences (22, 15, 3 and
-1), which have been fixed or explained since.
-
-I set myself a kill criterion before this round: a median under about
-1.8x across 10+ suites in the recommended configuration would mean
-rethinking the product. By the default-pool numbers, warpdom does not meet
-it. What it does show: on suites where the DOM is the bottleneck,
-1.4x to 3x with jsdom's results; on the rest, roughly level.
-<!-- source: docs/research/README.md 3.2 (median 1.30x, kill criterion); PLAN.md Decisions 2026-10-09 and 2026-10-10; docs/head-to-head.md "Seven more suites" -->
+I set myself a kill criterion before this work: a median under about 1.8x
+across 10+ suites in the recommended configuration would mean rethinking
+the product. The drop-in median is 1.50x, so by that measure warpdom is
+not there yet. What it does show: jsdom's results on every suite, faster
+on every suite, 1.5x to 2x where the DOM is a large part of the work and
+up to 8.8x where it dominates. The larger multiples for the rest come
+from not paying per-file isolation (below).
 
 ### Against happy-dom
 
@@ -388,16 +408,15 @@ can meet, and they are not comparable with browser numbers on wpt.fyi.
 ## Limits, honestly
 
 - **Not available.** warpdom is a private, unreleased project.
-- **One machine, few rounds.** One Apple M4 Pro laptop; 3 rounds per
-  configuration, medians, no confidence intervals; no Linux or CI
-  numbers yet, which is where test time costs money.
-- **Mixed dates.** Only the MUI, react-spectrum and handsontable timings
-  are from the current code.
+- **Few rounds.** 3 rounds per configuration, medians, no confidence
+  intervals. GitHub's runners are shared machines, so a single round can
+  be off by several percent.
 - **Selection bias.** The corpus drove the compatibility work. Projects
   were chosen because they test with jsdom in Node; web component
   libraries mostly test in real browsers and are barely represented.
-- **Corpus commits not pinned** for these runs; the scripts now record
-  them with every run.
+- **Our own harness has had bugs** (the pinned files above, and broken
+  jsdom rounds caught by the per-test comparison). Both were found by the
+  method itself, but there may be others.
 - **happy-dom** is compared on three suites only; **linkedom** on none.
 - **The harness copies warpdom into each project** to mimic an installed
   package; a real installation could still differ.
@@ -406,20 +425,20 @@ can meet, and they are not comparable with browser numbers on wpt.fyi.
   Vitest 3.2 or later. Some suites in the corpus could not be compared at
   all yet (ag-grid's behavioural suite times out; element-plus pins jsdom
   16).
-<!-- source: docs/research/README.md 5 "Threats to validity", 2.1 (excluded projects); PLAN.md wpt-global-attributes "Not done", wpt-misc "Left", CSSOM decision (link loading); docs/fast-mode.md (Vitest 3.2) -->
+<!-- source: docs/research/README.md 5 "Threats to validity", 2.1 (excluded projects) -->
 
 ## What's next
 
-1. Re-time every suite with the current code in one quiet session, with
-   at least 5 alternating rounds and confidence intervals.
-2. happy-dom (and linkedom) in every comparison, correctness and speed.
-3. A held-out set of projects that did not drive the compatibility work,
+1. `npx warpdom compare`: run your own suite on jsdom and on warpdom, and
+   see every test whose result changes and the speedup, on your machine.
+2. More rounds and confidence intervals on the GitHub runs.
+3. happy-dom (and linkedom) in every comparison, correctness and speed.
+4. A held-out set of projects that did not drive the compatibility work,
    and one real application's suite (not a library).
-4. A full WPT re-run, published with the runner, so anyone can check it.
-5. Linux CI timings.
+5. A full WPT re-run, published with the runner, so anyone can check it.
 6. Then: make it public, and offer migration PRs where the numbers say
    they are worth it.
-<!-- source: docs/research/README.md 6 "Open work for a paper"; PLAN.md Roadmap -->
+<!-- source: docs/compare.md; docs/research/README.md 6; PLAN.md Roadmap -->
 
 If you maintain a jsdom suite that is slow and DOM-heavy (grids, rich
 components, lots of `getComputedStyle`), I would like to hear about it:

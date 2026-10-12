@@ -25,6 +25,7 @@ import { DOM_PARSING_INTERFACES, innerMarkup, outerMarkup } from './dom-parsing.
 import { FILE_READER_INTERFACES } from './file-reader.js';
 import { ABORT_INTERFACES } from './abort.js';
 import { IFRAME_MEMBERS, WINDOW_FRAME_MEMBERS } from './frames.js';
+import './scripts.js';
 import { STORAGE_INTERFACE, STORAGE_WINDOW_MEMBERS } from './storage.js';
 import { PROGRESS_MEMBERS, METER_MEMBERS } from './progress-meter.js';
 import { SLOT_MEMBERS, SLOTTABLE_MEMBERS } from './slots.js';
@@ -290,6 +291,8 @@ function cloneNode(node, deep, doc) {
   if (s.type === ELEMENT_NODE) {
     copy = w.createElementNS(s.ns, s.prefix ? `${s.prefix}:${s.tag}` : s.tag, doc, false, null, false, s.ceIs ?? null);
     copy[S].attrs = new Map(s.attrs);
+    // A clone of a script that already started is already started.
+    if (s.script === 'started') copy[S].script = 'started';
     if (s.attrNS) copy[S].attrNS = new Map(s.attrNS);
     if (s.handlers || hasOnAttribute(s.attrs)) eventHandlerAttributesAdded(copy);
     if (s.attrs.size !== 0) namedAttributesSet(copy[S], doc);
@@ -588,8 +591,8 @@ export const INTERFACES = [
       },
       get styleSheets() { state(this); return documentStyleSheets(this); },
       createRange() { const s = state(this); return newRange(s.window, this, 0); },
-      // Scripts never run, so there is no currently executing script.
-      get currentScript() { state(this); return null; },
+      // The script element whose classic script is running (scripts.js).
+      get currentScript() { return state(this).currentScript ?? null; },
       // document.open/write/close (HTML 8.4): open() empties the document
       // and starts an input stream; each write appends to it and the
       // document is reparsed from the stream, so content is there at once.
@@ -902,6 +905,19 @@ export const INTERFACES = [
       set translate(v) { state(this); writeAttribute(this, 'translate', v ? 'yes' : 'no'); },
       get hidden() { return state(this).attrs.has('hidden'); },
       set hidden(v) { state(this); writeAttribute(this, 'hidden', v ? '' : undefined); },
+      // The draggable attribute (HTML 6.11.7): true or false (any case),
+      // else auto: images and links with an href are draggable.
+      get draggable() {
+        const s = state(this);
+        const v = s.attrs.get('draggable');
+        if (v !== undefined) {
+          const lower = v.toLowerCase();
+          if (lower === 'true') return true;
+          if (lower === 'false') return false;
+        }
+        return s.tag === 'img' || (s.tag === 'a' && s.attrs.has('href'));
+      },
+      set draggable(v) { state(this); writeAttribute(this, 'draggable', v ? 'true' : 'false'); },
     }),
   },
   { name: 'SVGElement', parent: 'Element', members: mix(inlineStyle, htmlOrSvgElement, FOCUS_MEMBERS, GLOBAL_HANDLER_MEMBERS) },

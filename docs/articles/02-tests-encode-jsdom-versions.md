@@ -101,6 +101,24 @@ we recorded one.
   jsdom.
   <!-- source: PLAN.md "Deliberate deviations" (inert), 2026-10-11 decision -->
 
+## Not even the jsdom version is enough: cssstyle
+
+jsdom 26 and earlier get their CSS behavior from a separate package,
+cssstyle (`^4.x`), and the lockfile picks the minor version. svelte's
+lockfile pins cssstyle 4.1.0 under jsdom 25.0.1, while a fresh install of
+the same jsdom gets 4.6.0. Black-box probes of jsdom 25.0.1 with each
+cssstyle from 4.1.0 to 4.6.0:
+- The computed `color` of an element without a declared color is `''`
+  before cssstyle 4.4, `'CanvasText'` in 4.4 and 4.5, `'canvastext'` from
+  4.6, and `rgb(0, 0, 0)` from jsdom 27.
+- `url()` in `background`/`background-image` is written without quotes
+  before 4.3.1 and with quotes after.
+
+8 of svelte's tests depend on the first and 4 on the second. warpdom now
+reads the cssstyle version next to the detected jsdom as well, and
+follows these cutoffs.
+<!-- source: PLAN.md 2026-10-12 jsdom 25 profile entry; test/computed-style.test.js, test/style.test.js -->
+
 ## How we found the boundaries (method)
 
 - Black-box sweeps against several installed jsdom versions (26, 27, 30;

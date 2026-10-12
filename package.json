@@ -4,7 +4,7 @@
   "description": "A DOM for unit tests that loads almost instantly and behaves like jsdom.",
   "private": true,
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "author": "Sonu Kapoor",
   "exports": {
     ".": {

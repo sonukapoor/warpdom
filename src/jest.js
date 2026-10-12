@@ -121,6 +121,8 @@ export default class WarpdomEnvironment {
     Object.defineProperty(window.document, 'defaultView', { get: () => global, configurable: true });
     // Events at the window show the global as their target, as with jsdom.
     window[S].globalProxy = global;
+    // Classic scripts run in the context, as jsdom's do (scripts.js).
+    window[S].runScript = (source) => vm.runInContext(source, sandbox);
     this.context = sandbox;
     this.global = global;
     this.window = window;

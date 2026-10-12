@@ -106,3 +106,30 @@ for (const jsdom of [30, 26]) {
     return [records, calls, attributes.length];
   }, { jsdom });
 }
+
+test('a registration moves with its node to another document', async () => {
+  const w = createWindow();
+  const d = w.document;
+  const t = d.createElement('template');
+  t.innerHTML = '<select></select>';
+  const frag = t.content.cloneNode(true);
+  const select = frag.firstChild;
+  const log = [];
+  const mo = new w.MutationObserver((records) => log.push(records.map((r) => r.type).join()));
+  mo.observe(select, { childList: true, subtree: true });
+  d.body.appendChild(frag);
+  select.appendChild(d.createElement('option'));
+  await Promise.resolve();
+  assert.deepEqual(log, ['childList']);
+  mo.disconnect();
+  const other = d.implementation.createHTMLDocument('').createElement('div');
+  mo.observe(other, { attributes: true });
+  d.body.appendChild(other);
+  other.id = 'x';
+  await Promise.resolve();
+  assert.deepEqual(log, ['childList', 'attributes']);
+  mo.disconnect();
+  other.id = 'y';
+  await Promise.resolve();
+  assert.equal(log.length, 2);
+});
