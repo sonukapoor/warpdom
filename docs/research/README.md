@@ -67,6 +67,16 @@ kobalte (workspace package not built), nuxt-ui (jsdom baseline broken),
 element-plus (pins jsdom 16). The corpus's mantine and ngx-formly are not
 part of these surveys.
 
+**Runner versions** (the versions installed in the checkouts, read from
+their package.json files on 2026-10-12): Vitest 1.2.2 (melt-ui), 2.1.9
+(solid, solid-primitives), 3.0.9 (floating-ui), 3.2.4
+(emoji-picker-element), 4.0.18-4.1.11 (Radix, Vuetify, svelte, React
+Spectrum's Vitest packages, CopilotKit, tanstack-query, react-router,
+naive-ui, vueuse) and 5.0.0-5.0.3 (MUI, ariakit); Jest 27.5.1
+(handsontable's core), 29.7.0 (dom-testing-library, taiga-ui, downshift)
+and 30.4.2 (react-hook-form, React Spectrum, react-router). ark-ui's
+runner is installed under its packages (bun) and was not read here.
+
 ### 2.2 How each suite is run
 
 All runs use the dom-api-tracer harness `scripts/trace-corpus.mjs`, which
@@ -212,7 +222,7 @@ number of test entries in the jsdom baseline.
 | --- | --- | --- | --- | --- | --- | --- |
 | react-spectrum | 8,446 | 8,317 | 8,317 | **0** | 304 (2026-10-10, survey-jest.log) | |
 | handsontable | 8,062 | 8,062 | 8,059 | 3 | 16 (2026-10-11 morning, survey3.log); 8,418 on the first Jest run (survey-jest.log) | all 3 in `jsdomThemeCssFilter.unit.js`, which tests a workaround for a style-sheet parse error only jsdom reports; warpdom deliberately does not reproduce the error |
-| svelte (invalid, see correction) | 7,873 | 7,818 | 7,818 | ~~0~~ 55 after the fix | 0 (2026-10-09, survey.log) | |
+| svelte (invalid, see correction) | 7,873 (jsdom baseline of survey8; the run with all files switched counted 7,879) | 7,818 | 7,818 | ~~0~~ 55 after the fix | 0 (2026-10-09, survey.log) | |
 | material-ui | 6,751 | 5,878 | 5,878 | **0** | 0 (survey3.log) | |
 | CopilotKit | 3,427 | 2,275 | 2,275 | **0** | 362 (survey.log) | coverage dropped: see below |
 | ariakit | 1,852 | 1,811 | 1,820 | 9 | 59 (survey.log) | all 9 fail on jsdom and pass on warpdom (proxy defineProperty, a CompositionEvent view check; PLAN.md "Corpus") |
@@ -403,7 +413,7 @@ also running timing, so CPU shares are usable and wall times are not):
 | | jsdom | warpdom |
 | --- | --- | --- |
 | CPU in test processes | 321.7 s | 180.5 s (-44%) |
-| of which DOM | 130.9 s (40.7%) | 17.5 s (9.7%), 7.5x less |
+| of which DOM | 130.8 s (40.7%) | 17.5 s (9.7%), 7.5x less |
 | idle in test processes (summed) | 871.9 s | 824.7 s |
 
 warpdom removes most of ariakit's DOM cost, but the suite is
@@ -457,9 +467,13 @@ but do not predict suite speedups (section 3.4).
 All on hosted Linux runners (2 cores), corpus at the commits in
 `dom-api-tracer/corpus/pins.json`, warpdom main as of each run, Node
 22.23.3, 3 rounds, configurations alternating within one job. Speedups are
-medians of per-round ratios.
+medians of per-round ratios. Each job records the warpdom commit it
+checked out (environment records next to the CSVs); main can move while a
+run's jobs start. The fast-mode run's jobs used d1358bf, 09ef8b7 and
+5b665a6: between them only compare and PLAN.md changed, not the DOM code,
+so its results are from one DOM.
 
-**Three-way** (run 38201339795, warpdom 42e87b2 with the svelte fixes;
+**Three-way** (run 38201339795, warpdom d1358bf per every job's environment record, which contains the svelte fixes merged in 42e87b2;
 [data/timing/ci-2026-10-12-three-way/](data/timing/ci-2026-10-12-three-way/)).
 handsontable is left out: its jsdom run of the core package exceeded the
 harness's 20-minute limit in every round, so the comparison counted all
@@ -483,6 +497,10 @@ with a failed package as NA (dom-api-tracer b25a690).
 | svelte | 137.9 s | 125.2 s | 126.4 s | 1.10x | 1.09x | 1.01x | 1 / 288 |
 | solid | 5.2 s | 4.8 s | 4.7 s | 1.08x | 1.11x | 0.94x | 1 / 0 |
 
+- The run's report flagged MUI and ark-ui ("jsdom rounds differ from the
+  jsdom baseline") under the rule of the time (any difference); their
+  jsdom rounds differed by 1-2 flaky tests, below the later threshold of
+  more than 5, so their times are valid.
 - Medians over these 13 suites: warpdom vs jsdom **1.32x**, happy-dom vs
   jsdom 1.30x, warpdom vs happy-dom 1.14x.
 - **Uncertainty** (timing-report.cjs, dom-api-tracer b7f3188 of
@@ -538,7 +556,7 @@ faster; then fast mode equals warpdom default.
 
 **Fast frames** (run 38197900923, experiment branch `exp/fast-frames`,
 before the pinned-file fix; [data/timing/ci-2026-10-12-fastframes/](data/timing/ci-2026-10-12-fastframes/)):
-ariakit 465.2 -> 291.5 s (1.61x over warpdom default, 2.31x over jsdom),
+ariakit 467.9 -> 291.5 s (medians of 3 rounds; 1.61x over warpdom default, 2.31x over jsdom, medians of per-round ratios),
 no gain on ark-ui, floating-ui, Radix and Vuetify. It changes results:
 ariakit 12 differences instead of 9, ark-ui 6 instead of 3-4. So it can
 only be an opt-in, like fast mode (F6).
@@ -548,7 +566,7 @@ job per area; [data/wpt/ci-2026-10-12-summary.md](data/wpt/ci-2026-10-12-summary
 
 | | warpdom | jsdom 30.1.2 |
 | --- | --- | --- |
-| Subtests passed | 113,318 of 133,221 (85.1%) | 107,201 (80.5%) |
+| Subtests passed | 113,318 of 133,221 (85.1%) | 107,201 (80.5% in jsdom's own table; 80.4% scored against the union of both engines' subtests, 133,221) |
 | Score per file | **72.5%** | 71.1% |
 | Files where every subtest passes | 611 | 613 |
 | Wall clock, summed over jobs | 676 s | 1,463 s |
@@ -783,9 +801,12 @@ gain or lose.
 
 ## 5. Threats to validity
 
-- **Few rounds, no confidence intervals.** 3 rounds per configuration;
-  medians only. Machine load varied between sessions (jsdom 5-13% faster in
-  the second 2026-10-11 session; load average up to 14 on 2026-10-09).
+- **Few rounds.** 3 rounds per configuration for the published tables
+  (5 for the ablations). Since b7f3188 the report gives per-suite ranges
+  (bootstrap intervals from 5 rounds) and a two-level bootstrap interval
+  for the median across suites (3.6 "Uncertainty"). On the laptop, machine
+  load varied between sessions (jsdom 5-13% faster in the second
+  2026-10-11 session; load average up to 14 on 2026-10-09).
 - **Mixed dates and warpdom versions** in the speed table; only the
   2026-10-11 rows (MUI, react-spectrum, handsontable) are current.
 - **Corpus commits not pinned** before 2026-10-12. Project commits were
@@ -806,8 +827,9 @@ gain or lose.
   libraries) are out of scope. Compatibility fixes were driven by this
   same corpus, so parity on it overstates parity on unseen suites; a
   held-out set is needed.
-- **happy-dom is only in the 2026-10-09 head-to-head** (3 suites);
-  linkedom is in no comparison.
+- **happy-dom** is in the three-way GitHub runs (13 tuning suites, 9
+  held-out), drop-in only (not with learned isolation); linkedom is in no
+  comparison.
 - **Hardware**: one Apple M4 Pro laptop for all results up to 2026-10-12.
   Linux numbers from GitHub-hosted runners are being collected (2.4,
   2.7). Runners are shared virtual machines, so their noise differs from
