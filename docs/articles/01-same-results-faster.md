@@ -183,22 +183,27 @@ cores) per project, pinned commits, 3 rounds with jsdom, warpdom and
 happy-dom alternating on the same machine.
 <!-- source: docs/research/README.md 3.6; dom-api-tracer Actions run 38201339795 (three-way), 38200262078 (CopilotKit), 38194812094 (handsontable) -->
 
-| Suite | jsdom | warpdom | happy-dom | warpdom vs jsdom | happy-dom vs jsdom | Tests that differ from jsdom: warpdom / happy-dom |
-| --- | --- | --- | --- | --- | --- | --- |
-| handsontable* | 826.1 s | 92.2 s | | **8.84x** | | 3 / |
-| material-ui | 472.4 s | 247.2 s | 333.8 s | **1.90x** | 1.41x | 1 / 1,039 |
-| radix-primitives | 44.4 s | 23.6 s | 29.6 s | 1.88x | 1.51x | 0 / 18 |
-| ark-ui | 235.2 s | 143.0 s | 163.8 s | 1.60x | 1.45x | 2 / 115 |
-| floating-ui | 29.4 s | 18.8 s | 22.6 s | 1.57x | 1.30x | 0 / 14 |
-| ariakit | 829.6 s | 539.6 s | 462.6 s | 1.54x | 1.79x | 11 / 51 |
-| vuetify | 80.5 s | 52.0 s | 53.1 s | 1.54x | 1.53x | 0 / 4 |
-| emoji-picker-element | 53.1 s | 40.2 s | 46.0 s | 1.32x | 1.16x | 0 / 1 |
-| react-hook-form | 23.8 s | 17.5 s | 22.3 s | 1.32x | 1.04x | 0 / 7 |
-| react-spectrum | 709.9 s | 550.7 s | 628.4 s | 1.26x | 1.20x | 0 / 1,445 |
-| CopilotKit | 468.5 s | 373.9 s | 50.9 s | 1.25x | (9.01x) | 0 / 4,676 |
-| analog | 41.2 s | 33.5 s | 35.9 s | 1.25x | 1.15x | 0 / 2 |
-| svelte | 137.9 s | 125.2 s | 126.4 s | 1.10x | 1.09x | 1 / 288 |
-| solid | 5.2 s | 4.8 s | 4.7 s | 1.08x | 1.11x | 1 / 0 |
+| Suite | jsdom | warpdom | happy-dom | Tests that differ from jsdom: warpdom / happy-dom | warpdom speedup |
+| --- | ---: | ---: | ---: | --- | ---: |
+| ariakit | 13m 50s | 9m 00s | 7m 43s | 11 / 51 | 1.54x |
+| handsontable* | 13m 46s | 1m 32s | – | 3 / – | 8.84x |
+| React Spectrum | 11m 50s | 9m 11s | 10m 28s | 0 / 1,445 | 1.26x |
+| MUI | 7m 52s | 4m 07s | 5m 34s | 1 / 1,039 | 1.90x |
+| CopilotKit | 7m 48s | 6m 14s | 50.9 s ¹ | 0 / 4,676 | 1.25x |
+| ark-ui | 3m 55s | 2m 23s | 2m 44s | 2 / 115 | 1.60x |
+| svelte | 2m 18s | 2m 05s | 2m 06s | 1 / 288 | 1.10x |
+| Vuetify | 1m 20s | 52.0 s | 53.1 s | 0 / 4 | 1.54x |
+| emoji-picker-element | 53.1 s | 40.2 s | 46.0 s | 0 / 1 | 1.32x |
+| Radix | 44.4 s | 23.6 s | 29.6 s | 0 / 18 | 1.88x |
+| analog | 41.2 s | 33.5 s | 35.9 s | 0 / 2 | 1.25x |
+| floating-ui | 29.4 s | 18.8 s | 22.6 s | 0 / 14 | 1.57x |
+| react-hook-form | 23.8 s | 17.5 s | 22.3 s | 0 / 7 | 1.32x |
+| solid | 5.2 s | 4.8 s | 4.7 s | 1 / 0 | 1.08x |
+
+Times are the median of 3 rounds; the speedup is the median of the
+per-round ratios (jsdom and warpdom back to back on the same machine).
+¹ CopilotKit runs fast on happy-dom because 4,676 of its tests break
+there.
 
 \* handsontable is from the two-way run the same day: in the three-way
 run its jsdom core package hit the harness's time limit, so that run says

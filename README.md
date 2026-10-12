@@ -125,33 +125,37 @@ testEnvironmentOptions: { fastFrames: true }
 
 ## Measured
 
-GitHub Actions, Linux, pinned project commits, 3 rounds, 2026-10-12
-(drop-in, against each project's own jsdom):
+Time to run each suite: GitHub Actions, Linux, pinned project commits,
+median of 3 rounds, 2026-10-12, drop-in (each project's own jsdom and
+config, 2 workers):
 
-| Suite | warpdom vs jsdom | happy-dom vs jsdom | Tests that change result: warpdom / happy-dom |
-| --- | --- | --- | --- |
-| handsontable | 8.84x | | 3 / |
-| MUI | 1.90x | 1.41x | 1 / 1,039 |
-| Radix | 1.88x | 1.51x | 0 / 18 |
-| ark-ui | 1.60x | 1.45x | 2 / 115 |
-| floating-ui | 1.57x | 1.30x | 0 / 14 |
-| ariakit | 1.54x | 1.79x | 11 / 51 |
-| Vuetify | 1.54x | 1.53x | 0 / 4 |
-| emoji-picker-element | 1.32x | 1.16x | 0 / 1 |
-| react-hook-form | 1.32x | 1.04x | 0 / 7 |
-| React Spectrum | 1.26x | 1.20x | 0 / 1,445 |
-| CopilotKit | 1.25x | (9.01x) | 0 / 4,676 |
-| analog | 1.25x | 1.15x | 0 / 2 |
-| svelte | 1.10x | 1.09x | 1 / 288 |
-| solid | 1.08x | 1.11x | 1 / 0 |
+| Suite | jsdom | warpdom | happy-dom | Tests that change result: warpdom / happy-dom |
+| --- | ---: | ---: | ---: | --- |
+| ariakit | 13m 50s | 9m 00s | 7m 43s | 11 / 51 |
+| handsontable | 13m 46s | 1m 32s | – | 3 / – |
+| React Spectrum | 11m 50s | 9m 11s | 10m 28s | 0 / 1,445 |
+| MUI | 7m 52s | 4m 07s | 5m 34s | 1 / 1,039 |
+| CopilotKit | 7m 48s | 6m 14s | 50.9 s ¹ | 0 / 4,676 |
+| ark-ui | 3m 55s | 2m 23s | 2m 44s | 2 / 115 |
+| svelte | 2m 18s | 2m 05s | 2m 06s | 1 / 288 |
+| Vuetify | 1m 20s | 52.0 s | 53.1 s | 0 / 4 |
+| emoji-picker-element | 53.1 s | 40.2 s | 46.0 s | 0 / 1 |
+| Radix | 44.4 s | 23.6 s | 29.6 s | 0 / 18 |
+| analog | 41.2 s | 33.5 s | 35.9 s | 0 / 2 |
+| floating-ui | 29.4 s | 18.8 s | 22.6 s | 0 / 14 |
+| react-hook-form | 23.8 s | 17.5 s | 22.3 s | 0 / 7 |
+| solid | 5.2 s | 4.8 s | 4.7 s | 1 / 0 |
 
-A faster DOM only speeds up the part of a run spent in the DOM; compilers,
-frameworks and waiting stay as they are, which is why gains range from 1.1x
-to 8.8x. warpdom's differences are flaky tests that also change on jsdom,
+¹ CopilotKit is faster on happy-dom because 4,676 of its tests break there.
+handsontable's happy-dom run is still to be measured.
+
+warpdom is faster than jsdom on every suite: from 1.08x (solid) to 8.8x
+(handsontable), median 1.3x to 1.4x. A faster DOM only speeds up the part of
+a run spent in the DOM; compilers, frameworks and waiting stay as they are.
+warpdom's changed results are flaky tests that also change on jsdom,
 ariakit tests that fail on jsdom and pass on warpdom (plus two fixed since),
-and one deliberate difference in svelte. happy-dom's 9x on CopilotKit is the
-suite largely failing fast. Full tables, fast mode, profiles and caveats:
-[docs/research/README.md](docs/research/README.md).
+and one deliberate difference in svelte. Full tables, fast mode, profiles
+and caveats: [docs/research/README.md](docs/research/README.md).
 
 Web Platform Tests (dom, domparsing, html/dom, css/cssom; 963 files):
 warpdom passes 87.4% of subtests (jsdom 30: 80.4%), with a per-file score of
