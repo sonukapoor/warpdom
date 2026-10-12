@@ -1538,3 +1538,29 @@ Left, and why:
   (27.1 vs 27.7 ns; bench:hot shows +6% as for dom-gaps, noise between
   builds); create-bench and insert-bench level; dispatch-bench +2%.
 
+- **2026-10-12: XMLHttpRequest stays out, for now (decided by Sonu, on the
+  recommendation below).** The WPT work found that jsdom's
+  `XMLHttpRequest` passes some dom/events subtests warpdom cannot. Data:
+  the tracer recorded no XMLHttpRequest member use (open, send, ...) in
+  4,151 test files of 20 projects (dom-api-tracer .corpus/report/usage.json),
+  and none of the held-out set's 58 differences involves it. Without it,
+  HTTP libraries that feature-detect it (axios) use Node's HTTP client,
+  which request mocking (nock, msw's Node interceptors) intercepts too, so
+  requests in tests still work; only tests of XHR itself would differ.
+  A faithful implementation (jsdom's does real requests through Node) is
+  large. Revisit when a real suite needs it (compare or a user report).
+  Listed in the README's "Not implemented, unlike jsdom".
+
+- **2026-10-12: Release prep.** (1) CI: `.github/workflows/ci.yml` runs
+  `npm test` on every push to main and every pull request, on Node 22.12
+  (the minimum) and 24. (2) `npm pack --dry-run`: 73 files, 281 kB packed,
+  1.0 MB unpacked: src/, bin/warpdom.js, README, LICENSE, package.json; no
+  tests, fixtures, docs or research data. Runtime imports are Node built-ins,
+  the dependencies (parse5, @rgrove/parse-xml) and `vitest` (now an
+  optional peer dependency). package.json has repository, homepage, bugs
+  and keywords; `"private": true` stays until the release. (3)
+  `packages/vitest-environment-warpdom`: re-exports `warpdom/vitest` so
+  `environment: 'warpdom'` works (checked with Vitest 5 in a project with
+  both installed). To publish both at release: npm names `warpdom` and
+  `vitest-environment-warpdom` were free on 2026-10-12.
+

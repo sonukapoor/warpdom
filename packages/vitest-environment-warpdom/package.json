@@ -1,0 +1,15 @@
+{
+  "name": "vitest-environment-warpdom",
+  "version": "0.0.0",
+  "description": "warpdom as a Vitest environment by name: test.environment: 'warpdom'.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "author": "Sonu Kapoor",
+  "repository": { "type": "git", "url": "git+https://github.com/sonukapoor/warpdom.git", "directory": "packages/vitest-environment-warpdom" },
+  "exports": "./index.js",
+  "main": "./index.js",
+  "files": ["index.js"],
+  "peerDependencies": { "warpdom": "*", "vitest": ">=2" },
+  "keywords": ["vitest", "vitest-environment", "warpdom", "jsdom", "dom", "testing"]
+}

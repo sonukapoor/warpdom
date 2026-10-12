@@ -1,11 +1,29 @@
 {
   "name": "warpdom",
   "version": "0.0.0",
-  "description": "A DOM for unit tests that loads almost instantly and behaves like jsdom.",
+  "description": "A fast DOM for unit and component tests: jsdom's test results, faster. A drop-in Vitest and Jest environment.",
   "private": true,
   "type": "module",
   "license": "MIT",
   "author": "Sonu Kapoor",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sonukapoor/warpdom.git"
+  },
+  "homepage": "https://github.com/sonukapoor/warpdom#readme",
+  "bugs": {
+    "url": "https://github.com/sonukapoor/warpdom/issues"
+  },
+  "keywords": [
+    "dom",
+    "jsdom",
+    "testing",
+    "vitest",
+    "jest",
+    "test-environment",
+    "happy-dom",
+    "web-platform"
+  ],
   "exports": {
     ".": {
       "node": "./src/node.js",
@@ -51,5 +69,13 @@
   },
   "bin": {
     "warpdom": "./bin/warpdom.js"
+  },
+  "peerDependencies": {
+    "vitest": ">=2"
+  },
+  "peerDependenciesMeta": {
+    "vitest": {
+      "optional": true
+    }
   }
 }
