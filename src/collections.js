@@ -29,7 +29,17 @@ function arrayIndex(key) {
   return v <= 4294967294 ? v : -1;
 }
 
+// The state of the list whose get trap ran last. Members called on a list
+// (the length getter, item(), forEach) are almost always reached through
+// that trap a moment before, so they find their state here instead of
+// reading list[S] through the Proxy a second time. A state belongs to one
+// list, so the identity check makes any stale value harmless; it keeps at
+// most one list reachable.
+let lastState = null;
+
 const items = (list) => {
+  const last = lastState;
+  if (last !== null && last.proxy === list) return last.items();
   const s = list != null ? list[S] : undefined;
   if (!s || !s.items) throw new TypeError('Illegal invocation');
   return s.items();
@@ -40,99 +50,116 @@ const items = (list) => {
 // Returns the named property's value, or null when there is none to show.
 const namedValue = (t, s, key) => (key === '' || key in t ? null : s.named.get(s.proxy, key));
 
-const handler = {
+// A list's internal state is also its Proxy handler: the traps live on the
+// class prototype and read the state through `this`, so a list costs one
+// state object, its target and the Proxy, and no trap loads the state from
+// the target. A static list (querySelectorAll) keeps its array; a live list
+// keeps the function that returns its current items.
+class ListState {
+  constructor(array, getItems, named, setIndex) {
+    this.array = array;
+    this.getItems = getItems;
+    this.named = named;
+    this.setIndex = setIndex;
+    this.proxy = null;
+  }
+
+  items() {
+    const array = this.array;
+    return array !== null ? array : this.getItems();
+  }
+
   get(t, key, receiver) {
     if (typeof key === 'string') {
       const i = arrayIndex(key);
       if (i >= 0) {
-        const list = t[S].items();
+        const list = this.items();
         if (i < list.length) return list[i];
         return Reflect.get(t, key, receiver);
       }
       // Members and expandos first: they hide named properties anyway.
+      lastState = this;
       const v = Reflect.get(t, key, receiver);
-      if (v !== undefined) return v;
-      const s = t[S];
-      if (s.named === null) return v;
-      const named = namedValue(t, s, key);
+      if (v !== undefined || this.named === null) return v;
+      const named = namedValue(t, this, key);
       return named !== null ? named : undefined;
     }
-    if (key === S) {
-      // Internal state belongs to the collection itself, not to objects that
-      // inherit from it (an HTMLCollection used as a prototype).
-      const s = t[S];
-      return receiver === s.proxy ? s : undefined;
-    }
+    // Internal state belongs to the collection itself, not to objects that
+    // inherit from it (an HTMLCollection used as a prototype).
+    if (key === S) return receiver === this.proxy ? this : undefined;
     return Reflect.get(t, key, receiver);
-  },
+  }
+
   has(t, key) {
     const i = arrayIndex(key);
     if (i >= 0) {
-      if (i < t[S].items().length) return true;
-    } else if (typeof key === 'string' && t[S].named !== null && namedValue(t, t[S], key) !== null) return true;
+      if (i < this.items().length) return true;
+    } else if (typeof key === 'string' && this.named !== null && namedValue(t, this, key) !== null) return true;
+    else if (key === S) return true;
     return Reflect.has(t, key);
-  },
+  }
+
   getOwnPropertyDescriptor(t, key) {
-    const s = t[S];
     const i = arrayIndex(key);
     if (i >= 0) {
-      const list = s.items();
-      if (i < list.length) return { value: list[i], writable: s.setIndex !== null, enumerable: true, configurable: true };
+      const list = this.items();
+      if (i < list.length) return { value: list[i], writable: this.setIndex !== null, enumerable: true, configurable: true };
       return undefined;
     }
     if (typeof key === 'string') {
-      if (s.named !== null) {
-        const v = namedValue(t, s, key);
-        if (v !== null) return { value: v, writable: false, enumerable: !s.named.unenumerable, configurable: true };
+      if (this.named !== null) {
+        const v = namedValue(t, this, key);
+        if (v !== null) return { value: v, writable: false, enumerable: !this.named.unenumerable, configurable: true };
       }
     } else if (key === S) return undefined;
     return Reflect.getOwnPropertyDescriptor(t, key);
-  },
+  }
+
   defineProperty(t, key, desc) {
-    const s = t[S];
     const i = arrayIndex(key);
     if (i >= 0) {
       // Only an indexed setter (HTMLOptionsCollection) accepts index writes.
-      if (s.setIndex === null || !('value' in desc) || 'get' in desc || 'set' in desc) return false;
-      s.setIndex(i, desc.value);
+      if (this.setIndex === null || !('value' in desc) || 'get' in desc || 'set' in desc) return false;
+      this.setIndex(i, desc.value);
       return true;
     }
     // A supported name cannot get an own property in its place.
-    if (typeof key === 'string' && s.named !== null && key !== '' && !Object.hasOwn(t, key) && s.named.get(s.proxy, key) !== null) return false;
+    if (typeof key === 'string' && this.named !== null && key !== '' && !Object.hasOwn(t, key) && this.named.get(this.proxy, key) !== null) return false;
     return Reflect.defineProperty(t, key, desc);
-  },
+  }
+
   set(t, key, value, receiver) {
-    const s = t[S];
     const i = arrayIndex(key);
     if (i >= 0) {
-      if (s.setIndex !== null) {
-        if (receiver === s.proxy) { s.setIndex(i, value); return true; }
-      } else if (i < s.items().length) return false; // read-only indexed property
+      if (this.setIndex !== null) {
+        if (receiver === this.proxy) { this.setIndex(i, value); return true; }
+      } else if (i < this.items().length) return false; // read-only indexed property
     }
     return Reflect.set(t, key, value, receiver);
-  },
+  }
+
   deleteProperty(t, key) {
-    const s = t[S];
     const i = arrayIndex(key);
-    if (i >= 0) return i >= s.items().length;
+    if (i >= 0) return i >= this.items().length;
     if (typeof key === 'string') {
-      if (s.named !== null && namedValue(t, s, key) !== null) return false;
+      if (this.named !== null && namedValue(t, this, key) !== null) return false;
     } else if (key === S) return true;
     return Reflect.deleteProperty(t, key);
-  },
+  }
+
   ownKeys(t) {
-    const s = t[S];
-    const list = s.items();
+    const list = this.items();
     const keys = [];
     for (let i = 0; i < list.length; i++) keys.push(String(i));
-    if (s.named !== null) {
-      for (const name of s.named.names(s.proxy)) if (!(name in t)) keys.push(name);
+    if (this.named !== null) {
+      for (const name of this.named.names(this.proxy)) if (!(name in t)) keys.push(name);
     }
-    for (const key of Reflect.ownKeys(t)) if (key !== S) keys.push(key);
+    for (const key of Reflect.ownKeys(t)) keys.push(key);
     return keys;
-  },
-  preventExtensions() { return false; },
-};
+  }
+
+  preventExtensions() { return false; }
+}
 
 // Named properties of HTMLCollection (DOM 4.2.10.2): elements by id, and HTML
 // elements also by name; [LegacyUnenumerableNamedProperties].
@@ -168,16 +195,15 @@ export const HTML_COLLECTION_NAMED = { get: htmlCollectionNamedItem, names: html
 // HTMLCollection's named properties unless they pass their own.
 // setIndex(index, value): an indexed property setter, or null.
 export function liveList(proto, getItems, named = undefined, setIndex = null) {
-  const target = Object.create(proto);
-  const s = {
-    items: getItems,
-    named: named !== undefined ? named : typeof proto.namedItem === 'function' ? HTML_COLLECTION_NAMED : null,
-    setIndex,
-    proxy: null,
-  };
-  target[S] = s;
-  s.proxy = new Proxy(target, handler);
-  return s.proxy;
+  const s = new ListState(null, getItems, named !== undefined ? named : typeof proto.namedItem === 'function' ? HTML_COLLECTION_NAMED : null, setIndex);
+  return (s.proxy = new Proxy(Object.create(proto), s));
+}
+
+// A static NodeList (querySelectorAll) over an array that never changes.
+// The caller must not mutate the array afterwards.
+export function staticList(proto, array) {
+  const s = new ListState(array, null, null, null);
+  return (s.proxy = new Proxy(Object.create(proto), s));
 }
 
 // Iterators over a list's current items (WebIDL value and pair iterators

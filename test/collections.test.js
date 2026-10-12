@@ -179,3 +179,39 @@ parity('iterating a live NodeList or HTMLCollection sees changes made meanwhile'
   return [seen.length, early.next().value === parent.firstChild, [...childNodes.keys()], [...childNodes.entries()].length,
     String(childNodes.values()), [...d.querySelectorAll('i')].length];
 });
+
+parity('static NodeList from querySelectorAll: own properties, read-only, undeletable, unchanged by later changes', (w) => {
+  const doc = html(w, '<p id="a"></p><p id="b"></p>');
+  const list = doc.querySelectorAll('p');
+  const again = doc.querySelectorAll('p');
+  const desc = (k) => { const d = Object.getOwnPropertyDescriptor(list, k); return d && { ...d, value: id(d.value) }; };
+  const before = [list === again, list.length, id(list[0]), id(list.item(1)), list[2], Object.keys(list), '1' in list, '2' in list,
+    desc('0'), desc('2'), desc('length')];
+  list.expando = 1;
+  const writes = [attempt(() => looseSet(list, '0', null)), attempt(() => { list[0] = null; }), attempt(() => looseSet(list, '5', 1)),
+    attempt(() => looseDelete(list, '0')), attempt(() => looseDelete(list, '5')), attempt(() => Object.defineProperty(list, '0', { value: 1 })),
+    attempt(() => Object.defineProperty(list, '7', { value: 1 })), attempt(() => Object.preventExtensions(list)),
+    Object.getOwnPropertyNames(list), Object.getOwnPropertySymbols(list).length];
+  doc.body.append(doc.createElement('p'));
+  doc.getElementById('a').remove();
+  const after = [list.length, [...list].map(id), [...list.entries()].map(([i, el]) => [i, id(el)]), [...list.keys()],
+    [...list.values()].map(id), (() => { const seen = []; list.forEach((el, i, l) => seen.push([id(el), i, l === list])); return seen; })(),
+    doc.querySelectorAll('p').length, list !== doc.querySelectorAll('p')];
+  return [before, writes, after];
+});
+
+parity('querySelector and querySelectorAll results do not share cache entries across selector strings', (w) => {
+  const doc = html(w, '<div id="x"></div><div id="y"></div>');
+  const first = doc.querySelector('div');
+  return [id(first), doc.querySelectorAll('\0div').length, doc.querySelectorAll('div').length, id(doc.querySelector('div'))];
+});
+
+parity('NodeList members on an object inheriting from a NodeList, after the NodeList was read', (w) => {
+  const doc = html(w, '<p></p><p></p>');
+  const list = doc.querySelectorAll('p');
+  const child = Object.create(list);
+  const kids = doc.body.childNodes;
+  return [list.length, attempt(() => child.length), attempt(() => child.item(0)), list.length,
+    attempt(() => w.NodeList.prototype.item.call(child, 0)), kids.length, list.item(0) === doc.body.firstChild,
+    attempt(() => Object.getOwnPropertyDescriptor(w.NodeList.prototype, 'length').get.call(kids)), list.length];
+});

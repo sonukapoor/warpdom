@@ -1589,3 +1589,66 @@ Left, and why:
   common pattern in component tests. Measure with bench/hot.js against
   happy-dom and on MUI or Radix with fast mode.
 
+
+- **2026-10-12: Cheaper query cache hits and NodeList access (branch
+  perf/query-hits).** Profiled first (focused micro-benchmarks with an
+  inner loop, so the timer is out of the numbers; Node 22.23.3, laptop).
+  What a `root.querySelectorAll('*').length` cache hit cost on main, ~85
+  ns in parts:
+  - method wrapper (`state`, argument check, window protos): ~14 ns;
+  - `selectors.querySelectorAll` hit: 12 ns (`String()` 4, `compile` Map
+    lookup ~3, cache checks and the result Map lookup ~5);
+  - the NodeList: 15.6 ns (target, closure, state, symbol property, Proxy);
+  - `.length`: 44 ns, two Proxy traps (`length`, then `list[S]` inside the
+    getter) plus `Reflect.get` to the getter.
+
+  `childNodes[i]` loop, 108 ns per step: `length` (as above) plus an
+  indexed read, 62 ns. A V8 floor: any integer-keyed read of a Proxy goes
+  to the runtime, 56 ns with a trap that returns a constant and 59 ns with
+  no get trap at all, against 10 ns for a named key (`p.foo`); the CPU
+  profile puts 70% of the loop in that machinery, 17% in our trap.
+
+  Changes (src/collections.js, src/selectors.js, the querySelectorAll
+  caller):
+  - a list's state is its Proxy handler (a class with the traps on its
+    prototype): no state read from the target in any trap, no symbol
+    property on the target; static NodeLists keep their array
+    (`staticList`), no closure;
+  - list members (`length`, `item`, `forEach`, iterators) take the state of
+    the list whose get trap ran last when it is the same list (identity
+    check, so a stale value is harmless; it keeps one list reachable)
+    instead of a second trap for `list[S]`;
+  - `querySelectorAll` looks the result cache up before compiling the
+    selector (only non-dynamic selectors are cached, so a hit needs no
+    compile);
+  - `querySelector`'s first-match results are keyed by the compiled entry
+    instead of `\0` + selector: no string built per call, and fixes a
+    collision (`querySelectorAll('\0div')` after `querySelector('div')`
+    returned the cached first `div`; parity test added).
+  No change on mutation paths, no new node fields; each call still
+  returns a new NodeList.
+
+  After: hit parts 13 / 6 / 13.5 / 27 ns; indexed read unchanged (the
+  floor). bench/hot.js, ns per op, median of 5 alternating runs:
+
+  | | main | branch | happy-dom | jsdom |
+  |---|---:|---:|---:|---:|
+  | querySelectorAll `[data-index="999"]` | 108.0 | 80.9 | 62.5 | 365,261 |
+  | querySelectorAll `*` | 109.0 | 81.8 | 57.2 | 41,188 |
+  | childNodes[i] loop | 107.4 | 97.9 | 80.1 | 204.8 |
+  | querySelector `#id` | 51.5 | 33.4 | 52.0 | 1,183 |
+
+  Other hot members level (8 extra alternating runs for the ones that
+  looked off in the first 5: appendChild 91.2 / 90.7, setAttribute 53.0 /
+  53.4, matches 21.6 / 22.1, dispatchEvent 1506 / 1479); create, insert
+  and dispatch benches and load (18 ms, window 0.2 ms) level.
+  npm test green on 22.23.3 and 22.12; WPT dom/collections and dom/nodes
+  identical subtest by subtest; Radix 976/982 on warpdom and jsdom.
+
+  Why happy-dom is still ahead (black-box observation): its
+  querySelectorAll returns the same object for the same query (`a === b`),
+  and its lists have ordinary own index properties (`delete list[0]`
+  succeeds); jsdom returns a new list, and `delete` fails, as in warpdom.
+  Closing the rest of the gap needs a non-Proxy NodeList, which changes
+  observable behavior (delete, defineProperty, preventExtensions and
+  out-of-range index writes on lists) and was not done; Sonu to decide.

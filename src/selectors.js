@@ -685,24 +685,28 @@ export function closest(el, selector) {
 const QUERY_CACHE_LIMIT = 64;
 
 export function querySelectorAll(root, selector, first = false) {
-  const text = String(selector);
-  const entry = compile(text);
-  if (entry.dynamic) return query(root, entry, first);
+  const text = typeof selector === 'string' ? selector : String(selector);
   const rs = root[S];
   const doc = rs.type === DOCUMENT_NODE ? root : rs.doc;
   const rev = doc[S].treeRev ?? 0;
   let cache = rs.queryCache;
+  // A hit needs no compile: only selectors without dynamic parts are cached.
+  if (cache && rs.queryCacheRev === rev && rs.queryCacheDoc === doc) {
+    const all = cache.get(text);
+    if (all !== undefined) return all;
+  }
+  const entry = compile(text);
+  if (entry.dynamic) return query(root, entry, first);
   if (!cache || rs.queryCacheRev !== rev || rs.queryCacheDoc !== doc || cache.size >= QUERY_CACHE_LIMIT) {
     cache = rs.queryCache = new Map();
     rs.queryCacheRev = rev;
     rs.queryCacheDoc = doc;
   }
-  const all = cache.get(text);
-  if (all) return all;
   if (first) {
-    const key = `\0${text}`;
-    let one = cache.get(key);
-    if (!one) cache.set(key, one = query(root, entry, true));
+    // The first match alone, keyed by the compiled entry (a selector string
+    // cannot collide with it).
+    let one = cache.get(entry);
+    if (!one) cache.set(entry, one = query(root, entry, true));
     return one;
   }
   const found = query(root, entry, false);

@@ -34,7 +34,7 @@ import { TABLE_MEMBERS, SECTION_MEMBERS, ROW_MEMBERS, CELL_MEMBERS } from './tab
 import { HYPERLINK_MEMBERS } from './hyperlinks.js';
 import { BASE_MEMBERS, nodeBaseURI } from './base-url.js';
 import { documentCookie, setDocumentCookie } from './cookies.js';
-import { COLLECTION_INTERFACES, liveList } from './collections.js';
+import { COLLECTION_INTERFACES, liveList, staticList } from './collections.js';
 import { HTML_ELEMENTS } from './html-elements.js';
 import { EVENT_INTERFACES, createEvent, retarget } from './events.js';
 import { MUTATION_INTERFACES } from './mutation.js';
@@ -64,8 +64,7 @@ const queries = {
   querySelectorAll(selector) {
     state(this);
     if (selector === undefined && arguments.length < 1) tooFewArguments(this.constructor?.name ?? 'Node', 'querySelectorAll', 1, arguments.length);
-    const found = selectAll(this, selector);
-    return liveList(internals(this).protos.NodeList, () => found);
+    return staticList(internals(this).protos.NodeList, selectAll(this, selector));
   },
 };
 
