@@ -1198,3 +1198,16 @@ browser project (3 tests, chromium) not compared.
 Open: projects only defined in other files are known after the first
 baseline run (baseline name guessed from installed packages until then);
 nested project strings in Vitest 5 project configs are not resolved.
+
+- **2026-10-12: EventModifierInit's other modifier keys.** Found by the
+  three-way GitHub run once ariakit's `shims.jsdom.test.ts` (pinned to
+  jsdom with a comment) ran on warpdom: `new KeyboardEvent('keydown',
+  { modifierCapsLock: true }).getModifierState('CapsLock')` must be true.
+  Black-box facts (jsdom 25, 26 and 30 agree): the ten `modifier*` init
+  members (AltGraph, CapsLock, Fn, FnLock, Hyper, NumLock, ScrollLock,
+  Super, Symbol, SymbolLock) are read by `getModifierState` on MouseEvent,
+  PointerEvent, WheelEvent and KeyboardEvent; they are not attributes;
+  keys are case-sensitive; TouchEvent has no `getModifierState` (warpdom
+  had one; removed). The event keeps its init dictionary and reads the key
+  when asked: reading ten absent keys at construction cost 12-20% of
+  `new MouseEvent`/`new KeyboardEvent`; now construction is unchanged.

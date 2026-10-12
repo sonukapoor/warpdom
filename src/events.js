@@ -412,7 +412,29 @@ export function eventConstruct(name, fields = {}) {
 export const fieldGetters = (fields) => Object.fromEntries(Object.keys(fields).map((key) => [key, { get() { return state(this)[key]; } }]));
 
 const MODIFIERS = { Control: 'ctrlKey', Shift: 'shiftKey', Alt: 'altKey', Meta: 'metaKey' };
-const modifierState = { getModifierState(key) { const field = MODIFIERS[key]; return field ? !!state(this)[field] : false; } };
+// The other modifier keys of UI Events' EventModifierInit (modifierCapsLock,
+// ...): read by getModifierState, not exposed as attributes. As in jsdom 25,
+// 26 and 30: honored by MouseEvent, PointerEvent, WheelEvent and
+// KeyboardEvent; TouchEvent has no getModifierState (Touch Events; jsdom
+// neither). Constructing an event only keeps the init dictionary (reading
+// ten absent keys from every dictionary cost 12-20% of construction); they
+// are read when getModifierState asks for one.
+const EXTRA_MODIFIER_INIT = Object.fromEntries(
+  ['AltGraph', 'CapsLock', 'Fn', 'FnLock', 'Hyper', 'NumLock', 'ScrollLock', 'Super', 'Symbol', 'SymbolLock'].map((key) => [key, `modifier${key}`]));
+const withModifierInit = (construct) => (w, self, args) => {
+  construct(w, self, args);
+  self[S].modifierInit = args[1] ?? null;
+  return self;
+};
+const modifierState = {
+  getModifierState(key) {
+    const s = state(this);
+    const field = MODIFIERS[key];
+    if (field) return !!s[field];
+    const init = Object.hasOwn(EXTRA_MODIFIER_INIT, key) ? EXTRA_MODIFIER_INIT[key] : undefined;
+    return init !== undefined && s.modifierInit != null && !!s.modifierInit[init];
+  },
+};
 
 const UI_FIELDS = { view: null, detail: 0, which: 0 };
 const MODIFIER_FIELDS = { ctrlKey: false, shiftKey: false, altKey: false, metaKey: false };
@@ -532,7 +554,7 @@ export const EVENT_INTERFACES = [
     ...fieldGetters(UI_FIELDS),
     initUIEvent(type, bubbles, cancelable, view, detail) { legacyInit(this, type, bubbles, cancelable, { view: view ?? null, detail: Number(detail) | 0 }); },
   } },
-  { name: 'MouseEvent', parent: 'UIEvent', construct: eventConstruct('MouseEvent', MOUSE_FIELDS), members: {
+  { name: 'MouseEvent', parent: 'UIEvent', construct: withModifierInit(eventConstruct('MouseEvent', MOUSE_FIELDS)), members: {
     ...fieldGetters(MOUSE_OWN), ...modifierState,
     initMouseEvent(type, bubbles, cancelable, view, detail, screenX, screenY, clientX, clientY, ctrlKey, altKey, shiftKey, metaKey, button, relatedTarget) {
       legacyInit(this, type, bubbles, cancelable, {
@@ -548,15 +570,15 @@ export const EVENT_INTERFACES = [
     get offsetX() { state(this); return 0; },
     get offsetY() { state(this); return 0; },
   } },
-  { name: 'PointerEvent', parent: 'MouseEvent', construct: eventConstruct('PointerEvent', POINTER_FIELDS), members: {
+  { name: 'PointerEvent', parent: 'MouseEvent', construct: withModifierInit(eventConstruct('PointerEvent', POINTER_FIELDS)), members: {
     ...fieldGetters(own(POINTER_FIELDS, MOUSE_FIELDS)),
     getCoalescedEvents() { return []; },
     getPredictedEvents() { return []; },
   } },
   { name: 'WheelEvent', parent: 'MouseEvent', statics: DELTA_MODES,
-    construct: eventConstruct('WheelEvent', WHEEL_FIELDS), members: { ...fieldGetters(own(WHEEL_FIELDS, MOUSE_FIELDS)), ...constants(DELTA_MODES) } },
+    construct: withModifierInit(eventConstruct('WheelEvent', WHEEL_FIELDS)), members: { ...fieldGetters(own(WHEEL_FIELDS, MOUSE_FIELDS)), ...constants(DELTA_MODES) } },
   { name: 'KeyboardEvent', parent: 'UIEvent', statics: KEY_LOCATIONS,
-    construct: eventConstruct('KeyboardEvent', KEYBOARD_FIELDS), members: {
+    construct: withModifierInit(eventConstruct('KeyboardEvent', KEYBOARD_FIELDS)), members: {
       ...fieldGetters(own(KEYBOARD_FIELDS, UI_FIELDS)), ...modifierState, ...constants(KEY_LOCATIONS),
       initKeyboardEvent(type, bubbles, cancelable, view, key, location, ctrlKey, altKey, shiftKey, metaKey) {
         legacyInit(this, type, bubbles, cancelable, {
@@ -566,7 +588,7 @@ export const EVENT_INTERFACES = [
       },
     } },
   { name: 'TouchEvent', parent: 'UIEvent', construct: constructTouchEvent, members: {
-    ...fieldGetters(own(TOUCH_FIELDS, UI_FIELDS)), ...touchListGetters, ...modifierState,
+    ...fieldGetters(own(TOUCH_FIELDS, UI_FIELDS)), ...touchListGetters,
   } },
   { name: 'CompositionEvent', parent: 'UIEvent', construct: eventConstruct('CompositionEvent', COMPOSITION_FIELDS), members: {
     ...fieldGetters(own(COMPOSITION_FIELDS, UI_FIELDS)),

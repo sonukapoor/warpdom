@@ -326,3 +326,25 @@ parity('isTrusted', async (w) => {
   await new Promise((resolve) => setTimeout(resolve, 20));
   return seen.sort();
 });
+
+// EventModifierInit's other modifier keys: read by getModifierState on mouse,
+// pointer, wheel and keyboard events (not touch events), never exposed as
+// attributes. ariakit's shims test relies on modifierCapsLock and
+// modifierSuper.
+for (const jsdom of [30, 26, 25]) {
+  parity(`getModifierState: modifier* init members (jsdom ${jsdom})`, (w) => {
+    const keys = ['Control', 'Shift', 'Alt', 'Meta', 'AltGraph', 'CapsLock', 'Fn', 'FnLock', 'Hyper', 'NumLock', 'ScrollLock',
+      'Super', 'Symbol', 'SymbolLock', 'Accel', 'OS', 'alt', 'capslock', 'toString'];
+    const all = Object.fromEntries(keys.slice(4, 14).map((k) => [`modifier${k}`, true]));
+    const out = [];
+    for (const name of ['KeyboardEvent', 'MouseEvent', 'WheelEvent', 'PointerEvent', 'TouchEvent']) {
+      if (!w[name]) { out.push([name, 'absent']); continue; }
+      const on = new w[name]('x', { ...all, altKey: true });
+      const one = new w[name]('x', { modifierSuper: 1, modifierCapsLock: 0 });
+      const none = new w[name]('x');
+      out.push([name, typeof on.getModifierState, keys.filter((k) => on.getModifierState?.(k)), keys.filter((k) => one.getModifierState?.(k)),
+        keys.filter((k) => none.getModifierState?.(k)), 'modifierCapsLock' in on]);
+    }
+    return out;
+  }, { jsdom });
+}
