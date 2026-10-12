@@ -51,7 +51,7 @@ function notComparedLines(result) {
   }
   if (pinned?.notSwitched ?? pinned?.files) {
     const n = pinned.notSwitched ?? pinned.files;
-    const why = result.runner === 'jest' ? ' (Jest reads the comment in its workers)' : '';
+    const why = result.runner === 'jest' ? ' (Jest: only comments choosing jsdom, on a jsdom baseline, are switched)' : '';
     lines.push(`Not compared: ${plural(n, 'file')} (${plural(pinned.tests, 'test')}) ${n === 1 ? 'chooses' : 'choose'} ${(pinned.notSwitchedEnvironments ?? pinned.environments).join('/')} with a comment and were not switched${why}`);
   }
   const unswitched = (result.projects ?? []).filter((p) => p.unswitched);

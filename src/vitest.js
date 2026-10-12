@@ -10,6 +10,8 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { createWindow } from './node.js';
 import { S } from './internal.js';
+import { ablated, materializeAll } from './ablate.js';
+import { setQueryCache } from './selectors.js';
 import { resetWindow, snapshotWindow } from './reset.js';
 import { HOST_TIMER_KEYS } from './window-features.js';
 
@@ -170,9 +172,12 @@ export function jsdomProfile(options, root = process.cwd()) {
 
 export const jsdomVersion = (options, root) => jsdomProfile(options, root).jsdom;
 
+if (ablated('no-query-cache')) setQueryCache(false);
+
 function createTestWindow(options) {
   // Vitest's jsdom environment defaults to this URL as well.
   const window = createWindow({ url: 'http://localhost:3000', ...jsdomProfile(options), fastFrames: options?.warpdom?.fastFrames === true });
+  if (ablated('eager-interfaces')) materializeAll(window);
   // Like Vitest's jsdom environment: an error thrown in an event listener
   // fails the test, unless the test listens for 'error' on the window.
   window[S].onUnhandledError = (error) => {
@@ -229,16 +234,24 @@ export default {
     };
   },
   setup(global, options) {
-    const window = createTestWindow(options);
-    const restore = installWindow(global, window, { hostKeys: VITEST_HOST_KEYS, alwaysKeys: VITEST_ALWAYS_KEYS });
+    let window = createTestWindow(options);
+    let restore = installWindow(global, window, { hostKeys: VITEST_HOST_KEYS, alwaysKeys: VITEST_ALWAYS_KEYS });
     // Classic scripts run as global code of the realm the window is
     // installed in (scripts.js): an indirect eval.
     window[S].runScript = (source) => (0, eval)(source);
     snapshotWindow(window);
-    global[RESET] = () => {
-      restore.resetOverrides();
-      resetWindow(window);
-    };
+    global[RESET] = ablated('fresh-window')
+      // Ablation: a new window per file instead of the in-place reset.
+      ? () => {
+        restore();
+        window = createTestWindow(options);
+        restore = installWindow(global, window, { hostKeys: VITEST_HOST_KEYS, alwaysKeys: VITEST_ALWAYS_KEYS });
+        window[S].runScript = (source) => (0, eval)(source);
+      }
+      : () => {
+        restore.resetOverrides();
+        resetWindow(window);
+      };
     return {
       teardown() {
         delete global[RESET];

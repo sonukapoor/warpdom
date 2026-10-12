@@ -1800,3 +1800,12 @@ ignore assignment); jsdom 21 assumed like 22 where unmeasured.
   slower, 0.61 ms. Benefit: Jest/Vitest deep equality and snapshots no longer
   see warpdom's internals on events, FormData, AbortSignal and others, and
   event getters are about 3x faster.
+
+- **2026-10-12: compare switches Jest files pinned to jsdom.** Same
+  mechanism as the corpus harness (dom-api-tracer ec4545f): a temporary
+  `jest-environment-jest-environment-jsdom` package, the first name Jest's
+  resolveTestEnvironment tries for `@jest-environment jsdom`, present only
+  during warpdom runs (on a jsdom baseline). The Jest end-to-end test checks
+  that the pinned fixture file is switched and compared and the package is
+  removed.
+

@@ -166,11 +166,17 @@ is unaffected.
   original name, so those options do not reach warpdom; the report counts
   switched files that have them.
 
-**Jest: reported, not switched (for now).** Jest reads the docblock in its
-workers, where the wrapper config does not run. Pinned Jest files run on
-the baseline in both runs; the report says "N files choose jsdom with a
-comment and were not switched", leaves their tests out of the comparison,
-and lists any of them whose status changed between runs anyway.
+**Jest: files pinned to jsdom are switched (2026-10-12).** Jest reads the
+docblock in its workers, where the wrapper config does not run, and
+resolves `@jest-environment jsdom` by first looking for a package named
+`jest-environment-jest-environment-jsdom` (it prefixes the name it already
+expanded to `jest-environment-jsdom`). No real package has that name, so
+compare creates it in node_modules for each warpdom run only, re-exporting
+warpdom's Jest environment, and removes it afterwards: files pinned to
+jsdom (also as `jest-environment-jsdom`) run on jsdom in baseline runs and
+on warpdom in warpdom runs, nothing is edited and the project's
+jest-environment-jsdom is not shadowed. Only on a jsdom baseline; other
+Jest pins (node, happy-dom, paths) are reported and not compared.
 
 ### Monorepos (projects, workspaces)
 
@@ -358,8 +364,8 @@ Timing in CI is noisy (shared 2- or 4-core machines). The docs recommend
 
 1. **Per-file environment comments:** Vitest files that pin jsdom or
    happy-dom with a comment are switched (2026-10-12, replacing "report
-   only": pinned files held 84.5% of svelte's tests). Jest files are
-   reported and not compared until Jest gets the same.
+   only": pinned files held 84.5% of svelte's tests). Jest files pinned
+   to jsdom are switched too, through a temporary package (above).
 2. **Warm-up:** none for a single round (cold, like CI); an untimed warm-up
    pair before timed rounds when `--rounds` ≥ 2.
 3. **Default rounds:** 1, labeled indicative, so a first try costs two

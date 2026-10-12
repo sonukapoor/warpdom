@@ -683,8 +683,17 @@ export function closest(el, selector) {
 // Query results are cached per root and selector until the document's tree
 // or attributes change (treeRev). Callers must not mutate the returned array.
 const QUERY_CACHE_LIMIT = 64;
+// Off only for the ablation measurement (src/ablate.js, set by the
+// adapters): the exported binding is replaced, so the cached path has no
+// check for it (importers see the live binding).
+export function setQueryCache(on) { querySelectorAll = on ? cachedQuerySelectorAll : uncachedQuerySelectorAll; }
+function uncachedQuerySelectorAll(root, selector, first = false) {
+  return query(root, compile(typeof selector === 'string' ? selector : String(selector)), first);
+}
 
-export function querySelectorAll(root, selector, first = false) {
+// eslint-disable-next-line import/no-mutable-exports
+export let querySelectorAll = cachedQuerySelectorAll;
+function cachedQuerySelectorAll(root, selector, first = false) {
   const text = typeof selector === 'string' ? selector : String(selector);
   const rs = root[S];
   const doc = rs.type === DOCUMENT_NODE ? root : rs.doc;

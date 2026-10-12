@@ -18,6 +18,10 @@ import { join } from 'node:path';
 import { createWindow } from './node.js';
 import { S } from './internal.js';
 import { installWindow, defineUnforgeableSelf } from './vitest.js';
+import { ablated, materializeAll } from './ablate.js';
+import { setQueryCache } from './selectors.js';
+
+if (ablated('no-query-cache')) setQueryCache(false);
 
 // Node globals jest-environment-jsdom exposes too (beyond the DOM's own).
 // AbortController and AbortSignal are the window's, as jsdom's are there.
@@ -101,6 +105,7 @@ export default class WarpdomEnvironment {
 
     // jest-environment-jsdom's default URL.
     const window = createWindow({ url: options.url ?? 'http://localhost/', ...jsdomProfile(projectConfig.rootDir ?? process.cwd(), options), fastFrames: options.fastFrames === true });
+    if (ablated('eager-interfaces')) materializeAll(window);
     // An error thrown in an event listener fails the test, unless the test
     // listens for 'error' on the window (as with jest-environment-jsdom).
     window[S].onUnhandledError = (error) => {

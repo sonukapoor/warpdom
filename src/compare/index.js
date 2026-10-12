@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { detectRunner, findVitestWorkspace, packageDir, packageVersion, installedWarpdom, domVersion, environmentComments, takeConfigArg, scriptNodeFlags } from './detect.js';
 import { vitestWrapper, vitestWorkspaceWrapper, vitestReporter, jestWrapper, jestReporter, wrapperName, workspaceWrapperName, MARK, PROBE_MARKER, PINNED_TARGET } from './wrappers.js';
 import { resolveVitestProjects, resolveJestProjects } from './projects.js';
-import { TempFiles, copyWarpdom, pinnedEnvironmentPackage, acquireLock, gitStatus, statusChanges } from './files.js';
+import { TempFiles, copyWarpdom, pinnedEnvironmentPackage, jestPinnedPackage, acquireLock, gitStatus, statusChanges } from './files.js';
 import { runnerArgs, hasMinWorkers, runProcess, currentChild, killTree, testsOf, countsOf, runnerDuration, readReport } from './run.js';
 import { compareRuns, groupDifferences, timingSummary, pairOrder, exitCode } from './results.js';
 import { environmentRecord } from './env.js';
@@ -37,6 +37,9 @@ const baselineEnvironment = (runner, name) => (runner === 'jest' && name === 'ha
 
 const firstErrorLine = (output) => output.split('\n').slice(1).map((l) => l.replace(/\x1b\[[0-9;]*m/g, '').trim())
   .find((l) => /error/i.test(l) && !l.includes(PROBE_MARKER)) ?? '';
+
+// Jest comment values the pinned package switches.
+const JEST_JSDOM = new Set(['jsdom', 'jest-environment-jsdom']);
 
 export async function compare(options = {}) {
   const cwd = path.resolve(options.cwd ?? process.cwd());
@@ -252,6 +255,7 @@ export async function compare(options = {}) {
     let projectsRan = false;
     let projectsFromRun = false;
     let checkedSwitch = false;
+    let jestSwitched = false;
     for (const [i, pair] of pairs.entries()) {
       for (const side of pairOrder(i)) {
         const index = result.runs.length + 1;
@@ -262,7 +266,17 @@ export async function compare(options = {}) {
         const pinnedLog = path.join(out, 'logs', `${name}.pinned.tsv`);
         pinnedLogs[side].push(pinnedLog);
         const projectsFile = path.join(out, 'runs', `${name}.projects.json`);
-        const res = await execute(wrappers[side], resultsFile, logFile, { WARPDOM_COMPARE_PINNED_LOG: pinnedLog, WARPDOM_COMPARE_PROJECTS: projectsFile }, reporter);
+        // Jest: files pinned to jsdom switch to warpdom in warpdom runs only
+        // (on a jsdom baseline; the package exists just for the run).
+        const jestShim = runner === 'jest' && side === 'warpdom' && baselineName === 'jsdom'
+          ? jestPinnedPackage(nodeModules, warpdomEnvironment, temp) : null;
+        if (jestShim) jestSwitched = true;
+        let res;
+        try {
+          res = await execute(wrappers[side], resultsFile, logFile, { WARPDOM_COMPARE_PINNED_LOG: pinnedLog, WARPDOM_COMPARE_PROJECTS: projectsFile }, reporter);
+        } finally {
+          if (jestShim) temp.remove([jestShim]);
+        }
         const report = readReport(resultsFile);
         const ran = readReport(projectsFile);
         const run = {
@@ -298,7 +312,7 @@ export async function compare(options = {}) {
             for (const p of meta.projects.filter((x) => x.browser)) {
               if (!result.projects.some((x) => x.name === p.name)) result.projects.push({ ...p, dom: false, notRun: true });
             }
-            const switchable = runner === 'vitest' && pinned.length > 0;
+            const switchable = pinned.length > 0 && (runner === 'vitest' || (baselineName === 'jsdom' && pinned.some((p) => JEST_JSDOM.has(p.environment))));
             if (!result.projects.some((p) => p.dom) && !switchable) {
               const seen = [...new Set(result.projects.map((p) => (p.browser ? 'browser mode' : environmentLabel(p.environment))))].join(', ');
               throw new CompareError(`nothing to compare: no project runs on jsdom or happy-dom (found: ${seen})`);
@@ -342,7 +356,7 @@ export async function compare(options = {}) {
     const switched = switchedIn(pinnedLogs.warpdom);
     const switchedOnBaseline = switchedIn(pinnedLogs.baseline);
     for (const p of pinned) {
-      p.switched = switched.has(p.file);
+      p.switched = switched.has(p.file) || (jestSwitched && JEST_JSDOM.has(p.environment));
       p.options = Boolean(switched.get(p.file)?.options);
       if (switchedOnBaseline.has(p.file)) p.baseline = baselineName;
     }

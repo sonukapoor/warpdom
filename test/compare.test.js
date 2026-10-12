@@ -881,7 +881,14 @@ test('compare end to end (Jest)', { skip: !jestModules && 'set WARPDOM_COMPARE_J
     assert.equal(res.status, 1, res.stdout + res.stderr);
     assert.match(res.stdout, /warpdom compare: jest \d/);
     assert.match(res.stdout, /1 pass on jsdom and fail on warpdom, 1 fail on jsdom and pass on warpdom/);
-    assert.match(res.stdout, /Not compared: 1 file \(1 test\) chooses jsdom with a comment and were not switched \(Jest reads the comment in its workers\)/);
+    // The file pinned to jsdom with a comment is switched (a temporary
+    // jest-environment-jest-environment-jsdom package during the warpdom run)
+    // and compared: it passes on both.
+    assert.match(res.stdout, /1 file pins jsdom with a comment; switched/);
+    assert.doesNotMatch(res.stdout, /Not compared: 1 file/);
+    const result = JSON.parse(fs.readFileSync(path.join(dir, '.warpdom-compare', 'results.json'), 'utf8'));
+    assert.deepEqual(result.pinned.list.map((f) => [f.file, f.environment, f.switched]), [['pinned.spec.js', 'jsdom', true]]);
+    assert.ok(!fs.existsSync(path.join(dir, 'node_modules', 'jest-environment-jest-environment-jsdom')), 'temporary package removed');
     assert.deepEqual(leftovers(dir), []);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
