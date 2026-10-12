@@ -14,6 +14,18 @@ import { resetWindow, snapshotWindow } from './reset.js';
 import { HOST_TIMER_KEYS } from './window-features.js';
 
 const SELF_KEYS = ['window', 'self', 'top', 'parent'];
+
+// The global's EventTarget methods act on the window, as bound functions
+// would, but respect another this (window.addEventListener.call(element,
+// ...)), as the inherited EventTarget methods of a browser's window do.
+const EVENT_TARGET_METHODS = ['addEventListener', 'removeEventListener', 'dispatchEvent'];
+function eventTargetMethod(fn, window) {
+  const method = { [fn.name](...args) {
+    return fn.apply(this != null && this[S] !== undefined ? this : window, args);
+  } }[fn.name];
+  Object.defineProperty(method, 'length', { value: fn.length });
+  return method;
+}
 const isClassLike = (key) => /^[A-Z]/.test(key);
 
 // The value of a data property found on the object or its prototypes;
@@ -56,7 +68,8 @@ export function installWindow(global, window, { hostKeys = [], alwaysKeys = [] }
     // Methods (data properties) are bound once; accessors are read live and
     // not called here (localStorage throws for opaque origins).
     const value = dataValue(window, key);
-    const bound = typeof value === 'function' && !isClassLike(key) ? value.bind(window) : null;
+    const bound = typeof value === 'function' && !isClassLike(key)
+      ? (EVENT_TARGET_METHODS.includes(key) ? eventTargetMethod(value, window) : value.bind(window)) : null;
     // Event handler attributes (onclick, ...) are read from the window: body
     // and frameset elements set the window's handlers too.
     if (value === undefined && key.startsWith('on') && !alwaysKeys.includes(key)) {

@@ -5,6 +5,7 @@
 // reports so and leaves the URL alone, as jsdom does).
 import { S } from './internal.js';
 import { dispatch } from './events.js';
+import { runJavascriptURL } from './scripts.js';
 
 const withoutFragment = (url) => {
   const i = url.href.indexOf('#');
@@ -16,8 +17,9 @@ const withoutFragment = (url) => {
 export function navigate(window, url, replace = false) {
   const ws = window[S];
   const current = ws.url;
-  // As in jsdom: navigating to the current URL does nothing.
-  if (url.href === current.href) return;
+  // As in jsdom: navigating to the current URL does nothing, and neither
+  // does a javascript: URL given to location (hyperlinks run them).
+  if (url.href === current.href || url.protocol === 'javascript:') return;
   if (withoutFragment(url) !== withoutFragment(current)) {
     ws.notImplemented('navigation to another Document');
     return;
@@ -48,5 +50,6 @@ export function followHyperlink(element, url) {
   const doc = element[S].doc;
   if (doc[S].noView) return;
   const window = doc[S].window;
-  window[S].setTimeout(() => navigate(window, url), 0);
+  if (url.protocol === 'javascript:') window[S].setTimeout(() => runJavascriptURL(window, url), 0);
+  else window[S].setTimeout(() => navigate(window, url), 0);
 }

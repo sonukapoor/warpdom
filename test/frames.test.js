@@ -99,3 +99,26 @@ parity('a removed frame\'s timers and AbortSignal.timeout stop', async (w) => {
   child.clearInterval(interval); // so that a regression does not keep the process alive
   return [fired, signal.aborted];
 });
+
+// jsdom 30 also gives frame elements a window (WPT frame-post-connection-
+// steps); a parity scenario is not used because jsdom hangs on it.
+test('frame elements get a nested window like iframes', () => {
+  const w = createWindow();
+  const d = w.document;
+  const host = d.createElement('div');
+  const shadow = host.attachShadow({ mode: 'open' });
+  const frame = d.createElement('frame');
+  const iframe = d.createElement('iframe');
+  shadow.append(frame, iframe);
+  assert.deepEqual([frame.contentWindow, iframe.contentWindow], [null, null]);
+  d.body.append(host);
+  assert.notEqual(frame.contentWindow, null);
+  assert.notEqual(iframe.contentWindow, null);
+  assert.equal(w.length, 2);
+  assert.equal(frame.contentDocument.nodeName, '#document');
+  const other = d.implementation.createHTMLDocument('');
+  assert.equal(other.body.appendChild(other.createElement('frame')).contentWindow, null);
+  host.remove();
+  assert.equal(frame.contentWindow, null);
+  assert.equal(w.length, 0);
+});

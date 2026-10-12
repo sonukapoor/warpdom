@@ -6,7 +6,7 @@
 // documents use it with them.
 import {
   S, state, domError, HTML_NS, ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, DOCUMENT_TYPE_NODE,
-  CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE, elementById,
+  CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE, elementById, tooFewArguments,
 } from './internal.js';
 import { XML_NS, XMLNS_NS, attrNode } from './attributes.js';
 import { reportError } from './events.js';
@@ -345,6 +345,7 @@ const iteratorInvalid = (s) => (s.type === 4 || s.type === 5) && s.rev !== -1 &&
 export const XPATH_EVALUATOR_MEMBERS = {
   createExpression(expression, resolver = null) {
     const { window } = state(this);
+    if (expression === undefined && arguments.length < 1) tooFewArguments('Document', 'createExpression', 1, arguments.length);
     const r = checkResolver(resolver, 'createExpression', 'Document');
     const compiled = compileWith(window, expression, r);
     const expr = Object.create(window[S].protos.XPathExpression);

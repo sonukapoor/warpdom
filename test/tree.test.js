@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createWindow } from '../src/index.js';
+import { parity } from './parity.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const HTML = 'http://www.w3.org/1999/xhtml';
@@ -293,4 +294,32 @@ test('pre-insertion validity error messages', () => {
     'HierarchyRequestError: The operation would yield an incorrect node tree.',
     'HierarchyRequestError: The operation would yield an incorrect node tree.',
   ]);
+});
+
+parity('createElement keeps a name with colons as the local name; tagName uppercases ASCII only', (w) => {
+  const d = w.document;
+  const out = [];
+  for (const name of ['f:oo', ':foo', 'foo:', 'xml:foo', 'xmlns:foo', 'f::oo', 'ınput', 'FOO:Bar']) {
+    const el = d.createElement(name);
+    out.push([el.localName, el.prefix, el.tagName, el.cloneNode().localName]);
+  }
+  const div = d.createElement('div');
+  div.innerHTML = '<x:y></x:y>';
+  out.push([div.firstChild.localName, div.firstChild.prefix, div.firstChild.tagName]);
+  const ns = (q) => d.createElementNS('http://www.w3.org/1999/xhtml', q);
+  out.push([ns('SPAN').constructor.name, ns('x:SPAN').constructor.name, ns('span').constructor.name, ns('x:span').prefix]);
+  return out;
+});
+
+parity('getElementById(""), quirks-mode class names, insertAdjacentElement with a non-element', (w) => {
+  const d = w.document;
+  const frag = d.createDocumentFragment();
+  frag.append(d.createElement('div'));
+  frag.firstChild.id = '';
+  const quirks = new w.DOMParser().parseFromString('<p class="a A"></p><p class="A"></p>', 'text/html');
+  const standards = new w.DOMParser().parseFromString('<!doctype html><p class="a A"></p><p class="A"></p>', 'text/html');
+  let error;
+  try { d.body.insertAdjacentElement('afterbegin', d.implementation.createDocumentType('html', '', '')); } catch (e) { error = e.name; }
+  return [frag.getElementById(''), quirks.compatMode, quirks.getElementsByClassName('a').length,
+    standards.getElementsByClassName('a').length, error];
 });

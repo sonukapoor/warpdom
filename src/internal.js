@@ -30,7 +30,7 @@ export const hooks = {
   // documents that have had a script element made by script.
   scripts: null,
   // Live range updates (ranges.js); called only when a document has live ranges.
-  rangeInsert: null, rangeRemove: null, rangeReplaceData: null,
+  rangeInsert: null, rangeRemove: null, rangeReplaceData: null, rangeAdopt: null,
   // NodeIterator pre-removing steps (traversal.js); called only when a
   // document has node iterators.
   nodeIteratorRemove: null,
@@ -40,6 +40,9 @@ export const hooks = {
   named: null,
   // Custom element reactions (custom-elements.js); set once something is defined.
   ce: null,
+  // Windows of removed iframes so far (frames.js): while there are none,
+  // dispatch does not look for targets whose document is not fully active.
+  discardedWindows: 0,
 };
 
 // Runs fn as one custom element reactions scope (a [CEReactions] operation
@@ -56,6 +59,13 @@ export function state(node) {
   const s = node != null ? node[S] : undefined;
   if (!s) throw new TypeError('Illegal invocation');
   return s;
+}
+
+// WebIDL: an operation called with fewer arguments than it requires throws
+// a TypeError. Callers test the last required argument for undefined first,
+// so the common path never reads arguments.length.
+export function tooFewArguments(iface, method, required, present) {
+  throw new TypeError(`Failed to execute '${method}' on '${iface}': ${required} argument${required > 1 ? 's' : ''} required, but only ${present} present.`);
 }
 
 export function initNode(node, type, doc, extra) {
@@ -454,7 +464,7 @@ export function adopt(node, doc) {
   for (let n = node; n; n = nextInTree(n, node)) {
     const s = n[S];
     s.doc = doc;
-    if (s.tag === 'iframe' && s.ns === HTML_NS) doc[S].frameCount = (doc[S].frameCount ?? 0) + 1;
+    if ((s.tag === 'iframe' || s.tag === 'frame') && s.ns === HTML_NS) doc[S].frameCount = (doc[S].frameCount ?? 0) + 1;
     if (s.tag === 'slot' && s.ns === HTML_NS) doc[S].slotCount = (doc[S].slotCount ?? 0) + 1;
     if (s.tag === 'base' && s.ns === HTML_NS) doc[S].baseCount = (doc[S].baseCount ?? 0) + 1;
     if (s.script === 'ready') doc[S].scriptCount = (doc[S].scriptCount ?? 0) + 1;
@@ -466,6 +476,9 @@ export function adopt(node, doc) {
     if (s.content) adopt(s.content, templateContentsOwner(doc));
   }
   if (hooks.ce !== null && oldDoc !== doc) hooks.ce.adopted(node, oldDoc, doc);
+  // Live ranges inside the adopted subtree now follow the new document's
+  // mutations.
+  if (oldDoc !== doc && hasRanges(oldDoc)) hooks.rangeAdopt(node, oldDoc, doc);
 }
 
 // Registrations made by observe() (not transient ones) are counted in

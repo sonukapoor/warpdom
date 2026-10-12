@@ -1,0 +1,28 @@
+{
+  "projects": {
+    "solid-primitives": {
+      "name": "solid-primitives",
+      "repo": "https://github.com/solidjs-community/solid-primitives",
+      "startedAt": "2026-10-12T14:47:06.874Z",
+      "packages": [
+        {
+          "dir": ".",
+          "runner": "vitest",
+          "environment": "warpdom",
+          "status": "ran",
+          "run": {
+            "files": 113,
+            "failedFiles": 1,
+            "tests": 901,
+            "passed": 891,
+            "failed": 4,
+            "skipped": 3,
+            "ms": 1610,
+            "exitCode": 1
+          }
+        }
+      ],
+      "commit": "9c81cd0d64591e80afafd30e9facf7dccfb0f4ab"
+    }
+  }
+}

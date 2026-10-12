@@ -354,3 +354,41 @@ test('a range at a focused element in a shadow tree is not moved by removing the
   assert.deepEqual([r.startContainer, r.startOffset], [input, 0], 'the shadow tree is not inside wrap');
   assert.equal(d.activeElement, d.body);
 });
+
+// Calls each case and records the error name, or 'ok'.
+const outcomes = (cases) => cases.map((f) => { try { f(); return 'ok'; } catch (e) { return e.name; } });
+
+parity('compareBoundaryPoints converts how as an unsigned short', (w) => {
+  const r = w.document.createRange();
+  return [NaN, Infinity, -Infinity, 65536, 65537, 65539, 65540, -1, 2.9].map((how) => {
+    try { return r.compareBoundaryPoints(how, r); } catch (e) { return e.name; }
+  });
+});
+
+parity('StaticRange requires all four members', (w) => {
+  const div = w.document.createElement('div');
+  return outcomes([
+    () => new w.StaticRange({ startContainer: div, endContainer: div, endOffset: 0 }),
+    () => new w.StaticRange({ startContainer: div, startOffset: 0, endContainer: div }),
+    () => new w.StaticRange({ startContainer: div, startOffset: 0, endContainer: div, endOffset: 0 }),
+  ]);
+});
+
+parity('a live range moves with its subtree to another document', (w) => {
+  const d = w.document;
+  const make = () => {
+    const range = d.createRange();
+    const container = d.createElement('container');
+    container.appendChild(d.createElement('element'));
+    range.selectNode(container.firstChild);
+    return range;
+  };
+  const a = make();
+  d.implementation.createDocument(null, null).appendChild(a.startContainer);
+  a.startContainer.removeChild(a.startContainer.firstChild);
+  const b = make();
+  d.createElement('outer').appendChild(b.startContainer);
+  d.implementation.createDocument(null, null).appendChild(b.startContainer.parentNode);
+  b.startContainer.removeChild(b.startContainer.firstChild);
+  return [a.startOffset, a.endOffset, b.startOffset, b.endOffset];
+});

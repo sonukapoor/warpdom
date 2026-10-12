@@ -3,7 +3,7 @@
 // subclasses with their init dictionaries, and legacy createEvent/initEvent.
 // An exception in a listener is reported as an `error` event on the window
 // and dispatch continues, as in browsers and jsdom.
-import { S, state, domError, DOCUMENT_NODE, ELEMENT_NODE, HTML_NS, hooks } from './internal.js';
+import { S, state, domError, DOCUMENT_NODE, ELEMENT_NODE, HTML_NS, hooks, tooFewArguments } from './internal.js';
 import { liveList } from './collections.js';
 
 // --- EventTarget -------------------------------------------------------------
@@ -112,6 +112,19 @@ export function reportError(target, error) {
   if (!handled && ws.onUnhandledError) ws.onUnhandledError(error);
 }
 
+// Inner invoke skips listeners when the target's global is a window whose
+// document is not fully active (DOM 2.10): a removed iframe's window, its
+// documents and their nodes, and EventTargets made in it.
+function inDiscardedWindow(target) {
+  const s = target[S];
+  let w;
+  if (s === undefined) return false;
+  if (s.isWindow === true) w = target;
+  else if (s.type === undefined) w = s.window;
+  else w = (s.type === DOCUMENT_NODE ? target : s.doc)[S].window;
+  return w != null && w[S]?.discarded === true;
+}
+
 // Invoke the listeners of a path item for a phase ("capturing" or "bubbling").
 function invoke(event, index, phase) {
   const es = event[S];
@@ -169,6 +182,7 @@ export const exposed = (target) => (target != null && target[S]?.globalProxy ? t
 function invokeListeners(node, event, es, list, phase) {
   for (const entry of list.slice()) {
     if (entry.removed) continue;
+    if (hooks.discardedWindows !== 0 && inDiscardedWindow(node)) return;
     if (phase === 'capturing' && !entry.capture) continue;
     if (phase === 'bubbling' && entry.capture) continue;
     if (entry.once) removeEntry(node, es.type, entry);
@@ -351,6 +365,8 @@ export function cancel(event) {
 
 const eventTarget = {
   addEventListener(type, callback, options) {
+    state(this);
+    if (callback === undefined && arguments.length < 2) tooFewArguments('EventTarget', 'addEventListener', 2, arguments.length);
     const { capture, once, passive: given, signal } = flatten(options);
     if (signal?.aborted) return;
     if (callback == null) return;
@@ -365,6 +381,8 @@ const eventTarget = {
     signal?.addEventListener?.('abort', () => removeEntry(this, key, entry), { once: true });
   },
   removeEventListener(type, callback, options) {
+    state(this);
+    if (callback === undefined && arguments.length < 2) tooFewArguments('EventTarget', 'removeEventListener', 2, arguments.length);
     // EventListenerOptions: only capture is read.
     const capture = options !== null && (typeof options === 'object' || typeof options === 'function') ? !!options.capture : !!options;
     const list = this[S]?.listeners?.get(String(type));
@@ -373,6 +391,9 @@ const eventTarget = {
   },
   dispatchEvent(event) { return dispatch(this, event, false); },
 };
+// WebIDL lengths: the required arguments (options is optional).
+Object.defineProperty(eventTarget.addEventListener, 'length', { value: 2 });
+Object.defineProperty(eventTarget.removeEventListener, 'length', { value: 2 });
 
 // --- Event and subclasses -----------------------------------------------------
 
@@ -382,6 +403,11 @@ const KEY_LOCATIONS = { DOM_KEY_LOCATION_STANDARD: 0, DOM_KEY_LOCATION_LEFT: 1, 
 // Constants are on the interface object and its prototype (WebIDL).
 const constants = (table) => Object.fromEntries(Object.entries(table).map(([k, v]) => [k, { constant: v }]));
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+// isTrusted is [LegacyUnforgeable] in the DOM standard (an own accessor of
+// every event, as in jsdom). warpdom keeps it on Event.prototype: defining
+// it on every event made new Event 2.3x slower (42 -> 96 ns), and only
+// interface-shape checks can tell (deliberate deviation, PLAN.md).
 
 function initEventState(self, type, init, initialized = true) {
   self[S] = {
@@ -393,17 +419,57 @@ function initEventState(self, type, init, initialized = true) {
 
 // Builds a constructor body for an event interface: validates the type
 // argument, sets the base state, then copies the subclass's init fields.
+//
+// The state starts as a copy of a per-interface template that has every
+// field (base and interface ones, with their defaults), so the copy keeps
+// one shape and the init fields are written in place; adding the
+// interface's fields one by one cost most of a MouseEvent's construction.
 export function eventConstruct(name, fields = {}) {
   const entries = Object.entries(fields);
+  const keys = entries.map((e) => e[0]);
+  const hasView = 'view' in fields;
+  const template = {
+    type: '', bubbles: false, cancelable: false, composed: false,
+    target: null, currentTarget: null, eventPhase: 0, canceled: false, stopped: false, stopImmediate: false,
+    dispatching: false, initialized: true, isTrusted: false, inPassiveListener: false, timeStamp: 0, path: null, realm: null,
+    ...fields,
+  };
   return (w, self, [type, init]) => {
     if (type === undefined) throw new TypeError(`Failed to construct '${name}': 1 argument required, but only 0 present.`);
     const dict = init ?? {};
-    initEventState(self, type, dict);
-    const es = self[S];
-    for (let i = 0; i < entries.length; i++) {
-      const key = entries[i][0];
-      es[key] = dict[key] ?? entries[i][1];
+    // UIEventInit's view is a Window or null. Objects are accepted: test
+    // environments pass the global that stands for the window.
+    if (hasView) {
+      const view = dict.view;
+      if (view != null && typeof view !== 'object' && typeof view !== 'function') {
+        throw new TypeError(`Failed to construct '${name}': Failed to read the 'view' property from 'UIEventInit': The provided value is not of type 'Window'.`);
+      }
     }
+    if (keys.length === 0) {
+      // Event: the literal is faster than a copy.
+      initEventState(self, type, dict);
+      return self;
+    }
+    if (keys.length === 1) {
+      // One field (CustomEvent's detail and similar): the literal plus one
+      // property is faster than copying the template (40 vs 55 ns).
+      initEventState(self, type, dict);
+      const value = dict[keys[0]];
+      self[S][keys[0]] = value !== undefined && value !== null ? value : entries[0][1];
+      return self;
+    }
+    const es = { ...template };
+    es.type = String(type);
+    es.bubbles = !!dict.bubbles;
+    es.cancelable = !!dict.cancelable;
+    es.composed = !!dict.composed;
+    es.timeStamp = now();
+    es.path = [];
+    for (let i = 0; i < keys.length; i++) {
+      const value = dict[keys[i]];
+      if (value !== undefined && value !== null) es[keys[i]] = value;
+    }
+    self[S] = es;
     return self;
   };
 }
@@ -492,6 +558,22 @@ function constructMessageEvent(w, self, args) {
   return self;
 }
 
+// TransitionEventInit: propertyName and pseudoElement are DOMStrings,
+// elapsedTime a (finite) float.
+const TRANSITION_FIELDS = { propertyName: '', elapsedTime: 0, pseudoElement: '' };
+const transitionEventFields = eventConstruct('TransitionEvent');
+function constructTransitionEvent(w, self, args) {
+  transitionEventFields(w, self, args);
+  const dict = args[1] ?? {};
+  const es = self[S];
+  es.propertyName = dict.propertyName === undefined ? '' : String(dict.propertyName);
+  es.pseudoElement = dict.pseudoElement === undefined ? '' : String(dict.pseudoElement);
+  const elapsed = dict.elapsedTime === undefined ? 0 : Number(dict.elapsedTime);
+  if (!Number.isFinite(elapsed)) throw new TypeError("Failed to construct 'TransitionEvent': Failed to read the 'elapsedTime' property from 'TransitionEventInit': The provided float value is non-finite.");
+  es.elapsedTime = elapsed;
+  return self;
+}
+
 // The legacy init*Event methods (UI Events, HTML): initEvent, then the
 // interface's fields; nothing while the event is being dispatched.
 function legacyInit(event, type, bubbles, cancelable, fields) {
@@ -527,8 +609,8 @@ export const EVENT_INTERFACES = [
       get returnValue() { return !state(this).canceled; },
       set returnValue(v) { if (!v) this.preventDefault(); },
       get cancelBubble() { return state(this).stopped; },
-      set cancelBubble(v) { if (v) state(this).stopped = true; },
       get isTrusted() { return state(this).isTrusted; },
+      set cancelBubble(v) { const s = state(this); if (v) s.stopped = true; },
       get timeStamp() { return state(this).timeStamp; },
       composedPath() { state(this); return composedPath(this).map(exposed); },
       preventDefault() { const s = state(this); if (s.cancelable && !s.inPassiveListener) s.canceled = true; },
@@ -536,6 +618,7 @@ export const EVENT_INTERFACES = [
       stopImmediatePropagation() { const s = state(this); s.stopped = true; s.stopImmediate = true; },
       initEvent(type, bubbles = false, cancelable = false) {
         const s = state(this);
+        if (type === undefined && arguments.length === 0) tooFewArguments('Event', 'initEvent', 1, 0);
         if (s.dispatching) return;
         Object.assign(s, { type: String(type), bubbles: !!bubbles, cancelable: !!cancelable, initialized: true, canceled: false, stopped: false, stopImmediate: false, target: null });
       },
@@ -545,6 +628,7 @@ export const EVENT_INTERFACES = [
     get detail() { return state(this).detail; },
     initCustomEvent(type, bubbles = undefined, cancelable = undefined, detail = undefined) {
       const s = state(this);
+      if (type === undefined && arguments.length === 0) tooFewArguments('CustomEvent', 'initCustomEvent', 1, 0);
       if (s.dispatching) return;
       this.initEvent(type, bubbles, cancelable);
       s.detail = detail ?? null;
@@ -605,6 +689,10 @@ export const EVENT_INTERFACES = [
       legacyInit(this, type, bubbles, cancelable, { data: data ?? null, origin: String(origin ?? ''), lastEventId: String(lastEventId ?? ''), source: source ?? null, ports: Array.from(ports ?? []) });
     },
   } },
+  // CSS Transitions: jsdom has TransitionEvent from 27 (no AnimationEvent),
+  // and React picks transitionend over webkitTransitionEnd only when it
+  // exists. Not made by createEvent (jsdom neither).
+  { name: 'TransitionEvent', parent: 'Event', construct: constructTransitionEvent, members: fieldGetters(TRANSITION_FIELDS) },
   { name: 'ToggleEvent', parent: 'Event', construct: eventConstruct('ToggleEvent', { oldState: '', newState: '' }), members: fieldGetters({ oldState: '', newState: '' }) },
   { name: 'PopStateEvent', parent: 'Event', construct: eventConstruct('PopStateEvent', { state: null }), members: fieldGetters({ state: null }) },
   { name: 'HashChangeEvent', parent: 'Event', construct: eventConstruct('HashChangeEvent', { oldURL: '', newURL: '' }), members: fieldGetters({ oldURL: '', newURL: '' }) },
@@ -627,6 +715,8 @@ export const EVENT_INTERFACES = [
     set returnValue(v) { state(this).unloadReturnValue = String(v); },
   } },
 ];
+// The constructors' length (WebIDL: required arguments): the type.
+for (const iface of EVENT_INTERFACES) if (iface.construct && iface.name !== 'EventTarget') iface.length = 1;
 
 // document.createEvent(interface): an uninitialized event of that interface.
 // The DOM standard's createEvent table (ASCII case-insensitive), for the

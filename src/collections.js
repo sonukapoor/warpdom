@@ -9,7 +9,7 @@
 // exist when it was last read: defining them eagerly would cost every tree
 // mutation a pass over every live collection. The traps are kept cheap: one
 // character scan for an array index, then an array read.
-import { S, HTML_NS } from './internal.js';
+import { S, HTML_NS, tooFewArguments } from './internal.js';
 
 // The array index a property key names (WebIDL "is an array index": a
 // canonical numeric string below 2^32 - 1), or -1.
@@ -180,14 +180,41 @@ export function liveList(proto, getItems, named = undefined, setIndex = null) {
   return s.proxy;
 }
 
+// Iterators over a list's current items (WebIDL value and pair iterators
+// read the length and the item at each step, as Array.prototype.values
+// does), so iterating a live list sees changes made since it started.
+// The list's items are its cached array, rebuilt only after a change.
+const VALUES = 0, KEYS = 1, ENTRIES = 2;
+class ListIterator {
+  constructor(list, kind) { this.list = list; this.kind = kind; this.index = 0; }
+  next() {
+    const list = this.list;
+    if (list === null) return { value: undefined, done: true };
+    const array = items(list);
+    const i = this.index;
+    if (i >= array.length) { this.list = null; return { value: undefined, done: true }; }
+    this.index = i + 1;
+    const kind = this.kind;
+    return { value: kind === VALUES ? array[i] : kind === KEYS ? i : [i, array[i]], done: false };
+  }
+  [Symbol.iterator]() { return this; }
+}
+Object.defineProperty(ListIterator.prototype, Symbol.toStringTag, { value: 'Array Iterator', configurable: true });
+for (const key of ['constructor', 'next', Symbol.iterator]) {
+  Object.defineProperty(ListIterator.prototype, key, { enumerable: false });
+}
+
 const iterate = {
-  [Symbol.iterator]() { return items(this)[Symbol.iterator](); },
+  [Symbol.iterator]() { items(this); return new ListIterator(this, VALUES); },
 };
 
 // item(index) takes a WebIDL unsigned long: ToUint32 (item(-1) is
 // item(4294967295)).
 const item = {
-  item(index) { return items(this)[index >>> 0] ?? null; },
+  item(index) {
+    if (index === undefined && arguments.length < 1) tooFewArguments(this[Symbol.toStringTag], 'item', 1, 0);
+    return items(this)[index >>> 0] ?? null;
+  },
 };
 
 export const COLLECTION_INTERFACES = [
@@ -197,9 +224,9 @@ export const COLLECTION_INTERFACES = [
       get length() { return items(this).length; },
       ...item,
       forEach(callback, thisArg) { items(this).forEach((node, i) => callback.call(thisArg, node, i, this)); },
-      entries() { return items(this).entries(); },
-      keys() { return items(this).keys(); },
-      values() { return items(this).values(); },
+      entries() { items(this); return new ListIterator(this, ENTRIES); },
+      keys() { items(this); return new ListIterator(this, KEYS); },
+      values() { items(this); return new ListIterator(this, VALUES); },
       ...iterate,
     },
   },
@@ -226,7 +253,10 @@ export const COLLECTION_INTERFACES = [
     members: {
       get length() { return items(this).length; },
       ...item,
-      namedItem(name) { return htmlCollectionNamedItem(this, name); },
+      namedItem(name) {
+        if (name === undefined && arguments.length < 1) tooFewArguments('HTMLCollection', 'namedItem', 1, arguments.length);
+        return htmlCollectionNamedItem(this, name);
+      },
       ...iterate,
     },
   },

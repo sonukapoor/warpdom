@@ -11,7 +11,8 @@ import { S, HTML_NS, ELEMENT_NODE, hooks, nextInTree } from './internal.js';
 import { dispatch } from './events.js';
 import { clearWindowTimers } from './window-features.js';
 
-const isIframe = (n) => { const s = n[S]; return s.type === ELEMENT_NODE && s.ns === HTML_NS && s.tag === 'iframe'; };
+// iframe and frame elements.
+const isIframe = (n) => { const s = n[S]; return s.type === ELEMENT_NODE && s.ns === HTML_NS && (s.tag === 'iframe' || s.tag === 'frame'); };
 
 // Iframes in node's subtree, shadow trees included.
 function forEachIframe(node, fn) {
@@ -62,6 +63,7 @@ function destroyFrame(iframe) {
   // The discarded window's tasks never run: its timers (and so
   // AbortSignal.timeout of its realm) stop, as in jsdom.
   child[S].discarded = true;
+  hooks.discardedWindows++;
   clearWindowTimers(child);
   const parent = child[S].parentWindow;
   const frames = parent[S].childFrames;

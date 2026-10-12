@@ -146,6 +146,7 @@ const nodeList = (r, nodes) => liveList(r[S].protos.NodeList, () => nodes);
 export const MUTATION_INTERFACES = [
   {
     name: 'MutationObserver',
+    length: 1,
     construct: (w, self, [callback]) => {
       if (typeof callback !== 'function') {
         throw new TypeError("Failed to construct 'MutationObserver': The callback provided as parameter 1 is not a function.");

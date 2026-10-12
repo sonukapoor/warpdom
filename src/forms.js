@@ -1100,6 +1100,7 @@ const FORM_DATA_INTERFACES = [
   {
     name: 'FormDataEvent',
     parent: 'Event',
+    length: 2,
     construct: (w, self, args) => {
       if (!args[1]?.formData?.[S]) throw new TypeError("Failed to construct 'FormDataEvent': required member formData is undefined.");
       return eventConstruct('FormDataEvent', { formData: null })(w, self, args);

@@ -1,0 +1,28 @@
+{
+  "projects": {
+    "vueuse": {
+      "name": "vueuse",
+      "repo": "https://github.com/vueuse/vueuse",
+      "startedAt": "2026-10-12T14:47:43.767Z",
+      "packages": [
+        {
+          "dir": ".",
+          "runner": "vitest",
+          "environment": "warpdom",
+          "status": "ran",
+          "run": {
+            "files": 132,
+            "failedFiles": 3,
+            "tests": 940,
+            "passed": 928,
+            "failed": 10,
+            "skipped": 1,
+            "ms": 16775,
+            "exitCode": 1
+          }
+        }
+      ],
+      "commit": "ad2822b3854347f9eeb1c738fd2b90b773381c4a"
+    }
+  }
+}

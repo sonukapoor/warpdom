@@ -1,0 +1,334 @@
+{
+  "projects": [
+    {
+      "name": "dom-testing-library",
+      "repo": "https://github.com/testing-library/dom-testing-library",
+      "frameworks": [
+        "Vanilla"
+      ],
+      "kind": "testing utilities (framework-free)",
+      "notes": "Held-out project. @testing-library/dom, framework-free and DOM-heavy (queries, events, waitFor, role computation). Jest 29 via kcd-scripts, jest-environment-jsdom 29 with jsdom 20 (the repo pins jsdom 20.0.0). The root jest.config.js only lists two projects; the dom project config (tests/jest.config.dom.js) is run directly. The node project (src/__node_tests__) uses jest-environment-node and creates jsdom itself, so it is out of scope. No lockfile (.npmrc package-lock=false): npm install resolves current versions, so installs are not exactly reproducible.",
+      "install": "npm install --no-audit --no-fund",
+      "packages": [
+        {
+          "dir": ".",
+          "runner": "jest",
+          "config": "tests/jest.config.dom.js"
+        }
+      ]
+    },
+    {
+      "name": "tanstack-query",
+      "repo": "https://github.com/TanStack/query",
+      "frameworks": [
+        "Vanilla",
+        "React",
+        "Preact",
+        "Vue",
+        "Solid",
+        "Svelte",
+        "Angular",
+        "Lit"
+      ],
+      "kind": "data fetching (core + 7 framework adapters)",
+      "notes": "Held-out project. Every package with environment jsdom in its vite.config.ts is run (Vitest 4, jsdom 27.4): the framework-free query-core, the React, Preact, Vue 3, Solid, Svelte, Angular and Lit adapters, devtools and persist-client packages. Excluded: packages on the node environment (eslint-plugin-query, query-codemods, query-async/sync-storage-persister, query-persist-client-core, query-test-utils) and those without tests (react-query-next-experimental, vue-query-devtools). Workspace packages resolve to src through the @tanstack/custom-condition, so no build. The configs turn on coverage and retry: 3 when CI is set (the harness sets CI=1) and typecheck always; runs pass --coverage.enabled=false --retry=0 --typecheck.enabled=false so only the runtime tests run, without instrumentation, and a failure is not hidden by retries. vue-query tests run once on the installed Vue 3 (the repo script also switches vue-demi to Vue 2 and 2.7, which edits node_modules).",
+      "packages": [
+        {
+          "dir": "packages/query-core",
+          "runner": "vitest",
+          "args": [
+            "--coverage.enabled=false",
+            "--retry=0",
+            "--typecheck.enabled=false"
+          ]
+        },
+        {
+          "dir": "packages/react-query",
+          "runner": "vitest",
+          "args": [
+            "--coverage.enabled=false",
+            "--retry=0",
+            "--typecheck.enabled=false"
+          ]
+        },
+        {
+          "dir": "packages/react-query-devtools",
+          "runner": "vitest",
+          "args": [
+            "--coverage.enabled=false",
+            "--retry=0",
+            "--typecheck.enabled=false"
+          ]
+        },
+        {
+          "dir": "packages/react-query-persist-client",
+          "runner": "vitest",
+          "args": [
+            "--coverage.enabled=false",
+            "--retry=0",
+            "--typecheck.enabled=false"
+          ]
+        },
+        {
+          "dir": "packages/preact-query",
+          "runner": "vitest",
+          "args": [
+            "--coverage.enabled=false",
+            "--retry=0",
+            "--typecheck.enabled=false"
+          ]
+        },
+        {
+          "dir": "packages/preact-query-devtools",
+          "runner": "vitest",
+          "args": [
+            "--coverage.enabled=false",
+            "--retry=0",
+            "--typecheck.enabled=false"
+          ]
+        },
+        {
+          "dir": "packages/preact-query-persist-client",
+          "runner": "vitest",
+          "args": [
+            "--coverage.enabled=false",
+            "--retry=0",
+            "--typecheck.enabled=false"
+          ]
+        },
+        {
+          "dir": "packages/vue-query",
+          "runner": "vitest",
+          "args": [
+            "--coverage.enabled=false",
+            "--retry=0",
+            "--typecheck.enabled=false"
+          ]
+        },
+        {
+          "dir": "packages/solid-query",
+          "runner": "vitest",
+          "args": [
+            "--coverage.enabled=false",
+            "--retry=0",
+            "--typecheck.enabled=false"
+          ]
+        },
+        {
+          "dir": "packages/solid-query-devtools",
+          "runner": "vitest",
+          "args": [
+            "--coverage.enabled=false",
+            "--retry=0",
+            "--typecheck.enabled=false"
+          ]
+        },
+        {
+          "dir": "packages/solid-query-persist-client",
+          "runner": "vitest",
+          "args": [
+            "--coverage.enabled=false",
+            "--retry=0",
+            "--typecheck.enabled=false"
+          ]
+        },
+        {
+          "dir": "packages/svelte-query",
+          "runner": "vitest",
+          "args": [
+            "--coverage.enabled=false",
+            "--retry=0",
+            "--typecheck.enabled=false"
+          ]
+        },
+        {
+          "dir": "packages/svelte-query-devtools",
+          "runner": "vitest",
+          "args": [
+            "--coverage.enabled=false",
+            "--retry=0",
+            "--typecheck.enabled=false"
+          ]
+        },
+        {
+          "dir": "packages/svelte-query-persist-client",
+          "runner": "vitest",
+          "args": [
+            "--coverage.enabled=false",
+            "--retry=0",
+            "--typecheck.enabled=false"
+          ]
+        },
+        {
+          "dir": "packages/angular-query-experimental",
+          "runner": "vitest",
+          "args": [
+            "--coverage.enabled=false",
+            "--retry=0",
+            "--typecheck.enabled=false"
+          ]
+        },
+        {
+          "dir": "packages/angular-query-persist-client",
+          "runner": "vitest",
+          "args": [
+            "--coverage.enabled=false",
+            "--retry=0",
+            "--typecheck.enabled=false"
+          ]
+        },
+        {
+          "dir": "packages/lit-query",
+          "runner": "vitest",
+          "args": [
+            "--coverage.enabled=false",
+            "--retry=0",
+            "--typecheck.enabled=false"
+          ]
+        },
+        {
+          "dir": "packages/query-devtools",
+          "runner": "vitest",
+          "args": [
+            "--coverage.enabled=false",
+            "--retry=0",
+            "--typecheck.enabled=false"
+          ]
+        },
+        {
+          "dir": "packages/query-broadcast-client-experimental",
+          "runner": "vitest",
+          "args": [
+            "--coverage.enabled=false",
+            "--retry=0",
+            "--typecheck.enabled=false"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "react-router",
+      "repo": "https://github.com/remix-run/react-router",
+      "frameworks": [
+        "React"
+      ],
+      "kind": "router",
+      "notes": "Held-out project. Jest 30 with jest-environment-jsdom 30 (jsdom 26.1; the root also has jsdom 29 as a devDependency, not used by the Jest environment). The root config lists packages/* as projects; only packages/react-router runs on jsdom (the others use the node environment and test the dev server, adapters and CLI), so its config is run directly. ESM config and transform: NODE_OPTIONS=--experimental-vm-modules as in the repo test script. Most tests import the package sources through moduleNameMapper; two files import the built react-router/dom and react-router/internal entry points, hence the build (tsdown, a few seconds).",
+      "packages": [
+        {
+          "dir": "packages/react-router",
+          "runner": "jest",
+          "env": {
+            "NODE_OPTIONS": "--experimental-vm-modules --no-warnings=ExperimentalWarning"
+          }
+        }
+      ],
+      "build": "pnpm --filter react-router run build"
+    },
+    {
+      "name": "naive-ui",
+      "repo": "https://github.com/tusen-ai/naive-ui",
+      "frameworks": [
+        "Vue"
+      ],
+      "kind": "design system",
+      "install": "pnpm install --no-frozen-lockfile",
+      "notes": "Held-out project. Vue 3 component library, Vitest 4 with jsdom 27.4 (cssstyle overridden to 5.2.1 in pnpm-workspace.yaml). One root package; vite.config.mts excludes the two *.browser.spec files (run by vitest.browser.config.mts in Playwright) and the umd/esm build tests. No lockfile in the repository (pnpm-lock.yaml is gitignored), so the install resolves current versions and is not exactly reproducible; the commit pin fixes only the project code. Tests import src through an alias, no build.",
+      "packages": [
+        {
+          "dir": ".",
+          "runner": "vitest"
+        }
+      ]
+    },
+    {
+      "name": "taiga-ui",
+      "repo": "https://github.com/taiga-family/taiga-ui",
+      "frameworks": [
+        "Angular"
+      ],
+      "kind": "design system",
+      "install": "npx -y npm@11 ci --no-audit --no-fund --engine-strict=false",
+      "notes": "Held-out project. Angular 19 component library, Jest 29 with jest-preset-angular and jest-environment-jsdom 29 (jsdom 20.0.3), configured by the @taiga-ui/jest-config preset from the root package.json; one Jest run at the root covers every projects/**/*.spec.ts (cypress and playwright specs are ignored by the preset). Declares node >= 26 and npm >= 11 with engine-strict; installed with npm 11 (npm 10 rejects the lockfile) and --engine-strict=false so it runs on Node 22.23.3 like the rest of the corpus. The preset sets bail: 1 and collectCoverage: true; runs pass --bail=0 --coverage=false so a failing file does not stop the run and no instrumentation is added. The preset sets TZ=Europe/Moscow itself. On Node 22 one file (experimental/components/month/test/week.pipe.spec.ts) fails to load on every DOM because it uses Temporal (Node 26).",
+      "packages": [
+        {
+          "dir": ".",
+          "runner": "jest",
+          "args": [
+            "--bail=0",
+            "--coverage=false"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "melt-ui",
+      "repo": "https://github.com/melt-ui/melt-ui",
+      "frameworks": [
+        "Svelte"
+      ],
+      "kind": "headless UI builders",
+      "notes": "Held-out project. Svelte 4 headless builders (Melt UI; its successor for Svelte 5 is a separate repository), Vitest 1.2 with jsdom 24.0 and @testing-library/svelte. One root package; src/**/*.spec.ts. The config sets retry: 5; runs pass --retry=0 so a failure is not hidden by retries. Last commit 2025-09 (maintenance mode). svelte-kit sync runs in the install (prepare); its output (.svelte-kit) is gitignored. A test run rewrites src/json/contributors.json (same content, trailing newline dropped); restore it with git checkout to keep the checkout clean.",
+      "packages": [
+        {
+          "dir": ".",
+          "runner": "vitest",
+          "args": [
+            "--retry=0"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "solid-primitives",
+      "repo": "https://github.com/solidjs-community/solid-primitives",
+      "frameworks": [
+        "Solid"
+      ],
+      "kind": "reactive primitives (Solid)",
+      "notes": "Held-out project. Solid community primitives (~100 packages), Vitest 2.1 with jsdom 25 and isolate: false, one run from the root with configs/vitest.config.ts as the repo test:client script does (packages/*/test/*.test.ts minus server.test.ts). The SSR run (test:ssr, node environment) is out of scope. Packages resolve to their sources through the @solid-primitives/source condition, no build. Solid itself is in the tuning corpus; these packages (and their tests) are not. All test files are named packages/<name>/test/index.test.ts; per-test comparisons must key on the package directory, not the file name alone.",
+      "packages": [
+        {
+          "dir": ".",
+          "runner": "vitest",
+          "config": "configs/vitest.config.ts"
+        }
+      ]
+    },
+    {
+      "name": "vueuse",
+      "repo": "https://github.com/vueuse/vueuse",
+      "frameworks": [
+        "Vue"
+      ],
+      "kind": "composition utilities (Vue)",
+      "notes": "Held-out project. VueUse, Vitest 4 with jsdom 30. The root config has four projects; only unit (jsdom, packages/**/*.test.ts without .browser/.server) is run. browser runs in Playwright (Chromium, WebKit), server and exports in node. Packages resolve to sources through aliases, no build. The test setup starts an msw mock server (node interceptors, no network).",
+      "packages": [
+        {
+          "dir": ".",
+          "runner": "vitest",
+          "args": [
+            "--project",
+            "unit"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "downshift",
+      "repo": "https://github.com/downshift-js/downshift",
+      "frameworks": [
+        "React"
+      ],
+      "kind": "autocomplete/select primitives",
+      "install": "npm install --no-audit --no-fund",
+      "notes": "Held-out project. Downshift (React hooks and component for comboboxes and selects), Jest 29 via kcd-scripts with jest-environment-jsdom 29 (jsdom 20.0.3), root jest.config.js (src/**/__tests__). Excluded: the SSR config (other/ssr, node), the build and React Native tests (other/misc-tests, other/react-native) and the Playwright e2e tests. No lockfile (.npmrc package-lock=false): npm install resolves current versions, so installs are not exactly reproducible.",
+      "packages": [
+        {
+          "dir": ".",
+          "runner": "jest"
+        }
+      ]
+    }
+  ]
+}

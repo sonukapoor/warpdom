@@ -1,0 +1,316 @@
+{
+  "projects": {
+    "tanstack-query": {
+      "name": "tanstack-query",
+      "repo": "https://github.com/TanStack/query",
+      "startedAt": "2026-10-12T14:24:33.722Z",
+      "packages": [
+        {
+          "dir": "packages/query-core",
+          "runner": "vitest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 21,
+            "failedFiles": 0,
+            "tests": 616,
+            "passed": 616,
+            "failed": 0,
+            "skipped": 0,
+            "ms": 4589,
+            "exitCode": 0
+          }
+        },
+        {
+          "dir": "packages/react-query",
+          "runner": "vitest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 22,
+            "failedFiles": 0,
+            "tests": 413,
+            "passed": 413,
+            "failed": 0,
+            "skipped": 0,
+            "ms": 7761,
+            "exitCode": 0
+          }
+        },
+        {
+          "dir": "packages/react-query-devtools",
+          "runner": "vitest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 2,
+            "failedFiles": 0,
+            "tests": 37,
+            "passed": 37,
+            "failed": 0,
+            "skipped": 0,
+            "ms": 797,
+            "exitCode": 0
+          }
+        },
+        {
+          "dir": "packages/react-query-persist-client",
+          "runner": "vitest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 2,
+            "failedFiles": 0,
+            "tests": 11,
+            "passed": 11,
+            "failed": 0,
+            "skipped": 0,
+            "ms": 815,
+            "exitCode": 0
+          }
+        },
+        {
+          "dir": "packages/preact-query",
+          "runner": "vitest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 21,
+            "failedFiles": 0,
+            "tests": 397,
+            "passed": 397,
+            "failed": 0,
+            "skipped": 0,
+            "ms": 5733,
+            "exitCode": 0
+          }
+        },
+        {
+          "dir": "packages/preact-query-devtools",
+          "runner": "vitest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 2,
+            "failedFiles": 0,
+            "tests": 39,
+            "passed": 39,
+            "failed": 0,
+            "skipped": 0,
+            "ms": 908,
+            "exitCode": 0
+          }
+        },
+        {
+          "dir": "packages/preact-query-persist-client",
+          "runner": "vitest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 2,
+            "failedFiles": 0,
+            "tests": 2,
+            "passed": 2,
+            "failed": 0,
+            "skipped": 0,
+            "ms": 856,
+            "exitCode": 0
+          }
+        },
+        {
+          "dir": "packages/vue-query",
+          "runner": "vitest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 19,
+            "failedFiles": 0,
+            "tests": 236,
+            "passed": 229,
+            "failed": 0,
+            "skipped": 7,
+            "ms": 3856,
+            "exitCode": 0
+          }
+        },
+        {
+          "dir": "packages/solid-query",
+          "runner": "vitest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 13,
+            "failedFiles": 0,
+            "tests": 259,
+            "passed": 259,
+            "failed": 0,
+            "skipped": 0,
+            "ms": 4073,
+            "exitCode": 0
+          }
+        },
+        {
+          "dir": "packages/solid-query-devtools",
+          "runner": "vitest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 2,
+            "failedFiles": 0,
+            "tests": 33,
+            "passed": 33,
+            "failed": 0,
+            "skipped": 0,
+            "ms": 966,
+            "exitCode": 0
+          }
+        },
+        {
+          "dir": "packages/solid-query-persist-client",
+          "runner": "vitest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 1,
+            "failedFiles": 0,
+            "tests": 7,
+            "passed": 7,
+            "failed": 0,
+            "skipped": 0,
+            "ms": 879,
+            "exitCode": 0
+          }
+        },
+        {
+          "dir": "packages/svelte-query",
+          "runner": "vitest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 15,
+            "failedFiles": 0,
+            "tests": 131,
+            "passed": 131,
+            "failed": 0,
+            "skipped": 0,
+            "ms": 4741,
+            "exitCode": 0
+          }
+        },
+        {
+          "dir": "packages/svelte-query-devtools",
+          "runner": "vitest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 1,
+            "failedFiles": 0,
+            "tests": 14,
+            "passed": 14,
+            "failed": 0,
+            "skipped": 0,
+            "ms": 1241,
+            "exitCode": 0
+          }
+        },
+        {
+          "dir": "packages/svelte-query-persist-client",
+          "runner": "vitest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 1,
+            "failedFiles": 0,
+            "tests": 7,
+            "passed": 7,
+            "failed": 0,
+            "skipped": 0,
+            "ms": 1302,
+            "exitCode": 0
+          }
+        },
+        {
+          "dir": "packages/angular-query-experimental",
+          "runner": "vitest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 17,
+            "failedFiles": 0,
+            "tests": 169,
+            "passed": 169,
+            "failed": 0,
+            "skipped": 0,
+            "ms": 3491,
+            "exitCode": 0
+          }
+        },
+        {
+          "dir": "packages/angular-query-persist-client",
+          "runner": "vitest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 1,
+            "failedFiles": 0,
+            "tests": 6,
+            "passed": 5,
+            "failed": 0,
+            "skipped": 0,
+            "ms": 1595,
+            "exitCode": 0
+          }
+        },
+        {
+          "dir": "packages/lit-query",
+          "runner": "vitest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 13,
+            "failedFiles": 0,
+            "tests": 181,
+            "passed": 181,
+            "failed": 0,
+            "skipped": 0,
+            "ms": 2749,
+            "exitCode": 0
+          }
+        },
+        {
+          "dir": "packages/query-devtools",
+          "runner": "vitest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 11,
+            "failedFiles": 0,
+            "tests": 260,
+            "passed": 260,
+            "failed": 0,
+            "skipped": 0,
+            "ms": 4657,
+            "exitCode": 0
+          }
+        },
+        {
+          "dir": "packages/query-broadcast-client-experimental",
+          "runner": "vitest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 1,
+            "failedFiles": 0,
+            "tests": 13,
+            "passed": 13,
+            "failed": 0,
+            "skipped": 0,
+            "ms": 701,
+            "exitCode": 0
+          }
+        }
+      ],
+      "commit": "1ea892863955eb403ff15146b64f8f0d912b7adb"
+    }
+  }
+}

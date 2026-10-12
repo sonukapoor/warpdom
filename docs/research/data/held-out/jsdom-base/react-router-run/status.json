@@ -1,0 +1,32 @@
+{
+  "projects": {
+    "react-router": {
+      "name": "react-router",
+      "repo": "https://github.com/remix-run/react-router",
+      "startedAt": "2026-10-12T14:29:28.011Z",
+      "packages": [
+        {
+          "dir": "packages/react-router",
+          "runner": "jest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 118,
+            "failedFiles": 0,
+            "tests": 2446,
+            "passed": 2431,
+            "failed": 0,
+            "skipped": 15,
+            "ms": 29134,
+            "exitCode": 0
+          }
+        }
+      ],
+      "build": {
+        "exitCode": 0,
+        "ms": 1312
+      },
+      "commit": "dee9ad2dab41889e8fbdc6848b5781255d9f133a"
+    }
+  }
+}

@@ -511,6 +511,77 @@ warpdom now leads on the per-file score too (2026-10-11: 66.5% vs 71.5%);
 html/dom 71.5% vs 68.0%. Behind: the top-level `dom/` files (80.3% vs
 93.4%), `dom/events` (77.8% vs 79.8%), `dom/ranges` (87.6% vs 88.6%).
 
+**Safety run after the day's merges** (run 38261958358, one round, jsdom
+vs warpdom, 13 suites, warpdom 752c090 with innerText, namespaced
+attributes, XPath, the fastFrames opt-in and the getModifierState fix;
+[data/timing/ci-2026-10-12-safety/](data/timing/ci-2026-10-12-safety/)):
+no test changed from pass to fail in any suite. Differences:
+- ariakit 7, all tests that fail on jsdom and pass on warpdom (the 2
+  shim tests now pass on both);
+- ark-ui 3 and solid 1, flaky tests that also change on jsdom;
+- svelte 1, the DOMException deviation;
+- 0 in the other 9 suites.
+
+### 3.7 Held-out set, 2026-10-12
+
+Nine projects warpdom was never tuned on (dom-api-tracer
+`corpus/held-out.json`, pinned in `corpus/held-out-pins.json`), measured
+as warpdom was at 2db6583: per-test status on jsdom and on warpdom, one run
+each on the laptop, 2 workers. Nothing was fixed before measuring.
+[data/held-out/](data/held-out/) (per-test results of both runs, the
+corpus and pin files).
+
+| Project | Kind | Runner / jsdom | Tests | Differ |
+| --- | --- | --- | --- | --- |
+| naive-ui | Vue | Vitest 4 / jsdom 27.4 | 1,246 | 0 |
+| taiga-ui | Angular | Jest 29 / jsdom 20.0 | 2,604 | 0 |
+| melt-ui | Svelte 4 | Vitest 1.2 / jsdom 24.0 | 770 | 0 |
+| dom-testing-library | framework-free | Jest 29 / jsdom 20.0 | 657 | 1 |
+| tanstack-query | 7 frameworks | Vitest 4 / jsdom 27.4 | 2,821 | 2 |
+| solid-primitives | Solid | Vitest 2.1 / jsdom 25 | about 920 | 4 |
+| vueuse | Vue | Vitest 4 / jsdom 30.0 | 940 | 10 |
+| react-router | React | Jest 30 / jsdom 26.1 | 2,446 | 17 |
+| downshift | React | Jest 29 / jsdom 20.0 | 1,110 | 24 |
+
+58 of about 13,500 tests differ (0.43%); 4 of 9 projects have none. All 58
+pass on jsdom and fail on warpdom. Causes (confirmed by a probe outside the
+suite unless marked):
+- **Internal state visible to Jest's equality (7, react-router):** warpdom
+  keeps state in an own enumerable symbol property on some objects
+  (FormData, AbortSignal); `toEqual` and snapshots see it.
+- **`history.back()`/`go()`/`forward()` are no-ops (8, react-router).**
+- **A test replaces `global.document` (19, downshift):** warpdom's
+  `window.document` is writable, jsdom's is a getter without a setter, so
+  there the assignment is ignored.
+- **The jsdom 20 profile:** jsdom 20 serializes `border: 0` as `0px` and
+  drops `clip: rect(0 0 0 0)` (5, downshift); warpdom's oldest modeled
+  version was 25. jsdom 20 also logs "Not implemented" for
+  `getComputedStyle(el, pseudo)` (1, dom-testing-library).
+- **Missing `CloseEvent` (5, vueuse).**
+- **`Event.timeStamp`** is relative to the time origin in warpdom and can be
+  0 under fake timers; jsdom's is a Date.now() value (4, vueuse).
+- **`<input type=image>` submitter coordinates** in form data (2,
+  react-router).
+- **`CSSStyleSheet.ownerNode`** returns jsdom 27's internal object, without
+  an `id` (1, tanstack-query).
+- Not yet explained: requestAnimationFrame under Vitest's fake timers with
+  `isolate: false` (4, solid-primitives; likely), Lit context reconnection
+  under fake timers (1, tanstack-query), a Vue CSS variable switch (1,
+  vueuse).
+
+`warpdom compare --correctness` on three of them (dom-testing-library,
+react-router, vueuse) found the same differences as the harness. It
+needed `NODE_OPTIONS=--experimental-vm-modules` for react-router and gave
+no hint; it still runs browser-mode projects it does not compare.
+
+What this says about the corpus result: parity on unseen suites is high
+(99.6% of tests) but not exact. Most causes are classes of behavior that
+the tuning corpus did not exercise (history traversal, jsdom 20,
+assignment to `document`, Jest's deep equality on DOM objects), not
+one-off bugs. Several affect many tests at once, so fixing a cause matters
+more than the count. Rejected candidates and why: dom-api-tracer
+`scripts/research/README.md`, "Held-out set".
+
 ## 4. Findings
 
 **F1. "jsdom-compatible" is not one target: suites encode the jsdom
@@ -625,7 +696,7 @@ gain or lose.
   (e.g. module resolution), though the copy mimics an installed package.
 - **Profiling overhead**: shares come from `--cpu-prof` runs, which are
   slower than timed runs.
-- **Selection bias.** Most projects were added because they test with
+- **Selection bias** (now measured on a held-out set, 3.7: 0.43% of tests differ there, against almost none in the corpus). Most projects were added because they test with
   jsdom and run in Node; real-browser suites (most web-component
   libraries) are out of scope. Compatibility fixes were driven by this
   same corpus, so parity on it overstates parity on unseen suites; a

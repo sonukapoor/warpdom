@@ -17,9 +17,13 @@ function invalid(selector) {
   return domError(`'${selector}' is not a valid selector.`, 'SyntaxError');
 }
 
+// CSS input preprocessing (CSS Syntax 3.3): CR LF, CR and FF become LF,
+// NUL becomes U+FFFD.
+const preprocess = (text) => (/[\r\f\0]/.test(text) ? text.replace(/\r\n?|\f/g, '\n').replace(/\0/g, '\uFFFD') : text);
+
 class Parser {
   constructor(text) {
-    this.text = text;
+    this.text = preprocess(text);
     this.i = 0;
   }
 
@@ -115,10 +119,18 @@ class Parser {
   compound() {
     const tests = [];
     let type = null;
+    // A type selector's namespace: *| (any, as without one) or | (none).
+    // Declared prefixes need @namespace, which the DOM API cannot have.
+    let ns;
+    if (this.peek() === '*' && this.peek(1) === '|' && this.peek(2) !== '=') { this.i += 2; ns = '*'; }
+    else if (this.peek() === '|' && this.peek(1) !== '=') { this.i++; ns = ''; }
     if (this.peek() === '*') { this.i++; type = '*'; } else {
       const name = this.ident();
       if (name !== null) type = name;
     }
+    if (ns !== undefined && type === null) this.fail();
+    if (ns === undefined && type !== null && this.peek() === '|' && this.peek(1) !== '=') this.fail();
+    if (ns === '') { type = type ?? '*'; tests.push({ kind: 'noNamespace' }); }
     for (;;) {
       const c = this.peek();
       if (c === '#') {
@@ -175,6 +187,41 @@ class Parser {
     return { kind: 'attr', name, op, value, insensitive, ns };
   }
 
+  // A forgiving selector list (:is, :where): an invalid item is dropped.
+  forgivingList() {
+    const items = [];
+    for (;;) {
+      this.skipWs();
+      const start = this.i;
+      try {
+        const item = this.complex(false);
+        this.skipWs();
+        if (this.peek() !== ',' && this.peek() !== ')') this.fail();
+        items.push(item);
+      } catch {
+        this.i = start;
+        this.skipItem();
+      }
+      if (this.peek() !== ',') return items;
+      this.i++;
+    }
+  }
+
+  // Skips to the next top-level comma or the closing parenthesis.
+  skipItem() {
+    let depth = 0;
+    for (;;) {
+      const c = this.peek();
+      if (c === '') this.fail();
+      if (depth === 0 && (c === ',' || c === ')')) return;
+      if (c === '(' || c === '[') depth++;
+      else if (c === ')' || c === ']') depth--;
+      if (c === '"' || c === "'") this.string();
+      else if (c === '\\') this.i += 2;
+      else this.i++;
+    }
+  }
+
   skipBalanced() {
     let depth = 0;
     do {
@@ -196,7 +243,8 @@ class Parser {
     this.i++;
     this.skipWs();
     let arg;
-    if (['not', 'is', 'where', 'matches', '-webkit-any'].includes(lower)) arg = this.list();
+    if (lower === 'is' || lower === 'where') arg = this.forgivingList();
+    else if (['not', 'matches', '-webkit-any', 'host'].includes(lower)) arg = this.list();
     else if (lower === 'has') arg = this.list(true);
     else if (['nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-of-type'].includes(lower)) arg = this.nth(lower.endsWith('child'));
     else if (lower === 'lang' || lower === 'dir') { arg = this.ident() ?? (this.peek() === '"' || this.peek() === "'" ? this.string() : null); if (arg === null) this.fail(); }
@@ -232,7 +280,7 @@ const SIMPLE_PSEUDOS = new Set(['first-child', 'last-child', 'only-child', 'firs
   'empty', 'root', 'scope', 'checked', 'disabled', 'enabled', 'focus', 'focus-within', 'focus-visible', 'hover', 'active',
   'visited', 'link', 'any-link', 'target', 'required', 'optional', 'read-only', 'read-write', 'placeholder-shown',
   'defined', 'indeterminate', 'default', 'valid', 'invalid', 'in-range', 'out-of-range', 'autofill', 'modal', 'open', 'closed',
-  'popover-open', 'fullscreen', 'playing', 'paused', 'user-invalid', 'user-valid']);
+  'popover-open', 'fullscreen', 'playing', 'paused', 'user-invalid', 'user-valid', 'host']);
 
 // --- compiling ---------------------------------------------------------------------
 
@@ -308,6 +356,7 @@ const nthMatches = (index, a, b) => (a === 0 ? index === b : (index - b) / a >= 
 
 function compileTest(t) {
   switch (t.kind) {
+    case 'noNamespace': return (el) => el[S].ns === null;
     case 'id': return (el) => el[S].attrs.get('id') === t.value;
     case 'class': {
       const v = t.value;
@@ -379,7 +428,10 @@ function compilePseudo({ name, arg }) {
   if (DYNAMIC.has(name)) compilingDynamic = true;
   switch (name) {
     case 'not': { const m = compileList(arg); return (el, ctx) => !m(el, ctx); }
-    case 'is': case 'where': { const m = compileList(arg); return (el, ctx) => m(el, ctx); }
+    case 'is': case 'where': { if (arg.length === 0) return () => false; const m = compileList(arg); return (el, ctx) => m(el, ctx); }
+    // :host and :host(<compound>): reached only from the shadow tree's
+    // top-level elements through a combinator (compileComplex).
+    case 'host': { if (!arg) return () => true; const m = compileList(arg); return (el, ctx) => m(el, ctx); }
     case 'has': {
       const rel = arg.map(compileRelative);
       return (el, ctx) => rel.some((r) => r(el, ctx));
@@ -466,6 +518,12 @@ function isReadWrite(el) {
   return ce !== undefined && ce.toLowerCase() !== 'false';
 }
 
+// A compound made of :host alone: matches the shadow host, as the parent of
+// its shadow tree's top-level elements (CSS Scoping 3.1.1).
+const isHostCompound = ({ type, tests }) => type === null && tests.length === 1 && tests[0].kind === 'pseudo' && tests[0].name === 'host';
+const shadowHostOfParent = (el) => { const p = el[S].parent; return p !== null && p[S].shadow === true ? p[S].host : null; };
+const shadowHostAbove = (el) => { let n = el; while (n[S].parent) n = n[S].parent; return n[S].shadow === true ? n[S].host : null; };
+
 function compileCompound({ type, tests }) {
   const checks = tests.map(compileTest);
   const lower = type && type !== '*' ? type.toLowerCase() : null;
@@ -483,6 +541,13 @@ function compileCompound({ type, tests }) {
 // (inside :has) ends at the anchor, related by its leading combinator.
 function compileComplex({ parts, combinators, relative }) {
   const compounds = parts.map(compileCompound);
+  const host = parts.map(isHostCompound);
+  // The host is featureless outside its shadow tree: :host as the subject
+  // matches nothing.
+  if (host[host.length - 1]) return () => false;
+  // One compound (div, .a, [x]): its test alone.
+  if (compounds.length === 1 && !relative) return compounds[0];
+  const anyHost = host.includes(true);
   const combs = relative ? combinators.slice(1) : combinators;
   const lead = relative ? combinators[0] : null;
   const atAnchor = (el, anchor) => {
@@ -497,6 +562,10 @@ function compileComplex({ parts, combinators, relative }) {
   const matchFrom = (el, i, ctx) => {
     if (i === 0) return !relative || atAnchor(el, ctx.anchor);
     const prev = compounds[i - 1];
+    if (anyHost && host[i - 1]) {
+      const h = combs[i - 1] === '>' ? shadowHostOfParent(el) : combs[i - 1] === ' ' ? shadowHostAbove(el) : null;
+      return h !== null && prev(h, ctx) && matchFrom(h, i - 1, ctx);
+    }
     switch (combs[i - 1]) {
       case '>': { const p = parentElement(el); return !!p && prev(p, ctx) && matchFrom(p, i - 1, ctx); }
       case ' ': for (let p = parentElement(el); p; p = parentElement(p)) if (prev(p, ctx) && matchFrom(p, i - 1, ctx)) return true; return false;
@@ -544,7 +613,7 @@ export function compile(selector) {
   if (!entry) {
     const parser = new Parser(text);
     const list = parser.list();
-    if (parser.i < text.length) throw invalid(text);
+    if (parser.i < parser.text.length) throw invalid(text);
     compilingDynamic = false;
     const match = compileList(list);
     const simpleId = list.length === 1 && list[0].parts.length === 1 && list[0].parts[0].type === null
@@ -592,7 +661,7 @@ export function compileRuleSelector(selector) {
   if (!entries) {
     const parser = new Parser(text);
     const list = parser.list();
-    if (parser.i < text.length) throw invalid(text);
+    if (parser.i < parser.text.length) throw invalid(text);
     entries = list.map((complex) => ({ match: compileComplex(complex), specificity: complexSpecificity(complex) }));
     if (ruleCache.size >= CACHE_LIMIT) ruleCache.clear();
     ruleCache.set(text, entries);

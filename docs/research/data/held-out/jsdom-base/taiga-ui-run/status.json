@@ -1,0 +1,28 @@
+{
+  "projects": {
+    "taiga-ui": {
+      "name": "taiga-ui",
+      "repo": "https://github.com/taiga-family/taiga-ui",
+      "startedAt": "2026-10-12T14:38:36.932Z",
+      "packages": [
+        {
+          "dir": ".",
+          "runner": "jest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 327,
+            "failedFiles": 1,
+            "tests": 2604,
+            "passed": 2603,
+            "failed": 0,
+            "skipped": 1,
+            "ms": 221745,
+            "exitCode": 1
+          }
+        }
+      ],
+      "commit": "a11558d25be2ee34a0c7161a232c96472ac10147"
+    }
+  }
+}

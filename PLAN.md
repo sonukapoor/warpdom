@@ -173,6 +173,12 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   `tests/hydration/test.ts::whitespace-at-block-start` (svelte appends to
   the message of `Error`s only). Decided 2026-10-12: keep the standard;
   matching jsdom would change error handling in every suite.
+- `isTrusted` is an accessor on `Event.prototype`, not an own accessor
+  of every event as the DOM standard's [LegacyUnforgeable] requires (and
+  jsdom has). Defining it per event made `new Event` 2.3x slower (42 -> 96
+  ns); only interface-shape checks (WPT idlharness,
+  `Event-isTrusted.any.html`) can tell. Decided 2026-10-12 when merging
+  feat/wpt-dom: dom/events scores 78.6% instead of 79.75% (jsdom 79.8%).
 - `tabIndex` parses the attribute with the rules for parsing integers:
   `tabindex="abc"` gives the element's default (-1 on a div); jsdom gives 0.
 - A disabled `fieldset` is not focusable even with a `tabindex`; jsdom
@@ -1410,3 +1416,125 @@ declarative shadow DOM (xpath-shadow-dom 1 subtest).
   turns `'warpdom'` into it. Release decision: also publish a
   `vitest-environment-warpdom` package (name free on npm) so plain
   `environment: 'warpdom'` works.
+
+## 2026-10-12: WPT gaps against jsdom in dom/, dom/events, dom/ranges, dom/nodes (branch feat/wpt-dom)
+
+WPT 87b5d13099, run locally per directory with --jobs 1, Node 22.23.3,
+jsdom 30.1.2 as reference. Scores are per file against the union of
+subtest names (as `wpt/summary.mjs` side by side); "before" is main
+f7f4571 (newer than the CI run's d1358bf: XPath and namespaced
+attributes were already merged, so top-level dom/ started at 90.8%, not
+80.3%). No subtest that passed before fails now in any of the four.
+
+| Area | warpdom before | warpdom after | jsdom | subtests warpdom before -> after (jsdom) |
+| --- | --- | --- | --- | --- |
+| dom/ (10 files) | 90.8% | **95.9%** | 93.2% | 1,819 -> 2,001 of 2,102 (1,337) |
+| dom/events | 77.8% | **79.75%** | 79.78% | 594 -> 604 of 715 (481) |
+| dom/ranges | 87.6% | **89.2%** | 88.6% | 38,990 -> 40,318 of 44,494 (40,317) |
+| dom/nodes | 72.7% | **74.0%** | 69.1% | 7,175 -> 7,211 of 9,922 (7,137) |
+
+Subtests jsdom passes and warpdom fails: dom/ 10 -> 2, events 32 -> 27,
+ranges 3 -> 0, nodes 36 -> 1.
+
+Fixes, by cause:
+- **WebIDL details** (idlharness): operations called with too few
+  arguments throw a TypeError (getAttribute(), setAttribute('a'),
+  addEventListener('x'), createElement(), contains(), initEvent(),
+  Range.setStart(node), ...; the last required argument is tested for
+  undefined first, so the common path never reads arguments.length);
+  constructor lengths (Event and subclasses 1, MutationObserver,
+  StaticRange); add/removeEventListener and createElement(NS) lengths;
+  @@iterator not enumerable; brand checks (contains(null), isSameNode,
+  hasFeature, cancelBubble setter, documentURI, DOMTokenList
+  stringifier, add/removeEventListener).
+- **isTrusted** is an own, non-configurable accessor of every event with
+  one shared getter, as in jsdom (Object.keys(event) is ['isTrusted']).
+- **Globals**: the Vitest/Jest global's addEventListener,
+  removeEventListener and dispatchEvent act on the window, or on another
+  this (window.addEventListener.call(el, ...)).
+- **Events**: listeners on targets whose window is a removed iframe's do
+  not run (DOM inner invoke; checked only once an iframe has been removed
+  in the process); TransitionEvent for the jsdom 27+ profiles (jsdom has
+  it from 27.0.0; React then listens for transitionend, not
+  webkitTransitionEnd); UIEventInit view rejects primitives;
+  javascript: URLs of followed links run as scripts in a later task (as
+  jsdom with runScripts 'dangerously'; main printed "Not implemented:
+  navigation to another Document" for href="javascript:void(0)").
+- **Ranges**: live ranges move with an adopted subtree;
+  compareBoundaryPoints converts how as unsigned short; StaticRange
+  requires both offsets.
+- **Selectors**: *|type, |type, ns| invalid; forgiving :is()/:where();
+  CSS input preprocessing (CR LF, NUL); :host / :host(...) from a shadow
+  root's top-level elements.
+- **Nodes**: createElement('f:oo') keeps the colon name as local name
+  (also clones and the HTML parser's <x:y>); tagName uppercases ASCII
+  only; createElementNS(HTML, 'SPAN') is HTMLUnknownElement; <frame>
+  gets a nested window like <iframe>; live NodeList/HTMLCollection
+  iterators; DocumentFragment.getElementById(''), quirks-mode
+  getElementsByClassName, insertAdjacentElement type check.
+
+Performance (5 alternating runs against main f7f4571, medians; Node
+22.23.3):
+
+| | main | branch | |
+| --- | --- | --- | --- |
+| new Event | 42 ns | 96 ns | +54 ns: the isTrusted own accessor (defineProperty, ~55 ns, no cheaper way found) |
+| new CustomEvent | 55 ns | 122 ns | same |
+| new MouseEvent | 308 ns | 225 ns | -27%: event state from a per-interface template |
+| new KeyboardEvent | 273 ns | 205 ns | -25% |
+| dispatchEvent (hot, MouseEvent per call) | 1,538 ns | 1,487 ns | -3% |
+| dispatch-bench (new Event per call) | 1,407 ns | 1,470 ns | +4.5% (event creation) |
+| create-bench (includes new Event per node) | 184 ns | 237 ns | +29% (event creation) |
+| insert-bench | 60.1 | 59.5 | level |
+| appendChild / insertBefore / removeChild | 86.5 / 122.3 / 169.6 | 86.4 / 118.7 / 164.2 | level or faster |
+| setAttribute (bench:hot) | 47.3 | 49.1 | +3.8%; focused bench level (26.6 vs 26.3 ns) |
+| matches / closest (bench:hot) | 23.6 / 153.6 | 20.8 / 113.3 | one-compound selectors match directly |
+| cold load | 16.3 ms | 16.6 ms | +0.3 ms (more code) |
+| first window (25 fresh processes) | 1.59 ms | 1.63 ms | |
+
+Tried and dropped: renaming helper-built accessors to "get x" when
+interfaces are built (+0.3 ms first window) and naming handler accessors
+with computed keys (+0.2 ms first window); timestamps coarsened to 5 us
+(passes Event-timestamp-safe-resolution but breaks the high-resolution
+test, since performance.now() is the host's); Array.prototype.values as
+NodeList's iterator (every item would go through the list proxy).
+
+Decision for Sonu: isTrusted as an own accessor costs about 55 ns per
+event (plain Event 42 -> 96 ns); UIEvent subclasses are still faster than
+main because of the template. Revert 428744b if that is not worth jsdom's
+shape (WPT: dom/events then 78.6% vs 79.8%).
+
+Left, and why:
+- dom/events (0.03 points behind): XMLHttpRequest as an event target
+  (relatedTarget, event-global; jsdom has XHR, warpdom does not: adding it
+  changes which adapter axios and similar libraries pick, a product
+  decision); window.performance is Node's in the Vitest/Jest globals, so
+  dispatching warpdom events on it fails (as in Vitest's jsdom
+  environment; the runner runs jsdom as a plain window); event timeStamp
+  per frame time origin plus `eval` in frames (cross-realm getter); 5 us
+  resolution (see above); passive-by-default names its subtests after
+  window.constructor.name, which is Object for a Vitest-style global, so
+  20 subtests count as missing for each engine.
+- dom/: window.addEventListener === EventTarget.prototype.addEventListener
+  (the global has bound functions, like Vitest's jsdom environment);
+  NodeList entries/keys/values/forEach being Array.prototype's (cost).
+- Iframe-based range tests (Range-cloneContents, -deleteContents,
+  -extractContents, -insertNode, -surroundContents: ~4,200 subtests) fail
+  in both engines: frames load no documents and run no scripts.
+- Nested forms (Event-dispatch-single-activation-behavior, 8 subtests):
+  the outer form's onsubmit sees the bubbling submit event; unclear how
+  browsers avoid that.
+- Observed, not changed: jsdom matches `*|H` against a no-namespace `h`
+  element; jsdom accepts an unclosed `:is(b`.
+
+- **2026-10-12: Merging feat/wpt-dom.** Kept everything except the own
+  `isTrusted` accessor (moved to Event.prototype, see deviations). One-field
+  event interfaces (CustomEvent) use the state literal plus one property
+  instead of the template copy. Main vs merged branch (medians): new Event
+  41.4 -> 41.2 ns, CustomEvent 40.3 -> 45.5 ns (+5 ns, not found),
+  MouseEvent 312 -> 173 ns, KeyboardEvent 278 -> 156 ns; bench:hot
+  dispatchEvent -8.5%, closest -26%, matches -12%, appendChild/insertBefore/
+  removeChild -3% to -5%; setAttribute level in the focused benchmark
+  (27.1 vs 27.7 ns; bench:hot shows +6% as for dom-gaps, noise between
+  builds); create-bench and insert-bench level; dispatch-bench +2%.
+

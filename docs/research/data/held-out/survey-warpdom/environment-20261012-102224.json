@@ -1,0 +1,44 @@
+{
+  "recordedAt": "2026-10-12T14:22:24.461Z",
+  "node": "v22.23.3",
+  "os": {
+    "platform": "darwin",
+    "release": "25.6.0",
+    "version": "Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+    "arch": "arm64"
+  },
+  "cpu": {
+    "model": "Apple M4 Pro",
+    "cores": 14,
+    "availableParallelism": 14
+  },
+  "memory": {
+    "totalBytes": 25769803776,
+    "totalGiB": 24
+  },
+  "loadAverage": [
+    14.7177734375,
+    6.90576171875,
+    4.1083984375
+  ],
+  "warpdom": {
+    "dir": "/Users/sonukapoor/Projects/warpdom",
+    "commit": "2db65834e68c38a95571dff33e392d3eedf268c2",
+    "branch": "main",
+    "dirty": false
+  },
+  "domApiTracer": {
+    "dir": "/Users/sonukapoor/Projects/dom-api-tracer-heldout",
+    "commit": "b25a6908de487ef2be77110fd0b163eb7ff38396",
+    "branch": "feat/held-out",
+    "dirty": true
+  },
+  "projects": {
+    "dom-testing-library": {
+      "dir": "/Users/sonukapoor/Projects/dom-testing-library",
+      "commit": "6049cc0bc7cf2201625c476c95fa6299d0e2fa8b",
+      "branch": "main",
+      "dirty": false
+    }
+  }
+}

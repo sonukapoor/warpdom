@@ -348,3 +348,94 @@ for (const jsdom of [30, 26, 25]) {
     return out;
   }, { jsdom });
 }
+
+// Inner invoke skips listeners whose target's document is not fully active:
+// a removed iframe's window and document (as in jsdom).
+parity('listeners on a removed iframe\'s window and document do not run', (w) => {
+  const d = w.document;
+  const frame = d.createElement('iframe');
+  d.body.append(frame);
+  const win = frame.contentWindow;
+  const doc = frame.contentDocument;
+  const seen = [];
+  win.addEventListener('x', () => seen.push('window'));
+  doc.addEventListener('x', () => seen.push('document'));
+  win.dispatchEvent(new w.Event('x'));
+  doc.dispatchEvent(new w.Event('x'));
+  frame.remove();
+  const results = [win.dispatchEvent(new w.Event('x', { cancelable: true })), doc.dispatchEvent(new w.Event('x'))];
+  return [seen, results];
+});
+
+test('listeners on nodes of a removed iframe\'s document stop, also during dispatch', () => {
+  const w = createWindow();
+  const frame = w.document.createElement('iframe');
+  w.document.body.append(frame);
+  const doc = frame.contentDocument;
+  const el = doc.body.appendChild(doc.createElement('div'));
+  const order = [];
+  doc.addEventListener('x', () => { order.push('capture'); frame.remove(); }, true);
+  el.addEventListener('x', () => order.push('target'));
+  doc.addEventListener('x', () => order.push('bubble'));
+  el.dispatchEvent(new w.Event('x', { bubbles: true }));
+  assert.deepEqual(order, ['capture']);
+  // A window elsewhere keeps dispatching.
+  const other = createWindow();
+  let n = 0;
+  other.document.body.addEventListener('y', () => n++);
+  other.document.body.dispatchEvent(new other.Event('y'));
+  assert.equal(n, 1);
+});
+
+// TransitionEvent exists from jsdom 27 (React then listens for transitionend
+// rather than webkitTransitionEnd); jsdom has no AnimationEvent.
+for (const jsdom of [30, 26]) {
+  parity(`TransitionEvent (jsdom ${jsdom})`, (w) => {
+    if (!w.TransitionEvent) return ['absent', 'TransitionEvent' in w, 'AnimationEvent' in w];
+    const T = w.TransitionEvent;
+    const e = new T('transitionend', { propertyName: 5, elapsedTime: '1.1', pseudoElement: '::after', bubbles: true });
+    const d = new T('x');
+    const out = [T.length, Object.getOwnPropertyNames(T.prototype).sort(), Object.getPrototypeOf(T.prototype) === w.Event.prototype,
+      e.type, e.propertyName, e.elapsedTime, e.pseudoElement, e.bubbles, d.propertyName, d.elapsedTime, d.pseudoElement,
+      'AnimationEvent' in w, String(e)];
+    for (const f of [() => new T(), () => new T('x', { elapsedTime: NaN }), () => w.document.createEvent('TransitionEvent')]) {
+      try { f(); out.push('ok'); } catch (err) { out.push(err.name); }
+    }
+    return out;
+  }, { jsdom });
+}
+
+parity('UIEventInit view: primitives are rejected, null and the window accepted', (w) => {
+  const out = [];
+  for (const view of [7, 'x', true, null, undefined, w]) {
+    try { out.push(new w.MouseEvent('x', { view }).view === (view ?? null)); } catch (e) { out.push(e.name); }
+  }
+  return out;
+});
+
+// javascript: URLs: following a link runs the script in a later task (this
+// is the window; exceptions are reported), as jsdom does with runScripts
+// 'dangerously' (Vitest's and Jest's setting); location ignores them.
+for (const jsdom of [30, 26, 25]) {
+  parity(`javascript: URLs of links run as scripts; location ignores them (jsdom ${jsdom})`, async (w) => {
+
+    const d = w.document;
+    d.body.innerHTML = '<a id="a" href="javascript:window.n=(window.n||0)+1;window.order.push(%22run%22)">a</a>'
+      + '<area id="r" href="javascript:window.n+=10"><a id="t" target="_blank" href="javascript:window.n+=100">t</a>'
+      + '<a id="v" href="javascript:void(0)">v</a><a id="e" href="javascript:throw new Error(%22boom%22)">e</a>';
+    w.order = [];
+    const errors = [];
+    w.addEventListener('error', (e) => { errors.push(e.message); e.preventDefault(); });
+    d.getElementById('a').click();
+    w.order.push('after click');
+    Promise.resolve().then(() => w.order.push('microtask'));
+    w.location.href = 'javascript:window.n+=1000';
+    d.getElementById('t').click();
+    d.getElementById('v').click();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    d.getElementById('r').click();
+    d.getElementById('e').click();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return [w.n, w.order, errors.length, w.location.href];
+  }, { jsdom });
+}

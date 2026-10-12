@@ -102,6 +102,30 @@ test('the jsdom profile includes the cssstyle that jsdom loads', () => {
   assert.deepEqual(project([['node_modules/cssstyle', '4.6.0']], { warpdom: { jsdom: 26 } }), { jsdom: 26, cssstyle: undefined });
 });
 
+test('the global EventTarget methods act on the window, or on another this', () => {
+  const window = createWindow();
+  const global = {};
+  const restore = installWindow(global, window);
+  try {
+    const { body } = window.document;
+    const seen = [];
+    // A custom this (as a browser's inherited window.addEventListener).
+    global.addEventListener.call(body, 'a', function () { seen.push(this === body ? 'body' : 'other'); });
+    body.dispatchEvent(new window.Event('a'));
+    // Unbound and through the global: the window.
+    const { addEventListener } = global;
+    addEventListener('b', () => seen.push('window b'));
+    global.addEventListener('c', () => seen.push('window c'));
+    window.dispatchEvent(new window.Event('b'));
+    global.dispatchEvent(new window.Event('c'));
+    assert.deepEqual(seen, ['body', 'window b', 'window c']);
+    assert.equal(global.addEventListener.length, 2);
+    assert.equal(global.addEventListener.name, 'addEventListener');
+  } finally {
+    restore();
+  }
+});
+
 test('globals Vitest defines for members jsdom lacks read the window (matchMedia)', () => {
   // svelte's test helpers assign Window.prototype.matchMedia; code under
   // test calls window.matchMedia, the global.

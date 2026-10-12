@@ -164,3 +164,18 @@ test('test environment globals have no named access, as under Vitest with jsdom'
   assert.equal(window.foo.id, 'foo');
   restore();
 });
+
+parity('iterating a live NodeList or HTMLCollection sees changes made meanwhile', (w) => {
+  const d = w.document;
+  const parent = d.createElement('div');
+  const { childNodes, children } = parent;
+  const early = children[Symbol.iterator]();
+  parent.innerHTML = '<b>1</b><b>2</b>';
+  const seen = [];
+  for (const n of childNodes) {
+    seen.push(n.textContent);
+    if (seen.length < 3) parent.append(d.createElement('i'));
+  }
+  return [seen.length, early.next().value === parent.firstChild, [...childNodes.keys()], [...childNodes.entries()].length,
+    String(childNodes.values()), [...d.querySelectorAll('i')].length];
+});

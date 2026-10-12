@@ -5,7 +5,7 @@
 // HTML; namespaces (Namespaces in XML 1.0) are resolved here, on its tree.
 import {
   S, state, insert, remove, domError, hooks, HTML_NS, ELEMENT_NODE,
-  namedAttributesSet,
+  namedAttributesSet, tooFewArguments,
 } from './internal.js';
 import { XML_NS, XMLNS_NS } from './attributes.js';
 import { eventHandlerAttributesAdded } from './event-handlers.js';
@@ -56,6 +56,7 @@ const internals = (doc) => doc[S].window[S];
 export const XML_DOCUMENT_MEMBERS = {
   createCDATASection(data) {
     const s = state(this);
+    if (data === undefined && arguments.length < 1) tooFewArguments('Document', 'createCDATASection', 1, arguments.length);
     if (!s.xml) throw domError('Failed to execute \'createCDATASection\' on \'Document\': This operation is not supported for HTML documents.', 'NotSupportedError');
     const text = String(data);
     if (text.includes(']]>')) throw domError('Failed to execute \'createCDATASection\' on \'Document\': String cannot contain \']]>\' since that is the end delimiter of a CData section.', 'InvalidCharacterError');
@@ -63,6 +64,7 @@ export const XML_DOCUMENT_MEMBERS = {
   },
   createProcessingInstruction(target, data) {
     state(this);
+    if (data === undefined && arguments.length < 2) tooFewArguments('Document', 'createProcessingInstruction', 2, arguments.length);
     const t = String(target);
     const d = String(data);
     if (!NAME.test(t)) throw domError(`Failed to execute 'createProcessingInstruction' on 'Document': The target provided ('${t}') is not a valid name.`, 'InvalidCharacterError');

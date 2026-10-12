@@ -1,0 +1,28 @@
+{
+  "projects": {
+    "dom-testing-library": {
+      "name": "dom-testing-library",
+      "repo": "https://github.com/testing-library/dom-testing-library",
+      "startedAt": "2026-10-12T14:22:24.850Z",
+      "packages": [
+        {
+          "dir": ".",
+          "runner": "jest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 26,
+            "failedFiles": 0,
+            "tests": 657,
+            "passed": 657,
+            "failed": 0,
+            "skipped": 0,
+            "ms": 4960,
+            "exitCode": 0
+          }
+        }
+      ],
+      "commit": "6049cc0bc7cf2201625c476c95fa6299d0e2fa8b"
+    }
+  }
+}

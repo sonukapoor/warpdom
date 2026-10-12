@@ -1,0 +1,28 @@
+{
+  "projects": {
+    "downshift": {
+      "name": "downshift",
+      "repo": "https://github.com/downshift-js/downshift",
+      "startedAt": "2026-10-12T14:48:01.792Z",
+      "packages": [
+        {
+          "dir": ".",
+          "runner": "jest",
+          "environment": "jsdom",
+          "status": "ran",
+          "run": {
+            "files": 92,
+            "failedFiles": 0,
+            "tests": 1110,
+            "passed": 1110,
+            "failed": 0,
+            "skipped": 0,
+            "ms": 6905,
+            "exitCode": 0
+          }
+        }
+      ],
+      "commit": "1bb8b75e506fe807a5c5201a103d1bd128e5a5e2"
+    }
+  }
+}

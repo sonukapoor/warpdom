@@ -5,7 +5,7 @@
 // write path.
 import {
   S, state, initNode, domError, HTML_NS, idChanged, attributesChanged, hooks, observed,
-  asciiLowercase, validElementLocalName, validAttributeLocalName, validNamespacePrefix,
+  asciiLowercase, validElementLocalName, validAttributeLocalName, validNamespacePrefix, tooFewArguments,
 } from './internal.js';
 import { liveList } from './collections.js';
 import { styleAttributeChanged } from './css.js';
@@ -441,8 +441,8 @@ export const ATTRIBUTE_INTERFACES = [
       get length() { return tokenItems(this).length; },
       get value() { const s = state(this); return s.element[S].attrs.get(s.attribute) ?? ''; },
       set value(v) { const s = state(this); s.write(s.element, s.attribute, String(v)); },
-      item(index) { return tokenItems(this)[index] ?? null; },
-      contains(token) { return tokenItems(this).includes(String(token)); },
+      item(index) { if (index === undefined && arguments.length < 1) tooFewArguments('DOMTokenList', 'item', 1, arguments.length); return tokenItems(this)[index] ?? null; },
+      contains(token) { if (token === undefined && arguments.length < 1) tooFewArguments('DOMTokenList', 'contains', 1, arguments.length); return tokenItems(this).includes(String(token)); },
       add(...items) {
         const add = items.map(validToken);
         const current = tokenItems(this);
@@ -453,6 +453,7 @@ export const ATTRIBUTE_INTERFACES = [
         writeTokens(this, tokenItems(this).filter((t) => !remove.includes(t)));
       },
       toggle(token, force = undefined) {
+        if (token === undefined && arguments.length < 1) tooFewArguments('DOMTokenList', 'toggle', 1, arguments.length);
         const t = validToken(token);
         const has = tokenItems(this).includes(t);
         if (has && force !== true) { this.remove(t); return false; }
@@ -460,6 +461,7 @@ export const ATTRIBUTE_INTERFACES = [
         return has;
       },
       replace(token, newToken) {
+        if (newToken === undefined && arguments.length < 2) tooFewArguments('DOMTokenList', 'replace', 2, arguments.length);
         // Both are checked for emptiness before either for whitespace.
         if (String(token) === '' || String(newToken) === '') throw domError('The token provided must not be empty.', 'SyntaxError');
         const t = validToken(token);
@@ -475,7 +477,7 @@ export const ATTRIBUTE_INTERFACES = [
         return true;
       },
       supports(token) { void token; throw new TypeError("Failed to execute 'supports' on 'DOMTokenList': DOMTokenList has no supported tokens."); },
-      toString() { return this.value; },
+      toString() { const s = state(this); return s.element[S].attrs.get(s.attribute) ?? ''; },
       // A value iterator over indexed properties (WebIDL): Array.prototype's
       // own functions, which read length and the indexed properties.
       forEach: Array.prototype.forEach,

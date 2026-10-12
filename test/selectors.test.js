@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createWindow } from '../src/node.js';
+import { parity } from './parity.js';
 
 function page(html) {
   const w = createWindow();
@@ -167,4 +168,26 @@ test('querySelector with duplicate ids returns the first in tree order', () => {
   assert.equal(document.querySelector('#d').className, 'one');
   assert.equal(document.querySelectorAll('#d').length, 2);
   assert.equal(document.getElementById('r').querySelectorAll('#d').length, 2);
+});
+
+// Namespaces in type selectors, forgiving :is/:where, CSS input
+// preprocessing in escapes, and :host from a shadow root (as jsdom 30).
+parity('selectors: *| and | namespaces, forgiving :is, preprocessing, :host', (w) => {
+  const d = w.document;
+  const section = d.body.appendChild(d.createElement('section'));
+  section.className = 'x';
+  const shadow = section.attachShadow({ mode: 'open' });
+  shadow.appendChild(d.createElement('article')).appendChild(d.createElement('b'));
+  d.body.appendChild(d.createElementNS(null, 'h'));
+  const span = d.body.appendChild(d.createElement('span'));
+  span.id = 'sp�aces';
+  const spaces = d.body.appendChild(d.createElement('span'));
+  spaces.id = 'spaces';
+  const count = (root, selector) => { try { return root.querySelectorAll(selector).length; } catch (e) { return e.name; } };
+  return [
+    ...[':host > article', ':host article', ':host b', ':host(.x) b', ':host(.y) b', ':host', 'section > article', '*|article',
+      '|article', '*|*', 'x|article', ':is(x|a, article)', ':where()', ':is(:foo, b)', ':not(x|a)', ':where(:is(x|y), b)', 'b:is()']
+      .map((s) => count(shadow, s)),
+    ...['|h', '*|h', 'h', '|b', '#sp\0aces', '#sp\\0 aces', '#spac\\65\r\ns', '#spac\\65\fs'].map((s) => count(d, s)),
+  ];
 });

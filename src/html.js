@@ -123,7 +123,7 @@ function appendAst(internals, parent, astNodes, doc, inTemplate = false) {
     else if (n.tagName) {
       let is = null;
       for (const a of n.attrs) if (a.name === 'is' && !a.prefix) is = a.value;
-      node = internals.createElementNS(n.namespaceURI, n.tagName, doc, true, null, false, n.namespaceURI === HTML_NS ? is : null);
+      node = internals.createElementNS(n.namespaceURI, n.tagName, doc, true, null, false, n.namespaceURI === HTML_NS ? is : null, false);
       const attrs = node[S].attrs;
       let handlers = false;
       for (const a of n.attrs) {

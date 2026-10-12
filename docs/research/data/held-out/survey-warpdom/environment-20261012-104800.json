@@ -1,0 +1,92 @@
+{
+  "recordedAt": "2026-10-12T14:48:01.499Z",
+  "node": "v22.23.3",
+  "os": {
+    "platform": "darwin",
+    "release": "25.6.0",
+    "version": "Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+    "arch": "arm64"
+  },
+  "cpu": {
+    "model": "Apple M4 Pro",
+    "cores": 14,
+    "availableParallelism": 14
+  },
+  "memory": {
+    "totalBytes": 25769803776,
+    "totalGiB": 24
+  },
+  "loadAverage": [
+    28.0595703125,
+    26.525390625,
+    21.12744140625
+  ],
+  "warpdom": {
+    "dir": "/Users/sonukapoor/Projects/warpdom",
+    "commit": "752c0903f0b3a0e726410a288b7ca1e47e902938",
+    "branch": "main",
+    "dirty": false
+  },
+  "domApiTracer": {
+    "dir": "/Users/sonukapoor/Projects/dom-api-tracer-heldout",
+    "commit": "5375b8743e8fe608335a1fd51a8cb52c4bbf7095",
+    "branch": "feat/held-out",
+    "dirty": false
+  },
+  "projects": {
+    "dom-testing-library": {
+      "dir": "/Users/sonukapoor/Projects/dom-testing-library",
+      "commit": "6049cc0bc7cf2201625c476c95fa6299d0e2fa8b",
+      "branch": "main",
+      "dirty": false
+    },
+    "tanstack-query": {
+      "dir": "/Users/sonukapoor/Projects/tanstack-query",
+      "commit": "1ea892863955eb403ff15146b64f8f0d912b7adb",
+      "branch": "main",
+      "dirty": false
+    },
+    "react-router": {
+      "dir": "/Users/sonukapoor/Projects/react-router",
+      "commit": "dee9ad2dab41889e8fbdc6848b5781255d9f133a",
+      "branch": "main",
+      "dirty": false
+    },
+    "naive-ui": {
+      "dir": "/Users/sonukapoor/Projects/naive-ui",
+      "commit": "8b249214f17328a47eeb57dd5c7b80a47c94d116",
+      "branch": "main",
+      "dirty": false
+    },
+    "taiga-ui": {
+      "dir": "/Users/sonukapoor/Projects/taiga-ui",
+      "commit": "a11558d25be2ee34a0c7161a232c96472ac10147",
+      "branch": "main",
+      "dirty": false
+    },
+    "melt-ui": {
+      "dir": "/Users/sonukapoor/Projects/melt-ui",
+      "commit": "84b582f2a4af5957c872e52691649c27334957a7",
+      "branch": "develop",
+      "dirty": true
+    },
+    "solid-primitives": {
+      "dir": "/Users/sonukapoor/Projects/solid-primitives",
+      "commit": "9c81cd0d64591e80afafd30e9facf7dccfb0f4ab",
+      "branch": "main",
+      "dirty": false
+    },
+    "vueuse": {
+      "dir": "/Users/sonukapoor/Projects/vueuse",
+      "commit": "ad2822b3854347f9eeb1c738fd2b90b773381c4a",
+      "branch": "main",
+      "dirty": false
+    },
+    "downshift": {
+      "dir": "/Users/sonukapoor/Projects/downshift",
+      "commit": "1bb8b75e506fe807a5c5201a103d1bd128e5a5e2",
+      "branch": "master",
+      "dirty": false
+    }
+  }
+}

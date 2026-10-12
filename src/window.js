@@ -83,10 +83,12 @@ function addDescriptors(descriptors, members) {
     } else if (d.get || d.set) {
       descriptors[key] = { get: d.get, set: d.set, enumerable: true, configurable: true };
     } else {
-      descriptors[key] = { value: v, writable: true, enumerable: true, configurable: true };
+      // Symbol-keyed operations (@@iterator) are not enumerable (WebIDL).
+      descriptors[key] = { value: v, writable: true, enumerable: typeof key !== 'symbol', configurable: true };
     }
   }
 }
+
 // Interfaces with the HTML element constructor: HTMLElement and its element interfaces.
 const HTML_CONSTRUCTOR = new Set(['HTMLElement', ...HTML_ELEMENTS.map(([name]) => name)]);
 
@@ -96,9 +98,10 @@ for (const tag of PLAIN_TAGS) TAG_INTERFACE.set(tag, 'HTMLElement');
 
 function interfaceFor(ns, tag) {
   if (ns === HTML_NS) {
-    const lower = tag.toLowerCase();
+    // Local names are compared case-sensitively (createElementNS(HTML_NS,
+    // 'SPAN') is an HTMLUnknownElement); createElement lowercases first.
     // Valid custom element names (contain a hyphen) create HTMLElement.
-    return TAG_INTERFACE.get(lower) ?? (lower.includes('-') ? 'HTMLElement' : 'HTMLUnknownElement');
+    return TAG_INTERFACE.get(tag) ?? (tag.includes('-') ? 'HTMLElement' : 'HTMLUnknownElement');
   }
   if (ns === SVG_NS) return SVG_ELEMENTS.get(tag) ?? 'SVGElement';
   return 'Element';
@@ -132,6 +135,7 @@ function applyCompat(window, protos) {
   if (jsdom < 30) delete window.CSS;
   if (jsdom < 27) {
     delete window.PointerEvent;
+    delete window.TransitionEvent;
     for (const proto of [protos.HTMLElement, protos.SVGElement, protos.Document, protos.Window, protos.ShadowRoot]) {
       if (!proto) continue;
       for (const name of POINTER_HANDLERS) delete proto[name];
@@ -186,6 +190,8 @@ export function createWindow(options = {}) {
         ? function () { return htmlConstruct(window, ctor, new.target); }
         : function () { throw new TypeError('Illegal constructor'); };
     Object.defineProperty(ctor, 'name', { value: name });
+    // The constructor's required argument count (WebIDL); 0 when not given.
+    if (iface.length) Object.defineProperty(ctor, 'length', { value: iface.length });
     if (!iface.callback) {
       Object.defineProperty(ctor, 'prototype', { value: proto, writable: false });
       Object.defineProperty(proto, 'constructor', { value: ctor, writable: true, configurable: true });
@@ -232,8 +238,10 @@ export function createWindow(options = {}) {
     // Node factories; doc is the owner document (the window's by default).
     // raw: skip custom element handling; proto: the interface to use;
     // sync: run a custom element's constructor now (createElement).
-    createElementNS(ns, qualifiedName, doc = document, raw = false, proto = null, sync = false, is = null) {
-      const colon = qualifiedName.indexOf(':');
+    // prefixed: split a prefix off the name at its colon (createElement
+    // and the HTML parser keep the whole name as the local name).
+    createElementNS(ns, qualifiedName, doc = document, raw = false, proto = null, sync = false, is = null, prefixed = true) {
+      const colon = prefixed ? qualifiedName.indexOf(':') : -1;
       const tag = colon >= 0 ? qualifiedName.slice(colon + 1) : qualifiedName;
       if (!raw && ns === HTML_NS && hooks.ce !== null) {
         const custom = createCustomElement(doc, tag, is, sync);
@@ -242,7 +250,7 @@ export function createWindow(options = {}) {
       const element = create(proto ?? protos[interfaceFor(ns, tag)], ELEMENT_NODE, { tag, ns, attrs: new Map() }, doc);
       // The namespace prefix (createElementNS('...', 'svg:rect'), XML parsing).
       if (colon >= 0) element[S].prefix = qualifiedName.slice(0, colon);
-      if (tag === 'iframe' && ns === HTML_NS) doc[S].frameCount = (doc[S].frameCount ?? 0) + 1;
+      if ((tag === 'iframe' || tag === 'frame') && ns === HTML_NS) doc[S].frameCount = (doc[S].frameCount ?? 0) + 1;
       if (tag === 'slot' && ns === HTML_NS) doc[S].slotCount = (doc[S].slotCount ?? 0) + 1;
       if (tag === 'base' && ns === HTML_NS) doc[S].baseCount = (doc[S].baseCount ?? 0) + 1;
       // A script made by script may run when connected (scripts.js).

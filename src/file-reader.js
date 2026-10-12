@@ -131,5 +131,5 @@ export const FILE_READER_INTERFACES = [
       ...handlerMembers(['onloadstart', 'onprogress', 'onload', 'onabort', 'onerror', 'onloadend']),
     },
   },
-  { name: 'ProgressEvent', parent: 'Event', construct: eventConstruct('ProgressEvent', PROGRESS_FIELDS), members: fieldGetters(PROGRESS_FIELDS) },
+  { name: 'ProgressEvent', parent: 'Event', length: 1, construct: eventConstruct('ProgressEvent', PROGRESS_FIELDS), members: fieldGetters(PROGRESS_FIELDS) },
 ];

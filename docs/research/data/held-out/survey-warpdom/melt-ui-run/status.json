@@ -1,0 +1,28 @@
+{
+  "projects": {
+    "melt-ui": {
+      "name": "melt-ui",
+      "repo": "https://github.com/melt-ui/melt-ui",
+      "startedAt": "2026-10-12T14:46:40.253Z",
+      "packages": [
+        {
+          "dir": ".",
+          "runner": "vitest",
+          "environment": "warpdom",
+          "status": "ran",
+          "run": {
+            "files": 52,
+            "failedFiles": 0,
+            "tests": 770,
+            "passed": 770,
+            "failed": 0,
+            "skipped": 0,
+            "ms": 12850,
+            "exitCode": 0
+          }
+        }
+      ],
+      "commit": "84b582f2a4af5957c872e52691649c27334957a7"
+    }
+  }
+}

@@ -9,7 +9,7 @@
 import {
   S, state, domError, hooks, ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE,
   DOCUMENT_TYPE_NODE, HTML_NS, rootOf, insert, remove, replaceData, indexOf, nodeLength, contains, nextInTree,
-  containsFromDoc,
+  containsFromDoc, tooFewArguments,
 } from './internal.js';
 import { parseFragment } from './html.js';
 import { dispatch } from './events.js';
@@ -130,6 +130,13 @@ hooks.rangeInsert = (doc, parent, child) => {
     if (r.startNode === parent && r.startOffset > index) r.startOffset++;
     if (r.endNode === parent && r.endOffset > index) r.endOffset++;
   }
+};
+
+// A subtree moved to another document (adopt): its live ranges move with it.
+hooks.rangeAdopt = (root, oldDoc, doc) => {
+  forEachRange(oldDoc, (r) => {
+    if (r.startNode === root || contains(root, r.startNode)) register(r.ref.deref(), doc);
+  });
 };
 
 // The live range pre-remove steps.
@@ -538,9 +545,12 @@ export const RANGE_INTERFACES = [
   },
   {
     name: 'StaticRange',
+    length: 1,
     parent: 'AbstractRange',
     construct: (w, self, [init]) => {
+      // StaticRangeInit: all four members are required.
       if (!init?.startContainer?.[S] || !init?.endContainer?.[S]) throw new TypeError("Failed to construct 'StaticRange': required member is undefined.");
+      if (init.startOffset === undefined || init.endOffset === undefined) throw new TypeError("Failed to construct 'StaticRange': required member is undefined.");
       for (const node of [init.startContainer, init.endContainer]) {
         const t = node[S].type;
         if (t === DOCUMENT_TYPE_NODE || t === 2) throw domError('DocumentType and Attr nodes cannot be range boundaries.', 'InvalidNodeTypeError');
@@ -558,8 +568,8 @@ export const RANGE_INTERFACES = [
     members: {
       ...Object.fromEntries(Object.entries(RANGE_CONSTANTS).map(([k, v]) => [k, { constant: v }])),
       get commonAncestorContainer() { return commonAncestor(rangeState(this)); },
-      setStart(node, offset) { rangeState(this); setStart(this, state(node) && node, toOffset(offset)); },
-      setEnd(node, offset) { rangeState(this); setEnd(this, state(node) && node, toOffset(offset)); },
+      setStart(node, offset) { rangeState(this); if (offset === undefined && arguments.length < 2) tooFewArguments('Range', 'setStart', 2, arguments.length); setStart(this, state(node) && node, toOffset(offset)); },
+      setEnd(node, offset) { rangeState(this); if (offset === undefined && arguments.length < 2) tooFewArguments('Range', 'setEnd', 2, arguments.length); setEnd(this, state(node) && node, toOffset(offset)); },
       setStartBefore(node) { rangeState(this); setStart(this, parentOrThrow(node), indexOf(node)); },
       setStartAfter(node) { rangeState(this); setStart(this, parentOrThrow(node), indexOf(node) + 1); },
       setEndBefore(node) { rangeState(this); setEnd(this, parentOrThrow(node), indexOf(node)); },
@@ -581,8 +591,9 @@ export const RANGE_INTERFACES = [
       compareBoundaryPoints(how, sourceRange) {
         const r = rangeState(this);
         const o = rangeState(sourceRange);
-        const h = Number(how);
-        if (![0, 1, 2, 3].includes(h)) throw domError('The comparison method provided must be one of START_TO_START, START_TO_END, END_TO_END, or END_TO_START.', 'NotSupportedError');
+        // unsigned short (WebIDL): NaN and infinities are 0, modulo 2^16.
+        const h = Number(how) & 0xffff;
+        if (h > 3) throw domError('The comparison method provided must be one of START_TO_START, START_TO_END, END_TO_END, or END_TO_START.', 'NotSupportedError');
         if (rootOf(r.startNode) !== rootOf(o.startNode)) throw domError('The two Ranges are not in the same tree.', 'WrongDocumentError');
         const [thisNode, thisOffset] = h === 0 || h === 3 ? [r.startNode, r.startOffset] : [r.endNode, r.endOffset];
         const [srcNode, srcOffset] = h === 0 || h === 1 ? [o.startNode, o.startOffset] : [o.endNode, o.endOffset];
@@ -597,6 +608,7 @@ export const RANGE_INTERFACES = [
       detach() { rangeState(this); },
       isPointInRange(node, offset) {
         const r = rangeState(this);
+        if (offset === undefined && arguments.length < 2) tooFewArguments('Range', 'isPointInRange', 2, arguments.length);
         if (rootOf(node) !== rootOf(r.startNode)) return false;
         const o = toOffset(offset);
         checkBoundary(node, o);
@@ -604,6 +616,7 @@ export const RANGE_INTERFACES = [
       },
       comparePoint(node, offset) {
         const r = rangeState(this);
+        if (offset === undefined && arguments.length < 2) tooFewArguments('Range', 'comparePoint', 2, arguments.length);
         if (rootOf(node) !== rootOf(r.startNode)) throw domError('The node and the range are not in the same tree.', 'WrongDocumentError');
         const o = toOffset(offset);
         checkBoundary(node, o);

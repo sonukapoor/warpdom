@@ -53,6 +53,21 @@ function runInWindow(window, source) {
   withWindow.call(window, window, source);
 }
 
+// A javascript: URL followed as a hyperlink (HTML 7.4.2.5): its source,
+// the URL's percent-decoded path, runs as a classic script of the window;
+// the result is ignored (it would replace the document; jsdom ignores it
+// too), and an exception is reported.
+export function runJavascriptURL(window, url) {
+  const encoded = url.href.slice('javascript:'.length);
+  let source;
+  try { source = decodeURIComponent(encoded); } catch { source = encoded; }
+  try {
+    runInWindow(window, source);
+  } catch (error) {
+    reportError(window, error);
+  }
+}
+
 function prepare(script) {
   const s = script[S];
   if (s.script !== 'ready') return;
