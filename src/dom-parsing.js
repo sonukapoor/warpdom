@@ -250,7 +250,7 @@ export const DOM_PARSING_INTERFACES = [
 // The DOM standard's XPath interfaces: XPathResult, XPathExpression,
 // XPathEvaluator and the XPathEvaluatorBase members of Document
 // (evaluate, createExpression, createNSResolver). The XPath 1.0 engine
-// (src/xpath.js) is loaded the first time an expression is compiled, like
+// (src/xpath.cjs) is loaded the first time an expression is compiled, like
 // parse5 for HTML, through a loader the Node entry registers
 // (setXPathLoader), so these interfaces cost a few small functions until
 // then.
@@ -258,7 +258,7 @@ export const DOM_PARSING_INTERFACES = [
 let loadXPath = null;
 let engine = null;
 
-// Registers how to load src/xpath.js synchronously (the Node entry uses
+// Registers how to load src/xpath.cjs synchronously (the Node entry uses
 // require).
 export function setXPathLoader(loader) {
   loadXPath = loader;

@@ -174,4 +174,4 @@ test('the XPath engine loads on first use only', async () => {
   assert.equal(loads, 1);
 });
 
-const XPATH = await import('../src/xpath.js');
+const XPATH = await import('../src/xpath.cjs');

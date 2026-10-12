@@ -14,7 +14,7 @@
 // string into a tree that is evaluated directly; namespace prefixes are
 // resolved when an expression is created.
 
-export function createXPath(deps) {
+function createXPath(deps) {
   const {
     S, HTML_NS, XMLNS_NS, XML_NS, attrNode, elementById, domError,
   } = deps;
@@ -933,3 +933,5 @@ export function createXPath(deps) {
 
   return { compile, run, toNumber, toString, toBoolean, isNodeSet };
 }
+
+module.exports = { createXPath };
