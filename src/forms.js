@@ -11,7 +11,7 @@ import { urlOf } from './hyperlinks.js';
 import { followHyperlink } from './navigation.js';
 import {
   S, state, domError, hooks, HTML_NS, ELEMENT_NODE, TEXT_NODE, DOCUMENT_NODE,
-  rootOf, nextInTree, contains, elementById, connected
+  rootOf, nextInTree, contains, elementById, connected, asciiLowercase
 } from './internal.js';
 import { writeAttribute, attributeSteps, tokenList } from './attributes.js';
 import { liveList, htmlCollectionNames } from './collections.js';
@@ -151,7 +151,8 @@ const INPUT_TYPES = new Set(['hidden', 'text', 'search', 'tel', 'url', 'email', 
 export function inputType(el) {
   const t = attr(el, 'type');
   if (t === undefined) return 'text';
-  const lower = t.toLowerCase();
+  if (INPUT_TYPES.has(t)) return t; // already lowercase (the usual case)
+  const lower = asciiLowercase(t);
   return INPUT_TYPES.has(lower) ? lower : 'text';
 }
 
@@ -353,13 +354,13 @@ const selectionMembers = {
     if (!selectionApplies(this)) throw domError("The input element's type does not support selection.", 'InvalidStateError');
     setSelectionRange(this, s.selStart ?? 0, s.selEnd ?? 0, v);
   },
-  setSelectionRange(start, end, direction) { state(this); setSelectionRange(this, start, end, direction); },
+  setSelectionRange(start, end, direction = undefined) { state(this); setSelectionRange(this, start, end, direction); },
   select() {
     state(this);
     if (!selectionApplies(this)) return;
     setSelectionRange(this, 0, controlValue(this).length);
   },
-  setRangeText(replacement, start, end, selectMode = 'preserve') {
+  setRangeText(replacement, start = undefined, end = undefined, selectMode = 'preserve') {
     const s = state(this);
     if (!selectionApplies(this)) throw domError("The input element's type does not support selection.", 'InvalidStateError');
     const value = controlValue(this);
@@ -602,7 +603,7 @@ function labelsFor(el) {
   return map.get(el) ?? NO_LABELS;
 }
 
-const labelsMember = {
+export const labelsMember = {
   get labels() {
     const s = state(this);
     if (!isLabelable(this)) return null;
@@ -613,7 +614,7 @@ const labelsMember = {
 // --- constraint validation ---------------------------------------------------------
 
 function buttonType(el) {
-  const t = (attr(el, 'type') ?? '').toLowerCase();
+  const t = asciiLowercase(attr(el, 'type') ?? '');
   return t === 'reset' || t === 'button' ? t : 'submit';
 }
 
@@ -1244,7 +1245,7 @@ export const FORM_MEMBERS = new Map([
       },
       item(index) { return this.options.item(index); },
       namedItem(name) { return this.options.namedItem(name); },
-      add(element, before) { this.options.add(element, before); },
+      add(element, before = undefined) { this.options.add(element, before); },
       remove(...args) {
         if (args.length > 0) this.options.remove(args[0]);
         else internalsOf(this).protos.Element.remove.call(this);
@@ -1314,13 +1315,13 @@ export const FORM_MEMBERS = new Map([
     set action(v) { writeAttribute(this, 'action', String(v)); },
     get method() {
       state(this);
-      const m = (attr(this, 'method') ?? '').toLowerCase();
+      const m = asciiLowercase(attr(this, 'method') ?? '');
       return m === 'post' || m === 'dialog' ? m : 'get';
     },
     set method(v) { writeAttribute(this, 'method', String(v)); },
     get enctype() {
       state(this);
-      const e = (attr(this, 'enctype') ?? '').toLowerCase();
+      const e = asciiLowercase(attr(this, 'enctype') ?? '');
       return e === 'multipart/form-data' || e === 'text/plain' ? e : 'application/x-www-form-urlencoded';
     },
     set enctype(v) { writeAttribute(this, 'enctype', String(v)); },

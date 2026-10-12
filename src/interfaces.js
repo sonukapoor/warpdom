@@ -8,6 +8,7 @@ import {
   childArray, elementChildArray, collectElements, elementById, setData, replaceData, adopt, shadowIncludingRoot, reactionScope,
   ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, DOCUMENT_TYPE_NODE, HTML_NS, SVG_NS, connected,
   CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE, isCharacterData,
+  namedAttributesSet,
 } from './internal.js';
 import { XML_INTERFACES, XML_DOCUMENT_MEMBERS } from './xml.js';
 import { CSS_INTERFACES, styleOf } from './css.js';
@@ -17,7 +18,7 @@ import { CUSTOM_ELEMENT_INTERFACES } from './custom-elements.js';
 import { RANGE_INTERFACES, newRange, getSelection, splitText, normalize } from './ranges.js';
 import { CSSOM_INTERFACES, STYLE_ELEMENT_MEMBERS, documentStyleSheets } from './cssom.js';
 import { FOCUS_MEMBERS, DOCUMENT_FOCUS_MEMBERS } from './focus.js';
-import { FORM_INTERFACES, FORM_MEMBERS, clickMember } from './forms.js';
+import { FORM_INTERFACES, FORM_MEMBERS, clickMember, labelsMember } from './forms.js';
 import { GEOMETRY_INTERFACES, ELEMENT_LAYOUT, HTML_ELEMENT_LAYOUT } from './layout.js';
 import { querySelectorAll as selectAll, matches as matchSelector, closest as closestMatch } from './selectors.js';
 import { DOM_PARSING_INTERFACES, innerMarkup, outerMarkup } from './dom-parsing.js';
@@ -291,6 +292,7 @@ function cloneNode(node, deep, doc) {
     copy[S].attrs = new Map(s.attrs);
     if (s.attrNS) copy[S].attrNS = new Map(s.attrNS);
     if (s.handlers || hasOnAttribute(s.attrs)) eventHandlerAttributesAdded(copy);
+    if (s.attrs.size !== 0) namedAttributesSet(copy[S], doc);
   } else if (s.type === TEXT_NODE) copy = w.createText(s.data, doc);
   else if (s.type === COMMENT_NODE) copy = w.createComment(s.data, doc);
   else if (s.type === CDATA_SECTION_NODE) copy = w.createCDATA(s.data, doc);
@@ -368,6 +370,23 @@ function documentWrite(doc, text) {
 
 const isHTMLTag = (node, tag) => { const s = node[S]; return s.type === ELEMENT_NODE && s.ns === HTML_NS && s.tag === tag; };
 const htmlElement = (doc) => { const el = firstElement(doc[S]); return el && isHTMLTag(el, 'html') ? el : null; };
+// The head element: the html element's first head child.
+function headElement(doc) {
+  const html = htmlElement(doc);
+  if (html) for (let c = html[S].first; c; c = c[S].next) if (isHTMLTag(c, 'head')) return c;
+  return null;
+}
+// The body element: the html element's first body or frameset child.
+function bodyElement(doc) {
+  const html = htmlElement(doc);
+  if (html) for (let c = html[S].first; c; c = c[S].next) if (isHTMLTag(c, 'body') || isHTMLTag(c, 'frameset')) return c;
+  return null;
+}
+// The title element: the first HTML title element in the document.
+function titleElement(doc) {
+  for (const el of descendantElements(doc)) if (isHTMLTag(el, 'title')) return el;
+  return null;
+}
 function* descendantElements(root) {
   for (let n = root[S].first; n; n = nextInTree(n, root)) if (n[S].type === ELEMENT_NODE) yield n;
 }
@@ -446,7 +465,7 @@ export const INTERFACES = [
       get previousSibling() { return state(this).prev; },
       get isConnected() { state(this); return connected(this); },
       get baseURI() { return nodeBaseURI(this); },
-      getRootNode(options) { state(this); return options?.composed ? shadowIncludingRoot(this) : rootOf(this); },
+      getRootNode(options = undefined) { state(this); return options?.composed ? shadowIncludingRoot(this) : rootOf(this); },
       get textContent() { const t = state(this).type; return t === DOCUMENT_NODE || t === DOCUMENT_TYPE_NODE ? null : textOf(this); },
       set textContent(value) {
         const s = state(this);
@@ -511,41 +530,61 @@ export const INTERFACES = [
         for (let c = state(this).first; c; c = c[S].next) if (c[S].type === DOCUMENT_TYPE_NODE) return c;
         return null;
       },
-      get head() {
-        const html = htmlElement(this);
-        if (html) for (let c = html[S].first; c; c = c[S].next) if (isHTMLTag(c, 'head')) return c;
-        return null;
-      },
-      get body() {
-        const html = htmlElement(this);
-        if (html) for (let c = html[S].first; c; c = c[S].next) if (isHTMLTag(c, 'body') || isHTMLTag(c, 'frameset')) return c;
-        return null;
-      },
+      get head() { return headElement(this); },
+      get body() { return bodyElement(this); },
       // The html element's dir attribute, limited to only known values.
       get dir() { const html = htmlElement(this); return html ? knownDir(html[S].attrs.get('dir')) : ''; },
       set dir(v) { const html = htmlElement(this); if (html) writeAttribute(html, 'dir', String(v)); },
-      get title() {
+      // HTML 3.1.6: replaces the body element, or appends to the document
+      // element when there is none.
+      set body(value) {
         state(this);
-        for (const el of descendantElements(this)) {
-          if (isHTMLTag(el, 'title')) {
-            let text = '';
-            for (let c = el[S].first; c; c = c[S].next) if (c[S].type === TEXT_NODE) text += c[S].data;
-            return text.replace(/[\t\n\f\r ]+/g, ' ').trim();
-          }
+        const vs = value?.[S];
+        if (value !== null && (vs === undefined || vs.type !== ELEMENT_NODE || vs.ns !== HTML_NS)) {
+          throw new TypeError("Failed to set the 'body' property on 'Document': The provided value is not of type 'HTMLElement'.");
         }
-        return '';
+        if (value === null || (vs.tag !== 'body' && vs.tag !== 'frameset')) {
+          throw domError("Failed to set the 'body' property on 'Document': The new body element is of type '" + (value === null ? 'null' : vs.tag.toUpperCase()) + "'. It must be either a 'BODY' or 'FRAMESET' element.", 'HierarchyRequestError');
+        }
+        const body = bodyElement(this);
+        if (value === body) return;
+        if (body !== null) { replace(body[S].parent, value, body); return; }
+        const root = firstElement(state(this));
+        if (root === null) throw domError("Failed to set the 'body' property on 'Document': No document element exists.", 'HierarchyRequestError');
+        insert(root, value, null);
+      },
+      // HTML 3.1.3: an SVG document's title is its root's first SVG title
+      // child; otherwise the first HTML title element. ASCII whitespace is
+      // stripped and collapsed (other spaces, like U+00A0, are kept).
+      get title() {
+        const root = firstElement(state(this));
+        let title = null;
+        if (root !== null && root[S].ns === SVG_NS && root[S].tag === 'svg') {
+          for (let c = root[S].first; c; c = c[S].next) if (c[S].type === ELEMENT_NODE && c[S].ns === SVG_NS && c[S].tag === 'title') { title = c; break; }
+        } else title = titleElement(this);
+        if (title === null) return '';
+        let text = '';
+        for (let c = title[S].first; c; c = c[S].next) if (c[S].type === TEXT_NODE) text += c[S].data;
+        return text.replace(/[\t\n\f\r ]+/g, ' ').replace(/^ | $/g, '');
       },
       set title(value) {
-        state(this);
-        if (!this.documentElement) return;
+        const root = firstElement(state(this));
+        const text = String(value);
+        if (root === null) return;
+        const rs = root[S];
         let title = null;
-        for (const el of descendantElements(this)) if (isHTMLTag(el, 'title')) { title = el; break; }
-        if (!title) {
-          const head = this.head;
-          if (!head) return;
-          title = insert(head, internals(this).createElementNS(HTML_NS, 'title', this), null);
-        }
-        title.textContent = String(value);
+        if (rs.ns === SVG_NS && rs.tag === 'svg') {
+          for (let c = rs.first; c; c = c[S].next) if (c[S].type === ELEMENT_NODE && c[S].ns === SVG_NS && c[S].tag === 'title') { title = c; break; }
+          if (title === null) title = insert(root, internals(this).createElementNS(SVG_NS, 'title', this), rs.first);
+        } else if (rs.ns === HTML_NS) {
+          title = titleElement(this);
+          if (title === null) {
+            const head = headElement(this);
+            if (!head) return;
+            title = insert(head, internals(this).createElementNS(HTML_NS, 'title', this), null);
+          }
+        } else return;
+        replaceAll(title, text ? internals(this).createText(text, this) : null);
       },
       get styleSheets() { state(this); return documentStyleSheets(this); },
       createRange() { const s = state(this); return newRange(s.window, this, 0); },
@@ -572,9 +611,30 @@ export const INTERFACES = [
       get forms() { return documentCollection(this, 'forms', (el) => isHTMLTag(el, 'form')); },
       get images() { return documentCollection(this, 'images', (el) => isHTMLTag(el, 'img')); },
       get embeds() { return documentCollection(this, 'embeds', (el) => isHTMLTag(el, 'embed')); },
-      get plugins() { return this.embeds; },
+      get plugins() { return documentCollection(this, 'embeds', (el) => isHTMLTag(el, 'embed')); },
       get links() { return documentCollection(this, 'links', (el) => (isHTMLTag(el, 'a') || isHTMLTag(el, 'area')) && el[S].attrs.has('href')); },
       get anchors() { return documentCollection(this, 'anchors', (el) => isHTMLTag(el, 'a') && el[S].attrs.has('name')); },
+      get fgColor() { return bodyColor(this, 'text'); },
+      set fgColor(v) { setBodyColor(this, 'text', v); },
+      get linkColor() { return bodyColor(this, 'link'); },
+      set linkColor(v) { setBodyColor(this, 'link', v); },
+      get vlinkColor() { return bodyColor(this, 'vlink'); },
+      set vlinkColor(v) { setBodyColor(this, 'vlink', v); },
+      get alinkColor() { return bodyColor(this, 'alink'); },
+      set alinkColor(v) { setBodyColor(this, 'alink', v); },
+      get bgColor() { return bodyColor(this, 'bgcolor'); },
+      set bgColor(v) { setBodyColor(this, 'bgcolor', v); },
+      // Never matches: <applet> is HTMLUnknownElement (HTML, obsolete features).
+      get applets() { return documentCollection(this, 'applets', () => false); },
+      // Legacy no-ops (HTML, obsolete features).
+      clear() { state(this); },
+      captureEvents() { state(this); },
+      releaseEvents() { state(this); },
+      // No document is loaded from another (no navigation), so no referrer.
+      get referrer() { state(this); return ''; },
+      // The source file's modification time is not known, so the current
+      // time, in local time as MM/DD/YYYY hh:mm:ss (HTML 3.1.3).
+      get lastModified() { state(this); return formatLastModified(new Date()); },
       getSelection() { state(this); return getSelection(this); },
       get implementation() {
         const s = state(this);
@@ -628,12 +688,17 @@ export const INTERFACES = [
       createEvent(name) { return createEvent(state(this).window, name); },
       createAttribute(name) { state(this); return createAttribute(this, name); },
       createAttributeNS(ns, qualifiedName) { state(this); return createAttributeNS(this, ns, qualifiedName); },
-      createTreeWalker(root, whatToShow, filter) { return createTreeWalker(state(this).window, root, whatToShow, filter); },
-      createNodeIterator(root, whatToShow, filter) { return createNodeIterator(state(this).window, root, whatToShow, filter); },
+      createTreeWalker(root, whatToShow = undefined, filter = undefined) { return createTreeWalker(state(this).window, root, whatToShow, filter); },
+      createNodeIterator(root, whatToShow = undefined, filter = undefined) { return createNodeIterator(state(this).window, root, whatToShow, filter); },
       getElementById(id) { state(this); return elementById(this, String(id)); },
       getElementsByTagName(tag) { return byTagName(this, tag); },
       getElementsByTagNameNS(ns, localName) { return byTagNameNS(this, ns, localName); },
       getElementsByClassName(names) { return byClassName(this, names); },
+      // HTML elements with this name attribute, as a live NodeList.
+      getElementsByName(elementName) {
+        const name = String(elementName);
+        return liveElements(this, (el) => el[S].ns === HTML_NS && el[S].attrs.get('name') === name, internals(this).protos.NodeList);
+      },
     }),
   },
   { name: 'XMLDocument', parent: 'Document', members: {} },
@@ -656,7 +721,7 @@ export const INTERFACES = [
         if (/[\t\n\f\r \0>]/.test(String(name))) throw invalidName(name);
         return internals(doc).createDoctype(String(name), String(publicId), String(systemId), doc);
       },
-      createHTMLDocument(title) {
+      createHTMLDocument(title = undefined) {
         const w = internals(state(this).doc);
         const doc = w.createDocument({ contentType: 'text/html' });
         insert(doc, w.createDoctype('html', '', '', doc), null);
@@ -808,7 +873,7 @@ export const INTERFACES = [
       get outerHTML() { state(this); return outerMarkup(this); },
       set outerHTML(html) { setOuterHTML(this, html == null ? '' : html); },
       insertAdjacentHTML(position, html) { insertAdjacentHTML(this, position, html); },
-      toggleAttribute(name, force) {
+      toggleAttribute(name, force = undefined) {
         checkAttributeName(String(name));
         const has = this.hasAttribute(name);
         const want = force === undefined ? !has : !!force;
@@ -880,11 +945,11 @@ function insertAdjacent(element, position, node) {
 
 // A live HTMLCollection of elements below root matching test, recomputed
 // only after a change in the document's trees.
-function liveElements(root, test) {
+function liveElements(root, test, proto = internals(root).protos.HTMLCollection) {
   const doc = state(root).type === DOCUMENT_NODE ? root : state(root).doc;
   let cache = null;
   let rev = -1;
-  return liveList(internals(root).protos.HTMLCollection, () => {
+  return liveList(proto, () => {
     const current = doc[S].treeRev ?? 0;
     if (rev !== current) { cache = collectElements(root, test); rev = current; }
     return cache;
@@ -893,6 +958,24 @@ function liveElements(root, test) {
 
 // The document's named collections (scripts, forms, ...): one live
 // HTMLCollection each, created on first use.
+// document.fgColor, linkColor, ... (HTML, obsolete features): the body
+// element's text, link, ... attributes; '' and no effect without a <body>
+// (a frameset does not count).
+function bodyColor(doc, attr) {
+  const body = doc.body;
+  return body && isHTMLTag(body, 'body') ? body[S].attrs.get(attr) ?? '' : '';
+}
+function setBodyColor(doc, attr, v) {
+  const body = doc.body;
+  if (body && isHTMLTag(body, 'body')) writeAttribute(body, attr, v === null ? '' : String(v));
+}
+
+const pad2 = (n) => (n < 10 ? '0' : '') + n;
+function formatLastModified(d) {
+  const year = String(d.getFullYear()).padStart(4, '0');
+  return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}/${year} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+
 function documentCollection(doc, key, test) {
   const s = state(doc);
   const collections = s.collections ?? (s.collections = {});
@@ -953,20 +1036,51 @@ INTERFACES.push({
   },
 });
 // The HTMLHyperlinkElementUtils mixin (hyperlinks.js).
-INTERFACES.push({ name: 'HTMLAnchorElement', parent: 'HTMLElement', members: HYPERLINK_MEMBERS });
+INTERFACES.push({ name: 'HTMLAnchorElement', parent: 'HTMLElement', members: [HYPERLINK_MEMBERS, {
+  get text() { state(this); return this.textContent; },
+  set text(v) { state(this); this.textContent = String(v); },
+}] });
 INTERFACES.push({ name: 'HTMLAreaElement', parent: 'HTMLElement', members: HYPERLINK_MEMBERS });
 INTERFACES.push({ name: 'HTMLImageElement', parent: 'HTMLElement', members: IMAGE_MEMBERS });
 INTERFACES.push({ name: 'HTMLBaseElement', parent: 'HTMLElement', members: BASE_MEMBERS });
 INTERFACES.push({ name: 'HTMLIFrameElement', parent: 'HTMLElement', members: IFRAME_MEMBERS });
 INTERFACES.push({ name: 'HTMLSlotElement', parent: 'HTMLElement', members: SLOT_MEMBERS });
-INTERFACES.push({ name: 'HTMLMediaElement', parent: 'HTMLElement', members: MEDIA_MEMBERS, statics: MEDIA_STATICS });
+// Constants are on the interface object and its prototype (WebIDL).
+const asConstants = (table) => Object.fromEntries(Object.entries(table).map(([k, v]) => [k, { constant: v }]));
+INTERFACES.push({ name: 'HTMLMediaElement', parent: 'HTMLElement', members: [MEDIA_MEMBERS, asConstants(MEDIA_STATICS)], statics: MEDIA_STATICS });
 INTERFACES.push({ name: 'HTMLVideoElement', parent: 'HTMLMediaElement', members: VIDEO_MEMBERS });
 INTERFACES.push({ name: 'HTMLTableElement', parent: 'HTMLElement', members: TABLE_MEMBERS });
 INTERFACES.push({ name: 'HTMLTableSectionElement', parent: 'HTMLElement', members: SECTION_MEMBERS });
 INTERFACES.push({ name: 'HTMLTableRowElement', parent: 'HTMLElement', members: ROW_MEMBERS });
 INTERFACES.push({ name: 'HTMLTableCellElement', parent: 'HTMLElement', members: CELL_MEMBERS });
-INTERFACES.push({ name: 'HTMLProgressElement', parent: 'HTMLElement', members: PROGRESS_MEMBERS });
-INTERFACES.push({ name: 'HTMLMeterElement', parent: 'HTMLElement', members: METER_MEMBERS });
+INTERFACES.push({ name: 'HTMLProgressElement', parent: 'HTMLElement', members: [PROGRESS_MEMBERS, labelsMember] });
+INTERFACES.push({ name: 'HTMLMeterElement', parent: 'HTMLElement', members: [METER_MEMBERS, labelsMember] });
+// title and script text: the child text content; setting it replaces the
+// children with one Text node (string replace all).
+const childTextMembers = {
+  get text() {
+    state(this);
+    let text = '';
+    for (let c = this[S].first; c; c = c[S].next) if (c[S].type === TEXT_NODE) text += c[S].data;
+    return text;
+  },
+  set text(v) { state(this); this.textContent = String(v); },
+};
+INTERFACES.push({ name: 'HTMLTitleElement', parent: 'HTMLElement', members: childTextMembers });
+INTERFACES.push({ name: 'HTMLScriptElement', parent: 'HTMLElement', members: childTextMembers });
+// datalist options and map areas: live collections of descendants.
+const descendantCollection = (el, key, tag) => {
+  const s = state(el);
+  return s[key] ?? (s[key] = liveElements(el, (n) => isHTMLTag(n, tag)));
+};
+INTERFACES.push({ name: 'HTMLDataListElement', parent: 'HTMLElement', members: { get options() { return descendantCollection(this, 'optionsCollection', 'option'); } } });
+INTERFACES.push({ name: 'HTMLMapElement', parent: 'HTMLElement', members: { get areas() { return descendantCollection(this, 'areasCollection', 'area'); } } });
+// Text tracks are not loaded: readyState stays NONE.
+const TRACK_STATES = { NONE: 0, LOADING: 1, LOADED: 2, ERROR: 3 };
+INTERFACES.push({ name: 'HTMLTrackElement', parent: 'HTMLElement', statics: TRACK_STATES,
+  members: [{ get readyState() { state(this); return 0; } }, asConstants(TRACK_STATES)] });
+// Nested content is not loaded: no document (as jsdom).
+INTERFACES.push({ name: 'HTMLObjectElement', parent: 'HTMLElement', members: { get contentDocument() { state(this); return null; } } });
 INTERFACES.push({ name: 'HTMLTemplateElement', parent: 'HTMLElement', members: { get content() { return templateContent(this); } } });
 {
   const defined = new Set(INTERFACES.map((i) => i.name));

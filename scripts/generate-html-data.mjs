@@ -89,6 +89,10 @@ function reflection(member) {
   if (primary.name === 'ReflectNonNegative') options.nonNegative = true;
   if (primary.name === 'ReflectPositive') options.positive = true;
   if (primary.name === 'ReflectPositiveWithFallback') options.positiveWithFallback = true;
+  // [LegacyNullToEmptyString] on the type: null is set as ''.
+  if (member.idlType.extAttrs?.some((a) => a.name === 'LegacyNullToEmptyString')) options.nullToEmpty = true;
+  // USVString: lone surrogates become U+FFFD.
+  if (type === 'USVString' && primary.name !== 'ReflectURL') options.usv = true;
   let kind;
   if (primary.name === 'ReflectURL') kind = 'url';
   else if (type === 'DOMString' || type === 'USVString') kind = nullable ? 'nullable' : 'string';

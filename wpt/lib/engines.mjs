@@ -54,6 +54,9 @@ async function createWarpdom(url, warpdomDir, log) {
     evaluate: (code, filename) => vm.runInThisContext(code, { filename }),
     evaluateModule: (code, url, load) => evaluateModule(code, url, undefined, load),
     reportError: (error) => events.reportError(window, error),
+    // The parser sets the document's mode from the page's doctype (quirks
+    // without one); the runner parses with DOMParser, so the mode is copied.
+    adoptDocumentMode: (parsed) => { if (parsed[S]?.mode) window.document[S].mode = parsed[S].mode; },
     // Events the page load fires (DOMContentLoaded, load, a script's load
     // and error) are trusted in a browser; warpdom can fire them so.
     fire: (target, event) => events.dispatch(target === globalThis ? window : target, event),

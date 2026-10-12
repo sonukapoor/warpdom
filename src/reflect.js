@@ -3,7 +3,7 @@
 // reflect, and how, comes from the standard's IDL (html-reflect.js,
 // generated) plus the enumerated and other attributes whose reflection the
 // standard describes in prose (PROSE_REFLECTIONS below).
-import { S, state, domError } from './internal.js';
+import { S, state, domError, asciiLowercase } from './internal.js';
 import { documentBaseURL } from './base-url.js';
 import { writeAttribute, tokenList } from './attributes.js';
 import { REFLECTIONS } from './html-reflect.js';
@@ -14,7 +14,7 @@ const LEADING_INT = /^[\t\n\f\r ]*([+-]?\d+)/;
 
 export function parseInteger(value) {
   const m = LEADING_INT.exec(value);
-  return m ? parseInt(m[1], 10) : null;
+  return m ? parseInt(m[1], 10) + 0 : null; // + 0: "-0" is 0 (an IDL long has no -0)
 }
 
 const parseNonNegativeInteger = (value) => {
@@ -22,8 +22,9 @@ const parseNonNegativeInteger = (value) => {
   return n !== null && n >= 0 ? n : null;
 };
 
-// The rules for parsing floating-point number values.
-const LEADING_FLOAT = /^[\t\n\f\r ]*([+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?)/;
+// The rules for parsing floating-point number values (a "." after the
+// integer part may be followed directly by the exponent: "1.e2" is 100).
+const LEADING_FLOAT = /^[\t\n\f\r ]*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)/;
 export const parseFloatingPoint = (value) => {
   const m = LEADING_FLOAT.exec(value);
   const n = m ? Number(m[1]) : NaN;
@@ -51,18 +52,28 @@ export function resolveURL(element, attr) {
   return href;
 }
 
+// WebIDL USVString conversion: lone surrogates become U+FFFD.
+const toUSVString = (v) => { const s = String(v); return typeof s.toWellFormed === 'function' ? s.toWellFormed() : s; };
+
 const get = (el, attr) => state(el).attrs.get(attr);
 const set = (el, attr, value) => writeAttribute(el, attr, value);
 
 function accessor([, attr, kind, options = {}]) {
   switch (kind) {
-    case 'string': return {
+    case 'string': if (options.usv) return {
+      get() { return get(this, attr) ?? ''; },
+      set(v) { set(this, attr, toUSVString(v)); },
+    };
+    return options.nullToEmpty ? {
+      get() { return get(this, attr) ?? ''; },
+      set(v) { set(this, attr, v === null ? '' : String(v)); },
+    } : {
       get() { return get(this, attr) ?? ''; },
       set(v) { set(this, attr, String(v)); },
     };
     case 'nullable': return {
       get() { return get(this, attr) ?? null; },
-      set(v) { state(this); set(this, attr, v === null ? undefined : String(v)); },
+      set(v) { state(this); set(this, attr, v == null ? undefined : String(v)); }, // WebIDL: undefined converts to null for a nullable type
     };
     case 'url': return {
       get() { return resolveURL(this, attr); },
@@ -139,12 +150,12 @@ function accessor([, attr, kind, options = {}]) {
       get() {
         const value = get(this, attr);
         if (value === undefined) return options.missing;
-        const keyword = value.toLowerCase();
+        const keyword = asciiLowercase(value);
         if (options.keywords.includes(keyword)) return keyword;
         if (keyword === '' && options.empty !== undefined) return options.empty;
         return options.invalid;
       },
-      set(v) { state(this); set(this, attr, v === null && options.missing === null ? undefined : String(v)); },
+      set(v) { state(this); set(this, attr, v == null && options.missing === null ? undefined : String(v)); }, // nullable: undefined is null
     };
     default: throw new Error(`unknown reflection kind ${kind}`);
   }
@@ -153,6 +164,16 @@ function accessor([, attr, kind, options = {}]) {
 // CORS settings attributes: "" and invalid values are anonymous; missing
 // is No CORS (null).
 const CORS = { keywords: ['anonymous', 'use-credentials'], empty: 'anonymous', missing: null, invalid: 'anonymous' };
+
+// A submit button's form method and enctype overrides: limited to only
+// known values, with no missing value default.
+const SUBMITTER = [
+  ['formMethod', 'formmethod', 'enumerated', { keywords: ['get', 'post', 'dialog'], missing: '', invalid: 'get' }],
+  ['formEnctype', 'formenctype', 'enumerated', {
+    keywords: ['application/x-www-form-urlencoded', 'multipart/form-data', 'text/plain'],
+    missing: '', invalid: 'application/x-www-form-urlencoded',
+  }],
+];
 
 // Reflections the standard gives in prose rather than in its IDL.
 const PROSE_REFLECTIONS = [
@@ -175,6 +196,8 @@ const PROSE_REFLECTIONS = [
     ['height', 'height', 'unsigned', { default: 150 }],
   ]],
   ['HTMLInputElement', [['size', 'size', 'unsigned', { positive: true, default: 20 }]]],
+  ['HTMLButtonElement', SUBMITTER],
+  ['HTMLInputElement', SUBMITTER],
   ['HTMLFormElement', [['autocomplete', 'autocomplete', 'enumerated', { keywords: ['on', 'off'], missing: 'on', invalid: 'on' }]]],
   ['HTMLIFrameElement', [['srcdoc', 'srcdoc', 'string']]],
 ];
@@ -197,9 +220,20 @@ const nonce = {
   set(v) { state(this).nonce = String(v); },
 };
 
+// formAction reflects a URL, except that a missing or empty attribute gives
+// the document's URL.
+const formAction = {
+  get() {
+    const value = get(this, 'formaction');
+    return value === undefined || value === '' ? state(this).doc.URL : resolveURL(this, 'formaction');
+  },
+  set(v) { set(this, 'formaction', String(v)); },
+};
+
 const OTHER = [
   ['HTMLElement', { nonce }],
-  ['HTMLInputElement', { autocomplete: autofill }],
+  ['HTMLButtonElement', { formAction }],
+  ['HTMLInputElement', { autocomplete: autofill, formAction }],
   ['HTMLTextAreaElement', { autocomplete: autofill }],
   ['HTMLSelectElement', { autocomplete: autofill }],
 ];

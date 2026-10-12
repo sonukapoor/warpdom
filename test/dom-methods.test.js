@@ -505,3 +505,25 @@ test('MutationObserver: transient registered observers and notification order (D
   child.setAttribute('data-y', '');
   assert.deepEqual(first.takeRecords(), []);
 });
+
+// The @@unscopables object's own properties are ordinary writable data
+// properties (WebIDL), and each window has its own object.
+parity('@@unscopables entries are writable', (w) => ['Element', 'DocumentFragment', 'CharacterData', 'DocumentType'].map((name) => {
+  const u = w[name].prototype[Symbol.unscopables];
+  const d = Object.getOwnPropertyDescriptor(u, 'remove') ?? Object.getOwnPropertyDescriptor(u, 'append');
+  return [d.value, d.writable, d.enumerable, d.configurable, Object.isFrozen(u)];
+}));
+
+// Operation lengths count the arguments before the first optional one
+// (WebIDL), as jsdom's do.
+parity('operation lengths', (w) => {
+  const d = w.document;
+  const P = (name) => w[name].prototype;
+  return [P('AbortController').abort, w.AbortSignal.abort, P('DOMTokenList').toggle, P('DOMTokenList').supports,
+    P('CustomElementRegistry').define, P('CustomEvent').initCustomEvent, P('MessageEvent').initMessageEvent,
+    P('HTMLInputElement').setSelectionRange, P('HTMLInputElement').setRangeText, P('HTMLTextAreaElement').setRangeText,
+    P('HTMLSelectElement').add, P('Node').getRootNode, P('Document').createTreeWalker, P('Document').createNodeIterator,
+    P('DOMImplementation').createHTMLDocument, P('Element').toggleAttribute, P('HTMLSlotElement').assignedNodes,
+    P('HTMLSlotElement').assignedElements, P('HTMLMediaElement').canPlayType, P('History').pushState,
+    P('History').replaceState, P('MutationObserver').observe, d.createElement('select').options.add].map((f) => f.length);
+});

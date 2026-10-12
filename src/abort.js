@@ -57,14 +57,14 @@ export const ABORT_INTERFACES = [
     construct: (window, self) => { self[S] = { signal: createSignal(window) }; return self; },
     members: {
       get signal() { return state(this).signal; },
-      abort(reason) { signalAbort(state(this).signal, reason); },
+      abort(reason = undefined) { signalAbort(state(this).signal, reason); },
     },
   },
   {
     name: 'AbortSignal',
     parent: 'EventTarget',
     staticMethods: (window) => ({
-      abort(reason) {
+      abort(reason = undefined) {
         const signal = createSignal(window);
         signalAbort(signal, reason);
         return signal;

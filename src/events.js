@@ -377,6 +377,10 @@ const eventTarget = {
 // --- Event and subclasses -----------------------------------------------------
 
 const PHASES = { NONE: 0, CAPTURING_PHASE: 1, AT_TARGET: 2, BUBBLING_PHASE: 3 };
+const DELTA_MODES = { DOM_DELTA_PIXEL: 0, DOM_DELTA_LINE: 1, DOM_DELTA_PAGE: 2 };
+const KEY_LOCATIONS = { DOM_KEY_LOCATION_STANDARD: 0, DOM_KEY_LOCATION_LEFT: 1, DOM_KEY_LOCATION_RIGHT: 2, DOM_KEY_LOCATION_NUMPAD: 3 };
+// Constants are on the interface object and its prototype (WebIDL).
+const constants = (table) => Object.fromEntries(Object.entries(table).map(([k, v]) => [k, { constant: v }]));
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 function initEventState(self, type, init, initialized = true) {
@@ -419,6 +423,7 @@ const MOUSE_FIELDS = {
 const POINTER_FIELDS = {
   ...MOUSE_FIELDS, pointerId: 0, width: 1, height: 1, pressure: 0, tangentialPressure: 0,
   tiltX: 0, tiltY: 0, twist: 0, altitudeAngle: Math.PI / 2, azimuthAngle: 0, pointerType: '', isPrimary: false,
+  persistentDeviceId: 0,
 };
 const KEYBOARD_FIELDS = {
   ...UI_FIELDS, ...MODIFIER_FIELDS, key: '', code: '', location: 0, repeat: false, isComposing: false,
@@ -516,7 +521,7 @@ export const EVENT_INTERFACES = [
   },
   { name: 'CustomEvent', parent: 'Event', construct: eventConstruct('CustomEvent', { detail: null }), members: {
     get detail() { return state(this).detail; },
-    initCustomEvent(type, bubbles, cancelable, detail) {
+    initCustomEvent(type, bubbles = undefined, cancelable = undefined, detail = undefined) {
       const s = state(this);
       if (s.dispatching) return;
       this.initEvent(type, bubbles, cancelable);
@@ -548,11 +553,11 @@ export const EVENT_INTERFACES = [
     getCoalescedEvents() { return []; },
     getPredictedEvents() { return []; },
   } },
-  { name: 'WheelEvent', parent: 'MouseEvent', statics: { DOM_DELTA_PIXEL: 0, DOM_DELTA_LINE: 1, DOM_DELTA_PAGE: 2 },
-    construct: eventConstruct('WheelEvent', WHEEL_FIELDS), members: fieldGetters(own(WHEEL_FIELDS, MOUSE_FIELDS)) },
-  { name: 'KeyboardEvent', parent: 'UIEvent', statics: { DOM_KEY_LOCATION_STANDARD: 0, DOM_KEY_LOCATION_LEFT: 1, DOM_KEY_LOCATION_RIGHT: 2, DOM_KEY_LOCATION_NUMPAD: 3 },
+  { name: 'WheelEvent', parent: 'MouseEvent', statics: DELTA_MODES,
+    construct: eventConstruct('WheelEvent', WHEEL_FIELDS), members: { ...fieldGetters(own(WHEEL_FIELDS, MOUSE_FIELDS)), ...constants(DELTA_MODES) } },
+  { name: 'KeyboardEvent', parent: 'UIEvent', statics: KEY_LOCATIONS,
     construct: eventConstruct('KeyboardEvent', KEYBOARD_FIELDS), members: {
-      ...fieldGetters(own(KEYBOARD_FIELDS, UI_FIELDS)), ...modifierState,
+      ...fieldGetters(own(KEYBOARD_FIELDS, UI_FIELDS)), ...modifierState, ...constants(KEY_LOCATIONS),
       initKeyboardEvent(type, bubbles, cancelable, view, key, location, ctrlKey, altKey, shiftKey, metaKey) {
         legacyInit(this, type, bubbles, cancelable, {
           view: view ?? null, key: key == null ? '' : String(key), location: Number(location) >>> 0,
@@ -574,7 +579,7 @@ export const EVENT_INTERFACES = [
   { name: 'MessageEvent', parent: 'Event', construct: constructMessageEvent, members: {
     ...fieldGetters(own(MESSAGE_FIELDS, { ports: null })),
     get ports() { return state(this).ports; },
-    initMessageEvent(type, bubbles, cancelable, data, origin, lastEventId, source, ports) {
+    initMessageEvent(type, bubbles = undefined, cancelable = undefined, data = undefined, origin = undefined, lastEventId = undefined, source = undefined, ports = undefined) {
       legacyInit(this, type, bubbles, cancelable, { data: data ?? null, origin: String(origin ?? ''), lastEventId: String(lastEventId ?? ''), source: source ?? null, ports: Array.from(ports ?? []) });
     },
   } },

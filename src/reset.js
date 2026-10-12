@@ -9,7 +9,7 @@
 // Made for running test files without isolation (Vitest --no-isolate):
 // files share modules but each starts with a fresh-looking DOM, which takes
 // a millisecond instead of a new window.
-import { S, insert } from './internal.js';
+import { S, insert, hooks } from './internal.js';
 import { clearStorage } from './storage.js';
 import { clearCookies } from './cookies.js';
 import { clearWindowTimers } from './window-features.js';
@@ -113,6 +113,7 @@ export function resetWindow(window) {
   }
   ds.treeRev = (ds.treeRev ?? 0) + 1;
   ds.ids = undefined;
+  hooks.named.reset(ds);
   const [doctype, html, head, body] = ws.initialNodes.map(({ node }) => node);
   insert(doc, doctype, null);
   insert(doc, html, null);

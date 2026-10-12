@@ -384,7 +384,7 @@ export const ATTRIBUTE_INTERFACES = [
         const remove = items.map(validToken);
         writeTokens(this, tokenItems(this).filter((t) => !remove.includes(t)));
       },
-      toggle(token, force) {
+      toggle(token, force = undefined) {
         const t = validToken(token);
         const has = tokenItems(this).includes(t);
         if (has && force !== true) { this.remove(t); return false; }
@@ -406,7 +406,7 @@ export const ATTRIBUTE_INTERFACES = [
         writeTokens(this, out);
         return true;
       },
-      supports() { throw new TypeError("Failed to execute 'supports' on 'DOMTokenList': DOMTokenList has no supported tokens."); },
+      supports(token) { void token; throw new TypeError("Failed to execute 'supports' on 'DOMTokenList': DOMTokenList has no supported tokens."); },
       toString() { return this.value; },
       // A value iterator over indexed properties (WebIDL): Array.prototype's
       // own functions, which read length and the indexed properties.

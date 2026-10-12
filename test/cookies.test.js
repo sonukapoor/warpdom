@@ -88,3 +88,14 @@ test('cookie: expiry follows the clock', () => {
     Date.now = realNow;
   }
 });
+
+// Deviation from jsdom (PLAN.md): a cookie string with a NUL is ignored
+// (RFC 6265bis; WPT document-cookie.html), where jsdom truncates it there.
+test('cookie: a NUL rejects the cookie', () => {
+  const d = createWindow({ url: 'http://localhost:3000/' }).document;
+  d.cookie = 'a=b';
+  d.cookie = 'b=A\0Z';
+  d.cookie = 'c=1; path=/\0';
+  d.cookie = 'nl=a\nb';
+  assert.equal(d.cookie, 'a=b; nl=a');
+});

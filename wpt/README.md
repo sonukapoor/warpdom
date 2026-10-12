@@ -172,8 +172,9 @@ Skipped and not-runnable tests are listed in every results file.
   `document.readyState` changes, `document.currentScript`,
   `document.write`, the parser's error recovery while scripts run (the whole
   page is parsed first and then inserted), character encodings (pages are
-  read as UTF-8), quirks mode of the main document, import maps, style
-  sheet and image loading. Scripts inserted by tests are not executed by
+  read as UTF-8), quirks mode of the main document in jsdom (warpdom's
+  document takes the parsed page's mode), import maps, style sheet and
+  image loading. Scripts inserted by tests are not executed by
   either engine (warpdom never runs scripts; jsdom does not with
   `outside-only`), so tests of script execution fail for both.
 - **Engine-specific setup**: warpdom runs on the global object of the

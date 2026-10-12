@@ -268,6 +268,24 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   undefined for an HTML element inside SVG), and `:lang()` reads `lang`
   in no namespace only on HTML and SVG elements, `xml:lang` (XML
   namespace) first.
+- `document.getElementsByName` returns only HTML elements, as the HTML
+  standard says; jsdom (26 to 30) also returns SVG and other elements with
+  a name attribute.
+- Document named properties (jsdom 30 profile) are own accessor
+  properties of the document, listed by Object.getOwnPropertyNames in the
+  order they appeared; jsdom makes them read-only data properties that
+  cannot be deleted or redefined, listed in tree order. Assignment fails
+  the same way (TypeError in strict mode). See 2026-10-11, dom-tree
+  accessors.
+- `document.lastModified` is the current time when read (the source
+  file's time is not known); jsdom gives the document's creation time.
+- `document.cookie` ignores a cookie string with a NUL (RFC 6265bis);
+  jsdom truncates it there (CR and LF still truncate in both).
+- USVString reflections (`ping`, `srcset`, `imageSrcset`) replace lone
+  surrogates with U+FFFD; jsdom keeps them in `ping`.
+- Submit buttons' formAction, formMethod, formEnctype and the document's
+  obsolete body colors (fgColor, linkColor, vlinkColor, alinkColor,
+  bgColor) exist; jsdom lacks them.
 
 ## Decisions
 
@@ -338,7 +356,9 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   In the profile so far: before 29, empty computed-style defaults; before
   27, no PointerEvent or pointer handlers, and click() fires a MouseEvent;
   before 30.1.2 (a patch release, 2026-10-04), focus() ignores display:
-  none and [hidden] (ark-ui's signature pad focuses a [hidden] input). So
+  none and [hidden] (ark-ui's signature pad focuses a [hidden] input);
+  before 30, no document named properties (checked black-box: 26.1,
+  27.2, 29.1.1 have none, 30.1.2 has them). So
   the option takes a full version too ('30.1.1'); the adapters pass the
   installed one, and a bare major means its latest release.
   Also before 28: computed styles accept writes (react-aria fakes
@@ -874,3 +894,79 @@ attributes with one qualified name in different namespaces
 elements' dataset (no MathMLElement, as in jsdom), and harness limits:
 the-lang-attribute-* measure :lang through layout (offsetWidth),
 cdata-dir_auto loads an XHTML iframe.
+- **2026-10-11: Document tree accessors** (branch wpt-dom-tree-accessors;
+  WPT html/dom/documents/dom-tree-accessors, 46 files). Score 40.5% ->
+  98.1%, subtests 94 -> 247 of 263 (jsdom 30.1.2: 95.6%, 243). Done:
+  `document.getElementsByName` (it was missing), the `document.body`
+  setter, `document.title` per HTML (only ASCII whitespace stripped, SVG
+  documents use the root's SVG title, documents whose root is neither
+  HTML nor svg have no settable title), and document named properties
+  (forms, images, embeds, objects, iframes; Document is
+  [LegacyOverrideBuiltIns], so `<form name="body">` hides document.body
+  as in jsdom 30 and browsers). Design (src/document-named.js): no Proxy
+  around the document; the names are own accessor properties of the
+  document, defined when a name appears and deleted when it goes, so reads
+  of document members never pass a trap. A deleted property leaves a V8
+  object in dictionary mode (document member reads 8 -> 18 ns), so the
+  document is made fast again after each deletion (used once as a
+  constructor's prototype). Bookkeeping happens in the walk the tree
+  already makes for the id index, and only in documents that have owned
+  an embed/form/iframe/img with a name or an object with a name or id
+  (`namedCandidates`; rare in real suites: plain forms, imgs and inputs do
+  not count); name and id changes come through the attribute change
+  steps. jsdom before 30 has no named properties, so the profile leaves
+  them out. Left: Document.currentScript (the runner does not model it;
+  jsdom 2/18, warpdom 3/18) and one nameditem-names subtest (property
+  names in tree order: an own property named "42" is listed first, as for
+  any object).
+  Performance (Node 22.17.1, medians of 5-7 alternating runs against
+  main, focused bench in the session scratchpad): setAttribute of id or
+  name on any element 42.1 -> 46.3 ns (+10%, the attribute change step
+  that checks for the five element types; other attributes unchanged);
+  inserting and removing a 4-node subtree in a document with named
+  elements 68.7 -> 105.3 ns (+53%, the named walk; a document with ids
+  already pays about that: 127.2 -> 127.8 ns, unchanged); bench:hot all
+  within +-4% (setAttribute 45.7 -> 46.3 ns), create-bench and
+  insert-bench unchanged; document member reads unchanged (10.9 -> 11.2
+  ns, noise). Load: cold 17.6 -> 17.2 ms, first window 1.55 -> 1.72 ms
+  (together unchanged), next windows 0.187 -> 0.185 ms.
+
+## 2026-10-12: WPT html/dom reflection, resource metadata, dom/abort, dom/ (branch wpt-misc)
+
+WPT 87b5d13099, warpdom score per file (subtests passed), before -> after,
+same runner: html/dom/ top-level files 65.5% -> 72.4% (58,180 -> 59,275 of
+67,354; jsdom 67.1%); html/dom/documents/resource-metadata-management 56.4%
+-> 83.9% (12 -> 17 of 20; jsdom 77.3%); dom/abort 83.3% -> 100%; dom/
+top-level files 69.9% -> 80.3% (1,643 -> 1,719; jsdom 83.4%). No file lost
+a subtest. aria-attribute-reflection.html was 0/41 because nullable
+reflections stored undefined as "undefined" (now 41/41).
+Done: WebIDL undefined -> null for nullable reflections (ARIA, role,
+crossOrigin); "-0" parses to 0; ASCII case-insensitive keywords; "1.e2";
+[LegacyNullToEmptyString]; USVString reflections; submit buttons' form*
+overrides; document dir, applets, clear/captureEvents/releaseEvents,
+referrer, lastModified, body colors; title/script/a text, datalist
+options, map areas, meter/progress labels, track readyState, object
+contentDocument, constants on prototypes, navigator productSub/vendorSub,
+PointerEvent persistentDeviceId; @@unscopables writable per window;
+NodeFilter as a legacy callback interface object; operation lengths;
+removing an iframe stops its window's timers and AbortSignal.timeout; a
+cookie with a NUL is ignored. Runner: load events no longer use a deleted
+window.Event (dom/interface-objects.html); warpdom's document takes the
+parsed page's mode (document-compatmode-03).
+Performance (Node 22.17.1, medians of 5 alternating runs against main):
+cold load 17.7 -> 17.5 ms, first window 1.50 -> 1.56 ms (the new
+interface entries and per-window @@unscopables objects; inside budget),
+next windows 0.180 -> 0.184 ms; bench:hot within noise. input.type:
+14.3 -> 12.7 ns (a lowercase known type skips lowercasing).
+Tried and reverted: naming accessor functions "get <name>" (idlharness
+checks it, ~550 subtests): +0.3 ms per first window (renaming ~400
+functions), not worth it for a check no test suite makes.
+Left: element reflection (ariaActiveDescendantElement, ariaLabelledByElements;
+jsdom lacks them, libraries may feature-detect them), inert, referrerPolicy,
+loading, decoding, fetchPriority, link.as, enterKeyHint, translate,
+draggable (feature detection risk; behavior not implemented), XPath
+(XPathResult, document.evaluate), accessKeyLabel, input width/height,
+img width/height setter range, idlharness argument-count checks (every
+operation would need a length check) and accessor names, the global's
+addEventListener identity (Vitest-style install), readyState transitions
+and Last-Modified headers (runner), iframes loading cross-origin pages.

@@ -9,6 +9,7 @@
 // internal.js).
 import { S, HTML_NS, ELEMENT_NODE, hooks, nextInTree } from './internal.js';
 import { dispatch } from './events.js';
+import { clearWindowTimers } from './window-features.js';
 
 const isIframe = (n) => { const s = n[S]; return s.type === ELEMENT_NODE && s.ns === HTML_NS && s.tag === 'iframe'; };
 
@@ -58,6 +59,10 @@ function destroyFrame(iframe) {
   const child = es.frameWindow;
   if (!child) return;
   es.frameWindow = null;
+  // The discarded window's tasks never run: its timers (and so
+  // AbortSignal.timeout of its realm) stop, as in jsdom.
+  child[S].discarded = true;
+  clearWindowTimers(child);
   const parent = child[S].parentWindow;
   const frames = parent[S].childFrames;
   frames.splice(frames.indexOf(child), 1);

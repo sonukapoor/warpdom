@@ -266,5 +266,5 @@ export const TRAVERSAL_INTERFACES = [
       detach() { state(this); },
     }),
   },
-  { name: 'NodeFilter', statics: NODE_FILTER, members: {} },
+  { name: 'NodeFilter', callback: true, statics: NODE_FILTER, members: {} },
 ];

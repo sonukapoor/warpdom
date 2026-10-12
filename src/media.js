@@ -31,7 +31,7 @@ export const MEDIA_MEMBERS = {
   pause() { report(this, 'pause'); },
   load() { report(this, 'load'); },
   addTextTrack() { report(this, 'addTextTrack'); },
-  canPlayType() { state(this); return ''; },
+  canPlayType(type) { state(this); void type; return ''; },
   get paused() { state(this); return true; },
   get ended() { state(this); return false; },
   get seeking() { state(this); return false; },

@@ -70,3 +70,93 @@ parity('ARIA reflection (ARIAMixin)', (w) => {
   out.push(div.hasAttribute('aria-label'));
   return out;
 });
+
+// WebIDL: undefined converts to null for a nullable DOMString, so it removes
+// the attribute (jsdom 26 and 30 alike).
+for (const jsdom of [26, 30]) {
+  parity(`ARIA reflection: undefined removes the attribute (jsdom ${jsdom})`, (w) => {
+    const div = w.document.createElement('div');
+    div.setAttribute('aria-label', 'x');
+    div.setAttribute('role', 'button');
+    div.ariaLabel = undefined;
+    div.role = undefined;
+    return [div.ariaLabel, div.role, div.hasAttribute('aria-label'), div.hasAttribute('role')];
+  }, { jsdom });
+}
+
+// "-0" parses to 0 (an IDL long has no -0), and a nullable enumerated
+// attribute (crossOrigin) set to undefined is removed.
+parity('reflection: "-0" is 0, crossOrigin = undefined removes the attribute', (w) => {
+  const d = w.document;
+  const link = d.createElement('link');
+  link.setAttribute('tabindex', '-0');
+  const input = d.createElement('input');
+  input.setAttribute('maxlength', '-0');
+  const ol = d.createElement('ol');
+  ol.setAttribute('start', '-0');
+  const video = d.createElement('video');
+  video.crossOrigin = 'anonymous';
+  video.crossOrigin = undefined;
+  const img = d.createElement('img');
+  img.crossOrigin = 'anonymous';
+  img.crossOrigin = null;
+  return [Object.is(link.tabIndex, 0), Object.is(input.maxLength, 0), Object.is(ol.start, 0),
+    video.getAttribute('crossorigin'), video.crossOrigin, img.hasAttribute('crossorigin')];
+});
+
+// Keywords compare ASCII case-insensitively (the Kelvin sign is not "k"),
+// "1.e2" is 100, and [LegacyNullToEmptyString] attributes set null as "".
+parity('reflection: ASCII case-insensitive keywords, "1.e2", null as ""', (w) => {
+  const d = w.document;
+  const input = d.createElement('input');
+  input.setAttribute('type', 'checKbox');
+  const button = d.createElement('button');
+  button.setAttribute('type', 'RESET');
+  const form = d.createElement('form');
+  form.setAttribute('method', 'poſt');
+  const progress = d.createElement('progress');
+  progress.setAttribute('max', '1.e2');
+  const meter = d.createElement('meter');
+  meter.setAttribute('max', '1.');
+  const img = d.createElement('img');
+  img.border = null;
+  const iframe = d.createElement('iframe');
+  iframe.marginHeight = null;
+  const body = d.createElement('body');
+  body.bgColor = null;
+  return [input.type, button.type, form.method, progress.max, meter.max,
+    img.getAttribute('border'), iframe.getAttribute('marginheight'), body.getAttribute('bgcolor')];
+});
+
+// Submit buttons' formAction, formMethod and formEnctype (jsdom lacks them;
+// the standard's reflection).
+test('formAction, formMethod, formEnctype', () => {
+  const w = createWindow({ url: 'http://localhost:3000/dir/page' });
+  const d = w.document;
+  for (const tag of ['button', 'input']) {
+    const el = d.createElement(tag);
+    assert.deepEqual([el.formAction, el.formMethod, el.formEnctype], ['http://localhost:3000/dir/page', '', '']);
+    el.setAttribute('formaction', 'go?x=1');
+    el.setAttribute('formmethod', 'POST');
+    el.setAttribute('formenctype', 'Text/Plain');
+    assert.deepEqual([el.formAction, el.formMethod, el.formEnctype], ['http://localhost:3000/dir/go?x=1', 'post', 'text/plain']);
+    el.formMethod = 'put';
+    el.formEnctype = '';
+    el.formAction = '';
+    assert.deepEqual([el.getAttribute('formmethod'), el.formMethod, el.formEnctype, el.formAction],
+      ['put', 'get', 'application/x-www-form-urlencoded', 'http://localhost:3000/dir/page']);
+  }
+});
+
+// USVString reflections (ping, srcset, imageSrcset) replace lone surrogates
+// with U+FFFD (WebIDL); jsdom does it for srcset and keeps them in ping.
+test('USVString reflections replace lone surrogates', () => {
+  const d = createWindow().document;
+  const a = d.createElement('a');
+  a.ping = 'x\uD989';
+  const source = d.createElement('source');
+  source.srcset = '\uD800a.png';
+  const link = d.createElement('link');
+  link.imageSrcset = '\uDC00';
+  assert.deepEqual([a.ping, source.srcset, link.imageSrcset], ['x�', '�a.png', '�']);
+});

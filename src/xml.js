@@ -5,6 +5,7 @@
 // HTML; namespaces (Namespaces in XML 1.0) are resolved here, on its tree.
 import {
   S, state, insert, remove, domError, hooks, HTML_NS, ELEMENT_NODE,
+  namedAttributesSet,
 } from './internal.js';
 import { XML_NS, XMLNS_NS } from './attributes.js';
 import { eventHandlerAttributesAdded } from './event-handlers.js';
@@ -215,6 +216,7 @@ function buildElement(w, doc, n, parentScope, inTemplate) {
     if (name.startsWith('on')) handlers = true;
   }
   if (handlers) eventHandlerAttributesAdded(element);
+  if (es.attrs.size !== 0) namedAttributesSet(es, doc);
   if (!inTemplate && hooks.ce !== null) hooks.ce.created(element);
   // A template's children go into its contents (HTML, the XML parser).
   if (html && local === 'template') build(w, doc, templateContentOf(element), n.children, scope, true);

@@ -405,3 +405,42 @@ parity('img: width, height, natural sizes, complete', (w) => {
   out.push([legacy.width, legacy.height]);
   return out;
 });
+
+// Element members jsdom has: title/script/anchor text, datalist options,
+// map areas, meter/progress labels, track readyState, object
+// contentDocument, media/keyboard/wheel constants on prototypes, navigator
+// productSub/vendorSub.
+for (const jsdom of [26, 30]) {
+  parity(`element members: text, options, areas, labels, constants (jsdom ${jsdom})`, (w) => {
+    const d = w.document;
+    d.body.innerHTML = '<map><area><b><area></b></map><datalist><option>1</option><b><option>2</option></b></datalist>'
+      + '<meter id=m></meter><label for=m>M</label><progress></progress><object></object><a>x<b>y</b></a>';
+    const title = d.createElement('title');
+    title.innerHTML = 'a<b>x</b>c';
+    title.append(d.createComment('c'));
+    const script = d.createElement('script');
+    script.textContent = 'p';
+    script.append(d.createComment('c'), d.createTextNode('q'));
+    const out = [title.text, script.text];
+    title.text = 'new';
+    script.text = 's';
+    const a = d.querySelector('a');
+    out.push(title.childNodes.length, title.innerHTML, script.childNodes.length, a.text);
+    a.text = 'z';
+    const datalist = d.querySelector('datalist');
+    const options = datalist.options;
+    datalist.append(d.createElement('option'));
+    const areas = d.querySelector('map').areas;
+    out.push(a.innerHTML, options.length, options === datalist.options, options instanceof w.HTMLCollection,
+      areas.length, areas[1] === d.querySelectorAll('area')[1],
+      d.querySelector('meter').labels.length, d.querySelector('progress').labels.length,
+      d.querySelector('object').contentDocument,
+      d.createElement('track').readyState, w.HTMLTrackElement.LOADED, w.HTMLTrackElement.prototype.ERROR,
+      w.HTMLMediaElement.prototype.HAVE_ENOUGH_DATA, d.createElement('audio').NETWORK_NO_SOURCE,
+      w.KeyboardEvent.prototype.DOM_KEY_LOCATION_NUMPAD, new w.KeyboardEvent('x').DOM_KEY_LOCATION_LEFT,
+      w.WheelEvent.prototype.DOM_DELTA_PAGE, w.navigator.productSub, w.navigator.vendorSub);
+    return out;
+  }, { jsdom });
+}
+
+parity('PointerEvent persistentDeviceId', (w) => [new w.PointerEvent('x').persistentDeviceId, new w.PointerEvent('x', { persistentDeviceId: 5 }).persistentDeviceId]);

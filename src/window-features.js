@@ -45,6 +45,7 @@ function startTimer(window, repeat, handler, timeout, args) {
   const ws = state(window);
   const timers = ws.timers ?? (ws.timers = { next: 1, handles: new Map() });
   const id = timers.next++;
+  if (ws.discarded) return id;
   const callback = typeof handler === 'function' ? handler : () => {};
   const run = () => {
     if (!repeat) timers.handles.delete(id);
@@ -244,6 +245,8 @@ export const FEATURE_INTERFACES = [
       get appName() { state(this); return 'Netscape'; },
       get appCodeName() { state(this); return 'Mozilla'; },
       get product() { state(this); return 'Gecko'; },
+      get productSub() { state(this); return '20030107'; },
+      get vendorSub() { state(this); return ''; },
       get platform() { state(this); return ''; },
       get vendor() { state(this); return 'Apple Computer, Inc.'; },
       get language() { state(this); return 'en-US'; },
@@ -284,14 +287,14 @@ export const FEATURE_INTERFACES = [
       get state() { const s = state(this); return s.entries[s.index].state; },
       get scrollRestoration() { return state(this).scrollRestoration ?? 'auto'; },
       set scrollRestoration(v) { state(this).scrollRestoration = v === 'manual' ? 'manual' : 'auto'; },
-      pushState(data, title, target) {
+      pushState(data, title, target = undefined) {
         const s = state(this);
         const next = target == null ? url(this) : new URL(String(target), url(this).href);
         s.entries.splice(s.index + 1, Infinity, { state: structuredClone(data), url: next });
         s.index++;
         setURL(this, next);
       },
-      replaceState(data, title, target) {
+      replaceState(data, title, target = undefined) {
         const s = state(this);
         const next = target == null ? url(this) : new URL(String(target), url(this).href);
         s.entries[s.index] = { state: structuredClone(data), url: next };

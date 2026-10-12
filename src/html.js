@@ -5,6 +5,7 @@
 import {
   S, state, insert, remove, replace, replaceAll, domError, hooks, reactionScope, HTML_NS, templateContentsOwner,
   ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE,
+  namedAttributesSet,
 } from './internal.js';
 import { parseXMLFragment } from './xml.js';
 import { eventHandlerAttributesAdded } from './event-handlers.js';
@@ -133,6 +134,7 @@ function appendAst(internals, parent, astNodes, doc, inTemplate = false) {
         if (a.name.startsWith('on')) handlers = true;
       }
       if (handlers) eventHandlerAttributesAdded(node);
+      if (n.attrs.length !== 0) namedAttributesSet(node[S], doc);
       // A parsed <details open> queues its toggle event, as adding the
       // attribute would.
       if (n.tagName === 'details' && n.namespaceURI === HTML_NS && attrs.has('open')) attributeSteps.get('open')?.(node, undefined, attrs.get('open'));

@@ -44,15 +44,18 @@ function pathMatch(requestPath, cookiePath) {
   return cookiePath.endsWith('/') || requestPath[cookiePath.length] === '/';
 }
 
-// Controls other than CR, LF and NUL (which end the string) reject the cookie.
+// Controls other than CR and LF (which end the string) reject the cookie.
+// NUL rejects it too (RFC 6265bis: a set-cookie-string with a NUL is
+// ignored; jsdom truncates there as at CR and LF).
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\x01-\x1f\x7f]/;
 // eslint-disable-next-line no-control-regex
-const TRUNCATE = /[\r\n\0]/;
+const TRUNCATE = /[\r\n]/;
 
 const expired = (cookie, now) => cookie.expires !== null && cookie.expires <= now;
 
 function setCookie(doc, url, input) {
+  if (input.includes('\0')) return;
   const end = input.search(TRUNCATE);
   const string = end === -1 ? input : input.slice(0, end);
   const [pair, ...attributes] = string.split(';');

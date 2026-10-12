@@ -13,7 +13,8 @@
 // DOMContentLoaded fires at the document and load at the window (which
 // testharness.js waits for).
 //
-// Not modeled: document.readyState transitions, document.currentScript,
+// The document's mode (quirks without a doctype) is the parsed page's, for
+// engines with a way to set it (warpdom). Not modeled: document.readyState transitions, document.currentScript,
 // document.write, import maps, the parser's own error recovery while
 // scripts run (the whole page is parsed first), stylesheets and images
 // loading.
@@ -109,12 +110,16 @@ const KEEP_CHILDREN = new Set(['SCRIPT', 'STYLE', 'TEXTAREA', 'TITLE', 'XMP', 'I
 export async function loadPage(engine, test, { wptRoot, reporterSource, yieldToTasks, note }) {
   const window = engine.window;
   const document = window.document;
+  // Taken before any script runs: tests may delete interface objects
+  // (dom/interface-objects.html deletes window.Event).
+  const Event = window.Event;
   const testUrl = new URL(test.url, test.file.includes('.https.') ? HTTPS_ORIGIN : ORIGIN).href;
   let html = test.kind === 'html' ? readFileSync(join(wptRoot, test.file), 'utf8') : wrapperHtml(test);
   if (test.kind === 'html' && test.file.includes('.sub.')) html = substitute(html, testUrl);
 
   const parsed = new window.DOMParser().parseFromString(html, 'text/html');
   while (document.firstChild) document.removeChild(document.firstChild);
+  engine.adoptDocumentMode?.(parsed);
 
   const later = []; // deferred and async classic scripts, in document order
   const baseUrl = () => (typeof document.baseURI === 'string' && document.baseURI !== 'about:blank' ? document.baseURI : testUrl);
@@ -136,7 +141,7 @@ export async function loadPage(engine, test, { wptRoot, reporterSource, yieldToT
   }
 
   function fire(target, type, init) {
-    engine.fire(target, new window.Event(type, init));
+    engine.fire(target, new Event(type, init));
   }
 
   function evaluate(code, filename) {

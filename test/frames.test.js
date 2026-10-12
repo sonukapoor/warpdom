@@ -82,3 +82,20 @@ parity('a frame window\'s timers', async (w) => {
   await new Promise((resolve) => setTimeout(resolve, 30));
   return [typeof a, a > 0, b > a, log, fw.atob(fw.btoa('hi'))];
 });
+
+// A removed iframe's window is discarded: its timers, intervals and
+// AbortSignal.timeout() never fire.
+parity('a removed frame\'s timers and AbortSignal.timeout stop', async (w) => {
+  w.document.body.innerHTML = '<iframe></iframe>';
+  const iframe = w.document.querySelector('iframe');
+  const child = iframe.contentWindow;
+  const fired = [];
+  child.setTimeout(() => fired.push('timeout'), 5);
+  const interval = child.setInterval(() => fired.push('interval'), 3);
+  const signal = child.AbortSignal.timeout(5);
+  signal.onabort = () => fired.push('abort');
+  iframe.remove();
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  child.clearInterval(interval); // so that a regression does not keep the process alive
+  return [fired, signal.aborted];
+});

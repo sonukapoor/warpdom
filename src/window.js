@@ -11,6 +11,7 @@ import { HTML_ELEMENTS, PLAIN_TAGS } from './html-elements.js';
 import { setupWindow } from './window-features.js';
 import { setValidationMode } from './css.js';
 import { namedPropertiesObject } from './named-access.js';
+import './document-named.js';
 import { createCustomElement, createRegistry, htmlConstruct, isValidCustomElementName } from './custom-elements.js';
 
 // Once per module load: the interfaces in order, parents before children.
@@ -52,7 +53,15 @@ function descriptorsOf(iface) {
     else addDescriptors(descriptors, members);
   }
   const keys = Reflect.ownKeys(descriptors);
-  table = { keys, descriptors: keys.map((key) => descriptors[key]) };
+  table = { keys, descriptors: keys.map((key) => descriptors[key]), unscopables: null };
+  // The @@unscopables descriptor is left out of the shared list: each
+  // window gets its own object.
+  const i = keys.indexOf(Symbol.unscopables);
+  if (i !== -1 && descriptors[Symbol.unscopables].unscopables) {
+    table.unscopables = descriptors[Symbol.unscopables].value;
+    keys.splice(i, 1);
+    table.descriptors.splice(i, 1);
+  }
   DESCRIPTORS.set(iface.name, table);
   return table;
 }
@@ -62,11 +71,9 @@ function addDescriptors(descriptors, members) {
     const d = Object.getOwnPropertyDescriptor(members, key);
     const v = d.value;
     if (v && typeof v === 'object' && 'unscopables' in v) {
-      // @@unscopables (WebIDL): a null-prototype object, frozen since it is
-      // shared by every window.
-      const value = Object.create(null);
-      for (const name of v.unscopables) value[name] = true;
-      descriptors[key] = { value: Object.freeze(value), enumerable: false, writable: false, configurable: true };
+      // @@unscopables (WebIDL): a null-prototype object whose properties are
+      // writable; made per window (see unscopablesOf).
+      descriptors[key] = { value: v.unscopables, enumerable: false, writable: false, configurable: true, unscopables: true };
     } else if (v && typeof v === 'object' && 'constant' in v) {
       // Constants such as Node.ELEMENT_NODE: read-only, as in WebIDL.
       descriptors[key] = { value: v.constant, enumerable: true, writable: false, configurable: false };
@@ -156,10 +163,20 @@ export function createWindow(options = {}) {
     // (CSSStyleProperties' 1,600 accessors took ~1.5 ms). The prototype is
     // set afterwards; own keys, their order and descriptors are the same.
     const proto = Object.create(null);
-    const { keys, descriptors } = descriptorsOf(iface);
+    const { keys, descriptors, unscopables } = descriptorsOf(iface);
     for (let i = 0; i < keys.length; i++) Object.defineProperty(proto, keys[i], descriptors[i]);
+    if (unscopables) {
+      const value = Object.create(null);
+      for (const member of unscopables) value[member] = true;
+      Object.defineProperty(proto, Symbol.unscopables, { value, enumerable: false, writable: false, configurable: true });
+    }
     Object.setPrototypeOf(proto, parent ? parent.prototype : Object.prototype);
-    const ctor = iface.construct
+    // A callback interface with constants (NodeFilter) has a legacy callback
+    // interface object: a function that is not a constructor and has no
+    // prototype property (a method has neither).
+    const ctor = iface.callback
+      ? { [name]() { throw new TypeError(`${name} is not a constructor`); } }[name]
+      : iface.construct
       ? function (...args) {
         if (!new.target) throw new TypeError(`Failed to construct '${name}': Please use the 'new' operator.`);
         return iface.construct(window, this, args);
@@ -169,8 +186,10 @@ export function createWindow(options = {}) {
         ? function () { return htmlConstruct(window, ctor, new.target); }
         : function () { throw new TypeError('Illegal constructor'); };
     Object.defineProperty(ctor, 'name', { value: name });
-    Object.defineProperty(ctor, 'prototype', { value: proto, writable: false });
-    Object.defineProperty(proto, 'constructor', { value: ctor, writable: true, configurable: true });
+    if (!iface.callback) {
+      Object.defineProperty(ctor, 'prototype', { value: proto, writable: false });
+      Object.defineProperty(proto, 'constructor', { value: ctor, writable: true, configurable: true });
+    }
     // The class string (WebIDL): Object.prototype.toString gives [object Name].
     if (!Object.hasOwn(proto, Symbol.toStringTag)) Object.defineProperty(proto, Symbol.toStringTag, { value: name, configurable: true });
     if (parent) Object.setPrototypeOf(ctor, parent);

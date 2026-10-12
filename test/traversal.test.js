@@ -110,3 +110,12 @@ parity('NodeIterator: a filter that removes the node it is given', (w) => {
   out.push(it.referenceNode === a, it.pointerBeforeReferenceNode, it.nextNode().localName);
   return out;
 });
+
+// NodeFilter is a legacy callback interface object: constants, no
+// prototype, not a constructor.
+parity('NodeFilter has no prototype and is not a constructor', (w) => {
+  const N = w.NodeFilter;
+  let error = null;
+  try { new N(); } catch (e) { error = e.name; }
+  return [typeof N, 'prototype' in N, N.SHOW_ELEMENT, N.FILTER_SKIP, N.name, error];
+});

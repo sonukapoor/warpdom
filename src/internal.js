@@ -31,6 +31,10 @@ export const hooks = {
   // NodeIterator pre-removing steps (traversal.js); called only when a
   // document has node iterators.
   nodeIteratorRemove: null,
+  // Document named properties (document-named.js); insertions are
+  // reported only in documents that have owned an element that can be one
+  // (namedCandidates), removals only while the document has named elements.
+  named: null,
   // Custom element reactions (custom-elements.js); set once something is defined.
   ce: null,
 };
@@ -130,6 +134,26 @@ export function rootOf(node) {
   let n = node;
   while (n[S].parent) n = n[S].parent;
   return n;
+}
+
+// Elements that can be document named properties (document-named.js).
+export const isNamedTag = (tag) => tag === 'img' || tag === 'form' || tag === 'iframe' || tag === 'embed' || tag === 'object';
+
+// After an element (state s) got attributes other than through
+// writeAttribute (parsing, cloning) or moved to doc: counts it in doc's
+// namedCandidates when it has a name (an object also an id), which turns
+// on the insertion walk for named properties. The count is never lowered
+// (like frameCount): a high count only costs that walk. jsdom gained
+// document named properties in version 30 (29.1.1 has none), so the jsdom
+// profile before 30 counts nothing and its documents get none.
+export function namedAttributesSet(s, doc) {
+  if (s.ns !== HTML_NS || !isNamedTag(s.tag)) return;
+  const name = s.attrs.get('name');
+  if ((name !== undefined && name !== '') || (s.tag === 'object' && s.attrs.has('id'))) {
+    const ds = doc[S];
+    if (ds.window[S].compat.jsdom < 30) return;
+    ds.namedCandidates = (ds.namedCandidates ?? 0) + 1;
+  }
 }
 
 // In the document tree (not in a shadow tree): what the id index covers.
@@ -384,7 +408,7 @@ function insertChecked(parent, node, ref, root, quiet) {
   ns.parent = parent;
   ps.count++;
   changed(parent);
-  if (connected) indexIds(node, true);
+  if (connected) indexIds(node, true, doc[S].namedCandidates !== undefined);
   if (!quiet && observed(parent)) hooks.childList(parent, [node], [], ns.prev, ns.next);
   if (hooks.ce !== null) hooks.ce.inserted(node);
   // Iframes get nested windows (frames.js), only in documents that have any.
@@ -416,6 +440,7 @@ export function adopt(node, doc) {
     if (s.tag === 'iframe' && s.ns === HTML_NS) doc[S].frameCount = (doc[S].frameCount ?? 0) + 1;
     if (s.tag === 'slot' && s.ns === HTML_NS) doc[S].slotCount = (doc[S].slotCount ?? 0) + 1;
     if (s.tag === 'base' && s.ns === HTML_NS) doc[S].baseCount = (doc[S].baseCount ?? 0) + 1;
+    if (s.type === ELEMENT_NODE) namedAttributesSet(s, doc);
     if (s.attrNodes) for (const attr of s.attrNodes.values()) attr[S].doc = doc;
     if (s.content) adopt(s.content, templateContentsOwner(doc));
   }
@@ -448,7 +473,8 @@ function removeNode(parent, node, quiet) {
   ns.prev = ns.next = ns.parent = null;
   ps.count--;
   changed(parent);
-  if (connected) indexIds(node, false);
+  const named = ods.namedBy !== undefined && ods.namedBy.size !== 0;
+  if (connected || named) indexIds(node, false, named, connected);
   // Focus fixup: removing the focused element (also from inside a shadow
   // tree of the removed subtree) focuses the document, without events.
   const focused = ods.focused;
@@ -497,12 +523,17 @@ export function containsFromDoc(ds, ancestor, node) {
 // --- id index -----------------------------------------------------------------
 
 // Add or remove the ids of node and its element descendants.
-function indexIds(node, add) {
+// named: also update document named properties (document-named.js) for
+// embed, form, iframe, img and object elements; ids: update the id index.
+function indexIds(node, add, named, ids = true) {
   for (let n = node; n; n = nextInTree(n, node)) {
     const s = n[S];
     if (s.type === ELEMENT_NODE) {
-      const id = s.attrs.get('id');
-      if (id !== undefined && id !== '') updateId(s.doc, id, n, add);
+      if (ids) {
+        const id = s.attrs.get('id');
+        if (id !== undefined && id !== '') updateId(s.doc, id, n, add);
+      }
+      if (named && s.ns === HTML_NS && isNamedTag(s.tag)) hooks.named.update(s.doc, n, add);
     }
   }
 }

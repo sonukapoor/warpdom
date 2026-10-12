@@ -143,8 +143,8 @@ hooks.slots = {
 };
 
 export const SLOT_MEMBERS = {
-  assignedNodes(options) { return options?.flatten ? flattened(this, []) : assignedNodes(this); },
-  assignedElements(options) {
+  assignedNodes(options = undefined) { return options?.flatten ? flattened(this, []) : assignedNodes(this); },
+  assignedElements(options = undefined) {
     const nodes = options?.flatten ? flattened(this, []) : assignedNodes(this);
     return nodes.filter((n) => n[S].type === ELEMENT_NODE);
   },

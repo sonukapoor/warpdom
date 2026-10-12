@@ -286,7 +286,7 @@ export const CUSTOM_ELEMENT_INTERFACES = [
   {
     name: 'CustomElementRegistry',
     members: {
-      define(name, constructor, options) {
+      define(name, constructor, options = undefined) {
         const rs = registryState(this);
         if (!isConstructor(constructor)) throw new TypeError("Failed to execute 'define' on 'CustomElementRegistry': The provided callback is not a constructor.");
         const n = String(name);

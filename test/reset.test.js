@@ -67,3 +67,18 @@ test('resetWindow returns a window to a fresh state, keeping its objects', () =>
   d.body.appendChild(d.createElement('p'));
   return Promise.resolve().then(() => assert.deepEqual(observed, [], 'observers of the old document are gone'));
 });
+
+test('resetWindow forgets document named properties', () => {
+  const w = createWindow();
+  snapshotWindow(w);
+  const d = w.document;
+  d.body.innerHTML = '<form name="login"></form><img name="logo">';
+  assert.equal(d.login.tagName, 'FORM');
+  resetWindow(w);
+  assert.equal('login' in d, false);
+  assert.equal('logo' in d, false);
+  d.body.innerHTML = '<form name="login"></form>';
+  assert.equal(d.login.tagName, 'FORM');
+  d.body.innerHTML = '';
+  assert.equal('login' in d, false);
+});

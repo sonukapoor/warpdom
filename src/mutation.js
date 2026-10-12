@@ -154,7 +154,7 @@ export const MUTATION_INTERFACES = [
       return self;
     },
     members: {
-      observe(target, options) {
+      observe(target, options = undefined) {
         const os = state(this);
         if (!target?.[S]) throw new TypeError("Failed to execute 'observe' on 'MutationObserver': parameter 1 is not of type 'Node'.");
         const opts = normalize(options);
