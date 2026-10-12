@@ -989,4 +989,22 @@ and Last-Modified headers (runner), iframes loading cross-origin pages.
   per-file score warpdom 72.1% vs jsdom 69.4% (was 38.8%); subtests
   59,796 vs 52,869 of 69,303. Ahead or level in every subdirectory except
   innerText/outerText (both 3.2%: neither has innerText).
+- **2026-10-12: Reproducibility and a compare command before going
+  public.** Two audiences need two tools. (1) People checking our claims
+  should reproduce the published numbers from the warpdom repository alone,
+  so before warpdom goes public the corpus timing moves here (harness,
+  corpus list with pinned commits, timing scripts and the GitHub Actions
+  workflow, e.g. under bench/corpus/). Until then it stays in
+  dom-api-tracer (.github/workflows/timing.yml, corpus/pins.json,
+  scripts/research/), which goes back to its original purpose afterwards:
+  tracing which DOM APIs test suites use. (2) People trying warpdom on
+  their own project need one command, `npx warpdom compare`: runs the
+  project's tests on jsdom and on warpdom alternating, reports the speedup
+  and every test whose status differs (the corpus survey for one project),
+  next to the existing `warpdom vitest run`, with a CI example. It is also
+  how we collect evidence from real application suites.
+  Design: docs/compare.md (decided: 1 indicative round by default, warm-up
+  only with more rounds, per-file environment comments reported but not
+  switched in v1, no happy-dom column, exit code 1 on any pass-to-fail
+  change, the corpus timing reuses `compare()`).
 
