@@ -1,0 +1,7 @@
+round,project,config,seconds,differs
+1,solid,jsdom-default,5.1,0
+1,solid,warpdom-default,5.4,0
+2,solid,jsdom-default,5.1,0
+2,solid,warpdom-default,5.5,0
+3,solid,jsdom-default,5.3,0
+3,solid,warpdom-default,5.6,1

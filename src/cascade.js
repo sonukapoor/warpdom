@@ -20,7 +20,7 @@ import { segments, expand, serializeBox, BOX, PAIRS, CSS_WIDE } from './shorthan
 import { compileRuleSelector } from './selectors.js';
 import { directionality } from './directionality.js';
 import { documentStyleSheets, styleElementSheet } from './cssom.js';
-import { parseDeclarations, computed, validationModeOf } from './css.js';
+import { parseDeclarations, computed, validationModeOf, isLegacyMode } from './css.js';
 
 // --- the rule index ------------------------------------------------------------------
 
@@ -43,7 +43,7 @@ const bySpecificityThenOrder = (a, b) => b.specificity - a.specificity || b.orde
 // Rules inside other grouping rules never apply, as in jsdom.
 function mediaApplies(rule, mode) {
   const list = rule[S].media[S].list;
-  if (mode === 'jsdom26') return list.includes('screen');
+  if (isLegacyMode(mode)) return list.includes('screen');
   return list.length === 0 || list.includes('all') || list.includes('screen');
 }
 
@@ -269,6 +269,7 @@ const CUSTOM = [null, 1, 0, 0];
 // A shorthand or unknown property: box and pair shorthands from their
 // longhands, others as declared.
 function shorthandValue(element, name) {
+  if (LEGACY_BORDER.has(name) && isLegacyMode(validationModeOf(element[S].doc[S].window))) return legacyBorderValue(element, name);
   const longhands = SHORTHANDS[name];
   if (longhands && BOX.has(name) && longhands.length === 4) return serializeBox(longhands.map((l) => computedValue(element, l)));
   if (longhands && PAIRS.has(name) && longhands.length === 2) {
@@ -292,6 +293,36 @@ function shorthandValue(element, name) {
 
 const BORDER_SIDE = /^border-(top|right|bottom|left)$/;
 
+// jsdom 26 and earlier: the border shorthands compute to their declared
+// values, colors as written (border: 1px solid pink stays so, while
+// border-top-color is rgb(255, 192, 203)). border declares the sides and
+// border-width, -style and -color too; a longhand declared later does not
+// change them, and border-top-width alone leaves border-top empty.
+const LEGACY_BORDER = new Set(['border', 'border-top', 'border-right', 'border-bottom', 'border-left', 'border-width', 'border-style', 'border-color']);
+const BORDER_STYLES = new Set(['none', 'hidden', 'dotted', 'dashed', 'solid', 'double', 'groove', 'ridge', 'inset', 'outset']);
+const LEGACY_WIDTH = /^(thin|medium|thick|[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?[a-z%]*)$/i;
+const ZERO_LENGTH = /^[+-]?(0+\.?0*|\.0+)$/;
+
+function legacyBorderValue(element, name) {
+  const part = name === 'border-width' ? 0 : name === 'border-style' ? 1 : name === 'border-color' ? 2 : -1;
+  let value = name === 'border' ? undefined : cascaded(element, name);
+  const own = value !== undefined;
+  if (!own) value = cascaded(element, 'border');
+  if (value === undefined || CSS_WIDE.has(value.toLowerCase())) return '';
+  if (value.includes('var(')) return name === 'border' ? value : '';
+  if (own && part >= 0) return value;
+  const parts = ['', '', ''];
+  const tokens = segments(value);
+  for (let i = 0; i < tokens.length; i += 2) {
+    const token = tokens[i];
+    if (token === '') continue;
+    if (BORDER_STYLES.has(token.toLowerCase())) parts[1] = token;
+    else if (LEGACY_WIDTH.test(token)) parts[0] = ZERO_LENGTH.test(token) ? '0px' : token;
+    else parts[2] = token;
+  }
+  return part >= 0 ? parts[part] : parts.filter((p) => p !== '').join(' ');
+}
+
 // jsdom before 29 (the jsdom bundled with jest-environment-jsdom up to
 // Jest 30): an undeclared property computes to '', except display (the
 // user agent's, '' for inline elements), visibility, pointer-events and
@@ -309,7 +340,7 @@ function legacyDefault(element, name) {
     const parent = inheritParent(element);
     if (parent) return computedValue(parent, name);
     if (name !== 'color') return LEGACY_INHERITED[name];
-    return element[S].doc[S].window[S].compat.jsdom < 27 ? 'canvastext' : 'rgb(0, 0, 0)';
+    return element[S].doc[S].window[S].compat.rootColor;
   }
   if (name === 'background-color') return 'rgba(0, 0, 0, 0)';
   if (BORDER_COLOR.test(name)) return computedValue(element, 'color');

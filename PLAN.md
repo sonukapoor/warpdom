@@ -1008,3 +1008,101 @@ and Last-Modified headers (runner), iframes loading cross-origin pages.
   switched in v1, no happy-dom column, exit code 1 on any pass-to-fail
   change, the corpus timing reuses `compare()`).
 
+- **2026-10-12: Timing moves to GitHub Actions; why speedups vary.**
+  - Laptop timings can be disturbed by other jobs, so the reference
+    timing now runs in dom-api-tracer's `timing` workflow: one job per
+    project, pinned commits, alternating DOMs, with options for
+    experiment configurations and per-file phase timings.
+  - The local single-session re-timing (2 rounds, stopped early) gives a
+    drop-in median of 1.25x over 14 suites, faster on all 14.
+  - ariakit is wait-bound: warpdom does 7.5x less DOM work, but the test
+    processes mostly wait for animation frames paced at a real 60 Hz.
+    Experiment `exp/fast-frames` (frames without the real-time wait,
+    opt-in) is being measured.
+  - solid is 0.94x on a runner. That was first blamed on a 0.8 s cost of
+    loading warpdom as a custom environment in Vitest 2. That was wrong:
+    14 of solid's files pin jsdom with a `@vitest-environment` comment,
+    so the "warpdom" run loaded both DOMs. The same affected svelte
+    (84.5% of its tests). The harness now switches such files
+    (dom-api-tracer ceffbd6); see the correction in docs/research/README.md
+    section 3. With the switch, svelte shows 55 real differences, now being
+    fixed.
+  - Details in docs/research/README.md (3.2, 3.4, F6, F7).
+
+## 2026-10-12: `warpdom compare`, milestones 1-3 (branch feat/compare)
+
+Implemented (docs/compare.md): `src/compare/` (Node only; exported as
+`warpdom/compare`) and `warpdom compare` in bin/warpdom.js. The harness
+pieces from dom-api-tracer's trace-corpus.mjs moved here without the tracer:
+wrapper configs named `*.warpdom-compare.<role>.*` (only such names, the
+`node_modules/.warpdom-compare` copy and directories compare created while
+empty are ever deleted), `<out>/pending.json` written before every temporary
+file, cleanup in finally, on SIGINT/SIGTERM/SIGHUP and by the next run, a
+lock per output directory, `git status --porcelain` before and after. A
+config probe (the wrapper describes the projects and stops the runner)
+finds the DOM projects before any test runs; exit 2 when there are none.
+`--correctness` (one run each), `--rounds n` (alternating; untimed warm-up
+pair when n >= 2), flaky detection on both sides, regression/fixed/other
+classes and groups by status change and first error line, report.md
+(summary without file or test names, then details), results.json, logs,
+environment record. Per-file environment comments are counted and their
+tests left out of the comparison (status changes there are listed).
+Smoke tests (2 workers): solid packages/solid (Vitest 2) same results;
+14 of its files (268 of 482 tests) pin jsdom with a comment, and warpdom
+is 1.21x slower there (the warpdom run loads both DOMs); one
+transition test in a pinned file failed in warpdom runs only (isolate:
+false shares the worker). react-hook-form (Jest 30, jest-fixed-jsdom):
+1,524 tests same, 1.14x faster over 2 rounds.
+Open: monorepos (milestone 4), --explore (5); Jest tests of Node
+projects are counted in the totals (Jest's JSON has no project per file);
+the solid numbers argue for switching docblock-pinned files after all.
+Update (same day): compare now switches Vitest test files that pin jsdom
+or happy-dom with a comment (as the corpus harness does since
+dom-api-tracer ceffbd6): the wrapper patches fs.promises.readFile in
+Vitest's main process so the comment names `warpdom-compare` (resolved as
+a temporary `vitest-environment-warpdom-compare` package) or the baseline;
+Jest pins stay reported and not compared. solid again: all 482 tests
+compared, same results; 1.03x faster over 2 rounds (spread 1.01x-1.05x),
+was 1.21x slower with both DOMs loaded. The "Transition memo stale read"
+test passed in all 4 warpdom runs (it failed in 3 of 4 when pinned files
+stayed on jsdom next to warpdom files in the shared worker), which points
+to the mixed environments in one worker.
+
+- **2026-10-12: jsdom 25 and its cssstyle (svelte).** svelte (Vitest 4,
+  jsdom 25.0.1, all files on warpdom) showed that jsdom 26 and earlier
+  behave like the cssstyle 4.x they load, not only like their own version:
+  svelte's lockfile has cssstyle 4.1.0, a fresh jsdom 25 install gets
+  4.6.0. Observed (black box, jsdom 25.0.1 with each cssstyle 4.x, jsdom 26
+  and 30):
+  - Undeclared computed color (and the border colors derived from it): ''
+    before cssstyle 4.4, 'CanvasText' in 4.4 and 4.5, 'canvastext' from
+    4.6 (jsdom 26), rgb(0, 0, 0) from jsdom 27.
+  - url() in background and background-image serializes without quotes
+    before cssstyle 4.3.1 (url('a.png') -> url(a.png), also in the style
+    attribute and the computed value), quoted from 4.3.1 on.
+  - cssstyle 4 parses 54 properties (margin, padding, the border ones,
+    width, height, top..left, colors, fonts, flex, background); every other
+    value is kept as written: min-height: 0 stays 0 (warpdom wrote 0px),
+    gap: +.5 stays +.5. Same in jsdom 25 and 26.
+  - Computed border shorthands (border, border-top..left, border-width,
+    -style, -color) are the declared values, colors as written: border:
+    100px solid pink computes to 100px solid pink (jsdom 30: rgb(255, 192,
+    203)); border declares the sides too, a later border-top-color does not
+    change them, border-top-width alone leaves border-top empty. jsdom 27
+    and 28 differ again (border '' for named colors); not modeled.
+  - Vitest's jsdom environment defines global getters for matchMedia,
+    createPopup, scrollLeft and scrollTop even though jsdom lacks them, so
+    a test that assigns Window.prototype.matchMedia (svelte's helpers) makes
+    window.matchMedia work; warpdom's Vitest environment now does the same.
+  warpdom: createWindow takes `cssstyle` (the adapters read it next to the
+  jsdom they detect; `environmentOptions.warpdom.cssstyle` /
+  `testEnvironmentOptions.cssstyle` override), validation mode 'jsdom25'
+  (= 'jsdom26' with unquoted url()s) for cssstyle before 4.3.1, and
+  compat.rootColor. Without a cssstyle version the jsdom 25/26 profile
+  stays as before (latest 4.x). svelte: 55 -> 30 differences; the rest are
+  <select>, media, draggable, hydration and script execution.
+  Not modeled: cssstyle before 4.4 also leaves float and the font
+  properties unparsed and parses the others more loosely (52 properties
+  differ from 4.6 on a sweep, e.g. border: 1px solid #ff0000 keeps #ff0000,
+  currentcolor stays the computed border color); jsdom 26 lowercases units
+  in parsed lengths (1PX -> 1px).

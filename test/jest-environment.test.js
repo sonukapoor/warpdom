@@ -53,3 +53,23 @@ test('Jest environment: a warpdom window as the global, with what jest-environme
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+test('Jest environment: follows the jsdom and cssstyle jest-environment-jsdom loads', async () => {
+  const rootDir = fakeJestProject();
+  const pkg = (dir, json) => { mkdirSync(join(rootDir, dir), { recursive: true }); writeFileSync(join(rootDir, dir, 'package.json'), JSON.stringify(json)); };
+  pkg('node_modules/jest-environment-jsdom', { name: 'jest-environment-jsdom', version: '29.7.0' });
+  pkg('node_modules/jsdom', { name: 'jsdom', version: '25.0.1' });
+  pkg('node_modules/jsdom/node_modules/cssstyle', { name: 'cssstyle', version: '4.1.0' });
+  let env;
+  try {
+    env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: {} } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+    await env.setup();
+    const run = (code) => vm.runInContext(code, env.getVmContext());
+    // cssstyle 4.1: url() without quotes, no root color.
+    assert.equal(run('const d = document.createElement("div"); d.style.backgroundImage = "url(\'a.png\')"; d.style.backgroundImage'), 'url(a.png)');
+    assert.equal(run('getComputedStyle(document.body.appendChild(document.createElement("p"))).color'), '');
+  } finally {
+    await env?.teardown();
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});

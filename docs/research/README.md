@@ -123,6 +123,21 @@ Head-to-head with happy-dom (2026-10-09, 3 suites x 3 DOMs x 3 modes, 3
 interleaved rounds): `scripts/research/headtohead.sh`,
 [docs/head-to-head.md](../head-to-head.md).
 
+**On GitHub Actions (from 2026-10-12).** `dom-api-tracer/.github/workflows/timing.yml`
+runs the same protocol (`timing-rounds.sh`) with one job per project on
+GitHub-hosted Linux runners, each project checked out at the commit pinned
+in `dom-api-tracer/corpus/pins.json`, and combines the per-project CSVs
+into the same report. jsdom and warpdom alternate within one job, so a
+ratio never mixes machines. Jobs on different projects run on different
+machines, so absolute times are not comparable across rows. Inputs select
+the projects, rounds, warpdom ref, configurations (including experiment
+configurations such as `warpdomframes-default`) and per-file phase timings
+(`perfile-reporter.mjs`, Vitest only: environment setup, prepare, collect,
+setup files and tests per test file, compared with `perfile.cjs`). Every
+job uploads its CSV, environment record and harness logs. This is the
+reference setup from now on: anyone with access can rerun it, and it is
+not affected by other work on a laptop.
+
 ### 2.5 Profiling
 
 `trace-corpus.mjs --profile` runs every test process with `--cpu-prof`.
@@ -132,6 +147,11 @@ code, GC, Node internals and other; built-in frames are charged to their
 nearest caller with a source file. `scripts/research/prof-top-dom.cjs`
 ranks functions within warpdom's own files. Profiled runs are slower than
 timed runs and are used only for shares, never for speedups.
+`profile-share.mjs --json` also reports idle time per process (summed
+over processes): time a test process spends waiting, e.g. on timers. A
+suite whose idle time dwarfs its CPU time cannot gain much from a faster
+DOM (3.4, F6). CPU shares are robust to other load on the machine; wall
+times are not.
 
 ### 2.6 Micro-benchmarks
 
@@ -152,7 +172,34 @@ this record next to every run, including the commit of every corpus
 checkout; the runs in this document predate that, so their project commits
 are only known to be the local checkouts as of 2026-10-08 to 2026-10-11.
 
+GitHub Actions runs (2026-10-12 on): `ubuntu-latest` runners, Node
+22.23.3. Each job's environment record (CPU model, cores, memory, all
+commits) is in its artifact. Hosted runners are shared virtual machines
+with fewer cores than the laptop, so absolute times are 2-3x the laptop's
+(react-hook-form: jsdom 18.8 s vs 6.3 s) and ratios can differ. Small
+suites differ most (solid: 0.94x on the runner, 1.07x on the laptop, both
+invalid; see the correction in section 3).
+
 ## 3. Results
+
+> **Correction, 2026-10-12: svelte and solid were not fully measured.**
+> Vitest takes a test file's environment from a `@vitest-environment
+> jsdom` comment before the config. The harness switched only the config,
+> so files with that comment stayed on jsdom in every "warpdom" run before
+> 2026-10-12. Measured on the jsdom baselines:
+> - **svelte:** 8 of 34 files, 6,656 of 7,879 tests (84.5%);
+> - **solid:** 14 of 27 files, 268 of 482 tests (55.6%);
+> - ariakit 1.5%; CopilotKit and handsontable under 1%, mostly `node` pins, which are correct anyway;
+> - the other 9 suites: none.
+>
+> So the svelte and solid rows below (correctness and speed) compare
+> mostly jsdom with jsdom. They are kept for the record but must not be
+> cited. The harness now switches these files without editing them
+> (dom-api-tracer ceffbd6). With that fix, solid passes all 482 tests on
+> warpdom, and svelte has 55 tests that pass on jsdom and fail on
+> warpdom: jsdom 25 profile gaps, `<select>`, media, hydration. Those are
+> being fixed (PLAN.md). Both suites are to be re-measured.
+
 
 ### 3.1 Correctness (RQ1)
 
@@ -165,7 +212,7 @@ number of test entries in the jsdom baseline.
 | --- | --- | --- | --- | --- | --- | --- |
 | react-spectrum | 8,446 | 8,317 | 8,317 | **0** | 304 (2026-10-10, survey-jest.log) | |
 | handsontable | 8,062 | 8,062 | 8,059 | 3 | 16 (2026-10-11 morning, survey3.log); 8,418 on the first Jest run (survey-jest.log) | all 3 in `jsdomThemeCssFilter.unit.js`, which tests a workaround for a style-sheet parse error only jsdom reports; warpdom deliberately does not reproduce the error |
-| svelte | 7,873 | 7,818 | 7,818 | **0** | 0 (2026-10-09, survey.log) | |
+| svelte (invalid, see correction) | 7,873 | 7,818 | 7,818 | ~~0~~ 55 after the fix | 0 (2026-10-09, survey.log) | |
 | material-ui | 6,751 | 5,878 | 5,878 | **0** | 0 (survey3.log) | |
 | CopilotKit | 3,427 | 2,275 | 2,275 | **0** | 362 (survey.log) | coverage dropped: see below |
 | ariakit | 1,852 | 1,811 | 1,820 | 9 | 59 (survey.log) | all 9 fail on jsdom and pass on warpdom (proxy defineProperty, a CompositionEvent view check; PLAN.md "Corpus") |
@@ -173,7 +220,7 @@ number of test entries in the jsdom baseline.
 | ark-ui | 1,244 | 1,189 | 1,187 | 2 | 6 (survey.log) | Editable typing race (fails about 1 run in 3 under load); a NumberInput test that also fails on jsdom with the current checkout |
 | radix-primitives | 982 | 976 | 976 | **0** | 0 (survey3.log) | |
 | vuetify | 822 | 818 | 818 | **0** | 0 (survey3.log) | |
-| solid | 480 | 480 | 479 | 1 | 136 (survey.log) | `transition.spec` fails on jsdom too in some file orders (`isolate: false` shares solid's module state) |
+| solid (invalid, see correction) | 480 | 480 | 479 | 1 (0 after the fix) | 136 (survey.log) | `transition.spec` fails on jsdom too in some file orders (`isolate: false` shares solid's module state) |
 | floating-ui | 339 | 333 | 333 | **0** | 14 (survey.log) | |
 | analog | 196 | 187 | 187 | **0** | 0 (survey.log) | |
 | emoji-picker-element | 160 | 157 | 157 | **0** | 7 (survey3.log) | |
@@ -220,8 +267,8 @@ compatibility fixes (differences in that run in the last column).
 | analog | Vitest | timing-2026-10-09.csv | 13.7 s | 11.9 s | 1.15x | learned: 11.5 s vs 13.9 s (1.21x, isolated kept) | 0 |
 | emoji-picker-element | Vitest 3 | headtohead-2026-10-09.csv | 22.2 s | 19.6 s | 1.13x | happy-dom 20.0 s (1 differs); learned 19.2 s vs 22.9 s (1.19x) | 0 |
 | ariakit | Vitest | timing-2026-10-09.csv | 405.6 s | 362.6 s | 1.12x | | 22 |
-| svelte | Vitest | timing-2026-10-09.csv | 38.2 s | 36.8 s | 1.04x | | 0 |
-| solid | Vitest 2 | timing-2026-10-09.csv | 1.4 s | 1.5 s | 0.93x | learned (isolated): 1.4 s vs 1.5 s (1.07x) | 1 |
+| svelte (invalid) | Vitest | timing-2026-10-09.csv | 38.2 s | 36.8 s | 1.04x | | 0 |
+| solid (invalid) | Vitest 2 | timing-2026-10-09.csv | 1.4 s | 1.5 s | 0.93x | learned (isolated): 1.4 s vs 1.5 s (1.07x) | 1 |
 
 All sources are in [data/timing/](data/timing/). Over these 14 latest
 measurements the median default-pool speedup is 1.30x (mixed dates, so an
@@ -245,6 +292,43 @@ ran 5-13% faster in the second session, so compare ratios:
 | MUI vmThreads | 28.8 / 22.2 s | 1.30x | 26.8 / 21.3 s | 1.26x | 0 -> 0 |
 | react-spectrum | 150.5 / 108.9 s | 1.38x | 138.0 / 98.9 s | 1.40x | 1 -> 0 |
 | handsontable | 545.7 / 210.7 s | 2.59x | 475.8 / 156.7 s | 3.04x | 16 -> 3 |
+
+**Re-timing, 2026-10-12 (laptop, one session, current warpdom).** All
+14 suites with the same protocol and warpdom main as of 2026-10-12, in
+one session. It was stopped during round 3 to move timing to GitHub
+Actions. So the table below has 2 rounds per suite (3 for
+react-hook-form and solid), and the median of 2 rounds is the lower
+value. Round 2 of react-spectrum and CopilotKit overlapped with a
+profiling run (22:22-22:35) and is slower in both configurations; it
+does not enter their median.
+Data: [data/timing/timing-2026-10-12-local-partial.csv](data/timing/timing-2026-10-12-local-partial.csv),
+environment record next to it.
+
+| Suite | jsdom | warpdom | Speedup | Differ |
+| --- | --- | --- | --- | --- |
+| handsontable | 477.1 s | 151.7 s | 3.09x | 3 |
+| material-ui | 85.0 s | 44.1 s | 1.87x | 0 |
+| radix-primitives | 17.1 s | 10.0 s | 1.71x | 0 |
+| vuetify | 15.2 s | 8.9 s | 1.62x | 0 |
+| floating-ui | 9.7 s | 6.2 s | 1.56x | 0 |
+| ark-ui | 74.3 s | 47.2 s | 1.54x | 1 |
+| react-hook-form | 6.3 s | 5.0 s | 1.26x | 0 |
+| CopilotKit | 142.5 s | 114.6 s | 1.24x | 0 |
+| analog | 13.3 s | 10.8 s | 1.23x | 0 |
+| react-spectrum | 128.2 s | 105.9 s | 1.21x | 0 |
+| emoji-picker-element | 21.6 s | 19.1 s | 1.13x | 0 |
+| ariakit | 401.1 s | 359.1 s | 1.10x | 9 |
+| solid (invalid) | 1.5 s | 1.4 s | 1.07x | 1 |
+| svelte (invalid) | 35.6 s | 35.0 s | 1.01x | 0 |
+
+Single-session median over the 14 suites: **1.25x** (default pool, drop-in);
+over the 12 valid ones (without svelte and solid) **1.40x** (middle
+pair 1.26x and 1.54x, so the median is sensitive to which suites are in
+the corpus). warpdom is faster on all 14; 5 suites gain
+1.5x or more. Speedup ratios
+here are the median of per-round ratios (`timing-report.cjs`). The
+GitHub Actions run of the same 14 suites (3 rounds, pinned commits) is to
+replace this table (PLAN.md).
 
 ### 3.3 handsontable per package
 
@@ -309,6 +393,31 @@ bench/env-bench.mjs and bench/style-miss-bench.mjs:
 - CSS value validation: repeated style writes unchanged (~130 ns, cached);
   unique values 449 -> 562 ns per write (+25%).
 
+**ariakit, 2026-10-12** (both DOMs; profiles ran while the laptop was
+also running timing, so CPU shares are usable and wall times are not):
+[data/profile/ariakit-jsdom-2026-10-12.profile-share.txt](data/profile/ariakit-jsdom-2026-10-12.profile-share.txt),
+[data/profile/ariakit-warpdom-2026-10-12.profile-share.txt](data/profile/ariakit-warpdom-2026-10-12.profile-share.txt)
+(JSON with idle time next to them),
+[data/profile/ariakit-warpdom-2026-10-12.top-dom.txt](data/profile/ariakit-warpdom-2026-10-12.top-dom.txt).
+
+| | jsdom | warpdom |
+| --- | --- | --- |
+| CPU in test processes | 321.7 s | 180.5 s (-44%) |
+| of which DOM | 130.9 s (40.7%) | 17.5 s (9.7%), 7.5x less |
+| idle in test processes (summed) | 871.9 s | 824.7 s |
+
+warpdom removes most of ariakit's DOM cost, but the suite is
+wait-bound: its test processes are idle for about 4.6x as long as they
+compute. The waits come from ariakit's own interaction helpers
+(`@ariakit/test`, `sleep.ts`). After every simulated click, key press or
+hover they await two animation frames and a 4 ms timer. Animation frames
+in jsdom and warpdom fire on a real 60 Hz clock (16.7 ms), so every
+interaction costs at least about 37 ms of wall time regardless of the DOM.
+Within warpdom's CPU, the top functions are the cascade (`ruleIndex`,
+`computedValue`, `cascaded`: about 10%), the 1 ms clock behind
+`performance.now` and frames, interface creation (`materialize`, 3%) and
+event dispatch.
+
 ## 4. Findings
 
 **F1. "jsdom-compatible" is not one target: suites encode the jsdom
@@ -327,7 +436,11 @@ only from 30; jsdom 26 does not shorten box shorthands (margin: 0 0 stays
 projects use whichever jsdom they install, so one corpus needs several
 behaviors at once. warpdom takes a jsdom version (`createWindow({ jsdom })`), detected
 by its adapters from the installed jsdom, and follows the observable
-behavior of that version.
+behavior of that version. Up to jsdom 26 the version alone is not enough:
+CSS behavior follows the cssstyle 4.x the lockfile resolved (svelte's
+jsdom 25.0.1 with cssstyle 4.1.0: undeclared computed color '' instead of
+canvastext, url() without quotes), so the adapters pass that version too
+(PLAN.md, 2026-10-12).
 
 **F2. Spec-generated CSS value validation can match jsdom without false
 rejections and at little cost.** Grammars generated from the
@@ -352,8 +465,8 @@ prototypes, so a prototype mock cannot leak into the next file (3.5).
 dominate.** On MUI warpdom is 8% of CPU; Node internals, Vitest, React and
 Testing Library are 63% together (3.4). Whole-suite speedups therefore
 follow the suite's DOM share: 13.7x for handsontable's DOM-heavy core but
-1.0-1.2x for compiler-, wait- or logic-heavy suites (svelte, ariakit,
-CopilotKit, solid). The largest remaining multiples come from not paying
+1.0-1.2x for wait- or logic-heavy suites (ariakit, CopilotKit; svelte
+and solid are to be re-measured, see the correction in section 3). The largest remaining multiples come from not paying
 per-file isolation: warpdom's in-place reset makes fast mode correct
 where a fresh jsdom window per file breaks suites (Radix: 605 differences
 with fresh jsdom windows, 0 with warpdom's reset; docs/head-to-head.md),
@@ -365,6 +478,39 @@ remaining 15 differences are explained (3.1). Differences are also a
 bug-finding signal in the other direction: ariakit's 9 tests fail on
 jsdom and pass on warpdom.
 
+**F6. Some suites are bound by real-time waits, not by the DOM.**
+ariakit's DOM CPU drops 7.5x on warpdom, but its run time only 1.10x. Its
+test helpers wait for animation frames, which jsdom and warpdom pace with
+real time (3.4). A faster DOM cannot shorten those waits. Making frames
+fire without the real-time wait could ("fast frames"). That changes the
+order of frames relative to short timers, so it would be an opt-in that
+needs per-test verification. An experiment branch (`exp/fast-frames`,
+`WARPDOM_FAST_FRAMES=1`) is being measured on GitHub Actions on ariakit,
+ark-ui, floating-ui, Radix and Vuetify, with test-status differences
+against jsdom.
+
+**F7. Why the speedup varies between suites.** A suite's time is DOM work
+plus everything else (compiling, framework, runner, test code, waiting),
+and warpdom changes only the first. Three effects explain the spread
+from 1.01x to 3.09x:
+1. **The DOM share.** It is high in MUI, Radix and handsontable, and low
+   in wait-bound ariakit (F4, F6).
+2. **The mix of DOM operations.** warpdom is not uniformly faster. The
+   cascade (`getComputedStyle`) does real work in both DOMs and
+   dominates warpdom's own profile on MUI and ariakit.
+3. **Fixed costs in small suites** (open). The first explanation of
+   solid's slowdown (a one-time cost of about 0.8 s per worker from
+   loading warpdom as a custom environment) was wrong. Per-file timings
+   (run 38197895182) did show that cost on the first file of each worker,
+   but a CPU profile showed why: 14 of solid's files pinned jsdom with a
+   comment, so the "warpdom" run loaded both DOMs. That is the correction
+   at the top of section 3. Whether small suites lose to fixed costs
+   remains to be measured with all files on warpdom.
+
+The same per-file comparison is planned for `warpdom compare`
+([docs/compare.md](../compare.md)), so users can see which of their files
+gain or lose.
+
 ## 5. Threats to validity
 
 - **Few rounds, no confidence intervals.** 3 rounds per configuration;
@@ -372,8 +518,10 @@ jsdom and pass on warpdom.
   the second 2026-10-11 session; load average up to 14 on 2026-10-09).
 - **Mixed dates and warpdom versions** in the speed table; only the
   2026-10-11 rows (MUI, react-spectrum, handsontable) are current.
-- **Corpus commits not pinned.** Project commits were not recorded for
-  these runs (record-env now does this); CopilotKit's checkout lost builds
+- **Corpus commits not pinned** before 2026-10-12. Project commits were
+  not recorded for the earlier runs. record-env now records them, and
+  `dom-api-tracer/corpus/pins.json` pins 18 projects for the GitHub
+  Actions runs; CopilotKit's checkout lost builds
   between surveys, shrinking its coverage. 7 jsdom baselines are from
   2026-10-08 and were not re-run with the warpdom runs.
 - **Flaky tests** (ark-ui Editable, solid transition.spec under
@@ -390,7 +538,14 @@ jsdom and pass on warpdom.
   held-out set is needed.
 - **happy-dom is only in the 2026-10-09 head-to-head** (3 suites);
   linkedom is in no comparison.
-- **Hardware**: one Apple M4 Pro laptop; no Linux/x86 CI numbers.
+- **Hardware**: one Apple M4 Pro laptop for all results up to 2026-10-12.
+  Linux numbers from GitHub-hosted runners are being collected (2.4,
+  2.7). Runners are shared virtual machines, so their noise differs from
+  the laptop's.
+- **Concurrent load on the laptop** is not always visible to the
+  measurement: other jobs ran on timers during some sessions, and on
+  2026-10-12 a profiling run overlapped one timing round (3.2). This is
+  why the reference timing moved to GitHub Actions.
 
 ## 6. Open work for a paper
 
@@ -408,7 +563,9 @@ jsdom and pass on warpdom.
 6. Re-time the 2026-10-09 rows (and Jest's react-hook-form) with current
    warpdom; profile handsontable core, whose 2026-10-11 gain is larger than
    cheaper startup explains (PLAN.md).
-7. Linux CI timings (the setting where test time costs money).
+7. Linux CI timings (the setting where test time costs money): the GitHub
+   Actions workflow exists (2.4); the first full 14-suite run is from
+   2026-10-12.
 
 ## 7. Reproduction
 
@@ -436,6 +593,13 @@ corpus command at a time, on an otherwise idle machine. From
    `zero-run.mjs`.
 6. **Micro-benchmarks (warpdom):** `npm run bench:load`, `npm run bench:hot`,
    `node bench/<name>-bench.mjs [checkout]` per [bench/README.md](../../bench/README.md).
+
+**Without a laptop:** run the `timing` workflow in dom-api-tracer
+(Actions, "timing", "Run workflow"; or `gh workflow run timing -f
+projects=<a,b> -f rounds=3 [-f warpdom_ref=<ref>] [-f "configs=..."]
+[-f perfile=true]`). The run's summary page shows the table; the
+`timing-report` artifact has the combined CSV, environment records and
+per-file timings.
 
 Survey and timing scripts write an environment record (commits of all
 corpus checkouts, warpdom, Node, OS, CPU, memory) next to their output.

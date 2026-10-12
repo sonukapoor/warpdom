@@ -6,7 +6,7 @@
 // Values are kept as written: unlike jsdom 30 they are not normalized
 // (jsdom serializes `margin: 0` as `0px`).
 import { S, state, domError, cssomChanges, ELEMENT_NODE, TEXT_NODE, HTML_NS, nextInTree, connected } from './internal.js';
-import { declarationBlock, serializeDeclarations, escapeIdentifier, protosMode } from './css.js';
+import { declarationBlock, serializeDeclarations, escapeIdentifier, protosMode, isLegacyMode } from './css.js';
 import { liveList } from './collections.js';
 import { fallbackBaseURL } from './base-url.js';
 
@@ -104,7 +104,7 @@ export function parseRules(text, strict = false) {
 // none, more than one, or something else after it. jsdom 26 ignored what
 // follows a rule (a{}; and a{} b{} inserted a), and so does its profile.
 function parseOneRule(text, protos) {
-  if (protosMode(protos) === 'jsdom26') return parseRules(text)[0] ?? null;
+  if (isLegacyMode(protosMode(protos))) return parseRules(text)[0] ?? null;
   const records = parseRules(text, true);
   return records.length === 1 && !records[0].invalid ? records[0] : null;
 }

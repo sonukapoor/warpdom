@@ -309,7 +309,7 @@ export const FEATURE_INTERFACES = [
 
 // Per-window setup: URL, location, history, and the legacy factory
 // constructors Image, Audio and Option (their prototype is the element's).
-export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATEST_JSDOM } = {}) {
+export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATEST_JSDOM, cssstyle } = {}) {
   const ws = window[S];
   ws.url = new URL(initial);
   // Compatibility with the jsdom generation the tests were written for
@@ -319,9 +319,18 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
   // computed styles; before 30.1.2 focus() ignored display: none and the
   // hidden attribute.
   const version = parseJsdomVersion(jsdom);
+  // jsdom 26 and earlier parse CSS with cssstyle 4, whose behavior changed
+  // between its minor releases; the installed one (option cssstyle, found
+  // by the adapters next to jsdom) decides, else the latest 4.x. Before
+  // 4.3.1, url() in background and background-image serialized without
+  // quotes; before 4.4 the root element's computed color was '', and in
+  // 4.4 and 4.5 'CanvasText'.
+  const css = version[0] < 27 && cssstyle != null ? parseJsdomVersion(cssstyle) : null;
   ws.compat = {
     version: jsdom, jsdom: version[0], legacyComputedStyle: version[0] < 29, mutableComputedStyle: version[0] < 28,
-    focusIgnoresRendering: before(version, [30, 1, 2]),
+    focusIgnoresRendering: before(version, [30, 1, 2]), cssstyle: css ? cssstyle : undefined,
+    unquotedUrls: css !== null && before(css, [4, 3, 1]),
+    rootColor: version[0] >= 27 ? 'rgb(0, 0, 0)' : css !== null && before(css, [4, 4, 0]) ? '' : css !== null && before(css, [4, 6, 0]) ? 'CanvasText' : 'canvastext',
   };
   // DOMException is the platform's (shared by all windows); its subclass too.
   window.DOMException = DOMException;

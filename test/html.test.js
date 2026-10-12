@@ -143,9 +143,12 @@ htmlParity('hyperlinks: URL members of <a> and <area>', (w) => {
   return out;
 });
 
-// After tasks queued so far (navigation events are zero-delay timer tasks,
-// and timers with the same delay run in order): no fixed wait to outrun.
-const tick = () => new Promise((resolve) => setTimeout(() => setTimeout(resolve, 0), 0));
+// After tasks queued so far. Navigation events are zero-delay timer tasks
+// in both DOMs, but jsdom's can take more than two timer hops to run when
+// the machine is busy (seen with the compare end-to-end tests running in
+// parallel), so wait on the clock: a timer due later runs after every
+// zero-delay task queued before it.
+const tick = () => new Promise((resolve) => setTimeout(resolve, 25));
 
 htmlParity('hyperlinks: following links', async (w) => {
   const d = w.document;

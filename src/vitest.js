@@ -31,9 +31,12 @@ function dataValue(object, key) {
 export const VITEST_HOST_KEYS = ['AbortController', 'AbortSignal', ...HOST_TIMER_KEYS];
 
 // Names Vitest's jsdom environment defines on the global from its key list
-// even when the window lacks them: before jsdom 30 there is no CSS, and the
-// global CSS reads undefined (Vuetify reads CSS?.supports at load).
-export const VITEST_ALWAYS_KEYS = ['CSS'];
+// even when the window lacks them, as getters that read the window: before
+// jsdom 30 there is no CSS, and the global CSS reads undefined (Vuetify
+// reads CSS?.supports at load); jsdom has no matchMedia, and a test that
+// assigns Window.prototype.matchMedia makes the global one work (svelte's
+// test helpers do).
+export const VITEST_ALWAYS_KEYS = ['CSS', 'matchMedia', 'createPopup', 'scrollLeft', 'scrollTop'];
 
 export function installWindow(global, window, { hostKeys = [], alwaysKeys = [] } = {}) {
   const originals = new Map();
@@ -104,24 +107,32 @@ function nodeHostGlobals() {
 
 // The jsdom generation to behave like: environmentOptions.warpdom.jsdom,
 // else the jsdom Vitest's jsdom environment would load (the project's,
-// else one Vitest itself resolves), else warpdom's default.
-export function jsdomVersion(options, root = process.cwd()) {
-  const set = options?.warpdom?.jsdom;
-  if (set != null) return set;
+// else one Vitest itself resolves), else warpdom's default. Also the
+// cssstyle that jsdom loads (environmentOptions.warpdom.cssstyle
+// overrides it): jsdom 26 and earlier behave like their cssstyle 4.x.
+export function jsdomProfile(options, root = process.cwd()) {
+  const set = options?.warpdom ?? {};
   const project = createRequire(join(root, 'package.json'));
+  let path;
   try {
-    return project('jsdom/package.json').version;
-  } catch { /* not a dependency of the project */ }
-  try {
-    return createRequire(project.resolve('vitest/package.json'))('jsdom/package.json').version;
+    path = project.resolve('jsdom/package.json');
   } catch {
-    return undefined;
+    try {
+      path = createRequire(project.resolve('vitest/package.json')).resolve('jsdom/package.json');
+    } catch { /* no jsdom installed */ }
   }
+  const read = (from, name) => { try { return createRequire(from)(`${name}/package.json`).version; } catch { return undefined; } };
+  return {
+    jsdom: set.jsdom ?? (path ? read(path, 'jsdom') : undefined),
+    cssstyle: set.cssstyle ?? (path && set.jsdom == null ? read(path, 'cssstyle') : undefined),
+  };
 }
+
+export const jsdomVersion = (options, root) => jsdomProfile(options, root).jsdom;
 
 function createTestWindow(options) {
   // Vitest's jsdom environment defaults to this URL as well.
-  const window = createWindow({ url: 'http://localhost:3000', jsdom: jsdomVersion(options) });
+  const window = createWindow({ url: 'http://localhost:3000', ...jsdomProfile(options) });
   // Like Vitest's jsdom environment: an error thrown in an event listener
   // fails the test, unless the test listens for 'error' on the window.
   window[S].onUnhandledError = (error) => {

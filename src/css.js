@@ -133,18 +133,22 @@ function functionArguments(value) {
 }
 
 // url() serialized with a quoted string, as jsdom does for these
-// properties (jsdom 26: the background ones).
+// properties (jsdom 26: the background ones); in 'jsdom25' mode (cssstyle
+// before 4.3.1) the background ones without quotes: url(a.png).
 const QUOTED_URLS = {
   spec: new Set(['background', 'background-image', 'content', 'list-style-image', 'mask-image', 'filter']),
   jsdom26: new Set(['background', 'background-image']),
 };
+const UNQUOTED_URLS = { jsdom25: QUOTED_URLS.jsdom26 };
+const URL_FUNCTION = /\burl\(\s*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|([^"'()\s]*))\s*\)/gi;
 function quoteUrls(value) {
-  return value.replace(/\burl\(\s*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|([^"'()\s]*))\s*\)/gi, (m, dq, sq, raw) => {
+  return value.replace(URL_FUNCTION, (m, dq, sq, raw) => {
     if (dq !== undefined) return `url("${dq}")`;
     const text = sq ?? raw;
     return `url("${text.replace(/(^|[^\\])"/g, '$1\\"')}")`;
   });
 }
+const unquoteUrls = (value) => value.replace(URL_FUNCTION, (m, dq, sq, raw) => `url(${dq ?? sq ?? raw})`);
 
 // A list (font families, background layers): ", " between its items
 // (jsdom 26 and later).
@@ -180,6 +184,17 @@ const JSDOM26_VALIDATED = new Set(['-webkit-text-fill-color', '-webkit-text-stro
   'clear', 'clip', 'color', 'flex', 'float', 'flood-color', 'font', 'font-family', 'font-size', 'font-style', 'height',
   'left', 'lighting-color', 'line-height', 'margin', 'margin-bottom', 'margin-left', 'margin-right', 'margin-top', 'opacity', 'outline-color',
   'padding', 'padding-bottom', 'padding-left', 'padding-right', 'padding-top', 'right', 'stop-color', 'top', 'width']);
+// Properties jsdom 26 (cssstyle 4) parses; it keeps the others' values as
+// written (min-height: 0 stays 0, gap: +.5 stays +.5). Measured with
+// cssstyle 4.4 to 4.6.
+const JSDOM26_PARSED = new Set(['-webkit-text-fill-color', '-webkit-text-stroke-color', 'background-color', 'background-image', 'border-bottom-color',
+  'border-bottom-width', 'border-left-color', 'border-left-width', 'border-right-color', 'border-right-width', 'border-spacing', 'border-top-color',
+  'border-top-width', 'bottom', 'color', 'flex-basis', 'flex-grow', 'flex-shrink', 'flood-color', 'font-family', 'font-size', 'font-weight', 'height',
+  'left', 'lighting-color', 'line-height', 'margin-bottom', 'margin-left', 'margin-right', 'margin-top', 'opacity', 'outline-color', 'padding-bottom',
+  'padding-left', 'padding-right', 'padding-top', 'right', 'stop-color', 'top', 'width', 'background', 'background-position', 'border', 'border-bottom',
+  'border-color', 'border-left', 'border-right', 'border-top', 'border-width', 'flex', 'font', 'font-variant', 'margin', 'padding']);
+// 'jsdom25' is 'jsdom26' with unquoted url()s (cssstyle before 4.3.1).
+export const isLegacyMode = (mode) => mode === 'jsdom26' || mode === 'jsdom25';
 const modes = new WeakMap(); // CSSStyleProperties prototype -> mode
 export function setValidationMode(proto, mode) { modes.set(proto, mode); }
 const modeOf = (proto) => modes.get(proto) ?? 'spec';
@@ -194,7 +209,7 @@ const isKnownProperty = (name) => name.startsWith('--') || LONGHANDS[name] !== u
 // same few values, so each is validated and serialized once. INVALID marks
 // a value the property's grammar rejects.
 const INVALID = null;
-const declaredCaches = { spec: new Map(), jsdom26: new Map(), page: new Map() }; // mode -> property -> (raw value -> serialized)
+const declaredCaches = { spec: new Map(), jsdom26: new Map(), jsdom25: new Map(), page: new Map() }; // mode -> property -> (raw value -> serialized)
 function declaredValue(name, value, mode = 'spec') {
   const cache = declaredCaches[mode];
   let byValue = cache.get(name);
@@ -298,6 +313,7 @@ function serializeDeclared(name, value, mode) {
   if (name.startsWith('--')) return value;
   // CSS-wide keywords are ASCII case-insensitive and serialize lowercased.
   if (value.length <= 12 && CSS_WIDE_KEYWORD.test(value)) return value.toLowerCase();
+  if (isLegacyMode(mode) && !JSDOM26_PARSED.has(name)) return value;
   if (name === 'display' && mode === 'spec') return displayShortForm(value);
   if (name === 'flex') return flexLonghands(canonicalNumbers(value));
   if (name === 'font') return familyCommas(serializeFont(canonicalNumbers(value)));
@@ -316,6 +332,7 @@ function serializeDeclared(name, value, mode) {
   if (value.includes('(')) {
     if (mode === 'spec' && name !== 'border-image' && /(min|max|clamp|gradient)\(/i.test(value)) value = functionArguments(value);
     if (QUOTED_URLS[mode]?.has(name)) value = quoteUrls(value);
+    else if (UNQUOTED_URLS[mode]?.has(name)) value = unquoteUrls(value);
     return name === 'background' || name === 'background-image' ? familyCommas(value) : value;
   }
   const box = BOX_SHORTHANDS.has(name);
@@ -350,7 +367,7 @@ function parseInto(decls, text, mode) {
     if (!name || !value) continue;
     const declared = declaredValue(name, value, mode);
     if (declared === INVALID) continue;
-    if (mode !== 'jsdom26') {
+    if (!isLegacyMode(mode)) {
       if (!important && (covered?.has(name) || decls.get(name)?.important)) continue;
       if (important && SHORTHANDS[name]) for (const longhand of SHORTHANDS[name]) (covered ??= new Set()).add(longhand);
     }
@@ -405,6 +422,7 @@ const MERGED = {
   page: [['margin', SHORTHANDS.margin]],
   jsdom26: ['margin', 'padding'].map((shorthand) => [shorthand, SHORTHANDS[shorthand]]),
 };
+MERGED.jsdom25 = MERGED.jsdom26;
 // A block that ever held one of their longhands is marked (decls.mergeable),
 // so most blocks skip merging.
 const MERGEABLE = new Set(MERGED.spec.flatMap(([, longhands]) => longhands));
@@ -414,7 +432,7 @@ function serialize(decls, mode = 'spec') {
     const first = decls.get(longhands[0]);
     if (first === undefined || !longhands.every((l) => decls.get(l)?.important === first.important)) continue;
     const values = longhands.map((l) => decls.get(l).value);
-    const value = mode === 'jsdom26' ? values.join(' ') : COMPOSED[shorthand](values);
+    const value = isLegacyMode(mode) ? values.join(' ') : COMPOSED[shorthand](values);
     merged ??= new Map();
     let place = null;
     for (const name of decls.keys()) if (longhands.includes(name)) { place = name; break; }
@@ -610,7 +628,7 @@ const valueOf = (style, name) => {
   if (decl) return decl.value;
   if (LONGHANDS[name]) return fromShorthand(s.decls, name);
   // jsdom 26 read background as the background-color set alone.
-  if (name === 'background' && s.mode === 'jsdom26') return s.decls.get('background-color')?.value ?? '';
+  if (name === 'background' && isLegacyMode(s.mode)) return s.decls.get('background-color')?.value ?? '';
   return COMPOSED[name] ? composeShorthand(s.decls, name) : '';
 };
 

@@ -15,6 +15,7 @@
     "./vitest/reset": "./src/vitest-reset.js",
     "./vitest/fast": "./src/vitest-fast.js",
     "./jest": "./src/jest.js",
+    "./compare": "./src/compare/index.js",
     "./package.json": "./package.json"
   },
   "files": [
@@ -34,8 +35,14 @@
     "@webref/idl": "^3.85.1",
     "happy-dom": "^20.14.6",
     "jsdom": "^30.1.2",
+    "jsdom25": "npm:jsdom@25.0.1",
     "jsdom26": "npm:jsdom@^26.1.0",
     "vitest": "^5.0.3"
+  },
+  "overrides": {
+    "jsdom25": {
+      "cssstyle": "4.1.0"
+    }
   },
   "dependencies": {
     "@rgrove/parse-xml": "^5.0.0",

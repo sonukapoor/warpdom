@@ -304,3 +304,57 @@ parity('background-repeat serializes in its shortest form', (w) => {
     return style.backgroundRepeat;
   });
 });
+
+// jsdom 26 and earlier (cssstyle 4) parse a few dozen properties and keep
+// the others' values as written: min-height: 0 stays 0 (svelte's slide
+// transition writes it), 0.0 and +.5 are not shortened.
+const unparsed = (w) => {
+  const out = [];
+  for (const name of ['min-height', 'max-width', 'gap', 'letter-spacing', 'border-radius', 'inset', 'translate', 'outline-width', 'vertical-align', 'display', 'transform']) {
+    for (const value of ['0', '0.0', '+.5', '1px  2px', 'translateX(45PX)']) {
+      const e = w.document.createElement('div');
+      e.style.setProperty(name, value);
+      out.push(e.style.getPropertyValue(name));
+    }
+  }
+  const e = w.document.createElement('p');
+  e.style.cssText = 'overflow: hidden;opacity: 0;border-top-width: 0.5px;min-height: 0';
+  out.push(e.getAttribute('style'), e.style.minHeight);
+  return out;
+};
+parity('style: properties jsdom does not parse keep their values (jsdom 25)', unparsed, { jsdom: 25 });
+parity('style: properties jsdom does not parse keep their values (jsdom 26)', unparsed, { jsdom: 26 });
+
+// url() in background and background-image: without quotes before
+// cssstyle 4.3.1 (jsdom 25 as svelte installs it), quoted after.
+const urls = (w) => {
+  const d = w.document;
+  const out = [];
+  for (const value of ['url(a.png)', 'url("a.png")', "url('https://example.com/foo.jpg')", 'url(data:image/png;base64,AAA=)', 'url("")']) {
+    for (const name of ['background-image', 'background', 'list-style-image']) {
+      const e = d.createElement('div');
+      e.style.setProperty(name, value);
+      out.push(e.style.getPropertyValue(name));
+    }
+  }
+  const div = d.body.appendChild(d.createElement('div'));
+  div.setAttribute('style', "background-image: url('x.png'); color: red;");
+  out.push(div.style.backgroundImage, w.getComputedStyle(div).backgroundImage);
+  div.style.setProperty('--v', 'rgba(0, 0, 0, 1)');
+  out.push(div.getAttribute('style'), div.outerHTML);
+  return out;
+};
+parity('style: url() serialization (jsdom 25)', urls, { jsdom: 25 });
+parity('style: url() serialization (jsdom 26)', urls, { jsdom: 26 });
+
+test('style: url() quotes follow the cssstyle jsdom 26 and earlier load', () => {
+  const image = (options) => {
+    const e = createWindow(options).document.createElement('div');
+    e.style.backgroundImage = 'url("a.png")';
+    return e.style.backgroundImage;
+  };
+  assert.equal(image({ jsdom: '25.0.1', cssstyle: '4.3.0' }), 'url(a.png)');
+  assert.equal(image({ jsdom: '25.0.1', cssstyle: '4.3.1' }), 'url("a.png")');
+  assert.equal(image({ jsdom: 25 }), 'url("a.png")');
+  assert.equal(image({ jsdom: 30, cssstyle: '4.1.0' }), 'url("a.png")');
+});

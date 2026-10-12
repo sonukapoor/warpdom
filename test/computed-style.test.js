@@ -217,3 +217,50 @@ const computedWrites = (w) => {
 };
 parity('getComputedStyle: writes (jsdom 26 profile)', computedWrites, { jsdom: 26 });
 parity('getComputedStyle: writes', computedWrites);
+
+// The root's computed color under jsdom 26 and earlier follows cssstyle:
+// '' before 4.4 (jsdom 25 as svelte installs it), 'CanvasText' in 4.4 and
+// 4.5, 'canvastext' from 4.6; rgb(0, 0, 0) from jsdom 27.
+const rootColor = (w) => {
+  const d = w.document;
+  d.body.innerHTML = '<p id=p>x</p><p id=r style="color: green">y</p><div id=b style="border: 1px solid">z</div>';
+  const cs = (id, p) => w.getComputedStyle(d.getElementById(id)).getPropertyValue(p);
+  return [cs('p', 'color'), cs('r', 'color'), cs('b', 'border-top-color'), w.getComputedStyle(d.body).color, w.getComputedStyle(d.documentElement).color];
+};
+parity('getComputedStyle: undeclared color (jsdom 25)', rootColor, { jsdom: 25 });
+parity('getComputedStyle: undeclared color (jsdom 26)', rootColor, { jsdom: 26 });
+parity('getComputedStyle: undeclared color', rootColor);
+
+test('getComputedStyle: undeclared color follows the cssstyle jsdom 26 and earlier load', () => {
+  const color = (options) => {
+    const w = createWindow(options);
+    return w.getComputedStyle(w.document.body.appendChild(w.document.createElement('p'))).color;
+  };
+  assert.equal(color({ jsdom: '25.0.1', cssstyle: '4.3.1' }), '');
+  assert.equal(color({ jsdom: '25.0.1', cssstyle: '4.4.0' }), 'CanvasText');
+  assert.equal(color({ jsdom: '26.1.0', cssstyle: '4.5.0' }), 'CanvasText');
+  assert.equal(color({ jsdom: '26.1.0', cssstyle: '4.6.0' }), 'canvastext');
+  assert.equal(color({ jsdom: 26 }), 'canvastext');
+  // jsdom 27 and later use cssstyle 5; an older cssstyle given is ignored.
+  assert.equal(color({ jsdom: 28, cssstyle: '4.1.0' }), 'rgb(0, 0, 0)');
+});
+
+// jsdom 26 and earlier compute the border shorthands to their declared
+// values, colors as written; border declares the sides and border-width,
+// -style and -color, and a later longhand does not change them. (Not
+// covered for jsdom 25: cssstyle 4.1 keeps currentcolor as the computed
+// border color and rejects var() in border.)
+const legacyBorders = (w, jsdom25 = false) => {
+  const d = w.document;
+  d.head.innerHTML = '<style>.k{border:4px solid black}.m{border-top:1px solid red}.v{--c:blue;border:1px solid var(--c)}</style>';
+  const styles = ['border: 100px solid pink', 'border: 1px solid', 'border-top-width: 3px', ...(jsdom25 ? [] : ['border: 2px solid currentcolor']), 'border: 1px solid PINK',
+    'border: 1px solid transparent', 'border: 1px solid pink; border-top-color: red', 'border: 1em solid pink', 'border: 0 solid pink', 'border-color: pink',
+    'border-top: 2px dashed pink; border-color: pink'];
+  const props = ['border', 'border-top', 'border-left', 'border-color', 'border-width', 'border-style', 'border-top-width', 'border-top-color'];
+  const read = (e) => props.map((p) => w.getComputedStyle(e).getPropertyValue(p));
+  const out = styles.map((s) => { const e = d.body.appendChild(d.createElement('div')); e.setAttribute('style', s); return read(e); });
+  for (const c of jsdom25 ? ['k', 'm'] : ['k', 'm', 'v']) { const e = d.body.appendChild(d.createElement('div')); e.className = c; out.push(read(e)); }
+  return out;
+};
+parity('getComputedStyle: border shorthands as declared (jsdom 25)', (w) => legacyBorders(w, true), { jsdom: 25 });
+parity('getComputedStyle: border shorthands as declared (jsdom 26)', legacyBorders, { jsdom: 26 });

@@ -1,8 +1,8 @@
 # `warpdom compare` (design draft)
 
-Status: design, 2026-10-12 (open questions decided the same day). Not
-implemented. See PLAN.md, "Reproducibility
-and a compare command before going public".
+Status: design, 2026-10-12 (open questions decided the same day).
+Milestones 1-3 implemented in `src/compare/` (branch feat/compare). See
+PLAN.md, "Reproducibility and a compare command before going public".
 
 ## Why
 
@@ -122,13 +122,44 @@ Under plain `npx` (npm cache), compare copies itself into
 ### Per-file environment comments
 
 `// @vitest-environment jsdom` and `@jest-environment jsdom` docblocks
-override the config, so the wrapper alone leaves those files on jsdom.
-v1 counts them and reports "N files pin jsdom with a comment and were not
-switched". Whether to switch them later depends on how common they are; the
-tracer corpus can count them. Options:
+override the config, so the wrapper alone would leave those files on
+jsdom. They are common: 56% of solid's tests and 84.5% of svelte's are in
+files pinned to jsdom, so leaving them out makes both the results and the
+speed misleading (solid came out 1.21x slower while the warpdom run loaded
+both DOMs).
 
-- a Vitest plugin in the wrapper that rewrites the docblock during transform;
-- a resolve alias for the environment name.
+**Vitest: switched, without editing the files.** Vitest 2, 4 and 5 read a
+test file's `@vitest-environment <name>` / `@jest-environment <name>`
+comment in the main process with `fs.promises.readFile(file, 'utf-8')` and
+match `/@(?:vitest|jest)-environment\s+([\w-]+)\b/` (names only, no paths).
+The wrapper config runs in that same process and patches
+`fs.promises.readFile` once (marked, so loading the config again does not
+patch twice): in what Vitest reads, a jsdom or happy-dom name in that
+comment becomes the run's target. It is only a comment, so the transform
+is unaffected.
+
+- warpdom run: the target is `warpdom-compare`, a name Vitest does not
+  know, which it resolves as the package `vitest-environment-warpdom-compare`
+  from the project root. Compare creates that package for the run in
+  `node_modules` (package.json with `type: module` and `exports`, an
+  index.js re-exporting warpdom's environment), recorded in `pending.json`
+  and removed like the other temporary files.
+- Baseline run: on a jsdom baseline, happy-dom pins become jsdom; on a
+  happy-dom baseline, jsdom pins become happy-dom. Pins already on the
+  baseline stay.
+- Each switched file is logged (`WARPDOM_COMPARE_PINNED_LOG`), and the
+  report says "N files pin jsdom with a comment; switched". Their tests are
+  compared like all others.
+- Node and other pins stay untouched and are reported as not compared.
+- Known limitation: `@vitest-environment-options` stays keyed by the
+  original name, so those options do not reach warpdom; the report counts
+  switched files that have them.
+
+**Jest: reported, not switched (for now).** Jest reads the docblock in its
+workers, where the wrapper config does not run. Pinned Jest files run on
+the baseline in both runs; the report says "N files choose jsdom with a
+comment and were not switched", leaves their tests out of the comparison,
+and lists any of them whose status changed between runs anyway.
 
 ### Timing
 
@@ -240,8 +271,10 @@ Timing in CI is noisy (shared 2- or 4-core machines). The docs recommend
 
 ## Decisions (2026-10-12)
 
-1. **Per-file environment comments:** report only in v1, and count them
-   across the corpus before deciding on a transform plugin.
+1. **Per-file environment comments:** Vitest files that pin jsdom or
+   happy-dom with a comment are switched (2026-10-12, replacing "report
+   only": pinned files held 84.5% of svelte's tests). Jest files are
+   reported and not compared until Jest gets the same.
 2. **Warm-up:** none for a single round (cold, like CI); an untimed warm-up
    pair before timed rounds when `--rounds` ≥ 2.
 3. **Default rounds:** 1, labeled indicative, so a first try costs two

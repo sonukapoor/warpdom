@@ -1,0 +1,2 @@
+project                  cpu s        dom  framework testing-li     runner  transform    project         gc       node other-deps      other
+ariakit                 180.51       9.7%      27.0%       6.0%      14.0%       4.4%      15.5%       3.6%       8.5%       1.7%       9.7%

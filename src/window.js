@@ -202,8 +202,9 @@ export function createWindow(options = {}) {
     }
     ctors[name] = ctor;
     // CSS value validation: every property's grammar from jsdom 27; before,
-    // jsdom checked a few dozen properties.
-    if (name === 'CSSStyleProperties') setValidationMode(proto, window[S].compat.jsdom < 27 ? 'jsdom26' : 'spec');
+    // jsdom checked a few dozen properties ('jsdom25': the same, with
+    // url() serialized without quotes, as cssstyle before 4.3.1 did).
+    if (name === 'CSSStyleProperties') setValidationMode(proto, window[S].compat.jsdom >= 27 ? 'spec' : window[S].compat.unquotedUrls ? 'jsdom25' : 'jsdom26');
     Object.defineProperty(protos, name, { value: proto, writable: true, enumerable: true, configurable: true });
     if (Object.getOwnPropertyDescriptor(window, name)?.get === lazyGetters[name]) {
       Object.defineProperty(window, name, { value: ctor, writable: true, configurable: true });
@@ -271,7 +272,7 @@ export function createWindow(options = {}) {
     notImplemented: (message) => console.error(`Not implemented: ${message}`),
     // An iframe's nested window (frames.js).
     // A frame's window behaves like the same jsdom generation as its parent.
-    createNestedWindow: ({ url, parent, frameElement }) => createWindow({ url, jsdom: parent[S].compat.version, nested: { parent, frameElement } }),
+    createNestedWindow: ({ url, parent, frameElement }) => createWindow({ url, jsdom: parent[S].compat.version, cssstyle: parent[S].compat.cssstyle, nested: { parent, frameElement } }),
     parentWindow: options.nested?.parent ?? null,
     frameElement: options.nested?.frameElement ?? null,
   };

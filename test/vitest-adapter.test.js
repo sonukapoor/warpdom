@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { jsdomVersion } from '../src/vitest.js';
+import { jsdomVersion, jsdomProfile, installWindow, VITEST_ALWAYS_KEYS } from '../src/vitest.js';
+import { createWindow } from '../src/index.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const run = (...args) => {
@@ -76,6 +77,48 @@ test('the jsdom profile follows the jsdom Vitest would load', () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('the jsdom profile includes the cssstyle that jsdom loads', () => {
+  const pkg = (dir, json) => { mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, 'package.json'), JSON.stringify(json)); };
+  // A fresh project per case (Node caches module resolution).
+  const project = (cssstyleDirs, options = {}) => {
+    const root = mkdtempSync(join(tmpdir(), 'warpdom-cssstyle-'));
+    try {
+      pkg(root, { name: 'project' });
+      pkg(join(root, 'node_modules/jsdom'), { name: 'jsdom', version: '25.0.1' });
+      for (const [dir, version] of cssstyleDirs) pkg(join(root, dir), { name: 'cssstyle', version });
+      return jsdomProfile(options, root);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  };
+  assert.deepEqual(project([]), { jsdom: '25.0.1', cssstyle: undefined });
+  // Hoisted beside jsdom, or nested in it (nested wins, as for Node).
+  assert.deepEqual(project([['node_modules/cssstyle', '4.6.0']]), { jsdom: '25.0.1', cssstyle: '4.6.0' });
+  assert.deepEqual(project([['node_modules/cssstyle', '4.6.0'], ['node_modules/jsdom/node_modules/cssstyle', '4.1.0']]), { jsdom: '25.0.1', cssstyle: '4.1.0' });
+  // Options override; a jsdom version given alone does not use the installed cssstyle.
+  assert.deepEqual(project([['node_modules/cssstyle', '4.6.0']], { warpdom: { cssstyle: '4.4.0' } }), { jsdom: '25.0.1', cssstyle: '4.4.0' });
+  assert.deepEqual(project([['node_modules/cssstyle', '4.6.0']], { warpdom: { jsdom: 26 } }), { jsdom: 26, cssstyle: undefined });
+});
+
+test('globals Vitest defines for members jsdom lacks read the window (matchMedia)', () => {
+  // svelte's test helpers assign Window.prototype.matchMedia; code under
+  // test calls window.matchMedia, the global.
+  const window = createWindow({ jsdom: 25 });
+  const global = {};
+  const restore = installWindow(global, window, { alwaysKeys: VITEST_ALWAYS_KEYS });
+  try {
+    assert.equal('matchMedia' in global, true);
+    assert.equal(global.matchMedia, undefined);
+    const matchMedia = (media) => ({ matches: false, media });
+    window.Window.prototype.matchMedia = matchMedia;
+    assert.equal(global.matchMedia, matchMedia);
+    assert.deepEqual(global.matchMedia('(min-width: 1px)'), { matches: false, media: '(min-width: 1px)' });
+  } finally {
+    restore();
+  }
+  assert.equal('matchMedia' in global, false);
 });
 
 test('Vitest keeps Node\'s AbortController and AbortSignal, as its jsdom environment does', async () => {

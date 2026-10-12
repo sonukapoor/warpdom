@@ -72,14 +72,18 @@ function numericTimers(target) {
 }
 
 // The jsdom generation to behave like: testEnvironmentOptions.jsdom, else
-// the jsdom jest-environment-jsdom brings (26 with Jest 30), else 26.
-function jsdomVersion(rootDir, options) {
-  if (options.jsdom != null) return options.jsdom;
+// the jsdom jest-environment-jsdom brings (26 with Jest 30), else 26; and
+// the cssstyle that jsdom loads (testEnvironmentOptions.cssstyle overrides).
+function jsdomProfile(rootDir, options) {
+  if (options.jsdom != null) return { jsdom: options.jsdom, cssstyle: options.cssstyle };
   try {
     const envRequire = createRequire(createRequire(join(rootDir, 'package.json')).resolve('jest-environment-jsdom/package.json'));
-    return envRequire('jsdom/package.json').version;
+    const jsdomRequire = createRequire(envRequire.resolve('jsdom/package.json'));
+    let cssstyle = options.cssstyle;
+    try { cssstyle ??= jsdomRequire('cssstyle/package.json').version; } catch { /* not found */ }
+    return { jsdom: jsdomRequire('./package.json').version, cssstyle };
   } catch {
-    return 26;
+    return { jsdom: 26, cssstyle: options.cssstyle };
   }
 }
 
@@ -96,7 +100,7 @@ export default class WarpdomEnvironment {
     const options = projectConfig.testEnvironmentOptions ?? {};
 
     // jest-environment-jsdom's default URL.
-    const window = createWindow({ url: options.url ?? 'http://localhost/', jsdom: jsdomVersion(projectConfig.rootDir ?? process.cwd(), options) });
+    const window = createWindow({ url: options.url ?? 'http://localhost/', ...jsdomProfile(projectConfig.rootDir ?? process.cwd(), options) });
     // An error thrown in an event listener fails the test, unless the test
     // listens for 'error' on the window (as with jest-environment-jsdom).
     window[S].onUnhandledError = (error) => {
