@@ -628,6 +628,33 @@ react-router, vueuse) found the same differences as the harness. It
 needed `NODE_OPTIONS=--experimental-vm-modules` for react-router and gave
 no hint; it still runs browser-mode projects it does not compare.
 
+**Timing before the fixes** (GitHub Actions run 38280058454, warpdom
+3275164, three DOMs, 3 rounds;
+[data/held-out/ci-2026-10-12-before-timing/](data/held-out/ci-2026-10-12-before-timing/)):
+
+| Project | jsdom | warpdom | happy-dom | warpdom vs jsdom | differ: warpdom / happy-dom |
+| --- | --- | --- | --- | --- | --- |
+| vueuse | 60.0 s | 32.7 s | 49.5 s | 1.84x | 10 / 58 |
+| downshift | 14.4 s | 8.4 s | 9.8 s | 1.71x | 24 / 19 |
+| tanstack-query | 83.8 s | 55.8 s | 65.4 s | 1.50x | 2 / 1 |
+| melt-ui | 46.8 s | 33.1 s | 40.4 s | 1.41x | 0 / 10 |
+| dom-testing-library | 6.5 s | 5.0 s | 5.7 s | 1.30x | 1 / 23 |
+| naive-ui | 334.1 s | 298.7 s | 316.3 s | 1.12x | 0 / 23 |
+| taiga-ui | 595.1 s | 589.5 s | 87.9 s | 1.01x | 0 / 2,604 |
+| react-router | 48.7 s | 48.9 s | 50.8 s | 1.00x | 17 / 83 |
+| solid-primitives | 3.8 s | 21.9 s | 3.4 s | **0.18x** | 8 / 13 |
+
+- Median warpdom vs jsdom over the 9 unseen projects: 1.30x (95% bootstrap
+  interval 1.01-1.71x); happy-dom vs jsdom 1.16x (1.06-1.47x).
+- **solid-primitives was 5.7x slower on warpdom**: its animation frames
+  ran on Node's timer captured when the window was created, not on the
+  global's, so Vitest's fake timers did not advance them and tests waited
+  in real time (the cause the held-out fixes found; fixed in c4c9571,
+  after which solid-primitives took 4.5 s against jsdom's 5.2 s). An unseen
+  suite can hit a slow path that no tuning suite exercised.
+- happy-dom changed 2,604 of taiga-ui's results (the whole suite), which is
+  why its time there is low.
+
 **After the fixes** (warpdom c4c9571, which merged the held-out fixes;
 GitHub Actions run 38284524015, one round, jsdom vs warpdom, each project
 on its own runner;
