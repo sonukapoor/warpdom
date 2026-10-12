@@ -5,7 +5,7 @@
 // Also innerText and outerText, which depend on rendering (below; kept in
 // this module rather than their own, as each module file adds load time).
 import {
-  S, state, ELEMENT_NODE, TEXT_NODE, CDATA_SECTION_NODE, HTML_NS, SVG_NS,
+  S, state, hiddenSlot, ELEMENT_NODE, TEXT_NODE, CDATA_SECTION_NODE, HTML_NS, SVG_NS,
   connected, textOf, insert, replaceAll, replace, replaceData, remove, domError,
 } from './internal.js';
 import { computedValue } from './cascade.js';
@@ -50,6 +50,7 @@ const rect = (self, x, y, width, height) => {
   return self;
 };
 const RECT = Symbol('rect');
+const RECT_SLOT = hiddenSlot().descriptor; // invisible to reflection, as S (internal.js)
 const toNumber = (v) => (v === undefined ? 0 : Number(v));
 const r = (self) => {
   const s = self?.[RECT];
@@ -64,6 +65,7 @@ function fromRect(other = {}) {
 export const GEOMETRY_INTERFACES = [
   {
     name: 'DOMRectReadOnly',
+    slot: [RECT, RECT_SLOT],
     construct: (w, self, [x, y, width, height]) => rect(self, x, y, width, height),
     statics: { fromRect },
     members: {

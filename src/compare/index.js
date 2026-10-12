@@ -14,7 +14,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { detectRunner, findVitestWorkspace, packageDir, packageVersion, installedWarpdom, domVersion, environmentComments, takeConfigArg } from './detect.js';
+import { detectRunner, findVitestWorkspace, packageDir, packageVersion, installedWarpdom, domVersion, environmentComments, takeConfigArg, scriptNodeFlags } from './detect.js';
 import { vitestWrapper, vitestWorkspaceWrapper, vitestReporter, jestWrapper, jestReporter, wrapperName, workspaceWrapperName, MARK, PROBE_MARKER, PINNED_TARGET } from './wrappers.js';
 import { resolveVitestProjects, resolveJestProjects } from './projects.js';
 import { TempFiles, copyWarpdom, pinnedEnvironmentPackage, acquireLock, gitStatus, statusChanges } from './files.js';
@@ -48,6 +48,8 @@ export async function compare(options = {}) {
   const rounds = correctness ? 1 : Math.max(1, Number(options.rounds ?? 1));
   const timeoutMs = (options.timeout ?? 30) * 60_000;
   const log = options.log ?? (() => {});
+  // Paths in messages: relative when inside cwd, else absolute.
+  const shown = (file) => displayPath(file, cwd);
   const result = {
     version: 1, cwd, out, mode: correctness ? 'correctness' : 'timing', exitCode: 2, error: null, warnings: [],
     runner: null, runnerVersion: null, baseline: null, warpdom: null, projects: [], external: 0,
@@ -108,9 +110,17 @@ export async function compare(options = {}) {
       return file;
     };
     const minWorkers = runner === 'vitest' && options.workers ? hasMinWorkers(bin) : false;
+    // Node flags the project's test script gives the runner (react-router:
+    // node --experimental-vm-modules .../jest.js), passed on in NODE_OPTIONS.
+    const nodeFlags = scriptNodeFlags(cwd, runner);
+    result.nodeOptions = nodeFlags.length ? nodeFlags.join(' ') : null;
+    if (result.nodeOptions) log(`Node flags from the test script: ${result.nodeOptions}`);
+    const nodeEnv = result.nodeOptions ? { NODE_OPTIONS: [process.env.NODE_OPTIONS, result.nodeOptions].filter(Boolean).join(' ') } : {};
     const execute = (wrapper, resultsFile, logFile, env = {}, reporter = null) => runProcess(bin, runnerArgs(runner, {
       config: wrapper, resultsFile, workers: options.workers, minWorkers, reporter: runner === 'vitest' ? reporter : null, args,
-    }), { cwd, env, timeoutMs, logFile });
+    }), { cwd, env: { ...nodeEnv, ...env }, timeoutMs, logFile });
+    // When a run fails to start, a hint for runners that need node flags.
+    const flagsHint = () => (result.nodeOptions ? '' : '; if the project runs its test runner with node flags (node --experimental-vm-modules ...), set them in NODE_OPTIONS');
 
     // --- probe: which projects run on a DOM -------------------------------
     const metaFile = path.join(out, 'meta.json');
@@ -125,7 +135,7 @@ export async function compare(options = {}) {
         return JSON.parse(fs.readFileSync(metaFile, 'utf8'));
       } catch {
         const why = firstErrorLine(res.output);
-        throw new CompareError(`the ${runner} config could not be loaded${why ? `: ${why}` : ''} (see ${path.relative(cwd, path.join(out, 'logs', 'probe.log'))})`);
+        throw new CompareError(`the ${runner} config could not be loaded${why ? `: ${why}` : ''} (see ${shown(path.join(out, 'logs', 'probe.log'))})${flagsHint()}`);
       } finally {
         fs.rmSync(metaFile, { force: true });
       }
@@ -260,10 +270,10 @@ export async function compare(options = {}) {
           wallMs: Math.round(res.ms), log: path.relative(out, logFile), results: path.relative(out, resultsFile),
         };
         result.runs.push(run);
-        if (res.timedOut) throw new CompareError(`the ${label} run timed out after ${options.timeout ?? 30} min (see ${path.relative(cwd, logFile)})`);
+        if (res.timedOut) throw new CompareError(`the ${label} run timed out after ${options.timeout ?? 30} min (see ${shown(logFile)})`);
         if (!report) {
           const why = firstErrorLine(res.output);
-          throw new CompareError(`the ${label} run produced no results${why ? `: ${why}` : ''} (see ${path.relative(cwd, logFile)})`);
+          throw new CompareError(`the ${label} run produced no results${why ? `: ${why}` : ''} (see ${shown(logFile)})${flagsHint()}`);
         }
         const runTests = testsOf(report, cwd, ran);
         if (ran?.projects) run.projects = ran.projects.map((p) => ({ name: p.name, environment: p.browser ? 'browser mode' : environmentLabel(p.environment) }));
@@ -284,6 +294,10 @@ export async function compare(options = {}) {
             // Jest gives resolved paths: judged by the package name, so a
             // checkout in a directory named after jsdom is not mistaken.
             result.projects = ran.projects.map((p) => ({ ...p, dom: !p.browser && isDomEnvironment(runner, environmentLabel(p.environment)) }));
+            // Browser-mode projects are left out of both runs: listed as not run.
+            for (const p of meta.projects.filter((x) => x.browser)) {
+              if (!result.projects.some((x) => x.name === p.name)) result.projects.push({ ...p, dom: false, notRun: true });
+            }
             const switchable = runner === 'vitest' && pinned.length > 0;
             if (!result.projects.some((p) => p.dom) && !switchable) {
               const seen = [...new Set(result.projects.map((p) => (p.browser ? 'browser mode' : environmentLabel(p.environment))))].join(', ');
@@ -307,7 +321,7 @@ export async function compare(options = {}) {
           }
         }
         log(`  [${index}/${total}] ${label.padEnd(9)} ${(pair.warmup ? 'warm-up' : correctness ? '' : `round ${pair.round}`).padEnd(8)} ${((run.runnerMs ?? run.wallMs) / 1000).toFixed(1).padStart(6)} s  ${run.counts.passed} passed, ${run.counts.failed} failed${run.counts.skipped ? `, ${run.counts.skipped} skipped` : ''}`);
-        if (side === 'baseline' && index <= 2 && run.counts.tests === 0) throw new CompareError(`no tests ran on ${label} (see ${path.relative(cwd, logFile)})`);
+        if (side === 'baseline' && index <= 2 && run.counts.tests === 0) throw new CompareError(`no tests ran on ${label} (see ${shown(logFile)})${flagsHint()}`);
       }
     }
 
@@ -381,9 +395,14 @@ export async function compare(options = {}) {
 
 class CompareError extends Error {}
 
+// A path for messages: relative to dir when it is inside dir, else absolute
+// (a relative path out of dir, ../../.., is longer and harder to follow).
+export function displayPath(file, dir) {
+  const rel = path.relative(dir, file);
+  return rel === '' || rel.startsWith('..') || path.isAbsolute(rel) ? file : rel;
+}
+
 // The terminal summary for a result, with the report's path relative to dir.
 export function summary(result, dir = process.cwd()) {
-  const report = path.join(result.out, 'report.md');
-  const rel = path.relative(dir, report);
-  return renderConsole(result, { reportPath: rel.startsWith('..') ? report : rel });
+  return renderConsole(result, { reportPath: displayPath(path.join(result.out, 'report.md'), dir) });
 }

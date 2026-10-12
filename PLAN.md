@@ -334,6 +334,15 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   jsdom truncates it there (CR and LF still truncate in both).
 - USVString reflections (`ping`, `srcset`, `imageSrcset`) replace lone
   surrogates with U+FFFD; jsdom keeps them in `ping`.
+- `CSSStyleSheet.ownerNode` in the jsdom 27 to 29 profiles is the owning
+  element, as in jsdom 30; jsdom 27 to 29 give an internal object without
+  `id` (black box, 27.4; a bug fixed in 30), which no realistic code should
+  depend on. One known test does: tanstack-query
+  `packages/query-devtools/src/__tests__/contexts/PiPContext.test.tsx` "should
+  copy parent "#_goober" "textContent" into the PiP mirror when the observer
+  fires" (on jsdom 27.4 the mirrored style gets no id, so the test's own
+  #_goober is the one updated). jsdom 20 to 26 profiles have no ownerNode
+  at all, as those versions.
 - Submit buttons' formAction, formMethod, formEnctype and the document's
   obsolete body colors (fgColor, linkColor, vlinkColor, alinkColor,
   bgColor) exist; jsdom lacks them.
@@ -1652,3 +1661,142 @@ Left, and why:
   Closing the rest of the gap needs a non-Proxy NodeList, which changes
   observable behavior (delete, defineProperty, preventExtensions and
   out-of-range index writes on lists) and was not done; Sonu to decide.
+
+## 2026-10-12: Held-out fixes (branch fix/held-out)
+
+The causes of the held-out set's 58 differences (docs/research/README.md
+3.7), fixed against jsdom as a black box (jsdom 20.0.3, 22.1.0, 23.2.0,
+24.1.3, 25.0.1, 26.1, 27.4 from naive-ui's install, 30.1.2; Vitest and Jest
+probes through the held-out projects' own installs). New reference
+aliases: jsdom20 and jsdom22 (devDependencies; parity() takes 20 and 22,
+loaded lazily: their URL parser makes Node 22.12 print a punycode
+deprecation); jsdom23 and jsdom24 were installed with --no-save only for
+the research.
+
+- **Internal state invisible to deep equality.** Every non-node object
+  (events, FormData, AbortSignal, style declarations, ranges, history,
+  DOMRect, ...) kept its state in an own enumerable symbol property, which
+  Jest's and Vitest's toEqual and pretty-format walk (react-router: loader
+  arguments holding an AbortSignal with listeners; FormData snapshots).
+  Now a private field stamped onto the object (internal.js hiddenSlot;
+  Object.defineProperty with enumerable: false cost 65 ns per object, more
+  than a whole new Event), with an accessor for S on the interface's
+  prototype so `obj[S]` keeps working; events and style declarations read
+  the field directly (an accessor read cost 2-4 ns, and `state()`'s
+  megamorphic load is slower than the private field's: event getters
+  15.5 -> 4.7 ns for three reads). Not on nodes (the plain property is the
+  fastest for the hottest objects; test frameworks compare and print nodes
+  as DOM nodes; clones already hide it) and not on proxied lists, storage
+  and dataset (their traps hide it).
+- **History traversal.** back()/forward()/go() were no-ops. Black box, jsdom
+  20 to 30: the target is index + delta when called, out of range nothing,
+  the move in a task on the global's timers (Vitest and Jest fake timers
+  hold it back; it fires on advancing 1 ms, not 0), skipped if the target
+  is current by then or a pushState/fragment navigation/location.replace
+  came in between (replaceState keeps it); sets URL and history.state (the
+  same object), fires popstate, then hashchange when the fragment differs.
+  go(0) reports a reload as not implemented. pushState/replaceState keep
+  the state object as given (jsdom: `history.state === obj`, no
+  DataCloneError for functions or nodes; warpdom cloned). Fragment
+  navigations and followed links now also use the global's timers, as
+  jsdom's do under fake timers.
+- **Assigning document.** In jest-environment-jsdom (jsdom 20 and 26) the
+  global is the window: document, window and top are getters without
+  setters (assignment ignored, also in strict code), location navigates.
+  The Jest environment and Vitest's VM pools now do the same; Vitest's
+  other pools keep setters, as its jsdom environment has them (assignment
+  replaces the global's value there, for jsdom too). window.location = url
+  navigates ([PutForwards=href]).
+- **jsdom 20 to 23 profiles.** CSS modes 'jsdom20' (cssstyle 2) and
+  'jsdom22' (cssstyle 3; jsdom 21 assumed), defaults by version when no
+  cssstyle is given; 'jsdom27' for 27 to 29 (30's validation, 26's border
+  and clip). Found on the way, for all profiles: border and its sides
+  (order, 0 as 0px, none dropped by 20 to 27 and `medium` in 30, sides
+  cleared by none), clip (rect with spaces dropped before 30, rect(0px)
+  in 30), outline as written in 30, aspect-ratio 1 as 1 / 1 in 30; per
+  version the properties cssstyle does not know (217 to 369 of warpdom's)
+  and the CSS-wide keywords, auto and var() old cssstyle drops. On 420
+  common component-library declarations warpdom now differs from jsdom
+  20/22/25/26/30 in 1/1/1/2/2 (calc() folding in 26+, flex: 1 as written
+  before 26; were 41/30/28/18/14). jsdom 20 also: no SubmitEvent (submit
+  is an Event), image buttons do not submit, FormData ignores the
+  submitter, MouseEvent without pageX/x/offsetX; style sheets of 20 to 26
+  have no ownerNode, href, title or type.
+- **"Not implemented" reports.** getComputedStyle with a pseudo-element is
+  reported (20 to 23 "window.computedStyle(elt, pseudoElt)", 24 to 26
+  "window.getComputedStyle(...)", 27+ "Window's getComputedStyle() method:
+  with pseudo-elements"); all reports use jsdom 20 to 26's words
+  (window.alert, HTMLFormElement.prototype.submit) in those profiles, and
+  go where each environment sends them: Jest, the test's console as Error
+  objects (dom-testing-library spies on console.error); Vitest, the console
+  of the environment's setup, which a test's spy does not see.
+- **CloseEvent** (wasClean, code as unsigned short, reason as USVString).
+- **Event.timeStamp** is Date.now() at creation (jsdom 20 to 30), Date
+  looked up in warpdom's realm: Vitest's default pools follow fake timers'
+  Date, Jest and VM pools stay real, as jsdom. new Event 41 -> 37 ns
+  (Date.now is cheaper than performance.now).
+- **Image buttons**: the activating click's clientX/clientY become the
+  selected coordinate (name.x/name.y), as jsdom 22 to 30; MouseEvent
+  offsetX/offsetY are clientX/clientY (warpdom had 0).
+- **CSSStyleSheet.ownerNode**: see "Deliberate deviations" (jsdom 27 to 29
+  give an internal object; the 27 profile keeps the element).
+- **Unexplained ones, found:** (1) solid-primitives: animation frames ran on
+  Node's setTimeout captured at window creation; jsdom's run on the global's
+  timers, so Vitest 2's fake timers (which leave requestAnimationFrame
+  alone) still run them. (2) tanstack-query lit-query: event paths ignored
+  slots (a slottable's parent in the path is its assigned slot; composedPath
+  lacked slot and shadow root), and jsdom 20 to 30 keep a node's last
+  assigned slot after it leaves the host (its events still go through the
+  old slot and host, not its new parents); the test that moves a context
+  consumer to another provider relies on the stale path. Both done (the
+  stale slot is recorded when a slottable is assigned). (3) vueuse
+  useCssVar: jsdom 22 to 30 compute a disconnected element's style once
+  and keep it until the document's connected tree or style sheets change
+  (Vue Test Utils mounts detached); warpdom keeps the element's cascade
+  cache, with its style attribute's declarations, until then.
+- **compare**: node flags from the package.json test script into
+  NODE_OPTIONS (and a hint when a run does not start); paths in messages
+  relative only inside cwd; Vitest browser-mode projects left out of both
+  runs and reported as not run.
+
+Held-out set after the fixes (dom-api-tracer survey-warpdom.sh with the
+original jsdom baselines, 2 workers, one run each; differing tests
+before -> after): dom-testing-library 1 -> 0, tanstack-query 2 -> 1,
+react-router 17 -> 0, naive-ui 0 -> 0, taiga-ui 0 -> 0, melt-ui 0 -> 0
+(one run showed a ContextMenu test failing once; it passed in 3 direct
+runs and the survey re-run), solid-primitives 4 -> 0, vueuse 10 -> 0,
+downshift 24 -> 0: 58 -> 1 of about 13,500. Kept: tanstack-query
+query-devtools PiPContext "#_goober" test (the ownerNode deviation).
+
+Performance (Node 22.23.3, 5 alternating rounds against main 3275164,
+medians; ev = a focused events benchmark): new Event 41.4 -> 36.9 ns,
+MouseEvent 200 -> 179, dispatch + one listener 326 -> 314, three event
+getter reads 15.5 -> 4.7; style writes 95.5 -> 89.9; create-bench 180 ->
+172; insert-bench, dispatch-bench, cold load (17.5 ms), next windows
+level; bench:hot within +-3% (setAttribute -5%). cascade-bench read pass
+0.53 -> 0.55 ms (+3-4%, from getComputedStyle stamping the private field
+on each declaration it creates; mutate+read level). Tried and dropped: a
+connectivity check on every computed read (+10%), checking slots at
+every step of an event path (dispatchEvent depth 20 +6.6%), a document
+field read on every tree change (removeChild +3.9%).
+
+Left: calc() folding (jsdom 26+ give calc(3px) for calc(1px + 2px)) and
+flex: 1 as written before 26; other internal tasks still on Node's
+timers (postMessage, FileReader, details toggle, iframe load,
+selectionchange; jsdom's may follow fake timers, unchecked); Jest and VM
+globals' navigator, history, localStorage still have setters (jsdom's
+ignore assignment); jsdom 21 assumed like 22 where unmeasured.
+
+- **2026-10-12: Merging fix/held-out: the cost of hidden state, accepted
+  (Sonu's decision).** State in private fields (instead of an own
+  enumerable symbol property) makes `getComputedStyle` slower while code is
+  cold. bench/cascade-bench.mjs read pass (20 passes, mostly unoptimized
+  code): main 0.51 ms, branch 0.55 ms (+8%); with 200 passes (warm) 0.32 vs
+  0.33 ms, level. A warm microbenchmark of create and read is level (create
+  even faster). That is about 80 ns per call while cold: for handsontable
+  (about 940 calls per test file) about 75 us per file, about 40 ms on a 90 s
+  suite (0.04%). Tried and dropped: creating style declarations with the
+  field from the start (Reflect.construct with a per-prototype new.target):
+  slower, 0.61 ms. Benefit: Jest/Vitest deep equality and snapshots no longer
+  see warpdom's internals on events, FormData, AbortSignal and others, and
+  event getters are about 3x faster.

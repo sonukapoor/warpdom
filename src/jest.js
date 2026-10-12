@@ -17,7 +17,7 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { createWindow } from './node.js';
 import { S } from './internal.js';
-import { installWindow } from './vitest.js';
+import { installWindow, defineUnforgeableSelf } from './vitest.js';
 
 // Node globals jest-environment-jsdom exposes too (beyond the DOM's own).
 // AbortController and AbortSignal are the window's, as jsdom's are there.
@@ -107,7 +107,7 @@ export default class WarpdomEnvironment {
       if (!userErrorListeners(window)) process.emit('uncaughtException', error);
     };
     const sandbox = {};
-    this.restoreWindow = installWindow(sandbox, window);
+    this.restoreWindow = installWindow(sandbox, window, { unforgeable: true });
     for (const name of HOST_GLOBALS) {
       // Values, not descriptors: some are lazy getters bound to Node's global (crypto).
       if (!(name in sandbox) && name in globalThis) Object.defineProperty(sandbox, name, { value: globalThis[name], writable: true, configurable: true });
@@ -116,9 +116,18 @@ export default class WarpdomEnvironment {
     vm.createContext(sandbox);
     const global = vm.runInContext('this', sandbox);
     for (const key of ['window', 'self', 'top', 'parent', 'global']) {
-      Object.defineProperty(sandbox, key, { value: global, writable: true, configurable: true });
+      if (key === 'window' || key === 'top') defineUnforgeableSelf(sandbox, key, global);
+      else Object.defineProperty(sandbox, key, { value: global, writable: true, configurable: true });
     }
     Object.defineProperty(window.document, 'defaultView', { get: () => global, configurable: true });
+    // As jest-environment-jsdom: "Not implemented" reports go to the test's
+    // console as Error objects (tests spy on console.error and read the
+    // message).
+    window[S].reportNotImplemented = (text) => {
+      const error = new Error(text);
+      error.type = 'not implemented';
+      global.console?.error(error);
+    };
     // Events at the window show the global as their target, as with jsdom.
     window[S].globalProxy = global;
     // Classic scripts run in the context, as jsdom's do (scripts.js).

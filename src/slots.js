@@ -128,16 +128,52 @@ function childrenChanged(parent, node) {
   }
 }
 
+// The slot an event path goes through from a slottable. jsdom (20 to 30,
+// black box) keeps a slottable's last assigned slot after the node leaves
+// its host or stops matching: the event path still goes through that slot,
+// its shadow root and host, not through the node's new parent, until the
+// node is assigned to another slot (assignedSlot is null meanwhile). Tests
+// written against jsdom rely on it: tanstack-query's lit-query consumer,
+// moved out of one provider, still reaches it with its context request.
+// Recorded whenever a slottable is assigned: inserted into a host, slots
+// entering a shadow tree, slot and name changes, and when an event path
+// finds it assigned.
+const isHost = (n) => n !== null && n[S].type === ELEMENT_NODE && !!n[S].shadowRoot;
+function remember(node) {
+  const slot = findSlot(node);
+  if (slot !== null) node[S].lastSlot = slot;
+  return slot;
+}
+function rememberHost(host) {
+  for (let c = host[S].first; c; c = c[S].next) if (isSlottable(c)) remember(c);
+}
+function eventSlot(node) {
+  if (!isSlottable(node)) return null;
+  if (isHost(node[S].parent)) {
+    const slot = remember(node);
+    if (slot !== null) return slot;
+  }
+  return node[S].lastSlot ?? null;
+}
+
 hooks.slots = {
-  inserted: childrenChanged,
+  eventSlot,
+  inserted(parent, node) {
+    childrenChanged(parent, node);
+    if (isHost(parent) && isSlottable(node)) remember(node);
+    if (node[S].type === ELEMENT_NODE && hasSlot(node)) {
+      const root = rootOf(parent);
+      if (isShadowRoot(root)) rememberHost(root[S].host);
+    }
+  },
   removed: childrenChanged,
   attributeChanged(element, name) {
     if (name === 'slot') {
       const parent = element[S].parent;
-      if (parent && parent[S].type === ELEMENT_NODE && parent[S].shadowRoot) schedule(parent[S].shadowRoot);
+      if (isHost(parent)) { schedule(parent[S].shadowRoot); remember(element); }
     } else if (name === 'name' && isSlot(element)) {
       const root = rootOf(element);
-      if (isShadowRoot(root)) schedule(root);
+      if (isShadowRoot(root)) { schedule(root); rememberHost(root[S].host); }
     }
   },
 };

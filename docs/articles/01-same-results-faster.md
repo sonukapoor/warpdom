@@ -4,7 +4,7 @@
 DRAFT, not published. Author: Sonu Kapoor.
 Title alternatives (pick one that the final numbers support):
 - "jsdom's test results, faster on every suite we measured" (GitHub
-  Actions, 2026-10-12: 14 suites, drop-in median 1.32x-1.43x, range
+  Actions, 2026-10-12: 14 suites, drop-in median 1.32x (95% interval 1.25x-1.57x), range
   1.08x-8.84x; fast mode median 1.64x, up to 8.1x)
 - "Same results as jsdom, faster where the DOM is the bottleneck"
 - "A test DOM written from the specs: 42,000 tests, jsdom's results"
@@ -210,10 +210,15 @@ run its jsdom core package hit the harness's time limit, so that run says
 nothing about it. [TODO: re-run handsontable three-way with the 45-minute
 limit]
 
-**warpdom is faster than jsdom on all 14 suites.** The median is 1.32x
-over the 13 suites of the three-way run, 1.43x with handsontable; the
-range is 1.08x to 8.84x. Those medians are the numbers to remember, not
-the 8.84x.
+**warpdom is faster than jsdom on all 14 suites**, from 1.08x to 8.84x.
+The suites fall into two groups: about 1.1x to 1.3x (compile-, logic- or
+wait-heavy suites) and 1.5x to 1.9x (DOM-heavy ones), with handsontable far
+above. A median across them is therefore uncertain: 1.32x over the 13
+suites of the three-way run, with a 95% bootstrap interval of 1.25x to
+1.57x (resampling suites and their rounds). Within a suite the
+measurements are tight: most suites' three rounds agree within 3%. Read
+the per-suite table, not the median, and certainly not the 8.84x.
+<!-- source: docs/research/README.md 3.6 "Uncertainty"; dom-api-tracer timing-report.cjs b7f3188 -->
 
 **happy-dom is about as fast** (median 1.30x over jsdom), and faster
 than warpdom on ariakit and solid. **But it changes test results in 12
@@ -257,7 +262,7 @@ Angular wrapper's compile time weighs more there.
 
 I set myself a kill criterion before this work: a median under about 1.8x
 across 10+ suites in the recommended configuration would mean rethinking
-the product. Drop-in, the median is 1.3x to 1.4x, so that alone does not
+the product. Drop-in, the median is 1.32x (95% interval 1.25x-1.57x), so that alone does not
 meet it. Fast mode (below) is the recommended configuration for Vitest:
 its median over 11 suites is 1.64x, still under 1.8x, with 6x to 8x on
 the suites whose time is DOM work. What the data does show: jsdom's

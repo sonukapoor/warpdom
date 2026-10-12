@@ -60,7 +60,9 @@ function notComparedLines(result) {
     const tests = unswitched.reduce((n, p) => n + (byProject[p.name ?? '']?.notCompared ?? 0), 0);
     lines.push(`Not compared: ${plural(unswitched.length, 'project')} on ${[...new Set(unswitched.map((p) => environmentLabel(p.environment)))].join(', ')}${tests ? ` (${plural(tests, 'test')})` : ''} that compare could not switch`);
   }
-  const others = (result.projects ?? []).filter((p) => !p.dom && !p.unswitched);
+  const notRun = (result.projects ?? []).filter((p) => p.notRun);
+  if (notRun.length) lines.push(`Not run: ${plural(notRun.length, 'project')} in browser mode (left out of both runs)`);
+  const others = (result.projects ?? []).filter((p) => !p.dom && !p.unswitched && !p.notRun);
   if (others.length) {
     const environments = [...new Set(others.filter((p) => !p.browser).map((p) => environmentLabel(p.environment)))];
     const where = [environments.length ? `on ${environments.join(', ')}` : null, others.some((p) => p.browser) ? 'in browser mode' : null].filter(Boolean).join(' and ');
@@ -155,7 +157,7 @@ function projectTable(result, md) {
   for (const name of names) {
     const p = projects.find((x) => (x.name ?? '') === name);
     const n = byProject[name] ?? { compared: 0, same: 0, regressions: 0, fixed: 0, other: 0, flaky: 0, notCompared: 0 };
-    const environment = !p ? '-' : p.browser ? 'browser mode' : `${environmentLabel(p.environment)}${p.unswitched ? ' (not switched, not compared)' : p.dom ? '' : ' (not compared)'}`;
+    const environment = !p ? '-' : p.notRun ? 'browser mode (not run)' : p.browser ? 'browser mode' : `${environmentLabel(p.environment)}${p.unswitched ? ' (not switched, not compared)' : p.dom ? '' : ' (not compared)'}`;
     md.push(`| ${name || '(unnamed)'} | ${environment} | ${n.compared} | ${n.same} | ${n.regressions} | ${n.fixed} | ${n.other} | ${n.flaky} | ${n.notCompared} |`);
   }
   md.push('');

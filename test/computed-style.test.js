@@ -264,3 +264,41 @@ const legacyBorders = (w, jsdom25 = false) => {
 };
 parity('getComputedStyle: border shorthands as declared (jsdom 25)', (w) => legacyBorders(w, true), { jsdom: 25 });
 parity('getComputedStyle: border shorthands as declared (jsdom 26)', legacyBorders, { jsdom: 26 });
+
+// jsdom 21 and later keep a disconnected element's computed style until
+// the document's connected tree or its style sheets change (black box, 22
+// to 30); jsdom 20 computes it each time.
+for (const jsdom of [30, 26, 20]) {
+  parity(`getComputedStyle of a disconnected element: kept until the document changes (jsdom ${jsdom})`, (w) => {
+    const d = w.document;
+    const out = [];
+    const host = d.createElement('div');
+    const el = host.appendChild(d.createElement('div'));
+    // (jsdom 20 computes colors as written: left out there.)
+    const g = () => `${w.getComputedStyle(el).getPropertyValue('--a')}/${w.getComputedStyle(el).display}/${jsdom === 20 ? '' : w.getComputedStyle(el).color}`;
+    out.push(g());
+    el.style.setProperty('--a', '1');
+    el.style.color = 'red';
+    out.push(g());
+    d.body.appendChild(d.createElement('span'));
+    out.push(g());
+    el.style.setProperty('--a', '2');
+    host.appendChild(d.createElement('i'));
+    el.setAttribute('class', 'x');
+    out.push(g());
+    d.body.setAttribute('data-x', '1');
+    out.push(g());
+    const st = d.createElement('style');
+    st.textContent = 'div { display: inline }';
+    d.head.append(st);
+    el.style.setProperty('--a', '3');
+    out.push(g());
+    d.body.append(host);
+    out.push(g());
+    host.remove();
+    el.style.setProperty('--a', '5');
+    el.style.removeProperty('--a');
+    out.push(g());
+    return out;
+  }, { jsdom });
+}

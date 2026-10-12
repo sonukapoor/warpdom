@@ -182,3 +182,34 @@ test('Vitest: the global CSS exists (undefined) when the jsdom profile has no CS
     r2.teardown();
   }
 });
+
+// Vitest's VM pools run test files in a context whose global is the window,
+// as jsdom's (assignments to document, window and top ignored); its other
+// pools copy the window's members onto Node's global with setters, so an
+// assignment replaces the global's value, as Vitest's jsdom environment does.
+test('Vitest: assigning the global document is ignored in VM pools and replaces it otherwise, as with jsdom', async () => {
+  const { default: environment } = await import('../src/vitest.js');
+  const vmResult = await environment.setupVM();
+  try {
+    const context = vmResult.getVmContext();
+    const vm = await import('node:vm');
+    assert.equal(vm.runInContext(`(() => { 'use strict';
+      const real = document;
+      globalThis.document = {};
+      window.top = 1;
+      return [document === real, top === globalThis].join();
+    })()`, context), 'true,true');
+  } finally {
+    vmResult.teardown();
+  }
+  const window = createWindow();
+  const global = {};
+  const restore = installWindow(global, window, { hostKeys: [], alwaysKeys: VITEST_ALWAYS_KEYS });
+  try {
+    const fake = { fake: true };
+    global.document = fake;
+    assert.equal(global.document, fake);
+  } finally {
+    restore();
+  }
+});

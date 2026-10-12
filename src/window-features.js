@@ -7,7 +7,7 @@ import { computedStyle, cssNamespace } from './css.js';
 import './cascade.js';
 import { compile } from './selectors.js';
 import { QuotaExceededError } from './storage.js';
-import { navigate } from './navigation.js';
+import { navigate, traverse, hostTimeout } from './navigation.js';
 
 // The jsdom version warpdom behaves like by default.
 export const LATEST_JSDOM = 30;
@@ -101,6 +101,9 @@ export const HOST_TIMER_KEYS = Object.keys(timerMembers);
 // frames run much faster (ariakit 1.61x), but a frame can now run before a
 // short timer that would have fired first, which changes the result of a
 // few tests (docs/fast-frames.md). Timestamps stay real times.
+// The frame's timer is the global's setTimeout, looked up when the frame
+// is scheduled, as jsdom's is: fake timers that leave requestAnimationFrame
+// alone (Vitest 2's default) still run frames when the test advances them.
 const animationFrames = {
   requestAnimationFrame(callback) {
     const s = state(this);
@@ -109,7 +112,7 @@ const animationFrames = {
     frames.queue.set(id, callback);
     if (!frames.scheduled) {
       frames.scheduled = true;
-      s.setTimeout(() => {
+      hostTimeout(this, () => {
         frames.scheduled = false;
         // This frame's callbacks; one canceled by an earlier callback in the
         // same frame does not run.
@@ -179,9 +182,12 @@ export const WINDOW_MEMBERS = {
   get event() { return state(this).currentEvent; },
   set event(value) { Object.defineProperty(this, 'event', { value, writable: true, enumerable: true, configurable: true }); },
   ...notImplementedMethods,
-  getComputedStyle(element) {
+  // Pseudo-elements are not implemented: as in jsdom, the element's own
+  // style, reported as not implemented in the profile's words.
+  getComputedStyle(element, pseudoElt = undefined) {
     const ws = state(this);
     if (!element?.[S]?.attrs) throw new TypeError("Failed to execute 'getComputedStyle' on 'Window': parameter 1 is not of type 'Element'.");
+    if (pseudoElt != null && pseudoElt !== '') ws.notImplemented(pseudoElementMessage(ws.compat.jsdom));
     return computedStyle(element, ws.protos.CSSStyleProperties);
   },
   // postMessage to this window, as jsdom does it: the message (not cloned)
@@ -204,9 +210,16 @@ export const WINDOW_MEMBERS = {
   get screen() { const s = state(this); return s.screen ?? (s.screen = make(this, 'Screen', {})); },
   get navigator() { const s = state(this); return s.navigator ?? (s.navigator = make(this, 'Navigator', {})); },
   get location() { return state(this).location; },
+  // [PutForwards=href]: window.location = url navigates, as in jsdom.
+  set location(v) { state(this).location.href = v; },
   get history() { return state(this).history; },
 };
 Object.defineProperties(WINDOW_MEMBERS, Object.getOwnPropertyDescriptors(viewport));
+
+// jsdom's words for getComputedStyle with a pseudo-element (black box: 20
+// to 23, 24 to 26, 27 and later).
+const pseudoElementMessage = (jsdom) => (jsdom >= 27 ? "Window's getComputedStyle() method: with pseudo-elements"
+  : jsdom >= 24 ? 'window.getComputedStyle(elt, pseudoElt)' : 'window.computedStyle(elt, pseudoElt)');
 
 function make(window, iface, data) {
   const object = Object.create(window[S].protos[iface]);
@@ -296,22 +309,26 @@ export const FEATURE_INTERFACES = [
       get state() { const s = state(this); return s.entries[s.index].state; },
       get scrollRestoration() { return state(this).scrollRestoration ?? 'auto'; },
       set scrollRestoration(v) { state(this).scrollRestoration = v === 'manual' ? 'manual' : 'auto'; },
+      // The state is kept as given, as jsdom (20 to 30) does: the standard
+      // stores a structured clone, which throws for functions and nodes
+      // and gives a copy (history.state !== the object pushed).
       pushState(data, title, target = undefined) {
         const s = state(this);
         const next = target == null ? url(this) : new URL(String(target), url(this).href);
-        s.entries.splice(s.index + 1, Infinity, { state: structuredClone(data), url: next });
+        s.entries.splice(s.index + 1, Infinity, { state: data, url: next });
         s.index++;
+        s.navigations++; // cancels a pending traversal (navigation.js)
         setURL(this, next);
       },
       replaceState(data, title, target = undefined) {
         const s = state(this);
         const next = target == null ? url(this) : new URL(String(target), url(this).href);
-        s.entries[s.index] = { state: structuredClone(data), url: next };
+        s.entries[s.index] = { state: data, url: next };
         setURL(this, next);
       },
-      back() { state(this); },
-      forward() { state(this); },
-      go() { state(this); },
+      back() { traverse(state(this).window, -1); },
+      forward() { traverse(state(this).window, 1); },
+      go(delta = 0) { traverse(state(this).window, Number(delta) | 0); },
     },
   },
 ];
@@ -337,10 +354,14 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
   // 4.3.1, url() in background and background-image serialized without
   // quotes; before 4.4 the root element's computed color was '', and in
   // 4.4 and 4.5 'CanvasText'.
-  const css = version[0] < 27 && cssstyle != null ? parseJsdomVersion(cssstyle) : null;
+  // jsdom 20 loads cssstyle 2, jsdom 21 to 23 cssstyle 3 (assumed for 21;
+  // 22 and 23 measured): the default when no cssstyle is given.
+  const cssDefault = version[0] <= 20 ? '2.3.0' : version[0] <= 23 ? '3.0.0' : null;
+  const cssText = version[0] < 27 ? cssstyle ?? cssDefault : null;
+  const css = cssText != null ? parseJsdomVersion(cssText) : null;
   ws.compat = {
     version: jsdom, jsdom: version[0], legacyComputedStyle: version[0] < 29, mutableComputedStyle: version[0] < 28,
-    focusIgnoresRendering: before(version, [30, 1, 2]), cssstyle: css ? cssstyle : undefined,
+    focusIgnoresRendering: before(version, [30, 1, 2]), cssstyle: css ? cssText : undefined, cssstyleMajor: css ? css[0] : 0,
     unquotedUrls: css !== null && before(css, [4, 3, 1]),
     rootColor: version[0] >= 27 ? 'rgb(0, 0, 0)' : css !== null && before(css, [4, 4, 0]) ? '' : css !== null && before(css, [4, 6, 0]) ? 'CanvasText' : 'canvastext',
   };
@@ -349,7 +370,7 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
   window.QuotaExceededError = QuotaExceededError;
   ws.setTimeout = globalThis.setTimeout.bind(globalThis);
   ws.location = make(window, 'Location', {});
-  ws.history = make(window, 'History', { entries: [{ state: null, url: ws.url }], index: 0 });
+  ws.history = make(window, 'History', { entries: [{ state: null, url: ws.url }], index: 0, navigations: 0 });
 
   // Created on first use, like the interfaces (window.js), so a window
   // that never uses them does not create their element interfaces.

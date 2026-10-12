@@ -2,7 +2,7 @@
 // CSSStyleProperties (an accessor per CSS property name), as in jsdom 30.
 // Declarations are kept in order in a Map, and every change is written back to
 // the element's style attribute; a new style attribute re-parses them.
-import { S, state, domError, ELEMENT_NODE, cssomChanges, attributesChanged, hooks } from './internal.js';
+import { S, state, hiddenSlot, domError, ELEMENT_NODE, cssomChanges, attributesChanged, hooks } from './internal.js';
 import { STYLE_ACCESSORS } from './css-properties.js';
 import { LONGHANDS, SHORTHANDS, COLOR_SHORTHANDS, ALIASES } from './css-data.js';
 import { isValidValue } from './css-values.js';
@@ -139,7 +139,8 @@ const QUOTED_URLS = {
   spec: new Set(['background', 'background-image', 'content', 'list-style-image', 'mask-image', 'filter']),
   jsdom26: new Set(['background', 'background-image']),
 };
-const UNQUOTED_URLS = { jsdom25: QUOTED_URLS.jsdom26 };
+QUOTED_URLS.jsdom27 = QUOTED_URLS.spec;
+const UNQUOTED_URLS = { jsdom25: QUOTED_URLS.jsdom26, jsdom22: QUOTED_URLS.jsdom26, jsdom20: QUOTED_URLS.jsdom26 };
 const URL_FUNCTION = /\burl\(\s*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|([^"'()\s]*))\s*\)/gi;
 function quoteUrls(value) {
   return value.replace(URL_FUNCTION, (m, dq, sq, raw) => {
@@ -193,8 +194,13 @@ const JSDOM26_PARSED = new Set(['-webkit-text-fill-color', '-webkit-text-stroke-
   'left', 'lighting-color', 'line-height', 'margin-bottom', 'margin-left', 'margin-right', 'margin-top', 'opacity', 'outline-color', 'padding-bottom',
   'padding-left', 'padding-right', 'padding-top', 'right', 'stop-color', 'top', 'width', 'background', 'background-position', 'border', 'border-bottom',
   'border-color', 'border-left', 'border-right', 'border-top', 'border-width', 'flex', 'font', 'font-variant', 'margin', 'padding']);
-// 'jsdom25' is 'jsdom26' with unquoted url()s (cssstyle before 4.3.1).
-export const isLegacyMode = (mode) => mode === 'jsdom26' || mode === 'jsdom25';
+// 'jsdom25' is 'jsdom26' with unquoted url()s (cssstyle before 4.3.1);
+// 'jsdom22' (cssstyle 3: jsdom 21 to 23) is 'jsdom25' without calc() in
+// margins and paddings; 'jsdom20' (cssstyle 2) also without the properties
+// cssstyle 2 did not know (unknownTo). 'jsdom27' (jsdom 27 to 29)
+// is 'spec' with jsdom 26's border and clip (borderValue, clipValue).
+export const isLegacyMode = (mode) => mode === 'jsdom26' || mode === 'jsdom25' || mode === 'jsdom22' || mode === 'jsdom20';
+const isSpecMode = (mode) => mode === 'spec' || mode === 'jsdom27';
 const modes = new WeakMap(); // CSSStyleProperties prototype -> mode
 export function setValidationMode(proto, mode) { modes.set(proto, mode); }
 const modeOf = (proto) => modes.get(proto) ?? 'spec';
@@ -209,7 +215,7 @@ const isKnownProperty = (name) => name.startsWith('--') || LONGHANDS[name] !== u
 // same few values, so each is validated and serialized once. INVALID marks
 // a value the property's grammar rejects.
 const INVALID = null;
-const declaredCaches = { spec: new Map(), jsdom26: new Map(), jsdom25: new Map(), page: new Map() }; // mode -> property -> (raw value -> serialized)
+const declaredCaches = { spec: new Map(), jsdom27: new Map(), jsdom26: new Map(), jsdom25: new Map(), jsdom22: new Map(), jsdom20: new Map(), page: new Map() }; // mode -> property -> (raw value -> serialized)
 function declaredValue(name, value, mode = 'spec') {
   const cache = declaredCaches[mode];
   let byValue = cache.get(name);
@@ -219,13 +225,218 @@ function declaredValue(name, value, mode = 'spec') {
     if (mode === 'page') out = pageDescriptorValue(name, value);
     else if (!isKnownProperty(name)) out = INVALID;
     else {
-      const checked = mode === 'spec' || JSDOM26_VALIDATED.has(name);
-      out = !checked || isValidValue(name, value) ? serializeDeclared(name, value, mode) : INVALID;
+      out = versionedValue(name, value, mode);
+      if (out === undefined) {
+        const checked = isSpecMode(mode) || JSDOM26_VALIDATED.has(name);
+        out = !checked || isValidValue(name, value) ? serializeDeclared(name, value, mode) : INVALID;
+      }
     }
     if (byValue.size >= 500) byValue.clear();
     byValue.set(value, out);
   }
   return out;
+}
+
+// Values whose serialization depends on the jsdom version beyond the
+// modes' general rules (black box, jsdom 20 to 30); undefined for the
+// others. Runs once per property and raw value (declaredValue caches it).
+function versionedValue(name, value, mode) {
+  if (isLegacyMode(mode)) {
+    if (unknownTo(mode, name)) return INVALID;
+    const lower = value.toLowerCase();
+    const kind = CSS_WIDE_KEYWORD.test(value) ? lower : lower === 'auto' ? 'auto' : lower.includes('var(') ? 'var' : null;
+    if (kind !== null && droppedBy(mode, kind, name)) return INVALID;
+    if (mode !== 'jsdom26') {
+      // cssstyle before 4.3.1 keeps currentColor and border-spacing: 0 as written.
+      if (lower === 'currentcolor' && isColorProperty(name)) return value;
+      if (name === 'border-spacing' && ZERO.test(value)) return value;
+    }
+  }
+  if ((mode === 'jsdom26' || mode === 'jsdom27') && name === 'border-style' && value.toLowerCase() === 'none') return INVALID;
+  // jsdom 30 writes a single-number aspect-ratio as a ratio.
+  if (mode === 'spec' && name === 'aspect-ratio' && /^\+?(\d+\.?\d*|\.\d+)$/.test(value)) return `${Number(value)} / 1`;
+  if ((mode === 'jsdom20' || mode === 'jsdom22') && (name.startsWith('margin') || name.startsWith('padding')) && /calc\(/i.test(value)) return INVALID;
+  if (BORDER_SHORTHAND.has(name)) return borderValue(name, value, mode);
+  if (name === 'clip') return clipValue(value, mode);
+  // jsdom 30 keeps outline as written (colors, numbers, order), a 0 as 0px.
+  if (name === 'outline' && mode === 'spec') return !isValidValue(name, value) ? INVALID : CSS_WIDE_KEYWORD.test(value) ? value.toLowerCase() : ZERO.test(value) ? '0px' : value;
+  return undefined;
+}
+
+// Properties the cssstyle of a jsdom profile does not know: setProperty
+// drops them (black box: no value kept, 'initial' neither), by the oldest
+// profile that knows them: jsdom 26's cssstyle 4.6 lacks the first list,
+// 4.1 (jsdom25 mode) also the second, 3 (jsdom 21 to 23) the third, 2
+// (jsdom 20) the fourth. jsdom 27 and later know every property warpdom
+// does. Split into sets on first use (legacy profiles only).
+const UNKNOWN_TO = [
+  ['jsdom26',
+    '-webkit-box-align -webkit-box-flex -webkit-box-ordinal-group -webkit-box-orient -webkit-box-pack -webkit-user-select animation-delay-end '
+    + 'animation-delay-start animation-range-center animation-trigger backdrop-filter background-position-block background-position-inline '
+    + 'background-repeat-block background-repeat-inline background-tbd border-block-end-clip border-block-start-clip border-bottom-clip '
+    + 'border-inline-end-clip border-inline-start-clip border-left-clip border-limit border-right-clip border-shape border-top-clip '
+    + 'box-shadow-blur box-shadow-color box-shadow-offset box-shadow-position box-shadow-spread caret-animation column-height '
+    + 'column-rule-inset-cap-end column-rule-inset-cap-start column-rule-inset-junction-end column-rule-inset-junction-start '
+    + 'column-rule-visibility-items column-wrap copy-into corner-bottom-left-shape corner-bottom-right-shape corner-end-end-shape '
+    + 'corner-end-start-shape corner-start-end-shape corner-start-start-shape corner-top-left-shape corner-top-right-shape cx cy d event-trigger '
+    + 'event-trigger-name event-trigger-source field-sizing flex-line-count flow-tolerance frame-sizing image-animation input-security '
+    + 'interactivity interest-delay-end interest-delay-start link-parameters math-depth math-shift math-style object-view-box overlay paint-order '
+    + 'path-length pointer-timeline-axis pointer-timeline-name r reading-order row-rule-inset-cap-end row-rule-inset-cap-start '
+    + 'row-rule-inset-junction-end row-rule-inset-junction-start row-rule-visibility-items rule-overlap rx ry scroll-axis-lock '
+    + 'scroll-initial-target scroll-target-group shape-padding text-decoration-inset text-fit text-size-adjust '
+    + 'timeline-trigger-activation-range-end timeline-trigger-activation-range-start timeline-trigger-active-range-end '
+    + 'timeline-trigger-active-range-start timeline-trigger-name timeline-trigger-source touch-action trigger-scope view-transition-scope '
+    + 'window-drag x y zoom border-block-clip border-block-end-radius border-block-start-radius border-bottom-radius border-clip '
+    + 'border-inline-clip border-inline-end-radius border-inline-start-radius border-left-radius border-right-radius border-top-radius '
+    + 'column-rule-inset column-rule-inset-cap column-rule-inset-end column-rule-inset-junction column-rule-inset-start corner corner-block-end '
+    + 'corner-block-end-shape corner-block-start corner-block-start-shape corner-bottom corner-bottom-left corner-bottom-right corner-bottom-shape '
+    + 'corner-end-end corner-end-start corner-inline-end corner-inline-end-shape corner-inline-start corner-inline-start-shape corner-left '
+    + 'corner-left-shape corner-right corner-right-shape corner-shape corner-start-end corner-start-start corner-top corner-top-left '
+    + 'corner-top-right corner-top-shape interest-delay max-size min-size pointer-timeline row-rule-inset row-rule-inset-cap row-rule-inset-end '
+    + 'row-rule-inset-junction row-rule-inset-start rule-inset rule-inset-cap rule-inset-end rule-inset-junction rule-inset-start '
+    + 'rule-visibility-items timeline-trigger timeline-trigger-activation-range timeline-trigger-active-range -webkit-align-content '
+    + '-webkit-align-items -webkit-align-self -webkit-animation -webkit-animation-delay -webkit-animation-direction -webkit-animation-duration '
+    + '-webkit-animation-fill-mode -webkit-animation-iteration-count -webkit-animation-name -webkit-animation-play-state '
+    + '-webkit-animation-timing-function -webkit-appearance -webkit-backface-visibility -webkit-background-clip -webkit-background-origin '
+    + '-webkit-background-size -webkit-border-bottom-left-radius -webkit-border-bottom-right-radius -webkit-border-radius '
+    + '-webkit-border-top-left-radius -webkit-border-top-right-radius -webkit-box-shadow -webkit-box-sizing -webkit-filter -webkit-flex '
+    + '-webkit-flex-basis -webkit-flex-direction -webkit-flex-flow -webkit-flex-grow -webkit-flex-shrink -webkit-justify-content -webkit-mask '
+    + '-webkit-mask-box-image -webkit-mask-clip -webkit-mask-composite -webkit-mask-image -webkit-mask-origin -webkit-mask-position '
+    + '-webkit-mask-repeat -webkit-mask-size -webkit-order -webkit-perspective -webkit-perspective-origin -webkit-transform-origin '
+    + '-webkit-transform-style -webkit-transition -webkit-transition-delay -webkit-transition-duration -webkit-transition-property '
+    + '-webkit-transition-timing-function grid-column-gap grid-gap grid-row-gap '],
+  ['jsdom25',
+    '-webkit-text-fill-color -webkit-text-stroke-color -webkit-text-stroke-width block-step-align block-step-insert block-step-round '
+    + 'block-step-size column-rule-break dynamic-range-limit fill-break fill-color fill-image fill-origin fill-position fill-repeat fill-size '
+    + 'float-defer float-offset float-reference interpolate-size line-height-step margin-break overscroll-behavior-block '
+    + 'overscroll-behavior-inline overscroll-behavior-x overscroll-behavior-y position-area position-try-fallbacks position-visibility '
+    + 'reading-flow row-rule-break row-rule-color row-rule-style row-rule-width scroll-marker-group slider-orientation stroke-align '
+    + 'stroke-alignment stroke-break stroke-color stroke-dash-corner stroke-dash-justify stroke-dashadjust stroke-dashcorner stroke-image '
+    + 'stroke-origin stroke-position stroke-repeat stroke-size transition-behavior view-transition-class view-transition-group -webkit-text-stroke '
+    + 'block-step overscroll-behavior row-rule rule rule-break rule-color rule-style rule-width -webkit-flex-wrap -webkit-mask-box-image-outset '
+    + '-webkit-mask-box-image-repeat -webkit-mask-box-image-slice -webkit-mask-box-image-source -webkit-mask-box-image-width '
+    + '-webkit-text-size-adjust -webkit-transform '],
+  ['jsdom22',
+    'anchor-name anchor-scope animation-composition animation-range-end animation-range-start animation-timeline font-synthesis-position '
+    + 'font-width line-fit-edge position-anchor position-try-order text-autospace text-box text-box-edge text-box-trim text-spacing-trim '
+    + 'text-wrap-mode text-wrap-style timeline-scope white-space-collapse white-space-trim word-space-transform position-try '],
+  ['jsdom20',
+    'accent-color aspect-ratio backface-visibility baseline-source block-ellipsis contain-intrinsic-block-size contain-intrinsic-height '
+    + 'contain-intrinsic-inline-size contain-intrinsic-width container-name container-type content-visibility initial-letter initial-letter-align '
+    + 'initial-letter-wrap margin-trim min-intrinsic-sizing overflow-anchor overflow-clip-margin-block-end overflow-clip-margin-block-start '
+    + 'overflow-clip-margin-bottom overflow-clip-margin-inline-end overflow-clip-margin-inline-start overflow-clip-margin-left '
+    + 'overflow-clip-margin-right overflow-clip-margin-top perspective perspective-origin print-color-adjust rotate ruby-overhang scale '
+    + 'scroll-timeline-axis scroll-timeline-name scrollbar-color scrollbar-gutter scrollbar-width text-decoration-skip-box '
+    + 'text-decoration-skip-ink text-decoration-skip-self text-decoration-skip-spaces text-decoration-thickness text-emphasis-skip '
+    + 'text-underline-offset transform-style translate view-timeline-axis view-timeline-inset view-timeline-name view-transition-name '
+    + '-webkit-line-clamp animation-range contain-intrinsic-size container overflow-clip-margin overflow-clip-margin-block '
+    + 'overflow-clip-margin-inline scroll-timeline text-decoration-skip view-timeline '],
+];
+// Values cssstyle drops for some properties it knows (black box): CSS-wide
+// keywords, auto and var() (jsdom 26: var() in font-variant only). jsdom
+// 20 to 25 drop the same ones.
+const DROPPED = {
+  legacy: {
+    inherit: 'border-bottom-color border-bottom-style border-bottom-width border-left-color border-left-style border-left-width border-right-color border-right-style border-right-width border-top-color border-top-style border-top-width bottom color flex-grow flex-shrink flood-color font-size left lighting-color margin-bottom margin-left margin-right margin-top opacity outline-color padding-bottom padding-left padding-right padding-top right stop-color top background border-color border-style border-width flex font',
+    initial: 'background-attachment background-color background-image background-repeat border-bottom-color border-bottom-style border-bottom-width border-collapse border-left-color border-left-style border-left-width border-right-color border-right-style border-right-width border-top-color border-top-style border-top-width bottom clear clip color flex-basis flex-grow flex-shrink flood-color font-size height left lighting-color margin-bottom margin-left margin-right margin-top opacity outline-color padding-bottom padding-left padding-right padding-top right stop-color top width background background-position border-color border-style border-width',
+    unset: 'background-attachment background-color background-image background-repeat border-bottom-color border-bottom-style border-bottom-width border-collapse border-left-color border-left-style border-left-width border-right-color border-right-style border-right-width border-top-color border-top-style border-top-width bottom clear clip color flex-basis flex-grow flex-shrink flood-color font-size height left lighting-color margin-bottom margin-left margin-right margin-top opacity outline-color padding-bottom padding-left padding-right padding-top right stop-color top width background background-position border-color border-style border-width flex',
+    revert: 'background-attachment background-color background-image background-repeat border-bottom-color border-bottom-style border-bottom-width border-collapse border-left-color border-left-style border-left-width border-right-color border-right-style border-right-width border-top-color border-top-style border-top-width bottom clear clip color flex-basis flex-grow flex-shrink flood-color font-size height left lighting-color margin-bottom margin-left margin-right margin-top opacity outline-color padding-bottom padding-left padding-right padding-top right stop-color top width background background-position border-color border-style border-width flex margin padding',
+    var: 'background-attachment background-color background-image background-repeat border-bottom-color border-bottom-style border-bottom-width border-collapse border-left-color border-left-style border-left-width border-right-color border-right-style border-right-width border-top-color border-top-style border-top-width bottom clear clip color flex-basis flex-grow flex-shrink flood-color font-size height left lighting-color margin-bottom margin-left margin-right margin-top opacity outline-color padding-bottom padding-left padding-right padding-top right stop-color top width background background-position border-color border-style border-width flex margin padding',
+    auto: 'bottom flex-grow flex-shrink left outline-color right top flex',
+  },
+  jsdom26: {
+    inherit: 'flex-grow flex-shrink background flex font', initial: 'flex-grow flex-shrink background font', unset: 'flex-grow flex-shrink background flex font',
+    revert: 'flex-grow flex-shrink background flex font', var: 'font-variant', auto: 'border-spacing flex-grow flex-shrink font-weight outline-color font-variant',
+  },
+};
+let droppedSets = null;
+function droppedBy(mode, kind, name) {
+  if (droppedSets === null) {
+    droppedSets = {};
+    for (const [key, lists] of Object.entries(DROPPED)) {
+      droppedSets[key] = {};
+      for (const [k, list] of Object.entries(lists)) droppedSets[key][k] = new Set(list.split(' '));
+    }
+  }
+  return droppedSets[mode === 'jsdom26' ? 'jsdom26' : 'legacy'][kind]?.has(name) === true;
+}
+
+let unknownSets = null;
+function unknownTo(mode, name) {
+  if (unknownSets === null) {
+    unknownSets = {};
+    const names = [];
+    for (const [key, list] of UNKNOWN_TO) {
+      names.push(...list.trim().split(' '));
+      unknownSets[key] = new Set(names);
+    }
+  }
+  return unknownSets[mode]?.has(name) === true;
+}
+
+// border and its sides (width, style and color in any order), as jsdom's
+// versions serialize them (black box; cssstyle in jsdom 20 to 26):
+// - jsdom 30 ('spec'): the shortest form, width style color, without
+//   initial values (medium, none, currentcolor); all initial is medium.
+// - jsdom 26 to 29: width style color, a 0 width as 0px; on border a none
+//   style is left out, alone it drops the declaration; on a side none and
+//   hidden clear what came before them (border-top: 0 none drops it,
+//   none 0 is 0px). CSS-wide keywords drop the declaration.
+// - jsdom 20 to 25 (cssstyle before 4.3.1): as jsdom 26, but components as
+//   written (on border named colors lowercased), border keeps a none style (alone it still drops it), sides
+//   keep a 0 width as written and only none clears, and var() drops it.
+const BORDER_SHORTHAND = new Set(['border', 'border-top', 'border-right', 'border-bottom', 'border-left']);
+const BORDER_STYLE = /^(none|hidden|dotted|dashed|solid|double|groove|ridge|inset|outset)$/i;
+const BORDER_WIDTH = /^(thin|medium|thick|calc\(.*\)|[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?[a-z]*)$/i;
+function borderValue(name, value, mode) {
+  if (!isValidValue(name, value)) return INVALID;
+  const keyword = CSS_WIDE_KEYWORD.test(value);
+  if (keyword) return mode === 'spec' ? value.toLowerCase() : INVALID;
+  const legacy = isLegacyMode(mode) && mode !== 'jsdom26';
+  if (/var\(|env\(|attr\(/i.test(value)) return legacy ? INVALID : value;
+  const parts = segments(value);
+  let width = null, style = null, color = null;
+  const side = name !== 'border';
+  for (let i = 0; i < parts.length; i += 2) {
+    const token = parts[i];
+    if (token === '') continue;
+    if (i > 0 && parts[i - 1].includes(',')) return serializeDeclared(name, value, mode);
+    if (BORDER_STYLE.test(token)) {
+      const lower = token.toLowerCase();
+      if (side && mode !== 'spec' && (lower === 'none' || (lower === 'hidden' && !legacy))) { width = color = null; style = ''; } else style = token;
+    } else if (BORDER_WIDTH.test(token)) width = token;
+    else color = token;
+  }
+  if (style === '') style = null;
+  if (mode === 'spec') {
+    if (width !== null && width.toLowerCase() === 'medium') width = null;
+    if (style !== null && style.toLowerCase() === 'none') style = null;
+    if (color !== null && color.toLowerCase() === 'currentcolor') color = null;
+    if (width === null && style === null && color === null) return 'medium';
+  } else if (!side && style !== null && style.toLowerCase() === 'none') {
+    if (width === null && color === null) return INVALID;
+    if (!legacy) style = null;
+  }
+  if (width === null && style === null && color === null) return INVALID;
+  if (width !== null) width = legacy ? (ZERO.test(width) && !side ? '0px' : width) : ZERO.test(width) ? '0px' : canonicalNumbers(width);
+  // Legacy: as written, on border with named colors lowercased.
+  if (color !== null) color = !legacy ? declaredColors(color) : !side && /^[a-z]+$/i.test(color) ? color.toLowerCase() : color;
+  return [width, style, color].filter((part) => part !== null).join(' ');
+}
+
+// clip: auto, or rect() with comma-separated lengths (0 is 0px). jsdom 30
+// keeps only the first of space-separated lengths (rect(0 0 0 0) is
+// rect(0px)); jsdom 20 to 29 drop them, and auto inside rect().
+function clipValue(value, mode) {
+  const m = /^rect\(\s*(.*?)\s*\)$/i.exec(value);
+  if (!m) return undefined;
+  const commas = m[1].includes(',');
+  const args = (commas ? m[1].split(',') : m[1].split(/\s+/)).map((a) => a.trim());
+  if (args.some((a) => !/^(auto|0|[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?[a-z]+)$/i.test(a))) return undefined;
+  if (args.length !== 4) return INVALID;
+  if (mode !== 'spec' && (!commas || args.some((a) => a.toLowerCase() === 'auto'))) return INVALID;
+  const zero = (a) => (ZERO.test(a) ? '0px' : a);
+  return commas ? `rect(${args.map(zero).join(', ')})` : `rect(${zero(args[0])})`;
 }
 
 // @page descriptors (CSS Paged Media 3, CSSOM's CSSPageDescriptors): the
@@ -314,23 +525,23 @@ function serializeDeclared(name, value, mode) {
   // CSS-wide keywords are ASCII case-insensitive and serialize lowercased.
   if (value.length <= 12 && CSS_WIDE_KEYWORD.test(value)) return value.toLowerCase();
   if (isLegacyMode(mode) && !JSDOM26_PARSED.has(name)) return value;
-  if (name === 'display' && mode === 'spec') return displayShortForm(value);
+  if (name === 'display' && isSpecMode(mode)) return displayShortForm(value);
   if (name === 'flex') return flexLonghands(canonicalNumbers(value));
   if (name === 'font') return familyCommas(serializeFont(canonicalNumbers(value)));
   if (name === 'font-family') return familyCommas(value);
   value = canonicalNumbers(value);
   // background-position as its x and y parts per layer (jsdom 27 and
   // later): center is center center, top is center top.
-  if (name === 'background-position' && mode === 'spec') {
+  if (name === 'background-position' && isSpecMode(mode)) {
     const layers = positionLayers(value);
     if (layers) value = layers.map(([x, y]) => `${x} ${y}`).join(', ');
   }
   // background-repeat in its shortest form (CSS Backgrounds 3), as in jsdom
   // 27 and later: repeat repeat is repeat, repeat no-repeat is repeat-x.
-  if (name === 'background-repeat' && mode === 'spec') value = shortRepeat(value);
+  if (name === 'background-repeat' && isSpecMode(mode)) value = shortRepeat(value);
   if (isColorProperty(name)) value = declaredColors(value);
   if (value.includes('(')) {
-    if (mode === 'spec' && name !== 'border-image' && /(min|max|clamp|gradient)\(/i.test(value)) value = functionArguments(value);
+    if (isSpecMode(mode) && name !== 'border-image' && /(min|max|clamp|gradient)\(/i.test(value)) value = functionArguments(value);
     if (QUOTED_URLS[mode]?.has(name)) value = quoteUrls(value);
     else if (UNQUOTED_URLS[mode]?.has(name)) value = unquoteUrls(value);
     return name === 'background' || name === 'background-image' ? familyCommas(value) : value;
@@ -385,16 +596,23 @@ function defineIndex(style, i, name) {
   style[i] = name;
 }
 function reindex(style) {
-  const s = style[S];
+  const s = styleState(style);
   let i = 0;
   for (const name of s.decls.keys()) defineIndex(style, i++, name);
   for (let j = i; j < s.indexed; j++) delete style[j];
   s.indexed = i;
 }
 export function clearDeclarations(style) {
-  style[S].decls.clear();
+  styleState(style).decls.clear();
   reindex(style);
 }
+
+// A style declaration's state: a private field (hiddenSlot in internal.js),
+// read directly here (style writes are hot); CSSStyleDeclaration.prototype
+// has the accessor for S for other modules.
+const STYLE_SLOT = hiddenSlot();
+const styleState = STYLE_SLOT.get;
+const initStyleState = STYLE_SLOT.init;
 
 // Property names are ASCII case-insensitive, except custom properties'.
 const propertyName = (name) => {
@@ -422,7 +640,8 @@ const MERGED = {
   page: [['margin', SHORTHANDS.margin]],
   jsdom26: ['margin', 'padding'].map((shorthand) => [shorthand, SHORTHANDS[shorthand]]),
 };
-MERGED.jsdom25 = MERGED.jsdom26;
+MERGED.jsdom25 = MERGED.jsdom22 = MERGED.jsdom20 = MERGED.jsdom26;
+MERGED.jsdom27 = MERGED.spec;
 // A block that ever held one of their longhands is marked (decls.mergeable),
 // so most blocks skip merging.
 const MERGEABLE = new Set(MERGED.spec.flatMap(([, longhands]) => longhands));
@@ -463,7 +682,7 @@ export const computed = { value: null };
 // records and attributeChangedCallback, as in jsdom); a
 // style rule's declarations changed the cascade.
 function sync(style) {
-  const s = state(style);
+  const s = styleState(style);
   const element = s.element;
   if (element) {
     const es = element[S];
@@ -578,7 +797,7 @@ export function cssNamespace(matchesSelector) {
 
 export function computedStyle(element, proto) {
   const style = Object.create(proto);
-  style[S] = { element, computed: true, decls: new Map(), mode: modeOf(proto), indexed: 0 };
+  initStyleState(style, { element, computed: true, decls: new Map(), mode: modeOf(proto), indexed: 0 });
   return style;
 }
 
@@ -622,7 +841,7 @@ function writeComputed(s, name, value) {
 }
 
 const valueOf = (style, name) => {
-  const s = state(style);
+  const s = styleState(style);
   if (s.computed) return computedOverride(s, name) ?? computed.value(s.element, name);
   const decl = s.decls.get(name);
   if (decl) return decl.value;
@@ -672,7 +891,7 @@ function composeShorthand(decls, name) {
 }
 
 function setDeclaration(style, name, value, priority = '') {
-  const s = state(style);
+  const s = styleState(style);
   if (s.computed) {
     if (!mutableComputed(s)) readOnly();
     writeComputed(s, name, value);
@@ -708,7 +927,7 @@ function styleDescriptors() {
     descriptors[accessor] = {
       get() { return valueOf(this, name); },
       set(value) {
-        const s = state(this);
+        const s = styleState(this);
         if (s.computed) writeComputed(s, name, value);
         else setDeclaration(this, name, value);
       },
@@ -743,10 +962,11 @@ function pageDescriptors() {
 export const CSS_INTERFACES = [
   {
     name: 'CSSStyleDeclaration',
+    slot: [S, STYLE_SLOT.descriptor],
     members: {
-      get cssText() { const s = state(this); return serialize(s.decls, s.mode); },
+      get cssText() { const s = styleState(this); return serialize(s.decls, s.mode); },
       set cssText(text) {
-        const s = state(this);
+        const s = styleState(this);
         if (s.computed) {
           if (!mutableComputed(s)) readOnly();
           const decls = new Map();
@@ -759,11 +979,11 @@ export const CSS_INTERFACES = [
         reindex(this);
         sync(this);
       },
-      get length() { return state(this).decls.size; },
-      get parentRule() { return state(this).parentRule ?? null; },
+      get length() { return styleState(this).decls.size; },
+      get parentRule() { return styleState(this).parentRule ?? null; },
       item(index) {
         if (index === undefined && arguments.length === 0) tooFew('item', 1, 0);
-        return [...state(this).decls.keys()][index >>> 0] ?? '';
+        return [...styleState(this).decls.keys()][index >>> 0] ?? '';
       },
       // Iterable as an indexed collection (WebIDL): Array.prototype.values.
       [Symbol.iterator]: Array.prototype.values,
@@ -773,7 +993,7 @@ export const CSS_INTERFACES = [
       },
       getPropertyPriority(name) {
         if (name === undefined && arguments.length === 0) tooFew('getPropertyPriority', 1, 0);
-        return state(this).decls.get(propertyName(name))?.important ? 'important' : '';
+        return styleState(this).decls.get(propertyName(name))?.important ? 'important' : '';
       },
       setProperty(name, value, priority = '') {
         if (value === undefined && arguments.length < 2) tooFew('setProperty', 2, arguments.length);
@@ -782,7 +1002,7 @@ export const CSS_INTERFACES = [
       removeProperty(name) {
         if (name === undefined && arguments.length === 0) tooFew('removeProperty', 1, 0);
         const key = propertyName(name);
-        const s = state(this);
+        const s = styleState(this);
         const previous = s.computed ? (mutableComputed(s) ? valueOf(this, key) : readOnly()) : s.decls.get(key)?.value ?? '';
         setDeclaration(this, key, '');
         return previous;
@@ -803,21 +1023,21 @@ export const CSS_INTERFACES = [
 // mode: 'page' for an @page rule's descriptors.
 export function declarationBlock(proto, text, parentRule, mode = modeOf(proto)) {
   const style = Object.create(proto);
-  style[S] = { element: null, decls: new Map(), parentRule, mode, indexed: 0 };
-  parseInto(style[S].decls, text, style[S].mode);
+  initStyleState(style, { element: null, decls: new Map(), parentRule, mode, indexed: 0 });
+  parseInto(styleState(style).decls, text, styleState(style).mode);
   reindex(style);
   return style;
 }
 
-export const serializeDeclarations = (style) => serialize(style[S].decls, style[S].mode);
+export const serializeDeclarations = (style) => serialize(styleState(style).decls, styleState(style).mode);
 
 // The element's style object, created on first use from its style attribute.
 export function styleOf(element, proto) {
   const es = state(element);
   if (!es.style) {
     const style = Object.create(proto);
-    style[S] = { element, decls: new Map(), mode: modeOf(proto), indexed: 0 };
-    parseInto(style[S].decls, es.attrs.get('style'), style[S].mode);
+    initStyleState(style, { element, decls: new Map(), mode: modeOf(proto), indexed: 0 });
+    parseInto(styleState(style).decls, es.attrs.get('style'), styleState(style).mode);
     reindex(style);
     es.style = style;
   }
@@ -827,5 +1047,5 @@ export function styleOf(element, proto) {
 // Called when the style attribute is set or removed directly.
 export function styleAttributeChanged(element) {
   const es = element[S];
-  if (es.style) { parseInto(es.style[S].decls, es.attrs.get('style'), es.style[S].mode); reindex(es.style); }
+  if (es.style) { parseInto(styleState(es.style).decls, es.attrs.get('style'), styleState(es.style).mode); reindex(es.style); }
 }

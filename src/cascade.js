@@ -13,7 +13,7 @@
 // @layer blocks are not applied, constructed (adopted) style sheets are
 // not applied, and the hidden attribute hides an element whatever its
 // display rules say (but not over its style attribute).
-import { S, ELEMENT_NODE, HTML_NS, rootOf, nextInTree, cssomChanges } from './internal.js';
+import { S, ELEMENT_NODE, DOCUMENT_NODE, HTML_NS, rootOf, nextInTree, cssomChanges, connected, trackDetachedStyles } from './internal.js';
 import { LONGHANDS, SHORTHANDS, ALIASES } from './css-data.js';
 import { resolveColor } from './colors.js';
 import { segments, expand, serializeBox, BOX, PAIRS, CSS_WIDE } from './shorthands.js';
@@ -89,10 +89,11 @@ const EMPTY = new Map();
 
 // The rule index for an element's root: its shadow root's style sheets,
 // else its document's (disconnected elements too, as in jsdom).
+let lastRoot = null; // the root ruleIndex found last (for cascaded)
 function ruleIndex(element) {
   const es = element[S];
   const ds = es.doc[S];
-  const root = rootOf(element);
+  const root = lastRoot = rootOf(element);
   const holder = root[S].shadow === true ? root[S] : ds;
   const cached = holder.cascade;
   const treeRev = ds.treeRev ?? 0;
@@ -136,16 +137,44 @@ function firstMatch(list, element) {
 // attributes, or its style attribute change.
 function cascaded(element, name) {
   const es = element[S];
-  const index = ruleIndex(element);
-  const rev = es.doc[S].treeRev ?? 0;
-  const inlineMap = inlineDeclarations(element);
+  const ds = es.doc[S];
   let cache = es.cascaded;
+  // A disconnected element's values stay as they were (see below).
+  if (cache !== undefined && cache.detached && cache.detachedRev === ds.detachedRev && cache.cssomRev === cssomChanges.rev) {
+    if (cache.values.has(name)) return cache.values.get(name);
+    const value = cascade(element, cache.index, cache.inline, name);
+    cache.values.set(name, value);
+    return value;
+  }
+  const index = ruleIndex(element);
+  const rev = ds.treeRev ?? 0;
+  const inlineMap = inlineDeclarations(element);
   if (!cache || cache.index !== index || cache.rev !== rev || cache.inline !== inlineMap) {
-    cache = es.cascaded = { index, rev, inline: inlineMap, values: new Map() };
+    // Connected: the root ruleIndex found is the document, or a shadow
+    // root whose host is connected.
+    const root = lastRoot;
+    const detached = keepsDetached(ds) && root[S].type !== DOCUMENT_NODE && !(root[S].shadow === true && connected(root[S].host));
+    if (detached) trackDetachedStyles(ds);
+    cache = es.cascaded = { index, rev, inline: inlineMap, values: new Map(), detached, detachedRev: ds.detachedRev, cssomRev: cssomChanges.rev };
   } else if (cache.values.has(name)) return cache.values.get(name);
   const value = cascade(element, index, inlineMap, name);
   cache.values.set(name, value);
   return value;
+}
+
+// jsdom 21 and later (black box, 22 to 30 measured) compute a disconnected
+// element's style once and keep it until the document's connected tree or
+// its style sheets change: changes in its detached tree, its style
+// attribute included, do not refresh it (Vue Test Utils mounts into a
+// detached element; vueuse's useCssVar test reads a custom property after
+// removing it and gets the old value). warpdom keeps the element's
+// cascaded values, and its style attribute's declarations, from the first
+// computed read until then (detachedRev counts the connected changes, in
+// documents where such a read happened).
+function keepsDetached(ds) {
+  let keeps = ds.keepsDetached;
+  if (keeps === undefined) keeps = ds.keepsDetached = ds.window[S].compat.jsdom >= 21;
+  return keeps;
 }
 
 function cascade(element, index, inlineMap, name) {

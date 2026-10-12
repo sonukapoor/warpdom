@@ -10,6 +10,43 @@
 // an id are indexed per document, so getElementById is O(1).
 export const S = Symbol('warpdom');
 
+// The internal state of objects other than nodes (events, FormData,
+// AbortSignal, style declarations, ...) is invisible even to reflection:
+// Jest's and Vitest's deep equality and pretty-format walk own enumerable
+// symbol keys, so an own [S] property made toEqual compare (and snapshots
+// print) the state, where jsdom's objects show none. The state is a private
+// field stamped onto the object (Object.defineProperty with enumerable:
+// false cost 65 ns per object, more than a whole new Event). A slot gives:
+//   descriptor  an accessor for S on the interface's prototype, so
+//               `obj[S] = record` and `obj[S]` work unchanged (createWindow
+//               installs it on most interfaces, see hidesState);
+//   get, init   direct access for hot code (events, style declarations):
+//               through the accessor each read costs 2-4 ns more. get throws
+//               a TypeError for other objects, as state() does; init is for
+//               new objects only (it throws if the field exists: checking
+//               first made new Event 35% slower).
+// Nodes keep the plain property, the fastest for the hottest objects: test
+// frameworks compare and print nodes as DOM nodes (isEqualNode, the
+// DOMElement plugin), and clones, which Jest's messages walk, hide it
+// (cloneNode).
+export function hiddenSlot() {
+  class Through { constructor(object) { return object; } }
+  class Slot extends Through {
+    #state;
+    constructor(object, value) { super(object); this.#state = value; }
+    static get = (object) => object.#state;
+    static init = (object, value) => { new Slot(object, value); };
+    static descriptor = {
+      get() { return #state in this ? this.#state : undefined; },
+      set(value) { if (#state in this) this.#state = value; else new Slot(this, value); },
+      enumerable: false,
+      configurable: true,
+    };
+  }
+  return Slot;
+}
+export const HIDDEN_STATE = hiddenSlot().descriptor;
+
 export const ELEMENT_NODE = 1;
 export const TEXT_NODE = 3;
 export const CDATA_SECTION_NODE = 4;
@@ -196,7 +233,9 @@ function changed(parent) {
   const ps = parent[S];
   ps.rev++;
   const doc = ps.type === DOCUMENT_NODE ? parent : ps.doc;
-  doc[S].treeRev = (doc[S].treeRev ?? 0) + 1;
+  const ds = doc[S];
+  ds.treeRev = (ds.treeRev ?? 0) + 1;
+  if (tracking.detached && ds.detachedRev !== undefined && connected(parent)) ds.detachedRev++;
 }
 
 export function insert(parent, node, ref) {
@@ -598,9 +637,22 @@ function updateId(doc, id, element, add) {
 
 // Attribute changes can change live collections (getElementsByClassName).
 export function attributesChanged(element) {
-  const doc = element[S].doc;
-  doc[S].treeRev = (doc[S].treeRev ?? 0) + 1;
+  const ds = element[S].doc[S];
+  ds.treeRev = (ds.treeRev ?? 0) + 1;
+  if (tracking.detached && ds.detachedRev !== undefined && connected(element)) ds.detachedRev++;
 }
+
+// Changes in the document's connected tree, counted once a disconnected
+// element's computed style was read (cascade.js, cascaded): jsdom 21 and
+// later keep such an element's computed values until the connected tree
+// or the style sheets change; changes in its own detached tree, its style
+// attribute included, do not refresh them.
+// tracking.detached: whether any document counts them (a module flag,
+// cheaper on the insertion path than a missing field of every document).
+const tracking = { detached: false };
+export const trackDetachedStyles = (ds) => {
+  if (ds.detachedRev === undefined) { ds.detachedRev = 0; tracking.detached = true; }
+};
 
 // Called when an element's id attribute changes.
 export function idChanged(element, oldId, newId) {

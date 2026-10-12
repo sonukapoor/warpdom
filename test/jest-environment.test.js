@@ -88,3 +88,52 @@ test('Jest environment: testEnvironmentOptions.fastFrames', async () => {
   }
   rmSync(rootDir, { recursive: true, force: true });
 });
+
+// As in jest-environment-jsdom (jsdom 20 and 26, black box): the global is
+// the window, whose document, window and top are [LegacyUnforgeable]
+// getters, so assigning them is ignored, also in strict code; location
+// navigates (downshift's tests assign a copy to global.document).
+test('Jest environment: assigning document, window or top is ignored, location navigates', async () => {
+  const rootDir = fakeJestProject();
+  let env;
+  try {
+    env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: {} } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+    await env.setup();
+    const run = (code) => vm.runInContext(code, env.getVmContext());
+    assert.equal(run(`(() => { 'use strict';
+      const real = document;
+      global.document = { ...document, body: null };
+      window.document = {};
+      window.top = 1;
+      global.window = 2;
+      return [document === real, window.document === real, document.createElement('p').tagName, window.top === globalThis, window === globalThis].join();
+    })()`), 'true,true,P,true,true');
+    assert.equal(run(`(() => { 'use strict'; window.location = '#h'; return location.href; })()`), 'http://localhost/#h');
+    assert.equal(run('Object.getOwnPropertyDescriptor(globalThis, "document").set'), undefined);
+  } finally {
+    if (env?.global) await env.teardown();
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+// jest-environment-jsdom sends jsdom's "Not implemented" errors to the
+// test's console as Error objects; jsdom 20 to 26 word them window.alert.
+test('Jest environment: "Not implemented" reports reach the test\'s console as errors, in the profile\'s words', async () => {
+  const rootDir = fakeJestProject();
+  let env;
+  try {
+    env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom: '20.0.3' } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+    await env.setup();
+    const seen = [];
+    env.global.console = { error: (e) => seen.push([e instanceof Error, e.message, e.type]) };
+    vm.runInContext('alert("x"); getComputedStyle(document.body, "::before"); document.createElement("form").submit()', env.getVmContext());
+    assert.deepEqual(seen, [
+      [true, 'Not implemented: window.alert', 'not implemented'],
+      [true, 'Not implemented: window.computedStyle(elt, pseudoElt)', 'not implemented'],
+      [true, 'Not implemented: HTMLFormElement.prototype.submit', 'not implemented'],
+    ]);
+  } finally {
+    if (env?.global) await env.teardown();
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});

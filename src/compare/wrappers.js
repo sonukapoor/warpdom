@@ -66,12 +66,17 @@ const switchProject = (p) => {
   const q = relink(p);
   return { ...q, test: switchDom(q.test ?? {}) };
 };
+// Browser-mode projects are not compared: left out of both runs (inline
+// ones dropped, others given no test files), so no browser starts.
+const NO_FILES = ['**/__warpdom_compare_browser_mode_not_run__'];
+const notRun = (p) => (usesBrowser(p?.test) ? { ...p, test: { ...p.test, browser: { ...p.test.browser, enabled: false }, include: NO_FILES } } : p);
 // Inline projects (objects, functions, promises) get their environment
 // switched; strings become the wrappers compare wrote for them.
 const mapProjects = (list) => list.flatMap((p) => {
   if (typeof p === 'string') return LINKS.patterns[p] ?? [p];
-  if (typeof p === 'function') return [async (env) => switchProject((await p(env)) ?? {})];
-  if (p && typeof p.then === 'function') return [Promise.resolve(p).then((v) => switchProject(v ?? {}))];
+  if (typeof p === 'function') return [async (env) => notRun(switchProject((await p(env)) ?? {}))];
+  if (p && typeof p.then === 'function') return [Promise.resolve(p).then((v) => notRun(switchProject(v ?? {})))];
+  if (isObject(p) && usesBrowser(p.test)) return [];
   return isObject(p) ? [switchProject(p)] : [p];
 });`;
 }
@@ -170,6 +175,8 @@ export default async (env) => {
   // Projects with \`extends: true\` (or, from Vitest 5, without \`extends\`)
   // inherit the root environment, switched here.
   Object.assign(test, switchDom(test));
+  // A browser-mode config (a project file) runs no tests.
+  if (!list && usesBrowser(test)) Object.assign(test, notRun({ test }).test);
   if (Array.isArray(test.projects)) test.projects = mapProjects(test.projects);
   else if (Array.isArray(test.workspace)) test.workspace = mapProjects(test.workspace);
   else if (WORKSPACE) test.workspace = WORKSPACE;

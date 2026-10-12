@@ -138,3 +138,35 @@ parity('queueMicrotask reports exceptions', async (w) => {
   await new Promise((resolve) => setTimeout(resolve, 10));
   return [seen, typeError];
 });
+
+// jsdom 25 and 26 print the error's stack: compared on jsdom 30, and the
+// words of jsdom 20 to 26 checked below.
+for (const jsdom of [30]) {
+  parity(`"Not implemented" reports in the version's words (jsdom ${jsdom})`, (w) => {
+    w.document.body.innerHTML = '<form></form><canvas></canvas><video></video>';
+    w.alert('x');
+    w.scrollTo(0, 0);
+    try { w.document.querySelector('form').submit(); } catch { /* reported */ }
+    w.document.querySelector('canvas').getContext('2d');
+    w.document.querySelector('video').pause();
+    return null;
+  }, { jsdom });
+}
+
+test('"Not implemented" reports in jsdom 20 to 26\'s words', () => {
+  const messages = [];
+  const original = console.error;
+  console.error = (m) => messages.push(m);
+  try {
+    const w = createWindow({ jsdom: 26 });
+    w.document.body.innerHTML = '<form></form><canvas></canvas><video></video>';
+    w.alert('x');
+    w.document.querySelector('form').submit();
+    w.document.querySelector('canvas').getContext('2d');
+    w.document.querySelector('video').pause();
+  } finally {
+    console.error = original;
+  }
+  assert.deepEqual(messages, ['Not implemented: window.alert', 'Not implemented: HTMLFormElement.prototype.submit',
+    'Not implemented: HTMLCanvasElement.prototype.getContext (without installing the canvas npm package)', 'Not implemented: HTMLMediaElement.prototype.pause']);
+});

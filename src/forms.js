@@ -15,7 +15,7 @@ import {
 } from './internal.js';
 import { writeAttribute, attributeSteps, tokenList } from './attributes.js';
 import { liveList, htmlCollectionNames } from './collections.js';
-import { dispatch, eventConstruct, fieldGetters } from './events.js';
+import { dispatch, eventConstruct, fieldGetters, eventState } from './events.js';
 import { parseInteger } from './reflect.js';
 import { directionality } from './directionality.js';
 
@@ -786,7 +786,10 @@ const constraintValidation = {
 function submitForm(form, submitter) {
   const noValidate = has(form, 'novalidate') || (submitter !== null && has(submitter, 'formnovalidate'));
   if (!noValidate && !formCheckValidity(form)) return;
-  const event = new (windowOf(form).SubmitEvent)('submit', { bubbles: true, cancelable: true, submitter });
+  const window = windowOf(form);
+  // jsdom 20 has no SubmitEvent: submit is a plain Event.
+  const event = window[S].compat.jsdom < 21 ? new window.Event('submit', { bubbles: true, cancelable: true })
+    : new window.SubmitEvent('submit', { bubbles: true, cancelable: true, submitter });
   if (!dispatch(form, event)) return;
   notImplemented(form, "HTMLFormElement's requestSubmit() method");
 }
@@ -874,8 +877,14 @@ function inputActivation(input) {
         else s.checked = false;
       }
     },
-    run() {
+    run(event) {
       const mutable = !isDisabled(input) && !(READONLY_TYPES.has(type) && has(input, 'readonly'));
+      // An image button's selected coordinate: the click's, as jsdom takes
+      // it (clientX and clientY, its offsetX and offsetY without layout).
+      if (type === 'image' && event !== undefined) {
+        const es = eventState(event);
+        input[S].selectedCoordinate = [es.clientX ?? 0, es.clientY ?? 0];
+      }
       if (!mutable && type !== 'checkbox' && type !== 'radio') return;
       // Browsers (and jsdom) fire nothing for a radio button that was
       // already checked, though the standard's text fires input and change.
@@ -888,7 +897,8 @@ function inputActivation(input) {
       }
       const form = formOwner(input);
       if (!form || !isConnected(form)) return;
-      if (type === 'submit' || type === 'image') submitForm(form, input);
+      // jsdom 20: an image button does not submit its form.
+      if (type === 'submit' || (type === 'image' && windowOf(form)[S].compat.jsdom >= 21)) submitForm(form, input);
       else if (type === 'reset') reset(form);
     },
   };
@@ -1010,7 +1020,8 @@ function constructEntryList(form, submitter = null) {
       if ((type === 'checkbox' || type === 'radio') && !checkedness(field)) continue;
       if (type === 'image') {
         const prefix = attr(field, 'name') ? `${attr(field, 'name')}.` : '';
-        entries.push(createEntry(`${prefix}x`, '0'), createEntry(`${prefix}y`, '0')); // no layout: (0, 0)
+        const [x, y] = field[S].selectedCoordinate ?? [0, 0];
+        entries.push(createEntry(`${prefix}x`, String(x)), createEntry(`${prefix}y`, String(y)));
         continue;
       }
       const name = attr(field, 'name');
@@ -1051,6 +1062,9 @@ const FORM_DATA_INTERFACES = [
     construct: (w, self, [form, submitter = null]) => {
       self[S] = { entries: [] };
       if (form === undefined) return self;
+      // jsdom 20 ignores the submitter argument (libraries feature-detect it
+      // with new FormData(form, 0), which throws from jsdom 22 on).
+      if (w[S].compat.jsdom < 21) submitter = null;
       if (!form?.[S] || !isTag(form, 'form')) throw new TypeError("Failed to construct 'FormData': parameter 1 is not of type 'HTMLFormElement'.");
       if (submitter !== null) {
         if (!submitter?.[S] || !isSubmitButton(submitter)) throw new TypeError("Failed to construct 'FormData': The specified element is not a submit button.");

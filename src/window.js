@@ -3,7 +3,7 @@
 // built from property descriptors that are prepared once per module load,
 // each interface's the first time any window creates it.
 import {
-  S, hooks, initNode, insert, ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, DOCUMENT_TYPE_NODE,
+  S, HIDDEN_STATE, hooks, initNode, insert, ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, DOCUMENT_TYPE_NODE,
   CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE,
 } from './internal.js';
 import { INTERFACES, SVG_ELEMENTS, HTML_NS, SVG_NS } from './interfaces.js';
@@ -89,6 +89,16 @@ function addDescriptors(descriptors, members) {
   }
 }
 
+// Interfaces whose objects keep their state in a private field (see
+// hiddenSlot in internal.js): every root interface and every direct
+// EventTarget subclass, except nodes and the window (own property), and the
+// interfaces whose objects are proxies (their traps get the state from the
+// target and hide the key; a private field is not reachable through a proxy).
+// An interface may bring its own slot (Event, DOMRectReadOnly).
+const STATE_ON_OBJECT = new Set(['EventTarget', 'Node', 'Window', 'Storage', 'DOMStringMap', 'NodeList', 'HTMLCollection',
+  'NamedNodeMap', 'DOMTokenList', 'CSSRuleList', 'MediaList', 'StyleSheetList', 'TouchList', 'FileList']);
+const hidesState = (iface) => (!iface.parent || iface.parent === 'EventTarget') && !STATE_ON_OBJECT.has(iface.name);
+
 // Interfaces with the HTML element constructor: HTMLElement and its element interfaces.
 const HTML_CONSTRUCTOR = new Set(['HTMLElement', ...HTML_ELEMENTS.map(([name]) => name)]);
 
@@ -133,6 +143,12 @@ function applyCompat(window, protos) {
   // The CSS namespace (CSS.supports, CSS.escape) arrived in jsdom 30;
   // libraries feature-detect it (handsontable validates sizes with it).
   if (jsdom < 30) delete window.CSS;
+  // jsdom 20's MouseEvent has none of CSSOM View's coordinates (22 has).
+  // jsdom 20 has no SubmitEvent (submit events are Events).
+  if (jsdom < 21) {
+    for (const name of ['pageX', 'pageY', 'x', 'y', 'offsetX', 'offsetY']) delete protos.MouseEvent[name];
+    delete window.SubmitEvent;
+  }
   if (jsdom < 27) {
     delete window.PointerEvent;
     delete window.TransitionEvent;
@@ -141,6 +157,27 @@ function applyCompat(window, protos) {
       for (const name of POINTER_HANDLERS) delete proto[name];
     }
   }
+}
+
+// jsdom 20 to 26 name unimplemented methods "window.alert" and
+// "HTMLFormElement.prototype.submit" (details in parentheses), where jsdom
+// 27 and later write "Window's alert() method" (black box).
+function legacyWords(message) {
+  const window = /^Window's (\w+)\(\) method$/.exec(message);
+  if (window) return `window.${window[1]}`;
+  const method = /^(\w+)'s (\w+)\(\) method(?:: (.*))?$/.exec(message);
+  return method ? `${method[1]}.prototype.${method[2]}${method[3] ? ` (${method[3]})` : ''}` : message;
+}
+
+// The CSS mode of a jsdom profile (css.js): jsdom 30 'spec', 27 to 29
+// 'jsdom27'; before, by the cssstyle jsdom loads: 2 'jsdom20', 3 'jsdom22',
+// 4 before 4.3.1 'jsdom25', later 'jsdom26'.
+function cssMode(compat) {
+  if (compat.jsdom >= 30) return 'spec';
+  if (compat.jsdom >= 27) return 'jsdom27';
+  if (compat.cssstyleMajor === 2) return 'jsdom20';
+  if (compat.cssstyleMajor === 3) return 'jsdom22';
+  return compat.unquotedUrls ? 'jsdom25' : 'jsdom26';
 }
 
 export function createWindow(options = {}) {
@@ -174,6 +211,10 @@ export function createWindow(options = {}) {
       for (const member of unscopables) value[member] = true;
       Object.defineProperty(proto, Symbol.unscopables, { value, enumerable: false, writable: false, configurable: true });
     }
+    if (iface.slot) Object.defineProperty(proto, iface.slot[0], iface.slot[1]);
+    // Members a jsdom generation did not have (see applyCompat).
+    if (iface.compat) iface.compat(proto, window[S].compat);
+    if (hidesState(iface) && iface.slot?.[0] !== S) Object.defineProperty(proto, S, HIDDEN_STATE);
     Object.setPrototypeOf(proto, parent ? parent.prototype : Object.prototype);
     // A callback interface with constants (NodeFilter) has a legacy callback
     // interface object: a function that is not a constructor and has no
@@ -210,7 +251,7 @@ export function createWindow(options = {}) {
     // CSS value validation: every property's grammar from jsdom 27; before,
     // jsdom checked a few dozen properties ('jsdom25': the same, with
     // url() serialized without quotes, as cssstyle before 4.3.1 did).
-    if (name === 'CSSStyleProperties') setValidationMode(proto, window[S].compat.jsdom >= 27 ? 'spec' : window[S].compat.unquotedUrls ? 'jsdom25' : 'jsdom26');
+    if (name === 'CSSStyleProperties') setValidationMode(proto, cssMode(window[S].compat));
     Object.defineProperty(protos, name, { value: proto, writable: true, enumerable: true, configurable: true });
     if (Object.getOwnPropertyDescriptor(window, name)?.get === lazyGetters[name]) {
       Object.defineProperty(window, name, { value: ctor, writable: true, configurable: true });
@@ -281,8 +322,11 @@ export function createWindow(options = {}) {
     // like jsdom does; test environments replace this to fail the test.
     onUnhandledError: (error) => console.error(error),
     // As jsdom reports unimplemented features (form submission, navigation)
-    // through its virtual console.
-    notImplemented: (message) => console.error(`Not implemented: ${message}`),
+    // through its virtual console, in its version's words; the test
+    // environments send the text where jsdom's environments send it
+    // (reportNotImplemented).
+    notImplemented: (message) => internals.reportNotImplemented(`Not implemented: ${internals.compat.jsdom < 27 ? legacyWords(message) : message}`),
+    reportNotImplemented: (text) => console.error(text),
     // An iframe's nested window (frames.js).
     // A frame's window behaves like the same jsdom generation as its parent.
     createNestedWindow: ({ url, parent, frameElement }) => createWindow({ url, jsdom: parent[S].compat.version, cssstyle: parent[S].compat.cssstyle, fastFrames: parent[S].fastFrames, nested: { parent, frameElement } }),

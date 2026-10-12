@@ -56,13 +56,16 @@ export function resetWindow(window) {
   ws.listeners = undefined;
   ws.handlers = undefined;
   ws.viewport = undefined;
-  if (ws.frames) ws.frames.queue.clear();
+  // A frame scheduled on timers the test has since cleared or replaced
+  // would never run: the next file starts without frames.
+  if (ws.frames) { ws.frames.queue.clear(); ws.frames = undefined; }
   clearWindowTimers(window);
   clearStorage(window);
   clearCookies(window);
   ws.url = new URL(ws.initialURL);
   ws.history[S].entries = [{ state: null, url: ws.url }];
   ws.history[S].index = 0;
+  ws.history[S].navigations++; // drops a pending traversal (navigation.js)
 
   // Observers of the document go first, with their pending records, so the
   // reset itself is not observed.

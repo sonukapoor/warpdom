@@ -328,3 +328,21 @@ for (const jsdom of [30, 26]) {
     return [out, sheet.cssRules.length];
   }, { jsdom });
 }
+
+// jsdom 20 to 26: style sheets have no ownerNode, href, title or type;
+// jsdom 30 gives the element (27 to 29 an internal object: warpdom gives
+// the element there too, a deliberate deviation).
+for (const jsdom of [20, 26, 30]) {
+  parity(`style sheets: ownerNode, href, title and type (jsdom ${jsdom})`, (w) => {
+    w.document.head.innerHTML = '<style id=s title=t>a { color: red }</style>';
+    const sheet = w.document.styleSheets[0];
+    const node = sheet.ownerNode;
+    return [['ownerNode', 'href', 'title', 'type'].map((k) => k in sheet), node === w.document.getElementById('s'), node && 'id' in node ? node.id : null, sheet.title ?? null, sheet.type ?? null, sheet.cssRules.length];
+  }, { jsdom });
+}
+
+test('style sheets: ownerNode is the element in the jsdom 27 profile (jsdom 27 gives an internal object)', () => {
+  const w = createWindow({ jsdom: 27 });
+  w.document.head.innerHTML = '<style id=s>a { color: red }</style>';
+  assert.equal(w.document.styleSheets[0].ownerNode, w.document.getElementById('s'));
+});

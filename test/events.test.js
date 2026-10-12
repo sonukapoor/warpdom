@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 import { createWindow } from '../src/index.js';
 import { parity } from './parity.js';
 
@@ -439,3 +440,45 @@ for (const jsdom of [30, 26, 25]) {
     return [w.n, w.order, errors.length, w.location.href];
   }, { jsdom });
 }
+
+for (const jsdom of [30, 26, 25]) {
+  parity(`CloseEvent: wasClean, code and reason (jsdom ${jsdom})`, (w) => {
+    const e = new w.CloseEvent('close', { wasClean: 1, code: 65537, reason: 'bye', bubbles: true });
+    const d = new w.CloseEvent('x');
+    const out = [typeof w.CloseEvent, w.CloseEvent.length, Object.getOwnPropertyNames(w.CloseEvent.prototype).sort(), Object.prototype.toString.call(e), e instanceof w.Event,
+      [e.wasClean, e.code, e.reason, e.bubbles, e.type], [d.wasClean, d.code, d.reason],
+      [-1, 1.5, NaN, '12', 70000].map((code) => new w.CloseEvent('c', { code }).code),
+      [new w.CloseEvent('c', { reason: { toString() { return 'o'; } } }).reason, new w.CloseEvent('c', { reason: null }).reason]];
+    try { new w.CloseEvent(); } catch (err) { out.push(err.constructor.name, err.message); }
+    try { w.document.createEvent('CloseEvent'); } catch (err) { out.push(err.name); }
+    let seen = null;
+    w.document.body.addEventListener('close', (ev) => { seen = [ev.code, ev.reason, ev.wasClean]; });
+    w.document.body.dispatchEvent(e);
+    out.push(seen);
+    return out;
+  }, { jsdom });
+}
+
+// As jsdom: timeStamp is Date.now() at creation, from the realm warpdom
+// runs in (fake timers that replace that Date set it: Vitest's default
+// pools; a test realm's own Date does not: Jest, Vitest's VM pools).
+test('Event.timeStamp is Date.now() of warpdom\'s realm when the event is created', () => {
+  const w = createWindow();
+  const before = Date.now();
+  const e = new w.MouseEvent('click');
+  const after = Date.now();
+  assert.ok(Number.isInteger(e.timeStamp) && e.timeStamp >= before && e.timeStamp <= after);
+  const realNow = Date.now;
+  Date.now = () => 5000;
+  try {
+    assert.equal(new w.Event('x').timeStamp, 5000);
+    let clicked;
+    w.document.body.addEventListener('click', (ev) => { clicked = ev.timeStamp; });
+    w.document.body.click();
+    assert.equal(clicked, 5000);
+  } finally {
+    Date.now = realNow;
+  }
+  const context = vm.createContext({ w });
+  assert.ok(vm.runInContext('Date.now = () => 7; new w.Event("x").timeStamp', context) > 1e12);
+});

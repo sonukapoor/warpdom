@@ -8,7 +8,8 @@ import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { vitestWrapper, vitestWorkspaceWrapper, jestWrapper, wrapperName, workspaceWrapperName, PROBE_MARKER, PINNED_TARGET, PINNED_PACKAGE } from '../src/compare/wrappers.js';
 import { isDynamicPattern, expandBraces, globRegExp, glob, resolveVitestProjects, resolveJestProjects } from '../src/compare/projects.js';
-import { findConfig, findBin, detectRunner, environmentComments, takeConfigArg, packageDir } from '../src/compare/detect.js';
+import { findConfig, findBin, detectRunner, environmentComments, takeConfigArg, packageDir, scriptNodeFlags } from '../src/compare/detect.js';
+import { displayPath } from '../src/compare/index.js';
 import { TempFiles, removeEntry, copyWarpdom, pinnedEnvironmentPackage, isOwnName, acquireLock, gitStatus, statusChanges } from '../src/compare/files.js';
 import { runnerArgs, testsOf, countsOf, runnerDuration, normalizeStatus } from '../src/compare/run.js';
 import { classify, compareRuns, groupDifferences, timingSummary, median, pairOrder, exitCode } from '../src/compare/results.js';
@@ -71,8 +72,9 @@ test('compare wrappers: Vitest switches DOM projects only and describes the proj
       },
     }, { WARPDOM_COMPARE_META: meta });
     assert.equal(mixed.test.environment, '/w/vitest.js', 'the root, inherited by extends: true');
-    assert.deepEqual(mixed.test.projects.slice(0, 4).map((p) => p.test.environment), [undefined, '/w/vitest.js', 'jsdom', 'node']);
-    assert.equal(mixed.test.projects[4], 'packages/*');
+    // The browser-mode project is left out of the run.
+    assert.deepEqual(mixed.test.projects.slice(0, 3).map((p) => p.test.environment), [undefined, '/w/vitest.js', 'node']);
+    assert.equal(mixed.test.projects[3], 'packages/*');
     assert.deepEqual(JSON.parse(fs.readFileSync(meta, 'utf8')), {
       runner: 'vitest', root: process.cwd(), source: 'projects', workspace: null, unknown: 0, patterns: ['packages/*'], extends: [],
       projects: [
@@ -934,4 +936,51 @@ test('compare --fast-frames: warpdom runs get the fastFrames option, baselines d
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('compare: browser-mode projects are not run (function projects and project files get no files)', async () => {
+  const dir = tmp('vitest-browser');
+  try {
+    write(path.join(dir, 'b.config.mjs'), `export default { test: { environment: 'jsdom', projects: [
+      () => ({ test: { name: 'fn-browser', browser: { enabled: true, instances: [] } } }),
+      { test: { name: 'inline-browser', browser: { enabled: true } } },
+      { test: { name: 'dom', environment: 'jsdom' } },
+    ] } };`);
+    const wrapper = write(path.join(dir, 'b.warpdom-compare.mjs'), vitestWrapper(path.join(dir, 'b.config.mjs'), { environment: '/w/vitest.js' }));
+    const cfg = await (await import(pathToFileURL(wrapper).href)).default({});
+    assert.equal(cfg.test.projects.length, 2);
+    const fnProject = await cfg.test.projects[0]({});
+    assert.equal(fnProject.test.browser.enabled, false);
+    assert.deepEqual(fnProject.test.include, ['**/__warpdom_compare_browser_mode_not_run__']);
+    assert.equal(cfg.test.projects[1].test.environment, '/w/vitest.js');
+    write(path.join(dir, 'file.config.mjs'), 'export default { test: { name: "file-browser", browser: { enabled: true } } };');
+    const fileWrapper = write(path.join(dir, 'file.warpdom-compare.mjs'), vitestWrapper(path.join(dir, 'file.config.mjs'), { environment: '/w/vitest.js' }));
+    const fileCfg = await (await import(pathToFileURL(fileWrapper).href)).default({});
+    assert.equal(fileCfg.test.browser.enabled, false);
+    assert.deepEqual(fileCfg.test.include, ['**/__warpdom_compare_browser_mode_not_run__']);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  const report = renderConsole(sampleResult({ projects: [...sampleResult().projects, { name: 'browser (chromium)', environment: 'jsdom', browser: true, dom: false, notRun: true }] }));
+  assert.match(report, /Not run: 1 project in browser mode \(left out of both runs\)/);
+});
+
+test('compare: node flags from the test script, paths in messages', () => {
+  const dir = tmp('node-flags');
+  try {
+    const flags = (script, runner = 'jest') => {
+      fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ scripts: { test: script } }));
+      return scriptNodeFlags(dir, runner);
+    };
+    assert.deepEqual(flags('node --experimental-vm-modules --no-warnings=ExperimentalWarning ./node_modules/jest/bin/jest.js'), ['--experimental-vm-modules', '--no-warnings=ExperimentalWarning']);
+    assert.deepEqual(flags('NODE_OPTIONS=--experimental-vm-modules jest'), ['--experimental-vm-modules']);
+    assert.deepEqual(flags('cross-env NODE_OPTIONS="--max-old-space-size=4096 --inspect" jest --ci'), ['--max-old-space-size=4096']);
+    assert.deepEqual(flags('pnpm build && node --expose-gc node_modules/.bin/jest'), ['--expose-gc']);
+    assert.deepEqual(flags('jest'), []);
+    assert.deepEqual(flags('vitest run', 'vitest'), []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  assert.equal(displayPath('/p/proj/.warpdom-compare/logs/1.log', '/p/proj'), path.join('.warpdom-compare', 'logs', '1.log'));
+  assert.equal(displayPath('/tmp/out/logs/1.log', '/p/proj'), '/tmp/out/logs/1.log');
 });

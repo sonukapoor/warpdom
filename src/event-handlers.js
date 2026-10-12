@@ -5,7 +5,7 @@
 // place among the target's listeners.
 import { S, HTML_NS, SVG_NS, ELEMENT_NODE } from './internal.js';
 import { attributeSteps } from './attributes.js';
-import { addListener, removeListener, cancel, reportError, exposed } from './events.js';
+import { addListener, removeListener, cancel, reportError, exposed, eventState } from './events.js';
 import { formOwner } from './forms.js';
 import { GLOBAL_EVENT_HANDLERS, WINDOW_EVENT_HANDLERS } from './event-handler-names.js';
 
@@ -107,7 +107,7 @@ function compile(target, name, body) {
 function processHandler(target, name, event) {
   const callback = currentValue(target, name);
   if (typeof callback !== 'function') return; // null, or an object that is not callable
-  const es = event[S];
+  const es = eventState(event);
   const current = es.currentTarget;
   const special = es.type === 'error' && current !== null && isWindow(current) && es.message !== undefined && 'lineno' in es;
   const result = special

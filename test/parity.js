@@ -9,12 +9,27 @@ import { createWindow } from '../src/node.js';
 
 const URL_ = 'http://localhost:3000/page';
 
-// jsdom: 30, 26 or 25 (jsdom 25.0.1 with cssstyle 4.1.0, as installed in
-// its day; package.json pins that cssstyle for the jsdom25 alias).
+// jsdom: 30, 26, 25 (jsdom 25.0.1 with cssstyle 4.1.0, as installed in
+// its day; package.json pins that cssstyle for the jsdom25 alias), 22
+// (22.1.0, cssstyle 3.0.0) or 20 (20.0.3, cssstyle 2.3.0: Jest 29's
+// jest-environment-jsdom).
+// jsdom 20 and 22 are loaded when a test asks for them: their URL parser
+// requires punycode, which Node 22.12 reports as deprecated on
+// console.error (after the load, so outside the scenario's capture).
+const DOMS = { 25: JSDOM25, 26: JSDOM26, 30: JSDOM };
+const LAZY = { 20: 'jsdom20', 22: 'jsdom22' };
+async function domFor(jsdom) {
+  if (!DOMS[jsdom] && LAZY[jsdom]) {
+    DOMS[jsdom] = (await import(LAZY[jsdom])).JSDOM;
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  return DOMS[jsdom];
+}
+const PROFILES = { 20: { jsdom: '20.0.3', cssstyle: '2.3.0' }, 22: { jsdom: '22.1.0', cssstyle: '3.0.0' }, 25: { jsdom: '25.0.1', cssstyle: '4.1.0' } };
 export function parity(name, scenario, { jsdom = 30, url = URL_ } = {}) {
-  const Dom = jsdom === 25 ? JSDOM25 : jsdom === 26 ? JSDOM26 : JSDOM;
-  const profile = jsdom === 25 ? { jsdom: '25.0.1', cssstyle: '4.1.0' } : { jsdom };
+  const profile = PROFILES[jsdom] ?? { jsdom };
   test(name, async () => {
+    const Dom = await domFor(jsdom);
     const run = async (window) => {
       const errors = [];
       const original = console.error;

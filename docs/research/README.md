@@ -485,6 +485,18 @@ with a failed package as NA (dom-api-tracer b25a690).
 
 - Medians over these 13 suites: warpdom vs jsdom **1.32x**, happy-dom vs
   jsdom 1.30x, warpdom vs happy-dom 1.14x.
+- **Uncertainty** (timing-report.cjs, dom-api-tracer b7f3188 of
+  2026-10-12; [report](data/timing/ci-2026-10-12-three-way/report-without-handsontable.md)):
+  - Within a suite, the 3 per-round ratios are tight: most within ±3%
+    (MUI 1.89-1.92x, ariakit 1.53-1.54x, Radix 1.85-1.92x). React
+    Spectrum is the exception, 1.23-1.59x, from one outlying round.
+  - The median across suites has a 95% bootstrap interval of
+    **1.25-1.57x** (warpdom) and 1.15-1.51x (happy-dom), resampling suites
+    and their rounds.
+  - That width comes from which suites are in the corpus, not from timing
+    noise: the speedups fall into two groups (about 1.1-1.3x and 1.5-1.9x),
+    and the median sits between them. A headline "median" should always be
+    given with this interval and the per-suite table.
 - warpdom is faster than jsdom on all 13. happy-dom is faster than warpdom on
   ariakit, solid and (by breaking it) CopilotKit, and about level on
   Vuetify and svelte.

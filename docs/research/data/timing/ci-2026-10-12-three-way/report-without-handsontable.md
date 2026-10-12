@@ -31,3 +31,43 @@
 | vuetify | 80.5 s | 52.0 s | 53.1 s | 1.54x | 1.53x | 1.01x | 0 / 4 |
 
 Medians over 13 suites with valid jsdom rounds: warpdom vs jsdom 1.32x, happy-dom vs jsdom 1.30x, warpdom vs happy-dom 1.14x.
+
+**warpdom vs jsdom: speedup and its uncertainty** (median of per-round ratios; range for fewer than 5 rounds, else 95% bootstrap interval)
+
+| Suite | rounds | speedup | interval |
+| --- | --- | --- | --- |
+| CopilotKit | 3 | 1.25x | 1.21-1.33x (range) |
+| analog | 3 | 1.25x | 1.22-1.30x (range) |
+| ariakit | 3 | 1.54x | 1.53-1.54x (range) |
+| ark-ui | 3 | 1.60x | 1.52-1.67x (range) |
+| emoji-picker-element | 3 | 1.32x | 1.31-1.34x (range) |
+| floating-ui | 3 | 1.57x | 1.56-1.58x (range) |
+| material-ui | 3 | 1.90x | 1.89-1.92x (range) |
+| radix-primitives | 3 | 1.88x | 1.85-1.92x (range) |
+| react-hook-form | 3 | 1.32x | 1.30-1.36x (range) |
+| react-spectrum | 3 | 1.26x | 1.23-1.59x (range) |
+| solid | 3 | 1.08x | 1.04-1.10x (range) |
+| svelte | 3 | 1.10x | 1.10-1.13x (range) |
+| vuetify | 3 | 1.54x | 1.53-1.55x (range) |
+
+Median speedup over 13 suites: 1.32x (95% bootstrap interval 1.25-1.57x, suites and rounds resampled, 10000 resamples).
+
+**happy-dom vs jsdom: speedup and its uncertainty** (median of per-round ratios; range for fewer than 5 rounds, else 95% bootstrap interval)
+
+| Suite | rounds | speedup | interval |
+| --- | --- | --- | --- |
+| CopilotKit | 3 | 9.01x | 8.68-10.69x (range) |
+| analog | 3 | 1.15x | 1.15-1.22x (range) |
+| ariakit | 3 | 1.79x | 1.79-1.81x (range) |
+| ark-ui | 3 | 1.45x | 1.33-1.46x (range) |
+| emoji-picker-element | 3 | 1.16x | 1.15-1.17x (range) |
+| floating-ui | 3 | 1.30x | 1.30-1.32x (range) |
+| material-ui | 3 | 1.41x | 1.39-1.42x (range) |
+| radix-primitives | 3 | 1.51x | 1.49-1.54x (range) |
+| react-hook-form | 3 | 1.04x | 1.02-1.08x (range) |
+| react-spectrum | 3 | 1.20x | 1.07-1.36x (range) |
+| solid | 3 | 1.11x | 1.08-1.18x (range) |
+| svelte | 3 | 1.09x | 1.09-1.10x (range) |
+| vuetify | 3 | 1.53x | 1.45-1.56x (range) |
+
+Median speedup over 13 suites: 1.30x (95% bootstrap interval 1.15-1.51x, suites and rounds resampled, 10000 resamples).

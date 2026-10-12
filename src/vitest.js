@@ -51,7 +51,18 @@ export const VITEST_HOST_KEYS = ['AbortController', 'AbortSignal', ...HOST_TIMER
 // test helpers do).
 export const VITEST_ALWAYS_KEYS = ['CSS', 'matchMedia', 'createPopup', 'scrollLeft', 'scrollTop'];
 
-export function installWindow(global, window, { hostKeys = [], alwaysKeys = [] } = {}) {
+// Members of the window that are [LegacyUnforgeable] (WebIDL): own
+// accessors of jsdom's window. Where the global is the window itself
+// (Jest's environment, Vitest's VM pools), assigning document or window
+// is ignored, also in strict code (a VM context's global does not throw),
+// and assigning location navigates ([PutForwards=href]); downshift's tests
+// replace global.document with a copy and rely on that. Vitest's other
+// pools copy the window's members onto Node's global with setters, so
+// there an assignment replaces the global's value, for jsdom too.
+const UNFORGEABLE_KEYS = ['document', 'location'];
+const UNFORGEABLE_SELF_KEYS = ['window', 'top'];
+
+export function installWindow(global, window, { hostKeys = [], alwaysKeys = [], unforgeable = false } = {}) {
   const originals = new Map();
   // The window's own members and those it inherits (Window.prototype,
   // EventTarget.prototype: addEventListener, dispatchEvent, ...).
@@ -70,6 +81,15 @@ export function installWindow(global, window, { hostKeys = [], alwaysKeys = [] }
     const value = dataValue(window, key);
     const bound = typeof value === 'function' && !isClassLike(key)
       ? (EVENT_TARGET_METHODS.includes(key) ? eventTargetMethod(value, window) : value.bind(window)) : null;
+    if (unforgeable && UNFORGEABLE_KEYS.includes(key)) {
+      Object.defineProperty(global, key, {
+        get() { return window[key]; },
+        set: key === 'location' ? (v) => { window.location.href = v; } : undefined,
+        enumerable: true,
+        configurable: true,
+      });
+      continue;
+    }
     // Event handler attributes (onclick, ...) are read from the window: body
     // and frameset elements set the window's handlers too.
     if (value === undefined && key.startsWith('on') && !alwaysKeys.includes(key)) {
@@ -89,7 +109,8 @@ export function installWindow(global, window, { hostKeys = [], alwaysKeys = [] }
   for (const key of SELF_KEYS) {
     const original = Object.getOwnPropertyDescriptor(global, key);
     if (original) originals.set(key, original);
-    Object.defineProperty(global, key, { value: global, writable: true, configurable: true });
+    if (unforgeable && UNFORGEABLE_SELF_KEYS.includes(key)) defineUnforgeableSelf(global, key, global);
+    else Object.defineProperty(global, key, { value: global, writable: true, configurable: true });
   }
   Object.defineProperty(window.document, 'defaultView', { get: () => global, configurable: true });
   const restore = () => {
@@ -100,6 +121,11 @@ export function installWindow(global, window, { hostKeys = [], alwaysKeys = [] }
   // matchMedia, scrollTo, ...), as a fresh window would.
   restore.resetOverrides = () => overrides.clear();
   return restore;
+}
+
+// window and top of a global that is the window: assignments are ignored.
+export function defineUnforgeableSelf(target, key, value) {
+  Object.defineProperty(target, key, { get: () => value, enumerable: true, configurable: true });
 }
 
 // Set by the environment for warpdom/vitest/reset (a setup file that runs
@@ -152,6 +178,11 @@ function createTestWindow(options) {
   window[S].onUnhandledError = (error) => {
     if (!userErrorListeners(window)) process.emit('uncaughtException', error);
   };
+  // Vitest's jsdom environment sends jsdom's virtual console to the console
+  // of the environment's setup; the tests get another (a spy on their
+  // console.error does not see "Not implemented" reports).
+  const setupConsole = globalThis.console;
+  window[S].reportNotImplemented = (text) => setupConsole.error(text);
   return window;
 }
 
@@ -177,7 +208,7 @@ export default {
   async setupVM(options) {
     const window = createTestWindow(options);
     const sandbox = {};
-    const restore = installWindow(sandbox, window, { hostKeys: VITEST_HOST_KEYS, alwaysKeys: VITEST_ALWAYS_KEYS });
+    const restore = installWindow(sandbox, window, { hostKeys: VITEST_HOST_KEYS, alwaysKeys: VITEST_ALWAYS_KEYS, unforgeable: true });
     for (const name of nodeHostGlobals()) {
       // Values, not descriptors: some are lazy getters bound to Node's global (crypto).
       if (!(name in sandbox)) Object.defineProperty(sandbox, name, { value: globalThis[name], writable: true, configurable: true });
@@ -185,7 +216,8 @@ export default {
     vm.createContext(sandbox);
     const globalProxy = vm.runInContext('this', sandbox);
     for (const key of ['window', 'self', 'top', 'parent']) {
-      Object.defineProperty(sandbox, key, { value: globalProxy, writable: true, configurable: true });
+      if (UNFORGEABLE_SELF_KEYS.includes(key)) defineUnforgeableSelf(sandbox, key, globalProxy);
+      else Object.defineProperty(sandbox, key, { value: globalProxy, writable: true, configurable: true });
     }
     Object.defineProperty(window.document, 'defaultView', { get: () => globalProxy, configurable: true });
     window[S].globalProxy = globalProxy;

@@ -525,3 +525,44 @@ parity('select is iterable over its options', (w) => {
   const [first, second] = s;
   return [typeof w.HTMLSelectElement.prototype[Symbol.iterator], [...s].map((o) => o.textContent), first.textContent, second.textContent];
 });
+
+// An image button's selected coordinate is the activating click's (clientX,
+// clientY), as in jsdom 22 to 30; jsdom 20's FormData ignores the
+// submitter, and its MouseEvent has no pageX, x or offsetX.
+for (const jsdom of [30, 26, 20]) {
+  parity(`image buttons: the click's coordinates in form data; MouseEvent offsets (jsdom ${jsdom})`, (w) => {
+    const d = w.document;
+    d.body.innerHTML = '<form id=f><input name=a value=1><input type=image name=t alt=T><input type=image alt=N></form>';
+    const f = d.getElementById('f');
+    const [, t, n] = d.querySelectorAll('input');
+    const out = [];
+    const entries = (sub) => [...new w.FormData(f, sub)].map(([k, v]) => `${k}=${v}`).join('&');
+    const submits = [];
+    f.addEventListener('submit', (e) => { e.preventDefault(); submits.push(entries(e.submitter)); });
+    const click = (el, init) => el.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true, ...init }));
+    out.push(entries(t));
+    click(t, { clientX: 1, clientY: 2, screenX: 30, screenY: 40 });
+    out.push(entries(t));
+    click(t, {});
+    click(n, { clientX: 5, clientY: 6 });
+    click(t, { clientX: 7.6, clientY: -3.2 });
+    out.push(entries(t), entries(n));
+    t.click();
+    out.push(entries(t), submits);
+    const e = new w.MouseEvent('click', { clientX: 3, clientY: 4 });
+    out.push(['pageX', 'pageY', 'x', 'y', 'offsetX', 'offsetY'].map((k) => (k in w.MouseEvent.prototype ? e[k] : '-')));
+    try { new w.FormData(d.createElement('form'), 0); out.push('no throw'); } catch (err) { out.push(err.constructor.name); }
+    return out;
+  }, { jsdom });
+}
+
+for (const jsdom of [26, 20]) {
+  parity(`form submission: the submit event's interface (jsdom ${jsdom})`, (w) => {
+    w.document.body.innerHTML = '<form><input type=submit name=s><button name=b>b</button></form>';
+    const f = w.document.querySelector('form');
+    const seen = [];
+    f.addEventListener('submit', (e) => { e.preventDefault(); seen.push([e.constructor.name, e.submitter?.name ?? null, e.bubbles, e.cancelable]); });
+    for (const el of w.document.querySelectorAll('input, button')) el.click();
+    return [typeof w.SubmitEvent, seen];
+  }, { jsdom });
+}

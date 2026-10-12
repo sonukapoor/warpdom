@@ -86,9 +86,16 @@ first, with warpdom's error message for each group.
   `vite.config.*`, and with Vitest 2 and 3 `vitest.workspace.*`, also
   without a config; `jest.config.*`, `package.json` "jest").
 - **Environment per project:** only projects on jsdom or happy-dom switch.
-  Node projects and Vitest browser-mode projects run unchanged in both
-  runs; their tests are not compared, and the report says so per project
-  (see "Monorepos").
+  Node projects run unchanged in both runs; their tests are not compared,
+  and the report says so per project (see "Monorepos"). Vitest
+  browser-mode projects are left out of both runs (no browser starts) and
+  reported as not run.
+- **Node flags:** flags the package.json `test` script gives the runner
+  (`node --experimental-vm-modules .../jest.js`, `NODE_OPTIONS=... jest`)
+  are passed on in `NODE_OPTIONS`, without debugger flags. When a run does
+  not start and none were found, the error says the project may need them.
+- **Paths in messages:** relative to the current directory when inside it,
+  else absolute (an `--out` elsewhere).
 - **jsdom version:** the installed jsdom (the same detection as the Vitest
   adapter's `jsdomVersion`), so warpdom runs with the matching profile.
   The report names it.
@@ -212,8 +219,8 @@ is matched by occurrence). With it:
 - test keys carry the project name, so the same file in two projects is
   two sets of tests;
 - the projects come from the first baseline run, including those in other
-  files, with their environments; projects on node or in browser mode are
-  not compared (except Vitest files whose comment switched them to a DOM),
+  files, with their environments; projects on node are not compared,
+  browser-mode projects are not run (except Vitest files whose comment switched them to a DOM),
   and status changes there are listed in the details;
 - a DOM project still on jsdom or happy-dom in the warpdom run (one
   compare could not reach) is reported as not switched and not compared;

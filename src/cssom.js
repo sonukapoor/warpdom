@@ -946,6 +946,14 @@ export const CSSOM_INTERFACES = [
   },
   {
     name: 'StyleSheet',
+    // jsdom 20 to 26 (black box): style sheets are plain CSSOM objects
+    // without ownerNode, href, title or type (tanstack-query's devtools
+    // copy a sheet's ownerNode id only when there is one). jsdom 27 to 29
+    // give an internal object as ownerNode; warpdom gives the element, as
+    // jsdom 30 does (deliberate deviation, PLAN.md).
+    compat(proto, { jsdom }) {
+      if (jsdom < 27) for (const name of ['ownerNode', 'href', 'title', 'type']) delete proto[name];
+    },
     members: [{
       get type() { state(this); return 'text/css'; },
       get href() { return state(this).href; },

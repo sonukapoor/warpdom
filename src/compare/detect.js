@@ -183,3 +183,26 @@ export function takeConfigArg(args) {
   }
   return { config, args: rest };
 }
+
+// Node flags the project's package.json test script gives its runner:
+// `node <flags> path/to/jest.js`, `NODE_OPTIONS=<flags> jest` (also after
+// cross-env). Debugger flags are left out. [] when there are none.
+export function scriptNodeFlags(dir, runner) {
+  let script;
+  try { script = readJson(path.join(dir, 'package.json')).scripts?.test; } catch { return []; }
+  if (typeof script !== 'string') return [];
+  const flags = [];
+  for (const command of script.split(/&&|\|\||;/)) {
+    const words = command.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [];
+    const at = words.findIndex((w) => w === runner || w.endsWith(`/${runner}`) || new RegExp(`(^|/)${runner}(/bin/${runner})?\\.[mc]?js$`).test(w) || w.endsWith(`/${runner}.js`) || w.endsWith(`/${runner}.mjs`));
+    if (at < 0) continue;
+    for (let i = 0; i < at; i++) {
+      const w = words[i];
+      const env = /^NODE_OPTIONS=(.*)$/.exec(w);
+      if (env) flags.push(...env[1].replace(/["']/g, '').split(/\s+/).filter(Boolean));
+      else if (w.startsWith('-') && i > 0 && words.slice(0, i).includes('node')) flags.push(w);
+    }
+    break;
+  }
+  return flags.filter((f) => !/^--inspect/.test(f));
+}

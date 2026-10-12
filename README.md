@@ -8,9 +8,8 @@ written from the WHATWG specifications.
   handsontable, Radix, Vuetify, ariakit, svelte and more; about 42,000
   tests), every test has the status it has on jsdom, apart from flaky
   tests and a short list of deliberate differences (below).
-- **Faster on every suite we measured**: 1.08x to 8.8x drop-in, median
-  1.3x to 1.4x; with fast mode (Vitest), median 1.64x and 6x to 8x on
-  DOM-heavy suites.
+- **Faster on every suite we measured**: 1.08x to 8.8x drop-in; with fast
+  mode (Vitest), 6x to 8x on DOM-heavy suites.
 - **Check it on your own suite in one command**: `npx warpdom compare`.
 
 Status: pre-release. Numbers, method and raw data:
@@ -150,8 +149,11 @@ config, 2 workers):
 handsontable's happy-dom run is still to be measured.
 
 warpdom is faster than jsdom on every suite: from 1.08x (solid) to 8.8x
-(handsontable), median 1.3x to 1.4x. A faster DOM only speeds up the part of
-a run spent in the DOM; compilers, frameworks and waiting stay as they are.
+(handsontable). The suites fall into two groups, about 1.1x to 1.3x and
+1.5x to 1.9x (plus handsontable), so a single median says little: over the
+13 three-way suites it is 1.32x, with a 95% bootstrap interval of 1.25x to
+1.57x. A faster DOM only speeds up the part of a run spent in the DOM;
+compilers, frameworks and waiting stay as they are.
 warpdom's changed results are flaky tests that also change on jsdom,
 ariakit tests that fail on jsdom and pass on warpdom (plus two fixed since),
 and one deliberate difference in svelte. Full tables, fast mode, profiles
