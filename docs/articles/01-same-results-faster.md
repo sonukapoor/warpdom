@@ -266,6 +266,41 @@ warpdom is mainly a correctness switch: in the median it is 1.14x faster
 than happy-dom, and it is slower on ariakit and solid.
 <!-- source: docs/research/README.md 3.6 -->
 
+### Per operation
+
+Whole-suite numbers hide where the difference is. Per DOM operation, on
+the hottest members of the traced suites (ns per operation, median of 3
+runs on a laptop):
+
+| Operation | warpdom | jsdom | happy-dom | jsdom / warpdom | happy-dom / warpdom |
+| --- | --- | --- | --- | --- | --- |
+| appendChild (build 1000) | 87.6 | 762.1 | 353 | 8.7x | 4.0x |
+| insertBefore first (1000) | 123.7 | 1,129 | 978.3 | 9.1x | 7.9x |
+| removeChild all (1000) | 167.7 | 1,431 | 1,121 | 8.5x | 6.7x |
+| nextSibling walk | 11.4 | 45.9 | 88.1 | 4.0x | 7.7x |
+| previousSibling walk | 11.5 | 44.7 | 90.2 | 3.9x | 7.8x |
+| parentNode chain (depth 20) | 7.4 | 45.5 | 9.2 | 6.1x | 1.2x |
+| childNodes[i] loop | 107.6 | 202.3 | 79.1 | 1.9x | 0.7x |
+| firstElementChild + nextElementSibling | 9.8 | 47.6 | 87.8 | 4.9x | 9.0x |
+| getAttribute | 17.2 | 55.3 | 59.6 | 3.2x | 3.5x |
+| setAttribute | 50.6 | 175.4 | 553.3 | 3.5x | 10.9x |
+| getElementById (1000 elements) | 38.2 | 163.9 | 44.8 | 4.3x | 1.2x |
+| dispatchEvent (depth 20, document listener) | 1,435 | 3,947 | 5,296 | 2.7x | 3.7x |
+| querySelector #id | 50.1 | 1,188 | 50.4 | 23.7x | 1.0x |
+| querySelectorAll [data-index="999"] | 106.8 | 358,920 | 61.3 | 3,361x | 0.6x |
+| querySelectorAll * (Testing Library) | 107.7 | 41,555 | 56.2 | 386x | 0.5x |
+| querySelectorAll after a change (uncached) | 17,428 | 371,456 | 107,873 | 21.3x | 6.2x |
+| matches("div > span:nth-child(odd)") | 21.4 | 579 | 24.5 | 27.1x | 1.1x |
+| closest("[data-index]") | 114.8 | 7,912 | 242.6 | 68.9x | 2.1x |
+
+warpdom is faster than jsdom on every operation, by 2-9x on tree and
+attribute work and by orders of magnitude on selector queries. happy-dom
+wins on repeated queries of an unchanged tree, which it serves from a
+cache, and on index loops over `childNodes`; after a change, warpdom's
+queries are 6x cheaper. None of this predicts a suite's speedup: that
+depends on how much of the run is DOM work (next section).
+<!-- source: docs/research/README.md 3.5; data/hot-2026-10-12-three-dom.txt -->
+
 ### Where the time goes once the DOM is fast
 
 A CPU profile of MUI's four packages on warpdom (2026-10-11, 273 test
@@ -351,14 +386,13 @@ the same files.
 The latest run (2026-10-12, on GitHub Actions) covers four areas: `dom`,
 `domparsing`, `html/dom` and `css/cssom`; 963 test files, about 133,000
 subtests.
-<!-- source: docs/research/README.md 3.6; data/wpt/ci-2026-10-12-summary.md (warpdom d1358bf, WPT 87b5d13099) -->
+<!-- source: docs/research/README.md 3.6; data/wpt/ci-2026-10-12-evening-summary.md (warpdom cad3ce8, WPT 87b5d13099) -->
 
 | | warpdom | jsdom 30.1.2 |
 | --- | --- | --- |
-| Subtests passed | 113,318 (85.1%) | 107,201 (80.5%) |
-| Score per file | **72.5%** | 71.1% |
-| Files where every subtest passes | 611 | 613 |
-| Wall clock, summed over jobs | 676 s | 1,463 s |
+| Subtests passed | 116,422 (87.4%) | 107,201 (80.4%) |
+| Score per file | **75.9%** | 71.1% |
+| Wall clock, summed over jobs | 666 s | 1,397 s |
 
 Two numbers, because they answer different questions:
 
@@ -369,11 +403,12 @@ Two numbers, because they answer different questions:
   passed/total, and the files are averaged. A file with 3 subtests weighs
   as much as one with 1,500.
 
-warpdom is ahead on both now. A day earlier it was behind on the score
-per file (66.5% against 71.5%), mostly because of `html/dom`, which is
-now 71.5% against jsdom's 68.0%. It is still behind on the top-level
-`dom/` files (80.3% vs 93.4%), `dom/events` (77.8% vs 79.8%) and
-`dom/ranges` (87.6% vs 88.6%).
+warpdom is ahead on both. Two days earlier it was behind on the score per
+file (66.5% against 71.5%), mostly because of `html/dom`, which is now
+84.4% against jsdom's 68.0%. It is behind in one area, `dom/events`
+(78.7% vs 79.8%), by a deliberate choice: the standard makes `isTrusted`
+an own property of every event, and doing that made creating an event 2.3x
+slower, for a difference only interface-shape tests can see.
 
 Limits of these numbers: the runner is not a browser. There is no server,
 no layout, no user input, no workers and no pages loading in iframes;

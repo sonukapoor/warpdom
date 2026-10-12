@@ -27,7 +27,7 @@ and serializers like pretty-format, and cannot collide with test code.
 **Shape follows jsdom.** Members are defined on the same interface as in
 jsdom (e.g. `offsetWidth` on `HTMLElement.prototype` as an accessor), since
 tests spy on them there. The interface list and member placement can be
-checked against `spikes/fast-start/shapes.json` in dom-api-tracer.
+checked against `spikes/fast-start/shapes.json` in dom-api-tracer's history (commit ec4545f; the spike was removed from the repository on 2026-10-12).
 
 **No Node built-ins in the core**, so the same code can later run in edge
 runtimes and SSR.

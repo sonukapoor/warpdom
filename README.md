@@ -154,8 +154,8 @@ suite largely failing fast. Full tables, fast mode, profiles and caveats:
 [docs/research/README.md](docs/research/README.md).
 
 Web Platform Tests (dom, domparsing, html/dom, css/cssom; 963 files):
-warpdom passes 85.1% of subtests (jsdom 30: 80.5%), with a per-file score of
-72.5% (jsdom: 71.1%). The runner is in [wpt/](wpt/).
+warpdom passes 87.4% of subtests (jsdom 30: 80.4%), with a per-file score of
+75.9% (jsdom: 71.1%). The runner is in [wpt/](wpt/).
 
 ## Differences from jsdom
 

@@ -1564,3 +1564,28 @@ Left, and why:
   both installed). To publish both at release: npm names `warpdom` and
   `vitest-environment-warpdom` were free on 2026-10-12.
 
+- **2026-10-12: Candidate: cheaper query cache hits and NodeList access**
+  (from the three-DOM benchmark, docs/research/README.md 3.5). happy-dom
+  beats warpdom on two hot operations: repeated `querySelectorAll` on an
+  unchanged tree (56-61 ns vs 107-108 ns) and `childNodes[i]` loops (79
+  vs 108 ns). warpdom already caches query results per root and selector
+  until the tree or an attribute changes (selectors.js `querySelectorAll`,
+  `treeRev`); the gap is the cost of a hit. Likely parts (to profile
+  first):
+  - `compile(text)` (a Map lookup) runs before the result cache is
+    checked;
+  - the cache validity checks;
+  - creating the static NodeList, a Proxy for indexed access, on every
+    call (the same Proxy cost would explain `childNodes[i]`).
+
+  Constraints:
+  - each call returns a new NodeList, as in jsdom (identity is
+    observable);
+  - invalidation must stay free for insertion and attribute writes
+    (lesson: a field on every node cost insertion 8-12%);
+  - no change in results.
+
+  Testing Library queries the same tree constantly, so this is the most
+  common pattern in component tests. Measure with bench/hot.js against
+  happy-dom and on MUI or Radix with fast mode.
+

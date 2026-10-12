@@ -418,6 +418,40 @@ Within warpdom's CPU, the top functions are the cascade (`ruleIndex`,
 `performance.now` and frames, interface creation (`materialize`, 3%) and
 event dispatch.
 
+**Per operation, three DOMs** (bench/hot.js: the hottest members in the
+traced corpus; ns per operation, median of 3 runs; laptop, Node 22.23.3,
+warpdom 2e0293c, jsdom 30.1.2, happy-dom 20.14;
+[data/hot-2026-10-12-three-dom.txt](data/hot-2026-10-12-three-dom.txt)):
+
+| Operation | warpdom | jsdom | happy-dom | jsdom / warpdom | happy-dom / warpdom |
+| --- | --- | --- | --- | --- | --- |
+| appendChild (build 1000) | 87.6 | 762.1 | 353 | 8.7x | 4.0x |
+| insertBefore first (1000) | 123.7 | 1,129 | 978.3 | 9.1x | 7.9x |
+| removeChild all (1000) | 167.7 | 1,431 | 1,121 | 8.5x | 6.7x |
+| nextSibling walk | 11.4 | 45.9 | 88.1 | 4.0x | 7.7x |
+| previousSibling walk | 11.5 | 44.7 | 90.2 | 3.9x | 7.8x |
+| parentNode chain (depth 20) | 7.4 | 45.5 | 9.2 | 6.1x | 1.2x |
+| childNodes[i] loop | 107.6 | 202.3 | 79.1 | 1.9x | 0.7x |
+| firstElementChild + nextElementSibling | 9.8 | 47.6 | 87.8 | 4.9x | 9.0x |
+| getAttribute | 17.2 | 55.3 | 59.6 | 3.2x | 3.5x |
+| setAttribute | 50.6 | 175.4 | 553.3 | 3.5x | 10.9x |
+| getElementById (1000 elements) | 38.2 | 163.9 | 44.8 | 4.3x | 1.2x |
+| dispatchEvent (depth 20, document listener) | 1,435 | 3,947 | 5,296 | 2.7x | 3.7x |
+| querySelector #id | 50.1 | 1,188 | 50.4 | 23.7x | 1.0x |
+| querySelectorAll [data-index="999"] | 106.8 | 358,920 | 61.3 | 3,361x | 0.6x |
+| querySelectorAll * (Testing Library) | 107.7 | 41,555 | 56.2 | 386x | 0.5x |
+| querySelectorAll after a change (uncached) | 17,428 | 371,456 | 107,873 | 21.3x | 6.2x |
+| matches("div > span:nth-child(odd)") | 21.4 | 579 | 24.5 | 27.1x | 1.1x |
+| closest("[data-index]") | 114.8 | 7,912 | 242.6 | 68.9x | 2.1x |
+
+warpdom is faster than jsdom on every operation (2-9x on tree and
+attribute operations, 24-3,361x on selector queries, which jsdom matches
+without caching). happy-dom is faster on repeated querySelectorAll calls
+on an unchanged tree (it serves them from a cache: 56-61 ns vs warpdom's
+107-108 ns) and on `childNodes[i]` loops; once the tree changes, a query
+costs warpdom 6.2x less. Micro-benchmarks explain where suite time goes
+but do not predict suite speedups (section 3.4).
+
 ### 3.6 GitHub Actions, 2026-10-12: three DOMs, fast mode, WPT
 
 All on hosted Linux runners (2 cores), corpus at the commits in
@@ -507,7 +541,15 @@ job per area; [data/wpt/ci-2026-10-12-summary.md](data/wpt/ci-2026-10-12-summary
 | Files where every subtest passes | 611 | 613 |
 | Wall clock, summed over jobs | 676 s | 1,463 s |
 
-warpdom now leads on the per-file score too (2026-10-11: 66.5% vs 71.5%);
+Second run the same evening (run 38272794602, warpdom cad3ce8, after the
+DOM gaps and WPT work; [data/wpt/ci-2026-10-12-evening-summary.md](data/wpt/ci-2026-10-12-evening-summary.md)):
+score per file **75.9%** vs jsdom 71.1%, subtests 87.4% vs 80.4%, html/dom
+84.4% vs 68.0%, top-level dom/ 95.9% vs 93.2%, dom/ranges 89.2% vs 88.6%,
+dom/nodes 74.0% vs 68.2%. Behind only in dom/events, 78.7% vs 79.8%: the
+isTrusted deviation (PLAN.md). Wall clock summed over jobs: 666 s vs
+1,397 s.
+
+The first run: warpdom now leads on the per-file score too (2026-10-11: 66.5% vs 71.5%);
 html/dom 71.5% vs 68.0%. Behind: the top-level `dom/` files (80.3% vs
 93.4%), `dom/events` (77.8% vs 79.8%), `dom/ranges` (87.6% vs 88.6%).
 

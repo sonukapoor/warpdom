@@ -1,0 +1,61 @@
+=== run 1
+ns per op                                   warpdom      jsdom  happy-dom
+appendChild (build 1000)                       92.7      762.1      351.5
+insertBefore first (1000)                     123.7     1129.3     1008.8
+removeChild all (1000)                        165.7     1430.8     1073.2
+nextSibling walk                               11.4       46.1       83.3
+previousSibling walk                           11.5       45.6       93.8
+parentNode chain (depth 20)                     7.5       45.4        9.2
+childNodes[i] loop                            107.4      201.9       78.9
+firstElementChild + nextElementSibling          9.8       43.8       87.8
+getAttribute                                   17.2       54.7       60.0
+setAttribute                                   50.8      172.9      553.0
+getElementById (1000 elements)                 37.9      161.5       44.2
+dispatchEvent (depth 20, document listener)     1429.7     3947.0     5349.9
+querySelector #id                              50.1     1175.8       50.4
+querySelectorAll [data-index="999"]           106.8   359563.2       61.7
+querySelectorAll * (Testing Library)          107.2    41555.4       56.6
+querySelectorAll after a change (uncached)    17428.1   371456.0   103247.0
+matches("div > span:nth-child(odd)")           21.4      562.8       24.5
+closest("[data-index]")                       115.1     8046.7      241.7
+=== run 2
+ns per op                                   warpdom      jsdom  happy-dom
+appendChild (build 1000)                       87.6      764.2      355.0
+insertBefore first (1000)                     119.4     1099.2      978.3
+removeChild all (1000)                        167.7     1428.9     1137.8
+nextSibling walk                               11.4       44.6       88.1
+previousSibling walk                           12.2       43.8       88.2
+parentNode chain (depth 20)                     7.4       45.5        9.4
+childNodes[i] loop                            109.2      202.3       79.1
+firstElementChild + nextElementSibling          9.3       47.6       87.6
+getAttribute                                   17.0       55.3       58.5
+setAttribute                                   50.4      188.6      553.3
+getElementById (1000 elements)                 38.2      163.9       44.8
+dispatchEvent (depth 20, document listener)     1467.9     4209.4     5296.2
+querySelector #id                              50.1     1188.6       49.8
+querySelectorAll [data-index="999"]           107.3   358919.6       60.8
+querySelectorAll * (Testing Library)          107.7    44469.2       56.2
+querySelectorAll after a change (uncached)    19295.7   393956.7   117454.2
+matches("div > span:nth-child(odd)")           23.9      618.5       24.9
+closest("[data-index]")                       114.8     7873.6      242.6
+=== run 3
+ns per op                                   warpdom      jsdom  happy-dom
+appendChild (build 1000)                       86.1      745.5      353.0
+insertBefore first (1000)                     126.5     1143.5      971.4
+removeChild all (1000)                        170.0     1459.1     1121.1
+nextSibling walk                               11.4       45.9       89.5
+previousSibling walk                           11.1       44.7       90.2
+parentNode chain (depth 20)                     7.3       45.5        9.0
+childNodes[i] loop                            107.6      207.8       79.4
+firstElementChild + nextElementSibling         10.8       47.9       88.7
+getAttribute                                   17.8       57.9       59.6
+setAttribute                                   50.6      175.4      572.9
+getElementById (1000 elements)                 39.9      176.7       46.9
+dispatchEvent (depth 20, document listener)     1435.4     3883.6     5204.0
+querySelector #id                              50.2     1187.6       50.6
+querySelectorAll [data-index="999"]           106.2   356106.0       61.3
+querySelectorAll * (Testing Library)          109.1    41302.5       54.9
+querySelectorAll after a change (uncached)    16917.7   370876.6   107872.8
+matches("div > span:nth-child(odd)")           20.8      579.0       24.3
+closest("[data-index]")                       114.5     7912.0      246.3
+2e0293c Research: paper outline (questions, contributions, method, results, threats, what a submission needs)
