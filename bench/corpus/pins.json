@@ -1,0 +1,92 @@
+{
+  "floating-ui": {
+    "repo": "https://github.com/floating-ui/floating-ui",
+    "commit": "414e093d7cc8762ae0c207784aa98110bf67c9e6",
+    "date": "2026-07-04T08:36:29-04:00"
+  },
+  "solid": {
+    "repo": "https://github.com/solidjs/solid",
+    "commit": "aa123525b0421d63ad2476680b4444bc1fb30b4a",
+    "date": "2026-07-04T10:46:29-04:00"
+  },
+  "analog": {
+    "repo": "https://github.com/analogjs/analog",
+    "commit": "3b9463ecf9782dc792a049c2e1741060cfdf2dcc",
+    "date": "2026-04-16T18:41:52Z"
+  },
+  "CopilotKit": {
+    "repo": "https://github.com/CopilotKit/CopilotKit",
+    "commit": "0e715aadb93e4ce2936117e81451c691a2ac38b2",
+    "date": "2026-10-11T15:21:02-04:00"
+  },
+  "handsontable": {
+    "repo": "https://github.com/handsontable/handsontable",
+    "commit": "fff66b1a306479df42a53fc9f7f6ce39231ec138",
+    "date": "2026-10-07T13:03:33+02:00"
+  },
+  "ag-grid": {
+    "repo": "https://github.com/ag-grid/ag-grid",
+    "commit": "73997c5528d5f9333c42f474f95650af9f223992",
+    "date": "2026-10-08T09:27:12+01:00"
+  },
+  "material-ui": {
+    "repo": "https://github.com/mui/material-ui",
+    "commit": "edb9f2df1694fae5f04d027c785f0c4d10e492b5",
+    "date": "2026-10-08T15:17:21Z"
+  },
+  "ariakit": {
+    "repo": "https://github.com/ariakit/ariakit",
+    "commit": "51eb28a7ca75b5d9f722fa5035137c5ec69e0c3a",
+    "date": "2026-10-08T10:00:36Z"
+  },
+  "element-plus": {
+    "repo": "https://github.com/element-plus/element-plus",
+    "commit": "6f7016e434cc64d152940698a5fd3bc5f373ec97",
+    "date": "2026-10-07T18:03:47+08:00"
+  },
+  "kobalte": {
+    "repo": "https://github.com/kobaltedev/kobalte",
+    "commit": "675b4a11f4f074007c98b47a573760a1b60849ff",
+    "date": "2026-09-07T13:37:24+02:00"
+  },
+  "radix-primitives": {
+    "repo": "https://github.com/radix-ui/primitives",
+    "commit": "4e8b0dbc76d3e0189ab1a0ef0ff2245758506840",
+    "date": "2026-10-07T17:20:11-07:00"
+  },
+  "react-hook-form": {
+    "repo": "https://github.com/react-hook-form/react-hook-form",
+    "commit": "e76876b02550b3ad48a351c638845d9dc1aaa3c8",
+    "date": "2026-10-08T10:15:20+11:00"
+  },
+  "vuetify": {
+    "repo": "https://github.com/vuetifyjs/vuetify",
+    "commit": "e23a3c152930e9d504130ee194adfce63f84d66e",
+    "date": "2026-10-07T16:00:25+02:00"
+  },
+  "svelte": {
+    "repo": "https://github.com/sveltejs/svelte",
+    "commit": "707c28146b0f0a6d5404a1bd4769874c3c24851a",
+    "date": "2026-10-07T16:50:37+02:00"
+  },
+  "react-spectrum": {
+    "repo": "https://github.com/adobe/react-spectrum",
+    "commit": "2691598d3efcdaf6f49f29ad1a44bbc1741765a3",
+    "date": "2026-10-07T18:26:35-07:00"
+  },
+  "nuxt-ui": {
+    "repo": "https://github.com/nuxt/ui",
+    "commit": "9c4e33b7e076aa6bd59b5bd99d8621d9dc1bcf60",
+    "date": "2026-10-08T14:53:09+02:00"
+  },
+  "ark-ui": {
+    "repo": "https://github.com/chakra-ui/ark",
+    "commit": "eb6abb07f619022e2f42ae258f61b0c123166cd7",
+    "date": "2026-10-08T00:44:27+01:00"
+  },
+  "emoji-picker-element": {
+    "repo": "https://github.com/nolanlawson/emoji-picker-element",
+    "commit": "5d1c8bfc21e737c03a3cb14e06b4e472e2275ff1",
+    "date": "2026-03-04T17:30:28-08:00"
+  }
+}

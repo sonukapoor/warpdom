@@ -1,0 +1,131 @@
+# Corpus timing on GitHub-hosted runners: each corpus project in its own
+# job, at its pinned commit (bench/corpus/pins.json or held-out-pins.json),
+# timed with compare() (the code behind `warpdom compare`): jsdom, warpdom
+# and happy-dom rotating in every round, the runner's default pool, 2
+# workers. A final job combines the results into the published tables
+# (bench/corpus/report.mjs) on the run's summary page and as an artifact.
+# warpdom is the commit the workflow runs on (choose the branch when
+# starting it). See bench/corpus/README.md.
+#
+# Each project job takes minutes to hours (material-ui, ariakit,
+# react-spectrum and CopilotKit about an hour or more with 3 rounds).
+name: corpus-timing
+
+on:
+  workflow_dispatch:
+    inputs:
+      corpus:
+        description: 'Corpus file: corpus.json (the tuning corpus) or held-out.json (projects warpdom was never tuned on; list them in projects)'
+        type: choice
+        options: [corpus.json, held-out.json]
+        default: corpus.json
+      projects:
+        description: Corpus projects, comma separated
+        default: react-hook-form,solid,floating-ui,analog,radix-primitives,vuetify,emoji-picker-element,svelte,ark-ui,material-ui,react-spectrum,CopilotKit,ariakit,handsontable
+      rounds:
+        description: Timed rounds per project (the configurations rotate in each)
+        default: '3'
+      configs:
+        description: Configurations (jsdom-default, warpdom-default, happy-dom-default)
+        default: jsdom-default warpdom-default happy-dom-default
+      warmup:
+        description: An untimed warm-up group before the rounds (compare's default with 2 or more rounds)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      projects: ${{ steps.list.outputs.projects }}
+    steps:
+      - id: list
+        env:
+          PROJECTS: ${{ inputs.projects }}
+        run: echo "projects=$(printf '%s' "$PROJECTS" | jq -cR 'split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
+
+  time:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        project: ${{ fromJSON(needs.plan.outputs.projects) }}
+    env:
+      CORPUS_REPOS_DIR: ${{ github.workspace }}/../repos
+      CORPUS: bench/corpus/${{ inputs.corpus }}
+      PROJECT: ${{ matrix.project }}
+      ROUNDS: ${{ inputs.rounds }}
+      CONFIGS: ${{ inputs.configs }}
+      WARMUP: ${{ inputs.warmup && 'yes' || 'no' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.3
+      # pnpm and yarn at the versions the projects declare (packageManager).
+      - run: corepack enable
+      - uses: oven-sh/setup-bun@v2
+        if: matrix.project == 'ark-ui'
+      # warpdom's dependencies, and jsdom, happy-dom and
+      # @happy-dom/jest-environment, linked into projects that lack them.
+      - run: npm ci
+      - name: Check out ${{ matrix.project }} at its pinned commit, install, build
+        run: node bench/corpus/checkout.mjs --corpus "$CORPUS" --repos-dir "$CORPUS_REPOS_DIR" "$PROJECT"
+      - name: Time ${{ matrix.project }}
+        run: |
+          node bench/corpus/time.mjs --corpus "$CORPUS" --repos-dir "$CORPUS_REPOS_DIR" \
+            --rounds "$ROUNDS" --configs "$CONFIGS" $([ "$WARMUP" = no ] && echo --no-warmup) \
+            --out .corpus-timing --csv ".corpus-timing/timing-ci-$PROJECT.csv" "$PROJECT"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: timing-${{ matrix.project }}
+          # The CSV, the environment record, compare's results per package
+          # (results.json, report.md), the runner's per-test results (runs/)
+          # and logs.
+          path: .corpus-timing/
+          if-no-files-found: warn
+          include-hidden-files: true
+
+  report:
+    needs: time
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.3
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: timing-*
+          path: results
+          merge-multiple: true
+      - name: Combine
+        run: |
+          set -e
+          mkdir -p results
+          out=results/timing-ci.csv
+          echo "round,project,config,seconds,differs" > "$out"
+          shopt -s nullglob
+          files=(results/timing-ci-*.csv)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo 'No timing results: every project failed (see the time jobs and their artifacts).' | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          for f in "${files[@]}"; do tail -n +2 "$f" >> "$out"; done
+          node bench/corpus/report.mjs "$out" | tee results/report.md
+          { echo '## Corpus timing (median of rounds)'; echo; cat results/report.md; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: timing-report
+          path: |
+            results/timing-ci.csv
+            results/report.md
+            results/*.env-*.json
+            results/timing-ci-*.json

@@ -1809,3 +1809,38 @@ ignore assignment); jsdom 21 assumed like 22 where unmeasured.
   that the pinned fixture file is switched and compared and the package is
   removed.
 
+
+- **2026-10-12: Corpus timing moves here, on `compare()` (branch
+  feat/corpus-timing; milestone 6 of docs/compare.md).** `bench/corpus/`:
+  the corpus files and pins (copied from dom-api-tracer d790997, same
+  format), `checkout.mjs` (clone at the pin, install, build), `time.mjs`
+  (per package `compare()` with the corpus's config, args and env; jsdom,
+  warpdom and happy-dom rotating in every round, 2 workers; the same CSV
+  columns as before, compare's full results and an environment record),
+  `report.mjs` (a port of timing-report.cjs: identical output on all 18
+  CSVs in docs/research/data/timing), `write-pins.mjs`, README with the
+  commands per published table; `.github/workflows/corpus-timing.yml`.
+  `compare()` gained API-only options: `env`, `alsoEnvironments`
+  (happy-dom as a third DOM, results in `result.also`), `domPackages`
+  (DOM packages a project lacks, linked for the run), `warmup`,
+  `requireDom: false`; the CLI is unchanged. `@happy-dom/jest-environment`
+  is a new devDependency (happy-dom column of Jest projects).
+  - Local check against dom-api-tracer's harness (1 round, three DOMs):
+    react-hook-form 1,515 tests, floating-ui 340 in 4 packages, the same
+    in both; differences warpdom 0/0 in both, happy-dom the same tests
+    (react-hook-form 7 vs 8 from one flaky happy-dom test, floating-ui
+    14/14); times within 0.4 s (react-hook-form 6.0/5.1/8.5 s vs
+    6.1/5.1/8.5 s; floating-ui 9.8/6.5/8.2 vs 9.7/6.5/7.6).
+  - Differences by design (bench/corpus/README.md): the jsdom side keeps
+    the project's own environment (react-hook-form's jest-fixed-jsdom;
+    the old harness used plain jsdom), configurations rotate, a warm-up
+    group with 2+ rounds, compare's coverage-off and node-flag handling,
+    a failed run ends that package's comparison.
+  - One GitHub run (react-hook-form, 1 round, run 38287056740, through a
+    temporary push trigger, since workflow_dispatch needs the workflow on
+    the default branch): jsdom 23.1 s, warpdom 16.8 s, happy-dom 20.7 s;
+    1.38x / 1.12x / 1.23x; differ 0 / 8 (3.6 had 1.32x / 1.04x, 0 / 7).
+  - Next: merge, then run the full corpus once from here and compare with
+    3.6 (about 9 runner-hours; warpdom's Actions minutes are limited while
+    private, so plan it); port fast mode, the vm pool, per-file timings and
+    profiles; then switch dom-api-tracer back to tracing only.

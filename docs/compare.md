@@ -385,4 +385,11 @@ Timing in CI is noisy (shared 2- or 4-core machines). The docs recommend
    2026-10-12 (see "Monorepos").
 5. `--explore`.
 6. The corpus timing on top of `compare()`; the GitHub workflow moves here.
+   Done 2026-10-12 on branch feat/corpus-timing: `bench/corpus/`
+   ([README](../bench/corpus/README.md)) and `.github/workflows/corpus-timing.yml`.
+   For it, `compare()` gained API-only options (not in the CLI): `env`,
+   `alsoEnvironments` (e.g. `['happy-dom']`: a third DOM in every round,
+   with its comparison and times in `result.also`), `domPackages` (DOM
+   packages a project lacks, linked for the run), `warmup` and
+   `requireDom: false` (node-only packages still run).
 7. README section and CI example; then the public release.

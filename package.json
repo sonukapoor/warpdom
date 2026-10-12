@@ -49,6 +49,7 @@
     "bench:hot": "node bench/hot.js"
   },
   "devDependencies": {
+    "@happy-dom/jest-environment": "^20.14.6",
     "@webref/css": "^8.7.6",
     "@webref/elements": "^2.9.1",
     "@webref/idl": "^3.85.1",

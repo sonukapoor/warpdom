@@ -17,7 +17,8 @@ import { fileURLToPath } from 'node:url';
 import { detectRunner, findVitestWorkspace, packageDir, packageVersion, installedWarpdom, domVersion, environmentComments, takeConfigArg, scriptNodeFlags } from './detect.js';
 import { vitestWrapper, vitestWorkspaceWrapper, vitestReporter, jestWrapper, jestReporter, wrapperName, workspaceWrapperName, MARK, PROBE_MARKER, PINNED_TARGET } from './wrappers.js';
 import { resolveVitestProjects, resolveJestProjects } from './projects.js';
-import { TempFiles, copyWarpdom, pinnedEnvironmentPackage, jestPinnedPackage, acquireLock, gitStatus, statusChanges } from './files.js';
+import { createRequire } from 'node:module';
+import { TempFiles, copyWarpdom, pinnedEnvironmentPackage, jestPinnedPackage, linkPackage, acquireLock, gitStatus, statusChanges } from './files.js';
 import { runnerArgs, hasMinWorkers, runProcess, currentChild, killTree, testsOf, countsOf, runnerDuration, readReport } from './run.js';
 import { compareRuns, groupDifferences, timingSummary, pairOrder, exitCode } from './results.js';
 import { environmentRecord } from './env.js';
@@ -35,12 +36,35 @@ const isDomEnvironment = (runner, environment) => (runner === 'vitest'
 // The environment a baseline other than the project's own is given as.
 const baselineEnvironment = (runner, name) => (runner === 'jest' && name === 'happy-dom' ? '@happy-dom/jest-environment' : name);
 
+// The package that provides a DOM environment to a runner.
+const environmentPackage = (runner, name) => (runner === 'vitest' ? name : name === 'happy-dom' ? '@happy-dom/jest-environment' : 'jest-environment-jsdom');
+
+const DOM_NAMES = ['jsdom', 'happy-dom'];
+
 const firstErrorLine = (output) => output.split('\n').slice(1).map((l) => l.replace(/\x1b\[[0-9;]*m/g, '').trim())
   .find((l) => /error/i.test(l) && !l.includes(PROBE_MARKER)) ?? '';
 
 // Jest comment values the pinned package switches.
 const JEST_JSDOM = new Set(['jsdom', 'jest-environment-jsdom']);
 
+// Options (docs/compare.md): cwd, out, rounds, correctness, workers,
+// baseline, runner, timeout (minutes), args (runner arguments), log,
+// fastFrames. API only (not in the CLI), for the corpus timing in
+// bench/corpus/:
+// - env: environment variables for every run (e.g. TZ: 'UTC');
+// - alsoEnvironments: other DOMs to run in every round as well, e.g.
+//   ['happy-dom'] (jsdom or happy-dom; the baseline's own name is ignored).
+//   Each gets its runs, its comparison with the baseline and its times in
+//   result.also[name]; the exit code still depends on warpdom alone;
+// - domPackages: a node_modules directory to take DOM packages from that
+//   the project lacks (jsdom, happy-dom, jest-environment-jsdom,
+//   @happy-dom/jest-environment): Vitest gets a link next to its own
+//   node_modules for the run, Jest the package's path;
+// - warmup: whether an untimed warm-up group runs first (default: with 2
+//   or more rounds);
+// - requireDom: false runs a package whose projects are all on node anyway
+//   (nothing switches; its tests are not compared), so a corpus project's
+//   time covers all its packages. Browser-mode-only packages still stop.
 export async function compare(options = {}) {
   const cwd = path.resolve(options.cwd ?? process.cwd());
   const out = path.resolve(cwd, options.out ?? '.warpdom-compare');
@@ -51,13 +75,15 @@ export async function compare(options = {}) {
   const rounds = correctness ? 1 : Math.max(1, Number(options.rounds ?? 1));
   const timeoutMs = (options.timeout ?? 30) * 60_000;
   const log = options.log ?? (() => {});
+  const extraEnv = options.env ?? {};
+  const domPackages = options.domPackages ? path.resolve(options.domPackages) : null;
   // Paths in messages: relative when inside cwd, else absolute.
   const shown = (file) => displayPath(file, cwd);
   const result = {
     version: 1, cwd, out, mode: correctness ? 'correctness' : 'timing', exitCode: 2, error: null, warnings: [],
     runner: null, runnerVersion: null, baseline: null, warpdom: null, projects: [], external: 0,
     pinned: null, warmup: false, runs: [], correctness: null, timing: null, environment: null, gitChanges: [],
-    warpdomOptions,
+    warpdomOptions, also: null, env: Object.keys(extraEnv),
   };
 
   let release = null;
@@ -103,7 +129,10 @@ export async function compare(options = {}) {
       throw new CompareError(file ? `Vitest ${result.runnerVersion} does not read ${path.basename(file)} (workspace files were removed in Vitest 4); run compare where your vitest.config is`
         : 'no Vitest config found here (vitest.config.* or vite.config.*); run compare where you run vitest');
     }
-    if (options.baseline && !['jsdom', 'happy-dom'].includes(options.baseline)) throw new CompareError('--baseline must be jsdom or happy-dom');
+    if (options.baseline && !DOM_NAMES.includes(options.baseline)) throw new CompareError('--baseline must be jsdom or happy-dom');
+    for (const name of options.alsoEnvironments ?? []) {
+      if (!DOM_NAMES.includes(name)) throw new CompareError(`alsoEnvironments: ${name} is not jsdom or happy-dom`);
+    }
 
     // Wrappers sit next to the config they wrap; without a config, in cwd.
     const wrapperPath = (file, role) => path.join(file ? path.dirname(file) : cwd, wrapperName(runner, file, role));
@@ -121,7 +150,7 @@ export async function compare(options = {}) {
     const nodeEnv = result.nodeOptions ? { NODE_OPTIONS: [process.env.NODE_OPTIONS, result.nodeOptions].filter(Boolean).join(' ') } : {};
     const execute = (wrapper, resultsFile, logFile, env = {}, reporter = null) => runProcess(bin, runnerArgs(runner, {
       config: wrapper, resultsFile, workers: options.workers, minWorkers, reporter: runner === 'vitest' ? reporter : null, args,
-    }), { cwd, env: { ...nodeEnv, ...env }, timeoutMs, logFile });
+    }), { cwd, env: { ...nodeEnv, ...extraEnv, ...env }, timeoutMs, logFile });
     // When a run fails to start, a hint for runners that need node flags.
     const flagsHint = () => (result.nodeOptions ? '' : '; if the project runs its test runner with node flags (node --experimental-vm-modules ...), set them in NODE_OPTIONS');
 
@@ -184,7 +213,8 @@ export async function compare(options = {}) {
     // Projects in other files (and inline ones extending them) are only known
     // once they run: compare goes ahead and checks after the first run.
     const unknown = (meta.unknown ?? 0) + result.external;
-    if (!domProjects.length && !unknown) {
+    const nodeOnly = options.requireDom === false && result.projects.some((p) => !p.browser);
+    if (!domProjects.length && !unknown && !nodeOnly) {
       const seen = [...new Set(result.projects.map((p) => (p.browser ? 'browser mode' : p.environment)))].join(', ') || 'none';
       throw new CompareError(`nothing to compare: no project runs on jsdom or happy-dom (found: ${seen})`);
     }
@@ -196,9 +226,36 @@ export async function compare(options = {}) {
     // Without a DOM project in the root config, the installed DOM decides.
     const guessed = packageDir(cwd, 'jsdom') || !packageDir(cwd, 'happy-dom') ? 'jsdom' : 'happy-dom';
     const baselineName = options.baseline ?? ([...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? guessed);
-    const domEnvironment = options.baseline || !domProjects.length ? baselineEnvironment(runner, baselineName) : domProjects[0].environment;
+    // A DOM the project does not have comes from domPackages (API option):
+    // Vitest loads it by name, so it is linked next to Vitest's own
+    // node_modules; Jest takes the environment package's path.
+    const binModules = path.dirname(path.dirname(bin));
+    const provided = [];
+    const environmentFor = (name) => {
+      const pkg = environmentPackage(runner, name);
+      const fallback = baselineEnvironment(runner, name);
+      if (packageDir(cwd, pkg) || !domPackages || !fs.existsSync(path.join(domPackages, pkg, 'package.json'))) return fallback;
+      provided.push(name);
+      if (runner === 'jest') return path.join(domPackages, pkg);
+      linkPackage(binModules, pkg, path.join(domPackages, pkg), temp);
+      return fallback;
+    };
+    const domEnvironment = options.baseline || !domProjects.length ? environmentFor(baselineName) : domProjects[0].environment;
     result.baseline = domVersion(cwd, runner, domEnvironment);
     result.baseline.name = baselineName;
+    // Other DOMs run in every round too (alsoEnvironments).
+    const extras = [...new Set(options.alsoEnvironments ?? [])].filter((name) => name !== baselineName);
+    const extraEnvironments = Object.fromEntries(extras.map((name) => [name, environmentFor(name)]));
+    // The version of a provided DOM, which domVersion cannot see from cwd.
+    const versionOf = (info, name) => (info.version || !provided.includes(name) ? info
+      : { ...info, version: packageVersion(path.dirname(domPackages), name) });
+    if (extras.length) {
+      result.also = Object.fromEntries(extras.map((name) => [name, {
+        environment: { ...versionOf(domVersion(cwd, runner, extraEnvironments[name]), name), name }, provided: provided.includes(name),
+        correctness: null, timing: null,
+      }]));
+    }
+    if (provided.includes(baselineName)) result.baseline = { ...versionOf(result.baseline, baselineName), provided: true };
 
     // --- warpdom inside the project ---------------------------------------
     let warpdomDir = installedWarpdom(cwd);
@@ -218,9 +275,11 @@ export async function compare(options = {}) {
     const reporter = writeTemp(path.join(configDir, `${runner}.config${MARK}reporter.${runner === 'vitest' ? 'mjs' : 'cjs'}`),
       runner === 'vitest' ? vitestReporter() : jestReporter());
     const roles = {
-      baseline: { environment: options.baseline ? baselineEnvironment(runner, options.baseline) : null, pinned: baselineName },
+      baseline: { environment: options.baseline ? domEnvironment : null, pinned: baselineName },
       warpdom: { environment: warpdomEnvironment, pinned: PINNED_TARGET, warpdomOptions },
     };
+    for (const name of extras) roles[name] = { environment: extraEnvironments[name], pinned: name };
+    const sides = ['baseline', 'warpdom', ...extras];
     const wrappers = {};
     for (const [role, { environment, pinned, warpdomOptions: wo = null }] of Object.entries(roles)) {
       const root = wrapperPath(config, role);
@@ -242,35 +301,43 @@ export async function compare(options = {}) {
         ? vitestWrapper(config, { environment, pinned, major, links, warpdomOptions: wo })
         : jestWrapper(config, { environment, links, self: root, reporter, warpdomOptions: wo }));
     }
-    const pinnedLogs = { baseline: [], warpdom: [] };
+    const pinnedLogs = Object.fromEntries(sides.map((side) => [side, []]));
 
     // --- runs ----------------------------------------------------------------
-    result.warmup = !correctness && rounds >= 2;
+    result.warmup = !correctness && (options.warmup ?? rounds >= 2);
     const pairs = [];
     if (result.warmup) pairs.push({ warmup: true, round: null });
     for (let r = 1; r <= rounds; r++) pairs.push({ warmup: false, round: r });
-    const total = pairs.length * 2;
-    const tests = { baseline: [], warpdom: [] };
+    const total = pairs.length * sides.length;
+    const tests = Object.fromEntries(sides.map((side) => [side, []]));
+    // Jest: the environment file a pinned-jsdom package re-exports, per side.
+    const jestPinnedTarget = (side) => {
+      if (runner !== 'jest' || baselineName !== 'jsdom') return null;
+      if (side === 'warpdom') return warpdomEnvironment;
+      if (side !== 'happy-dom') return null;
+      try { return createRequire(path.join(cwd, 'package.json')).resolve(extraEnvironments[side]); } catch { return null; }
+    };
     let pinned = null;
     let projectsRan = false;
     let projectsFromRun = false;
     let checkedSwitch = false;
     let jestSwitched = false;
     for (const [i, pair] of pairs.entries()) {
-      for (const side of pairOrder(i)) {
+      for (const side of pairOrder(i, sides)) {
         const index = result.runs.length + 1;
         const name = `${index}-${side}`;
         const resultsFile = path.join(out, 'runs', `${name}.json`);
         const logFile = path.join(out, 'logs', `${name}.log`);
-        const label = side === 'baseline' ? baselineName : 'warpdom';
+        const label = side === 'baseline' ? baselineName : side;
         const pinnedLog = path.join(out, 'logs', `${name}.pinned.tsv`);
         pinnedLogs[side].push(pinnedLog);
         const projectsFile = path.join(out, 'runs', `${name}.projects.json`);
         // Jest: files pinned to jsdom switch to warpdom in warpdom runs only
-        // (on a jsdom baseline; the package exists just for the run).
-        const jestShim = runner === 'jest' && side === 'warpdom' && baselineName === 'jsdom'
-          ? jestPinnedPackage(nodeModules, warpdomEnvironment, temp) : null;
-        if (jestShim) jestSwitched = true;
+        // (on a jsdom baseline; the package exists just for the run), and to
+        // happy-dom in happy-dom runs (alsoEnvironments).
+        const shimTarget = jestPinnedTarget(side);
+        const jestShim = shimTarget ? jestPinnedPackage(nodeModules, shimTarget, temp) : null;
+        if (jestShim && side === 'warpdom') jestSwitched = true;
         let res;
         try {
           res = await execute(wrappers[side], resultsFile, logFile, { WARPDOM_COMPARE_PINNED_LOG: pinnedLog, WARPDOM_COMPARE_PROJECTS: projectsFile }, reporter);
@@ -313,7 +380,7 @@ export async function compare(options = {}) {
               if (!result.projects.some((x) => x.name === p.name)) result.projects.push({ ...p, dom: false, notRun: true });
             }
             const switchable = pinned.length > 0 && (runner === 'vitest' || (baselineName === 'jsdom' && pinned.some((p) => JEST_JSDOM.has(p.environment))));
-            if (!result.projects.some((p) => p.dom) && !switchable) {
+            if (!result.projects.some((p) => p.dom) && !switchable && !(options.requireDom === false && result.projects.some((p) => !p.browser))) {
               const seen = [...new Set(result.projects.map((p) => (p.browser ? 'browser mode' : environmentLabel(p.environment))))].join(', ');
               throw new CompareError(`nothing to compare: no project runs on jsdom or happy-dom (found: ${seen})`);
             }
@@ -335,7 +402,7 @@ export async function compare(options = {}) {
           }
         }
         log(`  [${index}/${total}] ${label.padEnd(9)} ${(pair.warmup ? 'warm-up' : correctness ? '' : `round ${pair.round}`).padEnd(8)} ${((run.runnerMs ?? run.wallMs) / 1000).toFixed(1).padStart(6)} s  ${run.counts.passed} passed, ${run.counts.failed} failed${run.counts.skipped ? `, ${run.counts.skipped} skipped` : ''}`);
-        if (side === 'baseline' && index <= 2 && run.counts.tests === 0) throw new CompareError(`no tests ran on ${label} (see ${shown(logFile)})${flagsHint()}`);
+        if (side === 'baseline' && i === 0 && run.counts.tests === 0) throw new CompareError(`no tests ran on ${label} (see ${shown(logFile)})${flagsHint()}`);
       }
     }
 
@@ -377,16 +444,31 @@ export async function compare(options = {}) {
       notSwitched: pinned.length - pinned.filter((p) => p.switched).length,
       notSwitchedEnvironments: [...new Set(pinned.filter((p) => !p.switched).map((p) => p.environment))],
     };
+    for (const name of extras) {
+      const e = compareRuns(tests.baseline, tests[name], { skipFiles, skipProjects, keepFiles });
+      e.groups = groupDifferences(e.differences);
+      result.also[name].correctness = e;
+    }
     if (!correctness) {
       const timed = result.runs.filter((r) => !r.warmup);
       const source = timed.every((r) => r.runnerMs != null) ? 'runner' : 'wall';
       for (const r of result.runs) r.ms = source === 'runner' ? r.runnerMs : r.wallMs;
       const perRound = [];
+      const of = (r, side) => timed.find((x) => x.round === r && x.side === side).ms;
       for (let r = 1; r <= rounds; r++) {
-        const of = (side) => timed.find((x) => x.round === r && x.side === side).ms;
-        perRound.push({ round: r, baselineMs: of('baseline'), warpdomMs: of('warpdom') });
+        perRound.push({ round: r, baselineMs: of(r, 'baseline'), warpdomMs: of(r, 'warpdom') });
       }
       result.timing = { ...timingSummary(perRound), perRound, source };
+      // The other DOMs: their times, and their speed against the baseline
+      // (speedup > 1: faster than the baseline).
+      for (const name of extras) {
+        const rows = perRound.map((p) => ({ round: p.round, baselineMs: p.baselineMs, warpdomMs: of(p.round, name) }));
+        const t = timingSummary(rows);
+        result.also[name].timing = {
+          ms: t.warpdomMs, baselineMs: t.baselineMs, speedup: t.speedup, ratios: t.ratios, spread: t.spread,
+          perRound: rows.map((x) => ({ round: x.round, ms: x.warpdomMs })), source,
+        };
+      }
     } else {
       for (const r of result.runs) r.ms = r.runnerMs ?? r.wallMs;
     }

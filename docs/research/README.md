@@ -628,6 +628,30 @@ react-router, vueuse) found the same differences as the harness. It
 needed `NODE_OPTIONS=--experimental-vm-modules` for react-router and gave
 no hint; it still runs browser-mode projects it does not compare.
 
+**After the fixes** (warpdom c4c9571, which merged the held-out fixes;
+GitHub Actions run 38284524015, one round, jsdom vs warpdom, each project
+on its own runner;
+[data/held-out/ci-2026-10-12-after/](data/held-out/ci-2026-10-12-after/)):
+**1 differing test** in the 9 projects, the deliberate deviation in
+tanstack-query (jsdom 27-29's CSSStyleSheet.ownerNode, PLAN.md); 0 in the
+other 8. warpdom is faster on all 9 (one round, indicative):
+
+| Project | jsdom | warpdom | Ratio |
+| --- | --- | --- | --- |
+| melt-ui | 79.0 s | 26.0 s | 3.04x |
+| vueuse | 91.5 s | 46.9 s | 1.95x |
+| tanstack-query | 128.7 s | 82.5 s | 1.56x |
+| downshift | 14.4 s | 9.5 s | 1.52x |
+| dom-testing-library | 6.0 s | 4.9 s | 1.22x |
+| solid-primitives | 5.2 s | 4.5 s | 1.16x |
+| naive-ui | 245.1 s | 224.3 s | 1.09x |
+| react-router | 43.2 s | 40.8 s | 1.06x |
+| taiga-ui | 638.1 s | 614.7 s | 1.04x |
+
+The fixes were driven by these 9 projects, so after them the set is no
+longer held out; the "before" numbers above remain the held-out result.
+A new held-out set is needed to measure parity on unseen suites again.
+
 What this says about the corpus result: parity on unseen suites is high
 (99.6% of tests) but not exact. Most causes are classes of behavior that
 the tuning corpus did not exercise (history traversal, jsdom 20,
@@ -793,7 +817,28 @@ gain or lose.
 
 ## 7. Reproduction
 
-Prerequisites: corpus checkouts under `~/Projects/<name>` with installs
+**Suite timings from this repository (from 2026-10-12):**
+[bench/corpus/README.md](../../bench/corpus/README.md) has the corpus files
+with their pinned commits, the tools (`checkout.mjs`, `time.mjs`,
+`report.mjs`, built on `compare()`, the code behind `warpdom compare`), the
+`corpus-timing` GitHub Actions workflow, the exact commands for each
+published table, the expected runtimes and what each output means. For
+example, the three-way table of 3.6:
+
+```sh
+node bench/corpus/checkout.mjs --repos-dir ~/corpus-repos <projects...>
+node bench/corpus/time.mjs --repos-dir ~/corpus-repos --rounds 3 --csv timing.csv <projects...>
+node bench/corpus/report.mjs timing.csv
+```
+
+or `gh workflow run corpus-timing.yml -f projects=<a,b> -f rounds=3`.
+The numbers published up to 2026-10-12 were measured with dom-api-tracer's
+harness, described below; bench/corpus/README.md lists how the two differ
+(checked to give the same tests, differences and times on react-hook-form
+and floating-ui). Fast mode, the vm pool, per-file timings and profiles are
+not ported yet and remain as below.
+
+**Up to 2026-10-12 (dom-api-tracer):** Prerequisites: corpus checkouts under `~/Projects/<name>` with installs
 and builds as `dom-api-tracer/corpus/corpus.json` describes; warpdom at
 `~/Projects/warpdom` (or `WARPDOM_DIR`); nvm with Node 22.23.3. Run one
 corpus command at a time, on an otherwise idle machine. From

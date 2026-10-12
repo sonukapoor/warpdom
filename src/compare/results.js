@@ -100,11 +100,16 @@ export function timingSummary(rounds) {
   };
 }
 
-// The order of the two runs in each pair: baseline first, then alternating,
-// so drift (thermal throttling, background load) hits both sides. The
-// warm-up pair (index 0 when there is one) runs baseline first.
-export function pairOrder(index) {
-  return index % 2 === 0 ? ['baseline', 'warpdom'] : ['warpdom', 'baseline'];
+// The order of the runs in each pair (or group, with more environments):
+// baseline first, then rotating, so drift (thermal throttling, background
+// load) hits every side. Two sides alternate (B W, W B, ...); three rotate
+// (B W H, W H B, H B W, ...). The warm-up group (index 0 when there is one)
+// runs baseline first.
+const TWO_SIDES = ['baseline', 'warpdom'];
+export function pairOrder(index, sides = TWO_SIDES) {
+  const list = Array.isArray(sides) ? sides : TWO_SIDES; // also as a map callback
+  const k = index % list.length;
+  return [...list.slice(k), ...list.slice(0, k)];
 }
 
 // 0: no test changes from pass to fail; 1: some do; 2: the comparison could

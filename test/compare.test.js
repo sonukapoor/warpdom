@@ -9,8 +9,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { vitestWrapper, vitestWorkspaceWrapper, jestWrapper, wrapperName, workspaceWrapperName, PROBE_MARKER, PINNED_TARGET, PINNED_PACKAGE } from '../src/compare/wrappers.js';
 import { isDynamicPattern, expandBraces, globRegExp, glob, resolveVitestProjects, resolveJestProjects } from '../src/compare/projects.js';
 import { findConfig, findBin, detectRunner, environmentComments, takeConfigArg, packageDir, scriptNodeFlags } from '../src/compare/detect.js';
-import { displayPath } from '../src/compare/index.js';
-import { TempFiles, removeEntry, copyWarpdom, pinnedEnvironmentPackage, isOwnName, acquireLock, gitStatus, statusChanges } from '../src/compare/files.js';
+import { displayPath, compare } from '../src/compare/index.js';
+import { TempFiles, removeEntry, copyWarpdom, pinnedEnvironmentPackage, linkPackage, isOwnName, acquireLock, gitStatus, statusChanges } from '../src/compare/files.js';
 import { runnerArgs, testsOf, countsOf, runnerDuration, normalizeStatus } from '../src/compare/run.js';
 import { classify, compareRuns, groupDifferences, timingSummary, median, pairOrder, exitCode } from '../src/compare/results.js';
 import { renderConsole, renderMarkdown, speedPhrase, environmentLabel } from '../src/compare/report.js';
@@ -495,6 +495,9 @@ test('compare results: timing, run order, exit codes', () => {
   assert.ok(Math.abs(steady.spread.min - 1.19) < 1e-9 && Math.abs(steady.spread.max - 1.21) < 1e-9);
   assert.equal(timingSummary([{ baselineMs: 1200, warpdomMs: 1000 }, { baselineMs: 1600, warpdomMs: 1000 }]).noisy, true);
   assert.deepEqual([0, 1, 2, 3].map(pairOrder), [['baseline', 'warpdom'], ['warpdom', 'baseline'], ['baseline', 'warpdom'], ['warpdom', 'baseline']]);
+  // Three sides rotate, so each runs first, second and third in turn.
+  assert.deepEqual([0, 1, 2, 3].map((i) => pairOrder(i, ['baseline', 'warpdom', 'happy-dom'])),
+    [['baseline', 'warpdom', 'happy-dom'], ['warpdom', 'happy-dom', 'baseline'], ['happy-dom', 'baseline', 'warpdom'], ['baseline', 'warpdom', 'happy-dom']]);
   assert.equal(exitCode({ regressions: 0 }), 0);
   assert.equal(exitCode({ regressions: 3 }), 1);
   assert.equal(exitCode({ error: 'no results', regressions: 3 }), 2);
@@ -602,6 +605,34 @@ test('compare files: only compare\'s own files are removed, also after a killed 
     t2.remove([a]);
     assert.deepEqual(t2.list().map((e) => e.path), [b]);
     t2.remove();
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('compare files: a package linked for the run is removed only while it is still that link', () => {
+  const dir = tmp('link');
+  try {
+    const temp = new TempFiles(path.join(dir, 'out', 'pending.json'));
+    const source = write(path.join(dir, 'other', 'happy-dom', 'package.json'), '{}');
+    const nm = path.join(dir, 'node_modules');
+    fs.mkdirSync(nm);
+    const link = linkPackage(nm, 'happy-dom', path.dirname(source), temp);
+    assert.equal(fs.realpathSync(link), fs.realpathSync(path.dirname(source)));
+    // A scoped name gets its scope directory, removed again when empty.
+    const scoped = linkPackage(nm, '@happy-dom/jest-environment', path.dirname(source), temp);
+    assert.ok(fs.lstatSync(scoped).isSymbolicLink());
+    // Already there: nothing linked, nothing recorded.
+    assert.equal(linkPackage(nm, 'happy-dom', path.dirname(source), temp), null);
+    temp.remove();
+    assert.deepEqual(fs.readdirSync(nm), []);
+    assert.ok(fs.existsSync(source), 'the target is untouched');
+    // Replaced by a real package in the meantime: kept.
+    const again = linkPackage(nm, 'happy-dom', path.dirname(source), temp);
+    fs.unlinkSync(again);
+    write(path.join(again, 'package.json'), '{"name":"happy-dom"}');
+    temp.remove();
+    assert.ok(fs.existsSync(path.join(again, 'package.json')));
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -762,6 +793,51 @@ test('compare end to end (Vitest): rounds with a warm-up pair, a runner filter, 
   }
 });
 
+test('compare API: alsoEnvironments, env, domPackages, no warm-up', async () => {
+  const dir = fixtureProject('compare-vitest', vitestLinks());
+  try {
+    // A file that needs the run's environment variables (API option env).
+    write(path.join(dir, 'env.spec.js'), "import { test, expect } from 'vitest';\ntest('sees env', () => { expect(process.env.WARPDOM_COMPARE_TEST_ENV).toBe('yes'); });\n");
+    assert.ok(!fs.existsSync(path.join(dir, 'node_modules', 'happy-dom')));
+    const result = await compare({
+      cwd: dir, rounds: 2, warmup: false, workers: 2, alsoEnvironments: ['happy-dom', 'jsdom'],
+      env: { WARPDOM_COMPARE_TEST_ENV: 'yes' }, domPackages: path.join(root, 'node_modules'),
+    });
+    assert.equal(result.error, null, JSON.stringify(result.warnings));
+    assert.equal(result.warmup, false);
+    // jsdom is the baseline, so only happy-dom is added; three sides rotate.
+    assert.deepEqual(result.runs.map((r) => `${r.round}:${r.side}`), ['1:baseline', '1:warpdom', '1:happy-dom', '2:warpdom', '2:happy-dom', '2:baseline']);
+    assert.deepEqual(Object.keys(result.also), ['happy-dom']);
+    const happy = result.also['happy-dom'];
+    assert.equal(happy.provided, true);
+    assert.equal(happy.environment.name, 'happy-dom');
+    assert.match(happy.environment.version, /^\d+\./);
+    // On happy-dom: the jsdom-only test still passes, warpdom's own fails,
+    // and the file pinned to happy-dom (jsdom on the baseline) fails its
+    // jsdom user-agent check; the file pinned to jsdom ran on happy-dom.
+    // On happy-dom only the file pinned to happy-dom (jsdom on the
+    // baseline) changes: it checks for jsdom's user agent. The env file
+    // passes everywhere (env reaches every run).
+    assert.deepEqual(happy.correctness.differences.map((d) => [d.name, d.class]), [['pinned to happy-dom: runs on jsdom or warpdom', 'regression']]);
+    for (const run of result.runs) {
+      const report = JSON.parse(fs.readFileSync(path.join(result.out, run.results), 'utf8'));
+      const envTest = report.testResults.flatMap((t) => t.assertionResults).find((a) => a.title === 'sees env');
+      assert.equal(envTest.status, 'passed', `${run.side} run sees the env option`);
+    }
+    assert.equal(happy.timing.perRound.length, 2);
+    assert.ok(happy.timing.ms > 0 && happy.timing.speedup > 0);
+    // warpdom's comparison and exit code are unchanged by the extra DOM.
+    assert.deepEqual(result.correctness.differences.map((d) => [d.name, d.class]).sort(), [['passes on jsdom only', 'regression'], ['passes on warpdom only', 'fixed'], ['pinned to jsdom: passes on jsdom only', 'regression']]);
+    assert.equal(result.exitCode, 1);
+    assert.deepEqual(result.env, ['WARPDOM_COMPARE_TEST_ENV']);
+    // The linked happy-dom is gone, like the other temporary files.
+    assert.ok(!fs.existsSync(path.join(dir, 'node_modules', 'happy-dom')));
+    assert.deepEqual(leftovers(dir), []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('compare end to end: a node-only project cannot be compared (exit code 2)', () => {
   const dir = fixtureProject('compare-vitest', vitestLinks());
   try {
@@ -769,6 +845,22 @@ test('compare end to end: a node-only project cannot be compared (exit code 2)',
     const res = compareCli(dir, ['--correctness']);
     assert.equal(res.status, 2, res.stdout + res.stderr);
     assert.match(res.stdout, /nothing to compare: no project runs on jsdom or happy-dom \(found: node\)/);
+    assert.deepEqual(leftovers(dir), []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('compare API: requireDom false runs a node-only package anyway, nothing compared', async () => {
+  const dir = fixtureProject('compare-vitest', vitestLinks());
+  try {
+    fs.writeFileSync(path.join(dir, 'vitest.config.js'), "export default { test: { include: ['same.spec.js'] } };");
+    const result = await compare({ cwd: dir, correctness: true, requireDom: false, alsoEnvironments: ['happy-dom'], domPackages: path.join(root, 'node_modules') });
+    assert.equal(result.error, null);
+    assert.deepEqual(result.runs.map((r) => r.side), ['baseline', 'warpdom', 'happy-dom']);
+    assert.equal(result.correctness.compared, 0);
+    assert.equal(result.correctness.notCompared, 2);
+    assert.equal(result.exitCode, 0);
     assert.deepEqual(leftovers(dir), []);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
