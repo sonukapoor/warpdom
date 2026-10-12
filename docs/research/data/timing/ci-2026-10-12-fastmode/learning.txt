@@ -1,0 +1,15 @@
+# Learning runs of the fast-mode run 38201346054 (GitHub Actions), from the
+# job logs ("LEARN" lines printed by dom-api-tracer scripts/research/learned.sh):
+# leaky files found by the shared learning run, the timed isolated and split
+# runs, and the mode kept. Extracted 2026-10-12.
+LEARN solid: 1 leaky files; isolated 4.9s, split 5.6s -> isolated
+LEARN floating-ui: 0 leaky files; isolated 23.1s, split 610.3s -> isolated
+LEARN ariakit: 47 leaky files; isolated 466.8s, split 526.7s -> isolated
+LEARN svelte: 3 leaky files; isolated 95.3s, split 95.6s -> isolated
+LEARN CopilotKit: 178 leaky files; isolated 435.9s, split 305.4s -> split
+LEARN analog: 10 leaky files; isolated 27.3s, split 39.9s -> isolated
+LEARN ark-ui: 137 leaky files; isolated 217.0s, split 222.1s -> isolated
+LEARN material-ui: 0 leaky files; isolated 182.4s, split 45.2s -> split
+LEARN radix-primitives: 0 leaky files; isolated 26.5s, split 9.1s -> split
+LEARN vuetify: 0 leaky files; isolated 31.1s, split 7.3s -> split
+LEARN emoji-picker-element: 12 leaky files; isolated 38.1s, split 31.1s -> split

@@ -1,0 +1,7 @@
+round,project,config,seconds,differs
+1,handsontable,jsdom-default,1286.1,0
+1,handsontable,warpdom-default,499.6,3
+2,handsontable,jsdom-default,819.0,0
+2,handsontable,warpdom-default,90.2,3
+3,handsontable,jsdom-default,823.8,0
+3,handsontable,warpdom-default,89.2,3
