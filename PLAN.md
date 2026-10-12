@@ -1844,3 +1844,82 @@ ignore assignment); jsdom 21 assumed like 22 where unmeasured.
     3.6 (about 9 runner-hours; warpdom's Actions minutes are limited while
     private, so plan it); port fast mode, the vm pool, per-file timings and
     profiles; then switch dom-api-tracer back to tracing only.
+
+## 2026-10-12: Style surface per jsdom profile (branch fix/legacy-style-accessors)
+
+A GitHub run of react-spectrum (jsdom 26.1.0, cssstyle 4.6.0, Jest) had 4
+tests passing on jsdom and failing on warpdom (usePress/useMove "user-select:
+none"): they set `document.documentElement.style.webkitUserSelect =
+'contain'` and read it back. jsdom 26 with cssstyle 4.6 has no such accessor
+(`'webkitUserSelect' in style` is false, the write makes an own data
+property); warpdom had jsdom 30's accessor, and since af612a2 ("jsdom 20 to
+23 profiles", UNKNOWN_TO) the jsdom26 profile's setProperty dropped
+-webkit-user-select, so the read gave ''. UNKNOWN_TO's premise (each older
+cssstyle knows a subset of the next one) was wrong: cssstyle 2 to 4.3 have
+webkitUserSelect and write it as `webkit-user-select` (no leading dash),
+only 4.4 to 4.6 lack it, and jsdom 27 to 30.0 also lack properties.
+
+- **Measured, black box** (scripts/gen-style-surface.mjs, not run at
+  runtime: installs each jsdom/cssstyle combination with npm and runs it):
+  the accessor names on the style prototype chain, which CSS names in
+  warpdom's data setProperty keeps, and the name each accessor writes.
+  40 combinations, grouped into 12 profile keys whose combinations measure
+  identically (the script fails otherwise): cssstyle2 (jsdom 20), cssstyle3
+  (3.0.0 with jsdom 21 to 23, and 4.0.1 with 24), cssstyle4.1 (4.1 to
+  4.3.1), cssstyle4.4 (4.4 to 4.6), cssstyle5.0 (5.0 to 5.2.1, e.g.
+  naive-ui's pnpm install of jsdom 27.4), cssstyle5 (5.3.x: jsdom 27 to
+  28.0), cssstyle6.0, cssstyle6.1 (6.1+, jsdom 28.1), jsdom29.0,
+  jsdom29.1, jsdom30.0.0, jsdom30.0.1; jsdom 30.1.x is STYLE_ACCESSORS.
+  Next to jsdom 30.1 (accessors missing / CSS names dropped / accessors
+  writing another name): cssstyle2 734/369/113, cssstyle3 615/307/113,
+  cssstyle4.1 573/286/113, cssstyle4.4 479/217/0, cssstyle5.0 479/217/0,
+  cssstyle5 412/183/0, cssstyle6.0 and 6.1 63/32/0, jsdom29.0 49/25/0,
+  jsdom29.1 47/24/0, jsdom30.0.0 11/6/0, jsdom30.0.1 7/4/0. A profile lacks
+  exactly the accessors of the names it drops, except those that write
+  another name (cssstyle 2 to 4.3: webkitX and webkit-x write webkit-x,
+  css-float writes float, webkitTextFillColor keeps a value although
+  setProperty('-webkit-text-fill-color') drops it). No profile keeps a
+  name jsdom 30 drops. Checked against the local installs of downshift,
+  hono, carton-case-management, react-spectrum, vuetify, naive-ui and
+  radix-primitives (`--check`): all the same.
+- **Data**: src/style-surface.js (13.5 KB, replaces UNKNOWN_TO), each
+  profile as differences from the next newer one. The key comes from
+  setupWindow (styleSurfaceKey: the cssstyle version before jsdom 29, given
+  or the one jsdom's version installs, else jsdom's version); compat keeps
+  the cssstyle option for jsdom 27 and 28 now. CSSStyleProperties'
+  descriptors are built per surface (descriptorsOf takes a variant, cached
+  per key), so a legacy window does no per-window deletes; setProperty and
+  parsing drop the profile's unknown names (also jsdom 27 to 30.0, which
+  dropped none before); names written only by legacy accessors (webkit-x)
+  are kept as written.
+- **Grammar** (generate-css-data.mjs): -webkit-user-select without
+  `contain`, -webkit-box-align/-orient/-pack with their keywords, as jsdom
+  28.1 to 30 (27 and 28.0 do not know them).
+- **Tests**: css-profiles.test.js checks 44 accessor writes (in, typeof,
+  read-back, cssText, own property) and 19 names through setProperty and
+  cssText on every profile of test/parity.js (20, 22, 25, 26, 30), and the
+  accessors of 10 names for jsdom 27 to 30.0. The same sample also matched
+  jsdom on all 40 measured combinations except the known differences below.
+- **react-spectrum** (local, Jest 30, jsdom 26.1.0 + cssstyle 4.6.0,
+  usePress and useMove, plain and STRICT_MODE=1 VIRT_ON=1): jsdom 102 pass /
+  11 fail (local failures, the same tests in every run), main 98/15 (the 4
+  user-select tests), branch 102/11 with the same result per test as jsdom.
+
+Known differences (not reproduced):
+- Accessors for properties warpdom's CSS data does not have: 30 to 385 per
+  profile (azimuth, speech properties, text-line-through-*, -webkit-marquee,
+  -webkit-border-after-color, column-rule-edge-inset, ...). They stay
+  undefined; an assignment makes an expando.
+- cssstyle 2 to 4.3: parsing `css-float: none` (cssText, style attribute)
+  writes float; values of the webkit-x names are kept as written (checked on
+  the test sample only).
+- cssstyle 5.0 to 5.1: cssText and style attribute parsing keep, unvalidated,
+  names setProperty drops (aspect-ratio, container-type,
+  animation-composition, transition-behavior, size; seen with `none`).
+  cssstyle 5.2.0 does not load at all (a module path with a backslash).
+- cssstyle 5.3.4 drops user-select: contain (5.3.0 to 5.3.3 and 5.3.5 to
+  5.3.7 keep it).
+- jsdom 28.1 to 30: -webkit-box-flex and -webkit-box-ordinal-group take no
+  plain number (only calc()).
+- jsdom 30 (and 28.1+): setProperty('-webkit-background-clip' / -origin /
+  -size) writes the unprefixed name; warpdom keeps the prefixed one.

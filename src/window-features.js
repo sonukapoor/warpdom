@@ -333,6 +333,23 @@ export const FEATURE_INTERFACES = [
   },
 ];
 
+// The style surface of a jsdom profile (src/style-surface.js: which
+// properties it knows and has accessors for), measured per jsdom and
+// cssstyle version: before jsdom 29 by the cssstyle jsdom loads (given, or
+// the one jsdom's version installs: 2 for jsdom 20, 3 for 21 to 23, the
+// latest 4.x for 24 to 26, 5.3 for 27 to 28.0, the latest 6.x for 28.1),
+// later by jsdom's version. null: jsdom 30.1 and later (STYLE_ACCESSORS).
+function styleSurfaceKey(version, css) {
+  if (version[0] >= 30) return before(version, [30, 0, 1]) ? 'jsdom30.0.0' : before(version, [30, 1, 0]) ? 'jsdom30.0.1' : null;
+  if (version[0] === 29) return before(version, [29, 1, 0]) ? 'jsdom29.0' : 'jsdom29.1';
+  css ??= version[0] <= 20 ? [2] : version[0] <= 23 ? [3] : version[0] <= 26 ? [4, Infinity] : before(version, [28, 1, 0]) ? [5] : [6, Infinity];
+  if (css[0] <= 2) return 'cssstyle2';
+  if (css[0] === 3 || (css[0] === 4 && before(css, [4, 1, 0]))) return 'cssstyle3';
+  if (css[0] === 4) return before(css, [4, 4, 0]) ? 'cssstyle4.1' : 'cssstyle4.4';
+  if (css[0] === 5) return before(css, [5, 3, 0]) ? 'cssstyle5.0' : 'cssstyle5';
+  return before(css, [6, 1, 0]) ? 'cssstyle6.0' : 'cssstyle6.1';
+}
+
 // Per-window setup: URL, location, history, and the legacy factory
 // constructors Image, Audio and Option (their prototype is the element's).
 export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATEST_JSDOM, cssstyle, fastFrames = false } = {}) {
@@ -361,7 +378,8 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
   const css = cssText != null ? parseJsdomVersion(cssText) : null;
   ws.compat = {
     version: jsdom, jsdom: version[0], legacyComputedStyle: version[0] < 29, mutableComputedStyle: version[0] < 28,
-    focusIgnoresRendering: before(version, [30, 1, 2]), cssstyle: css ? cssText : undefined, cssstyleMajor: css ? css[0] : 0,
+    focusIgnoresRendering: before(version, [30, 1, 2]), cssstyle: version[0] < 27 ? (css ? cssText : undefined) : cssstyle ?? undefined, cssstyleMajor: css ? css[0] : 0,
+    styleSurface: styleSurfaceKey(version, version[0] < 27 ? css : cssstyle != null ? parseJsdomVersion(cssstyle) : null),
     unquotedUrls: css !== null && before(css, [4, 3, 1]),
     rootColor: version[0] >= 27 ? 'rgb(0, 0, 0)' : css !== null && before(css, [4, 4, 0]) ? '' : css !== null && before(css, [4, 6, 0]) ? 'CanvasText' : 'canvastext',
   };

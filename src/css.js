@@ -4,6 +4,7 @@
 // the element's style attribute; a new style attribute re-parses them.
 import { S, state, hiddenSlot, domError, ELEMENT_NODE, cssomChanges, attributesChanged, hooks } from './internal.js';
 import { STYLE_ACCESSORS } from './css-properties.js';
+import { SURFACES } from './style-surface.js';
 import { LONGHANDS, SHORTHANDS, COLOR_SHORTHANDS, ALIASES } from './css-data.js';
 import { isValidValue } from './css-values.js';
 import { expand, segments, serializeBox, serializeFont, positionLayers } from './shorthands.js';
@@ -196,16 +197,60 @@ const JSDOM26_PARSED = new Set(['-webkit-text-fill-color', '-webkit-text-stroke-
   'border-color', 'border-left', 'border-right', 'border-top', 'border-width', 'flex', 'font', 'font-variant', 'margin', 'padding']);
 // 'jsdom25' is 'jsdom26' with unquoted url()s (cssstyle before 4.3.1);
 // 'jsdom22' (cssstyle 3: jsdom 21 to 23) is 'jsdom25' without calc() in
-// margins and paddings; 'jsdom20' (cssstyle 2) also without the properties
-// cssstyle 2 did not know (unknownTo). 'jsdom27' (jsdom 27 to 29)
-// is 'spec' with jsdom 26's border and clip (borderValue, clipValue).
+// margins and paddings; 'jsdom20' (cssstyle 2) the same. 'jsdom27' (jsdom
+// 27 to 29) is 'spec' with jsdom 26's border and clip (borderValue,
+// clipValue). The properties each profile knows are its style surface
+// (styleSurface), not its mode.
 export const isLegacyMode = (mode) => mode === 'jsdom26' || mode === 'jsdom25' || mode === 'jsdom22' || mode === 'jsdom20';
 const isSpecMode = (mode) => mode === 'spec' || mode === 'jsdom27';
 const modes = new WeakMap(); // CSSStyleProperties prototype -> mode
-export function setValidationMode(proto, mode) { modes.set(proto, mode); }
+const surfaces = new WeakMap(); // CSSStyleProperties prototype -> styleSurface (profiles before jsdom 30.1)
+// surfaceKey: the profile's style surface (src/style-surface.js), or null
+// for jsdom 30.1 and later. The prototype was built with the surface's
+// accessors (styleDescriptors): jsdom 26 with cssstyle 4.6 has no
+// style.webkitUserSelect, and assigning it creates an own data property
+// (react-spectrum's usePress tests save and restore it that way); cssstyle
+// 2 to 4.3 write it as webkit-user-select.
+export function setValidationMode(proto, mode, surfaceKey = null) {
+  modes.set(proto, mode);
+  if (surfaceKey !== null) surfaces.set(proto, styleSurface(surfaceKey));
+}
+
+// A profile's style surface, from its measured data (black box; generated
+// by scripts/gen-style-surface.mjs): the CSS names setProperty drops, the
+// accessors that write another name than jsdom 30's (or that jsdom 30 does
+// not have), and the names written that warpdom's data does not have (kept
+// as written). It lacks the accessors of dropped names that write no other
+// name (missingAccessors). Built once per profile key.
+const surfaceCache = new Map();
+const words = (text) => (text ? text.split(' ') : []);
+// cssstyle 2 to 4.3: webkitUserSelect and webkit-user-select write webkit-user-select.
+const legacyTarget = (accessor) => cssName(accessor).replace(/^-webkit-/, 'webkit-');
+export function styleSurface(key) {
+  let surface = surfaceCache.get(key);
+  if (surface !== undefined) return surface;
+  const data = SURFACES[key];
+  const from = data.from ? styleSurface(data.from) : null;
+  const drops = new Set(from?.drops);
+  const writes = new Map(from?.writes);
+  for (const name of words(data.drops)) drops.add(name);
+  for (const name of words(data.keeps)) drops.delete(name);
+  for (const accessor of words(data.writes)) writes.set(accessor, data.targets?.[accessor] ?? legacyTarget(accessor));
+  for (const accessor of words(data.unwrites)) writes.delete(accessor);
+  const extras = new Set([...writes.values()].filter((name) => !isKnownProperty(name)));
+  surface = { drops, writes, extras, caches: Object.create(null) };
+  surfaceCache.set(key, surface);
+  return surface;
+}
+const missing = (surface, accessor, name) => surface.drops.has(name) && !surface.writes.has(accessor);
+export const missingAccessors = (surface) => STYLE_ACCESSORS.filter((accessor) => missing(surface, accessor, cssName(accessor)));
 const modeOf = (proto) => modes.get(proto) ?? 'spec';
 export const validationModeOf = (window) => modeOf(window[S].protos.CSSStyleProperties);
 export const protosMode = (protos) => modeOf(protos.CSSStyleProperties);
+const surfaceOf = (proto) => surfaces.get(proto) ?? null;
+// A property the profile does not know: setProperty and parsing drop it.
+const dropped = (surface, name) => surface !== null && surface.drops.has(name);
+export const styleSurfaceOf = (window) => surfaceOf(window[S].protos.CSSStyleProperties);
 
 // A property name CSSOM accepts: a custom property, or one the
 // specifications define. Others are dropped (style.setProperty('foo', ...)).
@@ -216,13 +261,17 @@ const isKnownProperty = (name) => name.startsWith('--') || LONGHANDS[name] !== u
 // a value the property's grammar rejects.
 const INVALID = null;
 const declaredCaches = { spec: new Map(), jsdom27: new Map(), jsdom26: new Map(), jsdom25: new Map(), jsdom22: new Map(), jsdom20: new Map(), page: new Map() }; // mode -> property -> (raw value -> serialized)
-function declaredValue(name, value, mode = 'spec') {
-  const cache = declaredCaches[mode];
+// surface: the profile's (styleSurface), null for jsdom 30.1 and later; the
+// names it drops are dropped by setProperty and parsing (dropped), not
+// here: an accessor may still write one (cssstyle 2's webkitTextFillColor).
+function declaredValue(name, value, mode = 'spec', surface = null) {
+  const cache = surface === null ? declaredCaches[mode] : (surface.caches[mode] ??= new Map());
   let byValue = cache.get(name);
   if (byValue === undefined) cache.set(name, byValue = new Map());
   let out = byValue.get(value);
   if (out === undefined) {
     if (mode === 'page') out = pageDescriptorValue(name, value);
+    else if (surface !== null && surface.extras.has(name)) out = value;
     else if (!isKnownProperty(name)) out = INVALID;
     else {
       out = versionedValue(name, value, mode);
@@ -242,7 +291,6 @@ function declaredValue(name, value, mode = 'spec') {
 // others. Runs once per property and raw value (declaredValue caches it).
 function versionedValue(name, value, mode) {
   if (isLegacyMode(mode)) {
-    if (unknownTo(mode, name)) return INVALID;
     const lower = value.toLowerCase();
     const kind = CSS_WIDE_KEYWORD.test(value) ? lower : lower === 'auto' ? 'auto' : lower.includes('var(') ? 'var' : null;
     if (kind !== null && droppedBy(mode, kind, name)) return INVALID;
@@ -263,75 +311,6 @@ function versionedValue(name, value, mode) {
   return undefined;
 }
 
-// Properties the cssstyle of a jsdom profile does not know: setProperty
-// drops them (black box: no value kept, 'initial' neither), by the oldest
-// profile that knows them: jsdom 26's cssstyle 4.6 lacks the first list,
-// 4.1 (jsdom25 mode) also the second, 3 (jsdom 21 to 23) the third, 2
-// (jsdom 20) the fourth. jsdom 27 and later know every property warpdom
-// does. Split into sets on first use (legacy profiles only).
-const UNKNOWN_TO = [
-  ['jsdom26',
-    '-webkit-box-align -webkit-box-flex -webkit-box-ordinal-group -webkit-box-orient -webkit-box-pack -webkit-user-select animation-delay-end '
-    + 'animation-delay-start animation-range-center animation-trigger backdrop-filter background-position-block background-position-inline '
-    + 'background-repeat-block background-repeat-inline background-tbd border-block-end-clip border-block-start-clip border-bottom-clip '
-    + 'border-inline-end-clip border-inline-start-clip border-left-clip border-limit border-right-clip border-shape border-top-clip '
-    + 'box-shadow-blur box-shadow-color box-shadow-offset box-shadow-position box-shadow-spread caret-animation column-height '
-    + 'column-rule-inset-cap-end column-rule-inset-cap-start column-rule-inset-junction-end column-rule-inset-junction-start '
-    + 'column-rule-visibility-items column-wrap copy-into corner-bottom-left-shape corner-bottom-right-shape corner-end-end-shape '
-    + 'corner-end-start-shape corner-start-end-shape corner-start-start-shape corner-top-left-shape corner-top-right-shape cx cy d event-trigger '
-    + 'event-trigger-name event-trigger-source field-sizing flex-line-count flow-tolerance frame-sizing image-animation input-security '
-    + 'interactivity interest-delay-end interest-delay-start link-parameters math-depth math-shift math-style object-view-box overlay paint-order '
-    + 'path-length pointer-timeline-axis pointer-timeline-name r reading-order row-rule-inset-cap-end row-rule-inset-cap-start '
-    + 'row-rule-inset-junction-end row-rule-inset-junction-start row-rule-visibility-items rule-overlap rx ry scroll-axis-lock '
-    + 'scroll-initial-target scroll-target-group shape-padding text-decoration-inset text-fit text-size-adjust '
-    + 'timeline-trigger-activation-range-end timeline-trigger-activation-range-start timeline-trigger-active-range-end '
-    + 'timeline-trigger-active-range-start timeline-trigger-name timeline-trigger-source touch-action trigger-scope view-transition-scope '
-    + 'window-drag x y zoom border-block-clip border-block-end-radius border-block-start-radius border-bottom-radius border-clip '
-    + 'border-inline-clip border-inline-end-radius border-inline-start-radius border-left-radius border-right-radius border-top-radius '
-    + 'column-rule-inset column-rule-inset-cap column-rule-inset-end column-rule-inset-junction column-rule-inset-start corner corner-block-end '
-    + 'corner-block-end-shape corner-block-start corner-block-start-shape corner-bottom corner-bottom-left corner-bottom-right corner-bottom-shape '
-    + 'corner-end-end corner-end-start corner-inline-end corner-inline-end-shape corner-inline-start corner-inline-start-shape corner-left '
-    + 'corner-left-shape corner-right corner-right-shape corner-shape corner-start-end corner-start-start corner-top corner-top-left '
-    + 'corner-top-right corner-top-shape interest-delay max-size min-size pointer-timeline row-rule-inset row-rule-inset-cap row-rule-inset-end '
-    + 'row-rule-inset-junction row-rule-inset-start rule-inset rule-inset-cap rule-inset-end rule-inset-junction rule-inset-start '
-    + 'rule-visibility-items timeline-trigger timeline-trigger-activation-range timeline-trigger-active-range -webkit-align-content '
-    + '-webkit-align-items -webkit-align-self -webkit-animation -webkit-animation-delay -webkit-animation-direction -webkit-animation-duration '
-    + '-webkit-animation-fill-mode -webkit-animation-iteration-count -webkit-animation-name -webkit-animation-play-state '
-    + '-webkit-animation-timing-function -webkit-appearance -webkit-backface-visibility -webkit-background-clip -webkit-background-origin '
-    + '-webkit-background-size -webkit-border-bottom-left-radius -webkit-border-bottom-right-radius -webkit-border-radius '
-    + '-webkit-border-top-left-radius -webkit-border-top-right-radius -webkit-box-shadow -webkit-box-sizing -webkit-filter -webkit-flex '
-    + '-webkit-flex-basis -webkit-flex-direction -webkit-flex-flow -webkit-flex-grow -webkit-flex-shrink -webkit-justify-content -webkit-mask '
-    + '-webkit-mask-box-image -webkit-mask-clip -webkit-mask-composite -webkit-mask-image -webkit-mask-origin -webkit-mask-position '
-    + '-webkit-mask-repeat -webkit-mask-size -webkit-order -webkit-perspective -webkit-perspective-origin -webkit-transform-origin '
-    + '-webkit-transform-style -webkit-transition -webkit-transition-delay -webkit-transition-duration -webkit-transition-property '
-    + '-webkit-transition-timing-function grid-column-gap grid-gap grid-row-gap '],
-  ['jsdom25',
-    '-webkit-text-fill-color -webkit-text-stroke-color -webkit-text-stroke-width block-step-align block-step-insert block-step-round '
-    + 'block-step-size column-rule-break dynamic-range-limit fill-break fill-color fill-image fill-origin fill-position fill-repeat fill-size '
-    + 'float-defer float-offset float-reference interpolate-size line-height-step margin-break overscroll-behavior-block '
-    + 'overscroll-behavior-inline overscroll-behavior-x overscroll-behavior-y position-area position-try-fallbacks position-visibility '
-    + 'reading-flow row-rule-break row-rule-color row-rule-style row-rule-width scroll-marker-group slider-orientation stroke-align '
-    + 'stroke-alignment stroke-break stroke-color stroke-dash-corner stroke-dash-justify stroke-dashadjust stroke-dashcorner stroke-image '
-    + 'stroke-origin stroke-position stroke-repeat stroke-size transition-behavior view-transition-class view-transition-group -webkit-text-stroke '
-    + 'block-step overscroll-behavior row-rule rule rule-break rule-color rule-style rule-width -webkit-flex-wrap -webkit-mask-box-image-outset '
-    + '-webkit-mask-box-image-repeat -webkit-mask-box-image-slice -webkit-mask-box-image-source -webkit-mask-box-image-width '
-    + '-webkit-text-size-adjust -webkit-transform '],
-  ['jsdom22',
-    'anchor-name anchor-scope animation-composition animation-range-end animation-range-start animation-timeline font-synthesis-position '
-    + 'font-width line-fit-edge position-anchor position-try-order text-autospace text-box text-box-edge text-box-trim text-spacing-trim '
-    + 'text-wrap-mode text-wrap-style timeline-scope white-space-collapse white-space-trim word-space-transform position-try '],
-  ['jsdom20',
-    'accent-color aspect-ratio backface-visibility baseline-source block-ellipsis contain-intrinsic-block-size contain-intrinsic-height '
-    + 'contain-intrinsic-inline-size contain-intrinsic-width container-name container-type content-visibility initial-letter initial-letter-align '
-    + 'initial-letter-wrap margin-trim min-intrinsic-sizing overflow-anchor overflow-clip-margin-block-end overflow-clip-margin-block-start '
-    + 'overflow-clip-margin-bottom overflow-clip-margin-inline-end overflow-clip-margin-inline-start overflow-clip-margin-left '
-    + 'overflow-clip-margin-right overflow-clip-margin-top perspective perspective-origin print-color-adjust rotate ruby-overhang scale '
-    + 'scroll-timeline-axis scroll-timeline-name scrollbar-color scrollbar-gutter scrollbar-width text-decoration-skip-box '
-    + 'text-decoration-skip-ink text-decoration-skip-self text-decoration-skip-spaces text-decoration-thickness text-emphasis-skip '
-    + 'text-underline-offset transform-style translate view-timeline-axis view-timeline-inset view-timeline-name view-transition-name '
-    + '-webkit-line-clamp animation-range contain-intrinsic-size container overflow-clip-margin overflow-clip-margin-block '
-    + 'overflow-clip-margin-inline scroll-timeline text-decoration-skip view-timeline '],
-];
 // Values cssstyle drops for some properties it knows (black box): CSS-wide
 // keywords, auto and var() (jsdom 26: var() in font-variant only). jsdom
 // 20 to 25 drop the same ones.
@@ -359,19 +338,6 @@ function droppedBy(mode, kind, name) {
     }
   }
   return droppedSets[mode === 'jsdom26' ? 'jsdom26' : 'legacy'][kind]?.has(name) === true;
-}
-
-let unknownSets = null;
-function unknownTo(mode, name) {
-  if (unknownSets === null) {
-    unknownSets = {};
-    const names = [];
-    for (const [key, list] of UNKNOWN_TO) {
-      names.push(...list.trim().split(' '));
-      unknownSets[key] = new Set(names);
-    }
-  }
-  return unknownSets[mode]?.has(name) === true;
 }
 
 // border and its sides (width, style and color in any order), as jsdom's
@@ -561,7 +527,7 @@ function serializeDeclared(name, value, mode) {
   return tokens.join(' ');
 }
 
-function parseInto(decls, text, mode) {
+function parseInto(decls, text, mode, surface = null) {
   decls.clear();
   // A normal declaration does not override an important one for the same
   // property, or a longhand of an important shorthand (CSS Cascade), as in
@@ -575,8 +541,8 @@ function parseInto(decls, text, mode) {
     let important = false;
     const bang = value.match(/\s*!\s*important\s*$/i);
     if (bang) { important = true; value = value.slice(0, bang.index).trim(); }
-    if (!name || !value) continue;
-    const declared = declaredValue(name, value, mode);
+    if (!name || !value || dropped(surface, name)) continue;
+    const declared = declaredValue(name, value, mode, surface);
     if (declared === INVALID) continue;
     if (!isLegacyMode(mode)) {
       if (!important && (covered?.has(name) || decls.get(name)?.important)) continue;
@@ -625,9 +591,9 @@ function tooFew(method, required, present) {
 }
 
 // A declaration list's declarations (a style attribute's value).
-export function parseDeclarations(text, mode) {
+export function parseDeclarations(text, mode, surface = null) {
   const decls = new Map();
-  parseInto(decls, text, mode);
+  parseInto(decls, text, mode, surface);
   return decls;
 }
 
@@ -797,7 +763,7 @@ export function cssNamespace(matchesSelector) {
 
 export function computedStyle(element, proto) {
   const style = Object.create(proto);
-  initStyleState(style, { element, computed: true, decls: new Map(), mode: modeOf(proto), indexed: 0 });
+  initStyleState(style, { element, computed: true, decls: new Map(), mode: modeOf(proto), indexed: 0, surface: surfaceOf(proto) });
   return style;
 }
 
@@ -831,7 +797,7 @@ function writeComputed(s, name, value) {
   const raw = value === null ? '' : String(value).trim();
   // Removing a declaration from a computed style throws, as in jsdom 28+.
   if (raw === '') readOnly();
-  const text = declaredValue(name, raw, s.mode);
+  const text = declaredValue(name, raw, s.mode, s.surface);
   if (text === INVALID) return;
   (s.overrides ??= new Map()).set(name, text);
   const es = s.element[S];
@@ -906,7 +872,7 @@ function setDeclaration(style, name, value, priority = '') {
     return;
   }
   // Unknown properties and invalid values are ignored (CSSOM).
-  const text = declaredValue(name, raw, s.mode);
+  const text = declaredValue(name, raw, s.mode, s.surface);
   if (text === INVALID) return;
   const important = String(priority).toLowerCase() === 'important';
   const old = s.decls.get(name);
@@ -920,22 +886,29 @@ function setDeclaration(style, name, value, priority = '') {
 // CSSStyleProperties' accessors, one per name in STYLE_ACCESSORS. The
 // descriptor map has no prototype: V8 keeps it as a dictionary instead of
 // building a hidden class per key.
-function styleDescriptors() {
+// surfaceKey: the profile's (styleSurface), or null (jsdom 30.1 and later).
+function styleDescriptors(surfaceKey = null) {
   const descriptors = Object.create(null);
+  const surface = surfaceKey === null ? null : styleSurface(surfaceKey);
   for (const accessor of STYLE_ACCESSORS) {
     const name = cssName(accessor);
-    descriptors[accessor] = {
-      get() { return valueOf(this, name); },
-      set(value) {
-        const s = styleState(this);
-        if (s.computed) writeComputed(s, name, value);
-        else setDeclaration(this, name, value);
-      },
-      enumerable: true,
-      configurable: true,
-    };
+    if (surface === null) descriptors[accessor] = styleAccessor(name);
+    else if (!missing(surface, accessor, name)) descriptors[accessor] = styleAccessor(surface.writes.get(accessor) ?? name);
   }
+  if (surface !== null) for (const [accessor, name] of surface.writes) descriptors[accessor] ??= styleAccessor(name);
   return descriptors;
+}
+function styleAccessor(name) {
+  return {
+    get() { return valueOf(this, name); },
+    set(value) {
+      const s = styleState(this);
+      if (s.computed) writeComputed(s, name, value);
+      else setDeclaration(this, name, value);
+    },
+    enumerable: true,
+    configurable: true,
+  };
 }
 
 // CSSPageDescriptors' accessors: each descriptor by its dashed name, and
@@ -970,12 +943,12 @@ export const CSS_INTERFACES = [
         if (s.computed) {
           if (!mutableComputed(s)) readOnly();
           const decls = new Map();
-          parseInto(decls, text, s.mode);
+          parseInto(decls, text, s.mode, s.surface);
           s.overrides = new Map([...decls].map(([name, { value }]) => [name, value]));
           s.replaced = true;
           return;
         }
-        parseInto(s.decls, text, s.mode);
+        parseInto(s.decls, text, s.mode, s.surface);
         reindex(this);
         sync(this);
       },
@@ -997,7 +970,9 @@ export const CSS_INTERFACES = [
       },
       setProperty(name, value, priority = '') {
         if (value === undefined && arguments.length < 2) tooFew('setProperty', 2, arguments.length);
-        setDeclaration(this, propertyName(name), value, priority === null ? '' : priority);
+        const key = propertyName(name);
+        if (dropped(styleState(this).surface, key)) return;
+        setDeclaration(this, key, value, priority === null ? '' : priority);
       },
       removeProperty(name) {
         if (name === undefined && arguments.length === 0) tooFew('removeProperty', 1, 0);
@@ -1013,8 +988,9 @@ export const CSS_INTERFACES = [
     name: 'CSSStyleProperties',
     parent: 'CSSStyleDeclaration',
     // About 1,600 accessors: their property descriptors are built directly,
-    // the first time a window creates the interface.
+    // the first time a window creates the interface; per style surface.
     descriptors: styleDescriptors,
+    variant: (compat) => compat.styleSurface,
   },
   { name: 'CSSPageDescriptors', parent: 'CSSStyleDeclaration', descriptors: pageDescriptors },
 ];
@@ -1023,8 +999,8 @@ export const CSS_INTERFACES = [
 // mode: 'page' for an @page rule's descriptors.
 export function declarationBlock(proto, text, parentRule, mode = modeOf(proto)) {
   const style = Object.create(proto);
-  initStyleState(style, { element: null, decls: new Map(), parentRule, mode, indexed: 0 });
-  parseInto(styleState(style).decls, text, styleState(style).mode);
+  initStyleState(style, { element: null, decls: new Map(), parentRule, mode, indexed: 0, surface: mode === 'page' ? null : surfaceOf(proto) });
+  parseInto(styleState(style).decls, text, styleState(style).mode, styleState(style).surface);
   reindex(style);
   return style;
 }
@@ -1036,8 +1012,8 @@ export function styleOf(element, proto) {
   const es = state(element);
   if (!es.style) {
     const style = Object.create(proto);
-    initStyleState(style, { element, decls: new Map(), mode: modeOf(proto), indexed: 0 });
-    parseInto(styleState(style).decls, es.attrs.get('style'), styleState(style).mode);
+    initStyleState(style, { element, decls: new Map(), mode: modeOf(proto), indexed: 0, surface: surfaceOf(proto) });
+    parseInto(styleState(style).decls, es.attrs.get('style'), styleState(style).mode, styleState(style).surface);
     reindex(style);
     es.style = style;
   }
@@ -1047,5 +1023,5 @@ export function styleOf(element, proto) {
 // Called when the style attribute is set or removed directly.
 export function styleAttributeChanged(element) {
   const es = element[S];
-  if (es.style) { parseInto(styleState(es.style).decls, es.attrs.get('style'), styleState(es.style).mode); reindex(es.style); }
+  if (es.style) { const s = styleState(es.style); parseInto(s.decls, es.attrs.get('style'), s.mode, s.surface); reindex(es.style); }
 }

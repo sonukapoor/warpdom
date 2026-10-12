@@ -37,13 +37,16 @@ const BY_NAME = new Map(); // interface name -> definition
 // (CSSStyleProperties' accessors). Kept as parallel lists of keys and
 // descriptors: defining them one by one is faster than
 // Object.defineProperties (about 30% for CSSStyleProperties).
-const DESCRIPTORS = new Map(); // interface name -> { keys, descriptors }
-function descriptorsOf(iface) {
-  let table = DESCRIPTORS.get(iface.name);
+const DESCRIPTORS = new Map(); // interface name (and variant) -> { keys, descriptors }
+// variant: a key for interfaces whose members depend on the profile
+// (iface.variant: CSSStyleProperties' accessors), else null.
+function descriptorsOf(iface, variant = null) {
+  const cacheKey = variant === null ? iface.name : `${iface.name} ${variant}`;
+  let table = DESCRIPTORS.get(cacheKey);
   if (table) return table;
   let descriptors;
   if (iface.descriptors) {
-    descriptors = iface.descriptors();
+    descriptors = iface.descriptors(variant);
   } else {
     // Without a prototype: V8 keeps it as a dictionary rather than building
     // a hidden class per key.
@@ -62,7 +65,7 @@ function descriptorsOf(iface) {
     keys.splice(i, 1);
     table.descriptors.splice(i, 1);
   }
-  DESCRIPTORS.set(iface.name, table);
+  DESCRIPTORS.set(cacheKey, table);
   return table;
 }
 
@@ -204,7 +207,7 @@ export function createWindow(options = {}) {
     // (CSSStyleProperties' 1,600 accessors took ~1.5 ms). The prototype is
     // set afterwards; own keys, their order and descriptors are the same.
     const proto = Object.create(null);
-    const { keys, descriptors, unscopables } = descriptorsOf(iface);
+    const { keys, descriptors, unscopables } = descriptorsOf(iface, iface.variant ? iface.variant(window[S].compat) ?? null : null);
     for (let i = 0; i < keys.length; i++) Object.defineProperty(proto, keys[i], descriptors[i]);
     if (unscopables) {
       const value = Object.create(null);
@@ -251,7 +254,7 @@ export function createWindow(options = {}) {
     // CSS value validation: every property's grammar from jsdom 27; before,
     // jsdom checked a few dozen properties ('jsdom25': the same, with
     // url() serialized without quotes, as cssstyle before 4.3.1 did).
-    if (name === 'CSSStyleProperties') setValidationMode(proto, cssMode(window[S].compat));
+    if (name === 'CSSStyleProperties') setValidationMode(proto, cssMode(window[S].compat), window[S].compat.styleSurface);
     Object.defineProperty(protos, name, { value: proto, writable: true, enumerable: true, configurable: true });
     if (Object.getOwnPropertyDescriptor(window, name)?.get === lazyGetters[name]) {
       Object.defineProperty(window, name, { value: ctor, writable: true, configurable: true });

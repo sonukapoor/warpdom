@@ -99,6 +99,15 @@ Object.assign(propertySyntax, {
   stroke: SVG_PAINT,
   'fill-image': `[ ${SVG_PAINT} ]#`,
   'stroke-image': `[ ${SVG_PAINT} ]#`,
+  // jsdom 28.1 and later (black box, the properties jsdom 27 and 28.0 do
+  // not know): -webkit-user-select: contain is dropped, and the old flexbox
+  // properties take their keywords. (-webkit-box-flex and
+  // -webkit-box-ordinal-group take no plain number there, only calc():
+  // not reproduced.)
+  '-webkit-user-select': 'auto | text | none | all',
+  '-webkit-box-align': 'start | end | center | baseline | stretch',
+  '-webkit-box-orient': 'horizontal | vertical | inline-axis | block-axis',
+  '-webkit-box-pack': 'start | end | center | justify',
 });
 const EXTRA_KEYWORDS = { 'alignment-baseline': 'auto', zoom: 'normal', 'text-emphasis-position': 'auto', 'white-space': 'auto' };
 for (const [name, keyword] of Object.entries(EXTRA_KEYWORDS)) propertySyntax[name] = `${keyword} | ${propertySyntax[name]}`;

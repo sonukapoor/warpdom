@@ -21,6 +21,19 @@ const COMMON = [['outline', '0'], ['outline', 'none'], ['outline', '1px solid #c
   ['color', 'currentColor'], ['top', 'auto'], ['right', 'var(--x)'], ['width', 'initial'], ['font', 'inherit'], ['flex', 'unset'], ['border-spacing', '0'],
   ['border-style', 'none'], ['padding-left', 'calc(100% - 1px)'], ['font-size', 'revert'], ['opacity', '0.5']];
 
+const SURFACE_SAMPLE = [['webkitUserSelect', 'contain'], ['webkitUserSelect', 'none'], ['webkitUserSelect', 'Contain'], ['WebkitUserSelect', 'none'],
+  ['-webkit-user-select', 'none'], ['webkit-user-select', 'text'], ['userSelect', 'contain'], ['backdropFilter', 'blur(2px)'], ['touchAction', 'none'],
+  ['webkitBoxAlign', 'center'], ['WebkitBoxFlex', 'inherit'], ['-webkit-box-orient', 'vertical'], ['webkitBoxOrdinalGroup', 'inherit'], ['webkitBoxPack', 'end'],
+  ['webkitTextFillColor', 'red'], ['webkit-text-fill-color', 'red'], ['webkitTextStrokeWidth', '1px'], ['cssFloat', 'left'], ['css-float', 'left'],
+  ['webkitAnimation', 'none'], ['webkitTransform', 'translateX(0)'], ['WebkitTransform', 'none'], ['webkitAppearance', 'none'],
+  ['webkitLineClamp', '2'], ['aspectRatio', '1 / 1'], ['accentColor', 'red'], ['containerType', 'size'], ['translate', '10px'], ['animationComposition', 'add'],
+  ['textWrapMode', 'nowrap'], ['anchorName', '--a'], ['transitionBehavior', 'normal'], ['overscrollBehavior', 'contain'], ['positionArea', 'top'],
+  ['fieldSizing', 'content'], ['zoom', '2'], ['paintOrder', 'stroke'], ['gridGap', '1px'], ['imageAnimation', 'running'], ['frameSizing', 'auto'],
+  ['animationDelayStart', '1s'], ['maxSize', 'none'], ['scrollAxisLock', 'none'], ['color', 'red']];
+const SURFACE_NAMES = ['-webkit-user-select', 'webkit-user-select', 'backdrop-filter', 'touch-action', '-webkit-box-align', '-webkit-box-pack',
+  '-webkit-text-fill-color', 'webkit-text-fill-color', 'webkit-animation', '-webkit-transform', 'webkit-transform', 'aspect-ratio', 'container-type',
+  'animation-composition', 'transition-behavior', 'field-sizing', 'frame-sizing', 'size', 'float'];
+
 for (const jsdom of [20, 22, 25, 26, 30]) {
   parity(`style: border and its sides (jsdom ${jsdom})`, (w) => [...read(w, BORDERS.map((v) => ['border', v])), ...read(w, BORDERS.map((v) => ['border-top', v]))], { jsdom });
   parity(`style: clip (jsdom ${jsdom})`, (w) => read(w, CLIPS.map((v) => ['clip', v])), { jsdom });
@@ -31,6 +44,31 @@ for (const jsdom of [20, 22, 25, 26, 30]) {
     Object.assign(d.style, { border: '0', clip: 'rect(0 0 0 0)', height: '1px', margin: '-1px', overflow: 'hidden', padding: '0', position: 'absolute', width: '1px', whiteSpace: 'nowrap' });
     return [d.getAttribute('style'), d.style.border, d.style.clip];
   }, { jsdom });
+  // react-spectrum's usePress/useMove tests save, set and restore
+  // style.webkitUserSelect; before jsdom 27 it is an expando, not a property.
+  parity(`style: properties the profile has no accessor for (jsdom ${jsdom})`, (w) => {
+    const s = w.document.documentElement.style;
+    const before = [typeof s.webkitUserSelect, 'webkitUserSelect' in s, 'WebkitUserSelect' in s, 'backdropFilter' in s, 'userSelect' in s];
+    s.webkitUserSelect = 'contain';
+    s.backdropFilter = 'blur(2px)';
+    return [...before, s.webkitUserSelect, s.backdropFilter, s.cssText, typeof w.document.body.style.webkitUserSelect];
+  }, { jsdom });
+  // The style surface (src/style-surface.js): which accessors exist, which
+  // names setProperty keeps, and the name an accessor writes. Names from
+  // each profile's difference lists.
+  parity(`style: accessors and known properties (jsdom ${jsdom})`, (w) => SURFACE_SAMPLE.map(([name, value]) => {
+    const s = w.document.createElement('div').style;
+    const before = [name in s, typeof s[name]];
+    s[name] = value;
+    return [name, ...before, s[name], s.cssText, Object.hasOwn(s, name)].join(' | ');
+  }), { jsdom });
+  parity(`style: setProperty and cssText with the profile's names (jsdom ${jsdom})`, (w) => SURFACE_NAMES.map((name) => {
+    const s = w.document.createElement('div').style;
+    s.setProperty(name, 'inherit');
+    const kept = s.getPropertyValue(name);
+    s.cssText = `${name}: none; color: red`;
+    return [name, kept, s.getPropertyValue(name), s.cssText].join(' | ');
+  }), { jsdom });
 }
 
 test('getComputedStyle with a pseudo-element reports it as not implemented, in the profile\'s words', () => {
@@ -59,4 +97,33 @@ test('getComputedStyle with a pseudo-element reports it as not implemented, in t
 parity('getComputedStyle with a pseudo-element: the element\'s style, reported (jsdom 30)', (w) => {
   const p = w.document.body.appendChild(w.document.createElement('p'));
   return [w.getComputedStyle(p, '::after').display, w.getComputedStyle(p, ' ').display];
+});
+
+// Profiles test/parity.js does not load: the accessors a few names have
+// there (black box, jsdom installed with that cssstyle; the full lists are
+// checked by scripts/gen-style-surface.mjs).
+test('style accessors by jsdom and cssstyle version (jsdom 27 to 30.0)', () => {
+  const names = ['webkitUserSelect', 'touchAction', 'backdropFilter', 'aspectRatio', 'fieldSizing', 'frameSizing', 'imageAnimation', 'maxSize',
+    'animationDelayStart', 'timelineTriggerName'];
+  const present = (options) => {
+    const style = createWindow(options).document.body.style;
+    return names.filter((name) => name in style).join(' ');
+  };
+  const cases = [
+    [{ jsdom: '27.4.0', cssstyle: '5.1.0' }, 'aspectRatio'],
+    [{ jsdom: '27.4.0', cssstyle: '5.3.7' }, 'aspectRatio'],
+    [{ jsdom: '27.2.0' }, 'aspectRatio'],
+    [{ jsdom: '28.1.0', cssstyle: '6.0.1' }, 'webkitUserSelect touchAction backdropFilter aspectRatio fieldSizing timelineTriggerName'],
+    [{ jsdom: 28 }, 'webkitUserSelect touchAction backdropFilter aspectRatio fieldSizing timelineTriggerName'],
+    [{ jsdom: '29.0.0' }, 'webkitUserSelect touchAction backdropFilter aspectRatio fieldSizing imageAnimation timelineTriggerName'],
+    [{ jsdom: '29.1.1' }, 'webkitUserSelect touchAction backdropFilter aspectRatio fieldSizing frameSizing imageAnimation timelineTriggerName'],
+    [{ jsdom: '30.0.0' }, 'webkitUserSelect touchAction backdropFilter aspectRatio fieldSizing frameSizing imageAnimation timelineTriggerName'],
+    [{ jsdom: '30.0.1' }, 'webkitUserSelect touchAction backdropFilter aspectRatio fieldSizing frameSizing imageAnimation animationDelayStart timelineTriggerName'],
+    [{ jsdom: '30.1.2' }, names.join(' ')],
+  ];
+  for (const [options, expected] of cases) assert.equal(present(options), expected, JSON.stringify(options));
+  // cssstyle 2 to 4.3: webkitUserSelect writes webkit-user-select.
+  const s = createWindow({ jsdom: '24.1.3', cssstyle: '4.0.1' }).document.body.style;
+  s.webkitUserSelect = 'none';
+  assert.equal(s.cssText, 'webkit-user-select: none;');
 });
