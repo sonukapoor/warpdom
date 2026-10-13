@@ -334,10 +334,12 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   jsdom truncates it there (CR and LF still truncate in both).
 - USVString reflections (`ping`, `srcset`, `imageSrcset`) replace lone
   surrogates with U+FFFD; jsdom keeps them in `ping`.
-- `CSSStyleSheet.ownerNode` in the jsdom 27 to 29 profiles is the owning
-  element, as in jsdom 30; jsdom 27 to 29 give an internal object without
-  `id` (black box, 27.4; a bug fixed in 30), which no realistic code should
-  depend on. One known test does: tanstack-query
+- `CSSStyleSheet.ownerNode` in the jsdom 27 and 28 profiles is the owning
+  element, as in jsdom 29 and 30. Black box, measured on each release
+  (2026-10-12): jsdom 27.0.0 has no ownerNode property, 27.1 and 27.2 give
+  null, 27.3 to 28.1 an internal object without `id` (not a Node), 29.0
+  and later the element. No realistic code should depend on the 27/28
+  behaviors. One known test does: tanstack-query
   `packages/query-devtools/src/__tests__/contexts/PiPContext.test.tsx` "should
   copy parent "#_goober" "textContent" into the PiP mirror when the observer
   fires" (on jsdom 27.4 the mirrored style gets no id, so the test's own
@@ -1738,8 +1740,9 @@ the research.
 - **Image buttons**: the activating click's clientX/clientY become the
   selected coordinate (name.x/name.y), as jsdom 22 to 30; MouseEvent
   offsetX/offsetY are clientX/clientY (warpdom had 0).
-- **CSSStyleSheet.ownerNode**: see "Deliberate deviations" (jsdom 27 to 29
-  give an internal object; the 27 profile keeps the element).
+- **CSSStyleSheet.ownerNode**: see "Deliberate deviations" (jsdom 27.0 has
+  none, 27.1-27.2 null, 27.3-28.1 an internal object; 29 and later the
+  element, as warpdom).
 - **Unexplained ones, found:** (1) solid-primitives: animation frames ran on
   Node's setTimeout captured at window creation; jsdom's run on the global's
   timers, so Vitest 2's fake timers (which leave requestAnimationFrame

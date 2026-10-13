@@ -634,8 +634,9 @@ suite unless marked):
   0 under fake timers; jsdom's is a Date.now() value (4, vueuse).
 - **`<input type=image>` submitter coordinates** in form data (2,
   react-router).
-- **`CSSStyleSheet.ownerNode`** returns jsdom 27's internal object, without
-  an `id` (1, tanstack-query).
+- **`CSSStyleSheet.ownerNode`** is an internal object without an `id` in
+  jsdom 27.3 to 28.1 (27.0: no property; 27.1-27.2: null; 29 and later: the
+  element, as warpdom) (1, tanstack-query, which uses jsdom 27.4).
 - Not yet explained: requestAnimationFrame under Vitest's fake timers with
   `isolate: false` (4, solid-primitives; likely), Lit context reconnection
   under fake timers (1, tanstack-query), a Vue CSS variable switch (1,
@@ -678,7 +679,7 @@ GitHub Actions run 38284524015, one round, jsdom vs warpdom, each project
 on its own runner;
 [data/held-out/ci-2026-10-12-after/](data/held-out/ci-2026-10-12-after/)):
 **1 differing test** in the 9 projects, the deliberate deviation in
-tanstack-query (jsdom 27-29's CSSStyleSheet.ownerNode, PLAN.md); 0 in the
+tanstack-query (jsdom 27.3-28.1's CSSStyleSheet.ownerNode, PLAN.md); 0 in the
 other 8. warpdom is faster on all 9 (one round, indicative):
 
 | Project | jsdom | warpdom | Ratio |
