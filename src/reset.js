@@ -30,6 +30,26 @@ function restoreOwnProperties(object, snapshot) {
   }
 }
 
+// A kept node's mutation observer registrations go, and their observers
+// forget the node and their pending records (so the reset is not
+// observed), keeping the document's observer count right. An observer
+// still holding the node in its targets would find no registration there
+// at disconnect() (naive-ui: @juggle/resize-observer observes the body,
+// and its disconnect in the next file threw).
+function dropObservers(node, ds) {
+  const ns = node[S];
+  if (!ns.observers) return;
+  for (const registration of ns.observers) {
+    const os = registration.observer[S];
+    os.records = [];
+    // Transient registrations are neither targets nor counted.
+    if (registration.source) continue;
+    os.targets.delete(node);
+    ds.observerCount = Math.max(0, (ds.observerCount ?? 0) - 1);
+  }
+  ns.observers = undefined;
+}
+
 // Call once the window is set up (after a test environment installs it).
 export function snapshotWindow(window) {
   const ws = window[S];
@@ -69,14 +89,7 @@ export function resetWindow(window) {
 
   // Observers of the document go first, with their pending records, so the
   // reset itself is not observed.
-  if (ds.observers) {
-    for (const { observer } of ds.observers) {
-      observer[S].targets.delete(doc);
-      observer[S].records = [];
-    }
-    ds.observerCount = Math.max(0, (ds.observerCount ?? 0) - ds.observers.length);
-    ds.observers = undefined;
-  }
+  dropObservers(doc, ds);
 
   // The document's tree: the initial doctype, html, head and body stay
   // (libraries hold on to document.body), emptied and without attributes,
@@ -111,7 +124,7 @@ export function resetWindow(window) {
     if (ns.style) clearDeclarations(ns.style);
     ns.listeners = undefined;
     ns.handlers = undefined;
-    ns.observers = undefined;
+    dropObservers(node, ds);
     restoreOwnProperties(node, props);
   }
   ds.treeRev = (ds.treeRev ?? 0) + 1;

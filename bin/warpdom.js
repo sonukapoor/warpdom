@@ -9,7 +9,9 @@ const USAGE = 'usage: warpdom vitest [run] [--learn] [vitest arguments]\n'
 const [command, ...rest] = process.argv.slice(2);
 if (command === 'vitest') {
   const { main } = await import('../src/vitest-fast-cli.js');
-  process.exit(main(rest));
+  // null: Vitest runs in this process and exits it itself.
+  const code = await main(rest);
+  if (code !== null) process.exit(code);
 } else if (command === 'compare') {
   const { main } = await import('../src/compare/cli.js');
   process.exit(await main(rest));

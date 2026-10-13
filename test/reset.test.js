@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createWindow } from '../src/node.js';
 import { resetWindow, snapshotWindow } from '../src/reset.js';
+import { S } from '../src/internal.js';
 
 test('resetWindow returns a window to a fresh state, keeping its objects', () => {
   const w = createWindow({ url: 'http://localhost:3000/' });
@@ -81,4 +82,27 @@ test('resetWindow forgets document named properties', () => {
   assert.equal(d.login.tagName, 'FORM');
   d.body.innerHTML = '';
   assert.equal('login' in d, false);
+});
+
+test('resetWindow: observers of the kept body and html forget them, and disconnect() still works', () => {
+  const w = createWindow();
+  snapshotWindow(w);
+  const d = w.document;
+  const seen = [];
+  const onBody = new w.MutationObserver((records) => seen.push(records.length));
+  onBody.observe(d.body, { childList: true, subtree: true, attributes: true });
+  const onHtml = new w.MutationObserver(() => {});
+  onHtml.observe(d.documentElement, { attributes: true });
+  d.body.appendChild(d.createElement('p'));
+  resetWindow(w);
+  // The next file's code disconnects observers a module still holds
+  // (naive-ui: @juggle/resize-observer's on the body threw here).
+  assert.doesNotThrow(() => { onBody.disconnect(); onHtml.disconnect(); });
+  assert.deepEqual(onBody.takeRecords(), [], 'pending records went with the reset');
+  // Observing again works, and the old registration is gone (one record batch, not two).
+  onBody.observe(d.body, { childList: true });
+  d.body.appendChild(d.createElement('p'));
+  assert.equal(onBody.takeRecords().length, 1);
+  onBody.disconnect();
+  assert.equal(d[S].observerCount, 0, 'the document counts no registrations left');
 });
