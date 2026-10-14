@@ -259,6 +259,9 @@ export function createWindow(options = {}) {
     if (Object.getOwnPropertyDescriptor(window, name)?.get === lazyGetters[name]) {
       Object.defineProperty(window, name, { value: ctor, writable: true, configurable: true });
     }
+    // The reset (reset.js) snapshots the prototypes it restores that are
+    // created after its snapshot.
+    window[S]?.onMaterialize?.(name, proto);
     return ctor;
   }
   for (const iface of ORDER) {

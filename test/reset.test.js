@@ -106,3 +106,98 @@ test('resetWindow: observers of the kept body and html forget them, and disconne
   onBody.disconnect();
   assert.equal(d[S].observerCount, 0, 'the document counts no registrations left');
 });
+
+// user-event's setup() puts a clipboard stub on navigator as an own
+// accessor (and its cleanup an own undefined value); in a shared worker it
+// outlived the reset, and a later file found a navigator.clipboard that a
+// fresh window (warpdom's, jsdom's) does not have.
+test('resetWindow: own properties added to navigator are gone, the navigator kept', () => {
+  const w = createWindow({ url: 'http://localhost:3000/' });
+  snapshotWindow(w);
+  const navigator = w.navigator;
+  const userAgent = navigator.userAgent;
+  Object.defineProperty(navigator, 'clipboard', { get: () => ({ writeText() {} }), configurable: true });
+  Object.defineProperty(navigator, 'userAgent', { value: 'mocked', configurable: true });
+  navigator.custom = 1;
+  navigator[Symbol.for('mark')] = true;
+  resetWindow(w);
+  assert.equal(w.navigator, navigator, 'the same navigator');
+  assert.equal(navigator.clipboard, undefined);
+  assert.equal('clipboard' in navigator, false);
+  assert.equal(navigator.userAgent, userAgent);
+  assert.deepEqual(Reflect.ownKeys(navigator), []);
+
+  // A data property (user-event's detach: { value: undefined }), across a
+  // second reset.
+  Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+  resetWindow(w);
+  assert.equal('clipboard' in navigator, false);
+});
+
+test('resetWindow: a navigator first used after the snapshot, and one used before it', () => {
+  const before = createWindow();
+  before.navigator.early = 'kept';
+  snapshotWindow(before);
+  before.navigator.late = 1;
+  resetWindow(before);
+  assert.equal(before.navigator.early, 'kept', 'own properties at the snapshot stay');
+  assert.equal('late' in before.navigator, false);
+
+  const after = createWindow();
+  snapshotWindow(after);
+  assert.equal(Object.getOwnPropertyDescriptor(after[S].protos, 'Navigator').get !== undefined, true, 'Navigator not created yet');
+  Object.defineProperty(after.navigator, 'clipboard', { get: () => ({}), configurable: true });
+  resetWindow(after);
+  assert.equal('clipboard' in after.navigator, false);
+});
+
+test('resetWindow: prototypes of the kept objects are restored, also those created after the snapshot', () => {
+  const w = createWindow({ url: 'http://localhost:3000/' });
+  snapshotWindow(w);
+  const { Navigator, Screen, History, Location } = w;
+  const javaEnabled = Navigator.prototype.javaEnabled;
+  const width = Object.getOwnPropertyDescriptor(Screen.prototype, 'width');
+  Object.defineProperty(Navigator.prototype, 'clipboard', { get: () => ({}), configurable: true });
+  Navigator.prototype.javaEnabled = () => true;
+  Object.defineProperty(Screen.prototype, 'width', { get: () => 1920, configurable: true });
+  History.prototype.pushState = () => 'mocked';
+  Location.prototype.extra = 1;
+  resetWindow(w);
+  assert.equal('clipboard' in w.navigator, false);
+  assert.equal(Navigator.prototype.javaEnabled, javaEnabled);
+  assert.equal(w.navigator.javaEnabled(), false);
+  assert.deepEqual(Object.getOwnPropertyDescriptor(Screen.prototype, 'width'), width);
+  assert.equal(w.screen.width, 0);
+  assert.notEqual(w.history.pushState({}, ''), 'mocked');
+  assert.equal('extra' in w.location, false);
+});
+
+test('resetWindow: own properties on location, history, screen, customElements, external and the bars are gone', () => {
+  const w = createWindow({ url: 'http://localhost:3000/' });
+  snapshotWindow(w);
+  const objects = [w.location, w.history, w.screen, w.customElements, w.external, w.menubar, w.toolbar];
+  for (const object of objects) {
+    object.added = 1;
+    Object.defineProperty(object, 'accessor', { get: () => 2, configurable: true });
+  }
+  Object.defineProperty(w.location, 'href', { value: 'http://mocked/', configurable: true });
+  Object.defineProperty(w.screen, 'width', { value: 1920, configurable: true });
+  resetWindow(w);
+  for (const object of objects) assert.deepEqual(Reflect.ownKeys(object), [], Object.prototype.toString.call(object));
+  assert.equal(w.location.href, 'http://localhost:3000/');
+  assert.equal(w.screen.width, 0);
+  assert.equal(w.location, objects[0], 'the same objects');
+  assert.equal(w.history, objects[1]);
+  assert.equal(w.screen, objects[2]);
+  assert.equal(w.customElements, objects[3]);
+});
+
+test('resetWindow: a non-configurable property on a kept object stays without failing the reset', () => {
+  const w = createWindow();
+  snapshotWindow(w);
+  Object.defineProperty(w.navigator, 'frozen', { value: 1, configurable: false });
+  w.navigator.other = 2;
+  resetWindow(w);
+  assert.equal(w.navigator.frozen, 1);
+  assert.equal('other' in w.navigator, false);
+});
