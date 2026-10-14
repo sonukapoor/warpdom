@@ -19,9 +19,10 @@ abstract: >-
   warpdom is a DOM implementation for JavaScript unit and component tests,
   written from the WHATWG and CSSOM specifications, that installs as a
   drop-in Vitest or Jest environment in place of jsdom. On the open-source
-  test suites measured, every test keeps the result it has under jsdom
-  (apart from flaky tests and a short list of documented deliberate
-  differences), and suites run faster drop-in (median about 1.3x), with
+  test suites measured, tests keep the results they have under jsdom apart
+  from a short, documented list of differences (tests that fail or are
+  flaky on jsdom, deliberate deviations, and order- or timing-dependent
+  tests), and suites run faster drop-in (median about 1.3x), with
   larger gains where per-file environment isolation dominates run time.
 keywords:
   - DOM
@@ -41,7 +42,7 @@ references:
       - family-names: Kapoor
         given-names: Sonu
     repository-code: "https://github.com/sonukapoor/dom-api-tracer"
-    # doi: "10.5281/zenodo.XXXXXXX"
+    doi: "10.5281/zenodo.23378610"
     notes: >-
       The measurement tool and research harness used to evaluate warpdom.
 # preferred-citation: add the accompanying article (type: article, title,

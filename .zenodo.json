@@ -2,7 +2,7 @@
   "upload_type": "software",
   "title": "warpdom: a fast, jsdom-compatible DOM for unit and component tests",
   "version": "0.1.0",
-  "description": "<p>warpdom is a DOM implementation for JavaScript unit and component tests, written from the WHATWG and CSSOM specifications, that installs as a drop-in Vitest or Jest environment in place of jsdom. On the open-source test suites measured, every test keeps the result it has under jsdom (apart from flaky tests and a short list of documented deliberate differences), and suites run faster drop-in (median about 1.3x), with larger gains where per-file environment isolation dominates run time.</p><p>The archive includes the source, the test suite, the Web Platform Tests runner and the research record with its raw data (docs/research). The measurements were taken with dom-api-tracer (related identifier below).</p>",
+  "description": "<p>warpdom is a DOM implementation for JavaScript unit and component tests, written from the WHATWG and CSSOM specifications, that installs as a drop-in Vitest or Jest environment in place of jsdom. On the open-source test suites measured, tests keep the results they have under jsdom apart from a short, documented list of differences (tests that fail or are flaky on jsdom, deliberate deviations, and order- or timing-dependent tests), and suites run faster drop-in (median about 1.3x), with larger gains where per-file environment isolation dominates run time.</p><p>The archive includes the source, the test suite, the Web Platform Tests runner and the research record with its raw data (docs/research). The measurements were taken with dom-api-tracer (related identifier below).</p>",
   "creators": [
     {
       "name": "Kapoor, Sonu",
@@ -24,6 +24,12 @@
     "Web Platform Tests"
   ],
   "related_identifiers": [
+    {
+      "identifier": "10.5281/zenodo.23378610",
+      "relation": "isSupplementedBy",
+      "resource_type": "software",
+      "scheme": "doi"
+    },
     {
       "identifier": "https://github.com/sonukapoor/dom-api-tracer",
       "relation": "isSupplementedBy",
