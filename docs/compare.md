@@ -45,7 +45,7 @@ projects).
 | `--baseline <env>` | detected | `jsdom` or `happy-dom`; what warpdom is compared with |
 | `--out <dir>` | `.warpdom-compare/` | Report, JSON results, logs |
 | `--timeout <min>` | 30 | Per run |
-| `-- <args>` | | Passed to every run (a file filter, `--project x`) |
+| `-- <args>` | | Passed to every run (a file filter, `--project x`, `--config <file>`; these two replace the test script's) |
 
 Exit code: 0 when no test changes from pass to fail; 1 when some do; 2 when
 the comparison could not run. That makes `--correctness` usable as a CI
@@ -86,7 +86,12 @@ first, with warpdom's error message for each group.
   binary in `node_modules/.bin`. Both present: ask for `--runner`.
 - **Config:** the runner's own lookup order (`vitest.config.*`,
   `vite.config.*`, and with Vitest 2 and 3 `vitest.workspace.*`, also
-  without a config; `jest.config.*`, `package.json` "jest").
+  without a config; `jest.config.*`, `package.json` "jest"). A config the
+  package.json `test` script passes its runner (`jest --config
+  projects/hot-table/jest.config.js`, `vitest run -c vitest.unit.ts`; `-c`
+  too) is used instead, unless `-- --config <file>` is given; the runner
+  then comes from the script, so the file can have any name. Vitest
+  `--project` filters in the script are passed on unless `--` gives one.
 - **Environment per project:** only projects on jsdom or happy-dom switch.
   Node projects run unchanged in both runs; their tests are not compared,
   and the report says so per project (see "Monorepos"). Vitest

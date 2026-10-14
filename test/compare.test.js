@@ -8,7 +8,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { vitestWrapper, vitestWorkspaceWrapper, jestWrapper, wrapperName, workspaceWrapperName, PROBE_MARKER, PINNED_TARGET, PINNED_PACKAGE, warpdomVitestEnvironment, fsId } from '../src/compare/wrappers.js';
 import { isDynamicPattern, expandBraces, globRegExp, glob, resolveVitestProjects, resolveJestProjects } from '../src/compare/projects.js';
-import { findConfig, findBin, detectRunner, environmentComments, takeConfigArg, packageDir, scriptNodeFlags } from '../src/compare/detect.js';
+import { findConfig, findBin, detectRunner, environmentComments, takeConfigArg, packageDir, scriptNodeFlags, scriptRunnerArgs } from '../src/compare/detect.js';
 import { displayPath, compare } from '../src/compare/index.js';
 import { TempFiles, removeEntry, copyWarpdom, pinnedEnvironmentPackage, linkPackage, isOwnName, acquireLock, gitStatus, statusChanges } from '../src/compare/files.js';
 import { runnerArgs, testsOf, countsOf, runnerDuration, normalizeStatus } from '../src/compare/run.js';
@@ -810,6 +810,23 @@ test('compare end to end (Vitest): differences, exit code 1, nothing left behind
   }
 });
 
+// handsontable's angular wrapper: "test": "jest --config
+// projects/hot-table/jest.config.js"; compare reads the config from there.
+test('compare end to end (Vitest): the config the test script passes', () => {
+  const dir = fixtureProject('compare-vitest', vitestLinks());
+  try {
+    fs.renameSync(path.join(dir, 'vitest.config.js'), path.join(dir, 'vitest.unit.config.js'));
+    fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ type: 'module', scripts: { test: 'vitest run --config vitest.unit.config.js' } }));
+    const res = compareCli(dir, ['--correctness']);
+    assert.equal(res.status, 1, res.stdout + res.stderr);
+    assert.match(res.stderr, /Config from the test script: vitest\.unit\.config\.js/);
+    assert.match(res.stdout, /2 pass on jsdom and fail on warpdom, 1 fail on jsdom and pass on warpdom/);
+    assert.deepEqual(leftovers(dir), []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('compare end to end (Vitest): rounds with a warm-up pair, a runner filter, leftovers of a killed run', () => {
   const dir = fixtureProject('compare-vitest', vitestLinks());
   try {
@@ -1053,6 +1070,26 @@ test('compare end to end (Jest)', { skip: !jestModules && 'set WARPDOM_COMPARE_J
   }
 });
 
+test('compare end to end (Jest): the config the test script passes', { skip: !jestModules && 'set WARPDOM_COMPARE_JEST to a node_modules with jest' }, () => {
+  const dir = fixtureProject('compare-jest', {
+    jest: path.join(jestModules, 'jest'),
+    'jest-environment-jsdom': path.join(jestModules, 'jest-environment-jsdom'),
+    '.bin/jest': fs.realpathSync(path.join(jestModules, '.bin', 'jest')),
+  });
+  try {
+    // A name Jest would not find, and compare cannot tell the runner from.
+    fs.renameSync(path.join(dir, 'jest.config.js'), path.join(dir, 'dom-tests.cjs'));
+    fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ scripts: { test: 'cross-env NODE_OPTIONS=--no-warnings jest -c dom-tests.cjs' } }));
+    const res = compareCli(dir, ['--correctness']);
+    assert.equal(res.status, 1, res.stdout + res.stderr);
+    assert.match(res.stderr, /Config from the test script: dom-tests\.cjs/);
+    assert.match(res.stdout, /1 pass on jsdom and fail on warpdom, 1 fail on jsdom and pass on warpdom/);
+    assert.deepEqual(leftovers(dir), []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('compare end to end (Jest projects): project directories by glob, inline projects', { skip: !jestModules && 'set WARPDOM_COMPARE_JEST to a node_modules with jest' }, () => {
   const dir = fixtureProject('compare-jest-projects', {
     jest: path.join(jestModules, 'jest'),
@@ -1143,6 +1180,21 @@ test('compare: node flags from the test script, paths in messages', () => {
     assert.deepEqual(flags('pnpm build && node --expose-gc node_modules/.bin/jest'), ['--expose-gc']);
     assert.deepEqual(flags('jest'), []);
     assert.deepEqual(flags('vitest run', 'vitest'), []);
+    // The runner arguments that choose what runs: config and Vitest projects.
+    const runnerArgs = (script, runner) => {
+      fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ scripts: { test: script } }));
+      return scriptRunnerArgs(dir, runner);
+    };
+    assert.deepEqual(runnerArgs('cross-env NODE_OPTIONS=--openssl-legacy-provider jest --config projects/hot-table/jest.config.js'), { runner: 'jest', config: 'projects/hot-table/jest.config.js', projects: [] });
+    assert.deepEqual(runnerArgs('jest -c "config/jest unit.js" --ci', 'jest'), { runner: 'jest', config: 'config/jest unit.js', projects: [] });
+    assert.deepEqual(runnerArgs('node --expose-gc node_modules/jest/bin/jest.js --config=jest.dom.js'), { runner: 'jest', config: 'jest.dom.js', projects: [] });
+    assert.deepEqual(runnerArgs('jest --selectProjects a'), { runner: 'jest', config: null, projects: [] });
+    assert.deepEqual(runnerArgs('pnpm build && vitest run -c vitest.unit.ts --project dom --project=components'), { runner: 'vitest', config: 'vitest.unit.ts', projects: ['dom', 'components'] });
+    assert.deepEqual(runnerArgs('vitest --config ./vite.test.mts && jest -c j.js'), { runner: 'vitest', config: './vite.test.mts', projects: [] });
+    assert.deepEqual(runnerArgs('vitest --config ./vite.test.mts && jest -c j.js', 'jest'), { runner: 'jest', config: 'j.js', projects: [] });
+    assert.equal(runnerArgs('tsc -p .', null), null);
+    fs.writeFileSync(path.join(dir, 'package.json'), '{}');
+    assert.equal(scriptRunnerArgs(dir), null);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

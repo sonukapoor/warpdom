@@ -28,9 +28,34 @@ if (ablated('no-query-cache')) setQueryCache(false);
 const HOST_GLOBALS = ['Buffer', 'URL', 'URLSearchParams', 'queueMicrotask', 'atob', 'btoa',
   'Blob', 'File', 'Performance', 'performance', 'Headers', 'WebSocket', 'crypto', 'Crypto'];
 
-// Jest's packages, through the project's jest (they are not hoisted with
-// pnpm): jest -> @jest/core -> jest-config -> jest-environment-node.
+// Jest's packages (jest-util, jest-mock, @jest/fake-timers), from the Jest
+// that is running: jest-runner loads jest-runtime before it builds the
+// environment, and jest-runtime depends on all three (Jest 27 to 30). From
+// the project instead, a monorepo with several Jest versions can hand this
+// Jest another's (pnpm's .bin shims put node_modules/.pnpm/node_modules,
+// where any version may be hoisted, on NODE_PATH).
+const moduleCache = createRequire(import.meta.url).cache;
+const JEST_RUNTIME = /[\\/]jest-runtime[\\/]build[\\/]index\.js$/;
+
+function runningJestRequire() {
+  let runtime;
+  for (const key in moduleCache) if (JEST_RUNTIME.test(key)) runtime = key;
+  if (!runtime) return null;
+  const require = createRequire(runtime);
+  try {
+    for (const name of ['jest-util', 'jest-mock', '@jest/fake-timers']) require.resolve(name);
+  } catch {
+    return null;
+  }
+  return require;
+}
+
+// Otherwise (no Jest running, as in warpdom's own tests) through the
+// project's jest (they are not hoisted with pnpm): jest -> @jest/core ->
+// jest-config -> jest-environment-node.
 function jestRequire(rootDir) {
+  const running = runningJestRequire();
+  if (running) return running;
   let require = createRequire(join(rootDir, 'package.json'));
   try {
     require.resolve('@jest/fake-timers');

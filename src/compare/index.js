@@ -14,7 +14,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { detectRunner, findVitestWorkspace, packageDir, packageVersion, installedWarpdom, domVersion, environmentComments, takeConfigArg, scriptNodeFlags } from './detect.js';
+import { detectRunner, findVitestWorkspace, packageDir, packageVersion, installedWarpdom, domVersion, environmentComments, takeConfigArg, scriptNodeFlags, scriptRunnerArgs } from './detect.js';
 import { vitestWrapper, vitestWorkspaceWrapper, vitestReporter, jestWrapper, jestReporter, wrapperName, workspaceWrapperName, MARK, PROBE_MARKER, PINNED_TARGET, warpdomVitestEnvironment } from './wrappers.js';
 import { resolveVitestProjects, resolveJestProjects } from './projects.js';
 import { createRequire } from 'node:module';
@@ -120,9 +120,19 @@ export async function compare(options = {}) {
 
     // --- detection ---------------------------------------------------------
     const { config: configArg, args } = takeConfigArg(options.args ?? []);
-    const detected = detectRunner(cwd, { runner: options.runner ?? null, config: configArg });
-    if (detected.error) throw new CompareError(detected.error);
+    // What the test script passes its runner (handsontable's angular
+    // wrapper: jest --config projects/hot-table/jest.config.js), unless the
+    // runner arguments say otherwise.
+    const script = scriptRunnerArgs(cwd, options.runner ?? null);
+    const scriptConfig = !configArg && script?.config ? script.config : null;
+    const detected = detectRunner(cwd, scriptConfig ? { runner: script.runner, config: scriptConfig } : { runner: options.runner ?? null, config: configArg });
+    if (detected.error) throw new CompareError(scriptConfig ? `${detected.error} (from the test script)` : detected.error);
     const { runner, bin, config } = detected;
+    if (scriptConfig) log(`Config from the test script: ${scriptConfig}`);
+    if (runner === 'vitest' && script?.runner === 'vitest' && script.projects.length && !args.some((a) => a === '--project' || a.startsWith('--project='))) {
+      args.push(...script.projects.flatMap((name) => ['--project', name]));
+      log(`Projects from the test script: ${script.projects.join(', ')}`);
+    }
     result.runner = runner;
     result.runnerVersion = packageVersion(path.dirname(path.dirname(bin)), runner) ?? packageVersion(cwd, runner);
     const major = Number.parseInt(result.runnerVersion ?? '', 10) || null;

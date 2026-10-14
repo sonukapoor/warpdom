@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createRequire } from 'node:module';
 import vm from 'node:vm';
 import WarpdomEnvironment from '../src/jest.js';
 
@@ -163,6 +164,47 @@ test('Jest environment: after teardown the global keeps its members, as a closed
     await new Promise((resolve) => setTimeout(resolve, 20));
     assert.deepEqual(run('seen.join()'), 'click,microtask');
   } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+// Jest's helpers come from the Jest that is running, not the project's
+// resolution: in handsontable (pnpm), Jest 30's .bin shim put
+// node_modules/.pnpm/node_modules on NODE_PATH, where another workspace
+// package's Jest 27 copies were hoisted, and Jest 30's runtime got Jest
+// 27's ModuleMocker (no replaceProperty). Here the project resolves the
+// Jest 27 copies and the running jest-runtime has its own Jest 30 ones.
+test('Jest environment: Jest\'s helpers come from the running jest-runtime, in a layout with several Jest versions', async () => {
+  const rootDir = fakeJestProject();
+  const pkg = (dir, name, source) => {
+    const d = join(rootDir, dir, 'node_modules', name);
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, 'package.json'), JSON.stringify({ name, main: 'index.js' }));
+    writeFileSync(join(d, 'index.js'), source);
+  };
+  pkg('', 'jest-mock', 'exports.ModuleMocker = class { constructor() { this.version = 27; } };');
+  pkg('', 'jest-runtime', '');
+  mkdirSync(join(rootDir, 'node_modules/jest-runtime/build'));
+  const runtime = join(rootDir, 'node_modules/jest-runtime/build/index.js');
+  writeFileSync(runtime, '');
+  const nested = 'node_modules/jest-runtime';
+  pkg(nested, 'jest-util', 'exports.installCommonGlobals = (g) => { g.process = { env: {} }; g.jestUtil = 30; return g; };');
+  pkg(nested, 'jest-mock', 'exports.ModuleMocker = class { constructor() { this.version = 30; } replaceProperty() {} };');
+  pkg(nested, '@jest/fake-timers', 'class T { constructor() { this.version = 30; } dispose() {} }\nexports.LegacyFakeTimers = T; exports.ModernFakeTimers = T;');
+  const cache = createRequire(import.meta.url).cache;
+  const make = () => new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: {} } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+  try {
+    // No Jest running: the project's copies.
+    let env = make();
+    assert.equal(env.moduleMocker.version, 27);
+    await env.teardown();
+    // jest-runner has loaded jest-runtime: its copies.
+    createRequire(import.meta.url)(runtime);
+    env = make();
+    assert.deepEqual([env.moduleMocker.version, typeof env.moduleMocker.replaceProperty, env.fakeTimers.version, env.fakeTimersModern.version, env.global.jestUtil], [30, 'function', 30, 30, 30]);
+    await env.teardown();
+  } finally {
+    delete cache[runtime];
     rmSync(rootDir, { recursive: true, force: true });
   }
 });

@@ -184,25 +184,61 @@ export function takeConfigArg(args) {
   return { config, args: rest };
 }
 
+// The command in the project's package.json test script that runs the
+// runner (the first one, in `a && b`): { runner, before, after } with the
+// words before and after the runner's, or null. runner: the one to look
+// for, else Vitest or Jest, whichever the script runs.
+function scriptCommand(dir, runner = null) {
+  let script;
+  try { script = readJson(path.join(dir, 'package.json')).scripts?.test; } catch { return null; }
+  if (typeof script !== 'string') return null;
+  const isRunner = (w, r) => w === r || w.endsWith(`/${r}`) || new RegExp(`(^|/)${r}(/bin/${r})?\\.[mc]?js$`).test(w);
+  for (const command of script.split(/&&|\|\||;/)) {
+    const words = command.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [];
+    for (const r of runner ? [runner] : ['vitest', 'jest']) {
+      const at = words.findIndex((w) => isRunner(w, r));
+      if (at >= 0) return { runner: r, before: words.slice(0, at), after: words.slice(at + 1).map((w) => w.replace(/["']/g, '')) };
+    }
+  }
+  return null;
+}
+
 // Node flags the project's package.json test script gives its runner:
 // `node <flags> path/to/jest.js`, `NODE_OPTIONS=<flags> jest` (also after
 // cross-env). Debugger flags are left out. [] when there are none.
 export function scriptNodeFlags(dir, runner) {
-  let script;
-  try { script = readJson(path.join(dir, 'package.json')).scripts?.test; } catch { return []; }
-  if (typeof script !== 'string') return [];
+  const command = scriptCommand(dir, runner);
+  if (!command) return [];
+  const words = command.before;
   const flags = [];
-  for (const command of script.split(/&&|\|\||;/)) {
-    const words = command.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [];
-    const at = words.findIndex((w) => w === runner || w.endsWith(`/${runner}`) || new RegExp(`(^|/)${runner}(/bin/${runner})?\\.[mc]?js$`).test(w) || w.endsWith(`/${runner}.js`) || w.endsWith(`/${runner}.mjs`));
-    if (at < 0) continue;
-    for (let i = 0; i < at; i++) {
-      const w = words[i];
-      const env = /^NODE_OPTIONS=(.*)$/.exec(w);
-      if (env) flags.push(...env[1].replace(/["']/g, '').split(/\s+/).filter(Boolean));
-      else if (w.startsWith('-') && i > 0 && words.slice(0, i).includes('node')) flags.push(w);
-    }
-    break;
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    const env = /^NODE_OPTIONS=(.*)$/.exec(w);
+    if (env) flags.push(...env[1].replace(/["']/g, '').split(/\s+/).filter(Boolean));
+    else if (w.startsWith('-') && i > 0 && words.slice(0, i).includes('node')) flags.push(w);
   }
   return flags.filter((f) => !/^--inspect/.test(f));
+}
+
+// The runner arguments of the project's package.json test script that
+// choose what runs: its config (--config/-c, Jest and Vitest) and Vitest's
+// --project filters. { runner, config, projects } or null when the script
+// runs neither runner (or runner, when given).
+export function scriptRunnerArgs(dir, runner = null) {
+  const command = scriptCommand(dir, runner);
+  if (!command) return null;
+  let config = null;
+  const projects = [];
+  const words = command.after;
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    const [flag, inline] = w.startsWith('--') && w.includes('=') ? [w.slice(0, w.indexOf('=')), w.slice(w.indexOf('=') + 1)] : [w, null];
+    const take = () => inline ?? (i + 1 < words.length ? words[++i] : null);
+    if (flag === '--config' || flag === '-c') config = take() ?? config;
+    else if (flag === '--project' && command.runner === 'vitest') {
+      const name = take();
+      if (name) projects.push(name);
+    }
+  }
+  return { runner: command.runner, config, projects };
 }
