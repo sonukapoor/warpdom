@@ -15,7 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { detectRunner, findVitestWorkspace, packageDir, packageVersion, installedWarpdom, domVersion, environmentComments, takeConfigArg, scriptNodeFlags } from './detect.js';
-import { vitestWrapper, vitestWorkspaceWrapper, vitestReporter, jestWrapper, jestReporter, wrapperName, workspaceWrapperName, MARK, PROBE_MARKER, PINNED_TARGET } from './wrappers.js';
+import { vitestWrapper, vitestWorkspaceWrapper, vitestReporter, jestWrapper, jestReporter, wrapperName, workspaceWrapperName, MARK, PROBE_MARKER, PINNED_TARGET, warpdomVitestEnvironment } from './wrappers.js';
 import { resolveVitestProjects, resolveJestProjects } from './projects.js';
 import { createRequire } from 'node:module';
 import { TempFiles, copyWarpdom, pinnedEnvironmentPackage, jestPinnedPackage, linkPackage, acquireLock, gitStatus, statusChanges } from './files.js';
@@ -274,19 +274,22 @@ export async function compare(options = {}) {
     // Vitest: test files that pin jsdom or happy-dom with a comment are
     // switched too, to the baseline (a happy-dom pin becomes jsdom on a
     // jsdom baseline, and the other way round) and to warpdom, through a
-    // package Vitest resolves for the name warpdom-compare.
+    // package Vitest resolves for the name warpdom-compare, which the
+    // switched projects use too.
     if (runner === 'vitest') pinnedEnvironmentPackage(nodeModules, warpdomEnvironment, temp);
     // A reporter that records which project ran each file.
     const reporter = writeTemp(path.join(configDir, `${runner}.config${MARK}reporter.${runner === 'vitest' ? 'mjs' : 'cjs'}`),
       runner === 'vitest' ? vitestReporter() : jestReporter());
     const roles = {
       baseline: { environment: options.baseline ? domEnvironment : null, pinned: baselineName },
-      warpdom: { environment: warpdomEnvironment, pinned: PINNED_TARGET, warpdomOptions },
+      // Vitest: the pinned files' name, so the grouping matches jsdom's
+      // (warpdomVitestEnvironment).
+      warpdom: { ...(runner === 'vitest' ? warpdomVitestEnvironment(warpdomEnvironment) : { environment: warpdomEnvironment }), pinned: PINNED_TARGET, warpdomOptions },
     };
     for (const name of extras) roles[name] = { environment: extraEnvironments[name], pinned: name };
     const sides = ['baseline', 'warpdom', ...extras];
     const wrappers = {};
-    for (const [role, { environment, pinned, warpdomOptions: wo = null }] of Object.entries(roles)) {
+    for (const [role, { environment, environmentId = null, pinned, warpdomOptions: wo = null }] of Object.entries(roles)) {
       const root = wrapperPath(config, role);
       const target = (file) => (isRoot(file) ? root : wrapperPath(file, role));
       const patterns = {};
@@ -296,14 +299,14 @@ export async function compare(options = {}) {
       const links = { patterns, extends: Object.fromEntries([...extendsTargets].map(([value, file]) => [value, target(file)])), workspace: null };
       if (workspace) {
         links.workspace = writeTemp(path.join(path.dirname(workspace), workspaceWrapperName(workspace, role)),
-          vitestWorkspaceWrapper(workspace, { environment, links, warpdomOptions: wo }));
+          vitestWorkspaceWrapper(workspace, { environment, environmentId, links, warpdomOptions: wo }));
       }
       for (const file of externalConfigs) {
         const own = wrapperPath(file, role);
-        writeTemp(own, runner === 'vitest' ? vitestWrapper(file, { environment, pinned, major, warpdomOptions: wo }) : jestWrapper(file, { environment, self: own, warpdomOptions: wo }));
+        writeTemp(own, runner === 'vitest' ? vitestWrapper(file, { environment, environmentId, pinned, major, warpdomOptions: wo }) : jestWrapper(file, { environment, self: own, warpdomOptions: wo }));
       }
       wrappers[role] = writeTemp(root, runner === 'vitest'
-        ? vitestWrapper(config, { environment, pinned, major, links, warpdomOptions: wo })
+        ? vitestWrapper(config, { environment, environmentId, pinned, major, links, warpdomOptions: wo })
         : jestWrapper(config, { environment, links, self: root, reporter, warpdomOptions: wo }));
     }
     const pinnedLogs = Object.fromEntries(sides.map((side) => [side, []]));

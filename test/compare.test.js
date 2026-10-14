@@ -6,7 +6,7 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { vitestWrapper, vitestWorkspaceWrapper, jestWrapper, wrapperName, workspaceWrapperName, PROBE_MARKER, PINNED_TARGET, PINNED_PACKAGE } from '../src/compare/wrappers.js';
+import { vitestWrapper, vitestWorkspaceWrapper, jestWrapper, wrapperName, workspaceWrapperName, PROBE_MARKER, PINNED_TARGET, PINNED_PACKAGE, warpdomVitestEnvironment, fsId } from '../src/compare/wrappers.js';
 import { isDynamicPattern, expandBraces, globRegExp, glob, resolveVitestProjects, resolveJestProjects } from '../src/compare/projects.js';
 import { findConfig, findBin, detectRunner, environmentComments, takeConfigArg, packageDir, scriptNodeFlags } from '../src/compare/detect.js';
 import { displayPath, compare } from '../src/compare/index.js';
@@ -293,6 +293,45 @@ test('compare wrappers: Vitest files pinned to jsdom or happy-dom with a comment
   assert.equal(none.patchedOnce, true);
   assert.equal(none.files['a.spec.js'], files['a.spec.js'], 'no patch without a target');
   assert.deepEqual(none.logged, []);
+});
+
+test('compare wrappers: Vitest warpdom runs give projects and pinned files one environment name', async () => {
+  // Vitest groups test files that share workers by environment name: the
+  // config and the files pinned to jsdom must say the same, as on jsdom.
+  const wd = warpdomVitestEnvironment('/w/src/vitest.js');
+  assert.deepEqual(wd, { environment: PINNED_TARGET, environmentId: '/@fs/w/src/vitest.js' });
+  assert.equal(fsId('/@fs/w/x.js'), '/@fs/w/x.js');
+  assert.equal(fsId('rel/x.js'), 'rel/x.js', 'only absolute paths change');
+  assert.equal(readPinned(PINNED_TARGET, { 'a.spec.js': '// @vitest-environment jsdom\n' }).files['a.spec.js'], `// @vitest-environment ${wd.environment}\n`, 'a pinned file gets the name the config gets');
+  const dir = tmp('vitest-name');
+  try {
+    const config = { plugins: [{ name: 'own' }], test: { environment: 'jsdom', projects: [{ test: { name: 'u', environment: 'jsdom' } }, { test: { name: 'n', environment: 'node' } }] } };
+    write(path.join(dir, 'vitest.config.mjs'), `export default ${JSON.stringify(config)};`);
+    const wrapper = write(path.join(dir, 'vitest.config.warpdom-compare.warpdom.mjs'), vitestWrapper(path.join(dir, 'vitest.config.mjs'), { ...wd, major: 3 }));
+    const cfg = await (await import(pathToFileURL(wrapper).href)).default({ mode: 'test' });
+    const resolves = (c) => (c.plugins ?? []).filter((p) => p.name === 'warpdom-compare:environment').map((p) => p.resolveId(PINNED_PACKAGE));
+    assert.equal(cfg.test.environment, PINNED_TARGET);
+    assert.equal(cfg.test.projects[0].test.environment, PINNED_TARGET, 'inline projects too');
+    assert.equal(cfg.test.projects[1].test.environment, 'node');
+    assert.deepEqual(cfg.plugins.map((p) => p.name), ['own', 'warpdom-compare:environment'], 'the project\'s plugins kept');
+    // In the workers the name resolves to warpdom's path as a /@fs/ id (the
+    // Vitest 2/3 loader hang); also in inline projects, which may hold pinned files.
+    assert.deepEqual(resolves(cfg), [wd.environmentId]);
+    assert.deepEqual(resolves(cfg.test.projects[0]), [wd.environmentId]);
+    assert.deepEqual(resolves(cfg.test.projects[1]), [wd.environmentId]);
+    assert.equal(cfg.plugins[1].resolveId('vitest-environment-jsdom'), null, 'other ids left alone');
+    const ws = write(path.join(dir, 'vitest.workspace.mjs'), `export default ${JSON.stringify([{ test: { environment: 'jsdom' } }])};`);
+    const wsWrapper = write(path.join(dir, workspaceWrapperName(ws, 'warpdom')), vitestWorkspaceWrapper(ws, wd));
+    const [project] = (await import(pathToFileURL(wsWrapper).href)).default;
+    assert.equal(project.test.environment, PINNED_TARGET, 'workspace projects too');
+    assert.deepEqual(resolves(project), [wd.environmentId]);
+    // Without environmentId (baseline, other DOMs) nothing is added.
+    const plain = write(path.join(dir, 'vitest.config.warpdom-compare.baseline.mjs'), vitestWrapper(path.join(dir, 'vitest.config.mjs'), { environment: 'happy-dom' }));
+    assert.deepEqual((await (await import(pathToFileURL(plain).href)).default({ mode: 'test' })).plugins.map((p) => p.name), ['own']);
+    assert.equal(environmentLabel(PINNED_TARGET), 'warpdom', 'reported as warpdom');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('compare wrappers: Jest switches jsdom-like environments, drops self-referencing projects', async () => {
@@ -787,6 +826,30 @@ test('compare end to end (Vitest): rounds with a warm-up pair, a runner filter, 
     assert.equal(result.timing.rounds, 2);
     assert.equal(result.timing.source, 'runner');
     assert.equal(result.environment.runner.name, 'vitest');
+    assert.deepEqual(leftovers(dir), []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('compare API (Vitest): without isolation, projects and pinned files share workers on warpdom as on jsdom', async () => {
+  // Vitest gives each environment name its own workers when files share
+  // them. One worker: all four files (two pinned to jsdom) run in one
+  // process on each side; with a path for the config and a name for the
+  // pinned files, warpdom's run had two.
+  const dir = fixtureProject('compare-vitest-group', vitestLinks());
+  const log = path.join(dir, 'group.log');
+  try {
+    const result = await compare({ cwd: dir, correctness: true, workers: 1, env: { WARPDOM_COMPARE_GROUP_LOG: log } });
+    assert.equal(result.error, null, JSON.stringify(result.warnings));
+    assert.equal(result.exitCode, 0);
+    const lines = fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => l.split(' '));
+    for (const side of ['jsdom', 'warpdom']) {
+      const own = lines.filter(([s]) => s === side);
+      assert.deepEqual(own.map(([, f]) => f).sort(), ['a', 'b', 'c', 'd'], `every file ran on ${side}`);
+      assert.equal(new Set(own.map(([, , pid]) => pid)).size, 1, `${side}: one environment group, one worker (${own.map((l) => l.join(' ')).join(', ')})`);
+    }
+    assert.equal(result.pinned.switched, 2);
     assert.deepEqual(leftovers(dir), []);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

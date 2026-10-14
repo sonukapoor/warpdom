@@ -155,6 +155,19 @@ is unaffected.
   `node_modules` (package.json with `type: module` and `exports`, an
   index.js re-exporting warpdom's environment), recorded in `pending.json`
   and removed like the other temporary files.
+- The projects compare switches get the same name, not warpdom's path
+  (2026-10-14). When test files share workers (`isolate: false`), Vitest
+  (1.2 to 5) groups them by environment name and gives each group its own
+  workers. On jsdom the config and its pinned files say `jsdom`: one group.
+  A path for the config and `warpdom-compare` for the pinned files made two
+  groups on warpdom, so files shared workers with other files than on
+  jsdom (solid's suite depends on that order). A Vite plugin in the wrapper
+  (root config and inline projects) resolves
+  `vitest-environment-warpdom-compare` in the test workers to warpdom's
+  path as a `/@fs/` id, so the Vitest 2/3 environment-loader hang for
+  modules outside the Vite root ([fast-mode.md](fast-mode.md)) cannot
+  occur; the package is still needed, since Vitest checks in its main
+  process that it exists. Jest does not group test files by environment.
 - Baseline run: on a jsdom baseline, happy-dom pins become jsdom; on a
   happy-dom baseline, jsdom pins become happy-dom. Pins already on the
   baseline stay.

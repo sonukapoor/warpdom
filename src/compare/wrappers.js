@@ -14,11 +14,36 @@ import path from 'node:path';
 export const MARK = '.warpdom-compare.';
 export const PROBE_MARKER = '[warpdom compare] config probe';
 
-// The environment name test files pinned to jsdom or happy-dom get in the
-// warpdom run: Vitest resolves a name it does not know as the package
-// vitest-environment-<name>, which compare creates for the run.
+// The environment name test files pinned to jsdom or happy-dom, and the
+// projects on them, get in the warpdom run: Vitest resolves a name it does
+// not know as the package vitest-environment-<name>, which compare creates
+// for the run.
 export const PINNED_TARGET = 'warpdom-compare';
 export const PINNED_PACKAGE = `vitest-environment-${PINNED_TARGET}`;
+
+// A path as a Vite /@fs/ id (as ../vitest-fast.js fsId, which this module
+// cannot import: it loads Vitest).
+export const fsId = (file) => {
+  if (typeof file !== 'string' || file.startsWith('/@fs/') || !path.isAbsolute(file)) return file;
+  const p = file.replace(/\\/g, '/');
+  return `/@fs${p.startsWith('/') ? '' : '/'}${p}`;
+};
+
+// The Vitest environment of the warpdom run: projects on jsdom or happy-dom
+// get the same name as the files pinned to them with a comment
+// (PINNED_TARGET), not warpdom's path. When test files share workers
+// (isolate: false), Vitest (1.2 to 5) groups them by environment name and
+// gives each group its own workers. On jsdom the config and the pinned
+// files share one name and one group; a path for the config and a name for
+// the pinned files made two groups, with a different file order per worker
+// (solid's suite depends on it). In the test workers a Vite plugin resolves
+// the name's package to warpdom's path as a /@fs/ id (environmentId):
+// Vitest 2 and 3 cache the environment's loader with the first file's RPC
+// channel, and for a module outside the Vite root the next file waits
+// forever for that channel to resolve it (see ../vitest-fast.js); a /@fs/
+// id needs no resolving. The package (pinnedEnvironmentPackage) is still
+// needed: Vitest checks in its own process that it exists.
+export const warpdomVitestEnvironment = (file) => ({ environment: PINNED_TARGET, environmentId: fsId(file) });
 
 // The wrapper's file name for a config and a role (baseline, warpdom, probe,
 // reporter): the config's own name with the mark, so wrappers of several
@@ -50,8 +75,18 @@ const importPath = (from, file) => {
 // LINKS.patterns: string -> [paths]; LINKS.extends: string -> path.
 // warpdomOptions: merged into environmentOptions.warpdom of switched
 // projects (e.g. { fastFrames: true }).
-function vitestHelpers({ environment, links, warpdomOptions }) {
+// environmentId: what the environment name resolves to in the test
+// workers (warpdomVitestEnvironment), through a plugin added to the config
+// and every inline project.
+function vitestHelpers({ environment, links, warpdomOptions, environmentId }) {
   return `const ENVIRONMENT = ${JSON.stringify(environment)};
+const ENVIRONMENT_ID = ${JSON.stringify(environmentId ?? null)};
+const environmentPlugin = {
+  name: 'warpdom-compare:environment',
+  enforce: 'pre',
+  resolveId: (id) => (id === 'vitest-environment-' + ENVIRONMENT ? ENVIRONMENT_ID : null),
+};
+const withPlugin = (c) => (ENVIRONMENT_ID ? { ...c, plugins: [...[].concat(c.plugins ?? []), environmentPlugin] } : c);
 const WARPDOM_OPTIONS = ${JSON.stringify(warpdomOptions ?? null)};
 const LINKS = ${JSON.stringify({ patterns: links?.patterns ?? {}, extends: links?.extends ?? {} })};
 const isObject = (v) => v && typeof v === 'object' && !Array.isArray(v) && typeof v.then !== 'function';
@@ -64,7 +99,7 @@ const switchDom = (test) => (ENVIRONMENT && isDom(test?.environment) && !usesBro
 const relink = (p) => (typeof p.extends === 'string' && LINKS.extends[p.extends] ? { ...p, extends: LINKS.extends[p.extends] } : p);
 const switchProject = (p) => {
   const q = relink(p);
-  return { ...q, test: switchDom(q.test ?? {}) };
+  return withPlugin({ ...q, test: switchDom(q.test ?? {}) });
 };
 // Browser-mode projects are not compared: left out of both runs (inline
 // ones dropped, others given no test files), so no browser starts.
@@ -125,7 +160,7 @@ if (PINNED && !fs.promises.readFile.warpdomComparePinned) {
 // - links: { patterns, extends } from compare's resolution of project
 //   strings, and workspace: the workspace wrapper to use (Vitest 2 and 3);
 // - probeWorkspace: a workspace file the probe imports to describe it.
-export function vitestWrapper(base, { environment = null, pinned = null, major = null, links = null, probeWorkspace = null, warpdomOptions = null } = {}) {
+export function vitestWrapper(base, { environment = null, pinned = null, major = null, links = null, probeWorkspace = null, warpdomOptions = null, environmentId = null } = {}) {
   const dir = base ? path.dirname(base) : null;
   const importBase = base ? `import base from './${path.basename(base)}';` : 'const base = {};';
   const importWorkspace = probeWorkspace
@@ -138,7 +173,7 @@ ${importBase}
 ${importWorkspace}
 
 ${pinnedPatch(pinned)}
-${vitestHelpers({ environment, links, warpdomOptions })}
+${vitestHelpers({ environment, links, warpdomOptions, environmentId })}
 const MAJOR = ${JSON.stringify(major)};
 const WORKSPACE = ${JSON.stringify(links?.workspace ?? null)};
 const nameOf = (t) => (typeof t?.name === 'string' ? t.name : t?.name?.label ?? null);
@@ -180,18 +215,18 @@ export default async (env) => {
   if (Array.isArray(test.projects)) test.projects = mapProjects(test.projects);
   else if (Array.isArray(test.workspace)) test.workspace = mapProjects(test.workspace);
   else if (WORKSPACE) test.workspace = WORKSPACE;
-  return { ...cfg, test };
+  return withPlugin({ ...cfg, test });
 };
 `;
 }
 
 // A Vitest workspace file's wrapper (Vitest 2 and 3 load it themselves):
 // the same array, with inline projects switched and strings replaced.
-export function vitestWorkspaceWrapper(workspace, { environment = null, links = null, warpdomOptions = null } = {}) {
+export function vitestWorkspaceWrapper(workspace, { environment = null, links = null, warpdomOptions = null, environmentId = null } = {}) {
   return `// Generated by warpdom compare. Safe to delete.
 import workspace from './${path.basename(workspace)}';
 
-${vitestHelpers({ environment, links, warpdomOptions })}
+${vitestHelpers({ environment, links, warpdomOptions, environmentId })}
 
 export default mapProjects(workspace);
 `;

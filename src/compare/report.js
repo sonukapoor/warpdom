@@ -1,6 +1,7 @@
 // Rendering a comparison for `warpdom compare`: the terminal summary and
 // report.md. The report's Summary part names no files or tests, so it can
 // be pasted into a public issue; the Details part lists them.
+import { PINNED_TARGET } from './wrappers.js';
 
 const secs = (ms) => (ms == null ? '-' : `${(ms / 1000).toFixed(ms < 10_000 ? 2 : 1)} s`);
 const times = (x) => `${x.toFixed(2)}x`;
@@ -8,9 +9,11 @@ const plural = (n, one, many = `${one}s`) => `${n.toLocaleString('en-US')} ${n =
 const pad = (s, n) => String(s).padEnd(n);
 const INDENT = ' '.repeat(10);
 
-// A short name for an environment: Jest gives resolved paths.
+// A short name for an environment: Jest gives resolved paths, and
+// compare's Vitest warpdom run the name PINNED_TARGET.
 export function environmentLabel(environment) {
   const value = String(environment ?? 'unknown');
+  if (value === PINNED_TARGET) return 'warpdom';
   if (!/^([a-zA-Z]:)?[\\/]/.test(value)) return value;
   const parts = value.split(/[\\/]/);
   const i = parts.lastIndexOf('node_modules');
