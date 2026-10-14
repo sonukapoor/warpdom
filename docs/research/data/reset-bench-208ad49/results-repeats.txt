@@ -1,0 +1,18 @@
+# repeat run 2: node reset-bench.mjs <worktree>
+warpdom reset micro-benchmark  node v22.17.1  darwin arm64  jsdom profile 30.1.2  reps 200 warmup 50
+timed | state | nodes | elements | median ms | p10 ms | p90 ms | max ms | min ms | mean ms | post-reset problems
+environment reset (resetOverrides + resetWindow) | a-untouched | 5 | 3 | 0.0586 | 0.0419 | 0.1115 | 1.9117 | 0.018 | 0.0809 | none
+environment reset (resetOverrides + resetWindow) | b-typical-test-file | 816 | 484 | 0.0884 | 0.0368 | 0.1488 | 1.2253 | 0.0198 | 0.104 | none
+environment reset (resetOverrides + resetWindow) | c-large-tree-10k | 18007 | 12005 | 0.0801 | 0.0656 | 0.1703 | 31.738 | 0.0534 | 0.4356 | none
+resetWindow(window) only | a-untouched | 5 | 3 | 0.0351 | 0.0173 | 0.0702 | 1.305 | 0.0161 | 0.0476 | none
+resetWindow(window) only | b-typical-test-file | 816 | 484 | 0.0783 | 0.0349 | 0.1352 | 7.6733 | 0.0214 | 0.1699 | none
+resetWindow(window) only | c-large-tree-10k | 18007 | 12005 | 0.0754 | 0.0661 | 0.1806 | 26.2459 | 0.0443 | 0.4951 | none
+# repeat run 3: node reset-bench.mjs <worktree>
+warpdom reset micro-benchmark  node v22.17.1  darwin arm64  jsdom profile 30.1.2  reps 200 warmup 50
+timed | state | nodes | elements | median ms | p10 ms | p90 ms | max ms | min ms | mean ms | post-reset problems
+environment reset (resetOverrides + resetWindow) | a-untouched | 5 | 3 | 0.0467 | 0.0209 | 0.0852 | 7.758 | 0.0167 | 0.1001 | none
+environment reset (resetOverrides + resetWindow) | b-typical-test-file | 816 | 484 | 0.0785 | 0.0302 | 0.1438 | 87.8548 | 0.0214 | 0.5549 | none
+environment reset (resetOverrides + resetWindow) | c-large-tree-10k | 18007 | 12005 | 0.0778 | 0.0647 | 0.1656 | 15.5832 | 0.0413 | 0.3111 | none
+resetWindow(window) only | a-untouched | 5 | 3 | 0.0406 | 0.0209 | 0.058 | 0.1836 | 0.0164 | 0.0434 | none
+resetWindow(window) only | b-typical-test-file | 816 | 484 | 0.0749 | 0.0259 | 0.138 | 22.293 | 0.0193 | 0.2421 | none
+resetWindow(window) only | c-large-tree-10k | 18007 | 12005 | 0.0733 | 0.0604 | 0.1615 | 49.2684 | 0.0395 | 0.5036 | none

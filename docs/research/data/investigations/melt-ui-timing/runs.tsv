@@ -1,0 +1,1453 @@
+experiment	condition	dom	scope	run	load1	test	status	duration_ms	failure
+repro-underload	none	jsdom	file	1	10.28	Context Menu	passed	23	-
+repro-underload	none	jsdom	file	1	10.28	Dropdown Menu (Default)	passed	19	-
+repro-underload	none	jsdom	file	1	10.28	Dropdown Menu (forceVisible)	passed	16	-
+repro-underload	none	warpdom	file	1	10.28	Context Menu	passed	19	-
+repro-underload	none	warpdom	file	1	10.28	Dropdown Menu (Default)	passed	13	-
+repro-underload	none	warpdom	file	1	10.28	Dropdown Menu (forceVisible)	passed	14	-
+repro-underload	none	jsdom	file	2	9.70	Context Menu	passed	26	-
+repro-underload	none	jsdom	file	2	9.70	Dropdown Menu (Default)	passed	22	-
+repro-underload	none	jsdom	file	2	9.70	Dropdown Menu (forceVisible)	passed	17	-
+repro-underload	none	warpdom	file	2	9.70	Context Menu	passed	18	-
+repro-underload	none	warpdom	file	2	9.70	Dropdown Menu (Default)	passed	14	-
+repro-underload	none	warpdom	file	2	9.70	Dropdown Menu (forceVisible)	passed	18	-
+repro-underload	none	jsdom	file	3	9.48	Context Menu	passed	25	-
+repro-underload	none	jsdom	file	3	9.48	Dropdown Menu (Default)	passed	20	-
+repro-underload	none	jsdom	file	3	9.48	Dropdown Menu (forceVisible)	passed	17	-
+repro-underload	none	warpdom	file	3	12.89	Context Menu	passed	20	-
+repro-underload	none	warpdom	file	3	12.89	Dropdown Menu (Default)	passed	16	-
+repro-underload	none	warpdom	file	3	12.89	Dropdown Menu (forceVisible)	passed	15	-
+repro-underload	none	jsdom	file	4	12.89	Context Menu	passed	23	-
+repro-underload	none	jsdom	file	4	12.89	Dropdown Menu (Default)	passed	18	-
+repro-underload	none	jsdom	file	4	12.89	Dropdown Menu (forceVisible)	passed	19	-
+repro-underload	none	warpdom	file	4	13.38	Context Menu	passed	20	-
+repro-underload	none	warpdom	file	4	13.38	Dropdown Menu (Default)	passed	15	-
+repro-underload	none	warpdom	file	4	13.38	Dropdown Menu (forceVisible)	passed	15	-
+repro-underload	none	jsdom	file	5	13.03	Context Menu	passed	23	-
+repro-underload	none	jsdom	file	5	13.03	Dropdown Menu (Default)	passed	22	-
+repro-underload	none	jsdom	file	5	13.03	Dropdown Menu (forceVisible)	passed	18	-
+repro-underload	none	warpdom	file	5	13.03	Context Menu	passed	19	-
+repro-underload	none	warpdom	file	5	13.03	Dropdown Menu (Default)	passed	15	-
+repro-underload	none	warpdom	file	5	13.03	Dropdown Menu (forceVisible)	passed	16	-
+repro-underload	none	jsdom	file	6	12.46	Context Menu	passed	23	-
+repro-underload	none	jsdom	file	6	12.46	Dropdown Menu (Default)	passed	20	-
+repro-underload	none	jsdom	file	6	12.46	Dropdown Menu (forceVisible)	passed	13	-
+repro-underload	none	warpdom	file	6	14.35	Context Menu	passed	19	-
+repro-underload	none	warpdom	file	6	14.35	Dropdown Menu (Default)	passed	15	-
+repro-underload	none	warpdom	file	6	14.35	Dropdown Menu (forceVisible)	passed	15	-
+repro-underload	none	jsdom	file	7	14.35	Context Menu	passed	23	-
+repro-underload	none	jsdom	file	7	14.35	Dropdown Menu (Default)	passed	18	-
+repro-underload	none	jsdom	file	7	14.35	Dropdown Menu (forceVisible)	passed	18	-
+repro-underload	none	warpdom	file	7	15.52	Context Menu	passed	18	-
+repro-underload	none	warpdom	file	7	15.52	Dropdown Menu (Default)	passed	13	-
+repro-underload	none	warpdom	file	7	15.52	Dropdown Menu (forceVisible)	passed	17	-
+repro-underload	none	jsdom	file	8	15.32	Context Menu	passed	26	-
+repro-underload	none	jsdom	file	8	15.32	Dropdown Menu (Default)	passed	22	-
+repro-underload	none	jsdom	file	8	15.32	Dropdown Menu (forceVisible)	passed	19	-
+repro-underload	none	warpdom	file	8	36.36	Context Menu	passed	28	-
+repro-underload	none	warpdom	file	8	36.36	Dropdown Menu (Default)	passed	23	-
+repro-underload	none	warpdom	file	8	36.36	Dropdown Menu (forceVisible)	failed	1541	expected null not to be null
+repro-underload	none	jsdom	file	9	51.86	Context Menu	passed	49	-
+repro-underload	none	jsdom	file	9	51.86	Dropdown Menu (Default)	passed	106	-
+repro-underload	none	jsdom	file	9	51.86	Dropdown Menu (forceVisible)	passed	38	-
+repro-underload	none	warpdom	file	9	81.83	Context Menu	passed	45	-
+repro-underload	none	warpdom	file	9	81.83	Dropdown Menu (Default)	passed	27	-
+repro-underload	none	warpdom	file	9	81.83	Dropdown Menu (forceVisible)	failed	1547	expected null not to be null
+repro-underload	none	jsdom	file	10	98.58	Context Menu	failed	59	expected null not to be null
+repro-underload	none	jsdom	file	10	98.58	Dropdown Menu (Default)	passed	44	-
+repro-underload	none	jsdom	file	10	98.58	Dropdown Menu (forceVisible)	passed	34	-
+repro-underload	none	warpdom	file	10	111.34	Context Menu	passed	31	-
+repro-underload	none	warpdom	file	10	111.34	Dropdown Menu (Default)	passed	43	-
+repro-underload	none	warpdom	file	10	111.34	Dropdown Menu (forceVisible)	passed	56	-
+repro-underload	none	jsdom	file	11	130.37	Context Menu	passed	85	-
+repro-underload	none	jsdom	file	11	130.37	Dropdown Menu (Default)	passed	41	-
+repro-underload	none	jsdom	file	11	130.37	Dropdown Menu (forceVisible)	failed	1531	expected null not to be null
+repro-underload	none	warpdom	file	11	146.70	Context Menu	passed	30	-
+repro-underload	none	warpdom	file	11	146.70	Dropdown Menu (Default)	passed	32	-
+repro-underload	none	warpdom	file	11	146.70	Dropdown Menu (forceVisible)	passed	25	-
+repro-underload	none	jsdom	file	12	158.39	Context Menu	passed	78	-
+repro-underload	none	jsdom	file	12	158.39	Dropdown Menu (Default)	passed	140	-
+repro-underload	none	jsdom	file	12	158.39	Dropdown Menu (forceVisible)	passed	104	-
+repro-underload	none	warpdom	file	12	166.34	Context Menu	passed	98	-
+repro-underload	none	warpdom	file	12	166.34	Dropdown Menu (Default)	passed	119	-
+repro-underload	none	warpdom	file	12	166.34	Dropdown Menu (forceVisible)	passed	20	-
+repro	none	jsdom	file	1	15.12	Context Menu	passed	23	-
+repro	none	jsdom	file	1	15.12	Dropdown Menu (Default)	passed	21	-
+repro	none	jsdom	file	1	15.12	Dropdown Menu (forceVisible)	passed	19	-
+repro	none	warpdom	file	1	14.47	Context Menu	passed	19	-
+repro	none	warpdom	file	1	14.47	Dropdown Menu (Default)	passed	17	-
+repro	none	warpdom	file	1	14.47	Dropdown Menu (forceVisible)	passed	15	-
+repro	none	jsdom	file	2	14.91	Context Menu	passed	27	-
+repro	none	jsdom	file	2	14.91	Dropdown Menu (Default)	passed	22	-
+repro	none	jsdom	file	2	14.91	Dropdown Menu (forceVisible)	passed	20	-
+repro	none	warpdom	file	2	14.91	Context Menu	failed	24	expected null not to be null
+repro	none	warpdom	file	2	14.91	Dropdown Menu (Default)	passed	16	-
+repro	none	warpdom	file	2	14.91	Dropdown Menu (forceVisible)	passed	16	-
+repro	none	jsdom	file	3	24.85	Context Menu	passed	27	-
+repro	none	jsdom	file	3	24.85	Dropdown Menu (Default)	passed	22	-
+repro	none	jsdom	file	3	24.85	Dropdown Menu (forceVisible)	passed	18	-
+repro	none	warpdom	file	3	33.83	Context Menu	failed	23	expected null not to be null
+repro	none	warpdom	file	3	33.83	Dropdown Menu (Default)	passed	16	-
+repro	none	warpdom	file	3	33.83	Dropdown Menu (forceVisible)	passed	17	-
+repro	none	jsdom	file	4	33.83	Context Menu	passed	26	-
+repro	none	jsdom	file	4	33.83	Dropdown Menu (Default)	passed	21	-
+repro	none	jsdom	file	4	33.83	Dropdown Menu (forceVisible)	passed	17	-
+repro	none	warpdom	file	4	43.85	Context Menu	passed	20	-
+repro	none	warpdom	file	4	43.85	Dropdown Menu (Default)	passed	17	-
+repro	none	warpdom	file	4	43.85	Dropdown Menu (forceVisible)	passed	15	-
+repro	none	jsdom	file	5	43.85	Context Menu	passed	23	-
+repro	none	jsdom	file	5	43.85	Dropdown Menu (Default)	passed	20	-
+repro	none	jsdom	file	5	43.85	Dropdown Menu (forceVisible)	passed	17	-
+repro	none	warpdom	file	5	50.83	Context Menu	passed	20	-
+repro	none	warpdom	file	5	50.83	Dropdown Menu (Default)	passed	16	-
+repro	none	warpdom	file	5	50.83	Dropdown Menu (forceVisible)	passed	16	-
+repro	none	jsdom	file	6	56.69	Context Menu	passed	25	-
+repro	none	jsdom	file	6	56.69	Dropdown Menu (Default)	passed	18	-
+repro	none	jsdom	file	6	56.69	Dropdown Menu (forceVisible)	passed	17	-
+repro	none	warpdom	file	6	56.69	Context Menu	passed	20	-
+repro	none	warpdom	file	6	56.69	Dropdown Menu (Default)	passed	17	-
+repro	none	warpdom	file	6	56.69	Dropdown Menu (forceVisible)	passed	16	-
+repro	none	jsdom	file	7	60.64	Context Menu	passed	24	-
+repro	none	jsdom	file	7	60.64	Dropdown Menu (Default)	passed	19	-
+repro	none	jsdom	file	7	60.64	Dropdown Menu (forceVisible)	passed	17	-
+repro	none	warpdom	file	7	65.87	Context Menu	passed	21	-
+repro	none	warpdom	file	7	65.87	Dropdown Menu (Default)	passed	16	-
+repro	none	warpdom	file	7	65.87	Dropdown Menu (forceVisible)	passed	17	-
+repro	none	jsdom	file	8	65.87	Context Menu	passed	23	-
+repro	none	jsdom	file	8	65.87	Dropdown Menu (Default)	passed	20	-
+repro	none	jsdom	file	8	65.87	Dropdown Menu (forceVisible)	passed	18	-
+repro	none	warpdom	file	8	64.28	Context Menu	failed	23	expected null not to be null
+repro	none	warpdom	file	8	64.28	Dropdown Menu (Default)	passed	16	-
+repro	none	warpdom	file	8	64.28	Dropdown Menu (forceVisible)	passed	16	-
+repro	none	jsdom	file	9	64.28	Context Menu	passed	24	-
+repro	none	jsdom	file	9	64.28	Dropdown Menu (Default)	passed	21	-
+repro	none	jsdom	file	9	64.28	Dropdown Menu (forceVisible)	passed	18	-
+repro	none	warpdom	file	9	59.77	Context Menu	failed	24	expected null not to be null
+repro	none	warpdom	file	9	59.77	Dropdown Menu (Default)	passed	16	-
+repro	none	warpdom	file	9	59.77	Dropdown Menu (forceVisible)	passed	18	-
+repro	none	jsdom	file	10	55.39	Context Menu	passed	24	-
+repro	none	jsdom	file	10	55.39	Dropdown Menu (Default)	passed	22	-
+repro	none	jsdom	file	10	55.39	Dropdown Menu (forceVisible)	passed	17	-
+repro	none	warpdom	file	10	55.39	Context Menu	passed	21	-
+repro	none	warpdom	file	10	55.39	Dropdown Menu (Default)	passed	17	-
+repro	none	warpdom	file	10	55.39	Dropdown Menu (forceVisible)	passed	14	-
+repro	none	jsdom	file	11	51.43	Context Menu	passed	25	-
+repro	none	jsdom	file	11	51.43	Dropdown Menu (Default)	passed	21	-
+repro	none	jsdom	file	11	51.43	Dropdown Menu (forceVisible)	passed	19	-
+repro	none	warpdom	file	11	48.67	Context Menu	failed	23	expected null not to be null
+repro	none	warpdom	file	11	48.67	Dropdown Menu (Default)	passed	16	-
+repro	none	warpdom	file	11	48.67	Dropdown Menu (forceVisible)	passed	17	-
+repro	none	jsdom	file	12	48.67	Context Menu	passed	25	-
+repro	none	jsdom	file	12	48.67	Dropdown Menu (Default)	passed	22	-
+repro	none	jsdom	file	12	48.67	Dropdown Menu (forceVisible)	passed	19	-
+repro	none	warpdom	file	12	46.62	Context Menu	passed	22	-
+repro	none	warpdom	file	12	46.62	Dropdown Menu (Default)	passed	15	-
+repro	none	warpdom	file	12	46.62	Dropdown Menu (forceVisible)	passed	15	-
+repro	none	jsdom	file	13	43.85	Context Menu	passed	25	-
+repro	none	jsdom	file	13	43.85	Dropdown Menu (Default)	passed	21	-
+repro	none	jsdom	file	13	43.85	Dropdown Menu (forceVisible)	passed	18	-
+repro	none	warpdom	file	13	43.85	Context Menu	failed	23	expected null not to be null
+repro	none	warpdom	file	13	43.85	Dropdown Menu (Default)	passed	16	-
+repro	none	warpdom	file	13	43.85	Dropdown Menu (forceVisible)	passed	17	-
+repro	none	jsdom	file	14	40.82	Context Menu	passed	26	-
+repro	none	jsdom	file	14	40.82	Dropdown Menu (Default)	passed	22	-
+repro	none	jsdom	file	14	40.82	Dropdown Menu (forceVisible)	passed	18	-
+repro	none	warpdom	file	14	38.03	Context Menu	passed	23	-
+repro	none	warpdom	file	14	38.03	Dropdown Menu (Default)	passed	17	-
+repro	none	warpdom	file	14	38.03	Dropdown Menu (forceVisible)	passed	15	-
+repro	none	jsdom	file	15	38.03	Context Menu	passed	24	-
+repro	none	jsdom	file	15	38.03	Dropdown Menu (Default)	passed	21	-
+repro	none	jsdom	file	15	38.03	Dropdown Menu (forceVisible)	passed	19	-
+repro	none	warpdom	file	15	36.74	Context Menu	passed	22	-
+repro	none	warpdom	file	15	36.74	Dropdown Menu (Default)	passed	15	-
+repro	none	warpdom	file	15	36.74	Dropdown Menu (forceVisible)	passed	18	-
+repro	none	jsdom	file	16	34.84	Context Menu	passed	24	-
+repro	none	jsdom	file	16	34.84	Dropdown Menu (Default)	passed	20	-
+repro	none	jsdom	file	16	34.84	Dropdown Menu (forceVisible)	passed	18	-
+repro	none	warpdom	file	16	34.84	Context Menu	passed	19	-
+repro	none	warpdom	file	16	34.84	Dropdown Menu (Default)	passed	13	-
+repro	none	warpdom	file	16	34.84	Dropdown Menu (forceVisible)	passed	19	-
+repro	none	jsdom	file	17	36.38	Context Menu	passed	27	-
+repro	none	jsdom	file	17	36.38	Dropdown Menu (Default)	passed	23	-
+repro	none	jsdom	file	17	36.38	Dropdown Menu (forceVisible)	passed	19	-
+repro	none	warpdom	file	17	38.67	Context Menu	passed	20	-
+repro	none	warpdom	file	17	38.67	Dropdown Menu (Default)	passed	17	-
+repro	none	warpdom	file	17	38.67	Dropdown Menu (forceVisible)	passed	18	-
+repro	none	jsdom	file	18	38.67	Context Menu	passed	23	-
+repro	none	jsdom	file	18	38.67	Dropdown Menu (Default)	passed	20	-
+repro	none	jsdom	file	18	38.67	Dropdown Menu (forceVisible)	passed	16	-
+repro	none	warpdom	file	18	38.13	Context Menu	passed	22	-
+repro	none	warpdom	file	18	38.13	Dropdown Menu (Default)	passed	16	-
+repro	none	warpdom	file	18	38.13	Dropdown Menu (forceVisible)	passed	17	-
+repro	none	jsdom	file	19	38.13	Context Menu	passed	27	-
+repro	none	jsdom	file	19	38.13	Dropdown Menu (Default)	passed	22	-
+repro	none	jsdom	file	19	38.13	Dropdown Menu (forceVisible)	passed	18	-
+repro	none	warpdom	file	19	35.56	Context Menu	passed	19	-
+repro	none	warpdom	file	19	35.56	Dropdown Menu (Default)	passed	15	-
+repro	none	warpdom	file	19	35.56	Dropdown Menu (forceVisible)	passed	18	-
+repro	none	jsdom	file	20	33.51	Context Menu	passed	24	-
+repro	none	jsdom	file	20	33.51	Dropdown Menu (Default)	passed	22	-
+repro	none	jsdom	file	20	33.51	Dropdown Menu (forceVisible)	passed	18	-
+repro	none	warpdom	file	20	33.51	Context Menu	passed	20	-
+repro	none	warpdom	file	20	33.51	Dropdown Menu (Default)	passed	13	-
+repro	none	warpdom	file	20	33.51	Dropdown Menu (forceVisible)	passed	18	-
+delay	d0	jsdom	file	1	33.31	Context Menu	passed	32	-
+delay	d0	jsdom	file	1	33.31	Dropdown Menu (Default)	passed	22	-
+delay	d0	jsdom	file	1	33.31	Dropdown Menu (forceVisible)	passed	21	-
+delay	d0	warpdom	file	1	32.09	Context Menu	passed	26	-
+delay	d0	warpdom	file	1	32.09	Dropdown Menu (Default)	passed	17	-
+delay	d0	warpdom	file	1	32.09	Dropdown Menu (forceVisible)	passed	24	-
+delay	d1	warpdom	file	1	30.24	Context Menu	passed	33	-
+delay	d1	warpdom	file	1	30.24	Dropdown Menu (Default)	passed	21	-
+delay	d1	warpdom	file	1	30.24	Dropdown Menu (forceVisible)	failed	1538	expected null not to be null
+delay	d2	warpdom	file	1	30.24	Context Menu	passed	39	-
+delay	d2	warpdom	file	1	30.24	Dropdown Menu (Default)	passed	26	-
+delay	d2	warpdom	file	1	30.24	Dropdown Menu (forceVisible)	passed	32	-
+delay	d4	warpdom	file	1	29.10	Context Menu	passed	48	-
+delay	d4	warpdom	file	1	29.10	Dropdown Menu (Default)	passed	34	-
+delay	d4	warpdom	file	1	29.10	Dropdown Menu (forceVisible)	passed	43	-
+delay	d0	jsdom	file	2	27.49	Context Menu	passed	32	-
+delay	d0	jsdom	file	2	27.49	Dropdown Menu (Default)	passed	47	-
+delay	d0	jsdom	file	2	27.49	Dropdown Menu (forceVisible)	passed	26	-
+delay	d0	warpdom	file	2	27.49	Context Menu	passed	26	-
+delay	d0	warpdom	file	2	27.49	Dropdown Menu (Default)	passed	17	-
+delay	d0	warpdom	file	2	27.49	Dropdown Menu (forceVisible)	passed	23	-
+delay	d1	warpdom	file	2	26.65	Context Menu	passed	34	-
+delay	d1	warpdom	file	2	26.65	Dropdown Menu (Default)	passed	20	-
+delay	d1	warpdom	file	2	26.65	Dropdown Menu (forceVisible)	failed	1536	expected null not to be null
+delay	d2	warpdom	file	2	26.51	Context Menu	passed	38	-
+delay	d2	warpdom	file	2	26.51	Dropdown Menu (Default)	passed	24	-
+delay	d2	warpdom	file	2	26.51	Dropdown Menu (forceVisible)	passed	29	-
+delay	d4	warpdom	file	2	26.51	Context Menu	passed	50	-
+delay	d4	warpdom	file	2	26.51	Dropdown Menu (Default)	passed	33	-
+delay	d4	warpdom	file	2	26.51	Dropdown Menu (forceVisible)	passed	41	-
+delay	d0	jsdom	file	3	27.19	Context Menu	passed	31	-
+delay	d0	jsdom	file	3	27.19	Dropdown Menu (Default)	passed	22	-
+delay	d0	jsdom	file	3	27.19	Dropdown Menu (forceVisible)	passed	21	-
+delay	d0	warpdom	file	3	27.34	Context Menu	passed	25	-
+delay	d0	warpdom	file	3	27.34	Dropdown Menu (Default)	passed	17	-
+delay	d0	warpdom	file	3	27.34	Dropdown Menu (forceVisible)	passed	21	-
+delay	d1	warpdom	file	3	25.55	Context Menu	passed	31	-
+delay	d1	warpdom	file	3	25.55	Dropdown Menu (Default)	passed	18	-
+delay	d1	warpdom	file	3	25.55	Dropdown Menu (forceVisible)	failed	1539	expected null not to be null
+delay	d2	warpdom	file	3	25.55	Context Menu	passed	38	-
+delay	d2	warpdom	file	3	25.55	Dropdown Menu (Default)	passed	24	-
+delay	d2	warpdom	file	3	25.55	Dropdown Menu (forceVisible)	passed	30	-
+delay	d4	warpdom	file	3	25.42	Context Menu	passed	52	-
+delay	d4	warpdom	file	3	25.42	Dropdown Menu (Default)	passed	34	-
+delay	d4	warpdom	file	3	25.42	Dropdown Menu (forceVisible)	passed	39	-
+delay	d0	jsdom	file	4	24.19	Context Menu	passed	31	-
+delay	d0	jsdom	file	4	24.19	Dropdown Menu (Default)	passed	24	-
+delay	d0	jsdom	file	4	24.19	Dropdown Menu (forceVisible)	passed	22	-
+delay	d0	warpdom	file	4	24.19	Context Menu	failed	28	expected null not to be null
+delay	d0	warpdom	file	4	24.19	Dropdown Menu (Default)	passed	14	-
+delay	d0	warpdom	file	4	24.19	Dropdown Menu (forceVisible)	passed	25	-
+delay	d1	warpdom	file	4	23.29	Context Menu	passed	33	-
+delay	d1	warpdom	file	4	23.29	Dropdown Menu (Default)	passed	17	-
+delay	d1	warpdom	file	4	23.29	Dropdown Menu (forceVisible)	passed	28	-
+delay	d2	warpdom	file	4	22.23	Context Menu	passed	40	-
+delay	d2	warpdom	file	4	22.23	Dropdown Menu (Default)	passed	26	-
+delay	d2	warpdom	file	4	22.23	Dropdown Menu (forceVisible)	passed	40	-
+delay	d4	warpdom	file	4	22.23	Context Menu	passed	51	-
+delay	d4	warpdom	file	4	22.23	Dropdown Menu (Default)	passed	30	-
+delay	d4	warpdom	file	4	22.23	Dropdown Menu (forceVisible)	passed	38	-
+delay	d0	jsdom	file	5	20.85	Context Menu	passed	31	-
+delay	d0	jsdom	file	5	20.85	Dropdown Menu (Default)	passed	21	-
+delay	d0	jsdom	file	5	20.85	Dropdown Menu (forceVisible)	passed	21	-
+delay	d0	warpdom	file	5	20.85	Context Menu	passed	25	-
+delay	d0	warpdom	file	5	20.85	Dropdown Menu (Default)	passed	15	-
+delay	d0	warpdom	file	5	20.85	Dropdown Menu (forceVisible)	passed	23	-
+delay	d1	warpdom	file	5	23.50	Context Menu	passed	33	-
+delay	d1	warpdom	file	5	23.50	Dropdown Menu (Default)	passed	20	-
+delay	d1	warpdom	file	5	23.50	Dropdown Menu (forceVisible)	failed	1538	expected null not to be null
+delay	d2	warpdom	file	5	25.22	Context Menu	passed	38	-
+delay	d2	warpdom	file	5	25.22	Dropdown Menu (Default)	passed	23	-
+delay	d2	warpdom	file	5	25.22	Dropdown Menu (forceVisible)	passed	31	-
+delay	d4	warpdom	file	5	23.68	Context Menu	passed	50	-
+delay	d4	warpdom	file	5	23.68	Dropdown Menu (Default)	passed	31	-
+delay	d4	warpdom	file	5	23.68	Dropdown Menu (forceVisible)	passed	45	-
+delay	d0	jsdom	file	6	23.68	Context Menu	passed	31	-
+delay	d0	jsdom	file	6	23.68	Dropdown Menu (Default)	passed	22	-
+delay	d0	jsdom	file	6	23.68	Dropdown Menu (forceVisible)	passed	24	-
+delay	d0	warpdom	file	6	22.67	Context Menu	passed	24	-
+delay	d0	warpdom	file	6	22.67	Dropdown Menu (Default)	passed	16	-
+delay	d0	warpdom	file	6	22.67	Dropdown Menu (forceVisible)	passed	26	-
+delay	d1	warpdom	file	6	21.25	Context Menu	passed	31	-
+delay	d1	warpdom	file	6	21.25	Dropdown Menu (Default)	passed	21	-
+delay	d1	warpdom	file	6	21.25	Dropdown Menu (forceVisible)	failed	1537	expected null not to be null
+delay	d2	warpdom	file	6	21.25	Context Menu	passed	39	-
+delay	d2	warpdom	file	6	21.25	Dropdown Menu (Default)	passed	23	-
+delay	d2	warpdom	file	6	21.25	Dropdown Menu (forceVisible)	passed	31	-
+delay	d4	warpdom	file	6	21.07	Context Menu	passed	49	-
+delay	d4	warpdom	file	6	21.07	Dropdown Menu (Default)	passed	33	-
+delay	d4	warpdom	file	6	21.07	Dropdown Menu (forceVisible)	passed	39	-
+delay	d0	jsdom	file	7	20.03	Context Menu	passed	31	-
+delay	d0	jsdom	file	7	20.03	Dropdown Menu (Default)	passed	22	-
+delay	d0	jsdom	file	7	20.03	Dropdown Menu (forceVisible)	passed	22	-
+delay	d0	warpdom	file	7	20.03	Context Menu	failed	27	expected null not to be null
+delay	d0	warpdom	file	7	20.03	Dropdown Menu (Default)	passed	17	-
+delay	d0	warpdom	file	7	20.03	Dropdown Menu (forceVisible)	passed	22	-
+delay	d1	warpdom	file	7	19.62	Context Menu	passed	32	-
+delay	d1	warpdom	file	7	19.62	Dropdown Menu (Default)	passed	19	-
+delay	d1	warpdom	file	7	19.62	Dropdown Menu (forceVisible)	passed	26	-
+delay	d2	warpdom	file	7	18.45	Context Menu	passed	38	-
+delay	d2	warpdom	file	7	18.45	Dropdown Menu (Default)	passed	25	-
+delay	d2	warpdom	file	7	18.45	Dropdown Menu (forceVisible)	passed	31	-
+delay	d4	warpdom	file	7	18.45	Context Menu	passed	49	-
+delay	d4	warpdom	file	7	18.45	Dropdown Menu (Default)	passed	30	-
+delay	d4	warpdom	file	7	18.45	Dropdown Menu (forceVisible)	passed	40	-
+delay	d0	jsdom	file	8	17.29	Context Menu	passed	35	-
+delay	d0	jsdom	file	8	17.29	Dropdown Menu (Default)	passed	22	-
+delay	d0	jsdom	file	8	17.29	Dropdown Menu (forceVisible)	passed	21	-
+delay	d0	warpdom	file	8	17.29	Context Menu	failed	25	expected null not to be null
+delay	d0	warpdom	file	8	17.29	Dropdown Menu (Default)	passed	17	-
+delay	d0	warpdom	file	8	17.29	Dropdown Menu (forceVisible)	passed	23	-
+delay	d1	warpdom	file	8	17.27	Context Menu	passed	33	-
+delay	d1	warpdom	file	8	17.27	Dropdown Menu (Default)	passed	19	-
+delay	d1	warpdom	file	8	17.27	Dropdown Menu (forceVisible)	failed	1534	expected null not to be null
+delay	d2	warpdom	file	8	17.25	Context Menu	passed	38	-
+delay	d2	warpdom	file	8	17.25	Dropdown Menu (Default)	passed	25	-
+delay	d2	warpdom	file	8	17.25	Dropdown Menu (forceVisible)	passed	35	-
+delay	d4	warpdom	file	8	16.35	Context Menu	passed	50	-
+delay	d4	warpdom	file	8	16.35	Dropdown Menu (Default)	passed	33	-
+delay	d4	warpdom	file	8	16.35	Dropdown Menu (forceVisible)	passed	39	-
+delay	d0	jsdom	file	9	16.35	Context Menu	passed	30	-
+delay	d0	jsdom	file	9	16.35	Dropdown Menu (Default)	passed	21	-
+delay	d0	jsdom	file	9	16.35	Dropdown Menu (forceVisible)	passed	23	-
+delay	d0	warpdom	file	9	16.32	Context Menu	passed	23	-
+delay	d0	warpdom	file	9	16.32	Dropdown Menu (Default)	passed	17	-
+delay	d0	warpdom	file	9	16.32	Dropdown Menu (forceVisible)	passed	24	-
+delay	d1	warpdom	file	9	16.32	Context Menu	passed	33	-
+delay	d1	warpdom	file	9	16.32	Dropdown Menu (Default)	passed	17	-
+delay	d1	warpdom	file	9	16.32	Dropdown Menu (forceVisible)	passed	26	-
+delay	d2	warpdom	file	9	17.25	Context Menu	passed	38	-
+delay	d2	warpdom	file	9	17.25	Dropdown Menu (Default)	passed	25	-
+delay	d2	warpdom	file	9	17.25	Dropdown Menu (forceVisible)	passed	34	-
+delay	d4	warpdom	file	9	16.27	Context Menu	passed	50	-
+delay	d4	warpdom	file	9	16.27	Dropdown Menu (Default)	passed	33	-
+delay	d4	warpdom	file	9	16.27	Dropdown Menu (forceVisible)	passed	40	-
+delay	d0	jsdom	file	10	16.27	Context Menu	passed	31	-
+delay	d0	jsdom	file	10	16.27	Dropdown Menu (Default)	passed	17	-
+delay	d0	jsdom	file	10	16.27	Dropdown Menu (forceVisible)	passed	21	-
+delay	d0	warpdom	file	10	16.89	Context Menu	passed	26	-
+delay	d0	warpdom	file	10	16.89	Dropdown Menu (Default)	passed	17	-
+delay	d0	warpdom	file	10	16.89	Dropdown Menu (forceVisible)	passed	25	-
+delay	d1	warpdom	file	10	16.42	Context Menu	passed	31	-
+delay	d1	warpdom	file	10	16.42	Dropdown Menu (Default)	passed	20	-
+delay	d1	warpdom	file	10	16.42	Dropdown Menu (forceVisible)	failed	1538	expected null not to be null
+delay	d2	warpdom	file	10	16.42	Context Menu	passed	38	-
+delay	d2	warpdom	file	10	16.42	Dropdown Menu (Default)	passed	22	-
+delay	d2	warpdom	file	10	16.42	Dropdown Menu (forceVisible)	passed	33	-
+delay	d4	warpdom	file	10	16.47	Context Menu	passed	52	-
+delay	d4	warpdom	file	10	16.47	Dropdown Menu (Default)	passed	36	-
+delay	d4	warpdom	file	10	16.47	Dropdown Menu (forceVisible)	passed	39	-
+delay	d0	jsdom	file	11	15.71	Context Menu	passed	33	-
+delay	d0	jsdom	file	11	15.71	Dropdown Menu (Default)	passed	30	-
+delay	d0	jsdom	file	11	15.71	Dropdown Menu (forceVisible)	passed	25	-
+delay	d0	warpdom	file	11	15.71	Context Menu	passed	25	-
+delay	d0	warpdom	file	11	15.71	Dropdown Menu (Default)	passed	17	-
+delay	d0	warpdom	file	11	15.71	Dropdown Menu (forceVisible)	passed	22	-
+delay	d1	warpdom	file	11	18.13	Context Menu	passed	33	-
+delay	d1	warpdom	file	11	18.13	Dropdown Menu (Default)	passed	21	-
+delay	d1	warpdom	file	11	18.13	Dropdown Menu (forceVisible)	failed	1536	expected null not to be null
+delay	d2	warpdom	file	11	20.04	Context Menu	passed	39	-
+delay	d2	warpdom	file	11	20.04	Dropdown Menu (Default)	passed	25	-
+delay	d2	warpdom	file	11	20.04	Dropdown Menu (forceVisible)	passed	31	-
+delay	d4	warpdom	file	11	20.04	Context Menu	passed	50	-
+delay	d4	warpdom	file	11	20.04	Dropdown Menu (Default)	passed	32	-
+delay	d4	warpdom	file	11	20.04	Dropdown Menu (forceVisible)	passed	37	-
+delay	d0	jsdom	file	12	19.08	Context Menu	passed	30	-
+delay	d0	jsdom	file	12	19.08	Dropdown Menu (Default)	passed	21	-
+delay	d0	jsdom	file	12	19.08	Dropdown Menu (forceVisible)	passed	24	-
+delay	d0	warpdom	file	12	18.03	Context Menu	passed	25	-
+delay	d0	warpdom	file	12	18.03	Dropdown Menu (Default)	passed	16	-
+delay	d0	warpdom	file	12	18.03	Dropdown Menu (forceVisible)	passed	23	-
+delay	d1	warpdom	file	12	18.03	Context Menu	passed	30	-
+delay	d1	warpdom	file	12	18.03	Dropdown Menu (Default)	passed	19	-
+delay	d1	warpdom	file	12	18.03	Dropdown Menu (forceVisible)	passed	28	-
+delay	d2	warpdom	file	12	17.15	Context Menu	passed	37	-
+delay	d2	warpdom	file	12	17.15	Dropdown Menu (Default)	passed	25	-
+delay	d2	warpdom	file	12	17.15	Dropdown Menu (forceVisible)	passed	31	-
+delay	d4	warpdom	file	12	16.33	Context Menu	passed	51	-
+delay	d4	warpdom	file	12	16.33	Dropdown Menu (Default)	passed	30	-
+delay	d4	warpdom	file	12	16.33	Dropdown Menu (forceVisible)	passed	41	-
+delay	d0	jsdom	file	13	16.33	Context Menu	passed	32	-
+delay	d0	jsdom	file	13	16.33	Dropdown Menu (Default)	passed	21	-
+delay	d0	jsdom	file	13	16.33	Dropdown Menu (forceVisible)	passed	21	-
+delay	d0	warpdom	file	13	15.59	Context Menu	failed	28	expected null not to be null
+delay	d0	warpdom	file	13	15.59	Dropdown Menu (Default)	passed	14	-
+delay	d0	warpdom	file	13	15.59	Dropdown Menu (forceVisible)	passed	24	-
+delay	d1	warpdom	file	13	15.59	Context Menu	passed	33	-
+delay	d1	warpdom	file	13	15.59	Dropdown Menu (Default)	passed	19	-
+delay	d1	warpdom	file	13	15.59	Dropdown Menu (forceVisible)	passed	27	-
+delay	d2	warpdom	file	13	16.50	Context Menu	passed	39	-
+delay	d2	warpdom	file	13	16.50	Dropdown Menu (Default)	passed	23	-
+delay	d2	warpdom	file	13	16.50	Dropdown Menu (forceVisible)	passed	31	-
+delay	d4	warpdom	file	13	16.38	Context Menu	passed	50	-
+delay	d4	warpdom	file	13	16.38	Dropdown Menu (Default)	passed	32	-
+delay	d4	warpdom	file	13	16.38	Dropdown Menu (forceVisible)	passed	43	-
+delay	d0	jsdom	file	14	16.38	Context Menu	passed	30	-
+delay	d0	jsdom	file	14	16.38	Dropdown Menu (Default)	passed	19	-
+delay	d0	jsdom	file	14	16.38	Dropdown Menu (forceVisible)	passed	25	-
+delay	d0	warpdom	file	14	16.11	Context Menu	passed	24	-
+delay	d0	warpdom	file	14	16.11	Dropdown Menu (Default)	passed	17	-
+delay	d0	warpdom	file	14	16.11	Dropdown Menu (forceVisible)	passed	26	-
+delay	d1	warpdom	file	14	15.22	Context Menu	passed	31	-
+delay	d1	warpdom	file	14	15.22	Dropdown Menu (Default)	passed	21	-
+delay	d1	warpdom	file	14	15.22	Dropdown Menu (forceVisible)	failed	1534	expected null not to be null
+delay	d2	warpdom	file	14	15.22	Context Menu	passed	39	-
+delay	d2	warpdom	file	14	15.22	Dropdown Menu (Default)	passed	24	-
+delay	d2	warpdom	file	14	15.22	Dropdown Menu (forceVisible)	passed	32	-
+delay	d4	warpdom	file	14	14.48	Context Menu	passed	50	-
+delay	d4	warpdom	file	14	14.48	Dropdown Menu (Default)	passed	32	-
+delay	d4	warpdom	file	14	14.48	Dropdown Menu (forceVisible)	passed	39	-
+delay	d0	jsdom	file	15	14.76	Context Menu	passed	32	-
+delay	d0	jsdom	file	15	14.76	Dropdown Menu (Default)	passed	22	-
+delay	d0	jsdom	file	15	14.76	Dropdown Menu (forceVisible)	passed	23	-
+delay	d0	warpdom	file	15	14.76	Context Menu	failed	27	expected null not to be null
+delay	d0	warpdom	file	15	14.76	Dropdown Menu (Default)	passed	16	-
+delay	d0	warpdom	file	15	14.76	Dropdown Menu (forceVisible)	passed	24	-
+delay	d1	warpdom	file	15	16.94	Context Menu	passed	33	-
+delay	d1	warpdom	file	15	16.94	Dropdown Menu (Default)	passed	21	-
+delay	d1	warpdom	file	15	16.94	Dropdown Menu (forceVisible)	failed	1537	expected null not to be null
+delay	d2	warpdom	file	15	17.67	Context Menu	passed	38	-
+delay	d2	warpdom	file	15	17.67	Dropdown Menu (Default)	passed	24	-
+delay	d2	warpdom	file	15	17.67	Dropdown Menu (forceVisible)	passed	30	-
+delay	d4	warpdom	file	15	16.97	Context Menu	passed	52	-
+delay	d4	warpdom	file	15	16.97	Dropdown Menu (Default)	passed	32	-
+delay	d4	warpdom	file	15	16.97	Dropdown Menu (forceVisible)	passed	39	-
+delay	d0	jsdom	file	16	16.97	Context Menu	passed	33	-
+delay	d0	jsdom	file	16	16.97	Dropdown Menu (Default)	passed	21	-
+delay	d0	jsdom	file	16	16.97	Dropdown Menu (forceVisible)	passed	24	-
+delay	d0	warpdom	file	16	16.74	Context Menu	failed	27	expected null not to be null
+delay	d0	warpdom	file	16	16.74	Dropdown Menu (Default)	passed	16	-
+delay	d0	warpdom	file	16	16.74	Dropdown Menu (forceVisible)	passed	23	-
+delay	d1	warpdom	file	16	16.12	Context Menu	passed	33	-
+delay	d1	warpdom	file	16	16.12	Dropdown Menu (Default)	passed	21	-
+delay	d1	warpdom	file	16	16.12	Dropdown Menu (forceVisible)	failed	1541	expected null not to be null
+delay	d2	warpdom	file	16	16.12	Context Menu	passed	36	-
+delay	d2	warpdom	file	16	16.12	Dropdown Menu (Default)	passed	25	-
+delay	d2	warpdom	file	16	16.12	Dropdown Menu (forceVisible)	passed	31	-
+delay	d4	warpdom	file	16	16.91	Context Menu	passed	50	-
+delay	d4	warpdom	file	16	16.91	Dropdown Menu (Default)	passed	33	-
+delay	d4	warpdom	file	16	16.91	Dropdown Menu (forceVisible)	passed	44	-
+delay	d0	jsdom	file	17	16.51	Context Menu	passed	31	-
+delay	d0	jsdom	file	17	16.51	Dropdown Menu (Default)	passed	20	-
+delay	d0	jsdom	file	17	16.51	Dropdown Menu (forceVisible)	passed	23	-
+delay	d0	warpdom	file	17	16.51	Context Menu	passed	25	-
+delay	d0	warpdom	file	17	16.51	Dropdown Menu (Default)	passed	17	-
+delay	d0	warpdom	file	17	16.51	Dropdown Menu (forceVisible)	passed	30	-
+delay	d1	warpdom	file	17	15.75	Context Menu	passed	33	-
+delay	d1	warpdom	file	17	15.75	Dropdown Menu (Default)	passed	21	-
+delay	d1	warpdom	file	17	15.75	Dropdown Menu (forceVisible)	passed	28	-
+delay	d2	warpdom	file	17	15.75	Context Menu	passed	39	-
+delay	d2	warpdom	file	17	15.75	Dropdown Menu (Default)	passed	24	-
+delay	d2	warpdom	file	17	15.75	Dropdown Menu (forceVisible)	passed	32	-
+delay	d4	warpdom	file	17	16.81	Context Menu	passed	49	-
+delay	d4	warpdom	file	17	16.81	Dropdown Menu (Default)	passed	32	-
+delay	d4	warpdom	file	17	16.81	Dropdown Menu (forceVisible)	passed	38	-
+delay	d0	jsdom	file	18	15.95	Context Menu	passed	30	-
+delay	d0	jsdom	file	18	15.95	Dropdown Menu (Default)	passed	23	-
+delay	d0	jsdom	file	18	15.95	Dropdown Menu (forceVisible)	passed	23	-
+delay	d0	warpdom	file	18	15.95	Context Menu	failed	27	expected null not to be null
+delay	d0	warpdom	file	18	15.95	Dropdown Menu (Default)	passed	17	-
+delay	d0	warpdom	file	18	15.95	Dropdown Menu (forceVisible)	passed	23	-
+delay	d1	warpdom	file	18	16.27	Context Menu	passed	32	-
+delay	d1	warpdom	file	18	16.27	Dropdown Menu (Default)	passed	18	-
+delay	d1	warpdom	file	18	16.27	Dropdown Menu (forceVisible)	failed	1536	expected null not to be null
+delay	d2	warpdom	file	18	16.73	Context Menu	passed	40	-
+delay	d2	warpdom	file	18	16.73	Dropdown Menu (Default)	passed	23	-
+delay	d2	warpdom	file	18	16.73	Dropdown Menu (forceVisible)	passed	36	-
+delay	d4	warpdom	file	18	16.73	Context Menu	passed	50	-
+delay	d4	warpdom	file	18	16.73	Dropdown Menu (Default)	passed	31	-
+delay	d4	warpdom	file	18	16.73	Dropdown Menu (forceVisible)	passed	38	-
+delay	d0	jsdom	file	19	15.87	Context Menu	passed	33	-
+delay	d0	jsdom	file	19	15.87	Dropdown Menu (Default)	passed	23	-
+delay	d0	jsdom	file	19	15.87	Dropdown Menu (forceVisible)	passed	23	-
+delay	d0	warpdom	file	19	15.08	Context Menu	failed	27	expected null not to be null
+delay	d0	warpdom	file	19	15.08	Dropdown Menu (Default)	passed	17	-
+delay	d0	warpdom	file	19	15.08	Dropdown Menu (forceVisible)	passed	21	-
+delay	d1	warpdom	file	19	15.08	Context Menu	passed	30	-
+delay	d1	warpdom	file	19	15.08	Dropdown Menu (Default)	passed	21	-
+delay	d1	warpdom	file	19	15.08	Dropdown Menu (forceVisible)	passed	23	-
+delay	d2	warpdom	file	19	16.19	Context Menu	passed	38	-
+delay	d2	warpdom	file	19	16.19	Dropdown Menu (Default)	passed	25	-
+delay	d2	warpdom	file	19	16.19	Dropdown Menu (forceVisible)	passed	32	-
+delay	d4	warpdom	file	19	16.19	Context Menu	passed	55	-
+delay	d4	warpdom	file	19	16.19	Dropdown Menu (Default)	passed	32	-
+delay	d4	warpdom	file	19	16.19	Dropdown Menu (forceVisible)	passed	36	-
+delay	d0	jsdom	file	20	17.38	Context Menu	passed	29	-
+delay	d0	jsdom	file	20	17.38	Dropdown Menu (Default)	passed	22	-
+delay	d0	jsdom	file	20	17.38	Dropdown Menu (forceVisible)	passed	23	-
+delay	d0	warpdom	file	20	16.79	Context Menu	failed	26	expected null not to be null
+delay	d0	warpdom	file	20	16.79	Dropdown Menu (Default)	passed	17	-
+delay	d0	warpdom	file	20	16.79	Dropdown Menu (forceVisible)	passed	23	-
+delay	d1	warpdom	file	20	16.08	Context Menu	passed	32	-
+delay	d1	warpdom	file	20	16.08	Dropdown Menu (Default)	passed	20	-
+delay	d1	warpdom	file	20	16.08	Dropdown Menu (forceVisible)	failed	1540	expected null not to be null
+delay	d2	warpdom	file	20	16.08	Context Menu	passed	36	-
+delay	d2	warpdom	file	20	16.08	Dropdown Menu (Default)	passed	25	-
+delay	d2	warpdom	file	20	16.08	Dropdown Menu (forceVisible)	passed	31	-
+delay	d4	warpdom	file	20	15.44	Context Menu	passed	50	-
+delay	d4	warpdom	file	20	15.44	Dropdown Menu (Default)	passed	33	-
+delay	d4	warpdom	file	20	15.44	Dropdown Menu (forceVisible)	passed	35	-
+raf	r8	jsdom	file	1	10.88	Context Menu	passed	30	-
+raf	r8	jsdom	file	1	10.88	Dropdown Menu (Default)	passed	22	-
+raf	r8	jsdom	file	1	10.88	Dropdown Menu (forceVisible)	passed	23	-
+raf	r8	warpdom	file	1	10.88	Context Menu	passed	26	-
+raf	r8	warpdom	file	1	10.88	Dropdown Menu (Default)	passed	15	-
+raf	r8	warpdom	file	1	10.88	Dropdown Menu (forceVisible)	passed	21	-
+raf	r24	jsdom	file	1	10.49	Context Menu	passed	31	-
+raf	r24	jsdom	file	1	10.49	Dropdown Menu (Default)	passed	21	-
+raf	r24	jsdom	file	1	10.49	Dropdown Menu (forceVisible)	passed	19	-
+raf	r24	warpdom	file	1	12.37	Context Menu	passed	27	-
+raf	r24	warpdom	file	1	12.37	Dropdown Menu (Default)	passed	17	-
+raf	r24	warpdom	file	1	12.37	Dropdown Menu (forceVisible)	passed	29	-
+raf	r32	jsdom	file	1	12.37	Context Menu	passed	31	-
+raf	r32	jsdom	file	1	12.37	Dropdown Menu (Default)	passed	23	-
+raf	r32	jsdom	file	1	12.37	Dropdown Menu (forceVisible)	passed	19	-
+raf	r32	warpdom	file	1	14.82	Context Menu	passed	22	-
+raf	r32	warpdom	file	1	14.82	Dropdown Menu (Default)	passed	17	-
+raf	r32	warpdom	file	1	14.82	Dropdown Menu (forceVisible)	passed	19	-
+raf	r48	jsdom	file	1	15.80	Context Menu	passed	26	-
+raf	r48	jsdom	file	1	15.80	Dropdown Menu (Default)	passed	21	-
+raf	r48	jsdom	file	1	15.80	Dropdown Menu (forceVisible)	passed	22	-
+raf	r48	warpdom	file	1	15.80	Context Menu	passed	26	-
+raf	r48	warpdom	file	1	15.80	Dropdown Menu (Default)	passed	17	-
+raf	r48	warpdom	file	1	15.80	Dropdown Menu (forceVisible)	passed	28	-
+raf	r8	jsdom	file	2	15.09	Context Menu	passed	31	-
+raf	r8	jsdom	file	2	15.09	Dropdown Menu (Default)	passed	20	-
+raf	r8	jsdom	file	2	15.09	Dropdown Menu (forceVisible)	passed	22	-
+raf	r8	warpdom	file	2	15.09	Context Menu	passed	26	-
+raf	r8	warpdom	file	2	15.09	Dropdown Menu (Default)	passed	16	-
+raf	r8	warpdom	file	2	15.09	Dropdown Menu (forceVisible)	passed	21	-
+raf	r24	jsdom	file	2	14.28	Context Menu	passed	31	-
+raf	r24	jsdom	file	2	14.28	Dropdown Menu (Default)	passed	19	-
+raf	r24	jsdom	file	2	14.28	Dropdown Menu (forceVisible)	passed	22	-
+raf	r24	warpdom	file	2	13.62	Context Menu	passed	25	-
+raf	r24	warpdom	file	2	13.62	Dropdown Menu (Default)	passed	15	-
+raf	r24	warpdom	file	2	13.62	Dropdown Menu (forceVisible)	passed	26	-
+raf	r32	jsdom	file	2	13.62	Context Menu	passed	31	-
+raf	r32	jsdom	file	2	13.62	Dropdown Menu (Default)	passed	22	-
+raf	r32	jsdom	file	2	13.62	Dropdown Menu (forceVisible)	passed	24	-
+raf	r32	warpdom	file	2	13.33	Context Menu	passed	22	-
+raf	r32	warpdom	file	2	13.33	Dropdown Menu (Default)	passed	17	-
+raf	r32	warpdom	file	2	13.33	Dropdown Menu (forceVisible)	passed	16	-
+raf	r48	jsdom	file	2	13.14	Context Menu	passed	25	-
+raf	r48	jsdom	file	2	13.14	Dropdown Menu (Default)	passed	21	-
+raf	r48	jsdom	file	2	13.14	Dropdown Menu (forceVisible)	passed	17	-
+raf	r48	warpdom	file	2	13.14	Context Menu	passed	25	-
+raf	r48	warpdom	file	2	13.14	Dropdown Menu (Default)	passed	16	-
+raf	r48	warpdom	file	2	13.14	Dropdown Menu (forceVisible)	passed	23	-
+raf	r8	jsdom	file	3	12.89	Context Menu	passed	33	-
+raf	r8	jsdom	file	3	12.89	Dropdown Menu (Default)	passed	30	-
+raf	r8	jsdom	file	3	12.89	Dropdown Menu (forceVisible)	passed	23	-
+raf	r8	warpdom	file	3	12.89	Context Menu	passed	25	-
+raf	r8	warpdom	file	3	12.89	Dropdown Menu (Default)	passed	16	-
+raf	r8	warpdom	file	3	12.89	Dropdown Menu (forceVisible)	passed	23	-
+raf	r24	jsdom	file	3	12.34	Context Menu	passed	29	-
+raf	r24	jsdom	file	3	12.34	Dropdown Menu (Default)	passed	22	-
+raf	r24	jsdom	file	3	12.34	Dropdown Menu (forceVisible)	passed	22	-
+raf	r24	warpdom	file	3	12.23	Context Menu	passed	27	-
+raf	r24	warpdom	file	3	12.23	Dropdown Menu (Default)	passed	17	-
+raf	r24	warpdom	file	3	12.23	Dropdown Menu (forceVisible)	passed	25	-
+raf	r32	jsdom	file	3	12.23	Context Menu	passed	29	-
+raf	r32	jsdom	file	3	12.23	Dropdown Menu (Default)	passed	21	-
+raf	r32	jsdom	file	3	12.23	Dropdown Menu (forceVisible)	passed	18	-
+raf	r32	warpdom	file	3	14.38	Context Menu	passed	20	-
+raf	r32	warpdom	file	3	14.38	Dropdown Menu (Default)	passed	14	-
+raf	r32	warpdom	file	3	14.38	Dropdown Menu (forceVisible)	passed	14	-
+raf	r48	jsdom	file	3	13.70	Context Menu	passed	26	-
+raf	r48	jsdom	file	3	13.70	Dropdown Menu (Default)	passed	22	-
+raf	r48	jsdom	file	3	13.70	Dropdown Menu (forceVisible)	passed	19	-
+raf	r48	warpdom	file	3	13.70	Context Menu	passed	24	-
+raf	r48	warpdom	file	3	13.70	Dropdown Menu (Default)	passed	15	-
+raf	r48	warpdom	file	3	13.70	Dropdown Menu (forceVisible)	passed	22	-
+raf	r8	jsdom	file	4	13.17	Context Menu	passed	31	-
+raf	r8	jsdom	file	4	13.17	Dropdown Menu (Default)	passed	24	-
+raf	r8	jsdom	file	4	13.17	Dropdown Menu (forceVisible)	passed	21	-
+raf	r8	warpdom	file	4	12.43	Context Menu	passed	24	-
+raf	r8	warpdom	file	4	12.43	Dropdown Menu (Default)	passed	17	-
+raf	r8	warpdom	file	4	12.43	Dropdown Menu (forceVisible)	passed	23	-
+raf	r24	jsdom	file	4	12.43	Context Menu	passed	31	-
+raf	r24	jsdom	file	4	12.43	Dropdown Menu (Default)	passed	21	-
+raf	r24	jsdom	file	4	12.43	Dropdown Menu (forceVisible)	passed	22	-
+raf	r24	warpdom	file	4	12.00	Context Menu	passed	27	-
+raf	r24	warpdom	file	4	12.00	Dropdown Menu (Default)	passed	18	-
+raf	r24	warpdom	file	4	12.00	Dropdown Menu (forceVisible)	failed	1533	expected null not to be null
+raf	r32	jsdom	file	4	11.60	Context Menu	passed	32	-
+raf	r32	jsdom	file	4	11.60	Dropdown Menu (Default)	passed	22	-
+raf	r32	jsdom	file	4	11.60	Dropdown Menu (forceVisible)	passed	17	-
+raf	r32	warpdom	file	4	11.60	Context Menu	passed	22	-
+raf	r32	warpdom	file	4	11.60	Dropdown Menu (Default)	passed	16	-
+raf	r32	warpdom	file	4	11.60	Dropdown Menu (forceVisible)	passed	20	-
+raf	r48	jsdom	file	4	11.07	Context Menu	passed	26	-
+raf	r48	jsdom	file	4	11.07	Dropdown Menu (Default)	passed	21	-
+raf	r48	jsdom	file	4	11.07	Dropdown Menu (forceVisible)	passed	19	-
+raf	r48	warpdom	file	4	10.66	Context Menu	passed	26	-
+raf	r48	warpdom	file	4	10.66	Dropdown Menu (Default)	passed	16	-
+raf	r48	warpdom	file	4	10.66	Dropdown Menu (forceVisible)	passed	24	-
+raf	r8	jsdom	file	5	10.66	Context Menu	passed	32	-
+raf	r8	jsdom	file	5	10.66	Dropdown Menu (Default)	passed	20	-
+raf	r8	jsdom	file	5	10.66	Dropdown Menu (forceVisible)	passed	22	-
+raf	r8	warpdom	file	5	11.01	Context Menu	passed	25	-
+raf	r8	warpdom	file	5	11.01	Dropdown Menu (Default)	passed	16	-
+raf	r8	warpdom	file	5	11.01	Dropdown Menu (forceVisible)	passed	21	-
+raf	r24	jsdom	file	5	10.45	Context Menu	passed	31	-
+raf	r24	jsdom	file	5	10.45	Dropdown Menu (Default)	passed	20	-
+raf	r24	jsdom	file	5	10.45	Dropdown Menu (forceVisible)	passed	21	-
+raf	r24	warpdom	file	5	10.45	Context Menu	passed	23	-
+raf	r24	warpdom	file	5	10.45	Dropdown Menu (Default)	passed	15	-
+raf	r24	warpdom	file	5	10.45	Dropdown Menu (forceVisible)	passed	23	-
+raf	r32	jsdom	file	5	11.77	Context Menu	passed	32	-
+raf	r32	jsdom	file	5	11.77	Dropdown Menu (Default)	passed	17	-
+raf	r32	jsdom	file	5	11.77	Dropdown Menu (forceVisible)	passed	18	-
+raf	r32	warpdom	file	5	11.07	Context Menu	passed	20	-
+raf	r32	warpdom	file	5	11.07	Dropdown Menu (Default)	passed	16	-
+raf	r32	warpdom	file	5	11.07	Dropdown Menu (forceVisible)	passed	16	-
+raf	r48	jsdom	file	5	11.07	Context Menu	passed	25	-
+raf	r48	jsdom	file	5	11.07	Dropdown Menu (Default)	passed	21	-
+raf	r48	jsdom	file	5	11.07	Dropdown Menu (forceVisible)	passed	20	-
+raf	r48	warpdom	file	5	11.55	Context Menu	passed	26	-
+raf	r48	warpdom	file	5	11.55	Dropdown Menu (Default)	passed	16	-
+raf	r48	warpdom	file	5	11.55	Dropdown Menu (forceVisible)	passed	24	-
+raf	r8	jsdom	file	6	13.42	Context Menu	passed	30	-
+raf	r8	jsdom	file	6	13.42	Dropdown Menu (Default)	passed	22	-
+raf	r8	jsdom	file	6	13.42	Dropdown Menu (forceVisible)	passed	24	-
+raf	r8	warpdom	file	6	13.42	Context Menu	passed	25	-
+raf	r8	warpdom	file	6	13.42	Dropdown Menu (Default)	passed	16	-
+raf	r8	warpdom	file	6	13.42	Dropdown Menu (forceVisible)	passed	21	-
+raf	r24	jsdom	file	6	12.67	Context Menu	failed	43	expected null not to be null
+raf	r24	jsdom	file	6	12.67	Dropdown Menu (Default)	passed	22	-
+raf	r24	jsdom	file	6	12.67	Dropdown Menu (forceVisible)	passed	22	-
+raf	r24	warpdom	file	6	12.67	Context Menu	passed	25	-
+raf	r24	warpdom	file	6	12.67	Dropdown Menu (Default)	passed	16	-
+raf	r24	warpdom	file	6	12.67	Dropdown Menu (forceVisible)	passed	25	-
+raf	r32	jsdom	file	6	12.05	Context Menu	passed	31	-
+raf	r32	jsdom	file	6	12.05	Dropdown Menu (Default)	passed	22	-
+raf	r32	jsdom	file	6	12.05	Dropdown Menu (forceVisible)	failed	1531	expected null not to be null
+raf	r32	warpdom	file	6	15.01	Context Menu	passed	22	-
+raf	r32	warpdom	file	6	15.01	Dropdown Menu (Default)	passed	15	-
+raf	r32	warpdom	file	6	15.01	Dropdown Menu (forceVisible)	passed	16	-
+raf	r48	jsdom	file	6	14.29	Context Menu	passed	27	-
+raf	r48	jsdom	file	6	14.29	Dropdown Menu (Default)	passed	21	-
+raf	r48	jsdom	file	6	14.29	Dropdown Menu (forceVisible)	passed	18	-
+raf	r48	warpdom	file	6	14.29	Context Menu	passed	26	-
+raf	r48	warpdom	file	6	14.29	Dropdown Menu (Default)	passed	15	-
+raf	r48	warpdom	file	6	14.29	Dropdown Menu (forceVisible)	passed	24	-
+raf	r8	jsdom	file	7	13.55	Context Menu	passed	31	-
+raf	r8	jsdom	file	7	13.55	Dropdown Menu (Default)	passed	20	-
+raf	r8	jsdom	file	7	13.55	Dropdown Menu (forceVisible)	passed	23	-
+raf	r8	warpdom	file	7	13.55	Context Menu	passed	26	-
+raf	r8	warpdom	file	7	13.55	Dropdown Menu (Default)	passed	16	-
+raf	r8	warpdom	file	7	13.55	Dropdown Menu (forceVisible)	passed	19	-
+raf	r24	jsdom	file	7	13.98	Context Menu	passed	30	-
+raf	r24	jsdom	file	7	13.98	Dropdown Menu (Default)	passed	18	-
+raf	r24	jsdom	file	7	13.98	Dropdown Menu (forceVisible)	passed	21	-
+raf	r24	warpdom	file	7	13.42	Context Menu	passed	25	-
+raf	r24	warpdom	file	7	13.42	Dropdown Menu (Default)	passed	13	-
+raf	r24	warpdom	file	7	13.42	Dropdown Menu (forceVisible)	passed	27	-
+raf	r32	jsdom	file	7	13.42	Context Menu	passed	32	-
+raf	r32	jsdom	file	7	13.42	Dropdown Menu (Default)	passed	22	-
+raf	r32	jsdom	file	7	13.42	Dropdown Menu (forceVisible)	passed	15	-
+raf	r32	warpdom	file	7	13.79	Context Menu	passed	20	-
+raf	r32	warpdom	file	7	13.79	Dropdown Menu (Default)	passed	16	-
+raf	r32	warpdom	file	7	13.79	Dropdown Menu (forceVisible)	passed	19	-
+raf	r48	jsdom	file	7	12.93	Context Menu	passed	27	-
+raf	r48	jsdom	file	7	12.93	Dropdown Menu (Default)	passed	21	-
+raf	r48	jsdom	file	7	12.93	Dropdown Menu (forceVisible)	passed	18	-
+raf	r48	warpdom	file	7	12.93	Context Menu	passed	26	-
+raf	r48	warpdom	file	7	12.93	Dropdown Menu (Default)	passed	17	-
+raf	r48	warpdom	file	7	12.93	Dropdown Menu (forceVisible)	passed	24	-
+raf	r8	jsdom	file	8	12.69	Context Menu	passed	31	-
+raf	r8	jsdom	file	8	12.69	Dropdown Menu (Default)	passed	23	-
+raf	r8	jsdom	file	8	12.69	Dropdown Menu (forceVisible)	passed	23	-
+raf	r8	warpdom	file	8	11.83	Context Menu	passed	29	-
+raf	r8	warpdom	file	8	11.83	Dropdown Menu (Default)	passed	20	-
+raf	r8	warpdom	file	8	11.83	Dropdown Menu (forceVisible)	passed	21	-
+raf	r24	jsdom	file	8	11.83	Context Menu	passed	32	-
+raf	r24	jsdom	file	8	11.83	Dropdown Menu (Default)	passed	22	-
+raf	r24	jsdom	file	8	11.83	Dropdown Menu (forceVisible)	passed	23	-
+raf	r24	warpdom	file	8	12.89	Context Menu	passed	25	-
+raf	r24	warpdom	file	8	12.89	Dropdown Menu (Default)	passed	17	-
+raf	r24	warpdom	file	8	12.89	Dropdown Menu (forceVisible)	passed	14	-
+raf	r32	jsdom	file	8	12.10	Context Menu	passed	32	-
+raf	r32	jsdom	file	8	12.10	Dropdown Menu (Default)	passed	22	-
+raf	r32	jsdom	file	8	12.10	Dropdown Menu (forceVisible)	passed	19	-
+raf	r32	warpdom	file	8	12.10	Context Menu	passed	22	-
+raf	r32	warpdom	file	8	12.10	Dropdown Menu (Default)	passed	17	-
+raf	r32	warpdom	file	8	12.10	Dropdown Menu (forceVisible)	passed	15	-
+raf	r48	jsdom	file	8	11.53	Context Menu	passed	28	-
+raf	r48	jsdom	file	8	11.53	Dropdown Menu (Default)	passed	20	-
+raf	r48	jsdom	file	8	11.53	Dropdown Menu (forceVisible)	passed	25	-
+raf	r48	warpdom	file	8	11.53	Context Menu	passed	27	-
+raf	r48	warpdom	file	8	11.53	Dropdown Menu (Default)	passed	15	-
+raf	r48	warpdom	file	8	11.53	Dropdown Menu (forceVisible)	passed	21	-
+raf	r8	jsdom	file	9	11.01	Context Menu	passed	33	-
+raf	r8	jsdom	file	9	11.01	Dropdown Menu (Default)	passed	21	-
+raf	r8	jsdom	file	9	11.01	Dropdown Menu (forceVisible)	passed	23	-
+raf	r8	warpdom	file	9	10.92	Context Menu	passed	26	-
+raf	r8	warpdom	file	9	10.92	Dropdown Menu (Default)	passed	16	-
+raf	r8	warpdom	file	9	10.92	Dropdown Menu (forceVisible)	passed	21	-
+raf	r24	jsdom	file	9	10.92	Context Menu	passed	32	-
+raf	r24	jsdom	file	9	10.92	Dropdown Menu (Default)	passed	23	-
+raf	r24	jsdom	file	9	10.92	Dropdown Menu (forceVisible)	passed	25	-
+raf	r24	warpdom	file	9	12.29	Context Menu	passed	26	-
+raf	r24	warpdom	file	9	12.29	Dropdown Menu (Default)	passed	17	-
+raf	r24	warpdom	file	9	12.29	Dropdown Menu (forceVisible)	passed	24	-
+raf	r32	jsdom	file	9	11.63	Context Menu	passed	30	-
+raf	r32	jsdom	file	9	11.63	Dropdown Menu (Default)	passed	20	-
+raf	r32	jsdom	file	9	11.63	Dropdown Menu (forceVisible)	passed	16	-
+raf	r32	warpdom	file	9	11.63	Context Menu	failed	26	expected null not to be null
+raf	r32	warpdom	file	9	11.63	Dropdown Menu (Default)	passed	17	-
+raf	r32	warpdom	file	9	11.63	Dropdown Menu (forceVisible)	passed	17	-
+raf	r48	jsdom	file	9	10.86	Context Menu	passed	26	-
+raf	r48	jsdom	file	9	10.86	Dropdown Menu (Default)	passed	22	-
+raf	r48	jsdom	file	9	10.86	Dropdown Menu (forceVisible)	passed	23	-
+raf	r48	warpdom	file	9	10.39	Context Menu	passed	23	-
+raf	r48	warpdom	file	9	10.39	Dropdown Menu (Default)	passed	17	-
+raf	r48	warpdom	file	9	10.39	Dropdown Menu (forceVisible)	passed	28	-
+raf	r8	jsdom	file	10	10.39	Context Menu	passed	33	-
+raf	r8	jsdom	file	10	10.39	Dropdown Menu (Default)	passed	21	-
+raf	r8	jsdom	file	10	10.39	Dropdown Menu (forceVisible)	passed	23	-
+raf	r8	warpdom	file	10	9.88	Context Menu	passed	26	-
+raf	r8	warpdom	file	10	9.88	Dropdown Menu (Default)	passed	16	-
+raf	r8	warpdom	file	10	9.88	Dropdown Menu (forceVisible)	passed	22	-
+raf	r24	jsdom	file	10	9.88	Context Menu	passed	32	-
+raf	r24	jsdom	file	10	9.88	Dropdown Menu (Default)	passed	23	-
+raf	r24	jsdom	file	10	9.88	Dropdown Menu (forceVisible)	passed	24	-
+raf	r24	warpdom	file	10	10.37	Context Menu	passed	26	-
+raf	r24	warpdom	file	10	10.37	Dropdown Menu (Default)	passed	17	-
+raf	r24	warpdom	file	10	10.37	Dropdown Menu (forceVisible)	failed	1525	expected null not to be null
+raf	r32	jsdom	file	10	10.18	Context Menu	passed	33	-
+raf	r32	jsdom	file	10	10.18	Dropdown Menu (Default)	passed	21	-
+raf	r32	jsdom	file	10	10.18	Dropdown Menu (forceVisible)	passed	16	-
+raf	r32	warpdom	file	10	9.76	Context Menu	passed	22	-
+raf	r32	warpdom	file	10	9.76	Dropdown Menu (Default)	passed	17	-
+raf	r32	warpdom	file	10	9.76	Dropdown Menu (forceVisible)	passed	16	-
+raf	r48	jsdom	file	10	9.76	Context Menu	passed	27	-
+raf	r48	jsdom	file	10	9.76	Dropdown Menu (Default)	passed	24	-
+raf	r48	jsdom	file	10	9.76	Dropdown Menu (forceVisible)	passed	24	-
+raf	r48	warpdom	file	10	12.18	Context Menu	passed	25	-
+raf	r48	warpdom	file	10	12.18	Dropdown Menu (Default)	passed	14	-
+raf	r48	warpdom	file	10	12.18	Dropdown Menu (forceVisible)	passed	21	-
+raf	r8	jsdom	file	11	11.37	Context Menu	passed	32	-
+raf	r8	jsdom	file	11	11.37	Dropdown Menu (Default)	passed	22	-
+raf	r8	jsdom	file	11	11.37	Dropdown Menu (forceVisible)	passed	22	-
+raf	r8	warpdom	file	11	11.37	Context Menu	passed	26	-
+raf	r8	warpdom	file	11	11.37	Dropdown Menu (Default)	passed	17	-
+raf	r8	warpdom	file	11	11.37	Dropdown Menu (forceVisible)	passed	23	-
+raf	r24	jsdom	file	11	15.02	Context Menu	passed	33	-
+raf	r24	jsdom	file	11	15.02	Dropdown Menu (Default)	passed	21	-
+raf	r24	jsdom	file	11	15.02	Dropdown Menu (forceVisible)	passed	21	-
+raf	r24	warpdom	file	11	14.86	Context Menu	passed	27	-
+raf	r24	warpdom	file	11	14.86	Dropdown Menu (Default)	passed	15	-
+raf	r24	warpdom	file	11	14.86	Dropdown Menu (forceVisible)	failed	1531	expected null not to be null
+raf	r32	jsdom	file	11	13.91	Context Menu	passed	33	-
+raf	r32	jsdom	file	11	13.91	Dropdown Menu (Default)	passed	23	-
+raf	r32	jsdom	file	11	13.91	Dropdown Menu (forceVisible)	passed	17	-
+raf	r32	warpdom	file	11	13.91	Context Menu	passed	21	-
+raf	r32	warpdom	file	11	13.91	Dropdown Menu (Default)	passed	15	-
+raf	r32	warpdom	file	11	13.91	Dropdown Menu (forceVisible)	passed	16	-
+raf	r48	jsdom	file	11	13.28	Context Menu	passed	26	-
+raf	r48	jsdom	file	11	13.28	Dropdown Menu (Default)	passed	23	-
+raf	r48	jsdom	file	11	13.28	Dropdown Menu (forceVisible)	passed	19	-
+raf	r48	warpdom	file	11	13.28	Context Menu	passed	26	-
+raf	r48	warpdom	file	11	13.28	Dropdown Menu (Default)	passed	15	-
+raf	r48	warpdom	file	11	13.28	Dropdown Menu (forceVisible)	passed	18	-
+raf	r8	jsdom	file	12	13.17	Context Menu	passed	31	-
+raf	r8	jsdom	file	12	13.17	Dropdown Menu (Default)	passed	21	-
+raf	r8	jsdom	file	12	13.17	Dropdown Menu (forceVisible)	passed	24	-
+raf	r8	warpdom	file	12	12.52	Context Menu	passed	26	-
+raf	r8	warpdom	file	12	12.52	Dropdown Menu (Default)	passed	15	-
+raf	r8	warpdom	file	12	12.52	Dropdown Menu (forceVisible)	passed	24	-
+raf	r24	jsdom	file	12	12.52	Context Menu	passed	30	-
+raf	r24	jsdom	file	12	12.52	Dropdown Menu (Default)	passed	22	-
+raf	r24	jsdom	file	12	12.52	Dropdown Menu (forceVisible)	passed	24	-
+raf	r24	warpdom	file	12	14.24	Context Menu	passed	26	-
+raf	r24	warpdom	file	12	14.24	Dropdown Menu (Default)	passed	17	-
+raf	r24	warpdom	file	12	14.24	Dropdown Menu (forceVisible)	passed	22	-
+raf	r32	jsdom	file	12	13.42	Context Menu	passed	40	-
+raf	r32	jsdom	file	12	13.42	Dropdown Menu (Default)	passed	22	-
+raf	r32	jsdom	file	12	13.42	Dropdown Menu (forceVisible)	passed	17	-
+raf	r32	warpdom	file	12	13.42	Context Menu	passed	22	-
+raf	r32	warpdom	file	12	13.42	Dropdown Menu (Default)	passed	14	-
+raf	r32	warpdom	file	12	13.42	Dropdown Menu (forceVisible)	passed	17	-
+raf	r48	jsdom	file	12	12.90	Context Menu	passed	27	-
+raf	r48	jsdom	file	12	12.90	Dropdown Menu (Default)	passed	19	-
+raf	r48	jsdom	file	12	12.90	Dropdown Menu (forceVisible)	passed	23	-
+raf	r48	warpdom	file	12	13.23	Context Menu	passed	23	-
+raf	r48	warpdom	file	12	13.23	Dropdown Menu (Default)	passed	17	-
+raf	r48	warpdom	file	12	13.23	Dropdown Menu (forceVisible)	passed	27	-
+raf	r8	jsdom	file	13	13.23	Context Menu	passed	32	-
+raf	r8	jsdom	file	13	13.23	Dropdown Menu (Default)	passed	19	-
+raf	r8	jsdom	file	13	13.23	Dropdown Menu (forceVisible)	passed	21	-
+raf	r8	warpdom	file	13	12.57	Context Menu	passed	26	-
+raf	r8	warpdom	file	13	12.57	Dropdown Menu (Default)	passed	16	-
+raf	r8	warpdom	file	13	12.57	Dropdown Menu (forceVisible)	passed	20	-
+raf	r24	jsdom	file	13	12.57	Context Menu	passed	31	-
+raf	r24	jsdom	file	13	12.57	Dropdown Menu (Default)	passed	22	-
+raf	r24	jsdom	file	13	12.57	Dropdown Menu (forceVisible)	passed	22	-
+raf	r24	warpdom	file	13	12.69	Context Menu	passed	26	-
+raf	r24	warpdom	file	13	12.69	Dropdown Menu (Default)	passed	15	-
+raf	r24	warpdom	file	13	12.69	Dropdown Menu (forceVisible)	passed	23	-
+raf	r32	jsdom	file	13	11.99	Context Menu	passed	31	-
+raf	r32	jsdom	file	13	11.99	Dropdown Menu (Default)	passed	23	-
+raf	r32	jsdom	file	13	11.99	Dropdown Menu (forceVisible)	passed	19	-
+raf	r32	warpdom	file	13	11.99	Context Menu	passed	22	-
+raf	r32	warpdom	file	13	11.99	Dropdown Menu (Default)	passed	17	-
+raf	r32	warpdom	file	13	11.99	Dropdown Menu (forceVisible)	passed	18	-
+raf	r48	jsdom	file	13	14.87	Context Menu	passed	24	-
+raf	r48	jsdom	file	13	14.87	Dropdown Menu (Default)	passed	21	-
+raf	r48	jsdom	file	13	14.87	Dropdown Menu (forceVisible)	passed	18	-
+raf	r48	warpdom	file	13	14.64	Context Menu	passed	26	-
+raf	r48	warpdom	file	13	14.64	Dropdown Menu (Default)	passed	15	-
+raf	r48	warpdom	file	13	14.64	Dropdown Menu (forceVisible)	passed	25	-
+raf	r8	jsdom	file	14	14.64	Context Menu	passed	31	-
+raf	r8	jsdom	file	14	14.64	Dropdown Menu (Default)	passed	22	-
+raf	r8	jsdom	file	14	14.64	Dropdown Menu (forceVisible)	passed	22	-
+raf	r8	warpdom	file	14	14.43	Context Menu	passed	24	-
+raf	r8	warpdom	file	14	14.43	Dropdown Menu (Default)	passed	14	-
+raf	r8	warpdom	file	14	14.43	Dropdown Menu (forceVisible)	passed	22	-
+raf	r24	jsdom	file	14	14.43	Context Menu	passed	30	-
+raf	r24	jsdom	file	14	14.43	Dropdown Menu (Default)	passed	18	-
+raf	r24	jsdom	file	14	14.43	Dropdown Menu (forceVisible)	passed	20	-
+raf	r24	warpdom	file	14	13.76	Context Menu	passed	27	-
+raf	r24	warpdom	file	14	13.76	Dropdown Menu (Default)	passed	17	-
+raf	r24	warpdom	file	14	13.76	Dropdown Menu (forceVisible)	passed	25	-
+raf	r32	jsdom	file	14	12.97	Context Menu	passed	31	-
+raf	r32	jsdom	file	14	12.97	Dropdown Menu (Default)	passed	22	-
+raf	r32	jsdom	file	14	12.97	Dropdown Menu (forceVisible)	passed	17	-
+raf	r32	warpdom	file	14	12.97	Context Menu	passed	21	-
+raf	r32	warpdom	file	14	12.97	Dropdown Menu (Default)	passed	15	-
+raf	r32	warpdom	file	14	12.97	Dropdown Menu (forceVisible)	passed	17	-
+raf	r48	jsdom	file	14	12.42	Context Menu	passed	26	-
+raf	r48	jsdom	file	14	12.42	Dropdown Menu (Default)	passed	22	-
+raf	r48	jsdom	file	14	12.42	Dropdown Menu (forceVisible)	passed	18	-
+raf	r48	warpdom	file	14	14.38	Context Menu	passed	27	-
+raf	r48	warpdom	file	14	14.38	Dropdown Menu (Default)	passed	17	-
+raf	r48	warpdom	file	14	14.38	Dropdown Menu (forceVisible)	passed	26	-
+raf	r8	jsdom	file	15	14.38	Context Menu	passed	32	-
+raf	r8	jsdom	file	15	14.38	Dropdown Menu (Default)	passed	20	-
+raf	r8	jsdom	file	15	14.38	Dropdown Menu (forceVisible)	passed	24	-
+raf	r8	warpdom	file	15	16.92	Context Menu	passed	26	-
+raf	r8	warpdom	file	15	16.92	Dropdown Menu (Default)	passed	17	-
+raf	r8	warpdom	file	15	16.92	Dropdown Menu (forceVisible)	passed	23	-
+raf	r24	jsdom	file	15	18.20	Context Menu	passed	31	-
+raf	r24	jsdom	file	15	18.20	Dropdown Menu (Default)	passed	19	-
+raf	r24	jsdom	file	15	18.20	Dropdown Menu (forceVisible)	passed	24	-
+raf	r24	warpdom	file	15	21.79	Context Menu	passed	26	-
+raf	r24	warpdom	file	15	21.79	Dropdown Menu (Default)	passed	16	-
+raf	r24	warpdom	file	15	21.79	Dropdown Menu (forceVisible)	failed	1532	expected null not to be null
+raf	r32	jsdom	file	15	21.79	Context Menu	passed	33	-
+raf	r32	jsdom	file	15	21.79	Dropdown Menu (Default)	passed	22	-
+raf	r32	jsdom	file	15	21.79	Dropdown Menu (forceVisible)	passed	19	-
+raf	r32	warpdom	file	15	21.25	Context Menu	passed	22	-
+raf	r32	warpdom	file	15	21.25	Dropdown Menu (Default)	passed	16	-
+raf	r32	warpdom	file	15	21.25	Dropdown Menu (forceVisible)	passed	17	-
+raf	r48	jsdom	file	15	19.86	Context Menu	passed	28	-
+raf	r48	jsdom	file	15	19.86	Dropdown Menu (Default)	passed	21	-
+raf	r48	jsdom	file	15	19.86	Dropdown Menu (forceVisible)	passed	19	-
+raf	r48	warpdom	file	15	19.86	Context Menu	passed	23	-
+raf	r48	warpdom	file	15	19.86	Dropdown Menu (Default)	passed	16	-
+raf	r48	warpdom	file	15	19.86	Dropdown Menu (forceVisible)	passed	27	-
+raf	r8	jsdom	file	16	18.59	Context Menu	passed	31	-
+raf	r8	jsdom	file	16	18.59	Dropdown Menu (Default)	passed	22	-
+raf	r8	jsdom	file	16	18.59	Dropdown Menu (forceVisible)	passed	23	-
+raf	r8	warpdom	file	16	18.59	Context Menu	passed	26	-
+raf	r8	warpdom	file	16	18.59	Dropdown Menu (Default)	passed	16	-
+raf	r8	warpdom	file	16	18.59	Dropdown Menu (forceVisible)	passed	21	-
+raf	r24	jsdom	file	16	17.35	Context Menu	passed	30	-
+raf	r24	jsdom	file	16	17.35	Dropdown Menu (Default)	passed	22	-
+raf	r24	jsdom	file	16	17.35	Dropdown Menu (forceVisible)	passed	22	-
+raf	r24	warpdom	file	16	17.80	Context Menu	passed	26	-
+raf	r24	warpdom	file	16	17.80	Dropdown Menu (Default)	passed	14	-
+raf	r24	warpdom	file	16	17.80	Dropdown Menu (forceVisible)	passed	23	-
+raf	r32	jsdom	file	16	16.61	Context Menu	passed	31	-
+raf	r32	jsdom	file	16	16.61	Dropdown Menu (Default)	passed	19	-
+raf	r32	jsdom	file	16	16.61	Dropdown Menu (forceVisible)	failed	1530	expected null not to be null
+raf	r32	warpdom	file	16	16.61	Context Menu	passed	21	-
+raf	r32	warpdom	file	16	16.61	Dropdown Menu (Default)	passed	16	-
+raf	r32	warpdom	file	16	16.61	Dropdown Menu (forceVisible)	passed	18	-
+raf	r48	jsdom	file	16	15.92	Context Menu	passed	25	-
+raf	r48	jsdom	file	16	15.92	Dropdown Menu (Default)	passed	21	-
+raf	r48	jsdom	file	16	15.92	Dropdown Menu (forceVisible)	passed	18	-
+raf	r48	warpdom	file	16	15.05	Context Menu	passed	26	-
+raf	r48	warpdom	file	16	15.05	Dropdown Menu (Default)	passed	16	-
+raf	r48	warpdom	file	16	15.05	Dropdown Menu (forceVisible)	passed	21	-
+raf	r8	jsdom	file	17	15.05	Context Menu	passed	31	-
+raf	r8	jsdom	file	17	15.05	Dropdown Menu (Default)	passed	22	-
+raf	r8	jsdom	file	17	15.05	Dropdown Menu (forceVisible)	passed	20	-
+raf	r8	warpdom	file	17	14.72	Context Menu	passed	27	-
+raf	r8	warpdom	file	17	14.72	Dropdown Menu (Default)	passed	17	-
+raf	r8	warpdom	file	17	14.72	Dropdown Menu (forceVisible)	passed	22	-
+raf	r24	jsdom	file	17	13.78	Context Menu	passed	31	-
+raf	r24	jsdom	file	17	13.78	Dropdown Menu (Default)	passed	21	-
+raf	r24	jsdom	file	17	13.78	Dropdown Menu (forceVisible)	passed	21	-
+raf	r24	warpdom	file	17	13.78	Context Menu	passed	26	-
+raf	r24	warpdom	file	17	13.78	Dropdown Menu (Default)	passed	17	-
+raf	r24	warpdom	file	17	13.78	Dropdown Menu (forceVisible)	passed	24	-
+raf	r32	jsdom	file	17	12.92	Context Menu	passed	30	-
+raf	r32	jsdom	file	17	12.92	Dropdown Menu (Default)	passed	22	-
+raf	r32	jsdom	file	17	12.92	Dropdown Menu (forceVisible)	passed	18	-
+raf	r32	warpdom	file	17	12.92	Context Menu	passed	21	-
+raf	r32	warpdom	file	17	12.92	Dropdown Menu (Default)	passed	17	-
+raf	r32	warpdom	file	17	12.92	Dropdown Menu (forceVisible)	passed	16	-
+raf	r48	jsdom	file	17	12.85	Context Menu	passed	28	-
+raf	r48	jsdom	file	17	12.85	Dropdown Menu (Default)	passed	22	-
+raf	r48	jsdom	file	17	12.85	Dropdown Menu (forceVisible)	passed	22	-
+raf	r48	warpdom	file	17	13.26	Context Menu	passed	27	-
+raf	r48	warpdom	file	17	13.26	Dropdown Menu (Default)	passed	17	-
+raf	r48	warpdom	file	17	13.26	Dropdown Menu (forceVisible)	passed	26	-
+raf	r8	jsdom	file	18	13.26	Context Menu	passed	32	-
+raf	r8	jsdom	file	18	13.26	Dropdown Menu (Default)	passed	22	-
+raf	r8	jsdom	file	18	13.26	Dropdown Menu (forceVisible)	passed	23	-
+raf	r8	warpdom	file	18	13.96	Context Menu	passed	28	-
+raf	r8	warpdom	file	18	13.96	Dropdown Menu (Default)	passed	17	-
+raf	r8	warpdom	file	18	13.96	Dropdown Menu (forceVisible)	passed	19	-
+raf	r24	jsdom	file	18	13.64	Context Menu	passed	31	-
+raf	r24	jsdom	file	18	13.64	Dropdown Menu (Default)	passed	22	-
+raf	r24	jsdom	file	18	13.64	Dropdown Menu (forceVisible)	passed	23	-
+raf	r24	warpdom	file	18	12.87	Context Menu	passed	24	-
+raf	r24	warpdom	file	18	12.87	Dropdown Menu (Default)	passed	15	-
+raf	r24	warpdom	file	18	12.87	Dropdown Menu (forceVisible)	failed	1535	expected null not to be null
+raf	r32	jsdom	file	18	12.87	Context Menu	passed	32	-
+raf	r32	jsdom	file	18	12.87	Dropdown Menu (Default)	passed	20	-
+raf	r32	jsdom	file	18	12.87	Dropdown Menu (forceVisible)	passed	18	-
+raf	r32	warpdom	file	18	13.52	Context Menu	failed	28	expected null not to be null
+raf	r32	warpdom	file	18	13.52	Dropdown Menu (Default)	passed	17	-
+raf	r32	warpdom	file	18	13.52	Dropdown Menu (forceVisible)	passed	16	-
+raf	r48	jsdom	file	18	13.52	Context Menu	passed	26	-
+raf	r48	jsdom	file	18	13.52	Dropdown Menu (Default)	passed	22	-
+raf	r48	jsdom	file	18	13.52	Dropdown Menu (forceVisible)	passed	19	-
+raf	r48	warpdom	file	18	14.36	Context Menu	passed	26	-
+raf	r48	warpdom	file	18	14.36	Dropdown Menu (Default)	passed	15	-
+raf	r48	warpdom	file	18	14.36	Dropdown Menu (forceVisible)	passed	23	-
+raf	r8	jsdom	file	19	13.77	Context Menu	passed	32	-
+raf	r8	jsdom	file	19	13.77	Dropdown Menu (Default)	passed	22	-
+raf	r8	jsdom	file	19	13.77	Dropdown Menu (forceVisible)	passed	23	-
+raf	r8	warpdom	file	19	13.77	Context Menu	passed	25	-
+raf	r8	warpdom	file	19	13.77	Dropdown Menu (Default)	passed	16	-
+raf	r8	warpdom	file	19	13.77	Dropdown Menu (forceVisible)	passed	23	-
+raf	r24	jsdom	file	19	12.91	Context Menu	passed	32	-
+raf	r24	jsdom	file	19	12.91	Dropdown Menu (Default)	passed	19	-
+raf	r24	jsdom	file	19	12.91	Dropdown Menu (forceVisible)	passed	21	-
+raf	r24	warpdom	file	19	12.03	Context Menu	passed	25	-
+raf	r24	warpdom	file	19	12.03	Dropdown Menu (Default)	passed	16	-
+raf	r24	warpdom	file	19	12.03	Dropdown Menu (forceVisible)	passed	26	-
+raf	r32	jsdom	file	19	12.03	Context Menu	passed	31	-
+raf	r32	jsdom	file	19	12.03	Dropdown Menu (Default)	passed	22	-
+raf	r32	jsdom	file	19	12.03	Dropdown Menu (forceVisible)	passed	18	-
+raf	r32	warpdom	file	19	13.39	Context Menu	passed	22	-
+raf	r32	warpdom	file	19	13.39	Dropdown Menu (Default)	passed	16	-
+raf	r32	warpdom	file	19	13.39	Dropdown Menu (forceVisible)	passed	15	-
+raf	r48	jsdom	file	19	12.96	Context Menu	passed	28	-
+raf	r48	jsdom	file	19	12.96	Dropdown Menu (Default)	passed	21	-
+raf	r48	jsdom	file	19	12.96	Dropdown Menu (forceVisible)	passed	20	-
+raf	r48	warpdom	file	19	12.96	Context Menu	passed	27	-
+raf	r48	warpdom	file	19	12.96	Dropdown Menu (Default)	passed	15	-
+raf	r48	warpdom	file	19	12.96	Dropdown Menu (forceVisible)	passed	28	-
+raf	r8	jsdom	file	20	12.24	Context Menu	passed	32	-
+raf	r8	jsdom	file	20	12.24	Dropdown Menu (Default)	passed	19	-
+raf	r8	jsdom	file	20	12.24	Dropdown Menu (forceVisible)	passed	23	-
+raf	r8	warpdom	file	20	12.24	Context Menu	passed	27	-
+raf	r8	warpdom	file	20	12.24	Dropdown Menu (Default)	passed	16	-
+raf	r8	warpdom	file	20	12.24	Dropdown Menu (forceVisible)	passed	22	-
+raf	r24	jsdom	file	20	11.58	Context Menu	passed	31	-
+raf	r24	jsdom	file	20	11.58	Dropdown Menu (Default)	passed	22	-
+raf	r24	jsdom	file	20	11.58	Dropdown Menu (forceVisible)	passed	23	-
+raf	r24	warpdom	file	20	11.21	Context Menu	passed	26	-
+raf	r24	warpdom	file	20	11.21	Dropdown Menu (Default)	passed	16	-
+raf	r24	warpdom	file	20	11.21	Dropdown Menu (forceVisible)	passed	22	-
+raf	r32	jsdom	file	20	11.21	Context Menu	passed	29	-
+raf	r32	jsdom	file	20	11.21	Dropdown Menu (Default)	passed	22	-
+raf	r32	jsdom	file	20	11.21	Dropdown Menu (forceVisible)	passed	18	-
+raf	r32	warpdom	file	20	10.96	Context Menu	passed	20	-
+raf	r32	warpdom	file	20	10.96	Dropdown Menu (Default)	passed	16	-
+raf	r32	warpdom	file	20	10.96	Dropdown Menu (forceVisible)	passed	17	-
+raf	r48	jsdom	file	20	10.48	Context Menu	passed	26	-
+raf	r48	jsdom	file	20	10.48	Dropdown Menu (Default)	passed	21	-
+raf	r48	jsdom	file	20	10.48	Dropdown Menu (forceVisible)	passed	22	-
+raf	r48	warpdom	file	20	10.48	Context Menu	passed	25	-
+raf	r48	warpdom	file	20	10.48	Dropdown Menu (Default)	passed	17	-
+raf	r48	warpdom	file	20	10.48	Dropdown Menu (forceVisible)	passed	22	-
+delay-fine	d0	warpdom	file	1	10.20	Context Menu	failed	27	expected null not to be null
+delay-fine	d0	warpdom	file	1	10.20	Dropdown Menu (Default)	passed	15	-
+delay-fine	d0	warpdom	file	1	10.20	Dropdown Menu (forceVisible)	passed	21	-
+delay-fine	d0.25	warpdom	file	1	10.20	Context Menu	passed	28	-
+delay-fine	d0.25	warpdom	file	1	10.20	Dropdown Menu (Default)	passed	18	-
+delay-fine	d0.25	warpdom	file	1	10.20	Dropdown Menu (forceVisible)	passed	23	-
+delay-fine	d0.5	warpdom	file	1	10.58	Context Menu	passed	27	-
+delay-fine	d0.5	warpdom	file	1	10.58	Dropdown Menu (Default)	passed	18	-
+delay-fine	d0.5	warpdom	file	1	10.58	Dropdown Menu (forceVisible)	passed	26	-
+delay-fine	d0.75	warpdom	file	1	10.06	Context Menu	failed	29	expected null not to be null
+delay-fine	d0.75	warpdom	file	1	10.06	Dropdown Menu (Default)	passed	20	-
+delay-fine	d0.75	warpdom	file	1	10.06	Dropdown Menu (forceVisible)	passed	25	-
+delay-fine	d0	warpdom	file	2	10.06	Context Menu	failed	26	expected null not to be null
+delay-fine	d0	warpdom	file	2	10.06	Dropdown Menu (Default)	passed	17	-
+delay-fine	d0	warpdom	file	2	10.06	Dropdown Menu (forceVisible)	passed	23	-
+delay-fine	d0.25	warpdom	file	2	10.21	Context Menu	failed	29	expected null not to be null
+delay-fine	d0.25	warpdom	file	2	10.21	Dropdown Menu (Default)	passed	17	-
+delay-fine	d0.25	warpdom	file	2	10.21	Dropdown Menu (forceVisible)	passed	21	-
+delay-fine	d0.5	warpdom	file	2	10.21	Context Menu	failed	30	expected null not to be null
+delay-fine	d0.5	warpdom	file	2	10.21	Dropdown Menu (Default)	passed	19	-
+delay-fine	d0.5	warpdom	file	2	10.21	Dropdown Menu (forceVisible)	passed	26	-
+delay-fine	d0.75	warpdom	file	2	10.12	Context Menu	passed	31	-
+delay-fine	d0.75	warpdom	file	2	10.12	Dropdown Menu (Default)	passed	20	-
+delay-fine	d0.75	warpdom	file	2	10.12	Dropdown Menu (forceVisible)	failed	1532	expected null not to be null
+delay-fine	d0	warpdom	file	3	11.15	Context Menu	passed	26	-
+delay-fine	d0	warpdom	file	3	11.15	Dropdown Menu (Default)	passed	17	-
+delay-fine	d0	warpdom	file	3	11.15	Dropdown Menu (forceVisible)	passed	21	-
+delay-fine	d0.25	warpdom	file	3	11.15	Context Menu	failed	29	expected null not to be null
+delay-fine	d0.25	warpdom	file	3	11.15	Dropdown Menu (Default)	passed	17	-
+delay-fine	d0.25	warpdom	file	3	11.15	Dropdown Menu (forceVisible)	passed	21	-
+delay-fine	d0.5	warpdom	file	3	19.38	Context Menu	passed	27	-
+delay-fine	d0.5	warpdom	file	3	19.38	Dropdown Menu (Default)	passed	18	-
+delay-fine	d0.5	warpdom	file	3	19.38	Dropdown Menu (forceVisible)	passed	25	-
+delay-fine	d0.75	warpdom	file	3	19.91	Context Menu	passed	31	-
+delay-fine	d0.75	warpdom	file	3	19.91	Dropdown Menu (Default)	passed	20	-
+delay-fine	d0.75	warpdom	file	3	19.91	Dropdown Menu (forceVisible)	failed	1537	expected null not to be null
+delay-fine	d0	warpdom	file	4	18.64	Context Menu	failed	26	expected null not to be null
+delay-fine	d0	warpdom	file	4	18.64	Dropdown Menu (Default)	passed	16	-
+delay-fine	d0	warpdom	file	4	18.64	Dropdown Menu (forceVisible)	passed	22	-
+delay-fine	d0.25	warpdom	file	4	18.64	Context Menu	passed	27	-
+delay-fine	d0.25	warpdom	file	4	18.64	Dropdown Menu (Default)	passed	18	-
+delay-fine	d0.25	warpdom	file	4	18.64	Dropdown Menu (forceVisible)	passed	23	-
+delay-fine	d0.5	warpdom	file	4	18.51	Context Menu	failed	29	expected null not to be null
+delay-fine	d0.5	warpdom	file	4	18.51	Dropdown Menu (Default)	passed	19	-
+delay-fine	d0.5	warpdom	file	4	18.51	Dropdown Menu (forceVisible)	passed	22	-
+delay-fine	d0.75	warpdom	file	4	17.35	Context Menu	passed	30	-
+delay-fine	d0.75	warpdom	file	4	17.35	Dropdown Menu (Default)	passed	19	-
+delay-fine	d0.75	warpdom	file	4	17.35	Dropdown Menu (forceVisible)	failed	1535	expected null not to be null
+delay-fine	d0	warpdom	file	5	17.35	Context Menu	passed	23	-
+delay-fine	d0	warpdom	file	5	17.35	Dropdown Menu (Default)	passed	17	-
+delay-fine	d0	warpdom	file	5	17.35	Dropdown Menu (forceVisible)	passed	24	-
+delay-fine	d0.25	warpdom	file	5	16.36	Context Menu	failed	28	expected null not to be null
+delay-fine	d0.25	warpdom	file	5	16.36	Dropdown Menu (Default)	passed	18	-
+delay-fine	d0.25	warpdom	file	5	16.36	Dropdown Menu (forceVisible)	passed	21	-
+delay-fine	d0.5	warpdom	file	5	16.36	Context Menu	passed	29	-
+delay-fine	d0.5	warpdom	file	5	16.36	Dropdown Menu (Default)	passed	19	-
+delay-fine	d0.5	warpdom	file	5	16.36	Dropdown Menu (forceVisible)	passed	24	-
+delay-fine	d0.75	warpdom	file	5	16.57	Context Menu	passed	30	-
+delay-fine	d0.75	warpdom	file	5	16.57	Dropdown Menu (Default)	passed	18	-
+delay-fine	d0.75	warpdom	file	5	16.57	Dropdown Menu (forceVisible)	failed	1536	expected null not to be null
+delay-fine	d0	warpdom	file	6	17.32	Context Menu	failed	27	expected null not to be null
+delay-fine	d0	warpdom	file	6	17.32	Dropdown Menu (Default)	passed	17	-
+delay-fine	d0	warpdom	file	6	17.32	Dropdown Menu (forceVisible)	passed	25	-
+delay-fine	d0.25	warpdom	file	6	16.18	Context Menu	failed	27	expected null not to be null
+delay-fine	d0.25	warpdom	file	6	16.18	Dropdown Menu (Default)	passed	17	-
+delay-fine	d0.25	warpdom	file	6	16.18	Dropdown Menu (forceVisible)	passed	23	-
+delay-fine	d0.5	warpdom	file	6	16.18	Context Menu	passed	28	-
+delay-fine	d0.5	warpdom	file	6	16.18	Dropdown Menu (Default)	passed	19	-
+delay-fine	d0.5	warpdom	file	6	16.18	Dropdown Menu (forceVisible)	failed	1534	expected null not to be null
+delay-fine	d0.75	warpdom	file	6	16.08	Context Menu	passed	31	-
+delay-fine	d0.75	warpdom	file	6	16.08	Dropdown Menu (Default)	passed	19	-
+delay-fine	d0.75	warpdom	file	6	16.08	Dropdown Menu (forceVisible)	failed	1537	expected null not to be null
+delay-fine	d0	warpdom	file	7	18.32	Context Menu	passed	23	-
+delay-fine	d0	warpdom	file	7	18.32	Dropdown Menu (Default)	passed	16	-
+delay-fine	d0	warpdom	file	7	18.32	Dropdown Menu (forceVisible)	passed	25	-
+delay-fine	d0.25	warpdom	file	7	17.49	Context Menu	passed	29	-
+delay-fine	d0.25	warpdom	file	7	17.49	Dropdown Menu (Default)	passed	19	-
+delay-fine	d0.25	warpdom	file	7	17.49	Dropdown Menu (forceVisible)	passed	22	-
+delay-fine	d0.5	warpdom	file	7	17.49	Context Menu	passed	29	-
+delay-fine	d0.5	warpdom	file	7	17.49	Dropdown Menu (Default)	passed	19	-
+delay-fine	d0.5	warpdom	file	7	17.49	Dropdown Menu (forceVisible)	failed	1537	expected null not to be null
+delay-fine	d0.75	warpdom	file	7	18.81	Context Menu	passed	30	-
+delay-fine	d0.75	warpdom	file	7	18.81	Dropdown Menu (Default)	passed	20	-
+delay-fine	d0.75	warpdom	file	7	18.81	Dropdown Menu (forceVisible)	failed	1540	expected null not to be null
+delay-fine	d0	warpdom	file	8	21.47	Context Menu	failed	26	expected null not to be null
+delay-fine	d0	warpdom	file	8	21.47	Dropdown Menu (Default)	passed	14	-
+delay-fine	d0	warpdom	file	8	21.47	Dropdown Menu (forceVisible)	passed	21	-
+delay-fine	d0.25	warpdom	file	8	20.07	Context Menu	failed	27	expected null not to be null
+delay-fine	d0.25	warpdom	file	8	20.07	Dropdown Menu (Default)	passed	18	-
+delay-fine	d0.25	warpdom	file	8	20.07	Dropdown Menu (forceVisible)	passed	21	-
+delay-fine	d0.5	warpdom	file	8	20.07	Context Menu	passed	27	-
+delay-fine	d0.5	warpdom	file	8	20.07	Dropdown Menu (Default)	passed	17	-
+delay-fine	d0.5	warpdom	file	8	20.07	Dropdown Menu (forceVisible)	failed	1536	expected null not to be null
+delay-fine	d0.75	warpdom	file	8	20.62	Context Menu	passed	29	-
+delay-fine	d0.75	warpdom	file	8	20.62	Dropdown Menu (Default)	passed	17	-
+delay-fine	d0.75	warpdom	file	8	20.62	Dropdown Menu (forceVisible)	passed	25	-
+delay-fine	d0	warpdom	file	9	20.98	Context Menu	passed	26	-
+delay-fine	d0	warpdom	file	9	20.98	Dropdown Menu (Default)	passed	16	-
+delay-fine	d0	warpdom	file	9	20.98	Dropdown Menu (forceVisible)	passed	24	-
+delay-fine	d0.25	warpdom	file	9	20.98	Context Menu	failed	29	expected null not to be null
+delay-fine	d0.25	warpdom	file	9	20.98	Dropdown Menu (Default)	passed	17	-
+delay-fine	d0.25	warpdom	file	9	20.98	Dropdown Menu (forceVisible)	passed	23	-
+delay-fine	d0.5	warpdom	file	9	20.42	Context Menu	failed	29	expected null not to be null
+delay-fine	d0.5	warpdom	file	9	20.42	Dropdown Menu (Default)	passed	18	-
+delay-fine	d0.5	warpdom	file	9	20.42	Dropdown Menu (forceVisible)	passed	24	-
+delay-fine	d0.75	warpdom	file	9	20.42	Context Menu	failed	30	expected null not to be null
+delay-fine	d0.75	warpdom	file	9	20.42	Dropdown Menu (Default)	passed	17	-
+delay-fine	d0.75	warpdom	file	9	20.42	Dropdown Menu (forceVisible)	passed	27	-
+delay-fine	d0	warpdom	file	10	20.30	Context Menu	passed	24	-
+delay-fine	d0	warpdom	file	10	20.30	Dropdown Menu (Default)	passed	16	-
+delay-fine	d0	warpdom	file	10	20.30	Dropdown Menu (forceVisible)	passed	20	-
+delay-fine	d0.25	warpdom	file	10	18.68	Context Menu	failed	28	expected null not to be null
+delay-fine	d0.25	warpdom	file	10	18.68	Dropdown Menu (Default)	passed	17	-
+delay-fine	d0.25	warpdom	file	10	18.68	Dropdown Menu (forceVisible)	passed	22	-
+delay-fine	d0.5	warpdom	file	10	18.68	Context Menu	passed	30	-
+delay-fine	d0.5	warpdom	file	10	18.68	Dropdown Menu (Default)	passed	17	-
+delay-fine	d0.5	warpdom	file	10	18.68	Dropdown Menu (forceVisible)	failed	1539	expected null not to be null
+delay-fine	d0.75	warpdom	file	10	17.42	Context Menu	passed	29	-
+delay-fine	d0.75	warpdom	file	10	17.42	Dropdown Menu (Default)	passed	20	-
+delay-fine	d0.75	warpdom	file	10	17.42	Dropdown Menu (forceVisible)	failed	1537	expected null not to be null
+delay-fine	d0	warpdom	file	11	18.03	Context Menu	failed	26	expected null not to be null
+delay-fine	d0	warpdom	file	11	18.03	Dropdown Menu (Default)	passed	15	-
+delay-fine	d0	warpdom	file	11	18.03	Dropdown Menu (forceVisible)	passed	25	-
+delay-fine	d0.25	warpdom	file	11	17.87	Context Menu	failed	28	expected null not to be null
+delay-fine	d0.25	warpdom	file	11	17.87	Dropdown Menu (Default)	passed	18	-
+delay-fine	d0.25	warpdom	file	11	17.87	Dropdown Menu (forceVisible)	passed	22	-
+delay-fine	d0.5	warpdom	file	11	17.87	Context Menu	passed	27	-
+delay-fine	d0.5	warpdom	file	11	17.87	Dropdown Menu (Default)	passed	19	-
+delay-fine	d0.5	warpdom	file	11	17.87	Dropdown Menu (forceVisible)	passed	25	-
+delay-fine	d0.75	warpdom	file	11	17.00	Context Menu	passed	29	-
+delay-fine	d0.75	warpdom	file	11	17.00	Dropdown Menu (Default)	passed	18	-
+delay-fine	d0.75	warpdom	file	11	17.00	Dropdown Menu (forceVisible)	passed	26	-
+delay-fine	d0	warpdom	file	12	17.00	Context Menu	failed	27	expected null not to be null
+delay-fine	d0	warpdom	file	12	17.00	Dropdown Menu (Default)	passed	15	-
+delay-fine	d0	warpdom	file	12	17.00	Dropdown Menu (forceVisible)	passed	25	-
+delay-fine	d0.25	warpdom	file	12	18.52	Context Menu	passed	25	-
+delay-fine	d0.25	warpdom	file	12	18.52	Dropdown Menu (Default)	passed	16	-
+delay-fine	d0.25	warpdom	file	12	18.52	Dropdown Menu (forceVisible)	passed	23	-
+delay-fine	d0.5	warpdom	file	12	18.56	Context Menu	failed	29	expected null not to be null
+delay-fine	d0.5	warpdom	file	12	18.56	Dropdown Menu (Default)	passed	17	-
+delay-fine	d0.5	warpdom	file	12	18.56	Dropdown Menu (forceVisible)	failed	1537	expected null not to be null
+delay-fine	d0.75	warpdom	file	12	17.39	Context Menu	passed	30	-
+delay-fine	d0.75	warpdom	file	12	17.39	Dropdown Menu (Default)	passed	20	-
+delay-fine	d0.75	warpdom	file	12	17.39	Dropdown Menu (forceVisible)	failed	1536	expected null not to be null
+delay-fine	d0	warpdom	file	13	17.39	Context Menu	failed	27	expected null not to be null
+delay-fine	d0	warpdom	file	13	17.39	Dropdown Menu (Default)	passed	16	-
+delay-fine	d0	warpdom	file	13	17.39	Dropdown Menu (forceVisible)	passed	24	-
+delay-fine	d0.25	warpdom	file	13	17.20	Context Menu	failed	25	expected null not to be null
+delay-fine	d0.25	warpdom	file	13	17.20	Dropdown Menu (Default)	passed	17	-
+delay-fine	d0.25	warpdom	file	13	17.20	Dropdown Menu (forceVisible)	passed	23	-
+delay-fine	d0.5	warpdom	file	13	16.22	Context Menu	failed	30	expected null not to be null
+delay-fine	d0.5	warpdom	file	13	16.22	Dropdown Menu (Default)	passed	17	-
+delay-fine	d0.5	warpdom	file	13	16.22	Dropdown Menu (forceVisible)	failed	1534	expected null not to be null
+delay-fine	d0.75	warpdom	file	13	15.16	Context Menu	passed	28	-
+delay-fine	d0.75	warpdom	file	13	15.16	Dropdown Menu (Default)	passed	19	-
+delay-fine	d0.75	warpdom	file	13	15.16	Dropdown Menu (forceVisible)	failed	1530	expected null not to be null
+delay-fine	d0	warpdom	file	14	15.16	Context Menu	passed	26	-
+delay-fine	d0	warpdom	file	14	15.16	Dropdown Menu (Default)	passed	17	-
+delay-fine	d0	warpdom	file	14	15.16	Dropdown Menu (forceVisible)	passed	24	-
+delay-fine	d0.25	warpdom	file	14	15.39	Context Menu	failed	28	expected null not to be null
+delay-fine	d0.25	warpdom	file	14	15.39	Dropdown Menu (Default)	passed	16	-
+delay-fine	d0.25	warpdom	file	14	15.39	Dropdown Menu (forceVisible)	passed	25	-
+delay-fine	d0.5	warpdom	file	14	14.96	Context Menu	failed	28	expected null not to be null
+delay-fine	d0.5	warpdom	file	14	14.96	Dropdown Menu (Default)	passed	17	-
+delay-fine	d0.5	warpdom	file	14	14.96	Dropdown Menu (forceVisible)	failed	1537	expected null not to be null
+delay-fine	d0.75	warpdom	file	14	14.08	Context Menu	failed	28	expected null not to be null
+delay-fine	d0.75	warpdom	file	14	14.08	Dropdown Menu (Default)	passed	20	-
+delay-fine	d0.75	warpdom	file	14	14.08	Dropdown Menu (forceVisible)	failed	1541	expected null not to be null
+delay-fine	d0	warpdom	file	15	14.08	Context Menu	failed	26	expected null not to be null
+delay-fine	d0	warpdom	file	15	14.08	Dropdown Menu (Default)	passed	16	-
+delay-fine	d0	warpdom	file	15	14.08	Dropdown Menu (forceVisible)	passed	23	-
+delay-fine	d0.25	warpdom	file	15	14.71	Context Menu	failed	27	expected null not to be null
+delay-fine	d0.25	warpdom	file	15	14.71	Dropdown Menu (Default)	passed	18	-
+delay-fine	d0.25	warpdom	file	15	14.71	Dropdown Menu (forceVisible)	passed	24	-
+delay-fine	d0.5	warpdom	file	15	14.66	Context Menu	passed	30	-
+delay-fine	d0.5	warpdom	file	15	14.66	Dropdown Menu (Default)	passed	18	-
+delay-fine	d0.5	warpdom	file	15	14.66	Dropdown Menu (forceVisible)	failed	1535	expected null not to be null
+delay-fine	d0.75	warpdom	file	15	15.56	Context Menu	passed	31	-
+delay-fine	d0.75	warpdom	file	15	15.56	Dropdown Menu (Default)	passed	20	-
+delay-fine	d0.75	warpdom	file	15	15.56	Dropdown Menu (forceVisible)	failed	1535	expected null not to be null
+delay-fine	d0	warpdom	file	16	18.72	Context Menu	failed	27	expected null not to be null
+delay-fine	d0	warpdom	file	16	18.72	Dropdown Menu (Default)	passed	15	-
+delay-fine	d0	warpdom	file	16	18.72	Dropdown Menu (forceVisible)	passed	25	-
+delay-fine	d0.25	warpdom	file	16	18.72	Context Menu	failed	28	expected null not to be null
+delay-fine	d0.25	warpdom	file	16	18.72	Dropdown Menu (Default)	passed	18	-
+delay-fine	d0.25	warpdom	file	16	18.72	Dropdown Menu (forceVisible)	passed	25	-
+delay-fine	d0.5	warpdom	file	16	17.78	Context Menu	passed	29	-
+delay-fine	d0.5	warpdom	file	16	17.78	Dropdown Menu (Default)	passed	19	-
+delay-fine	d0.5	warpdom	file	16	17.78	Dropdown Menu (forceVisible)	passed	22	-
+delay-fine	d0.75	warpdom	file	16	16.68	Context Menu	passed	31	-
+delay-fine	d0.75	warpdom	file	16	16.68	Dropdown Menu (Default)	passed	20	-
+delay-fine	d0.75	warpdom	file	16	16.68	Dropdown Menu (forceVisible)	failed	1540	expected null not to be null
+delay-fine	d0	warpdom	file	17	16.68	Context Menu	failed	27	expected null not to be null
+delay-fine	d0	warpdom	file	17	16.68	Dropdown Menu (Default)	passed	15	-
+delay-fine	d0	warpdom	file	17	16.68	Dropdown Menu (forceVisible)	passed	24	-
+delay-fine	d0.25	warpdom	file	17	15.82	Context Menu	failed	28	expected null not to be null
+delay-fine	d0.25	warpdom	file	17	15.82	Dropdown Menu (Default)	passed	18	-
+delay-fine	d0.25	warpdom	file	17	15.82	Dropdown Menu (forceVisible)	passed	23	-
+delay-fine	d0.5	warpdom	file	17	15.82	Context Menu	passed	30	-
+delay-fine	d0.5	warpdom	file	17	15.82	Dropdown Menu (Default)	passed	18	-
+delay-fine	d0.5	warpdom	file	17	15.82	Dropdown Menu (forceVisible)	passed	24	-
+delay-fine	d0.75	warpdom	file	17	16.16	Context Menu	failed	30	expected null not to be null
+delay-fine	d0.75	warpdom	file	17	16.16	Dropdown Menu (Default)	passed	19	-
+delay-fine	d0.75	warpdom	file	17	16.16	Dropdown Menu (forceVisible)	failed	1537	expected null not to be null
+delay-fine	d0	warpdom	file	18	15.82	Context Menu	passed	25	-
+delay-fine	d0	warpdom	file	18	15.82	Dropdown Menu (Default)	passed	14	-
+delay-fine	d0	warpdom	file	18	15.82	Dropdown Menu (forceVisible)	passed	22	-
+delay-fine	d0.25	warpdom	file	18	15.82	Context Menu	passed	27	-
+delay-fine	d0.25	warpdom	file	18	15.82	Dropdown Menu (Default)	passed	16	-
+delay-fine	d0.25	warpdom	file	18	15.82	Dropdown Menu (forceVisible)	passed	23	-
+delay-fine	d0.5	warpdom	file	18	15.92	Context Menu	failed	30	expected null not to be null
+delay-fine	d0.5	warpdom	file	18	15.92	Dropdown Menu (Default)	passed	18	-
+delay-fine	d0.5	warpdom	file	18	15.92	Dropdown Menu (forceVisible)	passed	24	-
+delay-fine	d0.75	warpdom	file	18	15.20	Context Menu	passed	29	-
+delay-fine	d0.75	warpdom	file	18	15.20	Dropdown Menu (Default)	passed	20	-
+delay-fine	d0.75	warpdom	file	18	15.20	Dropdown Menu (forceVisible)	passed	29	-
+delay-fine	d0	warpdom	file	19	15.20	Context Menu	passed	25	-
+delay-fine	d0	warpdom	file	19	15.20	Dropdown Menu (Default)	passed	15	-
+delay-fine	d0	warpdom	file	19	15.20	Dropdown Menu (forceVisible)	passed	23	-
+delay-fine	d0.25	warpdom	file	19	16.23	Context Menu	passed	27	-
+delay-fine	d0.25	warpdom	file	19	16.23	Dropdown Menu (Default)	passed	17	-
+delay-fine	d0.25	warpdom	file	19	16.23	Dropdown Menu (forceVisible)	passed	25	-
+delay-fine	d0.5	warpdom	file	19	15.33	Context Menu	failed	29	expected null not to be null
+delay-fine	d0.5	warpdom	file	19	15.33	Dropdown Menu (Default)	passed	18	-
+delay-fine	d0.5	warpdom	file	19	15.33	Dropdown Menu (forceVisible)	failed	1541	expected null not to be null
+delay-fine	d0.75	warpdom	file	19	14.34	Context Menu	passed	31	-
+delay-fine	d0.75	warpdom	file	19	14.34	Dropdown Menu (Default)	passed	20	-
+delay-fine	d0.75	warpdom	file	19	14.34	Dropdown Menu (forceVisible)	failed	1537	expected null not to be null
+delay-fine	d0	warpdom	file	20	14.34	Context Menu	passed	24	-
+delay-fine	d0	warpdom	file	20	14.34	Dropdown Menu (Default)	passed	16	-
+delay-fine	d0	warpdom	file	20	14.34	Dropdown Menu (forceVisible)	passed	24	-
+delay-fine	d0.25	warpdom	file	20	14.31	Context Menu	passed	28	-
+delay-fine	d0.25	warpdom	file	20	14.31	Dropdown Menu (Default)	passed	17	-
+delay-fine	d0.25	warpdom	file	20	14.31	Dropdown Menu (forceVisible)	passed	25	-
+delay-fine	d0.5	warpdom	file	20	15.01	Context Menu	passed	30	-
+delay-fine	d0.5	warpdom	file	20	15.01	Dropdown Menu (Default)	passed	19	-
+delay-fine	d0.5	warpdom	file	20	15.01	Dropdown Menu (forceVisible)	failed	1535	expected null not to be null
+delay-fine	d0.75	warpdom	file	20	15.01	Context Menu	passed	31	-
+delay-fine	d0.75	warpdom	file	20	15.01	Dropdown Menu (Default)	passed	20	-
+delay-fine	d0.75	warpdom	file	20	15.01	Dropdown Menu (forceVisible)	passed	23	-
+chain	none	jsdom	file	1	10.34	Context Menu	passed	27	-
+chain	none	jsdom	file	1	10.34	Dropdown Menu (Default)	passed	20	-
+chain	none	jsdom	file	1	10.34	Dropdown Menu (forceVisible)	passed	17	-
+chain	none	warpdom	file	1	10.34	Context Menu	passed	22	-
+chain	none	warpdom	file	1	10.34	Dropdown Menu (Default)	passed	16	-
+chain	none	warpdom	file	1	10.34	Dropdown Menu (forceVisible)	passed	14	-
+chain	none	jsdom	file	2	10.71	Context Menu	passed	28	-
+chain	none	jsdom	file	2	10.71	Dropdown Menu (Default)	passed	21	-
+chain	none	jsdom	file	2	10.71	Dropdown Menu (forceVisible)	passed	19	-
+chain	none	warpdom	file	2	10.41	Context Menu	passed	22	-
+chain	none	warpdom	file	2	10.41	Dropdown Menu (Default)	passed	16	-
+chain	none	warpdom	file	2	10.41	Dropdown Menu (forceVisible)	passed	17	-
+chain	none	jsdom	file	3	10.41	Context Menu	passed	29	-
+chain	none	jsdom	file	3	10.41	Dropdown Menu (Default)	passed	24	-
+chain	none	jsdom	file	3	10.41	Dropdown Menu (forceVisible)	passed	19	-
+chain	none	warpdom	file	3	11.34	Context Menu	passed	22	-
+chain	none	warpdom	file	3	11.34	Dropdown Menu (Default)	passed	17	-
+chain	none	warpdom	file	3	11.34	Dropdown Menu (forceVisible)	passed	17	-
+chain	none	jsdom	file	4	10.83	Context Menu	passed	26	-
+chain	none	jsdom	file	4	10.83	Dropdown Menu (Default)	passed	22	-
+chain	none	jsdom	file	4	10.83	Dropdown Menu (forceVisible)	passed	19	-
+chain	none	warpdom	file	4	10.83	Context Menu	passed	21	-
+chain	none	warpdom	file	4	10.83	Dropdown Menu (Default)	passed	16	-
+chain	none	warpdom	file	4	10.83	Dropdown Menu (forceVisible)	passed	15	-
+chain	none	jsdom	file	5	10.21	Context Menu	passed	34	-
+chain	none	jsdom	file	5	10.21	Dropdown Menu (Default)	passed	33	-
+chain	none	jsdom	file	5	10.21	Dropdown Menu (forceVisible)	passed	21	-
+chain	none	warpdom	file	5	10.43	Context Menu	passed	21	-
+chain	none	warpdom	file	5	10.43	Dropdown Menu (Default)	passed	16	-
+chain	none	warpdom	file	5	10.43	Dropdown Menu (forceVisible)	passed	16	-
+chain	none	jsdom	file	6	10.07	Context Menu	passed	30	-
+chain	none	jsdom	file	6	10.07	Dropdown Menu (Default)	passed	25	-
+chain	none	jsdom	file	6	10.07	Dropdown Menu (forceVisible)	passed	20	-
+chain	none	warpdom	file	6	10.07	Context Menu	passed	23	-
+chain	none	warpdom	file	6	10.07	Dropdown Menu (Default)	passed	18	-
+chain	none	warpdom	file	6	10.07	Dropdown Menu (forceVisible)	passed	17	-
+chain	none	jsdom	file	7	9.99	Context Menu	passed	28	-
+chain	none	jsdom	file	7	9.99	Dropdown Menu (Default)	passed	24	-
+chain	none	jsdom	file	7	9.99	Dropdown Menu (forceVisible)	passed	20	-
+chain	none	warpdom	file	7	9.51	Context Menu	passed	22	-
+chain	none	warpdom	file	7	9.51	Dropdown Menu (Default)	passed	18	-
+chain	none	warpdom	file	7	9.51	Dropdown Menu (forceVisible)	passed	16	-
+chain	none	jsdom	file	8	9.51	Context Menu	passed	29	-
+chain	none	jsdom	file	8	9.51	Dropdown Menu (Default)	passed	23	-
+chain	none	jsdom	file	8	9.51	Dropdown Menu (forceVisible)	passed	20	-
+chain	none	warpdom	file	8	11.87	Context Menu	passed	21	-
+chain	none	warpdom	file	8	11.87	Dropdown Menu (Default)	passed	17	-
+chain	none	warpdom	file	8	11.87	Dropdown Menu (forceVisible)	passed	17	-
+chain	none	jsdom	file	9	13.64	Context Menu	passed	41	-
+chain	none	jsdom	file	9	13.64	Dropdown Menu (Default)	passed	100	-
+chain	none	jsdom	file	9	13.64	Dropdown Menu (forceVisible)	passed	24	-
+chain	none	warpdom	file	9	15.19	Context Menu	passed	21	-
+chain	none	warpdom	file	9	15.19	Dropdown Menu (Default)	passed	17	-
+chain	none	warpdom	file	9	15.19	Dropdown Menu (forceVisible)	passed	17	-
+chain	none	jsdom	file	10	15.19	Context Menu	passed	27	-
+chain	none	jsdom	file	10	15.19	Dropdown Menu (Default)	passed	22	-
+chain	none	jsdom	file	10	15.19	Dropdown Menu (forceVisible)	passed	21	-
+chain	none	warpdom	file	10	15.90	Context Menu	passed	23	-
+chain	none	warpdom	file	10	15.90	Dropdown Menu (Default)	passed	17	-
+chain	none	warpdom	file	10	15.90	Dropdown Menu (forceVisible)	passed	16	-
+chain	none	jsdom	file	11	15.18	Context Menu	passed	27	-
+chain	none	jsdom	file	11	15.18	Dropdown Menu (Default)	passed	23	-
+chain	none	jsdom	file	11	15.18	Dropdown Menu (forceVisible)	passed	19	-
+chain	none	warpdom	file	11	17.65	Context Menu	passed	27	-
+chain	none	warpdom	file	11	17.65	Dropdown Menu (Default)	passed	23	-
+chain	none	warpdom	file	11	17.65	Dropdown Menu (forceVisible)	passed	15	-
+chain	none	jsdom	file	12	17.65	Context Menu	passed	28	-
+chain	none	jsdom	file	12	17.65	Dropdown Menu (Default)	passed	22	-
+chain	none	jsdom	file	12	17.65	Dropdown Menu (forceVisible)	passed	20	-
+chain	none	warpdom	file	12	18.96	Context Menu	passed	21	-
+chain	none	warpdom	file	12	18.96	Dropdown Menu (Default)	passed	17	-
+chain	none	warpdom	file	12	18.96	Dropdown Menu (forceVisible)	passed	16	-
+chain	none	jsdom	file	13	18.00	Context Menu	passed	28	-
+chain	none	jsdom	file	13	18.00	Dropdown Menu (Default)	passed	24	-
+chain	none	jsdom	file	13	18.00	Dropdown Menu (forceVisible)	passed	20	-
+chain	none	warpdom	file	13	18.00	Context Menu	passed	21	-
+chain	none	warpdom	file	13	18.00	Dropdown Menu (Default)	passed	19	-
+chain	none	warpdom	file	13	18.00	Dropdown Menu (forceVisible)	passed	17	-
+chain	none	jsdom	file	14	20.96	Context Menu	passed	27	-
+chain	none	jsdom	file	14	20.96	Dropdown Menu (Default)	passed	22	-
+chain	none	jsdom	file	14	20.96	Dropdown Menu (forceVisible)	passed	17	-
+chain	none	warpdom	file	14	21.85	Context Menu	failed	23	expected null not to be null
+chain	none	warpdom	file	14	21.85	Dropdown Menu (Default)	passed	17	-
+chain	none	warpdom	file	14	21.85	Dropdown Menu (forceVisible)	passed	17	-
+chain	none	jsdom	file	15	21.85	Context Menu	passed	29	-
+chain	none	jsdom	file	15	21.85	Dropdown Menu (Default)	passed	25	-
+chain	none	jsdom	file	15	21.85	Dropdown Menu (forceVisible)	passed	21	-
+chain	none	warpdom	file	15	22.58	Context Menu	failed	24	expected null not to be null
+chain	none	warpdom	file	15	22.58	Dropdown Menu (Default)	passed	16	-
+chain	none	warpdom	file	15	22.58	Dropdown Menu (forceVisible)	passed	15	-
+chain	none	jsdom	file	16	23.09	Context Menu	passed	30	-
+chain	none	jsdom	file	16	23.09	Dropdown Menu (Default)	passed	27	-
+chain	none	jsdom	file	16	23.09	Dropdown Menu (forceVisible)	passed	21	-
+chain	none	warpdom	file	16	22.04	Context Menu	passed	22	-
+chain	none	warpdom	file	16	22.04	Dropdown Menu (Default)	passed	17	-
+chain	none	warpdom	file	16	22.04	Dropdown Menu (forceVisible)	passed	15	-
+chain	none	jsdom	file	17	22.04	Context Menu	passed	28	-
+chain	none	jsdom	file	17	22.04	Dropdown Menu (Default)	passed	22	-
+chain	none	jsdom	file	17	22.04	Dropdown Menu (forceVisible)	passed	20	-
+chain	none	warpdom	file	17	26.29	Context Menu	passed	22	-
+chain	none	warpdom	file	17	26.29	Dropdown Menu (Default)	passed	17	-
+chain	none	warpdom	file	17	26.29	Dropdown Menu (forceVisible)	passed	17	-
+chain	none	jsdom	file	18	24.74	Context Menu	passed	29	-
+chain	none	jsdom	file	18	24.74	Dropdown Menu (Default)	passed	24	-
+chain	none	jsdom	file	18	24.74	Dropdown Menu (forceVisible)	passed	21	-
+chain	none	warpdom	file	18	24.74	Context Menu	failed	23	expected null not to be null
+chain	none	warpdom	file	18	24.74	Dropdown Menu (Default)	passed	17	-
+chain	none	warpdom	file	18	24.74	Dropdown Menu (forceVisible)	passed	16	-
+chain	none	jsdom	file	19	23.16	Context Menu	passed	26	-
+chain	none	jsdom	file	19	23.16	Dropdown Menu (Default)	passed	24	-
+chain	none	jsdom	file	19	23.16	Dropdown Menu (forceVisible)	passed	17	-
+chain	none	warpdom	file	19	21.62	Context Menu	passed	21	-
+chain	none	warpdom	file	19	21.62	Dropdown Menu (Default)	passed	17	-
+chain	none	warpdom	file	19	21.62	Dropdown Menu (forceVisible)	passed	16	-
+chain	none	jsdom	file	20	21.62	Context Menu	passed	25	-
+chain	none	jsdom	file	20	21.62	Dropdown Menu (Default)	passed	22	-
+chain	none	jsdom	file	20	21.62	Dropdown Menu (forceVisible)	passed	18	-
+chain	none	warpdom	file	20	23.18	Context Menu	passed	21	-
+chain	none	warpdom	file	20	23.18	Dropdown Menu (Default)	passed	16	-
+chain	none	warpdom	file	20	23.18	Dropdown Menu (forceVisible)	passed	16	-
+repro	none	jsdom	full	1	11.59	Context Menu	passed	25	-
+repro	none	jsdom	full	1	11.59	Dropdown Menu (Default)	passed	22	-
+repro	none	jsdom	full	1	11.59	Dropdown Menu (forceVisible)	passed	21	-
+repro	none	warpdom	full	1	10.89	Context Menu	failed	23	expected null not to be null
+repro	none	warpdom	full	1	10.89	Dropdown Menu (Default)	passed	14	-
+repro	none	warpdom	full	1	10.89	Dropdown Menu (forceVisible)	passed	15	-
+repro	none	jsdom	full	2	9.00	Context Menu	passed	26	-
+repro	none	jsdom	full	2	9.00	Dropdown Menu (Default)	passed	21	-
+repro	none	jsdom	full	2	9.00	Dropdown Menu (forceVisible)	passed	17	-
+repro	none	warpdom	full	2	8.33	Context Menu	passed	20	-
+repro	none	warpdom	full	2	8.33	Dropdown Menu (Default)	passed	15	-
+repro	none	warpdom	full	2	8.33	Dropdown Menu (forceVisible)	passed	15	-
+repro	none	jsdom	full	3	11.83	Context Menu	passed	28	-
+repro	none	jsdom	full	3	11.83	Dropdown Menu (Default)	passed	19	-
+repro	none	jsdom	full	3	11.83	Dropdown Menu (forceVisible)	passed	17	-
+repro	none	warpdom	full	3	14.80	Context Menu	failed	23	expected null not to be null
+repro	none	warpdom	full	3	14.80	Dropdown Menu (Default)	passed	15	-
+repro	none	warpdom	full	3	14.80	Dropdown Menu (forceVisible)	passed	15	-
+repro	none	jsdom	full	4	12.06	Context Menu	passed	24	-
+repro	none	jsdom	full	4	12.06	Dropdown Menu (Default)	passed	22	-
+repro	none	jsdom	full	4	12.06	Dropdown Menu (forceVisible)	passed	18	-
+repro	none	warpdom	full	4	10.42	Context Menu	failed	23	expected null not to be null
+repro	none	warpdom	full	4	10.42	Dropdown Menu (Default)	passed	15	-
+repro	none	warpdom	full	4	10.42	Dropdown Menu (forceVisible)	passed	15	-
+repro	none	jsdom	full	5	11.28	Context Menu	passed	28	-
+repro	none	jsdom	full	5	11.28	Dropdown Menu (Default)	passed	22	-
+repro	none	jsdom	full	5	11.28	Dropdown Menu (forceVisible)	passed	18	-
+repro	none	warpdom	full	5	11.89	Context Menu	passed	21	-
+repro	none	warpdom	full	5	11.89	Dropdown Menu (Default)	passed	16	-
+repro	none	warpdom	full	5	11.89	Dropdown Menu (forceVisible)	passed	16	-
+repro	none	jsdom	full	6	10.08	Context Menu	passed	25	-
+repro	none	jsdom	full	6	10.08	Dropdown Menu (Default)	passed	21	-
+repro	none	jsdom	full	6	10.08	Dropdown Menu (forceVisible)	passed	17	-
+repro	none	warpdom	full	6	9.92	Context Menu	passed	21	-
+repro	none	warpdom	full	6	9.92	Dropdown Menu (Default)	passed	16	-
+repro	none	warpdom	full	6	9.92	Dropdown Menu (forceVisible)	passed	16	-
+repro	none	jsdom	full	7	8.61	Context Menu	passed	25	-
+repro	none	jsdom	full	7	8.61	Dropdown Menu (Default)	passed	21	-
+repro	none	jsdom	full	7	8.61	Dropdown Menu (forceVisible)	passed	18	-
+repro	none	warpdom	full	7	7.73	Context Menu	passed	20	-
+repro	none	warpdom	full	7	7.73	Dropdown Menu (Default)	passed	17	-
+repro	none	warpdom	full	7	7.73	Dropdown Menu (forceVisible)	passed	15	-
+repro	none	jsdom	full	8	7.36	Context Menu	passed	24	-
+repro	none	jsdom	full	8	7.36	Dropdown Menu (Default)	passed	20	-
+repro	none	jsdom	full	8	7.36	Dropdown Menu (forceVisible)	passed	18	-
+repro	none	warpdom	full	8	9.54	Context Menu	passed	19	-
+repro	none	warpdom	full	8	9.54	Dropdown Menu (Default)	passed	16	-
+repro	none	warpdom	full	8	9.54	Dropdown Menu (forceVisible)	passed	15	-
+repro	none	jsdom	full	9	9.64	Context Menu	passed	26	-
+repro	none	jsdom	full	9	9.64	Dropdown Menu (Default)	passed	20	-
+repro	none	jsdom	full	9	9.64	Dropdown Menu (forceVisible)	passed	19	-
+repro	none	warpdom	full	9	11.27	Context Menu	passed	20	-
+repro	none	warpdom	full	9	11.27	Dropdown Menu (Default)	passed	16	-
+repro	none	warpdom	full	9	11.27	Dropdown Menu (forceVisible)	passed	16	-
+repro	none	jsdom	full	10	9.40	Context Menu	passed	24	-
+repro	none	jsdom	full	10	9.40	Dropdown Menu (Default)	passed	21	-
+repro	none	jsdom	full	10	9.40	Dropdown Menu (forceVisible)	passed	19	-
+repro	none	warpdom	full	10	8.88	Context Menu	failed	24	expected null not to be null
+repro	none	warpdom	full	10	8.88	Dropdown Menu (Default)	passed	15	-
+repro	none	warpdom	full	10	8.88	Dropdown Menu (forceVisible)	passed	15	-
+repro	none	jsdom	full	11	8.19	Context Menu	passed	24	-
+repro	none	jsdom	full	11	8.19	Dropdown Menu (Default)	passed	22	-
+repro	none	jsdom	full	11	8.19	Dropdown Menu (forceVisible)	passed	18	-
+repro	none	warpdom	full	11	7.62	Context Menu	failed	23	expected null not to be null
+repro	none	warpdom	full	11	7.62	Dropdown Menu (Default)	passed	16	-
+repro	none	warpdom	full	11	7.62	Dropdown Menu (forceVisible)	passed	15	-
+repro	none	jsdom	full	12	7.71	Context Menu	passed	24	-
+repro	none	jsdom	full	12	7.71	Dropdown Menu (Default)	passed	22	-
+repro	none	jsdom	full	12	7.71	Dropdown Menu (forceVisible)	passed	20	-
+repro	none	warpdom	full	12	7.73	Context Menu	passed	22	-
+repro	none	warpdom	full	12	7.73	Dropdown Menu (Default)	passed	16	-
+repro	none	warpdom	full	12	7.73	Dropdown Menu (forceVisible)	passed	16	-
+repro	none	jsdom	full	13	6.86	Context Menu	passed	26	-
+repro	none	jsdom	full	13	6.86	Dropdown Menu (Default)	passed	22	-
+repro	none	jsdom	full	13	6.86	Dropdown Menu (forceVisible)	passed	19	-
+repro	none	warpdom	full	13	6.42	Context Menu	passed	21	-
+repro	none	warpdom	full	13	6.42	Dropdown Menu (Default)	passed	16	-
+repro	none	warpdom	full	13	6.42	Dropdown Menu (forceVisible)	passed	15	-
+repro	none	jsdom	full	14	5.96	Context Menu	passed	26	-
+repro	none	jsdom	full	14	5.96	Dropdown Menu (Default)	passed	21	-
+repro	none	jsdom	full	14	5.96	Dropdown Menu (forceVisible)	passed	18	-
+repro	none	warpdom	full	14	5.74	Context Menu	failed	23	expected null not to be null
+repro	none	warpdom	full	14	5.74	Dropdown Menu (Default)	passed	14	-
+repro	none	warpdom	full	14	5.74	Dropdown Menu (forceVisible)	passed	15	-
+repro	none	jsdom	full	15	5.94	Context Menu	passed	24	-
+repro	none	jsdom	full	15	5.94	Dropdown Menu (Default)	passed	22	-
+repro	none	jsdom	full	15	5.94	Dropdown Menu (forceVisible)	passed	18	-
+repro	none	warpdom	full	15	5.30	Context Menu	failed	24	expected null not to be null
+repro	none	warpdom	full	15	5.30	Dropdown Menu (Default)	passed	15	-
+repro	none	warpdom	full	15	5.30	Dropdown Menu (forceVisible)	passed	15	-
+repro	none	jsdom	full	16	4.85	Context Menu	passed	26	-
+repro	none	jsdom	full	16	4.85	Dropdown Menu (Default)	passed	23	-
+repro	none	jsdom	full	16	4.85	Dropdown Menu (forceVisible)	passed	19	-
+repro	none	warpdom	full	16	5.35	Context Menu	failed	25	expected null not to be null
+repro	none	warpdom	full	16	5.35	Dropdown Menu (Default)	passed	16	-
+repro	none	warpdom	full	16	5.35	Dropdown Menu (forceVisible)	passed	16	-
+repro	none	jsdom	full	17	4.90	Context Menu	passed	23	-
+repro	none	jsdom	full	17	4.90	Dropdown Menu (Default)	passed	22	-
+repro	none	jsdom	full	17	4.90	Dropdown Menu (forceVisible)	passed	18	-
+repro	none	warpdom	full	17	4.89	Context Menu	passed	21	-
+repro	none	warpdom	full	17	4.89	Dropdown Menu (Default)	passed	16	-
+repro	none	warpdom	full	17	4.89	Dropdown Menu (forceVisible)	passed	16	-
+repro	none	jsdom	full	18	4.63	Context Menu	passed	23	-
+repro	none	jsdom	full	18	4.63	Dropdown Menu (Default)	passed	23	-
+repro	none	jsdom	full	18	4.63	Dropdown Menu (forceVisible)	passed	17	-
+repro	none	warpdom	full	18	4.93	Context Menu	passed	21	-
+repro	none	warpdom	full	18	4.93	Dropdown Menu (Default)	passed	16	-
+repro	none	warpdom	full	18	4.93	Dropdown Menu (forceVisible)	passed	14	-
+repro	none	jsdom	full	19	4.81	Context Menu	passed	26	-
+repro	none	jsdom	full	19	4.81	Dropdown Menu (Default)	passed	23	-
+repro	none	jsdom	full	19	4.81	Dropdown Menu (forceVisible)	passed	18	-
+repro	none	warpdom	full	19	6.57	Context Menu	passed	20	-
+repro	none	warpdom	full	19	6.57	Dropdown Menu (Default)	passed	14	-
+repro	none	warpdom	full	19	6.57	Dropdown Menu (forceVisible)	passed	16	-
+repro	none	jsdom	full	20	5.94	Context Menu	passed	26	-
+repro	none	jsdom	full	20	5.94	Dropdown Menu (Default)	passed	20	-
+repro	none	jsdom	full	20	5.94	Dropdown Menu (forceVisible)	passed	18	-
+repro	none	warpdom	full	20	5.55	Context Menu	failed	24	expected null not to be null
+repro	none	warpdom	full	20	5.55	Dropdown Menu (Default)	passed	16	-
+repro	none	warpdom	full	20	5.55	Dropdown Menu (forceVisible)	passed	15	-

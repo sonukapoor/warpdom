@@ -1,0 +1,5 @@
+test	dom	n	median_ms	q25	q75	share_below_16ms
+Context Menu	jsdom	40	19.3	17.0	20.0	0.13
+Context Menu	warpdom	60	16.4	13.1	16.9	0.45
+Dropdown Menu (forceVisible)	jsdom	40	12.6	10.1	13.5	1.00
+Dropdown Menu (forceVisible)	warpdom	60	8.9	7.9	9.1	0.98

@@ -1,0 +1,81 @@
+dom	run	test	inherited_tick_set	inherited_tick_fire	menu_open	intro	fresh_tick_set	toggle_enter	tick_to_enter	outcome
+jsdom	1	Context Menu	-5.15	10.90	8.81	joined	-	20.98	-	passed
+jsdom	1	Dropdown Menu (forceVisible)	-11.98	5.11	3.36	joined	-	12.43	-	passed
+jsdom	10	Context Menu	-5.24	10.64	7.85	joined	-	20.33	-	passed
+jsdom	10	Dropdown Menu (forceVisible)	-12.26	5.73	3.87	joined	-	15.21	-	passed
+jsdom	11	Context Menu	-5.33	10.12	10.12	joined	-	20.00	-	passed
+jsdom	11	Dropdown Menu (forceVisible)	-12.54	5.70	3.92	joined	-	13.79	-	passed
+jsdom	12	Context Menu	-5.19	11.90	11.90	joined	-	22.41	-	passed
+jsdom	12	Dropdown Menu (forceVisible)	-13.47	2.17	4.20	fresh	4.20	14.42	10.22	passed
+jsdom	13	Context Menu	-5.26	11.85	11.85	joined	-	22.22	-	passed
+jsdom	13	Dropdown Menu (forceVisible)	-12.51	5.79	4.14	joined	-	14.70	-	passed
+jsdom	14	Context Menu	-4.99	11.34	9.17	joined	-	20.59	-	passed
+jsdom	14	Dropdown Menu (forceVisible)	-11.66	4.85	3.28	joined	-	12.31	-	passed
+jsdom	15	Context Menu	-5.22	11.78	11.78	joined	-	23.02	-	passed
+jsdom	15	Dropdown Menu (forceVisible)	-13.31	5.83	4.15	joined	-	14.65	-	passed
+jsdom	16	Context Menu	-5.17	11.39	11.39	joined	-	23.04	-	passed
+jsdom	16	Dropdown Menu (forceVisible)	-12.85	5.49	3.80	joined	-	14.86	-	passed
+jsdom	17	Context Menu	-5.17	11.45	11.45	joined	-	22.48	-	passed
+jsdom	17	Dropdown Menu (forceVisible)	-12.53	5.95	4.11	joined	-	14.25	-	passed
+jsdom	18	Context Menu	-5.37	12.04	12.04	joined	-	22.42	-	passed
+jsdom	18	Dropdown Menu (forceVisible)	-13.31	6.01	4.29	joined	-	15.38	-	passed
+jsdom	19	Context Menu	-4.99	10.37	10.37	joined	-	19.96	-	passed
+jsdom	19	Dropdown Menu (forceVisible)	-11.44	5.23	3.48	joined	-	11.67	-	passed
+jsdom	2	Context Menu	-5.10	11.38	11.38	joined	-	21.40	-	passed
+jsdom	2	Dropdown Menu (forceVisible)	-11.81	5.90	4.06	joined	-	12.92	-	passed
+jsdom	20	Context Menu	-4.86	11.27	11.27	joined	-	20.00	-	passed
+jsdom	20	Dropdown Menu (forceVisible)	-12.38	5.65	3.34	joined	-	13.09	-	passed
+jsdom	3	Context Menu	-5.14	11.78	11.78	joined	-	22.12	-	passed
+jsdom	3	Dropdown Menu (forceVisible)	-11.54	5.46	3.74	joined	-	13.98	-	passed
+jsdom	4	Context Menu	-5.03	12.65	11.21	joined	-	20.55	-	passed
+jsdom	4	Dropdown Menu (forceVisible)	-11.82	5.56	3.79	joined	-	14.66	-	passed
+jsdom	5	Context Menu	-6.53	10.29	10.29	joined	-	26.47	-	passed
+jsdom	5	Dropdown Menu (forceVisible)	-16.16	0.98	4.60	fresh	4.60	15.17	10.57	passed
+jsdom	6	Context Menu	-4.97	11.50	11.50	joined	-	23.73	-	passed
+jsdom	6	Dropdown Menu (forceVisible)	-12.95	6.19	4.50	joined	-	14.42	-	passed
+jsdom	7	Context Menu	-5.21	11.82	11.82	joined	-	22.13	-	passed
+jsdom	7	Dropdown Menu (forceVisible)	-13.86	2.17	4.29	fresh	4.29	13.38	9.08	passed
+jsdom	8	Context Menu	-5.23	11.29	11.29	joined	-	23.13	-	passed
+jsdom	8	Dropdown Menu (forceVisible)	-4.92	11.51	3.75	joined	-	14.89	-	passed
+jsdom	9	Context Menu	-6.13	13.25	13.25	joined	-	31.50	-	passed
+jsdom	9	Dropdown Menu (forceVisible)	-7.21	10.50	4.53	joined	-	18.00	-	passed
+warpdom	1	Context Menu	-4.61	11.06	8.33	joined	-	16.98	-	passed
+warpdom	1	Dropdown Menu (forceVisible)	-14.71	0.58	3.04	fresh	3.04	10.65	7.61	passed
+warpdom	10	Context Menu	-4.58	11.38	8.45	joined	-	17.37	-	passed
+warpdom	10	Dropdown Menu (forceVisible)	-15.14	0.55	2.92	fresh	2.92	10.47	7.55	passed
+warpdom	11	Context Menu	-6.67	9.20	8.15	joined	-	21.39	-	passed
+warpdom	11	Dropdown Menu (forceVisible)	-14.79	0.57	1.65	fresh	1.65	9.51	7.86	passed
+warpdom	12	Context Menu	-4.71	11.16	8.40	joined	-	17.12	-	passed
+warpdom	12	Dropdown Menu (forceVisible)	-	-	2.72	fresh	2.72	11.37	8.65	passed
+warpdom	13	Context Menu	-4.70	11.26	8.41	joined	-	17.31	-	passed
+warpdom	13	Dropdown Menu (forceVisible)	-12.83	4.27	2.55	joined	-	11.48	-	passed
+warpdom	14	Context Menu	-	-	5.17	fresh	5.17	17.15	11.98	failed
+warpdom	14	Dropdown Menu (forceVisible)	-15.24	0.59	2.99	fresh	2.99	12.00	9.01	passed
+warpdom	15	Context Menu	-	-	4.67	fresh	4.67	16.74	12.06	failed
+warpdom	15	Dropdown Menu (forceVisible)	-4.54	10.86	2.75	joined	-	10.38	-	passed
+warpdom	16	Context Menu	-4.68	11.59	8.69	joined	-	16.43	-	passed
+warpdom	16	Dropdown Menu (forceVisible)	-16.32	0.57	1.69	fresh	1.69	10.47	8.78	passed
+warpdom	17	Context Menu	-4.66	11.22	8.41	joined	-	17.16	-	passed
+warpdom	17	Dropdown Menu (forceVisible)	-15.90	0.52	2.92	fresh	2.92	12.10	9.18	passed
+warpdom	18	Context Menu	-	-	4.67	fresh	4.67	16.55	11.88	failed
+warpdom	18	Dropdown Menu (forceVisible)	-13.39	3.12	2.62	joined	-	10.25	-	passed
+warpdom	19	Context Menu	-	-	4.73	fresh	4.73	16.42	11.68	passed
+warpdom	19	Dropdown Menu (forceVisible)	-12.51	2.81	2.41	joined	-	11.19	-	passed
+warpdom	2	Context Menu	-4.64	10.99	8.12	joined	-	16.80	-	passed
+warpdom	2	Dropdown Menu (forceVisible)	-14.56	1.78	2.92	fresh	2.92	11.83	8.91	passed
+warpdom	20	Context Menu	-4.46	11.87	7.70	joined	-	16.32	-	passed
+warpdom	20	Dropdown Menu (forceVisible)	-15.12	1.72	2.79	fresh	2.79	11.48	8.70	passed
+warpdom	3	Context Menu	-4.61	11.25	8.37	joined	-	17.23	-	passed
+warpdom	3	Dropdown Menu (forceVisible)	-15.73	0.60	3.22	fresh	3.22	12.43	9.21	passed
+warpdom	4	Context Menu	-4.48	11.92	7.73	joined	-	16.25	-	passed
+warpdom	4	Dropdown Menu (forceVisible)	-14.52	1.81	3.13	fresh	3.13	10.78	7.64	passed
+warpdom	5	Context Menu	-4.68	10.84	7.95	joined	-	16.67	-	passed
+warpdom	5	Dropdown Menu (forceVisible)	-12.81	2.91	2.48	joined	-	11.33	-	passed
+warpdom	6	Context Menu	-4.75	11.15	8.28	joined	-	16.96	-	passed
+warpdom	6	Dropdown Menu (forceVisible)	-4.81	11.88	2.75	joined	-	10.21	-	passed
+warpdom	7	Context Menu	-4.74	11.33	7.04	joined	-	15.89	-	passed
+warpdom	7	Dropdown Menu (forceVisible)	-15.33	0.49	2.82	fresh	2.82	11.81	8.99	passed
+warpdom	8	Context Menu	-4.68	12.02	7.80	joined	-	16.35	-	passed
+warpdom	8	Dropdown Menu (forceVisible)	-14.73	1.79	3.07	fresh	3.07	12.29	9.22	passed
+warpdom	9	Context Menu	-4.54	12.19	7.96	joined	-	16.68	-	passed
+warpdom	9	Dropdown Menu (forceVisible)	-14.45	2.94	2.51	joined	-	11.64	-	passed

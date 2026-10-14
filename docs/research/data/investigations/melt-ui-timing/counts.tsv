@@ -1,0 +1,76 @@
+experiment	condition	dom	scope	test	failed/runs	mean_load1
+chain	none	jsdom	file	Context Menu	0/20	16.0
+chain	none	jsdom	file	Dropdown Menu (Default)	0/20	16.0
+chain	none	jsdom	file	Dropdown Menu (forceVisible)	0/20	16.0
+chain	none	warpdom	file	Context Menu	3/20	16.6
+chain	none	warpdom	file	Dropdown Menu (Default)	0/20	16.6
+chain	none	warpdom	file	Dropdown Menu (forceVisible)	0/20	16.6
+delay	d0	jsdom	file	Context Menu	0/20	19.6
+delay	d0	jsdom	file	Dropdown Menu (Default)	0/20	19.6
+delay	d0	jsdom	file	Dropdown Menu (forceVisible)	0/20	19.6
+delay	d0	warpdom	file	Context Menu	9/20	19.3
+delay	d0	warpdom	file	Dropdown Menu (Default)	0/20	19.3
+delay	d0	warpdom	file	Dropdown Menu (forceVisible)	0/20	19.3
+delay	d1	warpdom	file	Context Menu	0/20	19.2
+delay	d1	warpdom	file	Dropdown Menu (Default)	0/20	19.2
+delay	d1	warpdom	file	Dropdown Menu (forceVisible)	13/20	19.2
+delay	d2	warpdom	file	Context Menu	0/20	19.4
+delay	d2	warpdom	file	Dropdown Menu (Default)	0/20	19.4
+delay	d2	warpdom	file	Dropdown Menu (forceVisible)	0/20	19.4
+delay	d4	warpdom	file	Context Menu	0/20	19.1
+delay	d4	warpdom	file	Dropdown Menu (Default)	0/20	19.1
+delay	d4	warpdom	file	Dropdown Menu (forceVisible)	0/20	19.1
+delay-fine	d0	warpdom	file	Context Menu	11/20	16.4
+delay-fine	d0	warpdom	file	Dropdown Menu (Default)	0/20	16.4
+delay-fine	d0	warpdom	file	Dropdown Menu (forceVisible)	0/20	16.4
+delay-fine	d0.25	warpdom	file	Context Menu	13/20	16.2
+delay-fine	d0.25	warpdom	file	Dropdown Menu (Default)	0/20	16.2
+delay-fine	d0.25	warpdom	file	Dropdown Menu (forceVisible)	0/20	16.2
+delay-fine	d0.5	warpdom	file	Context Menu	8/20	16.5
+delay-fine	d0.5	warpdom	file	Dropdown Menu (Default)	0/20	16.5
+delay-fine	d0.5	warpdom	file	Dropdown Menu (forceVisible)	10/20	16.5
+delay-fine	d0.75	warpdom	file	Context Menu	4/20	16.2
+delay-fine	d0.75	warpdom	file	Dropdown Menu (Default)	0/20	16.2
+delay-fine	d0.75	warpdom	file	Dropdown Menu (forceVisible)	14/20	16.2
+raf	r24	jsdom	file	Context Menu	1/20	13.1
+raf	r24	jsdom	file	Dropdown Menu (Default)	0/20	13.1
+raf	r24	jsdom	file	Dropdown Menu (forceVisible)	0/20	13.1
+raf	r24	warpdom	file	Context Menu	0/20	13.4
+raf	r24	warpdom	file	Dropdown Menu (Default)	0/20	13.4
+raf	r24	warpdom	file	Dropdown Menu (forceVisible)	5/20	13.4
+raf	r32	jsdom	file	Context Menu	0/20	13.0
+raf	r32	jsdom	file	Dropdown Menu (Default)	0/20	13.0
+raf	r32	jsdom	file	Dropdown Menu (forceVisible)	2/20	13.0
+raf	r32	warpdom	file	Context Menu	2/20	13.4
+raf	r32	warpdom	file	Dropdown Menu (Default)	0/20	13.4
+raf	r32	warpdom	file	Dropdown Menu (forceVisible)	0/20	13.4
+raf	r48	jsdom	file	Context Menu	0/20	13.2
+raf	r48	jsdom	file	Dropdown Menu (Default)	0/20	13.2
+raf	r48	jsdom	file	Dropdown Menu (forceVisible)	0/20	13.2
+raf	r48	warpdom	file	Context Menu	0/20	13.4
+raf	r48	warpdom	file	Dropdown Menu (Default)	0/20	13.4
+raf	r48	warpdom	file	Dropdown Menu (forceVisible)	0/20	13.4
+raf	r8	jsdom	file	Context Menu	0/20	13.2
+raf	r8	jsdom	file	Dropdown Menu (Default)	0/20	13.2
+raf	r8	jsdom	file	Dropdown Menu (forceVisible)	0/20	13.2
+raf	r8	warpdom	file	Context Menu	0/20	13.1
+raf	r8	warpdom	file	Dropdown Menu (Default)	0/20	13.1
+raf	r8	warpdom	file	Dropdown Menu (forceVisible)	0/20	13.1
+repro	none	jsdom	file	Context Menu	0/20	42.0
+repro	none	jsdom	file	Dropdown Menu (Default)	0/20	42.0
+repro	none	jsdom	file	Dropdown Menu (forceVisible)	0/20	42.0
+repro	none	jsdom	full	Context Menu	0/20	8.0
+repro	none	jsdom	full	Dropdown Menu (Default)	0/20	8.0
+repro	none	jsdom	full	Dropdown Menu (forceVisible)	0/20	8.0
+repro	none	warpdom	file	Context Menu	6/20	42.7
+repro	none	warpdom	file	Dropdown Menu (Default)	0/20	42.7
+repro	none	warpdom	file	Dropdown Menu (forceVisible)	0/20	42.7
+repro	none	warpdom	full	Context Menu	9/20	8.2
+repro	none	warpdom	full	Dropdown Menu (Default)	0/20	8.2
+repro	none	warpdom	full	Dropdown Menu (forceVisible)	0/20	8.2
+repro-underload	none	jsdom	file	Context Menu	1/12	44.7
+repro-underload	none	jsdom	file	Dropdown Menu (Default)	0/12	44.7
+repro-underload	none	jsdom	file	Dropdown Menu (forceVisible)	1/12	44.7
+repro-underload	none	warpdom	file	Context Menu	0/12	52.6
+repro-underload	none	warpdom	file	Dropdown Menu (Default)	0/12	52.6
+repro-underload	none	warpdom	file	Dropdown Menu (forceVisible)	2/12	52.6

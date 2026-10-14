@@ -11,6 +11,13 @@
 // extended by: every configuration per suite, the A1 rows, per-learning modes, timed-run modes and
 // re-runs, false passes per test with a class, P3 against two A/A thresholds, and a comparison with
 // the 208ad49 baselines (ci-2026-10-13-208ad49-baselines-*).
+// Since the third internal review (2026-10-14): the best correct jsdom configuration is chosen here,
+// not taken from report.md, by a symmetric rule (the job's flaky set and the tests nondeterministic in
+// isolated runs, pooled over every per-test archive at the same DOM code, are excluded for jsdom
+// alternatives as they are for warpdom; the best is the one with the highest median per-round ratio
+// over jsdom-default); plus false passes in shared files of any class, the drop-in's cross-suite
+// medians in both jobs and the estimated split runs per calibration. Run with DOM_API_TRACER pinned
+// at harness 843087f (tools/README.md).
 //
 // Conventions as results-208ad49.cjs:
 // - speedup of B over A: median over rounds of time(A)/time(B) in the same round; "range" is the
@@ -114,6 +121,62 @@ const KINDS = [['tuning', 'baselines-tuning'], ['held-out', 'baselines-heldout']
 const BL = KINDS.map(([k, d]) => ({ k, J: job(P + d) }));
 const OLDBL = KINDS.map(([k, d]) => ({ k, data: readCsv(path.join(D, OLD + d, 'timing-ci.csv')), learn: readJsonl(path.join(D, OLD + d, 'learning.jsonl')) }));
 
+// ---------- the symmetric rule: tests nondeterministic in isolated runs, pooled ----------
+// Every archived job at the same DOM code (208ad49 and 5942dc9 differ only in the fast-mode command):
+// a test is nondeterministic in a suite if its status (missing counted as a status) is not the same
+// in every run, warm-ups included, of one isolated configuration: jsdom's default, jsdom's VM pool or
+// warpdom's drop-in (the A/A copy of the drop-in included). The same set is excluded on both sides:
+// for a jsdom alternative (is it correct?) and for warpdom (Table 4 classes such tests as
+// nondeterministic). Shared configurations are not pooled, because leaks make their outcomes vary.
+const POOL_DIRS = [
+  `${OLD}threeway-tuning/run1-38426985620`, `${OLD}threeway-tuning/run2-38427009322`, `${OLD}threeway-tuning/run3-38427031231`,
+  `${OLD}threeway-heldout`, `${OLD}threeway-apps`, `${OLD}ablation-a2a3/tuning-38427093681`, `${OLD}ablation-a2a3/heldout-38427115775`,
+  `${OLD}ablation-a4/tuning-38427136397`, `${OLD}ablation-a4/heldout-38427158136`,
+  `${OLD}baselines-tuning`, `${OLD}baselines-heldout`, `${OLD}baselines-apps`,
+  `${P}baselines-tuning`, `${P}baselines-heldout`, `${P}baselines-apps`,
+];
+const ISO_CONFIGS = { 'jsdom-default': 'jsdom-default', 'jsdom-vm': 'jsdom-vm', 'warpdom-default': 'warpdom-default', 'warpdom-default-aa': 'warpdom-default' };
+const POOL = {}; // suite -> config -> [test maps]
+for (const dir of POOL_DIRS) {
+  const pt = extract(dir, 'pertest.tar.xz', 'pertest');
+  for (const r of fs.readdirSync(pt)) for (const s of fs.readdirSync(path.join(pt, r))) for (const [file, c] of Object.entries(ISO_CONFIGS)) {
+    const m = readMap(path.join(pt, r, s, `${file}.json`));
+    if (m) ((POOL[s] ??= {})[c] ??= []).push(m.tests);
+  }
+}
+const NONDET = {}; // suite -> Map test -> configurations in which it is nondeterministic
+for (const [s, byC] of Object.entries(POOL)) {
+  const n = new Map();
+  for (const [c, maps] of Object.entries(byC)) for (const k of new Set(maps.flatMap((m) => Object.keys(m)))) if (new Set(maps.map((m) => m[k]?.s ?? 'missing')).size > 1) n.set(k, [...(n.get(k) ?? []), c]);
+  NONDET[s] = n;
+}
+// As ablation-report.cjs's correct(), with the job's flaky set and the pooled set excluded: a time in
+// every timed round, a per-test map in every timed round, no other test differing in any round.
+function correctSym(J, s, c) {
+  if (c === 'jsdom-default') return true;
+  const p = J.data.get(s);
+  const timedRounds = [...p.values()].filter((r) => r[c]);
+  if (!timedRounds.length || timedRounds.some((r) => Number.isNaN(r[c].secs))) return false;
+  const rounds = fs.readdirSync(J.pt).filter((r) => r !== '0' && fs.existsSync(path.join(J.pt, r, s)));
+  for (const r of rounds) {
+    const base = readMap(path.join(J.pt, r, s, 'jsdom-default.json')), run = readMap(path.join(J.pt, r, s, `${c}.json`));
+    if (!base || !run) return false;
+    for (const k of new Set([...Object.keys(base.tests), ...Object.keys(run.tests)])) if (base.tests[k]?.s !== run.tests[k]?.s && !J.flaky[s].tests.has(k) && !NONDET[s]?.has(k)) return false;
+  }
+  return true;
+}
+const JSDOM_ALTS = ['jsdom-shared', 'jsdom-sharedclean', 'jsdom-vm'];
+// The best correct jsdom configuration: of jsdom-default and the correct alternatives, the one with
+// the highest speedup over jsdom-default by the statistic the paper reports (median of per-round
+// ratios; jsdom-default itself 1).
+function bestSym(J, s) {
+  const p = J.data.get(s);
+  const correct = ['jsdom-default', ...JSDOM_ALTS.filter((c) => [...p.values()].some((r) => r[c]) && correctSym(J, s, c))];
+  const sp = (c) => (c === 'jsdom-default' ? 1 : mid(ratios(p, 'jsdom-default', c)));
+  const best = correct.reduce((a, c) => (sp(c) > sp(a) ? c : a));
+  return { correct, best, sp: sp(best) };
+}
+
 log('# Computed numbers for the strong baselines and measured isolation at warpdom 5942dc9\n');
 log('Generated by `tools/results-5942dc9.cjs` from the archived files in ci-2026-10-14-5942dc9-baselines-{tuning,heldout,apps} (see its header for the conventions). Every table names its source. "learned" in the data = the paper\'s measured isolation.\n');
 
@@ -157,21 +220,32 @@ for (const { k, J } of BL) {
 
 // ---------- measured isolation table and comparisons ----------
 log('## Measured isolation ("learned" in the data) and the strong baselines\n');
-log('Best correct jsdom configuration from each report.md (ablation-report.cjs: the fastest of jsdom-default/-shared/-vm/-sharedclean by median time whose tests match jsdom-default in every round, the job\'s flaky set excluded; jsdom-learned is not a candidate). Cells as above.\n');
+log('Best correct jsdom configuration, symmetric rule (this script, not report.md): a jsdom alternative (jsdom-shared, jsdom-sharedclean, jsdom-vm) is correct if it has a time and a per-test map in every timed round and no test differs from the same round\'s jsdom-default except tests in the job\'s flaky set or nondeterministic in isolated runs (pooled over every archived job at the same DOM code; section "Nondeterministic tests" below). The same exclusion applies to warpdom\'s configurations. Of jsdom-default and the correct alternatives, the best is the one with the highest median of per-round ratios over jsdom-default, the statistic the speedups use. jsdom-learned is not a candidate: it is the policy under evaluation, applied to jsdom, and is reported in its own column. Cells as above.\n');
+log('### Nondeterministic tests (pooled over every archived job at the same DOM code)\n');
+log(`Archives: ${POOL_DIRS.join(', ')} (pertest.tar.xz of each). Per suite: tests whose status is not the same in every run of one isolated configuration (in brackets).\n`);
+for (const s of Object.keys(NONDET).sort()) if (NONDET[s].size) {
+  const byC = new Map(); for (const cs of NONDET[s].values()) { const key = cs.join('+'); byC.set(key, (byC.get(key) ?? 0) + 1); }
+  log(`- ${s}: ${NONDET[s].size} (${[...byC].map(([c, n]) => `${n} [${c}]`).join(', ')})${NONDET[s].size <= 6 ? `: ${[...NONDET[s].keys()].map((t) => t.split('::').pop().slice(0, 90)).join('; ')}` : ''}`);
+}
+log('');
 const cmp = { ld: {}, lb: {}, jl: {}, wj: {}, sc: {}, sr: {}, sf: {}, lj: {}, dj: {} };
-const bestBy = {}; const everyBy = {};
+const bestBy = {}; const everyBy = {}; const correctBy = {};
 for (const { k, J } of BL) {
-  const { best, every } = bestOf(J.dir);
-  everyBy[k] = every;
+  const { best: perJob } = bestOf(J.dir);
   log(`### ${k}\n`);
   log('| Suite | rounds | jsdom default | correct jsdom configurations | best correct jsdom | jsdom-learned | warpdom drop-in | warpdom shared+reset | warpdom-learned (method) |');
   log('| --- | --- | --- | --- | --- | --- | --- | --- | --- |');
+  const every = [];
   for (const s of [...J.data.keys()].sort()) {
     const p = J.data.get(s);
-    const b = best[s].best; bestBy[`${k}/${s}`] = b;
+    const sym = bestSym(J, s);
+    const b = sym.best; bestBy[`${k}/${s}`] = b; correctBy[`${k}/${s}`] = sym.correct;
+    const ran = JSDOM_ALTS.filter((c) => [...p.values()].some((r) => r[c]));
+    if (ran.length && ran.every((c) => !sym.correct.includes(c))) every.push(`${s} (${ran.join(', ')})`);
+    const diffRule = JSON.stringify([...perJob[s].correct].sort()) !== JSON.stringify([...sym.correct].sort());
     const cell = (c) => `${s1(medT(p, c))}; ${xr(ratios(p, 'jsdom-default', c))}; ${differAll(J, s, c).str}`;
     const method = [...p.values()].map((r) => r['warpdom-learned']?.method).find(Boolean) ?? '';
-    log(`| ${s} | ${p.size} | ${s1(medT(p, 'jsdom-default'))} | ${best[s].correct.join(', ')} | ${b}: ${s1(medT(p, b))}, ${b === 'jsdom-default' ? '1.00x' : xr(ratios(p, 'jsdom-default', b))} | ${cell('jsdom-learned')} | ${cell('warpdom-default')} | ${cell('warpdom-sharedreset')} | ${cell('warpdom-learned')} (${method}) |`);
+    log(`| ${s} | ${p.size} | ${s1(medT(p, 'jsdom-default'))} | ${sym.correct.join(', ')}${diffRule ? ` (per-job flaky set only: ${perJob[s].correct.join(', ')})` : ''} | ${b}: ${s1(medT(p, b))}, ${b === 'jsdom-default' ? '1.00x' : xr(ratios(p, 'jsdom-default', b))} | ${cell('jsdom-learned')} | ${cell('warpdom-default')} | ${cell('warpdom-sharedreset')} | ${cell('warpdom-learned')} (${method}) |`);
     const key = `${k}/${s}`;
     cmp.ld[key] = ratios(p, 'warpdom-default', 'warpdom-learned');
     cmp.lb[key] = ratios(p, b, 'warpdom-learned');
@@ -183,21 +257,29 @@ for (const { k, J } of BL) {
     cmp.lj[key] = ratios(p, 'jsdom-default', 'warpdom-learned');
     cmp.dj[key] = ratios(p, 'jsdom-default', 'warpdom-default');
   }
-  log(`\nEvery non-default jsdom configuration changes results (report.md): ${every || 'none'}\n`);
+  everyBy[k] = every.join(', ');
+  log(`\nEvery non-default jsdom configuration changes results (symmetric rule): ${every.join(', ') || 'none'}.\n`);
 }
 // Which jsdom alternatives keep results, counted over the 16 Vitest suites.
 {
   const counts = {};
-  for (const { k, J } of BL) { const { best } = bestOf(J.dir); for (const s of J.data.keys()) for (const c of best[s].correct) if (c !== 'jsdom-default') (counts[c] ??= []).push(k === 'apps' ? `${s} (app)` : s); }
-  log('Correct jsdom alternatives (report.md "correct jsdom configurations"), by configuration:\n');
+  const any = new Set();
+  for (const { k, J } of BL) for (const s of J.data.keys()) for (const c of correctBy[`${k}/${s}`]) if (c !== 'jsdom-default') { (counts[c] ??= []).push(k === 'apps' ? `${s} (app)` : s); any.add(`${k}/${s}`); }
+  log('Correct jsdom alternatives (symmetric rule), by configuration:\n');
   for (const [c, l] of Object.entries(counts).sort()) log(`- ${c}: ${l.length} (${l.sort().join(', ')})`);
+  log(`- Suites with at least one correct alternative: ${any.size} (${[...any].sort().join(', ')}).`);
+  log(`- Best correct configuration not jsdom-default: ${Object.entries(bestBy).filter(([, b]) => b !== 'jsdom-default').map(([k, b]) => `${k} ${b}`).join(', ')}.`);
 }
 
 log('\n### Pairwise comparisons per suite\n');
 log('Median of per-round ratios (range). learned vs drop-in = warpdom-default / warpdom-learned (> 1: learned faster); learned vs best = best correct jsdom / warpdom-learned; learned vs jsdom default = jsdom-default / warpdom-learned; jsdom-learned vs jsdom-default = jsdom-default / jsdom-learned; warpdom-learned vs jsdom-learned = jsdom-learned / warpdom-learned.\n');
-log('| Suite | best correct jsdom | learned vs jsdom default | learned vs best correct jsdom | learned vs drop-in | jsdom-learned vs jsdom-default | warpdom-learned vs jsdom-learned |');
-log('| --- | --- | --- | --- | --- | --- | --- |');
-for (const key of Object.keys(cmp.ld)) log(`| ${key} | ${bestBy[key]} | ${xr(cmp.lj[key])} | ${xr(cmp.lb[key])} | ${xr(cmp.ld[key])} | ${xr(cmp.jl[key])} | ${xr(cmp.wj[key])} |`);
+log('| Suite | best correct jsdom (its speedup) | learned vs jsdom default | drop-in vs jsdom default (same job) | learned vs best correct jsdom | learned vs drop-in | jsdom-learned vs jsdom-default | warpdom-learned vs jsdom-learned |');
+log('| --- | --- | --- | --- | --- | --- | --- | --- |');
+for (const { k, J } of BL) for (const s of [...J.data.keys()].sort()) { const key = `${k}/${s}`; const b = bestBy[key]; log(`| ${key} | ${b}${b === 'jsdom-default' ? '' : ` (${x2(mid(ratios(J.data.get(s), 'jsdom-default', b)))})`} | ${xr(cmp.lj[key])} | ${xr(cmp.dj[key])} | ${xr(cmp.lb[key])} | ${xr(cmp.ld[key])} | ${xr(cmp.jl[key])} | ${xr(cmp.wj[key])} |`); }
+{
+  const slower = Object.keys(cmp.lb).filter((k) => !k.startsWith('apps/') && mid(cmp.lb[k]) < 1).map((k) => `${k} ${x2(mid(cmp.lb[k]))}`);
+  log(`\nlearned slower than the best correct jsdom configuration (median below 1), 16 Vitest suites: ${slower.join(', ') || 'none'}.`);
+}
 log('\n### Cross-suite medians\n');
 log('Two-level bootstrap as timing-report.cjs (resample suites, then rounds within each chosen suite; seed 0x5eed, 10,000 resamples). Sets: the 16 Vitest suites (11 tuning, 5 held-out); ariakit has 1 timed round and CopilotKit 2 (budget), so two sets leave them out. Excalidraw (application, 3 rounds) is not in any median.\n');
 log('| Comparison | set | median | leave-one-out medians: lowest - highest |');
@@ -220,17 +302,10 @@ for (const [name, m] of [['warpdom-learned vs jsdom-default', cmp.lj], ['warpdom
     log(`| ${name} | ${sn} | ${bootStr(b)} | ${x2(mn.v)} (without ${mn.s}) - ${x2(mx.v)} (without ${mx.s}) |`);
   }
 }
-// Sensitivity: ark-ui's jsdom-vm differs from jsdom-default only in tests that fail in this job's
-// jsdom-default runs and are flaky on jsdom in other jobs (NumberInput smallStep/largeStep, Toast);
-// at 208ad49 jsdom-vm was ark-ui's best correct configuration. Medians with jsdom-vm as ark-ui's best.
-{
-  const alt = { ...cmp.lb, 'tuning/ark-ui': ratios(BL[0].J.data.get('ark-ui'), 'jsdom-vm', 'warpdom-learned') };
-  log(`\nSensitivity (ark-ui's best correct jsdom taken as jsdom-vm, whose only differences are NumberInput smallStep/largeStep and Toast tests): ark-ui learned vs jsdom-vm ${xr(alt['tuning/ark-ui'])}; learned vs best correct jsdom, tuning (11) ${bootStr(boot2(Object.keys(alt).filter(sets['tuning (11)']).map((k) => alt[k])))}; 16 Vitest ${bootStr(boot2(Object.keys(alt).filter(sets['tuning + held-out (16)']).map((k) => alt[k])))}.`);
-}
 {
   const gm = (a) => Math.exp(valid(a).reduce((x, y) => x + Math.log(y), 0) / valid(a).length);
   const ks = Object.keys(cmp.lj).filter(sets['tuning + held-out (16)']);
-  log(`\nOther summaries over the 16 Vitest suites: geometric mean of the per-suite medians, learned vs jsdom default ${x2(gm(ks.map((k) => mid(cmp.lj[k]))))}, learned vs best correct jsdom ${x2(gm(ks.map((k) => mid(cmp.lb[k]))))}, learned vs drop-in ${x2(gm(ks.map((k) => mid(cmp.ld[k]))))}.`);
+  log(`\nOther summaries over the 16 Vitest suites: geometric mean of the per-suite medians, learned vs jsdom default ${x2(gm(ks.map((k) => mid(cmp.lj[k]))))}, learned vs best correct jsdom ${x2(gm(ks.map((k) => mid(cmp.lb[k]))))}, learned vs drop-in ${x2(gm(ks.map((k) => mid(cmp.ld[k]))))}, drop-in vs jsdom default ${x2(gm(ks.map((k) => mid(cmp.dj[k]))))}, jsdom-learned vs jsdom default ${x2(gm(ks.map((k) => mid(cmp.jl[k]))))}.`);
 }
 
 // ---------- A1 ----------
@@ -276,6 +351,7 @@ log('A false pass: a test the learned configuration reported passed while the sa
 log('| Suite | configuration | round | test | isolated | jsdom | flaky in job | isolated runs of the job not passed | file in that timed run | class |');
 log('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |');
 const g2 = [];
+const placementOf = new Map();
 const RECS = {};
 function placement(k, J, s, c, r, t) { // where the test's file ran in the timed learned run of round r
   const recs = RECS[J.dir] ??= readJsonl(path.join(D, J.dir, 'learning.jsonl'));
@@ -303,6 +379,7 @@ for (const { k, J } of BL) for (const s of [...J.data.keys()].sort()) for (const
       const fl = J.flaky[s].tests.has(t);
       const js = B?.tests[t]?.s ?? 'missing';
       const where = placement(k, J, s, c, r, t);
+      placementOf.set(`${k}/${s}/${c}/${r}/${t}`, where);
       const cls = notPassed === isoMaps.length ? (where === 'shared' ? '**G2 candidate** (failed in every isolated run of the job; ran shared)' : 'failed in every isolated run of the job, but ran isolated (not a leak)') : fl ? 'flaky on jsdom' : js !== 'passed' ? 'fails on jsdom' : !I.tests[t] ? 'missing in isolated run' : 'passes on jsdom; fails in some isolated runs';
       g2.push({ k, s, c, r, t, cls });
       log(`| ${s} | ${c} | ${r} | ${t.split('::').slice(1).join('::').slice(0, 140)} | ${I.tests[t]?.s ?? 'missing'} | ${js} | ${fl ? 'yes' : 'no'} | ${notPassed} of ${isoMaps.length} | ${where} | ${cls} |`);
@@ -317,11 +394,39 @@ const nonzero = Object.entries(fpSum).filter(([, v]) => v > 0).map(([k, v]) => `
 log(`- CSV false_pass sums > 0: ${nonzero.join(', ') || 'none'}.`);
 log(`- G2 candidates (passed shared, failed in every isolated run of the job): ${g2.filter((x) => x.cls.includes('G2')).map((x) => `${x.s} ${x.c} round ${x.r}: ${x.t.split('::').pop()}`).join('; ') || 'none'}.`);
 
+// False passes in files that ran shared, whatever their class: the G2 criterion above (failed in every
+// isolated run) cannot see a leak that only raises a pass rate. Per test: the rounds with a false pass
+// in a shared file, and pass rates in the job: the learned configuration's timed runs in which the
+// file ran shared, and the same DOM's isolated runs (warm-up included).
+log('\n### False passes in files that ran shared (any class)\n');
+log('A false pass as above whose file ran shared in that timed run. Pass rates over this job: "shared" = timed learned runs in which the test\'s file ran shared; "isolated" = the same DOM\'s isolated runs, warm-up included. One-sided Fisher exact p (shared pass rate higher), as a descriptive check only.\n');
+log('| Suite | configuration | test | rounds with a false pass in a shared file | passed when shared | passed when isolated | Fisher p |');
+log('| --- | --- | --- | --- | --- | --- | --- |');
+const lf = (n) => { let x = 0; for (let i = 2; i <= n; i++) x += Math.log(i); return x; };
+const hyper = (a, b, c, d) => Math.exp(lf(a + b) + lf(c + d) + lf(a + c) + lf(b + d) - lf(a) - lf(b) - lf(c) - lf(d) - lf(a + b + c + d));
+const fisherGreater = (a, b, c, d) => { let p = 0; const r1 = a + b, c1 = a + c, n = a + b + c + d; for (let x = a; x <= Math.min(r1, c1); x++) p += hyper(x, r1 - x, c1 - x, n - r1 - c1 + x); return p; };
+const sharedFP = new Map();
+for (const x of g2) if (placementOf.get(`${x.k}/${x.s}/${x.c}/${x.r}/${x.t}`) === 'shared') { const key = `${x.k}\t${x.s}\t${x.c}\t${x.t}`; sharedFP.set(key, [...(sharedFP.get(key) ?? []), x.r]); }
+const SHAREDFP = [];
+for (const [key, rounds] of sharedFP) {
+  const [k, s, c, t] = key.split('\t');
+  const J = BL.find((b) => b.k === k).J;
+  const iso = c === 'warpdom-learned' ? 'warpdom-default' : 'jsdom-default';
+  let sp = 0, sn = 0;
+  for (const r of J.data.get(s).keys()) { if (placement(k, J, s, c, r, t) !== 'shared') continue; const L = readMap(path.join(J.pt, r, s, `${c}.json`)); if (!L) continue; sn++; if (L.tests[t]?.s === 'passed') sp++; }
+  const isoMaps = fs.readdirSync(J.pt).map((r) => readMap(path.join(J.pt, r, s, `${iso}.json`))).filter(Boolean);
+  const ip = isoMaps.filter((m) => m.tests[t]?.s === 'passed').length, inn = isoMaps.length;
+  const fp = fisherGreater(sp, sn - sp, ip, inn - ip);
+  SHAREDFP.push({ s, c, t, rounds });
+  log(`| ${s} | ${c} | ${t.split('::').slice(1).join('::').slice(0, 120)} | ${rounds.join(', ')} | ${sp} of ${sn} | ${ip} of ${inn} | ${fp.toFixed(2)} |`);
+}
+log(`\n- False passes in shared files: ${SHAREDFP.reduce((a, x) => a + x.rounds.length, 0)} in ${SHAREDFP.length} tests (${[...new Set(SHAREDFP.map((x) => `${x.s} ${x.c}`))].join(', ') || 'none'}).`);
+
 // ---------- learning ----------
 log('\n## Learning: modes, stability, re-runs, cost and break-even\n');
-log('Source: learning.jsonl of each directory. Learnings: the warm-up\'s (round 0) and one from scratch in each timed round. The timed learned runs use the state of the warm-up learning (as ablation-report.cjs states; the run records confirm it: e.g. ark-ui ran react split in all 5 timed runs while learnings 2-4 chose all isolated); the per-round learnings measure stability and cost. Modes: per learning, in round order (CLI: the projects split, or "all isolated"). Mode agreement: share of learnings choosing the most common mode. Jaccard: mean pairwise similarity of the leaky (isolated) file sets. Timed runs: the mode each timed run used (the mode field of the run record), files re-run by the safety net and new leaky files, summed. Cost: median over learnings of the whole learning time minus its isolated run (seconds - t_iso; = t_sh + t_split where both are recorded), "k of n" learnings with both seconds and t_iso. Break-even: cost / (median isolated run - median learned run) from timing-ci.csv, the isolated run being the same DOM\'s default.\n');
-log('| Suite | configuration | method | learnings | modes per learning (round 0-5) | mode agreement | leaky files min-max | Jaccard | timed runs: modes | re-runs, new leaky | cost | gain per run | break-even runs |');
-log('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |');
+log('Source: learning.jsonl of each directory. Learnings: the warm-up\'s (round 0) and one from scratch in each timed round. The timed learned runs use the state of the warm-up learning (as ablation-report.cjs states; the run records confirm it: e.g. ark-ui ran react split in all 5 timed runs while learnings 2-4 chose all isolated); the per-round learnings measure stability and cost. Modes: per learning, in round order (CLI: the projects split, or "all isolated"). Mode agreement: share of learnings choosing the most common mode. Jaccard: mean pairwise similarity of the leaky (isolated) file sets. Timed runs: the mode each timed run used (the mode field of the run record), files re-run by the safety net and new leaky files, summed. Cost: median over learnings of the whole learning time minus its isolated run (seconds - t_iso; = t_sh + t_split where both are recorded), "k of n" learnings with both seconds and t_iso. Break-even: cost / (median isolated run - median learned run) from timing-ci.csv, the isolated run being the same DOM\'s default; the cost includes every split run of the learning (up to 4). Split runs per learning: (seconds - t_iso - t_sh) / t_split, rounded, where t_split is the last split run\'s time (an estimate: earlier split runs may take longer or shorter).\n');
+log('| Suite | configuration | method | learnings | modes per learning (round 0-5) | mode agreement | leaky files min-max | Jaccard | timed runs: modes | re-runs, new leaky | cost | gain per run | break-even runs | split runs per learning (estimated) |');
+log('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |');
 const LEARN = {};
 for (const { k, J } of BL) {
   const recs = readJsonl(path.join(D, J.dir, 'learning.jsonl'));
@@ -341,8 +446,10 @@ for (const { k, J } of BL) {
     const runModes = new Map(); for (const r of R) runModes.set(modeName(r.mode), (runModes.get(modeName(r.mode)) ?? 0) + 1);
     const reruns = R.reduce((a, r) => a + (r.rerun ?? 0), 0), newl = R.reduce((a, r) => a + (r.new_leaky?.length ?? 0), 0);
     const be = Number.isNaN(cost) || Number.isNaN(gain) ? '—' : gain <= 0 ? 'never' : (cost / gain).toFixed(1);
+    // Split runs per learning, estimated as (seconds - t_iso - t_sh) / t_split (t_split: the last split run).
+    const est = L.filter((r) => r.seconds != null && r.t_iso != null && r.t_sh != null && r.t_split > 0).map((r) => Math.max(0, Math.round((r.seconds - r.t_iso - r.t_sh) / r.t_split)));
     LEARN[`${k}/${s}/${c}`] = { modes: L.map((r) => modeName(r.mode)), agree, be, cost, gain, reruns, jac: pairs.length ? pairs.reduce((a, b) => a + b, 0) / pairs.length : NaN, sizes };
-    log(`| ${k}/${s} | ${c} | ${[...new Set(L.map((r) => r.method))].join(', ')} | ${L.length} | ${L.map((r) => modeName(r.mode)).join('; ')} | ${agree.toFixed(2)} | ${Math.min(...sizes)}-${Math.max(...sizes)} | ${pairs.length ? (pairs.reduce((a, b) => a + b, 0) / pairs.length).toFixed(2) : '—'} | ${[...runModes].map(([m, n]) => `${m} ${n}`).join(', ')} | ${reruns}, ${newl} | ${s1(cost)} (${exact.length} of ${L.length}) | ${s1(gain)} | ${be} |`);
+    log(`| ${k}/${s} | ${c} | ${[...new Set(L.map((r) => r.method))].join(', ')} | ${L.length} | ${L.map((r) => modeName(r.mode)).join('; ')} | ${agree.toFixed(2)} | ${Math.min(...sizes)}-${Math.max(...sizes)} | ${pairs.length ? (pairs.reduce((a, b) => a + b, 0) / pairs.length).toFixed(2) : '—'} | ${[...runModes].map(([m, n]) => `${m} ${n}`).join(', ')} | ${reruns}, ${newl} | ${s1(cost)} (${exact.length} of ${L.length}) | ${s1(gain)} | ${be} | ${est.length ? est.join(', ') : '—'} |`);
   }
 }
 {
@@ -374,5 +481,17 @@ for (let i = 0; i < BL.length; i++) {
     const om = O.learn.filter((r) => r.project === s && r.kind === 'learn' && (r.config ?? 'warpdom-learned') === 'warpdom-learned').sort((a, b) => a.round - b.round).map((r) => modeName(r.mode));
     log(`| ${k}/${s} | ${po.size} / ${pn.size} | ${summarize(om)} | ${summarize(LEARN[`${k}/${s}/warpdom-learned`].modes)} | ${xr(ratios(po, 'warpdom-default', 'warpdom-learned'))} | ${xr(cmp.ld[`${k}/${s}`])} | ${xr(ratios(po, 'jsdom-default', 'warpdom-learned'))} | ${xr(cmp.lj[`${k}/${s}`])} | ${xr(ratios(po, 'jsdom-default', 'warpdom-default'))} | ${xr(cmp.dj[`${k}/${s}`])} |`);
   }
+}
+// The drop-in measured twice with identical DOM code: how much a single job's cross-suite median moves
+// compared with the per-suite ratios.
+{
+  const ch = [], o16 = [], n16 = [];
+  for (let i = 0; i < BL.length; i++) {
+    const { k, J } = BL[i]; if (k === 'apps') continue; const O = OLDBL[i];
+    for (const s of J.data.keys()) { const a = mid(ratios(O.data.get(s), 'jsdom-default', 'warpdom-default')), b = mid(cmp.dj[`${k}/${s}`]); o16.push(a); n16.push(b); ch.push({ s, d: b / a - 1 }); }
+  }
+  const abs = ch.map((x) => Math.abs(x.d));
+  const mn = ch.reduce((a, c) => (c.d < a.d ? c : a)), mx = ch.reduce((a, c) => (c.d > a.d ? c : a));
+  log(`\nDrop-in vs jsdom default, the same DOM code in two jobs (16 Vitest suites): cross-suite median ${x2(mid(o16))} at 208ad49, ${x2(mid(n16))} at 5942dc9 (${((mid(n16) / mid(o16) - 1) * 100).toFixed(1)}%); per-suite change of the median ratio: median of absolute changes ${(mid(abs) * 100).toFixed(1)}%, from ${(mn.d * 100).toFixed(1)}% (${mn.s}) to +${(mx.d * 100).toFixed(1)}% (${mx.s}).`);
 }
 fs.rmSync(tmp, { recursive: true, force: true });

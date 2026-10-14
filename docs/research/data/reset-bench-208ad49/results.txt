@@ -1,0 +1,19 @@
+$ git -C <worktree of 208ad49> rev-parse HEAD
+208ad49e83f09da7f4ba8ffb01cbb14958e7a60a
+$ node --version
+v22.17.1
+$ uname -a
+Darwin Mac 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041 arm64
+$ sysctl -n machdep.cpu.brand_string
+Apple M4 Pro
+$ sysctl -n hw.memsize
+25769803776
+$ node reset-bench.mjs <worktree> --json results.json
+warpdom reset micro-benchmark  node v22.17.1  darwin arm64  jsdom profile 30.1.2  reps 200 warmup 50
+timed | state | nodes | elements | median ms | p10 ms | p90 ms | max ms | min ms | mean ms | post-reset problems
+environment reset (resetOverrides + resetWindow) | a-untouched | 5 | 3 | 0.0488 | 0.0224 | 0.0846 | 2.5769 | 0.0175 | 0.0798 | none
+environment reset (resetOverrides + resetWindow) | b-typical-test-file | 816 | 484 | 0.085 | 0.041 | 0.1271 | 5.89 | 0.0212 | 0.1286 | none
+environment reset (resetOverrides + resetWindow) | c-large-tree-10k | 18007 | 12005 | 0.0771 | 0.0646 | 0.1716 | 12.0559 | 0.036 | 0.3533 | none
+resetWindow(window) only | a-untouched | 5 | 3 | 0.0455 | 0.0167 | 0.0893 | 9.1402 | 0.0161 | 0.1036 | none
+resetWindow(window) only | b-typical-test-file | 816 | 484 | 0.0883 | 0.0537 | 0.138 | 3.384 | 0.0215 | 0.1284 | none
+resetWindow(window) only | c-large-tree-10k | 18007 | 12005 | 0.0778 | 0.0611 | 0.1766 | 20.0351 | 0.0456 | 0.3954 | none

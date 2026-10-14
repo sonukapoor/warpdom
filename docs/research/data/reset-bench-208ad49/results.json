@@ -1,0 +1,106 @@
+{
+  "meta": {
+    "warpdomDir": "<worktree of 208ad49>",
+    "jsdomProfile": "30.1.2",
+    "createWindowOptions": {
+      "url": "http://localhost:3000",
+      "jsdom": "30.1.2",
+      "fastFrames": false
+    },
+    "node": "v22.17.1",
+    "platform": "darwin arm64",
+    "date": "2026-10-14T20:18:56.138Z"
+  },
+  "results": [
+    {
+      "state": "a-untouched",
+      "nodesBeforeReset": 5,
+      "elementsBeforeReset": 3,
+      "reps": 200,
+      "warmup": 50,
+      "medianMs": 0.0488,
+      "p10Ms": 0.0224,
+      "p90Ms": 0.0846,
+      "maxMs": 2.5769,
+      "minMs": 0.0175,
+      "meanMs": 0.0798,
+      "postResetProblems": [],
+      "timed": "environment reset (resetOverrides + resetWindow)"
+    },
+    {
+      "state": "b-typical-test-file",
+      "nodesBeforeReset": 816,
+      "elementsBeforeReset": 484,
+      "reps": 200,
+      "warmup": 50,
+      "medianMs": 0.085,
+      "p10Ms": 0.041,
+      "p90Ms": 0.1271,
+      "maxMs": 5.89,
+      "minMs": 0.0212,
+      "meanMs": 0.1286,
+      "postResetProblems": [],
+      "timed": "environment reset (resetOverrides + resetWindow)"
+    },
+    {
+      "state": "c-large-tree-10k",
+      "nodesBeforeReset": 18007,
+      "elementsBeforeReset": 12005,
+      "reps": 200,
+      "warmup": 50,
+      "medianMs": 0.0771,
+      "p10Ms": 0.0646,
+      "p90Ms": 0.1716,
+      "maxMs": 12.0559,
+      "minMs": 0.036,
+      "meanMs": 0.3533,
+      "postResetProblems": [],
+      "timed": "environment reset (resetOverrides + resetWindow)"
+    },
+    {
+      "state": "a-untouched",
+      "nodesBeforeReset": 5,
+      "elementsBeforeReset": 3,
+      "reps": 200,
+      "warmup": 50,
+      "medianMs": 0.0455,
+      "p10Ms": 0.0167,
+      "p90Ms": 0.0893,
+      "maxMs": 9.1402,
+      "minMs": 0.0161,
+      "meanMs": 0.1036,
+      "postResetProblems": [],
+      "timed": "resetWindow(window) only"
+    },
+    {
+      "state": "b-typical-test-file",
+      "nodesBeforeReset": 816,
+      "elementsBeforeReset": 484,
+      "reps": 200,
+      "warmup": 50,
+      "medianMs": 0.0883,
+      "p10Ms": 0.0537,
+      "p90Ms": 0.138,
+      "maxMs": 3.384,
+      "minMs": 0.0215,
+      "meanMs": 0.1284,
+      "postResetProblems": [],
+      "timed": "resetWindow(window) only"
+    },
+    {
+      "state": "c-large-tree-10k",
+      "nodesBeforeReset": 18007,
+      "elementsBeforeReset": 12005,
+      "reps": 200,
+      "warmup": 50,
+      "medianMs": 0.0778,
+      "p10Ms": 0.0611,
+      "p90Ms": 0.1766,
+      "maxMs": 20.0351,
+      "minMs": 0.0456,
+      "meanMs": 0.3954,
+      "postResetProblems": [],
+      "timed": "resetWindow(window) only"
+    }
+  ]
+}
