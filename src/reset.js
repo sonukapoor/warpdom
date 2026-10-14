@@ -4,7 +4,17 @@
 // state is reset: a new document tree, no listeners, handlers, focus,
 // selection or observers on the document and window, no pending animation
 // frames and storage, and the initial URL, history, viewport and scroll
-// position.
+// position. The window's own objects that stay (navigator, location,
+// history, screen, ...) get back the own properties they had, and so do
+// their prototypes (Navigator.prototype, ...): user-event's setup() puts a
+// clipboard stub on navigator, which a fresh window does not have.
+//
+// Not restored: other interface prototypes (Element.prototype.scrollTo =
+// ..., often set by a setup file, which runs again before each file),
+// interface objects' own properties, a kept object whose prototype was
+// replaced (Object.setPrototypeOf), properties a test made non-configurable,
+// and Node's own globals (performance, crypto, console), which are the
+// worker's, not the window's.
 //
 // Made for running test files without isolation (Vitest --no-isolate):
 // files share modules but each starts with a fresh-looking DOM, which takes
@@ -20,14 +30,30 @@ const ownProperties = (object) => new Map(Reflect.ownKeys(object).map((key) => [
 
 // Puts back an object's own properties as snapshotted: properties added
 // since (a library's "already set up" marker, a test's global) are deleted.
+// A property made non-configurable cannot be deleted or redefined; it stays
+// (Reflect: no TypeError, which would fail every later file).
 function restoreOwnProperties(object, snapshot) {
   for (const key of Reflect.ownKeys(object)) {
-    if (!snapshot.has(key)) delete object[key];
+    if (!snapshot.has(key)) Reflect.deleteProperty(object, key);
   }
   for (const [key, descriptor] of snapshot) {
     const current = Object.getOwnPropertyDescriptor(object, key);
-    if (!current || current.value !== descriptor.value || current.get !== descriptor.get) Object.defineProperty(object, key, descriptor);
+    if (!current || current.value !== descriptor.value || current.get !== descriptor.get || current.set !== descriptor.set) Reflect.defineProperty(object, key, descriptor);
   }
+}
+
+// The window's objects that stay across resets (by their internal state
+// entry, window-features.js; created on first use, except location and
+// history), and their interfaces. They start without own properties.
+const KEPT_OBJECTS = ['navigator', 'screen', 'external', 'location', 'history', 'customElements'];
+const KEPT_INTERFACES = new Set(['Navigator', 'Screen', 'External', 'BarProp', 'Location', 'History', 'CustomElementRegistry']);
+const NO_PROPERTIES = new Map();
+
+function keptObjects(ws) {
+  const objects = [];
+  for (const key of KEPT_OBJECTS) if (ws[key]) objects.push(ws[key]);
+  if (ws.bars) objects.push(...Object.values(ws.bars));
+  return objects;
 }
 
 // A kept node's mutation observer registrations go, and their observers
@@ -59,6 +85,19 @@ export function snapshotWindow(window) {
   // The initial tree's nodes, kept by reset (libraries hold document.body).
   const doc = window.document;
   ws.initialNodes = [doc.doctype, doc.documentElement, doc.head, doc.body].map((node) => ({ node, props: ownProperties(node) }));
+  // The kept objects made so far; one made later starts without own
+  // properties (NO_PROPERTIES).
+  ws.keptSnapshots = new Map(keptObjects(ws).map((object) => [object, ownProperties(object)]));
+  // Their prototypes: those created so far now, the others when created.
+  const protos = new Map();
+  for (const name of KEPT_INTERFACES) {
+    const proto = Object.getOwnPropertyDescriptor(ws.protos, name)?.value;
+    if (proto) protos.set(proto, ownProperties(proto));
+  }
+  ws.keptProtoSnapshots = protos;
+  ws.onMaterialize = (name, proto) => {
+    if (KEPT_INTERFACES.has(name)) protos.set(proto, ownProperties(proto));
+  };
 }
 
 export function resetWindow(window) {
@@ -71,6 +110,10 @@ export function resetWindow(window) {
   // and set up again only if the mark is gone.
   restoreOwnProperties(window, ws.snapshot);
   restoreOwnProperties(doc, ws.documentSnapshot);
+  // The kept objects' and their prototypes' own properties (user-event's
+  // navigator.clipboard stub, a test's navigator.userAgent).
+  for (const object of keptObjects(ws)) restoreOwnProperties(object, ws.keptSnapshots.get(object) ?? NO_PROPERTIES);
+  for (const [proto, snapshot] of ws.keptProtoSnapshots) restoreOwnProperties(proto, snapshot);
 
   // Window state.
   ws.listeners = undefined;

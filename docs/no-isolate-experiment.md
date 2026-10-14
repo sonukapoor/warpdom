@@ -71,7 +71,12 @@ tree (the same `html`, `head` and `body` elements, since Testing Library's
 `screen` holds `document.body`), no listeners, handlers, attributes or
 added properties on them (libraries mark a document they have set up),
 focus, selection, observers, animation frames, URL, history and viewport
-back to their initial state.
+back to their initial state. The window's other kept objects (navigator,
+location, history, screen, customElements, external, the bars) and their
+prototypes get back their initial own properties: user-event's `setup()`
+leaves a clipboard stub on `navigator`, which a fresh window does not have
+(found by the shuffled-order experiment of 2026-10-14 in ark-ui's suite).
+Other interface prototypes are not restored.
 
 warpdom, Vitest, two workers:
 
