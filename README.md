@@ -7,6 +7,8 @@
 
 # warpdom
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23378613.svg)](https://doi.org/10.5281/zenodo.23378613)
+
 A DOM for unit and component tests: **your tests get the same results as
 on jsdom, faster.** A drop-in environment for Vitest and Jest, written
 from the WHATWG specifications.

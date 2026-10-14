@@ -4,9 +4,8 @@ message: >-
 type: software
 title: "warpdom: a fast, jsdom-compatible DOM for unit and component tests"
 version: 0.1.0
-# DOI: assigned by Zenodo at the v0.1.0 release; add it here afterwards.
-# doi: "10.5281/zenodo.XXXXXXX"
-# date-released: "YYYY-MM-DD"  (the v0.1.0 release date)
+doi: "10.5281/zenodo.23378614"
+date-released: "2026-10-14"
 license: MIT
 repository-code: "https://github.com/sonukapoor/warpdom"
 url: "https://github.com/sonukapoor/warpdom"
