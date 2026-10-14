@@ -10,7 +10,8 @@ warpdom's fast mode runs files without isolation and resets the window
 between files (same objects, fresh state), and runs the files that still
 leak (module state the reset cannot reach) isolated. It decides by
 measuring, with a margin for noise, and checks every split run against
-the isolated time, so it is not slower than isolated runs beyond noise.
+the isolated time, so it does not stay slower than isolated runs beyond
+noise.
 
 ## Setup (Vitest 3.2 or later)
 
@@ -29,8 +30,12 @@ work too.
 Run tests with the warpdom CLI instead of `vitest run`:
 
 ```sh
-warpdom vitest run [vitest arguments]
+warpdom vitest run [--learn] [--slow-runs=3] [--relearn-after=10] [vitest arguments]
 ```
+
+`--learn` learns now; `--slow-runs` and `--relearn-after` set the
+feedback rule below (defaults shown; `--relearn-after=0` keeps a switched
+mode isolated until `--learn`).
 
 ## What it does
 
@@ -53,8 +58,16 @@ warpdom vitest run [vitest arguments]
   isolated result counts, so a newly leaking file never shows a false
   failure; it runs isolated from then on (also when it fails isolated too:
   a real failure is then reported directly, not after a shared run and a
-  rerun). A split run that is no faster than the learned isolated time
-  switches the mode to isolated.
+  rerun).
+- **Feedback**: a split run (without its reruns) that takes longer than
+  the learned isolated time plus the margin is *slow*. Three slow split
+  runs in a row switch the mode to isolated; a faster run resets the
+  count, so one slow runner or one noisy run never ends split mode. That
+  isolated mode learns again after 10 plain runs (the slowness may have
+  been the machine's). A split run whose suite has more than 10% more or
+  fewer test files than the learned one learns again on the next run.
+  Every mode decision is recorded in the state with its reason and times
+  (`decisions`).
 - **Hangs and timeouts**: a run without isolation that takes much longer
   than the isolated one is stopped. When learning, that means isolated
   mode; in a split run, the run falls back to an isolated run (its result
@@ -118,11 +131,30 @@ was 3-8% slower than the drop-in on 5 of 11 tuning suites).
   is the first and coldest. Learnings within a few percent flipped between
   modes (emoji-picker-element, svelte, solid), and a suite gaining under
   5% from the split gains little anyway.
-- **Feedback (P3 after learning).** Each split run compares its own time
-  (without the reruns, which a file needs once) with the learned isolated
-  time; a split no faster than that switches to isolated for good (until
-  `--learn`). So a split that stops paying (more files isolated, a slower
-  machine) costs at most one run.
+- **The mode is decided on one machine; feedback needs persistent
+  evidence.** The learning compares t_split with t_iso measured in the
+  same learning, on the same machine, minutes apart, so its decision is
+  relative. Later split runs can only be compared with the stored t_iso,
+  an absolute time from the learning's machine, and absolute times of
+  the same suite vary up to 1.6x between hosted CI runners of the same
+  type. Until 2026-10-14 one split run not faster than t_iso switched to
+  isolated for good: one slow runner or one noisy run disabled a split
+  that pays. Now a split run is slow only beyond the margin
+  (t > t_iso + max(5% of t_iso, 0.5 s), the learning's margin), the mode
+  switches only after 3 slow split runs in a row (`--slow-runs`), and an
+  isolated mode reached that way learns again after 10 plain runs
+  (`--relearn-after`), on the machine that runs the suite then, which
+  recovers from a learning made on a faster machine. A split that really
+  stops paying (more files isolated, a grown suite) costs at most 3 runs
+  slower than isolated by more than the margin, then a learning every 10
+  runs while it does not pay. A suite that gained or lost more than 10% of
+  its test files learns again (the stored t_iso no longer stands for it).
+  Isolated mode chosen by a learning stays a plain run: no counter, no
+  write, no re-learning (`--learn` after large changes).
+  Not chosen: scaling t_iso by a calibration on the current machine (per
+  file times of the isolated files, or a probe run). Per-file times in a
+  run depend on what the other workers run, and a probe costs time on
+  every run; persistence and re-learning need neither.
 - **Isolated mode costs exactly a plain run.** Vitest runs in the CLI's
   process with the arguments as given: no second Node process, no added
   reporters (the CLI used to replace the project's reporters with
@@ -153,9 +185,37 @@ was 3-8% slower than the drop-in on 5 of 11 tuning suites).
   needs no resolving. Vitest 1.2 to 5.0 accept it, isolated or not;
   Vitest 4 and later do not hang either way.
 - **State version 2** (`vitest-fast-state.js`): `isolate`, `leaky`,
-  `learned` (isolated, fast and split times), `reason`, `runs`. A
+  `learned` (isolated, fast and split times, every split time of the
+  learning, the number of test files), `reason`, `runs`, `slowStreak`,
+  `relearnIn`, `relearn`, `decisions` (the last 10 mode decisions with
+  reason and times; the fields after `runs` are optional). A
   version 1 file may have been learned with the defects above, so it
   counts as nothing learned and the next run learns again.
+
+## Learning cost and break-even
+
+A learning runs the suite isolated (t_iso; its result is the run's
+result, so it costs nothing extra), once without isolation (t_fast,
+stopped at 1.25 t_iso + 10 s) and the split k times, 1 <= k <= 4 (a
+split that still differs adds the differing files and runs again):
+
+    learning time  = t_iso + t_fast + sum of the k split times
+    cost           = t_fast + k * t_split          (beyond a plain run)
+
+`learned.fast` and `learned.splits` record t_fast and every split time.
+When the learning chooses split, each later run saves t_iso - t_split
+(less the reruns of newly failing files, one each), so the learning has
+paid for itself after
+
+    N* = (t_fast + k * t_split) / (t_iso - t_split)
+
+runs. With r = t_split / t_iso and t_fast close to t_split (true when few
+files leak): N* = (k + 1) r / (1 - r). For r = 0.3: 0.86 runs with k = 1,
+2.1 with k = 4; for r = 0.9 (a 10% gain): 18 and 45. When the learning
+chooses isolated, its cost is not paid back (isolated mode then costs a
+plain run). A switch to isolated by slow split runs adds a learning every
+`--relearn-after` runs (default 10) while split does not pay, at most
+(t_fast + k t_split) / 10 per run on average.
 
 ## Measured
 

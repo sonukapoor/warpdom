@@ -8,11 +8,21 @@
 //              those whose results differed without isolation, failed
 //              without isolation, or had an unhandled error there
 //   leaky      the part of isolate that passed isolated (they leak)
-//   learned    { isolated, fast, split }: the learning's run times (s)
+//   learned    { isolated, fast, split, splits, files }: the learning's
+//              run times (s; splits: every split run of the learning, the
+//              last decides) and its number of test files
 //   reason     why the mode is what it is
 //   differing  (isolated after a split that kept differing) the files
 //              whose results still differed in the last split run
 //   runs       the last split runs' times (s), newest last
+//   slowStreak split runs in a row slower than learned.isolated plus the
+//              margin (SLOW_RUNS of them make the mode isolated)
+//   relearnIn  (isolated by slow split runs) plain runs left before the
+//              CLI learns again
+//   relearn    (the suite changed) why the next run learns again
+//   decisions  the last mode decisions: { at, mode, reason, times }
+// The fields after differing are optional (older version 2 files lack
+// them).
 // A version 1 file (learned before version 2's checks) counts as nothing
 // learned, so the CLI learns again.
 //

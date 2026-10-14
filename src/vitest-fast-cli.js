@@ -18,8 +18,13 @@
 //   isolated too is a real failure, and isolating it avoids its rerun next
 //   time). A split run that is stopped at its deadline, has no report, or
 //   has an unhandled error without a test file falls back to an isolated
-//   run. A split run that is not faster than the learned isolated time
-//   switches the mode to isolated.
+//   run, and the mode becomes isolated. A split run slower than the
+//   learned isolated time plus the margin is slow; SLOW_RUNS slow split
+//   runs in a row (not one: times vary between runs and machines) switch
+//   the mode to isolated, which learns again after RELEARN_AFTER plain
+//   runs. A suite whose number of test files changed by more than
+//   SUITE_CHANGE learns again on the next run. The state records each
+//   mode decision with its reason and times (decisions).
 //
 // Node only.
 import { spawn } from 'node:child_process';
@@ -45,9 +50,50 @@ export function chooseMode(isolatedSeconds, splitSeconds) {
   if (!(isolatedSeconds > 0) || !(splitSeconds > 0)) return 'isolated';
   return splitSeconds < isolatedSeconds - Math.max(isolatedSeconds * MARGIN, MARGIN_SECONDS) ? 'split' : 'isolated';
 }
-// After a split run: it stays split only while the split run (without its
-// reruns, which a file needs once) is faster than the learned isolated run.
-export const keepSplit = (isolatedSeconds, splitSeconds) => splitSeconds < isolatedSeconds;
+// After a split run (its time without the reruns, which a file needs
+// once). One run is not evidence: absolute times vary between runs and
+// between CI runners of the same type (up to 1.6x in the study), and the
+// learned isolated time may come from another machine. A split run is
+// slow when it takes longer than the learned isolated time plus the
+// margin; the mode becomes isolated only after SLOW_RUNS slow split runs
+// in a row. A faster run resets the count.
+export const SLOW_RUNS = 3;
+export const slowSplit = (isolatedSeconds, splitSeconds) =>
+  !(isolatedSeconds > 0) || !(splitSeconds > 0) || splitSeconds > isolatedSeconds + Math.max(isolatedSeconds * MARGIN, MARGIN_SECONDS);
+// Isolated mode reached that way (not by a learning, which compares both
+// modes on one machine minutes apart) learns again after RELEARN_AFTER
+// plain runs: the slowness may have been the machine's, not the split's.
+// A split run whose suite has more or fewer test files than the learned
+// one by more than SUITE_CHANGE learns again on the next run: the learned
+// isolated time no longer stands for the suite.
+export const RELEARN_AFTER = 10;
+export const SUITE_CHANGE = 0.1;
+// Mode decisions kept in the state (newest last).
+export const DECISIONS = 10;
+
+// The state after a split run: { state, switched } (switched: the mode
+// became isolated). files: the number of test files the run had.
+export function afterSplitRun(state, { seconds, files }, { slowRuns = SLOW_RUNS, relearnAfter = RELEARN_AFTER, now = new Date() } = {}) {
+  const isolatedSeconds = state.learned?.isolated;
+  const slow = slowSplit(isolatedSeconds, seconds);
+  const slowStreak = slow ? (state.slowStreak ?? 0) + 1 : 0;
+  const runs = [...(state.runs ?? []), round1(seconds)].slice(-5);
+  const next = { ...state, runs, slowStreak };
+  const learnedFiles = state.learned?.files;
+  if (learnedFiles > 0 && files >= 0 && Math.abs(files - learnedFiles) > learnedFiles * SUITE_CHANGE) {
+    next.relearn = `the suite has ${files} test files, learned with ${learnedFiles}`;
+  }
+  if (slowStreak < slowRuns) return { state: next, switched: false, slow };
+  const reason = `${slowStreak} split runs in a row took longer than the learned isolated ${isolatedSeconds} s plus the margin (last ${runs.slice(-slowStreak).join(', ')} s)`;
+  const decided = decision(now, 'isolated', reason, { isolated: isolatedSeconds, splitRuns: runs.slice(-slowStreak) });
+  return {
+    state: { ...next, mode: 'isolated', reason, relearnIn: relearnAfter > 0 ? relearnAfter : undefined, decisions: [...(state.decisions ?? []), decided].slice(-DECISIONS) },
+    switched: true,
+    slow,
+  };
+}
+const decision = (now, mode, reason, timings) => ({ at: now.toISOString(), mode, reason, ...timings });
+const round1 = (s) => +s.toFixed(1);
 // A run without isolation is stopped when it takes this much longer than
 // the isolated run (learning: same machine, minutes apart; later runs:
 // the state may come from another machine, so more room).
@@ -233,8 +279,6 @@ function runVitest({ cwd, bin, args, env, quiet = false, limit = null }) {
 
 const say = (message) => process.stderr.write(`warpdom: ${message}\n`);
 const rel = (cwd, files) => [...files].map((f) => relative(cwd, f)).sort();
-const round1 = (s) => +s.toFixed(1);
-
 function writeCache(file, data) {
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, `${JSON.stringify({ version: CACHE_VERSION, ...data }, null, 2)}\n`);
@@ -248,11 +292,21 @@ function unusable(r, label) {
   return null;
 }
 
-async function learn({ cwd, bin, args, cacheFile, limits }) {
-  say('learning: an isolated run (its results count), a run without isolation, and the split; once');
+// The test files of a run (type tests left out, as in filesOf).
+const fileCount = (run) => run?.files?.size ?? 0;
+
+// why: what made this learning happen (null: no state, or --learn).
+// history: the earlier state's mode decisions, kept.
+async function learn({ cwd, bin, args, cacheFile, limits, why = null, history = [], now = new Date() }) {
+  say(`learning${why ? ` (${why})` : ''}: an isolated run (its results count), a run without isolation, and the split`);
   const iso = await runVitest({ cwd, bin, args, env: { WARPDOM_FAST_MODE: 'isolated' } });
+  const files = fileCount(iso.run);
+  const store = (mode, reason, data) => {
+    const decisions = [...history, decision(now, mode, reason, { learning: why ?? 'first', ...data.learned })].slice(-DECISIONS);
+    writeCache(cacheFile, { mode, reason, isolate: [], leaky: [], runs: [], slowStreak: 0, ...data, decisions });
+  };
   const save = (mode, reason, extra = {}) => {
-    writeCache(cacheFile, { mode, reason, isolate: [], leaky: [], learned: { isolated: round1(iso.seconds) }, ...extra });
+    store(mode, reason, { learned: { isolated: round1(iso.seconds), files }, ...extra });
     say(`learned: ${mode} (${reason}) (${relative(cwd, cacheFile)})`);
     return iso.status;
   };
@@ -260,11 +314,12 @@ async function learn({ cwd, bin, args, cacheFile, limits }) {
   const limit = deadline(iso.seconds, limits.learn);
   const fast = await runVitest({ cwd, bin, args, env: { WARPDOM_FAST_MODE: 'fast' }, quiet: true, limit });
   const fastProblem = unusable(fast, 'fast');
-  if (fastProblem) return save('isolated', fastProblem, { learned: { isolated: round1(iso.seconds), fast: round1(fast.seconds) } });
+  if (fastProblem) return save('isolated', fastProblem, { learned: { isolated: round1(iso.seconds), fast: round1(fast.seconds), files } });
   // Files to isolate: their results without isolation differ, or cannot
   // be trusted. leaky: those that pass isolated.
   const isolate = new Set([...differingFiles(iso.run, fast.run), ...untrusted(fast.run)]);
   let split = null;
+  const splits = [];
   // The split must reproduce the isolated run's results; files that still
   // differ (order changed with the split, or an error a file left behind
   // showed this time) join the isolated ones, for up to SPLIT_RUNS runs.
@@ -273,37 +328,58 @@ async function learn({ cwd, bin, args, cacheFile, limits }) {
       cwd, bin, args: splitArgs(args), quiet: true, limit,
       env: { WARPDOM_FAST_MODE: 'split', WARPDOM_FAST_ISOLATE: JSON.stringify(rel(cwd, isolate)) },
     });
+    splits.push(round1(split.seconds));
+    const timings = { isolated: round1(iso.seconds), fast: round1(fast.seconds), split: round1(split.seconds), splits, files };
     const problem = unusable(split, 'split');
-    if (problem) return save('isolated', problem, { learned: { isolated: round1(iso.seconds), fast: round1(fast.seconds), split: round1(split.seconds) } });
+    if (problem) return save('isolated', problem, { learned: timings });
     const differs = new Set([...differingFiles(iso.run, split.run), ...[...untrusted(split.run)].filter((f) => !isolate.has(f))]);
     if (differs.size === 0) break;
     if (attempt === SPLIT_RUNS - 1) {
       return save('isolated', `the split's results differ from the isolated run's in ${differs.size} more file(s)`, {
-        learned: { isolated: round1(iso.seconds), fast: round1(fast.seconds), split: round1(split.seconds) },
+        learned: timings,
         differing: rel(cwd, differs),
       });
     }
     for (const f of differs) isolate.add(f);
   }
   const leaky = [...isolate].filter((f) => iso.run.files.has(f) && !failedFile(iso.run.files.get(f)));
-  const learned = { isolated: round1(iso.seconds), fast: round1(fast.seconds), split: round1(split.seconds) };
+  // splits: every split run of the learning (the last decides); the
+  // learning cost beyond the isolated run is fast + the sum of splits.
+  const learned = { isolated: round1(iso.seconds), fast: round1(fast.seconds), split: round1(split.seconds), splits, files };
+  // Both times come from this learning, on this machine, minutes apart.
   const mode = chooseMode(iso.seconds, split.seconds);
   const reason = mode === 'split'
     ? `split ${learned.split} s beats isolated ${learned.isolated} s by more than the margin`
     : `split ${learned.split} s does not beat isolated ${learned.isolated} s by more than the margin`;
-  writeCache(cacheFile, { mode, reason, isolate: rel(cwd, isolate), leaky: rel(cwd, leaky), learned, runs: [] });
+  store(mode, reason, { isolate: rel(cwd, isolate), leaky: rel(cwd, leaky), learned });
   say(`learned: ${isolate.size} file(s) to isolate (${leaky.length} leak); isolated ${learned.isolated} s, split ${learned.split} s: using ${mode} (${relative(cwd, cacheFile)})`);
   return iso.status;
 }
 
-async function run({ cwd, bin, args, cacheFile, cache, limits }) {
+// Why the state asks to learn before this run, or null.
+function relearnReason(cache) {
+  if (cache.relearn) return cache.relearn;
+  if (cache.mode !== 'split' && typeof cache.relearnIn === 'number' && cache.relearnIn <= 0) {
+    return `isolated since ${cache.slowStreak ?? SLOW_RUNS} slow split runs; measuring again`;
+  }
+  return null;
+}
+
+async function run({ cwd, bin, args, cacheFile, cache, limits, options }) {
+  const now = options.now ?? new Date();
   if (cache.mode !== 'split') {
+    // Isolated by slowness of split runs: count the plain runs until the
+    // next learning (one small write; the run itself is unchanged).
+    if (typeof cache.relearnIn === 'number') writeCache(cacheFile, { ...cache, relearnIn: cache.relearnIn - 1 });
     await runInProcess({ bin, args, env: { WARPDOM_FAST_MODE: 'isolated' } });
     return null;
   }
   const isolatedSeconds = cache.learned?.isolated;
+  // A run that could not be used (stopped at its deadline, no report,
+  // errors outside test files) ends split mode at once, until --learn.
   const toIsolated = (reason, extra = {}) => {
-    writeCache(cacheFile, { ...cache, ...extra, mode: 'isolated', reason });
+    const decisions = [...(cache.decisions ?? []), decision(now, 'isolated', reason, { isolated: isolatedSeconds, split: extra.runs?.at(-1) })].slice(-DECISIONS);
+    writeCache(cacheFile, { ...cache, ...extra, mode: 'isolated', reason, relearnIn: undefined, decisions });
     say(`${reason}: isolated runs from now on (warpdom vitest run --learn learns again)`);
   };
   const first = await runVitest({ cwd, bin, args: splitArgs(args), env: { WARPDOM_FAST_MODE: 'split' }, limit: deadline(isolatedSeconds, limits.run) });
@@ -311,7 +387,7 @@ async function run({ cwd, bin, args, cacheFile, cache, limits }) {
   if (problem) {
     say(`${problem}; running isolated`);
     const iso = await runVitest({ cwd, bin, args, env: { WARPDOM_FAST_MODE: 'isolated' } });
-    toIsolated(problem);
+    toIsolated(problem, { runs: [...(cache.runs ?? []), round1(first.seconds)].slice(-5) });
     return iso.status;
   }
   const isolatedSet = new Set(cache.isolate.map((f) => resolve(cwd, f)));
@@ -337,21 +413,37 @@ async function run({ cwd, bin, args, cacheFile, cache, limits }) {
     say(`result: ${merged.passed} passed, ${merged.failed} failed, ${merged.skipped} skipped (failing files rerun isolated)`);
     status = merged.failedFiles > 0 || first.run.typesFailed > 0 || unattributedErrors(rerun.run) ? 1 : rerun.status;
   }
-  const runs = [...(state.runs ?? []), round1(first.seconds)].slice(-5);
-  if (!keepSplit(isolatedSeconds, first.seconds)) {
-    toIsolated(`the split run took ${round1(first.seconds)} s, not less than the learned isolated ${isolatedSeconds} s`, { ...state, runs });
-  } else {
-    writeCache(cacheFile, { ...state, runs });
-  }
+  const after = afterSplitRun(state, { seconds: first.seconds, files: fileCount(first.run) }, { ...options, now });
+  writeCache(cacheFile, after.state);
+  if (after.switched) say(`${after.state.reason}: isolated runs from now on; learning again after ${after.state.relearnIn ?? 'no'} isolated run(s) (warpdom vitest run --learn learns now)`);
+  else if (after.slow) say(`the split run took ${round1(first.seconds)} s, longer than the learned isolated ${isolatedSeconds} s plus the margin (${after.state.slowStreak} of ${options.slowRuns ?? SLOW_RUNS} in a row before isolated mode)`);
+  if (after.state.relearn && !cache.relearn) say(`${after.state.relearn}: learning again on the next run`);
   return status;
 }
 
-// warpdom vitest [run] [--learn] [vitest arguments]. Resolves to the exit
-// code, or null when Vitest runs in this process and sets it itself.
-// limits: the deadlines (tests shorten them).
+// The CLI's own options (the rest go to Vitest): --learn,
+// --slow-runs=<n> (slow split runs in a row before isolated mode) and
+// --relearn-after=<n> (plain runs in that isolated mode before learning
+// again; 0: never, until --learn).
+export function cliOptions(argv) {
+  const options = {};
+  const args = [];
+  let relearn = false;
+  for (const a of argv) {
+    const m = /^--(slow-runs|relearn-after)=(\d+)$/.exec(a);
+    if (m) options[m[1] === 'slow-runs' ? 'slowRuns' : 'relearnAfter'] = Math.max(Number(m[2]), m[1] === 'slow-runs' ? 1 : 0);
+    else if (a === '--learn') relearn = true;
+    else if (a !== 'run') args.push(a);
+  }
+  return { args, relearn, options };
+}
+
+// warpdom vitest [run] [--learn] [--slow-runs=<n>] [--relearn-after=<n>]
+// [vitest arguments]. Resolves to the exit code, or null when Vitest runs
+// in this process and sets it itself. limits: the deadlines (tests
+// shorten them).
 export async function main(argv, cwd = process.cwd(), limits = { learn: LEARN_DEADLINE, run: RUN_DEADLINE }) {
-  const args = argv.filter((a) => a !== 'run' && a !== '--learn');
-  const relearn = argv.includes('--learn');
+  const { args, relearn, options } = cliOptions(argv);
   const { bin, version } = vitestBin(cwd);
   if (!supportsProjects(version)) {
     say(`fast mode needs Vitest 3.2 or later (found ${version}); running Vitest as configured`);
@@ -360,5 +452,9 @@ export async function main(argv, cwd = process.cwd(), limits = { learn: LEARN_DE
   }
   const cacheFile = join(cwd, CACHE_FILE);
   const cache = relearn ? null : readCache(cacheFile);
-  return cache ? run({ cwd, bin, args, cacheFile, cache, limits }) : learn({ cwd, bin, args, cacheFile, limits });
+  const history = (relearn ? readCache(cacheFile) : cache)?.decisions ?? [];
+  if (!cache) return learn({ cwd, bin, args, cacheFile, limits, why: relearn ? '--learn' : null, history });
+  const why = relearnReason(cache);
+  if (why) return learn({ cwd, bin, args, cacheFile, limits, why, history });
+  return run({ cwd, bin, args, cacheFile, cache, limits, options });
 }

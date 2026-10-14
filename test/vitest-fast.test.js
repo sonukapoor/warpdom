@@ -8,7 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { withFastMode, fsId, projectCliOptions, REPORTER } from '../src/vitest-fast.js';
 import { environment as ENVIRONMENT_PATH } from '../src/vitest-environment.js';
 import {
-  filesOf, untrusted, unattributedErrors, errorFiles, differingFiles, merge, summary, chooseMode, keepSplit, deadline,
+  filesOf, untrusted, unattributedErrors, errorFiles, differingFiles, merge, summary, chooseMode, slowSplit, afterSplitRun, cliOptions, deadline,
+  SLOW_RUNS, RELEARN_AFTER, SUITE_CHANGE,
   MARGIN, LEARN_DEADLINE, RUN_DEADLINE, SPLIT_RUNS, splitArgs, withoutProjects, namesReporters, main,
 } from '../src/vitest-fast-cli.js';
 import { runReport, stackFiles } from '../src/vitest-fast-reporter.js';
@@ -151,12 +152,64 @@ test('chooseMode: split only when it beats isolated by more than the noise margi
   assert.equal(chooseMode(4, 3.4), 'split');
   assert.equal(chooseMode(100, null), 'isolated', 'a missing time is not faster');
   assert.equal(chooseMode(undefined, 5), 'isolated');
-  assert.equal(keepSplit(100, 99), true);
-  assert.equal(keepSplit(100, 100), false, 'a split run no faster than isolated ends split mode');
-  assert.equal(keepSplit(undefined, 10), false);
+  assert.equal(slowSplit(100, 99), false);
+  assert.equal(slowSplit(100, 105), false, 'within the margin of the learned isolated time: not slow');
+  assert.equal(slowSplit(100, 105.1), true);
+  assert.equal(slowSplit(4, 4.5), false, 'and at least half a second');
+  assert.equal(slowSplit(4, 4.6), true);
+  assert.equal(slowSplit(undefined, 10), true, 'no learned time: no evidence that split pays');
   assert.equal(deadline(100, LEARN_DEADLINE), 135);
   assert.equal(deadline(100, RUN_DEADLINE), 180);
   assert.equal(deadline(undefined, RUN_DEADLINE), null);
+});
+
+test('after a split run: one slow run does not switch the mode', () => {
+  assert.deepEqual([SLOW_RUNS, RELEARN_AFTER, SUITE_CHANGE], [3, 10, 0.1]);
+  const learned = { mode: 'split', isolate: [], leaky: [], learned: { isolated: 100, split: 60, files: 50 }, runs: [], slowStreak: 0 };
+  // A slow runner (1.6x): 96 s against 60 s learned, then normal again.
+  let { state, switched } = afterSplitRun(learned, { seconds: 160, files: 50 });
+  assert.equal(switched, false);
+  assert.deepEqual([state.mode, state.slowStreak, state.runs], ['split', 1, [160]]);
+  ({ state, switched } = afterSplitRun(state, { seconds: 61, files: 50 }));
+  assert.deepEqual([switched, state.mode, state.slowStreak], [false, 'split', 0], 'a faster run resets the count');
+  ({ state } = afterSplitRun(state, { seconds: 150, files: 50 }));
+  ({ state, switched } = afterSplitRun(state, { seconds: 150, files: 50 }));
+  assert.deepEqual([switched, state.mode, state.slowStreak], [false, 'split', 2], 'two in a row are not enough either');
+});
+
+test('after a split run: persistent slowness switches to isolated, with the reason, the times and a re-learning due', () => {
+  const now = new Date('2026-10-14T12:00:00Z');
+  let state = { mode: 'split', isolate: [], leaky: [], learned: { isolated: 100, split: 60, files: 50 }, runs: [], decisions: [{ at: 'x', mode: 'split', reason: 'learned' }] };
+  for (const seconds of [110, 120]) ({ state } = afterSplitRun(state, { seconds, files: 50 }, { now }));
+  const out = afterSplitRun(state, { seconds: 130, files: 50 }, { now });
+  assert.equal(out.switched, true);
+  assert.equal(out.state.mode, 'isolated');
+  assert.equal(out.state.relearnIn, RELEARN_AFTER);
+  assert.match(out.state.reason, /^3 split runs in a row took longer than the learned isolated 100 s plus the margin \(last 110, 120, 130 s\)$/);
+  assert.deepEqual(out.state.decisions.map((d) => d.mode), ['split', 'isolated'], 'every decision is kept, newest last');
+  assert.deepEqual(out.state.decisions[1], { at: now.toISOString(), mode: 'isolated', reason: out.state.reason, isolated: 100, splitRuns: [110, 120, 130] });
+  // Configurable: --slow-runs and --relearn-after (0: never).
+  const quick = afterSplitRun({ ...state, slowStreak: 0 }, { seconds: 130, files: 50 }, { slowRuns: 1, relearnAfter: 0 });
+  assert.deepEqual([quick.switched, quick.state.relearnIn], [true, undefined]);
+  // Slow by less than the margin is not slow.
+  let near = { ...state, slowStreak: 0 };
+  for (let i = 0; i < 5; i++) ({ state: near } = afterSplitRun(near, { seconds: 104, files: 50 }));
+  assert.deepEqual([near.mode, near.slowStreak], ['split', 0]);
+});
+
+test('after a split run: a suite whose test files changed by more than 10% learns again', () => {
+  const state = { mode: 'split', isolate: [], leaky: [], learned: { isolated: 100, files: 50 }, runs: [] };
+  assert.equal(afterSplitRun(state, { seconds: 50, files: 55 }).state.relearn, undefined, '10% is not a change');
+  assert.match(afterSplitRun(state, { seconds: 50, files: 56 }).state.relearn, /56 test files, learned with 50/);
+  assert.match(afterSplitRun(state, { seconds: 50, files: 44 }).state.relearn, /44 test files/);
+  assert.equal(afterSplitRun({ ...state, learned: { isolated: 100 } }, { seconds: 50, files: 5 }).state.relearn, undefined, 'older states have no file count');
+});
+
+test('the CLI options: --learn, --slow-runs, --relearn-after; the rest goes to Vitest', () => {
+  assert.deepEqual(cliOptions(['run', '--learn', '--slow-runs=2', '--relearn-after=0', '--project', 'unit']), {
+    args: ['--project', 'unit'], relearn: true, options: { slowRuns: 2, relearnAfter: 0 },
+  });
+  assert.deepEqual(cliOptions(['--slow-runs=0']).options, { slowRuns: 1 }, 'at least one');
 });
 
 // --- results ----------------------------------------------------------------------
@@ -414,15 +467,71 @@ test('split runs: failing files rerun once and isolated from then on, real failu
   const fake = fakeVitest((d) => {
     const files = passing(d, 'a', 'b', 'c');
     const failed = (f) => ({ ...f, state: 'failed', tests: [['t', 'failed']] });
-    return { split: { files: [files[0], failed(files[1]), failed(files[2])] }, rerun: { files: [files[1], failed(files[2])] } };
+    // 0.8 s: slow against a learned isolated time of 0.01 s (plus the 0.5 s margin).
+    return { split: { sleep: 0.8, files: [files[0], failed(files[1]), failed(files[2])] }, rerun: { files: [files[1], failed(files[2])] } };
   });
   fake.setState({ mode: 'split', isolate: [], leaky: [], learned: { isolated: 100 } });
   assert.equal(await quietly(() => main(['run'], fake.dir, short)), 1, 'c fails isolated too: a real failure');
   assert.deepEqual([fake.state().mode, fake.state().isolate, fake.state().leaky], ['split', ['b', 'c'], ['b']]);
   fake.setState({ ...fake.state(), learned: { isolated: 0.01 } });
   await quietly(() => main(['run'], fake.dir, short));
+  assert.deepEqual([fake.state().mode, fake.state().slowStreak], ['split', 1], 'one slow split run is not evidence');
+  await quietly(() => main(['run'], fake.dir, short));
+  await quietly(() => main(['run'], fake.dir, short));
   assert.equal(fake.state().mode, 'isolated');
-  assert.match(fake.state().reason, /not less than the learned isolated/);
+  assert.match(fake.state().reason, /^3 split runs in a row took longer than the learned isolated 0.01 s/);
+});
+
+test('split runs: a slow run between fast ones keeps split mode', async () => {
+  // Learned isolated 3 s (slow beyond 3.5 s); the second split run takes 5 s.
+  const fake = fakeVitest((d) => ({ split: [{ files: passing(d, 'a') }, { sleep: 5, files: passing(d, 'a') }, { files: passing(d, 'a') }] }));
+  fake.setState({ mode: 'split', isolate: [], leaky: [], learned: { isolated: 3, files: 1 } });
+  const long = { learn: { factor: 1, seconds: 30 }, run: { factor: 1, seconds: 30 } };
+  for (let i = 0; i < 3; i++) await quietly(() => main(['run'], fake.dir, long));
+  assert.deepEqual(fake.runs(), ['split', 'split', 'split']);
+  assert.deepEqual([fake.state().mode, fake.state().slowStreak, fake.state().runs.length], ['split', 0, 3]);
+  assert.ok(fake.state().runs[1] >= 5);
+});
+
+test('isolated by slow split runs: plain runs, then learning again (recovery); isolated by a learning stays plain', async () => {
+  const fake = fakeVitest((d) => ({ isolated: { sleep: 3, files: passing(d, 'a', 'b') }, fast: { files: passing(d, 'a', 'b') }, split: { files: passing(d, 'a', 'b') } }));
+  fake.setState({ mode: 'isolated', reason: '3 split runs in a row ...', isolate: [], leaky: [], learned: { isolated: 1, files: 2 }, relearnIn: 2, decisions: [{ at: 'x', mode: 'isolated', reason: 'slow' }] });
+  const argv = process.argv;
+  try {
+    for (let i = 0; i < 2; i++) assert.equal(await quietly(() => main(['run'], fake.dir, short)), null);
+  } finally {
+    process.argv = argv;
+    delete process.env.WARPDOM_FAST_MODE;
+  }
+  assert.equal(fake.state().relearnIn, 0);
+  assert.equal(await quietly(() => main(['run'], fake.dir, short)), 0, "the learning's isolated run is the result");
+  // (Node runs the stand-in's module once per process: one in-process entry.)
+  assert.deepEqual(fake.runs(), ['isolated (in process)', 'isolated', 'fast', 'split']);
+  const state = fake.state();
+  assert.deepEqual([state.mode, state.relearnIn, state.learned.files, state.learned.splits.length], ['split', undefined, 2, 1]);
+  assert.deepEqual(state.decisions.map((d) => [d.mode, d.learning]), [['isolated', undefined], ['split', 'isolated since 3 slow split runs; measuring again']]);
+  // Isolated by a learning: no counting, no re-learning.
+  const plain = fakeVitest((d) => ({ isolated: { files: passing(d, 'a') } }));
+  plain.setState({ mode: 'isolated', reason: 'split does not beat isolated', isolate: [], leaky: [], learned: { isolated: 1 } });
+  const before = readFileSync(join(plain.dir, '.warpdom/fast-mode.json'), 'utf8');
+  try {
+    for (let i = 0; i < 3; i++) await main(['run'], plain.dir);
+  } finally {
+    process.argv = argv;
+    delete process.env.WARPDOM_FAST_MODE;
+  }
+  assert.equal(readFileSync(join(plain.dir, '.warpdom/fast-mode.json'), 'utf8'), before, 'the state file is not even written');
+  assert.deepEqual(plain.runs(), ['isolated (in process)']);
+});
+
+test('split runs: a changed suite learns again on the next run', async () => {
+  const fake = fakeVitest((d) => ({ isolated: { sleep: 3, files: passing(d, 'a', 'b', 'c') }, fast: { files: passing(d, 'a', 'b', 'c') }, split: { files: passing(d, 'a', 'b', 'c') } }));
+  fake.setState({ mode: 'split', isolate: [], leaky: [], learned: { isolated: 600, files: 2 } });
+  await quietly(() => main(['run'], fake.dir, short));
+  assert.match(fake.state().relearn, /3 test files, learned with 2/);
+  await quietly(() => main(['run'], fake.dir, short));
+  assert.deepEqual(fake.runs(), ['split', 'isolated', 'fast', 'split']);
+  assert.deepEqual([fake.state().mode, fake.state().learned.files, fake.state().relearn], ['split', 3, undefined]);
 });
 
 test('isolated mode: Vitest runs in this process with the arguments as given, nothing added', async () => {
