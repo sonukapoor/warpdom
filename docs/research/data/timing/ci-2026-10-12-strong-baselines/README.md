@@ -2,10 +2,10 @@
 
 | Directory | Run | Suites | warpdom | dom-api-tracer | Rounds |
 | --- | --- | --- | --- | --- | --- |
-| tuning-38298849766 | 38298849766 ("Run A") | 11 Vitest tuning suites | 77bec904 | aea4a5c | warm-up + 5 (ariakit 3: the job's time budget stopped it before round 4) |
-| held-out-38298853051 | 38298853051 ("Run B") | 5 held-out Vitest suites | 77bec904 | aea4a5c | warm-up + 5 |
-| rerun-solid-primitives-38336504666 | 38336504666 | solid-primitives | 77bec904 | ce2fbc6 (fixed keys) | warm-up + 5 |
-| rerun-naive-ui-38336504666 | 38336504666 | naive-ui | 77bec904 | ce2fbc6 (fixed keys) | warm-up + 5 |
+| tuning-38298849766 | 38298849766 ("Run A") | 11 Vitest tuning suites | 1ccb7048 | aea4a5c | warm-up + 5 (ariakit 3: the job's time budget stopped it before round 4) |
+| held-out-38298853051 | 38298853051 ("Run B") | 5 held-out Vitest suites | 1ccb7048 | aea4a5c | warm-up + 5 |
+| rerun-solid-primitives-38336504666 | 38336504666 | solid-primitives | 1ccb7048 | ce2fbc6 (fixed keys) | warm-up + 5 |
+| rerun-naive-ui-38336504666 | 38336504666 | naive-ui | 1ccb7048 | ce2fbc6 (fixed keys) | warm-up + 5 |
 
 Mode `ablation-isolation` (dom-api-tracer scripts/research/ablation-isolation.sh):
 per round, jsdom default / `isolate: false` / `vmThreads`, warpdom default /

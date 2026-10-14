@@ -1,4 +1,4 @@
-# Drop-in, three DOMs, tuning suites, three independent runs (warpdom 208ad49)
+# Drop-in, three DOMs, tuning suites, three independent runs (warpdom 8630317)
 
 | Directory | Run |
 | --- | --- |
@@ -12,7 +12,7 @@
   of each other (16:00:58-16:01:16 UTC, together with the other experiments of
   this re-run) and ran concurrently, each job on its own runner; jobs started as
   runners became free (environment records stamped 16:01-18:31).
-- **Commits:** warpdom 208ad49 (frozen), harness dom-api-tracer 843087f; clean in
+- **Commits:** warpdom 8630317 (frozen), harness dom-api-tracer 843087f; clean in
   every environment record.
 - **Runners:** 4 cores, 15.6 GiB, Node 22.23.3 everywhere; CPU model per job in the
   env records (AMD EPYC 7763, 9V74, 9V45, Intel Xeon Platinum 8370C and 8573C).

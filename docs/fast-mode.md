@@ -65,7 +65,7 @@ warpdom vitest run [vitest arguments]
 
 ## Design decisions
 
-The rules, and why (CI evaluation of 2026-10-12, warpdom 77bec904: learned
+The rules, and why (CI evaluation of 2026-10-12, warpdom 1ccb7048: learned
 was 3-8% slower than the drop-in on 5 of 11 tuning suites).
 
 - **Quiet runs are not buffered.** The CLI ran its learning runs with
@@ -93,7 +93,7 @@ was 3-8% slower than the drop-in on 5 of 11 tuning suites).
   the same worker runs; isolated, the worker ends with its file and the
   error never surfaces. Isolating the running file only moved the error
   to the next file, so the split never reproduced the isolated results.
-  On CI (208ad49, 4-core runners) that kept VueUse (an un-awaited
+  On CI (8630317, 4-core runners) that kept VueUse (an un-awaited
   `vi.waitFor` in `packages/shared/utils/index.test.ts`) and naive-ui
   (`forEach(async ...)` with `await vi.waitFor` in the AutoComplete and
   ColorPicker placement tests) isolated in all 6 learnings each ("the
@@ -105,7 +105,7 @@ was 3-8% slower than the drop-in on 5 of 11 tuning suites).
   names (Vitest keeps the call site's stack for `vi.waitFor`; a callback's
   frames name the file that defined it), and those are the files the
   error counts against; only an error whose stack names no test file
-  counts against the running file, as before. On CI at 5942dc9 VueUse
+  counts against the running file, as before. On CI at 2606b3d VueUse
   and naive-ui then split in all 6 learnings each (VueUse isolating
   `packages/shared/utils/index.test.ts`).
   Whether such an error shows at all depends on timing (naive-ui's two
@@ -159,7 +159,7 @@ was 3-8% slower than the drop-in on 5 of 11 tuning suites).
 
 ## Measured
 
-GitHub Actions, warpdom 5942dc9 (2026-10-14), 16 open-source Vitest suites
+GitHub Actions, warpdom 2606b3d (2026-10-14), 16 open-source Vitest suites
 and Excalidraw, 4-core runners, up to 5 rounds (ariakit 1, CopilotKit 2,
 Excalidraw 3), every configuration in each round. Speedup: median of
 per-round ratios.

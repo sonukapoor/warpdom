@@ -13,7 +13,7 @@
   svelte also cssstyle 4.1.0 and 4.6.0 under its own jsdom 25.0.1. A forced jsdom's
   own dependencies (cssstyle, nwsapi, parse5, whatwg-url) are kept inside its
   declared ranges (forced to the range when the tree resolves one outside).
-- **warpdom is not involved.** The environment records name warpdom 208ad49 only
+- **warpdom is not involved.** The environment records name warpdom 8630317 only
   because the workflow checks it out; harness 843087f, clean.
 - **Runners:** 4 cores, 15.6 GiB, Node 22.23.3; CPU per job in the env records
   (`<suite>.env-*.json`; analog's and others' records are named after the suite).

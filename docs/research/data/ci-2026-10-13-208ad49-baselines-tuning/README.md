@@ -1,8 +1,8 @@
-# Strong baselines and measured isolation, tuning suites (warpdom 208ad49)
+# Strong baselines and measured isolation, tuning suites (warpdom 8630317)
 
 - **Run:** GitHub Actions 38426915125 (sonukapoor/dom-api-tracer, workflow timing,
   mode `ablation-isolation`), 11 Vitest tuning suites, one job per suite.
-- **Commits:** warpdom 208ad49e83f09da7f4ba8ffb01cbb14958e7a60a (frozen), harness
+- **Commits:** warpdom 86303173664963a6582ec1ac7477276481fbc8b8 (frozen), harness
   dom-api-tracer 843087f5ae8537ee36a00a30f0df763e7d6a7f62; both clean in every
   environment record (`timing-ci-*.env-*.json`).
 - **Runners:** GitHub-hosted Linux, 4 cores, 15.6 GiB, Node 22.23.3 in every

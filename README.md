@@ -136,7 +136,7 @@ depends on how much of a suite's time goes into reloading modules per
 file; measure it on your suite before relying on it.
 
 Measured on GitHub Actions on 16 open-source Vitest suites (up to 5 rounds;
-warpdom 5942dc9): where sharing pays it is much faster than both jsdom's
+warpdom 2606b3d): where sharing pays it is much faster than both jsdom's
 default and warpdom's drop-in, e.g. VueUse 9.6x over jsdom (5.2x over the
 drop-in), MUI 6.7x (3.7x), Vuetify 5.6x (3.8x), Radix 4.7x (2.6x),
 naive-ui 3.4x (3.0x), tanstack-query 2.4x (1.6x). Where sharing does not
@@ -197,14 +197,14 @@ testEnvironmentOptions: { fastFrames: true }
 ## Measured
 
 All numbers below are from GitHub Actions runs on one frozen commit,
-warpdom 208ad49 (2026-10-13): hosted Linux runners with 4 cores, pinned
+warpdom 8630317 (2026-10-13): hosted Linux runners with 4 cores, pinned
 project commits, each project's own runner, config and jsdom, 2 workers.
 In each job the DOMs alternate on the same machine: an untimed warm-up,
 then 5 rounds with the order rotated. A speedup is the median of the
 per-round ratios, so it never mixes machines. Raw data, scripts and every
 derived number: [docs/research/](docs/research/README.md)
 (`docs/research/data/ci-2026-10-13-208ad49-*`).
-<!-- source: docs/research/data/ci-2026-10-13-208ad49-RESULTS.md 1 (runs, protocol, 139 environment records: warpdom 208ad49, Node 22.23.3, 4 cores) and "Conventions" -->
+<!-- source: docs/research/data/ci-2026-10-13-208ad49-RESULTS.md 1 (runs, protocol, 139 environment records: warpdom 8630317, Node 22.23.3, 4 cores) and "Conventions" -->
 
 ### At a glance
 

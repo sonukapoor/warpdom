@@ -1,4 +1,4 @@
-# Ablation A4: jsdom 30.1.2's profile for every project (warpdom 208ad49)
+# Ablation A4: jsdom 30.1.2's profile for every project (warpdom 8630317)
 
 | Directory | Run | Suites |
 | --- | --- | --- |
@@ -9,7 +9,7 @@
   jsdom-default, warpdom-default (own profile; the same-job control) and
   warpdomlatest-default (`WARPDOM_ABLATE=latest-profile`: jsdom 30.1.2 behavior
   whatever jsdom the project installs).
-- **Commits:** warpdom 208ad49 (frozen), harness dom-api-tracer 843087f; clean.
+- **Commits:** warpdom 8630317 (frozen), harness dom-api-tracer 843087f; clean.
 - **Runners:** 4 cores, 15.6 GiB, Node 22.23.3; CPU per job in the env records
   (react-spectrum: Intel Xeon Platinum 8370C).
 - **Protocol:** warm-up + **2 rounds** by design (a correctness question), order

@@ -1,9 +1,9 @@
-# Strong baselines and measured isolation, Excalidraw (warpdom 208ad49)
+# Strong baselines and measured isolation, Excalidraw (warpdom 8630317)
 
 - **Run:** GitHub Actions 38426961764 (sonukapoor/dom-api-tracer, workflow timing,
   mode `ablation-isolation`, corpus `apps.json`): Excalidraw only (the Wire web app
   runs Jest, which always isolates).
-- **Commits:** warpdom 208ad49 (frozen), harness dom-api-tracer 843087f; clean.
+- **Commits:** warpdom 8630317 (frozen), harness dom-api-tracer 843087f; clean.
 - **Runner:** 4 cores, 15.6 GiB, Node 22.23.3, AMD EPYC 7763.
 - **What it measures, protocol, files, derived reports:** as in
   `../ci-2026-10-13-208ad49-baselines-tuning/README.md`. warpdom-learned is the

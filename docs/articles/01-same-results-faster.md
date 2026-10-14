@@ -4,9 +4,9 @@
 DRAFT, not published. Author: Sonu Kapoor.
 Title alternatives (pick one that the final numbers support):
 - "jsdom's test results, faster on every suite we tuned on" (GitHub
-  Actions, warpdom 208ad49, 2026-10-13: faster on all 13 tuning suites in
+  Actions, warpdom 8630317, 2026-10-13: faster on all 13 tuning suites in
   three runs, drop-in median about 1.27x, 1.03x-1.89x per suite; about
-  8-9x on handsontable, reported separately; fast mode at 5942dc9,
+  8-9x on handsontable, reported separately; fast mode at 2606b3d,
   2026-10-14: median 1.54x over jsdom's default, 1.01x over the drop-in)
 - "Same results as jsdom, faster where the DOM is the bottleneck"
 - "A test DOM written from the specs: 42,000 tests, jsdom's results"
@@ -14,7 +14,7 @@ Decisions (2026-10-12): projects are named (results are verifiable);
 the headline is the drop-in median with the per-suite range; mistakes
 in our own measurement are reported openly (pinned files, environment
 groups). 2026-10-14: every measured number from the frozen re-run at
-warpdom 208ad49
+warpdom 8630317
 (docs/research/data/ci-2026-10-13-208ad49-*).
 Every number has a source comment next to it. Paths are relative to the
 warpdom repository unless they start with dom-api-tracer/.
@@ -90,7 +90,7 @@ differences, grouped by error message and investigated one at a time.
   `jest-environment-jsdom` bundles jsdom 26).
 - **Timing:** on GitHub Actions, one job per project on a hosted Linux
   runner (4 cores), each project checked out at a pinned commit, all on
-  one frozen warpdom commit (208ad49). Within a job, jsdom, warpdom and
+  one frozen warpdom commit (8630317). Within a job, jsdom, warpdom and
   happy-dom alternate on the same machine, an untimed warm-up and then 5
   rounds with the order rotated, so a ratio never mixes machines. Times
   are medians; the speedup is the median of the per-round ratios, given
@@ -108,7 +108,7 @@ differences, grouped by error message and investigated one at a time.
 
 ## Evidence 1: the same result for (almost) every test
 
-The final check ran on the frozen commit (warpdom 208ad49): 12 CI jobs
+The final check ran on the frozen commit (warpdom 8630317): 12 CI jobs
 that each ran jsdom and warpdom side by side, 503 rounds of a suite in
 all, about 43,600 tests in the 14 projects. Nine of them had **zero**
 tests with a different status in any round.
@@ -170,7 +170,7 @@ serialization, a test assigning to `global.document`, Jest's deep
 equality seeing internal state.
 <!-- source: docs/research/README.md 3.7 (data/held-out/; "3 of 9 projects have none", corrected from 4 on 2026-10-13) -->
 
-After fixing those causes, the final check (warpdom 208ad49, every CI
+After fixing those causes, the final check (warpdom 8630317, every CI
 job that ran them, 17 rounds each) left, in the held-out nine, apart from
 flaky tests: 1 deliberate difference in tanstack-query
 (`CSSStyleSheet.ownerNode`, below), 1 melt-ui test that fails in some
@@ -188,7 +188,7 @@ no longer held out; the 0.43% is the held-out result.
 
 Two web applications, Excalidraw and the Wire web app, went the same way:
 2 and 141 differing tests when first tried, 0 on both after the fixes
-they drove (also in every round at 208ad49) (the 139 of Wire's were two files that did not run at all,
+they drove (also in every round at 8630317) (the 139 of Wire's were two files that did not run at all,
 because warpdom's Jest teardown deleted globals while a database
 library's promise chain was still running).
 <!-- source: docs/research/README.md 3.8 "Web applications"; data/apps/ci-2026-10-12-apps-before/report.md (run 38304848528); data/ci-2026-10-13-208ad49-threeway-apps/report.md (run 38427075297: 0 differing on both) -->
@@ -246,7 +246,7 @@ The path there is in the logs: React Spectrum went from 304 differences to
 ## Evidence 2: speed
 
 Measured on 2026-10-13 on GitHub Actions: one hosted Linux runner (4
-cores) per project, pinned commits, warpdom 208ad49, a warm-up and 5
+cores) per project, pinned commits, warpdom 8630317, a warm-up and 5
 rounds with jsdom, warpdom and happy-dom alternating on the same machine.
 The table is the first of three identical runs, sorted by jsdom time; the
 last column gives the speedup in each of the three.
@@ -472,7 +472,7 @@ drop-in. Four of the 16 suites (floating-ui, solid, melt-ui,
 solid-primitives) run an older Vitest and ariakit passes three
 `--project` arguments, so those five were measured with the harness's
 emulation of the same rules.
-<!-- source: docs/research/data/ci-2026-10-14-5942dc9-RESULTS.md sections 2-4 and 7 (runs 38567560217, 38567579662, 38567598200, warpdom 5942dc9; per-suite speedups over jsdom-default and warpdom-default; 16-suite medians 1.54x (1.27-3.56x), 1.01x (1.00-2.73x), 1.27x (1.06-1.52x) over the best correct jsdom configuration; naive-ui 0.67x vs jsdom-shared, melt-ui 0.84x vs jsdom-vm; every jsdom alternative changes results on CopilotKit, analog, ariakit, ark-ui, emoji-picker-element, tanstack-query, VueUse; at 208ad49 VueUse and naive-ui stayed isolated in 6 of 6 learnings); warpdom src/vitest-fast-cli.js ("fast mode needs Vitest 3.2 or later ...; running Vitest as configured") -->
+<!-- source: docs/research/data/ci-2026-10-14-5942dc9-RESULTS.md sections 2-4 and 7 (runs 38567560217, 38567579662, 38567598200, warpdom 2606b3d; per-suite speedups over jsdom-default and warpdom-default; 16-suite medians 1.54x (1.27-3.56x), 1.01x (1.00-2.73x), 1.27x (1.06-1.52x) over the best correct jsdom configuration; naive-ui 0.67x vs jsdom-shared, melt-ui 0.84x vs jsdom-vm; every jsdom alternative changes results on CopilotKit, analog, ariakit, ark-ui, emoji-picker-element, tanstack-query, VueUse; at 8630317 VueUse and naive-ui stayed isolated in 6 of 6 learnings); warpdom src/vitest-fast-cli.js ("fast mode needs Vitest 3.2 or later ...; running Vitest as configured") -->
 
 Vitest's VM pool (`--pool=vmThreads`) is the other lever, and jsdom users
 can sometimes have it already. On MUI, jsdom works with vmThreads (26.8 s)
@@ -494,7 +494,7 @@ testharness.js tests in warpdom and, as a reference, in jsdom 30.1.2, on
 the same files.
 <!-- source: wpt/README.md -->
 
-The latest run (on GitHub Actions, warpdom 208ad49, the same commit as
+The latest run (on GitHub Actions, warpdom 8630317, the same commit as
 the suite measurements) covers four areas: `dom`, `domparsing`,
 `html/dom` and `css/cssom`; 963 test files, about 133,000 subtests.
 <!-- source: docs/research/data/wpt/ci-2026-10-13-208ad49/README.md and summary.md (run 38427179332, WPT 87b5d13099) -->

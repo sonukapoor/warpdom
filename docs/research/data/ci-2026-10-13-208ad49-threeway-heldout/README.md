@@ -1,8 +1,8 @@
-# Drop-in, three DOMs, held-out suites (warpdom 208ad49)
+# Drop-in, three DOMs, held-out suites (warpdom 8630317)
 
 - **Run:** GitHub Actions 38427053627 (sonukapoor/dom-api-tracer, workflow timing,
   mode `timing`, corpus `held-out.json`): the 9 held-out suites.
-- **Commits:** warpdom 208ad49 (frozen), harness dom-api-tracer 843087f; clean.
+- **Commits:** warpdom 8630317 (frozen), harness dom-api-tracer 843087f; clean.
 - **Runners:** 4 cores, 15.6 GiB, Node 22.23.3; CPU per job in the env records
   (AMD EPYC 7763, 9V74, 9V45).
 - **What it measures, protocol, files, derived report:** as in

@@ -84,7 +84,7 @@ CompositionEvent view check).
 
 Latest survey (after CSS validation, lazy interfaces, the range fast path,
 XML, WebIDL collections, CSSOM, DOM methods and the html/dom work; main at
-6fe475f): 0 differences in react-spectrum, react-hook-form, Vuetify, svelte,
+8a78ca5): 0 differences in react-spectrum, react-hook-form, Vuetify, svelte,
 floating-ui, emoji-picker-element, analog, Radix, MUI, CopilotKit (its local
 checkout lacks some package builds: 231 files fail to load on both DOMs).
 handsontable 3 (all in jsdomThemeCssFilter.unit.js: a jsdom style sheet
@@ -352,7 +352,7 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   profile. Known tests that depend on it: 3 tests in handsontable
   `handsontable/test/__tests__/jsdomThemeCssFilter.unit.js`, which check
   handsontable's Jest-only filter for that message and expect jsdom to
-  report it. They differ in every round at 208ad49
+  report it. They differ in every round at 8630317
   (docs/research/data/ci-2026-10-13-208ad49-RESULTS.md section 7).
 - Submit buttons' formAction, formMethod, formEnctype and the document's
   obsolete body colors (fgColor, linkColor, vlinkColor, alinkColor,
@@ -766,7 +766,7 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   to a computed style throws (28+); CSS-wide keywords lowercased; jsdom 26
   profile: insertRule ignores text after the rule.
   Performance (bench/style-bench.mjs, bench/style-miss-bench.mjs, cold
-  import; medians of 7 alternating runs against main 6c3e472, Node
+  import; medians of 7 alternating runs against main 4d964eb, Node
   22.17.1, shared machine): style write 93.9 -> 90.4 ns, repeated writes
   126.9 -> 126.6 ns, unique values 515.5 -> 524.0 ns (+1.6%), cold load
   15.68 -> 15.86 ms. The unique-value cost is the declared-value checks
@@ -831,7 +831,7 @@ warpdom follows the standard. Each has a test. To publish in the docs.
      jsdom works with vmThreads here, so warpdom's lead over the pool alone
      is 1.26x.
      Load cost of the MUI work (bench/load.js, Node 22.17.1, median of 5
-     interleaved runs against 43b97a4): cold load 19.3 -> 20.0 ms, heap
+     interleaved runs against f210f2a): cold load 19.3 -> 20.0 ms, heap
      after load and one window 2.60 -> 2.83 MB; later windows unchanged.
      Accepted: the cascade, colors and CSS property data are what emotion
      suites need, and load stays well inside the 30-40 ms budget. Tried
@@ -853,7 +853,7 @@ warpdom follows the standard. Each has a test. To publish in the docs.
    Harness: warpdom now runs from a copy inside the package (Vitest hangs
    loading an environment from outside the root with isolate: false).
    Load cost of this round (bench/load.js, Node 22.17.1, median of 5
-   against eafface): cold load 19.5 -> 20.6 ms, heap 2.84 -> 2.99 MB,
+   against 75bc864): cold load 19.5 -> 20.6 ms, heap 2.84 -> 2.99 MB,
    window creation unchanged; hot members unchanged (bench:hot, all
    within +-2.4%). Accepted: the new interfaces are what the suites use;
    still well inside the budget. Lazy interface creation is the next
@@ -915,7 +915,7 @@ getElementById-namespaced-id, Element-setAttributeNodeNS),
 Node.moveBefore (jsdom lacks it; libraries feature-detect it), document
 character sets, live-collection and named-property cases (collections
 branch), DragEvent and TextEvent (jsdom lacks them too).
-- **2026-10-11: First full WPT run** (wpt/, WPT 87b5d13099, warpdom fc9d262;
+- **2026-10-11: First full WPT run** (wpt/, WPT 87b5d13099, warpdom cd971f2;
   dom, domparsing, html/dom, css/cssom; 963 files, 133k subtests;
   docs/research/data/wpt/full-2026-10-11-summary.md). Subtests passed:
   warpdom 111,785 (83.9%), jsdom 30.1.2 107,191 (80.5%). Per-file score
@@ -1045,7 +1045,7 @@ and Last-Modified headers (runner), iframes loading cross-origin pages.
   `>=20.19`): the XML parser dependency needs it, and Node 20 is past its
   end of life. `.nvmrc` selects Node 22 (`nvm use` picks the newest 22.x
   installed; 22.17.1 and 22.23.3 here).
-- **2026-10-12: html/dom after the html/dom work** (main 6fe475f, WPT
+- **2026-10-12: html/dom after the html/dom work** (main 8a78ca5, WPT
   87b5d13099, --jobs 1; docs/research/data/wpt/htmldom-2026-10-12-summary.md):
   per-file score warpdom 72.1% vs jsdom 69.4% (was 38.8%); subtests
   59,796 vs 52,869 of 69,303. Ahead or level in every subdirectory except
@@ -1271,7 +1271,7 @@ nested project strings in Vitest 5 project configs are not resolved.
   - Three-way: warpdom faster than jsdom on all 14 suites; median 1.32x
     (13 suites) or 1.43x (with handsontable's 8.84x from the two-way run).
     happy-dom 1.30x but changes results in 12 of 13 suites; warpdom 0-2
-    per suite (ariakit 11: 9 jsdom-fail plus 2 fixed in 0bdec62).
+    per suite (ariakit 11: 9 jsdom-fail plus 2 fixed in c9a06c4).
   - Fast mode median 1.64x over 11 Vitest suites (MUI 8.14x, Vuetify
     6.56x, Radix 6.03x); 0-2 differences except ariakit.
   - WPT: score per file 72.5% vs jsdom 71.1%, subtests 85.1% vs 80.5%.
@@ -1442,7 +1442,7 @@ declarative shadow DOM (xpath-shadow-dom 1 subtest).
 WPT 87b5d13099, run locally per directory with --jobs 1, Node 22.23.3,
 jsdom 30.1.2 as reference. Scores are per file against the union of
 subtest names (as `wpt/summary.mjs` side by side); "before" is main
-f7f4571 (newer than the CI run's d1358bf: XPath and namespaced
+1258109 (newer than the CI run's d7546a7: XPath and namespaced
 attributes were already merged, so top-level dom/ started at 90.8%, not
 80.3%). No subtest that passed before fails now in any of the four.
 
@@ -1493,7 +1493,7 @@ Fixes, by cause:
   iterators; DocumentFragment.getElementById(''), quirks-mode
   getElementsByClassName, insertAdjacentElement type check.
 
-Performance (5 alternating runs against main f7f4571, medians; Node
+Performance (5 alternating runs against main 1258109, medians; Node
 22.23.3):
 
 | | main | branch | |
@@ -1521,7 +1521,7 @@ NodeList's iterator (every item would go through the list proxy).
 
 Decision for Sonu: isTrusted as an own accessor costs about 55 ns per
 event (plain Event 42 -> 96 ns); UIEvent subclasses are still faster than
-main because of the template. Revert 428744b if that is not worth jsdom's
+main because of the template. Revert 428744b (pre-consolidation hash; see [COMMIT-MAP.md](docs/research/data/COMMIT-MAP.md)) if that is not worth jsdom's
 shape (WPT: dom/events then 78.6% vs 79.8%).
 
 Left, and why:
@@ -1780,7 +1780,7 @@ runs and the survey re-run), solid-primitives 4 -> 0, vueuse 10 -> 0,
 downshift 24 -> 0: 58 -> 1 of about 13,500. Kept: tanstack-query
 query-devtools PiPContext "#_goober" test (the ownerNode deviation).
 
-Performance (Node 22.23.3, 5 alternating rounds against main 3275164,
+Performance (Node 22.23.3, 5 alternating rounds against main 441fda1,
 medians; ev = a focused events benchmark): new Event 41.4 -> 36.9 ns,
 MouseEvent 200 -> 179, dispatch + one listener 326 -> 314, three event
 getter reads 15.5 -> 4.7; style writes 95.5 -> 89.9; create-bench 180 ->
@@ -1864,7 +1864,7 @@ tests passing on jsdom and failing on warpdom (usePress/useMove "user-select:
 none"): they set `document.documentElement.style.webkitUserSelect =
 'contain'` and read it back. jsdom 26 with cssstyle 4.6 has no such accessor
 (`'webkitUserSelect' in style` is false, the write makes an own data
-property); warpdom had jsdom 30's accessor, and since af612a2 ("jsdom 20 to
+property); warpdom had jsdom 30's accessor, and since af612a2 (pre-consolidation hash; see [COMMIT-MAP.md](docs/research/data/COMMIT-MAP.md)) ("jsdom 20 to
 23 profiles", UNKNOWN_TO) the jsdom26 profile's setProperty dropped
 -webkit-user-select, so the read gave ''. UNKNOWN_TO's premise (each older
 cssstyle knows a subset of the next one) was wrong: cssstyle 2 to 4.3 have

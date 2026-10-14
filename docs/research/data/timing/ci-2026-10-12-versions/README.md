@@ -11,7 +11,7 @@ also cssstyle 4.1.0 and 4.6.0 under its own jsdom 25.0.1.
 | held-out-38303830165 | 38303830165 | 2b78c2e (naive-ui and solid-primitives keys have the CI root bug; use the rerun for them) |
 | rerun-38336519771 | 38336519771 (naive-ui and solid-primitives, fixed keys) | ce2fbc6 |
 
-warpdom is not involved (environment records name 77bec904 only because
+warpdom is not involved (environment records name 1ccb7048 only because
 the workflow checks it out). `versions-out.tar.xz`: per project and
 variant, the status map with failure messages and the resolved versions
 (`meta.json`). `report.md`, `versions.csv`, `versions-groups.json`:

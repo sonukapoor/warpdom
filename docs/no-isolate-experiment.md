@@ -2,7 +2,7 @@
 
 > Experiment log of 2026-10-09 (laptop, warpdom of that day), kept as a
 > record. Current drop-in numbers are in the README's "Measured" section;
-> current fast mode numbers (GitHub Actions, warpdom 5942dc9) are in
+> current fast mode numbers (GitHub Actions, warpdom 2606b3d) are in
 > docs/fast-mode.md, "Measured".
 > <!-- source: docs/research/data/ci-2026-10-14-5942dc9-RESULTS.md -->
 

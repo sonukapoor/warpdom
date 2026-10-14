@@ -1,4 +1,4 @@
-# WPT at the frozen commit (warpdom 208ad49)
+# WPT at the frozen commit (warpdom 8630317)
 
 GitHub run 38427179332 (sonukapoor/warpdom, workflow wpt.yml, WPT commit
 87b5d13099c8bc2f9047ce1d29c963a3e0a246f6, engines warpdom and jsdom 30,

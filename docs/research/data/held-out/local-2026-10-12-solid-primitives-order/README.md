@@ -12,7 +12,7 @@ with `isolate: false`).
   the same way.
 
 Only these two summaries are archived. The repeated idle/loaded runs that
-compared how often each DOM meets this order (77bec90 under load 1 slow
+compared how often each DOM meets this order (1ccb704 under load 1 slow
 run in 30, warpdom main 0 in 30, jsdom 0 in 30 with a margin of about
 20 ms) are recorded in README 3.7 as the author's measurement; their raw
 output was not archived.

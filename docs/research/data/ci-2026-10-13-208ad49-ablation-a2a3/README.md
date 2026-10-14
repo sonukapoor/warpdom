@@ -1,4 +1,4 @@
-# Ablations A2 (eager interfaces), A3 (no query cache) and the A/A control (warpdom 208ad49)
+# Ablations A2 (eager interfaces), A3 (no query cache) and the A/A control (warpdom 8630317)
 
 | Directory | Run | Suites |
 | --- | --- | --- |
@@ -12,8 +12,8 @@
   (`WARPDOM_ABLATE=no-query-cache`). Every other configuration runs with
   `WARPDOM_ABLATE` unset. **No `warpdom-ablate-unset` configuration (the switch set
   to the empty string) ran in these jobs**; the only measurement of it is the
-  earlier run 38303845272 at 77bec904 (`../timing/ci-2026-10-12-aa-control/`).
-- **Commits:** warpdom 208ad49 (frozen; `src/ablate.js` reads the switch, the
+  earlier run 38303845272 at 1ccb7048 (`../timing/ci-2026-10-12-aa-control/`).
+- **Commits:** warpdom 8630317 (frozen; `src/ablate.js` reads the switch, the
   Vitest and Jest adapters apply it), harness dom-api-tracer 843087f; clean.
 - **Runners:** 4 cores, 15.6 GiB, Node 22.23.3; CPU per job in the env records.
 - **Protocol:** warm-up + 5 rounds, order rotated; 2 workers.

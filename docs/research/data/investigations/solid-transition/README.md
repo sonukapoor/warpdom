@@ -13,7 +13,7 @@ only: no jsdom or happy-dom source was read.
   `AssertionError: expected null not to be null` (`expect(dataRef).not.toBeNull()`,
   line 70): after 100 rounds of `await Promise.resolve(); await setTimeout(0)`
   the component started in the transition has not mounted.
-- CI at warpdom 208ad49 (`ci-2026-10-13-208ad49-correctness-warpdom-*.tsv`):
+- CI at warpdom 8630317 (`ci-2026-10-13-208ad49-correctness-warpdom-*.tsv`):
   failed in 24 of 27 warpdom-default rounds, passed in every jsdom-default round.
   CI archives statuses only, not messages or file orders; the message above is
   from the local runs.
@@ -55,7 +55,7 @@ only: no jsdom or happy-dom source was read.
 4. **Swapping the grouping swaps the outcome** (full suite, 2 workers,
    `scripts/run.sh`, 10 runs each):
 
-   | Grouping | jsdom 25.0.1 | warpdom 208ad49 code |
+   | Grouping | jsdom 25.0.1 | warpdom 8630317 code |
    | --- | --- | --- |
    | one environment name for all files (as the jsdom run) | 10/10 pass | 10/10 pass |
    | two names, config vs pinned files (as the warpdom run) | 7/10 pass | 6/10 pass |
@@ -73,12 +73,12 @@ Machine load matters only through that.
 `node scripts/trace-corpus.mjs --repos-dir ~/Projects --only solid --environment
 <dom> --no-baseline --no-build` (dom-api-tracer 843087f, 2 workers), with a
 setup file that logs the file order per worker (`--first-setup
-scripts/order-setup.mjs`) for full-suite runs. warpdom 208ad49 and main e5ba020
+scripts/order-setup.mjs`) for full-suite runs. warpdom 8630317 and main 1f6d6cf
 (same `src/`; main only changes `.gitignore` and a docs script). "Load": 14 `yes`
 processes on 14 cores; "idle": no added load (the machine was shared with other
 work, load average about 68 when the load phase started).
 
-| | jsdom 25.0.1 | warpdom 208ad49 | warpdom main |
+| | jsdom 25.0.1 | warpdom 8630317 | warpdom main |
 | --- | --- | --- | --- |
 | file alone, idle | 10/10 pass | 10/10 pass | 10/10 pass |
 | file alone, load | 10/10 pass | 10/10 pass | 10/10 pass |
@@ -98,7 +98,7 @@ and not on jsdom. A user who switches the config to warpdom but leaves the
 `@vitest-environment jsdom` comments (or names them differently from the
 config) gets the same split. Giving the config and the pinned files the same
 environment name in the harness would remove the difference; that is a change
-to dom-api-tracer, not made here (the paper's numbers are frozen at 208ad49).
+to dom-api-tracer, not made here (the paper's numbers are frozen at 8630317).
 
 ## Files
 

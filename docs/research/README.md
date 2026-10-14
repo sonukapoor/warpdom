@@ -227,7 +227,7 @@ invalid; see the correction in section 3).
 ### 3.1 Correctness (RQ1)
 
 Latest full survey, 2026-10-11 afternoon (warpdom code as merged to main,
-up to commit fcd0b51 by timestamp; the commit was not recorded):
+up to commit 9fee122 by timestamp; the commit was not recorded):
 [data/surveys/survey8.log](data/surveys/survey8.log). "Tests" is the
 number of test entries in the jsdom baseline.
 
@@ -383,7 +383,7 @@ tracer counted 940 calls per test file, PLAN.md 2026-10-08).
 ### 3.4 Where the time goes (RQ3)
 
 CPU profile of MUI's four packages on warpdom, 2026-10-11 (warpdom
-3dc99c7 by timestamp, after all changes above; 273 test files, 274 profiled processes,
+b7d83e7 by timestamp, after all changes above; 273 test files, 274 profiled processes,
 92.2 s of sampled CPU, idle excluded):
 [data/profile/mui-warpdom-2026-10-11.profile-share.txt](data/profile/mui-warpdom-2026-10-11.profile-share.txt),
 [data/profile/mui-warpdom-2026-10-11.top-dom.txt](data/profile/mui-warpdom-2026-10-11.top-dom.txt).
@@ -450,7 +450,7 @@ event dispatch.
 
 **Per operation, three DOMs** (bench/hot.js: the hottest members in the
 traced corpus; ns per operation, median of 3 runs; laptop, Node 22.23.3,
-warpdom 2e0293c, jsdom 30.1.2, happy-dom 20.14;
+warpdom c3e08a1, jsdom 30.1.2, happy-dom 20.14;
 [data/hot-2026-10-12-three-dom.txt](data/hot-2026-10-12-three-dom.txt)):
 
 | Operation | warpdom | jsdom | happy-dom | jsdom / warpdom | happy-dom / warpdom |
@@ -489,11 +489,11 @@ All on hosted Linux runners (2 cores), corpus at the commits in
 22.23.3, 3 rounds, configurations alternating within one job. Speedups are
 medians of per-round ratios. Each job records the warpdom commit it
 checked out (environment records next to the CSVs); main can move while a
-run's jobs start. The fast-mode run's jobs used d1358bf, 09ef8b7 and
-5b665a6: between them only compare and PLAN.md changed, not the DOM code,
+run's jobs start. The fast-mode run's jobs used d7546a7, 5bde765 and
+9f775c5: between them only compare and PLAN.md changed, not the DOM code,
 so its results are from one DOM.
 
-**Three-way** (run 38201339795, warpdom d1358bf per every job's environment record, which contains the svelte fixes merged in 42e87b2;
+**Three-way** (run 38201339795, warpdom d7546a7 per every job's environment record, which contains the svelte fixes merged in 110c9d3;
 [data/timing/ci-2026-10-12-three-way/](data/timing/ci-2026-10-12-three-way/)).
 handsontable is left out: its jsdom run of the core package exceeded the
 harness's 20-minute limit in every round, so the comparison counted all
@@ -549,7 +549,7 @@ with a failed package as NA (dom-api-tracer b25a690).
   - ariakit's 11 are its 9 known tests that fail on jsdom and pass on
     warpdom, plus 2 in `shims.jsdom.test.ts`. That file is pinned to jsdom,
     so it first ran on warpdom here. The 2 were a real gap (the
-    `modifier*` init members of `getModifierState`), fixed in 0bdec62.
+    `modifier*` init members of `getModifierState`), fixed in c9a06c4.
 - CopilotKit was also re-run two-way after the broken rounds of run
   38194812094: jsdom 432.9 s, warpdom 342.7 s, 1.26x, 0 differences
   ([data/timing/ci-2026-10-12-copilotkit/](data/timing/ci-2026-10-12-copilotkit/)).
@@ -582,7 +582,7 @@ no gain on ark-ui, floating-ui, Radix and Vuetify. It changes results:
 ariakit 12 differences instead of 9, ark-ui 6 instead of 3-4. So it can
 only be an opt-in, like fast mode (F6).
 
-**WPT** (warpdom run 38201266741, warpdom d1358bf, WPT 87b5d13099, one
+**WPT** (warpdom run 38201266741, warpdom d7546a7, WPT 87b5d13099, one
 job per area; [data/wpt/ci-2026-10-12-summary.md](data/wpt/ci-2026-10-12-summary.md)):
 
 | | warpdom | jsdom 30.1.2 |
@@ -592,7 +592,7 @@ job per area; [data/wpt/ci-2026-10-12-summary.md](data/wpt/ci-2026-10-12-summary
 | Files where every subtest passes | 611 | 613 |
 | Wall clock, summed over jobs | 676 s | 1,463 s |
 
-Second run the same evening (run 38272794602, warpdom cad3ce8, after the
+Second run the same evening (run 38272794602, warpdom 0181b5f, after the
 DOM gaps and WPT work; [data/wpt/ci-2026-10-12-evening-summary.md](data/wpt/ci-2026-10-12-evening-summary.md)):
 score per file **75.9%** vs jsdom 71.1%, subtests 87.4% vs 80.4%, html/dom
 84.4% vs 68.0%, top-level dom/ 95.9% vs 93.2%, dom/ranges 89.2% vs 88.6%,
@@ -605,7 +605,7 @@ html/dom 71.5% vs 68.0%. Behind: the top-level `dom/` files (80.3% vs
 93.4%), `dom/events` (77.8% vs 79.8%), `dom/ranges` (87.6% vs 88.6%).
 
 **Safety run after the day's merges** (run 38261958358, one round, jsdom
-vs warpdom, 13 suites, warpdom 752c090 with innerText, namespaced
+vs warpdom, 13 suites, warpdom 04722d2 with innerText, namespaced
 attributes, XPath, the fastFrames opt-in and the getModifierState fix;
 [data/timing/ci-2026-10-12-safety/](data/timing/ci-2026-10-12-safety/)):
 no test changed from pass to fail in any suite except solid's flaky test
@@ -627,7 +627,7 @@ this line first said "no test changed from pass to fail"). Differences:
 
 Nine projects warpdom was never tuned on (dom-api-tracer
 `corpus/held-out.json`, pinned in `corpus/held-out-pins.json`), measured
-as warpdom was at 2db6583: per-test status on jsdom and on warpdom, one run
+as warpdom was at 3ee73fc: per-test status on jsdom and on warpdom, one run
 each on the laptop, 2 workers. Nothing was fixed before measuring.
 [data/held-out/](data/held-out/) (per-test results of both runs, the
 corpus and pin files).
@@ -667,7 +667,7 @@ suite unless marked):
   an `id` (1, tanstack-query).
 - **Animation frames on Node's timer** captured at window creation, which
   Vitest's fake timers do not advance (4 presence tests, solid-primitives;
-  fixed in c4c9571).
+  fixed in f7b56eb).
 - Not yet explained: Lit context reconnection
   under fake timers (1, tanstack-query), a Vue CSS variable switch (1,
   vueuse).
@@ -678,7 +678,7 @@ needed `NODE_OPTIONS=--experimental-vm-modules` for react-router and gave
 no hint; it still runs browser-mode projects it does not compare.
 
 **Timing before the fixes** (GitHub Actions run 38280058454, warpdom
-3275164, three DOMs, 3 rounds, 4-core runners with 15.6 GiB per the
+441fda1, three DOMs, 3 rounds, 4-core runners with 15.6 GiB per the
 environment records;
 [data/held-out/ci-2026-10-12-before-timing/](data/held-out/ci-2026-10-12-before-timing/)):
 
@@ -706,12 +706,12 @@ environment records;
   20.9 s and warpdom in 20.8 s
   ([data/held-out/local-2026-10-12-solid-primitives-order/](data/held-out/local-2026-10-12-solid-primitives-order/)).
   warpdom meets that order more often, presumably because it is faster:
-  locally, 77bec90 under load 1 slow run in 30, main 0 in 30, jsdom 0 in
+  locally, 1ccb704 under load 1 slow run in 30, main 0 in 30, jsdom 0 in
   30 but with a margin of about 20 ms (the author's runs; raw output not
   archived). On CI the slow order appeared on warpdom in 3 of 5 rounds and
   the warm-up of run 38302460860 and in none of the 5 rounds of the
   fixed-key rerun 38336512442. The frame bug (frames on Node's timer
-  captured at window creation, fixed in c4c9571) was real but caused the
+  captured at window creation, fixed in f7b56eb) was real but caused the
   4 presence-test failures, a separate issue; the earlier text conflated
   the two.
 - Counts (differ column) are the most in any round (an earlier version gave
@@ -727,13 +727,13 @@ environment records;
   0-1 of 20 under load on warpdom, 0 of 20 on jsdom, and passed 10 of 10
   with a 25 ms wait (the author's runs, raw output not archived). On CI
   the Dropdown Menu variant failed in round 1 of run 38302460860 and in 2
-  of 5 isolated rounds of run 38298853051. It predates 77bec90. Not a DOM
-  difference. (2026-10-14: at 208ad49 the Context Menu variant differs in
+  of 5 isolated rounds of run 38298853051. It predates 1ccb704. Not a DOM
+  difference. (2026-10-14: at 8630317 the Context Menu variant differs in
   7 of 17 warpdom-default rounds, and the Dropdown Menu test failed on
   jsdom in 2 of 5 jsdom-learned rounds; the Context Menu variant's speed
   sensitivity is shown by analogy only, 3.9.)
 
-**After the fixes** (warpdom c4c9571, which merged the held-out fixes;
+**After the fixes** (warpdom f7b56eb, which merged the held-out fixes;
 GitHub Actions run 38284524015, one round, jsdom vs warpdom, each project
 on its own runner;
 [data/held-out/ci-2026-10-12-after/](data/held-out/ci-2026-10-12-after/)):
@@ -757,7 +757,7 @@ The fixes were driven by these 9 projects, so after them the set is no
 longer held out; the "before" numbers above remain the held-out result.
 A new held-out set is needed to measure parity on unseen suites again.
 (2026-10-14: the drop-in timing of these 9 projects at the frozen commit
-208ad49 is in 3.9: 1.36x over 8, 1.31x with solid-primitives' raw rounds;
+8630317 is in 3.9: 1.36x over 8, 1.31x with solid-primitives' raw rounds;
 it measures the fixed DOM on formerly unseen suites.)
 
 What this says about the corpus result: parity on unseen suites is high
@@ -770,7 +770,7 @@ more than the count. Rejected candidates and why: dom-api-tracer
 
 ### 3.8 GitHub Actions, 2026-10-12/13: strong baselines, variance, versions, ablations, applications
 
-All at warpdom 77bec904 (the commit of the paper's first draft) unless noted, on 4-core
+All at warpdom 1ccb7048 (the commit of the paper's first draft) unless noted, on 4-core
 runners (earlier CI runs: the three-way and first fast-mode runs had 2
 cores; the held-out timing before the fixes, run 38280058454, and the
 handsontable rerun already had 4), warm-up + 5 rounds with the order of
@@ -819,8 +819,8 @@ solid-primitives.
   (failing shared tests), so ark-ui's react, solid and vue packages and
   CopilotKit's vue package split with no leaky files and every later run
   re-ran their failing files; naive-ui's leaky set (0-43 files) varied for
-  the same reason (warpdom 1ee70ac commit message; docs/fast-mode.md,
-  "Quiet runs are not buffered"). Fixed in 1ee70ac, before 208ad49.
+  the same reason (warpdom 1ee70ac (pre-consolidation hash; see [COMMIT-MAP.md](data/COMMIT-MAP.md)) commit message; docs/fast-mode.md,
+  "Quiet runs are not buffered"). Fixed in 1ee70ac, before 8630317.
 - These are lower than the first fast-mode run (3.6: MUI 8.14x, Vuetify
   6.56x, Radix 6.03x, CopilotKit 1.72x, emoji-picker 1.67x): another
   warpdom commit, 2-core runners, the harness implementation.
@@ -851,14 +851,14 @@ solid-primitives.
   377-775 tests change; fresh window: 932-945; VM pools (both DOMs): 9;
   happy-dom shared: 23-26 (the provisional Run B count was 96).
 - Correction (2026-10-14) to the table above: two rows did not hold at
-  208ad49 (3.9). Vuetify: with the cleanup baseline jsdom-sharedclean
+  8630317 (3.9). Vuetify: with the cleanup baseline jsdom-sharedclean
   (jsdom without isolation plus restoreAllMocks, unstubAllGlobals,
   unstubAllEnvs and real timers between files; dom-api-tracer 67a9c22) a
   jsdom configuration keeps every result (4.87x over jsdom default), so
   "every jsdom alternative changes results" is no longer true for Vuetify,
   nor for svelte (jsdom-shared, -sharedclean) and ark-ui (jsdom-vm, its 2
   differing tests jsdom-flaky). VueUse: the 8.89x was not reproduced; the
-  shipped command at 208ad49 kept VueUse (and naive-ui) isolated in 6 of 6
+  shipped command at 8630317 kept VueUse (and naive-ui) isolated in 6 of 6
   learnings because of the error misattribution of 3.10.
 - floating-ui's 26-fold "slowdown" in shared mode (3.6) is a hang:
   shared (fresh or reset) and vmThreads on warpdom report 127 of 292
@@ -877,8 +877,8 @@ handsontable 1.29x, 1.31x, 1.31x; handsontable 9.02x, 9.01x, 9.00x;
 per-suite spread between runs over the 13 suites median 2.7%, max 6.8%,
 over all 14 median 2.6%, max 6.8%; jsdom's absolute times up to 74%.
 happy-dom 1.27x, 1.27x, 1.23x, results changed in 12 of 13 each.
-react-spectrum differed in 4 tests in every run at 77bec90 (user-select
-regression since af612a2, fixed in 6062a8b).
+react-spectrum differed in 4 tests in every run at 1ccb704 (user-select
+regression since af612a2 (pre-consolidation hash; see [COMMIT-MAP.md](data/COMMIT-MAP.md)), fixed in 06a86b1).
 
 **Held-out, 5 rounds** (run 38302460860;
 [data/held-out/ci-2026-10-12-timing-5rounds/](data/held-out/ci-2026-10-12-timing-5rounds/)):
@@ -897,7 +897,7 @@ the laptop's 3.04x and CI's cold-cache 2.57x.
 0.996 (median deviation 0.8%, 95th percentile 3.1%); with WARPDOM_ABLATE
 set empty 1.000 (0.4%, 3.7%).
 
-**A2/A3** (runs 38287824993, 38287832655, 23 suites, DOM code = 77bec90):
+**A2/A3** (runs 38287824993, 38287832655, 23 suites, DOM code = 1ccb704):
 eager interfaces 1.00x (1.00-1.01x), no query cache 1.00x (0.99-1.00x)
 of warpdom default's time: no measurable whole-suite effect.
 
@@ -925,30 +925,30 @@ handsontable, solid-primitives, taiga-ui. Forced jsdom 26/30 does not
 load under handsontable's Jest 27 (it runs jsdom 16.7.0, the Angular
 wrapper 20.0.3) nor jsdom 30 under downshift's and dom-testing-library's
 Jest 29.
-Correction (2026-10-14): the re-run at 208ad49 (3.9) counts 13 of 23,
+Correction (2026-10-14): the re-run at 8630317 (3.9) counts 13 of 23,
 counting only tests that ran under both versions with another status
 (load failures separate), with the harness that keeps a forced jsdom's
 dependencies inside its declared ranges (dom-api-tracer edcef25). melt-ui
 has no change there (its 1 above was "Popover ... Closes when click
 outside content", jsdom-flaky), and ark-ui's 30.1.2 count is 4.
 
-**Check of warpdom 627b7ee** (runs 38321363343, 38321374148, one round,
+**Check of warpdom db4895c** (runs 38321363343, 38321374148, one round,
 23 suites): react-spectrum 0; ariakit 7, handsontable 3, solid 1, svelte
 1, tanstack-query 1, ark-ui 1, melt-ui 1, solid-primitives 4 (the
 fake-timer order); 0 elsewhere.
 
 **Web applications** ([data/apps/](data/apps/); pinned
-2026-10-12T20:29:54Z before measuring). At 77bec90 (run 38304848528):
+2026-10-12T20:29:54Z before measuring). At 1ccb704 (run 38304848528):
 Excalidraw 1.20x, 2 tests differ (1 locally: cssstyle's font shorthand
 before 4.4); wire-webapp 0.88x, 141 differ (2 var() in computed styles,
 which jsdom never substitutes; 139 tests in 2 files that did not run:
 warpdom's Jest teardown deleted globals and Dexie's promise chain crashed
-the worker). After 5c70d4e and 627b7ee (run 38321384572): Excalidraw
+the worker). After a8f193d and db4895c (run 38321384572): Excalidraw
 1.24x (1.21-1.24x), wire-webapp 1.04x (1.00-1.06x), 0 differ on both;
 happy-dom 44 / 93 differ, 0.54x on wire-webapp. The apps drove the fixes,
 so this is a migration case study, not held-out evidence.
 Excalidraw's learned isolation and strong baselines (run 38304856904,
-warpdom 77bec90, warm-up + 4 rounds, the time budget stopped round 5;
+warpdom 1ccb704, warm-up + 4 rounds, the time budget stopped round 5;
 harness emulation, as Excalidraw has Vitest 3.0.6;
 [data/apps/ci-2026-10-12-apps-learned/](data/apps/ci-2026-10-12-apps-learned/)):
 all 5 learnings chose isolation with the same 139 leaky files, because
@@ -972,9 +972,9 @@ pagination in some runs of every DOM, which the collision hid); and the
 report's median of an even number of rounds was the lower middle value,
 its "differ" a median over rounds (a84ca4c).
 
-### 3.9 Re-run at the frozen commit warpdom 208ad49 (2026-10-13)
+### 3.9 Re-run at the frozen commit warpdom 8630317 (2026-10-13)
 
-Every experiment again, on one warpdom commit (208ad49) and one harness
+Every experiment again, on one warpdom commit (8630317) and one harness
 commit (dom-api-tracer 843087f), 14 GitHub Actions runs dispatched
 2026-10-13 16:00-16:02 UTC. Full results:
 [data/ci-2026-10-13-208ad49-RESULTS.md](data/ci-2026-10-13-208ad49-RESULTS.md)
@@ -1001,7 +1001,7 @@ numbers of 3.6-3.8 for the paper, except measured isolation (3.10).
 | wpt/ci-2026-10-13-208ad49 | 38427179332 | WPT | - |
 
 **Runners** (computed, "Runners"): 139 environment records, all warpdom
-208ad49 and harness 843087f, Node 22.23.3, 4 cores, 15.6 GiB; six CPU
+8630317 and harness 843087f, Node 22.23.3, 4 cores, 15.6 GiB; six CPU
 models: AMD EPYC 7763 (72), 9V74 (25), 9V45 (23), Intel Xeon Platinum
 8573C (12), 8370C (4), Xeon 6973P-C (3). Protocol: untimed warm-up of
 every configuration, rounds with the configuration order rotated, 2
@@ -1083,7 +1083,7 @@ rule: A2 eager interfaces 1.008x (1.003-1.013x), A3 no query cache 1.003x
 (1.000-1.009x), A/A 1.003x (1.000-1.007x); A/A per round median |log
 ratio| 0.7%, 95th percentile 4.1% (tuning, 70 rounds) and 4.8% (held-out,
 40 rounds). No effect beyond the A/A noise. The WARPDOM_ABLATE-unset
-control did not run at 208ad49 (only at 77bec904, 3.8). A4 (jsdom 30.1.2's
+control did not run at 8630317 (only at 1ccb7048, 3.8). A4 (jsdom 30.1.2's
 profile for every project): more differing tests in both rounds in 7 of
 23 suites: React Spectrum 0 -> 146, svelte 1 -> 25, handsontable 3 -> 23,
 downshift 0 -> 7, ark-ui 2-3 -> 6, CopilotKit 0 -> 1, dom-testing-library
@@ -1094,7 +1094,7 @@ downshift 0 -> 7, ark-ui 2-3 -> 6, CopilotKit 0 -> 1, dom-testing-library
 80.4% against the union); per-file score 75.7% vs 71.0%. Not an
 independent check (WPT was an optimization target).
 
-**Measured isolation at 208ad49: superseded, see 3.10.** Kept as the
+**Measured isolation at 8630317: superseded, see 3.10.** Kept as the
 record of that run (RESULTS 3; computed, "Measured isolation"): over 11
 tuning suites warpdom-learned 1.25x over jsdom default, 1.22x
 (1.02-1.25x) over the best correct jsdom configuration, 1.00x over the
@@ -1127,7 +1127,7 @@ rule, an artifact of its 21 misattributed pagination tests.
 ([data/investigations/solid-transition/README.md](data/investigations/solid-transition/README.md);
 laptop, black box). `web/test/transition.spec.tsx` "memo created during
 transition should not return undefined in committed state" failed on
-warpdom in 24 of 27 CI rounds at 208ad49 and passed in every jsdom round.
+warpdom in 24 of 27 CI rounds at 8630317 and passed in every jsdom round.
 Cause: solid's suite runs with `isolate: false`; `suspense.spec.tsx`
 calls `enableScheduling()` at module level, and a later
 `transition.spec.tsx` in the same worker fails unless
@@ -1148,7 +1148,7 @@ this supersedes RESULTS 7's "UNEXPLAINED" label and the earlier "flaky"
 wording (3.1, 3.6). The harness was not changed (numbers frozen at
 843087f).
 
-**Error misattribution in the CLI** (warpdom 0596184, merged as 5942dc9;
+**Error misattribution in the CLI** (warpdom 0596184 (pre-consolidation hash; see [COMMIT-MAP.md](data/COMMIT-MAP.md)), merged as 2606b3d;
 docs/fast-mode.md). Vitest reports an unhandled error with the file that
 is running when it is thrown; without isolation, a timer or promise a test
 leaves behind (VueUse: an un-awaited `vi.waitFor` in
@@ -1156,18 +1156,18 @@ leaves behind (VueUse: an un-awaited `vi.waitFor` in
 `await vi.waitFor` in the AutoComplete and ColorPicker placement tests)
 throws in a later file, so learning isolated an innocent file, the error
 moved on, and the split never reproduced the isolated results: both
-suites stayed isolated in 6 of 6 learnings at 208ad49 (3.9). The fix
+suites stayed isolated in 6 of 6 learnings at 8630317 (3.9). The fix
 counts an error against the test files its stack names (against the
 running file only when it names none) and allows up to 4 split runs (was
 2). It was found by this evaluation: the per-test comparison showed
 warpdom shared with the reset keeping every result on VueUse while the
-CLI rejected the split. `git -C ~/Projects/warpdom diff --stat 208ad49
-5942dc9 -- src` lists only `src/vitest-fast-cli.js`,
+CLI rejected the split. `git -C ~/Projects/warpdom diff --stat 8630317
+2606b3d -- src` lists only `src/vitest-fast-cli.js`,
 `src/vitest-fast-reporter.js` and `src/vitest-fast-state.js`: the DOM
 code is identical, so the drop-in, correctness, version, ablation and WPT
-results of 3.9 hold for 5942dc9.
+results of 3.9 hold for 2606b3d.
 
-**Re-run of the strong baselines at 5942dc9** (all configurations of
+**Re-run of the strong baselines at 2606b3d** (all configurations of
 3.9's baselines experiments, measured isolation included): GitHub runs
 38567560217, 38567579662 and 38567598200, 2026-10-14; results in 3.11.
 They replace 3.9's measured-isolation numbers in the paper.
@@ -1192,11 +1192,11 @@ grouping on solid (above; not fixed, numbers frozen); a fractional
 Radix's shared learning run failed (dom-api-tracer 11e24a5, before
 843087f).
 
-### 3.11 Strong baselines and measured isolation at warpdom 5942dc9 (2026-10-14)
+### 3.11 Strong baselines and measured isolation at warpdom 2606b3d (2026-10-14)
 
 The baselines experiments of 3.9 again (11 configurations, warm-up plus
-up to 5 rounds), with warpdom 5942dc9 (3.10: the command's error
-attribution; the DOM equals 208ad49) and harness dom-api-tracer af51077
+up to 5 rounds), with warpdom 2606b3d (3.10: the command's error
+attribution; the DOM equals 8630317) and harness dom-api-tracer af51077
 (843087f plus one `.gitignore` line; without the environment-grouping
 change a4eafea). Full results:
 [data/ci-2026-10-14-5942dc9-RESULTS.md](data/ci-2026-10-14-5942dc9-RESULTS.md);
@@ -1206,12 +1206,12 @@ derived numbers:
 archives `data/ci-2026-10-14-5942dc9-baselines-{tuning,heldout,apps}`
 (runs 38567560217, 38567579662, 38567598200; each report.md recomputed,
 byte-identical to the run's own). 17 environment records: warpdom
-5942dc9 and harness af51077, clean; Node 22.23.3, 4 cores, 15.6 GiB;
+2606b3d and harness af51077, clean; Node 22.23.3, 4 cores, 15.6 GiB;
 AMD EPYC 7763 (8), Intel Xeon Platinum 8573C (4), AMD EPYC 9V45 (2),
 9V74 (2), Intel Xeon 6973P-C (1). Budget stops: ariakit 1 round,
 CopilotKit 2, Excalidraw 3.
 
-| 16 Vitest suites (95% two-level bootstrap) | 208ad49 (3.9) | 5942dc9 |
+| 16 Vitest suites (95% two-level bootstrap) | 8630317 (3.9) | 2606b3d |
 | --- | --- | --- |
 | measured isolation vs jsdom default | 1.31x (1.20-1.99) | 1.54x (1.27-3.56) |
 | vs best correct jsdom configuration | 1.19x (1.02-1.33) | 1.27x (1.06-1.52); 1.21x (1.03-1.46) with ark-ui's jsdom-vm counted |
@@ -1238,10 +1238,10 @@ CopilotKit 2, Excalidraw 3.
   (CopilotKit, analog, ariakit, ark-ui, emoji-picker-element,
   tanstack-query, VueUse) and Excalidraw.
 - **Correctness and G2:** warpdom-learned differed from jsdom in 39
-  tests, all in the 208ad49 correctness inventories (3.9). One possible G2 violation: ark-ui's
+  tests, all in the 8630317 correctness inventories (3.9). One possible G2 violation: ark-ui's
   "explicit largeStep" test passed once in a shared file while failing in
   all 6 isolated runs of the job; the drop-in passed it in 10 of 27
-  isolated rounds at 208ad49, so most likely flaky. jsdom-learned (the
+  isolated rounds at 8630317, so most likely flaky. jsdom-learned (the
   harness's emulation) lost the results of one ariakit file (6 tests).
 - **Learning:** mode agreement 1.00 on 13 of 17 suites; break-even
   0.5-1.3 runs on VueUse, MUI, Vuetify, naive-ui and Radix, 3.3 on
@@ -1308,10 +1308,10 @@ where a fresh jsdom window per file breaks suites (Radix: 605 differences
 with fresh jsdom windows, 0 with warpdom's reset; docs/head-to-head.md),
 giving 3.3-6.1x on MUI, Radix and Vuetify.
 Correction (2026-10-14): against what jsdom users can do the gain is
-smaller. At 208ad49 jsdom without isolation (MUI, Radix) or with a
+smaller. At 8630317 jsdom without isolation (MUI, Radix) or with a
 generic cleanup (Vuetify, jsdom-sharedclean) keeps every result, and
 measured isolation was 1.62x, 1.49x and 1.17x faster than those (3.9);
-at 5942dc9, 1.54x, 1.47x and 1.11x (3.11, the numbers the paper uses).
+at 2606b3d, 1.54x, 1.47x and 1.11x (3.11, the numbers the paper uses).
 
 **F5. Exact per-test parity is reachable on large suites.** 10 of 14
 projects (42,139 baseline tests in all 14) have no status difference; the
@@ -1329,8 +1329,8 @@ one melt-ui test speed-sensitive by analogy only.
 **F8. The per-test comparison checks the measurement too.** It found
 defects in the harness and in the shipped command as well as in the DOM:
 the key collision, the maxBuffer truncation (ark-ui's and CopilotKit's
-safety-net re-runs at 77bec904), the error misattribution (VueUse and
-naive-ui kept isolated at 208ad49) and the environment grouping behind
+safety-net re-runs at 1ccb7048), the error misattribution (VueUse and
+naive-ui kept isolated at 8630317) and the environment grouping behind
 solid's transition test (3.10).
 
 **F6. Some suites are bound by real-time waits, not by the DOM.**
@@ -1417,7 +1417,7 @@ gain or lose.
 - **Between-run variation** (3.8): the drop-in speedup per suite varies
   by up to 6.8% between three runs at one commit, absolute times by up to
   74%; within a job an A/A pair varies by about 1% (95th percentile 3-4%).
-- **(2026-10-14) Runners at 208ad49** (3.9): one runner class (4 cores,
+- **(2026-10-14) Runners at 8630317** (3.9): one runner class (4 cores,
   15.6 GiB) but six CPU models; per-suite speedups varied between three
   runs by a median 2.3% and at most 8.6% (handsontable 11.3%), absolute
   times by up to 1.6-1.8x.
@@ -1464,11 +1464,11 @@ gain or lose.
    shuffled file orders for G2; the shipped command running type tests
    (`*.test-d.ts[x]`) that the project's own run does not; tests that
    never report a result (floating-ui) should count as failures for
-   learning. (2026-10-14: the re-run at 208ad49 is done, 3.9; the type
+   learning. (2026-10-14: the re-run at 8630317 is done, 3.9; the type
    tests and missing results were fixed in warpdom 1ee70ac; the strong
-   baselines are being re-run at 5942dc9 after the error-attribution fix,
+   baselines are being re-run at 2606b3d after the error-attribution fix,
    3.10.)
-9. (2026-10-14) Open (the 5942dc9 strong-baseline runs are archived and
+9. (2026-10-14) Open (the 2606b3d strong-baseline runs are archived and
    reported, 3.11; solid's one environment name is in dom-api-tracer
    a4eafea, after those runs): give the harness's emulation
    the CLI's error attribution, or state where it differs; add handsontable's 3 deviations to PLAN.md's

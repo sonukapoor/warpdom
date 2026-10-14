@@ -1,9 +1,9 @@
-# Strong baselines and measured isolation, held-out suites (warpdom 208ad49)
+# Strong baselines and measured isolation, held-out suites (warpdom 8630317)
 
 - **Run:** GitHub Actions 38426939259 (sonukapoor/dom-api-tracer, workflow timing,
   mode `ablation-isolation`, corpus `held-out.json`): the 5 held-out Vitest suites
   (melt-ui, naive-ui, solid-primitives, tanstack-query, vueuse).
-- **Commits:** warpdom 208ad49 (frozen), harness dom-api-tracer 843087f; clean in
+- **Commits:** warpdom 8630317 (frozen), harness dom-api-tracer 843087f; clean in
   every environment record.
 - **Runners:** 4 cores, 15.6 GiB, Node 22.23.3; CPU: AMD EPYC 9V45 (melt-ui), Intel
   Xeon Platinum 8370C (naive-ui), AMD EPYC 9V74 (solid-primitives), AMD EPYC 7763
@@ -28,5 +28,5 @@
   jsdom-default runs), so they are in the flaky set; its 4 filesystem timer tests
   fail when the project's own fake-timer leak reaches them (see RESULTS.md).
 - tanstack-query: the 493 type tests that the shipped command ran in the earlier
-  run (77bec904) do not appear here (warpdom-learned differs from jsdom in 1 test,
+  run (1ccb7048) do not appear here (warpdom-learned differs from jsdom in 1 test,
   the ownerNode deviation).
