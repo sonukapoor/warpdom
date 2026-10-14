@@ -228,21 +228,21 @@ time. Times are the median of 5 rounds. The range is the suite's speedup
 in each of the three runs.
 <!-- source: docs/research/data/ci-2026-10-13-208ad49-threeway-tuning/run1-38426985620/report.md (times, speedups, tests differing: most in any round); ci-2026-10-13-208ad49-computed.md "Tuning: warpdom speedup per run and between runs" (per-run medians: min-max) -->
 
-| Suite | jsdom | warpdom | happy-dom | warpdom vs jsdom | In the 3 runs | Tests that change result: warpdom / happy-dom |
+| Suite | jsdom | happy-dom | **warpdom** | **warpdom vs jsdom** | **warpdom, 3 runs** | Tests that change result: happy-dom / warpdom |
 | --- | ---: | ---: | ---: | ---: | --- | --- |
-| ariakit | 537.3 s | 407.2 s | 232.1 s | 1.32x | 1.32–1.39x | 7 ¹ / 51 |
-| CopilotKit | 456.5 s | 366.3 s | 48.6 s ² | 1.24x | 1.23–1.25x | 0 / 4,681 |
-| React Spectrum | 419.9 s | 338.4 s | 363.1 s | 1.24x | 1.19–1.26x | 0 / 1,441 |
-| MUI | 264.0 s | 141.2 s | 185.1 s | 1.89x | 1.88–1.89x | 0 / 1,042 |
-| ark-ui | 205.7 s | 130.8 s | 141.5 s | 1.59x | 1.56–1.61x | 3 ³ / 116 |
-| svelte | 91.4 s | 84.6 s | 85.5 s | 1.08x | 1.08–1.09x | 1 ⁴ / 288 |
-| Vuetify | 39.6 s | 26.8 s | 26.7 s | 1.49x | 1.49–1.52x | 0 / 4 |
-| emoji-picker-element | 37.2 s | 29.1 s | 32.3 s | 1.28x | 1.18–1.28x | 0 / 1 |
-| Radix | 29.6 s | 16.4 s | 19.7 s | 1.79x | 1.75–1.86x | 0 / 18 |
-| floating-ui | 23.7 s | 15.5 s | 18.8 s | 1.53x | 1.52–1.55x | 0 / 14 |
-| analog | 19.3 s | 16.0 s | 17.3 s | 1.20x | 1.19–1.21x | 0 / 2 |
-| react-hook-form | 12.8 s | 10.3 s | 14.2 s | 1.24x | 1.21–1.24x | 0 / 8 |
-| solid | 3.4 s | 3.3 s | 3.1 s | 1.03x | 1.03x in each | 1 ⁵ / 0 |
+| ariakit | 537.3 s | 232.1 s | **407.2 s** | **1.32x** | **1.32–1.39x** | 51 / **7 ¹** |
+| CopilotKit | 456.5 s | 48.6 s ² | **366.3 s** | **1.24x** | **1.23–1.25x** | 4,681 / **0** |
+| React Spectrum | 419.9 s | 363.1 s | **338.4 s** | **1.24x** | **1.19–1.26x** | 1,441 / **0** |
+| MUI | 264.0 s | 185.1 s | **141.2 s** | **1.89x** | **1.88–1.89x** | 1,042 / **0** |
+| ark-ui | 205.7 s | 141.5 s | **130.8 s** | **1.59x** | **1.56–1.61x** | 116 / **3 ³** |
+| svelte | 91.4 s | 85.5 s | **84.6 s** | **1.08x** | **1.08–1.09x** | 288 / **1 ⁴** |
+| Vuetify | 39.6 s | 26.7 s | **26.8 s** | **1.49x** | **1.49–1.52x** | 4 / **0** |
+| emoji-picker-element | 37.2 s | 32.3 s | **29.1 s** | **1.28x** | **1.18–1.28x** | 1 / **0** |
+| Radix | 29.6 s | 19.7 s | **16.4 s** | **1.79x** | **1.75–1.86x** | 18 / **0** |
+| floating-ui | 23.7 s | 18.8 s | **15.5 s** | **1.53x** | **1.52–1.55x** | 14 / **0** |
+| analog | 19.3 s | 17.3 s | **16.0 s** | **1.20x** | **1.19–1.21x** | 2 / **0** |
+| react-hook-form | 12.8 s | 14.2 s | **10.3 s** | **1.24x** | **1.21–1.24x** | 8 / **0** |
+| solid | 3.4 s | 3.1 s | **3.3 s** | **1.03x** | **1.03x in each** | 0 / **1 ⁵** |
 
 ¹ Tests that fail on jsdom and pass on warpdom.
 ² CopilotKit is fast on happy-dom because 4,681 of its tests break there.

@@ -252,21 +252,21 @@ The table is the first of three identical runs, sorted by jsdom time; the
 last column gives the speedup in each of the three.
 <!-- source: docs/research/data/ci-2026-10-13-208ad49-threeway-tuning/run1-38426985620/report.md; ci-2026-10-13-208ad49-computed.md "Tuning: warpdom speedup per run and between runs" (runs 38426985620, 38427009322, 38427031231) -->
 
-| Suite | jsdom | warpdom | happy-dom | Tests that differ from jsdom: warpdom / happy-dom | warpdom speedup (3 runs) |
-| --- | ---: | ---: | ---: | --- | ---: |
-| ariakit | 537.3 s | 407.2 s | 232.1 s | 7 / 51 | 1.32x (1.32–1.39x) |
-| CopilotKit | 456.5 s | 366.3 s | 48.6 s ¹ | 0 / 4,681 | 1.24x (1.23–1.25x) |
-| React Spectrum | 419.9 s | 338.4 s | 363.1 s | 0 / 1,441 | 1.24x (1.19–1.26x) |
-| MUI | 264.0 s | 141.2 s | 185.1 s | 0 / 1,042 | 1.89x (1.88–1.89x) |
-| ark-ui | 205.7 s | 130.8 s | 141.5 s | 3 / 116 | 1.59x (1.56–1.61x) |
-| svelte | 91.4 s | 84.6 s | 85.5 s | 1 / 288 | 1.08x (1.08–1.09x) |
-| Vuetify | 39.6 s | 26.8 s | 26.7 s | 0 / 4 | 1.49x (1.49–1.52x) |
-| emoji-picker-element | 37.2 s | 29.1 s | 32.3 s | 0 / 1 | 1.28x (1.18–1.28x) |
-| Radix | 29.6 s | 16.4 s | 19.7 s | 0 / 18 | 1.79x (1.75–1.86x) |
-| floating-ui | 23.7 s | 15.5 s | 18.8 s | 0 / 14 | 1.53x (1.52–1.55x) |
-| analog | 19.3 s | 16.0 s | 17.3 s | 0 / 2 | 1.20x (1.19–1.21x) |
-| react-hook-form | 12.8 s | 10.3 s | 14.2 s | 0 / 8 | 1.24x (1.21–1.24x) |
-| solid | 3.4 s | 3.3 s | 3.1 s | 1 / 0 | 1.03x (1.03x in each) |
+| Suite | jsdom | happy-dom | **warpdom** | **warpdom speedup (3 runs)** | Tests that differ from jsdom: happy-dom / warpdom |
+| --- | ---: | ---: | ---: | ---: | --- |
+| ariakit | 537.3 s | 232.1 s | **407.2 s** | **1.32x (1.32–1.39x)** | 51 / **7** |
+| CopilotKit | 456.5 s | 48.6 s ¹ | **366.3 s** | **1.24x (1.23–1.25x)** | 4,681 / **0** |
+| React Spectrum | 419.9 s | 363.1 s | **338.4 s** | **1.24x (1.19–1.26x)** | 1,441 / **0** |
+| MUI | 264.0 s | 185.1 s | **141.2 s** | **1.89x (1.88–1.89x)** | 1,042 / **0** |
+| ark-ui | 205.7 s | 141.5 s | **130.8 s** | **1.59x (1.56–1.61x)** | 116 / **3** |
+| svelte | 91.4 s | 85.5 s | **84.6 s** | **1.08x (1.08–1.09x)** | 288 / **1** |
+| Vuetify | 39.6 s | 26.7 s | **26.8 s** | **1.49x (1.49–1.52x)** | 4 / **0** |
+| emoji-picker-element | 37.2 s | 32.3 s | **29.1 s** | **1.28x (1.18–1.28x)** | 1 / **0** |
+| Radix | 29.6 s | 19.7 s | **16.4 s** | **1.79x (1.75–1.86x)** | 18 / **0** |
+| floating-ui | 23.7 s | 18.8 s | **15.5 s** | **1.53x (1.52–1.55x)** | 14 / **0** |
+| analog | 19.3 s | 17.3 s | **16.0 s** | **1.20x (1.19–1.21x)** | 2 / **0** |
+| react-hook-form | 12.8 s | 14.2 s | **10.3 s** | **1.24x (1.21–1.24x)** | 8 / **0** |
+| solid | 3.4 s | 3.1 s | **3.3 s** | **1.03x (1.03x in each)** | 0 / **1** |
 
 Times are the median of 5 rounds; the speedup is the median of the
 per-round ratios (jsdom and warpdom on the same machine in the same
@@ -379,26 +379,26 @@ Whole-suite numbers hide where the difference is. Per DOM operation, on
 the hottest members of the traced suites (ns per operation, median of 3
 runs on a laptop):
 
-| Operation | warpdom | jsdom | happy-dom | jsdom / warpdom | happy-dom / warpdom |
+| Operation | **warpdom** | jsdom | happy-dom | jsdom / warpdom | happy-dom / warpdom |
 | --- | --- | --- | --- | --- | --- |
-| appendChild (build 1000) | 87.6 | 762.1 | 353 | 8.7x | 4.0x |
-| insertBefore first (1000) | 123.7 | 1,129 | 978.3 | 9.1x | 7.9x |
-| removeChild all (1000) | 167.7 | 1,431 | 1,121 | 8.5x | 6.7x |
-| nextSibling walk | 11.4 | 45.9 | 88.1 | 4.0x | 7.7x |
-| previousSibling walk | 11.5 | 44.7 | 90.2 | 3.9x | 7.8x |
-| parentNode chain (depth 20) | 7.4 | 45.5 | 9.2 | 6.1x | 1.2x |
-| childNodes[i] loop | 107.6 | 202.3 | 79.1 | 1.9x | 0.7x |
-| firstElementChild + nextElementSibling | 9.8 | 47.6 | 87.8 | 4.9x | 9.0x |
-| getAttribute | 17.2 | 55.3 | 59.6 | 3.2x | 3.5x |
-| setAttribute | 50.6 | 175.4 | 553.3 | 3.5x | 10.9x |
-| getElementById (1000 elements) | 38.2 | 163.9 | 44.8 | 4.3x | 1.2x |
-| dispatchEvent (depth 20, document listener) | 1,435 | 3,947 | 5,296 | 2.7x | 3.7x |
-| querySelector #id | 50.1 | 1,188 | 50.4 | 23.7x | 1.0x |
-| querySelectorAll [data-index="999"] | 106.8 | 358,920 | 61.3 | 3,361x | 0.6x |
-| querySelectorAll * (Testing Library) | 107.7 | 41,555 | 56.2 | 386x | 0.5x |
-| querySelectorAll after a change (uncached) | 17,428 | 371,456 | 107,873 | 21.3x | 6.2x |
-| matches("div > span:nth-child(odd)") | 21.4 | 579 | 24.5 | 27.1x | 1.1x |
-| closest("[data-index]") | 114.8 | 7,912 | 242.6 | 68.9x | 2.1x |
+| appendChild (build 1000) | **87.6** | 762.1 | 353 | 8.7x | 4.0x |
+| insertBefore first (1000) | **123.7** | 1,129 | 978.3 | 9.1x | 7.9x |
+| removeChild all (1000) | **167.7** | 1,431 | 1,121 | 8.5x | 6.7x |
+| nextSibling walk | **11.4** | 45.9 | 88.1 | 4.0x | 7.7x |
+| previousSibling walk | **11.5** | 44.7 | 90.2 | 3.9x | 7.8x |
+| parentNode chain (depth 20) | **7.4** | 45.5 | 9.2 | 6.1x | 1.2x |
+| childNodes[i] loop | **107.6** | 202.3 | 79.1 | 1.9x | 0.7x |
+| firstElementChild + nextElementSibling | **9.8** | 47.6 | 87.8 | 4.9x | 9.0x |
+| getAttribute | **17.2** | 55.3 | 59.6 | 3.2x | 3.5x |
+| setAttribute | **50.6** | 175.4 | 553.3 | 3.5x | 10.9x |
+| getElementById (1000 elements) | **38.2** | 163.9 | 44.8 | 4.3x | 1.2x |
+| dispatchEvent (depth 20, document listener) | **1,435** | 3,947 | 5,296 | 2.7x | 3.7x |
+| querySelector #id | **50.1** | 1,188 | 50.4 | 23.7x | 1.0x |
+| querySelectorAll [data-index="999"] | **106.8** | 358,920 | 61.3 | 3,361x | 0.6x |
+| querySelectorAll * (Testing Library) | **107.7** | 41,555 | 56.2 | 386x | 0.5x |
+| querySelectorAll after a change (uncached) | **17,428** | 371,456 | 107,873 | 21.3x | 6.2x |
+| matches("div > span:nth-child(odd)") | **21.4** | 579 | 24.5 | 27.1x | 1.1x |
+| closest("[data-index]") | **114.8** | 7,912 | 242.6 | 68.9x | 2.1x |
 
 warpdom is faster than jsdom on every operation, by 2-9x on tree and
 attribute work and by orders of magnitude on selector queries. happy-dom
