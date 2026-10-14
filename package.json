@@ -1,11 +1,14 @@
 {
   "name": "warpdom",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "A fast DOM for unit and component tests: jsdom's test results, faster. A drop-in Vitest and Jest environment.",
   "private": true,
   "type": "module",
   "license": "MIT",
-  "author": "Sonu Kapoor",
+  "author": {
+    "name": "Sonu Kapoor",
+    "url": "https://github.com/sonukapoor"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sonukapoor/warpdom.git"
@@ -22,7 +25,10 @@
     "jest",
     "test-environment",
     "happy-dom",
-    "web-platform"
+    "web-platform",
+    "whatwg",
+    "vitest-environment",
+    "jest-environment"
   ],
   "exports": {
     ".": {
@@ -38,7 +44,8 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "src"
+    "src",
+    "bin"
   ],
   "engines": {
     "node": ">=22.12"

@@ -1,0 +1,35 @@
+{
+  "upload_type": "software",
+  "title": "warpdom: a fast, jsdom-compatible DOM for unit and component tests",
+  "version": "0.1.0",
+  "description": "<p>warpdom is a DOM implementation for JavaScript unit and component tests, written from the WHATWG and CSSOM specifications, that installs as a drop-in Vitest or Jest environment in place of jsdom. On the open-source test suites measured, every test keeps the result it has under jsdom (apart from flaky tests and a short list of documented deliberate differences), and suites run faster drop-in (median about 1.3x), with larger gains where per-file environment isolation dominates run time.</p><p>The archive includes the source, the test suite, the Web Platform Tests runner and the research record with its raw data (docs/research). The measurements were taken with dom-api-tracer (related identifier below).</p>",
+  "creators": [
+    {
+      "name": "Kapoor, Sonu",
+      "affiliation": "Independent Researcher",
+      "orcid": "0009-0009-6074-6238"
+    }
+  ],
+  "license": "MIT",
+  "keywords": [
+    "DOM",
+    "jsdom",
+    "testing",
+    "unit testing",
+    "Vitest",
+    "Jest",
+    "test environment",
+    "web platform",
+    "WHATWG",
+    "Web Platform Tests"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/sonukapoor/dom-api-tracer",
+      "relation": "isSupplementedBy",
+      "resource_type": "software",
+      "scheme": "url"
+    }
+  ],
+  "access_right": "open"
+}

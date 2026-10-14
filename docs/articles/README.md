@@ -7,11 +7,12 @@ or checked before publishing.
 
 | # | File | Working title | Status |
 | --- | --- | --- | --- |
-| 1 | [01-same-results-faster.md](01-same-results-faster.md) | jsdom's test results, up to 3x faster: what we measured on 14 real suites | First full draft (2026-10-11). Needs: re-timing of the 2026-10-09/10 rows and fast mode with current code, a full WPT re-run, title choice. |
-| 2 | [02-tests-encode-jsdom-versions.md](02-tests-encode-jsdom-versions.md) | "jsdom-compatible" is not one target: your tests encode a jsdom version | Outline with the key table (2026-10-11). Needs: project names for several rows, two version boundaries confirmed, then writing out. |
+| 1 | [01-same-results-faster.md](01-same-results-faster.md) | jsdom's test results, faster on every suite we tuned on: what we measured on 23 real suites | Full draft; measured numbers from the frozen re-run at warpdom 208ad49 (2026-10-13: three-way runs, held-out set, web apps, versions, WPT). Fast mode numbers from the strong-baseline re-run at warpdom 5942dc9 (2026-10-14). Needs: title choice. |
+| 2 | [02-tests-encode-jsdom-versions.md](02-tests-encode-jsdom-versions.md) | "jsdom-compatible" is not one target: your tests encode a jsdom version | Outline with the key table (2026-10-11); version measurements from the 208ad49 re-run. Needs: project names for several rows, two version boundaries confirmed, then writing out. |
 
 Source of the numbers: [../research/README.md](../research/README.md) and
-[../research/data/](../research/data/), [../../PLAN.md](../../PLAN.md),
+[../research/data/](../research/data/) (the final runs, `ci-2026-10-13-208ad49-*`, are on
+branch docs/paper-revision), [../../PLAN.md](../../PLAN.md),
 [../head-to-head.md](../head-to-head.md), [../fast-mode.md](../fast-mode.md),
 [../no-isolate-experiment.md](../no-isolate-experiment.md),
 [../../wpt/README.md](../../wpt/README.md), and the scripts in

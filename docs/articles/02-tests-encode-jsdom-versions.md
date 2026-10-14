@@ -16,13 +16,29 @@ src/vitest.js and src/jest.js (version detection).
 - A test suite does not test against "the DOM" or even "jsdom". It tests
   against the jsdom version that was installed when its assertions were
   written, and the assertions quietly encode that version's behavior.
-- So "jsdom-compatible" is several targets. One corpus of 14 projects
-  needed at least two jsdom generations at once.
+- So "jsdom-compatible" is several targets. The 23 projects we measured
+  resolve jsdom versions from 16.7.0 (handsontable's core) to 30.1.2
+  (ariakit), and some monorepos mix several (CopilotKit: 24.1.3, 26.1.0
+  and 29.1.0 in different packages).
+  <!-- source (branch docs/paper-revision): docs/research/data/ci-2026-10-13-208ad49-computed.md "Version rule: jsdom resolved per package" -->
 - Why it happens: Jest 30's `jest-environment-jsdom` still bundles jsdom
   26, while Vitest projects use whatever jsdom they install (the harness
   provides jsdom 30 when a project has none). element-plus pins jsdom 16,
   and some of its tests rely on behavior jsdom 30 dropped.
   <!-- source: PLAN.md 2026-10-11 decision; docs/research/README.md 2.2; PLAN.md Next steps 3 (element-plus) -->
+- Measured on 23 suites (14 tuning, 9 held-out), two ways:
+  - **jsdom alone:** running each suite on jsdom 20.0.3, 26.1.0 or
+    30.1.2 instead of its own changes the status of tests that ran in 13
+    of 23 projects, leaving out flaky tests and files that do not load
+    (for example ariakit 258 tests, 13.9%, on jsdom 20, React Spectrum
+    138 on jsdom 30, svelte 38 on jsdom 20, Vuetify 15-16 on each other
+    version; every other project 1 to 16 tests).
+  - **warpdom with the wrong profile:** given the latest jsdom's behavior
+    instead of their own, tests that differ from jsdom rise in 7 of 23
+    suites, to about 200: React Spectrum 0 -> 146, svelte 1 -> 25,
+    handsontable 3 -> 23, downshift 0 -> 7, ark-ui 2-3 -> 6, CopilotKit
+    0 -> 1, dom-testing-library 0 -> 1. Higher in both rounds.
+  <!-- source (branch docs/paper-revision): docs/research/data/ci-2026-10-13-208ad49-RESULTS.md 6 "Versions" (runs 38427202342, 38427223850; ci-2026-10-13-208ad49-versions/) and 5 "A4" (runs 38427136397, 38427158136; ci-2026-10-13-208ad49-ablation-a4/a4-differences.tsv); ci-2026-10-13-208ad49-computed.md "Versions" -->
 
 ## The story that found it
 
@@ -114,10 +130,13 @@ cssstyle from 4.1.0 to 4.6.0:
 - `url()` in `background`/`background-image` is written without quotes
   before 4.3.1 and with quotes after.
 
-8 of svelte's tests depend on the first and 4 on the second. warpdom now
-reads the cssstyle version next to the detected jsdom as well, and
-follows these cutoffs.
-<!-- source: PLAN.md 2026-10-12 jsdom 25 profile entry; test/computed-style.test.js, test/style.test.js -->
+8 of svelte's tests depend on the first and 4 on the second. Measured
+with jsdom alone, swapping cssstyle 4.1.0 for 4.6.0 under svelte's jsdom
+25.0.1 changes exactly 12 tests, the same 12 that change when svelte runs
+on jsdom 26.1.0 (which loads cssstyle 4.6.0): svelte's whole "jsdom 26"
+difference is its CSS library's. warpdom now reads the cssstyle version
+next to the detected jsdom as well, and follows these cutoffs.
+<!-- source: PLAN.md 2026-10-12 jsdom 25 profile entry; test/computed-style.test.js, test/style.test.js; branch docs/paper-revision: docs/research/data/ci-2026-10-13-208ad49-RESULTS.md 6 and computed.md "Versions" (svelte cssstyle-4.6.0: 12; jsdom-26.1.0: 12, the same tests) -->
 
 ## How we found the boundaries (method)
 
@@ -135,12 +154,16 @@ follows these cutoffs.
 
 ## Side effect worth a paragraph
 
-- Following jsdom 26's code paths changed speed too: handsontable (Jest,
-  jsdom 26) went from 2.59x to 3.04x faster than jsdom after the profile
-  landed, more than cheaper startup explains. Likely cause: without a
-  `CSS` namespace it uses its own size parser, and invalid declarations
-  are dropped. Not profiled yet. [TODO: profile handsontable core before
-  claiming the cause]
+- Following an old jsdom's code paths changed speed too: handsontable
+  (Jest; its core, React and Vue packages resolve jsdom 16.7.0, which an earlier
+  draft gave as 26) went from 2.59x to 3.04x faster than jsdom after the
+  profile landed, more than cheaper startup explains. Likely cause:
+  without a `CSS` namespace it uses its own size parser, and invalid
+  declarations are dropped. Not profiled yet. [TODO: profile handsontable
+  core before claiming the cause] Its jsdom 16.7 is also why the final
+  measurements report handsontable apart from the medians (about 8-9x
+  with a warm cache, 2.5x cold).
+  <!-- source (branch docs/paper-revision): docs/research/data/ci-2026-10-13-208ad49-computed.md "Version rule" and "handsontable per package"; RESULTS.md 2.4 -->
   <!-- source: PLAN.md 2026-10-11 "Suite timings before and after validation and lazy interfaces"; docs/research/README.md 3.2 -->
 
 ## Takeaways for readers (draft)

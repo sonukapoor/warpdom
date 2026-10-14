@@ -1,5 +1,11 @@
 # Head-to-head: jsdom, happy-dom, warpdom
 
+> Experiment log of 2026-10-09 (laptop, warpdom of that day), kept as a
+> record. Current drop-in numbers are in the README's "Measured" section;
+> current fast mode numbers (GitHub Actions, warpdom 5942dc9) are in
+> docs/fast-mode.md, "Measured".
+> <!-- source (branch docs/paper-revision): docs/research/data/ci-2026-10-14-5942dc9-RESULTS.md -->
+
 *2026-10-09. Vitest, Node 22.23.3, two workers. 3 suites x 3 DOMs x 3
 modes, 3 interleaved rounds; times are medians. "Differs" counts tests
 whose status differs from jsdom's isolated run, per round. Raw:

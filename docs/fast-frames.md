@@ -56,10 +56,12 @@ Directly: `createWindow({ fastFrames: true })`. Windows in iframes inherit it.
 A frame now runs before a timer with a short delay that would have fired
 first at 60 Hz (for example `setTimeout(fn, 5)` set before awaiting a frame).
 Tests that depend on that order can change result. On the corpus
-(2026-10-12, GitHub Actions): ariakit got 1.61x faster than warpdom's
-default (2.31x faster than jsdom) with 3 more tests differing from jsdom;
-ark-ui gained nothing and had about 3 more differences; floating-ui, Radix
-and Vuetify were unchanged in speed and results.
+(2026-10-12, GitHub Actions, 3 rounds, measured on the experiment branch
+before it was merged): ariakit got 1.61x faster than warpdom's default
+(2.31x faster than jsdom) with 3 more tests differing from jsdom; ark-ui
+gained nothing and had 2 to 3 more differences; floating-ui, Radix and
+Vuetify were unchanged in speed and results.
+<!-- source: docs/research/README.md 3.6 "Fast frames" (run 38197900923, branch exp/fast-frames: ariakit 467.9 -> 291.5 s, 1.61x over warpdom default, 2.31x over jsdom; ariakit 12 differences instead of 9, ark-ui 6 instead of 3-4; no gain on ark-ui, floating-ui, Radix, Vuetify); data/timing/ci-2026-10-12-fastframes/ -->
 
 Check your own suite before turning it on:
 

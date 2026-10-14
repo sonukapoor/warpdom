@@ -345,6 +345,16 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   fires" (on jsdom 27.4 the mirrored style gets no id, so the test's own
   #_goober is the one updated). jsdom 20 to 26 profiles have no ownerNode
   at all, as those versions.
+- No style-sheet parse error is reported to the console. jsdom 16 (with
+  cssom 0.4.4) cannot parse CSS nesting: it drops such a sheet and reports
+  "Error: Could not parse CSS stylesheet" through `console.error` (as
+  handsontable's test helper describes it). warpdom reproduces this in no
+  profile. Known tests that depend on it: 3 tests in handsontable
+  `handsontable/test/__tests__/jsdomThemeCssFilter.unit.js`, which check
+  handsontable's Jest-only filter for that message and expect jsdom to
+  report it. They differ in every round at 208ad49 (branch
+  docs/paper-revision, docs/research/data/ci-2026-10-13-208ad49-RESULTS.md
+  section 7).
 - Submit buttons' formAction, formMethod, formEnctype and the document's
   obsolete body colors (fgColor, linkColor, vlinkColor, alinkColor,
   bgColor) exist; jsdom lacks them.
@@ -1989,3 +1999,73 @@ Found while measuring, not fixed (none seen in a suite yet):
   dropped; warpdom keeps it.
 - In the Jest environment `String(window)` is "[object Object]" (jsdom:
   "[object Window]").
+
+## Release v0.1.0: public repository, Zenodo DOIs, npm (branch release/prep)
+
+Prepared on release/prep (nothing published): `CITATION.cff` and
+`.zenodo.json` here and in dom-api-tracer (its own release/prep branch),
+version 0.1.0 in package.json, package-lock.json and
+packages/vitest-environment-warpdom, `files: ["src", "bin"]`, a Citing
+section and third-party data notes in the README, and the research record
+pointing at the public dom-api-tracer repository. `npm pack --dry-run`:
+75 files, 304.8 kB packed, 1.1 MB unpacked (src/, bin/warpdom.js, README,
+LICENSE, package.json). Audit before the flip: no credentials in any
+commit of either repository; local paths `/Users/sonukapoor/...` appear in
+research data (acceptable); no copied third-party code. Size: the whole
+history packs to about 10 MB (largest file 1.1 MB), so docs/research/data
+stays in the repository and is archived with each Zenodo software release;
+a separate Zenodo dataset deposit only for raw data too large for git
+(e.g. dom-api-tracer's per-file traces, if they are published).
+
+Steps for the author, in this order:
+
+1. **Fill the placeholders** on release/prep: affiliation and ORCID in
+   `CITATION.cff` (authors and preferred-citation) and affiliation in
+   `.zenodo.json`; add `"orcid": "0000-000X-XXXX-XXXX"` to the creator in
+   `.zenodo.json` only with the real value (Zenodo rejects an invalid
+   ORCID, and the archive then fails). Same in dom-api-tracer. Merge both
+   release/prep branches into main (`npm test` green) and push.
+2. **Flip visibility** of sonukapoor/warpdom to public (Settings, General,
+   Danger Zone). Before: `git status --ignored` shows the local-only notes
+   untracked (they are excluded in .git/info/exclude, never committed). Only branches that are pushed
+   become public; decide whether docs/paper-revision (with the
+   `pertest.tar.xz` data, about 10 MB) is pushed before or after.
+3. **Enable the Zenodo GitHub integration**: sign in to zenodo.org with
+   GitHub, Account, GitHub, Sync now, and switch on both
+   sonukapoor/dom-api-tracer and sonukapoor/warpdom. This must happen
+   before step 4: Zenodo archives only releases created after it is
+   switched on (a release made before needs to be deleted and re-created).
+4. **Create the GitHub release v0.1.0 of dom-api-tracer first** (tag
+   `v0.1.0` on main, title `v0.1.0`). Zenodo archives it within minutes and
+   reads `.zenodo.json`.
+5. **Get its DOIs** from the Zenodo record: the version DOI (this exact
+   release) and the concept DOI (all versions, resolves to the latest).
+   Put the dom-api-tracer DOI into warpdom's `.zenodo.json`
+   (`related_identifiers`: identifier `10.5281/zenodo.N`, scheme `doi`,
+   relation `isSupplementedBy`) and `CITATION.cff` (`references`, `doi`);
+   commit and push to warpdom main.
+6. **Create the GitHub release v0.1.0 of warpdom** (tag `v0.1.0`) and get
+   its version and concept DOIs from Zenodo in the same way.
+7. **Record the DOIs**: `doi` and `date-released` in both `CITATION.cff`
+   files, and a DOI badge in both READMEs (concept DOI); commit to main
+   (no new release needed; the next release picks them up). Optionally add
+   the warpdom DOI to dom-api-tracer's `.zenodo.json` as `isSupplementTo`
+   for its next release.
+8. **Paste the DOIs into the paper's `[DOI]` placeholders** (worktree
+   ~/Projects/warpdom-paper-rev, branch docs/paper-revision): the version
+   DOIs, so readers get the exact code and data the paper measured.
+   When the article is published, fill `preferred-citation` in
+   `CITATION.cff` (title, volume, issue, pages, DOI).
+9. **Retire the deploy key**: with warpdom public, dom-api-tracer's
+   `timing.yml` can check warpdom out without `ssh-key`; remove that line,
+   delete the `WARPDOM_DEPLOY_KEY` secret in dom-api-tracer and the deploy
+   key in warpdom's settings.
+10. **npm publish when ready** (independent of the DOIs; can be later):
+    remove `"private": true` from package.json and from
+    packages/vitest-environment-warpdom/package.json, check the names are
+    still free (`npm view warpdom`, `npm view vitest-environment-warpdom`
+    should 404), `npm pack --dry-run`, then `npm publish` in the root and
+    `npm publish` in packages/vitest-environment-warpdom (warpdom first: the
+    second has it as a peer dependency). Use 2FA; optionally publish from
+    GitHub Actions with `--provenance`. dom-api-tracer: `npm publish` from
+    its root if it should be on npm too.

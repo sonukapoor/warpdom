@@ -105,7 +105,9 @@ was 3-8% slower than the drop-in on 5 of 11 tuning suites).
   names (Vitest keeps the call site's stack for `vi.waitFor`; a callback's
   frames name the file that defined it), and those are the files the
   error counts against; only an error whose stack names no test file
-  counts against the running file, as before.
+  counts against the running file, as before. On CI at 5942dc9 VueUse
+  and naive-ui then split in all 6 learnings each (VueUse isolating
+  `packages/shared/utils/index.test.ts`).
   Whether such an error shows at all depends on timing (naive-ui's two
   files showed one at a time), so a split that still differs adds the
   differing files and runs again up to 4 times (was 2); a learning that
@@ -155,9 +157,35 @@ was 3-8% slower than the drop-in on 5 of 11 tuning suites).
   version 1 file may have been learned with the defects above, so it
   counts as nothing learned and the next run learns again.
 
-## Measured (docs/head-to-head.md)
+## Measured
 
-Ten open-source suites against jsdom's default run, median of 3 rounds: never
-slower (lowest 1.03x), MUI 6.1x, Vuetify 4.1x, Radix 3.3x; suites whose
-files leak module state, or that spend little time in the DOM, stay at
-1.0-1.6x.
+GitHub Actions, warpdom 5942dc9 (2026-10-14), 16 open-source Vitest suites
+and Excalidraw, 4-core runners, up to 5 rounds (ariakit 1, CopilotKit 2,
+Excalidraw 3), every configuration in each round. Speedup: median of
+per-round ratios.
+
+| Suite | mode | over jsdom default | over warpdom drop-in | over the fastest jsdom configuration that keeps every result |
+| --- | --- | --- | --- | --- |
+| VueUse | split | 9.62x | 5.17x | 9.62x (jsdom default) |
+| MUI | split | 6.67x | 3.73x | 1.54x (`isolate: false`) |
+| Vuetify | split | 5.61x | 3.80x | 1.11x (`isolate: false` + cleanup) |
+| Radix | split | 4.73x | 2.59x | 1.47x (`isolate: false`) |
+| naive-ui | split | 3.36x | 3.01x | **0.67x** (`isolate: false`) |
+| tanstack-query | 7 of 19 projects split | 2.41x | 1.59x | 2.41x (jsdom default) |
+| CopilotKit | vue project split | 1.52x | 1.22x | 1.52x (jsdom default) |
+| the other 9 suites and Excalidraw | isolated, or split within noise | 1.05-1.59x | 0.98-1.03x | melt-ui **0.84x** (VM pool), others 1.01-1.59x |
+| **median, 16 Vitest suites** | | **1.54x** | **1.01x** | **1.27x** |
+
+Where sharing pays, fast mode is several times faster than both jsdom
+and the drop-in; where it does not, it runs the suite isolated and costs
+what the drop-in costs (no suite was slower than the drop-in beyond the
+A/A noise). On naive-ui and melt-ui a jsdom configuration that keeps
+every result is faster. Floating-ui, solid, melt-ui and solid-primitives
+(Vitest < 3.2), ariakit (three `--project` arguments) and Excalidraw
+were measured with the research harness's emulation of these rules,
+because `warpdom vitest run` needs Vitest 3.2 or later; on older Vitest
+it runs Vitest as configured, which is the drop-in. One test (ark-ui,
+which fails on jsdom and passes intermittently on warpdom) passed once
+in a shared file while failing in every isolated run of that job: most
+likely a flaky pass, not demonstrably a leak.
+<!-- source (branch docs/paper-revision): docs/research/data/ci-2026-10-14-5942dc9-RESULTS.md sections 2-7 (runs 38567560217, 38567579662, 38567598200; per-suite ratios with ranges; medians with 95% two-level bootstrap intervals: 1.54x (1.27-3.56x), 1.01x (1.00-2.73x), 1.27x (1.06-1.52x); the other suites: analog, ariakit, ark-ui, emoji-picker-element, floating-ui, solid, svelte, melt-ui, solid-primitives, Excalidraw; ark-ui's best correct jsdom configuration is jsdom default by the job's flaky set, 0.56x of its VM pool if that counts) and data/ci-2026-10-14-5942dc9-computed.md. Earlier laptop measurement (docs/head-to-head.md, 2026-10-09, ten suites, 3 rounds: MUI 6.1x, Vuetify 4.1x, Radix 3.3x over jsdom default) is superseded. -->

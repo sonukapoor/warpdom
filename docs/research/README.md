@@ -4,8 +4,11 @@ The living record of warpdom's evaluation, kept so it can become a paper or
 article. Every number here comes from a file named next to it; the small
 raw files are copied into [`data/`](data/) because their originals lived in
 temporary or untracked locations. Paths starting with `dom-api-tracer/`
-are in the measurement repository (`~/Projects/dom-api-tracer`);
-`.corpus-env/` there is untracked local output.
+are in the measurement repository,
+[sonukapoor/dom-api-tracer](https://github.com/sonukapoor/dom-api-tracer)
+(cloned locally as `~/Projects/dom-api-tracer`; short commit hashes such as
+`dom-api-tracer b25a690` are commits there); `.corpus-env/` there is
+untracked local output.
 
 *Last updated 2026-10-11.*
 

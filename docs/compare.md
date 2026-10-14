@@ -14,8 +14,10 @@ questions, and the command answers exactly these, on their own suite:
    changes, and why.
 2. **How much faster is my suite?** Measured, alternating, with the spread.
 3. **Could it be faster still?** Which runner settings keep the results
-   and cut the time further (e.g. the vm pool: MUI 3.97x vs 1.82x by
-   default).
+   and cut the time further (e.g. the vm pool on MUI: 4.08x faster than
+   jsdom's default pool, against 1.88x for warpdom in the default pool;
+   laptop, 2026-10-11).
+   <!-- source: docs/research/README.md 3.2 (material-ui, timing-2026-10-11-after.csv: jsdom 87.0 s, warpdom 46.2 s, 1.88x; warpdom vmThreads 21.3 s, 4.08x) -->
 
 Published benchmarks persuade nobody who can't reproduce them. One command
 that a skeptic runs in a few minutes turns "trust us" into "see for
@@ -138,6 +140,7 @@ jsdom. They are common: 56% of solid's tests and 84.5% of svelte's are in
 files pinned to jsdom, so leaving them out makes both the results and the
 speed misleading (solid came out 1.21x slower while the warpdom run loaded
 both DOMs).
+<!-- source: docs/research/README.md section 3 "Correction, 2026-10-12" (svelte 84.5%, solid 55.6% of tests); PLAN.md compare smoke tests (solid 1.21x slower with both DOMs loaded; 1.03x faster once switched) -->
 
 **Vitest: switched, without editing the files.** Vitest 2, 4 and 5 read a
 test file's `@vitest-environment <name>` / `@jest-environment <name>`
