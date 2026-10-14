@@ -2,7 +2,6 @@
   "name": "warpdom",
   "version": "0.1.0",
   "description": "A fast DOM for unit and component tests: jsdom's test results, faster. A drop-in Vitest and Jest environment.",
-  "private": true,
   "type": "module",
   "license": "MIT",
   "author": {
