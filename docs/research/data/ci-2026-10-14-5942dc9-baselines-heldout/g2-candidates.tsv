@@ -1,0 +1,29 @@
+round 1	solid-primitives	isolated: failed	jsdom: failed	root::packages/filesystem/test/index.test.ts::createFileSystem (sync) relays file system errors a deleted file stored in a signal throws an error
+round 1	solid-primitives	isolated: failed	jsdom: failed	root::packages/filesystem/test/index.test.ts::createFileSystem(makeWebAccessFileSystem) fs.readFile returns the content
+round 1	solid-primitives	isolated: failed	jsdom: failed	root::packages/filesystem/test/index.test.ts::createFileSystem(makeWebAccessFileSystem) fs.writeFile updates a readFile resource
+round 1	solid-primitives	isolated: failed	jsdom: failed	root::packages/filesystem/test/index.test.ts::createFileSystem(makeWebAccessFileSystem) fs.rename updates a readdir resource
+round 2	solid-primitives	isolated: failed	jsdom: passed	root::packages/filesystem/test/index.test.ts::createFileSystem (sync) relays file system errors a deleted file stored in a signal throws an error
+round 2	solid-primitives	isolated: failed	jsdom: passed	root::packages/filesystem/test/index.test.ts::createFileSystem(makeWebAccessFileSystem) fs.readFile returns the content
+round 2	solid-primitives	isolated: failed	jsdom: passed	root::packages/filesystem/test/index.test.ts::createFileSystem(makeWebAccessFileSystem) fs.writeFile updates a readFile resource
+round 2	solid-primitives	isolated: failed	jsdom: passed	root::packages/filesystem/test/index.test.ts::createFileSystem(makeWebAccessFileSystem) fs.rename updates a readdir resource
+round 3	solid-primitives	isolated: missing	jsdom: missing	root::packages/pagination/test/index.test.ts::makeAbortable makes a fetcher abortable
+round 3	solid-primitives	isolated: missing	jsdom: missing	root::packages/pagination/test/index.test.ts::makeAbortable filters (only) abort errors
+round 3	solid-primitives	isolated: missing	jsdom: missing	root::packages/pagination/test/index.test.ts::makeAggregated aggregates arrays
+round 3	solid-primitives	isolated: missing	jsdom: missing	root::packages/pagination/test/index.test.ts::makeAggregated aggregates objects
+round 3	solid-primitives	isolated: missing	jsdom: missing	root::packages/pagination/test/index.test.ts::makeAggregated aggregates strings
+round 3	solid-primitives	isolated: missing	jsdom: missing	root::packages/pagination/test/index.test.ts::makeAggregated aggregates numbers
+round 3	solid-primitives	isolated: missing	jsdom: missing	root::packages/pagination/test/index.test.ts::makeAggregated an initial value [] allows to aggregate objects into arrays
+round 3	solid-primitives	isolated: missing	jsdom: missing	root::packages/pagination/test/index.test.ts::serializer works on undefined, null, booleans, numbers, bignum
+round 3	solid-primitives	isolated: missing	jsdom: missing	root::packages/pagination/test/index.test.ts::serializer works on strings
+round 3	solid-primitives	isolated: missing	jsdom: missing	root::packages/pagination/test/index.test.ts::serializer works on arrays
+round 3	solid-primitives	isolated: missing	jsdom: missing	root::packages/pagination/test/index.test.ts::serializer works on objects
+round 3	solid-primitives	isolated: missing	jsdom: missing	root::packages/pagination/test/index.test.ts::serializer works on RequestInit
+round 3	solid-primitives	isolated: missing	jsdom: missing	root::packages/pagination/test/index.test.ts::makeCache caches results
+round 3	solid-primitives	isolated: missing	jsdom: missing	root::packages/pagination/test/index.test.ts::makeCache persists cache
+round 3	solid-primitives	isolated: missing	jsdom: missing	root::packages/pagination/test/index.test.ts::makeCache invalidates cache
+round 3	solid-primitives	isolated: missing	jsdom: missing	root::packages/pagination/test/index.test.ts::makeCache provides an accessor for automatically invalidated results
+round 3	solid-primitives	isolated: missing	jsdom: missing	root::packages/pagination/test/index.test.ts::makeRetrying retries the request after a delay
+round 3	solid-primitives	isolated: missing	jsdom: missing	root::packages/pagination/test/index.test.ts::makeRetrying throws after the configured number of retries
+round 3	solid-primitives	isolated: missing	jsdom: missing	root::packages/pagination/test/index.test.ts::createDeepSignal provides resources with fine-grained reactivity
+round 3	solid-primitives	isolated: missing	jsdom: missing	root::packages/pagination/test/index.test.ts::createDeepSignal mutates the resource with callback
+round 3	solid-primitives	isolated: missing	jsdom: missing	root::packages/pagination/test/index.test.ts::createDeepSignal mutates the resource with plain object

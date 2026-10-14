@@ -1,0 +1,16 @@
+round,project,config,seconds,differs,files_differ,ref
+1,emoji-picker-element,jsdom-default,36.9,0,0,baseline
+1,emoji-picker-element,warpdom-default,29.4,0,0,round
+1,emoji-picker-element,happy-dom-default,32.3,1,1,round
+2,emoji-picker-element,warpdom-default,29.1,0,0,round
+2,emoji-picker-element,happy-dom-default,32.8,1,1,round
+2,emoji-picker-element,jsdom-default,37.7,0,0,baseline
+3,emoji-picker-element,happy-dom-default,32.7,1,1,round
+3,emoji-picker-element,jsdom-default,37.4,0,0,baseline
+3,emoji-picker-element,warpdom-default,29.2,0,0,round
+4,emoji-picker-element,jsdom-default,37.2,0,0,baseline
+4,emoji-picker-element,warpdom-default,29.1,0,0,round
+4,emoji-picker-element,happy-dom-default,32.0,1,1,round
+5,emoji-picker-element,warpdom-default,28.8,0,0,round
+5,emoji-picker-element,happy-dom-default,32.1,1,1,round
+5,emoji-picker-element,jsdom-default,37.1,0,0,baseline

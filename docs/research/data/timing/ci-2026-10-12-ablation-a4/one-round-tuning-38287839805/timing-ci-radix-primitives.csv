@@ -1,0 +1,4 @@
+round,project,config,seconds,differs
+1,radix-primitives,jsdom-default,44.4,0
+1,radix-primitives,warpdom-default,23.5,0
+1,radix-primitives,warpdomlatest-default,23.6,0

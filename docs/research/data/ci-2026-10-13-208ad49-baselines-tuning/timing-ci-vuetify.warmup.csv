@@ -1,0 +1,10 @@
+round,project,config,seconds,differs,files_differ,false_pass,false_fail,ref,position,method
+0,vuetify,jsdom-default,30.6,0,0,NA,NA,,1,
+0,vuetify,jsdom-shared,5.8,0,0,0,0,jsdom-default,2,
+0,vuetify,jsdom-vm,8.1,879,65,0,879,jsdom-default,3,
+0,vuetify,jsdom-sharedclean,5.9,0,0,0,0,jsdom-default,4,
+0,vuetify,warpdom-default,20.8,0,0,NA,NA,,6,
+0,vuetify,warpdom-vm,10.3,2,1,0,2,warpdom-default,7,
+0,vuetify,warpdom-sharedfresh,5.5,63,15,0,63,warpdom-default,8,
+0,vuetify,warpdom-sharedreset,5.2,0,0,0,0,warpdom-default,9,
+0,vuetify,happydom-shared,4.8,4,3,0,4,jsdom-default,11,

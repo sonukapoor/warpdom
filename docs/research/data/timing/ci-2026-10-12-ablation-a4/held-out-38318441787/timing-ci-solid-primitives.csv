@@ -1,0 +1,7 @@
+round,project,config,seconds,differs,files_differ
+1,solid-primitives,jsdom-default,4.0,0,0
+1,solid-primitives,warpdom-default,21.9,4,0
+1,solid-primitives,warpdomlatest-default,3.4,0,0
+2,solid-primitives,warpdom-default,3.6,0,0
+2,solid-primitives,warpdomlatest-default,3.5,0,0
+2,solid-primitives,jsdom-default,4.0,0,0

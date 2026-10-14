@@ -1,0 +1,4 @@
+round,project,config,seconds,differs
+1,react-spectrum,jsdom-default,358.4,0
+1,react-spectrum,warpdom-default,254.2,4
+1,react-spectrum,warpdomlatest-default,246.2,143

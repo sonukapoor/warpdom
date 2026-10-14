@@ -1,0 +1,224 @@
+experiment	condition	scope	dom	run	result	suspense_before_in_same_worker	external_source_between	files_before_transition_in_its_worker
+harness	idle	file	jsdom	1	passed	-	-	-
+harness	idle	file	jsdom	10	passed	-	-	-
+harness	idle	file	jsdom	2	passed	-	-	-
+harness	idle	file	jsdom	3	passed	-	-	-
+harness	idle	file	jsdom	4	passed	-	-	-
+harness	idle	file	jsdom	5	passed	-	-	-
+harness	idle	file	jsdom	6	passed	-	-	-
+harness	idle	file	jsdom	7	passed	-	-	-
+harness	idle	file	jsdom	8	passed	-	-	-
+harness	idle	file	jsdom	9	passed	-	-	-
+harness	idle	file	w208	1	passed	-	-	-
+harness	idle	file	w208	10	passed	-	-	-
+harness	idle	file	w208	2	passed	-	-	-
+harness	idle	file	w208	3	passed	-	-	-
+harness	idle	file	w208	4	passed	-	-	-
+harness	idle	file	w208	5	passed	-	-	-
+harness	idle	file	w208	6	passed	-	-	-
+harness	idle	file	w208	7	passed	-	-	-
+harness	idle	file	w208	8	passed	-	-	-
+harness	idle	file	w208	9	passed	-	-	-
+harness	idle	file	wmain	1	passed	-	-	-
+harness	idle	file	wmain	10	passed	-	-	-
+harness	idle	file	wmain	2	passed	-	-	-
+harness	idle	file	wmain	3	passed	-	-	-
+harness	idle	file	wmain	4	passed	-	-	-
+harness	idle	file	wmain	5	passed	-	-	-
+harness	idle	file	wmain	6	passed	-	-	-
+harness	idle	file	wmain	7	passed	-	-	-
+harness	idle	file	wmain	8	passed	-	-	-
+harness	idle	file	wmain	9	passed	-	-	-
+harness	idle	full	jsdom	1	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	jsdom	10	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	jsdom	11	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	jsdom	12	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	jsdom	13	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	jsdom	14	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	jsdom	15	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	jsdom	16	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	jsdom	17	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	jsdom	18	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	jsdom	19	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	jsdom	2	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	jsdom	20	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	jsdom	3	failed	yes	no	test/signals.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	jsdom	4	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/transition.spec.tsx
+harness	idle	full	jsdom	5	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	jsdom	6	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	jsdom	7	passed	no	yes	test/signals.spec.ts test/signals.memo.spec.ts test/external-source.spec.ts web/test/transition.spec.tsx
+harness	idle	full	jsdom	8	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	jsdom	9	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	w208	1	failed	yes	no	web/test/suspense.spec.tsx web/test/index.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	w208	10	passed	no	no	test/signals.spec.ts web/test/portal.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	w208	11	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/portal.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	w208	12	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	w208	13	passed	no	no	test/signals.spec.ts web/test/portal.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	w208	14	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	w208	15	passed	no	no	test/signals.spec.ts web/test/portal.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	w208	16	passed	no	no	test/signals.spec.ts web/test/portal.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	w208	17	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/portal.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	w208	18	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/portal.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	w208	19	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/portal.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	w208	2	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/index.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	w208	20	passed	no	no	test/signals.spec.ts web/test/portal.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	w208	3	passed	no	no	test/signals.spec.ts web/test/index.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	w208	4	passed	no	no	test/signals.spec.ts web/test/for.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	w208	5	passed	no	no	test/signals.spec.ts web/test/for.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	w208	6	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	w208	7	passed	no	no	test/signals.spec.ts web/test/portal.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	w208	8	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	w208	9	passed	no	no	test/signals.spec.ts web/test/portal.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	wmain	1	passed	no	no	test/signals.spec.ts web/test/for.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	wmain	10	passed	no	no	test/signals.spec.ts web/test/portal.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	wmain	11	passed	no	no	test/signals.spec.ts web/test/portal.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	wmain	12	passed	no	no	test/signals.spec.ts web/test/portal.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	wmain	13	passed	no	no	test/signals.spec.ts web/test/portal.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	wmain	14	passed	no	no	test/signals.spec.ts web/test/portal.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	wmain	15	passed	no	no	test/signals.spec.ts web/test/portal.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	wmain	16	passed	no	no	test/signals.spec.ts web/test/portal.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	wmain	17	passed	no	no	test/signals.spec.ts web/test/portal.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	wmain	18	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	wmain	19	passed	no	no	test/signals.spec.ts web/test/portal.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	wmain	2	passed	no	no	test/signals.spec.ts web/test/for.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	wmain	20	passed	no	no	test/signals.spec.ts web/test/portal.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	wmain	3	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	wmain	4	passed	no	no	test/signals.spec.ts web/test/for.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	wmain	5	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/index.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	wmain	6	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/index.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	wmain	7	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	wmain	8	passed	no	no	test/signals.spec.ts web/test/portal.spec.tsx web/test/transition.spec.tsx
+harness	idle	full	wmain	9	passed	no	no	test/signals.spec.ts web/test/portal.spec.tsx web/test/transition.spec.tsx
+harness	load	file	jsdom	1	passed	-	-	-
+harness	load	file	jsdom	10	passed	-	-	-
+harness	load	file	jsdom	2	passed	-	-	-
+harness	load	file	jsdom	3	passed	-	-	-
+harness	load	file	jsdom	4	passed	-	-	-
+harness	load	file	jsdom	5	passed	-	-	-
+harness	load	file	jsdom	6	passed	-	-	-
+harness	load	file	jsdom	7	passed	-	-	-
+harness	load	file	jsdom	8	passed	-	-	-
+harness	load	file	jsdom	9	passed	-	-	-
+harness	load	file	w208	1	passed	-	-	-
+harness	load	file	w208	10	passed	-	-	-
+harness	load	file	w208	2	passed	-	-	-
+harness	load	file	w208	3	passed	-	-	-
+harness	load	file	w208	4	passed	-	-	-
+harness	load	file	w208	5	passed	-	-	-
+harness	load	file	w208	6	passed	-	-	-
+harness	load	file	w208	7	passed	-	-	-
+harness	load	file	w208	8	passed	-	-	-
+harness	load	file	w208	9	passed	-	-	-
+harness	load	file	wmain	1	passed	-	-	-
+harness	load	file	wmain	10	passed	-	-	-
+harness	load	file	wmain	2	passed	-	-	-
+harness	load	file	wmain	3	passed	-	-	-
+harness	load	file	wmain	4	passed	-	-	-
+harness	load	file	wmain	5	passed	-	-	-
+harness	load	file	wmain	6	passed	-	-	-
+harness	load	file	wmain	7	passed	-	-	-
+harness	load	file	wmain	8	passed	-	-	-
+harness	load	file	wmain	9	passed	-	-	-
+harness	load	full	jsdom	1	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	load	full	jsdom	10	passed	yes	yes	test/signals.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	load	full	jsdom	2	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	load	full	jsdom	3	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	load	full	jsdom	4	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	load	full	jsdom	5	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	load	full	jsdom	6	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	load	full	jsdom	7	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	load	full	jsdom	8	passed	no	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts test/signals.memo.spec.ts web/test/portal.spec.tsx test/external-source.spec.ts web/test/transition.spec.tsx
+harness	load	full	jsdom	9	passed	no	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts test/signals.memo.spec.ts web/test/portal.spec.tsx test/external-source.spec.ts web/test/transition.spec.tsx
+harness	load	full	w208	1	passed	no	no	test/signals.spec.ts web/test/for.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	load	full	w208	10	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	load	full	w208	2	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	load	full	w208	3	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/index.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	load	full	w208	4	passed	no	no	test/signals.spec.ts web/test/for.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	load	full	w208	5	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/index.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	load	full	w208	6	passed	no	no	test/signals.spec.ts web/test/for.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	load	full	w208	7	passed	no	no	test/signals.spec.ts web/test/index.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	load	full	w208	8	passed	no	no	test/signals.spec.ts web/test/switch.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	load	full	w208	9	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/for.spec.tsx web/test/portal.spec.tsx web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+harness	load	full	wmain	1	passed	no	no	test/signals.spec.ts web/test/for.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	load	full	wmain	10	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/index.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	load	full	wmain	2	passed	no	no	test/signals.spec.ts web/test/for.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	load	full	wmain	3	passed	no	no	test/signals.spec.ts web/test/for.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	load	full	wmain	4	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/index.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	load	full	wmain	5	passed	no	no	test/signals.spec.ts web/test/for.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	load	full	wmain	6	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/index.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	load	full	wmain	7	passed	no	no	test/signals.spec.ts web/test/for.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	load	full	wmain	8	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/for.spec.tsx web/test/portal.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+harness	load	full	wmain	9	passed	no	no	test/signals.spec.ts web/test/switch.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+grouping	split	full	jsdom	1	passed	no	no	test/signals.spec.ts web/test/index.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+grouping	split	full	jsdom	10	passed	no	no	test/signals.spec.ts web/test/for.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+grouping	split	full	jsdom	2	passed	no	no	test/signals.spec.ts web/test/index.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+grouping	split	full	jsdom	3	passed	no	no	test/signals.spec.ts web/test/index.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+grouping	split	full	jsdom	4	passed	no	no	test/signals.spec.ts web/test/index.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+grouping	split	full	jsdom	5	passed	no	no	test/signals.spec.ts web/test/switch.spec.tsx web/test/for.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+grouping	split	full	jsdom	6	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/index.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+grouping	split	full	jsdom	7	passed	no	no	test/signals.spec.ts web/test/for.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+grouping	split	full	jsdom	8	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/index.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+grouping	split	full	jsdom	9	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/index.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+grouping	unified	full	jsdom	1	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+grouping	unified	full	jsdom	10	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+grouping	unified	full	jsdom	2	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+grouping	unified	full	jsdom	3	passed	no	no	test/signals.spec.ts test/signals.memo.spec.ts web/test/transition.spec.tsx
+grouping	unified	full	jsdom	4	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+grouping	unified	full	jsdom	5	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+grouping	unified	full	jsdom	6	passed	no	no	test/signals.spec.ts test/signals.memo.spec.ts web/test/transition.spec.tsx
+grouping	unified	full	jsdom	7	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+grouping	unified	full	jsdom	8	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/transition.spec.tsx
+grouping	unified	full	jsdom	9	passed	no	no	test/signals.spec.ts test/signals.memo.spec.ts web/test/transition.spec.tsx
+grouping	split	full	warpdom	1	passed	no	no	test/signals.spec.ts web/test/index.spec.tsx web/test/portal.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+grouping	split	full	warpdom	10	passed	no	no	test/signals.spec.ts web/test/for.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+grouping	split	full	warpdom	2	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/index.spec.tsx web/test/show.spec.tsx web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+grouping	split	full	warpdom	3	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/index.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+grouping	split	full	warpdom	4	passed	no	no	test/signals.spec.ts web/test/for.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+grouping	split	full	warpdom	5	passed	no	no	test/signals.spec.ts web/test/for.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+grouping	split	full	warpdom	6	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/index.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+grouping	split	full	warpdom	7	passed	no	no	test/signals.spec.ts web/test/for.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+grouping	split	full	warpdom	8	failed	yes	no	web/test/suspense.spec.tsx web/test/switch.spec.tsx web/test/index.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+grouping	split	full	warpdom	9	passed	no	no	test/signals.spec.ts web/test/index.spec.tsx web/test/show.spec.tsx web/test/element.spec.tsx web/test/transition.spec.tsx
+grouping	unified	full	warpdom	1	passed	no	no	test/signals.spec.ts test/signals.memo.spec.ts web/test/transition.spec.tsx
+grouping	unified	full	warpdom	10	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+grouping	unified	full	warpdom	2	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+grouping	unified	full	warpdom	3	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+grouping	unified	full	warpdom	4	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+grouping	unified	full	warpdom	5	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+grouping	unified	full	warpdom	6	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+grouping	unified	full	warpdom	7	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+grouping	unified	full	warpdom	8	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+grouping	unified	full	warpdom	9	passed	yes	yes	store/test/store.spec.ts store/test/modifiers.spec.ts test/component.spec.ts web/test/suspense.spec.tsx test/resource.spec.ts web/test/switch.spec.tsx web/test/index.spec.tsx web/test/for.spec.tsx web/test/show.spec.tsx store/test/mutable.spec.ts test/dev.spec.ts test/rendering.spec.ts web/test/portal.spec.tsx web/test/element.spec.tsx test/external-source.spec.ts web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+sequenced	S_ES_T	subset	jsdom	1	passed	-	-	web/test/suspense.spec.tsx test/external-source.spec.ts web/test/transition.spec.tsx
+sequenced	S_ES_T	subset	jsdom	2	passed	-	-	web/test/suspense.spec.tsx test/external-source.spec.ts web/test/transition.spec.tsx
+sequenced	S_ES_T	subset	jsdom	3	passed	-	-	web/test/suspense.spec.tsx test/external-source.spec.ts web/test/transition.spec.tsx
+sequenced	S_T	subset	jsdom	1	failed	-	-	web/test/suspense.spec.tsx web/test/transition.spec.tsx
+sequenced	S_T	subset	jsdom	2	failed	-	-	web/test/suspense.spec.tsx web/test/transition.spec.tsx
+sequenced	S_T	subset	jsdom	3	failed	-	-	web/test/suspense.spec.tsx web/test/transition.spec.tsx
+sequenced	T	subset	jsdom	1	passed	-	-	web/test/transition.spec.tsx
+sequenced	T	subset	jsdom	2	passed	-	-	web/test/transition.spec.tsx
+sequenced	T	subset	jsdom	3	passed	-	-	web/test/transition.spec.tsx
+sequenced	S_ES_T	subset	warpdom	1	passed	-	-	web/test/suspense.spec.tsx test/external-source.spec.ts web/test/transition.spec.tsx
+sequenced	S_ES_T	subset	warpdom	2	passed	-	-	web/test/suspense.spec.tsx test/external-source.spec.ts web/test/transition.spec.tsx
+sequenced	S_ES_T	subset	warpdom	3	passed	-	-	web/test/suspense.spec.tsx test/external-source.spec.ts web/test/transition.spec.tsx
+sequenced	S_T	subset	warpdom	1	failed	-	-	web/test/suspense.spec.tsx web/test/transition.spec.tsx
+sequenced	S_T	subset	warpdom	2	failed	-	-	web/test/suspense.spec.tsx web/test/transition.spec.tsx
+sequenced	S_T	subset	warpdom	3	failed	-	-	web/test/suspense.spec.tsx web/test/transition.spec.tsx
+sequenced	T	subset	warpdom	1	passed	-	-	web/test/transition.spec.tsx
+sequenced	T	subset	warpdom	2	passed	-	-	web/test/transition.spec.tsx
+sequenced	T	subset	warpdom	3	passed	-	-	web/test/transition.spec.tsx
+sequenced-extra	suspense,dev,transition	subset	jsdom	1	failed	-	-	web/test/suspense.spec.tsx test/dev.spec.ts web/test/transition.spec.tsx
+sequenced-extra	suspense,dynamic,transition	subset	jsdom	1	failed	-	-	web/test/suspense.spec.tsx web/test/dynamic.spec.tsx web/test/transition.spec.tsx
+sequenced-extra	suspense,external-source,transition	subset	jsdom	1	passed	-	-	web/test/suspense.spec.tsx test/external-source.spec.ts web/test/transition.spec.tsx
+sequenced-extra	suspense,mutable,transition	subset	jsdom	1	failed	-	-	web/test/suspense.spec.tsx store/test/mutable.spec.ts web/test/transition.spec.tsx
+sequenced-extra	suspense,portal,transition	subset	jsdom	1	failed	-	-	web/test/suspense.spec.tsx web/test/portal.spec.tsx web/test/transition.spec.tsx
+sequenced-extra	suspense,rendering,transition	subset	jsdom	1	failed	-	-	web/test/suspense.spec.tsx test/rendering.spec.ts web/test/transition.spec.tsx
+sequenced-extra	suspense,resource,transition	subset	jsdom	1	failed	-	-	web/test/suspense.spec.tsx test/resource.spec.ts web/test/transition.spec.tsx
+sequenced-extra	suspense,resource,transition	subset	jsdom	2	failed	-	-	web/test/suspense.spec.tsx test/resource.spec.ts web/test/transition.spec.tsx
+sequenced-extra	suspense,transition	subset	jsdom	1	failed	-	-	web/test/suspense.spec.tsx web/test/transition.spec.tsx
+sequenced-extra	suspense,transition	subset	jsdom	2	failed	-	-	web/test/suspense.spec.tsx web/test/transition.spec.tsx
+sequenced-extra	transition	subset	jsdom	1	passed	-	-	web/test/transition.spec.tsx
+sequenced-extra	suspense,resource,transition	subset	warpdom	1	failed	-	-	web/test/suspense.spec.tsx test/resource.spec.ts web/test/transition.spec.tsx
+sequenced-extra	suspense,resource,transition	subset	warpdom	2	failed	-	-	web/test/suspense.spec.tsx test/resource.spec.ts web/test/transition.spec.tsx
+sequenced-extra	suspense,transition	subset	warpdom	1	failed	-	-	web/test/suspense.spec.tsx web/test/transition.spec.tsx
+sequenced-extra	suspense,transition	subset	warpdom	2	failed	-	-	web/test/suspense.spec.tsx web/test/transition.spec.tsx

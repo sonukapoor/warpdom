@@ -1,0 +1,9 @@
+round,project,config,seconds,differs,files_differ,false_pass,false_fail,ref,position,method
+0,radix-primitives,jsdom-default,46.0,0,0,NA,NA,,1,
+0,radix-primitives,jsdom-shared,13.5,0,0,0,0,jsdom-default,2,
+0,radix-primitives,jsdom-vm,19.0,1,1,0,1,jsdom-default,3,
+0,radix-primitives,warpdom-default,24.4,0,0,NA,NA,,4,
+0,radix-primitives,warpdom-vm,15.7,0,0,0,0,warpdom-default,5,
+0,radix-primitives,warpdom-sharedfresh,43.0,584,40,0,584,warpdom-default,6,
+0,radix-primitives,warpdom-sharedreset,11.2,0,0,0,0,warpdom-default,7,
+0,radix-primitives,happydom-shared,10.2,18,5,0,18,jsdom-default,9,

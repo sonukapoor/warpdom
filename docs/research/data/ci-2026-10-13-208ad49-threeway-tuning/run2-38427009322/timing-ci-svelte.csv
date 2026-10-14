@@ -1,0 +1,16 @@
+round,project,config,seconds,differs,files_differ,ref
+1,svelte,jsdom-default,96.1,0,0,baseline
+1,svelte,warpdom-default,87.3,1,1,round
+1,svelte,happy-dom-default,88.3,288,5,round
+2,svelte,warpdom-default,83.9,1,1,round
+2,svelte,happy-dom-default,83.5,288,5,round
+2,svelte,jsdom-default,86.0,0,0,baseline
+3,svelte,happy-dom-default,80.8,288,5,round
+3,svelte,jsdom-default,84.9,0,0,baseline
+3,svelte,warpdom-default,78.3,1,1,round
+4,svelte,jsdom-default,87.0,0,0,baseline
+4,svelte,warpdom-default,79.1,1,1,round
+4,svelte,happy-dom-default,80.4,288,5,round
+5,svelte,warpdom-default,79.9,1,1,round
+5,svelte,happy-dom-default,82.4,288,5,round
+5,svelte,jsdom-default,86.6,0,0,baseline

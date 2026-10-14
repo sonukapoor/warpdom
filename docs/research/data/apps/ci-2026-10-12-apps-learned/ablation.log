@@ -1,0 +1,196 @@
+
+▶ excalidraw
+  installing: yarn install --frozen-lockfile
+  ran     .: 2508/2556 passed on jsdom, 263.6s
+
+▶ excalidraw
+  ran     .: 213/215 passed on jsdom, 30.0s
+
+▶ excalidraw
+  ran     .: 2475/2545 passed on jsdom, 287.6s
+
+▶ excalidraw
+  ran     .: 2506/2556 passed on warpdom, 213.7s
+
+▶ excalidraw
+  ran     .: 2493/2543 passed on warpdom, 1080.1s
+
+▶ excalidraw
+  ran     .: 213/215 passed on warpdom, 23.9s
+
+▶ excalidraw
+  ran     .: 213/215 passed on warpdom, 23.7s
+
+▶ excalidraw
+  failed  .: fast-cli unsupported: Vitest 3.0.6 (warpdom vitest run needs >= 3.2)
+
+▶ excalidraw
+  ran     .: 2506/2556 passed on warpdom, 213.7s
+
+▶ excalidraw
+  ran     .: 213/215 passed on warpdom, 23.9s
+
+▶ excalidraw
+  ran     .: 213/215 passed on warpdom, 23.3s
+
+▶ excalidraw
+  ran     .: 2236/2281 passed on warpdom, 192.2s
+
+▶ excalidraw
+  ran     .: 212/215 passed on happy-dom (provided), 27.3s
+
+▶ excalidraw
+  ran     .: 2506/2556 passed on warpdom, 213.1s
+
+▶ excalidraw
+  ran     .: 213/215 passed on warpdom, 24.0s
+
+▶ excalidraw
+  ran     .: 213/215 passed on warpdom, 23.0s
+
+▶ excalidraw
+  ran     .: 2236/2281 passed on warpdom, 192.2s
+
+▶ excalidraw
+  ran     .: 2508/2556 passed on jsdom, 263.4s
+
+▶ excalidraw
+  ran     .: 213/215 passed on jsdom, 29.6s
+
+▶ excalidraw
+  ran     .: 2474/2540 passed on jsdom, 291.2s
+
+▶ excalidraw
+  ran     .: 2506/2556 passed on warpdom, 213.3s
+
+▶ excalidraw
+  failed  .: run produced no results (see logs/excalidraw/root.warpdom.log)
+
+▶ excalidraw
+  ran     .: 213/215 passed on warpdom, 23.7s
+
+▶ excalidraw
+  ran     .: 213/215 passed on warpdom, 23.7s
+
+▶ excalidraw
+  ran     .: 2506/2556 passed on warpdom, 212.7s
+
+▶ excalidraw
+  ran     .: 212/215 passed on happy-dom (provided), 27.0s
+
+▶ excalidraw
+  ran     .: 2506/2556 passed on warpdom, 213.8s
+
+▶ excalidraw
+  ran     .: 213/215 passed on warpdom, 23.7s
+
+▶ excalidraw
+  ran     .: 213/215 passed on warpdom, 23.4s
+
+▶ excalidraw
+  ran     .: 2236/2281 passed on warpdom, 193.2s
+
+▶ excalidraw
+  ran     .: 213/215 passed on jsdom, 30.2s
+
+▶ excalidraw
+  ran     .: 2487/2556 passed on jsdom, 284.6s
+
+▶ excalidraw
+  ran     .: 2506/2556 passed on warpdom, 214.4s
+
+▶ excalidraw
+  ran     .: 2503/2553 passed on warpdom, 795.0s
+
+▶ excalidraw
+  ran     .: 213/215 passed on warpdom, 23.9s
+
+▶ excalidraw
+  ran     .: 213/215 passed on warpdom, 23.8s
+
+▶ excalidraw
+  ran     .: 2506/2556 passed on warpdom, 213.0s
+
+▶ excalidraw
+  ran     .: 212/215 passed on happy-dom (provided), 27.0s
+
+▶ excalidraw
+  ran     .: 2508/2556 passed on jsdom, 262.1s
+
+▶ excalidraw
+  ran     .: 2506/2556 passed on warpdom, 212.4s
+
+▶ excalidraw
+  ran     .: 213/215 passed on warpdom, 24.0s
+
+▶ excalidraw
+  ran     .: 213/215 passed on warpdom, 23.5s
+
+▶ excalidraw
+  ran     .: 2236/2281 passed on warpdom, 192.8s
+
+▶ excalidraw
+  ran     .: 2481/2556 passed on jsdom, 291.6s
+
+▶ excalidraw
+  ran     .: 2506/2556 passed on warpdom, 212.9s
+
+▶ excalidraw
+  failed  .: run produced no results (see logs/excalidraw/root.warpdom.log)
+
+▶ excalidraw
+  ran     .: 213/215 passed on warpdom, 23.7s
+
+▶ excalidraw
+  ran     .: 213/215 passed on warpdom, 23.9s
+
+▶ excalidraw
+  ran     .: 2506/2556 passed on warpdom, 214.2s
+
+▶ excalidraw
+  ran     .: 212/215 passed on happy-dom (provided), 27.3s
+
+▶ excalidraw
+  ran     .: 2508/2556 passed on jsdom, 264.1s
+
+▶ excalidraw
+  ran     .: 213/215 passed on jsdom, 30.1s
+
+▶ excalidraw
+  ran     .: 2506/2556 passed on warpdom, 214.1s
+
+▶ excalidraw
+  ran     .: 213/215 passed on warpdom, 23.8s
+
+▶ excalidraw
+  ran     .: 213/215 passed on warpdom, 23.4s
+
+▶ excalidraw
+  ran     .: 2236/2281 passed on warpdom, 193.3s
+
+▶ excalidraw
+  ran     .: 2506/2556 passed on warpdom, 213.8s
+
+▶ excalidraw
+  ran     .: 2497/2548 passed on warpdom, 868.3s
+
+▶ excalidraw
+  ran     .: 213/215 passed on warpdom, 24.1s
+
+▶ excalidraw
+  ran     .: 213/215 passed on warpdom, 24.0s
+
+▶ excalidraw
+  ran     .: 2506/2556 passed on warpdom, 214.1s
+
+▶ excalidraw
+  ran     .: 212/215 passed on happy-dom (provided), 27.6s
+
+▶ excalidraw
+  ran     .: 2508/2556 passed on jsdom, 263.5s
+
+▶ excalidraw
+  ran     .: 213/215 passed on jsdom, 30.3s
+
+▶ excalidraw
+  ran     .: 2473/2545 passed on jsdom, 285.5s

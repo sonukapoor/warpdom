@@ -1,0 +1,11 @@
+{"round":0,"project":"floating-ui","kind":"learn","method":"harness","seconds":1232.1,"mode":"isolated","t_iso":16,"t_sh":608,"t_split":608.1,"leaky":[]}
+{"round":1,"project":"floating-ui","kind":"learn","method":"harness","seconds":1231.3,"mode":"isolated","t_iso":15.5,"t_sh":607.9,"t_split":607.9,"leaky":[]}
+{"round":1,"project":"floating-ui","kind":"run","method":"harness","seconds":15.6,"mode":"isolated","isolated":0,"rerun":0,"new_leaky":[],"leaky":[]}
+{"round":2,"project":"floating-ui","kind":"learn","method":"harness","seconds":1231.7,"mode":"isolated","t_iso":15.9,"t_sh":608,"t_split":607.8,"leaky":[]}
+{"round":2,"project":"floating-ui","kind":"run","method":"harness","seconds":15.6,"mode":"isolated","isolated":0,"rerun":0,"new_leaky":[],"leaky":[]}
+{"round":3,"project":"floating-ui","kind":"learn","method":"harness","seconds":1231.8,"mode":"isolated","t_iso":16,"t_sh":607.9,"t_split":607.9,"leaky":[]}
+{"round":3,"project":"floating-ui","kind":"run","method":"harness","seconds":16,"mode":"isolated","isolated":0,"rerun":0,"new_leaky":[],"leaky":[]}
+{"round":4,"project":"floating-ui","kind":"learn","method":"harness","seconds":1231.5,"mode":"isolated","t_iso":15.6,"t_sh":608,"t_split":607.9,"leaky":[]}
+{"round":4,"project":"floating-ui","kind":"run","method":"harness","seconds":15.9,"mode":"isolated","isolated":0,"rerun":0,"new_leaky":[],"leaky":[]}
+{"round":5,"project":"floating-ui","kind":"learn","method":"harness","seconds":1231.8,"mode":"isolated","t_iso":15.9,"t_sh":607.9,"t_split":608,"leaky":[]}
+{"round":5,"project":"floating-ui","kind":"run","method":"harness","seconds":15.7,"mode":"isolated","isolated":0,"rerun":0,"new_leaky":[],"leaky":[]}

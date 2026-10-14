@@ -1,0 +1,10 @@
+round,project,config,package,status,seconds
+0,radix-primitives,jsdom-default,.,ran,29.2
+0,radix-primitives,warpdom-default,.,ran,16.1
+0,radix-primitives,warpdomlatest-default,.,ran,15.9
+1,radix-primitives,jsdom-default,.,ran,27.5
+1,radix-primitives,warpdom-default,.,ran,15.4
+1,radix-primitives,warpdomlatest-default,.,ran,15.5
+2,radix-primitives,warpdom-default,.,ran,15.7
+2,radix-primitives,warpdomlatest-default,.,ran,15.8
+2,radix-primitives,jsdom-default,.,ran,28.1

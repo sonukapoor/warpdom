@@ -1,0 +1,7 @@
+round,project,config,seconds,differs,files_differ
+1,ark-ui,jsdom-default,122.7,0,0
+1,ark-ui,warpdom-default,82.5,0,0
+1,ark-ui,warpdomlatest-default,81.9,3,3
+2,ark-ui,warpdom-default,80.1,0,0
+2,ark-ui,warpdomlatest-default,81.8,3,3
+2,ark-ui,jsdom-default,124.4,1,0

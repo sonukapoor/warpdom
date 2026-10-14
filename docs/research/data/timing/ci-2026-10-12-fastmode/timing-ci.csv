@@ -1,4 +1,4 @@
-round,project,config,seconds,differs
+round,project,config,seconds,differs,isolated_files,new_leaks
 1,CopilotKit,jsdom-default,540.7,0,0,0
 1,CopilotKit,warpdom-learned-split,314.0,0,178,1
 2,CopilotKit,jsdom-default,551.6,0,0,0

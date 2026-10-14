@@ -1,0 +1,14 @@
+round,project,config,seconds,differs,files_differ
+1,handsontable,jsdom-default,796.6,0,0
+1,handsontable,warpdom-default,89.2,3,1
+1,handsontable,happy-dom-default,NA,7646,525
+2,handsontable,warpdom-default,98.0,3,1
+2,handsontable,happy-dom-default,NA,7646,525
+2,handsontable,jsdom-default,819.8,0,0
+3,handsontable,happy-dom-default,NA,7646,525
+3,handsontable,jsdom-default,822.1,0,0
+3,handsontable,warpdom-default,89.7,3,1
+4,handsontable,jsdom-default,807.3,0,0
+4,handsontable,warpdom-default,88.7,3,1
+4,handsontable,happy-dom-default,NA,7646,525
+5,handsontable,warpdom-default,88.2,3,1

@@ -1,0 +1,5 @@
+round,project,config,package,status,seconds
+0,solid,jsdom-default,packages/solid,ran,2.5
+0,solid,warpdom-default,packages/solid,ran,2.1
+1,solid,jsdom-default,packages/solid,ran,2.1
+1,solid,warpdom-default,packages/solid,ran,2.1

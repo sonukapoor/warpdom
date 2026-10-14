@@ -1,0 +1,27 @@
+suite	test	differs in (job: rounds/compared, statuses, flaky in job)	flaky in any job
+ark-ui	packages_react::packages/react/src/components/number-input/tests/number-input.test.tsx::NumberInput / Field prop: smallStep should use an explicit smallStep when Alt is held	blT: 2/5 passed>failed flaky	yes
+ark-ui	packages_react::packages/react/src/components/number-input/tests/number-input.test.tsx::NumberInput should handle min and max fraction digits	blT: 2/5 failed>passed flaky	yes
+ark-ui	packages_react::packages/react/src/components/toast/tests/toast.test.tsx::Toast should show and hide a toast message	blT: 2/5 failed>passed flaky	yes
+melt-ui	root::src/tests/dropdown-menu/DropdownMenu.spec.ts:: Dropdown Menu (forceVisible) Toggles checked to true for default unchecked checkbox items	blH: 2/5 passed>failed	no
+melt-ui	root::src/tests/popover/Popover.spec.ts:: Popover (Default) Closes when click outside content	blH: 1/5 passed>failed	no
+solid-primitives	root::packages/pagination/test/index.test.ts::createDeepSignal mutates the resource with callback	blH: 2/5 missing>passed,passed>missing flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::createDeepSignal mutates the resource with plain object	blH: 2/5 missing>passed,passed>missing flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::createDeepSignal provides resources with fine-grained reactivity	blH: 2/5 missing>passed,passed>missing flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeAbortable filters (only) abort errors	blH: 2/5 missing>passed,passed>missing flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeAbortable makes a fetcher abortable	blH: 2/5 missing>passed,passed>missing flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeAggregated aggregates arrays	blH: 2/5 missing>passed,passed>missing flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeAggregated aggregates numbers	blH: 2/5 missing>passed,passed>missing flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeAggregated aggregates objects	blH: 2/5 missing>passed,passed>missing flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeAggregated aggregates strings	blH: 2/5 missing>passed,passed>missing flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeAggregated an initial value [] allows to aggregate objects into arrays	blH: 2/5 missing>passed,passed>missing flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeCache caches results	blH: 2/5 missing>passed,passed>missing flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeCache invalidates cache	blH: 2/5 missing>passed,passed>missing flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeCache persists cache	blH: 2/5 missing>passed,passed>missing flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeCache provides an accessor for automatically invalidated results	blH: 2/5 missing>passed,passed>missing flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeRetrying retries the request after a delay	blH: 2/5 missing>passed,passed>missing flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeRetrying throws after the configured number of retries	blH: 2/5 missing>passed,passed>missing flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::serializer works on RequestInit	blH: 2/5 missing>passed,passed>missing flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::serializer works on arrays	blH: 2/5 missing>passed,passed>missing flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::serializer works on objects	blH: 2/5 missing>passed,passed>missing flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::serializer works on strings	blH: 2/5 missing>passed,passed>missing flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::serializer works on undefined, null, booleans, numbers, bignum	blH: 2/5 missing>passed,passed>missing flaky	yes

@@ -1,0 +1,4 @@
+round,project,config,seconds,differs,files_differ
+0,tanstack-query,jsdom-default,127.1,0,0
+0,tanstack-query,warpdom-default,82.4,1,1
+0,tanstack-query,happy-dom-default,98.3,1,1

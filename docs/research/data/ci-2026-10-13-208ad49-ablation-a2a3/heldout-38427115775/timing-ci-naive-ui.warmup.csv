@@ -1,0 +1,6 @@
+round,project,config,seconds,differs,files_differ,ref
+0,naive-ui,jsdom-default,332.0,0,0,baseline
+0,naive-ui,warpdom-default,297.8,0,0,round
+0,naive-ui,warpdom-default-aa,297.7,0,0,round
+0,naive-ui,warpdomeager-default,297.0,0,0,round
+0,naive-ui,warpdomnocache-default,294.9,0,0,round

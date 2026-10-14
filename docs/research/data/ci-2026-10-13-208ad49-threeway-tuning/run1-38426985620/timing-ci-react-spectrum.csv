@@ -1,0 +1,16 @@
+round,project,config,seconds,differs,files_differ,ref
+1,react-spectrum,jsdom-default,419.9,0,0,baseline
+1,react-spectrum,warpdom-default,331.1,0,0,round
+1,react-spectrum,happy-dom-default,368.3,1432,95,round
+2,react-spectrum,warpdom-default,340.5,0,0,round
+2,react-spectrum,happy-dom-default,343.7,1402,98,round
+2,react-spectrum,jsdom-default,410.9,0,0,baseline
+3,react-spectrum,happy-dom-default,366.9,1395,94,round
+3,react-spectrum,jsdom-default,434.4,0,0,baseline
+3,react-spectrum,warpdom-default,329.2,0,0,round
+4,react-spectrum,jsdom-default,419.1,0,0,baseline
+4,react-spectrum,warpdom-default,338.4,0,0,round
+4,react-spectrum,happy-dom-default,363.1,1408,94,round
+5,react-spectrum,warpdom-default,344.0,0,0,round
+5,react-spectrum,happy-dom-default,345.5,1441,100,round
+5,react-spectrum,jsdom-default,423.3,0,0,baseline

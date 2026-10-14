@@ -1,7 +1,6 @@
 cff-version: 1.2.0
 message: >-
-  If you use warpdom, please cite it using the metadata below. When the
-  journal article is published, please cite the article (preferred-citation).
+  If you use warpdom, please cite it using the metadata below.
 type: software
 title: "warpdom: a fast, jsdom-compatible DOM for unit and component tests"
 version: 0.1.0
@@ -45,15 +44,6 @@ references:
     # doi: "10.5281/zenodo.XXXXXXX"
     notes: >-
       The measurement tool and research harness used to evaluate warpdom.
-preferred-citation:
-  type: article
-  title: "TITLE OF THE JOURNAL ARTICLE (placeholder)"
-  authors:
-    - family-names: Kapoor
-      given-names: Sonu
-      affiliation: "Independent Researcher"
-      orcid: "https://orcid.org/0009-0009-6074-6238"
-  journal: "Journal of Web Engineering"
-  year: 2026
-  # volume, issue, start, end and doi: fill in at publication.
-  # doi: "10.XXXX/XXXXX"
+# preferred-citation: add the accompanying article (type: article, title,
+# authors, journal, year, volume, issue, start, end, doi) when it is
+# published. Until then GitHub's "Cite this repository" cites the software.

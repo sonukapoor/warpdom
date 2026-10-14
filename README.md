@@ -17,13 +17,13 @@ from the WHATWG specifications.
   status it has on jsdom, apart from flaky tests and a short list of
   explained differences (below). In 12 CI jobs, 17 of the 25 suites (with
   two web applications) had no test that differed from jsdom in any round.
-  <!-- source (branch docs/paper-revision): docs/research/data/ci-2026-10-13-208ad49-computed.md "Versions" (own-b rows: tests per suite, 43,587 tuning, 13,526 held-out); ci-2026-10-13-208ad49-RESULTS.md section 7 (17 of 25 suites, 503 suite-rounds); ci-2026-10-13-208ad49-correctness-warpdom-default.tsv -->
+  <!-- source: docs/research/data/ci-2026-10-13-208ad49-computed.md "Versions" (own-b rows: tests per suite, 43,587 tuning, 13,526 held-out); ci-2026-10-13-208ad49-RESULTS.md section 7 (17 of 25 suites, 503 suite-rounds); ci-2026-10-13-208ad49-correctness-warpdom-default.tsv -->
 - **Faster on every suite we tuned on.** Drop-in, warpdom was faster than
   jsdom on all 13 tuning suites in each of three independent runs: a
   median of about 1.27x, from 1.03x (solid) to 1.89x (MUI) per suite.
   handsontable, whose core runs jsdom 16.7, ran about 8–9x faster; it is
   reported separately.
-  <!-- source (branch docs/paper-revision): docs/research/data/ci-2026-10-13-208ad49-computed.md "Tuning: warpdom speedup per run and between runs" (per-run medians: solid 1.03x, material-ui 1.88-1.89x; handsontable 7.97-8.87x) and "Cross-suite medians of the drop-in speedup" (1.28x, 1.27x, 1.26x; 3 runs pooled 1.27x); "Version rule" (handsontable core 16.7.0); RESULTS.md 2.1 (faster on all 13 in every run), 2.4 (handsontable 9.07x and 9.27x in two more jobs); runs 38426985620, 38427009322, 38427031231 -->
+  <!-- source: docs/research/data/ci-2026-10-13-208ad49-computed.md "Tuning: warpdom speedup per run and between runs" (per-run medians: solid 1.03x, material-ui 1.88-1.89x; handsontable 7.97-8.87x) and "Cross-suite medians of the drop-in speedup" (1.28x, 1.27x, 1.26x; 3 runs pooled 1.27x); "Version rule" (handsontable core 16.7.0); RESULTS.md 2.1 (faster on all 13 in every run), 2.4 (handsontable 9.07x and 9.27x in two more jobs); runs 38426985620, 38427009322, 38427031231 -->
 - **Check it on your own suite in one command**: `npx warpdom compare`.
 
 Status: pre-release. Numbers, method and raw data:
@@ -82,7 +82,7 @@ tests passes or fails by that order alone, on jsdom and on warpdom alike.
 Use the same name in the config and in the comments (`environment:
 'warpdom'` with `vitest-environment-warpdom`, and
 `/** @vitest-environment warpdom */`), or remove the comments.
-<!-- source (branch docs/paper-revision): docs/research/data/investigations/solid-transition/README.md (Vitest 2's non-isolated forks pool groups files by environment name; one name for all files: 10/10 pass on both DOMs; two names: 7/10 jsdom, 6/10 warpdom). Grouping by name: vitest 2.1.9 dist/chunks/resolveConfig*.js, groupBy(filesWithEnv, ({ environment }) => environment.name) -->
+<!-- source: docs/research/data/investigations/solid-transition/README.md (Vitest 2's non-isolated forks pool groups files by environment name; one name for all files: 10/10 pass on both DOMs; two names: 7/10 jsdom, 6/10 warpdom). Grouping by name: vitest 2.1.9 dist/chunks/resolveConfig*.js, groupBy(filesWithEnv, ({ environment }) => environment.name) -->
 
 ### Which jsdom warpdom behaves like
 
@@ -94,7 +94,7 @@ version it loads) and follows that version's observable behavior. With
 jsdom alone, another jsdom version changed test results in 13 of 23
 projects we measured ([Version dependence](#version-dependence)). To set
 it yourself:
-<!-- source (branch docs/paper-revision): docs/research/data/ci-2026-10-13-208ad49-RESULTS.md 6 (13 of 23) -->
+<!-- source: docs/research/data/ci-2026-10-13-208ad49-RESULTS.md 6 (13 of 23) -->
 
 ```js
 // Vitest
@@ -124,7 +124,7 @@ pin jsdom with a comment to another environment name than the config's,
 so they run in a separate group (see Setup). In a suite with
 `isolate: false` and order-dependent tests, that alone can change a
 result; check such a difference with the comments switched.
-<!-- source: src/compare/index.js (warpdom role: environment = warpdom's path, pinned = 'warpdom-compare'); branch docs/paper-revision: docs/research/data/investigations/solid-transition/README.md -->
+<!-- source: src/compare/index.js (warpdom role: environment = warpdom's path, pinned = 'warpdom-compare'); docs/research/data/investigations/solid-transition/README.md -->
 
 ## Faster still
 
@@ -150,7 +150,7 @@ suites (naive-ui 0.67x; melt-ui 0.84x). On Vitest older than 3.2,
 that is, the drop-in. Four of the 16 suites (melt-ui among them) run an
 older Vitest and ariakit passes three `--project` arguments, so those
 five were measured with our harness's emulation of the same rules.
-<!-- source (branch docs/paper-revision): docs/research/data/ci-2026-10-14-5942dc9-RESULTS.md sections 2 and 3 (runs 38567560217, 38567579662, 38567598200; per suite: speedup over jsdom-default and over warpdom-default; 7 of 17 suites beyond the A/A noise; 16 Vitest suites: 1.54x (1.27-3.56x) over jsdom default, 1.01x (1.00-2.73x) over the drop-in, 1.27x (1.06-1.52x) over the best correct jsdom configuration, 1.21x if ark-ui's VM pool counts; naive-ui 0.67x vs jsdom-shared, melt-ui 0.84x vs jsdom-vm); floating-ui, solid, melt-ui and solid-primitives (Vitest < 3.2) and ariakit were measured with the harness's emulation of the same rules; src/vitest-fast-cli.js ("fast mode needs Vitest 3.2 or later ...; running Vitest as configured") -->
+<!-- source: docs/research/data/ci-2026-10-14-5942dc9-RESULTS.md sections 2 and 3 (runs 38567560217, 38567579662, 38567598200; per suite: speedup over jsdom-default and over warpdom-default; 7 of 17 suites beyond the A/A noise; 16 Vitest suites: 1.54x (1.27-3.56x) over jsdom default, 1.01x (1.00-2.73x) over the drop-in, 1.27x (1.06-1.52x) over the best correct jsdom configuration, 1.21x if ark-ui's VM pool counts; naive-ui 0.67x vs jsdom-shared, melt-ui 0.84x vs jsdom-vm); floating-ui, solid, melt-ui and solid-primitives (Vitest < 3.2) and ariakit were measured with the harness's emulation of the same rules; src/vitest-fast-cli.js ("fast mode needs Vitest 3.2 or later ...; running Vitest as configured") -->
 | Suite | Mode chosen | vs jsdom default | vs best correct jsdom setup | vs warpdom drop-in |
 | --- | --- | ---: | ---: | ---: |
 | VueUse | split | **9.62x** | 9.62x | 5.17x |
@@ -164,7 +164,7 @@ five were measured with our harness's emulation of the same rules.
 | floating-ui / melt-ui | isolated | 1.56x / 1.44x | 1.01x / 0.84x | 1.01x / 0.99x |
 | 7 more suites | isolated | 1.05-1.35x | – | 0.98-1.03x |
 | **Median of 16** | | **1.54x** | **1.27x** | **1.01x** |
-<!-- source (branch docs/paper-revision): docs/research/data/ci-2026-10-14-5942dc9-RESULTS.md 2-3 and ci-2026-10-14-5942dc9-computed.md (runs 38567560217, 38567579662, 38567598200; best correct jsdom setup: the fastest of jsdom default, isolate: false, isolate: false with a cleanup, and the VM pool that kept every result in every round) -->
+<!-- source: docs/research/data/ci-2026-10-14-5942dc9-RESULTS.md 2-3 and ci-2026-10-14-5942dc9-computed.md (runs 38567560217, 38567579662, 38567598200; best correct jsdom setup: the fastest of jsdom default, isolate: false, isolate: false with a cleanup, and the VM pool that kept every result in every round) -->
 
 [docs/fast-mode.md](docs/fast-mode.md)
 
@@ -184,7 +184,7 @@ soon as the event loop gets to them; suites whose test helpers wait for
 frames get much faster (ariakit 1.6x over warpdom's default). A few tests
 can change result, so it is off by default: check with
 `npx warpdom compare --fast-frames`.
-<!-- source (branch docs/paper-revision): docs/research/README.md 3.6 "Fast frames" (run 38197900923, experiment branch exp/fast-frames: ariakit 467.9 -> 291.5 s, 1.61x over warpdom default; ariakit 12 differences instead of 9, ark-ui 6 instead of 3-4) -->
+<!-- source: docs/research/README.md 3.6 "Fast frames" (run 38197900923, experiment branch exp/fast-frames: ariakit 467.9 -> 291.5 s, 1.61x over warpdom default; ariakit 12 differences instead of 9, ark-ui 6 instead of 3-4) -->
 [docs/fast-frames.md](docs/fast-frames.md)
 
 ```js
@@ -202,9 +202,9 @@ project commits, each project's own runner, config and jsdom, 2 workers.
 In each job the DOMs alternate on the same machine: an untimed warm-up,
 then 5 rounds with the order rotated. A speedup is the median of the
 per-round ratios, so it never mixes machines. Raw data, scripts and every
-derived number: [docs/research/](docs/research/README.md) (branch
-docs/paper-revision, `docs/research/data/ci-2026-10-13-208ad49-*`).
-<!-- source (branch docs/paper-revision): docs/research/data/ci-2026-10-13-208ad49-RESULTS.md 1 (runs, protocol, 139 environment records: warpdom 208ad49, Node 22.23.3, 4 cores) and "Conventions" -->
+derived number: [docs/research/](docs/research/README.md)
+(`docs/research/data/ci-2026-10-13-208ad49-*`).
+<!-- source: docs/research/data/ci-2026-10-13-208ad49-RESULTS.md 1 (runs, protocol, 139 environment records: warpdom 208ad49, Node 22.23.3, 4 cores) and "Conventions" -->
 
 ### At a glance
 
@@ -219,14 +219,14 @@ docs/paper-revision, `docs/research/data/ci-2026-10-13-208ad49-*`).
 | Fast mode, 16 Vitest suites | up to **9.6x** over jsdom (VueUse); median 1.54x over jsdom, 1.01x over the drop-in |
 | Version dependence (jsdom alone) | another jsdom version changes results in **13 of 23** projects |
 | Web Platform Tests | **87.4%** of subtests (jsdom: 80.5%) |
-<!-- source (branch docs/paper-revision): docs/research/data/ci-2026-10-13-208ad49-computed.md "Cross-suite medians of the drop-in speedup", "Tuning: warpdom speedup per run and between runs", "handsontable per package", threeway-heldout and threeway-apps reports; ci-2026-10-13-208ad49-RESULTS.md 7 (correctness inventory: 17 of 25 suites, 45 tests), 5 (versions: 13 of 23); ci-2026-10-14-5942dc9-RESULTS.md 2-3 (fast mode); wpt/ci-2026-10-13-208ad49/summary.md -->
+<!-- source: docs/research/data/ci-2026-10-13-208ad49-computed.md "Cross-suite medians of the drop-in speedup", "Tuning: warpdom speedup per run and between runs", "handsontable per package", threeway-heldout and threeway-apps reports; ci-2026-10-13-208ad49-RESULTS.md 7 (correctness inventory: 17 of 25 suites, 45 tests), 5 (versions: 13 of 23); ci-2026-10-14-5942dc9-RESULTS.md 2-3 (fast mode); wpt/ci-2026-10-13-208ad49/summary.md -->
 
 ### Drop-in speed and results
 
 The first of three identical runs (run 38426985620), sorted by jsdom
 time. Times are the median of 5 rounds. The range is the suite's speedup
 in each of the three runs.
-<!-- source (branch docs/paper-revision): docs/research/data/ci-2026-10-13-208ad49-threeway-tuning/run1-38426985620/report.md (times, speedups, tests differing: most in any round); ci-2026-10-13-208ad49-computed.md "Tuning: warpdom speedup per run and between runs" (per-run medians: min-max) -->
+<!-- source: docs/research/data/ci-2026-10-13-208ad49-threeway-tuning/run1-38426985620/report.md (times, speedups, tests differing: most in any round); ci-2026-10-13-208ad49-computed.md "Tuning: warpdom speedup per run and between runs" (per-run medians: min-max) -->
 
 | Suite | jsdom | warpdom | happy-dom | warpdom vs jsdom | In the 3 runs | Tests that change result: warpdom / happy-dom |
 | --- | ---: | ---: | ---: | ---: | --- | --- |
@@ -250,7 +250,7 @@ in each of the three runs.
 jsdom too (2 without it).
 ⁴ A deliberate difference (`DOMException`, below).
 ⁵ An order-dependent test of solid's, not a DOM difference (below).
-<!-- source (branch docs/paper-revision): run1-38426985620/report.md (ark-ui 3 (2) without flaky; CopilotKit happy-dom 4681); ci-2026-10-13-208ad49-RESULTS.md 7 (classes: ariakit 7 failed>passed in every round; ark-ui largeStep and Toast fail on jsdom, smallStep flaky; svelte deliberate); docs/research/data/investigations/solid-transition/README.md (solid) -->
+<!-- source: run1-38426985620/report.md (ark-ui 3 (2) without flaky; CopilotKit happy-dom 4681); ci-2026-10-13-208ad49-RESULTS.md 7 (classes: ariakit 7 failed>passed in every round; ark-ui largeStep and Toast fail on jsdom, smallStep flaky; svelte deliberate); docs/research/data/investigations/solid-transition/README.md (solid) -->
 
 - **Median:** 1.28x, 1.27x and 1.26x in the three runs (95% two-level
   bootstrap 1.22–1.54x, 1.21–1.54x, 1.19–1.55x), 1.27x over the three
@@ -259,18 +259,18 @@ jsdom too (2 without it).
   Between runs, a suite's speedup moved by a median of 2.3% and at most
   8.6% (emoji-picker-element), although absolute times moved by up to
   1.6x with the runner's CPU (Radix on jsdom: 28.9 s to 46.8 s).
-  <!-- source (branch docs/paper-revision): ci-2026-10-13-208ad49-computed.md "Cross-suite medians of the drop-in speedup" and "Tuning: warpdom speedup per run and between runs" (spread median 2.3%, max 8.6%); RESULTS.md 2.1 (two clusters; radix jsdom 28.9-46.8 s) -->
+  <!-- source: ci-2026-10-13-208ad49-computed.md "Cross-suite medians of the drop-in speedup" and "Tuning: warpdom speedup per run and between runs" (spread median 2.3%, max 8.6%); RESULTS.md 2.1 (two clusters; radix jsdom 28.9-46.8 s) -->
 - **Where the gain is small:** a faster DOM only speeds up the part of a
   run spent in the DOM; compilers, frameworks, module loading and waiting
   stay as they are. solid (1.03x; single rounds 0.97x to 1.06x) and svelte
   (1.08x to 1.09x) gain little, as do the held-out taiga-ui (1.01x,
   0.99x to 1.03x) and react-router (1.04x) and the Wire web app (1.03x,
   1.00x to 1.03x).
-  <!-- source (branch docs/paper-revision): ci-2026-10-13-208ad49-computed.md "Tuning: warpdom speedup per run and between runs" (solid pooled 0.97-1.06x; svelte 1.08-1.09x), "Held-out (run 38427053627)" (taiga-ui 1.01x, 0.99-1.03; react-router 1.04x, 1.03-1.06), "Applications (run 38427075297)" (wire-webapp 1.03x, 1.00-1.03) -->
+  <!-- source: ci-2026-10-13-208ad49-computed.md "Tuning: warpdom speedup per run and between runs" (solid pooled 0.97-1.06x; svelte 1.08-1.09x), "Held-out (run 38427053627)" (taiga-ui 1.01x, 0.99-1.03; react-router 1.04x, 1.03-1.06), "Applications (run 38427075297)" (wire-webapp 1.03x, 1.00-1.03) -->
 - **happy-dom** is about as fast (median 1.25x, 1.27x, 1.28x over jsdom
   in the three runs) but changes results in 12 of the 13 suites, and is
   slower than jsdom on react-hook-form (0.88x to 0.94x).
-  <!-- source (branch docs/paper-revision): ci-2026-10-13-208ad49-computed.md "happy-dom vs jsdom, same procedure"; RESULTS.md 2.5 (12 of 13, all but solid; react-hook-form 0.88-0.94x) -->
+  <!-- source: ci-2026-10-13-208ad49-computed.md "happy-dom vs jsdom, same procedure"; RESULTS.md 2.5 (12 of 13, all but solid; react-hook-form 0.88-0.94x) -->
 
 ### handsontable
 
@@ -283,7 +283,7 @@ core package alone 11.2x to 12.5x, the Angular wrapper (jsdom 20.0.3)
 cold transform cache and the Angular wrapper's compile, it was about 2.5x
 (2.53x to 2.55x). 3 tests differ, all deliberately (below). happy-dom
 completed no timed round.
-<!-- source (branch docs/paper-revision): ci-2026-10-13-208ad49-computed.md "Version rule" and "handsontable per package"; RESULTS.md 2.4 (cold first run 2.54x, 2.55x, 2.53x; happy-dom no timed round) -->
+<!-- source: ci-2026-10-13-208ad49-computed.md "Version rule" and "handsontable per package"; RESULTS.md 2.4 (cold first run 2.54x, 2.55x, 2.53x; happy-dom no timed round) -->
 
 ### Held-out suites and two applications
 
@@ -299,7 +299,7 @@ the 17 CI rounds that ran each of them, only these tests changed result:
 tanstack-query 1 (the `ownerNode` difference below), melt-ui 1
 (speed-sensitive, below) and solid-primitives 4 (an order dependence of
 the project's own, below), plus flaky tests.
-<!-- source (branch docs/paper-revision): docs/research/README.md 3.7 (58 of about 13,500, 0.43%); ci-2026-10-13-208ad49-computed.md "Held-out (run 38427053627)", "Cross-suite medians" (8 suites 1.36x, 1.05-1.69x) and solid-primitives raw rounds (1.14x, 1.11-1.19); "Versions" (tests per suite, 13,526); RESULTS.md 2.2 and 7 -->
+<!-- source: docs/research/README.md 3.7 (58 of about 13,500, 0.43%); ci-2026-10-13-208ad49-computed.md "Held-out (run 38427053627)", "Cross-suite medians" (8 suites 1.36x, 1.05-1.69x) and solid-primitives raw rounds (1.14x, 1.11-1.19); "Versions" (tests per suite, 13,526); RESULTS.md 2.2 and 7 -->
 
 **Web applications.** Excalidraw ran 1.21x faster (1.20x to 1.23x) and
 the Wire web app 1.03x (1.00x to 1.03x, about equal), with no test that
@@ -307,7 +307,7 @@ changed result. happy-dom changed 44 and 63 of their tests and ran Wire at
 0.54x of jsdom's speed. Both apps drove fixes when they were first tried
 (2 and 141 tests differed then), so this is a migration case study, not
 held-out evidence.
-<!-- source (branch docs/paper-revision): docs/research/data/ci-2026-10-13-208ad49-threeway-apps/report.md (run 38427075297); RESULTS.md 2.3; docs/research/data/apps/ci-2026-10-12-apps-before/report.md (run 38304848528: 2 and 141 differing) -->
+<!-- source: docs/research/data/ci-2026-10-13-208ad49-threeway-apps/report.md (run 38427075297); RESULTS.md 2.3; docs/research/data/apps/ci-2026-10-12-apps-before/report.md (run 38304848528: 2 and 141 differing) -->
 
 ### Version dependence
 
@@ -324,7 +324,7 @@ jsdom's behavior instead of their own, warpdom would differ from jsdom in
 more tests in 7 of 23 suites: React Spectrum 0 → 146, svelte 1 → 25,
 handsontable 3 → 23, downshift 0 → 7, ark-ui 2–3 → 6, CopilotKit 0 → 1,
 dom-testing-library 0 → 1.
-<!-- source (branch docs/paper-revision): docs/research/data/ci-2026-10-13-208ad49-computed.md "Versions" (runs 38427202342, 38427223850); RESULTS.md 6 (13 of 23; ariakit 258, 13.93%; React Spectrum 138; svelte 38; cssstyle 4.1.0 -> 4.6.0: 12) and 5 (A4, runs 38427136397, 38427158136: 7 of 23) -->
+<!-- source: docs/research/data/ci-2026-10-13-208ad49-computed.md "Versions" (runs 38427202342, 38427223850); RESULTS.md 6 (13 of 23; ariakit 258, 13.93%; React Spectrum 138; svelte 38; cssstyle 4.1.0 -> 4.6.0: 12) and 5 (A4, runs 38427136397, 38427158136: 7 of 23) -->
 
 ### Web Platform Tests
 
@@ -332,7 +332,7 @@ On WPT's `dom`, `domparsing`, `html/dom` and `css/cssom` (963 files),
 warpdom passes 87.4% of subtests (jsdom 30.1.2: 80.5%), with a per-file
 score of 75.7% (jsdom: 71.0%). warpdom was worked on against these tests,
 so they are not an independent check. The runner is in [wpt/](wpt/).
-<!-- source (branch docs/paper-revision): docs/research/data/wpt/ci-2026-10-13-208ad49/summary.md (run 38427179332, WPT 87b5d13099: warpdom 116,410 of 133,248, 87.4%, score 75.7%; jsdom 107,200 of 133,158, 80.5%, score 71.0%) -->
+<!-- source: docs/research/data/wpt/ci-2026-10-13-208ad49/summary.md (run 38427179332, WPT 87b5d13099: warpdom 116,410 of 133,248, 87.4%, score 75.7%; jsdom 107,200 of 133,158, 80.5%, score 71.0%) -->
 
 Full tables, method, profiles and caveats:
 [docs/research/README.md](docs/research/README.md).
@@ -355,7 +355,7 @@ Those that changed a test in the 25 measured suites:
   cannot parse CSS nesting, drops such a sheet and reports "Could not
   parse CSS stylesheet": 3 handsontable tests of its filter for that
   message (`jsdomThemeCssFilter.unit.js`).
-<!-- source: PLAN.md "Deliberate deviations from jsdom" (DOMException, svelte whitespace-at-block-start; ownerNode measured per release, tanstack-query PiPContext.test.tsx; handsontable jsdomThemeCssFilter.unit.js); branch docs/paper-revision: docs/research/data/ci-2026-10-13-208ad49-RESULTS.md 7 (svelte 27 of 27 rounds, tanstack-query 17 of 17, handsontable 22 of 22) -->
+<!-- source: PLAN.md "Deliberate deviations from jsdom" (DOMException, svelte whitespace-at-block-start; ownerNode measured per release, tanstack-query PiPContext.test.tsx; handsontable jsdomThemeCssFilter.unit.js); docs/research/data/ci-2026-10-13-208ad49-RESULTS.md 7 (svelte 27 of 27 rounds, tanstack-query 17 of 17, handsontable 22 of 22) -->
 
 Results that change for other reasons:
 
@@ -380,7 +380,7 @@ Results that change for other reasons:
   timers on; 4 timer tests that run after it in the same worker time out
   (4 of 17 rounds), on jsdom too when forced into that order. On CI that
   order occurred only under warpdom.
-<!-- source (branch docs/paper-revision): docs/research/data/ci-2026-10-13-208ad49-RESULTS.md 7 (ariakit 23 of 23 rounds; ark-ui largeStep 10 of 27, Toast 25 of 27; melt-ui Context Menu 7 of 17, speed-sensitive by analogy; solid-primitives 4 of 17, forced order fails on jsdom too, held-out/local-2026-10-12-solid-primitives-order/; slow order warpdom-only on CI); ci-2026-10-13-208ad49-correctness-jsdom-learned.tsv (melt-ui Dropdown Menu 2 of 5 rounds on jsdom); docs/research/data/investigations/solid-transition/README.md (solid: 24 of 27 rounds; 130 runs, 32 failed, 98 passed; environment groups) -->
+<!-- source: docs/research/data/ci-2026-10-13-208ad49-RESULTS.md 7 (ariakit 23 of 23 rounds; ark-ui largeStep 10 of 27, Toast 25 of 27; melt-ui Context Menu 7 of 17, speed-sensitive by analogy; solid-primitives 4 of 17, forced order fails on jsdom too, held-out/local-2026-10-12-solid-primitives-order/; slow order warpdom-only on CI); ci-2026-10-13-208ad49-correctness-jsdom-learned.tsv (melt-ui Dropdown Menu 2 of 5 rounds on jsdom); docs/research/data/investigations/solid-transition/README.md (solid: 24 of 27 rounds; 130 runs, 32 failed, 98 passed; environment groups) -->
 
 Other deliberate differences:
 

@@ -1,0 +1,16 @@
+round,project,config,seconds,differs,files_differ,ref
+1,analog,jsdom-default,19.9,0,0,baseline
+1,analog,warpdom-default,16.6,0,0,round
+1,analog,happy-dom-default,17.7,2,0,round
+2,analog,warpdom-default,16.5,0,0,round
+2,analog,happy-dom-default,17.4,2,0,round
+2,analog,jsdom-default,19.7,0,0,baseline
+3,analog,happy-dom-default,16.9,2,0,round
+3,analog,jsdom-default,18.9,0,0,baseline
+3,analog,warpdom-default,16.0,0,0,round
+4,analog,jsdom-default,19.0,0,0,baseline
+4,analog,warpdom-default,15.8,0,0,round
+4,analog,happy-dom-default,17.1,2,0,round
+5,analog,warpdom-default,15.7,0,0,round
+5,analog,happy-dom-default,17.3,2,0,round
+5,analog,jsdom-default,19.3,0,0,baseline

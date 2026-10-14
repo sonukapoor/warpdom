@@ -1,0 +1,6 @@
+NA round 0 ariakit learning:  failed .: fast-cli unsupported: 3 --project arguments (withFastMode splits one project)
+    
+    ▶ ariakit
+      failed  .: fast-cli unsupported: 3 --project arguments (withFastMode splits one project)
+METHOD ariakit: harness emulation of warpdom vitest run (failed  .: fast-cli unsupported: 3 --project arguments (withFastMode splits one project))
+BUDGET: stopped before round 2 of 5 (268 min used, rounds take up to 142 min, budget 320 min): ariakit

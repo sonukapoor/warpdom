@@ -1,0 +1,8 @@
+NA round 0 floating-ui learning:  failed packages/react: fast-cli unsupported: Vitest 3.0.9 (warpdom vitest run needs >= 3.2)| failed packages/react-dom: fast-cli unsupported: Vitest 3.0.9 (warpdom vitest run needs >= 3.2)| failed packages/dom: fast-cli unsupported: Vitest 3.0.9 (warpdom vitest run needs >= 3.2)| failed packages/vue: fast-cli unsupported: Vitest 3.0.9 (warpdom vitest run needs >= 3.2)
+    
+    ▶ floating-ui
+      failed  packages/react: fast-cli unsupported: Vitest 3.0.9 (warpdom vitest run needs >= 3.2)
+      failed  packages/react-dom: fast-cli unsupported: Vitest 3.0.9 (warpdom vitest run needs >= 3.2)
+      failed  packages/dom: fast-cli unsupported: Vitest 3.0.9 (warpdom vitest run needs >= 3.2)
+      failed  packages/vue: fast-cli unsupported: Vitest 3.0.9 (warpdom vitest run needs >= 3.2)
+METHOD floating-ui: harness emulation of warpdom vitest run (failed  packages/react: fast-cli unsupported: Vitest 3.0.9 (warpdom vitest run needs >= 3.2)|failed  packages/react-dom: fast-cli unsupported: Vitest 3.0.9 (warpdom vitest run needs >= 3.2)|failed  packages/dom: fast-cli unsupported: Vitest 3.0.9 (warpdom vitest run needs >= 3.2))

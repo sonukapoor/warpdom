@@ -1,0 +1,7 @@
+round,project,config,seconds,differs
+1,radix-primitives,jsdom-default,41.5,0
+1,radix-primitives,warpdom-default,22.4,0
+1,radix-primitives,jsdom-shared,12.7,0
+1,radix-primitives,warpdom-sharedfresh,48.0,611
+1,radix-primitives,warpdom-sharedreset,10.8,0
+1,radix-primitives,warpdom-learned,8.5,0

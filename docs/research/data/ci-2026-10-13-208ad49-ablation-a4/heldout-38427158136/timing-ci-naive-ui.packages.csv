@@ -1,0 +1,10 @@
+round,project,config,package,status,seconds
+0,naive-ui,jsdom-default,.,ran,198.4
+0,naive-ui,warpdomlatest-default,.,ran,182.1
+0,naive-ui,warpdom-default,.,ran,179.5
+1,naive-ui,jsdom-default,.,ran,211.7
+1,naive-ui,warpdomlatest-default,.,ran,189.7
+1,naive-ui,warpdom-default,.,ran,186.1
+2,naive-ui,warpdomlatest-default,.,ran,181.1
+2,naive-ui,warpdom-default,.,ran,185.3
+2,naive-ui,jsdom-default,.,ran,202.7

@@ -1,0 +1,11 @@
+{"round":0,"project":"solid-primitives","kind":"learn","method":"harness","seconds":12.9,"mode":"isolated","t_iso":4.2,"t_sh":4.4,"t_split":4.3,"leaky":[]}
+{"round":1,"project":"solid-primitives","kind":"learn","method":"harness","seconds":12.8,"mode":"split","t_iso":4.3,"t_sh":4.3,"t_split":4.2,"leaky":[]}
+{"round":1,"project":"solid-primitives","kind":"run","method":"harness","seconds":4.2,"mode":"isolated","isolated":0,"rerun":0,"new_leaky":[],"leaky":[]}
+{"round":2,"project":"solid-primitives","kind":"learn","method":"harness","seconds":12.7,"mode":"isolated","t_iso":4.2,"t_sh":4.3,"t_split":4.2,"leaky":[]}
+{"round":2,"project":"solid-primitives","kind":"run","method":"harness","seconds":4.2,"mode":"isolated","isolated":0,"rerun":0,"new_leaky":[],"leaky":[]}
+{"round":3,"project":"solid-primitives","kind":"learn","method":"harness","seconds":12.8,"mode":"isolated","t_iso":4.3,"t_sh":4.2,"t_split":4.3,"leaky":[]}
+{"round":3,"project":"solid-primitives","kind":"run","method":"harness","seconds":4.4,"mode":"isolated","isolated":0,"rerun":0,"new_leaky":[],"leaky":[]}
+{"round":4,"project":"solid-primitives","kind":"learn","method":"harness","seconds":12.7,"mode":"isolated","t_iso":4.2,"t_sh":4.2,"t_split":4.3,"leaky":[]}
+{"round":4,"project":"solid-primitives","kind":"run","method":"harness","seconds":4.2,"mode":"isolated","isolated":0,"rerun":0,"new_leaky":[],"leaky":[]}
+{"round":5,"project":"solid-primitives","kind":"learn","method":"harness","seconds":12.9,"mode":"isolated","t_iso":4.3,"t_sh":4.3,"t_split":4.3,"leaky":[]}
+{"round":5,"project":"solid-primitives","kind":"run","method":"harness","seconds":22.5,"mode":"isolated","isolated":0,"rerun":0,"new_leaky":[],"leaky":[]}

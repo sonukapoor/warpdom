@@ -1,0 +1,10 @@
+round,project,config,seconds,differs,files_differ,false_pass,false_fail,ref,position,method
+0,tanstack-query,jsdom-default,129.3,0,0,NA,NA,,1,
+0,tanstack-query,jsdom-shared,62.0,113,13,0,113,jsdom-default,2,
+0,tanstack-query,jsdom-vm,71.7,3,2,0,3,jsdom-default,3,
+0,tanstack-query,jsdom-sharedclean,62.1,90,9,0,90,jsdom-default,4,
+0,tanstack-query,warpdom-default,84.7,1,1,NA,NA,,6,
+0,tanstack-query,warpdom-vm,58.5,1,1,0,0,warpdom-default,7,
+0,tanstack-query,warpdom-sharedfresh,47.9,117,14,0,116,warpdom-default,8,
+0,tanstack-query,warpdom-sharedreset,46.8,104,9,0,103,warpdom-default,9,
+0,tanstack-query,happydom-shared,51.1,107,12,0,107,jsdom-default,11,

@@ -1,0 +1,10 @@
+round,project,config,package,status,seconds
+0,vueuse,jsdom-default,.,ran,91.1
+0,vueuse,warpdomlatest-default,.,ran,46.2
+0,vueuse,warpdom-default,.,ran,46.3
+1,vueuse,jsdom-default,.,ran,91.2
+1,vueuse,warpdomlatest-default,.,ran,46.2
+1,vueuse,warpdom-default,.,ran,46.2
+2,vueuse,warpdomlatest-default,.,ran,46.2
+2,vueuse,warpdom-default,.,ran,46.2
+2,vueuse,jsdom-default,.,ran,90.4

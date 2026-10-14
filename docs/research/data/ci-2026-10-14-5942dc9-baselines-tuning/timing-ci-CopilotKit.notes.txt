@@ -1,0 +1,11 @@
+NA round 1 CopilotKit happydom-shared:  failed packages/vue: run produced no results (see logs/CopilotKit/packages_vue.happy-dom.log)
+    
+    ▶ CopilotKit
+      ran     packages/react-core: 0/0 passed on happy-dom (provided) (1 pinned files switched), 1.0s
+      failed  packages/vue: run produced no results (see logs/CopilotKit/packages_vue.happy-dom.log)
+      ran     packages/angular: 0/0 passed on happy-dom (provided), 8.7s
+      ran     packages/web-inspector: 2/2 passed on happy-dom (provided), 1.3s
+      ran     packages/web-components: 0/0 passed on happy-dom (provided), 0.8s
+      ran     packages/a2ui-renderer: 0/0 passed on happy-dom (provided), 0.8s
+      ran     packages/mcp-apps-renderer: 0/0 passed on happy-dom (provided), 0.8s
+BUDGET: stopped before round 3 of 5 (255 min used, rounds take up to 88 min, budget 320 min): CopilotKit

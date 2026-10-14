@@ -1,0 +1,4 @@
+round,project,config,seconds,differs,files_differ
+0,ariakit,jsdom-default,610.4,0,0
+0,ariakit,warpdom-default,447.6,7,2
+0,ariakit,happy-dom-default,282.0,51,20

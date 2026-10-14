@@ -1,0 +1,40 @@
+suite	test	differs in (job: rounds/compared, statuses, flaky in job)	flaky in any job
+ariakit	root::packages/ariakit-test/src/__utils.test.ts::getOwnerWindow reports no window when a document answers its default view with an element	blT: 1/1 failed>passed	no
+ariakit	root::packages/ariakit-test/src/dispatch.test.ts::dispatch.compositionEnd preserves the provided CompositionEvent members	blT: 1/1 failed>passed	no
+ariakit	root::packages/ariakit-test/src/dispatch.test.ts::dispatch.compositionStart preserves the provided CompositionEvent members	blT: 1/1 failed>passed	no
+ariakit	root::packages/ariakit-test/src/dispatch.test.ts::dispatch.compositionUpdate preserves the provided CompositionEvent members	blT: 1/1 failed>passed	no
+ariakit	root::packages/ariakit-utils/src/dom.test.ts::getActiveElement ignores a document's named activeElement form	blT: 1/1 failed>passed	no
+ariakit	root::packages/ariakit-utils/src/dom.test.ts::getDocument resolves an element whose document answers nodeType with an element	blT: 1/1 failed>passed	no
+ariakit	root::packages/ariakit-utils/src/events.test.ts::fireClickEvent falls back when a document answers its default view with an element	blT: 1/1 failed>passed	no
+ark-ui	packages_react::packages/react/src/components/number-input/tests/number-input.test.tsx::NumberInput / Field prop: largeStep should increment by the default largeStep (10 * step) when Shift is held	blT: 4/5 failed>passed	no
+ark-ui	packages_react::packages/react/src/components/number-input/tests/number-input.test.tsx::NumberInput / Field prop: largeStep should use an explicit largeStep when Shift is held	blT: 1/5 failed>passed	no
+ark-ui	packages_react::packages/react/src/components/toast/tests/toast.test.tsx::Toast should show and hide a toast message	blT: 4/5 failed>passed flaky	yes
+melt-ui	root::src/tests/popover/Popover.spec.ts:: Popover (Default) Closes when click outside content	blH: 3/5 failed>passed flaky	yes
+solid	packages_solid::packages/solid/web/test/transition.spec.tsx::Transition memo stale read (#2046) memo created during transition should not return undefined in committed state	blT: 3/5 passed>failed	no
+solid-primitives	root::packages/filesystem/test/index.test.ts::createFileSystem (sync) relays file system errors a deleted file stored in a signal throws an error	blH: 2/5 failed>passed,passed>failed flaky	yes
+solid-primitives	root::packages/filesystem/test/index.test.ts::createFileSystem(makeWebAccessFileSystem) fs.readFile returns the content	blH: 2/5 failed>passed,passed>failed flaky	yes
+solid-primitives	root::packages/filesystem/test/index.test.ts::createFileSystem(makeWebAccessFileSystem) fs.rename updates a readdir resource	blH: 2/5 failed>passed,passed>failed flaky	yes
+solid-primitives	root::packages/filesystem/test/index.test.ts::createFileSystem(makeWebAccessFileSystem) fs.writeFile updates a readFile resource	blH: 2/5 failed>passed,passed>failed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::createDeepSignal mutates the resource with callback	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::createDeepSignal mutates the resource with plain object	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::createDeepSignal provides resources with fine-grained reactivity	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeAbortable filters (only) abort errors	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeAbortable makes a fetcher abortable	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeAggregated aggregates arrays	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeAggregated aggregates numbers	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeAggregated aggregates objects	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeAggregated aggregates strings	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeAggregated an initial value [] allows to aggregate objects into arrays	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeCache caches results	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeCache invalidates cache	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeCache persists cache	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeCache provides an accessor for automatically invalidated results	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeRetrying retries the request after a delay	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeRetrying throws after the configured number of retries	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::serializer works on RequestInit	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::serializer works on arrays	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::serializer works on objects	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::serializer works on strings	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::serializer works on undefined, null, booleans, numbers, bignum	blH: 3/5 passed>missing,missing>passed flaky	yes
+svelte	root::packages/svelte/tests/hydration/test.ts::whitespace-at-block-start	blT: 5/5 passed>failed	no
+tanstack-query	packages_query-devtools::packages/query-devtools/src/__tests__/contexts/PiPContext.test.tsx::PiPContext "#_goober" MutationObserver should copy parent "#_goober" "textContent" into the PiP mirror when the observer fires	blH: 5/5 passed>failed	no

@@ -1,0 +1,10 @@
+round,project,config,package,status,seconds
+0,svelte,jsdom-default,.,ran,84.0
+0,svelte,warpdom-default,.,ran,72.3
+0,svelte,warpdomlatest-default,.,ran,71.6
+1,svelte,jsdom-default,.,ran,78.0
+1,svelte,warpdom-default,.,ran,73.6
+1,svelte,warpdomlatest-default,.,ran,75.5
+2,svelte,warpdom-default,.,ran,73.6
+2,svelte,warpdomlatest-default,.,ran,73.5
+2,svelte,jsdom-default,.,ran,76.1

@@ -1,0 +1,6 @@
+round,project,config,seconds,differs,files_differ,ref
+0,react-spectrum,jsdom-default,471.9,0,0,baseline
+0,react-spectrum,warpdom-default,330.6,0,0,round
+0,react-spectrum,warpdom-default-aa,333.3,0,0,round
+0,react-spectrum,warpdomeager-default,335.9,0,0,round
+0,react-spectrum,warpdomnocache-default,359.8,0,0,round

@@ -1,0 +1,16 @@
+round,project,config,seconds,differs,files_differ
+1,wire-webapp,jsdom-default,176.1,0,0
+1,wire-webapp,warpdom-default,169.4,0,0
+1,wire-webapp,happy-dom-default,327.3,93,23
+2,wire-webapp,warpdom-default,179.0,0,0
+2,wire-webapp,happy-dom-default,331.6,70,18
+2,wire-webapp,jsdom-default,179.6,0,0
+3,wire-webapp,happy-dom-default,325.7,67,18
+3,wire-webapp,jsdom-default,180.9,0,0
+3,wire-webapp,warpdom-default,172.9,0,0
+4,wire-webapp,jsdom-default,178.3,0,0
+4,wire-webapp,warpdom-default,174.6,0,0
+4,wire-webapp,happy-dom-default,327.8,69,17
+5,wire-webapp,warpdom-default,170.5,0,0
+5,wire-webapp,happy-dom-default,326.7,68,18
+5,wire-webapp,jsdom-default,179.9,0,0

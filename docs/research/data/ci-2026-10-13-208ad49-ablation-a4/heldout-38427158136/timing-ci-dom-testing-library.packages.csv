@@ -1,0 +1,10 @@
+round,project,config,package,status,seconds
+0,dom-testing-library,jsdom-default,.,ran,7.9
+0,dom-testing-library,warpdomlatest-default,.,ran,6.4
+0,dom-testing-library,warpdom-default,.,ran,5.2
+1,dom-testing-library,jsdom-default,.,ran,6.8
+1,dom-testing-library,warpdomlatest-default,.,ran,5.2
+1,dom-testing-library,warpdom-default,.,ran,5.2
+2,dom-testing-library,warpdomlatest-default,.,ran,5.1
+2,dom-testing-library,warpdom-default,.,ran,5.3
+2,dom-testing-library,jsdom-default,.,ran,6.9

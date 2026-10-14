@@ -1,0 +1,6 @@
+round,project,config,seconds,differs,files_differ,ref
+0,svelte,jsdom-default,100.7,0,0,baseline
+0,svelte,warpdom-default,79.2,1,1,round
+0,svelte,warpdom-default-aa,82.0,1,1,round
+0,svelte,warpdomeager-default,81.2,1,1,round
+0,svelte,warpdomnocache-default,79.5,1,1,round

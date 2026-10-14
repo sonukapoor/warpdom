@@ -1,0 +1,11 @@
+solid-primitives happydom-shared              common 8,8,8,8,8 | onlyRun 0,0,0,0,0 | onlyBase 5,5,5,26,5 | FP(vs wd-default) common 0,0,4,0,0 missing 0,0,0,0,0
+solid-primitives jsdom-default                common 0,0,0,0,0 | onlyRun 0,0,0,0,0 | onlyBase 0,0,0,0,0 | FP(vs wd-default) common 0,0,4,0,0 missing 0,0,0,0,0
+solid-primitives jsdom-shared                 common 0,0,0,0,0 | onlyRun 0,21,21,0,21 | onlyBase 21,0,0,21,0 | FP(vs wd-default) common 0,0,4,0,0 missing 0,21,0,0,21
+solid-primitives jsdom-vm                     common 4,4,4,4,4 | onlyRun 0,21,21,0,21 | onlyBase 0,0,0,0,0 | FP(vs wd-default) common 0,0,4,0,0 missing 0,21,0,0,21
+solid-primitives learn-isolated               common 4,0,0,0,4 | onlyRun 0,21,21,0,21 | onlyBase 0,0,0,21,0 | FP(vs wd-default) common 0,0,4,0,0 missing 0,21,0,0,21
+solid-primitives learn-shared                 common 0,0,0,0,0 | onlyRun 0,0,21,0,21 | onlyBase 0,0,0,21,0 | FP(vs wd-default) common 0,0,4,0,0 missing 0,0,0,0,21
+solid-primitives warpdom-default              common 0,0,4,0,0 | onlyRun 0,0,21,0,0 | onlyBase 0,0,0,0,0 | FP(vs wd-default) common 0,0,0,0,0 missing 0,0,0,0,0
+solid-primitives warpdom-learned              common 0,0,0,0,0 | onlyRun 0,21,21,0,21 | onlyBase 21,0,0,0,0 | FP(vs wd-default) common 0,0,4,0,0 missing 0,21,0,0,21
+solid-primitives warpdom-sharedfresh          common 0,0,0,0,0 | onlyRun 0,21,0,0,0 | onlyBase 0,0,0,0,0 | FP(vs wd-default) common 0,0,4,0,0 missing 0,21,0,0,0
+solid-primitives warpdom-sharedreset          common 0,0,0,0,0 | onlyRun 0,21,21,0,21 | onlyBase 0,0,0,0,0 | FP(vs wd-default) common 0,0,4,0,0 missing 0,21,0,0,21
+solid-primitives warpdom-vm                   common 0,0,0,0,0 | onlyRun 0,21,21,0,21 | onlyBase 0,0,0,0,0 | FP(vs wd-default) common 0,0,4,0,0 missing 0,21,0,0,21

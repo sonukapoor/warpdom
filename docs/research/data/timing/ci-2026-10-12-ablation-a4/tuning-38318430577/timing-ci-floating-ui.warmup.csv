@@ -1,0 +1,4 @@
+round,project,config,seconds,differs,files_differ
+0,floating-ui,jsdom-default,25.8,0,0
+0,floating-ui,warpdom-default,15.9,0,0
+0,floating-ui,warpdomlatest-default,15.9,0,0

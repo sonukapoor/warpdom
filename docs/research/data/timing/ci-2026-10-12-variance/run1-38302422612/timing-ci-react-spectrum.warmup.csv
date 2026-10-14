@@ -1,0 +1,4 @@
+round,project,config,seconds,differs,files_differ
+0,react-spectrum,jsdom-default,468.3,0,0
+0,react-spectrum,warpdom-default,309.2,4,1
+0,react-spectrum,happy-dom-default,334.8,1410,93

@@ -1,0 +1,16 @@
+{
+ "ark-ui": {
+  "rounds": [
+   "0",
+   "1",
+   "2"
+  ],
+  "broken": [],
+  "flaky": {
+   "tests": [
+    "packages_react::packages/react/src/components/number-input/tests/number-input.test.tsx::NumberInput / Field prop: smallStep should use an explicit smallStep when Alt is held"
+   ],
+   "files": []
+  }
+ }
+}

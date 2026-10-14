@@ -1,0 +1,7 @@
+round,project,config,seconds,differs,files_differ,ref
+0,excalidraw,jsdom-default,209.6,0,0,baseline
+0,excalidraw,warpdom-default,169.1,0,0,round
+0,excalidraw,happy-dom-default,189.6,44,15,round
+0,wire-webapp,jsdom-default,211.7,0,0,baseline
+0,wire-webapp,warpdom-default,200.6,0,0,round
+0,wire-webapp,happy-dom-default,373.3,55,19,round

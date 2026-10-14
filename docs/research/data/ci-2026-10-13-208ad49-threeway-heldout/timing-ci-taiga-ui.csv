@@ -1,0 +1,16 @@
+round,project,config,seconds,differs,files_differ,ref
+1,taiga-ui,jsdom-default,582.4,0,0,baseline
+1,taiga-ui,warpdom-default,573.8,0,0,round
+1,taiga-ui,happy-dom-default,85.5,2604,326,round
+2,taiga-ui,warpdom-default,566.0,0,0,round
+2,taiga-ui,happy-dom-default,86.8,2604,326,round
+2,taiga-ui,jsdom-default,584.3,0,0,baseline
+3,taiga-ui,happy-dom-default,88.8,2604,326,round
+3,taiga-ui,jsdom-default,593.7,0,0,baseline
+3,taiga-ui,warpdom-default,597.9,0,0,round
+4,taiga-ui,jsdom-default,603.2,0,0,baseline
+4,taiga-ui,warpdom-default,589.2,0,0,round
+4,taiga-ui,happy-dom-default,87.6,2604,326,round
+5,taiga-ui,warpdom-default,579.0,0,0,round
+5,taiga-ui,happy-dom-default,87.2,2604,326,round
+5,taiga-ui,jsdom-default,579.7,0,0,baseline

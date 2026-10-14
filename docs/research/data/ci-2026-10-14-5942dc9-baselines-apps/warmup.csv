@@ -1,0 +1,10 @@
+round,project,config,seconds,differs,files_differ,false_pass,false_fail,ref,position,method
+0,excalidraw,jsdom-default,267.5,0,0,NA,NA,,1,
+0,excalidraw,jsdom-shared,31.9,2341,141,0,2295,jsdom-default,2,
+0,excalidraw,jsdom-vm,273.9,35,2,0,35,jsdom-default,3,
+0,excalidraw,jsdom-sharedclean,30.1,2341,141,0,2295,jsdom-default,4,
+0,excalidraw,warpdom-default,214.5,0,0,NA,NA,,6,
+0,excalidraw,warpdom-vm,NA,2556,143,0,2508,warpdom-default,7,
+0,excalidraw,warpdom-sharedfresh,24.0,2341,141,0,2295,warpdom-default,8,
+0,excalidraw,warpdom-sharedreset,23.8,2341,141,0,2295,warpdom-default,9,
+0,excalidraw,happydom-shared,27.9,2342,142,0,2296,jsdom-default,11,

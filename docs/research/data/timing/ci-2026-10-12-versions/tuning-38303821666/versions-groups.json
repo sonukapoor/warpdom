@@ -1,0 +1,1355 @@
+{
+  "CopilotKit jsdom-20.0.3": [
+    {
+      "key": "passed -> failed | AssertionError: expected '' to be 'var(--copilotkit-license-banner-offse…' // Object.is equality",
+      "count": 3,
+      "examples": [
+        "packages_vue::packages/vue/src/v2/components/chat/__tests__/CopilotChatInput.bottomAnchored.test.ts::CopilotChatInput bottom-anchored offset reserves padding-bottom for the license banner when positioning=\"absolute\"",
+        "packages_vue::packages/vue/src/v2/components/chat/__tests__/CopilotChatInput.bottomAnchored.test.ts::CopilotChatInput bottom-anchored offset reserves padding-bottom for the license banner when bottomAnchored=true (positioning=\"static\")",
+        "packages_vue::packages/vue/src/v2/components/chat/__tests__/CopilotChatInput.bottomAnchored.test.ts::CopilotChatInput bottom-anchored offset CopilotChatView main overlay forwards bottomAnchored=true to its input"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected [] to include 'saved-thread'",
+      "count": 1,
+      "examples": [
+        "packages_vue::packages/vue/src/v2/providers/__tests__/inspector-thread-override.test.ts::inspector thread override switches a pinned threadId when view-thread matches the agent"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected '' to be 'none' // Object.is equality",
+      "count": 1,
+      "examples": [
+        "packages_web-inspector::packages/web-inspector/src/__tests__/inspector-navigation.spec.ts::trusted identity stays on Home while connection state moves into branded chrome"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected undefined to be 'left' // Object.is equality",
+      "count": 1,
+      "examples": [
+        "packages_web-inspector::packages/web-inspector/src/__tests__/threads-states.spec.ts::real and example rows expose native focus and current-selection semantics"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected undefined to be 'N.N' // Object.is equality",
+      "count": 1,
+      "examples": [
+        "packages_web-inspector::packages/web-inspector/src/__tests__/web-inspector.spec.ts::WebInspectorElement small viewports zooms the window down so the desktop layout fits the screen"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected undefined to be '' // Object.is equality",
+      "count": 1,
+      "examples": [
+        "packages_web-inspector::packages/web-inspector/src/__tests__/web-inspector.spec.ts::WebInspectorElement small viewports keeps the full-size window when the screen can hold it"
+      ]
+    }
+  ],
+  "CopilotKit jsdom-26.1.0": [
+    {
+      "key": "passed -> failed | AssertionError: expected '' to be 'none' // Object.is equality",
+      "count": 1,
+      "examples": [
+        "packages_web-inspector::packages/web-inspector/src/__tests__/inspector-navigation.spec.ts::trusted identity stays on Home while connection state moves into branded chrome"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected undefined to be 'left' // Object.is equality",
+      "count": 1,
+      "examples": [
+        "packages_web-inspector::packages/web-inspector/src/__tests__/threads-states.spec.ts::real and example rows expose native focus and current-selection semantics"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected undefined to be 'N.N' // Object.is equality",
+      "count": 1,
+      "examples": [
+        "packages_web-inspector::packages/web-inspector/src/__tests__/web-inspector.spec.ts::WebInspectorElement small viewports zooms the window down so the desktop layout fits the screen"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected undefined to be '' // Object.is equality",
+      "count": 1,
+      "examples": [
+        "packages_web-inspector::packages/web-inspector/src/__tests__/web-inspector.spec.ts::WebInspectorElement small viewports keeps the full-size window when the screen can hold it"
+      ]
+    }
+  ],
+  "CopilotKit jsdom-30.1.2": [
+    {
+      "key": "passed -> failed | AssertionError: expected \"connectAgent\" to not be called at all, but actually been called N times",
+      "count": 1,
+      "examples": [
+        "packages_angular::packages/angular/src/lib/components/chat/__tests__/copilot-chat.spec.ts::CopilotChat connection lifecycle agent connections destroy before connect delegation does not call Core"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: Unable to find role=\"menuitem\" and name \"View in Inspector Open this message in the Inspector\"",
+      "count": 1,
+      "examples": [
+        "packages_react-core::packages/react-core/src/v2/components/chat/__tests__/CopilotChatAssistantMessage.test.tsx::CopilotChatAssistantMessage Callback functionality renders the local Inspector button and opens it from the toolbar"
+      ]
+    }
+  ],
+  "ariakit jsdom-20.0.3": [
+    {
+      "key": "passed -> failed | TypeError: CSS?.supports is not a function",
+      "count": 167,
+      "examples": [
+        "root::app/src/sandbox/combobox-popover-modal-input/test.ts::closes the modal popover with Escape from the input inside it",
+        "root::app/src/sandbox/combobox-popover-modal-input/test.ts::keeps the combobox select interactive while the rest is inert",
+        "root::app/src/sandbox/combobox-prevented-close/test.ts::Dialog a prevented close from Enter on an item keeps the search and the active item"
+      ]
+    },
+    {
+      "key": "passed -> failed | TestingLibraryElementError: Unable to find an accessible element with the role \"dialog\" and name `(accessibleName, element) => {",
+      "count": 11,
+      "examples": [
+        "root::app/src/sandbox/dialog-combobox-command-menu/test.ts::open dialog with enter and hide by pressing enter on esc button",
+        "root::app/src/sandbox/dialog-core-interactions/test.ts::opens from the disclosure with Enter",
+        "root::app/src/sandbox/dialog-core-interactions/test.ts::opens from the disclosure with Space"
+      ]
+    },
+    {
+      "key": "passed -> failed | ReferenceError: PointerEvent is not defined",
+      "count": 10,
+      "examples": [
+        "root::packages/ariakit-test/src/dispatch.jsdom.test.ts::dispatch.pointerDown initializes an event dispatched inside an iframe",
+        "root::packages/ariakit-test/src/dispatch.jsdom.test.ts::dispatch.click initializes an event dispatched inside an iframe",
+        "root::packages/ariakit-test/src/dispatch.test.ts::dispatch.click builds a PointerEvent for a form with a control named document"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: Unable to find an accessible element with the role \"menuitem\" and name `(accessibleName, element) => {",
+      "count": 8,
+      "examples": [
+        "root::app/src/sandbox/menu-initial-focus-changes/test.ts::gives the initial focus to the first item when a modal menu opens again after its first item was removed",
+        "root::app/src/sandbox/menu-initial-focus-changes/test.ts::gives the initial focus to the first item when a modal menu opens again after an item arrived at its top",
+        "root::app/src/sandbox/menu-initial-focus-changes/test.ts::gives the initial focus to the first item when a modal menu opens again after it closed from its menu button"
+      ]
+    },
+    {
+      "key": "failed -> passed | (own) TestingLibraryElementError: Unable to find an accessible element with the role \"button\" and name `(accessibleName, element) => {",
+      "count": 5,
+      "examples": [
+        "root::app/src/sandbox/ariakit-ui-disclosure/test.ts::keeps a trailing badge beside the label",
+        "root::app/src/sandbox/ariakit-ui-list/test.ts::keeps a disclosure badge beside the label without a description",
+        "root::app/src/sandbox/ariakit-ui-list/test.ts::keeps a disclosure step's checked state in its name"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected [ 'pointerdown - - N', …(N) ] to deeply equal [ 'pointerdown N N N', …(N) ]",
+      "count": 5,
+      "examples": [
+        "root::packages/ariakit-test/src/click.test.ts::click with the auxiliary button dispatches auxclick instead of click",
+        "root::packages/ariakit-test/src/click.test.ts::click and rightClick derive buttons from the button they press",
+        "root::packages/ariakit-test/src/click.test.ts::click with the primary button keeps dispatching click"
+      ]
+    },
+    {
+      "key": "failed -> passed | (own) AssertionError: expected '' to be 'sample paragraph text' // Object.is equality",
+      "count": 5,
+      "examples": [
+        "root::packages/ariakit-test/src/mouse-down.test.ts::mouseDown on a button preserves the document selection",
+        "root::packages/ariakit-test/src/mouse-down.test.ts::mouseDown on a non-text input preserves the document selection",
+        "root::packages/ariakit-test/src/mouse-down.test.ts::mouseDown on a select preserves the document selection"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: Unable to find role=\"dialog\" and name `(accessibleName, element) => {",
+      "count": 4,
+      "examples": [
+        "root::app/src/sandbox/combobox-tabs/test.ts::open popover with components tab initially selected, but not active",
+        "root::app/src/sandbox/combobox-tabs-animated/test.ts::selected tab is restored only after the animation ends",
+        "root::app/src/sandbox/combobox-tabs-animated/test.ts::can re-open the dialog with arrow down while the animation is running"
+      ]
+    },
+    {
+      "key": "passed -> failed | TestingLibraryElementError: Unable to find an accessible element with the role \"option\" and name `(accessibleName, element) => {",
+      "count": 4,
+      "examples": [
+        "root::app/src/sandbox/combobox-tabs/test.ts::filter items and change tabs",
+        "root::app/src/sandbox/combobox-tabs/test.ts::clear input with mouse",
+        "root::app/src/sandbox/combobox-tabs-old/test.ts::filter items and change tabs"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected [ Array(N) ] to deeply equal [ Array(N) ]",
+      "count": 4,
+      "examples": [
+        "root::app/src/sandbox/command-keyboard-click/react.test.ts::Enter activation works in Vitest's non-VM jsdom environment",
+        "root::app/src/sandbox/command-keyboard-click/react.test.ts::Space activation works in Vitest's non-VM jsdom environment",
+        "root::app/src/sandbox/command-keyboard-click/test.ts::Enter dispatches a PointerEvent with no pointer behind it"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected \"vi.fn()\" to be called once, but got N times",
+      "count": 4,
+      "examples": [
+        "root::packages/ariakit-test/src/press.jsdom.test.ts::press.Enter does not resubmit an image submitter after external validation",
+        "root::packages/ariakit-test/src/press.jsdom.test.ts::press.Enter does not resubmit an image submitter after stopped validation",
+        "root::packages/ariakit-test/src/press.test.ts::press.Enter activates an image submitter for implicit submission"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected [] to deeply equal [ …(N) ]",
+      "count": 3,
+      "examples": [
+        "root::packages/ariakit-test/src/click.test.ts::click carries only the pointer identity to the click event",
+        "root::packages/ariakit-test/src/click.test.ts::click with the auxiliary button carries the pointer identity to auxclick",
+        "root::packages/ariakit-test/src/click.test.ts::rightClick carries the pointer identity to contextmenu and auxclick"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected false to be true // Object.is equality",
+      "count": 3,
+      "examples": [
+        "root::packages/ariakit-test/src/shims.test.ts::restores a disabled radio group when a click listener prevents the selection",
+        "root::packages/ariakit-test/src/shims.test.ts::restores a disabled radio group linked by the form attribute when prevented",
+        "root::packages/ariakit-test/src/shims.test.ts::reverts only the activation's changes, preserving listener changes to other radios"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: Unable to find role=\"tab\" and name `(accessibleName, element) => {",
+      "count": 2,
+      "examples": [
+        "root::app/src/sandbox/combobox-tabs/test.ts::filter items until there are no results and change tabs",
+        "root::app/src/sandbox/combobox-tabs-old/test.ts::filter items until there are no results and change tabs"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: Unable to find an accessible element with the role \"dialog\" and name `(accessibleName, element) => {",
+      "count": 2,
+      "examples": [
+        "root::app/src/sandbox/combobox-tabs/test.ts::open the popover with arrow down after switching tabs",
+        "root::app/src/sandbox/combobox-tabs-old/test.ts::open the popover with arrow down after switching tabs"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: Unable to find an accessible element with the role \"button\" and name `(accessibleName, element) => {",
+      "count": 2,
+      "examples": [
+        "root::app/src/sandbox/menu-initial-focus-changes/test.ts::gives the initial focus to the first item that arrives in the \"Modal bookmarks\" menu",
+        "root::app/src/sandbox/menu-initial-focus-changes/test.ts::gives the initial focus to the first item that arrives in the \"Inline modal bookmarks\" menu"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected [] to deeply equal [ Array(N) ]",
+      "count": 2,
+      "examples": [
+        "root::packages/ariakit-test/src/click.test.ts::click forwards the pointer identity from a label to its control",
+        "root::packages/ariakit-test/src/press.test.ts::press activates a button with no pointer behind the click"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected undefined to be -N // Object.is equality",
+      "count": 2,
+      "examples": [
+        "root::packages/ariakit-utils/src/events.test.ts::fireClickEvent reports no pointer for members passed as undefined",
+        "root::packages/ariakit-utils/src/events.test.ts::fireClickEvent forwards the members of a live event passed as the init"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected \"vi.fn()\" to be called N times, but got N times",
+      "count": 1,
+      "examples": [
+        "root::packages/ariakit-test/src/select.react.test.tsx::select"
+      ]
+    },
+    {
+      "key": "passed -> failed | TestingLibraryElementError: Unable to find an accessible element with the role \"button\" and name `(accessibleName, element) => {",
+      "count": 1,
+      "examples": [
+        "root::app/src/sandbox/dialog-details-enhancement/test.ts::focus trap"
+      ]
+    },
+    {
+      "key": "failed -> passed | (own) TypeError: 'defineProperty' on proxy: trap returned falsish for property 'defaultView'",
+      "count": 1,
+      "examples": [
+        "root::packages/ariakit-test/src/__utils.test.ts::getOwnerWindow reports no window when a document answers its default view with an element"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected [] to deeply equal [ 'click true N pen', …(N) ]",
+      "count": 1,
+      "examples": [
+        "root::packages/ariakit-test/src/dispatch.test.ts::dispatch builds the click-family events as PointerEvent"
+      ]
+    },
+    {
+      "key": "failed -> passed | (own) AssertionError: expected N to be N // Object.is equality",
+      "count": 1,
+      "examples": [
+        "root::packages/ariakit-test/src/press.test.ts::press.Enter does not resubmit an image submitter after validation"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected [] to deeply equal [ { isPointerEvent: true, …(N) } ]",
+      "count": 1,
+      "examples": [
+        "root::packages/ariakit-test/src/press.test.ts::press.Enter submits with no pointer behind the default button click"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected [ …(N) ] to deeply equal [ { type: 'pointerdown', …(N) }, …(N) ]",
+      "count": 1,
+      "examples": [
+        "root::packages/ariakit-test/src/right-click.test.ts::rightClick dispatches a secondary click sequence"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected [] to deeply equal [ 'click true N pen N' ]",
+      "count": 1,
+      "examples": [
+        "root::packages/ariakit-test/src/select.test.ts::select carries only the pointer identity to the click event"
+      ]
+    },
+    {
+      "key": "failed -> passed | (own) TypeError: 'defineProperty' on proxy: trap returned falsish for property 'nodeType'",
+      "count": 1,
+      "examples": [
+        "root::packages/ariakit-utils/src/dom.test.ts::getDocument resolves an element whose document answers nodeType with an element"
+      ]
+    },
+    {
+      "key": "failed -> passed | (own) TypeError: 'defineProperty' on proxy: trap returned falsish for property 'activeElement'",
+      "count": 1,
+      "examples": [
+        "root::packages/ariakit-utils/src/dom.test.ts::getActiveElement ignores a document's named activeElement form"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected undefined to be N // Object.is equality",
+      "count": 1,
+      "examples": [
+        "root::packages/ariakit-utils/src/events.test.ts::fireClickEvent keeps the pointer members the caller passes"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected undefined to be +N // Object.is equality",
+      "count": 1,
+      "examples": [
+        "root::packages/ariakit-utils/src/events.test.ts::fireClickEvent keeps a zero pointerId the caller passes"
+      ]
+    },
+    {
+      "key": "passed -> failed | TypeError: Class extends value undefined is not a constructor or null",
+      "count": 1,
+      "examples": [
+        "root::packages/ariakit-utils/src/events.test.ts::fireClickEvent builds the event with the element's own window"
+      ]
+    },
+    {
+      "key": "passed -> failed | TypeError: Cannot read properties of null (reading '_history')",
+      "count": 1,
+      "examples": [
+        "root::packages/ariakit-utils/src/events.test.ts::fireClickEvent uses the element's window as the view and composes the click"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: The instanceof assertion needs a constructor but undefined was given.",
+      "count": 1,
+      "examples": [
+        "root::packages/ariakit-utils/src/events.test.ts::fireClickEvent falls back to MouseEvent where PointerEvent is missing"
+      ]
+    }
+  ],
+  "ariakit jsdom-26.1.0": [
+    {
+      "key": "passed -> failed | TypeError: CSS?.supports is not a function",
+      "count": 167,
+      "examples": [
+        "root::app/src/sandbox/combobox-popover-modal-input/test.ts::closes the modal popover with Escape from the input inside it",
+        "root::app/src/sandbox/combobox-popover-modal-input/test.ts::keeps the combobox select interactive while the rest is inert",
+        "root::app/src/sandbox/combobox-prevented-close/test.ts::Dialog a prevented close from Enter on an item keeps the search and the active item"
+      ]
+    },
+    {
+      "key": "passed -> failed | TestingLibraryElementError: Unable to find an accessible element with the role \"dialog\" and name `(accessibleName, element) => {",
+      "count": 11,
+      "examples": [
+        "root::app/src/sandbox/dialog-combobox-command-menu/test.ts::open dialog with enter and hide by pressing enter on esc button",
+        "root::app/src/sandbox/dialog-core-interactions/test.ts::opens from the disclosure with Enter",
+        "root::app/src/sandbox/dialog-core-interactions/test.ts::opens from the disclosure with Space"
+      ]
+    },
+    {
+      "key": "passed -> failed | ReferenceError: PointerEvent is not defined",
+      "count": 10,
+      "examples": [
+        "root::packages/ariakit-test/src/dispatch.jsdom.test.ts::dispatch.pointerDown initializes an event dispatched inside an iframe",
+        "root::packages/ariakit-test/src/dispatch.jsdom.test.ts::dispatch.click initializes an event dispatched inside an iframe",
+        "root::packages/ariakit-test/src/dispatch.test.ts::dispatch.click builds a PointerEvent for a form with a control named document"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: Unable to find an accessible element with the role \"menuitem\" and name `(accessibleName, element) => {",
+      "count": 8,
+      "examples": [
+        "root::app/src/sandbox/menu-initial-focus-changes/test.ts::gives the initial focus to the first item when a modal menu opens again after its first item was removed",
+        "root::app/src/sandbox/menu-initial-focus-changes/test.ts::gives the initial focus to the first item when a modal menu opens again after an item arrived at its top",
+        "root::app/src/sandbox/menu-initial-focus-changes/test.ts::gives the initial focus to the first item when a modal menu opens again after it closed from its menu button"
+      ]
+    },
+    {
+      "key": "failed -> passed | (own) TestingLibraryElementError: Unable to find an accessible element with the role \"button\" and name `(accessibleName, element) => {",
+      "count": 5,
+      "examples": [
+        "root::app/src/sandbox/ariakit-ui-disclosure/test.ts::keeps a trailing badge beside the label",
+        "root::app/src/sandbox/ariakit-ui-list/test.ts::keeps a disclosure badge beside the label without a description",
+        "root::app/src/sandbox/ariakit-ui-list/test.ts::keeps a disclosure step's checked state in its name"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected [ 'pointerdown - - N', …(N) ] to deeply equal [ 'pointerdown N N N', …(N) ]",
+      "count": 5,
+      "examples": [
+        "root::packages/ariakit-test/src/click.test.ts::click with the auxiliary button dispatches auxclick instead of click",
+        "root::packages/ariakit-test/src/click.test.ts::click and rightClick derive buttons from the button they press",
+        "root::packages/ariakit-test/src/click.test.ts::click with the primary button keeps dispatching click"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: Unable to find role=\"dialog\" and name `(accessibleName, element) => {",
+      "count": 4,
+      "examples": [
+        "root::app/src/sandbox/combobox-tabs/test.ts::open popover with components tab initially selected, but not active",
+        "root::app/src/sandbox/combobox-tabs-animated/test.ts::selected tab is restored only after the animation ends",
+        "root::app/src/sandbox/combobox-tabs-animated/test.ts::can re-open the dialog with arrow down while the animation is running"
+      ]
+    },
+    {
+      "key": "passed -> failed | TestingLibraryElementError: Unable to find an accessible element with the role \"option\" and name `(accessibleName, element) => {",
+      "count": 4,
+      "examples": [
+        "root::app/src/sandbox/combobox-tabs/test.ts::filter items and change tabs",
+        "root::app/src/sandbox/combobox-tabs/test.ts::clear input with mouse",
+        "root::app/src/sandbox/combobox-tabs-old/test.ts::filter items and change tabs"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected [ Array(N) ] to deeply equal [ Array(N) ]",
+      "count": 4,
+      "examples": [
+        "root::app/src/sandbox/command-keyboard-click/react.test.ts::Enter activation works in Vitest's non-VM jsdom environment",
+        "root::app/src/sandbox/command-keyboard-click/react.test.ts::Space activation works in Vitest's non-VM jsdom environment",
+        "root::app/src/sandbox/command-keyboard-click/test.ts::Enter dispatches a PointerEvent with no pointer behind it"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected [] to deeply equal [ …(N) ]",
+      "count": 3,
+      "examples": [
+        "root::packages/ariakit-test/src/click.test.ts::click carries only the pointer identity to the click event",
+        "root::packages/ariakit-test/src/click.test.ts::click with the auxiliary button carries the pointer identity to auxclick",
+        "root::packages/ariakit-test/src/click.test.ts::rightClick carries the pointer identity to contextmenu and auxclick"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected false to be true // Object.is equality",
+      "count": 3,
+      "examples": [
+        "root::packages/ariakit-test/src/shims.test.ts::restores a disabled radio group when a click listener prevents the selection",
+        "root::packages/ariakit-test/src/shims.test.ts::restores a disabled radio group linked by the form attribute when prevented",
+        "root::packages/ariakit-test/src/shims.test.ts::reverts only the activation's changes, preserving listener changes to other radios"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: Unable to find role=\"tab\" and name `(accessibleName, element) => {",
+      "count": 2,
+      "examples": [
+        "root::app/src/sandbox/combobox-tabs/test.ts::filter items until there are no results and change tabs",
+        "root::app/src/sandbox/combobox-tabs-old/test.ts::filter items until there are no results and change tabs"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: Unable to find an accessible element with the role \"dialog\" and name `(accessibleName, element) => {",
+      "count": 2,
+      "examples": [
+        "root::app/src/sandbox/combobox-tabs/test.ts::open the popover with arrow down after switching tabs",
+        "root::app/src/sandbox/combobox-tabs-old/test.ts::open the popover with arrow down after switching tabs"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: Unable to find an accessible element with the role \"button\" and name `(accessibleName, element) => {",
+      "count": 2,
+      "examples": [
+        "root::app/src/sandbox/menu-initial-focus-changes/test.ts::gives the initial focus to the first item that arrives in the \"Modal bookmarks\" menu",
+        "root::app/src/sandbox/menu-initial-focus-changes/test.ts::gives the initial focus to the first item that arrives in the \"Inline modal bookmarks\" menu"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected [] to deeply equal [ Array(N) ]",
+      "count": 2,
+      "examples": [
+        "root::packages/ariakit-test/src/click.test.ts::click forwards the pointer identity from a label to its control",
+        "root::packages/ariakit-test/src/press.test.ts::press activates a button with no pointer behind the click"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected undefined to be -N // Object.is equality",
+      "count": 2,
+      "examples": [
+        "root::packages/ariakit-utils/src/events.test.ts::fireClickEvent reports no pointer for members passed as undefined",
+        "root::packages/ariakit-utils/src/events.test.ts::fireClickEvent forwards the members of a live event passed as the init"
+      ]
+    },
+    {
+      "key": "passed -> failed | TestingLibraryElementError: Unable to find an accessible element with the role \"button\" and name `(accessibleName, element) => {",
+      "count": 1,
+      "examples": [
+        "root::app/src/sandbox/dialog-details-enhancement/test.ts::focus trap"
+      ]
+    },
+    {
+      "key": "failed -> passed | (own) TypeError: 'defineProperty' on proxy: trap returned falsish for property 'defaultView'",
+      "count": 1,
+      "examples": [
+        "root::packages/ariakit-test/src/__utils.test.ts::getOwnerWindow reports no window when a document answers its default view with an element"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected [] to deeply equal [ 'click true N pen', …(N) ]",
+      "count": 1,
+      "examples": [
+        "root::packages/ariakit-test/src/dispatch.test.ts::dispatch builds the click-family events as PointerEvent"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected [] to deeply equal [ { isPointerEvent: true, …(N) } ]",
+      "count": 1,
+      "examples": [
+        "root::packages/ariakit-test/src/press.test.ts::press.Enter submits with no pointer behind the default button click"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected [ …(N) ] to deeply equal [ { type: 'pointerdown', …(N) }, …(N) ]",
+      "count": 1,
+      "examples": [
+        "root::packages/ariakit-test/src/right-click.test.ts::rightClick dispatches a secondary click sequence"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected [] to deeply equal [ 'click true N pen N' ]",
+      "count": 1,
+      "examples": [
+        "root::packages/ariakit-test/src/select.test.ts::select carries only the pointer identity to the click event"
+      ]
+    },
+    {
+      "key": "failed -> passed | (own) TypeError: 'defineProperty' on proxy: trap returned falsish for property 'nodeType'",
+      "count": 1,
+      "examples": [
+        "root::packages/ariakit-utils/src/dom.test.ts::getDocument resolves an element whose document answers nodeType with an element"
+      ]
+    },
+    {
+      "key": "failed -> passed | (own) TypeError: 'defineProperty' on proxy: trap returned falsish for property 'activeElement'",
+      "count": 1,
+      "examples": [
+        "root::packages/ariakit-utils/src/dom.test.ts::getActiveElement ignores a document's named activeElement form"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected undefined to be N // Object.is equality",
+      "count": 1,
+      "examples": [
+        "root::packages/ariakit-utils/src/events.test.ts::fireClickEvent keeps the pointer members the caller passes"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected undefined to be +N // Object.is equality",
+      "count": 1,
+      "examples": [
+        "root::packages/ariakit-utils/src/events.test.ts::fireClickEvent keeps a zero pointerId the caller passes"
+      ]
+    },
+    {
+      "key": "passed -> failed | TypeError: Class extends value undefined is not a constructor or null",
+      "count": 1,
+      "examples": [
+        "root::packages/ariakit-utils/src/events.test.ts::fireClickEvent builds the event with the element's own window"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: The instanceof assertion needs a constructor but undefined was given.",
+      "count": 1,
+      "examples": [
+        "root::packages/ariakit-utils/src/events.test.ts::fireClickEvent falls back to MouseEvent where PointerEvent is missing"
+      ]
+    }
+  ],
+  "ark-ui jsdom-20.0.3": [
+    {
+      "key": "failed -> passed | (own) Error: expect(element).toHaveStyle()",
+      "count": 2,
+      "examples": [
+        "packages_react::packages/react/src/components/factory.test.tsx::Ark Factory should merge styles and classes",
+        "packages_react::packages/react/src/components/factory.test.tsx::Ark Factory should unwrap a react.lazy child from the RSC flight protocol"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: expect(element).toHaveStyle()",
+      "count": 2,
+      "examples": [
+        "packages_solid::packages/solid/src/components/factory.test.tsx::Ark Factory should merge styles",
+        "packages_svelte::packages/svelte/src/lib/components/factory/factory.test.ts::Ark Factory should merge styles and classes"
+      ]
+    }
+  ],
+  "ark-ui jsdom-30.1.2": [
+    {
+      "key": "passed -> failed | Error: expect(element).toHaveFocus()",
+      "count": 3,
+      "examples": [
+        "packages_react::packages/react/src/components/signature-pad/tests/signature-pad.test.tsx::Signature Pad / Field should focus on signature pad when label is clicked",
+        "packages_solid::packages/solid/src/components/signature-pad/tests/signature-pad.test.tsx::Signature Pad / Field should focus on signature pad when label is clicked",
+        "packages_vue::packages/vue/src/components/signature-pad/tests/signature-pad.test.ts::Signature Pad / Field should focus on input when label is clicked"
+      ]
+    }
+  ],
+  "handsontable jsdom-26.1.0": [
+    {
+      "key": "passed -> missing | ",
+      "count": 7717,
+      "examples": [
+        "handsontable::handsontable/src/translations/__tests__/indexMapper.unit.ts::IndexMapper should fill mappers with initial values at start",
+        "handsontable::handsontable/src/translations/__tests__/indexMapper.unit.ts::IndexMapper should fill mappers with proper values by calling `initToLength` method",
+        "handsontable::handsontable/src/translations/__tests__/indexMapper.unit.ts::IndexMapper should reset values in registered maps properly after calling `initToLength` method"
+      ]
+    }
+  ],
+  "handsontable jsdom-30.1.2": [
+    {
+      "key": "passed -> missing | ",
+      "count": 8031,
+      "examples": [
+        "handsontable::handsontable/src/translations/__tests__/indexMapper.unit.ts::IndexMapper should fill mappers with initial values at start",
+        "handsontable::handsontable/src/translations/__tests__/indexMapper.unit.ts::IndexMapper should fill mappers with proper values by calling `initToLength` method",
+        "handsontable::handsontable/src/translations/__tests__/indexMapper.unit.ts::IndexMapper should reset values in registered maps properly after calling `initToLength` method"
+      ]
+    }
+  ],
+  "material-ui jsdom-20.0.3": [
+    {
+      "key": "passed -> failed | AssertionError: expected SVGSVGElement{ …(N), [Symbol(impl)]: SVGSVGElementImpl{ …(N), …(N) } } to have computed style { fill: 'rgb(N, N, N)' }",
+      "count": 2,
+      "examples": [
+        "packages_mui-material::packages/mui-material/src/SvgIcon/SvgIcon.test.js::<SvgIcon /> should have `fill=\"currentColor\"`",
+        "packages_mui-material::packages/mui-material/src/SvgIcon/SvgIcon.test.js::<SvgIcon /> should not add `fill` if svg is a direct child"
+      ]
+    },
+    {
+      "key": "passed -> failed | TestingLibraryElementError: Unable to find an accessible element with the role \"button\" and name \"Clear\"",
+      "count": 1,
+      "examples": [
+        "packages_mui-material::packages/mui-material/src/Autocomplete/Autocomplete.test.js::<Autocomplete /> prop: getOptionValue async options in freeSolo mode keeps the input empty after clicking Clear before options arrive"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected div.MuiSelect-select.MuiSelect-outlined.MuiInputBase-input.MuiOutlinedInput-input.emotion-client-render-jbzNk-MuiNativeSelect-root-MuiSelect-select-MuiInputBase-input-MuiOutli",
+      "count": 1,
+      "examples": [
+        "packages_mui-material::packages/mui-material/src/Select/Select.test.js::<Select /> pointer interactions does not select an option when the opening mouseup lands on it before the drag delay"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected N to equal +N",
+      "count": 1,
+      "examples": [
+        "packages_mui-material::packages/mui-material/src/Select/Select.test.js::<Select /> pointer interactions does not close when the opening mouseup lands on the selected option before the drag delay"
+      ]
+    }
+  ],
+  "material-ui jsdom-26.1.0": [
+    {
+      "key": "passed -> failed | AssertionError: expected SVGSVGElement{ …(N), [Symbol(impl)]: SVGSVGElementImpl{ …(N), …(N) } } to have computed style { fill: 'rgb(N, N, N)' }",
+      "count": 2,
+      "examples": [
+        "packages_mui-material::packages/mui-material/src/SvgIcon/SvgIcon.test.js::<SvgIcon /> should have `fill=\"currentColor\"`",
+        "packages_mui-material::packages/mui-material/src/SvgIcon/SvgIcon.test.js::<SvgIcon /> should not add `fill` if svg is a direct child"
+      ]
+    },
+    {
+      "key": "passed -> failed | TestingLibraryElementError: Unable to find an accessible element with the role \"button\" and name \"Clear\"",
+      "count": 1,
+      "examples": [
+        "packages_mui-material::packages/mui-material/src/Autocomplete/Autocomplete.test.js::<Autocomplete /> prop: getOptionValue async options in freeSolo mode keeps the input empty after clicking Clear before options arrive"
+      ]
+    }
+  ],
+  "radix-primitives jsdom-20.0.3": [
+    {
+      "key": "passed -> failed | AssertionError: expected \"vi.fn()\" to not be called at all, but actually been called N times",
+      "count": 5,
+      "examples": [
+        "root::packages/react/dismissable-layer/src/dismissable-layer.test.tsx::DismissableLayer defers touch pointer down outside dismissal until click",
+        "root::packages/react/dismissable-layer/src/dismissable-layer.test.tsx::DismissableLayer cancels pending touch outside dismissal when pointer down moves back inside",
+        "root::packages/react/dismissable-layer/src/dismissable-layer.test.tsx::DismissableLayer does not dismiss when a later outside interaction event is stopped and pointer down outside is deferred"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: Unable to find an element with the text: Content One. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make yo",
+      "count": 4,
+      "examples": [
+        "root::packages/react/navigation-menu/src/navigation-menu.test.tsx::NavigationMenu activationMode \"automatic\" activationMode opens the item on pointer enter",
+        "root::packages/react/navigation-menu/src/navigation-menu.test.tsx::NavigationMenuSub activationMode \"automatic\" activationMode opens the item on pointer enter",
+        "root::packages/react/navigation-menu/src/navigation-menu.test.tsx::NavigationMenuSub activationMode inheritance inherits \"automatic\" from the parent NavigationMenu"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected 'translate(N, -N%)' to not deeply equal 'translate(N, -N%)'",
+      "count": 1,
+      "examples": [
+        "root::packages/react/context-menu/src/context-menu.test.tsx::rendering and opening re-anchors the content when re-triggered in a new location while open"
+      ]
+    },
+    {
+      "key": "passed -> failed | ReferenceError: PointerEvent is not defined",
+      "count": 1,
+      "examples": [
+        "root::packages/react/dismissable-layer/src/dismissable-layer.test.tsx::DismissableLayer treats a shadow tree inside the layer as inside"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected \"vi.fn()\" to be called N times, but got N times",
+      "count": 1,
+      "examples": [
+        "root::packages/react/slider/src/slider.test.tsx::Slider when dragging a range thumb to overlap another calls `onValueCommit` with the narrowed value"
+      ]
+    }
+  ],
+  "radix-primitives jsdom-26.1.0": [
+    {
+      "key": "passed -> failed | AssertionError: expected \"vi.fn()\" to not be called at all, but actually been called N times",
+      "count": 5,
+      "examples": [
+        "root::packages/react/dismissable-layer/src/dismissable-layer.test.tsx::DismissableLayer defers touch pointer down outside dismissal until click",
+        "root::packages/react/dismissable-layer/src/dismissable-layer.test.tsx::DismissableLayer cancels pending touch outside dismissal when pointer down moves back inside",
+        "root::packages/react/dismissable-layer/src/dismissable-layer.test.tsx::DismissableLayer does not dismiss when a later outside interaction event is stopped and pointer down outside is deferred"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: Unable to find an element with the text: Content One. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make yo",
+      "count": 4,
+      "examples": [
+        "root::packages/react/navigation-menu/src/navigation-menu.test.tsx::NavigationMenu activationMode \"automatic\" activationMode opens the item on pointer enter",
+        "root::packages/react/navigation-menu/src/navigation-menu.test.tsx::NavigationMenuSub activationMode \"automatic\" activationMode opens the item on pointer enter",
+        "root::packages/react/navigation-menu/src/navigation-menu.test.tsx::NavigationMenuSub activationMode inheritance inherits \"automatic\" from the parent NavigationMenu"
+      ]
+    },
+    {
+      "key": "passed -> failed | ReferenceError: PointerEvent is not defined",
+      "count": 1,
+      "examples": [
+        "root::packages/react/dismissable-layer/src/dismissable-layer.test.tsx::DismissableLayer treats a shadow tree inside the layer as inside"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected \"vi.fn()\" to be called N times, but got N times",
+      "count": 1,
+      "examples": [
+        "root::packages/react/slider/src/slider.test.tsx::Slider when dragging a range thumb to overlap another calls `onValueCommit` with the narrowed value"
+      ]
+    }
+  ],
+  "react-spectrum jsdom-20.0.3": [
+    {
+      "key": "passed -> failed | TypeError: AbortSignal.timeout is not a function",
+      "count": 6,
+      "examples": [
+        "root::packages/react-aria/test/utils/runAfterKeyboard.test.ts::runAfterKeyboard runAfterKeyboard flushes on resize end when the keyboard is opening",
+        "root::packages/react-aria/test/utils/runAfterKeyboard.test.ts::runAfterKeyboard runAfterKeyboard guarantees a flush when the keyboard did not open in time",
+        "root::packages/react-aria/test/utils/runAfterKeyboard.test.ts::runAfterKeyboard runAfterKeyboardTransition flushes on resize end when the keyboard is closing"
+      ]
+    },
+    {
+      "key": "passed -> failed | AggregateError:",
+      "count": 2,
+      "examples": [
+        "root::packages/react-aria-components/test/Menu.test.tsx::Menu should support a context menu trigger",
+        "root::packages/react-aria-components/test/Menu.test.tsx::Menu should close a context menu when right clicking outside"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: expect(jest.fn()).not.toHaveBeenCalled()",
+      "count": 2,
+      "examples": [
+        "root::packages/@adobe/react-spectrum/test/overlays/Popover.test.js::Popover v3 does not close when focus is lost with no replacement, such as switching tabs",
+        "root::packages/@adobe/react-spectrum/test/overlays/Tray.test.js::Tray does not close when focus is lost with no replacement, such as switching tabs"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: expect(received).not.toBeNull()",
+      "count": 1,
+      "examples": [
+        "root::packages/@adobe/react-spectrum/test/picker/Picker.test.js::Picker closing does not close when focus is lost with no replacement, such as switching tabs"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: expect(received).toBe(expected) // Object.is equality",
+      "count": 1,
+      "examples": [
+        "root::packages/react-aria-components/test/Sheet.test.js::Sheet stacking tracks the stack index and descendants of nested sheets"
+      ]
+    }
+  ],
+  "react-spectrum jsdom-30.1.2": [
+    {
+      "key": "passed -> missing | ",
+      "count": 122,
+      "examples": [
+        "root::packages/@adobe/react-spectrum/test/color/ColorArea.test.tsx::ColorArea Controlled attributes sets input props",
+        "root::packages/@adobe/react-spectrum/test/color/ColorArea.test.tsx::ColorArea Controlled attributes disabled",
+        "root::packages/@adobe/react-spectrum/test/color/ColorArea.test.tsx::ColorArea Controlled attributes labelling should support a custom aria-label"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: expect(received).toEqual(expected) // deep equality",
+      "count": 55,
+      "examples": [
+        "root::packages/react-aria/test/overlays/calculatePosition.test.ts::calculatePosition placement = left no viewport offset Should calculate the correct position",
+        "root::packages/react-aria/test/overlays/calculatePosition.test.ts::calculatePosition placement = left no viewport offset Should calculate the correct position when provider does not start at top of screen",
+        "root::packages/react-aria/test/overlays/calculatePosition.test.ts::calculatePosition placement = left viewport offset before Should calculate the correct position"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: expect(jest.fn()).toHaveBeenCalledTimes(expected)",
+      "count": 25,
+      "examples": [
+        "root::packages/@adobe/react-spectrum/test/numberfield/NumberField.test.js::NumberField advances automatically to the limit and not beyond",
+        "root::packages/@adobe/react-spectrum/test/numberfield/NumberField.test.js::NumberField advances increment starting from undefined",
+        "root::packages/@adobe/react-spectrum/test/numberfield/NumberField.test.js::NumberField advances increment starting from undefined where min is defined"
+      ]
+    },
+    {
+      "key": "passed -> failed | TestingLibraryElementError: Unable to find an accessible element with the role \"tooltip\"",
+      "count": 11,
+      "examples": [
+        "root::packages/@adobe/react-spectrum/test/actiongroup/ActionGroup.test.js::ActionGroup buttonLabelBehavior should show the text in a tooltip with buttonLabelBehavior=\"hide\"",
+        "root::packages/@adobe/react-spectrum/test/actiongroup/ActionGroup.test.js::ActionGroup buttonLabelBehavior should hide the text if it does not fit with buttonLabelBehavior=\"collapse\"",
+        "root::packages/@adobe/react-spectrum/test/tooltip/TooltipTrigger.test.js::TooltipTrigger delay once opened, it can be closed and opened instantly for a period of time"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: expect(received).toBe(expected) // Object.is equality",
+      "count": 10,
+      "examples": [
+        "root::packages/react-aria/test/interactions/usePress.test.js::usePress disable text-selection when pressed should not add user-select: none to the page when press start (non-iOS)",
+        "root::packages/react-aria/test/interactions/usePress.test.js::usePress disable text-selection when pressed should remove user-select: none from the page when press end (iOS)",
+        "root::packages/@adobe/react-spectrum/test/picker/Picker.test.js::Picker selection focuses items on hover"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: expect(jest.fn()).toHaveBeenCalledWith(...expected)",
+      "count": 9,
+      "examples": [
+        "root::packages/@adobe/react-spectrum/test/numberfield/NumberField.test.js::NumberField advances automatically if the arrows are held down",
+        "root::packages/@adobe/react-spectrum/test/tooltip/TooltipTrigger.test.js::TooltipTrigger delay opens for hover",
+        "root::packages/@adobe/react-spectrum/test/tooltip/TooltipTrigger.test.js::TooltipTrigger custom delay opens for hover"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: expect(received).toStrictEqual(expected) // deep equality",
+      "count": 5,
+      "examples": [
+        "root::packages/react-aria/test/interactions/useMove.test.js::useMove mouse events responds to mouse events",
+        "root::packages/react-aria/test/interactions/useMove.test.js::useMove touch events responds to touch events",
+        "root::packages/react-aria/test/interactions/useMove.test.js::useMove touch events ends with touchcancel"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: expect(received).not.toBeNull()",
+      "count": 3,
+      "examples": [
+        "root::packages/react-aria/test/tooltip/useTooltip.test.js::useTooltip opens tooltip on hover after delay",
+        "root::packages/react-aria/test/tooltip/useTooltip.test.js::useTooltip opens tooltip immediately on hover with `delay: 0`",
+        "root::packages/react-aria/test/tooltip/useTooltip.test.js::useTooltip hides tooltip when hover leaves the trigger"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: expect(received).toThrow()",
+      "count": 2,
+      "examples": [
+        "root::packages/@adobe/react-spectrum/test/combobox/ComboBox.test.js::ComboBox mobile combobox combobox value resets on tray close (clicking outside tray)",
+        "root::packages/@adobe/react-spectrum/test/tooltip/TooltipTrigger.test.js::TooltipTrigger concurrently open tooltips does not allow more than one tooltip open at a time"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: expect(element).not.toBeInTheDocument()",
+      "count": 2,
+      "examples": [
+        "root::packages/react-aria-components/test/Menu.test.tsx::rac-staticAriaMenuTrigger closes the menu on click outside",
+        "root::packages/react-aria-components/test/Menu.test.tsx::rac-dynamicAriaMenuTrigger closes the menu on click outside"
+      ]
+    },
+    {
+      "key": "passed -> failed | TestingLibraryElementError: Unable to find an element with the text: Unhelpful information.. This could be because the text is broken up by multiple elements. In this case, you can provide a function ",
+      "count": 2,
+      "examples": [
+        "root::packages/@adobe/react-spectrum/test/tooltip/TooltipTrigger.test.js::TooltipTrigger multiple tooltips will not show a tooltip if the trigger is left during warmup, nor will warmup complete",
+        "root::packages/@adobe/react-spectrum/test/tooltip/TooltipTrigger.test.js::TooltipTrigger concurrently open tooltips two can be open at once if in controlled open state"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: expect(jest.fn()).toHaveBeenLastCalledWith(...expected)",
+      "count": 2,
+      "examples": [
+        "root::packages/react-aria/test/slider/useSlider.test.js::useSlider interactions on track should allow you to set value of closest thumb by dragging on track",
+        "root::packages/react-aria/test/slider/useSlider.test.js::useSlider interactions on track should allow you to set value of closest thumb by dragging on track (vertical)"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: expect(element).toHaveAttribute(\"data-dragging\", \"true\") // element.getAttribute(\"data-dragging\") === \"true\"",
+      "count": 2,
+      "examples": [
+        "root::packages/react-aria-components/test/ColorArea.test.js::ColorArea should support dragging state",
+        "root::packages/react-aria-components/test/ColorWheel.test.js::ColorWheel should support dragging state"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: expect(received).toBeFalsy()",
+      "count": 1,
+      "examples": [
+        "root::packages/@adobe/react-spectrum/test/combobox/ComboBox.test.js::ComboBox opening button click opens for touch"
+      ]
+    },
+    {
+      "key": "passed -> failed | TestingLibraryElementError: Unable to find an accessible element with the role \"listbox\"",
+      "count": 1,
+      "examples": [
+        "root::packages/@adobe/react-spectrum/test/picker/Picker.test.js::Picker opening can be opened on touch up"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: expect(element).toBeDisabled()",
+      "count": 1,
+      "examples": [
+        "root::packages/react-aria-components/test/NumberField.test.js::NumberField auto spinning stops spinning if the associated button is disabled"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: Received NaN for the `%s` attribute. If this is expected, cast the value to a string.",
+      "count": 1,
+      "examples": [
+        "root::packages/react-aria-components/test/Slider.test.js::Slider should support dragging state"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: expect(received).toBeVisible()",
+      "count": 1,
+      "examples": [
+        "root::packages/react-stately/test/tooltip/useTooltipTriggerState.test.js::useTooltipTriggerState instant warmup animates the first, swaps subsequent instantly, and animates out the last"
+      ]
+    },
+    {
+      "key": "passed -> failed | TestingLibraryElementError: Unable to find an element by: [data-testid=\"preview\"]",
+      "count": 1,
+      "examples": [
+        "root::packages/react-aria-components/test/PreviewTrigger.test.js::PreviewTrigger safe area opens on hover, stays open across the safe area, and closes when the pointer leaves"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: expect(element).toHaveStyle()",
+      "count": 1,
+      "examples": [
+        "root::packages/react-aria/test/overlays/useOverlayPosition.test.tsx::useOverlayPosition should position the overlay relative to the trigger at top"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: Unexpected hue",
+      "count": 1,
+      "examples": [
+        "root::packages/react-aria-components/test/ColorSlider.test.js::ColorSlider should support dragging state"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: Unable to fire a \"mouseenter\" event - please provide a DOM element.",
+      "count": 1,
+      "examples": [
+        "root::packages/react-aria/test/tooltip/useTooltip.test.js::useTooltip hides tooltip when hover leaves"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: expect(jest.fn()).toHaveBeenCalled()",
+      "count": 1,
+      "examples": [
+        "root::packages/react-aria/test/overlays/useOverlay.shadow.test.js::useOverlay with shadow dom Mouse Events should close the overlay when clicking outside if shouldCloseOnInteractOutside returns true"
+      ]
+    }
+  ],
+  "svelte cssstyle-4.6.0": [
+    {
+      "key": "passed -> failed | AssertionError: expected 'canvastext' to equal ''",
+      "count": 8,
+      "examples": [
+        "root::packages/svelte/tests/runtime-legacy/test.ts::css (dom)",
+        "root::packages/svelte/tests/runtime-legacy/test.ts::css (hydrate)",
+        "root::packages/svelte/tests/runtime-legacy/test.ts::css-space-in-attribute (dom)"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected 'url(\"https://example.com/foo.jpg\")' to equal 'url(https://example.com/foo.jpg)'",
+      "count": 2,
+      "examples": [
+        "root::packages/svelte/tests/runtime-legacy/test.ts::attribute-url (dom)",
+        "root::packages/svelte/tests/runtime-legacy/test.ts::attribute-url (hydrate)"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected '<div style=\"background-image: url(&qu…' to deeply equal '<div style=\"background-image: url(htt…'",
+      "count": 1,
+      "examples": [
+        "root::packages/svelte/tests/runtime-legacy/test.ts::inline-style-directive-string-variable-kebab-case (dom)"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected 'url(\"https://raw.githubusercontent.co…' to equal 'url(https://raw.githubusercontent.com…'",
+      "count": 1,
+      "examples": [
+        "root::packages/svelte/tests/runtime-legacy/test.ts::inline-style-directive-string-variable-kebab-case (hydrate)"
+      ]
+    }
+  ],
+  "svelte jsdom-20.0.3": [
+    {
+      "key": "passed -> failed | AssertionError: expected 'red' to equal 'rgb(N, N, N)'",
+      "count": 22,
+      "examples": [
+        "root::packages/svelte/tests/runtime-legacy/test.ts::css-comments (dom)",
+        "root::packages/svelte/tests/runtime-legacy/test.ts::css-comments (hydrate)",
+        "root::packages/svelte/tests/runtime-legacy/test.ts::inline-style (dom)"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected 'green' to equal 'rgb(N, N, N)'",
+      "count": 6,
+      "examples": [
+        "root::packages/svelte/tests/runtime-legacy/test.ts::inline-style-directive-spread-and-attr (dom)",
+        "root::packages/svelte/tests/runtime-legacy/test.ts::inline-style-directive-spread-and-attr (hydrate)",
+        "root::packages/svelte/tests/runtime-legacy/test.ts::inline-style-directive-string-variable (dom)"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected 'blue' to equal 'rgb(N, N, N)'",
+      "count": 4,
+      "examples": [
+        "root::packages/svelte/tests/runtime-legacy/test.ts::inline-style-directive-spread (dom)",
+        "root::packages/svelte/tests/runtime-legacy/test.ts::inline-style-directive-spread (hydrate)",
+        "root::packages/svelte/tests/runtime-legacy/test.ts::inline-style-directive-spread-dynamic (dom)"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected '' to equal 'rgba(N, N, N, N)'",
+      "count": 2,
+      "examples": [
+        "root::packages/svelte/tests/runtime-legacy/test.ts::css-space-in-attribute (dom)",
+        "root::packages/svelte/tests/runtime-legacy/test.ts::css-space-in-attribute (hydrate)"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected null to equal ''",
+      "count": 2,
+      "examples": [
+        "root::packages/svelte/tests/runtime-legacy/test.ts::transition-css-and-js (dom)",
+        "root::packages/svelte/tests/runtime-legacy/test.ts::transition-css-and-js (hydrate)"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected [ true, true ] to deeply equal [ true, false ]",
+      "count": 1,
+      "examples": [
+        "root::packages/svelte/tests/runtime-runes/test.ts::form-default-value-select (hydrate)"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected [ 'MAIN', 'MAIN' ] to deeply equal [ 'MAIN' ]",
+      "count": 1,
+      "examples": [
+        "root::packages/svelte/tests/runtime-runes/test.ts::style-directive-mutations (hydrate)"
+      ]
+    }
+  ],
+  "svelte jsdom-26.1.0": [
+    {
+      "key": "passed -> failed | AssertionError: expected 'canvastext' to equal ''",
+      "count": 8,
+      "examples": [
+        "root::packages/svelte/tests/runtime-legacy/test.ts::css (dom)",
+        "root::packages/svelte/tests/runtime-legacy/test.ts::css (hydrate)",
+        "root::packages/svelte/tests/runtime-legacy/test.ts::css-space-in-attribute (dom)"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected 'url(\"https://example.com/foo.jpg\")' to equal 'url(https://example.com/foo.jpg)'",
+      "count": 2,
+      "examples": [
+        "root::packages/svelte/tests/runtime-legacy/test.ts::attribute-url (dom)",
+        "root::packages/svelte/tests/runtime-legacy/test.ts::attribute-url (hydrate)"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected '<div style=\"background-image: url(&qu…' to deeply equal '<div style=\"background-image: url(htt…'",
+      "count": 1,
+      "examples": [
+        "root::packages/svelte/tests/runtime-legacy/test.ts::inline-style-directive-string-variable-kebab-case (dom)"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected 'url(\"https://raw.githubusercontent.co…' to equal 'url(https://raw.githubusercontent.com…'",
+      "count": 1,
+      "examples": [
+        "root::packages/svelte/tests/runtime-legacy/test.ts::inline-style-directive-string-variable-kebab-case (hydrate)"
+      ]
+    }
+  ],
+  "svelte jsdom-30.1.2": [
+    {
+      "key": "passed -> failed | AssertionError: expected 'rgb(N, N, N)' to equal ''",
+      "count": 8,
+      "examples": [
+        "root::packages/svelte/tests/runtime-legacy/test.ts::css (dom)",
+        "root::packages/svelte/tests/runtime-legacy/test.ts::css (hydrate)",
+        "root::packages/svelte/tests/runtime-legacy/test.ts::css-space-in-attribute (dom)"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected '<hN>Outside</hN>\\n<button style=\"opac…' to deeply equal '<hN>Outside</hN>\\n<button style=\"opac…'",
+      "count": 4,
+      "examples": [
+        "root::packages/svelte/tests/runtime-runes/test.ts::dynamic-component-transition (dom)",
+        "root::packages/svelte/tests/runtime-runes/test.ts::dynamic-component-transition (hydrate)",
+        "root::packages/svelte/tests/runtime-runes/test.ts::dynamic-if-component-transition (dom)"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected 'url(\"https://example.com/foo.jpg\")' to equal 'url(https://example.com/foo.jpg)'",
+      "count": 2,
+      "examples": [
+        "root::packages/svelte/tests/runtime-legacy/test.ts::attribute-url (dom)",
+        "root::packages/svelte/tests/runtime-legacy/test.ts::attribute-url (hydrate)"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected '<p>foo</p>\\n<p class=\"red svelte-xyzN…' to deeply equal '<p>foo</p>\\n<p class=\"red svelte-xyzN…'",
+      "count": 2,
+      "examples": [
+        "root::packages/svelte/tests/runtime-legacy/test.ts::class-shortcut-with-transition (dom)",
+        "root::packages/svelte/tests/runtime-legacy/test.ts::class-shortcut-with-transition (hydrate)"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected '<div style=\"background-image: none; b…' to deeply equal '<div style=\"\"></div>'",
+      "count": 2,
+      "examples": [
+        "root::packages/svelte/tests/runtime-legacy/test.ts::inline-style-become-undefined (dom)",
+        "root::packages/svelte/tests/runtime-legacy/test.ts::inline-style-become-undefined (hydrate)"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected 'Npx' to equal 'Nvh'",
+      "count": 2,
+      "examples": [
+        "root::packages/svelte/tests/runtime-legacy/test.ts::inline-style-directive-multiple (dom)",
+        "root::packages/svelte/tests/runtime-legacy/test.ts::inline-style-directive-multiple (hydrate)"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected 'Npx solid rgb(N, N, N)' to equal 'Npx solid pink'",
+      "count": 2,
+      "examples": [
+        "root::packages/svelte/tests/runtime-legacy/test.ts::inline-style-directive-string-variable (dom)",
+        "root::packages/svelte/tests/runtime-legacy/test.ts::inline-style-directive-string-variable (hydrate)"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected '<button>hide</button>\\n<div style=\"op…' to deeply equal '<button>hide</button>\\n<div style=\"op…'",
+      "count": 2,
+      "examples": [
+        "root::packages/svelte/tests/runtime-runes/test.ts::if-transition-inert (dom)",
+        "root::packages/svelte/tests/runtime-runes/test.ts::if-transition-inert (hydrate)"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected [] to deeply equal [ true ]",
+      "count": 2,
+      "examples": [
+        "root::packages/svelte/tests/runtime-runes/test.ts::muted-without-bind-works (dom)",
+        "root::packages/svelte/tests/runtime-runes/test.ts::muted-without-bind-works (hydrate)"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected '<div style=\"background-image: url(&qu…' to deeply equal '<div style=\"background-image: url(htt…'",
+      "count": 1,
+      "examples": [
+        "root::packages/svelte/tests/runtime-legacy/test.ts::inline-style-directive-string-variable-kebab-case (dom)"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected 'url(\"https://raw.githubusercontent.co…' to equal 'url(https://raw.githubusercontent.com…'",
+      "count": 1,
+      "examples": [
+        "root::packages/svelte/tests/runtime-legacy/test.ts::inline-style-directive-string-variable-kebab-case (hydrate)"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected [] to deeply equal [ 'init' ]",
+      "count": 1,
+      "examples": [
+        "root::packages/svelte/tests/runtime-runes/test.ts::nested-script-tag (dom)"
+      ]
+    }
+  ],
+  "vuetify jsdom-20.0.3": [
+    {
+      "key": "passed -> failed | Error: Unexpected console.warn message: [Vue warn]: Failed to resolve directive: ripple",
+      "count": 8,
+      "examples": [
+        "packages_vuetify::packages/vuetify/src/components/VCheckbox/__tests__/VCheckbox.spec.tsx::VCheckbox hide-details behavior should not have aria-describedby when hide-details is true",
+        "packages_vuetify::packages/vuetify/src/components/VCheckbox/__tests__/VCheckbox.spec.tsx::VCheckbox hide-details behavior should have aria-describedby when hide-details is false or undefined",
+        "packages_vuetify::packages/vuetify/src/components/VCheckbox/__tests__/VCheckbox.spec.tsx::VCheckbox hide-details behavior should have aria-describedby when hide-details is \"auto\" and has messages"
+      ]
+    },
+    {
+      "key": "passed -> failed | TypeError: __vite_ssr_import_N__.screen.findAllByCSS is not a function",
+      "count": 2,
+      "examples": [
+        "packages_vuetify::packages/vuetify/src/components/VDatePicker/__tests__/VDatePicker.date.spec.ts::week numbers with time zone should calculate weeks correctly near ST/DST transition",
+        "packages_vuetify::packages/vuetify/src/components/VDatePicker/__tests__/VDatePicker.date.spec.ts::week numbers with time zone should calculate weeks correctly near DST/ST transition"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: Unexpected console.warn message: [Vue warn]: Failed to resolve directive: intersect",
+      "count": 2,
+      "examples": [
+        "packages_vuetify::packages/vuetify/src/components/VTextarea/__tests__/VTextarea.spec.tsx::VTextarea has affixed icons",
+        "packages_vuetify::packages/vuetify/src/components/VTextarea/__tests__/VTextarea.spec.tsx::VTextarea has affixed icons with actions"
+      ]
+    },
+    {
+      "key": "passed -> failed | TypeError: __vite_ssr_import_N__.screen.getByCSS is not a function",
+      "count": 1,
+      "examples": [
+        "packages_vuetify::packages/vuetify/src/components/VDefaultsProvider/__tests__/VDefaultsProvider.spec.tsx::VDefaultsProvider should apply new defaults"
+      ]
+    },
+    {
+      "key": "passed -> failed | TypeError: __vite_ssr_import_N__.screen.queryAllByCSS is not a function",
+      "count": 1,
+      "examples": [
+        "packages_vuetify::packages/vuetify/src/components/VDatePicker/__tests__/VDatePicker.a11y.spec.tsx::VDatePicker accessibility should have aria-current=\"date\" on today's date"
+      ]
+    },
+    {
+      "key": "passed -> failed | TypeError: __vite_ssr_import_N__.screen.getAllByCSS is not a function",
+      "count": 1,
+      "examples": [
+        "packages_vuetify::packages/vuetify/src/components/VDatePicker/__tests__/VDatePicker.a11y.spec.tsx::VDatePicker accessibility should have aria-labels on date buttons"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected undefined to be truthy",
+      "count": 1,
+      "examples": [
+        "packages_vuetify::packages/vuetify/src/components/VDatePicker/__tests__/VDatePicker.a11y.spec.tsx::VDatePicker accessibility should use full month name for aria-labels in month selection"
+      ]
+    }
+  ],
+  "vuetify jsdom-26.1.0": [
+    {
+      "key": "passed -> failed | Error: Unexpected console.warn message: [Vue warn]: Failed to resolve directive: ripple",
+      "count": 8,
+      "examples": [
+        "packages_vuetify::packages/vuetify/src/components/VCheckbox/__tests__/VCheckbox.spec.tsx::VCheckbox hide-details behavior should not have aria-describedby when hide-details is true",
+        "packages_vuetify::packages/vuetify/src/components/VCheckbox/__tests__/VCheckbox.spec.tsx::VCheckbox hide-details behavior should have aria-describedby when hide-details is false or undefined",
+        "packages_vuetify::packages/vuetify/src/components/VCheckbox/__tests__/VCheckbox.spec.tsx::VCheckbox hide-details behavior should have aria-describedby when hide-details is \"auto\" and has messages"
+      ]
+    },
+    {
+      "key": "passed -> failed | TypeError: __vite_ssr_import_N__.screen.findAllByCSS is not a function",
+      "count": 2,
+      "examples": [
+        "packages_vuetify::packages/vuetify/src/components/VDatePicker/__tests__/VDatePicker.date.spec.ts::week numbers with time zone should calculate weeks correctly near ST/DST transition",
+        "packages_vuetify::packages/vuetify/src/components/VDatePicker/__tests__/VDatePicker.date.spec.ts::week numbers with time zone should calculate weeks correctly near DST/ST transition"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: Unexpected console.warn message: [Vue warn]: Failed to resolve directive: intersect",
+      "count": 2,
+      "examples": [
+        "packages_vuetify::packages/vuetify/src/components/VTextarea/__tests__/VTextarea.spec.tsx::VTextarea has affixed icons",
+        "packages_vuetify::packages/vuetify/src/components/VTextarea/__tests__/VTextarea.spec.tsx::VTextarea has affixed icons with actions"
+      ]
+    },
+    {
+      "key": "passed -> failed | TypeError: __vite_ssr_import_N__.screen.getByCSS is not a function",
+      "count": 1,
+      "examples": [
+        "packages_vuetify::packages/vuetify/src/components/VDefaultsProvider/__tests__/VDefaultsProvider.spec.tsx::VDefaultsProvider should apply new defaults"
+      ]
+    },
+    {
+      "key": "passed -> failed | TypeError: __vite_ssr_import_N__.screen.queryAllByCSS is not a function",
+      "count": 1,
+      "examples": [
+        "packages_vuetify::packages/vuetify/src/components/VDatePicker/__tests__/VDatePicker.a11y.spec.tsx::VDatePicker accessibility should have aria-current=\"date\" on today's date"
+      ]
+    },
+    {
+      "key": "passed -> failed | TypeError: __vite_ssr_import_N__.screen.getAllByCSS is not a function",
+      "count": 1,
+      "examples": [
+        "packages_vuetify::packages/vuetify/src/components/VDatePicker/__tests__/VDatePicker.a11y.spec.tsx::VDatePicker accessibility should have aria-labels on date buttons"
+      ]
+    }
+  ],
+  "vuetify jsdom-30.1.2": [
+    {
+      "key": "passed -> failed | Error: Unexpected console.warn message: [Vue warn]: Failed to resolve directive: ripple",
+      "count": 8,
+      "examples": [
+        "packages_vuetify::packages/vuetify/src/components/VCheckbox/__tests__/VCheckbox.spec.tsx::VCheckbox hide-details behavior should not have aria-describedby when hide-details is true",
+        "packages_vuetify::packages/vuetify/src/components/VCheckbox/__tests__/VCheckbox.spec.tsx::VCheckbox hide-details behavior should have aria-describedby when hide-details is false or undefined",
+        "packages_vuetify::packages/vuetify/src/components/VCheckbox/__tests__/VCheckbox.spec.tsx::VCheckbox hide-details behavior should have aria-describedby when hide-details is \"auto\" and has messages"
+      ]
+    },
+    {
+      "key": "passed -> failed | TypeError: __vite_ssr_import_N__.screen.findAllByCSS is not a function",
+      "count": 2,
+      "examples": [
+        "packages_vuetify::packages/vuetify/src/components/VDatePicker/__tests__/VDatePicker.date.spec.ts::week numbers with time zone should calculate weeks correctly near ST/DST transition",
+        "packages_vuetify::packages/vuetify/src/components/VDatePicker/__tests__/VDatePicker.date.spec.ts::week numbers with time zone should calculate weeks correctly near DST/ST transition"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: Unexpected console.warn message: [Vue warn]: Failed to resolve directive: intersect",
+      "count": 2,
+      "examples": [
+        "packages_vuetify::packages/vuetify/src/components/VTextarea/__tests__/VTextarea.spec.tsx::VTextarea has affixed icons",
+        "packages_vuetify::packages/vuetify/src/components/VTextarea/__tests__/VTextarea.spec.tsx::VTextarea has affixed icons with actions"
+      ]
+    },
+    {
+      "key": "passed -> failed | TypeError: __vite_ssr_import_N__.screen.getByCSS is not a function",
+      "count": 1,
+      "examples": [
+        "packages_vuetify::packages/vuetify/src/components/VDefaultsProvider/__tests__/VDefaultsProvider.spec.tsx::VDefaultsProvider should apply new defaults"
+      ]
+    },
+    {
+      "key": "passed -> failed | TypeError: __vite_ssr_import_N__.screen.queryAllByCSS is not a function",
+      "count": 1,
+      "examples": [
+        "packages_vuetify::packages/vuetify/src/components/VDatePicker/__tests__/VDatePicker.a11y.spec.tsx::VDatePicker accessibility should have aria-current=\"date\" on today's date"
+      ]
+    },
+    {
+      "key": "passed -> failed | TypeError: __vite_ssr_import_N__.screen.getAllByCSS is not a function",
+      "count": 1,
+      "examples": [
+        "packages_vuetify::packages/vuetify/src/components/VDatePicker/__tests__/VDatePicker.a11y.spec.tsx::VDatePicker accessibility should have aria-labels on date buttons"
+      ]
+    }
+  ]
+}

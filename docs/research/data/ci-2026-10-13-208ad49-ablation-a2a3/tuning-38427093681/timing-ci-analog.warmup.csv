@@ -1,0 +1,6 @@
+round,project,config,seconds,differs,files_differ,ref
+0,analog,jsdom-default,35.1,0,0,baseline
+0,analog,warpdom-default,27.5,0,0,round
+0,analog,warpdom-default-aa,27.0,0,0,round
+0,analog,warpdomeager-default,27.2,0,0,round
+0,analog,warpdomnocache-default,27.1,0,0,round

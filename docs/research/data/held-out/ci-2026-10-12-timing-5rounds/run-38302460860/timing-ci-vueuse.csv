@@ -1,0 +1,16 @@
+round,project,config,seconds,differs,files_differ
+1,vueuse,jsdom-default,70.3,0,0
+1,vueuse,warpdom-default,35.5,0,0
+1,vueuse,happy-dom-default,55.9,58,10
+2,vueuse,warpdom-default,35.4,0,0
+2,vueuse,happy-dom-default,56.4,58,10
+2,vueuse,jsdom-default,69.7,0,0
+3,vueuse,happy-dom-default,55.7,58,10
+3,vueuse,jsdom-default,70.2,0,0
+3,vueuse,warpdom-default,35.4,0,0
+4,vueuse,jsdom-default,70.4,0,0
+4,vueuse,warpdom-default,35.3,0,0
+4,vueuse,happy-dom-default,56.2,58,10
+5,vueuse,warpdom-default,36.4,0,0
+5,vueuse,happy-dom-default,56.5,58,10
+5,vueuse,jsdom-default,70.1,0,0

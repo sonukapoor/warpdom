@@ -1,0 +1,4 @@
+round,project,config,seconds,differs,files_differ,ref
+0,radix-primitives,jsdom-default,29.1,0,0,baseline
+0,radix-primitives,warpdom-default,16.7,0,0,round
+0,radix-primitives,happy-dom-default,19.6,18,5,round

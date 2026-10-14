@@ -1,0 +1,16 @@
+round,project,config,seconds,differs,files_differ
+1,CopilotKit,jsdom-default,479.8,0,0
+1,CopilotKit,warpdom-default,378.8,0,0
+1,CopilotKit,happy-dom-default,49.6,4681,114
+2,CopilotKit,warpdom-default,370.8,0,0
+2,CopilotKit,happy-dom-default,49.4,4681,114
+2,CopilotKit,jsdom-default,468.7,0,0
+3,CopilotKit,happy-dom-default,54.5,4681,114
+3,CopilotKit,jsdom-default,464.8,0,0
+3,CopilotKit,warpdom-default,369.2,0,0
+4,CopilotKit,jsdom-default,452.4,0,0
+4,CopilotKit,warpdom-default,369.1,0,0
+4,CopilotKit,happy-dom-default,48.7,4681,114
+5,CopilotKit,warpdom-default,369.3,0,0
+5,CopilotKit,happy-dom-default,47.6,4681,114
+5,CopilotKit,jsdom-default,450.2,0,0

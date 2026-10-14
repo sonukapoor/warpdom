@@ -1,0 +1,16 @@
+# Tests whose status differs between jsdom-default and warpdom-default in GitHub Actions run 38261958358
+# One round (safety run, warpdom 752c090).
+# Extracted 2026-10-12 from the run's workflow artifacts (per-test JSON of timing-jsdom-default and timing-warpdom-default) with a per-test key of package, file and full name.
+project	jsdom	warpdom	package	file	test
+ariakit	failed	passed	root	packages/ariakit-test/src/__utils.test.ts	getOwnerWindow reports no window when a document answers its default view with an element
+ariakit	failed	passed	root	packages/ariakit-test/src/dispatch.test.ts	dispatch.compositionEnd preserves the provided CompositionEvent members
+ariakit	failed	passed	root	packages/ariakit-test/src/dispatch.test.ts	dispatch.compositionStart preserves the provided CompositionEvent members
+ariakit	failed	passed	root	packages/ariakit-test/src/dispatch.test.ts	dispatch.compositionUpdate preserves the provided CompositionEvent members
+ariakit	failed	passed	root	packages/ariakit-utils/src/dom.test.ts	getActiveElement ignores a document's named activeElement form
+ariakit	failed	passed	root	packages/ariakit-utils/src/dom.test.ts	getDocument resolves an element whose document answers nodeType with an element
+ariakit	failed	passed	root	packages/ariakit-utils/src/events.test.ts	fireClickEvent falls back when a document answers its default view with an element
+ark-ui	failed	passed	packages_react	packages/react/src/components/number-input/tests/number-input.test.tsx	NumberInput / Field prop: largeStep should use an explicit largeStep when Shift is held
+ark-ui	failed	passed	packages_react	packages/react/src/components/number-input/tests/number-input.test.tsx	NumberInput should handle min and max fraction digits
+ark-ui	failed	passed	packages_react	packages/react/src/components/toast/tests/toast.test.tsx	Toast should show and hide a toast message
+solid	passed	failed	packages_solid	packages/solid/web/test/transition.spec.tsx	Transition memo stale read (#2046) memo created during transition should not return undefined in committed state
+svelte	passed	failed	root	packages/svelte/tests/hydration/test.ts	whitespace-at-block-start

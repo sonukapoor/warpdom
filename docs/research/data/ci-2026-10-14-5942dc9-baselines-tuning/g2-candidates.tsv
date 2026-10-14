@@ -1,0 +1,5 @@
+round 1	ark-ui	isolated: failed	jsdom: failed	packages_react::packages/react/src/components/number-input/tests/number-input.test.tsx::NumberInput / Field prop: largeStep should use an explicit largeStep when Shift is held
+round 2	ark-ui	isolated: failed	jsdom: failed	packages_react::packages/react/src/components/number-input/tests/number-input.test.tsx::NumberInput / Field prop: largeStep should increment by the default largeStep (10 * step) when Shift is held
+round 2	solid	isolated: failed	jsdom: passed	packages_solid::packages/solid/web/test/transition.spec.tsx::Transition memo stale read (#2046) memo created during transition should not return undefined in committed state
+round 3	ark-ui	isolated: failed	jsdom: failed	packages_react::packages/react/src/components/number-input/tests/number-input.test.tsx::NumberInput / Field prop: largeStep should increment by the default largeStep (10 * step) when Shift is held
+round 5	ark-ui	isolated: failed	jsdom: failed	packages_react::packages/react/src/components/number-input/tests/number-input.test.tsx::NumberInput / Field prop: largeStep should increment by the default largeStep (10 * step) when Shift is held

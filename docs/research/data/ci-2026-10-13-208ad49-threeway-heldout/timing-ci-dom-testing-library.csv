@@ -1,0 +1,16 @@
+round,project,config,seconds,differs,files_differ,ref
+1,dom-testing-library,jsdom-default,6.7,0,0,baseline
+1,dom-testing-library,warpdom-default,5.2,0,0,round
+1,dom-testing-library,happy-dom-default,5.8,23,8,round
+2,dom-testing-library,warpdom-default,5.1,0,0,round
+2,dom-testing-library,happy-dom-default,5.8,23,8,round
+2,dom-testing-library,jsdom-default,6.7,0,0,baseline
+3,dom-testing-library,happy-dom-default,5.8,23,8,round
+3,dom-testing-library,jsdom-default,6.7,0,0,baseline
+3,dom-testing-library,warpdom-default,5.2,0,0,round
+4,dom-testing-library,jsdom-default,6.8,0,0,baseline
+4,dom-testing-library,warpdom-default,5.1,0,0,round
+4,dom-testing-library,happy-dom-default,5.7,23,8,round
+5,dom-testing-library,warpdom-default,5.1,0,0,round
+5,dom-testing-library,happy-dom-default,5.8,23,8,round
+5,dom-testing-library,jsdom-default,6.7,0,0,baseline

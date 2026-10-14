@@ -1,0 +1,7 @@
+round,project,config,seconds,differs,files_differ
+1,CopilotKit,jsdom-default,452.3,0,0
+1,CopilotKit,warpdom-default,362.6,0,0
+1,CopilotKit,warpdomlatest-default,363.1,1,1
+2,CopilotKit,warpdom-default,363.8,0,0
+2,CopilotKit,warpdomlatest-default,362.8,1,1
+2,CopilotKit,jsdom-default,448.1,0,0

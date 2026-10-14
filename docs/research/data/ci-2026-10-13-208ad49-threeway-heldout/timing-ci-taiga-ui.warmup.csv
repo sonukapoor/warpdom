@@ -1,0 +1,4 @@
+round,project,config,seconds,differs,files_differ,ref
+0,taiga-ui,jsdom-default,625.1,0,0,baseline
+0,taiga-ui,warpdom-default,599.5,0,0,round
+0,taiga-ui,happy-dom-default,86.5,2604,326,round

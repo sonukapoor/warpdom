@@ -1,0 +1,11 @@
+{"round":0,"project":"vuetify","kind":"learn","method":"cli","packages":1,"seconds":42.704,"mode":"split","vitest":"4.1.11","t_iso":28.5,"t_split":7.1,"t_sh":7.104,"t_sh_runs":6.033,"leaky":[]}
+{"round":1,"project":"vuetify","kind":"learn","method":"cli","packages":1,"seconds":42.528,"mode":"split","vitest":"4.1.11","t_iso":28.3,"t_split":7,"t_sh":7.228,"t_sh_runs":6.034,"leaky":[]}
+{"round":1,"project":"vuetify","kind":"run","method":"cli","packages":1,"seconds":7.108,"mode":"split","vitest":"4.1.11","isolated":0,"rerun":0,"new_leaky":[],"leaky":[]}
+{"round":2,"project":"vuetify","kind":"learn","method":"cli","packages":1,"seconds":42.628,"mode":"split","vitest":"4.1.11","t_iso":28.5,"t_split":7,"t_sh":7.128,"t_sh_runs":6.007,"leaky":[]}
+{"round":2,"project":"vuetify","kind":"run","method":"cli","packages":1,"seconds":7.249,"mode":"split","vitest":"4.1.11","isolated":0,"rerun":0,"new_leaky":[],"leaky":[]}
+{"round":3,"project":"vuetify","kind":"learn","method":"cli","packages":1,"seconds":42.251,"mode":"split","vitest":"4.1.11","t_iso":28,"t_split":7.1,"t_sh":7.151,"t_sh_runs":5.985,"leaky":[]}
+{"round":3,"project":"vuetify","kind":"run","method":"cli","packages":1,"seconds":7.134,"mode":"split","vitest":"4.1.11","isolated":0,"rerun":0,"new_leaky":[],"leaky":[]}
+{"round":4,"project":"vuetify","kind":"learn","method":"cli","packages":1,"seconds":41.515,"mode":"split","vitest":"4.1.11","t_iso":27.5,"t_split":6.9,"t_sh":7.115,"t_sh_runs":5.903,"leaky":[]}
+{"round":4,"project":"vuetify","kind":"run","method":"cli","packages":1,"seconds":7.024,"mode":"split","vitest":"4.1.11","isolated":0,"rerun":0,"new_leaky":[],"leaky":[]}
+{"round":5,"project":"vuetify","kind":"learn","method":"cli","packages":1,"seconds":41.872,"mode":"split","vitest":"4.1.11","t_iso":27.8,"t_split":6.9,"t_sh":7.172,"t_sh_runs":5.916,"leaky":[]}
+{"round":5,"project":"vuetify","kind":"run","method":"cli","packages":1,"seconds":7.091,"mode":"split","vitest":"4.1.11","isolated":0,"rerun":0,"new_leaky":[],"leaky":[]}

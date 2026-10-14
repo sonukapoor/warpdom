@@ -1,0 +1,12 @@
+round,project,config,seconds,differs,files_differ,false_pass,false_fail,ref,position,method
+1,ariakit,jsdom-default,626.1,0,0,NA,NA,,1,
+1,ariakit,jsdom-shared,433.9,5,2,0,5,jsdom-default,2,
+1,ariakit,jsdom-vm,457.9,6,1,4,2,jsdom-default,3,
+1,ariakit,jsdom-sharedclean,415.0,17,4,0,17,jsdom-default,4,
+1,ariakit,jsdom-learned,602.6,6,0,0,6,jsdom-default,5,harness
+1,ariakit,warpdom-default,454.3,7,2,NA,NA,,6,
+1,ariakit,warpdom-vm,418.6,7,2,0,0,warpdom-default,7,
+1,ariakit,warpdom-sharedfresh,173.2,1098,191,0,1091,warpdom-default,8,
+1,ariakit,warpdom-sharedreset,367.4,127,34,0,120,warpdom-default,9,
+1,ariakit,warpdom-learned,462.8,7,2,0,0,warpdom-default,10,harness
+1,ariakit,happydom-shared,155.6,59,22,41,18,jsdom-default,11,

@@ -1,0 +1,19 @@
+# Tests whose status differs between jsdom-default and warpdom-default in GitHub Actions run 38201339795
+# Last round (round 3) only; the jsdom side is that round's jsdom run.
+# Extracted 2026-10-12 from the run's workflow artifacts (per-test JSON of timing-jsdom-default and timing-warpdom-default) with a per-test key of package, file and full name.
+project	jsdom	warpdom	package	file	test
+ariakit	failed	passed	root	packages/ariakit-test/src/__utils.test.ts	getOwnerWindow reports no window when a document answers its default view with an element
+ariakit	failed	passed	root	packages/ariakit-test/src/dispatch.test.ts	dispatch(element, event) reports the same modifiers as the named form for a keyboard event
+ariakit	failed	passed	root	packages/ariakit-test/src/dispatch.test.ts	dispatch.compositionEnd preserves the provided CompositionEvent members
+ariakit	failed	passed	root	packages/ariakit-test/src/dispatch.test.ts	dispatch.compositionStart preserves the provided CompositionEvent members
+ariakit	failed	passed	root	packages/ariakit-test/src/dispatch.test.ts	dispatch.compositionUpdate preserves the provided CompositionEvent members
+ariakit	passed	failed	root	packages/ariakit-test/src/shims.jsdom.test.ts	leaves an environment that already implements mouse event members alone
+ariakit	passed	failed	root	packages/ariakit-test/src/shims.jsdom.test.ts	leaves an environment with a conformant modifier state alone
+ariakit	failed	passed	root	packages/ariakit-test/src/shims.test.ts	keeps the keyboard event constructor's contract while patching it
+ariakit	failed	passed	root	packages/ariakit-utils/src/dom.test.ts	getActiveElement ignores a document's named activeElement form
+ariakit	failed	passed	root	packages/ariakit-utils/src/dom.test.ts	getDocument resolves an element whose document answers nodeType with an element
+ariakit	failed	passed	root	packages/ariakit-utils/src/events.test.ts	fireClickEvent falls back when a document answers its default view with an element
+ark-ui	failed	passed	packages_react	packages/react/src/components/number-input/tests/number-input.test.tsx	NumberInput / Field prop: largeStep should increment by the default largeStep (10 * step) when Shift is held
+# handsontable: jsdom core package timed out (467 jsdom entries), not compared
+solid	passed	failed	packages_solid	packages/solid/web/test/transition.spec.tsx	Transition memo stale read (#2046) memo created during transition should not return undefined in committed state
+svelte	passed	failed	root	packages/svelte/tests/hydration/test.ts	whitespace-at-block-start

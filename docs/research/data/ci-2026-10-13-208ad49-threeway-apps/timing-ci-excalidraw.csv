@@ -1,0 +1,16 @@
+round,project,config,seconds,differs,files_differ,ref
+1,excalidraw,jsdom-default,206.2,0,0,baseline
+1,excalidraw,warpdom-default,170.2,0,0,round
+1,excalidraw,happy-dom-default,197.1,44,15,round
+2,excalidraw,warpdom-default,177.5,0,0,round
+2,excalidraw,happy-dom-default,200.9,44,15,round
+2,excalidraw,jsdom-default,217.5,0,0,baseline
+3,excalidraw,happy-dom-default,196.6,44,15,round
+3,excalidraw,jsdom-default,216.2,0,0,baseline
+3,excalidraw,warpdom-default,179.5,0,0,round
+4,excalidraw,jsdom-default,218.6,0,0,baseline
+4,excalidraw,warpdom-default,181.3,0,0,round
+4,excalidraw,happy-dom-default,199.1,44,15,round
+5,excalidraw,warpdom-default,174.3,0,0,round
+5,excalidraw,happy-dom-default,197.1,44,15,round
+5,excalidraw,jsdom-default,212.0,0,0,baseline

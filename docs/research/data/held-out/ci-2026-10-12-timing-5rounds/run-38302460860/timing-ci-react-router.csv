@@ -1,0 +1,16 @@
+round,project,config,seconds,differs,files_differ
+1,react-router,jsdom-default,51.6,0,0
+1,react-router,warpdom-default,48.9,0,0
+1,react-router,happy-dom-default,51.2,83,10
+2,react-router,warpdom-default,49.5,0,0
+2,react-router,happy-dom-default,50.2,83,10
+2,react-router,jsdom-default,51.0,0,0
+3,react-router,happy-dom-default,50.3,84,11
+3,react-router,jsdom-default,52.1,0,0
+3,react-router,warpdom-default,48.8,0,0
+4,react-router,jsdom-default,52.7,0,0
+4,react-router,warpdom-default,49.5,0,0
+4,react-router,happy-dom-default,52.0,83,10
+5,react-router,warpdom-default,48.6,0,0
+5,react-router,happy-dom-default,49.3,83,10
+5,react-router,jsdom-default,50.8,0,0

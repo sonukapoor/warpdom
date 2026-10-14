@@ -1,0 +1,5 @@
+NA round 0 solid learning:  failed packages/solid: fast-cli unsupported: Vitest 2.1.9 (warpdom vitest run needs >= 3.2)
+    
+    ▶ solid
+      failed  packages/solid: fast-cli unsupported: Vitest 2.1.9 (warpdom vitest run needs >= 3.2)
+METHOD solid: harness emulation of warpdom vitest run (failed  packages/solid: fast-cli unsupported: Vitest 2.1.9 (warpdom vitest run needs >= 3.2))

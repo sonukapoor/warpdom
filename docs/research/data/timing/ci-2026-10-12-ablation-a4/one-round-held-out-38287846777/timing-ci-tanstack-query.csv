@@ -1,0 +1,4 @@
+round,project,config,seconds,differs
+1,tanstack-query,jsdom-default,78.5,0
+1,tanstack-query,warpdom-default,50.7,1
+1,tanstack-query,warpdomlatest-default,51.1,1

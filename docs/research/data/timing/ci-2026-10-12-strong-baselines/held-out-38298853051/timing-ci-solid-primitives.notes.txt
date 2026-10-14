@@ -1,0 +1,5 @@
+NA round 0 solid-primitives learning:  failed .: fast-cli unsupported: Vitest 2.1.9 (warpdom vitest run needs >= 3.2)
+    
+    ▶ solid-primitives
+      failed  .: fast-cli unsupported: Vitest 2.1.9 (warpdom vitest run needs >= 3.2)
+METHOD solid-primitives: harness emulation of warpdom vitest run (failed  .: fast-cli unsupported: Vitest 2.1.9 (warpdom vitest run needs >= 3.2))

@@ -1,0 +1,36 @@
+suite	test	differs in (job: rounds/compared, statuses, flaky in job)	flaky in any job
+ariakit	root::app/src/sandbox/combobox-multiple-select/test.ts::check/uncheck item after filtering	blT: 1/1 passed>missing	no
+ariakit	root::app/src/sandbox/combobox-multiple-select/test.ts::check/uncheck with click	blT: 1/1 passed>missing	no
+ariakit	root::app/src/sandbox/combobox-multiple-select/test.ts::check/uncheck with enter	blT: 1/1 passed>missing	no
+ariakit	root::app/src/sandbox/combobox-multiple-select/test.ts::default checked	blT: 1/1 passed>missing	no
+ariakit	root::app/src/sandbox/combobox-multiple-select/test.ts::no result	blT: 1/1 passed>missing	no
+ariakit	root::app/src/sandbox/combobox-multiple-select/test.ts::open with keyboard, then try to open again	blT: 1/1 passed>missing	no
+ark-ui	packages_react::packages/react/src/components/number-input/tests/number-input.test.tsx::NumberInput / Field prop: smallStep should use an explicit smallStep when Alt is held	blT: 4/5 failed>passed	no
+ark-ui	packages_react::packages/react/src/components/number-input/tests/number-input.test.tsx::NumberInput should handle min and max fraction digits	blT: 1/5 passed>failed	no
+ark-ui	packages_react::packages/react/src/components/toast/tests/toast.test.tsx::Toast should show and hide a toast message	blT: 4/5 failed>passed flaky	yes
+melt-ui	root::src/tests/popover/Popover.spec.ts:: Popover (Default) Closes when click outside content	blH: 1/5 failed>passed flaky	yes
+solid-primitives	root::packages/filesystem/test/index.test.ts::createFileSystem (sync) relays file system errors a deleted file stored in a signal throws an error	blH: 1/5 failed>passed flaky	yes
+solid-primitives	root::packages/filesystem/test/index.test.ts::createFileSystem(makeWebAccessFileSystem) fs.readFile returns the content	blH: 1/5 failed>passed flaky	yes
+solid-primitives	root::packages/filesystem/test/index.test.ts::createFileSystem(makeWebAccessFileSystem) fs.rename updates a readdir resource	blH: 1/5 failed>passed flaky	yes
+solid-primitives	root::packages/filesystem/test/index.test.ts::createFileSystem(makeWebAccessFileSystem) fs.writeFile updates a readFile resource	blH: 1/5 failed>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::createDeepSignal mutates the resource with callback	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::createDeepSignal mutates the resource with plain object	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::createDeepSignal provides resources with fine-grained reactivity	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeAbortable filters (only) abort errors	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeAbortable makes a fetcher abortable	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeAggregated aggregates arrays	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeAggregated aggregates numbers	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeAggregated aggregates objects	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeAggregated aggregates strings	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeAggregated an initial value [] allows to aggregate objects into arrays	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeCache caches results	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeCache invalidates cache	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeCache persists cache	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeCache provides an accessor for automatically invalidated results	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeRetrying retries the request after a delay	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::makeRetrying throws after the configured number of retries	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::serializer works on RequestInit	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::serializer works on arrays	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::serializer works on objects	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::serializer works on strings	blH: 3/5 passed>missing,missing>passed flaky	yes
+solid-primitives	root::packages/pagination/test/index.test.ts::serializer works on undefined, null, booleans, numbers, bignum	blH: 3/5 passed>missing,missing>passed flaky	yes

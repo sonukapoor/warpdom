@@ -11,8 +11,8 @@ or checked before publishing.
 | 2 | [02-tests-encode-jsdom-versions.md](02-tests-encode-jsdom-versions.md) | "jsdom-compatible" is not one target: your tests encode a jsdom version | Outline with the key table (2026-10-11); version measurements from the 208ad49 re-run. Needs: project names for several rows, two version boundaries confirmed, then writing out. |
 
 Source of the numbers: [../research/README.md](../research/README.md) and
-[../research/data/](../research/data/) (the final runs, `ci-2026-10-13-208ad49-*`, are on
-branch docs/paper-revision), [../../PLAN.md](../../PLAN.md),
+[../research/data/](../research/data/) (the final runs: `ci-2026-10-13-208ad49-*` and
+`ci-2026-10-14-5942dc9-*`), [../../PLAN.md](../../PLAN.md),
 [../head-to-head.md](../head-to-head.md), [../fast-mode.md](../fast-mode.md),
 [../no-isolate-experiment.md](../no-isolate-experiment.md),
 [../../wpt/README.md](../../wpt/README.md), and the scripts in

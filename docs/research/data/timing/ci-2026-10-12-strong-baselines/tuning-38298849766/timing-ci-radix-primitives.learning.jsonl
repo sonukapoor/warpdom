@@ -1,0 +1,11 @@
+{"round":0,"project":"radix-primitives","kind":"learn","method":"cli","packages":1,"seconds":43.652,"mode":"split","vitest":"4.1.7","t_iso":25.2,"t_split":9.1,"t_sh":9.352,"t_sh_runs":8.776,"leaky":[]}
+{"round":1,"project":"radix-primitives","kind":"learn","method":"cli","packages":1,"seconds":42.477,"mode":"split","vitest":"4.1.7","t_iso":24.6,"t_split":8.8,"t_sh":9.077,"t_sh_runs":8.53,"leaky":[]}
+{"round":1,"project":"radix-primitives","kind":"run","method":"cli","packages":1,"seconds":8.818,"mode":"split","vitest":"4.1.7","isolated":0,"rerun":0,"new_leaky":[],"leaky":[]}
+{"round":2,"project":"radix-primitives","kind":"learn","method":"cli","packages":1,"seconds":41.932,"mode":"split","vitest":"4.1.7","t_iso":24.3,"t_split":8.8,"t_sh":8.832,"t_sh_runs":8.273,"leaky":[]}
+{"round":2,"project":"radix-primitives","kind":"run","method":"cli","packages":1,"seconds":9.636,"mode":"split","vitest":"4.1.7","isolated":0,"rerun":0,"new_leaky":[],"leaky":[]}
+{"round":3,"project":"radix-primitives","kind":"learn","method":"cli","packages":1,"seconds":42.793,"mode":"split","vitest":"4.1.7","t_iso":24.7,"t_split":8.9,"t_sh":9.193,"t_sh_runs":8.589,"leaky":[]}
+{"round":3,"project":"radix-primitives","kind":"run","method":"cli","packages":1,"seconds":8.905,"mode":"split","vitest":"4.1.7","isolated":0,"rerun":0,"new_leaky":[],"leaky":[]}
+{"round":4,"project":"radix-primitives","kind":"learn","method":"cli","packages":1,"seconds":42.081,"mode":"split","vitest":"4.1.7","t_iso":24.2,"t_split":8.8,"t_sh":9.081,"t_sh_runs":8.441,"leaky":[]}
+{"round":4,"project":"radix-primitives","kind":"run","method":"cli","packages":1,"seconds":9.735,"mode":"split","vitest":"4.1.7","isolated":0,"rerun":0,"new_leaky":[],"leaky":[]}
+{"round":5,"project":"radix-primitives","kind":"learn","method":"cli","packages":1,"seconds":44.74,"mode":"split","vitest":"4.1.7","t_iso":25.5,"t_split":9.5,"t_sh":9.74,"t_sh_runs":9.132,"leaky":[]}
+{"round":5,"project":"radix-primitives","kind":"run","method":"cli","packages":1,"seconds":9.702,"mode":"split","vitest":"4.1.7","isolated":0,"rerun":0,"new_leaky":[],"leaky":[]}

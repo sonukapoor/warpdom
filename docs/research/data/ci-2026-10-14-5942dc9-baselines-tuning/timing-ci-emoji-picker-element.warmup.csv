@@ -1,0 +1,10 @@
+round,project,config,seconds,differs,files_differ,false_pass,false_fail,ref,position,method
+0,emoji-picker-element,jsdom-default,37.5,0,0,NA,NA,,1,
+0,emoji-picker-element,jsdom-shared,13.4,60,15,0,60,jsdom-default,2,
+0,emoji-picker-element,jsdom-vm,13.0,140,27,0,140,jsdom-default,3,
+0,emoji-picker-element,jsdom-sharedclean,10.2,59,15,0,59,jsdom-default,4,
+0,emoji-picker-element,warpdom-default,29.3,0,0,NA,NA,,6,
+0,emoji-picker-element,warpdom-vm,24.9,3,2,0,3,warpdom-default,7,
+0,emoji-picker-element,warpdom-sharedfresh,30.7,34,12,0,34,warpdom-default,8,
+0,emoji-picker-element,warpdom-sharedreset,29.1,34,12,0,34,warpdom-default,9,
+0,emoji-picker-element,happydom-shared,39.2,52,14,0,52,jsdom-default,11,

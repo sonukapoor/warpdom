@@ -1,0 +1,4 @@
+round,project,config,seconds,differs
+1,svelte,jsdom-default,87.1,0
+1,svelte,warpdom-default,73.8,1
+1,svelte,warpdomlatest-default,73.7,25

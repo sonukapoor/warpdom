@@ -20,7 +20,7 @@ src/vitest.js and src/jest.js (version detection).
   resolve jsdom versions from 16.7.0 (handsontable's core) to 30.1.2
   (ariakit), and some monorepos mix several (CopilotKit: 24.1.3, 26.1.0
   and 29.1.0 in different packages).
-  <!-- source (branch docs/paper-revision): docs/research/data/ci-2026-10-13-208ad49-computed.md "Version rule: jsdom resolved per package" -->
+  <!-- source: docs/research/data/ci-2026-10-13-208ad49-computed.md "Version rule: jsdom resolved per package" -->
 - Why it happens: Jest 30's `jest-environment-jsdom` still bundles jsdom
   26, while Vitest projects use whatever jsdom they install (the harness
   provides jsdom 30 when a project has none). element-plus pins jsdom 16,
@@ -38,7 +38,7 @@ src/vitest.js and src/jest.js (version detection).
     suites, to about 200: React Spectrum 0 -> 146, svelte 1 -> 25,
     handsontable 3 -> 23, downshift 0 -> 7, ark-ui 2-3 -> 6, CopilotKit
     0 -> 1, dom-testing-library 0 -> 1. Higher in both rounds.
-  <!-- source (branch docs/paper-revision): docs/research/data/ci-2026-10-13-208ad49-RESULTS.md 6 "Versions" (runs 38427202342, 38427223850; ci-2026-10-13-208ad49-versions/) and 5 "A4" (runs 38427136397, 38427158136; ci-2026-10-13-208ad49-ablation-a4/a4-differences.tsv); ci-2026-10-13-208ad49-computed.md "Versions" -->
+  <!-- source: docs/research/data/ci-2026-10-13-208ad49-RESULTS.md 6 "Versions" (runs 38427202342, 38427223850; ci-2026-10-13-208ad49-versions/) and 5 "A4" (runs 38427136397, 38427158136; ci-2026-10-13-208ad49-ablation-a4/a4-differences.tsv); ci-2026-10-13-208ad49-computed.md "Versions" -->
 
 ## The story that found it
 
@@ -136,7 +136,7 @@ with jsdom alone, swapping cssstyle 4.1.0 for 4.6.0 under svelte's jsdom
 on jsdom 26.1.0 (which loads cssstyle 4.6.0): svelte's whole "jsdom 26"
 difference is its CSS library's. warpdom now reads the cssstyle version
 next to the detected jsdom as well, and follows these cutoffs.
-<!-- source: PLAN.md 2026-10-12 jsdom 25 profile entry; test/computed-style.test.js, test/style.test.js; branch docs/paper-revision: docs/research/data/ci-2026-10-13-208ad49-RESULTS.md 6 and computed.md "Versions" (svelte cssstyle-4.6.0: 12; jsdom-26.1.0: 12, the same tests) -->
+<!-- source: PLAN.md 2026-10-12 jsdom 25 profile entry; test/computed-style.test.js, test/style.test.js; docs/research/data/ci-2026-10-13-208ad49-RESULTS.md 6 and computed.md "Versions" (svelte cssstyle-4.6.0: 12; jsdom-26.1.0: 12, the same tests) -->
 
 ## How we found the boundaries (method)
 
@@ -163,7 +163,7 @@ next to the detected jsdom as well, and follows these cutoffs.
   core before claiming the cause] Its jsdom 16.7 is also why the final
   measurements report handsontable apart from the medians (about 8-9x
   with a warm cache, 2.5x cold).
-  <!-- source (branch docs/paper-revision): docs/research/data/ci-2026-10-13-208ad49-computed.md "Version rule" and "handsontable per package"; RESULTS.md 2.4 -->
+  <!-- source: docs/research/data/ci-2026-10-13-208ad49-computed.md "Version rule" and "handsontable per package"; RESULTS.md 2.4 -->
   <!-- source: PLAN.md 2026-10-11 "Suite timings before and after validation and lazy interfaces"; docs/research/README.md 3.2 -->
 
 ## Takeaways for readers (draft)

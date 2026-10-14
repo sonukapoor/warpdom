@@ -1,0 +1,11 @@
+{"round":0,"project":"emoji-picker-element","kind":"learn","method":"cli","packages":1,"seconds":75.008,"mode":"isolated","vitest":"3.2.4","t_iso":24.8,"t_split":25,"t_sh":25.208,"t_sh_runs":24.301,"leaky":[]}
+{"round":1,"project":"emoji-picker-element","kind":"learn","method":"cli","packages":1,"seconds":73.889,"mode":"isolated","vitest":"3.2.4","t_iso":24.2,"t_split":24.6,"t_sh":25.089,"t_sh_runs":24.219,"leaky":[]}
+{"round":1,"project":"emoji-picker-element","kind":"run","method":"cli","packages":1,"seconds":24.511,"mode":"isolated","vitest":"3.2.4","isolated":0,"rerun":0,"new_leaky":[],"leaky":[]}
+{"round":2,"project":"emoji-picker-element","kind":"learn","method":"cli","packages":1,"seconds":73.917,"mode":"isolated","vitest":"3.2.4","t_iso":24.1,"t_split":24.8,"t_sh":25.017,"t_sh_runs":24.073,"leaky":[]}
+{"round":2,"project":"emoji-picker-element","kind":"run","method":"cli","packages":1,"seconds":24.654,"mode":"isolated","vitest":"3.2.4","isolated":0,"rerun":0,"new_leaky":[],"leaky":[]}
+{"round":3,"project":"emoji-picker-element","kind":"learn","method":"cli","packages":1,"seconds":74.972,"mode":"split","vitest":"3.2.4","t_iso":25.1,"t_split":24.9,"t_sh":24.972,"t_sh_runs":24.035,"leaky":[]}
+{"round":3,"project":"emoji-picker-element","kind":"run","method":"cli","packages":1,"seconds":25.04,"mode":"isolated","vitest":"3.2.4","isolated":0,"rerun":0,"new_leaky":[],"leaky":[]}
+{"round":4,"project":"emoji-picker-element","kind":"learn","method":"cli","packages":1,"seconds":74.913,"mode":"isolated","vitest":"3.2.4","t_iso":24.8,"t_split":25,"t_sh":25.113,"t_sh_runs":24.275,"leaky":[]}
+{"round":4,"project":"emoji-picker-element","kind":"run","method":"cli","packages":1,"seconds":25.305,"mode":"isolated","vitest":"3.2.4","isolated":0,"rerun":0,"new_leaky":[],"leaky":[]}
+{"round":5,"project":"emoji-picker-element","kind":"learn","method":"cli","packages":1,"seconds":75.033,"mode":"split","vitest":"3.2.4","t_iso":24.8,"t_split":24.8,"t_sh":25.433,"t_sh_runs":24.527,"leaky":[]}
+{"round":5,"project":"emoji-picker-element","kind":"run","method":"cli","packages":1,"seconds":24.495,"mode":"isolated","vitest":"3.2.4","isolated":0,"rerun":0,"new_leaky":[],"leaky":[]}

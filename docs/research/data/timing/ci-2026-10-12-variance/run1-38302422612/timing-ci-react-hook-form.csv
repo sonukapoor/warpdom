@@ -1,0 +1,16 @@
+round,project,config,seconds,differs,files_differ
+1,react-hook-form,jsdom-default,15.1,0,0
+1,react-hook-form,warpdom-default,11.7,0,0
+1,react-hook-form,happy-dom-default,15.1,7,5
+2,react-hook-form,warpdom-default,11.6,0,0
+2,react-hook-form,happy-dom-default,15.0,7,5
+2,react-hook-form,jsdom-default,14.4,0,0
+3,react-hook-form,happy-dom-default,15.1,7,5
+3,react-hook-form,jsdom-default,14.5,0,0
+3,react-hook-form,warpdom-default,11.6,0,0
+4,react-hook-form,jsdom-default,15.2,0,0
+4,react-hook-form,warpdom-default,12.1,0,0
+4,react-hook-form,happy-dom-default,15.9,7,5
+5,react-hook-form,warpdom-default,11.8,0,0
+5,react-hook-form,happy-dom-default,15.6,8,6
+5,react-hook-form,jsdom-default,15.3,0,0

@@ -1,0 +1,16 @@
+round,project,config,seconds,differs,files_differ
+1,ariakit,jsdom-default,612.4,0,0
+1,ariakit,warpdom-default,450.2,7,2
+1,ariakit,happy-dom-default,284.1,51,20
+2,ariakit,warpdom-default,449.2,7,2
+2,ariakit,happy-dom-default,286.5,51,20
+2,ariakit,jsdom-default,618.3,0,0
+3,ariakit,happy-dom-default,284.1,51,20
+3,ariakit,jsdom-default,613.1,0,0
+3,ariakit,warpdom-default,449.2,7,2
+4,ariakit,jsdom-default,614.3,0,0
+4,ariakit,warpdom-default,450.0,7,2
+4,ariakit,happy-dom-default,285.9,51,20
+5,ariakit,warpdom-default,453.6,7,2
+5,ariakit,happy-dom-default,284.4,51,20
+5,ariakit,jsdom-default,622.0,0,0

@@ -1,0 +1,23 @@
+round 2	melt-ui	isolated: failed	jsdom: passed	root::src/tests/context-menu/ContextMenu.spec.ts:: Context Menu Toggles checked to true for default unchecked checkbox items
+round 4	melt-ui	isolated: failed	jsdom: passed	root::src/tests/context-menu/ContextMenu.spec.ts:: Context Menu Toggles checked to true for default unchecked checkbox items
+round 4	solid-primitives	isolated: missing	jsdom: passed	root::packages/pagination/test/index.test.ts::makeAbortable makes a fetcher abortable
+round 4	solid-primitives	isolated: missing	jsdom: passed	root::packages/pagination/test/index.test.ts::makeAbortable filters (only) abort errors
+round 4	solid-primitives	isolated: missing	jsdom: passed	root::packages/pagination/test/index.test.ts::makeAggregated aggregates arrays
+round 4	solid-primitives	isolated: missing	jsdom: passed	root::packages/pagination/test/index.test.ts::makeAggregated aggregates objects
+round 4	solid-primitives	isolated: missing	jsdom: passed	root::packages/pagination/test/index.test.ts::makeAggregated aggregates strings
+round 4	solid-primitives	isolated: missing	jsdom: passed	root::packages/pagination/test/index.test.ts::makeAggregated aggregates numbers
+round 4	solid-primitives	isolated: missing	jsdom: passed	root::packages/pagination/test/index.test.ts::makeAggregated an initial value [] allows to aggregate objects into arrays
+round 4	solid-primitives	isolated: missing	jsdom: passed	root::packages/pagination/test/index.test.ts::serializer works on undefined, null, booleans, numbers, bignum
+round 4	solid-primitives	isolated: missing	jsdom: passed	root::packages/pagination/test/index.test.ts::serializer works on strings
+round 4	solid-primitives	isolated: missing	jsdom: passed	root::packages/pagination/test/index.test.ts::serializer works on arrays
+round 4	solid-primitives	isolated: missing	jsdom: passed	root::packages/pagination/test/index.test.ts::serializer works on objects
+round 4	solid-primitives	isolated: missing	jsdom: passed	root::packages/pagination/test/index.test.ts::serializer works on RequestInit
+round 4	solid-primitives	isolated: missing	jsdom: passed	root::packages/pagination/test/index.test.ts::makeCache caches results
+round 4	solid-primitives	isolated: missing	jsdom: passed	root::packages/pagination/test/index.test.ts::makeCache persists cache
+round 4	solid-primitives	isolated: missing	jsdom: passed	root::packages/pagination/test/index.test.ts::makeCache invalidates cache
+round 4	solid-primitives	isolated: missing	jsdom: passed	root::packages/pagination/test/index.test.ts::makeCache provides an accessor for automatically invalidated results
+round 4	solid-primitives	isolated: missing	jsdom: passed	root::packages/pagination/test/index.test.ts::makeRetrying retries the request after a delay
+round 4	solid-primitives	isolated: missing	jsdom: passed	root::packages/pagination/test/index.test.ts::makeRetrying throws after the configured number of retries
+round 4	solid-primitives	isolated: missing	jsdom: passed	root::packages/pagination/test/index.test.ts::createDeepSignal provides resources with fine-grained reactivity
+round 4	solid-primitives	isolated: missing	jsdom: passed	root::packages/pagination/test/index.test.ts::createDeepSignal mutates the resource with callback
+round 4	solid-primitives	isolated: missing	jsdom: passed	root::packages/pagination/test/index.test.ts::createDeepSignal mutates the resource with plain object

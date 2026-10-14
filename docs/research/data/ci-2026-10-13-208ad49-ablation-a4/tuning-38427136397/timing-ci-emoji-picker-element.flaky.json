@@ -1,0 +1,14 @@
+{
+ "emoji-picker-element": {
+  "rounds": [
+   "0",
+   "1",
+   "2"
+  ],
+  "broken": [],
+  "flaky": {
+   "tests": [],
+   "files": []
+  }
+ }
+}

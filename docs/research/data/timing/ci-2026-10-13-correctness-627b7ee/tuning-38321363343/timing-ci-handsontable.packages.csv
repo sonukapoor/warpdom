@@ -1,0 +1,17 @@
+round,project,config,package,status,seconds
+0,handsontable,jsdom-default,handsontable,ran,773.1
+0,handsontable,jsdom-default,wrappers/react-wrapper,ran,42.6
+0,handsontable,jsdom-default,wrappers/vue3,ran,19.4
+0,handsontable,jsdom-default,wrappers/angular-wrapper,ran,382.4
+0,handsontable,warpdom-default,handsontable,ran,81.4
+0,handsontable,warpdom-default,wrappers/react-wrapper,ran,22.9
+0,handsontable,warpdom-default,wrappers/vue3,ran,14.8
+0,handsontable,warpdom-default,wrappers/angular-wrapper,ran,378.8
+1,handsontable,jsdom-default,handsontable,ran,759.7
+1,handsontable,jsdom-default,wrappers/react-wrapper,ran,32.7
+1,handsontable,jsdom-default,wrappers/vue3,ran,11.1
+1,handsontable,jsdom-default,wrappers/angular-wrapper,ran,21.4
+1,handsontable,warpdom-default,handsontable,ran,58.2
+1,handsontable,warpdom-default,wrappers/react-wrapper,ran,13.0
+1,handsontable,warpdom-default,wrappers/vue3,ran,6.6
+1,handsontable,warpdom-default,wrappers/angular-wrapper,ran,11.6

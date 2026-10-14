@@ -1,0 +1,10 @@
+round,project,config,seconds,differs,files_differ,false_pass,false_fail,ref,position,method
+0,CopilotKit,jsdom-default,304.0,0,0,NA,NA,,1,
+0,CopilotKit,jsdom-shared,219.3,1627,189,0,1627,jsdom-default,2,
+0,CopilotKit,jsdom-vm,127.8,2240,212,0,2240,jsdom-default,3,
+0,CopilotKit,jsdom-sharedclean,198.9,1672,164,0,1672,jsdom-default,4,
+0,CopilotKit,warpdom-default,231.3,0,0,NA,NA,,6,
+0,CopilotKit,warpdom-vm,167.8,2234,207,0,2234,warpdom-default,7,
+0,CopilotKit,warpdom-sharedfresh,254.0,2168,242,0,2168,warpdom-default,8,
+0,CopilotKit,warpdom-sharedreset,220.9,1422,194,0,1422,warpdom-default,9,
+0,CopilotKit,happydom-shared,8.8,4681,114,0,4680,jsdom-default,11,

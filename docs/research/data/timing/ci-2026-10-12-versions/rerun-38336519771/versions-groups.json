@@ -1,0 +1,22 @@
+{
+  "naive-ui jsdom-20.0.3": [
+    {
+      "key": "passed -> failed | AssertionError: expected \"vi.fn()\" to not be called at all, but actually been called N times",
+      "count": 1,
+      "examples": [
+        "root::src/input/tests/Input.spec.tsx::n-input should work with `blur` `focus` `select` methods"
+      ]
+    }
+  ],
+  "solid-primitives jsdom-30.1.2": [
+    {
+      "key": "passed -> missing | ",
+      "count": 21,
+      "examples": [
+        "root::packages/pagination/test/index.test.ts::makeAbortable makes a fetcher abortable",
+        "root::packages/pagination/test/index.test.ts::makeAbortable filters (only) abort errors",
+        "root::packages/pagination/test/index.test.ts::makeAggregated aggregates arrays"
+      ]
+    }
+  ]
+}

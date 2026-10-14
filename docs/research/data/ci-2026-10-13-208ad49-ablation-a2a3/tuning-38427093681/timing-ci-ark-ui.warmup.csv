@@ -1,0 +1,6 @@
+round,project,config,seconds,differs,files_differ,ref
+0,ark-ui,jsdom-default,215.9,0,0,baseline
+0,ark-ui,warpdom-default,136.3,1,1,round
+0,ark-ui,warpdom-default-aa,135.8,2,1,round
+0,ark-ui,warpdomeager-default,137.6,2,1,round
+0,ark-ui,warpdomnocache-default,137.7,2,1,round

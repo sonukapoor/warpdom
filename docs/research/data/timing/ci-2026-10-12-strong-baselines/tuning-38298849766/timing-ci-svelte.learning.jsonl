@@ -1,0 +1,11 @@
+{"round":0,"project":"svelte","kind":"learn","method":"cli","packages":1,"seconds":339.268,"mode":"isolated","vitest":"4.1.7","t_iso":83.7,"t_split":159.4,"t_sh":96.168,"t_sh_runs":95.095,"leaky":["root::packages/svelte/tests/runtime-legacy/test.ts"]}
+{"round":1,"project":"svelte","kind":"learn","method":"cli","packages":1,"seconds":248.244,"mode":"isolated","vitest":"4.1.7","t_iso":81.9,"t_split":82.2,"t_sh":84.144,"t_sh_runs":83.135,"leaky":[]}
+{"round":1,"project":"svelte","kind":"run","method":"cli","packages":1,"seconds":89.092,"mode":"isolated","vitest":"4.1.7","isolated":1,"rerun":0,"new_leaky":[],"leaky":["root::packages/svelte/tests/runtime-legacy/test.ts"]}
+{"round":2,"project":"svelte","kind":"learn","method":"cli","packages":1,"seconds":267.071,"mode":"split","vitest":"4.1.7","t_iso":89.4,"t_split":88,"t_sh":89.671,"t_sh_runs":88.571,"leaky":[]}
+{"round":2,"project":"svelte","kind":"run","method":"cli","packages":1,"seconds":89.52,"mode":"isolated","vitest":"4.1.7","isolated":1,"rerun":0,"new_leaky":[],"leaky":["root::packages/svelte/tests/runtime-legacy/test.ts"]}
+{"round":3,"project":"svelte","kind":"learn","method":"cli","packages":1,"seconds":256.601,"mode":"split","vitest":"4.1.7","t_iso":85.5,"t_split":84.2,"t_sh":86.901,"t_sh_runs":85.886,"leaky":[]}
+{"round":3,"project":"svelte","kind":"run","method":"cli","packages":1,"seconds":88.029,"mode":"isolated","vitest":"4.1.7","isolated":1,"rerun":0,"new_leaky":[],"leaky":["root::packages/svelte/tests/runtime-legacy/test.ts"]}
+{"round":4,"project":"svelte","kind":"learn","method":"cli","packages":1,"seconds":257.369,"mode":"isolated","vitest":"4.1.7","t_iso":84.8,"t_split":85.2,"t_sh":87.369,"t_sh_runs":86.272,"leaky":[]}
+{"round":4,"project":"svelte","kind":"run","method":"cli","packages":1,"seconds":85.721,"mode":"isolated","vitest":"4.1.7","isolated":1,"rerun":0,"new_leaky":[],"leaky":["root::packages/svelte/tests/runtime-legacy/test.ts"]}
+{"round":5,"project":"svelte","kind":"learn","method":"cli","packages":1,"seconds":250.949,"mode":"split","vitest":"4.1.7","t_iso":83,"t_split":82.5,"t_sh":85.449,"t_sh_runs":84.472,"leaky":[]}
+{"round":5,"project":"svelte","kind":"run","method":"cli","packages":1,"seconds":84.583,"mode":"isolated","vitest":"4.1.7","isolated":1,"rerun":0,"new_leaky":[],"leaky":["root::packages/svelte/tests/runtime-legacy/test.ts"]}

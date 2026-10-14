@@ -1,0 +1,4 @@
+round,project,config,seconds,differs
+1,floating-ui,jsdom-default,14.4,0
+1,floating-ui,warpdom-default,9.6,0
+1,floating-ui,warpdomlatest-default,9.9,0

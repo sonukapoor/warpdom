@@ -1,0 +1,16 @@
+round,project,config,seconds,differs,files_differ
+1,naive-ui,jsdom-default,301.8,0,0
+1,naive-ui,warpdom-default,268.1,0,0
+1,naive-ui,happy-dom-default,283.2,23,6
+2,naive-ui,warpdom-default,268.7,0,0
+2,naive-ui,happy-dom-default,284.4,23,6
+2,naive-ui,jsdom-default,301.1,0,0
+3,naive-ui,happy-dom-default,283.1,23,6
+3,naive-ui,jsdom-default,301.8,0,0
+3,naive-ui,warpdom-default,268.5,0,0
+4,naive-ui,jsdom-default,300.9,0,0
+4,naive-ui,warpdom-default,267.5,0,0
+4,naive-ui,happy-dom-default,282.0,23,6
+5,naive-ui,warpdom-default,268.5,0,0
+5,naive-ui,happy-dom-default,284.3,23,6
+5,naive-ui,jsdom-default,301.6,0,0

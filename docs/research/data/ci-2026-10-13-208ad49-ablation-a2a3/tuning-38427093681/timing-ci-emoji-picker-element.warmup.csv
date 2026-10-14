@@ -1,0 +1,6 @@
+round,project,config,seconds,differs,files_differ,ref
+0,emoji-picker-element,jsdom-default,32.9,0,0,baseline
+0,emoji-picker-element,warpdom-default,26.9,0,0,round
+0,emoji-picker-element,warpdom-default-aa,27.3,0,0,round
+0,emoji-picker-element,warpdomeager-default,27.4,0,0,round
+0,emoji-picker-element,warpdomnocache-default,27.0,0,0,round

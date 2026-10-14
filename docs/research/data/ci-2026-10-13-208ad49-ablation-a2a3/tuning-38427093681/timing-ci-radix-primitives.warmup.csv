@@ -1,0 +1,6 @@
+round,project,config,seconds,differs,files_differ,ref
+0,radix-primitives,jsdom-default,41.5,0,0,baseline
+0,radix-primitives,warpdom-default,22.6,0,0,round
+0,radix-primitives,warpdom-default-aa,22.8,0,0,round
+0,radix-primitives,warpdomeager-default,22.8,0,0,round
+0,radix-primitives,warpdomnocache-default,22.8,0,0,round

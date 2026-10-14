@@ -1,0 +1,17 @@
+round,project,config,package,status,seconds
+0,floating-ui,jsdom-default,packages/react,ran,19.5
+0,floating-ui,jsdom-default,packages/react-dom,ran,1.8
+0,floating-ui,jsdom-default,packages/dom,ran,1.4
+0,floating-ui,jsdom-default,packages/vue,ran,2.0
+0,floating-ui,warpdom-default,packages/react,ran,11.9
+0,floating-ui,warpdom-default,packages/react-dom,ran,1.4
+0,floating-ui,warpdom-default,packages/dom,ran,1.1
+0,floating-ui,warpdom-default,packages/vue,ran,1.6
+1,floating-ui,jsdom-default,packages/react,ran,19.2
+1,floating-ui,jsdom-default,packages/react-dom,ran,1.8
+1,floating-ui,jsdom-default,packages/dom,ran,1.4
+1,floating-ui,jsdom-default,packages/vue,ran,2.0
+1,floating-ui,warpdom-default,packages/react,ran,11.9
+1,floating-ui,warpdom-default,packages/react-dom,ran,1.4
+1,floating-ui,warpdom-default,packages/dom,ran,1.1
+1,floating-ui,warpdom-default,packages/vue,ran,1.6

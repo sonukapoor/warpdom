@@ -1,0 +1,10 @@
+round,project,config,package,status,seconds
+0,emoji-picker-element,jsdom-default,.,ran,37.8
+0,emoji-picker-element,warpdom-default,.,ran,29.5
+0,emoji-picker-element,warpdomlatest-default,.,ran,29.4
+1,emoji-picker-element,jsdom-default,.,ran,37.3
+1,emoji-picker-element,warpdom-default,.,ran,29.5
+1,emoji-picker-element,warpdomlatest-default,.,ran,29.7
+2,emoji-picker-element,warpdom-default,.,ran,30.2
+2,emoji-picker-element,warpdomlatest-default,.,ran,29.3
+2,emoji-picker-element,jsdom-default,.,ran,37.3

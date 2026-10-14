@@ -1,0 +1,1 @@
+round 4	ark-ui	isolated: failed	jsdom: failed	packages_react::packages/react/src/components/number-input/tests/number-input.test.tsx::NumberInput / Field prop: largeStep should use an explicit largeStep when Shift is held

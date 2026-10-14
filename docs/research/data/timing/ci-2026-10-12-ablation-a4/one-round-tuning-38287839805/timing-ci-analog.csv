@@ -1,0 +1,4 @@
+round,project,config,seconds,differs
+1,analog,jsdom-default,26.4,0
+1,analog,warpdom-default,20.6,0
+1,analog,warpdomlatest-default,21.2,0

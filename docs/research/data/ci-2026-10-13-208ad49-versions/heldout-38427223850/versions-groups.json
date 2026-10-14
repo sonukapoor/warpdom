@@ -1,0 +1,147 @@
+{
+  "dom-testing-library jsdom-20.0.3": [
+    {
+      "key": "passed -> failed | Error: expect(received).toEqual(expected) // deep equality",
+      "count": 1,
+      "examples": [
+        "root::src/__tests__/ariaAttributes.js::`selected: true` matches `aria-selected=\"true\"` on supported roles"
+      ]
+    }
+  ],
+  "dom-testing-library jsdom-26.1.0": [
+    {
+      "key": "passed -> failed | Error: expect(received).toMatch(expected)",
+      "count": 1,
+      "examples": [
+        "root::src/__tests__/role.js::configuration can be configured to consider ::before and ::after for accessible names which logs errors in jsdom"
+      ]
+    }
+  ],
+  "dom-testing-library jsdom-30.1.2": [
+    {
+      "key": "passed -> missing | ",
+      "count": 657,
+      "examples": [
+        "root::src/__tests__/element-queries.js::query can return null",
+        "root::src/__tests__/element-queries.js::get throws a useful error message",
+        "root::src/__tests__/element-queries.js::can get elements by matching their text content"
+      ]
+    }
+  ],
+  "downshift jsdom-30.1.2": [
+    {
+      "key": "passed -> missing | ",
+      "count": 1110,
+      "examples": [
+        "root::src/hooks/useSelect/__tests__/getToggleButtonProps.test.js::getToggleButtonProps hook props returns an object with some default props",
+        "root::src/hooks/useSelect/__tests__/getToggleButtonProps.test.js::getToggleButtonProps hook props assign default value to aria-labelledby",
+        "root::src/hooks/useSelect/__tests__/getToggleButtonProps.test.js::getToggleButtonProps hook props assign custom value passed by user to aria-labelledby"
+      ]
+    }
+  ],
+  "naive-ui jsdom-20.0.3": [
+    {
+      "key": "passed -> failed | Error: Snapshot `n-gradient-text > should work with `gradient` prop N` mismatched",
+      "count": 1,
+      "examples": [
+        "root::src/gradient-text/tests/GradientText.spec.ts::n-gradient-text should work with `gradient` prop"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected \"vi.fn()\" to not be called at all, but actually been called N times",
+      "count": 1,
+      "examples": [
+        "root::src/input/tests/Input.spec.tsx::n-input should work with `blur` `focus` `select` methods"
+      ]
+    }
+  ],
+  "react-router jsdom-20.0.3": [
+    {
+      "key": "passed -> failed | Error: expect(received).toEqual(expected) // deep equality",
+      "count": 10,
+      "examples": [
+        "packages_react-router::packages/react-router/__tests__/dom/data-browser-router-test.tsx::Router: <DataBrowserRouter> basename supports a basename on <Form method=\"get\">",
+        "packages_react-router::packages/react-router/__tests__/dom/data-browser-router-test.tsx::Router: <DataBrowserRouter> <Form action> index routes does not put ?index param in final URL for <Form method=\"get\"",
+        "packages_react-router::packages/react-router/__tests__/dom/data-browser-router-test.tsx::Router: <DataBrowserRouter> useSubmit/Form FormData appends button name/value and doesn't overwrite inputs with same name (form)"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: Unable to find an element with the text: loading. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your m",
+      "count": 2,
+      "examples": [
+        "packages_react-router::packages/react-router/__tests__/dom/data-browser-router-test.tsx::Router: <DataBrowserRouter> submissions allows a button to override the <form method>",
+        "packages_react-router::packages/react-router/__tests__/dom/data-browser-router-test.tsx::Router: <DataHashRouter> submissions allows a button to override the <form method>"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: Unable to find an element with the text: Yes. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your match",
+      "count": 2,
+      "examples": [
+        "packages_react-router::packages/react-router/__tests__/dom/data-browser-router-test.tsx::Router: <DataBrowserRouter> submissions allows a button to override the <form action>",
+        "packages_react-router::packages/react-router/__tests__/dom/data-browser-router-test.tsx::Router: <DataHashRouter> submissions allows a button to override the <form action>"
+      ]
+    },
+    {
+      "key": "passed -> failed | Error: expect(received).toBe(expected) // Object.is equality",
+      "count": 2,
+      "examples": [
+        "packages_react-router::packages/react-router/__tests__/dom/data-browser-router-test.tsx::Router: <DataBrowserRouter> useSubmit/Form FormData includes submit button name/value on form submission",
+        "packages_react-router::packages/react-router/__tests__/dom/data-browser-router-test.tsx::Router: <DataHashRouter> useSubmit/Form FormData includes submit button name/value on form submission"
+      ]
+    }
+  ],
+  "react-router jsdom-30.1.2": [
+    {
+      "key": "passed -> missing | ",
+      "count": 1404,
+      "examples": [
+        "packages_react-router::packages/react-router/__tests__/router/fetchers-test.ts::fetchers fetcher states unabstracted loader fetch",
+        "packages_react-router::packages/react-router/__tests__/router/fetchers-test.ts::fetchers fetcher states unabstracted loader fetch with fog of war",
+        "packages_react-router::packages/react-router/__tests__/router/fetchers-test.ts::fetchers fetcher states loader fetch"
+      ]
+    }
+  ],
+  "tanstack-query jsdom-20.0.3": [
+    {
+      "key": "passed -> failed | TypeError: DOMRectReadOnly is not a constructor",
+      "count": 1,
+      "examples": [
+        "packages_query-devtools::packages/query-devtools/src/__tests__/Devtools.test.tsx::Devtools should keep measured panel widths independent"
+      ]
+    }
+  ],
+  "tanstack-query jsdom-30.1.2": [
+    {
+      "key": "passed -> failed | AssertionError: expected '' to be '.next { color: blue; }' // Object.is equality",
+      "count": 1,
+      "examples": [
+        "packages_query-devtools::packages/query-devtools/src/__tests__/contexts/PiPContext.test.tsx::PiPContext \"#_goober\" MutationObserver should copy parent \"#_goober\" \"textContent\" into the PiP mirror when the observer fires"
+      ]
+    }
+  ],
+  "vueuse jsdom-20.0.3": [
+    {
+      "key": "passed -> failed | AssertionError: expected \"vi.fn()\" to be called +N times, but got N times",
+      "count": 2,
+      "examples": [
+        "root::packages/core/onLongPress/index.test.ts::onLongPress given argument is ref given options should trigger longpress if pointer is moved",
+        "root::packages/core/onLongPress/index.test.ts::onLongPress given argument is no ref given options should trigger longpress if pointer is moved"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected \"vi.fn()\" to be called with arguments: [ Any<Number>, +N, false, …(N) ]",
+      "count": 2,
+      "examples": [
+        "root::packages/core/onLongPress/index.test.ts::onLongPress given argument is ref given options should trigger onMouseUp when pointer is released",
+        "root::packages/core/onLongPress/index.test.ts::onLongPress given argument is no ref given options should trigger onMouseUp when pointer is released"
+      ]
+    },
+    {
+      "key": "passed -> failed | AssertionError: expected 'blue' to be 'red' // Object.is equality",
+      "count": 1,
+      "examples": [
+        "root::packages/core/useCssVar/index.test.ts::useCssVar should work when changing CSS variable name"
+      ]
+    }
+  ]
+}

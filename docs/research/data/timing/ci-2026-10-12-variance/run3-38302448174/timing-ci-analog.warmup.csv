@@ -1,0 +1,4 @@
+round,project,config,seconds,differs,files_differ
+0,analog,jsdom-default,33.7,0,0
+0,analog,warpdom-default,26.5,0,0
+0,analog,happy-dom-default,28.7,2,0

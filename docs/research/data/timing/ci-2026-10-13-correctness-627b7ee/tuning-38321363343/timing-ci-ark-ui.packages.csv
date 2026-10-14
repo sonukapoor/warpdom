@@ -1,0 +1,17 @@
+round,project,config,package,status,seconds
+0,ark-ui,jsdom-default,packages/react,ran,40.6
+0,ark-ui,jsdom-default,packages/vue,ran,45.2
+0,ark-ui,jsdom-default,packages/solid,ran,38.9
+0,ark-ui,jsdom-default,packages/svelte,ran,11.9
+0,ark-ui,warpdom-default,packages/react,ran,24.8
+0,ark-ui,warpdom-default,packages/vue,ran,30.3
+0,ark-ui,warpdom-default,packages/solid,ran,25.6
+0,ark-ui,warpdom-default,packages/svelte,ran,7.2
+1,ark-ui,jsdom-default,packages/react,ran,40.2
+1,ark-ui,jsdom-default,packages/vue,ran,46.6
+1,ark-ui,jsdom-default,packages/solid,ran,40.1
+1,ark-ui,jsdom-default,packages/svelte,ran,11.5
+1,ark-ui,warpdom-default,packages/react,ran,24.5
+1,ark-ui,warpdom-default,packages/vue,ran,31.1
+1,ark-ui,warpdom-default,packages/solid,ran,25.9
+1,ark-ui,warpdom-default,packages/svelte,ran,7.2

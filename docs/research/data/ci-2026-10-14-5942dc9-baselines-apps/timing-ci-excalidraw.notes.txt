@@ -1,0 +1,18 @@
+NA round 0 excalidraw warpdom-vm:  failed .: run produced no results (see logs/excalidraw/root.warpdom.log)
+    
+    ▶ excalidraw
+      failed  .: run produced no results (see logs/excalidraw/root.warpdom.log)
+NA round 0 excalidraw learning:  failed .: fast-cli unsupported: Vitest 3.0.6 (warpdom vitest run needs >= 3.2)
+    
+    ▶ excalidraw
+      failed  .: fast-cli unsupported: Vitest 3.0.6 (warpdom vitest run needs >= 3.2)
+METHOD excalidraw: harness emulation of warpdom vitest run (failed  .: fast-cli unsupported: Vitest 3.0.6 (warpdom vitest run needs >= 3.2))
+NA round 1 excalidraw warpdom-vm:  failed .: run produced no results (see logs/excalidraw/root.warpdom.log)
+    
+    ▶ excalidraw
+      failed  .: run produced no results (see logs/excalidraw/root.warpdom.log)
+NA round 3 excalidraw warpdom-vm:  failed .: run produced no results (see logs/excalidraw/root.warpdom.log)
+    
+    ▶ excalidraw
+      failed  .: run produced no results (see logs/excalidraw/root.warpdom.log)
+BUDGET: stopped before round 4 of 5 (293 min used, rounds take up to 85 min, budget 320 min): excalidraw

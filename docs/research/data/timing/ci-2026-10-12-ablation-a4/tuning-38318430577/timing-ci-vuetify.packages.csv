@@ -1,0 +1,10 @@
+round,project,config,package,status,seconds
+0,vuetify,jsdom-default,packages/vuetify,ran,42.0
+0,vuetify,warpdom-default,packages/vuetify,ran,28.6
+0,vuetify,warpdomlatest-default,packages/vuetify,ran,28.5
+1,vuetify,jsdom-default,packages/vuetify,ran,42.1
+1,vuetify,warpdom-default,packages/vuetify,ran,28.1
+1,vuetify,warpdomlatest-default,packages/vuetify,ran,27.8
+2,vuetify,warpdom-default,packages/vuetify,ran,27.7
+2,vuetify,warpdomlatest-default,packages/vuetify,ran,28.0
+2,vuetify,jsdom-default,packages/vuetify,ran,41.8

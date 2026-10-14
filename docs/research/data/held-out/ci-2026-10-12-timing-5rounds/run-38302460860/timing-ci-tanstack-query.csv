@@ -1,0 +1,16 @@
+round,project,config,seconds,differs,files_differ
+1,tanstack-query,jsdom-default,125.1,0,0
+1,tanstack-query,warpdom-default,81.9,1,1
+1,tanstack-query,happy-dom-default,98.3,1,1
+2,tanstack-query,warpdom-default,82.1,1,1
+2,tanstack-query,happy-dom-default,98.3,1,1
+2,tanstack-query,jsdom-default,125.6,0,0
+3,tanstack-query,happy-dom-default,98.1,1,1
+3,tanstack-query,jsdom-default,125.3,0,0
+3,tanstack-query,warpdom-default,82.2,1,1
+4,tanstack-query,jsdom-default,125.0,0,0
+4,tanstack-query,warpdom-default,82.0,1,1
+4,tanstack-query,happy-dom-default,97.8,1,1
+5,tanstack-query,warpdom-default,81.8,1,1
+5,tanstack-query,happy-dom-default,98.1,1,1
+5,tanstack-query,jsdom-default,125.0,0,0

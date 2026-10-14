@@ -1,0 +1,1 @@
+warm-up: handsontable happy-dom-default has no time; not run in the timed rounds

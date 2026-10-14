@@ -1,0 +1,7 @@
+round,project,config,seconds,differs,files_differ
+1,vuetify,jsdom-default,42.1,0,0
+1,vuetify,warpdom-default,28.1,0,0
+1,vuetify,warpdomlatest-default,27.8,0,0
+2,vuetify,warpdom-default,27.7,0,0
+2,vuetify,warpdomlatest-default,28.0,0,0
+2,vuetify,jsdom-default,41.8,0,0

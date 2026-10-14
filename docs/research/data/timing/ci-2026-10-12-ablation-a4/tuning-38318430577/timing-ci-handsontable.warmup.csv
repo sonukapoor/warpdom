@@ -1,0 +1,4 @@
+round,project,config,seconds,differs,files_differ
+0,handsontable,jsdom-default,1099.0,0,0
+0,handsontable,warpdom-default,423.2,3,1
+0,handsontable,warpdomlatest-default,80.5,23,5

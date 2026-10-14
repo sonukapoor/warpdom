@@ -1,0 +1,4 @@
+round,project,config,seconds,differs,files_differ
+0,dom-testing-library,jsdom-default,8.2,0,0
+0,dom-testing-library,warpdom-default,6.6,0,0
+0,dom-testing-library,happy-dom-default,7.3,23,8

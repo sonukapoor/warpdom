@@ -84,23 +84,114 @@ function write(name, svg) {
 
 // ---------------------------------------------------------------- data
 
-// Three-way GitHub Actions run (README 3.6; report-without-handsontable.md).
-const threeWayMd = read('timing/ci-2026-10-12-three-way/report-without-handsontable.md');
-const threeWay = table(threeWayMd, '| Suite | jsdom | warpdom | happy-dom').map((r) => {
-  const [wdDiff, hdDiff] = r[7].split('/').map(num);
-  return {
-    suite: r[0],
-    jsdom: num(r[1]),
-    warpdom: num(r[2]),
-    happy: num(r[3]),
-    wdSpeed: num(r[4]),
-    hdSpeed: num(r[5]),
-    wdDiff,
-    hdDiff,
-  };
-});
+// Drop-in runs at the frozen commit warpdom 208ad49 (Figures 2 and 3):
+// ci-2026-10-13-208ad49-threeway-tuning/run{1,2,3}-*/timing-ci.csv (three
+// independent runs), -threeway-heldout/timing-ci.csv, -threeway-apps/timing-ci.csv.
+// Columns: round,project,config,seconds,differs,files_differ,ref; "differs" is the
+// count of tests whose status differs from the same round's jsdom-default run.
+const DROPIN = 'ci-2026-10-13-208ad49';
+const TUNING_RUNS = ['run1-38426985620', 'run2-38427009322', 'run3-38427031231'];
+/** Per project: { wd: [ratios], hd: [ratios], wdDiff, hdDiff } from one timing CSV. */
+function dropIn(csvPath) {
+  const rounds = new Map();
+  for (const l of read(csvPath).trim().split('\n').slice(1)) {
+    const [round, project, config, secs, differs] = l.split(',');
+    if (round === '0') continue; // warm-up
+    const k = `${project}|${round}`;
+    if (!rounds.has(k)) rounds.set(k, {});
+    rounds.get(k)[config] = { secs: Number(secs), differs: Number(differs) };
+  }
+  const out = {};
+  for (const [k, v] of rounds) {
+    const project = k.split('|')[0];
+    const o = (out[project] ??= { wd: [], hd: [], wdDiff: 0, hdDiff: null });
+    const j = v['jsdom-default'];
+    const w = v['warpdom-default'];
+    const h = v['happy-dom-default'];
+    if (!j || !Number.isFinite(j.secs)) continue;
+    if (w && Number.isFinite(w.secs)) {
+      o.wd.push(j.secs / w.secs);
+      o.wdDiff = Math.max(o.wdDiff, w.differs);
+    }
+    if (h && Number.isFinite(h.secs)) {
+      o.hd.push(j.secs / h.secs);
+      o.hdDiff = Math.max(o.hdDiff ?? 0, h.differs);
+    }
+  }
+  return out;
+}
+/** Median; the mean of the two middle values for an even count (timing-report.cjs). */
+function median(a) {
+  const s = [...a].sort((x, y) => x - y);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+const tuningRuns = TUNING_RUNS.map((r) => dropIn(`${DROPIN}-threeway-tuning/${r}/timing-ci.csv`));
+const heldOut = dropIn(`${DROPIN}-threeway-heldout/timing-ci.csv`);
+const apps = dropIn(`${DROPIN}-threeway-apps/timing-ci.csv`);
+const LABEL = { 'wire-webapp': 'Wire web app', excalidraw: 'Excalidraw', 'material-ui': 'material-ui (MUI)' };
+const label = (p) => LABEL[p] || p;
 
-// Fast mode GitHub Actions run (README 3.6; ci-2026-10-12-fastmode/report.md).
+/** Rows for Figures 2 and 3: group headers and suites. */
+function dropInRows() {
+  const rows = [];
+  const tuningNames = Object.keys(tuningRuns[0]);
+  const tuning = tuningNames.map((p) => {
+    const runs = tuningRuns.map((r) => r[p]);
+    const wdAll = runs.flatMap((r) => r.wd);
+    const hdAll = runs.flatMap((r) => r.hd);
+    return {
+      suite: p,
+      wd: wdAll, hd: hdAll,
+      wdMed: median(wdAll), hdMed: hdAll.length ? median(hdAll) : null,
+      wdRunMeds: runs.map((r) => median(r.wd)),
+      hdRunMeds: hdAll.length ? runs.map((r) => median(r.hd)) : [],
+      wdDiff: Math.max(...runs.map((r) => r.wdDiff)),
+      hdDiff: hdAll.length ? Math.max(...runs.map((r) => r.hdDiff ?? 0)) : null,
+    };
+  });
+  const single = (src, p) => ({
+    suite: p, wd: src[p].wd, hd: src[p].hd,
+    wdMed: median(src[p].wd), hdMed: src[p].hd.length ? median(src[p].hd) : null,
+    wdRunMeds: [], hdRunMeds: [], wdDiff: src[p].wdDiff, hdDiff: src[p].hdDiff,
+  });
+  rows.push({ header: 'Tuning suites (3 independent runs; 13 under the version rule)' });
+  tuning.filter((r) => r.suite !== 'handsontable').sort((a, b) => b.wdMed - a.wdMed).forEach((r) => rows.push(r));
+  const ht = tuning.find((r) => r.suite === 'handsontable');
+  if (ht) rows.push({ ...ht, display: 'handsontable \u2020' });
+  rows.push({ header: 'Held-out suites (1 run)' });
+  Object.keys(heldOut).map((p) => single(heldOut, p)).sort((a, b) => b.wdMed - a.wdMed)
+    .forEach((r) => rows.push(r.suite === 'solid-primitives' ? { ...r, display: 'solid-primitives *' } : r));
+  rows.push({ header: 'Applications (1 run)' });
+  Object.keys(apps).map((p) => single(apps, p)).sort((a, b) => b.wdMed - a.wdMed).forEach((r) => rows.push(r));
+  return rows;
+}
+const dropRows = dropInRows();
+
+/** Per-round ratios jsdom-default / target, per project, from a timing CSV (Figure S3). */
+function roundRatios(csvPath, targetPrefix) {
+  const byKey = new Map();
+  for (const line of read(csvPath).trim().split('\n').slice(1)) {
+    const [round, project, config, secs] = line.split(',');
+    const k = `${project}|${round}`;
+    if (!byKey.has(k)) byKey.set(k, {});
+    const cfg = config === 'jsdom-default' ? 'jsdom' : config.startsWith(targetPrefix) ? 'target' : null;
+    if (cfg) byKey.get(k)[cfg] = Number(secs);
+  }
+  const out = {};
+  for (const [k, v] of byKey) {
+    const project = k.split('|')[0];
+    if (v.jsdom && v.target) (out[project] ??= []).push(v.jsdom / v.target);
+  }
+  return out;
+}
+const learnedRounds = roundRatios('timing/ci-2026-10-12-fastmode/timing-ci.csv', 'warpdom-learned');
+const whisker = (x, lo, hi, yMid) =>
+  line(x(lo), yMid, x(hi), yMid, 'stroke="#000" stroke-width="0.9"') +
+  line(x(lo), yMid - 3, x(lo), yMid + 3, 'stroke="#000" stroke-width="0.9"') +
+  line(x(hi), yMid - 3, x(hi), yMid + 3, 'stroke="#000" stroke-width="0.9"');
+
+// First CI run of measured isolation (Figure S3; README 3.6; ci-2026-10-12-fastmode/report.md).
 const fastMd = read('timing/ci-2026-10-12-fastmode/report.md');
 const fast = table(fastMd, '| Suite | jsdom default | warpdom fast mode').map((r) => ({
   suite: r[0],
@@ -111,11 +202,11 @@ const fast = table(fastMd, '| Suite | jsdom default | warpdom fast mode').map((r
   differ: num(r[5]),
 }));
 
-// WPT, evening run (README 3.6; data/wpt/ci-2026-10-12-evening-summary.md, "Side by side").
-const wptMd = read('wpt/ci-2026-10-12-evening-summary.md');
+// WPT at the frozen commit (data/wpt/ci-2026-10-13-208ad49/summary.md, "Side by side"; run 38427179332, warpdom 208ad49).
+const wptMd = read('wpt/ci-2026-10-13-208ad49/summary.md');
 const wpt = table(wptMd, '| Directory | Files | Subtests | warpdom passed', wptMd.indexOf('## Side by side') > 0
   ? wptMd.split('\n').findIndex((l) => l.startsWith('## Side by side')) : 0).map((r) => ({
-  area: r[0].replace(/\*/g, ''),
+  area: r[0].replace(/\*/g, '').replace(/\/$/, ''),
   files: num(r[1]),
   wdScore: num(r[5]),
   jsScore: num(r[8]),
@@ -146,16 +237,16 @@ const profiles = [
 
 // Surveys (README 3.1, "Earlier" column; data/surveys/*.log), in order.
 const SURVEYS = [
-  ['survey.log', '10-09 a'],
-  ['survey2.log', '10-09 b'],
-  ['survey-jest.log', '10-10 a'],
-  ['survey-ht.log', '10-10 b'],
-  ['survey3.log', '10-11 1'],
-  ['survey4.log', '10-11 2'],
-  ['survey5.log', '10-11 3'],
-  ['survey6.log', '10-11 4'],
-  ['survey7.log', '10-11 5'],
-  ['survey8.log', '10-11 6'],
+  ['survey.log', 'S1 10-09'],
+  ['survey2.log', 'S2 10-09'],
+  ['survey-jest.log', 'S3 10-10'],
+  ['survey-ht.log', 'S4 10-10'],
+  ['survey3.log', 'S5 10-11'],
+  ['survey4.log', 'S6 10-11'],
+  ['survey5.log', 'S7 10-11'],
+  ['survey6.log', 'S8 10-11'],
+  ['survey7.log', 'S9 10-11'],
+  ['survey8.log', 'S10 10-11'],
 ];
 const surveys = SURVEYS.map(([file, label]) => {
   const byProject = {};
@@ -166,56 +257,88 @@ const surveys = SURVEYS.map(([file, label]) => {
   return { file, label, byProject };
 });
 
-// ---------------------------------------------------------------- figure 2: speedups, three-way
+// ---------------------------------------------------------------- figure 2: drop-in speedups at 208ad49
 
 {
-  const rows = [...threeWay].sort((a, b) => b.wdSpeed - a.wdSpeed);
-  const W = 720, left = 150, right = 30, top = 46, rowH = 30, barH = 10;
-  const H = top + rows.length * rowH + 50;
-  const lo = 0.5, hi = 10;
+  const W = 760, left = 175, right = 70, top = 52, rowH = 30, headH = 26, barH = 10;
+  const bodyH = dropRows.reduce((h, r) => h + (r.header ? headH : rowH), 0);
+  const H = top + bodyH + 70;
+  const lo = 0.4, hi = 15;
   const x = (v) => left + ((Math.log10(v) - Math.log10(lo)) / (Math.log10(hi) - Math.log10(lo))) * (W - left - right);
-  let b = text(left, 18, 'Speedup over jsdom (median of per-round ratios), GitHub Actions, 3 rounds; log scale', 'font-weight="bold"');
-  b += legend(left, 36, [['warpdom vs jsdom', '#333'], ['happy-dom vs jsdom', 'url(#diag)']]);
-  for (const t of [0.5, 0.75, 1, 1.5, 2, 3, 5, 10]) {
-    b += line(x(t), top, x(t), top + rows.length * rowH, `stroke="${t === 1 ? '#000' : '#bbb'}" stroke-width="${t === 1 ? 1.2 : 0.6}"${t === 1 ? '' : ' stroke-dasharray="2,3"'}`);
-    b += text(x(t), top + rows.length * rowH + 16, `${t}x`, 'text-anchor="middle"');
+  let b = legend(left, 30, [['warpdom vs jsdom', '#333'], ['happy-dom vs jsdom', 'url(#diag)']]);
+  b += `<path d="M${(left + 330).toFixed(1)} 21 l4 4 l-4 4 l-4 -4 z" fill="#fff" stroke="#000" stroke-width="0.9"/>`;
+  b += text(left + 340, 30, 'median of one run (tuning)');
+  const ticks = [0.5, 1, 1.5, 2, 3, 5, 10];
+  for (const t of ticks) {
+    b += line(x(t), top, x(t), top + bodyH, `stroke="${t === 1 ? '#000' : '#bbb'}" stroke-width="${t === 1 ? 1.2 : 0.6}"${t === 1 ? '' : ' stroke-dasharray="2,3"'}`);
+    b += text(x(t), top + bodyH + 16, `${t}x`, 'text-anchor="middle"');
   }
-  rows.forEach((r, i) => {
-    const y = top + i * rowH + 4;
-    b += text(left - 8, y + barH + 4, r.suite, 'text-anchor="end"');
+  const diamond = (cx, cy) => `<path d="M${cx.toFixed(1)} ${(cy - 4).toFixed(1)} l4 4 l-4 4 l-4 -4 z" fill="#fff" stroke="#000" stroke-width="0.9"/>`;
+  let y = top;
+  for (const r of dropRows) {
+    if (r.header) {
+      b += `<rect x="0" y="${y + 3}" width="${W}" height="${headH - 6}" fill="#fff"/>`;
+      b += text(8, y + 17, r.header, 'font-weight="bold"');
+      y += headH;
+      continue;
+    }
+    const yy = y + 4;
+    b += text(left - 8, yy + barH + 4, r.display || label(r.suite), 'text-anchor="end"');
     const x1 = x(1);
-    b += rect(Math.min(x1, x(r.wdSpeed)), y, Math.abs(x(r.wdSpeed) - x1), barH, '#333');
-    b += text(Math.max(x1, x(r.wdSpeed)) + 4, y + barH - 1, `${r.wdSpeed.toFixed(2)}x`, 'font-size="10"');
-    b += rect(Math.min(x1, x(r.hdSpeed)), y + barH + 1, Math.abs(x(r.hdSpeed) - x1), barH, 'url(#diag)');
-    b += text(Math.max(x1, x(r.hdSpeed)) + 4, y + 2 * barH, `${r.hdSpeed.toFixed(2)}x`, 'font-size="10"');
-  });
-  b += text(left, H - 10, 'Bars start at 1x; a bar to the left of 1x is slower than jsdom. handsontable is not in this run (harness time limit).', 'font-size="10"');
-  write('fig2-speedup-three-way.svg', svgDoc(W, H, b, 'Speedup over jsdom per suite, warpdom and happy-dom'));
+    const bar = (med, all, runMeds, yb, fill) => {
+      let o = rect(Math.min(x1, x(med)), yb, Math.abs(x(med) - x1), barH, fill);
+      o += whisker(x, Math.min(...all), Math.max(...all), yb + barH / 2);
+      for (const m of runMeds) o += diamond(x(m), yb + barH / 2);
+      o += text(Math.max(x1, x(med), x(Math.max(...all))) + 6, yb + barH - 1, `${med.toFixed(2)}x`, 'font-size="10"');
+      return o;
+    };
+    b += bar(r.wdMed, r.wd, r.wdRunMeds, yy, '#333');
+    if (r.hdMed != null) b += bar(r.hdMed, r.hd, r.hdRunMeds, yy + barH + 1, 'url(#diag)');
+    else b += text(x1 + 4, yy + 2 * barH, 'happy-dom: no time in any round', 'font-size="10" font-style="italic"');
+    y += rowH;
+  }
+  b += text(8, H - 36, 'Speedup over jsdom in each runner\'s default isolation (log scale), warpdom 208ad49. Bars: median of per-round ratios (tuning: 15 rounds of', 'font-size="10"');
+  b += text(8, H - 23, 'three runs pooled; diamonds: each run\'s median); whiskers: range of the per-round ratios. \u2020 core on jsdom 16.7, outside the medians.', 'font-size="10"');
+  b += text(8, H - 10, '* every jsdom round flagged by the broken-round rule (21 tests reported or dropped on every DOM); raw rounds shown.', 'font-size="10"');
+  write('fig2-speedup-three-way.svg', svgDoc(W, H, b, 'Drop-in speedup over jsdom per suite, warpdom and happy-dom'));
 }
 
-// ---------------------------------------------------------------- figure 3: changed results
+// ---------------------------------------------------------------- figure 3: changed results at 208ad49
 
 {
-  const rows = [...threeWay].sort((a, b) => b.hdDiff - a.hdDiff);
-  const W = 720, left = 150, right = 60, top = 46, rowH = 30, barH = 10;
-  const H = top + rows.length * rowH + 50;
+  const rows = dropRows.filter((r) => r.header || r.suite !== 'solid-primitives');
+  const W = 760, left = 175, right = 70, top = 46, rowH = 30, headH = 26, barH = 10;
+  const bodyH = rows.reduce((h, r) => h + (r.header ? headH : rowH), 0);
+  const H = top + bodyH + 58;
   const maxL = Math.log10(10000 + 1);
   const x = (v) => left + (Math.log10(v + 1) / maxL) * (W - left - right);
-  let b = text(left, 18, 'Tests whose status differs from jsdom, per suite (three-way run); log scale of count + 1', 'font-weight="bold"');
-  b += legend(left, 36, [['warpdom', '#333'], ['happy-dom', 'url(#diag)']]);
+  let b = legend(left, 30, [['warpdom', '#333'], ['happy-dom', 'url(#diag)']]);
   for (const t of [0, 1, 10, 100, 1000, 10000]) {
-    b += line(x(t), top, x(t), top + rows.length * rowH, `stroke="${t === 0 ? '#000' : '#bbb'}" stroke-width="0.6"${t === 0 ? '' : ' stroke-dasharray="2,3"'}`);
-    b += text(x(t), top + rows.length * rowH + 16, t.toLocaleString('en-US'), 'text-anchor="middle"');
+    b += line(x(t), top, x(t), top + bodyH, `stroke="${t === 0 ? '#000' : '#bbb'}" stroke-width="0.6"${t === 0 ? '' : ' stroke-dasharray="2,3"'}`);
+    b += text(x(t), top + bodyH + 16, t.toLocaleString('en-US'), 'text-anchor="middle"');
   }
-  rows.forEach((r, i) => {
-    const y = top + i * rowH + 4;
-    b += text(left - 8, y + barH + 4, r.suite, 'text-anchor="end"');
-    b += rect(x(0), y, x(r.wdDiff) - x(0), barH, '#333');
-    b += text(x(r.wdDiff) + 4, y + barH - 1, String(r.wdDiff), 'font-size="10"');
-    b += rect(x(0), y + barH + 1, x(r.hdDiff) - x(0), barH, 'url(#diag)');
-    b += text(x(r.hdDiff) + 4, y + 2 * barH, r.hdDiff.toLocaleString('en-US'), 'font-size="10"');
-  });
-  b += text(left, H - 10, 'Differences in either direction (pass on jsdom and fail, or the reverse), summed over the run.', 'font-size="10"');
+  let y = top;
+  for (const r of rows) {
+    if (r.header) {
+      b += `<rect x="0" y="${y + 3}" width="${W}" height="${headH - 6}" fill="#fff"/>`;
+      b += text(8, y + 17, r.header, 'font-weight="bold"');
+      y += headH;
+      continue;
+    }
+    const yy = y + 4;
+    b += text(left - 8, yy + barH + 4, r.display || label(r.suite), 'text-anchor="end"');
+    b += rect(x(0), yy, x(r.wdDiff) - x(0), barH, '#333');
+    b += text(x(r.wdDiff) + 4, yy + barH - 1, String(r.wdDiff), 'font-size="10"');
+    if (r.hdDiff != null) {
+      b += rect(x(0), yy + barH + 1, x(r.hdDiff) - x(0), barH, 'url(#diag)');
+      b += text(x(r.hdDiff) + 4, yy + 2 * barH, r.hdDiff.toLocaleString('en-US'), 'font-size="10"');
+    } else {
+      b += text(x(0) + 4, yy + 2 * barH, 'happy-dom: no time in any round', 'font-size="10" font-style="italic"');
+    }
+    y += rowH;
+  }
+  b += text(8, H - 23, 'Tests whose status differs from the same round\'s jsdom run, either direction, most in any round (tuning: over the three runs);', 'font-size="10"');
+  b += text(8, H - 10, 'log scale of count + 1; warpdom 208ad49. solid-primitives left out (21 tests reported or dropped on every DOM). \u2020 core on jsdom 16.7.', 'font-size="10"');
   write('fig3-differences.svg', svgDoc(W, H, b, 'Tests that change result, warpdom and happy-dom'));
 }
 
@@ -232,15 +355,14 @@ const surveys = SURVEYS.map(([file, label]) => {
     ['project code', ['project'], '#ccc'],
     ['GC, other deps, other', ['gc', 'other-deps', 'other'], '#fff'],
   ];
-  const W = 720, left = 130, right = 30, top = 86, rowH = 46, barH = 26;
+  const W = 720, left = 130, right = 30, top = 76, rowH = 46, barH = 26;
   const labelRoom = 150;
   const H = top + profiles.length * rowH + 60;
   const maxCpu = Math.max(...profiles.map((p) => p.cpu));
   const scale = (W - left - right - labelRoom) / maxCpu;
-  let b = text(left, 18, 'Sampled CPU time of test processes by category (idle excluded), seconds', 'font-weight="bold"');
   // legend in two rows
-  b += legend(left, 40, GROUPS.slice(0, 4).map(([l, , f]) => [l, f]));
-  b += legend(left, 60, GROUPS.slice(4).map(([l, , f]) => [l, f]));
+  let b = legend(left, 30, GROUPS.slice(0, 4).map(([l, , f]) => [l, f]));
+  b += legend(left, 50, GROUPS.slice(4).map(([l, , f]) => [l, f]));
   profiles.forEach((p, i) => {
     const y = top + i * rowH;
     b += text(left - 8, y + barH / 2 + 4, p.label, 'text-anchor="end"');
@@ -257,12 +379,12 @@ const surveys = SURVEYS.map(([file, label]) => {
     const idle = p.idle != null ? `; idle ${p.idle.toFixed(1)} s` : '';
     b += text(cx + 6, y + barH / 2 + 4, `${p.cpu.toFixed(1)} s${idle}`, 'font-size="10"');
   });
-  b += text(left, H - 26, 'ariakit: 2026-10-12, laptop (shares usable, wall times not). MUI: four packages, 2026-10-11, warpdom only.', 'font-size="10"');
+  b += text(left, H - 26, 'Sampled CPU seconds of test processes, idle excluded. ariakit 2026-10-12, MUI (four packages) 2026-10-11; laptop profiles.', 'font-size="10"');
   b += text(left, H - 12, 'Idle = summed time test processes spent waiting (timers, animation frames).', 'font-size="10"');
   write('fig4-cpu-share.svg', svgDoc(W, H, b, 'CPU time by category, jsdom and warpdom'));
 }
 
-// ---------------------------------------------------------------- figure 5: WPT per area
+// ---------------------------------------------------------------- figure S2 (supplement): WPT per area
 
 {
   const rows = wpt.filter((r) => r.area !== 'Total');
@@ -271,8 +393,7 @@ const surveys = SURVEYS.map(([file, label]) => {
   const W = 720, left = 150, right = 60, top = 46, rowH = 30, barH = 10;
   const H = top + all.length * rowH + 44;
   const x = (v) => left + (v / 100) * (W - left - right);
-  let b = text(left, 18, 'Web Platform Tests: score per file (wpt.fyi style), per area', 'font-weight="bold"');
-  b += legend(left, 36, [['warpdom', '#333'], ['jsdom 30.1.2', 'url(#diag)']]);
+  let b = legend(left, 30, [['warpdom', '#333'], ['jsdom 30.1.2', 'url(#diag)']]);
   for (const t of [0, 20, 40, 60, 80, 100]) {
     b += line(x(t), top, x(t), top + all.length * rowH, 'stroke="#bbb" stroke-width="0.6" stroke-dasharray="2,3"');
     b += text(x(t), top + all.length * rowH + 16, `${t}%`, 'text-anchor="middle"');
@@ -286,11 +407,11 @@ const surveys = SURVEYS.map(([file, label]) => {
     b += rect(x(0), y + barH + 1, x(r.jsScore) - x(0), barH, 'url(#diag)');
     b += text(x(r.jsScore) + 4, y + 2 * barH, `${r.jsScore.toFixed(1)}%`, 'font-size="10"');
   });
-  b += text(left, H - 8, 'Scored against the union of subtest names both engines report. Run 38272794602, warpdom cad3ce8, WPT 87b5d13099.', 'font-size="10"');
-  write('fig5-wpt.svg', svgDoc(W, H, b, 'WPT score per area, warpdom and jsdom'));
+  b += text(left, H - 8, 'Scored against the union of subtest names both engines report. Run 38427179332, warpdom 208ad49, WPT 87b5d13099.', 'font-size="10"');
+  write('figS2-wpt.svg', svgDoc(W, H, b, 'WPT score per area, warpdom and jsdom'));
 }
 
-// ---------------------------------------------------------------- figure 1: fast mode (learned isolation)
+// ---------------------------------------------------------------- figure S3 (supplement): measured isolation, first CI run (file name kept)
 
 {
   const rows = [...fast].sort((a, b) => b.speed - a.speed);
@@ -298,8 +419,7 @@ const surveys = SURVEYS.map(([file, label]) => {
   const H = top + rows.length * rowH + 50;
   const hi = 9;
   const x = (v) => left + (v / hi) * (W - left - right);
-  let b = text(left, 18, 'Learned isolation (Vitest): speedup over jsdom default, GitHub Actions, 3 rounds', 'font-weight="bold"');
-  b += legend(left, 36, [['split (shared files + learned isolated ones)', '#333'], ['isolated kept (= warpdom default)', 'url(#diag)']]);
+  let b = legend(left, 30, [['split (shared files + measured isolated ones)', '#333'], ['isolated kept (= drop-in)', 'url(#diag)']]);
   for (let t = 0; t <= hi; t++) {
     b += line(x(t), top, x(t), top + rows.length * rowH, `stroke="${t === 1 ? '#000' : '#bbb'}" stroke-width="${t === 1 ? 1.2 : 0.6}"${t === 1 ? '' : ' stroke-dasharray="2,3"'}`);
     b += text(x(t), top + rows.length * rowH + 16, `${t}x`, 'text-anchor="middle"');
@@ -308,13 +428,15 @@ const surveys = SURVEYS.map(([file, label]) => {
     const y = top + i * rowH + (rowH - barH) / 2;
     b += text(left - 8, y + barH - 3, r.suite, 'text-anchor="end"');
     b += rect(x(0), y, x(r.speed) - x(0), barH, r.mode === 'split' ? '#333' : 'url(#diag)');
-    b += text(x(r.speed) + 4, y + barH - 3, `${r.speed.toFixed(2)}x`, 'font-size="10"');
+    const rr = learnedRounds[r.suite] || [r.speed];
+    b += whisker(x, Math.min(...rr), Math.max(...rr), y + barH / 2);
+    b += text(Math.max(x(r.speed), x(Math.max(...rr))) + 4, y + barH - 3, `${r.speed.toFixed(2)}x`, 'font-size="10"');
   });
-  b += text(left, H - 10, 'Each ratio compares runs within one job (one machine). Run 38201346054.', 'font-size="10"');
-  write('fig1-fastmode.svg', svgDoc(W, H, b, 'Fast-mode speedups'));
+  b += text(left, H - 10, 'Measured isolation (first CI run, harness implementation) over jsdom default: median of 3 per-round ratios in one job; whiskers: range.', 'font-size="10"');
+  write('fig1-learned-isolation.svg', svgDoc(W, H, b, 'Measured isolation (first CI run, harness implementation): speedup over jsdom default'));
 }
 
-// ---------------------------------------------------------------- figure 6: survey timeline
+// ---------------------------------------------------------------- figure S1 (supplement): survey timeline
 
 {
   const projects = [];
@@ -329,7 +451,7 @@ const surveys = SURVEYS.map(([file, label]) => {
     const g = Math.round(225 - t * 200);
     return `rgb(${g},${g},${g})`;
   };
-  let b = text(left, 18, 'Tests whose status differs from jsdom, per survey (chronological, 2026-10-09 to 10-11)', 'font-weight="bold"');
+  let b = '';
   surveys.forEach((s, j) => {
     b += text(left + j * cellW + cellW / 2, top - 22, s.label.split(' ')[0], 'text-anchor="middle" font-size="10"');
     b += text(left + j * cellW + cellW / 2, top - 8, s.label.split(' ')[1], 'text-anchor="middle" font-size="10"');
@@ -352,5 +474,5 @@ const surveys = SURVEYS.map(([file, label]) => {
   });
   b += text(left, H - 30, 'Empty cells: project not in that survey. Shade: log of count + 1. Files: data/surveys/*.log.', 'font-size="10"');
   b += text(left, H - 16, '* svelte and solid kept most files on jsdom before 2026-10-12 (pinned environment comments): their rows are not valid.', 'font-size="10"');
-  write('fig6-survey-timeline.svg', svgDoc(W, H, b, 'Differences per survey'));
+  write('figS1-survey-timeline.svg', svgDoc(W, H, b, 'Differences per survey'));
 }

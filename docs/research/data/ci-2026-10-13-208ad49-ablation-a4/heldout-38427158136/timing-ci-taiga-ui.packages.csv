@@ -1,0 +1,10 @@
+round,project,config,package,status,seconds
+0,taiga-ui,jsdom-default,.,ran,657.6
+0,taiga-ui,warpdomlatest-default,.,ran,632.5
+0,taiga-ui,warpdom-default,.,ran,608.7
+1,taiga-ui,jsdom-default,.,ran,628.4
+1,taiga-ui,warpdomlatest-default,.,ran,605.5
+1,taiga-ui,warpdom-default,.,ran,607.6
+2,taiga-ui,warpdomlatest-default,.,ran,609.0
+2,taiga-ui,warpdom-default,.,ran,618.1
+2,taiga-ui,jsdom-default,.,ran,626.7

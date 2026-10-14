@@ -1,0 +1,6 @@
+round,project,config,seconds,differs,files_differ,ref
+0,vueuse,jsdom-default,71.5,0,0,baseline
+0,vueuse,warpdom-default,36.1,0,0,round
+0,vueuse,warpdom-default-aa,36.0,0,0,round
+0,vueuse,warpdomeager-default,36.3,0,0,round
+0,vueuse,warpdomnocache-default,35.7,0,0,round

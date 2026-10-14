@@ -1,0 +1,9 @@
+round,project,config,seconds,differs,files_differ,false_pass,false_fail,ref,position,method
+0,vueuse,jsdom-default,63.2,0,0,NA,NA,,1,
+0,vueuse,jsdom-shared,7.3,6,1,0,6,jsdom-default,2,
+0,vueuse,jsdom-vm,7.2,940,132,0,938,jsdom-default,3,
+0,vueuse,warpdom-default,33.4,0,0,NA,NA,,4,
+0,vueuse,warpdom-vm,15.7,6,2,0,6,warpdom-default,5,
+0,vueuse,warpdom-sharedfresh,25.3,77,10,0,77,warpdom-default,6,
+0,vueuse,warpdom-sharedreset,6.9,0,0,0,0,warpdom-default,7,
+0,vueuse,happydom-shared,28.9,64,11,0,64,jsdom-default,9,

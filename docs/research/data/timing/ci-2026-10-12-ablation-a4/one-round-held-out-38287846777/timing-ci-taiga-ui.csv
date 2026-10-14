@@ -1,0 +1,4 @@
+round,project,config,seconds,differs
+1,taiga-ui,jsdom-default,627.4,0
+1,taiga-ui,warpdom-default,613.4,0
+1,taiga-ui,warpdomlatest-default,586.8,0

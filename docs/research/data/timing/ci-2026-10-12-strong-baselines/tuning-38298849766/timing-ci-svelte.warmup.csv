@@ -1,0 +1,9 @@
+round,project,config,seconds,differs,files_differ,false_pass,false_fail,ref,position,method
+0,svelte,jsdom-default,109.0,0,0,NA,NA,,1,
+0,svelte,jsdom-shared,90.3,0,0,0,0,jsdom-default,2,
+0,svelte,jsdom-vm,83.4,30,3,0,30,jsdom-default,3,
+0,svelte,warpdom-default,82.7,1,1,NA,NA,,4,
+0,svelte,warpdom-vm,78.4,29,2,1,29,warpdom-default,5,
+0,svelte,warpdom-sharedfresh,79.0,1,1,0,0,warpdom-default,6,
+0,svelte,warpdom-sharedreset,81.2,5,2,0,4,warpdom-default,7,
+0,svelte,happydom-shared,82.1,290,5,0,290,jsdom-default,9,

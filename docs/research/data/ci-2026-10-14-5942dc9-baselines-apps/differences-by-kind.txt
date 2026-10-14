@@ -1,0 +1,16 @@
+excalidraw happydom-shared                    common 1,1,1 | onlyRun 0,0,0 | onlyBase 2341,2341,2341 | FP(vs wd-default) common 0,0,0 missing 0,0,0
+excalidraw jsdom-default                      common 0,0,0 | onlyRun 0,0,0 | onlyBase 0,0,0 | FP(vs wd-default) common 0,0,0 missing 0,0,0
+excalidraw jsdom-learned                      common 0,0,0 | onlyRun 0,0,0 | onlyBase 0,0,0 | FP(vs wd-default) common 0,0,0 missing 0,0,0
+excalidraw jsdom-shared                       common 0,0,0 | onlyRun 0,0,0 | onlyBase 2341,2341,2341 | FP(vs wd-default) common 0,0,0 missing 0,0,0
+excalidraw jsdom-sharedclean                  common 0,0,0 | onlyRun 0,0,0 | onlyBase 2341,2341,2341 | FP(vs wd-default) common 0,0,0 missing 0,0,0
+excalidraw jsdom-vm                           common 32,17,38 | onlyRun 0,0,0 | onlyBase 0,13,0 | FP(vs wd-default) common 0,0,0 missing 0,0,0
+excalidraw learn-isolated                     common 0,0,0 | onlyRun 0,0,0 | onlyBase 0,0,0 | FP(vs wd-default) common 0,0,0 missing 0,0,0
+excalidraw learn-shared                       common 0,0,0 | onlyRun 0,0,0 | onlyBase 2341,2341,2341 | FP(vs wd-default) common 0,0,0 missing 0,0,0
+excalidraw learn-split-isolated               common 0,0,0 | onlyRun 0,0,0 | onlyBase 215,215,215 | FP(vs wd-default) common 0,0,0 missing 0,0,0
+excalidraw learn-split-shared                 common 0,0,0 | onlyRun 0,0,0 | onlyBase 2341,2341,2341 | FP(vs wd-default) common 0,0,0 missing 0,0,0
+excalidraw learn-split                        common 0,0,0 | onlyRun 0,0,0 | onlyBase 0,0,0 | FP(vs wd-default) common 0,0,0 missing 0,0,0
+excalidraw warpdom-default                    common 0,0,0 | onlyRun 0,0,0 | onlyBase 0,0,0 | FP(vs wd-default) common 0,0,0 missing 0,0,0
+excalidraw warpdom-learned                    common 0,0,0 | onlyRun 0,0,0 | onlyBase 0,0,0 | FP(vs wd-default) common 0,0,0 missing 0,0,0
+excalidraw warpdom-sharedfresh                common 0,0,0 | onlyRun 0,0,0 | onlyBase 2341,2341,2341 | FP(vs wd-default) common 0,0,0 missing 0,0,0
+excalidraw warpdom-sharedreset                common 0,0,0 | onlyRun 0,0,0 | onlyBase 2341,2341,2341 | FP(vs wd-default) common 0,0,0 missing 0,0,0
+excalidraw warpdom-vm                         common 0,3,0 | onlyRun 0,0,0 | onlyBase 2556,7,2556 | FP(vs wd-default) common 0,0,0 missing 0,0,0

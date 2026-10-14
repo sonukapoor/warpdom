@@ -1,0 +1,5 @@
+NA round 0 melt-ui learning:  failed .: fast-cli unsupported: Vitest 1.2.2 (warpdom vitest run needs >= 3.2)
+    
+    ▶ melt-ui
+      failed  .: fast-cli unsupported: Vitest 1.2.2 (warpdom vitest run needs >= 3.2)
+METHOD melt-ui: harness emulation of warpdom vitest run (failed  .: fast-cli unsupported: Vitest 1.2.2 (warpdom vitest run needs >= 3.2))
