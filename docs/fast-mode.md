@@ -39,8 +39,10 @@ warpdom vitest run [vitest arguments]
   Files whose results without isolation differ from the isolated run's
   (any test's status, a missing test or file), that fail without
   isolation, or that have an unhandled error there are the files to
-  isolate. The split must reproduce the isolated results and beat the
-  isolated time by more than the noise margin, else the mode is isolated.
+  isolate. The split must reproduce the isolated results (files that
+  still differ join the isolated ones, for up to 4 split runs) and beat
+  the isolated time by more than the noise margin, else the mode is
+  isolated.
   Kept in `.warpdom/fast-mode.json` (commit it, or learn on the machine
   that runs the suite: the times are that machine's).
 - **Isolated mode** is a plain `vitest run` with your arguments, in the
@@ -83,6 +85,31 @@ was 3-8% slower than the drop-in on 5 of 11 tuning suites).
   an unhandled error comes from it. A file that fails both ways is
   isolated too: its shared result says nothing, and isolating it saves a
   rerun on every later failing build.
+- **An unhandled error belongs to the file whose code threw it.** Vitest
+  reports an unhandled error with the file that was running when it was
+  thrown. Without isolation that is often another file: a timer or
+  promise a test leaves behind (an un-awaited `vi.waitFor`, assertions in
+  a callback that runs after the test ended) throws while a later file of
+  the same worker runs; isolated, the worker ends with its file and the
+  error never surfaces. Isolating the running file only moved the error
+  to the next file, so the split never reproduced the isolated results.
+  On CI (208ad49, 4-core runners) that kept VueUse (an un-awaited
+  `vi.waitFor` in `packages/shared/utils/index.test.ts`) and naive-ui
+  (`forEach(async ...)` with `await vi.waitFor` in the AutoComplete and
+  ColorPicker placement tests) isolated in all 6 learnings each ("the
+  split's results differ ... in 1-3 more file(s)"), although on VueUse
+  sharing with warpdom's reset kept every test's status; on a lightly
+  loaded fast machine the errors could come after the worker's last file
+  and not show, so learning there chose split. warpdom's
+  reporter now also records the run's test files that the error's stack
+  names (Vitest keeps the call site's stack for `vi.waitFor`; a callback's
+  frames name the file that defined it), and those are the files the
+  error counts against; only an error whose stack names no test file
+  counts against the running file, as before.
+  Whether such an error shows at all depends on timing (naive-ui's two
+  files showed one at a time), so a split that still differs adds the
+  differing files and runs again up to 4 times (was 2); a learning that
+  ends isolated this way names the files in `differing`.
 - **Margin.** Split is chosen only if t_split < t_iso - max(5% of t_iso,
   0.5 s). Paired A/A runs on CI vary by 0.8% (median) and 3.1% (95th
   percentile); the learning measures each mode once, and its isolated run

@@ -10,6 +10,8 @@
 //   leaky      the part of isolate that passed isolated (they leak)
 //   learned    { isolated, fast, split }: the learning's run times (s)
 //   reason     why the mode is what it is
+//   differing  (isolated after a split that kept differing) the files
+//              whose results still differed in the last split run
 //   runs       the last split runs' times (s), newest last
 // A version 1 file (learned before version 2's checks) counts as nothing
 // learned, so the CLI learns again.

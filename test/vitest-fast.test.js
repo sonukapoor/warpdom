@@ -8,10 +8,10 @@ import { fileURLToPath } from 'node:url';
 import { withFastMode, fsId, projectCliOptions, REPORTER } from '../src/vitest-fast.js';
 import { environment as ENVIRONMENT_PATH } from '../src/vitest-environment.js';
 import {
-  filesOf, untrusted, unattributedErrors, differingFiles, merge, summary, chooseMode, keepSplit, deadline,
-  MARGIN, LEARN_DEADLINE, RUN_DEADLINE, splitArgs, withoutProjects, namesReporters, main,
+  filesOf, untrusted, unattributedErrors, errorFiles, differingFiles, merge, summary, chooseMode, keepSplit, deadline,
+  MARGIN, LEARN_DEADLINE, RUN_DEADLINE, SPLIT_RUNS, splitArgs, withoutProjects, namesReporters, main,
 } from '../src/vitest-fast-cli.js';
-import { runReport } from '../src/vitest-fast-reporter.js';
+import { runReport, stackFiles } from '../src/vitest-fast-reporter.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const withEnv = (env, fn) => {
@@ -203,7 +203,41 @@ test('the reporter: per file its project, state and tests; errors with their fil
   const out = runReport([module, typeModule], [{ message: 'm', VITEST_TEST_PATH: '/a.test.ts' }, new Error('n')], 'passed');
   assert.deepEqual(out.files[0], { file: '/a.test.ts', project: 'warpdom', state: 'passed', tests: [['x > t', 'passed'], ['u', 'pending']] });
   assert.equal(out.files[1].typecheck, true);
-  assert.deepEqual(out.errors, [{ file: '/a.test.ts', message: 'm' }, { file: null, message: 'n' }]);
+  assert.deepEqual(out.errors, [{ file: '/a.test.ts', sources: [], message: 'm' }, { file: null, sources: [], message: 'n' }]);
+});
+
+test("the reporter: an error's sources are the run's test files its stack names", () => {
+  const module = (moduleId) => ({ moduleId, project: { name: 'warpdom' }, state: () => 'passed', children: { allTests: () => [] }, task: { meta: {} } });
+  const modules = [module('/p/a.test.ts'), module('/p/b.test.ts')];
+  // Vitest's parsed frames: an un-awaited vi.waitFor of a, timing out while b runs.
+  const parsed = {
+    message: 'Timed out in waitFor!', VITEST_TEST_PATH: '/p/b.test.ts',
+    stacks: [{ file: '/p/node_modules/vitest/dist/chunk.js' }, { file: '/p/a.test.ts' }, { file: '/p/a.test.ts' }],
+  };
+  // Only the stack text: absolute paths and file URLs.
+  const text = { message: 'x', VITEST_TEST_PATH: '/p/b.test.ts', stack: 'Error: x\n    at f (file:///p/node_modules/x.js:1:2)\n    at /p/a.test.ts:70:8\n    at g (file:///p/b.test.ts:3:4)\n    at new Promise (<anonymous>)' };
+  const none = { message: 'y', VITEST_TEST_PATH: '/p/b.test.ts', stack: 'Error: y\n    at h (/p/src/lib.js:1:1)' };
+  const out = runReport(modules, [parsed, text, none]);
+  assert.deepEqual(out.errors.map((e) => [e.file, e.sources]), [
+    ['/p/b.test.ts', ['/p/a.test.ts']],
+    ['/p/b.test.ts', ['/p/a.test.ts', '/p/b.test.ts']],
+    ['/p/b.test.ts', []],
+  ]);
+  assert.deepEqual(stackFiles(text), ['/p/node_modules/x.js', '/p/a.test.ts', '/p/b.test.ts']);
+  assert.deepEqual(stackFiles({}), []);
+});
+
+test('results: an unhandled error counts against the files it comes from, else the file running', () => {
+  assert.deepEqual(errorFiles({ file: '/b', sources: ['/a'] }), ['/a']);
+  assert.deepEqual(errorFiles({ file: '/b', sources: [] }), ['/b']);
+  assert.deepEqual(errorFiles({ file: '/b' }), ['/b'], 'reports without sources');
+  assert.deepEqual(errorFiles({ file: null, sources: ['/a'] }), ['/a']);
+  const run = runOf(report([['/a', 'passed', [['t', 'passed']]], ['/b', 'passed', [['t', 'passed']]]], [
+    { file: '/b', sources: ['/a'], message: 'thrown by a while b ran' },
+    { file: null, sources: ['/a'], message: 'thrown by a after the run' },
+  ]));
+  assert.deepEqual([...untrusted(run)], ['/a']);
+  assert.equal(unattributedErrors(run), 0);
 });
 
 // --- with real Vitest (fixtures/vitest-fast) ---------------------------------------
@@ -248,6 +282,29 @@ test('warpdom vitest run: learning finds the leaking file; a newly leaking file 
   }
 });
 
+test('warpdom vitest run: an error a file leaves behind isolates that file, not the one running when it is thrown', async () => {
+  // a-leaves.spec.js leaves an un-awaited vi.waitFor that times out while
+  // b-waits.spec.js (and, with b isolated, c-waits.spec.js) runs. Isolating
+  // the running file moved the error to the next one, and the learning
+  // ended in isolated mode with b and c isolated.
+  const stray = join(root, 'fixtures/vitest-fast-stray');
+  const cacheFile = join(stray, '.warpdom/fast-mode.json');
+  rmSync(join(stray, '.warpdom'), { recursive: true, force: true });
+  try {
+    assert.equal(await quietly(() => main(['run', '--learn'], stray)), 0);
+    const state = JSON.parse(readFileSync(cacheFile, 'utf8'));
+    assert.deepEqual([state.isolate, state.leaky], [['a-leaves.spec.js'], ['a-leaves.spec.js']]);
+    assert.match(state.reason, /^split /, 'the split reproduced the isolated run');
+    // Split mode with nothing isolated: the error is a's, so a is rerun and isolated.
+    writeFileSync(cacheFile, JSON.stringify({ version: 2, mode: 'split', isolate: [], leaky: [], learned: { isolated: 600 } }));
+    assert.equal(await quietly(() => main(['run'], stray)), 0);
+    const after = JSON.parse(readFileSync(cacheFile, 'utf8'));
+    assert.deepEqual([after.mode, after.isolate], ['split', ['a-leaves.spec.js']]);
+  } finally {
+    rmSync(join(stray, '.warpdom'), { recursive: true, force: true });
+  }
+});
+
 // --- hangs, timeouts and missing results (a stand-in for Vitest) --------------------
 
 // A project whose "Vitest" sleeps, then writes the report the scenario
@@ -260,12 +317,15 @@ function fakeVitest(scenario) {
   writeFileSync(join(dir, 'package.json'), '{}');
   writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name: 'vitest', version: '3.2.4', type: 'module', bin: { vitest: 'vitest.mjs' } }));
   writeFileSync(join(pkg, 'vitest.mjs'), `
-import { writeFileSync, appendFileSync } from 'node:fs';
+import { writeFileSync, appendFileSync, readFileSync } from 'node:fs';
 const scenario = ${JSON.stringify(scenario(dir))};
 const mode = process.env.WARPDOM_FAST_RERUN === '1' ? 'rerun' : process.env.WARPDOM_FAST_MODE;
 const reportFile = process.env.WARPDOM_FAST_REPORT;
 appendFileSync(${JSON.stringify(join(dir, 'runs.log'))}, mode + (reportFile ? '' : ' (in process)') + '\\n');
-const s = scenario[mode] ?? scenario.isolated;
+// A list: one entry per run of the mode, in order (the last repeats).
+const n = readFileSync(${JSON.stringify(join(dir, 'runs.log'))}, 'utf8').trim().split('\\n').filter((m) => m.split(' ')[0] === mode).length - 1;
+const entry = scenario[mode] ?? scenario.isolated;
+const s = Array.isArray(entry) ? entry[Math.min(n, entry.length - 1)] : entry;
 if (reportFile) setTimeout(() => {
   writeFileSync(reportFile, JSON.stringify({ reason: 'passed', files: s.files, errors: s.errors ?? [] }));
   process.exit(s.files.some((f) => f.state === 'failed') ? 1 : 0);
@@ -317,7 +377,26 @@ test('learning: unhandled errors without a file, or a split whose results differ
   });
   await quietly(() => main(['run'], differ.dir, short));
   assert.equal(differ.state().mode, 'isolated');
-  assert.deepEqual(differ.runs(), ['isolated', 'fast', 'split', 'split']);
+  assert.deepEqual(differ.state().differing, ['b']);
+  assert.equal(SPLIT_RUNS, 4);
+  assert.deepEqual(differ.runs(), ['isolated', 'fast', 'split', 'split', 'split', 'split']);
+});
+
+test('learning: errors left behind by files, one shown per split run, isolate those files over further split runs', async () => {
+  // As naive-ui on CI: two files leave assertions behind that fail while
+  // another file runs; each split run shows one of them (timing).
+  const fake = fakeVitest((d) => {
+    const iso = passing(d, 'a', 'b', 'c', 'd');
+    const stray = (from) => ({ file: join(d, 'd'), sources: [join(d, from)], message: 'expected undefined to be top' });
+    return {
+      isolated: { sleep: 3, files: iso },
+      fast: { files: iso },
+      split: [{ files: iso, errors: [stray('a')] }, { files: iso, errors: [stray('b')] }, { files: iso }],
+    };
+  });
+  await quietly(() => main(['run'], fake.dir, short));
+  assert.deepEqual([fake.state().mode, fake.state().isolate], ['split', ['a', 'b']], 'the files the errors came from, not d');
+  assert.deepEqual(fake.runs(), ['isolated', 'fast', 'split', 'split', 'split']);
 });
 
 test('a split run that hangs is stopped, the run falls back to an isolated one, and the mode becomes isolated', async () => {

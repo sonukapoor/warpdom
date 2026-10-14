@@ -5,7 +5,8 @@
 //   is the run's result), a run without isolation, then the split. Files
 //   whose results without isolation differ from the isolated run's in any
 //   test (a test missing counts), that fail without isolation, or that
-//   have an unhandled error there run isolated in the split. Split is kept
+//   have an unhandled error there (the files its stack names, else the
+//   file running when it was thrown) run isolated in the split. Split is kept
 //   only if it beats the isolated run by more than the noise margin
 //   (chooseMode), and only if its results equal the isolated run's. A run
 //   without isolation that takes much longer than the isolated one is
@@ -52,6 +53,11 @@ export const keepSplit = (isolatedSeconds, splitSeconds) => splitSeconds < isola
 // the state may come from another machine, so more room).
 export const LEARN_DEADLINE = { factor: 1.25, seconds: 10 };
 export const RUN_DEADLINE = { factor: 1.5, seconds: 30 };
+// Split runs a learning makes at most. An error that a file leaves behind
+// (a timer or promise throwing after its test ended) shows in a run
+// without isolation only when a later file is still running then, so one
+// run may reveal some of the files that leave them and the next another.
+export const SPLIT_RUNS = 4;
 export const deadline = (isolatedSeconds, { factor, seconds }) => (isolatedSeconds > 0 ? isolatedSeconds * factor + seconds : null);
 
 // --- results ------------------------------------------------------------------------
@@ -86,14 +92,22 @@ export function readReport(file) {
 
 const failedFile = (f) => f.state === 'failed' || [...f.tests.values()].includes('failed');
 
+// The files an unhandled error comes from: the run's test files its stack
+// names (sources), else the file that was running when it was thrown.
+// Without isolation these differ when a file leaves a timer or promise
+// behind (an un-awaited vi.waitFor) that throws while a later file runs:
+// the file to isolate is the one that left it, not the one running (the
+// error would move on to another file each time).
+export const errorFiles = (e) => (e.sources?.length ? e.sources : e.file ? [e.file] : []);
+
 // Files a run cannot vouch for: failed, or with an unhandled error.
 export function untrusted(run) {
   const out = new Set();
   for (const [name, f] of run.files) if (failedFile(f)) out.add(name);
-  for (const e of run.errors) if (e.file) out.add(e.file);
+  for (const e of run.errors) for (const f of errorFiles(e)) out.add(f);
   return out;
 }
-export const unattributedErrors = (run) => run.errors.filter((e) => !e.file).length;
+export const unattributedErrors = (run) => run.errors.filter((e) => !errorFiles(e).length).length;
 
 // Files whose results in run differ from reference: missing, another file
 // state, or any test with another state or missing (or extra).
@@ -251,9 +265,10 @@ async function learn({ cwd, bin, args, cacheFile, limits }) {
   // be trusted. leaky: those that pass isolated.
   const isolate = new Set([...differingFiles(iso.run, fast.run), ...untrusted(fast.run)]);
   let split = null;
-  // The split must reproduce the isolated run's results; a file that still
-  // differs (order changed with the split) joins the isolated ones, once.
-  for (let attempt = 0; attempt < 2; attempt++) {
+  // The split must reproduce the isolated run's results; files that still
+  // differ (order changed with the split, or an error a file left behind
+  // showed this time) join the isolated ones, for up to SPLIT_RUNS runs.
+  for (let attempt = 0; attempt < SPLIT_RUNS; attempt++) {
     split = await runVitest({
       cwd, bin, args: splitArgs(args), quiet: true, limit,
       env: { WARPDOM_FAST_MODE: 'split', WARPDOM_FAST_ISOLATE: JSON.stringify(rel(cwd, isolate)) },
@@ -262,7 +277,12 @@ async function learn({ cwd, bin, args, cacheFile, limits }) {
     if (problem) return save('isolated', problem, { learned: { isolated: round1(iso.seconds), fast: round1(fast.seconds), split: round1(split.seconds) } });
     const differs = new Set([...differingFiles(iso.run, split.run), ...[...untrusted(split.run)].filter((f) => !isolate.has(f))]);
     if (differs.size === 0) break;
-    if (attempt === 1) return save('isolated', `the split's results differ from the isolated run's in ${differs.size} more file(s)`);
+    if (attempt === SPLIT_RUNS - 1) {
+      return save('isolated', `the split's results differ from the isolated run's in ${differs.size} more file(s)`, {
+        learned: { isolated: round1(iso.seconds), fast: round1(fast.seconds), split: round1(split.seconds) },
+        differing: rel(cwd, differs),
+      });
+    }
     for (const f of differs) isolate.add(f);
   }
   const leaky = [...isolate].filter((f) => iso.run.files.has(f) && !failedFile(iso.run.files.get(f)));
