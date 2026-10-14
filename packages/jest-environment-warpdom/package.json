@@ -1,0 +1,14 @@
+{
+  "name": "jest-environment-warpdom",
+  "version": "0.1.0",
+  "description": "warpdom as a Jest environment by name: testEnvironment: 'warpdom'.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Sonu Kapoor",
+  "repository": { "type": "git", "url": "git+https://github.com/sonukapoor/warpdom.git", "directory": "packages/jest-environment-warpdom" },
+  "exports": "./index.js",
+  "main": "./index.js",
+  "files": ["index.js"],
+  "peerDependencies": { "warpdom": ">=0.1.0", "jest": ">=27" },
+  "keywords": ["jest", "jest-environment", "warpdom", "jsdom", "dom", "testing"]
+}

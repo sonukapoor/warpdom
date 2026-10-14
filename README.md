@@ -70,6 +70,10 @@ module.exports = {
 };
 ```
 
+Or install the small companion package `jest-environment-warpdom` too, and
+use the name, as with jsdom: `testEnvironment: 'warpdom'`, and
+`/** @jest-environment warpdom */` in test files (Jest 27 to 30).
+
 Test files that choose jsdom with a comment (`/** @vitest-environment jsdom */`,
 `@jest-environment jsdom`) keep using jsdom; change the comment to switch
 them.
