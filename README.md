@@ -23,8 +23,9 @@ from the WHATWG specifications.
 - **Faster on every suite we tuned on.** Drop-in, warpdom was faster than
   jsdom on all 13 tuning suites in each of three independent runs: a
   median of about 1.27x, from 1.03x (solid) to 1.89x (MUI) per suite.
-  handsontable, whose core runs jsdom 16.7, ran about 8–9x faster; it is
-  reported separately.
+  handsontable, whose core runs jsdom 16.7, ran about 8–9x faster at the
+  measured commit and about 3.2x on its current branch, which has since
+  added its own jsdom speed-ups; it is reported separately.
   <!-- source: docs/research/data/ci-2026-10-13-208ad49-computed.md "Tuning: warpdom speedup per run and between runs" (per-run medians: solid 1.03x, material-ui 1.88-1.89x; handsontable 7.97-8.87x) and "Cross-suite medians of the drop-in speedup" (1.28x, 1.27x, 1.26x; 3 runs pooled 1.27x); "Version rule" (handsontable core 16.7.0); RESULTS.md 2.1 (faster on all 13 in every run), 2.4 (handsontable 9.07x and 9.27x in two more jobs); runs 38426985620, 38427009322, 38427031231 -->
 - **Check it on your own suite in one command**: `npx warpdom compare`.
 
@@ -289,6 +290,15 @@ core package alone 11.2x to 12.5x, the Angular wrapper (jsdom 20.0.3)
 cold transform cache and the Angular wrapper's compile, it was about 2.5x
 (2.53x to 2.55x). 3 tests differ, all deliberately (below). happy-dom
 completed no timed round.
+
+On handsontable's current branch (develop at fa6f901, measured
+2026-10-14 with warpdom 0.1.1, 5 rounds) the speedup is smaller, 3.17x
+(251 s on jsdom, 79 s on warpdom; core 3.48x): handsontable has since
+added its own workarounds for jsdom's slowness (a stylesheet mock and a
+patch of jsdom's CSS library), which make its jsdom baseline faster. 7 of
+its new tests test that patch of jsdom's CSS library, which warpdom does
+not have, so they fail on warpdom.
+<!-- source: GitHub Actions run 38647824283 (sonukapoor/dom-api-tracer, timing, unpinned, handsontable develop fa6f901a17ea7293b97e4147486f58a171c8b58a, warpdom v0.1.1, jsdom-default and warpdom-default, 5 rounds): 251.2 s vs 79.2 s, 3.17x; per package core 3.48x; test/__tests__/jsdomComputedStyleSpeed.unit.js 7 of 8 tests fail on warpdom -->
 <!-- source: ci-2026-10-13-208ad49-computed.md "Version rule" and "handsontable per package"; RESULTS.md 2.4 (cold first run 2.54x, 2.55x, 2.53x; happy-dom no timed round) -->
 
 ### Held-out suites and two applications
