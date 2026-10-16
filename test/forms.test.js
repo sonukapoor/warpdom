@@ -388,14 +388,21 @@ parity('details: one toggle event per task', async (w) => {
   for (const el of d.querySelectorAll('details')) {
     el.addEventListener('toggle', (e) => log.push([el.id, e.type, e.bubbles, e.cancelable, el.open]));
   }
+  // Waits for the toggle event itself, not a fixed delay: under load a
+  // 20 ms timer could run before an engine's queued toggle task, which then
+  // coalesced with the next changes and made the logs differ.
+  const toggled = (el) => new Promise((r) => el.addEventListener('toggle', r, { once: true }));
+  let next = toggled(det);
   d.querySelector('summary').click();
   log.push(['sync', det.open]);
-  await new Promise((r) => setTimeout(r, 20));
+  await next;
+  next = toggled(d.getElementById('b'));
   det.open = false;
   det.open = true;
   det.open = false;
   d.getElementById('b').open = false;
-  await new Promise((r) => setTimeout(r, 20));
+  await next;
+  await new Promise((r) => setTimeout(r, 0));
   return log;
 });
 
