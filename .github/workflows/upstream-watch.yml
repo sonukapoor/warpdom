@@ -1,0 +1,44 @@
+# Weekly check of the releases warpdom follows (scripts/upstream-watch.mjs):
+# a jsdom newer than the newest modeled one, the inline style surface of a
+# fresh jsdom@latest install against the default profile, and Vitest or Jest
+# majors newer than the tested ones. Each finding opens one issue. The
+# second job runs npm test with the newest Vitest.
+name: upstream-watch
+
+on:
+  schedule:
+    - cron: '17 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: node scripts/upstream-watch.mjs --issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  newest-vitest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm install --no-save vitest@latest
+      - run: npx vitest --version
+      - run: npm test

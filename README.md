@@ -110,6 +110,12 @@ test: { environment, environmentOptions: { warpdom: { jsdom: '26.1.0' } } }
 testEnvironmentOptions: { jsdom: '26.1.0' }
 ```
 
+warpdom models jsdom 20.0.3 to 30.1.2. With a newer jsdom installed (a
+later minor or major release), tests get jsdom 30.1.2's behavior and
+warpdom prints a warning once; a weekly check
+([upstream-watch](.github/workflows/upstream-watch.yml)) opens an issue
+when such a release appears.
+
 ## Check your suite first: `warpdom compare`
 
 ```sh
