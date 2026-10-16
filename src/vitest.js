@@ -13,7 +13,7 @@ import { S } from './internal.js';
 import { ablated, materializeAll } from './ablate.js';
 import { setQueryCache } from './selectors.js';
 import { resetWindow, snapshotWindow } from './reset.js';
-import { HOST_TIMER_KEYS } from './window-features.js';
+import { HOST_TIMER_KEYS, warnNewerJsdom } from './window-features.js';
 
 const SELF_KEYS = ['window', 'self', 'top', 'parent'];
 
@@ -164,8 +164,10 @@ export function jsdomProfile(options, root = process.cwd()) {
     } catch { /* no jsdom installed */ }
   }
   const read = (from, name) => { try { return createRequire(from)(`${name}/package.json`).version; } catch { return undefined; } };
+  const installed = path ? read(path, 'jsdom') : undefined;
+  if (set.jsdom == null) warnNewerJsdom(installed);
   return {
-    jsdom: set.jsdom ?? (path ? read(path, 'jsdom') : undefined),
+    jsdom: set.jsdom ?? installed,
     cssstyle: set.cssstyle ?? (path && set.jsdom == null ? read(path, 'cssstyle') : undefined),
   };
 }

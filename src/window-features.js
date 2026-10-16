@@ -19,6 +19,33 @@ function parseJsdomVersion(version) {
   return [major, minor, patch];
 }
 
+// The newest jsdom release the profiles were measured against. A later
+// minor or major release may change behavior warpdom does not reproduce;
+// patch releases are taken to keep it.
+export const NEWEST_MODELED_JSDOM = '30.1.2';
+
+// The warning for an installed jsdom newer than NEWEST_MODELED_JSDOM, else null.
+export function newerJsdomWarning(version) {
+  if (version == null) return null;
+  const [major, minor] = parseJsdomVersion(version);
+  const [newestMajor, newestMinor] = parseJsdomVersion(NEWEST_MODELED_JSDOM);
+  if (!Number.isFinite(major) || !Number.isFinite(minor)) return null;
+  if (major < newestMajor || (major === newestMajor && minor <= newestMinor)) return null;
+  return `warpdom: the installed jsdom ${version} is newer than ${NEWEST_MODELED_JSDOM}, the newest version warpdom models, `
+    + `so tests get jsdom ${NEWEST_MODELED_JSDOM}'s behavior. If a test's result differs from jsdom, please report it at `
+    + 'https://github.com/sonukapoor/warpdom/issues';
+}
+
+// Prints newerJsdomWarning once per process (the adapters call it with the
+// jsdom version they found installed).
+let warnedNewerJsdom = false;
+export function warnNewerJsdom(version) {
+  const warning = newerJsdomWarning(version);
+  if (warning === null || warnedNewerJsdom) return;
+  warnedNewerJsdom = true;
+  globalThis.console?.warn(warning);
+}
+
 const before = (version, target) => {
   for (let i = 0; i < 3; i++) if (version[i] !== target[i]) return version[i] < target[i];
   return false;

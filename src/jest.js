@@ -20,6 +20,7 @@ import { S } from './internal.js';
 import { installWindow, defineUnforgeableSelf } from './vitest.js';
 import { ablated, materializeAll } from './ablate.js';
 import { setQueryCache } from './selectors.js';
+import { warnNewerJsdom } from './window-features.js';
 
 if (ablated('no-query-cache')) setQueryCache(false);
 
@@ -119,7 +120,9 @@ function jsdomProfile(rootDir, options) {
     const jsdomRequire = createRequire(envRequire.resolve('jsdom/package.json'));
     let cssstyle = options.cssstyle;
     try { cssstyle ??= jsdomRequire('cssstyle/package.json').version; } catch { /* not found */ }
-    return { jsdom: jsdomRequire('./package.json').version, cssstyle };
+    const jsdom = jsdomRequire('./package.json').version;
+    warnNewerJsdom(jsdom);
+    return { jsdom, cssstyle };
   } catch {
     return { jsdom: 26, cssstyle: options.cssstyle };
   }

@@ -156,7 +156,8 @@ async function main(args) {
   if (check) {
     const { styleSurface, missingAccessors } = await import(pathToFileURL(join(root, 'src/css.js')));
     const got = await diff(measure(check[0]), base);
-    const surface = styleSurface(check[1]);
+    // 'base' (jsdom 30.1, the default profile) has no data: nothing dropped or rewritten.
+    const surface = check[1] === 'base' ? { drops: new Set(), writes: new Map() } : styleSurface(check[1]);
     const sorted = (list) => [...list].sort();
     const result = {
       drops: same(sorted(got.drops), sorted(surface.drops)),

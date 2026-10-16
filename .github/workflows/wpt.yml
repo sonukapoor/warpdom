@@ -6,6 +6,11 @@
 name: wpt
 
 on:
+  # Monthly, at the newest WPT commit with the default areas and engines:
+  # shows whether new or changed tests move warpdom's pass rate against
+  # jsdom's (the run's summary page has the tables).
+  schedule:
+    - cron: '41 6 2 * *'
   workflow_dispatch:
     inputs:
       areas:
@@ -30,7 +35,7 @@ jobs:
       areas: ${{ steps.list.outputs.areas }}
     steps:
       - id: list
-        run: echo "areas=$(echo '${{ inputs.areas }}' | jq -cR 'split(" ") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
+        run: echo "areas=$(echo '${{ inputs.areas || 'dom domparsing html/dom css/cssom' }}' | jq -cR 'split(" ") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
 
   run:
     needs: plan
@@ -46,18 +51,18 @@ jobs:
         with:
           node-version: 22.23.3
       - run: npm ci
-      - name: WPT at ${{ inputs.wpt_ref }} (sparse)
+      - name: WPT at ${{ inputs.wpt_ref || 'HEAD' }} (sparse)
         run: |
           git init -q wpt-checkout
           cd wpt-checkout
           git remote add origin https://github.com/web-platform-tests/wpt.git
           git sparse-checkout set "${{ matrix.area }}" resources common interfaces
-          git fetch -q --depth 1 --filter=blob:none origin "${{ inputs.wpt_ref }}"
+          git fetch -q --depth 1 --filter=blob:none origin "${{ inputs.wpt_ref || 'HEAD' }}"
           git checkout -q FETCH_HEAD
       - id: slug
         run: echo "slug=$(echo '${{ matrix.area }}' | tr '/' '-')" >> "$GITHUB_OUTPUT"
       - name: Run ${{ matrix.area }}
-        run: node wpt/run.mjs "${{ matrix.area }}" --engine "${{ inputs.engines }}" --jobs "${{ inputs.jobs }}" --wpt wpt-checkout --out "wpt-out/${{ steps.slug.outputs.slug }}" --quiet
+        run: node wpt/run.mjs "${{ matrix.area }}" --engine "${{ inputs.engines || 'warpdom,jsdom' }}" --jobs "${{ inputs.jobs || '2' }}" --wpt wpt-checkout --out "wpt-out/${{ steps.slug.outputs.slug }}" --quiet
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -82,7 +87,7 @@ jobs:
         run: |
           set -e
           mkdir -p merged
-          for engine in $(echo '${{ inputs.engines }}' | tr ',' ' '); do
+          for engine in $(echo '${{ inputs.engines || 'warpdom,jsdom' }}' | tr ',' ' '); do
             node wpt/merge.mjs "merged/$engine.json" wpt-out/*/"$engine.json"
           done
           node wpt/summary.mjs merged --depth 2 | tee merged/summary.md

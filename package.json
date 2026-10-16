@@ -1,6 +1,6 @@
 {
   "name": "warpdom",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "A fast DOM for unit and component tests: jsdom's test results, faster. A drop-in Vitest and Jest environment.",
   "type": "module",
   "license": "MIT",
@@ -29,6 +29,7 @@
     "vitest-environment",
     "jest-environment"
   ],
+  "main": "./src/node.js",
   "exports": {
     ".": {
       "node": "./src/node.js",
