@@ -14,6 +14,9 @@ export class QuotaExceededError extends DOMException {
   #requested;
   constructor(message = '', options = {}) {
     super(message, 'QuotaExceededError');
+    // Some Node releases (24.6, for one) return a plain DOMException from
+    // its constructor whatever the subclass; give the instance its class.
+    if (Object.getPrototypeOf(this) !== new.target.prototype) Object.setPrototypeOf(this, new.target.prototype);
     this.#quota = options.quota ?? null;
     this.#requested = options.requested ?? null;
   }
