@@ -40,3 +40,16 @@ test('Web Storage: opaque origins and the per-file reset', () => {
   assert.equal(w.localStorage.length, 0);
   assert.equal(w.sessionStorage.length, 0);
 });
+
+test('QuotaExceededError instances are of their class (Node 24.6 returned a plain DOMException)', () => {
+  const w = createWindow({ url: 'http://localhost/' });
+  let error;
+  try { w.localStorage.setItem('x', 'y'.repeat(5000001)); } catch (e) { error = e; }
+  assert.ok(error instanceof w.QuotaExceededError);
+  assert.ok(error instanceof w.DOMException);
+  assert.equal(error.constructor.name, 'QuotaExceededError');
+  assert.equal(error.name, 'QuotaExceededError');
+  assert.equal(error.quota, null);
+  const direct = new w.QuotaExceededError('m', { quota: 5, requested: 6 });
+  assert.deepEqual([direct.quota, direct.requested, direct.message], [5, 6, 'm']);
+});
