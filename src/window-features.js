@@ -8,6 +8,7 @@ import './cascade.js';
 import { compile } from './selectors.js';
 import { QuotaExceededError } from './storage.js';
 import { navigate, traverse, hostTimeout } from './navigation.js';
+import { VERSION } from './version.js';
 
 // The jsdom version warpdom behaves like by default.
 export const LATEST_JSDOM = 30;
@@ -260,7 +261,7 @@ function make(window, iface, data) {
 // isJSDOM) to skip layout-dependent behavior in a DOM without layout.
 const userAgent = () => {
   const platform = globalThis.process?.platform ?? 'unknown OS';
-  return `Mozilla/5.0 (${platform}) AppleWebKit/537.36 (KHTML, like Gecko) jsdom/30.0.0 warpdom/0.0.0`;
+  return `Mozilla/5.0 (${platform}) AppleWebKit/537.36 (KHTML, like Gecko) jsdom/30.0.0 warpdom/${VERSION}`;
 };
 
 const url = (self) => state(self).window[S].url;
