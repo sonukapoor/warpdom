@@ -376,6 +376,20 @@ function borderParts(value) {
 // alone when nothing is declared). null: the accessor reads as
 // getPropertyValue (a declared CSS-wide keyword or var() too).
 const BACKGROUND_PARTS = ['background-image', 'background-position', 'background-repeat', 'background-attachment'];
+// A declared background's parts as written and its expansion, by value.
+const backgroundCache = new Map();
+function backgroundParts(value) {
+  let parsed = backgroundCache.get(value);
+  if (parsed === undefined) {
+    const given = backgroundComponents(value);
+    // background: none alone declares no image there.
+    if (given !== null && value === 'none') given['background-image'] = null;
+    parsed = given === null ? null : { given, expanded: new Map(expand('background', value)) };
+    if (backgroundCache.size >= 500) backgroundCache.clear();
+    backgroundCache.set(value, parsed);
+  }
+  return parsed;
+}
 const LEGACY_BACKGROUND_ORDER = ['background-image', 'background-repeat', 'background-attachment', 'background-position'];
 export function legacyAccessorValue(element, name) {
   const compat = element[S].doc[S].window[S].compat;
@@ -395,11 +409,9 @@ export function legacyAccessorValue(element, name) {
   // written there, else as declared alone.
   let given = null, expanded = null;
   if (own !== undefined) {
-    given = backgroundComponents(own);
-    if (given === null) return null;
-    // background: none alone declares no image there.
-    if (own === 'none') given['background-image'] = null;
-    expanded = new Map(expand('background', own));
+    const parsed = backgroundParts(own);
+    if (parsed === null) return null;
+    ({ given, expanded } = parsed);
   }
   const declared = (longhand) => {
     if (longhand === 'background-position') {

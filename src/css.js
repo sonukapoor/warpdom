@@ -1007,7 +1007,7 @@ function setDeclaration(style, name, value, priority = '') {
   if (text === INVALID) return;
   const important = String(priority).toLowerCase() === 'important';
   if (isLegacyFont(s.surface, name) && removeLegacyFont(s.decls, s.surface)) reindex(style);
-  if (isLegacyMode(s.mode) && RESETS[name] !== undefined && resets(s.surface, name, text)) {
+  if (RESETS[name] !== undefined && isLegacyMode(s.mode) && resets(s.surface, name, text)) {
     let removed = false;
     for (const n of RESETS[name]) removed = s.decls.delete(n) || removed;
     if (removed) {
