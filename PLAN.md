@@ -2068,3 +2068,47 @@ Steps for the author, in this order:
     second has it as a peer dependency). Use 2FA; optionally publish from
     GitHub Actions with `--provenance`. dom-api-tracer: `npm publish` from
     its root if it should be on npm too.
+
+## 2026-10-17: `warpdom migrate` (branch feat/migrate)
+
+`npx warpdom migrate` automates the six hand-made adoption branches
+(docs/migrate.md, `src/migrate/`, exported as `warpdom/migrate`): dry run
+by default (plan printed and written to `.warpdom-migrate/plan.md`),
+`--apply`, `--json`, `--offline`, `--keep-jsdom-version`. It reads
+configs as text with a small scanner (`src/migrate/js.js`: tokens, object
+properties with key paths, where each string literal sits), edits exactly
+the literal (`'jsdom'` -> `'warpdom'`) and lists everything it cannot edit
+exactly as manual. Detection reuses compare's `findConfig`,
+`findVitestWorkspace`, `packageVersion`, `packageDir` and `glob`. No new
+dependency. Versions come from node_modules, else the lockfile
+(`src/migrate/lockfile.js`: pnpm v5-v9, npm v2/v3, yarn classic and
+berry), else package.json (pnpm catalogs resolved).
+
+`npm test` now names its files (`test/*.test.js test/parity.js`): Node's
+default pattern also runs every .js under test/, which would execute the
+fixture projects' configs in test/fixtures/migrate/.
+
+Acceptance against the hand-made branches (migrate --apply at the parent
+commit, lockfiles ignored; handsontable and element-plus dry run):
+- radix-ui/primitives, floating-ui, material-ui: config and package.json
+  changes identical; only comments the hand change reworded differ (listed
+  under "To review").
+- vuetify: identical except where the catalog entries go (where jsdom was,
+  rather than after the testing group).
+- downshift: misses the root jest.config.js, which inherits jsdom from
+  kcd-scripts/jest (`Object.assign(require('kcd-scripts/jest'), ...)`);
+  listed as manual, by design (it does not read other packages' code).
+- handsontable: the 4 Jest configs and 4 package.json files match; the root
+  keeps jsdom and global-jsdom because scripts/verify-bundles.mjs imports
+  them (the hand change rewrote that script).
+- element-plus (jsdom 16.4.0, no hand branch): the config and two
+  `@vitest-environment happy-dom` comments switch; the plan advises
+  `--keep-jsdom-version` (warpdom would otherwise follow jsdom 30.1.2).
+
+Open decision: by default migrate only reports the jsdom version the tests
+saw (warpdom follows the installed jsdom, and its default once it is
+removed: 30.1.2 for Vitest, 26 for Jest); `--keep-jsdom-version` writes
+`environmentOptions.warpdom.jsdom` / `testEnvironmentOptions.jsdom`. The
+hand-made branches did not pin and kept every result, but projects on old
+jsdom versions (element-plus 16, handsontable's Jest 27 with jsdom 16.7)
+may need it. Pinning by default is a one-line change if preferred.

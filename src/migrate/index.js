@@ -215,10 +215,13 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
   // Configs: by name, by --config in scripts, workspace entries, and the
   // files they import with relative paths.
   const configs = new Set(files.filter((f) => CONFIG_NAME.test(f.name)).map((f) => f.rel));
+  // The runners' own config files (not setup files or shared modules): only
+  // these can inherit an environment from a preset or package.
+  const primary = new Set(files.filter((f) => /^(jest|vite|vitest)\.config\./.test(f.name)).map((f) => f.rel));
   for (const pkg of pkgs.values()) {
     for (const runner of ['vitest', 'jest']) {
       const c = findConfig(pkg.dir, runner);
-      if (c && !c.endsWith('package.json')) configs.add(rel(c));
+      if (c && !c.endsWith('package.json')) { configs.add(rel(c)); primary.add(rel(c)); }
     }
     const wsFile = findVitestWorkspace(pkg.dir);
     if (wsFile) configs.add(rel(wsFile));
@@ -227,7 +230,7 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       for (const m of script.matchAll(/(?:^|\s)(?:--config|-c)(?:=|\s+)(['"]?)([^\s'"]+)\1/g)) {
         if (!/\b(vitest|jest)\b/.test(script)) continue;
         const file = path.resolve(pkg.dir, m[2]);
-        if (fs.existsSync(file) && fs.statSync(file).isFile()) configs.add(rel(file));
+        if (fs.existsSync(file) && fs.statSync(file).isFile()) { configs.add(rel(file)); primary.add(rel(file)); }
       }
     }
   }
@@ -328,7 +331,9 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
     const { tokens, properties, sites } = a;
     const within = (p) => prefix.every((k, i) => p.path[i] === k);
     let envProps = 0;
-    const isJestPrimary = prefix.length > 0 || /^jest[.-]/.test(path.basename(file)) || configs.has(file) && /jest/.test(path.basename(file));
+    const base = path.basename(file);
+    const isPrimary = prefix.length > 0 || primary.has(file);
+    const isJest = prefix.length > 0 || (/jest/.test(base) && !/^(vite|vitest)\./.test(base));
     for (const p of properties) {
       if (!within(p)) continue;
       const runner = ENV_KEYS[p.key];
@@ -365,24 +370,32 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       if (DOM_ENVIRONMENTS.vitest.has(t.value)) addEdit(file, t, 'warpdom', 'environmentMatchGlobs', 'vitest');
       else if (t.value === 'warpdom') uses.push({ file, runner: 'vitest' });
     }
-    // A Jest config that sets no environment but takes its options from
-    // somewhere else (a preset, another package's config).
-    if (!envProps && (isJestPrimary || /^(vite|vitest)\./.test(path.basename(file)))) {
-      const jest = isJestPrimary && !/^(vite|vitest)\./.test(path.basename(file));
-      for (const source of inheritedFrom(a, prefix)) {
-        if (source.spec.startsWith('.') || source.spec.startsWith('/')) continue;
-        if (jest && NODE_PRESETS.test(source.spec)) continue;
-        if (!jest && /^(vite|vitest)(\/|$)|^@vitejs\/|^@vitest\//.test(source.spec)) continue;
-        const what = jest ? 'testEnvironment' : 'test.environment';
-        addManual(file, source.offset, `sets no ${what} itself but takes its config from ${source.spec} (${source.how}); if that chooses jsdom or happy-dom, set ${what}: 'warpdom' here`, jest ? 'jest' : 'vitest');
-      }
+    // A runner's config that sets no environment but takes its options from
+    // somewhere else: each config object with a preset and no environment
+    // of its own, and a config without any environment that is built from
+    // another module (spread, Object.assign, mergeConfig).
+    if (!isPrimary || !(isJest || runnerOf(ownerOf(file), 'vitest') === 'vitest')) return;
+    const sources = [];
+    for (const p of properties) {
+      if (p.key !== 'preset' || !within(p) || tokens[p.valueStart]?.type !== 'string') continue;
+      if (properties.some((q) => q.frame === p.frame && ENV_KEYS[q.key])) continue;
+      const t = tokens[p.valueStart];
+      sources.push({ spec: t.value, how: `preset '${t.value}'`, offset: t.start });
+    }
+    if (!envProps && !prefix.length) sources.push(...inheritedFrom(a));
+    const what = isJest ? 'testEnvironment' : 'test.environment';
+    for (const source of sources) {
+      if (source.spec.startsWith('.') || source.spec.startsWith('/')) continue;
+      if (isJest && NODE_PRESETS.test(source.spec)) continue;
+      if (!isJest && /^(vite|vitest)(\/|$)|^@vitejs\/|^@vitest\//.test(source.spec)) continue;
+      addManual(file, source.offset, `sets no ${what} itself but takes its config from ${source.spec} (${source.how}); if that chooses jsdom or happy-dom, set ${what}: 'warpdom' here`, isJest ? 'jest' : 'vitest');
     }
   }
 
-  // Where a config's options come from besides its own text: preset,
-  // spreads, Object.assign / mergeConfig of an imported value.
-  function inheritedFrom(a, prefix) {
-    const { tokens, properties, spreads } = a;
+  // Where a config's options come from besides its own text: spreads,
+  // Object.assign / mergeConfig of an imported value.
+  function inheritedFrom(a) {
+    const { tokens, spreads } = a;
     const out = [];
     const specOf = (name) => {
       for (let k = 0; k < tokens.length - 3; k++) {
@@ -402,13 +415,6 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       }
       return null;
     };
-    for (const p of properties) {
-      if (p.key === 'preset' && prefix.every((k, i) => p.path[i] === k) && p.path.length === prefix.length + 1) {
-        const t = tokens[p.valueStart];
-        if (t?.type === 'string') out.push({ spec: t.value, how: `preset '${t.value}'`, offset: t.start });
-      }
-    }
-    if (prefix.length) return out;
     for (const s of spreads) {
       const t = tokens[s.token];
       if (t?.type === 'ident') {
@@ -551,10 +557,10 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
 
   // --- per-file comments ---------------------------------------------------
   for (const f of scope) {
-    if (!SCRIPT_EXTS.has(f.ext) && f.ext !== '.vue' && f.ext !== '.svelte') continue;
+    if (!SCRIPT_EXTS.has(f.ext)) continue;
     const text = textOf(f.rel);
     if (text === null || !/@(vitest|jest)-environment\s/.test(text.slice(0, 8192))) continue;
-    const comments = SCRIPT_EXTS.has(f.ext) ? leadingComments(text) : tokenize(text.slice(0, 8192)).comments;
+    const comments = leadingComments(text);
     for (const c of comments) {
       for (const m of c.text.matchAll(/@(vitest|jest)-environment\s+([^\s*]+)/g)) {
         const value = m[2];
@@ -674,7 +680,6 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
     return c.sections.get(section);
   };
   const catalogChanges = new Map(); // catalog name -> { remove: [], add: [] }
-  const catalogRefs = []; // { pkg, name, catalog } references that stay
   const catalogNameOf = (spec) => (typeof spec === 'string' && spec.startsWith('catalog:') ? (spec.slice('catalog:'.length) || 'default') : null);
 
   // Removals first: what stays decides nothing else, but the catalog needs
@@ -767,7 +772,6 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       const spec = p.json[s]?.[name];
       if (catalogNameOf(spec) !== cat) return false;
       const removedHere = pkgChanges.get(p.rel)?.sections.get(s)?.remove.includes(name);
-      if (!removedHere) catalogRefs.push({ package: p.file, name });
       return !removedHere;
     })));
   }

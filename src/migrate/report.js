@@ -33,6 +33,7 @@ export function renderConsole(r, { mentionsLimit = 15 } = {}) {
   }
   out.push(...header(r));
   for (const w of r.warnings) out.push(`warning: ${w}`);
+  for (const n of r.notes ?? []) out.push(`note: ${n}`);
   const nothing = !r.edits.length && !r.dependencies.length && !r.catalog.length;
   if (nothing) out.push('', r.manual.length ? 'No change migrate can make by itself.' : 'Nothing to change: no test environment here uses jsdom or happy-dom.');
   if (r.edits.length) {
@@ -97,9 +98,10 @@ export function renderMarkdown(r) {
   }
   for (const l of header(r)) out.push(`- ${l}`);
   out.push('');
-  if (r.warnings.length) {
+  if (r.warnings.length || r.notes?.length) {
     out.push('## Warnings', '');
     for (const w of r.warnings) out.push(`- ${w}`);
+    for (const n of r.notes ?? []) out.push(`- note: ${n}`);
     out.push('');
   }
   out.push('## Before you apply', '', COMPARE, '');

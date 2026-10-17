@@ -309,6 +309,28 @@ test('migrate: a computed or inherited environment lands in manual and keeps the
   assert.match(renderConsole(r), /Manual \(3\)/);
 }));
 
+test('migrate: presets, setup files and custom environments', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'warpdom-migrate-presets-'));
+  const write = (rel, text) => {
+    fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+    fs.writeFileSync(path.join(dir, rel), text);
+  };
+  try {
+    write('package.json', '{\n  "name": "p",\n  "devDependencies": {\n    "jest": "^29.7.0",\n    "jest-environment-jsdom": "^29.7.0"\n  }\n}\n');
+    write('jest.config.js', "module.exports = {\n  projects: [\n    { displayName: 'ng', preset: 'jest-preset-angular' },\n    { displayName: 'ts', preset: 'ts-jest' },\n    { displayName: 'dom', testEnvironment: './tools/dom-env.js' },\n  ],\n};\n");
+    write('jest.setup.js', "Object.assign(global, require('whatwg-fetch'));\n");
+    write('tools/dom-env.js', "const JSDOMEnvironment = require('jest-environment-jsdom').default;\nmodule.exports = class extends JSDOMEnvironment {};\n");
+    const r = await run(dir, { apply: true });
+    assert.deepEqual(r.edits, []);
+    assert.deepEqual(r.manual.map((m) => [m.file, m.line]), [['jest.config.js', 3]], 'jest-preset-angular only: ts-jest chooses no DOM, a setup file inherits nothing');
+    assert.match(r.manual[0].reason, /preset 'jest-preset-angular'/);
+    assert.deepEqual(r.kept.map((k) => k.name), ['jest-environment-jsdom']);
+    assert.match(r.kept[0].reason, /tools\/dom-env\.js:1|manual/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('migrate: --keep-jsdom-version writes the removed version next to the environment', async () => {
   await withProject('vitest-single', async (dir) => {
     const r = await run(dir, { apply: true, keepJsdomVersion: true });
