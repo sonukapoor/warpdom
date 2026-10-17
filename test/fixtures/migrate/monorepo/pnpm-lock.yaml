@@ -1,0 +1,29 @@
+lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    devDependencies:
+      jsdom:
+        specifier: ^26.1.0
+        version: 26.1.0
+
+  packages/legacy:
+    devDependencies:
+      jest:
+        specifier: ^29.7.0
+        version: 29.7.0
+      jest-environment-jsdom:
+        specifier: ^29.7.0
+        version: 29.7.0
+
+packages:
+
+  jest-environment-jsdom@29.7.0:
+    resolution: {integrity: sha512-x}
+
+snapshots:
+
+  jest-environment-jsdom@29.7.0:
+    dependencies:
+      jsdom: 20.0.3

@@ -1,0 +1,10 @@
+{
+  "name": "vitest-projects",
+  "private": true,
+  "packageManager": "pnpm@10.18.0",
+  "devDependencies": {
+    "happy-dom": "^20.0.0",
+    "jsdom": "catalog:",
+    "vitest": "catalog:"
+  }
+}

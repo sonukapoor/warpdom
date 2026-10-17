@@ -1,0 +1,33 @@
+lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    devDependencies:
+      happy-dom:
+        specifier: ^20.0.0
+        version: 20.0.10
+      jsdom:
+        specifier: 'catalog:'
+        version: 27.0.1
+      vitest:
+        specifier: 'catalog:'
+        version: 4.0.3(jsdom@27.0.1)
+
+packages:
+
+  happy-dom@20.0.10:
+    resolution: {integrity: sha512-x}
+
+  jsdom@27.0.1:
+    resolution: {integrity: sha512-x}
+
+snapshots:
+
+  happy-dom@20.0.10:
+    dependencies:
+      whatwg-mimetype: 3.0.0
+
+  jsdom@27.0.1:
+    dependencies:
+      cssstyle: 5.3.1

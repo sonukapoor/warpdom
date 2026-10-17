@@ -1,0 +1,8 @@
+{
+  "name": "docblocks-jest",
+  "private": true,
+  "devDependencies": {
+    "jest": "^30.0.0",
+    "jest-environment-jsdom": "^30.0.0"
+  }
+}

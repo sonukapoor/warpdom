@@ -1,0 +1,11 @@
+{
+  "name": "dynamic",
+  "private": true,
+  "devDependencies": {
+    "@acme/jest-config": "^1.0.0",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "jsdom": "^26.1.0",
+    "vitest": "^3.2.4"
+  }
+}

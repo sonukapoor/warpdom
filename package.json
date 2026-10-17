@@ -41,6 +41,7 @@
     "./vitest/fast": "./src/vitest-fast.js",
     "./jest": "./src/jest.js",
     "./compare": "./src/compare/index.js",
+    "./migrate": "./src/migrate/index.js",
     "./package.json": "./package.json"
   },
   "files": [
@@ -51,7 +52,7 @@
     "node": ">=22.12"
   },
   "scripts": {
-    "test": "node --test",
+    "test": "node --test \"test/*.test.js\" test/parity.js",
     "bench:load": "node bench/load.js",
     "bench:hot": "node bench/hot.js"
   },

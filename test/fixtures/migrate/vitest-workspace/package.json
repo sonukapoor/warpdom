@@ -1,0 +1,10 @@
+{
+  "name": "vitest-workspace",
+  "private": true,
+  "packageManager": "yarn@4.10.0",
+  "devDependencies": {
+    "happy-dom": "^20.0.0",
+    "jsdom": "^25.0.0",
+    "vitest": "^2.1.9"
+  }
+}
