@@ -75,6 +75,11 @@ export default defineConfig((env) => {
   const happy = siteOf('happy-dom')[0];
   assert.deepEqual([happy.type, happy.path.join('.'), happy.index], ['element', 'test.environmentMatchGlobs.[]', 1]);
   assert.equal(a.tokens[a.spreads[0].token].value, 'base');
+  const ws = analyze("export default ['packages/*', { test: { environment: 'jsdom' } }];");
+  const wsSite = [...ws.sites].find(([k]) => ws.tokens[k].value === 'packages/*')[1];
+  assert.deepEqual([wsSite.type, wsSite.index], ['element', 0], 'export default [ is an array, not an index');
+  const ts = analyze("const config: Config = { testEnvironment: 'jsdom' as const };\nexport default config;");
+  assert.equal([...ts.sites].find(([k]) => ts.tokens[k].value === 'jsdom')[1].prop.key, 'testEnvironment');
   assert.equal(tokenize("a = 'x' // 'jsdom'").tokens.length, 3, 'comments are not tokens');
   assert.equal(tokenize('x = `a${"}"}b` + 1').tokens.length, 5, 'template with an expression is one token');
 });

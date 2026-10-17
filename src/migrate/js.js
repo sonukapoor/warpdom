@@ -241,7 +241,7 @@ export function analyze(source, { json = false } = {}) {
       if (v === '[') {
         let kind = 'array';
         if (f.kind === 'object' && f.expectKey) kind = 'computed';
-        else if (prev && (prev.type === 'ident' && !REGEX_AFTER.has(prev.value) || isPunct(prev, ')') || isPunct(prev, ']') || prev.type === 'string' || prev.type === 'template')) kind = 'index';
+        else if (prev && ((prev.type === 'ident' && !REGEX_AFTER.has(prev.value) && !OBJECT_AFTER.has(prev.value)) || isPunct(prev, ')') || isPunct(prev, ']') || prev.type === 'string' || prev.type === 'template')) kind = 'index';
         frames.push({ kind, path: ctxPath(f), index: 0, open: k });
         continue;
       }
