@@ -79,7 +79,7 @@
     "parse5": "^8.0.1"
   },
   "bin": {
-    "warpdom": "./bin/warpdom.js"
+    "warpdom": "bin/warpdom.js"
   },
   "peerDependencies": {
     "vitest": ">=2"
