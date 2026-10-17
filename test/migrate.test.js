@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { VERSION } from '../src/version.js';
 import { analyze, tokenize, leadingComments, moduleSpecifiers } from '../src/migrate/js.js';
 import { editDependencies, editCatalog, catalogEntries, applyEdits } from '../src/migrate/edits.js';
 import { yamlTopLevel, releaseAgeSettings, excludedBy, packageManager, workspaces } from '../src/migrate/project.js';
@@ -221,7 +222,7 @@ test('migrate: Vitest projects array, environmentMatchGlobs, pnpm catalog and mi
   assert.match(config, /\['\*\*\/\*\.dom\.test\.ts', 'warpdom'\]/);
   assert.match(config, /name: 'node', environment: 'node'/, 'node project unchanged');
   assert.deepEqual(readJson(dir, 'package.json').devDependencies, { vitest: 'catalog:', 'vitest-environment-warpdom': 'catalog:', warpdom: 'catalog:' });
-  assert.equal(read(dir, 'pnpm-workspace.yaml'), "packages:\n  - '.'\nminimumReleaseAge: 1440\ncatalog:\n  warpdom: '^0.1.3'\n  vitest-environment-warpdom: '^0.1.0'\n  vitest: '^4.0.0'\n");
+  assert.equal(read(dir, 'pnpm-workspace.yaml'), `packages:\n  - '.'\nminimumReleaseAge: 1440\ncatalog:\n  warpdom: '^${VERSION}'\n  vitest-environment-warpdom: '^0.1.0'\n  vitest: '^4.0.0'\n`);
   const ages = Object.fromEntries(r.releaseAge.map((a) => [a.name, a]));
   assert.equal(ages.warpdom.status, 'too-new');
   assert.equal(ages.warpdom.okAt, '2026-10-17T11:39:26.020Z');
