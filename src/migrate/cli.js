@@ -5,8 +5,8 @@ import { migrate, renderConsole } from './index.js';
 export const HELP = `warpdom migrate: move your tests from jsdom or happy-dom to warpdom.
 
 Usage:
-  npx warpdom migrate            dry run: print the plan, change nothing
-  npx warpdom migrate --apply    make the changes
+  npx warpdom migrate              make the changes
+  npx warpdom migrate --dry-run    print the plan, change nothing
 
 Run it at the root of your project (a monorepo: at its root). It finds every
 place that picks jsdom or happy-dom: Vitest configs, projects and workspace
@@ -23,11 +23,14 @@ Not changed, but listed: environments it cannot edit exactly (computed,
 inherited from another package), and lines that mention jsdom (setup files,
 polyfills, console filters). The plan is written to .warpdom-migrate/plan.md.
 
-Run \`npx warpdom compare\` before --apply: it compares your tests on jsdom and
-on warpdom and needs jsdom still installed.
+Run \`npx warpdom compare\` first: it compares your tests on jsdom and on
+warpdom and needs jsdom still installed. migrate stops when the git working
+tree has uncommitted changes (so its changes can be reviewed and undone on
+their own); --force runs it anyway.
 
 Options:
-  --apply        Make the changes (default: dry run)
+  --dry-run      Print the plan (and write .warpdom-migrate/plan.md), change nothing
+  --force        Make the changes even when the git working tree is not clean
   --json         Print the plan as JSON
   --no-keep-jsdom-version
                  warpdom behaves like the jsdom version it finds installed;
@@ -42,14 +45,16 @@ Options:
                  their publication dates (release-age settings)
   -h, --help     Show this help
 
-Exit code: 0 when the plan was made (or applied), 2 when it could not be.
+Exit code: 0 when the changes were made (or the plan, with --dry-run), 2 when
+not (including a working tree with uncommitted changes, without --force).
 `;
 
 export function parseArgs(argv) {
   const opts = {};
   for (const a of argv) {
     if (a === '-h' || a === '--help') opts.help = true;
-    else if (a === '--apply') opts.apply = true;
+    else if (a === '--dry-run') opts.dryRun = true;
+    else if (a === '--force') opts.force = true;
     else if (a === '--json') opts.json = true;
     else if (a === '--offline') opts.offline = true;
     else if (a === '--keep-jsdom-version') opts.keepJsdomVersion = true;
@@ -71,7 +76,7 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
     stdout.write(HELP);
     return 0;
   }
-  const result = await migrate({ cwd, apply: opts.apply, keepJsdomVersion: opts.keepJsdomVersion, offline: opts.offline || process.env.WARPDOM_MIGRATE_OFFLINE === '1', fetch });
+  const result = await migrate({ cwd, apply: !opts.dryRun, force: opts.force, keepJsdomVersion: opts.keepJsdomVersion, offline: opts.offline || process.env.WARPDOM_MIGRATE_OFFLINE === '1', fetch });
   if (opts.json) stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   else stdout.write(renderConsole({ ...result, planFileShown: path.relative(cwd, result.planFile) }));
   return result.error ? 2 : 0;

@@ -9,8 +9,8 @@ exported as `warpdom/migrate`).
 
 ```sh
 npx warpdom compare            # first: your tests on jsdom and on warpdom
-npx warpdom migrate            # dry run: prints the plan, changes nothing
-npx warpdom migrate --apply    # makes the changes
+npx warpdom migrate --dry-run  # prints the plan, changes nothing
+npx warpdom migrate            # makes the changes
 pnpm install                   # or npm / yarn / bun: migrate does not install
 ```
 
@@ -19,7 +19,8 @@ every workspace package is migrated in one go).
 
 | Option | Meaning |
 |---|---|
-| `--apply` | Make the changes (default: dry run) |
+| `--dry-run` | Print the plan and write `.warpdom-migrate/plan.md`; change nothing |
+| `--force` | Make the changes even when the git working tree has uncommitted changes (by default migrate stops, so its changes can be reviewed and undone on their own) |
 | `--json` | Print the plan as JSON instead of text |
 | `--no-keep-jsdom-version` | Do not pin the removed jsdom version in the config (pinned by default when it differs from warpdom's default; see "jsdom version" below) |
 | `--offline` | Do not ask the npm registry for the latest versions and their publication dates |
@@ -29,7 +30,7 @@ Both modes write the plan to `.warpdom-migrate/plan.md` (it can be deleted
 afterwards). Exit code 0 when the plan was made or applied, 2 when it could
 not be (no package.json).
 
-**Run `warpdom compare` before `--apply`.** It runs the suite on jsdom (or
+**Run `warpdom compare` before migrating.** It runs the suite on jsdom (or
 happy-dom) and on warpdom and lists every test whose result changes; it
 needs jsdom still installed, which stops being true after the migration and
 `pnpm install`.
@@ -87,7 +88,7 @@ Dependencies:
 - Nothing is installed: the plan ends with the install command for the
   detected package manager.
 
-Running `--apply` again changes nothing: there is no DOM environment left,
+Running migrate again changes nothing: there is no DOM environment left,
 and the packages are already in place.
 
 ## What it reports (and does not change)
@@ -192,7 +193,7 @@ classic and berry), else from package.json (catalog references resolved).
 
 The same projects were migrated by hand first (branch
 `test/warpdom-environment` of each, all tests keeping their results), then
-with `migrate --apply` from the parent commit; lockfiles ignored. The hand
+with `migrate` from the parent commit; lockfiles ignored. The hand
 changes did not pin the jsdom version; migrate does by default, so every
 project below except material-ui (jsdom 30.1.2) and handsontable's Angular
 wrapper (jsdom 26) also gets one `environmentOptions` /

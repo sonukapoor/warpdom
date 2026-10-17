@@ -80,7 +80,7 @@ export function renderConsole(r, { mentionsLimit = 15 } = {}) {
     for (const a of ages) out.push(`  ${a.message}`);
   }
   out.push('', 'Next:');
-  if (dry && !nothing) out.push(`  1. ${COMPARE}`, '  2. npx warpdom migrate --apply', `  3. ${r.install ?? 'install'}, then run your tests`);
+  if (dry && !nothing) out.push(`  1. ${COMPARE}`, '  2. npx warpdom migrate', `  3. ${r.install ?? 'install'}, then run your tests`);
   else if (!dry && !nothing) out.push(`  ${r.install ?? 'install'}, then run your tests, and review the diff (git diff)`);
   else out.push(r.manual.length ? '  do the manual items above, then run migrate again' : '  nothing to do');
   out.push('', `Plan: ${r.planFileShown ?? r.planFile}`);
@@ -91,7 +91,7 @@ export function renderMarkdown(r) {
   const out = [];
   const dry = r.mode === 'dry-run';
   out.push('# warpdom migrate', '');
-  out.push(dry ? 'Dry run: nothing was changed. Run `npx warpdom migrate --apply` to make these changes.' : 'Applied: the changes below were made.', '');
+  out.push(dry ? 'Dry run: nothing was changed. Run `npx warpdom migrate` (without --dry-run) to make these changes.' : 'Applied: the changes below were made.', '');
   if (r.error) {
     out.push(`Error: ${r.error}`, '');
     return `${out.join('\n')}\n`;

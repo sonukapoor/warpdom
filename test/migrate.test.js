@@ -395,7 +395,8 @@ test('migrate: warns on a dirty git tree, errors without package.json', async ()
 // --- CLI ---------------------------------------------------------------------------
 
 test('migrate CLI: options, --json, help, exit codes', async () => {
-  assert.deepEqual(parseArgs(['--apply', '--json', '--offline', '--keep-jsdom-version']), { apply: true, json: true, offline: true, keepJsdomVersion: true });
+  assert.deepEqual(parseArgs(['--dry-run', '--force', '--json', '--offline', '--keep-jsdom-version']), { dryRun: true, force: true, json: true, offline: true, keepJsdomVersion: true });
+  assert.throws(() => parseArgs(['--apply']), /unknown option --apply/, 'applying is the default; there is no --apply');
   assert.deepEqual(parseArgs(['--no-keep-jsdom-version']), { keepJsdomVersion: false });
   assert.throws(() => parseArgs(['--nope']), /unknown option --nope/);
   const sink = () => { let s = ''; return { write: (x) => { s += x; }, get text() { return s; } }; };
@@ -406,15 +407,36 @@ test('migrate CLI: options, --json, help, exit codes', async () => {
   assert.equal(await main(['--bogus'], { stderr: err }), 2);
   await withProject('jest-config', async (dir) => {
     out = sink();
-    assert.equal(await main(['--json', '--offline'], { stdout: out, cwd: dir }), 0);
+    assert.equal(await main(['--dry-run', '--json', '--offline'], { stdout: out, cwd: dir }), 0);
     const plan = JSON.parse(out.text);
     assert.equal(plan.mode, 'dry-run');
     assert.equal(plan.edits[0].file, 'jest.config.js');
     assert.match(read(dir, 'jest.config.js'), /testEnvironment: 'jsdom'/, 'dry run');
     out = sink();
-    assert.equal(await main(['--offline'], { stdout: out, cwd: dir }), 0);
+    assert.equal(await main(['--dry-run', '--offline'], { stdout: out, cwd: dir }), 0);
     assert.match(out.text, /Would change the test environment \(2\):\n {2}jest\.config\.js:3 {2}testEnvironment: jsdom -> warpdom\n {2}jest\.config\.js:4 {2}added testEnvironmentOptions: \{ jsdom: '20\.0\.3' \},\n/);
     assert.match(out.text, /npx warpdom compare/);
+  });
+  // Without --dry-run the changes are made.
+  await withProject('jest-config', async (dir) => {
+    out = sink();
+    assert.equal(await main(['--offline'], { stdout: out, cwd: dir }), 0);
+    assert.match(read(dir, 'jest.config.js'), /testEnvironment: 'warpdom'/);
+  });
+  // A git working tree with uncommitted changes stops it, unless --force.
+  await withProject('jest-config', async (dir) => {
+    const git = (...a) => spawnSync('git', a, { cwd: dir, encoding: 'utf8' });
+    git('init', '-q'); git('add', '-A'); git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'fixture');
+    fs.appendFileSync(path.join(dir, 'package.json'), '\n');
+    out = sink();
+    assert.equal(await main(['--offline'], { stdout: out, cwd: dir }), 2);
+    assert.match(out.text, /uncommitted change/);
+    assert.match(read(dir, 'jest.config.js'), /testEnvironment: 'jsdom'/, 'nothing changed');
+    out = sink();
+    assert.equal(await main(['--dry-run', '--offline'], { stdout: out, cwd: dir }), 0, '--dry-run works on a dirty tree');
+    out = sink();
+    assert.equal(await main(['--force', '--offline'], { stdout: out, cwd: dir }), 0);
+    assert.match(read(dir, 'jest.config.js'), /testEnvironment: 'warpdom'/);
   });
   const res = spawnSync(process.execPath, [path.join(root, 'bin', 'warpdom.js'), 'migrate', '--help'], { encoding: 'utf8' });
   assert.equal(res.status, 0);

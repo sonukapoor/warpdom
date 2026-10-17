@@ -142,8 +142,8 @@ result; check such a difference with the comments switched.
 ## Switch: `warpdom migrate`
 
 ```sh
-npx warpdom migrate            # dry run: the plan, nothing changed
-npx warpdom migrate --apply    # make the changes, then install
+npx warpdom migrate --dry-run  # the plan, nothing changed
+npx warpdom migrate            # make the changes, then install
 ```
 
 Run it at the root of your project after `warpdom compare` (compare needs

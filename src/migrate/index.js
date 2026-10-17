@@ -2,7 +2,7 @@
 // warpdom (docs/migrate.md). Node only.
 //
 //   import { migrate } from 'warpdom/migrate';
-//   const plan = await migrate({ cwd, apply: false });
+//   const plan = await migrate({ cwd, apply: false });   // apply: true makes the changes (the CLI's default)
 //
 // It finds every place that picks a DOM environment (Vitest and Jest
 // configs, projects and workspaces, per-file comments, CLI flags in
@@ -79,6 +79,13 @@ export async function migrate(options = {}) {
     const registry = options.registry ?? (options.offline ? {} : await registryInfo(OWN, { fetchImpl: options.fetch }));
     const { finalTexts } = run(result, { cwd, registry, keepJsdomVersion: options.keepJsdomVersion !== false });
     await releaseAges(result, { now, registry, offline: Boolean(options.offline) });
+    if (apply && result.changedFiles.length && !options.force) {
+      const dirty = gitDirty(cwd);
+      if (dirty?.length) {
+        result.mode = 'dry-run';
+        throw new MigrateError(`the git working tree has ${dirty.length} uncommitted change(s): commit or stash them first, so that migrate's changes can be reviewed and undone on their own (or run with --force). Nothing was changed; the plan is below.`);
+      }
+    }
     if (apply) {
       for (const file of result.changedFiles) fs.writeFileSync(path.resolve(cwd, file), finalTexts.get(file));
     }
