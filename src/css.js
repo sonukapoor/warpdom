@@ -71,8 +71,13 @@ function isColorProperty(name) {
 
 // Serialized color values by raw value: the same few strings are written
 // over and over (style.color = '#f00' on every render).
-const colorCache = new Map();
+// legacyColors (set by declaredValue): cssstyle before 4.2, whose rgb()
+// and hsl() round channels once and which does not resolve hwb()
+// (colors.js).
+let legacyColors = false;
+const colorCaches = [new Map(), new Map()];
 function declaredColors(value) {
+  const colorCache = colorCaches[legacyColors ? 1 : 0];
   let out = colorCache.get(value);
   if (out === undefined) {
     out = serializeColors(value);
@@ -88,7 +93,7 @@ function serializeColors(value) {
     const token = parts[i];
     if (!token) continue;
     const lower = token.toLowerCase();
-    if (lower[0] === '#' || /^(rgba?|hsla?)\(/.test(lower)) parts[i] = resolveColor(token) ?? token;
+    if (lower[0] === '#' || /^(rgba?|hsla?|hwb)\(/.test(lower)) parts[i] = resolveColor(token, legacyColors) ?? token;
     else if (resolveColor(lower) !== null || lower === 'currentcolor') parts[i] = lower;
   }
   return parts.join('');
@@ -375,6 +380,7 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
   if (byValue === undefined) cache.set(name, byValue = new Map());
   let out = byValue.get(value);
   if (out === undefined) {
+    legacyColors = surface !== null && surface.legacyFont === 'cssstyle4.1';
     if (mode === 'page') out = pageDescriptorValue(name, value);
     else if (surface !== null && surface.extras.has(name)) out = value;
     else if (!isKnownProperty(name)) out = INVALID;

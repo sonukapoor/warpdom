@@ -1,7 +1,13 @@
-// CSS colors (CSS Color 4): parsing named, hex, rgb() and hsl() colors and
-// serializing them as resolved values are serialized: rgb(r, g, b), or
-// rgba(r, g, b, a) when not opaque. Other color syntaxes (lab(), color())
-// are kept as written.
+// CSS colors (CSS Color 4): parsing named, hex, rgb(), hsl() and hwb()
+// colors and serializing them as resolved values are serialized: rgb(r, g,
+// b), or rgba(r, g, b, a) when not opaque. Other color syntaxes (lab(),
+// color()) are kept as written.
+//
+// Channels as jsdom computes them (black box, jsdom 26 with cssstyle 4.2
+// to 4.6, 27 to 30): rounded to 4 significant digits, then to an integer
+// (hsl(102, 53%, 61%) has a red of 134.4666, 134.5, 135; rgb(113.45, 0,
+// 0) is rgb(114, 0, 0)). legacy (cssstyle before 4.2): rounded once, and
+// hwb() not resolved.
 
 // The named colors (CSS Color 4, 6.1), as 0xRRGGBB.
 const NAMED = {
@@ -96,16 +102,27 @@ function alphaValue(s) {
   return clamp(number(s), 0, 1);
 }
 
-function rgbFunction(inner) {
+const fourDigits = (v) => Math.round(Number(v.toPrecision(4)));
+
+function rgbFunction(inner, round) {
   const args = colorArgs(inner);
   if (!args) return null;
-  const channel = (s) => Math.round(clamp(s.endsWith('%') ? (number(s.slice(0, -1)) * 255) / 100 : number(s), 0, 255));
+  const channel = (s) => round(clamp(s.endsWith('%') ? (number(s.slice(0, -1)) * 255) / 100 : number(s), 0, 255));
   const [r, g, b] = args[0].map(channel);
   const a = alphaValue(args[1]);
   return [r, g, b, a].some(Number.isNaN) ? null : serialize(r, g, b, a);
 }
 
-function hslFunction(inner) {
+// CSS Color 4, 7.1: hslToRgb, channels from 0 to 1.
+function hslToRgb(h, s, l) {
+  const f = (n) => {
+    const k = (n + h / 30) % 12;
+    return l - s * Math.min(l, 1 - l) * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+  };
+  return [f(0), f(8), f(4)];
+}
+
+function hslFunction(inner, round) {
   const args = colorArgs(inner);
   if (!args) return null;
   const [hs, ss, ls] = args[0];
@@ -114,25 +131,40 @@ function hslFunction(inner) {
   const l = clamp(number(ls.replace(/%$/, '')) / 100, 0, 1);
   const a = alphaValue(args[1]);
   if ([h, s, l, a].some(Number.isNaN)) return null;
-  // CSS Color 4, 7.1: hslToRgb.
-  const f = (n) => {
-    const k = (n + h / 30) % 12;
-    return l - s * Math.min(l, 1 - l) * Math.max(-1, Math.min(k - 3, 9 - k, 1));
-  };
-  return serialize(Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255), a);
+  const [r, g, b] = hslToRgb(h, s, l);
+  return serialize(round(r * 255), round(g * 255), round(b * 255), a);
+}
+
+// hwb(), modern syntax only (CSS Color 4, 8.1: hwbToRgb).
+function hwbFunction(inner, round) {
+  if (inner.includes(',')) return null;
+  const args = colorArgs(inner);
+  if (!args) return null;
+  const [hs, ws, bs] = args[0];
+  if (!ws.endsWith('%') || !bs.endsWith('%')) return null;
+  const h = ((number(hs.replace(/deg$/i, '')) % 360) + 360) % 360;
+  let w = clamp(number(ws.slice(0, -1)) / 100, 0, 1);
+  let bl = clamp(number(bs.slice(0, -1)) / 100, 0, 1);
+  const a = alphaValue(args[1]);
+  if ([h, w, bl, a].some(Number.isNaN)) return null;
+  if (w + bl >= 1) { w /= w + bl; bl = 1 - w; }
+  const rgb = hslToRgb(h, 1, 0.5).map((c) => (c * (1 - w - bl) + w) * 255);
+  return serialize(round(rgb[0]), round(rgb[1]), round(rgb[2]), a);
 }
 
 // The resolved form of one color token, or null when it is not a color
 // this module resolves. currentcolor is left to the caller.
-export function resolveColor(token) {
+export function resolveColor(token, legacy = false) {
   const lower = token.toLowerCase();
   if (lower[0] === '#') return hex(lower);
   if (lower === 'transparent') return 'rgba(0, 0, 0, 0)';
   const named = NAMED[lower] ?? SYSTEM[lower];
   if (named !== undefined) return fromHex(named);
-  const m = /^(rgba?|hsla?)\((.*)\)$/s.exec(lower);
+  const m = /^(rgba?|hsla?|hwb)\((.*)\)$/s.exec(lower);
   if (!m) return null;
-  return m[1].startsWith('rgb') ? rgbFunction(m[2].trim()) : hslFunction(m[2].trim());
+  const round = legacy ? Math.round : fourDigits;
+  if (m[1] === 'hwb') return legacy ? null : hwbFunction(m[2].trim(), round);
+  return m[1].startsWith('rgb') ? rgbFunction(m[2].trim(), round) : hslFunction(m[2].trim(), round);
 }
 
 export const NAMED_COLORS = Object.keys(NAMED);

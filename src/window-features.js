@@ -413,6 +413,8 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
     legacyFont: css === null || !before(css, [4, 4, 0]) ? null : before(css, [4, 2, 0]) ? 'cssstyle4.1' : 'cssstyle4.2',
     // cssstyle 4.4 and later: the computed style's background and border
     // side accessors compose their longhands (cascade.js legacyAccessorValue).
+    // cssstyle before 4.2: color channels rounded once, no hwb() (colors.js).
+    legacyColors: version[0] < 27 && css !== null && before(css, [4, 2, 0]),
     composedAccessors: version[0] < 27 && (css === null || (css[0] === 4 && !before(css, [4, 4, 0]))),
     rootColor: version[0] >= 27 ? 'rgb(0, 0, 0)' : css !== null && before(css, [4, 4, 0]) ? '' : css !== null && before(css, [4, 6, 0]) ? 'CanvasText' : 'canvastext',
   };

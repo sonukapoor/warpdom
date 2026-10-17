@@ -259,7 +259,7 @@ function computeValue(element, name, value, data) {
       if (token.toLowerCase() === 'currentcolor') {
         parts[i] = name === 'color' ? inheritedValue(element, 'color', data) : currentColor(element);
       } else {
-        parts[i] = resolveColor(token) ?? token;
+        parts[i] = resolveColor(token, element[S].doc[S].window[S].compat.legacyColors) ?? token;
       }
     }
     value = parts.join('');
