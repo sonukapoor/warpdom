@@ -1,0 +1,8 @@
+{
+  "name": "example-app",
+  "private": true,
+  "devDependencies": {
+    "jsdom": "^26.1.0",
+    "vitest": "^3.2.4"
+  }
+}

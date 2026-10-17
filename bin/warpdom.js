@@ -3,8 +3,11 @@
 // with a safety net and learning (src/vitest-fast-cli.js).
 // warpdom compare [options] [-- runner arguments]: the project's tests on
 // jsdom and on warpdom, results and speed (src/compare/).
+// warpdom migrate [--apply] [--json]: moves the project's tests from jsdom
+// or happy-dom to warpdom (src/migrate/).
 const USAGE = 'usage: warpdom vitest [run] [--learn] [vitest arguments]\n'
-  + '       warpdom compare [options] [-- runner arguments]   (warpdom compare --help)\n';
+  + '       warpdom compare [options] [-- runner arguments]   (warpdom compare --help)\n'
+  + '       warpdom migrate [--apply] [--json] [--offline]     (warpdom migrate --help)\n';
 
 const [command, ...rest] = process.argv.slice(2);
 if (command === 'vitest') {
@@ -14,6 +17,9 @@ if (command === 'vitest') {
   if (code !== null) process.exit(code);
 } else if (command === 'compare') {
   const { main } = await import('../src/compare/cli.js');
+  process.exit(await main(rest));
+} else if (command === 'migrate') {
+  const { main } = await import('../src/migrate/cli.js');
   process.exit(await main(rest));
 } else {
   process.stderr.write(USAGE);

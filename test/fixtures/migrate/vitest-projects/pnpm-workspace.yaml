@@ -1,0 +1,6 @@
+packages:
+  - '.'
+minimumReleaseAge: 1440
+catalog:
+  jsdom: '^27.0.0'
+  vitest: '^4.0.0'

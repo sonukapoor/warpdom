@@ -1,0 +1,9 @@
+{
+  "name": "docblocks-vitest",
+  "private": true,
+  "devDependencies": {
+    "happy-dom": "^20.0.0",
+    "jsdom": "^26.1.0",
+    "vitest": "^3.2.4"
+  }
+}
