@@ -7,7 +7,7 @@
 
 # warpdom
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23378613.svg)](https://doi.org/10.5281/zenodo.23378613)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23378613.svg)](https://doi.org/10.5281/zenodo.23378613) [![Sponsor](https://img.shields.io/github/sponsors/sonukapoor?label=Sponsor&logo=GitHub)](https://github.com/sponsors/sonukapoor)
 
 A DOM for unit and component tests: **your tests get the same results as
 on jsdom, faster.** A drop-in environment for Vitest and Jest, written
