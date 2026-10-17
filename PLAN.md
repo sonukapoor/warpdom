@@ -1,7 +1,7 @@
 # warpdom plan
 
-> This plan lives in the warpdom repository (private:
-> github.com/sonukapoor/warpdom) since 2026-10-09. Measurement tools and
+> This plan lives in the warpdom repository (github.com/sonukapoor/warpdom,
+> public since 2026-10-14) since 2026-10-09. Measurement tools and
 > reports stay in the dom-api-tracer repository; `docs/...` paths below that
 > are not in this repo refer to it.
 
@@ -17,15 +17,81 @@ WPT conformance numbers, and real projects migrating.
 
 ## Roadmap
 
-1. **Measure** (current): trace which DOM APIs real test suites use, across
-   20-30 popular open-source component libraries; publish the aggregated
-   report.
-2. **Build the DOM** (separate repo): pure-JS core, compact internal tree,
-   lazily materialized node objects, near-free environment startup, parse5
-   for parsing at first. Scope and hot paths come from stage 1 data.
-3. **Prove it**: Vitest + Jest environments, WPT pass-rate dashboard,
-   benchmarks on real suites vs jsdom/happy-dom/linkedom, including losses.
-4. **Adoption**: migration PRs to well-known OSS projects showing CI time saved.
+Revised 2026-10-17. The aim is to become the default DOM for unit tests. That
+takes more than API count: switching must be risk-free, warpdom must be clearly
+faster, more complete than jsdom, used in public by well-known projects,
+built into the test runners, and maintained in a way large projects can rely
+on. "All APIs" is not the goal: without a rendering engine, real layout,
+canvas drawing, WebGL or media cannot be meaningful (that is what Vitest's
+browser mode is for). The goal is the most complete DOM for unit tests:
+every API that makes sense without layout, behaving as the standards say.
+
+Done so far (stages 1-3 of the original plan):
+- **Measure:** dom-api-tracer traced DOM API use across the corpus
+  (see Corpus).
+- **Build:** this repository, an independent implementation of the WHATWG
+  and W3C standards that reproduces each jsdom version's observable behavior.
+- **Prove:** the JWE paper (submitted 2026-10-16), public WPT numbers and
+  benchmarks on 25 real suites; drop-in 1.2-1.9x faster than jsdom on the
+  tuning suites, 4.5x on Ant Design.
+
+Milestones from here, each with its exit criterion:
+
+**M1: Parity with jsdom (0.1.x).** warpdom's API set includes jsdom's for
+every modeled jsdom version, and every measured suite gives jsdom's results.
+- #1-#4: crypto, TextEncoder/TextDecoder, Blob/File, performance (in progress
+  on feat/parity-apis; ship in 0.1.4).
+- #18: a CI test that warpdom's window has every interface and member jsdom's
+  has, per version, so a gap cannot reappear unnoticed.
+- #19: WPT on all test-DOM-relevant areas by default, results published.
+- #13 (done), #14, #15: differences found while adopting (Ant Design,
+  Element Plus on jsdom 16, Storybook on happy-dom).
+- Exit: #18 green on every jsdom version; 0 unexplained differing tests in
+  the corpus and the adoption projects; DOMParity's "Test DOM core" coverage
+  for warpdom at or above jsdom's (2026-10-17: 52.8% vs 57.1%).
+
+**M2: Modern APIs, opt-in (0.2).** The web APIs jsdom lacks, written from the
+standards, behind an opt-in so default results stay jsdom's.
+- #5: the opt-in design (an environment option, per API and all at once).
+- #6-#12: matchMedia, ResizeObserver, IntersectionObserver, dialog
+  show/showModal/close, scrollIntoView, Web Animations, structuredClone; then
+  the remaining core gaps that DOMParity (#17) lists, by measured usage.
+- Each API ships with its WPT area passing (as far as possible without
+  layout) and a note in docs on what "without layout" means for it.
+- Exit: with the opt-in on, warpdom has the highest "Test DOM core" coverage
+  of all test DOMs on DOMParity, with behavior checks passing.
+
+**M3: Modern APIs on by default (0.3 or 1.0).** After the opt-in has been
+used in real projects for at least one release cycle without regressions,
+turn it on by default for new installs (or per jsdom profile: projects that
+pin an old jsdom version keep the old API set). Documented as a breaking
+change, with `warpdom migrate` and `warpdom compare` showing any test whose
+result would change.
+- Exit: the corpus and the adopted projects show no unexplained result
+  changes with the APIs on.
+
+**M4: Adoption.** Well-known projects running their tests on warpdom in
+public; every adoption PR replaces jsdom completely (no two DOM packages).
+- Open or planned (2026-10-17): Radix, handsontable, floating-ui, downshift,
+  solid-primitives (bug fix), MUI and Vuetify (from 2026-10-19), Ant Design
+  (after 0.1.4); next candidates React Spectrum, CopilotKit, Excalidraw.
+- `warpdom migrate` and `warpdom compare` make a switch a five-minute,
+  reversible experiment; a GitHub Action that posts the comparison on a PR
+  is next.
+- Exit: at least ten well-known projects merged, with their CI time saved
+  documented.
+
+**M5: Built into the test runners.** `environment: 'warpdom'` listed by Vitest
+(and documented by Jest) next to jsdom and happy-dom, after M1, M2 and M4 give
+the evidence. Approach the Vitest team with the DOMParity data, the WPT
+numbers, the adoption list and the paper.
+
+**M6: Sustainable maintenance.** What large projects ask before depending on
+a single maintainer: GitHub Sponsors (live 2026-10-17), contributor docs and
+labeled issues, a release process with the weekly upstream watch, security
+policy, and more maintainers over time.
+
+**Later:** SSR and edge runtimes (the core already avoids Node built-ins).
 
 ## Product
 
