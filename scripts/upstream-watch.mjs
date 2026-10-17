@@ -6,11 +6,16 @@
 //   cssstyle release that jsdom's dependency range takes in;
 // - vitest and jest: a major release newer than the ones warpdom is tested
 //   with (the workflow then runs npm test with the newest Vitest).
+// - DOMParity (with --gap-issues): the web APIs jsdom has and warpdom lacks,
+//   one issue per interface, and a tracking issue for the core APIs only
+//   other test DOMs have (scripts/api-gaps.mjs; it creates and edits issues
+//   only when GH_TOKEN is set, so a local run is a dry run).
 // Every finding has a stable title; with --issues it opens one GitHub issue
 // per title that has none yet (open or closed), through the gh CLI.
-//   node scripts/upstream-watch.mjs [--issues] [--cache <dir>]
+//   node scripts/upstream-watch.mjs [--issues] [--gap-issues] [--cache <dir>]
 // Writes a Markdown report to stdout (and to $GITHUB_STEP_SUMMARY) and exits
-// 0; the issues are the signal.
+// 0; the issues are the signal. A failed DOMParity pass exits 1 after the
+// report.
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -18,6 +23,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NEWEST_MODELED_JSDOM, newerJsdomWarning } from '../src/window-features.js';
+import { runGapIssues } from './api-gaps.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -89,6 +95,15 @@ if (args.includes('--issues') && findings.length) {
     if (titles.has(f.title)) { lines.push(`  (issue exists: ${f.title})`); continue; }
     const url = execFileSync('gh', ['issue', 'create', '--title', f.title, '--body', f.body], { encoding: 'utf8' }).trim();
     lines.push(`  opened ${url}`);
+  }
+}
+
+if (args.includes('--gap-issues')) {
+  try {
+    lines.push(...await runGapIssues({ apply: Boolean(process.env.GH_TOKEN) }));
+  } catch (error) {
+    lines.push('', '## DOMParity API gaps', '', `- failed: ${error.message}`);
+    process.exitCode = 1;
   }
 }
 

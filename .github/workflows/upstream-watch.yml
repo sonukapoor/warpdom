@@ -1,8 +1,11 @@
 # Weekly check of the releases warpdom follows (scripts/upstream-watch.mjs):
 # a jsdom newer than the newest modeled one, the inline style surface of a
 # fresh jsdom@latest install against the default profile, and Vitest or Jest
-# majors newer than the tested ones. Each finding opens one issue. The
-# second job runs npm test with the newest Vitest.
+# majors newer than the tested ones. Each finding opens one issue. With
+# --gap-issues it also turns DOMParity's data into issues: one per interface
+# jsdom has and warpdom lacks (labels parity, missing-api, at most 15 per
+# run) and one tracking checklist of core APIs only other test DOMs have
+# (scripts/api-gaps.mjs). The second job runs npm test with the newest Vitest.
 name: upstream-watch
 
 on:
@@ -25,7 +28,7 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
-      - run: node scripts/upstream-watch.mjs --issues
+      - run: node scripts/upstream-watch.mjs --issues --gap-issues
         env:
           GH_TOKEN: ${{ github.token }}
 

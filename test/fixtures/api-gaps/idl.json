@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "date": "2026-10-17T00:00:00.000Z",
+  "webref": { "package": "@webref/idl", "version": "3.85.2" },
+  "engines": [
+    { "key": "jsdom@30.1.3", "engine": "jsdom", "version": "30.1.3" },
+    { "key": "warpdom@0.1.3", "engine": "warpdom", "version": "0.1.3" },
+    { "key": "happy-dom@21.0.3", "engine": "happy-dom", "version": "21.0.3" },
+    { "key": "linkedom@0.18.13", "engine": "linkedom", "version": "0.18.13" }
+  ],
+  "note": "Existence only.",
+  "specs": {
+    "dom": {
+      "title": "DOM Standard",
+      "url": "https://dom.spec.whatwg.org/",
+      "interfaces": {
+        "Node": { "kind": "interface", "inherits": "EventTarget", "status": "PPPP", "members": [["appendChild", "o", "1111"], ["moveBefore", "o", "1010"], ["fancy", "a", "0010"], ["ELEMENT_NODE", "c", "1111"]] },
+        "Gone": { "kind": "interface", "inherits": "Event", "status": "P-PP", "members": [["a", "a", "1010"], ["b", "o", "0010"]] },
+        "Blob": { "kind": "interface", "status": "N-PN", "members": [["size", "a", "1011"]] },
+        "Fancy": { "kind": "interface", "status": "--PP", "members": [["x", "a", "0011"], ["y", "o", "0001"]] },
+        "Stubby": { "kind": "interface", "status": "S-P-", "members": [] },
+        "Unprobed": { "kind": "interface", "status": "P?P-", "members": [["q", "a", "1?1-"]] },
+        "Window": { "kind": "interface", "status": "PPP-", "members": [["crypto", "a", "1000"], ["matchMedia", "o", "0010"], ["closed", "a", "0010"], ["opener", "a", "0011"]] }
+      }
+    },
+    "html": {
+      "title": "HTML",
+      "url": "https://html.spec.whatwg.org/multipage/",
+      "interfaces": {
+        "Node": { "members": [["extra", "a", "1000"]] },
+        "Gone": { "members": [["fromHtml", "a", "1000"], ["notInJsdom", "a", "0010"]] },
+        "Element": { "kind": "interface", "inherits": "Node", "status": "PPPP", "members": [["foo", "o", "1000"]] }
+      }
+    },
+    "web-animations": {
+      "title": "Web Animations",
+      "url": "https://drafts.csswg.org/web-animations-1/",
+      "interfaces": {
+        "Animation": { "kind": "interface", "status": "--P-", "members": [["play", "o", "0010"]] }
+      }
+    },
+    "exotic": {
+      "title": "Exotic Things",
+      "url": "https://example.org/exotic/",
+      "interfaces": {
+        "Exotic": { "kind": "interface", "status": "--P-", "members": [["e", "a", "0010"]] },
+        "OtherGap": { "kind": "interface", "status": "P-P-", "members": [] }
+      }
+    }
+  }
+}

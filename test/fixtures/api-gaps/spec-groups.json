@@ -1,0 +1,6 @@
+{
+  "groups": [
+    { "id": "core", "title": "Test DOM core", "specs": ["dom", "html", "web-animations"] },
+    { "id": "other", "title": "Other", "specs": ["exotic"] }
+  ]
+}
