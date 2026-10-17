@@ -127,3 +127,29 @@ test('style accessors by jsdom and cssstyle version (jsdom 27 to 30.0)', () => {
   s.webkitUserSelect = 'none';
   assert.equal(s.cssText, 'webkit-user-select: none;');
 });
+
+// Properties warpdom's CSS data lacks that a profile keeps, as written,
+// with their accessors (ant-design's List demo: react-infinite-scroll-
+// component sets WebkitOverflowScrolling: touch, kept from cssstyle 4.4).
+const extraNames = (w) => {
+  const s = w.document.createElement('div').style;
+  const out = ['WebkitOverflowScrolling' in s, 'webkitOverflowScrolling' in s];
+  s.WebkitOverflowScrolling = 'touch';
+  out.push(s.cssText, s.webkitOverflowScrolling, s.getPropertyValue('-webkit-overflow-scrolling'));
+  s.cssText = '';
+  s.setProperty('-webkit-overflow-scrolling', 'auto');
+  out.push(s.cssText);
+  return out;
+};
+for (const jsdom of [30, 26, 25, 22, 20]) parity(`style: names warpdom's data lacks (jsdom ${jsdom})`, extraNames, { jsdom });
+
+test('style: -webkit-overflow-scrolling is kept from cssstyle 4.4', () => {
+  const write = (options) => {
+    const s = createWindow(options).document.body.style;
+    s.WebkitOverflowScrolling = 'touch';
+    return s.cssText;
+  };
+  assert.equal(write({ jsdom: '26.1.0', cssstyle: '4.3.1' }), '');
+  assert.equal(write({ jsdom: '26.1.0', cssstyle: '4.4.0' }), '-webkit-overflow-scrolling: touch;');
+  assert.equal(write({ jsdom: '27.4.0', cssstyle: '5.3.7' }), '-webkit-overflow-scrolling: touch;');
+});
