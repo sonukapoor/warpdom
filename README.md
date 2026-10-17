@@ -390,6 +390,12 @@ Full tables, method, profiles and caveats:
 
 ## Differences from jsdom
 
+API by API, how warpdom, jsdom, happy-dom and linkedom each support the
+web platform (behavior checks for commonly used APIs, existence of every
+Web IDL interface and member) is on [DOMParity](https://domparity.github.io),
+a separate reference site with the same method for every engine (maintained
+by warpdom's author).
+
 warpdom matches jsdom's observable behavior where tests depend on it, and
 otherwise follows the standards. Deliberate differences, each with a test
 (full list in [PLAN.md](PLAN.md), "Deliberate deviations from jsdom").
