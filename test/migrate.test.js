@@ -213,7 +213,7 @@ test('migrate: idempotent, a second --apply changes nothing', async () => {
 
 test('migrate: Vitest projects array, environmentMatchGlobs, pnpm catalog and minimumReleaseAge', () => withProject('vitest-projects', async (dir) => {
   const registry = {
-    warpdom: { version: '0.1.3', time: '2026-10-16T11:39:26.020Z' },
+    warpdom: { version: VERSION, time: '2026-10-16T11:39:26.020Z' },
     'vitest-environment-warpdom': { version: '0.1.0', time: '2026-10-14T21:54:07.630Z' },
   };
   const r = await run(dir, { apply: true, registry, offline: false, now: Date.parse('2026-10-17T10:00:00Z') });
@@ -227,7 +227,7 @@ test('migrate: Vitest projects array, environmentMatchGlobs, pnpm catalog and mi
   assert.equal(ages.warpdom.status, 'too-new');
   assert.equal(ages.warpdom.okAt, '2026-10-17T11:39:26.020Z');
   assert.equal(ages['vitest-environment-warpdom'].status, 'ok');
-  assert.match(r.warnings.join('\n'), /warpdom 0\.1\.3 is younger than minimumReleaseAge/);
+  assert.match(r.warnings.join('\n'), new RegExp(`warpdom ${VERSION.replaceAll('.', '\\.')} is younger than minimumReleaseAge`));
   assert.match(r.profile.join('\n'), /ran on happy-dom/);
 }));
 
