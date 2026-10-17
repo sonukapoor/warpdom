@@ -884,6 +884,23 @@ function composeShorthand(decls, name) {
   return COMPOSED[name](values);
 }
 
+// jsdom 20 to 26 (cssstyle 2 to 4, black box): setting flex, background,
+// border or a border side through the style object removes that property
+// and the longhands it sets, then adds it at the end, so setting it again
+// moves it there, even to the same value (React re-sets a changed style
+// property; snapshots show the order). A var() value is set in place,
+// except flex's from cssstyle 4.4. A style attribute (cssText) does not
+// move them.
+const BORDER_SIDES = ['top', 'right', 'bottom', 'left'];
+const RESETS = {
+  flex: ['flex', 'flex-grow', 'flex-shrink', 'flex-basis'],
+  background: ['background', 'background-color', 'background-image', 'background-repeat', 'background-attachment', 'background-position'],
+  border: ['border', 'border-width', 'border-style', 'border-color', ...BORDER_SIDES.flatMap((side) => [`border-${side}`, `border-${side}-width`, `border-${side}-style`, `border-${side}-color`])],
+};
+for (const side of BORDER_SIDES) RESETS[`border-${side}`] = [`border-${side}`, `border-${side}-width`, `border-${side}-style`, `border-${side}-color`];
+// (A surface has a legacyFont variant before cssstyle 4.4.)
+const resets = (surface, name, text) => !text.includes('var(') || (name === 'flex' && surface?.legacyFont === undefined);
+
 function setDeclaration(style, name, value, priority = '') {
   const s = styleState(style);
   if (s.computed) {
@@ -905,6 +922,16 @@ function setDeclaration(style, name, value, priority = '') {
   if (text === INVALID) return;
   const important = String(priority).toLowerCase() === 'important';
   if (isLegacyFont(s.surface, name) && removeLegacyFont(s.decls, s.surface)) reindex(style);
+  if (isLegacyMode(s.mode) && RESETS[name] !== undefined && resets(s.surface, name, text)) {
+    let removed = false;
+    for (const n of RESETS[name]) removed = s.decls.delete(n) || removed;
+    if (removed) {
+      s.decls.set(name, { value: text, important });
+      reindex(style);
+      sync(style);
+      return;
+    }
+  }
   const old = s.decls.get(name);
   if (old && old.value === text && old.important === important) return;
   if (old === undefined && MERGEABLE.has(name)) s.decls.mergeable = true;

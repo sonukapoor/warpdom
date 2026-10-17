@@ -412,3 +412,43 @@ test('style: the font shorthand of cssstyle 4.2 and 4.3', () => {
   assert.deepEqual(font({ jsdom: '26.1.0', cssstyle: '4.3.1' }, '12px var(--a)'), ['', '', '']);
   assert.deepEqual(font({ jsdom: '25.0.1', cssstyle: '4.3.0' }, '20px 1turn'), ['', '', '']);
 });
+
+// jsdom 20 to 26 (cssstyle 2 to 4): setting flex, background, border or a
+// border side removes it and its longhands and adds it at the end, so a
+// re-set (React updating a changed style) moves it; other properties stay
+// in place. ant-design's Layout.Sider and Progress snapshots show it.
+const resets = (w) => {
+  const d = w.document;
+  const run = (f) => { const s = d.createElement('div').style; f(s); return [s.cssText, s.length, s[0]]; };
+  const props = { flex: ['0 0 200px', '0 0 80px'], background: ['red', 'blue'], border: ['1px solid red', '2px solid red'], borderTop: ['1px solid red', '1px solid red'],
+    borderLeft: ['1px solid red', '2px dashed red'], margin: ['1px', '2px'], padding: ['1px', '1px'], color: ['red', 'blue'], borderColor: ['red', 'blue'], outline: ['1px solid red', '2px solid red'] };
+  const out = Object.entries(props).map(([p, [a, b]]) => run((s) => { s[p] = a; s.maxWidth = '1px'; s.setProperty('--x', '1'); s[p] = b; }));
+  out.push(run((s) => { s.flex = '1 1 0px'; s.width = '1px'; s.setProperty('flex', '1 1 0px', 'important'); }));
+  out.push(run((s) => { s.flexGrow = '2'; s.flexBasis = '1px'; s.width = '1px'; s.flex = '1 1 0px'; }));
+  out.push(run((s) => { s.backgroundColor = 'red'; s.backgroundImage = 'none'; s.backgroundSize = 'auto'; s.width = '1px'; s.background = 'blue'; }));
+  out.push(run((s) => { s.borderTop = '1px solid red'; s.borderLeftColor = 'red'; s.borderWidth = '1px'; s.width = '1px'; s.border = '2px solid blue'; }));
+  out.push(run((s) => { s.borderTopWidth = '1px'; s.borderLeftWidth = '1px'; s.width = '1px'; s.borderTop = '2px solid blue'; }));
+  out.push(run((s) => { s.cssText = 'flex: 1 1 0px; width: 1px; flex: 2 2 0px'; }));
+  out.push(run((s) => { s.flex = '1 1 0px'; s.width = '1px'; s.flex = 'foo'; }));
+  return out;
+};
+for (const jsdom of [26, 25, 22, 20]) parity(`style: re-setting flex, background and border moves them to the end (jsdom ${jsdom})`, resets, { jsdom });
+
+// A var() value is set in place, except flex's from cssstyle 4.4 (jsdom 26).
+parity('style: a var() value of background and border is set in place (jsdom 26)', (w) => {
+  const run = (p, a, b) => { const s = w.document.createElement('div').style; s.setProperty(p, a); s.width = '1px'; s.setProperty(p, b); return s.cssText; };
+  return [run('background', 'red', 'var(--a)'), run('border', '1px solid red', 'var(--a)'), run('border-top', '1px solid red', 'var(--a)'), run('flex', '1 1 0px', 'var(--a)'),
+    run('background', 'var(--a)', 'red'), run('flex', 'var(--a)', '1 1 0px')];
+}, { jsdom: 26 });
+
+test('style: a re-set flex is a style attribute change (jsdom 26)', () => {
+  const w = createWindow({ jsdom: 26 });
+  const el = w.document.createElement('div');
+  el.style.flex = '1 1 0px';
+  el.style.width = '1px';
+  const observer = new w.MutationObserver(() => {});
+  observer.observe(el, { attributes: true });
+  el.style.flex = '1 1 0px';
+  assert.equal(el.getAttribute('style'), 'width: 1px; flex: 1 1 0px;');
+  assert.ok(observer.takeRecords().length > 0);
+});
