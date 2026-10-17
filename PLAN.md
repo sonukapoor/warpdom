@@ -44,6 +44,12 @@ every modeled jsdom version, and every measured suite gives jsdom's results.
 - #18: a CI test that warpdom's window has every interface and member jsdom's
   has, per version, so a gap cannot reappear unnoticed.
 - #19: WPT on all test-DOM-relevant areas by default, results published.
+- #17: the DOMParity audit is automated: the weekly upstream watch
+  (scripts/api-gaps.mjs) opens one parity issue per interface with gaps
+  (at most 15 a run, largest first) and keeps one "Beyond jsdom" checklist
+  of core APIs only other test DOMs have, for M2. 2026-10-17 data: 41 parity
+  interfaces beyond #1-#4 (ElementInternals, SVGSVGElement, XMLHttpRequest,
+  console, URL, URLSearchParams, WebSocket, Headers, ...), 119 checklist items.
 - #13 (done), #14, #15: differences found while adopting (Ant Design,
   Element Plus on jsdom 16, Storybook on happy-dom).
 - Exit: #18 green on every jsdom version; 0 unexplained differing tests in

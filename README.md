@@ -116,6 +116,18 @@ warpdom prints a warning once; a weekly check
 ([upstream-watch](.github/workflows/upstream-watch.yml)) opens an issue
 when such a release appears.
 
+The same weekly check reads [DOMParity](https://domparity.github.io)'s
+existence data and files the gaps it finds
+([scripts/api-gaps.mjs](scripts/api-gaps.mjs)): one issue (labels `parity`,
+`missing-api`) per interface jsdom has that warpdom lacks, or with members
+jsdom has that warpdom lacks, at most 15 a run; and one tracking issue,
+"Beyond jsdom: core APIs other test DOMs have", whose checklist lists the
+"Test DOM core" APIs neither jsdom nor warpdom has but happy-dom does,
+rewritten each run with ticked boxes kept. What an existing API issue names
+is skipped, and nothing happens when the data has not changed. Run
+`node scripts/api-gaps.mjs` locally for a dry run that prints what it would
+open.
+
 ## Check your suite first: `warpdom compare`
 
 ```sh
