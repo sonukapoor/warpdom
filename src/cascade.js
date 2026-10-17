@@ -17,17 +17,29 @@
 import { S, ELEMENT_NODE, DOCUMENT_NODE, HTML_NS, rootOf, nextInTree, cssomChanges, connected, trackDetachedStyles } from './internal.js';
 import { LONGHANDS, SHORTHANDS, ALIASES } from './css-data.js';
 import { resolveColor } from './colors.js';
-import { segments, expand, serializeBox, BOX, PAIRS, CSS_WIDE } from './shorthands.js';
+import { segments, expand, serializeBox, BOX, PAIRS, CSS_WIDE, backgroundComponents } from './shorthands.js';
 import { compileRuleSelector } from './selectors.js';
 import { directionality } from './directionality.js';
 import { documentStyleSheets, styleElementSheet } from './cssom.js';
-import { parseDeclarations, computed, validationModeOf, styleSurfaceOf, isLegacyMode } from './css.js';
+import { parseDeclarations, computed, validationModeOf, styleSurfaceOf, isLegacyMode, EXPANDED_SHORTHANDS } from './css.js';
 
 // --- the rule index ------------------------------------------------------------------
 
-function addDeclarations(index, decls, entries, counter) {
+// The [name, value] pairs a declaration contributes to the cascade. jsdom
+// 20 to 26 (cssstyle, black box) expand only some shorthands: gap,
+// overflow, border-radius and the others are declared alone, and leave
+// their longhands undeclared (overflow: hidden gives overflow-x '').
+function cascadeExpand(property, value, legacyFont, legacy) {
+  if (legacy) {
+    const name = ALIASES[property] ?? property;
+    if (SHORTHANDS[name] !== undefined && !EXPANDED_SHORTHANDS.has(name)) return [[name, value]];
+  }
+  return expand(property, value, legacyFont);
+}
+
+function addDeclarations(index, decls, entries, counter, legacy) {
   for (const [property, { value, important }] of decls) {
-    for (const [name, v] of expand(property, value, decls.legacyFont)) {
+    for (const [name, v] of cascadeExpand(property, value, decls.legacyFont, legacy)) {
       let lists = index.get(name);
       if (!lists) index.set(name, lists = { normal: [], important: [] });
       const order = counter.n++;
@@ -51,10 +63,11 @@ function mediaApplies(rule, mode) {
 function buildIndex(sheets, mode) {
   const index = new Map();
   const counter = { n: 0 };
+  const legacy = isLegacyMode(mode);
   const addRule = (rule) => {
     let entries;
     try { entries = compileRuleSelector(rule[S].selectorText); } catch { return; }
-    addDeclarations(index, rule[S].style[S].decls, entries, counter);
+    addDeclarations(index, rule[S].style[S].decls, entries, counter, legacy);
   };
   for (const sheet of sheets) {
     const ss = sheet[S];
@@ -117,9 +130,11 @@ function inlineDeclarations(element) {
   if (text === undefined) return null;
   if (es.inlineCascade?.text === text) return es.inlineCascade.map;
   const map = new Map();
-  const decls = parseDeclarations(text, validationModeOf(es.doc[S].window), styleSurfaceOf(es.doc[S].window));
+  const mode = validationModeOf(es.doc[S].window);
+  const decls = parseDeclarations(text, mode, styleSurfaceOf(es.doc[S].window));
+  const legacy = isLegacyMode(mode);
   for (const [property, { value, important }] of decls) {
-    for (const [name, v] of expand(property, value, decls.legacyFont)) {
+    for (const [name, v] of cascadeExpand(property, value, decls.legacyFont, legacy)) {
       if (!important && map.get(name)?.important) continue;
       map.set(name, { value: v, important });
     }
@@ -279,7 +294,15 @@ const CUSTOM = [null, 1, 0, 0];
 // A shorthand or unknown property: box and pair shorthands from their
 // longhands, others as declared.
 function shorthandValue(element, name) {
-  if (LEGACY_BORDER.has(name) && isLegacyMode(validationModeOf(element[S].doc[S].window))) return legacyBorderValue(element, name);
+  if (declaredComputed(element)) {
+    // jsdom 20 to 26: a shorthand declared with a CSS-wide keyword or var()
+    // computes to that value (gap: inherit, padding: var(--x)), and one
+    // jsdom does not expand (cascadeExpand) to its declared value alone.
+    const own = cascaded(element, name);
+    if (own !== undefined && (CSS_WIDE.has(own) || own.includes('var('))) return legacyUnset(element, own) ? '' : own;
+    if (SHORTHANDS[name] !== undefined && !EXPANDED_SHORTHANDS.has(name)) return own ?? '';
+    if (LEGACY_BORDER.has(name)) return legacyBorderValue(element, name);
+  }
   const longhands = SHORTHANDS[name];
   if (longhands && BOX.has(name) && longhands.length === 4) return serializeBox(longhands.map((l) => computedValue(element, l)));
   if (longhands && PAIRS.has(name) && longhands.length === 2) {
@@ -320,6 +343,12 @@ function legacyBorderValue(element, name) {
   if (value === undefined || CSS_WIDE.has(value.toLowerCase())) return '';
   if (value.includes('var(')) return name === 'border' ? value : '';
   if (own && part >= 0) return value;
+  const parts = borderParts(value);
+  return part >= 0 ? parts[part] : parts.filter((p) => p !== '').join(' ');
+}
+
+// A declared border value's width, style and color ('' when not given).
+function borderParts(value) {
   const parts = ['', '', ''];
   const tokens = segments(value);
   for (let i = 0; i < tokens.length; i += 2) {
@@ -329,7 +358,60 @@ function legacyBorderValue(element, name) {
     else if (LEGACY_WIDTH.test(token)) parts[0] = ZERO_LENGTH.test(token) ? '0px' : token;
     else parts[2] = token;
   }
-  return part >= 0 ? parts[part] : parts.filter((p) => p !== '').join(' ');
+  return parts;
+}
+
+// jsdom 20 to 26 (black box): the computed style's background and border
+// side accessors (style.background, not getPropertyValue('background'))
+// read the longhands when the shorthand (or border) is not declared:
+// background the computed background-color (jsdom 20: the declared one),
+// then the declared image, repeat, attachment and position (rgba(0, 0, 0,
+// 0) url(a.png)); a border side its declared width and style and the
+// computed color (jsdom 20: the declared one). From cssstyle 4.4 they
+// always do, the declared shorthand's parts included: background in the
+// order image, position, repeat, attachment, then the computed color
+// (background: red gives rgb(255, 0, 0), which jest-dom's
+// toHaveStyle({ background: 'rgb(255, 0, 0)' }) compares), a border side
+// width, style, computed color (1px solid rgb(255, 0, 0); canvastext
+// alone when nothing is declared). null: the accessor reads as
+// getPropertyValue (a declared CSS-wide keyword or var() too).
+const BACKGROUND_PARTS = ['background-image', 'background-position', 'background-repeat', 'background-attachment'];
+const LEGACY_BACKGROUND_ORDER = ['background-image', 'background-repeat', 'background-attachment', 'background-position'];
+export function legacyAccessorValue(element, name) {
+  const compat = element[S].doc[S].window[S].compat;
+  if (compat.jsdom > 26) return null;
+  const composed = compat.composedAccessors;
+  const own = cascaded(element, name);
+  if (own !== undefined && (!composed || CSS_WIDE.has(own) || own.includes('var('))) return null;
+  if (name !== 'background') {
+    const value = own ?? cascaded(element, 'border');
+    if (value !== undefined && (!composed || CSS_WIDE.has(value) || value.includes('var('))) return null;
+    const [width, style] = value !== undefined ? borderParts(value) : [cascaded(element, `${name}-width`), cascaded(element, `${name}-style`)];
+    const color = compat.jsdom >= 21 ? computedValue(element, `${name}-color`) : cascaded(element, `${name}-color`);
+    return [width, style, color].filter(Boolean).join(' ');
+  }
+  // A longhand's declared value: from background when that declares it
+  // (the longhand's cascaded value is the one background expands to), as
+  // written there, else as declared alone.
+  let given = null, expanded = null;
+  if (own !== undefined) {
+    given = backgroundComponents(own);
+    if (given === null) return null;
+    // background: none alone declares no image there.
+    if (own === 'none') given['background-image'] = null;
+    expanded = new Map(expand('background', own));
+  }
+  const declared = (longhand) => {
+    if (longhand === 'background-position') {
+      const alone = cascaded(element, longhand);
+      return expanded !== null && (alone === undefined || cascaded(element, 'background-position-x') === expanded.get('background-position-x')) ? given[longhand] : alone;
+    }
+    const value = cascaded(element, longhand);
+    return expanded !== null && value === expanded.get(longhand) ? given[longhand] : value;
+  };
+  const color = compat.jsdom >= 21 ? computedValue(element, 'background-color') : cascaded(element, 'background-color');
+  const parts = composed ? [...BACKGROUND_PARTS.map(declared), color] : [color, ...LEGACY_BACKGROUND_ORDER.map(declared)];
+  return parts.filter((part) => part != null && part !== '').join(' ');
 }
 
 // jsdom before 29 (the jsdom bundled with jest-environment-jsdom up to
@@ -356,6 +438,15 @@ function legacyDefault(element, name) {
   return '';
 }
 
+// jsdom 20 to 26 (black box: 20, 21, 22, 25, and 26 with cssstyle 4.3.1
+// and 4.6 measured) compute the CSS-wide keywords to themselves, as
+// declared, by longhands and shorthands alike (padding: inherit gives
+// padding and padding-top inherit; color: inherit gives inherit), except
+// unset, which from jsdom 21 computes as if nothing were declared, but
+// to '' for display (jsdom 20 keeps it too). jsdom 27 and 28 resolve some of them (not reproduced).
+const declaredComputed = (element) => element[S].doc[S].window[S].compat.jsdom <= 26;
+const legacyUnset = (element, value) => value === 'unset' && element[S].doc[S].window[S].compat.jsdom >= 21 && declaredComputed(element);
+
 // The HTML standard's rendering section sets `direction` from the
 // directionality on elements with a dir attribute, bdi and
 // input[type=tel] ([dir]:dir(ltr), bdi:dir(ltr), input[type=tel i]:dir(ltr),
@@ -377,8 +468,12 @@ export function computedValue(element, property) {
   // the style attribute.
   if (name === 'display' && element[S].ns === HTML_NS && element[S].attrs.has('hidden') && !inlineDeclarations(element)?.has('display')) return 'none';
   let value = cascaded(element, name);
-  // jsdom before 29: custom properties are not inherited either.
-  if (value === undefined && element[S].doc[S].window[S].compat?.legacyComputedStyle) return custom ? '' : legacyDefault(element, name);
+  if (element[S].doc[S].window[S].compat?.legacyComputedStyle) {
+    // jsdom before 29: custom properties are not inherited either.
+    if (value === undefined) return custom ? '' : legacyDefault(element, name);
+    if (legacyUnset(element, value)) return custom || name === 'display' ? '' : legacyDefault(element, name);
+    if (!custom && CSS_WIDE.has(value) && declaredComputed(element)) return value;
+  }
   if (value === undefined && name === 'direction' && uaDirection(element)) return directionality(element);
   // As in jsdom (20 to 30, black box): a value with var() is not
   // substituted, it computes to itself (and inherits so).
@@ -395,3 +490,4 @@ export function computedValue(element, property) {
 export const isDisplayNone = (element) => computedValue(element, 'display') === 'none';
 
 computed.value = computedValue;
+computed.accessor = legacyAccessorValue;

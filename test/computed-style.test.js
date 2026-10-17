@@ -285,6 +285,83 @@ const legacyBorders = (w, jsdom25 = false) => {
 parity('getComputedStyle: border shorthands as declared (jsdom 25)', (w) => legacyBorders(w, true), { jsdom: 25 });
 parity('getComputedStyle: border shorthands as declared (jsdom 26)', legacyBorders, { jsdom: 26 });
 
+// jsdom 20 to 26 compute CSS-wide keywords to themselves, as declared,
+// longhands and shorthands alike, unset (from jsdom 21) as if nothing
+// were declared but '' for display; a shorthand declared with var()
+// computes to that value. ant-design's Flex (gap: inherit), Collapse
+// (padding: var()) and ConfigProvider (border-radius: var()) tests read
+// them with jest-dom's toHaveStyle. (jsdom 20 computes colors as
+// written: left out there.)
+const legacyKeywords = (w, colors = true) => {
+  const d = w.document;
+  const props = [['width', '5px'], ['visibility', 'hidden'], ['display', 'flex'], ['row-gap', '5px'], ['pointer-events', 'none'], ['padding', '1px'], ['padding-top', '1px'],
+    ['gap', '1px'], ['border-radius', '1px'], ['margin', '1px'], ['border-width', '1px'], ...(colors ? [['color', 'red'], ['background-color', 'red']] : [])];
+  return props.map(([p, v]) => ['inherit', 'initial', 'unset', 'revert', 'var(--x)'].map((keyword) => {
+    const parent = d.body.appendChild(d.createElement('section'));
+    const el = parent.appendChild(d.createElement('div'));
+    parent.style.setProperty(p, v);
+    el.style.setProperty(p, keyword);
+    return w.getComputedStyle(el).getPropertyValue(p);
+  }));
+};
+for (const jsdom of [26, 25, 22]) parity(`getComputedStyle: CSS-wide keywords as declared (jsdom ${jsdom})`, legacyKeywords, { jsdom });
+parity('getComputedStyle: CSS-wide keywords as declared (jsdom 20)', (w) => legacyKeywords(w, false), { jsdom: 20 });
+
+// jsdom 20 to 26 expand only some shorthands into their longhands (margin,
+// padding, flex, background, border and its parts, font); gap, overflow,
+// border-radius and the others compute to their declared value, their
+// longhands to ''.
+const unexpanded = (w) => {
+  const d = w.document;
+  d.head.innerHTML = '<style>.s{gap:1px 2px;overflow:auto hidden;inset:3px}.s.t{row-gap:4px}</style>';
+  const props = ['gap', 'row-gap', 'column-gap', 'overflow', 'overflow-x', 'inset', 'top', 'border-radius', 'border-top-left-radius', 'flex-flow', 'flex-direction', 'place-items', 'align-items',
+    'outline', 'outline-width', 'padding', 'padding-top', 'flex', 'flex-grow'];
+  const read = (el) => props.map((p) => w.getComputedStyle(el).getPropertyValue(p));
+  const inline = d.body.appendChild(d.createElement('div'));
+  inline.setAttribute('style', 'gap: inherit; overflow: hidden; border-radius: var(--r); flex-flow: row wrap; place-items: center; outline: 1px solid; padding: 1px 2px; flex: 1 1 0px');
+  const sheet = d.body.appendChild(d.createElement('div'));
+  sheet.className = 's t';
+  return [read(inline), read(sheet)];
+};
+for (const jsdom of [26, 25, 22, 20]) parity(`getComputedStyle: shorthands jsdom does not expand (jsdom ${jsdom})`, unexpanded, { jsdom });
+
+// The computed style's background and border side accessors (not
+// getPropertyValue) read their longhands: jsdom 21 to 26 when nothing is
+// declared (the computed background-color first); from cssstyle 4.4
+// always (image, position, repeat, attachment, then the computed color;
+// border sides: width, style, computed color). ant-design's Upload and
+// message tests compare background: rgb(...) with toHaveStyle.
+// (Before cssstyle 4.3.1, jsdom writes background: none red as red none
+// and keeps border-top: 0 as written: left out there.)
+const legacyAccessors = (w, old = false) => {
+  const d = w.document;
+  const styles = ['', 'background: red', 'background: blue', 'background: url(a.png) no-repeat', 'background: none', ...(old ? [] : ['background: none red', 'border-top: 0']), 'background: transparent',
+    'background-color: red', 'background-image: url(a.png); background-repeat: no-repeat', 'background: red; background-image: url(a.png)', 'background: var(--b)',
+    'border-top: 1px solid red', 'border: 2px dashed blue', 'border-top-width: 2px', 'color: blue; border-left: dashed', 'border-top: var(--b)', 'border-top: thin solid'];
+  return styles.map((style) => {
+    const el = d.body.appendChild(d.createElement('div'));
+    el.setAttribute('style', style);
+    const cs = w.getComputedStyle(el);
+    return [cs.background, cs['background'], cs.getPropertyValue('background'), cs.borderTop, cs.borderLeft, cs['border-left'], cs.getPropertyValue('border-top'), cs.border];
+  });
+};
+parity('getComputedStyle: background and border side accessors (jsdom 26)', legacyAccessors, { jsdom: 26 });
+for (const jsdom of [25, 22]) parity(`getComputedStyle: background and border side accessors (jsdom ${jsdom})`, (w) => legacyAccessors(w, true), { jsdom });
+
+test('getComputedStyle: background and border side accessors compose from cssstyle 4.4', () => {
+  const read = (cssstyle, style) => {
+    const w = createWindow({ jsdom: '26.1.0', cssstyle });
+    const el = w.document.body.appendChild(w.document.createElement('div'));
+    el.setAttribute('style', style);
+    const cs = w.getComputedStyle(el);
+    return [cs.background, cs.getPropertyValue('background'), cs.borderTop, cs.borderRight];
+  };
+  assert.deepEqual(read('4.3.1', 'background: red; border-top: 1px solid red'), ['red', 'red', '1px solid red', '']);
+  assert.deepEqual(read('4.4.0', 'background: red; border-top: 1px solid red'), ['rgb(255, 0, 0)', 'red', '1px solid rgb(255, 0, 0)', 'CanvasText']);
+  assert.deepEqual(read('4.4.0', 'background: red url(a.png) fixed'), ['url("a.png") fixed rgb(255, 0, 0)', 'red url("a.png") fixed', 'CanvasText', 'CanvasText']);
+  assert.deepEqual(read('4.3.1', 'background-image: url(a.png)'), ['rgba(0, 0, 0, 0) url("a.png")', '', '', '']);
+});
+
 // jsdom 21 and later keep a disconnected element's computed style until
 // the document's connected tree or its style sheets change (black box, 22
 // to 30); jsdom 20 computes it each time.

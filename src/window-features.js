@@ -411,6 +411,9 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
     unquotedUrls: css !== null && before(css, [4, 3, 1]),
     // cssstyle's font shorthand before 4.4 (shorthands.js legacyFont).
     legacyFont: css === null || !before(css, [4, 4, 0]) ? null : before(css, [4, 2, 0]) ? 'cssstyle4.1' : 'cssstyle4.2',
+    // cssstyle 4.4 and later: the computed style's background and border
+    // side accessors compose their longhands (cascade.js legacyAccessorValue).
+    composedAccessors: version[0] < 27 && (css === null || (css[0] === 4 && !before(css, [4, 4, 0]))),
     rootColor: version[0] >= 27 ? 'rgb(0, 0, 0)' : css !== null && before(css, [4, 4, 0]) ? '' : css !== null && before(css, [4, 6, 0]) ? 'CanvasText' : 'canvastext',
   };
   // DOMException is the platform's (shared by all windows); its subclass too.

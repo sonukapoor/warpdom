@@ -848,7 +848,7 @@ const valueOf = (style, name) => {
 // Shorthands whose longhands a declaration block reads through them, as in
 // jsdom (its CSS layer expands these; overflow: hidden leaves overflow-x
 // empty there, and tests rely on that).
-const EXPANDED_SHORTHANDS = new Set(['background', 'background-position', 'border', 'border-top', 'border-right', 'border-bottom', 'border-left',
+export const EXPANDED_SHORTHANDS = new Set(['background', 'background-position', 'border', 'border-top', 'border-right', 'border-bottom', 'border-left',
   'border-color', 'border-style', 'border-width', 'flex', 'font', 'margin', 'padding']);
 
 // A longhand set by a declared shorthand (margin-top from margin: 0 auto);
@@ -955,7 +955,30 @@ function styleDescriptors(surfaceKey = null) {
   if (surface !== null) for (const [accessor, name] of surface.writes) descriptors[accessor] ??= styleAccessor(name);
   return descriptors;
 }
+// The computed style's background and border side accessors of jsdom 26
+// and earlier (cascade.js legacyAccessorValue).
+const COMPOSED_ACCESSORS = new Set(['background', 'border-top', 'border-right', 'border-bottom', 'border-left']);
+function composedValue(style, name) {
+  const s = styleState(style);
+  if (s.computed && isLegacyMode(s.mode)) {
+    const value = computedOverride(s, name) ?? computed.accessor(s.element, name);
+    if (value !== null) return value;
+  }
+  return valueOf(style, name);
+}
 function styleAccessor(name) {
+  if (COMPOSED_ACCESSORS.has(name)) {
+    return {
+      get() { return composedValue(this, name); },
+      set(value) {
+        const s = styleState(this);
+        if (s.computed) writeComputed(s, name, value);
+        else setDeclaration(this, name, value);
+      },
+      enumerable: true,
+      configurable: true,
+    };
+  }
   return {
     get() { return valueOf(this, name); },
     set(value) {
