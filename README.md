@@ -139,6 +139,31 @@ so they run in a separate group (see Setup). In a suite with
 result; check such a difference with the comments switched.
 <!-- source: src/compare/index.js (warpdom role: environment = warpdom's path, pinned = 'warpdom-compare'); docs/research/data/investigations/solid-transition/README.md -->
 
+## Switch: `warpdom migrate`
+
+```sh
+npx warpdom migrate            # dry run: the plan, nothing changed
+npx warpdom migrate --apply    # make the changes, then install
+```
+
+Run it at the root of your project after `warpdom compare` (compare needs
+jsdom still installed). It switches every place that picks jsdom or
+happy-dom to `warpdom`: Vitest configs, projects and workspace files,
+`environmentMatchGlobs`, Jest configs and package.json `"jest"`,
+`@vitest-environment` / `@jest-environment` comments and `--environment`
+flags in scripts, each with an exact text edit. It adds `warpdom` and
+`vitest-environment-warpdom` or `jest-environment-warpdom` where jsdom was
+declared, removes jsdom, happy-dom and their environment packages when
+nothing imports them any more, and prints the install command (it does not
+install). What it cannot change exactly (a computed environment, one
+inherited from another package) is listed as manual, and lines that
+mention jsdom (setup files, polyfills, console filters) are listed for
+review. It also warns about release-age settings (pnpm
+`minimumReleaseAge`, yarn `npmMinimalAgeGate`) with the date the new
+packages can be installed, and says which jsdom version your tests saw
+(`--keep-jsdom-version` keeps it). Details:
+[docs/migrate.md](docs/migrate.md).
+
 ## Faster still
 
 **Fast mode (Vitest).** Vitest isolates every test file, and reloading
@@ -448,7 +473,8 @@ const window = createWindow({ url: 'http://localhost/', jsdom: '30.1.2', fastFra
 window.document.body.innerHTML = '<p>hello</p>';
 ```
 
-`warpdom/compare` exports `compare(options)`, the API behind the CLI.
+`warpdom/compare` exports `compare(options)`, the API behind the CLI;
+`warpdom/migrate` exports `migrate({ cwd, apply })`, which returns the plan.
 
 ## Development
 

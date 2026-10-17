@@ -981,6 +981,7 @@ function classifyMention(f, line, isSetup, isConfig) {
   const category = isSetup ? 'setup' : isConfig ? 'config' : docs ? 'docs' : ci ? 'ci' : test ? 'test' : 'code';
   if (docs || ci) return { category, hint: docs ? 'docs mention jsdom' : 'CI or tool config mentions jsdom' };
   if (/["']types["']\s*:/.test(line) && /["']jsdom["']/.test(line)) return { category: 'config', hint: 'tsconfig loads @types/jsdom: drop "jsdom" here if you remove @types/jsdom' };
+  if (/\b(jsdom|happyDom)\s*:\s*(true|false)\b/i.test(line)) return { category: isConfig ? 'config' : category, hint: 'a jsdom flag of a shared config or helper: the environment it chooses is set where that is defined (migrate changes it there when it is a literal)' };
   if (/\b(require|import)\b.*['"](jsdom|happy-dom|global-jsdom|jsdom-global)['"/]/.test(line)) return { category: 'import', hint: 'uses jsdom or happy-dom directly (so it stays a dependency)' };
   if (/console\.(error|warn)|Not implemented|Could not parse CSS|virtualConsole/i.test(line)) return { category: 'console', hint: 'console filter for jsdom messages: warpdom prints "Not implemented: ..." as jsdom does; check whether the filter is still needed' };
   if (/\bis_?jsdom\b|\bisJSDOM\b|\bisJsDom\b/i.test(line)) return { category, hint: "jsdom check (an isJsdom-style helper): see how it detects jsdom; warpdom's navigator.userAgent contains 'jsdom/' like jsdom's, so a user-agent check still answers yes" };
