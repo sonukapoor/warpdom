@@ -172,6 +172,86 @@ function canonicalNumbers(value) {
   return parts.join('');
 }
 
+// Runs of whitespace outside quotes as one space.
+function collapseSpaces(value) {
+  let out = '', quote = null;
+  for (let i = 0; i < value.length; i++) {
+    const c = value[i];
+    if (quote !== null) {
+      out += c;
+      if (c === '\\' && i + 1 < value.length) out += value[++i];
+      else if (c === quote) quote = null;
+    } else if (c === '"' || c === "'") { quote = c; out += c; }
+    else if (/\s/.test(c)) { if (!out.endsWith(' ')) out += ' '; }
+    else out += c;
+  }
+  return out;
+}
+
+// calc() as jsdom 26 with cssstyle 4.3.1 and later serializes it in
+// lengths (black box): a sum of two terms, each a number, percentage or
+// dimension, or a product of one and a number (* or /), is simplified:
+// terms of the same unit are added, products computed (to 6 significant
+// digits), and the terms sorted (numbers, percentages, then the units in
+// alphabetical order), a negative term after the first written with -:
+// calc(700px + 50%) is calc(50% + 700px), calc(10px - 100%) is
+// calc(-100% + 10px), calc(100% / 3) is calc(33.3333%), and whitespace
+// is normalized. Other calc() values (three or more terms, parentheses,
+// var(), absolute units other than px, which jsdom converts) are kept as
+// written.
+const CALC_TERM = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)(%|[a-z]+)?$/i;
+const CALC_PRODUCT = /^(.+?)\s*([*/])\s*(.+)$/;
+const ABSOLUTE_UNITS = new Set(['in', 'cm', 'mm', 'q', 'pt', 'pc']);
+// Left out: border widths (cssstyle 4.3 drops calc() there) and
+// line-height (kept as written before 4.4).
+const BORDER_WIDTHS = new Set(['border-width', 'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width']);
+const sixDigits = (n) => String(Number(n.toPrecision(6)));
+function calcTerm(text) {
+  const m = CALC_TERM.exec(text);
+  if (m === null) {
+    const p = CALC_PRODUCT.exec(text);
+    if (p === null) return null;
+    const a = CALC_TERM.exec(p[1]), b = CALC_TERM.exec(p[3]);
+    if (a === null || b === null || (a[2] && b[2]) || (p[2] === '/' && b[2])) return null;
+    const [term, factor] = a[2] || p[2] === '/' ? [a, b] : [b, a];
+    const n = p[2] === '/' ? Number(term[1]) / Number(factor[1]) : Number(term[1]) * Number(factor[1]);
+    return Number.isFinite(n) ? { n, unit: (term[2] ?? '').toLowerCase(), text: null } : null;
+  }
+  const unit = (m[2] ?? '').toLowerCase();
+  // Kept as written, apart from the number's form (.5 is 0.5).
+  return { n: Number(m[1]), unit, text: `${m[1].startsWith('+') ? '+' : ''}${INTEGER.test(m[1]) ? integerText(m[1]) : Number(m[1])}` };
+}
+const unitRank = (unit) => (unit === '' ? '0' : unit === '%' ? '1' : `2${unit}`);
+function simplifyCalc(value) {
+  if (!value.endsWith(')')) return value;
+  const inner = value.slice(5, -1).trim().replace(/\s+/g, ' ');
+  if (/[()]/.test(inner)) return value;
+  const parts = inner.split(' ');
+  let terms;
+  const plus = parts.indexOf('+'), minus = parts.indexOf('-');
+  const op = plus >= 0 ? plus : minus;
+  if (op < 0) terms = [calcTerm(inner)];
+  else {
+    if ((plus >= 0 && minus >= 0) || parts.lastIndexOf(parts[op]) !== op) return value;
+    const second = calcTerm(parts.slice(op + 1).join(' '));
+    if (second !== null && parts[op] === '-') { second.n = -second.n; second.text = second.text === null ? null : second.text.startsWith('-') ? second.text.slice(1) : `-${second.text.replace(/^\+/, '')}`; }
+    terms = [calcTerm(parts.slice(0, op).join(' ')), second];
+  }
+  if (terms.some((t) => t === null || ABSOLUTE_UNITS.has(t.unit))) return value;
+  const number = (t) => `${t.text ?? sixDigits(t.n)}${t.unit}`;
+  if (terms.length === 2 && terms[0].unit === terms[1].unit) return `calc(${sixDigits(terms[0].n + terms[1].n)}${terms[0].unit})`;
+  if (terms.length === 1) return `calc(${number(terms[0])})`;
+  // A dimension subtracted stays after the first term (calc(100vh - 64px)).
+  if (parts[op] === '-' && terms[1].unit !== '' && terms[1].unit !== '%' && unitRank(terms[1].unit) < unitRank(terms[0].unit)) {
+    return `calc(${number(terms[0])} - ${number(terms[1]).replace(/^-/, '')})`;
+  }
+  terms.sort((a, b) => (unitRank(a.unit) < unitRank(b.unit) ? -1 : unitRank(a.unit) > unitRank(b.unit) ? 1 : 0));
+  const [first, next] = terms;
+  const negative = next.n < 0 || Object.is(next.n, -0);
+  const rest = negative ? `- ${number(next).replace(/^-/, '')}` : `+ ${number(next)}`;
+  return `calc(${number(first)} ${rest})`;
+}
+
 // Validation modes (css-values.js): 'spec' checks every property's grammar,
 // as jsdom 27 and later do; 'jsdom26' only the properties jsdom 26 checked,
 // without numeric ranges. A window's mode is set on its CSSStyleProperties
@@ -517,6 +597,7 @@ function serializeDeclared(name, value, mode) {
   // CSS-wide keywords are ASCII case-insensitive and serialize lowercased.
   if (value.length <= 12 && CSS_WIDE_KEYWORD.test(value)) return value.toLowerCase();
   if (isLegacyMode(mode) && !JSDOM26_PARSED.has(name)) return value;
+  if (mode === 'jsdom26' && value.startsWith('calc(') && isLengthProperty(name) && !BORDER_WIDTHS.has(name)) value = simplifyCalc(value);
   if (name === 'display' && isSpecMode(mode)) return displayShortForm(value);
   if (name === 'flex') return flexLonghands(canonicalNumbers(value));
   if (name === 'font') return familyCommas(serializeFont(canonicalNumbers(value)));
@@ -532,6 +613,10 @@ function serializeDeclared(name, value, mode) {
   // 27 and later: repeat repeat is repeat, repeat no-repeat is repeat-x.
   if (name === 'background-repeat' && isSpecMode(mode)) value = shortRepeat(value);
   if (isColorProperty(name)) value = declaredColors(value);
+  // jsdom 26 with cssstyle 4.3.1 and later writes each run of whitespace
+  // in background and background-image as one space (black box: a
+  // gradient written over several lines).
+  if (mode === 'jsdom26' && (name === 'background' || name === 'background-image') && /\s\s|[\t\n\r\f]/.test(value)) value = collapseSpaces(value);
   if (value.includes('(')) {
     if (isSpecMode(mode) && name !== 'border-image' && /(min|max|clamp|gradient)\(/i.test(value)) value = functionArguments(value);
     if (QUOTED_URLS[mode]?.has(name)) value = quoteUrls(value);

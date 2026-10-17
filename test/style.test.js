@@ -452,3 +452,37 @@ test('style: a re-set flex is a style attribute change (jsdom 26)', () => {
   assert.equal(el.getAttribute('style'), 'width: 1px; flex: 1 1 0px;');
   assert.ok(observer.takeRecords().length > 0);
 });
+
+// jsdom 26 (cssstyle 4.3.1 and later) simplifies calc() of two terms in
+// lengths: same units added, products computed, terms sorted (numbers,
+// percentages, units alphabetically), whitespace normalized; ant-design's
+// Table sets width: calc(700px + 50%) and snapshots calc(50% + 700px).
+// Earlier cssstyle (jsdom 25) keeps calc() as written.
+const calcs = (w) => {
+  const values = ['calc(700px + 50%)', 'calc(50% + 700px)', 'calc(100% - 10px)', 'calc(10px - 100%)', 'calc(-10px + 100%)', 'calc(100% + -10px)', 'calc(1px + 2px)',
+    'calc(0.1px + 0.2px)', 'calc(2em - 1em)', 'calc(1PX + 1px)', 'calc(10px - 10px)', 'calc(2 * 10px)', 'calc(10px*2)', 'calc(100% / 3)', 'calc(1.5 * 100%)', 'calc(10px / 2 + 50%)',
+    'calc( 100%  -  10px )', 'calc(10px + 2em)', 'calc(5vw + 10px)', 'calc(1px - 2em)', 'calc(100vh - 64px)', 'calc(5vw - 10px)', 'calc(1em - 50%)', 'calc(10px - 5)', 'calc(-50% - -10px)',
+    'calc(-0px + 50%)', 'calc(100% - 0px)', 'calc(+10px + 50%)', 'calc(100% - +10px)', 'calc(.5px + 50%)', 'calc(1.0000001px + 1em)', 'calc(100% - 1e1px)', 'calc(1px)', 'calc(1)',
+    'calc(1px+1px)', 'calc(var(--a) + 10px)', 'calc(1234567px + 1px)'];
+  const props = ['width', 'margin-left', 'padding', 'top', 'font-size', 'flex-basis', 'min-width', 'gap'];
+  const s = w.document.createElement('div').style;
+  return values.map((v) => props.map((p) => { s.setProperty(p, v); const r = s.getPropertyValue(p); s.removeProperty(p); return r; }));
+};
+parity('style: calc() simplified in lengths (jsdom 26)', calcs, { jsdom: 26 });
+parity('style: calc() as written (jsdom 25)', calcs, { jsdom: 25 });
+
+// jsdom 26 (cssstyle 4.3.1 and later) writes whitespace runs in background
+// and background-image as one space (ant-design's Progress demo writes a
+// gradient over several lines).
+parity('style: whitespace in background values (jsdom 26)', (w) => {
+  const s = w.document.createElement('div').style;
+  const gradient = 'linear-gradient(\n  to right,\n  hsla(180, 85%, 65%, 1),\n  hsla(210, 90%, 55%, 0.95)\n)';
+  const out = [];
+  for (const [p, v] of [['background-image', gradient], ['background', `${gradient} no-repeat`], ['background-image', 'linear-gradient(  to right,   red,\tblue )'],
+    ['transition', 'opacity 1s,\n  color 2s'], ['box-shadow', '0 0 1px red,\n  0 0 2px blue'], ['border-image', gradient]]) {
+    s.setProperty(p, v);
+    out.push(s.getPropertyValue(p));
+    s.removeProperty(p);
+  }
+  return out;
+}, { jsdom: 26 });
