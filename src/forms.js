@@ -995,15 +995,21 @@ const scalar = (v) => {
   return typeof s.toWellFormed === 'function' ? s.toWellFormed() : s;
 };
 
-// Create an entry: strings as scalar value strings; Blobs as Files (named
-// "blob" unless they are Files), renamed when a filename is given.
-function createEntry(name, value, filename) {
-  if (typeof globalThis.Blob === 'function' && value instanceof globalThis.Blob) {
+// Create an entry: strings as scalar value strings; Blobs (file-reader.js) as
+// Files of the blob's window, as in jsdom (named "blob" unless they are Files),
+// renamed when a filename is given. Other objects are strings, as in jsdom
+// (the platform's Blob gives "[object Blob]"); with a filename the value
+// must be a Blob (method: append or set, for the error).
+function createEntry(window, name, value, filename, method) {
+  const blob = hooks.blobs.blobData(value);
+  if (blob !== undefined) {
+    const lastModified = blob.name === undefined ? Date.now() : blob.lastModified;
     let file = value;
-    if (!(value instanceof globalThis.File)) file = new globalThis.File([value], 'blob', { type: value.type });
-    if (filename !== undefined) file = new globalThis.File([file], scalar(filename), { type: file.type, lastModified: file.lastModified });
+    if (filename !== undefined) file = hooks.blobs.makeFile(blob.window, blob.bytes, scalar(filename), blob.type, lastModified);
+    else if (blob.name === undefined) file = hooks.blobs.makeFile(blob.window, blob.bytes, 'blob', blob.type, lastModified);
     return { name: scalar(name), value: file };
   }
+  if (filename !== undefined) throw new TypeError(`Failed to execute '${method}' on 'FormData': parameter 2 is not of type 'Blob'.`);
   return { name: scalar(name), value: scalar(value) };
 }
 
@@ -1012,6 +1018,7 @@ function constructEntryList(form, submitter = null) {
   const fs = form[S];
   if (fs.constructingEntryList) return null;
   fs.constructingEntryList = true;
+  const window = windowOf(form);
   const entries = [];
   try {
     for (const field of descendants(rootOf(form))) {
@@ -1023,32 +1030,32 @@ function constructEntryList(form, submitter = null) {
       if (type === 'image') {
         const prefix = attr(field, 'name') ? `${attr(field, 'name')}.` : '';
         const [x, y] = field[S].selectedCoordinate ?? [0, 0];
-        entries.push(createEntry(`${prefix}x`, String(x)), createEntry(`${prefix}y`, String(y)));
+        entries.push(createEntry(window, `${prefix}x`, String(x)), createEntry(window, `${prefix}y`, String(y)));
         continue;
       }
       const name = attr(field, 'name');
       if (!name) continue;
       if (tag === 'select') {
         settleSelectedness(field);
-        for (const option of listOfOptions(field)) if (selectedness(option) && !isOptionDisabled(option)) entries.push(createEntry(name, optionValue(option)));
+        for (const option of listOfOptions(field)) if (selectedness(option) && !isOptionDisabled(option)) entries.push(createEntry(window, name, optionValue(option)));
       } else if (type === 'checkbox' || type === 'radio') {
-        entries.push(createEntry(name, attr(field, 'value') ?? 'on'));
+        entries.push(createEntry(window, name, attr(field, 'value') ?? 'on'));
       } else if (type === 'file') {
-        entries.push(createEntry(name, new globalThis.File([], '', { type: 'application/octet-stream' })));
+        entries.push(createEntry(window, name, hooks.blobs.makeFile(window, new Uint8Array(0), '', 'application/octet-stream', Date.now())));
       } else if (type === 'hidden' && name.toLowerCase() === '_charset_') {
-        entries.push(createEntry(name, 'UTF-8'));
+        entries.push(createEntry(window, name, 'UTF-8'));
       } else {
         const value = tag === 'textarea' ? textareaValue(field) : tag === 'input' ? inputValue(field) : attr(field, 'value') ?? '';
-        entries.push(createEntry(name, value));
+        entries.push(createEntry(window, name, value));
       }
       const dirname = attr(field, 'dirname');
       if (dirname && (tag === 'textarea' || (tag === 'input' && SELECTION_TYPES.has(type)))) {
-        entries.push(createEntry(dirname, directionality(field)));
+        entries.push(createEntry(window, dirname, directionality(field)));
       }
     }
     const formData = Object.create(internalsOf(form).protos.FormData);
-    formData[S] = { entries };
-    const event = new (windowOf(form).FormDataEvent)('formdata', { bubbles: true, formData });
+    formData[S] = { window, entries };
+    const event = new window.FormDataEvent('formdata', { bubbles: true, formData });
     dispatch(form, event);
   } finally {
     fs.constructingEntryList = false;
@@ -1062,7 +1069,7 @@ const FORM_DATA_INTERFACES = [
   {
     name: 'FormData',
     construct: (w, self, [form, submitter = null]) => {
-      self[S] = { entries: [] };
+      self[S] = { window: w, entries: [] };
       if (form === undefined) return self;
       // jsdom 20 ignores the submitter argument (libraries feature-detect it
       // with new FormData(form, 0), which throws from jsdom 22 on).
@@ -1078,7 +1085,7 @@ const FORM_DATA_INTERFACES = [
       return self;
     },
     members: {
-      append(name, value, filename) { entriesOf(this).push(createEntry(name, value, filename)); },
+      append(name, value, filename) { const s = state(this); s.entries.push(createEntry(s.window, name, value, filename, 'append')); },
       delete(name) {
         const s = state(this);
         const key = scalar(name);
@@ -1096,7 +1103,7 @@ const FORM_DATA_INTERFACES = [
       // Replace the first entry with this name and remove the others, or append.
       set(name, value, filename) {
         const s = state(this);
-        const entry = createEntry(name, value, filename);
+        const entry = createEntry(s.window, name, value, filename, 'set');
         let replaced = false;
         s.entries = s.entries.flatMap((e) => {
           if (e.name !== entry.name) return [e];

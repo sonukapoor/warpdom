@@ -23,6 +23,8 @@ import { GEOMETRY_INTERFACES, ELEMENT_LAYOUT, HTML_ELEMENT_LAYOUT, getInnerText,
 import { querySelectorAll as selectAll, matches as matchSelector, closest as closestMatch } from './selectors.js';
 import { DOM_PARSING_INTERFACES, innerMarkup, outerMarkup, XPATH_INTERFACES, XPATH_EVALUATOR_MEMBERS } from './dom-parsing.js';
 import { FILE_READER_INTERFACES } from './file-reader.js';
+import { BLOB_INTERFACES } from './file-reader.js';
+import { ENCODING_INTERFACES } from './encoding.js';
 import { ABORT_INTERFACES } from './abort.js';
 import { IFRAME_MEMBERS, WINDOW_FRAME_MEMBERS } from './frames.js';
 import './scripts.js';
@@ -414,6 +416,8 @@ export const INTERFACES = [
   ...DOM_PARSING_INTERFACES,
   ...XML_INTERFACES,
   ...FILE_READER_INTERFACES,
+  ...BLOB_INTERFACES,
+  ...ENCODING_INTERFACES,
   ...ABORT_INTERFACES,
   STORAGE_INTERFACE,
   TIME_RANGES_INTERFACE,

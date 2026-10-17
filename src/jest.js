@@ -4,9 +4,10 @@
 //
 // The global has what jest-environment-jsdom's has: the window's members,
 // and of Node's globals only those it also exposes (timers returning
-// numeric ids, Buffer, URL, AbortController, Blob, File, Headers, crypto,
-// performance, WebSocket, ...); not setImmediate, structuredClone,
-// TextEncoder, fetch or streams, which test setups commonly polyfill.
+// numeric ids, Buffer, URL, AbortController, Headers, WebSocket, ...); not
+// setImmediate, structuredClone, fetch or streams, which test setups
+// commonly polyfill. crypto, performance, Blob, File, and TextEncoder and
+// TextDecoder from jsdom 27.4, are the window's, as jsdom's are there.
 // Jest's own parts (fake timers, module mocker, common globals) come from
 // the project's Jest install, so warpdom keeps no runtime dependency on
 // Jest.
@@ -26,8 +27,7 @@ if (ablated('no-query-cache')) setQueryCache(false);
 
 // Node globals jest-environment-jsdom exposes too (beyond the DOM's own).
 // AbortController and AbortSignal are the window's, as jsdom's are there.
-const HOST_GLOBALS = ['Buffer', 'URL', 'URLSearchParams', 'queueMicrotask', 'atob', 'btoa',
-  'Blob', 'File', 'Performance', 'performance', 'Headers', 'WebSocket', 'crypto', 'Crypto'];
+const HOST_GLOBALS = ['Buffer', 'URL', 'URLSearchParams', 'queueMicrotask', 'atob', 'btoa', 'Headers', 'WebSocket'];
 
 // Jest's packages (jest-util, jest-mock, @jest/fake-timers), from the Jest
 // that is running: jest-runner loads jest-runtime before it builds the

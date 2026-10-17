@@ -45,6 +45,22 @@ function dataValue(object, key) {
 // timers replace Node's timers).
 export const VITEST_HOST_KEYS = ['AbortController', 'AbortSignal', ...HOST_TIMER_KEYS];
 
+// Window members Vitest's jsdom environment leaves to Node in its other
+// pools (forks, threads), not in the VM pools (black box, jsdom 20 to 30
+// with Vitest 5): there crypto (with subtle), performance (with mark and
+// measure), TextEncoder and TextDecoder are Node's, while Crypto,
+// Performance, Blob and File are the window's.
+export const VITEST_NODE_KEYS = ['crypto', 'performance', 'TextEncoder', 'TextDecoder'];
+const VITEST_GLOBAL_HOST_KEYS = [...VITEST_HOST_KEYS, ...VITEST_NODE_KEYS];
+
+// The per-file reset also forgets the marks and measures made on Node's
+// performance (shared by the files of a worker), as a new worker would.
+function clearHostTimeline(global) {
+  const { performance } = global;
+  if (typeof performance?.clearMarks === 'function') performance.clearMarks();
+  if (typeof performance?.clearMeasures === 'function') performance.clearMeasures();
+}
+
 // Names Vitest's jsdom environment defines on the global from its key list
 // even when the window lacks them, as getters that read the window: before
 // jsdom 30 there is no CSS, and the global CSS reads undefined (Vuetify
@@ -102,9 +118,13 @@ export function installWindow(global, window, { hostKeys = [], alwaysKeys = [], 
       });
       continue;
     }
+    // Assigning a member the window has only a getter for (performance,
+    // which fake timers replace) changes the global's value and leaves the
+    // window's alone, without the TypeError strict code would get
+    // assigning it on the window.
     Object.defineProperty(global, key, {
       get() { return overrides.has(key) ? overrides.get(key) : bound ?? window[key]; },
-      set(v) { overrides.set(key, v); window[key] = v; },
+      set(v) { overrides.set(key, v); Reflect.set(window, key, v); },
       configurable: true,
     });
   }
@@ -237,7 +257,7 @@ export default {
   },
   setup(global, options) {
     let window = createTestWindow(options);
-    let restore = installWindow(global, window, { hostKeys: VITEST_HOST_KEYS, alwaysKeys: VITEST_ALWAYS_KEYS });
+    let restore = installWindow(global, window, { hostKeys: VITEST_GLOBAL_HOST_KEYS, alwaysKeys: VITEST_ALWAYS_KEYS });
     // Classic scripts run as global code of the realm the window is
     // installed in (scripts.js): an indirect eval.
     window[S].runScript = (source) => (0, eval)(source);
@@ -247,12 +267,14 @@ export default {
       ? () => {
         restore();
         window = createTestWindow(options);
-        restore = installWindow(global, window, { hostKeys: VITEST_HOST_KEYS, alwaysKeys: VITEST_ALWAYS_KEYS });
+        restore = installWindow(global, window, { hostKeys: VITEST_GLOBAL_HOST_KEYS, alwaysKeys: VITEST_ALWAYS_KEYS });
+        clearHostTimeline(global);
         window[S].runScript = (source) => (0, eval)(source);
       }
       : () => {
         restore.resetOverrides();
         resetWindow(window);
+        clearHostTimeline(global);
       };
     return {
       teardown() {

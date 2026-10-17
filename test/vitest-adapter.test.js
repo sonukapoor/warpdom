@@ -60,6 +60,53 @@ test('setupVM: Node globals that are lazy getters work in the context (crypto)',
   }
 });
 
+// Black box (Vitest 5, jsdom 20 to 30): in the VM pools the global is the
+// window, with jsdom's crypto and performance; TextEncoder exists before
+// jsdom 27.4 too (Node's here). Elsewhere crypto, performance, TextEncoder
+// and TextDecoder are Node's, and Crypto, Performance, Blob and File the
+// window's.
+test('setupVM: crypto, performance, Blob, File and TextEncoder are the window\'s', async () => {
+  const { default: environment } = await import('../src/vitest.js');
+  const vmModule = await import('node:vm');
+  for (const [jsdom, encoder] of [['30.1.3', 'window'], ['26.1.0', 'node']]) {
+    const result = await environment.setupVM({ warpdom: { jsdom } });
+    try {
+      const run = (code) => vmModule.runInContext(code, result.getVmContext());
+      assert.equal(run('[Object.prototype.toString.call(crypto), typeof crypto.subtle, crypto instanceof Crypto, performance instanceof Performance, typeof performance.mark, new Blob(["a"]) instanceof window.Blob, new File([], "x") instanceof Blob].join()'),
+        '[object Crypto],undefined,true,true,undefined,true,true');
+      assert.equal(run('typeof TextEncoder === "function" && TextEncoder === window.TextEncoder'), true);
+      assert.equal(run('new TextEncoder().encode("a") instanceof Uint8Array'), encoder === 'window');
+      assert.equal(run('Object.prototype.toString.call(new TextDecoder())'), '[object TextDecoder]');
+      // Fake timers replace performance on the global.
+      assert.equal(run('"use strict"; globalThis.performance = { now: () => 5 }; performance.now()'), 5);
+    } finally {
+      result.teardown();
+    }
+  }
+});
+
+test('setup: crypto, performance, TextEncoder and TextDecoder stay Node\'s; the reset clears Node\'s marks', async () => {
+  const { default: environment } = await import('../src/vitest.js');
+  const cleared = [];
+  const host = { crypto: 'node crypto', TextEncoder: 'node encoder', performance: { clearMarks: () => cleared.push('marks'), clearMeasures: () => cleared.push('measures') } };
+  const global = { ...host };
+  const env = environment.setup(global, { warpdom: { jsdom: '30.1.3' } });
+  try {
+    assert.equal(global.crypto, host.crypto);
+    assert.equal(global.performance, host.performance);
+    assert.equal(global.TextEncoder, host.TextEncoder);
+    assert.equal('TextDecoder' in global, false);
+    assert.equal(Object.prototype.toString.call(new global.Blob(['a'])), '[object Blob]');
+    assert.ok(new global.File([], 'x') instanceof global.Blob);
+    assert.equal(global.Crypto.name, 'Crypto');
+    assert.equal(global.Performance.name, 'Performance');
+    global[Symbol.for('warpdom.vitest.reset')]();
+    assert.deepEqual(cleared, ['marks', 'measures']);
+  } finally {
+    env.teardown();
+  }
+});
+
 test('the jsdom profile follows the jsdom Vitest would load', () => {
   const root = mkdtempSync(join(tmpdir(), 'warpdom-jsdom-'));
   const pkg = (dir, json) => { mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, 'package.json'), JSON.stringify(json)); };

@@ -1,7 +1,8 @@
 // Window-level features: requestAnimationFrame, viewport and scrolling,
-// navigator, location and history, the Image/Audio/Option constructors.
+// navigator, location and history, crypto and performance, the
+// Image/Audio/Option constructors.
 // Values follow jsdom's defaults so tests see the same environment.
-import { S, state, domError } from './internal.js';
+import { S, state, domError, tooFewArguments, platformGlobal } from './internal.js';
 import { dispatch, reportError } from './events.js';
 import { computedStyle, cssNamespace } from './css.js';
 import './cascade.js';
@@ -9,6 +10,7 @@ import { compile } from './selectors.js';
 import { QuotaExceededError } from './storage.js';
 import { navigate, traverse, hostTimeout } from './navigation.js';
 import { VERSION } from './version.js';
+import { typedArrayName } from './encoding.js';
 
 // The jsdom version warpdom behaves like by default.
 export const LATEST_JSDOM = 30;
@@ -51,8 +53,6 @@ const before = (version, target) => {
   for (let i = 0; i < 3; i++) if (version[i] !== target[i]) return version[i] < target[i];
   return false;
 };
-
-const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 // Viewport values tests commonly override (window.innerWidth = 500).
 const VIEWPORT = { innerWidth: 1024, innerHeight: 768, outerWidth: 1024, outerHeight: 768, devicePixelRatio: 1,
@@ -121,7 +121,8 @@ const timerMembers = {
 export const HOST_TIMER_KEYS = Object.keys(timerMembers);
 
 // Animation frames: callbacks requested before a frame run together in it,
-// with the frame's time (performance.now() when it starts); those requested
+// with the frame's time (the window's performance.now() when it starts, as
+// in jsdom); those requested
 // during a frame run in the next one. jsdom (with pretendToBeVisual) and
 // warpdom start a frame every 16.7 ms of real time, so a test that awaits a
 // frame waits that long. With the fastFrames option a frame starts as soon
@@ -146,7 +147,7 @@ const animationFrames = {
         // same frame does not run.
         const current = frames.current = frames.queue;
         frames.queue = new Map();
-        const t = now();
+        const t = windowNow(this);
         for (const [id, cb] of current) {
           if (!current.has(id)) continue;
           current.delete(id);
@@ -241,6 +242,9 @@ export const WINDOW_MEMBERS = {
   // [PutForwards=href]: window.location = url navigates, as in jsdom.
   set location(v) { state(this).location.href = v; },
   get history() { return state(this).history; },
+  // The window's Crypto and Performance objects (crypto.js, performance.js).
+  get crypto() { const s = state(this); return s.crypto ?? (s.crypto = make(this, 'Crypto', {})); },
+  get performance() { const s = state(this); return s.performance ?? (s.performance = make(this, 'Performance', {})); },
 };
 Object.defineProperties(WINDOW_MEMBERS, Object.getOwnPropertyDescriptors(viewport));
 
@@ -277,7 +281,129 @@ const urlPart = (part) => ({
   },
 });
 
+// --- Performance ---------------------------------------------------------------------------------
+// Performance (High Resolution Time, 5): the window's clock. Its time
+// origin is the window's creation; now() counts from there, as do the
+// animation frame timestamps. As in jsdom (20 to 30, black box): now(),
+// timeOrigin and toJSON() only, no Performance Timeline or User Timing
+// (mark, measure, getEntries). The clock is the platform's
+// performance.now() (a web standard global), else Date.now().
+
+// The platform's clock, taken on first use: fake timers that replace the
+// global performance.now later do not move windows' clocks (nor animation
+// frame times), as with jsdom.
+const platformPerformance = platformGlobal('performance');
+let platformNow = null;
+let platformOrigin = 0;
+function initClock() {
+  const clock = platformPerformance();
+  const now = clock?.now;
+  if (typeof now === 'function') {
+    platformNow = () => now.call(clock);
+    platformOrigin = clock.timeOrigin;
+  } else {
+    platformNow = Date.now;
+  }
+}
+
+// Called when a window is created: the wall clock time, cheap to read.
+// The time origin on the platform's clock is fixed on first use (within a
+// millisecond of the creation), so a window never used as a clock does not
+// load Node's performance.
+export function startClock(ws) {
+  ws.created = Date.now();
+  ws.clockStart = undefined;
+}
+
+function clockStart(ws) {
+  if (ws.clockStart === undefined) {
+    if (platformNow === null) initClock();
+    ws.clockStart = platformNow() - Math.max(0, Date.now() - ws.created);
+    ws.timeOrigin = platformOrigin + ws.clockStart;
+  }
+  return ws.clockStart;
+}
+
+// The window's current high resolution time (ms since its time origin).
+export const windowNow = (window) => {
+  const start = clockStart(window[S]);
+  return platformNow() - start;
+};
+const timeOrigin = (window) => { clockStart(window[S]); return window[S].timeOrigin; };
+
+export const PERFORMANCE_INTERFACE = {
+  name: 'Performance',
+  parent: 'EventTarget',
+  members: {
+    now() { return windowNow(state(this).window); },
+    get timeOrigin() { return timeOrigin(state(this).window); },
+    toJSON() { return { timeOrigin: timeOrigin(state(this).window) }; },
+  },
+};
+
+// --- Crypto --------------------------------------------------------------------------------------
+// Crypto (Web Cryptography API, 10): getRandomValues() and randomUUID(),
+// as jsdom has them (no subtle in any jsdom version, black box 20 to 30).
+// The random bytes are the platform's (crypto.getRandomValues, a web
+// standard global in browsers, Node, Deno and edge runtimes).
+
+const INTEGER_ARRAYS = new Set(['Int8Array', 'Uint8Array', 'Uint8ClampedArray', 'Int16Array', 'Uint16Array', 'Int32Array', 'Uint32Array',
+  'BigInt64Array', 'BigUint64Array']);
+const MAX_BYTES = 65536;
+
+const platformCrypto = platformGlobal('crypto');
+
+function fillRandom(bytes) {
+  const crypto = platformCrypto();
+  if (typeof crypto?.getRandomValues === 'function') {
+    crypto.getRandomValues(bytes);
+    return;
+  }
+  for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+}
+
+const hex = (bytes, from, to) => {
+  let s = '';
+  for (let i = from; i < to; i++) s += (bytes[i] + 0x100).toString(16).slice(1);
+  return s;
+};
+
+export const CRYPTO_INTERFACE = {
+  name: 'Crypto',
+  members: {
+    getRandomValues(array) {
+      const s = state(this);
+      if (array === undefined && arguments.length < 1) tooFewArguments('Crypto', 'getRandomValues', 1, arguments.length);
+      if (!ArrayBuffer.isView(array)) throw new TypeError("Failed to execute 'getRandomValues' on 'Crypto': parameter 1 is not of any supported type.");
+      if (!INTEGER_ARRAYS.has(typedArrayName(array))) throw domError('getRandomValues() only accepts integer typed arrays', 'TypeMismatchError');
+      if (array.byteLength > MAX_BYTES) {
+        const message = `getRandomValues() cannot generate more than ${MAX_BYTES} bytes of random values; ${array.byteLength} bytes were requested`;
+        // jsdom 30 throws the QuotaExceededError interface, before a DOMException.
+        throw s.window[S].compat.jsdom >= 30 ? new QuotaExceededError(message) : domError(message, 'QuotaExceededError');
+      }
+      fillRandom(new Uint8Array(array.buffer, array.byteOffset, array.byteLength));
+      return array;
+    },
+    // From jsdom 22.1 (compat below). Version 4 (RFC 9562).
+    randomUUID() {
+      state(this);
+      const crypto = platformCrypto();
+      if (typeof crypto?.randomUUID === 'function') return crypto.randomUUID();
+      const b = new Uint8Array(16);
+      fillRandom(b);
+      b[6] = (b[6] & 0x0f) | 0x40;
+      b[8] = (b[8] & 0x3f) | 0x80;
+      return `${hex(b, 0, 4)}-${hex(b, 4, 6)}-${hex(b, 6, 8)}-${hex(b, 8, 10)}-${hex(b, 10, 16)}`;
+    },
+  },
+  compat(proto, compat) {
+    if (!compat.randomUUID) delete proto.randomUUID;
+  },
+};
+
 export const FEATURE_INTERFACES = [
+  CRYPTO_INTERFACE,
+  PERFORMANCE_INTERFACE,
   { name: 'BarProp', members: { get visible() { state(this); return true; } } },
   // Obsolete search provider methods; they do nothing.
   { name: 'External', members: { AddSearchProvider() { state(this); }, IsSearchProviderInstalled() { state(this); } } },
@@ -416,11 +542,16 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
     // cssstyle before 4.2: color channels rounded once, no hwb() (colors.js).
     legacyColors: version[0] < 27 && css !== null && before(css, [4, 2, 0]),
     composedAccessors: version[0] < 27 && (css === null || (css[0] === 4 && !before(css, [4, 4, 0]))),
+    // Members jsdom added (black box): crypto.randomUUID() in 22.1.0,
+    // TextEncoder and TextDecoder in 27.4.0, Blob's text(), arrayBuffer()
+    // and bytes() in 28.1.0.
+    randomUUID: !before(version, [22, 1, 0]), textCodec: !before(version, [27, 4, 0]), blobReads: !before(version, [28, 1, 0]),
     rootColor: version[0] >= 27 ? 'rgb(0, 0, 0)' : css !== null && before(css, [4, 4, 0]) ? '' : css !== null && before(css, [4, 6, 0]) ? 'CanvasText' : 'canvastext',
   };
   // DOMException is the platform's (shared by all windows); its subclass too.
   window.DOMException = DOMException;
   window.QuotaExceededError = QuotaExceededError;
+  startClock(ws);
   ws.setTimeout = globalThis.setTimeout.bind(globalThis);
   ws.location = make(window, 'Location', {});
   ws.history = make(window, 'History', { entries: [{ state: null, url: ws.url }], index: 0, navigations: 0 });

@@ -208,3 +208,34 @@ test('Jest environment: Jest\'s helpers come from the running jest-runtime, in a
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+// As jest-environment-jsdom (black box, jsdom 20 and 26 through Jest 29 and
+// 30): crypto, performance, Blob and File are the window's; TextEncoder
+// from jsdom 27.4, its arrays of the test's realm.
+test('Jest environment: crypto, performance, Blob, File and TextEncoder are the window\'s', async () => {
+  const rootDir = fakeJestProject();
+  try {
+    for (const [jsdom, expected] of [
+      ['20.0.3', '[object Crypto],undefined,undefined,undefined,undefined,true,undefined'],
+      ['26.1.0', '[object Crypto],undefined,function,undefined,undefined,true,undefined'],
+      ['30.1.3', '[object Crypto],undefined,function,undefined,function,true,function'],
+    ]) {
+      const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      try {
+        const run = (code) => vm.runInContext(code, env.getVmContext());
+        assert.equal(run('[Object.prototype.toString.call(crypto), typeof crypto.subtle, typeof crypto.randomUUID, typeof performance.mark, typeof TextEncoder, new Blob(["a"]) instanceof Blob, typeof Blob.prototype.text].join()'), expected, jsdom);
+        assert.equal(run('crypto === window.crypto && performance === window.performance && crypto.getRandomValues(new Uint8Array(2)) instanceof Uint8Array'), true);
+        if (jsdom === '30.1.3') {
+          assert.equal(run('new TextEncoder().encode("a") instanceof Uint8Array && new Blob(["a"]).arrayBuffer() instanceof Promise'), true);
+          assert.equal(await run('new Blob(["ab"]).arrayBuffer().then((b) => b instanceof ArrayBuffer && b.byteLength)'), 2);
+        }
+        // Jest's modern fake timers assign the global's performance (strict code).
+        assert.equal(run('"use strict"; const real = performance; globalThis.performance = { now: () => 5 }; const t = performance.now(); globalThis.performance = real; t'), 5);
+      } finally {
+        await env.teardown();
+      }
+    }
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
