@@ -2102,13 +2102,17 @@ commit, lockfiles ignored; handsontable and element-plus dry run):
   keeps jsdom and global-jsdom because scripts/verify-bundles.mjs imports
   them (the hand change rewrote that script).
 - element-plus (jsdom 16.4.0, no hand branch): the config and two
-  `@vitest-environment happy-dom` comments switch; the plan advises
-  `--keep-jsdom-version` (warpdom would otherwise follow jsdom 30.1.2).
+  `@vitest-environment happy-dom` comments switch, and jsdom 16.4.0 is pinned
+  (warpdom would otherwise follow jsdom 30.1.2).
 
-Open decision: by default migrate only reports the jsdom version the tests
-saw (warpdom follows the installed jsdom, and its default once it is
-removed: 30.1.2 for Vitest, 26 for Jest); `--keep-jsdom-version` writes
-`environmentOptions.warpdom.jsdom` / `testEnvironmentOptions.jsdom`. The
-hand-made branches did not pin and kept every result, but projects on old
-jsdom versions (element-plus 16, handsontable's Jest 27 with jsdom 16.7)
-may need it. Pinning by default is a one-line change if preferred.
+
+Decision (2026-10-17): migrate pins the removed jsdom version by default
+whenever it gives a different profile than warpdom's default for the
+runner (Vitest: below 30.1.2; Jest: other than 26), in the most local
+place (`environmentOptions.warpdom.jsdom` next to the environment;
+`testEnvironmentOptions.jsdom` for Jest; inside an existing options object
+when there is one), with a one-line why in the plan; nothing is written
+when the version matches the default. `--no-keep-jsdom-version` opts out.
+Reason: every migrated project keeps exactly its current jsdom behavior,
+warpdom's core promise. New pnpm catalog entries go at the end of a
+`# Testing` group when there is one, else where jsdom was.

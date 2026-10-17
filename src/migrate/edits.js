@@ -150,10 +150,20 @@ export function editCatalog(text, catalogName, { remove = [], add = [] }) {
   const removed = entries.filter((e) => remove.includes(e.name));
   if (!adding.length && !removed.length) return text;
   const model = removed[0] ?? entries[entries.length - 1];
-  const quote = model && /^(['"])/.test(model.value) ? model.value[0] : "'";
-  const keyOf = (name) => (/^[@!&*%|>'"#]/.test(name) || name.includes(':') ? `${quote}${name}${quote}` : name);
+  // The quoting of the entry it replaces (or the last one): '^1.0.0', "^1.0.0" or ^1.0.0.
+  const quote = !model ? "'" : /^(['"])/.test(model.value) ? model.value[0] : '';
+  const keyOf = (name) => (/^[@!&*%|>'"#]/.test(name) || name.includes(':') ? `${quote || "'"}${name}${quote || "'"}` : name);
   const newLines = adding.map((d) => `${cat.indent}${keyOf(d.name)}: ${quote}${d.spec}${quote}`);
-  const at = removed[0] ? removed[0].line : (entries.length ? entries[entries.length - 1].line + 1 : cat.start + 1);
+  // Next to the testing entries when a comment marks such a group (up to
+  // the next comment or blank line), else where the first removed entry
+  // was, else after the last entry.
+  let at = removed[0] ? removed[0].line : (entries.length ? entries[entries.length - 1].line + 1 : cat.start + 1);
+  const group = lines.findIndex((l, i) => i > cat.start && i < cat.end && /^\s*#\s*(unit\s+)?test(s|ing)?\b/i.test(l));
+  if (group >= 0) {
+    let last = -1;
+    for (let i = group + 1; i < cat.end && lines[i].trim() && !/^\s*#/.test(lines[i]); i++) last = i;
+    if (last >= 0) at = last + 1;
+  }
   const drop = new Set(removed.map((e) => e.line));
   const out = [];
   for (let i = 0; i < lines.length; i++) {

@@ -21,7 +21,7 @@ every workspace package is migrated in one go).
 |---|---|
 | `--apply` | Make the changes (default: dry run) |
 | `--json` | Print the plan as JSON instead of text |
-| `--keep-jsdom-version` | Write the removed jsdom version into the config (see "jsdom version" below) |
+| `--no-keep-jsdom-version` | Do not pin the removed jsdom version in the config (pinned by default when it differs from warpdom's default; see "jsdom version" below) |
 | `--offline` | Do not ask the npm registry for the latest versions and their publication dates |
 | `-h`, `--help` | Help |
 
@@ -66,10 +66,13 @@ Dependencies:
   old DOM package was declared (the nearest one up from the config; in a
   monorepo whose jsdom is a root dev dependency, the root), in the same
   section, with the same version style (`^0.1.3`, an exact `0.1.3`, or
-  `catalog:` with the entries added to the pnpm catalog where the old one
-  was). Entries go in sorted position when the list is sorted, else at its
-  end. Versions: the registry's latest, else the ones this warpdom ships
-  with.
+  `catalog:` with the entries added to the pnpm catalog: at the end of its
+  testing group when a comment such as `# Testing` marks one, else where
+  the old entry was, with its quoting). Entries go in sorted position when
+  the list is sorted, else at its end. Versions: the registry's latest,
+  else the ones this warpdom ships with.
+- `@types/jsdom` stays and is listed as kept: it can go once no code
+  imports jsdom's types and no tsconfig `"types"` list names jsdom.
 - `jsdom`, `happy-dom`, `jest-environment-jsdom`,
   `@happy-dom/jest-environment`, `global-jsdom` and `jsdom-global` are
   removed when nothing still needs them. A package keeps them, with the
@@ -124,9 +127,14 @@ and the packages are already in place.
 warpdom behaves like the jsdom version it finds installed (through
 jest-environment-jsdom for Jest), because suites encode the behavior of
 their jsdom. Once migrate removes jsdom, warpdom follows its default: the
-newest jsdom it models (30.1.2) for Vitest, jsdom 26 for Jest. The plan
-says which version the project had (installed, else from the lockfile,
-else from the declared range) and how to keep it:
+newest jsdom it models (30.1.2) for Vitest, jsdom 26 for Jest.
+
+So that every migrated project keeps exactly its current jsdom behavior,
+migrate pins the version it removes whenever that version would give a
+different profile than the default (installed version, else the
+lockfile's, else the declared range: `^26.1.0` pins `26`). It writes it in
+the most local place, next to the environment it changed, and says why in
+the plan:
 
 ```js
 // Vitest
@@ -135,11 +143,14 @@ test: { environment: 'warpdom', environmentOptions: { warpdom: { jsdom: '26.1.0'
 testEnvironment: 'warpdom', testEnvironmentOptions: { jsdom: '20.0.3' },
 ```
 
-With `--keep-jsdom-version`, migrate adds that line itself, right after the
-environment it changed (when the object has no such options yet; otherwise
-it says where to add the version). happy-dom suites get a note instead:
-warpdom behaves like jsdom, so `warpdom compare --baseline happy-dom` shows
-what changes.
+An options object that is already there gets the version as its first
+property (`environmentOptions.warpdom` is created inside an existing
+`environmentOptions`); one that already names a jsdom version is left as
+it is and reported. When the removed version is the one warpdom assumes
+anyway (jsdom 30.1.2 or later with Vitest, 26 with Jest), nothing is
+written. `--no-keep-jsdom-version` leaves the version out and only reports
+it. happy-dom suites get a note instead: warpdom behaves like jsdom, so
+`warpdom compare --baseline happy-dom` shows what changes.
 
 ## Release-age settings
 
@@ -181,14 +192,18 @@ classic and berry), else from package.json (catalog references resolved).
 
 The same projects were migrated by hand first (branch
 `test/warpdom-environment` of each, all tests keeping their results), then
-with `migrate --apply` from the parent commit; lockfiles ignored.
+with `migrate --apply` from the parent commit; lockfiles ignored. The hand
+changes did not pin the jsdom version; migrate does by default, so every
+project below except material-ui (jsdom 30.1.2) and handsontable's Angular
+wrapper (jsdom 26) also gets one `environmentOptions` /
+`testEnvironmentOptions` line next to its environment.
 
 | Project | Matched | Missed or different |
 |---|---|---|
 | radix-ui/primitives | vitest.config.mts environment; package.json (- jsdom, + warpdom, + vitest-environment-warpdom) | a comment in scripts/setup-tests.ts reworded by hand (listed under setup files) |
 | floating-ui | 5 vite.config.mts environments; root package.json | two test comments reworded by hand (listed) |
 | downshift | other/misc-tests/jest.config.js; package.json additions | root jest.config.js inherits jsdom from kcd-scripts/jest: listed as manual (the hand change added `testEnvironment: 'warpdom'`); a comment in other/ssr/jest.config.js (listed) |
-| vuetify | packages/vuetify/vitest.config.ts; package.json catalog entries; pnpm catalog | catalog entries placed where jsdom was rather than after the testing group; SKILL.md and a setup comment reworded by hand (listed) |
+| vuetify | packages/vuetify/vitest.config.ts; package.json catalog entries; pnpm catalog (in the `# Testing` group) | catalog entries at the end of the testing group (after the browser-testing entries) rather than after timezone-mock; jsdom 27.2.0 pinned next to the environment (not in the hand change); SKILL.md and a setup comment reworded by hand (listed) |
 | material-ui | vitest.shared.mts (`jsdom ? 'warpdom' : 'node'`); root package.json with exact versions | nothing |
-| handsontable (dry run) | 4 Jest configs (one in package.json); 4 package.json files | root jsdom and global-jsdom kept because scripts/verify-bundles.mjs imports them (the hand change rewrote that script); the removed jsdom workarounds and polyfills are listed for review, not removed |
-| element-plus (dry run, jsdom 16) | vitest.config.mts, two `@vitest-environment happy-dom` comments; jsdom and happy-dom removed | no hand-made branch; the plan advises `--keep-jsdom-version` (jsdom 16.4.0) |
+| handsontable (dry run) | 4 Jest configs (one in package.json); 4 package.json files | root jsdom and global-jsdom kept because scripts/verify-bundles.mjs imports them (the hand change rewrote that script); jsdom 16.7.0 pinned in the three Jest 27 configs; the removed jsdom workarounds and polyfills are listed for review, not removed |
+| element-plus (dry run, jsdom 16) | vitest.config.mts, two `@vitest-environment happy-dom` comments; jsdom and happy-dom removed; `environmentOptions: { warpdom: { jsdom: '16.4.0' } }` added after the environment | no hand-made branch |

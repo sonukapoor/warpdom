@@ -77,7 +77,7 @@ export async function migrate(options = {}) {
     // The registry's latest versions and their publication dates (for
     // release-age settings); offline, warpdom's own versions are used.
     const registry = options.registry ?? (options.offline ? {} : await registryInfo(OWN, { fetchImpl: options.fetch }));
-    const { finalTexts } = run(result, { cwd, registry, keepJsdomVersion: Boolean(options.keepJsdomVersion) });
+    const { finalTexts } = run(result, { cwd, registry, keepJsdomVersion: options.keepJsdomVersion !== false });
     await releaseAges(result, { now, registry, offline: Boolean(options.offline) });
     if (apply) {
       for (const file of result.changedFiles) fs.writeFileSync(path.resolve(cwd, file), finalTexts.get(file));
@@ -823,49 +823,81 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       if (keepJsdomVersion) {
         pins.set(relDir, { runner, version, base, option });
       } else {
-        result.profile.push(`${base}. To keep jsdom ${version}'s behavior, add ${option} to the config (or run migrate with --keep-jsdom-version).`);
+        result.profile.push(`${base}. To keep jsdom ${version}'s behavior, add ${option} to the config (--no-keep-jsdom-version left it out).`);
       }
     }
   }
   if (pins.size) {
     const pinned = new Set();
+    const why = (pin, where) => `${where}: pinned jsdom ${pin.version} (${pin.runner === 'vitest' ? 'environmentOptions.warpdom.jsdom' : 'testEnvironmentOptions.jsdom'}), because warpdom follows the installed jsdom and, once it is removed, would follow jsdom ${DEFAULT_PROFILE[pin.runner]}; this keeps the tests' current behavior (${pin.base.split(': ')[0]})`;
     for (const e of [...edits]) {
       if (!e.meta || (e.kind !== 'environment' && e.kind !== 'testEnvironment')) continue;
       const pkg = targetOf(e.file, e.runner);
       const pin = pins.get(pkg.rel);
       if (!pin || pin.runner !== e.runner) continue;
       const { prop, a, text } = e.meta;
+      const json = e.file.endsWith('.json');
+      const q = json ? '"' : a.tokens.find((t) => t.start === e.start)?.quote ?? "'";
+      const k = (name) => (json ? `"${name}"` : name);
+      const jsdomProp = `${k('jsdom')}: ${q}${pin.version}${q}`;
       const optionKey = e.runner === 'vitest' ? 'environmentOptions' : 'testEnvironmentOptions';
       const where = `${e.file}:${e.line}`;
-      if (a.properties.some((q) => q.frame === prop.frame && q.key === optionKey)) {
-        result.profile.push(`${pin.base}. ${where} already sets ${optionKey}: add jsdom: '${pin.version}' there to keep its behavior.`);
+      const eol = text.includes('\r\n') ? '\r\n' : '\n';
+      const lineOf = (offset) => lineIndex(text).lineOf(offset);
+      // An options object already there: the version goes inside it.
+      const existing = a.properties.find((x) => x.frame === prop.frame && x.key === optionKey);
+      if (existing) {
+        let obj = a.objects.find((o) => o.open === existing.valueStart);
+        let insertText = e.runner === 'vitest' ? `${k('warpdom')}: { ${jsdomProp} }` : jsdomProp;
+        if (obj && e.runner === 'vitest') {
+          const w = a.properties.find((x) => x.frame === obj && x.key === 'warpdom');
+          if (w) { obj = a.objects.find((o) => o.open === w.valueStart); insertText = jsdomProp; }
+        }
+        if (!obj || a.properties.some((x) => x.frame === obj && x.key === 'jsdom')) {
+          result.profile.push(`${pin.base}. ${where}: ${optionKey} is not an object literal or already names a jsdom version; check that it says ${pin.version}.`);
+          pinned.add(pkg.rel);
+          continue;
+        }
+        const first = a.properties.find((x) => x.frame === obj);
+        const open = a.tokens[obj.open];
+        let insert;
+        let line;
+        if (first && lineOf(a.tokens[first.keyToken].start) > lineOf(open.start)) {
+          const keyTok = a.tokens[first.keyToken];
+          const begin = text.lastIndexOf('\n', keyTok.start - 1) + 1;
+          insert = { start: begin, end: begin, text: `${text.slice(begin, keyTok.start)}${insertText},${eol}` };
+          line = lineOf(keyTok.start);
+        } else {
+          insert = { start: open.end, end: open.end, text: first ? ` ${insertText},` : ` ${insertText} ` };
+          line = lineOf(open.start);
+        }
+        edits.push({ file: e.file, ...insert, kind: optionKey, runner: e.runner, from: null, to: pin.version, line, pin: true, inline: !insert.text.endsWith(eol) });
+        result.profile.push(why(pin, `${e.file}:${line}`));
         pinned.add(pkg.rel);
         continue;
       }
       const keyTok = a.tokens[prop.keyToken];
       const lineBegin = text.lastIndexOf('\n', keyTok.start - 1) + 1;
       const indent = text.slice(lineBegin, keyTok.start);
+      const value = e.runner === 'vitest' ? `{ ${k('warpdom')}: { ${jsdomProp} } }` : `{ ${jsdomProp} }`;
+      const next = a.tokens[prop.valueEnd];
+      const lastValue = a.tokens[prop.valueEnd - 1];
       if (!/^[ \t]*$/.test(indent)) {
-        result.profile.push(`${pin.base}. ${where} is not on a line of its own: add ${pin.option} there by hand.`);
+        // The environment shares its line: the option goes right after it.
+        edits.push({ file: e.file, start: lastValue.end, end: lastValue.end, text: `, ${k(optionKey)}: ${value}`, kind: optionKey, runner: e.runner, from: null, to: pin.version, line: e.line, pin: true, inline: true });
+        result.profile.push(why(pin, where));
         pinned.add(pkg.rel);
         continue;
       }
-      const json = e.file.endsWith('.json');
-      const q = json ? '"' : e.meta.a.tokens.find((t) => t.start === e.start)?.quote ?? "'";
-      const key = json ? `"${optionKey}"` : optionKey;
-      const value = e.runner === 'vitest' ? `{ ${q === '"' && json ? '"warpdom"' : 'warpdom'}: { ${json ? '"jsdom"' : 'jsdom'}: ${q}${pin.version}${q} } }` : `{ ${json ? '"jsdom"' : 'jsdom'}: ${q}${pin.version}${q} }`;
-      const next = a.tokens[prop.valueEnd];
-      const lastValue = a.tokens[prop.valueEnd - 1];
-      const eol = text.includes('\r\n') ? '\r\n' : '\n';
       const insert = next?.value === ','
-        ? { start: next.end, end: next.end, text: `${eol}${indent}${key}: ${value},` }
-        : { start: lastValue.end, end: lastValue.end, text: `,${eol}${indent}${key}: ${value}` };
+        ? { start: next.end, end: next.end, text: `${eol}${indent}${k(optionKey)}: ${value},` }
+        : { start: lastValue.end, end: lastValue.end, text: `,${eol}${indent}${k(optionKey)}: ${value}` };
       edits.push({ file: e.file, ...insert, kind: optionKey, runner: e.runner, from: null, to: pin.version, line: e.line + 1, pin: true });
-      result.profile.push(`${pin.base}. Added ${pin.option} at ${where} to keep jsdom ${pin.version}'s behavior.`);
+      result.profile.push(why(pin, `${e.file}:${e.line + 1}`));
       pinned.add(pkg.rel);
     }
     for (const [relDir, pin] of pins) {
-      if (!pinned.has(relDir)) result.profile.push(`${pin.base}. No config literal to add it to: add ${pin.option} by hand to keep jsdom ${pin.version}'s behavior.`);
+      if (!pinned.has(relDir)) result.profile.push(`${pin.base}. No environment literal in a config to put it next to: add ${pin.option} by hand to keep jsdom ${pin.version}'s behavior.`);
     }
     applyAll();
   }
@@ -873,7 +905,7 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
   for (const [relDir, list] of removals) {
     const pkg = pkgs.get(relDir);
     if (list.some((r) => r.name === 'jsdom') && declared(pkg, '@types/jsdom')) {
-      result.kept.push({ package: pkg.file, name: '@types/jsdom', section: declared(pkg, '@types/jsdom'), reason: 'type definitions of jsdom: remove it too unless code or a tsconfig "types" list still uses them' });
+      result.kept.push({ package: pkg.file, name: '@types/jsdom', section: declared(pkg, '@types/jsdom'), reason: 'type definitions of jsdom: it can go once no code imports jsdom types and no tsconfig "types" list names jsdom' });
     }
   }
   result.profile = unique(result.profile);
@@ -912,10 +944,13 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
   }
 
   // --- the report ------------------------------------------------------------
-  result.edits = edits.map(({ file, line, kind, runner, from, to, pin }) => ({
-    file, line, kind, runner, from, to,
-    before: pin ? '' : lineIndex(textOf(file)).lineText(line).trim(),
-    after: lineIndex(finalTexts.get(file)).lineText(line).trim(),
+  // Lines a pinned jsdom version inserted before an edit move it down.
+  const shift = (e) => edits.filter((x) => x.file === e.file && x.pin && !x.inline && x !== e && x.start < e.start).length;
+  result.edits = edits.map((e) => ({
+    file: e.file, line: e.line, kind: e.kind, runner: e.runner, from: e.from, to: e.to,
+    before: e.pin && !e.inline ? '' : lineIndex(textOf(e.file)).lineText(e.line).trim(),
+    // The text after the environment edits only (dependency edits move lines).
+    after: lineIndex(after.get(e.file)).lineText(e.pin ? e.line : e.line + shift(e)).trim(),
   })).sort((x, y) => (x.file === y.file ? x.line - y.line : x.file < y.file ? -1 : 1));
   result.manual = manual.sort((x, y) => (x.file === y.file ? (x.line ?? 0) - (y.line ?? 0) : x.file < y.file ? -1 : 1));
   result.otherProjects = result.otherProjects.filter((o) => o.uses.length);

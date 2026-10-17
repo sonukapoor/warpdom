@@ -112,7 +112,10 @@ test('migrate edits: pnpm catalogs', () => {
   assert.deepEqual(catalogEntries(yaml, 'react18').entries.map((e) => e.name), ['react']);
   assert.equal(catalogEntries(yaml, 'nope'), null);
   assert.equal(editCatalog(yaml, 'default', { remove: ['jsdom'], add: [{ name: 'warpdom', spec: '^0.1.3' }, { name: 'vitest-environment-warpdom', spec: '^0.1.0' }] }),
-    "packages:\n  - 'packages/*'\ncatalog:\n  # Testing\n  warpdom: '^0.1.3'\n  vitest-environment-warpdom: '^0.1.0'\n  '@testing-library/vue': '^8.1.0'\ncatalogs:\n  react18:\n    react: ^18.0.0\n");
+    "packages:\n  - 'packages/*'\ncatalog:\n  # Testing\n  '@testing-library/vue': '^8.1.0'\n  warpdom: '^0.1.3'\n  vitest-environment-warpdom: '^0.1.0'\ncatalogs:\n  react18:\n    react: ^18.0.0\n", 'next to the testing group');
+  const plain = "catalog:\n  react: ^19.0.0\n  jsdom: ^27.0.0\n  vite: ^7.0.0\n";
+  assert.equal(editCatalog(plain, 'default', { remove: ['jsdom'], add: [{ name: 'warpdom', spec: '^0.1.3' }] }),
+    "catalog:\n  react: ^19.0.0\n  warpdom: ^0.1.3\n  vite: ^7.0.0\n", 'no group: where jsdom was, with its (lack of) quotes');
   assert.throws(() => applyEdits('abc', [{ start: 0, end: 2, text: 'x' }, { start: 1, end: 3, text: 'y' }]), /overlapping/);
 });
 
@@ -169,12 +172,12 @@ test('migrate: Vitest with one config (npm)', () => withProject('vitest-single',
   assert.equal(r.error, null);
   assert.equal(r.packageManager.name, 'npm');
   assert.deepEqual(r.runners.map((x) => [x.name, x.version]), [['vitest', '3.2.4']]);
-  assert.deepEqual(r.edits.map((e) => [e.file, e.line, e.from, e.to]), [['vitest.config.ts', 7, 'jsdom', 'warpdom']]);
-  assert.match(read(dir, 'vitest.config.ts'), /\/\/ jsdom for the component tests\n {4}environment: "warpdom",\n/, 'quotes and comments kept');
+  assert.deepEqual(r.edits.map((e) => [e.file, e.line, e.from, e.to]), [['vitest.config.ts', 7, 'jsdom', 'warpdom'], ['vitest.config.ts', 8, null, '26.1.0']]);
+  assert.match(read(dir, 'vitest.config.ts'), /\/\/ jsdom for the component tests\n {4}environment: "warpdom",\n {4}environmentOptions: \{ warpdom: \{ jsdom: "26\.1\.0" \} \},\n {4}setupFiles/, 'quotes and comments kept; jsdom 26.1.0 pinned by default');
   assert.deepEqual(readJson(dir, 'package.json').devDependencies, { '@testing-library/react': '^16.0.0', vitest: '^3.2.4', 'vitest-environment-warpdom': `^${ENVIRONMENT_PACKAGE_VERSION}`, warpdom: `^${r.versions.warpdom}` });
   assert.equal(r.install, 'npm install');
   assert.ok(r.mentions.some((m) => m.file === 'test/setup.ts' && m.category === 'setup'), 'setup file reported');
-  assert.match(r.profile.join('\n'), /jsdom 26\.1\.0 \(package-lock\.json\).*environmentOptions: \{ warpdom: \{ jsdom: '26\.1\.0' \} \}/);
+  assert.match(r.profile.join('\n'), /vitest.config.ts:8: pinned jsdom 26\.1\.0 \(environmentOptions\.warpdom\.jsdom\), because warpdom follows the installed jsdom/);
   assert.ok(fs.existsSync(path.join(dir, '.warpdom-migrate', 'plan.md')));
 }));
 
@@ -194,9 +197,9 @@ test('migrate: dry run changes nothing and writes the plan', () => withProject('
 test('migrate: idempotent, a second --apply changes nothing', async () => {
   for (const name of fs.readdirSync(fixtures)) {
     await withProject(name, async (dir) => {
-      await run(dir, { apply: true, keepJsdomVersion: true });
+      await run(dir, { apply: true });
       const once = snapshot(dir);
-      const r = await run(dir, { apply: true, keepJsdomVersion: true });
+      const r = await run(dir, { apply: true });
       assert.deepEqual(r.changedFiles, [], `${name}: nothing left to change`);
       assert.deepEqual(r.edits, [], name);
       const twice = snapshot(dir);
@@ -213,7 +216,7 @@ test('migrate: Vitest projects array, environmentMatchGlobs, pnpm catalog and mi
     'vitest-environment-warpdom': { version: '0.1.0', time: '2026-10-14T21:54:07.630Z' },
   };
   const r = await run(dir, { apply: true, registry, offline: false, now: Date.parse('2026-10-17T10:00:00Z') });
-  assert.deepEqual(r.edits.map((e) => [e.line, e.kind, e.from]), [[6, 'environmentMatchGlobs', 'happy-dom'], [12, 'environment', 'jsdom']]);
+  assert.deepEqual(r.edits.map((e) => [e.line, e.kind, e.from]), [[6, 'environmentMatchGlobs', 'happy-dom'], [12, 'environment', 'jsdom'], [13, 'environmentOptions', null]]);
   const config = read(dir, 'vitest.config.mts');
   assert.match(config, /\['\*\*\/\*\.dom\.test\.ts', 'warpdom'\]/);
   assert.match(config, /name: 'node', environment: 'node'/, 'node project unchanged');
@@ -230,20 +233,20 @@ test('migrate: Vitest projects array, environmentMatchGlobs, pnpm catalog and mi
 test('migrate: vitest.workspace file and a project config (yarn, npmMinimalAgeGate)', () => withProject('vitest-workspace', async (dir) => {
   const r = await run(dir, { apply: true });
   assert.equal(r.packageManager.name, 'yarn');
-  assert.deepEqual(r.edits.map((e) => [e.file, e.from]), [['packages/ui/vitest.config.ts', 'jsdom'], ['vitest.workspace.ts', 'happy-dom']]);
+  assert.deepEqual(r.edits.map((e) => [e.file, e.from]), [['packages/ui/vitest.config.ts', 'jsdom'], ['packages/ui/vitest.config.ts', null], ['vitest.workspace.ts', 'happy-dom'], ['vitest.workspace.ts', null]]);
   assert.match(read(dir, 'vitest.workspace.ts'), /name: 'inline',\n {6}environment: 'warpdom',/);
   assert.equal(r.install, 'yarn install');
   assert.deepEqual(r.releaseAge.map((a) => [a.manager, a.setting, a.status]), [['yarn', 'npmMinimalAgeGate', 'unknown'], ['yarn', 'npmMinimalAgeGate', 'unknown']]);
-  assert.match(r.profile.join('\n'), /jsdom 25\.0\.1 \(yarn\.lock\)/);
+  assert.match(r.profile.join('\n'), /pinned jsdom 25\.0\.1/);
 }));
 
 test('migrate: Jest config file', () => withProject('jest-config', async (dir) => {
   const r = await run(dir, { apply: true });
-  assert.equal(read(dir, 'jest.config.js'), "/** @type {import('jest').Config} */\nmodule.exports = {\n  testEnvironment: 'warpdom',\n  setupFilesAfterEnv: ['<rootDir>/jest.setup.cjs'],\n};\n");
+  assert.equal(read(dir, 'jest.config.js'), "/** @type {import('jest').Config} */\nmodule.exports = {\n  testEnvironment: 'warpdom',\n  testEnvironmentOptions: { jsdom: '20.0.3' },\n  setupFilesAfterEnv: ['<rootDir>/jest.setup.cjs'],\n};\n");
   assert.deepEqual(readJson(dir, 'package.json').devDependencies, { jest: '^29.7.0', 'jest-environment-warpdom': `^${ENVIRONMENT_PACKAGE_VERSION}`, warpdom: `^${r.versions.warpdom}` });
   const filter = r.mentions.find((m) => m.file === 'jest.setup.cjs');
   assert.equal(filter.category, 'console');
-  assert.match(r.profile.join('\n'), /jsdom 20 \(through jest-environment-jsdom 29\.7\.0\).*testEnvironmentOptions: \{ jsdom: '20' \}/);
+  assert.match(r.profile.join('\n'), /jest.config.js:4: pinned jsdom 20\.0\.3 \(testEnvironmentOptions\.jsdom\)/);
 }));
 
 test('migrate: package.json "jest" field, --env script flag, Jest 27', () => withProject('jest-package-json', async (dir) => {
@@ -253,6 +256,7 @@ test('migrate: package.json "jest" field, --env script flag, Jest 27', () => wit
   assert.equal(text, before
     .replace('"jest --env=jsdom"', '"jest --env=warpdom"')
     .replace('"testEnvironment": "jsdom"', '"testEnvironment": "warpdom"')
+    .replace('"testEnvironmentOptions": {\n', '"testEnvironmentOptions": {\n      "jsdom": "16",\n')
     .replace('    "jest-environment-jsdom": "^27.5.1"\n', `    "jest-environment-warpdom": "^${ENVIRONMENT_PACKAGE_VERSION}",\n    "warpdom": "^${r.versions.warpdom}"\n`));
   assert.match(r.transitive.join('\n'), /Jest 27's jest-config and jest-runner depend on jest-environment-jsdom/);
   assert.ok(r.mentions.some((m) => /pretendToBeVisual: a jsdom option warpdom does not read/.test(m.hint)));
@@ -336,22 +340,35 @@ test('migrate: presets, setup files and custom environments', async () => {
   }
 });
 
-test('migrate: --keep-jsdom-version writes the removed version next to the environment', async () => {
-  await withProject('vitest-single', async (dir) => {
-    const r = await run(dir, { apply: true, keepJsdomVersion: true });
-    assert.match(read(dir, 'vitest.config.ts'), /environment: "warpdom",\n {4}environmentOptions: \{ warpdom: \{ jsdom: "26\.1\.0" \} \},\n {4}setupFiles/);
-    assert.match(r.profile.join('\n'), /Added environmentOptions/);
-  });
+test('migrate: the removed jsdom version is pinned by default, inside existing options too; --no-keep-jsdom-version opts out', async () => {
   await withProject('jest-package-json', async (dir) => {
-    await run(dir, { apply: true, keepJsdomVersion: true });
-    const json = readJson(dir, 'package.json');
-    assert.equal(json.jest.testEnvironment, 'warpdom');
-    assert.equal(json.jest.testEnvironmentOptions.jsdom, undefined, 'an existing testEnvironmentOptions is reported, not merged');
+    const before = read(dir, 'package.json');
+    const r = await run(dir, { apply: true });
+    assert.ok(read(dir, 'package.json').includes('"testEnvironmentOptions": {\n      "jsdom": "16.7.0",\n      "url": "http://localhost/",') || /"jsdom": "16"/.test(read(dir, 'package.json')), 'first property of the existing options');
+    assert.equal(readJson(dir, 'package.json').jest.testEnvironmentOptions.pretendToBeVisual, true);
+    assert.match(r.profile.join('\n'), /pinned jsdom 16 \(testEnvironmentOptions\.jsdom\)/);
+    assert.notEqual(read(dir, 'package.json'), before);
   });
-  await withProject('jest-config', async (dir) => {
-    await run(dir, { apply: true, keepJsdomVersion: true });
-    assert.match(read(dir, 'jest.config.js'), /testEnvironment: 'warpdom',\n {2}testEnvironmentOptions: \{ jsdom: '20' \},\n/);
+  await withProject('vitest-single', async (dir) => {
+    const r = await run(dir, { apply: true, keepJsdomVersion: false });
+    assert.doesNotMatch(read(dir, 'vitest.config.ts'), /environmentOptions/);
+    assert.match(r.profile.join('\n'), /add environmentOptions: \{ warpdom: \{ jsdom: '26\.1\.0' \} \} to the config \(--no-keep-jsdom-version left it out\)/);
   });
+  // The default version: nothing written.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'warpdom-migrate-latest-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'package.json'), '{\n  "devDependencies": {\n    "jsdom": "30.1.2",\n    "vitest": "^4.0.0"\n  }\n}\n');
+    fs.writeFileSync(path.join(dir, 'vitest.config.ts'), "export default { test: { environment: 'jsdom', environmentOptions: { warpdom: {} } } };\n");
+    const r = await run(dir, { apply: true });
+    assert.equal(read(dir, 'vitest.config.ts'), "export default { test: { environment: 'warpdom', environmentOptions: { warpdom: {} } } };\n");
+    assert.deepEqual(r.profile, []);
+    fs.writeFileSync(path.join(dir, 'package.json'), '{\n  "devDependencies": {\n    "jsdom": "27.0.1",\n    "vitest": "^4.0.0"\n  }\n}\n');
+    fs.writeFileSync(path.join(dir, 'vitest.config.ts'), "export default { test: { environment: 'jsdom', environmentOptions: { warpdom: {} } } };\n");
+    await run(dir, { apply: true });
+    assert.equal(read(dir, 'vitest.config.ts'), "export default { test: { environment: 'warpdom', environmentOptions: { warpdom: { jsdom: '27.0.1' } } } };\n", 'into an existing warpdom options object');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('migrate: warns on a dirty git tree, errors without package.json', async () => {
@@ -378,6 +395,7 @@ test('migrate: warns on a dirty git tree, errors without package.json', async ()
 
 test('migrate CLI: options, --json, help, exit codes', async () => {
   assert.deepEqual(parseArgs(['--apply', '--json', '--offline', '--keep-jsdom-version']), { apply: true, json: true, offline: true, keepJsdomVersion: true });
+  assert.deepEqual(parseArgs(['--no-keep-jsdom-version']), { keepJsdomVersion: false });
   assert.throws(() => parseArgs(['--nope']), /unknown option --nope/);
   const sink = () => { let s = ''; return { write: (x) => { s += x; }, get text() { return s; } }; };
   let out = sink();
@@ -394,7 +412,7 @@ test('migrate CLI: options, --json, help, exit codes', async () => {
     assert.match(read(dir, 'jest.config.js'), /testEnvironment: 'jsdom'/, 'dry run');
     out = sink();
     assert.equal(await main(['--offline'], { stdout: out, cwd: dir }), 0);
-    assert.match(out.text, /Would change the test environment \(1\):\n {2}jest\.config\.js:3 {2}testEnvironment: jsdom -> warpdom/);
+    assert.match(out.text, /Would change the test environment \(2\):\n {2}jest\.config\.js:3 {2}testEnvironment: jsdom -> warpdom\n {2}jest\.config\.js:4 {2}added testEnvironmentOptions: \{ jsdom: '20\.0\.3' \},\n/);
     assert.match(out.text, /npx warpdom compare/);
   });
   const res = spawnSync(process.execPath, [path.join(root, 'bin', 'warpdom.js'), 'migrate', '--help'], { encoding: 'utf8' });

@@ -160,8 +160,12 @@ inherited from another package) is listed as manual, and lines that
 mention jsdom (setup files, polyfills, console filters) are listed for
 review. It also warns about release-age settings (pnpm
 `minimumReleaseAge`, yarn `npmMinimalAgeGate`) with the date the new
-packages can be installed, and says which jsdom version your tests saw
-(`--keep-jsdom-version` keeps it). Details:
+packages can be installed. warpdom behaves like the jsdom version it finds
+installed, so when migrate removes a jsdom version other than the one
+warpdom assumes by default, it pins that version next to the environment
+(`environmentOptions.warpdom.jsdom`, `testEnvironmentOptions.jsdom`) and
+your tests keep their current jsdom behavior (`--no-keep-jsdom-version`
+leaves it out). Details:
 [docs/migrate.md](docs/migrate.md).
 
 ## Faster still

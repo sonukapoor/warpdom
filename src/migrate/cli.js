@@ -29,13 +29,15 @@ on warpdom and needs jsdom still installed.
 Options:
   --apply        Make the changes (default: dry run)
   --json         Print the plan as JSON
-  --keep-jsdom-version
+  --no-keep-jsdom-version
                  warpdom behaves like the jsdom version it finds installed;
                  once jsdom is removed, like its default (the newest jsdom it
-                 models for Vitest, jsdom 26 for Jest). With this option,
-                 migrate writes the removed version next to the environment
-                 (environmentOptions.warpdom.jsdom, testEnvironmentOptions.jsdom)
-                 so the tests keep seeing that version's behavior
+                 models for Vitest, jsdom 26 for Jest). So by default, when
+                 the removed jsdom differs from that default, migrate writes
+                 its version next to the environment
+                 (environmentOptions.warpdom.jsdom for Vitest,
+                 testEnvironmentOptions.jsdom for Jest) and the tests keep
+                 their current jsdom behavior. This option leaves it out
   --offline      Do not ask the npm registry for the latest versions and
                  their publication dates (release-age settings)
   -h, --help     Show this help
@@ -51,6 +53,7 @@ export function parseArgs(argv) {
     else if (a === '--json') opts.json = true;
     else if (a === '--offline') opts.offline = true;
     else if (a === '--keep-jsdom-version') opts.keepJsdomVersion = true;
+    else if (a === '--no-keep-jsdom-version') opts.keepJsdomVersion = false;
     else throw new Error(`unknown option ${a}`);
   }
   return opts;

@@ -177,6 +177,11 @@ export function dependencyVersion(lock, name, version, dep) {
   if (!e) return null;
   const v = e.deps[dep];
   if (/^\d+\.\d+\.\d+/.test(v)) return v;
+  // npm: a range; the copy nested under the package, else the hoisted one.
+  if (e.key) {
+    const nested = lock.entries.find((x) => x.key === `${e.key}/node_modules/${dep}`) ?? lock.entries.find((x) => x.key === `node_modules/${dep}`);
+    if (nested?.version) return nested.version;
+  }
   // yarn: a range; the entry that resolves it.
   const r = lock.entries.find((x) => x.name === dep && x.specs?.includes(v));
   return r?.version ?? null;
