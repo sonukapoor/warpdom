@@ -357,6 +357,21 @@ warpdom follows the standard. Each has a test. To publish in the docs.
 - Submit buttons' formAction, formMethod, formEnctype and the document's
   obsolete body colors (fgColor, linkColor, vlinkColor, alinkColor,
   bgColor) exist; jsdom lacks them.
+- `FileReader` reads the platform's Blob too (Node's `fetch` responses in
+  Vitest's default pools, where fetch is Node's); jsdom's throws "parameter
+  1 is not of type 'Blob'". Kept from before warpdom had its own Blob.
+- `TextDecoder` labels: only ASCII whitespace is trimmed (Encoding
+  standard); jsdom 30 also accepts labels wrapped in NUL, vertical tab or
+  non-ASCII whitespace (WPT encoding/api-invalid-label: 3,000+ subtests).
+- `TextDecoder` for Big5, EUC-JP, EUC-KR, GBK, gb18030, ISO-2022-JP and
+  Shift_JIS is the platform's (ICU in Node): Big5's four two-code-point
+  pointers, ISO-2022-JP's ESC error handling, Shift_JIS byte 0x1A and
+  Big5 end-of-queue handling differ from the standard and from jsdom
+  (13 WPT encoding subtests). Writing these decoders means shipping their
+  indexes (hundreds of KB); no measured test decodes these encodings.
+- `TextEncoder.encode()` returns an array of the test's realm in every
+  profile; jsdom 27.4 returns one of jsdom's own realm (fixed in 28.1), so
+  `instanceof Uint8Array` fails there under Jest.
 
 ## Decisions
 
@@ -2116,3 +2131,88 @@ when the version matches the default. `--no-keep-jsdom-version` opts out.
 Reason: every migrated project keeps exactly its current jsdom behavior,
 warpdom's core promise. New pnpm catalog entries go at the end of a
 `# Testing` group when there is one, else where jsdom was.
+
+## 2026-10-17: crypto, performance, Blob/File, TextEncoder/TextDecoder (branch feat/parity-apis)
+
+GitHub issues #1 to #4: APIs jsdom's window has and warpdom's did not.
+Measured black box on jsdom 20.0.0, 20.0.3, 21.0.0, 21.1.0, 21.1.2, 22.0.0,
+22.1.0, 23.2.0, 24.1.3, 25.0.1, 26.1.0, 27.0.0, 27.0.1, 27.1.0, 27.2.0,
+27.3.0, 27.4.0, 28.0.0, 28.1.0, 29.1.1, 30.0.1 and 30.1.3, and through
+Vitest 5 (forks and vmThreads, jsdom 20/26/27/30) and Jest 29/30
+(jest-environment-jsdom with jsdom 20.0.3 / 26.1.0):
+
+| API | jsdom | Version boundary | warpdom |
+|---|---|---|---|
+| `window.crypto`, `Crypto` | getRandomValues (all), randomUUID, no `subtle` | randomUUID from 22.1.0 | own interface; bytes from the platform's `crypto.getRandomValues` |
+| `window.performance`, `Performance` | now, timeOrigin, toJSON (EventTarget); no mark/measure/getEntries | none (20 to 30) | own interface; window clock (origin = window creation), animation frame times on it (as jsdom's) |
+| `Blob`, `File` | size, type, slice; File name, lastModified; no stream() | text/arrayBuffer/bytes from 28.1.0 | own implementation (bytes in a Uint8Array, slices share it) |
+| `TextEncoder`, `TextDecoder` | encode, encodeInto, decode (fatal, ignoreBOM, stream) | from 27.4.0 | own interfaces; UTF-8 via the platform, UTF-16 / single-byte / x-user-defined own, CJK platform |
+| `URL.createObjectURL` | absent in every version | | absent (warpdom's window has no `URL`; the environments' is Node's) |
+
+Environments (black box): in Vitest's default pools jsdom's global
+`crypto`, `performance`, `TextEncoder` and `TextDecoder` are Node's and
+`Crypto`, `Performance`, `Blob`, `File` jsdom's (`VITEST_NODE_KEYS`); in
+the VM pools all are the window's (TextEncoder exists before 27.4 too,
+Node's here). Under Jest all are the window's; TextEncoder is absent
+before 27.4 (the familiar "TextEncoder is not defined"). warpdom now
+matches each case; before, its Jest and VM globals had Node's crypto (with
+subtle), performance (with mark) and Blob.
+
+Decisions:
+- Blob/File are warpdom's own, not node:buffer's Blob: per-window
+  prototypes (`instanceof window.Blob`), version-gated members, and
+  synchronous bytes for FormData, FileReader and `new Blob([blob])`, which
+  the platform Blob cannot give. Cost: ~150 lines.
+- Crypto, TextEncoder and UTF-8 decoding delegate to the platform's web
+  standard globals (not Node built-ins; the core imports nothing from
+  Node), read on first use from the global object as it was when warpdom
+  loaded (`platformGlobal` in internal.js): a runner that installs the
+  window on the real global (the WPT runner) must not make warpdom call
+  itself, and reading Node's `performance` getter costs ~0.5 ms.
+- Legacy single-byte decoding is warpdom's own, from the Encoding
+  standard's indexes (`scripts/generate-encoding-data.mjs` writes them into
+  src/encoding.js): Node 22.17 decodes windows-1252 0x80 to 0x9F wrongly
+  (drops them), and koi8-u, windows-874 and windows-1253 follow ICU's
+  tables. FileReader.readAsText uses the same decoders.
+- Results are made in the window's realm (`realmOf`: the VM context's
+  global under Jest and Vitest's VM pools), as jsdom 28.1+ does:
+  `encode() instanceof Uint8Array`, `await blob.arrayBuffer() instanceof
+  ArrayBuffer` hold in a Jest test.
+- FormData makes Files in the blob's window (jsdom 30, black box); a
+  platform Blob becomes the string "[object Blob]", as in jsdom; a
+  filename with a non-Blob value throws.
+- Assigning a window member that has only a getter through the global
+  (Jest's and Vitest's fake timers assign `performance`) no longer throws
+  in strict code: `installWindow`'s setter uses `Reflect.set`.
+- The Vitest reset (no isolation, fast mode) clears Node's performance
+  marks and measures between files.
+- Module layout for load time: Blob and File live in file-reader.js (File
+  API), Crypto and Performance in window-features.js, encoding data inline
+  in encoding.js; as separate modules cold load was +1.2 ms.
+
+Measured (Node 22.17.1, interleaved with main, medians): cold load 20.3 ->
+20.9 ms (5 runs each of 7 processes), first window 1.70 -> 1.75 ms, next
+windows 0.196 -> 0.200 ms; heap after load +0.18 MB, +1.8 KB per window
+(six more lazy interfaces). bench:hot: no change beyond noise (all within
++-6%, none of the hot paths touched).
+
+WPT (local checkout 87b5d13099, runner with jsdom 30.1.2, warpdom latest
+profile):
+
+| Directory | Subtests | warpdom passed | warpdom score | jsdom passed | jsdom score |
+|---|---:|---:|---:|---:|---:|
+| encoding/ (top level) | 12,040 | 11,614 | 75.0% | 7,819 | 59.6% |
+| FileAPI/ (all; blob/ 74.9% vs 74.5%) | 851 | 633 | - | 574 | - |
+| WebCryptoAPI getRandomValues, randomUUID, historical | 45 | 42 | 76.9% | 44 | 99.1% |
+| hr-time/ | 48 | 36 | 25.4% | 32 | 24.3% |
+| user-timing/ | 177 | 39 | 15.9% | 14 | 10.2% |
+
+jsdom passes and warpdom fails: 13 encoding subtests (CJK decoders, see
+deviations), 26 that need XMLHttpRequest, 2 WebCryptoAPI/historical (Node's
+SubtleCrypto and CryptoKey globals visible in the runner's global), 1 Blob
+constructor test with a platform object whose `length` is overwritten.
+
+Open: `window.URL` (jsdom's window has `URL` and `URLSearchParams`;
+warpdom's environments use Node's), `Headers` and `WebSocket` on the window,
+the legacy CJK decoders.
+

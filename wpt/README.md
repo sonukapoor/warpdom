@@ -21,6 +21,7 @@ git clone --depth 1 --filter=blob:none --sparse https://github.com/web-platform-
 cd wpt
 git sparse-checkout set dom domparsing html/dom css/cssom resources common interfaces
 # optional: git sparse-checkout add html/semantics/forms
+# optional: git sparse-checkout add encoding FileAPI WebCryptoAPI hr-time user-timing
 ```
 
 `resources/` (testharness.js, idlharness.js, WebIDL parser) and
@@ -179,8 +180,9 @@ Skipped and not-runnable tests are listed in every results file.
   `outside-only`), so tests of script execution fail for both.
 - **Engine-specific setup**: warpdom runs on the global object of the
   process with the Vitest environment's installation, so window operations
-  on the global are accessors (idlharness notices) and `performance` and
-  the timers are Node's. jsdom with `outside-only` does not compile event
+  on the global are accessors (idlharness notices) and the timers are
+  Node's. Node's other globals stay visible where the window has no member
+  of that name (`SubtleCrypto`, `CryptoKey`: WebCryptoAPI/historical). jsdom with `outside-only` does not compile event
   handler content attributes (`onload="..."`), and its load events are
   untrusted (no public API fires trusted events).
 - **Samples**: `--sample` picks files by a hash of their path and the seed;
