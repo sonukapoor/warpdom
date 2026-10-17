@@ -314,6 +314,34 @@ function backgroundLayers(value) {
   return out;
 }
 
+// The parts of a one-layer background value as written, by longhand
+// (background-image, -position, -repeat, -attachment, -color; null for
+// those not given), or null when it has several layers or does not
+// parse. For jsdom 26's computed background (cascade.js).
+export function backgroundComponents(value) {
+  if (topLevelCommaSplit(value).length !== 1) return null;
+  const out = { 'background-image': null, 'background-position': null, 'background-repeat': null, 'background-attachment': null, 'background-color': null };
+  const tokens = words(value);
+  for (let i = 0; i < tokens.length;) {
+    const token = tokens[i];
+    const lower = token.toLowerCase();
+    let key = null, end = i + 1;
+    if (isImage(token)) key = 'background-image';
+    else if (REPEATS.has(lower)) {
+      key = 'background-repeat';
+      if (lower !== 'repeat-x' && lower !== 'repeat-y' && REPEATS.has(tokens[end]?.toLowerCase()) && !/^repeat-[xy]$/i.test(tokens[end])) end++;
+    } else if (ATTACHMENTS.has(lower)) key = 'background-attachment';
+    else if (POSITION_KEYWORDS.has(lower) || isLength(token)) {
+      key = 'background-position';
+      while (end < tokens.length && end - i < 4 && (POSITION_KEYWORDS.has(tokens[end].toLowerCase()) || isLength(tokens[end]))) end++;
+    } else if (lower === 'currentcolor' || resolveColor(token) !== null) key = 'background-color';
+    if (key === null || out[key] !== null) return null;
+    out[key] = tokens.slice(i, end).join(' ');
+    i = end;
+  }
+  return out;
+}
+
 // The longhands a shorthand declaration sets, as [name, value] pairs, or
 // null when it is not expanded.
 function expandShorthand(name, value) {
