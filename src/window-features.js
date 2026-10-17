@@ -406,7 +406,7 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
   const css = cssText != null ? parseJsdomVersion(cssText) : null;
   ws.compat = {
     version: jsdom, jsdom: version[0], legacyComputedStyle: version[0] < 29, mutableComputedStyle: version[0] < 28,
-    focusIgnoresRendering: before(version, [30, 1, 2]), cssstyle: version[0] < 27 ? (css ? cssText : undefined) : cssstyle ?? undefined, cssstyleMajor: css ? css[0] : 0,
+    focusIgnoresRendering: before(version, [30, 1, 2]), detachedCheckableEvents: before(version, [16, 5, 2]), cssstyle: version[0] < 27 ? (css ? cssText : undefined) : cssstyle ?? undefined, cssstyleMajor: css ? css[0] : 0,
     styleSurface: styleSurfaceKey(version, version[0] < 27 ? css : cssstyle != null ? parseJsdomVersion(cssstyle) : null),
     unquotedUrls: css !== null && before(css, [4, 3, 1]),
     // cssstyle's font shorthand before 4.4 (shorthands.js legacyFont).

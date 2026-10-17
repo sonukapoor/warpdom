@@ -573,3 +573,19 @@ for (const jsdom of [26, 20]) {
     return [typeof w.SubmitEvent, seen];
   }, { jsdom });
 }
+
+test('jsdom before 16.5.2: a click on a detached checkbox or radio also fires input and change', () => {
+  for (const [jsdom, expected] of [['16.4.0', ['input', 'change']], ['16.5.1', ['input', 'change']], ['16.5.2', []], ['20.0.3', []], [undefined, []]]) {
+    const w = createWindow(jsdom ? { jsdom } : {});
+    for (const type of ['checkbox', 'radio']) {
+      const div = w.document.createElement('div');
+      div.innerHTML = `<label><input type=${type}></label>`;
+      const input = div.querySelector('input');
+      const log = [];
+      for (const t of ['input', 'change']) input.addEventListener(t, () => log.push(t));
+      div.querySelector('label').click();
+      assert.equal(input.checked, true);
+      assert.deepEqual(log, expected, `${jsdom} ${type}`);
+    }
+  }
+});
