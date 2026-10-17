@@ -889,7 +889,9 @@ function inputActivation(input) {
       // Browsers (and jsdom) fire nothing for a radio button that was
       // already checked, though the standard's text fires input and change.
       if (type === 'checkbox' || (type === 'radio' && !wasChecked)) {
-        if (isConnected(input)) {
+        // jsdom before 16.5.2 fired them for an input outside a document too
+        // (Vue Test Utils mounts components detached by default).
+        if (isConnected(input) || windowOf(input)[S].compat.detachedCheckableEvents) {
           fire(input, 'input', { bubbles: true, composed: true });
           fire(input, 'change', { bubbles: true });
         }
