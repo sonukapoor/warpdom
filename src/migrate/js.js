@@ -336,3 +336,43 @@ export function moduleSpecifiers(tokens) {
   }
   return out;
 }
+
+// Whether the module specifier at token k (from moduleSpecifiers) is used
+// for types only, so that it never loads the module: `import type ...`,
+// `export type ...`, `import { type A, type B }` (every name a type),
+// `typeof import('x')` and `import('x').Name` in a type position. A
+// default or namespace import, `import 'x'` and require() load it.
+export function typeOnlyReference(tokens, k) {
+  const p = tokens[k - 1];
+  const ident = (t, v) => t?.type === 'ident' && (v === undefined || t.value === v);
+  if (isPunct(p, '(')) {
+    if (!ident(tokens[k - 2], 'import')) return false;
+    if (ident(tokens[k - 3], 'typeof')) return true;
+    // import('x').Name (not .then(...)): a type; a value would be a promise.
+    return isPunct(tokens[k + 1], ')') && isPunct(tokens[k + 2], '.') && ident(tokens[k + 3])
+      && !['then', 'catch', 'finally'].includes(tokens[k + 3].value) && !isPunct(tokens[k + 4], '(');
+  }
+  if (!ident(p, 'from')) return false;
+  let j = k - 2;
+  while (j >= 0 && !(ident(tokens[j], 'import') || ident(tokens[j], 'export')) && !isPunct(tokens[j], ';') && k - j < 400) j--;
+  if (j < 0 || !ident(tokens[j])) return false;
+  const first = tokens[j + 1];
+  // import type X from / import type { X } from / export type { X } from;
+  // not `import type from 'x'` (a default import named type).
+  if (ident(first, 'type') && !isPunct(tokens[j + 2], ',') && !ident(tokens[j + 2], 'from')) return true;
+  if (!isPunct(first, '{')) return false;
+  let names = 0;
+  let expect = true;
+  for (let i = j + 2; i < k - 1; i++) {
+    const t = tokens[i];
+    if (isPunct(t, '}')) return names > 0 && !isPunct(tokens[i + 1], ',');
+    if (isPunct(t, ',')) { expect = true; continue; }
+    if (!expect) continue;
+    expect = false;
+    names++;
+    // `{ type X }` and `{ type X as Y }` are types; `{ type }` and
+    // `{ type as T }` import a value named type.
+    if (!(ident(t, 'type') && ident(tokens[i + 1]) && tokens[i + 1].value !== 'as')) return false;
+  }
+  return false;
+}

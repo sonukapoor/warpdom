@@ -17,11 +17,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { packageDir, packageVersion, findConfig, findVitestWorkspace } from '../compare/detect.js';
-import { analyze, tokenize, lineIndex, leadingComments, moduleSpecifiers } from './js.js';
+import { analyze, tokenize, lineIndex, leadingComments, moduleSpecifiers, typeOnlyReference } from './js.js';
 import { applyEdits, replaceLiteral, editDependencies, editCatalog, catalogEntries } from './edits.js';
-import { walk, workspaces, workspaceRootAbove, packageManager, installCommand, releaseAgeSettings, excludedBy, registryInfo, gitDirty, readText, posix, SCRIPT_EXTS } from './project.js';
+import { walk, workspaces, workspaceRootAbove, packageManager, installCommand, releaseAgeSettings, excludedBy, registryInfo, gitDirty, readText, posix, writeOutputDir, SCRIPT_EXTS } from './project.js';
 import { renderConsole, renderMarkdown } from './report.js';
-import { parseLockfile, resolvedVersion, dependencyVersion, dependents } from './lockfile.js';
+import { parseLockfile, resolvedVersion, dependencyVersion } from './lockfile.js';
+import { nodeModulesTree, chains, dependentsOutside, closure } from './transitive.js';
 import { VERSION } from '../version.js';
 
 export { renderConsole, renderMarkdown } from './report.js';
@@ -44,10 +45,51 @@ const PEERS = { 'global-jsdom': ['jsdom'], 'jsdom-global': ['jsdom'] };
 const DEP_SECTIONS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
 // Jest presets known not to choose a DOM environment.
 const NODE_PRESETS = /^(ts-jest|react-native|@shelf\/jest-mongodb|jest-dynalite)(\/|$)/;
+// Jest presets whose jest-preset sets a Node-based environment, for when
+// they are not installed (installed presets are read).
+const KNOWN_PRESET_ENVIRONMENTS = { 'jest-puppeteer': 'jest-environment-puppeteer', 'jest-playwright-preset': 'jest-playwright-preset/lib/PlaywrightEnvironment.js' };
+// Test environments that are no DOM (or extend jest-environment-node).
+const NODE_ENVIRONMENTS = /^(node|jest-environment-node|jest-environment-puppeteer|jest-playwright-preset(\/.*)?|@shelf\/jest-mongodb(\/.*)?)$/;
+// Packages jsdom (and its cssstyle) loads, by name or npm scope, that
+// projects list in Jest's transform allowlist (transformIgnorePatterns)
+// since jsdom 27 brought ESM dependencies. Kept explicit and narrow:
+// names other packages commonly need transformed too (whatwg-fetch, ws)
+// are not in it.
+export const JSDOM_DEPENDENCIES = ['jsdom', 'cssstyle', 'parse5', 'entities', 'nwsapi', 'tough-cookie', 'data-urls',
+  'whatwg-url', 'whatwg-encoding', 'whatwg-mimetype', 'webidl-conversions', 'w3c-xmlserializer', 'xml-name-validator',
+  'saxes', 'symbol-tree', 'html-encoding-sniffer', 'rrweb-cssom', 'is-potential-custom-element-name',
+  '@asamuzakjp', '@exodus', '@csstools'];
+// warpdom's first version with a CommonJS entry (Jest's module sandbox)
+// and with TypeScript declarations.
+const CJS_VERSION = '0.1.5';
+const TYPES_VERSION = '0.1.5';
 // The jsdom each jest-environment-jsdom major brings.
 const JEST_ENV_JSDOM = { 25: '15', 26: '16', 27: '16', 28: '19', 29: '20', 30: '26' };
 // What warpdom follows when no jsdom is installed (src/vitest.js, src/jest.js).
 const DEFAULT_PROFILE = { vitest: '30.1.2 (the newest it models)', jest: '26' };
+
+// Whether the cssstyle a jsdom loaded gives another profile than the one
+// warpdom assumes for that jsdom when none is given (src/window-features.js:
+// jsdom 20 cssstyle 2, 21 to 23 cssstyle 3, 24 to 26 the newest 4.x, 27
+// and 28.0 cssstyle 5.0 to 5.2, 28.1 and later the newest; 29 and later do
+// not depend on it).
+export function cssstyleChangesProfile(jsdom, cssstyle) {
+  const j = String(jsdom).split('.').map(Number);
+  const c = String(cssstyle).split('.').map(Number);
+  if (!Number.isFinite(j[0]) || !Number.isFinite(c[0])) return false;
+  const lt = (a, b) => {
+    for (let i = 0; i < 3; i++) if ((a[i] || 0) !== b[i]) return (a[i] || 0) < b[i];
+    return false;
+  };
+  if (j[0] >= 29) return false;
+  if (j[0] >= 27) {
+    const key = (v) => (v[0] === 5 ? (lt(v, [5, 3, 0]) ? '5.0' : '5') : v[0] === 6 ? (lt(v, [6, 1, 0]) ? '6.0' : '6.1') : String(v[0]));
+    return key(c) !== (j[0] === 27 || lt(j, [28, 1, 0]) ? '5.0' : '6.1');
+  }
+  if (j[0] <= 20) return c[0] !== 2;
+  if (j[0] <= 23) return c[0] !== 3;
+  return c[0] !== 4 || lt(c, [4, 6, 0]);
+}
 
 const CONFIG_NAME = /^(vite|vitest|jest)([.-][\w.-]*)?\.(c|m)?[jt]s$/;
 const TEST_FILE = /(\.|-|_)(test|spec)\.[cm]?[jt]sx?$|(^|\/)__tests__\//;
@@ -70,7 +112,7 @@ export async function migrate(options = {}) {
   const result = {
     version: 1, cwd, mode: apply ? 'apply' : 'dry-run', error: null, warnings: [], notes: [],
     packageManager: null, runners: [], monorepo: null, otherProjects: [], skippedFixtures: [],
-    edits: [], dependencies: [], catalog: [], kept: [], manual: [], mentions: [], transitive: [], profile: [],
+    edits: [], dependencies: [], catalog: [], kept: [], manual: [], mentions: [], transitive: [], profile: [], profiles: [], directUses: [],
     releaseAge: [], install: null, changedFiles: [], planFile: path.join(outDir, 'plan.md'), versions: {},
   };
   try {
@@ -94,7 +136,7 @@ export async function migrate(options = {}) {
     result.error = err.message;
   }
   try {
-    fs.mkdirSync(outDir, { recursive: true });
+    writeOutputDir(outDir);
     fs.writeFileSync(result.planFile, renderMarkdown(result));
   } catch (err) {
     result.warnings.push(`could not write ${posix(path.relative(cwd, result.planFile))}: ${err.message}`);
@@ -298,8 +340,13 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
   const edits = [];      // { file, start, end, text, kind, runner, from, to, line }
   const manual = [];     // { file, line, reason, runner }
   const uses = [];       // { file, runner, pathOnly }
-  const setupFiles = new Set();
+  const setupFiles = new Map(); // file -> Set of runners
   const optionNotes = [];
+  // environmentOptions.jsdom objects with only a url: renamed to
+  // environmentOptions.warpdom when the environment next to them changes.
+  const urlOptions = [];
+  // Jest transform allowlist entries naming jsdom's own dependencies.
+  const allowlist = [];
   // meta: the property and analysis of a config's environment literal
   // (where --keep-jsdom-version adds its option).
   const addEdit = (file, token, value, kind, runner, meta = null) => {
@@ -358,16 +405,20 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
           // Relative to the config, else to a root option of the same file.
           const roots = properties.filter((q) => (q.key === 'root' || q.key === 'rootDir') && tokens[q.valueStart]?.type === 'string').map((q) => tokens[q.valueStart].value);
           const target = resolveRelative(file, relSpec) ?? roots.map((r) => resolveRelative(file, `./${posix(path.join(r, relSpec))}`)).find(Boolean);
-          if (target) setupFiles.add(target);
+          if (target) {
+            if (!setupFiles.has(target)) setupFiles.set(target, new Set());
+            setupFiles.get(target).add(isJest ? 'jest' : 'vitest');
+          }
         }
       }
-      if (p.key === 'jsdom' || p.key === 'happyDOM' || p.key === 'happy-dom') {
-        if (p.path.includes('environmentOptions')) optionNotes.push({ file, line: lineIndex(text).lineOf(tokens[p.keyToken].start), hint: 'options for jsdom/happy-dom (environmentOptions): warpdom reads environmentOptions.warpdom ({ jsdom, cssstyle, fastFrames }) and uses http://localhost:3000 as its URL; move what still matters' });
+      if ((p.key === 'jsdom' || p.key === 'happyDOM' || p.key === 'happy-dom') && p.path[p.path.length - 2] === 'environmentOptions') {
+        environmentOptionsFor(file, text, a, p);
       }
       if (p.path.length >= 2 && p.path[p.path.length - 2] === 'testEnvironmentOptions' && !['url', 'jsdom', 'cssstyle', 'fastFrames', 'customExportConditions'].includes(p.key)) {
         optionNotes.push({ file, line: lineIndex(text).lineOf(tokens[p.keyToken].start), hint: `testEnvironmentOptions.${p.key}: a jsdom option warpdom does not read (it reads url, jsdom, cssstyle, fastFrames, customExportConditions)` });
       }
     }
+    if (isJest) transformAllowlist(file, text, a, prefix);
     // environmentMatchGlobs: [[glob, 'jsdom'], ...]
     for (const [k, site] of sites) {
       if (site.type !== 'element' || site.index !== 1) continue;
@@ -387,7 +438,7 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       if (p.key !== 'preset' || !within(p) || tokens[p.valueStart]?.type !== 'string') continue;
       if (properties.some((q) => q.frame === p.frame && ENV_KEYS[q.key])) continue;
       const t = tokens[p.valueStart];
-      sources.push({ spec: t.value, how: `preset '${t.value}'`, offset: t.start });
+      sources.push({ spec: t.value, how: `preset '${t.value}'`, offset: t.start, preset: true });
     }
     if (!envProps && !prefix.length) sources.push(...inheritedFrom(a));
     const what = isJest ? 'testEnvironment' : 'test.environment';
@@ -395,7 +446,61 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       if (source.spec.startsWith('.') || source.spec.startsWith('/')) continue;
       if (isJest && NODE_PRESETS.test(source.spec)) continue;
       if (!isJest && /^(vite|vitest)(\/|$)|^@vitejs\/|^@vitest\//.test(source.spec)) continue;
+      if (isJest && source.preset) {
+        const found = presetEnvironment(source.spec, ownerOf(file).dir);
+        const where = `${file}:${lineIndex(text).lineOf(source.offset)}`;
+        if (found && found.dom === false) {
+          result.notes.push(`${where}: preset '${source.spec}' sets ${found.env ? `testEnvironment '${found.env}'` : "no testEnvironment (Jest's default, node)"} (${found.where}), not a DOM environment: nothing to change there`);
+          continue;
+        }
+        if (found && found.dom === true) {
+          addManual(file, source.offset, `takes testEnvironment '${found.env}' from preset '${source.spec}' (${found.where}): add testEnvironment: 'warpdom' here`, 'jest');
+          continue;
+        }
+      }
       addManual(file, source.offset, `sets no ${what} itself but takes its config from ${source.spec} (${source.how}); if that chooses jsdom or happy-dom, set ${what}: 'warpdom' here`, isJest ? 'jest' : 'vitest');
+    }
+  }
+
+  // environmentOptions.jsdom / .happyDOM of a Vitest config. warpdom reads
+  // environmentOptions.warpdom ({ url, jsdom, cssstyle, fastFrames }); a
+  // jsdom object with only a url is renamed to warpdom (after the scan,
+  // when the environment beside it is changed), else the line is listed.
+  function environmentOptionsFor(file, text, a, p) {
+    const { tokens, properties } = a;
+    const line = lineIndex(text).lineOf(tokens[p.keyToken].start);
+    const options = properties.find((q) => q.key === 'environmentOptions' && q.valueStart === p.frame.open);
+    const obj = a.objects.find((o) => o.open === p.valueStart);
+    const inner = obj ? properties.filter((q) => q.frame === obj) : [];
+    const url = inner.find((q) => q.key === 'url');
+    const hasWarpdom = properties.some((q) => q.frame === p.frame && q.key === 'warpdom');
+    const urlOnly = p.key === 'jsdom' && obj && obj.close === p.valueEnd - 1 && inner.length === 1 && url && !url.shorthand
+      && url.valueEnd === url.valueStart + 1 && tokens[url.valueStart].type === 'string';
+    if (urlOnly && options && !hasWarpdom) {
+      urlOptions.push({ file, line, keyToken: tokens[p.keyToken], frame: options.frame, obj, url: tokens[url.valueStart].value });
+      return;
+    }
+    const what = p.key === 'jsdom' ? 'jsdom' : 'happy-dom';
+    const urlHint = url ? `; move url to environmentOptions.warpdom.url (warpdom's default is http://localhost:3000, as Vitest's ${what} environment's)` : '';
+    optionNotes.push({ file, line, hint: `options for ${what} (environmentOptions.${p.key}) that warpdom does not read: it reads environmentOptions.warpdom ({ url, jsdom, cssstyle, fastFrames })${urlHint}` });
+  }
+
+  // Entries of a Jest transform allowlist (the packages
+  // transformIgnorePatterns lets through, as array strings or inside a
+  // node_modules/(?!...) pattern) that name jsdom's own dependencies.
+  function transformAllowlist(file, text, a, prefix) {
+    const { tokens, sites } = a;
+    for (const [k, site] of sites) {
+      const t = tokens[k];
+      if (t.type !== 'string' || !t.value) continue;
+      const pth = site.type === 'value' ? site.prop.path : site.path ?? [];
+      if (prefix.length && !prefix.every((x, i) => pth[i] === x)) continue;
+      let names = [];
+      if (site.type === 'element' && JSDOM_DEPENDENCIES.some((n) => t.value === n || t.value.startsWith(`${n}/`))) names = [t.value];
+      else if (/node_modules/.test(t.value) && /\(\?!/.test(t.value)) {
+        names = JSDOM_DEPENDENCIES.filter((n) => new RegExp(`(?<![\\w@.-])${n.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}(?![\\w.-])`).test(t.value));
+      }
+      if (names.length) allowlist.push({ file, line: lineIndex(text).lineOf(t.start), names, pattern: site.type !== 'element' });
     }
   }
 
@@ -581,6 +686,19 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
     }
   }
 
+  // environmentOptions.jsdom = { url }: becomes environmentOptions.warpdom
+  // when the environment of the same config changes to warpdom (warpdom's
+  // Vitest environment reads environmentOptions.warpdom.url); else listed.
+  for (const u of urlOptions) {
+    const env = edits.find((e) => e.file === u.file && e.runner === 'vitest' && e.meta?.prop.frame === u.frame);
+    if (!env) {
+      optionNotes.push({ file: u.file, line: u.line, hint: `environmentOptions.jsdom.url: once this environment is warpdom, move it to environmentOptions.warpdom.url (warpdom's default is http://localhost:3000, as Vitest's jsdom environment's)` });
+      continue;
+    }
+    const t = u.keyToken;
+    edits.push({ file: u.file, start: t.start, end: t.end, text: t.type === 'string' ? `${t.quote}warpdom${t.quote}` : 'warpdom', kind: 'environmentOptions (url)', runner: 'vitest', from: 'environmentOptions.jsdom', to: 'environmentOptions.warpdom', line: u.line, renamed: u.obj });
+  }
+
   // --- the texts after the edits -------------------------------------------
   const after = new Map();
   const applyAll = () => {
@@ -619,10 +737,19 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
 
   // --- who still imports the old packages ----------------------------------
   const importers = new Map(REMOVABLE.map((n) => [n, []]));
+  // References to jsdom's types only (import type, typeof import('jsdom'),
+  // declaration files, tsconfig "types"): they never load jsdom, so they
+  // do not keep it, but they keep @types/jsdom.
+  const typeRefs = [];
   const matchesName = (value, name) => value === name || value.startsWith(`${name}/`);
   for (const f of scope) {
     const text = finalText(f.rel);
     if (text === null || !/jsdom|happy-dom/.test(text)) continue;
+    if (/^tsconfig.*\.json$/.test(f.name)) {
+      const m = /["']types["']\s*:\s*\[[^\]]*["']jsdom["']/.exec(text);
+      if (m) typeRefs.push({ file: f.rel, line: lineIndex(text).lineOf(m.index + m[0].length - 1), how: 'tsconfig "types"' });
+      continue;
+    }
     if (f.name === 'package.json') {
       let json;
       try { json = JSON.parse(text); } catch { continue; }
@@ -649,12 +776,23 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       }
       continue;
     }
-    const { tokens } = tokenize(text);
+    const { tokens, comments } = tokenize(text);
     const { lineOf } = lineIndex(text);
     const specs = moduleSpecifiers(tokens);
+    const declarations = /\.d\.[cm]?ts$/.test(f.name);
+    for (const c of comments) {
+      if (/^\/\/\/\s*<reference\s+types=["']jsdom["']/.test(c.text)) typeRefs.push({ file: f.rel, line: lineOf(c.start), how: 'reference' });
+    }
     for (const name of REMOVABLE) {
-      const hit = specs.find((s) => matchesName(s.value, name));
+      const hits = specs.filter((s) => matchesName(s.value, name));
+      // jsdom's types come from @types/jsdom, so a type-only reference
+      // does not need jsdom (happy-dom ships its own types: any reference
+      // keeps it).
+      const types = name === 'jsdom' ? hits.filter((s) => declarations || typeOnlyReference(tokens, s.token)) : [];
+      for (const s of types) typeRefs.push({ file: f.rel, line: lineOf(tokens[s.token].start), how: 'type' });
+      const hit = hits.find((s) => !types.includes(s));
       if (hit) { importers.get(name).push({ file: f.rel, line: lineOf(tokens[hit.token].start), how: 'import' }); continue; }
+      if (hits.length || declarations) continue;
       if (DOM_ENVIRONMENTS.vitest.has(name)) continue;
       const str = tokens.find((t) => (t.type === 'string' || t.type === 'template') && typeof t.value === 'string' && matchesName(t.value, name));
       if (str) importers.get(name).push({ file: f.rel, line: lineOf(str.start), how: 'string' });
@@ -740,6 +878,28 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
     }
     removals.set(relDir, list.filter((r) => !stays.includes(r)));
   }
+  // @types/jsdom goes with jsdom, unless a type reference to jsdom
+  // remains (they keep compiling against @types/jsdom without jsdom).
+  for (const pkg of pkgs.values()) {
+    const section = pkg.inScope ? declared(pkg, '@types/jsdom', ['dependencies', 'devDependencies']) : null;
+    if (!section) continue;
+    const keep = (why) => result.kept.push({ package: pkg.file, name: '@types/jsdom', section, reason: why });
+    const jsdomRemoved = removals.get(pkg.rel)?.some((r) => r.name === 'jsdom');
+    if (!jsdomRemoved && declared(pkg, 'jsdom')) {
+      if (result.kept.some((k) => k.package === pkg.file && k.name === 'jsdom')) keep('the type definitions of jsdom, which stays');
+      continue;
+    }
+    if (!jsdomRemoved && !needs.has(pkg.rel)) continue;
+    const refs = typeRefs.filter((t) => declaringFor(t.file, '@types/jsdom') === pkg);
+    if (refs.length) {
+      const where = refs.slice(0, 3).map((t) => `${t.file}:${t.line}`).join(', ');
+      keep(`type references to jsdom remain at ${where}${refs.length > 3 ? ` and ${refs.length - 3} more` : ''}: replace them with DOM lib types (e.g. DOMWindow -> Window), then remove @types/jsdom`);
+    } else if (section === 'dependencies' && pkg.json.private !== true) keep('a runtime dependency (dependencies) of a published package');
+    else {
+      if (!removals.has(pkg.rel)) removals.set(pkg.rel, []);
+      removals.get(pkg.rel).push({ name: '@types/jsdom', section, spec: pkg.json[section]['@types/jsdom'] });
+    }
+  }
   for (const [relDir, list] of removals) {
     const pkg = pkgs.get(relDir);
     for (const r of list) {
@@ -799,44 +959,61 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
     if (!m) return null;
     return m[1] === '^' ? m[2] : m[1] === '~' ? `${m[2]}.${m[3]}` : `${m[2]}.${m[3]}.${m[4]}`;
   };
-  const pins = new Map(); // pkg.rel -> { runner, version }
+  // The jsdom (and cssstyle) a runner's tests ran on before the
+  // migration: { decl (the package declaring it), version, cssstyle, source }.
+  const domProfileOf = (pkg, runner) => {
+    const name = runner === 'vitest' ? 'jsdom' : 'jest-environment-jsdom';
+    const decl = chainOf(pkg).find((p) => declared(p, name));
+    if (!decl) return null;
+    const spec = decl.json[declared(decl, name)][name];
+    const used = usedVersion(decl, name, spec);
+    if (runner === 'vitest') {
+      const jsdomDir = packageDir(decl.dir, 'jsdom');
+      const cssstyle = (jsdomDir ? packageVersion(jsdomDir, 'cssstyle') : null) ?? (used.how !== 'declared' ? dependencyVersion(lock, 'jsdom', used.version, 'cssstyle') : null);
+      return { decl, version: used.how === 'declared' ? fromSpec(used.version) : used.version, cssstyle, source: used.how === 'declared' ? `declared ${spec}` : used.how };
+    }
+    const envDir = packageDir(decl.dir, 'jest-environment-jsdom');
+    const installed = envDir ? packageVersion(envDir, 'jsdom') : null;
+    const locked = !installed && used.how !== 'declared' ? dependencyVersion(lock, 'jest-environment-jsdom', used.version, 'jsdom') : null;
+    const version = installed ?? locked ?? JEST_ENV_JSDOM[majorOf(used.version)] ?? null;
+    const jsdomDir = envDir ? packageDir(envDir, 'jsdom') : null;
+    const cssstyle = (jsdomDir ? packageVersion(jsdomDir, 'cssstyle') : null) ?? (installed || locked ? dependencyVersion(lock, 'jsdom', version, 'cssstyle') : null);
+    return { decl, version, cssstyle, source: `through jest-environment-jsdom ${used.version}${installed || locked ? '' : `, which depends on jsdom ${version}`}` };
+  };
+  const pins = new Map(); // pkg.rel -> { runner, version, cssstyle, base, option, where }
   for (const [relDir, list] of removals) {
     const pkg = pkgs.get(relDir);
     const runners = needs.get(relDir)?.runners ?? new Set();
     for (const r of list) {
-      let version = null;
       let runner = null;
-      let source = null;
-      if (r.name === 'jsdom' && (runners.has('vitest') || !runners.has('jest'))) {
-        runner = 'vitest';
-        const used = usedVersion(pkg, 'jsdom', r.spec);
-        version = used.how === 'declared' ? fromSpec(used.version) : used.version;
-        source = used.how === 'declared' ? `declared ${r.spec}` : used.how;
-      } else if (r.name === 'jest-environment-jsdom') {
-        runner = 'jest';
-        const used = usedVersion(pkg, 'jest-environment-jsdom', r.spec);
-        const envDir = packageDir(pkg.dir, 'jest-environment-jsdom');
-        version = (envDir ? packageVersion(envDir, 'jsdom') : null)
-          ?? (used.how !== 'declared' ? dependencyVersion(lock, 'jest-environment-jsdom', used.version, 'jsdom') : null)
-          ?? JEST_ENV_JSDOM[majorOf(used.version)] ?? null;
-        source = `through jest-environment-jsdom ${used.version}`;
-      } else if (r.name === 'happy-dom' || r.name === '@happy-dom/jest-environment') {
+      if (r.name === 'jsdom' && (runners.has('vitest') || !runners.has('jest'))) runner = 'vitest';
+      else if (r.name === 'jest-environment-jsdom') runner = 'jest';
+      else if (r.name === 'happy-dom' || r.name === '@happy-dom/jest-environment') {
         result.profile.push(`${pkg.file}: these tests ran on happy-dom; warpdom behaves like jsdom, so run \`npx warpdom compare --baseline happy-dom\` before applying to see what changes.`);
         continue;
       } else continue;
-      if (!version || sameAsDefault(runner, version)) continue;
-      const option = runner === 'vitest' ? `environmentOptions: { warpdom: { jsdom: '${version}' } }` : `testEnvironmentOptions: { jsdom: '${version}' }`;
-      const base = `${pkg.file}: warpdom follows the jsdom it finds installed, here jsdom ${version} (${source}); without it, it follows jsdom ${DEFAULT_PROFILE[runner]}`;
+      const before = domProfileOf(pkg, runner);
+      const version = before?.version;
+      // jsdom 28 and earlier: the cssstyle it loaded counts too.
+      const cssstyle = version && before.cssstyle && cssstyleChangesProfile(version, before.cssstyle) ? before.cssstyle : null;
+      if (!version || (sameAsDefault(runner, version) && !cssstyle)) continue;
+      const pair = cssstyle ? `jsdom: '${version}', cssstyle: '${cssstyle}'` : `jsdom: '${version}'`;
+      const option = runner === 'vitest' ? `environmentOptions: { warpdom: { ${pair} } }` : `testEnvironmentOptions: { ${pair} }`;
+      const named = `jsdom ${version}${cssstyle ? ` with cssstyle ${cssstyle}` : ''}`;
+      const base = `${pkg.file}: warpdom follows the jsdom it finds installed, here ${named} (${before.source}); without it, it follows jsdom ${DEFAULT_PROFILE[runner]}`;
       if (keepJsdomVersion) {
-        pins.set(relDir, { runner, version, base, option });
+        pins.set(relDir, { runner, version, cssstyle, named, base, option });
       } else {
-        result.profile.push(`${base}. To keep jsdom ${version}'s behavior, add ${option} to the config (--no-keep-jsdom-version left it out).`);
+        result.profile.push(`${base}. To keep ${named}'s behavior, add ${option} to the config (--no-keep-jsdom-version left it out).`);
       }
     }
   }
   if (pins.size) {
     const pinned = new Set();
-    const why = (pin, where) => `${where}: pinned jsdom ${pin.version} (${pin.runner === 'vitest' ? 'environmentOptions.warpdom.jsdom' : 'testEnvironmentOptions.jsdom'}), because warpdom follows the installed jsdom and, once it is removed, would follow jsdom ${DEFAULT_PROFILE[pin.runner]}; this keeps the tests' current behavior (${pin.base.split(': ')[0]})`;
+    const why = (pin, where) => {
+      pin.where = where;
+      return `${where}: pinned jsdom ${pin.version}${pin.cssstyle ? ` and cssstyle ${pin.cssstyle}` : ''} (${pin.runner === 'vitest' ? 'environmentOptions.warpdom.jsdom' : 'testEnvironmentOptions.jsdom'}), because warpdom follows the installed jsdom and, once it is removed, would follow jsdom ${DEFAULT_PROFILE[pin.runner]}; this keeps the tests' current behavior (${pin.base.split(': ')[0]})`;
+    };
     for (const e of [...edits]) {
       if (!e.meta || (e.kind !== 'environment' && e.kind !== 'testEnvironment')) continue;
       const pkg = targetOf(e.file, e.runner);
@@ -846,7 +1023,7 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       const json = e.file.endsWith('.json');
       const q = json ? '"' : a.tokens.find((t) => t.start === e.start)?.quote ?? "'";
       const k = (name) => (json ? `"${name}"` : name);
-      const jsdomProp = `${k('jsdom')}: ${q}${pin.version}${q}`;
+      const jsdomProp = `${k('jsdom')}: ${q}${pin.version}${q}${pin.cssstyle ? `, ${k('cssstyle')}: ${q}${pin.cssstyle}${q}` : ''}`;
       const optionKey = e.runner === 'vitest' ? 'environmentOptions' : 'testEnvironmentOptions';
       const where = `${e.file}:${e.line}`;
       const eol = text.includes('\r\n') ? '\r\n' : '\n';
@@ -858,9 +1035,12 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
         let insertText = e.runner === 'vitest' ? `${k('warpdom')}: { ${jsdomProp} }` : jsdomProp;
         if (obj && e.runner === 'vitest') {
           const w = a.properties.find((x) => x.frame === obj && x.key === 'warpdom');
+          // environmentOptions.jsdom renamed to warpdom above: the version goes in it.
+          const renamed = edits.find((x) => x.renamed && x.file === e.file && a.properties.some((y) => y.frame === obj && y.valueStart === x.renamed.open));
           if (w) { obj = a.objects.find((o) => o.open === w.valueStart); insertText = jsdomProp; }
+          else if (renamed) { obj = renamed.renamed; insertText = jsdomProp; }
         }
-        if (!obj || a.properties.some((x) => x.frame === obj && x.key === 'jsdom')) {
+        if (!obj || a.properties.some((x) => x.frame === obj && (x.key === 'jsdom' || (pin.cssstyle && x.key === 'cssstyle')))) {
           result.profile.push(`${pin.base}. ${where}: ${optionKey} is not an object literal or already names a jsdom version; check that it says ${pin.version}.`);
           pinned.add(pkg.rel);
           continue;
@@ -904,16 +1084,52 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       pinned.add(pkg.rel);
     }
     for (const [relDir, pin] of pins) {
-      if (!pinned.has(relDir)) result.profile.push(`${pin.base}. No environment literal in a config to put it next to: add ${pin.option} by hand to keep jsdom ${pin.version}'s behavior.`);
+      if (!pinned.has(relDir)) result.profile.push(`${pin.base}. No environment literal in a config to put it next to: add ${pin.option} by hand to keep ${pin.named}'s behavior.`);
     }
     applyAll();
   }
-  // @types/jsdom outlives jsdom only as type definitions.
-  for (const [relDir, list] of removals) {
-    const pkg = pkgs.get(relDir);
-    if (list.some((r) => r.name === 'jsdom') && declared(pkg, '@types/jsdom')) {
-      result.kept.push({ package: pkg.file, name: '@types/jsdom', section: declared(pkg, '@types/jsdom'), reason: 'type definitions of jsdom: it can go once no code imports jsdom types and no tsconfig "types" list names jsdom' });
+  // Per runner and package: the jsdom (and cssstyle) its tests ran on and
+  // the profile warpdom will follow after the migration.
+  const changedEnvs = new Map();
+  for (const e of edits) {
+    if (e.pin || e.renamed || !e.from || !e.runner) continue;
+    const pkg = targetOf(e.file, e.runner);
+    const key = `${pkg.rel}\0${e.runner}`;
+    if (!changedEnvs.has(key)) changedEnvs.set(key, { pkg, runner: e.runner, froms: new Set() });
+    changedEnvs.get(key).froms.add(e.from);
+  }
+  for (const { pkg, runner, froms } of changedEnvs.values()) {
+    if ([...froms].every((f) => /happy/.test(f))) {
+      const name = runner === 'vitest' ? 'happy-dom' : '@happy-dom/jest-environment';
+      const decl = chainOf(pkg).find((p) => declared(p, name));
+      const v = decl ? usedVersion(decl, name, decl.json[declared(decl, name)][name]).version : null;
+      result.profiles.push({ package: pkg.file, runner, before: `happy-dom${v ? ` ${v}` : ''}`, after: `jsdom ${DEFAULT_PROFILE[runner]} (warpdom models jsdom, not happy-dom)`, same: false });
+      continue;
     }
+    const before = domProfileOf(pkg, runner);
+    const beforeText = before?.version
+      ? `jsdom ${before.version}${before.cssstyle ? ` + cssstyle ${before.cssstyle}` : ''} (${before.source})`
+      : runner === 'jest' ? "the jsdom of Jest's own jest-environment-jsdom (not declared)" : 'a jsdom Vitest resolves itself (not declared)';
+    const pin = before ? pins.get(before.decl.rel) : null;
+    const oldName = runner === 'vitest' ? 'jsdom' : 'jest-environment-jsdom';
+    const stays = before && !removals.get(before.decl.rel)?.some((r) => r.name === oldName);
+    let after;
+    let same;
+    if (pin?.where && pin.runner === runner) {
+      after = `jsdom ${pin.version}${pin.cssstyle ? ` + cssstyle ${pin.cssstyle}` : ''}, pinned at ${pin.where}`;
+      same = true;
+    } else if (stays) {
+      after = runner === 'vitest'
+        ? `the installed jsdom${before.version ? ` (${before.version})` : ''}: it stays a dependency (see Kept), and warpdom follows it while it is installed`
+        : `the jsdom of the installed jest-environment-jsdom${before.version ? ` (${before.version})` : ''}: it stays a dependency (see Kept), and warpdom follows it while it is installed`;
+      same = true;
+    } else {
+      after = runner === 'vitest'
+        ? `jsdom ${DEFAULT_PROFILE.vitest}, its default once jsdom is removed`
+        : `jsdom 26 with the newest cssstyle 4.x it models, its default once jest-environment-jsdom is removed`;
+      same = before?.version ? sameAsDefault(runner, before.version) && !(before.cssstyle && cssstyleChangesProfile(before.version, before.cssstyle)) : null;
+    }
+    result.profiles.push({ package: pkg.file, runner, before: beforeText, after, same });
   }
   result.profile = unique(result.profile);
 
@@ -963,9 +1179,68 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
   result.otherProjects = result.otherProjects.filter((o) => o.uses.length);
   result.install = result.dependencies.length || result.catalog.length ? installCommand(pm.name) : null;
 
+  // The installed dependency graph: the lockfile, else node_modules.
+  const graph = lock.kind ? lock : fs.existsSync(path.join(pmRoot, 'node_modules')) ? nodeModulesTree(pmRoot) : null;
+  const graphName = lock.kind ? pm.lockfile : 'node_modules';
+  // Files Jest may load: its tests, its setup files and helpers under test
+  // directories of a package that uses Jest.
+  const jestRuns = (fileRel) => {
+    if (!chainOf(ownerOf(fileRel)).some((p) => declared(p, 'jest') || declared(p, 'react-scripts'))) return false;
+    if (setupFiles.has(fileRel)) return setupFiles.get(fileRel).has('jest');
+    return TEST_FILE.test(fileRel) || /(^|\/)(tests?|__tests__|__mocks__|specs?)\//.test(fileRel);
+  };
+  const jsdomRuntime = importers.get('jsdom').filter((u) => u.how === 'import' && !otherOf(u.file));
+  const runtimeFiles = unique(jsdomRuntime.map((u) => u.file));
+  const jsdomInJest = runtimeFiles.filter(jestRuns);
+
+  // Hints for particular lines (by file:line): options, allowlist entries,
+  // type references and direct uses.
+  const lineHints = new Map(optionNotes.map((o) => [`${o.file}:${o.line}`, { category: 'config', hint: o.hint }]));
+  const family = graph ? closure(graph, ['jsdom']) : null;
+  // One full explanation per allowlist (the first of its lines in a file);
+  // the other lines point to it.
+  const firstAllowLine = new Map();
+  for (const entry of allowlist) {
+    const list = entry.names.map((n) => `'${n}'`).join(', ');
+    const what = entry.names.length > 1 ? 'packages jsdom loads' : entry.names[0] === 'jsdom' ? 'jsdom itself' : 'a package jsdom loads';
+    let others = '';
+    if (family) {
+      const shared = entry.names.filter((n) => n !== 'jsdom').map((n) => [n, dependentsOutside(graph, n, family)]).filter(([, d]) => d.length);
+      others = shared.length
+        ? `; ${shared.map(([n, d]) => `${n} is also a dependency of ${d.slice(0, 3).join(', ')}${d.length > 3 ? ` and ${d.length - 3} more` : ''}`).join('; ')} in ${graphName}: keep it if your tests load that`
+        : `; in ${graphName} nothing but jsdom's own packages depends on ${entry.names.length > 1 ? 'them' : 'it'}`;
+    }
+    const first = firstAllowLine.get(entry.file);
+    let hint;
+    if (first === undefined) {
+      firstAllowLine.set(entry.file, entry.line);
+      const names = unique(allowlist.filter((x) => x.file === entry.file).flatMap((x) => x.names)).map((n) => `'${n}'`).join(', ');
+      hint = `${list} in a Jest transform allowlist (transformIgnorePatterns): ${what}. This file lists ${names} for the ESM that jsdom 27 and later bring; warpdom's Jest environment is loaded by Jest outside the transformed test code, so once nothing Jest runs imports jsdom, ${entry.pattern ? 'drop them from the pattern' : 'these entries can go'}`
+        + (jsdomInJest.length ? ` (${jsdomInJest.slice(0, 2).join(', ')} still ${jsdomInJest.length > 1 ? 'import' : 'imports'} jsdom inside Jest)` : '')
+        + (family ? others : ', unless code your tests import needs them transformed too')
+        + '. Not removed by migrate: an entry that is still needed fails every test file that loads the package';
+    } else {
+      hint = `${list}: ${what}, in the same Jest transform allowlist (see line ${first})${family ? others : ''}`;
+    }
+    lineHints.set(`${entry.file}:${entry.line}`, { category: 'config', hint });
+  }
+  for (const t of typeRefs) {
+    lineHints.set(`${t.file}:${t.line}`, { category: 'types', hint: `type reference to jsdom (${t.how === 'tsconfig "types"' ? 'tsconfig "types"' : 'it does not load jsdom'}): replace it with DOM lib types (e.g. DOMWindow -> Window, JSDOM -> Window); once none is left, @types/jsdom can go` });
+  }
+  const jestNote = (file) => (jestRuns(file) ? `; this file runs inside Jest, whose module sandbox loads warpdom through its CommonJS entry: requires warpdom >= ${CJS_VERSION}` : '');
+  for (const file of runtimeFiles) {
+    const lines = (textOf(file) ?? '').split(/\r?\n/);
+    lines.forEach((line, i) => {
+      const key = `${file}:${i + 1}`;
+      if (lineHints.has(key)) return;
+      if (/\b(require|import)\b.*['"]jsdom['"/]/.test(line)) lineHints.set(key, { category: 'import', hint: `uses jsdom directly, so jsdom stays a dependency while it does; with warpdom: import { createWindow } from 'warpdom' (see Direct uses)${jestNote(file)}` });
+      else if (/\bnew\s+(?:\w+\.)?JSDOM\s*\(/.test(line)) lineHints.set(key, { category: null, hint: "new JSDOM(html, { url }) -> const window = createWindow({ url }), then window.document.documentElement.innerHTML = html (or window.document.write(html)); use that window where this reads dom.window; to parse HTML only: new window.DOMParser().parseFromString(html, 'text/html')" });
+      else if (/\bJSDOM\.(fromURL|fromFile|fragment)\b/.test(line)) lineHints.set(key, { category: null, hint: 'JSDOM.fromURL / fromFile / fragment: no warpdom equivalent; build the document with createWindow() and set its HTML (fragment: a <template> element\'s content)' });
+    });
+  }
+
   // Mentions of jsdom / happy-dom that migrate leaves alone.
   const editedLines = new Set(edits.filter((e) => !e.pin).map((e) => `${e.file}:${e.line}`));
-  const optionHints = new Map(optionNotes.map((o) => [`${o.file}:${o.line}`, o.hint]));
   for (const f of scope) {
     if (f.size > 512 * 1024 || /^(CHANGELOG|HISTORY|CHANGES)/i.test(f.name) || ['package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lock'].includes(f.name)) continue;
     const text = textOf(f.rel);
@@ -977,16 +1252,34 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       const line = lines[i];
       if (!MENTION.test(line) || editedLines.has(`${f.rel}:${i + 1}`)) continue;
       if ((isPkg || isCatalog) && /^\s*['"]?(@happy-dom\/jest-environment|@types\/jsdom|jest-environment-jsdom|jsdom|happy-dom|global-jsdom|jsdom-global)['"]?\s*:/.test(line)) continue;
-      const option = optionHints.get(`${f.rel}:${i + 1}`);
-      const { category, hint } = option ? { category: 'config', hint: option } : classifyMention(f, line, setupFiles.has(f.rel), configs.has(f.rel));
+      const classified = classifyMention(f, line, setupFiles.has(f.rel), configs.has(f.rel));
+      const special = lineHints.get(`${f.rel}:${i + 1}`);
+      const { category, hint } = special ? { category: special.category ?? classified.category, hint: special.hint } : classified;
       result.mentions.push({ file: f.rel, line: i + 1, text: line.trim().slice(0, 160), category, hint });
     }
   }
-  for (const o of optionNotes) {
-    if (!result.mentions.some((m) => m.file === o.file && m.line === o.line)) result.mentions.push({ file: o.file, line: o.line, text: lineIndex(textOf(o.file)).lineText(o.line).trim(), category: 'config', hint: o.hint });
+  // Hinted lines that do not say jsdom ('parse5' in an allowlist).
+  for (const [key, h] of lineHints) {
+    const at = key.lastIndexOf(':');
+    const file = key.slice(0, at);
+    const line = Number(key.slice(at + 1));
+    if (!h.category || result.mentions.some((m) => m.file === file && m.line === line) || editedLines.has(key)) continue;
+    result.mentions.push({ file, line, text: lineIndex(textOf(file)).lineText(line).trim().slice(0, 160), category: h.category, hint: h.hint });
   }
   result.mentions.sort((x, y) => (MENTION_ORDER.indexOf(x.category) - MENTION_ORDER.indexOf(y.category))
     || (x.file === y.file ? x.line - y.line : x.file < y.file ? -1 : 1));
+
+  // Direct uses of jsdom: what replaces them, and what that needs.
+  if (runtimeFiles.length) {
+    result.directUses.push(`${runtimeFiles.length} file(s) use jsdom itself: ${runtimeFiles.slice(0, 6).join(', ')}${runtimeFiles.length > 6 ? ` and ${runtimeFiles.length - 6} more` : ''}; jsdom stays a dependency while they do. The warpdom equivalent: \`import { createWindow } from 'warpdom'\`; \`new JSDOM(html, { url })\` -> \`const window = createWindow({ url })\`, then \`window.document.documentElement.innerHTML = html\` (or \`window.document.write(html)\`); \`dom.window\` -> that window; parsing HTML only (\`new JSDOM(html).window.document\`) -> \`new window.DOMParser().parseFromString(html, 'text/html')\`.`);
+    if (jsdomInJest.length) result.directUses.push(`${jsdomInJest.join(', ')} ${jsdomInJest.length > 1 ? 'run' : 'runs'} inside Jest (a test, a Jest setup file or a helper under a test directory): Jest's module sandbox loads warpdom (an ES module package) through its CommonJS entry, which requires warpdom >= ${CJS_VERSION}.`);
+    const typescript = fs.existsSync(path.join(cwd, 'tsconfig.json')) || [...pkgs.values()].some((p) => p.inScope && declared(p, 'typescript'));
+    if (typescript) result.directUses.push(`TypeScript: warpdom >= ${TYPES_VERSION} ships its type declarations (createWindow and its options, the window type), so \`import { createWindow } from 'warpdom'\` type-checks under strict without a local \`declare module 'warpdom'\`.`);
+  }
+  if (typeRefs.length) {
+    const where = unique(typeRefs.map((t) => `${t.file}:${t.line}`));
+    result.directUses.push(`${where.length} type reference(s) to jsdom (${where.slice(0, 4).join(', ')}${where.length > 4 ? ` and ${where.length - 4} more` : ''}): they do not load jsdom and do not keep it; replace them with DOM lib types (DOMWindow -> Window, JSDOM -> Window), then @types/jsdom can go.`);
+  }
 
   // Where jsdom stays in the install without being a direct dependency.
   const removedNames = unique(result.dependencies.flatMap((d) => d.remove.map((r) => r.name)));
@@ -995,19 +1288,106 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       if (r.name === 'vitest') result.transitive.push('Vitest lists jsdom and happy-dom as optional peer dependencies: nothing installs them once the project does not list them.');
       if (r.name === 'jest' && majorOf(r.version) === 27) result.transitive.push("Jest 27's jest-config and jest-runner depend on jest-environment-jsdom (and so on jsdom): they stay installed, but nothing loads them once no config or comment names jsdom.");
     }
-  }
-  if (removedNames.length && lock.kind) {
-    // Parts of the removed packages themselves, and Jest 27 (said above).
-    const own = /^(vitest|jest-config|jest-runner|@jest\/environment-jsdom-abstract|@types\/jsdom)@/;
-    for (const [name, set] of dependents(lock, removedNames)) {
-      const by = [...set].filter((d) => !REMOVABLE.some((n) => d.startsWith(`${n}@`)) && !own.test(d));
-      if (by.length) result.transitive.push(`${name} stays in ${pm.lockfile} as a dependency of ${by.slice(0, 4).join(', ')}${by.length > 4 ? ` and ${by.length - 4} more` : ''}; that is fine as long as no test environment loads it.`);
+    if (!graph) {
+      const why = { pnpm: 'pnpm why jsdom', yarn: 'yarn why jsdom' }[pm.name] ?? 'npm ls jsdom';
+      result.transitive.push(`No lockfile and no node_modules: migrate cannot see which packages install jsdom or happy-dom through their own dependencies; after installing, \`${why}\` lists them.`);
+    } else {
+      const roots = [];
+      for (const pkg of pkgs.values()) {
+        if (!pkg.inScope) continue;
+        for (const section of ['dependencies', 'devDependencies', 'optionalDependencies']) {
+          for (const [name, spec] of Object.entries(pkg.json[section] ?? {})) {
+            if (REMOVABLE.includes(name) || name === 'vitest' || name.startsWith('@types/')) continue;
+            roots.push({ dir: lockRel(pkg), name, spec });
+          }
+        }
+      }
+      // What tests, setup files and test configs name, to tell whether one
+      // may load a package of a chain.
+      const testish = scope.filter((f) => SCRIPT_EXTS.has(f.ext) && (TEST_FILE.test(f.rel) || setupFiles.has(f.rel) || configs.has(f.rel) || /(^|\/)(tests?|__tests__|__mocks__)\//.test(f.rel)));
+      const namedBy = (names) => {
+        const out = [];
+        for (const f of testish) {
+          const text = finalText(f.rel);
+          if (!text || !names.some((n) => text.includes(n))) continue;
+          const { tokens } = tokenize(text);
+          const { lineOf } = lineIndex(text);
+          const t = tokens.find((x) => (x.type === 'string' || x.type === 'template') && typeof x.value === 'string'
+            && names.some((n) => matchesName(x.value, n) || x.value.includes(`node_modules/${n}/`)));
+          if (t) out.push(`${f.rel}:${lineOf(t.start)}`);
+        }
+        return out;
+      };
+      for (const c of chains(graph, roots, ['jsdom', 'happy-dom'])) {
+        // Jest 27 keeps jest-environment-jsdom (said above).
+        if (c.chain.some((x) => x.startsWith('jest-environment-jsdom@'))) continue;
+        const names = c.chain.slice(0, -1).map((x) => x.replace(/@[^@]*$/, ''));
+        const by = namedBy(unique([...names, ...c.roots]));
+        const also = c.roots.filter((r) => r !== names[0]);
+        const loads = by.length
+          ? `${by.slice(0, 3).join(', ')}${by.length > 3 ? ` and ${by.length - 3} more` : ''} ${by.length > 1 ? 'name' : 'names'} a package that brings it, so a test or a transform may load it (beside warpdom, not as the test environment)`
+          : 'no test, setup file or test config names a package that brings it, and no test environment loads it once migrated';
+        result.transitive.push(`${c.name} ${c.version} stays installed (${graphName}): ${c.chain.join(' -> ')}${also.length ? ` (also through ${also.slice(0, 3).join(', ')}${also.length > 3 ? ` and ${also.length - 3} more` : ''})` : ''}; ${loads}.`);
+      }
     }
   }
   result.transitive = unique(result.transitive);
 
   result.changedFiles = [...finalTexts.keys()].filter((f) => finalTexts.get(f) !== readText(path.resolve(cwd, f))).sort();
   return { finalTexts };
+}
+
+// The testEnvironment a Jest preset sets: { env (null: none, Jest's
+// default node), dom (true, false, or null when unknown), where }. An
+// installed preset's jest-preset.json / .js / .cjs is read as text (not
+// run); a preset that is not installed is looked up in a short list of
+// known ones; null when neither tells.
+function presetEnvironment(spec, fromDir) {
+  const pkgName = spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0];
+  const dir = packageDir(fromDir, pkgName);
+  if (dir) {
+    const sub = spec.slice(pkgName.length);
+    for (const name of ['jest-preset.json', 'jest-preset.js', 'jest-preset.cjs', 'jest-preset.mjs']) {
+      const file = path.join(dir, sub, name);
+      const text = readText(file);
+      if (text === null) continue;
+      const where = `${pkgName}${sub}/${name}`;
+      const a = analyze(text, { json: name.endsWith('.json') });
+      const p = a.properties.find((q) => q.key === 'testEnvironment');
+      const t = p ? a.tokens[p.valueStart] : null;
+      if (p && (t?.type !== 'string' || p.valueEnd !== p.valueStart + 1)) return { env: null, dom: null, where };
+      // No testEnvironment of its own: Jest's default, unless it builds on
+      // another config.
+      if (!p) return { env: null, dom: a.spreads.length || /\b(require|import)\b/.test(text) ? null : false, where };
+      return { env: t.value, dom: environmentIsDom(t.value, path.dirname(file)), where };
+    }
+  }
+  const known = KNOWN_PRESET_ENVIRONMENTS[spec];
+  return known ? { env: known, dom: false, where: `${spec}'s preset` } : null;
+}
+
+// Whether a Jest testEnvironment is a DOM: true for jsdom and happy-dom
+// (or an environment whose code or dependencies name them), false for
+// Node-based ones, null when unknown.
+function environmentIsDom(env, baseDir) {
+  if (ALL_DOM.has(env) || /jsdom|happy-dom/.test(env)) return true;
+  if (NODE_ENVIRONMENTS.test(env)) return false;
+  if (env.startsWith('.') || env.startsWith('/')) {
+    const text = readText(path.resolve(baseDir, env)) ?? readText(path.resolve(baseDir, `${env}.js`));
+    if (text === null) return null;
+    if (/jsdom|happy-dom/.test(text)) return true;
+    return /jest-environment-node|NodeEnvironment/.test(text) ? false : null;
+  }
+  const dir = packageDir(baseDir, env.startsWith('@') ? env.split('/').slice(0, 2).join('/') : env.split('/')[0]);
+  if (!dir) return null;
+  try {
+    const meta = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+    const deps = Object.keys({ ...meta.dependencies, ...meta.peerDependencies });
+    if (deps.some((d) => /jsdom|happy-dom/.test(d))) return true;
+    return deps.includes('jest-environment-node') ? false : null;
+  } catch {
+    return null;
+  }
 }
 
 // The workspace root dir belongs to (dir itself when it is not a package
@@ -1019,7 +1399,7 @@ function workspaceRootOf(dir) {
 
 
 // What a line that mentions jsdom probably is, most actionable first.
-export const MENTION_ORDER = ['setup', 'config', 'console', 'import', 'code', 'test', 'ci', 'docs'];
+export const MENTION_ORDER = ['setup', 'config', 'console', 'import', 'types', 'code', 'test', 'ci', 'docs'];
 function classifyMention(f, line, isSetup, isConfig) {
   const docs = f.ext === '.md' || f.ext === '.mdx';
   const ci = f.rel.startsWith('.github/') || f.ext === '.yml' || f.ext === '.yaml';

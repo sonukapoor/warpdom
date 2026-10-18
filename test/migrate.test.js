@@ -9,11 +9,12 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { VERSION } from '../src/version.js';
-import { analyze, tokenize, leadingComments, moduleSpecifiers } from '../src/migrate/js.js';
+import { analyze, tokenize, leadingComments, moduleSpecifiers, typeOnlyReference } from '../src/migrate/js.js';
 import { editDependencies, editCatalog, catalogEntries, applyEdits } from '../src/migrate/edits.js';
-import { yamlTopLevel, releaseAgeSettings, excludedBy, packageManager, workspaces } from '../src/migrate/project.js';
+import { yamlTopLevel, releaseAgeSettings, excludedBy, packageManager, workspaces, walk, parseGitignore, gitignoreMatcher } from '../src/migrate/project.js';
+import { chains, nodeModulesTree } from '../src/migrate/transitive.js';
 import { parseLockfile, resolvedVersion, dependencyVersion, dependents } from '../src/migrate/lockfile.js';
-import { migrate, renderConsole, renderMarkdown, ENVIRONMENT_PACKAGE_VERSION } from '../src/migrate/index.js';
+import { migrate, renderConsole, renderMarkdown, ENVIRONMENT_PACKAGE_VERSION, cssstyleChangesProfile } from '../src/migrate/index.js';
 import { parseArgs, main, HELP } from '../src/migrate/cli.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -41,6 +42,8 @@ function snapshot(dir) {
   visit(dir);
   return out;
 }
+// The output folder of migrate (.warpdom-migrate/) left out.
+const withoutOutput = (snap) => Object.fromEntries(Object.entries(snap).filter(([k]) => !k.startsWith('.warpdom-migrate/')));
 const run = (dir, options = {}) => migrate({ cwd: dir, offline: true, now: NOW, ...options });
 const withProject = async (name, fn) => {
   const dir = project(name);
@@ -189,8 +192,8 @@ test('migrate: dry run changes nothing and writes the plan', () => withProject('
   assert.ok(r.edits.length > 0 && r.changedFiles.length > 0, 'there is something to change');
   const after = snapshot(dir);
   const plan = after['.warpdom-migrate/plan.md'];
-  delete after['.warpdom-migrate/plan.md'];
-  assert.deepEqual(after, before);
+  assert.deepEqual(withoutOutput(after), before);
+  assert.match(after['.warpdom-migrate/.gitignore'], /^\*$/m, 'the output folder ignores itself');
   assert.match(plan, /Dry run: nothing was changed/);
   assert.match(plan, /npx warpdom compare/);
 }));
@@ -204,9 +207,7 @@ test('migrate: idempotent, a second --apply changes nothing', async () => {
       assert.deepEqual(r.changedFiles, [], `${name}: nothing left to change`);
       assert.deepEqual(r.edits, [], name);
       const twice = snapshot(dir);
-      delete once['.warpdom-migrate/plan.md'];
-      delete twice['.warpdom-migrate/plan.md'];
-      assert.deepEqual(twice, once, name);
+      assert.deepEqual(withoutOutput(twice), withoutOutput(once), name);
     });
   }
 });
@@ -313,9 +314,7 @@ test('migrate: a computed or inherited environment lands in manual and keeps the
   assert.match(r.manual[1].reason, /pickEnvironment\(process\.env\)/);
   assert.match(r.manual[2].reason, /`env` = 'jsdom' \(line 4\), which is also used for other things/);
   assert.deepEqual(r.kept.map((k) => k.name).sort(), ['jest-environment-jsdom', 'jsdom']);
-  const after = snapshot(dir);
-  delete after['.warpdom-migrate/plan.md'];
-  assert.deepEqual(after, before, 'nothing changed');
+  assert.deepEqual(withoutOutput(snapshot(dir)), before, 'nothing changed');
   assert.match(renderConsole(r), /Manual \(3\)/);
 }));
 
@@ -462,4 +461,277 @@ test('migrate: workspaces are read from package.json too', () => {
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// --- the first real-world run (Ant Design, warpdom issue #39) ---------------------
+
+// A file in a project directory (parents created).
+const put = (dir, rel, text) => {
+  fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+  fs.writeFileSync(path.join(dir, rel), text);
+};
+const tempProject = async (files, fn) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'warpdom-migrate-tmp-'));
+  try {
+    for (const [rel, text] of Object.entries(files)) put(dir, rel, text);
+    await fn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+};
+// node_modules/<name>/package.json with the given fields.
+const installed = (dir, rel, meta, extra = {}) => {
+  put(dir, `node_modules/${rel}/package.json`, JSON.stringify({ name: rel.replace(/^.*node_modules\//, ''), ...meta }));
+  for (const [file, text] of Object.entries(extra)) put(dir, `node_modules/${rel}/${file}`, text);
+};
+// The packages of the antd-like fixture's install that matter here.
+function antdInstall(dir) {
+  installed(dir, 'jsonml.js', { version: '0.1.0', dependencies: { jsdom: '^8.5.0' } });
+  installed(dir, 'jsonml.js/node_modules/jsdom', { version: '8.5.0' });
+  installed(dir, 'mark-twain', { version: '2.0.3', dependencies: { 'jsonml.js': '^0.1.0' } });
+  installed(dir, 'jest-environment-jsdom', { version: '30.5.2', dependencies: { jsdom: '^26.1.0' } });
+  installed(dir, 'jest-environment-jsdom/node_modules/jsdom', { version: '26.1.0', dependencies: { cssstyle: '^4.2.1' } });
+  installed(dir, 'cssstyle', { version: '4.6.0' });
+  installed(dir, 'jsdom', { version: '30.1.3', dependencies: { cssstyle: '^5.3.0', parse5: '^8.0.0' } });
+  installed(dir, 'jsdom/node_modules/cssstyle', { version: '5.3.7' });
+  installed(dir, 'parse5', { version: '8.0.0', dependencies: { entities: '^6.0.0' } });
+  installed(dir, 'entities', { version: '6.0.0' });
+  installed(dir, 'cheerio', { version: '1.0.0', dependencies: { parse5: '^8.0.0' } });
+  installed(dir, 'jest-puppeteer', { version: '11.0.0' }, { 'jest-preset.json': '{"testEnvironment": "jest-environment-puppeteer"}' });
+  // A generated, git-ignored copy of package.json (.dumi/tmp in .gitignore).
+  put(dir, '.dumi/tmp/appData.json', read(dir, 'package.json'));
+}
+
+test('migrate (#39): the Ant Design shapes, installed', () => withProject('antd-like', async (dir) => {
+  antdInstall(dir);
+  const r = await run(dir);
+  // 1. jest-puppeteer's preset sets a Node environment: no manual item, and
+  // jest-environment-jsdom goes.
+  assert.deepEqual(r.manual, []);
+  assert.match(r.notes.join('\n'), /\.jest\.image\.js:7: preset 'jest-puppeteer' sets testEnvironment 'jest-environment-puppeteer' \(jest-puppeteer\/jest-preset\.json\), not a DOM environment/);
+  assert.deepEqual(r.dependencies.map((d) => d.remove.map((x) => x.name)), [['jest-environment-jsdom']]);
+  // 2. Type-only references do not keep jsdom; @types/jsdom stays with jsdom.
+  const kept = Object.fromEntries(r.kept.map((k) => [k.name, k.reason]));
+  assert.equal(kept.jsdom, 'still used by scripts/print-changelog.ts:1, tests/shared/imageTest.tsx:1');
+  assert.equal(kept['@types/jsdom'], 'the type definitions of jsdom, which stays');
+  const types = r.mentions.filter((m) => m.category === 'types').map((m) => `${m.file}:${m.line}`);
+  assert.deepEqual(types, ['tests/setup.ts:1', 'typings/custom.d.ts:1', 'vitest.setup.ts:1']);
+  assert.match(r.mentions.find((m) => m.category === 'types').hint, /replace it with DOM lib types \(e\.g\. DOMWindow -> Window/);
+  // 3. jsdom's own dependencies in the transform allowlist, each listed;
+  // the others ('@babel', '.pnpm', '@rc-component') not.
+  const allow = r.mentions.filter((m) => m.file === '.jest.js' && /transform allowlist/.test(m.hint));
+  assert.deepEqual(allow.map((m) => m.line), [5, 8, 9, 10, 11, 12]);
+  assert.match(allow[0].hint, /'@asamuzakjp', 'parse5', 'entities', '@exodus', 'jsdom', '@csstools'.*these entries can go \(tests\/shared\/imageTest\.tsx still imports jsdom inside Jest\).*Not removed by migrate/);
+  assert.match(allow[1].hint, /parse5 is also a dependency of cheerio@1\.0\.0 in node_modules: keep it if your tests load that/);
+  assert.match(allow[2].hint, /in node_modules nothing but jsdom's own packages depends on it/);
+  assert.match(read(dir, '.jest.js'), /'parse5',\n {2}'entities',/, 'never edited');
+  // 4. The git-ignored generated file is not read.
+  assert.ok(!r.mentions.some((m) => m.file.startsWith('.dumi/')));
+  // 5. Direct uses: the warpdom equivalent, and the Jest note.
+  assert.match(r.directUses[0], /2 file\(s\) use jsdom itself: scripts\/print-changelog\.ts, tests\/shared\/imageTest\.tsx.*createWindow\(\{ url \}\).*documentElement\.innerHTML/);
+  assert.match(r.directUses[1], /^tests\/shared\/imageTest\.tsx runs inside Jest .*requires warpdom >= 0\.1\.5\.$/);
+  assert.match(r.mentions.find((m) => m.file === 'tests/shared/imageTest.tsx' && m.line === 4).hint, /^new JSDOM\(html, \{ url \}\) -> const window = createWindow\(\{ url \}\)/);
+  // 6. TypeScript: the types note.
+  assert.match(r.directUses[2], /^TypeScript: warpdom >= 0\.1\.5 ships its type declarations/);
+  assert.match(r.directUses[3], /^3 type reference\(s\) to jsdom/);
+  // 7. jsdom left in node_modules, with its chain.
+  assert.ok(r.transitive.includes('jsdom 8.5.0 stays installed (node_modules): jsonml.js@0.1.0 -> jsdom@8.5.0 (also through mark-twain); no test, setup file or test config names a package that brings it, and no test environment loads it once migrated.'), r.transitive.join('\n'));
+  // 8. Per runner: the jsdom before, the profile after.
+  assert.deepEqual(r.profiles, [
+    { package: 'package.json', runner: 'jest', before: 'jsdom 26.1.0 + cssstyle 4.6.0 (through jest-environment-jsdom 30.5.2)', after: 'jsdom 26 with the newest cssstyle 4.x it models, its default once jest-environment-jsdom is removed', same: true },
+    { package: 'package.json', runner: 'vitest', before: 'jsdom 30.1.3 + cssstyle 5.3.7 (installed)', after: 'the installed jsdom (30.1.3): it stays a dependency (see Kept), and warpdom follows it while it is installed', same: true },
+  ]);
+  // 9. environmentOptions.jsdom.url moves to environmentOptions.warpdom.url;
+  // Jest's testEnvironmentOptions.url is read by warpdom as it is.
+  assert.deepEqual(r.edits.map((e) => [e.file, e.line, e.kind]), [['.jest.js', 20, 'testEnvironment'], ['vitest.config.ts', 5, 'environment'], ['vitest.config.ts', 8, 'environmentOptions (url)']]);
+  assert.equal(r.edits[2].after, "warpdom: { url: 'http://localhost' },");
+  assert.ok(!r.mentions.some((m) => m.file === '.jest.js' && m.line === 23));
+  // 10. The output folder ignores itself.
+  assert.equal(read(dir, '.warpdom-migrate/.gitignore').split('\n').filter((l) => l && !l.startsWith('#')).join(), '*');
+  const console = renderConsole({ ...r, planFileShown: '.warpdom-migrate/plan.md' });
+  assert.match(console, /Direct uses of jsdom:\n {2}2 file\(s\)/);
+  assert.match(console, /jsdom version:\n {2}Jest \(package\.json\): the tests ran on jsdom 26\.1\.0 \+ cssstyle 4\.6\.0 .*\(the same profile\)/);
+  assert.match(console, /Plan: \.warpdom-migrate\/plan\.md \(its folder ignores itself in git/);
+  assert.match(read(dir, '.warpdom-migrate/plan.md'), /## Direct uses of jsdom/);
+  // Applied: the url is where warpdom reads it.
+  await run(dir, { apply: true });
+  assert.match(read(dir, 'vitest.config.ts'), /environment: 'warpdom',\n.*\n {4}environmentOptions: \{\n {6}warpdom: \{ url: 'http:\/\/localhost' \},/);
+}));
+
+test('migrate (#39): the Ant Design shapes, a fresh clone (nothing installed)', () => withProject('antd-like', async (dir) => {
+  const r = await run(dir);
+  assert.deepEqual(r.manual, [], "jest-puppeteer is a known Node preset when it is not installed");
+  assert.match(r.notes.join('\n'), /preset 'jest-puppeteer' sets testEnvironment 'jest-environment-puppeteer' \(jest-puppeteer's preset\)/);
+  assert.match(r.transitive.join('\n'), /No lockfile and no node_modules: .*`npm ls jsdom` lists them/);
+  assert.equal(r.profiles[0].before, 'jsdom 26 (through jest-environment-jsdom 30.5.2, which depends on jsdom 26)');
+  assert.equal(r.profiles[1].before, 'jsdom 30 (declared ^30.1.1)');
+  assert.match(r.mentions.find((m) => m.line === 5 && m.file === '.jest.js').hint, /unless code your tests import needs them transformed too/);
+}));
+
+test('migrate (#39): type-only references to jsdom, and @types/jsdom', async () => {
+  const pkg = (extra = '') => `{\n  "private": true,\n  "devDependencies": {\n    "@types/jsdom": "^21.1.7",\n    "jsdom": "30.1.2",${extra}\n    "vitest": "^4.0.0"\n  }\n}\n`;
+  const config = "export default { test: { environment: 'jsdom' } };\n";
+  // Only type references: jsdom goes; @types/jsdom stays, with the reason.
+  await tempProject({ 'package.json': pkg(), 'vitest.config.ts': config, 'src/env.ts': "import { type DOMWindow, type JSDOM } from 'jsdom';\nexport type W = DOMWindow;\n", 'types/global.d.ts': "/// <reference types=\"jsdom\" />\n" }, async (dir) => {
+    const r = await run(dir, { apply: true });
+    assert.deepEqual(r.dependencies[0].remove.map((x) => x.name), ['jsdom']);
+    assert.deepEqual(r.kept.map((k) => [k.name, k.reason]), [['@types/jsdom', 'type references to jsdom remain at src/env.ts:1, types/global.d.ts:1: replace them with DOM lib types (e.g. DOMWindow -> Window), then remove @types/jsdom']]);
+    assert.ok(readJson(dir, 'package.json').devDependencies['@types/jsdom']);
+  });
+  // No reference left: both go.
+  await tempProject({ 'package.json': pkg(), 'vitest.config.ts': config }, async (dir) => {
+    const r = await run(dir, { apply: true });
+    assert.deepEqual(r.dependencies[0].remove.map((x) => x.name), ['jsdom', '@types/jsdom']);
+    assert.deepEqual(r.kept, []);
+    assert.equal(readJson(dir, 'package.json').devDependencies['@types/jsdom'], undefined);
+  });
+  // tsconfig "types" naming jsdom is a reference too; a value import keeps jsdom.
+  await tempProject({ 'package.json': pkg(), 'vitest.config.ts': config, 'tsconfig.json': '{\n  "compilerOptions": {\n    "types": ["vitest/globals", "jsdom"]\n  }\n}\n', 'src/a.ts': "import { JSDOM, type DOMWindow } from 'jsdom';\n" }, async (dir) => {
+    const r = await run(dir);
+    assert.deepEqual(r.kept.map((k) => k.name), ['jsdom', '@types/jsdom']);
+    assert.match(r.kept[0].reason, /src\/a\.ts:1/);
+    assert.ok(r.mentions.some((m) => m.file === 'tsconfig.json' && m.category === 'types'));
+  });
+  // happy-dom ships its own types: a type import keeps it.
+  await tempProject({ 'package.json': '{\n  "private": true,\n  "devDependencies": {\n    "happy-dom": "^20.0.0",\n    "vitest": "^4.0.0"\n  }\n}\n', 'vitest.config.ts': "export default { test: { environment: 'happy-dom' } };\n", 'src/a.ts': "import type { Window } from 'happy-dom';\n" }, async (dir) => {
+    const r = await run(dir);
+    assert.deepEqual(r.kept.map((k) => k.name), ['happy-dom']);
+  });
+});
+
+test('migrate scanner (#39): type-only module references', () => {
+  const check = (src) => {
+    const { tokens } = tokenize(src);
+    return typeOnlyReference(tokens, moduleSpecifiers(tokens)[0].token);
+  };
+  for (const src of ["import type { DOMWindow } from 'jsdom';", "import type JSDOM from 'jsdom';", "import { type DOMWindow, type JSDOM as J } from 'jsdom';",
+    "export type { DOMWindow } from 'jsdom';", "type M = typeof import('jsdom');", "type W = import('jsdom').DOMWindow;"]) assert.equal(check(src), true, src);
+  for (const src of ["import { type DOMWindow, JSDOM } from 'jsdom';", "import jsdom from 'jsdom';", "import type from 'jsdom';", "import * as J from 'jsdom';",
+    "import 'jsdom';", "const { JSDOM } = require('jsdom');", "const m = await import('jsdom');", "import('jsdom').then((m) => m);", "import { type } from 'jsdom';"]) assert.equal(check(src), false, src);
+});
+
+test('migrate (#39): Jest presets are read when installed', async () => {
+  const files = (preset) => ({
+    'package.json': '{\n  "private": true,\n  "devDependencies": {\n    "jest": "^30.0.0",\n    "jest-environment-jsdom": "^30.0.0"\n  }\n}\n',
+    'jest.config.js': `module.exports = { preset: '${preset}' };\n`,
+  });
+  await tempProject(files('my-dom-preset'), async (dir) => {
+    installed(dir, 'my-dom-preset', { version: '1.0.0' }, { 'jest-preset.js': "module.exports = { testEnvironment: 'jsdom' };\n" });
+    const r = await run(dir);
+    assert.deepEqual(r.manual.map((m) => m.reason), ["takes testEnvironment 'jsdom' from preset 'my-dom-preset' (my-dom-preset/jest-preset.js): add testEnvironment: 'warpdom' here"]);
+    assert.deepEqual(r.kept.map((k) => k.name), ['jest-environment-jsdom']);
+  });
+  await tempProject(files('my-node-preset'), async (dir) => {
+    installed(dir, 'my-node-preset', { version: '1.0.0' }, { 'jest-preset.json': '{"testEnvironment": "node"}' });
+    const r = await run(dir);
+    assert.deepEqual(r.manual, []);
+    assert.deepEqual(r.edits, []);
+    assert.deepEqual(r.dependencies[0].remove.map((x) => x.name), ['jest-environment-jsdom'], 'nothing chooses it any more');
+  });
+  await tempProject(files('my-env-preset'), async (dir) => {
+    installed(dir, 'my-env-preset', { version: '1.0.0' }, { 'jest-preset.json': '{"testEnvironment": "./env.js"}', 'env.js': "module.exports = require('jest-environment-jsdom');\n" });
+    assert.match((await run(dir)).manual[0].reason, /takes testEnvironment '\.\/env\.js' from preset 'my-env-preset'/);
+  });
+  // Not installed and not known: listed, as before.
+  await tempProject(files('@acme/jest-preset'), async (dir) => {
+    assert.match((await run(dir)).manual[0].reason, /takes its config from @acme\/jest-preset \(preset '@acme\/jest-preset'\); if that chooses jsdom/);
+  });
+});
+
+test('migrate (#39): environmentOptions.jsdom.url moves to environmentOptions.warpdom.url, with a pinned version inside', async () => {
+  const pkg = '{\n  "private": true,\n  "devDependencies": {\n    "jsdom": "26.1.0",\n    "vitest": "^4.0.0"\n  }\n}\n';
+  await tempProject({ 'package.json': pkg, 'vitest.config.ts': "export default {\n  test: {\n    environment: 'jsdom',\n    environmentOptions: { jsdom: { url: 'http://localhost/app' } },\n  },\n};\n" }, async (dir) => {
+    await run(dir, { apply: true });
+    assert.equal(read(dir, 'vitest.config.ts'), "export default {\n  test: {\n    environment: 'warpdom',\n    environmentOptions: { warpdom: { jsdom: '26.1.0', url: 'http://localhost/app' } },\n  },\n};\n");
+  });
+  // Other jsdom options: listed, not moved.
+  await tempProject({ 'package.json': pkg, 'vitest.config.ts': "export default {\n  test: {\n    environment: 'jsdom',\n    environmentOptions: { jsdom: { url: 'http://x/', pretendToBeVisual: true } },\n  },\n};\n" }, async (dir) => {
+    const r = await run(dir);
+    assert.match(r.mentions.find((m) => m.line === 4).hint, /options for jsdom \(environmentOptions\.jsdom\) that warpdom does not read: .*move url to environmentOptions\.warpdom\.url/);
+    assert.ok(!r.edits.some((e) => e.kind === 'environmentOptions (url)'));
+  });
+  // A computed environment stays on jsdom for now: the url stays too.
+  await tempProject({ 'package.json': pkg, 'vitest.config.ts': "export default {\n  test: {\n    environment: process.env.DOM ?? 'node',\n    environmentOptions: { jsdom: { url: 'http://x/' } },\n  },\n};\n" }, async (dir) => {
+    const r = await run(dir);
+    assert.deepEqual(r.edits, []);
+    assert.match(r.mentions.find((m) => m.line === 4).hint, /once this environment is warpdom, move it to environmentOptions\.warpdom\.url/);
+  });
+});
+
+test('migrate (#39): ignored files are not read (git, else .gitignore)', async () => {
+  const files = {
+    'package.json': '{\n  "private": true,\n  "devDependencies": {\n    "jsdom": "30.1.2",\n    "vitest": "^4.0.0"\n  }\n}\n',
+    'vitest.config.ts': "export default { test: { environment: 'jsdom' } };\n",
+    '.gitignore': '/generated/\n*.tmp.ts\n!keep.tmp.ts\n',
+    'generated/data.json': '{ "jsdom": "^30.1.1" }\n',
+    'src/a.tmp.ts': "import { JSDOM } from 'jsdom';\n",
+    'src/keep.tmp.ts': '// jsdom\n',
+    'src/x.ts': '// jsdom\n',
+  };
+  await tempProject(files, async (dir) => {
+    assert.equal(gitignoreMatcher(dir).source, '.gitignore');
+    assert.deepEqual(walk(dir).map((f) => f.rel), ['package.json', 'src/keep.tmp.ts', 'src/x.ts', 'vitest.config.ts']);
+    const r = await run(dir);
+    assert.deepEqual(r.kept, [], 'an ignored file that imports jsdom does not keep it');
+    const git = (...a) => spawnSync('git', a, { cwd: dir, encoding: 'utf8' });
+    if (git('init', '-q').status !== 0) return;
+    put(dir, '.git/info/exclude', 'src/x.ts\n');
+    assert.deepEqual(walk(dir).map((f) => f.rel), ['package.json', 'src/keep.tmp.ts', 'vitest.config.ts'], "git's answer, .git/info/exclude included");
+    // Tracked files are read even when a pattern matches them.
+    git('add', '-f', 'src/a.tmp.ts');
+    assert.ok(walk(dir).some((f) => f.rel === 'src/a.tmp.ts'));
+    // The output folder ignores itself.
+    git('add', '-A');
+    assert.doesNotMatch(git('status', '--porcelain').stdout, /warpdom-migrate/);
+  });
+  const rules = parseGitignore('.dumi/tmp\nnode_modules/\n# comment\n**/cache\n');
+  assert.deepEqual(rules.map((x) => [x.re.test('.dumi/tmp'), x.re.test('a/.dumi/tmp'), x.dirOnly]), [[true, false, false], [false, false, true], [false, false, false]]);
+  assert.ok(rules[2].re.test('a/b/cache'));
+});
+
+test('migrate (#39): transitive jsdom with its chain, from an npm lockfile and from node_modules', () => {
+  const lock = parseLockfile(fixtures, null);
+  assert.deepEqual(chains(lock, [], ['jsdom']), []);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'warpdom-migrate-chain-'));
+  try {
+    put(dir, 'package-lock.json', JSON.stringify({ lockfileVersion: 3, packages: {
+      '': { devDependencies: { tools: '^1.0.0', 'jsonml.js': '^0.1.0' } },
+      'node_modules/tools': { version: '1.2.0', dependencies: { 'mark-twain': '^2.0.0' } },
+      'node_modules/mark-twain': { version: '2.0.3', dependencies: { 'jsonml.js': '^0.1.0' } },
+      'node_modules/jsonml.js': { version: '0.1.0', dependencies: { jsdom: '^8.5.0' } },
+      'node_modules/jsonml.js/node_modules/jsdom': { version: '8.5.0' },
+      'node_modules/jsdom': { version: '30.1.3' },
+    } }));
+    const npm = parseLockfile(dir, 'package-lock.json');
+    const roots = [{ dir: '', name: 'tools' }, { dir: '', name: 'jsonml.js' }];
+    assert.deepEqual(chains(npm, roots, ['jsdom']), [{ name: 'jsdom', version: '8.5.0', chain: ['jsonml.js@0.1.0', 'jsdom@8.5.0'], roots: ['jsonml.js', 'tools'] }]);
+    installed(dir, 'a', { version: '1.0.0', dependencies: { b: '1' } });
+    installed(dir, '@s/b', { version: '1.0.0' });
+    installed(dir, 'b', { version: '2.0.0', dependencies: { 'happy-dom': '^20.0.0' } });
+    installed(dir, 'b/node_modules/happy-dom', { version: '20.0.1' });
+    assert.deepEqual(chains(nodeModulesTree(dir), [{ dir: '', name: 'a' }], ['happy-dom']).map((c) => c.chain), [['a@1.0.0', 'b@2.0.0', 'happy-dom@20.0.1']]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('migrate (#39): the cssstyle a removed jsdom loaded is pinned when it changes the profile', async () => {
+  assert.equal(cssstyleChangesProfile('26.1.0', '4.6.0'), false);
+  assert.equal(cssstyleChangesProfile('26.1.0', '4.2.0'), true);
+  assert.equal(cssstyleChangesProfile('20.0.3', '2.3.0'), false);
+  assert.equal(cssstyleChangesProfile('27.2.0', '5.3.1'), true);
+  assert.equal(cssstyleChangesProfile('28.1.0', '6.1.0'), false);
+  assert.equal(cssstyleChangesProfile('30.1.2', '5.0.0'), false);
+  await tempProject({
+    'package.json': '{\n  "private": true,\n  "devDependencies": {\n    "jest": "^30.0.0",\n    "jest-environment-jsdom": "^30.0.0"\n  }\n}\n',
+    'jest.config.js': "module.exports = {\n  testEnvironment: 'jsdom',\n};\n",
+  }, async (dir) => {
+    installed(dir, 'jest-environment-jsdom', { version: '30.0.0' });
+    installed(dir, 'jest-environment-jsdom/node_modules/jsdom', { version: '26.1.0' });
+    installed(dir, 'cssstyle', { version: '4.2.1' });
+    const r = await run(dir, { apply: true });
+    assert.equal(read(dir, 'jest.config.js'), "module.exports = {\n  testEnvironment: 'warpdom',\n  testEnvironmentOptions: { jsdom: '26.1.0', cssstyle: '4.2.1' },\n};\n");
+    assert.match(r.profile.join('\n'), /jest\.config\.js:3: pinned jsdom 26\.1\.0 and cssstyle 4\.2\.1 \(testEnvironmentOptions\.jsdom\)/);
+    assert.deepEqual(r.profiles.map((p) => [p.before, p.after, p.same]), [['jsdom 26.1.0 + cssstyle 4.2.1 (through jest-environment-jsdom 30.0.0)', 'jsdom 26.1.0 + cssstyle 4.2.1, pinned at jest.config.js:3', true]]);
+  });
 });

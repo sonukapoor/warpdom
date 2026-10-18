@@ -13,11 +13,13 @@ function header(r) {
 }
 
 const CATEGORY = {
-  setup: 'setup files and polyfills', config: 'configs', console: 'console filters', import: 'direct uses',
+  setup: 'setup files and polyfills', config: 'configs', console: 'console filters', import: 'direct uses', types: 'type references',
   code: 'source', test: 'tests', ci: 'CI and tool configs', docs: 'docs',
 };
 
 const loc = (x) => (x.line ? `${x.file}:${x.line}` : x.file);
+// One runner's jsdom before and after the migration.
+const profileLine = (p) => `${p.runner === 'vitest' ? 'Vitest' : 'Jest'} (${p.package}): the tests ran on ${p.before}; warpdom will follow ${p.after}${p.same === true ? ' (the same profile)' : p.same === false ? ' (a different profile: see below)' : ''}`;
 const depLine = (d) => [
   ...d.remove.map((x) => `- ${x.name} ${x.spec}`),
   ...d.add.map((x) => `+ ${x.name} ${x.spec}`),
@@ -70,8 +72,13 @@ export function renderConsole(r, { mentionsLimit = 15 } = {}) {
     out.push('', 'Installed through other packages:');
     for (const t of r.transitive) out.push(`  ${t}`);
   }
-  if (r.profile.length) {
+  if (r.directUses?.length) {
+    out.push('', 'Direct uses of jsdom:');
+    for (const d of r.directUses) out.push(`  ${d}`);
+  }
+  if (r.profile.length || r.profiles?.length) {
     out.push('', 'jsdom version:');
+    for (const p of r.profiles ?? []) out.push(`  ${profileLine(p)}`);
     for (const p of r.profile) out.push(`  ${p}`);
   }
   const ages = r.releaseAge.filter((a) => a.status !== 'ok' && a.status !== 'excluded');
@@ -83,7 +90,7 @@ export function renderConsole(r, { mentionsLimit = 15 } = {}) {
   if (dry && !nothing) out.push(`  1. ${COMPARE}`, '  2. npx warpdom migrate', `  3. ${r.install ?? 'install'}, then run your tests`);
   else if (!dry && !nothing) out.push(`  ${r.install ?? 'install'}, then run your tests, and review the diff (git diff)`);
   else out.push(r.manual.length ? '  do the manual items above, then run migrate again' : '  nothing to do');
-  out.push('', `Plan: ${r.planFileShown ?? r.planFile}`);
+  out.push('', `Plan: ${r.planFileShown ?? r.planFile} (its folder ignores itself in git; delete it when done)`);
   return `${out.join('\n')}\n`;
 }
 
@@ -136,8 +143,9 @@ export function renderMarkdown(r) {
     for (const t of r.transitive) out.push(`- ${t}`);
     out.push('');
   }
-  if (r.profile.length) {
+  if (r.profile.length || r.profiles?.length) {
     out.push('### jsdom version', '');
+    for (const p of r.profiles ?? []) out.push(`- ${profileLine(p)}`);
     for (const p of r.profile) out.push(`- ${p}`);
     out.push('');
   }
@@ -156,6 +164,11 @@ export function renderMarkdown(r) {
   if (r.otherProjects.length) {
     out.push('## Other projects', '', 'These directories have their own package.json and are not workspace packages; run migrate in each.', '');
     for (const o of r.otherProjects) out.push(`- \`${o.dir}\`: ${o.uses.join(', ')}`);
+    out.push('');
+  }
+  if (r.directUses?.length) {
+    out.push('## Direct uses of jsdom', '');
+    for (const d of r.directUses) out.push(`- ${d}`);
     out.push('');
   }
   if (r.skippedFixtures.length) {
