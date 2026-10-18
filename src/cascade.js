@@ -26,20 +26,20 @@ import { parseDeclarations, computed, validationModeOf, styleSurfaceOf, isLegacy
 // --- the rule index ------------------------------------------------------------------
 
 // The [name, value] pairs a declaration contributes to the cascade. jsdom
-// 20 to 26 (cssstyle, black box) expand only some shorthands: gap,
-// overflow, border-radius and the others are declared alone, and leave
-// their longhands undeclared (overflow: hidden gives overflow-x '').
-function cascadeExpand(property, value, legacyFont, legacy) {
-  if (legacy) {
-    const name = ALIASES[property] ?? property;
-    if (SHORTHANDS[name] !== undefined && !EXPANDED_SHORTHANDS.has(name)) return [[name, value]];
-  }
+// (black box: 20 to 26 with cssstyle, 27.0 to 30.1.3) expands only some
+// shorthands: gap, overflow, border-radius, inset, outline and the others
+// are declared alone, and leave their longhands undeclared (overflow:
+// hidden gives overflow-x '' before jsdom 29.0.2, visible from it;
+// border-radius: 6px gives border-top-left-radius '' or 0).
+function cascadeExpand(property, value, legacyFont) {
+  const name = ALIASES[property] ?? property;
+  if (SHORTHANDS[name] !== undefined && !EXPANDED_SHORTHANDS.has(name)) return [[name, value]];
   return expand(property, value, legacyFont);
 }
 
-function addDeclarations(index, decls, entries, counter, legacy) {
+function addDeclarations(index, decls, entries, counter) {
   for (const [property, { value, important }] of decls) {
-    for (const [name, v] of cascadeExpand(property, value, decls.legacyFont, legacy)) {
+    for (const [name, v] of cascadeExpand(property, value, decls.legacyFont)) {
       let lists = index.get(name);
       if (!lists) index.set(name, lists = { normal: [], important: [] });
       const order = counter.n++;
@@ -63,11 +63,10 @@ function mediaApplies(rule, mode) {
 function buildIndex(sheets, mode) {
   const index = new Map();
   const counter = { n: 0 };
-  const legacy = isLegacyMode(mode);
   const addRule = (rule) => {
     let entries;
     try { entries = compileRuleSelector(rule[S].selectorText); } catch { return; }
-    addDeclarations(index, rule[S].style[S].decls, entries, counter, legacy);
+    addDeclarations(index, rule[S].style[S].decls, entries, counter);
   };
   for (const sheet of sheets) {
     const ss = sheet[S];
@@ -132,9 +131,8 @@ function inlineDeclarations(element) {
   const map = new Map();
   const mode = validationModeOf(es.doc[S].window);
   const decls = parseDeclarations(text, mode, styleSurfaceOf(es.doc[S].window));
-  const legacy = isLegacyMode(mode);
   for (const [property, { value, important }] of decls) {
-    for (const [name, v] of cascadeExpand(property, value, decls.legacyFont, legacy)) {
+    for (const [name, v] of cascadeExpand(property, value, decls.legacyFont)) {
       if (!important && map.get(name)?.important) continue;
       map.set(name, { value: v, important });
     }
@@ -238,6 +236,8 @@ const FONT_SIZES = { medium: '16px' };
 const FONT_WEIGHTS = { normal: '400', bold: '700' };
 const BORDER_WIDTHS = { thin: '1px', medium: '3px', thick: '5px' };
 const BORDER_WIDTH = /^border-(top|right|bottom|left)-width$/;
+const NO_BORDER = new Set(['none', 'hidden']);
+const RAW_KEYWORDS = new Set(['font-weight', 'font-size', 'outline-width', 'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width']);
 
 // currentcolor: the computed color; transparent when that is a var()
 // value jsdom does not substitute (jsdom 29 and later; before, the
@@ -265,6 +265,14 @@ function computeValue(element, name, value, data) {
     value = parts.join('');
   }
   if (data[3] && value === '0') return '0px';
+  const raw = RAW_KEYWORDS.has(name) ? element[S].doc[S].window[S].compat.rawComputedValues : null;
+  if (raw !== null) {
+    // jsdom 29.0.2 to 30.0.x (black box) keep these keywords (border-top-width
+    // thin, font-weight bold), and border widths whatever the border style,
+    // but 30.0 computes medium to 16px (border-top-width and outline-width
+    // too).
+    return raw === '30.0' && value.toLowerCase() === 'medium' && name !== 'font-weight' ? '16px' : value;
+  }
   if (name === 'font-size') return FONT_SIZES[value.toLowerCase()] ?? value;
   if (name === 'font-weight') return FONT_WEIGHTS[value.toLowerCase()] ?? value;
   if (BORDER_WIDTH.test(name)) {
@@ -279,6 +287,8 @@ function computeValue(element, name, value, data) {
 // in jsdom (margin-top: 0, but margin: 0 auto gives margin-top: 0px).
 function initialValue(element, name, data) {
   if (name === 'display') return DEFAULT_DISPLAY.get(element[S].tag) ?? 'inline';
+  // jsdom 29.0.2 and later (black box, to 30.1.3).
+  if (name === 'outline-color') return 'rgba(0, 0, 0, 0)';
   if (data[0] === null) return '';
   return data[0] === '0' ? '0' : computeValue(element, name, data[0], data);
 }
@@ -295,6 +305,8 @@ const CUSTOM = [null, 1, 0, 0];
 // longhands, others as declared.
 function shorthandValue(element, name) {
   if (declaredComputed(element)) {
+    // jsdom 27 to 29.0.1: border and its sides compute to ''.
+    if ((name === 'border' || BORDER_SIDE.test(name)) && element[S].doc[S].window[S].compat.jsdom >= 27) return '';
     // jsdom 20 to 26: a shorthand declared with a CSS-wide keyword or var()
     // computes to that value (gap: inherit, padding: var(--x)), and one
     // jsdom does not expand (cascadeExpand) to its declared value alone.
@@ -374,7 +386,10 @@ function borderParts(value) {
 // toHaveStyle({ background: 'rgb(255, 0, 0)' }) compares), a border side
 // width, style, computed color (1px solid rgb(255, 0, 0); canvastext
 // alone when nothing is declared). null: the accessor reads as
-// getPropertyValue (a declared CSS-wide keyword or var() too).
+// getPropertyValue (a declared CSS-wide keyword or var() too). jsdom 27
+// to 30.1.2 compose the background accessor so too (background: red gives
+// rgb(255, 0, 0)), from 29.0.2 inherit, initial and unset give the
+// computed color alone; not the border side ones.
 const BACKGROUND_PARTS = ['background-image', 'background-position', 'background-repeat', 'background-attachment'];
 // A declared background's parts as written and its expansion, by value.
 const backgroundCache = new Map();
@@ -393,9 +408,10 @@ function backgroundParts(value) {
 const LEGACY_BACKGROUND_ORDER = ['background-image', 'background-repeat', 'background-attachment', 'background-position'];
 export function legacyAccessorValue(element, name) {
   const compat = element[S].doc[S].window[S].compat;
-  if (compat.jsdom > 26) return null;
-  const composed = compat.composedAccessors;
+  if (compat.jsdom > 26 && (name !== 'background' || compat.shorthandInitials)) return null;
+  const composed = compat.composedAccessors || compat.jsdom > 26;
   const own = cascaded(element, name);
+  if (own !== undefined && !compat.legacyComputedStyle && RESOLVED_KEYWORDS.has(own)) return computedValue(element, 'background-color');
   if (own !== undefined && (!composed || CSS_WIDE.has(own) || own.includes('var('))) return null;
   if (name !== 'background') {
     const value = own ?? cascaded(element, 'border');
@@ -450,14 +466,16 @@ function legacyDefault(element, name) {
   return '';
 }
 
-// jsdom 20 to 26 (black box: 20, 21, 22, 25, and 26 with cssstyle 4.3.1
-// and 4.6 measured) compute the CSS-wide keywords to themselves, as
-// declared, by longhands and shorthands alike (padding: inherit gives
-// padding and padding-top inherit; color: inherit gives inherit), except
-// unset, which from jsdom 21 computes as if nothing were declared, but
-// to '' for display (jsdom 20 keeps it too). jsdom 27 and 28 resolve some of them (not reproduced).
-const declaredComputed = (element) => element[S].doc[S].window[S].compat.jsdom <= 26;
-const legacyUnset = (element, value) => value === 'unset' && element[S].doc[S].window[S].compat.jsdom >= 21 && declaredComputed(element);
+// jsdom before 29.0.2 (black box: 20, 21, 22, 25, and 26 with cssstyle
+// 4.3.1 and 4.6, 27.0 to 29.0.1 measured) compute the CSS-wide keywords to
+// themselves, as declared, by longhands and shorthands alike (padding:
+// inherit gives padding and padding-top inherit; color: inherit gives
+// inherit), except unset, which from jsdom 21 to 28.0 computes as if
+// nothing were declared, but to '' for display (jsdom 20 keeps it too, and
+// jsdom 28.1 to 29.0.1). From jsdom 27, display: initial and unset compute
+// to inline.
+const declaredComputed = (element) => element[S].doc[S].window[S].compat.legacyComputedStyle;
+const legacyUnset = (element, value) => value === 'unset' && element[S].doc[S].window[S].compat.unsetUndeclared;
 
 // The HTML standard's rendering section sets `direction` from the
 // directionality on elements with a dir attribute, bdi and
@@ -480,11 +498,13 @@ export function computedValue(element, property) {
   // the style attribute.
   if (name === 'display' && element[S].ns === HTML_NS && element[S].attrs.has('hidden') && !inlineDeclarations(element)?.has('display')) return 'none';
   let value = cascaded(element, name);
-  if (element[S].doc[S].window[S].compat?.legacyComputedStyle) {
-    // jsdom before 29: custom properties are not inherited either.
+  const compat = element[S].doc[S].window[S].compat;
+  if (compat.legacyComputedStyle) {
+    // jsdom before 29.0.2: custom properties are not inherited either.
     if (value === undefined) return custom ? '' : legacyDefault(element, name);
+    if (name === 'display' && compat.jsdom >= 27 && (value === 'initial' || value === 'unset')) return 'inline';
     if (legacyUnset(element, value)) return custom || name === 'display' ? '' : legacyDefault(element, name);
-    if (!custom && CSS_WIDE.has(value) && declaredComputed(element)) return value;
+    if (!custom && CSS_WIDE.has(value)) return value;
   }
   if (value === undefined && name === 'direction' && uaDirection(element)) return directionality(element);
   // As in jsdom (20 to 30, black box): a value with var() is not
@@ -493,13 +513,138 @@ export function computedValue(element, property) {
   const keyword = value === undefined ? (data[1] ? 'inherit' : 'initial') : value.toLowerCase();
   switch (keyword) {
     case 'inherit': return inheritedValue(element, name, data);
-    case 'unset': case 'revert': case 'revert-layer': return data[1] ? inheritedValue(element, name, data) : initialValue(element, name, data);
-    case 'initial': return custom ? '' : initialValue(element, name, data);
+    // jsdom 27 and later (black box, 27.0 to 30.1.3): revert and
+    // revert-layer compute to themselves, as declared.
+    case 'revert': case 'revert-layer':
+      if (BORDER_WIDTH.test(name) && element[S].doc[S].window[S].compat.rawComputedValues === null && NO_BORDER.has(computedValue(element, name.replace('-width', '-style')).toLowerCase())) return '0px';
+      return custom ? value : keyword;
+    case 'unset': if (data[1]) return inheritedValue(element, name, data);
+    // falls through: unset is initial for a property that is not inherited
+    case 'initial':
+      if (custom) return '';
+      // display: initial (or unset) is inline, not the element's default.
+      return value !== undefined && name === 'display' ? 'inline' : initialValue(element, name, data);
     default: return custom ? value : computeValue(element, name, value, data);
   }
 }
 
+// --- computed shorthands as jsdom 29.0.2 and later read them -------------------------
+
+// The value jsdom 29.0.2 and later (black box, to 30.1.3) give a
+// shorthand it does not expand (cascadeExpand) for a CSS-wide keyword
+// (inherit, initial, unset; revert is declared), from 30.1.3 when it is
+// not declared too: these, else 'see individual properties' (before 30.1.3)
+// or ''. The border ones (border-top-radius, border-image) from 29.1.1 (see
+// blankBorderShorthands).
+const SHORTHAND_INITIALS = {
+  '-webkit-line-clamp': 'none', 'box-shadow': 'none', caret: 'auto', container: 'see individual properties', 'corner-shape': 'round',
+  flex: '0 1 auto', 'font-synthesis': 'weight style small-caps position', 'font-variant': 'normal', grid: 'none', 'grid-template': 'none',
+  'grid-area': 'auto', 'grid-column': 'auto', 'grid-row': 'auto', inset: 'auto', 'inset-block': 'auto', 'inset-inline': 'auto', 'line-clamp': 'none',
+  overflow: 'visible', 'overflow-clip-margin': '0px', 'overflow-clip-margin-block': '0px', 'overflow-clip-margin-inline': '0px',
+  'overscroll-behavior': 'auto auto', 'place-content': 'normal', 'place-self': 'auto', 'scroll-margin': '0', 'scroll-margin-block': '0',
+  'scroll-margin-inline': '0', 'scroll-padding': 'auto', 'scroll-padding-block': 'auto', 'scroll-padding-inline': 'auto', 'text-align': 'start',
+  'text-wrap': 'wrap', 'vertical-align': 'baseline', 'white-space': 'normal', 'border-image': 'none', 'max-size': 'none', 'min-size': 'auto', size: 'auto',
+  // '' from 30.1.3.
+  marker: 'not defined for shorthand properties', 'mask-border': 'See individual properties', 'text-decoration-skip': 'See individual properties',
+  // Before 30.0.1.
+  'animation-delay': '0s',
+};
+for (const side of ['top', 'right', 'bottom', 'left', 'block-start', 'block-end', 'inline-start', 'inline-end']) SHORTHAND_INITIALS[`border-${side}-radius`] = '0';
+for (const corner of ['', '-top', '-right', '-bottom', '-left', '-top-left', '-top-right', '-bottom-left', '-bottom-right', '-block-start', '-block-end',
+  '-inline-start', '-inline-end', '-start-start', '-start-end', '-end-start', '-end-end']) SHORTHAND_INITIALS[`corner${corner}`] = '0';
+const LATE_BLANK = new Set(['marker', 'mask-border', 'text-decoration-skip']);
+const RESOLVED_KEYWORDS = new Set(['inherit', 'initial', 'unset']);
+
+function shorthandInitial(name, compat) {
+  const value = SHORTHAND_INITIALS[name];
+  if (compat.shorthandInitials) return value === undefined || LATE_BLANK.has(name) ? '' : value;
+  if (name === 'animation-delay' && !compat.initialAnimationDelay) return 'see individual properties';
+  return value ?? 'see individual properties';
+}
+
+// jsdom 30.1.3 computes background-position keywords to percentages
+// (center 50%, as in its background shorthand).
+const POSITION_PERCENT = { left: '0%', top: '0%', center: '50%', right: '100%', bottom: '100%' };
+function positionValue(element, late) {
+  const x = computedValue(element, 'background-position-x'), y = computedValue(element, 'background-position-y');
+  if (x === y && CSS_WIDE.has(x)) return x;
+  const xs = x.split(/\s*,\s*/), ys = y.split(/\s*,\s*/);
+  const part = (v) => (late ? POSITION_PERCENT[v.toLowerCase()] ?? v : v);
+  return xs.map((px, i) => `${part(px)} ${part(ys[i] ?? ys[ys.length - 1])}`).join(', ');
+}
+
+// jsdom 30.1.3 composes flex and background from their computed longhands,
+// declared with var() too (rgba(0, 0, 0, 0) none repeat scroll 0% 0% /
+// auto padding-box border-box; a color in the last layer only).
+const BACKGROUND_LAYER = ['background-image', 'background-repeat', 'background-attachment'];
+const BACKGROUND_BOX = ['background-size', 'background-origin', 'background-clip'];
+function composedLate(element, name) {
+  if (name === 'flex') {
+    const parts = ['flex-grow', 'flex-shrink', 'flex-basis'].map((l) => computedValue(element, l));
+    return parts.every((p) => p === parts[0]) && CSS_WIDE.has(parts[0]) ? parts[0] : parts.join(' ');
+  }
+  if (name === 'background-position') return positionValue(element, true);
+  const split = (v) => v.split(/\s*,\s*/);
+  const layers = split(computedValue(element, 'background-image'));
+  const lists = [...BACKGROUND_LAYER, ...BACKGROUND_BOX].map((l) => split(computedValue(element, l)));
+  const positions = split(positionValue(element, true));
+  const at = (list, i) => list[i] ?? list[list.length - 1];
+  const color = computedValue(element, 'background-color');
+  return layers.map((image, i) => {
+    const head = [image, at(lists[1], i), at(lists[2], i), at(positions, i)];
+    if (i === layers.length - 1) head.unshift(color);
+    return `${head.join(' ')} / ${[3, 4, 5].map((k) => at(lists[k], i)).join(' ')}`;
+  }).join(', ');
+}
+
+// getComputedStyle(element).getPropertyValue(shorthand) in jsdom 29.0.2
+// and later (black box, 29.0.2 to 30.1.3): a shorthand jsdom does not
+// expand computes to its declared value (border-radius: var(--r) stays
+// var(--r)), to its keyword value (SHORTHAND_INITIALS) for inherit,
+// initial and unset, and to '' (from 30.1.3 its keyword value) when not
+// declared; its longhands are not set. Of those jsdom expands, padding,
+// margin and the border ones compose their longhands; flex, background
+// and font are as declared (keyword values: flex 0 1 auto, background and
+// font 'see individual properties') until 30.1.3, from which flex and
+// background compose their longhands.
+const LATE_COMPOSED = new Set(['flex', 'background', 'background-position']);
+function observedShorthand(element, name) {
+  const compat = element[S].doc[S].window[S].compat;
+  if (compat.shorthandInitials && LATE_COMPOSED.has(name)) return composedLate(element, name);
+  if (name === 'background-position') {
+    return cascaded(element, 'background-position-x') === undefined && cascaded(element, 'background-position-y') === undefined ? '' : positionValue(element, false);
+  }
+  const expanded = EXPANDED_SHORTHANDS.has(name);
+  if (expanded && name !== 'flex' && name !== 'background' && name !== 'font') {
+    const value = shorthandValue(element, name);
+    // border: revert, from 30.1.3 once.
+    return compat.shorthandInitials && value === 'revert revert revert' ? 'revert' : value;
+  }
+  if (!expanded && compat.blankBorderShorthands && name.startsWith('border-')) return '';
+  const own = cascaded(element, name);
+  if (own !== undefined && !RESOLVED_KEYWORDS.has(own.toLowerCase())) return own;
+  if (own === undefined && (expanded || !compat.shorthandInitials)) return '';
+  return shorthandInitial(name, compat);
+}
+
+// getComputedStyle(element).getPropertyValue(property), as jsdom gives it.
+// computedValue is the value warpdom works with (layout reads it).
+// jsdom 27 and later: background-position from its x and y (set by
+// background too: background: red gives 0% 0%).
+function styleValue(element, property) {
+  if (LONGHANDS[property] !== undefined) return computedValue(element, property);
+  const compat = element[S].doc[S].window[S].compat;
+  if (compat.jsdom >= 27 && !property.startsWith('--')) {
+    const lower = property.toLowerCase();
+    const name = ALIASES[lower] ?? lower;
+    if (!compat.legacyComputedStyle) {
+      if (SHORTHANDS[name] !== undefined) return observedShorthand(element, name);
+    } else if (name === 'background-position') return observedShorthand(element, name);
+  }
+  return computedValue(element, property);
+}
+
 export const isDisplayNone = (element) => computedValue(element, 'display') === 'none';
 
-computed.value = computedValue;
+computed.value = styleValue;
 computed.accessor = legacyAccessorValue;

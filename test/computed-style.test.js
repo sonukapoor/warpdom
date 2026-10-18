@@ -178,10 +178,10 @@ test('getComputedStyle: disabled style sheets', () => {
   e.className = 'v';
   const cs = w.getComputedStyle(e);
   assert.equal(cs.width, '7px');
-  // Deliberate deviations: jsdom ignores flex-flow, and still applies a
-  // disabled style sheet.
+  // As in jsdom (27 to 30.1.3), flex-flow does not set its longhands; a
+  // deliberate deviation: jsdom still applies a disabled style sheet.
   e.style.flexFlow = 'column wrap';
-  assert.deepEqual([cs.flexDirection, cs.flexWrap], ['column', 'wrap']);
+  assert.deepEqual([cs.flexDirection, cs.flexWrap, cs.flexFlow], ['row', 'nowrap', 'column wrap']);
   d.styleSheets[0].disabled = true;
   assert.equal(cs.width, 'auto');
 });
