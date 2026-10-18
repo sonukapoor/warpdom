@@ -110,6 +110,12 @@ test: { environment, environmentOptions: { warpdom: { jsdom: '26.1.0' } } }
 testEnvironmentOptions: { jsdom: '26.1.0' }
 ```
 
+Interfaces and members jsdom added along the way exist from that version
+on, as measured on jsdom's releases: `crypto.randomUUID()` from 22.1.0,
+`TextEncoder` and `TextDecoder` from 27.4.0, Blob's `text()`,
+`arrayBuffer()` and `bytes()` from 28.1.0 (`window.crypto`,
+`window.performance`, `Blob` and `File` exist in every version).
+
 warpdom models jsdom 20.0.3 to 30.1.2. With a newer jsdom installed (a
 later minor or major release), tests get jsdom 30.1.2's behavior and
 warpdom prints a warning once; a weekly check
@@ -474,6 +480,12 @@ Other deliberate differences:
   reflected attributes from the current HTML standard.
 - Kept the same in every jsdom profile: `MediaList` normalization (jsdom
   30's) and writable style indexed properties (jsdom 26's).
+- `FileReader` also reads the platform's `Blob` (one from Node's `fetch` in
+  Vitest); jsdom's throws a TypeError. `TextDecoder` trims only ASCII
+  whitespace from labels, as the Encoding standard says (jsdom accepts
+  labels with other whitespace or NUL around them), and decodes Big5,
+  EUC-JP, EUC-KR, GBK, gb18030, ISO-2022-JP and Shift_JIS with the
+  platform's decoders, which differ from jsdom's for a few byte sequences.
 <!-- source: PLAN.md "Deliberate deviations from jsdom" -->
 
 Not implemented (jsdom lacks these too): layout (sizes and positions are

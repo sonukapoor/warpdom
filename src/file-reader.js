@@ -1,19 +1,212 @@
-// FileReader (File API, 7) and ProgressEvent (XMLHttpRequest standard,
-// 4.7): reads a Blob (the platform's Blob and File, which the test
-// environments expose) as an ArrayBuffer, text, a binary string or a data
-// URL. The read takes the blob's bytes in one chunk, so it fires
-// loadstart, one progress (none for an empty blob), then load (or error)
-// and loadend, each in its own task.
-import { S, state, domError } from './internal.js';
+// The File API: Blob and File (3 and 4), FileReader (7), and ProgressEvent
+// (XMLHttpRequest standard, 4.7).
+//
+// Blob and File are warpdom's own interfaces, not the platform's Blob: each
+// window has its own prototypes (x instanceof window.Blob, and members that
+// differ by jsdom version), and FormData, FileReader and new Blob([blob])
+// read a blob's bytes synchronously, which the platform's Blob does not
+// offer. A blob's bytes are an immutable Uint8Array; slices share it.
+//
+// FileReader reads a Blob as an ArrayBuffer, text, a binary string or a
+// data URL. Unlike jsdom, it also reads the platform's
+// Blobs (a fetch Response's blob() in Vitest, where fetch is Node's). The
+// read takes the blob's bytes in one chunk, so it fires loadstart, one
+// progress (none for an empty blob), then load (or error) and loadend,
+// each in its own task.
+import { S, state, domError, hiddenSlot, hooks } from './internal.js';
 import { dispatch, eventConstruct, fieldGetters } from './events.js';
 import { handlerMembers } from './event-handlers.js';
+import { decodeText, bufferBytes, realmOf, webidlString, utf8Encode, PlatformTextDecoder } from './encoding.js';
+
+// --- Blob and File ------------------------------------------------------------------------------
+
+const BLOB = Symbol('blob');
+const BLOB_SLOT = hiddenSlot().descriptor; // invisible to reflection, as S (internal.js)
+
+const NO_BYTES = new Uint8Array(0);
+
+// A blob's data ({ window, bytes, type, name, lastModified }; name and
+// lastModified for Files only), or undefined for other values. Blobs of any
+// warpdom window count.
+export function blobData(value) {
+  return value !== null && (typeof value === 'object' || typeof value === 'function') ? value[BLOB] : undefined;
+}
+
+const data = (self) => {
+  const d = blobData(self);
+  if (d === undefined) throw new TypeError('Illegal invocation');
+  return d;
+};
+
+// A new Blob or File of the window with these bytes (not copied).
+export function makeBlob(window, bytes, type) {
+  const blob = Object.create(window[S].protos.Blob);
+  blob[BLOB] = { window, bytes, type, name: undefined, lastModified: 0 };
+  return blob;
+}
+
+export function makeFile(window, bytes, name, type, lastModified) {
+  const file = Object.create(window[S].protos.File);
+  file[BLOB] = { window, bytes, type, name, lastModified };
+  return file;
+}
+
+// A blob type: lowercased, or '' if it has a character outside U+0020 to
+// U+007E.
+const blobType = (value) => {
+  const s = String(value);
+  return /[^\x20-\x7e]/.test(s) ? '' : s.toLowerCase();
+};
+
+const NATIVE_NEWLINE = globalThis.process?.platform === 'win32' ? '\r\n' : '\n';
+
+// The blob parts (a sequence of BufferSource, Blob or USVString): bytes,
+// or strings, which become bytes once the options (endings) are known.
+function convertParts(parts, iface) {
+  const method = parts === null || (typeof parts !== 'object' && typeof parts !== 'function') ? undefined : parts[Symbol.iterator];
+  if (typeof method !== 'function') throw new TypeError(`Failed to construct '${iface}': parameter 1 is not an iterable object.`);
+  const out = [];
+  // The iterator method is read once (WebIDL sequence conversion).
+  for (const part of { [Symbol.iterator]: () => method.call(parts) }) {
+    const blob = blobData(part);
+    if (blob !== undefined) { out.push(blob.bytes); continue; }
+    const view = bufferBytes(part);
+    out.push(view !== null ? view.slice() : webidlString(part, "parameter 1's element", `Failed to construct '${iface}'`));
+  }
+  return out;
+}
+
+function blobOptions(options, iface) {
+  if (options === undefined || options === null) return { endings: 'transparent', type: '' };
+  if (typeof options !== 'object' && typeof options !== 'function') throw new TypeError(`Failed to construct '${iface}': parameter ${iface === 'File' ? 3 : 2} is not an object.`);
+  const { endings: e } = options;
+  const endings = e === undefined ? 'transparent' : String(e);
+  if (endings !== 'transparent' && endings !== 'native') {
+    throw new TypeError(`Failed to construct '${iface}': parameter ${iface === 'File' ? 3 : 2} has member 'endings' that '${endings}' is not a valid enumeration value for EndingType`);
+  }
+  const { type } = options;
+  return { endings, type: type === undefined ? '' : blobType(type) };
+}
+
+// Process blob parts (File API 3.1.2): the bytes of all parts in order.
+function processParts(parts, endings) {
+  if (parts.length === 0) return NO_BYTES;
+  const chunks = parts.map((part) => {
+    if (typeof part !== 'string') return part;
+    return utf8Encode(endings === 'native' ? part.replace(/\r\n|\r|\n/g, NATIVE_NEWLINE) : part);
+  });
+  if (chunks.length === 1) return chunks[0];
+  let size = 0;
+  for (const c of chunks) size += c.length;
+  const bytes = new Uint8Array(size);
+  let at = 0;
+  for (const c of chunks) { bytes.set(c, at); at += c.length; }
+  return bytes;
+}
+
+// WebIDL [Clamp] long long (slice's start and end).
+const MAX_SAFE = Number.MAX_SAFE_INTEGER;
+function clampLongLong(value) {
+  let x = Number(value);
+  if (Number.isNaN(x)) return 0;
+  x = Math.min(Math.max(x, -MAX_SAFE), MAX_SAFE);
+  let r = Math.round(x);
+  if (Math.abs(x % 1) === 0.5 && r % 2 !== 0) r -= 1; // ties to even
+  return r + 0;
+}
+
+// WebIDL long long (File's lastModified): truncated; NaN and infinities are 0.
+function longLong(value) {
+  const x = Number(value);
+  return Number.isFinite(x) ? Math.trunc(x) + 0 : 0;
+}
+
+// Blob.text(), arrayBuffer() and bytes(): a promise of the window's realm;
+// a TypeError rejects it for another this, as WebIDL has it.
+function read(self, package_) {
+  const d = blobData(self);
+  if (d === undefined) return Promise.reject(new TypeError('Illegal invocation'));
+  const P = realmOf(d.window).Promise;
+  return P.resolve(package_(d));
+}
+
+let utf8Decoder = null;
+
+export const BLOB_INTERFACES = [
+  {
+    name: 'Blob',
+    slot: [BLOB, BLOB_SLOT],
+    construct: (window, self, [parts = undefined, options = undefined]) => {
+      const converted = parts === undefined ? [] : convertParts(parts, 'Blob');
+      const { endings, type } = blobOptions(options, 'Blob');
+      self[BLOB] = { window, bytes: processParts(converted, endings), type, name: undefined, lastModified: 0 };
+      return self;
+    },
+    members: {
+      get size() { return data(this).bytes.length; },
+      get type() { return data(this).type; },
+      slice(start = undefined, end = undefined, contentType = undefined) {
+        const d = data(this);
+        const size = d.bytes.length;
+        let from = start === undefined ? 0 : clampLongLong(start);
+        from = from < 0 ? Math.max(size + from, 0) : Math.min(from, size);
+        let to = end === undefined ? size : clampLongLong(end);
+        to = to < 0 ? Math.max(size + to, 0) : Math.min(to, size);
+        const type = contentType === undefined ? '' : blobType(contentType);
+        return makeBlob(d.window, d.bytes.subarray(from, Math.max(to, from)), type);
+      },
+      // From jsdom 28.1 (Blob's compat below).
+      text() {
+        return read(this, (d) => {
+          utf8Decoder ??= new PlatformTextDecoder();
+          return utf8Decoder.decode(d.bytes);
+        });
+      },
+      arrayBuffer() { return read(this, (d) => new (realmOf(d.window).Uint8Array)(d.bytes).buffer); },
+      bytes() { return read(this, (d) => new (realmOf(d.window).Uint8Array)(d.bytes)); },
+    },
+    // jsdom has text(), arrayBuffer() and bytes() from 28.1 (black box: 28.0
+    // has none); stream() in no version.
+    compat(proto, compat) {
+      if (!compat.blobReads) { delete proto.text; delete proto.arrayBuffer; delete proto.bytes; }
+    },
+  },
+  {
+    name: 'File',
+    parent: 'Blob',
+    length: 2,
+    construct: (window, self, args) => {
+      if (args.length < 2) throw new TypeError(`Failed to construct 'File': 2 arguments required, but only ${args.length} present.`);
+      const [parts, name, options] = args;
+      const converted = convertParts(parts, 'File');
+      const fileName = webidlString(name, 'parameter 2', "Failed to construct 'File'");
+      const { endings, type } = blobOptions(options, 'File');
+      const lastModified = options?.lastModified === undefined ? Date.now() : longLong(options.lastModified);
+      self[BLOB] = { window, bytes: processParts(converted, endings), type, name: fileName.toWellFormed?.() ?? fileName, lastModified };
+      return self;
+    },
+    members: {
+      get name() { const d = data(this); if (d.name === undefined) throw new TypeError('Illegal invocation'); return d.name; },
+      get lastModified() { const d = data(this); if (d.name === undefined) throw new TypeError('Illegal invocation'); return d.lastModified; },
+    },
+  },
+];
+
+// Used by FileReader: the blob's bytes now, or null for a value that is not
+// a warpdom Blob.
+export const blobBytes = (value) => blobData(value)?.bytes ?? null;
+
+hooks.blobs = { blobData, makeFile };
+
+// --- FileReader ---------------------------------------------------------------------------------
 
 const EMPTY = 0, LOADING = 1, DONE = 2;
 const STATES = { EMPTY, LOADING, DONE };
 
 const PROGRESS_FIELDS = { lengthComputable: false, loaded: 0, total: 0 };
 
-const isBlob = (value) => (typeof Blob !== 'undefined' && value instanceof Blob)
+const isBlob = (value) => blobBytes(value) !== null
+  || (typeof Blob !== 'undefined' && value instanceof Blob)
   || (value !== null && typeof value === 'object' && typeof value.arrayBuffer === 'function' && typeof value.size === 'number' && typeof value.type === 'string');
 
 // Only progress events carry the byte counts.
@@ -39,27 +232,11 @@ function binaryString(bytes) {
 
 const charsetOf = (type) => /;\s*charset=("?)([^";\s]+)\1/i.exec(type)?.[2];
 
-function decoderFor(label) {
-  if (label == null) return null;
-  try { return new TextDecoder(String(label)); } catch { return null; }
-}
-
-// The Encoding standard's decode: a byte order mark decides first, then
-// the given encoding, then the blob type's charset, then UTF-8.
-function decodeText(bytes, label, type) {
-  let encoding = null;
-  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) encoding = 'utf-8';
-  else if (bytes[0] === 0xfe && bytes[1] === 0xff) encoding = 'utf-16be';
-  else if (bytes[0] === 0xff && bytes[1] === 0xfe) encoding = 'utf-16le';
-  const decoder = (encoding && new TextDecoder(encoding)) ?? decoderFor(label) ?? decoderFor(charsetOf(type)) ?? new TextDecoder('utf-8');
-  return decoder.decode(bytes);
-}
-
 function packageData(buffer, kind, blob, encoding) {
   switch (kind) {
     case 'ArrayBuffer': return buffer;
     case 'BinaryString': return binaryString(new Uint8Array(buffer));
-    case 'Text': return decodeText(new Uint8Array(buffer), encoding, blob.type);
+    case 'Text': return decodeText(new Uint8Array(buffer), encoding, charsetOf(blob.type));
     default: return `data:${blob.type || 'application/octet-stream'};base64,${btoa(binaryString(new Uint8Array(buffer)))}`;
   }
 }
@@ -76,9 +253,12 @@ function readOperation(reader, blob, kind, encoding) {
   const read = {};
   s.read = read;
   queue(reader, read, () => fire(reader, 'loadstart'));
-  blob.arrayBuffer().then((buffer) => {
+  // A warpdom Blob's bytes are at hand; a platform Blob is read.
+  const bytes = blobBytes(blob);
+  const size = blob.size;
+  (bytes !== null ? Promise.resolve(bytes.slice().buffer) : blob.arrayBuffer()).then((buffer) => {
     // One chunk, when there are bytes at all.
-    if (buffer.byteLength) queue(reader, read, () => fire(reader, 'progress', { loaded: buffer.byteLength, total: blob.size }));
+    if (buffer.byteLength) queue(reader, read, () => fire(reader, 'progress', { loaded: buffer.byteLength, total: size }));
     queue(reader, read, () => {
       s.read = null;
       s.readyState = DONE;

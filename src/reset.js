@@ -14,7 +14,8 @@
 // interface objects' own properties, a kept object whose prototype was
 // replaced (Object.setPrototypeOf), properties a test made non-configurable,
 // and Node's own globals (performance, crypto, console), which are the
-// worker's, not the window's.
+// worker's, not the window's (the Vitest environment clears the marks and
+// measures on Node's performance itself).
 //
 // Made for running test files without isolation (Vitest --no-isolate):
 // files share modules but each starts with a fresh-looking DOM, which takes
@@ -45,8 +46,8 @@ function restoreOwnProperties(object, snapshot) {
 // The window's objects that stay across resets (by their internal state
 // entry, window-features.js; created on first use, except location and
 // history), and their interfaces. They start without own properties.
-const KEPT_OBJECTS = ['navigator', 'screen', 'external', 'location', 'history', 'customElements'];
-const KEPT_INTERFACES = new Set(['Navigator', 'Screen', 'External', 'BarProp', 'Location', 'History', 'CustomElementRegistry']);
+const KEPT_OBJECTS = ['navigator', 'screen', 'external', 'location', 'history', 'customElements', 'crypto', 'performance'];
+const KEPT_INTERFACES = new Set(['Navigator', 'Screen', 'External', 'BarProp', 'Location', 'History', 'CustomElementRegistry', 'Crypto', 'Performance']);
 const NO_PROPERTIES = new Map();
 
 function keptObjects(ws) {

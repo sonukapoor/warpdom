@@ -80,6 +80,8 @@ export const hooks = {
   // Windows of removed iframes so far (frames.js): while there are none,
   // dispatch does not look for targets whose document is not fully active.
   discardedWindows: 0,
+  // Blob data and File creation (file-reader.js), for FormData (forms.js).
+  blobs: null,
 };
 
 // Runs fn as one custom element reactions scope (a [CEReactions] operation
@@ -169,6 +171,23 @@ export function validAttributeLocalName(name) {
 }
 // Namespace prefixes allow "=".
 export const validNamespacePrefix = (name) => name !== '' && validAttributeLocalName(name.replace(/=/g, 'a'));
+
+// A platform global (performance, crypto, TextDecoder), read on first use
+// from the property the global object had when warpdom loaded: a test setup
+// or runner may later put a window's on the global object, and Node defines
+// some as getters that load a module when first read (performance: ~0.5 ms).
+export function platformGlobal(name) {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, name);
+  let read = false;
+  let value;
+  return () => {
+    if (!read) {
+      read = true;
+      value = descriptor === undefined ? globalThis[name] : descriptor.get ? descriptor.get.call(globalThis) : descriptor.value;
+    }
+    return value;
+  };
+}
 
 // DOMException is a web standard global (browsers, Node, Deno, edge runtimes).
 export function domError(message, name) {

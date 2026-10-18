@@ -146,6 +146,10 @@ function applyCompat(window, protos) {
   // The CSS namespace (CSS.supports, CSS.escape) arrived in jsdom 30;
   // libraries feature-detect it (handsontable validates sizes with it).
   if (jsdom < 30) delete window.CSS;
+  if (!window[S].compat.textCodec) {
+    delete window.TextEncoder;
+    delete window.TextDecoder;
+  }
   // jsdom 20's MouseEvent has none of CSSOM View's coordinates (22 has).
   // jsdom 20 has no SubmitEvent (submit events are Events).
   if (jsdom < 21) {

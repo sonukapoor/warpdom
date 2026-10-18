@@ -1,9 +1,9 @@
-// FileReader and ProgressEvent, checked against jsdom. jsdom reads its own
-// Blob; warpdom reads the platform's (what the test environments expose).
+// FileReader and ProgressEvent, checked against jsdom, each reading its
+// window's Blob and File.
 import { parity } from './parity.js';
 
-const BlobOf = (w) => w.Blob ?? Blob;
-const FileOf = (w) => w.File ?? File;
+const BlobOf = (w) => w.Blob;
+const FileOf = (w) => w.File;
 
 // Reads a blob and records the events, readyState and result.
 function read(w, method, blob, ...args) {
@@ -36,6 +36,8 @@ parity('FileReader: readAsText and encodings', async (w) => {
   return [
     await read(w, 'readAsText', new B(['héllo ✓'])),
     await read(w, 'readAsText', new B([new Uint8Array([0xe9, 0x41])]), 'latin1'),
+    await read(w, 'readAsText', new B([new Uint8Array([0x80, 0x9f, 0x41])]), 'latin1'),
+    await read(w, 'readAsText', new B([new Uint8Array([0xae, 0x41])]), 'koi8-u'),
     await read(w, 'readAsText', new B([new Uint8Array([0xe9, 0x41])], { type: 'text/plain;charset=windows-1252' })),
     await read(w, 'readAsText', new B([new Uint8Array([0xe9, 0x41])]), 'nonsense'),
     await read(w, 'readAsText', new B([new Uint8Array([0xff, 0xfe, 0x41, 0x00])])),
