@@ -501,11 +501,16 @@ show it; please report it.
 ## API
 
 ```js
-import { createWindow } from 'warpdom';
+import { createWindow } from 'warpdom';   // or const { createWindow } = require('warpdom');
 
 const window = createWindow({ url: 'http://localhost/', jsdom: '30.1.2', fastFrames: false });
 window.document.body.innerHTML = '<p>hello</p>';
 ```
+
+`require('warpdom')` works in Node and in Jest test files, and TypeScript
+types ship with the package. [docs/api.md](docs/api.md) has the options and
+the equivalents of jsdom's API (`new JSDOM(html, { url })`, `dom.window`,
+`dom.serialize()`) for tests that create windows themselves.
 
 `warpdom/compare` exports `compare(options)`, the API behind the CLI;
 `warpdom/migrate` exports `migrate({ cwd, apply })`, which returns the plan.
@@ -514,6 +519,8 @@ window.document.body.innerHTML = '<p>hello</p>';
 
 ```sh
 npm test              # unit and parity tests (node:test; parity tests run jsdom side by side)
+npm run test:types    # the published types, under tsc --strict (test/types)
+npm run build         # dist/warpdom.cjs, the CommonJS build (also run by npm test and npm pack)
 npm run bench:load    # cold load and window creation
 npm run bench:hot     # hot DOM members against jsdom and happy-dom
 node wpt/run.mjs dom/nodes --engine warpdom,jsdom   # Web Platform Tests
