@@ -3,7 +3,7 @@
 // password, host, hostname, port, pathname, search and hash, each reading
 // the element's url (the href attribute parsed against the document's
 // URL) and writing changes back to the href attribute.
-import { S, state } from './internal.js';
+import { S, state, PlatformURL as URL } from './internal.js';
 import { documentBaseURL } from './base-url.js';
 import { writeAttribute } from './attributes.js';
 

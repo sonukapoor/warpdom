@@ -8,12 +8,15 @@
 import vm from 'node:vm';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { URL as NodeURL } from 'node:url';
+import { Blob as NodeBlob } from 'node:buffer';
 import { createWindow } from './node.js';
 import { S } from './internal.js';
 import { ablated, materializeAll } from './ablate.js';
 import { setQueryCache } from './selectors.js';
 import { resetWindow, snapshotWindow } from './reset.js';
 import { HOST_TIMER_KEYS, warnNewerJsdom } from './window-features.js';
+import { blobData } from './file-reader.js';
 
 const SELF_KEYS = ['window', 'self', 'top', 'parent'];
 
@@ -51,7 +54,51 @@ export const VITEST_HOST_KEYS = ['AbortController', 'AbortSignal', ...HOST_TIMER
 // measure), TextEncoder and TextDecoder are Node's, while Crypto,
 // Performance, Blob and File are the window's.
 export const VITEST_NODE_KEYS = ['crypto', 'performance', 'TextEncoder', 'TextDecoder'];
-const VITEST_GLOBAL_HOST_KEYS = [...VITEST_HOST_KEYS, ...VITEST_NODE_KEYS];
+// In all its pools URLSearchParams and Headers are Node's, and URL is
+// Vitest's own (vitestURL below); webkitURL stays the window's.
+const VITEST_URL_KEYS = ['URL', 'URLSearchParams', 'Headers'];
+const VITEST_GLOBAL_HOST_KEYS = [...VITEST_HOST_KEYS, ...VITEST_NODE_KEYS, ...VITEST_URL_KEYS];
+const VITEST_VM_HOST_KEYS = [...VITEST_HOST_KEYS, ...VITEST_URL_KEYS];
+
+// Vitest's jsdom environment's URL (black box, Vitest 5, jsdom 20 to 30,
+// every pool): a subclass of Node's URL whose createObjectURL() takes the
+// window's Blobs and Files too (as a Node Blob of their bytes and type);
+// revokeObjectURL(), parse() and canParse() are Node's. One per window, so
+// a test's URL.createObjectURL = vi.fn() stays in its file (the per-file
+// reset puts the subclass's own properties back).
+function vitestURL() {
+  return class URL extends NodeURL {
+    static createObjectURL(object) {
+      const blob = blobData(object);
+      return super.createObjectURL(blob ? new NodeBlob([blob.bytes], { type: blob.type }) : object);
+    }
+  };
+}
+
+// Defines URL on the global; returns restore() and reset().
+function installURL(global) {
+  const original = Object.getOwnPropertyDescriptor(global, 'URL');
+  const URL = vitestURL();
+  const define = () => Object.defineProperty(global, 'URL', { value: URL, writable: true, enumerable: false, configurable: true });
+  define();
+  const statics = new Map(Reflect.ownKeys(URL).map((key) => [key, Object.getOwnPropertyDescriptor(URL, key)]));
+  const members = new Map(Reflect.ownKeys(URL.prototype).map((key) => [key, Object.getOwnPropertyDescriptor(URL.prototype, key)]));
+  const put = (object, snapshot) => {
+    for (const key of Reflect.ownKeys(object)) if (!snapshot.has(key)) Reflect.deleteProperty(object, key);
+    for (const [key, descriptor] of snapshot) Reflect.defineProperty(object, key, descriptor);
+  };
+  return {
+    restore() {
+      delete global.URL;
+      if (original) Object.defineProperty(global, 'URL', original);
+    },
+    reset() {
+      put(URL, statics);
+      put(URL.prototype, members);
+      define();
+    },
+  };
+}
 
 // The per-file reset also forgets the marks and measures made on Node's
 // performance (shared by the files of a worker), as a new worker would.
@@ -78,6 +125,12 @@ export const VITEST_ALWAYS_KEYS = ['CSS', 'matchMedia', 'createPopup', 'scrollLe
 // pools copy the window's members onto Node's global with setters, so
 // there an assignment replaces the global's value, for jsdom too.
 const UNFORGEABLE_KEYS = ['document', 'location'];
+
+// Window members every environment leaves to the global object it
+// installs the window on, as jsdom's environments do (black box): the
+// console is the environment's (Jest's, Vitest's), and WebAssembly that of
+// the global's realm.
+const GLOBAL_OWN_KEYS = ['console', 'WebAssembly'];
 const UNFORGEABLE_SELF_KEYS = ['window', 'top'];
 
 export function installWindow(global, window, { hostKeys = [], alwaysKeys = [], unforgeable = false } = {}) {
@@ -89,7 +142,7 @@ export function installWindow(global, window, { hostKeys = [], alwaysKeys = [], 
     for (const name of Object.getOwnPropertyNames(p)) if (name !== 'constructor') names.add(name);
   }
   for (const key of alwaysKeys) names.add(key);
-  const keys = [...names].filter((k) => !SELF_KEYS.includes(k) && !hostKeys.includes(k));
+  const keys = [...names].filter((k) => !SELF_KEYS.includes(k) && !hostKeys.includes(k) && !GLOBAL_OWN_KEYS.includes(k));
   const overrides = new Map(); // key -> value assigned through the global
   for (const key of keys) {
     const original = Object.getOwnPropertyDescriptor(global, key);
@@ -211,6 +264,8 @@ function createTestWindow(options) {
   // console.error does not see "Not implemented" reports).
   const setupConsole = globalThis.console;
   window[S].reportNotImplemented = (text) => setupConsole.error(text);
+  // Frames' consoles (the global's console is the test's) write there too.
+  window[S].consoleTarget = setupConsole;
   return window;
 }
 
@@ -236,7 +291,12 @@ export default {
   async setupVM(options) {
     const window = createTestWindow(options);
     const sandbox = {};
-    const restore = installWindow(sandbox, window, { hostKeys: VITEST_HOST_KEYS, alwaysKeys: VITEST_ALWAYS_KEYS, unforgeable: true });
+    const restore = installWindow(sandbox, window, { hostKeys: VITEST_VM_HOST_KEYS, alwaysKeys: VITEST_ALWAYS_KEYS, unforgeable: true });
+    installURL(sandbox);
+    // The global's console starts as the window's, as jsdom's does there;
+    // Vitest then assigns its own (black box: a non-enumerable property
+    // with every jsdom).
+    Object.defineProperty(sandbox, 'console', { value: window.console, writable: true, enumerable: false, configurable: true });
     for (const name of nodeHostGlobals()) {
       // Values, not descriptors: some are lazy getters bound to Node's global (crypto).
       if (!(name in sandbox)) Object.defineProperty(sandbox, name, { value: globalThis[name], writable: true, configurable: true });
@@ -259,6 +319,7 @@ export default {
   setup(global, options) {
     let window = createTestWindow(options);
     let restore = installWindow(global, window, { hostKeys: VITEST_GLOBAL_HOST_KEYS, alwaysKeys: VITEST_ALWAYS_KEYS });
+    const url = installURL(global);
     // Classic scripts run as global code of the realm the window is
     // installed in (scripts.js): an indirect eval.
     window[S].runScript = (source) => (0, eval)(source);
@@ -269,18 +330,21 @@ export default {
         restore();
         window = createTestWindow(options);
         restore = installWindow(global, window, { hostKeys: VITEST_GLOBAL_HOST_KEYS, alwaysKeys: VITEST_ALWAYS_KEYS });
+        url.reset();
         clearHostTimeline(global);
         window[S].runScript = (source) => (0, eval)(source);
       }
       : () => {
         restore.resetOverrides();
         resetWindow(window);
+        url.reset();
         clearHostTimeline(global);
       };
     return {
       teardown() {
         delete global[RESET];
         restore();
+        url.restore();
       },
     };
   },

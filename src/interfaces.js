@@ -40,7 +40,7 @@ import { COLLECTION_INTERFACES, liveList, staticList } from './collections.js';
 import { HTML_ELEMENTS } from './html-elements.js';
 import { EVENT_INTERFACES, createEvent, retarget } from './events.js';
 import { MUTATION_INTERFACES } from './mutation.js';
-import { FEATURE_INTERFACES, WINDOW_MEMBERS } from './window-features.js';
+import { FEATURE_INTERFACES, WINDOW_MEMBERS, URL_INTERFACES } from './window-features.js';
 import { TRAVERSAL_INTERFACES, createTreeWalker, createNodeIterator } from './traversal.js';
 import { parseFragment, parseDocument, serializeChildren, setInnerHTML, setOuterHTML, insertAdjacentHTML, templateContent } from './html.js';
 import {
@@ -419,6 +419,7 @@ export const INTERFACES = [
   ...BLOB_INTERFACES,
   ...ENCODING_INTERFACES,
   ...ABORT_INTERFACES,
+  ...URL_INTERFACES,
   STORAGE_INTERFACE,
   TIME_RANGES_INTERFACE,
   ...MUTATION_INTERFACES,

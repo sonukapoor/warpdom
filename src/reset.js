@@ -20,7 +20,7 @@
 // Made for running test files without isolation (Vitest --no-isolate):
 // files share modules but each starts with a fresh-looking DOM, which takes
 // a millisecond instead of a new window.
-import { S, insert, hooks } from './internal.js';
+import { S, insert, hooks, PlatformURL as URL } from './internal.js';
 import { clearStorage } from './storage.js';
 import { clearCookies } from './cookies.js';
 import { clearWindowTimers } from './window-features.js';
@@ -46,7 +46,7 @@ function restoreOwnProperties(object, snapshot) {
 // The window's objects that stay across resets (by their internal state
 // entry, window-features.js; created on first use, except location and
 // history), and their interfaces. They start without own properties.
-const KEPT_OBJECTS = ['navigator', 'screen', 'external', 'location', 'history', 'customElements', 'crypto', 'performance'];
+const KEPT_OBJECTS = ['navigator', 'screen', 'external', 'location', 'history', 'customElements', 'crypto', 'performance', 'console'];
 const KEPT_INTERFACES = new Set(['Navigator', 'Screen', 'External', 'BarProp', 'Location', 'History', 'CustomElementRegistry', 'Crypto', 'Performance']);
 const NO_PROPERTIES = new Map();
 

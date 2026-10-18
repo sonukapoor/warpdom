@@ -8,7 +8,7 @@
 // accepted only when it is the host itself (domain=com is rejected,
 // domain=localhost on localhost is not). HttpOnly cookies cannot be set
 // from script. Secure cookies need a secure origin: https, or localhost.
-import { S } from './internal.js';
+import { S, PlatformURL as URL } from './internal.js';
 
 // The cookie store: the top-level window's.
 function store(doc) {

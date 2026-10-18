@@ -117,9 +117,15 @@ testEnvironmentOptions: { jsdom: '26.1.0' }
 
 Interfaces and members jsdom added along the way exist from that version
 on, as measured on jsdom's releases: `crypto.randomUUID()` from 22.1.0,
-`TextEncoder` and `TextDecoder` from 27.4.0, Blob's `text()`,
-`arrayBuffer()` and `bytes()` from 28.1.0 (`window.crypto`,
-`window.performance`, `Blob` and `File` exist in every version).
+`URL.parse()`, `URL.canParse()`, `URLSearchParams.size` and the value
+argument of its `has()` and `delete()` from 23.0.0, `Headers`'
+`getSetCookie()` (separate `Set-Cookie` values) from 24.1.0, `TextEncoder`
+and `TextDecoder` from 27.4.0, Blob's `text()`, `arrayBuffer()` and
+`bytes()` from 28.1.0 (`window.crypto`, `window.performance`, `Blob`,
+`File`, `URL`, `URLSearchParams`, `Headers`, `console` and `WebAssembly`
+exist in every version). As in jsdom, the window's `URL` has no
+`createObjectURL()`; under Vitest the global `URL` is Vitest's (Node's,
+with a `createObjectURL()` that takes the window's Blobs), as with jsdom.
 
 warpdom models jsdom 20.0.3 to 30.1.2. With a newer jsdom installed (a
 later minor or major release), tests get jsdom 30.1.2's behavior and
@@ -491,6 +497,12 @@ Other deliberate differences:
   labels with other whitespace or NUL around them), and decodes Big5,
   EUC-JP, EUC-KR, GBK, gb18030, ISO-2022-JP and Shift_JIS with the
   platform's decoders, which differ from jsdom's for a few byte sequences.
+- `URL` parses with the platform's parser (Ada in Node), as `URL` does in
+  Vitest's jsdom environment: for some internationalized host names
+  (IDNA) and opaque paths with trailing spaces it differs from jsdom's
+  whatwg-url (WPT url/: warpdom 7,136 of 8,784 subtests, jsdom 6,394).
+  An iframe's `WebAssembly` is its parent's (warpdom's frames share one
+  realm).
 <!-- source: PLAN.md "Deliberate deviations from jsdom" -->
 
 Not implemented (jsdom lacks these too): layout (sizes and positions are

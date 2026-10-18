@@ -239,3 +239,36 @@ test('Jest environment: crypto, performance, Blob, File and TextEncoder are the 
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+// As jest-environment-jsdom (black box, jsdom 20.0.3 and 26.1.0 through
+// Jest 29 and 30): URL, URLSearchParams and Headers are the window's (no
+// URL.createObjectURL), console is Jest's (frames' consoles write to it),
+// and WebAssembly is the test file's realm's.
+test('Jest environment: URL, URLSearchParams, Headers, console and WebAssembly as with jsdom', async () => {
+  const rootDir = fakeJestProject();
+  try {
+    for (const [jsdom, expected] of [
+      ['20.0.3', 'undefined,undefined,undefined,false,undefined,Invalid URL: nope,true,true'],
+      ['26.1.0', 'undefined,undefined,function,true,function,Invalid URL: nope,true,true'],
+      ['30.1.3', 'undefined,undefined,function,true,function,Invalid URL: nope,true,true'],
+    ]) {
+      const logged = [];
+      const testConsole = { log: (...args) => logged.push(args.join(' ')) };
+      const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console: testConsole, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      try {
+        const run = (code) => vm.runInContext(code, env.getVmContext());
+        assert.equal(run(`[typeof URL.createObjectURL, typeof URL.revokeObjectURL, typeof URL.parse, "size" in URLSearchParams.prototype,
+          typeof Headers.prototype.getSetCookie, (() => { try { new URL("nope"); } catch (e) { return e.message; } })(),
+          URL === window.URL && URLSearchParams === window.URLSearchParams && Headers === window.Headers && webkitURL === URL,
+          new URL("http://a/?b=1").searchParams instanceof URLSearchParams].join()`), expected, jsdom);
+        assert.equal(run('WebAssembly === window.WebAssembly && Object.getPrototypeOf(Object.getPrototypeOf(new WebAssembly.Memory({ initial: 1 }))) === Object.prototype'), true);
+        run('document.body.innerHTML = "<iframe></iframe>"; document.querySelector("iframe").contentWindow.console.log("from", "frame")');
+        assert.deepEqual(logged, ['from frame']);
+      } finally {
+        await env.teardown();
+      }
+    }
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
