@@ -197,8 +197,9 @@ export const jsdomVersion = (options, root) => jsdomProfile(options, root).jsdom
 if (ablated('no-query-cache')) setQueryCache(false);
 
 function createTestWindow(options) {
-  // Vitest's jsdom environment defaults to this URL as well.
-  const window = createWindow({ url: 'http://localhost:3000', ...(ablated('latest-profile') ? {} : jsdomProfile(options)), fastFrames: options?.warpdom?.fastFrames === true });
+  // environmentOptions.warpdom.url, as environmentOptions.jsdom.url for
+  // Vitest's jsdom environment, whose default is this URL as well.
+  const window = createWindow({ url: options?.warpdom?.url ?? 'http://localhost:3000', ...(ablated('latest-profile') ? {} : jsdomProfile(options)), fastFrames: options?.warpdom?.fastFrames === true });
   if (ablated('eager-interfaces')) materializeAll(window);
   // Like Vitest's jsdom environment: an error thrown in an event listener
   // fails the test, unless the test listens for 'error' on the window.

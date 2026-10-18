@@ -1,0 +1,18 @@
+{
+  // Type tests (npm run test:types): the published types, used as a strict
+  // TypeScript project would, through the package's own exports (a package
+  // can import itself by name). Not part of npm test's node:test files.
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "es2022",
+    "lib": ["es2022"],
+    "types": [],
+    "skipLibCheck": false,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true
+  },
+  "files": ["core.ts", "core-cjs.cts", "vitest.ts", "jest.ts", "tools.ts"]
+}

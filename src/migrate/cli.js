@@ -21,7 +21,11 @@ it prints the install command for your package manager.
 
 Not changed, but listed: environments it cannot edit exactly (computed,
 inherited from another package), and lines that mention jsdom (setup files,
-polyfills, console filters). The plan is written to .warpdom-migrate/plan.md.
+polyfills, console filters, direct uses of jsdom, type references, Jest
+transform allowlist entries for jsdom's dependencies), and the jsdom each
+runner ran on before and will follow after. Files git ignores are not
+read. The plan is written to .warpdom-migrate/plan.md; that folder ignores
+itself in git (a .gitignore with *), so git add -A does not commit it.
 
 Run \`npx warpdom compare\` first: it compares your tests on jsdom and on
 warpdom and needs jsdom still installed. migrate stops when the git working

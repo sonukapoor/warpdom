@@ -21,9 +21,12 @@ export const readText = (file) => { try { return fs.readFileSync(file, 'utf8'); 
 export const posix = (p) => p.split(path.sep).join('/');
 
 // Every file of the project worth reading, relative POSIX paths, sorted:
-// { rel, abs, ext, size }. Skips dependencies, build output, symlinks and
-// large or binary files.
-export function walk(root) {
+// { rel, abs, ext, size }. Skips dependencies, build output, symlinks,
+// large or binary files, and what git ignores (generated files such as
+// .dumi/tmp/appData.json repeat the package.json and are not the
+// project's code). Declaration files (.d.ts) are read: they can refer to
+// jsdom's types.
+export function walk(root, { ignored = ignoredPaths(root) } = {}) {
   const files = [];
   const visit = (dir, rel) => {
     let entries;
@@ -33,13 +36,13 @@ export function walk(root) {
       const abs = path.join(dir, e.name);
       const r = rel ? `${rel}/${e.name}` : e.name;
       if (e.isDirectory()) {
-        if (!SKIP_DIRS.has(e.name)) visit(abs, r);
+        if (!SKIP_DIRS.has(e.name) && !ignored.has(r, true)) visit(abs, r);
         continue;
       }
       if (!e.isFile()) continue;
       const ext = path.extname(e.name).toLowerCase();
       if (!TEXT_EXTS.has(ext) && !TEXT_NAMES.has(e.name) && !e.name.startsWith('.mocharc') && e.name !== 'bunfig.toml' && e.name !== '.yarnrc.yml') continue;
-      if (/\.min\.[cm]?js$/.test(e.name) || e.name.endsWith('.d.ts')) continue;
+      if (/\.min\.[cm]?js$/.test(e.name) || ignored.has(r, false)) continue;
       let size;
       try { size = fs.statSync(abs).size; } catch { continue; }
       if (size > MAX_SIZE && !LOCKFILES.has(e.name)) continue;
@@ -48,6 +51,100 @@ export function walk(root) {
   };
   visit(root, '');
   return files.sort((a, b) => (a.rel < b.rel ? -1 : 1));
+}
+
+// What git ignores under root: { has(rel, isDir), source }. In a git
+// repository, git's own answer (`git ls-files --others --ignored
+// --exclude-standard --directory`: every .gitignore, .git/info/exclude
+// and the global excludes file; tracked files are never ignored).
+// Outside one, the .gitignore files of root and its directories, read
+// with the common pattern rules (*, **, ?, a leading or trailing /, !).
+export function ignoredPaths(root) {
+  const res = spawnSync('git', ['ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z'], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  if (res.status === 0 && !res.error) {
+    const files = new Set();
+    const dirs = new Set();
+    for (const entry of res.stdout.split('\0')) {
+      if (!entry) continue;
+      if (entry.endsWith('/')) dirs.add(entry.slice(0, -1));
+      else files.add(entry);
+    }
+    return { source: 'git', has: (rel, isDir) => (isDir ? dirs.has(rel) : files.has(rel)) };
+  }
+  return gitignoreMatcher(root);
+}
+
+// .gitignore files without git: each file's patterns apply below its
+// directory; later patterns win, ! re-includes.
+export function gitignoreMatcher(root) {
+  const rulesByDir = new Map(); // dir rel ('' root) -> [{ re, negate, dirOnly }]
+  const rulesOf = (dirRel) => {
+    if (!rulesByDir.has(dirRel)) {
+      const text = readText(path.join(root, dirRel, '.gitignore'));
+      rulesByDir.set(dirRel, text === null ? [] : parseGitignore(text));
+    }
+    return rulesByDir.get(dirRel);
+  };
+  const matchIn = (dirRel, rel, isDir) => {
+    const sub = dirRel ? rel.slice(dirRel.length + 1) : rel;
+    let state = null;
+    for (const rule of rulesOf(dirRel)) {
+      if (rule.dirOnly && !isDir) continue;
+      if (rule.re.test(sub)) state = !rule.negate;
+    }
+    return state;
+  };
+  const has = (rel, isDir) => {
+    // A path is ignored when it or one of its parent directories is (git
+    // does not look inside an ignored directory).
+    const parts = rel.split('/');
+    for (let i = 1; i <= parts.length; i++) {
+      const prefix = parts.slice(0, i).join('/');
+      const prefixIsDir = i < parts.length || isDir;
+      let state = null;
+      for (let j = 0; j < i; j++) {
+        const dirRel = parts.slice(0, j).join('/');
+        const m = matchIn(dirRel, prefix, prefixIsDir);
+        if (m !== null) state = m;
+      }
+      if (state) return true;
+    }
+    return false;
+  };
+  return { source: '.gitignore', has };
+}
+
+export function parseGitignore(text) {
+  const rules = [];
+  for (const raw of text.split(/\r?\n/)) {
+    let line = raw.replace(/(?<!\\)\s+$/, '');
+    if (!line || line.startsWith('#')) continue;
+    let negate = false;
+    if (line.startsWith('!')) { negate = true; line = line.slice(1); }
+    line = line.replace(/^\\([#!])/, '$1');
+    const dirOnly = line.endsWith('/');
+    if (dirOnly) line = line.slice(0, -1);
+    // A slash at the start or in the middle anchors the pattern to the
+    // .gitignore's directory; otherwise it matches a name at any depth.
+    const anchored = line.includes('/');
+    if (line.startsWith('/')) line = line.slice(1);
+    let re = '';
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '*' && line[i + 1] === '*') {
+        if (line[i + 2] === '/') { re += '(?:.*/)?'; i += 2; } else { re += '.*'; i++; }
+      } else if (c === '*') re += '[^/]*';
+      else if (c === '?') re += '[^/]';
+      else if (c === '\\' && i + 1 < line.length) re += line[++i].replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+      else if (c === '[') {
+        const close = line.indexOf(']', i + 1);
+        if (close < 0) re += '\\[';
+        else { re += `[${line.slice(i + 1, close).replace(/^!/, '^')}]`; i = close; }
+      } else re += c.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+    }
+    rules.push({ re: new RegExp(anchored ? `^${re}$` : `(?:^|/)${re}$`), negate, dirOnly });
+  }
+  return rules;
 }
 
 // pnpm-workspace.yaml: the strings of a top-level list (packages:,
@@ -234,4 +331,13 @@ export function gitDirty(dir) {
   const res = spawnSync('git', ['status', '--porcelain'], { cwd: dir, encoding: 'utf8' });
   if (res.status !== 0) return null;
   return res.stdout.split('\n').filter((l) => l.trim() && !/\.warpdom-(migrate|compare)\//.test(l));
+}
+
+// The output folder (.warpdom-migrate/) ignores itself: a .gitignore
+// inside it that names everything, so `git add -A` never commits the plan
+// and the project's own .gitignore is left alone.
+export function writeOutputDir(dir) {
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, '.gitignore');
+  if (!fs.existsSync(file)) fs.writeFileSync(file, '# Written by warpdom migrate: this folder holds its plan and is not committed.\n*\n');
 }

@@ -11,7 +11,7 @@
 // The legacy multi-byte encodings (Big5, EUC-JP, EUC-KR, GBK, gb18030,
 // ISO-2022-JP, Shift_JIS) are the platform's; jsdom's differ from it for
 // a few code points (Big5's combining pairs).
-import { S, state, asciiLowercase, tooFewArguments } from './internal.js';
+import { S, state, asciiLowercase, tooFewArguments, PLATFORM_GLOBAL } from './internal.js';
 
 // --- bytes and strings (also for Blob and Crypto) ------------------------------------------------
 // WebIDL's buffer source checks, which work for arrays and buffers of any
@@ -70,14 +70,17 @@ export function realmBytes(window, bytes) {
 
 // The platform's TextEncoder and TextDecoder, taken when warpdom loads: a
 // test setup (or a runner) may later put a window's on the global object.
-const PlatformTextEncoder = globalThis.TextEncoder;
-export const PlatformTextDecoder = globalThis.TextDecoder;
+const PlatformTextEncoder = PLATFORM_GLOBAL.TextEncoder;
+export const PlatformTextDecoder = PLATFORM_GLOBAL.TextDecoder;
 let platformEncoder = null;
 
-// UTF-8 encode (lone surrogates become U+FFFD), as a Uint8Array of this realm.
+// UTF-8 encode (lone surrogates become U+FFFD), as a Uint8Array of this realm
+// (copied when the platform's is another: the CommonJS build in a Jest test
+// file, see PLATFORM_GLOBAL).
 export function utf8Encode(string) {
   platformEncoder ??= new PlatformTextEncoder();
-  return platformEncoder.encode(string);
+  const bytes = platformEncoder.encode(string);
+  return bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
 }
 
 // label -> encoding name, built on first use.

@@ -29,44 +29,94 @@
     "vitest-environment",
     "jest-environment"
   ],
-  "main": "./src/node.js",
+  "main": "./dist/warpdom.cjs",
+  "types": "./types/index.d.ts",
   "exports": {
     ".": {
-      "node": "./src/node.js",
-      "default": "./src/index.js"
+      "node": {
+        "module-sync": {
+          "types": "./types/index.d.ts",
+          "default": "./src/node.js"
+        },
+        "require": {
+          "types": "./dist/warpdom.d.cts",
+          "default": "./dist/warpdom.cjs"
+        },
+        "default": {
+          "types": "./types/index.d.ts",
+          "default": "./src/node.js"
+        }
+      },
+      "require": {
+        "types": "./dist/warpdom.d.cts",
+        "default": "./dist/warpdom.cjs"
+      },
+      "default": {
+        "types": "./types/index.d.ts",
+        "default": "./src/index.js"
+      }
     },
-    "./vitest": "./src/vitest.js",
-    "./vitest/environment": "./src/vitest-environment.js",
-    "./vitest/reset": "./src/vitest-reset.js",
-    "./vitest/fast": "./src/vitest-fast.js",
-    "./jest": "./src/jest.js",
-    "./compare": "./src/compare/index.js",
-    "./migrate": "./src/migrate/index.js",
+    "./vitest": {
+      "types": "./types/vitest.d.ts",
+      "default": "./src/vitest.js"
+    },
+    "./vitest/environment": {
+      "types": "./types/vitest-environment.d.ts",
+      "default": "./src/vitest-environment.js"
+    },
+    "./vitest/reset": {
+      "types": "./types/vitest-reset.d.ts",
+      "default": "./src/vitest-reset.js"
+    },
+    "./vitest/fast": {
+      "types": "./types/vitest-fast.d.ts",
+      "default": "./src/vitest-fast.js"
+    },
+    "./jest": {
+      "types": "./types/jest.d.ts",
+      "default": "./src/jest.js"
+    },
+    "./compare": {
+      "types": "./types/compare.d.ts",
+      "default": "./src/compare/index.js"
+    },
+    "./migrate": {
+      "types": "./types/migrate.d.ts",
+      "default": "./src/migrate/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
     "src",
-    "bin"
+    "bin",
+    "dist",
+    "types"
   ],
   "engines": {
     "node": ">=22.12"
   },
   "scripts": {
+    "build": "node scripts/build-cjs.mjs",
+    "prepack": "npm run build",
+    "pretest": "npm run build",
     "test": "node --test \"test/*.test.js\" test/parity.js",
     "bench:load": "node bench/load.js",
-    "bench:hot": "node bench/hot.js"
+    "bench:hot": "node bench/hot.js",
+    "test:types": "npm run build && tsc -p test/types"
   },
   "devDependencies": {
     "@happy-dom/jest-environment": "^20.14.6",
     "@webref/css": "^8.7.6",
     "@webref/elements": "^2.9.1",
     "@webref/idl": "^3.85.1",
+    "esbuild": "^0.28.2",
     "happy-dom": "^20.14.6",
     "jsdom": "^30.1.2",
     "jsdom20": "npm:jsdom@20.0.3",
     "jsdom22": "npm:jsdom@22.1.0",
     "jsdom25": "npm:jsdom@25.0.1",
     "jsdom26": "npm:jsdom@^26.1.0",
+    "typescript": "^7.0.2",
     "vitest": "^5.0.3"
   },
   "overrides": {

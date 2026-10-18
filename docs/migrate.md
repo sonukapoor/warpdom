@@ -27,8 +27,14 @@ every workspace package is migrated in one go).
 | `-h`, `--help` | Help |
 
 Both modes write the plan to `.warpdom-migrate/plan.md` (it can be deleted
-afterwards). Exit code 0 when the plan was made or applied, 2 when it could
-not be (no package.json).
+afterwards). The folder ignores itself: migrate writes a `.gitignore`
+containing `*` into it, so `git add -A` never commits the plan, and the
+project's own `.gitignore` is not touched (editing it would be a change of
+its own to review and commit, also after a dry run, which changes
+nothing else). The plan stays where the console output points, next to
+the project, rather than in a temporary directory where it is easily
+lost. Exit code 0 when the plan was made or applied, 2 when it could not
+be (no package.json).
 
 **Run `warpdom compare` before migrating.** It runs the suite on jsdom (or
 happy-dom) and on warpdom and lists every test whose result changes; it
@@ -59,6 +65,14 @@ the literal involved (quotes, comments and formatting stay as they were):
 - A constant of the same file used only as an environment
   (`const env = 'jsdom'; ... environment: env`) is changed where it is
   declared.
+- Vitest's `environmentOptions.jsdom` when it holds only a `url` (`{ jsdom:
+  { url: 'http://localhost' } }`) and the environment beside it is changed:
+  the key becomes `warpdom`, which warpdom's Vitest environment reads
+  (`environmentOptions.warpdom.url`, default `http://localhost:3000` as with
+  Vitest's jsdom environment). Other jsdom options, or an environment that
+  stays as it is, are listed instead. Jest's `testEnvironmentOptions.url`
+  needs nothing: warpdom's Jest environment reads it (default
+  `http://localhost/`, as jest-environment-jsdom).
 
 Dependencies:
 
@@ -72,8 +86,17 @@ Dependencies:
   the old entry was, with its quoting). Entries go in sorted position when
   the list is sorted, else at its end. Versions: the registry's latest,
   else the ones this warpdom ships with.
-- `@types/jsdom` stays and is listed as kept: it can go once no code
-  imports jsdom's types and no tsconfig `"types"` list names jsdom.
+- `@types/jsdom` goes with jsdom when no type reference to jsdom is left;
+  else it stays, listed as kept with the references. Type references are
+  `import type ... from 'jsdom'`, `import { type A, type B } from 'jsdom'`
+  (every name a type), `export type ... from 'jsdom'`, `typeof
+  import('jsdom')` and `import('jsdom').Name`, any reference in a `.d.ts`
+  file, `/// <reference types="jsdom" />` and a tsconfig `"types"` list
+  naming jsdom. They never load jsdom, so they do not keep it (they keep
+  compiling against @types/jsdom); each is listed under "type references"
+  with the DOM lib type to use instead (`DOMWindow` -> `Window`). When jsdom
+  stays for other reasons, @types/jsdom stays with it. happy-dom ships its
+  own types, so any reference to happy-dom keeps it.
 - `jsdom`, `happy-dom`, `jest-environment-jsdom`,
   `@happy-dom/jest-environment`, `global-jsdom` and `jsdom-global` are
   removed when nothing still needs them. A package keeps them, with the
@@ -100,25 +123,76 @@ and the packages are already in place.
   `testEnvironment` but takes its options from a package (`...base`,
   `Object.assign(require('kcd-scripts/jest'), ...)`, a `preset`) whose
   environment may be jsdom. Each with its file and line; migrate does not
-  guess. The packages such a config needs stay until it is done.
+  guess. The packages such a config needs stay until it is done. A Jest
+  `preset` is looked up first: an installed preset's `jest-preset.json` /
+  `.js` / `.cjs` is read as text (not run) for its `testEnvironment`, and a
+  few presets are known when not installed (`jest-puppeteer`,
+  `jest-playwright-preset`: Node-based). A Node environment
+  (`jest-environment-puppeteer`, or none, Jest's default `node`) gives a
+  note and no manual item, so it keeps nothing; a jsdom one gives a manual
+  item that says so.
 - **To review**: every line that mentions jsdom or happy-dom and was not
   changed, grouped (setup files and polyfills first, then configs, console
-  filters, direct uses, source, tests, CI, docs), each with a short hint:
+  filters, direct uses, type references, source, tests, CI, docs), each
+  with a short hint:
   a jsdom-only workaround that warpdom may not need; a console filter for
   jsdom's "Not implemented" messages (warpdom prints the same); a
   user-agent check (warpdom's user agent contains `jsdom/` like jsdom's,
   so it keeps matching); options for jsdom that warpdom does not read
-  (`environmentOptions.jsdom`, `testEnvironmentOptions.pretendToBeVisual`).
+  (`environmentOptions.jsdom`, `testEnvironmentOptions.pretendToBeVisual`);
+  `new JSDOM(...)` lines with their warpdom equivalent.
+- **Jest transform allowlists**: entries of a Jest config's
+  `transformIgnorePatterns` allowlist (array strings such as `'parse5'`, or
+  names inside a `node_modules/(?!...)` pattern) that name jsdom or a
+  package jsdom (or its cssstyle) loads, from an explicit list: `jsdom`,
+  `cssstyle`, `parse5`, `entities`, `nwsapi`, `tough-cookie`, `data-urls`,
+  `whatwg-url`, `whatwg-encoding`, `whatwg-mimetype`, `webidl-conversions`,
+  `w3c-xmlserializer`, `xml-name-validator`, `saxes`, `symbol-tree`,
+  `html-encoding-sniffer`, `rrweb-cssom`, `is-potential-custom-element-name`
+  and the scopes `@asamuzakjp`, `@exodus`, `@csstools` (not `whatwg-fetch`
+  or `ws`, which other packages need too). Projects added them for the ESM
+  jsdom 27 and later bring; warpdom's Jest environment is loaded by Jest
+  outside the transformed test code, so they can go once nothing Jest runs
+  imports jsdom. Each is listed with what the lockfile (or node_modules)
+  says: whether another package depends on it (parse5 through
+  hast-util-raw, say), and which file still imports jsdom inside Jest.
+  They are never edited: the list is often built in code (a const array
+  joined into a pattern), and removing an entry that another ESM
+  dependency still needs makes every test file that loads it fail, while
+  leaving one costs only transform time.
+- **Direct uses of jsdom**: code that imports jsdom itself (a script, a
+  site plugin, a test helper) keeps jsdom, with the warpdom equivalent:
+  `import { createWindow } from 'warpdom'`; `new JSDOM(html, { url })` ->
+  `const window = createWindow({ url })`, then
+  `window.document.documentElement.innerHTML = html` or
+  `window.document.write(html)`; `dom.window` -> that window; parsing only
+  -> `new window.DOMParser().parseFromString(html, 'text/html')`. When such
+  a file runs inside Jest (a test, a Jest setup file, a helper under a test
+  directory), the plan says that Jest's module sandbox loads warpdom
+  through its CommonJS entry, which requires warpdom >= 0.1.5; in a
+  TypeScript project, that warpdom >= 0.1.5 ships type declarations.
 - **Installed through other packages**: where jsdom stays in the install
   without being a direct dependency, in one line each: Vitest lists jsdom
   and happy-dom as optional peers; Jest 27's jest-config and jest-runner
-  depend on jest-environment-jsdom; other packages from the lockfile
-  (for example jest-preset-angular). They are not loaded by tests once no
-  config or comment names jsdom.
+  depend on jest-environment-jsdom; and every copy of jsdom or happy-dom
+  the lockfile (else node_modules) still installs, with the shortest chain
+  from one of the project's dependencies (`jsonml.js@0.1.0 ->
+  jsdom@8.5.0`, also through the other dependencies that bring it) and
+  whether a test, setup file or test config names a package of it (a
+  transform such as `./node_modules/@ant-design/tools/...` may load it;
+  no test environment does once migrated). Without a lockfile and
+  node_modules the plan says so and gives the command that lists them
+  (`npm ls jsdom`).
 - **Other projects**: directories with their own package.json that are not
   workspace packages (examples, templates) are not changed; their uses are
   listed, to run migrate there. Uses under `fixtures/` directories are
   skipped.
+- **Ignored files** are not read at all: in a git repository what `git
+  ls-files --others --ignored --exclude-standard --directory` lists (every
+  .gitignore, .git/info/exclude, the global excludes; tracked files are
+  always read), else the .gitignore files themselves. Generated files such
+  as `.dumi/tmp/appData.json` repeat the package.json and are not the
+  project's code.
 - **Warnings**: a dirty git tree (so the diff can be reviewed on its own),
   a Node version below 22.12 pinned in `.nvmrc` / `.node-version`, Vitest
   before 2 or Jest before 27.
@@ -130,10 +204,23 @@ jest-environment-jsdom for Jest), because suites encode the behavior of
 their jsdom. Once migrate removes jsdom, warpdom follows its default: the
 newest jsdom it models (30.1.2) for Vitest, jsdom 26 for Jest.
 
+The plan says, per runner and package, which jsdom (and cssstyle) the
+tests ran on before and what warpdom will follow after, with the pin when
+there is one:
+
+```
+Jest (package.json): the tests ran on jsdom 26.1.0 + cssstyle 4.6.0 (through jest-environment-jsdom 30.5.2); warpdom will follow jsdom 26 with the newest cssstyle 4.x it models, its default once jest-environment-jsdom is removed (the same profile)
+Vitest (package.json): the tests ran on jsdom 30.1.3 (package-lock.json); warpdom will follow the installed jsdom (30.1.3): it stays a dependency (see Kept), and warpdom follows it while it is installed (the same profile)
+```
+
 So that every migrated project keeps exactly its current jsdom behavior,
 migrate pins the version it removes whenever that version would give a
 different profile than the default (installed version, else the
-lockfile's, else the declared range: `^26.1.0` pins `26`). It writes it in
+lockfile's, else the declared range: `^26.1.0` pins `26`). For jsdom 28
+and earlier, whose behavior also depends on the cssstyle they load, the
+installed (or locked) cssstyle is pinned with it when it gives another
+profile than the one warpdom assumes for that jsdom (jsdom 26 with
+cssstyle 4.2.1: `{ jsdom: '26.1.0', cssstyle: '4.2.1' }`). It writes it in
 the most local place, next to the environment it changed, and says why in
 the plan:
 
@@ -177,9 +264,10 @@ classic and berry), else from package.json (catalog references resolved).
   evaluation, no new dependency). Anything that is not a literal at the
   place it is used goes to "manual"; it does not follow values across
   modules other than relative imports of config files.
-- Environments inherited from a package (kcd-scripts, jest-preset-angular,
-  a company preset) are reported, not set: migrate does not read other
-  packages' code to find out what they choose.
+- Environments inherited from a package (kcd-scripts, a company preset)
+  are reported, not set. The one exception is a Jest `preset`, whose
+  installed `jest-preset` file is read as text (see Manual); other
+  packages' code is not read or run.
 - Custom environments (`testEnvironment: './my-env.js'` extending
   jest-environment-jsdom) stay; their import keeps jest-environment-jsdom
   and is listed.
@@ -207,4 +295,5 @@ wrapper (jsdom 26) also gets one `environmentOptions` /
 | vuetify | packages/vuetify/vitest.config.ts; package.json catalog entries; pnpm catalog (in the `# Testing` group) | catalog entries at the end of the testing group (after the browser-testing entries) rather than after timezone-mock; jsdom 27.2.0 pinned next to the environment (not in the hand change); SKILL.md and a setup comment reworded by hand (listed) |
 | material-ui | vitest.shared.mts (`jsdom ? 'warpdom' : 'node'`); root package.json with exact versions | nothing |
 | handsontable (dry run) | 4 Jest configs (one in package.json); 4 package.json files | root jsdom and global-jsdom kept because scripts/verify-bundles.mjs imports them (the hand change rewrote that script); jsdom 16.7.0 pinned in the three Jest 27 configs; the removed jsdom workarounds and polyfills are listed for review, not removed |
+| ant-design (dry run, 2026-10-18, master @ 3fb9b07514; [#39](https://github.com/sonukapoor/warpdom/issues/39)) | .jest.js and vitest.config.ts environments; `environmentOptions.jsdom.url` moved to `environmentOptions.warpdom.url`; jest-environment-jsdom removed (the jest-puppeteer preset is Node-based); jsdom and @types/jsdom kept for three runtime uses, each listed with its createWindow equivalent and the CommonJS-entry note for the Jest helper; the two `import type { DOMWindow }` lines listed as type references; six jsdom-only transformIgnorePatterns entries listed; the git-ignored .dumi/tmp/appData.json not read; with a lockfile, jsonml.js@0.1.0 -> jsdom@8.5.0 reported | the hand migration also rewrote the three runtime uses and the type references |
 | element-plus (dry run, jsdom 16) | vitest.config.mts, two `@vitest-environment happy-dom` comments; jsdom and happy-dom removed; `environmentOptions: { warpdom: { jsdom: '16.4.0' } }` added after the environment | no hand-made branch |
