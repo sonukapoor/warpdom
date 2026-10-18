@@ -25,7 +25,7 @@ function parseJsdomVersion(version) {
 // The newest jsdom release the profiles were measured against. A later
 // minor or major release may change behavior warpdom does not reproduce;
 // patch releases are taken to keep it.
-export const NEWEST_MODELED_JSDOM = '30.1.2';
+export const NEWEST_MODELED_JSDOM = '30.1.3';
 
 // The warning for an installed jsdom newer than NEWEST_MODELED_JSDOM, else null.
 export function newerJsdomWarning(version) {
@@ -531,7 +531,19 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
   const cssText = version[0] < 27 ? cssstyle ?? cssDefault : null;
   const css = cssText != null ? parseJsdomVersion(cssText) : null;
   ws.compat = {
-    version: jsdom, jsdom: version[0], legacyComputedStyle: version[0] < 29, mutableComputedStyle: version[0] < 28,
+    version: jsdom, jsdom: version[0], mutableComputedStyle: version[0] < 28,
+    // Computed style (cascade.js), black box per release: before 29.0.2
+    // undeclared properties compute to '' and CSS-wide keywords to
+    // themselves (jsdom 29.0.0 and 29.0.1 too); unset to '' before 28.1
+    // (from jsdom 21). From 29.0.2 a shorthand jsdom does not expand
+    // computes a CSS-wide keyword to 'see individual properties' or its own
+    // initial value, and its border shorthands (border-radius,
+    // border-block, ...) to '' until 29.1.1; from 30.1.3 to '' or that
+    // initial value, undeclared too, and flex and background compose their
+    // longhands (cascade.js observedShorthand).
+    legacyComputedStyle: before(version, [29, 0, 2]), unsetUndeclared: version[0] >= 21 && before(version, [28, 1, 0]),
+    blankBorderShorthands: !before(version, [29, 0, 2]) && before(version, [29, 1, 1]), shorthandInitials: !before(version, [30, 1, 3]), initialAnimationDelay: before(version, [30, 0, 1]),
+    rawComputedValues: before(version, [29, 0, 2]) || !before(version, [30, 1, 0]) ? null : version[0] === 29 ? '29' : '30.0',
     focusIgnoresRendering: before(version, [30, 1, 2]), detachedCheckableEvents: before(version, [16, 5, 2]), cssstyle: version[0] < 27 ? (css ? cssText : undefined) : cssstyle ?? undefined, cssstyleMajor: css ? css[0] : 0,
     styleSurface: styleSurfaceKey(version, version[0] < 27 ? css : cssstyle != null ? parseJsdomVersion(cssstyle) : null),
     unquotedUrls: css !== null && before(css, [4, 3, 1]),

@@ -625,7 +625,8 @@ function serializeDeclared(name, value, mode) {
   if (mode === 'jsdom26' && (name === 'background' || name === 'background-image') && /\s\s|[\t\n\r\f]/.test(value)) value = collapseSpaces(value);
   if (value.includes('(')) {
     if (isSpecMode(mode) && name !== 'border-image' && /(min|max|clamp|gradient)\(/i.test(value)) value = functionArguments(value);
-    if (QUOTED_URLS[mode]?.has(name)) value = quoteUrls(value);
+    // jsdom 27 and later keep url() as written in a value with var().
+    if (QUOTED_URLS[mode]?.has(name) && !(isSpecMode(mode) && /var\(/i.test(value))) value = quoteUrls(value);
     else if (UNQUOTED_URLS[mode]?.has(name)) value = unquoteUrls(value);
     return name === 'background' || name === 'background-image' ? familyCommas(value) : value;
   }
@@ -933,8 +934,32 @@ const valueOf = (style, name) => {
   if (LONGHANDS[name] || (s.decls.legacyFont !== undefined && LEGACY_FONT_LONGHANDS.has(name))) return fromShorthand(s.decls, name);
   // jsdom 26 read background as the background-color set alone.
   if (name === 'background' && isLegacyMode(s.mode)) return s.decls.get('background-color')?.value ?? '';
-  return COMPOSED[name] ? composeShorthand(s.decls, name) : '';
+  if (COMPOSED[name]) return composeShorthand(s.decls, name);
+  return BORDER_READS[name] !== undefined && !isLegacyMode(s.mode) ? composeBorder(s.decls, name) : '';
 };
+
+// jsdom 27 and later (black box, 27.0 to 30.1.3) read border-width,
+// -style and -color and the border sides from their longhands, set by
+// border too (border: 1px solid red gives border-width 1px and border-top
+// 1px solid red), a side in its shortest form (border: red gives
+// border-top red, border: none medium).
+const BORDER_READS = {};
+const BOX_SIDES = ['top', 'right', 'bottom', 'left'], BORDER_PARTS = ['width', 'style', 'color'];
+for (const part of BORDER_PARTS) BORDER_READS[`border-${part}`] = BOX_SIDES.map((side) => `border-${side}-${part}`);
+for (const side of BOX_SIDES) BORDER_READS[`border-${side}`] = BORDER_PARTS.map((part) => `border-${side}-${part}`);
+const BORDER_INITIAL = ['medium', 'none', 'currentcolor'];
+function composeBorder(decls, name) {
+  const values = [];
+  for (const longhand of BORDER_READS[name]) {
+    const value = decls.get(longhand)?.value ?? fromShorthand(decls, longhand);
+    if (!value) return '';
+    values.push(value);
+  }
+  if (values.length === 4) return serializeBox(values);
+  if (values.every((v) => CSS_WIDE_KEYWORD.test(v))) return values.every((v) => v === values[0]) ? values[0] : '';
+  const parts = values.filter((v, i) => v.toLowerCase() !== BORDER_INITIAL[i]);
+  return parts.length ? parts.join(' ') : values[0];
+}
 
 // Shorthands whose longhands a declaration block reads through them, as in
 // jsdom (its CSS layer expands these; overflow: hidden leaves overflow-x
@@ -960,6 +985,8 @@ const COMPOSED = {
   padding: (v) => serializeBox(v),
   flex: ([grow, shrink, basis]) => `${grow} ${shrink} ${basis}`,
   'background-position': ([x, y]) => {
+    // background: inherit gives background-position inherit (jsdom 28.1 and later).
+    if (x === y && CSS_WIDE_KEYWORD.test(x)) return x;
     if (!x.includes(',') && !y.includes(',')) return `${x} ${y}`;
     const xs = x.split(/\s*,\s*/), ys = y.split(/\s*,\s*/);
     return xs.map((part, i) => `${part} ${ys[i] ?? ys[ys.length - 1]}`).join(', ');
@@ -1051,7 +1078,7 @@ function styleDescriptors(surfaceKey = null) {
 const COMPOSED_ACCESSORS = new Set(['background', 'border-top', 'border-right', 'border-bottom', 'border-left']);
 function composedValue(style, name) {
   const s = styleState(style);
-  if (s.computed && isLegacyMode(s.mode)) {
+  if (s.computed) {
     const value = computedOverride(s, name) ?? computed.accessor(s.element, name);
     if (value !== null) return value;
   }

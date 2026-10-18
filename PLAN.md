@@ -335,8 +335,10 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   document's URL without its fragment.
 - A TouchEvent's touch lists are TouchLists (length, item(), indexing,
   iteration), and TouchList exists; jsdom uses arrays.
-- getComputedStyle expands the `flex-flow` shorthand (jsdom ignores it)
-  and does not apply a disabled style sheet (jsdom does).
+- getComputedStyle does not apply a disabled style sheet (jsdom does).
+  (It no longer expands `flex-flow`: as in jsdom, flex-flow, gap,
+  overflow, border-radius, inset, outline and the other shorthands jsdom
+  does not expand leave their longhands unset; issue #36.)
 - `option.form` is its select's form owner (jsdom: the nearest ancestor
   form), and the list of options follows the standard's current
   definition (options nested in other elements inside the select count).
@@ -2288,3 +2290,90 @@ Open: `window.URL` (jsdom's window has `URL` and `URLSearchParams`;
 warpdom's environments use Node's), `Headers` and `WebSocket` on the window,
 the legacy CJK decoders.
 
+
+## 2026-10-18: computed shorthands, var() and CSS-wide keywords for jsdom 27 to 30.1.3 (branch fix/jsdom30-var-shorthands, #36)
+
+Ant Design (Vitest, jsdom 30.1.3): three ConfigProvider cssVar tests
+compare `getComputedStyle(button)['border-radius']` with
+`var(--ant-border-radius)` (jest-dom toHaveStyle). jsdom keeps a shorthand
+it does not expand as declared; warpdom expanded it and composed `0`.
+
+Measured black box on jsdom 27.0.0, 27.4.0, 28.0.0, 28.1.0, 29.0.0,
+29.0.1, 29.0.2, 29.1.0, 29.1.1, 30.0.0, 30.0.1, 30.1.0, 30.1.1, 30.1.2 and
+30.1.3 (fresh installs: cssstyle 5.3.7 for 27 and 28.0, 6.2.0 for 28.1),
+inline style (attribute, accessor, setProperty, cssText) and
+getComputedStyle (style attribute and a rule), 18 shorthands with var(),
+plain values and inherit/initial/unset/revert, their longhands, and
+longhands with keywords (scratch scripts; 9722 differing reads before,
+2187 after, none in 30.0 to 30.1.3 outside font).
+
+| Read (rule) | 27.0-28.0 | 28.1-29.0.1 | 29.0.2-29.1.0 | 29.1.1-30.1.2 | 30.1.3 |
+|---|---|---|---|---|---|
+| border-radius: var(--r) -> border-radius | var(--r) | var(--r) | '' | var(--r) | var(--r) |
+| border-radius: 6px -> border-top-left-radius | '' | '' | 0 | 0 | 0 |
+| border-radius: inherit -> border-radius | inherit | inherit | '' | see individual properties | '' |
+| border-radius: unset -> border-radius | '' | unset | '' | see individual properties | '' |
+| padding: 0px var(--r) -> padding | 0px var(--r) | 0px var(--r) | 0 | 0 | 0 |
+| padding-top: inherit / unset | inherit / '' | inherit / unset | 0 / 0 | 0 / 0 | 0 / 0 |
+| padding-top: revert | revert | revert | revert | revert | revert |
+| display: initial, unset | inline | inline | inline | inline | inline |
+| gap: 4px 8px -> row-gap; overflow: hidden -> overflow-x | '' | '' | normal; visible | normal; visible | normal; visible |
+| gap: initial -> gap | initial | initial | see individual properties | see individual properties | '' |
+| flex: var(--r) -> flex | var(--r) | var(--r) | var(--r) | var(--r) | 0 1 auto |
+| background: red -> background (accessor) | red (rgb(255, 0, 0)) | same | same | same | rgb(255, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box |
+| inset undeclared | '' | '' | '' | '' | auto |
+| border: 1px solid red -> border | '' | '' | 1px solid rgb(255, 0, 0) | same | same |
+| border-top: thin solid -> border-top-width | (legacy) | (legacy) | thin | thin (30.0: medium is 16px) | 1px from 30.1.0 |
+
+The model (src/cascade.js, compat flags in window-features.js):
+- Only margin, padding, flex, background(-position), font, border and its
+  sides, width, style and color set their longhands, in every jsdom
+  profile (cascadeExpand). gap, overflow, border-radius, inset, outline,
+  flex-flow, place-*, ... leave them unset: flex-flow is no longer a
+  deliberate deviation.
+- `legacyComputedStyle` is before 29.0.2 (29.0.0 and 29.0.1 still compute
+  undeclared properties to ''), with CSS-wide keywords as declared;
+  `unsetUndeclared` (unset as if undeclared) from 21 to 28.0; border and
+  its sides compute to '' from 27 to 29.0.1.
+- From 29.0.2 (observedShorthand): a shorthand jsdom does not expand
+  computes to its declared value, inherit/initial/unset to its keyword
+  value (SHORTHAND_INITIALS: inset auto, overflow visible, flex 0 1 auto,
+  else 'see individual properties'), undeclared to ''; its border ones
+  (border-radius, border-block, border-image) to '' until 29.1.1
+  (`blankBorderShorthands`). From 30.1.3 (`shorthandInitials`) the keyword
+  value is also the undeclared one and 'see individual properties' is '';
+  flex and background compose their computed longhands (background in
+  jsdom's full form, position keywords as percentages).
+- revert and revert-layer compute to themselves (27 and later); display:
+  initial and unset to inline; outline-color's initial value is
+  rgba(0, 0, 0, 0).
+- 29.0.2 to 30.0.x (`rawComputedValues`) keep border widths, outline-width,
+  font-size and font-weight keywords, and border widths whatever the
+  style; 30.0 computes medium to 16px.
+- The computed `background` accessor composes the longhands from 27 to
+  30.1.2 too (as cssstyle 4.4 to 4.6 for jsdom 26), from 29.0.2 a keyword
+  gives the computed color.
+- Inline (27 and later): border-width, -style, -color and the border
+  sides read from their longhands, set by border too; background: inherit
+  gives background-position inherit; url() in a value with var() stays as
+  written.
+- The parity tests compare with the jsdom 30 release installed (its exact
+  version as the profile), since 30.1.2 and 30.1.3 differ;
+  NEWEST_MODELED_JSDOM is 30.1.3.
+
+Not reproduced (measured, left): font (30.1.3 composes it, from font-family
+'depends on user agent', and drops some font declarations; 30.0+
+resolves font-size em/% and keywords); the inline border parsing of jsdom
+27 to 29 (border: none, CSS-wide keywords and var() in border are accepted
+there by the setter, by the style attribute from 29.0.1/29.0.2; the
+'jsdom27' mode keeps jsdom 26's rules); 27 to 29.0.0 inline
+`background: inherit` as five or seven keywords; inset: 0 as 0 before
+28.1; border-color in 27 to 29.0.1. Also seen, outside this issue: jsdom
+30's style attribute parser drops a longhand declared after its shorthand
+(`padding: 1px; padding-top: 3px` gives cssText `padding: 1px;`), and its
+computed style objects are snapshots (warpdom's stay live).
+
+Tests: test/computed-shorthands.test.js (per-release literals at the
+boundaries, parity with the installed jsdom, Ant Design's case).
+Bench: bench:hot unchanged (no CSS path); computed reads ~10% faster
+(longhand fast path), cascade-bench within noise.

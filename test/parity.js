@@ -1,6 +1,7 @@
 // Runs a scenario on a jsdom window and on a warpdom window; the results,
 // and what each printed on console.error, must be the same.
 import { test } from 'node:test';
+import { createRequire } from 'node:module';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { JSDOM as JSDOM26 } from 'jsdom26';
@@ -25,7 +26,10 @@ async function domFor(jsdom) {
   }
   return DOMS[jsdom];
 }
-const PROFILES = { 20: { jsdom: '20.0.3', cssstyle: '2.3.0' }, 22: { jsdom: '22.1.0', cssstyle: '3.0.0' }, 25: { jsdom: '25.0.1', cssstyle: '4.1.0' } };
+// jsdom 30: the release installed (30.1.2 and 30.1.3 differ in computed
+// shorthands), so the profile is that release's.
+const JSDOM30 = createRequire(import.meta.url)('jsdom/package.json').version;
+const PROFILES = { 20: { jsdom: '20.0.3', cssstyle: '2.3.0' }, 22: { jsdom: '22.1.0', cssstyle: '3.0.0' }, 25: { jsdom: '25.0.1', cssstyle: '4.1.0' }, 30: { jsdom: JSDOM30 } };
 export function parity(name, scenario, { jsdom = 30, url = URL_ } = {}) {
   const profile = PROFILES[jsdom] ?? { jsdom };
   test(name, async () => {
