@@ -75,6 +75,11 @@ Or install the small companion package `jest-environment-warpdom` too, and
 use the name, as with jsdom: `testEnvironment: 'warpdom'`, and
 `/** @jest-environment warpdom */` in test files (Jest 27 to 30).
 
+The page URL: `environmentOptions: { warpdom: { url } }` with Vitest
+(default `http://localhost:3000`, as with Vitest's jsdom environment, which
+reads `environmentOptions.jsdom.url`), `testEnvironmentOptions: { url }`
+with Jest (default `http://localhost/`, as with jest-environment-jsdom).
+
 Test files that choose jsdom with a comment (`/** @vitest-environment jsdom */`,
 `@jest-environment jsdom`) keep using jsdom; change the comment to switch
 them.

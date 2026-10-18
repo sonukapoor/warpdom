@@ -260,3 +260,31 @@ test('Vitest: assigning the global document is ignored in VM pools and replaces 
     restore();
   }
 });
+
+// environmentOptions.warpdom.url sets the page URL, as
+// environmentOptions.jsdom.url does for Vitest's jsdom environment (whose
+// default, http://localhost:3000, is warpdom's too).
+test('Vitest: environmentOptions.warpdom.url sets the URL', async () => {
+  const { default: environment } = await import('../src/vitest.js');
+  const global = {};
+  const result = environment.setup(global, { warpdom: { url: 'http://localhost/app/?q=1' } });
+  try {
+    assert.equal(global.location.href, 'http://localhost/app/?q=1');
+    assert.equal(global.document.URL, 'http://localhost/app/?q=1');
+  } finally {
+    result.teardown();
+  }
+  const vmResult = await environment.setupVM({ warpdom: { url: 'http://example.test/' } });
+  try {
+    assert.equal(vmResult.getVmContext().location.origin, 'http://example.test');
+  } finally {
+    vmResult.teardown();
+  }
+  const plain = {};
+  const r2 = environment.setup(plain);
+  try {
+    assert.equal(plain.location.href, 'http://localhost:3000/');
+  } finally {
+    r2.teardown();
+  }
+});
