@@ -1,5 +1,6 @@
-# Unit and parity tests (npm test) on every push and pull request, on the
-# oldest supported Node and the current LTS.
+# Unit and parity tests (npm test) and the type tests (npm run test:types)
+# on every push and pull request, on the oldest supported Node and the
+# current LTS.
 name: ci
 
 on:
@@ -26,3 +27,4 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: npm run test:types

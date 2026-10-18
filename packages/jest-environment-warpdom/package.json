@@ -6,9 +6,10 @@
   "license": "MIT",
   "author": "Sonu Kapoor",
   "repository": { "type": "git", "url": "git+https://github.com/sonukapoor/warpdom.git", "directory": "packages/jest-environment-warpdom" },
-  "exports": "./index.js",
+  "exports": { "types": "./index.d.ts", "default": "./index.js" },
   "main": "./index.js",
-  "files": ["index.js"],
+  "types": "./index.d.ts",
+  "files": ["index.js", "index.d.ts"],
   "peerDependencies": { "warpdom": ">=0.1.0", "jest": ">=27" },
   "keywords": ["jest", "jest-environment", "warpdom", "jsdom", "dom", "testing"]
 }

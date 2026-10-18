@@ -172,18 +172,27 @@ export function validAttributeLocalName(name) {
 // Namespace prefixes allow "=".
 export const validNamespacePrefix = (name) => name !== '' && validAttributeLocalName(name.replace(/=/g, 'a'));
 
+// The global object platform globals (performance, crypto, TextEncoder) come
+// from: this realm's. The CommonJS build (scripts/build-cjs.mjs) declares
+// __warpdomPlatformGlobal as Node's own global object: Jest evaluates it in
+// a test file's VM context, whose global object is the test environment's
+// window (jsdom's, or warpdom's), which may lack TextEncoder and has the
+// window's crypto and performance.
+/* global __warpdomPlatformGlobal */
+export const PLATFORM_GLOBAL = typeof __warpdomPlatformGlobal === 'object' ? __warpdomPlatformGlobal : globalThis;
+
 // A platform global (performance, crypto, TextDecoder), read on first use
 // from the property the global object had when warpdom loaded: a test setup
 // or runner may later put a window's on the global object, and Node defines
 // some as getters that load a module when first read (performance: ~0.5 ms).
 export function platformGlobal(name) {
-  const descriptor = Object.getOwnPropertyDescriptor(globalThis, name);
+  const descriptor = Object.getOwnPropertyDescriptor(PLATFORM_GLOBAL, name);
   let read = false;
   let value;
   return () => {
     if (!read) {
       read = true;
-      value = descriptor === undefined ? globalThis[name] : descriptor.get ? descriptor.get.call(globalThis) : descriptor.value;
+      value = descriptor === undefined ? PLATFORM_GLOBAL[name] : descriptor.get ? descriptor.get.call(PLATFORM_GLOBAL) : descriptor.value;
     }
     return value;
   };
