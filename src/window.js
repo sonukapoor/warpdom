@@ -6,7 +6,7 @@ import {
   S, HIDDEN_STATE, hooks, initNode, insert, ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, DOCUMENT_TYPE_NODE,
   CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE,
 } from './internal.js';
-import { INTERFACES, SVG_ELEMENTS, HTML_NS, SVG_NS } from './interfaces.js';
+import { INTERFACES, SVG_ELEMENTS, LEGACY_SVG_ELEMENTS, SVG_TYPES_INTERFACES, HTML_NS, SVG_NS } from './interfaces.js';
 import { HTML_ELEMENTS, PLAIN_TAGS } from './html-elements.js';
 import { setupWindow } from './window-features.js';
 import { setValidationMode } from './css.js';
@@ -99,7 +99,7 @@ function addDescriptors(descriptors, members) {
 // target and hide the key; a private field is not reachable through a proxy).
 // An interface may bring its own slot (Event, DOMRectReadOnly).
 const STATE_ON_OBJECT = new Set(['EventTarget', 'Node', 'Window', 'Storage', 'DOMStringMap', 'NodeList', 'HTMLCollection',
-  'NamedNodeMap', 'DOMTokenList', 'CSSRuleList', 'MediaList', 'StyleSheetList', 'TouchList', 'FileList']);
+  'NamedNodeMap', 'DOMTokenList', 'CSSRuleList', 'MediaList', 'StyleSheetList', 'TouchList', 'FileList', 'SVGStringList']);
 const hidesState = (iface) => (!iface.parent || iface.parent === 'EventTarget') && !STATE_ON_OBJECT.has(iface.name);
 
 // Interfaces with the HTML element constructor: HTMLElement and its element interfaces.
@@ -109,14 +109,14 @@ const TAG_INTERFACE = new Map();
 for (const [name, , tags] of HTML_ELEMENTS) for (const tag of tags) TAG_INTERFACE.set(tag, name);
 for (const tag of PLAIN_TAGS) TAG_INTERFACE.set(tag, 'HTMLElement');
 
-function interfaceFor(ns, tag) {
+function interfaceFor(ns, tag, compat) {
   if (ns === HTML_NS) {
     // Local names are compared case-sensitively (createElementNS(HTML_NS,
     // 'SPAN') is an HTMLUnknownElement); createElement lowercases first.
     // Valid custom element names (contain a hyphen) create HTMLElement.
     return TAG_INTERFACE.get(tag) ?? (tag.includes('-') ? 'HTMLElement' : 'HTMLUnknownElement');
   }
-  if (ns === SVG_NS) return SVG_ELEMENTS.get(tag) ?? 'SVGElement';
+  if (ns === SVG_NS) return (compat.svgTypes ? SVG_ELEMENTS : LEGACY_SVG_ELEMENTS).get(tag) ?? 'SVGElement';
   return 'Element';
 }
 
@@ -156,6 +156,8 @@ function applyCompat(window, protos) {
     for (const name of ['pageX', 'pageY', 'x', 'y', 'offsetX', 'offsetY']) delete protos.MouseEvent[name];
     delete window.SubmitEvent;
   }
+  // jsdom 26.1.0 added the SVG interfaces of svg.js (SVG_TYPES_INTERFACES).
+  if (!window[S].compat.svgTypes) for (const name of SVG_TYPES_INTERFACES) delete window[name];
   if (jsdom < 27) {
     delete window.PointerEvent;
     delete window.TransitionEvent;
@@ -298,7 +300,7 @@ export function createWindow(options = {}) {
         const custom = createCustomElement(doc, tag, is, sync);
         if (custom) return custom;
       }
-      const element = create(proto ?? protos[interfaceFor(ns, tag)], ELEMENT_NODE, { tag, ns, attrs: new Map() }, doc);
+      const element = create(proto ?? protos[interfaceFor(ns, tag, internals.compat)], ELEMENT_NODE, { tag, ns, attrs: new Map() }, doc);
       // The namespace prefix (createElementNS('...', 'svg:rect'), XML parsing).
       if (colon >= 0) element[S].prefix = qualifiedName.slice(0, colon);
       if ((tag === 'iframe' || tag === 'frame') && ns === HTML_NS) doc[S].frameCount = (doc[S].frameCount ?? 0) + 1;

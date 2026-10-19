@@ -213,11 +213,12 @@ const autofill = {
   set(v) { set(this, 'autocomplete', String(v)); },
 };
 
-// nonce: an internal slot, initialized from the attribute; setting the IDL
-// attribute does not change the content attribute.
-const nonce = {
-  get() { const s = state(this); return s.nonce ?? s.attrs.get('nonce') ?? ''; },
-  set(v) { state(this).nonce = String(v); },
+// nonce (HTMLElement and SVGElement): jsdom reflects the content attribute
+// (black box, jsdom 20 to 30), where the standard keeps an internal slot
+// that setting the IDL attribute does not write back.
+export const NONCE = {
+  get() { return state(this).attrs.get('nonce') ?? ''; },
+  set(v) { state(this); set(this, 'nonce', String(v)); },
 };
 
 // formAction reflects a URL, except that a missing or empty attribute gives
@@ -231,7 +232,7 @@ const formAction = {
 };
 
 const OTHER = [
-  ['HTMLElement', { nonce }],
+  ['HTMLElement', { nonce: NONCE }],
   ['HTMLButtonElement', { formAction }],
   ['HTMLInputElement', { autocomplete: autofill, formAction }],
   ['HTMLTextAreaElement', { autocomplete: autofill }],
