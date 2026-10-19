@@ -1146,6 +1146,10 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
     blobEventNaNTimecode: !before(version, [30, 1, 0]),
     // CSSMediaRule's matches from 29.0.0, CSSNestedDeclarations from 27.2.0.
     mediaRuleMatches: version[0] >= 29, nestedDeclarations: !before(version, [27, 2, 0]),
+    // ElementInternals and attachInternals() from 23.1.0, its labels and
+    // form-associated custom elements from 26.0.0; its role and ARIA
+    // accessors throw before 27.0.0.
+    elementInternals: !before(version, [23, 1, 0]), internalsLabels: !before(version, [26, 0, 0]), internalsAria: !before(version, [27, 0, 0]),
     rootColor: version[0] >= 27 ? 'rgb(0, 0, 0)' : css !== null && before(css, [4, 4, 0]) ? '' : css !== null && before(css, [4, 6, 0]) ? 'CanvasText' : 'canvastext',
   };
   // DOMException is the platform's (shared by all windows); its subclass too.

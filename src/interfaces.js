@@ -8,13 +8,13 @@ import {
   childArray, elementChildArray, collectElements, elementById, setData, replaceData, adopt, shadowIncludingRoot, reactionScope,
   ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, DOCUMENT_TYPE_NODE, HTML_NS, SVG_NS, connected,
   CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE, isCharacterData,
-  namedAttributesSet, tooFewArguments,
+  namedAttributesSet, tooFewArguments, hooks,
 } from './internal.js';
 import { XML_INTERFACES, XML_DOCUMENT_MEMBERS } from './xml.js';
 import { CSS_INTERFACES, styleOf } from './css.js';
 import { hasReflections, reflectedMembers } from './reflect.js';
 import { GLOBAL_HANDLER_MEMBERS, WINDOW_HANDLER_MEMBERS, eventHandlerAttributesAdded, handlerMembers } from './event-handlers.js';
-import { CUSTOM_ELEMENT_INTERFACES } from './custom-elements.js';
+import { CUSTOM_ELEMENT_INTERFACES, ATTACH_INTERNALS_MEMBERS, lookUp } from './custom-elements.js';
 import { RANGE_INTERFACES, newRange, getSelection, splitText, normalize } from './ranges.js';
 import { CSSOM_INTERFACES, STYLE_ELEMENT_MEMBERS, documentStyleSheets } from './cssom.js';
 import { FOCUS_MEMBERS, DOCUMENT_FOCUS_MEMBERS } from './focus.js';
@@ -349,6 +349,11 @@ function attachShadow(element, init) {
   if (es.ns !== HTML_NS) throw domError("Failed to execute 'attachShadow' on 'Element': This element does not support attachShadow", 'NotSupportedError');
   const customName = es.tag.includes('-');
   if (!customName && !SHADOW_HOSTS.has(es.tag)) throw domError("Failed to execute 'attachShadow' on 'Element': This element does not support attachShadow", 'NotSupportedError');
+  // A definition with disabledFeatures 'shadow' (looked up, so also before
+  // the element is upgraded), with jsdom's message (20 to 30).
+  if (hooks.ce !== null && (customName || (es.ceIs !== undefined && es.ceIs !== null)) && lookUp(es.doc, es.ns, es.tag, es.ceIs ?? null)?.disableShadow) {
+    throw domError('Shadow root cannot be create on a custom element with disabled shadow', 'NotSupportedError');
+  }
   if (es.shadowRoot) throw domError("Failed to execute 'attachShadow' on 'Element': Shadow root cannot be created on a host which already hosts a shadow tree.", 'NotSupportedError');
   const shadow = initNode(Object.create(internals(element).protos.ShadowRoot), DOCUMENT_FRAGMENT_NODE, es.doc, {
     shadow: true, host: element, mode, delegatesFocus: !!init.delegatesFocus, serializable: !!init.serializable,
@@ -922,7 +927,9 @@ export const INTERFACES = [
   {
     name: 'HTMLElement',
     parent: 'Element',
-    members: mix(inlineStyle, htmlOrSvgElement, HTML_ELEMENT_LAYOUT, clickMember, FOCUS_MEMBERS, GLOBAL_HANDLER_MEMBERS, {
+    // attachInternals() from jsdom 23.1.0 (custom-elements.js).
+    compat(proto, compat) { if (!compat.elementInternals) delete proto.attachInternals; },
+    members: mix(inlineStyle, htmlOrSvgElement, HTML_ELEMENT_LAYOUT, clickMember, ATTACH_INTERNALS_MEMBERS, FOCUS_MEMBERS, GLOBAL_HANDLER_MEMBERS, {
       get dir() { return knownDir(state(this).attrs.get('dir')); },
       set dir(v) { writeAttribute(this, 'dir', String(v)); },
       // Translation mode (HTML 3.2.6.3).

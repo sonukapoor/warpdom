@@ -103,7 +103,10 @@ export function isLabelable(el) {
   const s = el[S];
   if (s.type !== ELEMENT_NODE || s.ns !== HTML_NS) return false;
   if (LABELABLE.has(s.tag)) return true;
-  return s.tag === 'input' && inputType(el) !== 'hidden';
+  if (s.tag === 'input') return inputType(el) !== 'hidden';
+  // Form-associated custom elements, from jsdom 26.0.0 (custom-elements.js
+  // reads formAssociated only from that version).
+  return s.ceState === 'custom' && s.ceDefinition?.formAssociated === true;
 }
 
 function isInteractiveContent(node) {
@@ -654,11 +657,16 @@ function labelsFor(el) {
   return map.get(el) ?? NO_LABELS;
 }
 
+// A labelable element's labels: a live NodeList, the same on every read.
+export function labelsList(el) {
+  const s = el[S];
+  return s.labelsList ?? (s.labelsList = liveList(internalsOf(el).protos.NodeList, () => labelsFor(el)));
+}
+
 export const labelsMember = {
   get labels() {
-    const s = state(this);
-    if (!isLabelable(this)) return null;
-    return s.labelsList ?? (s.labelsList = liveList(internalsOf(this).protos.NodeList, () => labelsFor(this)));
+    state(this);
+    return isLabelable(this) ? labelsList(this) : null;
   },
 };
 

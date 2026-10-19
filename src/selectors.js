@@ -292,9 +292,13 @@ const isHTML = (el) => el[S].ns === HTML_NS;
 const FORM_DISABLE = new Set(['button', 'input', 'select', 'textarea', 'optgroup', 'option', 'fieldset']);
 const FORM_REQUIRED = new Set(['input', 'select', 'textarea']);
 
+// Form-associated custom elements take :disabled and :enabled from jsdom
+// 27.0.0 (custom-elements.js sets disableable from that version).
+const disableableCustom = (s) => s.ceState === 'custom' && s.ceDefinition?.disableable === true;
+
 function isDisabled(el) {
   const s = el[S];
-  if (!isHTML(el) || !FORM_DISABLE.has(s.tag)) return false;
+  if (!isHTML(el) || (!FORM_DISABLE.has(s.tag) && !disableableCustom(s))) return false;
   if (s.attrs.has('disabled')) return true;
   if (s.tag === 'option') { const p = parentElement(el); return !!p && p[S].tag === 'optgroup' && p[S].attrs.has('disabled'); }
   // Inside a disabled fieldset, except within its first legend.
@@ -459,7 +463,7 @@ function compilePseudo({ name, arg }) {
     case 'valid': return (el) => matchesValidity(el, false);
     case 'invalid': return (el) => matchesValidity(el, true);
     case 'disabled': return isDisabled;
-    case 'enabled': return (el) => isHTML(el) && FORM_DISABLE.has(el[S].tag) && !isDisabled(el);
+    case 'enabled': return (el) => isHTML(el) && (FORM_DISABLE.has(el[S].tag) || disableableCustom(el[S])) && !isDisabled(el);
     case 'required': return (el) => isHTML(el) && FORM_REQUIRED.has(el[S].tag) && el[S].attrs.has('required');
     case 'optional': return (el) => isHTML(el) && FORM_REQUIRED.has(el[S].tag) && !el[S].attrs.has('required');
     case 'read-only': return (el) => !isReadWrite(el);

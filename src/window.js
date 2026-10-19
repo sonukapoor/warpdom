@@ -151,6 +151,7 @@ function applyCompat(window, protos) {
   // libraries feature-detect it (handsontable validates sizes with it).
   if (jsdom < 30) delete window.CSS;
   if (!window[S].compat.nestedDeclarations) delete window.CSSNestedDeclarations;
+  if (!window[S].compat.elementInternals) delete window.ElementInternals;
   if (!window[S].compat.textCodec) {
     delete window.TextEncoder;
     delete window.TextDecoder;
