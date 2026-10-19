@@ -2775,3 +2775,8 @@ in the profiles of the jsdom versions that have them.
   input (`checkedRadios`, set by setCheckedness, the parser and
   adoption); attribute steps can now be chained (addAttributeStep: the
   name attribute has the document's named properties and radio groups).
+- **option.text (#48).** Strips and collapses ASCII whitespace only (an
+  NBSP or U+3000 stays; warpdom trimmed with String.prototype.trim), and
+  leaves out HTML and SVG script elements only (MathML and no-namespace
+  script are text), as the standard and every version. Also option.label
+  and value without a value attribute.

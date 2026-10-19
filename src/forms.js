@@ -10,7 +10,7 @@
 import { urlOf } from './hyperlinks.js';
 import { followHyperlink } from './navigation.js';
 import {
-  S, state, domError, hooks, HTML_NS, ELEMENT_NODE, TEXT_NODE, DOCUMENT_NODE,
+  S, state, domError, hooks, HTML_NS, SVG_NS, ELEMENT_NODE, TEXT_NODE, DOCUMENT_NODE,
   rootOf, nextInTree, contains, elementById, connected, asciiLowercase, PlatformURL as URL, tooFewArguments,
 } from './internal.js';
 import { writeAttribute, attributeSteps, addAttributeStep, tokenList } from './attributes.js';
@@ -79,8 +79,9 @@ function fire(target, type, init) {
 const notImplemented = (el, message) => internalsOf(el).notImplemented(message);
 
 const asciiWhitespace = /[\t\n\f\r ]+/g;
-const stripAndCollapse = (s) => s.replace(asciiWhitespace, ' ').trim();
 const trimASCII = (s) => s.replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, '');
+// Strip and collapse ASCII whitespace (not NBSP or other Unicode spaces).
+const stripAndCollapse = (s) => trimASCII(s.replace(asciiWhitespace, ' '));
 const stripNewlines = (s) => (/[\r\n]/.test(s) ? s.replace(/[\r\n]/g, '') : s);
 
 // --- disabled, listed, labelable --------------------------------------------------
@@ -710,7 +711,7 @@ function textExcludingScript(node) {
   for (let c = node[S].first; c; c = c[S].next) {
     const cs = c[S];
     if (cs.type === TEXT_NODE) out += cs.data;
-    else if (cs.type === ELEMENT_NODE && cs.tag !== 'script') out += textExcludingScript(c);
+    else if (cs.type === ELEMENT_NODE && !(cs.tag === 'script' && (cs.ns === HTML_NS || cs.ns === SVG_NS))) out += textExcludingScript(c);
   }
   return out;
 }

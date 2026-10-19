@@ -1250,3 +1250,26 @@ test('radio button groups: becoming connected unchecks the group from jsdom 30.1
   };
   assert.deepEqual([run('30.0.1'), run('30.1.0')], [[true, true], [false, true]]);
 });
+
+// option.text (#48): strip and collapse ASCII whitespace only (NBSP and
+// other spaces stay); leave out HTML and SVG script elements only.
+parity('option text: whitespace and script elements', (w) => {
+  const d = w.document;
+  const out = [];
+  for (const html of [' text ', ' a \t b\n', ' x ', 'a\u000bb', '　y']) {
+    const o = d.createElement('option');
+    o.innerHTML = html;
+    out.push([html, o.text, o.label, o.value]);
+  }
+  for (const [ns, name] of [['http://www.w3.org/1998/Math/MathML', 'script'], [null, 'script'], ['http://www.w3.org/2000/svg', 'script'], ['http://www.w3.org/1999/xhtml', 'script'], ['http://www.w3.org/1999/xhtml', 'style']]) {
+    const o = d.createElement('option');
+    const sc = d.createElementNS(ns, name);
+    sc.textContent = 'S';
+    o.append('before ', sc, ' after');
+    out.push([ns, name, o.text, o.value, o.label]);
+  }
+  const s = d.createElement('select');
+  s.innerHTML = '<option> v </option><option value=" x "> </option>';
+  out.push([s.value, s.options[1].text, s.options[1].label]);
+  return out;
+});
