@@ -99,7 +99,8 @@ function addDescriptors(descriptors, members) {
 // target and hide the key; a private field is not reachable through a proxy).
 // An interface may bring its own slot (Event, DOMRectReadOnly).
 const STATE_ON_OBJECT = new Set(['EventTarget', 'Node', 'Window', 'Storage', 'DOMStringMap', 'NodeList', 'HTMLCollection',
-  'NamedNodeMap', 'DOMTokenList', 'CSSRuleList', 'MediaList', 'StyleSheetList', 'TouchList', 'FileList', 'SVGStringList']);
+  'NamedNodeMap', 'DOMTokenList', 'CSSRuleList', 'MediaList', 'StyleSheetList', 'TouchList', 'FileList', 'SVGStringList',
+  'Plugin', 'MimeType', 'PluginArray', 'MimeTypeArray']);
 const hidesState = (iface) => (!iface.parent || iface.parent === 'EventTarget') && !STATE_ON_OBJECT.has(iface.name);
 
 // Interfaces with the HTML element constructor: HTMLElement and its element interfaces.

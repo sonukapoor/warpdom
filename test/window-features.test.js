@@ -170,3 +170,27 @@ test('"Not implemented" reports in jsdom 20 to 26\'s words', () => {
   assert.deepEqual(messages, ['Not implemented: window.alert', 'Not implemented: HTMLFormElement.prototype.submit',
     'Not implemented: HTMLCanvasElement.prototype.getContext (without installing the canvas npm package)', 'Not implemented: HTMLMediaElement.prototype.pause']);
 });
+
+// navigator.plugins and navigator.mimeTypes, Plugin, MimeType, PluginArray
+// and MimeTypeArray (#58, #31, #33, #34, #54): empty legacy collections in
+// every jsdom version measured (20.0.3 to 30.1.3).
+for (const jsdom of [20, 26, 30]) {
+  parity(`navigator.plugins and mimeTypes: empty collections (jsdom ${jsdom})`, (w) => {
+    const caught = (f) => { try { return f(); } catch (err) { return err.constructor.name; } };
+    const n = w.navigator;
+    const shapes = ['Plugin', 'MimeType', 'PluginArray', 'MimeTypeArray'].map((name) => {
+      const C = w[name];
+      return [name, C.length, Object.getOwnPropertyNames(C.prototype).sort(), caught(() => new C()), Object.prototype.toString.call(C.prototype),
+        C.prototype[Symbol.iterator]?.name, typeof C.prototype.item === 'function' ? C.prototype.item.length : null];
+    });
+    const lists = [['plugins', 'PluginArray'], ['mimeTypes', 'MimeTypeArray']].map(([key, name]) => {
+      const list = n[key];
+      const strictSet = caught(() => { 'use strict'; list[0] = 'a'; });
+      list.expando = 1;
+      return [list === n[key], list instanceof w[name], list.length, list.item(0), list.item(-1), list.namedItem('application/pdf'), list[0], 0 in list,
+        [...list], Object.keys(list), String(list), JSON.stringify(list), strictSet, caught(() => list.item()), caught(() => list.namedItem())];
+    });
+    return [shapes, lists, n.plugins.refresh(), 'pdfViewerEnabled' in n, n.javaEnabled(), Object.getOwnPropertyNames(w.Navigator.prototype).includes('plugins'),
+      caught(() => { n.plugins = 5; }), n.plugins instanceof w.PluginArray];
+  }, { jsdom });
+}

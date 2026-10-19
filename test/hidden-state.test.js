@@ -25,7 +25,7 @@ function objects(w) {
     controller: new w.AbortController(), signal: new w.AbortController().signal, timeout: w.AbortSignal.timeout(1000), eventTarget: new w.EventTarget(),
     emitter: new Emitter(), style: div.style, computed: w.getComputedStyle(div), range: d.createRange(), selection: w.getSelection(),
     walker: d.createTreeWalker(div), iterator: d.createNodeIterator(div), rect: div.getBoundingClientRect(), domRect: new w.DOMRect(1, 2, 3, 4),
-    validity: d.querySelector('input').validity, history: w.history, location: w.location, navigator: w.navigator, screen: w.screen,
+    validity: d.querySelector('input').validity, history: w.history, location: w.location, navigator: w.navigator, plugins: w.navigator.plugins, mimeTypes: w.navigator.mimeTypes, screen: w.screen,
     customElements: w.customElements, implementation: d.implementation, sheet, rule: sheet.cssRules[0], ruleStyle: sheet.cssRules[0].style,
     record: mo.takeRecords()[0], parser: new w.DOMParser(), serializer: new w.XMLSerializer(), reader: new w.FileReader(),
     xpath: d.evaluate('//div', d, null, 0, null), staticRange: new w.StaticRange({ startContainer: div, startOffset: 0, endContainer: div, endOffset: 0 }),
