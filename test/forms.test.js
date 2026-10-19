@@ -956,3 +956,37 @@ const weekInput = (w) => {
   return out;
 };
 for (const jsdom of [30, 25, 20]) parity(`input type=week (jsdom ${jsdom})`, weekInput, { jsdom });
+
+// The pattern attribute (#43): compiled as ^(?:pattern)$ only when the
+// pattern compiles on its own (no escaping the group), with the v flag
+// from jsdom 27.0.0 and the u flag before.
+const patterns = (w) => {
+  const d = w.document;
+  const out = [];
+  const cases = [['[(]', ['foo', '(']], ['a)(b', ['x', 'a)(b', 'a']], ['a)|(b', ['x']], ['[a-z]{3}', ['abc', 'ab']], ['\\p{L}+', ['abc', '1']],
+    ['[\\p{L}--[a-z]]', ['A', 'a']], ['[[a-z]&&[aeiou]]', ['a', 'b']], ['a|b', ['a', 'ab']], ['.', ['\u{1F600}']], ['[|]', ['|']], ['(', ['(']], ['a{', ['a{']], ['abc|', ['x']]];
+  for (const [pattern, values] of cases) {
+    for (const value of values) {
+      for (const type of ['text', 'email']) {
+        const i = d.createElement('input');
+        i.type = type;
+        i.multiple = type === 'email';
+        i.pattern = pattern;
+        i.value = value;
+        out.push([pattern, value, type, i.validity.patternMismatch]);
+      }
+    }
+  }
+  return out;
+};
+for (const jsdom of [30, 26, 20]) parity(`pattern attribute (jsdom ${jsdom})`, patterns, { jsdom });
+test('pattern attribute: the v flag from jsdom 27.0.0', () => {
+  const mismatch = (jsdom, pattern, value) => {
+    const i = createWindow({ jsdom }).document.createElement('input');
+    i.pattern = pattern;
+    i.value = value;
+    return i.validity.patternMismatch;
+  };
+  assert.deepEqual([mismatch('26.1.0', '[(]', 'foo'), mismatch('27.0.0', '[(]', 'foo')], [true, false]);
+  assert.deepEqual([mismatch('26.1.0', '[\\p{L}--[a-z]]', 'a'), mismatch('27.0.0', '[\\p{L}--[a-z]]', 'a')], [false, true]);
+});

@@ -773,9 +773,16 @@ const VALIDITY_FLAGS = ['valueMissing', 'typeMismatch', 'patternMismatch', 'tooL
 
 const EMAIL = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
-function compilePattern(pattern) {
-  try { return new RegExp(`^(?:${pattern})$`, 'v'); } catch {
-    try { return new RegExp(`^(?:${pattern})$`, 'u'); } catch { return null; }
+// The compiled pattern regular expression (HTML): null when the pattern
+// does not compile on its own (so "a)(b" cannot close the wrapping group),
+// else ^(?:pattern)$. With the v flag from jsdom 27.0.0, the u flag before
+// (compat.patternFlag; black box, 26.1.0 and 27.0.0-beta.0: u).
+function compilePattern(pattern, flag) {
+  try {
+    new RegExp(pattern, flag);
+    return new RegExp(`^(?:${pattern})$`, flag);
+  } catch {
+    return null;
   }
 }
 
@@ -814,7 +821,7 @@ function inputValidity(el) {
     if (type === 'url') { try { new URL(value); } catch { flags.typeMismatch = true; } }
     const pattern = attr(el, 'pattern');
     if (pattern !== undefined && PATTERN_TYPES.has(type)) {
-      const re = compilePattern(pattern);
+      const re = compilePattern(pattern, windowOf(el)[S].compat.patternFlag);
       if (re) {
         const values = type === 'email' && has(el, 'multiple') ? value.split(',') : [value];
         flags.patternMismatch = !values.every((v) => re.test(v));

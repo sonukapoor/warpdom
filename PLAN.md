@@ -2718,3 +2718,8 @@ in the profiles of the jsdom versions that have them.
   valueAsNumber setter for years below 100 (year 1 gives "1901-W01")
   and out of the Date range ("0NaN-WNaN", "-29719-W14" are stored
   unsanitized; warpdom stores "").
+- **pattern (#43).** The compiled pattern is null when the pattern does
+  not compile on its own ("a)(b", "a)|(b": no mismatch), as the standard
+  and every version. The flag: v from jsdom 27.0.0 ("[(]" is invalid
+  and ignored, "[\p{L}--[a-z]]" is a set difference), u before (26.1.0
+  and 27.0.0-beta.0; `compat.patternFlag`). warpdom tried v, then u.
