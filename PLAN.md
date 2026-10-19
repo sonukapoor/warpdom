@@ -48,6 +48,9 @@ every modeled jsdom version, and every measured suite gives jsdom's results.
   motion member interfaces, the plugin API, media track lists,
   CSSMediaRule.matches, CSSNestedDeclarations (branch fix/misc-parity,
   2026-10-19 below).
+- #26: WebSocket, the host's (decided 2026-10-19). #22, #30:
+  XMLHttpRequest, on by default (decided 2026-10-19; its own branch after
+  the three parity PRs merge).
 - #18: a CI test that warpdom's window has every interface and member jsdom's
   has, per version, so a gap cannot reappear unnoticed.
 - #19: WPT on all test-DOM-relevant areas by default, results published.
@@ -478,6 +481,35 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   everywhere in warpdom.
 
 ## Decisions
+
+- **2026-10-19: XMLHttpRequest and WebSocket (decided by Sonu)** (issues
+  #22, #26, #30).
+  - **WebSocket:** option A, `window.WebSocket` is the host's WebSocket
+    (Node's), aliased, not an own interface (branch
+    fix/websocket-window, 2026-10-19 below). Its events and errors are
+    Node's, not the window's (README, "Differences from jsdom"). An own
+    spec implementation wrapping the host's (option B, 1-2 days) only if
+    `warpdom compare` or a user report shows a test that needs it: the
+    tracer saw WebSocket in 1 test file of 1 project, which already
+    passes.
+  - **XMLHttpRequest:** reverses the 2026-10-12 "XMLHttpRequest stays
+    out" decision, because of the 2026-10-17 rule that everything jsdom
+    has is on by default (M1); XHR and XMLHttpRequestEventTarget exist
+    in every jsdom version.
+    - Implemented from the spec on top of the host's `fetch`, on by
+      default, with an `xhr: false` escape hatch for suites that rely on
+      the Node-http fallback (axios then takes the XHR path again, as on
+      jsdom; release note).
+    - Synchronous XHR (`open(m, url, false)`) throws a clear error: jsdom
+      uses a child process for it, which the core can't, and the tracer
+      measured no use.
+    - Upload progress is approximated (fetch has no upload progress), and
+      jsdom's cookie jar is not modeled.
+    - Checks: the WPT `xhr/` area (added to the default areas), a
+      mock-compat test (msw, nock, axios) and the corpus check.
+    - It comes in a separate branch after the three parity PRs merge.
+  - **Rejected:** an interface-only XHR stub whose `send()` fails: axios
+    would detect XHR and every request would fail.
 
 - **2026-10-11: XML documents.** Real suites barely parse XML: in the
   stage 1 traces only ag-grid's excel-export test (happy-dom) parses XML,
@@ -1688,7 +1720,8 @@ Left, and why:
   requests in tests still work; only tests of XHR itself would differ.
   A faithful implementation (jsdom's does real requests through Node) is
   large. Revisit when a real suite needs it (compare or a user report).
-  Listed in the README's "Not implemented, unlike jsdom".
+  Listed in the README's "Not implemented, unlike jsdom". Reversed
+  2026-10-19 (Decisions): XHR comes on by default.
 
 - **2026-10-12: Release prep.** (1) CI: `.github/workflows/ci.yml` runs
   `npm test` on every push to main and every pull request, on Node 22.12
