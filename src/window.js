@@ -141,6 +141,9 @@ function installGlobalOperations(window, proto) {
   }
 }
 
+const DEVICE_AND_MEDIA_EVENTS = ['PromiseRejectionEvent', 'BlobEvent', 'DeviceMotionEvent', 'DeviceOrientationEvent',
+  'DeviceMotionEventAcceleration', 'DeviceMotionEventRotationRate'];
+
 function applyCompat(window, protos) {
   const { jsdom } = window[S].compat;
   // The CSS namespace (CSS.supports, CSS.escape) arrived in jsdom 30;
@@ -161,6 +164,9 @@ function applyCompat(window, protos) {
   if (jsdom < 27) {
     delete window.PointerEvent;
     delete window.TransitionEvent;
+    // Also from jsdom 27: PromiseRejectionEvent, BlobEvent and the device
+    // events (createEvent makes no device events before, events.js).
+    for (const name of DEVICE_AND_MEDIA_EVENTS) delete window[name];
     for (const proto of [protos.HTMLElement, protos.SVGElement, protos.Document, protos.Window, protos.ShadowRoot]) {
       if (!proto) continue;
       for (const name of POINTER_HANDLERS) delete proto[name];

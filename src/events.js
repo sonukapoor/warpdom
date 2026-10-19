@@ -638,6 +638,133 @@ const DEVICE_MOTION_FIELDS = { acceleration: null, accelerationIncludingGravity:
 const DEVICE_ORIENTATION_FIELDS = { alpha: null, beta: null, gamma: null, absolute: false };
 const MOUSE_OWN = own(MOUSE_FIELDS, UI_FIELDS);
 
+// WebIDL conversions for the constructors below, with jsdom's messages
+// (black box, jsdom 20 to 30). The init dictionary: undefined and null are
+// an empty one; other values that are not objects throw.
+function initDictionary(name, init) {
+  if (init === undefined || init === null) return {};
+  if (typeof init !== 'object' && typeof init !== 'function') throw new TypeError(`Failed to construct '${name}': parameter 2 is not an object.`);
+  return init;
+}
+
+function requireArguments(name, required, args) {
+  if (args.length < required) {
+    throw new TypeError(`Failed to construct '${name}': ${required} argument${required > 1 ? 's' : ''} required, but only ${args.length} present.`);
+  }
+  if (typeof args[0] === 'symbol') throw new TypeError(`Failed to construct '${name}': parameter 1 is a symbol, which cannot be converted to a string.`);
+}
+
+// A double member (path names it in the message, as "a' that has member 'x").
+function finiteDouble(name, path, value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) throw new TypeError(`Failed to construct '${name}': parameter 2 has member '${path}' that is not a finite floating-point value.`);
+  return n;
+}
+
+// A nullable double member (DeviceOrientationEventInit, DeviceMotionEvent's
+// acceleration and rotation rate members): undefined and null are null.
+const nullableDouble = (name, path, value) => (value === undefined || value === null ? null : finiteDouble(name, path, value));
+
+// PromiseRejectionEvent (HTML 8.1.7.3), from jsdom 27: promise is required
+// and any object (a thenable or function too), reason any value. jsdom
+// never fires unhandledrejection or rejectionhandled; nor does warpdom.
+function constructPromiseRejectionEvent(w, self, args) {
+  requireArguments('PromiseRejectionEvent', 2, args);
+  const dict = initDictionary('PromiseRejectionEvent', args[1]);
+  initEventState(self, args[0], dict);
+  const promise = dict.promise;
+  if (promise === undefined) throw new TypeError("promise is required in 'PromiseRejectionEventInit'");
+  if (promise === null || (typeof promise !== 'object' && typeof promise !== 'function')) {
+    throw new TypeError("Failed to construct 'PromiseRejectionEvent': parameter 2 has member 'promise' that is not an object.");
+  }
+  const es = eventState(self);
+  es.promise = promise;
+  es.reason = dict.reason;
+  return self;
+}
+
+// BlobEvent (MediaStream Recording), from jsdom 27: data is a required Blob
+// (of any window), timecode a finite double; without one, timecode is 0
+// before jsdom 30.1.0 and NaN from it.
+function constructBlobEvent(w, self, args) {
+  requireArguments('BlobEvent', 2, args);
+  const dict = initDictionary('BlobEvent', args[1]);
+  initEventState(self, args[0], dict);
+  const data = dict.data;
+  if (data === undefined) throw new TypeError("data is required in 'BlobEventInit'");
+  if (hooks.blobs?.blobData(data) === undefined) throw new TypeError("Failed to construct 'BlobEvent': parameter 2 has member 'data' that is not of type 'Blob'.");
+  const timecode = dict.timecode;
+  const es = eventState(self);
+  es.data = data;
+  es.timecode = timecode === undefined ? (w[S].compat.blobEventNaNTimecode ? NaN : 0) : finiteDouble('BlobEvent', 'timecode', timecode);
+  return self;
+}
+
+// PageTransitionEvent (HTML), in every jsdom version: persisted, a boolean.
+// Not made by createEvent (jsdom neither); nothing fires pageshow or
+// pagehide.
+const pageTransitionEventFields = eventConstruct('PageTransitionEvent');
+function constructPageTransitionEvent(w, self, args) {
+  if (args.length > 0) initDictionary('PageTransitionEvent', args[1]);
+  pageTransitionEventFields(w, self, args);
+  eventState(self).persisted = !!args[1]?.persisted;
+  return self;
+}
+
+// DeviceMotionEvent's acceleration, accelerationIncludingGravity and
+// rotationRate (Device Orientation and Motion), as jsdom 27 to 30 give them
+// (black box): not DeviceMotionEventAcceleration or
+// DeviceMotionEventRotationRate objects, which are never made, but objects
+// of a class of the outer realm ("DeviceMotionEventAccelerationImpl") with
+// writable own data properties x, y and z (alpha, beta and gamma), the same
+// object on every read. A member left out is null; given (null too), an
+// object whose members are null or finite doubles.
+class DeviceMotionEventAccelerationImpl {}
+class DeviceMotionEventRotationRateImpl {}
+const ACCELERATION_KEYS = ['x', 'y', 'z'];
+const ROTATION_KEYS = ['alpha', 'beta', 'gamma'];
+
+function motionMember(member, value, Impl, keys) {
+  if (value === undefined) return null;
+  if (value !== null && typeof value !== 'object' && typeof value !== 'function') {
+    throw new TypeError(`Failed to construct 'DeviceMotionEvent': parameter 2 has member '${member}' that is not an object.`);
+  }
+  const result = new Impl();
+  for (const key of keys) result[key] = nullableDouble('DeviceMotionEvent', `${member}' that has member '${key}`, value?.[key]);
+  return result;
+}
+
+// DeviceMotionEvent and DeviceOrientationEvent exist from jsdom 27
+// (applyCompat in window.js).
+const deviceMotionEventFields = eventConstruct('DeviceMotionEvent');
+function constructDeviceMotionEvent(w, self, args) {
+  if (args.length > 0) initDictionary('DeviceMotionEvent', args[1]);
+  deviceMotionEventFields(w, self, args);
+  const dict = args[1] ?? {};
+  const es = eventState(self);
+  es.acceleration = motionMember('acceleration', dict.acceleration, DeviceMotionEventAccelerationImpl, ACCELERATION_KEYS);
+  es.accelerationIncludingGravity = motionMember('accelerationIncludingGravity', dict.accelerationIncludingGravity, DeviceMotionEventAccelerationImpl, ACCELERATION_KEYS);
+  const interval = dict.interval;
+  es.interval = interval === undefined ? 0 : finiteDouble('DeviceMotionEvent', 'interval', interval);
+  es.rotationRate = motionMember('rotationRate', dict.rotationRate, DeviceMotionEventRotationRateImpl, ROTATION_KEYS);
+  return self;
+}
+
+const deviceOrientationEventFields = eventConstruct('DeviceOrientationEvent');
+function constructDeviceOrientationEvent(w, self, args) {
+  if (args.length > 0) initDictionary('DeviceOrientationEvent', args[1]);
+  deviceOrientationEventFields(w, self, args);
+  const dict = args[1] ?? {};
+  const es = eventState(self);
+  es.absolute = !!dict.absolute;
+  for (const key of ['alpha', 'beta', 'gamma']) es[key] = nullableDouble('DeviceOrientationEvent', key, dict[key]);
+  return self;
+}
+
+// Interfaces of the acceleration and rotation rate members, never
+// instantiated (as in jsdom): illegal constructors whose accessors throw.
+const motionGetters = (keys) => Object.fromEntries(keys.map((key) => [key, { get() { return state(this)[key]; } }]));
+
 export const EVENT_INTERFACES = [
   { name: 'EventTarget', members: eventTarget, construct: (w, self) => {
     // Not enumerable (see hiddenSlot in internal.js); EventTarget.prototype
@@ -765,8 +892,13 @@ export const EVENT_INTERFACES = [
       });
     },
   } },
-  { name: 'DeviceMotionEvent', parent: 'Event', construct: eventConstruct('DeviceMotionEvent', DEVICE_MOTION_FIELDS), members: fieldGetters(DEVICE_MOTION_FIELDS) },
-  { name: 'DeviceOrientationEvent', parent: 'Event', construct: eventConstruct('DeviceOrientationEvent', DEVICE_ORIENTATION_FIELDS), members: fieldGetters(DEVICE_ORIENTATION_FIELDS) },
+  { name: 'DeviceMotionEvent', parent: 'Event', construct: constructDeviceMotionEvent, members: fieldGetters(DEVICE_MOTION_FIELDS) },
+  { name: 'DeviceOrientationEvent', parent: 'Event', construct: constructDeviceOrientationEvent, members: fieldGetters(DEVICE_ORIENTATION_FIELDS) },
+  { name: 'DeviceMotionEventAcceleration', members: motionGetters(ACCELERATION_KEYS) },
+  { name: 'DeviceMotionEventRotationRate', members: motionGetters(ROTATION_KEYS) },
+  { name: 'PromiseRejectionEvent', parent: 'Event', construct: constructPromiseRejectionEvent, members: fieldGetters({ promise: null, reason: undefined }) },
+  { name: 'BlobEvent', parent: 'Event', construct: constructBlobEvent, members: fieldGetters({ data: null, timecode: 0 }) },
+  { name: 'PageTransitionEvent', parent: 'Event', construct: constructPageTransitionEvent, members: fieldGetters({ persisted: false }) },
   // Not constructible: only createEvent (and navigation, not modeled) make one.
   { name: 'BeforeUnloadEvent', parent: 'Event', members: {
     get returnValue() { return eventState(this).unloadReturnValue ?? ''; },
@@ -775,6 +907,8 @@ export const EVENT_INTERFACES = [
 ];
 // The constructors' length (WebIDL: required arguments): the type.
 for (const iface of EVENT_INTERFACES) if (iface.construct && iface.name !== 'EventTarget') iface.length = 1;
+// PromiseRejectionEvent and BlobEvent require their init dictionary.
+for (const iface of EVENT_INTERFACES) if (iface.name === 'PromiseRejectionEvent' || iface.name === 'BlobEvent') iface.length = 2;
 
 // document.createEvent(interface): an uninitialized event of that interface.
 // The DOM standard's createEvent table (ASCII case-insensitive), for the
@@ -789,7 +923,10 @@ const LEGACY_EVENT_NAMES = {
 
 export function createEvent(window, name) {
   const iface = Object.hasOwn(LEGACY_EVENT_NAMES, String(name).toLowerCase()) ? LEGACY_EVENT_NAMES[String(name).toLowerCase()] : undefined;
-  if (!iface) throw domError(`The provided event type ("${name}") is invalid.`, 'NotSupportedError');
+  // jsdom has the device events from 27 (createEvent too).
+  if (!iface || (window[S].compat.jsdom < 27 && (iface === 'DeviceMotionEvent' || iface === 'DeviceOrientationEvent'))) {
+    throw domError(`The provided event type ("${name}") is invalid.`, 'NotSupportedError');
+  }
   let event;
   if (iface === 'BeforeUnloadEvent') {
     event = Object.create(window[S].protos.BeforeUnloadEvent);
