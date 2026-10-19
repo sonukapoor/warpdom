@@ -11,7 +11,7 @@ import { urlOf } from './hyperlinks.js';
 import { followHyperlink } from './navigation.js';
 import {
   S, state, domError, hooks, HTML_NS, ELEMENT_NODE, TEXT_NODE, DOCUMENT_NODE,
-  rootOf, nextInTree, contains, elementById, connected, asciiLowercase, PlatformURL as URL,
+  rootOf, nextInTree, contains, elementById, connected, asciiLowercase, PlatformURL as URL, tooFewArguments,
 } from './internal.js';
 import { writeAttribute, attributeSteps, tokenList } from './attributes.js';
 import { liveList, htmlCollectionNames } from './collections.js';
@@ -315,6 +315,23 @@ attributeSteps.set('checked', (el) => {
 // --- text selection (input and textarea) ------------------------------------------
 
 const selectionApplies = (el) => isTag(el, 'textarea') || SELECTION_TYPES.has(inputType(el));
+// Input types select() applies to without a selection: it only fires select.
+const SELECT_ONLY_TYPES = new Set(['email', 'number', 'date', 'month', 'week', 'time', 'datetime-local', 'color', 'file']);
+const SELECTION_MODES = new Set(['select', 'start', 'end', 'preserve']);
+const selectionInterface = (el) => (isTag(el, 'textarea') ? 'HTMLTextAreaElement' : 'HTMLInputElement');
+
+// The select event (HTML 4.10.21.2): select(), setSelectionRange(), the
+// selection setters and setRangeText() fire it at the element, bubbling and
+// not cancelable, in a queued task. As jsdom (black box, 20.0.3 to
+// 30.1.2), every call fires one, also when the selection did not change
+// and when one is already queued (the standard skips both), and for
+// elements not in a document. Before jsdom 21.1.2 it is dispatched
+// synchronously and is cancelable (compat.syncSelectEvent).
+function fireSelect(el) {
+  const ws = windowOf(el)[S];
+  if (ws.compat.syncSelectEvent) fire(el, 'select', { bubbles: true, cancelable: true });
+  else ws.setTimeout(() => fire(el, 'select', { bubbles: true }), 0);
+}
 export const controlValue = (el) => (isTag(el, 'textarea') ? textareaValue(el) : inputValue(el));
 
 function setControlValueRaw(el, value) {
@@ -333,6 +350,7 @@ function setSelectionRange(el, start, end, direction = 'none') {
   s.selStart = st;
   s.selEnd = e;
   s.selDir = direction === 'forward' || direction === 'backward' ? direction : 'none';
+  fireSelect(el);
 }
 
 const selectionMembers = {
@@ -354,35 +372,50 @@ const selectionMembers = {
     if (!selectionApplies(this)) throw domError("The input element's type does not support selection.", 'InvalidStateError');
     setSelectionRange(this, s.selStart ?? 0, s.selEnd ?? 0, v);
   },
-  setSelectionRange(start, end, direction = undefined) { state(this); setSelectionRange(this, start, end, direction); },
+  setSelectionRange(start, end, direction = undefined) {
+    state(this);
+    if (end === undefined && arguments.length < 2) tooFewArguments(selectionInterface(this), 'setSelectionRange', 2, arguments.length);
+    setSelectionRange(this, start, end, direction);
+  },
   select() {
     state(this);
-    if (!selectionApplies(this)) return;
-    setSelectionRange(this, 0, controlValue(this).length);
+    if (selectionApplies(this)) setSelectionRange(this, 0, controlValue(this).length);
+    else if (isTag(this, 'input') && SELECT_ONLY_TYPES.has(inputType(this))) fireSelect(this);
   },
-  setRangeText(replacement, start = undefined, end = undefined, selectMode = 'preserve') {
+  setRangeText(replacement, start = undefined, end = undefined, selectMode = undefined) {
     const s = state(this);
+    // WebIDL overload resolution: (replacement) or (replacement, start,
+    // end, selectMode); two arguments match neither.
+    const n = arguments.length;
+    const iface = selectionInterface(this);
+    if (n < 1) tooFewArguments(iface, 'setRangeText', 1, 0);
+    if (n === 2) throw new TypeError(`Failed to execute 'setRangeText' on '${iface}': only 2 arguments present.`);
+    const text = String(replacement);
+    const mode = selectMode === undefined ? 'preserve' : String(selectMode);
+    if (!SELECTION_MODES.has(mode)) throw new TypeError(`Failed to execute 'setRangeText' on '${iface}': parameter 4 '${mode}' is not a valid enumeration value for SelectionMode`);
     if (!selectionApplies(this)) throw domError("The input element's type does not support selection.", 'InvalidStateError');
     const value = controlValue(this);
-    const text = String(replacement);
     let st = s.selStart ?? 0, en = s.selEnd ?? 0;
-    if (start !== undefined) {
+    if (n > 2) {
       st = start >>> 0;
       en = end >>> 0;
-      if (st > en) throw domError('The provided start value is larger than the end value.', 'IndexSizeError');
+      if (st > en) throw domError('The index is not in the allowed range.', 'IndexSizeError');
     }
     st = Math.min(st, value.length);
     en = Math.min(en, value.length);
     let selStart = s.selStart ?? 0, selEnd = s.selEnd ?? 0;
     setControlValueRaw(this, value.slice(0, st) + text + value.slice(en));
-    const newEnd = st + text.length;
-    if (selectMode === 'select') { selStart = st; selEnd = newEnd; } else if (selectMode === 'start') { selStart = selEnd = st; } else if (selectMode === 'end') { selStart = selEnd = newEnd; } else {
+    // jsdom before 21.1.2: the end of the replaced text is the new value's length.
+    const newEnd = windowOf(this)[S].compat.legacyRangeTextEnd ? controlValue(this).length : st + text.length;
+    if (mode === 'select') { selStart = st; selEnd = newEnd; } else if (mode === 'start') { selStart = selEnd = st; } else if (mode === 'end') { selStart = selEnd = newEnd; } else {
       const delta = text.length - (en - st);
       if (selStart > en) selStart += delta; else if (selStart > st) selStart = st;
       if (selEnd > en) selEnd += delta; else if (selEnd > st) selEnd = newEnd;
     }
     s.selStart = selStart;
     s.selEnd = selEnd;
+    s.selDir = 'none';
+    fireSelect(this);
   },
 };
 

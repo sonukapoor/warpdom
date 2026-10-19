@@ -1046,6 +1046,11 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
     legacyComputedStyle: before(version, [29, 0, 2]), unsetUndeclared: version[0] >= 21 && before(version, [28, 1, 0]),
     blankBorderShorthands: !before(version, [29, 0, 2]) && before(version, [29, 1, 1]), shorthandInitials: !before(version, [30, 1, 3]), initialAnimationDelay: before(version, [30, 0, 1]),
     rawComputedValues: before(version, [29, 0, 2]) || !before(version, [30, 1, 0]) ? null : version[0] === 29 ? '29' : '30.0',
+    // Text selection (forms.js), black box per release: before 21.1.2 the
+    // select event is dispatched synchronously and is cancelable (from
+    // 21.1.2 in a task, not cancelable), and setRangeText() takes the new
+    // value's length as the end of the replaced text.
+    syncSelectEvent: before(version, [21, 1, 2]), legacyRangeTextEnd: before(version, [21, 1, 2]),
     focusIgnoresRendering: before(version, [30, 1, 2]), detachedCheckableEvents: before(version, [16, 5, 2]), cssstyle: version[0] < 27 ? (css ? cssText : undefined) : cssstyle ?? undefined, cssstyleMajor: css ? css[0] : 0,
     styleSurface: styleSurfaceKey(version, version[0] < 27 ? css : cssstyle != null ? parseJsdomVersion(cssstyle) : null),
     unquotedUrls: css !== null && before(css, [4, 3, 1]),

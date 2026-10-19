@@ -279,6 +279,144 @@ parity('text selection', (w) => {
   return out;
 });
 
+// The select event: one per call of select(), setSelectionRange(), the
+// selection setters and setRangeText(), also when the selection does not
+// change, when one is already queued and for elements not in a document;
+// none for value changes or calls that throw. In a task from jsdom 21.1.2,
+// synchronous and cancelable before (the jsdom 20 profile).
+async function selectEvents(w) {
+  const d = w.document;
+  d.body.innerHTML = '<input id="t" value="hello"><textarea id="ta">abc</textarea><input id="e" type="email"><input id="n" type="number" value="1"><input id="c" type="checkbox"><input id="m">';
+  const log = [];
+  const record = (e) => log.push([e.target.id, e.type, e.constructor.name, e.bubbles, e.cancelable, e.composed, e.isTrusted, e.eventPhase, e.target.selectionStart, e.target.selectionEnd, e.target.selectionDirection]);
+  d.addEventListener('select', record);
+  const t = d.getElementById('t');
+  const ta = d.getElementById('ta');
+  t.onselect = () => log.push('onselect');
+  t.select();
+  log.push('after select()');
+  t.select();
+  t.setSelectionRange(1, 2);
+  t.setSelectionRange(1, 2);
+  t.selectionStart = 0;
+  t.selectionEnd = 3;
+  t.selectionDirection = 'backward';
+  t.setRangeText('x');
+  t.setRangeText('y', 0, 1, 'select');
+  t.setRangeText('z', 1, 1, 'end');
+  t.value = 'abc';
+  try { t.setRangeText('q', 2, 1); } catch (e) { log.push(e.name); }
+  try { t.setSelectionRange(0); } catch (e) { log.push(e.name); }
+  ta.select();
+  ta.setRangeText('z', 0, 0, 'start');
+  d.getElementById('e').select();
+  d.getElementById('n').select();
+  d.getElementById('c').select();
+  try { d.getElementById('c').setSelectionRange(0, 1); } catch (e) { log.push(e.name); }
+  const detached = d.createElement('input');
+  detached.id = 'detached';
+  detached.value = 'ab';
+  detached.addEventListener('select', record);
+  detached.select();
+  const other = d.implementation.createHTMLDocument('').createElement('textarea');
+  other.id = 'other';
+  other.addEventListener('select', record);
+  other.setSelectionRange(0, 0);
+  const removed = d.createElement('textarea');
+  removed.id = 'removed';
+  removed.value = 'abcd';
+  d.body.append(removed);
+  removed.select();
+  removed.remove();
+  log.push('end of task');
+  // Events are dispatched in the order they were queued: waiting for the
+  // last one waits for all of them (or 2 s, if it never comes).
+  const m = d.getElementById('m');
+  let timer;
+  await Promise.race([
+    new Promise((resolve) => { m.addEventListener('select', resolve, { once: true }); m.select(); }),
+    new Promise((resolve) => { timer = setTimeout(() => resolve(log.push('no select event')), 2000); }),
+  ]);
+  clearTimeout(timer);
+  return log;
+}
+for (const jsdom of [30, 25, 22, 20]) parity(`select event (jsdom ${jsdom})`, selectEvents, { jsdom });
+
+// The jsdom release where the select event became a task (black box:
+// 21.1.1 dispatches it synchronously, 21.1.2 in a task).
+test('select event: synchronous and cancelable before jsdom 21.1.2', async () => {
+  const observe = async (jsdom) => {
+    const w = createWindow({ jsdom });
+    const i = w.document.body.appendChild(w.document.createElement('input'));
+    i.value = 'abc';
+    const log = [];
+    i.addEventListener('select', (e) => log.push(e.cancelable));
+    i.setRangeText('x', 0, 1);
+    log.push('sync');
+    await new Promise((r) => setTimeout(r, 10));
+    return log;
+  };
+  assert.deepEqual(await observe('21.1.1'), [true, 'sync']);
+  assert.deepEqual(await observe('21.1.2'), ['sync', false]);
+});
+
+// setRangeText()'s new selection in every mode: the direction becomes
+// none, and before jsdom 21.1.2 the end of the replaced text is the new
+// value's length (the jsdom 20 profile; black box, 21.1.1 and 21.1.2).
+const rangeTextSelection = (w) => {
+  const out = [];
+  for (const [start, end] of [[0, 0], [0, 3], [1, 4], [2, 2], [4, 5]]) {
+    for (const args of [['x'], ['xyz'], ['', 0, 2], ['abc', 1, 2, 'select'], ['abc', 1, 2, 'start'], ['abc', 1, 2, 'end'], ['abc', 1, 2], ['', 1, 3, 'preserve'], ['q', 3, 3, 'end']]) {
+      const i = w.document.createElement('input');
+      i.value = 'hello';
+      i.setSelectionRange(start, end, 'backward');
+      i.setRangeText(...args);
+      out.push([i.value, i.selectionStart, i.selectionEnd, i.selectionDirection]);
+    }
+  }
+  return out;
+};
+for (const jsdom of [30, 20]) parity(`setRangeText selection (jsdom ${jsdom})`, rangeTextSelection, { jsdom });
+test('setRangeText selection: the replaced text ends at the value\'s length before jsdom 21.1.2', () => {
+  const end = (jsdom) => {
+    const i = createWindow({ jsdom }).document.createElement('input');
+    i.value = 'hello';
+    i.setRangeText('abc', 1, 2, 'end');
+    return i.selectionEnd;
+  };
+  assert.deepEqual([end('21.1.1'), end('21.1.2')], [7, 4]);
+});
+
+// WebIDL arguments of setRangeText() and setSelectionRange(): too few
+// arguments, two for setRangeText (no overload takes two), an invalid
+// SelectionMode, and undefined for optional and present arguments.
+parity('setRangeText and setSelectionRange arguments', (w) => {
+  const d = w.document;
+  const out = [];
+  const attempt = (make, f) => {
+    const el = make();
+    try { f(el); out.push([el.value, el.selectionStart, el.selectionEnd]); } catch (e) { out.push([e.constructor.name, e.name, e.message]); }
+  };
+  const input = (type = 'text') => { const i = d.createElement('input'); i.type = type; i.value = 'abc'; return i; };
+  const textarea = () => { const t = d.createElement('textarea'); t.value = 'abc'; return t; };
+  for (const make of [input, textarea, () => input('checkbox'), () => input('email')]) {
+    attempt(make, (el) => el.setRangeText());
+    attempt(make, (el) => el.setRangeText('x', 1));
+    attempt(make, (el) => el.setRangeText('x', 1, 2, 'bogus'));
+    attempt(make, (el) => el.setSelectionRange());
+    attempt(make, (el) => el.setSelectionRange(1));
+  }
+  attempt(input, (el) => el.setRangeText(undefined));
+  attempt(input, (el) => el.setRangeText('x', undefined, undefined));
+  attempt(input, (el) => el.setRangeText('x', 1, undefined));
+  attempt(input, (el) => el.setRangeText('x', 1, 2, undefined));
+  attempt(input, (el) => el.setRangeText('x', 2, 1));
+  attempt(input, (el) => el.setRangeText('x', 0, 9, 'end'));
+  attempt(input, (el) => el.setSelectionRange(1, undefined));
+  attempt(input, (el) => el.setSelectionRange(undefined, 2, undefined));
+  return out;
+});
+
 parity('valueAsNumber, valueAsDate, stepUp', (w) => {
   const d = w.document;
   const n = d.createElement('input');
