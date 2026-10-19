@@ -1118,6 +1118,9 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
     // 21.1.2 in a task, not cancelable), and setRangeText() takes the new
     // value's length as the end of the replaced text.
     syncSelectEvent: before(version, [21, 1, 2]), legacyRangeTextEnd: before(version, [21, 1, 2]),
+    // Form controls (forms.js), black box per release: from 30.1.0 cloning
+    // an input copies its indeterminate state.
+    cloneIndeterminate: !before(version, [30, 1, 0]),
     focusIgnoresRendering: before(version, [30, 1, 2]), detachedCheckableEvents: before(version, [16, 5, 2]), cssstyle: version[0] < 27 ? (css ? cssText : undefined) : cssstyle ?? undefined, cssstyleMajor: css ? css[0] : 0,
     styleSurface: styleSurfaceKey(version, version[0] < 27 ? css : cssstyle != null ? parseJsdomVersion(cssstyle) : null),
     unquotedUrls: css !== null && before(css, [4, 3, 1]),

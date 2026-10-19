@@ -315,6 +315,21 @@ attributeSteps.set('checked', (el) => {
   if (has(el, 'checked') && inputType(el) === 'radio') setCheckedness(el, true);
 });
 
+// The cloning steps of input and textarea (HTML): an input's value, dirty
+// value flag, checkedness and dirty checkedness flag, a textarea's raw
+// value and dirty value flag; as jsdom (black box, 20.0.3 to 30.1.2). The
+// indeterminate state from jsdom 30.1.0 (compat.cloneIndeterminate), as
+// the standard says. The selection is not copied.
+export function cloneFormState(node, copy) {
+  const s = node[S];
+  const c = copy[S];
+  if (s.dirtyValue) { c.value = s.value; c.dirtyValue = true; }
+  if (s.tag !== 'input') return;
+  if (s.checked !== undefined) c.checked = s.checked;
+  if (s.dirtyChecked) c.dirtyChecked = true;
+  if (s.indeterminate && windowOf(copy)[S].compat.cloneIndeterminate) c.indeterminate = true;
+}
+
 // --- text selection (input and textarea) ------------------------------------------
 
 const selectionApplies = (el) => isTag(el, 'textarea') || SELECTION_TYPES.has(inputType(el));

@@ -727,3 +727,83 @@ test('jsdom before 16.5.2: a click on a detached checkbox or radio also fires in
     }
   }
 });
+
+// Cloning steps of input and textarea (#41): value, dirty value flag,
+// checkedness and dirty checkedness flag; a textarea's raw value and dirty
+// flag. Not the selection or an option's selectedness. From jsdom 30.1.0
+// the indeterminate state too.
+const cloning = (w) => {
+  const d = w.document;
+  const out = [];
+  for (const type of ['text', 'checkbox', 'radio', 'hidden', 'file', 'number', 'range', 'color', 'date', 'submit']) {
+    const i = d.createElement('input');
+    i.type = type;
+    try { i.value = type === 'number' ? '5' : 'foo bar'; } catch (e) { out.push(e.name); }
+    i.checked = true;
+    i.indeterminate = true;
+    const c = i.cloneNode();
+    out.push([type, c.value, c.checked, c.indeterminate, c.getAttribute('value')]);
+    c.setAttribute('value', 'baz');
+    c.removeAttribute('checked');
+    c.setAttribute('checked', '');
+    out.push([c.value, c.checked]);
+    const j = d.createElement('input');
+    j.type = type;
+    j.setAttribute('value', '7');
+    j.setAttribute('checked', '');
+    const cj = j.cloneNode();
+    cj.setAttribute('value', '8');
+    cj.removeAttribute('checked');
+    out.push([cj.value, cj.checked]);
+  }
+  const i = d.createElement('input');
+  i.value = 'hello';
+  i.setSelectionRange(1, 3, 'backward');
+  const c = i.cloneNode();
+  out.push([c.selectionStart, c.selectionEnd, c.selectionDirection]);
+  const t = d.createElement('textarea');
+  t.textContent = 'def';
+  t.value = 'foo bar';
+  const tc = t.cloneNode();
+  out.push([tc.value, tc.textContent]);
+  tc.textContent = 'zzz';
+  out.push(tc.value);
+  const t2 = d.createElement('textarea');
+  t2.textContent = 'def';
+  const t2c = t2.cloneNode(true);
+  t2c.textContent = 'q';
+  out.push(t2c.value);
+  d.body.innerHTML = '<form><input name=a><input type=checkbox name=b><select><option>1<option>2</select><textarea>t</textarea></form>';
+  const f = d.body.firstChild;
+  f.elements[0].value = 'x';
+  f.elements[1].checked = true;
+  f.elements[2].selectedIndex = 1;
+  f.elements[3].value = 'changed';
+  const fc = f.cloneNode(true);
+  out.push([fc.elements[0].value, fc.elements[1].checked, fc.elements[2].selectedIndex, fc.elements[3].value]);
+  const o = d.createElement('option');
+  o.selected = true;
+  out.push(o.cloneNode().selected);
+  const other = d.implementation.createHTMLDocument('');
+  const ii = d.createElement('input');
+  ii.value = 'imp';
+  ii.checked = true;
+  out.push([other.importNode(ii).value, other.importNode(ii).checked]);
+  const cb = d.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = false;
+  const cbc = cb.cloneNode();
+  cbc.setAttribute('checked', '');
+  out.push(cbc.checked);
+  return out;
+};
+for (const jsdom of [30, 25, 20]) parity(`cloning input and textarea (jsdom ${jsdom})`, cloning, { jsdom });
+
+test('cloning an input copies its indeterminate state from jsdom 30.1.0', () => {
+  const cloned = (jsdom) => {
+    const i = createWindow({ jsdom }).document.createElement('input');
+    i.indeterminate = true;
+    return i.cloneNode().indeterminate;
+  };
+  assert.deepEqual([cloned('29.1.1'), cloned('30.0.1'), cloned('30.1.0'), cloned('30.1.2')], [false, false, true, true]);
+});

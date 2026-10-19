@@ -2679,3 +2679,19 @@ Tests: test/events.test.js (parity on jsdom 20, 26, 30; 27.0.0 and
 test/custom-elements.test.js (ElementInternals on 20, 22, 25, 26, 30;
 23.0.1/23.1.0/26.0.0/27.0.0 literals; disabledFeatures; viewless
 documents), test/hidden-state.test.js.
+
+## 2026-10-19: html/semantics forms parity (branch fix/forms-parity, #41 to #51)
+
+Gaps from the WPT html/semantics comparison (warpdom-notes,
+wpt-html-semantics-2026-10-18). Each measured black box on jsdom 20.0.3,
+22.1.0, 25.0.1, 26.1.0, 27.4.0, 28.1.0, 29.1.1 and 30.1.2 (and the
+releases around a boundary), against the HTML standard. On by default
+in the profiles of the jsdom versions that have them.
+
+- **Cloning steps (#41).** cloneNode() and importNode() of an input copy
+  its value, dirty value flag, checkedness and dirty checkedness flag; of
+  a textarea its raw value and dirty value flag (every version). The
+  indeterminate state from jsdom 30.1.0 (30.0.1 and earlier: not copied;
+  `compat.cloneIndeterminate`). Not copied in any version: the selection,
+  an option's selectedness (a select's selectedIndex is the default
+  again in the clone).
