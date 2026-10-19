@@ -26,7 +26,7 @@
 // object counts, as in jsdom.
 import { S, HTML_NS, ELEMENT_NODE, hooks, nextInTree, rootOf, isNamedTag, namedAttributesSet } from './internal.js';
 import { liveList } from './collections.js';
-import { attributeSteps } from './attributes.js';
+import { addAttributeStep } from './attributes.js';
 
 const NONE = [];
 
@@ -159,5 +159,5 @@ function attributeChanged(element) {
   namedAttributesSet(s, doc);
   if (doc[S].namedCandidates) update(doc, element, rootOf(element) === doc);
 }
-attributeSteps.set('name', attributeChanged);
-attributeSteps.set('id', attributeChanged);
+addAttributeStep('name', attributeChanged);
+addAttributeStep('id', attributeChanged);

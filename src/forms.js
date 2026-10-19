@@ -13,7 +13,7 @@ import {
   S, state, domError, hooks, HTML_NS, ELEMENT_NODE, TEXT_NODE, DOCUMENT_NODE,
   rootOf, nextInTree, contains, elementById, connected, asciiLowercase, PlatformURL as URL, tooFewArguments,
 } from './internal.js';
-import { writeAttribute, attributeSteps, tokenList } from './attributes.js';
+import { writeAttribute, attributeSteps, addAttributeStep, tokenList } from './attributes.js';
 import { liveList, htmlCollectionNames } from './collections.js';
 import { dispatch, eventConstruct, fieldGetters, eventState } from './events.js';
 import { parseInteger } from './reflect.js';
@@ -350,6 +350,7 @@ attributeSteps.set('type', (el, old, value) => {
   if (from === to) return undefined;
   const fromMode = valueMode(from), toMode = valueMode(to);
   if (!SELECTION_TYPES.has(from) && SELECTION_TYPES.has(to)) { s.selStart = s.selEnd = 0; s.selDir = 'none'; }
+  if (to === 'radio' && checkedness(el)) uncheckGroup(el);
   if (fromMode === 'value') {
     const current = sanitize(el, from, s.value ?? attr(el, 'value') ?? '');
     if (toMode === 'value') { s.value = current; return undefined; }
@@ -376,8 +377,36 @@ function radioGroup(el) {
 
 function setCheckedness(el, value) {
   el[S].checked = value;
-  if (value && inputType(el) === 'radio') for (const other of radioGroup(el)) other[S].checked = false;
+  if (value && inputType(el) === 'radio') uncheckGroup(el);
 }
+
+// The other buttons of a checked radio button's group become unchecked.
+function uncheckGroup(el) {
+  el[S].doc[S].checkedRadios = true;
+  for (const other of radioGroup(el)) other[S].checked = false;
+}
+const isCheckedRadio = (el) => isTag(el, 'input') && inputType(el) === 'radio' && checkedness(el);
+
+// The radio button group is also updated, as jsdom (black box, 20.0.3 to
+// 30.1.2), when a checked radio button's name changes, when an input
+// becomes a radio button, and when its form owner changes on insertion
+// (into a form, or into a tree where its form attribute finds one). From
+// jsdom 30.1.0 (compat.radioConnected), as the standard: also when it
+// becomes connected, and when its form attribute changes.
+addAttributeStep('name', (el) => { if (isCheckedRadio(el)) uncheckGroup(el); });
+attributeSteps.set('form', (el) => {
+  if (isCheckedRadio(el) && windowOf(el)[S].compat.radioConnected) uncheckGroup(el);
+});
+// connected: node's tree is a document's (a shadow tree is checked here).
+hooks.radios = (node, connected) => {
+  const now = windowOf(node)[S].compat.radioConnected && (connected || isConnected(node));
+  for (const el of treeElements(node)) {
+    if (!isCheckedRadio(el)) continue;
+    if (now) { uncheckGroup(el); continue; }
+    const form = formOwner(el);
+    if (form !== null && !contains(node, form)) uncheckGroup(el);
+  }
+};
 
 attributeSteps.set('checked', (el) => {
   const s = el[S];

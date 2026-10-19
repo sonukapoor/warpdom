@@ -2761,3 +2761,17 @@ in the profiles of the jsdom versions that have them.
   give null), where the standard ignores the attribute and takes the
   ancestor form. The WPT subtests pass either way (the id names the
   ancestor).
+- **Radio button groups (#47).** A checked radio button unchecks the
+  rest of its group, in every version, when its name attribute changes
+  (also not connected), when its type becomes radio, and when its form
+  owner changes on insertion: inserted into a form (connected or not;
+  also by the parser and by cloneNode, one node at a time, so the last
+  checked wins). From jsdom 30.1.0 (`compat.radioConnected`; 30.0.1 not)
+  also when it becomes connected (in tree order of the inserted subtree,
+  so in a subtree inserted at once the first checked wins; a fragment's
+  children one by one, so the last wins) and when its form attribute is
+  set or removed. No events. warpdom did it only when checkedness was
+  set. Insertions pay for it only in documents that have had a checked
+  input (`checkedRadios`, set by setCheckedness, the parser and
+  adoption); attribute steps can now be chained (addAttributeStep: the
+  name attribute has the document's named properties and radio groups).

@@ -144,6 +144,9 @@ function appendAst(internals, parent, astNodes, doc, inTemplate = false) {
       // A parsed <details open> queues its toggle event, as adding the
       // attribute would.
       if (n.tagName === 'details' && n.namespaceURI === HTML_NS && attrs.has('open')) attributeSteps.get('open')?.(node, undefined, attrs.get('open'));
+      // A checked input may be a radio button: its group is updated on
+      // insertion (forms.js).
+      if (n.tagName === 'input' && attrs.has('checked')) doc[S].checkedRadios = true;
       if (!inTemplate && hooks.ce !== null) hooks.ce.created(node);
       if (n.content) {
         const content = templateContent(node);

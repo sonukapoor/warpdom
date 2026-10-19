@@ -17,6 +17,18 @@ const ATTRIBUTE_NODE = 2;
 // returns undefined, or a function to run after the change is reported.
 export const attributeSteps = new Map();
 
+// Adds a step for an attribute that may have one already (both run, in
+// the order added; the last function returned runs after the report).
+export function addAttributeStep(name, step) {
+  const first = attributeSteps.get(name);
+  if (first === undefined) { attributeSteps.set(name, step); return; }
+  attributeSteps.set(name, (element, old, value) => {
+    const a = first(element, old, value);
+    const b = step(element, old, value);
+    return b ?? a;
+  });
+}
+
 // The one path for attribute writes (undefined removes): keeps the id index,
 // live collections, the style object, Attr nodes and attribute views in step,
 // and reports to MutationObservers.
