@@ -48,9 +48,9 @@ every modeled jsdom version, and every measured suite gives jsdom's results.
   motion member interfaces, the plugin API, media track lists,
   CSSMediaRule.matches, CSSNestedDeclarations (branch fix/misc-parity,
   2026-10-19 below).
-- #26: WebSocket, the host's (decided 2026-10-19). #22, #30:
-  XMLHttpRequest, on by default (decided 2026-10-19; its own branch after
-  the three parity PRs merge).
+- #26: WebSocket, the host's (branch fix/websocket-window, 2026-10-19
+  below). #22, #30: XMLHttpRequest, on by default (decided 2026-10-19;
+  its own branch after the three parity PRs merge).
 - #18: a CI test that warpdom's window has every interface and member jsdom's
   has, per version, so a gap cannot reappear unnoticed.
 - #19: WPT on all test-DOM-relevant areas by default, results published.
@@ -462,6 +462,10 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   hosts) and opaque paths with trailing spaces differ from jsdom's
   whatwg-url. jsdom 23 to 27's `URL.parse()` returns an object that is not
   `instanceof URL` (fixed in 28); warpdom's always is.
+- `WebSocket` is the platform's (Node's), not an own interface: sockets,
+  their events (MessageEvent, CloseEvent) and errors are Node's, not the
+  window's. jsdom's is its own, with real connections too. Decided
+  2026-10-19 (option A, below): one test file of one project used it.
 - An iframe's `WebAssembly` (and console) is made in warpdom's one realm:
   its `WebAssembly` is the top-level window's realm's, where jsdom gives
   each frame its own realm.
@@ -2862,3 +2866,65 @@ After #41 to #44: 3945, jsdom-only 28. Tests: test/forms.test.js (parity
 on jsdom 30, 26, 25, 22, 20 as each issue needs; literals at 23.0.1/23.1.0,
 26.0.0/26.1.0, 26.1.0/27.0.0, 23.2.0, 30.0.1/30.1.0). Bench: bench:hot
 unchanged (two runs each, alternating order).
+
+## 2026-10-19: window.WebSocket, the host's (branch fix/websocket-window, #26)
+
+DOMParity counted `window.WebSocket` as missing: under Vitest the global
+`WebSocket` was already Node's, and the Jest environment copied Node's
+onto the global (HOST_GLOBALS), but the window had none. Decided by Sonu
+(Decisions, 2026-10-19): the window's is the host's.
+
+Measured black box on jsdom 20.0.0, 20.0.3, 21.0.0, 21.1.0, 21.1.2,
+22.0.0, 22.1.0, 23.2.0, 24.1.3, 25.0.1, 26.1.0, 27.0.0, 27.0.1, 27.1.0,
+27.2.0, 27.3.0, 27.4.0, 28.0.0, 28.1.0, 29.1.1, 30.0.1 and 30.1.3, with
+and without runScripts: every version has `WebSocket` as an own data
+property of the window, writable, not enumerable, configurable (an
+assignment replaces it, delete removes it), its own interface (length 1,
+the four constants, binaryType, bufferedAmount, extensions, protocol,
+readyState, url, send, close, the on* handlers); CloseEvent and
+MessageEvent exist too (warpdom had both already). Environments (Vitest
+5 with jsdom 30.1.2, forks, threads, vmThreads, vmForks; Jest 29 and 30
+with jest-environment-jsdom, jsdom 20.0.3 and 26.1.0): the global's `WebSocket` and the window's
+are one object, jsdom's (an accessor of Node's global in forks and
+threads, a data property in the VM pools and under Jest), and
+`window.WebSocket = Mock` replaces both.
+
+warpdom:
+- `window.WebSocket` is the platform's `WebSocket` (`PLATFORM_GLOBAL`,
+  Node's from 22), with jsdom's descriptor once read, in frames too; none
+  when the platform has none (checked with `in` at load). Node's global
+  `WebSocket` is a lazy property: reading it, or its descriptor, loads
+  Node's WebSocket client (~10 ms, Node 22.17), so the window reads it on
+  first use, as interface objects are made (an accessor until then); the
+  per-file reset puts it back.
+- Vitest, forks and threads: the global keeps its own `WebSocket`
+  (Node's, the object the window reads; `VITEST_PLATFORM_KEYS`). Copying
+  the window's onto the global would read the global's descriptor (the
+  10 ms load in every file) and make the window's getter read itself.
+  A test's assignment there changes Node's global, as for fetch or
+  AbortController; `vi.unstubAllGlobals` (warpdom/vitest/reset in fast
+  mode) undoes `vi.stubGlobal`.
+- Vitest VM pools and Jest: the global reads the window's (installWindow),
+  so the context no longer loads Node's WebSocket when it is set up;
+  Jest's HOST_GLOBALS copy remains for a window without one.
+- Differences (README): sockets and their events and errors are Node's
+  (`event instanceof window.MessageEvent` is false); the global's
+  descriptor is a data property in forks/threads and an accessor in the
+  VM pools and Jest (jsdom: the reverse), as for other window members.
+
+Tests: test/web-apis.test.js (parity with jsdom 20, 22, 25, 26, 30:
+existence, descriptor, constants, replace and delete; the platform's,
+frames, lazy; the reset), test/jest-environment.test.js (global and window
+identity, assignment, the next file), test/vitest-adapter.test.js
+(fixtures/vitest-websocket on warpdom and jsdom in forks and vmThreads:
+identity, `vi.stubGlobal`, `window.WebSocket = Mock`; setupVM and setup).
+`npm test` on Node 22.12.0 and 22.23.3: 929 passed, 4 skipped;
+`npm run test:types` passes.
+
+Measured (Node 22.17.1, interleaved with main, medians of 5 runs): cold
+load 20.9 -> 21.0 ms, first window 2.22 -> 2.28 ms, next windows 0.189 ->
+0.190 ms; bench:hot (warpdom only, 5 runs each) all cases within +-4%
+except firstElementChild + nextElementSibling (8.6 -> 9.5 ns, bimodal
+between 8 and 10 ns on both builds; 6 more interleaved runs each: 9.45
+vs 9.35), no hot path touched.
+

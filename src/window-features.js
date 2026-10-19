@@ -1,6 +1,6 @@
 // Window-level features: requestAnimationFrame, viewport and scrolling,
 // navigator, location and history, crypto and performance, URL,
-// URLSearchParams and Headers, console and WebAssembly, the
+// URLSearchParams and Headers, console, WebAssembly and WebSocket, the
 // Image/Audio/Option constructors.
 // Values follow jsdom's defaults so tests see the same environment.
 import { S, state, domError, tooFewArguments, platformGlobal, PLATFORM_GLOBAL, PlatformURL, PlatformURL as URL } from './internal.js';
@@ -965,6 +965,30 @@ const PLUGIN_INTERFACES = [
   },
 ];
 
+// --- WebSocket -----------------------------------------------------------------------------------
+// jsdom's window has WebSocket in every version (black box, 20.0.0 to
+// 30.1.3): an own data property, writable, not enumerable, configurable.
+// warpdom's is the platform's WebSocket (Node's from 22), not an own
+// interface: its events and errors are the platform's, not the window's
+// (README, "Differences from jsdom"). Without one on the platform the
+// window has none. Node defines it as a lazy property that loads its
+// WebSocket client on first access, also through
+// Object.getOwnPropertyDescriptor (~10 ms), so it is read on the window's
+// first read of WebSocket, as the interface objects are made (window.js);
+// the `in` check does not load it.
+const PLATFORM_HAS_WEBSOCKET = 'WebSocket' in PLATFORM_GLOBAL;
+
+function setupWebSocket(window) {
+  if (!PLATFORM_HAS_WEBSOCKET) return;
+  const define = (value) => Object.defineProperty(window, 'WebSocket', { value, writable: true, enumerable: false, configurable: true });
+  Object.defineProperty(window, 'WebSocket', {
+    get() { const WebSocket = PLATFORM_GLOBAL.WebSocket; define(WebSocket); return WebSocket; },
+    set: define,
+    enumerable: false,
+    configurable: true,
+  });
+}
+
 export const FEATURE_INTERFACES = [
   ...PLUGIN_INTERFACES,
   CRYPTO_INTERFACE,
@@ -1173,6 +1197,7 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
   window.QuotaExceededError = QuotaExceededError;
   startClock(ws);
   setupConsole(window);
+  setupWebSocket(window);
   ws.setTimeout = globalThis.setTimeout.bind(globalThis);
   ws.location = make(window, 'Location', {});
   ws.history = make(window, 'History', { entries: [{ state: null, url: ws.url }], index: 0, navigations: 0 });

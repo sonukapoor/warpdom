@@ -57,7 +57,13 @@ export const VITEST_NODE_KEYS = ['crypto', 'performance', 'TextEncoder', 'TextDe
 // In all its pools URLSearchParams and Headers are Node's, and URL is
 // Vitest's own (vitestURL below); webkitURL stays the window's.
 const VITEST_URL_KEYS = ['URL', 'URLSearchParams', 'Headers'];
-const VITEST_GLOBAL_HOST_KEYS = [...VITEST_HOST_KEYS, ...VITEST_NODE_KEYS, ...VITEST_URL_KEYS];
+// The window's WebSocket is the platform's (window-features.js): in the
+// pools where the global is Node's own, the global keeps its WebSocket
+// (the same object), which the window reads on first use. Replacing the
+// global's would load Node's WebSocket client for every test file (its
+// descriptor is lazy, ~10 ms) and make the window's read itself.
+const VITEST_PLATFORM_KEYS = ['WebSocket'];
+const VITEST_GLOBAL_HOST_KEYS = [...VITEST_HOST_KEYS, ...VITEST_NODE_KEYS, ...VITEST_URL_KEYS, ...VITEST_PLATFORM_KEYS];
 const VITEST_VM_HOST_KEYS = [...VITEST_HOST_KEYS, ...VITEST_URL_KEYS];
 
 // Vitest's jsdom environment's URL (black box, Vitest 5, jsdom 20 to 30,

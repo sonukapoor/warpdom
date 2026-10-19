@@ -352,3 +352,52 @@ test('setup: URL is Vitest\'s, kept per file by the reset; URLSearchParams, Head
   }
   assert.equal(global.URL, 'node URL');
 });
+
+// Black box (Vitest 5, jsdom 30, every pool): the global's WebSocket and
+// the window's are one, and vi.stubGlobal or an assignment to
+// window.WebSocket replaces both. warpdom's is Node's: in the forks and
+// threads pools the global keeps Node's own; in the VM pools the global
+// reads the window's.
+test('Vitest: WebSocket is one object on the global and the window, and tests can stub it, as with jsdom', () => {
+  for (const pool of ['forks', 'vmThreads']) {
+    for (const environment of [[], ['--environment', 'jsdom']]) {
+      let out = '';
+      let code = 0;
+      try {
+        out = String(execFileSync('node_modules/.bin/vitest', ['run', '--root', 'fixtures/vitest-websocket', '--pool', pool, ...environment], { cwd: root, stdio: 'pipe' }));
+      } catch (err) {
+        code = err.status;
+        out = String(err.stdout) + String(err.stderr);
+      }
+      assert.equal(code, 0, `${pool} ${environment.join(' ') || 'warpdom'}: ${out}`);
+      assert.match(out, /3 passed/);
+    }
+  }
+});
+
+test('setupVM and setup: the window\'s WebSocket is Node\'s; setup leaves the global\'s', async () => {
+  const { default: environment } = await import('../src/vitest.js');
+  const vmModule = await import('node:vm');
+  const result = await environment.setupVM();
+  try {
+    const context = result.getVmContext();
+    assert.equal(vmModule.runInContext('WebSocket', context), WebSocket);
+    assert.equal(vmModule.runInContext('WebSocket === window.WebSocket && WebSocket === document.defaultView.WebSocket', context), true);
+    vmModule.runInContext('window.WebSocket = class Mock {}', context);
+    assert.equal(vmModule.runInContext('WebSocket.name === "Mock" && globalThis.WebSocket === window.WebSocket', context), true);
+  } finally {
+    result.teardown();
+  }
+  // The global keeps its own (in Vitest's other pools, Node's, the object
+  // the window reads): reading it does not go through the window.
+  const global = { WebSocket: 'node ws' };
+  const env = environment.setup(global);
+  try {
+    assert.deepEqual(Object.getOwnPropertyDescriptor(global, 'WebSocket'), { value: 'node ws', writable: true, enumerable: true, configurable: true });
+    global[Symbol.for('warpdom.vitest.reset')]();
+    assert.equal(global.WebSocket, 'node ws');
+  } finally {
+    env.teardown();
+  }
+  assert.equal(global.WebSocket, 'node ws');
+});

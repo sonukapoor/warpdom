@@ -1,5 +1,6 @@
 // window.crypto, window.performance, Blob and File, TextEncoder and
-// TextDecoder, URL, URLSearchParams, Headers, console and WebAssembly:
+// TextDecoder, URL, URLSearchParams, Headers, console, WebAssembly and
+// WebSocket:
 // parity with jsdom (20, 22, 25, 26, 30), and the version boundaries
 // measured on jsdom releases (black box: 21.1.2 / 22.0.0 have no
 // crypto.randomUUID, 22.1.0 has; 27.3.0 has no TextEncoder, 27.4.0 has;
@@ -571,6 +572,48 @@ test('WebAssembly: the realm\'s namespace; a frame\'s is its top-level window\'s
   assert.equal(new w.WebAssembly.Module(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0])) instanceof WebAssembly.Module, true);
 });
 
+// --- WebSocket ---------------------------------------------------------------------------------------
+// jsdom's window has WebSocket in every version (black box, 20.0.0 to
+// 30.1.3, with and without runScripts): an own data property, writable,
+// not enumerable, configurable, that a test can replace or delete;
+// CloseEvent and MessageEvent exist too. warpdom's is the platform's
+// WebSocket (Node's), made on first read.
+const webSocketScenario = (w) => {
+  const WS = w.WebSocket;
+  const out = [typeof WS, descriptor(w, 'WebSocket'), Object.keys(w).includes('WebSocket'), 'WebSocket' in w, WS.name,
+    [WS.CONNECTING, WS.OPEN, WS.CLOSING, WS.CLOSED].join(), typeof WS.prototype.send, typeof WS.prototype.close,
+    typeof w.CloseEvent, typeof w.MessageEvent];
+  const Mock = function Mock() {};
+  w.WebSocket = Mock;
+  out.push(w.WebSocket === Mock, descriptor(w, 'WebSocket'));
+  out.push(delete w.WebSocket, 'WebSocket' in w);
+  return out;
+};
+for (const jsdom of VERSIONS) parity(`WebSocket: an own property of the window, replaceable (jsdom ${jsdom})`, webSocketScenario, { jsdom });
+
+test('WebSocket: the platform\'s, also in frames; made on first read', () => {
+  const w = createWindow({ url: 'http://localhost:3000/' });
+  assert.equal(typeof Object.getOwnPropertyDescriptor(w, 'WebSocket').get, 'function');
+  assert.equal(w.WebSocket, globalThis.WebSocket);
+  assert.deepEqual(Object.getOwnPropertyDescriptor(w, 'WebSocket'), { value: globalThis.WebSocket, writable: true, enumerable: false, configurable: true });
+  w.document.body.innerHTML = '<iframe></iframe>';
+  assert.equal(w.document.querySelector('iframe').contentWindow.WebSocket, globalThis.WebSocket);
+  // Assigned before the first read: the window keeps the assigned value.
+  const other = createWindow();
+  const Mock = class {};
+  other.WebSocket = Mock;
+  assert.deepEqual(Object.getOwnPropertyDescriptor(other, 'WebSocket'), { value: Mock, writable: true, enumerable: false, configurable: true });
+  assert.equal(createWindow().WebSocket, globalThis.WebSocket);
+});
+
+// No connection: the prototype chain shows whose EventTarget sockets are
+// (and so whose events they dispatch).
+test('WebSocket: sockets are the platform\'s EventTargets, not the window\'s', () => {
+  const w = createWindow();
+  assert.equal(w.WebSocket.prototype instanceof w.EventTarget, false);
+  assert.equal(w.WebSocket.prototype instanceof EventTarget, true);
+});
+
 // --- the per-file reset ------------------------------------------------------------------------------
 
 test('reset: crypto and performance keep their objects and lose added properties', () => {
@@ -586,6 +629,20 @@ test('reset: crypto and performance keep their objects and lose added properties
   assert.notEqual(w.crypto.randomUUID(), 'mock');
   assert.notEqual(w.performance.now(), 1);
   assert.equal('extra' in w.Crypto.prototype, false);
+});
+
+test('reset: a replaced WebSocket is the platform\'s again', () => {
+  for (const readFirst of [false, true]) {
+    const w = createWindow({ url: 'http://localhost:3000/' });
+    if (readFirst) assert.equal(w.WebSocket, globalThis.WebSocket);
+    snapshotWindow(w);
+    w.WebSocket = class Mock {};
+    resetWindow(w);
+    assert.equal(w.WebSocket, globalThis.WebSocket, `read before the snapshot: ${readFirst}`);
+    delete w.WebSocket;
+    resetWindow(w);
+    assert.equal(w.WebSocket, globalThis.WebSocket);
+  }
 });
 
 test('reset: the console keeps its object and gets back its methods', () => {
@@ -604,7 +661,7 @@ test('reset: the console keeps its object and gets back its methods', () => {
 
 test('window creation does not create the new interfaces', () => {
   const w = createWindow();
-  for (const name of ['Crypto', 'Performance', 'Blob', 'File', 'TextEncoder', 'TextDecoder', 'URL', 'URLSearchParams', 'Headers', 'console']) {
+  for (const name of ['Crypto', 'Performance', 'Blob', 'File', 'TextEncoder', 'TextDecoder', 'URL', 'URLSearchParams', 'Headers', 'console', 'WebSocket']) {
     assert.equal(typeof Object.getOwnPropertyDescriptor(w, name)?.get, 'function', `${name} is still lazy`);
   }
 });
