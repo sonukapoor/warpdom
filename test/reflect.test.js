@@ -7,7 +7,10 @@ test('element interfaces follow the current standard', () => {
   const { document: d, ...w } = createWindow();
   const iface = (tag) => Object.getPrototypeOf(d.createElement(tag)).constructor.name;
   assert.equal(iface('search'), 'HTMLElement');
-  assert.equal(iface('menuitem'), 'HTMLElement');
+  // menuitem: HTMLElement in @webref's element data, HTMLUnknownElement in
+  // jsdom 20 to 30 and in WPT (contextmenu-historical.html); warpdom
+  // follows jsdom (#51).
+  assert.equal(iface('menuitem'), 'HTMLUnknownElement');
   assert.equal(iface('selectedcontent'), 'HTMLSelectedContentElement');
   assert.equal(iface('marquee'), 'HTMLMarqueeElement');
   assert.equal(iface('blink'), 'HTMLUnknownElement');

@@ -8,6 +8,7 @@
 // that need a tree scan (form.elements, labels, select options) are cached
 // until the document changes (treeRev).
 import { urlOf } from './hyperlinks.js';
+import { documentBaseURL } from './base-url.js';
 import { followHyperlink } from './navigation.js';
 import {
   S, state, domError, hooks, HTML_NS, SVG_NS, ELEMENT_NODE, TEXT_NODE, DOCUMENT_NODE,
@@ -549,6 +550,26 @@ function childText(el) {
 const normalizeNewlines = (v) => (v.includes('\r') ? v.replace(/\r\n?/g, '\n') : v);
 const textareaValue = (el) => (el[S].dirtyValue ? el[S].value : normalizeNewlines(childText(el)));
 
+// The textarea wrapping transformation (form data): with wrap="hard"
+// (exactly, as jsdom), a line feed after every cols UTF-16 code units of
+// each line (cols: the attribute's non-zero value, else 20). jsdom 24.0.0
+// to 30.0.1 break lines in other places when the cols attribute is set
+// (not reproduced: no transformation then; compat.hardWrap).
+function wrappedValue(el) {
+  const value = textareaValue(el);
+  if (attr(el, 'wrap') !== 'hard') return value;
+  const colsAttr = attr(el, 'cols');
+  if (colsAttr !== undefined && !windowOf(el)[S].compat.hardWrap) return value;
+  const n = colsAttr === undefined ? null : parseInteger(colsAttr);
+  const cols = n !== null && n > 0 ? n : 20;
+  return value.split('\n').map((line) => {
+    if (line.length <= cols) return line;
+    const parts = [];
+    for (let i = 0; i < line.length; i += cols) parts.push(line.slice(i, i + cols));
+    return parts.join('\n');
+  }).join('\n');
+}
+
 // --- select and option ------------------------------------------------------------
 // From the HTML standard (4.10.7 select, 4.10.10 option). An option's
 // selectedness is explicit state once set (s.selectedness), else its
@@ -903,8 +924,16 @@ function inputValidity(el) {
     if (n !== null && type !== 'range') {
       const min = toNumber(type, attr(el, 'min') ?? '', el);
       const max = toNumber(type, attr(el, 'max') ?? '', el);
-      if (min !== null && n < min) flags.rangeUnderflow = true;
-      if (max !== null && n > max) flags.rangeOverflow = true;
+      if (type === 'time' && min !== null && (max === null || min > max)) {
+        // A reversed time range (min > max) wraps midnight: a value between
+        // max and min underflows and overflows. As jsdom (black box, 20.0.3
+        // to 30.1.2), a time with min and no valid max is treated as one
+        // too (the standard: an underflow only).
+        if (n < min && (max === null || n > max)) flags.rangeUnderflow = flags.rangeOverflow = true;
+      } else {
+        if (min !== null && n < min) flags.rangeUnderflow = true;
+        if (max !== null && n > max) flags.rangeOverflow = true;
+      }
     }
     flags.stepMismatch = stepMismatch(el, type, value);
   }
@@ -1242,7 +1271,7 @@ function constructEntryList(form, submitter = null) {
       } else if (type === 'hidden' && name.toLowerCase() === '_charset_') {
         entries.push(createEntry(window, name, 'UTF-8'));
       } else {
-        const value = tag === 'textarea' ? textareaValue(field) : tag === 'input' ? inputValue(field) : attr(field, 'value') ?? '';
+        const value = tag === 'textarea' ? wrappedValue(field) : tag === 'input' ? inputValue(field) : attr(field, 'value') ?? '';
         entries.push(createEntry(window, name, value));
       }
       const dirname = attr(field, 'dirname');
@@ -1372,6 +1401,15 @@ export const FORM_MEMBERS = new Map([
         const s = state(this);
         if (inputType(this) !== 'file') return null;
         return s.fileList ?? (s.fileList = liveList(internalsOf(this).protos.FileList, () => NO_FILES));
+      },
+      // The setter keeps the FileList itself (input.files = other.files:
+      // the same object); null and undefined change nothing; on other
+      // types it does nothing. jsdom's TypeError for other values.
+      set files(v) {
+        const s = state(this);
+        if (v === null || v === undefined) return;
+        if (!(v instanceof windowOf(this).FileList)) throw new TypeError("Failed to set the 'files' property on 'HTMLInputElement': The provided value is not of type 'FileList'.");
+        if (inputType(this) === 'file') s.fileList = v;
       },
       get list() {
         state(this);
@@ -1558,9 +1596,10 @@ export const FORM_MEMBERS = new Map([
     get action() {
       state(this);
       const a = attr(this, 'action');
-      const base = internalsOf(this).url;
-      if (a === undefined || a === '') return base.href;
-      try { return new URL(a, base).href; } catch { return a; }
+      // Missing or empty: the document's URL; else resolved against the
+      // document's base URL (a <base> element), as jsdom.
+      if (a === undefined || a === '') return internalsOf(this).url.href;
+      try { return new URL(a, documentBaseURL(this[S].doc)).href; } catch { return a; }
     },
     set action(v) { writeAttribute(this, 'action', String(v)); },
     get method() {

@@ -2794,3 +2794,26 @@ in the profiles of the jsdom versions that have them.
   live collections), made in createElementNS; other keys go straight to
   the element. Not covered: customized built-in forms/selects (is=) and
   custom element classes extending them stay plain.
+- **Smaller gaps (#51), five of six.** Every measured version unless
+  noted. (1) A time input with min > max has a reversed range: a value
+  between max and min underflows and overflows, others neither. jsdom
+  deviation, followed: min with no valid max counts as reversed too
+  (min 14:00, value 13:00: both flags; the standard: underflow only).
+  (2) The textarea wrapping transformation in the form data set:
+  wrap="hard" (exactly; "HARD" is not hard in jsdom, the standard is
+  case-insensitive) breaks each line every cols UTF-16 code units (cols
+  20 without the attribute). jsdom 24.0.0 to 30.0.1 do something else
+  when the cols attribute is set (one break at cols, then at 313 for
+  cols 3, a trailing line feed when a later line is long); not
+  reproduced, warpdom does not transform then (`compat.hardWrap`).
+  (3) menuitem creates HTMLUnknownElement (the generator leaves it out
+  of the HTMLElement tags; @webref still lists it), and
+  window.HTMLDocument is the Document interface object. (4) form.action
+  resolves against the document's base URL. (5) input.files is
+  settable: it keeps the FileList itself, ignores null/undefined, throws
+  jsdom's TypeError for anything else, does nothing on other types.
+  Left: (6) dialog's UA colors (background white/Canvas, color
+  black/CanvasText; jsdom 20 serializes "white"/"black", 26
+  rgb(255, 255, 255)/rgb(0, 0, 0); an open dialog's display is "" before
+  30, "block" in 30): style profile work, a separate change.
+  Seen, left: jsdom has no formAction IDL attribute (warpdom has).

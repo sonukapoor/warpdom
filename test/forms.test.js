@@ -1319,3 +1319,62 @@ test('form[i] from jsdom 26.1.0', () => {
   };
   assert.deepEqual([typeOf('26.0.0'), typeOf('26.1.0')], ['undefined', 'object']);
 });
+
+// Smaller gaps (#51): reversed time ranges, textarea hard wrapping in form
+// data, menuitem and HTMLDocument, form.action against the base URL, and
+// the input.files setter.
+const smallerGaps = (w) => {
+  const d = w.document;
+  const out = [];
+  const attempt = (f) => { try { return f(); } catch (e) { return [e.name, e.message]; } };
+  const time = (attrs) => {
+    const i = d.createElement('input');
+    i.type = 'time';
+    for (const [k, v] of Object.entries(attrs)) i.setAttribute(k, v);
+    return [attrs, i.validity.rangeOverflow, i.validity.rangeUnderflow, i.validity.valid];
+  };
+  for (const value of ['14:00', '12:00', '13:00', '15:00', '11:00', '23:59', '00:00']) out.push(time({ min: '14:00', max: '12:00', value }));
+  out.push(time({ min: '14:00', value: '13:00' }), time({ min: '14:00', max: '', value: '15:00' }), time({ max: '12:00', value: '13:00' }), time({ min: '23:00', max: '01:00', value: '00:30' }));
+  const f = d.createElement('form');
+  const t = d.createElement('textarea');
+  t.name = 't';
+  f.append(t);
+  for (const [wrap, cols, value] of [['hard', null, 'A'.repeat(45)], ['hard', null, 'ab\nabcdefghijklmnopqrstuvwxyz'], ['soft', 10, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'], ['HARD', 10, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'], ['hard', 3, 'a\r\nb'], ['hard', 3, 'abc']]) {
+    t.setAttribute('wrap', wrap);
+    if (cols) t.cols = cols; else t.removeAttribute('cols');
+    t.value = value;
+    out.push([wrap, cols, new w.FormData(f).get('t'), t.value]);
+  }
+  out.push([d.createElement('menuitem').constructor.name, typeof w.HTMLMenuItemElement, w.HTMLDocument === w.Document, d instanceof w.HTMLDocument]);
+  const base = d.createElement('base');
+  base.href = '/common/blank.html';
+  d.head.append(base);
+  const fa = d.createElement('form');
+  fa.setAttribute('action', 'a.html');
+  const fb = d.createElement('form');
+  const fc = d.createElement('form');
+  fc.setAttribute('action', '');
+  out.push([fa.action, fb.action, fc.action]);
+  base.remove();
+  out.push(fa.action);
+  const i1 = d.createElement('input');
+  i1.type = 'file';
+  const i2 = d.createElement('input');
+  i2.type = 'file';
+  out.push([attempt(() => { i1.files = i2.files; return i1.files === i2.files; }), attempt(() => { i1.files = null; return i1.files === i2.files; }), attempt(() => { i1.files = 'x'; return 'set'; })]);
+  const text = d.createElement('input');
+  out.push([text.files, attempt(() => { text.files = i2.files; return text.files; })]);
+  return out;
+};
+for (const jsdom of [30, 25, 20]) parity(`reversed time range, hard wrap, HTMLDocument, form.action, files (jsdom ${jsdom})`, smallerGaps, { jsdom });
+test('textarea hard wrap with a cols attribute: before jsdom 24 and from 30.1.0', () => {
+  const wrapped = (jsdom) => {
+    const d = createWindow({ jsdom }).document;
+    const f = d.createElement('form');
+    f.innerHTML = '<textarea name=t wrap=hard cols=10></textarea>';
+    f.firstChild.value = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    return new d.defaultView.FormData(f).get('t');
+  };
+  assert.equal(wrapped('23.2.0'), 'ABCDEFGHIJ\nKLMNOPQRST\nUVWXYZ');
+  assert.equal(wrapped('30.1.0'), 'ABCDEFGHIJ\nKLMNOPQRST\nUVWXYZ');
+});

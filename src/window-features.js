@@ -1131,6 +1131,9 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
     radioConnected: !before(version, [30, 1, 0]),
     // form[i] (form.elements[i]) from 26.1.0.
     formIndexed: !before(version, [26, 1, 0]),
+    // textarea wrap="hard" with a cols attribute breaks lines every cols
+    // characters before 24.0.0 and from 30.1.0 (between: elsewhere).
+    hardWrap: before(version, [24, 0, 0]) || !before(version, [30, 1, 0]),
     focusIgnoresRendering: before(version, [30, 1, 2]), detachedCheckableEvents: before(version, [16, 5, 2]), cssstyle: version[0] < 27 ? (css ? cssText : undefined) : cssstyle ?? undefined, cssstyleMajor: css ? css[0] : 0,
     styleSurface: styleSurfaceKey(version, version[0] < 27 ? css : cssstyle != null ? parseJsdomVersion(cssstyle) : null),
     unquotedUrls: css !== null && before(css, [4, 3, 1]),
