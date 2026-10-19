@@ -807,3 +807,88 @@ test('cloning an input copies its indeterminate state from jsdom 30.1.0', () => 
   };
   assert.deepEqual([cloned('29.1.1'), cloned('30.0.1'), cloned('30.1.0'), cloned('30.1.2')], [false, false, true, true]);
 });
+
+// Input type change (#42): value mode transitions, sanitization of the
+// kept value, and the selection when the new type has one.
+const TYPE_CHANGE_TYPES = ['text', 'hidden', 'checkbox', 'file', 'number', 'color', 'email', 'url', 'date', 'button', 'radio', 'range', 'search'];
+const typeChange = (w) => {
+  const d = w.document;
+  const out = [];
+  for (const from of TYPE_CHANGE_TYPES) {
+    for (const to of TYPE_CHANGE_TYPES) {
+      if (from === to) continue;
+      const i = d.createElement('input');
+      i.type = from;
+      try { i.value = '  foo\nbar  '; } catch (e) { out.push(e.name); }
+      i.type = to;
+      out.push([from, to, i.value, i.getAttribute('value'), i.selectionStart, i.selectionEnd]);
+    }
+  }
+  const mk = (attrs) => { const i = d.createElement('input'); for (const [k, v] of Object.entries(attrs)) i.setAttribute(k, v); return i; };
+  let i = mk({});
+  i.value = 'foo';
+  i.type = 'file';
+  i.type = 'text';
+  out.push(i.value);
+  i.setAttribute('value', 'bar');
+  out.push(i.value);
+  i = mk({ value: 'hello' });
+  i.type = 'color';
+  out.push(i.value);
+  i.type = 'text';
+  out.push(i.value);
+  i.setAttribute('value', 'again');
+  out.push(i.value);
+  i = mk({ value: ' x ' });
+  i.type = 'url';
+  i.type = 'text';
+  out.push(i.value);
+  i = mk({ value: 'hello' });
+  d.body.append(i);
+  const mo = new w.MutationObserver(() => {});
+  mo.observe(i, { attributes: true, attributeOldValue: true });
+  i.value = 'dirty';
+  i.type = 'checkbox';
+  out.push(mo.takeRecords().map((r) => [r.attributeName, r.oldValue]));
+  i = mk({ value: 'attr' });
+  i.value = 'dirty';
+  i.type = 'file';
+  i.type = 'text';
+  out.push(i.value);
+  i = mk({ type: 'range' });
+  i.type = 'number';
+  out.push(i.value);
+  i = mk({ type: 'range', value: '500' });
+  i.type = 'text';
+  out.push(i.value);
+  i = mk({ multiple: '' });
+  i.value = ' a , b ';
+  i.type = 'email';
+  i.type = 'text';
+  out.push(i.value);
+  i = mk({});
+  i.value = '2020-01-01 10:00';
+  i.type = 'datetime-local';
+  i.type = 'text';
+  out.push(i.value);
+  for (const [via, back] of [['color', 'text'], ['number', 'text'], ['password', null], ['TEXT', null], ['search', null], ['bogus', null]]) {
+    i = mk({});
+    i.value = 'hello';
+    i.setSelectionRange(2, 4, 'backward');
+    i.setAttribute('type', via);
+    if (back) i.type = back;
+    out.push([i.value, i.selectionStart, i.selectionEnd, i.selectionDirection]);
+  }
+  i = mk({});
+  i.value = 'abc';
+  let events = 0;
+  i.addEventListener('select', () => events++);
+  i.addEventListener('input', () => events++);
+  i.type = 'hidden';
+  out.push(events);
+  const c = mk({ value: 'v' });
+  c.type = 'number';
+  out.push(c.cloneNode().value);
+  return out;
+};
+for (const jsdom of [30, 20]) parity(`input type change (jsdom ${jsdom})`, typeChange, { jsdom });

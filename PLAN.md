@@ -2695,3 +2695,16 @@ in the profiles of the jsdom versions that have them.
   `compat.cloneIndeterminate`). Not copied in any version: the selection,
   an option's selectedness (a select's selectedIndex is the default
   again in the clone).
+- **Input type change (#42).** The type attribute's change steps, as the
+  standard and every measured version: value mode to default or
+  default/on writes a non-empty value to the value attribute (its
+  mutation record after the type attribute's: attribute steps can now
+  return a function that runs after the change is reported); any other
+  mode into value mode takes the value attribute again and clears the
+  dirty flag (text, file, text: ""); value mode to value mode keeps the
+  value, sanitized for the old and the new type (text "hello", color,
+  text gives "#000000"; a range's default "50" stays "50" as a number).
+  warpdom kept the non-dirty value lazily as the attribute's; a value
+  kept by a type change is now stored without the dirty flag, and a
+  value attribute change drops it. A type without selection to one with
+  it puts the selection at 0, 0, none. No events.

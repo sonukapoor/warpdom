@@ -152,7 +152,10 @@ const INPUT_TYPES = new Set(['hidden', 'text', 'search', 'tel', 'url', 'email', 
   'time', 'datetime-local', 'number', 'range', 'color', 'checkbox', 'radio', 'file', 'submit', 'image', 'reset', 'button']);
 
 export function inputType(el) {
-  const t = attr(el, 'type');
+  return typeState(attr(el, 'type'));
+}
+
+function typeState(t) {
   if (t === undefined) return 'text';
   if (INPUT_TYPES.has(t)) return t; // already lowercase (the usual case)
   const lower = asciiLowercase(t);
@@ -266,7 +269,7 @@ function inputValue(el) {
   const s = el[S];
   const type = inputType(el);
   switch (valueMode(type)) {
-    case 'value': return sanitize(el, type, s.dirtyValue ? s.value : attr(el, 'value') ?? '');
+    case 'value': return sanitize(el, type, s.value ?? attr(el, 'value') ?? '');
     case 'default': return attr(el, 'value') ?? '';
     case 'default/on': return attr(el, 'value') ?? 'on';
     default: return '';
@@ -291,6 +294,42 @@ function setInputValue(el, value) {
 }
 
 const checkedness = (el) => el[S].checked ?? has(el, 'checked');
+
+// An input's value is its value attribute's, sanitized for its type, until
+// it is set (the dirty value flag) or a type change keeps it (s.value
+// without the dirty flag: the value attribute replaces it).
+attributeSteps.set('value', (el) => {
+  const s = el[S];
+  if (s.value !== undefined && !s.dirtyValue && isTag(el, 'input')) s.value = undefined;
+});
+
+// The type attribute's change steps (HTML 4.10.5, "input type change"), as
+// jsdom (black box, 20.0.3 to 30.1.2): from the value mode to default or
+// default/on, a non-empty value is written to the value attribute (after
+// the type attribute's mutation record); from another mode into the value
+// mode, the value is the value attribute's again (not dirty); from the
+// value mode to the value mode, the value is kept (sanitized for the old
+// type, and then the new one). An input type that gains selection puts
+// the selection at the start.
+attributeSteps.set('type', (el, old, value) => {
+  const s = el[S];
+  if (s.ns !== HTML_NS || s.tag !== 'input') return undefined;
+  const from = typeState(old), to = typeState(value);
+  if (from === to) return undefined;
+  const fromMode = valueMode(from), toMode = valueMode(to);
+  if (!SELECTION_TYPES.has(from) && SELECTION_TYPES.has(to)) { s.selStart = s.selEnd = 0; s.selDir = 'none'; }
+  if (fromMode === 'value') {
+    const current = sanitize(el, from, s.value ?? attr(el, 'value') ?? '');
+    if (toMode === 'value') { s.value = current; return undefined; }
+    s.value = undefined;
+    s.dirtyValue = false;
+    if (current !== '' && (toMode === 'default' || toMode === 'default/on')) return () => writeAttribute(el, 'value', current);
+  } else if (toMode === 'value') {
+    s.value = undefined;
+    s.dirtyValue = false;
+  }
+  return undefined;
+});
 
 function radioGroup(el) {
   const name = attr(el, 'name');
@@ -323,7 +362,8 @@ attributeSteps.set('checked', (el) => {
 export function cloneFormState(node, copy) {
   const s = node[S];
   const c = copy[S];
-  if (s.dirtyValue) { c.value = s.value; c.dirtyValue = true; }
+  if (s.value !== undefined) c.value = s.value;
+  if (s.dirtyValue) c.dirtyValue = true;
   if (s.tag !== 'input') return;
   if (s.checked !== undefined) c.checked = s.checked;
   if (s.dirtyChecked) c.dirtyChecked = true;
