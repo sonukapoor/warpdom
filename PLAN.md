@@ -2817,3 +2817,15 @@ in the profiles of the jsdom versions that have them.
   rgb(255, 255, 255)/rgb(0, 0, 0); an open dialog's display is "" before
   30, "block" in 30): style profile work, a separate change.
   Seen, left: jsdom has no formAction IDL attribute (warpdom has).
+
+WPT html/semantics/forms (local, WPT 87b5d13099, jsdom 30.1.2: 3851 of
+4687): warpdom 3733 to 3974 subtests; jsdom passes and warpdom fails 244
+to 0, the reverse 126 to 123. Given up to follow jsdom (jsdom fails them
+too): input-type-change-value.html (2, color dirty flag on type change),
+input-stepdown-02.html (1, stepDown with no value and min > 0: max - min
+rule). button-submit-remove-children(-jssubmit).html time out now and
+then on both engines (navigation timing; pass when rerun alone).
+After #41 to #44: 3945, jsdom-only 28. Tests: test/forms.test.js (parity
+on jsdom 30, 26, 25, 22, 20 as each issue needs; literals at 23.0.1/23.1.0,
+26.0.0/26.1.0, 26.1.0/27.0.0, 23.2.0, 30.0.1/30.1.0). Bench: bench:hot
+unchanged (two runs each, alternating order).
