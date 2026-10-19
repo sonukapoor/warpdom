@@ -14,11 +14,11 @@ on:
   workflow_dispatch:
     inputs:
       areas:
-        description: WPT directories, one job each (space separated)
-        default: dom domparsing html/dom css/cssom
+        description: 'WPT directories, one job each (space separated); dir~sub1~sub2 runs dir without its subdirectories sub1, sub2'
+        default: dom domparsing html/dom css/cssom css/cssom-view html/semantics/forms html/semantics/interactive-elements url FileAPI encoding~legacy-mb-japanese~legacy-mb-korean~legacy-mb-schinese~legacy-mb-tchinese~streams encoding/legacy-mb-japanese encoding/legacy-mb-korean encoding/legacy-mb-schinese encoding/legacy-mb-tchinese encoding/streams WebCryptoAPI hr-time user-timing resize-observer intersection-observer web-animations/interfaces
       wpt_ref:
-        description: 'WPT commit (default is the commit of the 2026-10-11 run)'
-        default: 87b5d13099c8bc2f9047ce1d29c963a3e0a246f6
+        description: 'WPT commit or ref (HEAD = newest; the 2026-10-11 paper run used 87b5d13099c8bc2f9047ce1d29c963a3e0a246f6)'
+        default: HEAD
       engines:
         default: warpdom,jsdom
       jobs:
@@ -35,12 +35,12 @@ jobs:
       areas: ${{ steps.list.outputs.areas }}
     steps:
       - id: list
-        run: echo "areas=$(echo '${{ inputs.areas || 'dom domparsing html/dom css/cssom' }}' | jq -cR 'split(" ") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
+        run: echo "areas=$(echo '${{ inputs.areas || 'dom domparsing html/dom css/cssom css/cssom-view html/semantics/forms html/semantics/interactive-elements url FileAPI encoding~legacy-mb-japanese~legacy-mb-korean~legacy-mb-schinese~legacy-mb-tchinese~streams encoding/legacy-mb-japanese encoding/legacy-mb-korean encoding/legacy-mb-schinese encoding/legacy-mb-tchinese encoding/streams WebCryptoAPI hr-time user-timing resize-observer intersection-observer web-animations/interfaces' }}' | jq -cR 'split(" ") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
 
   run:
     needs: plan
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 350
     strategy:
       fail-fast: false
       matrix:
@@ -52,17 +52,24 @@ jobs:
           node-version: 22.23.3
       - run: npm ci
       - name: WPT at ${{ inputs.wpt_ref || 'HEAD' }} (sparse)
+        env:
+          AREA: ${{ matrix.area }}
         run: |
           git init -q wpt-checkout
           cd wpt-checkout
           git remote add origin https://github.com/web-platform-tests/wpt.git
-          git sparse-checkout set "${{ matrix.area }}" resources common interfaces
+          git sparse-checkout set "${AREA%%~*}" resources common interfaces
           git fetch -q --depth 1 --filter=blob:none origin "${{ inputs.wpt_ref || 'HEAD' }}"
           git checkout -q FETCH_HEAD
       - id: slug
-        run: echo "slug=$(echo '${{ matrix.area }}' | tr '/' '-')" >> "$GITHUB_OUTPUT"
+        run: echo "slug=$(echo '${{ matrix.area }}' | tr '/~' '--')" >> "$GITHUB_OUTPUT"
       - name: Run ${{ matrix.area }}
-        run: node wpt/run.mjs "${{ matrix.area }}" --engine "${{ inputs.engines || 'warpdom,jsdom' }}" --jobs "${{ inputs.jobs || '2' }}" --wpt wpt-checkout --out "wpt-out/${{ steps.slug.outputs.slug }}" --quiet
+        env:
+          AREA: ${{ matrix.area }}
+        run: |
+          base="${AREA%%~*}"; excl=()
+          if [ "$base" != "$AREA" ]; then IFS='~' read -ra parts <<< "${AREA#*~}"; for p in "${parts[@]}"; do excl+=(--exclude "$base/$p"); done; fi
+          node wpt/run.mjs "$base" "${excl[@]}" --engine "${{ inputs.engines || 'warpdom,jsdom' }}" --jobs "${{ inputs.jobs || '2' }}" --wpt wpt-checkout --out "wpt-out/${{ steps.slug.outputs.slug }}" --quiet
       - uses: actions/upload-artifact@v4
         if: always()
         with:

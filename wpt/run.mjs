@@ -24,7 +24,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 function parseArgs(argv) {
   const opts = {
     paths: [], engines: ['warpdom'], wpt: process.env.WPT_DIR ?? join(homedir(), 'Projects/wpt'),
-    warpdom: resolve(here, '..'), sample: 0, seed: 1, jobs: 1, maxMemory: 1536, timeoutMultiplier: 1, filter: null,
+    warpdom: resolve(here, '..'), sample: 0, seed: 1, jobs: 1, maxMemory: 1536, timeoutMultiplier: 1, filter: null, exclude: [],
     skip: true, testdriver: false, tentative: false, out: null, depth: 0, quiet: false,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -39,6 +39,9 @@ function parseArgs(argv) {
     else if (a === '--max-memory') opts.maxMemory = Math.max(256, Number(next()));
     else if (a === '--timeout-multiplier') opts.timeoutMultiplier = Number(next());
     else if (a === '--filter') opts.filter = next();
+    // Leaves out the tests under a path (repeatable): splits a large
+    // directory into jobs (encoding/ without its legacy-mb-* directories).
+    else if (a === '--exclude') opts.exclude.push(next().replace(/\/$/, ''));
     else if (a === '--no-skip') opts.skip = false;
     else if (a === '--include-testdriver') opts.testdriver = true;
     else if (a === '--include-tentative') opts.tentative = true;
@@ -197,6 +200,11 @@ async function main() {
   }
   let { tests, notRunnable } = discover(opts.wpt, opts.paths);
   if (opts.filter) tests = tests.filter((t) => t.id.includes(opts.filter));
+  if (opts.exclude.length) {
+    const out = (id) => opts.exclude.some((p) => id === p || id.startsWith(`${p}/`) || id.startsWith(`/${p}/`));
+    tests = tests.filter((t) => !out(t.id));
+    notRunnable = notRunnable.filter((t) => !out(t.id ?? t));
+  }
   const expectations = loadExpectations();
   if (opts.sample) {
     // Sample among the tests that run, so a sample of n runs n files; the
