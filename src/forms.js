@@ -194,8 +194,10 @@ function weeksInYear(y) {
   const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
   return jan1 === 4 || (leap && jan1 === 3) ? 53 : 52;
 }
+// A week string's year has four or five digits in jsdom (black box, 20.0.3
+// to 30.1.2; the standard allows more).
 function parseWeek(v) {
-  const m = /^(\d{4,})-W(\d\d)$/.exec(v);
+  const m = /^(\d{4,5})-W(\d\d)$/.exec(v);
   return m && +m[1] > 0 && +m[2] >= 1 && +m[2] <= weeksInYear(+m[1]) ? { y: +m[1], w: +m[2] } : null;
 }
 function parseTime(v) {
@@ -211,6 +213,24 @@ function parseDateTime(v) {
   return date && time !== null ? { date, time } : null;
 }
 const pad = (n, w = 2) => String(n).padStart(w, '0');
+const DAY = 86400000;
+const WEEK = 7 * DAY;
+// Midnight UTC on the Monday of week w of year y (ISO 8601 weeks: week 1
+// has the year's first Thursday). Years below 100 are years, not 19xx.
+function weekStart(y, w) {
+  const jan4 = new Date(0);
+  jan4.setUTCFullYear(y, 0, 4);
+  return jan4.getTime() - ((jan4.getUTCDay() + 6) % 7) * DAY + (w - 1) * WEEK;
+}
+// The week string of the week containing time n (ms).
+function serializeWeek(n) {
+  const date = new Date(n);
+  const thursday = new Date(date.getTime() + (3 - ((date.getUTCDay() + 6) % 7)) * DAY);
+  const y = thursday.getUTCFullYear();
+  const jan1 = new Date(0);
+  jan1.setUTCFullYear(y, 0, 1);
+  return `${pad(y, 4)}-W${pad(Math.floor((thursday.getTime() - jan1.getTime()) / WEEK) + 1)}`;
+}
 function serializeTime(ms) {
   const h = Math.floor(ms / 3600000), mi = Math.floor(ms / 60000) % 60, sec = Math.floor(ms / 1000) % 60, frac = ms % 1000;
   let out = `${pad(h)}:${pad(mi)}`;
@@ -229,6 +249,7 @@ function toNumber(type, v) {
     case 'number': case 'range': return parseFloatValue(v);
     case 'date': { const d = parseDate(v); return d ? Date.UTC(d.y, d.mo - 1, d.d) : null; }
     case 'month': { const d = parseMonth(v); return d ? (d.y - 1970) * 12 + d.mo - 1 : null; }
+    case 'week': { const d = parseWeek(v); return d ? weekStart(d.y, d.w) : null; }
     case 'time': return parseTime(v);
     case 'datetime-local': { const d = parseDateTime(v); return d ? Date.UTC(d.date.y, d.date.mo - 1, d.date.d) + d.time : null; }
     default: return null;
@@ -758,7 +779,8 @@ function compilePattern(pattern) {
   }
 }
 
-const DEFAULT_STEP = { number: [1, 1], range: [1, 1], date: [1, 86400000], month: [1, 1], time: [60, 1000], 'datetime-local': [60, 1000] };
+// Per type: default step, step scale factor, default step base.
+const DEFAULT_STEP = { number: [1, 1, 0], range: [1, 1, 0], date: [1, DAY, 0], month: [1, 1, 0], week: [1, WEEK, -259200000], time: [60, 1000, 0], 'datetime-local': [60, 1000, 0] };
 
 function stepMismatch(el, type, value) {
   const defaults = DEFAULT_STEP[type];
@@ -770,7 +792,7 @@ function stepMismatch(el, type, value) {
   const allowed = step * defaults[1];
   const n = toNumber(type, value);
   if (n === null) return false;
-  const base = toNumber(type, attr(el, 'min') ?? '') ?? toNumber(type, attr(el, 'value') ?? '') ?? 0;
+  const base = toNumber(type, attr(el, 'min') ?? '') ?? toNumber(type, attr(el, 'value') ?? '') ?? defaults[2];
   const q = (n - base) / allowed;
   return Math.abs(q - Math.round(q)) > 1e-9;
 }
@@ -1294,12 +1316,13 @@ export const FORM_MEMBERS = new Map([
         else if (type === 'date') setInputValue(this, new Date(n).toISOString().slice(0, 10));
         else if (type === 'time') setInputValue(this, serializeTime(((n % 86400000) + 86400000) % 86400000));
         else if (type === 'month') { const y = 1970 + Math.floor(n / 12); setInputValue(this, `${pad(y, 4)}-${pad((((n % 12) + 12) % 12) + 1)}`); }
+        else if (type === 'week') setInputValue(this, serializeWeek(n));
         else { const d = new Date(n); setInputValue(this, `${d.toISOString().slice(0, 10)}T${serializeTime(n - Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))}`); }
       },
       get valueAsDate() {
         state(this);
         const type = inputType(this);
-        if (type !== 'date' && type !== 'time' && type !== 'month') return null;
+        if (type !== 'date' && type !== 'time' && type !== 'month' && type !== 'week') return null;
         const n = toNumber(type, inputValue(this));
         if (n === null) return null;
         return new Date(type === 'month' ? Date.UTC(1970 + Math.floor(n / 12), n % 12) : n);
@@ -1307,7 +1330,7 @@ export const FORM_MEMBERS = new Map([
       set valueAsDate(v) {
         state(this);
         const type = inputType(this);
-        if (type !== 'date' && type !== 'time' && type !== 'month') throw domError("This input element does not support Date values.", 'InvalidStateError');
+        if (type !== 'date' && type !== 'time' && type !== 'month' && type !== 'week') throw domError("This input element does not support Date values.", 'InvalidStateError');
         if (v === null) { setInputValue(this, ''); return; }
         if (!(v instanceof Date)) throw new TypeError("Failed to set the 'valueAsDate' property on 'HTMLInputElement': The provided value is not a Date.");
         const t = v.getTime();
@@ -1542,7 +1565,7 @@ function stepBy(el, n) {
   if (step === null || step <= 0) step = defaults[0];
   const value = toNumber(type, inputValue(el)) ?? 0;
   const delta = step * defaults[1];
-  const base = toNumber(type, attr(el, 'min') ?? '') ?? toNumber(type, attr(el, 'value') ?? '') ?? 0;
+  const base = toNumber(type, attr(el, 'min') ?? '') ?? toNumber(type, attr(el, 'value') ?? '') ?? defaults[2];
   const count = Number(n) | 0;
   const q = (value - base) / delta;
   // Off the step grid: snap to the nearest step in the direction of travel.

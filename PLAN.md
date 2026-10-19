@@ -2708,3 +2708,13 @@ in the profiles of the jsdom versions that have them.
   kept by a type change is now stored without the dirty flag, and a
   value attribute change drops it. A type without selection to one with
   it puts the selection at 0, 0, none. No events.
+- **type=week (#49).** valueAsNumber is midnight UTC on the Monday of the
+  ISO week, valueAsDate that date; the setters take the week containing
+  the time; stepUp/stepDown by one week from the step base 1970-W01
+  (-259,200,000); min, max and step validity. Every version. jsdom
+  parses a week string's year with four or five digits only
+  ("100000-W01" is sanitized to ""; the standard allows more); warpdom
+  follows. Not reproduced, jsdom's results at extremes: the
+  valueAsNumber setter for years below 100 (year 1 gives "1901-W01")
+  and out of the Date range ("0NaN-WNaN", "-29719-W14" are stored
+  unsanitized; warpdom stores "").

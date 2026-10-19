@@ -892,3 +892,67 @@ const typeChange = (w) => {
   return out;
 };
 for (const jsdom of [30, 20]) parity(`input type change (jsdom ${jsdom})`, typeChange, { jsdom });
+
+// input type=week (#49): valueAsNumber (the Monday of the week, midnight
+// UTC), valueAsDate, stepUp/stepDown (one week, step base 1970-W01) and
+// min, max and step validity. Year with four or five digits, as jsdom.
+const weekInput = (w) => {
+  const d = w.document;
+  const out = [];
+  const attempt = (f) => { try { return f(); } catch (e) { return e.name; } };
+  for (const v of ['2019-W50', '2020-W53', '2021-W53', '2026-W53', '1970-W01', '1969-W20', '0001-W01', '00001-W01', '99999-W52', '99999-W53', '100000-W01', '275760-W37', '2019-W1', '2019-w50', '2019-W00', '']) {
+    const i = d.createElement('input');
+    i.type = 'week';
+    i.value = v;
+    out.push([v, i.value, i.valueAsNumber, i.valueAsDate === null ? null : i.valueAsDate.toISOString()]);
+  }
+  for (const n of [1575849600000, 0, -259200000, 1, 86400000 * 3.5, -345600000, -20217600000, Date.UTC(2019, 11, 30), Date.UTC(2021, 0, 3), Date.UTC(2027, 0, 1)]) {
+    const i = d.createElement('input');
+    i.type = 'week';
+    i.valueAsNumber = n;
+    out.push(['valueAsNumber', n, i.value]);
+  }
+  for (const date of [new Date(Date.UTC(2019, 11, 12)), new Date(0), new Date(NaN), null]) {
+    const i = d.createElement('input');
+    i.type = 'week';
+    i.value = '2000-W01';
+    out.push(['valueAsDate', attempt(() => { i.valueAsDate = date; return i.value; })]);
+  }
+  const step = (attrs, f) => {
+    const i = d.createElement('input');
+    i.type = 'week';
+    for (const [k, v] of Object.entries(attrs)) i.setAttribute(k, v);
+    return attempt(() => { f(i); return i.value; });
+  };
+  out.push(
+    step({ value: '2019-W50' }, (i) => i.stepUp()),
+    step({ value: '2019-W52' }, (i) => i.stepUp()),
+    step({ value: '2020-W53' }, (i) => i.stepUp()),
+    step({ value: '2019-W50' }, (i) => i.stepDown(3)),
+    step({ value: '2019-W50', step: '2' }, (i) => i.stepUp()),
+    step({ value: '2019-W50', step: '2', min: '2019-W01' }, (i) => i.stepUp()),
+    step({}, (i) => i.stepUp()),
+    step({}, (i) => i.stepDown()),
+    step({ value: '2019-W50', max: '2019-W51' }, (i) => i.stepUp(5)),
+    step({ value: '2019-W50', step: 'any' }, (i) => i.stepUp()),
+    step({ value: '2019-W50', step: '0.5' }, (i) => i.stepUp()),
+    step({ value: '2019-W50', step: '1.5' }, (i) => i.stepUp()),
+  );
+  const validity = (attrs) => {
+    const i = d.createElement('input');
+    i.type = 'week';
+    for (const [k, v] of Object.entries(attrs)) i.setAttribute(k, v);
+    const v = i.validity;
+    return [v.rangeOverflow, v.rangeUnderflow, v.stepMismatch, v.valid, i.checkValidity(), i.matches(':invalid')];
+  };
+  out.push(
+    validity({ value: '2019-W50', max: '2019-W01' }),
+    validity({ value: '2019-W50', min: '2020-W01' }),
+    validity({ value: '2019-W50', step: '2', min: '2019-W01' }),
+    validity({ value: '2019-W50', step: '2' }),
+    validity({ value: '2019-W50', min: 'bogus', max: 'x' }),
+    validity({ value: '1970-W03', step: '2' }),
+  );
+  return out;
+};
+for (const jsdom of [30, 25, 20]) parity(`input type=week (jsdom ${jsdom})`, weekInput, { jsdom });
