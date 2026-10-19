@@ -324,6 +324,8 @@ export function createWindow(options = {}) {
         element[S].ceState = 'undefined';
         element[S].ceIs = is;
       }
+      // form[i] and select[i] (forms.js).
+      if ((tag === 'form' || tag === 'select') && ns === HTML_NS) return hooks.indexedElement(element, tag, internals.compat);
       return element;
     },
     createText: (data, doc = document) => create(protos.Text, TEXT_NODE, { data }, doc),

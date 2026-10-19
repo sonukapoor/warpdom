@@ -287,3 +287,82 @@ export const COLLECTION_INTERFACES = [
     },
   },
 ];
+
+// Elements with indexed properties (HTMLFormElement: its elements;
+// HTMLSelectElement: its options, with an indexed setter): legacy platform
+// objects as above, with no named properties. items(element) returns the
+// current items, setIndex(element, index, value) is the setter or null.
+// Other keys (the element's state among them) go to the element itself.
+class IndexedElement {
+  constructor(items, setIndex) {
+    this.items = items;
+    this.setIndex = setIndex;
+    this.proxy = null;
+  }
+
+  get(t, key, receiver) {
+    if (typeof key === 'string') {
+      const i = arrayIndex(key);
+      if (i >= 0) {
+        const list = this.items(this.proxy);
+        if (i < list.length) return list[i];
+      }
+    }
+    return Reflect.get(t, key, receiver);
+  }
+
+  has(t, key) {
+    const i = arrayIndex(key);
+    if (i >= 0 && i < this.items(this.proxy).length) return true;
+    return Reflect.has(t, key);
+  }
+
+  getOwnPropertyDescriptor(t, key) {
+    const i = arrayIndex(key);
+    if (i >= 0) {
+      const list = this.items(this.proxy);
+      return i < list.length ? { value: list[i], writable: this.setIndex !== null, enumerable: true, configurable: true } : undefined;
+    }
+    return Reflect.getOwnPropertyDescriptor(t, key);
+  }
+
+  defineProperty(t, key, desc) {
+    const i = arrayIndex(key);
+    if (i >= 0) {
+      if (this.setIndex === null || !('value' in desc) || 'get' in desc || 'set' in desc) return false;
+      this.setIndex(this.proxy, i, desc.value);
+      return true;
+    }
+    return Reflect.defineProperty(t, key, desc);
+  }
+
+  set(t, key, value, receiver) {
+    const i = arrayIndex(key);
+    if (i >= 0) {
+      if (this.setIndex === null) return false;
+      if (receiver === this.proxy) { this.setIndex(this.proxy, i, value); return true; }
+    }
+    return Reflect.set(t, key, value, receiver);
+  }
+
+  deleteProperty(t, key) {
+    const i = arrayIndex(key);
+    if (i >= 0) return i >= this.items(this.proxy).length;
+    return Reflect.deleteProperty(t, key);
+  }
+
+  ownKeys(t) {
+    const n = this.items(this.proxy).length;
+    const keys = [];
+    for (let i = 0; i < n; i++) keys.push(String(i));
+    for (const key of Reflect.ownKeys(t)) keys.push(key);
+    return keys;
+  }
+
+  preventExtensions() { return false; }
+}
+
+export function indexedElement(element, items, setIndex = null) {
+  const handler = new IndexedElement(items, setIndex);
+  return (handler.proxy = new Proxy(element, handler));
+}

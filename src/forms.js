@@ -14,7 +14,7 @@ import {
   rootOf, nextInTree, contains, elementById, connected, asciiLowercase, PlatformURL as URL, tooFewArguments,
 } from './internal.js';
 import { writeAttribute, attributeSteps, addAttributeStep, tokenList } from './attributes.js';
-import { liveList, htmlCollectionNames } from './collections.js';
+import { liveList, htmlCollectionNames, indexedElement } from './collections.js';
 import { dispatch, eventConstruct, fieldGetters, eventState } from './events.js';
 import { parseInteger } from './reflect.js';
 import { directionality } from './directionality.js';
@@ -1493,8 +1493,7 @@ export const FORM_MEMBERS = new Map([
       namedItem(name) { return this.options.namedItem(name); },
       // Iterable over its options, as an interface with an indexed getter
       // (WebIDL). jsdom's is Array.prototype.values over indexed properties;
-      // warpdom has no indexed properties on elements (select[0]), so it
-      // iterates the list of options directly.
+      // warpdom iterates the list of options directly (the same items).
       [Symbol.iterator]() { state(this); return listOfOptions(this).slice()[Symbol.iterator](); },
       add(element, before = undefined) { this.options.add(element, before); },
       remove(...args) {
@@ -1689,6 +1688,15 @@ function formControlsNamedItem(list, name) {
 }
 
 const FORM_CONTROLS_NAMED = { get: formControlsNamedItem, names: htmlCollectionNames, unenumerable: true };
+
+// Indexed properties (WebIDL legacy platform objects): select[i] is
+// select.options[i], with its setter, in every measured jsdom version;
+// form[i] is form.elements[i] from jsdom 26.1.0 (compat.formIndexed;
+// 26.0.0 has none). No named properties: jsdom has none on forms.
+hooks.indexedElement = (element, tag, compat) => {
+  if (tag === 'select') return indexedElement(element, listOfOptions, setOption);
+  return compat.formIndexed ? indexedElement(element, formElements) : element;
+};
 
 // HTMLOptionsCollection's indexed setter (select.options[i] = option).
 function setOption(select, index, option) {

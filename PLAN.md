@@ -2780,3 +2780,17 @@ in the profiles of the jsdom versions that have them.
   leaves out HTML and SVG script elements only (MathML and no-namespace
   script are text), as the standard and every version. Also option.label
   and value without a value attribute.
+- **form[i] and select[i] (#50).** select[i] is select.options[i] with the
+  indexed setter (`select[3] = option` pads with empty options, `= null`
+  removes, a non-option throws TypeError) in every measured version;
+  form[i] is form.elements[i] from jsdom 26.1.0 (26.0.0 and earlier have
+  none: `form[0] = 'x'` is an expando there; `compat.formIndexed`).
+  Legacy platform object semantics as jsdom: own enumerable properties
+  "0".."n-1" first in ownKeys, form indices read-only (assignment,
+  defineProperty and delete of a present index fail: TypeError in strict
+  code), deleting an absent index succeeds. No named properties on forms
+  (jsdom has none: `form.a` is undefined). The form and select objects
+  are Proxies over the element (collections.js indexedElement, like the
+  live collections), made in createElementNS; other keys go straight to
+  the element. Not covered: customized built-in forms/selects (is=) and
+  custom element classes extending them stay plain.

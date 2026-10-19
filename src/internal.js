@@ -85,6 +85,9 @@ export const hooks = {
   // Radio button groups on insertion (forms.js); called only in documents
   // that have had a checked radio button (checkedRadios).
   radios: null,
+  // HTMLFormElement and HTMLSelectElement objects with indexed properties
+  // (forms.js).
+  indexedElement: null,
 };
 
 // Runs fn as one custom element reactions scope (a [CEReactions] operation

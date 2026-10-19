@@ -1273,3 +1273,49 @@ parity('option text: whitespace and script elements', (w) => {
   out.push([s.value, s.options[1].text, s.options[1].label]);
   return out;
 });
+
+// Indexed properties (#50): select[i] (with its setter) in every version;
+// form[i] from jsdom 26.1.0. No named properties on forms.
+const indexedProperties = (w) => {
+  const d = w.document;
+  const out = [];
+  const attempt = (f) => { try { return f(); } catch (e) { return e.name; } };
+  const f = d.createElement('form');
+  f.innerHTML = '<input name=a id=ida><input name=b><select name=s><option>1</select><img name=im><fieldset name=fs></fieldset><input name=length>';
+  out.push([typeof f[0], f[0] === f.elements[0], f[10], Object.getOwnPropertyNames(f), Object.keys(f)]);
+  const forIn = [];
+  for (const k in f) if (/^\d/.test(k)) forIn.push(k);
+  out.push(forIn, [f.a, f.ida, typeof f.length], [0 in f, '1' in f, 7 in f, 'a' in f]);
+  const desc = Object.getOwnPropertyDescriptor(f, '0');
+  out.push(desc && [desc.writable, desc.enumerable, desc.configurable, desc.value === f.elements[0]]);
+  out.push([attempt(() => delete f[0]), attempt(() => delete f[9]), attempt(() => { f[0] = 'x'; return f[0] === f.elements[0]; }), attempt(() => { f[50] = 'y'; return f[50]; })]);
+  out.push(attempt(() => { Object.defineProperty(f, '1', { value: 3 }); return f[1] === 3; }));
+  f.zz = 1;
+  f.append(d.createElement('textarea'));
+  out.push(Object.getOwnPropertyNames(f));
+  const s = d.createElement('select');
+  s.innerHTML = '<option>a</option><option>b</option>';
+  out.push([s[1].text, Object.getOwnPropertyNames(s), 1 in s, 5 in s]);
+  const o = d.createElement('option');
+  o.text = 'new';
+  s[3] = o;
+  out.push([s.length, s[2].text, s[3].text]);
+  s[0] = null;
+  out.push([s.length, s[0].text]);
+  out.push([attempt(() => { s[0] = 'str'; return 'set'; }), attempt(() => delete s[0]), attempt(() => delete s[9])]);
+  const sd = Object.getOwnPropertyDescriptor(s, '0');
+  out.push([sd.writable, sd.enumerable, sd.configurable, Object.keys(s), [...s].length]);
+  out.push([f instanceof w.HTMLFormElement, Object.getPrototypeOf(s) === w.HTMLSelectElement.prototype, s.cloneNode(true)[1].text, f.cloneNode(true)[0]?.name ?? null]);
+  d.body.innerHTML = '<form id=pf><input name=p></form><select id=ps><option>x</select>';
+  out.push([d.getElementById('pf')[0]?.name ?? null, d.forms[0] === d.getElementById('pf'), d.getElementById('ps')[0].text, d.querySelector('select') === d.getElementById('ps')]);
+  return out;
+};
+for (const jsdom of [30, 26, 25, 20]) parity(`form[i] and select[i] (jsdom ${jsdom})`, indexedProperties, { jsdom });
+test('form[i] from jsdom 26.1.0', () => {
+  const typeOf = (jsdom) => {
+    const f = createWindow({ jsdom }).document.createElement('form');
+    f.innerHTML = '<input>';
+    return typeof f[0];
+  };
+  assert.deepEqual([typeOf('26.0.0'), typeOf('26.1.0')], ['undefined', 'object']);
+});
