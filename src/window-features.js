@@ -1,8 +1,9 @@
 // Window-level features: requestAnimationFrame, viewport and scrolling,
-// navigator, location and history, crypto and performance, the
+// navigator, location and history, crypto and performance, URL,
+// URLSearchParams and Headers, console and WebAssembly, the
 // Image/Audio/Option constructors.
 // Values follow jsdom's defaults so tests see the same environment.
-import { S, state, domError, tooFewArguments, platformGlobal } from './internal.js';
+import { S, state, domError, tooFewArguments, platformGlobal, PLATFORM_GLOBAL, PlatformURL, PlatformURL as URL } from './internal.js';
 import { dispatch, reportError } from './events.js';
 import { computedStyle, cssNamespace } from './css.js';
 import './cascade.js';
@@ -10,7 +11,7 @@ import { compile } from './selectors.js';
 import { QuotaExceededError } from './storage.js';
 import { navigate, traverse, hostTimeout } from './navigation.js';
 import { VERSION } from './version.js';
-import { typedArrayName } from './encoding.js';
+import { typedArrayName, realmOf, webidlString } from './encoding.js';
 
 // The jsdom version warpdom behaves like by default.
 export const LATEST_JSDOM = 30;
@@ -204,8 +205,10 @@ export const WINDOW_MEMBERS = {
   set origin(value) { replace(this, 'origin', value); },
   get external() { const ws = state(this); return ws.external ?? (ws.external = make(this, 'External', {})); },
   set external(value) { replace(this, 'external', value); },
-  // An alias of URL; a getter, so environments do not bind it.
-  get webkitURL() { state(this); return URL; },
+  // An alias of the window's URL interface (url.js); a getter, so
+  // environments do not bind it. Under Vitest it stays the window's while
+  // the global URL is the environment's, as with jsdom.
+  get webkitURL() { return state(this).protos.URL.constructor; },
   // The current event (DOM 2.10), set while listeners run (events.js);
   // [Replaceable]: assigning it replaces it with an own property.
   get event() { return state(this).currentEvent; },
@@ -401,6 +404,505 @@ export const CRYPTO_INTERFACE = {
   },
 };
 
+// --- URL, URLSearchParams and Headers ---------------------------------------------------------------
+// URL and URLSearchParams (URL Standard, 6) and Headers (Fetch, 5.2): the
+// window's own interfaces, as jsdom's window has them (black box, jsdom
+// 20.0.0 to 30.1.3). Each window has its own constructors, so a test that
+// replaces URL.prototype.toString or assigns URL.createObjectURL changes
+// that window only (with the platform's URL, every window of the worker).
+//
+// URL parsing and serialization are the platform's (URL and
+// URLSearchParams are web standard globals in browsers, Node, Deno and edge
+// runtimes): each URL holds a platform URL, and its searchParams wrap the
+// platform URL's, which the platform keeps in sync with the URL. What jsdom
+// adds or lacks per version is warpdom's: URL.parse() and canParse(), the
+// size attribute and the value argument of has() and delete() from jsdom
+// 23.0.0; no URL.createObjectURL() in any version; jsdom's errors
+// ("Invalid URL: x", WebIDL argument conversion). Headers is warpdom's own
+// (jsdom's has its own errors, and Set-Cookie headers stay separate only
+// from jsdom 24.1.0; the platform's Headers also loads Node's fetch on
+// first use, ~8 ms).
+// (In this module for load time, as Crypto and Performance.)
+
+// The platform's, taken when warpdom loads: a runner may later put a
+// window's URL on the global object.
+const PlatformURLSearchParams = PLATFORM_GLOBAL.URLSearchParams;
+
+const parseURL = (url, base) => {
+  if (typeof PlatformURL.parse === 'function') return base === undefined ? PlatformURL.parse(url) : PlatformURL.parse(url, base);
+  try { return base === undefined ? new PlatformURL(url) : new PlatformURL(url, base); } catch { return null; }
+};
+
+const constructing = (name) => `Failed to construct '${name}'`;
+
+// A URL of the window holding a platform URL.
+function makeURL(window, url) {
+  const object = Object.create(window[S].protos.URL);
+  object[S] = { window, url, params: null };
+  return object;
+}
+
+// The URL and base strings, parsed: the platform URL, or jsdom's TypeError.
+function parseOrThrow(url, base, context) {
+  const href = webidlString(url, 'parameter 1', context);
+  let baseHref;
+  if (base !== undefined) {
+    baseHref = webidlString(base, 'parameter 2', context);
+    if (parseURL(baseHref) === null) throw new TypeError(`Invalid base URL: ${baseHref}`);
+  }
+  const parsed = parseURL(href, baseHref);
+  if (parsed === null) throw new TypeError(`Invalid URL: ${href}`);
+  return parsed;
+}
+
+const setterContext = (name) => `Failed to set the '${name}' property on 'URL'`;
+const setterString = (value, name) => {
+  if (typeof value === 'symbol') throw new TypeError(`${setterContext(name)}: The provided value is a symbol, which cannot be converted to a string.`);
+  return String(value);
+};
+
+// The URL's components: getters and setters of the platform URL's (named
+// "get protocol" and "set protocol", as WebIDL's).
+const urlComponent = (name) => Object.getOwnPropertyDescriptor({
+  get [name]() { return state(this).url[name]; },
+  set [name](value) { state(this).url[name] = setterString(value, name); },
+}, name);
+
+const URL_INTERFACE = {
+  name: 'URL',
+  length: 1,
+  construct(window, self, args) {
+    if (args.length < 1) throw new TypeError(`${constructing('URL')}: 1 argument required, but only 0 present.`);
+    self[S] = { window, url: parseOrThrow(args[0], args[1], constructing('URL')), params: null };
+    return self;
+  },
+  members: {
+    get href() { return state(this).url.href; },
+    set href(value) {
+      const s = state(this);
+      const href = setterString(value, 'href');
+      if (parseURL(href) === null) throw new TypeError(`Invalid URL: ${href}`);
+      s.url.href = href;
+    },
+    toString() { return state(this).url.href; },
+    get origin() { return state(this).url.origin; },
+    protocol: urlComponent('protocol'),
+    username: urlComponent('username'),
+    password: urlComponent('password'),
+    host: urlComponent('host'),
+    hostname: urlComponent('hostname'),
+    port: urlComponent('port'),
+    pathname: urlComponent('pathname'),
+    search: urlComponent('search'),
+    get searchParams() {
+      const s = state(this);
+      return s.params ?? (s.params = makeParams(s.window, s.url.searchParams));
+    },
+    hash: urlComponent('hash'),
+    toJSON() { return state(this).url.href; },
+  },
+  // URL.parse() and URL.canParse(), from jsdom 23.0.0 (compat.urlParse).
+  staticMethods(window) {
+    if (!window[S].compat.urlParse) return {};
+    return {
+      parse(url, base = undefined) {
+        if (arguments.length < 1) tooFewArguments('URL', 'parse', 1, 0);
+        const context = "Failed to execute 'parse' on 'URL'";
+        const href = webidlString(url, 'parameter 1', context);
+        const baseHref = base === undefined ? undefined : webidlString(base, 'parameter 2', context);
+        const parsed = baseHref !== undefined && parseURL(baseHref) === null ? null : parseURL(href, baseHref);
+        return parsed === null ? null : makeURL(window, parsed);
+      },
+      canParse(url, base = undefined) {
+        if (arguments.length < 1) tooFewArguments('URL', 'canParse', 1, 0);
+        const context = "Failed to execute 'canParse' on 'URL'";
+        const href = webidlString(url, 'parameter 1', context);
+        const baseHref = base === undefined ? undefined : webidlString(base, 'parameter 2', context);
+        return !(baseHref !== undefined && parseURL(baseHref) === null) && parseURL(href, baseHref) !== null;
+      },
+    };
+  },
+};
+
+// --- URLSearchParams ------------------------------------------------------------------------------
+
+function makeParams(window, params) {
+  const object = Object.create(window[S].protos.URLSearchParams);
+  object[S] = { window, params };
+  return object;
+}
+
+// The iterator method of an init that is an object (WebIDL union
+// conversion): undefined for a record. jsdom before 30 takes any
+// @@iterator property for a sequence (null too) and fails with V8's
+// spread error; jsdom 30 as WebIDL (null: a record; not callable: an error).
+function iteratorMethod(init, window) {
+  const method = init[Symbol.iterator];
+  const legacy = window[S].compat.jsdom < 30;
+  if (legacy ? method === undefined : method == null) return undefined;
+  if (typeof method !== 'function') throw new TypeError(legacy ? 'tmp is not iterable' : 'Cannot convert a Symbol value to a string');
+  return method;
+}
+
+// A record<K, V> (WebIDL 3.2.24): the own enumerable properties; a key
+// that converts to one seen before replaces its value.
+function recordPairs(init, context, convert) {
+  const pairs = new Map();
+  for (const key of Reflect.ownKeys(init)) {
+    const descriptor = Reflect.getOwnPropertyDescriptor(init, key);
+    if (descriptor === undefined || !descriptor.enumerable) continue;
+    if (typeof key === 'symbol') throw new TypeError(`${context}: parameter 1 record's key is a symbol, which cannot be converted to a string.`);
+    pairs.set(convert(key, "record's key"), convert(init[key], "record's value"));
+  }
+  return [...pairs];
+}
+
+// A sequence<sequence<T>>: each element an iterable of exactly two (the
+// count is checked by the caller: jsdom's messages differ).
+function sequencePairs(init, method, context, convert) {
+  const pairs = [];
+  for (const element of { [Symbol.iterator]: () => method.call(init) }) {
+    if (element === null || (typeof element !== 'object' && typeof element !== 'function')) {
+      throw new TypeError(`${context}: parameter 1 sequence's element is not an iterable object.`);
+    }
+    const pair = [];
+    for (const item of element) pair.push(convert(item, "sequence's element's element"));
+    pairs.push(pair);
+  }
+  return pairs;
+}
+
+const uspContext = constructing('URLSearchParams');
+// USVString: lone surrogates become U+FFFD.
+const usvString = (string) => (typeof string.toWellFormed === 'function' ? string.toWellFormed() : string.replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, '\ufffd'));
+const uspString = (value, what) => usvString(webidlString(value, `parameter 1 ${what}`, uspContext));
+
+// The (name, value) pairs of a URLSearchParams init, or its string.
+function paramsInit(window, init) {
+  if (init === undefined) return '';
+  if (init === null || (typeof init !== 'object' && typeof init !== 'function')) return webidlString(init, 'parameter 1', uspContext);
+  const method = iteratorMethod(init, window);
+  if (method === undefined) return recordPairs(init, uspContext, uspString);
+  const pairs = sequencePairs(init, method, uspContext, uspString);
+  for (const pair of pairs) {
+    if (pair.length !== 2) throw new TypeError(`${uspContext}: parameter 1 sequence's element does not contain exactly two elements.`);
+  }
+  return pairs;
+}
+
+const argument = (value, index, method, iface = 'URLSearchParams') => webidlString(value, `parameter ${index}`, `Failed to execute '${method}' on '${iface}'`);
+
+// forEach (WebIDL pair iterators): its errors name the 'iterable'.
+function checkCallback(callback, present) {
+  if (present < 1) throw new TypeError("Failed to execute 'forEach' on 'iterable': 1 argument required, but only 0 present.");
+  if (typeof callback !== 'function') throw new TypeError("Failed to execute 'forEach' on 'iterable': The callback provided as parameter 1 is not a function");
+}
+
+const URL_SEARCH_PARAMS_INTERFACE = {
+  name: 'URLSearchParams',
+  construct(window, self, [init]) {
+    const pairs = paramsInit(window, init);
+    let params;
+    if (typeof pairs === 'string') {
+      params = new PlatformURLSearchParams(pairs);
+    } else {
+      params = new PlatformURLSearchParams();
+      for (const [name, value] of pairs) params.append(name, value);
+    }
+    self[S] = { window, params };
+    return self;
+  },
+  members: {
+    // From jsdom 23.0.0 (compat below).
+    get size() { return state(this).params.size; },
+    append(name, value) {
+      const { params } = state(this);
+      if (value === undefined && arguments.length < 2) tooFewArguments('URLSearchParams', 'append', 2, arguments.length);
+      params.append(argument(name, 1, 'append'), argument(value, 2, 'append'));
+    },
+    // The value argument from jsdom 23.0.0 (compat.paramValues).
+    delete(name, value = undefined) {
+      const s = state(this);
+      if (arguments.length < 1) tooFewArguments('URLSearchParams', 'delete', 1, 0);
+      const key = argument(name, 1, 'delete');
+      if (value === undefined || !s.window[S].compat.paramValues) s.params.delete(key);
+      else s.params.delete(key, argument(value, 2, 'delete'));
+    },
+    get(name) {
+      const { params } = state(this);
+      if (arguments.length < 1) tooFewArguments('URLSearchParams', 'get', 1, 0);
+      return params.get(argument(name, 1, 'get'));
+    },
+    getAll(name) {
+      const { params } = state(this);
+      if (arguments.length < 1) tooFewArguments('URLSearchParams', 'getAll', 1, 0);
+      return params.getAll(argument(name, 1, 'getAll'));
+    },
+    has(name, value = undefined) {
+      const s = state(this);
+      if (arguments.length < 1) tooFewArguments('URLSearchParams', 'has', 1, 0);
+      const key = argument(name, 1, 'has');
+      return value === undefined || !s.window[S].compat.paramValues ? s.params.has(key) : s.params.has(key, argument(value, 2, 'has'));
+    },
+    set(name, value) {
+      const { params } = state(this);
+      if (value === undefined && arguments.length < 2) tooFewArguments('URLSearchParams', 'set', 2, arguments.length);
+      params.set(argument(name, 1, 'set'), argument(value, 2, 'set'));
+    },
+    sort() { state(this).params.sort(); },
+    // The platform's iterators (live, as WebIDL's pair iterators).
+    entries() { return state(this).params.entries(); },
+    keys() { return state(this).params.keys(); },
+    values() { return state(this).params.values(); },
+    forEach(callback, thisArg = undefined) {
+      const { params } = state(this);
+      checkCallback(callback, arguments.length);
+      params.forEach((value, name) => { callback.call(thisArg, value, name, this); });
+    },
+    toString() { return state(this).params.toString(); },
+  },
+  compat(proto, compat) {
+    if (!compat.paramValues) delete proto.size;
+  },
+};
+
+// --- Headers -------------------------------------------------------------------------------------
+// A header list of [name, value] pairs, names as given. As jsdom's: no
+// guard (forbidden request headers are kept), its errors ("name is
+// invalid"), and before jsdom 24.1.0 no getSetCookie() and Set-Cookie
+// values combined like any other header's.
+
+const TOKEN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+const HTTP_WHITESPACE = /^[\t\n\r ]+|[\t\n\r ]+$/g;
+const INVALID_VALUE = /[\0\n\r]/;
+const NOT_BYTES = /[^\x00-\xFF]/;
+const lowercase = (name) => name.toLowerCase();
+
+function byteString(value, what, context) {
+  const string = webidlString(value, what, context);
+  if (NOT_BYTES.test(string)) throw new TypeError(`${context}: ${what} is not a valid ByteString.`);
+  return string;
+}
+
+const headerName = (value, method) => {
+  const name = byteString(value, 'parameter 1', `Failed to execute '${method}' on 'Headers'`);
+  if (!TOKEN.test(name)) throw new TypeError('name is invalid');
+  return name;
+};
+
+const headerValue = (value, method) => {
+  const normalized = byteString(value, 'parameter 2', `Failed to execute '${method}' on 'Headers'`).replace(HTTP_WHITESPACE, '');
+  if (INVALID_VALUE.test(normalized)) throw new TypeError('value is invalid');
+  return normalized;
+};
+
+function appendHeader(s, name, value) {
+  if (!TOKEN.test(name)) throw new TypeError('name is invalid');
+  const normalized = value.replace(HTTP_WHITESPACE, '');
+  if (INVALID_VALUE.test(normalized)) throw new TypeError('value is invalid');
+  s.list.push([name, normalized]);
+  s.sorted = null;
+}
+
+const combined = (list, key) => {
+  let value = null;
+  for (const [name, v] of list) if (lowercase(name) === key) value = value === null ? v : `${value}, ${v}`;
+  return value;
+};
+
+// Sort and combine (Fetch 2.2.2): lowercase names in byte order, values of
+// a name combined, Set-Cookie values separate from jsdom 24.1.0. Cached
+// until the list changes.
+function sortedHeaders(s) {
+  if (s.sorted !== null) return s.sorted;
+  const names = [...new Set(s.list.map(([name]) => lowercase(name)))].sort();
+  const separate = s.window[S].compat.setCookieList;
+  const sorted = [];
+  for (const name of names) {
+    if (name === 'set-cookie' && separate) {
+      for (const [n, v] of s.list) if (lowercase(n) === name) sorted.push([name, v]);
+    } else {
+      sorted.push([name, combined(s.list, name)]);
+    }
+  }
+  return (s.sorted = sorted);
+}
+
+const hContext = constructing('Headers');
+const hInitString = (value, what) => byteString(value, `parameter 1 ${what}`, hContext);
+
+function fillHeaders(window, s, init) {
+  if (init === undefined) return;
+  if (init === null || (typeof init !== 'object' && typeof init !== 'function')) throw new TypeError(`${hContext}: parameter 1 is not of any supported type.`);
+  const method = iteratorMethod(init, window);
+  if (method === undefined) {
+    for (const [name, value] of recordPairs(init, hContext, hInitString)) appendHeader(s, name, value);
+    return;
+  }
+  for (const pair of sequencePairs(init, method, hContext, hInitString)) {
+    if (pair.length !== 2) throw new TypeError('init is invalid');
+    appendHeader(s, pair[0], pair[1]);
+  }
+}
+
+// The Headers iterator (WebIDL default iterator objects): the sorted list
+// as it is at each step.
+const HEADERS_ITERATOR = Object.create(Object.getPrototypeOf(Object.getPrototypeOf([][Symbol.iterator]())), {
+  next: {
+    value: function next() {
+      const it = this?.[ITERATION];
+      if (it === undefined) throw new TypeError('next() called on an object that is not a Headers iterator.');
+      const list = sortedHeaders(it.target);
+      if (it.index >= list.length) return { value: undefined, done: true };
+      const [name, value] = list[it.index++];
+      return { value: it.kind === 'keys' ? name : it.kind === 'values' ? value : [name, value], done: false };
+    },
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  [Symbol.toStringTag]: { value: 'Headers Iterator', configurable: true },
+});
+const ITERATION = Symbol('Headers iteration');
+
+function headersIterator(self, kind) {
+  const iterator = Object.create(HEADERS_ITERATOR);
+  Object.defineProperty(iterator, ITERATION, { value: { target: state(self), kind, index: 0 } });
+  return iterator;
+}
+
+const HEADERS_INTERFACE = {
+  name: 'Headers',
+  construct(window, self, [init]) {
+    const s = { window, list: [], sorted: null };
+    fillHeaders(window, s, init);
+    self[S] = s;
+    return self;
+  },
+  members: {
+    append(name, value) {
+      const s = state(this);
+      if (value === undefined && arguments.length < 2) tooFewArguments('Headers', 'append', 2, arguments.length);
+      s.list.push([headerName(name, 'append'), headerValue(value, 'append')]);
+      s.sorted = null;
+    },
+    delete(name) {
+      const s = state(this);
+      if (arguments.length < 1) tooFewArguments('Headers', 'delete', 1, 0);
+      const key = lowercase(headerName(name, 'delete'));
+      s.list = s.list.filter(([n]) => lowercase(n) !== key);
+      s.sorted = null;
+    },
+    get(name) {
+      const s = state(this);
+      if (arguments.length < 1) tooFewArguments('Headers', 'get', 1, 0);
+      return combined(s.list, lowercase(headerName(name, 'get')));
+    },
+    // From jsdom 24.1.0 (compat below).
+    getSetCookie() {
+      const values = [];
+      for (const [name, value] of state(this).list) if (lowercase(name) === 'set-cookie') values.push(value);
+      return values;
+    },
+    has(name) {
+      const s = state(this);
+      if (arguments.length < 1) tooFewArguments('Headers', 'has', 1, 0);
+      const key = lowercase(headerName(name, 'has'));
+      return s.list.some(([n]) => lowercase(n) === key);
+    },
+    // Replaces the first header of the name and removes the others, or appends.
+    set(name, value) {
+      const s = state(this);
+      if (value === undefined && arguments.length < 2) tooFewArguments('Headers', 'set', 2, arguments.length);
+      const header = headerName(name, 'set');
+      const normalized = headerValue(value, 'set');
+      const key = lowercase(header);
+      let found = false;
+      s.list = s.list.filter((entry) => {
+        if (lowercase(entry[0]) !== key) return true;
+        if (found) return false;
+        found = true;
+        entry[1] = normalized;
+        return true;
+      });
+      if (!found) s.list.push([header, normalized]);
+      s.sorted = null;
+    },
+    keys() { return headersIterator(this, 'keys'); },
+    values() { return headersIterator(this, 'values'); },
+    entries() { return headersIterator(this, 'entries'); },
+    forEach(callback, thisArg = undefined) {
+      const s = state(this);
+      checkCallback(callback, arguments.length);
+      for (let i = 0; i < sortedHeaders(s).length; i++) {
+        const [name, value] = sortedHeaders(s)[i];
+        callback.call(thisArg, value, name, this);
+      }
+    },
+  },
+  compat(proto, compat) {
+    if (!compat.setCookieList) delete proto.getSetCookie;
+  },
+};
+
+// @@iterator is the entries() function (WebIDL pair iterators).
+for (const { members } of [URL_SEARCH_PARAMS_INTERFACE, HEADERS_INTERFACE]) members[Symbol.iterator] = members.entries;
+
+export const URL_INTERFACES = [URL_INTERFACE, URL_SEARCH_PARAMS_INTERFACE, HEADERS_INTERFACE];
+
+// --- console and WebAssembly ---------------------------------------------------------------------
+// Own properties of the window, as jsdom's (black box, 20 to 30).
+// Test environments leave both to the global object they install the
+// window on (installWindow in vitest.js): there console is the
+// environment's (Jest's, Vitest's) and WebAssembly the realm's.
+
+// jsdom's console: a plain object whose methods (no names, no length)
+// send their arguments to its virtual console, which by default sends
+// them to the console of the platform; an iframe's to the same. warpdom's
+// send them to the console the test environment gives
+// (window[S].consoleTarget: the one jsdom's virtual console sends to
+// there), else to the platform's.
+const CONSOLE_METHODS = ['assert', 'clear', 'count', 'countReset', 'debug', 'dir', 'dirxml', 'error', 'group', 'groupCollapsed',
+  'groupEnd', 'info', 'log', 'table', 'time', 'timeLog', 'timeEnd', 'trace', 'warn'];
+const platformConsole = platformGlobal('console');
+
+const topWindow = (window) => {
+  let top = window;
+  while (top[S].parentWindow) top = top[S].parentWindow;
+  return top;
+};
+
+function createConsole(window) {
+  const console = {};
+  const forward = (method) => (...args) => {
+    let target = topWindow(window)[S].consoleTarget ?? platformConsole();
+    if (target === console) target = platformConsole();
+    target?.[method]?.(...args);
+  };
+  for (const method of CONSOLE_METHODS) console[method] = forward(method);
+  return console;
+}
+
+function setupConsole(window) {
+  const ws = window[S];
+  // Made on first read, as the interface objects are (window.js): until
+  // then an accessor. Enumerable before jsdom 27. The per-file reset
+  // (reset.js) keeps the object and puts back its methods.
+  const enumerable = ws.compat.jsdom < 27;
+  const define = (value) => Object.defineProperty(window, 'console', { value, writable: true, enumerable, configurable: true });
+  Object.defineProperty(window, 'console', {
+    get() { const console = ws.console ?? (ws.console = createConsole(window)); define(console); return console; },
+    set: define,
+    enumerable,
+    configurable: true,
+  });
+  // The WebAssembly namespace of the window's realm (the test file's under
+  // Jest and Vitest's VM pools, where the global's own is that); a frame's
+  // is its top-level window's, as frames share warpdom's realm.
+  const { WebAssembly } = realmOf(topWindow(window));
+  if (WebAssembly !== undefined) Object.defineProperty(window, 'WebAssembly', { value: WebAssembly, writable: true, enumerable: false, configurable: true });
+}
+
 export const FEATURE_INTERFACES = [
   CRYPTO_INTERFACE,
   PERFORMANCE_INTERFACE,
@@ -558,12 +1060,17 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
     // TextEncoder and TextDecoder in 27.4.0, Blob's text(), arrayBuffer()
     // and bytes() in 28.1.0.
     randomUUID: !before(version, [22, 1, 0]), textCodec: !before(version, [27, 4, 0]), blobReads: !before(version, [28, 1, 0]),
+    // URL.parse() and canParse(), URLSearchParams size and the value
+    // argument of has() and delete() from 23.0.0; Headers keeps Set-Cookie
+    // values apart (getSetCookie()) from 24.1.0 (url.js).
+    urlParse: !before(version, [23, 0, 0]), paramValues: !before(version, [23, 0, 0]), setCookieList: !before(version, [24, 1, 0]),
     rootColor: version[0] >= 27 ? 'rgb(0, 0, 0)' : css !== null && before(css, [4, 4, 0]) ? '' : css !== null && before(css, [4, 6, 0]) ? 'CanvasText' : 'canvastext',
   };
   // DOMException is the platform's (shared by all windows); its subclass too.
   window.DOMException = DOMException;
   window.QuotaExceededError = QuotaExceededError;
   startClock(ws);
+  setupConsole(window);
   ws.setTimeout = globalThis.setTimeout.bind(globalThis);
   ws.location = make(window, 'Location', {});
   ws.history = make(window, 'History', { entries: [{ state: null, url: ws.url }], index: 0, navigations: 0 });

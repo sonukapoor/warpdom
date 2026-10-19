@@ -288,3 +288,67 @@ test('Vitest: environmentOptions.warpdom.url sets the URL', async () => {
     r2.teardown();
   }
 });
+
+// Black box (Vitest 5, jsdom 20 to 30, forks and vmThreads): URL is
+// Vitest's own subclass of Node's URL, whose createObjectURL() also takes
+// the window's Blobs and Files; URLSearchParams and Headers are Node's;
+// webkitURL is the window's URL (no createObjectURL); console is Vitest's
+// and WebAssembly the test file's realm's.
+test('setupVM: URL, URLSearchParams, Headers, console and WebAssembly as with jsdom', async () => {
+  const { default: environment } = await import('../src/vitest.js');
+  const vmModule = await import('node:vm');
+  const { URL: NodeURL } = await import('node:url');
+  const { resolveObjectURL } = await import('node:buffer');
+  const result = await environment.setupVM({ warpdom: { jsdom: '30.1.3' } });
+  try {
+    const run = (code) => vmModule.runInContext(code, result.getVmContext());
+    const U = run('URL');
+    assert.equal(Object.getPrototypeOf(U), NodeURL);
+    assert.deepEqual(Object.getOwnPropertyNames(U).sort(), ['createObjectURL', 'length', 'name', 'prototype']);
+    assert.equal(run('URL === window.URL && webkitURL !== URL && typeof webkitURL.createObjectURL'), 'undefined');
+    const url = run('URL.createObjectURL(new File(["xyz"], "f.txt", { type: "text/plain" }))');
+    assert.match(url, /^blob:nodedata:/);
+    assert.deepEqual([resolveObjectURL(url).type, resolveObjectURL(url).size], ['text/plain', 3]);
+    run(`URL.revokeObjectURL(${JSON.stringify(url)})`);
+    assert.equal(resolveObjectURL(url), undefined);
+    assert.equal(run('URLSearchParams'), URLSearchParams);
+    assert.equal(run('Headers'), Headers);
+    assert.equal(run('Object.getPrototypeOf(Object.getPrototypeOf(new WebAssembly.Memory({ initial: 1 }))) === Object.prototype'), true);
+    // Until Vitest puts its console there: the window's, writing to the setup's console.
+    assert.equal(run('Object.getOwnPropertyDescriptor(globalThis, "console").enumerable'), false);
+    const original = console.info;
+    let got;
+    console.info = (x) => { got = x; };
+    try { run('console.info("to setup")'); } finally { console.info = original; }
+    assert.equal(got, 'to setup');
+  } finally {
+    result.teardown();
+  }
+});
+
+test('setup: URL is Vitest\'s, kept per file by the reset; URLSearchParams, Headers, console and WebAssembly stay the global\'s', async () => {
+  const { default: environment } = await import('../src/vitest.js');
+  const { URL: NodeURL } = await import('node:url');
+  const host = { URL: 'node URL', URLSearchParams: 'node params', Headers: 'node headers', console: 'node console', WebAssembly: 'node wasm' };
+  const global = { ...host };
+  const env = environment.setup(global, { warpdom: { jsdom: '30.1.3' } });
+  try {
+    const U = global.URL;
+    assert.equal(Object.getPrototypeOf(U), NodeURL);
+    assert.deepEqual([global.URLSearchParams, global.Headers, global.console, global.WebAssembly], ['node params', 'node headers', 'node console', 'node wasm']);
+    assert.equal(typeof global.webkitURL.createObjectURL, 'undefined');
+    assert.equal(new global.webkitURL('http://a/').href, 'http://a/');
+    assert.match(U.createObjectURL(new global.Blob(['a'])), /^blob:nodedata:/);
+    // A test's stubs, and a replaced global URL, are gone in the next file.
+    U.createObjectURL = () => 'stub';
+    U.prototype.extra = 1;
+    global.URL = 'replaced';
+    global[Symbol.for('warpdom.vitest.reset')]();
+    assert.equal(global.URL, U);
+    assert.match(U.createObjectURL(new global.Blob(['a'])), /^blob:nodedata:/);
+    assert.equal('extra' in U.prototype, false);
+  } finally {
+    env.teardown();
+  }
+  assert.equal(global.URL, 'node URL');
+});

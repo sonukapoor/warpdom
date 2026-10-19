@@ -6,7 +6,7 @@
 // Documents count their base elements at creation (as for iframes and
 // slots), so documents without any skip the search; with some, the result
 // is cached until the document's trees or attributes change.
-import { S, state, nextInTree, ELEMENT_NODE, DOCUMENT_NODE, HTML_NS } from './internal.js';
+import { S, state, nextInTree, ELEMENT_NODE, DOCUMENT_NODE, HTML_NS, PlatformURL as URL } from './internal.js';
 import { writeAttribute } from './attributes.js';
 
 // The document's URL: its own, else its window's.

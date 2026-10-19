@@ -11,7 +11,7 @@ import { urlOf } from './hyperlinks.js';
 import { followHyperlink } from './navigation.js';
 import {
   S, state, domError, hooks, HTML_NS, ELEMENT_NODE, TEXT_NODE, DOCUMENT_NODE,
-  rootOf, nextInTree, contains, elementById, connected, asciiLowercase
+  rootOf, nextInTree, contains, elementById, connected, asciiLowercase, PlatformURL as URL,
 } from './internal.js';
 import { writeAttribute, attributeSteps, tokenList } from './attributes.js';
 import { liveList, htmlCollectionNames } from './collections.js';

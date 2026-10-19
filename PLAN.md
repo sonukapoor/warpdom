@@ -39,8 +39,10 @@ Milestones from here, each with its exit criterion:
 
 **M1: Parity with jsdom (0.1.x).** warpdom's API set includes jsdom's for
 every modeled jsdom version, and every measured suite gives jsdom's results.
-- #1-#4: crypto, TextEncoder/TextDecoder, Blob/File, performance (in progress
-  on feat/parity-apis; ship in 0.1.4).
+- #1-#4: crypto, TextEncoder/TextDecoder, Blob/File, performance (done,
+  0.1.5).
+- #23, #25, #27, #28, #32: console, URL, URLSearchParams, Headers,
+  WebAssembly (branch feat/parity-group1, 2026-10-18 below).
 - #18: a CI test that warpdom's window has every interface and member jsdom's
   has, per version, so a gap cannot reappear unnoticed.
 - #19: WPT on all test-DOM-relevant areas by default, results published.
@@ -446,6 +448,15 @@ warpdom follows the standard. Each has a test. To publish in the docs.
 - `TextEncoder.encode()` returns an array of the test's realm in every
   profile; jsdom 27.4 returns one of jsdom's own realm (fixed in 28.1), so
   `instanceof Uint8Array` fails there under Jest.
+- `URL` and `URLSearchParams` parse and serialize with the platform's
+  parser (Ada in Node 22), as the `URL` of Vitest's jsdom environment
+  does: IDNA edge cases (WPT IdnaTestV2, toascii, url-origin `xn--`
+  hosts) and opaque paths with trailing spaces differ from jsdom's
+  whatwg-url. jsdom 23 to 27's `URL.parse()` returns an object that is not
+  `instanceof URL` (fixed in 28); warpdom's always is.
+- An iframe's `WebAssembly` (and console) is made in warpdom's one realm:
+  its `WebAssembly` is the top-level window's realm's, where jsdom gives
+  each frame its own realm.
 
 ## Decisions
 
@@ -2377,3 +2388,93 @@ Tests: test/computed-shorthands.test.js (per-release literals at the
 boundaries, parity with the installed jsdom, Ant Design's case).
 Bench: bench:hot unchanged (no CSS path); computed reads ~10% faster
 (longhand fast path), cascade-bench within noise.
+
+
+## 2026-10-18: URL, URLSearchParams, Headers, console, WebAssembly (branch feat/parity-group1)
+
+GitHub issues #25, #27, #28, #23, #32: members jsdom's window has and
+warpdom's did not. Measured black box on jsdom 20.0.0, 20.0.3, 21.0.0,
+21.1.2, 22.0.0, 22.1.0, 23.0.0, 23.2.0, 24.0.0, 24.1.0 to 24.1.3, 25.0.0,
+25.0.1, 26.0.0, 26.1.0, 27.0.0 to 27.4.0, 28.0.0, 28.1.0, 29.0.0, 29.1.1,
+30.0.0, 30.0.1, 30.1.0 and 30.1.3 (a window with runScripts), through
+Vitest 5 (forks and vmThreads; jsdom 20.0.3, 23.2.0, 24.1.3, 26.1.0,
+27.4.0, 30.1.3) and Jest 29/30 (jest-environment-jsdom: jsdom 20.0.3 /
+26.1.0):
+
+| API | jsdom's window | Version boundary | warpdom |
+|---|---|---|---|
+| `URL` | own interface (whatwg-url); no `createObjectURL`/`revokeObjectURL` in any version; errors "Invalid URL: x" / "Invalid base URL: x" | `parse`, `canParse` from 23.0.0 | own interface per window holding a platform URL (parsing is the platform's); `webkitURL` is the window's `URL` |
+| `URLSearchParams` | own interface; WebIDL init conversion (sequence, record, string) | `size`, value argument of `has()`/`delete()` from 23.0.0 | own interface wrapping the platform's (a URL's searchParams wrap the platform URL's, kept in sync by the platform); jsdom's conversion errors |
+| `Headers` | own interface (no guard, "name is invalid", "value is invalid", "init is invalid") | `getSetCookie()` and separate `Set-Cookie` entries from 24.1.0 | own implementation (the platform's loads Node's fetch on first use, ~8 ms, and has other errors) |
+| `console` | own data property, plain object, 19 methods without names that send their arguments to the virtual console (default: Node's console) | enumerable before 27.0.0 | own property made on first read; methods send to `window[S].consoleTarget` (set by the environments), else the platform's console |
+| `WebAssembly` | own data property: the window realm's | none | own data property: the window realm's (`realmOf`, the top-level window's for frames) |
+| init with a non-callable `@@iterator` | "tmp is not iterable" before 30; WebIDL from 30.0.0 | 30.0.0 | same |
+
+Environments (black box): jest-environment-jsdom exposes the window's
+`URL`, `URLSearchParams` and `Headers` (no `createObjectURL`), Jest's
+console, and the test realm's `WebAssembly`; warpdom's Jest global had
+Node's `URL` (with `createObjectURL`, "Invalid URL" without the input),
+`URLSearchParams` and `Headers` and now has the window's. Vitest's jsdom
+environment, in every pool: `URL` is Vitest's own subclass of Node's URL
+whose `createObjectURL()` also takes jsdom's Blobs and Files (a Node Blob
+of their bytes); `URLSearchParams` and `Headers` are Node's; `webkitURL`
+is jsdom's own URL; console is Vitest's (a non-enumerable property in the
+VM pools) and `WebAssembly` the test realm's. warpdom now matches: its
+Vitest `URL` is the same kind of subclass (`vitestURL`; before,
+`URL.createObjectURL(new Blob(...))` threw because Node's takes only Node
+Blobs), one per window, and the per-file reset puts back its own
+properties and the global's `URL`. `installWindow` never installs
+`console` and `WebAssembly` (GLOBAL_OWN_KEYS): they stay the global's.
+
+Decisions:
+- URL and URLSearchParams delegate parsing to the platform (a web standard
+  global, so the core still imports nothing from Node), but are warpdom's
+  own interfaces: per-window constructors (a test's
+  `URL.createObjectURL = jest.fn()` stays in its file's window, where with
+  Node's URL it changed every later file of the worker), jsdom's members
+  per version and jsdom's errors. The platform's are taken when warpdom
+  loads (a runner may put the window's on the global); warpdom's own URL
+  uses (location, links, base URLs) import `PlatformURL` from internal.js
+  for the same reason.
+- Headers is warpdom's own (~190 lines): jsdom has its own semantics and
+  messages per version, and Node's Headers costs ~8 ms on first use.
+- Realms: errors are warpdom's realm's TypeErrors and entry arrays plain
+  arrays, as jsdom's are its outer realm's (under Jest, `new URL('x')`
+  throws a TypeError that is not the test realm's, with jsdom too).
+  Iterators of URLSearchParams are the platform's.
+- `structuredClone(new URL(...))` gives `{}` as with jsdom (Node's URL
+  throws DataCloneError): 2 WPT url/historical subtests that warpdom
+  passed with Node's URL now fail, as on jsdom.
+- The interfaces live in window-features.js: as a separate module, the
+  first window took ~0.15 ms more (a scavenge moved into it).
+
+Measured (Node 22.17.1, interleaved with main, medians): cold load 21.1 ->
+21.3 ms (5 runs of 7 processes); first window 2.09 -> 2.22 ms (5 runs;
+120 interleaved processes: 2.09 -> 2.24), which is GC timing: with
+`gc()` before the window, 1.73 -> 1.76 ms; next windows 0.199 -> 0.197 ms.
+bench:hot within noise (3 runs each, all cases within +-7%, none
+touched); bench/url-bench.mjs (a.href) 48.8 -> 48.5 ns (mean of 4 runs).
+
+WPT (checkout 0f26972422, runner with jsdom 30.1.2, warpdom latest
+profile):
+
+| Directory | Subtests | warpdom passed | warpdom score | main (Node's URL, Headers) | jsdom passed | jsdom score |
+|---|---:|---:|---:|---:|---:|---:|
+| url/ | 8,784 | 7,136 | 91.8% | 7,138 | 6,394 | 82.5% |
+| fetch/api/headers/ | 268 | 116 | 62.8% | 116 | 95 | 61.3% |
+
+jsdom passes and warpdom fails: in url/, IDNA and `xn--` hosts (Ada,
+IdnaTestV2 840, toascii 126, url-origin 7), opaque paths with trailing
+spaces (url-constructor, url-setters, a-element), 190 failure.html
+subtests and 4 Headers ones that use XMLHttpRequest, and idlharness'
+`webkitURL` descriptor (an accessor of Window.prototype in warpdom).
+
+Tests: test/web-apis.test.js (parity with jsdom 20, 22, 25, 26, 30 for
+URL, URLSearchParams, Headers, console and the window's own properties;
+the version boundaries; per-window URL; console targets; WebAssembly
+realms; the reset), test/jest-environment.test.js and
+test/vitest-adapter.test.js (the environments' globals, Vitest's
+createObjectURL, the reset of Vitest's URL).
+
+Open: idlharness wants `webkitURL` as the window's own data property;
+Node's Ada IDNA differences would need an own host parser (tr46 data).

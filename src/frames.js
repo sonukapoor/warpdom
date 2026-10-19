@@ -7,7 +7,7 @@
 // iframe: the tree calls these hooks only when the document's frameCount
 // is non-zero (counted at creation and adoption, in window.js and
 // internal.js).
-import { S, HTML_NS, ELEMENT_NODE, hooks, nextInTree } from './internal.js';
+import { S, HTML_NS, ELEMENT_NODE, hooks, nextInTree, PlatformURL as URL } from './internal.js';
 import { dispatch } from './events.js';
 import { clearWindowTimers } from './window-features.js';
 

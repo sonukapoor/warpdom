@@ -4,10 +4,12 @@
 //
 // The global has what jest-environment-jsdom's has: the window's members,
 // and of Node's globals only those it also exposes (timers returning
-// numeric ids, Buffer, URL, AbortController, Headers, WebSocket, ...); not
-// setImmediate, structuredClone, fetch or streams, which test setups
-// commonly polyfill. crypto, performance, Blob, File, and TextEncoder and
-// TextDecoder from jsdom 27.4, are the window's, as jsdom's are there.
+// numeric ids, Buffer, WebSocket, ...); not setImmediate, structuredClone,
+// fetch or streams, which test setups commonly polyfill. crypto,
+// performance, Blob, File, URL, URLSearchParams, Headers, AbortController,
+// and TextEncoder and TextDecoder from jsdom 27.4, are the window's, as
+// jsdom's are there (no URL.createObjectURL). console is Jest's, and
+// WebAssembly the test file's realm's.
 // Jest's own parts (fake timers, module mocker, common globals) come from
 // the project's Jest install, so warpdom keeps no runtime dependency on
 // Jest.
@@ -26,8 +28,7 @@ import { warnNewerJsdom } from './window-features.js';
 if (ablated('no-query-cache')) setQueryCache(false);
 
 // Node globals jest-environment-jsdom exposes too (beyond the DOM's own).
-// AbortController and AbortSignal are the window's, as jsdom's are there.
-const HOST_GLOBALS = ['Buffer', 'URL', 'URLSearchParams', 'queueMicrotask', 'atob', 'btoa', 'Headers', 'WebSocket'];
+const HOST_GLOBALS = ['Buffer', 'queueMicrotask', 'atob', 'btoa', 'WebSocket'];
 
 // Jest's packages (jest-util, jest-mock, @jest/fake-timers), from the Jest
 // that is running: jest-runner loads jest-runtime before it builds the
@@ -170,6 +171,9 @@ export default class WarpdomEnvironment {
       error.type = 'not implemented';
       global.console?.error(error);
     };
+    // The window's console (frames') writes to the test's console, where
+    // jest-environment-jsdom sends jsdom's virtual console.
+    window[S].consoleTarget = context?.console ?? globalThis.console;
     // Events at the window show the global as their target, as with jsdom.
     window[S].globalProxy = global;
     // Classic scripts run in the context, as jsdom's do (scripts.js).

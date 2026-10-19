@@ -181,6 +181,11 @@ export const validNamespacePrefix = (name) => name !== '' && validAttributeLocal
 /* global __warpdomPlatformGlobal */
 export const PLATFORM_GLOBAL = typeof __warpdomPlatformGlobal === 'object' ? __warpdomPlatformGlobal : globalThis;
 
+// The platform's URL parser (a web standard global): warpdom's own uses
+// (location, base URLs, links) parse with it, not with whatever URL the
+// global object has later (a runner may put the window's URL there).
+export const PlatformURL = PLATFORM_GLOBAL.URL;
+
 // A platform global (performance, crypto, TextDecoder), read on first use
 // from the property the global object had when warpdom loaded: a test setup
 // or runner may later put a window's on the global object, and Node defines

@@ -3,7 +3,7 @@
 // reflect, and how, comes from the standard's IDL (html-reflect.js,
 // generated) plus the enumerated and other attributes whose reflection the
 // standard describes in prose (PROSE_REFLECTIONS below).
-import { S, state, domError, asciiLowercase } from './internal.js';
+import { S, state, domError, asciiLowercase, PlatformURL as URL } from './internal.js';
 import { documentBaseURL } from './base-url.js';
 import { writeAttribute, tokenList } from './attributes.js';
 import { REFLECTIONS } from './html-reflect.js';
