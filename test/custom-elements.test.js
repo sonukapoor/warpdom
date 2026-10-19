@@ -105,3 +105,23 @@ test('without custom element definitions, tree operations skip reactions', () =>
   w.document.body.appendChild(w.document.createElement('x-undefined'));
   assert.equal(w.document.body.firstChild[S].ceState, 'undefined');
 });
+
+// Documents without a browsing context look up no custom element
+// definitions (before, warpdom ran the constructor there, which failed).
+parity('documents without a browsing context do not create custom elements', (w) => {
+  const errors = [];
+  w.addEventListener('error', (e) => errors.push(e.message));
+  class Z extends w.HTMLElement { constructor() { super(); this.made = true; } }
+  w.customElements.define('x-z', Z);
+  const docs = [w.document.implementation.createHTMLDocument(), new w.DOMParser().parseFromString('<x-z></x-z>', 'text/html'),
+    w.document.implementation.createDocument('http://www.w3.org/1999/xhtml', 'html')];
+  const out = docs.map((d) => {
+    const e = d.createElement('x-z');
+    const parsed = d.querySelector('x-z');
+    return [e.constructor.name, !!e.made, parsed && [parsed.constructor.name, !!parsed.made]];
+  });
+  const e = docs[0].createElement('x-z');
+  w.document.body.append(e);
+  out.push([e instanceof Z, !!e.made], w.document.importNode(docs[1].querySelector('x-z')) instanceof Z, errors);
+  return out;
+});
