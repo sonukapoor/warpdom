@@ -118,19 +118,27 @@ testEnvironmentOptions: { jsdom: '26.1.0' }
 Interfaces and members jsdom added along the way exist from that version
 on, as measured on jsdom's releases: `crypto.randomUUID()` from 22.1.0,
 `URL.parse()`, `URL.canParse()`, `URLSearchParams.size` and the value
-argument of its `has()` and `delete()` from 23.0.0, `Headers`'
-`getSetCookie()` (separate `Set-Cookie` values) from 24.1.0, the SVG
-element interfaces of `g`, `defs`, `desc`, `metadata`, `switch` and
-`symbol`, `SVGRect`, `viewBox`, `preserveAspectRatio` and
-`createSVGRect()` from 26.1.0, `TextEncoder` and `TextDecoder` from
-27.4.0, Blob's `text()`, `arrayBuffer()` and `bytes()` from 28.1.0
-(`window.crypto`, `window.performance`, `Blob`, `File`, `URL`,
-`URLSearchParams`, `Headers`, `console`, `WebAssembly`, `SVGNumber`,
-`SVGStringList` and `SVGAnimatedString` exist in every version). Before
-28.1.0 an `svg` element's window event handlers (`onunload`,
-`onmessage`, ...) are the window's, as `body`'s are. As in jsdom, the window's `URL` has no
-`createObjectURL()`; under Vitest the global `URL` is Vitest's (Node's,
-with a `createObjectURL()` that takes the window's Blobs), as with jsdom.
+argument of its `has()` and `delete()` from 23.0.0, `ElementInternals` and
+`attachInternals()` from 23.1.0 (its `labels` and form-associated custom
+elements from 26.0.0, its role and ARIA accessors throw jsdom's TypeError
+until 27.0.0), `Headers`' `getSetCookie()` (separate `Set-Cookie` values)
+from 24.1.0, the SVG element interfaces of `g`, `defs`, `desc`,
+`metadata`, `switch` and `symbol`, `SVGRect`, `viewBox`,
+`preserveAspectRatio` and `createSVGRect()` from 26.1.0,
+`PromiseRejectionEvent`, `BlobEvent`, `DeviceMotionEvent`,
+`DeviceOrientationEvent` and their member interfaces from 27.0.0,
+`CSSNestedDeclarations` from 27.2.0, `TextEncoder` and `TextDecoder` from
+27.4.0, Blob's `text()`, `arrayBuffer()` and `bytes()` from 28.1.0,
+`CSSMediaRule.matches` from 29.0.0 (`window.crypto`, `window.performance`,
+`Blob`, `File`, `URL`, `URLSearchParams`, `Headers`, `console`,
+`WebAssembly`, `SVGNumber`, `SVGStringList`, `SVGAnimatedString`,
+`PageTransitionEvent`, the empty `navigator.plugins` and
+`navigator.mimeTypes`, and media elements' `audioTracks` and `videoTracks`
+exist in every version). Before 28.1.0 an `svg` element's window event
+handlers (`onunload`, `onmessage`, ...) are the window's, as `body`'s are.
+As in jsdom, the window's `URL` has no `createObjectURL()`; under Vitest
+the global `URL` is Vitest's (Node's, with a `createObjectURL()` that
+takes the window's Blobs), as with jsdom.
 
 warpdom models jsdom 20.0.3 to 30.1.2. With a newer jsdom installed (a
 later minor or major release), tests get jsdom 30.1.2's behavior and
