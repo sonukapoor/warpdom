@@ -990,3 +990,84 @@ test('pattern attribute: the v flag from jsdom 27.0.0', () => {
   assert.deepEqual([mismatch('26.1.0', '[(]', 'foo'), mismatch('27.0.0', '[(]', 'foo')], [true, false]);
   assert.deepEqual([mismatch('26.1.0', '[\\p{L}--[a-z]]', 'a'), mismatch('27.0.0', '[\\p{L}--[a-z]]', 'a')], [false, true]);
 });
+
+// stepUp() and stepDown() (#44): nothing when min > max, when max - min
+// is less than the step, or when the result moves against the method;
+// clamping to a value on the step; exact decimal arithmetic for steps and
+// step mismatch. valueAsNumber: out of the Date range, NaN and Infinity.
+const stepping = (w) => {
+  const d = w.document;
+  const out = [];
+  const attempt = (f) => { try { return f(); } catch (e) { return [e.name, e.message]; } };
+  const run = (type, attrs, op, n) => {
+    const i = d.createElement('input');
+    i.type = type;
+    for (const [k, v] of Object.entries(attrs)) i.setAttribute(k, v);
+    return [type, attrs, op, n, attempt(() => { if (n === undefined) i[op](); else i[op](n); return i.value; })];
+  };
+  const N = 'number';
+  const cases = [
+    [N, { min: '300', value: '200' }, 'stepDown'], [N, { min: '300', value: '200' }, 'stepUp'], [N, { max: '100', value: '200' }, 'stepUp'],
+    [N, { min: '10', max: '5', value: '0' }, 'stepUp'], [N, { min: '10', max: '5', value: '0' }, 'stepDown'],
+    ['range', { min: '3', max: '14', step: '3', value: '9' }, 'stepUp', 2], [N, { min: '0', max: '5', step: '3', value: '0' }, 'stepUp', 5],
+    [N, { max: '7', value: '1', step: '3' }, 'stepUp', 5], [N, { min: '1', max: '2', step: '5', value: '1' }, 'stepUp'], [N, { min: '1', max: '2', step: '5' }, 'stepUp'],
+    [N, { min: '0', max: '4', step: '5', value: '-5' }, 'stepUp'], [N, { min: '0', max: '5', step: '5', value: '-5' }, 'stepUp'], [N, { min: '2', max: '3', step: '2', value: '0' }, 'stepUp'],
+    [N, { min: '1.5', max: '2.5', step: '2', value: '7' }, 'stepDown'], [N, { min: '0.1', max: '0.3', step: '0.2', value: '-1' }, 'stepUp'],
+    [N, { value: '1.5' }, 'stepUp'], [N, { value: '1.5' }, 'stepDown'], [N, { min: '5' }, 'stepDown'], [N, { max: '-5' }, 'stepUp'],
+    [N, { min: '1', value: '5' }, 'stepDown', 10], [N, { value: '5' }, 'stepUp', -2], [N, { value: '5' }, 'stepUp', 1.9], [N, { value: '5' }, 'stepUp', 'x'],
+    ['date', { min: '2020-01-10', value: '2020-01-05' }, 'stepDown'], ['datetime-local', { min: '2020-01-10T00:00', value: '2020-01-05T00:00' }, 'stepDown'],
+    ['time', { min: '10:00', value: '09:00' }, 'stepDown'], ['month', { min: '2020-05', value: '2020-01' }, 'stepDown'], ['week', { min: '2020-W10', value: '2020-W05' }, 'stepDown'],
+    ['time', { max: '10:00', value: '11:00' }, 'stepUp'], ['range', {}, 'stepUp', 100], ['range', {}, 'stepDown', 100],
+    ['date', { min: '2020-01-01', max: '2020-01-02', step: '2', value: '2019-12-01' }, 'stepUp'], ['time', { min: '10:00', max: '10:01', step: '120', value: '09:00' }, 'stepUp'],
+    [N, { step: '3e-15', value: '17' }, 'stepUp'], [N, { step: '3e-15', value: '17' }, 'stepDown'], [N, { step: '0.1', value: '0.2' }, 'stepUp'],
+    [N, { step: 'any', value: '1' }, 'stepUp'], ['text', {}, 'stepUp'], ['time', { step: '0.5', value: '10:00' }, 'stepUp'], ['time', { step: '0.0001', value: '10:00' }, 'stepUp'],
+  ];
+  for (const c of cases) out.push(run(...c));
+  for (const [step, value] of [[3e-15, '17'], [0.003, '3.6'], [1e-12, '-12345678.9'], [0.1, '0.3'], [1e-15, '1'], [1 / 3, '1'], [3, '1e20'], [0.5, '1e-320'], [0.25, '0.75']]) {
+    const i = d.createElement('input');
+    i.type = 'number';
+    i.step = step;
+    i.value = value;
+    out.push([step, value, i.validity.stepMismatch]);
+  }
+  for (const [type, n] of [['time', 1500], ['time', 100], ['time', 0.0001 * 1000 + 36000000], ['datetime-local', 1000], ['number', NaN], ['number', Infinity], ['text', NaN], ['text', 5], ['date', NaN]]) {
+    const i = d.createElement('input');
+    i.type = type;
+    out.push([type, n, attempt(() => { i.valueAsNumber = n; return i.value; })]);
+  }
+  for (const [type, v] of [['time', '10:00:00.5'], ['time', '10:00:00.05'], ['datetime-local', '2020-01-01 10:00:00.5'], ['datetime-local', '2020-01-01T10:00:05'], ['datetime-local', '2020-01-01T10:00:00.123']]) {
+    const i = d.createElement('input');
+    i.type = type;
+    i.value = v;
+    out.push([type, v, i.value, i.valueAsNumber]);
+  }
+  return out;
+};
+for (const jsdom of [30, 25, 22, 20]) parity(`stepUp, stepDown and valueAsNumber (jsdom ${jsdom})`, stepping, { jsdom });
+
+test('valueAsNumber = NaN throws before jsdom 23.1.0; time strings change in 30.1.0', () => {
+  const nan = (jsdom) => {
+    const i = createWindow({ jsdom }).document.createElement('input');
+    i.type = 'number';
+    try { i.valueAsNumber = NaN; return i.value; } catch (e) { return e.constructor.name; }
+  };
+  assert.deepEqual([nan('23.0.1'), nan('23.1.0')], ['TypeError', '']);
+  const time = (jsdom) => {
+    const d = createWindow({ jsdom }).document;
+    const i = d.createElement('input');
+    i.type = 'time';
+    i.valueAsNumber = 1500;
+    const j = d.createElement('input');
+    j.type = 'time';
+    j.value = '10:00:00.5';
+    return [i.value, j.valueAsNumber];
+  };
+  assert.deepEqual(time('30.0.1'), ['00:00:01.500', 36000005]);
+  assert.deepEqual(time('30.1.0'), ['00:00:01.5', 36000500]);
+  // Out of the Date range: no exception; jsdom 30.1.2 gives "" for
+  // datetime-local (WPT input-valueasnumber.html).
+  const i = createWindow().document.createElement('input');
+  i.type = 'datetime-local';
+  i.valueAsNumber = 2.734333707189448e26;
+  assert.equal(i.value, '');
+});

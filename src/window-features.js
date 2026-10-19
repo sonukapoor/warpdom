@@ -1121,7 +1121,11 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
     // Form controls (forms.js), black box per release: from 30.1.0 cloning
     // an input copies its indeterminate state; the pattern attribute
     // compiles with the v flag from 27.0.0, with u before.
-    cloneIndeterminate: !before(version, [30, 1, 0]), patternFlag: before(version, [27, 0, 0]) ? 'u' : 'v',
+    // valueAsNumber = NaN throws a TypeError before 23.1.0; before 30.1.0
+    // a time's fraction is whole milliseconds and times with seconds have
+    // three fraction digits.
+    cloneIndeterminate: !before(version, [30, 1, 0]), patternFlag: before(version, [27, 0, 0]) ? 'u' : 'v', nanValueAsNumberThrows: before(version, [23, 1, 0]),
+    legacyTimeStrings: before(version, [30, 1, 0]),
     focusIgnoresRendering: before(version, [30, 1, 2]), detachedCheckableEvents: before(version, [16, 5, 2]), cssstyle: version[0] < 27 ? (css ? cssText : undefined) : cssstyle ?? undefined, cssstyleMajor: css ? css[0] : 0,
     styleSurface: styleSurfaceKey(version, version[0] < 27 ? css : cssstyle != null ? parseJsdomVersion(cssstyle) : null),
     unquotedUrls: css !== null && before(css, [4, 3, 1]),

@@ -2723,3 +2723,31 @@ in the profiles of the jsdom versions that have them.
   and every version. The flag: v from jsdom 27.0.0 ("[(]" is invalid
   and ignored, "[\p{L}--[a-z]]" is a set difference), u before (26.1.0
   and 27.0.0-beta.0; `compat.patternFlag`). warpdom tried v, then u.
+- **stepUp()/stepDown() and valueAsNumber (#44).** As jsdom in every
+  measured version: nothing happens when min > max, or when the result
+  would move against the method (stepDown() from below min, stepUp()
+  from above max, stepUp(-2)); a value off the step goes to the next one
+  on it in the method's direction (n unused); a result past min or max
+  is clamped to the nearest value on the step inside them (range 3..14
+  step 3, 9, stepUp(2): 12; warpdom clamped to 14). jsdom deviation,
+  followed: nothing happens when max - min is less than the step (min 0
+  max 4 step 5: stepUp() leaves "" alone; the standard returns only when
+  no value between min and max is on the step, which with min as the
+  step base never happens). Steps and step mismatch use exact decimal
+  arithmetic on the numbers' shortest decimal forms, as jsdom: step
+  3e-15 does not divide 17 (mismatch), 1/3 does not divide 1, 0.1 + 0.2
+  is 0.3, 17 + 3e-15 is 17.000000000000004 (warpdom used a 1e-9
+  tolerance and rounded to 15 digits). valueAsNumber: Infinity throws
+  TypeError "Failed to set infinite value as Number" before the type
+  check, NaN too before 23.1.0 (`compat.nanValueAsNumberThrows`; 23.0.1
+  throws, 23.1.0 sets ""); out of the Date range no RangeError
+  (datetime-local ""). Before 30.1.0 a time's fraction is whole
+  milliseconds (".5" is 5 ms) and a time with seconds serializes with
+  three fraction digits ("00:00:01.500", "10:00:05.000"), for time and
+  datetime-local (`compat.legacyTimeStrings`; 30.0.1 old, 30.1.0 new).
+  Error messages are jsdom's. Not reproduced: jsdom's valueAsNumber
+  setter stores its string without sanitization (range 1e21 stays
+  "1e+21", out-of-range dates become "0NaN-NaN-NaN"; warpdom sanitizes),
+  and jsdom sanitizes a range's value only when it is set, not when min
+  or max change later (`<input type=range value=50 max=40>` is "50" in
+  jsdom, "40" in warpdom, as the standard).

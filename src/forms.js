@@ -200,16 +200,19 @@ function parseWeek(v) {
   const m = /^(\d{4,5})-W(\d\d)$/.exec(v);
   return m && +m[1] > 0 && +m[2] >= 1 && +m[2] <= weeksInYear(+m[1]) ? { y: +m[1], w: +m[2] } : null;
 }
-function parseTime(v) {
+// Before jsdom 30.1.0 (legacy: compat.legacyTimeStrings) a time's
+// fraction is read as whole milliseconds (".5" is 5 ms) and a time with
+// seconds is serialized with three fraction digits ("10:00:05.000").
+function parseTime(v, legacy = false) {
   const m = /^(\d\d):(\d\d)(?::(\d\d)(?:\.(\d{1,3}))?)?$/.exec(v);
   if (!m || +m[1] > 23 || +m[2] > 59 || (m[3] !== undefined && +m[3] > 59)) return null;
-  return ((+m[1] * 60 + +m[2]) * 60 + (+m[3] || 0)) * 1000 + (m[4] ? +m[4].padEnd(3, '0') : 0);
+  return ((+m[1] * 60 + +m[2]) * 60 + (+m[3] || 0)) * 1000 + (m[4] ? +(legacy ? m[4] : m[4].padEnd(3, '0')) : 0);
 }
-function parseDateTime(v) {
+function parseDateTime(v, legacy = false) {
   const m = /^(.+?)[T ](.+)$/.exec(v);
   if (!m) return null;
   const date = parseDate(m[1]);
-  const time = parseTime(m[2]);
+  const time = parseTime(m[2], legacy);
   return date && time !== null ? { date, time } : null;
 }
 const pad = (n, w = 2) => String(n).padStart(w, '0');
@@ -231,27 +234,28 @@ function serializeWeek(n) {
   jan1.setUTCFullYear(y, 0, 1);
   return `${pad(y, 4)}-W${pad(Math.floor((thursday.getTime() - jan1.getTime()) / WEEK) + 1)}`;
 }
-function serializeTime(ms) {
+function serializeTime(ms, legacy = false) {
   const h = Math.floor(ms / 3600000), mi = Math.floor(ms / 60000) % 60, sec = Math.floor(ms / 1000) % 60, frac = ms % 1000;
   let out = `${pad(h)}:${pad(mi)}`;
   if (sec || frac) out += `:${pad(sec)}`;
-  if (frac) out += `.${pad(frac, 3).replace(/0+$/, '')}`;
+  if (legacy) { if (sec || frac) out += `.${pad(frac, 3)}`; } else if (frac) out += `.${pad(frac, 3).replace(/0+$/, '')}`;
   return out;
 }
+const legacyTime = (el) => windowOf(el)[S].compat.legacyTimeStrings;
 
 const FLOAT = /^-?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 const parseFloatValue = (v) => (FLOAT.test(v) && Number.isFinite(Number(v)) ? Number(v) : null);
 
 // Converts a value of the given type to a number (ms for dates and times,
 // months for month), or null.
-function toNumber(type, v) {
+function toNumber(type, v, el) {
   switch (type) {
     case 'number': case 'range': return parseFloatValue(v);
     case 'date': { const d = parseDate(v); return d ? Date.UTC(d.y, d.mo - 1, d.d) : null; }
     case 'month': { const d = parseMonth(v); return d ? (d.y - 1970) * 12 + d.mo - 1 : null; }
     case 'week': { const d = parseWeek(v); return d ? weekStart(d.y, d.w) : null; }
-    case 'time': return parseTime(v);
-    case 'datetime-local': { const d = parseDateTime(v); return d ? Date.UTC(d.date.y, d.date.mo - 1, d.date.d) + d.time : null; }
+    case 'time': return parseTime(v, legacyTime(el));
+    case 'datetime-local': { const d = parseDateTime(v, legacyTime(el)); return d ? Date.UTC(d.date.y, d.date.mo - 1, d.date.d) + d.time : null; }
     default: return null;
   }
 }
@@ -281,7 +285,7 @@ function sanitize(el, type, v) {
     case 'month': return parseMonth(v) ? v : '';
     case 'week': return parseWeek(v) ? v : '';
     case 'time': return parseTime(v) === null ? '' : v;
-    case 'datetime-local': { const d = parseDateTime(v); return d ? `${v.slice(0, v.search(/[T ]/))}T${serializeTime(d.time)}` : ''; }
+    case 'datetime-local': { const legacy = legacyTime(el); const d = parseDateTime(v, legacy); return d ? `${v.slice(0, v.search(/[T ]/))}T${serializeTime(d.time, legacy)}` : ''; }
     default: return v;
   }
 }
@@ -789,19 +793,50 @@ function compilePattern(pattern, flag) {
 // Per type: default step, step scale factor, default step base.
 const DEFAULT_STEP = { number: [1, 1, 0], range: [1, 1, 0], date: [1, DAY, 0], month: [1, 1, 0], week: [1, WEEK, -259200000], time: [60, 1000, 0], 'datetime-local': [60, 1000, 0] };
 
-function stepMismatch(el, type, value) {
+// Exact decimal arithmetic for steps, as jsdom (black box, 20.0.3 to
+// 30.1.2): numbers are taken at their shortest decimal form (String(n)),
+// so step 3e-15 does not divide 17, step 1/3 does not divide 1, and 0.2
+// stepped up by 0.1 is 0.3. A decimal is [BigInt digits, exponent of 10].
+function decimal(n) {
+  const [mantissa, exp = '0'] = String(n).split('e');
+  const dot = mantissa.indexOf('.');
+  const digits = dot < 0 ? mantissa : mantissa.slice(0, dot) + mantissa.slice(dot + 1);
+  return [BigInt(digits), Number(exp) - (dot < 0 ? 0 : mantissa.length - dot - 1)];
+}
+const decimalNumber = (digits, e) => Number(`${digits}e${e}`);
+const floorDiv = (a, b) => { const q = a / b; return (a % b !== 0n && (a < 0n) !== (b < 0n)) ? q - 1n : q; };
+
+// The step of an input: [allowed value step, step base] (numbers), or
+// null for step="any" and types without one.
+function allowedStep(el, type) {
   const defaults = DEFAULT_STEP[type];
-  if (!defaults) return false;
+  if (!defaults) return null;
   const stepAttr = attr(el, 'step');
-  if (stepAttr !== undefined && stepAttr.toLowerCase() === 'any') return false;
+  if (stepAttr !== undefined && asciiLowercase(stepAttr) === 'any') return null;
   let step = stepAttr === undefined ? null : parseFloatValue(stepAttr);
   if (step === null || step <= 0) step = defaults[0];
-  const allowed = step * defaults[1];
-  const n = toNumber(type, value);
+  const base = toNumber(type, attr(el, 'min') ?? '', el) ?? toNumber(type, attr(el, 'value') ?? '', el) ?? defaults[2];
+  return [step, defaults[1], base];
+}
+
+// Numbers as BigInt digits at one exponent of 10 (the smallest of theirs).
+function scaled(numbers) {
+  const decs = numbers.map((x) => (x === null ? null : decimal(x)));
+  let e = Infinity;
+  for (const d of decs) if (d !== null && d[1] < e) e = d[1];
+  return { e, values: decs.map((d) => (d === null ? null : d[0] * 10n ** BigInt(d[1] - e))) };
+}
+
+function stepMismatch(el, type, value) {
+  const n = toNumber(type, value, el);
   if (n === null) return false;
-  const base = toNumber(type, attr(el, 'min') ?? '') ?? toNumber(type, attr(el, 'value') ?? '') ?? defaults[2];
-  const q = (n - base) / allowed;
-  return Math.abs(q - Math.round(q)) > 1e-9;
+  const step = allowedStep(el, type);
+  if (step === null) return false;
+  const [stepValue, scale, base] = step;
+  // Integers: exact in floating point.
+  if (Number.isSafeInteger(n) && Number.isSafeInteger(base) && Number.isSafeInteger(stepValue * scale) && Number.isSafeInteger(n - base)) return (n - base) % (stepValue * scale) !== 0;
+  const { values: [v, b, d] } = scaled([n, base, stepValue]);
+  return (v - b) % (d * BigInt(scale)) !== 0n;
 }
 
 function inputValidity(el) {
@@ -827,10 +862,10 @@ function inputValidity(el) {
         flags.patternMismatch = !values.every((v) => re.test(v));
       }
     }
-    const n = toNumber(type, value);
+    const n = toNumber(type, value, el);
     if (n !== null && type !== 'range') {
-      const min = toNumber(type, attr(el, 'min') ?? '');
-      const max = toNumber(type, attr(el, 'max') ?? '');
+      const min = toNumber(type, attr(el, 'min') ?? '', el);
+      const max = toNumber(type, attr(el, 'max') ?? '', el);
       if (min !== null && n < min) flags.rangeUnderflow = true;
       if (max !== null && n > max) flags.rangeOverflow = true;
     }
@@ -1309,28 +1344,34 @@ export const FORM_MEMBERS = new Map([
       },
       get valueAsNumber() {
         state(this);
-        const n = toNumber(inputType(this), inputValue(this));
+        const n = toNumber(inputType(this), inputValue(this), this);
         return n === null ? NaN : n;
       },
       set valueAsNumber(v) {
         state(this);
         const type = inputType(this);
         const n = Number(v);
-        if (!Number.isFinite(n) && !Number.isNaN(n)) throw new TypeError("Failed to set the 'valueAsNumber' property on 'HTMLInputElement': The provided double value is non-finite.");
-        if (!DEFAULT_STEP[type]) throw domError("This input element does not support Number values.", 'InvalidStateError');
+        // As jsdom: not finite is a TypeError, NaN too before 23.1.0.
+        if (!Number.isFinite(n) && (!Number.isNaN(n) || windowOf(this)[S].compat.nanValueAsNumberThrows)) throw new TypeError('Failed to set infinite value as Number');
+        if (!DEFAULT_STEP[type]) throw domError("Failed to set the 'valueAsNumber' property on 'HTMLInputElement': This input element does not support Number values.", 'InvalidStateError');
         if (Number.isNaN(n)) { setInputValue(this, ''); return; }
         if (type === 'number' || type === 'range') setInputValue(this, String(n));
-        else if (type === 'date') setInputValue(this, new Date(n).toISOString().slice(0, 10));
-        else if (type === 'time') setInputValue(this, serializeTime(((n % 86400000) + 86400000) % 86400000));
+        else if (type === 'date') { const d = new Date(n); setInputValue(this, Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10)); }
+        else if (type === 'time') setInputValue(this, serializeTime(Math.floor(((n % DAY) + DAY) % DAY), legacyTime(this)));
         else if (type === 'month') { const y = 1970 + Math.floor(n / 12); setInputValue(this, `${pad(y, 4)}-${pad((((n % 12) + 12) % 12) + 1)}`); }
         else if (type === 'week') setInputValue(this, serializeWeek(n));
-        else { const d = new Date(n); setInputValue(this, `${d.toISOString().slice(0, 10)}T${serializeTime(n - Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))}`); }
+        else {
+          // Out of the Date range: the empty string (jsdom; the standard leaves it undefined).
+          const d = new Date(n);
+          const t = d.getTime();
+          setInputValue(this, Number.isNaN(t) ? '' : `${d.toISOString().slice(0, 10)}T${serializeTime(t - Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()), legacyTime(this))}`);
+        }
       },
       get valueAsDate() {
         state(this);
         const type = inputType(this);
         if (type !== 'date' && type !== 'time' && type !== 'month' && type !== 'week') return null;
-        const n = toNumber(type, inputValue(this));
+        const n = toNumber(type, inputValue(this), this);
         if (n === null) return null;
         return new Date(type === 'month' ? Date.UTC(1970 + Math.floor(n / 12), n % 12) : n);
       },
@@ -1345,8 +1386,8 @@ export const FORM_MEMBERS = new Map([
         if (type === 'month') this.valueAsNumber = (v.getUTCFullYear() - 1970) * 12 + v.getUTCMonth();
         else this.valueAsNumber = type === 'time' ? t % 86400000 : t;
       },
-      stepUp(n = 1) { stepBy(this, n); },
-      stepDown(n = 1) { stepBy(this, -n); },
+      stepUp(n = 1) { stepBy(this, Number(n) | 0, true); },
+      stepDown(n = 1) { stepBy(this, Number(n) | 0, false); },
     },
   )],
   ['HTMLTextAreaElement', mix(
@@ -1561,29 +1602,38 @@ export const FORM_MEMBERS = new Map([
   }],
 ]);
 
-function stepBy(el, n) {
+// stepUp() and stepDown() (HTML 4.10.5.4), as jsdom (black box, 20.0.3 to
+// 30.1.2): nothing happens when min > max, when max - min is less than
+// the step, or when the result would move against the method's
+// direction (stepDown() below min, stepUp() above max, a negative n); a
+// value off the step goes to the next one on it in the method's direction
+// (n is not used); a result past min or max goes to the nearest value on
+// the step inside them. Exact decimal arithmetic (decimal()).
+function stepBy(el, n, up) {
   state(el);
   const type = inputType(el);
-  const defaults = DEFAULT_STEP[type];
-  if (!defaults) throw domError('This form element is not steppable.', 'InvalidStateError');
-  const stepAttr = attr(el, 'step');
-  if (stepAttr !== undefined && stepAttr.toLowerCase() === 'any') throw domError("This form element does not have an allowed value step.", 'InvalidStateError');
-  let step = stepAttr === undefined ? null : parseFloatValue(stepAttr);
-  if (step === null || step <= 0) step = defaults[0];
-  const value = toNumber(type, inputValue(el)) ?? 0;
-  const delta = step * defaults[1];
-  const base = toNumber(type, attr(el, 'min') ?? '') ?? toNumber(type, attr(el, 'value') ?? '') ?? defaults[2];
-  const count = Number(n) | 0;
-  const q = (value - base) / delta;
-  // Off the step grid: snap to the nearest step in the direction of travel.
-  let next = Math.abs(q - Math.round(q)) > 1e-9
-    ? base + (count > 0 ? Math.ceil(q) : Math.floor(q)) * delta
-    : value + delta * count;
-  const min = toNumber(type, attr(el, 'min') ?? '');
-  const max = toNumber(type, attr(el, 'max') ?? '');
-  if (min !== null && next < min) next = min;
-  if (max !== null && next > max) next = max;
-  el.valueAsNumber = Number(next.toPrecision(15));
+  const method = `Failed to invoke '${up ? 'stepUp' : 'stepDown'}' method on 'HTMLInputElement'`;
+  if (!DEFAULT_STEP[type]) throw domError(`${method}: This input element does not support Number values.`, 'InvalidStateError');
+  const allowed = allowedStep(el, type);
+  if (allowed === null) throw domError(`${method}: This input element does not support value step.`, 'InvalidStateError');
+  const bounds = type === 'range' ? rangeBounds(el) : null;
+  const min = bounds ? bounds.min : toNumber(type, attr(el, 'min') ?? '', el);
+  const max = bounds ? bounds.max : toNumber(type, attr(el, 'max') ?? '', el);
+  if (min !== null && max !== null && min > max) return;
+  // Values on the step are base + k * step (BigInt digits at exponent e).
+  const { e, values: [stepDigits, base, before, lo, hi] } = scaled([allowed[0], allowed[2], toNumber(type, inputValue(el), el) ?? 0, min, max]);
+  const step = stepDigits * BigInt(allowed[1]);
+  const ceilK = (x) => -floorDiv(base - x, step);
+  // jsdom (black box, every version): nothing when max - min is less than
+  // the step (the standard: when no value between them is on the step).
+  if (lo !== null && hi !== null && hi - lo < step) return;
+  let next;
+  if ((before - base) % step !== 0n) next = base + (up ? floorDiv(before - base, step) + 1n : ceilK(before) - 1n) * step;
+  else next = before + step * BigInt(up ? n : -n);
+  if (lo !== null && next < lo) next = base + ceilK(lo) * step;
+  if (hi !== null && next > hi) next = base + floorDiv(hi - base, step) * step;
+  if (up ? next < before : next > before) return;
+  el.valueAsNumber = decimalNumber(next, e);
 }
 
 // --- collections and ValidityState -----------------------------------------------
