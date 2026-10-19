@@ -150,6 +150,7 @@ function applyCompat(window, protos) {
   // The CSS namespace (CSS.supports, CSS.escape) arrived in jsdom 30;
   // libraries feature-detect it (handsontable validates sizes with it).
   if (jsdom < 30) delete window.CSS;
+  if (!window[S].compat.nestedDeclarations) delete window.CSSNestedDeclarations;
   if (!window[S].compat.textCodec) {
     delete window.TextEncoder;
     delete window.TextDecoder;
