@@ -52,9 +52,16 @@ function* descendants(root) {
   for (let n = root[S].first; n; n = nextInTree(n, root)) if (n[S].type === ELEMENT_NODE) yield n;
 }
 
+// The elements of a tree in tree order: its root too when the root is an
+// element (a tree not in a document: a form, label or control on its own).
+function* treeElements(root) {
+  if (root[S].type === ELEMENT_NODE) yield root;
+  yield* descendants(root);
+}
+
 function firstWithId(root, id) {
   if (root[S].type === DOCUMENT_NODE) return elementById(root, id);
-  for (const el of descendants(root)) if (attr(el, 'id') === id) return el;
+  for (const el of treeElements(root)) if (attr(el, 'id') === id) return el;
   return null;
 }
 
@@ -136,7 +143,7 @@ export function formOwner(el) {
 function formElements(form) {
   return cached(form, 'formElements', () => {
     const out = [];
-    for (const el of descendants(rootOf(form))) {
+    for (const el of treeElements(rootOf(form))) {
       if (isListed(el) && !(el[S].tag === 'input' && inputType(el) === 'image') && formOwner(el) === form) out.push(el);
     }
     return out;
@@ -361,7 +368,7 @@ function radioGroup(el) {
   if (!name) return [];
   const form = formOwner(el);
   const out = [];
-  for (const other of descendants(rootOf(el))) {
+  for (const other of treeElements(rootOf(el))) {
     if (other !== el && isTag(other, 'input') && inputType(other) === 'radio' && attr(other, 'name') === name && formOwner(other) === form) out.push(other);
   }
   return out;
@@ -725,7 +732,7 @@ function labelsFor(el) {
   const root = rootOf(el);
   const map = cached(root, 'labelMap', () => {
     const byControl = new Map();
-    for (const node of descendants(root)) {
+    for (const node of treeElements(root)) {
       if (!isTag(node, 'label')) continue;
       const control = labelControl(node);
       if (!control) continue;
@@ -1181,7 +1188,7 @@ function constructEntryList(form, submitter = null) {
   const window = windowOf(form);
   const entries = [];
   try {
-    for (const field of descendants(rootOf(form))) {
+    for (const field of treeElements(rootOf(form))) {
       if (!(field[S].ns === HTML_NS && SUBMITTABLE.has(field[S].tag)) || formOwner(field) !== form) continue;
       const tag = field[S].tag;
       const type = tag === 'input' ? inputType(field) : null;

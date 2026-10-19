@@ -1071,3 +1071,55 @@ test('valueAsNumber = NaN throws before jsdom 23.1.0; time strings change in 30.
   i.valueAsNumber = 2.734333707189448e26;
   assert.equal(i.value, '');
 });
+
+// Form owner and labels in trees not in a document (#46): the form
+// attribute's id and a label's for are looked up in the element's tree,
+// its root included (a form or label at the root).
+parity('form owner and labels in disconnected trees', (w) => {
+  const d = w.document;
+  const out = [];
+  for (const tag of ['input', 'button', 'fieldset', 'object', 'output', 'select', 'textarea']) {
+    const f = d.createElement('form');
+    f.id = 'form1';
+    const el = d.createElement(tag);
+    el.setAttribute('form', 'form1');
+    f.append(el);
+    out.push([tag, el.form === f, f.elements.length]);
+    const div = d.createElement('div');
+    const f2 = d.createElement('form');
+    f2.id = 'other';
+    const f3 = d.createElement('form');
+    div.append(f2, f3);
+    for (const id of ['other', '', 'nope']) {
+      const c = d.createElement(tag);
+      c.setAttribute('form', id);
+      f3.append(c);
+      out.push([tag, id, c.form === f2 ? 'by id' : c.form === f3 ? 'ancestor' : c.form]);
+    }
+  }
+  const l1 = d.createElement('label');
+  l1.innerHTML = '<input id="test16">';
+  const l2 = d.createElement('label');
+  l2.htmlFor = 'test16';
+  l1.append(l2);
+  out.push([l1.firstChild.labels.length, l2.control === l1.firstChild, l1.control === l1.firstChild]);
+  const l3 = d.createElement('label');
+  l3.htmlFor = 'self';
+  l3.id = 'self';
+  out.push(l3.control);
+  const radio = d.createElement('input');
+  radio.type = 'radio';
+  radio.name = 'g';
+  radio.checked = true;
+  const r2 = d.createElement('input');
+  r2.type = 'radio';
+  r2.name = 'g';
+  radio.append(r2);
+  r2.checked = true;
+  out.push([radio.checked, r2.checked]);
+  const host = d.createElement('div');
+  const sr = host.attachShadow({ mode: 'open' });
+  sr.innerHTML = '<form id=s2></form><form id=s3><input form=s2 id=si2></form><label for=si2>x</label>';
+  out.push([sr.getElementById('si2').form === sr.getElementById('s2'), sr.getElementById('si2').labels.length]);
+  return out;
+});

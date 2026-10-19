@@ -2751,3 +2751,13 @@ in the profiles of the jsdom versions that have them.
   and jsdom sanitizes a range's value only when it is set, not when min
   or max change later (`<input type=range value=50 max=40>` is "50" in
   jsdom, "40" in warpdom, as the standard).
+- **Disconnected trees (#46).** The form attribute's id, a label's for
+  and the list attribute are looked up in the element's tree with its
+  root included; warpdom left the root out, so a form or label at the
+  root of a tree not in a document was never found (form.elements of a
+  lone form with a form=id control: 0; jsdom 1). jsdom deviation,
+  followed (every version): a control that is not connected uses its
+  form attribute too (by id in its tree; `form=""` and an unknown id
+  give null), where the standard ignores the attribute and takes the
+  ancestor form. The WPT subtests pass either way (the id names the
+  ancestor).
