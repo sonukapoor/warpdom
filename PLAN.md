@@ -2478,3 +2478,53 @@ createObjectURL, the reset of Vitest's URL).
 
 Open: idlharness wants `webkitURL` as the window's own data property;
 Node's Ada IDNA differences would need an own host parser (tr46 data).
+
+## 2026-10-18: the select event, setRangeText() and setSelectionRange() arguments (branch fix/select-event, #40, #45)
+
+No text selection API fired `select`. Measured black box on jsdom 20.0.3,
+21.0.0, 21.1.0, 21.1.1, 21.1.2, 22.1.0, 25.0.1, 26.1.0, 27.4.0, 28.1.0,
+29.1.1 and 30.1.2 (scratch scripts):
+
+- select(), setSelectionRange(), the selectionStart/End/Direction setters
+  and setRangeText() (every mode) fire one `select` (an Event, bubbles,
+  isTrusted) per call, in every version: also when the selection does not
+  change, when one is already queued (no coalescing: two calls, two
+  events) and for elements not in a document, removed before the task
+  runs, or in a document without a browsing context. The value setter
+  and calls that throw fire none. select() also fires on email, number,
+  date, month, week, time, datetime-local, color and file inputs (no
+  selection there); not on checkbox, radio, hidden, button, submit, reset,
+  image or range. The standard skips unchanged selections and coalesces
+  (select-event.html "a second time" and "twice": the 108 subtests jsdom
+  fails too); warpdom follows jsdom.
+- Before 21.1.2: dispatched synchronously and cancelable
+  (`compat.syncSelectEvent`); from 21.1.2 in a task, not cancelable.
+  jsdom 22 to 29 queue it like a timer (after setTimeout(0) calls made
+  before it); jsdom 30 like its toggle and volumechange tasks, before
+  them. warpdom queues it on the window's internal timer, as toggle and
+  volumechange (a select task can run later than in jsdom 30 relative to
+  timers set before the call).
+- Before 21.1.2 setRangeText() takes the new value's length as the end of
+  the replaced text (`compat.legacyRangeTextEnd`: 'end' and 'select'
+  modes, and preserve for a selection end inside the range). In every
+  version it resets selectionDirection to none (warpdom kept it).
+- Arguments (WebIDL, every version): setRangeText() with none throws
+  "1 argument required", with two "only 2 arguments present" (no overload
+  takes two), an invalid SelectionMode a TypeError, all before the
+  InvalidStateError of an input type without selection; with three or
+  four arguments, undefined start/end are 0 (`setRangeText('x',
+  undefined, undefined)` inserts at 0; warpdom took it as the
+  one-argument form). setSelectionRange() with fewer than two throws.
+  The IndexSizeError message is jsdom's.
+
+Seen, left: cloneNode does not copy an input's or textarea's value (#41);
+the remaining jsdom-only subtest in textfieldselection
+(selection-start-end-extra.html, type changed to color and back).
+
+WPT html/semantics/forms/textfieldselection (local, jsdom 30.1.2):
+warpdom 459 to 671 of 783 subtests (jsdom 672); select-event.html 0 to
+162 of 270 (jsdom 162), setRangeText 57 to 88, selection-start-end 27 to
+45, setSelectionRange 48 to 49.
+Tests: test/forms.test.js (select event parity on jsdom 30, 25, 22, 20;
+21.1.1/21.1.2 literals; setRangeText selection on 30 and 20; arguments).
+Bench: bench:hot unchanged (no hot path touched).
