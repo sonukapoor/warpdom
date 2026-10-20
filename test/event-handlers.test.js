@@ -68,6 +68,20 @@ const namedScenario = (w) => {
 };
 for (const jsdom of [20, 26, 30]) parity(`content attributes find named elements (jsdom ${jsdom})`, namedScenario, { jsdom });
 
+// Named objects whose names a compiler might use for its scope objects
+// (__window, __document, __form, __element) are just named objects: the
+// element, form, document and window scopes stay.
+const scopeNameScenario = (w) => {
+  const d = html(w, '<div id="__window"></div><div id="__named"></div><div id="__document"></div><div id="__element"></div><div id="shadowed"></div><form name="__form"></form>'
+    + '<form id="f"><input><button id="b" type="button" onclick="window.__r = [String(shadowed), id, typeof getElementById, elements.length, typeof setTimeout, __window.id]"></button></form>'
+    + '<button id="c" onclick="window.__s = [String(shadowed), id, typeof getElementById, typeof setTimeout]"></button>');
+  w.shadowed = 'g';
+  d.getElementById('b').click();
+  d.getElementById('c').click();
+  return [String(w.__r), String(w.__s)];
+};
+for (const jsdom of [20, 26, 30]) parity(`content attributes: named objects do not replace scopes (jsdom ${jsdom})`, scopeNameScenario, { jsdom });
+
 parity('body forwards window handlers; window onerror', (w) => {
   const d = w.document;
   const log = [];

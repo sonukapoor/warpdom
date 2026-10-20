@@ -3262,6 +3262,23 @@ own copy of vitest, so that it loads the chosen jsdom).
   window, behind the test's global); in Vitest's VM pools Node's host
   globals (setTimeout, fetch, atob, queueMicrotask, ...) are not
   enumerable on warpdom's global, enumerable on jsdom's.
+- **Copilot re-review on #87 (ae1314d): scope names.** The handler
+  compiler reached its scope objects through parameters (__window,
+  __document, __form, __element), and each was looked up inside the with
+  scopes already entered, so a named object of that name replaced the
+  scope: `<div id="__element">` made a bare `id` read "__element",
+  `<div id="__document">` hid the document's members (`getElementById`
+  undefined), `<form name="__form">` replaced the form owner, and in the
+  VM pools `<div id="__window">` replaced the global. This held in every
+  pool and on plain windows, since inline handlers got their scopes.
+  jsdom (Vitest forks and vmThreads on 20.0.3 and 30.1.3, black box)
+  treats them as ordinary named objects. The scopes are now reached as
+  this[i] of the compiled function, which nothing shadows. Tests:
+  event-handlers.test.js (parity with jsdom 20, 26, 30 on a plain window),
+  jest-environment.test.js (20.0.3, 26.1.0, 30.1.3). Handler compile
+  (median of 5 alternating runs, 3000 handlers, vs 1723448): plain
+  window 6.06 -> 5.44 us, VM pool 20.6 -> 19.9 us; calls unchanged (2.2
+  and 3.9 us).
 
 Left as they are (measured, not in these issues):
 - ShadowRoot.prototype.onslotchange: warpdom has it, no jsdom does.

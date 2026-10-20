@@ -166,22 +166,22 @@ function compile(target, name, body) {
   // named access, so the window's named objects (<div id="result">) come
   // from a scope of their own just behind it (namedScope), also before the
   // lexical bindings, as in jsdom. Elsewhere the window comes first,
-  // standing in for the global scope.
+  // standing in for the global scope. The scope objects are reached
+  // through this, which no with scope can shadow: an identifier would
+  // resolve through the scopes already entered (<div id="__window">, a
+  // document's <form name="__form">).
   const window = doc[S].window;
   const ws = window[S];
   const inContext = ws.globalProxy !== undefined && ws.runScript !== undefined;
   try {
-    const compileIn = inContext
-      ? (params, code) => ws.runScript(`(function (__named, ${params}) { with (__named) with (__window) { ${code} } })`)
-      : (params, code) => new Function(...params.split(', '), `with (__window) { ${code} }`);
-    const scope = inContext ? [namedScope(window, ws.globalProxy), ws.globalProxy] : [window];
-    if (!element) return compileIn('__window', source)(...scope);
-    const s = element[S];
-    const form = s.ns === HTML_NS && FORM_ASSOCIATED.has(s.tag) ? formOwner(element) : null;
-    return compileIn('__window, __document, __form, __element',
-      `with (__document) with (__form) with (__element) { ${source} }`)(
-      ...scope, doc, form ?? Object.create(null), element,
-    );
+    const scopes = inContext ? [namedScope(window, ws.globalProxy), ws.globalProxy] : [window];
+    if (element) {
+      const s = element[S];
+      const form = s.ns === HTML_NS && FORM_ASSOCIATED.has(s.tag) ? formOwner(element) : null;
+      scopes.push(doc, form ?? Object.create(null), element);
+    }
+    const code = `${scopes.map((_, i) => `with (this[${i}]) `).join('')}{ ${source} }`;
+    return (inContext ? ws.runScript(`(function () { ${code} })`) : new Function(code)).call(scopes);
   } catch (error) {
     handlerEntry(target, name).value = null;
     reportError(element ?? target, error);

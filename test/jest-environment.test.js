@@ -467,3 +467,32 @@ test('Jest environment: handler scope before script bindings; frame aliases are 
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+// Named objects whose names a compiler might use for its scope objects are
+// just named objects in an inline handler: the global, document, form and
+// element scopes stay (jest-environment-jsdom and Vitest's VM pools, black
+// box on jsdom 20.0.3, 26.1.0 and 30.1.3).
+test('Jest environment: named objects do not replace an inline handler\'s scopes', async () => {
+  const rootDir = fakeJestProject();
+  try {
+    const results = {};
+    for (const jsdom of ['20.0.3', '26.1.0', '30.1.3']) {
+      const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      await env.setup();
+      results[jsdom] = vm.runInContext(`(() => {
+        window.shadowed = 'g';
+        document.body.innerHTML = '<div id="__window"></div><div id="__named"></div><div id="__document"></div><div id="__element"></div><div id="shadowed"></div><form name="__form"></form>'
+          + '<form id="f"><input><button id="b" type="button" onclick="document.body.dataset.r = [String(shadowed), id, typeof getElementById, elements.length, typeof setTimeout, __window.id].join()"></button></form>'
+          + '<button id="c" onclick="document.body.dataset.s = [String(shadowed), id, typeof getElementById, typeof setTimeout].join()"></button>';
+        document.getElementById('b').click();
+        document.getElementById('c').click();
+        return document.body.dataset.r + ' | ' + document.body.dataset.s;
+      })()`, env.getVmContext());
+      await env.teardown();
+    }
+    const expected = 'g,b,function,2,function,__window | g,c,function,function';
+    assert.deepEqual(results, { '20.0.3': expected, '26.1.0': expected, '30.1.3': expected });
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
