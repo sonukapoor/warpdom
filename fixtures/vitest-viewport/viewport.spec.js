@@ -39,3 +39,34 @@ test('assignments and Object.defineProperty', () => {
   expect(kind('self')).toBe(expected.self);
   expect(Object.keys(window)).toContain('self');
 });
+
+// Where the global is the window (VM pools), an inline event handler's
+// global scope is that global: it reads the initial data properties and
+// what the test assigned, also after a second assignment to a
+// [Replaceable] accessor (jsdom 27 and later), and its own assignments to
+// window are the test's (black box: jsdom 20.0.3, 26.1.0, 30.1.3).
+test.skipIf(process.env.VIEWPORT_EXPECT === 'forks')('inline event handlers read the global\'s members', () => {
+  const div = document.createElement('div');
+  div.setAttribute('onclick', 'document.body.dataset.r = [innerWidth, window.innerWidth, name, outerWidth, scrollY, innerHeight, status].join(); window.fromHandler = 1');
+  document.body.append(div);
+  window.name = '';
+  window.status = '';
+  // Defined by the test before (300 or 400, per version).
+  const h = window.innerHeight;
+  div.click();
+  expect(document.body.dataset.r).toBe(`640,640,,1024,0,${h},`);
+  expect(window.fromHandler).toBe(1);
+  window.innerWidth = 700;
+  window.outerWidth = 900;
+  window.name = 'n1';
+  div.click();
+  expect(document.body.dataset.r).toBe(`700,700,n1,900,0,${h},`);
+  window.innerWidth = 800;
+  window.outerWidth = 1000;
+  window.scrollY = 5;
+  window.name = 'n2';
+  window.status = 'st';
+  div.click();
+  expect(document.body.dataset.r).toBe(`800,800,n2,1000,5,${h},st`);
+  div.remove();
+});

@@ -344,3 +344,40 @@ test('Jest environment: viewport members, name, status and self as on jsdom per 
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+// An inline event handler's global scope is the global (the window), as in
+// jest-environment-jsdom (black box, jsdom 20.0.3, 26.1.0 and 30.1.3): it
+// reads the initial data properties (name, the viewport members before 27)
+// and the test's assignments, also a second assignment to a [Replaceable]
+// accessor (jsdom 27 and later) and Object.defineProperty, and what it
+// assigns to window is the test's.
+test('Jest environment: inline event handlers read the global\'s members', async () => {
+  const rootDir = fakeJestProject();
+  try {
+    const results = {};
+    for (const jsdom of ['20.0.3', '26.1.0', '30.1.3']) {
+      const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      await env.setup();
+      results[jsdom] = vm.runInContext(`(() => {
+        const div = document.createElement('div');
+        div.setAttribute('onclick', 'document.body.dataset.r = [innerWidth, window.innerWidth, name, outerWidth, scrollY, innerHeight, status].join(); window.fromHandler = 1');
+        document.body.append(div);
+        const out = [];
+        const click = () => { div.click(); out.push(document.body.dataset.r); };
+        click();
+        window.innerWidth = 640; window.name = 'n1'; window.outerWidth = 700;
+        click();
+        window.innerWidth = 800; window.name = 'n2'; window.outerWidth = 900; window.scrollY = 5; window.status = 'st';
+        Object.defineProperty(window, 'innerHeight', { value: 333, writable: true, enumerable: true, configurable: true });
+        click();
+        out.push(window.fromHandler);
+        return out.join(' | ');
+      })()`, env.getVmContext());
+      await env.teardown();
+    }
+    const expected = '1024,1024,,1024,0,768, | 640,640,n1,700,0,768, | 800,800,n2,900,5,333,st | 1';
+    assert.deepEqual(results, { '20.0.3': expected, '26.1.0': expected, '30.1.3': expected });
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});

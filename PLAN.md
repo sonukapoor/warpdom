@@ -3181,6 +3181,28 @@ own copy of vitest, so that it loads the chosen jsdom).
   profiles 30.1.2, 26.1.0 and 20.0.3 with the measured results), a Jest
   environment test for 20.0.3, 26.1.0 and 30.1.3.
 
+- **Copilot review on #87.** (1) The per-file reset now clears the inert
+  handlers (onauxclick, onloadend before 22.1.0) of the document and the
+  kept html, head and body. (2) Under Jest and Vitest's VM pools the
+  global's data members (name; viewport and status before 27) and the
+  [Replaceable] members it took over after an assignment are the global's
+  own, so the window behind it went stale, and inline event handlers read
+  that window (`window.innerWidth = 640`, then `onclick` read 1024; from 27
+  a second assignment was missed; `window.x = 1` in a handler went to the
+  hidden window). jsdom (black box: Vitest vmThreads and
+  jest-environment-jsdom on 20.0.3, 26.1.0 and 30.1.3) runs inline handlers
+  in the context, seeing every assignment and Object.defineProperty. warpdom
+  now compiles them in the VM context (runScript) when the environment has
+  one, so their global scope is the global; the exposed descriptors are
+  unchanged. Vitest's forks pool is unchanged (there jsdom's handlers run on
+  jsdom's own window, not Node's global). (3) restoreOwnProperties()
+  compares writable, enumerable and configurable too, so a flag-only
+  change (`Object.defineProperty(window, 'innerWidth', { writable: false
+  })`) does not survive the reset. Tests: reset.test.js (inert handlers on
+  20.0.3; flags on 26.1.0 and 30.1.3), fixtures/vitest-viewport (inline
+  handler test in the VM pools, warpdom profiles and real jsdom), a Jest
+  environment test on 20.0.3, 26.1.0, 30.1.3.
+
 Left as they are (measured, not in these issues):
 - ShadowRoot.prototype.onslotchange: warpdom has it, no jsdom does.
 - The window's event handlers and other Window members are on

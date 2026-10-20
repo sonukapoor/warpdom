@@ -29,6 +29,12 @@ import { clearDeclarations } from './css.js';
 // Own properties (string and symbol keys) of an object, as descriptors.
 const ownProperties = (object) => new Map(Reflect.ownKeys(object).map((key) => [key, Object.getOwnPropertyDescriptor(object, key)]));
 
+// Whether two property descriptors differ in value, accessors or flags
+// (Object.defineProperty(window, 'innerWidth', { writable: false }) keeps
+// the value).
+const changed = (current, descriptor) => current.value !== descriptor.value || current.get !== descriptor.get || current.set !== descriptor.set
+  || current.writable !== descriptor.writable || current.enumerable !== descriptor.enumerable || current.configurable !== descriptor.configurable;
+
 // Puts back an object's own properties as snapshotted: properties added
 // since (a library's "already set up" marker, a test's global) are deleted.
 // A property made non-configurable cannot be deleted or redefined; it stays
@@ -39,7 +45,7 @@ function restoreOwnProperties(object, snapshot) {
   }
   for (const [key, descriptor] of snapshot) {
     const current = Object.getOwnPropertyDescriptor(object, key);
-    if (!current || current.value !== descriptor.value || current.get !== descriptor.get || current.set !== descriptor.set) Reflect.defineProperty(object, key, descriptor);
+    if (!current || changed(current, descriptor)) Reflect.defineProperty(object, key, descriptor);
   }
 }
 
@@ -168,6 +174,7 @@ export function resetWindow(window) {
     if (ns.style) clearDeclarations(ns.style);
     ns.listeners = undefined;
     ns.handlers = undefined;
+    ns.inertHandlers = undefined;
     dropObservers(node, ds);
     restoreOwnProperties(node, props);
   }
@@ -183,6 +190,8 @@ export function resetWindow(window) {
   // Document state.
   ds.listeners = undefined;
   ds.handlers = undefined;
+  // Inert event handlers before jsdom 22.1.0 (event-handlers.js).
+  ds.inertHandlers = undefined;
   ds.focused = null;
   ds.focusChainOf = null;
   if (ds.selection) {

@@ -152,17 +152,27 @@ function compile(target, name, body) {
   if (!doc || doc[S].noView) return null;
   const params = !element && name === 'onerror' ? 'event, source, lineno, colno, error' : 'event';
   const source = `return function ${name}(${params}) {\n${body}\n};`;
-  // The with statements give the standard's scope chain. The window comes
-  // first: it stands in for the global scope, since it is not the JS global.
+  // The with statements give the standard's scope chain. Where an
+  // environment made a VM context whose global is the window (Jest,
+  // Vitest's VM pools: globalProxy), the handler is compiled there, so its
+  // global scope is that global, which holds what tests assign
+  // (window.innerWidth = 640, window.name, Object.defineProperty(window,
+  // ...)), as with jsdom (black box: Vitest vmThreads and
+  // jest-environment-jsdom on jsdom 20.0.3, 26.1.0 and 30.1.3). Elsewhere
+  // the window comes first, standing in for the global scope.
   const window = doc[S].window;
+  const ws = window[S];
+  const inContext = ws.globalProxy !== undefined && ws.runScript !== undefined;
   try {
-    if (!element) return new Function('__window', `with (__window) { ${source} }`)(window);
+    if (!element) return inContext ? ws.runScript(`(function () { ${source} })`)() : new Function('__window', `with (__window) { ${source} }`)(window);
     const s = element[S];
     const form = s.ns === HTML_NS && FORM_ASSOCIATED.has(s.tag) ? formOwner(element) : null;
-    return new Function('__window', '__document', '__form', '__element',
-      `with (__window) with (__document) with (__form) with (__element) { ${source} }`)(
-      window, doc, form ?? Object.create(null), element,
-    );
+    const scopes = 'with (__document) with (__form) with (__element)';
+    return inContext
+      ? ws.runScript(`(function (__document, __form, __element) { ${scopes} { ${source} } })`)(doc, form ?? Object.create(null), element)
+      : new Function('__window', '__document', '__form', '__element', `with (__window) ${scopes} { ${source} }`)(
+        window, doc, form ?? Object.create(null), element,
+      );
   } catch (error) {
     handlerEntry(target, name).value = null;
     reportError(element ?? target, error);
