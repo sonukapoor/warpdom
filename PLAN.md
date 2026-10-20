@@ -2679,3 +2679,153 @@ Tests: test/events.test.js (parity on jsdom 20, 26, 30; 27.0.0 and
 test/custom-elements.test.js (ElementInternals on 20, 22, 25, 26, 30;
 23.0.1/23.1.0/26.0.0/27.0.0 literals; disabledFeatures; viewless
 documents), test/hidden-state.test.js.
+
+## 2026-10-19: html/semantics forms parity (branch fix/forms-parity, #41 to #51)
+
+Gaps from the WPT html/semantics comparison (warpdom-notes,
+wpt-html-semantics-2026-10-18). Each measured black box on jsdom 20.0.3,
+22.1.0, 25.0.1, 26.1.0, 27.4.0, 28.1.0, 29.1.1 and 30.1.2 (and the
+releases around a boundary), against the HTML standard. On by default
+in the profiles of the jsdom versions that have them.
+
+- **Cloning steps (#41).** cloneNode() and importNode() of an input copy
+  its value, dirty value flag, checkedness and dirty checkedness flag; of
+  a textarea its raw value and dirty value flag (every version). The
+  indeterminate state from jsdom 30.1.0 (30.0.1 and earlier: not copied;
+  `compat.cloneIndeterminate`). Not copied in any version: the selection,
+  an option's selectedness (a select's selectedIndex is the default
+  again in the clone).
+- **Input type change (#42).** The type attribute's change steps, as the
+  standard and every measured version: value mode to default or
+  default/on writes a non-empty value to the value attribute (its
+  mutation record after the type attribute's: attribute steps can now
+  return a function that runs after the change is reported); any other
+  mode into value mode takes the value attribute again and clears the
+  dirty flag (text, file, text: ""); value mode to value mode keeps the
+  value, sanitized for the old and the new type (text "hello", color,
+  text gives "#000000"; a range's default "50" stays "50" as a number).
+  warpdom kept the non-dirty value lazily as the attribute's; a value
+  kept by a type change is now stored without the dirty flag, and a
+  value attribute change drops it. A type without selection to one with
+  it puts the selection at 0, 0, none. No events.
+- **type=week (#49).** valueAsNumber is midnight UTC on the Monday of the
+  ISO week, valueAsDate that date; the setters take the week containing
+  the time; stepUp/stepDown by one week from the step base 1970-W01
+  (-259,200,000); min, max and step validity. Every version. jsdom
+  parses a week string's year with four or five digits only
+  ("100000-W01" is sanitized to ""; the standard allows more); warpdom
+  follows. Not reproduced, jsdom's results at extremes: the
+  valueAsNumber setter for years below 100 (year 1 gives "1901-W01")
+  and out of the Date range ("0NaN-WNaN", "-29719-W14" are stored
+  unsanitized; warpdom stores "").
+- **pattern (#43).** The compiled pattern is null when the pattern does
+  not compile on its own ("a)(b", "a)|(b": no mismatch), as the standard
+  and every version. The flag: v from jsdom 27.0.0 ("[(]" is invalid
+  and ignored, "[\p{L}--[a-z]]" is a set difference), u before (26.1.0
+  and 27.0.0-beta.0; `compat.patternFlag`). warpdom tried v, then u.
+- **stepUp()/stepDown() and valueAsNumber (#44).** As jsdom in every
+  measured version: nothing happens when min > max, or when the result
+  would move against the method (stepDown() from below min, stepUp()
+  from above max, stepUp(-2)); a value off the step goes to the next one
+  on it in the method's direction (n unused); a result past min or max
+  is clamped to the nearest value on the step inside them (range 3..14
+  step 3, 9, stepUp(2): 12; warpdom clamped to 14). jsdom deviation,
+  followed: nothing happens when max - min is less than the step (min 0
+  max 4 step 5: stepUp() leaves "" alone; the standard returns only when
+  no value between min and max is on the step, which with min as the
+  step base never happens). Steps and step mismatch use exact decimal
+  arithmetic on the numbers' shortest decimal forms, as jsdom: step
+  3e-15 does not divide 17 (mismatch), 1/3 does not divide 1, 0.1 + 0.2
+  is 0.3, 17 + 3e-15 is 17.000000000000004 (warpdom used a 1e-9
+  tolerance and rounded to 15 digits). valueAsNumber: Infinity throws
+  TypeError "Failed to set infinite value as Number" before the type
+  check, NaN too before 23.1.0 (`compat.nanValueAsNumberThrows`; 23.0.1
+  throws, 23.1.0 sets ""); out of the Date range no RangeError
+  (datetime-local ""). Before 30.1.0 a time's fraction is whole
+  milliseconds (".5" is 5 ms) and a time with seconds serializes with
+  three fraction digits ("00:00:01.500", "10:00:05.000"), for time and
+  datetime-local (`compat.legacyTimeStrings`; 30.0.1 old, 30.1.0 new).
+  Error messages are jsdom's. Not reproduced: jsdom's valueAsNumber
+  setter stores its string without sanitization (range 1e21 stays
+  "1e+21", out-of-range dates become "0NaN-NaN-NaN"; warpdom sanitizes),
+  and jsdom sanitizes a range's value only when it is set, not when min
+  or max change later (`<input type=range value=50 max=40>` is "50" in
+  jsdom, "40" in warpdom, as the standard).
+- **Disconnected trees (#46).** The form attribute's id, a label's for
+  and the list attribute are looked up in the element's tree with its
+  root included; warpdom left the root out, so a form or label at the
+  root of a tree not in a document was never found (form.elements of a
+  lone form with a form=id control: 0; jsdom 1). jsdom deviation,
+  followed (every version): a control that is not connected uses its
+  form attribute too (by id in its tree; `form=""` and an unknown id
+  give null), where the standard ignores the attribute and takes the
+  ancestor form. The WPT subtests pass either way (the id names the
+  ancestor).
+- **Radio button groups (#47).** A checked radio button unchecks the
+  rest of its group, in every version, when its name attribute changes
+  (also not connected), when its type becomes radio, and when its form
+  owner changes on insertion: inserted into a form (connected or not;
+  also by the parser and by cloneNode, one node at a time, so the last
+  checked wins). From jsdom 30.1.0 (`compat.radioConnected`; 30.0.1 not)
+  also when it becomes connected (in tree order of the inserted subtree,
+  so in a subtree inserted at once the first checked wins; a fragment's
+  children one by one, so the last wins) and when its form attribute is
+  set or removed. No events. warpdom did it only when checkedness was
+  set. Insertions pay for it only in documents that have had a checked
+  input (`checkedRadios`, set by setCheckedness, the parser and
+  adoption); attribute steps can now be chained (addAttributeStep: the
+  name attribute has the document's named properties and radio groups).
+- **option.text (#48).** Strips and collapses ASCII whitespace only (an
+  NBSP or U+3000 stays; warpdom trimmed with String.prototype.trim), and
+  leaves out HTML and SVG script elements only (MathML and no-namespace
+  script are text), as the standard and every version. Also option.label
+  and value without a value attribute.
+- **form[i] and select[i] (#50).** select[i] is select.options[i] with the
+  indexed setter (`select[3] = option` pads with empty options, `= null`
+  removes, a non-option throws TypeError) in every measured version;
+  form[i] is form.elements[i] from jsdom 26.1.0 (26.0.0 and earlier have
+  none: `form[0] = 'x'` is an expando there; `compat.formIndexed`).
+  Legacy platform object semantics as jsdom: own enumerable properties
+  "0".."n-1" first in ownKeys, form indices read-only (assignment,
+  defineProperty and delete of a present index fail: TypeError in strict
+  code), deleting an absent index succeeds. No named properties on forms
+  (jsdom has none: `form.a` is undefined). The form and select objects
+  are Proxies over the element (collections.js indexedElement, like the
+  live collections), made in createElementNS; other keys go straight to
+  the element. Not covered: customized built-in forms/selects (is=) and
+  custom element classes extending them stay plain.
+- **Smaller gaps (#51), five of six.** Every measured version unless
+  noted. (1) A time input with min > max has a reversed range: a value
+  between max and min underflows and overflows, others neither. jsdom
+  deviation, followed: min with no valid max counts as reversed too
+  (min 14:00, value 13:00: both flags; the standard: underflow only).
+  (2) The textarea wrapping transformation in the form data set:
+  wrap="hard" (exactly; "HARD" is not hard in jsdom, the standard is
+  case-insensitive) breaks each line every cols UTF-16 code units (cols
+  20 without the attribute). jsdom 24.0.0 to 30.0.1 do something else
+  when the cols attribute is set (one break at cols, then at 313 for
+  cols 3, a trailing line feed when a later line is long); not
+  reproduced, warpdom does not transform then (`compat.hardWrap`).
+  (3) menuitem creates HTMLUnknownElement (the generator leaves it out
+  of the HTMLElement tags; @webref still lists it), and
+  window.HTMLDocument is the Document interface object. (4) form.action
+  resolves against the document's base URL. (5) input.files is
+  settable: it keeps the FileList itself, ignores null/undefined, throws
+  jsdom's TypeError for anything else, does nothing on other types.
+  Left: (6) dialog's UA colors (background white/Canvas, color
+  black/CanvasText; jsdom 20 serializes "white"/"black", 26
+  rgb(255, 255, 255)/rgb(0, 0, 0); an open dialog's display is "" before
+  30, "block" in 30): style profile work, a separate change.
+  Seen, left: jsdom has no formAction IDL attribute (warpdom has).
+
+WPT html/semantics/forms (local, WPT 87b5d13099, jsdom 30.1.2: 3851 of
+4687): warpdom 3733 to 3974 subtests; jsdom passes and warpdom fails 244
+to 0, the reverse 126 to 123. Given up to follow jsdom (jsdom fails them
+too): input-type-change-value.html (2, color dirty flag on type change),
+input-stepdown-02.html (1, stepDown with no value and min > 0: max - min
+rule). button-submit-remove-children(-jssubmit).html time out now and
+then on both engines (navigation timing; pass when rerun alone).
+After #41 to #44: 3945, jsdom-only 28. Tests: test/forms.test.js (parity
+on jsdom 30, 26, 25, 22, 20 as each issue needs; literals at 23.0.1/23.1.0,
+26.0.0/26.1.0, 26.1.0/27.0.0, 23.2.0, 30.0.1/30.1.0). Bench: bench:hot
+unchanged (two runs each, alternating order).

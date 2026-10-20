@@ -82,6 +82,12 @@ export const hooks = {
   discardedWindows: 0,
   // Blob data and File creation (file-reader.js), for FormData (forms.js).
   blobs: null,
+  // Radio button groups on insertion (forms.js); called only in documents
+  // that have had a checked radio button (checkedRadios).
+  radios: null,
+  // HTMLFormElement and HTMLSelectElement objects with indexed properties
+  // (forms.js).
+  indexedElement: null,
 };
 
 // Runs fn as one custom element reactions scope (a [CEReactions] operation
@@ -506,6 +512,7 @@ function insertChecked(parent, node, ref, root, quiet) {
   ps.count++;
   changed(parent);
   if (connected) indexIds(node, true, doc[S].namedCandidates !== undefined);
+  if (doc[S].checkedRadios === true && hooks.radios !== null) hooks.radios(node, connected);
   if (!quiet && observed(parent)) hooks.childList(parent, [node], [], ns.prev, ns.next);
   if (hooks.ce !== null) hooks.ce.inserted(node);
   // Iframes get nested windows (frames.js), only in documents that have any.
@@ -540,6 +547,7 @@ export function adopt(node, doc) {
     if (s.tag === 'slot' && s.ns === HTML_NS) doc[S].slotCount = (doc[S].slotCount ?? 0) + 1;
     if (s.tag === 'base' && s.ns === HTML_NS) doc[S].baseCount = (doc[S].baseCount ?? 0) + 1;
     if (s.script === 'ready') doc[S].scriptCount = (doc[S].scriptCount ?? 0) + 1;
+    if (s.tag === 'input' && (s.checked === true || s.attrs.has('checked'))) doc[S].checkedRadios = true;
     if (s.type === ELEMENT_NODE) namedAttributesSet(s, doc);
     if (s.attrNodes) for (const attr of s.attrNodes.values()) attr[S].doc = doc;
     // Mutation observer registrations move with their node: observed()

@@ -8,13 +8,14 @@
 // that need a tree scan (form.elements, labels, select options) are cached
 // until the document changes (treeRev).
 import { urlOf } from './hyperlinks.js';
+import { documentBaseURL } from './base-url.js';
 import { followHyperlink } from './navigation.js';
 import {
-  S, state, domError, hooks, HTML_NS, ELEMENT_NODE, TEXT_NODE, DOCUMENT_NODE,
+  S, state, domError, hooks, HTML_NS, SVG_NS, ELEMENT_NODE, TEXT_NODE, DOCUMENT_NODE,
   rootOf, nextInTree, contains, elementById, connected, asciiLowercase, PlatformURL as URL, tooFewArguments,
 } from './internal.js';
-import { writeAttribute, attributeSteps, tokenList } from './attributes.js';
-import { liveList, htmlCollectionNames } from './collections.js';
+import { writeAttribute, attributeSteps, addAttributeStep, tokenList } from './attributes.js';
+import { liveList, htmlCollectionNames, indexedElement } from './collections.js';
 import { dispatch, eventConstruct, fieldGetters, eventState } from './events.js';
 import { parseInteger } from './reflect.js';
 import { directionality } from './directionality.js';
@@ -52,9 +53,16 @@ function* descendants(root) {
   for (let n = root[S].first; n; n = nextInTree(n, root)) if (n[S].type === ELEMENT_NODE) yield n;
 }
 
+// The elements of a tree in tree order: its root too when the root is an
+// element (a tree not in a document: a form, label or control on its own).
+function* treeElements(root) {
+  if (root[S].type === ELEMENT_NODE) yield root;
+  yield* descendants(root);
+}
+
 function firstWithId(root, id) {
   if (root[S].type === DOCUMENT_NODE) return elementById(root, id);
-  for (const el of descendants(root)) if (attr(el, 'id') === id) return el;
+  for (const el of treeElements(root)) if (attr(el, 'id') === id) return el;
   return null;
 }
 
@@ -72,8 +80,9 @@ function fire(target, type, init) {
 const notImplemented = (el, message) => internalsOf(el).notImplemented(message);
 
 const asciiWhitespace = /[\t\n\f\r ]+/g;
-const stripAndCollapse = (s) => s.replace(asciiWhitespace, ' ').trim();
 const trimASCII = (s) => s.replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, '');
+// Strip and collapse ASCII whitespace (not NBSP or other Unicode spaces).
+const stripAndCollapse = (s) => trimASCII(s.replace(asciiWhitespace, ' '));
 const stripNewlines = (s) => (/[\r\n]/.test(s) ? s.replace(/[\r\n]/g, '') : s);
 
 // --- disabled, listed, labelable --------------------------------------------------
@@ -136,7 +145,7 @@ export function formOwner(el) {
 function formElements(form) {
   return cached(form, 'formElements', () => {
     const out = [];
-    for (const el of descendants(rootOf(form))) {
+    for (const el of treeElements(rootOf(form))) {
       if (isListed(el) && !(el[S].tag === 'input' && inputType(el) === 'image') && formOwner(el) === form) out.push(el);
     }
     return out;
@@ -152,7 +161,10 @@ const INPUT_TYPES = new Set(['hidden', 'text', 'search', 'tel', 'url', 'email', 
   'time', 'datetime-local', 'number', 'range', 'color', 'checkbox', 'radio', 'file', 'submit', 'image', 'reset', 'button']);
 
 export function inputType(el) {
-  const t = attr(el, 'type');
+  return typeState(attr(el, 'type'));
+}
+
+function typeState(t) {
   if (t === undefined) return 'text';
   if (INPUT_TYPES.has(t)) return t; // already lowercase (the usual case)
   const lower = asciiLowercase(t);
@@ -191,43 +203,68 @@ function weeksInYear(y) {
   const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
   return jan1 === 4 || (leap && jan1 === 3) ? 53 : 52;
 }
+// A week string's year has four or five digits in jsdom (black box, 20.0.3
+// to 30.1.2; the standard allows more).
 function parseWeek(v) {
-  const m = /^(\d{4,})-W(\d\d)$/.exec(v);
+  const m = /^(\d{4,5})-W(\d\d)$/.exec(v);
   return m && +m[1] > 0 && +m[2] >= 1 && +m[2] <= weeksInYear(+m[1]) ? { y: +m[1], w: +m[2] } : null;
 }
-function parseTime(v) {
+// Before jsdom 30.1.0 (legacy: compat.legacyTimeStrings) a time's
+// fraction is read as whole milliseconds (".5" is 5 ms) and a time with
+// seconds is serialized with three fraction digits ("10:00:05.000").
+function parseTime(v, legacy = false) {
   const m = /^(\d\d):(\d\d)(?::(\d\d)(?:\.(\d{1,3}))?)?$/.exec(v);
   if (!m || +m[1] > 23 || +m[2] > 59 || (m[3] !== undefined && +m[3] > 59)) return null;
-  return ((+m[1] * 60 + +m[2]) * 60 + (+m[3] || 0)) * 1000 + (m[4] ? +m[4].padEnd(3, '0') : 0);
+  return ((+m[1] * 60 + +m[2]) * 60 + (+m[3] || 0)) * 1000 + (m[4] ? +(legacy ? m[4] : m[4].padEnd(3, '0')) : 0);
 }
-function parseDateTime(v) {
+function parseDateTime(v, legacy = false) {
   const m = /^(.+?)[T ](.+)$/.exec(v);
   if (!m) return null;
   const date = parseDate(m[1]);
-  const time = parseTime(m[2]);
+  const time = parseTime(m[2], legacy);
   return date && time !== null ? { date, time } : null;
 }
 const pad = (n, w = 2) => String(n).padStart(w, '0');
-function serializeTime(ms) {
+const DAY = 86400000;
+const WEEK = 7 * DAY;
+// Midnight UTC on the Monday of week w of year y (ISO 8601 weeks: week 1
+// has the year's first Thursday). Years below 100 are years, not 19xx.
+function weekStart(y, w) {
+  const jan4 = new Date(0);
+  jan4.setUTCFullYear(y, 0, 4);
+  return jan4.getTime() - ((jan4.getUTCDay() + 6) % 7) * DAY + (w - 1) * WEEK;
+}
+// The week string of the week containing time n (ms).
+function serializeWeek(n) {
+  const date = new Date(n);
+  const thursday = new Date(date.getTime() + (3 - ((date.getUTCDay() + 6) % 7)) * DAY);
+  const y = thursday.getUTCFullYear();
+  const jan1 = new Date(0);
+  jan1.setUTCFullYear(y, 0, 1);
+  return `${pad(y, 4)}-W${pad(Math.floor((thursday.getTime() - jan1.getTime()) / WEEK) + 1)}`;
+}
+function serializeTime(ms, legacy = false) {
   const h = Math.floor(ms / 3600000), mi = Math.floor(ms / 60000) % 60, sec = Math.floor(ms / 1000) % 60, frac = ms % 1000;
   let out = `${pad(h)}:${pad(mi)}`;
   if (sec || frac) out += `:${pad(sec)}`;
-  if (frac) out += `.${pad(frac, 3).replace(/0+$/, '')}`;
+  if (legacy) { if (sec || frac) out += `.${pad(frac, 3)}`; } else if (frac) out += `.${pad(frac, 3).replace(/0+$/, '')}`;
   return out;
 }
+const legacyTime = (el) => windowOf(el)[S].compat.legacyTimeStrings;
 
 const FLOAT = /^-?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 const parseFloatValue = (v) => (FLOAT.test(v) && Number.isFinite(Number(v)) ? Number(v) : null);
 
 // Converts a value of the given type to a number (ms for dates and times,
 // months for month), or null.
-function toNumber(type, v) {
+function toNumber(type, v, el) {
   switch (type) {
     case 'number': case 'range': return parseFloatValue(v);
     case 'date': { const d = parseDate(v); return d ? Date.UTC(d.y, d.mo - 1, d.d) : null; }
     case 'month': { const d = parseMonth(v); return d ? (d.y - 1970) * 12 + d.mo - 1 : null; }
-    case 'time': return parseTime(v);
-    case 'datetime-local': { const d = parseDateTime(v); return d ? Date.UTC(d.date.y, d.date.mo - 1, d.date.d) + d.time : null; }
+    case 'week': { const d = parseWeek(v); return d ? weekStart(d.y, d.w) : null; }
+    case 'time': return parseTime(v, legacyTime(el));
+    case 'datetime-local': { const d = parseDateTime(v, legacyTime(el)); return d ? Date.UTC(d.date.y, d.date.mo - 1, d.date.d) + d.time : null; }
     default: return null;
   }
 }
@@ -257,7 +294,7 @@ function sanitize(el, type, v) {
     case 'month': return parseMonth(v) ? v : '';
     case 'week': return parseWeek(v) ? v : '';
     case 'time': return parseTime(v) === null ? '' : v;
-    case 'datetime-local': { const d = parseDateTime(v); return d ? `${v.slice(0, v.search(/[T ]/))}T${serializeTime(d.time)}` : ''; }
+    case 'datetime-local': { const legacy = legacyTime(el); const d = parseDateTime(v, legacy); return d ? `${v.slice(0, v.search(/[T ]/))}T${serializeTime(d.time, legacy)}` : ''; }
     default: return v;
   }
 }
@@ -266,7 +303,7 @@ function inputValue(el) {
   const s = el[S];
   const type = inputType(el);
   switch (valueMode(type)) {
-    case 'value': return sanitize(el, type, s.dirtyValue ? s.value : attr(el, 'value') ?? '');
+    case 'value': return sanitize(el, type, s.value ?? attr(el, 'value') ?? '');
     case 'default': return attr(el, 'value') ?? '';
     case 'default/on': return attr(el, 'value') ?? 'on';
     default: return '';
@@ -292,12 +329,49 @@ function setInputValue(el, value) {
 
 const checkedness = (el) => el[S].checked ?? has(el, 'checked');
 
+// An input's value is its value attribute's, sanitized for its type, until
+// it is set (the dirty value flag) or a type change keeps it (s.value
+// without the dirty flag: the value attribute replaces it).
+attributeSteps.set('value', (el) => {
+  const s = el[S];
+  if (s.value !== undefined && !s.dirtyValue && isTag(el, 'input')) s.value = undefined;
+});
+
+// The type attribute's change steps (HTML 4.10.5, "input type change"), as
+// jsdom (black box, 20.0.3 to 30.1.2): from the value mode to default or
+// default/on, a non-empty value is written to the value attribute (after
+// the type attribute's mutation record); from another mode into the value
+// mode, the value is the value attribute's again (not dirty); from the
+// value mode to the value mode, the value is kept (sanitized for the old
+// type, and then the new one). An input type that gains selection puts
+// the selection at the start.
+attributeSteps.set('type', (el, old, value) => {
+  const s = el[S];
+  if (s.ns !== HTML_NS || s.tag !== 'input') return undefined;
+  const from = typeState(old), to = typeState(value);
+  if (from === to) return undefined;
+  const fromMode = valueMode(from), toMode = valueMode(to);
+  if (!SELECTION_TYPES.has(from) && SELECTION_TYPES.has(to)) { s.selStart = s.selEnd = 0; s.selDir = 'none'; }
+  if (to === 'radio' && checkedness(el)) uncheckGroup(el);
+  if (fromMode === 'value') {
+    const current = sanitize(el, from, s.value ?? attr(el, 'value') ?? '');
+    if (toMode === 'value') { s.value = current; return undefined; }
+    s.value = undefined;
+    s.dirtyValue = false;
+    if (current !== '' && (toMode === 'default' || toMode === 'default/on')) return () => writeAttribute(el, 'value', current);
+  } else if (toMode === 'value') {
+    s.value = undefined;
+    s.dirtyValue = false;
+  }
+  return undefined;
+});
+
 function radioGroup(el) {
   const name = attr(el, 'name');
   if (!name) return [];
   const form = formOwner(el);
   const out = [];
-  for (const other of descendants(rootOf(el))) {
+  for (const other of treeElements(rootOf(el))) {
     if (other !== el && isTag(other, 'input') && inputType(other) === 'radio' && attr(other, 'name') === name && formOwner(other) === form) out.push(other);
   }
   return out;
@@ -305,8 +379,36 @@ function radioGroup(el) {
 
 function setCheckedness(el, value) {
   el[S].checked = value;
-  if (value && inputType(el) === 'radio') for (const other of radioGroup(el)) other[S].checked = false;
+  if (value && inputType(el) === 'radio') uncheckGroup(el);
 }
+
+// The other buttons of a checked radio button's group become unchecked.
+function uncheckGroup(el) {
+  el[S].doc[S].checkedRadios = true;
+  for (const other of radioGroup(el)) other[S].checked = false;
+}
+const isCheckedRadio = (el) => isTag(el, 'input') && inputType(el) === 'radio' && checkedness(el);
+
+// The radio button group is also updated, as jsdom (black box, 20.0.3 to
+// 30.1.2), when a checked radio button's name changes, when an input
+// becomes a radio button, and when its form owner changes on insertion
+// (into a form, or into a tree where its form attribute finds one). From
+// jsdom 30.1.0 (compat.radioConnected), as the standard: also when it
+// becomes connected, and when its form attribute changes.
+addAttributeStep('name', (el) => { if (isCheckedRadio(el)) uncheckGroup(el); });
+attributeSteps.set('form', (el) => {
+  if (isCheckedRadio(el) && windowOf(el)[S].compat.radioConnected) uncheckGroup(el);
+});
+// connected: node's tree is a document's (a shadow tree is checked here).
+hooks.radios = (node, connected) => {
+  const now = windowOf(node)[S].compat.radioConnected && (connected || isConnected(node));
+  for (const el of treeElements(node)) {
+    if (!isCheckedRadio(el)) continue;
+    if (now) { uncheckGroup(el); continue; }
+    const form = formOwner(el);
+    if (form !== null && !contains(node, form)) uncheckGroup(el);
+  }
+};
 
 attributeSteps.set('checked', (el) => {
   const s = el[S];
@@ -314,6 +416,22 @@ attributeSteps.set('checked', (el) => {
   s.checked = undefined;
   if (has(el, 'checked') && inputType(el) === 'radio') setCheckedness(el, true);
 });
+
+// The cloning steps of input and textarea (HTML): an input's value, dirty
+// value flag, checkedness and dirty checkedness flag, a textarea's raw
+// value and dirty value flag; as jsdom (black box, 20.0.3 to 30.1.2). The
+// indeterminate state from jsdom 30.1.0 (compat.cloneIndeterminate), as
+// the standard says. The selection is not copied.
+export function cloneFormState(node, copy) {
+  const s = node[S];
+  const c = copy[S];
+  if (s.value !== undefined) c.value = s.value;
+  if (s.dirtyValue) c.dirtyValue = true;
+  if (s.tag !== 'input') return;
+  if (s.checked !== undefined) c.checked = s.checked;
+  if (s.dirtyChecked) c.dirtyChecked = true;
+  if (s.indeterminate && windowOf(copy)[S].compat.cloneIndeterminate) c.indeterminate = true;
+}
 
 // --- text selection (input and textarea) ------------------------------------------
 
@@ -431,6 +549,26 @@ function childText(el) {
 }
 const normalizeNewlines = (v) => (v.includes('\r') ? v.replace(/\r\n?/g, '\n') : v);
 const textareaValue = (el) => (el[S].dirtyValue ? el[S].value : normalizeNewlines(childText(el)));
+
+// The textarea wrapping transformation (form data): with wrap="hard"
+// (exactly, as jsdom), a line feed after every cols UTF-16 code units of
+// each line (cols: the attribute's non-zero value, else 20). jsdom 24.0.0
+// to 30.0.1 break lines in other places when the cols attribute is set
+// (not reproduced: no transformation then; compat.hardWrap).
+function wrappedValue(el) {
+  const value = textareaValue(el);
+  if (attr(el, 'wrap') !== 'hard') return value;
+  const colsAttr = attr(el, 'cols');
+  if (colsAttr !== undefined && !windowOf(el)[S].compat.hardWrap) return value;
+  const n = colsAttr === undefined ? null : parseInteger(colsAttr);
+  const cols = n !== null && n > 0 ? n : 20;
+  return value.split('\n').map((line) => {
+    if (line.length <= cols) return line;
+    const parts = [];
+    for (let i = 0; i < line.length; i += cols) parts.push(line.slice(i, i + cols));
+    return parts.join('\n');
+  }).join('\n');
+}
 
 // --- select and option ------------------------------------------------------------
 // From the HTML standard (4.10.7 select, 4.10.10 option). An option's
@@ -594,7 +732,7 @@ function textExcludingScript(node) {
   for (let c = node[S].first; c; c = c[S].next) {
     const cs = c[S];
     if (cs.type === TEXT_NODE) out += cs.data;
-    else if (cs.type === ELEMENT_NODE && cs.tag !== 'script') out += textExcludingScript(c);
+    else if (cs.type === ELEMENT_NODE && !(cs.tag === 'script' && (cs.ns === HTML_NS || cs.ns === SVG_NS))) out += textExcludingScript(c);
   }
   return out;
 }
@@ -645,7 +783,7 @@ function labelsFor(el) {
   const root = rootOf(el);
   const map = cached(root, 'labelMap', () => {
     const byControl = new Map();
-    for (const node of descendants(root)) {
+    for (const node of treeElements(root)) {
       if (!isTag(node, 'label')) continue;
       const control = labelControl(node);
       if (!control) continue;
@@ -697,27 +835,66 @@ const VALIDITY_FLAGS = ['valueMissing', 'typeMismatch', 'patternMismatch', 'tooL
 
 const EMAIL = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
-function compilePattern(pattern) {
-  try { return new RegExp(`^(?:${pattern})$`, 'v'); } catch {
-    try { return new RegExp(`^(?:${pattern})$`, 'u'); } catch { return null; }
+// The compiled pattern regular expression (HTML): null when the pattern
+// does not compile on its own (so "a)(b" cannot close the wrapping group),
+// else ^(?:pattern)$. With the v flag from jsdom 27.0.0, the u flag before
+// (compat.patternFlag; black box, 26.1.0 and 27.0.0-beta.0: u).
+function compilePattern(pattern, flag) {
+  try {
+    new RegExp(pattern, flag);
+    return new RegExp(`^(?:${pattern})$`, flag);
+  } catch {
+    return null;
   }
 }
 
-const DEFAULT_STEP = { number: [1, 1], range: [1, 1], date: [1, 86400000], month: [1, 1], time: [60, 1000], 'datetime-local': [60, 1000] };
+// Per type: default step, step scale factor, default step base.
+const DEFAULT_STEP = { number: [1, 1, 0], range: [1, 1, 0], date: [1, DAY, 0], month: [1, 1, 0], week: [1, WEEK, -259200000], time: [60, 1000, 0], 'datetime-local': [60, 1000, 0] };
 
-function stepMismatch(el, type, value) {
+// Exact decimal arithmetic for steps, as jsdom (black box, 20.0.3 to
+// 30.1.2): numbers are taken at their shortest decimal form (String(n)),
+// so step 3e-15 does not divide 17, step 1/3 does not divide 1, and 0.2
+// stepped up by 0.1 is 0.3. A decimal is [BigInt digits, exponent of 10].
+function decimal(n) {
+  const [mantissa, exp = '0'] = String(n).split('e');
+  const dot = mantissa.indexOf('.');
+  const digits = dot < 0 ? mantissa : mantissa.slice(0, dot) + mantissa.slice(dot + 1);
+  return [BigInt(digits), Number(exp) - (dot < 0 ? 0 : mantissa.length - dot - 1)];
+}
+const decimalNumber = (digits, e) => Number(`${digits}e${e}`);
+const floorDiv = (a, b) => { const q = a / b; return (a % b !== 0n && (a < 0n) !== (b < 0n)) ? q - 1n : q; };
+
+// The step of an input: [allowed value step, step base] (numbers), or
+// null for step="any" and types without one.
+function allowedStep(el, type) {
   const defaults = DEFAULT_STEP[type];
-  if (!defaults) return false;
+  if (!defaults) return null;
   const stepAttr = attr(el, 'step');
-  if (stepAttr !== undefined && stepAttr.toLowerCase() === 'any') return false;
+  if (stepAttr !== undefined && asciiLowercase(stepAttr) === 'any') return null;
   let step = stepAttr === undefined ? null : parseFloatValue(stepAttr);
   if (step === null || step <= 0) step = defaults[0];
-  const allowed = step * defaults[1];
-  const n = toNumber(type, value);
+  const base = toNumber(type, attr(el, 'min') ?? '', el) ?? toNumber(type, attr(el, 'value') ?? '', el) ?? defaults[2];
+  return [step, defaults[1], base];
+}
+
+// Numbers as BigInt digits at one exponent of 10 (the smallest of theirs).
+function scaled(numbers) {
+  const decs = numbers.map((x) => (x === null ? null : decimal(x)));
+  let e = Infinity;
+  for (const d of decs) if (d !== null && d[1] < e) e = d[1];
+  return { e, values: decs.map((d) => (d === null ? null : d[0] * 10n ** BigInt(d[1] - e))) };
+}
+
+function stepMismatch(el, type, value) {
+  const n = toNumber(type, value, el);
   if (n === null) return false;
-  const base = toNumber(type, attr(el, 'min') ?? '') ?? toNumber(type, attr(el, 'value') ?? '') ?? 0;
-  const q = (n - base) / allowed;
-  return Math.abs(q - Math.round(q)) > 1e-9;
+  const step = allowedStep(el, type);
+  if (step === null) return false;
+  const [stepValue, scale, base] = step;
+  // Integers: exact in floating point.
+  if (Number.isSafeInteger(n) && Number.isSafeInteger(base) && Number.isSafeInteger(stepValue * scale) && Number.isSafeInteger(n - base)) return (n - base) % (stepValue * scale) !== 0;
+  const { values: [v, b, d] } = scaled([n, base, stepValue]);
+  return (v - b) % (d * BigInt(scale)) !== 0n;
 }
 
 function inputValidity(el) {
@@ -737,18 +914,26 @@ function inputValidity(el) {
     if (type === 'url') { try { new URL(value); } catch { flags.typeMismatch = true; } }
     const pattern = attr(el, 'pattern');
     if (pattern !== undefined && PATTERN_TYPES.has(type)) {
-      const re = compilePattern(pattern);
+      const re = compilePattern(pattern, windowOf(el)[S].compat.patternFlag);
       if (re) {
         const values = type === 'email' && has(el, 'multiple') ? value.split(',') : [value];
         flags.patternMismatch = !values.every((v) => re.test(v));
       }
     }
-    const n = toNumber(type, value);
+    const n = toNumber(type, value, el);
     if (n !== null && type !== 'range') {
-      const min = toNumber(type, attr(el, 'min') ?? '');
-      const max = toNumber(type, attr(el, 'max') ?? '');
-      if (min !== null && n < min) flags.rangeUnderflow = true;
-      if (max !== null && n > max) flags.rangeOverflow = true;
+      const min = toNumber(type, attr(el, 'min') ?? '', el);
+      const max = toNumber(type, attr(el, 'max') ?? '', el);
+      if (type === 'time' && min !== null && (max === null || min > max)) {
+        // A reversed time range (min > max) wraps midnight: a value between
+        // max and min underflows and overflows. As jsdom (black box, 20.0.3
+        // to 30.1.2), a time with min and no valid max is treated as one
+        // too (the standard: an underflow only).
+        if (n < min && (max === null || n > max)) flags.rangeUnderflow = flags.rangeOverflow = true;
+      } else {
+        if (min !== null && n < min) flags.rangeUnderflow = true;
+        if (max !== null && n > max) flags.rangeOverflow = true;
+      }
     }
     flags.stepMismatch = stepMismatch(el, type, value);
   }
@@ -1062,7 +1247,7 @@ function constructEntryList(form, submitter = null) {
   const window = windowOf(form);
   const entries = [];
   try {
-    for (const field of descendants(rootOf(form))) {
+    for (const field of treeElements(rootOf(form))) {
       if (!(field[S].ns === HTML_NS && SUBMITTABLE.has(field[S].tag)) || formOwner(field) !== form) continue;
       const tag = field[S].tag;
       const type = tag === 'input' ? inputType(field) : null;
@@ -1086,7 +1271,7 @@ function constructEntryList(form, submitter = null) {
       } else if (type === 'hidden' && name.toLowerCase() === '_charset_') {
         entries.push(createEntry(window, name, 'UTF-8'));
       } else {
-        const value = tag === 'textarea' ? textareaValue(field) : tag === 'input' ? inputValue(field) : attr(field, 'value') ?? '';
+        const value = tag === 'textarea' ? wrappedValue(field) : tag === 'input' ? inputValue(field) : attr(field, 'value') ?? '';
         entries.push(createEntry(window, name, value));
       }
       const dirname = attr(field, 'dirname');
@@ -1217,6 +1402,15 @@ export const FORM_MEMBERS = new Map([
         if (inputType(this) !== 'file') return null;
         return s.fileList ?? (s.fileList = liveList(internalsOf(this).protos.FileList, () => NO_FILES));
       },
+      // The setter keeps the FileList itself (input.files = other.files:
+      // the same object); null and undefined change nothing; on other
+      // types it does nothing. jsdom's TypeError for other values.
+      set files(v) {
+        const s = state(this);
+        if (v === null || v === undefined) return;
+        if (!(v instanceof windowOf(this).FileList)) throw new TypeError("Failed to set the 'files' property on 'HTMLInputElement': The provided value is not of type 'FileList'.");
+        if (inputType(this) === 'file') s.fileList = v;
+      },
       get list() {
         state(this);
         const id = attr(this, 'list');
@@ -1225,34 +1419,41 @@ export const FORM_MEMBERS = new Map([
       },
       get valueAsNumber() {
         state(this);
-        const n = toNumber(inputType(this), inputValue(this));
+        const n = toNumber(inputType(this), inputValue(this), this);
         return n === null ? NaN : n;
       },
       set valueAsNumber(v) {
         state(this);
         const type = inputType(this);
         const n = Number(v);
-        if (!Number.isFinite(n) && !Number.isNaN(n)) throw new TypeError("Failed to set the 'valueAsNumber' property on 'HTMLInputElement': The provided double value is non-finite.");
-        if (!DEFAULT_STEP[type]) throw domError("This input element does not support Number values.", 'InvalidStateError');
+        // As jsdom: not finite is a TypeError, NaN too before 23.1.0.
+        if (!Number.isFinite(n) && (!Number.isNaN(n) || windowOf(this)[S].compat.nanValueAsNumberThrows)) throw new TypeError('Failed to set infinite value as Number');
+        if (!DEFAULT_STEP[type]) throw domError("Failed to set the 'valueAsNumber' property on 'HTMLInputElement': This input element does not support Number values.", 'InvalidStateError');
         if (Number.isNaN(n)) { setInputValue(this, ''); return; }
         if (type === 'number' || type === 'range') setInputValue(this, String(n));
-        else if (type === 'date') setInputValue(this, new Date(n).toISOString().slice(0, 10));
-        else if (type === 'time') setInputValue(this, serializeTime(((n % 86400000) + 86400000) % 86400000));
+        else if (type === 'date') { const d = new Date(n); setInputValue(this, Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10)); }
+        else if (type === 'time') setInputValue(this, serializeTime(Math.floor(((n % DAY) + DAY) % DAY), legacyTime(this)));
         else if (type === 'month') { const y = 1970 + Math.floor(n / 12); setInputValue(this, `${pad(y, 4)}-${pad((((n % 12) + 12) % 12) + 1)}`); }
-        else { const d = new Date(n); setInputValue(this, `${d.toISOString().slice(0, 10)}T${serializeTime(n - Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))}`); }
+        else if (type === 'week') setInputValue(this, serializeWeek(n));
+        else {
+          // Out of the Date range: the empty string (jsdom; the standard leaves it undefined).
+          const d = new Date(n);
+          const t = d.getTime();
+          setInputValue(this, Number.isNaN(t) ? '' : `${d.toISOString().slice(0, 10)}T${serializeTime(t - Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()), legacyTime(this))}`);
+        }
       },
       get valueAsDate() {
         state(this);
         const type = inputType(this);
-        if (type !== 'date' && type !== 'time' && type !== 'month') return null;
-        const n = toNumber(type, inputValue(this));
+        if (type !== 'date' && type !== 'time' && type !== 'month' && type !== 'week') return null;
+        const n = toNumber(type, inputValue(this), this);
         if (n === null) return null;
         return new Date(type === 'month' ? Date.UTC(1970 + Math.floor(n / 12), n % 12) : n);
       },
       set valueAsDate(v) {
         state(this);
         const type = inputType(this);
-        if (type !== 'date' && type !== 'time' && type !== 'month') throw domError("This input element does not support Date values.", 'InvalidStateError');
+        if (type !== 'date' && type !== 'time' && type !== 'month' && type !== 'week') throw domError("This input element does not support Date values.", 'InvalidStateError');
         if (v === null) { setInputValue(this, ''); return; }
         if (!(v instanceof Date)) throw new TypeError("Failed to set the 'valueAsDate' property on 'HTMLInputElement': The provided value is not a Date.");
         const t = v.getTime();
@@ -1260,8 +1461,8 @@ export const FORM_MEMBERS = new Map([
         if (type === 'month') this.valueAsNumber = (v.getUTCFullYear() - 1970) * 12 + v.getUTCMonth();
         else this.valueAsNumber = type === 'time' ? t % 86400000 : t;
       },
-      stepUp(n = 1) { stepBy(this, n); },
-      stepDown(n = 1) { stepBy(this, -n); },
+      stepUp(n = 1) { stepBy(this, Number(n) | 0, true); },
+      stepDown(n = 1) { stepBy(this, Number(n) | 0, false); },
     },
   )],
   ['HTMLTextAreaElement', mix(
@@ -1330,8 +1531,7 @@ export const FORM_MEMBERS = new Map([
       namedItem(name) { return this.options.namedItem(name); },
       // Iterable over its options, as an interface with an indexed getter
       // (WebIDL). jsdom's is Array.prototype.values over indexed properties;
-      // warpdom has no indexed properties on elements (select[0]), so it
-      // iterates the list of options directly.
+      // warpdom iterates the list of options directly (the same items).
       [Symbol.iterator]() { state(this); return listOfOptions(this).slice()[Symbol.iterator](); },
       add(element, before = undefined) { this.options.add(element, before); },
       remove(...args) {
@@ -1396,9 +1596,10 @@ export const FORM_MEMBERS = new Map([
     get action() {
       state(this);
       const a = attr(this, 'action');
-      const base = internalsOf(this).url;
-      if (a === undefined || a === '') return base.href;
-      try { return new URL(a, base).href; } catch { return a; }
+      // Missing or empty: the document's URL; else resolved against the
+      // document's base URL (a <base> element), as jsdom.
+      if (a === undefined || a === '') return internalsOf(this).url.href;
+      try { return new URL(a, documentBaseURL(this[S].doc)).href; } catch { return a; }
     },
     set action(v) { writeAttribute(this, 'action', String(v)); },
     get method() {
@@ -1476,29 +1677,38 @@ export const FORM_MEMBERS = new Map([
   }],
 ]);
 
-function stepBy(el, n) {
+// stepUp() and stepDown() (HTML 4.10.5.4), as jsdom (black box, 20.0.3 to
+// 30.1.2): nothing happens when min > max, when max - min is less than
+// the step, or when the result would move against the method's
+// direction (stepDown() below min, stepUp() above max, a negative n); a
+// value off the step goes to the next one on it in the method's direction
+// (n is not used); a result past min or max goes to the nearest value on
+// the step inside them. Exact decimal arithmetic (decimal()).
+function stepBy(el, n, up) {
   state(el);
   const type = inputType(el);
-  const defaults = DEFAULT_STEP[type];
-  if (!defaults) throw domError('This form element is not steppable.', 'InvalidStateError');
-  const stepAttr = attr(el, 'step');
-  if (stepAttr !== undefined && stepAttr.toLowerCase() === 'any') throw domError("This form element does not have an allowed value step.", 'InvalidStateError');
-  let step = stepAttr === undefined ? null : parseFloatValue(stepAttr);
-  if (step === null || step <= 0) step = defaults[0];
-  const value = toNumber(type, inputValue(el)) ?? 0;
-  const delta = step * defaults[1];
-  const base = toNumber(type, attr(el, 'min') ?? '') ?? toNumber(type, attr(el, 'value') ?? '') ?? 0;
-  const count = Number(n) | 0;
-  const q = (value - base) / delta;
-  // Off the step grid: snap to the nearest step in the direction of travel.
-  let next = Math.abs(q - Math.round(q)) > 1e-9
-    ? base + (count > 0 ? Math.ceil(q) : Math.floor(q)) * delta
-    : value + delta * count;
-  const min = toNumber(type, attr(el, 'min') ?? '');
-  const max = toNumber(type, attr(el, 'max') ?? '');
-  if (min !== null && next < min) next = min;
-  if (max !== null && next > max) next = max;
-  el.valueAsNumber = Number(next.toPrecision(15));
+  const method = `Failed to invoke '${up ? 'stepUp' : 'stepDown'}' method on 'HTMLInputElement'`;
+  if (!DEFAULT_STEP[type]) throw domError(`${method}: This input element does not support Number values.`, 'InvalidStateError');
+  const allowed = allowedStep(el, type);
+  if (allowed === null) throw domError(`${method}: This input element does not support value step.`, 'InvalidStateError');
+  const bounds = type === 'range' ? rangeBounds(el) : null;
+  const min = bounds ? bounds.min : toNumber(type, attr(el, 'min') ?? '', el);
+  const max = bounds ? bounds.max : toNumber(type, attr(el, 'max') ?? '', el);
+  if (min !== null && max !== null && min > max) return;
+  // Values on the step are base + k * step (BigInt digits at exponent e).
+  const { e, values: [stepDigits, base, before, lo, hi] } = scaled([allowed[0], allowed[2], toNumber(type, inputValue(el), el) ?? 0, min, max]);
+  const step = stepDigits * BigInt(allowed[1]);
+  const ceilK = (x) => -floorDiv(base - x, step);
+  // jsdom (black box, every version): nothing when max - min is less than
+  // the step (the standard: when no value between them is on the step).
+  if (lo !== null && hi !== null && hi - lo < step) return;
+  let next;
+  if ((before - base) % step !== 0n) next = base + (up ? floorDiv(before - base, step) + 1n : ceilK(before) - 1n) * step;
+  else next = before + step * BigInt(up ? n : -n);
+  if (lo !== null && next < lo) next = base + ceilK(lo) * step;
+  if (hi !== null && next > hi) next = base + floorDiv(hi - base, step) * step;
+  if (up ? next < before : next > before) return;
+  el.valueAsNumber = decimalNumber(next, e);
 }
 
 // --- collections and ValidityState -----------------------------------------------
@@ -1517,6 +1727,15 @@ function formControlsNamedItem(list, name) {
 }
 
 const FORM_CONTROLS_NAMED = { get: formControlsNamedItem, names: htmlCollectionNames, unenumerable: true };
+
+// Indexed properties (WebIDL legacy platform objects): select[i] is
+// select.options[i], with its setter, in every measured jsdom version;
+// form[i] is form.elements[i] from jsdom 26.1.0 (compat.formIndexed;
+// 26.0.0 has none). No named properties: jsdom has none on forms.
+hooks.indexedElement = (element, tag, compat) => {
+  if (tag === 'select') return indexedElement(element, listOfOptions, setOption);
+  return compat.formIndexed ? indexedElement(element, formElements) : element;
+};
 
 // HTMLOptionsCollection's indexed setter (select.options[i] = option).
 function setOption(select, index, option) {

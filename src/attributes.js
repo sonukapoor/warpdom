@@ -13,8 +13,21 @@ import { styleAttributeChanged } from './css.js';
 const ATTRIBUTE_NODE = 2;
 
 // Attribute change steps by attribute name (form controls register theirs:
-// checked, selected, ...), run after the attribute map is updated.
+// checked, selected, ...), run after the attribute map is updated. A step
+// returns undefined, or a function to run after the change is reported.
 export const attributeSteps = new Map();
+
+// Adds a step for an attribute that may have one already (both run, in
+// the order added; the last function returned runs after the report).
+export function addAttributeStep(name, step) {
+  const first = attributeSteps.get(name);
+  if (first === undefined) { attributeSteps.set(name, step); return; }
+  attributeSteps.set(name, (element, old, value) => {
+    const a = first(element, old, value);
+    const b = step(element, old, value);
+    return b ?? a;
+  });
+}
 
 // The one path for attribute writes (undefined removes): keeps the id index,
 // live collections, the style object, Attr nodes and attribute views in step,
@@ -48,12 +61,15 @@ function writeAttributeValue(element, key, value, checkName) {
   attributesChanged(element);
   if (key === 'style') styleAttributeChanged(element);
   const step = attributeSteps.get(key);
-  if (step !== undefined) step(element, old, value);
+  // A step can return a function to run after the change is reported (it
+  // changes other attributes, whose records come after this one's).
+  const after = step === undefined ? undefined : step(element, old, value);
   if (observed(element)) hooks.attribute(element, key, old);
   if (hooks.ce !== null) hooks.ce.attributeChanged(element, key, old, value);
   // A removed attribute's namespace is kept until the steps above ran.
   if (value === undefined && es.attrNS != null) forgetNamespace(es, key);
   if ((key === 'slot' || key === 'name') && hooks.slots !== null && es.doc[S].slotCount) hooks.slots.attributeChanged(element, key);
+  if (after !== undefined) after();
 }
 
 // --- namespaced attributes (DOM 4.9) ---------------------------------------------

@@ -291,6 +291,14 @@ export function createWindow(options = {}) {
     });
     Object.defineProperty(protos, name, { get() { return materialize(name).prototype; }, enumerable: true, configurable: true });
   }
+  // HTMLDocument (HTML, legacy): the Document interface object under
+  // another name, as in jsdom.
+  const setHTMLDocument = (value) => Object.defineProperty(window, 'HTMLDocument', { value, writable: true, configurable: true });
+  Object.defineProperty(window, 'HTMLDocument', {
+    get() { const ctor = materialize('Document'); setHTMLDocument(ctor); return ctor; },
+    set: setHTMLDocument,
+    configurable: true,
+  });
 
   let document;
   const create = (proto, type, extra, doc) => initNode(Object.create(proto), type, doc, extra);
@@ -324,6 +332,8 @@ export function createWindow(options = {}) {
         element[S].ceState = 'undefined';
         element[S].ceIs = is;
       }
+      // form[i] and select[i] (forms.js).
+      if ((tag === 'form' || tag === 'select') && ns === HTML_NS) return hooks.indexedElement(element, tag, internals.compat);
       return element;
     },
     createText: (data, doc = document) => create(protos.Text, TEXT_NODE, { data }, doc),

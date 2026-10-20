@@ -18,7 +18,7 @@ import { CUSTOM_ELEMENT_INTERFACES, ATTACH_INTERNALS_MEMBERS, lookUp } from './c
 import { RANGE_INTERFACES, newRange, getSelection, splitText, normalize } from './ranges.js';
 import { CSSOM_INTERFACES, STYLE_ELEMENT_MEMBERS, documentStyleSheets } from './cssom.js';
 import { FOCUS_MEMBERS, DOCUMENT_FOCUS_MEMBERS } from './focus.js';
-import { FORM_INTERFACES, FORM_MEMBERS, clickMember, labelsMember } from './forms.js';
+import { FORM_INTERFACES, FORM_MEMBERS, clickMember, labelsMember, cloneFormState } from './forms.js';
 import { GEOMETRY_INTERFACES, ELEMENT_LAYOUT, HTML_ELEMENT_LAYOUT, getInnerText, setInnerText, setOuterText } from './layout.js';
 import { querySelectorAll as selectAll, matches as matchSelector, closest as closestMatch } from './selectors.js';
 import { DOM_PARSING_INTERFACES, innerMarkup, outerMarkup, XPATH_INTERFACES, XPATH_EVALUATOR_MEMBERS } from './dom-parsing.js';
@@ -289,6 +289,8 @@ function cloneNode(node, deep, doc) {
     if (s.attrNS) copy[S].attrNS = new Map(s.attrNS);
     if (s.handlers || hasOnAttribute(s.attrs)) eventHandlerAttributesAdded(copy);
     if (s.attrs.size !== 0) namedAttributesSet(copy[S], doc);
+    // Cloning steps of input and textarea (HTML): their form state.
+    if (s.ns === HTML_NS && (s.tag === 'input' || s.tag === 'textarea')) cloneFormState(node, copy);
   } else if (s.type === TEXT_NODE) copy = w.createText(s.data, doc);
   else if (s.type === COMMENT_NODE) copy = w.createComment(s.data, doc);
   else if (s.type === CDATA_SECTION_NODE) copy = w.createCDATA(s.data, doc);

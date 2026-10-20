@@ -1118,6 +1118,22 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
     // 21.1.2 in a task, not cancelable), and setRangeText() takes the new
     // value's length as the end of the replaced text.
     syncSelectEvent: before(version, [21, 1, 2]), legacyRangeTextEnd: before(version, [21, 1, 2]),
+    // Form controls (forms.js), black box per release: from 30.1.0 cloning
+    // an input copies its indeterminate state; the pattern attribute
+    // compiles with the v flag from 27.0.0, with u before.
+    // valueAsNumber = NaN throws a TypeError before 23.1.0; before 30.1.0
+    // a time's fraction is whole milliseconds and times with seconds have
+    // three fraction digits.
+    cloneIndeterminate: !before(version, [30, 1, 0]), patternFlag: before(version, [27, 0, 0]) ? 'u' : 'v', nanValueAsNumberThrows: before(version, [23, 1, 0]),
+    legacyTimeStrings: before(version, [30, 1, 0]),
+    // From 30.1.0 a checked radio button unchecks its group when it becomes
+    // connected or its form attribute changes.
+    radioConnected: !before(version, [30, 1, 0]),
+    // form[i] (form.elements[i]) from 26.1.0.
+    formIndexed: !before(version, [26, 1, 0]),
+    // textarea wrap="hard" with a cols attribute breaks lines every cols
+    // characters before 24.0.0 and from 30.1.0 (between: elsewhere).
+    hardWrap: before(version, [24, 0, 0]) || !before(version, [30, 1, 0]),
     focusIgnoresRendering: before(version, [30, 1, 2]), detachedCheckableEvents: before(version, [16, 5, 2]), cssstyle: version[0] < 27 ? (css ? cssText : undefined) : cssstyle ?? undefined, cssstyleMajor: css ? css[0] : 0,
     styleSurface: styleSurfaceKey(version, version[0] < 27 ? css : cssstyle != null ? parseJsdomVersion(cssstyle) : null),
     unquotedUrls: css !== null && before(css, [4, 3, 1]),

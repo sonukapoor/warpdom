@@ -38,7 +38,10 @@ for (const { name, interface: iface } of elements) {
   tagsByInterface.set(iface, [...(tagsByInterface.get(iface) ?? []), name]);
 }
 
-const plainTags = tagsByInterface.get('HTMLElement') ?? [];
+// menuitem is listed with HTMLElement, but the standard made it
+// HTMLUnknownElement when it removed the element (HTMLMenuItemElement is
+// gone; jsdom 20 to 30 make HTMLUnknownElement).
+const plainTags = (tagsByInterface.get('HTMLElement') ?? []).filter((tag) => tag !== 'menuitem');
 const interfaces = [...parents.keys()].filter((name) => name !== 'HTMLElement');
 // Parents before children.
 const ordered = [];

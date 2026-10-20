@@ -76,4 +76,4 @@ export const HTML_ELEMENTS = [
   ["HTMLParamElement","HTMLElement",["param"]],
 ];
 
-export const PLAIN_TAGS = ["abbr","acronym","address","article","aside","b","basefont","bdi","bdo","big","center","cite","code","dd","dfn","dt","em","figcaption","figure","footer","header","hgroup","i","kbd","main","mark","menuitem","nav","nobr","noembed","noframes","noscript","plaintext","rb","rp","rt","rtc","ruby","s","samp","search","section","small","strike","strong","sub","summary","sup","tt","u","var","wbr"];
+export const PLAIN_TAGS = ["abbr","acronym","address","article","aside","b","basefont","bdi","bdo","big","center","cite","code","dd","dfn","dt","em","figcaption","figure","footer","header","hgroup","i","kbd","main","mark","nav","nobr","noembed","noframes","noscript","plaintext","rb","rp","rt","rtc","ruby","s","samp","search","section","small","strike","strong","sub","summary","sup","tt","u","var","wbr"];
