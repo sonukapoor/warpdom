@@ -1120,6 +1120,28 @@ test('XMLHttpRequest: profile boundaries (jsdom 28.0.0 undici; network errors re
   assert.deepEqual(await Promise.all(['27.3.0', '27.4.0'].map(replacement)), ['abc', '\ufffd']);
 });
 
+test('XMLHttpRequest: fetch is asked to omit the host\'s credentials (cookies) on requests, preflights and redirect retries (Copilot review on #89)', async () => {
+  const hostFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push(`${init.method} ${init.redirect} ${init.credentials}`);
+    if (init.method === 'OPTIONS') return new Response(null, { status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' } });
+    if (init.redirect === 'manual' && calls.length === 2) return { type: 'opaqueredirect', status: 0, statusText: '', headers: new Headers(), body: null, redirected: false, url: '' };
+    return new Response('ok', { headers: { 'access-control-allow-origin': '*' } });
+  };
+  try {
+    const w = createWindow({ url: PAGE });
+    await request(w, 'PUT', `${CROSS}/echo`, { body: 'x' });
+    await request(w, 'GET', `${BASE}/text`);
+    await request(w, 'GET', `${BASE}/text`, { prep: (x) => { x.withCredentials = true; } });
+    // A preflight, the request (an opaque redirect), its retry, then two
+    // requests (one withCredentials: still no host cookies).
+    assert.deepEqual(calls, ['OPTIONS manual omit', 'PUT manual omit', 'PUT follow omit', 'GET follow omit', 'GET follow omit']);
+  } finally {
+    globalThis.fetch = hostFetch;
+  }
+});
+
 test('XMLHttpRequest: a host whose fetch hides redirects (opaqueredirect) follows them itself (Copilot review on #89)', async () => {
   const hostFetch = globalThis.fetch;
   try {

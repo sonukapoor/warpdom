@@ -603,6 +603,11 @@ these differences from jsdom:
   gives an opaque redirect), the host follows them with its own checks and
   only the final response gets jsdom's; the first redirected request is
   sent a second time to find this out. Node, Deno and Bun expose redirects.
+- Browser hosts are not supported for cross-origin requests yet: a
+  browser's `fetch` hides the CORS headers warpdom checks, so allowed
+  cross-origin responses fail
+  ([#91](https://github.com/sonukapoor/warpdom/issues/91)). Requests never
+  carry the host's own cookies (`credentials: 'omit'`).
 - A redirect that fails its CORS check is a network error. jsdom before 28
   fires `error` and then goes on to follow the redirect and fire `load`.
 - jsdom 20 to 26 report network errors on the virtual console; warpdom's

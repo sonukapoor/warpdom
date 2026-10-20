@@ -3609,3 +3609,21 @@ agree on everything):
   when it or the request is cross-origin. Documented (README, docs/api.md);
   test with a fetch stub.
 
+### Copilot's re-review of 8bc5d15 on #89 (2026-10-20)
+
+No open issues; three "previously missed" items in unchanged code
+(decided by the coordinator for Sonu):
+- The timers and clock were taken from the global of the context that
+  evaluates warpdom: the CommonJS bundle evaluated in a Jest test file's
+  VM context after fake timers were installed got the fake ones (a timeout
+  never fired). Now from PLATFORM_GLOBAL (Node's main global in the
+  bundle). Test in test/cjs.test.js (bundle in a VM context with
+  never-firing timers and a frozen Date: the timeout fires).
+- Every fetch (request, preflight, redirect retry) passes credentials:
+  'omit': warpdom has no cookies, and a browser host's must not go with
+  its requests (no-op on Node). Test with a fetch stub.
+- Not done: browser fetch filters cross-origin responses (CORS headers
+  hidden), so warpdom's own CORS checks reject allowed responses on a
+  browser host. Documented as a limitation (README, docs/api.md); issue
+  #91, for the SSR/edge milestone.
+

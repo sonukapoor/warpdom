@@ -36,10 +36,12 @@ import { userAgentOf } from './window-features.js';
 // Timers and clock of the host, taken when warpdom loads: a test's fake
 // timers (and a faked or frozen Date) do not stop requests from completing
 // or timing out, nor change how much of a timeout is left (as with jsdom,
-// whose requests run on Node's I/O).
-const hostSetTimeout = globalThis.setTimeout;
-const hostClearTimeout = globalThis.clearTimeout;
-const hostNow = Date.now;
+// whose requests run on Node's I/O). From the platform's global object:
+// the CommonJS bundle can be evaluated in a Jest test file's VM context
+// after its fake timers were installed there.
+const hostSetTimeout = PLATFORM_GLOBAL.setTimeout?.bind(PLATFORM_GLOBAL);
+const hostClearTimeout = PLATFORM_GLOBAL.clearTimeout?.bind(PLATFORM_GLOBAL);
+const hostNow = PLATFORM_GLOBAL.Date.now.bind(PLATFORM_GLOBAL.Date);
 
 const UNSENT = 0, OPENED = 1, HEADERS_RECEIVED = 2, LOADING = 3, DONE = 4;
 const STATES = { UNSENT, OPENED, HEADERS_RECEIVED, LOADING, DONE };
@@ -390,7 +392,9 @@ async function fetchFollowing(fetch, s, req) {
   for (let redirects = 0; ; redirects++) {
     // The headers as name/value pairs: fetch's conversion of a record loses
     // a header named __proto__.
-    const init = { method, headers: Object.entries(headers), body, redirect: hostFollows.has(fetch) ? 'follow' : 'manual', signal };
+    // credentials 'omit': warpdom has no cookies, and a host's (a browser's)
+    // must not go with the request.
+    const init = { method, headers: Object.entries(headers), body, credentials: 'omit', redirect: hostFollows.has(fetch) ? 'follow' : 'manual', signal };
     let response = await fetch(fetchURL, init);
     if (s.req !== req) { response.body?.cancel().catch(() => {}); return null; }
     if (response.type === 'opaqueredirect' && init.redirect === 'manual') {
@@ -541,7 +545,7 @@ async function run(xhr, s, req) {
     if (req.preflight) {
       const headers = { Origin: origin, 'Access-Control-Request-Method': method, 'User-Agent': req.userAgent, Accept: '*/*', 'Accept-Language': 'en' };
       if (req.unsafe.length) headers['Access-Control-Request-Headers'] = req.unsafe.join(', ');
-      const preflight = await fetch(req.fetchURL, { method: 'OPTIONS', headers, redirect: 'manual', signal: req.controller.signal });
+      const preflight = await fetch(req.fetchURL, { method: 'OPTIONS', headers, credentials: 'omit', redirect: 'manual', signal: req.controller.signal });
       if (s.req !== req) return;
       preflight.body?.cancel().catch(() => {});
       if (preflight.status < 200 || preflight.status > 299) { fail(xhr, s, req, `Error: Response for preflight has invalid HTTP status code ${preflight.status}`); return; }

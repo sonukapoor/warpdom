@@ -62,6 +62,29 @@ test('CommonJS build: works in a Jest-like VM context, without loading packages 
   assert.match(readFileSync(bundleFile, 'utf8'), /^(\/\/.*\n)*'use strict';\n/);
 });
 
+test('CommonJS build: loaded in a VM context with fake timers and a frozen Date already installed, XHR timeouts still fire (Copilot review on #89)', async () => {
+  const { startServer } = await import('./xhr-server.js');
+  const server = await startServer();
+  try {
+    // Jest's fake timers in the test file's context: timers that never fire,
+    // a Date that stands still.
+    const frozen = Date.now();
+    class FrozenDate extends Date { static now() { return frozen; } }
+    const never = () => ({ ref() { return this; }, unref() { return this; }, hasRef: () => false, refresh() { return this; } });
+    const context = vm.createContext({ console, setTimeout: never, clearTimeout: () => {}, setInterval: never, clearInterval: () => {}, Date: FrozenDate, queueMicrotask, URL, DOMException });
+    const { exports: warpdom } = loadInContext(context);
+    const window = warpdom.createWindow({ url: `http://localhost:${server.port}/page/index.html` });
+    const x = new window.XMLHttpRequest();
+    const fired = new Promise((resolve) => { x.ontimeout = () => resolve('timeout'); setTimeout(() => resolve('no timeout'), 2000); });
+    x.open('GET', `http://localhost:${server.port}/hang`);
+    x.timeout = 50;
+    x.send();
+    assert.equal(await fired, 'timeout');
+  } finally {
+    await server.close();
+  }
+});
+
 test('CommonJS build: in the VM context of warpdom/jest, whose global object is a warpdom window', async () => {
   // Stand-ins for the Jest packages the environment loads from the project.
   const dir = mkdtempSync(join(tmpdir(), 'warpdom-cjs-'));
