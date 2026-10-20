@@ -63,8 +63,8 @@ jobs:
       CONFIGS: ${{ inputs.configs }}
       WARMUP: ${{ inputs.warmup && 'yes' || 'no' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22.23.3
       # pnpm and yarn at the versions the projects declare (packageManager).
@@ -81,7 +81,7 @@ jobs:
           node bench/corpus/time.mjs --corpus "$CORPUS" --repos-dir "$CORPUS_REPOS_DIR" \
             --rounds "$ROUNDS" --configs "$CONFIGS" $([ "$WARMUP" = no ] && echo --no-warmup) \
             --out .corpus-timing --csv ".corpus-timing/timing-ci-$PROJECT.csv" "$PROJECT"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: timing-${{ matrix.project }}
@@ -97,11 +97,11 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22.23.3
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: timing-*
           path: results
@@ -121,7 +121,7 @@ jobs:
           for f in "${files[@]}"; do tail -n +2 "$f" >> "$out"; done
           node bench/corpus/report.mjs "$out" | tee results/report.md
           { echo '## Corpus timing (median of rounds)'; echo; cat results/report.md; } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: timing-report
           path: |
