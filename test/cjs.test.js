@@ -62,6 +62,69 @@ test('CommonJS build: works in a Jest-like VM context, without loading packages 
   assert.match(readFileSync(bundleFile, 'utf8'), /^(\/\/.*\n)*'use strict';\n/);
 });
 
+test('CommonJS build: loaded in a VM context with fake timers and a frozen Date already installed, XHR timeouts still fire (Copilot review on #89)', async () => {
+  const { startServer } = await import('./xhr-server.js');
+  const server = await startServer();
+  try {
+    // Jest's fake timers in the test file's context: timers that never fire,
+    // a Date that stands still.
+    const frozen = Date.now();
+    class FrozenDate extends Date { static now() { return frozen; } }
+    const never = () => ({ ref() { return this; }, unref() { return this; }, hasRef: () => false, refresh() { return this; } });
+    const context = vm.createContext({ console, setTimeout: never, clearTimeout: () => {}, setInterval: never, clearInterval: () => {}, Date: FrozenDate, queueMicrotask, URL, DOMException });
+    const { exports: warpdom } = loadInContext(context);
+    const window = warpdom.createWindow({ url: `http://localhost:${server.port}/page/index.html` });
+    const x = new window.XMLHttpRequest();
+    const fired = new Promise((resolve) => { x.ontimeout = () => resolve('timeout'); setTimeout(() => resolve('no timeout'), 2000); });
+    x.open('GET', `http://localhost:${server.port}/hang`);
+    x.timeout = 50;
+    x.send();
+    assert.equal(await fired, 'timeout');
+  } finally {
+    await server.close();
+  }
+});
+
+test('CommonJS build: in a VM context without AbortController, preflighted requests work and stop (Copilot review on #89)', async () => {
+  const { startServer } = await import('./xhr-server.js');
+  const server = await startServer();
+  try {
+    const { exports: warpdom } = loadInContext();
+    const window = warpdom.createWindow({ url: `http://localhost:${server.port}/page/index.html` });
+    const send = (method, url, stop) => new Promise((resolve) => {
+      const x = new window.XMLHttpRequest();
+      x.onloadend = () => resolve([x.status, x.responseText === '' ? '' : JSON.parse(x.responseText).method]);
+      x.open(method, url);
+      x.send('x');
+      if (stop) x.abort();
+    });
+    // Cross-origin PUT: a preflight first (it used req.controller.signal).
+    assert.deepEqual(await send('PUT', `http://127.0.0.1:${server.port}/echo?acao=*&preflight=ok`), [200, 'PUT']);
+    assert.deepEqual(await send('POST', `http://localhost:${server.port}/hang`, true), [0, '']);
+  } finally {
+    await server.close();
+  }
+});
+
+test('CommonJS build: in a VM context without btoa, the jsdom 20 profile sends URL credentials as Basic authorization (Copilot review on #89)', async () => {
+  const { startServer } = await import('./xhr-server.js');
+  const server = await startServer();
+  try {
+    const { exports: warpdom, context } = loadInContext();
+    assert.equal(vm.runInContext('typeof btoa', context), 'undefined');
+    const window = warpdom.createWindow({ url: `http://localhost:${server.port}/page/index.html`, jsdom: '20.0.3' });
+    const authorization = await new Promise((resolve) => {
+      const x = new window.XMLHttpRequest();
+      x.onloadend = () => resolve(x.status === 200 ? JSON.parse(x.responseText).headers.authorization : `status ${x.status}`);
+      x.open('GET', `http://%C3%A9:p@localhost:${server.port}/echo`);
+      x.send();
+    });
+    assert.equal(authorization, 'Basic w6k6cA==');
+  } finally {
+    await server.close();
+  }
+});
+
 test('CommonJS build: in the VM context of warpdom/jest, whose global object is a warpdom window', async () => {
   // Stand-ins for the Jest packages the environment loads from the project.
   const dir = mkdtempSync(join(tmpdir(), 'warpdom-cjs-'));

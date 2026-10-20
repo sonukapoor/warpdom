@@ -131,7 +131,7 @@ from 24.1.0, the SVG element interfaces of `g`, `defs`, `desc`,
 27.4.0, Blob's `text()`, `arrayBuffer()` and `bytes()` from 28.1.0,
 `CSSMediaRule.matches` from 29.0.0 (`window.crypto`, `window.performance`,
 `Blob`, `File`, `URL`, `URLSearchParams`, `Headers`, `console`,
-`WebAssembly`, `WebSocket`, `SVGNumber`, `SVGStringList`, `SVGAnimatedString`,
+`WebAssembly`, `WebSocket`, `XMLHttpRequest`, `SVGNumber`, `SVGStringList`, `SVGAnimatedString`,
 `PageTransitionEvent`, the empty `navigator.plugins` and
 `navigator.mimeTypes`, and media elements' `audioTracks` and `videoTracks`
 exist in every version). Before 28.1.0 an `svg` element's window event
@@ -169,6 +169,29 @@ rewritten each run with ticked boxes kept. What an existing API issue names
 is skipped, and nothing happens when the data has not changed. Run
 `node scripts/api-gaps.mjs` locally for a dry run that prints what it would
 open.
+
+### XMLHttpRequest and request mocking
+
+`XMLHttpRequest` exists in every jsdom version, so warpdom has it too:
+written from the XHR standard on top of the host's `fetch`, with jsdom's
+observable behavior (events and their order, CORS checks and preflights,
+timeouts, aborts, errors; jsdom 28 changed several of these when it moved
+to undici, and the profile follows). HTTP libraries that look for it
+(axios) take their XHR adapter, as with jsdom. Request mocking works as
+with jsdom: msw answers the request the XHR makes through `fetch` (so a
+cross-origin mocked response needs `Access-Control-Allow-Origin`, as on
+jsdom), and nock answers XHR itself. The differences are listed under
+[Differences from jsdom](#differences-from-jsdom).
+
+Before XMLHttpRequest, axios used Node's HTTP client under warpdom. To keep
+that (no `XMLHttpRequest` at all):
+
+```js
+// Vitest
+test: { environment, environmentOptions: { warpdom: { xhr: false } } }
+// Jest
+testEnvironmentOptions: { xhr: false }
+```
 
 ## Check your suite first: `warpdom compare`
 
@@ -443,7 +466,9 @@ On the 17 WPT areas a test DOM is expected to cover (3,447 files; `dom`,
 the observers or Web Animations (opt-in work, #5-#12), which keeps both totals
 low. warpdom was worked on against the first four areas (87.4% vs 80.5% there
 on 2026-10-13), so those are not an independent check. The runner is in
-[wpt/](wpt/); the workflow runs all 17 areas monthly at the newest WPT.
+[wpt/](wpt/); the workflow runs all 17 areas monthly at the newest WPT,
+and `xhr` (most of its tests need WPT's server, which the runner does not
+have).
 <!-- source: docs/research/data/wpt/ci-2026-10-19-9d1498b/summary.md (run 39189276229 at WPT HEAD, warpdom main 9d1498b: warpdom 140,797 of 186,857, 75.4%, score 34.1%; jsdom 127,119 of 176,171, 72.2%, score 32.0%). Earlier 4-area run: docs/research/data/wpt/ci-2026-10-13-208ad49/summary.md (run 38427179332: 87.4% vs 80.5%) -->
 
 Full tables, method, profiles and caveats:
@@ -551,11 +576,43 @@ Not implemented (jsdom lacks these too): layout (sizes and positions are
 0, as in jsdom), `inert`, loading external style sheets, scripts or pages,
 navigation to other documents.
 
-Not implemented, unlike jsdom: `XMLHttpRequest`. In 4,151 test files of 20
-projects we traced, no test used it; HTTP libraries that feature-detect it
-(axios) fall back to Node's HTTP client, which request mocking (nock, msw)
-intercepts as well. If your suite tests XHR itself, `warpdom compare` will
-show it; please report it.
+`XMLHttpRequest` makes its requests with the host's `fetch`, which decides
+these differences from jsdom:
+
+- `getAllResponseHeaders()` lists the headers sorted by name, with repeated
+  headers combined into one line (jsdom: in the order received, and from
+  jsdom 28 each repeated header on its own line). `getResponseHeader()` is
+  the same.
+- Upload progress is not measured: the upload's `progress`, `load` and
+  `loadend` events report the whole body when the response's headers
+  arrive, as jsdom's do.
+- Synchronous requests (`open(method, url, false)`) throw a
+  `NotSupportedError` at `send()`; jsdom runs them in a child process.
+- Cookies are neither sent nor stored. jsdom shares its cookie jar with
+  `document.cookie`: a response's `Set-Cookie` shows up in
+  `document.cookie`, and requests send the document's cookies.
+- `file:` URLs fail with a network error (jsdom reads the file).
+- Requests carry fetch's `Sec-Fetch-Mode` header. A `DataView` body is
+  sent (jsdom 28 and later send none). The method `patch` in lowercase is
+  sent as is, as jsdom does, and makes Node print a warning once. Requests
+  from an `about:blank` iframe send no `Referer` (jsdom: `about:blank`).
+- The `Referer` never carries the page URL's credentials or fragment, as
+  Referrer Policy says. jsdom sends the document's URL with both, and
+  before 28 sends a redirected request's previous URL as requested.
+- Where the host's `fetch` hides redirects (in a browser, `redirect: 'manual'`
+  gives an opaque redirect), the host follows them with its own checks and
+  only the final response gets jsdom's; the first redirected request is
+  sent a second time to find this out. Node, Deno and Bun expose redirects.
+- Browser hosts are not supported for cross-origin requests yet: a
+  browser's `fetch` hides the CORS headers warpdom checks, so allowed
+  cross-origin responses fail
+  ([#91](https://github.com/sonukapoor/warpdom/issues/91)). Requests never
+  carry the host's own cookies (`credentials: 'omit'`).
+- A redirect that fails its CORS check is a network error. jsdom before 28
+  fires `error` and then goes on to follow the redirect and fire `load`.
+- jsdom 20 to 26 report network errors on the virtual console; warpdom's
+  test environments report them where they report "Not implemented"
+  messages, in jsdom's words for CORS failures and with fetch's for others.
 
 ## API
 

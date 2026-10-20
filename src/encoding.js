@@ -85,7 +85,7 @@ export function utf8Encode(string) {
 
 // label -> encoding name, built on first use.
 let labelTable = null;
-function encodingOf(label) {
+export function encodingOf(label) {
   if (labelTable === null) {
     labelTable = new Map();
     for (const [name, labels] of Object.entries(ENCODING_LABELS)) for (const l of labels) labelTable.set(l, name);

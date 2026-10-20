@@ -23,6 +23,7 @@ import { GEOMETRY_INTERFACES, ELEMENT_LAYOUT, HTML_ELEMENT_LAYOUT, getInnerText,
 import { querySelectorAll as selectAll, matches as matchSelector, closest as closestMatch } from './selectors.js';
 import { DOM_PARSING_INTERFACES, innerMarkup, outerMarkup, XPATH_INTERFACES, XPATH_EVALUATOR_MEMBERS } from './dom-parsing.js';
 import { FILE_READER_INTERFACES } from './file-reader.js';
+import { XHR_INTERFACES } from './xhr.js';
 import { BLOB_INTERFACES } from './file-reader.js';
 import { ENCODING_INTERFACES } from './encoding.js';
 import { ABORT_INTERFACES } from './abort.js';
@@ -303,6 +304,8 @@ function cloneNode(node, deep, doc) {
     copy = w.initDocument(Object.create(Object.getPrototypeOf(node)), {
       noView: true, url: node.URL, contentType: s.contentType, xml: !!s.xml, mode: s.mode ?? 'no-quirks',
     });
+    // And the same encoding (an XMLHttpRequest response document's charset).
+    if (s.charset !== undefined) copy[S].charset = s.charset;
     doc = copy;
   } else if (s.type === ATTRIBUTE_NODE) {
     copy = initNode(Object.create(w.protos.Attr), ATTRIBUTE_NODE, doc, { name: s.name, key: s.key, element: null, detachedValue: node.value, info: attrInfo(s) });
@@ -424,6 +427,7 @@ export const INTERFACES = [
   ...DOM_PARSING_INTERFACES,
   ...XML_INTERFACES,
   ...FILE_READER_INTERFACES,
+  ...XHR_INTERFACES,
   ...BLOB_INTERFACES,
   ...ENCODING_INTERFACES,
   ...ABORT_INTERFACES,
@@ -672,9 +676,10 @@ export const INTERFACES = [
       },
       get compatMode() { return state(this).mode === 'quirks' ? 'BackCompat' : 'CSS1Compat'; },
       get contentType() { return state(this).contentType; },
-      get characterSet() { state(this); return 'UTF-8'; },
-      get charset() { state(this); return 'UTF-8'; },
-      get inputEncoding() { state(this); return 'UTF-8'; },
+      // UTF-8, except an XMLHttpRequest response document's (its charset).
+      get characterSet() { return state(this).charset ?? 'UTF-8'; },
+      get charset() { return state(this).charset ?? 'UTF-8'; },
+      get inputEncoding() { return state(this).charset ?? 'UTF-8'; },
       get readyState() { state(this); return 'complete'; },
       createElement(tagName, options = undefined) {
         const s = state(this);

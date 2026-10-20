@@ -154,6 +154,13 @@ function applyCompat(window, protos) {
   if (jsdom < 30) delete window.CSS;
   if (!window[S].compat.nestedDeclarations) delete window.CSSNestedDeclarations;
   if (!window[S].compat.elementInternals) delete window.ElementInternals;
+  // Option xhr: false (createWindow): no XMLHttpRequest, as before warpdom
+  // had it (HTTP libraries then take the host's HTTP client).
+  if (!window[S].xhr) {
+    delete window.XMLHttpRequest;
+    delete window.XMLHttpRequestEventTarget;
+    delete window.XMLHttpRequestUpload;
+  }
   if (!window[S].compat.textCodec) {
     delete window.TextEncoder;
     delete window.TextDecoder;
@@ -382,16 +389,24 @@ export function createWindow(options = {}) {
       Object.create(xml && !plain ? protos.XMLDocument : protos.Document), { noView: true, url: 'about:blank', contentType, xml }),
     // Errors from event listeners that no 'error' listener handled. Logged
     // like jsdom does; test environments replace this to fail the test.
-    onUnhandledError: (error) => console.error(error),
+    // A frame's are reported where its top window reports jsdom's virtual
+    // console errors (reportError): with jsdom under Jest and Vitest they
+    // are logged and do not fail the test (only the top window's 'error'
+    // event is watched).
+    onUnhandledError: options.nested ? (error) => options.nested.parent[S].reportError(error) : (error) => console.error(error),
+    // jsdom's virtual console errors ("jsdomError"): test environments send
+    // them where jsdom's environments do.
+    reportError: options.nested ? (error) => options.nested.parent[S].reportError(error) : (error) => console.error(error),
     // As jsdom reports unimplemented features (form submission, navigation)
     // through its virtual console, in its version's words; the test
     // environments send the text where jsdom's environments send it
     // (reportNotImplemented).
     notImplemented: (message) => internals.reportNotImplemented(`Not implemented: ${internals.compat.jsdom < 27 ? legacyWords(message) : message}`),
-    reportNotImplemented: (text) => console.error(text),
+    // A frame reports where its top window does (jsdom: one virtual console).
+    reportNotImplemented: options.nested ? (...args) => options.nested.parent[S].reportNotImplemented(...args) : (text) => console.error(text),
     // An iframe's nested window (frames.js).
     // A frame's window behaves like the same jsdom generation as its parent.
-    createNestedWindow: ({ url, parent, frameElement }) => createWindow({ url, jsdom: parent[S].compat.version, cssstyle: parent[S].compat.cssstyle, fastFrames: parent[S].fastFrames, nested: { parent, frameElement } }),
+    createNestedWindow: ({ url, parent, frameElement }) => createWindow({ url, jsdom: parent[S].compat.version, cssstyle: parent[S].compat.cssstyle, fastFrames: parent[S].fastFrames, xhr: parent[S].xhr, nested: { parent, frameElement } }),
     parentWindow: options.nested?.parent ?? null,
     frameElement: options.nested?.frameElement ?? null,
   };

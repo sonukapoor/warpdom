@@ -27,10 +27,6 @@ const HTML_TAGS = [...new Set([...HTML_ELEMENTS.flatMap(([, , tags]) => tags), .
 // jsdom majors it applies to, the issue and why. An entry that matches
 // nothing in any version fails the test: remove it then.
 const KNOWN = [
-  // To be implemented, on by default, in its own branch after the parity
-  // branches merge (PLAN.md, decided 2026-10-19).
-  { path: /^(window\.)?XMLHttpRequest(EventTarget|Upload)?\b/, issues: [22, 30] },
-
   // No issue yet (found by this test; see #18).
   { path: /^HTML(Button|Input|Select|TextArea)Element\.prototype\.(autofocus|inputMode)$/, difference: /^on HTMLElement$/, issues: [], reason: 'jsdom has them on the element interface too' },
   { path: /^(HTMLFormControlsCollection|HTMLOptionsCollection|RadioNodeList|CSSStyleProperties)\.prototype\.\[Symbol\.iterator\]$/, difference: /^on /, issues: [], reason: 'jsdom gives each interface its own @@iterator' },

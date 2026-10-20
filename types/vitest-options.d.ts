@@ -15,6 +15,12 @@ export interface WarpdomVitestOptions {
   cssstyle?: string;
   /** Run animation frames without the real-time wait (docs/fast-frames.md). Default `false`. */
   fastFrames?: boolean;
+  /**
+   * `false` leaves out XMLHttpRequest (and XMLHttpRequestEventTarget and
+   * XMLHttpRequestUpload), so HTTP libraries that look for it (axios) use
+   * the host's HTTP client instead. Default `true`, as jsdom has it.
+   */
+  xhr?: boolean;
 }
 
 /** Vitest's `test.environmentOptions`, as warpdom's environment reads it. */

@@ -10,6 +10,8 @@
 import { S, HTML_NS, ELEMENT_NODE, hooks, nextInTree, PlatformURL as URL } from './internal.js';
 import { dispatch, exposed } from './events.js';
 import { clearWindowTimers } from './window-features.js';
+import { abortWindowRequests } from './xhr.js';
+import { windowOrigin } from './window-features.js';
 
 // iframe and frame elements.
 const isIframe = (n) => { const s = n[S]; return s.type === ELEMENT_NODE && s.ns === HTML_NS && (s.tag === 'iframe' || s.tag === 'frame'); };
@@ -50,6 +52,16 @@ function createFrame(iframe) {
     try { url = new URL(src, doc[S].url ?? parent[S].url).href; } catch { /* about:blank */ }
   }
   const child = parent[S].createNestedWindow({ url, parent, frameElement: iframe });
+  if (url === 'about:blank') {
+    // An about:blank document has its creator's origin, and its creator's
+    // base URL as fallback base URL (HTML 7.1.1, 2.4.1). jsdom 26 and
+    // later keep the base URL from its first use, earlier ones follow the
+    // parent's (black box).
+    child[S].aboutOrigin = windowOrigin(parent);
+    const cs = child.document[S];
+    cs.aboutBase = doc;
+    cs.aboutBaseKept = parent[S].compat.jsdom >= 26;
+  }
   es.frameWindow = child;
   const frames = parent[S].childFrames ?? (parent[S].childFrames = []);
   frames.push(child);
@@ -70,6 +82,7 @@ function destroyFrame(iframe) {
   child[S].discarded = true;
   hooks.discardedWindows++;
   clearWindowTimers(child);
+  abortWindowRequests(child);
   const parent = child[S].parentWindow;
   const frames = parent[S].childFrames;
   frames.splice(frames.indexOf(child), 1);

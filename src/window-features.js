@@ -220,12 +220,16 @@ const barMembers = Object.fromEntries(BARS.map((bar) => [bar, {
 // [Replaceable] attributes: assigning one replaces it with an own property.
 const replace = (target, name, value) => Object.defineProperty(target, name, { value, writable: true, enumerable: true, configurable: true });
 
+// A window's origin: an iframe's about:blank document has its creator's
+// (frames.js), as in jsdom (its location.origin stays "null").
+export const windowOrigin = (window) => { const ws = state(window); return ws.aboutOrigin ?? ws.url.origin; };
+
 export const WINDOW_MEMBERS = {
   ...animationFrames,
   ...timerMembers,
   ...noOps,
   ...barMembers,
-  get origin() { const url = state(this).url; return url.origin; },
+  get origin() { return windowOrigin(this); },
   set origin(value) { replace(this, 'origin', value); },
   get external() { const ws = state(this); return ws.external ?? (ws.external = make(this, 'External', {})); },
   set external(value) { replace(this, 'external', value); },
@@ -289,6 +293,9 @@ const userAgent = () => {
   const platform = globalThis.process?.platform ?? 'unknown OS';
   return `Mozilla/5.0 (${platform}) AppleWebKit/537.36 (KHTML, like Gecko) jsdom/30.0.0 warpdom/${VERSION}`;
 };
+
+// The user agent a window's requests send (XMLHttpRequest).
+export const userAgentOf = () => userAgent();
 
 const url = (self) => state(self).window[S].url;
 const setURL = (self, next) => { state(self).window[S].url = next; };
@@ -1203,6 +1210,14 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // Event handlers (event-handlers.js): before 22.1.0 jsdom lacks 19 of
     // GlobalEventHandlers' (oncopy, ontouchstart, ...; black box).
     legacyHandlers: before(version, [22, 1, 0]),
+    // XMLHttpRequest (xhr.js): jsdom 28.0.0 moved it from Node's http
+    // module to undici (event order, headers, bodies; black box 27.4.0 and
+    // 28.0.0), and from 27.0.0 network errors are no longer reported on the
+    // virtual console.
+    // send() rejects views on a SharedArrayBuffer from 27.0.1; a response
+    // charset naming the replacement encoding (iso-2022-kr) decodes to
+    // U+FFFD from 27.4.0 (before: as UTF-8).
+    xhrUndici: !before(version, [28, 0, 0]), xhrRejectsShared: !before(version, [27, 0, 1]), xhrReplacement: !before(version, [27, 4, 0]),
     urlParse: !before(version, [23, 0, 0]), paramValues: !before(version, [23, 0, 0]), setCookieList: !before(version, [24, 1, 0]),
     // BlobEvent's timecode without one in the init: 0 before 30.1.0, NaN from it.
     blobEventNaNTimecode: !before(version, [30, 1, 0]),
@@ -1218,8 +1233,10 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
 
 // Per-window setup: URL, location, history, and the legacy factory
 // constructors Image, Audio and Option (their prototype is the element's).
-export function setupWindow(window, { url: initial = 'about:blank', fastFrames = false } = {}) {
+export function setupWindow(window, { url: initial = 'about:blank', fastFrames = false, xhr = true } = {}) {
   const ws = window[S];
+  // Option xhr: false leaves XMLHttpRequest out (window.js applyCompat).
+  ws.xhr = xhr !== false;
   // Opt-in (option fastFrames): animation frames run as soon as the event
   // loop gets to them instead of every 16.7 ms of real time (see below).
   ws.fastFrames = fastFrames === true;

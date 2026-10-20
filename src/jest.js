@@ -24,6 +24,7 @@ import { installWindow, defineSelfKey } from './vitest.js';
 import { ablated, materializeAll } from './ablate.js';
 import { setQueryCache } from './selectors.js';
 import { warnNewerJsdom } from './window-features.js';
+import { abortWindowRequests } from './xhr.js';
 
 if (ablated('no-query-cache')) setQueryCache(false);
 
@@ -144,7 +145,7 @@ export default class WarpdomEnvironment {
     const options = projectConfig.testEnvironmentOptions ?? {};
 
     // jest-environment-jsdom's default URL.
-    const window = createWindow({ url: options.url ?? 'http://localhost/', ...(ablated('latest-profile') ? {} : jsdomProfile(projectConfig.rootDir ?? process.cwd(), options)), fastFrames: options.fastFrames === true });
+    const window = createWindow({ url: options.url ?? 'http://localhost/', ...(ablated('latest-profile') ? {} : jsdomProfile(projectConfig.rootDir ?? process.cwd(), options)), fastFrames: options.fastFrames === true, xhr: options.xhr !== false });
     if (ablated('eager-interfaces')) materializeAll(window);
     // An error thrown in an event listener fails the test, unless the test
     // listens for 'error' on the window (as with jest-environment-jsdom).
@@ -166,10 +167,19 @@ export default class WarpdomEnvironment {
     // As jest-environment-jsdom: "Not implemented" reports go to the test's
     // console as Error objects (tests spy on console.error and read the
     // message).
-    window[S].reportNotImplemented = (text) => {
+    window[S].reportNotImplemented = (text, type = 'not implemented') => {
       const error = new Error(text);
-      error.type = 'not implemented';
+      error.type = type;
       global.console?.error(error);
+    };
+    // As jest-environment-jsdom: jsdom's virtual console errors (a frame's
+    // uncaught listener exceptions) go to the test's console, as jsdom's
+    // "Uncaught [...]" error (type and detail before jsdom 27, cause after).
+    window[S].reportError = (error) => {
+      const report = new Error(`Uncaught [${String(error)}]`);
+      if (window[S].compat.jsdom < 27) Object.assign(report, { type: 'unhandled exception', detail: error });
+      else Object.assign(report, { type: 'unhandled-exception', cause: error });
+      global.console?.error(report);
     };
     // The window's console (frames') writes to the test's console, where
     // jest-environment-jsdom sends jsdom's virtual console.
@@ -204,6 +214,8 @@ export default class WarpdomEnvironment {
     this.fakeTimers?.dispose();
     this.fakeTimersModern?.dispose();
     this.clearTimers?.();
+    // Requests still running stop without events, as closing jsdom's window stops them.
+    if (this.window) abortWindowRequests(this.window);
     if (this.context) {
       for (const key of CLOSED_WINDOW_UNDEFINED) {
         Object.defineProperty(this.context, key, { get: () => undefined, enumerable: true, configurable: true });

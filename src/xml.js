@@ -255,13 +255,19 @@ const errorMessage = (error) => error.message.split('\n')[0].replace(/ \(line \d
 const scalarValues = (text) => (typeof text.toWellFormed === 'function' ? text.toWellFormed()
   : text.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '\uFFFD'));
 
-const PARSER_ERROR_NS = 'http://www.mozilla.org/newlayout/xml/parsererror.xml';
+export const PARSER_ERROR_NS = 'http://www.mozilla.org/newlayout/xml/parsererror.xml';
 
 // Parses an XML document into doc (an empty XML document). A document that
 // is not well-formed becomes an error document: a parsererror element (in
 // Firefox's namespace, as the DOM Parsing tests and jsdom have it) with
 // the message.
 export function parseXMLDocument(doc, text) {
+  parseXMLInto(doc, text);
+  return doc;
+}
+
+// As parseXMLDocument(); returns whether the text was well-formed.
+export function parseXMLInto(doc, text) {
   const w = internals(doc);
   const source = scalarValues(String(text));
   try {
@@ -275,8 +281,9 @@ export function parseXMLDocument(doc, text) {
     const root = w.createElementNS(PARSER_ERROR_NS, 'parsererror', doc, true);
     insert(root, w.createText(`${position(source, error.pos)}: ${message}`, doc), null);
     insert(doc, root, null);
+    return false;
   }
-  return doc;
+  return true;
 }
 
 // The namespace bindings in scope at an element: prefix -> namespace,

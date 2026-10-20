@@ -80,13 +80,19 @@ export function wptFile(wptRoot, url) {
 const MIME = { js: 'text/javascript', html: 'text/html', htm: 'text/html', css: 'text/css', json: 'application/json', xml: 'application/xml',
   xhtml: 'application/xhtml+xml', svg: 'image/svg+xml', txt: 'text/plain', idl: 'text/plain', png: 'image/png', gif: 'image/gif', jpg: 'image/jpeg' };
 
+// The host's fetch, for data: and blob: URLs (warpdom's XMLHttpRequest
+// fetches through the global's fetch, which the runner replaces).
+const hostFetch = globalThis.fetch;
+
 // A fetch() standing in for WPT's server: files of the checkout, by URL
-// (relative URLs against the document's base URL); other origins fail as a
-// network error. Static files only: no headers files, no Python handlers.
+// (relative URLs against the document's base URL); data: and blob: URLs
+// as the host's fetch has them; other origins fail as a network error.
+// Static files only: no headers files, no Python handlers.
 export function wptFetch(wptRoot, baseUrl) {
   return async function fetch(input, init) {
     const href = typeof input === 'string' ? input : input?.url ?? String(input);
     const url = new URL(href, baseUrl());
+    if (url.protocol === 'data:' || url.protocol === 'blob:') return hostFetch(url.href, init);
     if (!WPT_HOSTS.has(url.hostname)) throw new TypeError('Failed to fetch (network access is not available in this runner)');
     const file = wptFile(wptRoot, url);
     if (!file) return new Response('', { status: 404, statusText: 'Not Found' });

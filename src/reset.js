@@ -24,6 +24,7 @@ import { S, insert, hooks, PlatformURL as URL } from './internal.js';
 import { clearStorage } from './storage.js';
 import { clearCookies } from './cookies.js';
 import { clearWindowTimers } from './window-features.js';
+import { abortWindowRequests } from './xhr.js';
 import { clearDeclarations } from './css.js';
 
 // Own properties (string and symbol keys) of an object, as descriptors.
@@ -131,6 +132,7 @@ export function resetWindow(window) {
   // would never run: the next file starts without frames.
   if (ws.frames) { ws.frames.queue.clear(); ws.frames = undefined; }
   clearWindowTimers(window);
+  abortWindowRequests(window);
   clearStorage(window);
   clearCookies(window);
   ws.url = new URL(ws.initialURL);

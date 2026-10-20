@@ -139,6 +139,50 @@ test('Jest environment: "Not implemented" reports reach the test\'s console as e
   }
 });
 
+// Black box (jest-environment-jsdom 30, jsdom 20 to 30): a frame's uncaught
+// listener exception does not fail the test (only the top window's 'error'
+// event is watched); jsdom's virtual console sends it to the test's console
+// as "Uncaught [...]" (Copilot review on #89).
+test('Jest environment: a frame\'s listener errors reach the test\'s console and do not fail the test, as with jsdom', async () => {
+  for (const [jsdom, type, link] of [['20.0.3', 'unhandled exception', 'detail'], ['30.1.3', 'unhandled-exception', 'cause']]) {
+    const rootDir = fakeJestProject();
+    let env;
+    const emit = process.emit;
+    const uncaught = [];
+    process.emit = function (name, ...args) { if (name === 'uncaughtException') { uncaught.push(args[0]); return true; } return emit.call(this, name, ...args); };
+    try {
+      env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      await env.setup();
+      const seen = [];
+      env.global.console = { error: (e) => seen.push([e instanceof Error, e.message, e.type, String(e[link])]) };
+      await vm.runInContext(`(async () => {
+        const frame = document.body.appendChild(document.createElement('iframe'));
+        const inner = frame.contentDocument.body.appendChild(frame.contentDocument.createElement('iframe'));
+        for (const [doc, text] of [[frame.contentDocument, 'frame'], [inner.contentDocument, 'nested frame']]) {
+          const b = doc.body.appendChild(doc.createElement('button'));
+          b.addEventListener('click', () => { throw new Error(text); });
+          b.click();
+        }
+        const x = new frame.contentWindow.XMLHttpRequest();
+        await new Promise((resolve) => {
+          x.onloadend = resolve;
+          x.onload = () => { throw new Error('xhr onload'); };
+          x.open('GET', 'data:text/plain,ok');
+          x.send();
+        });
+      })()`, env.getVmContext());
+      assert.deepEqual(seen, ['frame', 'nested frame', 'xhr onload'].map((m) => [true, `Uncaught [Error: ${m}]`, type, `Error: ${m}`]));
+      // The top window's still fail the test.
+      vm.runInContext('const b = document.body.appendChild(document.createElement("button")); b.addEventListener("click", () => { throw new Error("top"); }); b.click();', env.getVmContext());
+      assert.deepEqual(uncaught.map((e) => e.message), ['top']);
+    } finally {
+      process.emit = emit;
+      if (env?.global) await env.teardown();
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  }
+});
+
 // As jest-environment-jsdom's teardown, which closes the window (black
 // box, jsdom 26 through Jest 30): code still running after the test file
 // (a library's promise chain, Dexie's) finds the window's members, and

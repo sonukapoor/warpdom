@@ -109,6 +109,7 @@
     "@webref/css": "^8.7.6",
     "@webref/elements": "^2.9.1",
     "@webref/idl": "^3.85.1",
+    "axios": "^1.20.0",
     "esbuild": "^0.28.2",
     "happy-dom": "^20.14.6",
     "jsdom": "^30.1.2",
@@ -123,6 +124,8 @@
     "jsdom28": "npm:jsdom@28.1.0",
     "jsdom29": "npm:jsdom@29.1.1",
     "jsdom30": "npm:jsdom@30.1.3",
+    "msw": "^3.0.3",
+    "nock": "^14.0.17",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
   },
