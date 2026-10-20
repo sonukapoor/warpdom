@@ -1,6 +1,7 @@
 # Unit and parity tests (npm test) and the type tests (npm run test:types)
-# on every push and pull request, on the oldest supported Node and the
-# current LTS.
+# on every push and pull request, on Node 22.22 (the oldest Node that jsdom 30
+# and its undici declare support for; package.json engines still says
+# >=22.12) and the current LTS.
 name: ci
 
 on:
@@ -18,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ['22.12', '24']
+        node: ['22.22', '24']
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
