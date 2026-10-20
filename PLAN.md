@@ -2948,10 +2948,22 @@ matches nothing fails too. jsdom 20.0.3, 21.1.2, 22.1.0, 23.2.0, 24.1.3, 25.0.1,
 devDependencies, plus the installed jsdom. WARPDOM_API_REPORT=1 prints what
 warpdom has that jsdom lacks per version (opt-in candidates, #5).
 
-Checked against trial/all-parity: every fix/svg-parity, fix/misc-parity and
-fix/forms-parity entry goes stale (remove them when those merge), with no new
-difference; fix/websocket-window clears the WebSocket entry. XMLHttpRequest
-(#22, #30) stays until its branch. Differences without an issue (KNOWN, "No
+Rebased on main after fix/svg-parity, fix/misc-parity, fix/forms-parity and
+fix/websocket-window merged (#73, #74, #75, #78): their 19 KNOWN entries went
+stale and are removed, with no new difference. XMLHttpRequest (#22, #30) stays
+until its branch.
+
+Node 22.12: jsdom 30.1.3 (the jsdom30 alias) needs undici ^8.12.1, and npm
+replaced the hoisted undici 8.11.2 that the installed jsdom 30.1.2 used with
+8.12.3, whose lib/interceptor/decompress.js calls
+zlib.createZstdDecompress.bind() at load; Node has createZstdDecompress from
+22.15, so every test that loads jsdom failed on 22.12 ("reading 'bind'").
+package.json overrides keep the installed jsdom on undici 8.11.2 (as main had
+it; npm nests it under node_modules/jsdom), and the test skips a jsdom whose
+own engines exclude the running Node (on 22.12: 29.1.1, 30.1.2, 30.1.3; and
+the stale-entry check then). CI on Node 24 runs every version. undici 8.11.2
+and jsdom 30 also declare Node >= 22.19 / ^22.22.2, so the installed jsdom
+running on 22.12 at all is luck, not support. Differences without an issue (KNOWN, "No
 issue yet"): XPathException; HTMLIFrameElement.getSVGDocument; onloadend
 (jsdom 20-21); window.onautocomplete/onautocompleteerror/onsort (20-26);
 Window.prototype inherits EventTarget directly before jsdom 24; kinds of

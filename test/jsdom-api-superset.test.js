@@ -25,29 +25,6 @@ const HTML_TAGS = [...new Set([...HTML_ELEMENTS.flatMap(([, , tags]) => tags), .
 // jsdom majors it applies to, the issue and why. An entry that matches
 // nothing in any version fails the test: remove it then.
 const KNOWN = [
-  // Removed when fix/svg-parity merges.
-  { path: /^(window\.)?SVGSVGElement\b/, issues: [21], until: 'fix/svg-parity' },
-  { path: /^(window\.)?SVG(Animated)?PreserveAspectRatio\b/, issues: [24, 60], until: 'fix/svg-parity' },
-  { path: /^(window\.)?SVGStringList\b/, issues: [29], until: 'fix/svg-parity' },
-  { path: /^SVGElement\.prototype\.(className|ownerSVGElement|viewportElement|nonce)$/, issues: [55], until: 'fix/svg-parity' },
-  { path: /^(window\.)?SVGAnimated(Rect|String)\b/, issues: [61, 62], until: 'fix/svg-parity' },
-  { path: /^SVGGraphicsElement\.prototype\.(requiredExtensions|systemLanguage)$/, issues: [63], until: 'fix/svg-parity' },
-  { path: /^(window\.)?SVGSymbolElement\b|^<svg:symbol> is$/, issues: [64], until: 'fix/svg-parity' },
-  { path: /^(window\.)?SVG(G|Defs|Desc|Metadata|Switch)Element\b|^<svg:(g|defs|desc|metadata|switch)> is$|^(window\.)?SVG(Number|Rect)\b/, issues: [], until: 'fix/svg-parity', reason: 'in DOMParity without an issue; done on the branch' },
-  // Removed when fix/misc-parity merges.
-  { path: /^(window\.)?ElementInternals\b|^HTMLElement\.prototype\.attachInternals$/, issues: [20], until: 'fix/misc-parity' },
-  { path: /^(window\.)?PromiseRejectionEvent\b/, issues: [59], until: 'fix/misc-parity' },
-  { path: /^(window\.)?BlobEvent\b/, issues: [56], until: 'fix/misc-parity' },
-  { path: /^(window\.)?PageTransitionEvent\b/, issues: [], until: 'fix/misc-parity', reason: 'no issue; done on the branch' },
-  { path: /^(window\.)?DeviceMotionEvent(Acceleration|RotationRate)\b/, issues: [52, 53], until: 'fix/misc-parity' },
-  { path: /^(window\.)?(Plugin|MimeType|PluginArray|MimeTypeArray)\b|^(Navigator\.prototype|window\.navigator)\.(plugins|mimeTypes)$/, issues: [31, 33, 34, 54, 58], until: 'fix/misc-parity' },
-  { path: /^HTMLMediaElement\.prototype\.(audioTracks|videoTracks)$/, issues: [57], until: 'fix/misc-parity' },
-  { path: /^CSSMediaRule\.prototype\.matches$/, issues: [65], until: 'fix/misc-parity' },
-  { path: /^(window\.)?CSSNestedDeclarations\b/, difference: /^missing$/, issues: [66], until: 'fix/misc-parity' },
-  // Removed when fix/forms-parity merges.
-  { path: /^(window\.)?HTMLDocument$|^<menuitem> is$/, issues: [51], until: 'fix/forms-parity' },
-  // Removed when fix/websocket-window merges.
-  { path: /^(window\.)?WebSocket\b/, issues: [26], until: 'fix/websocket-window' },
   // To be implemented, on by default, in its own branch after the parity
   // branches merge (PLAN.md, decided 2026-10-19).
   { path: /^(window\.)?XMLHttpRequest(EventTarget|Upload)?\b/, issues: [22, 30] },
@@ -78,9 +55,30 @@ const report = process.env.WARPDOM_API_REPORT === '1';
 const used = new Set();
 const seen = new Set();
 
+// A jsdom whose engines exclude this Node is skipped: jsdom 30 needs
+// ^22.22.2 || ^24.15.0 || >=26.0.0 and jsdom 29 ^22.13.0, while warpdom
+// supports Node >= 22.12 (CI runs 22.12 and 24). On Node 22.12, jsdom 30.1.3
+// does not load at all: its undici (^8.12.1) binds zlib.createZstdDecompress
+// at load, which Node has from 22.15. CI on Node 24 runs every version.
+const engineSkipped = [];
+const nodeVersion = process.versions.node.split('.').map(Number);
+const atLeast = (version, min) => {
+  for (let i = 0; i < 3; i++) if (version[i] !== min[i]) return version[i] > min[i];
+  return true;
+};
+const satisfies = (range) => range.split('||').some((alternative) => alternative.trim().split(/\s+/).every((comparator) => {
+  const match = /^(\^|>=)(\d+)(?:\.(\d+))?(?:\.(\d+))?$/.exec(comparator);
+  if (!match) throw new Error(`jsdom engines comparator not handled: ${comparator}`);
+  const min = match.slice(2).map((part) => Number(part ?? 0));
+  return atLeast(nodeVersion, min) && (match[1] === '>=' || nodeVersion[0] === min[0]);
+}));
+
 for (const alias of ALIASES) {
   const pkg = require(`${alias}/package.json`);
-  test(`warpdom has jsdom ${pkg.version}'s API (${alias})`, { skip: seen.has(pkg.version) && 'the same version as another alias' }, () => {
+  const supported = !pkg.engines?.node || satisfies(pkg.engines.node);
+  if (!supported) engineSkipped.push(pkg.version);
+  const skip = (!supported && `jsdom ${pkg.version} needs Node ${pkg.engines.node}`) || (seen.has(pkg.version) && 'the same version as another alias');
+  test(`warpdom has jsdom ${pkg.version}'s API (${alias})`, { skip }, () => {
     seen.add(pkg.version);
     const major = Number.parseInt(pkg.version, 10);
     // The cssstyle that jsdom loads (before jsdom 29), as the adapters pass it.
@@ -116,7 +114,7 @@ test('the versions cover every major from 20 to 30 and the newest modeled', () =
   assert.ok(versions.includes(NEWEST_MODELED_JSDOM), `NEWEST_MODELED_JSDOM ${NEWEST_MODELED_JSDOM}: update the jsdom30 alias`);
 });
 
-test('every KNOWN entry still matches a difference', () => {
+test('every KNOWN entry still matches a difference', { skip: engineSkipped.length > 0 && `jsdom ${engineSkipped.join(', ')} skipped on this Node` }, () => {
   const stale = KNOWN.filter((entry) => !used.has(entry)).map((entry) => `${entry.path}${entry.until ? ` (${entry.until})` : ''}`);
   assert.deepEqual(stale, [], 'these differences are gone: remove their KNOWN entries');
 });

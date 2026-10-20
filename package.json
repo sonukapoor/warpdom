@@ -129,6 +129,10 @@
   "overrides": {
     "jsdom25": {
       "cssstyle": "4.1.0"
+    },
+    "jsdom": {
+      ".": "$jsdom",
+      "undici": "8.11.2"
     }
   },
   "dependencies": {
