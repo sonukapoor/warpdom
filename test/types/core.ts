@@ -1,7 +1,7 @@
 // warpdom's core, imported (ES module).
 import { createWindow, setParserLoader, type CreateWindowOptions, type WarpdomWindow } from 'warpdom';
 
-const options: CreateWindowOptions = { url: 'https://example.com/', jsdom: '30.1.2', cssstyle: '4.6.0', fastFrames: true };
+const options: CreateWindowOptions = { url: 'https://example.com/', jsdom: '30.1.2', cssstyle: '4.6.0', fastFrames: true, xhr: false };
 const window: WarpdomWindow = createWindow(options);
 createWindow();
 createWindow({ jsdom: 26 });
@@ -27,3 +27,10 @@ createWindow({ url: new URL('https://example.com/') });
 createWindow({ runScripts: 'dangerously' });
 // @ts-expect-error: fastFrames is a boolean
 createWindow({ fastFrames: 'yes' });
+// @ts-expect-error: xhr is a boolean
+createWindow({ xhr: 'off' });
+
+// XMLHttpRequest is the DOM's.
+const xhr: XMLHttpRequest = new window.XMLHttpRequest();
+xhr.open('GET', '/');
+void xhr.upload;
