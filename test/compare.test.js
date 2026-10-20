@@ -949,15 +949,21 @@ test('compare API: requireDom false runs a node-only package anyway, nothing com
 
 test('compare end to end: SIGTERM during a run stops the runner and removes the temporary files', async () => {
   const dir = fixtureProject('compare-vitest', vitestLinks());
+  let child = null;
   try {
     // A test that waits, so the run is still going when the signal arrives.
     write(path.join(dir, 'slow.spec.js'), "import { test } from 'vitest';\ntest('waits', () => new Promise((r) => setTimeout(r, 20000)), 30000);\n");
-    const child = spawn(process.execPath, [cli, 'compare', '--correctness'], { cwd: dir, stdio: 'ignore' });
+    child = spawn(process.execPath, [cli, 'compare', '--correctness'], { cwd: dir, stdio: 'ignore' });
     const exited = new Promise((resolve) => child.on('exit', (code) => resolve(code)));
     const pending = path.join(dir, '.warpdom-compare', 'pending.json');
+    // compare removes pending.json while its list is empty; a half-written
+    // list would be a bug (it is replaced by a rename), so only ENOENT is ok.
+    const recorded = () => {
+      try { return JSON.parse(fs.readFileSync(pending, 'utf8')); } catch (err) { if (err.code === 'ENOENT') return []; throw err; }
+    };
     const deadline = Date.now() + 20000;
     // Wait until the baseline run is going: both wrappers and the copy exist.
-    while (Date.now() < deadline && !(fs.existsSync(path.join(dir, '.warpdom-compare', 'logs', 'probe.log')) && fs.existsSync(pending) && JSON.parse(fs.readFileSync(pending, 'utf8')).length >= 3)) {
+    while (Date.now() < deadline && !(fs.existsSync(path.join(dir, '.warpdom-compare', 'logs', 'probe.log')) && recorded().length >= 3)) {
       await new Promise((r) => setTimeout(r, 50));
     }
     await new Promise((r) => setTimeout(r, 300));
@@ -970,6 +976,8 @@ test('compare end to end: SIGTERM during a run stops the runner and removes the 
     assert.ok(!fs.existsSync(pending));
     assert.ok(!fs.existsSync(path.join(dir, '.warpdom-compare', 'run.lock')));
   } finally {
+    // After a failed assertion the run may still be going.
+    if (child && child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
     fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 });

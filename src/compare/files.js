@@ -68,8 +68,12 @@ export class TempFiles {
 
   #write(list) {
     if (list.length) {
+      // Written to a temporary file and renamed over the list, so a reader
+      // (or the next run, after a kill mid-write) never sees half a list.
       fs.mkdirSync(path.dirname(this.pendingFile), { recursive: true });
-      fs.writeFileSync(this.pendingFile, JSON.stringify(list, null, 2));
+      const tmp = `${this.pendingFile}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify(list, null, 2));
+      fs.renameSync(tmp, this.pendingFile);
     } else {
       fs.rmSync(this.pendingFile, { force: true });
     }
