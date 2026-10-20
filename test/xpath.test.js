@@ -175,3 +175,25 @@ test('the XPath engine loads on first use only', async () => {
 });
 
 const XPATH = await import('../src/xpath.cjs');
+
+// XPathException (#67): on jsdom's window in every version (black box,
+// 20.0.0 to 30.1.3), a function returning an Error named XPathException.
+const describe = (d) => (d ? `${'value' in d ? `data ${typeof d.value === 'function' ? 'function' : JSON.stringify(d.value)}` : 'accessor'} ${d.writable ? 'w' : ''}${d.enumerable ? 'e' : ''}${d.configurable ? 'c' : ''}` : 'none');
+const xpathExceptionScenario = (w) => {
+  const X = w.XPathException;
+  const statics = ['INVALID_EXPRESSION_ERR', 'TYPE_ERR', 'prototype'].map((key) => `${key}: ${describe(Object.getOwnPropertyDescriptor(X, key))}`);
+  const error = (e) => [Object.prototype.toString.call(e), Reflect.ownKeys(e).map(String).join(), e.name, e.code, e.message, String(e), e instanceof X, e instanceof Error];
+  return [describe(Object.getOwnPropertyDescriptor(w, 'XPathException')), typeof X, X.name, X.length, statics,
+    Reflect.ownKeys(X.prototype).map(String), Object.getPrototypeOf(X.prototype) === Object.prototype, Object.prototype.toString.call(X.prototype),
+    error(new X(51, 'bad expression')), error(new X()), error(X(52, 'wrong type')), error(X(52)),
+    'XPathException' in w.document, typeof w.document.XPathException];
+};
+for (const jsdom of [20, 25, 30]) parity(`XPathException (jsdom ${jsdom})`, xpathExceptionScenario, { jsdom });
+
+test('XPathException: each window its own', () => {
+  const a = createWindow({ jsdom: '20.0.0' });
+  const b = createWindow();
+  assert.notEqual(a.XPathException, b.XPathException);
+  a.XPathException.TYPE_ERR = 0;
+  assert.equal(b.XPathException.TYPE_ERR, 52);
+});

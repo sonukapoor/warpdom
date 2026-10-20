@@ -102,10 +102,60 @@ export function namedPropertiesObject(window, holder, next) {
   return proxy;
 }
 
+// jsdom before 24.1.2 has no named properties object (black box): its
+// Window.prototype inherits from EventTarget.prototype directly, and named
+// access is through the window's own properties, so a named object hides
+// EventTarget's members (<div id="addEventListener">), though not the
+// window's or Object.prototype's. For those profiles Window.prototype
+// itself (target, already filled) looks up the named objects, as a proxy
+// that otherwise leaves everything to the target. Only these profiles pay
+// for reading Window.prototype's members through a proxy.
+export function namedAccessPrototype(window, target) {
+  let proxy = null;
+  const lookup = (t, key) => {
+    if (typeof key !== 'string' || key === 'document' || Object.hasOwn(t, key) || key in Object.prototype) return undefined;
+    const value = namedValue(window, key);
+    return value === undefined || hidden(window, proxy, key) ? undefined : value;
+  };
+  proxy = new Proxy(target, {
+    get(t, key, receiver) {
+      const value = lookup(t, key);
+      return value !== undefined ? value : Reflect.get(t, key, receiver);
+    },
+    has(t, key) {
+      return Reflect.has(t, key) || lookup(t, key) !== undefined;
+    },
+  });
+  return proxy;
+}
+
 // Named access on another global object that stands for window (the WPT
 // runner's, where the global is the window as in a browser): window's named
 // objects behind the global's own and inherited properties. The Vitest and
 // Jest environments do not install it (see PLAN.md, 2026-10-11).
 export function installNamedAccess(global, window) {
   Object.setPrototypeOf(global, namedPropertiesObject(window, global, Object.getPrototypeOf(global)));
+}
+
+// The window's named objects as a scope (a with statement's object) for
+// code whose global is another object that does no named access: inline
+// event handlers compiled in Jest's or Vitest's VM context, where it comes
+// just behind the global as a with scope, which answers the names the
+// global has, own or inherited. Any other name of a named object resolves
+// to it, live, before the global lexical bindings, as jsdom does there
+// (black box: Vitest vmThreads and jest-environment-jsdom on jsdom 20.0.3,
+// 26.1.0 and 30.1.3). An assignment to such a name goes to the global,
+// which then hides it.
+export function namedScope(window, global) {
+  return new Proxy(Object.create(null), {
+    has(t, key) {
+      return typeof key === 'string' && namedValue(window, key) !== undefined;
+    },
+    get(t, key) {
+      return typeof key === 'string' ? namedValue(window, key) : undefined;
+    },
+    set(t, key, value) {
+      return Reflect.set(global, key, value);
+    },
+  });
 }

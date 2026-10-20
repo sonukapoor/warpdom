@@ -258,6 +258,25 @@ export const DOM_PARSING_INTERFACES = [
 let loadXPath = null;
 let engine = null;
 
+// XPathException (DOM Level 3 XPath, obsolete), as jsdom's window has it in
+// every version (black box, 20.0.0 to 30.1.3): a plain function with the
+// INVALID_EXPRESSION_ERR (51) and TYPE_ERR (52) constants that, called with
+// or without new, returns an Error named XPathException with the code and
+// message given (not an instance of XPathException). No evaluation throws
+// one: warpdom's XPath errors are DOMExceptions and TypeErrors. One per
+// window, an own data property of it (writable, enumerable, configurable).
+export function xpathException() {
+  const XPathException = function XPathException(code, message) {
+    const error = new Error(message);
+    error.name = 'XPathException';
+    error.code = code;
+    return error;
+  };
+  XPathException.INVALID_EXPRESSION_ERR = 51;
+  XPathException.TYPE_ERR = 52;
+  return XPathException;
+}
+
 // Registers how to load src/xpath.cjs synchronously (the Node entry uses
 // require).
 export function setXPathLoader(loader) {

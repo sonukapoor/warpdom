@@ -8,10 +8,11 @@ import {
 } from './internal.js';
 import { INTERFACES, SVG_ELEMENTS, LEGACY_SVG_ELEMENTS, SVG_TYPES_INTERFACES, HTML_NS, SVG_NS } from './interfaces.js';
 import { HTML_ELEMENTS, PLAIN_TAGS } from './html-elements.js';
-import { setupWindow } from './window-features.js';
+import { setupWindow, profileCompat, setupWindowData } from './window-features.js';
 import { setValidationMode } from './css.js';
-import { namedPropertiesObject } from './named-access.js';
+import { namedPropertiesObject, namedAccessPrototype } from './named-access.js';
 import './document-named.js';
+import { xpathException } from './dom-parsing.js';
 import { createCustomElement, createRegistry, htmlConstruct, isValidCustomElementName } from './custom-elements.js';
 
 // Once per module load: the interfaces in order, parents before children.
@@ -39,7 +40,10 @@ const BY_NAME = new Map(); // interface name -> definition
 // Object.defineProperties (about 30% for CSSStyleProperties).
 const DESCRIPTORS = new Map(); // interface name (and variant) -> { keys, descriptors }
 // variant: a key for interfaces whose members depend on the profile
-// (iface.variant: CSSStyleProperties' accessors), else null.
+// (iface.variant: CSSStyleProperties' accessors, the event handlers of a
+// jsdom version), else null. An interface built from members changes its
+// descriptors for a variant with iface.adjust(descriptors, variant), once
+// per module load, rather than each window deleting members.
 function descriptorsOf(iface, variant = null) {
   const cacheKey = variant === null ? iface.name : `${iface.name} ${variant}`;
   let table = DESCRIPTORS.get(cacheKey);
@@ -54,6 +58,7 @@ function descriptorsOf(iface, variant = null) {
     const { members } = iface;
     if (Array.isArray(members)) for (const m of members) addDescriptors(descriptors, typeof m === 'function' ? m() : m);
     else addDescriptors(descriptors, members);
+    if (variant !== null && iface.adjust) iface.adjust(descriptors, variant);
   }
   const keys = Reflect.ownKeys(descriptors);
   table = { keys, descriptors: keys.map((key) => descriptors[key]), unscopables: null };
@@ -121,13 +126,6 @@ function interfaceFor(ns, tag, compat) {
   return 'Element';
 }
 
-// Interfaces and members a jsdom generation did not have yet, removed from
-// this window (its prototypes are its own). Libraries feature-detect them:
-// react-aria listens for pointer events only when PointerEvent exists, so
-// tests written for jsdom before 27 fire mouse events only.
-const POINTER_HANDLERS = ['ongotpointercapture', 'onlostpointercapture', 'onpointercancel', 'onpointerdown', 'onpointerenter',
-  'onpointerleave', 'onpointermove', 'onpointerout', 'onpointerover', 'onpointerrawupdate', 'onpointerup'];
-
 // Window is a [Global] interface (WebIDL 3.7.6): its operations are own
 // properties of the window, and called without a this value (const
 // { getComputedStyle } = iframe.contentWindow) they act on that window.
@@ -145,6 +143,10 @@ function installGlobalOperations(window, proto) {
 const DEVICE_AND_MEDIA_EVENTS = ['PromiseRejectionEvent', 'BlobEvent', 'DeviceMotionEvent', 'DeviceOrientationEvent',
   'DeviceMotionEventAcceleration', 'DeviceMotionEventRotationRate'];
 
+// Interfaces and members a jsdom generation did not have yet, removed from
+// this window (its prototypes are its own). Libraries feature-detect them:
+// react-aria listens for pointer events only when PointerEvent exists, so
+// tests written for jsdom before 27 fire mouse events only.
 function applyCompat(window, protos) {
   const { jsdom } = window[S].compat;
   // The CSS namespace (CSS.supports, CSS.escape) arrived in jsdom 30;
@@ -170,10 +172,6 @@ function applyCompat(window, protos) {
     // Also from jsdom 27: PromiseRejectionEvent, BlobEvent and the device
     // events (createEvent makes no device events before, events.js).
     for (const name of DEVICE_AND_MEDIA_EVENTS) delete window[name];
-    for (const proto of [protos.HTMLElement, protos.SVGElement, protos.Document, protos.Window, protos.ShadowRoot]) {
-      if (!proto) continue;
-      for (const name of POINTER_HANDLERS) delete proto[name];
-    }
   }
 }
 
@@ -196,6 +194,28 @@ function cssMode(compat) {
   if (compat.cssstyleMajor === 2) return 'jsdom20';
   if (compat.cssstyleMajor === 3) return 'jsdom22';
   return compat.unquotedUrls ? 'jsdom25' : 'jsdom26';
+}
+
+// document, window and self: own accessors of the window ([LegacyUnforgeable]
+// document and window; self [Replaceable]), as in jsdom (black box, 20.0.0
+// to 30.1.3); their getters give this window's whatever this is. jsdom 20:
+// all configurable, self without a setter; from 21.0.0 document and window
+// are not configurable and assigning self replaces it with a data property.
+function defineSelfMembers(window, document) {
+  const legacy = window[S].compat.jsdom < 21;
+  const own = {
+    get document() { return document; },
+    get window() { return window; },
+    get self() { return window; },
+    set self(value) { Object.defineProperty(window, 'self', { value, writable: true, enumerable: true, configurable: true }); },
+  };
+  const define = (key, configurable, withSetter = false) => {
+    const { get, set } = Object.getOwnPropertyDescriptor(own, key);
+    Object.defineProperty(window, key, { get, set: withSetter ? set : undefined, enumerable: true, configurable });
+  };
+  define('document', legacy);
+  define('window', legacy);
+  define('self', true, !legacy);
 }
 
 export function createWindow(options = {}) {
@@ -221,7 +241,7 @@ export function createWindow(options = {}) {
     // through a new hidden class per member, rebuilt for every window
     // (CSSStyleProperties' 1,600 accessors took ~1.5 ms). The prototype is
     // set afterwards; own keys, their order and descriptors are the same.
-    const proto = Object.create(null);
+    let proto = Object.create(null);
     const { keys, descriptors, unscopables } = descriptorsOf(iface, iface.variant ? iface.variant(window[S].compat) ?? null : null);
     for (let i = 0; i < keys.length; i++) Object.defineProperty(proto, keys[i], descriptors[i]);
     if (unscopables) {
@@ -234,6 +254,8 @@ export function createWindow(options = {}) {
     if (iface.compat) iface.compat(proto, window[S].compat);
     if (hidesState(iface) && iface.slot?.[0] !== S) Object.defineProperty(proto, S, HIDDEN_STATE);
     Object.setPrototypeOf(proto, parent ? parent.prototype : Object.prototype);
+    // Named access before jsdom 24.1.2 (named-access.js).
+    if (name === 'Window' && !window[S].compat.windowProperties) proto = namedAccessPrototype(window, proto);
     // A callback interface with constants (NodeFilter) has a legacy callback
     // interface object: a function that is not a constructor and has no
     // prototype property (a method has neither).
@@ -291,6 +313,15 @@ export function createWindow(options = {}) {
     });
     Object.defineProperty(protos, name, { get() { return materialize(name).prototype; }, enumerable: true, configurable: true });
   }
+  // webkitURL: the window's URL interface under another name, an own data
+  // property, not enumerable (jsdom 20 to 30, black box); made on first
+  // read, as the interface objects are.
+  const setWebkitURL = (value) => Object.defineProperty(window, 'webkitURL', { value, writable: true, configurable: true });
+  Object.defineProperty(window, 'webkitURL', {
+    get() { const ctor = materialize('URL'); setWebkitURL(ctor); return ctor; },
+    set: setWebkitURL,
+    configurable: true,
+  });
   // HTMLDocument (HTML, legacy): the Document interface object under
   // another name, as in jsdom.
   const setHTMLDocument = (value) => Object.defineProperty(window, 'HTMLDocument', { value, writable: true, configurable: true });
@@ -364,14 +395,18 @@ export function createWindow(options = {}) {
     parentWindow: options.nested?.parent ?? null,
     frameElement: options.nested?.frameElement ?? null,
   };
+  // The profile first: interfaces' members can depend on it (variants).
+  internals.compat = profileCompat(options);
+  Object.defineProperty(window, S, { value: internals });
   Object.setPrototypeOf(window, protos.Window);
   // Named access (window[id]): the named properties object between
-  // Window.prototype and EventTarget.prototype.
-  Object.setPrototypeOf(protos.Window, namedPropertiesObject(window, window, Object.getPrototypeOf(protos.Window)));
-  Object.defineProperty(window, S, { value: internals });
+  // Window.prototype and EventTarget.prototype (from jsdom 24.1.2; before,
+  // Window.prototype does it, see materialize).
+  if (internals.compat.windowProperties) Object.setPrototypeOf(protos.Window, namedPropertiesObject(window, window, Object.getPrototypeOf(protos.Window)));
   setupWindow(window, options);
   applyCompat(window, protos);
   installGlobalOperations(window, protos.Window);
+  Object.defineProperty(window, 'XPathException', { value: xpathException(), writable: true, enumerable: true, configurable: true });
   internals.customElements = createRegistry(window);
 
   document = internals.initDocument(Object.create(protos.Document));
@@ -381,8 +416,7 @@ export function createWindow(options = {}) {
   insert(html, internals.createElementNS(HTML_NS, 'head'), null);
   insert(html, internals.createElementNS(HTML_NS, 'body'), null);
 
-  window.document = document;
-  window.window = window;
-  window.self = window;
+  defineSelfMembers(window, document);
+  setupWindowData(window);
   return window;
 }

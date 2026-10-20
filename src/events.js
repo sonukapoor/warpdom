@@ -818,6 +818,12 @@ export const EVENT_INTERFACES = [
   } },
   { name: 'UIEvent', parent: 'Event', construct: eventConstruct('UIEvent', UI_FIELDS), members: {
     ...fieldGetters(UI_FIELDS),
+    // A window installed as a VM context's global (Jest, Vitest's VM pools)
+    // is that global, as event.target is: the events warpdom fires (focus,
+    // blur, click()) name the window as their view, and jsdom's view there
+    // is the global, which holds what the test assigns (black box: Vitest
+    // vmThreads and Jest on jsdom 20.0.3, 26.1.0 and 30.1.3).
+    view: { get() { return exposed(eventState(this).view); } },
     initUIEvent(type, bubbles, cancelable, view, detail) { legacyInit(this, type, bubbles, cancelable, { view: view ?? null, detail: Number(detail) | 0 }); },
   } },
   { name: 'MouseEvent', parent: 'UIEvent', construct: withModifierInit(eventConstruct('MouseEvent', MOUSE_FIELDS)), members: {

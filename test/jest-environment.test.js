@@ -306,3 +306,229 @@ test('Jest environment: WebSocket is the window\'s, which is Node\'s; a test can
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+// Window members tests override (#68): the global is the window, so its
+// members have the window's kinds (black box with jsdom 20.0.3, 26.1.0 and
+// 30.1.3 as the global of a VM context, as jest-environment-jsdom makes it;
+// there assigning a member with only a getter is ignored, also in strict
+// code).
+test('Jest environment: viewport members, name, status and self as on jsdom per version', async () => {
+  const rootDir = fakeJestProject();
+  try {
+    const results = {};
+    for (const jsdom of ['20.0.3', '26.1.0', '30.1.3']) {
+      const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      await env.setup();
+      results[jsdom] = vm.runInContext(`(() => {
+        'use strict';
+        const kind = (key) => { const d = Object.getOwnPropertyDescriptor(window, key); return ('value' in d ? 'data ' : 'accessor ') + (d.set ? 's' : '') + (d.writable ? 'w' : '') + (d.enumerable ? 'e' : '') + (d.configurable ? 'c' : ''); };
+        const out = [kind('innerWidth'), kind('name'), kind('status'), kind('self')];
+        window.innerWidth = 640;
+        Object.defineProperty(window, 'innerHeight', { value: 300 });
+        let assigned;
+        try { window.innerHeight = 400; assigned = window.innerHeight; } catch (e) { assigned = e.constructor.name; }
+        window.status = 5;
+        let self;
+        try { window.self = 7; self = window.self === 7; } catch (e) { self = e.constructor.name; }
+        out.push(window.innerWidth + ' ' + kind('innerWidth'), assigned, typeof window.status, self);
+        return out.join(' | ');
+      })()`, env.getVmContext());
+      await env.teardown();
+    }
+    assert.deepEqual(results, {
+      '20.0.3': 'data wec | data wec | data wec | accessor ec | 640 data wec | 400 | number | false',
+      '26.1.0': 'data wec | data wec | data wec | accessor sec | 640 data wec | 400 | number | true',
+      '30.1.3': 'accessor sec | data wec | accessor sec | accessor sec | 640 data wec | TypeError | string | true',
+    });
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+// An inline event handler's global scope is the global (the window), as in
+// jest-environment-jsdom (black box, jsdom 20.0.3, 26.1.0 and 30.1.3): it
+// reads the initial data properties (name, the viewport members before 27)
+// and the test's assignments, also a second assignment to a [Replaceable]
+// accessor (jsdom 27 and later) and Object.defineProperty, and what it
+// assigns to window is the test's.
+test('Jest environment: inline event handlers read the global\'s members', async () => {
+  const rootDir = fakeJestProject();
+  try {
+    const results = {};
+    for (const jsdom of ['20.0.3', '26.1.0', '30.1.3']) {
+      const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      await env.setup();
+      results[jsdom] = vm.runInContext(`(() => {
+        const div = document.createElement('div');
+        div.setAttribute('onclick', 'document.body.dataset.r = [innerWidth, window.innerWidth, name, outerWidth, scrollY, innerHeight, status].join(); window.fromHandler = 1');
+        document.body.append(div);
+        const out = [];
+        const click = () => { div.click(); out.push(document.body.dataset.r); };
+        click();
+        window.innerWidth = 640; window.name = 'n1'; window.outerWidth = 700;
+        click();
+        window.innerWidth = 800; window.name = 'n2'; window.outerWidth = 900; window.scrollY = 5; window.status = 'st';
+        Object.defineProperty(window, 'innerHeight', { value: 333, writable: true, enumerable: true, configurable: true });
+        click();
+        out.push(window.fromHandler);
+        return out.join(' | ');
+      })()`, env.getVmContext());
+      await env.teardown();
+    }
+    const expected = '1024,1024,,1024,0,768, | 640,640,n1,700,0,768, | 800,800,n2,900,5,333,st | 1';
+    assert.deepEqual(results, { '20.0.3': expected, '26.1.0': expected, '30.1.3': expected });
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+// The global does no named access, but an inline event handler finds the
+// window's named objects (a sibling's id, live; a form's name) after the
+// global's own and inherited members, and its assignment to such a name
+// goes to the global, as in jest-environment-jsdom (black box, jsdom
+// 20.0.3, 26.1.0 and 30.1.3).
+test('Jest environment: inline event handlers find named elements', async () => {
+  const rootDir = fakeJestProject();
+  try {
+    const results = {};
+    for (const jsdom of ['20.0.3', '26.1.0', '30.1.3']) {
+      const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      await env.setup();
+      results[jsdom] = vm.runInContext(`(() => {
+        window.shadowed = 'g';
+        document.body.innerHTML = '<div id="result"></div><form name="fname"></form><div id="dup"></div><span id="dup"></span><div id="gone"></div>'
+          + '<div id="shadowed"></div><div id="setTimeout"></div><div id="an"></div>'
+          + '<button id="t" onclick="result.textContent = \\'ok\\'; document.body.dataset.r = [fname.tagName, dup.length, typeof late, typeof gone, typeof nosuch, shadowed, typeof setTimeout, typeof an].join(); an = 5; fresh = 6"></button>';
+        const button = document.getElementById('t');
+        button.click();
+        const out = [document.getElementById('result').textContent, document.body.dataset.r];
+        document.body.insertAdjacentHTML('beforeend', '<span id="late"></span>');
+        document.getElementById('gone').remove();
+        button.click();
+        out.push(document.body.dataset.r, window.an, globalThis.fresh);
+        return out.join(' | ');
+      })()`, env.getVmContext());
+      await env.teardown();
+    }
+    const expected = 'ok | FORM,2,undefined,object,undefined,g,function,object | FORM,2,object,undefined,undefined,g,function,number | 5 | 6';
+    assert.deepEqual(results, { '20.0.3': expected, '26.1.0': expected, '30.1.3': expected });
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+// In jest-environment-jsdom (black box, jsdom 20.0.3 through Jest 29 and
+// 26.1.0 through Jest 30): an inline handler's window scope is the global as
+// an object, so the global's properties and then named objects come before
+// the global let/const of classic scripts (<div id="counter"> wins over a
+// script's `let counter = 42`; the handler's `counter = ...` and `kc = 8`
+// assign the global's properties, the bindings stay), and the global's
+// functions get the global as this. frames, a frame's parent and top are
+// the global, so they read what the test assigns; window[0] is the frame.
+test('Jest environment: handler scope before script bindings; frame aliases are the global', async () => {
+  const rootDir = fakeJestProject();
+  try {
+    const results = {};
+    for (const jsdom of ['20.0.3', '26.1.0', '30.1.3']) {
+      const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      await env.setup();
+      results[jsdom] = vm.runInContext(`(() => {
+        const out = [];
+        const iframe = document.createElement('iframe');
+        document.body.append(iframe);
+        const cw = iframe.contentWindow;
+        out.push([window.frames === window, cw.parent === window, cw.top === window, window[0] === cw, window.frames[0] === cw].join());
+        window.name = 'updated'; window.innerWidth = 640;
+        out.push([window.frames.name, cw.parent.name, cw.parent.innerWidth].join());
+        window.innerWidth = 800;
+        out.push([window.frames.innerWidth, cw.top.innerWidth].join());
+        iframe.remove();
+        out.push(String(window[0]));
+        const s = document.createElement('script');
+        s.textContent = 'let counter = 42; const kc = 7;';
+        document.head.append(s);
+        window.whoami = function () { 'use strict'; return this === window; };
+        document.body.innerHTML = '<div id="counter"></div><div id="kc"></div><button id="b" onclick="document.body.dataset.r = [typeof counter, String(counter), String(kc), whoami()].join(); counter = counter + 1; kc = 8"></button>';
+        const b = document.getElementById('b');
+        b.click(); out.push(document.body.dataset.r);
+        b.click(); out.push(document.body.dataset.r);
+        const s2 = document.createElement('script');
+        s2.textContent = 'document.body.dataset.c = [counter, kc, window.counter, window.kc].join()';
+        document.head.append(s2);
+        out.push(document.body.dataset.c);
+        return out.join(' | ');
+      })()`, env.getVmContext());
+      await env.teardown();
+    }
+    const expected = 'true,true,true,true,true | updated,updated,640 | 800,800 | undefined'
+      + ' | object,[object HTMLDivElement],[object HTMLDivElement],true | string,[object HTMLDivElement]1,8,true | 42,7,[object HTMLDivElement]11,8';
+    assert.deepEqual(results, { '20.0.3': expected, '26.1.0': expected, '30.1.3': expected });
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+// Named objects whose names a compiler might use for its scope objects are
+// just named objects in an inline handler: the global, document, form and
+// element scopes stay (jest-environment-jsdom and Vitest's VM pools, black
+// box on jsdom 20.0.3, 26.1.0 and 30.1.3).
+test('Jest environment: named objects do not replace an inline handler\'s scopes', async () => {
+  const rootDir = fakeJestProject();
+  try {
+    const results = {};
+    for (const jsdom of ['20.0.3', '26.1.0', '30.1.3']) {
+      const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      await env.setup();
+      results[jsdom] = vm.runInContext(`(() => {
+        window.shadowed = 'g';
+        document.body.innerHTML = '<div id="__window"></div><div id="__named"></div><div id="__document"></div><div id="__element"></div><div id="shadowed"></div><form name="__form"></form>'
+          + '<form id="f"><input><button id="b" type="button" onclick="document.body.dataset.r = [String(shadowed), id, typeof getElementById, elements.length, typeof setTimeout, __window.id].join()"></button></form>'
+          + '<button id="c" onclick="document.body.dataset.s = [String(shadowed), id, typeof getElementById, typeof setTimeout].join()"></button>';
+        document.getElementById('b').click();
+        document.getElementById('c').click();
+        return document.body.dataset.r + ' | ' + document.body.dataset.s;
+      })()`, env.getVmContext());
+      await env.teardown();
+    }
+    const expected = 'g,b,function,2,function,__window | g,c,function,function';
+    assert.deepEqual(results, { '20.0.3': expected, '26.1.0': expected, '30.1.3': expected });
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+// The view of the events warpdom fires (focus, blur, focusin, click() and
+// a label's click) is the global, as in jest-environment-jsdom (black box,
+// jsdom 20.0.3 and 26.1.0; Vitest vmThreads on 20.0.3, 26.1.0, 30.1.3), so
+// it reads what the test assigned to window.
+test('Jest environment: event.view is the global', async () => {
+  const rootDir = fakeJestProject();
+  try {
+    const results = {};
+    for (const jsdom of ['20.0.3', '26.1.0', '30.1.3']) {
+      const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      await env.setup();
+      results[jsdom] = vm.runInContext(`(() => {
+        window.name = 'updated';
+        window.innerWidth = 800;
+        document.body.innerHTML = '<input id="i"><label id="l">x<input id="li" type="checkbox"></label><button id="b"></button>';
+        const views = [];
+        const rec = (k) => (e) => { views.push(k + ':' + [e.view === window, e.view.name, e.view.innerWidth].join()); };
+        const i = document.getElementById('i');
+        for (const type of ['focus', 'focusin', 'blur']) i.addEventListener(type, rec(type));
+        i.focus(); i.blur();
+        document.getElementById('b').addEventListener('click', rec('click'));
+        document.getElementById('b').click();
+        document.getElementById('li').addEventListener('click', rec('label'));
+        document.getElementById('l').click();
+        views.push(new MouseEvent('x', { view: window }).view === window);
+        return views.join(' ');
+      })()`, env.getVmContext());
+      await env.teardown();
+    }
+    const expected = 'focus:true,updated,800 focusin:true,updated,800 blur:true,updated,800 click:true,updated,800 label:true,updated,800 true';
+    assert.deepEqual(results, { '20.0.3': expected, '26.1.0': expected, '30.1.3': expected });
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});

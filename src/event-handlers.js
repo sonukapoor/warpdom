@@ -7,6 +7,7 @@ import { S, HTML_NS, SVG_NS, ELEMENT_NODE } from './internal.js';
 import { attributeSteps } from './attributes.js';
 import { addListener, removeListener, cancel, reportError, exposed, eventState } from './events.js';
 import { formOwner } from './forms.js';
+import { namedScope } from './named-access.js';
 import { GLOBAL_EVENT_HANDLERS, WINDOW_EVENT_HANDLERS } from './event-handler-names.js';
 
 // The event handler event type: the name without "on", except four
@@ -20,6 +21,69 @@ const EVENT_TYPES = {
 const eventType = (name) => EVENT_TYPES[name] ?? name.slice(2);
 
 const WINDOW_HANDLERS = new Set(WINDOW_EVENT_HANDLERS);
+
+// The event handlers a jsdom version lacks (black box, every release from
+// 20.0.0 to 30.1.3, on HTMLElement, SVGElement, Document and the window):
+// before 22.1.0 these 19, and on the window onauxclick too; before 27.0.0
+// the pointer event handlers. Neither the IDL attribute nor the content
+// attribute exists then (<div oncopy> does nothing). Before 22.1.0
+// HTMLElement's, SVGElement's and Document's onauxclick is inert (see
+// inertHandler), and they have an inert onloadend (#67). Before 27.0.0 the
+// window has onautocomplete, onautocompleteerror and onsort, which work
+// (only as IDL attributes: body has none).
+const HANDLERS_FROM_22_1 = ['onbeforeinput', 'onbeforematch', 'onbeforetoggle', 'oncontextlost', 'oncontextrestored', 'oncopy',
+  'oncut', 'onformdata', 'onpaste', 'onscrollend', 'onslotchange', 'ontouchcancel', 'ontouchend', 'ontouchmove', 'ontouchstart',
+  'onwebkitanimationend', 'onwebkitanimationiteration', 'onwebkitanimationstart', 'onwebkittransitionend'];
+const POINTER_HANDLERS = ['ongotpointercapture', 'onlostpointercapture', 'onpointercancel', 'onpointerdown', 'onpointerenter',
+  'onpointerleave', 'onpointermove', 'onpointerout', 'onpointerover', 'onpointerrawupdate', 'onpointerup'];
+const LEGACY_INERT = ['onauxclick', 'onloadend'];
+const LEGACY_WINDOW_HANDLERS = ['onautocomplete', 'onautocompleteerror', 'onsort'];
+const LEGACY_ABSENT = new Set([...HANDLERS_FROM_22_1, ...LEGACY_INERT]);
+const POINTER = new Set(POINTER_HANDLERS);
+// A content attribute that is no event handler in the profile's jsdom.
+const absentHandler = (compat, name) => (compat.legacyHandlers && LEGACY_ABSENT.has(name)) || (compat.jsdom < 27 && POINTER.has(name));
+
+// An inert event handler IDL attribute, as jsdom has some (black box): it
+// keeps the value assigned (a function or an object, else null; undefined
+// until set), its content attribute is ignored and it is never called.
+function inertHandler(name) {
+  return Object.getOwnPropertyDescriptor({
+    get [name]() {
+      const s = this?.[S];
+      if (!s) throw new TypeError('Illegal invocation');
+      return s.inertHandlers?.get(name);
+    },
+    set [name](value) {
+      const s = this?.[S];
+      if (!s) throw new TypeError('Illegal invocation');
+      const map = s.inertHandlers ?? (s.inertHandlers = new Map());
+      map.set(name, typeof value === 'function' || (typeof value === 'object' && value !== null) ? value : null);
+    },
+  }, name);
+}
+const INERT = Object.fromEntries(LEGACY_INERT.map((name) => [name, inertHandler(name)]));
+
+// The event handlers of the profile's jsdom, as a variant of the
+// interfaces with GlobalEventHandlers' members (HTMLElement, SVGElement,
+// Document, Window; window.js descriptorsOf): null for jsdom 27 and later.
+export const handlerVariant = (compat) => (compat.legacyHandlers ? 'before 22.1' : compat.jsdom < 27 ? 'before 27' : null);
+
+// Changes an interface's descriptors for a handlerVariant (forWindow: the
+// Window interface's).
+export function adjustHandlers(descriptors, variant, forWindow = false) {
+  if (variant === null) return;
+  for (const name of POINTER_HANDLERS) delete descriptors[name];
+  if (forWindow) {
+    for (const name of LEGACY_WINDOW_HANDLERS) descriptors[name] = { ...LEGACY_WINDOW_MEMBERS[name], enumerable: true, configurable: true };
+  }
+  if (variant !== 'before 22.1') return;
+  for (const name of HANDLERS_FROM_22_1) delete descriptors[name];
+  for (const name of LEGACY_INERT) {
+    if (forWindow) delete descriptors[name];
+    else descriptors[name] = { ...INERT[name], enumerable: true, configurable: true };
+  }
+}
+
 // Handlers body and frameset forward to their window.
 const WINDOW_REFLECTING_BODY = new Set(['onblur', 'onerror', 'onfocus', 'onload', 'onresize', 'onscroll']);
 
@@ -89,17 +153,35 @@ function compile(target, name, body) {
   if (!doc || doc[S].noView) return null;
   const params = !element && name === 'onerror' ? 'event, source, lineno, colno, error' : 'event';
   const source = `return function ${name}(${params}) {\n${body}\n};`;
-  // The with statements give the standard's scope chain. The window comes
-  // first: it stands in for the global scope, since it is not the JS global.
+  // The with statements give the standard's scope chain. Where an
+  // environment made a VM context whose global is the window (Jest,
+  // Vitest's VM pools: globalProxy), the handler is compiled there and,
+  // as with jsdom (black box: Vitest vmThreads and jest-environment-jsdom
+  // on jsdom 20.0.3, 26.1.0 and 30.1.3), its window scope is that global
+  // as an object (with), so it reads what tests assign (window.innerWidth
+  // = 640, window.name, Object.defineProperty(window, ...)), calls the
+  // global's functions with the global as this, and finds the global's
+  // properties before the global lexical bindings of classic scripts (a
+  // script's `let counter` loses to window.counter). That global does no
+  // named access, so the window's named objects (<div id="result">) come
+  // from a scope of their own just behind it (namedScope), also before the
+  // lexical bindings, as in jsdom. Elsewhere the window comes first,
+  // standing in for the global scope. The scope objects are reached
+  // through this, which no with scope can shadow: an identifier would
+  // resolve through the scopes already entered (<div id="__window">, a
+  // document's <form name="__form">).
   const window = doc[S].window;
+  const ws = window[S];
+  const inContext = ws.globalProxy !== undefined && ws.runScript !== undefined;
   try {
-    if (!element) return new Function('__window', `with (__window) { ${source} }`)(window);
-    const s = element[S];
-    const form = s.ns === HTML_NS && FORM_ASSOCIATED.has(s.tag) ? formOwner(element) : null;
-    return new Function('__window', '__document', '__form', '__element',
-      `with (__window) with (__document) with (__form) with (__element) { ${source} }`)(
-      window, doc, form ?? Object.create(null), element,
-    );
+    const scopes = inContext ? [namedScope(window, ws.globalProxy), ws.globalProxy] : [window];
+    if (element) {
+      const s = element[S];
+      const form = s.ns === HTML_NS && FORM_ASSOCIATED.has(s.tag) ? formOwner(element) : null;
+      scopes.push(doc, form ?? Object.create(null), element);
+    }
+    const code = `${scopes.map((_, i) => `with (this[${i}]) `).join('')}{ ${source} }`;
+    return (inContext ? ws.runScript(`(function () { ${code} })`) : new Function(code)).call(scopes);
   } catch (error) {
     handlerEntry(target, name).value = null;
     reportError(element ?? target, error);
@@ -141,6 +223,7 @@ function idlAttribute(name) {
 }
 
 export const handlerMembers = (names) => Object.fromEntries(names.map((name) => [name, idlAttribute(name)]));
+const LEGACY_WINDOW_MEMBERS = handlerMembers(LEGACY_WINDOW_HANDLERS);
 const members = handlerMembers;
 
 export const GLOBAL_HANDLER_MEMBERS = members(GLOBAL_EVENT_HANDLERS);
@@ -151,19 +234,18 @@ export const WINDOW_HANDLER_MEMBERS = members(WINDOW_EVENT_HANDLERS);
 // until set, no content attribute, never called).
 function svgWindowHandler(name) {
   const forwarding = idlAttribute(name);
+  const inert = inertHandler(name);
   return {
     get() {
       const s = this?.[S];
       if (!s) throw new TypeError('Illegal invocation');
-      if (isForwardingSvg(s)) return forwarding.get.call(this);
-      return s.inertHandlers?.get(name);
+      return isForwardingSvg(s) ? forwarding.get.call(this) : inert.get.call(this);
     },
     set(value) {
       const s = this?.[S];
       if (!s) throw new TypeError('Illegal invocation');
-      if (isForwardingSvg(s)) return forwarding.set.call(this, value);
-      const map = s.inertHandlers ?? (s.inertHandlers = new Map());
-      map.set(name, typeof value === 'function' || (typeof value === 'object' && value !== null) ? value : null);
+      if (isForwardingSvg(s)) forwarding.set.call(this, value);
+      else inert.set.call(this, value);
     },
   };
 }
@@ -179,7 +261,7 @@ const GLOBAL = new Set(GLOBAL_EVENT_HANDLERS);
 function contentAttributeChanged(element, name, value) {
   const s = element[S];
   const applies = (s.ns === HTML_NS || s.ns === SVG_NS) && (GLOBAL.has(name) || (forwardsToWindow(s) && WINDOW_HANDLERS.has(name)));
-  if (!applies) return;
+  if (!applies || absentHandler(s.doc[S].window[S].compat, name)) return;
   const target = handlerTarget(element, name);
   if (!target) return;
   if (value === undefined) deactivate(target, name);

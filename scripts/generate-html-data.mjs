@@ -38,11 +38,17 @@ for (const { name, interface: iface } of elements) {
   tagsByInterface.set(iface, [...(tagsByInterface.get(iface) ?? []), name]);
 }
 
-// menuitem is listed with HTMLElement, but the standard made it
-// HTMLUnknownElement when it removed the element (HTMLMenuItemElement is
-// gone; jsdom 20 to 30 make HTMLUnknownElement).
-const plainTags = (tagsByInterface.get('HTMLElement') ?? []).filter((tag) => tag !== 'menuitem');
-const interfaces = [...parents.keys()].filter((name) => name !== 'HTMLElement');
+// Elements jsdom makes HTMLUnknownElement (black box, every release from
+// 20.0.0 to 30.1.3), which warpdom follows: menuitem, which the element
+// data lists with HTMLElement, but the standard made HTMLUnknownElement
+// when it removed the element (HTMLMenuItemElement is gone); and the newer
+// search (HTMLElement) and selectedcontent (HTMLSelectedContentElement,
+// which jsdom lacks, so neither has warpdom).
+const UNKNOWN_IN_JSDOM = new Set(['menuitem', 'search', 'selectedcontent']);
+const NOT_IN_JSDOM = new Set(['HTMLSelectedContentElement']);
+for (const [iface, tags] of tagsByInterface) tagsByInterface.set(iface, tags.filter((tag) => !UNKNOWN_IN_JSDOM.has(tag)));
+const plainTags = tagsByInterface.get('HTMLElement') ?? [];
+const interfaces = [...parents.keys()].filter((name) => name !== 'HTMLElement' && !NOT_IN_JSDOM.has(name));
 // Parents before children.
 const ordered = [];
 const visit = (name) => {

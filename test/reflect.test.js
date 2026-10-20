@@ -6,12 +6,15 @@ import { createWindow } from '../src/node.js';
 test('element interfaces follow the current standard', () => {
   const { document: d, ...w } = createWindow();
   const iface = (tag) => Object.getPrototypeOf(d.createElement(tag)).constructor.name;
-  assert.equal(iface('search'), 'HTMLElement');
-  // menuitem: HTMLElement in @webref's element data, HTMLUnknownElement in
-  // jsdom 20 to 30 and in WPT (contextmenu-historical.html); warpdom
-  // follows jsdom (#51).
+  // search (HTMLElement) and selectedcontent (HTMLSelectedContentElement)
+  // in the standard: HTMLUnknownElement in jsdom 20 to 30, which warpdom
+  // follows (#69). menuitem: HTMLElement in @webref's element data,
+  // HTMLUnknownElement in jsdom 20 to 30 and in WPT
+  // (contextmenu-historical.html); warpdom follows jsdom (#51).
+  assert.equal(iface('search'), 'HTMLUnknownElement');
   assert.equal(iface('menuitem'), 'HTMLUnknownElement');
-  assert.equal(iface('selectedcontent'), 'HTMLSelectedContentElement');
+  assert.equal(iface('selectedcontent'), 'HTMLUnknownElement');
+  assert.equal(typeof w.HTMLSelectedContentElement, 'undefined');
   assert.equal(iface('marquee'), 'HTMLMarqueeElement');
   assert.equal(iface('blink'), 'HTMLUnknownElement');
   assert.equal(iface('x-foo'), 'HTMLElement');
@@ -162,4 +165,31 @@ test('USVString reflections replace lone surrogates', () => {
   const link = d.createElement('link');
   link.imageSrcset = '\uDC00';
   assert.deepEqual([a.ping, source.srcset, link.imageSrcset], ['x�', '�a.png', '�']);
+});
+
+// <search>, <selectedcontent> and <menuitem> are HTMLUnknownElement in jsdom
+// 20 to 30 (#69; black box, every release); <search> is display: block
+// from jsdom 27 ('' before, as other elements without a user agent display
+// there).
+const unknownElementsScenario = (w) => {
+  const d = w.document;
+  d.body.innerHTML = '<search id="s">x</search><select><button><selectedcontent></selectedcontent></button><option>a</option></select><menuitem id="m"></menuitem>';
+  const out = [d.body.innerHTML, 'HTMLSelectedContentElement' in w];
+  for (const tag of ['search', 'selectedcontent', 'menuitem']) {
+    const e = d.createElement(tag);
+    d.body.append(e);
+    out.push(e.constructor.name, e instanceof w.HTMLUnknownElement, Object.getPrototypeOf(e) === w.HTMLUnknownElement.prototype,
+      w.getComputedStyle(e).display, Object.prototype.toString.call(e));
+  }
+  return out;
+};
+for (const jsdom of [20, 26, 30]) parity(`search, selectedcontent and menuitem (jsdom ${jsdom})`, unknownElementsScenario, { jsdom });
+
+test('<search> display per jsdom version: boundary 27.0.0', () => {
+  const display = (jsdom) => {
+    const w = createWindow({ jsdom });
+    return w.getComputedStyle(w.document.body.appendChild(w.document.createElement('search'))).display;
+  };
+  assert.equal(display('26.1.0'), '');
+  assert.equal(display('27.0.0'), 'block');
 });

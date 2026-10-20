@@ -20,7 +20,7 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { createWindow } from './node.js';
 import { S } from './internal.js';
-import { installWindow, defineUnforgeableSelf } from './vitest.js';
+import { installWindow, defineSelfKey } from './vitest.js';
 import { ablated, materializeAll } from './ablate.js';
 import { setQueryCache } from './selectors.js';
 import { warnNewerJsdom } from './window-features.js';
@@ -160,10 +160,8 @@ export default class WarpdomEnvironment {
     this.clearTimers = numericTimers(sandbox);
     vm.createContext(sandbox);
     const global = vm.runInContext('this', sandbox);
-    for (const key of ['window', 'self', 'top', 'parent', 'global']) {
-      if (key === 'window' || key === 'top') defineUnforgeableSelf(sandbox, key, global);
-      else Object.defineProperty(sandbox, key, { value: global, writable: true, configurable: true });
-    }
+    for (const key of ['window', 'self', 'top', 'parent']) defineSelfKey(sandbox, key, global, window, true);
+    Object.defineProperty(sandbox, 'global', { value: global, writable: true, configurable: true });
     Object.defineProperty(window.document, 'defaultView', { get: () => global, configurable: true });
     // As jest-environment-jsdom: "Not implemented" reports go to the test's
     // console as Error objects (tests spy on console.error and read the

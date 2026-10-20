@@ -51,6 +51,9 @@ every modeled jsdom version, and every measured suite gives jsdom's results.
 - #26: WebSocket, the host's (branch fix/websocket-window, 2026-10-19
   below). #22, #30: XMLHttpRequest, on by default (decided 2026-10-19;
   its own branch after the three parity PRs merge).
+- #67, #68, #69, #77: XPathException, getSVGDocument(), event handlers per
+  version, Window member kinds and prototype chain, `<search>` and
+  `<selectedcontent>` (branch fix/small-parity, 2026-10-20 below).
 - #18: a CI test that warpdom's window has every interface and member jsdom's
   has, per version, so a gap cannot reappear unnoticed. Test in place (branch
   test/jsdom-api-superset, 2026-10-19 below); its KNOWN list holds what is
@@ -284,6 +287,10 @@ warpdom follows the standard. Each has a test. To publish in the docs.
 - Additive, to watch in the corpus: Range `getClientRects()` and
   `getBoundingClientRect()` (CSSOM View) exist and return empty results;
   jsdom lacks them, so code that feature-detects them takes another path.
+- An iframe's `getSVGDocument()` returns its content document when that is
+  an SVG document, else null (always null: frames never hold SVG
+  documents); jsdom 20 to 30 have the method but every call throws a
+  TypeError from inside jsdom (2026-10-20, #67).
 - An event handler set again after being set to null is registered anew,
   after listeners added since (the standard's own example); jsdom keeps
   its old position.
@@ -323,9 +330,10 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   30 have neither, so there assignments are expandos and reads give
   `undefined`; see the 2026-10-12 section below).
 - Element interfaces and reflected attributes come from the current
-  standard's IDL: `<search>` and `<menuitem>` are HTMLElement (jsdom:
-  HTMLUnknownElement), `<selectedcontent>` exists, and reflections jsdom
-  lacks (srcset, relList, sandbox, ...) are present. Not `inert`:
+  standard's IDL, with reflections jsdom lacks (srcset, relList, sandbox,
+  ...) present; but `<menuitem>` (#51), `<search>` and `<selectedcontent>`
+  (#69, 2026-10-20) are HTMLUnknownElement and there is no
+  HTMLSelectedContentElement, as in jsdom 20 to 30. Not `inert`:
   libraries feature-detect it (react-aria then uses the inert attribute
   instead of aria-hidden) and warpdom does not implement inertness, so it
   is left out, as in jsdom (src/reflect.js FEATURE_DETECTED). Members that
@@ -3070,4 +3078,269 @@ Next: corpus re-run on the branch (getComputedStyle results change for
 every profile: suites reading button/heading/body styles move to jsdom's
 values); offload to GitHub Actions. Open issues for the left items (system
 colors per generation first).
+
+## 2026-10-20: small parity fixes (branch fix/small-parity, #67, #68, #69, #77)
+
+All measured black box on every jsdom release from 20.0.0 to 30.1.3 (42
+releases installed as aliases in a scratch directory; scripts not kept),
+the environment cases with Vitest 5's jsdom environment (forks and
+vmThreads) on jsdom 20.0.3, 26.1.0 and 30.1.3 (a scratch project with its
+own copy of vitest, so that it loads the chosen jsdom).
+
+- **#77, event handlers per version.** jsdom's handler sets change at two
+  releases, not per minor: before 22.1.0 HTMLElement, SVGElement and
+  Document lack 19 GlobalEventHandlers (onbeforeinput, onbeforematch,
+  onbeforetoggle, oncontextlost, oncontextrestored, oncopy, oncut,
+  onformdata, onpaste, onscrollend, onslotchange, the four touch handlers
+  and the four onwebkit* ones), the window also onauxclick; before 27.0.0
+  no pointer handlers. Counts as in jsdom: element 61/79/90, Document
+  63/81/92, window 78/98/106 (before 22.1.0 / to 26.1.0 / from 27.0.0).
+  Content attributes of absent handlers do nothing (the profiles compiled
+  `<div onpointerdown>` before 27 too). Before 22.1.0 the elements' and
+  Document's onauxclick is inert: it keeps what is assigned (a function or
+  object, else null; undefined until set), is never called, and its
+  content attribute is ignored (svg's window handlers from 28.1.0 behave
+  the same; one inertHandler for both).
+- **Handler sets as variants.** The profiles before 27 deleted the
+  pointer handlers from five prototypes per window, and #77 added 19 more
+  deletes: deleting from those prototypes made the jsdom 20 profile's next
+  window 320 -> 500 us. HTMLElement, SVGElement, Document and Window now
+  take their handlers from a variant of their descriptors (iface.variant
+  and iface.adjust in window.js, built once per module load), which needs
+  the compat object before the Window interface is made: profileCompat(),
+  split out of setupWindow(). Next window, median of 5 alternating
+  processes x 300 windows, Node 22.23.3, main -> branch: jsdom 20.0.3
+  profile 325 -> 196 us, 23.2.0 307 -> 177 us, 26.1.0 307 -> 173 us,
+  30.1.3 174 -> 175 us.
+- **#67.** `window.XPathException` in every version: an own data property
+  (writable, enumerable, configurable) holding a plain function (length 2,
+  INVALID_EXPRESSION_ERR 51 and TYPE_ERR 52 as writable, enumerable,
+  configurable statics) that, with or without new, returns an Error named
+  XPathException with the code and message (own stack, message, name,
+  code; not an instance of XPathException). jsdom's evaluate() never throws
+  one; warpdom's XPath errors stay as they were. One per window.
+  `HTMLIFrameElement.prototype.getSVGDocument` (iframe only, not frame,
+  embed or object): jsdom's throws "....getSVGDocument is not a function"
+  from inside jsdom on every call, so warpdom follows the standard and
+  returns null (deviation listed above). onloadend on HTMLElement,
+  SVGElement and Document before 22.1.0: inert, as onauxclick. The window's
+  onautocomplete, onautocompleteerror and onsort before 27.0.0: working
+  handlers (null at first, called for their events), IDL only (body has
+  none; body's content attribute does nothing).
+- **#69.** `<search>`, `<selectedcontent>` (and `<menuitem>`) are
+  HTMLUnknownElement in every jsdom release, from createElement and the
+  parser, and no jsdom has HTMLSelectedContentElement: the generator leaves
+  them out of html-elements.js (UNKNOWN_IN_JSDOM, NOT_IN_JSDOM); the
+  superset test walks the three tags explicitly. jsdom computes
+  `<search>`'s display as '' before 27.0.0 and block from it (cascade.js).
+- **#68, Window members.** jsdom's window has them all as own properties:
+  document, window and self accessors whose getters give the window's
+  whatever this is (20.x: configurable, self getter only; from 21.0.0
+  document and window not configurable, self [Replaceable]); name a data
+  property ('' and any value kept as given) in every version; webkitURL a
+  data property, not enumerable (warpdom: an accessor until first read,
+  as the interface objects); status and the 13 viewport members data
+  properties (writable, enumerable, configurable) before 27.0.0 and
+  accessors from 27.0.0, the viewport ones [Replaceable] (an assignment
+  makes a data property) and returning their value whatever this is,
+  status converting to a string. warpdom now defines them as own
+  properties of the window in the same shape (setupWindowData,
+  defineSelfMembers); the per-file reset restores them from the snapshot
+  (status's state is cleared too, which it was not). Before 24.1.2 (not
+  24.0: 24.1.0 and 24.1.1 still lack it) jsdom has no WindowProperties
+  object: Window.prototype inherits from EventTarget.prototype, and named
+  access is through own properties of the window, so a named element
+  hides EventTarget's members (window.addEventListener is the element with
+  `<div id="addEventListener">`) but not the window's or
+  Object.prototype's. For those profiles Window.prototype itself is a
+  proxy that looks the named objects up (named-access.js
+  namedAccessPrototype); reading a Window.prototype member there costs
+  ~20 ns more (window.location 12 -> 34 ns, addEventListener 22 -> 38
+  ns; jsdom 24.1.2 and later unchanged). window.document, an accessor now,
+  reads in 8 ns instead of 5.
+- **Environments.** Vitest's forks and threads pools copy the window's
+  members to Node's global as accessors, for jsdom too, so there
+  vi.spyOn(window, 'innerWidth', 'get'), assignments and
+  Object.defineProperty already behaved as with jsdom; only window, self,
+  top and parent were not enumerable (jsdom: writable, enumerable data
+  properties), fixed. Where the global is the window (Jest, Vitest's VM
+  pools), jsdom's global has the window's own kinds: the window's data
+  members that are not functions (name; status and the viewport members
+  before 27) are now the global's own data properties, the global's
+  accessors are enumerable as the window's members, an assignment the
+  window turns into a data property ([Replaceable] members, methods,
+  interface objects) does the same on the global, and one it keeps as an
+  accessor (status from 27) is read back from the window; self and parent
+  are [Replaceable] accessors from jsdom 21 (getters only in 20, where
+  assigning them is ignored, as a VM context's global ignores assignments
+  to getter-only properties in strict code too). vi.spyOn(window,
+  'innerWidth', 'get') works on data properties too (Vitest's spyOn
+  handles both), in every pool and version. Window constructors found as
+  data properties (webkitURL after its first read) are no longer bound.
+  Tests: fixtures/vitest-viewport (forks and vmThreads, jsdom and warpdom,
+  profiles 30.1.2, 26.1.0 and 20.0.3 with the measured results), a Jest
+  environment test for 20.0.3, 26.1.0 and 30.1.3.
+
+- **Copilot review on #87.** (1) The per-file reset now clears the inert
+  handlers (onauxclick, onloadend before 22.1.0) of the document and the
+  kept html, head and body. (2) Under Jest and Vitest's VM pools the
+  global's data members (name; viewport and status before 27) and the
+  [Replaceable] members it took over after an assignment are the global's
+  own, so the window behind it went stale, and inline event handlers read
+  that window (`window.innerWidth = 640`, then `onclick` read 1024; from 27
+  a second assignment was missed; `window.x = 1` in a handler went to the
+  hidden window). jsdom (black box: Vitest vmThreads and
+  jest-environment-jsdom on 20.0.3, 26.1.0 and 30.1.3) runs inline handlers
+  in the context, seeing every assignment and Object.defineProperty. warpdom
+  now compiles them in the VM context (runScript) when the environment has
+  one, so their global scope is the global; the exposed descriptors are
+  unchanged. Vitest's forks pool is unchanged (there jsdom's handlers run on
+  jsdom's own window, not Node's global). (3) restoreOwnProperties()
+  compares writable, enumerable and configurable too, so a flag-only
+  change (`Object.defineProperty(window, 'innerWidth', { writable: false
+  })`) does not survive the reset. Tests: reset.test.js (inert handlers on
+  20.0.3; flags on 26.1.0 and 30.1.3), fixtures/vitest-viewport (inline
+  handler test in the VM pools, warpdom profiles and real jsdom), a Jest
+  environment test on 20.0.3, 26.1.0, 30.1.3.
+- **Copilot re-review on #87: named elements in VM-pool handlers.**
+  Compiling in the VM context dropped the named-element lookup that
+  `with (window)` gave: `onclick="result.textContent = 'ok'"` with a
+  sibling `<div id="result">` threw ReferenceError (the VM global does no
+  named access). jsdom there (black box, same setups) resolves named
+  objects live (a later id resolves, a removed one is gone, two of one id
+  give an HTMLCollection, a form's name), after the global's own and
+  inherited members (`window.x = 'g'` beats `<div id="x">`, `setTimeout`
+  stays the function), and an assignment to such a name goes to the global.
+  warpdom now puts a named scope (namedScope in named-access.js) between the
+  document and the global: it answers only names the global lacks, and
+  forwards writes to the global. Tests: fixtures/vitest-viewport (every
+  pool; the global-first cases in the VM pools), a Jest environment test
+  and plain-window parity tests on 20.0.3, 26.1.0, 30.1.3. Still open, not
+  handler-specific: `window.<named>` on the VM global (decision 2026-10-11)
+  and window named access for `<a name>`/`<area name>` (jsdom 20.0.3 and
+  26.1.0 have it, 30.1.3 does not; warpdom never).
+- **Copilot review on #87, third round.** Measured black box with Vitest
+  5's jsdom environment (forks, threads, vmThreads) on jsdom 20.0.3,
+  26.1.0, 30.1.3 and jest-environment-jsdom (jsdom 20.0.3, 26.1.0).
+  (1) Global let/const of classic scripts in a handler: the comment asked
+  for them to win over named elements, but jsdom does not do that in any
+  pool: with a script's `let counter = 42` and `<div id="counter">`, an
+  inline handler reads the element, its `counter = ...` (and `kc = 8` for
+  a `const kc`) assigns a global property that later handler runs read,
+  while the scripts' bindings stay 42 and 7; a binding without a colliding
+  name or global property is read and assigned (`solo`). Its handler
+  scope is the global as an object (with), so the global's functions get
+  the global as this. warpdom's VM-pool handlers did the first run right
+  and then let the binding win (namedScope answered only names the global
+  lacked, and the global was reached as the global scope, behind the
+  bindings), and called the global's functions with undefined as this.
+  They are now compiled as `with (named) with (global)`: the global's
+  properties, then the named objects, then the bindings, as in jsdom;
+  namedScope no longer checks the global (one `in` fewer per name).
+  (2) frames, and a frame's parent and top, returned the window behind the
+  VM global: `window.name = 'updated'` then `frames.name` read '', and
+  innerWidth assignments were missed. In jsdom's VM pools and Jest they
+  are the global (`frames === window`, `iframe.contentWindow.parent ===
+  window`), and window[0] is the frame. warpdom's getters now return the
+  exposed global (events.js exposed()), and the index properties are kept
+  on the global too. In forks and threads jsdom's frames/parent are its
+  own window (not the test's global) with the same values, as warpdom's.
+  (3) In forks and threads installWindow made every replaced global
+  non-enumerable, dropping Node's navigator from Object.keys(globalThis);
+  as with jsdom, a replaced global keeps its enumerability and a new one
+  is not enumerable. Tests: jest-environment.test.js (frames and handler
+  scope on 20.0.3, 26.1.0, 30.1.3), fixtures/vitest-viewport (frame
+  aliases in every pool, identity in the VM pools; Object.keys(globalThis);
+  handler scope before script bindings in the VM pools; also run with
+  real jsdom), vitest-adapter.test.js (enumerability on a stand-in
+  global). Bench (Node 22.23.3, alternating runs vs 1723448): bench:load
+  unchanged (next window 0.211 -> 0.208 ms, first window 2.53 -> 2.47 ms),
+  bench:hot within noise, inline handler in a VM pool: compile ~21 us and
+  call ~4.1 us on both. Left open: in forks and threads warpdom runs classic scripts as
+  an indirect eval on Node's global, so a script's let/const do not
+  outlive it and its var lands on the test's global (jsdom: its own
+  window, behind the test's global); in Vitest's VM pools Node's host
+  globals (setTimeout, fetch, atob, queueMicrotask, ...) are not
+  enumerable on warpdom's global, enumerable on jsdom's.
+- **Copilot re-review on #87 (ae1314d): scope names.** The handler
+  compiler reached its scope objects through parameters (__window,
+  __document, __form, __element), and each was looked up inside the with
+  scopes already entered, so a named object of that name replaced the
+  scope: `<div id="__element">` made a bare `id` read "__element",
+  `<div id="__document">` hid the document's members (`getElementById`
+  undefined), `<form name="__form">` replaced the form owner, and in the
+  VM pools `<div id="__window">` replaced the global. This held in every
+  pool and on plain windows, since inline handlers got their scopes.
+  jsdom (Vitest forks and vmThreads on 20.0.3 and 30.1.3, black box)
+  treats them as ordinary named objects. The scopes are now reached as
+  this[i] of the compiled function, which nothing shadows. Tests:
+  event-handlers.test.js (parity with jsdom 20, 26, 30 on a plain window),
+  jest-environment.test.js (20.0.3, 26.1.0, 30.1.3). Handler compile
+  (median of 5 alternating runs, 3000 handlers, vs 1723448): plain
+  window 6.06 -> 5.44 us, VM pool 20.6 -> 19.9 us; calls unchanged (2.2
+  and 3.9 us).
+- **Copilot re-review on #87 (d1c1f09): event.view; reset of -0.** In
+  jsdom's VM pools and Jest (Vitest vmThreads on 20.0.3, 26.1.0, 30.1.3;
+  jest-environment-jsdom on 20.0.3 and 26.1.0), the view of the events
+  jsdom fires (focus, focusin, blur, click(), a label's click) is the
+  global, so `event.view.name` / `.innerWidth` read the test's
+  assignments; warpdom's was the backing window ('' and 1024 after
+  `window.name = 'updated'; window.innerWidth = 800`). UIEvent's view getter
+  now returns exposed() of the view, as target and currentTarget do, which
+  covers every event warpdom fires with the window as view. Checked the
+  other references in the same probe: composedPath() already ends with the
+  global, postMessage's MessageEvent has source null and the global as
+  target, as in jsdom. In forks and threads jsdom's view is its own window
+  (not the test's global) with the same values, as warpdom's; there jsdom
+  throws for `new MouseEvent('x', { view: window })` (the global is not its
+  Window) and warpdom accepts it (unchanged). reset.js compares values with
+  Object.is, so `scrollY = -0` (a data property before jsdom 27; jsdom 26
+  keeps -0) is undone by the reset. Tests: jest-environment.test.js
+  (event.view on 20.0.3, 26.1.0, 30.1.3), fixtures/vitest-viewport
+  (event.view in every pool, also with real jsdom), reset.test.js (-0 on
+  20.0.3, 26.1.0, 30.1.3).
+
+Left as they are (measured, not in these issues):
+- ShadowRoot.prototype.onslotchange: warpdom has it, no jsdom does.
+- The window's event handlers and other Window members are on
+  Window.prototype in warpdom, own properties of the window in jsdom (the
+  superset test does not distinguish; Object.hasOwn(window, 'onclick')
+  differs).
+- Attributes of other window members: jsdom 21+ has setters
+  ([Replaceable]) on length, frames, parent, external (20: none), the six
+  bars and screen, and location, top and window are not configurable;
+  warpdom's length, frames, parent, bars and screen are getters only.
+- In Jest and Vitest's VM pools: the global's document, window and top
+  stay configurable (teardown redefines them), its interface objects and
+  webkitURL are accessors, and assigning a getter-only member
+  (performance) still sets the global's value (jsdom 20 to 26 ignore it,
+  27+ throw).
+- jsdom 24.1.2 to 26.1.0 have both the WindowProperties object and the
+  window's own named properties; warpdom has the former only.
+- Assigning window.document or window.window in strict code throws a
+  TypeError on warpdom's window outside an environment, as on jsdom 27+;
+  jsdom 20 to 26 windows made with runScripts ignore it (a VM context's
+  global).
+
+Tests: event-handlers.test.js (handler sets and content attributes on
+jsdom 20, 22, 26, 30; counts at 20.0.0, 22.0.0, 22.1.0, 26.1.0, 27.0.0,
+30.1.3; inert onauxclick/onloadend; the window's onautocomplete,
+onautocompleteerror, onsort), xpath.test.js (XPathException on 20, 25,
+30), frames.test.js (getSVGDocument shape on 20, 25, 30; null on
+profiles), reflect.test.js (`<search>`, `<selectedcontent>`, `<menuitem>`
+on 20, 26, 30; display at 26.1.0/27.0.0), window-features.test.js (member
+kinds, assignments, prototype chain and named access on 20, 22, 25, 26,
+30; boundaries 20.0.3, 21.0.0, 24.1.1, 24.1.2, 26.1.0, 27.0.0, 30.1.3;
+reset), vitest-adapter.test.js and jest-environment.test.js (above). The
+superset test's KNOWN entries for these issues are removed (8).
+
+Bench (Node 22.23.3, 5 alternating runs, medians, main -> branch):
+bench:load cold load 20.4 -> 20.4 ms, first window 2.39 -> 2.47 ms
+(spread 2.2 to 2.5 on both), next window 0.206 -> 0.208 ms; bench:hot
+within noise (two rounds of 3 and 5 alternating runs; nothing here
+touches tree operations): the largest median differences have
+overlapping ranges, setAttribute -1.7% then +3.6%, appendChild +8.2% then
+-1.2%, insertBefore +4.5% then +3.4% (main 117.7 to 124.3 ns, branch
+116.5 to 130.0 ns). Window creation per profile and member reads as
+above.
 

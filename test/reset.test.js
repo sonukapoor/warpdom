@@ -201,3 +201,56 @@ test('resetWindow: a non-configurable property on a kept object stays without fa
   assert.equal(w.navigator.frozen, 1);
   assert.equal('other' in w.navigator, false);
 });
+
+// Before jsdom 22.1.0 onauxclick and onloadend are inert on elements and
+// the document (event-handlers.js): undefined until set, and so again after
+// the per-file reset.
+test('resetWindow forgets inert event handlers (jsdom 20 profile)', () => {
+  const w = createWindow({ jsdom: '20.0.3' });
+  snapshotWindow(w);
+  const d = w.document;
+  const f = () => {};
+  d.onloadend = f;
+  d.onauxclick = f;
+  d.documentElement.onloadend = f;
+  d.head.onauxclick = f;
+  d.body.onauxclick = f;
+  resetWindow(w);
+  assert.deepEqual([d.onloadend, d.onauxclick, d.documentElement.onloadend, d.head.onauxclick, d.body.onauxclick], [undefined, undefined, undefined, undefined, undefined]);
+});
+
+// A property whose value stays but whose flags change is restored too.
+test('resetWindow restores descriptor flags changed without the value', () => {
+  for (const jsdom of ['26.1.0', '30.1.3']) {
+    const w = createWindow({ jsdom });
+    snapshotWindow(w);
+    const before = ['innerWidth', 'name', 'status'].map((key) => Object.getOwnPropertyDescriptor(w, key));
+    if (jsdom === '26.1.0') Object.defineProperty(w, 'innerWidth', { writable: false });
+    else Object.defineProperty(w, 'innerWidth', { enumerable: false });
+    Object.defineProperty(w, 'name', { enumerable: false });
+    Object.defineProperty(w, 'status', { configurable: true, enumerable: false });
+    resetWindow(w);
+    assert.deepEqual(['innerWidth', 'name', 'status'].map((key) => Object.getOwnPropertyDescriptor(w, key)), before, jsdom);
+    w.innerWidth = 640;
+    assert.equal(w.innerWidth, 640, jsdom);
+    // A property made non-configurable stays, without an error.
+    Object.defineProperty(w, 'name', { value: '', configurable: false });
+    resetWindow(w);
+    assert.equal(Object.getOwnPropertyDescriptor(w, 'name').configurable, false);
+  }
+});
+
+// Before jsdom 27 the viewport members are data properties: a signed zero
+// assigned by a test (scrollY = -0, seen through Object.is or 1 / scrollY)
+// is a change the reset undoes.
+test('resetWindow restores viewport values assigned as -0', () => {
+  for (const jsdom of ['20.0.3', '26.1.0', '30.1.3']) {
+    const w = createWindow({ jsdom });
+    snapshotWindow(w);
+    w.scrollY = -0;
+    w.pageXOffset = -0;
+    assert.equal(Object.is(w.scrollY, -0), true, jsdom);
+    resetWindow(w);
+    assert.deepEqual([Object.is(w.scrollY, 0), Object.is(w.pageXOffset, 0)], [true, true], jsdom);
+  }
+});
