@@ -50,7 +50,7 @@ every modeled jsdom version, and every measured suite gives jsdom's results.
   2026-10-19 below).
 - #26: WebSocket, the host's (branch fix/websocket-window, 2026-10-19
   below). #22, #30: XMLHttpRequest, on by default (decided 2026-10-19;
-  its own branch after the three parity PRs merge).
+  branch feat/xhr, 2026-10-20 below).
 - #67, #68, #69, #77: XPathException, getSVGDocument(), event handlers per
   version, Window member kinds and prototype chain, `<search>` and
   `<selectedcontent>` (branch fix/small-parity, 2026-10-20 below).
@@ -494,6 +494,23 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   "Illegal invocation" TypeError (jsdom: "'get x' called on an object that
   is not a valid instance of DeviceMotionEventAcceleration."), as
   everywhere in warpdom.
+- `XMLHttpRequest` makes its requests with the host's `fetch` (2026-10-20,
+  branch feat/xhr): `getAllResponseHeaders()` lists headers sorted by name
+  with repeated headers combined (jsdom: as received; from 28 repeated
+  headers on separate lines); upload progress is not measured (the upload
+  events report the whole body when the response's headers arrive, as
+  jsdom's do); synchronous requests throw a NotSupportedError at send()
+  (jsdom: a child process); cookies are not sent or stored (jsdom shares
+  its jar with document.cookie both ways); file: URLs fail (jsdom 28+ reads
+  the file); requests carry fetch's Sec-Fetch-Mode, and a redirected
+  request fetch's Origin and Referer; responseURL drops a redirect's
+  fragment; a DataView body is sent (jsdom 28+ sends none); jsdom before
+  28 never completes a POST redirected by 301, 302 or 303 (warpdom follows
+  it as GET), goes on with a request aborted in loadstart and throws
+  Node's error from send() for ftp: and about: URLs (warpdom: a network
+  error); network errors that jsdom before 27 reports are worded by fetch
+  (CORS failures in jsdom's words); the method `patch` in lowercase makes
+  Node's fetch print a warning once.
 
 ## Decisions
 
@@ -3343,4 +3360,133 @@ overlapping ranges, setAttribute -1.7% then +3.6%, appendChild +8.2% then
 -1.2%, insertBefore +4.5% then +3.4% (main 117.7 to 124.3 ns, branch
 116.5 to 130.0 ns). Window creation per profile and member reads as
 above.
+
+## 2026-10-20: XMLHttpRequest (branch feat/xhr, #22, #30)
+
+XMLHttpRequest, XMLHttpRequestEventTarget and XMLHttpRequestUpload, as
+decided 2026-10-19: written from the XHR standard (src/xhr.js) on top of
+the host's fetch, read from the platform's global object when a request
+starts (so msw and nock, which replace fetch, see the requests); the core
+imports no Node built-ins. On by default in every profile (every jsdom
+from 20.0.3 to 30.1.3 has the three interfaces; the API superset test's
+XMLHttpRequest entry is gone and the test passes for every version);
+`xhr: false` (createWindow, environmentOptions.warpdom.xhr,
+testEnvironmentOptions.xhr; frames inherit it) leaves them out, as
+before. Lazy like the other interfaces; the upload object is made on first
+use. Requests still running stop without events when a test environment
+tears down or resets the window, or a frame is discarded, as closing
+jsdom's window does. Timers are the host's, taken at load, so a test's
+fake timers do not stop requests or their timeouts.
+
+Measured black box (local server, real requests; scratch probes, then
+test/xhr.test.js), jsdom 20.0.3 to 30.1.3 and 27.0.0, 27.0.1, 27.1 to 27.3,
+28.0.0:
+- Two generations: jsdom 20 to 27 make requests with Node's http module,
+  28.0.0 and later with undici (compat.xhrUndici). From 28: upload
+  progress/load/loadend fire before HEADERS_RECEIVED (before: after it);
+  an empty body gets one progress event in HEADERS_RECEIVED; `X-HTTP-Method`
+  and the other method-override headers are forbidden with CONNECT, TRACE
+  or TRACK; setRequestHeader's errors have their own messages ("Invalid
+  header name", "setRequestHeader() can only be called in the OPENED
+  state."); buffers and type-less blobs get no Content-Type (before:
+  text/plain;charset=UTF-8); repeated response headers are separate lines
+  (before: combined); `Access-Control-Expose-Headers: *` exposes all;
+  cross-origin and data: uploads report their lengths (before: 0/0, and no
+  upload completion for data:); open() after a response resets status
+  (before: kept); a cross-origin request redirected to another origin is
+  not checked as origin null (before: it is). Before 27.0.0 network and
+  CORS errors are reported on the virtual console (warpdom: through the
+  environments' "Not implemented" channel, in jsdom's words for CORS).
+  Multipart bodies: hex boundaries and no line-break normalization before
+  26; filenames never normalized. jsdom 20 sends URL credentials as Basic
+  authorization. A view on a SharedArrayBuffer throws from 27.0.1; a
+  response charset naming the replacement encoding gives U+FFFD from
+  27.4.0.
+- Events: readystatechange (1) in open(); loadstart synchronously in
+  send(), then upload loadstart (0/total) when upload listeners were ever
+  added (a removed listener counts) and the body is not empty;
+  readystatechange and progress per received chunk (lengthComputable with
+  a Content-Length); readystatechange (4), load and loadend in one task.
+  Timeouts: progress (0/0) at the upload if it is incomplete, else at the
+  request, then readystatechange (4), upload timeout/loadend, progress,
+  timeout, loadend; afterwards readyState is 0 and the headers and body
+  are gone but status, statusText and responseURL stay. Abort: as the
+  standard, with responseURL kept. A timeout changed during a request is
+  measured from its start; 0 cancels it; a request started without one
+  never gets one.
+- CORS as jsdom checks it: Origin on cross-origin requests; a preflight
+  (Origin, Access-Control-Request-Method, -Headers: the author's names as
+  written, joined by ", ") only for methods other than GET, HEAD and POST,
+  author headers other than Accept, Accept-Language, Content-Language and
+  Content-Type (any value), or upload listeners; it needs a 2xx status,
+  the allowed origin and the headers in Access-Control-Allow-Headers (or
+  *); allowed methods are not checked. Cross-origin responses expose the
+  safelisted headers and Access-Control-Expose-Headers.
+- Bodies and responses: Content-Type defaults and the charset rewrite to
+  UTF-8 for strings and documents (URLSearchParams are sent as strings,
+  text/plain, as jsdom does), the document serialization with its doctype,
+  response types (arraybuffer and blob give the bytes so far before DONE,
+  as jsdom; json decodes UTF-8 only; documents: text/html only for
+  responseType document, XML for XML types and no Content-Type, null on a
+  parse error, contentType application/xml, characterSet from the
+  charset), getAllResponseHeaders() without a trailing CRLF, Set-Cookie
+  and Set-Cookie2 hidden, the URL's fragment kept in responseURL without
+  a redirect, data: URLs.
+- Synchronous XHR: jsdom runs it in a child process (it works when the
+  server is in another process; with the server in the same process it
+  deadlocks until "Sync XHR worker timed out"). warpdom throws a
+  NotSupportedError at send() that says to make the request asynchronous;
+  open()'s own checks (InvalidAccessError with a timeout or responseType)
+  are jsdom's. open(m, u, undefined) is synchronous, as in jsdom.
+- Cookies: jsdom stores a response's Set-Cookie in the jar document.cookie
+  reads and sends the document's cookies with same-origin requests (and
+  credentialed cross-origin ones); warpdom does neither (decided).
+
+Differences are listed in "Deliberate deviations" above and in the
+README. Mock compatibility (test/xhr-mocks.test.js, fixtures/vitest-xhr-
+mocks, same specs on warpdom in forks and vmThreads and on jsdom in forks;
+jsdom's VM context cannot load msw or nock, no web streams): axios takes
+its XHR adapter (as with jsdom; with xhr: false Node's http client, nock
+intercepts it); msw answers the request the XHR makes through fetch, so
+its CORS checks apply (a cross-origin mocked response needs
+Access-Control-Allow-Origin, on jsdom too); nock 14 answers XHR itself
+through @mswjs/interceptors' XMLHttpRequest interceptor (no CORS). Not
+run under Jest (the Jest CLI is not a devDependency): there msw and nock
+replace the test global's XMLHttpRequest, which is the window's, as with
+jsdom. devDependencies: msw 3, nock 14 (15 needs Node 22.20), axios 1.
+
+Tests: test/xhr.test.js (parity scenarios on jsdom 20.0.3, 27.4.0, 28.1.0,
+30.1.3, some on 22, 25 and 26; each engine against its own server,
+several at a time, ~11 s; plus the option, laziness, sync, reset and
+teardown, fake timers, realms, profile boundaries and the documented
+differences), test/xhr-mocks.test.js, the type tests.
+
+WPT (checkout 87b5d13099, runner fixed: the host's WebSocket stays on the
+global, else every warpdom file failed since fix/websocket-window; data:
+and blob: URLs through the host's fetch): xhr/ 531 of 1,438 subtests,
+score 29.1% (jsdom 30.1.2: 486, 30.1%). Most of xhr/ needs wptserve
+(.py handlers, other origins): neither engine reaches it here (jsdom's
+requests fail DNS, which passes tests that expect an error), so the
+area's number says little until the runner has a server: wptserve with
+its Python handlers and the www1/www2 hosts resolving to it (Node's
+lookup or /etc/hosts), https. Of jsdom's 55 subtests warpdom fails: 19
+synchronous XHR, ~25 server-dependent, 4 FormData iteration and its
+idlharness line (forms.js, not XHR), 1 ProgressEvent conversion, 2
+responseXML importNode/adoptNode of XHTML scripts, 3 timeout files that
+stop at postMessage with one argument. The subtests in other areas that
+needed XMLHttpRequest now pass (main vs branch, warpdom, FileAPI, url,
+fetch/api/headers, domxpath, dom/events, hr-time, user-timing,
+WebCryptoAPI, encoding without the legacy CJK and streams directories:
++1,410 subtests, 0 lost): domxpath/xml_xpath_runner 1,024 (jsdom 0),
+url/failure.html 190, encoding/single-byte-decoder?XMLHttpRequest 168,
+unsupported-encodings 14, replacement-encodings 6, fetch/api/headers 4,
+dom/events 4 (relatedTarget, event-global). xhr added to the WPT
+workflow's default areas.
+
+Measured (Node 22.17.1, interleaved with main 74f6b34, medians of 5):
+cold load 21.9 -> 23.1 ms (+1.2 ms: the xhr.js module, ~0.9 ms to load
+alone; minifying it does not help), first window 2.52 -> 1.93 ms, next
+windows 0.203 -> 0.200 ms. bench:hot (warpdom only) every case within
+-3% to +4%, none of the hot paths touched. `npm test` on Node 22.23.3 and
+22.12.0 and `npm run test:types` pass.
 
