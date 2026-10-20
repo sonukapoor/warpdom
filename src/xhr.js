@@ -47,9 +47,10 @@ const INVALID_STATE = 'The object is in an invalid state.';
 const RESPONSE_TYPES = new Set(['', 'arraybuffer', 'blob', 'document', 'json', 'text']);
 const NORMALIZED_METHODS = new Set(['DELETE', 'GET', 'HEAD', 'OPTIONS', 'POST', 'PUT']);
 
-// Forbidden request header names (Fetch): set silently does nothing.
+// Forbidden request header names (Fetch, without Set-Cookie, which jsdom
+// sends): setting one silently does nothing.
 const FORBIDDEN_HEADERS = new Set(['accept-charset', 'accept-encoding', 'access-control-request-headers', 'access-control-request-method',
-  'connection', 'content-length', 'cookie', 'cookie2', 'date', 'dnt', 'expect', 'host', 'keep-alive', 'origin', 'referer', 'set-cookie',
+  'connection', 'content-length', 'cookie', 'cookie2', 'date', 'dnt', 'expect', 'host', 'keep-alive', 'origin', 'referer',
   'te', 'trailer', 'transfer-encoding', 'upgrade', 'via']);
 const METHOD_OVERRIDE_HEADERS = new Set(['x-http-method', 'x-http-method-override', 'x-method-override']);
 // Author headers that need no CORS preflight (jsdom: Content-Type with any value).
@@ -218,22 +219,27 @@ function documentResponse(s) {
 
 // --- request bodies ---------------------------------------------------------------------------
 
-// A multipart/form-data boundary in the form jsdom's has.
-function boundary() {
+// A multipart/form-data boundary in the form jsdom's has: 24 digits, hex
+// digits before jsdom 26.
+function boundary(legacy) {
   let digits = '';
-  for (let i = 0; i < 24; i++) digits += Math.floor(Math.random() * 10);
+  for (let i = 0; i < 24; i++) digits += Math.floor(Math.random() * (legacy ? 16 : 10)).toString(16);
   return `--------------------------${digits}`;
 }
 
-const escapeName = (name) => name.replace(/\r\n|\r|\n/g, '\r\n').replace(/\n/g, '%0A').replace(/\r/g, '%0D').replace(/"/g, '%22');
+// Line breaks in names and string values are normalized to CRLF (from
+// jsdom 26; filenames never); names and filenames have line breaks and
+// quotes percent-encoded.
+const crlf = (s, legacy) => (legacy ? s : s.replace(/\r\n|\r|\n/g, '\r\n'));
+const escapeName = (name) => name.replace(/\n/g, '%0A').replace(/\r/g, '%0D').replace(/"/g, '%22');
 
-function multipart(entries) {
-  const b = boundary();
+function multipart(entries, legacy) {
+  const b = boundary(legacy);
   const parts = [];
   for (const { name, value } of entries) {
-    let head = `--${b}\r\nContent-Disposition: form-data; name="${escapeName(name)}"`;
+    let head = `--${b}\r\nContent-Disposition: form-data; name="${escapeName(crlf(name, legacy))}"`;
     if (typeof value === 'string') {
-      parts.push(utf8Encode(`${head}\r\n\r\n${value.replace(/\r\n|\r|\n/g, '\r\n')}\r\n`));
+      parts.push(utf8Encode(`${head}\r\n\r\n${crlf(value, legacy)}\r\n`));
       continue;
     }
     const file = blobData(value);
@@ -263,7 +269,7 @@ const PlatformBlob = PLATFORM_GLOBAL.Blob;
 // a typed array body, and cannot send it again after a 307 or 308 redirect.
 const bodyOf = (bytes) => (typeof PlatformBlob === 'function' ? new PlatformBlob([bytes]) : bytes);
 
-function extractBody(body, legacy) {
+function extractBody(body, legacy, legacyMultipart) {
   const fallback = legacy ? 'text/plain;charset=UTF-8' : null;
   if (body?.[S]?.type === DOCUMENT_NODE) {
     const bytes = utf8Encode(innerMarkup(body));
@@ -275,7 +281,7 @@ function extractBody(body, legacy) {
   const view = bufferBytes(body);
   if (view !== null) { const bytes = view.slice(); return { body: bodyOf(bytes), length: bytes.length, type: fallback, text: false }; }
   const entries = formDataEntries(body);
-  if (entries !== null) { const { bytes, type } = multipart(entries); return { body: bodyOf(bytes), length: bytes.length, type, text: false }; }
+  if (entries !== null) { const { bytes, type } = multipart(entries, legacyMultipart); return { body: bodyOf(bytes), length: bytes.length, type, text: false }; }
   // Strings, and everything else (URLSearchParams too, as in jsdom) as a string.
   const bytes = utf8Encode(String(body).toWellFormed?.() ?? String(body));
   return { body: bodyOf(bytes), length: bytes.length, type: 'text/plain;charset=UTF-8', text: true };
@@ -283,12 +289,12 @@ function extractBody(body, legacy) {
 
 // --- CORS (Fetch 3.2, as jsdom checks it) -------------------------------------------------------
 
-function corsAllows(response, origin, credentials) {
+// Why a response fails the CORS check, in jsdom's words, or null.
+function corsError(response, origin, credentials) {
   const allow = response.headers.get('access-control-allow-origin');
-  if (allow === null) return false;
-  if (allow === '*' && !credentials) return true;
-  if (allow !== origin) return false;
-  return !credentials || response.headers.get('access-control-allow-credentials') === 'true';
+  if (allow === '*' && !credentials) return null;
+  if (allow === '*' || (allow === origin && credentials && response.headers.get('access-control-allow-credentials') !== 'true')) return 'Credentials forbidden';
+  return allow === origin ? null : `Cross origin ${origin} forbidden`;
 }
 
 const headerList = (value) => (value ?? '').split(',').map((v) => v.trim().toLowerCase()).filter((v) => v !== '');
@@ -366,7 +372,8 @@ function completeUpload(s, req, cross) {
   if (s.uploadComplete) return true;
   s.uploadComplete = true;
   const upload = s.upload;
-  if (!s.uploadListener || upload === null) return true;
+  // jsdom before 28 completes no upload to a data: URL.
+  if (!s.uploadListener || upload === null || (req.data && !s.window[S].compat.xhrUndici)) return true;
   const window = s.window;
   // jsdom before 28: cross-origin requests' upload events carry no lengths.
   const [loaded, computable] = cross && !s.window[S].compat.xhrUndici ? [0, false] : [req.length, true];
@@ -392,25 +399,30 @@ async function run(xhr, s, req) {
       const preflight = await fetch(req.fetchURL, { method: 'OPTIONS', headers, redirect: 'manual', signal: req.controller.signal });
       if (s.req !== req) return;
       preflight.body?.cancel().catch(() => {});
-      if (preflight.status < 200 || preflight.status > 299 || !corsAllows(preflight, origin, credentials)) {
-        fail(xhr, s, req, credentials && preflight.headers.get('access-control-allow-origin') === '*' ? 'Credentials forbidden' : `Cross origin ${origin} forbidden`);
-        return;
-      }
+      if (preflight.status < 200 || preflight.status > 299) { fail(xhr, s, req, `Error: Response for preflight has invalid HTTP status code ${preflight.status}`); return; }
+      const denied = corsError(preflight, origin, credentials);
+      if (denied !== null) { fail(xhr, s, req, denied); return; }
       const allowed = headerList(preflight.headers.get('access-control-allow-headers'));
       const missing = allowed.includes('*') ? [] : req.unsafe.filter((name) => !allowed.includes(name.toLowerCase()));
       if (missing.length) { fail(xhr, s, req, `Headers ${missing.join(', ')} forbidden`); return; }
     }
     response = await fetch(req.fetchURL, { method, headers: req.headers, body: req.body, redirect: 'follow', signal: req.controller.signal });
   } catch (error) {
-    fail(xhr, s, req, error?.cause?.message || error?.cause?.name || error?.message);
+    const reason = error?.cause?.message || error?.cause?.name || error?.message;
+    fail(xhr, s, req, reason === 'redirect count exceeded' ? 'Error: Maximum number of redirects exceeded' : reason);
     return;
   }
   if (s.req !== req) { response.body?.cancel().catch(() => {}); return; }
   const finalURL = response.redirected ? response.url : url;
-  const finalCross = cross || (response.redirected && new URL(response.url).origin !== origin);
-  if (finalCross && !/^(data|blob):/.test(finalURL) && !corsAllows(response, origin, credentials)) {
+  const finalOrigin = response.redirected ? new URL(response.url).origin : null;
+  const finalCross = cross || (response.redirected && finalOrigin !== origin);
+  // jsdom before 28: a cross-origin request redirected to another origin
+  // has the origin null (a tainted origin), even back to the document's.
+  const tainted = cross && response.redirected && !compat.xhrUndici && finalOrigin !== new URL(url).origin;
+  const denied = finalCross || tainted ? corsError(response, tainted ? 'null' : origin, credentials) : null;
+  if (denied !== null && !/^(data|blob):/.test(finalURL)) {
     response.body?.cancel().catch(() => {});
-    fail(xhr, s, req, credentials && response.headers.get('access-control-allow-origin') === '*' ? 'Credentials forbidden' : `Cross origin ${origin} forbidden`);
+    fail(xhr, s, req, denied);
     return;
   }
   let exposed = null;
@@ -482,7 +494,7 @@ function send(xhr, s, body) {
   const compat = window[S].compat;
   const legacy = !compat.xhrUndici;
   const method = s.method;
-  const extracted = body === undefined || body === null || method === 'GET' || method === 'HEAD' ? null : extractBody(body, legacy);
+  const extracted = body === undefined || body === null || method === 'GET' || method === 'HEAD' ? null : extractBody(body, legacy, compat.jsdom < 26);
 
   const headers = {};
   const names = new Map(); // lowercase -> name as sent
@@ -516,15 +528,15 @@ function send(xhr, s, body) {
   headers['Accept-Encoding'] = 'gzip, deflate';
   if (docURL.protocol === 'http:' || docURL.protocol === 'https:') { docURL.hash = ''; headers.Referer = docURL.href; }
   if (cross) headers.Origin = origin;
-  // The fetch URL has no credentials (fetch rejects them); jsdom before 28
-  // sends them as Basic authorization.
+  // The fetch URL has no credentials (fetch rejects them); jsdom 20 sends
+  // them as Basic authorization.
   let fetchURL = url.href;
   if (url.username !== '' || url.password !== '') {
     const plain = new URL(url.href);
     plain.username = '';
     plain.password = '';
     fetchURL = plain.href;
-    if (legacy && !names.has('authorization')) headers.Authorization = `Basic ${btoa(`${decodeURIComponent(url.username)}:${decodeURIComponent(url.password)}`)}`;
+    if (compat.jsdom < 21 && !names.has('authorization')) headers.Authorization = `Basic ${btoa(`${decodeURIComponent(url.username)}:${decodeURIComponent(url.password)}`)}`;
   }
 
   // An empty body has no upload events, as in jsdom.
@@ -534,7 +546,7 @@ function send(xhr, s, body) {
   const unsafe = [...names.entries()].filter(([lower]) => !SIMPLE_HEADERS.has(lower)).map(([, name]) => name);
   const req = {
     url: url.href, fetchURL, method: legacy && method.toUpperCase() === 'PATCH' ? 'PATCH' : method, headers, body: extracted?.body ?? null, length: extracted?.length ?? 0,
-    origin, cross, credentials: s.withCredentials, unsafe, userAgent,
+    origin, cross, credentials: s.withCredentials, unsafe, userAgent, data: url.protocol === 'data:',
     preflight: cross && (!['GET', 'HEAD', 'POST'].includes(method) || unsafe.length > 0 || s.uploadListener),
     controller: typeof AbortController === 'function' ? new AbortController() : null, timer: null, start: Date.now(),
   };
@@ -546,7 +558,7 @@ function send(xhr, s, body) {
   fireProgress(xhr, window, 'loadstart', 0, 0, false);
   if (s.state !== OPENED || !s.send || s.req !== req) return;
   if (!s.uploadComplete && s.uploadListener) {
-    const [total, computable] = cross && legacy ? [0, false] : [req.length, true];
+    const [total, computable] = (cross || req.data) && legacy ? [0, false] : [req.length, true];
     fireProgress(s.upload, window, 'loadstart', 0, total, computable);
     if (s.state !== OPENED || !s.send || s.req !== req) return;
   }
