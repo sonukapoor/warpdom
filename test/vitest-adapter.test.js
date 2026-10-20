@@ -425,6 +425,7 @@ test('Vitest: viewport members, name, status and self as with jsdom, per pool an
       out = String(err.stdout) + String(err.stderr);
     }
     assert.equal(code, 0, `${pool} ${environment.join(' ') || 'warpdom'} ${jsdom ?? ''}: ${out}`);
-    assert.match(out, pool === 'forks' ? /3 passed \| 2 skipped/ : /5 passed/);
+    // Vitest colors its summary on CI (GitHub Actions); match the plain text.
+    assert.match(out.replace(/\x1b\[[0-9;]*m/g, ''), pool === 'forks' ? /3 passed \| 2 skipped/ : /5 passed/);
   }
 });
