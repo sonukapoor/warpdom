@@ -531,6 +531,27 @@ const SCENARIOS = {
     await one('crossToSame', `/redirect?acao=*&to=${encodeURIComponent(`${c.BASE}/echo`)}`, { upload: false });
     return out;
   },
+  async conversions(w, c) {
+    const out = {};
+    const x = new w.XMLHttpRequest();
+    x.open('POST', `${c.BASE}/echo`);
+    out.sharedArrayBuffer = attempt(() => x.send(new Uint8Array(new SharedArrayBuffer(4))));
+    const y = new w.XMLHttpRequest();
+    y.open('GET', `${c.BASE}/x`, false);
+    out.syncResponseType = ['nosuchtype', 'json'].map((v) => attempt(() => { y.responseType = v; return y.responseType; }));
+    const calls = [];
+    const value = (name, v) => ({ toString() { calls.push(name); return v; } });
+    new w.XMLHttpRequest().open(value('method', 'GET'), value('url', '/x'), true, value('user', 'a'), value('password', 'b'));
+    new w.XMLHttpRequest().open('GET', '/x', true, null, undefined);
+    out.toString = calls;
+    const z = new w.XMLHttpRequest();
+    z.responseType = 'json';
+    z.open('GET', `${c.BASE}/type?ct=application/json&body=fffe7b007d00&enc=hex`);
+    z.send();
+    await done(z);
+    out.utf16JSON = z.response;
+    return out;
+  },
   async urls(w, c) {
     const out = [];
     for (const u of ['echo?q=1', '/echo#frag', '../echo', `//localhost:${c.PORT}/echo`, `${c.BASE}/ech%6F?a b`, `http://u:p@localhost:${c.PORT}/echo`]) {
@@ -802,4 +823,11 @@ test('XMLHttpRequest: profile boundaries (jsdom 28.0.0 undici; network errors re
   assert.deepEqual(errors, []);
   await sequence('26.1.0');
   assert.deepEqual(errors, ['Cross origin http://localhost:PORT forbidden']);
+  // send() rejects a view on a SharedArrayBuffer from 27.0.1 (27.0.0 sends it).
+  const shared = (jsdom) => {
+    const x = new (createWindow({ url: PAGE, jsdom }).XMLHttpRequest)();
+    x.open('POST', `http://localhost:${DEAD}/`);
+    return attempt(() => x.send(new Uint8Array(new SharedArrayBuffer(4))));
+  };
+  assert.deepEqual(['27.0.0', '27.0.1'].map(shared), ['undefined', "TypeError/TypeError: Failed to execute 'send' on 'XMLHttpRequest': parameter 1 is a view on a SharedArrayBuffer, which is not allowed."]);
 });

@@ -24,7 +24,7 @@
 import { S, state, domError, tooFewArguments, PLATFORM_GLOBAL, PlatformURL as URL, DOCUMENT_NODE } from './internal.js';
 import { dispatch } from './events.js';
 import { handlerMembers } from './event-handlers.js';
-import { decodeText, encodingOf, bufferBytes, realmOf, utf8Encode } from './encoding.js';
+import { decodeText, encodingOf, bufferBytes, isSharedArrayBuffer, realmOf, utf8Encode, PlatformTextDecoder } from './encoding.js';
 import { blobData, makeBlob } from './file-reader.js';
 import { documentBaseURL } from './base-url.js';
 import { innerMarkup } from './dom-parsing.js';
@@ -181,6 +181,9 @@ function encodingName(s, bytes) {
   return name === 'utf-8' ? 'UTF-8' : name.startsWith('utf-16') ? name.toUpperCase() : name;
 }
 
+let utf8Decoder = null;
+const utf8Decode = (bytes) => (utf8Decoder ??= new PlatformTextDecoder()).decode(bytes);
+
 function responseText(s) {
   if (s.state !== LOADING && s.state !== DONE) return '';
   const r = s.response;
@@ -269,7 +272,7 @@ const PlatformBlob = PLATFORM_GLOBAL.Blob;
 // a typed array body, and cannot send it again after a 307 or 308 redirect.
 const bodyOf = (bytes) => (typeof PlatformBlob === 'function' ? new PlatformBlob([bytes]) : bytes);
 
-function extractBody(body, legacy, legacyMultipart) {
+function extractBody(body, legacy, legacyMultipart, rejectsShared) {
   const fallback = legacy ? 'text/plain;charset=UTF-8' : null;
   if (body?.[S]?.type === DOCUMENT_NODE) {
     const bytes = utf8Encode(innerMarkup(body));
@@ -278,6 +281,9 @@ function extractBody(body, legacy, legacyMultipart) {
   const blob = blobData(body);
   if (blob !== undefined) return { body: bodyOf(blob.bytes), length: blob.bytes.length, type: blob.type || fallback, text: false };
   if (typeof PlatformBlob === 'function' && body instanceof PlatformBlob) return { body, length: body.size, type: body.type || fallback, text: false };
+  if (rejectsShared && ArrayBuffer.isView(body) && isSharedArrayBuffer(body.buffer)) {
+    throw new TypeError("Failed to execute 'send' on 'XMLHttpRequest': parameter 1 is a view on a SharedArrayBuffer, which is not allowed.");
+  }
   const view = bufferBytes(body);
   if (view !== null) { const bytes = view.slice(); return { body: bodyOf(bytes), length: bytes.length, type: fallback, text: false }; }
   const entries = formDataEntries(body);
@@ -494,7 +500,7 @@ function send(xhr, s, body) {
   const compat = window[S].compat;
   const legacy = !compat.xhrUndici;
   const method = s.method;
-  const extracted = body === undefined || body === null || method === 'GET' || method === 'HEAD' ? null : extractBody(body, legacy, compat.jsdom < 26);
+  const extracted = body === undefined || body === null || method === 'GET' || method === 'HEAD' ? null : extractBody(body, legacy, compat.jsdom < 26, compat.xhrRejectsShared);
 
   const headers = {};
   const names = new Map(); // lowercase -> name as sent
@@ -580,8 +586,10 @@ function open(xhr, s, method, url, rest) {
     throw domError('The string did not match the expected pattern.', 'SyntaxError');
   }
   // open(method, url) is asynchronous; with a third argument, its boolean
-  // value decides (undefined is false).
+  // value decides (undefined is false). The user name and password are
+  // converted (USVString?) and not used.
   const sync = rest.length > 0 && !rest[0];
+  for (let i = 1; i < 3 && i < rest.length; i++) if (rest[i] != null) String(rest[i]);
   if (sync && (s.timeout !== 0 || s.responseType !== '')) throw domError('The object does not support the operation or argument.', 'InvalidAccessError');
   stop(s);
   s.send = false;
@@ -644,7 +652,8 @@ function response(s) {
   } else if (type === 'json') {
     value = null;
     if (r.length !== 0) {
-      try { value = realmOf(s.window).JSON.parse(decodeText(responseBytes(r), 'utf-8')); } catch { value = null; }
+      // UTF-8, whatever the response says (a UTF-16 byte order mark is not one).
+      try { value = realmOf(s.window).JSON.parse(utf8Decode(responseBytes(r))); } catch { value = null; }
     }
   } else {
     value = documentResponse(s);
@@ -771,10 +780,12 @@ export const XHR_INTERFACES = [
       get responseType() { return xhrState(this).responseType; },
       set responseType(value) {
         const s = xhrState(this);
+        // An invalid value is ignored before the setter's steps (WebIDL enumeration).
+        const type = String(value);
+        if (!RESPONSE_TYPES.has(type)) return;
         if (s.state === LOADING || s.state === DONE) throw domError(INVALID_STATE, 'InvalidStateError');
         if (s.sync) throw domError('The object does not support the operation or argument.', 'InvalidAccessError');
-        const type = String(value);
-        if (RESPONSE_TYPES.has(type)) s.responseType = type;
+        s.responseType = type;
       },
       get response() { return response(xhrState(this)); },
       get responseText() {
