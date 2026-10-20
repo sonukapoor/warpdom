@@ -136,6 +136,18 @@ from 24.1.0, the SVG element interfaces of `g`, `defs`, `desc`,
 `navigator.mimeTypes`, and media elements' `audioTracks` and `videoTracks`
 exist in every version). Before 28.1.0 an `svg` element's window event
 handlers (`onunload`, `onmessage`, ...) are the window's, as `body`'s are.
+Event handlers follow the version too: `oncopy`, `oncut`, `onpaste`,
+`onbeforeinput`, the touch handlers and 11 others from 22.1.0 (before,
+`onauxclick` and `onloadend` keep what is assigned but never run, and their
+content attributes do nothing), the pointer event handlers from 27.0.0,
+and the window's `onautocomplete`, `onautocompleteerror` and `onsort` until
+26.1.0. The window's viewport members (`innerWidth`, `scrollY`,
+`devicePixelRatio`, ...) and `status` are plain data properties until
+26.1.0 and accessors from 27.0.0 (whose viewport setters replace them),
+as in jsdom, also on the global of Jest and Vitest's VM pools; `name` is a
+data property and `document`, `window` and `self` are accessors in every
+version, and before 24.1.2 `Window.prototype` inherits from `EventTarget`
+directly. `<search>` is `display: block` from 27.0.0.
 As in jsdom, the window's `URL` has no `createObjectURL()`; under Vitest
 the global `URL` is Vitest's (Node's, with a `createObjectURL()` that
 takes the window's Blobs), as with jsdom.
@@ -504,11 +516,14 @@ Other deliberate differences:
   `visibilityState` and cookies of documents without a browsing context,
   CSSOM rule-list and `@page` rules, XML serialization details,
   `getElementsByName` (HTML elements only), a removed iframe's
-  `contentWindow` (null).
+  `contentWindow` (null), an iframe's `getSVGDocument()` (null; jsdom's
+  throws a TypeError from inside jsdom).
 - Additions jsdom lacks: `innerText`/`outerText`, `Selection.direction`,
   Range `getClientRects()`/`getBoundingClientRect()` (empty), `ToggleEvent`,
   `TouchList`, `TimeRanges` on media elements, element interfaces and
-  reflected attributes from the current HTML standard.
+  reflected attributes from the current HTML standard (but `<search>`,
+  `<selectedcontent>` and `<menuitem>` are `HTMLUnknownElement`, as in
+  jsdom).
 - Kept the same in every jsdom profile: `MediaList` normalization (jsdom
   30's) and writable style indexed properties (jsdom 26's).
 - `FileReader` also reads the platform's `Blob` (one from Node's `fetch` in
