@@ -216,6 +216,74 @@ const legacyScenario = (w) => {
 };
 parity('getComputedStyle: jsdom 26 profile', legacyScenario, { jsdom: 26 });
 
+// The user agent style sheet (src/ua-sheet.js) under the page's: jsdom
+// before 27 an older browser's (body margin 8px, classic form controls,
+// sectioned h1), from 27 the HTML standard's rendering section, whose
+// !important declarations win over the page's from 28.1.0. floating-ui
+// subtracts body's inline margins from the viewport width it clips to:
+// with jsdom 26's 8px each it got -16 and flipped, which decided whether
+// Mantine's popover settled before the test ended (#80).
+const uaScenario = (w, skip = []) => {
+  const d = w.document;
+  d.head.innerHTML = '<style>.z{margin:0}.o{overflow:visible}.b{display:block}.m{margin-left:3px}</style>';
+  d.body.innerHTML = '<h1 id=h1>a</h1><section><h1 id=sh1>b</h1></section><hr id=hr><pre id=pre></pre><p id=p class=m></p><b id=b></b><th id=th></th>'
+    + '<ul id=ul><li id=li><ul id=ul2><li><ul id=ul3></ul></li></ul></li></ul><ol id=ol><li><ul id=ol2></ul></li></ol>'
+    + '<input id=text><input id=cb type=checkbox><input id=hid type=hidden><input id=hid2 type=hidden class=b><input id=over class=o><input id=sub type=submit>'
+    + '<button id=btn></button><select id=sel></select><textarea id=ta></textarea><progress id=prog></progress>'
+    + '<dialog id=dlg></dialog><dialog id=dlg2 open></dialog><table><tr id=tr><td id=td>x</td></tr></table>'
+    + '<a id=a href=x></a><a id=a2></a><abbr id=abbr title=t></abbr><details><summary id=sum>s</summary></details><embed id=emb hidden><img id=img><span id=span></span>'
+    + '<div id=dir dir=rtl></div><bdi id=bdi></bdi><mark id=mark></mark><video id=vid></video><iframe id=ifr></iframe><fieldset id=fs></fieldset><nobr id=nobr></nobr>';
+  const props = ['display', 'margin-top', 'margin-left', 'margin-right', 'padding-top', 'padding-left', 'padding-inline-start', 'border-top-style', 'border-top-width',
+    'box-sizing', 'font-weight', 'font-style', 'font-family', 'list-style-type', 'white-space', 'text-align', 'vertical-align', 'text-decoration', 'cursor',
+    'position', 'overflow', 'unicode-bidi', 'direction', 'object-fit', 'min-height', 'width', 'height', 'appearance', 'counter-reset', 'line-height', 'letter-spacing']
+    .filter((p) => !skip.includes(p));
+  const out = {};
+  for (const e of d.querySelectorAll('[id]')) { const cs = w.getComputedStyle(e); out[e.id] = props.map((p) => cs.getPropertyValue(p)); }
+  for (const e of [d.documentElement, d.body]) { const cs = w.getComputedStyle(e); out[e.localName] = props.map((p) => cs.getPropertyValue(p)); }
+  d.body.className = 'z';
+  out.zeroed = w.getComputedStyle(d.body).marginLeft;
+  return out;
+};
+parity('getComputedStyle: the user agent style sheet (jsdom 20)', uaScenario, { jsdom: 20 });
+parity('getComputedStyle: the user agent style sheet (jsdom 22)', uaScenario, { jsdom: 22 });
+parity('getComputedStyle: the user agent style sheet (jsdom 25)', uaScenario, { jsdom: 25 });
+parity('getComputedStyle: the user agent style sheet (jsdom 26)', uaScenario, { jsdom: 26 });
+parity('getComputedStyle: the user agent style sheet (jsdom 27)', uaScenario, { jsdom: 27 });
+parity('getComputedStyle: the user agent style sheet (jsdom 28)', uaScenario, { jsdom: 28 });
+// Not compared from jsdom 29.0.2, where warpdom differs whatever the sheet
+// says: font-family (its initial value is 'depends on user agent' there),
+// vertical-align: inherit (jsdom inherits it as a longhand); from 30.0 em
+// lengths and bolder resolved (font-weight, the dialog's padding).
+const LATER = ['font-family', 'vertical-align'];
+parity('getComputedStyle: the user agent style sheet (jsdom 29)', (w) => uaScenario(w, LATER), { jsdom: 29 });
+parity('getComputedStyle: the user agent style sheet', (w) => uaScenario(w, [...LATER, 'font-weight', 'padding-top', 'padding-left']));
+
+test('getComputedStyle: body margins per jsdom generation (#80)', () => {
+  const margins = (options) => {
+    const w = createWindow(options);
+    const cs = w.getComputedStyle(w.document.body);
+    return [cs.marginLeft, cs.marginRight, cs.margin];
+  };
+  assert.deepEqual(margins({ jsdom: '20.0.3' }), ['8px', '8px', '8px']);
+  assert.deepEqual(margins({ jsdom: '26.1.0' }), ['8px', '8px', '8px']);
+  assert.deepEqual(margins({ jsdom: '27.0.0' }), ['', '', '']);
+  assert.deepEqual(margins({ jsdom: '29.0.1' }), ['', '', '']);
+  assert.deepEqual(margins({ jsdom: '29.0.2' }), ['0', '0', '0']);
+  assert.deepEqual(margins({ jsdom: '30.1.3' }), ['0', '0', '0']);
+});
+
+test('getComputedStyle: the user agent sheet\'s !important declarations win from jsdom 28.1.0', () => {
+  const read = (jsdom) => {
+    const w = createWindow({ jsdom });
+    w.document.body.innerHTML = '<input id=a style="overflow: visible"><input id=b type=hidden style="display: block">';
+    return ['a', 'b'].map((id) => w.getComputedStyle(w.document.getElementById(id))).map((cs, i) => (i ? cs.display : cs.overflow));
+  };
+  assert.deepEqual(read('26.1.0'), ['visible', 'block']);
+  assert.deepEqual(read('28.0.0'), ['visible', 'block']);
+  assert.deepEqual(read('28.1.0'), ['clip', 'none']);
+  assert.deepEqual(read('30.1.3'), ['clip', 'none']);
+});
+
 // Writes to computed styles (react-aria fakes a layout this way): jsdom
 // before 28 lets every write change that object; from 28, setting a
 // property changes the element's value until the document changes.
