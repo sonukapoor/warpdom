@@ -272,3 +272,37 @@ test('Jest environment: URL, URLSearchParams, Headers, console and WebAssembly a
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+// As jest-environment-jsdom (black box, Jest 29 and 30): the global is the
+// window, so WebSocket and window.WebSocket are one property, which a test
+// can replace for its file. jsdom's is its own interface; warpdom's is
+// Node's (a fresh file gets it back).
+test('Jest environment: WebSocket is the window\'s, which is Node\'s; a test can replace it', async () => {
+  const rootDir = fakeJestProject();
+  const make = async () => {
+    const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: {} } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+    await env.setup();
+    return env;
+  };
+  try {
+    const env = await make();
+    try {
+      const run = (code) => vm.runInContext(code, env.getVmContext());
+      assert.equal(run('WebSocket'), globalThis.WebSocket);
+      assert.equal(run('WebSocket === window.WebSocket && WebSocket === document.defaultView.WebSocket && "WebSocket" in window'), true);
+      assert.equal(run('Object.getOwnPropertyDescriptor(globalThis, "WebSocket").enumerable || Object.keys(window).includes("WebSocket")'), false);
+      assert.equal(run('(() => { const Mock = function Mock() {}; window.WebSocket = Mock; return globalThis.WebSocket === Mock && WebSocket === Mock; })()'), true);
+      assert.equal(run('(() => { const Mock = class {}; globalThis.WebSocket = Mock; return window.WebSocket === Mock; })()'), true);
+    } finally {
+      await env.teardown();
+    }
+    const next = await make();
+    try {
+      assert.equal(vm.runInContext('WebSocket', next.getVmContext()), globalThis.WebSocket);
+    } finally {
+      await next.teardown();
+    }
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});

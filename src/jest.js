@@ -4,12 +4,12 @@
 //
 // The global has what jest-environment-jsdom's has: the window's members,
 // and of Node's globals only those it also exposes (timers returning
-// numeric ids, Buffer, WebSocket, ...); not setImmediate, structuredClone,
-// fetch or streams, which test setups commonly polyfill. crypto,
-// performance, Blob, File, URL, URLSearchParams, Headers, AbortController,
-// and TextEncoder and TextDecoder from jsdom 27.4, are the window's, as
-// jsdom's are there (no URL.createObjectURL). console is Jest's, and
-// WebAssembly the test file's realm's.
+// numeric ids, Buffer, ...); not setImmediate, structuredClone, fetch or
+// streams, which test setups commonly polyfill. crypto, performance, Blob,
+// File, URL, URLSearchParams, Headers, AbortController, and TextEncoder
+// and TextDecoder from jsdom 27.4, are the window's, as jsdom's are there
+// (no URL.createObjectURL); so is WebSocket, which is Node's. console is
+// Jest's, and WebAssembly the test file's realm's.
 // Jest's own parts (fake timers, module mocker, common globals) come from
 // the project's Jest install, so warpdom keeps no runtime dependency on
 // Jest.
@@ -28,6 +28,8 @@ import { warnNewerJsdom } from './window-features.js';
 if (ablated('no-query-cache')) setQueryCache(false);
 
 // Node globals jest-environment-jsdom exposes too (beyond the DOM's own).
+// WebSocket is the window's, which is Node's (window-features.js); copied
+// from Node only if the window has none.
 const HOST_GLOBALS = ['Buffer', 'queueMicrotask', 'atob', 'btoa', 'WebSocket'];
 
 // Jest's packages (jest-util, jest-mock, @jest/fake-timers), from the Jest

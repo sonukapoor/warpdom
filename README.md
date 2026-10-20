@@ -131,7 +131,7 @@ from 24.1.0, the SVG element interfaces of `g`, `defs`, `desc`,
 27.4.0, Blob's `text()`, `arrayBuffer()` and `bytes()` from 28.1.0,
 `CSSMediaRule.matches` from 29.0.0 (`window.crypto`, `window.performance`,
 `Blob`, `File`, `URL`, `URLSearchParams`, `Headers`, `console`,
-`WebAssembly`, `SVGNumber`, `SVGStringList`, `SVGAnimatedString`,
+`WebAssembly`, `WebSocket`, `SVGNumber`, `SVGStringList`, `SVGAnimatedString`,
 `PageTransitionEvent`, the empty `navigator.plugins` and
 `navigator.mimeTypes`, and media elements' `audioTracks` and `videoTracks`
 exist in every version). Before 28.1.0 an `svg` element's window event
@@ -523,6 +523,13 @@ Other deliberate differences:
   whatwg-url (WPT url/: warpdom 7,136 of 8,784 subtests, jsdom 6,394).
   An iframe's `WebAssembly` is its parent's (warpdom's frames share one
   realm).
+- `WebSocket` is the platform's (Node's, from Node 22), as `URL` is
+  Node's under Vitest; jsdom has its own. The window's and the global's
+  are the same object in Vitest and Jest, and tests replace it as on
+  jsdom (`window.WebSocket = Mock`, `vi.stubGlobal`). Its sockets and
+  events are Node's, not the window's: `event instanceof window.MessageEvent`
+  and `socket instanceof window.EventTarget` are false, and its errors
+  are Node's. Without a platform `WebSocket` the window has none.
 <!-- source: PLAN.md "Deliberate deviations from jsdom" -->
 
 Not implemented (jsdom lacks these too): layout (sizes and positions are
