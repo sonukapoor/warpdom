@@ -26,8 +26,9 @@ async function createWarpdom(url, warpdomDir, log) {
   ]);
   const window = createWindow({ url });
   // As the Vitest environment: the host's timers stay (warpdom's window
-  // timers are built on them).
-  installWindow(globalThis, window, { hostKeys: VITEST_HOST_KEYS });
+  // timers are built on them), and so does the host's WebSocket, which the
+  // window's is (an accessor on the global would read itself).
+  installWindow(globalThis, window, { hostKeys: [...VITEST_HOST_KEYS, 'WebSocket'] });
   // installWindow makes every window member an accessor on the global (so
   // mocks assigned to the global reach the window). WebIDL makes interface
   // objects data properties of the global, and idlharness.js checks that,
