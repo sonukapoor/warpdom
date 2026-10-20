@@ -20,6 +20,7 @@ import { resolveColor } from './colors.js';
 import { segments, expand, serializeBox, BOX, PAIRS, CSS_WIDE, backgroundComponents } from './shorthands.js';
 import { compileRuleSelector } from './selectors.js';
 import { directionality } from './directionality.js';
+import { uaDeclarations, uaValue } from './ua-sheet.js';
 import { documentStyleSheets, styleElementSheet } from './cssom.js';
 import { parseDeclarations, computed, validationModeOf, styleSurfaceOf, isLegacyMode, EXPANDED_SHORTHANDS } from './css.js';
 
@@ -193,6 +194,15 @@ function keepsDetached(ds) {
 }
 
 function cascade(element, index, inlineMap, name) {
+  const window = element[S].doc[S].window;
+  const ua = uaDeclarations(window, name, cascadeExpand);
+  // jsdom 28.1.0 and later: the user agent sheet's !important
+  // declarations win over the page's.
+  const uaImportant = window[S].compat.uaImportant;
+  if (uaImportant) {
+    const v = uaValue(ua.important, element);
+    if (v !== undefined) return v;
+  }
   const inline = inlineMap?.get(name);
   if (inline?.important) return inline.value;
   const lists = index.get(name);
@@ -201,7 +211,12 @@ function cascade(element, index, inlineMap, name) {
     if (v !== undefined) return v;
   }
   if (inline) return inline.value;
-  return lists?.normal.length ? firstMatch(lists.normal, element) : undefined;
+  if (lists?.normal.length) {
+    const v = firstMatch(lists.normal, element);
+    if (v !== undefined) return v;
+  }
+  // The user agent sheet (ua-sheet.js), under the page's.
+  return (uaImportant ? undefined : uaValue(ua.important, element)) ?? uaValue(ua.normal, element);
 }
 
 // --- computed values ------------------------------------------------------------------
@@ -214,23 +229,6 @@ function inheritParent(element) {
   if (p[S].type === ELEMENT_NODE) return p;
   return p[S].shadow === true ? p[S].host : null;
 }
-
-// The HTML standard's rendering section (user agent style sheet), display only.
-const DISPLAY = {
-  none: ['head', 'script', 'style', 'template', 'title', 'meta', 'link', 'base', 'noscript', 'area', 'datalist', 'param', 'rp'],
-  block: ['html', 'body', 'div', 'p', 'section', 'article', 'aside', 'header', 'footer', 'nav', 'main', 'address',
-    'blockquote', 'figure', 'figcaption', 'form', 'fieldset', 'legend', 'details', 'summary', 'dialog', 'hr', 'pre',
-    'ul', 'ol', 'menu', 'dl', 'dd', 'dt', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hgroup', 'search', 'center', 'listing',
-    'plaintext', 'xmp', 'optgroup'],
-  'list-item': ['li'],
-  table: ['table'], 'table-row': ['tr'], 'table-cell': ['td', 'th'], 'table-caption': ['caption'],
-  'table-row-group': ['tbody'], 'table-header-group': ['thead'], 'table-footer-group': ['tfoot'],
-  'table-column': ['col'], 'table-column-group': ['colgroup'],
-  'inline-block': ['button', 'input', 'select', 'textarea', 'meter', 'progress', 'img', 'video', 'audio', 'iframe', 'canvas', 'embed', 'object'],
-  ruby: ['ruby'], 'ruby-text': ['rt'],
-};
-const DEFAULT_DISPLAY = new Map();
-for (const [display, tags] of Object.entries(DISPLAY)) for (const tag of tags) DEFAULT_DISPLAY.set(tag, display);
 
 const FONT_SIZES = { medium: '16px' };
 const FONT_WEIGHTS = { normal: '400', bold: '700' };
@@ -265,7 +263,12 @@ function computeValue(element, name, value, data) {
     value = parts.join('');
   }
   if (data[3] && value === '0') return '0px';
-  const raw = RAW_KEYWORDS.has(name) ? element[S].doc[S].window[S].compat.rawComputedValues : null;
+  if (!RAW_KEYWORDS.has(name)) return value;
+  const compat = element[S].doc[S].window[S].compat;
+  // jsdom before 29.0.2 (black box, 20 to 29.0.1) keeps these keywords as
+  // declared too (font-weight: bold, border-top-width: thin).
+  if (compat.legacyComputedStyle) return value;
+  const raw = compat.rawComputedValues;
   if (raw !== null) {
     // jsdom 29.0.2 to 30.0.x (black box) keep these keywords (border-top-width
     // thin, font-weight bold), and border widths whatever the border style,
@@ -286,7 +289,8 @@ function computeValue(element, name, value, data) {
 // Initial values are computed too, except that an initial 0 stays 0, as
 // in jsdom (margin-top: 0, but margin: 0 auto gives margin-top: 0px).
 function initialValue(element, name, data) {
-  if (name === 'display') return DEFAULT_DISPLAY.get(element[S].tag) ?? 'inline';
+  // Display values other than inline come from the user agent sheet.
+  if (name === 'display') return 'inline';
   // jsdom 29.0.2 and later (black box, to 30.1.3).
   if (name === 'outline-color') return 'rgba(0, 0, 0, 0)';
   if (data[0] === null) return '';
@@ -442,19 +446,16 @@ export function legacyAccessorValue(element, name) {
   return parts.filter((part) => part != null && part !== '').join(' ');
 }
 
-// jsdom before 29 (the jsdom bundled with jest-environment-jsdom up to
-// Jest 30): an undeclared property computes to '', except display (the
-// user agent's, '' for inline elements), visibility, pointer-events and
-// color (inherited), background-color and the border colors.
-const LEGACY_INLINE = new Set(['img']);
+// jsdom before 29.0.2 (the jsdom bundled with jest-environment-jsdom up
+// to Jest 30): a property neither the page nor the user agent sheet
+// declares computes to '', except display (inline from jsdom 27),
+// visibility, pointer-events and color (inherited), background-color and
+// the border colors.
 const LEGACY_INHERITED = { visibility: 'visible', 'pointer-events': 'auto' };
 const BORDER_COLOR = /^border-(top|right|bottom|left)-color$/;
 
 function legacyDefault(element, name) {
-  if (name === 'display') {
-    const tag = element[S].tag;
-    return LEGACY_INLINE.has(tag) ? '' : DEFAULT_DISPLAY.get(tag) ?? '';
-  }
+  if (name === 'display') return element[S].doc[S].window[S].compat.jsdom >= 27 ? 'inline' : '';
   if (name === 'color' || name in LEGACY_INHERITED) {
     const parent = inheritParent(element);
     if (parent) return computedValue(parent, name);
@@ -494,14 +495,21 @@ export function computedValue(element, property) {
   const name = ALIASES[lower] ?? lower;
   const data = custom ? CUSTOM : LONGHANDS[name];
   if (!data) return shorthandValue(element, name);
-  // As in jsdom: the hidden attribute wins over display rules, not over
-  // the style attribute.
-  if (name === 'display' && element[S].ns === HTML_NS && element[S].attrs.has('hidden') && !inlineDeclarations(element)?.has('display')) return 'none';
-  let value = cascaded(element, name);
   const compat = element[S].doc[S].window[S].compat;
+  // As in jsdom: the hidden attribute wins over display rules, not over
+  // the style attribute; from jsdom 27 not on embed (embed[hidden] is
+  // inline in the user agent sheet).
+  if (name === 'display' && element[S].ns === HTML_NS && element[S].attrs.has('hidden') && !inlineDeclarations(element)?.has('display')
+    && (compat.jsdom < 27 || element[S].tag !== 'embed')) return 'none';
+  let value = cascaded(element, name);
   if (compat.legacyComputedStyle) {
-    // jsdom before 29.0.2: custom properties are not inherited either.
-    if (value === undefined) return custom ? '' : legacyDefault(element, name);
+    // jsdom before 29.0.2: custom properties are not inherited either;
+    // from jsdom 27 the direction of elements with dir, bdi and
+    // input[type=tel] is their directionality.
+    if (value === undefined) {
+      if (name === 'direction' && compat.jsdom >= 27 && uaDirection(element)) return directionality(element);
+      return custom ? '' : legacyDefault(element, name);
+    }
     if (name === 'display' && compat.jsdom >= 27 && (value === 'initial' || value === 'unset')) return 'inline';
     if (legacyUnset(element, value)) return custom || name === 'display' ? '' : legacyDefault(element, name);
     if (!custom && CSS_WIDE.has(value)) return value;

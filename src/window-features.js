@@ -1137,6 +1137,9 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
     legacyComputedStyle: before(version, [29, 0, 2]), unsetUndeclared: version[0] >= 21 && before(version, [28, 1, 0]),
     blankBorderShorthands: !before(version, [29, 0, 2]) && before(version, [29, 1, 1]), shorthandInitials: !before(version, [30, 1, 3]), initialAnimationDelay: before(version, [30, 0, 1]),
     rawComputedValues: before(version, [29, 0, 2]) || !before(version, [30, 1, 0]) ? null : version[0] === 29 ? '29' : '30.0',
+    // The user agent sheet's !important declarations win over the page's
+    // from 28.1.0 (ua-sheet.js).
+    uaImportant: !before(version, [28, 1, 0]),
     // Text selection (forms.js), black box per release: before 21.1.2 the
     // select event is dispatched synchronously and is cancelable (from
     // 21.1.2 in a task, not cancelable), and setRangeText() takes the new
@@ -1192,6 +1195,7 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
     elementInternals: !before(version, [23, 1, 0]), internalsLabels: !before(version, [26, 0, 0]), internalsAria: !before(version, [27, 0, 0]),
     rootColor: version[0] >= 27 ? 'rgb(0, 0, 0)' : css !== null && before(css, [4, 4, 0]) ? '' : css !== null && before(css, [4, 6, 0]) ? 'CanvasText' : 'canvastext',
   };
+  ws.uaIndex = undefined; // the user agent sheet's index (ua-sheet.js)
   // DOMException is the platform's (shared by all windows); its subclass too.
   window.DOMException = DOMException;
   window.QuotaExceededError = QuotaExceededError;

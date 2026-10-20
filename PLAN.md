@@ -63,7 +63,8 @@ every modeled jsdom version, and every measured suite gives jsdom's results.
   interfaces beyond #1-#4 (ElementInternals, SVGSVGElement, XMLHttpRequest,
   console, URL, URLSearchParams, WebSocket, Headers, ...), 119 checklist items.
 - #13 (done), #14, #15: differences found while adopting (Ant Design,
-  Element Plus on jsdom 16, Storybook on happy-dom).
+  Element Plus on jsdom 16, Storybook on happy-dom); #80: Mantine (the user
+  agent style sheet, branch fix/mantine-floating-ui, 2026-10-20 below).
 - Exit: #18 green on every jsdom version; 0 unexplained differing tests in
   the corpus and the adoption projects; DOMParity's "Test DOM core" coverage
   for warpdom at or above jsdom's (2026-10-17: 52.8% vs 57.1%).
@@ -2977,3 +2978,96 @@ per rule, CSSStyleRule extends CSSRule, parse()); style accessors on
 CSSStyleDeclaration in jsdom 28 and earlier (warpdom: CSSStyleProperties), and
 cssstyle 2-4.1's getPropertyCSSValue, getPropertyShorthand, isPropertyImplicit
 and azimuth.
+
+## 2026-10-20: the user agent style sheet (branch fix/mantine-floating-ui, #80)
+
+Mantine 9.7.3 (Jest 30, jsdom 26.1.0): 40 tests in @mantine/schedule's
+MoreEvents.test.tsx failed on warpdom 0.1.6 (13/53 in the file alone,
+53/53 on jsdom). Root cause, black box: floating-ui's viewport clipping
+rect subtracts body's computed inline margins (getViewportRect:
+html.clientWidth - body.clientWidth - marginLeft - marginRight). jsdom 26
+computes body's margins to 8px (its user agent style sheet), so the
+clipping width was -16, flip and hide ran more iterations and more
+microtask hops, and the position update resolved after the test's
+cleanup unmounted the popover (no setState). warpdom computed '' (no user
+agent sheet beyond display): width 0, fewer hops, the flushSync setState
+landed after the test outside act(), and Mantine's jsdom.mocks.ts turned
+React's act() warning into a failure of the following test. Found by
+instrumenting floating-ui's platform calls in a scratch moduleNameMapper
+copy (getClippingRect: jsdom {width: -16}, warpdom {width: 0}).
+
+The gap was wider than body: jsdom applies a full user agent sheet in
+getComputedStyle in every release, warpdom only display. Measured black
+box (every tag with @webref/elements x every longhand plus 17 shorthands;
+~100 variants: input types, nested lists, :link, dir, details/summary,
+dialog[open], popover, sectioned headings, ruby, disabled buttons; author
+rules against it) on jsdom 20.0.3, 21.1.2, 22.1.0, 23.2.0, 24.1.3, 25.0.1,
+26.1.0, 27.0.0, 27.1.0, 27.3.0, 27.4.0, 28.0.0, 28.1.0, 29.0.0, 29.0.1,
+29.0.2, 29.1.1, 30.1.0, 30.1.3:
+
+| | jsdom 20 to 26 | jsdom 27 to 30.1.3 |
+|---|---|---|
+| sheet | an older browser's: body margin 8px, h1-h6 sizes and bold, sectioned h1 1.5em/1.17em, hr/iframe/fieldset borders, form controls (button 2px outset, padding 2px 6px 3px; input 2px inset, padding 1px; checkbox margin 3px 0.5ex; type=color 44x23px; ...), ul ul circle, ruby > rt 50%, html no display, dialog:not([open]) none | the HTML standard's rendering section as jsdom applies it: no body margin (margin-block/-inline not applied), unicode-bidi: isolate, padding-inline-start: 40px on lists, counter-reset, :link color/underline/pointer, abbr[title], details > summary list-item, popover, input/select/button/textarea initial text properties and appearance: auto, td/th padding 1px, embed[hidden] inline |
+| undeclared display | '' | inline |
+| !important in the sheet | (none) | win over the page's from 28.1.0 (input overflow: clip, input[type=hidden] display: none; 27.0 to 28.0 the page's win) |
+| values | through the profile's parser: named colors and .83em kept in 20-22 | computed as the profile computes authors' values |
+
+warpdom (src/ua-sheet.js): the two sheets as CSS text written from the
+measurements (the newer from the rendering section's rules), cascaded
+under the page's style sheets and style attribute (cascade.js cascade());
+`compat.uaImportant` from 28.1.0. Each sheet is split once per CSS mode and
+style surface; a property's declarations are parsed with the profile's
+parser and indexed when it is first read: single type selectors in a map
+by tag, other rules by the tag they require (or a short list for [dir],
+:link, [popover]) in specificity order. DEFAULT_DISPLAY is gone: display
+comes from the sheet (initial inline; legacy undeclared '' before 27,
+inline from 27, which fixes span/img display '' in the 27 to 29.0.1
+profiles). The hidden attribute keeps winning over display rules, except
+on embed from 27 (embed[hidden] is inline there). From 27 the legacy
+computed path applies the dir/bdi/input[type=tel] direction too.
+Also fixed (seen through the sheet, author values too): before 29.0.2
+font-weight, font-size and border width keywords stay as declared (bold,
+thin), as jsdom keeps them (warpdom computed 700 and 1px).
+
+Left (measured, outside the sheet; existing value-model gaps, author values
+alike): system colors (jsdom 20-22 as written, 23-26 lowercased keywords,
+27+ its own values, ButtonFace and ThreeDFace rgb(204, 204, 204), GrayText
+rgb(102, 102, 102); warpdom resolves them to other rgb() values) and
+ThreeDFace rejected by warpdom's 20-26 parser (fieldset border color);
+text-indent: 0 stays 0 before 29.0.1; padding 2px 6px 3px 6px serialized as
+written before 27; border: solid and background: white leave longhands ''
+in jsdom 20-26; 30.0+ resolves em, % and bolder/smaller (h1 32px, b 700)
+and font-family's 'depends on user agent' from 29.0.2 (known, see font);
+vertical-align: inherit inherits as a longhand in 29.0.2+; logical border
+colors, caret-color and other properties warpdom has but jsdom computes
+differently (global, not the sheet); svg a[href] matches :link in jsdom;
+27.4.0's parser drops dialog's Canvas, fit-content.
+
+Tests: test/computed-style.test.js: parity of a 40-element scenario
+(display, margins, paddings, borders, fonts, lists, white-space,
+text-align, cursor, position, overflow, unicode-bidi, direction, ...) on
+jsdom 20, 22, 25, 26, 27.4, 28.1, 29.1.1 and 30 (parity.js now loads the
+jsdom27-29 aliases), body margins per generation (#80), the !important
+boundary (28.0.0 / 28.1.0). npm test 1056/1056 (Node 22.23.3),
+test:types clean.
+
+Mantine (jest.config.ts, TZ=UTC, 2 workers, Node 22.23.3): MoreEvents
+13/53 -> 53/53 (twice); whole suite jsdom 18014 passed / 16 skipped in
+110 s, warpdom (this branch) 18014 / 16 in 81 s, 0 differing tests.
+
+Bench (Node 22.23.3, medians of 5 interleaved runs, main vs branch):
+cascade-bench read pass 0.64 -> 0.50 ms, mutate+read 1.76 -> 1.81 ms
+(noise); bench:load cold load and windows unchanged (22-24 ms, sheet text
+only). A cache-miss-only micro-benchmark (2000 elements of 10 tags,
+display, visibility, margin-left and cursor read after each tree change,
+no style sheets): 1.9 -> 2.3 ms per pass (jsdom 26 profile), 2.4 -> 3.0 ms
+(jsdom 30); jsdom: 129 and 247 ms. The extra is the sheet lookup on
+undeclared properties (a map get per property, a tag map, a few rules per
+tag), the price of jsdom's values; first computed read per process +1.7 ms
+(26) / +3.5 ms (30) for parsing display's declarations (lazy per property;
+an eager whole-sheet index cost ~8 ms).
+Next: corpus re-run on the branch (getComputedStyle results change for
+every profile: suites reading button/heading/body styles move to jsdom's
+values); offload to GitHub Actions. Open issues for the left items (system
+colors per generation first).
+

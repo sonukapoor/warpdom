@@ -597,6 +597,8 @@ function shortRepeat(value) {
 }
 
 const CSS_WIDE_KEYWORD = /^(initial|inherit|unset|revert|revert-layer)$/i;
+const KEEPS_NUMBERS_AS_WRITTEN = { jsdom25: true, jsdom22: true, jsdom20: true };
+const CANONICAL_NUMBERS_PRE_431 = new Set(['opacity', 'flex-grow', 'flex-shrink']);
 function serializeDeclared(name, value, mode) {
   // Custom properties keep their value as written (CSS Variables 1), as in jsdom.
   if (name.startsWith('--')) return value;
@@ -608,7 +610,10 @@ function serializeDeclared(name, value, mode) {
   if (name === 'flex') return flexLonghands(canonicalNumbers(value));
   if (name === 'font') return familyCommas(serializeFont(canonicalNumbers(value)));
   if (name === 'font-family') return familyCommas(value);
-  value = canonicalNumbers(value);
+  // cssstyle before 4.3.1 (jsdom 20 to 25) keeps lengths, percentages and
+  // line-height as written (.83em, 10.0px, 1.50); its number properties
+  // (opacity, flex-grow, flex-shrink) it serializes canonically.
+  if (!KEEPS_NUMBERS_AS_WRITTEN[mode] || CANONICAL_NUMBERS_PRE_431.has(name)) value = canonicalNumbers(value);
   // background-position as its x and y parts per layer (jsdom 27 and
   // later): center is center center, top is center top.
   if (name === 'background-position' && isSpecMode(mode)) {

@@ -13,12 +13,13 @@ const URL_ = 'http://localhost:3000/page';
 // jsdom: 30, 26, 25 (jsdom 25.0.1 with cssstyle 4.1.0, as installed in
 // its day; package.json pins that cssstyle for the jsdom25 alias), 22
 // (22.1.0, cssstyle 3.0.0) or 20 (20.0.3, cssstyle 2.3.0: Jest 29's
-// jest-environment-jsdom).
+// jest-environment-jsdom); 27, 28 and 29 (27.4.0, 28.1.0, 29.1.1).
 // jsdom 20 and 22 are loaded when a test asks for them: their URL parser
 // requires punycode, which Node 22.12 reports as deprecated on
 // console.error (after the load, so outside the scenario's capture).
+// 27 to 29 too, as only a few tests use them.
 const DOMS = { 25: JSDOM25, 26: JSDOM26, 30: JSDOM };
-const LAZY = { 20: 'jsdom20', 22: 'jsdom22' };
+const LAZY = { 20: 'jsdom20', 22: 'jsdom22', 27: 'jsdom27', 28: 'jsdom28', 29: 'jsdom29' };
 async function domFor(jsdom) {
   if (!DOMS[jsdom] && LAZY[jsdom]) {
     DOMS[jsdom] = (await import(LAZY[jsdom])).JSDOM;
@@ -29,7 +30,7 @@ async function domFor(jsdom) {
 // jsdom 30: the release installed (30.1.2 and 30.1.3 differ in computed
 // shorthands), so the profile is that release's.
 const JSDOM30 = createRequire(import.meta.url)('jsdom/package.json').version;
-const PROFILES = { 20: { jsdom: '20.0.3', cssstyle: '2.3.0' }, 22: { jsdom: '22.1.0', cssstyle: '3.0.0' }, 25: { jsdom: '25.0.1', cssstyle: '4.1.0' }, 30: { jsdom: JSDOM30 } };
+const PROFILES = { 20: { jsdom: '20.0.3', cssstyle: '2.3.0' }, 22: { jsdom: '22.1.0', cssstyle: '3.0.0' }, 25: { jsdom: '25.0.1', cssstyle: '4.1.0' }, 27: { jsdom: '27.4.0' }, 28: { jsdom: '28.1.0' }, 29: { jsdom: '29.1.1' }, 30: { jsdom: JSDOM30 } };
 export function parity(name, scenario, { jsdom = 30, url = URL_ } = {}) {
   const profile = PROFILES[jsdom] ?? { jsdom };
   test(name, async () => {
