@@ -596,6 +596,9 @@ these differences from jsdom:
   sent (jsdom 28 and later send none). The method `patch` in lowercase is
   sent as is, as jsdom does, and makes Node print a warning once. Requests
   from an `about:blank` iframe send no `Referer` (jsdom: `about:blank`).
+- The `Referer` never carries the page URL's credentials or fragment, as
+  Referrer Policy says. jsdom sends the document's URL with both, and
+  before 28 sends a redirected request's previous URL as requested.
 - A redirect that fails its CORS check is a network error. jsdom before 28
   fires `error` and then goes on to follow the redirect and fire `load`.
 - jsdom 20 to 26 report network errors on the virtual console; warpdom's

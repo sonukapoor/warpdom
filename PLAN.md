@@ -511,7 +511,11 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   Node's error from send() for ftp: and about: URLs (warpdom: a network
   error); network errors that jsdom before 27 reports are worded by fetch
   (CORS failures in jsdom's words); the method `patch` in lowercase makes
-  Node's fetch print a warning once.
+  Node's fetch print a warning once; the Referer has no credentials and no
+  fragment (jsdom sends the document's URL with both, and before 28 a
+  redirected request's previous URL as requested); a header named
+  `__proto__` reaches fetch (jsdom loses it; Node's fetch drops it from
+  the wire, so the server sees what it sees from jsdom 28+).
 
 ## Decisions
 
@@ -3543,4 +3547,38 @@ responseTypes scenario now covers both, so a jsdom change shows.
 Also: the timeouts scenario's body-timeout cases got a wider margin
 (jsdom took more than 150 ms to the headers on CI), and the Vitest output
 in test/xhr-mocks.test.js is matched without ANSI colors (CI colors it).
+
+### Copilot's re-review of 6620899 on #89 (2026-10-20)
+
+Six more on src/xhr.js, checked black box on jsdom 20.0.3, 27.4.0, 28.1.0
+and 30.1.3 (local server) and against the standards. All six held in
+some form; fixed with tests (test/xhr.test.js):
+- Referer with credentials (window at http://user:secret@host/page#frag):
+  every jsdom sends the document's URL with credentials and fragment
+  (warpdom already dropped the fragment). Before 28 a redirected hop
+  sends the previous request URL as requested (fragment, credentials).
+  Referrer Policy strips both: warpdom now does, in every profile
+  (deviation; README, differences test). The redirectHops scenario
+  compares Referers without their fragment and loads without lengths.
+- A request stopped (abort(), open(), teardown) between fetchFollowing()'s
+  check and run() resuming went on: readystatechange 2 after the abort, or
+  the old response over the reopened request. run() now checks again and
+  cancels the stale body (test with a fetch whose promise gets a
+  continuation after XHR's).
+- Bodyless documents: every jsdom gives no document (response and
+  responseXML null) for HEAD, 204, 304 and also an empty 200 body (one
+  byte, even a space, makes one). The standard returns null only for a
+  null body and parses an empty one; warpdom follows jsdom: no bytes, no
+  document. Parity cases in responseTypes.
+- XML parse failure was detected by a parsererror root in Firefox's
+  namespace, so a well-formed document with that root was null; jsdom
+  returns it. xml.js has parseXMLInto() (returns whether the text was
+  well-formed; parseXMLDocument() keeps its shape); parity cases for the
+  valid parsererror document and a document without a root.
+- A header named `__proto__` went through `{}` (lost). jsdom loses it as
+  well (no header; jsdom 28+ lists it in the preflight, 20-27 do not
+  preflight for it). Now a null-prototype record, and fetch gets the
+  headers as name/value pairs (fetch's record conversion drops
+  `__proto__` too). Node's fetch (22 and 24) still leaves it off the
+  wire, so on the wire nothing changes; a fetch mock (msw) sees it.
 

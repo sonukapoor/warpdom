@@ -50,7 +50,7 @@ export function startServer() {
         res.end('hello é');
         return;
       case '/type':
-        res.writeHead(200, { ...(q.ct === undefined ? {} : { 'content-type': q.ct }), ...cors });
+        res.writeHead(Number(q.code ?? 200), { ...(q.ct === undefined ? {} : { 'content-type': q.ct }), ...cors });
         res.end(Buffer.from(q.body ?? '', q.enc ?? 'utf8'));
         return;
       case '/status':

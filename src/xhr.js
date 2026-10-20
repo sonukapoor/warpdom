@@ -29,7 +29,7 @@ import { blobData, makeBlob } from './file-reader.js';
 import { documentBaseURL } from './base-url.js';
 import { innerMarkup } from './dom-parsing.js';
 import { parseDocument } from './html.js';
-import { parseXMLDocument, PARSER_ERROR_NS } from './xml.js';
+import { parseXMLInto } from './xml.js';
 import { formDataEntries } from './forms.js';
 import { userAgentOf } from './window-features.js';
 
@@ -219,6 +219,10 @@ function documentResponse(s) {
   const html = essence(mime) === 'text/html';
   if (!html && !isXmlMime(mime)) return null;
   if (html && s.responseType === '') return null;
+  // No document without a byte of body, as in jsdom: a bodyless response
+  // (HEAD, 204, 304; the standard's null body) and an empty one alike (the
+  // standard parses an empty body into an empty document).
+  if (r.length === 0) return null;
   const bytes = responseBytes(r);
   const text = decodeBody(s, bytes);
   const ws = s.window[S];
@@ -232,10 +236,9 @@ function documentResponse(s) {
   const doc = ws.createDocument({ contentType: 'application/xml', xml: true, plain: true });
   doc[S].url = url;
   doc[S].charset = encodingName(s, bytes);
-  parseXMLDocument(doc, text);
-  const root = doc[S].first;
-  if (root !== null && root[S].ns === PARSER_ERROR_NS && root[S].tag === 'parsererror' && root[S].next === null) return null;
-  return doc;
+  // Not well-formed: null (a well-formed document whose root is a
+  // parsererror element stays a document).
+  return parseXMLInto(doc, text) ? doc : null;
 }
 
 // --- request bodies ---------------------------------------------------------------------------
@@ -325,6 +328,17 @@ const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const BODY_HEADERS = new Set(['content-encoding', 'content-language', 'content-location', 'content-type']);
 const httpURL = (url) => url.protocol === 'http:' || url.protocol === 'https:';
 // A URL fetch accepts: without credentials.
+// A URL as a Referer (Referrer Policy, "strip url for use as a referrer"):
+// without credentials and fragment. jsdom sends both (the document's URL,
+// and before 28 a redirected request's previous URL); warpdom does not.
+function referrerOf(url) {
+  const plain = new URL(url.href);
+  plain.username = '';
+  plain.password = '';
+  plain.hash = '';
+  return plain.href;
+}
+
 function withoutCredentials(url) {
   if (url.username === '' && url.password === '') return url.href;
   const plain = new URL(url.href);
@@ -366,7 +380,9 @@ async function fetchFollowing(fetch, s, req) {
   let crossed = cross;
   let tainted = false;
   for (let redirects = 0; ; redirects++) {
-    const response = await fetch(fetchURL, { method, headers, body, redirect: 'manual', signal });
+    // The headers as name/value pairs: fetch's conversion of a record loses
+    // a header named __proto__.
+    const response = await fetch(fetchURL, { method, headers: Object.entries(headers), body, redirect: 'manual', signal });
     if (s.req !== req) { response.body?.cancel().catch(() => {}); return null; }
     const location = REDIRECT_STATUSES.has(response.status) ? response.headers.get('location') : null;
     if (location === null) {
@@ -388,7 +404,7 @@ async function fetchFollowing(fetch, s, req) {
       if (denied !== null) return denied;
     }
     if (hopCross && next.origin !== url.origin && (legacy || cross || nextCross)) tainted = true;
-    headers = { ...headers };
+    headers = Object.assign(Object.create(null), headers);
     const status = response.status;
     if (((status === 301 || status === 302) && method === 'POST') || (status === 303 && method !== 'GET' && method !== 'HEAD')) {
       method = 'GET';
@@ -399,7 +415,7 @@ async function fetchFollowing(fetch, s, req) {
     if (next.origin !== url.origin) deleteHeader(headers, 'authorization');
     deleteHeader(headers, 'origin');
     if (legacy || crossed || nextCross) headers.Origin = tainted ? 'null' : origin;
-    if (legacy && 'Referer' in headers) headers.Referer = url.href;
+    if (legacy && 'Referer' in headers) headers.Referer = referrerOf(url);
     url = next;
     fetchURL = withoutCredentials(next);
   }
@@ -516,6 +532,8 @@ async function run(xhr, s, req) {
     }
     const result = await fetchFollowing(fetch, s, req);
     if (result === null) return;
+    // Stopped (abort(), open(), a teardown) while fetchFollowing() returned.
+    if (s.req !== req) { if (typeof result === 'object') result.response.body?.cancel().catch(() => {}); return; }
     if (typeof result === 'string') { fail(xhr, s, req, result); return; }
     response = result;
   } catch (error) {
@@ -601,7 +619,9 @@ function send(xhr, s, body) {
   const method = s.method;
   const extracted = body === undefined || body === null || method === 'GET' || method === 'HEAD' ? null : extractBody(body, legacy, compat.jsdom < 26, compat.xhrRejectsShared);
 
-  const headers = {};
+  // A record without a prototype: every accepted name (__proto__ too) is
+  // its own property, as fetch reads it.
+  const headers = Object.create(null);
   const names = new Map(); // lowercase -> name as sent
   for (const [name, value] of s.headers) { headers[name] = value; names.set(name.toLowerCase(), name); }
   if (extracted !== null) {
@@ -632,7 +652,7 @@ function send(xhr, s, body) {
   // The author may set User-Agent (no longer a forbidden header).
   const userAgent = names.has('user-agent') ? headers[names.get('user-agent')] : (headers['User-Agent'] = userAgentOf(window));
   headers['Accept-Encoding'] = 'gzip, deflate';
-  if (docURL.protocol === 'http:' || docURL.protocol === 'https:') { docURL.hash = ''; headers.Referer = docURL.href; }
+  if (docURL.protocol === 'http:' || docURL.protocol === 'https:') headers.Referer = referrerOf(docURL);
   if (cross) headers.Origin = origin;
   // The fetch URL has no credentials (fetch rejects them); jsdom 20 sends
   // them as Basic authorization.

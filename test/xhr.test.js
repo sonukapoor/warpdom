@@ -408,9 +408,9 @@ const SCENARIOS = {
   },
   async responseTypes(w, c) {
     const out = {};
-    const get = async (type, query, prep) => {
+    const get = async (type, query, prep, method = 'GET') => {
       const x = new w.XMLHttpRequest();
-      x.open('GET', `${c.BASE}/type?${query}`);
+      x.open(method, `${c.BASE}/type?${query}`);
       x.responseType = type;
       prep?.(x);
       x.send();
@@ -471,6 +471,19 @@ const SCENARIOS = {
     out.xmlDeclarationEncoding = await get('', `ct=application/xml&body=${latin1Xml}&enc=hex`);
     out.xmlDeclarationEncodingDocument = await get('document', `ct=text/xml&body=${latin1Xml}&enc=hex`);
     out.htmlMetaCharset = await get('document', `ct=text/html&body=${Buffer.from('<meta charset="windows-1252"><p>\u00e9', 'latin1').toString('hex')}&enc=hex`);
+    // No document without a body: HEAD, 204, 304 and an empty body (one
+    // space makes one); a well-formed document whose root is a parsererror
+    // element is a document (Copilot review on #89).
+    out.headHtml = await get('document', 'ct=text/html&body=x', undefined, 'HEAD');
+    out.noContentHtml = await get('document', 'ct=text/html&code=204');
+    out.notModifiedHtml = await get('document', 'ct=text/html&code=304');
+    out.emptyHtml = await get('document', 'ct=text/html&body=');
+    out.spaceHtml = await get('document', 'ct=text/html&body=%20');
+    out.headXml = await get('', 'ct=text/xml&body=x', undefined, 'HEAD');
+    const parsererror = encodeURIComponent('<parsererror xmlns="http://www.mozilla.org/newlayout/xml/parsererror.xml">x</parsererror>');
+    out.parsererrorRoot = await get('document', `ct=text/xml&body=${parsererror}`);
+    out.parsererrorRootDefault = await get('', `ct=application/xml&body=${parsererror}`);
+    out.noRootXml = await get('document', 'ct=text/xml&body=text');
     return out;
   },
   // After a network error or a CORS failure (Copilot review on #89).
@@ -572,8 +585,11 @@ const SCENARIOS = {
       const { x, log } = await request(w, method, code ? url.replace('code=302', `code=${code}`) : url, { body });
       // (Ports appear encoded in the URLs too.)
       const ports = (v) => v.replaceAll(String(c.PORT), 'PORT');
-      const hops = c.server.requests.slice(n).map((r) => ports(`${r.method} ${r.headers.host}${r.path.split('?')[0]} origin=${r.headers.origin ?? '-'} referer=${r.headers.referer ?? '-'}`));
-      out[name] = [x.status, ports(x.responseURL), log.filter((l) => /^(load|error) /.test(l)), hops];
+      // (Without the Referer's fragment: jsdom before 28 sends a redirected
+      // request's previous URL with it, warpdom without; the differences test.)
+      const hops = c.server.requests.slice(n).map((r) => ports(`${r.method} ${r.headers.host}${r.path.split('?')[0]} origin=${r.headers.origin ?? '-'} referer=${r.headers.referer?.split('#')[0] ?? '-'}`));
+      // (The echoed body's length goes with the Referer.)
+      out[name] = [x.status, ports(x.responseURL), log.filter((l) => /^(load|error) /.test(l)).map((l) => l.replace(/\/\d+\/\d+$/, '')), hops];
     };
     const origin = encodeURIComponent(c.BASE);
     await one('crossToSameAllowsNull', R(c.CROSS, `${c.BASE}/echo?acao=null`, '&acao=*'));
@@ -985,6 +1001,67 @@ test('XMLHttpRequest differences from jsdom: headers sorted and combined, cookie
   w.document.body.append(frame);
   const { x: fromFrame } = await request(frame.contentWindow, 'GET', '/echo');
   assert.equal(JSON.parse(fromFrame.responseText).headers.referer, undefined);
+  // The Referer has neither credentials nor a fragment (jsdom sends the
+  // document's URL with both, and before 28 a redirected request's previous
+  // URL as it was requested) (Copilot review on #89).
+  const secret = createWindow({ url: `http://user:secret@localhost:${PORT}/page/index.html#frag` });
+  const referers = async (win, url) => {
+    const before = server.requests.length;
+    await request(win, 'GET', url);
+    return server.requests.slice(before).map((r) => port(`${r.method} ${r.headers.referer ?? '-'}`));
+  };
+  assert.deepEqual(await referers(secret, `${BASE}/echo`), ['GET http://localhost:PORT/page/index.html']);
+  assert.deepEqual(await referers(secret, `${CROSS}/echo?acao=*`), ['GET http://localhost:PORT/page/index.html']);
+  assert.deepEqual(await referers(legacy, `http://u:p@localhost:${PORT}/redirect?code=302&to=%2Fecho#private-token`), [
+    'GET http://localhost:PORT/page/index.html',
+    'GET http://localhost:PORT/redirect?code=302&to=%2Fecho',
+  ]);
+});
+
+test('XMLHttpRequest: a request stopped while its response arrives fires nothing more and leaves no response (Copilot review on #89)', async () => {
+  const hostFetch = globalThis.fetch;
+  try {
+    for (const stopWith of ['abort', 'open']) {
+      const w = createWindow({ url: PAGE });
+      const x = new w.XMLHttpRequest();
+      const log = [];
+      logEvents(x, log);
+      let cancelled = false;
+      let fetched;
+      // The response arrives; a continuation registered on fetch's promise
+      // after XHR's stops the request before XHR goes on with it.
+      globalThis.fetch = () => (fetched = Promise.resolve().then(() => new Response(new ReadableStream({
+        start(controller) { controller.enqueue(new TextEncoder().encode('stale')); controller.close(); },
+        cancel() { cancelled = true; },
+      }), { headers: { 'content-type': 'text/plain' } })));
+      x.open('GET', `${BASE}/text`);
+      x.send();
+      fetched.then(() => (stopWith === 'abort' ? x.abort() : x.open('GET', `${BASE}/echo`)));
+      await wait(50);
+      assert.deepEqual([stopWith, log.filter((l) => !l.startsWith('loadstart'))], [stopWith, stopWith === 'abort'
+        ? ['readystatechange 1 0', 'readystatechange 4 0', 'abort 4 0 false/0/0', 'loadend 4 0 false/0/0']
+        : ['readystatechange 1 0']]);
+      assert.deepEqual([x.readyState, x.status, x.responseText, x.getAllResponseHeaders(), cancelled], [stopWith === 'abort' ? 0 : 1, 0, '', '', true]);
+    }
+  } finally {
+    globalThis.fetch = hostFetch;
+  }
+});
+
+test('XMLHttpRequest: every header name the author sets reaches fetch, __proto__ too (Copilot review on #89)', async () => {
+  const hostFetch = globalThis.fetch;
+  const seen = [];
+  globalThis.fetch = (url, init) => {
+    seen.push([...new Headers(init.headers)].filter(([name]) => /^(__proto__|constructor|x-a)$/.test(name)));
+    return Promise.resolve(new Response('ok'));
+  };
+  try {
+    const w = createWindow({ url: PAGE });
+    await request(w, 'GET', `${BASE}/text`, { prep: (x) => { x.setRequestHeader('__proto__', 'p'); x.setRequestHeader('constructor', 'c'); x.setRequestHeader('X-A', '1'); } });
+    assert.deepEqual(seen, [[['__proto__', 'p'], ['constructor', 'c'], ['x-a', '1']]]);
+  } finally {
+    globalThis.fetch = hostFetch;
+  }
 });
 
 test('XMLHttpRequest: profile boundaries (jsdom 28.0.0 undici; network errors reported before 27)', async () => {
