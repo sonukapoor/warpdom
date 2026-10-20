@@ -31,8 +31,9 @@ const ownProperties = (object) => new Map(Reflect.ownKeys(object).map((key) => [
 
 // Whether two property descriptors differ in value, accessors or flags
 // (Object.defineProperty(window, 'innerWidth', { writable: false }) keeps
-// the value).
-const changed = (current, descriptor) => current.value !== descriptor.value || current.get !== descriptor.get || current.set !== descriptor.set
+// the value). Values compare with Object.is: scrollY = -0 is a change (and
+// NaN is not).
+const changed = (current, descriptor) => !Object.is(current.value, descriptor.value) || current.get !== descriptor.get || current.set !== descriptor.set
   || current.writable !== descriptor.writable || current.enumerable !== descriptor.enumerable || current.configurable !== descriptor.configurable;
 
 // Puts back an object's own properties as snapshotted: properties added

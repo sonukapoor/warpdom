@@ -3279,6 +3279,26 @@ own copy of vitest, so that it loads the chosen jsdom).
   (median of 5 alternating runs, 3000 handlers, vs 1723448): plain
   window 6.06 -> 5.44 us, VM pool 20.6 -> 19.9 us; calls unchanged (2.2
   and 3.9 us).
+- **Copilot re-review on #87 (d1c1f09): event.view; reset of -0.** In
+  jsdom's VM pools and Jest (Vitest vmThreads on 20.0.3, 26.1.0, 30.1.3;
+  jest-environment-jsdom on 20.0.3 and 26.1.0), the view of the events
+  jsdom fires (focus, focusin, blur, click(), a label's click) is the
+  global, so `event.view.name` / `.innerWidth` read the test's
+  assignments; warpdom's was the backing window ('' and 1024 after
+  `window.name = 'updated'; window.innerWidth = 800`). UIEvent's view getter
+  now returns exposed() of the view, as target and currentTarget do, which
+  covers every event warpdom fires with the window as view. Checked the
+  other references in the same probe: composedPath() already ends with the
+  global, postMessage's MessageEvent has source null and the global as
+  target, as in jsdom. In forks and threads jsdom's view is its own window
+  (not the test's global) with the same values, as warpdom's; there jsdom
+  throws for `new MouseEvent('x', { view: window })` (the global is not its
+  Window) and warpdom accepts it (unchanged). reset.js compares values with
+  Object.is, so `scrollY = -0` (a data property before jsdom 27; jsdom 26
+  keeps -0) is undone by the reset. Tests: jest-environment.test.js
+  (event.view on 20.0.3, 26.1.0, 30.1.3), fixtures/vitest-viewport
+  (event.view in every pool, also with real jsdom), reset.test.js (-0 on
+  20.0.3, 26.1.0, 30.1.3).
 
 Left as they are (measured, not in these issues):
 - ShadowRoot.prototype.onslotchange: warpdom has it, no jsdom does.

@@ -170,3 +170,29 @@ test.skipIf(process.env.VIEWPORT_EXPECT === 'forks')('inline event handlers: the
   delete window.kc;
   document.body.innerHTML = '';
 });
+
+// The view of the events warpdom fires (focus, blur, click(), a label's
+// click) reads what the test assigned to window in every pool; where the
+// global is the window (VM pools) it is the global (black box: jsdom
+// 20.0.3, 26.1.0, 30.1.3).
+test('event.view follows the window', () => {
+  const { name, innerWidth } = window;
+  window.name = 'updated';
+  window.innerWidth = 800;
+  document.body.innerHTML = '<input id="i"><label id="l">x<input id="li" type="checkbox"></label><button id="b"></button>';
+  const views = [];
+  const rec = (k) => (e) => { views.push(`${k}:${e.view === window},${e.view.name},${e.view.innerWidth}`); };
+  const i = document.getElementById('i');
+  for (const type of ['focus', 'focusin', 'blur']) i.addEventListener(type, rec(type));
+  i.focus();
+  i.blur();
+  document.getElementById('b').addEventListener('click', rec('click'));
+  document.getElementById('b').click();
+  document.getElementById('li').addEventListener('click', rec('label'));
+  document.getElementById('l').click();
+  const same = process.env.VIEWPORT_EXPECT !== 'forks';
+  expect(views).toEqual(['focus', 'focusin', 'blur', 'click', 'label'].map((k) => `${k}:${same},updated,800`));
+  window.name = name;
+  window.innerWidth = innerWidth;
+  document.body.innerHTML = '';
+});

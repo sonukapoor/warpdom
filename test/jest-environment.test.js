@@ -496,3 +496,39 @@ test('Jest environment: named objects do not replace an inline handler\'s scopes
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+// The view of the events warpdom fires (focus, blur, focusin, click() and
+// a label's click) is the global, as in jest-environment-jsdom (black box,
+// jsdom 20.0.3 and 26.1.0; Vitest vmThreads on 20.0.3, 26.1.0, 30.1.3), so
+// it reads what the test assigned to window.
+test('Jest environment: event.view is the global', async () => {
+  const rootDir = fakeJestProject();
+  try {
+    const results = {};
+    for (const jsdom of ['20.0.3', '26.1.0', '30.1.3']) {
+      const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      await env.setup();
+      results[jsdom] = vm.runInContext(`(() => {
+        window.name = 'updated';
+        window.innerWidth = 800;
+        document.body.innerHTML = '<input id="i"><label id="l">x<input id="li" type="checkbox"></label><button id="b"></button>';
+        const views = [];
+        const rec = (k) => (e) => { views.push(k + ':' + [e.view === window, e.view.name, e.view.innerWidth].join()); };
+        const i = document.getElementById('i');
+        for (const type of ['focus', 'focusin', 'blur']) i.addEventListener(type, rec(type));
+        i.focus(); i.blur();
+        document.getElementById('b').addEventListener('click', rec('click'));
+        document.getElementById('b').click();
+        document.getElementById('li').addEventListener('click', rec('label'));
+        document.getElementById('l').click();
+        views.push(new MouseEvent('x', { view: window }).view === window);
+        return views.join(' ');
+      })()`, env.getVmContext());
+      await env.teardown();
+    }
+    const expected = 'focus:true,updated,800 focusin:true,updated,800 blur:true,updated,800 click:true,updated,800 label:true,updated,800 true';
+    assert.deepEqual(results, { '20.0.3': expected, '26.1.0': expected, '30.1.3': expected });
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
