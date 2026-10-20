@@ -426,6 +426,30 @@ test('Vitest: viewport members, name, status and self as with jsdom, per pool an
     }
     assert.equal(code, 0, `${pool} ${environment.join(' ') || 'warpdom'} ${jsdom ?? ''}: ${out}`);
     // Vitest colors its summary on CI (GitHub Actions); match the plain text.
-    assert.match(out.replace(/\x1b\[[0-9;]*m/g, ''), pool === 'forks' ? /3 passed \| 2 skipped/ : /5 passed/);
+    assert.match(out.replace(/\x1b\[[0-9;]*m/g, ''), pool === 'forks' ? /5 passed \| 3 skipped/ : /8 passed/);
   }
+});
+
+// Vitest's forks and threads pools (black box with its jsdom environment,
+// jsdom 20.0.3, 26.1.0, 30.1.3): a global the window's member replaces
+// keeps its enumerability (Node's navigator stays in
+// Object.keys(globalThis)), the window's other members are not enumerable,
+// window, self, top and parent are; teardown restores the originals.
+test('Vitest: replaced globals keep their enumerability in forks and threads', async () => {
+  const { default: environment } = await import('../src/vitest.js');
+  const navigator = { userAgent: 'node' };
+  const global = {};
+  Object.defineProperty(global, 'navigator', { get: () => navigator, enumerable: true, configurable: true });
+  Object.defineProperty(global, 'location', { value: 'hidden', writable: true, enumerable: false, configurable: true });
+  const env = environment.setup(global);
+  try {
+    const keys = Object.keys(global);
+    assert.deepEqual(['navigator', 'window', 'self', 'top', 'parent'].filter((k) => !keys.includes(k)), []);
+    assert.deepEqual(['document', 'location', 'innerWidth', 'addEventListener', 'HTMLElement'].filter((k) => keys.includes(k)), []);
+    assert.notEqual(global.navigator, navigator);
+  } finally {
+    env.teardown();
+  }
+  assert.equal(global.navigator, navigator);
+  assert.deepEqual(Object.getOwnPropertyDescriptor(global, 'location'), { value: 'hidden', writable: true, enumerable: false, configurable: true });
 });

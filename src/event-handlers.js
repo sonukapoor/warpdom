@@ -155,29 +155,32 @@ function compile(target, name, body) {
   const source = `return function ${name}(${params}) {\n${body}\n};`;
   // The with statements give the standard's scope chain. Where an
   // environment made a VM context whose global is the window (Jest,
-  // Vitest's VM pools: globalProxy), the handler is compiled there, so its
-  // global scope is that global, which holds what tests assign
-  // (window.innerWidth = 640, window.name, Object.defineProperty(window,
-  // ...)), as with jsdom (black box: Vitest vmThreads and
-  // jest-environment-jsdom on jsdom 20.0.3, 26.1.0 and 30.1.3). That
-  // global does no named access, so the window's named objects (<div
-  // id="result">) come from a scope of their own just before it, for the
-  // names the global does not have (namedScope). Elsewhere the window comes
-  // first, standing in for the global scope.
+  // Vitest's VM pools: globalProxy), the handler is compiled there and,
+  // as with jsdom (black box: Vitest vmThreads and jest-environment-jsdom
+  // on jsdom 20.0.3, 26.1.0 and 30.1.3), its window scope is that global
+  // as an object (with), so it reads what tests assign (window.innerWidth
+  // = 640, window.name, Object.defineProperty(window, ...)), calls the
+  // global's functions with the global as this, and finds the global's
+  // properties before the global lexical bindings of classic scripts (a
+  // script's `let counter` loses to window.counter). That global does no
+  // named access, so the window's named objects (<div id="result">) come
+  // from a scope of their own just behind it (namedScope), also before the
+  // lexical bindings, as in jsdom. Elsewhere the window comes first,
+  // standing in for the global scope.
   const window = doc[S].window;
   const ws = window[S];
   const inContext = ws.globalProxy !== undefined && ws.runScript !== undefined;
   try {
-    const outer = inContext ? namedScope(window, ws.globalProxy) : window;
     const compileIn = inContext
-      ? (params, code) => ws.runScript(`(function (${params}) { ${code} })`)
-      : (params, code) => new Function(...params.split(', '), code);
-    if (!element) return compileIn('__window', `with (__window) { ${source} }`)(outer);
+      ? (params, code) => ws.runScript(`(function (__named, ${params}) { with (__named) with (__window) { ${code} } })`)
+      : (params, code) => new Function(...params.split(', '), `with (__window) { ${code} }`);
+    const scope = inContext ? [namedScope(window, ws.globalProxy), ws.globalProxy] : [window];
+    if (!element) return compileIn('__window', source)(...scope);
     const s = element[S];
     const form = s.ns === HTML_NS && FORM_ASSOCIATED.has(s.tag) ? formOwner(element) : null;
     return compileIn('__window, __document, __form, __element',
-      `with (__window) with (__document) with (__form) with (__element) { ${source} }`)(
-      outer, doc, form ?? Object.create(null), element,
+      `with (__document) with (__form) with (__element) { ${source} }`)(
+      ...scope, doc, form ?? Object.create(null), element,
     );
   } catch (error) {
     handlerEntry(target, name).value = null;

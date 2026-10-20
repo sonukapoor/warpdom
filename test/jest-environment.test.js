@@ -416,3 +416,54 @@ test('Jest environment: inline event handlers find named elements', async () => 
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+// In jest-environment-jsdom (black box, jsdom 20.0.3 through Jest 29 and
+// 26.1.0 through Jest 30): an inline handler's window scope is the global as
+// an object, so the global's properties and then named objects come before
+// the global let/const of classic scripts (<div id="counter"> wins over a
+// script's `let counter = 42`; the handler's `counter = ...` and `kc = 8`
+// assign the global's properties, the bindings stay), and the global's
+// functions get the global as this. frames, a frame's parent and top are
+// the global, so they read what the test assigns; window[0] is the frame.
+test('Jest environment: handler scope before script bindings; frame aliases are the global', async () => {
+  const rootDir = fakeJestProject();
+  try {
+    const results = {};
+    for (const jsdom of ['20.0.3', '26.1.0', '30.1.3']) {
+      const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      await env.setup();
+      results[jsdom] = vm.runInContext(`(() => {
+        const out = [];
+        const iframe = document.createElement('iframe');
+        document.body.append(iframe);
+        const cw = iframe.contentWindow;
+        out.push([window.frames === window, cw.parent === window, cw.top === window, window[0] === cw, window.frames[0] === cw].join());
+        window.name = 'updated'; window.innerWidth = 640;
+        out.push([window.frames.name, cw.parent.name, cw.parent.innerWidth].join());
+        window.innerWidth = 800;
+        out.push([window.frames.innerWidth, cw.top.innerWidth].join());
+        iframe.remove();
+        out.push(String(window[0]));
+        const s = document.createElement('script');
+        s.textContent = 'let counter = 42; const kc = 7;';
+        document.head.append(s);
+        window.whoami = function () { 'use strict'; return this === window; };
+        document.body.innerHTML = '<div id="counter"></div><div id="kc"></div><button id="b" onclick="document.body.dataset.r = [typeof counter, String(counter), String(kc), whoami()].join(); counter = counter + 1; kc = 8"></button>';
+        const b = document.getElementById('b');
+        b.click(); out.push(document.body.dataset.r);
+        b.click(); out.push(document.body.dataset.r);
+        const s2 = document.createElement('script');
+        s2.textContent = 'document.body.dataset.c = [counter, kc, window.counter, window.kc].join()';
+        document.head.append(s2);
+        out.push(document.body.dataset.c);
+        return out.join(' | ');
+      })()`, env.getVmContext());
+      await env.teardown();
+    }
+    const expected = 'true,true,true,true,true | updated,updated,640 | 800,800 | undefined'
+      + ' | object,[object HTMLDivElement],[object HTMLDivElement],true | string,[object HTMLDivElement]1,8,true | 42,7,[object HTMLDivElement]11,8';
+    assert.deepEqual(results, { '20.0.3': expected, '26.1.0': expected, '30.1.3': expected });
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});

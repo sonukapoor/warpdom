@@ -108,3 +108,65 @@ test.skipIf(process.env.VIEWPORT_EXPECT === 'forks')('inline event handlers: the
   delete window.fresh;
   document.body.innerHTML = '';
 });
+
+// frames and a frame's parent and top read what the test assigns to window
+// in every pool; where the global is the window (VM pools) they are the
+// global, and window[0] is the frame (black box: jsdom 20.0.3, 26.1.0,
+// 30.1.3).
+test('frame aliases follow the window', () => {
+  const iframe = document.createElement('iframe');
+  document.body.append(iframe);
+  const cw = iframe.contentWindow;
+  expect(window.frames[0]).toBe(cw);
+  if (process.env.VIEWPORT_EXPECT !== 'forks') {
+    expect([window.frames === window, cw.parent === window, cw.top === window, window[0] === cw]).toEqual([true, true, true, true]);
+  }
+  const { name, innerWidth } = window;
+  window.name = 'updated';
+  window.innerWidth = 640;
+  expect([window.frames.name, cw.parent.name, cw.top.name, cw.parent.innerWidth]).toEqual(['updated', 'updated', 'updated', 640]);
+  window.innerWidth = 800;
+  expect([window.frames.innerWidth, cw.parent.innerWidth, cw.top.innerWidth]).toEqual([800, 800, 800]);
+  iframe.remove();
+  expect(window[0]).toBe(undefined);
+  window.name = name;
+  window.innerWidth = innerWidth;
+});
+
+// Object.keys(globalThis): Node's enumerable globals the window's members
+// replace stay enumerable (navigator), the window's other members are not
+// in forks and threads, and window is (black box: jsdom 20.0.3, 26.1.0,
+// 30.1.3).
+test('enumerable globals', () => {
+  const keys = Object.keys(globalThis);
+  expect(['navigator', 'window'].filter((k) => !keys.includes(k))).toEqual([]);
+  const windowKeys = ['document', 'location', 'innerWidth', 'addEventListener', 'getComputedStyle'].filter((k) => keys.includes(k));
+  expect(windowKeys).toEqual(process.env.VIEWPORT_EXPECT === 'forks' ? [] : ['document', 'location', 'innerWidth', 'addEventListener', 'getComputedStyle']);
+});
+
+// Where the global is the window (VM pools): an inline handler's window
+// scope is the global as an object, so its properties and the named
+// objects come before the global let/const of classic scripts, the
+// handler's assignments go to the global's properties, and the global's
+// functions get the global as this (black box: jsdom 20.0.3, 26.1.0,
+// 30.1.3).
+test.skipIf(process.env.VIEWPORT_EXPECT === 'forks')('inline event handlers: the global before script bindings', () => {
+  const s = document.createElement('script');
+  s.textContent = 'let counter = 42; const kc = 7; let solo = 1;';
+  document.head.append(s);
+  window.whoami = function () { return this === window; };
+  document.body.innerHTML = '<div id="counter"></div><div id="kc"></div><button id="b" onclick="document.body.dataset.r = [typeof counter, String(counter), String(kc), solo, whoami()].join(); counter = counter + 1; kc = 8; solo = 2"></button>';
+  const b = document.getElementById('b');
+  b.click();
+  expect(document.body.dataset.r).toBe('object,[object HTMLDivElement],[object HTMLDivElement],1,true');
+  b.click();
+  expect(document.body.dataset.r).toBe('string,[object HTMLDivElement]1,8,2,true');
+  const s2 = document.createElement('script');
+  s2.textContent = 'document.body.dataset.c = [counter, kc, solo, "solo" in window, window.counter, window.kc].join()';
+  document.head.append(s2);
+  expect(document.body.dataset.c).toBe('42,7,2,false,[object HTMLDivElement]11,8');
+  delete window.whoami;
+  delete window.counter;
+  delete window.kc;
+  document.body.innerHTML = '';
+});

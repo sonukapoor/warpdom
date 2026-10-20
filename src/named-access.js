@@ -139,15 +139,17 @@ export function installNamedAccess(global, window) {
 
 // The window's named objects as a scope (a with statement's object) for
 // code whose global is another object that does no named access: inline
-// event handlers compiled in Jest's or Vitest's VM context. A name the
-// global has, own or inherited, is left to the global; any other name of a
-// named object resolves to it, live, as jsdom does there (black box: Vitest
-// vmThreads and jest-environment-jsdom on jsdom 20.0.3, 26.1.0 and 30.1.3).
-// An assignment to such a name goes to the global, which then hides it.
+// event handlers compiled in Jest's or Vitest's VM context, where it comes
+// just behind the global as a with scope, which answers the names the
+// global has, own or inherited. Any other name of a named object resolves
+// to it, live, before the global lexical bindings, as jsdom does there
+// (black box: Vitest vmThreads and jest-environment-jsdom on jsdom 20.0.3,
+// 26.1.0 and 30.1.3). An assignment to such a name goes to the global,
+// which then hides it.
 export function namedScope(window, global) {
   return new Proxy(Object.create(null), {
     has(t, key) {
-      return typeof key === 'string' && !(key in global) && namedValue(window, key) !== undefined;
+      return typeof key === 'string' && namedValue(window, key) !== undefined;
     },
     get(t, key) {
       return typeof key === 'string' ? namedValue(window, key) : undefined;

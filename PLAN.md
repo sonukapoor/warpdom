@@ -3219,6 +3219,49 @@ own copy of vitest, so that it loads the chosen jsdom).
   handler-specific: `window.<named>` on the VM global (decision 2026-10-11)
   and window named access for `<a name>`/`<area name>` (jsdom 20.0.3 and
   26.1.0 have it, 30.1.3 does not; warpdom never).
+- **Copilot review on #87, third round.** Measured black box with Vitest
+  5's jsdom environment (forks, threads, vmThreads) on jsdom 20.0.3,
+  26.1.0, 30.1.3 and jest-environment-jsdom (jsdom 20.0.3, 26.1.0).
+  (1) Global let/const of classic scripts in a handler: the comment asked
+  for them to win over named elements, but jsdom does not do that in any
+  pool: with a script's `let counter = 42` and `<div id="counter">`, an
+  inline handler reads the element, its `counter = ...` (and `kc = 8` for
+  a `const kc`) assigns a global property that later handler runs read,
+  while the scripts' bindings stay 42 and 7; a binding without a colliding
+  name or global property is read and assigned (`solo`). Its handler
+  scope is the global as an object (with), so the global's functions get
+  the global as this. warpdom's VM-pool handlers did the first run right
+  and then let the binding win (namedScope answered only names the global
+  lacked, and the global was reached as the global scope, behind the
+  bindings), and called the global's functions with undefined as this.
+  They are now compiled as `with (named) with (global)`: the global's
+  properties, then the named objects, then the bindings, as in jsdom;
+  namedScope no longer checks the global (one `in` fewer per name).
+  (2) frames, and a frame's parent and top, returned the window behind the
+  VM global: `window.name = 'updated'` then `frames.name` read '', and
+  innerWidth assignments were missed. In jsdom's VM pools and Jest they
+  are the global (`frames === window`, `iframe.contentWindow.parent ===
+  window`), and window[0] is the frame. warpdom's getters now return the
+  exposed global (events.js exposed()), and the index properties are kept
+  on the global too. In forks and threads jsdom's frames/parent are its
+  own window (not the test's global) with the same values, as warpdom's.
+  (3) In forks and threads installWindow made every replaced global
+  non-enumerable, dropping Node's navigator from Object.keys(globalThis);
+  as with jsdom, a replaced global keeps its enumerability and a new one
+  is not enumerable. Tests: jest-environment.test.js (frames and handler
+  scope on 20.0.3, 26.1.0, 30.1.3), fixtures/vitest-viewport (frame
+  aliases in every pool, identity in the VM pools; Object.keys(globalThis);
+  handler scope before script bindings in the VM pools; also run with
+  real jsdom), vitest-adapter.test.js (enumerability on a stand-in
+  global). Bench (Node 22.23.3, alternating runs vs 1723448): bench:load
+  unchanged (next window 0.211 -> 0.208 ms, first window 2.53 -> 2.47 ms),
+  bench:hot within noise, inline handler in a VM pool: compile ~21 us and
+  call ~4.1 us on both. Left open: in forks and threads warpdom runs classic scripts as
+  an indirect eval on Node's global, so a script's let/const do not
+  outlive it and its var lands on the test's global (jsdom: its own
+  window, behind the test's global); in Vitest's VM pools Node's host
+  globals (setTimeout, fetch, atob, queueMicrotask, ...) are not
+  enumerable on warpdom's global, enumerable on jsdom's.
 
 Left as they are (measured, not in these issues):
 - ShadowRoot.prototype.onslotchange: warpdom has it, no jsdom does.

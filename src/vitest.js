@@ -206,7 +206,11 @@ export function installWindow(global, window, { hostKeys = [], alwaysKeys = [], 
           if (own && 'value' in own) Object.defineProperty(global, key, { ...own });
         }
         : (v) => { overrides.set(key, v); Reflect.set(window, key, v); },
-      enumerable: unforgeable && descriptor !== undefined && descriptor.enumerable,
+      // Elsewhere (Vitest's forks and threads pools) a global the window's
+      // member replaces keeps its enumerability (Node's navigator stays in
+      // Object.keys(globalThis)) and a new one is not enumerable, as with
+      // Vitest's jsdom environment (black box: jsdom 20.0.3, 26.1.0, 30.1.3).
+      enumerable: unforgeable ? descriptor !== undefined && descriptor.enumerable : original?.enumerable ?? false,
       configurable: true,
     });
   }
