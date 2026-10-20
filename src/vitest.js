@@ -17,6 +17,7 @@ import { setQueryCache } from './selectors.js';
 import { resetWindow, snapshotWindow } from './reset.js';
 import { HOST_TIMER_KEYS, warnNewerJsdom } from './window-features.js';
 import { blobData } from './file-reader.js';
+import { abortWindowRequests } from './xhr.js';
 
 const SELF_KEYS = ['window', 'self', 'top', 'parent'];
 
@@ -298,7 +299,7 @@ if (ablated('no-query-cache')) setQueryCache(false);
 function createTestWindow(options) {
   // environmentOptions.warpdom.url, as environmentOptions.jsdom.url for
   // Vitest's jsdom environment, whose default is this URL as well.
-  const window = createWindow({ url: options?.warpdom?.url ?? 'http://localhost:3000', ...(ablated('latest-profile') ? {} : jsdomProfile(options)), fastFrames: options?.warpdom?.fastFrames === true });
+  const window = createWindow({ url: options?.warpdom?.url ?? 'http://localhost:3000', ...(ablated('latest-profile') ? {} : jsdomProfile(options)), fastFrames: options?.warpdom?.fastFrames === true, xhr: options?.warpdom?.xhr !== false });
   if (ablated('eager-interfaces')) materializeAll(window);
   // Like Vitest's jsdom environment: an error thrown in an event listener
   // fails the test, unless the test listens for 'error' on the window.
@@ -356,7 +357,7 @@ export default {
     window[S].runScript = (source) => vm.runInContext(source, sandbox);
     return {
       getVmContext() { return sandbox; },
-      teardown() { restore(); },
+      teardown() { abortWindowRequests(window); restore(); },
     };
   },
   setup(global, options) {
@@ -386,6 +387,8 @@ export default {
     return {
       teardown() {
         delete global[RESET];
+        // Requests still running stop without events, as closing jsdom's window stops them.
+        abortWindowRequests(window);
         restore();
         url.restore();
       },

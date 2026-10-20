@@ -414,8 +414,8 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       if ((p.key === 'jsdom' || p.key === 'happyDOM' || p.key === 'happy-dom') && p.path[p.path.length - 2] === 'environmentOptions') {
         environmentOptionsFor(file, text, a, p);
       }
-      if (p.path.length >= 2 && p.path[p.path.length - 2] === 'testEnvironmentOptions' && !['url', 'jsdom', 'cssstyle', 'fastFrames', 'customExportConditions'].includes(p.key)) {
-        optionNotes.push({ file, line: lineIndex(text).lineOf(tokens[p.keyToken].start), hint: `testEnvironmentOptions.${p.key}: a jsdom option warpdom does not read (it reads url, jsdom, cssstyle, fastFrames, customExportConditions)` });
+      if (p.path.length >= 2 && p.path[p.path.length - 2] === 'testEnvironmentOptions' && !['url', 'jsdom', 'cssstyle', 'fastFrames', 'xhr', 'customExportConditions'].includes(p.key)) {
+        optionNotes.push({ file, line: lineIndex(text).lineOf(tokens[p.keyToken].start), hint: `testEnvironmentOptions.${p.key}: a jsdom option warpdom does not read (it reads url, jsdom, cssstyle, fastFrames, xhr, customExportConditions)` });
       }
     }
     if (isJest) transformAllowlist(file, text, a, prefix);
@@ -463,7 +463,7 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
   }
 
   // environmentOptions.jsdom / .happyDOM of a Vitest config. warpdom reads
-  // environmentOptions.warpdom ({ url, jsdom, cssstyle, fastFrames }); a
+  // environmentOptions.warpdom ({ url, jsdom, cssstyle, fastFrames, xhr }); a
   // jsdom object with only a url is renamed to warpdom (after the scan,
   // when the environment beside it is changed), else the line is listed.
   function environmentOptionsFor(file, text, a, p) {
@@ -482,7 +482,7 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
     }
     const what = p.key === 'jsdom' ? 'jsdom' : 'happy-dom';
     const urlHint = url ? `; move url to environmentOptions.warpdom.url (warpdom's default is http://localhost:3000, as Vitest's ${what} environment's)` : '';
-    optionNotes.push({ file, line, hint: `options for ${what} (environmentOptions.${p.key}) that warpdom does not read: it reads environmentOptions.warpdom ({ url, jsdom, cssstyle, fastFrames })${urlHint}` });
+    optionNotes.push({ file, line, hint: `options for ${what} (environmentOptions.${p.key}) that warpdom does not read: it reads environmentOptions.warpdom ({ url, jsdom, cssstyle, fastFrames, xhr })${urlHint}` });
   }
 
   // Entries of a Jest transform allowlist (the packages

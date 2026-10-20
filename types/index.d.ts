@@ -46,6 +46,12 @@ export interface CreateWindowOptions {
    * (docs/fast-frames.md).
    */
   fastFrames?: boolean;
+  /**
+   * `false` leaves out XMLHttpRequest (and XMLHttpRequestEventTarget and
+   * XMLHttpRequestUpload), so HTTP libraries that look for it (axios) use
+   * the host's HTTP client instead. Default `true`, as jsdom has it.
+   */
+  xhr?: boolean;
 }
 
 /**
