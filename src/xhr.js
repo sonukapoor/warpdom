@@ -538,6 +538,7 @@ async function run(xhr, s, req) {
   const window = s.window;
   const compat = window[S].compat;
   const fetch = PLATFORM_GLOBAL.fetch;
+  if (req.urlError !== null) { await null; fail(xhr, s, req, req.urlError); return; }
   if (typeof fetch !== 'function') { fail(xhr, s, req, 'fetch is not available'); return; }
   const { method, origin, cross, credentials } = req;
   let response;
@@ -680,10 +681,17 @@ function send(xhr, s, body) {
   if (docURL.protocol === 'http:' || docURL.protocol === 'https:') headers.Referer = referrerOf(docURL);
   if (cross) headers.Origin = origin;
   // The fetch URL has no credentials (fetch rejects them); jsdom 20 sends
-  // them as Basic authorization.
+  // them as Basic authorization, UTF-8 encoded, and fails the request
+  // (a network error) when they do not percent-decode.
   const fetchURL = withoutCredentials(url);
-  if (url.username !== '' || url.password !== '') {
-    if (compat.jsdom < 21 && !names.has('authorization')) headers.Authorization = `Basic ${btoa(`${decodeURIComponent(url.username)}:${decodeURIComponent(url.password)}`)}`;
+  let urlError = null;
+  if ((url.username !== '' || url.password !== '') && compat.jsdom < 21 && !names.has('authorization')) {
+    try {
+      const bytes = utf8Encode(`${decodeURIComponent(url.username)}:${decodeURIComponent(url.password)}`);
+      headers.Authorization = `Basic ${btoa(String.fromCharCode(...bytes))}`;
+    } catch (error) {
+      urlError = `${error.name}: ${error.message}`;
+    }
   }
 
   // An empty body has no upload events, as in jsdom.
@@ -695,7 +703,9 @@ function send(xhr, s, body) {
     url: url.href, fetchURL, method: legacy && method.toUpperCase() === 'PATCH' ? 'PATCH' : method, headers, body: extracted?.body ?? null, length: extracted?.length ?? 0,
     origin, cross, credentials: s.withCredentials, unsafe, userAgent, data: url.protocol === 'data:',
     preflight: cross && (!['GET', 'HEAD', 'POST'].includes(method) || unsafe.length > 0 || s.uploadListener),
-    controller: typeof AbortController === 'function' ? new AbortController() : null, timer: null, start: hostNow(),
+    // The platform's AbortController, as its fetch takes the signal (the
+    // CommonJS bundle may be evaluated in a context without one).
+    controller: typeof PLATFORM_GLOBAL.AbortController === 'function' ? new PLATFORM_GLOBAL.AbortController() : null, timer: null, start: hostNow(), urlError,
   };
   s.req = req;
   const pending = window[S].pendingRequests ?? (window[S].pendingRequests = new Set());

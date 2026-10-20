@@ -311,6 +311,9 @@ function createTestWindow(options) {
   // console.error does not see "Not implemented" reports).
   const setupConsole = globalThis.console;
   window[S].reportNotImplemented = (text) => setupConsole.error(text);
+  // jsdom's virtual console errors (a frame's uncaught listener
+  // exceptions) are logged there too, and do not fail the test.
+  window[S].reportError = (error) => setupConsole.error(error);
   // Frames' consoles (the global's console is the test's) write there too.
   window[S].consoleTarget = setupConsole;
   return window;

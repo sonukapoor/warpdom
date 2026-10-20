@@ -85,6 +85,27 @@ test('CommonJS build: loaded in a VM context with fake timers and a frozen Date 
   }
 });
 
+test('CommonJS build: in a VM context without AbortController, preflighted requests work and stop (Copilot review on #89)', async () => {
+  const { startServer } = await import('./xhr-server.js');
+  const server = await startServer();
+  try {
+    const { exports: warpdom } = loadInContext();
+    const window = warpdom.createWindow({ url: `http://localhost:${server.port}/page/index.html` });
+    const send = (method, url, stop) => new Promise((resolve) => {
+      const x = new window.XMLHttpRequest();
+      x.onloadend = () => resolve([x.status, x.responseText === '' ? '' : JSON.parse(x.responseText).method]);
+      x.open(method, url);
+      x.send('x');
+      if (stop) x.abort();
+    });
+    // Cross-origin PUT: a preflight first (it used req.controller.signal).
+    assert.deepEqual(await send('PUT', `http://127.0.0.1:${server.port}/echo?acao=*&preflight=ok`), [200, 'PUT']);
+    assert.deepEqual(await send('POST', `http://localhost:${server.port}/hang`, true), [0, '']);
+  } finally {
+    await server.close();
+  }
+});
+
 test('CommonJS build: in the VM context of warpdom/jest, whose global object is a warpdom window', async () => {
   // Stand-ins for the Jest packages the environment loads from the project.
   const dir = mkdtempSync(join(tmpdir(), 'warpdom-cjs-'));

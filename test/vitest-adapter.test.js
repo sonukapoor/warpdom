@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -45,6 +45,20 @@ test('an error thrown in an event listener fails the run, as with jsdom', () => 
     }
     assert.equal(code, 1, `exit code with ${environment.join(' ') || 'warpdom'}`);
     assert.match(out, /thrown in a listener/);
+  }
+});
+
+// Black box (Vitest 5, jsdom 30): a frame's uncaught listener exception
+// (an XMLHttpRequest onload too) goes to jsdom's virtual console, which
+// Vitest prints; the test passes (Copilot review on #89).
+test('an error thrown in a frame\'s listener is logged and does not fail the test, as with jsdom', () => {
+  for (const environment of [[], ['--environment', 'jsdom']]) {
+    const result = spawnSync('node_modules/.bin/vitest', ['run', '--root', 'fixtures/vitest-frame-errors', ...environment], { cwd: root, encoding: 'utf8' });
+    const out = (result.stdout + result.stderr).replace(/\x1b\[[0-9;]*m/g, '');
+    assert.equal(result.status, 0, environment.join(' ') || 'warpdom');
+    assert.match(out, /Tests {2}2 passed \(2\)/);
+    assert.match(out, /Error: thrown in a frame listener/);
+    assert.match(out, /Error: thrown in a frame xhr onload/);
   }
 });
 

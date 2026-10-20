@@ -389,7 +389,14 @@ export function createWindow(options = {}) {
       Object.create(xml && !plain ? protos.XMLDocument : protos.Document), { noView: true, url: 'about:blank', contentType, xml }),
     // Errors from event listeners that no 'error' listener handled. Logged
     // like jsdom does; test environments replace this to fail the test.
-    onUnhandledError: (error) => console.error(error),
+    // A frame's are reported where its top window reports jsdom's virtual
+    // console errors (reportError): with jsdom under Jest and Vitest they
+    // are logged and do not fail the test (only the top window's 'error'
+    // event is watched).
+    onUnhandledError: options.nested ? (error) => options.nested.parent[S].reportError(error) : (error) => console.error(error),
+    // jsdom's virtual console errors ("jsdomError"): test environments send
+    // them where jsdom's environments do.
+    reportError: options.nested ? (error) => options.nested.parent[S].reportError(error) : (error) => console.error(error),
     // As jsdom reports unimplemented features (form submission, navigation)
     // through its virtual console, in its version's words; the test
     // environments send the text where jsdom's environments send it

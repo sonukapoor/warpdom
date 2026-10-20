@@ -172,6 +172,15 @@ export default class WarpdomEnvironment {
       error.type = type;
       global.console?.error(error);
     };
+    // As jest-environment-jsdom: jsdom's virtual console errors (a frame's
+    // uncaught listener exceptions) go to the test's console, as jsdom's
+    // "Uncaught [...]" error (type and detail before jsdom 27, cause after).
+    window[S].reportError = (error) => {
+      const report = new Error(`Uncaught [${String(error)}]`);
+      if (window[S].compat.jsdom < 27) Object.assign(report, { type: 'unhandled exception', detail: error });
+      else Object.assign(report, { type: 'unhandled-exception', cause: error });
+      global.console?.error(report);
+    };
     // The window's console (frames') writes to the test's console, where
     // jest-environment-jsdom sends jsdom's virtual console.
     window[S].consoleTarget = context?.console ?? globalThis.console;

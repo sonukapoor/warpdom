@@ -695,7 +695,10 @@ const SCENARIOS = {
   },
   async urls(w, c) {
     const out = [];
-    for (const u of ['echo?q=1', '/echo#frag', '../echo', `//localhost:${c.PORT}/echo`, `${c.BASE}/ech%6F?a b`, `http://u:p@localhost:${c.PORT}/echo`]) {
+    // Non-ASCII and undecodable credentials (jsdom 20: UTF-8 in Basic
+    // authorization; %FF a network error) (Copilot review on #89).
+    const credentials = ['é:p', 'u:€', '%C3%A9:p%3A', '%FF:p'].map((cred) => `http://${cred}@localhost:${c.PORT}/echo`);
+    for (const u of ['echo?q=1', '/echo#frag', '../echo', `//localhost:${c.PORT}/echo`, `${c.BASE}/ech%6F?a b`, `http://u:p@localhost:${c.PORT}/echo`, ...credentials]) {
       const { x } = await request(w, 'GET', u);
       out.push([port(u), x.status, port(x.responseURL), x.status === 200 ? JSON.parse(x.responseText).headers.authorization ?? null : null]);
     }

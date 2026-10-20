@@ -3627,3 +3627,34 @@ No open issues; three "previously missed" items in unchanged code
   browser host. Documented as a limitation (README, docs/api.md); issue
   #91, for the SSR/edge milestone.
 
+### Copilot's re-review of e9b57a1 on #89 (2026-10-20)
+
+No open issues; three "previously missed" items in unchanged code, all
+done:
+- A frame's uncaught listener exceptions (an XHR onload too) went to the
+  frame's own onUnhandledError (console.error; under Vitest nothing was
+  printed). Black box, jsdom under Vitest 5 (jsdom 30) and Jest 30
+  (jest-environment-jsdom 30.5.2): such an exception does not fail the
+  test (only the top window's 'error' event is watched); jsdom's virtual
+  console reports it (jsdomError "Uncaught [Error: x]", type "unhandled
+  exception" with detail before 27, "unhandled-exception" with cause
+  from 27), which Vitest prints on the setup console and Jest's
+  environment sends to the test's console. Copilot asked for the test to
+  fail; warpdom matches jsdom instead (a suite that passes on jsdom must
+  not fail): frames hand them to the top window's new reportError hook
+  (window internals; jsdom's virtual console errors), which the Vitest
+  environment sends to the setup console and the Jest environment to the
+  test's console in jsdom's shape. The top window's errors still fail the
+  test. Tests: fixtures/vitest-frame-errors (warpdom and jsdom),
+  test/jest-environment.test.js (profiles 20.0.3 and 30.1.3).
+- jsdom 20's Basic authorization from URL credentials is UTF-8 (é:p is
+  w6k6cA==, €:p 4oKsOnA=); undecodable ones (%FF) are a network error
+  reported as "URIError: URI malformed". warpdom used btoa on the decoded
+  string (Latin-1; € threw from send()). Now UTF-8, and the network
+  error. Parity cases in urls.
+- The AbortController for a request's fetch came from the evaluating
+  context: the CommonJS bundle in a VM context without one had no
+  controller, so a preflighted request threw at req.controller.signal.
+  Now PLATFORM_GLOBAL's (the signal goes to its fetch). Test in
+  test/cjs.test.js.
+
