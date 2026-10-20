@@ -19,7 +19,9 @@ const require = createRequire(import.meta.url);
 // One release per major from 20 to 30 (the latest of each; the newest is
 // NEWEST_MODELED_JSDOM), plus the jsdom installed when it is another one.
 const ALIASES = ['jsdom20', 'jsdom21', 'jsdom22', 'jsdom23', 'jsdom24', 'jsdom25', 'jsdom26', 'jsdom27', 'jsdom28', 'jsdom29', 'jsdom30', 'jsdom'];
-const HTML_TAGS = [...new Set([...HTML_ELEMENTS.flatMap(([, , tags]) => tags), ...PLAIN_TAGS])];
+// Also the elements both make HTMLUnknownElement though the standard
+// gives them an interface (#51, #69).
+const HTML_TAGS = [...new Set([...HTML_ELEMENTS.flatMap(([, , tags]) => tags), ...PLAIN_TAGS, 'menuitem', 'search', 'selectedcontent'])];
 
 // Known differences: a path pattern, optionally the difference and the
 // jsdom majors it applies to, the issue and why. An entry that matches
@@ -33,7 +35,6 @@ const KNOWN = [
   { path: /^Window extends$/, jsdom: [20, 23], issues: [], reason: 'jsdom before 24 has no WindowProperties object: Window.prototype inherits from EventTarget.prototype' },
   { path: /^window\.(document|self|window|name|webkitURL)$/, difference: /^jsdom \w+, warpdom \w+$/, issues: [], reason: 'kind of the window member differs' },
   { path: /^window\.(innerWidth|innerHeight|outerWidth|outerHeight|devicePixelRatio|scrollX|scrollY|pageXOffset|pageYOffset|screenX|screenY|screenLeft|screenTop|status)$/, difference: /^jsdom data, warpdom accessor$/, jsdom: [20, 26], issues: [], reason: 'jsdom 26 and earlier: writable data properties' },
-  { path: /^<(search|selectedcontent)> is$/, issues: [], reason: 'jsdom makes HTMLUnknownElement' },
   { path: /^HTML(Button|Input|Select|TextArea)Element\.prototype\.(autofocus|inputMode)$/, difference: /^on HTMLElement$/, issues: [], reason: 'jsdom has them on the element interface too' },
   { path: /^(HTMLFormControlsCollection|HTMLOptionsCollection|RadioNodeList|CSSStyleProperties)\.prototype\.\[Symbol\.iterator\]$/, difference: /^on /, issues: [], reason: 'jsdom gives each interface its own @@iterator' },
   { path: /^HTMLFormElement\.prototype\.\[Symbol\.iterator\]$/, jsdom: [26, 30], issues: [], reason: 'a form is iterable from jsdom 26 (not fixed by fix/forms-parity\'s #50)' },
