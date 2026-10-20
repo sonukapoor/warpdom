@@ -56,14 +56,41 @@ const before = (version, target) => {
   return false;
 };
 
-// Viewport values tests commonly override (window.innerWidth = 500).
+// Viewport values tests commonly override (window.innerWidth = 500), and
+// status, as jsdom has them (black box, every release 20.0.0 to 30.1.3):
+// own properties of the window, as name (setupWindowData). Before 27.0.0
+// writable, enumerable, configurable data properties
+// (Object.defineProperty(window, 'innerWidth', { value: 500 }) keeps them
+// writable). From 27.0.0 accessors (enumerable, configurable): the
+// viewport getters give the value whatever this is and their setters
+// replace the accessor with a data property ([Replaceable]); status keeps
+// a string. name is a data property in every version and keeps any value
+// as given.
 const VIEWPORT = { innerWidth: 1024, innerHeight: 768, outerWidth: 1024, outerHeight: 768, devicePixelRatio: 1,
   scrollX: 0, scrollY: 0, pageXOffset: 0, pageYOffset: 0, screenX: 0, screenY: 0, screenLeft: 0, screenTop: 0 };
 
-const viewport = Object.fromEntries(Object.entries(VIEWPORT).map(([key, value]) => [key, {
-  get() { const v = state(this).viewport; return v && key in v ? v[key] : value; },
-  set(v) { const s = state(this); (s.viewport ?? (s.viewport = {}))[key] = v; },
-}]));
+const accessor = (members, key) => ({ ...Object.getOwnPropertyDescriptor(members, key), enumerable: true, configurable: true });
+const WINDOW_ACCESSORS = [
+  ...Object.entries(VIEWPORT).map(([key, value]) => [key, accessor({
+    get [key]() { return value; },
+    set [key](v) { replace(this, key, v); },
+  }, key)]),
+  ['status', accessor({
+    get status() { return state(this).status ?? ''; },
+    set status(v) { state(this).status = String(v); },
+  }, 'status')],
+];
+
+export function setupWindowData(window) {
+  const define = (key, value) => Object.defineProperty(window, key, { value, writable: true, enumerable: true, configurable: true });
+  define('name', '');
+  if (window[S].compat.jsdom >= 27) {
+    for (const [key, descriptor] of WINDOW_ACCESSORS) Object.defineProperty(window, key, descriptor);
+    return;
+  }
+  for (const key in VIEWPORT) define(key, VIEWPORT[key]);
+  define('status', '');
+}
 
 // One frame about every 16 ms; callbacks queued before a frame run in it
 // with the same timestamp, as in jsdom with pretendToBeVisual.
@@ -198,18 +225,10 @@ export const WINDOW_MEMBERS = {
   ...timerMembers,
   ...noOps,
   ...barMembers,
-  get name() { return state(this).name ?? ''; },
-  set name(v) { state(this).name = String(v); },
-  get status() { return state(this).status ?? ''; },
-  set status(v) { state(this).status = String(v); },
   get origin() { const url = state(this).url; return url.origin; },
   set origin(value) { replace(this, 'origin', value); },
   get external() { const ws = state(this); return ws.external ?? (ws.external = make(this, 'External', {})); },
   set external(value) { replace(this, 'external', value); },
-  // An alias of the window's URL interface (url.js); a getter, so
-  // environments do not bind it. Under Vitest it stays the window's while
-  // the global URL is the environment's, as with jsdom.
-  get webkitURL() { return state(this).protos.URL.constructor; },
   // The current event (DOM 2.10), set while listeners run (events.js);
   // [Replaceable]: assigning it replaces it with an own property.
   get event() { return state(this).currentEvent; },
@@ -250,7 +269,6 @@ export const WINDOW_MEMBERS = {
   get crypto() { const s = state(this); return s.crypto ?? (s.crypto = make(this, 'Crypto', {})); },
   get performance() { const s = state(this); return s.performance ?? (s.performance = make(this, 'Performance', {})); },
 };
-Object.defineProperties(WINDOW_MEMBERS, Object.getOwnPropertyDescriptors(viewport));
 
 // jsdom's words for getComputedStyle with a pseudo-element (black box: 20
 // to 23, 24 to 26, 27 and later).
@@ -1179,6 +1197,9 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // to the window before 28.1.0.
     svgTypes: !before(version, [26, 1, 0]), svgSymbolViewport: !before(version, [26, 1, 0]) && before(version, [30, 1, 0]),
     svgWindowHandlers: before(version, [28, 1, 0]),
+    // The window's named properties object (WindowProperties) from 24.1.2;
+    // before, Window.prototype inherits from EventTarget.prototype.
+    windowProperties: !before(version, [24, 1, 2]),
     // Event handlers (event-handlers.js): before 22.1.0 jsdom lacks 19 of
     // GlobalEventHandlers' (oncopy, ontouchstart, ...; black box).
     legacyHandlers: before(version, [22, 1, 0]),

@@ -194,3 +194,122 @@ for (const jsdom of [20, 26, 30]) {
       caught(() => { n.plugins = 5; }), n.plugins instanceof w.PluginArray];
   }, { jsdom });
 }
+
+// Window member kinds and the prototype chain (#68; black box, every jsdom
+// release from 20.0.0 to 30.1.3): document, window and self are own
+// accessors (configurable in jsdom 20 only, self replaceable from 21), name
+// an own data property, webkitURL an own data property that is not
+// enumerable, status and the viewport members own data properties before
+// 27 and own accessors from 27 (viewport setters replace them); before
+// 24.1.2 Window.prototype inherits from EventTarget.prototype directly.
+const VIEWPORT_KEYS = ['innerWidth', 'innerHeight', 'outerWidth', 'outerHeight', 'devicePixelRatio', 'scrollX', 'scrollY', 'pageXOffset',
+  'pageYOffset', 'screenX', 'screenY', 'screenLeft', 'screenTop'];
+const descriptorOf = (o, key) => {
+  const d = Object.getOwnPropertyDescriptor(o, key);
+  if (!d) return 'none';
+  const flags = `${d.writable ? 'w' : ''}${d.enumerable ? 'e' : ''}${d.configurable ? 'c' : ''}`;
+  if ('value' in d) return `data ${typeof d.value === 'object' ? 'object' : typeof d.value === 'function' ? d.value.name : JSON.stringify(d.value)} ${flags}`;
+  return `accessor ${d.get?.name ?? '-'}/${d.set?.name ?? '-'} ${flags}`;
+};
+const windowKindsScenario = (w) => {
+  void w.webkitURL; // warpdom makes it on first read, as its interface objects
+  const out = ['document', 'window', 'self', 'name', 'status', 'webkitURL', ...VIEWPORT_KEYS].map((key) => `${key}: ${descriptorOf(w, key)}`);
+  const get = (key) => Object.getOwnPropertyDescriptor(w, key).get;
+  out.push(get('document').call({}) === w.document, get('window').call(undefined) === w, get('self').call({}) === w, w.webkitURL === w.URL);
+  if (get('innerWidth')) out.push(get('innerWidth').call({}), get('scrollY').call(undefined));
+  return out;
+};
+const windowAssignmentScenario = (w) => {
+  const attempt = (f) => { try { return f(); } catch (e) { return e.constructor.name; } };
+  const out = [];
+  w.innerWidth = 500;
+  out.push(w.innerWidth, descriptorOf(w, 'innerWidth'));
+  w.scrollY = '20';
+  out.push(w.scrollY);
+  // A test's Object.defineProperty with a value only: writable stays as it was.
+  Object.defineProperty(w, 'innerHeight', { value: 300 });
+  out.push(descriptorOf(w, 'innerHeight'), attempt(() => { w.innerHeight = 400; return w.innerHeight; }));
+  // vi.spyOn(window, 'devicePixelRatio', 'get') needs an accessor.
+  const ratio = Object.getOwnPropertyDescriptor(w, 'devicePixelRatio');
+  out.push(typeof ratio.get);
+  if (ratio.get) {
+    Object.defineProperty(w, 'devicePixelRatio', { ...ratio, get: () => 2 });
+    out.push(w.devicePixelRatio);
+    Object.defineProperty(w, 'devicePixelRatio', ratio);
+    out.push(w.devicePixelRatio);
+  }
+  w.name = 5;
+  w.status = 6;
+  out.push(typeof w.name, typeof w.status, descriptorOf(w, 'name'));
+  w.webkitURL = 7;
+  out.push(descriptorOf(w, 'webkitURL'));
+  out.push(attempt(() => { delete w.outerWidth; return String(w.outerWidth); }));
+  return out;
+};
+const windowChainScenario = (w) => {
+  const d = w.document;
+  d.body.innerHTML = '<div id="named"></div><form name="f"></form><div id="addEventListener"></div><div id="location"></div><div id="toString"></div>';
+  const parent = Object.getPrototypeOf(w.Window.prototype);
+  const out = [parent === w.EventTarget.prototype, Object.prototype.toString.call(parent), Object.prototype.toString.call(w.Window.prototype),
+    Object.getPrototypeOf(w.EventTarget.prototype) === Object.prototype || Object.getPrototypeOf(w.EventTarget.prototype) === w.Object?.prototype,
+    w.Window.prototype.constructor === w.Window, Reflect.ownKeys(w.Window.prototype).includes('constructor')];
+  out.push(String(w.named), 'named' in w, String(w.f), typeof w.addEventListener, String(w.location) === w.location.href, typeof w.toString, w.missing, 'missing' in w);
+  d.getElementById('named').remove();
+  out.push(String(w.named), 'named' in w);
+  return out;
+};
+for (const jsdom of [20, 22, 25, 26, 30]) {
+  parity(`window member kinds (jsdom ${jsdom})`, windowKindsScenario, { jsdom });
+  parity(`window member assignments (jsdom ${jsdom})`, windowAssignmentScenario, { jsdom });
+  parity(`Window prototype chain and named access (jsdom ${jsdom})`, windowChainScenario, { jsdom });
+}
+
+test('window member kinds per jsdom version: boundaries 21.0.0, 24.1.2 and 27.0.0', () => {
+  const kinds = (jsdom) => {
+    const w = createWindow({ jsdom });
+    const parent = Object.getPrototypeOf(w.Window.prototype);
+    return [descriptorOf(w, 'document'), descriptorOf(w, 'self'), descriptorOf(w, 'innerWidth'), descriptorOf(w, 'status'),
+      parent === w.EventTarget.prototype ? 'EventTarget' : Object.prototype.toString.call(parent)];
+  };
+  const legacy = ['accessor get document/- ec', 'accessor get self/- ec', 'data 1024 wec', 'data "" wec'];
+  const data = ['accessor get document/- e', 'accessor get self/set self ec', 'data 1024 wec', 'data "" wec'];
+  const accessors = ['accessor get document/- e', 'accessor get self/set self ec', 'accessor get innerWidth/set innerWidth ec', 'accessor get status/set status ec'];
+  assert.deepEqual(kinds('20.0.3'), [...legacy, 'EventTarget']);
+  assert.deepEqual(kinds('21.0.0'), [...data, 'EventTarget']);
+  assert.deepEqual(kinds('24.1.1'), [...data, 'EventTarget']);
+  assert.deepEqual(kinds('24.1.2'), [...data, '[object WindowProperties]']);
+  assert.deepEqual(kinds('26.1.0'), [...data, '[object WindowProperties]']);
+  assert.deepEqual(kinds('27.0.0'), [...accessors, '[object WindowProperties]']);
+  assert.deepEqual(kinds('30.1.3'), [...accessors, '[object WindowProperties]']);
+});
+
+test('window: self is replaceable from jsdom 21, document and window are not, in strict code', () => {
+  for (const jsdom of ['21.0.0', '30.1.3']) {
+    const w = createWindow({ jsdom });
+    const document = w.document;
+    assert.throws(() => { w.document = {}; }, TypeError);
+    assert.throws(() => { w.window = {}; }, TypeError);
+    assert.throws(() => { delete w.document; }, TypeError);
+    assert.equal(w.document, document);
+    w.self = 7;
+    assert.equal(descriptorOf(w, 'self'), 'data 7 wec');
+  }
+  const w = createWindow({ jsdom: '20.0.3' });
+  assert.throws(() => { w.self = 7; }, TypeError);
+  delete w.document;
+  assert.equal(w.document, undefined);
+});
+
+test('window: the per-file reset puts back the viewport, name and status', async () => {
+  const { snapshotWindow, resetWindow } = await import('../src/reset.js');
+  for (const jsdom of ['26.1.0', '30.1.3']) {
+    const w = createWindow({ jsdom });
+    snapshotWindow(w);
+    w.innerWidth = 500;
+    w.name = 'x';
+    w.status = 'y';
+    Object.defineProperty(w, 'innerHeight', { value: 1, configurable: true });
+    resetWindow(w);
+    assert.deepEqual([w.innerWidth, w.innerHeight, w.name, w.status], [1024, 768, '', ''], jsdom);
+  }
+});

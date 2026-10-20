@@ -32,9 +32,6 @@ const KNOWN = [
   { path: /^(window\.)?XMLHttpRequest(EventTarget|Upload)?\b/, issues: [22, 30] },
 
   // No issue yet (found by this test; see #18).
-  { path: /^Window extends$/, jsdom: [20, 23], issues: [], reason: 'jsdom before 24 has no WindowProperties object: Window.prototype inherits from EventTarget.prototype' },
-  { path: /^window\.(document|self|window|name|webkitURL)$/, difference: /^jsdom \w+, warpdom \w+$/, issues: [], reason: 'kind of the window member differs' },
-  { path: /^window\.(innerWidth|innerHeight|outerWidth|outerHeight|devicePixelRatio|scrollX|scrollY|pageXOffset|pageYOffset|screenX|screenY|screenLeft|screenTop|status)$/, difference: /^jsdom data, warpdom accessor$/, jsdom: [20, 26], issues: [], reason: 'jsdom 26 and earlier: writable data properties' },
   { path: /^HTML(Button|Input|Select|TextArea)Element\.prototype\.(autofocus|inputMode)$/, difference: /^on HTMLElement$/, issues: [], reason: 'jsdom has them on the element interface too' },
   { path: /^(HTMLFormControlsCollection|HTMLOptionsCollection|RadioNodeList|CSSStyleProperties)\.prototype\.\[Symbol\.iterator\]$/, difference: /^on /, issues: [], reason: 'jsdom gives each interface its own @@iterator' },
   { path: /^HTMLFormElement\.prototype\.\[Symbol\.iterator\]$/, jsdom: [26, 30], issues: [], reason: 'a form is iterable from jsdom 26 (not fixed by fix/forms-parity\'s #50)' },

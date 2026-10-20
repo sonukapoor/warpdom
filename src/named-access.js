@@ -102,6 +102,33 @@ export function namedPropertiesObject(window, holder, next) {
   return proxy;
 }
 
+// jsdom before 24.1.2 has no named properties object (black box): its
+// Window.prototype inherits from EventTarget.prototype directly, and named
+// access is through the window's own properties, so a named object hides
+// EventTarget's members (<div id="addEventListener">), though not the
+// window's or Object.prototype's. For those profiles Window.prototype
+// itself (target, already filled) looks up the named objects, as a proxy
+// that otherwise leaves everything to the target. Only these profiles pay
+// for reading Window.prototype's members through a proxy.
+export function namedAccessPrototype(window, target) {
+  let proxy = null;
+  const lookup = (t, key) => {
+    if (typeof key !== 'string' || key === 'document' || Object.hasOwn(t, key) || key in Object.prototype) return undefined;
+    const value = namedValue(window, key);
+    return value === undefined || hidden(window, proxy, key) ? undefined : value;
+  };
+  proxy = new Proxy(target, {
+    get(t, key, receiver) {
+      const value = lookup(t, key);
+      return value !== undefined ? value : Reflect.get(t, key, receiver);
+    },
+    has(t, key) {
+      return Reflect.has(t, key) || lookup(t, key) !== undefined;
+    },
+  });
+  return proxy;
+}
+
 // Named access on another global object that stands for window (the WPT
 // runner's, where the global is the window as in a browser): window's named
 // objects behind the global's own and inherited properties. The Vitest and

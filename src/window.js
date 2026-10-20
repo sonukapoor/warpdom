@@ -8,9 +8,9 @@ import {
 } from './internal.js';
 import { INTERFACES, SVG_ELEMENTS, LEGACY_SVG_ELEMENTS, SVG_TYPES_INTERFACES, HTML_NS, SVG_NS } from './interfaces.js';
 import { HTML_ELEMENTS, PLAIN_TAGS } from './html-elements.js';
-import { setupWindow, profileCompat } from './window-features.js';
+import { setupWindow, profileCompat, setupWindowData } from './window-features.js';
 import { setValidationMode } from './css.js';
-import { namedPropertiesObject } from './named-access.js';
+import { namedPropertiesObject, namedAccessPrototype } from './named-access.js';
 import './document-named.js';
 import { xpathException } from './dom-parsing.js';
 import { createCustomElement, createRegistry, htmlConstruct, isValidCustomElementName } from './custom-elements.js';
@@ -196,6 +196,28 @@ function cssMode(compat) {
   return compat.unquotedUrls ? 'jsdom25' : 'jsdom26';
 }
 
+// document, window and self: own accessors of the window ([LegacyUnforgeable]
+// document and window; self [Replaceable]), as in jsdom (black box, 20.0.0
+// to 30.1.3); their getters give this window's whatever this is. jsdom 20:
+// all configurable, self without a setter; from 21.0.0 document and window
+// are not configurable and assigning self replaces it with a data property.
+function defineSelfMembers(window, document) {
+  const legacy = window[S].compat.jsdom < 21;
+  const own = {
+    get document() { return document; },
+    get window() { return window; },
+    get self() { return window; },
+    set self(value) { Object.defineProperty(window, 'self', { value, writable: true, enumerable: true, configurable: true }); },
+  };
+  const define = (key, configurable, withSetter = false) => {
+    const { get, set } = Object.getOwnPropertyDescriptor(own, key);
+    Object.defineProperty(window, key, { get, set: withSetter ? set : undefined, enumerable: true, configurable });
+  };
+  define('document', legacy);
+  define('window', legacy);
+  define('self', true, !legacy);
+}
+
 export function createWindow(options = {}) {
   // Starts as a plain object; becomes a Window once the interfaces exist.
   const window = {};
@@ -219,7 +241,7 @@ export function createWindow(options = {}) {
     // through a new hidden class per member, rebuilt for every window
     // (CSSStyleProperties' 1,600 accessors took ~1.5 ms). The prototype is
     // set afterwards; own keys, their order and descriptors are the same.
-    const proto = Object.create(null);
+    let proto = Object.create(null);
     const { keys, descriptors, unscopables } = descriptorsOf(iface, iface.variant ? iface.variant(window[S].compat) ?? null : null);
     for (let i = 0; i < keys.length; i++) Object.defineProperty(proto, keys[i], descriptors[i]);
     if (unscopables) {
@@ -232,6 +254,8 @@ export function createWindow(options = {}) {
     if (iface.compat) iface.compat(proto, window[S].compat);
     if (hidesState(iface) && iface.slot?.[0] !== S) Object.defineProperty(proto, S, HIDDEN_STATE);
     Object.setPrototypeOf(proto, parent ? parent.prototype : Object.prototype);
+    // Named access before jsdom 24.1.2 (named-access.js).
+    if (name === 'Window' && !window[S].compat.windowProperties) proto = namedAccessPrototype(window, proto);
     // A callback interface with constants (NodeFilter) has a legacy callback
     // interface object: a function that is not a constructor and has no
     // prototype property (a method has neither).
@@ -289,6 +313,15 @@ export function createWindow(options = {}) {
     });
     Object.defineProperty(protos, name, { get() { return materialize(name).prototype; }, enumerable: true, configurable: true });
   }
+  // webkitURL: the window's URL interface under another name, an own data
+  // property, not enumerable (jsdom 20 to 30, black box); made on first
+  // read, as the interface objects are.
+  const setWebkitURL = (value) => Object.defineProperty(window, 'webkitURL', { value, writable: true, configurable: true });
+  Object.defineProperty(window, 'webkitURL', {
+    get() { const ctor = materialize('URL'); setWebkitURL(ctor); return ctor; },
+    set: setWebkitURL,
+    configurable: true,
+  });
   // HTMLDocument (HTML, legacy): the Document interface object under
   // another name, as in jsdom.
   const setHTMLDocument = (value) => Object.defineProperty(window, 'HTMLDocument', { value, writable: true, configurable: true });
@@ -367,8 +400,9 @@ export function createWindow(options = {}) {
   Object.defineProperty(window, S, { value: internals });
   Object.setPrototypeOf(window, protos.Window);
   // Named access (window[id]): the named properties object between
-  // Window.prototype and EventTarget.prototype.
-  Object.setPrototypeOf(protos.Window, namedPropertiesObject(window, window, Object.getPrototypeOf(protos.Window)));
+  // Window.prototype and EventTarget.prototype (from jsdom 24.1.2; before,
+  // Window.prototype does it, see materialize).
+  if (internals.compat.windowProperties) Object.setPrototypeOf(protos.Window, namedPropertiesObject(window, window, Object.getPrototypeOf(protos.Window)));
   setupWindow(window, options);
   applyCompat(window, protos);
   installGlobalOperations(window, protos.Window);
@@ -382,8 +416,7 @@ export function createWindow(options = {}) {
   insert(html, internals.createElementNS(HTML_NS, 'head'), null);
   insert(html, internals.createElementNS(HTML_NS, 'body'), null);
 
-  window.document = document;
-  window.window = window;
-  window.self = window;
+  defineSelfMembers(window, document);
+  setupWindowData(window);
   return window;
 }

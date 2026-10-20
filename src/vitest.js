@@ -33,12 +33,11 @@ function eventTargetMethod(fn, window) {
 }
 const isClassLike = (key) => /^[A-Z]/.test(key);
 
-// The value of a data property found on the object or its prototypes;
-// undefined for accessors.
-function dataValue(object, key) {
+// The descriptor of a property found on the object or its prototypes.
+function findDescriptor(object, key) {
   for (let o = object; o; o = Object.getPrototypeOf(o)) {
     const descriptor = Object.getOwnPropertyDescriptor(o, key);
-    if (descriptor) return 'value' in descriptor ? descriptor.value : undefined;
+    if (descriptor) return descriptor;
   }
   return undefined;
 }
@@ -154,9 +153,11 @@ export function installWindow(global, window, { hostKeys = [], alwaysKeys = [], 
     const original = Object.getOwnPropertyDescriptor(global, key);
     if (original) originals.set(key, original);
     // Methods (data properties) are bound once; accessors are read live and
-    // not called here (localStorage throws for opaque origins).
-    const value = dataValue(window, key);
-    const bound = typeof value === 'function' && !isClassLike(key)
+    // not called here (localStorage throws for opaque origins). Constructors
+    // (webkitURL once read) are not bound.
+    const descriptor = findDescriptor(window, key);
+    const value = descriptor && 'value' in descriptor ? descriptor.value : undefined;
+    const bound = typeof value === 'function' && !isClassLike(key) && !Object.hasOwn(value, 'prototype')
       ? (EVENT_TARGET_METHODS.includes(key) ? eventTargetMethod(value, window) : value.bind(window)) : null;
     if (unforgeable && UNFORGEABLE_KEYS.includes(key)) {
       Object.defineProperty(global, key, {
@@ -165,6 +166,15 @@ export function installWindow(global, window, { hostKeys = [], alwaysKeys = [], 
         enumerable: true,
         configurable: true,
       });
+      continue;
+    }
+    // Where the global is the window, the window's data properties that
+    // are not functions (name; status and the viewport members before jsdom
+    // 27) are the global's own, as on jsdom's window: writable, enumerable
+    // and configurable, so Object.defineProperty(window, 'innerWidth',
+    // { value: 500 }) leaves them writable. Assignments stay on the global.
+    if (unforgeable && descriptor && 'value' in descriptor && typeof value !== 'function' && !isClassLike(key)) {
+      Object.defineProperty(global, key, { ...descriptor });
       continue;
     }
     // Event handler attributes (onclick, ...) are read from the window: body
@@ -180,18 +190,30 @@ export function installWindow(global, window, { hostKeys = [], alwaysKeys = [], 
     // Assigning a member the window has only a getter for (performance,
     // which fake timers replace) changes the global's value and leaves the
     // window's alone, without the TypeError strict code would get
-    // assigning it on the window.
+    // assigning it on the window. Where the global is the window, its
+    // accessors are enumerable as the window's members are, and an
+    // assignment the window takes is the window's: a member it replaces
+    // with a data property (innerWidth from jsdom 27, external, a method,
+    // an interface object) becomes the same data property of the global,
+    // and one it keeps an accessor (status) is read from the window.
+    const accepts = unforgeable && descriptor !== undefined && ('value' in descriptor ? descriptor.writable : descriptor.set !== undefined);
     Object.defineProperty(global, key, {
       get() { return overrides.has(key) ? overrides.get(key) : bound ?? window[key]; },
-      set(v) { overrides.set(key, v); Reflect.set(window, key, v); },
+      set: accepts
+        ? (v) => {
+          Reflect.set(window, key, v);
+          const own = Object.getOwnPropertyDescriptor(window, key);
+          if (own && 'value' in own) Object.defineProperty(global, key, { ...own });
+        }
+        : (v) => { overrides.set(key, v); Reflect.set(window, key, v); },
+      enumerable: unforgeable && descriptor !== undefined && descriptor.enumerable,
       configurable: true,
     });
   }
   for (const key of SELF_KEYS) {
     const original = Object.getOwnPropertyDescriptor(global, key);
     if (original) originals.set(key, original);
-    if (unforgeable && UNFORGEABLE_SELF_KEYS.includes(key)) defineUnforgeableSelf(global, key, global);
-    else Object.defineProperty(global, key, { value: global, writable: true, configurable: true });
+    defineSelfKey(global, key, global, window, unforgeable);
   }
   Object.defineProperty(window.document, 'defaultView', { get: () => global, configurable: true });
   const restore = () => {
@@ -207,6 +229,20 @@ export function installWindow(global, window, { hostKeys = [], alwaysKeys = [], 
 // window and top of a global that is the window: assignments are ignored.
 export function defineUnforgeableSelf(target, key, value) {
   Object.defineProperty(target, key, { get: () => value, enumerable: true, configurable: true });
+}
+
+// window, self, top and parent of the global (black box, Vitest 5 with jsdom
+// 20.0.3, 26.1.0 and 30.1.3). Where the global is the window (unforgeable:
+// Jest, Vitest's VM pools): window and top have only a getter; self and
+// parent are accessors whose setter replaces them with a data property
+// ([Replaceable]) from jsdom 21, getters only in jsdom 20; enumerable,
+// configurable. Elsewhere (Vitest's other pools): writable, enumerable,
+// configurable data properties.
+export function defineSelfKey(target, key, value, window, unforgeable) {
+  const data = (v) => Object.defineProperty(target, key, { value: v, writable: true, enumerable: true, configurable: true });
+  if (!unforgeable) data(value);
+  else if (UNFORGEABLE_SELF_KEYS.includes(key)) defineUnforgeableSelf(target, key, value);
+  else Object.defineProperty(target, key, { get: () => value, set: window[S].compat.jsdom >= 21 ? data : undefined, enumerable: true, configurable: true });
 }
 
 // Set by the environment for warpdom/vitest/reset (a setup file that runs
@@ -309,10 +345,7 @@ export default {
     }
     vm.createContext(sandbox);
     const globalProxy = vm.runInContext('this', sandbox);
-    for (const key of ['window', 'self', 'top', 'parent']) {
-      if (UNFORGEABLE_SELF_KEYS.includes(key)) defineUnforgeableSelf(sandbox, key, globalProxy);
-      else Object.defineProperty(sandbox, key, { value: globalProxy, writable: true, configurable: true });
-    }
+    for (const key of SELF_KEYS) defineSelfKey(sandbox, key, globalProxy, window, true);
     Object.defineProperty(window.document, 'defaultView', { get: () => globalProxy, configurable: true });
     window[S].globalProxy = globalProxy;
     // Classic scripts run in the context, as jsdom's do (scripts.js).

@@ -306,3 +306,41 @@ test('Jest environment: WebSocket is the window\'s, which is Node\'s; a test can
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+// Window members tests override (#68): the global is the window, so its
+// members have the window's kinds (black box with jsdom 20.0.3, 26.1.0 and
+// 30.1.3 as the global of a VM context, as jest-environment-jsdom makes it;
+// there assigning a member with only a getter is ignored, also in strict
+// code).
+test('Jest environment: viewport members, name, status and self as on jsdom per version', async () => {
+  const rootDir = fakeJestProject();
+  try {
+    const results = {};
+    for (const jsdom of ['20.0.3', '26.1.0', '30.1.3']) {
+      const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      await env.setup();
+      results[jsdom] = vm.runInContext(`(() => {
+        'use strict';
+        const kind = (key) => { const d = Object.getOwnPropertyDescriptor(window, key); return ('value' in d ? 'data ' : 'accessor ') + (d.set ? 's' : '') + (d.writable ? 'w' : '') + (d.enumerable ? 'e' : '') + (d.configurable ? 'c' : ''); };
+        const out = [kind('innerWidth'), kind('name'), kind('status'), kind('self')];
+        window.innerWidth = 640;
+        Object.defineProperty(window, 'innerHeight', { value: 300 });
+        let assigned;
+        try { window.innerHeight = 400; assigned = window.innerHeight; } catch (e) { assigned = e.constructor.name; }
+        window.status = 5;
+        let self;
+        try { window.self = 7; self = window.self === 7; } catch (e) { self = e.constructor.name; }
+        out.push(window.innerWidth + ' ' + kind('innerWidth'), assigned, typeof window.status, self);
+        return out.join(' | ');
+      })()`, env.getVmContext());
+      await env.teardown();
+    }
+    assert.deepEqual(results, {
+      '20.0.3': 'data wec | data wec | data wec | accessor ec | 640 data wec | 400 | number | false',
+      '26.1.0': 'data wec | data wec | data wec | accessor sec | 640 data wec | 400 | number | true',
+      '30.1.3': 'accessor sec | data wec | accessor sec | accessor sec | 640 data wec | TypeError | string | true',
+    });
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});

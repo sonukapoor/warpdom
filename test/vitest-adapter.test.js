@@ -401,3 +401,30 @@ test('setupVM and setup: the window\'s WebSocket is Node\'s; setup leaves the gl
   }
   assert.equal(global.WebSocket, 'node ws');
 });
+
+// Window members tests override (#68): vi.spyOn(window, 'innerWidth',
+// 'get'), assignments and Object.defineProperty give jsdom's results in
+// every pool, for the installed jsdom and for a jsdom 26 profile (measured
+// black box with Vitest 5's jsdom environment on jsdom 20.0.3, 26.1.0 and
+// 30.1.3; the fixture lists the results).
+test('Vitest: viewport members, name, status and self as with jsdom, per pool and profile', () => {
+  const cases = [
+    ['forks', [], 'forks'], ['vmThreads', [], 'vm'],
+    ['forks', ['--environment', 'jsdom'], 'forks'], ['vmThreads', ['--environment', 'jsdom'], 'vm'],
+    ['forks', [], 'forks', '26.1.0'], ['vmThreads', [], 'vm-legacy', '26.1.0'], ['vmThreads', [], 'vm-legacy', '20.0.3'],
+  ];
+  for (const [pool, environment, expect, jsdom] of cases) {
+    let out = '';
+    let code = 0;
+    try {
+      out = String(execFileSync('node_modules/.bin/vitest', ['run', '--root', 'fixtures/vitest-viewport', '--pool', pool, ...environment], {
+        cwd: root, stdio: 'pipe', env: { ...process.env, VIEWPORT_EXPECT: expect, ...(jsdom ? { VIEWPORT_JSDOM: jsdom } : {}) },
+      }));
+    } catch (err) {
+      code = err.status;
+      out = String(err.stdout) + String(err.stderr);
+    }
+    assert.equal(code, 0, `${pool} ${environment.join(' ') || 'warpdom'} ${jsdom ?? ''}: ${out}`);
+    assert.match(out, /2 passed/);
+  }
+});

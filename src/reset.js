@@ -119,7 +119,7 @@ export function resetWindow(window) {
   // Window state.
   ws.listeners = undefined;
   ws.handlers = undefined;
-  ws.viewport = undefined;
+  ws.status = undefined;
   // A frame scheduled on timers the test has since cleared or replaced
   // would never run: the next file starts without frames.
   if (ws.frames) { ws.frames.queue.clear(); ws.frames = undefined; }
