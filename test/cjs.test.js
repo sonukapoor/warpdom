@@ -106,6 +106,25 @@ test('CommonJS build: in a VM context without AbortController, preflighted reque
   }
 });
 
+test('CommonJS build: in a VM context without btoa, the jsdom 20 profile sends URL credentials as Basic authorization (Copilot review on #89)', async () => {
+  const { startServer } = await import('./xhr-server.js');
+  const server = await startServer();
+  try {
+    const { exports: warpdom, context } = loadInContext();
+    assert.equal(vm.runInContext('typeof btoa', context), 'undefined');
+    const window = warpdom.createWindow({ url: `http://localhost:${server.port}/page/index.html`, jsdom: '20.0.3' });
+    const authorization = await new Promise((resolve) => {
+      const x = new window.XMLHttpRequest();
+      x.onloadend = () => resolve(x.status === 200 ? JSON.parse(x.responseText).headers.authorization : `status ${x.status}`);
+      x.open('GET', `http://%C3%A9:p@localhost:${server.port}/echo`);
+      x.send();
+    });
+    assert.equal(authorization, 'Basic w6k6cA==');
+  } finally {
+    await server.close();
+  }
+});
+
 test('CommonJS build: in the VM context of warpdom/jest, whose global object is a warpdom window', async () => {
   // Stand-ins for the Jest packages the environment loads from the project.
   const dir = mkdtempSync(join(tmpdir(), 'warpdom-cjs-'));

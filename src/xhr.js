@@ -688,7 +688,7 @@ function send(xhr, s, body) {
   if ((url.username !== '' || url.password !== '') && compat.jsdom < 21 && !names.has('authorization')) {
     try {
       const bytes = utf8Encode(`${decodeURIComponent(url.username)}:${decodeURIComponent(url.password)}`);
-      headers.Authorization = `Basic ${btoa(String.fromCharCode(...bytes))}`;
+      headers.Authorization = `Basic ${PLATFORM_GLOBAL.btoa(String.fromCharCode(...bytes))}`;
     } catch (error) {
       urlError = `${error.name}: ${error.message}`;
     }

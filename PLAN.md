@@ -3658,3 +3658,14 @@ done:
   Now PLATFORM_GLOBAL's (the signal goes to its fetch). Test in
   test/cjs.test.js.
 
+### Copilot's re-review of d6305eb on #89 (2026-10-20)
+
+Four "previously missed" items. Fixed: the jsdom 20 profile's Basic
+authorization used the evaluating global's btoa (the CommonJS bundle in a
+VM context without one failed with a ReferenceError); now PLATFORM_GLOBAL's
+(test in test/cjs.test.js). Deferred to #92 (to verify against jsdom per
+generation first): an unknown override charset label falling back to the
+response's charset; cancelling an in-flight preflight body on abort; jsdom
+28+ upload events seeing the final response, and cancelling the body when
+an upload handler aborts or reopens.
+
