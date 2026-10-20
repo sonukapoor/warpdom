@@ -154,6 +154,13 @@ function applyCompat(window, protos) {
   if (jsdom < 30) delete window.CSS;
   if (!window[S].compat.nestedDeclarations) delete window.CSSNestedDeclarations;
   if (!window[S].compat.elementInternals) delete window.ElementInternals;
+  // Option xhr: false (createWindow): no XMLHttpRequest, as before warpdom
+  // had it (HTTP libraries then take the host's HTTP client).
+  if (!window[S].xhr) {
+    delete window.XMLHttpRequest;
+    delete window.XMLHttpRequestEventTarget;
+    delete window.XMLHttpRequestUpload;
+  }
   if (!window[S].compat.textCodec) {
     delete window.TextEncoder;
     delete window.TextDecoder;
@@ -391,7 +398,7 @@ export function createWindow(options = {}) {
     reportNotImplemented: (text) => console.error(text),
     // An iframe's nested window (frames.js).
     // A frame's window behaves like the same jsdom generation as its parent.
-    createNestedWindow: ({ url, parent, frameElement }) => createWindow({ url, jsdom: parent[S].compat.version, cssstyle: parent[S].compat.cssstyle, fastFrames: parent[S].fastFrames, nested: { parent, frameElement } }),
+    createNestedWindow: ({ url, parent, frameElement }) => createWindow({ url, jsdom: parent[S].compat.version, cssstyle: parent[S].compat.cssstyle, fastFrames: parent[S].fastFrames, xhr: parent[S].xhr, nested: { parent, frameElement } }),
     parentWindow: options.nested?.parent ?? null,
     frameElement: options.nested?.frameElement ?? null,
   };

@@ -10,6 +10,7 @@
 import { S, HTML_NS, ELEMENT_NODE, hooks, nextInTree, PlatformURL as URL } from './internal.js';
 import { dispatch, exposed } from './events.js';
 import { clearWindowTimers } from './window-features.js';
+import { abortWindowRequests } from './xhr.js';
 
 // iframe and frame elements.
 const isIframe = (n) => { const s = n[S]; return s.type === ELEMENT_NODE && s.ns === HTML_NS && (s.tag === 'iframe' || s.tag === 'frame'); };
@@ -70,6 +71,7 @@ function destroyFrame(iframe) {
   child[S].discarded = true;
   hooks.discardedWindows++;
   clearWindowTimers(child);
+  abortWindowRequests(child);
   const parent = child[S].parentWindow;
   const frames = parent[S].childFrames;
   frames.splice(frames.indexOf(child), 1);

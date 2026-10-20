@@ -4,7 +4,7 @@
 // parse HTML do not pay for loading it).
 import {
   S, state, insert, remove, replace, replaceAll, domError, hooks, reactionScope, HTML_NS, templateContentsOwner,
-  ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE,
+  ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, DOCUMENT_TYPE_NODE, CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE,
   namedAttributesSet,
 } from './internal.js';
 import { parseXMLFragment } from './xml.js';
@@ -76,6 +76,8 @@ export function serializeChildren(node) {
       case TEXT_NODE: case CDATA_SECTION_NODE: out += raw ? cs.data : escapeText(cs.data); break;
       case COMMENT_NODE: out += `<!--${cs.data}-->`; break;
       case PROCESSING_INSTRUCTION_NODE: out += `<?${cs.target} ${cs.data}>`; break;
+      // Only a document has one (XMLHttpRequest's send(document)).
+      case DOCUMENT_TYPE_NODE: out += `<!DOCTYPE ${cs.name}>`; break;
       default: break;
     }
   }

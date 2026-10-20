@@ -255,7 +255,7 @@ const errorMessage = (error) => error.message.split('\n')[0].replace(/ \(line \d
 const scalarValues = (text) => (typeof text.toWellFormed === 'function' ? text.toWellFormed()
   : text.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '\uFFFD'));
 
-const PARSER_ERROR_NS = 'http://www.mozilla.org/newlayout/xml/parsererror.xml';
+export const PARSER_ERROR_NS = 'http://www.mozilla.org/newlayout/xml/parsererror.xml';
 
 // Parses an XML document into doc (an empty XML document). A document that
 // is not well-formed becomes an error document: a parsererror element (in

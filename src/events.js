@@ -109,7 +109,10 @@ function slotInClosedTree(previous, parent) {
 // one is already being reported (an error listener that throws): then the
 // error goes straight to the unhandled-error path, without recursing.
 export function reportError(target, error) {
-  const window = target[S]?.type === DOCUMENT_NODE ? target[S].window : target[S]?.doc?.[S]?.window ?? target;
+  // Nodes: their document's window; other targets that belong to a window
+  // (XMLHttpRequest, FileReader) keep it in their state.
+  const ts = target[S];
+  const window = ts?.type === DOCUMENT_NODE ? ts.window : ts?.doc?.[S]?.window ?? (ts?.isWindow ? target : ts?.window ?? target);
   const ErrorEvent = window?.ErrorEvent;
   if (!ErrorEvent) throw error;
   const ws = window[S];

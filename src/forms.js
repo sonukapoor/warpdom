@@ -1291,6 +1291,12 @@ function constructEntryList(form, submitter = null) {
 
 const entriesOf = (self) => state(self).entries;
 
+// A FormData's entries (XMLHttpRequest's send), or null for other values.
+export function formDataEntries(value) {
+  const s = value !== null && typeof value === 'object' ? value[S] : undefined;
+  return s !== undefined && Array.isArray(s.entries) && Object.prototype.toString.call(value) === '[object FormData]' ? s.entries : null;
+}
+
 const FORM_DATA_INTERFACES = [
   {
     name: 'FormData',
