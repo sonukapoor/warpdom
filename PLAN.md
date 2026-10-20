@@ -52,7 +52,9 @@ every modeled jsdom version, and every measured suite gives jsdom's results.
   below). #22, #30: XMLHttpRequest, on by default (decided 2026-10-19;
   its own branch after the three parity PRs merge).
 - #18: a CI test that warpdom's window has every interface and member jsdom's
-  has, per version, so a gap cannot reappear unnoticed.
+  has, per version, so a gap cannot reappear unnoticed. Test in place (branch
+  test/jsdom-api-superset, 2026-10-19 below); its KNOWN list holds what is
+  still open.
 - #19: WPT on all test-DOM-relevant areas by default, results published.
 - #17: the DOMParity audit is automated: the weekly upstream watch
   (scripts/api-gaps.mjs) opens one parity issue per interface with gaps
@@ -2928,3 +2930,50 @@ except firstElementChild + nextElementSibling (8.6 -> 9.5 ns, bimodal
 between 8 and 10 ns on both builds; 6 more interleaved runs each: 9.45
 vs 9.35), no hot path touched.
 
+## 2026-10-19: warpdom's API set includes jsdom's, per version (branch test/jsdom-api-superset, #18)
+
+`test/jsdom-api-superset.test.js` (part of `npm test`, ~2-3 s) walks jsdom's
+window and warpdom's window with that version's profile black box
+(`test/api-surface.js`): the window's members, every interface on it (statics,
+prototype members, parent), the objects it exposes (document, navigator,
+location, history, screen, storage, performance, crypto, customElements,
+console, CSS, ...) with their interfaces, objects reached through them (style,
+selection, ranges, collections, shadow root), and the interface of an element
+per HTML tag in html-elements.js and 39 SVG tags. A jsdom path warpdom lacks,
+has as another kind (method, accessor, data), only through a parent or a
+subclass, or with another parent or element interface fails, unless a KNOWN
+entry (pattern, jsdom majors, issue, reason) explains it; a KNOWN entry that
+matches nothing fails too. jsdom 20.0.3, 21.1.2, 22.1.0, 23.2.0, 24.1.3, 25.0.1,
+26.1.0, 27.4.0, 28.1.0, 29.1.1 and 30.1.3 (NEWEST_MODELED_JSDOM), aliases in
+devDependencies, plus the installed jsdom. WARPDOM_API_REPORT=1 prints what
+warpdom has that jsdom lacks per version (opt-in candidates, #5).
+
+Rebased on main after fix/svg-parity, fix/misc-parity, fix/forms-parity and
+fix/websocket-window merged (#73, #74, #75, #78): their 19 KNOWN entries went
+stale and are removed, with no new difference. XMLHttpRequest (#22, #30) stays
+until its branch.
+
+Node 22.12: jsdom 30.1.3 (the jsdom30 alias) needs undici ^8.12.1, and npm
+replaced the hoisted undici 8.11.2 that the installed jsdom 30.1.2 used with
+8.12.3, whose lib/interceptor/decompress.js calls
+zlib.createZstdDecompress.bind() at load; Node has createZstdDecompress from
+22.15, so every test that loads jsdom failed on 22.12 ("reading 'bind'").
+package.json overrides keep the installed jsdom on undici 8.11.2 (as main had
+it; npm nests it under node_modules/jsdom), and the test skips a jsdom whose
+own engines exclude the running Node (on 22.12: 29.1.1, 30.1.2, 30.1.3; and
+the stale-entry check then). CI on Node 24 runs every version. undici 8.11.2
+and jsdom 30 also declare Node >= 22.19 / ^22.22.2, so the installed jsdom
+running on 22.12 at all is luck, not support. Differences without an issue (KNOWN, "No
+issue yet"): XPathException; HTMLIFrameElement.getSVGDocument; onloadend
+(jsdom 20-21); window.onautocomplete/onautocompleteerror/onsort (20-26);
+Window.prototype inherits EventTarget directly before jsdom 24; kinds of
+window.document/self/window/name/webkitURL, and of the viewport members
+(data properties before jsdom 27); `<search>` and `<selectedcontent>` are
+HTMLUnknownElement in jsdom; own autofocus/inputMode on form controls and own
+@@iterator on collections in jsdom; HTMLFormElement @@iterator (26+, not fixed
+by #50); CSSKeyframesRule @@iterator and CSSSupportsRule.matches (29+); the
+cssom/rrweb-cssom shape of jsdom 28 and earlier (rule constants, own members
+per rule, CSSStyleRule extends CSSRule, parse()); style accessors on
+CSSStyleDeclaration in jsdom 28 and earlier (warpdom: CSSStyleProperties), and
+cssstyle 2-4.1's getPropertyCSSValue, getPropertyShorthand, isPropertyImplicit
+and azimuth.

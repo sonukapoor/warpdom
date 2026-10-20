@@ -113,15 +113,26 @@
     "happy-dom": "^20.14.6",
     "jsdom": "^30.1.2",
     "jsdom20": "npm:jsdom@20.0.3",
+    "jsdom21": "npm:jsdom@21.1.2",
     "jsdom22": "npm:jsdom@22.1.0",
+    "jsdom23": "npm:jsdom@23.2.0",
+    "jsdom24": "npm:jsdom@24.1.3",
     "jsdom25": "npm:jsdom@25.0.1",
     "jsdom26": "npm:jsdom@^26.1.0",
+    "jsdom27": "npm:jsdom@27.4.0",
+    "jsdom28": "npm:jsdom@28.1.0",
+    "jsdom29": "npm:jsdom@29.1.1",
+    "jsdom30": "npm:jsdom@30.1.3",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
   },
   "overrides": {
     "jsdom25": {
       "cssstyle": "4.1.0"
+    },
+    "jsdom": {
+      ".": "$jsdom",
+      "undici": "8.11.2"
     }
   },
   "dependencies": {
