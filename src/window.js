@@ -8,11 +8,10 @@ import {
 } from './internal.js';
 import { INTERFACES, SVG_ELEMENTS, LEGACY_SVG_ELEMENTS, SVG_TYPES_INTERFACES, HTML_NS, SVG_NS } from './interfaces.js';
 import { HTML_ELEMENTS, PLAIN_TAGS } from './html-elements.js';
-import { setupWindow } from './window-features.js';
+import { setupWindow, profileCompat } from './window-features.js';
 import { setValidationMode } from './css.js';
 import { namedPropertiesObject } from './named-access.js';
 import './document-named.js';
-import { handlerCompat } from './event-handlers.js';
 import { xpathException } from './dom-parsing.js';
 import { createCustomElement, createRegistry, htmlConstruct, isValidCustomElementName } from './custom-elements.js';
 
@@ -41,7 +40,10 @@ const BY_NAME = new Map(); // interface name -> definition
 // Object.defineProperties (about 30% for CSSStyleProperties).
 const DESCRIPTORS = new Map(); // interface name (and variant) -> { keys, descriptors }
 // variant: a key for interfaces whose members depend on the profile
-// (iface.variant: CSSStyleProperties' accessors), else null.
+// (iface.variant: CSSStyleProperties' accessors, the event handlers of a
+// jsdom version), else null. An interface built from members changes its
+// descriptors for a variant with iface.adjust(descriptors, variant), once
+// per module load, rather than each window deleting members.
 function descriptorsOf(iface, variant = null) {
   const cacheKey = variant === null ? iface.name : `${iface.name} ${variant}`;
   let table = DESCRIPTORS.get(cacheKey);
@@ -56,6 +58,7 @@ function descriptorsOf(iface, variant = null) {
     const { members } = iface;
     if (Array.isArray(members)) for (const m of members) addDescriptors(descriptors, typeof m === 'function' ? m() : m);
     else addDescriptors(descriptors, members);
+    if (variant !== null && iface.adjust) iface.adjust(descriptors, variant);
   }
   const keys = Reflect.ownKeys(descriptors);
   table = { keys, descriptors: keys.map((key) => descriptors[key]), unscopables: null };
@@ -170,9 +173,6 @@ function applyCompat(window, protos) {
     // events (createEvent makes no device events before, events.js).
     for (const name of DEVICE_AND_MEDIA_EVENTS) delete window[name];
   }
-  // The window's event handlers (HTMLElement's, SVGElement's and
-  // Document's are removed when those interfaces are made).
-  handlerCompat(protos.Window, window[S].compat, true);
 }
 
 // jsdom 20 to 26 name unimplemented methods "window.alert" and
@@ -362,11 +362,13 @@ export function createWindow(options = {}) {
     parentWindow: options.nested?.parent ?? null,
     frameElement: options.nested?.frameElement ?? null,
   };
+  // The profile first: interfaces' members can depend on it (variants).
+  internals.compat = profileCompat(options);
+  Object.defineProperty(window, S, { value: internals });
   Object.setPrototypeOf(window, protos.Window);
   // Named access (window[id]): the named properties object between
   // Window.prototype and EventTarget.prototype.
   Object.setPrototypeOf(protos.Window, namedPropertiesObject(window, window, Object.getPrototypeOf(protos.Window)));
-  Object.defineProperty(window, S, { value: internals });
   setupWindow(window, options);
   applyCompat(window, protos);
   installGlobalOperations(window, protos.Window);

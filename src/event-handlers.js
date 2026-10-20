@@ -62,20 +62,24 @@ function inertHandler(name) {
 }
 const INERT = Object.fromEntries(LEGACY_INERT.map((name) => [name, inertHandler(name)]));
 
-// Puts the event handlers of the profile's jsdom on an interface prototype
-// with the GlobalEventHandlers members (HTMLElement, SVGElement, Document;
-// the window's: forWindow).
-export function handlerCompat(proto, compat, forWindow = false) {
-  if (compat.legacyHandlers) {
-    for (const name of HANDLERS_FROM_22_1) delete proto[name];
-    for (const name of LEGACY_INERT) {
-      if (forWindow) delete proto[name];
-      else Object.defineProperty(proto, name, { ...INERT[name], enumerable: true, configurable: true });
-    }
+// The event handlers of the profile's jsdom, as a variant of the
+// interfaces with GlobalEventHandlers' members (HTMLElement, SVGElement,
+// Document, Window; window.js descriptorsOf): null for jsdom 27 and later.
+export const handlerVariant = (compat) => (compat.legacyHandlers ? 'before 22.1' : compat.jsdom < 27 ? 'before 27' : null);
+
+// Changes an interface's descriptors for a handlerVariant (forWindow: the
+// Window interface's).
+export function adjustHandlers(descriptors, variant, forWindow = false) {
+  if (variant === null) return;
+  for (const name of POINTER_HANDLERS) delete descriptors[name];
+  if (forWindow) {
+    for (const name of LEGACY_WINDOW_HANDLERS) descriptors[name] = { ...LEGACY_WINDOW_MEMBERS[name], enumerable: true, configurable: true };
   }
-  if (compat.jsdom < 27) {
-    for (const name of POINTER_HANDLERS) delete proto[name];
-    if (forWindow) for (const name of LEGACY_WINDOW_HANDLERS) Object.defineProperty(proto, name, { ...LEGACY_WINDOW_MEMBERS[name], enumerable: true, configurable: true });
+  if (variant !== 'before 22.1') return;
+  for (const name of HANDLERS_FROM_22_1) delete descriptors[name];
+  for (const name of LEGACY_INERT) {
+    if (forWindow) delete descriptors[name];
+    else descriptors[name] = { ...INERT[name], enumerable: true, configurable: true };
   }
 }
 

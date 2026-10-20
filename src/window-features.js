@@ -1097,20 +1097,15 @@ function styleSurfaceKey(version, css) {
   return before(css, [6, 1, 0]) ? 'cssstyle6.0' : 'cssstyle6.1';
 }
 
-// Per-window setup: URL, location, history, and the legacy factory
-// constructors Image, Audio and Option (their prototype is the element's).
-export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATEST_JSDOM, cssstyle, fastFrames = false } = {}) {
-  const ws = window[S];
-  // Opt-in (option fastFrames): animation frames run as soon as the event
-  // loop gets to them instead of every 16.7 ms of real time (see below).
-  ws.fastFrames = fastFrames === true;
-  ws.url = new URL(initial);
-  // Compatibility with the jsdom generation the tests were written for
-  // (option jsdom: its version, or its major version): behaviors that
-  // changed between versions in ways tests observe. jsdom before 29 left
-  // most computed style values empty, and before 28 let tests write to
-  // computed styles; before 30.1.2 focus() ignored display: none and the
-  // hidden attribute.
+// Compatibility with the jsdom generation the tests were written for
+// (option jsdom: its version, or its major version; option cssstyle: the
+// cssstyle it loads): the window's compat object (window[S].compat), made
+// before its interfaces, whose members can depend on it.
+export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
+  // Behaviors that changed between versions in ways tests observe. jsdom
+  // before 29 left most computed style values empty, and before 28 let
+  // tests write to computed styles; before 30.1.2 focus() ignored
+  // display: none and the hidden attribute.
   const version = parseJsdomVersion(jsdom);
   // jsdom 26 and earlier parse CSS with cssstyle 4, whose behavior changed
   // between its minor releases; the installed one (option cssstyle, found
@@ -1123,7 +1118,7 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
   const cssDefault = version[0] <= 20 ? '2.3.0' : version[0] <= 23 ? '3.0.0' : null;
   const cssText = version[0] < 27 ? cssstyle ?? cssDefault : null;
   const css = cssText != null ? parseJsdomVersion(cssText) : null;
-  ws.compat = {
+  return {
     version: jsdom, jsdom: version[0], mutableComputedStyle: version[0] < 28,
     // Computed style (cascade.js), black box per release: before 29.0.2
     // undeclared properties compute to '' and CSS-wide keywords to
@@ -1198,6 +1193,16 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
     elementInternals: !before(version, [23, 1, 0]), internalsLabels: !before(version, [26, 0, 0]), internalsAria: !before(version, [27, 0, 0]),
     rootColor: version[0] >= 27 ? 'rgb(0, 0, 0)' : css !== null && before(css, [4, 4, 0]) ? '' : css !== null && before(css, [4, 6, 0]) ? 'CanvasText' : 'canvastext',
   };
+}
+
+// Per-window setup: URL, location, history, and the legacy factory
+// constructors Image, Audio and Option (their prototype is the element's).
+export function setupWindow(window, { url: initial = 'about:blank', fastFrames = false } = {}) {
+  const ws = window[S];
+  // Opt-in (option fastFrames): animation frames run as soon as the event
+  // loop gets to them instead of every 16.7 ms of real time (see below).
+  ws.fastFrames = fastFrames === true;
+  ws.url = new URL(initial);
   ws.uaIndex = undefined; // the user agent sheet's index (ua-sheet.js)
   // DOMException is the platform's (shared by all windows); its subclass too.
   window.DOMException = DOMException;

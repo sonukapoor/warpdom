@@ -13,7 +13,7 @@ import {
 import { XML_INTERFACES, XML_DOCUMENT_MEMBERS } from './xml.js';
 import { CSS_INTERFACES, styleOf } from './css.js';
 import { hasReflections, reflectedMembers } from './reflect.js';
-import { GLOBAL_HANDLER_MEMBERS, WINDOW_HANDLER_MEMBERS, eventHandlerAttributesAdded, handlerMembers, handlerCompat } from './event-handlers.js';
+import { GLOBAL_HANDLER_MEMBERS, WINDOW_HANDLER_MEMBERS, eventHandlerAttributesAdded, handlerMembers, handlerVariant, adjustHandlers } from './event-handlers.js';
 import { CUSTOM_ELEMENT_INTERFACES, ATTACH_INTERNALS_MEMBERS, lookUp } from './custom-elements.js';
 import { RANGE_INTERFACES, newRange, getSelection, splitText, normalize } from './ranges.js';
 import { CSSOM_INTERFACES, STYLE_ELEMENT_MEMBERS, documentStyleSheets } from './cssom.js';
@@ -439,7 +439,14 @@ export const INTERFACES = [
   ...CSSOM_INTERFACES,
   ...RANGE_INTERFACES,
   ...CUSTOM_ELEMENT_INTERFACES,
-  { name: 'Window', parent: 'EventTarget', members: mix(GLOBAL_HANDLER_MEMBERS, WINDOW_HANDLER_MEMBERS, WINDOW_MEMBERS, WINDOW_FRAME_MEMBERS, STORAGE_WINDOW_MEMBERS) },
+  {
+    name: 'Window',
+    parent: 'EventTarget',
+    members: mix(GLOBAL_HANDLER_MEMBERS, WINDOW_HANDLER_MEMBERS, WINDOW_MEMBERS, WINDOW_FRAME_MEMBERS, STORAGE_WINDOW_MEMBERS),
+    // The event handlers of the profile's jsdom (event-handlers.js).
+    variant: handlerVariant,
+    adjust: (descriptors, variant) => adjustHandlers(descriptors, variant, true),
+  },
   {
     name: 'Node',
     parent: 'EventTarget',
@@ -529,7 +536,8 @@ export const INTERFACES = [
     // new Document(): an XML document without a browsing context, as in jsdom.
     construct: (w, self) => w[S].initDocument(self, { noView: true, url: 'about:blank', contentType: 'application/xml', xml: true }),
     // The event handlers of the profile's jsdom (event-handlers.js).
-    compat: handlerCompat,
+    variant: handlerVariant,
+    adjust: adjustHandlers,
     members: mix(parentNode, DOCUMENT_FOCUS_MEMBERS, GLOBAL_HANDLER_MEMBERS, XML_DOCUMENT_MEMBERS, XPATH_EVALUATOR_MEMBERS, {
       get defaultView() { const s = state(this); return s.noView ? null : s.window; },
       get URL() { const s = state(this); return s.url ?? s.window[S].url.href; },
@@ -931,12 +939,11 @@ export const INTERFACES = [
   {
     name: 'HTMLElement',
     parent: 'Element',
-    // attachInternals() from jsdom 23.1.0 (custom-elements.js); the event
-    // handlers of the profile's jsdom (event-handlers.js).
-    compat(proto, compat) {
-      if (!compat.elementInternals) delete proto.attachInternals;
-      handlerCompat(proto, compat);
-    },
+    // attachInternals() from jsdom 23.1.0 (custom-elements.js).
+    compat(proto, compat) { if (!compat.elementInternals) delete proto.attachInternals; },
+    // The event handlers of the profile's jsdom (event-handlers.js).
+    variant: handlerVariant,
+    adjust: adjustHandlers,
     members: mix(inlineStyle, htmlOrSvgElement, HTML_ELEMENT_LAYOUT, clickMember, ATTACH_INTERNALS_MEMBERS, FOCUS_MEMBERS, GLOBAL_HANDLER_MEMBERS, {
       get dir() { return knownDir(state(this).attrs.get('dir')); },
       set dir(v) { writeAttribute(this, 'dir', String(v)); },
@@ -965,7 +972,7 @@ export const INTERFACES = [
       set draggable(v) { state(this); writeAttribute(this, 'draggable', v ? 'true' : 'false'); },
     }),
   },
-  { name: 'SVGElement', parent: 'Element', compat: handlerCompat, members: mix(FOCUS_MEMBERS, SVG_ELEMENT_MEMBERS, inlineStyle, htmlOrSvgElement, GLOBAL_HANDLER_MEMBERS) },
+  { name: 'SVGElement', parent: 'Element', variant: handlerVariant, adjust: adjustHandlers, members: mix(FOCUS_MEMBERS, SVG_ELEMENT_MEMBERS, inlineStyle, htmlOrSvgElement, GLOBAL_HANDLER_MEMBERS) },
   ...SVG_INTERFACES,
 ];
 
