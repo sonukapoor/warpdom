@@ -28,11 +28,15 @@ const RAW = Symbol('raw handler');
 
 const isWindow = (target) => target[S].isWindow === true;
 const isBodyOrFrameset = (s) => s.type === ELEMENT_NODE && s.ns === HTML_NS && (s.tag === 'body' || s.tag === 'frameset');
+// Before jsdom 28.1.0 an svg element's window event handlers (and the
+// handlers body reflects) are its window's, as body's are (black box).
+const isForwardingSvg = (s) => s.tag === 'svg' && s.type === ELEMENT_NODE && s.ns === SVG_NS && s.doc[S].window[S].compat.svgWindowHandlers === true;
+const forwardsToWindow = (s) => isBodyOrFrameset(s) || isForwardingSvg(s);
 
 // Determining the target of an event handler.
 function handlerTarget(target, name) {
   const s = target[S];
-  if (!isBodyOrFrameset(s) || !(WINDOW_HANDLERS.has(name) || WINDOW_REFLECTING_BODY.has(name))) return target;
+  if (!forwardsToWindow(s) || !(WINDOW_HANDLERS.has(name) || WINDOW_REFLECTING_BODY.has(name))) return target;
   return s.doc[S].noView ? null : s.doc[S].window;
 }
 
@@ -142,15 +146,39 @@ const members = handlerMembers;
 export const GLOBAL_HANDLER_MEMBERS = members(GLOBAL_EVENT_HANDLERS);
 export const WINDOW_HANDLER_MEMBERS = members(WINDOW_EVENT_HANDLERS);
 
+// SVGSVGElement's window event handlers: the window's before jsdom 28.1.0;
+// from 28.1.0 jsdom keeps the value given and nothing else (undefined
+// until set, no content attribute, never called).
+function svgWindowHandler(name) {
+  const forwarding = idlAttribute(name);
+  return {
+    get() {
+      const s = this?.[S];
+      if (!s) throw new TypeError('Illegal invocation');
+      if (isForwardingSvg(s)) return forwarding.get.call(this);
+      return s.inertHandlers?.get(name);
+    },
+    set(value) {
+      const s = this?.[S];
+      if (!s) throw new TypeError('Illegal invocation');
+      if (isForwardingSvg(s)) return forwarding.set.call(this, value);
+      const map = s.inertHandlers ?? (s.inertHandlers = new Map());
+      map.set(name, typeof value === 'function' || (typeof value === 'object' && value !== null) ? value : null);
+    },
+  };
+}
+export const SVG_WINDOW_HANDLER_MEMBERS = Object.fromEntries(WINDOW_EVENT_HANDLERS.map((name) => [name, svgWindowHandler(name)]));
+
 // --- content attributes ---------------------------------------------------------------------
 
 const GLOBAL = new Set(GLOBAL_EVENT_HANDLERS);
 
 // Attribute change steps for event handler content attributes of HTML
-// (and SVG) elements; body and frameset also have the window's.
+// (and SVG) elements; body and frameset (and svg before jsdom 28.1.0) also
+// have the window's.
 function contentAttributeChanged(element, name, value) {
   const s = element[S];
-  const applies = (s.ns === HTML_NS || s.ns === SVG_NS) && (GLOBAL.has(name) || (isBodyOrFrameset(s) && WINDOW_HANDLERS.has(name)));
+  const applies = (s.ns === HTML_NS || s.ns === SVG_NS) && (GLOBAL.has(name) || (forwardsToWindow(s) && WINDOW_HANDLERS.has(name)));
   if (!applies) return;
   const target = handlerTarget(element, name);
   if (!target) return;

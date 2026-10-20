@@ -1068,6 +1068,12 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
     // URL.parse() and canParse(), URLSearchParams size and the value
     // argument of has() and delete() from 23.0.0; Headers keeps Set-Cookie
     // values apart (getSetCookie()) from 24.1.0 (url.js).
+    // SVG (svg.js, event-handlers.js): the element interfaces, SVGRect,
+    // viewBox and preserveAspectRatio from 26.1.0; a symbol is a viewport
+    // element from 26.1.0 to 30.0.x; svg forwards window event handlers
+    // to the window before 28.1.0.
+    svgTypes: !before(version, [26, 1, 0]), svgSymbolViewport: !before(version, [26, 1, 0]) && before(version, [30, 1, 0]),
+    svgWindowHandlers: before(version, [28, 1, 0]),
     urlParse: !before(version, [23, 0, 0]), paramValues: !before(version, [23, 0, 0]), setCookieList: !before(version, [24, 1, 0]),
     rootColor: version[0] >= 27 ? 'rgb(0, 0, 0)' : css !== null && before(css, [4, 4, 0]) ? '' : css !== null && before(css, [4, 6, 0]) ? 'CanvasText' : 'canvastext',
   };

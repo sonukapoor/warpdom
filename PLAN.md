@@ -2528,3 +2528,72 @@ warpdom 459 to 671 of 783 subtests (jsdom 672); select-event.html 0 to
 Tests: test/forms.test.js (select event parity on jsdom 30, 25, 22, 20;
 21.1.1/21.1.2 literals; setRangeText selection on 30 and 20; arguments).
 Bench: bench:hot unchanged (no hot path touched).
+
+## 2026-10-19: SVG interfaces as jsdom has them (branch fix/svg-parity, #21, #24, #29, #55, #60, #61, #62, #63, #64)
+
+DOMParity listed SVG interfaces and members jsdom's window has and
+warpdom's lacked. Its idl.json (2026-10-19) also lists SVGDefsElement,
+SVGDescElement, SVGGElement, SVGMetadataElement, SVGNumber and
+SVGSwitchElement without issues; jsdom also has SVGRect (webref has no
+such interface). All added (src/svg.js). Measured black box on jsdom
+20.0.3, 21.1.2, 22.1.0, 23.2.0, 24.1.3, 25.0.1, 26.0.0, 26.1.0, 27.0.0,
+27.4.0, 28.0.0, 28.1.0, 29.1.1, 30.0.0, 30.0.1, 30.1.0, 30.1.1, 30.1.2 and
+30.1.3 (scratch scripts; 1,700 probe results compared per profile):
+
+- Every version: SVGElement's className is an SVGAnimatedString
+  (getter only; baseVal writes class, animVal reads it), nonce,
+  ownerSVGElement and viewportElement (the nearest svg ancestor, through
+  SVG elements only: an svg in a div in a foreignObject has none);
+  SVGGraphicsElement's requiredExtensions and systemLanguage
+  (SVGStringList); SVGSVGElement's createSVGNumber(), getElementById()
+  (the svg itself or a descendant, in tree order), suspendRedraw()
+  (returns 1), unsuspendRedraw(), unsuspendRedrawAll(), forceRedraw()
+  (no effect) and the window event handlers.
+- From 26.1.0 (`compat.svgTypes`): g, defs, desc, metadata, switch and
+  symbol create SVGGElement, SVGDefsElement, SVGDescElement,
+  SVGMetadataElement, SVGSwitchElement and SVGSymbolElement (before:
+  SVGElement, and only svg is an SVGGraphicsElement); SVGRect,
+  SVGAnimatedRect, SVGPreserveAspectRatio and
+  SVGAnimatedPreserveAspectRatio; viewBox, preserveAspectRatio (svg and
+  symbol) and createSVGRect().
+- From 26.1.0 to 30.0.x (`compat.svgSymbolViewport`) a symbol is the
+  viewportElement of its descendants; 30.1.0 dropped that.
+- Before 28.1.0 (`compat.svgWindowHandlers`) an svg element's window
+  event handlers (onafterprint ... onunload) and onblur, onerror,
+  onfocus, onload, onresize and onscroll are the window's, as body's are
+  (IDL and content attributes; null without a browsing context). From
+  28.1.0 the window handlers only keep what is assigned: undefined until
+  set, content attributes ignored, never called; the six others are the
+  element's own.
+- nonce reflects the content attribute on HTML and SVG elements in every
+  version (the standard keeps it in an internal slot; warpdom's
+  HTMLElement did, now as jsdom).
+
+jsdom where SVG 2 says otherwise (followed): viewBox accepts four numbers
+separated by spaces or a comma with spaces around it, spaces at the ends,
+no tabs or newlines, `1.` and `1e` invalid, `1e400` is Infinity; a
+negative width or height, an invalid or a missing value read as 0 0 0 0
+(never null). Writes to baseVal serialize all four ("x y w h") and store
+single-precision values (WebIDL float: "not a finite floating-point
+value", "outside the range of a single-precision floating-point value");
+animVal throws a DOMException named NO_MODIFICATION_ALLOWED_ERR (code 0).
+preserveAspectRatio accepts only `<align>` or `<align> meet|slice`
+(case-sensitive, spaces only, no "defer", nothing around), else
+xMidYMid meet; its animVal is writable like baseVal; align outside 1-10
+throws TypeError "Invalid alignment", meetOrSlice outside 1-2 "Invalid
+meet-or-slice value"; writes serialize both parts. systemLanguage splits
+on commas (HTML), written back joined by ", "; requiredExtensions on
+whitespace, joined by " ". A list keeps its items between its own writes
+and parses again after any other change to its attribute (also to the
+same value); every write sets the attribute (clear() on an empty list
+too); initialize() returns undefined; the indexed setter replaces an item
+(IndexSizeError past the end).
+
+Left as everywhere in warpdom: brand-check errors say "Illegal
+invocation" (jsdom: "'get x' called on an object that is not a valid
+instance of SVGRect."); window properties are accessors until first read.
+
+Tests: test/svg.test.js (parity on jsdom 20, 22, 25, 26, 30; version
+boundaries 26.0.0/26.1.0, 28.0.0/28.1.0, 30.0.1/30.1.0 on the profiles).
+Bench: cold load, first and next windows and bench:hot within noise
+(25 alternating fresh processes: next window 0.191 vs 0.193 ms).

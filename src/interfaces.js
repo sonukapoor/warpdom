@@ -38,6 +38,7 @@ import { BASE_MEMBERS, nodeBaseURI } from './base-url.js';
 import { documentCookie, setDocumentCookie } from './cookies.js';
 import { COLLECTION_INTERFACES, liveList, staticList } from './collections.js';
 import { HTML_ELEMENTS } from './html-elements.js';
+import { SVG_INTERFACES, SVG_ELEMENT_MEMBERS } from './svg.js';
 import { EVENT_INTERFACES, createEvent, retarget } from './events.js';
 import { MUTATION_INTERFACES } from './mutation.js';
 import { FEATURE_INTERFACES, WINDOW_MEMBERS, URL_INTERFACES } from './window-features.js';
@@ -949,10 +950,8 @@ export const INTERFACES = [
       set draggable(v) { state(this); writeAttribute(this, 'draggable', v ? 'true' : 'false'); },
     }),
   },
-  { name: 'SVGElement', parent: 'Element', members: mix(inlineStyle, htmlOrSvgElement, FOCUS_MEMBERS, GLOBAL_HANDLER_MEMBERS) },
-  { name: 'SVGGraphicsElement', parent: 'SVGElement', members: {} },
-  { name: 'SVGSVGElement', parent: 'SVGGraphicsElement', members: {} },
-  { name: 'SVGTitleElement', parent: 'SVGElement', members: {} },
+  { name: 'SVGElement', parent: 'Element', members: mix(FOCUS_MEMBERS, SVG_ELEMENT_MEMBERS, inlineStyle, htmlOrSvgElement, GLOBAL_HANDLER_MEMBERS) },
+  ...SVG_INTERFACES,
 ];
 
 function knownDir(value) {
@@ -1150,6 +1149,5 @@ for (const iface of INTERFACES) {
   if (hasReflections(name) || form) iface.members = mix(reflected, form ?? {}, iface.members);
 }
 
-// SVG elements with an interface of their own; others are SVGElement.
-export const SVG_ELEMENTS = new Map([['svg', 'SVGSVGElement'], ['title', 'SVGTitleElement']]);
+export { SVG_ELEMENTS, LEGACY_SVG_ELEMENTS, SVG_TYPES_INTERFACES } from './svg.js';
 export { HTML_NS, SVG_NS };
