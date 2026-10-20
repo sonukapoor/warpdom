@@ -12,6 +12,7 @@ import { setupWindow } from './window-features.js';
 import { setValidationMode } from './css.js';
 import { namedPropertiesObject } from './named-access.js';
 import './document-named.js';
+import { handlerCompat } from './event-handlers.js';
 import { createCustomElement, createRegistry, htmlConstruct, isValidCustomElementName } from './custom-elements.js';
 
 // Once per module load: the interfaces in order, parents before children.
@@ -121,13 +122,6 @@ function interfaceFor(ns, tag, compat) {
   return 'Element';
 }
 
-// Interfaces and members a jsdom generation did not have yet, removed from
-// this window (its prototypes are its own). Libraries feature-detect them:
-// react-aria listens for pointer events only when PointerEvent exists, so
-// tests written for jsdom before 27 fire mouse events only.
-const POINTER_HANDLERS = ['ongotpointercapture', 'onlostpointercapture', 'onpointercancel', 'onpointerdown', 'onpointerenter',
-  'onpointerleave', 'onpointermove', 'onpointerout', 'onpointerover', 'onpointerrawupdate', 'onpointerup'];
-
 // Window is a [Global] interface (WebIDL 3.7.6): its operations are own
 // properties of the window, and called without a this value (const
 // { getComputedStyle } = iframe.contentWindow) they act on that window.
@@ -145,6 +139,10 @@ function installGlobalOperations(window, proto) {
 const DEVICE_AND_MEDIA_EVENTS = ['PromiseRejectionEvent', 'BlobEvent', 'DeviceMotionEvent', 'DeviceOrientationEvent',
   'DeviceMotionEventAcceleration', 'DeviceMotionEventRotationRate'];
 
+// Interfaces and members a jsdom generation did not have yet, removed from
+// this window (its prototypes are its own). Libraries feature-detect them:
+// react-aria listens for pointer events only when PointerEvent exists, so
+// tests written for jsdom before 27 fire mouse events only.
 function applyCompat(window, protos) {
   const { jsdom } = window[S].compat;
   // The CSS namespace (CSS.supports, CSS.escape) arrived in jsdom 30;
@@ -170,11 +168,10 @@ function applyCompat(window, protos) {
     // Also from jsdom 27: PromiseRejectionEvent, BlobEvent and the device
     // events (createEvent makes no device events before, events.js).
     for (const name of DEVICE_AND_MEDIA_EVENTS) delete window[name];
-    for (const proto of [protos.HTMLElement, protos.SVGElement, protos.Document, protos.Window, protos.ShadowRoot]) {
-      if (!proto) continue;
-      for (const name of POINTER_HANDLERS) delete proto[name];
-    }
   }
+  // The window's event handlers (HTMLElement's, SVGElement's and
+  // Document's are removed when those interfaces are made).
+  handlerCompat(protos.Window, window[S].compat, true);
 }
 
 // jsdom 20 to 26 name unimplemented methods "window.alert" and

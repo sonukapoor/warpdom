@@ -1184,6 +1184,9 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
     // to the window before 28.1.0.
     svgTypes: !before(version, [26, 1, 0]), svgSymbolViewport: !before(version, [26, 1, 0]) && before(version, [30, 1, 0]),
     svgWindowHandlers: before(version, [28, 1, 0]),
+    // Event handlers (event-handlers.js): before 22.1.0 jsdom lacks 19 of
+    // GlobalEventHandlers' (oncopy, ontouchstart, ...; black box).
+    legacyHandlers: before(version, [22, 1, 0]),
     urlParse: !before(version, [23, 0, 0]), paramValues: !before(version, [23, 0, 0]), setCookieList: !before(version, [24, 1, 0]),
     // BlobEvent's timecode without one in the init: 0 before 30.1.0, NaN from it.
     blobEventNaNTimecode: !before(version, [30, 1, 0]),

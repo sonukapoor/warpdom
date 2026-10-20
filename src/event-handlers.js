@@ -20,6 +20,59 @@ const EVENT_TYPES = {
 const eventType = (name) => EVENT_TYPES[name] ?? name.slice(2);
 
 const WINDOW_HANDLERS = new Set(WINDOW_EVENT_HANDLERS);
+
+// The event handlers a jsdom version lacks (black box, every release from
+// 20.0.0 to 30.1.3, on HTMLElement, SVGElement, Document and the window):
+// before 22.1.0 these 19, and on the window onauxclick too; before 27.0.0
+// the pointer event handlers. Neither the IDL attribute nor the content
+// attribute exists then (<div oncopy> does nothing). Before 22.1.0
+// HTMLElement's, SVGElement's and Document's onauxclick is inert (see
+// inertHandler).
+const HANDLERS_FROM_22_1 = ['onbeforeinput', 'onbeforematch', 'onbeforetoggle', 'oncontextlost', 'oncontextrestored', 'oncopy',
+  'oncut', 'onformdata', 'onpaste', 'onscrollend', 'onslotchange', 'ontouchcancel', 'ontouchend', 'ontouchmove', 'ontouchstart',
+  'onwebkitanimationend', 'onwebkitanimationiteration', 'onwebkitanimationstart', 'onwebkittransitionend'];
+const POINTER_HANDLERS = ['ongotpointercapture', 'onlostpointercapture', 'onpointercancel', 'onpointerdown', 'onpointerenter',
+  'onpointerleave', 'onpointermove', 'onpointerout', 'onpointerover', 'onpointerrawupdate', 'onpointerup'];
+const LEGACY_INERT = ['onauxclick'];
+const LEGACY_ABSENT = new Set([...HANDLERS_FROM_22_1, ...LEGACY_INERT]);
+const POINTER = new Set(POINTER_HANDLERS);
+// A content attribute that is no event handler in the profile's jsdom.
+const absentHandler = (compat, name) => (compat.legacyHandlers && LEGACY_ABSENT.has(name)) || (compat.jsdom < 27 && POINTER.has(name));
+
+// An inert event handler IDL attribute, as jsdom has some (black box): it
+// keeps the value assigned (a function or an object, else null; undefined
+// until set), its content attribute is ignored and it is never called.
+function inertHandler(name) {
+  return Object.getOwnPropertyDescriptor({
+    get [name]() {
+      const s = this?.[S];
+      if (!s) throw new TypeError('Illegal invocation');
+      return s.inertHandlers?.get(name);
+    },
+    set [name](value) {
+      const s = this?.[S];
+      if (!s) throw new TypeError('Illegal invocation');
+      const map = s.inertHandlers ?? (s.inertHandlers = new Map());
+      map.set(name, typeof value === 'function' || (typeof value === 'object' && value !== null) ? value : null);
+    },
+  }, name);
+}
+const INERT = Object.fromEntries(LEGACY_INERT.map((name) => [name, inertHandler(name)]));
+
+// Puts the event handlers of the profile's jsdom on an interface prototype
+// with the GlobalEventHandlers members (HTMLElement, SVGElement, Document;
+// the window's: forWindow).
+export function handlerCompat(proto, compat, forWindow = false) {
+  if (compat.legacyHandlers) {
+    for (const name of HANDLERS_FROM_22_1) delete proto[name];
+    for (const name of LEGACY_INERT) {
+      if (forWindow) delete proto[name];
+      else Object.defineProperty(proto, name, { ...INERT[name], enumerable: true, configurable: true });
+    }
+  }
+  if (compat.jsdom < 27) for (const name of POINTER_HANDLERS) delete proto[name];
+}
+
 // Handlers body and frameset forward to their window.
 const WINDOW_REFLECTING_BODY = new Set(['onblur', 'onerror', 'onfocus', 'onload', 'onresize', 'onscroll']);
 
@@ -151,19 +204,18 @@ export const WINDOW_HANDLER_MEMBERS = members(WINDOW_EVENT_HANDLERS);
 // until set, no content attribute, never called).
 function svgWindowHandler(name) {
   const forwarding = idlAttribute(name);
+  const inert = inertHandler(name);
   return {
     get() {
       const s = this?.[S];
       if (!s) throw new TypeError('Illegal invocation');
-      if (isForwardingSvg(s)) return forwarding.get.call(this);
-      return s.inertHandlers?.get(name);
+      return isForwardingSvg(s) ? forwarding.get.call(this) : inert.get.call(this);
     },
     set(value) {
       const s = this?.[S];
       if (!s) throw new TypeError('Illegal invocation');
-      if (isForwardingSvg(s)) return forwarding.set.call(this, value);
-      const map = s.inertHandlers ?? (s.inertHandlers = new Map());
-      map.set(name, typeof value === 'function' || (typeof value === 'object' && value !== null) ? value : null);
+      if (isForwardingSvg(s)) forwarding.set.call(this, value);
+      else inert.set.call(this, value);
     },
   };
 }
@@ -179,7 +231,7 @@ const GLOBAL = new Set(GLOBAL_EVENT_HANDLERS);
 function contentAttributeChanged(element, name, value) {
   const s = element[S];
   const applies = (s.ns === HTML_NS || s.ns === SVG_NS) && (GLOBAL.has(name) || (forwardsToWindow(s) && WINDOW_HANDLERS.has(name)));
-  if (!applies) return;
+  if (!applies || absentHandler(s.doc[S].window[S].compat, name)) return;
   const target = handlerTarget(element, name);
   if (!target) return;
   if (value === undefined) deactivate(target, name);
