@@ -9,8 +9,16 @@
 import { S, state, nextInTree, ELEMENT_NODE, DOCUMENT_NODE, HTML_NS, PlatformURL as URL } from './internal.js';
 import { writeAttribute } from './attributes.js';
 
-// The document's URL: its own, else its window's.
-export const fallbackBaseURL = (doc) => { const ds = doc[S]; return ds.url ?? ds.window[S].url; };
+// The document's URL: its own, else its window's; for an iframe's
+// about:blank document, its creator's base URL (frames.js: the creator
+// document's, or the one kept from the first use).
+export const fallbackBaseURL = (doc) => { const ds = doc[S]; return ds.url ?? (ds.aboutBase === undefined ? ds.window[S].url : aboutBaseURL(ds)); };
+function aboutBaseURL(ds) {
+  if (typeof ds.aboutBase === 'string') return ds.aboutBase;
+  const url = toString(documentBaseURL(ds.aboutBase));
+  if (ds.aboutBaseKept) ds.aboutBase = url;
+  return url;
+}
 
 const toString = (url) => (typeof url === 'string' ? url : url.href);
 
@@ -33,7 +41,7 @@ function firstBase(doc) {
 // their caches and pass it to new URL()).
 export function documentBaseURL(doc) {
   const ds = doc[S];
-  const fallback = ds.url ?? ds.window[S].url;
+  const fallback = ds.url ?? (ds.aboutBase === undefined ? ds.window[S].url : aboutBaseURL(ds));
   if (!ds.baseCount) return fallback;
   const rev = ds.treeRev ?? 0;
   const cached = ds.baseURL;

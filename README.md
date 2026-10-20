@@ -592,11 +592,12 @@ these differences from jsdom:
   `document.cookie`: a response's `Set-Cookie` shows up in
   `document.cookie`, and requests send the document's cookies.
 - `file:` URLs fail with a network error (jsdom reads the file).
-- Requests carry fetch's `Sec-Fetch-Mode` header, and a redirected
-  request fetch's `Origin` and `Referer`. A redirect's fragment is not kept
-  in `responseURL` (jsdom keeps it). A `DataView` body is sent (jsdom 28
-  and later send none). The method `patch` in lowercase is sent as is, as
-  jsdom does, and makes Node print a warning once.
+- Requests carry fetch's `Sec-Fetch-Mode` header. A `DataView` body is
+  sent (jsdom 28 and later send none). The method `patch` in lowercase is
+  sent as is, as jsdom does, and makes Node print a warning once. Requests
+  from an `about:blank` iframe send no `Referer` (jsdom: `about:blank`).
+- A redirect that fails its CORS check is a network error. jsdom before 28
+  fires `error` and then goes on to follow the redirect and fire `load`.
 - jsdom 20 to 26 report network errors on the virtual console; warpdom's
   test environments report them where they report "Not implemented"
   messages, in jsdom's words for CORS failures and with fetch's for others.

@@ -309,7 +309,9 @@ const SCENARIOS = {
     for (const [name, method, url, ms, body, upload] of [
       ['hangPost', 'POST', `${c.BASE}/hang`, 100, 'abc', true], ['hangPostNoUploadListeners', 'POST', `${c.BASE}/hang`, 100, 'abc', false],
       ['hangGet', 'GET', `${c.BASE}/hang`, 100], ['headersLate', 'POST', `${c.BASE}/slow?wait=400&n=1`, 100, 'abc', true],
-      ['duringBody', 'GET', `${c.BASE}/slow?n=5&ms=80`, 150], ['duringBodyAfterUpload', 'POST', `${c.BASE}/slow?n=5&ms=80`, 150, 'abc', true]]) {
+      // (The body takes 800 ms: jsdom on a slow CI machine took more than
+      // 150 ms to the headers.)
+      ['duringBody', 'GET', `${c.BASE}/slow?n=10&ms=80`, 400], ['duringBodyAfterUpload', 'POST', `${c.BASE}/slow?n=10&ms=80`, 400, 'abc', true]]) {
       const { x, log } = await request(w, method, url, { body, upload, prep: (r) => { r.timeout = ms; } });
       out[name] = [log.filter((l, i) => !(l.startsWith('readystatechange 3') && log[i + 1]?.startsWith('progress 3 200 false/') && !log[i + 1].endsWith('/0/0'))), getters(x)];
     }
@@ -457,6 +459,29 @@ const SCENARIOS = {
     out.overrideBlob = await get('blob', 'ct=text/plain&body=x', (x) => x.overrideMimeType('Foo/Bar;A=B'));
     out.documentCharset = await get('document', `ct=text%2Fhtml&body=${encodeURIComponent('<p>')}c3a9&enc=utf8`, (x) => x.overrideMimeType('text/html;charset=latin1'));
     out.overrideKeepsHeader = await get('', 'ct=text/plain&body=x', (x) => x.overrideMimeType('application/xml'));
+    // An override without a charset keeps the response's (Copilot review on #89).
+    const cp1252 = encodeURIComponent('text/plain;charset=windows-1252');
+    out.overrideWithoutCharset = await get('', `ct=${cp1252}&body=6869e9&enc=hex`, (x) => x.overrideMimeType('text/plain'));
+    out.overrideInvalidKeepsCharset = await get('', `ct=${cp1252}&body=6869e9&enc=hex`, (x) => x.overrideMimeType('nonsense'));
+    out.overrideXmlWithoutCharset = await get('document', `ct=${cp1252}&body=3c613ee93c2f613e&enc=hex`, (x) => x.overrideMimeType('text/xml'));
+    out.overrideHtmlWithoutCharset = await get('document', `ct=${encodeURIComponent('text/html;charset=windows-1252')}&body=3c703ee9&enc=hex`, (x) => x.overrideMimeType('text/html'));
+    // jsdom looks at neither an XML declaration's encoding nor an HTML meta
+    // charset: UTF-8 (the XHR standard would use them).
+    const latin1Xml = Buffer.concat([Buffer.from('<?xml version="1.0" encoding="ISO-8859-1"?><a>'), Buffer.from([0xe9]), Buffer.from('</a>')]).toString('hex');
+    out.xmlDeclarationEncoding = await get('', `ct=application/xml&body=${latin1Xml}&enc=hex`);
+    out.xmlDeclarationEncodingDocument = await get('document', `ct=text/xml&body=${latin1Xml}&enc=hex`);
+    out.htmlMetaCharset = await get('document', `ct=text/html&body=${Buffer.from('<meta charset="windows-1252"><p>\u00e9', 'latin1').toString('hex')}&enc=hex`);
+    return out;
+  },
+  // After a network error or a CORS failure (Copilot review on #89).
+  async failedResponses(w, c) {
+    const out = {};
+    for (const type of ['', 'text', 'arraybuffer', 'blob', 'json', 'document']) {
+      for (const [name, url] of [['refused', `http://localhost:${c.DEAD}/x`], ['cors', `${c.CROSS}/type?body=AB`]]) {
+        const { x, log } = await request(w, 'GET', url, { prep: (r) => { r.responseType = type; } });
+        out[`${name} ${type}`] = [log.at(-2), x.readyState, attempt(() => x.response)];
+      }
+    }
     return out;
   },
   async partialResponses(w, c) {
@@ -482,7 +507,11 @@ const SCENARIOS = {
     x.onreadystatechange = () => at.push([x.readyState, headerLines(x.getAllResponseHeaders()), x.getResponseHeader('X-A')]);
     x.send();
     await done(x);
-    return { before, at, raw: x.getAllResponseHeaders().endsWith('\r\n') };
+    // Names that are not header names match nothing; a name that is not a
+    // ByteString throws (Copilot review on #89).
+    const names = ['', 'bad name', 'x-a\n', 'x-a\0', ' x-a', '(x)', 'x:a', 'é', '€', 'X-A'].map((n) => attempt(() => x.getResponseHeader(n)));
+    const { x: y } = await request(w, 'GET', `${c.CROSS}/text?acao=*`);
+    return { before, at, raw: x.getAllResponseHeaders().endsWith('\r\n'), names, cross: ['', 'bad name'].map((n) => attempt(() => y.getResponseHeader(n))) };
   },
   async cors(w, c) {
     const out = {};
@@ -531,6 +560,75 @@ const SCENARIOS = {
     // Redirects across origins.
     await one('crossToCross', `/redirect?acao=*&to=${encodeURIComponent(`${c.CROSS}/echo?acao=*`)}`, { upload: false });
     await one('crossToSame', `/redirect?acao=*&to=${encodeURIComponent(`${c.BASE}/echo`)}`, { upload: false });
+    return out;
+  },
+  // Redirects across origins: the CORS checks of each hop, the Origin and
+  // Referer each hop sends, responseURL's fragment (Copilot review on #89).
+  async redirectHops(w, c) {
+    const out = {};
+    const R = (from, to, query = '') => `${from}/redirect?code=302${query}&to=${encodeURIComponent(to)}`;
+    const one = async (name, url, { method = 'GET', body, code } = {}) => {
+      const n = c.server.requests.length;
+      const { x, log } = await request(w, method, code ? url.replace('code=302', `code=${code}`) : url, { body });
+      // (Ports appear encoded in the URLs too.)
+      const ports = (v) => v.replaceAll(String(c.PORT), 'PORT');
+      const hops = c.server.requests.slice(n).map((r) => ports(`${r.method} ${r.headers.host}${r.path.split('?')[0]} origin=${r.headers.origin ?? '-'} referer=${r.headers.referer ?? '-'}`));
+      out[name] = [x.status, ports(x.responseURL), log.filter((l) => /^(load|error) /.test(l)), hops];
+    };
+    const origin = encodeURIComponent(c.BASE);
+    await one('crossToSameAllowsNull', R(c.CROSS, `${c.BASE}/echo?acao=null`, '&acao=*'));
+    await one('crossToSameAllowsOrigin', R(c.CROSS, `${c.BASE}/echo?acao=${origin}`, '&acao=*'));
+    await one('crossToCrossAllowsOrigin', R(c.CROSS, `${c.CROSS}/echo?acao=${origin}`, '&acao=*'));
+    await one('sameToCrossToSame', R(c.BASE, R(c.CROSS, `${c.BASE}/echo`, '&acao=*')));
+    await one('sameToCrossToSameAllowsOrigin', R(c.BASE, R(c.CROSS, `${c.BASE}/echo?acao=${origin}`, '&acao=*')));
+    await one('sameToSame', R(c.BASE, `${c.BASE}/echo#frag`));
+    await one('fragmentOfTheRequest', `${R(c.BASE, `${c.BASE}/echo`)}#first`);
+    // No preflight for a redirected request, in any version.
+    await one('putToCross', R(c.BASE, `${c.CROSS}/echo?acao=*`), { method: 'PUT', body: 'x', code: 307 });
+    // jsdom before 28 fires error and then load for these (warpdom: error, see
+    // the differences test).
+    if (c.jsdom >= 28) {
+      await one('crossRedirectWithoutAllowOrigin', R(c.CROSS, `${c.CROSS}/echo?acao=*`));
+      await one('crossRedirectWithoutAllowOriginToSame', R(c.CROSS, `${c.BASE}/echo?acao=*`));
+      await one('sameToCrossRedirectWithoutAllowOrigin', R(c.BASE, R(c.CROSS, `${c.CROSS}/echo?acao=*`)));
+      await one('sameToCrossRedirectWithoutAllowOriginToSame', R(c.BASE, R(c.CROSS, `${c.BASE}/echo?acao=*`)));
+    }
+    return out;
+  },
+  // An about:blank iframe has its parent's origin and base URL (taken at
+  // creation from jsdom 26); removing the frame stops its requests and its
+  // frames' (Copilot review on #89). (jsdom sends about:blank as Referer.)
+  async aboutBlankFrames(w, c) {
+    const out = {};
+    const base = w.document.createElement('base');
+    base.href = `${c.BASE}/sub/`;
+    w.document.head.append(base);
+    const frame = w.document.createElement('iframe');
+    w.document.body.append(frame);
+    const child = frame.contentWindow;
+    base.href = `${c.BASE}/other/`;
+    out.frame = [child.origin, child.location.origin, child.document.URL, port(child.document.baseURI)];
+    for (const [name, url] of [['same', `${c.BASE}/echo`], ['relative', 'echo'], ['cross', `${c.CROSS}/echo`]]) {
+      const n = c.server.requests.length;
+      const { x, log } = await request(child, 'GET', url);
+      const sent = c.server.requests.slice(n)[0];
+      out[name] = [log.at(-2).split(' ').slice(0, 3), x.status, port(x.responseURL), sent ? port(sent.headers.origin ?? '-') : null];
+    }
+    base.remove();
+    const nested = child.document.createElement('iframe');
+    child.document.body.append(nested);
+    const log = [];
+    for (const [name, win] of [['child', child], ['nested', nested.contentWindow]]) {
+      const x = new win.XMLHttpRequest();
+      for (const type of ['readystatechange', 'load', 'error', 'abort', 'loadend']) x.addEventListener(type, () => log.push(`${name} ${type} ${x.readyState}`));
+      x.open('GET', `${c.BASE}/slow?wait=100&n=2`);
+      x.send();
+    }
+    await wait(20);
+    frame.remove();
+    log.push('removed');
+    await wait(400);
+    out.removed = log;
     return out;
   },
   async conversions(w, c) {
@@ -613,7 +711,7 @@ async function run(window, scenario, ctx, errors) {
 // Every scenario on jsdom 20, 27, 28 and 30 (each side of the two
 // boundaries), a few on 22, 25 and 26.
 const parityTests = [];
-const VERSIONS = { jsdom20: 'all', jsdom22: ['shape', 'events', 'cors', 'timeouts'], jsdom25: ['bodies', 'aborts'], jsdom26: ['states', 'setRequestHeader', 'errors'],
+const VERSIONS = { jsdom20: 'all', jsdom22: ['shape', 'events', 'cors', 'timeouts'], jsdom25: ['bodies', 'aborts', 'aboutBlankFrames'], jsdom26: ['states', 'setRequestHeader', 'errors', 'aboutBlankFrames'],
   jsdom27: 'all', jsdom28: 'all', jsdom30: 'all' };
 for (const [alias, which] of Object.entries(VERSIONS)) {
   const pkg = require(`${alias}/package.json`);
@@ -642,7 +740,7 @@ for (const [alias, which] of Object.entries(VERSIONS)) {
         await Promise.all(servers.map((srv) => srv.close()));
       }
       // Network failures are reported in other words (Node's http module vs fetch).
-      if (name === 'errors') { expected.errors = expected.errors.length; actual.errors = actual.errors.length; }
+      if (name === 'errors' || name === 'failedResponses') { expected.errors = expected.errors.length; actual.errors = actual.errors.length; }
       assert.deepEqual(actual, expected);
     }]);
   }
@@ -745,6 +843,40 @@ test('XMLHttpRequest: a window reset or an environment teardown stops its reques
   assert.deepEqual(events, []);
 });
 
+test('XMLHttpRequest: a window reset or an environment teardown stops its frames\' requests too', async () => {
+  // A frame's and a nested frame's request each, then the reset or teardown.
+  const start = (w, events) => {
+    const frame = w.document.createElement('iframe');
+    w.document.body.append(frame);
+    const nested = frame.contentDocument.createElement('iframe');
+    frame.contentDocument.body.append(nested);
+    for (const win of [frame.contentWindow, nested.contentWindow]) {
+      const x = new win.XMLHttpRequest();
+      x.onreadystatechange = () => events.push(x.readyState);
+      x.onloadend = () => events.push('loadend');
+      x.open('GET', `${BASE}/slow?n=3&ms=50`);
+      x.send();
+    }
+  };
+  const w = createWindow({ url: PAGE });
+  snapshotWindow(w);
+  const reset = [];
+  start(w, reset);
+  resetWindow(w);
+  const { default: JestEnvironment } = await import('../src/jest.js');
+  const env = new JestEnvironment({ projectConfig: { rootDir: process.cwd(), testEnvironmentOptions: { url: PAGE } } });
+  const teardown = [];
+  start(env.global, teardown);
+  await env.teardown();
+  const { default: vitest } = await import('../src/vitest.js');
+  const vm = await vitest.setupVM({ warpdom: { url: PAGE } });
+  const vmTeardown = [];
+  start(vm.getVmContext(), vmTeardown);
+  vm.teardown();
+  await wait(300);
+  assert.deepEqual([reset, teardown, vmTeardown], [[1, 1], [1, 1], [1, 1]]);
+});
+
 test('XMLHttpRequest: fake timers on the global do not stop requests or timeouts', async () => {
   const w = createWindow({ url: PAGE });
   const { setTimeout: realSetTimeout } = globalThis;
@@ -767,6 +899,40 @@ test('XMLHttpRequest: fake timers on the global do not stop requests or timeouts
     assert.deepEqual(log.sort(), ['load ok', 'timeout']);
   } finally {
     globalThis.setTimeout = realSetTimeout;
+  }
+});
+
+test('XMLHttpRequest: a faked or frozen Date does not change how much of a timeout is left', async () => {
+  const w = createWindow({ url: PAGE });
+  const realNow = Date.now;
+  // fake(): the Date.now() a test's fake timers install, at send() (frozen
+  // there) or just after it (10 s ahead).
+  const outcome = async (fake, afterSend) => {
+    if (!afterSend) Date.now = fake();
+    try {
+      const x = new w.XMLHttpRequest();
+      const start = realNow();
+      const result = new Promise((resolve) => {
+        x.ontimeout = () => resolve(['timeout', realNow() - start]);
+        x.onload = () => resolve(['load', realNow() - start]);
+      });
+      x.open('GET', `${BASE}/slow?wait=800&n=1`);
+      x.timeout = 5000;
+      x.send();
+      if (afterSend) Date.now = fake();
+      // 200 ms in, a 400 ms timeout has 200 ms left (frozen Date: 400 ms;
+      // 10 s ahead: none).
+      await wait(200);
+      x.timeout = 400;
+      return await result;
+    } finally {
+      Date.now = realNow;
+    }
+  };
+  for (const [fake, afterSend] of [[() => { const t = realNow(); return () => t; }, false], [() => () => realNow() + 10_000, true]]) {
+    const [type, elapsed] = await outcome(fake, afterSend);
+    assert.equal(type, 'timeout');
+    assert.ok(elapsed >= 340 && elapsed < 540, `timed out after ${elapsed} ms`);
   }
 });
 
@@ -807,6 +973,18 @@ test('XMLHttpRequest differences from jsdom: headers sorted and combined, cookie
   // jsdom 28 and later send no body for a DataView; warpdom sends its bytes.
   const { x: view } = await request(w, 'POST', `${BASE}/echo`, { body: new DataView(new Uint8Array([70, 71]).buffer) });
   assert.equal(JSON.parse(view.responseText).body, 'FG');
+  // A redirect that fails its CORS check: jsdom before 28 fires error and
+  // then goes on to load the redirect; warpdom stops at the error.
+  const legacy = createWindow({ url: PAGE, jsdom: '27.4.0' });
+  legacy[S].reportNotImplemented = () => {};
+  const n = server.requests.length;
+  const { x: redirected, log: events } = await request(legacy, 'GET', `${CROSS}/redirect?code=302&to=${encodeURIComponent(`${CROSS}/echo?acao=*`)}`);
+  assert.deepEqual([redirected.status, events.filter((l) => /^(load|error) /.test(l)).map((l) => l.split(' ')[0]), server.requests.length - n], [0, ['error'], 1]);
+  // An about:blank frame's requests send no Referer (jsdom: about:blank).
+  const frame = w.document.createElement('iframe');
+  w.document.body.append(frame);
+  const { x: fromFrame } = await request(frame.contentWindow, 'GET', '/echo');
+  assert.equal(JSON.parse(fromFrame.responseText).headers.referer, undefined);
 });
 
 test('XMLHttpRequest: profile boundaries (jsdom 28.0.0 undici; network errors reported before 27)', async () => {

@@ -395,7 +395,8 @@ export function createWindow(options = {}) {
     // environments send the text where jsdom's environments send it
     // (reportNotImplemented).
     notImplemented: (message) => internals.reportNotImplemented(`Not implemented: ${internals.compat.jsdom < 27 ? legacyWords(message) : message}`),
-    reportNotImplemented: (text) => console.error(text),
+    // A frame reports where its top window does (jsdom: one virtual console).
+    reportNotImplemented: options.nested ? (...args) => options.nested.parent[S].reportNotImplemented(...args) : (text) => console.error(text),
     // An iframe's nested window (frames.js).
     // A frame's window behaves like the same jsdom generation as its parent.
     createNestedWindow: ({ url, parent, frameElement }) => createWindow({ url, jsdom: parent[S].compat.version, cssstyle: parent[S].compat.cssstyle, fastFrames: parent[S].fastFrames, xhr: parent[S].xhr, nested: { parent, frameElement } }),

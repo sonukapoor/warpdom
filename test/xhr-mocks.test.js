@@ -14,11 +14,15 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 
+// Vitest's output without colors (on CI it colors even a pipe).
+// eslint-disable-next-line no-control-regex
+const plain = (text) => text.replace(/\x1b\[[0-9;]*m/g, '');
+
 function vitest(args) {
   try {
-    return { code: 0, out: String(execFileSync('node_modules/.bin/vitest', ['run', '--root', 'fixtures/vitest-xhr-mocks', ...args], { cwd: root, stdio: 'pipe' })) };
+    return { code: 0, out: plain(String(execFileSync('node_modules/.bin/vitest', ['run', '--root', 'fixtures/vitest-xhr-mocks', ...args], { cwd: root, stdio: 'pipe' }))) };
   } catch (err) {
-    return { code: err.status, out: String(err.stdout) + String(err.stderr) };
+    return { code: err.status, out: plain(String(err.stdout) + String(err.stderr)) };
   }
 }
 

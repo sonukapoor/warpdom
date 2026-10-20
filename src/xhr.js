@@ -33,11 +33,13 @@ import { parseXMLDocument, PARSER_ERROR_NS } from './xml.js';
 import { formDataEntries } from './forms.js';
 import { userAgentOf } from './window-features.js';
 
-// Timers of the host, taken when warpdom loads: a test's fake timers do
-// not stop requests from completing or timing out (as with jsdom, whose
-// requests run on Node's I/O).
+// Timers and clock of the host, taken when warpdom loads: a test's fake
+// timers (and a faked or frozen Date) do not stop requests from completing
+// or timing out, nor change how much of a timeout is left (as with jsdom,
+// whose requests run on Node's I/O).
 const hostSetTimeout = globalThis.setTimeout;
 const hostClearTimeout = globalThis.clearTimeout;
+const hostNow = Date.now;
 
 const UNSENT = 0, OPENED = 1, HEADERS_RECEIVED = 2, LOADING = 3, DONE = 4;
 const STATES = { UNSENT, OPENED, HEADERS_RECEIVED, LOADING, DONE };
@@ -162,10 +164,21 @@ function finalMime(s) {
   return header == null ? null : parseMime(header);
 }
 
+// The label of the final encoding (XHR "get a final encoding"): the
+// override's charset, else the response's (an override without one keeps
+// the response's, as in jsdom); undefined for none.
+function charsetLabel(s) {
+  const override = s.overrideMime?.params.get('charset');
+  if (override !== undefined) return override;
+  const header = s.response.headers?.get('content-type');
+  return header == null ? undefined : parseMime(header)?.params.get('charset');
+}
+
 // Decodes the response body as text: a byte order mark, else the final
-// MIME type's charset, else UTF-8.
+// encoding, else UTF-8. (As jsdom, an XML declaration's encoding and an
+// HTML document's meta charset are not looked at.)
 function decodeBody(s, bytes) {
-  const label = finalMime(s)?.params.get('charset');
+  const label = charsetLabel(s);
   // The replacement encoding (iso-2022-kr and the like): one U+FFFD for
   // any input, unless a byte order mark decides (jsdom before 27.4: UTF-8).
   if (label !== undefined && bytes.length !== 0 && s.window[S].compat.xhrReplacement && encodingOf(label) === 'replacement'
@@ -179,7 +192,7 @@ function encodingName(s, bytes) {
   else if (bytes[0] === 0xfe && bytes[1] === 0xff) name = 'utf-16be';
   else if (bytes[0] === 0xff && bytes[1] === 0xfe) name = 'utf-16le';
   else {
-    const label = finalMime(s)?.params.get('charset');
+    const label = charsetLabel(s);
     const e = label === undefined ? null : encodingOf(label);
     name = e === null || e === 'replacement' ? 'utf-8' : e;
   }
@@ -308,6 +321,90 @@ function corsError(response, origin, credentials) {
   return allow === origin ? null : `Cross origin ${origin} forbidden`;
 }
 
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const BODY_HEADERS = new Set(['content-encoding', 'content-language', 'content-location', 'content-type']);
+const httpURL = (url) => url.protocol === 'http:' || url.protocol === 'https:';
+// A URL fetch accepts: without credentials.
+function withoutCredentials(url) {
+  if (url.username === '' && url.password === '') return url.href;
+  const plain = new URL(url.href);
+  plain.username = '';
+  plain.password = '';
+  return plain.href;
+}
+function deleteHeader(headers, lower) {
+  for (const name of Object.keys(headers)) if (name.toLowerCase() === lower) delete headers[name];
+}
+
+// Fetches the request and follows its redirects itself (fetch's redirect:
+// 'manual'; fetch's own following checks no CORS on the way), with the
+// checks and headers jsdom has per hop (black box, PLAN.md 2026-10-20):
+//   - jsdom 28 and later: a redirect from another origin than the
+//     document's is CORS-checked when the request started cross-origin or
+//     goes on to another origin; such a redirect to yet another origin
+//     taints the origin (Origin: null, and the final response is checked
+//     against null). Once a hop was cross-origin, the next hops send
+//     Origin. The final response is checked when it is cross-origin or the
+//     request started so. The Location's fragment, else the request's,
+//     stays in responseURL.
+//   - jsdom before 28 (as the Fetch standard): once a hop was cross-origin
+//     every response is checked, and a cross-origin hop redirecting to
+//     another origin taints the origin. Every redirected hop sends Origin,
+//     and the previous URL as Referer. jsdom fires error and then goes on
+//     to load the redirect; warpdom stops at the error.
+//   No hop is preflighted, as in jsdom (the standard preflights a redirected
+//   request that needs it). Returns { response, finalURL, checked, tainted },
+//   a network error's message, or null when the request was stopped.
+async function fetchFollowing(fetch, s, req) {
+  const legacy = !s.window[S].compat.xhrUndici;
+  const { origin, cross, credentials } = req;
+  const signal = req.controller?.signal;
+  let url = new URL(req.url);
+  let fetchURL = req.fetchURL;
+  let { method, body } = req;
+  let headers = req.headers;
+  let crossed = cross;
+  let tainted = false;
+  for (let redirects = 0; ; redirects++) {
+    const response = await fetch(fetchURL, { method, headers, body, redirect: 'manual', signal });
+    if (s.req !== req) { response.body?.cancel().catch(() => {}); return null; }
+    const location = REDIRECT_STATUSES.has(response.status) ? response.headers.get('location') : null;
+    if (location === null) {
+      const finalCross = httpURL(url) && url.origin !== origin;
+      return { response, finalURL: url.href, checked: legacy ? crossed || finalCross : finalCross || cross, tainted };
+    }
+    response.body?.cancel().catch(() => {});
+    if (redirects === 20) return 'Error: Maximum number of redirects exceeded';
+    let next;
+    try { next = new URL(location, url); } catch { return `Error: Invalid redirect location ${location}`; }
+    if (!httpURL(next)) return `Error: Redirect to an unsupported scheme ${next.protocol}`;
+    if (next.hash === '' && !location.includes('#') && !legacy) next.hash = url.hash;
+    const hopCross = url.origin !== origin;
+    const nextCross = next.origin !== origin;
+    crossed ||= hopCross;
+    const corsHop = legacy ? crossed : hopCross && (cross || nextCross);
+    if (corsHop) {
+      const denied = corsError(response, tainted ? 'null' : origin, credentials);
+      if (denied !== null) return denied;
+    }
+    if (hopCross && next.origin !== url.origin && (legacy || cross || nextCross)) tainted = true;
+    headers = { ...headers };
+    const status = response.status;
+    if (((status === 301 || status === 302) && method === 'POST') || (status === 303 && method !== 'GET' && method !== 'HEAD')) {
+      method = 'GET';
+      body = null;
+      for (const name of BODY_HEADERS) deleteHeader(headers, name);
+    }
+    // As fetch: the author's Authorization stays with its origin.
+    if (next.origin !== url.origin) deleteHeader(headers, 'authorization');
+    deleteHeader(headers, 'origin');
+    if (legacy || crossed || nextCross) headers.Origin = tainted ? 'null' : origin;
+    if (legacy && 'Referer' in headers) headers.Referer = url.href;
+    url = next;
+    fetchURL = withoutCredentials(next);
+  }
+}
+
 const headerList = (value) => (value ?? '').split(',').map((v) => v.trim().toLowerCase()).filter((v) => v !== '');
 
 // --- the request ------------------------------------------------------------------------------
@@ -375,7 +472,7 @@ function armTimeout(xhr, s, req) {
   if (req.timer !== null) hostClearTimeout(req.timer);
   req.timer = null;
   if (s.timeout === 0) return;
-  const remaining = Math.max(0, s.timeout - (Date.now() - req.start));
+  const remaining = Math.max(0, s.timeout - (hostNow() - req.start));
   req.timer = hostSetTimeout(() => { req.timer = null; timedOut(xhr, s, req); }, remaining);
 }
 
@@ -401,7 +498,7 @@ async function run(xhr, s, req) {
   const compat = window[S].compat;
   const fetch = PLATFORM_GLOBAL.fetch;
   if (typeof fetch !== 'function') { fail(xhr, s, req, 'fetch is not available'); return; }
-  const { url, method, origin, cross, credentials } = req;
+  const { method, origin, cross, credentials } = req;
   let response;
   try {
     if (req.preflight) {
@@ -417,27 +514,24 @@ async function run(xhr, s, req) {
       const missing = allowed.includes('*') ? [] : req.unsafe.filter((name) => !allowed.includes(name.toLowerCase()));
       if (missing.length) { fail(xhr, s, req, `Headers ${missing.join(', ')} forbidden`); return; }
     }
-    response = await fetch(req.fetchURL, { method, headers: req.headers, body: req.body, redirect: 'follow', signal: req.controller.signal });
+    const result = await fetchFollowing(fetch, s, req);
+    if (result === null) return;
+    if (typeof result === 'string') { fail(xhr, s, req, result); return; }
+    response = result;
   } catch (error) {
-    const reason = error?.cause?.message || error?.cause?.name || error?.message;
-    fail(xhr, s, req, reason === 'redirect count exceeded' ? 'Error: Maximum number of redirects exceeded' : reason);
+    fail(xhr, s, req, error?.cause?.message || error?.cause?.name || error?.message);
     return;
   }
-  if (s.req !== req) { response.body?.cancel().catch(() => {}); return; }
-  const finalURL = response.redirected ? response.url : url;
-  const finalOrigin = response.redirected ? new URL(response.url).origin : null;
-  const finalCross = cross || (response.redirected && finalOrigin !== origin);
-  // jsdom before 28: a cross-origin request redirected to another origin
-  // has the origin null (a tainted origin), even back to the document's.
-  const tainted = cross && response.redirected && !compat.xhrUndici && finalOrigin !== new URL(url).origin;
-  const denied = finalCross || tainted ? corsError(response, tainted ? 'null' : origin, credentials) : null;
+  const { finalURL, checked, tainted } = response;
+  response = response.response;
+  const denied = checked ? corsError(response, tainted ? 'null' : origin, credentials) : null;
   if (denied !== null && !/^(data|blob):/.test(finalURL)) {
     response.body?.cancel().catch(() => {});
     fail(xhr, s, req, denied);
     return;
   }
   let exposed = null;
-  if (finalCross) {
+  if (checked) {
     const list = headerList(response.headers.get('access-control-expose-headers'));
     exposed = list.includes('*') && !credentials && compat.xhrUndici ? null : new Set([...SAFELISTED_RESPONSE, ...list]);
   }
@@ -528,7 +622,8 @@ function send(xhr, s, body) {
 
   const doc = window.document;
   const docURL = new URL(doc[S].url ?? window[S].url);
-  const origin = docURL.origin;
+  // An about:blank iframe's requests have its creator's origin.
+  const origin = window[S].aboutOrigin ?? docURL.origin;
   const url = s.url;
   const httpLike = url.protocol === 'http:' || url.protocol === 'https:';
   const cross = httpLike && url.origin !== origin;
@@ -541,12 +636,8 @@ function send(xhr, s, body) {
   if (cross) headers.Origin = origin;
   // The fetch URL has no credentials (fetch rejects them); jsdom 20 sends
   // them as Basic authorization.
-  let fetchURL = url.href;
+  const fetchURL = withoutCredentials(url);
   if (url.username !== '' || url.password !== '') {
-    const plain = new URL(url.href);
-    plain.username = '';
-    plain.password = '';
-    fetchURL = plain.href;
     if (compat.jsdom < 21 && !names.has('authorization')) headers.Authorization = `Basic ${btoa(`${decodeURIComponent(url.username)}:${decodeURIComponent(url.password)}`)}`;
   }
 
@@ -559,7 +650,7 @@ function send(xhr, s, body) {
     url: url.href, fetchURL, method: legacy && method.toUpperCase() === 'PATCH' ? 'PATCH' : method, headers, body: extracted?.body ?? null, length: extracted?.length ?? 0,
     origin, cross, credentials: s.withCredentials, unsafe, userAgent, data: url.protocol === 'data:',
     preflight: cross && (!['GET', 'HEAD', 'POST'].includes(method) || unsafe.length > 0 || s.uploadListener),
-    controller: typeof AbortController === 'function' ? new AbortController() : null, timer: null, start: Date.now(),
+    controller: typeof AbortController === 'function' ? new AbortController() : null, timer: null, start: hostNow(),
   };
   s.req = req;
   const pending = window[S].pendingRequests ?? (window[S].pendingRequests = new Set());
@@ -631,10 +722,10 @@ function setRequestHeader(s, name, value) {
   else s.headers.push([n, v]);
 }
 
-function byteString(value, index) {
+function byteString(value, index, method = 'setRequestHeader') {
   const s = String(value);
   // eslint-disable-next-line no-control-regex
-  if (/[^\u0000-\u00ff]/.test(s)) throw new TypeError(`Failed to execute 'setRequestHeader' on 'XMLHttpRequest': parameter ${index} is not a valid ByteString.`);
+  if (/[^\u0000-\u00ff]/.test(s)) throw new TypeError(`Failed to execute '${method}' on 'XMLHttpRequest': parameter ${index} is not a valid ByteString.`);
   return s;
 }
 
@@ -650,6 +741,9 @@ function response(s) {
     if ((type === 'arraybuffer' || type === 'blob') && (s.state === HEADERS_RECEIVED || s.state === LOADING)) return binaryResponse(s, type, responseBytes(r).slice());
     return null;
   }
+  // A network error (fetch failed, CORS): null, as in jsdom, not an empty
+  // buffer or blob.
+  if (r.headers === null) return null;
   if (s.responseObject !== undefined) return s.responseObject;
   let value;
   if (type === 'arraybuffer' || type === 'blob') {
@@ -764,9 +858,12 @@ export const XHR_INTERFACES = [
       getResponseHeader(name) {
         const s = xhrState(this);
         if (name === undefined && arguments.length < 1) tooFewArguments('XMLHttpRequest', 'getResponseHeader', 1, 0);
+        const n = byteString(name, 1, 'getResponseHeader');
         const r = s.response;
-        if (r.headers === null) return null;
-        const lower = String(name).toLowerCase();
+        // A name that is not a header name matches no header (fetch's
+        // Headers.get() would throw).
+        if (r.headers === null || !TOKEN.test(n)) return null;
+        const lower = n.toLowerCase();
         return visible(r, lower) ? r.headers.get(lower) : null;
       },
       getAllResponseHeaders() {
@@ -810,9 +907,11 @@ export const XHR_INTERFACES = [
 ];
 
 // Stops a window's requests without events (a test environment's
-// teardown and per-file reset, a discarded frame), as closing jsdom's
-// window does.
+// teardown and per-file reset, a discarded frame), and those of its
+// frames, nested ones included, as closing jsdom's window does.
 export function abortWindowRequests(window) {
+  const frames = window[S].childFrames;
+  if (frames) for (const child of frames) abortWindowRequests(child);
   const pending = window[S].pendingRequests;
   if (!pending) return;
   for (const req of [...pending]) req.abort();

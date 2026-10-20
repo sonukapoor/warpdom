@@ -502,9 +502,10 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   jsdom's do); synchronous requests throw a NotSupportedError at send()
   (jsdom: a child process); cookies are not sent or stored (jsdom shares
   its jar with document.cookie both ways); file: URLs fail (jsdom 28+ reads
-  the file); requests carry fetch's Sec-Fetch-Mode, and a redirected
-  request fetch's Origin and Referer; responseURL drops a redirect's
-  fragment; a DataView body is sent (jsdom 28+ sends none); jsdom before
+  the file); requests carry fetch's Sec-Fetch-Mode, and an about:blank
+  iframe's no Referer (jsdom: about:blank); a redirect that fails its CORS
+  check is a network error (jsdom before 28 fires error, then follows the
+  redirect to load); a DataView body is sent (jsdom 28+ sends none); jsdom before
   28 never completes a POST redirected by 301, 302 or 303 (warpdom follows
   it as GET), goes on with a request aborted in loadstart and throws
   Node's error from send() for ftp: and about: URLs (warpdom: a network
@@ -3489,4 +3490,57 @@ alone; minifying it does not help), first window 2.52 -> 1.93 ms, next
 windows 0.203 -> 0.200 ms. bench:hot (warpdom only) every case within
 -3% to +4%, none of the hot paths touched. `npm test` on Node 22.23.3 and
 22.12.0 and `npm run test:types` pass.
+
+### Copilot review on #89 (2026-10-20)
+
+Eight comments on src/xhr.js, each checked black box on jsdom 20.0.3,
+27.4.0, 28.1.0 and 30.1.3 (local server; 21 to 26 where the answer moved)
+and against the XHR and Fetch standards. Seven held; fixed with parity
+scenarios or tests (test/xhr.test.js):
+- overrideMimeType() without a charset kept no charset: the response's
+  charset now stays (XHR "get a final encoding"; every jsdom), for text and
+  for documents' characterSet.
+- Timeouts measured elapsed time with the global Date.now(), so a faked or
+  frozen Date (fake timers) moved them; now the host's Date.now taken at
+  load, as the timers are.
+- Redirects: fetch's own following checks no CORS on the way and sends its
+  own Origin and Referer. warpdom now follows redirects itself (redirect:
+  'manual', at most 20, 301/302 POST and 303 to GET without the body
+  headers, Authorization dropped across origins as fetch does) with
+  jsdom's checks per hop, which differ by generation (black box, three
+  origins): jsdom 28+ checks a redirect from another origin when the
+  request started cross-origin or goes on to another origin, taints the
+  origin (Origin: null, final check against null) when such a redirect
+  goes to yet another origin, sends Origin once a hop was cross-origin, and
+  keeps the request's fragment when the Location has none; jsdom before 28
+  checks every response once a hop was cross-origin, taints as the
+  standard, sends Origin on every redirected hop and the previous URL as
+  Referer, and keeps no fragment. Decided: a failed redirect check is a
+  network error in every profile (jsdom before 28 fires error and then
+  follows the redirect to load: a bug not worth copying; README). Not
+  done: a preflight for a redirected request that needs one (the
+  standard's, Copilot's suggestion): no jsdom sends it (a PUT redirected by
+  307 to another origin goes without preflight), and preflighting would
+  fail requests to servers and mocks that pass on jsdom.
+- An about:blank iframe had the origin "null": it now has its creator's
+  (window.origin, XHR's origin checks and Origin header; location.origin
+  stays "null", as jsdom), and its creator's base URL as fallback base URL
+  (relative URLs, baseURI, a.href), followed live before jsdom 26 and kept
+  from the first use from 26. A frame reports "Not implemented" and jsdom
+  20-26's XHR errors where its parent does (jsdom: one virtual console).
+- After a network error or a CORS failure the arraybuffer and blob
+  responses were an empty buffer or blob: now null, as jsdom.
+- getResponseHeader() with a name that is not a header name ('' or
+  'bad name') threw fetch's TypeError: now null; a name that is not a
+  ByteString throws jsdom's TypeError.
+- Requests of iframes (nested ones too) survived the parent's reset,
+  teardown and the removal of an outer frame: abortWindowRequests() now
+  goes through the frames.
+Did not hold for parity: an XML response's XML declaration encoding (and
+an HTML document's meta charset) is not used by any jsdom (UTF-8, U+FFFD
+for other bytes); the standard uses them. warpdom stays with jsdom; the
+responseTypes scenario now covers both, so a jsdom change shows.
+Also: the timeouts scenario's body-timeout cases got a wider margin
+(jsdom took more than 150 ms to the headers on CI), and the Vitest output
+in test/xhr-mocks.test.js is matched without ANSI colors (CI colors it).
 

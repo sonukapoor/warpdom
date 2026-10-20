@@ -220,12 +220,16 @@ const barMembers = Object.fromEntries(BARS.map((bar) => [bar, {
 // [Replaceable] attributes: assigning one replaces it with an own property.
 const replace = (target, name, value) => Object.defineProperty(target, name, { value, writable: true, enumerable: true, configurable: true });
 
+// A window's origin: an iframe's about:blank document has its creator's
+// (frames.js), as in jsdom (its location.origin stays "null").
+export const windowOrigin = (window) => { const ws = state(window); return ws.aboutOrigin ?? ws.url.origin; };
+
 export const WINDOW_MEMBERS = {
   ...animationFrames,
   ...timerMembers,
   ...noOps,
   ...barMembers,
-  get origin() { const url = state(this).url; return url.origin; },
+  get origin() { return windowOrigin(this); },
   set origin(value) { replace(this, 'origin', value); },
   get external() { const ws = state(this); return ws.external ?? (ws.external = make(this, 'External', {})); },
   set external(value) { replace(this, 'external', value); },
