@@ -7,6 +7,7 @@ import { S, HTML_NS, SVG_NS, ELEMENT_NODE } from './internal.js';
 import { attributeSteps } from './attributes.js';
 import { addListener, removeListener, cancel, reportError, exposed, eventState } from './events.js';
 import { formOwner } from './forms.js';
+import { namedScope } from './named-access.js';
 import { GLOBAL_EVENT_HANDLERS, WINDOW_EVENT_HANDLERS } from './event-handler-names.js';
 
 // The event handler event type: the name without "on", except four
@@ -158,21 +159,26 @@ function compile(target, name, body) {
   // global scope is that global, which holds what tests assign
   // (window.innerWidth = 640, window.name, Object.defineProperty(window,
   // ...)), as with jsdom (black box: Vitest vmThreads and
-  // jest-environment-jsdom on jsdom 20.0.3, 26.1.0 and 30.1.3). Elsewhere
-  // the window comes first, standing in for the global scope.
+  // jest-environment-jsdom on jsdom 20.0.3, 26.1.0 and 30.1.3). That
+  // global does no named access, so the window's named objects (<div
+  // id="result">) come from a scope of their own just before it, for the
+  // names the global does not have (namedScope). Elsewhere the window comes
+  // first, standing in for the global scope.
   const window = doc[S].window;
   const ws = window[S];
   const inContext = ws.globalProxy !== undefined && ws.runScript !== undefined;
   try {
-    if (!element) return inContext ? ws.runScript(`(function () { ${source} })`)() : new Function('__window', `with (__window) { ${source} }`)(window);
+    const outer = inContext ? namedScope(window, ws.globalProxy) : window;
+    const compileIn = inContext
+      ? (params, code) => ws.runScript(`(function (${params}) { ${code} })`)
+      : (params, code) => new Function(...params.split(', '), code);
+    if (!element) return compileIn('__window', `with (__window) { ${source} }`)(outer);
     const s = element[S];
     const form = s.ns === HTML_NS && FORM_ASSOCIATED.has(s.tag) ? formOwner(element) : null;
-    const scopes = 'with (__document) with (__form) with (__element)';
-    return inContext
-      ? ws.runScript(`(function (__document, __form, __element) { ${scopes} { ${source} } })`)(doc, form ?? Object.create(null), element)
-      : new Function('__window', '__document', '__form', '__element', `with (__window) ${scopes} { ${source} }`)(
-        window, doc, form ?? Object.create(null), element,
-      );
+    return compileIn('__window, __document, __form, __element',
+      `with (__window) with (__document) with (__form) with (__element) { ${source} }`)(
+      outer, doc, form ?? Object.create(null), element,
+    );
   } catch (error) {
     handlerEntry(target, name).value = null;
     reportError(element ?? target, error);

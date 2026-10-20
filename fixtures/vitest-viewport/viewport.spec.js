@@ -70,3 +70,41 @@ test.skipIf(process.env.VIEWPORT_EXPECT === 'forks')('inline event handlers read
   expect(document.body.dataset.r).toBe(`800,800,n2,1000,5,${h},st`);
   div.remove();
 });
+
+// An inline event handler finds the window's named objects (a sibling's
+// id, live, a form's name) in every pool, also where the global does no
+// named access (VM pools), as with jsdom (black box: jsdom 20.0.3, 26.1.0,
+// 30.1.3).
+test('inline event handlers find named elements', () => {
+  document.body.innerHTML = '<div id="result"></div><form name="fname"></form><div id="dup"></div><span id="dup"></span><div id="gone"></div>'
+    + '<button id="t" onclick="result.textContent = \'ok\'; document.body.dataset.r = [fname.tagName, dup.length, typeof late, typeof gone, typeof nosuch].join()"></button>';
+  const button = document.getElementById('t');
+  button.click();
+  expect(document.getElementById('result').textContent).toBe('ok');
+  expect(document.body.dataset.r).toBe('FORM,2,undefined,object,undefined');
+  document.body.insertAdjacentHTML('beforeend', '<span id="late"></span>');
+  document.getElementById('gone').remove();
+  button.click();
+  expect(document.body.dataset.r).toBe('FORM,2,object,undefined,undefined');
+  document.body.innerHTML = '';
+});
+
+// Where the global is the window (VM pools): the global's own and inherited
+// members come before named objects, and an assignment to a named object's
+// name goes to the global, which then hides it (black box: jsdom 20.0.3,
+// 26.1.0, 30.1.3).
+test.skipIf(process.env.VIEWPORT_EXPECT === 'forks')('inline event handlers: the global before named elements', () => {
+  window.shadowed = 'g';
+  document.body.innerHTML = '<div id="shadowed"></div><div id="setTimeout"></div><div id="an"></div>'
+    + '<button id="t" onclick="document.body.dataset.r = [shadowed, typeof setTimeout, typeof an].join(); an = 5; fresh = 6"></button>';
+  const button = document.getElementById('t');
+  button.click();
+  expect(document.body.dataset.r).toBe('g,function,object');
+  expect([window.an, window.fresh]).toEqual([5, 6]);
+  button.click();
+  expect(document.body.dataset.r).toBe('g,function,number');
+  delete window.shadowed;
+  delete window.an;
+  delete window.fresh;
+  document.body.innerHTML = '';
+});

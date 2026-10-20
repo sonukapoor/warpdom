@@ -3202,6 +3202,23 @@ own copy of vitest, so that it loads the chosen jsdom).
   20.0.3; flags on 26.1.0 and 30.1.3), fixtures/vitest-viewport (inline
   handler test in the VM pools, warpdom profiles and real jsdom), a Jest
   environment test on 20.0.3, 26.1.0, 30.1.3.
+- **Copilot re-review on #87: named elements in VM-pool handlers.**
+  Compiling in the VM context dropped the named-element lookup that
+  `with (window)` gave: `onclick="result.textContent = 'ok'"` with a
+  sibling `<div id="result">` threw ReferenceError (the VM global does no
+  named access). jsdom there (black box, same setups) resolves named
+  objects live (a later id resolves, a removed one is gone, two of one id
+  give an HTMLCollection, a form's name), after the global's own and
+  inherited members (`window.x = 'g'` beats `<div id="x">`, `setTimeout`
+  stays the function), and an assignment to such a name goes to the global.
+  warpdom now puts a named scope (namedScope in named-access.js) between the
+  document and the global: it answers only names the global lacks, and
+  forwards writes to the global. Tests: fixtures/vitest-viewport (every
+  pool; the global-first cases in the VM pools), a Jest environment test
+  and plain-window parity tests on 20.0.3, 26.1.0, 30.1.3. Still open, not
+  handler-specific: `window.<named>` on the VM global (decision 2026-10-11)
+  and window named access for `<a name>`/`<area name>` (jsdom 20.0.3 and
+  26.1.0 have it, 30.1.3 does not; warpdom never).
 
 Left as they are (measured, not in these issues):
 - ShadowRoot.prototype.onslotchange: warpdom has it, no jsdom does.

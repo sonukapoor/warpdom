@@ -49,6 +49,25 @@ parity('content attributes compile with element, form and document scope', (w) =
   return out;
 });
 
+// Named objects (a sibling's id, live; a form's name; several of one id)
+// are in a handler's scope through the window, after the window's own
+// members; an assignment to such a name goes to the window.
+const namedScenario = (w) => {
+  const d = html(w, '<div id="result"></div><form name="fname"></form><div id="dup"></div><span id="dup"></span><div id="gone"></div>'
+    + '<div id="shadowed"></div><div id="setTimeout"></div><div id="an"></div>'
+    + '<button id="t" onclick="result.textContent = \'ok\'; window.__r = [fname.tagName, dup.length, typeof late, typeof gone, typeof nosuch, shadowed, typeof setTimeout, typeof an].join(); an = 5"></button>');
+  w.shadowed = 'g';
+  const button = d.getElementById('t');
+  button.click();
+  const out = [d.getElementById('result').textContent, w.__r];
+  d.body.insertAdjacentHTML('beforeend', '<span id="late"></span>');
+  d.getElementById('gone').remove();
+  button.click();
+  out.push(w.__r, w.an);
+  return out;
+};
+for (const jsdom of [20, 26, 30]) parity(`content attributes find named elements (jsdom ${jsdom})`, namedScenario, { jsdom });
+
 parity('body forwards window handlers; window onerror', (w) => {
   const d = w.document;
   const log = [];

@@ -381,3 +381,38 @@ test('Jest environment: inline event handlers read the global\'s members', async
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+// The global does no named access, but an inline event handler finds the
+// window's named objects (a sibling's id, live; a form's name) after the
+// global's own and inherited members, and its assignment to such a name
+// goes to the global, as in jest-environment-jsdom (black box, jsdom
+// 20.0.3, 26.1.0 and 30.1.3).
+test('Jest environment: inline event handlers find named elements', async () => {
+  const rootDir = fakeJestProject();
+  try {
+    const results = {};
+    for (const jsdom of ['20.0.3', '26.1.0', '30.1.3']) {
+      const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      await env.setup();
+      results[jsdom] = vm.runInContext(`(() => {
+        window.shadowed = 'g';
+        document.body.innerHTML = '<div id="result"></div><form name="fname"></form><div id="dup"></div><span id="dup"></span><div id="gone"></div>'
+          + '<div id="shadowed"></div><div id="setTimeout"></div><div id="an"></div>'
+          + '<button id="t" onclick="result.textContent = \\'ok\\'; document.body.dataset.r = [fname.tagName, dup.length, typeof late, typeof gone, typeof nosuch, shadowed, typeof setTimeout, typeof an].join(); an = 5; fresh = 6"></button>';
+        const button = document.getElementById('t');
+        button.click();
+        const out = [document.getElementById('result').textContent, document.body.dataset.r];
+        document.body.insertAdjacentHTML('beforeend', '<span id="late"></span>');
+        document.getElementById('gone').remove();
+        button.click();
+        out.push(document.body.dataset.r, window.an, globalThis.fresh);
+        return out.join(' | ');
+      })()`, env.getVmContext());
+      await env.teardown();
+    }
+    const expected = 'ok | FORM,2,undefined,object,undefined,g,function,object | FORM,2,object,undefined,undefined,g,function,number | 5 | 6';
+    assert.deepEqual(results, { '20.0.3': expected, '26.1.0': expected, '30.1.3': expected });
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
