@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createWindow } from '../src/index.js';
 import { parity } from './parity.js';
+import { S } from '../src/internal.js';
 
 test('getComputedStyle returns a read-only declaration with inline values', () => {
   const w = createWindow();
@@ -226,16 +227,18 @@ parity('getComputedStyle: jsdom 26 profile', legacyScenario, { jsdom: 26 });
 const uaScenario = (w, skip = []) => {
   const d = w.document;
   d.head.innerHTML = '<style>.z{margin:0}.o{overflow:visible}.b{display:block}.m{margin-left:3px}</style>';
-  d.body.innerHTML = '<h1 id=h1>a</h1><section><h1 id=sh1>b</h1></section><hr id=hr><pre id=pre></pre><p id=p class=m></p><b id=b></b><th id=th></th>'
+  d.body.innerHTML = '<h1 id=h1>a</h1><section><h1 id=sh1>b</h1></section><hr id=hr><pre id=pre></pre><p id=p class=m></p><b id=b></b>'
     + '<ul id=ul><li id=li><ul id=ul2><li><ul id=ul3></ul></li></ul></li></ul><ol id=ol><li><ul id=ol2></ul></li></ol>'
     + '<input id=text><input id=cb type=checkbox><input id=hid type=hidden><input id=hid2 type=hidden class=b><input id=over class=o><input id=sub type=submit>'
     + '<button id=btn></button><select id=sel></select><textarea id=ta></textarea><progress id=prog></progress>'
-    + '<dialog id=dlg></dialog><dialog id=dlg2 open></dialog><table><tr id=tr><td id=td>x</td></tr></table>'
+    + '<dialog id=dlg></dialog><dialog id=dlg2 open></dialog><table><tr id=tr><th id=th>h</th><td id=td>x</td></tr></table>'
     + '<a id=a href=x></a><a id=a2></a><abbr id=abbr title=t></abbr><details><summary id=sum>s</summary></details><embed id=emb hidden><img id=img><span id=span></span>'
-    + '<div id=dir dir=rtl></div><bdi id=bdi></bdi><mark id=mark></mark><video id=vid></video><iframe id=ifr></iframe><fieldset id=fs></fieldset><nobr id=nobr></nobr>';
+    + '<div id=dir dir=rtl></div><bdi id=bdi></bdi><mark id=mark></mark><video id=vid></video><iframe id=ifr></iframe><fieldset id=fs></fieldset><nobr id=nobr></nobr>'
+    + '<ruby id=ruby>a<rp id=rp>(</rp><rt id=rt>b</rt><rp>)</rp></ruby><rp id=rp2></rp>';
   const props = ['display', 'margin-top', 'margin-left', 'margin-right', 'padding-top', 'padding-left', 'padding-inline-start', 'border-top-style', 'border-top-width',
     'box-sizing', 'font-weight', 'font-style', 'font-family', 'list-style-type', 'white-space', 'text-align', 'vertical-align', 'text-decoration', 'cursor',
-    'position', 'overflow', 'unicode-bidi', 'direction', 'object-fit', 'min-height', 'width', 'height', 'appearance', 'counter-reset', 'line-height', 'letter-spacing']
+    'position', 'overflow', 'unicode-bidi', 'direction', 'object-fit', 'min-height', 'width', 'height', 'appearance', 'counter-reset', 'line-height', 'letter-spacing',
+    'border-radius', 'border-top-left-radius']
     .filter((p) => !skip.includes(p));
   const out = {};
   for (const e of d.querySelectorAll('[id]')) { const cs = w.getComputedStyle(e); out[e.id] = props.map((p) => cs.getPropertyValue(p)); }
@@ -257,6 +260,33 @@ parity('getComputedStyle: the user agent style sheet (jsdom 28)', uaScenario, { 
 const LATER = ['font-family', 'vertical-align'];
 parity('getComputedStyle: the user agent style sheet (jsdom 29)', (w) => uaScenario(w, LATER), { jsdom: 29 });
 parity('getComputedStyle: the user agent style sheet', (w) => uaScenario(w, [...LATER, 'font-weight', 'padding-top', 'padding-left']));
+
+// Heading sizes, sectioned h1 included (before 27: 1.5em in one section,
+// 1.17em from two). Not jsdom 30, which resolves em to px (#84).
+const headingSizes = (w) => {
+  const d = w.document;
+  d.body.innerHTML = '<h1 id=h1></h1><h2 id=h2></h2><h3 id=h3></h3><h4 id=h4></h4><h5 id=h5></h5><h6 id=h6></h6><hgroup><h1 id=hg></h1></hgroup>'
+    + '<section><h1 id=s1></h1><h2 id=s2></h2><article><h1 id=s11></h1><nav><h1 id=s111></h1></nav></article></section><aside><div><h1 id=a1></h1></div></aside>'
+    + '<small id=sm></small><big id=big></big><sub id=sub></sub>';
+  return [...d.querySelectorAll('[id]')].map((e) => [e.id, w.getComputedStyle(e).fontSize, w.getComputedStyle(e).fontWeight]);
+};
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29]) parity(`getComputedStyle: heading sizes (jsdom ${jsdom})`, headingSizes, { jsdom });
+
+test('getComputedStyle: custom properties do not grow the user agent sheet\'s index', () => {
+  const w = createWindow({ jsdom: '26.1.0' });
+  const d = w.document;
+  const e = d.body.appendChild(d.createElement('div'));
+  const cs = w.getComputedStyle(e);
+  assert.equal(cs.display, 'block');
+  const names = w[S].uaIndex.names;
+  const size = names.size;
+  for (let i = 0; i < 200; i++) {
+    e.style.setProperty(`--gen-${i}`, `${i}px`);
+    assert.equal(cs.getPropertyValue(`--gen-${i}`), `${i}px`);
+    assert.equal(cs.getPropertyValue(`--unset-${i}`), '');
+  }
+  assert.equal(names.size, size);
+});
 
 test('getComputedStyle: body margins per jsdom generation (#80)', () => {
   const margins = (options) => {

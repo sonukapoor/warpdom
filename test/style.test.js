@@ -486,3 +486,14 @@ parity('style: whitespace in background values (jsdom 26)', (w) => {
   }
   return out;
 }, { jsdom: 26 });
+
+// cssstyle before 4.3.1 (jsdom 20 to 25) keeps lengths, percentages and
+// line-height as written; opacity, flex-grow and flex-shrink it writes
+// canonically. From jsdom 26 all of them are canonical.
+const numbersAsWritten = (w) => {
+  const values = [['font-size', '.83em'], ['width', '10.0px'], ['width', '+10px'], ['width', '10.50%'], ['margin-left', '-.5em'], ['margin', '.5em 1.50em'],
+    ['padding', '.5em 0 1.0em'], ['line-height', '1.50'], ['line-height', '.5em'], ['top', '0.0px'], ['opacity', '.50'], ['flex-grow', '.50'], ['flex-shrink', '1.0'],
+    ['border-top-width', '.5em'], ['flex-basis', '.5em'], ['font-weight', '400.0']];
+  return values.map(([p, v]) => { const e = w.document.createElement('div'); e.style.setProperty(p, v); return e.style.getPropertyValue(p); });
+};
+for (const jsdom of [20, 22, 25, 26]) parity(`style: numbers as written before cssstyle 4.3.1 (jsdom ${jsdom})`, numbersAsWritten, { jsdom });

@@ -10,7 +10,8 @@
 //   margin, headings and form controls their classic look (button: 2px
 //   outset border, padding 2px 6px 3px), sectioned h1 a smaller size, the
 //   html element no display. Values go through the profile's CSS parser,
-//   so its quirks apply (cssstyle 2 and 3 keep named colors and .83em).
+//   so its quirks apply (cssstyle 2 and 3 keep named colors, cssstyle before
+//   4.3.1 .83em as written).
 // - html, jsdom 27 and later: the rendering section's rules as jsdom
 //   applies them: no body margin (margin-block and margin-inline are not
 //   applied), unicode-bidi: isolate on block elements, padding-inline-start
@@ -92,6 +93,7 @@ label { cursor: default }
 ruby { text-indent: 0 }
 rt { line-height: normal; text-indent: 0 }
 ruby > rt { display: block; font-size: 50%; text-align: start }
+ruby > rp { display: none }
 dialog:not([open]) { display: none }
 dialog { position: absolute; left: 0; right: 0; margin: auto; border-style: solid; padding: 1em; background-color: white; color: black }
 input, textarea, select, button { font: -webkit-small-control; color: initial; letter-spacing: normal; word-spacing: normal; line-height: normal;
@@ -110,7 +112,8 @@ button { align-items: flex-start; text-align: center; cursor: default; color: Bu
   background-color: ButtonFace; box-sizing: border-box }
 input[type="button" i]:disabled, input[type="submit" i]:disabled, input[type="reset" i]:disabled, button:disabled { color: GrayText }
 textarea { background-color: white; border: 1px solid; flex-direction: column; resize: auto; cursor: auto; padding: 2px; white-space: pre-wrap }
-select { align-items: center; border: 1px solid; white-space: pre; background-color: white; color: black; cursor: default; box-sizing: border-box }
+select { align-items: center; border: 1px solid; white-space: pre; background-color: white; color: black; cursor: default; box-sizing: border-box;
+  border-radius: 5px }
 optgroup { font-weight: bolder }
 option { font-weight: normal; white-space: pre; padding: 0 2px 1px 2px; min-height: 1.2em }
 progress { box-sizing: border-box; height: 1em; width: 10em; vertical-align: -0.2em }
@@ -370,8 +373,12 @@ function indexFor(window, expand) {
 
 // The user agent sheet's declarations of a longhand (or of a shorthand
 // jsdom does not expand): { normal, important }, each null when it
-// declares none. expand: the cascade's shorthand expansion.
+// declares none. expand: the cascade's shorthand expansion. Neither sheet
+// declares a custom property, so --* names skip the index: the process-wide
+// index keeps every name it has seen, and generated custom property names
+// would accumulate there over a long test process.
 export function uaDeclarations(window, name, expand) {
+  if (name.startsWith('--')) return NONE;
   return declarationsOf(window[S].uaIndex ?? indexFor(window, expand), name);
 }
 
