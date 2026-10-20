@@ -15,7 +15,7 @@ on:
     inputs:
       areas:
         description: 'WPT directories, one job each (space separated); dir~sub1~sub2 runs dir without its subdirectories sub1, sub2'
-        default: dom domparsing html/dom css/cssom css/cssom-view html/semantics/forms html/semantics/interactive-elements url FileAPI encoding~legacy-mb-japanese~legacy-mb-korean~legacy-mb-schinese~legacy-mb-tchinese~streams encoding/legacy-mb-japanese encoding/legacy-mb-korean encoding/legacy-mb-schinese encoding/legacy-mb-tchinese encoding/streams WebCryptoAPI hr-time user-timing resize-observer intersection-observer web-animations/interfaces
+        default: dom domparsing html/dom css/cssom css/cssom-view html/semantics/forms html/semantics/interactive-elements url FileAPI encoding~legacy-mb-japanese~legacy-mb-korean~legacy-mb-schinese~legacy-mb-tchinese~streams encoding/legacy-mb-japanese encoding/legacy-mb-korean encoding/legacy-mb-schinese encoding/legacy-mb-tchinese encoding/streams WebCryptoAPI hr-time user-timing resize-observer intersection-observer web-animations/interfaces xhr
       wpt_ref:
         description: 'WPT commit or ref (HEAD = newest; the 2026-10-11 paper run used 87b5d13099c8bc2f9047ce1d29c963a3e0a246f6)'
         default: HEAD
@@ -35,7 +35,7 @@ jobs:
       areas: ${{ steps.list.outputs.areas }}
     steps:
       - id: list
-        run: echo "areas=$(echo '${{ inputs.areas || 'dom domparsing html/dom css/cssom css/cssom-view html/semantics/forms html/semantics/interactive-elements url FileAPI encoding~legacy-mb-japanese~legacy-mb-korean~legacy-mb-schinese~legacy-mb-tchinese~streams encoding/legacy-mb-japanese encoding/legacy-mb-korean encoding/legacy-mb-schinese encoding/legacy-mb-tchinese encoding/streams WebCryptoAPI hr-time user-timing resize-observer intersection-observer web-animations/interfaces' }}' | jq -cR 'split(" ") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
+        run: echo "areas=$(echo '${{ inputs.areas || 'dom domparsing html/dom css/cssom css/cssom-view html/semantics/forms html/semantics/interactive-elements url FileAPI encoding~legacy-mb-japanese~legacy-mb-korean~legacy-mb-schinese~legacy-mb-tchinese~streams encoding/legacy-mb-japanese encoding/legacy-mb-korean encoding/legacy-mb-schinese encoding/legacy-mb-tchinese encoding/streams WebCryptoAPI hr-time user-timing resize-observer intersection-observer web-animations/interfaces xhr' }}' | jq -cR 'split(" ") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
 
   run:
     needs: plan

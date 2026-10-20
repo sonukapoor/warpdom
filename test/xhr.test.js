@@ -429,6 +429,8 @@ const SCENARIOS = {
     out.utf8BOM = await get('', 'ct=text/plain&body=efbbbf6869&enc=hex');
     out.utf16BOM = await get('', 'ct=text/plain&body=fffe6800&enc=hex');
     out.noContentType = await get('', 'body=h%C3%A9');
+    out.replacementEncoding = await get('', `ct=${encodeURIComponent('text/plain;charset=iso-2022-kr')}&body=abc`);
+    out.replacementEncodingEmpty = await get('', `ct=${encodeURIComponent('text/plain;charset=iso-2022-kr')}&body=`);
     out.json = await get('json', `ct=application/json&body=${encodeURIComponent('{"a":[1,2]}')}`);
     out.jsonArray = await get('json', `ct=application/json&body=${encodeURIComponent('[1]')}`);
     out.badJson = await get('json', `ct=application/json&body=${encodeURIComponent('{bad')}`);
@@ -830,4 +832,10 @@ test('XMLHttpRequest: profile boundaries (jsdom 28.0.0 undici; network errors re
     return attempt(() => x.send(new Uint8Array(new SharedArrayBuffer(4))));
   };
   assert.deepEqual(['27.0.0', '27.0.1'].map(shared), ['undefined', "TypeError/TypeError: Failed to execute 'send' on 'XMLHttpRequest': parameter 1 is a view on a SharedArrayBuffer, which is not allowed."]);
+  // A charset naming the replacement encoding decodes to U+FFFD from 27.4.0 (27.3.0: as UTF-8).
+  const replacement = async (jsdom) => {
+    const { x } = await request(createWindow({ url: PAGE, jsdom }), 'GET', `${BASE}/type?ct=${encodeURIComponent('text/plain;charset=iso-2022-kr')}&body=abc`);
+    return x.responseText;
+  };
+  assert.deepEqual(await Promise.all(['27.3.0', '27.4.0'].map(replacement)), ['abc', '\ufffd']);
 });

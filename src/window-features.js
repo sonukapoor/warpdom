@@ -1210,8 +1210,10 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // module to undici (event order, headers, bodies; black box 27.4.0 and
     // 28.0.0), and from 27.0.0 network errors are no longer reported on the
     // virtual console.
-    // send() rejects views on a SharedArrayBuffer from 27.0.1.
-    xhrUndici: !before(version, [28, 0, 0]), xhrRejectsShared: !before(version, [27, 0, 1]),
+    // send() rejects views on a SharedArrayBuffer from 27.0.1; a response
+    // charset naming the replacement encoding (iso-2022-kr) decodes to
+    // U+FFFD from 27.4.0 (before: as UTF-8).
+    xhrUndici: !before(version, [28, 0, 0]), xhrRejectsShared: !before(version, [27, 0, 1]), xhrReplacement: !before(version, [27, 4, 0]),
     urlParse: !before(version, [23, 0, 0]), paramValues: !before(version, [23, 0, 0]), setCookieList: !before(version, [24, 1, 0]),
     // BlobEvent's timecode without one in the init: 0 before 30.1.0, NaN from it.
     blobEventNaNTimecode: !before(version, [30, 1, 0]),

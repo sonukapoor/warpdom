@@ -165,7 +165,12 @@ function finalMime(s) {
 // Decodes the response body as text: a byte order mark, else the final
 // MIME type's charset, else UTF-8.
 function decodeBody(s, bytes) {
-  return decodeText(bytes, finalMime(s)?.params.get('charset'));
+  const label = finalMime(s)?.params.get('charset');
+  // The replacement encoding (iso-2022-kr and the like): one U+FFFD for
+  // any input, unless a byte order mark decides (jsdom before 27.4: UTF-8).
+  if (label !== undefined && bytes.length !== 0 && s.window[S].compat.xhrReplacement && encodingOf(label) === 'replacement'
+    && !(bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) && !(bytes[0] === 0xfe && bytes[1] === 0xff) && !(bytes[0] === 0xff && bytes[1] === 0xfe)) return '\ufffd';
+  return decodeText(bytes, label);
 }
 
 function encodingName(s, bytes) {
