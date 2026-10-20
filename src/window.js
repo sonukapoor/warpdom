@@ -99,7 +99,8 @@ function addDescriptors(descriptors, members) {
 // target and hide the key; a private field is not reachable through a proxy).
 // An interface may bring its own slot (Event, DOMRectReadOnly).
 const STATE_ON_OBJECT = new Set(['EventTarget', 'Node', 'Window', 'Storage', 'DOMStringMap', 'NodeList', 'HTMLCollection',
-  'NamedNodeMap', 'DOMTokenList', 'CSSRuleList', 'MediaList', 'StyleSheetList', 'TouchList', 'FileList', 'SVGStringList']);
+  'NamedNodeMap', 'DOMTokenList', 'CSSRuleList', 'MediaList', 'StyleSheetList', 'TouchList', 'FileList', 'SVGStringList',
+  'Plugin', 'MimeType', 'PluginArray', 'MimeTypeArray']);
 const hidesState = (iface) => (!iface.parent || iface.parent === 'EventTarget') && !STATE_ON_OBJECT.has(iface.name);
 
 // Interfaces with the HTML element constructor: HTMLElement and its element interfaces.
@@ -141,11 +142,16 @@ function installGlobalOperations(window, proto) {
   }
 }
 
+const DEVICE_AND_MEDIA_EVENTS = ['PromiseRejectionEvent', 'BlobEvent', 'DeviceMotionEvent', 'DeviceOrientationEvent',
+  'DeviceMotionEventAcceleration', 'DeviceMotionEventRotationRate'];
+
 function applyCompat(window, protos) {
   const { jsdom } = window[S].compat;
   // The CSS namespace (CSS.supports, CSS.escape) arrived in jsdom 30;
   // libraries feature-detect it (handsontable validates sizes with it).
   if (jsdom < 30) delete window.CSS;
+  if (!window[S].compat.nestedDeclarations) delete window.CSSNestedDeclarations;
+  if (!window[S].compat.elementInternals) delete window.ElementInternals;
   if (!window[S].compat.textCodec) {
     delete window.TextEncoder;
     delete window.TextDecoder;
@@ -161,6 +167,9 @@ function applyCompat(window, protos) {
   if (jsdom < 27) {
     delete window.PointerEvent;
     delete window.TransitionEvent;
+    // Also from jsdom 27: PromiseRejectionEvent, BlobEvent and the device
+    // events (createEvent makes no device events before, events.js).
+    for (const name of DEVICE_AND_MEDIA_EVENTS) delete window[name];
     for (const proto of [protos.HTMLElement, protos.SVGElement, protos.Document, protos.Window, protos.ShadowRoot]) {
       if (!proto) continue;
       for (const name of POINTER_HANDLERS) delete proto[name];

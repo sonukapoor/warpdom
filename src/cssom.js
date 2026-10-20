@@ -750,7 +750,20 @@ export const CSSOM_INTERFACES = [
   },
   { name: 'CSSGroupingRule', parent: 'CSSRule', members: groupingMembers },
   { name: 'CSSConditionRule', parent: 'CSSGroupingRule', members: { get conditionText() { const s = state(this); return s.media ? s.media[S].list.join(', ') : s.conditionText; } } },
-  { name: 'CSSMediaRule', parent: 'CSSConditionRule', members: mediaMember },
+  // matches from jsdom 29 (compat.mediaRuleMatches): jsdom evaluates no
+  // media features, so a list matches when it is empty or has an "all" or
+  // "screen" query, as the cascade applies @media rules (cascade.js).
+  {
+    name: 'CSSMediaRule',
+    parent: 'CSSConditionRule',
+    members: [mediaMember, {
+      get matches() {
+        const list = state(this).media[S].list;
+        return list.length === 0 || list.includes('all') || list.includes('screen');
+      },
+    }],
+    compat(proto, compat) { if (!compat.mediaRuleMatches) delete proto.matches; },
+  },
   { name: 'CSSSupportsRule', parent: 'CSSConditionRule', members: {} },
   {
     name: 'CSSContainerRule',
@@ -779,6 +792,17 @@ export const CSSOM_INTERFACES = [
   },
   { name: 'CSSLayerBlockRule', parent: 'CSSGroupingRule', members: { get name() { return state(this).name; } } },
   { name: 'CSSLayerStatementRule', parent: 'CSSRule', members: { get nameList() { return Object.freeze(state(this).nameList.slice()); } } },
+  // CSS Nesting's declarations after a nested rule, from jsdom 27.2
+  // (applyCompat in window.js). warpdom's style sheets have no nested rules
+  // yet, so none is ever made: only the interface (style [PutForwards=cssText]).
+  {
+    name: 'CSSNestedDeclarations',
+    parent: 'CSSRule',
+    members: {
+      get style() { return state(this).style; },
+      set style(v) { state(this).style.cssText = v; },
+    },
+  },
   {
     name: 'CSSStyleRule',
     parent: 'CSSGroupingRule',

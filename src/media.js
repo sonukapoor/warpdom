@@ -11,7 +11,7 @@ const report = (el, method) => windowOf(el)[S].notImplemented(`HTMLMediaElement'
 
 function media(el) {
   const s = state(el);
-  return s.media ?? (s.media = { currentTime: 0, volume: 1, muted: false, playbackRate: 1, defaultPlaybackRate: 1, textTracks: null });
+  return s.media ?? (s.media = { currentTime: 0, volume: 1, muted: false, playbackRate: 1, defaultPlaybackRate: 1, audioTracks: null, videoTracks: null, textTracks: null });
 }
 
 // A change of volume or muted fires volumechange at the element: in a
@@ -54,6 +54,10 @@ export const MEDIA_MEMBERS = {
   get buffered() { return emptyRanges(this); },
   get played() { return emptyRanges(this); },
   get seekable() { return emptyRanges(this); },
+  // The track lists are empty arrays, the same one on every read, as in
+  // jsdom 20 to 30 (no AudioTrackList, VideoTrackList or TextTrackList).
+  get audioTracks() { const m = media(this); return m.audioTracks ?? (m.audioTracks = []); },
+  get videoTracks() { const m = media(this); return m.videoTracks ?? (m.videoTracks = []); },
   get textTracks() { const m = media(this); return m.textTracks ?? (m.textTracks = []); },
   get currentTime() { return media(this).currentTime; },
   set currentTime(v) { media(this).currentTime = finite('currentTime', v); },

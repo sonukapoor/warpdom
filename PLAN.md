@@ -43,6 +43,11 @@ every modeled jsdom version, and every measured suite gives jsdom's results.
   0.1.5).
 - #23, #25, #27, #28, #32: console, URL, URLSearchParams, Headers,
   WebAssembly (branch feat/parity-group1, 2026-10-18 below).
+- #20, #31, #33, #34, #52-#54, #56-#59, #65, #66: ElementInternals,
+  PromiseRejectionEvent, BlobEvent, PageTransitionEvent, the device
+  motion member interfaces, the plugin API, media track lists,
+  CSSMediaRule.matches, CSSNestedDeclarations (branch fix/misc-parity,
+  2026-10-19 below).
 - #18: a CI test that warpdom's window has every interface and member jsdom's
   has, per version, so a gap cannot reappear unnoticed.
 - #19: WPT on all test-DOM-relevant areas by default, results published.
@@ -457,6 +462,20 @@ warpdom follows the standard. Each has a test. To publish in the docs.
 - An iframe's `WebAssembly` (and console) is made in warpdom's one realm:
   its `WebAssembly` is the top-level window's realm's, where jsdom gives
   each frame its own realm.
+- warpdom's style sheets do not nest rules (CSS Nesting): `.a { color: red;
+  & .b {} margin: 0 }` keeps only the declarations before the nested rule
+  and drops the rule, so no `CSSNestedDeclarations` object is ever made
+  (the interface exists from jsdom 27.2). jsdom 27.2 and 28 keep the nested
+  rule (and drop the later declarations), 29 and later also make a
+  `CSSNestedDeclarations` of them. Not done: it needs nesting in the CSSOM
+  parser, serializer and cascade.
+- `CSSNestedDeclarations` (like the other CSS rule interfaces) is an
+  illegal constructor in every profile; jsdom 27.2 and 28's (rrweb-cssom)
+  can be constructed and has `[object Object]` as its class string.
+- Accessors and methods called on the wrong object throw warpdom's
+  "Illegal invocation" TypeError (jsdom: "'get x' called on an object that
+  is not a valid instance of DeviceMotionEventAcceleration."), as
+  everywhere in warpdom.
 
 ## Decisions
 
@@ -2597,3 +2616,66 @@ Tests: test/svg.test.js (parity on jsdom 20, 22, 25, 26, 30; version
 boundaries 26.0.0/26.1.0, 28.0.0/28.1.0, 30.0.1/30.1.0 on the profiles).
 Bench: cold load, first and next windows and bench:hot within noise
 (25 alternating fresh processes: next window 0.191 vs 0.193 ms).
+
+## 2026-10-19: ElementInternals, events, the plugin API, media tracks, CSSOM members (branch fix/misc-parity)
+
+GitHub issues #20, #59, #65, #66, #56, #57, #58, #31, #33, #34, #54, #52,
+#53, and PageTransitionEvent (in every jsdom, missing in warpdom).
+Measured black box on jsdom 20.0.0, 20.0.3, 21.0.0, 21.1.2, 22.0.0,
+22.1.0, 23.0.0, 23.0.1, 23.1.0, 23.2.0, 24.0.0, 24.1.0, 24.1.3, 25.0.0,
+25.0.1, 26.0.0, 26.1.0, 27.0.0 to 27.4.0, 28.0.0, 28.1.0, 29.0.0, 29.0.2,
+29.1.0, 29.1.1, 30.0.0, 30.0.1 and 30.1.0 to 30.1.3 (a window with
+runScripts; a script compared each probe on jsdom and on warpdom with that
+jsdom's profile):
+
+| API | jsdom | Version boundary | warpdom |
+|---|---|---|---|
+| `ElementInternals`, `HTMLElement.attachInternals()` | shadowRoot, role, 41 ARIA attributes (not reflected to the element); no setFormValue, form, validity, states or CustomStateSet in any version | from 23.1.0; `labels` from 26.0.0; role/ARIA accessors throw "Cannot read properties of undefined (reading 'get'/'set'/'delete')" until 27.0.0 | same |
+| attachInternals() errors | NotSupportedError: customized built-in (is value, also `createElement('x-a', { is })`), non-custom (no definition, also template contents and viewless documents), disabled by disabledFeatures, already attached, before the constructor ran; a failed upgrade's element can attach | 23.1.0 | same, in that order |
+| form-associated custom elements | `formAssociated` read at define() from 26.0.0; labelable (label.control, internals.labels a live NodeList) from 26.0.0; `:disabled`/`:enabled` from 27.0.0; form callbacks never read or called; not in form.elements or FormData | 26.0.0, 27.0.0 | same |
+| `disabledFeatures` | read at define() in every version ("Invalid Sequence" when not iterable); 'shadow' makes attachShadow() throw "Shadow root cannot be create on a custom element with disabled shadow" (looked up, so also before an upgrade) | every version | same (warpdom did not read it) |
+| `PromiseRejectionEvent` | length 2, promise required (any object), reason any; never fired (no unhandledrejection/rejectionhandled) | 27.0.0 | same |
+| `BlobEvent` | length 2, data a required Blob (of any window), timecode finite double | 27.0.0; timecode without one 0 before 30.1.0, NaN from it | same |
+| `PageTransitionEvent` | persisted; not made by createEvent | every version | same |
+| `DeviceMotionEvent`, `DeviceOrientationEvent` | exist (and createEvent makes them) only from 27.0.0; members converted (finite doubles, objects) with jsdom's errors; acceleration/rotationRate are objects of a class "DeviceMotionEventAccelerationImpl"/"...RotationRateImpl" with own data properties, not instances of the interfaces | 27.0.0 | same (before: in every profile, values unconverted) |
+| `DeviceMotionEventAcceleration`, `...RotationRate` | illegal constructors, never instantiated | 27.0.0 | same |
+| `navigator.plugins`, `mimeTypes`; `Plugin`, `MimeType`, `PluginArray`, `MimeTypeArray` | empty legacy platform objects, same object each read, item()/namedItem() null, iterator Array.prototype.values; no pdfViewerEnabled | every version | same (staticList) |
+| `audioTracks`, `videoTracks` | an empty array per element (like textTracks); no AudioTrackList/VideoTrackList | every version | same |
+| `CSSMediaRule.matches` | true when the media list is empty or has "all" or "screen" (no feature evaluated; "only screen", "not print" false) | 29.0.0 | same (the cascade's test) |
+| `CSSNestedDeclarations` | interface; made for declarations after nested rules from 29.0.0 | 27.2.0 | interface only (deviations above) |
+
+Also fixed: documents without a browsing context (DOMParser's,
+DOMImplementation's) used the window's custom element registry, so
+`createElement('x-z')` there ran the constructor (which failed and
+reported an error) and parsed elements were upgraded; now none is
+created there, as in jsdom.
+
+Seen, left: `CSSSupportsRule.matches` (jsdom 29 and later evaluate the
+condition; `selector()` is false) is not in the DOMParity issues and not
+done. jsdom 23.2.0's `:disabled` and `:enabled` both match custom
+elements (any, inside a disabled fieldset) and inputs: not modeled.
+jsdom's Navigator has no `maxTouchPoints` or `webdriver`, warpdom's has.
+
+Decisions:
+- DeviceMotionEvent's member objects copy jsdom's (own properties, a
+  class of warpdom's realm named as jsdom's): `toEqual({ x: 1, y: null,
+  z: null })` passes on jsdom; the standard's objects have no own
+  properties.
+- jsdom 23.1 to 26's throwing role and ARIA accessors are reproduced: a
+  test written for those versions sees the same TypeError.
+- No unhandledrejection: jsdom leaves unhandled rejections to Node.
+
+Measured (Node 22.17.1, interleaved with main): cold load 21.6 -> 21.9 ms
+(medians of 4 x 7 processes; 40 processes each: 23.0 -> 23.4 ms), first
+window 2.21 -> 2.36 ms (40 processes: 2.25 -> 2.34 ms; after `gc()` 1.81 ->
+1.87 ms: 11 more lazy interface accessors), next windows 0.201 -> 0.203
+ms. bench:hot within noise (3 interleaved runs each, medians within +-5%,
+mixed signs).
+
+Tests: test/events.test.js (parity on jsdom 20, 26, 30; 27.0.0 and
+30.1.0 literals), test/window-features.test.js (plugins, jsdom 20, 26,
+30), test/html.test.js (media tracks, 20 and 30), test/cssom.test.js
+(matches on 26 and 30; 27.1/27.2/29.0 literals),
+test/custom-elements.test.js (ElementInternals on 20, 22, 25, 26, 30;
+23.0.1/23.1.0/26.0.0/27.0.0 literals; disabledFeatures; viewless
+documents), test/hidden-state.test.js.

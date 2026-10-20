@@ -12,6 +12,7 @@ import { QuotaExceededError } from './storage.js';
 import { navigate, traverse, hostTimeout } from './navigation.js';
 import { VERSION } from './version.js';
 import { typedArrayName, realmOf, webidlString } from './encoding.js';
+import { staticList } from './collections.js';
 
 // The jsdom version warpdom behaves like by default.
 export const LATEST_JSDOM = 30;
@@ -903,7 +904,69 @@ function setupConsole(window) {
   if (WebAssembly !== undefined) Object.defineProperty(window, 'WebAssembly', { value: WebAssembly, writable: true, enumerable: false, configurable: true });
 }
 
+// Plugin, MimeType, PluginArray and MimeTypeArray (HTML 8.9.1.6, the
+// obsolete plugin API), as in jsdom 20 to 30: navigator.plugins and
+// navigator.mimeTypes are empty legacy platform objects (staticList), so no
+// Plugin or MimeType object is ever made. Their iterator is
+// Array.prototype.values (WebIDL), as jsdom's is.
+const listOf = (self) => {
+  const s = self != null ? self[S] : undefined;
+  if (!s || !s.items) throw new TypeError('Illegal invocation');
+  return s.items();
+};
+const collectionLookups = (name) => ({
+  item(index) {
+    if (index === undefined && arguments.length < 1) tooFewArguments(name, 'item', 1, 0);
+    return listOf(this)[index >>> 0] ?? null;
+  },
+  namedItem(key) {
+    if (key === undefined && arguments.length < 1) tooFewArguments(name, 'namedItem', 1, 0);
+    listOf(this);
+    return null;
+  },
+});
+const PLUGIN_INTERFACES = [
+  {
+    name: 'Plugin',
+    members: {
+      ...collectionLookups('Plugin'),
+      get name() { return state(this).name; },
+      get description() { return state(this).description; },
+      get filename() { return state(this).filename; },
+      get length() { return listOf(this).length; },
+      [Symbol.iterator]: Array.prototype.values,
+    },
+  },
+  {
+    name: 'MimeType',
+    members: {
+      get type() { return state(this).type; },
+      get description() { return state(this).description; },
+      get suffixes() { return state(this).suffixes; },
+      get enabledPlugin() { return state(this).enabledPlugin; },
+    },
+  },
+  {
+    name: 'PluginArray',
+    members: {
+      refresh() { listOf(this); },
+      ...collectionLookups('PluginArray'),
+      get length() { return listOf(this).length; },
+      [Symbol.iterator]: Array.prototype.values,
+    },
+  },
+  {
+    name: 'MimeTypeArray',
+    members: {
+      ...collectionLookups('MimeTypeArray'),
+      get length() { return listOf(this).length; },
+      [Symbol.iterator]: Array.prototype.values,
+    },
+  },
+];
+
 export const FEATURE_INTERFACES = [
+  ...PLUGIN_INTERFACES,
   CRYPTO_INTERFACE,
   PERFORMANCE_INTERFACE,
   { name: 'BarProp', members: { get visible() { state(this); return true; } } },
@@ -931,6 +994,10 @@ export const FEATURE_INTERFACES = [
       get languages() { state(this); return Object.freeze(['en-US', 'en']); },
       get onLine() { state(this); return true; },
       get cookieEnabled() { state(this); return true; },
+      // Legacy plugin collections, empty as in jsdom (and browsers today);
+      // the same object on every read. No pdfViewerEnabled (jsdom neither).
+      get plugins() { const s = state(this); return s.plugins ?? (s.plugins = staticList(s.window[S].protos.PluginArray, [])); },
+      get mimeTypes() { const s = state(this); return s.mimeTypes ?? (s.mimeTypes = staticList(s.window[S].protos.MimeTypeArray, [])); },
       get hardwareConcurrency() { state(this); return 4; },
       get maxTouchPoints() { state(this); return 0; },
       get webdriver() { state(this); return false; },
@@ -1075,6 +1142,14 @@ export function setupWindow(window, { url: initial = 'about:blank', jsdom = LATE
     svgTypes: !before(version, [26, 1, 0]), svgSymbolViewport: !before(version, [26, 1, 0]) && before(version, [30, 1, 0]),
     svgWindowHandlers: before(version, [28, 1, 0]),
     urlParse: !before(version, [23, 0, 0]), paramValues: !before(version, [23, 0, 0]), setCookieList: !before(version, [24, 1, 0]),
+    // BlobEvent's timecode without one in the init: 0 before 30.1.0, NaN from it.
+    blobEventNaNTimecode: !before(version, [30, 1, 0]),
+    // CSSMediaRule's matches from 29.0.0, CSSNestedDeclarations from 27.2.0.
+    mediaRuleMatches: version[0] >= 29, nestedDeclarations: !before(version, [27, 2, 0]),
+    // ElementInternals and attachInternals() from 23.1.0, its labels and
+    // form-associated custom elements from 26.0.0; its role and ARIA
+    // accessors throw before 27.0.0.
+    elementInternals: !before(version, [23, 1, 0]), internalsLabels: !before(version, [26, 0, 0]), internalsAria: !before(version, [27, 0, 0]),
     rootColor: version[0] >= 27 ? 'rgb(0, 0, 0)' : css !== null && before(css, [4, 4, 0]) ? '' : css !== null && before(css, [4, 6, 0]) ? 'CanvasText' : 'canvastext',
   };
   // DOMException is the platform's (shared by all windows); its subclass too.

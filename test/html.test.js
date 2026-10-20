@@ -283,6 +283,18 @@ htmlParity('media elements without media', (w) => {
   return out;
 });
 
+// audioTracks, videoTracks and textTracks (#57): an empty array per
+// element, as in jsdom 20 to 30.
+for (const jsdom of [20, 30]) {
+  parity(`media elements: audioTracks, videoTracks and textTracks (jsdom ${jsdom})`, (w) => {
+    const v = w.document.createElement('video');
+    const a = w.document.createElement('audio');
+    v.audioTracks.push('x');
+    return [['audioTracks', 'videoTracks', 'textTracks'].map((k) => [Array.isArray(v[k]), v[k].length, v[k] === v[k], v[k] !== a[k], a[k].length]),
+      v.cloneNode().audioTracks.length, 'AudioTrackList' in w, 'VideoTrackList' in w];
+  }, { jsdom });
+}
+
 // Deliberate deviations: buffered, played and seekable are TimeRanges whose
 // start()/end() throw for an index out of range, and error is null (jsdom
 // gives plain objects that return 0, and undefined).

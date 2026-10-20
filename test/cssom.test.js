@@ -346,3 +346,44 @@ test('style sheets: ownerNode is the element in the jsdom 27 profile (jsdom 27 g
   w.document.head.innerHTML = '<style id=s>a { color: red }</style>';
   assert.equal(w.document.styleSheets[0].ownerNode, w.document.getElementById('s'));
 });
+
+// CSSMediaRule.matches (#65): from jsdom 29.0.0, true for a media list that
+// is empty or has an "all" or "screen" query (jsdom evaluates no features).
+for (const jsdom of [26, 30]) {
+  parity(`CSSMediaRule.matches (jsdom ${jsdom})`, (w) => {
+    const style = w.document.head.appendChild(w.document.createElement('style'));
+    const sheet = style.sheet;
+    const out = ['matches' in w.CSSMediaRule.prototype];
+    if (!out[0]) return out;
+    const d = Object.getOwnPropertyDescriptor(w.CSSMediaRule.prototype, 'matches');
+    out.push([typeof d.get, d.set, d.enumerable, d.configurable]);
+    for (const query of ['screen', 'print', 'all', '', '(min-width: 100px)', 'not print', 'screen and (min-width: 500px)', 'only screen', 'screen, print', 'print, all', 'SCREEN', 'not all', 'foo']) {
+      sheet.insertRule(`@media ${query} { a { color: red } }`, 0);
+      const rule = sheet.cssRules[0];
+      out.push(`${rule.media.mediaText}: ${rule.matches}`);
+      rule.media.mediaText = 'print';
+      out.push(rule.matches);
+      rule.media.appendMedium('screen');
+      out.push(rule.matches);
+    }
+    return out;
+  }, { jsdom });
+}
+
+// CSSNestedDeclarations (#66): the interface, from jsdom 27.2.0. warpdom's
+// style sheets do not nest rules yet, so none is made.
+parity('CSSNestedDeclarations: the interface (jsdom 30)', (w) => {
+  const C = w.CSSNestedDeclarations;
+  const d = Object.getOwnPropertyDescriptor(C.prototype, 'style');
+  let constructed;
+  try { constructed = new C(); } catch (err) { constructed = err.constructor.name; }
+  return [C.length, Object.getPrototypeOf(C).name, typeof d.get, typeof d.set, d.enumerable, Object.prototype.toString.call(C.prototype), constructed];
+});
+
+test('CSSNestedDeclarations from jsdom 27.2.0, CSSMediaRule.matches from 29.0.0', () => {
+  for (const [jsdom, nested, matches] of [['26.1.0', false, false], ['27.1.0', false, false], ['27.2.0', true, false], ['28.1.0', true, false], ['29.0.0', true, true], ['30.1.3', true, true]]) {
+    const w = createWindow({ jsdom });
+    assert.equal('CSSNestedDeclarations' in w, nested, `CSSNestedDeclarations in jsdom ${jsdom}`);
+    assert.equal('matches' in w.CSSMediaRule.prototype, matches, `CSSMediaRule.matches in jsdom ${jsdom}`);
+  }
+});

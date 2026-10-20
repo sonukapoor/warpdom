@@ -15,6 +15,7 @@ import {
   S, state, domError, hooks, ELEMENT_NODE, HTML_NS, nextInTree, connected,
 } from './internal.js';
 import { reportError } from './events.js';
+import { labelsList } from './forms.js';
 
 // --- valid custom element names ---------------------------------------------------
 
@@ -89,8 +90,10 @@ function enqueueUpgrade(element, definition) {
 
 // --- definitions -------------------------------------------------------------------
 
-// Inert template documents have no browsing context: no definitions apply.
-const registryOf = (doc) => (doc[S].inertTemplate === true ? null : doc[S].window?.[S].customElements?.[S] ?? null);
+// Documents without a browsing context (template contents, DOMParser's and
+// DOMImplementation's documents) look up no definitions: their elements
+// stay HTMLElement until a document with one adopts them.
+const registryOf = (doc) => (doc[S].inertTemplate === true || doc[S].noView === true ? null : doc[S].window?.[S].customElements?.[S] ?? null);
 
 // Look up a custom element definition (HTML namespace only).
 export function lookUp(doc, ns, localName, is) {
@@ -131,6 +134,9 @@ function upgrade(element, definition) {
     definition.constructionStack.pop();
   }
   es.ceState = 'custom';
+  // A form-associated element becomes labelable (forms.js): label caches
+  // keyed on the tree revision recompute.
+  if (definition.formAssociated) es.doc[S].treeRev = (es.doc[S].treeRev ?? 0) + 1;
 }
 
 function tryUpgrade(element) {
@@ -208,11 +214,15 @@ export function createCustomElement(doc, localName, is, sync) {
     if (rs.attrs.size > 0 || rs.first || rs.parent || rs.doc !== doc || rs.tag !== localName) {
       throw domError('The custom element constructor returned an element that cannot be used.', 'NotSupportedError');
     }
+    // createElement's is option: the element keeps it (serialized as an is
+    // attribute; attachInternals() refuses it), as in jsdom.
+    if (is !== null && is !== undefined) rs.ceIs = is;
     return result;
   } catch (error) {
     reportError(doc, error);
     const element = internals.createElementNS(HTML_NS, localName, doc, true, internals.protos.HTMLUnknownElement);
     element[S].ceState = 'failed';
+    if (is !== null && is !== undefined) element[S].ceIs = is;
     return element;
   }
 }
@@ -269,7 +279,6 @@ const ceHooks = {
 // --- CustomElementRegistry ---------------------------------------------------------------
 
 const CALLBACKS = ['connectedCallback', 'disconnectedCallback', 'adoptedCallback', 'attributeChangedCallback'];
-const FORM_CALLBACKS = ['formAssociatedCallback', 'formResetCallback', 'formDisabledCallback', 'formStateRestoreCallback'];
 
 const isConstructor = (f) => {
   if (typeof f !== 'function') return false;
@@ -288,7 +297,84 @@ const registryState = (self) => {
   return s;
 };
 
+// --- ElementInternals ------------------------------------------------------------------------
+
+// attachInternals() (HTML 4.13.7.1), from jsdom 23.1.0 (HTMLElement's
+// compat in interfaces.js), with jsdom's messages.
+function attachInternals(element) {
+  const es = state(element);
+  const fail = (message) => domError(message, 'NotSupportedError');
+  if (es.ceIs !== undefined && es.ceIs !== null) throw fail('Unable to attach ElementInternals to a customized built-in element.');
+  const definition = lookUp(es.doc, es.ns, es.tag, null);
+  if (definition === null) throw fail('Unable to attach ElementInternals to non-custom elements.');
+  if (definition.disableInternals) throw fail('ElementInternals is disabled by disabledFeature static field.');
+  if (es.ceInternals) throw fail('ElementInternals for the specified element was already attached.');
+  if (es.ceState !== 'precustomized' && es.ceState !== 'custom') {
+    throw fail('The attachInternals() function cannot be called prior to the execution of the custom element constructor.');
+  }
+  const window = es.doc[S].window;
+  const internals = Object.create(window[S].protos.ElementInternals);
+  // aria: the role and ARIA values set through it (not the element's
+  // attributes). legacyAria: jsdom 23.1 to 26 throw from those accessors.
+  internals[S] = { target: element, aria: null, legacyAria: !window[S].compat.internalsAria };
+  es.ceInternals = internals;
+  return internals;
+}
+
+export const ATTACH_INTERNALS_MEMBERS = {
+  attachInternals() { return attachInternals(this); },
+};
+
+// The role and ARIA attributes of ElementInternals (ARIA 1.3's
+// ARIAMixin), in jsdom's order.
+const INTERNALS_ARIA = ['role', 'ariaAtomic', 'ariaAutoComplete', 'ariaBusy', 'ariaChecked', 'ariaColCount', 'ariaColIndex', 'ariaColIndexText',
+  'ariaColSpan', 'ariaCurrent', 'ariaDescription', 'ariaDisabled', 'ariaExpanded', 'ariaHasPopup', 'ariaHidden', 'ariaInvalid',
+  'ariaKeyShortcuts', 'ariaLabel', 'ariaLevel', 'ariaLive', 'ariaModal', 'ariaMultiLine', 'ariaMultiSelectable', 'ariaOrientation',
+  'ariaPlaceholder', 'ariaPosInSet', 'ariaPressed', 'ariaReadOnly', 'ariaRequired', 'ariaRoleDescription', 'ariaRowCount',
+  'ariaRowIndex', 'ariaRowIndexText', 'ariaRowSpan', 'ariaSelected', 'ariaSetSize', 'ariaSort', 'ariaValueMax', 'ariaValueMin',
+  'ariaValueNow', 'ariaValueText', 'ariaRelevant'];
+
+// jsdom 23.1 to 26 throw this TypeError from every role and ARIA accessor
+// of ElementInternals (black box; fixed in 27.0.0).
+const legacyAriaError = (step) => new TypeError(`Cannot read properties of undefined (reading '${step}')`);
+
+// Nullable DOMString attributes kept on the ElementInternals object.
+const internalsAria = Object.fromEntries(INTERNALS_ARIA.map((name) => [name, {
+  get() {
+    const s = state(this);
+    if (s.legacyAria) throw legacyAriaError('get');
+    return s.aria?.get(name) ?? null;
+  },
+  set(value) {
+    const s = state(this);
+    if (value === null || value === undefined) {
+      if (s.legacyAria) throw legacyAriaError('delete');
+      s.aria?.delete(name);
+      return;
+    }
+    if (s.legacyAria) throw legacyAriaError('set');
+    (s.aria ?? (s.aria = new Map())).set(name, String(value));
+  },
+}]));
+
 export const CUSTOM_ELEMENT_INTERFACES = [
+  // From jsdom 23.1.0 (applyCompat in window.js); labels from 26.0.0. No
+  // form-associated members (setFormValue, validity, states): jsdom 23.1 to
+  // 30 has none.
+  {
+    name: 'ElementInternals',
+    members: [{
+      get shadowRoot() { return state(this).target[S].shadowRoot ?? null; },
+      get labels() {
+        const { target } = state(this);
+        if (target[S].ceDefinition?.formAssociated !== true) {
+          throw domError("Accesing an ElementInternal's labels property is only supported for form-associated custom elements", 'NotSupportedError');
+        }
+        return labelsList(target);
+      },
+    }, internalsAria],
+    compat(proto, compat) { if (!compat.internalsLabels) delete proto.labels; },
+  },
   {
     name: 'CustomElementRegistry',
     members: {
@@ -313,6 +399,7 @@ export const CUSTOM_ELEMENT_INTERFACES = [
         const callbacks = {};
         let observed = new Set();
         let formAssociated = false;
+        let disabledFeatures = [];
         try {
           const prototype = constructor.prototype;
           if (typeof prototype !== 'object' || prototype === null) throw new TypeError("Failed to execute 'define' on 'CustomElementRegistry': The prototype is not an object.");
@@ -327,14 +414,25 @@ export const CUSTOM_ELEMENT_INTERFACES = [
             const list = constructor.observedAttributes;
             if (list !== undefined) observed = new Set(Array.from(list, String));
           }
-          formAssociated = !!constructor.formAssociated;
-          if (formAssociated) {
-            for (const cb of FORM_CALLBACKS) if (typeof prototype[cb] === 'function') callbacks[cb] = prototype[cb];
+          // disabledFeatures in every jsdom version (20 to 30): null is
+          // none, a value that is not iterable throws jsdom's error.
+          const disabled = constructor.disabledFeatures;
+          if (disabled !== undefined && disabled !== null) {
+            if (typeof Object(disabled)[Symbol.iterator] !== 'function') throw new TypeError('Invalid Sequence');
+            disabledFeatures = Array.from(disabled, String);
           }
+          // formAssociated from jsdom 26.0.0, which never reads the form
+          // callbacks (formAssociatedCallback and the others never run).
+          if (rs.window[S].compat.internalsLabels) formAssociated = !!constructor.formAssociated;
         } finally {
           rs.running = false;
         }
-        const definition = { name: n, localName, constructor, observed, callbacks, formAssociated, constructionStack: [] };
+        const definition = {
+          name: n, localName, constructor, observed, callbacks, formAssociated, constructionStack: [],
+          // :disabled and :enabled apply to form-associated elements from jsdom 27.0.0 (selectors.js).
+          disableable: formAssociated && rs.window[S].compat.jsdom >= 27,
+          disableInternals: disabledFeatures.includes('internals'), disableShadow: disabledFeatures.includes('shadow'),
+        };
         rs.byName.set(n, definition);
         rs.byConstructor.set(constructor, definition);
         hooks.ce = ceHooks;
