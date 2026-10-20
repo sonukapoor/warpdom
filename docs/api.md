@@ -46,7 +46,7 @@ another.
 | `jsdom` | the newest jsdom warpdom models | The jsdom version to behave like (`'26.1.0'`, or a major version, `26`): see README, "Which jsdom warpdom behaves like" |
 | `cssstyle` | the one that jsdom brings | For jsdom 26 and earlier, the cssstyle version it loads |
 | `fastFrames` | `false` | Animation frames without the real-time wait ([fast-frames.md](fast-frames.md)) |
-| `xhr` | `true` | `false` leaves out `XMLHttpRequest`, `XMLHttpRequestEventTarget` and `XMLHttpRequestUpload` (see README, "XMLHttpRequest and request mocking"); frames inherit it |
+| `xhr` | `true` | `false` leaves out `XMLHttpRequest`, `XMLHttpRequestEventTarget` and `XMLHttpRequestUpload` (see README, "XMLHttpRequest and request mocking"); frames inherit it. Where the host's `fetch` hides redirects (browsers), the host follows them with its own checks, and the request that finds this out is sent twice |
 
 Scripts in parsed HTML do not run, as with jsdom's default (`runScripts`
 not set). The test environments set `url` (`http://localhost/` for Jest,

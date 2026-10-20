@@ -27,7 +27,7 @@ import { handlerMembers } from './event-handlers.js';
 import { decodeText, encodingOf, bufferBytes, isSharedArrayBuffer, realmOf, utf8Encode, PlatformTextDecoder } from './encoding.js';
 import { blobData, makeBlob } from './file-reader.js';
 import { documentBaseURL } from './base-url.js';
-import { innerMarkup } from './dom-parsing.js';
+import { innerMarkup, serializeXML } from './dom-parsing.js';
 import { parseDocument } from './html.js';
 import { parseXMLInto } from './xml.js';
 import { formDataEntries } from './forms.js';
@@ -296,7 +296,8 @@ const bodyOf = (bytes) => (typeof PlatformBlob === 'function' ? new PlatformBlob
 function extractBody(body, legacy, legacyMultipart, rejectsShared) {
   const fallback = legacy ? 'text/plain;charset=UTF-8' : null;
   if (body?.[S]?.type === DOCUMENT_NODE) {
-    const bytes = utf8Encode(innerMarkup(body));
+    // XHR serializes without the well-formed flag (as jsdom).
+    const bytes = utf8Encode(body[S].xml ? serializeXML(body) : innerMarkup(body));
     return { body: bodyOf(bytes), length: bytes.length, type: body[S].xml ? 'application/xml;charset=UTF-8' : 'text/html;charset=UTF-8', text: true };
   }
   const blob = blobData(body);
@@ -369,6 +370,13 @@ function deleteHeader(headers, lower) {
 //   No hop is preflighted, as in jsdom (the standard preflights a redirected
 //   request that needs it). Returns { response, finalURL, checked, tainted },
 //   a network error's message, or null when the request was stopped.
+// A host whose fetch hides redirects (browsers: an 'opaqueredirect'
+// response, status 0, no Location) follows them itself from then on
+// (redirect: 'follow'): the hops are the host's, with its own checks, and
+// only the final response is checked here. The request that finds this
+// out is sent again.
+const hostFollows = new WeakSet();
+
 async function fetchFollowing(fetch, s, req) {
   const legacy = !s.window[S].compat.xhrUndici;
   const { origin, cross, credentials } = req;
@@ -382,8 +390,21 @@ async function fetchFollowing(fetch, s, req) {
   for (let redirects = 0; ; redirects++) {
     // The headers as name/value pairs: fetch's conversion of a record loses
     // a header named __proto__.
-    const response = await fetch(fetchURL, { method, headers: Object.entries(headers), body, redirect: 'manual', signal });
+    const init = { method, headers: Object.entries(headers), body, redirect: hostFollows.has(fetch) ? 'follow' : 'manual', signal };
+    let response = await fetch(fetchURL, init);
     if (s.req !== req) { response.body?.cancel().catch(() => {}); return null; }
+    if (response.type === 'opaqueredirect' && init.redirect === 'manual') {
+      hostFollows.add(fetch);
+      init.redirect = 'follow';
+      response = await fetch(fetchURL, init);
+      if (s.req !== req) { response.body?.cancel().catch(() => {}); return null; }
+    }
+    if (init.redirect === 'follow' && response.redirected) {
+      const final = new URL(response.url);
+      if (final.hash === '' && !legacy) final.hash = url.hash;
+      const finalCross = httpURL(final) && final.origin !== origin;
+      return { response, finalURL: final.href, checked: crossed || finalCross, tainted };
+    }
     const location = REDIRECT_STATUSES.has(response.status) ? response.headers.get('location') : null;
     if (location === null) {
       const finalCross = httpURL(url) && url.origin !== origin;

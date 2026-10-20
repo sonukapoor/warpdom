@@ -304,6 +304,8 @@ function cloneNode(node, deep, doc) {
     copy = w.initDocument(Object.create(Object.getPrototypeOf(node)), {
       noView: true, url: node.URL, contentType: s.contentType, xml: !!s.xml, mode: s.mode ?? 'no-quirks',
     });
+    // And the same encoding (an XMLHttpRequest response document's charset).
+    if (s.charset !== undefined) copy[S].charset = s.charset;
     doc = copy;
   } else if (s.type === ATTRIBUTE_NODE) {
     copy = initNode(Object.create(w.protos.Attr), ATTRIBUTE_NODE, doc, { name: s.name, key: s.key, element: null, detachedValue: node.value, info: attrInfo(s) });

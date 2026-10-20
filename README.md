@@ -599,6 +599,10 @@ these differences from jsdom:
 - The `Referer` never carries the page URL's credentials or fragment, as
   Referrer Policy says. jsdom sends the document's URL with both, and
   before 28 sends a redirected request's previous URL as requested.
+- Where the host's `fetch` hides redirects (in a browser, `redirect: 'manual'`
+  gives an opaque redirect), the host follows them with its own checks and
+  only the final response gets jsdom's; the first redirected request is
+  sent a second time to find this out. Node, Deno and Bun expose redirects.
 - A redirect that fails its CORS check is a network error. jsdom before 28
   fires `error` and then goes on to follow the redirect and fire `load`.
 - jsdom 20 to 26 report network errors on the virtual console; warpdom's

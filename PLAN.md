@@ -3582,3 +3582,30 @@ some form; fixed with tests (test/xhr.test.js):
   `__proto__` too). Node's fetch (22 and 24) still leaves it off the
   wire, so on the wire nothing changes; a fetch mock (msw) sees it.
 
+### Copilot's re-review of 338c646 on #89 (2026-10-20)
+
+No open issues; three "previously missed" items in unchanged code, all
+fixed (probe: scratchpad p10.mjs, jsdom 20.0.3, 27.4.0, 28.1.0, 30.1.3
+agree on everything):
+- Document cloneNode() lost the encoding: every jsdom keeps it, shallow and
+  deep (windows-1252 and UTF-16LE XHR documents; other documents UTF-8).
+  cloneNode copies the charset for every document (interfaces.js). Parity
+  cases in responseTypes. Seen on the way, not changed: jsdom's clone of
+  an XML response document and its DOMParser documents are XMLDocument
+  objects (warpdom: Document, as the standard and browsers).
+- send(xmlDocument) threw InvalidStateError for markup that is not
+  well-formed (a comment with "--", PI data with "?>", U+0001 in text or an
+  attribute, a doctype public id with both quotes): every jsdom sends the
+  serialization as is (XHR's "serialize" has no well-formed flag; a
+  document without an element: empty body). XML documents now go through
+  serializeXML(); parity cases in bodies.
+- Browsers' fetch gives an opaqueredirect (status 0, no Location) for
+  redirect: 'manual', so the browser entry reported an empty status-0
+  load. Such a response marks that fetch function (a WeakSet) as one that
+  follows redirects itself: the request is sent again with redirect:
+  'follow', and later ones go straight to it. The hops are then the
+  host's, with its CORS checks; responseURL is the response's URL (the
+  request's fragment kept from 28 on), and the final response is checked
+  when it or the request is cross-origin. Documented (README, docs/api.md);
+  test with a fetch stub.
+

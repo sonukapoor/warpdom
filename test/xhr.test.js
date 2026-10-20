@@ -190,6 +190,16 @@ const SCENARIOS = {
       xml: [new w.DOMParser().parseFromString('<a>té</a>', 'application/xml')], html: [w.document.implementation.createHTMLDocument('t')], document: [w.document],
       documentCharset: [w.document, 'text/html;charset=latin1'], null: [null], undefined: [undefined], number: [42], object: [{ a: 1 }], buffer: [Buffer.from('nb')],
     };
+    // XML documents are sent without the well-formed flag (Copilot review on #89).
+    const xmlDoc = (change) => { const d = w.document.implementation.createDocument(null, 'root'); change(d, d.documentElement); return d; };
+    Object.assign(cases, {
+      xmlComment: [xmlDoc((d, root) => root.append(d.createComment('a--b'), d.createComment('c-')))],
+      xmlPI: [xmlDoc((d, root) => root.append(Object.assign(d.createProcessingInstruction('x', 'a'), { data: 'a?>b' })))],
+      xmlText: [xmlDoc((d, root) => root.append('a\u0001b'))],
+      xmlAttribute: [xmlDoc((d, root) => root.setAttribute('a', 'x\u0001'))],
+      xmlDoctype: [xmlDoc((d, root) => d.insertBefore(d.implementation.createDocumentType('root', 'p"\'', ''), root))],
+      xmlNoRoot: [xmlDoc((d, root) => root.remove())],
+    });
     // jsdom 28 and later send nothing for a DataView (warpdom: its bytes).
     if (c.jsdom < 28) cases.dataView = [new DataView(new Uint8Array([70, 71]).buffer)];
     for (const [name, [body, type]] of Object.entries(cases)) {
@@ -484,6 +494,21 @@ const SCENARIOS = {
     out.parsererrorRoot = await get('document', `ct=text/xml&body=${parsererror}`);
     out.parsererrorRootDefault = await get('', `ct=application/xml&body=${parsererror}`);
     out.noRootXml = await get('document', 'ct=text/xml&body=text');
+    // A clone of a response document keeps its encoding (Copilot review on #89).
+    const encodings = async (type, ct, hex) => {
+      const x = new w.XMLHttpRequest();
+      x.open('GET', `${c.BASE}/type?ct=${encodeURIComponent(ct)}&body=${hex}&enc=hex`);
+      x.responseType = 'document';
+      x.send();
+      await done(x);
+      const d = x.response;
+      return [d, d.cloneNode(false), d.cloneNode(true)].map((doc) => [doc.characterSet, doc.charset, doc.inputEncoding, doc.contentType]);
+    };
+    out.cloneHtml1252 = await encodings('document', 'text/html;charset=windows-1252', '3c703ee9');
+    out.cloneXml1252 = await encodings('document', 'text/xml;charset=windows-1252', '3c613ee93c2f613e');
+    out.cloneUtf16 = await encodings('document', 'text/html;charset=utf-16le', Buffer.from('<p>x', 'utf16le').toString('hex'));
+    out.cloneOthers = [w.document, w.document.implementation.createHTMLDocument('t'), new w.DOMParser().parseFromString('<a/>', 'text/xml')]
+      .map((doc) => doc.cloneNode(true).characterSet);
     return out;
   },
   // After a network error or a CORS failure (Copilot review on #89).
@@ -1093,4 +1118,33 @@ test('XMLHttpRequest: profile boundaries (jsdom 28.0.0 undici; network errors re
     return x.responseText;
   };
   assert.deepEqual(await Promise.all(['27.3.0', '27.4.0'].map(replacement)), ['abc', '\ufffd']);
+});
+
+test('XMLHttpRequest: a host whose fetch hides redirects (opaqueredirect) follows them itself (Copilot review on #89)', async () => {
+  const hostFetch = globalThis.fetch;
+  try {
+    for (const jsdom of ['27.4.0', '30.1.3']) {
+      const calls = [];
+      // A browser's fetch: redirect 'manual' gives an opaque redirect
+      // (status 0, no Location); 'follow' gives the final response.
+      globalThis.fetch = async (url, init) => {
+        calls.push(`${init.method} ${port(url)} ${init.redirect}`);
+        if (init.redirect === 'manual') return { type: 'opaqueredirect', status: 0, statusText: '', headers: new Headers(), body: null, redirected: false, url: '' };
+        const response = new Response(`body of ${init.method}`, { headers: { 'content-type': 'text/plain' } });
+        Object.defineProperties(response, { redirected: { value: true }, url: { value: `${BASE}/final` } });
+        return response;
+      };
+      const w = createWindow({ url: PAGE, jsdom });
+      const first = await request(w, 'POST', `${BASE}/redirect#frag`, { body: 'x' });
+      const second = await request(w, 'GET', `${BASE}/redirect`);
+      assert.deepEqual([first.x.status, first.x.responseText, port(first.x.responseURL), first.log.at(-2).split(' ')[0]],
+        [200, 'body of POST', jsdom === '27.4.0' ? 'http://localhost:PORT/final' : 'http://localhost:PORT/final#frag', 'load']);
+      assert.deepEqual([second.x.status, second.x.responseText, port(second.x.responseURL)], [200, 'body of GET', 'http://localhost:PORT/final']);
+      // The request that finds it out is sent again; later ones go straight to 'follow'.
+      assert.deepEqual(calls, [
+        'POST http://localhost:PORT/redirect#frag manual', 'POST http://localhost:PORT/redirect#frag follow', 'GET http://localhost:PORT/redirect follow']);
+    }
+  } finally {
+    globalThis.fetch = hostFetch;
+  }
 });
