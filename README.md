@@ -423,7 +423,7 @@ dom-testing-library 0 → 1.
 
 On the 17 WPT areas a test DOM is expected to cover (3,447 files; `dom`,
 `domparsing`, `html/dom`, `html/semantics/forms` and `interactive-elements`,
-`css/cssom`, `css/cssom-view`, `url`, `encoding`, `FileAPI`, `WebCryptoAPI`,
+`css/cssom`, `css/cssom-view`, `url`, `encoding`, `encoding/streams`, `FileAPI`, `WebCryptoAPI`,
 `hr-time`, `user-timing`, the resize and intersection observers and
 `web-animations/interfaces`), warpdom passes 75.4% of subtests (jsdom 30.1.2:
 72.2%). It is ahead or level in every area but `html/semantics` (forms:
