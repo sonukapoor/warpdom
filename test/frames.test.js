@@ -122,3 +122,34 @@ test('frame elements get a nested window like iframes', () => {
   assert.equal(frame.contentWindow, null);
   assert.equal(w.length, 0);
 });
+
+// getSVGDocument() (#67): an iframe's content document when it is an SVG
+// document, else null (HTML). jsdom 20 to 30 have the method (iframe only)
+// but every call throws a TypeError from inside jsdom; warpdom follows the
+// standard: its frames never hold SVG documents, so it returns null.
+const svgDocumentShapeScenario = (w) => {
+  const d = w.document;
+  const m = Object.getOwnPropertyDescriptor(w.HTMLIFrameElement.prototype, 'getSVGDocument');
+  return [typeof m.value, m.writable, m.enumerable, m.configurable, m.value.name, m.value.length,
+    ...['HTMLFrameElement', 'HTMLEmbedElement', 'HTMLObjectElement'].map((name) => 'getSVGDocument' in w[name].prototype),
+    'getSVGDocument' in d.createElement('iframe')];
+};
+for (const jsdom of [20, 25, 30]) parity(`iframe getSVGDocument(): the method (jsdom ${jsdom})`, svgDocumentShapeScenario, { jsdom });
+
+test('iframe getSVGDocument(): null unless the content document is an SVG document', async () => {
+  for (const jsdom of ['20.0.0', '30.1.3']) {
+    const w = createWindow({ jsdom });
+    const d = w.document;
+    const connected = d.body.appendChild(d.createElement('iframe'));
+    const srcdoc = d.createElement('iframe');
+    srcdoc.srcdoc = '<svg></svg>';
+    d.body.append(srcdoc);
+    await tick();
+    assert.ok(connected.contentDocument);
+    assert.equal(connected.getSVGDocument(), null);
+    assert.equal(srcdoc.getSVGDocument(), null);
+    assert.equal(d.createElement('iframe').getSVGDocument(), null);
+    assert.throws(() => w.HTMLIFrameElement.prototype.getSVGDocument.call(d.createElement('div')), TypeError);
+    assert.throws(() => w.HTMLIFrameElement.prototype.getSVGDocument.call({}), TypeError);
+  }
+});

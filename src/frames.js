@@ -81,6 +81,20 @@ export const IFRAME_MEMBERS = {
   get contentDocument() { const s = this[S]; return s?.frameWindow?.document ?? null; },
 };
 
+// getSVGDocument() (HTML 4.8.5, iframe only here, as in jsdom): the content
+// document when it is an SVG document, else null. A frame's document is
+// never one in warpdom (frames load about:blank and srcdoc), so it gives
+// null. jsdom (20 to 30, black box) has the method but every call throws a
+// TypeError from inside jsdom ("... .getSVGDocument is not a function").
+export const IFRAME_ONLY_MEMBERS = {
+  getSVGDocument() {
+    const s = this?.[S];
+    if (s?.tag !== 'iframe' || s.ns !== HTML_NS) throw new TypeError('Illegal invocation');
+    const doc = s.frameWindow?.document;
+    return doc && doc[S].contentType === 'image/svg+xml' ? doc : null;
+  },
+};
+
 // Window members for the window tree.
 export const WINDOW_FRAME_MEMBERS = {
   get parent() { return this[S].parentWindow ?? this; },

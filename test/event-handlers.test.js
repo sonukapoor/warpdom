@@ -91,11 +91,13 @@ test('a re-activated event handler runs after later listeners', () => {
   assert.deepEqual(log, ['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE']);
 });
 
-// The event handlers each jsdom version has (#77; black box, every release
-// from 20.0.0 to 30.1.3): before 22.1.0, 19 fewer on HTMLElement,
+// The event handlers each jsdom version has (#77, #67; black box, every
+// release from 20.0.0 to 30.1.3): before 22.1.0, 19 fewer on HTMLElement,
 // SVGElement and Document (oncopy, ontouchstart, ...), and on the window
-// onauxclick too; before 27.0.0 no pointer event handlers. Their content
-// attributes do nothing then either.
+// onauxclick too, while their onauxclick and onloadend are inert; before
+// 27.0.0 no pointer event handlers, and the window's onautocomplete,
+// onautocompleteerror and onsort. Absent handlers' content attributes do
+// nothing either.
 const handlerNames = (o) => {
   const names = new Set();
   for (let p = o; p && p !== Object.prototype; p = Object.getPrototypeOf(p)) {
@@ -103,12 +105,9 @@ const handlerNames = (o) => {
   }
   return [...names].sort();
 };
-// Handlers of #67 (onloadend before 22.1.0; the window's onautocomplete,
-// onautocompleteerror and onsort before 27.0.0) are checked with that issue.
-const LATER = new Set(['onloadend', 'onautocomplete', 'onautocompleteerror', 'onsort']);
 const handlerSetsScenario = (w) => {
   const d = w.document;
-  const names = (o) => handlerNames(o).filter((name) => !LATER.has(name));
+  const names = handlerNames;
   return [names(d.createElement('div')), names(d.body), names(d.createElementNS('http://www.w3.org/2000/svg', 'rect')), names(d), names(w)];
 };
 const handlerAttributesScenario = (w) => {
@@ -139,19 +138,53 @@ for (const jsdom of [20, 22, 26, 30]) {
   parity(`event handlers of jsdom ${jsdom}: content attributes`, handlerAttributesScenario, { jsdom });
 }
 
-test('event handlers per jsdom version: boundaries 22.1.0 and 27.0.0', () => {
+test('event handlers per jsdom version: boundaries 22.1.0 and 27.0.0 (counts as in jsdom)', () => {
   const count = (version) => {
     const w = createWindow({ jsdom: version });
     const d = w.document;
-    const names = (o) => handlerNames(o).filter((name) => !LATER.has(name));
+    const names = handlerNames;
     const div = d.createElement('div');
     return [names(div).length, names(d.createElementNS('http://www.w3.org/2000/svg', 'g')).length, names(d).length, names(w).length,
-      'oncopy' in div, 'onauxclick' in div, 'onauxclick' in w, 'onpointerdown' in div];
+      'oncopy' in div, 'onauxclick' in div, 'onauxclick' in w, 'onpointerdown' in div, 'onloadend' in div, 'onsort' in w];
   };
-  assert.deepEqual(count('20.0.0'), [60, 60, 62, 75, false, true, false, false]);
-  assert.deepEqual(count('22.0.0'), [60, 60, 62, 75, false, true, false, false]);
-  assert.deepEqual(count('22.1.0'), [79, 79, 81, 95, true, true, true, false]);
-  assert.deepEqual(count('26.1.0'), [79, 79, 81, 95, true, true, true, false]);
-  assert.deepEqual(count('27.0.0'), [90, 90, 92, 106, true, true, true, true]);
-  assert.deepEqual(count('30.1.3'), [90, 90, 92, 106, true, true, true, true]);
+  assert.deepEqual(count('20.0.0'), [61, 61, 63, 78, false, true, false, false, true, true]);
+  assert.deepEqual(count('22.0.0'), [61, 61, 63, 78, false, true, false, false, true, true]);
+  assert.deepEqual(count('22.1.0'), [79, 79, 81, 98, true, true, true, false, false, true]);
+  assert.deepEqual(count('26.1.0'), [79, 79, 81, 98, true, true, true, false, false, true]);
+  assert.deepEqual(count('27.0.0'), [90, 90, 92, 106, true, true, true, true, false, false]);
+  assert.deepEqual(count('30.1.3'), [90, 90, 92, 106, true, true, true, true, false, false]);
 });
+
+// onloadend before 22.1.0 (inert, as onauxclick), and the window's
+// onautocomplete, onautocompleteerror and onsort before 27.0.0 (#67).
+const legacyHandlersScenario = (w) => {
+  const d = w.document;
+  const ran = [];
+  w.ran = ran;
+  d.body.innerHTML = '<div id="a" onloadend="ran.push(\'loadend attribute\')"></div>';
+  const a = d.getElementById('a');
+  const svg = d.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  const out = [String(a.onloadend), String(svg.onloadend), String(d.onloadend)];
+  const values = [];
+  for (const value of [() => ran.push('loadend handler'), 'text', { handleEvent() {} }, 0]) {
+    a.onloadend = value;
+    values.push(a.onloadend === value ? 'same' : String(a.onloadend));
+  }
+  a.onloadend = () => ran.push('loadend handler');
+  d.onloadend = () => ran.push('document loadend handler');
+  a.dispatchEvent(new w.Event('loadend', { bubbles: true }));
+  out.push(values, ran.splice(0));
+  for (const type of ['autocomplete', 'autocompleteerror', 'sort']) {
+    const name = `on${type}`;
+    out.push(String(w[name]), name in d.body, name in d);
+    w[name] = (event) => ran.push(`${type} ${event.type}`);
+    w.dispatchEvent(new w.Event(type));
+    w[name] = 'text';
+    out.push(String(w[name]));
+  }
+  d.body.setAttribute('onsort', 'ran.push("sort attribute")');
+  w.dispatchEvent(new w.Event('sort'));
+  out.push(ran);
+  return out;
+};
+for (const jsdom of [20, 22, 26, 30]) parity(`jsdom ${jsdom}: onloadend, onautocomplete, onautocompleteerror, onsort`, legacyHandlersScenario, { jsdom });

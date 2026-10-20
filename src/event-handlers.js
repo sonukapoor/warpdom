@@ -27,13 +27,16 @@ const WINDOW_HANDLERS = new Set(WINDOW_EVENT_HANDLERS);
 // the pointer event handlers. Neither the IDL attribute nor the content
 // attribute exists then (<div oncopy> does nothing). Before 22.1.0
 // HTMLElement's, SVGElement's and Document's onauxclick is inert (see
-// inertHandler).
+// inertHandler), and they have an inert onloadend (#67). Before 27.0.0 the
+// window has onautocomplete, onautocompleteerror and onsort, which work
+// (only as IDL attributes: body has none).
 const HANDLERS_FROM_22_1 = ['onbeforeinput', 'onbeforematch', 'onbeforetoggle', 'oncontextlost', 'oncontextrestored', 'oncopy',
   'oncut', 'onformdata', 'onpaste', 'onscrollend', 'onslotchange', 'ontouchcancel', 'ontouchend', 'ontouchmove', 'ontouchstart',
   'onwebkitanimationend', 'onwebkitanimationiteration', 'onwebkitanimationstart', 'onwebkittransitionend'];
 const POINTER_HANDLERS = ['ongotpointercapture', 'onlostpointercapture', 'onpointercancel', 'onpointerdown', 'onpointerenter',
   'onpointerleave', 'onpointermove', 'onpointerout', 'onpointerover', 'onpointerrawupdate', 'onpointerup'];
-const LEGACY_INERT = ['onauxclick'];
+const LEGACY_INERT = ['onauxclick', 'onloadend'];
+const LEGACY_WINDOW_HANDLERS = ['onautocomplete', 'onautocompleteerror', 'onsort'];
 const LEGACY_ABSENT = new Set([...HANDLERS_FROM_22_1, ...LEGACY_INERT]);
 const POINTER = new Set(POINTER_HANDLERS);
 // A content attribute that is no event handler in the profile's jsdom.
@@ -70,7 +73,10 @@ export function handlerCompat(proto, compat, forWindow = false) {
       else Object.defineProperty(proto, name, { ...INERT[name], enumerable: true, configurable: true });
     }
   }
-  if (compat.jsdom < 27) for (const name of POINTER_HANDLERS) delete proto[name];
+  if (compat.jsdom < 27) {
+    for (const name of POINTER_HANDLERS) delete proto[name];
+    if (forWindow) for (const name of LEGACY_WINDOW_HANDLERS) Object.defineProperty(proto, name, { ...LEGACY_WINDOW_MEMBERS[name], enumerable: true, configurable: true });
+  }
 }
 
 // Handlers body and frameset forward to their window.
@@ -194,6 +200,7 @@ function idlAttribute(name) {
 }
 
 export const handlerMembers = (names) => Object.fromEntries(names.map((name) => [name, idlAttribute(name)]));
+const LEGACY_WINDOW_MEMBERS = handlerMembers(LEGACY_WINDOW_HANDLERS);
 const members = handlerMembers;
 
 export const GLOBAL_HANDLER_MEMBERS = members(GLOBAL_EVENT_HANDLERS);

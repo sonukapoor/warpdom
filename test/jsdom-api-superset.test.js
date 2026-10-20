@@ -30,10 +30,6 @@ const KNOWN = [
   { path: /^(window\.)?XMLHttpRequest(EventTarget|Upload)?\b/, issues: [22, 30] },
 
   // No issue yet (found by this test; see #18).
-  { path: /^(window\.)?XPathException\b/, issues: [], reason: 'XPathException (legacy) is on jsdom\'s window' },
-  { path: /^HTMLIFrameElement\.prototype\.getSVGDocument$/, issues: [] },
-  { path: /^(window\.document|(Document|HTMLElement|SVGElement)\.prototype)\.onloadend$/, jsdom: [20, 21], issues: [] },
-  { path: /^window\.on(autocomplete|autocompleteerror|sort)$/, jsdom: [20, 26], issues: [] },
   { path: /^Window extends$/, jsdom: [20, 23], issues: [], reason: 'jsdom before 24 has no WindowProperties object: Window.prototype inherits from EventTarget.prototype' },
   { path: /^window\.(document|self|window|name|webkitURL)$/, difference: /^jsdom \w+, warpdom \w+$/, issues: [], reason: 'kind of the window member differs' },
   { path: /^window\.(innerWidth|innerHeight|outerWidth|outerHeight|devicePixelRatio|scrollX|scrollY|pageXOffset|pageYOffset|screenX|screenY|screenLeft|screenTop|status)$/, difference: /^jsdom data, warpdom accessor$/, jsdom: [20, 26], issues: [], reason: 'jsdom 26 and earlier: writable data properties' },

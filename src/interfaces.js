@@ -26,7 +26,7 @@ import { FILE_READER_INTERFACES } from './file-reader.js';
 import { BLOB_INTERFACES } from './file-reader.js';
 import { ENCODING_INTERFACES } from './encoding.js';
 import { ABORT_INTERFACES } from './abort.js';
-import { IFRAME_MEMBERS, WINDOW_FRAME_MEMBERS } from './frames.js';
+import { IFRAME_MEMBERS, IFRAME_ONLY_MEMBERS, WINDOW_FRAME_MEMBERS } from './frames.js';
 import './scripts.js';
 import { STORAGE_INTERFACE, STORAGE_WINDOW_MEMBERS } from './storage.js';
 import { PROGRESS_MEMBERS, METER_MEMBERS } from './progress-meter.js';
@@ -1110,7 +1110,7 @@ INTERFACES.push({ name: 'HTMLAnchorElement', parent: 'HTMLElement', members: [HY
 INTERFACES.push({ name: 'HTMLAreaElement', parent: 'HTMLElement', members: HYPERLINK_MEMBERS });
 INTERFACES.push({ name: 'HTMLImageElement', parent: 'HTMLElement', members: IMAGE_MEMBERS });
 INTERFACES.push({ name: 'HTMLBaseElement', parent: 'HTMLElement', members: BASE_MEMBERS });
-INTERFACES.push({ name: 'HTMLIFrameElement', parent: 'HTMLElement', members: IFRAME_MEMBERS });
+INTERFACES.push({ name: 'HTMLIFrameElement', parent: 'HTMLElement', members: [IFRAME_ONLY_MEMBERS, IFRAME_MEMBERS] });
 // Frames (HTML, obsolete features) get a nested window like iframes, as in jsdom.
 INTERFACES.push({ name: 'HTMLFrameElement', parent: 'HTMLElement', members: IFRAME_MEMBERS });
 INTERFACES.push({ name: 'HTMLSlotElement', parent: 'HTMLElement', members: SLOT_MEMBERS });

@@ -13,6 +13,7 @@ import { setValidationMode } from './css.js';
 import { namedPropertiesObject } from './named-access.js';
 import './document-named.js';
 import { handlerCompat } from './event-handlers.js';
+import { xpathException } from './dom-parsing.js';
 import { createCustomElement, createRegistry, htmlConstruct, isValidCustomElementName } from './custom-elements.js';
 
 // Once per module load: the interfaces in order, parents before children.
@@ -369,6 +370,7 @@ export function createWindow(options = {}) {
   setupWindow(window, options);
   applyCompat(window, protos);
   installGlobalOperations(window, protos.Window);
+  Object.defineProperty(window, 'XPathException', { value: xpathException(), writable: true, enumerable: true, configurable: true });
   internals.customElements = createRegistry(window);
 
   document = internals.initDocument(Object.create(protos.Document));
