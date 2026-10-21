@@ -262,15 +262,21 @@ const windowChainScenario = (w) => {
 // box with jsdom 20.0.3, 21.1.2, 22.1.0, 26.1.0, 27.4.0 and 30.1.3, windows
 // made with runScripts as the test environments make them). Before 27.0.0
 // the derived object gets its own property and the window keeps its
-// member, also self (21+); from 27.0.0 the window's own accessors (self,
-// status, the viewport members) act on their window whatever this is: the
-// derived object gets no property and the window's member is replaced
-// (status keeps a string). Data properties (name; status and the viewport
-// members before 27; interface objects, Image, console, webkitURL,
-// HTMLDocument, WebSocket, which warpdom makes on first read) give the
-// derived object its own property in every version. The setters called on
-// an object that does not inherit from the window replace the window's
-// member, and status's getter reads its window's whatever this is.
+// member, also self (21+: the VM context's global does that, not self's
+// setter); from 27.0.0 the window's own accessors (self, status, the
+// viewport members) act on their window whatever this is: the derived
+// object gets no property and the window's member is replaced (status
+// keeps a string). Data properties (name; status and the viewport members
+// before 27; interface objects, Image, console, webkitURL, HTMLDocument,
+// WebSocket, which warpdom makes on first read) give the derived object its
+// own property in every version. The setters called on another object, or
+// on an object that inherits from the window, replace the window's member
+// in every version, and status's getter reads its window's whatever this
+// is. warpdom's window is not a VM context's global and its self setter
+// cannot tell an assignment through a derived object from a call, so it
+// replaces the window's self, as jsdom 21 to 26 without runScripts: self is
+// compared with those (with runScripts, warpdom's global in Jest and
+// Vitest's VM pools is such a global, jest-environment.test.js).
 // jsdom 20's self has a getter only, and its window (a VM context's global)
 // still lets the derived object have its own; warpdom's throws there (not
 // covered: jsdom 20 runs without self).
@@ -298,13 +304,19 @@ const inheritedAssignmentScenario = (keys) => (w) => {
     if (!set) { out.push(`${key}: no setter`); continue; }
     const other = {};
     out.push(`${key} setter on another object: ${attempt(() => { set.call(other, 8); return 'ok'; })} ${Object.hasOwn(other, key)} ${descriptorOf(w, key)}`);
+    const derived = Object.create(w);
+    out.push(`${key} setter on a derived object: ${attempt(() => { set.call(derived, 9); return 'ok'; })} ${Object.hasOwn(derived, key)} ${descriptorOf(w, key)}`);
   }
   if (statusGetter) out.push(`status getter: ${JSON.stringify(statusGetter.call({}))}`);
   return out;
 };
 for (const jsdom of [20, 22, 26, 27, 30]) {
-  const keys = [...INHERITED_KEYS, ...LAZY_KEYS].filter((key) => jsdom > 20 || key !== 'self');
+  const keys = [...INHERITED_KEYS, ...LAZY_KEYS].filter((key) => jsdom >= 27 || key !== 'self');
   parity(`assignments through an object inheriting from the window (jsdom ${jsdom})`, inheritedAssignmentScenario(keys), { jsdom });
+}
+for (const jsdom of [22, 26]) {
+  parity(`assignments through an object inheriting from the window, without runScripts (jsdom ${jsdom})`,
+    inheritedAssignmentScenario([...INHERITED_KEYS, ...LAZY_KEYS]), { jsdom, runScripts: false });
 }
 
 test('window: assignments through an object inheriting from the window, per jsdom version', () => {
@@ -323,8 +335,8 @@ test('window: assignments through an object inheriting from the window, per jsdo
   }
   assert.deepEqual(results, {
     '20.0.3': 'self TypeError none kept, status ok own kept, innerWidth ok own kept, Image ok own kept',
-    '21.0.0': 'self ok own kept, status ok own kept, innerWidth ok own kept, Image ok own kept',
-    '26.1.0': 'self ok own kept, status ok own kept, innerWidth ok own kept, Image ok own kept',
+    '21.0.0': 'self ok none replaced, status ok own kept, innerWidth ok own kept, Image ok own kept',
+    '26.1.0': 'self ok none replaced, status ok own kept, innerWidth ok own kept, Image ok own kept',
     '27.0.0': 'self ok none replaced, status ok none replaced, innerWidth ok none replaced, Image ok own kept',
     '30.1.3': 'self ok none replaced, status ok none replaced, innerWidth ok none replaced, Image ok own kept',
   });

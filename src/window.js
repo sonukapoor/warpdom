@@ -212,24 +212,23 @@ function cssMode(compat) {
 // to 30.1.3); their getters give this window's whatever this is. jsdom 20:
 // all configurable, self without a setter; from 21.0.0 document and window
 // are not configurable and assigning self replaces it with a data property.
-// The setter acts on this window whatever this is (another window, an
-// object that does not inherit from it), except that before 27.0.0 an
-// assignment through an object that inherits from the window
-// (Object.create(window).self = 7) gives that object its own property and
-// leaves the window's, as with jsdom's windows made with runScripts, as the
-// test environments make them (jsdom 21.1.2 and 26.1.0; from 27.4.0 such
-// an assignment replaces the window's self) (#90).
+// The setter acts on this window whatever this is, as jsdom's (another
+// window, any object; called as Object.getOwnPropertyDescriptor(window,
+// 'self').set.call(Object.create(window), 7) too), so an assignment through
+// an object that inherits from the window (Object.create(window).self = 7)
+// replaces the window's self, as with jsdom's windows made without
+// runScripts. With runScripts, jsdom 21 to 26 give that object its own
+// property instead; that is their VM context's global, not the setter
+// (black box, 21.1.2 and 26.1.0), and a setter cannot tell such an
+// assignment from a call. warpdom's global in Jest and Vitest's VM pools is
+// such a global (vitest.js defineSelfKey) (#90).
 function defineSelfMembers(window, document) {
   const legacy = window[S].compat.jsdom < 21;
-  const throughReceiver = window[S].compat.jsdom < 27;
   const own = {
     get document() { return document; },
     get window() { return window; },
     get self() { return window; },
-    set self(value) {
-      if (throughReceiver && assignedThrough(window, this, 'self', value)) return;
-      Object.defineProperty(window, 'self', { value, writable: true, enumerable: true, configurable: true });
-    },
+    set self(value) { Object.defineProperty(window, 'self', { value, writable: true, enumerable: true, configurable: true }); },
   };
   const define = (key, configurable, withSetter = false) => {
     const { get, set } = Object.getOwnPropertyDescriptor(own, key);
