@@ -207,8 +207,10 @@ jobs:
           notes="docs/release-notes/$tag.md"
           if [ -f "$notes" ]; then
             body=$(cat "$notes")
-            if ! grep -q '^npm: ' "$notes"; then body="$body"$'\n\n'"$footer"; fi
-            gh release create "$tag" --verify-tag "${draft[@]}" --title "warpdom $VERSION" --notes "$body"
           else
-            gh release create "$tag" --verify-tag "${draft[@]}" --title "warpdom $VERSION" --generate-notes --notes "$footer"
+            # GitHub's generated notes; gh's --generate-notes would put
+            # --notes before them, so the footer is appended here.
+            body=$(gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$tag" --jq .body)
           fi
+          if ! grep -q '^npm: ' <<< "$body"; then body="$body"$'\n\n'"$footer"; fi
+          gh release create "$tag" --verify-tag "${draft[@]}" --title "warpdom $VERSION" --notes "$body"
