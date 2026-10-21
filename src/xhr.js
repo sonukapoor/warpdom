@@ -553,8 +553,10 @@ async function run(xhr, s, req) {
       const headers = { Origin: origin, 'Access-Control-Request-Method': method, 'User-Agent': req.userAgent, Accept: '*/*', 'Accept-Language': 'en' };
       if (req.unsafe.length) headers['Access-Control-Request-Headers'] = req.unsafe.join(', ');
       const preflight = await fetch(req.fetchURL, { method: 'OPTIONS', headers, credentials: 'omit', redirect: 'manual', signal: req.controller.signal });
-      if (s.req !== req) return;
+      // The body is not read (also when the request was stopped meanwhile:
+      // a fetch mock may not stop its stream on the abort signal).
       preflight.body?.cancel().catch(() => {});
+      if (s.req !== req) return;
       if (preflight.status < 200 || preflight.status > 299) { fail(xhr, s, req, `Error: Response for preflight has invalid HTTP status code ${preflight.status}`); return; }
       const denied = corsError(preflight, origin, credentials);
       if (denied !== null) { fail(xhr, s, req, denied); return; }

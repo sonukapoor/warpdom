@@ -13,7 +13,7 @@
 //   /setcookie sets a cookie
 // and, on any route, acao, acac, aceh (Access-Control-Allow-Origin,
 // -Allow-Credentials, -Expose-Headers) and preflight=ok|fail with acah and
-// acam for OPTIONS requests.
+// acam for OPTIONS requests (answered after pfwait ms).
 import http from 'node:http';
 
 const CLIENT_HEADERS = /^(user-agent|sec-fetch-.*|host|connection|keep-alive)$/;
@@ -33,8 +33,12 @@ export function startServer() {
     if (q.acac) cors['access-control-allow-credentials'] = 'true';
     if (q.aceh) cors['access-control-expose-headers'] = q.aceh;
     if (req.method === 'OPTIONS' && q.preflight !== undefined) {
-      res.writeHead(q.preflight === 'fail' ? 500 : 204, { ...cors, 'access-control-allow-headers': q.acah ?? '', 'access-control-allow-methods': q.acam ?? '' });
-      res.end();
+      const answer = () => {
+        if (res.destroyed) return;
+        res.writeHead(q.preflight === 'fail' ? 500 : 204, { ...cors, 'access-control-allow-headers': q.acah ?? '', 'access-control-allow-methods': q.acam ?? '' });
+        res.end();
+      };
+      if (q.pfwait) setTimeout(answer, Number(q.pfwait)); else answer();
       return;
     }
     switch (url.pathname) {

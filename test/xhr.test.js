@@ -405,6 +405,17 @@ const SCENARIOS = {
     x.send();
     await done(x);
     out.reuse = log.slice();
+    // Stopped while its preflight is pending: nothing more (#92).
+    for (const how of ['abort', 'open']) {
+      [x, log] = make();
+      x.open('PUT', `${c.CROSS}/echo?preflight=ok&acao=*&pfwait=150`);
+      x.send('abc');
+      await wait(50);
+      log.push(how);
+      if (how === 'abort') x.abort(); else x.open('GET', `${c.BASE}/text`);
+      await wait(300);
+      out[`${how}InPreflight`] = [log.slice(), x.readyState, x.status];
+    }
     // jsdom before 28 goes on with the request after an abort in loadstart.
     if (c.jsdom < 28) return out;
     [x, log] = make();
@@ -1099,6 +1110,47 @@ test('XMLHttpRequest: a request stopped while its response arrives fires nothing
         ? ['readystatechange 1 0', 'readystatechange 4 0', 'abort 4 0 false/0/0', 'loadend 4 0 false/0/0']
         : ['readystatechange 1 0']]);
       assert.deepEqual([x.readyState, x.status, x.responseText, x.getAllResponseHeaders(), cancelled], [stopWith === 'abort' ? 0 : 1, 0, '', '', true]);
+    }
+  } finally {
+    globalThis.fetch = hostFetch;
+  }
+});
+
+// A response whose body stream records its cancellation and, as a fetch
+// mock may, ignores the abort signal (chunks: what it sends before waiting
+// forever).
+function recordingResponse(record, chunks = [], init = {}) {
+  return new Response(new ReadableStream({
+    start(controller) { for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk)); },
+    cancel() { record.cancelled = true; },
+  }), { headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' }, ...init });
+}
+
+test('XMLHttpRequest: a request stopped while its preflight is pending cancels the preflight\'s body (#92)', async () => {
+  const hostFetch = globalThis.fetch;
+  try {
+    for (const stopWith of ['abort', 'open', 'teardown']) {
+      const record = { cancelled: false };
+      let answer;
+      const methods = [];
+      globalThis.fetch = (url, init) => {
+        methods.push(init.method);
+        return new Promise((resolve) => { answer = () => resolve(recordingResponse(record)); });
+      };
+      const w = createWindow({ url: PAGE });
+      snapshotWindow(w);
+      const x = new w.XMLHttpRequest();
+      const log = [];
+      logEvents(x, log);
+      x.open('PUT', `${CROSS}/echo`);
+      x.send('abc');
+      if (stopWith === 'abort') x.abort();
+      else if (stopWith === 'open') x.open('GET', `${BASE}/text`);
+      else resetWindow(w);
+      answer();
+      await wait(20);
+      assert.deepEqual([stopWith, methods, record.cancelled, log.filter((l) => !/^(readystatechange 1|loadstart)/.test(l))],
+        [stopWith, ['OPTIONS'], true, stopWith === 'abort' ? ['readystatechange 4 0', 'abort 4 0 false/0/0', 'loadend 4 0 false/0/0'] : []]);
     }
   } finally {
     globalThis.fetch = hostFetch;
