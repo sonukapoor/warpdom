@@ -33,30 +33,42 @@ The workflow then:
 
 - checks that the tag is `v` + the `package.json` version, that
   `src/version.js` matches and that the tagged commit is on main;
-- runs `npm ci`, `npm test` and `npm run test:types` on Node 24;
-- publishes `warpdom`, plus `vitest-environment-warpdom` and
-  `jest-environment-warpdom` when the version in their `packages/*/package.json`
-  is not on npm yet (bump one of those only when it changed), with
-  `npm publish --provenance --access public`;
+- runs `npm ci`, `npm test` and `npm run test:types` on Node 24, and packs
+  the three packages (`npm pack`);
+- in a separate job that installs nothing from the project (the only job
+  that can get an npm token), publishes the packed `warpdom`, plus
+  `vitest-environment-warpdom` and `jest-environment-warpdom` when the
+  version in their `packages/*/package.json` is not on npm yet (bump one of
+  those only when it changed), with `npm publish --provenance --access
+  public`;
 - creates the GitHub release `warpdom X.Y.Z` from the tag (Zenodo archives
   it and mints a version DOI).
+
+Release runs never overlap: a run started while another is in progress
+waits for it (up to 100 waiting runs).
 
 Afterwards, smoke-test the package from the registry in a fresh project.
 
 **Dry run:** Actions, "release", "Run workflow", with "Dry run" ticked (the
-default), on any branch or tag: runs the checks and tests and
-`npm publish --dry-run` for each package, prints the release notes, and
-publishes nothing.
+default), on any branch or tag: runs the checks and tests, packs and lists
+each package's files, runs `npm publish --dry-run` for each version not on
+npm yet (npm refuses it for a version that is), prints the release notes,
+and publishes nothing.
 
 **A failed release:** fix the cause and run the workflow from the tag with
 "Dry run" unticked; versions already on npm are skipped and an existing
-GitHub release is left as is. Never move a tag that npm has published.
+GitHub release is left as is. Never move a tag that npm has published. In
+staged mode, first approve (or reject) on npmjs.com what the failed run
+staged: a staged version is not visible to the workflow's `npm view`
+check, and npm refuses to stage the same version again.
 
 **Staged publishing:** set the repository variable `NPM_PUBLISH_MODE` to
 `stage` (Settings, Secrets and variables, Actions, Variables) and the
 workflow runs `npm stage publish` instead: each package waits on npmjs.com
 (Staged Packages) until a maintainer approves it with 2FA, or
-`npm stage approve <id>`.
+`npm stage approve <id>`. The GitHub release is then created as a draft;
+publish it after the approval (the release's Edit, "Publish release", or
+`gh release edit vX.Y.Z --draft=false`).
 
 ## One-time setup on npmjs.com
 
