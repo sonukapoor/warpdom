@@ -735,7 +735,7 @@ const SCENARIOS = {
     const value = (name, v) => ({ toString() { calls.push(name); return v; } });
     new w.XMLHttpRequest().open(value('method', 'GET'), value('url', '/x'), true, value('user', 'a'), value('password', 'b'));
     new w.XMLHttpRequest().open('GET', '/x', true, null, undefined);
-    out.toString = calls;
+    out.toString = calls.slice();
     // Conversions come first, and their exceptions propagate (#92).
     const throwing = (name) => ({ toString() { calls.push(name); throw new RangeError(`${name} toString`); } });
     calls.length = 0;
