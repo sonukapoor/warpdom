@@ -3011,7 +3011,7 @@ cssom/rrweb-cssom shape of jsdom 28 and earlier (rule constants, own members
 per rule, CSSStyleRule extends CSSRule, parse()); style accessors on
 CSSStyleDeclaration in jsdom 28 and earlier (warpdom: CSSStyleProperties), and
 cssstyle 2-4.1's getPropertyCSSValue, getPropertyShorthand, isPropertyImplicit
-and azimuth.
+and azimuth (both fixed by #72, 2026-10-21; entries removed).
 
 ## 2026-10-20: the user agent style sheet (branch fix/mantine-floating-ui, #80)
 
@@ -3751,3 +3751,69 @@ benchmarks on a busy laptop to be judged.
   laptop (cold load 34 ms vs ~24 ms), so compare within a run only. The
   second A/A run flagged 1 of 21 measures beyond +5%: single flags are
   often noise.
+
+## 2026-10-21: style objects as jsdom has them per version (branch fix/style-declaration-accessors, #72)
+
+Phase 1 (black box, jsdom 20.0.0 to 30.1.3 with cssstyle 2.3.0 to 6.2.0):
+warpdom's accessor name sets already matched every cssstyle/jsdom group
+except azimuth for cssstyle 4.3 and earlier; the gap was the interface.
+jsdom 20 to 28 (cssstyle) make el.style and getComputedStyle()
+CSSStyleDeclarations whose one prototype has the accessors and the
+methods (no CSSStyleProperties global, no @@iterator or @@toStringTag), so
+`vi.spyOn(CSSStyleDeclaration.prototype, 'width', 'get')` intercepts
+el.style and computed reads there; on warpdom it threw (the accessors were
+CSSStyleProperties' in every profile).
+
+- **Design.** Before jsdom 29, CSSStyleProperties is an alias of
+  CSSStyleDeclaration (interface definition `alias`; materialize returns
+  the other interface and points protos.CSSStyleProperties at its
+  prototype, so the style code keeps one entry point; applyCompat deletes
+  the global). CSSStyleDeclaration's members are a variant per style
+  surface (as #87's event handler sets): `adjust` returns the accessors'
+  descriptor map with the members added (copying 1,600 accessors into the
+  members' map cost ~0.3 ms at first use), built once per module load;
+  each window still gets its own prototype. `untagged` leaves out
+  @@toStringTag. Members per cssstyle group: 2 to 4.3 enumerable, item/1,
+  setProperty/3, the three legacy stubs (length 0, return undefined); 4.4
+  and later non-enumerable (cssFloat too), item/0, setProperty/2 (3 in
+  5.3); a missing argument is no error except item() and setProperty()
+  from 4.4; setProperty with no value does nothing.
+- **azimuth**: cssstyle 2 to 4.3 convert to an angle in degrees (CSS 2
+  aural positions, `behind` mirrors, grad and rad converted, then into
+  [0, 360] as jsdom does: 720deg is 360deg), keywords case-insensitive,
+  '' and null ignored by the accessor; 4.2 and 4.3 write NaNdeg for every
+  angle (a cssstyle bug; FINDINGS said "A-C convert", measured on 4.1);
+  4.4 to 5.2 keep any value (already so); 5.3 only CSS-wide keywords.
+- jsdom 29+: unchanged, except CSSStyleProperties' own @@iterator (jsdom's
+  is CSSStyleDeclaration's, Array.prototype.values); KNOWN entry narrowed.
+- **Tests**: test/style-declaration.test.js, parity with jsdom 20, 22, 25,
+  26, 27.4, 28.1, 29.1.1 and 30 (chains, member owners/kinds/lengths,
+  tags, stubs, missing arguments, a spied width accessor seeing el.style
+  and computed reads and writes, azimuth); cssstyle 4.2/4.3 NaNdeg;
+  per-window prototypes. fixtures/vitest-style-spy (vi.spyOn, profiles
+  20.0.3, 26.1.0, 28.1.0, 30.1.3, and Vitest's jsdom environment) and a
+  Jest environment test with jest-mock's spyOn. The superset test's two
+  CSSStyleDeclaration KNOWN entries are gone.
+- **Bench** (Node 22.23.3, medians, base c2fb3d4 vs branch, interleaved):
+  bench:load cold load 21.7 vs 21.6 ms, first window 2.73 vs 2.72 ms (30
+  fresh processes each), next windows 0.206 vs 0.209 ms; bench:hot within
+  noise (-2.5% to +4.2%, no style members there). Style micro-bench
+  (1,000 elements; ns per op; profiles 20.0.3 / 26.1.0 / 28.1.0 / 30.1.3):
+  write 131.5/136.1/145.9/138.0 vs 132.9/140.8/141.0/130.8, read
+  42.4/54.8/42.5/42.5 vs 41.0/55.0/42.6/55.6 (bimodal 41/55 on both
+  sides; 10 more 30.1.3 runs show the same spread for both),
+  getComputedStyle 645/793/805/783 vs 639/790/795/782; first style
+  access per process 2.30/1.39 vs 2.33/1.42 ms (20.0.3/28.1.0).
+- **Not done**: (4) with cssstyle 5.3 and earlier jsdom's setProperty(),
+  cssText, the style attribute and getComputedStyle() call the (spied)
+  setters; doing so needs a descriptor lookup per declaration written on
+  the hot path, skipped. (5) Getter names `get width` for jsdom 29+:
+  renaming the 3,200 functions cost +1 ms at first style access
+  (defineProperty) or +1.4 ms and +0.3 ms per window (computed-key
+  literals); skipped. Also not modeled: cssstyle's length setter (leaves
+  its state inconsistent) and underscore members, jsdom 29.0.0's internal
+  computed classes, CSSStyleRule.style without accessors before 27.1.0,
+  computed azimuth with cssstyle 4.2/4.3 (NaNdeg vs ''), and cssText
+  `azimuth: inherit !important` with cssstyle 5.3 (jsdom drops the
+  priority). README "Differences from jsdom" lists them.
+
