@@ -24,7 +24,7 @@
 import { S, state, domError, tooFewArguments, PLATFORM_GLOBAL, PlatformURL as URL, DOCUMENT_NODE } from './internal.js';
 import { dispatch } from './events.js';
 import { handlerMembers } from './event-handlers.js';
-import { decodeText, encodingOf, bufferBytes, isSharedArrayBuffer, realmOf, utf8Encode, PlatformTextDecoder } from './encoding.js';
+import { decodeText, encodingOf, webidlString, bufferBytes, isSharedArrayBuffer, realmOf, utf8Encode, PlatformTextDecoder } from './encoding.js';
 import { blobData, makeBlob } from './file-reader.js';
 import { documentBaseURL } from './base-url.js';
 import { innerMarkup, serializeXML } from './dom-parsing.js';
@@ -167,11 +167,12 @@ function finalMime(s) {
 }
 
 // The label of the final encoding (XHR "get a final encoding"): the
-// override's charset, else the response's (an override without one keeps
-// the response's, as in jsdom); undefined for none.
+// override's charset when it names an encoding, else the response's (an
+// override without one, or with an unknown label, keeps the response's, as
+// in jsdom); undefined for none.
 function charsetLabel(s) {
   const override = s.overrideMime?.params.get('charset');
-  if (override !== undefined) return override;
+  if (override !== undefined && encodingOf(override) !== null) return override;
   const header = s.response.headers?.get('content-type');
   return header == null ? undefined : parseMime(header)?.params.get('charset');
 }
@@ -198,8 +199,13 @@ function encodingName(s, bytes) {
     const e = label === undefined ? null : encodingOf(label);
     name = e === null || e === 'replacement' ? 'utf-8' : e;
   }
-  return name === 'utf-8' ? 'UTF-8' : name.startsWith('utf-16') ? name.toUpperCase() : name;
+  return canonicalName(name);
 }
+
+// An encoding's name as the Encoding standard writes it (characterSet:
+// "ISO-8859-2", "Shift_JIS"; as jsdom), from warpdom's lowercase one.
+const MIXED_CASE_NAMES = { ibm866: 'IBM866', gbk: 'GBK', big5: 'Big5', shift_jis: 'Shift_JIS' };
+const canonicalName = (name) => MIXED_CASE_NAMES[name] ?? (/^(utf|iso|koi8|euc)-/.test(name) ? name.toUpperCase() : name);
 
 let utf8Decoder = null;
 const utf8Decode = (bytes) => (utf8Decoder ??= new PlatformTextDecoder()).decode(bytes);
@@ -481,6 +487,10 @@ function stop(s) {
   req.timer = null;
   s.window[S].pendingRequests?.delete(req);
   try { req.controller?.abort(); } catch { /* the host's abort */ }
+  // A read in progress ends too, where the stream ignores the abort signal
+  // (a fetch mock's).
+  req.reader?.cancel().catch(() => {});
+  req.reader = null;
 }
 
 // A network error from fetch, a CORS check or the body stream. jsdom 20
@@ -547,8 +557,10 @@ async function run(xhr, s, req) {
       const headers = { Origin: origin, 'Access-Control-Request-Method': method, 'User-Agent': req.userAgent, Accept: '*/*', 'Accept-Language': 'en' };
       if (req.unsafe.length) headers['Access-Control-Request-Headers'] = req.unsafe.join(', ');
       const preflight = await fetch(req.fetchURL, { method: 'OPTIONS', headers, credentials: 'omit', redirect: 'manual', signal: req.controller.signal });
-      if (s.req !== req) return;
+      // The body is not read (also when the request was stopped meanwhile:
+      // a fetch mock may not stop its stream on the abort signal).
       preflight.body?.cancel().catch(() => {});
+      if (s.req !== req) return;
       if (preflight.status < 200 || preflight.status > 299) { fail(xhr, s, req, `Error: Response for preflight has invalid HTTP status code ${preflight.status}`); return; }
       const denied = corsError(preflight, origin, credentials);
       if (denied !== null) { fail(xhr, s, req, denied); return; }
@@ -581,15 +593,17 @@ async function run(xhr, s, req) {
   }
   const length = response.headers.get('content-length');
   const total = length !== null && /^\d+$/.test(length) && !response.headers.has('content-encoding') ? Number(length) : 0;
+  // jsdom 28 and later complete the upload before HEADERS_RECEIVED, and its
+  // handlers see no response yet (status 0, no URL or headers); earlier
+  // ones after it. A request stopped in a handler cancels the body (jsdom
+  // fires the upload's remaining events, and from 28 a readystatechange,
+  // after the abort: warpdom does not, as the standard).
+  if (compat.xhrUndici && !completeUpload(s, req, cross)) { response.body?.cancel().catch(() => {}); return; }
   // As jsdom, the URL keeps its fragment when there was no redirect.
   s.response = { status: response.status, statusText: response.statusText, url: finalURL, headers: response.headers, exposed,
     chunks: [], length: 0, bytes: null, total, computable: total !== 0 };
   s.responseObject = undefined;
   s.text = null;
-
-  // jsdom 28 and later complete the upload before HEADERS_RECEIVED, earlier
-  // ones after it.
-  if (compat.xhrUndici && !completeUpload(s, req, cross)) return;
   s.state = HEADERS_RECEIVED;
   fireStateChange(xhr, window);
   if (s.req !== req) { response.body?.cancel().catch(() => {}); return; }
@@ -598,6 +612,7 @@ async function run(xhr, s, req) {
   const r = s.response;
   if (response.body !== null) {
     const reader = response.body.getReader();
+    req.reader = reader;
     for (;;) {
       let chunk;
       try {
@@ -607,7 +622,7 @@ async function run(xhr, s, req) {
         return;
       }
       if (s.req !== req) { reader.cancel().catch(() => {}); return; }
-      if (chunk.done) break;
+      if (chunk.done) { req.reader = null; break; }
       if (chunk.value.length === 0) continue;
       r.chunks.push(chunk.value);
       r.length += chunk.value.length;
@@ -705,7 +720,7 @@ function send(xhr, s, body) {
     preflight: cross && (!['GET', 'HEAD', 'POST'].includes(method) || unsafe.length > 0 || s.uploadListener),
     // The platform's AbortController, as its fetch takes the signal (the
     // CommonJS bundle may be evaluated in a context without one).
-    controller: typeof PLATFORM_GLOBAL.AbortController === 'function' ? new PLATFORM_GLOBAL.AbortController() : null, timer: null, start: hostNow(), urlError,
+    controller: typeof PLATFORM_GLOBAL.AbortController === 'function' ? new PLATFORM_GLOBAL.AbortController() : null, reader: null, timer: null, start: hostNow(), urlError,
   };
   s.req = req;
   const pending = window[S].pendingRequests ?? (window[S].pendingRequests = new Set());
@@ -723,24 +738,29 @@ function send(xhr, s, body) {
   run(xhr, s, req);
 }
 
+const OPEN_CONTEXT = "Failed to execute 'open' on 'XMLHttpRequest'";
+
 function open(xhr, s, method, url, rest) {
   const window = s.window;
   const legacy = !window[S].compat.xhrUndici;
-  const m = String(method);
+  // The arguments are converted first (WebIDL; the method is a ByteString),
+  // so an exception from a toString() propagates, as in jsdom. The user
+  // name and password are converted (USVString?) and not used.
+  const m = byteString(webidlString(method, 'parameter 1', OPEN_CONTEXT), 1, 'open');
+  const u = webidlString(url, 'parameter 2', OPEN_CONTEXT);
+  for (let i = 1; i < 3 && i < rest.length; i++) if (rest[i] != null) webidlString(rest[i], `parameter ${i + 3}`, OPEN_CONTEXT);
   if (!TOKEN.test(m)) throw domError('The string did not match the expected pattern.', 'SyntaxError');
   const upper = m.toUpperCase();
   if (upper === 'CONNECT' || upper === 'TRACE' || upper === 'TRACK') throw domError('The operation is insecure.', 'SecurityError');
   let parsed;
   try {
-    parsed = new URL(String(url), documentBaseURL(window.document));
+    parsed = new URL(u, documentBaseURL(window.document));
   } catch {
     throw domError('The string did not match the expected pattern.', 'SyntaxError');
   }
   // open(method, url) is asynchronous; with a third argument, its boolean
-  // value decides (undefined is false). The user name and password are
-  // converted (USVString?) and not used.
+  // value decides (undefined is false).
   const sync = rest.length > 0 && !rest[0];
-  for (let i = 1; i < 3 && i < rest.length; i++) if (rest[i] != null) String(rest[i]);
   if (sync && (s.timeout !== 0 || s.responseType !== '')) throw domError('The object does not support the operation or argument.', 'InvalidAccessError');
   stop(s);
   s.send = false;

@@ -142,8 +142,10 @@ const timerMembers = {
       try { callback(); } catch (error) { reportError(window, error); }
     });
   },
-  atob(data) { state(this); return globalThis.atob(data); },
-  btoa(data) { state(this); return globalThis.btoa(data); },
+  // The platform's (the CommonJS bundle may be evaluated in a context
+  // without them, a Jest test file's VM context).
+  atob(data) { state(this); return PLATFORM_GLOBAL.atob(data); },
+  btoa(data) { state(this); return PLATFORM_GLOBAL.btoa(data); },
 };
 
 // The window members test environments leave to the host (Node's timers).

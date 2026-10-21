@@ -13,7 +13,7 @@
 // read takes the blob's bytes in one chunk, so it fires loadstart, one
 // progress (none for an empty blob), then load (or error) and loadend,
 // each in its own task.
-import { S, state, domError, hiddenSlot, hooks } from './internal.js';
+import { S, state, domError, hiddenSlot, hooks, PLATFORM_GLOBAL } from './internal.js';
 import { dispatch, eventConstruct, fieldGetters } from './events.js';
 import { handlerMembers } from './event-handlers.js';
 import { decodeText, bufferBytes, realmOf, webidlString, utf8Encode, PlatformTextDecoder } from './encoding.js';
@@ -237,7 +237,9 @@ function packageData(buffer, kind, blob, encoding) {
     case 'ArrayBuffer': return buffer;
     case 'BinaryString': return binaryString(new Uint8Array(buffer));
     case 'Text': return decodeText(new Uint8Array(buffer), encoding, charsetOf(blob.type));
-    default: return `data:${blob.type || 'application/octet-stream'};base64,${btoa(binaryString(new Uint8Array(buffer)))}`;
+    // The platform's btoa: the CommonJS bundle may be evaluated in a
+    // context without one (a Jest test file's VM context).
+    default: return `data:${blob.type || 'application/octet-stream'};base64,${PLATFORM_GLOBAL.btoa(binaryString(new Uint8Array(buffer)))}`;
   }
 }
 

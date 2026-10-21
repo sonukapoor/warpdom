@@ -405,6 +405,17 @@ const SCENARIOS = {
     x.send();
     await done(x);
     out.reuse = log.slice();
+    // Stopped while its preflight is pending: nothing more (#92).
+    for (const how of ['abort', 'open']) {
+      [x, log] = make();
+      x.open('PUT', `${c.CROSS}/echo?preflight=ok&acao=*&pfwait=150`);
+      x.send('abc');
+      await wait(50);
+      log.push(how);
+      if (how === 'abort') x.abort(); else x.open('GET', `${c.BASE}/text`);
+      await wait(300);
+      out[`${how}InPreflight`] = [log.slice(), x.readyState, x.status];
+    }
     // jsdom before 28 goes on with the request after an abort in loadstart.
     if (c.jsdom < 28) return out;
     [x, log] = make();
@@ -415,6 +426,20 @@ const SCENARIOS = {
     await wait(300);
     out.inLoadstart = log.slice();
     return out;
+  },
+  // What the upload's handlers see: from jsdom 28 they run before
+  // HEADERS_RECEIVED, without the response (#92).
+  async uploadHandlers(w, c) {
+    const x = new w.XMLHttpRequest();
+    const seen = [];
+    for (const type of ['loadstart', 'progress', 'load', 'loadend']) {
+      x.upload.addEventListener(type, () => seen.push([type, getters(x), attempt(() => x.getResponseHeader('x-a')), attempt(() => x.getResponseHeader('content-type'))]));
+    }
+    x.addEventListener('readystatechange', () => seen.push(['readystatechange', x.readyState, x.status]));
+    x.open('POST', `${c.BASE}/text`);
+    x.send('body');
+    await done(x);
+    return seen;
   },
   async responseTypes(w, c) {
     const out = {};
@@ -475,6 +500,19 @@ const SCENARIOS = {
     out.overrideInvalidKeepsCharset = await get('', `ct=${cp1252}&body=6869e9&enc=hex`, (x) => x.overrideMimeType('nonsense'));
     out.overrideXmlWithoutCharset = await get('document', `ct=${cp1252}&body=3c613ee93c2f613e&enc=hex`, (x) => x.overrideMimeType('text/xml'));
     out.overrideHtmlWithoutCharset = await get('document', `ct=${encodeURIComponent('text/html;charset=windows-1252')}&body=3c703ee9&enc=hex`, (x) => x.overrideMimeType('text/html'));
+    // An override charset that names no encoding keeps the response's
+    // (UTF-8 when it has none); a known one wins (#92).
+    for (const [name, label] of [['Unknown', 'unknown'], ['Bogus', 'utf-9'], ['Known', 'iso-8859-2']]) {
+      out[`overrideText${name}Charset`] = await get('', `ct=${cp1252}&body=6869e9&enc=hex`, (x) => x.overrideMimeType(`text/plain;charset=${label}`));
+      out[`overrideHtml${name}Charset`] = await get('document', `ct=${encodeURIComponent('text/html;charset=windows-1252')}&body=3c703ee9&enc=hex`, (x) => x.overrideMimeType(`text/html;charset=${label}`));
+      out[`overrideXml${name}Charset`] = await get('document', `ct=${cp1252}&body=3c613ee93c2f613e&enc=hex`, (x) => x.overrideMimeType(`text/xml;charset=${label}`));
+    }
+    out.overrideUnknownCharsetNone = await get('', 'ct=text/plain&body=6869e9&enc=hex', (x) => x.overrideMimeType('text/plain;charset=unknown'));
+    // characterSet names the encoding as the Encoding standard writes it (#92).
+    out.characterSetNames = [];
+    for (const label of ['latin2', 'ibm866', 'koi8-r', 'gbk', 'gb18030', 'big5', 'euc-jp', 'shift_jis', 'euc-kr', 'macintosh', 'windows-1250', 'utf-16be']) {
+      out.characterSetNames.push((await get('document', `ct=${encodeURIComponent(`text/html;charset=${label}`)}&body=3c703e78&enc=hex`))[0][5]);
+    }
     // jsdom looks at neither an XML declaration's encoding nor an HTML meta
     // charset: UTF-8 (the XHR standard would use them).
     const latin1Xml = Buffer.concat([Buffer.from('<?xml version="1.0" encoding="ISO-8859-1"?><a>'), Buffer.from([0xe9]), Buffer.from('</a>')]).toString('hex');
@@ -655,6 +693,19 @@ const SCENARIOS = {
       const sent = c.server.requests.slice(n)[0];
       out[name] = [log.at(-2).split(' ').slice(0, 3), x.status, port(x.responseURL), sent ? port(sent.headers.origin ?? '-') : null];
     }
+    // With a fragment or query, about:blank has neither its creator's origin
+    // nor its base URL in any jsdom (the standard ignores the fragment): a
+    // relative URL throws, and requests carry Origin: null (#92).
+    for (const src of ['about:blank#sec', 'about:blank?q', 'about:blank#']) {
+      const other = w.document.createElement('iframe');
+      other.src = src;
+      w.document.body.append(other);
+      const win = other.contentWindow;
+      const n = c.server.requests.length;
+      const { x } = await request(win, 'GET', `${c.BASE}/echo`);
+      const sent = c.server.requests.slice(n)[0];
+      out[src] = [win.origin, win.location.href, port(win.document.baseURI), attempt(() => new win.XMLHttpRequest().open('GET', 'echo')), x.status, sent ? sent.headers.origin ?? '-' : null];
+    }
     base.remove();
     const nested = child.document.createElement('iframe');
     child.document.body.append(nested);
@@ -684,7 +735,23 @@ const SCENARIOS = {
     const value = (name, v) => ({ toString() { calls.push(name); return v; } });
     new w.XMLHttpRequest().open(value('method', 'GET'), value('url', '/x'), true, value('user', 'a'), value('password', 'b'));
     new w.XMLHttpRequest().open('GET', '/x', true, null, undefined);
-    out.toString = calls;
+    out.toString = calls.slice();
+    // Conversions come first, and their exceptions propagate (#92).
+    const throwing = (name) => ({ toString() { calls.push(name); throw new RangeError(`${name} toString`); } });
+    calls.length = 0;
+    out.conversionErrors = [
+      attempt(() => new w.XMLHttpRequest().open('GET', throwing('url'))),
+      attempt(() => new w.XMLHttpRequest().open('bad method', throwing('url after a bad method'))),
+      attempt(() => new w.XMLHttpRequest().open(throwing('method'), throwing('url after the method'))),
+      attempt(() => new w.XMLHttpRequest().open('GET', '/x', true, throwing('user'))),
+      attempt(() => new w.XMLHttpRequest().open('GET', 'http://[', true, null, throwing('password after a bad URL'))),
+      attempt(() => new w.XMLHttpRequest().open('GET', Symbol('url'))),
+      attempt(() => new w.XMLHttpRequest().open(Symbol('method'), '/x')),
+      attempt(() => new w.XMLHttpRequest().open('GET', '/x', true, Symbol('user'))),
+      attempt(() => new w.XMLHttpRequest().open('GET', '/x', true, 'u', Symbol('password'))),
+      attempt(() => new w.XMLHttpRequest().open('G€T', '/x')),
+      calls.slice(),
+    ];
     const z = new w.XMLHttpRequest();
     z.responseType = 'json';
     z.open('GET', `${c.BASE}/type?ct=application/json&body=fffe7b007d00&enc=hex`);
@@ -1070,6 +1137,109 @@ test('XMLHttpRequest: a request stopped while its response arrives fires nothing
         ? ['readystatechange 1 0', 'readystatechange 4 0', 'abort 4 0 false/0/0', 'loadend 4 0 false/0/0']
         : ['readystatechange 1 0']]);
       assert.deepEqual([x.readyState, x.status, x.responseText, x.getAllResponseHeaders(), cancelled], [stopWith === 'abort' ? 0 : 1, 0, '', '', true]);
+    }
+  } finally {
+    globalThis.fetch = hostFetch;
+  }
+});
+
+// A response whose body stream records its cancellation and, as a fetch
+// mock may, ignores the abort signal (chunks: what it sends before waiting
+// forever).
+function recordingResponse(record, chunks = [], init = {}) {
+  return new Response(new ReadableStream({
+    start(controller) { for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk)); },
+    cancel() { record.cancelled = true; },
+  }), { headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' }, ...init });
+}
+
+test('XMLHttpRequest: a request stopped while its preflight is pending cancels the preflight\'s body (#92)', async () => {
+  const hostFetch = globalThis.fetch;
+  try {
+    for (const stopWith of ['abort', 'open', 'teardown']) {
+      const record = { cancelled: false };
+      let answer;
+      const methods = [];
+      globalThis.fetch = (url, init) => {
+        methods.push(init.method);
+        return new Promise((resolve) => { answer = () => resolve(recordingResponse(record)); });
+      };
+      const w = createWindow({ url: PAGE });
+      snapshotWindow(w);
+      const x = new w.XMLHttpRequest();
+      const log = [];
+      logEvents(x, log);
+      x.open('PUT', `${CROSS}/echo`);
+      x.send('abc');
+      if (stopWith === 'abort') x.abort();
+      else if (stopWith === 'open') x.open('GET', `${BASE}/text`);
+      else resetWindow(w);
+      answer();
+      await wait(20);
+      assert.deepEqual([stopWith, methods, record.cancelled, log.filter((l) => !/^(readystatechange 1|loadstart)/.test(l))],
+        [stopWith, ['OPTIONS'], true, stopWith === 'abort' ? ['readystatechange 4 0', 'abort 4 0 false/0/0', 'loadend 4 0 false/0/0'] : []]);
+    }
+  } finally {
+    globalThis.fetch = hostFetch;
+  }
+});
+
+test('XMLHttpRequest: a request stopped while it waits for more of the body cancels the read (#92)', async () => {
+  const hostFetch = globalThis.fetch;
+  try {
+    for (const stopWith of ['abort', 'open', 'teardown', 'timeout']) {
+      const record = { cancelled: false };
+      globalThis.fetch = async () => recordingResponse(record, ['part']);
+      const w = createWindow({ url: PAGE });
+      snapshotWindow(w);
+      const x = new w.XMLHttpRequest();
+      const log = [];
+      logEvents(x, log);
+      x.open('GET', `${BASE}/text`);
+      if (stopWith === 'timeout') x.timeout = 50;
+      const progressed = new Promise((resolve) => x.addEventListener('progress', resolve, { once: true }));
+      x.send();
+      await progressed;
+      if (stopWith === 'abort') x.abort();
+      else if (stopWith === 'open') x.open('GET', `${BASE}/text`);
+      else if (stopWith === 'teardown') resetWindow(w);
+      await wait(stopWith === 'timeout' ? 100 : 20);
+      assert.deepEqual([stopWith, record.cancelled, log.at(-1)], [stopWith,
+        true, { abort: 'loadend 4 0 false/0/0', open: 'readystatechange 1 0', teardown: 'progress 3 200 false/4/0', timeout: 'loadend 4 200 false/0/0' }[stopWith]]);
+    }
+  } finally {
+    globalThis.fetch = hostFetch;
+  }
+});
+
+// jsdom goes on after such a stop: the upload's load and loadend, and from
+// 28 a readystatechange (readyState 2) at the stopped or reopened request.
+// warpdom stops, as the standard (README).
+test('XMLHttpRequest: a request stopped in an upload handler fires nothing more and cancels the body (#92)', async () => {
+  const hostFetch = globalThis.fetch;
+  try {
+    for (const jsdom of ['27.4.0', '30.1.3']) {
+      for (const stopWith of ['abort', 'open']) {
+        const record = { cancelled: false };
+        globalThis.fetch = async () => recordingResponse(record, ['part']);
+        const w = createWindow({ url: PAGE, jsdom });
+        const x = new w.XMLHttpRequest();
+        const log = [];
+        logEvents(x, log, true);
+        x.upload.addEventListener('progress', () => {
+          if (stopWith === 'abort') x.abort(); else x.open('GET', `${BASE}/text`);
+          log.push(stopWith);
+        }, { once: true });
+        x.open('POST', `${BASE}/echo`);
+        x.send('body');
+        await wait(30);
+        const after = log.slice(log.findIndex((l) => l.startsWith('upload.progress')));
+        const status = jsdom === '27.4.0' ? 200 : 0;
+        assert.deepEqual([jsdom, stopWith, record.cancelled, after, x.status], [jsdom, stopWith, true, stopWith === 'abort'
+          ? [`upload.progress ${jsdom === '27.4.0' ? 2 : 1} true/4/4`, 'readystatechange 4 0', 'abort 4 0 false/0/0', 'loadend 4 0 false/0/0', 'abort']
+          // Reopened in OPENED (from 28): no readystatechange.
+          : [`upload.progress ${jsdom === '27.4.0' ? 2 : 1} true/4/4`, ...(jsdom === '27.4.0' ? ['readystatechange 1 200'] : []), 'open'], stopWith === 'abort' ? 0 : status]);
+      }
     }
   } finally {
     globalThis.fetch = hostFetch;
