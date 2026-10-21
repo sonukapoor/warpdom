@@ -1192,6 +1192,16 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // side accessors compose their longhands (cascade.js legacyAccessorValue).
     // cssstyle before 4.2: color channels rounded once, no hwb() (colors.js).
     legacyColors: version[0] < 27 && css !== null && before(css, [4, 2, 0]),
+    // Color keywords as cssstyle writes them (css.js colorKeywords): before
+    // 4.4 'css2', in 4.4 and 4.5 'written', later lowercased (null).
+    colorKeywords: version[0] >= 27 || css === null || !before(css, [4, 6, 0]) ? null : before(css, [4, 4, 0]) ? 'css2' : 'written',
+    // Computed colors (cascade.js computeValue), black box: before 22.1.0
+    // as declared ('declared': red stays red; background-color and the
+    // border colors '' when not declared); to 26 named, hex and functional
+    // colors resolved, system colors as declared ('keywords'; currentcolor
+    // too with cssstyle before 4.4); from 27 all resolved, system colors to
+    // jsdom's values ('resolved').
+    computedColors: before(version, [22, 1, 0]) ? 'declared' : version[0] < 27 ? 'keywords' : 'resolved',
     composedAccessors: version[0] < 27 && (css === null || (css[0] === 4 && !before(css, [4, 4, 0]))),
     // Members jsdom added (black box): crypto.randomUUID() in 22.1.0,
     // TextEncoder and TextDecoder in 27.4.0, Blob's text(), arrayBuffer()

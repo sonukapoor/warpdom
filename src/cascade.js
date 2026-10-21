@@ -16,7 +16,7 @@
 // display rules say (but not over its style attribute).
 import { S, ELEMENT_NODE, DOCUMENT_NODE, HTML_NS, rootOf, nextInTree, cssomChanges, connected, trackDetachedStyles } from './internal.js';
 import { LONGHANDS, SHORTHANDS, ALIASES } from './css-data.js';
-import { resolveColor } from './colors.js';
+import { resolveColor, systemColorKind } from './colors.js';
 import { segments, expand, serializeBox, BOX, PAIRS, CSS_WIDE, backgroundComponents } from './shorthands.js';
 import { compileRuleSelector } from './selectors.js';
 import { directionality } from './directionality.js';
@@ -248,20 +248,45 @@ function currentColor(element) {
 // Computes a specified value: colors resolved, currentcolor to the color
 // property, a 0 length to 0px, keyword font sizes, weights and border
 // widths to numbers and lengths.
-function computeValue(element, name, value, data) {
-  if (data[2]) {
-    const parts = segments(value);
-    for (let i = 0; i < parts.length; i += 2) {
-      const token = parts[i];
-      if (!token) continue;
-      if (token.toLowerCase() === 'currentcolor') {
-        parts[i] = name === 'color' ? inheritedValue(element, 'color', data) : currentColor(element);
-      } else {
-        parts[i] = resolveColor(token, element[S].doc[S].window[S].compat.legacyColors) ?? token;
-      }
-    }
-    value = parts.join('');
+// Colors per jsdom version (compat.computedColors): before 22.1.0 as
+// declared (an opaque rgba() from a hex color as rgb()), to 26 system
+// colors (and with cssstyle before 4.4 currentcolor) as declared, and of
+// a border side shorthand's color as written there (cssstyle before 4.4)
+// hsl() and RGB() too, a hex alpha to 3 decimals rounded down.
+const OPAQUE_RGBA = /^rgba\((\d+, \d+, \d+), 1\)$/;
+function computeColors(element, name, value, data) {
+  const compat = element[S].doc[S].window[S].compat;
+  // cssstyle before 4.4 leaves a border's colors undeclared when it gives
+  // none (border: 2px inset); the expansion's initial currentcolor (in
+  // lowercase) stands for that.
+  if (value === 'currentcolor' && compat.colorKeywords === 'css2' && BORDER_COLOR.test(name)) {
+    return compat.computedColors === 'declared' ? '' : currentColor(element);
   }
+  const parts = segments(value);
+  for (let i = 0; i < parts.length; i += 2) {
+    const token = parts[i];
+    if (!token) continue;
+    if (compat.computedColors === 'declared') {
+      const opaque = OPAQUE_RGBA.exec(token);
+      if (opaque !== null) parts[i] = `rgb(${opaque[1]})`;
+      continue;
+    }
+    const lower = token.toLowerCase();
+    if (lower === 'currentcolor') {
+      // cssstyle before 4.4: kept, as currentColor.
+      if (compat.colorKeywords === 'css2') { parts[i] = 'currentColor'; continue; }
+      parts[i] = name === 'color' ? inheritedValue(element, 'color', data) : currentColor(element);
+    } else if (compat.computedColors !== 'keywords') {
+      parts[i] = resolveColor(token, compat.legacyColors) ?? token;
+    } else if (systemColorKind(lower) === 0 && !lower.startsWith('hsl') && !/^[a-zA-Z]*[A-Z][a-zA-Z]*\(/.test(token)) {
+      parts[i] = resolveColor(token, lower[0] === '#' ? 'floor' : compat.legacyColors) ?? token;
+    }
+  }
+  return parts.join('');
+}
+
+function computeValue(element, name, value, data) {
+  if (data[2]) value = computeColors(element, name, value, data);
   if (data[3] && value === '0') return '0px';
   if (!RAW_KEYWORDS.has(name)) return value;
   const compat = element[S].doc[S].window[S].compat;
@@ -462,8 +487,9 @@ function legacyDefault(element, name) {
     if (name !== 'color') return LEGACY_INHERITED[name];
     return element[S].doc[S].window[S].compat.rootColor;
   }
-  if (name === 'background-color') return 'rgba(0, 0, 0, 0)';
-  if (BORDER_COLOR.test(name)) return computedValue(element, 'color');
+  // jsdom before 22.1.0: '' (compat.computedColors).
+  if (name === 'background-color') return element[S].doc[S].window[S].compat.computedColors === 'declared' ? '' : 'rgba(0, 0, 0, 0)';
+  if (BORDER_COLOR.test(name)) return element[S].doc[S].window[S].compat.computedColors === 'declared' ? '' : computedValue(element, 'color');
   return '';
 }
 

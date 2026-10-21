@@ -8,7 +8,7 @@ import { SURFACES } from './style-surface.js';
 import { LONGHANDS, SHORTHANDS, COLOR_SHORTHANDS, ALIASES } from './css-data.js';
 import { isValidValue } from './css-values.js';
 import { expand, segments, serializeBox, serializeFont, positionLayers, legacyFont, LEGACY_FONT_LONGHANDS } from './shorthands.js';
-import { resolveColor } from './colors.js';
+import { resolveColor, systemColorKind } from './colors.js';
 
 // backgroundColor -> background-color, webkitAnimation/WebkitAnimation ->
 // -webkit-animation, cssFloat -> float; dashed names map to themselves.
@@ -73,11 +73,20 @@ function isColorProperty(name) {
 // over and over (style.color = '#f00' on every render).
 // legacyColors (set by declaredValue): cssstyle before 4.2, whose rgb()
 // and hsl() round channels once and which does not resolve hwb()
-// (colors.js).
+// (colors.js; 'cssstyle3' with cssstyle 2 and 3's hsl()). colorKeywords
+// (the surface's, set by declaredValue): how
+// the profile's cssstyle writes color keywords (black box): 'css2' before
+// 4.4, named colors, transparent, currentcolor and system colors as written
+// (Red, ButtonFace), CSS 4's system colors (Canvas) unknown; 'written' 4.4
+// and 4.5, system colors as written, the others lowercased; null (4.6 and
+// later, jsdom 27 and later) all lowercased.
 let legacyColors = false;
-const colorCaches = [new Map(), new Map()];
+let colorKeywords = null;
+const colorCaches = new Map();
 function declaredColors(value) {
-  const colorCache = colorCaches[legacyColors ? 1 : 0];
+  const key = `${legacyColors} ${colorKeywords}`;
+  let colorCache = colorCaches.get(key);
+  if (colorCache === undefined) colorCaches.set(key, colorCache = new Map());
   let out = colorCache.get(value);
   if (out === undefined) {
     out = serializeColors(value);
@@ -94,9 +103,39 @@ function serializeColors(value) {
     if (!token) continue;
     const lower = token.toLowerCase();
     if (lower[0] === '#' || /^(rgba?|hsla?|hwb)\(/.test(lower)) parts[i] = resolveColor(token, legacyColors) ?? token;
-    else if (resolveColor(lower) !== null || lower === 'currentcolor') parts[i] = lower;
+    else if (resolveColor(lower) !== null || lower === 'currentcolor') {
+      parts[i] = colorKeywords === 'css2' || (colorKeywords === 'written' && systemColorKind(lower) !== 0) ? token : lower;
+    }
   }
   return parts.join('');
+}
+
+// Whether the profile's cssstyle rejects a color value the grammar
+// accepts (black box): before 4.4 CSS 4's system colors (Canvas, Field;
+// CSS 2's ButtonFace and ThreeDFace it knows), in 4.4 and 4.5 SelectedItem
+// and SelectedItemText, before 4.2 color functions
+// its older parser does not read (RGB(), rgb(0 0 0), rgb(1.5, 0, 0));
+// cssstyle 5 (jsdom 27.0 to 28.0) system colors in the border side
+// shorthands, and background or text-decoration of one system color. And
+// in every profile rgb() and hsl() mixing numbers and percentages in the
+// comma syntax (rgb(50%, 0, 0)).
+function rejectsColor(name, value, surface) {
+  const shorthandSystem = surface !== null && (surface.key === 'cssstyle5' || surface.key === 'cssstyle5.0');
+  const oldParser = legacyColors === true || legacyColors === 'cssstyle3';
+  if (colorKeywords === null && !oldParser && !shorthandSystem && !value.includes(',')) return false;
+  const parts = segments(value);
+  for (let i = 0; i < parts.length; i += 2) {
+    const token = parts[i];
+    if (!token) continue;
+    const lower = token.toLowerCase();
+    if (oldParser && /^(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix)\(/.test(lower) && resolveColor(token, true) === null) return true;
+    // rgb() and hsl() in the comma syntax: numbers or percentages, not both.
+    if (/^(rgba?|hsla?)\([^()]*,[^()]*\)$/.test(lower) && resolveColor(token, legacyColors) === null) return true;
+    const kind = systemColorKind(lower);
+    if (kind === 1 && (colorKeywords === 'css2' || (colorKeywords === 'written' && lower.startsWith('selecteditem')))) return true;
+    if (kind !== 0 && shorthandSystem && ((BORDER_SHORTHAND.has(name) && name !== 'border') || ((name === 'background' || name === 'text-decoration') && parts.length === 1))) return true;
+  }
+  return false;
 }
 
 // Commas in math functions and gradients serialize as ", " (CSS Values
@@ -297,20 +336,24 @@ const surfaces = new WeakMap(); // CSSStyleProperties prototype -> styleSurface 
 // (react-spectrum's usePress tests save and restore it that way); cssstyle
 // 2 to 4.3 write it as webkit-user-select.
 // fontVariant: cssstyle's font shorthand before 4.4 ('cssstyle4.1' or
-// 'cssstyle4.2', see legacyFont in shorthands.js), or null.
-export function setValidationMode(proto, mode, surfaceKey = null, fontVariant = null) {
+// 'cssstyle4.2', see legacyFont in shorthands.js), or null. colors: how
+// its cssstyle writes color keywords ('css2', 'written' or null, see
+// colorKeywords).
+export function setValidationMode(proto, mode, surfaceKey = null, fontVariant = null, colors = null) {
   modes.set(proto, mode);
-  if (surfaceKey !== null) surfaces.set(proto, fontVariant === null ? styleSurface(surfaceKey) : legacyFontSurface(surfaceKey, fontVariant));
+  if (surfaceKey !== null) surfaces.set(proto, fontVariant === null && colors === null ? styleSurface(surfaceKey) : variantSurface(surfaceKey, fontVariant, colors));
 }
 
-// A style surface with cssstyle's font shorthand before 4.4: the same
-// names, its own declared value caches.
-const fontSurfaces = new Map();
-function legacyFontSurface(key, variant) {
-  let surface = fontSurfaces.get(`${key} ${variant}`);
+// A style surface with cssstyle's font shorthand before 4.4, or its color
+// keywords before 4.6: the same names, its own declared value caches.
+const variantSurfaces = new Map();
+function variantSurface(key, variant, colors) {
+  const id = `${key} ${variant} ${colors}`;
+  let surface = variantSurfaces.get(id);
   if (surface === undefined) {
-    surface = { ...styleSurface(key), legacyFont: variant, caches: Object.create(null) };
-    fontSurfaces.set(`${key} ${variant}`, surface);
+    surface = { ...styleSurface(key), caches: Object.create(null), colors };
+    if (variant !== null) surface.legacyFont = variant;
+    variantSurfaces.set(id, surface);
   }
   return surface;
 }
@@ -383,7 +426,8 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
   if (byValue === undefined) cache.set(name, byValue = new Map());
   let out = byValue.get(value);
   if (out === undefined) {
-    legacyColors = surface !== null && surface.legacyFont === 'cssstyle4.1';
+    legacyColors = surface === null || surface.legacyFont !== 'cssstyle4.1' ? false : mode === 'jsdom20' || mode === 'jsdom22' ? 'cssstyle3' : true;
+    colorKeywords = surface !== null ? surface.colors ?? null : null;
     if (mode === 'page') out = pageDescriptorValue(name, value);
     else if (surface !== null && surface.extras.has(name)) out = name === 'azimuth' ? azimuthValue(value, surface) : value;
     else if (!isKnownProperty(name)) out = INVALID;
@@ -394,6 +438,7 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
         const checked = isSpecMode(mode) || JSDOM26_VALIDATED.has(name);
         out = !checked || isValidValue(name, value) ? serializeDeclared(name, value, mode) : INVALID;
       }
+      if (out !== INVALID && isColorProperty(name) && (isSpecMode(mode) || JSDOM26_VALIDATED.has(name)) && rejectsColor(name, value, surface)) out = INVALID;
     }
     if (byValue.size >= 500) byValue.clear();
     byValue.set(value, out);
@@ -452,11 +497,14 @@ function versionedValue(name, value, mode) {
     const lower = value.toLowerCase();
     const kind = CSS_WIDE_KEYWORD.test(value) ? lower : lower === 'auto' ? 'auto' : lower.includes('var(') ? 'var' : null;
     if (kind !== null && droppedBy(mode, kind, name)) return INVALID;
-    if (mode !== 'jsdom26') {
-      // cssstyle before 4.3.1 keeps currentColor and border-spacing: 0 as written.
-      if (lower === 'currentcolor' && isColorProperty(name)) return value;
-      if (name === 'border-spacing' && ZERO.test(value)) return value;
+    // cssstyle before 4.4 keeps currentColor as written, before 4.3.1
+    // border-spacing: 0 and border-color lowercased.
+    if (lower === 'currentcolor' && colorKeywords === 'css2' && isColorProperty(name)) return value;
+    // Before 4.3.1 border-color as written, lowercased.
+    if (name === 'border-color' && mode !== 'jsdom26' && colorKeywords === 'css2') {
+      return isValidValue(name, value) && !rejectsColor(name, value, null) ? lower : INVALID;
     }
+    if (mode !== 'jsdom26' && name === 'border-spacing' && ZERO.test(value)) return value;
   }
   if ((mode === 'jsdom26' || mode === 'jsdom27') && name === 'border-style' && value.toLowerCase() === 'none') return INVALID;
   // jsdom 30 writes a single-number aspect-ratio as a ratio.
@@ -507,7 +555,7 @@ function droppedBy(mode, kind, name) {
 //   hidden clear what came before them (border-top: 0 none drops it,
 //   none 0 is 0px). CSS-wide keywords drop the declaration.
 // - jsdom 20 to 25 (cssstyle before 4.3.1): as jsdom 26, but components as
-//   written (on border named colors lowercased), border keeps a none style (alone it still drops it), sides
+//   written (to cssstyle 4.4 colors too; on border lowercased), border keeps a none style (alone it still drops it), sides
 //   keep a 0 width as written and only none clears, and var() drops it.
 const BORDER_SHORTHAND = new Set(['border', 'border-top', 'border-right', 'border-bottom', 'border-left']);
 const BORDER_STYLE = /^(none|hidden|dotted|dashed|solid|double|groove|ridge|inset|outset)$/i;
@@ -543,8 +591,9 @@ function borderValue(name, value, mode) {
   }
   if (width === null && style === null && color === null) return INVALID;
   if (width !== null) width = legacy ? (ZERO.test(width) && !side ? '0px' : width) : ZERO.test(width) ? '0px' : canonicalNumbers(width);
-  // Legacy: as written, on border with named colors lowercased.
-  if (color !== null) color = !legacy ? declaredColors(color) : !side && /^[a-z]+$/i.test(color) ? color.toLowerCase() : color;
+  // cssstyle before 4.4: as written on the sides; on border lowercased
+  // before 4.3.1.
+  if (color !== null) color = colorKeywords === 'css2' && side ? color : colorKeywords === 'css2' && legacy ? color.toLowerCase() : declaredColors(color);
   return [width, style, color].filter((part) => part !== null).join(' ');
 }
 
