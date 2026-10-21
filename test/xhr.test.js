@@ -427,6 +427,20 @@ const SCENARIOS = {
     out.inLoadstart = log.slice();
     return out;
   },
+  // What the upload's handlers see: from jsdom 28 they run before
+  // HEADERS_RECEIVED, without the response (#92).
+  async uploadHandlers(w, c) {
+    const x = new w.XMLHttpRequest();
+    const seen = [];
+    for (const type of ['loadstart', 'progress', 'load', 'loadend']) {
+      x.upload.addEventListener(type, () => seen.push([type, getters(x), attempt(() => x.getResponseHeader('x-a')), attempt(() => x.getResponseHeader('content-type'))]));
+    }
+    x.addEventListener('readystatechange', () => seen.push(['readystatechange', x.readyState, x.status]));
+    x.open('POST', `${c.BASE}/text`);
+    x.send('body');
+    await done(x);
+    return seen;
+  },
   async responseTypes(w, c) {
     const out = {};
     const get = async (type, query, prep, method = 'GET') => {
@@ -1179,6 +1193,40 @@ test('XMLHttpRequest: a request stopped while it waits for more of the body canc
       await wait(stopWith === 'timeout' ? 100 : 20);
       assert.deepEqual([stopWith, record.cancelled, log.at(-1)], [stopWith,
         true, { abort: 'loadend 4 0 false/0/0', open: 'readystatechange 1 0', teardown: 'progress 3 200 false/4/0', timeout: 'loadend 4 200 false/0/0' }[stopWith]]);
+    }
+  } finally {
+    globalThis.fetch = hostFetch;
+  }
+});
+
+// jsdom goes on after such a stop: the upload's load and loadend, and from
+// 28 a readystatechange (readyState 2) at the stopped or reopened request.
+// warpdom stops, as the standard (README).
+test('XMLHttpRequest: a request stopped in an upload handler fires nothing more and cancels the body (#92)', async () => {
+  const hostFetch = globalThis.fetch;
+  try {
+    for (const jsdom of ['27.4.0', '30.1.3']) {
+      for (const stopWith of ['abort', 'open']) {
+        const record = { cancelled: false };
+        globalThis.fetch = async () => recordingResponse(record, ['part']);
+        const w = createWindow({ url: PAGE, jsdom });
+        const x = new w.XMLHttpRequest();
+        const log = [];
+        logEvents(x, log, true);
+        x.upload.addEventListener('progress', () => {
+          if (stopWith === 'abort') x.abort(); else x.open('GET', `${BASE}/text`);
+          log.push(stopWith);
+        }, { once: true });
+        x.open('POST', `${BASE}/echo`);
+        x.send('body');
+        await wait(30);
+        const after = log.slice(log.findIndex((l) => l.startsWith('upload.progress')));
+        const status = jsdom === '27.4.0' ? 200 : 0;
+        assert.deepEqual([jsdom, stopWith, record.cancelled, after, x.status], [jsdom, stopWith, true, stopWith === 'abort'
+          ? [`upload.progress ${jsdom === '27.4.0' ? 2 : 1} true/4/4`, 'readystatechange 4 0', 'abort 4 0 false/0/0', 'loadend 4 0 false/0/0', 'abort']
+          // Reopened in OPENED (from 28): no readystatechange.
+          : [`upload.progress ${jsdom === '27.4.0' ? 2 : 1} true/4/4`, ...(jsdom === '27.4.0' ? ['readystatechange 1 200'] : []), 'open'], stopWith === 'abort' ? 0 : status]);
+      }
     }
   } finally {
     globalThis.fetch = hostFetch;

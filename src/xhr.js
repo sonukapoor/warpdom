@@ -593,15 +593,17 @@ async function run(xhr, s, req) {
   }
   const length = response.headers.get('content-length');
   const total = length !== null && /^\d+$/.test(length) && !response.headers.has('content-encoding') ? Number(length) : 0;
+  // jsdom 28 and later complete the upload before HEADERS_RECEIVED, and its
+  // handlers see no response yet (status 0, no URL or headers); earlier
+  // ones after it. A request stopped in a handler cancels the body (jsdom
+  // fires the upload's remaining events, and from 28 a readystatechange,
+  // after the abort: warpdom does not, as the standard).
+  if (compat.xhrUndici && !completeUpload(s, req, cross)) { response.body?.cancel().catch(() => {}); return; }
   // As jsdom, the URL keeps its fragment when there was no redirect.
   s.response = { status: response.status, statusText: response.statusText, url: finalURL, headers: response.headers, exposed,
     chunks: [], length: 0, bytes: null, total, computable: total !== 0 };
   s.responseObject = undefined;
   s.text = null;
-
-  // jsdom 28 and later complete the upload before HEADERS_RECEIVED, earlier
-  // ones after it.
-  if (compat.xhrUndici && !completeUpload(s, req, cross)) return;
   s.state = HEADERS_RECEIVED;
   fireStateChange(xhr, window);
   if (s.req !== req) { response.body?.cancel().catch(() => {}); return; }

@@ -610,6 +610,10 @@ these differences from jsdom:
   carry the host's own cookies (`credentials: 'omit'`).
 - A redirect that fails its CORS check is a network error. jsdom before 28
   fires `error` and then goes on to follow the redirect and fire `load`.
+- A request stopped (`abort()`, `open()`) in an upload `progress` or `load`
+  handler fires nothing more. jsdom goes on with the upload's remaining
+  `load` and `loadend`, and from 28 fires `readystatechange` (readyState 2)
+  at the stopped or reopened request.
 - jsdom 20 to 26 report network errors on the virtual console; warpdom's
   test environments report them where they report "Not implemented"
   messages, in jsdom's words for CORS failures and with fetch's for others.
