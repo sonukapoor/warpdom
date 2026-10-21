@@ -693,6 +693,19 @@ const SCENARIOS = {
       const sent = c.server.requests.slice(n)[0];
       out[name] = [log.at(-2).split(' ').slice(0, 3), x.status, port(x.responseURL), sent ? port(sent.headers.origin ?? '-') : null];
     }
+    // With a fragment or query, about:blank has neither its creator's origin
+    // nor its base URL in any jsdom (the standard ignores the fragment): a
+    // relative URL throws, and requests carry Origin: null (#92).
+    for (const src of ['about:blank#sec', 'about:blank?q', 'about:blank#']) {
+      const other = w.document.createElement('iframe');
+      other.src = src;
+      w.document.body.append(other);
+      const win = other.contentWindow;
+      const n = c.server.requests.length;
+      const { x } = await request(win, 'GET', `${c.BASE}/echo`);
+      const sent = c.server.requests.slice(n)[0];
+      out[src] = [win.origin, win.location.href, port(win.document.baseURI), attempt(() => new win.XMLHttpRequest().open('GET', 'echo')), x.status, sent ? sent.headers.origin ?? '-' : null];
+    }
     base.remove();
     const nested = child.document.createElement('iframe');
     child.document.body.append(nested);
