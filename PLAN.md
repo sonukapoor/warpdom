@@ -120,7 +120,9 @@ the projects of M4.
 **M6: Sustainable maintenance.** What large projects ask before depending on
 a single maintainer: GitHub Sponsors (live 2026-10-17), contributor docs and
 labeled issues, a release process with the weekly upstream watch, security
-policy, and more maintainers over time.
+policy, and more maintainers over time. What 1.0 means and needs, and the
+support policy: docs/road-to-1.0.md, docs/stability.md and SECURITY.md
+(2026-10-21 below).
 
 **Later:** SSR and edge runtimes (the core already avoids Node built-ins).
 
@@ -4001,3 +4003,38 @@ Bench (Node 22.17.1, bench:load, two runs each, main -> branch): cold load
 windows 0.193/0.197 -> 0.197/0.199 ms (the 13 viewport setters and
 status's accessor are made per window on 27+ profiles); within noise.
 
+## 2026-10-21: road to 1.0, stability and security policy (branch docs/road-to-1.0)
+
+Two maintainers declined adoption PRs because warpdom is pre-1.0 and has
+little traction yet, so 1.0 gets a public, checkable definition:
+
+- [docs/road-to-1.0.md](docs/road-to-1.0.md): what 1.0 promises (jsdom's
+  results, no breaking upgrades within 1.x, compare and migrate to check
+  and switch back), the public API the promise covers, and 8 criteria with
+  how each is checked and its status. Mapping to the milestones: criteria
+  1-4 are M1's exit (API superset test with KNOWN limited to documented
+  differences, parity issues closed or documented, the corpus check on 25+
+  suites, WPT gaps with issues); 5-7 are M6's release and security parts
+  (public API frozen and typed, 3 minor releases and 6 weeks without a
+  breaking change, docs complete); 8 is M4's first step (one adopter
+  outside the corpus). M2, M3 and M5 do not block 1.0; after 1.0, M3
+  (modern APIs on by default) is a major release unless it stays opt-in or
+  limited to new jsdom profiles.
+- [docs/stability.md](docs/stability.md): 0.x vs semver from 1.0, what is
+  and is not breaking (fixes toward jsdom's results are not; they are
+  listed in the release notes with the corpus check), jsdom 20.0.3 to
+  NEWEST_MODELED_JSDOM with the warning and upstream watch, Node 22.12+
+  (CI 22.22 and 24), Vitest 2+ and Jest 27+, the deprecation process.
+- [SECURITY.md](SECURITY.md): private reports through GitHub security
+  advisories; fixes for the latest minor only. Needs private vulnerability
+  reporting enabled in the repository settings (off on 2026-10-21).
+- README: the status line links both docs; "warpdom models jsdom 20.0.3
+  to 30.1.2" corrected to 30.1.3 (NEWEST_MODELED_JSDOM).
+
+Status on 2026-10-21: met 3 (corpus check for 0.1.7) and 4 (WPT); 5 and 7
+nearly (types in place; setXPathLoader only in its type); not met 1 and 2
+(KNOWN has 5 entries under #70 and #71; open parity issues #51, #70, #71,
+#76, #84, #90, #97, #98 and the audit #17), 6 (0.1.7 changed a default)
+and 8. Proposed numbers to confirm on the PR: 25 suites, 3 releases and 6
+weeks, 1 adopter, 4 weeks to model a new jsdom, deprecations kept 2 minor
+releases and 3 months, security answer within 7 days.
