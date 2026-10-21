@@ -44,6 +44,11 @@ function splitOutside(text, sep) {
 // inset: 0 100dvh). Numbers stay (opacity: 0, line-height: 0).
 const ZERO = /^[+-]?(0+\.?0*|\.0+)$/;
 const BOX_SHORTHANDS = new Set(['margin', 'padding', 'border-width']);
+// The length properties cssstyle 5 parses (black box, jsdom 27.0 to 28.0):
+// a 0 is 0px there, as written elsewhere (text-indent: 0, min-width: 0).
+const ZERO_PARSED_5 = new Set(['background-size', 'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width', 'border-spacing',
+  'top', 'right', 'bottom', 'left', 'flex-basis', 'font-size', 'height', 'width', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+  'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'margin', 'padding', 'border-width']);
 const ZERO_LISTS = new Set(['margin', 'padding', 'border-width', 'border-spacing', 'background-position']);
 const zeroIsLength = new Map();
 function isLengthProperty(name) {
@@ -82,6 +87,9 @@ function isColorProperty(name) {
 // later, jsdom 27 and later) all lowercased.
 let legacyColors = false;
 let colorKeywords = null;
+// cssstyle 5 (jsdom 27.0 to 28.0, set by declaredValue): a 0 stays 0 except
+// in the properties it parses (ZERO_PARSED_5).
+let zeroAsWritten = false;
 const colorCaches = new Map();
 function declaredColors(value) {
   const key = `${legacyColors} ${colorKeywords}`;
@@ -428,6 +436,7 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
   if (out === undefined) {
     legacyColors = surface === null || surface.legacyFont !== 'cssstyle4.1' ? false : mode === 'jsdom20' || mode === 'jsdom22' ? 'cssstyle3' : true;
     colorKeywords = surface !== null ? surface.colors ?? null : null;
+    zeroAsWritten = surface !== null && (surface.key === 'cssstyle5' || surface.key === 'cssstyle5.0');
     if (mode === 'page') out = pageDescriptorValue(name, value);
     else if (surface !== null && surface.extras.has(name)) out = name === 'azimuth' ? azimuthValue(value, surface) : value;
     else if (!isKnownProperty(name)) out = INVALID;
@@ -497,14 +506,13 @@ function versionedValue(name, value, mode) {
     const lower = value.toLowerCase();
     const kind = CSS_WIDE_KEYWORD.test(value) ? lower : lower === 'auto' ? 'auto' : lower.includes('var(') ? 'var' : null;
     if (kind !== null && droppedBy(mode, kind, name)) return INVALID;
-    // cssstyle before 4.4 keeps currentColor as written, before 4.3.1
-    // border-spacing: 0 and border-color lowercased.
-    if (lower === 'currentcolor' && colorKeywords === 'css2' && isColorProperty(name)) return value;
-    // Before 4.3.1 border-color as written, lowercased.
-    if (name === 'border-color' && mode !== 'jsdom26' && colorKeywords === 'css2') {
-      return isValidValue(name, value) && !rejectsColor(name, value, null) ? lower : INVALID;
+    // cssstyle before 4.4 keeps currentColor, border-spacing: 0 and a
+    // border width of 0 as written; before 4.3.1 border-color lowercased.
+    if (colorKeywords === 'css2') {
+      if (lower === 'currentcolor' && isColorProperty(name)) return value;
+      if ((name === 'border-spacing' || BORDER_WIDTHS.has(name)) && ZERO.test(value)) return value;
+      if (name === 'border-color' && mode !== 'jsdom26') return isValidValue(name, value) && !rejectsColor(name, value, null) ? lower : INVALID;
     }
-    if (mode !== 'jsdom26' && name === 'border-spacing' && ZERO.test(value)) return value;
   }
   if ((mode === 'jsdom26' || mode === 'jsdom27') && name === 'border-style' && value.toLowerCase() === 'none') return INVALID;
   // jsdom 30 writes a single-number aspect-ratio as a ratio.
@@ -733,7 +741,12 @@ function serializeDeclared(name, value, mode) {
   const box = BOX_SHORTHANDS.has(name);
   if (!box && !value.includes('0')) return value;
   const tokens = value.split(/\s+/);
-  if (tokens.length === 1) return ZERO.test(value) && isLengthProperty(name) ? '0px' : value;
+  if (tokens.length === 1) {
+    if (!ZERO.test(value)) return value;
+    // jsdom 28.1 and later: vertical-align: 0 is 0px too.
+    if (zeroAsWritten) return ZERO_PARSED_5.has(name) ? '0px' : value;
+    return isLengthProperty(name) || (name === 'vertical-align' && isSpecMode(mode)) ? '0px' : value;
+  }
   if (!ZERO_LISTS.has(name)) return value;
   for (let i = 0; i < tokens.length; i++) if (ZERO.test(tokens[i])) tokens[i] = '0px';
   if (box && tokens.length <= 4) {

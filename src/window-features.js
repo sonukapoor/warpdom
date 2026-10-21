@@ -1202,6 +1202,9 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // too with cssstyle before 4.4); from 27 all resolved, system colors to
     // jsdom's values ('resolved').
     computedColors: before(version, [22, 1, 0]) ? 'declared' : version[0] < 27 ? 'keywords' : 'resolved',
+    // A declared 0 length computes to 0px from 28.1.0; before as declared
+    // (text-indent: 0, min-width: 0), black box 20.0.0 to 28.0.0.
+    zeroLengths: !before(version, [28, 1, 0]),
     composedAccessors: version[0] < 27 && (css === null || (css[0] === 4 && !before(css, [4, 4, 0]))),
     // Members jsdom added (black box): crypto.randomUUID() in 22.1.0,
     // TextEncoder and TextDecoder in 27.4.0, Blob's text(), arrayBuffer()

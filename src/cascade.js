@@ -287,7 +287,8 @@ function computeColors(element, name, value, data) {
 
 function computeValue(element, name, value, data) {
   if (data[2]) value = computeColors(element, name, value, data);
-  if (data[3] && value === '0') return '0px';
+  // A 0 length: 0px from jsdom 28.1.0, as declared before (text-indent: 0).
+  if (data[3] && value === '0' && element[S].doc[S].window[S].compat.zeroLengths) return '0px';
   if (!RAW_KEYWORDS.has(name)) return value;
   const compat = element[S].doc[S].window[S].compat;
   // jsdom before 29.0.2 (black box, 20 to 29.0.1) keeps these keywords as

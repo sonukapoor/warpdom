@@ -128,4 +128,40 @@ function dialogs(w) {
     'border-top-color', 'left', 'right', 'width', 'height', 'inset-inline-start'];
   return [read(w, closed, props), read(w, open, props)];
 }
-for (const jsdom of [20, 22, 25, 26, 28, 29]) parity(`computed values: dialog (jsdom ${jsdom}, #76)`, dialogs, { jsdom });
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29]) parity(`computed values: dialog (jsdom ${jsdom}, #76)`, dialogs, { jsdom });
+
+// --- zero lengths ------------------------------------------------------------------
+
+// A 0 length stays 0 before jsdom 28.1.0 where cssstyle does not parse the
+// property (text-indent, min-width); cssstyle before 4.4 keeps border
+// widths and border-spacing so too.
+const ZEROS = ['text-indent', 'letter-spacing', 'min-width', 'outline-offset', 'border-top-width', 'border-spacing', 'width', 'margin-top', 'vertical-align', 'column-gap'];
+function zeros(w) {
+  const d = w.document;
+  d.head.innerHTML = `<style>.z { ${ZEROS.map((p) => `${p}: 0`).join('; ')} } .m { margin: 0; padding: 0 }</style>`;
+  const sheet = d.body.appendChild(d.createElement('div'));
+  sheet.className = 'z';
+  const inline = d.body.appendChild(d.createElement('div'));
+  for (const p of ZEROS) inline.style.setProperty(p, '0');
+  const box = d.body.appendChild(d.createElement('div'));
+  box.className = 'm';
+  const ua = ['ruby', 'rt', 'input', 'button', 'textarea'].map((tag) => read(w, d.body.appendChild(d.createElement(tag)), ['text-indent'])[0]);
+  return { sheet: read(w, sheet, ZEROS), declared: ZEROS.map((p) => inline.style.getPropertyValue(p)), inline: read(w, inline, ZEROS), box: read(w, box, ['margin-top', 'padding-left']), ua };
+}
+for (const jsdom of JSDOMS) parity(`computed values: zero lengths (jsdom ${jsdom})`, zeros, { jsdom });
+
+test('computed values: a 0 length is 0px from jsdom 28.1.0', () => {
+  const zero = (profile, prop) => profileColor(profile, `${prop}: 0`, prop);
+  for (const jsdom of ['20.0.3', '26.1.0', '27.0.0', '27.4.0', '28.0.0']) {
+    assert.deepEqual(zero({ jsdom }, 'text-indent'), ['0', '0'], jsdom);
+    assert.deepEqual(zero({ jsdom }, 'min-width'), ['0', '0'], jsdom);
+    assert.deepEqual(zero({ jsdom }, 'width'), ['0px', '0px'], jsdom);
+  }
+  for (const jsdom of ['28.1.0', '29.0.1', '30.1.3']) {
+    assert.deepEqual(zero({ jsdom }, 'text-indent'), ['0px', '0px'], jsdom);
+    assert.deepEqual(zero({ jsdom }, 'vertical-align'), ['0px', '0px'], jsdom);
+  }
+  // cssstyle 4.4 parses border widths and border-spacing.
+  assert.deepEqual(zero({ jsdom: '26.1.0', cssstyle: '4.3.1' }, 'border-top-width'), ['0', '0']);
+  assert.deepEqual(zero({ jsdom: '26.1.0', cssstyle: '4.4.0' }, 'border-top-width'), ['0px', '0px']);
+});
