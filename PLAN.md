@@ -127,7 +127,8 @@ policy, and more maintainers over time.
 ## Traction plan (2026-10-21)
 
 Why: the adoption PRs showed that numbers alone don't convince maintainers;
-what they ask for is maturity (1.0, see [docs/road-to-1.0.md](docs/road-to-1.0.md))
+what they ask for is maturity (1.0; its criteria are proposed in
+[#99](https://github.com/sonukapoor/warpdom/pull/99), docs/road-to-1.0.md)
 and traction (other users). This plan builds both. Research of 2026-10-21;
 status updated as items land.
 
@@ -152,7 +153,7 @@ minutes from one default-branch run, including install):
 | mattermost/mattermost | Jest, `testEnvironment: 'jsdom'` | ~32 job-min (4 shards) | |
 | apache/superset | Jest, custom environment extending jsdom | ~37 job-min (8 shards) | |
 | getsentry/sentry | Jest, custom jsdom-based environment | ~32 job-min (16 shards) | needs an extendable warpdom environment |
-| backstage/backstage | Jest, jsdom + @jest/environment-jsdom-abstract | ~4 min per job | needs an extendable base |
+| backstage/backstage | Jest, jsdom + @jest/environment-jsdom-abstract | not comparable | needs an extendable base; its CI skips tests that passed before (success cache; pull requests also test only changed packages), so a default-branch run has no DOM job-minutes to compare (2026-10-21, run 39624431674: 2 jobs, test step 11-14 s) |
 | RocketChat/Rocket.Chat, twentyhq/twenty, PostHog/posthog | Jest, jsdom | smaller or mixed | |
 | excalidraw/excalidraw, mastodon/mastodon | Vitest, jsdom | 2-3 min | small savings, well-known |
 
