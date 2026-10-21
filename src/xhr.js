@@ -24,7 +24,7 @@
 import { S, state, domError, tooFewArguments, PLATFORM_GLOBAL, PlatformURL as URL, DOCUMENT_NODE } from './internal.js';
 import { dispatch } from './events.js';
 import { handlerMembers } from './event-handlers.js';
-import { decodeText, encodingOf, bufferBytes, isSharedArrayBuffer, realmOf, utf8Encode, PlatformTextDecoder } from './encoding.js';
+import { decodeText, encodingOf, webidlString, bufferBytes, isSharedArrayBuffer, realmOf, utf8Encode, PlatformTextDecoder } from './encoding.js';
 import { blobData, makeBlob } from './file-reader.js';
 import { documentBaseURL } from './base-url.js';
 import { innerMarkup, serializeXML } from './dom-parsing.js';
@@ -729,24 +729,29 @@ function send(xhr, s, body) {
   run(xhr, s, req);
 }
 
+const OPEN_CONTEXT = "Failed to execute 'open' on 'XMLHttpRequest'";
+
 function open(xhr, s, method, url, rest) {
   const window = s.window;
   const legacy = !window[S].compat.xhrUndici;
-  const m = String(method);
+  // The arguments are converted first (WebIDL; the method is a ByteString),
+  // so an exception from a toString() propagates, as in jsdom. The user
+  // name and password are converted (USVString?) and not used.
+  const m = byteString(webidlString(method, 'parameter 1', OPEN_CONTEXT), 1, 'open');
+  const u = webidlString(url, 'parameter 2', OPEN_CONTEXT);
+  for (let i = 1; i < 3 && i < rest.length; i++) if (rest[i] != null) webidlString(rest[i], `parameter ${i + 3}`, OPEN_CONTEXT);
   if (!TOKEN.test(m)) throw domError('The string did not match the expected pattern.', 'SyntaxError');
   const upper = m.toUpperCase();
   if (upper === 'CONNECT' || upper === 'TRACE' || upper === 'TRACK') throw domError('The operation is insecure.', 'SecurityError');
   let parsed;
   try {
-    parsed = new URL(String(url), documentBaseURL(window.document));
+    parsed = new URL(u, documentBaseURL(window.document));
   } catch {
     throw domError('The string did not match the expected pattern.', 'SyntaxError');
   }
   // open(method, url) is asynchronous; with a third argument, its boolean
-  // value decides (undefined is false). The user name and password are
-  // converted (USVString?) and not used.
+  // value decides (undefined is false).
   const sync = rest.length > 0 && !rest[0];
-  for (let i = 1; i < 3 && i < rest.length; i++) if (rest[i] != null) String(rest[i]);
   if (sync && (s.timeout !== 0 || s.responseType !== '')) throw domError('The object does not support the operation or argument.', 'InvalidAccessError');
   stop(s);
   s.send = false;

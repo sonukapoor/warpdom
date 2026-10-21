@@ -698,6 +698,22 @@ const SCENARIOS = {
     new w.XMLHttpRequest().open(value('method', 'GET'), value('url', '/x'), true, value('user', 'a'), value('password', 'b'));
     new w.XMLHttpRequest().open('GET', '/x', true, null, undefined);
     out.toString = calls;
+    // Conversions come first, and their exceptions propagate (#92).
+    const throwing = (name) => ({ toString() { calls.push(name); throw new RangeError(`${name} toString`); } });
+    calls.length = 0;
+    out.conversionErrors = [
+      attempt(() => new w.XMLHttpRequest().open('GET', throwing('url'))),
+      attempt(() => new w.XMLHttpRequest().open('bad method', throwing('url after a bad method'))),
+      attempt(() => new w.XMLHttpRequest().open(throwing('method'), throwing('url after the method'))),
+      attempt(() => new w.XMLHttpRequest().open('GET', '/x', true, throwing('user'))),
+      attempt(() => new w.XMLHttpRequest().open('GET', 'http://[', true, null, throwing('password after a bad URL'))),
+      attempt(() => new w.XMLHttpRequest().open('GET', Symbol('url'))),
+      attempt(() => new w.XMLHttpRequest().open(Symbol('method'), '/x')),
+      attempt(() => new w.XMLHttpRequest().open('GET', '/x', true, Symbol('user'))),
+      attempt(() => new w.XMLHttpRequest().open('GET', '/x', true, 'u', Symbol('password'))),
+      attempt(() => new w.XMLHttpRequest().open('G€T', '/x')),
+      calls.slice(),
+    ];
     const z = new w.XMLHttpRequest();
     z.responseType = 'json';
     z.open('GET', `${c.BASE}/type?ct=application/json&body=fffe7b007d00&enc=hex`);
