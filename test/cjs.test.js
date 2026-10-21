@@ -125,6 +125,21 @@ test('CommonJS build: in a VM context without btoa, the jsdom 20 profile sends U
   }
 });
 
+test('CommonJS build: in a VM context without atob and btoa, window.atob, window.btoa and readAsDataURL work (#92)', async () => {
+  const { exports: warpdom, context } = loadInContext();
+  assert.equal(vm.runInContext('typeof atob + typeof btoa', context), 'undefinedundefined');
+  const window = warpdom.createWindow({ url: 'https://example.com/' });
+  assert.deepEqual([window.btoa('hi\u00e9'), window.atob('aGk=')], ['aGnp', 'hi']);
+  assert.throws(() => window.btoa('\u20ac'), (e) => e.name === 'InvalidCharacterError');
+  const reader = new window.FileReader();
+  const url = await new Promise((resolve, reject) => {
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(new window.Blob(['hi'], { type: 'text/plain' }));
+  });
+  assert.equal(url, 'data:text/plain;base64,aGk=');
+});
+
 test('CommonJS build: in the VM context of warpdom/jest, whose global object is a warpdom window', async () => {
   // Stand-ins for the Jest packages the environment loads from the project.
   const dir = mkdtempSync(join(tmpdir(), 'warpdom-cjs-'));
