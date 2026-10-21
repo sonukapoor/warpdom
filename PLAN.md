@@ -92,21 +92,30 @@ result would change.
 - Exit: the corpus and the adopted projects show no unexplained result
   changes with the APIs on.
 
-**M4: Adoption.** Well-known projects running their tests on warpdom in
-public; every adoption PR replaces jsdom completely (no two DOM packages).
-- Open or planned (2026-10-17): Radix, handsontable, floating-ui, downshift,
-  solid-primitives (bug fix), MUI and Vuetify (from 2026-10-19), Ant Design
-  (after 0.1.4); next candidates React Spectrum, CopilotKit, Excalidraw.
-- `warpdom migrate` and `warpdom compare` make a switch a five-minute,
-  reversible experiment; a GitHub Action that posts the comparison on a PR
-  is next.
-- Exit: at least ten well-known projects merged, with their CI time saved
-  documented.
+**M4: Adoption.** Projects running their tests on warpdom in public. The
+traction plan below (2026-10-21) sets the order of work.
+- Lesson (2026-10-21): two large libraries declined adoption PRs, Vuetify
+  ("1-2 years if it gets enough traction") and Mantine ("not while warpdom is
+  pre-1.0"). Libraries are conservative; applications, which pay for CI
+  minutes, are where test environments get switched (the public switches to
+  happy-dom were Gitea, cylc-ui, pulfalight, Element Web). First merged
+  adoptions: applications whose jsdom unit jobs set their CI time.
+- A full switch replaces jsdom completely (no two DOM packages). A
+  non-blocking side job that runs `warpdom compare` next to jsdom is also
+  acceptable: it keeps jsdom and reports result differences and time saved
+  on every run.
+- Open PRs: MUI, Radix, handsontable, floating-ui, downshift (and the
+  solid-primitives bug fix). Closed: Vuetify, Mantine, Ant Design (bot).
+- Exit: at least ten well-known projects running on warpdom, with their CI
+  time saved documented.
 
-**M5: Built into the test runners.** `environment: 'warpdom'` listed by Vitest
-(and documented by Jest) next to jsdom and happy-dom, after M1, M2 and M4 give
-the evidence. Approach the Vitest team with the DOMParity data, the WPT
-numbers, the adoption list and the paper.
+**M5: Documented and widely used with the test runners.** Vitest does not add
+or promote further built-in environments (a maintainer on
+vitest-dev/vitest#7842, closed as not planned), so the goal is not a built-in
+`environment: 'warpdom'` but: warpdom in Vitest's ecosystem CI
+(vitest-dev/vitest-ecosystem-ci, run three times a week and visible to the
+Vitest team), listed in awesome-vitest (done) and awesome-jest, and used by
+the projects of M4.
 
 **M6: Sustainable maintenance.** What large projects ask before depending on
 a single maintainer: GitHub Sponsors (live 2026-10-17), contributor docs and
@@ -114,6 +123,46 @@ labeled issues, a release process with the weekly upstream watch, security
 policy, and more maintainers over time.
 
 **Later:** SSR and edge runtimes (the core already avoids Node built-ins).
+
+## Traction plan (2026-10-21)
+
+Why: the adoption PRs showed that numbers alone don't convince maintainers;
+what they ask for is maturity (1.0; its criteria are proposed in
+[#99](https://github.com/sonukapoor/warpdom/pull/99), docs/road-to-1.0.md)
+and traction (other users). This plan builds both. Research of 2026-10-21;
+status updated as items land.
+
+| # | Action | Effort | Why | Status |
+|---|---|---|---|---|
+| 1 | Publish from GitHub Actions with npm trusted publishing and provenance | ~1 h + one-time npm setup by Sonu | jsdom, happy-dom and Vitest publish with provenance; it's the first thing a security review checks | PR in progress |
+| 2 | OpenSSF Scorecard action, actions pinned to SHAs, branch protection on main; optionally the OpenSSF Best Practices badge | 2-3 h | Visible trust signals for a single-maintainer project | Open |
+| 3 | A `warpdom compare` GitHub Action for a non-blocking side job (keeps jsdom, posts result differences and time saved) | 1-2 days | The cheapest yes for a conservative maintainer; builds evidence on their own suite over time (precedents: eslint-plugin-oxlint next to ESLint, rolldown-vite, react-compiler-healthcheck) | Open |
+| 4 | First adoptions in applications whose jsdom unit jobs set CI time (candidates below); open a PR only after `compare` shows zero differences and a measured speedup | ~1 day each | Applications switch test environments; libraries wait | Open |
+| 5 | Join Vitest's ecosystem CI (a `tests/warpdom.ts` like vitest-pool-example; its helpers assume pnpm) | ~½ day | Runs against Vitest main three times a week, visible to the Vitest team | Open |
+| 6 | Add warpdom to awesome-jest (jest-community/awesome-jest, "Environments") | 15 min | Lasting discoverability for Jest users | Open |
+| 7 | "Show and tell" in Vitest Discussions and the Vitest Discord: the reproducible benchmark, WPT numbers, `npx warpdom compare`, and where warpdom loses | ~2 h | Early users from the right audience, within Vitest's "custom environments are fine" stance | Open |
+| 8 | Bus factor and 1.0: road to 1.0 and stability policy ([#99](https://github.com/sonukapoor/warpdom/pull/99)), CONTRIBUTING with labeled good first issues, a second npm maintainer when possible | ongoing | Exactly what the "pre-1.0" answers point at | 1.0 doc in review |
+
+Candidate applications (jsdom unit suites that dominate CI shards; job
+minutes from one default-branch run, including install):
+
+| Project | Runner | Unit DOM jobs | Note |
+|---|---|---|---|
+| n8n-io/n8n | Vitest, `environment: 'jsdom'` | ~63 job-min (4 frontend shards x 2 Node) | |
+| grafana/grafana | Jest, `testEnvironment: 'jsdom'` | ~49 job-min (16 shards) | |
+| mattermost/mattermost | Jest, `testEnvironment: 'jsdom'` | ~32 job-min (4 shards) | |
+| apache/superset | Jest, custom environment extending jsdom | ~37 job-min (8 shards) | |
+| getsentry/sentry | Jest, custom jsdom-based environment | ~32 job-min (16 shards) | needs an extendable warpdom environment |
+| backstage/backstage | Jest, jsdom + @jest/environment-jsdom-abstract | not comparable | needs an extendable base; its CI skips tests that passed before (success cache; pull requests also test only changed packages), so a default-branch run has no DOM job-minutes to compare (2026-10-21, run 39624431674: 2 jobs, test step 11-14 s) |
+| RocketChat/Rocket.Chat, twentyhq/twenty, PostHog/posthog | Jest, jsdom | smaller or mixed | |
+| excalidraw/excalidraw, mastodon/mastodon | Vitest, jsdom | 2-3 min | small savings, well-known |
+
+Product work this implies: an extendable environment for projects that
+subclass jsdom's (Sentry, Superset, Backstage), and the compare Action (3).
+
+Current numbers to beat (2026-10-21): 4 stars, about 420 npm downloads a
+month, one maintainer. A competitor, vitest-environment-rsdom ("drop-in jsdom
+replacement accelerated with Rust"), appeared on 2026-10-09.
 
 ## Product
 
