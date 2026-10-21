@@ -276,19 +276,23 @@ const windowChainScenario = (w) => {
 // covered: jsdom 20 runs without self).
 const INHERITED_KEYS = ['self', 'name', 'status', 'innerWidth', 'scrollY', 'devicePixelRatio'];
 const LAZY_KEYS = ['console', 'Image', 'Option', 'Audio', 'HTMLCanvasElement', 'MutationObserver', 'webkitURL', 'HTMLDocument', 'WebSocket'];
+const sameDescriptor = (a, b) => b !== undefined && ('value' in a ? a.value === b.value : a.get === b.get && a.set === b.set);
 const inheritedAssignmentScenario = (keys) => (w) => {
   const attempt = (f) => { try { return f(); } catch (e) { return e.constructor.name; } };
   const out = [];
   const setters = ['self', 'outerHeight', 'status'].map((key) => [key, Object.getOwnPropertyDescriptor(w, key).set]);
   const statusGetter = Object.getOwnPropertyDescriptor(w, 'status').get;
   for (const key of keys) {
-    const before = w[key];
+    // The descriptor, not w[key]: warpdom makes the lazy members on first
+    // read (an accessor until then), and the assignment must reach that
+    // accessor's setter. Nothing reads them before this loop.
+    const before = Object.getOwnPropertyDescriptor(w, key);
     const derived = Object.create(w);
     const result = attempt(() => { derived[key] = 7; return 'ok'; });
     const own = Object.hasOwn(derived, key) ? descriptorOf(derived, key) : 'none';
-    // The lazy members are accessors on warpdom's window until read.
-    const window = LAZY_KEYS.includes(key) ? (w[key] === before ? 'kept' : 'replaced') : descriptorOf(w, key);
-    out.push(`${key}: ${result}, own ${own}, window ${window}, derived reads ${String(derived[key])}`);
+    const window = LAZY_KEYS.includes(key) ? (sameDescriptor(before, Object.getOwnPropertyDescriptor(w, key)) ? 'kept' : 'replaced') : descriptorOf(w, key);
+    const reads = w[key] === 7 ? '7' : typeof w[key];
+    out.push(`${key}: ${result}, own ${own}, window ${window} (reads ${reads}), derived reads ${String(derived[key])}`);
   }
   for (const [key, set] of setters) {
     if (!set) { out.push(`${key}: no setter`); continue; }
