@@ -196,3 +196,33 @@ test('event.view follows the window', () => {
   window.innerWidth = innerWidth;
   document.body.innerHTML = '';
 });
+
+// Assignments through an object that inherits from the window (#90; black
+// box: jsdom 20.0.3, 26.1.0, 30.1.3). In forks and threads Vitest copies
+// the window's members to Node's global: self and parent are data
+// properties there (the derived object gets its own), the others accessors
+// whose setters replace the global's value. In the VM pools up to jsdom 26
+// the global (a VM context's) lets the derived object have its own property
+// for every member; from jsdom 27 the context is jsdom's window itself and
+// an assignment to self, parent, innerWidth or status through a derived
+// object replaces the global's, where warpdom's global (a VM context's)
+// gives the derived object its own (not asserted); data properties (name,
+// interface objects) give it its own in every version.
+test('assignments through an object inheriting from the window', () => {
+  const kept = 'own kept';
+  const replaced = 'none replaced';
+  const expectedKinds = {
+    forks: { self: kept, parent: kept, innerWidth: replaced, status: replaced, name: replaced, Image: replaced, HTMLElement: replaced },
+    vm: { name: kept, Image: kept, HTMLElement: kept },
+    'vm-legacy': { self: kept, parent: kept, innerWidth: kept, status: kept, name: kept, Image: kept, HTMLElement: kept },
+  }[process.env.VIEWPORT_EXPECT];
+  const results = {};
+  for (const key of Object.keys(expectedKinds)) {
+    const before = Object.getOwnPropertyDescriptor(window, key);
+    const derived = Object.create(window);
+    derived[key] = 7;
+    results[key] = `${Object.hasOwn(derived, key) ? 'own' : 'none'} ${window[key] === 7 || window[key] === '7' ? 'replaced' : 'kept'}`;
+    Object.defineProperty(window, key, before);
+  }
+  expect(results).toEqual(expectedKinds);
+});

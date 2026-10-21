@@ -258,6 +258,74 @@ const windowChainScenario = (w) => {
   out.push(String(w.named), 'named' in w);
   return out;
 };
+// Assignments through an object that inherits from the window (#90; black
+// box with jsdom 20.0.3, 21.1.2, 22.1.0, 26.1.0, 27.4.0 and 30.1.3, windows
+// made with runScripts as the test environments make them). Before 27.0.0
+// the derived object gets its own property and the window keeps its
+// member, also self (21+); from 27.0.0 the window's own accessors (self,
+// status, the viewport members) act on their window whatever this is: the
+// derived object gets no property and the window's member is replaced
+// (status keeps a string). Data properties (name; status and the viewport
+// members before 27; interface objects, Image, console, webkitURL,
+// HTMLDocument, WebSocket, which warpdom makes on first read) give the
+// derived object its own property in every version. The setters called on
+// an object that does not inherit from the window replace the window's
+// member, and status's getter reads its window's whatever this is.
+// jsdom 20's self has a getter only, and its window (a VM context's global)
+// still lets the derived object have its own; warpdom's throws there (not
+// covered: jsdom 20 runs without self).
+const INHERITED_KEYS = ['self', 'name', 'status', 'innerWidth', 'scrollY', 'devicePixelRatio'];
+const LAZY_KEYS = ['console', 'Image', 'Option', 'Audio', 'HTMLCanvasElement', 'MutationObserver', 'webkitURL', 'HTMLDocument', 'WebSocket'];
+const inheritedAssignmentScenario = (keys) => (w) => {
+  const attempt = (f) => { try { return f(); } catch (e) { return e.constructor.name; } };
+  const out = [];
+  const setters = ['self', 'outerHeight', 'status'].map((key) => [key, Object.getOwnPropertyDescriptor(w, key).set]);
+  const statusGetter = Object.getOwnPropertyDescriptor(w, 'status').get;
+  for (const key of keys) {
+    const before = w[key];
+    const derived = Object.create(w);
+    const result = attempt(() => { derived[key] = 7; return 'ok'; });
+    const own = Object.hasOwn(derived, key) ? descriptorOf(derived, key) : 'none';
+    // The lazy members are accessors on warpdom's window until read.
+    const window = LAZY_KEYS.includes(key) ? (w[key] === before ? 'kept' : 'replaced') : descriptorOf(w, key);
+    out.push(`${key}: ${result}, own ${own}, window ${window}, derived reads ${String(derived[key])}`);
+  }
+  for (const [key, set] of setters) {
+    if (!set) { out.push(`${key}: no setter`); continue; }
+    const other = {};
+    out.push(`${key} setter on another object: ${attempt(() => { set.call(other, 8); return 'ok'; })} ${Object.hasOwn(other, key)} ${descriptorOf(w, key)}`);
+  }
+  if (statusGetter) out.push(`status getter: ${JSON.stringify(statusGetter.call({}))}`);
+  return out;
+};
+for (const jsdom of [20, 22, 26, 27, 30]) {
+  const keys = [...INHERITED_KEYS, ...LAZY_KEYS].filter((key) => jsdom > 20 || key !== 'self');
+  parity(`assignments through an object inheriting from the window (jsdom ${jsdom})`, inheritedAssignmentScenario(keys), { jsdom });
+}
+
+test('window: assignments through an object inheriting from the window, per jsdom version', () => {
+  // self: getter only before 21; status and innerWidth: data properties before 27.
+  const results = {};
+  for (const jsdom of ['20.0.3', '21.0.0', '26.1.0', '27.0.0', '30.1.3']) {
+    const w = createWindow({ jsdom });
+    const out = [];
+    for (const key of ['self', 'status', 'innerWidth', 'Image']) {
+      const derived = Object.create(w);
+      let result = 'ok';
+      try { derived[key] = 7; } catch (e) { result = e.constructor.name; }
+      out.push(`${key} ${result} ${Object.hasOwn(derived, key) ? 'own' : 'none'} ${w[key] === 7 || w[key] === '7' ? 'replaced' : 'kept'}`);
+    }
+    results[jsdom] = out.join(', ');
+  }
+  assert.deepEqual(results, {
+    '20.0.3': 'self TypeError none kept, status ok own kept, innerWidth ok own kept, Image ok own kept',
+    '21.0.0': 'self ok own kept, status ok own kept, innerWidth ok own kept, Image ok own kept',
+    '26.1.0': 'self ok own kept, status ok own kept, innerWidth ok own kept, Image ok own kept',
+    '27.0.0': 'self ok none replaced, status ok none replaced, innerWidth ok none replaced, Image ok own kept',
+    '30.1.3': 'self ok none replaced, status ok none replaced, innerWidth ok none replaced, Image ok own kept',
+  });
+});
+
 for (const jsdom of [20, 22, 25, 26, 30]) {
   parity(`window member kinds (jsdom ${jsdom})`, windowKindsScenario, { jsdom });
   parity(`window member assignments (jsdom ${jsdom})`, windowAssignmentScenario, { jsdom });

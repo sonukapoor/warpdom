@@ -426,6 +426,57 @@ test('Jest environment: inline event handlers read the global\'s members', async
   }
 });
 
+// Assignments through an object that inherits from the global (#90; black
+// box with jsdom 20.0.3, 26.1.0 and 30.1.3 as the global of a VM context,
+// as jest-environment-jsdom makes it). The global's own setters (self and
+// parent from 21, innerWidth and status from 27) called on another object
+// replace the global's member and give that object nothing. Up to jsdom 26
+// the VM context's global lets an object derived from it have its own
+// property for every member and keeps its own, as warpdom's global does;
+// data properties (name, interface objects) do so in every version. (From
+// jsdom 27 the context is the window itself, and an assignment to self,
+// parent, innerWidth or status through a derived object replaces the
+// global's: warpdom's global is a VM context's, which gives the derived
+// object its own property there too. Not asserted.)
+test('Jest environment: assignments through an object inheriting from the global', async () => {
+  const rootDir = fakeJestProject();
+  try {
+    const results = {};
+    for (const jsdom of ['20.0.3', '26.1.0', '30.1.3']) {
+      const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      await env.setup();
+      results[jsdom] = vm.runInContext(`(() => {
+        'use strict';
+        const out = [];
+        const keys = ${JSON.stringify(jsdom === '30.1.3' ? ['name', 'Image', 'MutationObserver'] : ['self', 'parent', 'innerWidth', 'status', 'name', 'Image', 'MutationObserver'])};
+        for (const key of keys) {
+          const derived = Object.create(window);
+          derived[key] = 7;
+          out.push(key + ' ' + Object.hasOwn(derived, key) + ' ' + (window[key] === 7));
+        }
+        for (const key of ['self', 'parent', 'innerWidth', 'status']) {
+          const d = Object.getOwnPropertyDescriptor(window, key);
+          if (!d.set) { out.push(key + ' no setter'); continue; }
+          const other = {};
+          d.set.call(other, 8);
+          out.push(key + ' setter ' + Object.hasOwn(other, key) + ' ' + String(window[key]));
+        }
+        return out.join(', ');
+      })()`, env.getVmContext());
+      await env.teardown();
+    }
+    const derived = 'self true false, parent true false, innerWidth true false, status true false, ';
+    const data = 'name true false, Image true false, MutationObserver true false';
+    assert.deepEqual(results, {
+      '20.0.3': `${derived}${data}, self no setter, parent no setter, innerWidth no setter, status no setter`,
+      '26.1.0': `${derived}${data}, self setter false 8, parent setter false 8, innerWidth no setter, status no setter`,
+      '30.1.3': `${data}, self setter false 8, parent setter false 8, innerWidth setter false 8, status setter false 8`,
+    });
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
 // The global does no named access, but an inline event handler finds the
 // window's named objects (a sibling's id, live; a form's name) after the
 // global's own and inherited members, and its assignment to such a name

@@ -3817,3 +3817,93 @@ CSSStyleProperties' in every profile).
   `azimuth: inherit !important` with cssstyle 5.3 (jsdom drops the
   priority). README "Differences from jsdom" lists them.
 
+## 2026-10-21: window setters and their receiver (branch fix/setter-receivers, #90)
+
+#90 (from Copilot's review of #87): the window's self setter, and self and
+parent on the VM pools' global, write to the window they close over, so
+`Object.create(window).self = 7` replaces window.self instead of giving
+the derived object its own property.
+
+Measured black box (jsdom 20.0.3, 21.1.2, 22.1.0, 26.1.0, 27.4.0, 28.1.0,
+29.1.1, 30.1.3; new JSDOM() with and without runScripts, and the window as
+a VM context's global, getInternalVMContext(), as jest-environment-jsdom
+uses it; Vitest 5 forks and vmThreads with its jsdom environment on
+30.1.2):
+- jsdom's own window accessors (self and parent from 21; frames, length,
+  external, origin, event, the bars, screen; status and the viewport
+  members from 27) act on their own window whatever this is: called on
+  another object or another window, the setter replaces this window's
+  member (status: its string), and status's getter reads it. So the
+  issue's premise holds only for some windows:
+- Up to 26 a window made with runScripts (as the test environments make
+  it) is a VM context's global, and an assignment through an object that
+  inherits from it gives that object its own data property and keeps the
+  window's, for every member (also jsdom 20's getter-only self). Without
+  runScripts it replaces the window's (21 to 26).
+- From 27 (with or without runScripts; getInternalVMContext() is the
+  window itself from 27) such an assignment replaces the window's member
+  and the derived object gets nothing, for self, parent, status and the
+  viewport members.
+- Data properties (name; status and the viewport members before 27;
+  interface objects, Image, Option, Audio, console, webkitURL,
+  HTMLDocument, WebSocket) give the derived object its own property in
+  every version.
+
+warpdom before: self replaced the window's member in every profile (jsdom
+21 to 26 with runScripts give the derived object its own); on 27+ the
+viewport setters gave the derived object its own (jsdom replaces the
+window's) and status's setter and getter threw on another object; the
+members warpdom makes on first read (interface objects, Image, Option,
+Audio, console, webkitURL, HTMLDocument, WebSocket) replaced the window's
+member where jsdom's data properties give the derived object its own. Now:
+- self's setter: before 27, an assignment through an object that inherits
+  from the window (the window on its prototype chain) defines that
+  object's own property; otherwise, and from 27 always, it replaces the
+  window's (window.js defineSelfMembers).
+- From 27 the viewport setters and status's getter and setter are made per
+  window and act on it whatever this is (window-features.js
+  defineWindowAccessors).
+- The lazy members' setters give an object that inherits from the window
+  its own property (writable, enumerable, configurable) and leave the
+  window's (internal.js lazyDataSetter, assignedThrough).
+- Jest and Vitest's VM pools: no code change. The global's setters already
+  replace the global's member whatever this is, as jsdom's; an assignment
+  through an object that inherits from the global never reaches them, as
+  warpdom's global is a contextified VM global (V8 gives the derived
+  object its own property), which matches jsdom up to 26. Vitest's forks
+  and threads pools match jsdom too (Node's global with Vitest-style
+  copies).
+
+Left as they are:
+- From jsdom 27, in Jest and Vitest's VM pools, `Object.create(window).self
+  = 7` (also parent, status, the viewport members) replaces jsdom's global
+  member; warpdom's contextified global gives the derived object its own.
+  Matching it needs a global that is not contextified (node:vm
+  DONT_CONTEXTIFY; jsdom 27's VM context is the window itself), which may
+  also cover the getter-only assignment difference listed under #87
+  (performance: 27+ throw). A follow-up, not small.
+- jsdom 20 windows with runScripts let a derived object have its own self
+  (getter only); warpdom's 20 profile throws in strict code, as a jsdom 20
+  window without runScripts does.
+- parent, frames, length, external, origin, event, the bars and screen are
+  Window.prototype members in warpdom (see #87's notes): an assignment
+  through a derived object gives it its own property where warpdom has a
+  setter (external, origin, event; jsdom 27+ replaces the window's) and
+  throws in strict code where it has none (jsdom 21 to 26 with runScripts
+  give the derived object its own).
+
+Tests: window-features.test.js (parity on jsdom 20, 22, 26, 27, 30:
+assignments through a derived object for self, name, status, the viewport
+members and the lazy members, the setters called on another object,
+status's getter on another object; per-profile results at 20.0.3, 21.0.0,
+26.1.0, 27.0.0, 30.1.3), jest-environment.test.js (20.0.3, 26.1.0,
+30.1.3: derived assignments to self, parent, innerWidth, status, name,
+Image, MutationObserver, and the global's setters called on another
+object; expectations measured on jsdom's VM context), fixtures/vitest-viewport
+(derived assignments in every pool, with warpdom and real jsdom).
+
+Bench (Node 22.17.1, bench:load, two runs each, main -> branch): cold load
+23.1/23.0 -> 22.8/23.1 ms, first window 1.96/1.98 -> 2.00/2.00 ms, next
+windows 0.193/0.197 -> 0.197/0.199 ms (the 13 viewport setters and
+status's accessor are made per window on 27+ profiles); within noise.
+

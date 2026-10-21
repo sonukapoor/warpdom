@@ -100,6 +100,27 @@ const hasRanges = (doc) => { const r = doc[S].ranges; return r !== undefined && 
 const ownerDocument = (node) => (node[S].type === DOCUMENT_NODE ? node : node[S].doc);
 export const observed = (node) => ownerDocument(node)[S].observerCount > 0;
 
+// The setter of a window's own data property that is made on first read
+// (interface objects, Image, console, webkitURL, ...: an accessor until
+// then). It does what assigning the data property does: on the window,
+// define(value) replaces the accessor; through an object that inherits from
+// the window (Object.create(window).Image = x) it gives that object its own
+// property (writable, enumerable, configurable) and leaves the window's
+// alone, as with jsdom's data properties (black box, 20.0.3 to 30.1.3).
+export function lazyDataSetter(window, name, define) {
+  return function (value) { if (!assignedThrough(window, this, name, value)) define(value); };
+}
+
+// The part of that for an object that inherits from the window: true when
+// receiver is one (the window is on its prototype chain), which now has
+// its own property; false for the window itself and anything else.
+export function assignedThrough(window, receiver, name, value) {
+  if (receiver === window || !isPrototypeOf.call(window, receiver)) return false;
+  Object.defineProperty(receiver, name, { value, writable: true, enumerable: true, configurable: true });
+  return true;
+}
+const { isPrototypeOf } = Object.prototype;
+
 export function state(node) {
   const s = node != null ? node[S] : undefined;
   if (!s) throw new TypeError('Illegal invocation');

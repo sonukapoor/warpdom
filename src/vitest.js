@@ -241,7 +241,12 @@ export function defineUnforgeableSelf(target, key, value) {
 // Jest, Vitest's VM pools): window and top have only a getter; self and
 // parent are accessors whose setter replaces them with a data property
 // ([Replaceable]) from jsdom 21, getters only in jsdom 20; enumerable,
-// configurable. Elsewhere (Vitest's other pools): writable, enumerable,
+// configurable. Their setters, as the global's other setters, replace the
+// global's member whatever this is, as jsdom's do (called on another
+// object); an assignment through an object that inherits from the global
+// does not reach them: the VM context's global gives that object its own
+// property, as jsdom's up to 26 (from 27 jsdom's replaces the global's
+// member, #90). Elsewhere (Vitest's other pools): writable, enumerable,
 // configurable data properties.
 export function defineSelfKey(target, key, value, window, unforgeable) {
   const data = (v) => Object.defineProperty(target, key, { value: v, writable: true, enumerable: true, configurable: true });

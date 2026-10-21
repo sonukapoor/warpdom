@@ -4,7 +4,7 @@
 // each interface's the first time any window creates it.
 import {
   S, HIDDEN_STATE, hooks, initNode, insert, ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, DOCUMENT_TYPE_NODE,
-  CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE,
+  CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE, lazyDataSetter, assignedThrough,
 } from './internal.js';
 import { INTERFACES, SVG_ELEMENTS, LEGACY_SVG_ELEMENTS, SVG_TYPES_INTERFACES, HTML_NS, SVG_NS } from './interfaces.js';
 import { HTML_ELEMENTS, PLAIN_TAGS } from './html-elements.js';
@@ -212,13 +212,24 @@ function cssMode(compat) {
 // to 30.1.3); their getters give this window's whatever this is. jsdom 20:
 // all configurable, self without a setter; from 21.0.0 document and window
 // are not configurable and assigning self replaces it with a data property.
+// The setter acts on this window whatever this is (another window, an
+// object that does not inherit from it), except that before 27.0.0 an
+// assignment through an object that inherits from the window
+// (Object.create(window).self = 7) gives that object its own property and
+// leaves the window's, as with jsdom's windows made with runScripts, as the
+// test environments make them (jsdom 21.1.2 and 26.1.0; from 27.4.0 such
+// an assignment replaces the window's self) (#90).
 function defineSelfMembers(window, document) {
   const legacy = window[S].compat.jsdom < 21;
+  const throughReceiver = window[S].compat.jsdom < 27;
   const own = {
     get document() { return document; },
     get window() { return window; },
     get self() { return window; },
-    set self(value) { Object.defineProperty(window, 'self', { value, writable: true, enumerable: true, configurable: true }); },
+    set self(value) {
+      if (throughReceiver && assignedThrough(window, this, 'self', value)) return;
+      Object.defineProperty(window, 'self', { value, writable: true, enumerable: true, configurable: true });
+    },
   };
   const define = (key, configurable, withSetter = false) => {
     const { get, set } = Object.getOwnPropertyDescriptor(own, key);
@@ -330,8 +341,9 @@ export function createWindow(options = {}) {
     Object.defineProperty(window, name, {
       get,
       // Assigning replaces the constructor property (a mock), as for a
-      // writable data property.
-      set(value) { Object.defineProperty(window, name, { value, writable: true, configurable: true }); },
+      // writable data property (also through an object that inherits from
+      // the window, internal.js assignedThrough).
+      set(value) { if (!assignedThrough(window, this, name, value)) Object.defineProperty(window, name, { value, writable: true, configurable: true }); },
       configurable: true,
     });
     Object.defineProperty(protos, name, { get() { return materialize(name).prototype; }, enumerable: true, configurable: true });
@@ -342,7 +354,7 @@ export function createWindow(options = {}) {
   const setWebkitURL = (value) => Object.defineProperty(window, 'webkitURL', { value, writable: true, configurable: true });
   Object.defineProperty(window, 'webkitURL', {
     get() { const ctor = materialize('URL'); setWebkitURL(ctor); return ctor; },
-    set: setWebkitURL,
+    set: lazyDataSetter(window, 'webkitURL', setWebkitURL),
     configurable: true,
   });
   // HTMLDocument (HTML, legacy): the Document interface object under
@@ -350,7 +362,7 @@ export function createWindow(options = {}) {
   const setHTMLDocument = (value) => Object.defineProperty(window, 'HTMLDocument', { value, writable: true, configurable: true });
   Object.defineProperty(window, 'HTMLDocument', {
     get() { const ctor = materialize('Document'); setHTMLDocument(ctor); return ctor; },
-    set: setHTMLDocument,
+    set: lazyDataSetter(window, 'HTMLDocument', setHTMLDocument),
     configurable: true,
   });
 
