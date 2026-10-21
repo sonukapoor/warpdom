@@ -220,3 +220,27 @@ function svgLinks(w) {
   return { out, count: d.querySelectorAll(':link').length, closest: d.querySelector('text').closest(':any-link')?.id };
 }
 for (const jsdom of JSDOMS) parity(`computed values: :link on SVG links (jsdom ${jsdom})`, svgLinks, { jsdom });
+
+// --- font-family and vertical-align ------------------------------------------------
+
+// From jsdom 29.0.2 font-family's initial value is 'depends on user
+// agent', and vertical-align: inherit inherits (the user agent sheet's td
+// and tr: middle from tbody), baseline from a parent without one.
+function inherited(w) {
+  const d = w.document;
+  d.head.innerHTML = '<style>.p { vertical-align: middle; font-family: Georgia } .i { vertical-align: inherit; font-family: inherit } .n { font-family: initial } .u { font-family: unset }</style>';
+  d.body.innerHTML = '<div class="p"><span class="i" id="a"></span><span class="n" id="b"></span></div><div><span class="i" id="c"></span><span class="u" id="d"></span></div>'
+    + '<table><tbody><tr id="tr"><td id="td">x</td></tr></tbody></table><pre id="pre"></pre>';
+  const out = {};
+  for (const el of [...d.querySelectorAll('[id]'), d.documentElement, d.body]) out[el.id || el.localName] = read(w, el, ['font-family', 'vertical-align']);
+  out.detached = read(w, d.createElement('div'), ['font-family']);
+  return out;
+}
+for (const jsdom of JSDOMS) parity(`computed values: font-family and vertical-align (jsdom ${jsdom})`, inherited, { jsdom });
+
+test('computed values: font-family depends on user agent from jsdom 29.0.2', () => {
+  for (const [jsdom, family] of [['29.0.1', ''], ['29.0.2', 'depends on user agent'], ['30.1.3', 'depends on user agent']]) {
+    const w = createWindow({ jsdom });
+    assert.equal(w.getComputedStyle(w.document.body).fontFamily, family, jsdom);
+  }
+});

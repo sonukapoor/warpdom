@@ -319,6 +319,7 @@ function initialValue(element, name, data) {
   if (name === 'display') return 'inline';
   // jsdom 29.0.2 and later (black box, to 30.1.3).
   if (name === 'outline-color') return 'rgba(0, 0, 0, 0)';
+  if (name === 'font-family') return 'depends on user agent';
   if (data[0] === null) return '';
   return data[0] === '0' ? '0' : computeValue(element, name, data[0], data);
 }
@@ -676,6 +677,13 @@ function observedShorthand(element, name) {
   if (!expanded && compat.blankBorderShorthands && name.startsWith('border-')) return '';
   const own = cascaded(element, name);
   if (own !== undefined && !RESOLVED_KEYWORDS.has(own.toLowerCase())) return own;
+  // vertical-align (a shorthand in CSS Inline 3) inherits as a longhand
+  // (black box, 29.0.2 to 30.1.3; the user agent sheet's td and tr), its
+  // initial value baseline when the parent does not declare it.
+  if (name === 'vertical-align' && own !== undefined && own.toLowerCase() === 'inherit') {
+    const parent = inheritParent(element);
+    if (parent !== null) return observedShorthand(parent, name) || 'baseline';
+  }
   if (own === undefined && (expanded || !compat.shorthandInitials)) return '';
   return shorthandInitial(name, compat);
 }
