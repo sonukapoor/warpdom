@@ -475,6 +475,19 @@ const SCENARIOS = {
     out.overrideInvalidKeepsCharset = await get('', `ct=${cp1252}&body=6869e9&enc=hex`, (x) => x.overrideMimeType('nonsense'));
     out.overrideXmlWithoutCharset = await get('document', `ct=${cp1252}&body=3c613ee93c2f613e&enc=hex`, (x) => x.overrideMimeType('text/xml'));
     out.overrideHtmlWithoutCharset = await get('document', `ct=${encodeURIComponent('text/html;charset=windows-1252')}&body=3c703ee9&enc=hex`, (x) => x.overrideMimeType('text/html'));
+    // An override charset that names no encoding keeps the response's
+    // (UTF-8 when it has none); a known one wins (#92).
+    for (const [name, label] of [['Unknown', 'unknown'], ['Bogus', 'utf-9'], ['Known', 'iso-8859-2']]) {
+      out[`overrideText${name}Charset`] = await get('', `ct=${cp1252}&body=6869e9&enc=hex`, (x) => x.overrideMimeType(`text/plain;charset=${label}`));
+      out[`overrideHtml${name}Charset`] = await get('document', `ct=${encodeURIComponent('text/html;charset=windows-1252')}&body=3c703ee9&enc=hex`, (x) => x.overrideMimeType(`text/html;charset=${label}`));
+      out[`overrideXml${name}Charset`] = await get('document', `ct=${cp1252}&body=3c613ee93c2f613e&enc=hex`, (x) => x.overrideMimeType(`text/xml;charset=${label}`));
+    }
+    out.overrideUnknownCharsetNone = await get('', 'ct=text/plain&body=6869e9&enc=hex', (x) => x.overrideMimeType('text/plain;charset=unknown'));
+    // characterSet names the encoding as the Encoding standard writes it (#92).
+    out.characterSetNames = [];
+    for (const label of ['latin2', 'ibm866', 'koi8-r', 'gbk', 'gb18030', 'big5', 'euc-jp', 'shift_jis', 'euc-kr', 'macintosh', 'windows-1250', 'utf-16be']) {
+      out.characterSetNames.push((await get('document', `ct=${encodeURIComponent(`text/html;charset=${label}`)}&body=3c703e78&enc=hex`))[0][5]);
+    }
     // jsdom looks at neither an XML declaration's encoding nor an HTML meta
     // charset: UTF-8 (the XHR standard would use them).
     const latin1Xml = Buffer.concat([Buffer.from('<?xml version="1.0" encoding="ISO-8859-1"?><a>'), Buffer.from([0xe9]), Buffer.from('</a>')]).toString('hex');

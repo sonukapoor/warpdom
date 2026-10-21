@@ -167,11 +167,12 @@ function finalMime(s) {
 }
 
 // The label of the final encoding (XHR "get a final encoding"): the
-// override's charset, else the response's (an override without one keeps
-// the response's, as in jsdom); undefined for none.
+// override's charset when it names an encoding, else the response's (an
+// override without one, or with an unknown label, keeps the response's, as
+// in jsdom); undefined for none.
 function charsetLabel(s) {
   const override = s.overrideMime?.params.get('charset');
-  if (override !== undefined) return override;
+  if (override !== undefined && encodingOf(override) !== null) return override;
   const header = s.response.headers?.get('content-type');
   return header == null ? undefined : parseMime(header)?.params.get('charset');
 }
@@ -198,8 +199,13 @@ function encodingName(s, bytes) {
     const e = label === undefined ? null : encodingOf(label);
     name = e === null || e === 'replacement' ? 'utf-8' : e;
   }
-  return name === 'utf-8' ? 'UTF-8' : name.startsWith('utf-16') ? name.toUpperCase() : name;
+  return canonicalName(name);
 }
+
+// An encoding's name as the Encoding standard writes it (characterSet:
+// "ISO-8859-2", "Shift_JIS"; as jsdom), from warpdom's lowercase one.
+const MIXED_CASE_NAMES = { ibm866: 'IBM866', gbk: 'GBK', big5: 'Big5', shift_jis: 'Shift_JIS' };
+const canonicalName = (name) => MIXED_CASE_NAMES[name] ?? (/^(utf|iso|koi8|euc)-/.test(name) ? name.toUpperCase() : name);
 
 let utf8Decoder = null;
 const utf8Decode = (bytes) => (utf8Decoder ??= new PlatformTextDecoder()).decode(bytes);
