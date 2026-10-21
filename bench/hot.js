@@ -4,8 +4,8 @@
 //   npm run bench:hot [-- --only warpdom] [-- --json] [-- warpdomDir]
 //
 // --only <env>: measure one environment (warpdom, jsdom or happy-dom).
-// --json: print one JSON object ({ case: { env: ns } }) instead of the
-// table; a case that throws is null there (used by bench/ci-compare.mjs).
+// --json: print one JSON object ({ dir, results: { case: { env: ns } } },
+// dir the measured checkout) instead of the table; a case that throws is null there (used by bench/ci-compare.mjs).
 // warpdomDir: the warpdom checkout to measure (default: this repository);
 // jsdom and happy-dom always come from this repository.
 import path from 'node:path';
@@ -14,7 +14,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const args = process.argv.slice(2);
 const json = args.includes('--json');
 const onlyAt = args.indexOf('--only');
-const dirArg = args.find((a, i) => !a.startsWith('--') && i !== onlyAt + 1);
+// The checkout: the first argument that is neither a flag nor --only's value.
+const dirArg = args.find((a, i) => !a.startsWith('--') && (onlyAt === -1 || i !== onlyAt + 1));
 const dir = path.resolve(dirArg ?? fileURLToPath(new URL('..', import.meta.url)));
 
 const N = 1000; // children per container
@@ -161,7 +162,7 @@ if (json) {
       try { results[name][e] = measure(e, name); } catch { results[name][e] = null; }
     }
   }
-  console.log(JSON.stringify({ unit: 'ns', results }));
+  console.log(JSON.stringify({ unit: 'ns', dir, results }));
 } else {
   console.log(['ns per op'.padEnd(40), ...envs.map((e) => e.padStart(11))].join(''));
   for (const name of Object.keys(cases)) {

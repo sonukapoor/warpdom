@@ -2,10 +2,13 @@
 # PR can be judged without benchmarking on a busy laptop. Checks out the PR
 # head and its base (main at the PR's base commit), installs both, and runs
 # bench/load.js and bench/hot.js (warpdom only) on both, alternating base and
-# head in every round (bench/ci-compare.mjs, from the head checkout, measures
-# both). Medians and the head/base change go to the run's summary page and
-# to one PR comment that is updated on every push (marker below). Forks get
-# a read-only token, so their PRs get the summary page only.
+# head in every round. The harness (bench/ci-compare.mjs and the bench
+# scripts) comes from the workflow's own revision (the PR head on pull
+# requests) and measures both checkouts, so any ref can be compared, also
+# one older than the harness. Medians and the head/base change go to the
+# run's summary page and to one PR comment that is updated on every push
+# (marker below). Forks get a read-only token, so their PRs get the summary
+# page only.
 #
 # Report only: never fails on a regression and is not a required check.
 # Manual runs (workflow_dispatch) compare a ref against main's tip.
@@ -52,9 +55,18 @@ jobs:
           else
             head="${INPUT_REF:-$RUN_SHA}"; base=main
           fi
+          # Pull requests: the PR head; manual runs: the commit the run starts from.
+          echo "harness=${PR_HEAD:-$RUN_SHA}" >> "$GITHUB_OUTPUT"
           echo "head=$head" >> "$GITHUB_OUTPUT"
           echo "base=$base" >> "$GITHUB_OUTPUT"
 
+      # The harness: bench/ from the workflow's own revision.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.refs.outputs.harness }}
+          path: harness
+          sparse-checkout: bench
+          persist-credentials: false
       - uses: actions/checkout@v7
         with:
           ref: ${{ steps.refs.outputs.head }}
@@ -83,15 +95,16 @@ jobs:
         run: |
           head_sha=$(git -C head rev-parse HEAD)
           base_sha=$(git -C base rev-parse HEAD)
+          harness_sha=$(git -C harness rev-parse HEAD)
           {
             echo "$MARKER"
             echo "## Benchmarks: \`${head_sha:0:7}\` vs \`${base_sha:0:7}\`"
             echo
-            node head/bench/ci-compare.mjs --base base --head head --rounds "$ROUNDS" \
+            node harness/bench/ci-compare.mjs --base base --head head --rounds "$ROUNDS" \
               --base-label "\`${base_sha:0:7}\`" --head-label "\`${head_sha:0:7}\`" \
               --json results.json
             echo
-            echo "GitHub-hosted runner ($(nproc) CPUs); changes within ±5% are usually noise. Both sides run head's bench scripts. Report only: this check never fails on a regression."
+            echo "GitHub-hosted runner ($(nproc) CPUs); changes within ±5% are usually noise. Both sides run the same bench scripts (from \`${harness_sha:0:7}\`). Report only: this check never fails on a regression."
           } > report.md
           cat report.md >> "$GITHUB_STEP_SUMMARY"
 

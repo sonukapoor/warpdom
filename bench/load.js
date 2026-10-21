@@ -5,7 +5,7 @@
 //   node bench/load.js [--json] [warpdomDir]
 //
 // warpdomDir: the warpdom checkout to measure (default: this repository).
-// --json: print one JSON object (ms per measure) instead of the text lines;
+// --json: print one JSON object (dir: the measured checkout; ms per measure) instead of the text lines;
 // used by bench/ci-compare.mjs.
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
@@ -37,5 +37,5 @@ for (let i = 0; i < 20; i++) createWindow();
 const times = [];
 for (let i = 0; i < 200; i++) { const t = performance.now(); createWindow(); times.push(performance.now() - t); }
 const nextWindows = median(times);
-if (json) console.log(JSON.stringify({ unit: 'ms', results: { 'cold load': coldLoad, 'first window': firstWindow, 'next windows': nextWindows } }));
+if (json) console.log(JSON.stringify({ unit: 'ms', dir, results: { 'cold load': coldLoad, 'first window': firstWindow, 'next windows': nextWindows } }));
 else console.log(`next windows   ${nextWindows.toFixed(3)} ms (median of 200)`);

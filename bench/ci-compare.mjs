@@ -5,10 +5,11 @@
 //     [--markdown out.md] [--json out.json] [--base-label x] [--head-label y]
 //
 // Runs bench/load.js and bench/hot.js (--only warpdom) from this checkout
-// against both directories, alternating base and head in every round (the
-// side that goes first alternates too), so drift hits both sides. Reports
-// the median of the rounds per measure and the head/base change. Lower is
-// better for every measure. Prints the Markdown table to stdout.
+// (the harness) against both directories, which can be any warpdom
+// checkouts or exports (src/ plus installed dependencies). Base and head
+// alternate in every round (the side that goes first alternates too), so
+// drift hits both sides. Reports the median of the rounds per measure and
+// the head/base change. Lower is better for every measure. Prints the Markdown table to stdout.
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -35,8 +36,11 @@ const benches = [
 ];
 
 const run = (bench, dir) => {
-  const out = execFileSync(process.execPath, [path.join(here, bench.script), '--json', ...bench.extra, path.resolve(dir)], { encoding: 'utf8' });
-  const { results } = JSON.parse(out.trim().split('\n').pop());
+  const target = path.resolve(dir);
+  const out = execFileSync(process.execPath, [path.join(here, bench.script), '--json', ...bench.extra, target], { encoding: 'utf8' });
+  const { dir: measured, results } = JSON.parse(out.trim().split('\n').pop());
+  // Self-check: the script measured the requested checkout, not its own.
+  if (measured !== target) throw new Error(`${bench.script} measured ${measured}, expected ${target}`);
   // hot.js nests per environment; load.js is flat.
   const flat = {};
   for (const [k, v] of Object.entries(results)) flat[k] = v !== null && typeof v === 'object' ? v.warpdom : v;

@@ -63,7 +63,8 @@ this repository either way, so only warpdom's side changes.
 
 `.github/workflows/bench.yml` runs on every pull request to main (and by
 hand, for any ref against main): it checks out the PR head and its base,
-installs both, and runs `ci-compare.mjs` from the head checkout (7
+installs both, and runs `ci-compare.mjs` from the workflow's own revision
+(the PR head; 7
 alternating rounds of `load.js` and `hot.js --only warpdom` on each side).
 The table goes to the run's summary page and to one PR comment, updated on
 every push. It is a GitHub-hosted runner: changes within +-5% are usually

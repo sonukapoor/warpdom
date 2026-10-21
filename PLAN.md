@@ -3725,11 +3725,13 @@ Every pull request to main gets before/after numbers from a GitHub-hosted
 runner (`.github/workflows/bench.yml`), so a PR no longer needs local
 benchmarks on a busy laptop to be judged.
 - The workflow checks out the PR head and its base commit, `npm ci` in both
-  (Node 22.22), and runs `bench/ci-compare.mjs` from the head checkout: 7
+  (Node 22.22), and runs `bench/ci-compare.mjs` from the workflow's own
+  revision (the PR head; for manual runs the commit the run starts from,
+  so an older ref can be measured too): 7
   rounds of `bench/load.js` and `bench/hot.js --only warpdom` on each side,
   alternating (the side that goes first alternates too), medians per
-  measure, head/base change, flagged beyond +-5%. Both sides run head's
-  bench scripts, so the base needs no `--json` support and a changed case
+  measure, head/base change, flagged beyond +-5%. Both sides run the same
+  bench scripts, so the measured checkouts need no `--json` support and a changed case
   measures the same code path on both sides (a case the base cannot run
   shows n/a).
 - Output: the run's summary page, an artifact (report.md, results.json),
@@ -3739,9 +3741,13 @@ benchmarks on a busy laptop to be judged.
 - Report only: never fails on a regression; not a required check.
 - `bench/load.js` and `bench/hot.js` take a warpdom checkout as an optional
   argument (as the `*-bench.mjs` scripts do) and `--json`; default output
-  unchanged. `hot.js` loads only the environments it measures.
+  unchanged. `hot.js` loads only the environments it measures. The JSON
+  records the measured checkout and ci-compare checks it (Copilot on #95:
+  `hot.js <dir>` without `--only` ignored the directory).
 - First run (#95, same source on both sides, so an A/A test): all 21
   measures within +-2.4%; single-round outliers up to 2.7x (querySelectorAll
   after a change) that the median absorbs. The job takes about 2 minutes
   (1.5 of them benchmarking); 4-CPU runner. Numbers are higher than on the
-  laptop (cold load 34 ms vs ~24 ms), so compare within a run only.
+  laptop (cold load 34 ms vs ~24 ms), so compare within a run only. The
+  second A/A run flagged 1 of 21 measures beyond +5%: single flags are
+  often noise.
