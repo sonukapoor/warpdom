@@ -487,6 +487,10 @@ function stop(s) {
   req.timer = null;
   s.window[S].pendingRequests?.delete(req);
   try { req.controller?.abort(); } catch { /* the host's abort */ }
+  // A read in progress ends too, where the stream ignores the abort signal
+  // (a fetch mock's).
+  req.reader?.cancel().catch(() => {});
+  req.reader = null;
 }
 
 // A network error from fetch, a CORS check or the body stream. jsdom 20
@@ -606,6 +610,7 @@ async function run(xhr, s, req) {
   const r = s.response;
   if (response.body !== null) {
     const reader = response.body.getReader();
+    req.reader = reader;
     for (;;) {
       let chunk;
       try {
@@ -615,7 +620,7 @@ async function run(xhr, s, req) {
         return;
       }
       if (s.req !== req) { reader.cancel().catch(() => {}); return; }
-      if (chunk.done) break;
+      if (chunk.done) { req.reader = null; break; }
       if (chunk.value.length === 0) continue;
       r.chunks.push(chunk.value);
       r.length += chunk.value.length;
@@ -713,7 +718,7 @@ function send(xhr, s, body) {
     preflight: cross && (!['GET', 'HEAD', 'POST'].includes(method) || unsafe.length > 0 || s.uploadListener),
     // The platform's AbortController, as its fetch takes the signal (the
     // CommonJS bundle may be evaluated in a context without one).
-    controller: typeof PLATFORM_GLOBAL.AbortController === 'function' ? new PLATFORM_GLOBAL.AbortController() : null, timer: null, start: hostNow(), urlError,
+    controller: typeof PLATFORM_GLOBAL.AbortController === 'function' ? new PLATFORM_GLOBAL.AbortController() : null, reader: null, timer: null, start: hostNow(), urlError,
   };
   s.req = req;
   const pending = window[S].pendingRequests ?? (window[S].pendingRequests = new Set());

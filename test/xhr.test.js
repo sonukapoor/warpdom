@@ -1157,6 +1157,34 @@ test('XMLHttpRequest: a request stopped while its preflight is pending cancels t
   }
 });
 
+test('XMLHttpRequest: a request stopped while it waits for more of the body cancels the read (#92)', async () => {
+  const hostFetch = globalThis.fetch;
+  try {
+    for (const stopWith of ['abort', 'open', 'teardown', 'timeout']) {
+      const record = { cancelled: false };
+      globalThis.fetch = async () => recordingResponse(record, ['part']);
+      const w = createWindow({ url: PAGE });
+      snapshotWindow(w);
+      const x = new w.XMLHttpRequest();
+      const log = [];
+      logEvents(x, log);
+      x.open('GET', `${BASE}/text`);
+      if (stopWith === 'timeout') x.timeout = 50;
+      const progressed = new Promise((resolve) => x.addEventListener('progress', resolve, { once: true }));
+      x.send();
+      await progressed;
+      if (stopWith === 'abort') x.abort();
+      else if (stopWith === 'open') x.open('GET', `${BASE}/text`);
+      else if (stopWith === 'teardown') resetWindow(w);
+      await wait(stopWith === 'timeout' ? 100 : 20);
+      assert.deepEqual([stopWith, record.cancelled, log.at(-1)], [stopWith,
+        true, { abort: 'loadend 4 0 false/0/0', open: 'readystatechange 1 0', teardown: 'progress 3 200 false/4/0', timeout: 'loadend 4 200 false/0/0' }[stopWith]]);
+    }
+  } finally {
+    globalThis.fetch = hostFetch;
+  }
+});
+
 test('XMLHttpRequest: every header name the author sets reaches fetch, __proto__ too (Copilot review on #89)', async () => {
   const hostFetch = globalThis.fetch;
   const seen = [];
