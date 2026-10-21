@@ -205,3 +205,18 @@ test('computed values: margin and padding as written before cssstyle 4.4', () =>
   assert.deepEqual(box('4.3.1'), ['1px 2px 1px 2px', 'padding: 1px 2px 1px 2px;', '1px 2px 1px 2px']);
   assert.deepEqual(box('4.4.0'), ['1px 2px', 'padding: 1px 2px 1px 2px;', '1px 2px']);
 });
+
+// --- :link -------------------------------------------------------------------------
+
+// An SVG a with an href matches :link and :any-link, as in jsdom (from 27
+// the user agent sheet's link color and cursor apply); xlink:href does not.
+function svgLinks(w) {
+  const d = w.document;
+  d.body.innerHTML = '<svg><a href="#x" id="sa"><text>t</text></a><a id="sb"><text>u</text></a></svg><a href="#y" id="ha">h</a>';
+  const xlink = d.createElementNS('http://www.w3.org/2000/svg', 'a');
+  xlink.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', '#z');
+  d.querySelector('svg').append(xlink);
+  const out = [...d.querySelectorAll('a')].map((a) => [a.matches(':link'), a.matches(':any-link'), ...read(w, a, ['color', 'cursor', 'text-decoration'])]);
+  return { out, count: d.querySelectorAll(':link').length, closest: d.querySelector('text').closest(':any-link')?.id };
+}
+for (const jsdom of JSDOMS) parity(`computed values: :link on SVG links (jsdom ${jsdom})`, svgLinks, { jsdom });
