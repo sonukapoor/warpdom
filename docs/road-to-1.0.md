@@ -9,7 +9,7 @@ supported is in [stability.md](stability.md).
 
 1.0 is a promise, not a feature list:
 
-- **Your tests get jsdom's results.** For a project on jsdom 20 or later,
+- **Your tests get jsdom's results.** For a project on jsdom 20.0.3 or later,
   switching to warpdom changes no test's result, apart from the
   differences listed in the README ("Differences from jsdom"). A test that
   differs for another reason is a bug, fixed in a patch release.
