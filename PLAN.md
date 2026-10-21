@@ -4032,10 +4032,12 @@ little traction yet, so 1.0 gets a public, checkable definition:
 - README: the status line links both docs; "warpdom models jsdom 20.0.3
   to 30.1.2" corrected to 30.1.3 (NEWEST_MODELED_JSDOM).
 
-Status on 2026-10-21: met 3 (corpus check for 0.1.7) and 4 (WPT); 5 and 7
-nearly (types in place; setXPathLoader only in its type); not met 1 and 2
-(KNOWN has 5 entries under #70 and #71; open parity issues #51, #70, #71,
-#76, #84, #90, #97, #98 and the audit #17), 6 (0.1.7 changed a default)
-and 8. Proposed numbers to confirm on the PR: 25 suites, 3 releases and 6
-weeks, 1 adopter, 4 weeks to model a new jsdom, deprecations kept 2 minor
+Status on 2026-10-21: met 3 (corpus check for 0.1.7); 5 and 7 nearly
+(typed except the Vitest `url` option, missing from WarpdomVitestOptions;
+setXPathLoader only in its type); not met 1 and 2 (KNOWN has 5 entries
+under #70 and #71; open parity issues #51, #70, #71, #76, #84, #90, #97,
+#98 and the audit #17), 4 (WPT run of 2026-10-19: html/semantics behind,
+#51; domparsing 341 vs 342 subtests, no issue yet) and 6 (0.1.7 changed a
+default). Proposed numbers to confirm on the PR: 25 suites, 3 releases
+and 6 weeks, 4 weeks to model a new jsdom, deprecations kept 2 minor
 releases and 3 months, security answer within 7 days.

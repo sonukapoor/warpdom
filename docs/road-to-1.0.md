@@ -9,7 +9,9 @@ supported is in [stability.md](stability.md).
 
 1.0 is a promise, not a feature list:
 
-- **Your tests get jsdom's results.** For a project on jsdom 20.0.3 or later,
+- **Your tests get jsdom's results.** For a project on a jsdom version
+  warpdom models (20.0.3 to 30.1.3 today; newer and older versions are in
+  [stability.md](stability.md#jsdom-versions)),
   switching to warpdom changes no test's result, apart from the
   differences listed in the README ("Differences from jsdom"). A test that
   differs for another reason is a bug, fixed in a patch release.
@@ -57,8 +59,8 @@ Status as of 2026-10-21 (warpdom 0.1.7 and main).
 | 1 | warpdom has every interface and member jsdom has, for every modeled jsdom version | `test/jsdom-api-superset.test.js` in CI (#18); its allowlist (KNOWN) holds only differences listed in "Differences from jsdom" | Not met. The test passes; KNOWN has 5 entries, all tracked by open issues (#70, #71), none of them listed as a deliberate difference yet |
 | 2 | No open parity issue that is not either fixed or listed in "Differences from jsdom" | Issues labeled `parity` | Not met. Open: [#51](https://github.com/sonukapoor/warpdom/issues/51), [#70](https://github.com/sonukapoor/warpdom/issues/70), [#71](https://github.com/sonukapoor/warpdom/issues/71), [#76](https://github.com/sonukapoor/warpdom/issues/76), [#84](https://github.com/sonukapoor/warpdom/issues/84), [#90](https://github.com/sonukapoor/warpdom/issues/90), [#97](https://github.com/sonukapoor/warpdom/issues/97), [#98](https://github.com/sonukapoor/warpdom/issues/98); the WebIDL audit [#17](https://github.com/sonukapoor/warpdom/issues/17) |
 | 3 | On 25 or more open-source suites, no test differs from jsdom without an explanation in the README, on the release candidate <!-- proposal: 25 suites; Sonu to confirm --> | The corpus check (`corpus-timing` workflow, jsdom vs warpdom on each suite's own runner and jsdom), run for each release | Met for 0.1.7 (22 suites plus Ant Design, Mantine, Excalidraw and wire-webapp; release notes). To be repeated on the 1.0 candidate |
-| 4 | Web Platform Tests numbers published for the release, and every area where warpdom passes fewer subtests than jsdom has an issue | `wpt` workflow (17 test-DOM areas, monthly); README "Web Platform Tests" | Met: 75.4% vs jsdom's 72.2% (run of 2026-10-19); the one area behind, `html/semantics`, has #51 |
-| 5 | Public API (above) frozen and typed | `npm run test:types` in CI; this page's list | Typed today; frozen from the release that meets criterion 6 |
+| 4 | Web Platform Tests numbers published for the release, and every area where warpdom passes fewer subtests than jsdom has an issue | `wpt` workflow (17 test-DOM areas, monthly); README "Web Platform Tests" | Not met. 75.4% vs jsdom's 72.2% (run of 2026-10-19). Two areas are behind: `html/semantics` (3,498 vs 3,822 subtests) has #51; `domparsing` (341 vs 342 subtests, both 30.3%) has no issue yet |
+| 5 | Public API (above) frozen and typed | `npm run test:types` in CI; this page's list | Nearly met: typed except the Vitest `url` option (read in `src/vitest.js`, missing from `WarpdomVitestOptions` in `types/vitest-options.d.ts`); frozen from the release that meets criterion 6 |
 | 6 | No breaking change in 3 consecutive minor releases spanning at least 6 weeks <!-- proposal: 3 releases, 6 weeks; Sonu to confirm --> | Release notes: a breaking change is a change to the public API above, as defined in [stability.md](stability.md) | Not met. 0.1.7 changed a default (`XMLHttpRequest` on, `xhr: false` to keep the old behavior) |
 | 7 | Documentation complete: setup, migration, options, differences from jsdom, stability policy, security policy | README, [api.md](api.md), [migrate.md](migrate.md), [compare.md](compare.md), [fast-mode.md](fast-mode.md), [stability.md](stability.md), [SECURITY.md](../SECURITY.md) | Nearly met with this page, stability.md and SECURITY.md: `setXPathLoader` is described only in its type |
 

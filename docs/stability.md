@@ -59,9 +59,12 @@ version set with the `jsdom` option.
   Modeling it (its observable changes measured black box, the corpus run
   on it) ships in a minor release; the aim is within 4 weeks of the
   jsdom release. <!-- proposal: 4 weeks; Sonu to confirm -->
-- **Older than 20**: not modeled. Projects on jsdom 16 to 19 (handsontable,
-  Element Plus) get the oldest profile's (jsdom 20's) behavior; differences there are
-  tracked (for example #14) but are not covered by the promise.
+- **Older than 20**: not modeled, best effort. Projects on jsdom 16 to 19
+  (handsontable, Element Plus) get the behavior of the version checks
+  warpdom has: mostly jsdom 20's, plus the few older differences measured
+  so far (before 16.5.2, a click on a detached checkbox or radio also fires
+  input and change). Differences there are tracked (for example #14) but
+  are not covered by the promise.
 
 ## Node versions
 

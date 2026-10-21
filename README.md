@@ -475,7 +475,8 @@ On the 17 WPT areas a test DOM is expected to cover (3,447 files; `dom`,
 `hr-time`, `user-timing`, the resize and intersection observers and
 `web-animations/interfaces`), warpdom passes 75.4% of subtests (jsdom 30.1.2:
 72.2%). It is ahead or level in every area but `html/semantics` (forms:
-70.6% vs 77.1%; issues #40-#51). Neither implements WebCrypto's `subtle`,
+70.6% vs 77.1%; issues #40-#51) and `domparsing` (341 vs 342 subtests,
+both 30.3%). Neither implements WebCrypto's `subtle`,
 the observers or Web Animations (opt-in work, #5-#12), which keeps both totals
 low. warpdom was worked on against the first four areas (87.4% vs 80.5% there
 on 2026-10-13), so those are not an independent check. The runner is in

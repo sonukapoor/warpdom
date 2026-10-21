@@ -20,8 +20,13 @@ is published with credit to the reporter, unless they prefer otherwise.
 
 ## Scope
 
-warpdom runs test code, not untrusted web content: like jsdom without
-`runScripts`, it does not run scripts in parsed HTML. Reports are most
+warpdom runs test code, not untrusted web content, and is not a sandbox.
+Like jsdom as Vitest and Jest set it up (`runScripts: 'dangerously'`),
+script elements made by the HTML parser do not run, but code in HTML can:
+inline event handler attributes (`onclick="..."`) run when the event is
+dispatched, `javascript:` links run when followed, and script elements
+created by script run when connected. That code runs in the test's
+process with the test's permissions. Reports are most
 useful for problems a test suite can hit without intending to, for
 example a crafted HTML, CSS or XML string that makes parsing hang or
 exhaust memory, a request (`XMLHttpRequest`) that skips the CORS checks
