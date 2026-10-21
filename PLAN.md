@@ -515,7 +515,11 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   fragment (jsdom sends the document's URL with both, and before 28 a
   redirected request's previous URL as requested); a header named
   `__proto__` reaches fetch (jsdom loses it; Node's fetch drops it from
-  the wire, so the server sees what it sees from jsdom 28+).
+  the wire, so the server sees what it sees from jsdom 28+); a request
+  stopped (abort(), open()) in an upload progress or load handler fires
+  nothing more (jsdom fires the upload's remaining load and loadend, and
+  from 28 a readystatechange with readyState 2 at the stopped or reopened
+  request; #92).
 
 ## Decisions
 
@@ -3669,3 +3673,47 @@ response's charset; cancelling an in-flight preflight body on abort; jsdom
 28+ upload events seeing the final response, and cancelling the body when
 an upload handler aborts or reopens.
 
+### XHR follow-ups (#92, 2026-10-21, branch fix/xhr-followups)
+
+The three items deferred from the d6305eb review and four added later on
+#92, each checked black box on jsdom 20.0.3, 27.4.0, 28.1.0 and 30.1.3
+(local server; 21 to 26 where the answer moved) and against the standards:
+- overrideMimeType() with a charset that names no encoding ('unknown',
+  'utf-9'): every jsdom keeps the response's charset (UTF-8 without one),
+  for text and documents' characterSet. Held; the override's label must
+  name an encoding to win. Seen on the way: documents' characterSet was
+  warpdom's lowercase name (iso-8859-2, shift_jis); every jsdom gives the
+  Encoding standard's (ISO-8859-2, Shift_JIS, Big5, GBK, IBM866). Fixed.
+  Not done: jsdom before 27 gives UTF-8 for iso-8859-8-i, x-mac-cyrillic
+  and iso-2022-jp, and before 23 for x-user-defined (its decoder lacks
+  them); warpdom decodes them in every profile.
+- Abort during a pending preflight: jsdom's events (readystatechange 4,
+  abort, loadend, nothing after) and open()'s (nothing) were warpdom's
+  already. Held for the body: the preflight's body is now cancelled when
+  the request was stopped meanwhile. Parity cases in aborts (the test
+  server answers OPTIONS after pfwait ms), test with a fetch stub.
+- Upload handlers in jsdom 28+ run in OPENED with status 0, no
+  responseURL and no headers (20 and 27 run them in HEADERS_RECEIVED with
+  the response). Held: warpdom stored the response before them; now after.
+  abort() or open() in such a handler left the fetched body uncancelled:
+  now cancelled. jsdom goes on after such a stop (the upload's load and
+  loadend; from 28 also readystatechange with readyState 2, stuck there);
+  warpdom stops, as the standard (deviation, README). Parity scenario
+  uploadHandlers, test with a fetch stub (27.4.0 and 30.1.3 profiles).
+- A pending reader.read() on a stream that ignores the abort signal: the
+  request keeps its reader and stop() cancels it (abort, open, timeout,
+  teardown). Test with a fetch stub.
+- open()'s argument conversions: every jsdom converts the method
+  (ByteString), URL, user name and password before any check, so a
+  toString() exception propagates (warpdom: SyntaxError), a symbol throws
+  jsdom's TypeError (warpdom used 'Symbol(url)'), and a method outside
+  Latin-1 throws "not a valid ByteString" (warpdom: SyntaxError). Fixed;
+  parity cases in conversions.
+- about:blank#section frames: no jsdom gives them the creator's origin or
+  base URL (origin null, own URL as base URL, relative XHR URLs throw,
+  Origin: null), nor for about:blank?q or about:blank#. warpdom already
+  matched; not changed (the standard would inherit). Parity cases in
+  aboutBlankFrames.
+- window.atob/btoa and FileReader.readAsDataURL used the evaluating
+  context's atob/btoa: the CommonJS bundle in a VM context without them
+  threw. Now PLATFORM_GLOBAL's; test in test/cjs.test.js.
