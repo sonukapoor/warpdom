@@ -76,7 +76,7 @@ const VIEWPORT = { innerWidth: 1024, innerHeight: 768, outerWidth: 1024, outerHe
 const VIEWPORT_GETTERS = Object.fromEntries(Object.entries(VIEWPORT).map(([key, value]) => [key, Object.getOwnPropertyDescriptor({ get [key]() { return value; } }, key).get]));
 
 function defineWindowAccessors(window) {
-  for (const key in VIEWPORT) {
+  for (const key of Object.keys(VIEWPORT)) {
     const { set } = Object.getOwnPropertyDescriptor({ set [key](v) { replace(window, key, v); } }, key);
     Object.defineProperty(window, key, { get: VIEWPORT_GETTERS[key], set, enumerable: true, configurable: true });
   }
@@ -92,7 +92,7 @@ export function setupWindowData(window) {
     defineWindowAccessors(window);
     return;
   }
-  for (const key in VIEWPORT) define(key, VIEWPORT[key]);
+  for (const key of Object.keys(VIEWPORT)) define(key, VIEWPORT[key]);
   define('status', '');
 }
 

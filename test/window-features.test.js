@@ -342,6 +342,59 @@ test('window: assignments through an object inheriting from the window, per jsdo
   });
 });
 
+// An assignment that reaches a window's data property through an object
+// inheriting from the window (super.Image = 7 in a method of such an
+// object, called on the receiver) is OrdinarySet's receiver step: the
+// receiver's own writable data property gets the value and keeps its
+// flags, a read-only or accessor own property or a new property on a
+// non-extensible receiver fails (a TypeError in strict code). warpdom makes
+// these members on first read: the scenario runs each case while the
+// member is still an accessor (cold) and again after reading it
+// (materialized), and must match jsdom's data properties both times.
+const RECEIVER_CASES = {
+  none: (d) => d,
+  'read-only': (d) => Object.defineProperty(d, KEY, { value: 1, writable: false, configurable: true }),
+  'writable, non-configurable': (d) => Object.defineProperty(d, KEY, { value: 1, writable: true, enumerable: false, configurable: false }),
+  accessor: (d) => Object.defineProperty(d, KEY, { get() { return 1; }, set() { throw new Error('own setter called'); }, configurable: true }),
+  'non-extensible': (d) => Object.preventExtensions(d),
+};
+let KEY;
+const receiverScenario = (w) => {
+  const out = [];
+  for (const key of ['Image', 'MutationObserver', 'console', 'webkitURL']) {
+    KEY = key;
+    for (const phase of ['cold', 'materialized']) {
+      if (phase === 'materialized') void w[key];
+      for (const [name, make] of Object.entries(RECEIVER_CASES)) {
+        const before = Object.getOwnPropertyDescriptor(w, key);
+        const receiver = make(Object.create(w));
+        const home = { __proto__: w, assign(v) { super[key] = v; } };
+        let result = 'ok';
+        try { home.assign.call(receiver, 7); } catch (e) { result = e.constructor.name; }
+        const own = Object.getOwnPropertyDescriptor(receiver, key);
+        const flags = own === undefined ? 'none' : 'value' in own ? `${own.value} ${own.writable} ${own.enumerable} ${own.configurable}` : 'accessor';
+        const window = sameDescriptor(before, Object.getOwnPropertyDescriptor(w, key)) ? 'kept' : 'replaced';
+        out.push(`${key} ${phase} ${name}: ${result}, own ${flags}, window ${window}`);
+      }
+    }
+  }
+  return out;
+};
+for (const jsdom of [20, 26, 30]) parity(`assignments reaching the window's data properties from a receiver (jsdom ${jsdom})`, receiverScenario, { jsdom });
+
+test('window: inherited enumerable Object.prototype keys do not reach window creation', () => {
+  Object.prototype.extra = 1;
+  try {
+    for (const jsdom of ['26.1.0', '30.1.3']) {
+      const w = createWindow({ jsdom });
+      assert.equal(w.innerWidth, 1024, jsdom);
+      assert.equal(Object.hasOwn(w, 'extra'), false, jsdom);
+    }
+  } finally {
+    delete Object.prototype.extra;
+  }
+});
+
 for (const jsdom of [20, 22, 25, 26, 30]) {
   parity(`window member kinds (jsdom ${jsdom})`, windowKindsScenario, { jsdom });
   parity(`window member assignments (jsdom ${jsdom})`, windowAssignmentScenario, { jsdom });

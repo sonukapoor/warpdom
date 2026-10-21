@@ -3876,7 +3876,21 @@ member where jsdom's data properties give the derived object its own. Now:
   defineWindowAccessors).
 - The lazy members' setters give an object that inherits from the window
   its own property (writable, enumerable, configurable) and leave the
-  window's (internal.js lazyDataSetter, assignedThrough).
+  window's (internal.js lazyDataSetter, assignedThrough). Copilot's review
+  of 4cc1bc8 on #96: they defined that property whatever the receiver
+  already had. Now they follow OrdinarySet's receiver step, as the data
+  property does (`super.Image = 7` from a method of an object inheriting
+  from the window, called on the receiver; black box, jsdom 20.0.3,
+  26.1.0, 30.1.3, matched cold and materialized): an own writable data
+  property gets the value and keeps its flags (also non-configurable), a
+  read-only or accessor own property or a new property on a
+  non-extensible receiver throws a TypeError, without calling the own
+  setter.
+- The viewport loops (window-features.js setupWindowData,
+  defineWindowAccessors) iterate the table's own keys: with an enumerable
+  Object.prototype key (`Object.prototype.extra = 1`) for...in made 27+
+  window creation throw ("Getter must be a function: 1") and gave earlier
+  windows an own extra member (Copilot's review of 4cc1bc8 on #96).
 - Jest and Vitest's VM pools: no code change. The global's setters already
   replace the global's member whatever this is, as jsdom's; an assignment
   through an object that inherits from the global never reaches them, as
@@ -3898,6 +3912,16 @@ Left as they are:
   DONT_CONTEXTIFY; jsdom 27's VM context is the window itself), which may
   also cover the getter-only assignment difference listed under #87
   (performance: 27+ throw). A follow-up, not small.
+- Lazy members, a failed assignment through a receiver (read-only or
+  accessor own property, non-extensible receiver) while the member is
+  still made on first read: a setter cannot return false, so it throws a
+  TypeError, as strict code does with the data property; sloppy code
+  silently ignores it and Reflect.set returns false once the member is
+  materialized (and in jsdom), and both get the TypeError while it is
+  cold. Matching that needs the members to be data properties from the
+  start. Test files are ES modules (strict), and the case needs a
+  read-only or accessor own property on an object inheriting from the
+  window, reached through super or Reflect.set.
 - jsdom 20 windows with runScripts let a derived object have its own self
   (getter only); warpdom's 20 profile throws in strict code, as a jsdom 20
   window without runScripts does.
@@ -3908,7 +3932,10 @@ Left as they are:
   throws in strict code where it has none (jsdom 21 to 26 with runScripts
   give the derived object its own).
 
-Tests: window-features.test.js (parity on jsdom 20, 22, 26, 27, 30:
+Tests: window-features.test.js (receiver cases for Image,
+MutationObserver, console and webkitURL, cold and materialized, parity on
+jsdom 20, 26, 30; window creation on 26.1.0 and 30.1.3 with
+Object.prototype.extra; parity on jsdom 20, 22, 26, 27, 30:
 assignments through a derived object for self, name, status, the viewport
 members and the lazy members, assigned while still made on first read,
 the setters called on another object and on a derived object, status's

@@ -104,19 +104,35 @@ export const observed = (node) => ownerDocument(node)[S].observerCount > 0;
 // (interface objects, Image, console, webkitURL, ...: an accessor until
 // then). It does what assigning the data property does: on the window,
 // define(value) replaces the accessor; through an object that inherits from
-// the window (Object.create(window).Image = x) it gives that object its own
-// property (writable, enumerable, configurable) and leaves the window's
-// alone, as with jsdom's data properties (black box, 20.0.3 to 30.1.3).
+// the window (Object.create(window).Image = x, super.Image = x) the
+// receiver gets or updates its own property as with jsdom's data
+// properties (black box, 20.0.3 to 30.1.3), see assignedThrough.
 export function lazyDataSetter(window, name, define) {
   return function (value) { if (!assignedThrough(window, this, name, value)) define(value); };
 }
 
 // The part of that for an object that inherits from the window: true when
-// receiver is one (the window is on its prototype chain), which now has
-// its own property; false for the window itself and anything else.
+// receiver is one (the window is on its prototype chain), false for the
+// window itself and anything else. The window's member stands for a
+// writable data property, so this is OrdinarySet's receiver step: an own
+// writable data property of the receiver gets the value and keeps its
+// flags; a read-only or accessor own property, or a new property on a
+// non-extensible receiver, is a failed assignment. A setter cannot return
+// that failure, so it throws a TypeError, as a strict-mode assignment to
+// the data property does (sloppy code and Reflect.set get false there
+// instead; see PLAN.md, #96).
 export function assignedThrough(window, receiver, name, value) {
   if (receiver === window || !isPrototypeOf.call(window, receiver)) return false;
-  Object.defineProperty(receiver, name, { value, writable: true, enumerable: true, configurable: true });
+  const own = Reflect.getOwnPropertyDescriptor(receiver, name);
+  if (own === undefined) {
+    if (!Reflect.defineProperty(receiver, name, { value, writable: true, enumerable: true, configurable: true })) {
+      throw new TypeError(`Cannot add property ${String(name)}, object is not extensible`);
+    }
+  } else if (!('value' in own)) {
+    throw new TypeError(`Cannot redefine property: ${String(name)}`);
+  } else if (!own.writable || !Reflect.defineProperty(receiver, name, { value })) {
+    throw new TypeError(`Cannot assign to read only property '${String(name)}' of object`);
+  }
   return true;
 }
 const { isPrototypeOf } = Object.prototype;
