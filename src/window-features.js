@@ -1110,13 +1110,13 @@ export const FEATURE_INTERFACES = [
 // The style surface of a jsdom profile (src/style-surface.js: which
 // properties it knows and has accessors for), measured per jsdom and
 // cssstyle version: before jsdom 29 by the cssstyle jsdom loads (given, or
-// the one jsdom's version installs: 2 for jsdom 20, 3 for 21 to 23, the
-// latest 4.x for 24 to 26, 5.3 for 27 to 28.0, the latest 6.x for 28.1),
+// the one jsdom's version installs: 2 to 21.0, 3 from 21.1 to 23.0, the
+// latest 4.x from 23.1 to 26, 5.3 for 27 to 28.0, the latest 6.x for 28.1),
 // later by jsdom's version. null: jsdom 30.1 and later (STYLE_ACCESSORS).
 function styleSurfaceKey(version, css) {
   if (version[0] >= 30) return before(version, [30, 0, 1]) ? 'jsdom30.0.0' : before(version, [30, 1, 0]) ? 'jsdom30.0.1' : null;
   if (version[0] === 29) return before(version, [29, 1, 0]) ? 'jsdom29.0' : 'jsdom29.1';
-  css ??= version[0] <= 20 ? [2] : version[0] <= 23 ? [3] : version[0] <= 26 ? [4, Infinity] : before(version, [28, 1, 0]) ? [5] : [6, Infinity];
+  css ??= before(version, [21, 1, 0]) ? [2] : before(version, [23, 1, 0]) ? [3] : version[0] <= 26 ? [4, Infinity] : before(version, [28, 1, 0]) ? [5] : [6, Infinity];
   if (css[0] <= 2) return 'cssstyle2';
   if (css[0] === 3 || (css[0] === 4 && before(css, [4, 1, 0]))) return 'cssstyle3';
   if (css[0] === 4) return before(css, [4, 4, 0]) ? 'cssstyle4.1' : 'cssstyle4.4';
@@ -1140,9 +1140,10 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
   // 4.3.1, url() in background and background-image serialized without
   // quotes; before 4.4 the root element's computed color was '', and in
   // 4.4 and 4.5 'CanvasText'.
-  // jsdom 20 loads cssstyle 2, jsdom 21 to 23 cssstyle 3 (assumed for 21;
-  // 22 and 23 measured): the default when no cssstyle is given.
-  const cssDefault = version[0] <= 20 ? '2.3.0' : version[0] <= 23 ? '3.0.0' : null;
+  // The cssstyle a jsdom release installs (its dependency range): 2.3 to
+  // 21.0.x, 3.0 from 21.1.0 to 23.0.x, the latest 4.x from 23.1.0: the
+  // default when no cssstyle is given.
+  const cssDefault = before(version, [21, 1, 0]) ? '2.3.0' : before(version, [23, 1, 0]) ? '3.0.0' : null;
   const cssText = version[0] < 27 ? cssstyle ?? cssDefault : null;
   const css = cssText != null ? parseJsdomVersion(cssText) : null;
   return {

@@ -307,3 +307,11 @@ test('computed values: em, keywords and bolder per jsdom 30 release', () => {
     assert.equal(w.getComputedStyle(d.body.appendChild(d.createElement('b'))).fontWeight, b, jsdom);
   }
 });
+
+test('computed values: the cssstyle each jsdom release installs is the default', () => {
+  // cssstyle 3 keeps Red as written; 4.6 (jsdom 23.1.0 and later) lowercases it and knows Canvas.
+  for (const [jsdom, red, canvas] of [['21.0.0', 'Red', ''], ['21.1.2', 'Red', ''], ['23.0.0', 'Red', ''], ['23.1.0', 'red', 'canvas'], ['24.1.3', 'red', 'canvas']]) {
+    assert.equal(profileColor({ jsdom }, 'color: Red')[0], red, jsdom);
+    assert.equal(profileColor({ jsdom }, 'color: Canvas')[0], canvas, jsdom);
+  }
+});
