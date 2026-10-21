@@ -959,13 +959,14 @@ function computedOverride(s, name) {
 }
 
 function writeComputed(s, name, value) {
+  const raw = value === null ? '' : String(value).trim();
   if (mutableComputed(s)) {
-    if (value === undefined) return; // "undefined", an invalid value
-    s.overrides ??= new Map();
-    s.overrides.set(name, value === null ? '' : String(value).trim());
+    // As on el.style (black box, jsdom 20 to 27.4): an empty value removes
+    // the property, an invalid one is ignored, others are serialized.
+    const text = raw === '' ? '' : declaredValue(name, raw, s.mode, s.surface);
+    if (text !== INVALID) (s.overrides ??= new Map()).set(name, text);
     return;
   }
-  const raw = value === null ? '' : String(value).trim();
   // Removing a declaration from a computed style throws, as in jsdom 28+.
   if (raw === '') readOnly();
   const text = declaredValue(name, raw, s.mode, s.surface);

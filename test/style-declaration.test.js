@@ -139,6 +139,27 @@ for (const jsdom of [20, 22, 25, 26, 27, 28, 29]) {
   }, { jsdom });
 }
 
+// Writes to the computed object before jsdom 28 go through the same
+// setters as el.style (black box, jsdom 20 to 27.4): azimuth is converted
+// or ignored as there, invalid values are ignored, an empty value removes
+// the property; from 28 the setters still validate and the methods throw.
+for (const jsdom of [20, 22, 25, 26, 27, 28]) {
+  parity(`jsdom ${jsdom}: writes to the computed style`, (w) => {
+    const t = (f) => { try { return JSON.stringify(f()); } catch (e) { return `throws ${e.name}`; } };
+    const fresh = () => w.getComputedStyle(w.document.body.appendChild(w.document.createElement('div')));
+    const out = [];
+    for (const [name, values] of [['azimuth', ['left', 'foo', '30Deg', '1turn', 'inherit', '', 'behind']], ['width', ['10px', 'foo', '']],
+      ['color', ['red', 'foo', 'rgb(1,2,3)', '']], ['display', ['flex', 'foo']]]) {
+      for (const how of ['set', 'setProperty']) {
+        const s = fresh();
+        const css = name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+        out.push(`${name} ${how}: ${values.map((v) => `${v} ${t(() => { if (how === 'set') s[name] = v; else s.setProperty(css, v); })} ${t(() => s[name])}`).join(' | ')}`);
+      }
+    }
+    return out;
+  }, { jsdom });
+}
+
 // cssstyle 4.2 to 4.3 (black box, jsdom 26.1.0 with cssstyle 4.2.0 to
 // 4.3.1): an angle written becomes NaNdeg; keywords convert as before.
 test('cssstyle 4.2 to 4.3: azimuth angles are NaNdeg', () => {
