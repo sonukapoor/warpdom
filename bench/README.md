@@ -4,6 +4,7 @@
 | --- | --- | --- |
 | `load.js` (`npm run bench:load`) | cold module load in fresh processes, first window, later windows | ms |
 | `hot.js` (`npm run bench:hot`) | hot members from the tracer data, against jsdom and happy-dom | ns per op |
+| `ci-compare.mjs` | `load.js` and `hot.js` (warpdom) on two checkouts, alternating rounds; what the bench workflow runs on pull requests | Markdown table of medians and change |
 | `create-bench.mjs` | createElement + appendChild + createTextNode + new Event | ns per node |
 | `insert-bench.mjs` | appendChild, removeChild, insertBefore, remove(), append and replaceChildren of elements and text in a connected element | ns per insertion + removal |
 | `style-bench.mjs` | inline style writes with repeated values (cache hits) | ns per write |
@@ -13,6 +14,10 @@
 | `url-bench.mjs` | `a.href` after a tree change (base URL cache miss) and cached | ns per read |
 | `window-bench.mjs` | createWindow, warm | µs per window |
 | `env-bench.mjs` | Vitest environment setup + teardown per test file, touching a few globals | µs per file |
+
+`load.js` and `hot.js` also take a warpdom checkout as an optional argument,
+and `--json` prints one JSON object instead of the text output
+(`node bench/hot.js --only warpdom --json /tmp/wd-base`).
 
 The `*-bench.mjs` scripts print one median and take the warpdom checkout to
 measure as an optional argument (default: this repository):
@@ -53,3 +58,17 @@ done
 
 Then take the median of each side. `cascade-bench.mjs` resolves jsdom from
 this repository either way, so only warpdom's side changes.
+
+## On pull requests
+
+`.github/workflows/bench.yml` runs on every pull request to main (and by
+hand, for any ref against main): it checks out the PR head and its base,
+installs both, and runs `ci-compare.mjs` from the head checkout (7
+alternating rounds of `load.js` and `hot.js --only warpdom` on each side).
+The table goes to the run's summary page and to one PR comment, updated on
+every push. It is a GitHub-hosted runner: changes within +-5% are usually
+noise. The workflow reports only; it never fails on a regression. Locally:
+
+```sh
+node bench/ci-compare.mjs --base /tmp/wd-base --head . --rounds 5
+```

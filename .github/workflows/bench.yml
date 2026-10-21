@@ -1,0 +1,121 @@
+# Before/after benchmarks for pull requests on a GitHub-hosted runner, so a
+# PR can be judged without benchmarking on a busy laptop. Checks out the PR
+# head and its base (main at the PR's base commit), installs both, and runs
+# bench/load.js and bench/hot.js (warpdom only) on both, alternating base and
+# head in every round (bench/ci-compare.mjs, from the head checkout, measures
+# both). Medians and the head/base change go to the run's summary page and
+# to one PR comment that is updated on every push (marker below). Forks get
+# a read-only token, so their PRs get the summary page only.
+#
+# Report only: never fails on a regression and is not a required check.
+# Manual runs (workflow_dispatch) compare a ref against main's tip.
+name: bench
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or commit to compare against main (default the branch the run starts from)
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: bench-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ROUNDS: '7'
+      MARKER: '<!-- warpdom-bench -->'
+    steps:
+      - name: Resolve refs
+        id: refs
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          INPUT_REF: ${{ inputs.ref }}
+          RUN_SHA: ${{ github.sha }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            head="$PR_HEAD"; base="$PR_BASE"
+          else
+            head="${INPUT_REF:-$RUN_SHA}"; base=main
+          fi
+          echo "head=$head" >> "$GITHUB_OUTPUT"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.refs.outputs.head }}
+          path: head
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.refs.outputs.base }}
+          path: base
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.22'
+          cache: npm
+          cache-dependency-path: |
+            head/package-lock.json
+            base/package-lock.json
+      - name: Install head
+        run: npm ci --no-audit --no-fund
+        working-directory: head
+      - name: Install base
+        run: npm ci --no-audit --no-fund
+        working-directory: base
+
+      - name: Compare
+        run: |
+          head_sha=$(git -C head rev-parse HEAD)
+          base_sha=$(git -C base rev-parse HEAD)
+          {
+            echo "$MARKER"
+            echo "## Benchmarks: \`${head_sha:0:7}\` vs \`${base_sha:0:7}\`"
+            echo
+            node head/bench/ci-compare.mjs --base base --head head --rounds "$ROUNDS" \
+              --base-label "\`${base_sha:0:7}\`" --head-label "\`${head_sha:0:7}\`" \
+              --json results.json
+            echo
+            echo "GitHub-hosted runner ($(nproc) CPUs); changes within ±5% are usually noise. Both sides run head's bench scripts. Report only: this check never fails on a regression."
+          } > report.md
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bench-results
+          path: |
+            report.md
+            results.json
+
+      - name: Comment on the pull request
+        # Forks and Dependabot get a read-only token: summary page only.
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          id=$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | contains(\"$MARKER\"))) | .id" | head -n 1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$id" -F body=@report.md > /dev/null
+            echo "Updated comment $id"
+          else
+            gh api -X POST "repos/$REPO/issues/$PR/comments" -F body=@report.md > /dev/null
+            echo "Posted a new comment"
+          fi
