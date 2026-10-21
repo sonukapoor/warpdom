@@ -43,7 +43,8 @@ const DESCRIPTORS = new Map(); // interface name (and variant) -> { keys, descri
 // (iface.variant: CSSStyleProperties' accessors, the event handlers of a
 // jsdom version), else null. An interface built from members changes its
 // descriptors for a variant with iface.adjust(descriptors, variant), once
-// per module load, rather than each window deleting members.
+// per module load, rather than each window deleting members (or returns
+// other descriptors to use).
 function descriptorsOf(iface, variant = null) {
   const cacheKey = variant === null ? iface.name : `${iface.name} ${variant}`;
   let table = DESCRIPTORS.get(cacheKey);
@@ -58,7 +59,7 @@ function descriptorsOf(iface, variant = null) {
     const { members } = iface;
     if (Array.isArray(members)) for (const m of members) addDescriptors(descriptors, typeof m === 'function' ? m() : m);
     else addDescriptors(descriptors, members);
-    if (variant !== null && iface.adjust) iface.adjust(descriptors, variant);
+    if (variant !== null && iface.adjust) descriptors = iface.adjust(descriptors, variant) ?? descriptors;
   }
   const keys = Reflect.ownKeys(descriptors);
   table = { keys, descriptors: keys.map((key) => descriptors[key]), unscopables: null };
@@ -152,6 +153,9 @@ function applyCompat(window, protos) {
   // The CSS namespace (CSS.supports, CSS.escape) arrived in jsdom 30;
   // libraries feature-detect it (handsontable validates sizes with it).
   if (jsdom < 30) delete window.CSS;
+  // Before jsdom 29 style objects are CSSStyleDeclarations (css.js
+  // legacyDeclaration).
+  if (jsdom < 29) delete window.CSSStyleProperties;
   if (!window[S].compat.nestedDeclarations) delete window.CSSNestedDeclarations;
   if (!window[S].compat.elementInternals) delete window.ElementInternals;
   // Option xhr: false (createWindow): no XMLHttpRequest, as before warpdom
@@ -242,6 +246,17 @@ export function createWindow(options = {}) {
     const existing = ctors[name];
     if (existing) return existing;
     const iface = BY_NAME.get(name);
+    // An interface the profile's jsdom does not have, whose objects are
+    // another's (CSSStyleProperties before jsdom 29: CSSStyleDeclaration);
+    // its global is removed (applyCompat).
+    const alias = iface.alias?.(window[S].compat);
+    if (alias) {
+      const ctor = materialize(alias);
+      ctors[name] = ctor;
+      if (name === 'CSSStyleProperties') setValidationMode(ctor.prototype, cssMode(window[S].compat), window[S].compat.styleSurface, window[S].compat.legacyFont);
+      Object.defineProperty(protos, name, { value: ctor.prototype, writable: true, enumerable: true, configurable: true });
+      return ctor;
+    }
     const parent = iface.parent ? materialize(iface.parent) : null;
     // Members are defined on an object without a prototype, which V8 keeps
     // as a dictionary: defining them on an object with a prototype walks
@@ -285,7 +300,8 @@ export function createWindow(options = {}) {
       Object.defineProperty(proto, 'constructor', { value: ctor, writable: true, configurable: true });
     }
     // The class string (WebIDL): Object.prototype.toString gives [object Name].
-    if (!Object.hasOwn(proto, Symbol.toStringTag)) Object.defineProperty(proto, Symbol.toStringTag, { value: name, configurable: true });
+    // (Not before jsdom 29 for CSSStyleDeclaration: [object Object].)
+    if (!Object.hasOwn(proto, Symbol.toStringTag) && !iface.untagged?.(window[S].compat)) Object.defineProperty(proto, Symbol.toStringTag, { value: name, configurable: true });
     if (parent) Object.setPrototypeOf(ctor, parent);
     for (const [key, value] of Object.entries(iface.statics ?? {})) {
       Object.defineProperty(ctor, key, { value, enumerable: true, writable: false, configurable: false });

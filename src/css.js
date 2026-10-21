@@ -347,8 +347,11 @@ export function styleSurface(key) {
   for (const name of words(data.keeps)) drops.delete(name);
   for (const accessor of words(data.writes)) writes.set(accessor, data.targets?.[accessor] ?? legacyTarget(accessor));
   for (const accessor of words(data.unwrites)) writes.delete(accessor);
+  // cssstyle 2 to 4.3 also have azimuth, which the generator leaves out
+  // (it keeps none of the values it writes; see azimuthValue).
+  if (AZIMUTH_KINDS[key] === 'angle') writes.set('azimuth', 'azimuth');
   const extras = new Set([...writes.values()].filter((name) => !isKnownProperty(name)));
-  surface = { drops, writes, extras, caches: Object.create(null) };
+  surface = { key, drops, writes, extras, caches: Object.create(null) };
   surfaceCache.set(key, surface);
   return surface;
 }
@@ -382,7 +385,7 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
   if (out === undefined) {
     legacyColors = surface !== null && surface.legacyFont === 'cssstyle4.1';
     if (mode === 'page') out = pageDescriptorValue(name, value);
-    else if (surface !== null && surface.extras.has(name)) out = value;
+    else if (surface !== null && surface.extras.has(name)) out = name === 'azimuth' ? azimuthValue(value, surface) : value;
     else if (!isKnownProperty(name)) out = INVALID;
     else if (isLegacyFont(surface, name)) out = /^inherit$/i.test(value) ? INVALID : legacyFont(value, surface.legacyFont) ?? INVALID;
     else {
@@ -396,6 +399,49 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
     byValue.set(value, out);
   }
   return out;
+}
+
+// azimuth (CSS 2 aural style sheets), black box: cssstyle 2 to 4.3 write
+// it as an angle in degrees ('angle': left 320deg, behind left 220deg,
+// -30deg 330deg, 10grad 9deg), keywords in any case, angles with lowercase
+// units, other values ignored; from 4.2 every angle written becomes NaNdeg
+// (a cssstyle bug: compat.legacyFont 'cssstyle4.2'). 4.4 to 5.2 keep any
+// value as written, 5.3 only the CSS-wide keywords ('keywords'); 6.0 and
+// jsdom 29 have no azimuth.
+const AZIMUTH_KINDS = { cssstyle2: 'angle', cssstyle3: 'angle', 'cssstyle4.1': 'angle', cssstyle5: 'keywords' };
+const AZIMUTH_POSITIONS = Object.assign(Object.create(null), { 'left-side': 270, 'far-left': 300, left: 320, 'center-left': 340, center: 0, 'center-right': 20, right: 40, 'far-right': 60, 'right-side': 90 });
+const AZIMUTH_ANGLE = /^([+-]?(?:\d+(?:\.\d+)?|\.\d+))(deg|grad|rad)$/;
+const AZIMUTH_NAN_ANGLE = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?(?:deg|grad|rad|turn)$/;
+export const hasAngleAzimuth = (surfaceKey) => AZIMUTH_KINDS[surfaceKey] === 'angle';
+function azimuthValue(value, surface) {
+  const kind = AZIMUTH_KINDS[surface.key];
+  if (kind === 'keywords') return CSS_WIDE_KEYWORD.test(value) ? value.toLowerCase() : INVALID;
+  if (kind !== 'angle') return value;
+  let degrees;
+  if (surface.legacyFont === 'cssstyle4.2') {
+    if (AZIMUTH_NAN_ANGLE.test(value)) return 'NaNdeg';
+  } else {
+    const angle = AZIMUTH_ANGLE.exec(value);
+    if (angle !== null) {
+      const n = Number(angle[1]);
+      degrees = angle[2] === 'deg' ? n : angle[2] === 'grad' ? n * 360 / 400 : n * 180 / Math.PI;
+    }
+  }
+  if (degrees === undefined) {
+    const words = value.toLowerCase().split(/\s+/);
+    if (words.length === 1) {
+      if (words[0] === 'leftwards' || words[0] === 'rightwards') return words[0];
+      degrees = words[0] === 'behind' ? 180 : AZIMUTH_POSITIONS[words[0]];
+    } else if (words.length === 2 && (words[0] === 'behind' || words[1] === 'behind')) {
+      const other = words[0] === 'behind' ? words[1] : words[0];
+      degrees = other === 'behind' ? 180 : AZIMUTH_POSITIONS[other] === undefined ? undefined : 180 - AZIMUTH_POSITIONS[other];
+    }
+    if (degrees === undefined) return INVALID;
+  }
+  // Into [0, 360]: 720deg is 360deg, -360deg 0deg.
+  if (degrees > 360) degrees = degrees % 360 || 360;
+  else if (degrees < 0) degrees = degrees % 360 + (degrees % 360 < 0 ? 360 : 0);
+  return `${degrees}deg`;
 }
 
 // Values whose serialization depends on the jsdom version beyond the
@@ -1076,6 +1122,12 @@ function styleDescriptors(surfaceKey = null) {
     else if (!missing(surface, accessor, name)) descriptors[accessor] = styleAccessor(surface.writes.get(accessor) ?? name);
   }
   if (surface !== null) for (const [accessor, name] of surface.writes) descriptors[accessor] ??= styleAccessor(name);
+  // cssstyle 2 to 4.3: style.azimuth = '' (or null) is ignored, as an
+  // invalid value; setProperty('azimuth', '') removes it.
+  if (hasAngleAzimuth(surfaceKey)) {
+    const { get, set } = descriptors.azimuth;
+    descriptors.azimuth = { get, set(value) { if (value !== null && String(value).trim() !== '') set.call(this, value); }, enumerable: true, configurable: true };
+  }
   return descriptors;
 }
 // The computed style's background and border side accessors of jsdom 26
@@ -1114,6 +1166,14 @@ function styleAccessor(name) {
   };
 }
 
+// CSSStyleProperties' members (jsdom 29 and later): the accessors, and its
+// own @@iterator, CSSStyleDeclaration's (black box, jsdom 29.1.1 and 30.1.3).
+function propertiesDescriptors(surfaceKey) {
+  const descriptors = styleDescriptors(surfaceKey);
+  descriptors[Symbol.iterator] = { value: Array.prototype.values, writable: true, enumerable: false, configurable: true };
+  return descriptors;
+}
+
 // CSSPageDescriptors' accessors: each descriptor by its dashed name, and
 // by its camel-cased one where that differs.
 function pageDescriptors() {
@@ -1132,6 +1192,80 @@ function pageDescriptors() {
       descriptors[key] = accessor;
     }
   }
+  return descriptors;
+}
+
+// CSSStyleDeclaration's operations, shared by the interface's variants.
+const itemOf = (style, index) => [...styleState(style).decls.keys()][index >>> 0] ?? '';
+const priorityOf = (style, name) => (styleState(style).decls.get(propertyName(name))?.important ? 'important' : '');
+function setPropertyOf(style, name, value, priority) {
+  const key = propertyName(name);
+  if (dropped(styleState(style).surface, key)) return;
+  setDeclaration(style, key, value, priority == null ? '' : priority);
+}
+function removePropertyOf(style, name) {
+  const key = propertyName(name);
+  const s = styleState(style);
+  const previous = s.computed ? (mutableComputed(s) ? valueOf(style, key) : readOnly()) : s.decls.get(key)?.value ?? '';
+  setDeclaration(style, key, '');
+  return previous;
+}
+
+// jsdom 28 and earlier (cssstyle 2.3 to 6.2), black box: one
+// CSSStyleDeclaration prototype has the operations, cssText, length,
+// parentRule and the style accessors (vi.spyOn(CSSStyleDeclaration.prototype,
+// 'width', 'get') sees el.style.width and computed reads), without
+// @@iterator and @@toStringTag ([object Object]). A missing argument is no
+// error, except item() and setProperty() from cssstyle 4.4; setProperty
+// with no value does nothing. cssstyle 2 to 4.3 ('A', jsdom 20 to 25): all
+// enumerable, item/1, setProperty/3, and getPropertyCSSValue,
+// getPropertyShorthand and isPropertyImplicit, which return undefined.
+// Later: not enumerable (cssFloat too), item/0, setProperty/2 (3 in
+// cssstyle 5.3: 'E'). cssstyle's own underscore members are left out.
+const LEGACY_GROUPS = { cssstyle2: 'A', cssstyle3: 'A', 'cssstyle4.1': 'A', 'cssstyle4.4': 'D', 'cssstyle5.0': 'D', cssstyle5: 'E', 'cssstyle6.0': 'F', 'cssstyle6.1': 'F' };
+const LEGACY_SHARED = {
+  getPropertyValue(name) { return valueOf(this, propertyName(name)); },
+  getPropertyPriority(name) { return priorityOf(this, name); },
+  removeProperty(name) { return removePropertyOf(this, name); },
+};
+const LEGACY_METHODS = {
+  A: {
+    ...LEGACY_SHARED,
+    item(index) { return index === undefined && arguments.length === 0 ? undefined : itemOf(this, index); },
+    setProperty(name, value, priority) { if (value !== undefined) setPropertyOf(this, name, value, priority); },
+    getPropertyCSSValue() {},
+    getPropertyShorthand() {},
+    isPropertyImplicit() {},
+  },
+  D: {
+    ...LEGACY_SHARED,
+    item() { if (arguments.length === 0) tooFew('item', 1, 0); return itemOf(this, arguments[0]); },
+    setProperty(name, value, priority = '') {
+      if (value === undefined) { if (arguments.length === 0) tooFew('setProperty', 2, 0); return; }
+      setPropertyOf(this, name, value, priority);
+    },
+  },
+};
+LEGACY_METHODS.F = LEGACY_METHODS.D;
+LEGACY_METHODS.E = {
+  ...LEGACY_METHODS.D,
+  setProperty(name, value, priority) {
+    if (value === undefined) { if (arguments.length === 0) tooFew('setProperty', 2, 0); return; }
+    setPropertyOf(this, name, value, priority);
+  },
+};
+// The accessors' descriptors (built for the variant) with the members
+// added, rather than 1,600 accessors copied into the members'.
+function legacyDeclaration(members, surfaceKey) {
+  const group = LEGACY_GROUPS[surfaceKey];
+  const enumerable = group === 'A';
+  const descriptors = styleDescriptors(surfaceKey);
+  if (!enumerable && descriptors.cssFloat) descriptors.cssFloat = { ...descriptors.cssFloat, enumerable: false };
+  for (const key of ['cssText', 'length', 'parentRule']) descriptors[key] = { ...members[key], enumerable };
+  const methods = LEGACY_METHODS[group];
+  for (const key of Object.keys(methods)) descriptors[key] = { value: methods[key], writable: true, enumerable, configurable: true };
+  // No @@iterator (nor @@toStringTag: untagged).
+  for (const key of Reflect.ownKeys(members)) if (typeof key !== 'symbol' && !(key in descriptors)) descriptors[key] = members[key];
   return descriptors;
 }
 
@@ -1159,7 +1293,7 @@ export const CSS_INTERFACES = [
       get parentRule() { return styleState(this).parentRule ?? null; },
       item(index) {
         if (index === undefined && arguments.length === 0) tooFew('item', 1, 0);
-        return [...styleState(this).decls.keys()][index >>> 0] ?? '';
+        return itemOf(this, index);
       },
       // Iterable as an indexed collection (WebIDL): Array.prototype.values.
       [Symbol.iterator]: Array.prototype.values,
@@ -1169,31 +1303,33 @@ export const CSS_INTERFACES = [
       },
       getPropertyPriority(name) {
         if (name === undefined && arguments.length === 0) tooFew('getPropertyPriority', 1, 0);
-        return styleState(this).decls.get(propertyName(name))?.important ? 'important' : '';
+        return priorityOf(this, name);
       },
       setProperty(name, value, priority = '') {
         if (value === undefined && arguments.length < 2) tooFew('setProperty', 2, arguments.length);
-        const key = propertyName(name);
-        if (dropped(styleState(this).surface, key)) return;
-        setDeclaration(this, key, value, priority === null ? '' : priority);
+        setPropertyOf(this, name, value, priority);
       },
       removeProperty(name) {
         if (name === undefined && arguments.length === 0) tooFew('removeProperty', 1, 0);
-        const key = propertyName(name);
-        const s = styleState(this);
-        const previous = s.computed ? (mutableComputed(s) ? valueOf(this, key) : readOnly()) : s.decls.get(key)?.value ?? '';
-        setDeclaration(this, key, '');
-        return previous;
+        return removePropertyOf(this, name);
       },
     },
+    // jsdom 28 and earlier: the style accessors are CSSStyleDeclaration's
+    // (legacyDeclaration); the variant is the profile's style surface.
+    variant: (compat) => (compat.jsdom < 29 ? compat.styleSurface : null),
+    adjust: legacyDeclaration,
+    untagged: (compat) => compat.jsdom < 29,
   },
   {
     name: 'CSSStyleProperties',
     parent: 'CSSStyleDeclaration',
     // About 1,600 accessors: their property descriptors are built directly,
     // the first time a window creates the interface; per style surface.
-    descriptors: styleDescriptors,
+    descriptors: propertiesDescriptors,
     variant: (compat) => compat.styleSurface,
+    // jsdom 28 and earlier have no CSSStyleProperties: style objects are
+    // CSSStyleDeclarations with the accessors (legacyDeclaration).
+    alias: (compat) => (compat.jsdom < 29 ? 'CSSStyleDeclaration' : null),
   },
   { name: 'CSSPageDescriptors', parent: 'CSSStyleDeclaration', descriptors: pageDescriptors },
 ];
