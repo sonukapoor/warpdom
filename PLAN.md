@@ -3717,3 +3717,31 @@ The three items deferred from the d6305eb review and four added later on
 - window.atob/btoa and FileReader.readAsDataURL used the evaluating
   context's atob/btoa: the CommonJS bundle in a VM context without them
   threw. Now PLATFORM_GLOBAL's; test in test/cjs.test.js.
+
+
+## 2026-10-21: benchmark comparison on pull requests (branch ci/bench-workflow, #95)
+
+Every pull request to main gets before/after numbers from a GitHub-hosted
+runner (`.github/workflows/bench.yml`), so a PR no longer needs local
+benchmarks on a busy laptop to be judged.
+- The workflow checks out the PR head and its base commit, `npm ci` in both
+  (Node 22.22), and runs `bench/ci-compare.mjs` from the head checkout: 7
+  rounds of `bench/load.js` and `bench/hot.js --only warpdom` on each side,
+  alternating (the side that goes first alternates too), medians per
+  measure, head/base change, flagged beyond +-5%. Both sides run head's
+  bench scripts, so the base needs no `--json` support and a changed case
+  measures the same code path on both sides (a case the base cannot run
+  shows n/a).
+- Output: the run's summary page, an artifact (report.md, results.json),
+  and one PR comment (marker `<!-- warpdom-bench -->`) edited on every
+  push. Fork and Dependabot PRs have a read-only token: summary page only.
+  Manual runs (workflow_dispatch, optional ref) compare against main's tip.
+- Report only: never fails on a regression; not a required check.
+- `bench/load.js` and `bench/hot.js` take a warpdom checkout as an optional
+  argument (as the `*-bench.mjs` scripts do) and `--json`; default output
+  unchanged. `hot.js` loads only the environments it measures.
+- First run (#95, same source on both sides, so an A/A test): all 21
+  measures within +-2.4%; single-round outliers up to 2.7x (querySelectorAll
+  after a change) that the median absorbs. The job takes about 2 minutes
+  (1.5 of them benchmarking); 4-CPU runner. Numbers are higher than on the
+  laptop (cold load 34 ms vs ~24 ms), so compare within a run only.
