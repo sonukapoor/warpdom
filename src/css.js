@@ -44,6 +44,10 @@ function splitOutside(text, sep) {
 // inset: 0 100dvh). Numbers stay (opacity: 0, line-height: 0).
 const ZERO = /^[+-]?(0+\.?0*|\.0+)$/;
 const BOX_SHORTHANDS = new Set(['margin', 'padding', 'border-width']);
+const shortestBox = (value) => {
+  const tokens = value.split(' ');
+  return tokens.length > 4 || value.includes('(') ? value : serializeBox([tokens[0], tokens[1] ?? tokens[0], tokens[2] ?? tokens[0], tokens[3] ?? tokens[1] ?? tokens[0]]);
+};
 // The length properties cssstyle 5 parses (black box, jsdom 27.0 to 28.0):
 // a 0 is 0px there, as written elsewhere (text-indent: 0, min-width: 0).
 const ZERO_PARSED_5 = new Set(['background-size', 'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width', 'border-spacing',
@@ -749,7 +753,10 @@ function serializeDeclared(name, value, mode) {
   }
   if (!ZERO_LISTS.has(name)) return value;
   for (let i = 0; i < tokens.length; i++) if (ZERO.test(tokens[i])) tokens[i] = '0px';
-  if (box && tokens.length <= 4) {
+  // As written with every cssstyle (jsdom 20 to 26; black box): margin,
+  // padding and border-width (2px 6px 3px 6px); from cssstyle 4.4 the
+  // margin and padding accessors read the shortest form (composedValue).
+  if (box && tokens.length <= 4 && !isLegacyMode(mode)) {
     const [top, right = top, bottom = top, left = right] = tokens;
     if (left !== right) return `${top} ${right} ${bottom} ${left}`;
     if (bottom !== top) return `${top} ${right} ${bottom}`;
@@ -1048,7 +1055,7 @@ const valueOf = (style, name) => {
   if (LONGHANDS[name] || (s.decls.legacyFont !== undefined && LEGACY_FONT_LONGHANDS.has(name))) return fromShorthand(s.decls, name);
   // jsdom 26 read background as the background-color set alone.
   if (name === 'background' && isLegacyMode(s.mode)) return s.decls.get('background-color')?.value ?? '';
-  if (COMPOSED[name]) return composeShorthand(s.decls, name);
+  if (COMPOSED[name]) return composeShorthand(s.decls, name, s.surface?.colors === 'css2');
   return BORDER_READS[name] !== undefined && !isLegacyMode(s.mode) ? composeBorder(s.decls, name) : '';
 };
 
@@ -1106,14 +1113,16 @@ const COMPOSED = {
     return xs.map((part, i) => `${part} ${ys[i] ?? ys[ys.length - 1]}`).join(', ');
   },
 };
-function composeShorthand(decls, name) {
+// legacyBox: cssstyle before 4.4, which writes all four values of margin
+// and padding (1px 2px 1px 2px).
+function composeShorthand(decls, name, legacyBox = false) {
   const values = [];
   for (const longhand of SHORTHANDS[name]) {
     const value = decls.get(longhand)?.value ?? fromShorthand(decls, longhand);
     if (!value) return '';
     values.push(value);
   }
-  return COMPOSED[name](values);
+  return legacyBox && (name === 'margin' || name === 'padding') ? values.join(' ') : COMPOSED[name](values);
 }
 
 // jsdom 20 to 26 (cssstyle 2 to 4, black box): setting flex, background,
@@ -1195,14 +1204,17 @@ function styleDescriptors(surfaceKey = null) {
 }
 // The computed style's background and border side accessors of jsdom 26
 // and earlier (cascade.js legacyAccessorValue).
-const COMPOSED_ACCESSORS = new Set(['background', 'border-top', 'border-right', 'border-bottom', 'border-left']);
+const COMPOSED_ACCESSORS = new Set(['background', 'border-top', 'border-right', 'border-bottom', 'border-left', 'margin', 'padding']);
 function composedValue(style, name) {
   const s = styleState(style);
   if (s.computed) {
     const value = computedOverride(s, name) ?? computed.accessor(s.element, name);
     if (value !== null) return value;
   }
-  return valueOf(style, name);
+  const value = valueOf(style, name);
+  // cssstyle 4.4 and later (jsdom 26): the margin and padding accessors
+  // read the shortest form, getPropertyValue() and cssText as written.
+  return (name === 'margin' || name === 'padding') && isLegacyMode(s.mode) && s.surface?.colors !== 'css2' ? shortestBox(value) : value;
 }
 function styleAccessor(name) {
   if (COMPOSED_ACCESSORS.has(name)) {

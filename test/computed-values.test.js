@@ -165,3 +165,43 @@ test('computed values: a 0 length is 0px from jsdom 28.1.0', () => {
   assert.deepEqual(zero({ jsdom: '26.1.0', cssstyle: '4.3.1' }, 'border-top-width'), ['0', '0']);
   assert.deepEqual(zero({ jsdom: '26.1.0', cssstyle: '4.4.0' }, 'border-top-width'), ['0px', '0px']);
 });
+
+// --- box shorthands ----------------------------------------------------------------
+
+// jsdom 20 to 26 keep margin, padding and border-width as written (the
+// user agent sheet's button padding 2px 6px 3px 6px); cssstyle 4.4 and
+// later read margin and padding in their shortest form (cssText keeps
+// them as written); a side that is '' leaves the shorthand ''.
+function boxes(w) {
+  const d = w.document;
+  d.head.innerHTML = '<style>.a { padding: 2px 6px 3px 6px; margin: 0 auto 0 auto; border-width: 1px 1px; border-style: solid } .b { padding: 1px 1px 1px }'
+    + ' .c { padding: 1px 2px; padding-left: 5px } .d { padding-left: 2px }</style>';
+  const out = {};
+  for (const cls of ['a', 'b', 'c', 'd']) {
+    const el = d.body.appendChild(d.createElement('div'));
+    el.className = cls;
+    out[cls] = read(w, el, ['padding', 'margin', 'border-width']);
+  }
+  for (const tag of ['button', 'option']) out[tag] = read(w, d.body.appendChild(d.createElement(tag)), ['padding']);
+  const el = d.createElement('div');
+  el.style.padding = '2px 6px 3px 6px';
+  el.style.margin = '0 auto 0 auto';
+  el.style.borderWidth = '1px 1px';
+  out.style = [el.style.padding, el.style.margin, el.style.borderWidth, el.style.cssText];
+  const sides = d.createElement('div');
+  for (const side of ['top', 'right', 'bottom', 'left']) sides.style.setProperty(`margin-${side}`, '1px');
+  out.sides = [sides.style.margin, sides.style.cssText];
+  return out;
+}
+for (const jsdom of JSDOMS) parity(`computed values: box shorthands (jsdom ${jsdom})`, boxes, { jsdom });
+
+test('computed values: margin and padding as written before cssstyle 4.4', () => {
+  const box = (cssstyle) => {
+    const w = createWindow({ jsdom: '26.1.0', cssstyle });
+    const el = w.document.body.appendChild(w.document.createElement('div'));
+    el.style.padding = '1px 2px 1px 2px';
+    return [el.style.padding, el.style.cssText, w.getComputedStyle(el).padding];
+  };
+  assert.deepEqual(box('4.3.1'), ['1px 2px 1px 2px', 'padding: 1px 2px 1px 2px;', '1px 2px 1px 2px']);
+  assert.deepEqual(box('4.4.0'), ['1px 2px', 'padding: 1px 2px 1px 2px;', '1px 2px']);
+});

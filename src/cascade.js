@@ -346,7 +346,22 @@ function shorthandValue(element, name) {
     if (LEGACY_BORDER.has(name)) return legacyBorderValue(element, name);
   }
   const longhands = SHORTHANDS[name];
-  if (longhands && BOX.has(name) && longhands.length === 4) return serializeBox(longhands.map((l) => computedValue(element, l)));
+  if (longhands && BOX.has(name) && longhands.length === 4) {
+    const values = longhands.map((l) => computedValue(element, l));
+    if (declaredComputed(element)) {
+      // jsdom before 29.0.2: '' when a side is; before 27 as declared
+      // (2px 6px 3px 6px), all four sides when the longhands changed them
+      // (the margin and padding accessors from cssstyle 4.4 in the
+      // shortest form: legacyAccessorValue).
+      if (values.includes('')) return '';
+      if (element[S].doc[S].window[S].compat.jsdom < 27) {
+        const own = cascaded(element, name);
+        if (own !== undefined && !CSS_WIDE.has(own) && expand(name, own).every(([n, v], i) => i === 0 || computedValue(element, n) === v)) return own;
+        return values.join(' ');
+      }
+    }
+    return serializeBox(values);
+  }
   if (longhands && PAIRS.has(name) && longhands.length === 2) {
     const [a, b] = longhands.map((l) => computedValue(element, l));
     return a === b ? a : `${a} ${b}`;
@@ -438,6 +453,9 @@ function backgroundParts(value) {
 const LEGACY_BACKGROUND_ORDER = ['background-image', 'background-repeat', 'background-attachment', 'background-position'];
 export function legacyAccessorValue(element, name) {
   const compat = element[S].doc[S].window[S].compat;
+  if (name === 'margin' || name === 'padding') {
+    return compat.jsdom < 27 && compat.colorKeywords !== 'css2' ? serializeBox(SHORTHANDS[name].map((l) => computedValue(element, l))) : null;
+  }
   if (compat.jsdom > 26 && (name !== 'background' || compat.shorthandInitials)) return null;
   const composed = compat.composedAccessors || compat.jsdom > 26;
   const own = cascaded(element, name);
