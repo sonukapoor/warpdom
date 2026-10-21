@@ -444,6 +444,22 @@ test('Vitest: viewport members, name, status and self as with jsdom, per pool an
   }
 });
 
+// vi.spyOn on the style accessors (#72): CSSStyleDeclaration's before
+// jsdom 29, CSSStyleProperties' later (black box, jsdom 20.0.3 to 30.1.3;
+// the installed jsdom checks the fixture's expectations).
+test('Vitest: vi.spyOn on the style accessors as with jsdom, per profile', () => {
+  const cases = [[[], 'declaration', '20.0.3'], [[], 'declaration', '26.1.0'], [[], 'declaration', '28.1.0'], [[], 'properties', '30.1.3'], [['--environment', 'jsdom'], 'properties']];
+  for (const [environment, expect, jsdom] of cases) {
+    const result = spawnSync('node_modules/.bin/vitest', ['run', '--root', 'fixtures/vitest-style-spy', ...environment], {
+      cwd: root, encoding: 'utf8', env: { ...process.env, STYLE_SPY_EXPECT: expect, ...(jsdom ? { STYLE_SPY_JSDOM: jsdom } : {}) },
+    });
+    // Vitest colors its output on CI (GitHub Actions); match the plain text.
+    const out = (result.stdout + result.stderr).replace(/\x1b\[[0-9;]*m/g, '');
+    assert.equal(result.status, 0, `${environment.join(' ') || 'warpdom'} ${jsdom ?? ''}: ${out}`);
+    assert.match(out, /Tests {2}3 passed \(3\)/);
+  }
+});
+
 // Vitest's forks and threads pools (black box with its jsdom environment,
 // jsdom 20.0.3, 26.1.0, 30.1.3): a global the window's member replaces
 // keeps its enumerability (Node's navigator stays in

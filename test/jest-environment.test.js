@@ -576,3 +576,39 @@ test('Jest environment: event.view is the global', async () => {
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+// jest.spyOn on the style accessors (#72), with Jest's own spyOn (the
+// project's jest-mock): CSSStyleDeclaration's before jsdom 29, so
+// jest.spyOn(CSSStyleDeclaration.prototype, 'width', 'get') sees el.style
+// and getComputedStyle reads; from 29 they are CSSStyleProperties' and that
+// spy throws (black box, jsdom 20.0.3 to 30.1.3).
+test('Jest environment: jest.spyOn on the style accessors as with jsdom, per profile', async () => {
+  const { ModuleMocker } = createRequire(import.meta.url)('jest-mock');
+  for (const jsdom of ['20.0.3', '26.1.0', '28.1.0', '30.1.3']) {
+    const legacy = Number.parseInt(jsdom, 10) < 29;
+    const rootDir = fakeJestProject();
+    let env;
+    try {
+      env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      await env.setup();
+      const g = env.global;
+      const jest = new ModuleMocker(g);
+      const el = g.document.body.appendChild(g.document.createElement('div'));
+      el.style.width = '10px';
+      assert.equal(typeof g.CSSStyleProperties, legacy ? 'undefined' : 'function', jsdom);
+      if (!legacy) assert.throws(() => jest.spyOn(g.CSSStyleDeclaration.prototype, 'width', 'get'), jsdom);
+      const width = jest.spyOn(legacy ? g.CSSStyleDeclaration.prototype : g.CSSStyleProperties.prototype, 'width', 'get').mockReturnValue('42px');
+      const set = jest.spyOn(legacy ? g.CSSStyleDeclaration.prototype : g.CSSStyleProperties.prototype, 'width', 'set');
+      assert.equal(vm.runInContext('el => [el.style.width, getComputedStyle(el).width, (el.style.width = "5px", "")].join()', env.getVmContext())(el), '42px,42px,', jsdom);
+      assert.equal(width.mock.calls.length, 2, jsdom);
+      assert.deepEqual(set.mock.calls, [['5px']], jsdom);
+      // In reverse order: each restores the descriptor it replaced.
+      set.mockRestore();
+      width.mockRestore();
+      assert.equal(el.style.width, '5px', jsdom);
+    } finally {
+      if (env?.global) await env.teardown();
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  }
+});

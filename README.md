@@ -148,6 +148,16 @@ as in jsdom, also on the global of Jest and Vitest's VM pools; `name` is a
 data property and `document`, `window` and `self` are accessors in every
 version, and before 24.1.2 `Window.prototype` inherits from `EventTarget`
 directly. `<search>` is `display: block` from 27.0.0.
+Before 29.0.0 `el.style` and `getComputedStyle()` give `CSSStyleDeclaration`
+objects whose prototype has the property accessors (`width`, ...) and the
+methods, and there is no `CSSStyleProperties`, so
+`vi.spyOn(CSSStyleDeclaration.prototype, 'width', 'get')` (or `jest.spyOn`)
+sees `el.style.width` and computed reads as with jsdom; from 29.0.0 the
+accessors are `CSSStyleProperties.prototype`'s. cssstyle's
+`getPropertyCSSValue()`, `getPropertyShorthand()` and
+`isPropertyImplicit()` (returning `undefined`) exist with cssstyle 4.3 and
+earlier, and `azimuth` with cssstyle 5.3 and earlier (as an angle until
+4.3, CSS-wide keywords only in 5.3), as they do in jsdom.
 As in jsdom, the window's `URL` has no `createObjectURL()`; under Vitest
 the global `URL` is Vitest's (Node's, with a `createObjectURL()` that
 takes the window's Blobs), as with jsdom.
@@ -551,6 +561,16 @@ Other deliberate differences:
   jsdom).
 - Kept the same in every jsdom profile: `MediaList` normalization (jsdom
   30's) and writable style indexed properties (jsdom 26's).
+- Style declarations: with cssstyle 5.3 and earlier (jsdom 20 to 28.0),
+  jsdom's `setProperty()`, `cssText` and the `style` attribute (and its
+  `getComputedStyle()`) also call the property setters, so a spied setter
+  sees them; warpdom's call it for assignments only (`style.width = ...`).
+  Not modeled either: cssstyle's `length` setter and underscore members,
+  the accessor functions' names (`get width` from jsdom 29, `get` in
+  warpdom), jsdom 29.0.0's internal classes behind `getComputedStyle()`, a
+  `CSSStyleRule`'s `style` without accessors before 27.1.0, and
+  `getComputedStyle().azimuth` with cssstyle 4.2 and 4.3 (`NaNdeg` for
+  an angle, jsdom's is empty).
 - `FileReader` also reads the platform's `Blob` (one from Node's `fetch` in
   Vitest); jsdom's throws a TypeError. `TextDecoder` trims only ASCII
   whitespace from labels, as the Encoding standard says (jsdom accepts
