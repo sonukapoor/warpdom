@@ -99,8 +99,10 @@ Requirements the workflow already meets: a GitHub-hosted runner, the
 
 ## Publishing by hand
 
-If the workflow cannot publish, a maintainer can still run `npm ci` and
-then `npm publish --access public` from a clean checkout of the tag (the
-`prepack` build needs the devDependencies; 2FA one-time password; no
-provenance). Create the GitHub release afterwards
+If the workflow cannot publish, a maintainer can still publish from a
+clean checkout of the tag (2FA one-time password; no provenance). Run
+`npm ci` first (the `prepack` build needs the devDependencies), then
+`npm publish --access public` in the repository root, and in
+`packages/vitest-environment-warpdom` and `packages/jest-environment-warpdom`
+for each whose version is not on npm yet (`npm view <name>@<version>`). Create the GitHub release afterwards
 (`gh release create vX.Y.Z --title "warpdom X.Y.Z" -F docs/release-notes/vX.Y.Z.md`).
