@@ -61,7 +61,11 @@ Status as of 2026-10-21 (warpdom 0.1.7 and main).
 | 5 | Public API (above) frozen and typed | `npm run test:types` in CI; this page's list | Typed today; frozen from the release that meets criterion 6 |
 | 6 | No breaking change in 3 consecutive minor releases spanning at least 6 weeks <!-- proposal: 3 releases, 6 weeks; Sonu to confirm --> | Release notes: a breaking change is a change to the public API above, as defined in [stability.md](stability.md) | Not met. 0.1.7 changed a default (`XMLHttpRequest` on, `xhr: false` to keep the old behavior) |
 | 7 | Documentation complete: setup, migration, options, differences from jsdom, stability policy, security policy | README, [api.md](api.md), [migrate.md](migrate.md), [compare.md](compare.md), [fast-mode.md](fast-mode.md), [stability.md](stability.md), [SECURITY.md](../SECURITY.md) | Nearly met with this page, stability.md and SECURITY.md: `setXPathLoader` is described only in its type |
-| 8 | At least 1 project outside the measured corpus runs its tests on warpdom on its main branch <!-- proposal: 1 project; Sonu to confirm --> | A merged change in that project's repository, linked here | Not met |
+
+Goals after 1.0, not criteria for it: projects outside the measured corpus
+running their tests on warpdom (M4, adoption). Maintainers have said they
+would wait for 1.0 before switching, so 1.0 depends only on the criteria
+above, which warpdom controls.
 
 Not required for 1.0: the opt-in web APIs jsdom lacks (#5 to #12, #35;
 milestone M2), and turning them on by default (M3). After 1.0, turning
@@ -72,5 +76,5 @@ for 2.0, unless it stays opt-in or limited to new jsdom profiles.
 
 [PLAN.md](../PLAN.md) has the milestones. 1.0 needs M1 (parity with jsdom:
 criteria 1 to 4) and the release and security parts of M6 (criteria 5 to
-7). Criterion 8 is the first step of M4 (adoption), whose own exit is ten
-well-known projects. M2, M3 and M5 do not block 1.0.
+7). Adoption (M4, whose exit is ten well-known projects) follows 1.0.
+M2, M3 and M5 do not block 1.0.

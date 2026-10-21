@@ -4010,14 +4010,15 @@ little traction yet, so 1.0 gets a public, checkable definition:
 
 - [docs/road-to-1.0.md](docs/road-to-1.0.md): what 1.0 promises (jsdom's
   results, no breaking upgrades within 1.x, compare and migrate to check
-  and switch back), the public API the promise covers, and 8 criteria with
+  and switch back), the public API the promise covers, and 7 criteria with
   how each is checked and its status. Mapping to the milestones: criteria
   1-4 are M1's exit (API superset test with KNOWN limited to documented
   differences, parity issues closed or documented, the corpus check on 25+
   suites, WPT gaps with issues); 5-7 are M6's release and security parts
   (public API frozen and typed, 3 minor releases and 6 weeks without a
-  breaking change, docs complete); 8 is M4's first step (one adopter
-  outside the corpus). M2, M3 and M5 do not block 1.0; after 1.0, M3
+  breaking change, docs complete). Adoption outside the corpus (M4) is a
+  goal after 1.0, not a criterion (decided by Sonu 2026-10-21: maintainers
+  wait for 1.0, so 1.0 must not wait for them). M2, M3 and M5 do not block 1.0; after 1.0, M3
   (modern APIs on by default) is a major release unless it stays opt-in or
   limited to new jsdom profiles.
 - [docs/stability.md](docs/stability.md): 0.x vs semver from 1.0, what is
