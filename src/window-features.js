@@ -1205,6 +1205,10 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // A declared 0 length computes to 0px from 28.1.0; before as declared
     // (text-indent: 0, min-width: 0), black box 20.0.0 to 28.0.0.
     zeroLengths: !before(version, [28, 1, 0]),
+    // From jsdom 30.0.0 computed lengths are px (em, rem, vw, calc(); font
+    // size keywords, larger and smaller), from 30.1.0 bolder and lighter
+    // weights (cascade.js, lengths.js).
+    absoluteLengths: version[0] >= 30, relativeWeights: !before(version, [30, 1, 0]),
     composedAccessors: version[0] < 27 && (css === null || (css[0] === 4 && !before(css, [4, 4, 0]))),
     // Members jsdom added (black box): crypto.randomUUID() in 22.1.0,
     // TextEncoder and TextDecoder in 27.4.0, Blob's text(), arrayBuffer()

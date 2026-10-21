@@ -128,7 +128,7 @@ function dialogs(w) {
     'border-top-color', 'left', 'right', 'width', 'height', 'inset-inline-start'];
   return [read(w, closed, props), read(w, open, props)];
 }
-for (const jsdom of [20, 22, 25, 26, 27, 28, 29]) parity(`computed values: dialog (jsdom ${jsdom}, #76)`, dialogs, { jsdom });
+for (const jsdom of JSDOMS) parity(`computed values: dialog (jsdom ${jsdom}, #76)`, dialogs, { jsdom });
 
 // --- zero lengths ------------------------------------------------------------------
 
@@ -242,5 +242,68 @@ test('computed values: font-family depends on user agent from jsdom 29.0.2', () 
   for (const [jsdom, family] of [['29.0.1', ''], ['29.0.2', 'depends on user agent'], ['30.1.3', 'depends on user agent']]) {
     const w = createWindow({ jsdom });
     assert.equal(w.getComputedStyle(w.document.body).fontFamily, family, jsdom);
+  }
+});
+
+// --- lengths, font sizes and weights (jsdom 30) -------------------------------------
+
+// jsdom 30 computes lengths to px: em from the element's font size (font
+// size from its parent's), rem from the root's, viewport units from 1024 x
+// 768, physical units at 96px to the inch, calc(), min(), max() and
+// clamp(); font size keywords, larger and smaller; from 30.1.0 bolder and
+// lighter. Percentages (but a font size's), lists and the dynamic
+// viewport units stay as declared.
+const UNITS = ['2em', '-1em', '.5em', '1rem', '1ex', '1ch', '1lh', '1rlh', '10vw', '10vh', '10vmin', '10vmax', '10svw', '1cm', '1mm', '1in', '1pt',
+  '1pc', '4q', '10%', 'calc(2em)', 'calc(1em + 2px)', 'calc(1000px / 3)', 'min(2em, 10px)', 'max(1em, 30px)', '13.33333333px', 'var(--x, 2em)'];
+function lengths(w, units = UNITS) {
+  const d = w.document;
+  d.documentElement.style.fontSize = '10px';
+  const parent = d.body.appendChild(d.createElement('div'));
+  parent.style.fontSize = '20px';
+  const out = {};
+  for (const value of units) {
+    const el = parent.appendChild(d.createElement('div'));
+    for (const p of ['width', 'margin-left', 'font-size', 'line-height', 'text-indent', 'border-top-left-radius']) el.style.setProperty(p, value);
+    out[value] = read(w, el, ['width', 'margin-left', 'font-size', 'line-height', 'text-indent', 'border-top-left-radius']);
+  }
+  d.head.innerHTML = '<style>.k { padding: 1em 2em } .g { gap: 2em; vertical-align: 2em }</style>';
+  for (const cls of ['k', 'g']) {
+    const el = parent.appendChild(d.createElement('div'));
+    el.className = cls;
+    out[cls] = read(w, el, ['padding', 'padding-left', 'gap', 'vertical-align']);
+  }
+  for (const size of ['xx-small', 'x-small', 'small', 'medium', 'large', 'x-large', 'xx-large', 'xxx-large', 'larger', 'smaller', '150%']) {
+    const el = parent.appendChild(d.createElement('div'));
+    el.style.fontSize = size;
+    out[size] = read(w, el, ['font-size']);
+  }
+  for (const weight of ['100', '400', '600', '700', '900']) {
+    const el = parent.appendChild(d.createElement('div'));
+    el.style.fontWeight = weight;
+    out[weight] = ['bolder', 'lighter'].map((keyword) => {
+      const child = el.appendChild(d.createElement('span'));
+      child.style.fontWeight = keyword;
+      return read(w, child, ['font-weight'])[0];
+    });
+  }
+  for (const tag of ['h1', 'h2', 'h5', 'b', 'small', 'big', 'sub', 'dialog']) out[tag] = read(w, d.body.appendChild(d.createElement(tag)), ['font-size', 'font-weight', 'padding-top']);
+  const h1 = d.body.appendChild(d.createElement('h1'));
+  out.h1b = read(w, h1.appendChild(d.createElement('b')), ['font-size', 'font-weight']);
+  const detached = d.createElement('div');
+  detached.style.width = '2em';
+  out.detached = read(w, detached, ['width', 'font-size']);
+  return out;
+}
+parity('computed values: lengths, font sizes and weights (jsdom 30)', lengths);
+// jsdom 29 for the values before (without the math functions its parser
+// simplifies or drops; older ones differ in which units cssstyle takes).
+parity('computed values: lengths, font sizes and weights (jsdom 29)', (w) => lengths(w, UNITS.filter((u) => !/^(min|max)\(|\//.test(u))), { jsdom: 29 });
+
+test('computed values: em, keywords and bolder per jsdom 30 release', () => {
+  for (const [jsdom, h1, b] of [['29.1.1', '2em', 'bolder'], ['30.0.0', '32px', 'bolder'], ['30.1.0', '32px', '700'], ['30.1.3', '32px', '700']]) {
+    const w = createWindow({ jsdom });
+    const d = w.document;
+    assert.equal(w.getComputedStyle(d.body.appendChild(d.createElement('h1'))).fontSize, h1, jsdom);
+    assert.equal(w.getComputedStyle(d.body.appendChild(d.createElement('b'))).fontWeight, b, jsdom);
   }
 });

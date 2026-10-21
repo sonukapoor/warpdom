@@ -20,6 +20,7 @@ import { resolveColor, systemColorKind } from './colors.js';
 import { segments, expand, serializeBox, BOX, PAIRS, CSS_WIDE, backgroundComponents } from './shorthands.js';
 import { compileRuleSelector } from './selectors.js';
 import { directionality } from './directionality.js';
+import { absoluteLength, mayResolve, sixDigits, FONT_SIZE_KEYWORDS, relativeWeight } from './lengths.js';
 import { uaDeclarations, uaValue } from './ua-sheet.js';
 import { documentStyleSheets, styleElementSheet } from './cssom.js';
 import { parseDeclarations, computed, validationModeOf, styleSurfaceOf, isLegacyMode, EXPANDED_SHORTHANDS } from './css.js';
@@ -285,12 +286,85 @@ function computeColors(element, name, value, data) {
   return parts.join('');
 }
 
+// --- absolute lengths (jsdom 30) ----------------------------------------------------
+
+// The px number of a computed font-size (16 when it is not in px, as for
+// a var() value jsdom does not substitute).
+const fontPx = (value) => (value.endsWith('px') ? Number(value.slice(0, -2)) || 0 : 16);
+
+function documentElementOf(element) {
+  for (let n = element[S].doc[S].first; n !== null; n = n[S].next) if (n[S].type === ELEMENT_NODE) return n;
+  return null;
+}
+
+// The font sizes a length refers to (lengths.js): em from the element's
+// font size (or its parent's, for font-size), rem from the root's.
+class LengthContext {
+  constructor(element, forFontSize) {
+    this.element = element;
+    this.forFontSize = forFontSize;
+    this.emPx = -1;
+    this.remPx = -1;
+  }
+  em() {
+    if (this.emPx < 0) {
+      const parent = this.forFontSize ? inheritParent(this.element) : this.element;
+      this.emPx = parent === null ? 16 : fontPx(computedValue(parent, 'font-size'));
+    }
+    return this.emPx;
+  }
+  rem() {
+    if (this.remPx < 0) {
+      const root = documentElementOf(this.element);
+      this.remPx = root === null || (root === this.element && this.forFontSize) ? 16 : fontPx(computedValue(root, 'font-size'));
+    }
+    return this.remPx;
+  }
+  // line-height normal: 1.2 times the font size.
+  lh() { return 1.2 * this.em(); }
+  rlh() { return 1.2 * this.rem(); }
+}
+
+// jsdom 30: font-size keywords, larger and smaller, percentages and
+// lengths from the parent's font size.
+function absoluteFontSize(element, value) {
+  const lower = value.toLowerCase();
+  const keyword = FONT_SIZE_KEYWORDS[lower];
+  if (keyword !== undefined) return `${keyword}px`;
+  if (lower === 'larger' || lower === 'smaller' || value.endsWith('%')) {
+    const parent = inheritParent(element);
+    const base = parent === null ? 16 : fontPx(computedValue(parent, 'font-size'));
+    if (lower === 'larger') return `${sixDigits(base * 1.2)}px`;
+    if (lower === 'smaller') return `${sixDigits(base / 1.2)}px`;
+    const percent = Number(value.slice(0, -1));
+    return Number.isNaN(percent) ? value : `${sixDigits((base * percent) / 100)}px`;
+  }
+  if (!mayResolve(value)) return value;
+  const px = absoluteLength(value, new LengthContext(element, true));
+  return px === null ? value : `${sixDigits(px)}px`;
+}
+
 function computeValue(element, name, value, data) {
   if (data[2]) value = computeColors(element, name, value, data);
-  // A 0 length: 0px from jsdom 28.1.0, as declared before (text-indent: 0).
-  if (data[3] && value === '0' && element[S].doc[S].window[S].compat.zeroLengths) return '0px';
-  if (!RAW_KEYWORDS.has(name)) return value;
   const compat = element[S].doc[S].window[S].compat;
+  // A 0 length: 0px from jsdom 28.1.0, as declared before (text-indent: 0).
+  if (data[3] && value === '0' && compat.zeroLengths) return '0px';
+  // jsdom 30 computes lengths to px (lengths.js), font sizes too; from
+  // 30.1.0 bolder and lighter to weights.
+  if (compat.absoluteLengths) {
+    if (name === 'font-size') return absoluteFontSize(element, value);
+    if (name === 'font-weight' && compat.relativeWeights) {
+      const lower = value.toLowerCase();
+      if (lower === 'bolder' || lower === 'lighter') {
+        const parent = inheritParent(element);
+        return String(relativeWeight(lower, parent === null ? 400 : Number(computedValue(parent, 'font-weight')) || 400));
+      }
+    } else if (mayResolve(value)) {
+      const px = absoluteLength(value, new LengthContext(element, false));
+      if (px !== null) value = `${sixDigits(px)}px`;
+    }
+  }
+  if (!RAW_KEYWORDS.has(name)) return value;
   // jsdom before 29.0.2 (black box, 20 to 29.0.1) keeps these keywords as
   // declared too (font-weight: bold, border-top-width: thin).
   if (compat.legacyComputedStyle) return value;
