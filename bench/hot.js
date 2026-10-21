@@ -1,17 +1,31 @@
 // Micro-benchmarks for the hottest DOM operations in real test suites (from
 // the dom-api-tracer corpus data), on warpdom, jsdom and happy-dom.
 // Prints nanoseconds per operation; lower is better.
-//   npm run bench:hot [-- --only warpdom]
-import { JSDOM } from 'jsdom';
-import { Window } from 'happy-dom';
-import { createWindow } from '../src/index.js';
+//   npm run bench:hot [-- --only warpdom] [-- --json] [-- warpdomDir]
+//
+// --only <env>: measure one environment (warpdom, jsdom or happy-dom).
+// --json: print one JSON object ({ dir, results: { case: { env: ns } } },
+// dir the measured checkout) instead of the table; a case that throws is null there (used by bench/ci-compare.mjs).
+// warpdomDir: the warpdom checkout to measure (default: this repository);
+// jsdom and happy-dom always come from this repository.
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const args = process.argv.slice(2);
+const json = args.includes('--json');
+const onlyAt = args.indexOf('--only');
+// The checkout: the first argument that is neither a flag nor --only's value.
+const dirArg = args.find((a, i) => !a.startsWith('--') && (onlyAt === -1 || i !== onlyAt + 1));
+const dir = path.resolve(dirArg ?? fileURLToPath(new URL('..', import.meta.url)));
 
 const N = 1000; // children per container
 
+// Each environment: [load its module, create a window from it]. Only the
+// measured environments are loaded.
 const environments = {
-  warpdom: () => createWindow(),
-  jsdom: () => new JSDOM('<!doctype html><html><head></head><body></body></html>').window,
-  'happy-dom': () => new Window(),
+  warpdom: [() => import(pathToFileURL(path.join(dir, 'src', 'index.js')).href), (m) => m.createWindow()],
+  jsdom: [() => import('jsdom'), (m) => new m.JSDOM('<!doctype html><html><head></head><body></body></html>').window],
+  'happy-dom': [() => import('happy-dom'), (m) => new m.Window()],
 };
 
 function container(window) {
@@ -118,7 +132,7 @@ const cases = {
 };
 
 function measure(env, name) {
-  const w = environments[env]();
+  const w = windowOf[env]();
   const [ops, fn] = cases[name](w);
   for (let i = 0; i < 20; i++) fn(); // warm up
   const runs = [];
@@ -132,9 +146,26 @@ function measure(env, name) {
   return runs[runs.length >> 1];
 }
 
-const only = process.argv.includes('--only') ? [process.argv[process.argv.indexOf('--only') + 1]] : Object.keys(environments);
+const only = onlyAt !== -1 ? [args[onlyAt + 1]] : Object.keys(environments);
 const envs = Object.keys(environments).filter((e) => only.includes(e));
-console.log(['ns per op'.padEnd(40), ...envs.map((e) => e.padStart(11))].join(''));
-for (const name of Object.keys(cases)) {
-  console.log([name.padEnd(40), ...envs.map((e) => measure(e, name).toFixed(1).padStart(11))].join(''));
+const windowOf = {};
+for (const e of envs) {
+  const [load, create] = environments[e];
+  const m = await load();
+  windowOf[e] = () => create(m);
+}
+if (json) {
+  const results = {};
+  for (const name of Object.keys(cases)) {
+    results[name] = {};
+    for (const e of envs) {
+      try { results[name][e] = measure(e, name); } catch { results[name][e] = null; }
+    }
+  }
+  console.log(JSON.stringify({ unit: 'ns', dir, results }));
+} else {
+  console.log(['ns per op'.padEnd(40), ...envs.map((e) => e.padStart(11))].join(''));
+  for (const name of Object.keys(cases)) {
+    console.log([name.padEnd(40), ...envs.map((e) => measure(e, name).toFixed(1).padStart(11))].join(''));
+  }
 }
