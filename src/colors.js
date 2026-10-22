@@ -186,7 +186,7 @@ function hueToChannel(p, q, t) {
 // 4.2 also grad, rad and turn (hsl(0.5turn 100% 50%) is rgb(0, 255, 255));
 // the older parser deg only.
 const HUE_UNITS = { deg: 1, grad: 0.9, rad: 180 / Math.PI, turn: 360 };
-const HUE = /^(.*?)(deg|grad|rad|turn)?$/i;
+const HUE = /^([\s\S]*?)(deg|grad|rad|turn)?$/i;
 function hueDegrees(s, legacy) {
   const [, n, unit] = HUE.exec(s);
   if (unit !== undefined && legacy && unit.toLowerCase() !== 'deg') return NaN;

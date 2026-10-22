@@ -46,6 +46,22 @@ function colors(w) {
 }
 for (const jsdom of JSDOMS) parity(`computed values: colors (jsdom ${jsdom})`, colors, { jsdom });
 
+// A hue across lines (calc() in a color is kept as written: #112) does
+// not stop the style sheet or the inline style.
+test('computed values: a hue with a line break', () => {
+  const w = createWindow({});
+  const d = w.document;
+  d.head.innerHTML = '<style>.h { color: hsl(calc(120\n + 0), 100%, 50%); background-color: red }</style>';
+  const el = d.body.appendChild(d.createElement('div'));
+  el.className = 'h';
+  assert.deepEqual(read(w, el, ['color', 'background-color']), ['hsl(calc(120\n + 0), 100%, 50%)', 'rgb(255, 0, 0)']);
+  const inline = d.body.appendChild(d.createElement('div'));
+  inline.style.color = 'hsl(calc(120\n + 0) 100% 50%)';
+  assert.equal(inline.style.color, 'hsl(calc(120\n + 0) 100% 50%)');
+  inline.style.color = 'hsl(120\n, 100%, 50%)';
+  assert.equal(read(w, inline, ['color'])[0], 'rgb(0, 255, 0)');
+});
+
 const profileColor = (profile, css, prop = 'color') => {
   const w = createWindow(profile);
   const el = w.document.body.appendChild(w.document.createElement('div'));
@@ -217,6 +233,21 @@ function boxAccessors(w) {
   return out;
 }
 for (const jsdom of JSDOMS) parity(`computed values: padding and margin accessors (jsdom ${jsdom})`, boxAccessors, { jsdom });
+
+// cssstyle 4.4 and later (jsdom 26): a function is one side of the
+// shortest form (calc(100% - 2px) calc(100% - 2px) is calc(100% - 2px)),
+// a value with var() stays as written. jsdom 27 and later: #112.
+parity('computed values: margin and padding with functions (jsdom 26)', (w) => {
+  const out = {};
+  for (const [prop, value] of [['padding', 'calc(100% - 2px) calc(100% - 2px)'], ['margin', 'calc(100% - 2px) 1px calc(100% - 2px) 1px'],
+    ['margin', 'calc(100% - 2px) 1px calc(100% - 2px)'], ['padding', 'calc(10%) 1px 2px 3px'], ['margin', 'var(--a) var(--a)']]) {
+    const el = w.document.body.appendChild(w.document.createElement('div'));
+    el.style.setProperty(prop, value);
+    const cs = w.getComputedStyle(el);
+    out[`${prop} ${value}`] = [el.style[prop], el.style.cssText, cs[prop], cs.getPropertyValue(prop)];
+  }
+  return out;
+}, { jsdom: 26 });
 
 test('computed values: margin and padding as written before cssstyle 4.4', () => {
   const box = (cssstyle) => {

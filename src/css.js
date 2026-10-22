@@ -44,9 +44,18 @@ function splitOutside(text, sep) {
 // inset: 0 100dvh). Numbers stay (opacity: 0, line-height: 0).
 const ZERO = /^[+-]?(0+\.?0*|\.0+)$/;
 const BOX_SHORTHANDS = new Set(['margin', 'padding', 'border-width']);
+// Functions as one side each (calc(100% - 2px) calc(100% - 2px) is
+// calc(100% - 2px)); a value with var() as written.
 const shortestBox = (value) => {
-  const tokens = value.split(' ');
-  return tokens.length > 4 || value.includes('(') ? value : serializeBox([tokens[0], tokens[1] ?? tokens[0], tokens[2] ?? tokens[0], tokens[3] ?? tokens[1] ?? tokens[0]]);
+  let tokens;
+  if (!value.includes('(')) tokens = value.split(' ');
+  else {
+    if (value.includes('var(')) return value;
+    const parts = segments(value);
+    if (parts.some((p, i) => i % 2 === 1 && p.trim() !== '')) return value;
+    tokens = parts.filter((_, i) => i % 2 === 0);
+  }
+  return tokens.length > 4 ? value : serializeBox([tokens[0], tokens[1] ?? tokens[0], tokens[2] ?? tokens[0], tokens[3] ?? tokens[1] ?? tokens[0]]);
 };
 // The length properties cssstyle 5 parses (black box, jsdom 27.0 to 28.0):
 // a 0 is 0px there, as written elsewhere (text-indent: 0, min-width: 0).
