@@ -1,0 +1,48 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+reviews:
+  profile: chill
+  # Never approve or request changes; comments only.
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  sequence_diagrams: false
+  in_progress_fortune: false
+  auto_review:
+    enabled: true
+    drafts: false
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
+  path_filters:
+    - "!dist/**"
+    - "!docs/research/data/**"
+    - "!wpt/results/**"
+    - "!**/package-lock.json"
+    - "!**/pnpm-lock.yaml"
+    - "!**/yarn.lock"
+    - "!**/*.tar.xz"
+  path_instructions:
+    - path: "src/**"
+      instructions: |
+        - Behavior is defined by what jsdom does, per jsdom version (compat flags in
+          src/window-features.js), measured black box. Prefer jsdom's observable
+          behavior over the standard unless the PR documents a deliberate deviation.
+        - The core under src/ must not import Node built-ins (node:*, fs, path, ...);
+          platform objects come through PLATFORM_GLOBAL.
+        - Hot paths (members exercised by bench/hot.js, tree navigation, attributes,
+          matches, events, getComputedStyle, window creation) must stay fast. Flag
+          per-call allocations (closures, temporary arrays, spreads) and prototype
+          walks on these paths.
+        - Every behavior change needs a test.
+    - path: "test/**"
+      instructions: |
+        - Every behavior change needs a test. Parity tests (test/parity.js) run the
+          same scenario on the installed jsdom versions and warpdom and compare results.
+        - Tests that match Vitest output must strip ANSI codes before comparing.
+    - path: "bench/**"
+      instructions: |
+        - Benchmarks must compare like with like (same scenario on jsdom, happy-dom
+          and warpdom) and must not hide setup cost that a real test run pays.
+chat:
+  auto_reply: true
