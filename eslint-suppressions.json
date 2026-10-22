@@ -1,0 +1,250 @@
+{
+  "bench/ci-compare.mjs": {
+    "no-nested-ternary": {
+      "count": 3
+    }
+  },
+  "bench/corpus/report.mjs": {
+    "no-nested-ternary": {
+      "count": 1
+    }
+  },
+  "bench/corpus/time.mjs": {
+    "no-nested-ternary": {
+      "count": 1
+    }
+  },
+  "src/cascade.js": {
+    "no-nested-ternary": {
+      "count": 4
+    }
+  },
+  "src/collections.js": {
+    "no-nested-ternary": {
+      "count": 2
+    }
+  },
+  "src/colors.js": {
+    "no-nested-ternary": {
+      "count": 1
+    }
+  },
+  "src/compare/index.js": {
+    "no-nested-ternary": {
+      "count": 2
+    }
+  },
+  "src/compare/report.js": {
+    "no-nested-ternary": {
+      "count": 4
+    }
+  },
+  "src/compare/run.js": {
+    "no-nested-ternary": {
+      "count": 2
+    }
+  },
+  "src/compare/wrappers.js": {
+    "no-nested-ternary": {
+      "count": 3
+    }
+  },
+  "src/css-values.js": {
+    "no-nested-ternary": {
+      "count": 5
+    }
+  },
+  "src/css.js": {
+    "no-nested-ternary": {
+      "count": 13
+    }
+  },
+  "src/cssom.js": {
+    "no-nested-ternary": {
+      "count": 1
+    }
+  },
+  "src/directionality.js": {
+    "no-nested-ternary": {
+      "count": 2
+    }
+  },
+  "src/dom-parsing.js": {
+    "no-nested-ternary": {
+      "count": 2
+    }
+  },
+  "src/event-handlers.js": {
+    "no-nested-ternary": {
+      "count": 1
+    }
+  },
+  "src/events.js": {
+    "no-nested-ternary": {
+      "count": 1
+    }
+  },
+  "src/forms.js": {
+    "no-nested-ternary": {
+      "count": 2
+    }
+  },
+  "src/interfaces.js": {
+    "no-nested-ternary": {
+      "count": 1
+    }
+  },
+  "src/internal.js": {
+    "no-nested-ternary": {
+      "count": 3
+    }
+  },
+  "src/layout.js": {
+    "no-nested-ternary": {
+      "count": 1
+    }
+  },
+  "src/lengths.js": {
+    "no-nested-ternary": {
+      "count": 6
+    }
+  },
+  "src/migrate/edits.js": {
+    "no-nested-ternary": {
+      "count": 3
+    }
+  },
+  "src/migrate/index.js": {
+    "no-nested-ternary": {
+      "count": 15
+    }
+  },
+  "src/migrate/report.js": {
+    "no-nested-ternary": {
+      "count": 2
+    }
+  },
+  "src/migrate/transitive.js": {
+    "no-nested-ternary": {
+      "count": 1
+    }
+  },
+  "src/mutation.js": {
+    "no-nested-ternary": {
+      "count": 1
+    }
+  },
+  "src/ranges.js": {
+    "no-nested-ternary": {
+      "count": 3
+    }
+  },
+  "src/reflect.js": {
+    "no-nested-ternary": {
+      "count": 1
+    }
+  },
+  "src/selectors.js": {
+    "import/no-mutable-exports": {
+      "count": 1
+    },
+    "no-nested-ternary": {
+      "count": 2
+    }
+  },
+  "src/shorthands.js": {
+    "no-nested-ternary": {
+      "count": 4
+    }
+  },
+  "src/tables.js": {
+    "no-nested-ternary": {
+      "count": 1
+    }
+  },
+  "src/ua-sheet.js": {
+    "no-nested-ternary": {
+      "count": 1
+    }
+  },
+  "src/vitest-fast-cli.js": {
+    "no-nested-ternary": {
+      "count": 1
+    }
+  },
+  "src/vitest-fast.js": {
+    "no-nested-ternary": {
+      "count": 2
+    }
+  },
+  "src/vitest.js": {
+    "no-nested-ternary": {
+      "count": 1
+    }
+  },
+  "src/window-features.js": {
+    "no-nested-ternary": {
+      "count": 15
+    }
+  },
+  "src/window.js": {
+    "no-nested-ternary": {
+      "count": 2
+    }
+  },
+  "src/xpath.cjs": {
+    "no-nested-ternary": {
+      "count": 1
+    }
+  },
+  "test/api-surface.js": {
+    "no-nested-ternary": {
+      "count": 1
+    }
+  },
+  "test/forms.test.js": {
+    "no-nested-ternary": {
+      "count": 1
+    }
+  },
+  "test/global-attributes.test.js": {
+    "no-nested-ternary": {
+      "count": 1
+    }
+  },
+  "test/shadow.test.js": {
+    "no-nested-ternary": {
+      "count": 3
+    }
+  },
+  "test/style-declaration.test.js": {
+    "no-nested-ternary": {
+      "count": 1
+    }
+  },
+  "test/window-features.test.js": {
+    "no-nested-ternary": {
+      "count": 3
+    }
+  },
+  "test/xhr.test.js": {
+    "no-nested-ternary": {
+      "count": 2
+    }
+  },
+  "test/xpath.test.js": {
+    "no-nested-ternary": {
+      "count": 1
+    }
+  },
+  "wpt/lib/child.mjs": {
+    "no-nested-ternary": {
+      "count": 1
+    }
+  },
+  "wpt/summary.mjs": {
+    "no-nested-ternary": {
+      "count": 2
+    }
+  }
+}

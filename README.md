@@ -692,6 +692,8 @@ npm run test:types    # the published types, under tsc --strict (test/types)
 npm run build         # dist/warpdom.cjs, the CommonJS build (also run by npm test and npm pack)
 npm run bench:load    # cold load and window creation
 npm run bench:hot     # hot DOM members against jsdom and happy-dom
+npm run format        # Prettier (CI runs npm run format:check)
+npm run lint          # ESLint readability rules, such as no nested ternaries
 node wpt/run.mjs dom/nodes --engine warpdom,jsdom   # Web Platform Tests
 ```
 
@@ -701,6 +703,10 @@ reference (its source is not read or copied). Plans and decisions:
 road to 1.0: [docs/road-to-1.0.md](docs/road-to-1.0.md); versions and
 support: [docs/stability.md](docs/stability.md); reporting a
 vulnerability: [SECURITY.md](SECURITY.md).
+Code is formatted with Prettier and linted with ESLint in CI; existing
+nested ternaries are listed in `eslint-suppressions.json` until they are
+rewritten. `git config blame.ignoreRevsFile .git-blame-ignore-revs` keeps
+the formatting commit out of `git blame`.
 Releases are published from GitHub Actions with npm provenance when a
 version tag is pushed: [RELEASING.md](RELEASING.md).
 

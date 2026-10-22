@@ -21,6 +21,8 @@ export default [
   },
   {
     files: ['**/*.{js,mjs,cjs}'],
+    // Some files carry disable comments for rules this config doesn't enable.
+    linterOptions: { reportUnusedDisableDirectives: 'off' },
     rules: {
       'no-nested-ternary': 'error',
     },
