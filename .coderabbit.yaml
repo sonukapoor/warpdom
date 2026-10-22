@@ -11,6 +11,8 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
+    # Keep reviewing busy PRs: 0 turns off the pause after N reviewed commits.
+    auto_pause_after_reviewed_commits: 0
   pre_merge_checks:
     docstrings:
       mode: "off"
