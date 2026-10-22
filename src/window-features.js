@@ -1251,8 +1251,17 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     urlParse: !before(version, [23, 0, 0]), paramValues: !before(version, [23, 0, 0]), setCookieList: !before(version, [24, 1, 0]),
     // BlobEvent's timecode without one in the init: 0 before 30.1.0, NaN from it.
     blobEventNaNTimecode: !before(version, [30, 1, 0]),
-    // CSSMediaRule's matches from 29.0.0, CSSNestedDeclarations from 27.2.0.
+    // CSSMediaRule's and CSSSupportsRule's matches from 29.0.0,
+    // CSSNestedDeclarations from 27.2.0.
     mediaRuleMatches: version[0] >= 29, nestedDeclarations: !before(version, [27, 2, 0]),
+    // The shape of the CSS rule interfaces (cssom.js CSSOM_SHAPE and ACEMIR_SHAPE), black box
+    // per release, by the CSSOM library jsdom loads: before 27.1.0 cssom and
+    // rrweb-cssom ('cssom': CSSStyleRule extends CSSRule, data members on
+    // the prototypes, CSSStyleRule.parse(); the CSSRule constants of rrweb-
+    // cssom 0.6 before 24.1.0, 0.7 to 25.x, 0.8 from 26.0.0), from 27.1.0
+    // to 28 @acemir/cssom ('acemir': type data and cssText on each rule
+    // interface, constants on CSSRule.prototype); from 29 jsdom's own (null).
+    cssomShape: before(version, [24, 1, 0]) ? 'cssom20' : before(version, [26, 0, 0]) ? 'cssom24' : before(version, [27, 1, 0]) ? 'cssom26' : version[0] < 29 ? 'acemir' : null,
     // ElementInternals and attachInternals() from 23.1.0, its labels and
     // form-associated custom elements from 26.0.0; its role and ARIA
     // accessors throw before 27.0.0.

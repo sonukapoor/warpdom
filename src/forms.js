@@ -15,7 +15,7 @@ import {
   rootOf, nextInTree, contains, elementById, connected, asciiLowercase, PlatformURL as URL, tooFewArguments,
 } from './internal.js';
 import { writeAttribute, attributeSteps, addAttributeStep, tokenList } from './attributes.js';
-import { liveList, htmlCollectionNames, indexedElement } from './collections.js';
+import { liveList, htmlCollectionNames, indexedElement, iterate } from './collections.js';
 import { dispatch, eventConstruct, fieldGetters, eventState } from './events.js';
 import { parseInteger } from './reflect.js';
 import { directionality } from './directionality.js';
@@ -1599,6 +1599,9 @@ export const FORM_MEMBERS = new Map([
       return list;
     },
     get length() { state(this); return formElements(this).length; },
+    // Iterable over its elements from jsdom 26.1.0, with form[i]
+    // (compat.formIndexed; interfaces.js leaves it out before).
+    [Symbol.iterator]() { state(this); return formElements(this).slice()[Symbol.iterator](); },
     get action() {
       state(this);
       const a = attr(this, 'action');
@@ -1773,6 +1776,7 @@ export const FORM_INTERFACES = [
         if (n < options.length) for (const o of options.slice(n)) o.remove();
         else for (let i = options.length; i < n; i++) select.appendChild(select.ownerDocument.createElement('option'));
       },
+      ...iterate,
       get selectedIndex() { return selectedIndex(state(this).select); },
       set selectedIndex(v) { state(this).select.selectedIndex = v; },
       add(element, before = null) {
@@ -1796,6 +1800,7 @@ export const FORM_INTERFACES = [
     parent: 'HTMLCollection',
     members: {
       namedItem(name) { return formControlsNamedItem(this, name); },
+      ...iterate,
     },
   },
   {
@@ -1812,6 +1817,7 @@ export const FORM_INTERFACES = [
           if (isTag(el, 'input') && inputType(el) === 'radio' && inputValue(el) === value) { el.checked = true; return; }
         }
       },
+      ...iterate,
     },
   },
   {

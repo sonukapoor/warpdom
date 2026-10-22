@@ -1378,3 +1378,41 @@ test('textarea hard wrap with a cols attribute: before jsdom 24 and from 30.1.0'
   assert.equal(wrapped('23.2.0'), 'ABCDEFGHIJ\nKLMNOPQRST\nUVWXYZ');
   assert.equal(wrapped('30.1.0'), 'ABCDEFGHIJ\nKLMNOPQRST\nUVWXYZ');
 });
+
+// Own @@iterator on the form collections, a form iterable from jsdom
+// 26.1.0, and autofocus and inputMode on the form controls' interfaces
+// (inputMode reflected as written) (#70).
+for (const jsdom of [20, 26, 30]) {
+  parity(`form collections' @@iterator, form iteration, own autofocus and inputMode (jsdom ${jsdom})`, (w) => {
+    const d = html(w, '<form id=f><input name=a type=radio><input name=a type=radio><button></button><select id=s><option>1<option>2</select><textarea></textarea></form>');
+    const form = d.getElementById('f');
+    const out = [];
+    for (const name of ['HTMLFormControlsCollection', 'HTMLOptionsCollection', 'RadioNodeList']) {
+      const desc = Object.getOwnPropertyDescriptor(w[name].prototype, Symbol.iterator);
+      out.push([name, typeof desc?.value, desc?.writable, desc?.enumerable, desc?.configurable]);
+    }
+    out.push([...form.elements].length, [...form.elements.namedItem('a')].length, [...d.getElementById('s').options].length);
+    out.push(Object.hasOwn(w.HTMLFormElement.prototype, Symbol.iterator));
+    try { out.push([...form].map((el) => el.tagName)); } catch (err) { out.push(err.constructor.name); }
+    for (const name of ['HTMLButtonElement', 'HTMLInputElement', 'HTMLSelectElement', 'HTMLTextAreaElement', 'HTMLFieldSetElement']) {
+      out.push([name, ...['autofocus', 'inputMode'].map((k) => {
+        const desc = Object.getOwnPropertyDescriptor(w[name].prototype, k);
+        return desc && [typeof desc.get, typeof desc.set, desc.enumerable, desc.configurable];
+      })]);
+    }
+    const input = form.querySelector('input');
+    input.autofocus = true;
+    input.inputMode = 'NUMERIC';
+    const textarea = form.querySelector('textarea');
+    textarea.setAttribute('inputmode', 'Decimal');
+    out.push(input.getAttribute('autofocus'), input.inputMode, input.getAttribute('inputmode'), textarea.inputMode, form.querySelector('button').autofocus);
+    return out;
+  }, { jsdom });
+}
+
+test('a form is iterable from jsdom 26.1.0', () => {
+  for (const [jsdom, iterable] of [['26.0.0', false], ['26.1.0', true], ['30.1.3', true]]) {
+    const w = createWindow({ jsdom });
+    assert.equal(Symbol.iterator in w.HTMLFormElement.prototype, iterable, `jsdom ${jsdom}`);
+  }
+});

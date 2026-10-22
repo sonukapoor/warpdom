@@ -27,12 +27,6 @@ const HTML_TAGS = [...new Set([...HTML_ELEMENTS.flatMap(([, , tags]) => tags), .
 // jsdom majors it applies to, the issue and why. An entry that matches
 // nothing in any version fails the test: remove it then.
 const KNOWN = [
-  // No issue yet (found by this test; see #18).
-  { path: /^HTML(Button|Input|Select|TextArea)Element\.prototype\.(autofocus|inputMode)$/, difference: /^on HTMLElement$/, issues: [], reason: 'jsdom has them on the element interface too' },
-  { path: /^(HTMLFormControlsCollection|HTMLOptionsCollection|RadioNodeList)\.prototype\.\[Symbol\.iterator\]$/, difference: /^on /, issues: [], reason: 'jsdom gives each interface its own @@iterator' },
-  { path: /^HTMLFormElement\.prototype\.\[Symbol\.iterator\]$/, jsdom: [26, 30], issues: [], reason: 'a form is iterable from jsdom 26 (not fixed by fix/forms-parity\'s #50)' },
-  { path: /^CSSKeyframesRule\.prototype\.\[Symbol\.iterator\]$|^CSSSupportsRule\.prototype\.matches$/, jsdom: [29, 30], issues: [] },
-  { path: /^CSS(\w*Rule|NestedDeclarations)\b|^CSSStyleSheet\.prototype\.(toString|parentStyleSheet)$/, jsdom: [20, 28], issues: [], reason: 'jsdom 28 and earlier take the CSSOM from cssom/rrweb-cssom: legacy constants, own members per rule interface, CSSStyleRule extends CSSRule, parse()' },
 ];
 
 const known = (major, path, difference) => KNOWN.find((entry) => entry.path.test(path)

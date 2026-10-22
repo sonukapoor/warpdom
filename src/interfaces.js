@@ -1175,6 +1175,12 @@ for (const iface of INTERFACES) {
   const form = FORM_MEMBERS.get(name);
   if (hasReflections(name) || form) iface.members = mix(reflected, form ?? {}, iface.members);
 }
+// A form is iterable from jsdom 26.1.0 (compat.formIndexed, with form[i]).
+{
+  const form = INTERFACES.find((i) => i.name === 'HTMLFormElement');
+  form.variant = (compat) => (compat.formIndexed ? null : 'unindexed');
+  form.adjust = (descriptors) => { delete descriptors[Symbol.iterator]; };
+}
 
 export { SVG_ELEMENTS, LEGACY_SVG_ELEMENTS, SVG_TYPES_INTERFACES } from './svg.js';
 export { HTML_NS, SVG_NS };

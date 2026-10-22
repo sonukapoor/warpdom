@@ -6,7 +6,7 @@
 // Values are kept as written: unlike jsdom 30 they are not normalized
 // (jsdom serializes `margin: 0` as `0px`).
 import { S, state, domError, cssomChanges, ELEMENT_NODE, TEXT_NODE, HTML_NS, nextInTree, connected, PlatformURL as URL } from './internal.js';
-import { declarationBlock, serializeDeclarations, escapeIdentifier, protosMode, isLegacyMode } from './css.js';
+import { declarationBlock, serializeDeclarations, escapeIdentifier, protosMode, isLegacyMode, supportsRuleMatches } from './css.js';
 import { liveList } from './collections.js';
 import { fallbackBaseURL } from './base-url.js';
 
@@ -277,9 +277,25 @@ const MARGINS = new Set(['top-left-corner', 'top-left', 'top-center', 'top-right
 
 const COUNTER_DESCRIPTORS = ['system', 'symbols', 'additive-symbols', 'negative', 'prefix', 'suffix', 'range', 'pad', 'speak-as', 'fallback'];
 
+// The CSSRule prototypes of windows whose profile has the cssom/rrweb-cssom
+// shape (jsdom before 27.1.0; CSSOM_SHAPE below), where parentRule,
+// parentStyleSheet, cssRules and conditionText are data properties of the
+// rule interfaces' prototypes and each rule has its own, as in jsdom.
+const LEGACY_RULES = new WeakSet();
+const legacyRules = (protos) => LEGACY_RULES.has(protos.CSSRule);
+// The rule interfaces whose prototypes have a cssRules data property there.
+const OWN_RULE_LISTS = new Set(['CSSMediaRule', 'CSSSupportsRule', 'CSSContainerRule', 'CSSLayerBlockRule']);
+
 function makeRule(protos, iface, sheet, parentRule, data) {
   const rule = Object.create(protos[iface]);
   rule[S] = { sheet, parentRule, protos, ...data };
+  if (legacyRules(protos)) {
+    // Own data properties, as jsdom's rules have (the prototypes' are null).
+    rule.parentRule = parentRule;
+    rule.parentStyleSheet = sheet;
+    if (OWN_RULE_LISTS.has(iface)) rule.cssRules = cssRuleList(rule);
+    if (iface === 'CSSSupportsRule') rule.conditionText = data.conditionText;
+  }
   return rule;
 }
 
@@ -339,7 +355,7 @@ function functionAt(text, name) {
 }
 
 // @import's prelude: a URL or string, then layer, supports() and media.
-function importRule(protos, prelude, sheet, parentRule) {
+function importParts(prelude) {
   const m = /^(?:url\(\s*(["']?)(.*?)\1\s*\)|(["'])((?:\\.|(?!\3)[^\\])*)\3)\s*(.*)$/s.exec(prelude);
   if (!m) return null;
   let rest = m[5].trim();
@@ -351,7 +367,51 @@ function importRule(protos, prelude, sheet, parentRule) {
   const supports = functionAt(rest, 'supports');
   if (supports) { supportsText = supports.inner; rest = supports.after; }
   const href = (m[2] ?? m[4]).replace(/\\(.)/g, '$1');
-  return makeRule(protos, 'CSSImportRule', sheet, parentRule, { href, layerName, supportsText, media: mediaList(protos, rest), styleSheet: null });
+  return { href, layerName, supportsText, media: rest };
+}
+
+function importRule(protos, prelude, sheet, parentRule) {
+  const parts = importParts(prelude);
+  if (!parts) return null;
+  return makeRule(protos, 'CSSImportRule', sheet, parentRule, { ...parts, media: mediaList(protos, parts.media), styleSheet: null });
+}
+
+// An @import rule given new text (jsdom before 29: its cssText setter
+// before 27.1.0, CSSImportRule.prototype.parse() from 27.1.0 to 28).
+function setImportText(rule, text) {
+  const m = /^\s*@import\s+([\s\S]*?);?\s*$/i.exec(text);
+  const parts = m && importParts(m[1].trim());
+  if (!parts) return;
+  const s = rule[S];
+  s.href = parts.href;
+  s.layerName = parts.layerName;
+  s.supportsText = parts.supportsText;
+  setMediaText(s.media, parts.media);
+  s.styleSheet = null;
+  cssomChanges.rev++;
+}
+
+// A style rule's selector and declarations from text, as jsdom before
+// 27.1.0 parses it (CSSStyleRule.parse() and the cssText setter; black
+// box 20.0.3 to 27.0.0): the selector before the last complete block, the
+// declarations of every block; without a block, the empty selector.
+function setStyleRuleText(rule, text) {
+  const t = String(text);
+  let selector = '';
+  let declarations = '';
+  for (let i = 0; ;) {
+    const open = t.indexOf('{', i);
+    if (open < 0) break;
+    selector = t.slice(i, open).trim();
+    const close = t.indexOf('}', open + 1);
+    if (close < 0) break;
+    declarations += `${t.slice(open + 1, close)};`;
+    i = close + 1;
+  }
+  const s = rule[S];
+  s.selectorText = selector;
+  s.style.cssText = declarations;
+  cssomChanges.rev++;
 }
 
 // An @page rule's body: descriptors, and margin rules (@top-left { ... }).
@@ -378,6 +438,13 @@ function pageRule(protos, selector, body, sheet, parentRule) {
   return rule;
 }
 
+// @container's prelude: [ <container-name> ]? <container-query>.
+function containerParts(prelude) {
+  const m = /^(-?[A-Za-z_][\w-]*)?\s*(.*)$/s.exec(prelude);
+  const named = m[1] && !/^(not|and|or)$/i.test(m[1]) && m[2] !== '';
+  return { conditionText: prelude, containerName: named ? m[1] : '', containerQuery: named ? m[2] : prelude };
+}
+
 // A rule object for a parsed record, or null for rules that are dropped.
 function createRule(protos, record, sheet, parentRule) {
   if (record.selector !== undefined) {
@@ -394,10 +461,7 @@ function createRule(protos, record, sheet, parentRule) {
   } else if (at === 'supports' && body !== null) {
     rule = makeRule(protos, 'CSSSupportsRule', sheet, parentRule, { conditionText: prelude });
   } else if (at === 'container' && body !== null) {
-    // [ <container-name> ]? <container-query>
-    const m = /^(-?[A-Za-z_][\w-]*)?\s*(.*)$/s.exec(prelude);
-    const named = m[1] && !/^(not|and|or)$/i.test(m[1]) && m[2] !== '';
-    rule = makeRule(protos, 'CSSContainerRule', sheet, parentRule, { conditionText: prelude, containerName: named ? m[1] : '', containerQuery: named ? m[2] : prelude });
+    rule = makeRule(protos, 'CSSContainerRule', sheet, parentRule, containerParts(prelude));
   } else if (at === 'scope' && body !== null) {
     // [ ( <scope-start> ) ]? [ to ( <scope-end> ) ]?
     const m = /^(?:\(([^()]*)\))?\s*(?:to\s*\(([^()]*)\))?$/is.exec(prelude);
@@ -464,6 +528,9 @@ function indexKeyframes(rule) {
 // belong to a style sheet.
 function detach(rule) {
   rule[S].parentRule = null;
+  // jsdom before 27.1.0 resets the rule's parentRule only (its
+  // parentStyleSheet stays, black box).
+  if (legacyRules(rule[S].protos)) rule.parentRule = null;
   const unsheet = (r) => {
     r[S].sheet = null;
     if (r[S].rules) for (const child of r[S].rules) unsheet(child);
@@ -488,7 +555,8 @@ function keyframesName(name) {
 function ruleText(rule) {
   const s = rule[S];
   switch (Object.getPrototypeOf(rule)) {
-    case s.protos.CSSStyleRule: return `${s.selectorText} ${styleText(s.style)}`;
+    // Empty only from CSSStyleRule.parse() and the cssText setter before jsdom 27.1.0.
+    case s.protos.CSSStyleRule: return s.selectorText === '' ? '' : `${s.selectorText} ${styleText(s.style)}`;
     case s.protos.CSSMediaRule: return `@media ${s.media[S].list.join(', ')} ${nested(s.rules)}`;
     case s.protos.CSSSupportsRule: return `@supports ${s.conditionText} ${nested(s.rules)}`;
     case s.protos.CSSContainerRule: return `@container ${s.conditionText} ${nested(s.rules)}`;
@@ -592,6 +660,7 @@ function newSheet(protos, data) {
     protos, ownerNode: null, ownerRule: null, parentSheet: null, href: null, baseURL: null, title: null,
     disabled: false, media: null, rules: [], constructed: false, ...data,
   };
+  if (legacyRules(protos)) sheet.parentStyleSheet = sheet[S].parentSheet;
   return sheet;
 }
 
@@ -718,10 +787,122 @@ const mediaMember = {
   set media(v) { setMediaText(state(this).media, v); cssomChanges.rev++; },
 };
 
+// --- the rule interfaces' shape per jsdom generation (compat.cssomShape) ---------------
+
+// CSSRule's constants beyond the standard's: cssom and rrweb-cssom 0.6
+// (jsdom before 24.1.0), rrweb-cssom 0.7 (24.1.0 to 25.x) and 0.8 and
+// @acemir/cssom (26.0.0 to 28.x); black box.
+const LEGACY_TYPES_20 = { UNKNOWN_RULE: 0, DOCUMENT_RULE: 13, VIEWPORT_RULE: 15, REGION_STYLE_RULE: 16 };
+const LEGACY_TYPES_24 = { ...LEGACY_TYPES_20, CONTAINER_RULE: 17, STARTING_STYLE_RULE: 1002 };
+const LEGACY_TYPES_26 = { ...LEGACY_TYPES_24, LAYER_BLOCK_RULE: 18 };
+const RULE_STATICS = {
+  cssom20: { ...RULE_TYPES, ...LEGACY_TYPES_20 },
+  cssom24: { ...RULE_TYPES, ...LEGACY_TYPES_24 },
+  cssom26: { ...RULE_TYPES, ...LEGACY_TYPES_26 },
+  acemir: { ...RULE_TYPES, ...LEGACY_TYPES_26 },
+};
+
+// The variant of a rule interface's descriptors (window.js descriptorsOf).
+const ruleVariant = (compat) => (compat.cssomShape === null ? null : compat.cssomShape === 'acemir' ? 'acemir' : 'cssom');
+
+const flagged = (flags) => ({ enumerable: flags.includes('e'), configurable: flags.includes('c') });
+const dataMember = (value, flags) => ({ value, writable: flags.includes('w'), ...flagged(flags) });
+const accessorMember = (get, set, flags) => ({ get, set, ...flagged(flags) });
+
+function cssTextOf() { state(this); return ruleText(this); }
+function conditionTextOf() { const s = state(this); return s.media ? s.media[S].list.join(', ') : s.conditionText; }
+const NO_RULES = Object.freeze([]);
+// Anonymous functions, as jsdom's (their name is ''): CSSStyleSheet's
+// toString() (each rule's text and a line break) and CSSKeyframesRule's
+// @@iterator before jsdom 29.
+const [sheetText, keyframesIterator] = [
+  function () { state(this); return rules(this).map((rule) => `${ruleText(rule)}\n`).join(''); },
+  function () { return Array.prototype.values.call(this); },
+];
+// CSSImportRule.prototype.parse (jsdom 27.1.0 to 28): reparses the rule
+// from @import text; a plain function named value (callable with new).
+function importParse(text) {
+  if (text == null) throw new TypeError(`Cannot read properties of ${text} (reading 'charAt')`);
+  try { state(this); } catch { return; }
+  if (isA(this, 'CSSImportRule')) setImportText(this, String(text));
+}
+Object.defineProperty(importParse, 'name', { value: 'value' });
+
+// jsdom before 27.1.0 (cssom, rrweb-cssom; black box 20.0.3 to 27.0.0):
+// parentRule, parentStyleSheet and type are writable data properties of
+// each rule interface's prototype (null, and the type), cssRules and
+// conditionText too where the rules have their own, and cssText an
+// accessor there.
+const legacyRule = (type) => ({
+  parentRule: dataMember(null, 'ecw'), parentStyleSheet: dataMember(null, 'ecw'),
+  ...(type === undefined ? {} : { type: dataMember(type, 'ecw') }),
+});
+const CSSOM_SHAPE = {
+  CSSGroupingRule: legacyRule(),
+  CSSConditionRule: { ...legacyRule(), cssRules: dataMember(NO_RULES, 'ecw'), conditionText: dataMember('', 'ecw'), cssText: dataMember('', 'ecw') },
+  CSSMediaRule: {
+    ...legacyRule(4), cssRules: dataMember(NO_RULES, 'ecw'),
+    conditionText: accessorMember(conditionTextOf, function (v) { setMediaText(state(this).media, v); cssomChanges.rev++; }, 'ec'),
+    cssText: accessorMember(cssTextOf, undefined, 'ec'),
+  },
+  CSSSupportsRule: { ...legacyRule(12), cssRules: dataMember(NO_RULES, 'ecw'), cssText: accessorMember(cssTextOf, undefined, '') },
+  CSSContainerRule: {
+    ...legacyRule(17), cssRules: dataMember(NO_RULES, 'ecw'),
+    conditionText: accessorMember(conditionTextOf, function (v) { Object.assign(state(this), containerParts(String(v))); cssomChanges.rev++; }, 'ec'),
+    cssText: accessorMember(cssTextOf, undefined, 'ec'),
+  },
+  CSSLayerBlockRule: { ...legacyRule(18), cssRules: dataMember(NO_RULES, 'ecw'), cssText: accessorMember(cssTextOf, undefined, 'ec') },
+  CSSStyleRule: { ...legacyRule(1), cssText: accessorMember(cssTextOf, function (v) { state(this); setStyleRuleText(this, v); }, '') },
+  CSSImportRule: { ...legacyRule(3), cssText: accessorMember(cssTextOf, function (v) { state(this); setImportText(this, String(v)); }, '') },
+  CSSKeyframesRule: { ...legacyRule(7), cssText: accessorMember(cssTextOf, undefined, '') },
+  CSSKeyframeRule: { ...legacyRule(8), cssText: accessorMember(cssTextOf, undefined, '') },
+  CSSFontFaceRule: { ...legacyRule(5), cssText: accessorMember(cssTextOf, undefined, '') },
+  // Rules jsdom before 27.1.0 does not make (it cannot parse them): data
+  // properties too, for their own (makeRule).
+  CSSPageRule: legacyRule(), CSSMarginRule: legacyRule(), CSSNamespaceRule: legacyRule(), CSSCounterStyleRule: legacyRule(),
+  CSSScopeRule: legacyRule(), CSSLayerStatementRule: legacyRule(), CSSNestedDeclarations: legacyRule(),
+  CSSStyleSheet: { parentStyleSheet: dataMember(null, 'ecw'), toString: dataMember(sheetText, 'ecw') },
+};
+
+// jsdom 27.1.0 to 28 (@acemir/cssom; black box 27.1.0 to 28.1.0): type a
+// read-only data property and cssText a getter on each rule interface,
+// CSSRule's constants on its prototype too, and cssRule ('').
+const acemirRule = (type, cssTextFlags = '') => ({ type: dataMember(type, ''), cssText: accessorMember(cssTextOf, undefined, cssTextFlags) });
+const ACEMIR_SHAPE = {
+  CSSRule: { cssRule: dataMember('', 'ec'), ...Object.fromEntries(Object.entries(LEGACY_TYPES_26).map(([k, v]) => [k, dataMember(v, 'e')])) },
+  CSSStyleRule: acemirRule(1),
+  CSSImportRule: { ...acemirRule(3), parse: dataMember(importParse, '') },
+  CSSMediaRule: { ...acemirRule(4), conditionText: accessorMember(conditionTextOf, undefined, '') },
+  CSSFontFaceRule: acemirRule(5),
+  CSSPageRule: acemirRule(6),
+  CSSKeyframesRule: { ...acemirRule(7), [Symbol.iterator]: dataMember(keyframesIterator, 'ecw') },
+  CSSKeyframeRule: acemirRule(8),
+  CSSNamespaceRule: acemirRule(10),
+  CSSCounterStyleRule: acemirRule(11),
+  CSSSupportsRule: acemirRule(12),
+  CSSContainerRule: acemirRule(17),
+  CSSLayerBlockRule: acemirRule(18),
+  CSSLayerStatementRule: acemirRule(0),
+  CSSScopeRule: acemirRule(0, 'ec'),
+  CSSNestedDeclarations: acemirRule(0),
+  CSSStyleSheet: { toString: dataMember(sheetText, 'ecw') },
+};
+
+// Members jsdom 29's interfaces have that the earlier shapes lack.
+const NEWER_MEMBERS = { CSSSupportsRule: ['matches'], CSSKeyframesRule: [Symbol.iterator] };
+
+// The descriptors of a rule interface (or CSSStyleSheet) for a shape
+// variant, once per module load.
+function adjustRule(name, descriptors, variant) {
+  for (const key of NEWER_MEMBERS[name] ?? []) delete descriptors[key];
+  return Object.assign(descriptors, (variant === 'cssom' ? CSSOM_SHAPE : ACEMIR_SHAPE)[name]);
+}
+
 export const CSSOM_INTERFACES = [
   {
     name: 'CSSRule',
-    statics: RULE_TYPES,
+    statics: (compat) => RULE_STATICS[compat.cssomShape] ?? RULE_TYPES,
+    compat(proto, compat) { if (ruleVariant(compat) === 'cssom') LEGACY_RULES.add(proto); },
     members: {
       ...Object.fromEntries(Object.entries(RULE_TYPES).map(([k, v]) => [k, { constant: v }])),
       get type() {
@@ -749,7 +930,7 @@ export const CSSOM_INTERFACES = [
     },
   },
   { name: 'CSSGroupingRule', parent: 'CSSRule', members: groupingMembers },
-  { name: 'CSSConditionRule', parent: 'CSSGroupingRule', members: { get conditionText() { const s = state(this); return s.media ? s.media[S].list.join(', ') : s.conditionText; } } },
+  { name: 'CSSConditionRule', parent: 'CSSGroupingRule', members: { conditionText: { get: conditionTextOf } } },
   // matches from jsdom 29 (compat.mediaRuleMatches): jsdom evaluates no
   // media features, so a list matches when it is empty or has an "all" or
   // "screen" query, as the cascade applies @media rules (cascade.js).
@@ -764,7 +945,9 @@ export const CSSOM_INTERFACES = [
     }],
     compat(proto, compat) { if (!compat.mediaRuleMatches) delete proto.matches; },
   },
-  { name: 'CSSSupportsRule', parent: 'CSSConditionRule', members: {} },
+  // matches from jsdom 29 (NEWER_MEMBERS): the condition evaluated as jsdom
+  // does (css.js supportsRuleMatches; selector() is false).
+  { name: 'CSSSupportsRule', parent: 'CSSConditionRule', members: { get matches() { return supportsRuleMatches(state(this).conditionText); } } },
   {
     name: 'CSSContainerRule',
     parent: 'CSSConditionRule',
@@ -806,6 +989,20 @@ export const CSSOM_INTERFACES = [
   {
     name: 'CSSStyleRule',
     parent: 'CSSGroupingRule',
+    // jsdom before 27.1.0: CSSStyleRule extends CSSRule (no cssRules), and
+    // has a static parse(text) that makes a rule (black box 20.0.3 to 27.0.0).
+    parentFor: (compat) => (ruleVariant(compat) === 'cssom' ? 'CSSRule' : null),
+    staticMethods(window) {
+      if (ruleVariant(window[S].compat) !== 'cssom') return {};
+      const protos = window[S].protos;
+      const parse = [function (text) {
+        const rule = makeRule(protos, 'CSSStyleRule', null, null, { selectorText: '', rules: [] });
+        rule[S].style = declarationBlock(protos.CSSStyleProperties, '', rule);
+        setStyleRuleText(rule, text);
+        return rule;
+      }][0];
+      return { parse };
+    },
     members: {
       get selectorText() { return state(this).selectorText; },
       set selectorText(v) {
@@ -887,6 +1084,9 @@ export const CSSOM_INTERFACES = [
         const key = keyText(select);
         return key === null ? null : rules(this).findLast((r) => r[S].keyText === key) ?? null;
       },
+      // Iterable over its keyframes (indexed properties) from jsdom 29;
+      // 27.1.0 to 28 have another function (ACEMIR_SHAPE), earlier none.
+      [Symbol.iterator]: Array.prototype.values,
     },
   },
   {
@@ -1047,3 +1247,12 @@ export const CSSOM_INTERFACES = [
     },
   },
 ];
+
+// The rule interfaces and CSSStyleSheet take their shape from the profile
+// (compat.cssomShape): descriptors per variant, built once per module load.
+for (const iface of CSSOM_INTERFACES) {
+  const { name } = iface;
+  if (!(name in CSSOM_SHAPE || name in ACEMIR_SHAPE)) continue;
+  iface.variant = ruleVariant;
+  iface.adjust = (descriptors, variant) => adjustRule(name, descriptors, variant);
+}

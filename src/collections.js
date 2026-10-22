@@ -230,7 +230,10 @@ for (const key of ['constructor', 'next', Symbol.iterator]) {
   Object.defineProperty(ListIterator.prototype, key, { enumerable: false });
 }
 
-const iterate = {
+// The list interfaces' @@iterator; their subclasses (HTMLFormControlsCollection,
+// HTMLOptionsCollection, RadioNodeList) have the same function as their own,
+// as in jsdom (black box 20.0.3 to 30.1.3: Array.prototype.values on each).
+export const iterate = {
   [Symbol.iterator]() { items(this); return new ListIterator(this, VALUES); },
 };
 

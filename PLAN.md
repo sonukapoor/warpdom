@@ -4109,10 +4109,73 @@ little traction yet, so 1.0 gets a public, checkable definition:
 
 Status on 2026-10-21: met 3 (corpus check for 0.1.7); 5 and 7 nearly
 (typed except the Vitest `url` option, missing from WarpdomVitestOptions;
-setXPathLoader only in its type); not met 1 and 2 (KNOWN has 5 entries
-under #70 and #71; open parity issues #51, #70, #71, #76, #84, #90, #97,
+setXPathLoader only in its type); not met 1 and 2 (KNOWN had 5 entries
+under #70 and #71, none after fix/parity-70-71; open parity issues #51, #70, #71, #76, #84, #90, #97,
 #98 and the audit #17), 4 (WPT run of 2026-10-19: html/semantics behind,
 #51; domparsing 341 vs 342 subtests, no issue yet) and 6 (0.1.7 changed a
 default). Proposed numbers to confirm on the PR: 25 suites, 3 releases
 and 6 weeks, 4 weeks to model a new jsdom, deprecations kept 2 minor
 releases and 3 months, security answer within 7 days.
+
+## 2026-10-22: form and CSS rule shapes per jsdom version (branch fix/parity-70-71, #70, #71)
+
+Black box (property descriptors, prototype chains, behavior) on jsdom
+20.0.3, 21.1.2, 22.0.0, 22.1.0, 23.2.0, 24.0.0, 24.1.0, 24.1.3, 25.0.1,
+26.0.0, 26.1.0, 27.0.0, 27.1.0, 27.2.0, 27.4.0, 28.0.0, 28.1.0, 29.1.1 and
+30.1.3. The API superset test's KNOWN list is now empty: every walked
+path jsdom has, warpdom has with the same kind, place and parent.
+
+- **#70, forms.** HTMLFormControlsCollection, HTMLOptionsCollection and
+  RadioNodeList have their own @@iterator in every version (jsdom: each
+  Array.prototype.values; warpdom: the same function as HTMLCollection's
+  and NodeList's). A form is iterable from 26.1.0, with form[i]
+  (compat.formIndexed; 26.0.0 has neither); the form's descriptors are a
+  variant. autofocus is an own member of HTMLButtonElement,
+  HTMLInputElement, HTMLSelectElement and HTMLTextAreaElement, inputMode of
+  HTMLInputElement and HTMLTextAreaElement, in every version; jsdom has
+  neither on HTMLElement (warpdom keeps HTMLElement's for other elements)
+  and reflects inputMode as written (input.inputMode is 'NUMERIC' for
+  inputmode="NUMERIC"), so the own inputMode does too.
+- **#70, CSS (29+).** CSSSupportsRule.matches: jsdom's evaluation,
+  measured on 24 conditions: selector() false, custom properties false,
+  !important accepted, a bare declaration false (CSS.supports differs on
+  those; css.js supportsRuleMatches). CSSKeyframesRule's @@iterator is
+  Array.prototype.values (keyframes are indexed properties).
+  CSSStyleProperties already had its own @@iterator.
+- **#71, CSS rules before 29 (compat.cssomShape).** The shape follows the
+  CSSOM library each jsdom installs: before 27.1.0 cssom 0.5 and
+  rrweb-cssom 0.6 (to 24.0.x), 0.7 (24.1.0 to 25.x), 0.8 (26.0.0 to
+  27.0.x); 27.1.0 to 28.x @acemir/cssom. Before 27.1.0: CSSStyleRule
+  extends CSSRule (no cssRules, insertRule); each rule interface's
+  prototype has parentRule and parentStyleSheet (null), type and, for
+  @media, @supports, @container and @layer blocks, cssRules ([]) as
+  writable data properties, cssText an accessor; CSSConditionRule's
+  conditionText and cssText are data (''); each rule has its own
+  parentRule, parentStyleSheet, cssRules and (@supports) conditionText,
+  as jsdom's do (set when the rule is made: only in those profiles, a
+  WeakSet lookup per rule otherwise); deleting a rule resets its
+  parentRule but keeps its parentStyleSheet; a style sheet has its own
+  parentStyleSheet and CSSStyleSheet.prototype a data one and toString()
+  (each rule's text and a line break). CSSStyleRule.parse(text) and the
+  style rule cssText setter take the selector before the last complete
+  block and every block's declarations (parse('garbage') has the empty
+  selector and cssText ''); @import's cssText setter and @media's and
+  @container's conditionText setters reparse. 27.1.0 to 28: type a
+  read-only data property and cssText a getter on each rule interface
+  (types: @container 17, @layer block 18, statements and @scope 0),
+  CSSRule's constants and cssRule ('') on its prototype,
+  CSSImportRule.prototype.parse (a function named value that reparses the
+  rule), CSSKeyframesRule's own @@iterator and CSSStyleSheet toString().
+  CSSRule's constants: UNKNOWN_RULE, DOCUMENT_RULE, VIEWPORT_RULE and
+  REGION_STYLE_RULE before 29, CONTAINER_RULE and STARTING_STYLE_RULE from
+  24.1.0, LAYER_BLOCK_RULE from 26.0.0 (as warpdom's other constants:
+  read-only; jsdom's statics are writable). Descriptors per variant
+  (window.js iface.variant/adjust), the parent per profile
+  (iface.parentFor) and statics as a function of the compat object.
+  Not modeled: jsdom before 29 serializes rules differently and cannot
+  parse @container or @layer before 24.1/26.0; parse() on
+  CSSNamespaceRule and CSSCounterStyleRule (27.1.0 to 28, not on jsdom's
+  window); 26's CSSLayerBlockRule.layerNameText; old jsdom's rule.style
+  being cssom's declaration object (color null when not set).
+- Cost: none per node; sheet parsing 2,000 rules and window creation the
+  same as main within noise (Node 22.23.3).
