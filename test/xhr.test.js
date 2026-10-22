@@ -319,15 +319,26 @@ const SCENARIOS = {
     for (const [name, method, url, ms, body, upload] of [
       ['hangPost', 'POST', `${c.BASE}/hang`, 100, 'abc', true], ['hangPostNoUploadListeners', 'POST', `${c.BASE}/hang`, 100, 'abc', false],
       ['hangGet', 'GET', `${c.BASE}/hang`, 100], ['headersLate', 'POST', `${c.BASE}/slow?wait=400&n=1`, 100, 'abc', true],
-      // (The body takes 800 ms: jsdom on a slow CI machine took more than
-      // 150 ms to the headers.)
-      ['duringBody', 'GET', `${c.BASE}/slow?n=10&ms=80`, 400], ['duringBodyAfterUpload', 'POST', `${c.BASE}/slow?n=10&ms=80`, 400, 'abc', true]]) {
-      const { x, log } = await request(w, method, url, { body, upload, prep: (r) => { r.timeout = ms; } });
+      // Three chunks, each sent once the previous one's progress event has
+      // fired, then the response stays open: both windows see the same
+      // chunks before the timeout, however busy the machine (timed chunks
+      // raced the timeout, and on a busy CI runner one window saw one more
+      // chunk than the other). What is left to time is the headers: the
+      // timeout leaves them a wide margin (jsdom on a busy CI machine took
+      // more than 150 ms to them).
+      ['duringBody', 'GET', `${c.BASE}/slow?n=3&step=1`, 2000], ['duringBodyAfterUpload', 'POST', `${c.BASE}/slow?n=3&step=1`, 2000, 'abc', true]]) {
+      const prep = (r) => {
+        r.timeout = ms;
+        r.addEventListener('progress', (e) => { if (e.loaded > 0) c.server.release(); });
+      };
+      const { x, log } = await request(w, method, url, { body, upload, prep });
       out[name] = [log.filter((l, i) => !(l.startsWith('readystatechange 3') && log[i + 1]?.startsWith('progress 3 200 false/') && !log[i + 1].endsWith('/0/0'))), getters(x)];
     }
     // Changing the timeout during the request: measured from its start; 0
-    // cancels it; a request started without one gets none.
-    for (const [name, first, later, at] of [['raised', 100, 1000, 20], ['lowered', 1000, 50, 20], ['cleared', 100, 0, 20], ['startedWithout', 0, 50, 120]]) {
+    // cancels it; a request started without one gets none. (The response
+    // comes at 500 ms; on a busy machine the change at 20 ms can run late
+    // and the response can take more than 1000 ms, hence the margins.)
+    for (const [name, first, later, at] of [['raised', 300, 2000, 20], ['lowered', 1000, 50, 20], ['cleared', 300, 0, 20], ['startedWithout', 0, 50, 120]]) {
       const x = new w.XMLHttpRequest();
       const log = [];
       x.ontimeout = () => log.push('timeout');
