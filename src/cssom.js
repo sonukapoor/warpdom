@@ -377,16 +377,18 @@ function importRule(protos, prelude, sheet, parentRule) {
 }
 
 // An @import rule given new text (jsdom before 29: its cssText setter
-// before 27.1.0, CSSImportRule.prototype.parse() from 27.1.0 to 28).
+// before 27.1.0, CSSImportRule.prototype.parse() from 27.1.0 to 28). As
+// measured (20.0.3 to 28.1.0): '@import' in lowercase only, and text
+// without media keeps the rule's media.
 function setImportText(rule, text) {
-  const m = /^\s*@import\s+([\s\S]*?);?\s*$/i.exec(text);
+  const m = /^\s*@import\s+([\s\S]*?);?\s*$/.exec(text);
   const parts = m && importParts(m[1].trim());
   if (!parts) return;
   const s = rule[S];
   s.href = parts.href;
   s.layerName = parts.layerName;
   s.supportsText = parts.supportsText;
-  setMediaText(s.media, parts.media);
+  if (parts.media.trim() !== '') setMediaText(s.media, parts.media);
   s.styleSheet = null;
   cssomChanges.rev++;
 }
@@ -394,16 +396,28 @@ function setImportText(rule, text) {
 // A style rule's selector and declarations from text, as jsdom before
 // 27.1.0 parses it (CSSStyleRule.parse() and the cssText setter; black
 // box 20.0.3 to 27.0.0): the selector before the last complete block, the
-// declarations of every block; without a block, the empty selector.
+// declarations of every block (up to its first '}': blocks do not nest);
+// without a block, the empty selector. Braces in strings and comments do
+// not count, and comments are not part of the selector.
 function setStyleRuleText(rule, text) {
   const t = String(text);
+  // The index of the first c at or after i outside strings and comments.
+  const find = (c, i) => {
+    while (i < t.length) {
+      const next = skipToken(t, i);
+      if (next !== i) i = next;
+      else if (t[i] === c) return i;
+      else i++;
+    }
+    return -1;
+  };
   let selector = '';
   let declarations = '';
   for (let i = 0; ;) {
-    const open = t.indexOf('{', i);
+    const open = find('{', i);
     if (open < 0) break;
-    selector = t.slice(i, open).trim();
-    const close = t.indexOf('}', open + 1);
+    selector = stripComments(t.slice(i, open)).trim();
+    const close = find('}', open + 1);
     if (close < 0) break;
     declarations += `${t.slice(open + 1, close)};`;
     i = close + 1;
@@ -558,7 +572,8 @@ function ruleText(rule) {
     // Empty only from CSSStyleRule.parse() and the cssText setter before jsdom 27.1.0.
     case s.protos.CSSStyleRule: return s.selectorText === '' ? '' : `${s.selectorText} ${styleText(s.style)}`;
     case s.protos.CSSMediaRule: return `@media ${s.media[S].list.join(', ')} ${nested(s.rules)}`;
-    case s.protos.CSSSupportsRule: return `@supports ${s.conditionText} ${nested(s.rules)}`;
+    // (before jsdom 27.1.0 its own conditionText, which can be assigned)
+    case s.protos.CSSSupportsRule: return `@supports ${legacyRules(s.protos) ? rule.conditionText : s.conditionText} ${nested(s.rules)}`;
     case s.protos.CSSContainerRule: return `@container ${s.conditionText} ${nested(s.rules)}`;
     case s.protos.CSSScopeRule: return `@scope ${s.prelude ? `${s.prelude} ` : ''}${nested(s.rules)}`;
     case s.protos.CSSCounterStyleRule: {
@@ -803,7 +818,10 @@ const RULE_STATICS = {
 };
 
 // The variant of a rule interface's descriptors (window.js descriptorsOf).
-const ruleVariant = (compat) => (compat.cssomShape === null ? null : compat.cssomShape === 'acemir' ? 'acemir' : 'cssom');
+function ruleVariant({ cssomShape }) {
+  if (cssomShape === null || cssomShape === 'acemir') return cssomShape;
+  return 'cssom';
+}
 
 const flagged = (flags) => ({ enumerable: flags.includes('e'), configurable: flags.includes('c') });
 const dataMember = (value, flags) => ({ value, writable: flags.includes('w'), ...flagged(flags) });
@@ -1204,6 +1222,7 @@ export const CSSOM_INTERFACES = [
         baseURL, constructed: true, disabled: !!options?.disabled,
         media: mediaList(protos, media?.[S]?.list ? media.mediaText : media ?? ''),
       })[S];
+      if (legacyRules(protos)) self.parentStyleSheet = null;
       return self;
     },
     members: {

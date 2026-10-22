@@ -1128,6 +1128,14 @@ function styleSurfaceKey(version, css) {
   return before(css, [6, 1, 0]) ? 'cssstyle6.0' : 'cssstyle6.1';
 }
 
+// The shape of the CSS rule interfaces for a jsdom version (profileCompat).
+function cssomShape(version) {
+  if (version[0] >= 29) return null;
+  if (!before(version, [27, 1, 0])) return 'acemir';
+  if (!before(version, [26, 0, 0])) return 'cssom26';
+  return before(version, [24, 1, 0]) ? 'cssom20' : 'cssom24';
+}
+
 // Compatibility with the jsdom generation the tests were written for
 // (option jsdom: its version, or its major version; option cssstyle: the
 // cssstyle it loads): the window's compat object (window[S].compat), made
@@ -1261,7 +1269,7 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // cssom 0.6 before 24.1.0, 0.7 to 25.x, 0.8 from 26.0.0), from 27.1.0
     // to 28 @acemir/cssom ('acemir': type data and cssText on each rule
     // interface, constants on CSSRule.prototype); from 29 jsdom's own (null).
-    cssomShape: before(version, [24, 1, 0]) ? 'cssom20' : before(version, [26, 0, 0]) ? 'cssom24' : before(version, [27, 1, 0]) ? 'cssom26' : version[0] < 29 ? 'acemir' : null,
+    cssomShape: cssomShape(version),
     // ElementInternals and attachInternals() from 23.1.0, its labels and
     // form-associated custom elements from 26.0.0; its role and ARIA
     // accessors throw before 27.0.0.

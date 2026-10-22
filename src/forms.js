@@ -1600,8 +1600,10 @@ export const FORM_MEMBERS = new Map([
     },
     get length() { state(this); return formElements(this).length; },
     // Iterable over its elements from jsdom 26.1.0, with form[i]
-    // (compat.formIndexed; interfaces.js leaves it out before).
-    [Symbol.iterator]() { state(this); return formElements(this).slice()[Symbol.iterator](); },
+    // (compat.formIndexed; interfaces.js leaves it out before): as jsdom's,
+    // Array.prototype.values over the indexed properties, which reads the
+    // current length and elements at each step.
+    [Symbol.iterator]: Array.prototype.values,
     get action() {
       state(this);
       const a = attr(this, 'action');

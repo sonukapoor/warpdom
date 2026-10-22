@@ -1416,3 +1416,32 @@ test('a form is iterable from jsdom 26.1.0', () => {
     assert.equal(Symbol.iterator in w.HTMLFormElement.prototype, iterable, `jsdom ${jsdom}`);
   }
 });
+
+// A form's iterator reads its current controls at each step, as jsdom's
+// (Array.prototype.values over form[i]): controls added or removed after
+// next() show (Copilot review on #116).
+for (const jsdom of [26, 30]) {
+  parity(`form iteration sees controls added and removed while iterating (jsdom ${jsdom})`, (w) => {
+    const d = html(w, '<form id=f><input id=a><input id=b></form>');
+    const form = d.getElementById('f');
+    const ids = (iterator, out) => { for (let step = iterator.next(); !step.done; step = iterator.next()) out.push(step.value.id); return out; };
+    const added = form[Symbol.iterator]();
+    const out = [added.next().value.id];
+    const c = d.createElement('input');
+    c.id = 'c';
+    form.appendChild(c);
+    ids(added, out);
+    const removed = form[Symbol.iterator]();
+    out.push('|', removed.next().value.id);
+    d.getElementById('b').remove();
+    ids(removed, out);
+    const before = form[Symbol.iterator]();
+    const e = d.createElement('input');
+    e.id = 'e';
+    form.appendChild(e);
+    out.push('|');
+    ids(before, out);
+    out.push(form[Symbol.iterator].name);
+    return out;
+  }, { jsdom });
+}

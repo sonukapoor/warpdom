@@ -520,3 +520,63 @@ test('CSS rule shapes stay per window', () => {
   assert.equal(current.document.styleSheets[0].cssRules[0].parentStyleSheet, current.document.styleSheets[0]);
   assert.equal(Object.getPrototypeOf(current.CSSStyleRule.prototype), current.CSSGroupingRule.prototype);
 });
+
+// Legacy setters and parsing details (Copilot and CodeRabbit review on
+// #116). Rule text is compared through its condition and declarations:
+// jsdom before 29 serializes rules differently.
+for (const jsdom of [20, 26]) {
+  parity(`CSSStyleRule.parse() with braces in strings and comments (jsdom ${jsdom})`, (w) => [
+    'a { content: "}"; color: red; }', 'a[title="{"] { color: red; }', 'a /* { */ { color: red }', "a { content: '{' ; top: 1px }",
+  ].map((text) => {
+    const rule = w.CSSStyleRule.parse(text);
+    return [rule.selectorText, ...['content', 'color', 'top'].map((name) => rule.style.getPropertyValue(name))];
+  }), { jsdom });
+
+  parity(`an @import rule's cssText setter (jsdom ${jsdom})`, (w) => {
+    const st = w.document.createElement('style');
+    st.textContent = '@import url(a.css) screen;';
+    w.document.head.appendChild(st);
+    const rule = st.sheet.cssRules[0];
+    // Text without media keeps the media; '@IMPORT' and other text change nothing.
+    return ['@import url(b.css) print;', 'garbage', 'a { color: red }', '@import "c.css";', '@import url(d.css) tv, print;', '@IMPORT url(e.css);'].map((text) => {
+      rule.cssText = text;
+      return `${rule.href} [${rule.media.mediaText}]`;
+    });
+  }, { jsdom });
+
+  parity(`an @supports rule's own conditionText is its text (jsdom ${jsdom})`, (w) => {
+    const st = w.document.createElement('style');
+    st.textContent = '@supports (display: grid) { a { color: red } }';
+    w.document.head.appendChild(st);
+    const rule = st.sheet.cssRules[0];
+    rule.conditionText = '(display: flex)';
+    return [rule.conditionText, rule.cssText.startsWith('@supports (display: flex) {'), st.sheet.toString().startsWith('@supports (display: flex) {')];
+  }, { jsdom });
+}
+
+parity("constructed style sheets' own parentStyleSheet (jsdom 26)", (w) => {
+  const sheet = new w.CSSStyleSheet();
+  const d = Object.getOwnPropertyDescriptor(sheet, 'parentStyleSheet');
+  return [d && [d.value, d.writable, d.enumerable, d.configurable], sheet.parentStyleSheet];
+}, { jsdom: 26 });
+
+parity("@container's conditionText setter (jsdom 26)", (w) => {
+  const st = w.document.createElement('style');
+  st.textContent = '@container (min-width: 1px) { b { top: 1px } } @container side (min-width: 1px) { c { top: 1px } }';
+  w.document.head.appendChild(st);
+  const [unnamed, named] = st.sheet.cssRules;
+  unnamed.conditionText = '(max-width: 2px)';
+  named.conditionText = 'other (max-width: 3px)';
+  return [unnamed, named].map((rule) => [rule.conditionText, rule.cssText.startsWith(`@container ${rule.conditionText} {`)]);
+}, { jsdom: 26 });
+
+parity('CSSImportRule.prototype.parse() keeps media and ignores other text (jsdom 28)', (w) => {
+  const st = w.document.createElement('style');
+  st.textContent = '@import url(a.css) screen;';
+  w.document.head.appendChild(st);
+  const rule = st.sheet.cssRules[0];
+  return ['@import url(b.css) print;', '@import "c.css";', '@import url(d.css) tv, print;', 'garbage', '@IMPORT url(g.css);', 'a { color: red }'].map((text) => {
+    rule.parse(text);
+    return `${rule.href} [${rule.media.mediaText}]`;
+  });
+}, { jsdom: 28 });
