@@ -92,28 +92,79 @@ result would change.
 - Exit: the corpus and the adopted projects show no unexplained result
   changes with the APIs on.
 
-**M4: Adoption.** Well-known projects running their tests on warpdom in
-public; every adoption PR replaces jsdom completely (no two DOM packages).
-- Open or planned (2026-10-17): Radix, handsontable, floating-ui, downshift,
-  solid-primitives (bug fix), MUI and Vuetify (from 2026-10-19), Ant Design
-  (after 0.1.4); next candidates React Spectrum, CopilotKit, Excalidraw.
-- `warpdom migrate` and `warpdom compare` make a switch a five-minute,
-  reversible experiment; a GitHub Action that posts the comparison on a PR
-  is next.
-- Exit: at least ten well-known projects merged, with their CI time saved
-  documented.
+**M4: Adoption.** Projects running their tests on warpdom in public. The
+traction plan below (2026-10-21) sets the order of work.
+- Lesson (2026-10-21): two large libraries declined adoption PRs, Vuetify
+  ("1-2 years if it gets enough traction") and Mantine ("not while warpdom is
+  pre-1.0"). Libraries are conservative; applications, which pay for CI
+  minutes, are where test environments get switched (the public switches to
+  happy-dom were Gitea, cylc-ui, pulfalight, Element Web). First merged
+  adoptions: applications whose jsdom unit jobs set their CI time.
+- A full switch replaces jsdom completely (no two DOM packages). A
+  non-blocking side job that runs `warpdom compare` next to jsdom is also
+  acceptable: it keeps jsdom and reports result differences and time saved
+  on every run.
+- Open PRs: MUI, Radix, handsontable, floating-ui, downshift (and the
+  solid-primitives bug fix). Closed: Vuetify, Mantine, Ant Design (bot).
+- Exit: at least ten well-known projects running on warpdom, with their CI
+  time saved documented.
 
-**M5: Built into the test runners.** `environment: 'warpdom'` listed by Vitest
-(and documented by Jest) next to jsdom and happy-dom, after M1, M2 and M4 give
-the evidence. Approach the Vitest team with the DOMParity data, the WPT
-numbers, the adoption list and the paper.
+**M5: Documented and widely used with the test runners.** Vitest does not add
+or promote further built-in environments (a maintainer on
+vitest-dev/vitest#7842, closed as not planned), so the goal is not a built-in
+`environment: 'warpdom'` but: warpdom in Vitest's ecosystem CI
+(vitest-dev/vitest-ecosystem-ci, run three times a week and visible to the
+Vitest team), listed in awesome-vitest (done) and awesome-jest, and used by
+the projects of M4.
 
 **M6: Sustainable maintenance.** What large projects ask before depending on
 a single maintainer: GitHub Sponsors (live 2026-10-17), contributor docs and
 labeled issues, a release process with the weekly upstream watch, security
-policy, and more maintainers over time.
+policy, and more maintainers over time. What 1.0 means and needs, and the
+support policy: docs/road-to-1.0.md, docs/stability.md and SECURITY.md
+(2026-10-21 below).
 
 **Later:** SSR and edge runtimes (the core already avoids Node built-ins).
+
+## Traction plan (2026-10-21)
+
+Why: the adoption PRs showed that numbers alone don't convince maintainers;
+what they ask for is maturity (1.0; its criteria are proposed in
+[#99](https://github.com/sonukapoor/warpdom/pull/99), docs/road-to-1.0.md)
+and traction (other users). This plan builds both. Research of 2026-10-21;
+status updated as items land.
+
+| # | Action | Effort | Why | Status |
+|---|---|---|---|---|
+| 1 | Publish from GitHub Actions with npm trusted publishing and provenance | ~1 h + one-time npm setup by Sonu | jsdom, happy-dom and Vitest publish with provenance; it's the first thing a security review checks | PR in progress |
+| 2 | OpenSSF Scorecard action, actions pinned to SHAs, branch protection on main; optionally the OpenSSF Best Practices badge | 2-3 h | Visible trust signals for a single-maintainer project | PR in progress: Scorecard workflow and badge, every action pinned to a commit SHA except CVE Lite CLI (`@v1` on purpose), Dependabot for actions, CVE Lite dependency scan in CI (2026-10-21: no known vulnerabilities). Branch protection and the Best Practices badge are Sonu's settings |
+| 3 | A `warpdom compare` GitHub Action for a non-blocking side job (keeps jsdom, posts result differences and time saved) | 1-2 days | The cheapest yes for a conservative maintainer; builds evidence on their own suite over time (precedents: eslint-plugin-oxlint next to ESLint, rolldown-vite, react-compiler-healthcheck) | Open |
+| 4 | First adoptions in applications whose jsdom unit jobs set CI time (candidates below); open a PR only after `compare` shows zero differences and a measured speedup | ~1 day each | Applications switch test environments; libraries wait | Open |
+| 5 | Join Vitest's ecosystem CI (a `tests/warpdom.ts` like vitest-pool-example; its helpers assume pnpm) | ~½ day | Runs against Vitest main three times a week, visible to the Vitest team | Open |
+| 6 | Add warpdom to awesome-jest (jest-community/awesome-jest, "Environments") | 15 min | Lasting discoverability for Jest users | Open |
+| 7 | "Show and tell" in Vitest Discussions and the Vitest Discord: the reproducible benchmark, WPT numbers, `npx warpdom compare`, and where warpdom loses | ~2 h | Early users from the right audience, within Vitest's "custom environments are fine" stance | Open |
+| 8 | Bus factor and 1.0: road to 1.0 and stability policy ([#99](https://github.com/sonukapoor/warpdom/pull/99)), CONTRIBUTING with labeled good first issues, a second npm maintainer when possible | ongoing | Exactly what the "pre-1.0" answers point at | 1.0 doc in review |
+
+Candidate applications (jsdom unit suites that dominate CI shards; job
+minutes from one default-branch run, including install):
+
+| Project | Runner | Unit DOM jobs | Note |
+|---|---|---|---|
+| n8n-io/n8n | Vitest, `environment: 'jsdom'` | ~63 job-min (4 frontend shards x 2 Node) | |
+| grafana/grafana | Jest, `testEnvironment: 'jsdom'` | ~49 job-min (16 shards) | |
+| mattermost/mattermost | Jest, `testEnvironment: 'jsdom'` | ~32 job-min (4 shards) | |
+| apache/superset | Jest, custom environment extending jsdom | ~37 job-min (8 shards) | |
+| getsentry/sentry | Jest, custom jsdom-based environment | ~32 job-min (16 shards) | needs an extendable warpdom environment |
+| backstage/backstage | Jest, jsdom + @jest/environment-jsdom-abstract | not comparable | needs an extendable base; its CI skips tests that passed before (success cache; pull requests also test only changed packages), so a default-branch run has no DOM job-minutes to compare (2026-10-21, run 39624431674: 2 jobs, test step 11-14 s) |
+| RocketChat/Rocket.Chat, twentyhq/twenty, PostHog/posthog | Jest, jsdom | smaller or mixed | |
+| excalidraw/excalidraw, mastodon/mastodon | Vitest, jsdom | 2-3 min | small savings, well-known |
+
+Product work this implies: an extendable environment for projects that
+subclass jsdom's (Sentry, Superset, Backstage), and the compare Action (3).
+
+Current numbers to beat (2026-10-21): 4 stars, about 420 npm downloads a
+month, one maintainer. A competitor, vitest-environment-rsdom ("drop-in jsdom
+replacement accelerated with Rust"), appeared on 2026-10-09.
 
 ## Product
 
@@ -3891,3 +3942,177 @@ dropped in 29); cssText as written vs accessor for 4.4+ (done) but sheet
 cssText as written in 27.0; color: initial '' with cssstyle 4.3.1; a
 border shorthand's hex alpha rounded down in 22.1-26; author lowercase
 `currentcolor` in a full border with cssstyle 2/3 (computed '').
+
+## 2026-10-21: window setters and their receiver (branch fix/setter-receivers, #90)
+
+#90 (from Copilot's review of #87): the window's self setter, and self and
+parent on the VM pools' global, write to the window they close over, so
+`Object.create(window).self = 7` replaces window.self instead of giving
+the derived object its own property.
+
+Measured black box (jsdom 20.0.3, 21.1.2, 22.1.0, 26.1.0, 27.4.0, 28.1.0,
+29.1.1, 30.1.3; new JSDOM() with and without runScripts, and the window as
+a VM context's global, getInternalVMContext(), as jest-environment-jsdom
+uses it; Vitest 5 forks and vmThreads with its jsdom environment on
+30.1.2):
+- jsdom's own window accessors (self and parent from 21; frames, length,
+  external, origin, event, the bars, screen; status and the viewport
+  members from 27) act on their own window whatever this is: called on
+  another object or another window, the setter replaces this window's
+  member (status: its string), and status's getter reads it. So the
+  issue's premise holds only for some windows:
+- Up to 26 a window made with runScripts (as the test environments make
+  it) is a VM context's global, and an assignment through an object that
+  inherits from it gives that object its own data property and keeps the
+  window's, for every member (also jsdom 20's getter-only self). Without
+  runScripts it replaces the window's (21 to 26).
+- From 27 (with or without runScripts; getInternalVMContext() is the
+  window itself from 27) such an assignment replaces the window's member
+  and the derived object gets nothing, for self, parent, status and the
+  viewport members.
+- Data properties (name; status and the viewport members before 27;
+  interface objects, Image, Option, Audio, console, webkitURL,
+  HTMLDocument, WebSocket) give the derived object its own property in
+  every version.
+
+warpdom before: self replaced the window's member in every profile (jsdom
+21 to 26 with runScripts give the derived object its own); on 27+ the
+viewport setters gave the derived object its own (jsdom replaces the
+window's) and status's setter and getter threw on another object; the
+members warpdom makes on first read (interface objects, Image, Option,
+Audio, console, webkitURL, HTMLDocument, WebSocket) replaced the window's
+member where jsdom's data properties give the derived object its own. Now:
+- self's setter: unchanged, it replaces the window's self whatever this
+  is (window.js defineSelfMembers). The first version of this branch had
+  it define the receiver's own property, before 27, when the receiver
+  inherits from the window; Copilot's review on #96 noted that jsdom's
+  setter called that way (`Object.getOwnPropertyDescriptor(window,
+  'self').set.call(Object.create(window), 7)`) replaces the window's self.
+  Measured on 21.1.2 and 26.1.0, with and without runScripts: explicit
+  calls (on a derived object, on an object further down the chain)
+  replace the window's self in both; `Object.create(window).self = 7` and
+  `Reflect.set(window, 'self', 9, {})` give the receiver its own data
+  property with runScripts (the VM context's global, not the setter) and
+  replace the window's self without. A setter cannot tell such an
+  assignment from a call, so warpdom's window (not a VM global) matches
+  jsdom's window made without runScripts; warpdom's global in Jest and
+  Vitest's VM pools is a VM global and matches it with runScripts.
+- From 27 the viewport setters and status's getter and setter are made per
+  window and act on it whatever this is (window-features.js
+  defineWindowAccessors).
+- The lazy members' setters give an object that inherits from the window
+  its own property (writable, enumerable, configurable) and leave the
+  window's (internal.js lazyDataSetter, assignedThrough). Copilot's review
+  of 4cc1bc8 on #96: they defined that property whatever the receiver
+  already had. Now they follow OrdinarySet's receiver step, as the data
+  property does (`super.Image = 7` from a method of an object inheriting
+  from the window, called on the receiver; black box, jsdom 20.0.3,
+  26.1.0, 30.1.3, matched cold and materialized): an own writable data
+  property gets the value and keeps its flags (also non-configurable), a
+  read-only or accessor own property or a new property on a
+  non-extensible receiver throws a TypeError, without calling the own
+  setter.
+- The viewport loops (window-features.js setupWindowData,
+  defineWindowAccessors) iterate the table's own keys: with an enumerable
+  Object.prototype key (`Object.prototype.extra = 1`) for...in made 27+
+  window creation throw ("Getter must be a function: 1") and gave earlier
+  windows an own extra member (Copilot's review of 4cc1bc8 on #96).
+- Jest and Vitest's VM pools: no code change. The global's setters already
+  replace the global's member whatever this is, as jsdom's; an assignment
+  through an object that inherits from the global never reaches them, as
+  warpdom's global is a contextified VM global (V8 gives the derived
+  object its own property), which matches jsdom up to 26. Vitest's forks
+  and threads pools match jsdom too (Node's global with Vitest-style
+  copies).
+
+Left as they are:
+- jsdom 21 to 26 windows made with runScripts, outside a test environment
+  (warpdom's createWindow): `Object.create(window).self = 7` gives the
+  derived object its own self in jsdom, and replaces the window's self in
+  warpdom (see above; matching both it and the setter's explicit calls
+  needs a window that is a VM context's global).
+- From jsdom 27, in Jest and Vitest's VM pools, `Object.create(window).self
+  = 7` (also parent, status, the viewport members) replaces jsdom's global
+  member; warpdom's contextified global gives the derived object its own.
+  Matching it needs a global that is not contextified (node:vm
+  DONT_CONTEXTIFY; jsdom 27's VM context is the window itself), which may
+  also cover the getter-only assignment difference listed under #87
+  (performance: 27+ throw). A follow-up, not small.
+- Lazy members, a failed assignment through a receiver (read-only or
+  accessor own property, non-extensible receiver) while the member is
+  still made on first read: a setter cannot return false, so it throws a
+  TypeError, as strict code does with the data property; sloppy code
+  silently ignores it and Reflect.set returns false once the member is
+  materialized (and in jsdom), and both get the TypeError while it is
+  cold. Matching that needs the members to be data properties from the
+  start. Test files are ES modules (strict), and the case needs a
+  read-only or accessor own property on an object inheriting from the
+  window, reached through super or Reflect.set.
+- jsdom 20 windows with runScripts let a derived object have its own self
+  (getter only); warpdom's 20 profile throws in strict code, as a jsdom 20
+  window without runScripts does.
+- parent, frames, length, external, origin, event, the bars and screen are
+  Window.prototype members in warpdom (see #87's notes): an assignment
+  through a derived object gives it its own property where warpdom has a
+  setter (external, origin, event; jsdom 27+ replaces the window's) and
+  throws in strict code where it has none (jsdom 21 to 26 with runScripts
+  give the derived object its own).
+
+Tests: window-features.test.js (receiver cases for Image,
+MutationObserver, console and webkitURL, cold and materialized, parity on
+jsdom 20, 26, 30; window creation on 26.1.0 and 30.1.3 with
+Object.prototype.extra; parity on jsdom 20, 22, 26, 27, 30:
+assignments through a derived object for self, name, status, the viewport
+members and the lazy members, assigned while still made on first read,
+the setters called on another object and on a derived object, status's
+getter on another object; self's derived assignment on 22 and 26 against
+windows made without runScripts; per-profile results at 20.0.3, 21.0.0,
+26.1.0, 27.0.0, 30.1.3), jest-environment.test.js (20.0.3, 26.1.0,
+30.1.3: derived assignments to self, parent, innerWidth, status, name,
+Image, MutationObserver, and the global's setters called on another
+object; expectations measured on jsdom's VM context), fixtures/vitest-viewport
+(derived assignments in every pool, with warpdom and real jsdom).
+
+Bench (Node 22.17.1, bench:load, two runs each, main -> branch): cold load
+23.1/23.0 -> 22.8/23.1 ms, first window 1.96/1.98 -> 2.00/2.00 ms, next
+windows 0.193/0.197 -> 0.197/0.199 ms (the 13 viewport setters and
+status's accessor are made per window on 27+ profiles); within noise.
+
+## 2026-10-21: road to 1.0, stability and security policy (branch docs/road-to-1.0)
+
+Two maintainers declined adoption PRs because warpdom is pre-1.0 and has
+little traction yet, so 1.0 gets a public, checkable definition:
+
+- [docs/road-to-1.0.md](docs/road-to-1.0.md): what 1.0 promises (jsdom's
+  results, no breaking upgrades within 1.x, compare and migrate to check
+  and switch back), the public API the promise covers, and 7 criteria with
+  how each is checked and its status. Mapping to the milestones: criteria
+  1-4 are M1's exit (API superset test with KNOWN limited to documented
+  differences, parity issues closed or documented, the corpus check on 25+
+  suites, WPT gaps with issues); 5-7 are M6's release and security parts
+  (public API frozen and typed, 3 minor releases and 6 weeks without a
+  breaking change, docs complete). Adoption outside the corpus (M4) is a
+  goal after 1.0, not a criterion (decided by Sonu 2026-10-21: maintainers
+  wait for 1.0, so 1.0 must not wait for them). M2, M3 and M5 do not block 1.0; after 1.0, M3
+  (modern APIs on by default) is a major release unless it stays opt-in or
+  limited to new jsdom profiles.
+- [docs/stability.md](docs/stability.md): 0.x vs semver from 1.0, what is
+  and is not breaking (fixes toward jsdom's results are not; they are
+  listed in the release notes with the corpus check), jsdom 20.0.3 to
+  NEWEST_MODELED_JSDOM with the warning and upstream watch, Node 22.12+
+  (CI 22.22 and 24), Vitest 2+ and Jest 27+, the deprecation process.
+- [SECURITY.md](SECURITY.md): private reports through GitHub security
+  advisories; fixes for the latest minor only. Private vulnerability
+  reporting is enabled in the repository settings (since 2026-10-21).
+- README: the status line links both docs; "warpdom models jsdom 20.0.3
+  to 30.1.2" corrected to 30.1.3 (NEWEST_MODELED_JSDOM).
+
+Status on 2026-10-21: met 3 (corpus check for 0.1.7); 5 and 7 nearly
+(typed except the Vitest `url` option, missing from WarpdomVitestOptions;
+setXPathLoader only in its type); not met 1 and 2 (KNOWN has 5 entries
+under #70 and #71; open parity issues #51, #70, #71, #76, #84, #90, #97,
+#98 and the audit #17), 4 (WPT run of 2026-10-19: html/semantics behind,
+#51; domparsing 341 vs 342 subtests, no issue yet) and 6 (0.1.7 changed a
+default). Proposed numbers to confirm on the PR: 25 suites, 3 releases
+and 6 weeks, 4 weeks to model a new jsdom, deprecations kept 2 minor
+releases and 3 months, security answer within 7 days.

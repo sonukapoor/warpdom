@@ -7,7 +7,7 @@
 
 # warpdom
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23378613.svg)](https://doi.org/10.5281/zenodo.23378613) [![Sponsor](https://img.shields.io/github/sponsors/sonukapoor?label=Sponsor&logo=GitHub)](https://github.com/sponsors/sonukapoor)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23378613.svg)](https://doi.org/10.5281/zenodo.23378613) [![Sponsor](https://img.shields.io/github/sponsors/sonukapoor?label=Sponsor&logo=GitHub)](https://github.com/sponsors/sonukapoor) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/sonukapoor/warpdom/badge)](https://scorecard.dev/viewer/?uri=github.com/sonukapoor/warpdom)
 
 A DOM for unit and component tests: **your tests get the same results as
 on jsdom, faster.** A drop-in environment for Vitest and Jest, written
@@ -29,7 +29,10 @@ from the WHATWG specifications.
   <!-- source: docs/research/data/ci-2026-10-13-208ad49-computed.md "Tuning: warpdom speedup per run and between runs" (per-run medians: solid 1.03x, material-ui 1.88-1.89x; handsontable 7.97-8.87x) and "Cross-suite medians of the drop-in speedup" (1.28x, 1.27x, 1.26x; 3 runs pooled 1.27x); "Version rule" (handsontable core 16.7.0); RESULTS.md 2.1 (faster on all 13 in every run), 2.4 (handsontable 9.07x and 9.27x in two more jobs); runs 38426985620, 38427009322, 38427031231 -->
 - **Check it on your own suite in one command**: `npx warpdom compare`.
 
-Status: pre-release. Numbers, method and raw data:
+Status: 0.x, before 1.0; what 1.0 will promise and what is still missing
+is in [docs/road-to-1.0.md](docs/road-to-1.0.md), how releases, jsdom, Node
+and test runner versions are supported in
+[docs/stability.md](docs/stability.md). Numbers, method and raw data:
 [docs/research/README.md](docs/research/README.md), measured with
 [dom-api-tracer](https://github.com/sonukapoor/dom-api-tracer).
 
@@ -175,8 +178,8 @@ As in jsdom, the window's `URL` has no `createObjectURL()`; under Vitest
 the global `URL` is Vitest's (Node's, with a `createObjectURL()` that
 takes the window's Blobs), as with jsdom.
 
-warpdom models jsdom 20.0.3 to 30.1.2. With a newer jsdom installed (a
-later minor or major release), tests get jsdom 30.1.2's behavior and
+warpdom models jsdom 20.0.3 to 30.1.3. With a newer jsdom installed (a
+later minor or major release), tests get jsdom 30.1.3's behavior and
 warpdom prints a warning once; a weekly check
 ([upstream-watch](.github/workflows/upstream-watch.yml)) opens an issue
 when such a release appears.
@@ -485,7 +488,8 @@ On the 17 WPT areas a test DOM is expected to cover (3,447 files; `dom`,
 `hr-time`, `user-timing`, the resize and intersection observers and
 `web-animations/interfaces`), warpdom passes 75.4% of subtests (jsdom 30.1.2:
 72.2%). It is ahead or level in every area but `html/semantics` (forms:
-70.6% vs 77.1%; issues #40-#51). Neither implements WebCrypto's `subtle`,
+70.6% vs 77.1%; issues #40-#51) and `domparsing` (341 vs 342 subtests,
+both 30.3%). Neither implements WebCrypto's `subtle`,
 the observers or Web Animations (opt-in work, #5-#12), which keeps both totals
 low. warpdom was worked on against the first four areas (87.4% vs 80.5% there
 on 2026-10-13), so those are not an independent check. The runner is in
@@ -693,7 +697,16 @@ node wpt/run.mjs dom/nodes --engine warpdom,jsdom   # Web Platform Tests
 
 warpdom is written from the specifications; jsdom is used as a black-box
 reference (its source is not read or copied). Plans and decisions:
-[PLAN.md](PLAN.md); architecture: [docs/design.md](docs/design.md).
+[PLAN.md](PLAN.md); architecture: [docs/design.md](docs/design.md); the
+road to 1.0: [docs/road-to-1.0.md](docs/road-to-1.0.md); versions and
+support: [docs/stability.md](docs/stability.md); reporting a
+vulnerability: [SECURITY.md](SECURITY.md).
+Releases are published from GitHub Actions with npm provenance when a
+version tag is pushed: [RELEASING.md](RELEASING.md).
+
+CI scans the dependencies with [CVE Lite CLI](https://github.com/OWASP/cve-lite-cli)
+(fails on high or critical advisories in production dependencies; results in
+GitHub Code Scanning) and runs [OpenSSF Scorecard](https://scorecard.dev) weekly.
 
 ## Citing
 
