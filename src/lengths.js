@@ -129,7 +129,13 @@ export function absoluteLength(value, ctx) {
 
 // Whether a value may be a length jsdom 30 resolves: one token (no space
 // outside a function) with a letter unit, or a math function.
-export const mayResolve = (value) => (value.length >= 2 && (MATH.test(value) || (SINGLE.test(value) && !value.endsWith('%'))));
+export function mayResolve(value) {
+  if (value.length < 2) return false;
+  const c = value.charCodeAt(0);
+  // A digit, '.', '+' or '-' first; c or m for calc(), clamp(), min(), max().
+  if ((c >= 48 && c <= 57) || c === 46 || c === 43 || c === 45) return SINGLE.test(value);
+  return (c === 99 || c === 109 || c === 67 || c === 77) && MATH.test(value);
+}
 
 // font-size keywords (CSS Fonts 4 at medium 16px, as jsdom 30 gives them)
 // and larger and smaller (a ratio of 1.2).

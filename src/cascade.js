@@ -172,7 +172,7 @@ function cascaded(element, name) {
     const root = lastRoot;
     const detached = keepsDetached(ds) && root[S].type !== DOCUMENT_NODE && !(root[S].shadow === true && connected(root[S].host));
     if (detached) trackDetachedStyles(ds);
-    cache = es.cascaded = { index, rev, inline: inlineMap, values: new Map(), detached, detachedRev: ds.detachedRev, cssomRev: cssomChanges.rev };
+    cache = es.cascaded = { index, rev, inline: inlineMap, values: new Map(), detached, detachedRev: ds.detachedRev, cssomRev: cssomChanges.rev, fontSize: undefined };
   } else if (cache.values.has(name)) return cache.values.get(name);
   const value = cascade(element, index, inlineMap, name);
   cache.values.set(name, value);
@@ -616,12 +616,24 @@ export function computedValue(element, property) {
   const data = custom ? CUSTOM : LONGHANDS[name];
   if (!data) return shorthandValue(element, name);
   const compat = element[S].doc[S].window[S].compat;
+  // jsdom 30: em lengths read the font sizes of the element and its
+  // ancestors; each element's is kept with its cascaded values (dropped
+  // with them on any tree, attribute or style sheet change).
+  if (name === 'font-size' && compat.absoluteLengths) {
+    const value = cascaded(element, name);
+    const cache = element[S].cascaded;
+    if (cache.fontSize !== undefined) return cache.fontSize;
+    return cache.fontSize = longhandValue(element, name, data, false, compat, value);
+  }
+  return longhandValue(element, name, data, custom, compat, cascaded(element, name));
+}
+
+function longhandValue(element, name, data, custom, compat, value) {
   // As in jsdom: the hidden attribute wins over display rules, not over
   // the style attribute; from jsdom 27 not on embed (embed[hidden] is
   // inline in the user agent sheet).
   if (name === 'display' && element[S].ns === HTML_NS && element[S].attrs.has('hidden') && !inlineDeclarations(element)?.has('display')
     && (compat.jsdom < 27 || element[S].tag !== 'embed')) return 'none';
-  let value = cascaded(element, name);
   if (compat.legacyComputedStyle) {
     // jsdom before 29.0.2: custom properties are not inherited either;
     // from jsdom 27 the direction of elements with dir, bdi and
