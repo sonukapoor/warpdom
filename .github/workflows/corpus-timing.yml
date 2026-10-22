@@ -63,13 +63,13 @@ jobs:
       CONFIGS: ${{ inputs.configs }}
       WARMUP: ${{ inputs.warmup && 'yes' || 'no' }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22.23.3
       # pnpm and yarn at the versions the projects declare (packageManager).
       - run: corepack enable
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         if: matrix.project == 'ark-ui'
       # warpdom's dependencies, and jsdom, happy-dom and
       # @happy-dom/jest-environment, linked into projects that lack them.
@@ -81,7 +81,7 @@ jobs:
           node bench/corpus/time.mjs --corpus "$CORPUS" --repos-dir "$CORPUS_REPOS_DIR" \
             --rounds "$ROUNDS" --configs "$CONFIGS" $([ "$WARMUP" = no ] && echo --no-warmup) \
             --out .corpus-timing --csv ".corpus-timing/timing-ci-$PROJECT.csv" "$PROJECT"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: timing-${{ matrix.project }}
@@ -97,11 +97,11 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22.23.3
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: timing-*
           path: results
@@ -121,7 +121,7 @@ jobs:
           for f in "${files[@]}"; do tail -n +2 "$f" >> "$out"; done
           node bench/corpus/report.mjs "$out" | tee results/report.md
           { echo '## Corpus timing (median of rounds)'; echo; cat results/report.md; } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: timing-report
           path: |
