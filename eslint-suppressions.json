@@ -145,9 +145,6 @@
     }
   },
   "src/selectors.js": {
-    "import/no-mutable-exports": {
-      "count": 1
-    },
     "no-nested-ternary": {
       "count": 2
     }

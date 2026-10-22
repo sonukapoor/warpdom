@@ -966,7 +966,6 @@ function uncachedQuerySelectorAll(root, selector, first = false) {
   return query(root, compile(typeof selector === 'string' ? selector : String(selector)), first);
 }
 
-// eslint-disable-next-line import/no-mutable-exports
 export let querySelectorAll = cachedQuerySelectorAll;
 function cachedQuerySelectorAll(root, selector, first = false) {
   const text = typeof selector === 'string' ? selector : String(selector);
