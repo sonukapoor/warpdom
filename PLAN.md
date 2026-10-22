@@ -3943,6 +3943,32 @@ cssText as written in 27.0; color: initial '' with cssstyle 4.3.1; a
 border shorthand's hex alpha rounded down in 22.1-26; author lowercase
 `currentcolor` in a full border with cssstyle 2/3 (computed '').
 
+Copilot review on the pending longhands (shorthands with var(), corpus
+check): overlapping border shorthands with different priorities, measured
+black box on jsdom 26.1.0 (cssstyle 4.6), 27.4.0, 28.1.0, 29.1.1 and
+30.1.3, a fieldset and a div, one rule, two rules and the style
+attribute, 5 border shorthands with var() x 9 later declarations, both
+orders and both priorities. jsdom sets a block's declarations one after
+another: `border: var(--b) !important; border-top: 1px solid red` gives
+border-top 1px solid red in 26 to 30 (and from 29 the user agent sheet's
+other sides on a fieldset, border's pending longhands dropped), so the
+suggested importance check before the cleanup would diverge; `border-top:
+var(--b) !important; border-width: 2px` gives border-top-width 2px (26:
+border-top-style stays pending; 29/30: the user agent sheet's style and
+color; 27/28 throw in a rule). A rule's block now goes through the same
+blockDeclarations as the attribute: in a rule importance protects nothing
+(`color: red !important; color: blue` is blue, 26 to 30), but from 29
+margin and padding keep an !important longhand before them; in the
+attribute from 27 an !important border or side with var() does not cover
+its longhands. parseDeclarations keeps the declarations it drops for
+importance in decls.sequence (only then). Rules without var() or
+!important keep the old path. Left: 26 with a border declaration before
+one with var(); 27/28 var() over var() in a rule and 28's border-color
+then border-left-color in the attribute; 27 to 30 reading an !important
+longhand before border-width with var() as `var(--b)`; 28's `flex: 1
+!important; flex-grow: 2` in a rule (1); importance across rules (two
+rules) unchanged.
+
 ## 2026-10-21: window setters and their receiver (branch fix/setter-receivers, #90)
 
 #90 (from Copilot's review of #87): the window's self setter, and self and

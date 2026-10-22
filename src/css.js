@@ -776,10 +776,15 @@ function serializeDeclared(name, value, mode) {
 
 function parseInto(decls, text, mode, surface = null) {
   decls.clear();
+  decls.sequence = undefined;
   // A normal declaration does not override an important one for the same
   // property, or a longhand of an important shorthand (CSS Cascade), as in
-  // jsdom 27 and later; jsdom 26 let the last one win.
+  // jsdom 27 and later; jsdom 26 let the last one win. When one is dropped,
+  // decls.sequence keeps every declaration in order, with the dropped ones'
+  // cover (the important shorthand, or null for the same property): the
+  // cascade sets them one after another (cascade.js blockDeclarations).
   let covered = null;
+  let sequence = null;
   for (const part of splitOutside(String(text ?? ''), ';')) {
     const colon = part.indexOf(':');
     if (colon < 0) continue;
@@ -793,13 +798,20 @@ function parseInto(decls, text, mode, surface = null) {
     const declared = declaredValue(name, value, mode, surface);
     if (declared === INVALID) continue;
     if (!isLegacyMode(mode)) {
-      if (!important && (covered?.has(name) || decls.get(name)?.important)) continue;
-      if (important && SHORTHANDS[name]) for (const longhand of SHORTHANDS[name]) (covered ??= new Set()).add(longhand);
+      if (!important && (covered?.has(name) || decls.get(name)?.important)) {
+        sequence ??= [...decls];
+        sequence.push([name, { value: declared, important, cover: decls.get(name)?.important ? null : covered.get(name) }]);
+        continue;
+      }
+      if (important && SHORTHANDS[name]) for (const longhand of SHORTHANDS[name]) (covered ??= new Map()).set(longhand, { name, value: declared });
     }
     if (MERGEABLE.has(name)) decls.mergeable = true;
     if (isLegacyFont(surface, name)) removeLegacyFont(decls, surface, false);
-    decls.set(name, { value: declared, important });
+    const decl = { value: declared, important };
+    decls.set(name, decl);
+    sequence?.push([name, decl]);
   }
+  if (sequence !== null) decls.sequence = sequence;
 }
 
 // Indexed properties (CSSOM): style[i] is the i-th declaration's name. They
@@ -819,6 +831,7 @@ function reindex(style) {
 }
 export function clearDeclarations(style) {
   styleState(style).decls.clear();
+  styleState(style).decls.sequence = undefined;
   reindex(style);
 }
 
@@ -1164,7 +1177,7 @@ function setDeclaration(style, name, value, priority = '') {
   if (isLegacyFont(s.surface, name) && /^inherit$/i.test(raw)) raw = '';
   // The style attribute is updated only when a declaration changed (CSSOM).
   if (raw === '') {
-    if (isLegacyFont(s.surface, name) ? removeLegacyFont(s.decls, s.surface) : s.decls.delete(name)) { reindex(style); sync(style); }
+    if (isLegacyFont(s.surface, name) ? removeLegacyFont(s.decls, s.surface) : s.decls.delete(name)) { s.decls.sequence = undefined; reindex(style); sync(style); }
     return;
   }
   // Unknown properties and invalid values are ignored (CSSOM).
@@ -1176,6 +1189,7 @@ function setDeclaration(style, name, value, priority = '') {
     let removed = false;
     for (const n of RESETS[name]) removed = s.decls.delete(n) || removed;
     if (removed) {
+      s.decls.sequence = undefined;
       s.decls.set(name, { value: text, important });
       reindex(style);
       sync(style);
@@ -1185,6 +1199,8 @@ function setDeclaration(style, name, value, priority = '') {
   const old = s.decls.get(name);
   if (old && old.value === text && old.important === important) return;
   if (old === undefined && MERGEABLE.has(name)) s.decls.mergeable = true;
+  // The declarations as set (no longer as parsed: decls.sequence).
+  s.decls.sequence = undefined;
   s.decls.set(name, { value: text, important });
   if (old === undefined) defineIndex(style, s.indexed++, name);
   sync(style);

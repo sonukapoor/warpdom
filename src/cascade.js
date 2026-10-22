@@ -43,11 +43,13 @@ import { parseDeclarations, computed, validationModeOf, styleSurfaceOf, isLegacy
 // the page's border longhands alone, but for a side's own, and hides the
 // user agent sheet's border widths and styles, all four sides (HIDE_UA:
 // border-width: var(--w) gives a textarea border-top-width and
-// border-top-style ''); in the style attribute they declare nothing in
-// jsdom 27 and 28.
+// border-top-style ''); in the style attribute border and the sides
+// declare nothing in jsdom 27 and 28. In a block (blockDeclarations) later
+// declarations replace pending longhands whatever their importance.
 const PENDING = '\0pending';
 const HIDE_UA = '\0hide-ua';
 const BORDER_FAMILY = new Set(['border', 'border-top', 'border-right', 'border-bottom', 'border-left', 'border-width', 'border-color', 'border-style']);
+const BORDER_PARTS = new Set(['border-width', 'border-style', 'border-color']);
 const UA_BORDER = ['border', 'border-width', 'border-style', 'border-color', ...['top', 'right', 'bottom', 'left'].flatMap((side) => [`border-${side}-width`, `border-${side}-style`])];
 function cascadeExpand(property, value, legacyFont, compat = null, inline = false) {
   const name = ALIASES[property] ?? property;
@@ -63,19 +65,32 @@ function cascadeExpand(property, value, legacyFont, compat = null, inline = fals
       if (side) for (const l of longhands) out.push([l, PENDING]);
       return out;
     }
-    if (!inline || compat.jsdom >= 29) return [[name, value], ...longhands.map((l) => [l, PENDING])];
+    if (!inline || compat.jsdom >= 29 || BORDER_PARTS.has(name)) return [[name, value], ...longhands.map((l) => [l, PENDING])];
   }
   return expand(property, value, legacyFont);
 }
 
+function setInOrder(decls) {
+  if (decls.sequence !== undefined) return true;
+  for (const { value, important } of decls.values()) if (important || value.includes('var(')) return true;
+  return false;
+}
+
 function addDeclarations(index, decls, entries, counter, compat) {
+  const add = (name, v, important) => {
+    let lists = index.get(name);
+    if (!lists) index.set(name, lists = { normal: [], important: [] });
+    const order = counter.n++;
+    for (const { match, specificity } of entries) (important ? lists.important : lists.normal).push({ match, specificity, order, value: v });
+  };
+  // A rule with var() or !important: its declarations as jsdom sets them
+  // (blockDeclarations); otherwise each declares its longhands.
+  if (compat?.pendingLonghands && setInOrder(decls)) {
+    for (const [name, { value, important }] of blockDeclarations(decls, compat, false)) add(name, value, important);
+    return;
+  }
   for (const [property, { value, important }] of decls) {
-    for (const [name, v] of cascadeExpand(property, value, decls.legacyFont, compat)) {
-      let lists = index.get(name);
-      if (!lists) index.set(name, lists = { normal: [], important: [] });
-      const order = counter.n++;
-      for (const { match, specificity } of entries) (important ? lists.important : lists.normal).push({ match, specificity, order, value: v });
-    }
+    for (const [name, v] of cascadeExpand(property, value, decls.legacyFont, compat)) add(name, v, important);
   }
 }
 
@@ -153,44 +168,120 @@ function ruleIndex(element) {
 
 // --- the cascade ---------------------------------------------------------------------
 
+// A declaration block's declarations, expanded, as jsdom sets them one
+// after another (the style attribute's, and from cssstyle 4.4 a style
+// rule's: compat.pendingLonghands).
+function blockDeclarations(decls, compat, inline) {
+  const map = new Map();
+  // An !important declaration keeps a later normal one of its property
+  // out (parseDeclarations drops it) in the attribute from jsdom 27, not in
+  // a rule (black box, jsdom 26 to 30: color: red !important; color: blue
+  // in a rule gives blue) or before 27. And from jsdom 27 an !important
+  // border or side with var() does not cover its longhands in the
+  // attribute: border: var(--b) !important; border-top-width: 3px gives
+  // border-top-width 3px.
+  const keepsImportant = inline && (compat.jsdom >= 27 || !compat.pendingLonghands);
+  let sequence = decls;
+  if (decls.sequence !== undefined && compat.pendingLonghands) {
+    sequence = inline ? (compat.jsdom >= 27 ? decls.sequence.filter(([, d]) => d.cover === undefined || coversPending(d.cover)) : decls) : decls.sequence;
+  }
+  // jsdom 27 and 28, in the attribute: border with var() declares nothing,
+  // and the border declarations after it, but for border, nothing either.
+  const locks = inline && compat.pendingLonghands && compat.jsdom < 29 && compat.jsdom >= 27;
+  let locked = false;
+  for (const [property, { value, important }] of sequence) {
+    if (locks && property === 'border') {
+      // It also drops the border declarations before it.
+      locked = value.includes('var(');
+      if (locked) { for (const l of SHORTHANDS.border) map.delete(l); continue; }
+    } else if (locked && (BORDER_FAMILY.has(property) || SHORTHANDS.border.includes(property))) continue;
+    const entries = cascadeExpand(property, value, decls.legacyFont, compat, inline);
+    const shorthand = entries.length > 1 && entries[entries.length - 1][1] === PENDING ? entries[0][0] : null;
+    // From jsdom 29 border or a side with var() after one of its longhands
+    // in the attribute declares nothing; border-width, border-style and
+    // border-color with var() nothing after border, and they leave the
+    // longhands a side set (border-top: 1px solid red; border-width:
+    // var(--w) keeps border-top-width 1px).
+    const parts = inline && compat.jsdom >= 29 && BORDER_PARTS.has(shorthand);
+    if (shorthand !== null && inline && compat.jsdom >= 29 && BORDER_FAMILY.has(shorthand)
+      && SHORTHANDS[shorthand].some(parts ? (l) => map.get(l)?.side === 'border' : (l) => map.has(l) && map.get(l).value !== PENDING)) continue;
+    // jsdom 27 and 28: after a side or border in the attribute, they make
+    // pending what it set, and declare nothing else (border-top: 1px solid
+    // red; border-width: var(--w) gives border-top-style '' and the user
+    // agent sheet's border-left-width).
+    if (locks && shorthand !== null && BORDER_PARTS.has(shorthand)) {
+      const sides = new Set();
+      for (const l of SHORTHANDS[shorthand]) { const d = map.get(l); if (d?.side !== undefined && !d.important) sides.add(d.side); }
+      if (sides.size) {
+        for (const [l, d] of map) if (sides.has(d.side)) map.set(l, { value: PENDING, important, from: shorthand });
+        continue;
+      }
+    }
+    // From jsdom 29 margin and padding (without var()) keep an !important
+    // longhand before them in a rule too.
+    const boxKeeps = !inline && shorthand === null && compat.jsdom >= 29 && (property === 'margin' || property === 'padding');
+    // jsdom 27 and 28: in a rule, one with var() drops all a border before
+    // it set (border: 1px solid; border-top: var(--b) gives the user agent
+    // sheet's border-left-width).
+    const ruleLocks = !inline && compat.jsdom >= 27 && compat.jsdom < 29;
+    if (ruleLocks && shorthand !== null && BORDER_FAMILY.has(shorthand) && SHORTHANDS[shorthand].some((l) => map.get(l)?.side === 'border')) {
+      for (const [l, d] of map) if (d.side === 'border') map.delete(l);
+    }
+    const side = (inline && compat.jsdom >= 27 && BORDER_SIDE.test(property)) || ((inline ? compat.jsdom >= 27 : ruleLocks) && property === 'border') ? property : undefined;
+    for (const [name, v] of entries) {
+      let prior = map.get(name);
+      // jsdom 27 and 28: in the attribute the pending longhands of
+      // border-width, border-style and border-color stay pending, over a
+      // later longhand, and over anything when !important.
+      if (locks && prior?.value === PENDING && BORDER_PARTS.has(prior.from) && (prior.important || entries.length === 1)) continue;
+      // Over a longhand pending from another shorthand, whatever their
+      // importance (jsdom sets them one after another: border: var(--b)
+      // !important; border-top: 1px solid red gives border-top-width 1px).
+      // In the attribute from jsdom 27 a longhand after a shorthand with
+      // var() is dropped (padding: var(--p); padding-top: 4px gives
+      // padding-top '' or 0), but for the border ones (border-width, style
+      // and color: but for a single longhand); before 27 the shorthand and
+      // its pending longhands are (padding-left from the user agent sheet).
+      // In a rule the longhand is declared and the others stay pending. The
+      // border shorthands keep theirs before jsdom 29; from 29 border and a
+      // side lose them to any later declaration of one of them,
+      // border-width, border-style and border-color to one with var()
+      // (border-width: var(--w); border-top: 1px solid keeps the other
+      // sides' widths pending).
+      if (prior?.value === PENDING && prior.from !== shorthand) {
+        const border = BORDER_FAMILY.has(prior.from);
+        if (inline && v !== PENDING && compat.jsdom >= 27 && (!border || (entries.length === 1 && BORDER_PARTS.has(prior.from)))) {
+          if (entries.length === 1) continue;
+        } else if (v !== PENDING ? (border ? compat.jsdom >= 29 && !BORDER_PARTS.has(prior.from) : inline) : border && compat.jsdom >= 29) {
+          const from = prior.from;
+          for (const l of SHORTHANDS[from]) if (map.get(l)?.from === from) map.delete(l);
+          map.delete(from);
+          prior = undefined;
+        }
+      }
+      // An !important longhand keeps a later normal one out (keepsImportant,
+      // boxKeeps), but for a pending border one: border-width: var(--w)
+      // !important; border-top: 1px solid red gives border-top-width 1px.
+      if (!important && prior?.important && (keepsImportant ? prior.value !== PENDING || !BORDER_FAMILY.has(prior.from) : boxKeeps && prior.value !== PENDING)) continue;
+      if (v === HIDE_UA && prior !== undefined) continue;
+      if (parts && prior?.side !== undefined && prior.side !== 'border') continue;
+      map.set(name, v === PENDING ? { value: v, important, from: shorthand } : side !== undefined ? { value: v, important, side } : { value: v, important });
+    }
+  }
+  return map;
+}
+
+const coversPending = (cover) => cover !== null && (cover.name === 'border' || BORDER_SIDE.test(cover.name)) && cover.value.includes('var(');
+
 // The style attribute's declarations, expanded, cached per attribute value.
 function inlineDeclarations(element) {
   const es = element[S];
   const text = es.attrs.get('style');
   if (text === undefined) return null;
   if (es.inlineCascade?.text === text) return es.inlineCascade.map;
-  const map = new Map();
   const mode = validationModeOf(es.doc[S].window);
   const decls = parseDeclarations(text, mode, styleSurfaceOf(es.doc[S].window));
-  const compat = es.doc[S].window[S].compat;
-  for (const [property, { value, important }] of decls) {
-    const entries = cascadeExpand(property, value, decls.legacyFont, compat, true);
-    const shorthand = entries.length > 1 && entries[entries.length - 1][1] === PENDING ? entries[0][0] : null;
-    // From jsdom 29 a border shorthand with var() after one of its
-    // longhands in the attribute declares nothing.
-    if (shorthand !== null && compat.jsdom >= 29 && BORDER_FAMILY.has(shorthand)
-      && SHORTHANDS[shorthand].some((l) => map.has(l) && map.get(l).value !== PENDING)) continue;
-    for (const [name, v] of entries) {
-      let prior = map.get(name);
-      // A longhand after a shorthand with var() in the attribute (padding:
-      // var(--p); padding-top: 4px): from jsdom 27 the longhand is dropped
-      // (padding-top '' or 0), but for the border shorthands; otherwise the
-      // shorthand's pending longhands are (padding-left from the user agent
-      // sheet), and the shorthand too but for a border one before 27.
-      if (prior?.value === PENDING && v !== PENDING) {
-        if (compat.jsdom >= 27 && !BORDER_FAMILY.has(prior.from)) {
-          if (entries.length === 1) continue;
-        } else {
-          for (const l of SHORTHANDS[prior.from]) if (map.get(l)?.value === PENDING) map.delete(l);
-          if (compat.jsdom >= 27 || !BORDER_FAMILY.has(prior.from)) map.delete(prior.from);
-          prior = undefined;
-        }
-      }
-      if (!important && prior?.important) continue;
-      if (v === HIDE_UA && prior !== undefined) continue;
-      map.set(name, v === PENDING ? { value: v, important, from: shorthand } : { value: v, important });
-    }
-  }
+  const map = blockDeclarations(decls, es.doc[S].window[S].compat, true);
   es.inlineCascade = { text, map };
   return map;
 }

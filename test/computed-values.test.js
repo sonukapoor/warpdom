@@ -455,3 +455,85 @@ test('computed values: shorthands with var() before cssstyle 4.4 keep the user a
     assert.equal(w.getComputedStyle(el).paddingTop, top, cssstyle);
   }
 });
+
+// Overlapping border shorthands with var() and different priorities, in a
+// rule and in the style attribute (Copilot review on #103): jsdom sets a
+// block's declarations one after another, so a later one replaces the
+// pending longhands of an !important border: var(--b) (border: var(--b)
+// !important; border-top: 1px solid red gives border-top-width 1px and,
+// from jsdom 29, the user agent sheet's border-left-width on a fieldset).
+const BORDER_VARS = ['border: var(--b)', 'border-top: var(--b)', 'border-width: var(--b)', 'border-style: var(--b)', 'border-color: var(--b)'];
+const BORDER_OVER = ['border-top-width: 3px', 'border-left-color: red', 'border-top: 3px dotted red', 'border-left: 3px dotted red', 'border-width: 3px', 'border-color: red',
+  'border: 3px dotted red', 'border-top: var(--c)', 'border-width: var(--c)'];
+const BORDER_PROPS = ['border-top-width', 'border-top-style', 'border-top-color', 'border-left-width', 'border-left-style', 'border-left-color'];
+// Not modeled: jsdom 27 and 28 throw on a side with var() and then
+// border-width or border-color in a rule, and keep border: var(--b)'s
+// pending longhands under a side or border-width with var() there; jsdom
+// 28's border-color: var(--b) then border-left-color or border-top in the
+// attribute; jsdom 26 and a border declaration before one with var(); and
+// jsdom 27 to 30 read a longhand declared !important before border-width,
+// border-style or border-color with var() as the var() text.
+function borderBlocks(jsdom) {
+  const blocks = []; // [block, in a rule, in the attribute]
+  const legacy = jsdom === 27 || jsdom === 28;
+  for (const important of [' !important', '']) {
+    for (const s of BORDER_VARS) {
+      for (const x of BORDER_OVER) {
+        const inRule = !legacy || !((s === 'border-top: var(--b)' && /^border-(width|color): [^v]/.test(x)) || (s === 'border: var(--b)' && /var\(--c\)/.test(x)));
+        const inAttr = !(jsdom === 28 && !important && s === 'border-color: var(--b)' && (x === 'border-left-color: red' || x === 'border-top: 3px dotted red'));
+        blocks.push([`${s}${important}; ${x}`, inRule, inAttr]);
+        const raw = important && BORDER_PARTS_VAR.has(s) && /^border-(top-width|left-color|top|left): [^v]/.test(x)
+          && !(s === 'border-width: var(--b)' && x === 'border-left-color: red') && !(s === 'border-color: var(--b)' && x === 'border-top-width: 3px');
+        if (jsdom >= 27 && !raw) blocks.push([`${x}${important}; ${s}`, true, true]);
+      }
+    }
+  }
+  return blocks;
+}
+const BORDER_PARTS_VAR = new Set(['border-width: var(--b)', 'border-style: var(--b)', 'border-color: var(--b)']);
+function overlappingBorders(w, jsdom) {
+  const d = w.document;
+  const blocks = borderBlocks(jsdom);
+  d.head.innerHTML = `<style>${blocks.map(([block, inRule], i) => (inRule ? `.o${i} { ${block} }` : '')).join('\n')}</style>`;
+  const out = {};
+  for (const tag of ['fieldset', 'div']) {
+    blocks.forEach(([block, inRule, inAttr], i) => {
+      for (const kind of ['rule', 'attr']) {
+        if (kind === 'rule' ? !inRule : !inAttr) continue;
+        const el = d.body.appendChild(d.createElement(tag));
+        if (kind === 'rule') el.className = `o${i}`;
+        else el.setAttribute('style', block);
+        const cs = w.getComputedStyle(el);
+        out[`${tag} ${kind} ${block}`] = BORDER_PROPS.map((p) => cs.getPropertyValue(p));
+      }
+    });
+  }
+  return out;
+}
+for (const jsdom of [26, 27, 28, 29, 30]) parity(`computed values: overlapping border shorthands with var() and priorities (jsdom ${jsdom})`, (w) => overlappingBorders(w, jsdom), { jsdom });
+
+// A rule's declarations in jsdom 26 to 30: a later one replaces an earlier
+// !important one (color: red !important; color: blue gives blue), but
+// from 29 margin and padding keep an !important longhand before them; a
+// longhand after a shorthand with var() is declared, the shorthand's other
+// longhands stay pending (padding: var(--p); padding-top: 4px gives
+// padding-left '' or 0, not the user agent sheet's).
+const RULE_BLOCKS = ['padding: var(--p); padding-top: 4px', 'padding: var(--p) !important; padding-top: 4px', 'padding-top: 4px; padding: var(--p)', 'padding-top: 4px !important; padding: var(--p)',
+  'margin: 1px; margin-top: 3px', 'margin: 1px !important; margin-top: 3px', 'margin-top: 3px !important; margin: 1px', 'padding-top: 3px !important; padding: 1px', 'color: red !important; color: blue',
+  'color: red; color: blue !important', 'font: var(--f) !important; line-height: 3', 'flex: var(--x); flex-grow: 2', 'background: var(--b) !important; background-color: red',
+  'padding: 1px !important; padding: var(--p)', 'padding: var(--p) !important; padding: 2px', 'font-size: 10px !important; font: 20px serif', 'outline: 1px solid !important; outline-width: 3px',
+  'overflow: hidden !important; overflow-x: auto', 'border-top-width: 1px !important; border-top-width: 5px', 'border-top: 1px solid red !important; border-width: 5px'];
+const RULE_PROPS = ['padding-top', 'padding-left', 'padding', 'margin-top', 'margin-left', 'color', 'font-size', 'line-height', 'flex-grow', 'flex-basis', 'background-color', 'outline-width', 'overflow-x', 'border-top-width'];
+function ruleBlocks(w) {
+  const d = w.document;
+  d.head.innerHTML = `<style>${RULE_BLOCKS.map((block, i) => `.k${i} { ${block} }`).join('\n')}</style>`;
+  const out = {};
+  RULE_BLOCKS.forEach((block, i) => {
+    const el = d.body.appendChild(d.createElement('textarea'));
+    el.className = `k${i}`;
+    const cs = w.getComputedStyle(el);
+    out[block] = RULE_PROPS.map((p) => cs.getPropertyValue(p));
+  });
+  return out;
+}
+for (const jsdom of [26, 27, 28, 29, 30]) parity(`computed values: a rule's declarations in order (jsdom ${jsdom})`, ruleBlocks, { jsdom });
