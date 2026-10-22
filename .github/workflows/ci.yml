@@ -1,7 +1,10 @@
 # Unit and parity tests (npm test) and the type tests (npm run test:types)
 # on every push and pull request, on Node 22.22 (the oldest Node that jsdom 30
 # and its undici declare support for; package.json engines still says
-# >=22.12) and the current LTS.
+# >=22.12) and the current LTS. In parallel, a dependency scan with CVE
+# Lite CLI: a full scan (dev dependencies included, report only) goes to
+# GitHub Code Scanning as SARIF, and the job fails on a high or critical
+# advisory in a production dependency.
 name: ci
 
 on:
@@ -21,11 +24,41 @@ jobs:
       matrix:
         node: ['22.22', '24']
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
       - run: npm test
       - run: npm run test:types
+
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Tag-pinned on purpose: CVE Lite CLI is the maintainer's own action, so
+      # its minor and patch releases are taken without an edit here.
+      - name: Scan all dependencies (report only)
+        uses: OWASP/cve-lite-cli@v1
+        with:
+          sarif: 'true'
+          output: cve-lite
+      # Fork pull requests get a read-only token and cannot upload.
+      - name: Upload SARIF to Code Scanning
+        if: always() && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: cve-lite
+          category: cve-lite
+      - name: Fail on high or critical in production dependencies
+        uses: OWASP/cve-lite-cli@v1
+        with:
+          prod-only: 'true'
+          fail-on: high

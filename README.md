@@ -7,7 +7,7 @@
 
 # warpdom
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23378613.svg)](https://doi.org/10.5281/zenodo.23378613) [![Sponsor](https://img.shields.io/github/sponsors/sonukapoor?label=Sponsor&logo=GitHub)](https://github.com/sponsors/sonukapoor)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23378613.svg)](https://doi.org/10.5281/zenodo.23378613) [![Sponsor](https://img.shields.io/github/sponsors/sonukapoor?label=Sponsor&logo=GitHub)](https://github.com/sponsors/sonukapoor) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/sonukapoor/warpdom/badge)](https://scorecard.dev/viewer/?uri=github.com/sonukapoor/warpdom)
 
 A DOM for unit and component tests: **your tests get the same results as
 on jsdom, faster.** A drop-in environment for Vitest and Jest, written
@@ -678,6 +678,10 @@ support: [docs/stability.md](docs/stability.md); reporting a
 vulnerability: [SECURITY.md](SECURITY.md).
 Releases are published from GitHub Actions with npm provenance when a
 version tag is pushed: [RELEASING.md](RELEASING.md).
+
+CI scans the dependencies with [CVE Lite CLI](https://github.com/OWASP/cve-lite-cli)
+(fails on high or critical advisories in production dependencies; results in
+GitHub Code Scanning) and runs [OpenSSF Scorecard](https://scorecard.dev) weekly.
 
 ## Citing
 
