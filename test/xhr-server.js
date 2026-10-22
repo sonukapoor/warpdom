@@ -9,6 +9,10 @@
 //   /status    ?code=&text=&body=
 //   /redirect  ?code=&to=
 //   /slow      ?n=<chunks>&ms=<gap>&size=<chunk size>&len=<content-length>&wait=<ms before headers>
+//              &step=1: no timed gaps; each chunk after the first waits for
+//              the test to call release(), and the response stays open
+//              after the last one (the client sees exactly the chunks the
+//              test let through, however busy the machine is)
 //   /hang      never answers
 //   /setcookie sets a cookie
 // and, on any route, acao, acac, aceh (Access-Control-Allow-Origin,
@@ -21,6 +25,8 @@ const CLIENT_HEADERS = /^(user-agent|sec-fetch-.*|host|connection|keep-alive)$/;
 export function startServer() {
   const requests = [];
   const sockets = new Set();
+  // Stepped /slow responses waiting for release() to send their next chunk.
+  let held = [];
   const server = http.createServer(async (req, res) => {
     const chunks = [];
     try { for await (const c of req) chunks.push(c); } catch { return; }
@@ -72,9 +78,9 @@ export function startServer() {
           let i = 0;
           const tick = () => {
             if (res.destroyed) return;
-            if (i++ >= n) { res.end(); return; }
+            if (i++ >= n) { if (!q.step) res.end(); return; }
             res.write('x'.repeat(Number(q.size ?? 10)));
-            setTimeout(tick, Number(q.ms ?? 50));
+            if (q.step) held.push(tick); else setTimeout(tick, Number(q.ms ?? 50));
           };
           tick();
         };
@@ -96,6 +102,8 @@ export function startServer() {
   return new Promise((resolve) => server.listen(0, () => resolve({
     port: server.address().port,
     requests,
+    // Sends the next chunk of each stepped /slow response.
+    release: () => { const ticks = held; held = []; for (const tick of ticks) tick(); },
     close: () => new Promise((done) => { for (const s of sockets) s.destroy(); server.close(done); }),
   })));
 }
