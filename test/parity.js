@@ -31,7 +31,8 @@ async function domFor(jsdom) {
 // shorthands), so the profile is that release's.
 const JSDOM30 = createRequire(import.meta.url)('jsdom/package.json').version;
 const PROFILES = { 20: { jsdom: '20.0.3', cssstyle: '2.3.0' }, 22: { jsdom: '22.1.0', cssstyle: '3.0.0' }, 25: { jsdom: '25.0.1', cssstyle: '4.1.0' }, 27: { jsdom: '27.4.0' }, 28: { jsdom: '28.1.0' }, 29: { jsdom: '29.1.1' }, 30: { jsdom: JSDOM30 } };
-export function parity(name, scenario, { jsdom = 30, url = URL_ } = {}) {
+// runScripts: as Vitest's jsdom environment (false: a window made without).
+export function parity(name, scenario, { jsdom = 30, url = URL_, runScripts = 'dangerously' } = {}) {
   const profile = PROFILES[jsdom] ?? { jsdom };
   test(name, async () => {
     const Dom = await domFor(jsdom);
@@ -46,7 +47,7 @@ export function parity(name, scenario, { jsdom = 30, url = URL_ } = {}) {
       }
     };
     // As Vitest's jsdom environment creates it.
-    const expected = await run(new Dom('<!doctype html><html><head></head><body></body></html>', { url, runScripts: 'dangerously', pretendToBeVisual: true }).window);
+    const expected = await run(new Dom('<!doctype html><html><head></head><body></body></html>', { url, ...(runScripts ? { runScripts } : {}), pretendToBeVisual: true }).window);
     const actual = await run(createWindow({ url, ...profile }));
     assert.deepEqual(actual, expected);
   });

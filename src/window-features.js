@@ -3,7 +3,7 @@
 // URLSearchParams and Headers, console, WebAssembly and WebSocket, the
 // Image/Audio/Option constructors.
 // Values follow jsdom's defaults so tests see the same environment.
-import { S, state, domError, tooFewArguments, platformGlobal, PLATFORM_GLOBAL, PlatformURL, PlatformURL as URL } from './internal.js';
+import { S, state, lazyDataSetter, domError, tooFewArguments, platformGlobal, PLATFORM_GLOBAL, PlatformURL, PlatformURL as URL } from './internal.js';
 import { dispatch, reportError } from './events.js';
 import { computedStyle, cssNamespace } from './css.js';
 import './cascade.js';
@@ -64,31 +64,35 @@ const before = (version, target) => {
 // writable). From 27.0.0 accessors (enumerable, configurable): the
 // viewport getters give the value whatever this is and their setters
 // replace the accessor with a data property ([Replaceable]); status keeps
-// a string. name is a data property in every version and keeps any value
-// as given.
+// a string. Like the window's other own accessors, they act on their own
+// window whatever this is: an assignment through an object that inherits
+// from the window (Object.create(window).innerWidth = 500), or the setter
+// called on another object, replaces the window's member and gives that
+// object no property of its own (black box, jsdom 27.4.0 to 30.1.3); so
+// the setters and status's getter are made per window. name is a data
+// property in every version and keeps any value as given.
 const VIEWPORT = { innerWidth: 1024, innerHeight: 768, outerWidth: 1024, outerHeight: 768, devicePixelRatio: 1,
   scrollX: 0, scrollY: 0, pageXOffset: 0, pageYOffset: 0, screenX: 0, screenY: 0, screenLeft: 0, screenTop: 0 };
+const VIEWPORT_GETTERS = Object.fromEntries(Object.entries(VIEWPORT).map(([key, value]) => [key, Object.getOwnPropertyDescriptor({ get [key]() { return value; } }, key).get]));
 
-const accessor = (members, key) => ({ ...Object.getOwnPropertyDescriptor(members, key), enumerable: true, configurable: true });
-const WINDOW_ACCESSORS = [
-  ...Object.entries(VIEWPORT).map(([key, value]) => [key, accessor({
-    get [key]() { return value; },
-    set [key](v) { replace(this, key, v); },
-  }, key)]),
-  ['status', accessor({
-    get status() { return state(this).status ?? ''; },
-    set status(v) { state(this).status = String(v); },
-  }, 'status')],
-];
+function defineWindowAccessors(window) {
+  for (const key of Object.keys(VIEWPORT)) {
+    const { set } = Object.getOwnPropertyDescriptor({ set [key](v) { replace(window, key, v); } }, key);
+    Object.defineProperty(window, key, { get: VIEWPORT_GETTERS[key], set, enumerable: true, configurable: true });
+  }
+  const ws = window[S];
+  const status = { get status() { return ws.status ?? ''; }, set status(v) { ws.status = String(v); } };
+  Object.defineProperty(window, 'status', { ...Object.getOwnPropertyDescriptor(status, 'status'), enumerable: true, configurable: true });
+}
 
 export function setupWindowData(window) {
   const define = (key, value) => Object.defineProperty(window, key, { value, writable: true, enumerable: true, configurable: true });
   define('name', '');
   if (window[S].compat.jsdom >= 27) {
-    for (const [key, descriptor] of WINDOW_ACCESSORS) Object.defineProperty(window, key, descriptor);
+    defineWindowAccessors(window);
     return;
   }
-  for (const key in VIEWPORT) define(key, VIEWPORT[key]);
+  for (const key of Object.keys(VIEWPORT)) define(key, VIEWPORT[key]);
   define('status', '');
 }
 
@@ -920,7 +924,7 @@ function setupConsole(window) {
   const define = (value) => Object.defineProperty(window, 'console', { value, writable: true, enumerable, configurable: true });
   Object.defineProperty(window, 'console', {
     get() { const console = ws.console ?? (ws.console = createConsole(window)); define(console); return console; },
-    set: define,
+    set: lazyDataSetter(window, 'console', define),
     enumerable,
     configurable: true,
   });
@@ -1010,7 +1014,7 @@ function setupWebSocket(window) {
   const define = (value) => Object.defineProperty(window, 'WebSocket', { value, writable: true, enumerable: false, configurable: true });
   Object.defineProperty(window, 'WebSocket', {
     get() { const WebSocket = PLATFORM_GLOBAL.WebSocket; define(WebSocket); return WebSocket; },
-    set: define,
+    set: lazyDataSetter(window, 'WebSocket', define),
     enumerable: false,
     configurable: true,
   });
@@ -1269,7 +1273,7 @@ export function setupWindow(window, { url: initial = 'about:blank', fastFrames =
     };
     Object.defineProperty(window, name, {
       get: create,
-      set(value) { Object.defineProperty(window, name, { value, writable: true, configurable: true }); },
+      set: lazyDataSetter(window, name, (value) => Object.defineProperty(window, name, { value, writable: true, configurable: true })),
       configurable: true,
     });
   };
