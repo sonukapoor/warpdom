@@ -161,6 +161,19 @@ accessors are `CSSStyleProperties.prototype`'s. cssstyle's
 `isPropertyImplicit()` (returning `undefined`) exist with cssstyle 4.3 and
 earlier, and `azimuth` with cssstyle 5.3 and earlier (as an angle until
 4.3, CSS-wide keywords only in 5.3), as they do in jsdom.
+Computed values follow the version too: colors stay as declared before
+22.1.0 (`red`, `transparent`, `GrayText`), named and hex colors resolve from
+22.1.0 while system colors stay keywords until 26, and from 27.0.0 system
+colors are jsdom's (`ButtonFace` is `rgb(204, 204, 204)`); before
+cssstyle 4.4 color keywords keep their case and only CSS 2's system colors
+exist (`ThreeDFace`, not `Canvas`). A declared `0` stays `0` before 28.1.0
+where cssstyle does not parse the property (`text-indent`, `min-width`);
+`margin`, `padding` and `border-width` keep their declared form before
+27.0.0 (`2px 6px 3px 6px`); from 29.0.2 `font-family` is
+`depends on user agent` when not declared and `vertical-align: inherit`
+inherits; from 30.0.0 lengths are px (`h1` 32px, `calc(1em + 2px)`, `10vw`
+102.4px) and font size keywords too, and from 30.1.0 `bolder` and
+`lighter` are weights. An SVG `a` with an `href` matches `:link`.
 As in jsdom, the window's `URL` has no `createObjectURL()`; under Vitest
 the global `URL` is Vitest's (Node's, with a `createObjectURL()` that
 takes the window's Blobs), as with jsdom.
@@ -575,6 +588,18 @@ Other deliberate differences:
   `CSSStyleRule`'s `style` without accessors before 27.1.0, and
   `getComputedStyle().azimuth` with cssstyle 4.2 and 4.3 (`NaNdeg` for
   an angle, jsdom's is empty).
+- Computed values not modeled: the `font` shorthand composed from its
+  longhands (jsdom's `getComputedStyle().font` and `el.style.font`), a
+  shorthand followed by one of its longhands in a declaration block
+  (jsdom stores the longhands: `margin: 1px 2px; margin-top: 3px` reads
+  `3px 2px 1px`), `!important` in style sheets before jsdom 29 (jsdom
+  ignores it there), jsdom 30's `calc()` mixing percentages and em
+  (`calc(100% - 0px)`), and the uppercase units and `calc()`
+  simplification of declared values in jsdom 29 and 30. jsdom 27.1 and
+  later parse style sheets with the cssstyle that `@acemir/cssom` finds,
+  so with an older cssstyle installed beside it (such as Jest 29's 2.3.0)
+  its sheets drop `Canvas` and `fit-content`; warpdom follows the cssstyle
+  jsdom itself installs.
 - `FileReader` also reads the platform's `Blob` (one from Node's `fetch` in
   Vitest); jsdom's throws a TypeError. `TextDecoder` trims only ASCII
   whitespace from labels, as the Encoding standard says (jsdom accepts

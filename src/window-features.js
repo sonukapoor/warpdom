@@ -1114,13 +1114,13 @@ export const FEATURE_INTERFACES = [
 // The style surface of a jsdom profile (src/style-surface.js: which
 // properties it knows and has accessors for), measured per jsdom and
 // cssstyle version: before jsdom 29 by the cssstyle jsdom loads (given, or
-// the one jsdom's version installs: 2 for jsdom 20, 3 for 21 to 23, the
-// latest 4.x for 24 to 26, 5.3 for 27 to 28.0, the latest 6.x for 28.1),
+// the one jsdom's version installs: 2 to 21.0, 3 from 21.1 to 23.0, the
+// latest 4.x from 23.1 to 26, 5.3 for 27 to 28.0, the latest 6.x for 28.1),
 // later by jsdom's version. null: jsdom 30.1 and later (STYLE_ACCESSORS).
 function styleSurfaceKey(version, css) {
   if (version[0] >= 30) return before(version, [30, 0, 1]) ? 'jsdom30.0.0' : before(version, [30, 1, 0]) ? 'jsdom30.0.1' : null;
   if (version[0] === 29) return before(version, [29, 1, 0]) ? 'jsdom29.0' : 'jsdom29.1';
-  css ??= version[0] <= 20 ? [2] : version[0] <= 23 ? [3] : version[0] <= 26 ? [4, Infinity] : before(version, [28, 1, 0]) ? [5] : [6, Infinity];
+  css ??= before(version, [21, 1, 0]) ? [2] : before(version, [23, 1, 0]) ? [3] : version[0] <= 26 ? [4, Infinity] : before(version, [28, 1, 0]) ? [5] : [6, Infinity];
   if (css[0] <= 2) return 'cssstyle2';
   if (css[0] === 3 || (css[0] === 4 && before(css, [4, 1, 0]))) return 'cssstyle3';
   if (css[0] === 4) return before(css, [4, 4, 0]) ? 'cssstyle4.1' : 'cssstyle4.4';
@@ -1144,9 +1144,10 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
   // 4.3.1, url() in background and background-image serialized without
   // quotes; before 4.4 the root element's computed color was '', and in
   // 4.4 and 4.5 'CanvasText'.
-  // jsdom 20 loads cssstyle 2, jsdom 21 to 23 cssstyle 3 (assumed for 21;
-  // 22 and 23 measured): the default when no cssstyle is given.
-  const cssDefault = version[0] <= 20 ? '2.3.0' : version[0] <= 23 ? '3.0.0' : null;
+  // The cssstyle a jsdom release installs (its dependency range): 2.3 to
+  // 21.0.x, 3.0 from 21.1.0 to 23.0.x, the latest 4.x from 23.1.0: the
+  // default when no cssstyle is given.
+  const cssDefault = before(version, [21, 1, 0]) ? '2.3.0' : before(version, [23, 1, 0]) ? '3.0.0' : null;
   const cssText = version[0] < 27 ? cssstyle ?? cssDefault : null;
   const css = cssText != null ? parseJsdomVersion(cssText) : null;
   return {
@@ -1190,12 +1191,35 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     focusIgnoresRendering: before(version, [30, 1, 2]), detachedCheckableEvents: before(version, [16, 5, 2]), cssstyle: version[0] < 27 ? (css ? cssText : undefined) : cssstyle ?? undefined, cssstyleMajor: css ? css[0] : 0,
     styleSurface: styleSurfaceKey(version, version[0] < 27 ? css : cssstyle != null ? parseJsdomVersion(cssstyle) : null),
     unquotedUrls: css !== null && before(css, [4, 3, 1]),
+    // A shorthand declared with var() (padding: var(--p)) declares its
+    // longhands pending substitution, so they hide the user agent sheet's
+    // and earlier ones (padding-top '', from 29.0.2 its initial 0): with
+    // cssstyle 4.4 and later (jsdom 23.1 to 26 with it; 4.4, 4.5 and 4.6
+    // measured), and in jsdom 27 and later (cascade.js cascadeExpand).
+    pendingLonghands: version[0] >= 27 || (css === null ? !before(version, [23, 1, 0]) : css[0] > 4 || (css[0] === 4 && !before(css, [4, 4, 0]))),
     // cssstyle's font shorthand before 4.4 (shorthands.js legacyFont).
     legacyFont: css === null || !before(css, [4, 4, 0]) ? null : before(css, [4, 2, 0]) ? 'cssstyle4.1' : 'cssstyle4.2',
     // cssstyle 4.4 and later: the computed style's background and border
     // side accessors compose their longhands (cascade.js legacyAccessorValue).
     // cssstyle before 4.2: color channels rounded once, no hwb() (colors.js).
     legacyColors: version[0] < 27 && css !== null && before(css, [4, 2, 0]),
+    // Color keywords as cssstyle writes them (css.js colorKeywords): before
+    // 4.4 'css2', in 4.4 and 4.5 'written', later lowercased (null).
+    colorKeywords: version[0] >= 27 || css === null || !before(css, [4, 6, 0]) ? null : before(css, [4, 4, 0]) ? 'css2' : 'written',
+    // Computed colors (cascade.js computeValue), black box: before 22.1.0
+    // as declared ('declared': red stays red; background-color and the
+    // border colors '' when not declared); to 26 named, hex and functional
+    // colors resolved, system colors as declared ('keywords'; currentcolor
+    // too with cssstyle before 4.4); from 27 all resolved, system colors to
+    // jsdom's values ('resolved').
+    computedColors: before(version, [22, 1, 0]) ? 'declared' : version[0] < 27 ? 'keywords' : 'resolved',
+    // A declared 0 length computes to 0px from 28.1.0; before as declared
+    // (text-indent: 0, min-width: 0), black box 20.0.0 to 28.0.0.
+    zeroLengths: !before(version, [28, 1, 0]),
+    // From jsdom 30.0.0 computed lengths are px (em, rem, vw, calc(); font
+    // size keywords, larger and smaller), from 30.1.0 bolder and lighter
+    // weights (cascade.js, lengths.js).
+    absoluteLengths: version[0] >= 30, relativeWeights: !before(version, [30, 1, 0]),
     composedAccessors: version[0] < 27 && (css === null || (css[0] === 4 && !before(css, [4, 4, 0]))),
     // Members jsdom added (black box): crypto.randomUUID() in 22.1.0,
     // TextEncoder and TextDecoder in 27.4.0, Blob's text(), arrayBuffer()

@@ -472,7 +472,9 @@ function compilePseudo({ name, arg }) {
     case 'focus': return (el) => el[S].doc[S].focused === el;
     case 'focus-visible': return (el) => el[S].doc[S].focused === el;
     case 'focus-within': return (el) => { const f = el[S].doc[S].focused; for (let n = f; n; n = n[S].parent) if (n === el) return true; return false; };
-    case 'link': case 'any-link': return (el) => isHTML(el) && (el[S].tag === 'a' || el[S].tag === 'area') && el[S].attrs.has('href');
+    // As in jsdom (black box, 20 to 30.1.3): an SVG a with an href too (not
+    // xlink:href).
+    case 'link': case 'any-link': return (el) => el[S].attrs.has('href') && (isHTML(el) ? el[S].tag === 'a' || el[S].tag === 'area' : el[S].ns === SVG_NS && el[S].tag === 'a');
     // Defined: uncustomized (no state) or custom.
     case 'defined': return (el) => { const st = el[S].ceState; return st === undefined || st === 'custom'; };
     case 'indeterminate': return (el) => !!el[S].indeterminate;

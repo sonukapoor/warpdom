@@ -6,8 +6,14 @@
 // Channels as jsdom computes them (black box, jsdom 26 with cssstyle 4.2
 // to 4.6, 27 to 30): rounded to 4 significant digits, then to an integer
 // (hsl(102, 53%, 61%) has a red of 134.4666, 134.5, 135; rgb(113.45, 0,
-// 0) is rgb(114, 0, 0)). legacy (cssstyle before 4.2): rounded once, and
-// hwb() not resolved.
+// 0) is rgb(114, 0, 0)); an alpha given as a number to 3 decimals (0.1234
+// is 0.123), one from a hex color to the fewest decimals that keep its 8-bit
+// value (#ff000080 is 0.5). legacy (cssstyle before 4.2, black box 2.3.0 to
+// 4.1.0): the older parser: function names in lowercase, the comma syntax
+// only, integer or percentage (rounded down) channels of one kind, an alpha
+// as written (0.123456; a percentage is read as its number, so 50% is
+// opaque), a hex alpha to 3 decimals (#ff000080 is 0.502, #ff0000ff
+// rgba(255, 0, 0, 1)), channels rounded once, and no hwb().
 
 // The named colors (CSS Color 4, 6.1), as 0xRRGGBB.
 const NAMED = {
@@ -44,9 +50,29 @@ const NAMED = {
   whitesmoke: 0xf5f5f5, yellow: 0xffff00, yellowgreen: 0x9acd32,
 };
 
-// System colors in a light color scheme.
-const SYSTEM = { canvas: 0xffffff, canvastext: 0x000000, linktext: 0x0000ee, graytext: 0x808080, buttonface: 0xefefef,
-  buttontext: 0x000000, field: 0xffffff, fieldtext: 0x000000, highlight: 0x3399ff, highlighttext: 0xffffff };
+// The system colors (CSS Color 4, 6.2, and the deprecated ones of 6.2.1)
+// as jsdom 27 and later compute them (black box, 27.0.0 to 30.1.3).
+const SYSTEM = {
+  accentcolor: 0x0099ff, accentcolortext: 0x000000, activetext: 0xff0000, buttonborder: 0x333333, buttonface: 0xcccccc,
+  buttontext: 0x000000, canvas: 0xffffff, canvastext: 0x000000, field: 0xffffff, fieldtext: 0x000000, graytext: 0x666666,
+  highlight: 0x0099ff, highlighttext: 0xffffff, linktext: 0x0000ff, mark: 0xffff00, marktext: 0x000000, selecteditem: 0x0099ff,
+  selecteditemtext: 0xffffff, visitedtext: 0x800080,
+  activeborder: 0x333333, activecaption: 0xffffff, appworkspace: 0xffffff, background: 0xffffff, buttonhighlight: 0xcccccc,
+  buttonshadow: 0xcccccc, captiontext: 0x000000, inactiveborder: 0x333333, inactivecaption: 0xffffff, inactivecaptiontext: 0x666666,
+  infobackground: 0xffffff, infotext: 0x000000, menu: 0xffffff, menutext: 0x000000, scrollbar: 0xffffff, threeddarkshadow: 0x333333,
+  threedface: 0xcccccc, threedhighlight: 0x333333, threedlightshadow: 0x333333, threedshadow: 0x333333, window: 0xffffff,
+  windowframe: 0x333333, windowtext: 0x000000,
+};
+// CSS 2's system colors, the only ones cssstyle before 4.4 knows (black
+// box, 2.3.0 to 4.3.1): with ButtonText, GrayText, Highlight and
+// HighlightText the deprecated ones.
+const CSS2_SYSTEM = new Set(['activeborder', 'activecaption', 'appworkspace', 'background', 'buttonface', 'buttonhighlight', 'buttonshadow',
+  'buttontext', 'captiontext', 'graytext', 'highlight', 'highlighttext', 'inactiveborder', 'inactivecaption', 'inactivecaptiontext',
+  'infobackground', 'infotext', 'menu', 'menutext', 'scrollbar', 'threeddarkshadow', 'threedface', 'threedhighlight', 'threedlightshadow',
+  'threedshadow', 'window', 'windowframe', 'windowtext']);
+// A lowercased keyword's kind: 2 a CSS 2 system color, 1 another system
+// color, 0 not a system color.
+export const systemColorKind = (lower) => (SYSTEM[lower] === undefined ? 0 : CSS2_SYSTEM.has(lower) ? 2 : 1);
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
@@ -61,21 +87,35 @@ const serialize = (r, g, b, a = 1) => (a >= 1
   ? `rgb(${r}, ${g}, ${b})`
   : `rgba(${r}, ${g}, ${b}, ${serializeAlpha(a)})`);
 
+// An alpha given as a number (rgba(), hsla(), / a): to 3 decimals; legacy
+// as written.
+function serializeNumeric(r, g, b, a, legacy) {
+  const alpha = legacy ? a : Math.round(a * 1000) / 1000;
+  return alpha >= 1 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 const fromHex = (n, a = 1) => serialize((n >> 16) & 255, (n >> 8) & 255, n & 255, a);
 
-function hex(text) {
+function hex(text, legacy) {
   const h = text.slice(1);
   if (!/^[0-9a-f]+$/i.test(h)) return null;
   const d = (s) => parseInt(s, 16);
+  let r, g, b, a = -1;
   switch (h.length) {
-    case 3: case 4: {
-      const [r, g, b, a] = [...h].map((c) => d(c + c));
-      return serialize(r, g, b, h.length === 4 ? a / 255 : 1);
-    }
+    case 3: case 4:
+      [r, g, b, a = -1] = [...h].map((c) => d(c + c));
+      break;
     case 6: case 8:
-      return serialize(d(h.slice(0, 2)), d(h.slice(2, 4)), d(h.slice(4, 6)), h.length === 8 ? d(h.slice(6, 8)) / 255 : 1);
+      r = d(h.slice(0, 2)); g = d(h.slice(2, 4)); b = d(h.slice(4, 6));
+      if (h.length === 8) a = d(h.slice(6, 8));
+      break;
     default: return null;
   }
+  if (a < 0) return serialize(r, g, b);
+  // 'floor': jsdom 22.1 to 26's computed value of one cssstyle kept as
+  // written (a border side's).
+  if (legacy === 'floor') return a === 255 ? serialize(r, g, b) : `rgba(${r}, ${g}, ${b}, ${Math.floor((a / 255) * 1000) / 1000})`;
+  return legacy ? `rgba(${r}, ${g}, ${b}, ${Math.round((a / 255) * 1000) / 1000})` : serialize(r, g, b, a / 255);
 }
 
 // Arguments of a color function, in the legacy (commas) or modern
@@ -96,21 +136,30 @@ function colorArgs(inner) {
 
 const number = (s) => (/^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(s) ? Number(s) : NaN);
 
-function alphaValue(s) {
+function alphaValue(s, legacy) {
   if (s === null) return 1;
+  if (legacy) return clamp(parseFloat(s), 0, 1);
   if (s.endsWith('%')) return clamp(number(s.slice(0, -1)) / 100, 0, 1);
   return clamp(number(s), 0, 1);
 }
 
 const fourDigits = (v) => Math.round(Number(v.toPrecision(4)));
 
-function rgbFunction(inner, round) {
+const LEGACY_INTEGER = /^[+-]?\d+$/;
+const LEGACY_PERCENT = /^[+-]?(\d+\.?\d*|\.\d+)%$/;
+function rgbFunction(inner, round, legacy) {
   const args = colorArgs(inner);
   if (!args) return null;
-  const channel = (s) => round(clamp(s.endsWith('%') ? (number(s.slice(0, -1)) * 255) / 100 : number(s), 0, 255));
+  // The comma syntax takes numbers or percentages, not both (CSS Color 4,
+  // 5.1); the older parser integers only.
+  if (inner.includes(',') && args[0].some((s) => s.endsWith('%')) && !args[0].every((s) => s.endsWith('%'))) return null;
+  if (legacy && !args[0].every((s) => LEGACY_INTEGER.test(s)) && !args[0].every((s) => LEGACY_PERCENT.test(s))) return null;
+  const channel = legacy
+    ? (s) => clamp(s.endsWith('%') ? Math.floor((number(s.slice(0, -1)) * 255) / 100) : number(s), 0, 255)
+    : (s) => round(clamp(s.endsWith('%') ? (number(s.slice(0, -1)) * 255) / 100 : number(s), 0, 255));
   const [r, g, b] = args[0].map(channel);
-  const a = alphaValue(args[1]);
-  return [r, g, b, a].some(Number.isNaN) ? null : serialize(r, g, b, a);
+  const a = alphaValue(args[1], legacy);
+  return [r, g, b, a].some(Number.isNaN) ? null : serializeNumeric(r, g, b, a, legacy);
 }
 
 // CSS Color 4, 7.1: hslToRgb, channels from 0 to 1.
@@ -122,17 +171,47 @@ function hslToRgb(h, s, l) {
   return [f(0), f(8), f(4)];
 }
 
-function hslFunction(inner, round) {
+// cssstyle 2 and 3 read the hue in turns, once wrapped into [0, 1] per
+// channel (turns: true).
+function hueToChannel(p, q, t) {
+  if (t < 0) t += 1;
+  if (t > 1) t -= 1;
+  if (t < 1 / 6) return p + (q - p) * 6 * t;
+  if (t < 1 / 2) return q;
+  if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+  return p;
+}
+
+// A hue in degrees, wrapped into [0, 360): a number or deg, from cssstyle
+// 4.2 also grad, rad and turn (hsl(0.5turn 100% 50%) is rgb(0, 255, 255));
+// the older parser deg only.
+const HUE_UNITS = { deg: 1, grad: 0.9, rad: 180 / Math.PI, turn: 360 };
+const HUE = /^([\s\S]*?)(deg|grad|rad|turn)?$/i;
+function hueDegrees(s, legacy) {
+  const [, n, unit] = HUE.exec(s);
+  if (unit !== undefined && legacy && unit.toLowerCase() !== 'deg') return NaN;
+  const deg = number(n) * (unit === undefined ? 1 : HUE_UNITS[unit.toLowerCase()]);
+  return ((deg % 360) + 360) % 360;
+}
+
+function hslFunction(inner, round, legacy, turns = false) {
   const args = colorArgs(inner);
   if (!args) return null;
   const [hs, ss, ls] = args[0];
-  const h = ((number(hs.replace(/deg$/i, '')) % 360) + 360) % 360;
+  if (turns) {
+    const h = number(hs), s = clamp(number(ss.replace(/%$/, '')) / 100, 0, 1), l = clamp(number(ls.replace(/%$/, '')) / 100, 0, 1);
+    const a = alphaValue(args[1], legacy);
+    if ([h, s, l, a].some(Number.isNaN)) return null;
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+    return serializeNumeric(round(hueToChannel(p, q, h + 1 / 3) * 255), round(hueToChannel(p, q, h) * 255), round(hueToChannel(p, q, h - 1 / 3) * 255), a, legacy);
+  }
+  const h = hueDegrees(hs, legacy);
   const s = clamp(number(ss.replace(/%$/, '')) / 100, 0, 1);
   const l = clamp(number(ls.replace(/%$/, '')) / 100, 0, 1);
-  const a = alphaValue(args[1]);
+  const a = alphaValue(args[1], legacy);
   if ([h, s, l, a].some(Number.isNaN)) return null;
   const [r, g, b] = hslToRgb(h, s, l);
-  return serialize(round(r * 255), round(g * 255), round(b * 255), a);
+  return serializeNumeric(round(r * 255), round(g * 255), round(b * 255), a, legacy);
 }
 
 // hwb(), modern syntax only (CSS Color 4, 8.1: hwbToRgb).
@@ -142,29 +221,40 @@ function hwbFunction(inner, round) {
   if (!args) return null;
   const [hs, ws, bs] = args[0];
   if (!ws.endsWith('%') || !bs.endsWith('%')) return null;
-  const h = ((number(hs.replace(/deg$/i, '')) % 360) + 360) % 360;
+  const h = hueDegrees(hs, false);
   let w = clamp(number(ws.slice(0, -1)) / 100, 0, 1);
   let bl = clamp(number(bs.slice(0, -1)) / 100, 0, 1);
-  const a = alphaValue(args[1]);
+  const a = alphaValue(args[1], false);
   if ([h, w, bl, a].some(Number.isNaN)) return null;
   if (w + bl >= 1) { w /= w + bl; bl = 1 - w; }
   const rgb = hslToRgb(h, 1, 0.5).map((c) => (c * (1 - w - bl) + w) * 255);
-  return serialize(round(rgb[0]), round(rgb[1]), round(rgb[2]), a);
+  return serializeNumeric(round(rgb[0]), round(rgb[1]), round(rgb[2]), a, false);
 }
 
 // The resolved form of one color token, or null when it is not a color
 // this module resolves. currentcolor is left to the caller.
+// legacy: false (the current parser), true (the older parser, cssstyle
+// before 4.2), 'cssstyle3' (the older parser with cssstyle 2 and 3's hsl(),
+// whose hue is read in turns: hsl(120, 50%, 50%) is rgb(64, 64, 64)),
+// 'floor' (jsdom 22.1 to 26's
+// computed value of a hex color cssstyle kept as written: its alpha
+// rounded down to 3 decimals).
 export function resolveColor(token, legacy = false) {
   const lower = token.toLowerCase();
-  if (lower[0] === '#') return hex(lower);
+  if (lower[0] === '#') return hex(lower, legacy);
   if (lower === 'transparent') return 'rgba(0, 0, 0, 0)';
   const named = NAMED[lower] ?? SYSTEM[lower];
   if (named !== undefined) return fromHex(named);
-  const m = /^(rgba?|hsla?|hwb)\((.*)\)$/s.exec(lower);
+  const old = legacy === true || legacy === 'cssstyle3';
+  // The older parser: lowercase names, comma syntax, no space inside the
+  // parentheses' ends.
+  const m = old ? /^(rgba?|hsla?)\((\S(?:.*\S)?)\)$/s.exec(token) : /^(rgba?|hsla?|hwb)\((.*)\)$/s.exec(lower);
   if (!m) return null;
-  const round = legacy ? Math.round : fourDigits;
-  if (m[1] === 'hwb') return legacy ? null : hwbFunction(m[2].trim(), round);
-  return m[1].startsWith('rgb') ? rgbFunction(m[2].trim(), round) : hslFunction(m[2].trim(), round);
+  if (old && (!m[2].includes(',') || /\s,/.test(m[2]))) return null;
+  const round = old ? Math.round : fourDigits;
+  if (m[1] === 'hwb') return hwbFunction(m[2].trim(), round);
+  if (m[1].startsWith('rgb')) return rgbFunction(m[2].trim(), round, old);
+  return hslFunction(m[2].trim(), round, old, legacy === 'cssstyle3');
 }
 
 export const NAMED_COLORS = Object.keys(NAMED);

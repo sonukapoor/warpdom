@@ -16,10 +16,11 @@
 // display rules say (but not over its style attribute).
 import { S, ELEMENT_NODE, DOCUMENT_NODE, HTML_NS, rootOf, nextInTree, cssomChanges, connected, trackDetachedStyles } from './internal.js';
 import { LONGHANDS, SHORTHANDS, ALIASES } from './css-data.js';
-import { resolveColor } from './colors.js';
+import { resolveColor, systemColorKind } from './colors.js';
 import { segments, expand, serializeBox, BOX, PAIRS, CSS_WIDE, backgroundComponents } from './shorthands.js';
 import { compileRuleSelector } from './selectors.js';
 import { directionality } from './directionality.js';
+import { absoluteLength, mayResolve, sixDigits, FONT_SIZE_KEYWORDS, relativeWeight } from './lengths.js';
 import { uaDeclarations, uaValue } from './ua-sheet.js';
 import { documentStyleSheets, styleElementSheet } from './cssom.js';
 import { parseDeclarations, computed, validationModeOf, styleSurfaceOf, isLegacyMode, EXPANDED_SHORTHANDS } from './css.js';
@@ -32,15 +33,44 @@ import { parseDeclarations, computed, validationModeOf, styleSurfaceOf, isLegacy
 // are declared alone, and leave their longhands undeclared (overflow:
 // hidden gives overflow-x '' before jsdom 29.0.2, visible from it;
 // border-radius: 6px gives border-top-left-radius '' or 0).
-function cascadeExpand(property, value, legacyFont) {
+// An expanded shorthand declared with var() declares its longhands as
+// PENDING (compat.pendingLonghands, black box: jsdom 26 with cssstyle 4.4
+// to 4.6, 27.4, 28.1, 29.1.1, 30.1.3): they win the cascade as declared
+// values do, and then compute as undeclared, without the user agent
+// sheet's (cascade): padding: var(--p) gives a textarea padding-top ''
+// before jsdom 29.0.2 and 0 from it, not the user agent sheet's 2px.
+// The border shorthands differ: before jsdom 27 one with var() leaves
+// the page's border longhands alone, but for a side's own, and hides the
+// user agent sheet's border widths and styles, all four sides (HIDE_UA:
+// border-width: var(--w) gives a textarea border-top-width and
+// border-top-style ''); in the style attribute they declare nothing in
+// jsdom 27 and 28.
+const PENDING = '\0pending';
+const HIDE_UA = '\0hide-ua';
+const BORDER_FAMILY = new Set(['border', 'border-top', 'border-right', 'border-bottom', 'border-left', 'border-width', 'border-color', 'border-style']);
+const UA_BORDER = ['border', 'border-width', 'border-style', 'border-color', ...['top', 'right', 'bottom', 'left'].flatMap((side) => [`border-${side}-width`, `border-${side}-style`])];
+function cascadeExpand(property, value, legacyFont, compat = null, inline = false) {
   const name = ALIASES[property] ?? property;
-  if (SHORTHANDS[name] !== undefined && !EXPANDED_SHORTHANDS.has(name)) return [[name, value]];
+  const longhands = SHORTHANDS[name];
+  if (longhands !== undefined && !EXPANDED_SHORTHANDS.has(name)) return [[name, value]];
+  if (compat?.pendingLonghands && longhands !== undefined && value.includes('var(')) {
+    if (!BORDER_FAMILY.has(name)) return [[name, value], ...longhands.map((l) => [l, PENDING])];
+    if (compat.jsdom < 27) {
+      // A side (border-top: var(--b)) declares its own longhands pending.
+      const side = BORDER_SIDE.test(name);
+      const out = [[name, value]];
+      for (const l of UA_BORDER) if (!side || !longhands.includes(l)) out.push([l, HIDE_UA]);
+      if (side) for (const l of longhands) out.push([l, PENDING]);
+      return out;
+    }
+    if (!inline || compat.jsdom >= 29) return [[name, value], ...longhands.map((l) => [l, PENDING])];
+  }
   return expand(property, value, legacyFont);
 }
 
-function addDeclarations(index, decls, entries, counter) {
+function addDeclarations(index, decls, entries, counter, compat) {
   for (const [property, { value, important }] of decls) {
-    for (const [name, v] of cascadeExpand(property, value, decls.legacyFont)) {
+    for (const [name, v] of cascadeExpand(property, value, decls.legacyFont, compat)) {
       let lists = index.get(name);
       if (!lists) index.set(name, lists = { normal: [], important: [] });
       const order = counter.n++;
@@ -61,13 +91,13 @@ function mediaApplies(rule, mode) {
   return list.length === 0 || list.includes('all') || list.includes('screen');
 }
 
-function buildIndex(sheets, mode) {
+function buildIndex(sheets, mode, compat) {
   const index = new Map();
   const counter = { n: 0 };
   const addRule = (rule) => {
     let entries;
     try { entries = compileRuleSelector(rule[S].selectorText); } catch { return; }
-    addDeclarations(index, rule[S].style[S].decls, entries, counter);
+    addDeclarations(index, rule[S].style[S].decls, entries, counter, compat);
   };
   for (const sheet of sheets) {
     const ss = sheet[S];
@@ -116,7 +146,7 @@ function ruleIndex(element) {
   const sheets = holder === ds ? documentStyleSheets(es.doc)[S].items() : shadowSheets(root);
   const index = cached && cached.cssomRev === cssomChanges.rev && sameSheets(cached.sheets, sheets)
     ? cached.index
-    : sheets.length ? buildIndex(sheets, validationModeOf(ds.window)) : EMPTY;
+    : sheets.length ? buildIndex(sheets, validationModeOf(ds.window), ds.window[S].compat) : EMPTY;
   holder.cascade = { treeRev, styleRev, cssomRev: cssomChanges.rev, sheets: sheets.slice(), index };
   return index;
 }
@@ -132,19 +162,50 @@ function inlineDeclarations(element) {
   const map = new Map();
   const mode = validationModeOf(es.doc[S].window);
   const decls = parseDeclarations(text, mode, styleSurfaceOf(es.doc[S].window));
+  const compat = es.doc[S].window[S].compat;
   for (const [property, { value, important }] of decls) {
-    for (const [name, v] of cascadeExpand(property, value, decls.legacyFont)) {
-      if (!important && map.get(name)?.important) continue;
-      map.set(name, { value: v, important });
+    const entries = cascadeExpand(property, value, decls.legacyFont, compat, true);
+    const shorthand = entries.length > 1 && entries[entries.length - 1][1] === PENDING ? entries[0][0] : null;
+    // From jsdom 29 a border shorthand with var() after one of its
+    // longhands in the attribute declares nothing.
+    if (shorthand !== null && compat.jsdom >= 29 && BORDER_FAMILY.has(shorthand)
+      && SHORTHANDS[shorthand].some((l) => map.has(l) && map.get(l).value !== PENDING)) continue;
+    for (const [name, v] of entries) {
+      let prior = map.get(name);
+      // A longhand after a shorthand with var() in the attribute (padding:
+      // var(--p); padding-top: 4px): from jsdom 27 the longhand is dropped
+      // (padding-top '' or 0), but for the border shorthands; otherwise the
+      // shorthand's pending longhands are (padding-left from the user agent
+      // sheet), and the shorthand too but for a border one before 27.
+      if (prior?.value === PENDING && v !== PENDING) {
+        if (compat.jsdom >= 27 && !BORDER_FAMILY.has(prior.from)) {
+          if (entries.length === 1) continue;
+        } else {
+          for (const l of SHORTHANDS[prior.from]) if (map.get(l)?.value === PENDING) map.delete(l);
+          if (compat.jsdom >= 27 || !BORDER_FAMILY.has(prior.from)) map.delete(prior.from);
+          prior = undefined;
+        }
+      }
+      if (!important && prior?.important) continue;
+      if (v === HIDE_UA && prior !== undefined) continue;
+      map.set(name, v === PENDING ? { value: v, important, from: shorthand } : { value: v, important });
     }
   }
   es.inlineCascade = { text, map };
   return map;
 }
 
+// The first matching entry's value, past HIDE_UA ones (noted in uaHidden);
+// settled: past PENDING ones too.
 const NO_SCOPE = {};
-function firstMatch(list, element) {
-  for (const entry of list) if (entry.match(element, NO_SCOPE)) return entry.value;
+let uaHidden = false;
+function firstMatch(list, element, settled = false) {
+  for (const entry of list) {
+    const value = entry.value;
+    if ((settled && value === PENDING) || !entry.match(element, NO_SCOPE)) continue;
+    if (value !== HIDE_UA) return value;
+    uaHidden = true;
+  }
   return undefined;
 }
 
@@ -158,7 +219,8 @@ function cascaded(element, name) {
   // A disconnected element's values stay as they were (see below).
   if (cache !== undefined && cache.detached && cache.detachedRev === ds.detachedRev && cache.cssomRev === cssomChanges.rev) {
     if (cache.values.has(name)) return cache.values.get(name);
-    const value = cascade(element, cache.index, cache.inline, name);
+    let value = cascade(element, cache.index, cache.inline, name);
+    if (value === PENDING) value = undefined;
     cache.values.set(name, value);
     return value;
   }
@@ -171,9 +233,10 @@ function cascaded(element, name) {
     const root = lastRoot;
     const detached = keepsDetached(ds) && root[S].type !== DOCUMENT_NODE && !(root[S].shadow === true && connected(root[S].host));
     if (detached) trackDetachedStyles(ds);
-    cache = es.cascaded = { index, rev, inline: inlineMap, values: new Map(), detached, detachedRev: ds.detachedRev, cssomRev: cssomChanges.rev };
+    cache = es.cascaded = { index, rev, inline: inlineMap, values: new Map(), detached, detachedRev: ds.detachedRev, cssomRev: cssomChanges.rev, fontSize: undefined };
   } else if (cache.values.has(name)) return cache.values.get(name);
-  const value = cascade(element, index, inlineMap, name);
+  let value = cascade(element, index, inlineMap, name);
+  if (value === PENDING) value = undefined;
   cache.values.set(name, value);
   return value;
 }
@@ -193,6 +256,8 @@ function keepsDetached(ds) {
   return keeps;
 }
 
+// The declared value that wins (PENDING for a pending longhand: undeclared
+// for cascaded).
 function cascade(element, index, inlineMap, name) {
   const window = element[S].doc[S].window;
   const ua = uaDeclarations(window, name, cascadeExpand);
@@ -203,11 +268,16 @@ function cascade(element, index, inlineMap, name) {
     const v = uaValue(ua.important, element);
     if (v !== undefined) return v;
   }
-  const inline = inlineMap?.get(name);
+  uaHidden = false;
+  let inline = inlineMap?.get(name);
+  if (inline?.value === HIDE_UA) { uaHidden = true; inline = undefined; }
   if (inline?.important) return inline.value;
   const lists = index.get(name);
   if (lists?.important.length) {
     const v = firstMatch(lists.important, element);
+    // jsdom 29 (black box, 29.1.1): an !important shorthand with var()
+    // does not override another !important declaration of its longhands.
+    if (v === PENDING && window[S].compat.jsdom === 29) return firstMatch(lists.important, element, true) ?? v;
     if (v !== undefined) return v;
   }
   if (inline) return inline.value;
@@ -216,6 +286,7 @@ function cascade(element, index, inlineMap, name) {
     if (v !== undefined) return v;
   }
   // The user agent sheet (ua-sheet.js), under the page's.
+  if (uaHidden) return undefined;
   return (uaImportant ? undefined : uaValue(ua.important, element)) ?? uaValue(ua.normal, element);
 }
 
@@ -248,23 +319,122 @@ function currentColor(element) {
 // Computes a specified value: colors resolved, currentcolor to the color
 // property, a 0 length to 0px, keyword font sizes, weights and border
 // widths to numbers and lengths.
-function computeValue(element, name, value, data) {
-  if (data[2]) {
-    const parts = segments(value);
-    for (let i = 0; i < parts.length; i += 2) {
-      const token = parts[i];
-      if (!token) continue;
-      if (token.toLowerCase() === 'currentcolor') {
-        parts[i] = name === 'color' ? inheritedValue(element, 'color', data) : currentColor(element);
-      } else {
-        parts[i] = resolveColor(token, element[S].doc[S].window[S].compat.legacyColors) ?? token;
-      }
-    }
-    value = parts.join('');
-  }
-  if (data[3] && value === '0') return '0px';
-  if (!RAW_KEYWORDS.has(name)) return value;
+// Colors per jsdom version (compat.computedColors): before 22.1.0 as
+// declared (an opaque rgba() from a hex color as rgb()), to 26 system
+// colors (and with cssstyle before 4.4 currentcolor) as declared, and of
+// a border side shorthand's color as written there (cssstyle before 4.4)
+// hsl() and RGB() too, a hex alpha to 3 decimals rounded down.
+const OPAQUE_RGBA = /^rgba\((\d+, \d+, \d+), 1\)$/;
+function computeColors(element, name, value, data) {
   const compat = element[S].doc[S].window[S].compat;
+  // cssstyle before 4.4 leaves a border's colors undeclared when it gives
+  // none (border: 2px inset); the expansion's initial currentcolor (in
+  // lowercase) stands for that.
+  if (value === 'currentcolor' && compat.colorKeywords === 'css2' && BORDER_COLOR.test(name)) {
+    return compat.computedColors === 'declared' ? '' : currentColor(element);
+  }
+  const parts = segments(value);
+  for (let i = 0; i < parts.length; i += 2) {
+    const token = parts[i];
+    if (!token) continue;
+    if (compat.computedColors === 'declared') {
+      const opaque = OPAQUE_RGBA.exec(token);
+      if (opaque !== null) parts[i] = `rgb(${opaque[1]})`;
+      continue;
+    }
+    const lower = token.toLowerCase();
+    if (lower === 'currentcolor') {
+      // cssstyle before 4.4: kept, as currentColor.
+      if (compat.colorKeywords === 'css2') { parts[i] = 'currentColor'; continue; }
+      parts[i] = name === 'color' ? inheritedValue(element, 'color', data) : currentColor(element);
+    } else if (compat.computedColors !== 'keywords') {
+      parts[i] = resolveColor(token, compat.legacyColors) ?? token;
+    } else if (systemColorKind(lower) === 0 && !lower.startsWith('hsl') && !/^[a-zA-Z]*[A-Z][a-zA-Z]*\(/.test(token)) {
+      parts[i] = resolveColor(token, lower[0] === '#' ? 'floor' : compat.legacyColors) ?? token;
+    }
+  }
+  return parts.join('');
+}
+
+// --- absolute lengths (jsdom 30) ----------------------------------------------------
+
+// The px number of a computed font-size (16 when it is not in px, as for
+// a var() value jsdom does not substitute).
+const fontPx = (value) => (value.endsWith('px') ? Number(value.slice(0, -2)) || 0 : 16);
+
+function documentElementOf(element) {
+  for (let n = element[S].doc[S].first; n !== null; n = n[S].next) if (n[S].type === ELEMENT_NODE) return n;
+  return null;
+}
+
+// The font sizes a length refers to (lengths.js): em from the element's
+// font size (or its parent's, for font-size), rem from the root's.
+class LengthContext {
+  constructor(element, forFontSize) {
+    this.element = element;
+    this.forFontSize = forFontSize;
+    this.emPx = -1;
+    this.remPx = -1;
+  }
+  em() {
+    if (this.emPx < 0) {
+      const parent = this.forFontSize ? inheritParent(this.element) : this.element;
+      this.emPx = parent === null ? 16 : fontPx(computedValue(parent, 'font-size'));
+    }
+    return this.emPx;
+  }
+  rem() {
+    if (this.remPx < 0) {
+      const root = documentElementOf(this.element);
+      this.remPx = root === null || (root === this.element && this.forFontSize) ? 16 : fontPx(computedValue(root, 'font-size'));
+    }
+    return this.remPx;
+  }
+  // line-height normal: 1.2 times the font size.
+  lh() { return 1.2 * this.em(); }
+  rlh() { return 1.2 * this.rem(); }
+}
+
+// jsdom 30: font-size keywords, larger and smaller, percentages and
+// lengths from the parent's font size.
+function absoluteFontSize(element, value) {
+  const lower = value.toLowerCase();
+  const keyword = FONT_SIZE_KEYWORDS[lower];
+  if (keyword !== undefined) return `${keyword}px`;
+  if (lower === 'larger' || lower === 'smaller' || value.endsWith('%')) {
+    const parent = inheritParent(element);
+    const base = parent === null ? 16 : fontPx(computedValue(parent, 'font-size'));
+    if (lower === 'larger') return `${sixDigits(base * 1.2)}px`;
+    if (lower === 'smaller') return `${sixDigits(base / 1.2)}px`;
+    const percent = Number(value.slice(0, -1));
+    return Number.isNaN(percent) ? value : `${sixDigits((base * percent) / 100)}px`;
+  }
+  if (!mayResolve(value)) return value;
+  const px = absoluteLength(value, new LengthContext(element, true));
+  return px === null ? value : `${sixDigits(px)}px`;
+}
+
+function computeValue(element, name, value, data) {
+  if (data[2]) value = computeColors(element, name, value, data);
+  const compat = element[S].doc[S].window[S].compat;
+  // A 0 length: 0px from jsdom 28.1.0, as declared before (text-indent: 0).
+  if (data[3] && value === '0' && compat.zeroLengths) return '0px';
+  // jsdom 30 computes lengths to px (lengths.js), font sizes too; from
+  // 30.1.0 bolder and lighter to weights.
+  if (compat.absoluteLengths) {
+    if (name === 'font-size') return absoluteFontSize(element, value);
+    if (name === 'font-weight' && compat.relativeWeights) {
+      const lower = value.toLowerCase();
+      if (lower === 'bolder' || lower === 'lighter') {
+        const parent = inheritParent(element);
+        return String(relativeWeight(lower, parent === null ? 400 : Number(computedValue(parent, 'font-weight')) || 400));
+      }
+    } else if (mayResolve(value)) {
+      const px = absoluteLength(value, new LengthContext(element, false));
+      if (px !== null) value = `${sixDigits(px)}px`;
+    }
+  }
+  if (!RAW_KEYWORDS.has(name)) return value;
   // jsdom before 29.0.2 (black box, 20 to 29.0.1) keeps these keywords as
   // declared too (font-weight: bold, border-top-width: thin).
   if (compat.legacyComputedStyle) return value;
@@ -293,6 +463,7 @@ function initialValue(element, name, data) {
   if (name === 'display') return 'inline';
   // jsdom 29.0.2 and later (black box, to 30.1.3).
   if (name === 'outline-color') return 'rgba(0, 0, 0, 0)';
+  if (name === 'font-family') return 'depends on user agent';
   if (data[0] === null) return '';
   return data[0] === '0' ? '0' : computeValue(element, name, data[0], data);
 }
@@ -315,12 +486,31 @@ function shorthandValue(element, name) {
     // computes to that value (gap: inherit, padding: var(--x)), and one
     // jsdom does not expand (cascadeExpand) to its declared value alone.
     const own = cascaded(element, name);
+    // '' when a longhand declared over it wins (padding: var(--p), then
+    // padding-top: 5px), which its pending longhands otherwise do.
+    if (own !== undefined && own.includes('var(') && element[S].doc[S].window[S].compat.pendingLonghands && !BORDER_FAMILY.has(name)
+      && EXPANDED_SHORTHANDS.has(name) && !inlineDeclarations(element)?.has(name) && SHORTHANDS[name].some((l) => cascaded(element, l) !== undefined)) return '';
     if (own !== undefined && (CSS_WIDE.has(own) || own.includes('var('))) return legacyUnset(element, own) ? '' : own;
     if (SHORTHANDS[name] !== undefined && !EXPANDED_SHORTHANDS.has(name)) return own ?? '';
     if (LEGACY_BORDER.has(name)) return legacyBorderValue(element, name);
   }
   const longhands = SHORTHANDS[name];
-  if (longhands && BOX.has(name) && longhands.length === 4) return serializeBox(longhands.map((l) => computedValue(element, l)));
+  if (longhands && BOX.has(name) && longhands.length === 4) {
+    const values = longhands.map((l) => computedValue(element, l));
+    if (declaredComputed(element)) {
+      // jsdom before 29.0.2: '' when a side is; before 27 as declared
+      // (2px 6px 3px 6px), all four sides when the longhands changed them
+      // (the margin and padding accessors from cssstyle 4.4 in the
+      // shortest form: legacyAccessorValue).
+      if (values.includes('')) return '';
+      if (element[S].doc[S].window[S].compat.jsdom < 27) {
+        const own = cascaded(element, name);
+        if (own !== undefined && !CSS_WIDE.has(own) && expand(name, own).every(([n, v], i) => i === 0 || computedValue(element, n) === v)) return own;
+        return values.join(' ');
+      }
+    }
+    return serializeBox(values);
+  }
   if (longhands && PAIRS.has(name) && longhands.length === 2) {
     const [a, b] = longhands.map((l) => computedValue(element, l));
     return a === b ? a : `${a} ${b}`;
@@ -412,13 +602,25 @@ function backgroundParts(value) {
 const LEGACY_BACKGROUND_ORDER = ['background-image', 'background-repeat', 'background-attachment', 'background-position'];
 export function legacyAccessorValue(element, name) {
   const compat = element[S].doc[S].window[S].compat;
+  if (name === 'margin' || name === 'padding') {
+    // As getPropertyValue for a declared CSS-wide keyword or var()
+    // (padding: var(--p)); '' when a side is (padding-left: 2px alone).
+    if (compat.jsdom >= 27 || compat.colorKeywords === 'css2') return null;
+    const own = cascaded(element, name);
+    if (own !== undefined && (CSS_WIDE.has(own) || own.includes('var('))) return null;
+    const values = SHORTHANDS[name].map((l) => computedValue(element, l));
+    return values.includes('') ? '' : serializeBox(values);
+  }
   if (compat.jsdom > 26 && (name !== 'background' || compat.shorthandInitials)) return null;
   const composed = compat.composedAccessors || compat.jsdom > 26;
   const own = cascaded(element, name);
   if (own !== undefined && !compat.legacyComputedStyle && RESOLVED_KEYWORDS.has(own)) return computedValue(element, 'background-color');
   if (own !== undefined && (!composed || CSS_WIDE.has(own) || own.includes('var('))) return null;
   if (name !== 'background') {
-    const value = own ?? cascaded(element, 'border');
+    // border: var(--b) declares the sides' longhands pending (cascadeExpand):
+    // composed from them (the computed color alone).
+    let value = own ?? cascaded(element, 'border');
+    if (own === undefined && value !== undefined && composed && compat.pendingLonghands && value.includes('var(')) value = undefined;
     if (value !== undefined && (!composed || CSS_WIDE.has(value) || value.includes('var('))) return null;
     const [width, style] = value !== undefined ? borderParts(value) : [cascaded(element, `${name}-width`), cascaded(element, `${name}-style`)];
     const color = compat.jsdom >= 21 ? computedValue(element, `${name}-color`) : cascaded(element, `${name}-color`);
@@ -462,8 +664,9 @@ function legacyDefault(element, name) {
     if (name !== 'color') return LEGACY_INHERITED[name];
     return element[S].doc[S].window[S].compat.rootColor;
   }
-  if (name === 'background-color') return 'rgba(0, 0, 0, 0)';
-  if (BORDER_COLOR.test(name)) return computedValue(element, 'color');
+  // jsdom before 22.1.0: '' (compat.computedColors).
+  if (name === 'background-color') return element[S].doc[S].window[S].compat.computedColors === 'declared' ? '' : 'rgba(0, 0, 0, 0)';
+  if (BORDER_COLOR.test(name)) return element[S].doc[S].window[S].compat.computedColors === 'declared' ? '' : computedValue(element, 'color');
   return '';
 }
 
@@ -496,12 +699,24 @@ export function computedValue(element, property) {
   const data = custom ? CUSTOM : LONGHANDS[name];
   if (!data) return shorthandValue(element, name);
   const compat = element[S].doc[S].window[S].compat;
+  // jsdom 30: em lengths read the font sizes of the element and its
+  // ancestors; each element's is kept with its cascaded values (dropped
+  // with them on any tree, attribute or style sheet change).
+  if (name === 'font-size' && compat.absoluteLengths) {
+    const value = cascaded(element, name);
+    const cache = element[S].cascaded;
+    if (cache.fontSize !== undefined) return cache.fontSize;
+    return cache.fontSize = longhandValue(element, name, data, false, compat, value);
+  }
+  return longhandValue(element, name, data, custom, compat, cascaded(element, name));
+}
+
+function longhandValue(element, name, data, custom, compat, value) {
   // As in jsdom: the hidden attribute wins over display rules, not over
   // the style attribute; from jsdom 27 not on embed (embed[hidden] is
   // inline in the user agent sheet).
   if (name === 'display' && element[S].ns === HTML_NS && element[S].attrs.has('hidden') && !inlineDeclarations(element)?.has('display')
     && (compat.jsdom < 27 || element[S].tag !== 'embed')) return 'none';
-  let value = cascaded(element, name);
   if (compat.legacyComputedStyle) {
     // jsdom before 29.0.2: custom properties are not inherited either;
     // from jsdom 27 the direction of elements with dir, bdi and
@@ -631,6 +846,13 @@ function observedShorthand(element, name) {
   if (!expanded && compat.blankBorderShorthands && name.startsWith('border-')) return '';
   const own = cascaded(element, name);
   if (own !== undefined && !RESOLVED_KEYWORDS.has(own.toLowerCase())) return own;
+  // vertical-align (a shorthand in CSS Inline 3) inherits as a longhand
+  // (black box, 29.0.2 to 30.1.3; the user agent sheet's td and tr), its
+  // initial value baseline when the parent does not declare it.
+  if (name === 'vertical-align' && own !== undefined && own.toLowerCase() === 'inherit') {
+    const parent = inheritParent(element);
+    if (parent !== null) return observedShorthand(parent, name) || 'baseline';
+  }
   if (own === undefined && (expanded || !compat.shorthandInitials)) return '';
   return shorthandInitial(name, compat);
 }

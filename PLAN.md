@@ -3868,6 +3868,81 @@ CSSStyleProperties' in every profile).
   `azimuth: inherit !important` with cssstyle 5.3 (jsdom drops the
   priority). README "Differences from jsdom" lists them.
 
+
+## 2026-10-21: computed values per jsdom version (branch fix/computed-values, #84, #76)
+
+Black box on every jsdom release from 20.0.0 to 30.1.3 (jsdoms-misc,
+jsdoms-36 clean installs) and cssstyle 2.3.0 to 6.2.0 (colors, ~170 length
+properties with 0 and em, box shorthands, font sizes and weights,
+font-family, vertical-align, :link, the dialog's user agent styles).
+
+| | measured | warpdom before |
+|---|---|---|
+| colors before 22.1.0 | as declared, computed too (`Red`, `transparent`, `GrayText`); undeclared background and border colors '' | rgb() |
+| colors 22.1 to 26 | named/hex/rgb() resolved, system colors (and currentColor before cssstyle 4.4) as declared, a border side's hsl()/RGB() as written | system colors to rgb() |
+| colors 27+ | all system colors to jsdom's values (ButtonFace/ThreeDFace rgb(204, 204, 204), GrayText rgb(102, 102, 102), Highlight rgb(0, 153, 255), LinkText rgb(0, 0, 255), Mark rgb(255, 255, 0), ButtonBorder rgb(51, 51, 51), ...) | 10 known, other values |
+| cssstyle < 4.4 | keywords as written, only CSS 2's 28 system colors (ThreeDFace yes, Canvas no); border-color lowercased and border on the full border before 4.3.1; border widths and border-spacing 0 as written | lowercased, ThreeDFace rejected |
+| cssstyle 4.4, 4.5 | system colors keep their case, SelectedItem(Text) unknown | lowercased |
+| cssstyle < 4.2 | older color parser: hex alpha to 3 decimals (0.502; #f00f rgba(..., 1)), alpha as written, lowercase comma-syntax functions only, integers or percentages (floored); cssstyle 2/3 read hsl()'s hue in turns (hsl(120, 50%, 50%) rgb(64, 64, 64)) | current parser |
+| cssstyle 5 (27.0-28.0) | system colors dropped in border sides and a lone one in background/text-decoration | kept |
+| alpha | a number to 3 decimals (0.1234 -> 0.123) in every version from cssstyle 4.2; rgb() mixing numbers and % in the comma syntax invalid; hsl() hues in grad, rad and turn from cssstyle 4.2 | byte-quantized (0.12); accepted |
+| a declared 0 | 0 before 28.1.0 where cssstyle does not parse the property (text-indent, min-width, letter-spacing; cssstyle 5 parses margins, paddings, widths, heights, offsets, border widths, border-spacing, flex-basis, font-size, background-size); 0px from 28.1.0, vertical-align too | 0px |
+| margin/padding/border-width before 27 | as declared (2px 6px 3px 6px), all four sides once a longhand changed them, '' with a side ''; from cssstyle 4.4 the margin/padding accessors read the shortest form ('' with a side '', a declared var() or CSS-wide keyword as getPropertyValue), getPropertyValue/cssText as written | shortest |
+| font-family 29.0.2+ | 'depends on user agent' when undeclared/initial | '' |
+| vertical-align: inherit 29.0.2+ | inherits (td/tr middle from tbody), baseline from a parent without one | baseline |
+| lengths 30.0+ | one length or math function to px, 6 significant digits: em/ex(0.5)/ch(0.5)/cap/ic/lh(1.2em) from the element's font size (font-size from its parent's), rem/rex/rlh from the root's, vw/vh/vi/vb/vmin/vmax at 1024 x 768, cm/mm/q/in/pt/pc at 96 dpi, calc/min/max/clamp; font-size keywords (9/10/13/16/18/24/32/48px), larger/smaller (x1.2), %; other % and lists as declared | as declared |
+| bolder/lighter 30.1.0+ | CSS Fonts 4 table from the parent's weight (b 700, h1 b 900, bolder keeps 900 to 1000) | bolder |
+| :link | an SVG a with href matches :link/:any-link (xlink:href does not), every version | HTML only |
+| default cssstyle | 2.3 to 21.0.x, 3.0 21.1-23.0.x, 4.x from 23.1.0 (dependency ranges) | 3.0 for 21-23 |
+
+#76 (dialog): jsdom 20-22.0 white/black (named colors as declared), an open
+dialog's display '' before 27 (already so), inset-inline-start 0 in 27.0 to
+28.0 (the zero rule). The earlier note that 27.4.0's parser drops the
+dialog's Canvas and fit-content was a measurement artifact: jsdom 27.1+
+parses style sheets with the cssstyle `@acemir/cssom` resolves, and the
+jsdoms install had a hoisted cssstyle 2.3.0 next to it (sheets then drop
+CSS 4 system colors, fit-content, uppercase units, use the old hsl() and
+hex alpha). Clean installs (jsdoms-36) keep them; warpdom follows the clean
+install. The repository's jsdom27/28 aliases resolve the root cssstyle
+4.6.0 there too, so parity scenarios for 27/28 avoid sheet values where
+4.6 and 5.3 differ. Projects with jest-environment-jsdom 29 beside jsdom
+27+ can hit the artifact for real; not modeled.
+
+Implementation: colors.js (jsdom's system color table, the CSS 2 set,
+legacy/'cssstyle3'/'floor' parsers, numeric alpha), css.js (surface color
+dialect colorKeywords per cssstyle, rejectsColor, zeroAsWritten for
+cssstyle 5, box shorthands as written, margin/padding accessors), cascade.js
+(computeColors per compat.computedColors, zeroLengths, box shorthands,
+vertical-align inheritance, font-family initial), lengths.js (jsdom 30's
+absolute lengths; a small calc evaluator), selectors.js (:link), compat
+flags colorKeywords, computedColors, zeroLengths, absoluteLengths,
+relativeWeights. Tests: test/computed-values.test.js (parity with jsdom 20,
+22, 25, 26, 27, 28, 29, 30 per item, boundaries as plain tests).
+
+Bench (Node 22.17.1, machine shared with another agent, medians of 5
+interleaved runs, main 3c0cf9f vs branch): cascade-bench read pass 0.50 ->
+0.52 ms, mutate+read 1.84 -> 1.85 ms; bench:hot within noise (no style
+cases); bench:load within noise (loaded machine). Cache-miss pass, 2,000
+elements x 8 properties (colors, em lengths, font size and weight), ms per
+jsdom 20.0.3 / 26.1.0 / 28.1.0 / 30.1.3 profile: 7.3/7.4/7.2/9.2 -> 6.0/7.8/
+7.7/11.0. The 30.1.3 extra is resolving em through the ancestors' font
+sizes (kept with each element's cascaded values; 12.9 ms without).
+
+Left (measured, not modeled): the font shorthand composed from its
+longhands (computed `font`: 30.1.3 `16px depends on user agent`, 30.1.0
+`400 16px ...`, 29.0.2 `medium ...`; el.style.font from longhands in every
+version); a shorthand followed by a longhand in a declaration block (jsdom
+expands to longhands: `margin: 1px 2px; margin-top: 3px` reads `3px 2px
+1px`; warpdom keeps both declarations and a stale shorthand) - every
+version, worth an issue; `!important` in style sheets ignored by jsdom
+before 29 (and lost for a longhand after its shorthand in 29) - worth an
+issue; jsdom 30.1's calc(100% - 1em) as calc(100% - 0px); declared values
+in jsdom 29/30 (uppercase units lowercased, calc() simplified, min()/max()
+dropped in 29); cssText as written vs accessor for 4.4+ (done) but sheet
+cssText as written in 27.0; color: initial '' with cssstyle 4.3.1; a
+border shorthand's hex alpha rounded down in 22.1-26; author lowercase
+`currentcolor` in a full border with cssstyle 2/3 (computed '').
+
 ## 2026-10-21: window setters and their receiver (branch fix/setter-receivers, #90)
 
 #90 (from Copilot's review of #87): the window's self setter, and self and

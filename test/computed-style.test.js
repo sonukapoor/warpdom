@@ -253,13 +253,10 @@ parity('getComputedStyle: the user agent style sheet (jsdom 25)', uaScenario, { 
 parity('getComputedStyle: the user agent style sheet (jsdom 26)', uaScenario, { jsdom: 26 });
 parity('getComputedStyle: the user agent style sheet (jsdom 27)', uaScenario, { jsdom: 27 });
 parity('getComputedStyle: the user agent style sheet (jsdom 28)', uaScenario, { jsdom: 28 });
-// Not compared from jsdom 29.0.2, where warpdom differs whatever the sheet
-// says: font-family (its initial value is 'depends on user agent' there),
-// vertical-align: inherit (jsdom inherits it as a longhand); from 30.0 em
-// lengths and bolder resolved (font-weight, the dialog's padding).
-const LATER = ['font-family', 'vertical-align'];
-parity('getComputedStyle: the user agent style sheet (jsdom 29)', (w) => uaScenario(w, LATER), { jsdom: 29 });
-parity('getComputedStyle: the user agent style sheet', (w) => uaScenario(w, [...LATER, 'font-weight', 'padding-top', 'padding-left']));
+parity('getComputedStyle: the user agent style sheet (jsdom 29)', uaScenario, { jsdom: 29 });
+// Not compared from jsdom 30.0, where warpdom differs whatever the sheet
+// says: em lengths and bolder resolved (font-weight, the dialog's padding).
+parity('getComputedStyle: the user agent style sheet', (w) => uaScenario(w, ['font-weight', 'padding-top', 'padding-left']));
 
 // Heading sizes, sectioned h1 included (before 27: 1.5em in one section,
 // 1.17em from two). Not jsdom 30, which resolves em to px (#84).

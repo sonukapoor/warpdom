@@ -8,7 +8,7 @@ import { SURFACES } from './style-surface.js';
 import { LONGHANDS, SHORTHANDS, COLOR_SHORTHANDS, ALIASES } from './css-data.js';
 import { isValidValue } from './css-values.js';
 import { expand, segments, serializeBox, serializeFont, positionLayers, legacyFont, LEGACY_FONT_LONGHANDS } from './shorthands.js';
-import { resolveColor } from './colors.js';
+import { resolveColor, systemColorKind } from './colors.js';
 
 // backgroundColor -> background-color, webkitAnimation/WebkitAnimation ->
 // -webkit-animation, cssFloat -> float; dashed names map to themselves.
@@ -44,6 +44,24 @@ function splitOutside(text, sep) {
 // inset: 0 100dvh). Numbers stay (opacity: 0, line-height: 0).
 const ZERO = /^[+-]?(0+\.?0*|\.0+)$/;
 const BOX_SHORTHANDS = new Set(['margin', 'padding', 'border-width']);
+// Functions as one side each (calc(100% - 2px) calc(100% - 2px) is
+// calc(100% - 2px)); a value with var() as written.
+const shortestBox = (value) => {
+  let tokens;
+  if (!value.includes('(')) tokens = value.split(' ');
+  else {
+    if (value.includes('var(')) return value;
+    const parts = segments(value);
+    if (parts.some((p, i) => i % 2 === 1 && p.trim() !== '')) return value;
+    tokens = parts.filter((_, i) => i % 2 === 0);
+  }
+  return tokens.length > 4 ? value : serializeBox([tokens[0], tokens[1] ?? tokens[0], tokens[2] ?? tokens[0], tokens[3] ?? tokens[1] ?? tokens[0]]);
+};
+// The length properties cssstyle 5 parses (black box, jsdom 27.0 to 28.0):
+// a 0 is 0px there, as written elsewhere (text-indent: 0, min-width: 0).
+const ZERO_PARSED_5 = new Set(['background-size', 'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width', 'border-spacing',
+  'top', 'right', 'bottom', 'left', 'flex-basis', 'font-size', 'height', 'width', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+  'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'margin', 'padding', 'border-width']);
 const ZERO_LISTS = new Set(['margin', 'padding', 'border-width', 'border-spacing', 'background-position']);
 const zeroIsLength = new Map();
 function isLengthProperty(name) {
@@ -73,11 +91,23 @@ function isColorProperty(name) {
 // over and over (style.color = '#f00' on every render).
 // legacyColors (set by declaredValue): cssstyle before 4.2, whose rgb()
 // and hsl() round channels once and which does not resolve hwb()
-// (colors.js).
+// (colors.js; 'cssstyle3' with cssstyle 2 and 3's hsl()). colorKeywords
+// (the surface's, set by declaredValue): how
+// the profile's cssstyle writes color keywords (black box): 'css2' before
+// 4.4, named colors, transparent, currentcolor and system colors as written
+// (Red, ButtonFace), CSS 4's system colors (Canvas) unknown; 'written' 4.4
+// and 4.5, system colors as written, the others lowercased; null (4.6 and
+// later, jsdom 27 and later) all lowercased.
 let legacyColors = false;
-const colorCaches = [new Map(), new Map()];
+let colorKeywords = null;
+// cssstyle 5 (jsdom 27.0 to 28.0, set by declaredValue): a 0 stays 0 except
+// in the properties it parses (ZERO_PARSED_5).
+let zeroAsWritten = false;
+const colorCaches = new Map();
 function declaredColors(value) {
-  const colorCache = colorCaches[legacyColors ? 1 : 0];
+  const key = `${legacyColors} ${colorKeywords}`;
+  let colorCache = colorCaches.get(key);
+  if (colorCache === undefined) colorCaches.set(key, colorCache = new Map());
   let out = colorCache.get(value);
   if (out === undefined) {
     out = serializeColors(value);
@@ -94,9 +124,39 @@ function serializeColors(value) {
     if (!token) continue;
     const lower = token.toLowerCase();
     if (lower[0] === '#' || /^(rgba?|hsla?|hwb)\(/.test(lower)) parts[i] = resolveColor(token, legacyColors) ?? token;
-    else if (resolveColor(lower) !== null || lower === 'currentcolor') parts[i] = lower;
+    else if (resolveColor(lower) !== null || lower === 'currentcolor') {
+      parts[i] = colorKeywords === 'css2' || (colorKeywords === 'written' && systemColorKind(lower) !== 0) ? token : lower;
+    }
   }
   return parts.join('');
+}
+
+// Whether the profile's cssstyle rejects a color value the grammar
+// accepts (black box): before 4.4 CSS 4's system colors (Canvas, Field;
+// CSS 2's ButtonFace and ThreeDFace it knows), in 4.4 and 4.5 SelectedItem
+// and SelectedItemText, before 4.2 color functions
+// its older parser does not read (RGB(), rgb(0 0 0), rgb(1.5, 0, 0));
+// cssstyle 5 (jsdom 27.0 to 28.0) system colors in the border side
+// shorthands, and background or text-decoration of one system color. And
+// in every profile rgb() and hsl() mixing numbers and percentages in the
+// comma syntax (rgb(50%, 0, 0)).
+function rejectsColor(name, value, surface) {
+  const shorthandSystem = surface !== null && (surface.key === 'cssstyle5' || surface.key === 'cssstyle5.0');
+  const oldParser = legacyColors === true || legacyColors === 'cssstyle3';
+  if (colorKeywords === null && !oldParser && !shorthandSystem && !value.includes(',')) return false;
+  const parts = segments(value);
+  for (let i = 0; i < parts.length; i += 2) {
+    const token = parts[i];
+    if (!token) continue;
+    const lower = token.toLowerCase();
+    if (oldParser && /^(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix)\(/.test(lower) && resolveColor(token, true) === null) return true;
+    // rgb() and hsl() in the comma syntax: numbers or percentages, not both.
+    if (/^(rgba?|hsla?)\([^()]*,[^()]*\)$/.test(lower) && resolveColor(token, legacyColors) === null) return true;
+    const kind = systemColorKind(lower);
+    if (kind === 1 && (colorKeywords === 'css2' || (colorKeywords === 'written' && lower.startsWith('selecteditem')))) return true;
+    if (kind !== 0 && shorthandSystem && ((BORDER_SHORTHAND.has(name) && name !== 'border') || ((name === 'background' || name === 'text-decoration') && parts.length === 1))) return true;
+  }
+  return false;
 }
 
 // Commas in math functions and gradients serialize as ", " (CSS Values
@@ -297,20 +357,24 @@ const surfaces = new WeakMap(); // CSSStyleProperties prototype -> styleSurface 
 // (react-spectrum's usePress tests save and restore it that way); cssstyle
 // 2 to 4.3 write it as webkit-user-select.
 // fontVariant: cssstyle's font shorthand before 4.4 ('cssstyle4.1' or
-// 'cssstyle4.2', see legacyFont in shorthands.js), or null.
-export function setValidationMode(proto, mode, surfaceKey = null, fontVariant = null) {
+// 'cssstyle4.2', see legacyFont in shorthands.js), or null. colors: how
+// its cssstyle writes color keywords ('css2', 'written' or null, see
+// colorKeywords).
+export function setValidationMode(proto, mode, surfaceKey = null, fontVariant = null, colors = null) {
   modes.set(proto, mode);
-  if (surfaceKey !== null) surfaces.set(proto, fontVariant === null ? styleSurface(surfaceKey) : legacyFontSurface(surfaceKey, fontVariant));
+  if (surfaceKey !== null) surfaces.set(proto, fontVariant === null && colors === null ? styleSurface(surfaceKey) : variantSurface(surfaceKey, fontVariant, colors));
 }
 
-// A style surface with cssstyle's font shorthand before 4.4: the same
-// names, its own declared value caches.
-const fontSurfaces = new Map();
-function legacyFontSurface(key, variant) {
-  let surface = fontSurfaces.get(`${key} ${variant}`);
+// A style surface with cssstyle's font shorthand before 4.4, or its color
+// keywords before 4.6: the same names, its own declared value caches.
+const variantSurfaces = new Map();
+function variantSurface(key, variant, colors) {
+  const id = `${key} ${variant} ${colors}`;
+  let surface = variantSurfaces.get(id);
   if (surface === undefined) {
-    surface = { ...styleSurface(key), legacyFont: variant, caches: Object.create(null) };
-    fontSurfaces.set(`${key} ${variant}`, surface);
+    surface = { ...styleSurface(key), caches: Object.create(null), colors };
+    if (variant !== null) surface.legacyFont = variant;
+    variantSurfaces.set(id, surface);
   }
   return surface;
 }
@@ -383,7 +447,9 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
   if (byValue === undefined) cache.set(name, byValue = new Map());
   let out = byValue.get(value);
   if (out === undefined) {
-    legacyColors = surface !== null && surface.legacyFont === 'cssstyle4.1';
+    legacyColors = surface === null || surface.legacyFont !== 'cssstyle4.1' ? false : mode === 'jsdom20' || mode === 'jsdom22' ? 'cssstyle3' : true;
+    colorKeywords = surface !== null ? surface.colors ?? null : null;
+    zeroAsWritten = surface !== null && (surface.key === 'cssstyle5' || surface.key === 'cssstyle5.0');
     if (mode === 'page') out = pageDescriptorValue(name, value);
     else if (surface !== null && surface.extras.has(name)) out = name === 'azimuth' ? azimuthValue(value, surface) : value;
     else if (!isKnownProperty(name)) out = INVALID;
@@ -394,6 +460,7 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
         const checked = isSpecMode(mode) || JSDOM26_VALIDATED.has(name);
         out = !checked || isValidValue(name, value) ? serializeDeclared(name, value, mode) : INVALID;
       }
+      if (out !== INVALID && isColorProperty(name) && (isSpecMode(mode) || JSDOM26_VALIDATED.has(name)) && rejectsColor(name, value, surface)) out = INVALID;
     }
     if (byValue.size >= 500) byValue.clear();
     byValue.set(value, out);
@@ -452,10 +519,12 @@ function versionedValue(name, value, mode) {
     const lower = value.toLowerCase();
     const kind = CSS_WIDE_KEYWORD.test(value) ? lower : lower === 'auto' ? 'auto' : lower.includes('var(') ? 'var' : null;
     if (kind !== null && droppedBy(mode, kind, name)) return INVALID;
-    if (mode !== 'jsdom26') {
-      // cssstyle before 4.3.1 keeps currentColor and border-spacing: 0 as written.
+    // cssstyle before 4.4 keeps currentColor, border-spacing: 0 and a
+    // border width of 0 as written; before 4.3.1 border-color lowercased.
+    if (colorKeywords === 'css2') {
       if (lower === 'currentcolor' && isColorProperty(name)) return value;
-      if (name === 'border-spacing' && ZERO.test(value)) return value;
+      if ((name === 'border-spacing' || BORDER_WIDTHS.has(name)) && ZERO.test(value)) return value;
+      if (name === 'border-color' && mode !== 'jsdom26') return isValidValue(name, value) && !rejectsColor(name, value, null) ? lower : INVALID;
     }
   }
   if ((mode === 'jsdom26' || mode === 'jsdom27') && name === 'border-style' && value.toLowerCase() === 'none') return INVALID;
@@ -507,7 +576,7 @@ function droppedBy(mode, kind, name) {
 //   hidden clear what came before them (border-top: 0 none drops it,
 //   none 0 is 0px). CSS-wide keywords drop the declaration.
 // - jsdom 20 to 25 (cssstyle before 4.3.1): as jsdom 26, but components as
-//   written (on border named colors lowercased), border keeps a none style (alone it still drops it), sides
+//   written (to cssstyle 4.4 colors too; on border lowercased), border keeps a none style (alone it still drops it), sides
 //   keep a 0 width as written and only none clears, and var() drops it.
 const BORDER_SHORTHAND = new Set(['border', 'border-top', 'border-right', 'border-bottom', 'border-left']);
 const BORDER_STYLE = /^(none|hidden|dotted|dashed|solid|double|groove|ridge|inset|outset)$/i;
@@ -543,8 +612,9 @@ function borderValue(name, value, mode) {
   }
   if (width === null && style === null && color === null) return INVALID;
   if (width !== null) width = legacy ? (ZERO.test(width) && !side ? '0px' : width) : ZERO.test(width) ? '0px' : canonicalNumbers(width);
-  // Legacy: as written, on border with named colors lowercased.
-  if (color !== null) color = !legacy ? declaredColors(color) : !side && /^[a-z]+$/i.test(color) ? color.toLowerCase() : color;
+  // cssstyle before 4.4: as written on the sides; on border lowercased
+  // before 4.3.1.
+  if (color !== null) color = colorKeywords === 'css2' && side ? color : colorKeywords === 'css2' && legacy ? color.toLowerCase() : declaredColors(color);
   return [width, style, color].filter((part) => part !== null).join(' ');
 }
 
@@ -684,10 +754,18 @@ function serializeDeclared(name, value, mode) {
   const box = BOX_SHORTHANDS.has(name);
   if (!box && !value.includes('0')) return value;
   const tokens = value.split(/\s+/);
-  if (tokens.length === 1) return ZERO.test(value) && isLengthProperty(name) ? '0px' : value;
+  if (tokens.length === 1) {
+    if (!ZERO.test(value)) return value;
+    // jsdom 28.1 and later: vertical-align: 0 is 0px too.
+    if (zeroAsWritten) return ZERO_PARSED_5.has(name) ? '0px' : value;
+    return isLengthProperty(name) || (name === 'vertical-align' && isSpecMode(mode)) ? '0px' : value;
+  }
   if (!ZERO_LISTS.has(name)) return value;
   for (let i = 0; i < tokens.length; i++) if (ZERO.test(tokens[i])) tokens[i] = '0px';
-  if (box && tokens.length <= 4) {
+  // As written with every cssstyle (jsdom 20 to 26; black box): margin,
+  // padding and border-width (2px 6px 3px 6px); from cssstyle 4.4 the
+  // margin and padding accessors read the shortest form (composedValue).
+  if (box && tokens.length <= 4 && !isLegacyMode(mode)) {
     const [top, right = top, bottom = top, left = right] = tokens;
     if (left !== right) return `${top} ${right} ${bottom} ${left}`;
     if (bottom !== top) return `${top} ${right} ${bottom}`;
@@ -986,7 +1064,7 @@ const valueOf = (style, name) => {
   if (LONGHANDS[name] || (s.decls.legacyFont !== undefined && LEGACY_FONT_LONGHANDS.has(name))) return fromShorthand(s.decls, name);
   // jsdom 26 read background as the background-color set alone.
   if (name === 'background' && isLegacyMode(s.mode)) return s.decls.get('background-color')?.value ?? '';
-  if (COMPOSED[name]) return composeShorthand(s.decls, name);
+  if (COMPOSED[name]) return composeShorthand(s.decls, name, s.surface?.colors === 'css2');
   return BORDER_READS[name] !== undefined && !isLegacyMode(s.mode) ? composeBorder(s.decls, name) : '';
 };
 
@@ -1044,14 +1122,16 @@ const COMPOSED = {
     return xs.map((part, i) => `${part} ${ys[i] ?? ys[ys.length - 1]}`).join(', ');
   },
 };
-function composeShorthand(decls, name) {
+// legacyBox: cssstyle before 4.4, which writes all four values of margin
+// and padding (1px 2px 1px 2px).
+function composeShorthand(decls, name, legacyBox = false) {
   const values = [];
   for (const longhand of SHORTHANDS[name]) {
     const value = decls.get(longhand)?.value ?? fromShorthand(decls, longhand);
     if (!value) return '';
     values.push(value);
   }
-  return COMPOSED[name](values);
+  return legacyBox && (name === 'margin' || name === 'padding') ? values.join(' ') : COMPOSED[name](values);
 }
 
 // jsdom 20 to 26 (cssstyle 2 to 4, black box): setting flex, background,
@@ -1133,14 +1213,17 @@ function styleDescriptors(surfaceKey = null) {
 }
 // The computed style's background and border side accessors of jsdom 26
 // and earlier (cascade.js legacyAccessorValue).
-const COMPOSED_ACCESSORS = new Set(['background', 'border-top', 'border-right', 'border-bottom', 'border-left']);
+const COMPOSED_ACCESSORS = new Set(['background', 'border-top', 'border-right', 'border-bottom', 'border-left', 'margin', 'padding']);
 function composedValue(style, name) {
   const s = styleState(style);
   if (s.computed) {
     const value = computedOverride(s, name) ?? computed.accessor(s.element, name);
     if (value !== null) return value;
   }
-  return valueOf(style, name);
+  const value = valueOf(style, name);
+  // cssstyle 4.4 and later (jsdom 26): the margin and padding accessors
+  // read the shortest form, getPropertyValue() and cssText as written.
+  return (name === 'margin' || name === 'padding') && isLegacyMode(s.mode) && s.surface?.colors !== 'css2' ? shortestBox(value) : value;
 }
 function styleAccessor(name) {
   if (COMPOSED_ACCESSORS.has(name)) {
