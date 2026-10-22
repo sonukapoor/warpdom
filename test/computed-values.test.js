@@ -195,6 +195,29 @@ function boxes(w) {
 }
 for (const jsdom of JSDOMS) parity(`computed values: box shorthands (jsdom ${jsdom})`, boxes, { jsdom });
 
+// The computed style's padding and margin accessors (cssstyle 4.4 and
+// later read them through the longhands before jsdom 27): '' when a side
+// is (padding-left: 2px alone, an inline element's padding-top), a var()
+// or CSS-wide keyword as declared. In a window of their own: in jsdom
+// 29.1.1 reading border-width: 1px 1px first turns these 0 into 0px.
+function boxAccessors(w) {
+  const d = w.document;
+  d.head.innerHTML = '<style>.d { padding-left: 2px } .e { padding: var(--p); margin: inherit } .f { padding: initial }</style>';
+  const out = {};
+  const box = (el) => { const cs = w.getComputedStyle(el); return [cs.padding, cs.margin, cs.getPropertyValue('padding'), cs.getPropertyValue('margin')]; };
+  for (const cls of ['d', 'e', 'f']) {
+    const el = d.body.appendChild(d.createElement('div'));
+    el.className = cls;
+    out[cls] = box(el);
+  }
+  for (const tag of ['p', 'button']) out[tag] = box(d.body.appendChild(d.createElement(tag)));
+  const inline = d.body.appendChild(d.createElement('span'));
+  inline.style.paddingTop = '4px';
+  out.inline = box(inline);
+  return out;
+}
+for (const jsdom of JSDOMS) parity(`computed values: padding and margin accessors (jsdom ${jsdom})`, boxAccessors, { jsdom });
+
 test('computed values: margin and padding as written before cssstyle 4.4', () => {
   const box = (cssstyle) => {
     const w = createWindow({ jsdom: '26.1.0', cssstyle });

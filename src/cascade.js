@@ -529,7 +529,13 @@ const LEGACY_BACKGROUND_ORDER = ['background-image', 'background-repeat', 'backg
 export function legacyAccessorValue(element, name) {
   const compat = element[S].doc[S].window[S].compat;
   if (name === 'margin' || name === 'padding') {
-    return compat.jsdom < 27 && compat.colorKeywords !== 'css2' ? serializeBox(SHORTHANDS[name].map((l) => computedValue(element, l))) : null;
+    // As getPropertyValue for a declared CSS-wide keyword or var()
+    // (padding: var(--p)); '' when a side is (padding-left: 2px alone).
+    if (compat.jsdom >= 27 || compat.colorKeywords === 'css2') return null;
+    const own = cascaded(element, name);
+    if (own !== undefined && (CSS_WIDE.has(own) || own.includes('var('))) return null;
+    const values = SHORTHANDS[name].map((l) => computedValue(element, l));
+    return values.includes('') ? '' : serializeBox(values);
   }
   if (compat.jsdom > 26 && (name !== 'background' || compat.shorthandInitials)) return null;
   const composed = compat.composedAccessors || compat.jsdom > 26;
