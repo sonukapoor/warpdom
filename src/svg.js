@@ -42,9 +42,15 @@ function cached(element, key, iface, data) {
 // WebIDL float: a finite number that fits a single-precision float.
 function toFloat(value, iface, name) {
   const x = Number(value);
-  if (!Number.isFinite(x)) throw new TypeError(`Failed to set the '${name}' property on '${iface}': The provided value is not a finite floating-point value.`);
+  if (!Number.isFinite(x))
+    throw new TypeError(
+      `Failed to set the '${name}' property on '${iface}': The provided value is not a finite floating-point value.`,
+    );
   const y = Math.fround(x);
-  if (!Number.isFinite(y)) throw new TypeError(`Failed to set the '${name}' property on '${iface}': The provided value is outside the range of a single-precision floating-point value.`);
+  if (!Number.isFinite(y))
+    throw new TypeError(
+      `Failed to set the '${name}' property on '${iface}': The provided value is outside the range of a single-precision floating-point value.`,
+    );
   return y;
 }
 
@@ -70,26 +76,45 @@ function rectOf(object) {
   const s = state(object);
   if (s.element === undefined) return s;
   const value = s.element[S].attrs.get('viewBox');
-  if (s.parsedFrom !== value || s.parsed === undefined) { s.parsed = parseViewBox(value); s.parsedFrom = value; }
+  if (s.parsedFrom !== value || s.parsed === undefined) {
+    s.parsed = parseViewBox(value);
+    s.parsedFrom = value;
+  }
   return s.parsed;
 }
 
 function setRect(object, name, value) {
   const s = state(object);
   const v = toFloat(value, 'SVGRect', name);
-  if (s.element === undefined) { s[name] = v; return; }
+  if (s.element === undefined) {
+    s[name] = v;
+    return;
+  }
   if (s.readOnly) throw domError('This SVGRect is read-only', 'NO_MODIFICATION_ALLOWED_ERR');
   const rect = { ...rectOf(object), [name]: v };
   writeAttribute(s.element, 'viewBox', `${rect.x} ${rect.y} ${rect.width} ${rect.height}`);
 }
 
 const viewBoxMember = {
-  get viewBox() { return cached(this, 'svgViewBox', 'SVGAnimatedRect', { element: this }); },
+  get viewBox() {
+    return cached(this, 'svgViewBox', 'SVGAnimatedRect', { element: this });
+  },
 };
 
 // --- preserveAspectRatio --------------------------------------------------------------
 
-const ALIGNS = ['none', 'xMinYMin', 'xMidYMin', 'xMaxYMin', 'xMinYMid', 'xMidYMid', 'xMaxYMid', 'xMinYMax', 'xMidYMax', 'xMaxYMax'];
+const ALIGNS = [
+  'none',
+  'xMinYMin',
+  'xMidYMin',
+  'xMaxYMin',
+  'xMinYMid',
+  'xMidYMid',
+  'xMaxYMid',
+  'xMinYMax',
+  'xMidYMax',
+  'xMaxYMax',
+];
 const PRESERVE_ASPECT_RATIO = new RegExp(`^(${ALIGNS.join('|')})(?: +(meet|slice))?$`);
 const ALIGN_VALUE = new Map(ALIGNS.map((name, i) => [name, i + 1]));
 const DEFAULT_RATIO = Object.freeze({ align: 6, meetOrSlice: 1 }); // xMidYMid meet
@@ -103,19 +128,34 @@ function parseRatio(value) {
 const ratioOf = (object) => parseRatio(state(object).element[S].attrs.get('preserveAspectRatio'));
 
 function writeRatio(object, { align, meetOrSlice }) {
-  writeAttribute(state(object).element, 'preserveAspectRatio', `${ALIGNS[align - 1]} ${meetOrSlice === 2 ? 'slice' : 'meet'}`);
+  writeAttribute(
+    state(object).element,
+    'preserveAspectRatio',
+    `${ALIGNS[align - 1]} ${meetOrSlice === 2 ? 'slice' : 'meet'}`,
+  );
 }
 
 const ratioMember = {
-  get preserveAspectRatio() { return cached(this, 'svgRatio', 'SVGAnimatedPreserveAspectRatio', { element: this }); },
+  get preserveAspectRatio() {
+    return cached(this, 'svgRatio', 'SVGAnimatedPreserveAspectRatio', { element: this });
+  },
 };
 
 const RATIO_CONSTANTS = {
-  SVG_PRESERVEASPECTRATIO_UNKNOWN: 0, SVG_PRESERVEASPECTRATIO_NONE: 1, SVG_PRESERVEASPECTRATIO_XMINYMIN: 2,
-  SVG_PRESERVEASPECTRATIO_XMIDYMIN: 3, SVG_PRESERVEASPECTRATIO_XMAXYMIN: 4, SVG_PRESERVEASPECTRATIO_XMINYMID: 5,
-  SVG_PRESERVEASPECTRATIO_XMIDYMID: 6, SVG_PRESERVEASPECTRATIO_XMAXYMID: 7, SVG_PRESERVEASPECTRATIO_XMINYMAX: 8,
-  SVG_PRESERVEASPECTRATIO_XMIDYMAX: 9, SVG_PRESERVEASPECTRATIO_XMAXYMAX: 10,
-  SVG_MEETORSLICE_UNKNOWN: 0, SVG_MEETORSLICE_MEET: 1, SVG_MEETORSLICE_SLICE: 2,
+  SVG_PRESERVEASPECTRATIO_UNKNOWN: 0,
+  SVG_PRESERVEASPECTRATIO_NONE: 1,
+  SVG_PRESERVEASPECTRATIO_XMINYMIN: 2,
+  SVG_PRESERVEASPECTRATIO_XMIDYMIN: 3,
+  SVG_PRESERVEASPECTRATIO_XMAXYMIN: 4,
+  SVG_PRESERVEASPECTRATIO_XMINYMID: 5,
+  SVG_PRESERVEASPECTRATIO_XMIDYMID: 6,
+  SVG_PRESERVEASPECTRATIO_XMAXYMID: 7,
+  SVG_PRESERVEASPECTRATIO_XMINYMAX: 8,
+  SVG_PRESERVEASPECTRATIO_XMIDYMAX: 9,
+  SVG_PRESERVEASPECTRATIO_XMAXYMAX: 10,
+  SVG_MEETORSLICE_UNKNOWN: 0,
+  SVG_MEETORSLICE_MEET: 1,
+  SVG_MEETORSLICE_SLICE: 2,
 };
 
 // --- SVGStringList ----------------------------------------------------------------------
@@ -153,10 +193,15 @@ function stringList(element, attribute) {
   if (s[key]) return s[key];
   const data = { element, attribute, separator, items: [], dirty: true, writing: false };
   const items = () => {
-    if (data.dirty) { data.items = parse(element[S].attrs.get(attribute) ?? ''); data.dirty = false; }
+    if (data.dirty) {
+      data.items = parse(element[S].attrs.get(attribute) ?? '');
+      data.dirty = false;
+    }
     return data.items;
   };
-  const list = liveList(protosOf(element).SVGStringList, items, null, (index, value) => replaceItem(data, items(), String(value), index));
+  const list = liveList(protosOf(element).SVGStringList, items, null, (index, value) =>
+    replaceItem(data, items(), String(value), index),
+  );
   list[S].svg = data;
   data.read = items;
   return (s[key] = list);
@@ -185,7 +230,11 @@ function writeList(data) {
 }
 
 function checkIndex(index, length) {
-  if (index >= length) throw domError(`The index provided (${index}) is greater than or equal to the maximum bound (${length}).`, 'IndexSizeError');
+  if (index >= length)
+    throw domError(
+      `The index provided (${index}) is greater than or equal to the maximum bound (${length}).`,
+      'IndexSizeError',
+    );
 }
 
 function replaceItem(data, items, item, index) {
@@ -211,25 +260,42 @@ function nearestViewport(element, symbol) {
 // --- members --------------------------------------------------------------------------
 
 export const SVG_ELEMENT_MEMBERS = {
-  get className() { return cached(this, 'svgClassName', 'SVGAnimatedString', { element: this }); },
-  get ownerSVGElement() { return nearestViewport(this, false); },
-  get viewportElement() { return nearestViewport(this, compatOf(this).svgSymbolViewport); },
+  get className() {
+    return cached(this, 'svgClassName', 'SVGAnimatedString', { element: this });
+  },
+  get ownerSVGElement() {
+    return nearestViewport(this, false);
+  },
+  get viewportElement() {
+    return nearestViewport(this, compatOf(this).svgSymbolViewport);
+  },
   nonce: NONCE,
 };
 
 const SVG_GRAPHICS_MEMBERS = {
-  get requiredExtensions() { return stringList(this, 'requiredExtensions'); },
-  get systemLanguage() { return stringList(this, 'systemLanguage'); },
+  get requiredExtensions() {
+    return stringList(this, 'requiredExtensions');
+  },
+  get systemLanguage() {
+    return stringList(this, 'systemLanguage');
+  },
 };
 
 const SVG_SVG_MEMBERS = {
-  createSVGNumber() { state(this); return make(protosOf(this).SVGNumber, { value: 0 }); },
-  createSVGRect() { state(this); return make(protosOf(this).SVGRect, { x: 0, y: 0, width: 0, height: 0 }); },
+  createSVGNumber() {
+    state(this);
+    return make(protosOf(this).SVGNumber, { value: 0 });
+  },
+  createSVGRect() {
+    state(this);
+    return make(protosOf(this).SVGRect, { x: 0, y: 0, width: 0, height: 0 });
+  },
   // The first element with the id in tree order: the svg itself or a
   // descendant.
   getElementById(elementId) {
     state(this);
-    if (elementId === undefined && arguments.length < 1) tooFewArguments('SVGSVGElement', 'getElementById', 1, arguments.length);
+    if (elementId === undefined && arguments.length < 1)
+      tooFewArguments('SVGSVGElement', 'getElementById', 1, arguments.length);
     const id = String(elementId);
     if (id === '') return null;
     for (let n = this; n !== null; n = nextInTree(n, this)) {
@@ -240,17 +306,23 @@ const SVG_SVG_MEMBERS = {
   // Legacy redraw methods: no effect; suspendRedraw returns 1.
   suspendRedraw(maxWaitMilliseconds) {
     state(this);
-    if (maxWaitMilliseconds === undefined && arguments.length < 1) tooFewArguments('SVGSVGElement', 'suspendRedraw', 1, arguments.length);
+    if (maxWaitMilliseconds === undefined && arguments.length < 1)
+      tooFewArguments('SVGSVGElement', 'suspendRedraw', 1, arguments.length);
     void (maxWaitMilliseconds >>> 0);
     return 1;
   },
   unsuspendRedraw(suspendHandleID) {
     state(this);
-    if (suspendHandleID === undefined && arguments.length < 1) tooFewArguments('SVGSVGElement', 'unsuspendRedraw', 1, arguments.length);
+    if (suspendHandleID === undefined && arguments.length < 1)
+      tooFewArguments('SVGSVGElement', 'unsuspendRedraw', 1, arguments.length);
     void (suspendHandleID >>> 0);
   },
-  unsuspendRedrawAll() { state(this); },
-  forceRedraw() { state(this); },
+  unsuspendRedrawAll() {
+    state(this);
+  },
+  forceRedraw() {
+    state(this);
+  },
 };
 
 const asConstants = (table) => Object.fromEntries(Object.entries(table).map(([k, v]) => [k, { constant: v }]));
@@ -264,7 +336,9 @@ export const SVG_INTERFACES = [
     name: 'SVGSVGElement',
     parent: 'SVGGraphicsElement',
     members: [SVG_SVG_MEMBERS, viewBoxMember, ratioMember, SVG_WINDOW_HANDLER_MEMBERS],
-    compat(proto, compat) { if (!compat.svgTypes) for (const name of SVG_TYPES_MEMBERS) delete proto[name]; },
+    compat(proto, compat) {
+      if (!compat.svgTypes) for (const name of SVG_TYPES_MEMBERS) delete proto[name];
+    },
   },
   { name: 'SVGTitleElement', parent: 'SVGElement', members: {} },
   { name: 'SVGGElement', parent: 'SVGGraphicsElement', members: {} },
@@ -276,68 +350,118 @@ export const SVG_INTERFACES = [
   {
     name: 'SVGAnimatedString',
     members: {
-      get baseVal() { return state(this).element[S].attrs.get('class') ?? ''; },
-      set baseVal(v) { writeAttribute(state(this).element, 'class', String(v)); },
-      get animVal() { return state(this).element[S].attrs.get('class') ?? ''; },
+      get baseVal() {
+        return state(this).element[S].attrs.get('class') ?? '';
+      },
+      set baseVal(v) {
+        writeAttribute(state(this).element, 'class', String(v));
+      },
+      get animVal() {
+        return state(this).element[S].attrs.get('class') ?? '';
+      },
     },
   },
   {
     name: 'SVGNumber',
     members: {
-      get value() { return state(this).value; },
-      set value(v) { const s = state(this); s.value = toFloat(v, 'SVGNumber', 'value'); },
+      get value() {
+        return state(this).value;
+      },
+      set value(v) {
+        const s = state(this);
+        s.value = toFloat(v, 'SVGNumber', 'value');
+      },
     },
   },
   {
     name: 'SVGRect',
     members: {
-      get x() { return rectOf(this).x; },
-      set x(v) { setRect(this, 'x', v); },
-      get y() { return rectOf(this).y; },
-      set y(v) { setRect(this, 'y', v); },
-      get width() { return rectOf(this).width; },
-      set width(v) { setRect(this, 'width', v); },
-      get height() { return rectOf(this).height; },
-      set height(v) { setRect(this, 'height', v); },
+      get x() {
+        return rectOf(this).x;
+      },
+      set x(v) {
+        setRect(this, 'x', v);
+      },
+      get y() {
+        return rectOf(this).y;
+      },
+      set y(v) {
+        setRect(this, 'y', v);
+      },
+      get width() {
+        return rectOf(this).width;
+      },
+      set width(v) {
+        setRect(this, 'width', v);
+      },
+      get height() {
+        return rectOf(this).height;
+      },
+      set height(v) {
+        setRect(this, 'height', v);
+      },
     },
   },
   {
     name: 'SVGAnimatedRect',
     members: {
-      get baseVal() { const s = state(this); return s.baseVal ?? (s.baseVal = make(protosOf(s.element).SVGRect, { element: s.element, readOnly: false })); },
-      get animVal() { const s = state(this); return s.animVal ?? (s.animVal = make(protosOf(s.element).SVGRect, { element: s.element, readOnly: true })); },
+      get baseVal() {
+        const s = state(this);
+        return s.baseVal ?? (s.baseVal = make(protosOf(s.element).SVGRect, { element: s.element, readOnly: false }));
+      },
+      get animVal() {
+        const s = state(this);
+        return s.animVal ?? (s.animVal = make(protosOf(s.element).SVGRect, { element: s.element, readOnly: true }));
+      },
     },
   },
   {
     name: 'SVGPreserveAspectRatio',
     statics: RATIO_CONSTANTS,
-    members: [{
-      get align() { return ratioOf(this).align; },
-      set align(v) {
-        const align = Number(v) & 0xffff; // WebIDL unsigned short
-        if (align < 1 || align > ALIGNS.length) throw new TypeError('Invalid alignment');
-        writeRatio(this, { align, meetOrSlice: ratioOf(this).meetOrSlice });
+    members: [
+      {
+        get align() {
+          return ratioOf(this).align;
+        },
+        set align(v) {
+          const align = Number(v) & 0xffff; // WebIDL unsigned short
+          if (align < 1 || align > ALIGNS.length) throw new TypeError('Invalid alignment');
+          writeRatio(this, { align, meetOrSlice: ratioOf(this).meetOrSlice });
+        },
+        get meetOrSlice() {
+          return ratioOf(this).meetOrSlice;
+        },
+        set meetOrSlice(v) {
+          const meetOrSlice = Number(v) & 0xffff;
+          if (meetOrSlice < 1 || meetOrSlice > 2) throw new TypeError('Invalid meet-or-slice value');
+          writeRatio(this, { align: ratioOf(this).align, meetOrSlice });
+        },
       },
-      get meetOrSlice() { return ratioOf(this).meetOrSlice; },
-      set meetOrSlice(v) {
-        const meetOrSlice = Number(v) & 0xffff;
-        if (meetOrSlice < 1 || meetOrSlice > 2) throw new TypeError('Invalid meet-or-slice value');
-        writeRatio(this, { align: ratioOf(this).align, meetOrSlice });
-      },
-    }, asConstants(RATIO_CONSTANTS)],
+      asConstants(RATIO_CONSTANTS),
+    ],
   },
   {
     name: 'SVGAnimatedPreserveAspectRatio',
     members: {
-      get baseVal() { const s = state(this); return s.baseVal ?? (s.baseVal = make(protosOf(s.element).SVGPreserveAspectRatio, { element: s.element })); },
-      get animVal() { const s = state(this); return s.animVal ?? (s.animVal = make(protosOf(s.element).SVGPreserveAspectRatio, { element: s.element })); },
+      get baseVal() {
+        const s = state(this);
+        return s.baseVal ?? (s.baseVal = make(protosOf(s.element).SVGPreserveAspectRatio, { element: s.element }));
+      },
+      get animVal() {
+        const s = state(this);
+        return s.animVal ?? (s.animVal = make(protosOf(s.element).SVGPreserveAspectRatio, { element: s.element }));
+      },
     },
   },
   {
     name: 'SVGStringList',
     members: {
-      get length() { return listData(this).read().length; },
-      get numberOfItems() { return listData(this).read().length; },
+      get length() {
+        return listData(this).read().length;
+      },
+      get numberOfItems() {
+        return listData(this).read().length;
+      },
       clear() {
         const data = listData(this);
         data.read();
@@ -346,7 +470,8 @@ export const SVG_INTERFACES = [
       },
       initialize(newItem) {
         const data = listData(this);
-        if (newItem === undefined && arguments.length < 1) tooFewArguments('SVGStringList', 'initialize', 1, arguments.length);
+        if (newItem === undefined && arguments.length < 1)
+          tooFewArguments('SVGStringList', 'initialize', 1, arguments.length);
         const item = String(newItem);
         data.read();
         data.items = [item];
@@ -355,7 +480,8 @@ export const SVG_INTERFACES = [
       },
       getItem(index) {
         const data = listData(this);
-        if (index === undefined && arguments.length < 1) tooFewArguments('SVGStringList', 'getItem', 1, arguments.length);
+        if (index === undefined && arguments.length < 1)
+          tooFewArguments('SVGStringList', 'getItem', 1, arguments.length);
         const items = data.read();
         const i = index >>> 0;
         checkIndex(i, items.length);
@@ -363,7 +489,8 @@ export const SVG_INTERFACES = [
       },
       insertItemBefore(newItem, index) {
         const data = listData(this);
-        if (index === undefined && arguments.length < 2) tooFewArguments('SVGStringList', 'insertItemBefore', 2, arguments.length);
+        if (index === undefined && arguments.length < 2)
+          tooFewArguments('SVGStringList', 'insertItemBefore', 2, arguments.length);
         const item = String(newItem);
         const items = data.read();
         items.splice(Math.min(index >>> 0, items.length), 0, item);
@@ -372,13 +499,15 @@ export const SVG_INTERFACES = [
       },
       replaceItem(newItem, index) {
         const data = listData(this);
-        if (index === undefined && arguments.length < 2) tooFewArguments('SVGStringList', 'replaceItem', 2, arguments.length);
+        if (index === undefined && arguments.length < 2)
+          tooFewArguments('SVGStringList', 'replaceItem', 2, arguments.length);
         const item = String(newItem);
         return replaceItem(data, data.read(), item, index >>> 0);
       },
       removeItem(index) {
         const data = listData(this);
-        if (index === undefined && arguments.length < 1) tooFewArguments('SVGStringList', 'removeItem', 1, arguments.length);
+        if (index === undefined && arguments.length < 1)
+          tooFewArguments('SVGStringList', 'removeItem', 1, arguments.length);
         const items = data.read();
         const i = index >>> 0;
         checkIndex(i, items.length);
@@ -388,7 +517,8 @@ export const SVG_INTERFACES = [
       },
       appendItem(newItem) {
         const data = listData(this);
-        if (newItem === undefined && arguments.length < 1) tooFewArguments('SVGStringList', 'appendItem', 1, arguments.length);
+        if (newItem === undefined && arguments.length < 1)
+          tooFewArguments('SVGStringList', 'appendItem', 1, arguments.length);
         const item = String(newItem);
         data.read().push(item);
         writeList(data);
@@ -402,10 +532,29 @@ export const SVG_INTERFACES = [
 // SVG elements with an interface of their own; others are SVGElement.
 // Before jsdom 26.1.0 only svg and title.
 export const SVG_ELEMENTS = new Map([
-  ['svg', 'SVGSVGElement'], ['title', 'SVGTitleElement'], ['g', 'SVGGElement'], ['defs', 'SVGDefsElement'], ['desc', 'SVGDescElement'],
-  ['metadata', 'SVGMetadataElement'], ['switch', 'SVGSwitchElement'], ['symbol', 'SVGSymbolElement'],
+  ['svg', 'SVGSVGElement'],
+  ['title', 'SVGTitleElement'],
+  ['g', 'SVGGElement'],
+  ['defs', 'SVGDefsElement'],
+  ['desc', 'SVGDescElement'],
+  ['metadata', 'SVGMetadataElement'],
+  ['switch', 'SVGSwitchElement'],
+  ['symbol', 'SVGSymbolElement'],
 ]);
-export const LEGACY_SVG_ELEMENTS = new Map([['svg', 'SVGSVGElement'], ['title', 'SVGTitleElement']]);
+export const LEGACY_SVG_ELEMENTS = new Map([
+  ['svg', 'SVGSVGElement'],
+  ['title', 'SVGTitleElement'],
+]);
 // Window properties jsdom added in 26.1.0.
-export const SVG_TYPES_INTERFACES = ['SVGGElement', 'SVGDefsElement', 'SVGDescElement', 'SVGMetadataElement', 'SVGSwitchElement',
-  'SVGSymbolElement', 'SVGRect', 'SVGAnimatedRect', 'SVGPreserveAspectRatio', 'SVGAnimatedPreserveAspectRatio'];
+export const SVG_TYPES_INTERFACES = [
+  'SVGGElement',
+  'SVGDefsElement',
+  'SVGDescElement',
+  'SVGMetadataElement',
+  'SVGSwitchElement',
+  'SVGSymbolElement',
+  'SVGRect',
+  'SVGAnimatedRect',
+  'SVGPreserveAspectRatio',
+  'SVGAnimatedPreserveAspectRatio',
+];

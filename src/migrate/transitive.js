@@ -11,24 +11,44 @@ import path from 'node:path';
 export function nodeModulesTree(dir, { maxEntries = 50000, maxDepth = 10 } = {}) {
   const out = { entries: [], importers: new Map(), kind: 'node_modules' };
   const readMeta = (abs) => {
-    try { return JSON.parse(fs.readFileSync(path.join(abs, 'package.json'), 'utf8')); } catch { return null; }
+    try {
+      return JSON.parse(fs.readFileSync(path.join(abs, 'package.json'), 'utf8'));
+    } catch {
+      return null;
+    }
   };
   const visit = (nm, prefix, depth) => {
     if (depth > maxDepth || out.entries.length >= maxEntries) return;
     let list;
-    try { list = fs.readdirSync(nm, { withFileTypes: true }); } catch { return; }
+    try {
+      list = fs.readdirSync(nm, { withFileTypes: true });
+    } catch {
+      return;
+    }
     for (const e of list) {
       if (e.name.startsWith('.') || !(e.isDirectory() || e.isSymbolicLink())) continue;
       let names = [e.name];
       if (e.name.startsWith('@')) {
-        try { names = fs.readdirSync(path.join(nm, e.name)).filter((n) => !n.startsWith('.')).map((n) => `${e.name}/${n}`); } catch { names = []; }
+        try {
+          names = fs
+            .readdirSync(path.join(nm, e.name))
+            .filter((n) => !n.startsWith('.'))
+            .map((n) => `${e.name}/${n}`);
+        } catch {
+          names = [];
+        }
       }
       for (const name of names) {
         const abs = path.join(nm, name);
         const meta = readMeta(abs);
         if (!meta) continue;
         const key = `${prefix}node_modules/${name}`;
-        out.entries.push({ name, version: meta.version ?? null, deps: { ...meta.dependencies, ...meta.optionalDependencies }, key });
+        out.entries.push({
+          name,
+          version: meta.version ?? null,
+          deps: { ...meta.dependencies, ...meta.optionalDependencies },
+          key,
+        });
         visit(path.join(abs, 'node_modules'), `${key}/`, depth + 1);
       }
     }
@@ -44,7 +64,7 @@ function resolver(lock) {
     const byKey = new Map(lock.entries.map((e) => [e.key, e]));
     // Node's lookup: the nearest node_modules up from the dependent.
     const lookup = (base, dep) => {
-      for (let b = base; ; ) {
+      for (let b = base; ;) {
         const hit = byKey.get(b ? `${b}/node_modules/${dep}` : `node_modules/${dep}`);
         if (hit) return hit;
         if (!b) return null;
@@ -61,7 +81,7 @@ function resolver(lock) {
       dep: (e, dep) => byId.get(`${dep}@${e.deps[dep]}`) ?? null,
       root: (dirRel, name) => {
         const v = lock.importers.get(dirRel)?.[name];
-        return v ? byId.get(`${name}@${v}`) ?? null : null;
+        return v ? (byId.get(`${name}@${v}`) ?? null) : null;
       },
     };
   }
@@ -103,12 +123,18 @@ export function chains(lock, roots, targets) {
       }
       for (const dep of Object.keys(e.deps ?? {})) {
         const next = r.dep(e, dep);
-        if (next && !parent.has(next)) { parent.set(next, e); queue.push(next); }
+        if (next && !parent.has(next)) {
+          parent.set(next, e);
+          queue.push(next);
+        }
       }
     }
   }
-  return [...found].map(([e, f]) => ({ name: e.name, version: e.version, chain: f.chain, roots: [...f.roots].sort() }))
-    .sort((a, b) => (a.name === b.name ? String(a.version).localeCompare(String(b.version)) : a.name < b.name ? -1 : 1));
+  return [...found]
+    .map(([e, f]) => ({ name: e.name, version: e.version, chain: f.chain, roots: [...f.roots].sort() }))
+    .sort((a, b) =>
+      a.name === b.name ? String(a.version).localeCompare(String(b.version)) : a.name < b.name ? -1 : 1,
+    );
 }
 
 // Entries that depend on name (or, for a scope such as '@csstools', on a
@@ -137,7 +163,10 @@ export function closure(lock, names) {
     const e = queue.shift();
     for (const dep of Object.keys(e.deps ?? {})) {
       const next = r.dep(e, dep);
-      if (next && !out.has(next)) { out.add(next); queue.push(next); }
+      if (next && !out.has(next)) {
+        out.add(next);
+        queue.push(next);
+      }
     }
   }
   return out;

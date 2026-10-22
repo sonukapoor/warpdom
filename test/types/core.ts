@@ -1,7 +1,13 @@
 // warpdom's core, imported (ES module).
 import { createWindow, setParserLoader, type CreateWindowOptions, type WarpdomWindow } from 'warpdom';
 
-const options: CreateWindowOptions = { url: 'https://example.com/', jsdom: '30.1.2', cssstyle: '4.6.0', fastFrames: true, xhr: false };
+const options: CreateWindowOptions = {
+  url: 'https://example.com/',
+  jsdom: '30.1.2',
+  cssstyle: '4.6.0',
+  fastFrames: true,
+  xhr: false,
+};
 const window: WarpdomWindow = createWindow(options);
 createWindow();
 createWindow({ jsdom: 26 });

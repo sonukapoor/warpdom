@@ -17,7 +17,9 @@ const clip = (s, n = 2000) => (s == null ? null : String(s).length > n ? String(
 process.once('message', async (job) => {
   const { test, engine: engineName, wptRoot, warpdomDir, timeoutMultiplier } = job;
   const notes = [];
-  const note = (message) => { if (notes.length < 50) notes.push(clip(message, 500)); };
+  const note = (message) => {
+    if (notes.length < 50) notes.push(clip(message, 500));
+  };
   let finished = false;
   const send = (message) => new Promise((resolve) => process.send(message, resolve));
   const finish = async (message) => {
@@ -31,11 +33,20 @@ process.once('message', async (job) => {
   // rejections are reported at the window, as a browser does.
   let engine = null;
   process.on('uncaughtException', (error) => {
-    if (!engine) return finish({ type: 'complete', harness: 'ERROR', message: `runner: ${error?.stack ?? error}`, subtests: [] });
-    try { engine.reportError(error); } catch (e) { note(`reportError failed: ${e?.message}`); }
+    if (!engine)
+      return finish({ type: 'complete', harness: 'ERROR', message: `runner: ${error?.stack ?? error}`, subtests: [] });
+    try {
+      engine.reportError(error);
+    } catch (e) {
+      note(`reportError failed: ${e?.message}`);
+    }
   });
   process.on('unhandledRejection', (reason, promise) => {
-    try { engine?.dispatchRejection(reason, promise); } catch (e) { note(`unhandledrejection failed: ${e?.message}`); }
+    try {
+      engine?.dispatchRejection(reason, promise);
+    } catch (e) {
+      note(`unhandledrejection failed: ${e?.message}`);
+    }
   });
 
   try {
@@ -48,7 +59,10 @@ process.once('message', async (job) => {
       value: {
         timeoutMultiplier,
         result(name, status, message) {
-          send({ type: 'result', subtest: { name: String(name), status: SUBTEST[status] ?? String(status), message: clip(message) } });
+          send({
+            type: 'result',
+            subtest: { name: String(name), status: SUBTEST[status] ?? String(status), message: clip(message) },
+          });
         },
         complete(tests, status, message, stack) {
           finish({
@@ -56,7 +70,11 @@ process.once('message', async (job) => {
             harness: HARNESS[status] ?? String(status),
             message: clip(message),
             stack: status === 0 ? null : clip(stack),
-            subtests: tests.map(([name, s, m]) => ({ name: String(name), status: SUBTEST[s] ?? String(s), message: clip(m) })),
+            subtests: tests.map(([name, s, m]) => ({
+              name: String(name),
+              status: SUBTEST[s] ?? String(s),
+              message: clip(m),
+            })),
           });
         },
       },
@@ -64,7 +82,16 @@ process.once('message', async (job) => {
     // A fallback in case testharness.js never completes (it did not load, or
     // load never fired): its own harness timeout plus a margin.
     const harnessTimeout = (test.long ? 60000 : 10000) * timeoutMultiplier;
-    hostSetTimeout(() => finish({ type: 'complete', harness: 'TIMEOUT', message: 'runner: no completion from testharness.js', subtests: null }), harnessTimeout + 5000);
+    hostSetTimeout(
+      () =>
+        finish({
+          type: 'complete',
+          harness: 'TIMEOUT',
+          message: 'runner: no completion from testharness.js',
+          subtests: null,
+        }),
+      harnessTimeout + 5000,
+    );
     await loadPage(engine, test, {
       wptRoot,
       reporterSource: reporterSource(),

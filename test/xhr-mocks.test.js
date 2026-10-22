@@ -20,13 +20,27 @@ const plain = (text) => text.replace(/\x1b\[[0-9;]*m/g, '');
 
 function vitest(args) {
   try {
-    return { code: 0, out: plain(String(execFileSync('node_modules/.bin/vitest', ['run', '--root', 'fixtures/vitest-xhr-mocks', ...args], { cwd: root, stdio: 'pipe' }))) };
+    return {
+      code: 0,
+      out: plain(
+        String(
+          execFileSync('node_modules/.bin/vitest', ['run', '--root', 'fixtures/vitest-xhr-mocks', ...args], {
+            cwd: root,
+            stdio: 'pipe',
+          }),
+        ),
+      ),
+    };
   } catch (err) {
     return { code: err.status, out: plain(String(err.stdout) + String(err.stderr)) };
   }
 }
 
-for (const [pool, environment] of [['forks', []], ['vmThreads', []], ['forks', ['--environment', 'jsdom']]]) {
+for (const [pool, environment] of [
+  ['forks', []],
+  ['vmThreads', []],
+  ['forks', ['--environment', 'jsdom']],
+]) {
   test(`msw, nock and axios with XMLHttpRequest: ${environment.length ? 'jsdom' : 'warpdom'}, ${pool}`, () => {
     const { code, out } = vitest(['--pool', pool, ...environment]);
     assert.equal(code, 0, out);
@@ -34,7 +48,7 @@ for (const [pool, environment] of [['forks', []], ['vmThreads', []], ['forks', [
   });
 }
 
-test('xhr: false in Vitest: no XMLHttpRequest, axios through Node\'s http client (nock)', () => {
+test("xhr: false in Vitest: no XMLHttpRequest, axios through Node's http client (nock)", () => {
   const { code, out } = vitest(['--config', 'vitest.no-xhr.config.js']);
   assert.equal(code, 0, out);
   assert.match(out, /Tests\s+1 passed \(1\)/);

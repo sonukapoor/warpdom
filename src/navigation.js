@@ -36,15 +36,20 @@ export function navigate(window, url, replace = false) {
     history.index++;
   }
   ws.url = url;
-  hostTimeout(window, () => {
-    dispatch(window, new window.PopStateEvent('popstate', { state: null }));
-    dispatch(window, new window.HashChangeEvent('hashchange', { oldURL: current.href, newURL: url.href }));
-  }, 0);
+  hostTimeout(
+    window,
+    () => {
+      dispatch(window, new window.PopStateEvent('popstate', { state: null }));
+      dispatch(window, new window.HashChangeEvent('hashchange', { oldURL: current.href, newURL: url.href }));
+    },
+    0,
+  );
 }
 
 // jsdom 27 and later name the missing piece "navigation to another
 // Document"; jsdom 20 to 26 "navigation (except hash changes)".
-const notImplemented = (ws) => ws.notImplemented(ws.compat.jsdom >= 27 ? 'navigation to another Document' : 'navigation (except hash changes)');
+const notImplemented = (ws) =>
+  ws.notImplemented(ws.compat.jsdom >= 27 ? 'navigation to another Document' : 'navigation (except hash changes)');
 
 // Navigation tasks run on the timers of the global the window is installed
 // on, looked up when queued, so a test's fake timers hold them back as they
@@ -81,17 +86,27 @@ export function traverse(window, delta) {
   const target = history.index + delta;
   if (target < 0 || target >= history.entries.length) return;
   const navigations = history.navigations;
-  hostTimeout(window, () => {
-    if (history.navigations !== navigations || target === history.index || target >= history.entries.length || ws.discarded) return;
-    const old = ws.url;
-    const entry = history.entries[target];
-    history.index = target;
-    ws.url = entry.url;
-    dispatch(window, new window.PopStateEvent('popstate', { state: entry.state }));
-    if (fragmentOf(old) !== fragmentOf(entry.url)) {
-      dispatch(window, new window.HashChangeEvent('hashchange', { oldURL: old.href, newURL: entry.url.href }));
-    }
-  }, 1);
+  hostTimeout(
+    window,
+    () => {
+      if (
+        history.navigations !== navigations ||
+        target === history.index ||
+        target >= history.entries.length ||
+        ws.discarded
+      )
+        return;
+      const old = ws.url;
+      const entry = history.entries[target];
+      history.index = target;
+      ws.url = entry.url;
+      dispatch(window, new window.PopStateEvent('popstate', { state: entry.state }));
+      if (fragmentOf(old) !== fragmentOf(entry.url)) {
+        dispatch(window, new window.HashChangeEvent('hashchange', { oldURL: old.href, newURL: entry.url.href }));
+      }
+    },
+    1,
+  );
 }
 
 // Following a hyperlink (<a>, <area>): a navigation in a later task. Links

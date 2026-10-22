@@ -228,12 +228,16 @@ function rules(text) {
 // A selector list's selectors (commas inside :is() and :not() kept).
 function selectorList(text) {
   const out = [];
-  let depth = 0, start = 0;
+  let depth = 0,
+    start = 0;
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
     if (c === '(') depth++;
     else if (c === ')') depth--;
-    else if (c === ',' && depth === 0) { out.push(text.slice(start, i).trim()); start = i + 1; }
+    else if (c === ',' && depth === 0) {
+      out.push(text.slice(start, i).trim());
+      start = i + 1;
+    }
   }
   out.push(text.slice(start).trim());
   return out;
@@ -244,7 +248,8 @@ const bySpecificityThenOrder = (a, b) => b.specificity - a.specificity || b.orde
 // The tag a selector's rightmost compound requires ('input' for
 // input[type="hidden" i], 'rt' for ruby > rt), or null ([dir], :link).
 function subjectTag(selector) {
-  let depth = 0, start = 0;
+  let depth = 0,
+    start = 0;
   for (let i = 0; i < selector.length; i++) {
     const c = selector[i];
     if (c === '(' || c === '[') depth++;
@@ -279,20 +284,29 @@ function splitSheet(text) {
 // A rule's selectors: single type selectors, and the others compiled.
 function compiledRule(rule) {
   if (rule.compiled !== null) return rule.compiled;
-  const simple = [], complex = [];
+  const simple = [],
+    complex = [];
   for (const selector of rule.selectors) {
-    if (SIMPLE.test(selector)) { simple.push(selector); continue; }
+    if (SIMPLE.test(selector)) {
+      simple.push(selector);
+      continue;
+    }
     // A selector the engine does not know leaves its rule out.
     let compiled;
-    try { compiled = compileRuleSelector(selector); } catch { continue; }
+    try {
+      compiled = compileRuleSelector(selector);
+    } catch {
+      continue;
+    }
     for (const { match, specificity } of compiled) complex.push({ match, specificity, tag: subjectTag(selector) });
   }
-  return rule.compiled = { simple, complex };
+  return (rule.compiled = { simple, complex });
 }
 
 // Whether a declared property can set name: itself, or a shorthand of it
 // (margin for margin-top, border for border-top and border-top-color).
-const mayDeclare = (property, name) => property === name || name.startsWith(`${property}-`) || SHORTHANDS[property]?.includes(name) === true;
+const mayDeclare = (property, name) =>
+  property === name || name.startsWith(`${property}-`) || SHORTHANDS[property]?.includes(name) === true;
 
 // The index of one sheet for one CSS mode and style surface: name ->
 // { normal, important } (an entry or null), built per name on first read.
@@ -321,7 +335,10 @@ function declarationsOf(index, name) {
       for (const tag of simple) entry.tags.set(tag, v);
       for (const { match, specificity, tag } of complex) {
         let list = entry.any;
-        if (tag !== null) { list = entry.byTag.get(tag); if (!list) entry.byTag.set(tag, list = []); }
+        if (tag !== null) {
+          list = entry.byTag.get(tag);
+          if (!list) entry.byTag.set(tag, (list = []));
+        }
         list.push({ match, specificity, order: decl.order, value: v });
       }
     }
@@ -358,17 +375,18 @@ const indexes = new Map();
 const surfaceIndexes = new WeakMap();
 function indexFor(window, expand) {
   const ws = window[S];
-  const mode = validationModeOf(window), surface = styleSurfaceOf(window);
+  const mode = validationModeOf(window),
+    surface = styleSurfaceOf(window);
   const generation = ws.compat.jsdom >= 27 ? 'html' : 'legacy';
   const key = `${generation} ${mode}`;
   let cache = indexes;
   if (surface !== null) {
     cache = surfaceIndexes.get(surface);
-    if (!cache) surfaceIndexes.set(surface, cache = new Map());
+    if (!cache) surfaceIndexes.set(surface, (cache = new Map()));
   }
   let index = cache.get(key);
-  if (!index) cache.set(key, index = sheetIndex(generation === 'html' ? HTML : LEGACY, mode, surface, expand));
-  return ws.uaIndex = index;
+  if (!index) cache.set(key, (index = sheetIndex(generation === 'html' ? HTML : LEGACY, mode, surface, expand)));
+  return (ws.uaIndex = index);
 }
 
 // The user agent sheet's declarations of a longhand (or of a shorthand

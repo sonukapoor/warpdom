@@ -30,7 +30,10 @@ test('the Vitest adapter warns once when the project has a newer jsdom installed
   try {
     writeFileSync(join(root, 'package.json'), '{"name":"fixture"}');
     mkdirSync(join(root, 'node_modules/jsdom'), { recursive: true });
-    writeFileSync(join(root, 'node_modules/jsdom/package.json'), '{"name":"jsdom","version":"31.0.0","main":"index.js"}');
+    writeFileSync(
+      join(root, 'node_modules/jsdom/package.json'),
+      '{"name":"jsdom","version":"31.0.0","main":"index.js"}',
+    );
     const warnings = [];
     const warn = console.warn;
     console.warn = (text) => warnings.push(text);

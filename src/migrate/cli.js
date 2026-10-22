@@ -68,7 +68,10 @@ export function parseArgs(argv) {
   return opts;
 }
 
-export async function main(argv, { stdout = process.stdout, stderr = process.stderr, cwd = process.cwd(), fetch } = {}) {
+export async function main(
+  argv,
+  { stdout = process.stdout, stderr = process.stderr, cwd = process.cwd(), fetch } = {},
+) {
   let opts;
   try {
     opts = parseArgs(argv);
@@ -80,7 +83,14 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
     stdout.write(HELP);
     return 0;
   }
-  const result = await migrate({ cwd, apply: !opts.dryRun, force: opts.force, keepJsdomVersion: opts.keepJsdomVersion, offline: opts.offline || process.env.WARPDOM_MIGRATE_OFFLINE === '1', fetch });
+  const result = await migrate({
+    cwd,
+    apply: !opts.dryRun,
+    force: opts.force,
+    keepJsdomVersion: opts.keepJsdomVersion,
+    offline: opts.offline || process.env.WARPDOM_MIGRATE_OFFLINE === '1',
+    fetch,
+  });
   if (opts.json) stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   else stdout.write(renderConsole({ ...result, planFileShown: path.relative(cwd, result.planFile) }));
   return result.error ? 2 : 0;

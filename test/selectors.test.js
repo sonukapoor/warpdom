@@ -38,7 +38,9 @@ test('attribute selectors with every operator and the i flag', () => {
 });
 
 test('combinators', () => {
-  const { document } = page('<section id="s"><div id="d"><p id="p1"></p></div><p id="p2"></p><span id="sp"></span><p id="p3"></p></section>');
+  const { document } = page(
+    '<section id="s"><div id="d"><p id="p1"></p></div><p id="p2"></p><span id="sp"></span><p id="p3"></p></section>',
+  );
   const q = (sel) => ids(document.querySelectorAll(sel));
   assert.deepEqual(q('section p'), ['p1', 'p2', 'p3']);
   assert.deepEqual(q('section > p'), ['p2', 'p3']);
@@ -49,7 +51,9 @@ test('combinators', () => {
 });
 
 test('structural pseudo-classes', () => {
-  const { document } = page('<ul id="u"><li id="l1"></li><li id="l2"></li><li id="l3"></li><li id="l4"></li><li id="l5"></li></ul><div id="e"></div>');
+  const { document } = page(
+    '<ul id="u"><li id="l1"></li><li id="l2"></li><li id="l3"></li><li id="l4"></li><li id="l5"></li></ul><div id="e"></div>',
+  );
   const q = (sel) => ids(document.querySelectorAll(sel));
   assert.deepEqual(q('li:first-child'), ['l1']);
   assert.deepEqual(q('li:last-child'), ['l5']);
@@ -183,11 +187,33 @@ parity('selectors: *| and | namespaces, forgiving :is, preprocessing, :host', (w
   span.id = 'sp�aces';
   const spaces = d.body.appendChild(d.createElement('span'));
   spaces.id = 'spaces';
-  const count = (root, selector) => { try { return root.querySelectorAll(selector).length; } catch (e) { return e.name; } };
+  const count = (root, selector) => {
+    try {
+      return root.querySelectorAll(selector).length;
+    } catch (e) {
+      return e.name;
+    }
+  };
   return [
-    ...[':host > article', ':host article', ':host b', ':host(.x) b', ':host(.y) b', ':host', 'section > article', '*|article',
-      '|article', '*|*', 'x|article', ':is(x|a, article)', ':where()', ':is(:foo, b)', ':not(x|a)', ':where(:is(x|y), b)', 'b:is()']
-      .map((s) => count(shadow, s)),
+    ...[
+      ':host > article',
+      ':host article',
+      ':host b',
+      ':host(.x) b',
+      ':host(.y) b',
+      ':host',
+      'section > article',
+      '*|article',
+      '|article',
+      '*|*',
+      'x|article',
+      ':is(x|a, article)',
+      ':where()',
+      ':is(:foo, b)',
+      ':not(x|a)',
+      ':where(:is(x|y), b)',
+      'b:is()',
+    ].map((s) => count(shadow, s)),
     ...['|h', '*|h', 'h', '|b', '#sp\0aces', '#sp\\0 aces', '#spac\\65\r\ns', '#spac\\65\fs'].map((s) => count(d, s)),
   ];
 });

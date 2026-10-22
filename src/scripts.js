@@ -16,10 +16,22 @@ import { S, HTML_NS, ELEMENT_NODE, TEXT_NODE, hooks, nextInTree, connected } fro
 import { reportError } from './events.js';
 
 const JS_MIME_TYPES = new Set([
-  'application/ecmascript', 'application/javascript', 'application/x-ecmascript', 'application/x-javascript',
-  'text/ecmascript', 'text/javascript', 'text/javascript1.0', 'text/javascript1.1', 'text/javascript1.2',
-  'text/javascript1.3', 'text/javascript1.4', 'text/javascript1.5', 'text/jscript', 'text/livescript',
-  'text/x-ecmascript', 'text/x-javascript',
+  'application/ecmascript',
+  'application/javascript',
+  'application/x-ecmascript',
+  'application/x-javascript',
+  'text/ecmascript',
+  'text/javascript',
+  'text/javascript1.0',
+  'text/javascript1.1',
+  'text/javascript1.2',
+  'text/javascript1.3',
+  'text/javascript1.4',
+  'text/javascript1.5',
+  'text/jscript',
+  'text/livescript',
+  'text/x-ecmascript',
+  'text/x-javascript',
 ]);
 
 const trimAscii = (v) => v.replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, '');
@@ -48,8 +60,12 @@ function childText(script) {
 let withWindow = null;
 function runInWindow(window, source) {
   const run = window[S].runScript;
-  if (run) { run(source); return; }
-  if (withWindow === null) withWindow = new Function('__window', '__source', 'with (__window) { return eval(__source); }');
+  if (run) {
+    run(source);
+    return;
+  }
+  if (withWindow === null)
+    withWindow = new Function('__window', '__source', 'with (__window) { return eval(__source); }');
   withWindow.call(window, window, source);
 }
 
@@ -60,7 +76,11 @@ function runInWindow(window, source) {
 export function runJavascriptURL(window, url) {
   const encoded = url.href.slice('javascript:'.length);
   let source;
-  try { source = decodeURIComponent(encoded); } catch { source = encoded; }
+  try {
+    source = decodeURIComponent(encoded);
+  } catch {
+    source = encoded;
+  }
   try {
     runInWindow(window, source);
   } catch (error) {
@@ -141,7 +161,7 @@ hooks.scripts = {
   fragment(doc, insertChildren, parent, fragment, ref, root, quiet) {
     if (!modern(doc)) return insertChildren(parent, fragment, ref, root, quiet);
     const outer = pending;
-    const found = pending = [];
+    const found = (pending = []);
     try {
       insertChildren(parent, fragment, ref, root, quiet);
     } finally {

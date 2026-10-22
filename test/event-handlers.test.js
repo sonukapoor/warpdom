@@ -5,11 +5,21 @@ parity('IDL attributes: values, order among listeners, return false', (w) => {
   const d = html(w, '<button id="b">b</button><a id="a" href="#x">a</a>');
   const b = d.getElementById('b');
   const log = [];
-  const out = [b.onclick, 'onclick' in b, 'oninput' in d, 'oninput' in w, 'onload' in w, 'onhashchange' in d.body, 'onhashchange' in b];
+  const out = [
+    b.onclick,
+    'onclick' in b,
+    'oninput' in d,
+    'oninput' in w,
+    'onload' in w,
+    'onhashchange' in d.body,
+    'onhashchange' in b,
+  ];
   b.addEventListener('click', () => log.push('one'));
   b.onclick = () => log.push('two (handler)');
   b.addEventListener('click', () => log.push('three'));
-  b.onclick = function () { log.push(`replaced, this is button: ${this === b}`); };
+  b.onclick = function () {
+    log.push(`replaced, this is button: ${this === b}`);
+  };
   b.click();
   out.push(log.splice(0), typeof b.onclick);
   b.onclick = 'not a function';
@@ -26,7 +36,10 @@ parity('IDL attributes: values, order among listeners, return false', (w) => {
 });
 
 parity('content attributes compile with element, form and document scope', (w) => {
-  const d = html(w, '<form id="f" name="theForm"><input id="i" name="field" onclick="window.__log.push([this.id, id, name, form.id, event.type, typeof getElementById])"></form><div id="x" onclick="return false"></div>');
+  const d = html(
+    w,
+    '<form id="f" name="theForm"><input id="i" name="field" onclick="window.__log.push([this.id, id, name, form.id, event.type, typeof getElementById])"></form><div id="x" onclick="return false"></div>',
+  );
   w.__log = [];
   d.getElementById('i').click();
   const div = d.getElementById('x');
@@ -53,9 +66,12 @@ parity('content attributes compile with element, form and document scope', (w) =
 // are in a handler's scope through the window, after the window's own
 // members; an assignment to such a name goes to the window.
 const namedScenario = (w) => {
-  const d = html(w, '<div id="result"></div><form name="fname"></form><div id="dup"></div><span id="dup"></span><div id="gone"></div>'
-    + '<div id="shadowed"></div><div id="setTimeout"></div><div id="an"></div>'
-    + '<button id="t" onclick="result.textContent = \'ok\'; window.__r = [fname.tagName, dup.length, typeof late, typeof gone, typeof nosuch, shadowed, typeof setTimeout, typeof an].join(); an = 5"></button>');
+  const d = html(
+    w,
+    '<div id="result"></div><form name="fname"></form><div id="dup"></div><span id="dup"></span><div id="gone"></div>' +
+      '<div id="shadowed"></div><div id="setTimeout"></div><div id="an"></div>' +
+      '<button id="t" onclick="result.textContent = \'ok\'; window.__r = [fname.tagName, dup.length, typeof late, typeof gone, typeof nosuch, shadowed, typeof setTimeout, typeof an].join(); an = 5"></button>',
+  );
   w.shadowed = 'g';
   const button = d.getElementById('t');
   button.click();
@@ -66,21 +82,26 @@ const namedScenario = (w) => {
   out.push(w.__r, w.an);
   return out;
 };
-for (const jsdom of [20, 26, 30]) parity(`content attributes find named elements (jsdom ${jsdom})`, namedScenario, { jsdom });
+for (const jsdom of [20, 26, 30])
+  parity(`content attributes find named elements (jsdom ${jsdom})`, namedScenario, { jsdom });
 
 // Named objects whose names a compiler might use for its scope objects
 // (__window, __document, __form, __element) are just named objects: the
 // element, form, document and window scopes stay.
 const scopeNameScenario = (w) => {
-  const d = html(w, '<div id="__window"></div><div id="__named"></div><div id="__document"></div><div id="__element"></div><div id="shadowed"></div><form name="__form"></form>'
-    + '<form id="f"><input><button id="b" type="button" onclick="window.__r = [String(shadowed), id, typeof getElementById, elements.length, typeof setTimeout, __window.id]"></button></form>'
-    + '<button id="c" onclick="window.__s = [String(shadowed), id, typeof getElementById, typeof setTimeout]"></button>');
+  const d = html(
+    w,
+    '<div id="__window"></div><div id="__named"></div><div id="__document"></div><div id="__element"></div><div id="shadowed"></div><form name="__form"></form>' +
+      '<form id="f"><input><button id="b" type="button" onclick="window.__r = [String(shadowed), id, typeof getElementById, elements.length, typeof setTimeout, __window.id]"></button></form>' +
+      '<button id="c" onclick="window.__s = [String(shadowed), id, typeof getElementById, typeof setTimeout]"></button>',
+  );
   w.shadowed = 'g';
   d.getElementById('b').click();
   d.getElementById('c').click();
   return [String(w.__r), String(w.__s)];
 };
-for (const jsdom of [20, 26, 30]) parity(`content attributes: named objects do not replace scopes (jsdom ${jsdom})`, scopeNameScenario, { jsdom });
+for (const jsdom of [20, 26, 30])
+  parity(`content attributes: named objects do not replace scopes (jsdom ${jsdom})`, scopeNameScenario, { jsdom });
 
 parity('body forwards window handlers; window onerror', (w) => {
   const d = w.document;
@@ -88,8 +109,18 @@ parity('body forwards window handlers; window onerror', (w) => {
   d.body.onresize = () => log.push('resize on window');
   w.dispatchEvent(new w.Event('resize'));
   const out = [w.onresize === d.body.onresize, log.splice(0)];
-  w.onerror = (message, source, lineno, colno, error) => { log.push([message, source, lineno, colno, error?.message]); return true; };
-  const event = new w.ErrorEvent('error', { message: 'boom', filename: 'f.js', lineno: 3, colno: 4, error: new Error('e'), cancelable: true });
+  w.onerror = (message, source, lineno, colno, error) => {
+    log.push([message, source, lineno, colno, error?.message]);
+    return true;
+  };
+  const event = new w.ErrorEvent('error', {
+    message: 'boom',
+    filename: 'f.js',
+    lineno: 3,
+    colno: 4,
+    error: new Error('e'),
+    cancelable: true,
+  });
   w.dispatchEvent(event);
   out.push(log.splice(0), event.defaultPrevented);
   w.onerror = null;
@@ -100,7 +131,14 @@ parity('React-style feature detection', (w) => {
   const d = w.document;
   const div = d.createElement('div');
   div.setAttribute('oninput', 'return;');
-  return ['oninput' in d, typeof div.oninput, 'onfocusin' in d, 'onpointerdown' in d, 'onanimationend' in d, 'ontouchstart' in d];
+  return [
+    'oninput' in d,
+    typeof div.oninput,
+    'onfocusin' in d,
+    'onpointerdown' in d,
+    'onanimationend' in d,
+    'ontouchstart' in d,
+  ];
 });
 
 // Following the standard where jsdom differs: a handler set again after
@@ -141,14 +179,21 @@ const handlerNames = (o) => {
 const handlerSetsScenario = (w) => {
   const d = w.document;
   const names = handlerNames;
-  return [names(d.createElement('div')), names(d.body), names(d.createElementNS('http://www.w3.org/2000/svg', 'rect')), names(d), names(w)];
+  return [
+    names(d.createElement('div')),
+    names(d.body),
+    names(d.createElementNS('http://www.w3.org/2000/svg', 'rect')),
+    names(d),
+    names(w),
+  ];
 };
 const handlerAttributesScenario = (w) => {
   const d = w.document;
   const ran = [];
   w.ran = ran;
-  d.body.innerHTML = '<div id="a" onclick="ran.push(\'click\')" oncopy="ran.push(\'copy\')" ontouchstart="ran.push(\'touchstart\')" '
-    + 'onpointerdown="ran.push(\'pointerdown\')" onauxclick="ran.push(\'auxclick\')"></div>';
+  d.body.innerHTML =
+    '<div id="a" onclick="ran.push(\'click\')" oncopy="ran.push(\'copy\')" ontouchstart="ran.push(\'touchstart\')" ' +
+    'onpointerdown="ran.push(\'pointerdown\')" onauxclick="ran.push(\'auxclick\')"></div>';
   const a = d.getElementById('a');
   const b = d.createElement('p');
   b.setAttribute('onpaste', 'ran.push("paste")');
@@ -177,8 +222,18 @@ test('event handlers per jsdom version: boundaries 22.1.0 and 27.0.0 (counts as 
     const d = w.document;
     const names = handlerNames;
     const div = d.createElement('div');
-    return [names(div).length, names(d.createElementNS('http://www.w3.org/2000/svg', 'g')).length, names(d).length, names(w).length,
-      'oncopy' in div, 'onauxclick' in div, 'onauxclick' in w, 'onpointerdown' in div, 'onloadend' in div, 'onsort' in w];
+    return [
+      names(div).length,
+      names(d.createElementNS('http://www.w3.org/2000/svg', 'g')).length,
+      names(d).length,
+      names(w).length,
+      'oncopy' in div,
+      'onauxclick' in div,
+      'onauxclick' in w,
+      'onpointerdown' in div,
+      'onloadend' in div,
+      'onsort' in w,
+    ];
   };
   assert.deepEqual(count('20.0.0'), [61, 61, 63, 78, false, true, false, false, true, true]);
   assert.deepEqual(count('22.0.0'), [61, 61, 63, 78, false, true, false, false, true, true]);
@@ -220,4 +275,5 @@ const legacyHandlersScenario = (w) => {
   out.push(ran);
   return out;
 };
-for (const jsdom of [20, 22, 26, 30]) parity(`jsdom ${jsdom}: onloadend, onautocomplete, onautocompleteerror, onsort`, legacyHandlersScenario, { jsdom });
+for (const jsdom of [20, 22, 26, 30])
+  parity(`jsdom ${jsdom}: onloadend, onautocomplete, onautocompleteerror, onsort`, legacyHandlersScenario, { jsdom });

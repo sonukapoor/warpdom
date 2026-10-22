@@ -14,22 +14,33 @@ async function frames(w, n) {
 
 test('fastFrames: off by default, a frame waits about 16.7 ms', async () => {
   const w = createWindow();
-  assert.ok(await frames(w, 3) >= 45, 'three frames take at least 45 ms');
+  assert.ok((await frames(w, 3)) >= 45, 'three frames take at least 45 ms');
 });
 
 test('fastFrames: frames run without the real-time wait', async () => {
   const w = createWindow({ fastFrames: true });
   // 30 frames would take 500 ms at 60 Hz.
-  assert.ok(await frames(w, 30) < 250, '30 frames well under 500 ms');
+  assert.ok((await frames(w, 30)) < 250, '30 frames well under 500 ms');
 });
 
 test('fastFrames: same frame semantics (batching, order, cancel, timestamps)', async () => {
   const w = createWindow({ fastFrames: true });
   const log = [];
   const times = [];
-  w.requestAnimationFrame((t) => { log.push('a'); times.push(t); w.requestAnimationFrame((t2) => { log.push('next'); times.push(t2); }); });
+  w.requestAnimationFrame((t) => {
+    log.push('a');
+    times.push(t);
+    w.requestAnimationFrame((t2) => {
+      log.push('next');
+      times.push(t2);
+    });
+  });
   const b = w.requestAnimationFrame(() => log.push('b'));
-  w.requestAnimationFrame((t) => { log.push('c'); times.push(t); w.cancelAnimationFrame(b + 2); });
+  w.requestAnimationFrame((t) => {
+    log.push('c');
+    times.push(t);
+    w.cancelAnimationFrame(b + 2);
+  });
   w.requestAnimationFrame(() => log.push('canceled by c'));
   w.cancelAnimationFrame(b);
   await frame(w);
@@ -54,12 +65,16 @@ test('fastFrames: nested browsing contexts inherit the option', async () => {
   const w = createWindow({ fastFrames: true, url: 'http://localhost/' });
   const iframe = w.document.body.appendChild(w.document.createElement('iframe'));
   const inner = iframe.contentWindow;
-  assert.ok(await frames(inner, 10) < 120);
+  assert.ok((await frames(inner, 10)) < 120);
 });
 
 test('fastFrames: Vitest environmentOptions.warpdom.fastFrames', async () => {
   const { default: environment } = await import('../src/vitest.js');
-  for (const [options, fast] of [[{ warpdom: { fastFrames: true } }, true], [{}, false], [{ warpdom: { fastFrames: 'yes' } }, false]]) {
+  for (const [options, fast] of [
+    [{ warpdom: { fastFrames: true } }, true],
+    [{}, false],
+    [{ warpdom: { fastFrames: 'yes' } }, false],
+  ]) {
     const global = {};
     const result = environment.setup(global, options);
     try {

@@ -21,10 +21,17 @@ export class QuotaExceededError extends DOMException {
     this.#requested = options.requested ?? null;
   }
 
-  get quota() { return this.#quota; }
-  get requested() { return this.#requested; }
+  get quota() {
+    return this.#quota;
+  }
+  get requested() {
+    return this.#requested;
+  }
 }
-Object.defineProperty(QuotaExceededError.prototype, Symbol.toStringTag, { value: 'QuotaExceededError', configurable: true });
+Object.defineProperty(QuotaExceededError.prototype, Symbol.toStringTag, {
+  value: 'QuotaExceededError',
+  configurable: true,
+});
 
 const items = (storage) => state(storage).items;
 
@@ -56,13 +63,18 @@ function clearItems(storage) {
 }
 
 const required = (method, args, n) => {
-  if (args.length < n) throw new TypeError(`Failed to execute '${method}' on 'Storage': ${n} argument${n > 1 ? 's' : ''} required, but only ${args.length} present.`);
+  if (args.length < n)
+    throw new TypeError(
+      `Failed to execute '${method}' on 'Storage': ${n} argument${n > 1 ? 's' : ''} required, but only ${args.length} present.`,
+    );
 };
 
 export const STORAGE_INTERFACE = {
   name: 'Storage',
   members: {
-    get length() { return items(this).size; },
+    get length() {
+      return items(this).size;
+    },
     key(...args) {
       required('key', args, 1);
       const index = Number(args[0]) >>> 0;
@@ -71,10 +83,21 @@ export const STORAGE_INTERFACE = {
       for (const k of items(this).keys()) if (i++ === index) return k;
       return null;
     },
-    getItem(...args) { required('getItem', args, 1); return items(this).get(String(args[0])) ?? null; },
-    setItem(...args) { required('setItem', args, 2); setItem(this, args[0], args[1]); },
-    removeItem(...args) { required('removeItem', args, 1); removeItem(this, String(args[0])); },
-    clear() { clearItems(this); },
+    getItem(...args) {
+      required('getItem', args, 1);
+      return items(this).get(String(args[0])) ?? null;
+    },
+    setItem(...args) {
+      required('setItem', args, 2);
+      setItem(this, args[0], args[1]);
+    },
+    removeItem(...args) {
+      required('removeItem', args, 1);
+      removeItem(this, String(args[0]));
+    },
+    clear() {
+      clearItems(this);
+    },
   },
 };
 
@@ -96,14 +119,19 @@ function createStorage(window) {
       return true;
     },
     deleteProperty(t, key) {
-      if (typeof key === 'string' && t[S].items.has(key)) { removeItem(target, key); return true; }
+      if (typeof key === 'string' && t[S].items.has(key)) {
+        removeItem(target, key);
+        return true;
+      }
       return Reflect.deleteProperty(t, key);
     },
     has(t, key) {
       return (typeof key === 'string' && t[S].items.has(key)) || Reflect.has(t, key);
     },
     ownKeys(t) {
-      return [...t[S].items.keys()].filter((k) => !(k in Object.getPrototypeOf(t))).concat(Reflect.ownKeys(t).filter((k) => k !== S));
+      return [...t[S].items.keys()]
+        .filter((k) => !(k in Object.getPrototypeOf(t)))
+        .concat(Reflect.ownKeys(t).filter((k) => k !== S));
     },
     getOwnPropertyDescriptor(t, key) {
       if (named(t, key) && t[S].items.has(key)) {
@@ -112,7 +140,10 @@ function createStorage(window) {
       return Reflect.getOwnPropertyDescriptor(t, key);
     },
     defineProperty(t, key, descriptor) {
-      if (typeof key === 'string' && 'value' in descriptor) { setItem(target, key, descriptor.value); return true; }
+      if (typeof key === 'string' && 'value' in descriptor) {
+        setItem(target, key, descriptor.value);
+        return true;
+      }
       return Reflect.defineProperty(t, key, descriptor);
     },
   });
@@ -125,8 +156,12 @@ function storageOf(window, which) {
 }
 
 export const STORAGE_WINDOW_MEMBERS = {
-  get localStorage() { return storageOf(this, 'localStorage'); },
-  get sessionStorage() { return storageOf(this, 'sessionStorage'); },
+  get localStorage() {
+    return storageOf(this, 'localStorage');
+  },
+  get sessionStorage() {
+    return storageOf(this, 'sessionStorage');
+  },
 };
 
 // For the per-file reset (reset.js).

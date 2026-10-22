@@ -164,7 +164,10 @@ export interface CompareResult {
   gitChanges: unknown[];
   warpdomOptions: { fastFrames: true } | null;
   /** Results of alsoEnvironments, by name. */
-  also: Record<string, { environment: unknown; provided: boolean; correctness: CorrectnessResult | null; timing: unknown }> | null;
+  also: Record<
+    string,
+    { environment: unknown; provided: boolean; correctness: CorrectnessResult | null; timing: unknown }
+  > | null;
   /** Names of the environment variables given in `env`. */
   env: string[];
   [key: string]: unknown;
@@ -177,7 +180,10 @@ export function compare(options?: CompareOptions): Promise<CompareResult>;
 export function summary(result: CompareResult, dir?: string): string;
 
 /** The terminal summary. */
-export function renderConsole(result: CompareResult, options?: { reportPath?: string | null; groupLimit?: number }): string;
+export function renderConsole(
+  result: CompareResult,
+  options?: { reportPath?: string | null; groupLimit?: number },
+): string;
 
 /** The shareable Markdown report (<out>/report.md). */
 export function renderMarkdown(result: CompareResult): string;

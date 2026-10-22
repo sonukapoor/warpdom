@@ -9,7 +9,10 @@ test('childList records for appends and removals, delivered asynchronously', asy
   const { document } = w;
   const list = document.body.appendChild(document.createElement('ul'));
   const records = [];
-  const observer = new w.MutationObserver((batch, obs) => { records.push(...batch); assert.equal(obs, observer); });
+  const observer = new w.MutationObserver((batch, obs) => {
+    records.push(...batch);
+    assert.equal(obs, observer);
+  });
   observer.observe(list, { childList: true });
   const a = list.appendChild(document.createElement('li'));
   const b = list.appendChild(document.createElement('li'));
@@ -34,8 +37,13 @@ test('subtree, attributes with old values and filters, characterData', async () 
   const text = child.appendChild(document.createTextNode('a'));
   const records = [];
   new w.MutationObserver((batch) => records.push(...batch)).observe(root, {
-    subtree: true, childList: true, attributes: true, attributeOldValue: true,
-    attributeFilter: ['data-x'], characterData: true, characterDataOldValue: true,
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeOldValue: true,
+    attributeFilter: ['data-x'],
+    characterData: true,
+    characterDataOldValue: true,
   });
   child.setAttribute('data-x', '1');
   child.setAttribute('data-x', '2');
@@ -43,7 +51,10 @@ test('subtree, attributes with old values and filters, characterData', async () 
   text.data = 'b';
   child.appendChild(document.createElement('i'));
   await tick();
-  assert.deepEqual(records.map((r) => r.type), ['attributes', 'attributes', 'characterData', 'childList']);
+  assert.deepEqual(
+    records.map((r) => r.type),
+    ['attributes', 'attributes', 'characterData', 'childList'],
+  );
   assert.deepEqual([records[0].attributeName, records[0].oldValue], ['data-x', null]);
   assert.equal(records[1].oldValue, '1');
   assert.equal(records[2].oldValue, 'a');
@@ -80,31 +91,46 @@ test('observe requires at least one of childList, attributes, characterData', ()
 import { parity as styleParity } from './parity.js';
 
 for (const jsdom of [30, 26]) {
-  styleParity(`style writes queue attribute records and custom element reactions (jsdom ${jsdom})`, async (w) => {
-    const d = w.document;
-    const el = d.createElement('div');
-    d.body.appendChild(el);
-    const records = [];
-    const observer = new w.MutationObserver((list) => records.push(...list.map((r) => `${r.attributeName}:${r.oldValue}`)));
-    observer.observe(el, { attributes: true, attributeOldValue: true });
-    const attributes = el.attributes;
-    el.style.height = '100px'; await Promise.resolve();
-    el.style.height = '100px'; await Promise.resolve();
-    el.style.cssText = 'height:100px'; await Promise.resolve();
-    el.style.removeProperty('width'); await Promise.resolve();
-    el.style.removeProperty('height'); await Promise.resolve();
-    const calls = [];
-    class X extends w.HTMLElement {
-      static get observedAttributes() { return ['style']; }
-      attributeChangedCallback(name, old, value) { calls.push(`${name}:${old}->${value}`); }
-    }
-    w.customElements.define('x-el', X);
-    const x = d.createElement('x-el');
-    d.body.appendChild(x);
-    x.style.color = 'red';
-    x.style.color = 'blue';
-    return [records, calls, attributes.length];
-  }, { jsdom });
+  styleParity(
+    `style writes queue attribute records and custom element reactions (jsdom ${jsdom})`,
+    async (w) => {
+      const d = w.document;
+      const el = d.createElement('div');
+      d.body.appendChild(el);
+      const records = [];
+      const observer = new w.MutationObserver((list) =>
+        records.push(...list.map((r) => `${r.attributeName}:${r.oldValue}`)),
+      );
+      observer.observe(el, { attributes: true, attributeOldValue: true });
+      const attributes = el.attributes;
+      el.style.height = '100px';
+      await Promise.resolve();
+      el.style.height = '100px';
+      await Promise.resolve();
+      el.style.cssText = 'height:100px';
+      await Promise.resolve();
+      el.style.removeProperty('width');
+      await Promise.resolve();
+      el.style.removeProperty('height');
+      await Promise.resolve();
+      const calls = [];
+      class X extends w.HTMLElement {
+        static get observedAttributes() {
+          return ['style'];
+        }
+        attributeChangedCallback(name, old, value) {
+          calls.push(`${name}:${old}->${value}`);
+        }
+      }
+      w.customElements.define('x-el', X);
+      const x = d.createElement('x-el');
+      d.body.appendChild(x);
+      x.style.color = 'red';
+      x.style.color = 'blue';
+      return [records, calls, attributes.length];
+    },
+    { jsdom },
+  );
 }
 
 test('a registration moves with its node to another document', async () => {

@@ -11,17 +11,23 @@
 // adoption) and compound operations open a scope; reactions queued inside
 // run when the outermost scope ends. Nothing of this runs until something
 // is defined: until then hooks.ce is null and the primitives skip it.
-import {
-  S, state, domError, hooks, ELEMENT_NODE, HTML_NS, nextInTree, connected,
-} from './internal.js';
+import { S, state, domError, hooks, ELEMENT_NODE, HTML_NS, nextInTree, connected } from './internal.js';
 import { reportError } from './events.js';
 import { labelsList } from './forms.js';
 
 // --- valid custom element names ---------------------------------------------------
 
 const PCEN = /^[a-z][-.0-9_a-z·À-ÖØ-öø-ͽͿ-῿‌‍‿⁀⁰-↏Ⰰ-⿯、-퟿豈-﷏ﷰ-�\u{10000}-\u{effff}]*$/u;
-const RESERVED = new Set(['annotation-xml', 'color-profile', 'font-face', 'font-face-src', 'font-face-uri',
-  'font-face-format', 'font-face-name', 'missing-glyph']);
+const RESERVED = new Set([
+  'annotation-xml',
+  'color-profile',
+  'font-face',
+  'font-face-src',
+  'font-face-uri',
+  'font-face-format',
+  'font-face-name',
+  'missing-glyph',
+]);
 
 export const isValidCustomElementName = (name) => name.includes('-') && PCEN.test(name) && !RESERVED.has(name);
 
@@ -51,9 +57,17 @@ function flush() {
       while (items && items.length > 0) {
         const reaction = items.shift();
         if (reaction.definition) {
-          try { upgrade(element, reaction.definition); } catch (error) { reportError(element, error); }
+          try {
+            upgrade(element, reaction.definition);
+          } catch (error) {
+            reportError(element, error);
+          }
         } else {
-          try { reaction.callback.apply(element, reaction.args); } catch (error) { reportError(element, error); }
+          try {
+            reaction.callback.apply(element, reaction.args);
+          } catch (error) {
+            reportError(element, error);
+          }
         }
       }
     }
@@ -93,7 +107,8 @@ function enqueueUpgrade(element, definition) {
 // Documents without a browsing context (template contents, DOMParser's and
 // DOMImplementation's documents) look up no definitions: their elements
 // stay HTMLElement until a document with one adopts them.
-const registryOf = (doc) => (doc[S].inertTemplate === true || doc[S].noView === true ? null : doc[S].window?.[S].customElements?.[S] ?? null);
+const registryOf = (doc) =>
+  doc[S].inertTemplate === true || doc[S].noView === true ? null : (doc[S].window?.[S].customElements?.[S] ?? null);
 
 // Look up a custom element definition (HTML namespace only).
 export function lookUp(doc, ns, localName, is) {
@@ -118,14 +133,19 @@ function upgrade(element, definition) {
   es.ceState = 'failed';
   for (const [key, value] of es.attrs) {
     const info = key.charCodeAt(0) === 0 ? es.attrNS.get(key) : null;
-    enqueueCallback(element, 'attributeChangedCallback', info === null ? [key, null, value, null] : [info.local, null, value, info.ns]);
+    enqueueCallback(
+      element,
+      'attributeChangedCallback',
+      info === null ? [key, null, value, null] : [info.local, null, value, info.ns],
+    );
   }
   if (connected(element)) enqueueCallback(element, 'connectedCallback', []);
   definition.constructionStack.push(element);
   try {
     es.ceState = 'precustomized';
     const result = Reflect.construct(definition.constructor, []);
-    if (result !== element) throw new TypeError('The custom element constructor did not produce the element being upgraded.');
+    if (result !== element)
+      throw new TypeError('The custom element constructor did not produce the element being upgraded.');
   } catch (error) {
     es.ceDefinition = null;
     es.ceReactions = [];
@@ -155,7 +175,8 @@ export function htmlConstruct(window, activeFunction, newTarget) {
   if (!definition) throw new TypeError('Illegal constructor');
   let isValue = null;
   if (definition.localName === definition.name) {
-    if (activeFunction !== window.HTMLElement) throw new TypeError('Illegal constructor: autonomous custom elements must extend HTMLElement.');
+    if (activeFunction !== window.HTMLElement)
+      throw new TypeError('Illegal constructor: autonomous custom elements must extend HTMLElement.');
   } else {
     isValue = definition.name;
   }
@@ -195,7 +216,12 @@ export function createCustomElement(doc, localName, is, sync) {
     element[S].ceState = 'undefined';
     element[S].ceIs = is;
     if (sync) {
-      try { upgrade(element, definition); } catch (error) { reportError(element, error); element[S].ceState = 'failed'; }
+      try {
+        upgrade(element, definition);
+      } catch (error) {
+        reportError(element, error);
+        element[S].ceState = 'failed';
+      }
     } else {
       enqueueUpgrade(element, definition);
     }
@@ -210,7 +236,8 @@ export function createCustomElement(doc, localName, is, sync) {
   try {
     const result = Reflect.construct(definition.constructor, []);
     const rs = result?.[S];
-    if (!rs || rs.type !== ELEMENT_NODE || rs.ns !== HTML_NS) throw new TypeError('The custom element constructor did not return an HTML element.');
+    if (!rs || rs.type !== ELEMENT_NODE || rs.ns !== HTML_NS)
+      throw new TypeError('The custom element constructor did not return an HTML element.');
     if (rs.attrs.size > 0 || rs.first || rs.parent || rs.doc !== doc || rs.tag !== localName) {
       throw domError('The custom element constructor returned an element that cannot be used.', 'NotSupportedError');
     }
@@ -267,7 +294,13 @@ const ceHooks = {
     if (element[S].ceState !== 'custom') return;
     // name is the attribute's key (attributes.js): its local name and namespace go to the callback.
     const info = name.charCodeAt(0) === 0 ? element[S].attrNS.get(name) : null;
-    enqueueCallback(element, 'attributeChangedCallback', info === null ? [name, oldValue ?? null, value ?? null, null] : [info.local, oldValue ?? null, value ?? null, info.ns]);
+    enqueueCallback(
+      element,
+      'attributeChangedCallback',
+      info === null
+        ? [name, oldValue ?? null, value ?? null, null]
+        : [info.local, oldValue ?? null, value ?? null, info.ns],
+    );
   },
   adopted(node, oldDoc, newDoc) {
     forEachShadowIncluding(node, (el) => {
@@ -282,7 +315,12 @@ const CALLBACKS = ['connectedCallback', 'disconnectedCallback', 'adoptedCallback
 
 const isConstructor = (f) => {
   if (typeof f !== 'function') return false;
-  try { Reflect.construct(String, [], f); return true; } catch { return false; }
+  try {
+    Reflect.construct(String, [], f);
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 export function createRegistry(window) {
@@ -304,13 +342,16 @@ const registryState = (self) => {
 function attachInternals(element) {
   const es = state(element);
   const fail = (message) => domError(message, 'NotSupportedError');
-  if (es.ceIs !== undefined && es.ceIs !== null) throw fail('Unable to attach ElementInternals to a customized built-in element.');
+  if (es.ceIs !== undefined && es.ceIs !== null)
+    throw fail('Unable to attach ElementInternals to a customized built-in element.');
   const definition = lookUp(es.doc, es.ns, es.tag, null);
   if (definition === null) throw fail('Unable to attach ElementInternals to non-custom elements.');
   if (definition.disableInternals) throw fail('ElementInternals is disabled by disabledFeature static field.');
   if (es.ceInternals) throw fail('ElementInternals for the specified element was already attached.');
   if (es.ceState !== 'precustomized' && es.ceState !== 'custom') {
-    throw fail('The attachInternals() function cannot be called prior to the execution of the custom element constructor.');
+    throw fail(
+      'The attachInternals() function cannot be called prior to the execution of the custom element constructor.',
+    );
   }
   const window = es.doc[S].window;
   const internals = Object.create(window[S].protos.ElementInternals);
@@ -322,40 +363,85 @@ function attachInternals(element) {
 }
 
 export const ATTACH_INTERNALS_MEMBERS = {
-  attachInternals() { return attachInternals(this); },
+  attachInternals() {
+    return attachInternals(this);
+  },
 };
 
 // The role and ARIA attributes of ElementInternals (ARIA 1.3's
 // ARIAMixin), in jsdom's order.
-const INTERNALS_ARIA = ['role', 'ariaAtomic', 'ariaAutoComplete', 'ariaBusy', 'ariaChecked', 'ariaColCount', 'ariaColIndex', 'ariaColIndexText',
-  'ariaColSpan', 'ariaCurrent', 'ariaDescription', 'ariaDisabled', 'ariaExpanded', 'ariaHasPopup', 'ariaHidden', 'ariaInvalid',
-  'ariaKeyShortcuts', 'ariaLabel', 'ariaLevel', 'ariaLive', 'ariaModal', 'ariaMultiLine', 'ariaMultiSelectable', 'ariaOrientation',
-  'ariaPlaceholder', 'ariaPosInSet', 'ariaPressed', 'ariaReadOnly', 'ariaRequired', 'ariaRoleDescription', 'ariaRowCount',
-  'ariaRowIndex', 'ariaRowIndexText', 'ariaRowSpan', 'ariaSelected', 'ariaSetSize', 'ariaSort', 'ariaValueMax', 'ariaValueMin',
-  'ariaValueNow', 'ariaValueText', 'ariaRelevant'];
+const INTERNALS_ARIA = [
+  'role',
+  'ariaAtomic',
+  'ariaAutoComplete',
+  'ariaBusy',
+  'ariaChecked',
+  'ariaColCount',
+  'ariaColIndex',
+  'ariaColIndexText',
+  'ariaColSpan',
+  'ariaCurrent',
+  'ariaDescription',
+  'ariaDisabled',
+  'ariaExpanded',
+  'ariaHasPopup',
+  'ariaHidden',
+  'ariaInvalid',
+  'ariaKeyShortcuts',
+  'ariaLabel',
+  'ariaLevel',
+  'ariaLive',
+  'ariaModal',
+  'ariaMultiLine',
+  'ariaMultiSelectable',
+  'ariaOrientation',
+  'ariaPlaceholder',
+  'ariaPosInSet',
+  'ariaPressed',
+  'ariaReadOnly',
+  'ariaRequired',
+  'ariaRoleDescription',
+  'ariaRowCount',
+  'ariaRowIndex',
+  'ariaRowIndexText',
+  'ariaRowSpan',
+  'ariaSelected',
+  'ariaSetSize',
+  'ariaSort',
+  'ariaValueMax',
+  'ariaValueMin',
+  'ariaValueNow',
+  'ariaValueText',
+  'ariaRelevant',
+];
 
 // jsdom 23.1 to 26 throw this TypeError from every role and ARIA accessor
 // of ElementInternals (black box; fixed in 27.0.0).
 const legacyAriaError = (step) => new TypeError(`Cannot read properties of undefined (reading '${step}')`);
 
 // Nullable DOMString attributes kept on the ElementInternals object.
-const internalsAria = Object.fromEntries(INTERNALS_ARIA.map((name) => [name, {
-  get() {
-    const s = state(this);
-    if (s.legacyAria) throw legacyAriaError('get');
-    return s.aria?.get(name) ?? null;
-  },
-  set(value) {
-    const s = state(this);
-    if (value === null || value === undefined) {
-      if (s.legacyAria) throw legacyAriaError('delete');
-      s.aria?.delete(name);
-      return;
-    }
-    if (s.legacyAria) throw legacyAriaError('set');
-    (s.aria ?? (s.aria = new Map())).set(name, String(value));
-  },
-}]));
+const internalsAria = Object.fromEntries(
+  INTERNALS_ARIA.map((name) => [
+    name,
+    {
+      get() {
+        const s = state(this);
+        if (s.legacyAria) throw legacyAriaError('get');
+        return s.aria?.get(name) ?? null;
+      },
+      set(value) {
+        const s = state(this);
+        if (value === null || value === undefined) {
+          if (s.legacyAria) throw legacyAriaError('delete');
+          s.aria?.delete(name);
+          return;
+        }
+        if (s.legacyAria) throw legacyAriaError('set');
+        (s.aria ?? (s.aria = new Map())).set(name, String(value));
+      },
+    },
+  ]),
+);
 
 export const CUSTOM_ELEMENT_INTERFACES = [
   // From jsdom 23.1.0 (applyCompat in window.js); labels from 26.0.0. No
@@ -363,35 +449,62 @@ export const CUSTOM_ELEMENT_INTERFACES = [
   // 30 has none.
   {
     name: 'ElementInternals',
-    members: [{
-      get shadowRoot() { return state(this).target[S].shadowRoot ?? null; },
-      get labels() {
-        const { target } = state(this);
-        if (target[S].ceDefinition?.formAssociated !== true) {
-          throw domError("Accesing an ElementInternal's labels property is only supported for form-associated custom elements", 'NotSupportedError');
-        }
-        return labelsList(target);
+    members: [
+      {
+        get shadowRoot() {
+          return state(this).target[S].shadowRoot ?? null;
+        },
+        get labels() {
+          const { target } = state(this);
+          if (target[S].ceDefinition?.formAssociated !== true) {
+            throw domError(
+              "Accesing an ElementInternal's labels property is only supported for form-associated custom elements",
+              'NotSupportedError',
+            );
+          }
+          return labelsList(target);
+        },
       },
-    }, internalsAria],
-    compat(proto, compat) { if (!compat.internalsLabels) delete proto.labels; },
+      internalsAria,
+    ],
+    compat(proto, compat) {
+      if (!compat.internalsLabels) delete proto.labels;
+    },
   },
   {
     name: 'CustomElementRegistry',
     members: {
       define(name, constructor, options = undefined) {
         const rs = registryState(this);
-        if (!isConstructor(constructor)) throw new TypeError("Failed to execute 'define' on 'CustomElementRegistry': The provided callback is not a constructor.");
+        if (!isConstructor(constructor))
+          throw new TypeError(
+            "Failed to execute 'define' on 'CustomElementRegistry': The provided callback is not a constructor.",
+          );
         const n = String(name);
-        if (!isValidCustomElementName(n)) throw domError(`Failed to execute 'define' on 'CustomElementRegistry': "${n}" is not a valid custom element name`, 'SyntaxError');
-        if (rs.byName.has(n)) throw domError(`Failed to execute 'define' on 'CustomElementRegistry': the name "${n}" has already been used with this registry`, 'NotSupportedError');
-        if (rs.byConstructor.has(constructor)) throw domError("Failed to execute 'define' on 'CustomElementRegistry': this constructor has already been used with this registry", 'NotSupportedError');
+        if (!isValidCustomElementName(n))
+          throw domError(
+            `Failed to execute 'define' on 'CustomElementRegistry': "${n}" is not a valid custom element name`,
+            'SyntaxError',
+          );
+        if (rs.byName.has(n))
+          throw domError(
+            `Failed to execute 'define' on 'CustomElementRegistry': the name "${n}" has already been used with this registry`,
+            'NotSupportedError',
+          );
+        if (rs.byConstructor.has(constructor))
+          throw domError(
+            "Failed to execute 'define' on 'CustomElementRegistry': this constructor has already been used with this registry",
+            'NotSupportedError',
+          );
         let localName = n;
         const ext = options?.extends ?? null;
         if (ext !== null) {
           const e = String(ext);
-          if (isValidCustomElementName(e)) throw domError(`"${e}" is a custom element name and cannot be extended.`, 'NotSupportedError');
+          if (isValidCustomElementName(e))
+            throw domError(`"${e}" is a custom element name and cannot be extended.`, 'NotSupportedError');
           const probe = rs.window[S].createElementNS(HTML_NS, e, rs.window.document, true);
-          if (Object.getPrototypeOf(probe) === rs.window[S].protos.HTMLUnknownElement) throw domError(`"${e}" is not an element that can be extended.`, 'NotSupportedError');
+          if (Object.getPrototypeOf(probe) === rs.window[S].protos.HTMLUnknownElement)
+            throw domError(`"${e}" is not an element that can be extended.`, 'NotSupportedError');
           localName = e;
         }
         if (rs.running) throw domError('A custom element is already being defined.', 'NotSupportedError');
@@ -402,11 +515,17 @@ export const CUSTOM_ELEMENT_INTERFACES = [
         let disabledFeatures = [];
         try {
           const prototype = constructor.prototype;
-          if (typeof prototype !== 'object' || prototype === null) throw new TypeError("Failed to execute 'define' on 'CustomElementRegistry': The prototype is not an object.");
+          if (typeof prototype !== 'object' || prototype === null)
+            throw new TypeError(
+              "Failed to execute 'define' on 'CustomElementRegistry': The prototype is not an object.",
+            );
           for (const cb of CALLBACKS) {
             const value = prototype[cb];
             if (value !== undefined) {
-              if (typeof value !== 'function') throw new TypeError(`Failed to execute 'define' on 'CustomElementRegistry': The '${cb}' property is not a function.`);
+              if (typeof value !== 'function')
+                throw new TypeError(
+                  `Failed to execute 'define' on 'CustomElementRegistry': The '${cb}' property is not a function.`,
+                );
               callbacks[cb] = value;
             }
           }
@@ -428,10 +547,17 @@ export const CUSTOM_ELEMENT_INTERFACES = [
           rs.running = false;
         }
         const definition = {
-          name: n, localName, constructor, observed, callbacks, formAssociated, constructionStack: [],
+          name: n,
+          localName,
+          constructor,
+          observed,
+          callbacks,
+          formAssociated,
+          constructionStack: [],
           // :disabled and :enabled apply to form-associated elements from jsdom 27.0.0 (selectors.js).
           disableable: formAssociated && rs.window[S].compat.jsdom >= 27,
-          disableInternals: disabledFeatures.includes('internals'), disableShadow: disabledFeatures.includes('shadow'),
+          disableInternals: disabledFeatures.includes('internals'),
+          disableShadow: disabledFeatures.includes('shadow'),
         };
         rs.byName.set(n, definition);
         rs.byConstructor.set(constructor, definition);
@@ -440,7 +566,13 @@ export const CUSTOM_ELEMENT_INTERFACES = [
         scope(() => {
           forEachShadowIncluding(rs.window.document, (el) => {
             const s = el[S];
-            if (s.ns === HTML_NS && s.tag === localName && (s.ceState === 'undefined') && (n === localName || s.ceIs === n)) enqueueUpgrade(el, definition);
+            if (
+              s.ns === HTML_NS &&
+              s.tag === localName &&
+              s.ceState === 'undefined' &&
+              (n === localName || s.ceIs === n)
+            )
+              enqueueUpgrade(el, definition);
           });
         });
         const pending = rs.whenDefined.get(n);
@@ -449,18 +581,25 @@ export const CUSTOM_ELEMENT_INTERFACES = [
           rs.whenDefined.delete(n);
         }
       },
-      get(name) { return registryState(this).byName.get(String(name))?.constructor; },
-      getName(constructor) { return registryState(this).byConstructor.get(constructor)?.name ?? null; },
+      get(name) {
+        return registryState(this).byName.get(String(name))?.constructor;
+      },
+      getName(constructor) {
+        return registryState(this).byConstructor.get(constructor)?.name ?? null;
+      },
       whenDefined(name) {
         const rs = registryState(this);
         const n = String(name);
-        if (!isValidCustomElementName(n)) return Promise.reject(domError(`"${n}" is not a valid custom element name`, 'SyntaxError'));
+        if (!isValidCustomElementName(n))
+          return Promise.reject(domError(`"${n}" is not a valid custom element name`, 'SyntaxError'));
         const definition = rs.byName.get(n);
         if (definition) return Promise.resolve(definition.constructor);
         let pending = rs.whenDefined.get(n);
         if (!pending) {
           let resolve;
-          const promise = new Promise((r) => { resolve = r; });
+          const promise = new Promise((r) => {
+            resolve = r;
+          });
           pending = { promise, resolve };
           rs.whenDefined.set(n, pending);
         }
@@ -468,15 +607,21 @@ export const CUSTOM_ELEMENT_INTERFACES = [
       },
       upgrade(root) {
         registryState(this);
-        scope(() => forEachShadowIncluding(state(root) && root, (el) => {
-          const s = el[S];
-          if (s.ceState === 'undefined' || s.ceState === undefined) {
-            const definition = lookUp(s.doc, s.ns, s.tag, s.ceIs);
-            if (definition) {
-              try { upgrade(el, definition); } catch (error) { reportError(el, error); }
+        scope(() =>
+          forEachShadowIncluding(state(root) && root, (el) => {
+            const s = el[S];
+            if (s.ceState === 'undefined' || s.ceState === undefined) {
+              const definition = lookUp(s.doc, s.ns, s.tag, s.ceIs);
+              if (definition) {
+                try {
+                  upgrade(el, definition);
+                } catch (error) {
+                  reportError(el, error);
+                }
+              }
             }
-          }
-        }));
+          }),
+        );
       },
     },
   },

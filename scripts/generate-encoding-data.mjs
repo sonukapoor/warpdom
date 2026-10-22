@@ -50,7 +50,9 @@ const ENCODING_LABELS = ${JSON.stringify(labels)};
 // SINGLE_BYTE: the code points of bytes 0x80 to 0xFF (index-<name>.txt);
 // U+FFFD for unmapped bytes.
 const SINGLE_BYTE = {
-${Object.entries(singleByte).map(([k, v]) => `  '${k}': '${v}',`).join('\n')}
+${Object.entries(singleByte)
+  .map(([k, v]) => `  '${k}': '${v}',`)
+  .join('\n')}
 };
 ${END}`;
 const file = new URL('../src/encoding.js', import.meta.url);
@@ -59,4 +61,6 @@ const from = source.indexOf(BEGIN);
 const to = source.indexOf(END);
 if (from === -1 || to === -1) throw new Error('src/encoding.js has no generated block');
 writeFileSync(file, source.slice(0, from) + data + source.slice(to + END.length));
-console.log(`src/encoding.js: ${Object.keys(labels).length} encodings, ${Object.values(labels).flat().length} labels, ${Object.keys(singleByte).length} single-byte indexes`);
+console.log(
+  `src/encoding.js: ${Object.keys(labels).length} encodings, ${Object.values(labels).flat().length} labels, ${Object.keys(singleByte).length} single-byte indexes`,
+);

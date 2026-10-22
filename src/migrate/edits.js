@@ -29,7 +29,7 @@ export function replaceLiteral(token, value) {
 const lineStart = (text, i) => text.lastIndexOf('\n', i - 1) + 1;
 const lineEnd = (text, i) => {
   const e = text.indexOf('\n', i);
-  return e < 0 ? text.length : (text[e - 1] === '\r' ? e - 1 : e);
+  return e < 0 ? text.length : text[e - 1] === '\r' ? e - 1 : e;
 };
 
 // The order dependencies are in: sorted (as npm and pnpm write them) or not.
@@ -46,9 +46,12 @@ export function editDependencies(text, section, { remove = [], add = [] }) {
   const eol = text.includes('\r\n') ? '\r\n' : '\n';
   const topLevel = a.properties.filter((p) => p.path.length === 1);
   const prop = topLevel.find((p) => p.key === section);
-  const firstKeyLine = topLevel[0] ? text.slice(lineStart(text, tokens[topLevel[0].keyToken].start), tokens[topLevel[0].keyToken].start) : '  ';
+  const firstKeyLine = topLevel[0]
+    ? text.slice(lineStart(text, tokens[topLevel[0].keyToken].start), tokens[topLevel[0].keyToken].start)
+    : '  ';
   const unit = /^[ \t]*$/.test(firstKeyLine) && firstKeyLine ? firstKeyLine : '  ';
-  const entryText = (name, spec, indent, colon = ': ') => `${indent}${JSON.stringify(name)}${colon}${JSON.stringify(spec)}`;
+  const entryText = (name, spec, indent, colon = ': ') =>
+    `${indent}${JSON.stringify(name)}${colon}${JSON.stringify(spec)}`;
   if (!prop) {
     if (!add.length) return text;
     const last = topLevel[topLevel.length - 1];
@@ -68,7 +71,9 @@ export function editDependencies(text, section, { remove = [], add = [] }) {
   const sectionIndent = text.slice(lineStart(text, tokens[prop.keyToken].start), tokens[prop.keyToken].start);
   const lines = entries.map((e) => lineOf(tokens[e.keyToken].start));
   // One entry per line, braces on their own lines.
-  const oneEach = new Set(lines).size === lines.length && (!lines.length || (lines[0] > lineOf(open.start) && lines[lines.length - 1] < lineOf(close.start)));
+  const oneEach =
+    new Set(lines).size === lines.length &&
+    (!lines.length || (lines[0] > lineOf(open.start) && lines[lines.length - 1] < lineOf(close.start)));
   if (!oneEach) return null;
   const removing = new Set(remove);
   const present = new Set(entries.map((e) => e.key));
@@ -90,7 +95,8 @@ export function editDependencies(text, section, { remove = [], add = [] }) {
   for (const d of adding) {
     const row = { name: d.name, text: entryText(d.name, d.spec, indent, colon) };
     const at = sorted ? rows.findIndex((r) => compareNames(r.name, d.name) > 0) : -1;
-    if (at < 0) rows.push(row); else rows.splice(at, 0, row);
+    if (at < 0) rows.push(row);
+    else rows.splice(at, 0, row);
   }
   if (!rows.length) return `${text.slice(0, open.start)}{}${text.slice(close.end)}`;
   if (!entries.length) {
@@ -116,7 +122,11 @@ export function catalogEntries(text, catalogName = 'default') {
     if (catalogs >= 0) {
       for (let i = catalogs + 1; i < lines.length && !/^\S/.test(lines[i]); i++) {
         const m = /^(\s+)(['"]?)([^'":]+)\2:\s*(#.*)?$/.exec(lines[i]);
-        if (m && m[3] === catalogName) { start = i; headerIndent = m[1].length; break; }
+        if (m && m[3] === catalogName) {
+          start = i;
+          headerIndent = m[1].length;
+          break;
+        }
       }
     }
   }
@@ -152,12 +162,13 @@ export function editCatalog(text, catalogName, { remove = [], add = [] }) {
   const model = removed[0] ?? entries[entries.length - 1];
   // The quoting of the entry it replaces (or the last one): '^1.0.0', "^1.0.0" or ^1.0.0.
   const quote = !model ? "'" : /^(['"])/.test(model.value) ? model.value[0] : '';
-  const keyOf = (name) => (/^[@!&*%|>'"#]/.test(name) || name.includes(':') ? `${quote || "'"}${name}${quote || "'"}` : name);
+  const keyOf = (name) =>
+    /^[@!&*%|>'"#]/.test(name) || name.includes(':') ? `${quote || "'"}${name}${quote || "'"}` : name;
   const newLines = adding.map((d) => `${cat.indent}${keyOf(d.name)}: ${quote}${d.spec}${quote}`);
   // Next to the testing entries when a comment marks such a group (up to
   // the next comment or blank line), else where the first removed entry
   // was, else after the last entry.
-  let at = removed[0] ? removed[0].line : (entries.length ? entries[entries.length - 1].line + 1 : cat.start + 1);
+  let at = removed[0] ? removed[0].line : entries.length ? entries[entries.length - 1].line + 1 : cat.start + 1;
   const group = lines.findIndex((l, i) => i > cat.start && i < cat.end && /^\s*#\s*(unit\s+)?test(s|ing)?\b/i.test(l));
   if (group >= 0) {
     let last = -1;

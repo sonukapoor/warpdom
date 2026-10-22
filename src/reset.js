@@ -28,14 +28,20 @@ import { abortWindowRequests } from './xhr.js';
 import { clearDeclarations } from './css.js';
 
 // Own properties (string and symbol keys) of an object, as descriptors.
-const ownProperties = (object) => new Map(Reflect.ownKeys(object).map((key) => [key, Object.getOwnPropertyDescriptor(object, key)]));
+const ownProperties = (object) =>
+  new Map(Reflect.ownKeys(object).map((key) => [key, Object.getOwnPropertyDescriptor(object, key)]));
 
 // Whether two property descriptors differ in value, accessors or flags
 // (Object.defineProperty(window, 'innerWidth', { writable: false }) keeps
 // the value). Values compare with Object.is: scrollY = -0 is a change (and
 // NaN is not).
-const changed = (current, descriptor) => !Object.is(current.value, descriptor.value) || current.get !== descriptor.get || current.set !== descriptor.set
-  || current.writable !== descriptor.writable || current.enumerable !== descriptor.enumerable || current.configurable !== descriptor.configurable;
+const changed = (current, descriptor) =>
+  !Object.is(current.value, descriptor.value) ||
+  current.get !== descriptor.get ||
+  current.set !== descriptor.set ||
+  current.writable !== descriptor.writable ||
+  current.enumerable !== descriptor.enumerable ||
+  current.configurable !== descriptor.configurable;
 
 // Puts back an object's own properties as snapshotted: properties added
 // since (a library's "already set up" marker, a test's global) are deleted.
@@ -54,8 +60,28 @@ function restoreOwnProperties(object, snapshot) {
 // The window's objects that stay across resets (by their internal state
 // entry, window-features.js; created on first use, except location and
 // history), and their interfaces. They start without own properties.
-const KEPT_OBJECTS = ['navigator', 'screen', 'external', 'location', 'history', 'customElements', 'crypto', 'performance', 'console'];
-const KEPT_INTERFACES = new Set(['Navigator', 'Screen', 'External', 'BarProp', 'Location', 'History', 'CustomElementRegistry', 'Crypto', 'Performance']);
+const KEPT_OBJECTS = [
+  'navigator',
+  'screen',
+  'external',
+  'location',
+  'history',
+  'customElements',
+  'crypto',
+  'performance',
+  'console',
+];
+const KEPT_INTERFACES = new Set([
+  'Navigator',
+  'Screen',
+  'External',
+  'BarProp',
+  'Location',
+  'History',
+  'CustomElementRegistry',
+  'Crypto',
+  'Performance',
+]);
 const NO_PROPERTIES = new Map();
 
 function keptObjects(ws) {
@@ -93,7 +119,10 @@ export function snapshotWindow(window) {
   ws.initialURL = ws.url.href;
   // The initial tree's nodes, kept by reset (libraries hold document.body).
   const doc = window.document;
-  ws.initialNodes = [doc.doctype, doc.documentElement, doc.head, doc.body].map((node) => ({ node, props: ownProperties(node) }));
+  ws.initialNodes = [doc.doctype, doc.documentElement, doc.head, doc.body].map((node) => ({
+    node,
+    props: ownProperties(node),
+  }));
   // The kept objects made so far; one made later starts without own
   // properties (NO_PROPERTIES).
   ws.keptSnapshots = new Map(keptObjects(ws).map((object) => [object, ownProperties(object)]));
@@ -130,7 +159,10 @@ export function resetWindow(window) {
   ws.status = undefined;
   // A frame scheduled on timers the test has since cleared or replaced
   // would never run: the next file starts without frames.
-  if (ws.frames) { ws.frames.queue.clear(); ws.frames = undefined; }
+  if (ws.frames) {
+    ws.frames.queue.clear();
+    ws.frames = undefined;
+  }
   clearWindowTimers(window);
   abortWindowRequests(window);
   clearStorage(window);
@@ -166,14 +198,19 @@ export function resetWindow(window) {
     if (ns.parent) {
       // Detach a node a test moved elsewhere.
       const ps = ns.parent[S];
-      if (ns.prev) ns.prev[S].next = ns.next; else ps.first = ns.next;
-      if (ns.next) ns.next[S].prev = ns.prev; else ps.last = ns.prev;
+      if (ns.prev) ns.prev[S].next = ns.next;
+      else ps.first = ns.next;
+      if (ns.next) ns.next[S].prev = ns.prev;
+      else ps.last = ns.prev;
       ps.count--;
       ps.rev++;
       ns.parent = ns.prev = ns.next = null;
     }
     detachChildren(node);
-    if (ns.attrs) { ns.attrs.clear(); if (ns.attrNS) ns.attrNS = null; }
+    if (ns.attrs) {
+      ns.attrs.clear();
+      if (ns.attrNS) ns.attrNS = null;
+    }
     if (ns.style) clearDeclarations(ns.style);
     ns.listeners = undefined;
     ns.handlers = undefined;
