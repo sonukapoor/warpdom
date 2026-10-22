@@ -693,7 +693,7 @@ npm run build         # dist/warpdom.cjs, the CommonJS build (also run by npm te
 npm run bench:load    # cold load and window creation
 npm run bench:hot     # hot DOM members against jsdom and happy-dom
 npm run format        # Prettier (CI runs npm run format:check)
-npm run lint          # ESLint readability rules, such as no nested ternaries
+npm run lint          # ESLint readability rules, such as no nested ternaries (Node 22.13+)
 node wpt/run.mjs dom/nodes --engine warpdom,jsdom   # Web Platform Tests
 ```
 
