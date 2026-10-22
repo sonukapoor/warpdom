@@ -1150,6 +1150,7 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
   const cssDefault = before(version, [21, 1, 0]) ? '2.3.0' : before(version, [23, 1, 0]) ? '3.0.0' : null;
   const cssText = version[0] < 27 ? cssstyle ?? cssDefault : null;
   const css = cssText != null ? parseJsdomVersion(cssText) : null;
+  const pendingLonghands = version[0] >= 27 || (css === null ? !before(version, [23, 1, 0]) : css[0] > 4 || (css[0] === 4 && !before(css, [4, 4, 0])));
   return {
     version: jsdom, jsdom: version[0], mutableComputedStyle: version[0] < 28,
     // Computed style (cascade.js), black box per release: before 29.0.2
@@ -1196,7 +1197,10 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // and earlier ones (padding-top '', from 29.0.2 its initial 0): with
     // cssstyle 4.4 and later (jsdom 23.1 to 26 with it; 4.4, 4.5 and 4.6
     // measured), and in jsdom 27 and later (cascade.js cascadeExpand).
-    pendingLonghands: version[0] >= 27 || (css === null ? !before(version, [23, 1, 0]) : css[0] > 4 || (css[0] === 4 && !before(css, [4, 4, 0]))),
+    pendingLonghands,
+    // A pending longhand and one declared as itself meet by order before
+    // 30.1.3, from it when both are !important (cascade.js cascadeByOrder).
+    pendingByOrder: !pendingLonghands ? null : before(version, [30, 1, 3]) ? 'all' : 'important',
     // cssstyle's font shorthand before 4.4 (shorthands.js legacyFont).
     legacyFont: css === null || !before(css, [4, 4, 0]) ? null : before(css, [4, 2, 0]) ? 'cssstyle4.1' : 'cssstyle4.2',
     // cssstyle 4.4 and later: the computed style's background and border

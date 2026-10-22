@@ -3943,6 +3943,34 @@ cssText as written in 27.0; color: initial '' with cssstyle 4.3.1; a
 border shorthand's hex alpha rounded down in 22.1-26; author lowercase
 `currentcolor` in a full border with cssstyle 2/3 (computed '').
 
+## 2026-10-22: a pending longhand meets a declared one by order (branch fix/antd-descriptions-padding)
+
+Corpus regression from #103: 8 Ant Design tests (Descriptions, nested
+descriptions preserve inner styles, inner bordered) failed on warpdom and
+passed on jsdom 26.1.0. The bordered cell rule declares `padding:
+var(--p) var(--q)` (more specific), a later rule `padding-bottom: var(--b)`
+(and `padding-bottom: 0` for the last row). #103 made the shorthand's
+longhands pending, and the pending padding-bottom won by specificity:
+computed padding-bottom '' where jsdom gives `var(--b)`.
+
+Black box (jsdom 26.1.0 with cssstyle 4.3.1, 4.4.0, 4.6.0; 27.4.0, 28.1.0,
+29.0.2, 29.1.0, 29.1.1, 30.0.0, 30.1.0 to 30.1.3): a pending longhand and a
+longhand declared as itself meet by document order, whatever their
+specificity and importance (an !important shorthand with var() loses to a
+later plain longhand, an !important longhand to a later var() shorthand),
+across style elements too; from 30.1.3 the cascade decides, but two
+!important ones still meet by order. cssstyle before 4.4 declares no
+pending longhands (unchanged). Implemented as compat.pendingByOrder ('all'
+before 30.1.3, 'important' from it) and cascade.js cascadeByOrder; a
+longhand from a shorthand without var() still meets the pending one by
+the cascade.
+
+Left (measured, not modeled): jsdom 20 to 27.4 cascade author rules by
+document order without specificity (`.a.b > td { color: red } td { color:
+blue }` computes blue; 28.1 and later by specificity); a shorthand with
+var() against a later shorthand without it (26/27 by order, 29 to 30.1.2
+the one without var() wins).
+
 ## 2026-10-21: window setters and their receiver (branch fix/setter-receivers, #90)
 
 #90 (from Copilot's review of #87): the window's self setter, and self and

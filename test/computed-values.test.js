@@ -455,3 +455,63 @@ test('computed values: shorthands with var() before cssstyle 4.4 keep the user a
     assert.equal(w.getComputedStyle(el).paddingTop, top, cssstyle);
   }
 });
+
+// A pending longhand and a longhand declared as itself meet by order, not
+// by importance or specificity, before jsdom 30.1.3 (from it only two
+// !important ones do). Ant Design's bordered Descriptions declares
+// padding: var(--p) var(--q) on its cells and padding-bottom: var(--b) in
+// a later, less specific rule (and padding-bottom: 0 for the last row);
+// its tests read the cell's padding-bottom.
+const BY_ORDER_PROPS = ['padding', 'padding-top', 'padding-bottom', 'padding-left', 'margin', 'margin-bottom', 'border-bottom-width', 'border-bottom'];
+const BY_ORDER = {
+  antd: `.d.d > .v > table > tbody > .r > td { padding: var(--p) var(--q) }
+    .d > .v > table > tbody > .r > td { padding-bottom: var(--b) }
+    .d > .v > table > tbody > .r:last-child > td { padding-bottom: 0 }`,
+  shorthandFirst: '.d.d td { padding: var(--p) var(--q) } td { padding-bottom: 7px }',
+  shorthandLast: '.d.d td { padding-bottom: 7px } td { padding: var(--p) }',
+  importantShorthand: '.d.d td { padding: var(--p) !important } td { padding-bottom: 7px }',
+  importantLonghand: 'td { padding-bottom: 7px !important } .d.d td { padding: var(--p) }',
+  bothImportantShorthandFirst: '.d.d td { padding: var(--p) !important } td { padding-bottom: 7px !important }',
+  bothImportantShorthandLast: '.d.d td { padding-bottom: 7px !important } td { padding: var(--p) !important }',
+  margin: '.d.d td { margin: var(--m) } td { margin-bottom: 7px }',
+  borderSide: '.d.d td { border-bottom: var(--b) } td { border-bottom-width: 7px }',
+  laterSheet: '.d.d td { padding: var(--p) }</style><style>td { padding-bottom: 7px }',
+  styleAttribute: '.d.d td { padding: var(--p) } td { padding-bottom: 7px }',
+};
+function pendingByOrder(w) {
+  const d = w.document;
+  const out = {};
+  for (const [key, css] of Object.entries(BY_ORDER)) {
+    d.head.innerHTML = `<style>${css}</style>`;
+    d.body.innerHTML = '<div class="d"><div class="v"><table><tbody><tr class="r"><td>a</td></tr><tr class="r"><td>b</td></tr></tbody></table></div></div>';
+    for (const td of d.querySelectorAll('td')) {
+      if (key === 'styleAttribute') td.setAttribute('style', 'padding-top: 2px');
+      const cs = w.getComputedStyle(td);
+      out[`${key} ${td.textContent}`] = BY_ORDER_PROPS.map((p) => [cs.getPropertyValue(p), cs[p]]);
+    }
+  }
+  return out;
+}
+for (const jsdom of [26, 27, 28, 29, 30]) parity(`computed values: a pending longhand and a declared one meet by order (jsdom ${jsdom})`, pendingByOrder, { jsdom });
+
+test('computed values: a pending longhand and a declared one meet by order before jsdom 30.1.3', () => {
+  const read = (jsdom, css) => {
+    const w = createWindow({ jsdom });
+    const d = w.document;
+    d.head.innerHTML = `<style>${css}</style>`;
+    d.body.innerHTML = '<div class="d"><table><tbody><tr><td></td></tr></tbody></table></div>';
+    return w.getComputedStyle(d.querySelector('td')).paddingBottom;
+  };
+  // jsdom 30.1.0 to 30.1.2: the later one; 30.1.3: the more specific one,
+  // the later one of two !important ones.
+  for (const [jsdom, first, last, important] of [['30.1.2', '7px', '0', '7px'], ['30.1.3', '0', '7px', '7px']]) {
+    assert.equal(read(jsdom, '.d.d td { padding: var(--p) } td { padding-bottom: 7px }'), first, jsdom);
+    assert.equal(read(jsdom, '.d.d td { padding-bottom: 7px } td { padding: var(--p) }'), last, jsdom);
+    assert.equal(read(jsdom, '.d.d td { padding: var(--p) !important } td { padding-bottom: 7px !important }'), important, jsdom);
+  }
+  // Before cssstyle 4.4 a shorthand with var() declares no longhands.
+  const w = createWindow({ jsdom: '26.1.0', cssstyle: '4.1.0' });
+  w.document.head.innerHTML = '<style>.d.d td { padding: var(--p) } td { padding-bottom: 7px }</style>';
+  w.document.body.innerHTML = '<div class="d"><table><tbody><tr><td></td></tr></tbody></table></div>';
+  assert.equal(w.getComputedStyle(w.document.querySelector('td')).paddingBottom, '7px');
+});

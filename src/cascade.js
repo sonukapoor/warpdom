@@ -70,11 +70,15 @@ function cascadeExpand(property, value, legacyFont, compat = null, inline = fals
 
 function addDeclarations(index, decls, entries, counter, compat) {
   for (const [property, { value, important }] of decls) {
+    // A longhand declared as itself (padding-bottom: 7px), not through a
+    // shorthand: it meets a pending longhand by order (cascadeByOrder).
+    const direct = SHORTHANDS[ALIASES[property] ?? property] === undefined;
     for (const [name, v] of cascadeExpand(property, value, decls.legacyFont, compat)) {
       let lists = index.get(name);
-      if (!lists) index.set(name, lists = { normal: [], important: [] });
+      if (!lists) index.set(name, lists = { normal: [], important: [], pending: false });
+      if (v === PENDING) lists.pending = true;
       const order = counter.n++;
-      for (const { match, specificity } of entries) (important ? lists.important : lists.normal).push({ match, specificity, order, value: v });
+      for (const { match, specificity } of entries) (important ? lists.important : lists.normal).push({ match, specificity, order, value: v, important, direct });
     }
   }
 }
@@ -209,6 +213,38 @@ function firstMatch(list, element, settled = false) {
   return undefined;
 }
 
+// The first matching entry of the rules (important, then normal) that
+// passes test.
+function firstEntry(lists, element, test) {
+  for (const list of [lists.important, lists.normal]) {
+    for (const entry of list) if (entry.value !== HIDE_UA && test(entry) && entry.match(element, NO_SCOPE)) return entry;
+  }
+  return undefined;
+}
+
+// A pending longhand and a longhand declared as itself meet by order, not
+// by importance or specificity (compat.pendingByOrder 'all', black box:
+// jsdom 26 with cssstyle 4.4 and 4.6, 27.4, 28.1, 29.0.2 to 30.1.2): the
+// later one wins. From 30.1.3 only two !important ones do ('important');
+// otherwise the cascade decides. Ant Design's bordered Descriptions
+// declares padding: var(--p) var(--q) on its cells and padding-bottom:
+// var(--b) in a later, less specific rule; jsdom gives padding-bottom
+// var(--b) there. The entry that wins, or undefined when the cascade
+// decides (no such pair, or another declaration wins anyway).
+function cascadeByOrder(lists, element, compat) {
+  const onlyImportant = compat.pendingByOrder === 'important';
+  const pending = firstEntry(lists, element, (e) => e.value === PENDING && (e.important || !onlyImportant));
+  if (pending === undefined) return undefined;
+  const direct = firstEntry(lists, element, (e) => e.direct && (e.important || !onlyImportant));
+  if (direct === undefined) return undefined;
+  // As cascade decides without order: past an !important pending one in
+  // jsdom 29 to another !important declaration.
+  let winner = firstEntry(lists, element, () => true);
+  if (winner === pending && compat.jsdom === 29 && pending.important) winner = firstEntry(lists, element, (e) => e.important && e.value !== PENDING) ?? pending;
+  if (winner !== pending && winner !== direct) return undefined;
+  return direct.order > pending.order ? direct : pending;
+}
+
 // The cascaded value: important inline, important rules, inline, rules.
 // Cached per element until its root's rules, the document's tree or
 // attributes, or its style attribute change.
@@ -273,6 +309,10 @@ function cascade(element, index, inlineMap, name) {
   if (inline?.value === HIDE_UA) { uaHidden = true; inline = undefined; }
   if (inline?.important) return inline.value;
   const lists = index.get(name);
+  if (lists?.pending && window[S].compat.pendingByOrder) {
+    const entry = cascadeByOrder(lists, element, window[S].compat);
+    if (entry !== undefined) return entry.important || !inline ? entry.value : inline.value;
+  }
   if (lists?.important.length) {
     const v = firstMatch(lists.important, element);
     // jsdom 29 (black box, 29.1.1): an !important shorthand with var()
