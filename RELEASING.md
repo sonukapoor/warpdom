@@ -99,10 +99,18 @@ Requirements the workflow already meets: a GitHub-hosted runner, the
 
 ## Publishing by hand
 
-If the workflow cannot publish, a maintainer can still publish from a
-clean checkout of the tag (2FA one-time password; no provenance). Run
+Use this only when a direct publish (`npm publish` mode) failed. After a
+staged release (`NPM_PUBLISH_MODE=stage`), first approve or reject every
+pending staged version on npmjs.com: a staged version is hidden from
+`npm view` but its version number stays reserved, so publishing it by hand
+fails until it is approved or rejected.
+
+From a clean checkout of the tag (2FA one-time password; no provenance), run
 `npm ci` first (the `prepack` build needs the devDependencies), then
 `npm publish --access public` in the repository root, and in
 `packages/vitest-environment-warpdom` and `packages/jest-environment-warpdom`
-for each whose version is not on npm yet (`npm view <name>@<version>`). Create the GitHub release afterwards
-(`gh release create vX.Y.Z --title "warpdom X.Y.Z" -F docs/release-notes/vX.Y.Z.md`).
+for each whose version is not on npm yet (`npm view <name>@<version>`).
+Create the GitHub release afterwards:
+
+- with release notes: `gh release create vX.Y.Z --title "warpdom X.Y.Z" -F docs/release-notes/vX.Y.Z.md`
+- without a notes file: `gh release create vX.Y.Z --title "warpdom X.Y.Z" --generate-notes`
