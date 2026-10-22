@@ -75,11 +75,14 @@ function evaluate(tokens, ctx) {
     if (fn === 'calc') return args.length === 1 ? args[0] : null;
     // Lengths or numbers (calc(1em * min(2, 3)) is 32px), not both.
     const key = args[0].px !== undefined ? 'px' : 'n';
-    if (args.some((a) => a[key] === undefined)) return null;
-    const v = args.map((a) => a[key]);
-    if (fn === 'min') return { [key]: Math.min(...v) };
-    if (fn === 'max') return { [key]: Math.max(...v) };
-    return v.length === 3 ? { [key]: Math.max(v[0], Math.min(v[1], v[2])) } : null;
+    let result = args[0][key];
+    for (let j = 1; j < args.length; j++) {
+      const value = args[j][key];
+      if (value === undefined) return null;
+      if (fn === 'min' ? value < result : fn === 'max' ? value > result : false) result = value;
+    }
+    if (fn === 'min' || fn === 'max') return { [key]: result };
+    return args.length === 3 ? { [key]: Math.max(args[0][key], Math.min(args[1][key], args[2][key])) } : null;
   }
   function product() {
     let left = primary();
