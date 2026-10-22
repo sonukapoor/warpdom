@@ -676,6 +676,8 @@ reference (its source is not read or copied). Plans and decisions:
 road to 1.0: [docs/road-to-1.0.md](docs/road-to-1.0.md); versions and
 support: [docs/stability.md](docs/stability.md); reporting a
 vulnerability: [SECURITY.md](SECURITY.md).
+Releases are published from GitHub Actions with npm provenance when a
+version tag is pushed: [RELEASING.md](RELEASING.md).
 
 ## Citing
 
