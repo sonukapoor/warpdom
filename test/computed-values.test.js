@@ -370,3 +370,88 @@ test('computed values: the cssstyle each jsdom release installs is the default',
     assert.equal(profileColor({ jsdom }, 'color: Canvas')[0], canvas, jsdom);
   }
 });
+
+// --- shorthands with var() ---------------------------------------------------------
+
+// A box shorthand declared with var() hides the user agent sheet's and
+// earlier longhands (padding-top '', from 29.0.2 0): Ant Design's autosize
+// TextArea reads a textarea's padding and border widths
+// (computedStyle['padding-bottom']) with padding: var(--p) var(--q) and
+// border-width: var(--w) declared, and writes heights from them.
+const VAR_PROPS = ['padding', 'padding-top', 'padding-left', 'padding-bottom', 'border-width', 'border-top-width', 'border-bottom-width', 'border-top-style', 'border-style', 'margin', 'margin-top'];
+function varShorthands(w) {
+  const d = w.document;
+  d.head.innerHTML = `<style>
+    .v { --p: 4px; --q: 11px; --lw: 1px }
+    .a { box-sizing: border-box; padding: var(--p) var(--q) }
+    .b { border-width: var(--lw); border-style: var(--lt) }
+    .c { padding-top: 3px; margin-top: 3px }
+    .d { padding: var(--p); margin: var(--p) 1px }
+    .e { padding-top: 5px }
+    .f { border: var(--lw) solid red }
+    .g { border-top: var(--lw) solid }
+  </style>`;
+  const out = {};
+  for (const tag of ['textarea', 'input', 'div', 'button']) {
+    for (const cls of ['v a b', 'v a', 'v b', 'c d', 'd e', 'v f', 'v g', 'c', '']) {
+      const el = d.body.appendChild(d.createElement(tag));
+      el.className = cls;
+      const cs = w.getComputedStyle(el);
+      out[`${tag}.${cls}`] = VAR_PROPS.map((p) => [cs.getPropertyValue(p), cs[p]]);
+    }
+  }
+  return out;
+}
+for (const jsdom of JSDOMS) parity(`computed values: shorthands with var() (jsdom ${jsdom})`, varShorthands, { jsdom });
+
+// Their per-version details from jsdom 26 (cssstyle 4.6): before 27 the
+// border shorthands hide only the user agent sheet's widths and styles
+// (and a side its own longhands), in jsdom 29 an !important one does not
+// override another !important declaration, and in the style attribute a
+// longhand after one is dropped from 27 (before, the shorthand is).
+const VAR_DETAIL_PROPS = ['padding', 'padding-top', 'padding-left', 'border-top-width', 'border-top-style', 'border-top-color', 'border-bottom-width',
+  'border-bottom-style', 'border-bottom-color', 'border-left-width', 'border-width', 'border-style', 'border-top', 'border',
+  'margin-top', 'font-size', 'font-weight', 'line-height', 'flex-grow', 'flex-basis', 'background-color', 'background-image'];
+function varShorthandDetails(w) {
+  const d = w.document;
+  d.head.innerHTML = `<style>
+    .p { font-size: 20px; font-weight: 700; line-height: 3; font-family: serif }
+    .c { padding-top: 3px; margin-top: 3px; flex-grow: 2; background-color: red; border-top: 2px dotted blue }
+    .q { border-bottom: 3px dashed green; border-left-width: 4px }
+    .f { font: var(--f) } .x { flex: var(--x) } .b { background: var(--b) } .bp { background-position: var(--bp) }
+    .bt { border-top: var(--bt) } .bc { border-color: var(--bc) } .bs { border-style: var(--bs) }
+    .bw { border-width: var(--bw) } .bb { border: var(--b) } .bwt { border-width: 1px var(--bw) }
+    .i { padding: 1px !important } .j { padding: var(--p) !important }
+  </style>`;
+  const out = {};
+  const parent = d.body.appendChild(d.createElement('div'));
+  parent.className = 'p';
+  const read = (el, key) => { const cs = w.getComputedStyle(el); out[key] = VAR_DETAIL_PROPS.map((p) => [cs.getPropertyValue(p), cs[p]]); };
+  for (const tag of ['div', 'textarea', 'button']) {
+    for (const cls of ['f', 'c f', 'x', 'c x', 'b', 'c b', 'bp', 'bt', 'c bt', 'bc', 'c bc', 'bs', 'c bs', 'i j', 'j', 'c j',
+      'q bt', 'bw', 'q bw', 'bb', 'q bb', 'bwt', 'q bwt']) {
+      const el = parent.appendChild(d.createElement(tag));
+      el.className = cls;
+      read(el, `${tag}.${cls}`);
+    }
+    for (const style of ['padding: var(--p)', 'padding-top: 4px; padding: var(--p)', 'padding: var(--p); padding-top: 4px', 'border: var(--b)', 'font: var(--f)']) {
+      const el = parent.appendChild(d.createElement(tag));
+      el.className = 'c';
+      el.setAttribute('style', style);
+      read(el, `${tag}[${style}]`);
+    }
+  }
+  return out;
+}
+for (const jsdom of [26, 27, 28, 29, 30]) parity(`computed values: shorthands with var(), per version (jsdom ${jsdom})`, varShorthandDetails, { jsdom });
+
+test('computed values: shorthands with var() before cssstyle 4.4 keep the user agent sheet', () => {
+  for (const [cssstyle, top] of [['4.1.0', '2px'], ['4.6.0', '']]) {
+    const w = createWindow({ jsdom: '26.1.0', cssstyle });
+    const d = w.document;
+    d.head.innerHTML = '<style>.a { padding: var(--p) }</style>';
+    const el = d.body.appendChild(d.createElement('textarea'));
+    el.className = 'a';
+    assert.equal(w.getComputedStyle(el).paddingTop, top, cssstyle);
+  }
+});

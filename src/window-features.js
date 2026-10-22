@@ -1191,6 +1191,12 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     focusIgnoresRendering: before(version, [30, 1, 2]), detachedCheckableEvents: before(version, [16, 5, 2]), cssstyle: version[0] < 27 ? (css ? cssText : undefined) : cssstyle ?? undefined, cssstyleMajor: css ? css[0] : 0,
     styleSurface: styleSurfaceKey(version, version[0] < 27 ? css : cssstyle != null ? parseJsdomVersion(cssstyle) : null),
     unquotedUrls: css !== null && before(css, [4, 3, 1]),
+    // A shorthand declared with var() (padding: var(--p)) declares its
+    // longhands pending substitution, so they hide the user agent sheet's
+    // and earlier ones (padding-top '', from 29.0.2 its initial 0): with
+    // cssstyle 4.4 and later (jsdom 23.1 to 26 with it; 4.4, 4.5 and 4.6
+    // measured), and in jsdom 27 and later (cascade.js cascadeExpand).
+    pendingLonghands: version[0] >= 27 || (css === null ? !before(version, [23, 1, 0]) : css[0] > 4 || (css[0] === 4 && !before(css, [4, 4, 0]))),
     // cssstyle's font shorthand before 4.4 (shorthands.js legacyFont).
     legacyFont: css === null || !before(css, [4, 4, 0]) ? null : before(css, [4, 2, 0]) ? 'cssstyle4.1' : 'cssstyle4.2',
     // cssstyle 4.4 and later: the computed style's background and border
