@@ -32,7 +32,7 @@ function colors(w) {
   }
   const el = d.body.appendChild(d.createElement('div'));
   for (const value of ['Red', 'ButtonFace', 'Canvas', 'threedface', 'Mark', '#ff000080', '#F00F', 'rgba(0,0,0,.1234)', 'rgba(0,0,0,50%)',
-    'RGB(1, 2, 3)', 'rgb(1.5, 2, 3)', 'currentColor', 'Transparent']) {
+    'RGB(1, 2, 3)', 'rgb(1.5, 2, 3)', 'currentColor', 'Transparent', 'hsl(0.5turn, 100%, 50%)', 'hsl(1rad 100% 50%)', 'hsla(-100grad, 100%, 50%, 0.5)']) {
     el.style.color = '';
     el.style.color = value;
     el.style.background = '';
@@ -277,7 +277,8 @@ test('computed values: font-family depends on user agent from jsdom 29.0.2', () 
 // lighter. Percentages (but a font size's), lists and the dynamic
 // viewport units stay as declared.
 const UNITS = ['2em', '-1em', '.5em', '1rem', '1ex', '1ch', '1lh', '1rlh', '10vw', '10vh', '10vmin', '10vmax', '10svw', '1cm', '1mm', '1in', '1pt',
-  '1pc', '4q', '10%', 'calc(2em)', 'calc(1em + 2px)', 'calc(1000px / 3)', 'min(2em, 10px)', 'max(1em, 30px)', '13.33333333px', 'var(--x, 2em)'];
+  '1pc', '4q', '10%', 'calc(2em)', 'calc(1em + 2px)', 'calc(1000px / 3)', 'min(2em, 10px)', 'max(1em, 30px)', '13.33333333px', 'var(--x, 2em)',
+  'calc(1em * min(2, 3))', 'calc(1em * max(2, 3))', 'calc(1em * clamp(1, 2, 3))', 'calc(min(2, 4) * 10px)'];
 function lengths(w, units = UNITS) {
   const d = w.document;
   d.documentElement.style.fontSize = '10px';
@@ -300,7 +301,7 @@ function lengths(w, units = UNITS) {
     el.style.fontSize = size;
     out[size] = read(w, el, ['font-size']);
   }
-  for (const weight of ['100', '400', '600', '700', '900']) {
+  for (const weight of ['100', '400', '600', '700', '900', '920', '1000']) {
     const el = parent.appendChild(d.createElement('div'));
     el.style.fontWeight = weight;
     out[weight] = ['bolder', 'lighter'].map((keyword) => {
@@ -320,7 +321,7 @@ function lengths(w, units = UNITS) {
 parity('computed values: lengths, font sizes and weights (jsdom 30)', lengths);
 // jsdom 29 for the values before (without the math functions its parser
 // simplifies or drops; older ones differ in which units cssstyle takes).
-parity('computed values: lengths, font sizes and weights (jsdom 29)', (w) => lengths(w, UNITS.filter((u) => !/^(min|max)\(|\//.test(u))), { jsdom: 29 });
+parity('computed values: lengths, font sizes and weights (jsdom 29)', (w) => lengths(w, UNITS.filter((u) => !/(min|max|clamp)\(|\//.test(u))), { jsdom: 29 });
 
 test('computed values: em, keywords and bolder per jsdom 30 release', () => {
   for (const [jsdom, h1, b] of [['29.1.1', '2em', 'bolder'], ['30.0.0', '32px', 'bolder'], ['30.1.0', '32px', '700'], ['30.1.3', '32px', '700']]) {

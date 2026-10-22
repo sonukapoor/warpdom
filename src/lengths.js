@@ -73,11 +73,13 @@ function evaluate(tokens, ctx) {
     while (expect(',')) args.push(sum());
     if (!expect(')') || args.some((a) => a === null)) return null;
     if (fn === 'calc') return args.length === 1 ? args[0] : null;
-    if (args.some((a) => a.px === undefined)) return null;
-    const px = args.map((a) => a.px);
-    if (fn === 'min') return { px: Math.min(...px) };
-    if (fn === 'max') return { px: Math.max(...px) };
-    return px.length === 3 ? { px: Math.max(px[0], Math.min(px[1], px[2])) } : null;
+    // Lengths or numbers (calc(1em * min(2, 3)) is 32px), not both.
+    const key = args[0].px !== undefined ? 'px' : 'n';
+    if (args.some((a) => a[key] === undefined)) return null;
+    const v = args.map((a) => a[key]);
+    if (fn === 'min') return { [key]: Math.min(...v) };
+    if (fn === 'max') return { [key]: Math.max(...v) };
+    return v.length === 3 ? { [key]: Math.max(v[0], Math.min(v[1], v[2])) } : null;
   }
   function product() {
     let left = primary();
@@ -141,8 +143,9 @@ export function mayResolve(value) {
 // and larger and smaller (a ratio of 1.2).
 export const FONT_SIZE_KEYWORDS = { 'xx-small': 9, 'x-small': 10, small: 13, medium: 16, large: 18, 'x-large': 24, 'xx-large': 32, 'xxx-large': 48 };
 
-// font-weight bolder and lighter (CSS Fonts 4, 2.2) from the parent's.
+// font-weight bolder and lighter (CSS Fonts 4, 2.2) from the parent's
+// (bolder keeps 900 to 1000).
 export function relativeWeight(keyword, parent) {
-  if (keyword === 'bolder') return parent < 350 ? 400 : parent < 550 ? 700 : 900;
+  if (keyword === 'bolder') return parent < 350 ? 400 : parent < 550 ? 700 : parent < 900 ? 900 : parent;
   return parent < 100 ? parent : parent < 550 ? 100 : parent < 750 ? 400 : 700;
 }

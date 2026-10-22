@@ -182,6 +182,18 @@ function hueToChannel(p, q, t) {
   return p;
 }
 
+// A hue in degrees, wrapped into [0, 360): a number or deg, from cssstyle
+// 4.2 also grad, rad and turn (hsl(0.5turn 100% 50%) is rgb(0, 255, 255));
+// the older parser deg only.
+const HUE_UNITS = { deg: 1, grad: 0.9, rad: 180 / Math.PI, turn: 360 };
+const HUE = /^(.*?)(deg|grad|rad|turn)?$/i;
+function hueDegrees(s, legacy) {
+  const [, n, unit] = HUE.exec(s);
+  if (unit !== undefined && legacy && unit.toLowerCase() !== 'deg') return NaN;
+  const deg = number(n) * (unit === undefined ? 1 : HUE_UNITS[unit.toLowerCase()]);
+  return ((deg % 360) + 360) % 360;
+}
+
 function hslFunction(inner, round, legacy, turns = false) {
   const args = colorArgs(inner);
   if (!args) return null;
@@ -193,7 +205,7 @@ function hslFunction(inner, round, legacy, turns = false) {
     const q = l < 0.5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
     return serializeNumeric(round(hueToChannel(p, q, h + 1 / 3) * 255), round(hueToChannel(p, q, h) * 255), round(hueToChannel(p, q, h - 1 / 3) * 255), a, legacy);
   }
-  const h = ((number(hs.replace(/deg$/i, '')) % 360) + 360) % 360;
+  const h = hueDegrees(hs, legacy);
   const s = clamp(number(ss.replace(/%$/, '')) / 100, 0, 1);
   const l = clamp(number(ls.replace(/%$/, '')) / 100, 0, 1);
   const a = alphaValue(args[1], legacy);
@@ -209,7 +221,7 @@ function hwbFunction(inner, round) {
   if (!args) return null;
   const [hs, ws, bs] = args[0];
   if (!ws.endsWith('%') || !bs.endsWith('%')) return null;
-  const h = ((number(hs.replace(/deg$/i, '')) % 360) + 360) % 360;
+  const h = hueDegrees(hs, false);
   let w = clamp(number(ws.slice(0, -1)) / 100, 0, 1);
   let bl = clamp(number(bs.slice(0, -1)) / 100, 0, 1);
   const a = alphaValue(args[1], false);
