@@ -106,10 +106,12 @@ pending staged version on npmjs.com: a staged version is hidden from
 fails until it is approved or rejected.
 
 From a clean checkout of the tag (2FA one-time password; no provenance), run
-`npm ci` first (the `prepack` build needs the devDependencies), then
-`npm publish --access public` in the repository root, and in
-`packages/vitest-environment-warpdom` and `packages/jest-environment-warpdom`
-for each whose version is not on npm yet (`npm view <name>@<version>`).
+`npm ci` first (the `prepack` build needs the devDependencies). Then, for
+each of the three packages (the repository root, then
+`packages/vitest-environment-warpdom` and `packages/jest-environment-warpdom`),
+check whether its version is already on npm (`npm view <name>@<version>`
+prints it if so) and run `npm publish --access public` in its directory only
+if it is not; after a partial publish, a retry then skips what's already up.
 Create the GitHub release afterwards:
 
 - with release notes: `gh release create vX.Y.Z --title "warpdom X.Y.Z" -F docs/release-notes/vX.Y.Z.md`
