@@ -4027,8 +4027,8 @@ little traction yet, so 1.0 gets a public, checkable definition:
   NEWEST_MODELED_JSDOM with the warning and upstream watch, Node 22.12+
   (CI 22.22 and 24), Vitest 2+ and Jest 27+, the deprecation process.
 - [SECURITY.md](SECURITY.md): private reports through GitHub security
-  advisories; fixes for the latest minor only. Needs private vulnerability
-  reporting enabled in the repository settings (off on 2026-10-21).
+  advisories; fixes for the latest minor only. Private vulnerability
+  reporting is enabled in the repository settings (since 2026-10-21).
 - README: the status line links both docs; "warpdom models jsdom 20.0.3
   to 30.1.2" corrected to 30.1.3 (NEWEST_MODELED_JSDOM).
 
