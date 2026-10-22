@@ -3960,8 +3960,13 @@ specificity and importance (an !important shorthand with var() loses to a
 later plain longhand, an !important longhand to a later var() shorthand),
 across style elements too; from 30.1.3 the cascade decides, but two
 !important ones still meet by order. cssstyle before 4.4 declares no
-pending longhands (unchanged). Implemented as compat.pendingByOrder ('all'
-before 30.1.3, 'important' from it) and cascade.js cascadeByOrder; a
+pending longhands (unchanged). Before 28 the latest matching pending and
+declared ones meet (jsdom applies rules in document order: `.d.d td {
+padding: var(--a) } td { padding-bottom: 7px } td { padding: var(--a) }`
+leaves padding-bottom pending), from 28 each declared property's winner
+by specificity (7px there). Implemented as compat.pendingByOrder
+('latest' before 28, 'all' to 30.1.2, 'important' from 30.1.3) and
+cascade.js cascadeByOrder; a
 longhand from a shorthand without var() still meets the pending one by
 the cascade.
 

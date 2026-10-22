@@ -475,14 +475,25 @@ const BY_ORDER = {
   bothImportantShorthandLast: '.d.d td { padding-bottom: 7px !important } td { padding: var(--p) !important }',
   margin: '.d.d td { margin: var(--m) } td { margin-bottom: 7px }',
   borderSide: '.d.d td { border-bottom: var(--b) } td { border-bottom-width: 7px }',
-  laterSheet: '.d.d td { padding: var(--p) }</style><style>td { padding-bottom: 7px }',
+  laterSheet: ['.d.d td { padding: var(--p) }', 'td { padding-bottom: 7px }'],
+  // Three rules: before jsdom 28 the latest of each (pending here), from
+  // 28 each declared property's winner by specificity (7px). The two
+  // shorthands have one value: before 28 jsdom's padding is the later
+  // one's, by document order (not modeled).
+  pendingAfter: '.d.d td { padding: var(--a) } td { padding-bottom: 7px } td { padding: var(--a) }',
+  pendingAfterMoreSpecific: 'td { padding: var(--a) } td { padding-bottom: 7px } .d.d td { padding: var(--a) }',
+  declaredAfter: '.d.d td { padding-bottom: 3px } td { padding: var(--a) } td { padding-bottom: 7px }',
+  declaredAfterMoreSpecific: 'td { padding-bottom: 3px } td { padding: var(--a) } .d.d td { padding-bottom: 7px }',
+  importantBetween: '.d.d td { padding: var(--a) } td { padding-bottom: 7px !important } td { padding: var(--a) }',
   styleAttribute: '.d.d td { padding: var(--p) } td { padding-bottom: 7px }',
 };
 function pendingByOrder(w) {
   const d = w.document;
   const out = {};
   for (const [key, css] of Object.entries(BY_ORDER)) {
-    d.head.innerHTML = `<style>${css}</style>`;
+    d.head.textContent = '';
+    // One style element per sheet, in order.
+    for (const text of [css].flat()) d.head.appendChild(d.createElement('style')).textContent = text;
     d.body.innerHTML = '<div class="d"><div class="v"><table><tbody><tr class="r"><td>a</td></tr><tr class="r"><td>b</td></tr></tbody></table></div></div>';
     for (const td of d.querySelectorAll('td')) {
       if (key === 'styleAttribute') td.setAttribute('style', 'padding-top: 2px');
