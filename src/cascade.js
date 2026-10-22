@@ -245,6 +245,9 @@ function cascadeByOrder(lists, element, compat) {
       const wanted = latest || winner === undefined || (isPending && pending === undefined) || (entry.direct && direct === undefined)
         || (i === 0 && !isPending && importantSettled === undefined);
       if (!wanted || !entry.match(element, NO_SCOPE)) continue;
+      // A first match from a shorthand without var() wins as the cascade
+      // decides: no need to look further.
+      if (winner === undefined && !isPending && !entry.direct) return undefined;
       winner ??= entry;
       if (!isPending && i === 0) importantSettled ??= entry;
       if (isPending && (pending === undefined || (latest && entry.order > pending.order))) pending = entry;
@@ -323,7 +326,9 @@ function cascade(element, index, inlineMap, name) {
   if (inline?.value === HIDE_UA) { uaHidden = true; inline = undefined; }
   if (inline?.important) return inline.value;
   const lists = index.get(name);
-  if (lists?.pending && window[S].compat.pendingByOrder) {
+  // A normal inline declaration wins over normal rules: no order to check
+  // without !important ones.
+  if (lists?.pending && window[S].compat.pendingByOrder && (!inline || lists.important.length)) {
     const entry = cascadeByOrder(lists, element, window[S].compat);
     if (entry !== undefined) return entry.important || !inline ? entry.value : inline.value;
   }

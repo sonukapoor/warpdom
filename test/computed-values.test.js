@@ -486,6 +486,11 @@ const BY_ORDER = {
   declaredAfterMoreSpecific: 'td { padding-bottom: 3px } td { padding: var(--a) } .d.d td { padding-bottom: 7px }',
   importantBetween: '.d.d td { padding: var(--a) } td { padding-bottom: 7px !important } td { padding: var(--a) }',
   styleAttribute: '.d.d td { padding: var(--p) } td { padding-bottom: 7px }',
+  // The style attribute's padding-bottom over pending and declared ones.
+  styleAttributeLonghand: '.d.d td { padding: var(--p) } td { padding-bottom: 7px } td { padding: var(--q) }',
+  styleAttributeImportant: '.d.d td { padding: var(--p) !important } td { padding-bottom: 7px }',
+  // A shorthand without var() that wins, with pending rules elsewhere.
+  settledWinner: '.d.d td { padding: 8px } .none td { padding: var(--p) } .none td { padding-bottom: 7px }',
 };
 function pendingByOrder(w) {
   const d = w.document;
@@ -497,6 +502,7 @@ function pendingByOrder(w) {
     d.body.innerHTML = '<div class="d"><div class="v"><table><tbody><tr class="r"><td>a</td></tr><tr class="r"><td>b</td></tr></tbody></table></div></div>';
     for (const td of d.querySelectorAll('td')) {
       if (key === 'styleAttribute') td.setAttribute('style', 'padding-top: 2px');
+      if (key.startsWith('styleAttribute') && key !== 'styleAttribute') td.setAttribute('style', 'padding-bottom: 3px');
       const cs = w.getComputedStyle(td);
       out[`${key} ${td.textContent}`] = BY_ORDER_PROPS.map((p) => [cs.getPropertyValue(p), cs[p]]);
     }

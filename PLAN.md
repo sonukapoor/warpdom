@@ -3966,7 +3966,11 @@ padding: var(--a) } td { padding-bottom: 7px } td { padding: var(--a) }`
 leaves padding-bottom pending), from 28 each declared property's winner
 by specificity (7px there). Implemented as compat.pendingByOrder
 ('latest' before 28, 'all' to 30.1.2, 'important' from 30.1.3) and
-cascade.js cascadeByOrder; a
+cascade.js cascadeByOrder (one scan; it stops at a first match from a
+shorthand without var(), and is skipped for a normal inline declaration
+with no !important rules: 400 cache-miss reads with 5,000 unrelated
+var() rules 55.7 -> 40.7 ms on the 26.1.0 profile, 53.5 -> 39.4 ms on
+30.1.2, Node 22.23.3); a
 longhand from a shorthand without var() still meets the pending one by
 the cascade.
 
