@@ -61,7 +61,20 @@ function blockEnd(text, open) {
   return text.length;
 }
 
-const stripComments = (text) => text.replace(/\/\*[\s\S]*?(\*\/|$)/g, '');
+// Text without its comments; comment markers in strings are kept.
+function stripComments(text) {
+  if (!text.includes('/*')) return text;
+  let out = '';
+  for (let i = 0; i < text.length;) {
+    const next = skipToken(text, i);
+    if (next === i) out += text[i++];
+    else {
+      if (text[i] !== '/') out += text.slice(i, next);
+      i = next;
+    }
+  }
+  return out;
+}
 
 // Splits a list of rules into records: { selector, body } for style rules,
 // { at, prelude, body } for at-rules (body null for statements). With
@@ -379,11 +392,13 @@ function importRule(protos, prelude, sheet, parentRule) {
 // An @import rule given new text (jsdom before 29: its cssText setter
 // before 27.1.0, CSSImportRule.prototype.parse() from 27.1.0 to 28). As
 // measured (20.0.3 to 28.1.0): '@import' in lowercase only, and text
-// without media keeps the rule's media.
+// without media, or without its closing semicolon, keeps the rule's media.
 function setImportText(rule, text) {
-  const m = /^\s*@import\s+([\s\S]*?);?\s*$/.exec(text);
+  const m = /^\s*@import\s+([\s\S]*?)(;?)\s*$/.exec(text);
   const parts = m && importParts(m[1].trim());
   if (!parts) return;
+  // Without the closing semicolon the media are not read (kept).
+  if (m[2] === '') parts.media = '';
   const s = rule[S];
   s.href = parts.href;
   s.layerName = parts.layerName;
@@ -571,16 +586,16 @@ function ruleText(rule) {
   switch (Object.getPrototypeOf(rule)) {
     // Empty only from CSSStyleRule.parse() and the cssText setter before jsdom 27.1.0.
     case s.protos.CSSStyleRule: return s.selectorText === '' ? '' : `${s.selectorText} ${styleText(s.style)}`;
-    case s.protos.CSSMediaRule: return `@media ${s.media[S].list.join(', ')} ${nested(s.rules)}`;
+    case s.protos.CSSMediaRule: return `@media ${s.media[S].list.join(', ')} ${nested(ruleArray(rule))}`;
     // (before jsdom 27.1.0 its own conditionText, which can be assigned)
-    case s.protos.CSSSupportsRule: return `@supports ${legacyRules(s.protos) ? rule.conditionText : s.conditionText} ${nested(s.rules)}`;
-    case s.protos.CSSContainerRule: return `@container ${s.conditionText} ${nested(s.rules)}`;
+    case s.protos.CSSSupportsRule: return `@supports ${legacyRules(s.protos) ? rule.conditionText : s.conditionText} ${nested(ruleArray(rule))}`;
+    case s.protos.CSSContainerRule: return `@container ${s.conditionText} ${nested(ruleArray(rule))}`;
     case s.protos.CSSScopeRule: return `@scope ${s.prelude ? `${s.prelude} ` : ''}${nested(s.rules)}`;
     case s.protos.CSSCounterStyleRule: {
       const body = [...s.descriptors].map(([name, value]) => `${name}: ${value};`).join(' ');
       return `@counter-style ${s.name} ${body ? `{ ${body} }` : '{ }'}`;
     }
-    case s.protos.CSSLayerBlockRule: return `@layer ${s.name} ${nested(s.rules)}`;
+    case s.protos.CSSLayerBlockRule: return `@layer ${s.name} ${nested(ruleArray(rule))}`;
     case s.protos.CSSLayerStatementRule: return `@layer ${s.nameList.join(', ')};`;
     case s.protos.CSSImportRule: {
       const media = s.media[S].list.join(', ');
@@ -603,6 +618,19 @@ function ruleText(rule) {
 
 // --- rule lists and insertRule -------------------------------------------------------
 
+// The rules a sheet or rule's insertRule(), deleteRule() and text use:
+// before jsdom 27.1.0 an @media, @supports, @container or @layer rule's own
+// cssRules, which a test can replace with an array (black box 26.1.0 and
+// 27.0.0: insertions, deletions and the cascade then use that array).
+export function ruleArray(owner) {
+  const s = owner[S];
+  if (s.ruleList !== undefined && Object.hasOwn(owner, 'cssRules') && legacyRules(s.protos)) {
+    const own = owner.cssRules;
+    if (own !== s.ruleList && Array.isArray(own)) return own;
+  }
+  return s.rules;
+}
+
 function cssRuleList(owner) {
   const s = owner[S];
   if (!s.ruleList) {
@@ -616,36 +644,37 @@ function cssRuleList(owner) {
 // @import and @namespace rules are not allowed.
 function insertRule(owner, text, index, sheet, parentRule, nested) {
   const s = owner[S];
+  const list = ruleArray(owner);
   const i = index === undefined ? 0 : index >>> 0;
-  if (i > s.rules.length) throw domError(`The index provided (${i}) is larger than the maximum index (${s.rules.length}).`, 'IndexSizeError');
+  if (i > list.length) throw domError(`The index provided (${i}) is larger than the maximum index (${list.length}).`, 'IndexSizeError');
   const record = parseOneRule(String(text), s.protos);
   const rule = record && createRule(s.protos, record, sheet, parentRule);
   if (!rule) throw domError(`Failed to parse the rule '${text}'.`, 'SyntaxError');
-  const before = s.rules.slice(0, i);
-  const after = s.rules.slice(i);
+  const before = list.slice(0, i);
+  const after = list.slice(i);
   if ((nested && (isImport(rule) || isNamespace(rule)))
     || (isImport(rule) && before.some((r) => !isImport(r)))
     || (isNamespace(rule) && (before.some((r) => !isImport(r) && !isNamespace(r)) || after.some(isImport)))
     || (!isImport(rule) && !isNamespace(rule) && after.some((r) => isImport(r) || isNamespace(r)))) {
     throw domError('Cannot insert the rule at this position.', 'HierarchyRequestError');
   }
-  if (isNamespace(rule) && s.rules.some((r) => !isImport(r) && !isNamespace(r))) {
+  if (isNamespace(rule) && list.some((r) => !isImport(r) && !isNamespace(r))) {
     throw domError('Cannot insert a @namespace rule into a list with other rules.', 'InvalidStateError');
   }
-  s.rules.splice(i, 0, rule);
+  list.splice(i, 0, rule);
   cssomChanges.rev++;
   return i;
 }
 
 function deleteRule(owner, index) {
-  const s = owner[S];
+  const list = ruleArray(owner);
   const i = index >>> 0;
-  if (i >= s.rules.length) throw domError(`The index provided (${i}) is larger than the maximum index (${s.rules.length - 1}).`, 'IndexSizeError');
-  const rule = s.rules[i];
-  if (isNamespace(rule) && s.rules.some((r) => !isImport(r) && !isNamespace(r))) {
+  if (i >= list.length) throw domError(`The index provided (${i}) is larger than the maximum index (${list.length - 1}).`, 'IndexSizeError');
+  const rule = list[i];
+  if (isNamespace(rule) && list.some((r) => !isImport(r) && !isNamespace(r))) {
     throw domError('Cannot delete a @namespace rule from a list with other rules.', 'InvalidStateError');
   }
-  s.rules.splice(i, 1);
+  list.splice(i, 1);
   cssomChanges.rev++;
   detach(rule);
 }

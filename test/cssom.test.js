@@ -456,6 +456,8 @@ for (const jsdom of [20, 26]) {
     out.push(rule.selectorText, rule.style.getPropertyValue('top'), rule.style.getPropertyValue('left'), rule.style.getPropertyValue('color'));
     rule.cssText = 'garbage';
     out.push(rule.selectorText);
+    rule.cssText = 'b[title="/*x*/"] { color: red }';
+    out.push(rule.selectorText);
     return out;
   }, { jsdom });
 }
@@ -527,6 +529,7 @@ test('CSS rule shapes stay per window', () => {
 for (const jsdom of [20, 26]) {
   parity(`CSSStyleRule.parse() with braces in strings and comments (jsdom ${jsdom})`, (w) => [
     'a { content: "}"; color: red; }', 'a[title="{"] { color: red; }', 'a /* { */ { color: red }', "a { content: '{' ; top: 1px }",
+    'a[title="/*x*/"] { color: red }', "a[title='/*x*/'] /* c */ { color: red }",
   ].map((text) => {
     const rule = w.CSSStyleRule.parse(text);
     return [rule.selectorText, ...['content', 'color', 'top'].map((name) => rule.style.getPropertyValue(name))];
@@ -538,7 +541,9 @@ for (const jsdom of [20, 26]) {
     w.document.head.appendChild(st);
     const rule = st.sheet.cssRules[0];
     // Text without media keeps the media; '@IMPORT' and other text change nothing.
-    return ['@import url(b.css) print;', 'garbage', 'a { color: red }', '@import "c.css";', '@import url(d.css) tv, print;', '@IMPORT url(e.css);'].map((text) => {
+    // Without the closing semicolon the media are kept too.
+    return ['@import url(b.css) print;', 'garbage', 'a { color: red }', '@import "c.css";', '@import url(d.css) tv, print;', '@IMPORT url(e.css);',
+      '@import url(f.css) print', '@import url(g.css) screen ;'].map((text) => {
       rule.cssText = text;
       return `${rule.href} [${rule.media.mediaText}]`;
     });
@@ -580,3 +585,33 @@ parity('CSSImportRule.prototype.parse() keeps media and ignores other text (jsdo
     return `${rule.href} [${rule.media.mediaText}]`;
   });
 }, { jsdom: 28 });
+
+// Before jsdom 27.1.0 a grouping rule's own cssRules can be replaced with an
+// array, which insertRule(), deleteRule(), cssText and the cascade then
+// use (Copilot review on #116).
+parity('a replaced cssRules array of an @media rule (jsdom 26)', (w) => {
+  const st = w.document.createElement('style');
+  st.textContent = '@media screen { p.z { color: red } }';
+  w.document.head.appendChild(st);
+  w.document.body.innerHTML = '<p class=z>x</p>';
+  const media = st.sheet.cssRules[0];
+  const list = [];
+  media.cssRules = list;
+  const out = [media.cssRules === list, media.cssText.includes('p.z'), w.getComputedStyle(w.document.body.firstChild).color];
+  media.insertRule('b { top: 1px }', 0);
+  out.push(list.length, list[0].selectorText, list[0].parentRule === media, media.cssText.includes('b {'), media.cssText.includes('p.z'));
+  media.deleteRule(0);
+  out.push(list.length, media.cssText.includes('b {'));
+  return out;
+}, { jsdom: 26 });
+
+// Comment markers inside strings are not comments (style sheets of every profile).
+for (const jsdom of [26, 30]) {
+  parity(`comment markers in quoted selectors (jsdom ${jsdom})`, (w) => {
+    const st = w.document.createElement('style');
+    st.textContent = 'a[title="/*x*/"] { color: red } b[title=\'/*y*/\'] { color: blue }';
+    w.document.head.appendChild(st);
+    w.document.body.innerHTML = '<a title="/*x*/">x</a>';
+    return [[...st.sheet.cssRules].map((rule) => rule.selectorText), w.getComputedStyle(w.document.body.firstChild).color];
+  }, { jsdom });
+}

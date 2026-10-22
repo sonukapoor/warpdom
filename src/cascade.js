@@ -22,7 +22,7 @@ import { compileRuleSelector } from './selectors.js';
 import { directionality } from './directionality.js';
 import { absoluteLength, mayResolve, sixDigits, FONT_SIZE_KEYWORDS, relativeWeight } from './lengths.js';
 import { uaDeclarations, uaValue } from './ua-sheet.js';
-import { documentStyleSheets, styleElementSheet } from './cssom.js';
+import { documentStyleSheets, styleElementSheet, ruleArray } from './cssom.js';
 import { parseDeclarations, computed, validationModeOf, styleSurfaceOf, isLegacyMode, EXPANDED_SHORTHANDS } from './css.js';
 
 // --- the rule index ------------------------------------------------------------------
@@ -106,7 +106,8 @@ function buildIndex(sheets, mode, compat) {
       const proto = Object.getPrototypeOf(rule);
       if (proto === ss.protos.CSSStyleRule) addRule(rule);
       else if (proto === ss.protos.CSSMediaRule && mediaApplies(rule, mode)) {
-        for (const inner of rule[S].rules) if (Object.getPrototypeOf(inner) === ss.protos.CSSStyleRule) addRule(inner);
+        // (ruleArray: before jsdom 27.1.0 the rule's cssRules, which may be replaced)
+        for (const inner of ruleArray(rule)) if (inner?.[S] && Object.getPrototypeOf(inner) === ss.protos.CSSStyleRule) addRule(inner);
       }
     }
   }
