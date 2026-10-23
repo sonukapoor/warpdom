@@ -111,6 +111,7 @@ test('compare action: inputs, defaults and validation', () => {
     prComment: false,
     maxTests: 50,
     artifactName: '',
+    commentAuthor: '',
   });
   const inputs = readInputs({
     INPUT_WORKING_DIRECTORY: 'packages/ui',
@@ -203,6 +204,35 @@ test('compare action: the status notice does not call flaky results all the same
   assert.equal(statusNotice(null), null);
 });
 
+test('compare action: files that fail to load are counted apart from tests', () => {
+  // One test passes on jsdom; its file fails to load on warpdom: compare
+  // gives a '(file)' regression and the test 'passed -> missing'.
+  const fileDiff = diff('(file)', 'regression', { baseline: 'missing', message: 'SyntaxError: bad import' });
+  const testDiff = diff('t', 'other', { baseline: 'passed', warpdom: 'missing', message: '' });
+  const r = result({ differences: [fileDiff, testDiff] });
+  r.correctness = { ...r.correctness, compared: 1, same: 0, regressions: 1, fixed: 0, other: 1 };
+  const text = renderSummary(r);
+  assert.match(
+    text,
+    /1 test compared, 0 with the same status; 1 test differs \(1 other change\)\. Also 1 test file fails to load on warpdom\./,
+  );
+  assert.match(text, /\| fails to load on warpdom \| a\.spec\.js \(whole file\) \| SyntaxError: bad import \|/);
+  assert.match(text, /\| passed → missing \| a\.spec\.js › t \| - \|/);
+  assert.ok(text.indexOf('(whole file)') < text.indexOf('› t'), 'file rows first within a class');
+  assert.deepEqual(statusNotice(r), {
+    level: 'warning',
+    text: 'warpdom compare: 1 of 1 tests differ (0 pass on jsdom and fail on warpdom); 1 test file fails to load on warpdom; see the job summary.',
+  });
+  // Only a file change, no test changes.
+  const only = result({ differences: [fileDiff] });
+  only.correctness = { ...only.correctness, compared: 0, same: 0, regressions: 1, fixed: 0, other: 0 };
+  assert.match(
+    renderSummary(only),
+    /0 tests compared, 0 with the same status and no test status changes\. Also 1 test file fails to load on warpdom\./,
+  );
+  assert.equal(statusNotice(only).text, 'warpdom compare: 1 test file fails to load on warpdom; see the job summary.');
+});
+
 test('compare action: Node version check', () => {
   assert.equal(nodeSupported('22.12.0'), true);
   assert.equal(nodeSupported('v24.1.0'), true);
@@ -249,7 +279,7 @@ test('compare action: summary with differences, sorted and capped', () => {
   );
   assert.match(text, /\| Test run \(1 round\) \| 12\.0 s \| 6\.00 s \|/);
   assert.match(text, /\*\*2\.00x faster\*\*, 6\.00 s saved per run \(indicative: one round/);
-  assert.match(text, /#### Tests whose status differs \(3\)/);
+  assert.match(text, /#### Status changes \(3\)/);
   const rows = text.split('\n').filter((l) => l.startsWith('| pass') || l.startsWith('| fail'));
   assert.deepEqual(rows, [
     '| pass → fail | a.spec.js › b | AssertionError: expected 1 to be 2 |',
@@ -274,7 +304,7 @@ test('compare action: summary variants', () => {
   );
   assert.match(
     flakyOnly,
-    /10 tests compared, 9 with the same status and no status changes; 1 flaky test not counted \(below\)\./,
+    /10 tests compared, 9 with the same status and no test status changes; 1 flaky test not counted \(below\)\./,
   );
   assert.match(flakyOnly, /Also: 1 test flaky on warpdom/);
 
@@ -284,7 +314,7 @@ test('compare action: summary variants', () => {
 
   const same = renderSummary(result({ differences: [] }));
   assert.match(same, /10 tests compared, all with the same status on jsdom and warpdom\./);
-  assert.doesNotMatch(same, /Tests whose status differs/);
+  assert.doesNotMatch(same, /Status changes/);
 
   const slower = renderSummary(
     result({
@@ -373,30 +403,54 @@ test('compare action: step outputs', () => {
   assert.equal(pullRequestNumber(null), null);
 });
 
-// A fake GitHub API: comments per page, and the calls made. `user` is the
-// token's login for GET /user; null answers 403 there, as for the Actions
-// token and app tokens.
-function fakeGitHub(pages, { status = 200, user = null } = {}) {
+// A fake GitHub API holding a pull request's comments, and the calls made.
+// `user`: the token's login for GET /user, or 'integration' (the Actions
+// token's 403) or 'rate-limited' (a 403 with x-ratelimit-remaining 0).
+// `writeStatus`: the status of POST, PATCH and DELETE (403 for a fork's
+// read-only token). `racer`: a comment another run posts while this one does.
+function fakeGitHub(initial, { user = 'integration', writeStatus = 200, racer = null } = {}) {
   const calls = [];
+  const state = initial.map((c) => ({ ...c }));
+  let nextId = 1000;
+  const self = user === 'integration' ? bot : person(user);
+  const reply = (status, data, headers = {}) => ({
+    ok: status < 300,
+    status,
+    headers: { get: (name) => headers[name.toLowerCase()] ?? null },
+    json: async () => data,
+  });
   const fetch = async (url, init) => {
-    calls.push({
-      method: init.method,
-      url,
-      body: init.body ? JSON.parse(init.body).body : undefined,
-      auth: init.headers.Authorization,
-    });
-    if (status !== 200) return { ok: false, status, json: async () => ({}) };
+    const body = init.body ? JSON.parse(init.body).body : undefined;
+    calls.push({ method: init.method, url, body, auth: init.headers.Authorization });
     if (url.endsWith('/user')) {
-      if (!user) return { ok: false, status: 403, json: async () => ({}) };
-      return { ok: true, status: 200, json: async () => ({ login: user }) };
+      if (user === 'integration') return reply(403, { message: 'Resource not accessible by integration' });
+      if (user === 'rate-limited') {
+        return reply(403, { message: 'API rate limit exceeded' }, { 'x-ratelimit-remaining': '0' });
+      }
+      return reply(200, { login: user });
     }
     if (init.method === 'GET') {
       const page = Number(new URL(url).searchParams.get('page'));
-      return { ok: true, status: 200, json: async () => pages[page - 1] ?? [] };
+      return reply(200, state.slice((page - 1) * 100, page * 100));
     }
-    return { ok: true, status: 201, json: async () => ({ id: 99 }) };
+    if (writeStatus !== 200) return reply(writeStatus, { message: 'Resource not accessible by integration' });
+    const id = Number(url.split('/').at(-1));
+    if (init.method === 'POST') {
+      if (racer) state.push({ ...racer });
+      const created = { id: nextId++, body, user: self };
+      state.push(created);
+      return reply(201, created);
+    }
+    const i = state.findIndex((c) => c.id === id);
+    if (i < 0) return reply(404, { message: 'Not Found' });
+    if (init.method === 'DELETE') {
+      state.splice(i, 1);
+      return reply(204, null);
+    }
+    state[i].body = body;
+    return reply(200, state[i]);
   };
-  return { fetch, calls };
+  return { fetch, calls, state };
 }
 
 const commentArgs = (fetch, extra = {}) => ({
@@ -413,60 +467,94 @@ const bot = { login: 'github-actions[bot]', type: 'Bot' };
 const person = (login) => ({ login, type: 'User' });
 const report = (id, user, dir = '.') => ({ id, body: `${marker(dir)}\nold`, user });
 const comments = (n, from = 1) => Array.from({ length: n }, (_, i) => ({ id: from + i, body: 'x', user: person('a') }));
+const writes = (calls) =>
+  calls.filter((c) => c.method !== 'GET').map((c) => [c.method, c.url.replace(/.*\/repos\/o\/r/, '')]);
 
 test('compare action: creates a comment when none has the marker', async () => {
-  const { fetch, calls } = fakeGitHub([[{ id: 1, body: 'hello', user: bot }, report(2, bot, 'other')]]);
-  assert.deepEqual(await upsertComment(commentArgs(fetch)), { action: 'created', id: 99 });
+  const gh = fakeGitHub([{ id: 1, body: 'hello', user: bot }, report(2, bot, 'other')]);
+  assert.deepEqual(await upsertComment(commentArgs(gh.fetch)), { action: 'created', id: 1000 });
   assert.deepEqual(
-    calls.map((c) => [c.method, c.url]),
+    gh.calls.slice(0, 3).map((c) => [c.method, c.url]),
     [
       ['GET', 'https://api.github.test/user'],
       ['GET', 'https://api.github.test/repos/o/r/issues/5/comments?per_page=100&page=1'],
       ['POST', 'https://api.github.test/repos/o/r/issues/5/comments'],
     ],
   );
-  assert.equal(calls[1].auth, 'Bearer t0k');
-  assert.equal(calls[2].body, `${marker('.')}\nnew`);
+  assert.equal(gh.calls[1].auth, 'Bearer t0k');
+  assert.equal(gh.calls[2].body, `${marker('.')}\nnew`);
+  assert.deepEqual(writes(gh.calls), [['POST', '/issues/5/comments']]);
 });
 
 test('compare action: updates the earlier comment, found on a later page', async () => {
-  const { fetch, calls } = fakeGitHub([comments(100), [report(500, bot)]]);
-  assert.deepEqual(await upsertComment(commentArgs(fetch)), { action: 'updated', id: 500 });
-  assert.deepEqual(
-    calls.map((c) => c.method),
-    ['GET', 'GET', 'GET', 'PATCH'],
-  );
-  assert.equal(calls[3].url, 'https://api.github.test/repos/o/r/issues/comments/500');
+  const gh = fakeGitHub([...comments(100), report(500, bot)]);
+  assert.deepEqual(await upsertComment(commentArgs(gh.fetch)), { action: 'updated', id: 500 });
+  assert.deepEqual(writes(gh.calls), [['PATCH', '/issues/comments/500']]);
+  assert.equal(gh.state.at(-1).body, `${marker('.')}\nnew`);
 });
 
 test("compare action: only a comment by the token's author is updated", async () => {
-  // The Actions token (no /user): a person's comment quoting the marker is
-  // not the report; the bot's is.
-  const actions = fakeGitHub([[report(1, person('someone')), report(2, bot)]]);
-  assert.deepEqual(await upsertComment(commentArgs(actions.fetch)), { action: 'updated', id: 2 });
-  const quotedOnly = fakeGitHub([[report(1, person('someone'))]]);
-  assert.deepEqual(await upsertComment(commentArgs(quotedOnly.fetch)), { action: 'created', id: 99 });
+  // The Actions token: github-actions[bot]'s report, not a person's comment
+  // quoting the marker, nor another app's.
+  const app = { login: 'other-app[bot]', type: 'Bot' };
+  const actions = fakeGitHub([report(1, person('someone')), report(2, app), report(3, bot)]);
+  assert.deepEqual(await upsertComment(commentArgs(actions.fetch)), { action: 'updated', id: 3 });
+  const notOurs = fakeGitHub([report(1, person('someone')), report(2, app)]);
+  assert.deepEqual(await upsertComment(commentArgs(notOurs.fetch)), { action: 'created', id: 1000 });
   // A personal token: its user's comment, not a bot's.
-  const custom = fakeGitHub([[report(1, bot), report(2, person('me'))]], { user: 'me' });
+  const custom = fakeGitHub([report(1, bot), report(2, person('me'))], { user: 'me' });
   assert.deepEqual(await upsertComment(commentArgs(custom.fetch)), { action: 'updated', id: 2 });
-  const otherUser = fakeGitHub([[report(1, person('someone'))]], { user: 'me' });
-  assert.deepEqual(await upsertComment(commentArgs(otherUser.fetch)), { action: 'created', id: 99 });
+  // An app token, named with comment-author: /user is not asked.
+  const named = fakeGitHub([report(1, bot), report(2, app)]);
+  assert.deepEqual(await upsertComment(commentArgs(named.fetch, { author: 'other-app[bot]' })), {
+    action: 'updated',
+    id: 2,
+  });
+  assert.ok(!named.calls.some((c) => c.url.endsWith('/user')));
+});
+
+test('compare action: a rate-limited /user is an error, not a guess at the author', async () => {
+  const gh = fakeGitHub([report(1, bot)], { user: 'rate-limited' });
+  const err = await upsertComment(commentArgs(gh.fetch)).then(
+    () => null,
+    (e) => e,
+  );
+  assert.equal(err.status, 403);
+  assert.equal(err.rateLimited, true);
+  assert.deepEqual(writes(gh.calls), []);
+  assert.match(commentFailure(err), /rate limited/);
 });
 
 test('compare action: the page cap without the report skips instead of posting a duplicate', async () => {
-  const { fetch, calls } = fakeGitHub([comments(100), comments(100, 101), [report(500, bot)]]);
-  const done = await upsertComment(commentArgs(fetch, { maxPages: 2 }));
+  const gh = fakeGitHub([...comments(200), report(500, bot)]);
+  const done = await upsertComment(commentArgs(gh.fetch, { maxPages: 2 }));
   assert.equal(done.action, 'skipped');
   assert.match(done.reason, /more than 200 comments/);
-  assert.ok(!calls.some((c) => c.method === 'POST' || c.method === 'PATCH'));
+  assert.deepEqual(writes(gh.calls), []);
   // Exactly full pages, then an empty one: searched completely.
-  const exact = fakeGitHub([comments(100), []]);
+  const exact = fakeGitHub(comments(100));
   assert.equal((await upsertComment(commentArgs(exact.fetch, { maxPages: 2 }))).action, 'created');
 });
 
+test('compare action: two overlapping runs leave one report', async () => {
+  // Another run posted its report between this run's search and its POST:
+  // the older one is kept with this body, this run's copy is deleted.
+  const gh = fakeGitHub([], { racer: report(900, bot) });
+  assert.deepEqual(await upsertComment(commentArgs(gh.fetch)), { action: 'updated', id: 900 });
+  assert.deepEqual(writes(gh.calls), [
+    ['POST', '/issues/5/comments'],
+    ['DELETE', '/issues/comments/1000'],
+    ['PATCH', '/issues/comments/900'],
+  ]);
+  assert.deepEqual(
+    gh.state.map((c) => [c.id, c.body]),
+    [[900, `${marker('.')}\nnew`]],
+  );
+});
+
 test('compare action: a read-only token (fork pull request) gives a warning, not a failure', async () => {
-  const { fetch } = fakeGitHub([[]], { status: 403 });
-  const err = await upsertComment(commentArgs(fetch)).then(
+  const gh = fakeGitHub([], { writeStatus: 403 });
+  const err = await upsertComment(commentArgs(gh.fetch)).then(
     () => null,
     (e) => e,
   );

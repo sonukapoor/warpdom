@@ -80,6 +80,7 @@ export function readInputs(env) {
     prComment: bool(input('pr-comment'), 'pr-comment'),
     maxTests: positive(input('max-tests'), 'max-tests', 50),
     artifactName: String(input('artifact-name')).trim(),
+    commentAuthor: String(input('comment-author')).trim(),
   };
 }
 
@@ -170,9 +171,40 @@ function speedLines(result, baseline, warpdom) {
   return [...rows, '', `**Speed:** ${speed}${notes.length ? ` (${notes.join('; ')})` : ''}.`];
 }
 
+// compare adds a '(file)' entry when a whole test file fails to load on one
+// side (results.js). It is not a test: it is left out of `compared`, so
+// it is counted and labeled apart from the tests.
+const isFile = (d) => d.name === '(file)';
+
+export function splitDifferences(c) {
+  const tests = c.differences.filter((d) => !isFile(d));
+  const files = c.differences.filter(isFile);
+  const by = (list, cls) => list.filter((d) => d.class === cls).length;
+  return {
+    tests,
+    files,
+    testRegressions: by(tests, 'regression'),
+    testFixed: by(tests, 'fixed'),
+    testOther: by(tests, 'other'),
+    fileRegressions: by(files, 'regression'),
+    fileFixed: by(files, 'fixed'),
+    fileOther: by(files, 'other'),
+  };
+}
+
 function testName(d) {
   const project = d.project ? ` [${cell(d.project, 60)}]` : '';
+  if (isFile(d)) return `${cell(d.file, 120)} (whole file)${project}`;
   return `${cell(d.file, 120)} › ${cell(d.name)}${project}`;
+}
+
+function changeLabel(d, baseline) {
+  if (isFile(d)) {
+    if (d.class === 'regression') return 'fails to load on warpdom';
+    if (d.class === 'fixed') return `fails to load on ${baseline}`;
+    return `load: ${cell(d.baseline, 20)} → ${cell(d.warpdom, 20)}`;
+  }
+  return CHANGE[d.class] ?? `${cell(d.baseline, 20)} → ${cell(d.warpdom, 20)}`;
 }
 
 // The first error line, from the side that failed: compare takes it from
@@ -185,19 +217,11 @@ function errorText(d, baseline) {
 
 function differenceLines(c, baseline, maxTests, artifactName) {
   const order = { regression: 0, fixed: 1, other: 2 };
-  const diffs = [...c.differences].sort((a, b) => order[a.class] - order[b.class] || a.key.localeCompare(b.key));
+  const rank = (d) => order[d.class] * 2 + (isFile(d) ? 0 : 1);
+  const diffs = [...c.differences].sort((a, b) => rank(a) - rank(b) || a.key.localeCompare(b.key));
   const shown = diffs.slice(0, maxTests);
-  const out = [
-    '',
-    `#### Tests whose status differs (${diffs.length})`,
-    '',
-    '| Change | Test | Error |',
-    '|---|---|---|',
-  ];
-  for (const d of shown) {
-    const change = CHANGE[d.class] ?? `${cell(d.baseline, 20)} → ${cell(d.warpdom, 20)}`;
-    out.push(`| ${change} | ${testName(d)} | ${errorText(d, baseline)} |`);
-  }
+  const out = ['', `#### Status changes (${diffs.length})`, '', '| Change | Test | Error |', '|---|---|---|'];
+  for (const d of shown) out.push(`| ${changeLabel(d, baseline)} | ${testName(d)} | ${errorText(d, baseline)} |`);
   if (diffs.length > shown.length) {
     const where = artifactName ? ` in the \`${cell(artifactName, 100)}\` artifact (report.md, results.json)` : '';
     out.push('', `…and ${diffs.length - shown.length} more${where}.`);
@@ -211,21 +235,39 @@ function differenceLines(c, baseline, maxTests, artifactName) {
   return out;
 }
 
+// Whole files that fail to load on one side, as a clause.
+function fileClause(s, baseline) {
+  const parts = [];
+  if (s.fileRegressions)
+    parts.push(
+      `${count(s.fileRegressions, 'test file')} ${verb(s.fileRegressions, 'fails', 'fail')} to load on warpdom`,
+    );
+  if (s.fileFixed)
+    parts.push(`${count(s.fileFixed, 'test file')} ${verb(s.fileFixed, 'fails', 'fail')} to load on ${baseline} only`);
+  if (s.fileOther)
+    parts.push(`${count(s.fileOther, 'test file')} ${verb(s.fileOther, 'changes', 'change')} load status`);
+  return parts.join(', ');
+}
+
 function resultLine(c, baseline) {
-  const differ = c.differences.length;
+  const s = splitDifferences(c);
+  const differ = s.tests.length;
   const flaky = (c.flakyBaseline?.length ?? 0) + (c.flakyWarpdom?.length ?? 0);
-  if (!differ && !flaky)
-    return `**Results:** ${count(c.compared, 'test')} compared, all with the same status on ${baseline} and warpdom.`;
+  const files = fileClause(s, baseline);
+  const filesText = files ? ` Also ${files}.` : '';
+  const head = `**Results:** ${count(c.compared, 'test')} compared`;
+  if (!differ && !flaky && !files) return `${head}, all with the same status on ${baseline} and warpdom.`;
   if (!differ) {
-    return `**Results:** ${count(c.compared, 'test')} compared, ${c.same.toLocaleString('en-US')} with the same status and no status changes; ${count(flaky, 'flaky test')} not counted (below).`;
+    const flakyText = flaky ? `; ${count(flaky, 'flaky test')} not counted (below)` : '';
+    return `${head}, ${c.same.toLocaleString('en-US')} with the same status and no test status changes${flakyText}.${filesText}`;
   }
   const parts = [];
-  const r = c.regressions;
-  const f = c.fixed;
+  const r = s.testRegressions;
+  const f = s.testFixed;
   if (r) parts.push(`${r} ${verb(r, 'passes', 'pass')} on ${baseline} and ${verb(r, 'fails', 'fail')} on warpdom`);
   if (f) parts.push(`${f} ${verb(f, 'fails', 'fail')} on ${baseline} and ${verb(f, 'passes', 'pass')} on warpdom`);
-  if (c.other) parts.push(count(c.other, 'other change'));
-  return `**Results:** ${count(c.compared, 'test')} compared, ${c.same.toLocaleString('en-US')} with the same status; ${count(differ, 'test')} ${verb(differ, 'differs', 'differ')} (${parts.join(', ')}).`;
+  if (s.testOther) parts.push(count(s.testOther, 'other change'));
+  return `${head}, ${c.same.toLocaleString('en-US')} with the same status; ${count(differ, 'test')} ${verb(differ, 'differs', 'differ')} (${parts.join(', ')}).${filesText}`;
 }
 
 // The job summary and pull request comment. `exitCode` is the CLI's own
@@ -331,10 +373,20 @@ export function commandText(text) {
 }
 
 // Creates the pull request comment, or updates the one an earlier run left
-// (found by its marker). Resolves to { action: 'created' | 'updated' } or
-// rejects with an Error carrying the HTTP status. Only GitHub's API is
-// called, with the token the caller passed.
-export async function upsertComment({ fetch, api, repository, number, token, body, workingDirectory, maxPages = 10 }) {
+// (found by its marker and author). Resolves to { action: 'created' |
+// 'updated' | 'skipped' } or rejects with an Error carrying the HTTP
+// status. Only GitHub's API is called, with the token the caller passed.
+export async function upsertComment({
+  fetch,
+  api,
+  repository,
+  number,
+  token,
+  body,
+  workingDirectory,
+  author = '',
+  maxPages = 10,
+}) {
   const headers = {
     Accept: 'application/vnd.github+json',
     Authorization: `Bearer ${token}`,
@@ -350,45 +402,74 @@ export async function upsertComment({ fetch, api, repository, number, token, bod
     if (!res.ok) {
       const err = new Error(`${method} ${url.replace(api, '')}: HTTP ${res.status}`);
       err.status = res.status;
+      err.rateLimited = res.status === 429 || res.headers?.get?.('x-ratelimit-remaining') === '0';
+      err.apiMessage = await res.json().then(
+        (data) => String(data?.message ?? ''),
+        () => '',
+      );
       throw err;
     }
-    return res.json();
+    return method === 'DELETE' ? null : res.json();
   };
   const tag = marker(workingDirectory);
   const base = `${api}/repos/${repository}`;
-  const author = await commentAuthor(call, api);
-  let existing = null;
-  let complete = false;
-  for (let page = 1; page <= maxPages && !existing; page++) {
-    const list = await call('GET', `${base}/issues/${number}/comments?per_page=100&page=${page}`);
-    existing = list.find((c) => typeof c.body === 'string' && c.body.startsWith(tag) && author(c.user)) ?? null;
-    if (list.length < 100) complete = true;
-    if (complete) break;
-  }
-  if (existing) {
-    await call('PATCH', `${base}/issues/comments/${existing.id}`, { body });
-    return { action: 'updated', id: existing.id };
+  const ours = await commentAuthor(call, api, author);
+  // Every report of ours for this working directory, oldest first, and
+  // whether all comments were searched.
+  const scan = async () => {
+    const found = [];
+    for (let page = 1; page <= maxPages; page++) {
+      const list = await call('GET', `${base}/issues/${number}/comments?per_page=100&page=${page}`);
+      for (const c of list) if (typeof c.body === 'string' && c.body.startsWith(tag) && ours(c.user)) found.push(c);
+      if (list.length < 100) return { found, complete: true };
+    }
+    return { found, complete: false };
+  };
+  const first = await scan();
+  if (first.found.length) {
+    const keep = first.found[0];
+    await call('PATCH', `${base}/issues/comments/${keep.id}`, { body });
+    return { action: 'updated', id: keep.id };
   }
   // Not all comments were searched: an earlier report may be further on,
   // and a second one would be a duplicate.
-  if (!complete) return { action: 'skipped', reason: `more than ${maxPages * 100} comments; the report was not found` };
+  if (!first.complete)
+    return { action: 'skipped', reason: `more than ${maxPages * 100} comments; the report was not found` };
   const created = await call('POST', `${base}/issues/${number}/comments`, { body });
+  // Two runs for the same pull request can both find nothing and both
+  // post: keep the oldest report, give it this body, delete the others.
+  const after = await scan();
+  const reports = [...after.found, ...(after.found.some((c) => c.id === created.id) ? [] : [created])];
+  reports.sort((x, y) => x.id - y.id);
+  const keep = reports[0];
+  for (const extra of reports.slice(1)) {
+    // A concurrent run may have deleted it already.
+    await call('DELETE', `${base}/issues/comments/${extra.id}`).catch((err) => {
+      if (err.status !== 404) throw err;
+    });
+  }
+  if (keep.id !== created.id) {
+    await call('PATCH', `${base}/issues/comments/${keep.id}`, { body });
+    return { action: 'updated', id: keep.id };
+  }
   return { action: 'created', id: created.id };
 }
 
-// Which comments this token wrote: a personal token's user (GET /user);
-// the Actions token and app tokens cannot read /user and comment as a bot
-// (github-actions[bot] or <app>[bot]), so then any bot's comment matches.
-// Someone else's comment that merely contains the marker is never edited.
-async function commentAuthor(call, api) {
-  let login = null;
+// Which comments this token wrote. `author` (the comment-author input)
+// names it outright, for app tokens (`my-app[bot]`). Else a personal
+// token's user from GET /user. The Actions token cannot read /user (403
+// "Resource not accessible by integration") and comments as
+// github-actions[bot]. Any other failure, a rate limit included, is
+// rethrown: guessing the author could post a duplicate report.
+async function commentAuthor(call, api, author) {
+  if (author) return (user) => user?.login === author;
   try {
-    login = (await call('GET', `${api}/user`)).login ?? null;
-  } catch {
-    // An installation token: 403 on /user.
+    const login = (await call('GET', `${api}/user`)).login;
+    if (login) return (user) => user?.login === login;
+  } catch (err) {
+    if (err.status !== 403 || err.rateLimited || !/not accessible by integration/i.test(err.apiMessage)) throw err;
   }
-  if (login) return (user) => user?.login === login;
-  return (user) => user?.type === 'Bot';
+  return (user) => user?.login === 'github-actions[bot]';
 }
 
 // The workflow command after a comparison: a warning when tests differ or it
@@ -398,11 +479,18 @@ export function statusNotice(result) {
   const c = result?.correctness;
   if (result?.error) return { level: 'warning', text: `warpdom compare could not run: ${result.error}` };
   if (!c) return null;
+  const baseline = result.baseline?.name ?? 'the baseline';
+  const s = splitDifferences(c);
+  const files = fileClause(s, baseline);
   if (c.differences.length) {
-    return {
-      level: 'warning',
-      text: `warpdom compare: ${c.differences.length} of ${c.compared} tests differ (${c.regressions} pass on ${result.baseline?.name ?? 'the baseline'} and fail on warpdom); see the job summary.`,
-    };
+    const parts = [];
+    if (s.tests.length) {
+      parts.push(
+        `${s.tests.length} of ${c.compared} tests differ (${s.testRegressions} pass on ${baseline} and fail on warpdom)`,
+      );
+    }
+    if (files) parts.push(files);
+    return { level: 'warning', text: `warpdom compare: ${parts.join('; ')}; see the job summary.` };
   }
   const flaky = (c.flakyBaseline?.length ?? 0) + (c.flakyWarpdom?.length ?? 0);
   if (flaky) {
@@ -416,6 +504,8 @@ export function statusNotice(result) {
 
 // Why a comment could not be posted, for the warning.
 export function commentFailure(err) {
+  if (err.rateLimited)
+    return `could not post the pull request comment (${err.message}, rate limited). The job summary has the same content.`;
   if (err.status === 403 || err.status === 404) {
     return (
       `could not post the pull request comment (${err.message}). Pull requests from forks get a read-only token, ` +

@@ -32,6 +32,12 @@ on:
 permissions:
   contents: read
 
+# One self-test per pull request (or push) at a time, so two runs never
+# write the report comment at once.
+concurrency:
+  group: compare-action-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   self-test:
     runs-on: ubuntu-latest

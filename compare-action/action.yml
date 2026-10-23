@@ -52,6 +52,9 @@ inputs:
   github-token:
     description: Token for the pull request comment. Only used when pr-comment is true.
     default: ${{ github.token }}
+  comment-author:
+    description: 'The login the comment is posted as, when github-token is an app token (for example my-app[bot]). Default (empty): the token''s user, or github-actions[bot] for the Actions token.'
+    default: ''
   max-tests:
     description: The most differing tests to list in the summary and comment; the artifact has all.
     default: '50'
@@ -113,6 +116,7 @@ runs:
         # The token only when a comment is wanted; the script also keeps
         # every INPUT_ variable out of the environment of npx and the tests.
         INPUT_GITHUB_TOKEN: ${{ inputs.pr-comment == 'true' && inputs.github-token || '' }}
+        INPUT_COMMENT_AUTHOR: ${{ inputs.comment-author }}
         INPUT_MAX_TESTS: ${{ inputs.max-tests }}
         INPUT_ARTIFACT_NAME: ${{ inputs.artifact-name }}
     # An upload error (e.g. the same artifact name from a matrix) must not

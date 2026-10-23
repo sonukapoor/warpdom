@@ -65,6 +65,7 @@ async function comment(inputs, text) {
       token: env.INPUT_GITHUB_TOKEN,
       body: renderComment(text, inputs.workingDirectory),
       workingDirectory: inputs.workingDirectory,
+      author: inputs.commentAuthor,
     });
     if (done.action === 'skipped')
       notice('warning', `pr-comment: no comment, to avoid a duplicate report: ${done.reason}.`);

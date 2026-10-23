@@ -390,6 +390,12 @@ permissions:
   contents: read
   pull-requests: write # only for pr-comment; leave out otherwise
 
+# One comparison per pull request at a time: a new push cancels the
+# running one.
+concurrency:
+  group: warpdom-compare-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   compare:
     runs-on: ubuntu-latest
@@ -424,12 +430,18 @@ What it does:
 2. Writes the job summary: runner and versions, how many tests have the
    same status, the baseline and warpdom test times, the speedup and the
    time saved per run, and a table of the tests whose status differs
-   (regressions first, up to `max-tests`), with warpdom's first error line.
+   (regressions first, up to `max-tests`), with the first error line.
+   Test files that fail to load on one side are listed and counted apart
+   from the tests.
 3. With `pr-comment: true`, creates one comment on the pull request, and
    updates that same comment on later pushes (found by a hidden marker per
-   working directory, in a comment by the token's own user, or by a bot
-   for the Actions token and app tokens). Past 1,000 comments without
+   working directory, in a comment by the token's author: the token's
+   user for a personal token, `github-actions[bot]` for the Actions token,
+   or `comment-author` for an app token). Past 1,000 comments without
    finding it, it skips with a warning rather than post a second report.
+   If two runs overlap and both post, the older report is kept and the
+   newer one deleted; the `concurrency` group in the example avoids the
+   overlap in the first place.
 4. Uploads `report.md`, `results.json` and the runner logs as an artifact
    (from a new directory under `RUNNER_TEMP` per invocation).
 5. Sets outputs (`exit-code`, `compared`, `regressions`, `fixed`,
@@ -451,6 +463,7 @@ What it does:
 | `job-summary` | `true` | Write the job summary |
 | `pr-comment` | `false` | Create or update one pull request comment |
 | `github-token` | `github.token` | Token for the comment |
+| `comment-author` | | The login an app token comments as (`my-app[bot]`) |
 | `max-tests` | `50` | Differing tests listed in the summary and comment |
 | `artifact-name` | `warpdom-compare` | The report artifact; empty to skip the upload |
 
