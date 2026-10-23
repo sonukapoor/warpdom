@@ -22,6 +22,7 @@ import {
   commentFailure,
   commandText,
   childEnvironment,
+  statusNotice,
   MIN_NODE,
 } from './lib.mjs';
 
@@ -65,7 +66,9 @@ async function comment(inputs, text) {
       body: renderComment(text, inputs.workingDirectory),
       workingDirectory: inputs.workingDirectory,
     });
-    process.stdout.write(`pr-comment: ${done.action} comment ${done.id} on #${number}.\n`);
+    if (done.action === 'skipped')
+      notice('warning', `pr-comment: no comment, to avoid a duplicate report: ${done.reason}.`);
+    else process.stdout.write(`pr-comment: ${done.action} comment ${done.id} on #${number}.\n`);
   } catch (err) {
     notice('warning', commentFailure(err));
   }
@@ -81,8 +84,11 @@ async function main() {
   }
   const workspace = env.GITHUB_WORKSPACE || process.cwd();
   const cwd = path.resolve(workspace, inputs.workingDirectory);
-  const slug = inputs.workingDirectory.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^\.+$/, 'root');
-  const out = path.join(env.RUNNER_TEMP || os.tmpdir(), 'warpdom-compare', slug);
+  // A new directory per invocation: several steps in one job (other
+  // working directories, or the same one twice) never share or delete one.
+  const parent = path.join(env.RUNNER_TEMP || os.tmpdir(), 'warpdom-compare');
+  fs.mkdirSync(parent, { recursive: true });
+  const out = fs.mkdtempSync(path.join(parent, 'run-'));
   if (/\.tgz$/.test(inputs.spec)) inputs.spec = path.resolve(workspace, inputs.spec);
 
   let result = null;
@@ -98,8 +104,6 @@ async function main() {
   if (skipped) {
     notice('warning', skipped);
   } else {
-    fs.rmSync(out, { recursive: true, force: true });
-    fs.mkdirSync(out, { recursive: true });
     const [command, args] = npxCommand(compareArgs(inputs, out));
     process.stdout.write(`warpdom compare in ${cwd} (${inputs.spec})\n`);
     const res = spawnSync(command, args, {
@@ -126,14 +130,8 @@ async function main() {
   if (inputs.jobSummary) append(env.GITHUB_STEP_SUMMARY, text);
   if (inputs.prComment) await comment(inputs, text);
 
-  const c = result?.correctness;
-  if (result?.error) notice('warning', `warpdom compare could not run: ${result.error}`);
-  else if (c?.differences.length) {
-    notice(
-      'warning',
-      `warpdom compare: ${c.differences.length} of ${c.compared} tests differ (${c.regressions} pass on ${result.baseline?.name} and fail on warpdom); see the job summary.`,
-    );
-  } else if (c) notice('notice', `warpdom compare: all ${c.compared} tests have the same status.`);
+  const status = statusNotice(result);
+  if (status) notice(status.level, status.text);
 
   const fail = shouldFail(result, inputs.failOn);
   append(

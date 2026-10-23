@@ -4,7 +4,9 @@
 // .github/workflows/compare-action.yml.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -25,6 +27,7 @@ import {
   upsertComment,
   commentFailure,
   childEnvironment,
+  statusNotice,
   COMMENT_LIMIT,
 } from '../compare-action/lib.mjs';
 
@@ -179,6 +182,25 @@ test('compare action: the npx arguments, runner arguments kept whole', () => {
 test('compare action: npx and the tests get no INPUT_ variables (no token)', () => {
   const env = childEnvironment({ PATH: '/bin', INPUT_GITHUB_TOKEN: 'secret', INPUT_ROUNDS: '1', CI: 'true' });
   assert.deepEqual(env, { PATH: '/bin', CI: 'true', npm_config_update_notifier: 'false' });
+});
+
+test('compare action: the status notice does not call flaky results all the same', () => {
+  assert.deepEqual(statusNotice(result({ differences: [] })), {
+    level: 'notice',
+    text: 'warpdom compare: all 10 tests have the same status.',
+  });
+  const flaky = result({
+    differences: [],
+    correctness: { ...result({ differences: [] }).correctness, same: 9, flakyWarpdom: [{}] },
+  });
+  assert.deepEqual(statusNotice(flaky), {
+    level: 'notice',
+    text: 'warpdom compare: no status changes in 10 tests; 1 flaky, not counted (see the job summary).',
+  });
+  assert.equal(statusNotice(result()).level, 'warning');
+  assert.match(statusNotice(result()).text, /3 of 10 tests differ \(2 pass on jsdom and fail on warpdom\)/);
+  assert.match(statusNotice(result({ error: 'no runner', correctness: null })).text, /could not run: no runner/);
+  assert.equal(statusNotice(null), null);
 });
 
 test('compare action: Node version check', () => {
@@ -351,8 +373,10 @@ test('compare action: step outputs', () => {
   assert.equal(pullRequestNumber(null), null);
 });
 
-// A fake GitHub API: comments per page, and the calls made.
-function fakeGitHub(pages, { status = 200 } = {}) {
+// A fake GitHub API: comments per page, and the calls made. `user` is the
+// token's login for GET /user; null answers 403 there, as for the Actions
+// token and app tokens.
+function fakeGitHub(pages, { status = 200, user = null } = {}) {
   const calls = [];
   const fetch = async (url, init) => {
     calls.push({
@@ -362,6 +386,10 @@ function fakeGitHub(pages, { status = 200 } = {}) {
       auth: init.headers.Authorization,
     });
     if (status !== 200) return { ok: false, status, json: async () => ({}) };
+    if (url.endsWith('/user')) {
+      if (!user) return { ok: false, status: 403, json: async () => ({}) };
+      return { ok: true, status: 200, json: async () => ({ login: user }) };
+    }
     if (init.method === 'GET') {
       const page = Number(new URL(url).searchParams.get('page'));
       return { ok: true, status: 200, json: async () => pages[page - 1] ?? [] };
@@ -371,7 +399,7 @@ function fakeGitHub(pages, { status = 200 } = {}) {
   return { fetch, calls };
 }
 
-const commentArgs = (fetch) => ({
+const commentArgs = (fetch, extra = {}) => ({
   fetch,
   api: 'https://api.github.test',
   repository: 'o/r',
@@ -379,36 +407,61 @@ const commentArgs = (fetch) => ({
   token: 't0k',
   body: `${marker('.')}\nnew`,
   workingDirectory: '.',
+  ...extra,
 });
+const bot = { login: 'github-actions[bot]', type: 'Bot' };
+const person = (login) => ({ login, type: 'User' });
+const report = (id, user, dir = '.') => ({ id, body: `${marker(dir)}\nold`, user });
+const comments = (n, from = 1) => Array.from({ length: n }, (_, i) => ({ id: from + i, body: 'x', user: person('a') }));
 
 test('compare action: creates a comment when none has the marker', async () => {
-  const { fetch, calls } = fakeGitHub([
-    [
-      { id: 1, body: 'hello' },
-      { id: 2, body: `${marker('other')}\nold` },
-    ],
-  ]);
+  const { fetch, calls } = fakeGitHub([[{ id: 1, body: 'hello', user: bot }, report(2, bot, 'other')]]);
   assert.deepEqual(await upsertComment(commentArgs(fetch)), { action: 'created', id: 99 });
   assert.deepEqual(
     calls.map((c) => [c.method, c.url]),
     [
+      ['GET', 'https://api.github.test/user'],
       ['GET', 'https://api.github.test/repos/o/r/issues/5/comments?per_page=100&page=1'],
       ['POST', 'https://api.github.test/repos/o/r/issues/5/comments'],
     ],
   );
-  assert.equal(calls[0].auth, 'Bearer t0k');
-  assert.equal(calls[1].body, `${marker('.')}\nnew`);
+  assert.equal(calls[1].auth, 'Bearer t0k');
+  assert.equal(calls[2].body, `${marker('.')}\nnew`);
 });
 
 test('compare action: updates the earlier comment, found on a later page', async () => {
-  const full = Array.from({ length: 100 }, (_, i) => ({ id: i + 1, body: 'x' }));
-  const { fetch, calls } = fakeGitHub([full, [{ id: 500, body: `${marker('.')}\nold` }]]);
+  const { fetch, calls } = fakeGitHub([comments(100), [report(500, bot)]]);
   assert.deepEqual(await upsertComment(commentArgs(fetch)), { action: 'updated', id: 500 });
   assert.deepEqual(
     calls.map((c) => c.method),
-    ['GET', 'GET', 'PATCH'],
+    ['GET', 'GET', 'GET', 'PATCH'],
   );
-  assert.equal(calls[2].url, 'https://api.github.test/repos/o/r/issues/comments/500');
+  assert.equal(calls[3].url, 'https://api.github.test/repos/o/r/issues/comments/500');
+});
+
+test("compare action: only a comment by the token's author is updated", async () => {
+  // The Actions token (no /user): a person's comment quoting the marker is
+  // not the report; the bot's is.
+  const actions = fakeGitHub([[report(1, person('someone')), report(2, bot)]]);
+  assert.deepEqual(await upsertComment(commentArgs(actions.fetch)), { action: 'updated', id: 2 });
+  const quotedOnly = fakeGitHub([[report(1, person('someone'))]]);
+  assert.deepEqual(await upsertComment(commentArgs(quotedOnly.fetch)), { action: 'created', id: 99 });
+  // A personal token: its user's comment, not a bot's.
+  const custom = fakeGitHub([[report(1, bot), report(2, person('me'))]], { user: 'me' });
+  assert.deepEqual(await upsertComment(commentArgs(custom.fetch)), { action: 'updated', id: 2 });
+  const otherUser = fakeGitHub([[report(1, person('someone'))]], { user: 'me' });
+  assert.deepEqual(await upsertComment(commentArgs(otherUser.fetch)), { action: 'created', id: 99 });
+});
+
+test('compare action: the page cap without the report skips instead of posting a duplicate', async () => {
+  const { fetch, calls } = fakeGitHub([comments(100), comments(100, 101), [report(500, bot)]]);
+  const done = await upsertComment(commentArgs(fetch, { maxPages: 2 }));
+  assert.equal(done.action, 'skipped');
+  assert.match(done.reason, /more than 200 comments/);
+  assert.ok(!calls.some((c) => c.method === 'POST' || c.method === 'PATCH'));
+  // Exactly full pages, then an empty one: searched completely.
+  const exact = fakeGitHub([comments(100), []]);
+  assert.equal((await upsertComment(commentArgs(exact.fetch, { maxPages: 2 }))).action, 'created');
 });
 
 test('compare action: a read-only token (fork pull request) gives a warning, not a failure', async () => {
@@ -446,4 +499,59 @@ test('compare action: action.yml passes every input through the environment, nev
   for (const script of runs) assert.doesNotMatch(script, /\$\{\{/, script);
   for (const uses of yml.matchAll(/uses: (\S+)( # .*)?/g))
     assert.match(uses[0], /@[0-9a-f]{40} # v\d/, 'actions pinned to a commit');
+});
+
+// main.mjs end to end with a fake npx on PATH that writes a results.json
+// into the --out directory it is given (POSIX only: the fake is a script).
+test('compare action: each invocation gets its own report directory', { skip: process.platform === 'win32' }, () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'warpdom-action-'));
+  try {
+    const bin = path.join(tmp, 'bin');
+    fs.mkdirSync(bin);
+    const npx = path.join(bin, 'npx');
+    fs.writeFileSync(
+      npx,
+      `#!${process.execPath}\nconst fs = require('fs');\nconst a = process.argv;\n` +
+        `const out = a[a.indexOf('--out') + 1];\n` +
+        `fs.writeFileSync(out + '/results.json', JSON.stringify(${JSON.stringify(result())}));\nprocess.exit(1);\n`,
+    );
+    fs.chmodSync(npx, 0o755);
+    for (const dir of ['packages/ui', 'packages_ui']) fs.mkdirSync(path.join(tmp, dir), { recursive: true });
+    const run = (dir) => {
+      const output = path.join(tmp, `output-${Math.random()}`);
+      const summaryFile = path.join(tmp, `summary-${Math.random()}`);
+      const res = spawnSync(process.execPath, [path.join(root, 'compare-action', 'main.mjs')], {
+        encoding: 'utf8',
+        env: {
+          PATH: `${bin}${path.delimiter}${process.env.PATH}`,
+          GITHUB_WORKSPACE: tmp,
+          RUNNER_TEMP: path.join(tmp, 'runner'),
+          GITHUB_OUTPUT: output,
+          GITHUB_STEP_SUMMARY: summaryFile,
+          INPUT_WORKING_DIRECTORY: dir,
+          INPUT_JOB_SUMMARY: 'true',
+          INPUT_GITHUB_TOKEN: 'secret',
+        },
+      });
+      assert.equal(res.status, 0, res.stdout + res.stderr);
+      const values = Object.fromEntries(
+        fs
+          .readFileSync(output, 'utf8')
+          .trim()
+          .split('\n')
+          .map((line) => line.split(/=(.*)/s).slice(0, 2)),
+      );
+      assert.match(fs.readFileSync(summaryFile, 'utf8'), /3 tests differ/);
+      return values;
+    };
+    const first = run('packages/ui');
+    const second = run('packages_ui');
+    const again = run('packages/ui');
+    const dirs = [first, second, again].map((v) => v['report-dir']);
+    assert.equal(new Set(dirs).size, 3, dirs.join());
+    for (const dir of dirs) assert.ok(fs.existsSync(path.join(dir, 'results.json')), dir);
+    assert.deepEqual([first.regressions, first['exit-code'], first.fail], ['2', '1', 'false']);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });

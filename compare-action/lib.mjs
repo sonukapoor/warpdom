@@ -356,18 +356,62 @@ export async function upsertComment({ fetch, api, repository, number, token, bod
   };
   const tag = marker(workingDirectory);
   const base = `${api}/repos/${repository}`;
+  const author = await commentAuthor(call, api);
   let existing = null;
+  let complete = false;
   for (let page = 1; page <= maxPages && !existing; page++) {
     const list = await call('GET', `${base}/issues/${number}/comments?per_page=100&page=${page}`);
-    existing = list.find((c) => typeof c.body === 'string' && c.body.startsWith(tag)) ?? null;
-    if (list.length < 100) break;
+    existing = list.find((c) => typeof c.body === 'string' && c.body.startsWith(tag) && author(c.user)) ?? null;
+    if (list.length < 100) complete = true;
+    if (complete) break;
   }
   if (existing) {
     await call('PATCH', `${base}/issues/comments/${existing.id}`, { body });
     return { action: 'updated', id: existing.id };
   }
+  // Not all comments were searched: an earlier report may be further on,
+  // and a second one would be a duplicate.
+  if (!complete) return { action: 'skipped', reason: `more than ${maxPages * 100} comments; the report was not found` };
   const created = await call('POST', `${base}/issues/${number}/comments`, { body });
   return { action: 'created', id: created.id };
+}
+
+// Which comments this token wrote: a personal token's user (GET /user);
+// the Actions token and app tokens cannot read /user and comment as a bot
+// (github-actions[bot] or <app>[bot]), so then any bot's comment matches.
+// Someone else's comment that merely contains the marker is never edited.
+async function commentAuthor(call, api) {
+  let login = null;
+  try {
+    login = (await call('GET', `${api}/user`)).login ?? null;
+  } catch {
+    // An installation token: 403 on /user.
+  }
+  if (login) return (user) => user?.login === login;
+  return (user) => user?.type === 'Bot';
+}
+
+// The workflow command after a comparison: a warning when tests differ or it
+// could not run, a notice otherwise. Flaky tests are in `compared` but in
+// neither `same` nor `differences`, so no differences is not "all the same".
+export function statusNotice(result) {
+  const c = result?.correctness;
+  if (result?.error) return { level: 'warning', text: `warpdom compare could not run: ${result.error}` };
+  if (!c) return null;
+  if (c.differences.length) {
+    return {
+      level: 'warning',
+      text: `warpdom compare: ${c.differences.length} of ${c.compared} tests differ (${c.regressions} pass on ${result.baseline?.name ?? 'the baseline'} and fail on warpdom); see the job summary.`,
+    };
+  }
+  const flaky = (c.flakyBaseline?.length ?? 0) + (c.flakyWarpdom?.length ?? 0);
+  if (flaky) {
+    return {
+      level: 'notice',
+      text: `warpdom compare: no status changes in ${c.compared} tests; ${flaky} flaky, not counted (see the job summary).`,
+    };
+  }
+  return { level: 'notice', text: `warpdom compare: all ${c.compared} tests have the same status.` };
 }
 
 // Why a comment could not be posted, for the warning.

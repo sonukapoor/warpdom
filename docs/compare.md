@@ -427,8 +427,11 @@ What it does:
    (regressions first, up to `max-tests`), with warpdom's first error line.
 3. With `pr-comment: true`, creates one comment on the pull request, and
    updates that same comment on later pushes (found by a hidden marker per
-   working directory).
-4. Uploads `report.md`, `results.json` and the runner logs as an artifact.
+   working directory, in a comment by the token's own user, or by a bot
+   for the Actions token and app tokens). Past 1,000 comments without
+   finding it, it skips with a warning rather than post a second report.
+4. Uploads `report.md`, `results.json` and the runner logs as an artifact
+   (from a new directory under `RUNNER_TEMP` per invocation).
 5. Sets outputs (`exit-code`, `compared`, `regressions`, `fixed`,
    `differences`, `baseline-ms`, `warpdom-ms`, `speedup`, `report-dir`) for
    later steps.
