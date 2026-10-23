@@ -915,3 +915,58 @@ test('BlobEvent timecode without one: 0 before jsdom 30.1.0, NaN from it', () =>
     assert.deepEqual(new w.BlobEvent('x', { data: new w.Blob([]) }).timecode, expected, `jsdom ${jsdom}`);
   }
 });
+
+// EventTarget's operations called without a this value act on the window,
+// as WebIDL's operations do on the global object; another receiver that is
+// not an EventTarget throws (black box, jsdom 20.0.3 to 30.1.3; #128:
+// Mattermost keeps a node's removeEventListener and calls it detached).
+for (const jsdom of [30, 26, 20])
+  parity(
+    `EventTarget: operations called without a this value act on the window (jsdom ${jsdom})`,
+    (w) => {
+      const out = [];
+      const node = w.document.body.appendChild(w.document.createElement('div'));
+      const { addEventListener: add, removeEventListener: remove, dispatchEvent: dispatch } = node;
+      let hits = 0;
+      const listener = (e) => {
+        hits++;
+        out.push(e.currentTarget === w, e.target === w);
+      };
+      add('x', listener);
+      w.dispatchEvent(new w.Event('x'));
+      out.push(dispatch(new w.Event('x')), hits);
+      remove('x', listener);
+      w.dispatchEvent(new w.Event('x'));
+      out.push(hits);
+      add.call(null, 'y', listener);
+      out.push(dispatch.call(null, new w.Event('y')), hits);
+      remove.call(undefined, 'y', listener);
+      w.dispatchEvent(new w.Event('y'));
+      out.push(hits);
+      for (const receiver of [{}, 1, 'x'])
+        for (const call of [() => add.call(receiver, 'z', listener), () => dispatch.call(receiver, new w.Event('z'))])
+          try {
+            call();
+            out.push('no error');
+          } catch (e) {
+            out.push(e.name);
+          }
+      return out;
+    },
+    { jsdom },
+  );
+
+test('EventTarget: each window has its own operations, acting on that window without a this value', () => {
+  const w = createWindow();
+  const frame = w.document.body.appendChild(w.document.createElement('iframe'));
+  const inner = frame.contentWindow;
+  const { addEventListener } = inner.EventTarget.prototype;
+  assert.notEqual(addEventListener, w.EventTarget.prototype.addEventListener);
+  assert.equal(addEventListener.name, 'addEventListener');
+  assert.equal(addEventListener.length, 2);
+  let hits = 0;
+  addEventListener('x', () => hits++);
+  inner.dispatchEvent(new inner.Event('x'));
+  w.dispatchEvent(new w.Event('x'));
+  assert.equal(hits, 1);
+});

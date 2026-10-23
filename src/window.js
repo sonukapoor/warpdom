@@ -359,6 +359,9 @@ export function createWindow(options = {}) {
     if (iface.slot) Object.defineProperty(proto, iface.slot[0], iface.slot[1]);
     // Members a jsdom generation did not have (see applyCompat).
     if (iface.compat) iface.compat(proto, window[S].compat);
+    // Members made for this window (EventTarget's operations act on it
+    // when called without a this value).
+    if (iface.perWindow) iface.perWindow(proto, window);
     if (hidesState(iface) && iface.slot?.[0] !== S) Object.defineProperty(proto, S, HIDDEN_STATE);
     Object.setPrototypeOf(proto, parent ? parent.prototype : Object.prototype);
     // Named access before jsdom 24.1.2 (named-access.js).
