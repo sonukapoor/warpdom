@@ -339,6 +339,44 @@ test: { environment, environmentOptions: { warpdom: { fastFrames: true } } }
 testEnvironmentOptions: { fastFrames: true }
 ```
 
+## How warpdom is verified
+
+Every change goes through the same checks, and all of them are public:
+
+- **jsdom as a black-box reference.** Behavior comes from the WHATWG and
+  W3C specifications. Where jsdom differs from them, or from itself across
+  versions, the difference is measured from outside (scripts that run jsdom
+  20 to 30 and compare results), never copied from its source. Each
+  measured difference becomes a profile setting ("Which jsdom warpdom
+  behaves like", above) and a test.
+- **Tests on every push** (`npm test`, about 1,400 tests on Node 22.22 and
+  24): unit tests, parity tests that run the same code on warpdom and on
+  the matching jsdom version side by side, and an API test that walks the
+  windows of the newest jsdom of every major from 20 to 30 and fails when
+  warpdom lacks a member jsdom has (known exceptions are listed in the
+  test, each with its issue).
+- **Real test suites before every merge.** The corpus of 23 open-source
+  suites (React, Vue, Svelte, Solid and Angular libraries, two applications,
+  and five suites warpdom was never tuned on) runs on jsdom and on warpdom
+  on GitHub-hosted runners, and every test's result is compared. A change
+  that makes any test differ from jsdom is not merged until it is fixed or
+  explained. The remaining differences are listed in "Differences from
+  jsdom", below.
+- **Web Platform Tests** on 17 areas, monthly at the newest WPT ("Web
+  Platform Tests", below).
+- **Benchmarks on every pull request**: the same scripts on the base and
+  the head, alternating on one runner, posted as a comment.
+- **Review and supply chain**: every change is a pull request with automated
+  code review, a dependency scan (CVE Lite CLI) and OpenSSF Scorecard;
+  workflow actions are pinned to commits; releases are published from
+  GitHub Actions with npm provenance ([RELEASING.md](RELEASING.md)).
+- **Watching upstream**: a weekly job opens an issue when a jsdom newer than
+  the newest modeled one, a changed inline style surface, or a new Vitest
+  or Jest major appears.
+
+You can run the same comparison on your own suite with
+[`warpdom compare`](#check-your-suite-first-warpdom-compare).
+
 ## Measured
 
 All numbers below are from GitHub Actions runs on one frozen commit,
