@@ -17,7 +17,7 @@ inputs:
     description: Where vitest or jest is normally run (a package, or a monorepo root), relative to the workspace.
     default: '.'
   warpdom-version:
-    description: The warpdom version or dist-tag to install from npm for this job, or a path to a packed .tgz.
+    description: The warpdom version or dist-tag to install from npm for this job, or a path to a packed .tgz. A warpdom the project already has installed is used instead (the summary says so).
     default: latest
   rounds:
     description: Timed rounds, each running the baseline and warpdom. 1 is labeled indicative; CI machines are noisy.

@@ -249,6 +249,12 @@ export function renderSummary(result, options = {}) {
   const runner = result.runner ? `${result.runner}${result.runnerVersion ? ` ${result.runnerVersion}` : ''}` : null;
   const out = [title, ''];
   if (runner) out.push(`${runner}, ${baseline} compared with ${warpdom}.`, '');
+  if (result.warpdom?.source === 'installed') {
+    out.push(
+      `${warpdom} is installed in the project, so the comparison used that copy (\`warpdom-version\` only chooses the CLI).`,
+      '',
+    );
+  }
   if (result.error) {
     out.push(`**The comparison could not run:** ${cell(result.error, 1000)}`);
     if (artifactName) out.push('', `The runner logs are in the \`${cell(artifactName, 100)}\` artifact.`);

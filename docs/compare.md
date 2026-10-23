@@ -418,7 +418,9 @@ What it does:
    as under plain `npx`. The project's `package.json`, lockfile and config
    are not touched, and compare checks that `git status` is unchanged. The
    project's own jsdom (or happy-dom) and runner are used: no other package
-   is installed.
+   is installed. When the project already has warpdom installed, compare
+   runs that copy (as the CLI always does), so `warpdom-version` then only
+   chooses the CLI; the summary says so.
 2. Writes the job summary: runner and versions, how many tests have the
    same status, the baseline and warpdom test times, the speedup and the
    time saved per run, and a table of the tests whose status differs
@@ -434,7 +436,7 @@ What it does:
 | Input | Default | Meaning |
 |---|---|---|
 | `working-directory` | `.` | Where `vitest` or `jest` is normally run (a package or a monorepo root) |
-| `warpdom-version` | `latest` | The warpdom version or dist-tag from npm, or a path to a packed `.tgz` |
+| `warpdom-version` | `latest` | The warpdom version or dist-tag from npm, or a path to a packed `.tgz` (an installed warpdom takes precedence) |
 | `rounds` | `1` | Timed rounds (`--rounds`); 1 is labeled indicative |
 | `correctness` | `false` | Results only, no timing (`--correctness`) |
 | `baseline` | detected | `jsdom` or `happy-dom` |

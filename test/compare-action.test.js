@@ -256,6 +256,10 @@ test('compare action: summary variants', () => {
   );
   assert.match(flakyOnly, /Also: 1 test flaky on warpdom/);
 
+  const installed = renderSummary(result({ warpdom: { source: 'installed', version: '0.1.7' } }));
+  assert.match(installed, /warpdom 0\.1\.7 is installed in the project, so the comparison used that copy/);
+  assert.doesNotMatch(renderSummary(result()), /is installed in the project/);
+
   const same = renderSummary(result({ differences: [] }));
   assert.match(same, /10 tests compared, all with the same status on jsdom and warpdom\./);
   assert.doesNotMatch(same, /Tests whose status differs/);
