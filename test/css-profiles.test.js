@@ -468,6 +468,21 @@ const BACKGROUNDS = [
   '1',
   '1px 2px',
   'url(a.png) 0 0 !important',
+  // Numbers and units (#132 review): canonical from cssstyle 4.4, units a
+  // length or a percentage.
+  '10.0px',
+  '.5em',
+  'red 1.50em',
+  '1e1px',
+  '010px',
+  '10PX',
+  '2vmin',
+  '5deg',
+  'url(a.png) 1s',
+  'red 10bogus',
+  // A parenthesis inside url(): rejected before jsdom 27.
+  'red url("calc(icon)")',
+  'url("a(b).png") red',
 ];
 // Where jsdom 27 and later set every longhand to its initial value (cssText
 // lists them; not modeled).
@@ -504,3 +519,29 @@ test('style: the background shorthand with cssstyle 4.4 and 4.5', () => {
   assert.equal(write('4.3.1', '0'), '');
   assert.equal(write('4.3.1', 'url(a.png) 10px 20px'), 'background: url("a.png") 20px;');
 });
+
+// An invalid background leaves the declared one in place, and jsdom 27 and
+// later compute the position their own serialization wrote (url("a.png")
+// center center: lost in 27 to 29, 50% 50% in 30; #132 review).
+for (const jsdom of [30, 29, 28, 27, 26, 20])
+  parity(
+    `style: an invalid background after a valid one; the computed position (jsdom ${jsdom})`,
+    (w) => {
+      const out = ['5deg', 'url(a.png) 1s', 'url(a.png) center / 5deg', 'url(a.png) center / cover contain'].map(
+        (value) => {
+          const s = w.document.createElement('div').style;
+          s.background = 'red';
+          s.background = value;
+          return s.cssText;
+        },
+      );
+      if (jsdom >= 27)
+        for (const value of ['url(a.png) center', 'url(a.png) 0', 'red top']) {
+          const el = w.document.body.appendChild(w.document.createElement('div'));
+          el.style.background = value;
+          out.push(el.style.cssText, w.getComputedStyle(el).backgroundPosition);
+        }
+      return out;
+    },
+    { jsdom },
+  );

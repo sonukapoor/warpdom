@@ -950,14 +950,28 @@ const BG_DIMENSION = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?([a-z]+|%)$/i;
 const BG_GRADIENT = /^(-webkit-)?(repeating-)?(linear|radial|conic)-gradient\(/i;
 const sizeToken = (t) => {
   if (ZERO.test(t)) return '0px';
-  return BG_SIZES.test(t) ? t.toLowerCase() : t;
+  return BG_SIZES.test(t) ? t.toLowerCase() : canonicalNumbers(t.toLowerCase());
+};
+// A length or percentage in a position as cssstyle reads it (black box):
+// before 4.2 px, cm, mm, in, pt, pc, em, ex, ch, rem, vh and vw, as
+// written (10.0px, 010px; not 1e1px or 10PX); from 4.2 also q, lh, rlh,
+// vmin, vmax, vb, vi and the small, large and dynamic viewport units (not
+// cqw), with an exponent but no leading zero (010px), in lowercase before
+// 4.4 and in any case from 4.4. Other units (5deg, 1s, 10bogus) are
+// invalid.
+const BG_LENGTH_3 = /^[+-]?(\d+\.?\d*|\.\d+)(px|cm|mm|in|pt|pc|em|ex|ch|rem|vh|vw|%)$/;
+const BG_LENGTH_4 =
+  /^[+-]?((0|[1-9]\d*)(\.\d*)?|\.\d+)(e[+-]?\d+)?(px|cm|mm|q|in|pt|pc|em|ex|ch|rem|lh|rlh|vmin|vmax|[sld]?v[hwbi]|%)$/;
+const legacyLength = (token, surface, old) => {
+  if (!old) return BG_LENGTH_4.test(token.toLowerCase());
+  return surface?.legacyFont === 'cssstyle4.1' ? BG_LENGTH_3.test(token) : BG_LENGTH_4.test(token);
 };
 function backgroundValue(value, mode, surface) {
   if (/var\(|env\(|attr\(/i.test(value) || CSS_WIDE_KEYWORD.test(value)) return undefined;
   const legacy = isLegacyMode(mode);
   // jsdom 27 and later: math functions (calc(10px + 5%) is calc(5% + 10px)
   // in jsdom 30, rejected before) are left to the general rules.
-  if (!legacy && /(calc|min|max|clamp)\(/i.test(value)) return undefined;
+  if (!legacy && /(calc|min|max|clamp)\(/i.test(value.replace(URL_FUNCTION, 'url()'))) return undefined;
   // The grammar first, as for other properties in these modes.
   if (!legacy && !isValidValue('background', value)) return INVALID;
   const old = legacy && colorKeywords === 'css2'; // cssstyle before 4.4
@@ -989,6 +1003,8 @@ function backgroundValue(value, mode, surface) {
       // Gradients from cssstyle 4 (jsdom 23.1 and later; measured: 4.3.0).
       if (gradient && (mode === 'jsdom20' || mode === 'jsdom22')) return INVALID;
       if (lower === 'none' && token !== 'none' && !legacy) return undefined;
+      // cssstyle rejects a url() with a parenthesis inside (url("a(b).png")).
+      if (legacy && /^url\(.*[()].*\)$/.test(token)) return INVALID;
       if (!put('image', token)) return INVALID;
     } else if (repeats.has(lower)) {
       // (repeat-x and repeat-y take no second keyword.)
@@ -1008,6 +1024,7 @@ function backgroundValue(value, mode, surface) {
       (found.boxes ??= []).push(lower);
     } else if (BG_POSITIONS.has(lower) || BG_DIMENSION.test(token) || ZERO.test(token) || /^calc\(/i.test(token)) {
       if (old && !BG_POSITIONS.has(lower) && !BG_DIMENSION.test(token)) return INVALID;
+      if (legacy && BG_DIMENSION.test(token) && !legacyLength(token, surface, old)) return INVALID;
       // cssstyle 4.4 to 4.6 read 0, +0, -0 and 0.0 as 0px, not 00.
       if (legacy && !old && ZERO.test(token) && !/^[+-]?(0(\.0*)?|\.0+)$/.test(token)) return INVALID;
       // jsdom 27 to 29: a unitless zero other than 0 sets the initial values.
@@ -1024,7 +1041,10 @@ function backgroundValue(value, mode, surface) {
             break;
           j++;
         }
-        found.position = tokens.slice(i, j).map((t) => (BG_POSITIONS.has(t.toLowerCase()) ? t.toLowerCase() : t));
+        // Keywords lowercased, numbers canonical (10.0px is 10px, .5em 0.5em).
+        found.position = tokens
+          .slice(i, j)
+          .map((t) => (BG_POSITIONS.has(t.toLowerCase()) ? t.toLowerCase() : canonicalNumbers(t.toLowerCase())));
         i = j - 1;
         if (tokens[j] === '/') {
           let k = j + 1;
@@ -1056,7 +1076,8 @@ function backgroundValue(value, mode, surface) {
   if (old) return [color, image, found.repeat, found.attachment, found.position].filter((p) => p !== null).join(' ');
   if (legacy) {
     const keyword = (t) => (t === null ? null : t.toLowerCase());
-    let position = keyword(found.position);
+    // Numbers canonical (cssstyle 4.4: 10.0px is 10px, 1e1px 10px).
+    let position = found.position === null ? null : canonicalNumbers(found.position.toLowerCase());
     if (position !== null && ZERO.test(position)) position = '0px';
     // cssstyle 4.4 and 4.5 keep none as written.
     const written = image !== null && image.toLowerCase() === 'none' && colorKeywords === null ? 'none' : image;
