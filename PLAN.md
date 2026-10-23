@@ -166,6 +166,45 @@ Current numbers to beat (2026-10-21): 4 stars, about 420 npm downloads a
 month, one maintainer. A competitor, vitest-environment-rsdom ("drop-in jsdom
 replacement accelerated with Rust"), appeared on 2026-10-09.
 
+## Adoption plan after the library declines (2026-10-23)
+
+Why: Vuetify (closed), Mantine (closed 2026-10-21) and MUI
+([mui/material-ui#49502](https://github.com/mui/material-ui/issues/49502),
+on hold 2026-10-23) accepted the speed and parity numbers and declined a
+young dependency in their test stack. MUI also said it may drop jsdom for
+real-browser tests. So the next stretch is about being a safe dependency,
+not about more speed or parity. This plan extends the traction plan above
+and is worked through in order.
+
+Positioning: warpdom is for projects that keep a simulated DOM in their
+unit tests for speed: applications, mid-size libraries and Jest users.
+Projects moving their DOM tests to real browsers are not the audience.
+
+Outreach rules until 1.0, or until two or three projects run warpdom in
+CI:
+- No new adoption PRs to large libraries (Ant Design, Radix, React
+  Spectrum and similar). Open RFCs and PRs (MUI) stay open and quiet: no
+  pushes, rebases or pings; one short reply where a maintainer answered.
+  Ant Design #59606 is not reopened for now.
+- Go back to a library only with a concrete trigger: 1.0, or a named
+  project that has run warpdom in CI for a few months.
+- Applications first, after `compare` shows zero differences and a
+  measured speedup on their own suite.
+
+| # | Step | Why | Status |
+|---|---|---|---|
+| A1 | Release 0.1.8, the first from CI with npm provenance | The release history and provenance are the first maturity signals | Waiting on #118 (Ant Design regression from #103) and merges |
+| A2 | Release every one to two weeks, small, with release notes | A steady npm history answers "two weeks old" | Starts after 0.1.8 |
+| A3 | README: how warpdom is verified (black-box measurement against 19 jsdom versions, WPT, the corpus of 20+ real suites run before every merge, review on every change, benchmarks on every PR) | Answers the quality concern behind "mostly AI generated" with evidence, not argument | Open |
+| A4 | Publicly checkable compatibility: DOMParity and WPT pass rates updated automatically | "Same results as jsdom" becomes something anyone can check | DOMParity live; automation open |
+| A5 | The compare GitHub Action (traction item 3): a non-blocking job that runs a project's suite on jsdom and warpdom and reports differences and time saved | Evidence on other projects' own CI without asking for a decision | Open |
+| A6 | Applications (traction item 4): screen n8n, Grafana, Mattermost and Superset by jsdom unit-test CI time, run `compare`, then one carefully measured PR | Applications care about CI minutes and adopt younger tools | Open |
+| A7 | Easy way back: document an opt-in setup with a one-line revert, and the compare mode as a safety net | Lowers the cost of saying yes | Open |
+| A8 | Cascade parity found while fixing #117: #121 (jsdom 20 to 27.4 ignore specificity), #122, #123 | Suites on jsdom 26/27, Ant Design among them | Open |
+
+The MUI reply (to be posted by Sonu) accepts the hold, leaves the draft
+PR open, and names the 1.0 criteria as the bar.
+
 ## Product
 
 **warpdom: a DOM for unit tests that loads almost instantly and behaves like
