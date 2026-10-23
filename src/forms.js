@@ -11,8 +11,23 @@ import { urlOf } from './hyperlinks.js';
 import { documentBaseURL } from './base-url.js';
 import { followHyperlink } from './navigation.js';
 import {
-  S, state, domError, hooks, HTML_NS, SVG_NS, ELEMENT_NODE, TEXT_NODE, DOCUMENT_NODE,
-  rootOf, nextInTree, contains, elementById, connected, asciiLowercase, PlatformURL as URL, tooFewArguments,
+  S,
+  state,
+  domError,
+  hooks,
+  HTML_NS,
+  SVG_NS,
+  ELEMENT_NODE,
+  TEXT_NODE,
+  DOCUMENT_NODE,
+  rootOf,
+  nextInTree,
+  contains,
+  elementById,
+  connected,
+  asciiLowercase,
+  PlatformURL as URL,
+  tooFewArguments,
 } from './internal.js';
 import { writeAttribute, attributeSteps, addAttributeStep, tokenList } from './attributes.js';
 import { liveList, htmlCollectionNames, indexedElement, iterate } from './collections.js';
@@ -22,7 +37,10 @@ import { directionality } from './directionality.js';
 
 // --- helpers -------------------------------------------------------------------
 
-const isTag = (node, tag) => { const s = node[S]; return s.type === ELEMENT_NODE && s.ns === HTML_NS && s.tag === tag; };
+const isTag = (node, tag) => {
+  const s = node[S];
+  return s.type === ELEMENT_NODE && s.ns === HTML_NS && s.tag === tag;
+};
 const attr = (el, name) => el[S].attrs.get(name);
 const has = (el, name) => el[S].attrs.has(name);
 const windowOf = (el) => el[S].doc[S].window;
@@ -97,7 +115,11 @@ export function isDisabled(el) {
   for (let p = s.parent; p; p = p[S].parent) {
     if (isTag(p, 'fieldset') && has(p, 'disabled')) {
       let legend = null;
-      for (let c = p[S].first; c; c = c[S].next) if (isTag(c, 'legend')) { legend = c; break; }
+      for (let c = p[S].first; c; c = c[S].next)
+        if (isTag(c, 'legend')) {
+          legend = c;
+          break;
+        }
       if (!legend || !contains(legend, el)) return true;
     }
   }
@@ -123,12 +145,26 @@ function isInteractiveContent(node) {
   if (s.type !== ELEMENT_NODE || s.ns !== HTML_NS) return false;
   if (s.attrs.has('tabindex')) return true;
   switch (s.tag) {
-    case 'a': return s.attrs.has('href');
-    case 'audio': case 'video': return s.attrs.has('controls');
-    case 'img': case 'object': return s.attrs.has('usemap');
-    case 'input': return inputType(node) !== 'hidden';
-    case 'button': case 'details': case 'embed': case 'iframe': case 'label': case 'select': case 'textarea': return true;
-    default: return false;
+    case 'a':
+      return s.attrs.has('href');
+    case 'audio':
+    case 'video':
+      return s.attrs.has('controls');
+    case 'img':
+    case 'object':
+      return s.attrs.has('usemap');
+    case 'input':
+      return inputType(node) !== 'hidden';
+    case 'button':
+    case 'details':
+    case 'embed':
+    case 'iframe':
+    case 'label':
+    case 'select':
+    case 'textarea':
+      return true;
+    default:
+      return false;
   }
 }
 
@@ -152,13 +188,36 @@ function formElements(form) {
   });
 }
 
-const isSubmitButton = (el) => (isTag(el, 'input') && (inputType(el) === 'submit' || inputType(el) === 'image'))
-  || (isTag(el, 'button') && buttonType(el) === 'submit');
+const isSubmitButton = (el) =>
+  (isTag(el, 'input') && (inputType(el) === 'submit' || inputType(el) === 'image')) ||
+  (isTag(el, 'button') && buttonType(el) === 'submit');
 
 // --- input type, value and checkedness ------------------------------------------
 
-const INPUT_TYPES = new Set(['hidden', 'text', 'search', 'tel', 'url', 'email', 'password', 'date', 'month', 'week',
-  'time', 'datetime-local', 'number', 'range', 'color', 'checkbox', 'radio', 'file', 'submit', 'image', 'reset', 'button']);
+const INPUT_TYPES = new Set([
+  'hidden',
+  'text',
+  'search',
+  'tel',
+  'url',
+  'email',
+  'password',
+  'date',
+  'month',
+  'week',
+  'time',
+  'datetime-local',
+  'number',
+  'range',
+  'color',
+  'checkbox',
+  'radio',
+  'file',
+  'submit',
+  'image',
+  'reset',
+  'button',
+]);
 
 export function inputType(el) {
   return typeState(attr(el, 'type'));
@@ -173,25 +232,54 @@ function typeState(t) {
 
 function valueMode(type) {
   switch (type) {
-    case 'hidden': case 'submit': case 'image': case 'reset': case 'button': return 'default';
-    case 'checkbox': case 'radio': return 'default/on';
-    case 'file': return 'filename';
-    default: return 'value';
+    case 'hidden':
+    case 'submit':
+    case 'image':
+    case 'reset':
+    case 'button':
+      return 'default';
+    case 'checkbox':
+    case 'radio':
+      return 'default/on';
+    case 'file':
+      return 'filename';
+    default:
+      return 'value';
   }
 }
 
 const SELECTION_TYPES = new Set(['text', 'search', 'url', 'tel', 'password']);
-const READONLY_TYPES = new Set(['text', 'search', 'url', 'tel', 'email', 'password', 'date', 'month', 'week', 'time', 'datetime-local', 'number']);
+const READONLY_TYPES = new Set([
+  'text',
+  'search',
+  'url',
+  'tel',
+  'email',
+  'password',
+  'date',
+  'month',
+  'week',
+  'time',
+  'datetime-local',
+  'number',
+]);
 const REQUIRED_TYPES = new Set([...READONLY_TYPES, 'checkbox', 'radio', 'file']);
 const PATTERN_TYPES = new Set(['text', 'search', 'url', 'tel', 'email', 'password']);
 
 // Dates and times (HTML "microsyntaxes"), as numbers for range and step checks.
-const daysInMonth = (y, m) => (m === 2 ? ((y % 4 === 0 && y % 100 !== 0) || y % 400 === 0 ? 29 : 28) : [31, 0, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1]);
+const daysInMonth = (y, m) =>
+  m === 2
+    ? (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0
+      ? 29
+      : 28
+    : [31, 0, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1];
 
 function parseDate(v) {
   const m = /^(\d{4,})-(\d\d)-(\d\d)$/.exec(v);
   if (!m) return null;
-  const y = +m[1], mo = +m[2], d = +m[3];
+  const y = +m[1],
+    mo = +m[2],
+    d = +m[3];
   return y > 0 && mo >= 1 && mo <= 12 && d >= 1 && d <= daysInMonth(y, mo) ? { y, mo, d } : null;
 }
 function parseMonth(v) {
@@ -244,10 +332,15 @@ function serializeWeek(n) {
   return `${pad(y, 4)}-W${pad(Math.floor((thursday.getTime() - jan1.getTime()) / WEEK) + 1)}`;
 }
 function serializeTime(ms, legacy = false) {
-  const h = Math.floor(ms / 3600000), mi = Math.floor(ms / 60000) % 60, sec = Math.floor(ms / 1000) % 60, frac = ms % 1000;
+  const h = Math.floor(ms / 3600000),
+    mi = Math.floor(ms / 60000) % 60,
+    sec = Math.floor(ms / 1000) % 60,
+    frac = ms % 1000;
   let out = `${pad(h)}:${pad(mi)}`;
   if (sec || frac) out += `:${pad(sec)}`;
-  if (legacy) { if (sec || frac) out += `.${pad(frac, 3)}`; } else if (frac) out += `.${pad(frac, 3).replace(/0+$/, '')}`;
+  if (legacy) {
+    if (sec || frac) out += `.${pad(frac, 3)}`;
+  } else if (frac) out += `.${pad(frac, 3).replace(/0+$/, '')}`;
   return out;
 }
 const legacyTime = (el) => windowOf(el)[S].compat.legacyTimeStrings;
@@ -259,13 +352,29 @@ const parseFloatValue = (v) => (FLOAT.test(v) && Number.isFinite(Number(v)) ? Nu
 // months for month), or null.
 function toNumber(type, v, el) {
   switch (type) {
-    case 'number': case 'range': return parseFloatValue(v);
-    case 'date': { const d = parseDate(v); return d ? Date.UTC(d.y, d.mo - 1, d.d) : null; }
-    case 'month': { const d = parseMonth(v); return d ? (d.y - 1970) * 12 + d.mo - 1 : null; }
-    case 'week': { const d = parseWeek(v); return d ? weekStart(d.y, d.w) : null; }
-    case 'time': return parseTime(v, legacyTime(el));
-    case 'datetime-local': { const d = parseDateTime(v, legacyTime(el)); return d ? Date.UTC(d.date.y, d.date.mo - 1, d.date.d) + d.time : null; }
-    default: return null;
+    case 'number':
+    case 'range':
+      return parseFloatValue(v);
+    case 'date': {
+      const d = parseDate(v);
+      return d ? Date.UTC(d.y, d.mo - 1, d.d) : null;
+    }
+    case 'month': {
+      const d = parseMonth(v);
+      return d ? (d.y - 1970) * 12 + d.mo - 1 : null;
+    }
+    case 'week': {
+      const d = parseWeek(v);
+      return d ? weekStart(d.y, d.w) : null;
+    }
+    case 'time':
+      return parseTime(v, legacyTime(el));
+    case 'datetime-local': {
+      const d = parseDateTime(v, legacyTime(el));
+      return d ? Date.UTC(d.date.y, d.date.mo - 1, d.date.d) + d.time : null;
+    }
+    default:
+      return null;
   }
 }
 
@@ -277,10 +386,17 @@ function rangeBounds(el) {
 
 function sanitize(el, type, v) {
   switch (type) {
-    case 'text': case 'search': case 'tel': case 'password': return stripNewlines(v);
-    case 'url': return trimASCII(stripNewlines(v));
-    case 'email': return has(el, 'multiple') ? v.split(',').map(trimASCII).join(',') : trimASCII(stripNewlines(v));
-    case 'number': return parseFloatValue(v) === null ? '' : v;
+    case 'text':
+    case 'search':
+    case 'tel':
+    case 'password':
+      return stripNewlines(v);
+    case 'url':
+      return trimASCII(stripNewlines(v));
+    case 'email':
+      return has(el, 'multiple') ? v.split(',').map(trimASCII).join(',') : trimASCII(stripNewlines(v));
+    case 'number':
+      return parseFloatValue(v) === null ? '' : v;
     case 'range': {
       const { min, max } = rangeBounds(el);
       const n = parseFloatValue(v);
@@ -289,13 +405,23 @@ function sanitize(el, type, v) {
       if (n > max) return `${max}`;
       return v;
     }
-    case 'color': return /^#[0-9a-fA-F]{6}$/.test(v) ? v.toLowerCase() : '#000000';
-    case 'date': return parseDate(v) ? v : '';
-    case 'month': return parseMonth(v) ? v : '';
-    case 'week': return parseWeek(v) ? v : '';
-    case 'time': return parseTime(v) === null ? '' : v;
-    case 'datetime-local': { const legacy = legacyTime(el); const d = parseDateTime(v, legacy); return d ? `${v.slice(0, v.search(/[T ]/))}T${serializeTime(d.time, legacy)}` : ''; }
-    default: return v;
+    case 'color':
+      return /^#[0-9a-fA-F]{6}$/.test(v) ? v.toLowerCase() : '#000000';
+    case 'date':
+      return parseDate(v) ? v : '';
+    case 'month':
+      return parseMonth(v) ? v : '';
+    case 'week':
+      return parseWeek(v) ? v : '';
+    case 'time':
+      return parseTime(v) === null ? '' : v;
+    case 'datetime-local': {
+      const legacy = legacyTime(el);
+      const d = parseDateTime(v, legacy);
+      return d ? `${v.slice(0, v.search(/[T ]/))}T${serializeTime(d.time, legacy)}` : '';
+    }
+    default:
+      return v;
   }
 }
 
@@ -303,10 +429,14 @@ function inputValue(el) {
   const s = el[S];
   const type = inputType(el);
   switch (valueMode(type)) {
-    case 'value': return sanitize(el, type, s.value ?? attr(el, 'value') ?? '');
-    case 'default': return attr(el, 'value') ?? '';
-    case 'default/on': return attr(el, 'value') ?? 'on';
-    default: return '';
+    case 'value':
+      return sanitize(el, type, s.value ?? attr(el, 'value') ?? '');
+    case 'default':
+      return attr(el, 'value') ?? '';
+    case 'default/on':
+      return attr(el, 'value') ?? 'on';
+    default:
+      return '';
   }
 }
 
@@ -318,12 +448,22 @@ function setInputValue(el, value) {
       const old = inputValue(el);
       s.value = sanitize(el, type, value);
       s.dirtyValue = true;
-      if (s.value !== old) { s.selStart = s.selEnd = s.value.length; s.selDir = 'none'; }
+      if (s.value !== old) {
+        s.selStart = s.selEnd = s.value.length;
+        s.selDir = 'none';
+      }
       break;
     }
-    case 'default': case 'default/on': writeAttribute(el, 'value', value); break;
+    case 'default':
+    case 'default/on':
+      writeAttribute(el, 'value', value);
+      break;
     default:
-      if (value !== '') throw domError('This input element accepts a filename, which may only be programmatically set to the empty string.', 'InvalidStateError');
+      if (value !== '')
+        throw domError(
+          'This input element accepts a filename, which may only be programmatically set to the empty string.',
+          'InvalidStateError',
+        );
   }
 }
 
@@ -348,17 +488,26 @@ attributeSteps.set('value', (el) => {
 attributeSteps.set('type', (el, old, value) => {
   const s = el[S];
   if (s.ns !== HTML_NS || s.tag !== 'input') return undefined;
-  const from = typeState(old), to = typeState(value);
+  const from = typeState(old),
+    to = typeState(value);
   if (from === to) return undefined;
-  const fromMode = valueMode(from), toMode = valueMode(to);
-  if (!SELECTION_TYPES.has(from) && SELECTION_TYPES.has(to)) { s.selStart = s.selEnd = 0; s.selDir = 'none'; }
+  const fromMode = valueMode(from),
+    toMode = valueMode(to);
+  if (!SELECTION_TYPES.has(from) && SELECTION_TYPES.has(to)) {
+    s.selStart = s.selEnd = 0;
+    s.selDir = 'none';
+  }
   if (to === 'radio' && checkedness(el)) uncheckGroup(el);
   if (fromMode === 'value') {
     const current = sanitize(el, from, s.value ?? attr(el, 'value') ?? '');
-    if (toMode === 'value') { s.value = current; return undefined; }
+    if (toMode === 'value') {
+      s.value = current;
+      return undefined;
+    }
     s.value = undefined;
     s.dirtyValue = false;
-    if (current !== '' && (toMode === 'default' || toMode === 'default/on')) return () => writeAttribute(el, 'value', current);
+    if (current !== '' && (toMode === 'default' || toMode === 'default/on'))
+      return () => writeAttribute(el, 'value', current);
   } else if (toMode === 'value') {
     s.value = undefined;
     s.dirtyValue = false;
@@ -372,7 +521,14 @@ function radioGroup(el) {
   const form = formOwner(el);
   const out = [];
   for (const other of treeElements(rootOf(el))) {
-    if (other !== el && isTag(other, 'input') && inputType(other) === 'radio' && attr(other, 'name') === name && formOwner(other) === form) out.push(other);
+    if (
+      other !== el &&
+      isTag(other, 'input') &&
+      inputType(other) === 'radio' &&
+      attr(other, 'name') === name &&
+      formOwner(other) === form
+    )
+      out.push(other);
   }
   return out;
 }
@@ -395,7 +551,9 @@ const isCheckedRadio = (el) => isTag(el, 'input') && inputType(el) === 'radio' &
 // (into a form, or into a tree where its form attribute finds one). From
 // jsdom 30.1.0 (compat.radioConnected), as the standard: also when it
 // becomes connected, and when its form attribute changes.
-addAttributeStep('name', (el) => { if (isCheckedRadio(el)) uncheckGroup(el); });
+addAttributeStep('name', (el) => {
+  if (isCheckedRadio(el)) uncheckGroup(el);
+});
 attributeSteps.set('form', (el) => {
   if (isCheckedRadio(el) && windowOf(el)[S].compat.radioConnected) uncheckGroup(el);
 });
@@ -404,7 +562,10 @@ hooks.radios = (node, connected) => {
   const now = windowOf(node)[S].compat.radioConnected && (connected || isConnected(node));
   for (const el of treeElements(node)) {
     if (!isCheckedRadio(el)) continue;
-    if (now) { uncheckGroup(el); continue; }
+    if (now) {
+      uncheckGroup(el);
+      continue;
+    }
     const form = formOwner(el);
     if (form !== null && !contains(node, form)) uncheckGroup(el);
   }
@@ -437,7 +598,17 @@ export function cloneFormState(node, copy) {
 
 const selectionApplies = (el) => isTag(el, 'textarea') || SELECTION_TYPES.has(inputType(el));
 // Input types select() applies to without a selection: it only fires select.
-const SELECT_ONLY_TYPES = new Set(['email', 'number', 'date', 'month', 'week', 'time', 'datetime-local', 'color', 'file']);
+const SELECT_ONLY_TYPES = new Set([
+  'email',
+  'number',
+  'date',
+  'month',
+  'week',
+  'time',
+  'datetime-local',
+  'color',
+  'file',
+]);
 const SELECTION_MODES = new Set(['select', 'start', 'end', 'preserve']);
 const selectionInterface = (el) => (isTag(el, 'textarea') ? 'HTMLTextAreaElement' : 'HTMLInputElement');
 
@@ -457,12 +628,14 @@ export const controlValue = (el) => (isTag(el, 'textarea') ? textareaValue(el) :
 
 function setControlValueRaw(el, value) {
   const s = el[S];
-  if (isTag(el, 'textarea')) s.value = value; else s.value = sanitize(el, inputType(el), value);
+  if (isTag(el, 'textarea')) s.value = value;
+  else s.value = sanitize(el, inputType(el), value);
   s.dirtyValue = true;
 }
 
 function setSelectionRange(el, start, end, direction = 'none') {
-  if (!selectionApplies(el)) throw domError("The input element's type does not support selection.", 'InvalidStateError');
+  if (!selectionApplies(el))
+    throw domError("The input element's type does not support selection.", 'InvalidStateError');
   const s = el[S];
   const length = controlValue(el).length;
   let e = Math.min(end >>> 0, length);
@@ -475,27 +648,37 @@ function setSelectionRange(el, start, end, direction = 'none') {
 }
 
 const selectionMembers = {
-  get selectionStart() { return selectionApplies(this) ? state(this).selStart ?? 0 : null; },
+  get selectionStart() {
+    return selectionApplies(this) ? (state(this).selStart ?? 0) : null;
+  },
   set selectionStart(v) {
     const s = state(this);
-    if (!selectionApplies(this)) throw domError("The input element's type does not support selection.", 'InvalidStateError');
+    if (!selectionApplies(this))
+      throw domError("The input element's type does not support selection.", 'InvalidStateError');
     setSelectionRange(this, v, Math.max(v >>> 0, s.selEnd ?? 0), s.selDir);
   },
-  get selectionEnd() { return selectionApplies(this) ? state(this).selEnd ?? 0 : null; },
+  get selectionEnd() {
+    return selectionApplies(this) ? (state(this).selEnd ?? 0) : null;
+  },
   set selectionEnd(v) {
     const s = state(this);
-    if (!selectionApplies(this)) throw domError("The input element's type does not support selection.", 'InvalidStateError');
+    if (!selectionApplies(this))
+      throw domError("The input element's type does not support selection.", 'InvalidStateError');
     setSelectionRange(this, s.selStart ?? 0, v, s.selDir);
   },
-  get selectionDirection() { return selectionApplies(this) ? state(this).selDir ?? 'none' : null; },
+  get selectionDirection() {
+    return selectionApplies(this) ? (state(this).selDir ?? 'none') : null;
+  },
   set selectionDirection(v) {
     const s = state(this);
-    if (!selectionApplies(this)) throw domError("The input element's type does not support selection.", 'InvalidStateError');
+    if (!selectionApplies(this))
+      throw domError("The input element's type does not support selection.", 'InvalidStateError');
     setSelectionRange(this, s.selStart ?? 0, s.selEnd ?? 0, v);
   },
   setSelectionRange(start, end, direction = undefined) {
     state(this);
-    if (end === undefined && arguments.length < 2) tooFewArguments(selectionInterface(this), 'setSelectionRange', 2, arguments.length);
+    if (end === undefined && arguments.length < 2)
+      tooFewArguments(selectionInterface(this), 'setSelectionRange', 2, arguments.length);
     setSelectionRange(this, start, end, direction);
   },
   select() {
@@ -513,10 +696,15 @@ const selectionMembers = {
     if (n === 2) throw new TypeError(`Failed to execute 'setRangeText' on '${iface}': only 2 arguments present.`);
     const text = String(replacement);
     const mode = selectMode === undefined ? 'preserve' : String(selectMode);
-    if (!SELECTION_MODES.has(mode)) throw new TypeError(`Failed to execute 'setRangeText' on '${iface}': parameter 4 '${mode}' is not a valid enumeration value for SelectionMode`);
-    if (!selectionApplies(this)) throw domError("The input element's type does not support selection.", 'InvalidStateError');
+    if (!SELECTION_MODES.has(mode))
+      throw new TypeError(
+        `Failed to execute 'setRangeText' on '${iface}': parameter 4 '${mode}' is not a valid enumeration value for SelectionMode`,
+      );
+    if (!selectionApplies(this))
+      throw domError("The input element's type does not support selection.", 'InvalidStateError');
     const value = controlValue(this);
-    let st = s.selStart ?? 0, en = s.selEnd ?? 0;
+    let st = s.selStart ?? 0,
+      en = s.selEnd ?? 0;
     if (n > 2) {
       st = start >>> 0;
       en = end >>> 0;
@@ -524,14 +712,24 @@ const selectionMembers = {
     }
     st = Math.min(st, value.length);
     en = Math.min(en, value.length);
-    let selStart = s.selStart ?? 0, selEnd = s.selEnd ?? 0;
+    let selStart = s.selStart ?? 0,
+      selEnd = s.selEnd ?? 0;
     setControlValueRaw(this, value.slice(0, st) + text + value.slice(en));
     // jsdom before 21.1.2: the end of the replaced text is the new value's length.
     const newEnd = windowOf(this)[S].compat.legacyRangeTextEnd ? controlValue(this).length : st + text.length;
-    if (mode === 'select') { selStart = st; selEnd = newEnd; } else if (mode === 'start') { selStart = selEnd = st; } else if (mode === 'end') { selStart = selEnd = newEnd; } else {
+    if (mode === 'select') {
+      selStart = st;
+      selEnd = newEnd;
+    } else if (mode === 'start') {
+      selStart = selEnd = st;
+    } else if (mode === 'end') {
+      selStart = selEnd = newEnd;
+    } else {
       const delta = text.length - (en - st);
-      if (selStart > en) selStart += delta; else if (selStart > st) selStart = st;
-      if (selEnd > en) selEnd += delta; else if (selEnd > st) selEnd = newEnd;
+      if (selStart > en) selStart += delta;
+      else if (selStart > st) selStart = st;
+      if (selEnd > en) selEnd += delta;
+      else if (selEnd > st) selEnd = newEnd;
     }
     s.selStart = selStart;
     s.selEnd = selEnd;
@@ -562,12 +760,15 @@ function wrappedValue(el) {
   if (colsAttr !== undefined && !windowOf(el)[S].compat.hardWrap) return value;
   const n = colsAttr === undefined ? null : parseInteger(colsAttr);
   const cols = n !== null && n > 0 ? n : 20;
-  return value.split('\n').map((line) => {
-    if (line.length <= cols) return line;
-    const parts = [];
-    for (let i = 0; i < line.length; i += cols) parts.push(line.slice(i, i + cols));
-    return parts.join('\n');
-  }).join('\n');
+  return value
+    .split('\n')
+    .map((line) => {
+      if (line.length <= cols) return line;
+      const parts = [];
+      for (let i = 0; i < line.length; i += cols) parts.push(line.slice(i, i + cols));
+      return parts.join('\n');
+    })
+    .join('\n');
 }
 
 // --- select and option ------------------------------------------------------------
@@ -612,10 +813,18 @@ function nearestAncestorSelect(option) {
   for (let n = option[S].parent; n && n[S].type === ELEMENT_NODE; n = n[S].parent) {
     if (n[S].ns !== HTML_NS) continue;
     switch (n[S].tag) {
-      case 'datalist': case 'hr': case 'option': return null;
-      case 'optgroup': if (optgroup) return null; optgroup = true; break;
-      case 'select': return n;
-      default: break;
+      case 'datalist':
+      case 'hr':
+      case 'option':
+        return null;
+      case 'optgroup':
+        if (optgroup) return null;
+        optgroup = true;
+        break;
+      case 'select':
+        return n;
+      default:
+        break;
     }
   }
   return null;
@@ -676,11 +885,15 @@ function sameOptions(a, b) {
   return true;
 }
 
-const askForReset = (select) => { select[S].settledOptions = null; };
+const askForReset = (select) => {
+  select[S].settledOptions = null;
+};
 
 // Changing a select's multiple or size attribute reruns the algorithm (the
 // display size can change; jsdom also reruns it when the value is the same).
-const selectAttributeChanged = (el) => { if (isTag(el, 'select')) askForReset(el); };
+const selectAttributeChanged = (el) => {
+  if (isTag(el, 'select')) askForReset(el);
+};
 attributeSteps.set('multiple', selectAttributeChanged);
 attributeSteps.set('size', selectAttributeChanged);
 
@@ -698,8 +911,11 @@ attributeSteps.set('open', (el, old, value) => {
   const s = el[S];
   if (s.ns !== HTML_NS || s.tag !== 'details' || (old === undefined) === (value === undefined)) return;
   const newState = value === undefined ? 'closed' : 'open';
-  if (s.toggleTask) { s.toggleTask.newState = newState; return; }
-  const task = s.toggleTask = { oldState: old === undefined ? 'closed' : 'open', newState };
+  if (s.toggleTask) {
+    s.toggleTask.newState = newState;
+    return;
+  }
+  const task = (s.toggleTask = { oldState: old === undefined ? 'closed' : 'open', newState });
   const window = s.doc[S].window;
   window[S].setTimeout(() => {
     s.toggleTask = null;
@@ -732,7 +948,8 @@ function textExcludingScript(node) {
   for (let c = node[S].first; c; c = c[S].next) {
     const cs = c[S];
     if (cs.type === TEXT_NODE) out += cs.data;
-    else if (cs.type === ELEMENT_NODE && !(cs.tag === 'script' && (cs.ns === HTML_NS || cs.ns === SVG_NS))) out += textExcludingScript(c);
+    else if (cs.type === ELEMENT_NODE && !(cs.tag === 'script' && (cs.ns === HTML_NS || cs.ns === SVG_NS)))
+      out += textExcludingScript(c);
   }
   return out;
 }
@@ -788,7 +1005,8 @@ function labelsFor(el) {
       const control = labelControl(node);
       if (!control) continue;
       const list = byControl.get(control);
-      if (list) list.push(node); else byControl.set(control, [node]);
+      if (list) list.push(node);
+      else byControl.set(control, [node]);
     }
     return byControl;
   });
@@ -820,20 +1038,37 @@ function barred(el) {
   switch (s.tag) {
     case 'input': {
       const type = inputType(el);
-      return type === 'hidden' || type === 'reset' || type === 'button' || (READONLY_TYPES.has(type) && has(el, 'readonly'));
+      return (
+        type === 'hidden' || type === 'reset' || type === 'button' || (READONLY_TYPES.has(type) && has(el, 'readonly'))
+      );
     }
-    case 'button': return buttonType(el) !== 'submit';
-    case 'select': case 'textarea': return has(el, 'readonly');
-    default: return true; // fieldset, output, object
+    case 'button':
+      return buttonType(el) !== 'submit';
+    case 'select':
+    case 'textarea':
+      return has(el, 'readonly');
+    default:
+      return true; // fieldset, output, object
   }
 }
 
 const willValidate = (el) => !isDisabled(el) && !closestTag(el, 'datalist') && !barred(el);
 
-const VALIDITY_FLAGS = ['valueMissing', 'typeMismatch', 'patternMismatch', 'tooLong', 'tooShort', 'rangeUnderflow',
-  'rangeOverflow', 'stepMismatch', 'badInput', 'customError'];
+const VALIDITY_FLAGS = [
+  'valueMissing',
+  'typeMismatch',
+  'patternMismatch',
+  'tooLong',
+  'tooShort',
+  'rangeUnderflow',
+  'rangeOverflow',
+  'stepMismatch',
+  'badInput',
+  'customError',
+];
 
-const EMAIL = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+const EMAIL =
+  /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
 // The compiled pattern regular expression (HTML): null when the pattern
 // does not compile on its own (so "a)(b" cannot close the wrapping group),
@@ -849,7 +1084,15 @@ function compilePattern(pattern, flag) {
 }
 
 // Per type: default step, step scale factor, default step base.
-const DEFAULT_STEP = { number: [1, 1, 0], range: [1, 1, 0], date: [1, DAY, 0], month: [1, 1, 0], week: [1, WEEK, -259200000], time: [60, 1000, 0], 'datetime-local': [60, 1000, 0] };
+const DEFAULT_STEP = {
+  number: [1, 1, 0],
+  range: [1, 1, 0],
+  date: [1, DAY, 0],
+  month: [1, 1, 0],
+  week: [1, WEEK, -259200000],
+  time: [60, 1000, 0],
+  'datetime-local': [60, 1000, 0],
+};
 
 // Exact decimal arithmetic for steps, as jsdom (black box, 20.0.3 to
 // 30.1.2): numbers are taken at their shortest decimal form (String(n)),
@@ -862,7 +1105,10 @@ function decimal(n) {
   return [BigInt(digits), Number(exp) - (dot < 0 ? 0 : mantissa.length - dot - 1)];
 }
 const decimalNumber = (digits, e) => Number(`${digits}e${e}`);
-const floorDiv = (a, b) => { const q = a / b; return (a % b !== 0n && (a < 0n) !== (b < 0n)) ? q - 1n : q; };
+const floorDiv = (a, b) => {
+  const q = a / b;
+  return a % b !== 0n && a < 0n !== b < 0n ? q - 1n : q;
+};
 
 // The step of an input: [allowed value step, step base] (numbers), or
 // null for step="any" and types without one.
@@ -892,8 +1138,16 @@ function stepMismatch(el, type, value) {
   if (step === null) return false;
   const [stepValue, scale, base] = step;
   // Integers: exact in floating point.
-  if (Number.isSafeInteger(n) && Number.isSafeInteger(base) && Number.isSafeInteger(stepValue * scale) && Number.isSafeInteger(n - base)) return (n - base) % (stepValue * scale) !== 0;
-  const { values: [v, b, d] } = scaled([n, base, stepValue]);
+  if (
+    Number.isSafeInteger(n) &&
+    Number.isSafeInteger(base) &&
+    Number.isSafeInteger(stepValue * scale) &&
+    Number.isSafeInteger(n - base)
+  )
+    return (n - base) % (stepValue * scale) !== 0;
+  const {
+    values: [v, b, d],
+  } = scaled([n, base, stepValue]);
   return (v - b) % (d * BigInt(scale)) !== 0n;
 }
 
@@ -902,7 +1156,8 @@ function inputValidity(el) {
   const value = inputValue(el);
   const flags = {};
   const required = has(el, 'required') && REQUIRED_TYPES.has(type);
-  if (required && valueMode(type) === 'value' && !isDisabled(el) && !has(el, 'readonly') && value === '') flags.valueMissing = true;
+  if (required && valueMode(type) === 'value' && !isDisabled(el) && !has(el, 'readonly') && value === '')
+    flags.valueMissing = true;
   if (type === 'checkbox' && required && !checkedness(el)) flags.valueMissing = true;
   if (type === 'radio') {
     const group = [el, ...radioGroup(el)];
@@ -910,8 +1165,15 @@ function inputValidity(el) {
   }
   if (type === 'file' && required) flags.valueMissing = true;
   if (value !== '') {
-    if (type === 'email') flags.typeMismatch = !(has(el, 'multiple') ? value.split(',').every((v) => EMAIL.test(v)) : EMAIL.test(value));
-    if (type === 'url') { try { new URL(value); } catch { flags.typeMismatch = true; } }
+    if (type === 'email')
+      flags.typeMismatch = !(has(el, 'multiple') ? value.split(',').every((v) => EMAIL.test(v)) : EMAIL.test(value));
+    if (type === 'url') {
+      try {
+        new URL(value);
+      } catch {
+        flags.typeMismatch = true;
+      }
+    }
     const pattern = attr(el, 'pattern');
     if (pattern !== undefined && PATTERN_TYPES.has(type)) {
       const re = compilePattern(pattern, windowOf(el)[S].compat.patternFlag);
@@ -944,20 +1206,30 @@ function validityFlags(el) {
   const s = el[S];
   let flags;
   switch (s.tag) {
-    case 'input': flags = inputValidity(el); break;
-    case 'textarea': flags = { valueMissing: has(el, 'required') && !isDisabled(el) && !has(el, 'readonly') && textareaValue(el) === '' }; break;
+    case 'input':
+      flags = inputValidity(el);
+      break;
+    case 'textarea':
+      flags = {
+        valueMissing: has(el, 'required') && !isDisabled(el) && !has(el, 'readonly') && textareaValue(el) === '',
+      };
+      break;
     case 'select': {
       const index = selectedIndex(el);
       flags = { valueMissing: has(el, 'required') && (index < 0 || (index === 0 && hasPlaceholderOption(el))) };
       break;
     }
-    default: flags = {};
+    default:
+      flags = {};
   }
   flags.customError = (s.customError ?? '') !== '';
   return flags;
 }
 
-const isValid = (el) => { const f = validityFlags(el); return VALIDITY_FLAGS.every((k) => !f[k]); };
+const isValid = (el) => {
+  const f = validityFlags(el);
+  return VALIDITY_FLAGS.every((k) => !f[k]);
+};
 
 const isCandidate = (el) => el[S].type === 1 && el[S].ns === HTML_NS && SUBMITTABLE.has(el[S].tag) && willValidate(el);
 const candidateInvalid = (el) => isCandidate(el) && !isValid(el);
@@ -972,7 +1244,11 @@ export function matchesValidity(el, invalid) {
   if (s.tag === 'form') found = formElements(el).some(candidateInvalid);
   else if (s.tag === 'fieldset') {
     found = false;
-    for (let n = s.first; n; n = nextInTree(n, el)) if (candidateInvalid(n)) { found = true; break; }
+    for (let n = s.first; n; n = nextInTree(n, el))
+      if (candidateInvalid(n)) {
+        found = true;
+        break;
+      }
   } else if (isCandidate(el)) found = !isValid(el);
   else return false;
   return found === invalid;
@@ -985,7 +1261,10 @@ function checkValidity(el) {
 }
 
 const constraintValidation = {
-  get willValidate() { state(this); return willValidate(this); },
+  get willValidate() {
+    state(this);
+    return willValidate(this);
+  },
   get validity() {
     const s = state(this);
     if (!s.validity) {
@@ -999,9 +1278,17 @@ const constraintValidation = {
     if (!willValidate(this) || isValid(this)) return '';
     return validityFlags(this).customError ? this[S].customError : 'Constraints not satisfied';
   },
-  checkValidity() { state(this); return checkValidity(this); },
-  reportValidity() { state(this); return checkValidity(this); },
-  setCustomValidity(message) { state(this).customError = String(message); },
+  checkValidity() {
+    state(this);
+    return checkValidity(this);
+  },
+  reportValidity() {
+    state(this);
+    return checkValidity(this);
+  },
+  setCustomValidity(message) {
+    state(this).customError = String(message);
+  },
 };
 
 // --- submission and reset ------------------------------------------------------------
@@ -1014,8 +1301,10 @@ function submitForm(form, submitter) {
   if (!noValidate && !formCheckValidity(form)) return;
   const window = windowOf(form);
   // jsdom 20 has no SubmitEvent: submit is a plain Event.
-  const event = window[S].compat.jsdom < 21 ? new window.Event('submit', { bubbles: true, cancelable: true })
-    : new window.SubmitEvent('submit', { bubbles: true, cancelable: true, submitter });
+  const event =
+    window[S].compat.jsdom < 21
+      ? new window.Event('submit', { bubbles: true, cancelable: true })
+      : new window.SubmitEvent('submit', { bubbles: true, cancelable: true, submitter });
   if (!dispatch(form, event)) return;
   notImplemented(form, "HTMLFormElement's requestSubmit() method");
 }
@@ -1041,14 +1330,18 @@ function resetControl(el) {
       s.value = undefined;
       break;
     case 'select':
-      for (const o of listOfOptions(el)) { o[S].selectedness = has(o, 'selected'); o[S].dirtySelected = false; }
+      for (const o of listOfOptions(el)) {
+        o[S].selectedness = has(o, 'selected');
+        o[S].dirtySelected = false;
+      }
       askForReset(el);
       break;
     case 'output':
       el.textContent = outputDefault(el);
       s.defaultOverride = null;
       break;
-    default: break;
+    default:
+      break;
   }
 }
 
@@ -1087,7 +1380,7 @@ function inputActivation(input) {
         s.checked = !wasChecked;
         s.indeterminate = false;
       } else if (type === 'radio') {
-        previouslyChecked = wasChecked ? input : radioGroup(input).find(checkedness) ?? null;
+        previouslyChecked = wasChecked ? input : (radioGroup(input).find(checkedness) ?? null);
         s.dirtyChecked = true;
         setCheckedness(input, true);
       }
@@ -1099,7 +1392,8 @@ function inputActivation(input) {
         s.checked = wasChecked;
         s.indeterminate = wasIndeterminate;
       } else if (type === 'radio') {
-        if (previouslyChecked && (previouslyChecked === input || radioGroup(input).includes(previouslyChecked))) setCheckedness(previouslyChecked, true);
+        if (previouslyChecked && (previouslyChecked === input || radioGroup(input).includes(previouslyChecked)))
+          setCheckedness(previouslyChecked, true);
         else s.checked = false;
       }
     },
@@ -1136,35 +1430,39 @@ function activationBehavior(node) {
   const s = node[S];
   if (s.type !== ELEMENT_NODE || s.ns !== HTML_NS) return null;
   switch (s.tag) {
-    case 'input': return inputActivation(node);
+    case 'input':
+      return inputActivation(node);
     // A button submits or resets its form owner.
-    case 'button': return {
-      run() {
-        if (isDisabled(node)) return;
-        const form = formOwner(node);
-        if (!form || !isConnected(form)) return;
-        const type = buttonType(node);
-        if (type === 'submit') submitForm(form, node);
-        else if (type === 'reset') reset(form);
-      },
-    };
+    case 'button':
+      return {
+        run() {
+          if (isDisabled(node)) return;
+          const form = formOwner(node);
+          if (!form || !isConnected(form)) return;
+          const type = buttonType(node);
+          if (type === 'submit') submitForm(form, node);
+          else if (type === 'reset') reset(form);
+        },
+      };
     // The standard leaves label activation to the platform: clicking the
     // label, or non-interactive content in it, clicks its labeled control.
     // Clicks on interactive content inside the label do nothing, and a click
     // from inside the control itself is not sent back to it (it bubbles here
     // when the control, like <meter>, has no activation behavior of its own).
-    case 'label': return {
-      run(event) {
-        const target = event.target;
-        for (let n = target; n && n !== node; n = n[S].parent) if (isInteractiveContent(n)) return;
-        const control = labelControl(node);
-        if (!control || isDisabled(control) || (target && contains(control, target))) return;
-        sendClick(control, { bubbles: true, cancelable: true, view: windowOf(node), detail: 1 });
-      },
-    };
+    case 'label':
+      return {
+        run(event) {
+          const target = event.target;
+          for (let n = target; n && n !== node; n = n[S].parent) if (isInteractiveContent(n)) return;
+          const control = labelControl(node);
+          if (!control || isDisabled(control) || (target && contains(control, target))) return;
+          sendClick(control, { bubbles: true, cancelable: true, view: windowOf(node), detail: 1 });
+        },
+      };
     // Links follow their url (hyperlinks.js, navigation.js); an <a> or
     // <area> without one is not a link.
-    case 'a': case 'area': {
+    case 'a':
+    case 'area': {
       if (!s.attrs.has('href')) return null;
       return {
         run() {
@@ -1174,17 +1472,23 @@ function activationBehavior(node) {
       };
     }
     // The summary for its parent details toggles the details' open attribute.
-    case 'summary': return {
-      run() {
-        const details = s.parent;
-        if (!details || !isTag(details, 'details')) return;
-        let first = null;
-        for (let c = details[S].first; c; c = c[S].next) if (isTag(c, 'summary')) { first = c; break; }
-        if (first !== node) return;
-        writeAttribute(details, 'open', has(details, 'open') ? undefined : '');
-      },
-    };
-    default: return null;
+    case 'summary':
+      return {
+        run() {
+          const details = s.parent;
+          if (!details || !isTag(details, 'details')) return;
+          let first = null;
+          for (let c = details[S].first; c; c = c[S].next)
+            if (isTag(c, 'summary')) {
+              first = c;
+              break;
+            }
+          if (first !== node) return;
+          writeAttribute(details, 'open', has(details, 'open') ? undefined : '');
+        },
+      };
+    default:
+      return null;
   }
 }
 
@@ -1199,9 +1503,17 @@ export const clickMember = {
       const window = windowOf(this);
       // jsdom before 27 (the profile without PointerEvent) fires a MouseEvent.
       const ClickEvent = window[S].compat.jsdom < 27 ? window.MouseEvent : window.PointerEvent;
-      dispatch(this, new ClickEvent('click', {
-        bubbles: true, cancelable: true, composed: true, pointerId: -1, view: window,
-      }), false);
+      dispatch(
+        this,
+        new ClickEvent('click', {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          pointerId: -1,
+          view: window,
+        }),
+        false,
+      );
     } finally {
       s.clickInProgress = false;
     }
@@ -1212,8 +1524,8 @@ export const clickMember = {
 // The HTML standard's entry list (4.10.21.4) and the XHR standard's FormData.
 
 const SUBMITTABLE = new Set(['button', 'input', 'object', 'select', 'textarea']);
-const isButton = (el) => isTag(el, 'button')
-  || (isTag(el, 'input') && ['submit', 'image', 'reset', 'button'].includes(inputType(el)));
+const isButton = (el) =>
+  isTag(el, 'button') || (isTag(el, 'input') && ['submit', 'image', 'reset', 'button'].includes(inputType(el)));
 
 // Converting to a scalar value string: lone surrogates become U+FFFD.
 const scalar = (v) => {
@@ -1231,11 +1543,14 @@ function createEntry(window, name, value, filename, method) {
   if (blob !== undefined) {
     const lastModified = blob.name === undefined ? Date.now() : blob.lastModified;
     let file = value;
-    if (filename !== undefined) file = hooks.blobs.makeFile(blob.window, blob.bytes, scalar(filename), blob.type, lastModified);
-    else if (blob.name === undefined) file = hooks.blobs.makeFile(blob.window, blob.bytes, 'blob', blob.type, lastModified);
+    if (filename !== undefined)
+      file = hooks.blobs.makeFile(blob.window, blob.bytes, scalar(filename), blob.type, lastModified);
+    else if (blob.name === undefined)
+      file = hooks.blobs.makeFile(blob.window, blob.bytes, 'blob', blob.type, lastModified);
     return { name: scalar(name), value: file };
   }
-  if (filename !== undefined) throw new TypeError(`Failed to execute '${method}' on 'FormData': parameter 2 is not of type 'Blob'.`);
+  if (filename !== undefined)
+    throw new TypeError(`Failed to execute '${method}' on 'FormData': parameter 2 is not of type 'Blob'.`);
   return { name: scalar(name), value: scalar(value) };
 }
 
@@ -1263,15 +1578,24 @@ function constructEntryList(form, submitter = null) {
       if (!name) continue;
       if (tag === 'select') {
         settleSelectedness(field);
-        for (const option of listOfOptions(field)) if (selectedness(option) && !isOptionDisabled(option)) entries.push(createEntry(window, name, optionValue(option)));
+        for (const option of listOfOptions(field))
+          if (selectedness(option) && !isOptionDisabled(option))
+            entries.push(createEntry(window, name, optionValue(option)));
       } else if (type === 'checkbox' || type === 'radio') {
         entries.push(createEntry(window, name, attr(field, 'value') ?? 'on'));
       } else if (type === 'file') {
-        entries.push(createEntry(window, name, hooks.blobs.makeFile(window, new Uint8Array(0), '', 'application/octet-stream', Date.now())));
+        entries.push(
+          createEntry(
+            window,
+            name,
+            hooks.blobs.makeFile(window, new Uint8Array(0), '', 'application/octet-stream', Date.now()),
+          ),
+        );
       } else if (type === 'hidden' && name.toLowerCase() === '_charset_') {
         entries.push(createEntry(window, name, 'UTF-8'));
       } else {
-        const value = tag === 'textarea' ? wrappedValue(field) : tag === 'input' ? inputValue(field) : attr(field, 'value') ?? '';
+        const value =
+          tag === 'textarea' ? wrappedValue(field) : tag === 'input' ? inputValue(field) : (attr(field, 'value') ?? '');
         entries.push(createEntry(window, name, value));
       }
       const dirname = attr(field, 'dirname');
@@ -1294,7 +1618,9 @@ const entriesOf = (self) => state(self).entries;
 // A FormData's entries (XMLHttpRequest's send), or null for other values.
 export function formDataEntries(value) {
   const s = value !== null && typeof value === 'object' ? value[S] : undefined;
-  return s !== undefined && Array.isArray(s.entries) && Object.prototype.toString.call(value) === '[object FormData]' ? s.entries : null;
+  return s !== undefined && Array.isArray(s.entries) && Object.prototype.toString.call(value) === '[object FormData]'
+    ? s.entries
+    : null;
 }
 
 const FORM_DATA_INTERFACES = [
@@ -1306,18 +1632,31 @@ const FORM_DATA_INTERFACES = [
       // jsdom 20 ignores the submitter argument (libraries feature-detect it
       // with new FormData(form, 0), which throws from jsdom 22 on).
       if (w[S].compat.jsdom < 21) submitter = null;
-      if (!form?.[S] || !isTag(form, 'form')) throw new TypeError("Failed to construct 'FormData': parameter 1 is not of type 'HTMLFormElement'.");
+      if (!form?.[S] || !isTag(form, 'form'))
+        throw new TypeError("Failed to construct 'FormData': parameter 1 is not of type 'HTMLFormElement'.");
       if (submitter !== null) {
-        if (!submitter?.[S] || !isSubmitButton(submitter)) throw new TypeError("Failed to construct 'FormData': The specified element is not a submit button.");
-        if (formOwner(submitter) !== form) throw domError("Failed to construct 'FormData': The specified element is not owned by this form element.", 'NotFoundError');
+        if (!submitter?.[S] || !isSubmitButton(submitter))
+          throw new TypeError("Failed to construct 'FormData': The specified element is not a submit button.");
+        if (formOwner(submitter) !== form)
+          throw domError(
+            "Failed to construct 'FormData': The specified element is not owned by this form element.",
+            'NotFoundError',
+          );
       }
       const list = constructEntryList(form, submitter);
-      if (list === null) throw domError("Failed to construct 'FormData': The form is already constructing its entry list.", 'InvalidStateError');
+      if (list === null)
+        throw domError(
+          "Failed to construct 'FormData': The form is already constructing its entry list.",
+          'InvalidStateError',
+        );
       self[S].entries = list;
       return self;
     },
     members: {
-      append(name, value, filename) { const s = state(this); s.entries.push(createEntry(s.window, name, value, filename, 'append')); },
+      append(name, value, filename) {
+        const s = state(this);
+        s.entries.push(createEntry(s.window, name, value, filename, 'append'));
+      },
       delete(name) {
         const s = state(this);
         const key = scalar(name);
@@ -1329,9 +1668,14 @@ const FORM_DATA_INTERFACES = [
       },
       getAll(name) {
         const key = scalar(name);
-        return entriesOf(this).filter((e) => e.name === key).map((e) => e.value);
+        return entriesOf(this)
+          .filter((e) => e.name === key)
+          .map((e) => e.value);
       },
-      has(name) { const key = scalar(name); return entriesOf(this).some((e) => e.name === key); },
+      has(name) {
+        const key = scalar(name);
+        return entriesOf(this).some((e) => e.name === key);
+      },
       // Replace the first entry with this name and remove the others, or append.
       set(name, value, filename) {
         const s = state(this);
@@ -1345,11 +1689,21 @@ const FORM_DATA_INTERFACES = [
         });
         if (!replaced) s.entries.push(entry);
       },
-      *entries() { for (const e of entriesOf(this).slice()) yield [e.name, e.value]; },
-      *keys() { for (const e of entriesOf(this).slice()) yield e.name; },
-      *values() { for (const e of entriesOf(this).slice()) yield e.value; },
-      forEach(callback, thisArg) { for (const e of entriesOf(this).slice()) callback.call(thisArg, e.value, e.name, this); },
-      [Symbol.iterator]() { return this.entries(); },
+      *entries() {
+        for (const e of entriesOf(this).slice()) yield [e.name, e.value];
+      },
+      *keys() {
+        for (const e of entriesOf(this).slice()) yield e.name;
+      },
+      *values() {
+        for (const e of entriesOf(this).slice()) yield e.value;
+      },
+      forEach(callback, thisArg) {
+        for (const e of entriesOf(this).slice()) callback.call(thisArg, e.value, e.name, this);
+      },
+      [Symbol.iterator]() {
+        return this.entries();
+      },
     },
   },
   {
@@ -1357,7 +1711,8 @@ const FORM_DATA_INTERFACES = [
     parent: 'Event',
     length: 2,
     construct: (w, self, args) => {
-      if (!args[1]?.formData?.[S]) throw new TypeError("Failed to construct 'FormDataEvent': required member formData is undefined.");
+      if (!args[1]?.formData?.[S])
+        throw new TypeError("Failed to construct 'FormDataEvent': required member formData is undefined.");
       return eventConstruct('FormDataEvent', { formData: null })(w, self, args);
     },
     members: fieldGetters({ formData: null }),
@@ -1373,7 +1728,12 @@ const mix = (...objects) => {
   return out;
 };
 
-const formMember = { get form() { state(this); return formOwner(this); } };
+const formMember = {
+  get form() {
+    state(this);
+    return formOwner(this);
+  },
+};
 
 const collection = (el, key, protoName, items, named = undefined, setIndex = null) => {
   const s = state(el);
@@ -1387,20 +1747,39 @@ const collection = (el, key, protoName, items, named = undefined, setIndex = nul
 
 // Members by interface, merged over the reflected attributes.
 export const FORM_MEMBERS = new Map([
-  ['HTMLInputElement', mix(
-    formMember,
-    labelsMember,
-    constraintValidation,
-    selectionMembers,
-    {
-      get type() { state(this); return inputType(this); },
-      set type(v) { writeAttribute(this, 'type', String(v)); },
-      get value() { state(this); return inputValue(this); },
-      set value(v) { state(this); setInputValue(this, str(v)); },
-      get checked() { state(this); return checkedness(this); },
-      set checked(v) { const s = state(this); s.dirtyChecked = true; setCheckedness(this, !!v); },
-      get indeterminate() { return !!state(this).indeterminate; },
-      set indeterminate(v) { state(this).indeterminate = !!v; },
+  [
+    'HTMLInputElement',
+    mix(formMember, labelsMember, constraintValidation, selectionMembers, {
+      get type() {
+        state(this);
+        return inputType(this);
+      },
+      set type(v) {
+        writeAttribute(this, 'type', String(v));
+      },
+      get value() {
+        state(this);
+        return inputValue(this);
+      },
+      set value(v) {
+        state(this);
+        setInputValue(this, str(v));
+      },
+      get checked() {
+        state(this);
+        return checkedness(this);
+      },
+      set checked(v) {
+        const s = state(this);
+        s.dirtyChecked = true;
+        setCheckedness(this, !!v);
+      },
+      get indeterminate() {
+        return !!state(this).indeterminate;
+      },
+      set indeterminate(v) {
+        state(this).indeterminate = !!v;
+      },
       // A file input's selected files: none (there is no file picker); the
       // same FileList each time. Null for other types.
       get files() {
@@ -1414,7 +1793,10 @@ export const FORM_MEMBERS = new Map([
       set files(v) {
         const s = state(this);
         if (v === null || v === undefined) return;
-        if (!(v instanceof windowOf(this).FileList)) throw new TypeError("Failed to set the 'files' property on 'HTMLInputElement': The provided value is not of type 'FileList'.");
+        if (!(v instanceof windowOf(this).FileList))
+          throw new TypeError(
+            "Failed to set the 'files' property on 'HTMLInputElement': The provided value is not of type 'FileList'.",
+          );
         if (inputType(this) === 'file') s.fileList = v;
       },
       get list() {
@@ -1433,19 +1815,37 @@ export const FORM_MEMBERS = new Map([
         const type = inputType(this);
         const n = Number(v);
         // As jsdom: not finite is a TypeError, NaN too before 23.1.0.
-        if (!Number.isFinite(n) && (!Number.isNaN(n) || windowOf(this)[S].compat.nanValueAsNumberThrows)) throw new TypeError('Failed to set infinite value as Number');
-        if (!DEFAULT_STEP[type]) throw domError("Failed to set the 'valueAsNumber' property on 'HTMLInputElement': This input element does not support Number values.", 'InvalidStateError');
-        if (Number.isNaN(n)) { setInputValue(this, ''); return; }
+        if (!Number.isFinite(n) && (!Number.isNaN(n) || windowOf(this)[S].compat.nanValueAsNumberThrows))
+          throw new TypeError('Failed to set infinite value as Number');
+        if (!DEFAULT_STEP[type])
+          throw domError(
+            "Failed to set the 'valueAsNumber' property on 'HTMLInputElement': This input element does not support Number values.",
+            'InvalidStateError',
+          );
+        if (Number.isNaN(n)) {
+          setInputValue(this, '');
+          return;
+        }
         if (type === 'number' || type === 'range') setInputValue(this, String(n));
-        else if (type === 'date') { const d = new Date(n); setInputValue(this, Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10)); }
-        else if (type === 'time') setInputValue(this, serializeTime(Math.floor(((n % DAY) + DAY) % DAY), legacyTime(this)));
-        else if (type === 'month') { const y = 1970 + Math.floor(n / 12); setInputValue(this, `${pad(y, 4)}-${pad((((n % 12) + 12) % 12) + 1)}`); }
-        else if (type === 'week') setInputValue(this, serializeWeek(n));
+        else if (type === 'date') {
+          const d = new Date(n);
+          setInputValue(this, Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10));
+        } else if (type === 'time')
+          setInputValue(this, serializeTime(Math.floor(((n % DAY) + DAY) % DAY), legacyTime(this)));
+        else if (type === 'month') {
+          const y = 1970 + Math.floor(n / 12);
+          setInputValue(this, `${pad(y, 4)}-${pad((((n % 12) + 12) % 12) + 1)}`);
+        } else if (type === 'week') setInputValue(this, serializeWeek(n));
         else {
           // Out of the Date range: the empty string (jsdom; the standard leaves it undefined).
           const d = new Date(n);
           const t = d.getTime();
-          setInputValue(this, Number.isNaN(t) ? '' : `${d.toISOString().slice(0, 10)}T${serializeTime(t - Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()), legacyTime(this))}`);
+          setInputValue(
+            this,
+            Number.isNaN(t)
+              ? ''
+              : `${d.toISOString().slice(0, 10)}T${serializeTime(t - Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()), legacyTime(this))}`,
+          );
         }
       },
       get valueAsDate() {
@@ -1459,46 +1859,83 @@ export const FORM_MEMBERS = new Map([
       set valueAsDate(v) {
         state(this);
         const type = inputType(this);
-        if (type !== 'date' && type !== 'time' && type !== 'month' && type !== 'week') throw domError("This input element does not support Date values.", 'InvalidStateError');
-        if (v === null) { setInputValue(this, ''); return; }
-        if (!(v instanceof Date)) throw new TypeError("Failed to set the 'valueAsDate' property on 'HTMLInputElement': The provided value is not a Date.");
+        if (type !== 'date' && type !== 'time' && type !== 'month' && type !== 'week')
+          throw domError('This input element does not support Date values.', 'InvalidStateError');
+        if (v === null) {
+          setInputValue(this, '');
+          return;
+        }
+        if (!(v instanceof Date))
+          throw new TypeError(
+            "Failed to set the 'valueAsDate' property on 'HTMLInputElement': The provided value is not a Date.",
+          );
         const t = v.getTime();
-        if (Number.isNaN(t)) { setInputValue(this, ''); return; }
+        if (Number.isNaN(t)) {
+          setInputValue(this, '');
+          return;
+        }
         if (type === 'month') this.valueAsNumber = (v.getUTCFullYear() - 1970) * 12 + v.getUTCMonth();
         else this.valueAsNumber = type === 'time' ? t % 86400000 : t;
       },
-      stepUp(n = 1) { stepBy(this, Number(n) | 0, true); },
-      stepDown(n = 1) { stepBy(this, Number(n) | 0, false); },
-    },
-  )],
-  ['HTMLTextAreaElement', mix(
-    formMember,
-    labelsMember,
-    constraintValidation,
-    selectionMembers,
-    {
-      get type() { state(this); return 'textarea'; },
-      get defaultValue() { state(this); return childText(this); },
-      set defaultValue(v) { state(this); this.textContent = str(v); },
-      get value() { state(this); return textareaValue(this); },
+      stepUp(n = 1) {
+        stepBy(this, Number(n) | 0, true);
+      },
+      stepDown(n = 1) {
+        stepBy(this, Number(n) | 0, false);
+      },
+    }),
+  ],
+  [
+    'HTMLTextAreaElement',
+    mix(formMember, labelsMember, constraintValidation, selectionMembers, {
+      get type() {
+        state(this);
+        return 'textarea';
+      },
+      get defaultValue() {
+        state(this);
+        return childText(this);
+      },
+      set defaultValue(v) {
+        state(this);
+        this.textContent = str(v);
+      },
+      get value() {
+        state(this);
+        return textareaValue(this);
+      },
       set value(v) {
         const s = state(this);
         const old = textareaValue(this);
         s.value = normalizeNewlines(str(v));
         s.dirtyValue = true;
-        if (s.value !== old) { s.selStart = s.selEnd = s.value.length; s.selDir = 'none'; }
+        if (s.value !== old) {
+          s.selStart = s.selEnd = s.value.length;
+          s.selDir = 'none';
+        }
       },
-      get textLength() { state(this); return textareaValue(this).length; },
-    },
-  )],
-  ['HTMLSelectElement', mix(
-    formMember,
-    labelsMember,
-    constraintValidation,
-    {
-      get type() { state(this); return has(this, 'multiple') ? 'select-multiple' : 'select-one'; },
+      get textLength() {
+        state(this);
+        return textareaValue(this).length;
+      },
+    }),
+  ],
+  [
+    'HTMLSelectElement',
+    mix(formMember, labelsMember, constraintValidation, {
+      get type() {
+        state(this);
+        return has(this, 'multiple') ? 'select-multiple' : 'select-one';
+      },
       get options() {
-        const options = collection(this, 'optionsList', 'HTMLOptionsCollection', () => listOfOptions(this), undefined, (i, v) => setOption(this, i, v));
+        const options = collection(
+          this,
+          'optionsList',
+          'HTMLOptionsCollection',
+          () => listOfOptions(this),
+          undefined,
+          (i, v) => setOption(this, i, v),
+        );
         options[S].select = this;
         return options;
       },
@@ -1508,16 +1945,27 @@ export const FORM_MEMBERS = new Map([
           return [...descendants(this)].filter((el) => isTag(el, 'option') && selectedness(el));
         });
       },
-      get length() { state(this); return listOfOptions(this).length; },
-      set length(v) { this.options.length = v; },
-      get selectedIndex() { state(this); return selectedIndex(this); },
+      get length() {
+        state(this);
+        return listOfOptions(this).length;
+      },
+      set length(v) {
+        this.options.length = v;
+      },
+      get selectedIndex() {
+        state(this);
+        return selectedIndex(this);
+      },
       set selectedIndex(v) {
         state(this);
         settleSelectedness(this);
         const options = listOfOptions(this);
         for (const o of options) o[S].selectedness = false;
         const chosen = options[Number(v) | 0];
-        if (chosen) { chosen[S].selectedness = true; chosen[S].dirtySelected = true; }
+        if (chosen) {
+          chosen[S].selectedness = true;
+          chosen[S].dirtySelected = true;
+        }
       },
       get value() {
         state(this);
@@ -1530,162 +1978,263 @@ export const FORM_MEMBERS = new Map([
         settleSelectedness(this);
         const value = str(v);
         for (const o of listOfOptions(this)) {
-          if (optionValue(o) === value) { o[S].selectedness = true; o[S].dirtySelected = true; } else o[S].selectedness = false;
+          if (optionValue(o) === value) {
+            o[S].selectedness = true;
+            o[S].dirtySelected = true;
+          } else o[S].selectedness = false;
         }
       },
-      item(index) { return this.options.item(index); },
-      namedItem(name) { return this.options.namedItem(name); },
+      item(index) {
+        return this.options.item(index);
+      },
+      namedItem(name) {
+        return this.options.namedItem(name);
+      },
       // Iterable over its options, as an interface with an indexed getter
       // (WebIDL). jsdom's is Array.prototype.values over indexed properties;
       // warpdom iterates the list of options directly (the same items).
-      [Symbol.iterator]() { state(this); return listOfOptions(this).slice()[Symbol.iterator](); },
-      add(element, before = undefined) { this.options.add(element, before); },
+      [Symbol.iterator]() {
+        state(this);
+        return listOfOptions(this).slice()[Symbol.iterator]();
+      },
+      add(element, before = undefined) {
+        this.options.add(element, before);
+      },
       remove(...args) {
         if (args.length > 0) this.options.remove(args[0]);
         else internalsOf(this).protos.Element.remove.call(this);
       },
-    },
-  )],
-  ['HTMLOptionElement', {
-    // The nearest ancestor select's form owner.
-    get form() {
-      state(this);
-      const select = nearestAncestorSelect(this);
-      return select ? formOwner(select) : null;
-    },
-    get selected() {
-      state(this);
-      const select = nearestAncestorSelect(this);
-      if (select) settleSelectedness(select);
-      return selectedness(this);
-    },
-    set selected(v) {
-      const s = state(this);
-      const select = nearestAncestorSelect(this);
-      if (select) settleSelectedness(select);
-      s.dirtySelected = true;
-      s.selectedness = !!v;
-      if (select) {
-        if (s.selectedness) deselectOthers(this, select);
-        askForReset(select);
-      }
-    },
-    get value() { state(this); return optionValue(this); },
-    set value(v) { writeAttribute(this, 'value', String(v)); },
-    get text() { state(this); return optionText(this); },
-    set text(v) { state(this); this.textContent = String(v); },
-    get label() { state(this); return attr(this, 'label') ?? optionText(this); },
-    set label(v) { writeAttribute(this, 'label', String(v)); },
-    // The number of options before it in its select's list of options.
-    get index() {
-      state(this);
-      const select = nearestAncestorSelect(this);
-      const i = select ? listOfOptions(select).indexOf(this) : -1;
-      return i < 0 ? 0 : i;
-    },
-  }],
-  ['HTMLButtonElement', mix(
-    formMember,
-    labelsMember,
-    constraintValidation,
+    }),
+  ],
+  [
+    'HTMLOptionElement',
     {
-      get type() { state(this); return buttonType(this); },
-      set type(v) { writeAttribute(this, 'type', String(v)); },
+      // The nearest ancestor select's form owner.
+      get form() {
+        state(this);
+        const select = nearestAncestorSelect(this);
+        return select ? formOwner(select) : null;
+      },
+      get selected() {
+        state(this);
+        const select = nearestAncestorSelect(this);
+        if (select) settleSelectedness(select);
+        return selectedness(this);
+      },
+      set selected(v) {
+        const s = state(this);
+        const select = nearestAncestorSelect(this);
+        if (select) settleSelectedness(select);
+        s.dirtySelected = true;
+        s.selectedness = !!v;
+        if (select) {
+          if (s.selectedness) deselectOthers(this, select);
+          askForReset(select);
+        }
+      },
+      get value() {
+        state(this);
+        return optionValue(this);
+      },
+      set value(v) {
+        writeAttribute(this, 'value', String(v));
+      },
+      get text() {
+        state(this);
+        return optionText(this);
+      },
+      set text(v) {
+        state(this);
+        this.textContent = String(v);
+      },
+      get label() {
+        state(this);
+        return attr(this, 'label') ?? optionText(this);
+      },
+      set label(v) {
+        writeAttribute(this, 'label', String(v));
+      },
+      // The number of options before it in its select's list of options.
+      get index() {
+        state(this);
+        const select = nearestAncestorSelect(this);
+        const i = select ? listOfOptions(select).indexOf(this) : -1;
+        return i < 0 ? 0 : i;
+      },
     },
-  )],
-  ['HTMLFormElement', {
-    get elements() {
-      const list = collection(this, 'elementsList', 'HTMLFormControlsCollection', () => formElements(this), FORM_CONTROLS_NAMED);
-      return list;
-    },
-    get length() { state(this); return formElements(this).length; },
-    // Iterable over its elements from jsdom 26.1.0, with form[i]
-    // (compat.formIndexed; interfaces.js leaves it out before): as jsdom's,
-    // Array.prototype.values over the indexed properties, which reads the
-    // current length and elements at each step.
-    [Symbol.iterator]: Array.prototype.values,
-    get action() {
-      state(this);
-      const a = attr(this, 'action');
-      // Missing or empty: the document's URL; else resolved against the
-      // document's base URL (a <base> element), as jsdom.
-      if (a === undefined || a === '') return internalsOf(this).url.href;
-      try { return new URL(a, documentBaseURL(this[S].doc)).href; } catch { return a; }
-    },
-    set action(v) { writeAttribute(this, 'action', String(v)); },
-    get method() {
-      state(this);
-      const m = asciiLowercase(attr(this, 'method') ?? '');
-      return m === 'post' || m === 'dialog' ? m : 'get';
-    },
-    set method(v) { writeAttribute(this, 'method', String(v)); },
-    get enctype() {
-      state(this);
-      const e = asciiLowercase(attr(this, 'enctype') ?? '');
-      return e === 'multipart/form-data' || e === 'text/plain' ? e : 'application/x-www-form-urlencoded';
-    },
-    set enctype(v) { writeAttribute(this, 'enctype', String(v)); },
-    get encoding() { return this.enctype; },
-    set encoding(v) { this.enctype = v; },
-    submit() { state(this); notImplemented(this, "HTMLFormElement's submit() method"); },
-    requestSubmit(submitter = null) {
-      state(this);
-      if (submitter !== null) {
-        if (!submitter?.[S] || !isSubmitButton(submitter)) throw new TypeError('The specified element is not a submit button');
-        if (formOwner(submitter) !== this) throw domError('The specified element is not owned by this form element', 'NotFoundError');
-      }
-      submitForm(this, submitter);
-    },
-    reset() { state(this); reset(this); },
-    checkValidity() { state(this); return formCheckValidity(this); },
-    reportValidity() { state(this); return formCheckValidity(this); },
-  }],
-  ['HTMLLabelElement', {
-    get control() { state(this); return labelControl(this); },
-    get form() {
-      state(this);
-      const control = labelControl(this);
-      return control && isListed(control) ? formOwner(control) : null;
-    },
-  }],
-  ['HTMLFieldSetElement', mix(
-    formMember,
-    constraintValidation,
+  ],
+  [
+    'HTMLButtonElement',
+    mix(formMember, labelsMember, constraintValidation, {
+      get type() {
+        state(this);
+        return buttonType(this);
+      },
+      set type(v) {
+        writeAttribute(this, 'type', String(v));
+      },
+    }),
+  ],
+  [
+    'HTMLFormElement',
     {
-      get type() { state(this); return 'fieldset'; },
-      get elements() { return collection(this, 'elementsList', 'HTMLCollection', () => cached(this, 'fieldsetElements', () => [...descendants(this)].filter(isListed))); },
+      get elements() {
+        const list = collection(
+          this,
+          'elementsList',
+          'HTMLFormControlsCollection',
+          () => formElements(this),
+          FORM_CONTROLS_NAMED,
+        );
+        return list;
+      },
+      get length() {
+        state(this);
+        return formElements(this).length;
+      },
+      // Iterable over its elements from jsdom 26.1.0, with form[i]
+      // (compat.formIndexed; interfaces.js leaves it out before): as jsdom's,
+      // Array.prototype.values over the indexed properties, which reads the
+      // current length and elements at each step.
+      [Symbol.iterator]: Array.prototype.values,
+      get action() {
+        state(this);
+        const a = attr(this, 'action');
+        // Missing or empty: the document's URL; else resolved against the
+        // document's base URL (a <base> element), as jsdom.
+        if (a === undefined || a === '') return internalsOf(this).url.href;
+        try {
+          return new URL(a, documentBaseURL(this[S].doc)).href;
+        } catch {
+          return a;
+        }
+      },
+      set action(v) {
+        writeAttribute(this, 'action', String(v));
+      },
+      get method() {
+        state(this);
+        const m = asciiLowercase(attr(this, 'method') ?? '');
+        return m === 'post' || m === 'dialog' ? m : 'get';
+      },
+      set method(v) {
+        writeAttribute(this, 'method', String(v));
+      },
+      get enctype() {
+        state(this);
+        const e = asciiLowercase(attr(this, 'enctype') ?? '');
+        return e === 'multipart/form-data' || e === 'text/plain' ? e : 'application/x-www-form-urlencoded';
+      },
+      set enctype(v) {
+        writeAttribute(this, 'enctype', String(v));
+      },
+      get encoding() {
+        return this.enctype;
+      },
+      set encoding(v) {
+        this.enctype = v;
+      },
+      submit() {
+        state(this);
+        notImplemented(this, "HTMLFormElement's submit() method");
+      },
+      requestSubmit(submitter = null) {
+        state(this);
+        if (submitter !== null) {
+          if (!submitter?.[S] || !isSubmitButton(submitter))
+            throw new TypeError('The specified element is not a submit button');
+          if (formOwner(submitter) !== this)
+            throw domError('The specified element is not owned by this form element', 'NotFoundError');
+        }
+        submitForm(this, submitter);
+      },
+      reset() {
+        state(this);
+        reset(this);
+      },
+      checkValidity() {
+        state(this);
+        return formCheckValidity(this);
+      },
+      reportValidity() {
+        state(this);
+        return formCheckValidity(this);
+      },
     },
-  )],
-  ['HTMLOutputElement', mix(
-    formMember,
-    labelsMember,
-    constraintValidation,
+  ],
+  [
+    'HTMLLabelElement',
     {
-      get type() { state(this); return 'output'; },
-      get htmlFor() { state(this); return tokenList(this, 'for', writeAttribute); },
-      set htmlFor(v) { writeAttribute(this, 'for', String(v)); },
-      get value() { state(this); return this.textContent; },
+      get control() {
+        state(this);
+        return labelControl(this);
+      },
+      get form() {
+        state(this);
+        const control = labelControl(this);
+        return control && isListed(control) ? formOwner(control) : null;
+      },
+    },
+  ],
+  [
+    'HTMLFieldSetElement',
+    mix(formMember, constraintValidation, {
+      get type() {
+        state(this);
+        return 'fieldset';
+      },
+      get elements() {
+        return collection(this, 'elementsList', 'HTMLCollection', () =>
+          cached(this, 'fieldsetElements', () => [...descendants(this)].filter(isListed)),
+        );
+      },
+    }),
+  ],
+  [
+    'HTMLOutputElement',
+    mix(formMember, labelsMember, constraintValidation, {
+      get type() {
+        state(this);
+        return 'output';
+      },
+      get htmlFor() {
+        state(this);
+        return tokenList(this, 'for', writeAttribute);
+      },
+      set htmlFor(v) {
+        writeAttribute(this, 'for', String(v));
+      },
+      get value() {
+        state(this);
+        return this.textContent;
+      },
       set value(v) {
         const s = state(this);
         if (s.defaultOverride == null) s.defaultOverride = this.textContent;
         this.textContent = String(v);
       },
-      get defaultValue() { state(this); return outputDefault(this); },
+      get defaultValue() {
+        state(this);
+        return outputDefault(this);
+      },
       set defaultValue(v) {
         const s = state(this);
         if (s.defaultOverride == null) this.textContent = String(v);
         else s.defaultOverride = String(v);
       },
-    },
-  )],
+    }),
+  ],
   ['HTMLObjectElement', mix(formMember, constraintValidation)],
-  ['HTMLLegendElement', {
-    get form() {
-      state(this);
-      const p = this[S].parent;
-      return p && isTag(p, 'fieldset') ? formOwner(p) : null;
+  [
+    'HTMLLegendElement',
+    {
+      get form() {
+        state(this);
+        const p = this[S].parent;
+        return p && isTag(p, 'fieldset') ? formOwner(p) : null;
+      },
     },
-  }],
+  ],
 ]);
 
 // stepUp() and stepDown() (HTML 4.10.5.4), as jsdom (black box, 20.0.3 to
@@ -1699,22 +2248,28 @@ function stepBy(el, n, up) {
   state(el);
   const type = inputType(el);
   const method = `Failed to invoke '${up ? 'stepUp' : 'stepDown'}' method on 'HTMLInputElement'`;
-  if (!DEFAULT_STEP[type]) throw domError(`${method}: This input element does not support Number values.`, 'InvalidStateError');
+  if (!DEFAULT_STEP[type])
+    throw domError(`${method}: This input element does not support Number values.`, 'InvalidStateError');
   const allowed = allowedStep(el, type);
-  if (allowed === null) throw domError(`${method}: This input element does not support value step.`, 'InvalidStateError');
+  if (allowed === null)
+    throw domError(`${method}: This input element does not support value step.`, 'InvalidStateError');
   const bounds = type === 'range' ? rangeBounds(el) : null;
   const min = bounds ? bounds.min : toNumber(type, attr(el, 'min') ?? '', el);
   const max = bounds ? bounds.max : toNumber(type, attr(el, 'max') ?? '', el);
   if (min !== null && max !== null && min > max) return;
   // Values on the step are base + k * step (BigInt digits at exponent e).
-  const { e, values: [stepDigits, base, before, lo, hi] } = scaled([allowed[0], allowed[2], toNumber(type, inputValue(el), el) ?? 0, min, max]);
+  const {
+    e,
+    values: [stepDigits, base, before, lo, hi],
+  } = scaled([allowed[0], allowed[2], toNumber(type, inputValue(el), el) ?? 0, min, max]);
   const step = stepDigits * BigInt(allowed[1]);
   const ceilK = (x) => -floorDiv(base - x, step);
   // jsdom (black box, every version): nothing when max - min is less than
   // the step (the standard: when no value between them is on the step).
   if (lo !== null && hi !== null && hi - lo < step) return;
   let next;
-  if ((before - base) % step !== 0n) next = base + (up ? floorDiv(before - base, step) + 1n : ceilK(before) - 1n) * step;
+  if ((before - base) % step !== 0n)
+    next = base + (up ? floorDiv(before - base, step) + 1n : ceilK(before) - 1n) * step;
   else next = before + step * BigInt(up ? n : -n);
   if (lo !== null && next < lo) next = base + ceilK(lo) * step;
   if (hi !== null && next > hi) next = base + floorDiv(hi - base, step) * step;
@@ -1734,7 +2289,9 @@ function formControlsNamedItem(list, name) {
   const found = items(list).filter((el) => attr(el, 'id') === key || attr(el, 'name') === key);
   if (found.length === 0) return null;
   if (found.length === 1) return found[0];
-  return liveList(state(list).protos.RadioNodeList, () => items(list).filter((el) => attr(el, 'id') === key || attr(el, 'name') === key));
+  return liveList(state(list).protos.RadioNodeList, () =>
+    items(list).filter((el) => attr(el, 'id') === key || attr(el, 'name') === key),
+  );
 }
 
 const FORM_CONTROLS_NAMED = { get: formControlsNamedItem, names: htmlCollectionNames, unenumerable: true };
@@ -1750,8 +2307,14 @@ hooks.indexedElement = (element, tag, compat) => {
 
 // HTMLOptionsCollection's indexed setter (select.options[i] = option).
 function setOption(select, index, option) {
-  if (option == null) { listOfOptions(select)[index]?.remove(); return; }
-  if (!option?.[S] || !isTag(option, 'option')) throw new TypeError("Failed to set an indexed property on 'HTMLOptionsCollection': parameter 2 is not of type 'HTMLOptionElement'.");
+  if (option == null) {
+    listOfOptions(select)[index]?.remove();
+    return;
+  }
+  if (!option?.[S] || !isTag(option, 'option'))
+    throw new TypeError(
+      "Failed to set an indexed property on 'HTMLOptionsCollection': parameter 2 is not of type 'HTMLOptionElement'.",
+    );
   const options = listOfOptions(select);
   const n = index - options.length;
   if (n > 0) {
@@ -1770,7 +2333,9 @@ export const FORM_INTERFACES = [
     name: 'HTMLOptionsCollection',
     parent: 'HTMLCollection',
     members: {
-      get length() { return items(this).length; },
+      get length() {
+        return items(this).length;
+      },
       set length(v) {
         const select = state(this).select;
         const options = items(this);
@@ -1779,14 +2344,20 @@ export const FORM_INTERFACES = [
         else for (let i = options.length; i < n; i++) select.appendChild(select.ownerDocument.createElement('option'));
       },
       ...iterate,
-      get selectedIndex() { return selectedIndex(state(this).select); },
-      set selectedIndex(v) { state(this).select.selectedIndex = v; },
+      get selectedIndex() {
+        return selectedIndex(state(this).select);
+      },
+      set selectedIndex(v) {
+        state(this).select.selectedIndex = v;
+      },
       add(element, before = null) {
         const select = state(this).select;
-        if (contains(element, select)) throw domError('The new element is an ancestor of the select.', 'HierarchyRequestError');
+        if (contains(element, select))
+          throw domError('The new element is an ancestor of the select.', 'HierarchyRequestError');
         let ref = before;
         if (typeof before === 'number') ref = items(this)[before] ?? null;
-        if (ref !== null && !contains(select, ref)) throw domError('The reference element is not a descendant of the select.', 'NotFoundError');
+        if (ref !== null && !contains(select, ref))
+          throw domError('The reference element is not a descendant of the select.', 'NotFoundError');
         if (element === ref) return;
         const parent = ref === null ? select : ref.parentNode;
         parent.insertBefore(element, ref);
@@ -1801,7 +2372,9 @@ export const FORM_INTERFACES = [
     name: 'HTMLFormControlsCollection',
     parent: 'HTMLCollection',
     members: {
-      namedItem(name) { return formControlsNamedItem(this, name); },
+      namedItem(name) {
+        return formControlsNamedItem(this, name);
+      },
       ...iterate,
     },
   },
@@ -1810,13 +2383,17 @@ export const FORM_INTERFACES = [
     parent: 'NodeList',
     members: {
       get value() {
-        for (const el of items(this)) if (isTag(el, 'input') && inputType(el) === 'radio' && checkedness(el)) return inputValue(el);
+        for (const el of items(this))
+          if (isTag(el, 'input') && inputType(el) === 'radio' && checkedness(el)) return inputValue(el);
         return '';
       },
       set value(v) {
         const value = String(v);
         for (const el of items(this)) {
-          if (isTag(el, 'input') && inputType(el) === 'radio' && inputValue(el) === value) { el.checked = true; return; }
+          if (isTag(el, 'input') && inputType(el) === 'radio' && inputValue(el) === value) {
+            el.checked = true;
+            return;
+          }
         }
       },
       ...iterate,
@@ -1824,11 +2401,16 @@ export const FORM_INTERFACES = [
   },
   {
     name: 'ValidityState',
-    members: Object.fromEntries([...VALIDITY_FLAGS, 'valid'].map((flag) => [flag, {
-      get() {
-        const flags = validityFlags(state(this).element);
-        return flag === 'valid' ? VALIDITY_FLAGS.every((k) => !flags[k]) : !!flags[flag];
-      },
-    }])),
+    members: Object.fromEntries(
+      [...VALIDITY_FLAGS, 'valid'].map((flag) => [
+        flag,
+        {
+          get() {
+            const flags = validityFlags(state(this).element);
+            return flag === 'valid' ? VALIDITY_FLAGS.every((k) => !flags[k]) : !!flags[flag];
+          },
+        },
+      ]),
+    ),
   },
 ];

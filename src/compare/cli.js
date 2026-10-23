@@ -47,7 +47,10 @@ export function parseArgs(argv) {
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--') { opts.args = argv.slice(i + 1); break; }
+    if (a === '--') {
+      opts.args = argv.slice(i + 1);
+      break;
+    }
     if (a === '-h' || a === '--help') opts.help = true;
     else if (a === '--correctness') opts.correctness = true;
     else if (a === '--fast-frames') opts.fastFrames = true;

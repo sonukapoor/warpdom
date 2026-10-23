@@ -3,7 +3,17 @@
 // URLSearchParams and Headers, console, WebAssembly and WebSocket, the
 // Image/Audio/Option constructors.
 // Values follow jsdom's defaults so tests see the same environment.
-import { S, state, lazyDataSetter, domError, tooFewArguments, platformGlobal, PLATFORM_GLOBAL, PlatformURL, PlatformURL as URL } from './internal.js';
+import {
+  S,
+  state,
+  lazyDataSetter,
+  domError,
+  tooFewArguments,
+  platformGlobal,
+  PLATFORM_GLOBAL,
+  PlatformURL,
+  PlatformURL as URL,
+} from './internal.js';
 import { dispatch, reportError } from './events.js';
 import { computedStyle, cssNamespace } from './css.js';
 import './cascade.js';
@@ -20,7 +30,9 @@ export const LATEST_JSDOM = 30;
 // A jsdom version as [major, minor, patch]: from a version string, or a
 // major version alone, which stands for that major's latest release.
 function parseJsdomVersion(version) {
-  const [major, minor = Infinity, patch = Infinity] = String(version).split('.').map((part) => Number.parseInt(part, 10));
+  const [major, minor = Infinity, patch = Infinity] = String(version)
+    .split('.')
+    .map((part) => Number.parseInt(part, 10));
   return [major, minor, patch];
 }
 
@@ -36,9 +48,11 @@ export function newerJsdomWarning(version) {
   const [newestMajor, newestMinor] = parseJsdomVersion(NEWEST_MODELED_JSDOM);
   if (!Number.isFinite(major) || !Number.isFinite(minor)) return null;
   if (major < newestMajor || (major === newestMajor && minor <= newestMinor)) return null;
-  return `warpdom: the installed jsdom ${version} is newer than ${NEWEST_MODELED_JSDOM}, the newest version warpdom models, `
-    + `so tests get jsdom ${NEWEST_MODELED_JSDOM}'s behavior. If a test's result differs from jsdom, please report it at `
-    + 'https://github.com/sonukapoor/warpdom/issues';
+  return (
+    `warpdom: the installed jsdom ${version} is newer than ${NEWEST_MODELED_JSDOM}, the newest version warpdom models, ` +
+    `so tests get jsdom ${NEWEST_MODELED_JSDOM}'s behavior. If a test's result differs from jsdom, please report it at ` +
+    'https://github.com/sonukapoor/warpdom/issues'
+  );
 }
 
 // Prints newerJsdomWarning once per process (the adapters call it with the
@@ -71,22 +85,66 @@ const before = (version, target) => {
 // object no property of its own (black box, jsdom 27.4.0 to 30.1.3); so
 // the setters and status's getter are made per window. name is a data
 // property in every version and keeps any value as given.
-const VIEWPORT = { innerWidth: 1024, innerHeight: 768, outerWidth: 1024, outerHeight: 768, devicePixelRatio: 1,
-  scrollX: 0, scrollY: 0, pageXOffset: 0, pageYOffset: 0, screenX: 0, screenY: 0, screenLeft: 0, screenTop: 0 };
-const VIEWPORT_GETTERS = Object.fromEntries(Object.entries(VIEWPORT).map(([key, value]) => [key, Object.getOwnPropertyDescriptor({ get [key]() { return value; } }, key).get]));
+const VIEWPORT = {
+  innerWidth: 1024,
+  innerHeight: 768,
+  outerWidth: 1024,
+  outerHeight: 768,
+  devicePixelRatio: 1,
+  scrollX: 0,
+  scrollY: 0,
+  pageXOffset: 0,
+  pageYOffset: 0,
+  screenX: 0,
+  screenY: 0,
+  screenLeft: 0,
+  screenTop: 0,
+};
+const VIEWPORT_GETTERS = Object.fromEntries(
+  Object.entries(VIEWPORT).map(([key, value]) => [
+    key,
+    Object.getOwnPropertyDescriptor(
+      {
+        get [key]() {
+          return value;
+        },
+      },
+      key,
+    ).get,
+  ]),
+);
 
 function defineWindowAccessors(window) {
   for (const key of Object.keys(VIEWPORT)) {
-    const { set } = Object.getOwnPropertyDescriptor({ set [key](v) { replace(window, key, v); } }, key);
+    const { set } = Object.getOwnPropertyDescriptor(
+      {
+        set [key](v) {
+          replace(window, key, v);
+        },
+      },
+      key,
+    );
     Object.defineProperty(window, key, { get: VIEWPORT_GETTERS[key], set, enumerable: true, configurable: true });
   }
   const ws = window[S];
-  const status = { get status() { return ws.status ?? ''; }, set status(v) { ws.status = String(v); } };
-  Object.defineProperty(window, 'status', { ...Object.getOwnPropertyDescriptor(status, 'status'), enumerable: true, configurable: true });
+  const status = {
+    get status() {
+      return ws.status ?? '';
+    },
+    set status(v) {
+      ws.status = String(v);
+    },
+  };
+  Object.defineProperty(window, 'status', {
+    ...Object.getOwnPropertyDescriptor(status, 'status'),
+    enumerable: true,
+    configurable: true,
+  });
 }
 
 export function setupWindowData(window) {
-  const define = (key, value) => Object.defineProperty(window, key, { value, writable: true, enumerable: true, configurable: true });
+  const define = (key, value) =>
+    Object.defineProperty(window, key, { value, writable: true, enumerable: true, configurable: true });
   define('name', '');
   if (window[S].compat.jsdom >= 27) {
     defineWindowAccessors(window);
@@ -132,24 +190,45 @@ export function clearWindowTimers(window) {
 }
 
 const timerMembers = {
-  setTimeout(handler, timeout = 0, ...args) { return startTimer(this, false, handler, timeout, args); },
-  setInterval(handler, timeout = 0, ...args) { return startTimer(this, true, handler, timeout, args); },
-  clearTimeout(id) { stopTimer(this, id); },
-  clearInterval(id) { stopTimer(this, id); },
+  setTimeout(handler, timeout = 0, ...args) {
+    return startTimer(this, false, handler, timeout, args);
+  },
+  setInterval(handler, timeout = 0, ...args) {
+    return startTimer(this, true, handler, timeout, args);
+  },
+  clearTimeout(id) {
+    stopTimer(this, id);
+  },
+  clearInterval(id) {
+    stopTimer(this, id);
+  },
   // An exception in the callback is reported (an error event at the
   // window), as for event listeners.
   queueMicrotask(callback) {
     state(this);
-    if (typeof callback !== 'function') throw new TypeError("Failed to execute 'queueMicrotask' on 'Window': The callback provided as parameter 1 is not a function.");
+    if (typeof callback !== 'function')
+      throw new TypeError(
+        "Failed to execute 'queueMicrotask' on 'Window': The callback provided as parameter 1 is not a function.",
+      );
     const window = this;
     globalThis.queueMicrotask(() => {
-      try { callback(); } catch (error) { reportError(window, error); }
+      try {
+        callback();
+      } catch (error) {
+        reportError(window, error);
+      }
     });
   },
   // The platform's (the CommonJS bundle may be evaluated in a context
   // without them, a Jest test file's VM context).
-  atob(data) { state(this); return PLATFORM_GLOBAL.atob(data); },
-  btoa(data) { state(this); return PLATFORM_GLOBAL.btoa(data); },
+  atob(data) {
+    state(this);
+    return PLATFORM_GLOBAL.atob(data);
+  },
+  btoa(data) {
+    state(this);
+    return PLATFORM_GLOBAL.btoa(data);
+  },
 };
 
 // The window members test environments leave to the host (Node's timers).
@@ -176,20 +255,28 @@ const animationFrames = {
     frames.queue.set(id, callback);
     if (!frames.scheduled) {
       frames.scheduled = true;
-      hostTimeout(this, () => {
-        frames.scheduled = false;
-        // This frame's callbacks; one canceled by an earlier callback in the
-        // same frame does not run.
-        const current = frames.current = frames.queue;
-        frames.queue = new Map();
-        const t = windowNow(this);
-        for (const [id, cb] of current) {
-          if (!current.has(id)) continue;
-          current.delete(id);
-          try { cb(t); } catch (error) { s.onUnhandledError(error); }
-        }
-        frames.current = null;
-      }, s.fastFrames ? 0 : 1000 / 60);
+      hostTimeout(
+        this,
+        () => {
+          frames.scheduled = false;
+          // This frame's callbacks; one canceled by an earlier callback in the
+          // same frame does not run.
+          const current = (frames.current = frames.queue);
+          frames.queue = new Map();
+          const t = windowNow(this);
+          for (const [id, cb] of current) {
+            if (!current.has(id)) continue;
+            current.delete(id);
+            try {
+              cb(t);
+            } catch (error) {
+              s.onUnhandledError(error);
+            }
+          }
+          frames.current = null;
+        },
+        s.fastFrames ? 0 : 1000 / 60,
+      );
     }
     return id;
   },
@@ -202,53 +289,110 @@ const animationFrames = {
 
 // Window methods jsdom does not implement either: they report "Not
 // implemented" on the console, as jsdom's default virtual console does.
-const notImplementedMethods = Object.fromEntries(['alert', 'blur', 'confirm', 'focus', 'moveBy', 'moveTo', 'open', 'print',
-  'prompt', 'resizeBy', 'resizeTo', 'scroll', 'scrollBy', 'scrollTo'].map((name) => [name, {
-  [name]() { state(this).notImplemented(`Window's ${name}() method`); },
-}[name]]));
+const notImplementedMethods = Object.fromEntries(
+  [
+    'alert',
+    'blur',
+    'confirm',
+    'focus',
+    'moveBy',
+    'moveTo',
+    'open',
+    'print',
+    'prompt',
+    'resizeBy',
+    'resizeTo',
+    'scroll',
+    'scrollBy',
+    'scrollTo',
+  ].map((name) => [
+    name,
+    {
+      [name]() {
+        state(this).notImplemented(`Window's ${name}() method`);
+      },
+    }[name],
+  ]),
+);
 
 // Window members that do nothing here (HTML standard, 7.2.2): close() and
 // stop() for a window scripts did not open, and the legacy captureEvents()
 // and releaseEvents().
-const noOps = { close() { state(this); }, stop() { state(this); }, captureEvents() { state(this); }, releaseEvents() { state(this); } };
+const noOps = {
+  close() {
+    state(this);
+  },
+  stop() {
+    state(this);
+  },
+  captureEvents() {
+    state(this);
+  },
+  releaseEvents() {
+    state(this);
+  },
+};
 
 // The BarProp objects (locationbar, menubar, ...): one per window and bar,
 // all visible.
 const BARS = ['locationbar', 'menubar', 'personalbar', 'scrollbars', 'statusbar', 'toolbar'];
-const barMembers = Object.fromEntries(BARS.map((bar) => [bar, {
-  get() {
-    const ws = state(this);
-    const bars = ws.bars ?? (ws.bars = {});
-    return bars[bar] ?? (bars[bar] = make(this, 'BarProp', {}));
-  },
-}]));
+const barMembers = Object.fromEntries(
+  BARS.map((bar) => [
+    bar,
+    {
+      get() {
+        const ws = state(this);
+        const bars = ws.bars ?? (ws.bars = {});
+        return bars[bar] ?? (bars[bar] = make(this, 'BarProp', {}));
+      },
+    },
+  ]),
+);
 
 // [Replaceable] attributes: assigning one replaces it with an own property.
-const replace = (target, name, value) => Object.defineProperty(target, name, { value, writable: true, enumerable: true, configurable: true });
+const replace = (target, name, value) =>
+  Object.defineProperty(target, name, { value, writable: true, enumerable: true, configurable: true });
 
 // A window's origin: an iframe's about:blank document has its creator's
 // (frames.js), as in jsdom (its location.origin stays "null").
-export const windowOrigin = (window) => { const ws = state(window); return ws.aboutOrigin ?? ws.url.origin; };
+export const windowOrigin = (window) => {
+  const ws = state(window);
+  return ws.aboutOrigin ?? ws.url.origin;
+};
 
 export const WINDOW_MEMBERS = {
   ...animationFrames,
   ...timerMembers,
   ...noOps,
   ...barMembers,
-  get origin() { return windowOrigin(this); },
-  set origin(value) { replace(this, 'origin', value); },
-  get external() { const ws = state(this); return ws.external ?? (ws.external = make(this, 'External', {})); },
-  set external(value) { replace(this, 'external', value); },
+  get origin() {
+    return windowOrigin(this);
+  },
+  set origin(value) {
+    replace(this, 'origin', value);
+  },
+  get external() {
+    const ws = state(this);
+    return ws.external ?? (ws.external = make(this, 'External', {}));
+  },
+  set external(value) {
+    replace(this, 'external', value);
+  },
   // The current event (DOM 2.10), set while listeners run (events.js);
   // [Replaceable]: assigning it replaces it with an own property.
-  get event() { return state(this).currentEvent; },
-  set event(value) { Object.defineProperty(this, 'event', { value, writable: true, enumerable: true, configurable: true }); },
+  get event() {
+    return state(this).currentEvent;
+  },
+  set event(value) {
+    Object.defineProperty(this, 'event', { value, writable: true, enumerable: true, configurable: true });
+  },
   ...notImplementedMethods,
   // Pseudo-elements are not implemented: as in jsdom, the element's own
   // style, reported as not implemented in the profile's words.
   getComputedStyle(element, pseudoElt = undefined) {
     const ws = state(this);
-    if (!element?.[S]?.attrs) throw new TypeError("Failed to execute 'getComputedStyle' on 'Window': parameter 1 is not of type 'Element'.");
+    if (!element?.[S]?.attrs)
+      throw new TypeError("Failed to execute 'getComputedStyle' on 'Window': parameter 1 is not of type 'Element'.");
     if (pseudoElt != null && pseudoElt !== '') ws.notImplemented(pseudoElementMessage(ws.compat.jsdom));
     return computedStyle(element, ws.protos.CSSStyleProperties);
   },
@@ -262,28 +406,61 @@ export const WINDOW_MEMBERS = {
     const target = String(targetOrigin);
     if (target !== '*' && target !== '/') {
       let origin;
-      try { origin = new URL(target).origin; } catch { throw domError(`Failed to execute 'postMessage' on 'Window': Invalid target origin '${target}' in a call to 'postMessage'.`, 'SyntaxError'); }
+      try {
+        origin = new URL(target).origin;
+      } catch {
+        throw domError(
+          `Failed to execute 'postMessage' on 'Window': Invalid target origin '${target}' in a call to 'postMessage'.`,
+          'SyntaxError',
+        );
+      }
       if (origin !== ws.url.origin) return;
     }
     ws.setTimeout(() => dispatch(this, new this.MessageEvent('message', { data: message })), 0);
   },
-  get customElements() { return state(this).customElements; },
-  getSelection() { return state(this) && this.document.getSelection(); },
-  get screen() { const s = state(this); return s.screen ?? (s.screen = make(this, 'Screen', {})); },
-  get navigator() { const s = state(this); return s.navigator ?? (s.navigator = make(this, 'Navigator', {})); },
-  get location() { return state(this).location; },
+  get customElements() {
+    return state(this).customElements;
+  },
+  getSelection() {
+    return state(this) && this.document.getSelection();
+  },
+  get screen() {
+    const s = state(this);
+    return s.screen ?? (s.screen = make(this, 'Screen', {}));
+  },
+  get navigator() {
+    const s = state(this);
+    return s.navigator ?? (s.navigator = make(this, 'Navigator', {}));
+  },
+  get location() {
+    return state(this).location;
+  },
   // [PutForwards=href]: window.location = url navigates, as in jsdom.
-  set location(v) { state(this).location.href = v; },
-  get history() { return state(this).history; },
+  set location(v) {
+    state(this).location.href = v;
+  },
+  get history() {
+    return state(this).history;
+  },
   // The window's Crypto and Performance objects (crypto.js, performance.js).
-  get crypto() { const s = state(this); return s.crypto ?? (s.crypto = make(this, 'Crypto', {})); },
-  get performance() { const s = state(this); return s.performance ?? (s.performance = make(this, 'Performance', {})); },
+  get crypto() {
+    const s = state(this);
+    return s.crypto ?? (s.crypto = make(this, 'Crypto', {}));
+  },
+  get performance() {
+    const s = state(this);
+    return s.performance ?? (s.performance = make(this, 'Performance', {}));
+  },
 };
 
 // jsdom's words for getComputedStyle with a pseudo-element (black box: 20
 // to 23, 24 to 26, 27 and later).
-const pseudoElementMessage = (jsdom) => (jsdom >= 27 ? "Window's getComputedStyle() method: with pseudo-elements"
-  : jsdom >= 24 ? 'window.getComputedStyle(elt, pseudoElt)' : 'window.computedStyle(elt, pseudoElt)');
+const pseudoElementMessage = (jsdom) =>
+  jsdom >= 27
+    ? "Window's getComputedStyle() method: with pseudo-elements"
+    : jsdom >= 24
+      ? 'window.getComputedStyle(elt, pseudoElt)'
+      : 'window.computedStyle(elt, pseudoElt)';
 
 function make(window, iface, data) {
   const object = Object.create(window[S].protos[iface]);
@@ -304,11 +481,15 @@ const userAgent = () => {
 export const userAgentOf = () => userAgent();
 
 const url = (self) => state(self).window[S].url;
-const setURL = (self, next) => { state(self).window[S].url = next; };
+const setURL = (self, next) => {
+  state(self).window[S].url = next;
+};
 // Location's setters navigate (navigation.js).
 const go = (self, next, replace) => navigate(state(self).window, next, replace);
 const urlPart = (part) => ({
-  get() { return url(this)[part]; },
+  get() {
+    return url(this)[part];
+  },
   set(v) {
     const next = new URL(url(this).href);
     next[part] = v;
@@ -364,15 +545,24 @@ export const windowNow = (window) => {
   const start = clockStart(window[S]);
   return platformNow() - start;
 };
-const timeOrigin = (window) => { clockStart(window[S]); return window[S].timeOrigin; };
+const timeOrigin = (window) => {
+  clockStart(window[S]);
+  return window[S].timeOrigin;
+};
 
 export const PERFORMANCE_INTERFACE = {
   name: 'Performance',
   parent: 'EventTarget',
   members: {
-    now() { return windowNow(state(this).window); },
-    get timeOrigin() { return timeOrigin(state(this).window); },
-    toJSON() { return { timeOrigin: timeOrigin(state(this).window) }; },
+    now() {
+      return windowNow(state(this).window);
+    },
+    get timeOrigin() {
+      return timeOrigin(state(this).window);
+    },
+    toJSON() {
+      return { timeOrigin: timeOrigin(state(this).window) };
+    },
   },
 };
 
@@ -382,8 +572,17 @@ export const PERFORMANCE_INTERFACE = {
 // The random bytes are the platform's (crypto.getRandomValues, a web
 // standard global in browsers, Node, Deno and edge runtimes).
 
-const INTEGER_ARRAYS = new Set(['Int8Array', 'Uint8Array', 'Uint8ClampedArray', 'Int16Array', 'Uint16Array', 'Int32Array', 'Uint32Array',
-  'BigInt64Array', 'BigUint64Array']);
+const INTEGER_ARRAYS = new Set([
+  'Int8Array',
+  'Uint8Array',
+  'Uint8ClampedArray',
+  'Int16Array',
+  'Uint16Array',
+  'Int32Array',
+  'Uint32Array',
+  'BigInt64Array',
+  'BigUint64Array',
+]);
 const MAX_BYTES = 65536;
 
 const platformCrypto = platformGlobal('crypto');
@@ -408,13 +607,20 @@ export const CRYPTO_INTERFACE = {
   members: {
     getRandomValues(array) {
       const s = state(this);
-      if (array === undefined && arguments.length < 1) tooFewArguments('Crypto', 'getRandomValues', 1, arguments.length);
-      if (!ArrayBuffer.isView(array)) throw new TypeError("Failed to execute 'getRandomValues' on 'Crypto': parameter 1 is not of any supported type.");
-      if (!INTEGER_ARRAYS.has(typedArrayName(array))) throw domError('getRandomValues() only accepts integer typed arrays', 'TypeMismatchError');
+      if (array === undefined && arguments.length < 1)
+        tooFewArguments('Crypto', 'getRandomValues', 1, arguments.length);
+      if (!ArrayBuffer.isView(array))
+        throw new TypeError(
+          "Failed to execute 'getRandomValues' on 'Crypto': parameter 1 is not of any supported type.",
+        );
+      if (!INTEGER_ARRAYS.has(typedArrayName(array)))
+        throw domError('getRandomValues() only accepts integer typed arrays', 'TypeMismatchError');
       if (array.byteLength > MAX_BYTES) {
         const message = `getRandomValues() cannot generate more than ${MAX_BYTES} bytes of random values; ${array.byteLength} bytes were requested`;
         // jsdom 30 throws the QuotaExceededError interface, before a DOMException.
-        throw s.window[S].compat.jsdom >= 30 ? new QuotaExceededError(message) : domError(message, 'QuotaExceededError');
+        throw s.window[S].compat.jsdom >= 30
+          ? new QuotaExceededError(message)
+          : domError(message, 'QuotaExceededError');
       }
       fillRandom(new Uint8Array(array.buffer, array.byteOffset, array.byteLength));
       return array;
@@ -461,8 +667,13 @@ export const CRYPTO_INTERFACE = {
 const PlatformURLSearchParams = PLATFORM_GLOBAL.URLSearchParams;
 
 const parseURL = (url, base) => {
-  if (typeof PlatformURL.parse === 'function') return base === undefined ? PlatformURL.parse(url) : PlatformURL.parse(url, base);
-  try { return base === undefined ? new PlatformURL(url) : new PlatformURL(url, base); } catch { return null; }
+  if (typeof PlatformURL.parse === 'function')
+    return base === undefined ? PlatformURL.parse(url) : PlatformURL.parse(url, base);
+  try {
+    return base === undefined ? new PlatformURL(url) : new PlatformURL(url, base);
+  } catch {
+    return null;
+  }
 };
 
 const constructing = (name) => `Failed to construct '${name}'`;
@@ -489,16 +700,27 @@ function parseOrThrow(url, base, context) {
 
 const setterContext = (name) => `Failed to set the '${name}' property on 'URL'`;
 const setterString = (value, name) => {
-  if (typeof value === 'symbol') throw new TypeError(`${setterContext(name)}: The provided value is a symbol, which cannot be converted to a string.`);
+  if (typeof value === 'symbol')
+    throw new TypeError(
+      `${setterContext(name)}: The provided value is a symbol, which cannot be converted to a string.`,
+    );
   return String(value);
 };
 
 // The URL's components: getters and setters of the platform URL's (named
 // "get protocol" and "set protocol", as WebIDL's).
-const urlComponent = (name) => Object.getOwnPropertyDescriptor({
-  get [name]() { return state(this).url[name]; },
-  set [name](value) { state(this).url[name] = setterString(value, name); },
-}, name);
+const urlComponent = (name) =>
+  Object.getOwnPropertyDescriptor(
+    {
+      get [name]() {
+        return state(this).url[name];
+      },
+      set [name](value) {
+        state(this).url[name] = setterString(value, name);
+      },
+    },
+    name,
+  );
 
 const URL_INTERFACE = {
   name: 'URL',
@@ -509,15 +731,21 @@ const URL_INTERFACE = {
     return self;
   },
   members: {
-    get href() { return state(this).url.href; },
+    get href() {
+      return state(this).url.href;
+    },
     set href(value) {
       const s = state(this);
       const href = setterString(value, 'href');
       if (parseURL(href) === null) throw new TypeError(`Invalid URL: ${href}`);
       s.url.href = href;
     },
-    toString() { return state(this).url.href; },
-    get origin() { return state(this).url.origin; },
+    toString() {
+      return state(this).url.href;
+    },
+    get origin() {
+      return state(this).url.origin;
+    },
     protocol: urlComponent('protocol'),
     username: urlComponent('username'),
     password: urlComponent('password'),
@@ -531,7 +759,9 @@ const URL_INTERFACE = {
       return s.params ?? (s.params = makeParams(s.window, s.url.searchParams));
     },
     hash: urlComponent('hash'),
-    toJSON() { return state(this).url.href; },
+    toJSON() {
+      return state(this).url.href;
+    },
   },
   // URL.parse() and URL.canParse(), from jsdom 23.0.0 (compat.urlParse).
   staticMethods(window) {
@@ -572,7 +802,8 @@ function iteratorMethod(init, window) {
   const method = init[Symbol.iterator];
   const legacy = window[S].compat.jsdom < 30;
   if (legacy ? method === undefined : method == null) return undefined;
-  if (typeof method !== 'function') throw new TypeError(legacy ? 'tmp is not iterable' : 'Cannot convert a Symbol value to a string');
+  if (typeof method !== 'function')
+    throw new TypeError(legacy ? 'tmp is not iterable' : 'Cannot convert a Symbol value to a string');
   return method;
 }
 
@@ -583,7 +814,8 @@ function recordPairs(init, context, convert) {
   for (const key of Reflect.ownKeys(init)) {
     const descriptor = Reflect.getOwnPropertyDescriptor(init, key);
     if (descriptor === undefined || !descriptor.enumerable) continue;
-    if (typeof key === 'symbol') throw new TypeError(`${context}: parameter 1 record's key is a symbol, which cannot be converted to a string.`);
+    if (typeof key === 'symbol')
+      throw new TypeError(`${context}: parameter 1 record's key is a symbol, which cannot be converted to a string.`);
     pairs.set(convert(key, "record's key"), convert(init[key], "record's value"));
   }
   return [...pairs];
@@ -606,28 +838,38 @@ function sequencePairs(init, method, context, convert) {
 
 const uspContext = constructing('URLSearchParams');
 // USVString: lone surrogates become U+FFFD.
-const usvString = (string) => (typeof string.toWellFormed === 'function' ? string.toWellFormed() : string.replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, '\ufffd'));
+const usvString = (string) =>
+  typeof string.toWellFormed === 'function'
+    ? string.toWellFormed()
+    : string.replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, '\ufffd');
 const uspString = (value, what) => usvString(webidlString(value, `parameter 1 ${what}`, uspContext));
 
 // The (name, value) pairs of a URLSearchParams init, or its string.
 function paramsInit(window, init) {
   if (init === undefined) return '';
-  if (init === null || (typeof init !== 'object' && typeof init !== 'function')) return webidlString(init, 'parameter 1', uspContext);
+  if (init === null || (typeof init !== 'object' && typeof init !== 'function'))
+    return webidlString(init, 'parameter 1', uspContext);
   const method = iteratorMethod(init, window);
   if (method === undefined) return recordPairs(init, uspContext, uspString);
   const pairs = sequencePairs(init, method, uspContext, uspString);
   for (const pair of pairs) {
-    if (pair.length !== 2) throw new TypeError(`${uspContext}: parameter 1 sequence's element does not contain exactly two elements.`);
+    if (pair.length !== 2)
+      throw new TypeError(`${uspContext}: parameter 1 sequence's element does not contain exactly two elements.`);
   }
   return pairs;
 }
 
-const argument = (value, index, method, iface = 'URLSearchParams') => webidlString(value, `parameter ${index}`, `Failed to execute '${method}' on '${iface}'`);
+const argument = (value, index, method, iface = 'URLSearchParams') =>
+  webidlString(value, `parameter ${index}`, `Failed to execute '${method}' on '${iface}'`);
 
 // forEach (WebIDL pair iterators): its errors name the 'iterable'.
 function checkCallback(callback, present) {
-  if (present < 1) throw new TypeError("Failed to execute 'forEach' on 'iterable': 1 argument required, but only 0 present.");
-  if (typeof callback !== 'function') throw new TypeError("Failed to execute 'forEach' on 'iterable': The callback provided as parameter 1 is not a function");
+  if (present < 1)
+    throw new TypeError("Failed to execute 'forEach' on 'iterable': 1 argument required, but only 0 present.");
+  if (typeof callback !== 'function')
+    throw new TypeError(
+      "Failed to execute 'forEach' on 'iterable': The callback provided as parameter 1 is not a function",
+    );
 }
 
 const URL_SEARCH_PARAMS_INTERFACE = {
@@ -646,10 +888,13 @@ const URL_SEARCH_PARAMS_INTERFACE = {
   },
   members: {
     // From jsdom 23.0.0 (compat below).
-    get size() { return state(this).params.size; },
+    get size() {
+      return state(this).params.size;
+    },
     append(name, value) {
       const { params } = state(this);
-      if (value === undefined && arguments.length < 2) tooFewArguments('URLSearchParams', 'append', 2, arguments.length);
+      if (value === undefined && arguments.length < 2)
+        tooFewArguments('URLSearchParams', 'append', 2, arguments.length);
       params.append(argument(name, 1, 'append'), argument(value, 2, 'append'));
     },
     // The value argument from jsdom 23.0.0 (compat.paramValues).
@@ -674,24 +919,38 @@ const URL_SEARCH_PARAMS_INTERFACE = {
       const s = state(this);
       if (arguments.length < 1) tooFewArguments('URLSearchParams', 'has', 1, 0);
       const key = argument(name, 1, 'has');
-      return value === undefined || !s.window[S].compat.paramValues ? s.params.has(key) : s.params.has(key, argument(value, 2, 'has'));
+      return value === undefined || !s.window[S].compat.paramValues
+        ? s.params.has(key)
+        : s.params.has(key, argument(value, 2, 'has'));
     },
     set(name, value) {
       const { params } = state(this);
       if (value === undefined && arguments.length < 2) tooFewArguments('URLSearchParams', 'set', 2, arguments.length);
       params.set(argument(name, 1, 'set'), argument(value, 2, 'set'));
     },
-    sort() { state(this).params.sort(); },
+    sort() {
+      state(this).params.sort();
+    },
     // The platform's iterators (live, as WebIDL's pair iterators).
-    entries() { return state(this).params.entries(); },
-    keys() { return state(this).params.keys(); },
-    values() { return state(this).params.values(); },
+    entries() {
+      return state(this).params.entries();
+    },
+    keys() {
+      return state(this).params.keys();
+    },
+    values() {
+      return state(this).params.values();
+    },
     forEach(callback, thisArg = undefined) {
       const { params } = state(this);
       checkCallback(callback, arguments.length);
-      params.forEach((value, name) => { callback.call(thisArg, value, name, this); });
+      params.forEach((value, name) => {
+        callback.call(thisArg, value, name, this);
+      });
     },
-    toString() { return state(this).params.toString(); },
+    toString() {
+      return state(this).params.toString();
+    },
   },
   compat(proto, compat) {
     if (!compat.paramValues) delete proto.size;
@@ -723,7 +982,10 @@ const headerName = (value, method) => {
 };
 
 const headerValue = (value, method) => {
-  const normalized = byteString(value, 'parameter 2', `Failed to execute '${method}' on 'Headers'`).replace(HTTP_WHITESPACE, '');
+  const normalized = byteString(value, 'parameter 2', `Failed to execute '${method}' on 'Headers'`).replace(
+    HTTP_WHITESPACE,
+    '',
+  );
   if (INVALID_VALUE.test(normalized)) throw new TypeError('value is invalid');
   return normalized;
 };
@@ -765,7 +1027,8 @@ const hInitString = (value, what) => byteString(value, `parameter 1 ${what}`, hC
 
 function fillHeaders(window, s, init) {
   if (init === undefined) return;
-  if (init === null || (typeof init !== 'object' && typeof init !== 'function')) throw new TypeError(`${hContext}: parameter 1 is not of any supported type.`);
+  if (init === null || (typeof init !== 'object' && typeof init !== 'function'))
+    throw new TypeError(`${hContext}: parameter 1 is not of any supported type.`);
   const method = iteratorMethod(init, window);
   if (method === undefined) {
     for (const [name, value] of recordPairs(init, hContext, hInitString)) appendHeader(s, name, value);
@@ -860,9 +1123,15 @@ const HEADERS_INTERFACE = {
       if (!found) s.list.push([header, normalized]);
       s.sorted = null;
     },
-    keys() { return headersIterator(this, 'keys'); },
-    values() { return headersIterator(this, 'values'); },
-    entries() { return headersIterator(this, 'entries'); },
+    keys() {
+      return headersIterator(this, 'keys');
+    },
+    values() {
+      return headersIterator(this, 'values');
+    },
+    entries() {
+      return headersIterator(this, 'entries');
+    },
     forEach(callback, thisArg = undefined) {
       const s = state(this);
       checkCallback(callback, arguments.length);
@@ -894,8 +1163,27 @@ export const URL_INTERFACES = [URL_INTERFACE, URL_SEARCH_PARAMS_INTERFACE, HEADE
 // send them to the console the test environment gives
 // (window[S].consoleTarget: the one jsdom's virtual console sends to
 // there), else to the platform's.
-const CONSOLE_METHODS = ['assert', 'clear', 'count', 'countReset', 'debug', 'dir', 'dirxml', 'error', 'group', 'groupCollapsed',
-  'groupEnd', 'info', 'log', 'table', 'time', 'timeLog', 'timeEnd', 'trace', 'warn'];
+const CONSOLE_METHODS = [
+  'assert',
+  'clear',
+  'count',
+  'countReset',
+  'debug',
+  'dir',
+  'dirxml',
+  'error',
+  'group',
+  'groupCollapsed',
+  'groupEnd',
+  'info',
+  'log',
+  'table',
+  'time',
+  'timeLog',
+  'timeEnd',
+  'trace',
+  'warn',
+];
 const platformConsole = platformGlobal('console');
 
 const topWindow = (window) => {
@@ -906,11 +1194,13 @@ const topWindow = (window) => {
 
 function createConsole(window) {
   const console = {};
-  const forward = (method) => (...args) => {
-    let target = topWindow(window)[S].consoleTarget ?? platformConsole();
-    if (target === console) target = platformConsole();
-    target?.[method]?.(...args);
-  };
+  const forward =
+    (method) =>
+    (...args) => {
+      let target = topWindow(window)[S].consoleTarget ?? platformConsole();
+      if (target === console) target = platformConsole();
+      target?.[method]?.(...args);
+    };
   for (const method of CONSOLE_METHODS) console[method] = forward(method);
   return console;
 }
@@ -921,9 +1211,14 @@ function setupConsole(window) {
   // then an accessor. Enumerable before jsdom 27. The per-file reset
   // (reset.js) keeps the object and puts back its methods.
   const enumerable = ws.compat.jsdom < 27;
-  const define = (value) => Object.defineProperty(window, 'console', { value, writable: true, enumerable, configurable: true });
+  const define = (value) =>
+    Object.defineProperty(window, 'console', { value, writable: true, enumerable, configurable: true });
   Object.defineProperty(window, 'console', {
-    get() { const console = ws.console ?? (ws.console = createConsole(window)); define(console); return console; },
+    get() {
+      const console = ws.console ?? (ws.console = createConsole(window));
+      define(console);
+      return console;
+    },
     set: lazyDataSetter(window, 'console', define),
     enumerable,
     configurable: true,
@@ -932,7 +1227,13 @@ function setupConsole(window) {
   // Jest and Vitest's VM pools, where the global's own is that); a frame's
   // is its top-level window's, as frames share warpdom's realm.
   const { WebAssembly } = realmOf(topWindow(window));
-  if (WebAssembly !== undefined) Object.defineProperty(window, 'WebAssembly', { value: WebAssembly, writable: true, enumerable: false, configurable: true });
+  if (WebAssembly !== undefined)
+    Object.defineProperty(window, 'WebAssembly', {
+      value: WebAssembly,
+      writable: true,
+      enumerable: false,
+      configurable: true,
+    });
 }
 
 // Plugin, MimeType, PluginArray and MimeTypeArray (HTML 8.9.1.6, the
@@ -961,28 +1262,48 @@ const PLUGIN_INTERFACES = [
     name: 'Plugin',
     members: {
       ...collectionLookups('Plugin'),
-      get name() { return state(this).name; },
-      get description() { return state(this).description; },
-      get filename() { return state(this).filename; },
-      get length() { return listOf(this).length; },
+      get name() {
+        return state(this).name;
+      },
+      get description() {
+        return state(this).description;
+      },
+      get filename() {
+        return state(this).filename;
+      },
+      get length() {
+        return listOf(this).length;
+      },
       [Symbol.iterator]: Array.prototype.values,
     },
   },
   {
     name: 'MimeType',
     members: {
-      get type() { return state(this).type; },
-      get description() { return state(this).description; },
-      get suffixes() { return state(this).suffixes; },
-      get enabledPlugin() { return state(this).enabledPlugin; },
+      get type() {
+        return state(this).type;
+      },
+      get description() {
+        return state(this).description;
+      },
+      get suffixes() {
+        return state(this).suffixes;
+      },
+      get enabledPlugin() {
+        return state(this).enabledPlugin;
+      },
     },
   },
   {
     name: 'PluginArray',
     members: {
-      refresh() { listOf(this); },
+      refresh() {
+        listOf(this);
+      },
       ...collectionLookups('PluginArray'),
-      get length() { return listOf(this).length; },
+      get length() {
+        return listOf(this).length;
+      },
       [Symbol.iterator]: Array.prototype.values,
     },
   },
@@ -990,7 +1311,9 @@ const PLUGIN_INTERFACES = [
     name: 'MimeTypeArray',
     members: {
       ...collectionLookups('MimeTypeArray'),
-      get length() { return listOf(this).length; },
+      get length() {
+        return listOf(this).length;
+      },
       [Symbol.iterator]: Array.prototype.values,
     },
   },
@@ -1011,9 +1334,14 @@ const PLATFORM_HAS_WEBSOCKET = 'WebSocket' in PLATFORM_GLOBAL;
 
 function setupWebSocket(window) {
   if (!PLATFORM_HAS_WEBSOCKET) return;
-  const define = (value) => Object.defineProperty(window, 'WebSocket', { value, writable: true, enumerable: false, configurable: true });
+  const define = (value) =>
+    Object.defineProperty(window, 'WebSocket', { value, writable: true, enumerable: false, configurable: true });
   Object.defineProperty(window, 'WebSocket', {
-    get() { const WebSocket = PLATFORM_GLOBAL.WebSocket; define(WebSocket); return WebSocket; },
+    get() {
+      const WebSocket = PLATFORM_GLOBAL.WebSocket;
+      define(WebSocket);
+      return WebSocket;
+    },
     set: lazyDataSetter(window, 'WebSocket', define),
     enumerable: false,
     configurable: true,
@@ -1024,49 +1352,140 @@ export const FEATURE_INTERFACES = [
   ...PLUGIN_INTERFACES,
   CRYPTO_INTERFACE,
   PERFORMANCE_INTERFACE,
-  { name: 'BarProp', members: { get visible() { state(this); return true; } } },
+  {
+    name: 'BarProp',
+    members: {
+      get visible() {
+        state(this);
+        return true;
+      },
+    },
+  },
   // Obsolete search provider methods; they do nothing.
-  { name: 'External', members: { AddSearchProvider() { state(this); }, IsSearchProviderInstalled() { state(this); } } },
+  {
+    name: 'External',
+    members: {
+      AddSearchProvider() {
+        state(this);
+      },
+      IsSearchProviderInstalled() {
+        state(this);
+      },
+    },
+  },
   // Values as in jsdom (no screen; no orientation).
   {
     name: 'Screen',
-    members: Object.fromEntries(Object.entries({ availWidth: 0, availHeight: 0, width: 0, height: 0, colorDepth: 24, pixelDepth: 24 })
-      .map(([key, value]) => [key, { get() { state(this); return value; } }])),
+    members: Object.fromEntries(
+      Object.entries({ availWidth: 0, availHeight: 0, width: 0, height: 0, colorDepth: 24, pixelDepth: 24 }).map(
+        ([key, value]) => [
+          key,
+          {
+            get() {
+              state(this);
+              return value;
+            },
+          },
+        ],
+      ),
+    ),
   },
   {
     name: 'Navigator',
     members: {
-      get userAgent() { state(this); return userAgent(); },
-      get appVersion() { state(this); return userAgent().slice('Mozilla/'.length); },
-      get appName() { state(this); return 'Netscape'; },
-      get appCodeName() { state(this); return 'Mozilla'; },
-      get product() { state(this); return 'Gecko'; },
-      get productSub() { state(this); return '20030107'; },
-      get vendorSub() { state(this); return ''; },
-      get platform() { state(this); return ''; },
-      get vendor() { state(this); return 'Apple Computer, Inc.'; },
-      get language() { state(this); return 'en-US'; },
-      get languages() { state(this); return Object.freeze(['en-US', 'en']); },
-      get onLine() { state(this); return true; },
-      get cookieEnabled() { state(this); return true; },
+      get userAgent() {
+        state(this);
+        return userAgent();
+      },
+      get appVersion() {
+        state(this);
+        return userAgent().slice('Mozilla/'.length);
+      },
+      get appName() {
+        state(this);
+        return 'Netscape';
+      },
+      get appCodeName() {
+        state(this);
+        return 'Mozilla';
+      },
+      get product() {
+        state(this);
+        return 'Gecko';
+      },
+      get productSub() {
+        state(this);
+        return '20030107';
+      },
+      get vendorSub() {
+        state(this);
+        return '';
+      },
+      get platform() {
+        state(this);
+        return '';
+      },
+      get vendor() {
+        state(this);
+        return 'Apple Computer, Inc.';
+      },
+      get language() {
+        state(this);
+        return 'en-US';
+      },
+      get languages() {
+        state(this);
+        return Object.freeze(['en-US', 'en']);
+      },
+      get onLine() {
+        state(this);
+        return true;
+      },
+      get cookieEnabled() {
+        state(this);
+        return true;
+      },
       // Legacy plugin collections, empty as in jsdom (and browsers today);
       // the same object on every read. No pdfViewerEnabled (jsdom neither).
-      get plugins() { const s = state(this); return s.plugins ?? (s.plugins = staticList(s.window[S].protos.PluginArray, [])); },
-      get mimeTypes() { const s = state(this); return s.mimeTypes ?? (s.mimeTypes = staticList(s.window[S].protos.MimeTypeArray, [])); },
-      get hardwareConcurrency() { state(this); return 4; },
-      get maxTouchPoints() { state(this); return 0; },
-      get webdriver() { state(this); return false; },
-      javaEnabled() { return false; },
+      get plugins() {
+        const s = state(this);
+        return s.plugins ?? (s.plugins = staticList(s.window[S].protos.PluginArray, []));
+      },
+      get mimeTypes() {
+        const s = state(this);
+        return s.mimeTypes ?? (s.mimeTypes = staticList(s.window[S].protos.MimeTypeArray, []));
+      },
+      get hardwareConcurrency() {
+        state(this);
+        return 4;
+      },
+      get maxTouchPoints() {
+        state(this);
+        return 0;
+      },
+      get webdriver() {
+        state(this);
+        return false;
+      },
+      javaEnabled() {
+        return false;
+      },
     },
   },
   {
     name: 'Location',
     members: {
       href: {
-        get() { return url(this).href; },
-        set(v) { go(this, new URL(String(v), url(this).href)); },
+        get() {
+          return url(this).href;
+        },
+        set(v) {
+          go(this, new URL(String(v), url(this).href));
+        },
       },
-      get origin() { return url(this).origin; },
+      get origin() {
+        return url(this).origin;
+      },
       protocol: urlPart('protocol'),
       host: urlPart('host'),
       hostname: urlPart('hostname'),
@@ -1074,19 +1493,36 @@ export const FEATURE_INTERFACES = [
       pathname: urlPart('pathname'),
       search: urlPart('search'),
       hash: urlPart('hash'),
-      assign(v) { go(this, new URL(String(v), url(this).href)); },
-      replace(v) { go(this, new URL(String(v), url(this).href), true); },
-      reload() { state(this); },
-      toString() { return url(this).href; },
+      assign(v) {
+        go(this, new URL(String(v), url(this).href));
+      },
+      replace(v) {
+        go(this, new URL(String(v), url(this).href), true);
+      },
+      reload() {
+        state(this);
+      },
+      toString() {
+        return url(this).href;
+      },
     },
   },
   {
     name: 'History',
     members: {
-      get length() { return state(this).entries.length; },
-      get state() { const s = state(this); return s.entries[s.index].state; },
-      get scrollRestoration() { return state(this).scrollRestoration ?? 'auto'; },
-      set scrollRestoration(v) { state(this).scrollRestoration = v === 'manual' ? 'manual' : 'auto'; },
+      get length() {
+        return state(this).entries.length;
+      },
+      get state() {
+        const s = state(this);
+        return s.entries[s.index].state;
+      },
+      get scrollRestoration() {
+        return state(this).scrollRestoration ?? 'auto';
+      },
+      set scrollRestoration(v) {
+        state(this).scrollRestoration = v === 'manual' ? 'manual' : 'auto';
+      },
       // The state is kept as given, as jsdom (20 to 30) does: the standard
       // stores a structured clone, which throws for functions and nodes
       // and gives a copy (history.state !== the object pushed).
@@ -1104,9 +1540,15 @@ export const FEATURE_INTERFACES = [
         s.entries[s.index] = { state: data, url: next };
         setURL(this, next);
       },
-      back() { traverse(state(this).window, -1); },
-      forward() { traverse(state(this).window, 1); },
-      go(delta = 0) { traverse(state(this).window, Number(delta) | 0); },
+      back() {
+        traverse(state(this).window, -1);
+      },
+      forward() {
+        traverse(state(this).window, 1);
+      },
+      go(delta = 0) {
+        traverse(state(this).window, Number(delta) | 0);
+      },
     },
   },
 ];
@@ -1118,9 +1560,18 @@ export const FEATURE_INTERFACES = [
 // latest 4.x from 23.1 to 26, 5.3 for 27 to 28.0, the latest 6.x for 28.1),
 // later by jsdom's version. null: jsdom 30.1 and later (STYLE_ACCESSORS).
 function styleSurfaceKey(version, css) {
-  if (version[0] >= 30) return before(version, [30, 0, 1]) ? 'jsdom30.0.0' : before(version, [30, 1, 0]) ? 'jsdom30.0.1' : null;
+  if (version[0] >= 30)
+    return before(version, [30, 0, 1]) ? 'jsdom30.0.0' : before(version, [30, 1, 0]) ? 'jsdom30.0.1' : null;
   if (version[0] === 29) return before(version, [29, 1, 0]) ? 'jsdom29.0' : 'jsdom29.1';
-  css ??= before(version, [21, 1, 0]) ? [2] : before(version, [23, 1, 0]) ? [3] : version[0] <= 26 ? [4, Infinity] : before(version, [28, 1, 0]) ? [5] : [6, Infinity];
+  css ??= before(version, [21, 1, 0])
+    ? [2]
+    : before(version, [23, 1, 0])
+      ? [3]
+      : version[0] <= 26
+        ? [4, Infinity]
+        : before(version, [28, 1, 0])
+          ? [5]
+          : [6, Infinity];
   if (css[0] <= 2) return 'cssstyle2';
   if (css[0] === 3 || (css[0] === 4 && before(css, [4, 1, 0]))) return 'cssstyle3';
   if (css[0] === 4) return before(css, [4, 4, 0]) ? 'cssstyle4.1' : 'cssstyle4.4';
@@ -1156,10 +1607,12 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
   // 21.0.x, 3.0 from 21.1.0 to 23.0.x, the latest 4.x from 23.1.0: the
   // default when no cssstyle is given.
   const cssDefault = before(version, [21, 1, 0]) ? '2.3.0' : before(version, [23, 1, 0]) ? '3.0.0' : null;
-  const cssText = version[0] < 27 ? cssstyle ?? cssDefault : null;
+  const cssText = version[0] < 27 ? (cssstyle ?? cssDefault) : null;
   const css = cssText != null ? parseJsdomVersion(cssText) : null;
   return {
-    version: jsdom, jsdom: version[0], mutableComputedStyle: version[0] < 28,
+    version: jsdom,
+    jsdom: version[0],
+    mutableComputedStyle: version[0] < 28,
     // Computed style (cascade.js), black box per release: before 29.0.2
     // undeclared properties compute to '' and CSS-wide keywords to
     // themselves (jsdom 29.0.0 and 29.0.1 too); unset to '' before 28.1
@@ -1169,9 +1622,13 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // border-block, ...) to '' until 29.1.1; from 30.1.3 to '' or that
     // initial value, undeclared too, and flex and background compose their
     // longhands (cascade.js observedShorthand).
-    legacyComputedStyle: before(version, [29, 0, 2]), unsetUndeclared: version[0] >= 21 && before(version, [28, 1, 0]),
-    blankBorderShorthands: !before(version, [29, 0, 2]) && before(version, [29, 1, 1]), shorthandInitials: !before(version, [30, 1, 3]), initialAnimationDelay: before(version, [30, 0, 1]),
-    rawComputedValues: before(version, [29, 0, 2]) || !before(version, [30, 1, 0]) ? null : version[0] === 29 ? '29' : '30.0',
+    legacyComputedStyle: before(version, [29, 0, 2]),
+    unsetUndeclared: version[0] >= 21 && before(version, [28, 1, 0]),
+    blankBorderShorthands: !before(version, [29, 0, 2]) && before(version, [29, 1, 1]),
+    shorthandInitials: !before(version, [30, 1, 3]),
+    initialAnimationDelay: before(version, [30, 0, 1]),
+    rawComputedValues:
+      before(version, [29, 0, 2]) || !before(version, [30, 1, 0]) ? null : version[0] === 29 ? '29' : '30.0',
     // The user agent sheet's !important declarations win over the page's
     // from 28.1.0 (ua-sheet.js).
     uaImportant: !before(version, [28, 1, 0]),
@@ -1179,14 +1636,17 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // select event is dispatched synchronously and is cancelable (from
     // 21.1.2 in a task, not cancelable), and setRangeText() takes the new
     // value's length as the end of the replaced text.
-    syncSelectEvent: before(version, [21, 1, 2]), legacyRangeTextEnd: before(version, [21, 1, 2]),
+    syncSelectEvent: before(version, [21, 1, 2]),
+    legacyRangeTextEnd: before(version, [21, 1, 2]),
     // Form controls (forms.js), black box per release: from 30.1.0 cloning
     // an input copies its indeterminate state; the pattern attribute
     // compiles with the v flag from 27.0.0, with u before.
     // valueAsNumber = NaN throws a TypeError before 23.1.0; before 30.1.0
     // a time's fraction is whole milliseconds and times with seconds have
     // three fraction digits.
-    cloneIndeterminate: !before(version, [30, 1, 0]), patternFlag: before(version, [27, 0, 0]) ? 'u' : 'v', nanValueAsNumberThrows: before(version, [23, 1, 0]),
+    cloneIndeterminate: !before(version, [30, 1, 0]),
+    patternFlag: before(version, [27, 0, 0]) ? 'u' : 'v',
+    nanValueAsNumberThrows: before(version, [23, 1, 0]),
     legacyTimeStrings: before(version, [30, 1, 0]),
     // From 30.1.0 a checked radio button unchecks its group when it becomes
     // connected or its form attribute changes.
@@ -1196,15 +1656,23 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // textarea wrap="hard" with a cols attribute breaks lines every cols
     // characters before 24.0.0 and from 30.1.0 (between: elsewhere).
     hardWrap: before(version, [24, 0, 0]) || !before(version, [30, 1, 0]),
-    focusIgnoresRendering: before(version, [30, 1, 2]), detachedCheckableEvents: before(version, [16, 5, 2]), cssstyle: version[0] < 27 ? (css ? cssText : undefined) : cssstyle ?? undefined, cssstyleMajor: css ? css[0] : 0,
-    styleSurface: styleSurfaceKey(version, version[0] < 27 ? css : cssstyle != null ? parseJsdomVersion(cssstyle) : null),
+    focusIgnoresRendering: before(version, [30, 1, 2]),
+    detachedCheckableEvents: before(version, [16, 5, 2]),
+    cssstyle: version[0] < 27 ? (css ? cssText : undefined) : (cssstyle ?? undefined),
+    cssstyleMajor: css ? css[0] : 0,
+    styleSurface: styleSurfaceKey(
+      version,
+      version[0] < 27 ? css : cssstyle != null ? parseJsdomVersion(cssstyle) : null,
+    ),
     unquotedUrls: css !== null && before(css, [4, 3, 1]),
     // A shorthand declared with var() (padding: var(--p)) declares its
     // longhands pending substitution, so they hide the user agent sheet's
     // and earlier ones (padding-top '', from 29.0.2 its initial 0): with
     // cssstyle 4.4 and later (jsdom 23.1 to 26 with it; 4.4, 4.5 and 4.6
     // measured), and in jsdom 27 and later (cascade.js cascadeExpand).
-    pendingLonghands: version[0] >= 27 || (css === null ? !before(version, [23, 1, 0]) : css[0] > 4 || (css[0] === 4 && !before(css, [4, 4, 0]))),
+    pendingLonghands:
+      version[0] >= 27 ||
+      (css === null ? !before(version, [23, 1, 0]) : css[0] > 4 || (css[0] === 4 && !before(css, [4, 4, 0]))),
     // cssstyle's font shorthand before 4.4 (shorthands.js legacyFont).
     legacyFont: css === null || !before(css, [4, 4, 0]) ? null : before(css, [4, 2, 0]) ? 'cssstyle4.1' : 'cssstyle4.2',
     // cssstyle 4.4 and later: the computed style's background and border
@@ -1213,7 +1681,8 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     legacyColors: version[0] < 27 && css !== null && before(css, [4, 2, 0]),
     // Color keywords as cssstyle writes them (css.js colorKeywords): before
     // 4.4 'css2', in 4.4 and 4.5 'written', later lowercased (null).
-    colorKeywords: version[0] >= 27 || css === null || !before(css, [4, 6, 0]) ? null : before(css, [4, 4, 0]) ? 'css2' : 'written',
+    colorKeywords:
+      version[0] >= 27 || css === null || !before(css, [4, 6, 0]) ? null : before(css, [4, 4, 0]) ? 'css2' : 'written',
     // Computed colors (cascade.js computeValue), black box: before 22.1.0
     // as declared ('declared': red stays red; background-color and the
     // border colors '' when not declared); to 26 named, hex and functional
@@ -1227,12 +1696,15 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // From jsdom 30.0.0 computed lengths are px (em, rem, vw, calc(); font
     // size keywords, larger and smaller), from 30.1.0 bolder and lighter
     // weights (cascade.js, lengths.js).
-    absoluteLengths: version[0] >= 30, relativeWeights: !before(version, [30, 1, 0]),
+    absoluteLengths: version[0] >= 30,
+    relativeWeights: !before(version, [30, 1, 0]),
     composedAccessors: version[0] < 27 && (css === null || (css[0] === 4 && !before(css, [4, 4, 0]))),
     // Members jsdom added (black box): crypto.randomUUID() in 22.1.0,
     // TextEncoder and TextDecoder in 27.4.0, Blob's text(), arrayBuffer()
     // and bytes() in 28.1.0.
-    randomUUID: !before(version, [22, 1, 0]), textCodec: !before(version, [27, 4, 0]), blobReads: !before(version, [28, 1, 0]),
+    randomUUID: !before(version, [22, 1, 0]),
+    textCodec: !before(version, [27, 4, 0]),
+    blobReads: !before(version, [28, 1, 0]),
     // URL.parse() and canParse(), URLSearchParams size and the value
     // argument of has() and delete() from 23.0.0; Headers keeps Set-Cookie
     // values apart (getSetCookie()) from 24.1.0 (url.js).
@@ -1240,7 +1712,8 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // viewBox and preserveAspectRatio from 26.1.0; a symbol is a viewport
     // element from 26.1.0 to 30.0.x; svg forwards window event handlers
     // to the window before 28.1.0.
-    svgTypes: !before(version, [26, 1, 0]), svgSymbolViewport: !before(version, [26, 1, 0]) && before(version, [30, 1, 0]),
+    svgTypes: !before(version, [26, 1, 0]),
+    svgSymbolViewport: !before(version, [26, 1, 0]) && before(version, [30, 1, 0]),
     svgWindowHandlers: before(version, [28, 1, 0]),
     // The window's named properties object (WindowProperties) from 24.1.2;
     // before, Window.prototype inherits from EventTarget.prototype.
@@ -1255,13 +1728,18 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // send() rejects views on a SharedArrayBuffer from 27.0.1; a response
     // charset naming the replacement encoding (iso-2022-kr) decodes to
     // U+FFFD from 27.4.0 (before: as UTF-8).
-    xhrUndici: !before(version, [28, 0, 0]), xhrRejectsShared: !before(version, [27, 0, 1]), xhrReplacement: !before(version, [27, 4, 0]),
-    urlParse: !before(version, [23, 0, 0]), paramValues: !before(version, [23, 0, 0]), setCookieList: !before(version, [24, 1, 0]),
+    xhrUndici: !before(version, [28, 0, 0]),
+    xhrRejectsShared: !before(version, [27, 0, 1]),
+    xhrReplacement: !before(version, [27, 4, 0]),
+    urlParse: !before(version, [23, 0, 0]),
+    paramValues: !before(version, [23, 0, 0]),
+    setCookieList: !before(version, [24, 1, 0]),
     // BlobEvent's timecode without one in the init: 0 before 30.1.0, NaN from it.
     blobEventNaNTimecode: !before(version, [30, 1, 0]),
     // CSSMediaRule's and CSSSupportsRule's matches from 29.0.0,
     // CSSNestedDeclarations from 27.2.0.
-    mediaRuleMatches: version[0] >= 29, nestedDeclarations: !before(version, [27, 2, 0]),
+    mediaRuleMatches: version[0] >= 29,
+    nestedDeclarations: !before(version, [27, 2, 0]),
     // The shape of the CSS rule interfaces (cssom.js CSSOM_SHAPE and ACEMIR_SHAPE), black box
     // per release, by the CSSOM library jsdom loads: before 27.1.0 cssom and
     // rrweb-cssom ('cssom': CSSStyleRule extends CSSRule, data members on
@@ -1273,8 +1751,17 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // ElementInternals and attachInternals() from 23.1.0, its labels and
     // form-associated custom elements from 26.0.0; its role and ARIA
     // accessors throw before 27.0.0.
-    elementInternals: !before(version, [23, 1, 0]), internalsLabels: !before(version, [26, 0, 0]), internalsAria: !before(version, [27, 0, 0]),
-    rootColor: version[0] >= 27 ? 'rgb(0, 0, 0)' : css !== null && before(css, [4, 4, 0]) ? '' : css !== null && before(css, [4, 6, 0]) ? 'CanvasText' : 'canvastext',
+    elementInternals: !before(version, [23, 1, 0]),
+    internalsLabels: !before(version, [26, 0, 0]),
+    internalsAria: !before(version, [27, 0, 0]),
+    rootColor:
+      version[0] >= 27
+        ? 'rgb(0, 0, 0)'
+        : css !== null && before(css, [4, 4, 0])
+          ? ''
+          : css !== null && before(css, [4, 6, 0])
+            ? 'CanvasText'
+            : 'canvastext',
   };
 }
 
@@ -1314,7 +1801,9 @@ export function setupWindow(window, { url: initial = 'about:blank', fastFrames =
     };
     Object.defineProperty(window, name, {
       get: create,
-      set: lazyDataSetter(window, name, (value) => Object.defineProperty(window, name, { value, writable: true, configurable: true })),
+      set: lazyDataSetter(window, name, (value) =>
+        Object.defineProperty(window, name, { value, writable: true, configurable: true }),
+      ),
       configurable: true,
     });
   };
@@ -1332,8 +1821,16 @@ export function setupWindow(window, { url: initial = 'about:blank', fastFrames =
   });
   // The CSS namespace object (CSS.escape, CSS.supports).
   Object.defineProperty(window, 'CSS', {
-    value: cssNamespace((selector) => { try { compile(selector); return true; } catch { return false; } }),
-    writable: true, configurable: true,
+    value: cssNamespace((selector) => {
+      try {
+        compile(selector);
+        return true;
+      } catch {
+        return false;
+      }
+    }),
+    writable: true,
+    configurable: true,
   });
   factory('Option', 'HTMLOptionElement', (doc, [text = '', value, defaultSelected = false, selected = false]) => {
     const option = doc.createElement('option');

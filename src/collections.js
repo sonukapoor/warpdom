@@ -103,7 +103,8 @@ class ListState {
     const i = arrayIndex(key);
     if (i >= 0) {
       const list = this.items();
-      if (i < list.length) return { value: list[i], writable: this.setIndex !== null, enumerable: true, configurable: true };
+      if (i < list.length)
+        return { value: list[i], writable: this.setIndex !== null, enumerable: true, configurable: true };
       return undefined;
     }
     if (typeof key === 'string') {
@@ -124,7 +125,14 @@ class ListState {
       return true;
     }
     // A supported name cannot get an own property in its place.
-    if (typeof key === 'string' && this.named !== null && key !== '' && !Object.hasOwn(t, key) && this.named.get(this.proxy, key) !== null) return false;
+    if (
+      typeof key === 'string' &&
+      this.named !== null &&
+      key !== '' &&
+      !Object.hasOwn(t, key) &&
+      this.named.get(this.proxy, key) !== null
+    )
+      return false;
     return Reflect.defineProperty(t, key, desc);
   }
 
@@ -132,7 +140,10 @@ class ListState {
     const i = arrayIndex(key);
     if (i >= 0) {
       if (this.setIndex !== null) {
-        if (receiver === this.proxy) { this.setIndex(i, value); return true; }
+        if (receiver === this.proxy) {
+          this.setIndex(i, value);
+          return true;
+        }
       } else if (i < this.items().length) return false; // read-only indexed property
     }
     return Reflect.set(t, key, value, receiver);
@@ -158,7 +169,9 @@ class ListState {
     return keys;
   }
 
-  preventExtensions() { return false; }
+  preventExtensions() {
+    return false;
+  }
 }
 
 // Named properties of HTMLCollection (DOM 4.2.10.2): elements by id, and HTML
@@ -177,7 +190,10 @@ export function htmlCollectionNames(list) {
   const names = [];
   const seen = new Set();
   const add = (name) => {
-    if (name !== undefined && name !== '' && !seen.has(name)) { seen.add(name); names.push(name); }
+    if (name !== undefined && name !== '' && !seen.has(name)) {
+      seen.add(name);
+      names.push(name);
+    }
   };
   for (const el of items(list)) {
     const es = el[S];
@@ -195,7 +211,12 @@ export const HTML_COLLECTION_NAMED = { get: htmlCollectionNamedItem, names: html
 // HTMLCollection's named properties unless they pass their own.
 // setIndex(index, value): an indexed property setter, or null.
 export function liveList(proto, getItems, named = undefined, setIndex = null) {
-  const s = new ListState(null, getItems, named !== undefined ? named : typeof proto.namedItem === 'function' ? HTML_COLLECTION_NAMED : null, setIndex);
+  const s = new ListState(
+    null,
+    getItems,
+    named !== undefined ? named : typeof proto.namedItem === 'function' ? HTML_COLLECTION_NAMED : null,
+    setIndex,
+  );
   return (s.proxy = new Proxy(Object.create(proto), s));
 }
 
@@ -210,20 +231,31 @@ export function staticList(proto, array) {
 // read the length and the item at each step, as Array.prototype.values
 // does), so iterating a live list sees changes made since it started.
 // The list's items are its cached array, rebuilt only after a change.
-const VALUES = 0, KEYS = 1, ENTRIES = 2;
+const VALUES = 0,
+  KEYS = 1,
+  ENTRIES = 2;
 class ListIterator {
-  constructor(list, kind) { this.list = list; this.kind = kind; this.index = 0; }
+  constructor(list, kind) {
+    this.list = list;
+    this.kind = kind;
+    this.index = 0;
+  }
   next() {
     const list = this.list;
     if (list === null) return { value: undefined, done: true };
     const array = items(list);
     const i = this.index;
-    if (i >= array.length) { this.list = null; return { value: undefined, done: true }; }
+    if (i >= array.length) {
+      this.list = null;
+      return { value: undefined, done: true };
+    }
     this.index = i + 1;
     const kind = this.kind;
     return { value: kind === VALUES ? array[i] : kind === KEYS ? i : [i, array[i]], done: false };
   }
-  [Symbol.iterator]() { return this; }
+  [Symbol.iterator]() {
+    return this;
+  }
 }
 Object.defineProperty(ListIterator.prototype, Symbol.toStringTag, { value: 'Array Iterator', configurable: true });
 for (const key of ['constructor', 'next', Symbol.iterator]) {
@@ -234,7 +266,10 @@ for (const key of ['constructor', 'next', Symbol.iterator]) {
 // HTMLOptionsCollection, RadioNodeList) have the same function as their own,
 // as in jsdom (black box 20.0.3 to 30.1.3: Array.prototype.values on each).
 export const iterate = {
-  [Symbol.iterator]() { items(this); return new ListIterator(this, VALUES); },
+  [Symbol.iterator]() {
+    items(this);
+    return new ListIterator(this, VALUES);
+  },
 };
 
 // item(index) takes a WebIDL unsigned long: ToUint32 (item(-1) is
@@ -250,12 +285,25 @@ export const COLLECTION_INTERFACES = [
   {
     name: 'NodeList',
     members: {
-      get length() { return items(this).length; },
+      get length() {
+        return items(this).length;
+      },
       ...item,
-      forEach(callback, thisArg) { items(this).forEach((node, i) => callback.call(thisArg, node, i, this)); },
-      entries() { items(this); return new ListIterator(this, ENTRIES); },
-      keys() { items(this); return new ListIterator(this, KEYS); },
-      values() { items(this); return new ListIterator(this, VALUES); },
+      forEach(callback, thisArg) {
+        items(this).forEach((node, i) => callback.call(thisArg, node, i, this));
+      },
+      entries() {
+        items(this);
+        return new ListIterator(this, ENTRIES);
+      },
+      keys() {
+        items(this);
+        return new ListIterator(this, KEYS);
+      },
+      values() {
+        items(this);
+        return new ListIterator(this, VALUES);
+      },
       ...iterate,
     },
   },
@@ -263,7 +311,9 @@ export const COLLECTION_INTERFACES = [
   {
     name: 'FileList',
     members: {
-      get length() { return items(this).length; },
+      get length() {
+        return items(this).length;
+      },
       ...item,
       ...iterate,
     },
@@ -272,7 +322,9 @@ export const COLLECTION_INTERFACES = [
   {
     name: 'TouchList',
     members: {
-      get length() { return items(this).length; },
+      get length() {
+        return items(this).length;
+      },
       ...item,
       ...iterate,
     },
@@ -280,10 +332,13 @@ export const COLLECTION_INTERFACES = [
   {
     name: 'HTMLCollection',
     members: {
-      get length() { return items(this).length; },
+      get length() {
+        return items(this).length;
+      },
       ...item,
       namedItem(name) {
-        if (name === undefined && arguments.length < 1) tooFewArguments('HTMLCollection', 'namedItem', 1, arguments.length);
+        if (name === undefined && arguments.length < 1)
+          tooFewArguments('HTMLCollection', 'namedItem', 1, arguments.length);
         return htmlCollectionNamedItem(this, name);
       },
       ...iterate,
@@ -324,7 +379,9 @@ class IndexedElement {
     const i = arrayIndex(key);
     if (i >= 0) {
       const list = this.items(this.proxy);
-      return i < list.length ? { value: list[i], writable: this.setIndex !== null, enumerable: true, configurable: true } : undefined;
+      return i < list.length
+        ? { value: list[i], writable: this.setIndex !== null, enumerable: true, configurable: true }
+        : undefined;
     }
     return Reflect.getOwnPropertyDescriptor(t, key);
   }
@@ -343,7 +400,10 @@ class IndexedElement {
     const i = arrayIndex(key);
     if (i >= 0) {
       if (this.setIndex === null) return false;
-      if (receiver === this.proxy) { this.setIndex(this.proxy, i, value); return true; }
+      if (receiver === this.proxy) {
+        this.setIndex(this.proxy, i, value);
+        return true;
+      }
     }
     return Reflect.set(t, key, value, receiver);
   }
@@ -362,7 +422,9 @@ class IndexedElement {
     return keys;
   }
 
-  preventExtensions() { return false; }
+  preventExtensions() {
+    return false;
+  }
 }
 
 export function indexedElement(element, items, setIndex = null) {

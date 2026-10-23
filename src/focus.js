@@ -30,7 +30,8 @@ function tabindexValue(el) {
 function isDetailsSummary(el) {
   const details = el[S].parent;
   if (!details || details[S].type !== ELEMENT_NODE || !isHTML(details, 'details')) return false;
-  for (let c = details[S].first; c; c = c[S].next) if (c[S].type === ELEMENT_NODE && isHTML(c, 'summary')) return c === el;
+  for (let c = details[S].first; c; c = c[S].next)
+    if (c[S].type === ELEMENT_NODE && isHTML(c, 'summary')) return c === el;
   return false;
 }
 
@@ -40,11 +41,19 @@ function isSuggestedFocusable(el) {
   if (s.ns === SVG_NS) return s.tag === 'a' && s.attrs.has('href');
   if (s.ns !== HTML_NS) return false;
   switch (s.tag) {
-    case 'a': return s.attrs.has('href');
-    case 'button': case 'select': case 'textarea': case 'iframe': return true;
-    case 'input': return inputType(el) !== 'hidden';
-    case 'summary': return isDetailsSummary(el);
-    default: return s.attrs.has('contenteditable'); // editing hosts
+    case 'a':
+      return s.attrs.has('href');
+    case 'button':
+    case 'select':
+    case 'textarea':
+    case 'iframe':
+      return true;
+    case 'input':
+      return inputType(el) !== 'hidden';
+    case 'summary':
+      return isDetailsSummary(el);
+    default:
+      return s.attrs.has('contenteditable'); // editing hosts
   }
 }
 
@@ -52,9 +61,17 @@ function isActuallyDisabled(el) {
   const s = el[S];
   if (s.ns !== HTML_NS) return false;
   switch (s.tag) {
-    case 'button': case 'input': case 'select': case 'textarea': return isDisabled(el);
-    case 'fieldset': case 'optgroup': case 'option': return s.attrs.has('disabled');
-    default: return false;
+    case 'button':
+    case 'input':
+    case 'select':
+    case 'textarea':
+      return isDisabled(el);
+    case 'fieldset':
+    case 'optgroup':
+    case 'option':
+      return s.attrs.has('disabled');
+    default:
+      return false;
   }
 }
 
@@ -149,8 +166,14 @@ const TABINDEX_ZERO = new Set(['a', 'area', 'button', 'frame', 'iframe', 'input'
 
 // HTMLElement and SVGElement (the HTMLOrSVGElement mixin).
 export const FOCUS_MEMBERS = {
-  focus() { state(this); focus(this); },
-  blur() { state(this); unfocus(this); },
+  focus() {
+    state(this);
+    focus(this);
+  },
+  blur() {
+    state(this);
+    unfocus(this);
+  },
   get tabIndex() {
     const s = state(this);
     const value = tabindexValue(this);
@@ -158,7 +181,10 @@ export const FOCUS_MEMBERS = {
     if (s.ns === HTML_NS && (TABINDEX_ZERO.has(s.tag) || (s.tag === 'summary' && isDetailsSummary(this)))) return 0;
     return s.ns === SVG_NS && s.tag === 'a' ? 0 : -1;
   },
-  set tabIndex(v) { state(this); writeAttribute(this, 'tabindex', String(Number(v) | 0)); },
+  set tabIndex(v) {
+    state(this);
+    writeAttribute(this, 'tabindex', String(Number(v) | 0));
+  },
 };
 
 export const DOCUMENT_FOCUS_MEMBERS = {
@@ -174,5 +200,7 @@ export const DOCUMENT_FOCUS_MEMBERS = {
     }
     return this.body ?? this.documentElement;
   },
-  hasFocus() { return !!state(this).focused; },
+  hasFocus() {
+    return !!state(this).focused;
+  },
 };

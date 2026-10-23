@@ -102,7 +102,10 @@
     "test": "node --test \"test/*.test.js\" test/parity.js",
     "bench:load": "node bench/load.js",
     "bench:hot": "node bench/hot.js",
-    "test:types": "npm run build && tsc -p test/types"
+    "test:types": "npm run build && tsc -p test/types",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint ."
   },
   "devDependencies": {
     "@happy-dom/jest-environment": "^20.14.6",
@@ -111,6 +114,7 @@
     "@webref/idl": "^3.85.1",
     "axios": "^1.20.0",
     "esbuild": "^0.28.2",
+    "eslint": "^10.12.0",
     "happy-dom": "^20.14.6",
     "jsdom": "^30.1.2",
     "jsdom20": "npm:jsdom@20.0.3",
@@ -126,6 +130,7 @@
     "jsdom30": "npm:jsdom@30.1.3",
     "msw": "^3.0.3",
     "nock": "^14.0.17",
+    "prettier": "^3.9.9",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
   },

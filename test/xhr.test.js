@@ -24,19 +24,35 @@ const PAGE = `${BASE}/page/index.html`;
 // --- helpers ------------------------------------------------------------------------------------
 
 const attempt = (fn) => {
-  try { const v = fn(); return v === undefined ? 'undefined' : v; } catch (e) { return `${e?.constructor?.name}/${e?.name}: ${e?.message}`; }
+  try {
+    const v = fn();
+    return v === undefined ? 'undefined' : v;
+  } catch (e) {
+    return `${e?.constructor?.name}/${e?.name}: ${e?.message}`;
+  }
 };
 const EVENTS = ['readystatechange', 'loadstart', 'progress', 'load', 'error', 'abort', 'timeout', 'loadend'];
 function logEvents(x, log, upload = false) {
   for (const type of EVENTS) {
-    x.addEventListener(type, (e) => log.push(`${type} ${x.readyState} ${x.status}${'loaded' in e ? ` ${e.lengthComputable}/${e.loaded}/${e.total}` : ''}`));
-    if (upload && type !== 'readystatechange') x.upload.addEventListener(type, (e) => log.push(`upload.${type} ${x.readyState} ${e.lengthComputable}/${e.loaded}/${e.total}`));
+    x.addEventListener(type, (e) =>
+      log.push(
+        `${type} ${x.readyState} ${x.status}${'loaded' in e ? ` ${e.lengthComputable}/${e.loaded}/${e.total}` : ''}`,
+      ),
+    );
+    if (upload && type !== 'readystatechange')
+      x.upload.addEventListener(type, (e) =>
+        log.push(`upload.${type} ${x.readyState} ${e.lengthComputable}/${e.loaded}/${e.total}`),
+      );
   }
 }
-const done = (x, ms = 3000) => new Promise((resolve) => {
-  const t = setTimeout(() => resolve('timed out'), ms);
-  x.addEventListener('loadend', () => { clearTimeout(t); setTimeout(() => resolve('done'), 20); });
-});
+const done = (x, ms = 3000) =>
+  new Promise((resolve) => {
+    const t = setTimeout(() => resolve('timed out'), ms);
+    x.addEventListener('loadend', () => {
+      clearTimeout(t);
+      setTimeout(() => resolve('done'), 20);
+    });
+  });
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const port = (s) => (typeof s === 'string' ? s.replace(/(localhost|127\.0\.0\.1):\d+/g, '$1:PORT') : s);
 // getAllResponseHeaders() as a sorted list, repeated headers combined, without
@@ -54,10 +70,17 @@ function headerLines(all) {
 }
 const getters = (x) => {
   const out = {};
-  for (const k of ['readyState', 'status', 'statusText', 'responseURL', 'responseType', 'timeout', 'withCredentials']) out[k] = port(attempt(() => x[k]));
-  out.response = attempt(() => { const r = x.response; return r === null ? null : typeof r === 'object' ? Object.prototype.toString.call(r) : r; });
+  for (const k of ['readyState', 'status', 'statusText', 'responseURL', 'responseType', 'timeout', 'withCredentials'])
+    out[k] = port(attempt(() => x[k]));
+  out.response = attempt(() => {
+    const r = x.response;
+    return r === null ? null : typeof r === 'object' ? Object.prototype.toString.call(r) : r;
+  });
   out.responseText = attempt(() => x.responseText);
-  out.responseXML = attempt(() => { const r = x.responseXML; return r === null ? null : Object.prototype.toString.call(r); });
+  out.responseXML = attempt(() => {
+    const r = x.responseXML;
+    return r === null ? null : Object.prototype.toString.call(r);
+  });
   out.headers = headerLines(attempt(() => x.getAllResponseHeaders()));
   return out;
 };
@@ -82,16 +105,33 @@ const SCENARIOS = {
     const X = w.XMLHttpRequest;
     const own = (o) => Object.getOwnPropertyNames(o).sort();
     const x = new X();
-    const desc = (k) => { const d = Object.getOwnPropertyDescriptor(X.prototype, k); return Object.fromEntries(Object.entries(d).map(([a, b]) => [a, typeof b === 'function' ? 'fn' : b])); };
+    const desc = (k) => {
+      const d = Object.getOwnPropertyDescriptor(X.prototype, k);
+      return Object.fromEntries(Object.entries(d).map(([a, b]) => [a, typeof b === 'function' ? 'fn' : b]));
+    };
     return {
       kinds: [typeof X, typeof w.XMLHttpRequestEventTarget, typeof w.XMLHttpRequestUpload, X.length, X.name],
-      chain: [Object.getPrototypeOf(X.prototype) === w.XMLHttpRequestEventTarget.prototype, Object.getPrototypeOf(w.XMLHttpRequestEventTarget.prototype) === w.EventTarget.prototype,
-        Object.getPrototypeOf(w.XMLHttpRequestUpload.prototype) === w.XMLHttpRequestEventTarget.prototype, Object.getPrototypeOf(X) === w.XMLHttpRequestEventTarget],
-      members: [own(X.prototype), own(w.XMLHttpRequestEventTarget.prototype), own(w.XMLHttpRequestUpload.prototype), own(X)],
+      chain: [
+        Object.getPrototypeOf(X.prototype) === w.XMLHttpRequestEventTarget.prototype,
+        Object.getPrototypeOf(w.XMLHttpRequestEventTarget.prototype) === w.EventTarget.prototype,
+        Object.getPrototypeOf(w.XMLHttpRequestUpload.prototype) === w.XMLHttpRequestEventTarget.prototype,
+        Object.getPrototypeOf(X) === w.XMLHttpRequestEventTarget,
+      ],
+      members: [
+        own(X.prototype),
+        own(w.XMLHttpRequestEventTarget.prototype),
+        own(w.XMLHttpRequestUpload.prototype),
+        own(X),
+      ],
       constants: [X.UNSENT, X.OPENED, X.HEADERS_RECEIVED, X.LOADING, X.DONE, x.DONE],
       constructors: [attempt(() => new w.XMLHttpRequestEventTarget()), attempt(() => new w.XMLHttpRequestUpload())],
       initial: getters(x),
-      upload: [Object.prototype.toString.call(x.upload), x.upload === x.upload, x.upload instanceof w.XMLHttpRequestUpload, x.upload instanceof w.EventTarget],
+      upload: [
+        Object.prototype.toString.call(x.upload),
+        x.upload === x.upload,
+        x.upload instanceof w.XMLHttpRequestUpload,
+        x.upload instanceof w.EventTarget,
+      ],
       tags: [Object.prototype.toString.call(x), own(x), x.onload, x.onreadystatechange, x.upload.onprogress],
       descriptors: ['readyState', 'onreadystatechange', 'open', 'DONE', 'response'].map(desc),
     };
@@ -99,25 +139,54 @@ const SCENARIOS = {
   open(w, c) {
     const x = new w.XMLHttpRequest();
     const r = [];
-    for (const m of ['bad method', 'CONNECT', 'connect', 'TRACE', 'track', '', 'GéT']) r.push([m, attempt(() => x.open(m, `${c.BASE}/echo`))]);
-    r.push(attempt(() => x.open('GET', 'http://[bad')), attempt(() => x.open()), attempt(() => x.open('GET')));
+    for (const m of ['bad method', 'CONNECT', 'connect', 'TRACE', 'track', '', 'GéT'])
+      r.push([m, attempt(() => x.open(m, `${c.BASE}/echo`))]);
+    r.push(
+      attempt(() => x.open('GET', 'http://[bad')),
+      attempt(() => x.open()),
+      attempt(() => x.open('GET')),
+    );
     const log = [];
     x.onreadystatechange = () => log.push(x.readyState);
-    r.push(attempt(() => x.open('GET', '/x')), attempt(() => x.open('GET', '/y')), log);
+    r.push(
+      attempt(() => x.open('GET', '/x')),
+      attempt(() => x.open('GET', '/y')),
+      log,
+    );
     // A third argument decides: undefined makes the request synchronous.
-    r.push(attempt(() => x.open('GET', '/x', undefined)), attempt(() => { x.timeout = 5; }), attempt(() => { x.responseType = 'json'; }));
+    r.push(
+      attempt(() => x.open('GET', '/x', undefined)),
+      attempt(() => {
+        x.timeout = 5;
+      }),
+      attempt(() => {
+        x.responseType = 'json';
+      }),
+    );
     const y = new w.XMLHttpRequest();
     y.responseType = 'json';
     const z = new w.XMLHttpRequest();
     z.timeout = 5;
-    r.push(attempt(() => y.open('GET', '/x', false)), attempt(() => z.open('GET', '/x', false)), attempt(() => z.open('GET', '/x', true)));
+    r.push(
+      attempt(() => y.open('GET', '/x', false)),
+      attempt(() => z.open('GET', '/x', false)),
+      attempt(() => z.open('GET', '/x', true)),
+    );
     return r;
   },
   async states(w, c) {
     const x = new w.XMLHttpRequest();
     const r = {};
-    r.beforeOpen = [attempt(() => x.setRequestHeader('a', 'b')), attempt(() => x.send()), attempt(() => x.overrideMimeType('text/plain')), attempt(() => x.getResponseHeader())];
-    r.responseTypes = ['', 'text', 'json', 'arraybuffer', 'blob', 'document', 'bogus', 'moz-blob'].map((t) => { x.responseType = t; return x.responseType; });
+    r.beforeOpen = [
+      attempt(() => x.setRequestHeader('a', 'b')),
+      attempt(() => x.send()),
+      attempt(() => x.overrideMimeType('text/plain')),
+      attempt(() => x.getResponseHeader()),
+    ];
+    r.responseTypes = ['', 'text', 'json', 'arraybuffer', 'blob', 'document', 'bogus', 'moz-blob'].map((t) => {
+      x.responseType = t;
+      return x.responseType;
+    });
     x.responseType = 'json';
     r.json = [attempt(() => x.responseText), attempt(() => x.responseXML), attempt(() => x.response)];
     x.responseType = 'document';
@@ -125,22 +194,59 @@ const SCENARIOS = {
     x.responseType = 'arraybuffer';
     r.arraybuffer = attempt(() => x.response);
     x.responseType = '';
-    r.timeouts = ['5', -1, 1.7, 'x', 2 ** 33, null].map((v) => { x.timeout = v; return x.timeout; });
+    r.timeouts = ['5', -1, 1.7, 'x', 2 ** 33, null].map((v) => {
+      x.timeout = v;
+      return x.timeout;
+    });
     x.timeout = 0;
-    r.credentials = [1, 0, 'a', ''].map((v) => { x.withCredentials = v; return x.withCredentials; });
+    r.credentials = [1, 0, 'a', ''].map((v) => {
+      x.withCredentials = v;
+      return x.withCredentials;
+    });
     x.open('GET', `${c.BASE}/slow?n=2&ms=100`);
     r.opened = getters(x);
     r.header = attempt(() => x.setRequestHeader('X-Test', 'v'));
     x.send();
-    r.sent = [getters(x), attempt(() => x.send()), attempt(() => x.setRequestHeader('a', 'b')), attempt(() => { x.withCredentials = true; }),
-      attempt(() => { x.responseType = 'text'; return x.responseType; }), attempt(() => x.overrideMimeType('text/plain')), attempt(() => { x.timeout = 0; return x.timeout; })];
+    r.sent = [
+      getters(x),
+      attempt(() => x.send()),
+      attempt(() => x.setRequestHeader('a', 'b')),
+      attempt(() => {
+        x.withCredentials = true;
+      }),
+      attempt(() => {
+        x.responseType = 'text';
+        return x.responseType;
+      }),
+      attempt(() => x.overrideMimeType('text/plain')),
+      attempt(() => {
+        x.timeout = 0;
+        return x.timeout;
+      }),
+    ];
     await new Promise((resolve) => {
       x.onreadystatechange = () => {
-        if (x.readyState === 3 && !r.loading) r.loading = [getters(x), attempt(() => { x.responseType = 'json'; }), attempt(() => x.overrideMimeType('text/plain'))];
+        if (x.readyState === 3 && !r.loading)
+          r.loading = [
+            getters(x),
+            attempt(() => {
+              x.responseType = 'json';
+            }),
+            attempt(() => x.overrideMimeType('text/plain')),
+          ];
         if (x.readyState === 2) r.headersReceived = getters(x);
       };
       x.onloadend = () => {
-        r.done = [getters(x), attempt(() => { x.responseType = 'json'; }), attempt(() => x.overrideMimeType('text/plain')), attempt(() => { x.withCredentials = true; })];
+        r.done = [
+          getters(x),
+          attempt(() => {
+            x.responseType = 'json';
+          }),
+          attempt(() => x.overrideMimeType('text/plain')),
+          attempt(() => {
+            x.withCredentials = true;
+          }),
+        ];
         resolve();
       };
     });
@@ -150,16 +256,52 @@ const SCENARIOS = {
     const x = new w.XMLHttpRequest();
     x.open('POST', `${c.BASE}/echo`);
     const r = {};
-    for (const [n, v] of [['Cookie', 'a=1'], ['Host', 'h'], ['Content-Length', '3'], ['Referer', 'http://x/'], ['Origin', 'http://x'], ['User-Agent', 'ua'],
-      ['Sec-Foo', '1'], ['Proxy-Foo', '1'], ['Accept-Charset', 'x'], ['Connection', 'close'], ['DNT', '1'], ['Keep-Alive', 'x'], ['Via', 'x'], ['Date', 'x'],
-      ['Expect', 'x'], ['TE', 'x'], ['Trailer', 'x'], ['Upgrade', 'x'], ['Transfer-Encoding', 'x'], ['Access-Control-Request-Method', 'x'],
-      ['Access-Control-Request-Headers', 'x'], ['Cookie2', 'x'], ['Set-Cookie', 'x'], ['Accept-Encoding', 'x'], ['X-HTTP-Method-Override', 'GET'],
-      ['X-HTTP-Method', 'TRACE'], ['X-Method-Override', 'get, track'], ['Accept', 'text/x'], ['Accept-Language', 'fr'], ['X-Dup', 'a'], ['x-dup', 'b'],
-      ['X-Empty', ''], ['X-Space', '  pad  '], ['X-Number', 5], ['X-Latin', 'é']]) {
+    for (const [n, v] of [
+      ['Cookie', 'a=1'],
+      ['Host', 'h'],
+      ['Content-Length', '3'],
+      ['Referer', 'http://x/'],
+      ['Origin', 'http://x'],
+      ['User-Agent', 'ua'],
+      ['Sec-Foo', '1'],
+      ['Proxy-Foo', '1'],
+      ['Accept-Charset', 'x'],
+      ['Connection', 'close'],
+      ['DNT', '1'],
+      ['Keep-Alive', 'x'],
+      ['Via', 'x'],
+      ['Date', 'x'],
+      ['Expect', 'x'],
+      ['TE', 'x'],
+      ['Trailer', 'x'],
+      ['Upgrade', 'x'],
+      ['Transfer-Encoding', 'x'],
+      ['Access-Control-Request-Method', 'x'],
+      ['Access-Control-Request-Headers', 'x'],
+      ['Cookie2', 'x'],
+      ['Set-Cookie', 'x'],
+      ['Accept-Encoding', 'x'],
+      ['X-HTTP-Method-Override', 'GET'],
+      ['X-HTTP-Method', 'TRACE'],
+      ['X-Method-Override', 'get, track'],
+      ['Accept', 'text/x'],
+      ['Accept-Language', 'fr'],
+      ['X-Dup', 'a'],
+      ['x-dup', 'b'],
+      ['X-Empty', ''],
+      ['X-Space', '  pad  '],
+      ['X-Number', 5],
+      ['X-Latin', 'é'],
+    ]) {
       r[`${n}=${v}`] = attempt(() => x.setRequestHeader(n, v));
     }
-    r.errors = [attempt(() => x.setRequestHeader('bad name', 'v')), attempt(() => x.setRequestHeader('X-Bad', 'a\nb')), attempt(() => x.setRequestHeader('X')),
-      attempt(() => x.setRequestHeader('X-U', '€')), attempt(() => x.setRequestHeader('X-€', 'v'))];
+    r.errors = [
+      attempt(() => x.setRequestHeader('bad name', 'v')),
+      attempt(() => x.setRequestHeader('X-Bad', 'a\nb')),
+      attempt(() => x.setRequestHeader('X')),
+      attempt(() => x.setRequestHeader('X-U', '€')),
+      attempt(() => x.setRequestHeader('X-€', 'v')),
+    ];
     x.send('abc');
     await done(x);
     const echo = JSON.parse(x.responseText);
@@ -168,7 +310,10 @@ const SCENARIOS = {
   },
   async defaultHeaders(w, c) {
     const out = [];
-    for (const [method, url] of [['GET', `${c.BASE}/echo`], ['GET', `${c.CROSS}/echo?acao=*`]]) {
+    for (const [method, url] of [
+      ['GET', `${c.BASE}/echo`],
+      ['GET', `${c.CROSS}/echo?acao=*`],
+    ]) {
       const { x } = await request(w, method, url);
       out.push(port(JSON.stringify(JSON.parse(x.responseText).headers)));
     }
@@ -182,19 +327,42 @@ const SCENARIOS = {
     fd.append('q"\n\r', new w.Blob(['z']), 'a\nb"');
     fd.append('v', 'l1\nl2\rl3');
     const cases = {
-      string: ['hé'], charsetReplaced: ['s', 'text/plain;charset=latin1'], noCharset: ['s', 'application/json'], upperCharset: ['s', 'text/plain; CHARSET=UTF-8'],
-      twoCharsets: ['s', 'text/plain;charset=a;charset=b'], badMime: ['s', 'nonsense;charset=latin1'],
-      urlSearchParams: [new w.URLSearchParams('a=1&b=2')], urlSearchParamsType: [new w.URLSearchParams('a=1'), 'text/x'],
-      blob: [new w.Blob(['bb'], { type: 'Text/X' })], blobNoType: [new w.Blob(['bb'])], blobTypeKept: [new w.Blob(['bb'], { type: 'a/b' }), 'c/d;charset=x'],
-      file: [new w.File(['ff'], 'n', { type: 'a/b' })], formData: [fd], arrayBuffer: [new Uint8Array([65, 66]).buffer], view: [new Uint8Array([67, 68, 69]).subarray(1)],
-      xml: [new w.DOMParser().parseFromString('<a>té</a>', 'application/xml')], html: [w.document.implementation.createHTMLDocument('t')], document: [w.document],
-      documentCharset: [w.document, 'text/html;charset=latin1'], null: [null], undefined: [undefined], number: [42], object: [{ a: 1 }], buffer: [Buffer.from('nb')],
+      string: ['hé'],
+      charsetReplaced: ['s', 'text/plain;charset=latin1'],
+      noCharset: ['s', 'application/json'],
+      upperCharset: ['s', 'text/plain; CHARSET=UTF-8'],
+      twoCharsets: ['s', 'text/plain;charset=a;charset=b'],
+      badMime: ['s', 'nonsense;charset=latin1'],
+      urlSearchParams: [new w.URLSearchParams('a=1&b=2')],
+      urlSearchParamsType: [new w.URLSearchParams('a=1'), 'text/x'],
+      blob: [new w.Blob(['bb'], { type: 'Text/X' })],
+      blobNoType: [new w.Blob(['bb'])],
+      blobTypeKept: [new w.Blob(['bb'], { type: 'a/b' }), 'c/d;charset=x'],
+      file: [new w.File(['ff'], 'n', { type: 'a/b' })],
+      formData: [fd],
+      arrayBuffer: [new Uint8Array([65, 66]).buffer],
+      view: [new Uint8Array([67, 68, 69]).subarray(1)],
+      xml: [new w.DOMParser().parseFromString('<a>té</a>', 'application/xml')],
+      html: [w.document.implementation.createHTMLDocument('t')],
+      document: [w.document],
+      documentCharset: [w.document, 'text/html;charset=latin1'],
+      null: [null],
+      undefined: [undefined],
+      number: [42],
+      object: [{ a: 1 }],
+      buffer: [Buffer.from('nb')],
     };
     // XML documents are sent without the well-formed flag (Copilot review on #89).
-    const xmlDoc = (change) => { const d = w.document.implementation.createDocument(null, 'root'); change(d, d.documentElement); return d; };
+    const xmlDoc = (change) => {
+      const d = w.document.implementation.createDocument(null, 'root');
+      change(d, d.documentElement);
+      return d;
+    };
     Object.assign(cases, {
       xmlComment: [xmlDoc((d, root) => root.append(d.createComment('a--b'), d.createComment('c-')))],
-      xmlPI: [xmlDoc((d, root) => root.append(Object.assign(d.createProcessingInstruction('x', 'a'), { data: 'a?>b' })))],
+      xmlPI: [
+        xmlDoc((d, root) => root.append(Object.assign(d.createProcessingInstruction('x', 'a'), { data: 'a?>b' }))),
+      ],
       xmlText: [xmlDoc((d, root) => root.append('a\u0001b'))],
       xmlAttribute: [xmlDoc((d, root) => root.setAttribute('a', 'x\u0001'))],
       xmlDoctype: [xmlDoc((d, root) => d.insertBefore(d.implementation.createDocumentType('root', 'p"\'', ''), root))],
@@ -209,8 +377,11 @@ const SCENARIOS = {
       x.send(body);
       await done(x);
       const echo = JSON.parse(x.responseText);
-      out[name] = [echo.headers['content-type'] ?? null, echo.headers['content-length'] ?? null, echo.body.replace(/-{26}[\da-f]{24}/g, 'BOUNDARY')]
-        .map((v) => (typeof v === 'string' ? v.replace(/boundary=-{26}[\da-f]{24}/, 'boundary=B') : v));
+      out[name] = [
+        echo.headers['content-type'] ?? null,
+        echo.headers['content-length'] ?? null,
+        echo.body.replace(/-{26}[\da-f]{24}/g, 'BOUNDARY'),
+      ].map((v) => (typeof v === 'string' ? v.replace(/boundary=-{26}[\da-f]{24}/, 'boundary=B') : v));
     }
     for (const method of ['GET', 'HEAD']) {
       const x = new w.XMLHttpRequest();
@@ -232,8 +403,22 @@ const SCENARIOS = {
   async events(w, c) {
     const out = {};
     let { x, log } = await request(w, 'GET', `${c.BASE}/text`, { upload: true });
-    out.get = [log, getters(x), [x.getResponseHeader('x-multi'), x.getResponseHeader('X-A'), x.getResponseHeader('set-cookie'), x.getResponseHeader('SET-COOKIE2'), x.getResponseHeader('nope'), x.getResponseHeader('content-type')]];
-    ({ log } = await request(w, 'POST', `${c.BASE}/type?ct=text/plain&body=done`, { body: 'a'.repeat(1000), upload: true }));
+    out.get = [
+      log,
+      getters(x),
+      [
+        x.getResponseHeader('x-multi'),
+        x.getResponseHeader('X-A'),
+        x.getResponseHeader('set-cookie'),
+        x.getResponseHeader('SET-COOKIE2'),
+        x.getResponseHeader('nope'),
+        x.getResponseHeader('content-type'),
+      ],
+    ];
+    ({ log } = await request(w, 'POST', `${c.BASE}/type?ct=text/plain&body=done`, {
+      body: 'a'.repeat(1000),
+      upload: true,
+    }));
     out.post = log;
     ({ log } = await request(w, 'POST', `${c.BASE}/type?ct=text/plain&body=done`, { body: 'abc' }));
     out.postWithoutUploadListeners = log;
@@ -252,9 +437,33 @@ const SCENARIOS = {
   async calls(w, c) {
     const log = [];
     const x = new w.XMLHttpRequest();
-    x.onreadystatechange = function (e) { log.push(['readystatechange', this === x, e.target === x, e.currentTarget === x, e.bubbles, e.cancelable, e.isTrusted, e.constructor === w.Event, x.readyState]); };
-    x.onload = function (e) { log.push(['load', this === x, e.bubbles, e.cancelable, e.isTrusted, e.constructor === w.ProgressEvent, e instanceof w.ProgressEvent]); };
-    x.upload.onloadstart = function (e) { log.push(['upload', this === x.upload, e.target === x.upload]); };
+    x.onreadystatechange = function (e) {
+      log.push([
+        'readystatechange',
+        this === x,
+        e.target === x,
+        e.currentTarget === x,
+        e.bubbles,
+        e.cancelable,
+        e.isTrusted,
+        e.constructor === w.Event,
+        x.readyState,
+      ]);
+    };
+    x.onload = function (e) {
+      log.push([
+        'load',
+        this === x,
+        e.bubbles,
+        e.cancelable,
+        e.isTrusted,
+        e.constructor === w.ProgressEvent,
+        e instanceof w.ProgressEvent,
+      ]);
+    };
+    x.upload.onloadstart = function (e) {
+      log.push(['upload', this === x.upload, e.target === x.upload]);
+    };
     x.open('POST', `${c.BASE}/type?body=x`);
     x.send('abc');
     await done(x);
@@ -269,7 +478,10 @@ const SCENARIOS = {
     await done(y);
     // A listener that throws is reported; the request continues.
     const z = new w.XMLHttpRequest();
-    z.onreadystatechange = () => { log.push(`throws ${z.readyState}`); if (z.readyState === 2) throw new Error('boom'); };
+    z.onreadystatechange = () => {
+      log.push(`throws ${z.readyState}`);
+      if (z.readyState === 2) throw new Error('boom');
+    };
     z.open('GET', `${c.BASE}/text`);
     z.send();
     await done(z);
@@ -277,8 +489,19 @@ const SCENARIOS = {
   },
   async statuses(w, c) {
     const out = [];
-    for (const [code, text, body] of [[404, 'Not Found', 'nf'], [204, 'No Content', ''], [201, 'Created Custom', 'c'], [500, 'Server Error', 'e'], [299, 'X', ''], [599, 'Y', '']]) {
-      const { x, log } = await request(w, 'GET', `${c.BASE}/status?code=${code}&text=${encodeURIComponent(text)}&body=${body}`);
+    for (const [code, text, body] of [
+      [404, 'Not Found', 'nf'],
+      [204, 'No Content', ''],
+      [201, 'Created Custom', 'c'],
+      [500, 'Server Error', 'e'],
+      [299, 'X', ''],
+      [599, 'Y', ''],
+    ]) {
+      const { x, log } = await request(
+        w,
+        'GET',
+        `${c.BASE}/status?code=${code}&text=${encodeURIComponent(text)}&body=${body}`,
+      );
       out.push([code, x.status, x.statusText, x.responseText, log]);
     }
     return out;
@@ -288,16 +511,31 @@ const SCENARIOS = {
     // jsdom before 28 never completes a POST redirected by 301, 302 or 303.
     // (jsdom keeps a fragment of the Location in responseURL; fetch does not
     // say it.)
-    const cases = [[302, '/text', 'GET'], [307, '/echo', 'POST'], [308, '/echo', 'POST'], [302, `${c.CROSS}/echo?acao=*`, 'GET'], [302, `${c.CROSS}/echo`, 'GET']];
+    const cases = [
+      [302, '/text', 'GET'],
+      [307, '/echo', 'POST'],
+      [308, '/echo', 'POST'],
+      [302, `${c.CROSS}/echo?acao=*`, 'GET'],
+      [302, `${c.CROSS}/echo`, 'GET'],
+    ];
     if (c.jsdom >= 28) cases.push([301, '/echo', 'POST'], [302, '/echo', 'POST'], [303, '/echo', 'PUT']);
     for (const [code, to, method] of cases) {
-      const { x, log } = await request(w, method, `${c.BASE}/redirect?code=${code}&to=${encodeURIComponent(to)}`, { body: method === 'GET' ? undefined : 'body' });
+      const { x, log } = await request(w, method, `${c.BASE}/redirect?code=${code}&to=${encodeURIComponent(to)}`, {
+        body: method === 'GET' ? undefined : 'body',
+      });
       const echo = x.status === 200 && to.includes('echo') ? JSON.parse(x.responseText) : null;
       // The echo's length depends on the Origin and Referer of the redirected
       // request, which fetch sets (jsdom: Origin on the next hop, and before 28
       // the redirecting URL as Referer).
-      out.push([code, port(to), method, x.status, port(x.responseURL), echo && [echo.method, echo.body, echo.headers['content-type'] ?? null],
-        echo ? log.map((l) => l.replace(/\/\d+\/0$/, '/N/0')) : log]);
+      out.push([
+        code,
+        port(to),
+        method,
+        x.status,
+        port(x.responseURL),
+        echo && [echo.method, echo.body, echo.headers['content-type'] ?? null],
+        echo ? log.map((l) => l.replace(/\/\d+\/0$/, '/N/0')) : log,
+      ]);
     }
     const { x, log } = await request(w, 'GET', `${c.BASE}/redirect?code=302`);
     out.push(['loop', x.status, port(x.responseURL), log]);
@@ -305,7 +543,10 @@ const SCENARIOS = {
   },
   async errors(w, c) {
     const out = {};
-    const cases = [['refused', 'POST', `http://localhost:${c.DEAD}/x`, 'abc'], ['refusedGet', 'GET', `http://localhost:${c.DEAD}/x`]];
+    const cases = [
+      ['refused', 'POST', `http://localhost:${c.DEAD}/x`, 'abc'],
+      ['refusedGet', 'GET', `http://localhost:${c.DEAD}/x`],
+    ];
     // jsdom before 28 throws Node's error from send() for other schemes.
     if (c.jsdom >= 28) cases.push(['scheme', 'GET', 'ftp://localhost/x'], ['about', 'GET', 'about:blank']);
     for (const [name, method, url, body] of cases) {
@@ -317,8 +558,10 @@ const SCENARIOS = {
   async timeouts(w, c) {
     const out = {};
     for (const [name, method, url, ms, body, upload] of [
-      ['hangPost', 'POST', `${c.BASE}/hang`, 100, 'abc', true], ['hangPostNoUploadListeners', 'POST', `${c.BASE}/hang`, 100, 'abc', false],
-      ['hangGet', 'GET', `${c.BASE}/hang`, 100], ['headersLate', 'POST', `${c.BASE}/slow?wait=400&n=1`, 100, 'abc', true],
+      ['hangPost', 'POST', `${c.BASE}/hang`, 100, 'abc', true],
+      ['hangPostNoUploadListeners', 'POST', `${c.BASE}/hang`, 100, 'abc', false],
+      ['hangGet', 'GET', `${c.BASE}/hang`, 100],
+      ['headersLate', 'POST', `${c.BASE}/slow?wait=400&n=1`, 100, 'abc', true],
       // Three chunks, each sent once the previous one's progress event has
       // fired, then the response stays open: both windows see the same
       // chunks before the timeout, however busy the machine (timed chunks
@@ -326,19 +569,38 @@ const SCENARIOS = {
       // chunk than the other). What is left to time is the headers: the
       // timeout leaves them a wide margin (jsdom on a busy CI machine took
       // more than 150 ms to them).
-      ['duringBody', 'GET', `${c.BASE}/slow?n=3&step=1`, 2000], ['duringBodyAfterUpload', 'POST', `${c.BASE}/slow?n=3&step=1`, 2000, 'abc', true]]) {
+      ['duringBody', 'GET', `${c.BASE}/slow?n=3&step=1`, 2000],
+      ['duringBodyAfterUpload', 'POST', `${c.BASE}/slow?n=3&step=1`, 2000, 'abc', true],
+    ]) {
       const prep = (r) => {
         r.timeout = ms;
-        r.addEventListener('progress', (e) => { if (e.loaded > 0) c.server.release(); });
+        r.addEventListener('progress', (e) => {
+          if (e.loaded > 0) c.server.release();
+        });
       };
       const { x, log } = await request(w, method, url, { body, upload, prep });
-      out[name] = [log.filter((l, i) => !(l.startsWith('readystatechange 3') && log[i + 1]?.startsWith('progress 3 200 false/') && !log[i + 1].endsWith('/0/0'))), getters(x)];
+      out[name] = [
+        log.filter(
+          (l, i) =>
+            !(
+              l.startsWith('readystatechange 3') &&
+              log[i + 1]?.startsWith('progress 3 200 false/') &&
+              !log[i + 1].endsWith('/0/0')
+            ),
+        ),
+        getters(x),
+      ];
     }
     // Changing the timeout during the request: measured from its start; 0
     // cancels it; a request started without one gets none. (The response
     // comes at 500 ms; on a busy machine the change at 20 ms can run late
     // and the response can take more than 1000 ms, hence the margins.)
-    for (const [name, first, later, at] of [['raised', 300, 2000, 20], ['lowered', 1000, 50, 20], ['cleared', 300, 0, 20], ['startedWithout', 0, 50, 120]]) {
+    for (const [name, first, later, at] of [
+      ['raised', 300, 2000, 20],
+      ['lowered', 1000, 50, 20],
+      ['cleared', 300, 0, 20],
+      ['startedWithout', 0, 50, 120],
+    ]) {
       const x = new w.XMLHttpRequest();
       const log = [];
       x.ontimeout = () => log.push('timeout');
@@ -346,7 +608,9 @@ const SCENARIOS = {
       x.open('GET', `${c.BASE}/slow?wait=500&n=1`);
       x.timeout = first;
       x.send();
-      setTimeout(() => { x.timeout = later; }, at);
+      setTimeout(() => {
+        x.timeout = later;
+      }, at);
       await done(x);
       out[name] = log;
     }
@@ -354,7 +618,12 @@ const SCENARIOS = {
   },
   async aborts(w, c) {
     const out = {};
-    const make = () => { const x = new w.XMLHttpRequest(); const log = []; logEvents(x, log, true); return [x, log]; };
+    const make = () => {
+      const x = new w.XMLHttpRequest();
+      const log = [];
+      logEvents(x, log, true);
+      return [x, log];
+    };
     let [x, log] = make();
     x.abort();
     out.unsent = [log.slice(), x.readyState];
@@ -373,7 +642,11 @@ const SCENARIOS = {
     out.sent = [log.slice(), getters(x)];
     [x, log] = make();
     x.open('GET', `${c.BASE}/slow?n=5&ms=60`);
-    x.addEventListener('progress', function once() { x.removeEventListener('progress', once); x.abort(); log.push(`aborted ${x.readyState}`); });
+    x.addEventListener('progress', function once() {
+      x.removeEventListener('progress', once);
+      x.abort();
+      log.push(`aborted ${x.readyState}`);
+    });
     x.send();
     await wait(500);
     out.loading = [log.slice(), getters(x)];
@@ -387,7 +660,13 @@ const SCENARIOS = {
     [x, log] = make();
     x.open('GET', `${c.BASE}/slow`);
     x.send();
-    x.onreadystatechange = () => { if (x.readyState === 4) { x.onreadystatechange = null; x.open('GET', `${c.BASE}/text`); log.push(`reopened ${x.readyState}`); } };
+    x.onreadystatechange = () => {
+      if (x.readyState === 4) {
+        x.onreadystatechange = null;
+        x.open('GET', `${c.BASE}/text`);
+        log.push(`reopened ${x.readyState}`);
+      }
+    };
     x.abort();
     log.push(`aborted ${x.readyState}`);
     await wait(200);
@@ -423,14 +702,18 @@ const SCENARIOS = {
       x.send('abc');
       await wait(50);
       log.push(how);
-      if (how === 'abort') x.abort(); else x.open('GET', `${c.BASE}/text`);
+      if (how === 'abort') x.abort();
+      else x.open('GET', `${c.BASE}/text`);
       await wait(300);
       out[`${how}InPreflight`] = [log.slice(), x.readyState, x.status];
     }
     // jsdom before 28 goes on with the request after an abort in loadstart.
     if (c.jsdom < 28) return out;
     [x, log] = make();
-    x.onloadstart = () => { x.abort(); log.push(`aborted in loadstart ${x.readyState}`); };
+    x.onloadstart = () => {
+      x.abort();
+      log.push(`aborted in loadstart ${x.readyState}`);
+    };
     x.open('POST', `${c.BASE}/echo`);
     x.send('abc');
     log.push(`after send ${x.readyState}`);
@@ -444,7 +727,14 @@ const SCENARIOS = {
     const x = new w.XMLHttpRequest();
     const seen = [];
     for (const type of ['loadstart', 'progress', 'load', 'loadend']) {
-      x.upload.addEventListener(type, () => seen.push([type, getters(x), attempt(() => x.getResponseHeader('x-a')), attempt(() => x.getResponseHeader('content-type'))]));
+      x.upload.addEventListener(type, () =>
+        seen.push([
+          type,
+          getters(x),
+          attempt(() => x.getResponseHeader('x-a')),
+          attempt(() => x.getResponseHeader('content-type')),
+        ]),
+      );
     }
     x.addEventListener('readystatechange', () => seen.push(['readystatechange', x.readyState, x.status]));
     x.open('POST', `${c.BASE}/text`);
@@ -465,12 +755,34 @@ const SCENARIOS = {
       try {
         const r = x.response;
         if (r === null || typeof r !== 'object') value = r;
-        else if (r instanceof w.Document) value = ['Document', Object.prototype.toString.call(r), r.contentType, r.documentElement?.outerHTML ?? null, port(r.URL), r.characterSet, r.compatMode, r.defaultView, r.title];
+        else if (r instanceof w.Document)
+          value = [
+            'Document',
+            Object.prototype.toString.call(r),
+            r.contentType,
+            r.documentElement?.outerHTML ?? null,
+            port(r.URL),
+            r.characterSet,
+            r.compatMode,
+            r.defaultView,
+            r.title,
+          ];
         else if (r instanceof w.Blob) value = ['Blob', r.size, r.type];
-        else if (Object.prototype.toString.call(r) === '[object ArrayBuffer]') value = ['ArrayBuffer', [...new Uint8Array(r)]];
+        else if (Object.prototype.toString.call(r) === '[object ArrayBuffer]')
+          value = ['ArrayBuffer', [...new Uint8Array(r)]];
         else value = ['JSON', JSON.stringify(r), Array.isArray(r)];
-      } catch (e) { value = e.message; }
-      return [value, attempt(() => x.responseText), attempt(() => { const d = x.responseXML; return d === null ? null : [d.contentType, d.documentElement?.outerHTML]; }), x.response === x.response];
+      } catch (e) {
+        value = e.message;
+      }
+      return [
+        value,
+        attempt(() => x.responseText),
+        attempt(() => {
+          const d = x.responseXML;
+          return d === null ? null : [d.contentType, d.documentElement?.outerHTML];
+        }),
+        x.response === x.response,
+      ];
     };
     out.text = await get('text', 'ct=text/plain&body=h%C3%A9');
     out.latin1 = await get('', `ct=${encodeURIComponent('text/plain;charset=iso-8859-1')}&body=6869e9&enc=hex`);
@@ -492,44 +804,99 @@ const SCENARIOS = {
     out.xml = await get('document', `ct=text/xml&body=${encodeURIComponent('<a><b/></a>')}`);
     out.badXml = await get('document', `ct=text/xml&body=${encodeURIComponent('<a>')}`);
     out.textAsDocument = await get('document', 'ct=text/plain&body=x');
-    out.svg = await get('document', `ct=image/svg%2Bxml&body=${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg"/>')}`);
+    out.svg = await get(
+      'document',
+      `ct=image/svg%2Bxml&body=${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg"/>')}`,
+    );
     out.plusXml = await get('document', `ct=application/foo%2Bxml&body=${encodeURIComponent('<a/>')}`);
     out.documentNoContentType = await get('document', `body=${encodeURIComponent('<a/>')}`);
     out.xmlDefault = await get('', `ct=application/xml&body=${encodeURIComponent('<a>x</a>')}`);
     out.htmlDefault = await get('', `ct=text/html&body=${encodeURIComponent('<p>x</p>')}`);
     out.badXmlDefault = await get('', `ct=application/xml&body=${encodeURIComponent('<a>')}`);
     out.xmlNoContentType = await get('', `body=${encodeURIComponent('<a/>')}`);
-    out.overrideXml = await get('', `ct=text/plain&body=${encodeURIComponent('<a>x</a>')}`, (x) => x.overrideMimeType('text/xml'));
-    out.overrideCharset = await get('', 'ct=text/plain&body=6869e9&enc=hex', (x) => x.overrideMimeType('text/plain; charset=latin1'));
+    out.overrideXml = await get('', `ct=text/plain&body=${encodeURIComponent('<a>x</a>')}`, (x) =>
+      x.overrideMimeType('text/xml'),
+    );
+    out.overrideCharset = await get('', 'ct=text/plain&body=6869e9&enc=hex', (x) =>
+      x.overrideMimeType('text/plain; charset=latin1'),
+    );
     out.overrideInvalid = await get('blob', 'ct=text/plain&body=x', (x) => x.overrideMimeType('nonsense'));
     out.overrideBlob = await get('blob', 'ct=text/plain&body=x', (x) => x.overrideMimeType('Foo/Bar;A=B'));
-    out.documentCharset = await get('document', `ct=text%2Fhtml&body=${encodeURIComponent('<p>')}c3a9&enc=utf8`, (x) => x.overrideMimeType('text/html;charset=latin1'));
+    out.documentCharset = await get('document', `ct=text%2Fhtml&body=${encodeURIComponent('<p>')}c3a9&enc=utf8`, (x) =>
+      x.overrideMimeType('text/html;charset=latin1'),
+    );
     out.overrideKeepsHeader = await get('', 'ct=text/plain&body=x', (x) => x.overrideMimeType('application/xml'));
     // An override without a charset keeps the response's (Copilot review on #89).
     const cp1252 = encodeURIComponent('text/plain;charset=windows-1252');
-    out.overrideWithoutCharset = await get('', `ct=${cp1252}&body=6869e9&enc=hex`, (x) => x.overrideMimeType('text/plain'));
-    out.overrideInvalidKeepsCharset = await get('', `ct=${cp1252}&body=6869e9&enc=hex`, (x) => x.overrideMimeType('nonsense'));
-    out.overrideXmlWithoutCharset = await get('document', `ct=${cp1252}&body=3c613ee93c2f613e&enc=hex`, (x) => x.overrideMimeType('text/xml'));
-    out.overrideHtmlWithoutCharset = await get('document', `ct=${encodeURIComponent('text/html;charset=windows-1252')}&body=3c703ee9&enc=hex`, (x) => x.overrideMimeType('text/html'));
+    out.overrideWithoutCharset = await get('', `ct=${cp1252}&body=6869e9&enc=hex`, (x) =>
+      x.overrideMimeType('text/plain'),
+    );
+    out.overrideInvalidKeepsCharset = await get('', `ct=${cp1252}&body=6869e9&enc=hex`, (x) =>
+      x.overrideMimeType('nonsense'),
+    );
+    out.overrideXmlWithoutCharset = await get('document', `ct=${cp1252}&body=3c613ee93c2f613e&enc=hex`, (x) =>
+      x.overrideMimeType('text/xml'),
+    );
+    out.overrideHtmlWithoutCharset = await get(
+      'document',
+      `ct=${encodeURIComponent('text/html;charset=windows-1252')}&body=3c703ee9&enc=hex`,
+      (x) => x.overrideMimeType('text/html'),
+    );
     // An override charset that names no encoding keeps the response's
     // (UTF-8 when it has none); a known one wins (#92).
-    for (const [name, label] of [['Unknown', 'unknown'], ['Bogus', 'utf-9'], ['Known', 'iso-8859-2']]) {
-      out[`overrideText${name}Charset`] = await get('', `ct=${cp1252}&body=6869e9&enc=hex`, (x) => x.overrideMimeType(`text/plain;charset=${label}`));
-      out[`overrideHtml${name}Charset`] = await get('document', `ct=${encodeURIComponent('text/html;charset=windows-1252')}&body=3c703ee9&enc=hex`, (x) => x.overrideMimeType(`text/html;charset=${label}`));
-      out[`overrideXml${name}Charset`] = await get('document', `ct=${cp1252}&body=3c613ee93c2f613e&enc=hex`, (x) => x.overrideMimeType(`text/xml;charset=${label}`));
+    for (const [name, label] of [
+      ['Unknown', 'unknown'],
+      ['Bogus', 'utf-9'],
+      ['Known', 'iso-8859-2'],
+    ]) {
+      out[`overrideText${name}Charset`] = await get('', `ct=${cp1252}&body=6869e9&enc=hex`, (x) =>
+        x.overrideMimeType(`text/plain;charset=${label}`),
+      );
+      out[`overrideHtml${name}Charset`] = await get(
+        'document',
+        `ct=${encodeURIComponent('text/html;charset=windows-1252')}&body=3c703ee9&enc=hex`,
+        (x) => x.overrideMimeType(`text/html;charset=${label}`),
+      );
+      out[`overrideXml${name}Charset`] = await get('document', `ct=${cp1252}&body=3c613ee93c2f613e&enc=hex`, (x) =>
+        x.overrideMimeType(`text/xml;charset=${label}`),
+      );
     }
-    out.overrideUnknownCharsetNone = await get('', 'ct=text/plain&body=6869e9&enc=hex', (x) => x.overrideMimeType('text/plain;charset=unknown'));
+    out.overrideUnknownCharsetNone = await get('', 'ct=text/plain&body=6869e9&enc=hex', (x) =>
+      x.overrideMimeType('text/plain;charset=unknown'),
+    );
     // characterSet names the encoding as the Encoding standard writes it (#92).
     out.characterSetNames = [];
-    for (const label of ['latin2', 'ibm866', 'koi8-r', 'gbk', 'gb18030', 'big5', 'euc-jp', 'shift_jis', 'euc-kr', 'macintosh', 'windows-1250', 'utf-16be']) {
-      out.characterSetNames.push((await get('document', `ct=${encodeURIComponent(`text/html;charset=${label}`)}&body=3c703e78&enc=hex`))[0][5]);
+    for (const label of [
+      'latin2',
+      'ibm866',
+      'koi8-r',
+      'gbk',
+      'gb18030',
+      'big5',
+      'euc-jp',
+      'shift_jis',
+      'euc-kr',
+      'macintosh',
+      'windows-1250',
+      'utf-16be',
+    ]) {
+      out.characterSetNames.push(
+        (await get('document', `ct=${encodeURIComponent(`text/html;charset=${label}`)}&body=3c703e78&enc=hex`))[0][5],
+      );
     }
     // jsdom looks at neither an XML declaration's encoding nor an HTML meta
     // charset: UTF-8 (the XHR standard would use them).
-    const latin1Xml = Buffer.concat([Buffer.from('<?xml version="1.0" encoding="ISO-8859-1"?><a>'), Buffer.from([0xe9]), Buffer.from('</a>')]).toString('hex');
+    const latin1Xml = Buffer.concat([
+      Buffer.from('<?xml version="1.0" encoding="ISO-8859-1"?><a>'),
+      Buffer.from([0xe9]),
+      Buffer.from('</a>'),
+    ]).toString('hex');
     out.xmlDeclarationEncoding = await get('', `ct=application/xml&body=${latin1Xml}&enc=hex`);
     out.xmlDeclarationEncodingDocument = await get('document', `ct=text/xml&body=${latin1Xml}&enc=hex`);
-    out.htmlMetaCharset = await get('document', `ct=text/html&body=${Buffer.from('<meta charset="windows-1252"><p>\u00e9', 'latin1').toString('hex')}&enc=hex`);
+    out.htmlMetaCharset = await get(
+      'document',
+      `ct=text/html&body=${Buffer.from('<meta charset="windows-1252"><p>\u00e9', 'latin1').toString('hex')}&enc=hex`,
+    );
     // No document without a body: HEAD, 204, 304 and an empty body (one
     // space makes one); a well-formed document whose root is a parsererror
     // element is a document (Copilot review on #89).
@@ -539,7 +906,9 @@ const SCENARIOS = {
     out.emptyHtml = await get('document', 'ct=text/html&body=');
     out.spaceHtml = await get('document', 'ct=text/html&body=%20');
     out.headXml = await get('', 'ct=text/xml&body=x', undefined, 'HEAD');
-    const parsererror = encodeURIComponent('<parsererror xmlns="http://www.mozilla.org/newlayout/xml/parsererror.xml">x</parsererror>');
+    const parsererror = encodeURIComponent(
+      '<parsererror xmlns="http://www.mozilla.org/newlayout/xml/parsererror.xml">x</parsererror>',
+    );
     out.parsererrorRoot = await get('document', `ct=text/xml&body=${parsererror}`);
     out.parsererrorRootDefault = await get('', `ct=application/xml&body=${parsererror}`);
     out.noRootXml = await get('document', 'ct=text/xml&body=text');
@@ -551,21 +920,40 @@ const SCENARIOS = {
       x.send();
       await done(x);
       const d = x.response;
-      return [d, d.cloneNode(false), d.cloneNode(true)].map((doc) => [doc.characterSet, doc.charset, doc.inputEncoding, doc.contentType]);
+      return [d, d.cloneNode(false), d.cloneNode(true)].map((doc) => [
+        doc.characterSet,
+        doc.charset,
+        doc.inputEncoding,
+        doc.contentType,
+      ]);
     };
     out.cloneHtml1252 = await encodings('document', 'text/html;charset=windows-1252', '3c703ee9');
     out.cloneXml1252 = await encodings('document', 'text/xml;charset=windows-1252', '3c613ee93c2f613e');
-    out.cloneUtf16 = await encodings('document', 'text/html;charset=utf-16le', Buffer.from('<p>x', 'utf16le').toString('hex'));
-    out.cloneOthers = [w.document, w.document.implementation.createHTMLDocument('t'), new w.DOMParser().parseFromString('<a/>', 'text/xml')]
-      .map((doc) => doc.cloneNode(true).characterSet);
+    out.cloneUtf16 = await encodings(
+      'document',
+      'text/html;charset=utf-16le',
+      Buffer.from('<p>x', 'utf16le').toString('hex'),
+    );
+    out.cloneOthers = [
+      w.document,
+      w.document.implementation.createHTMLDocument('t'),
+      new w.DOMParser().parseFromString('<a/>', 'text/xml'),
+    ].map((doc) => doc.cloneNode(true).characterSet);
     return out;
   },
   // After a network error or a CORS failure (Copilot review on #89).
   async failedResponses(w, c) {
     const out = {};
     for (const type of ['', 'text', 'arraybuffer', 'blob', 'json', 'document']) {
-      for (const [name, url] of [['refused', `http://localhost:${c.DEAD}/x`], ['cors', `${c.CROSS}/type?body=AB`]]) {
-        const { x, log } = await request(w, 'GET', url, { prep: (r) => { r.responseType = type; } });
+      for (const [name, url] of [
+        ['refused', `http://localhost:${c.DEAD}/x`],
+        ['cors', `${c.CROSS}/type?body=AB`],
+      ]) {
+        const { x, log } = await request(w, 'GET', url, {
+          prep: (r) => {
+            r.responseType = type;
+          },
+        });
         out[`${name} ${type}`] = [log.at(-2), x.readyState, attempt(() => x.response)];
       }
     }
@@ -578,7 +966,10 @@ const SCENARIOS = {
       x.open('GET', `${c.BASE}/slow?n=3&ms=60`);
       x.responseType = type;
       const seen = [];
-      const show = () => { const r = attempt(() => x.response); return r === null ? 'null' : typeof r === 'object' ? Object.prototype.toString.call(r) : JSON.stringify(r); };
+      const show = () => {
+        const r = attempt(() => x.response);
+        return r === null ? 'null' : typeof r === 'object' ? Object.prototype.toString.call(r) : JSON.stringify(r);
+      };
       x.onreadystatechange = () => seen.push(`${x.readyState}:${show()}`);
       x.send();
       await done(x);
@@ -591,14 +982,23 @@ const SCENARIOS = {
     x.open('GET', `${c.BASE}/text`);
     const before = x.getAllResponseHeaders();
     const at = [];
-    x.onreadystatechange = () => at.push([x.readyState, headerLines(x.getAllResponseHeaders()), x.getResponseHeader('X-A')]);
+    x.onreadystatechange = () =>
+      at.push([x.readyState, headerLines(x.getAllResponseHeaders()), x.getResponseHeader('X-A')]);
     x.send();
     await done(x);
     // Names that are not header names match nothing; a name that is not a
     // ByteString throws (Copilot review on #89).
-    const names = ['', 'bad name', 'x-a\n', 'x-a\0', ' x-a', '(x)', 'x:a', 'é', '€', 'X-A'].map((n) => attempt(() => x.getResponseHeader(n)));
+    const names = ['', 'bad name', 'x-a\n', 'x-a\0', ' x-a', '(x)', 'x:a', 'é', '€', 'X-A'].map((n) =>
+      attempt(() => x.getResponseHeader(n)),
+    );
     const { x: y } = await request(w, 'GET', `${c.CROSS}/text?acao=*`);
-    return { before, at, raw: x.getAllResponseHeaders().endsWith('\r\n'), names, cross: ['', 'bad name'].map((n) => attempt(() => y.getResponseHeader(n))) };
+    return {
+      before,
+      at,
+      raw: x.getAllResponseHeaders().endsWith('\r\n'),
+      names,
+      cross: ['', 'bad name'].map((n) => attempt(() => y.getResponseHeader(n))),
+    };
   },
   async cors(w, c) {
     const out = {};
@@ -607,9 +1007,23 @@ const SCENARIOS = {
       const { x, log } = await request(w, method, c.CROSS + url, { prep, body, upload });
       // The Origin of a redirected request is fetch's (jsdom: null after a
       // cross-origin redirect).
-      const requests = c.server.requests.slice(n).map((r, i) => [r.method, i === 0 ? r.headers.origin ?? null : '', r.headers['access-control-request-method'] ?? null, r.headers['access-control-request-headers'] ?? null]);
+      const requests = c.server.requests
+        .slice(n)
+        .map((r, i) => [
+          r.method,
+          i === 0 ? (r.headers.origin ?? null) : '',
+          r.headers['access-control-request-method'] ?? null,
+          r.headers['access-control-request-headers'] ?? null,
+        ]);
       // (Byte counts left out: the echoed request headers of a redirected request differ, see redirects.)
-      out[name] = [x.status, log.map((l) => l.replace(/\/\d+\/0$/, '/N/0')), port(JSON.stringify(requests)), headerLines(x.getAllResponseHeaders()), x.getResponseHeader('x-a'), x.getResponseHeader('content-type')];
+      out[name] = [
+        x.status,
+        log.map((l) => l.replace(/\/\d+\/0$/, '/N/0')),
+        port(JSON.stringify(requests)),
+        headerLines(x.getAllResponseHeaders()),
+        x.getResponseHeader('x-a'),
+        x.getResponseHeader('content-type'),
+      ];
     };
     const origin = encodeURIComponent(c.BASE);
     await one('noAllowOrigin', '/echo', { upload: false });
@@ -621,27 +1035,100 @@ const SCENARIOS = {
     await one('exposed', '/text?acao=*&aceh=x-a,content-type', { upload: false });
     await one('exposedStar', '/text?acao=*&aceh=*', { upload: false });
     await one('safelisted', '/text?acao=*', { upload: false });
-    await one('credentialsStar', '/echo?acao=*', { prep: (x) => { x.withCredentials = true; }, upload: false });
-    await one('credentials', `/echo?acao=${origin}&acac=1`, { prep: (x) => { x.withCredentials = true; }, upload: false });
-    await one('credentialsWithoutAllow', `/echo?acao=${origin}`, { prep: (x) => { x.withCredentials = true; }, upload: false });
+    await one('credentialsStar', '/echo?acao=*', {
+      prep: (x) => {
+        x.withCredentials = true;
+      },
+      upload: false,
+    });
+    await one('credentials', `/echo?acao=${origin}&acac=1`, {
+      prep: (x) => {
+        x.withCredentials = true;
+      },
+      upload: false,
+    });
+    await one('credentialsWithoutAllow', `/echo?acao=${origin}`, {
+      prep: (x) => {
+        x.withCredentials = true;
+      },
+      upload: false,
+    });
     await one('simplePost', '/echo?acao=*', { method: 'POST', body: 'x', upload: false });
-    await one('jsonPost', '/echo?acao=*', { method: 'POST', body: '{}', prep: (x) => x.setRequestHeader('Content-Type', 'application/json'), upload: false });
-    await one('accept', '/echo?acao=*', { prep: (x) => x.setRequestHeader('Accept', 'application/json'), upload: false });
-    await one('customHeader', '/echo?acao=*&preflight=ok&acah=x-custom', { prep: (x) => x.setRequestHeader('X-Custom', '1'), upload: false });
-    await one('customHeaderNotAllowed', '/echo?acao=*&preflight=ok', { prep: (x) => x.setRequestHeader('X-Custom', '1'), upload: false });
-    await one('customHeadersCase', '/echo?acao=*&preflight=ok&acah=X-B,x-a,authorization', { prep: (x) => { x.setRequestHeader('X-B', '1'); x.setRequestHeader('x-a', '2'); x.setRequestHeader('Content-Type', 'x/y'); x.setRequestHeader('Authorization', 'z'); }, upload: false });
-    await one('allowHeadersStar', '/echo?acao=*&preflight=ok&acah=*', { prep: (x) => x.setRequestHeader('X-Custom', '1'), upload: false });
-    await one('preflightFails', '/echo?acao=*&preflight=fail&acah=x-custom', { prep: (x) => x.setRequestHeader('X-Custom', '1'), upload: false });
-    await one('preflightWithoutAllowOrigin', '/echo?preflight=ok&acah=x-custom', { prep: (x) => x.setRequestHeader('X-Custom', '1'), upload: false });
-    await one('preflightCredentials', `/echo?acao=${origin}&acac=1&preflight=ok&acah=*`, { prep: (x) => { x.withCredentials = true; x.setRequestHeader('X-Custom', '1'); }, upload: false });
+    await one('jsonPost', '/echo?acao=*', {
+      method: 'POST',
+      body: '{}',
+      prep: (x) => x.setRequestHeader('Content-Type', 'application/json'),
+      upload: false,
+    });
+    await one('accept', '/echo?acao=*', {
+      prep: (x) => x.setRequestHeader('Accept', 'application/json'),
+      upload: false,
+    });
+    await one('customHeader', '/echo?acao=*&preflight=ok&acah=x-custom', {
+      prep: (x) => x.setRequestHeader('X-Custom', '1'),
+      upload: false,
+    });
+    await one('customHeaderNotAllowed', '/echo?acao=*&preflight=ok', {
+      prep: (x) => x.setRequestHeader('X-Custom', '1'),
+      upload: false,
+    });
+    await one('customHeadersCase', '/echo?acao=*&preflight=ok&acah=X-B,x-a,authorization', {
+      prep: (x) => {
+        x.setRequestHeader('X-B', '1');
+        x.setRequestHeader('x-a', '2');
+        x.setRequestHeader('Content-Type', 'x/y');
+        x.setRequestHeader('Authorization', 'z');
+      },
+      upload: false,
+    });
+    await one('allowHeadersStar', '/echo?acao=*&preflight=ok&acah=*', {
+      prep: (x) => x.setRequestHeader('X-Custom', '1'),
+      upload: false,
+    });
+    await one('preflightFails', '/echo?acao=*&preflight=fail&acah=x-custom', {
+      prep: (x) => x.setRequestHeader('X-Custom', '1'),
+      upload: false,
+    });
+    await one('preflightWithoutAllowOrigin', '/echo?preflight=ok&acah=x-custom', {
+      prep: (x) => x.setRequestHeader('X-Custom', '1'),
+      upload: false,
+    });
+    await one('preflightCredentials', `/echo?acao=${origin}&acac=1&preflight=ok&acah=*`, {
+      prep: (x) => {
+        x.withCredentials = true;
+        x.setRequestHeader('X-Custom', '1');
+      },
+      upload: false,
+    });
     await one('put', '/echo?acao=*&preflight=ok', { method: 'PUT', body: 'x', upload: false });
     await one('delete', '/echo?acao=*&preflight=ok', { method: 'DELETE', upload: false });
     await one('uploadListeners', '/echo?acao=*&preflight=ok', { method: 'POST', body: 'x' });
     await one('uploadListenersFail', '/echo', { method: 'POST', body: 'abc' });
     // jsdom preflights once any listener was added to upload, even removed.
-    for (const [name, prep] of [['touched', (x) => x.upload], ['handlerNull', (x) => { x.upload.onload = null; }],
-      ['addedRemoved', (x) => { const f = () => {}; x.upload.addEventListener('load', f); x.upload.removeEventListener('load', f); }],
-      ['handlerSetUnset', (x) => { x.upload.onload = () => {}; x.upload.onload = null; }]]) {
+    for (const [name, prep] of [
+      ['touched', (x) => x.upload],
+      [
+        'handlerNull',
+        (x) => {
+          x.upload.onload = null;
+        },
+      ],
+      [
+        'addedRemoved',
+        (x) => {
+          const f = () => {};
+          x.upload.addEventListener('load', f);
+          x.upload.removeEventListener('load', f);
+        },
+      ],
+      [
+        'handlerSetUnset',
+        (x) => {
+          x.upload.onload = () => {};
+          x.upload.onload = null;
+        },
+      ],
+    ]) {
       await one(name, '/echo?acao=*&preflight=ok', { method: 'POST', body: 'x', prep, upload: false });
     }
     // Redirects across origins.
@@ -661,9 +1148,20 @@ const SCENARIOS = {
       const ports = (v) => v.replaceAll(String(c.PORT), 'PORT');
       // (Without the Referer's fragment: jsdom before 28 sends a redirected
       // request's previous URL with it, warpdom without; the differences test.)
-      const hops = c.server.requests.slice(n).map((r) => ports(`${r.method} ${r.headers.host}${r.path.split('?')[0]} origin=${r.headers.origin ?? '-'} referer=${r.headers.referer?.split('#')[0] ?? '-'}`));
+      const hops = c.server.requests
+        .slice(n)
+        .map((r) =>
+          ports(
+            `${r.method} ${r.headers.host}${r.path.split('?')[0]} origin=${r.headers.origin ?? '-'} referer=${r.headers.referer?.split('#')[0] ?? '-'}`,
+          ),
+        );
       // (The echoed body's length goes with the Referer.)
-      out[name] = [x.status, ports(x.responseURL), log.filter((l) => /^(load|error) /.test(l)).map((l) => l.replace(/\/\d+\/\d+$/, '')), hops];
+      out[name] = [
+        x.status,
+        ports(x.responseURL),
+        log.filter((l) => /^(load|error) /.test(l)).map((l) => l.replace(/\/\d+\/\d+$/, '')),
+        hops,
+      ];
     };
     const origin = encodeURIComponent(c.BASE);
     await one('crossToSameAllowsNull', R(c.CROSS, `${c.BASE}/echo?acao=null`, '&acao=*'));
@@ -698,11 +1196,20 @@ const SCENARIOS = {
     const child = frame.contentWindow;
     base.href = `${c.BASE}/other/`;
     out.frame = [child.origin, child.location.origin, child.document.URL, port(child.document.baseURI)];
-    for (const [name, url] of [['same', `${c.BASE}/echo`], ['relative', 'echo'], ['cross', `${c.CROSS}/echo`]]) {
+    for (const [name, url] of [
+      ['same', `${c.BASE}/echo`],
+      ['relative', 'echo'],
+      ['cross', `${c.CROSS}/echo`],
+    ]) {
       const n = c.server.requests.length;
       const { x, log } = await request(child, 'GET', url);
       const sent = c.server.requests.slice(n)[0];
-      out[name] = [log.at(-2).split(' ').slice(0, 3), x.status, port(x.responseURL), sent ? port(sent.headers.origin ?? '-') : null];
+      out[name] = [
+        log.at(-2).split(' ').slice(0, 3),
+        x.status,
+        port(x.responseURL),
+        sent ? port(sent.headers.origin ?? '-') : null,
+      ];
     }
     // With a fragment or query, about:blank has neither its creator's origin
     // nor its base URL in any jsdom (the standard ignores the fragment): a
@@ -715,15 +1222,26 @@ const SCENARIOS = {
       const n = c.server.requests.length;
       const { x } = await request(win, 'GET', `${c.BASE}/echo`);
       const sent = c.server.requests.slice(n)[0];
-      out[src] = [win.origin, win.location.href, port(win.document.baseURI), attempt(() => new win.XMLHttpRequest().open('GET', 'echo')), x.status, sent ? sent.headers.origin ?? '-' : null];
+      out[src] = [
+        win.origin,
+        win.location.href,
+        port(win.document.baseURI),
+        attempt(() => new win.XMLHttpRequest().open('GET', 'echo')),
+        x.status,
+        sent ? (sent.headers.origin ?? '-') : null,
+      ];
     }
     base.remove();
     const nested = child.document.createElement('iframe');
     child.document.body.append(nested);
     const log = [];
-    for (const [name, win] of [['child', child], ['nested', nested.contentWindow]]) {
+    for (const [name, win] of [
+      ['child', child],
+      ['nested', nested.contentWindow],
+    ]) {
       const x = new win.XMLHttpRequest();
-      for (const type of ['readystatechange', 'load', 'error', 'abort', 'loadend']) x.addEventListener(type, () => log.push(`${name} ${type} ${x.readyState}`));
+      for (const type of ['readystatechange', 'load', 'error', 'abort', 'loadend'])
+        x.addEventListener(type, () => log.push(`${name} ${type} ${x.readyState}`));
       x.open('GET', `${c.BASE}/slow?wait=100&n=2`);
       x.send();
     }
@@ -741,14 +1259,35 @@ const SCENARIOS = {
     out.sharedArrayBuffer = attempt(() => x.send(new Uint8Array(new SharedArrayBuffer(4))));
     const y = new w.XMLHttpRequest();
     y.open('GET', `${c.BASE}/x`, false);
-    out.syncResponseType = ['nosuchtype', 'json'].map((v) => attempt(() => { y.responseType = v; return y.responseType; }));
+    out.syncResponseType = ['nosuchtype', 'json'].map((v) =>
+      attempt(() => {
+        y.responseType = v;
+        return y.responseType;
+      }),
+    );
     const calls = [];
-    const value = (name, v) => ({ toString() { calls.push(name); return v; } });
-    new w.XMLHttpRequest().open(value('method', 'GET'), value('url', '/x'), true, value('user', 'a'), value('password', 'b'));
+    const value = (name, v) => ({
+      toString() {
+        calls.push(name);
+        return v;
+      },
+    });
+    new w.XMLHttpRequest().open(
+      value('method', 'GET'),
+      value('url', '/x'),
+      true,
+      value('user', 'a'),
+      value('password', 'b'),
+    );
     new w.XMLHttpRequest().open('GET', '/x', true, null, undefined);
     out.toString = calls.slice();
     // Conversions come first, and their exceptions propagate (#92).
-    const throwing = (name) => ({ toString() { calls.push(name); throw new RangeError(`${name} toString`); } });
+    const throwing = (name) => ({
+      toString() {
+        calls.push(name);
+        throw new RangeError(`${name} toString`);
+      },
+    });
     calls.length = 0;
     out.conversionErrors = [
       attempt(() => new w.XMLHttpRequest().open('GET', throwing('url'))),
@@ -776,9 +1315,22 @@ const SCENARIOS = {
     // Non-ASCII and undecodable credentials (jsdom 20: UTF-8 in Basic
     // authorization; %FF a network error) (Copilot review on #89).
     const credentials = ['é:p', 'u:€', '%C3%A9:p%3A', '%FF:p'].map((cred) => `http://${cred}@localhost:${c.PORT}/echo`);
-    for (const u of ['echo?q=1', '/echo#frag', '../echo', `//localhost:${c.PORT}/echo`, `${c.BASE}/ech%6F?a b`, `http://u:p@localhost:${c.PORT}/echo`, ...credentials]) {
+    for (const u of [
+      'echo?q=1',
+      '/echo#frag',
+      '../echo',
+      `//localhost:${c.PORT}/echo`,
+      `${c.BASE}/ech%6F?a b`,
+      `http://u:p@localhost:${c.PORT}/echo`,
+      ...credentials,
+    ]) {
       const { x } = await request(w, 'GET', u);
-      out.push([port(u), x.status, port(x.responseURL), x.status === 200 ? JSON.parse(x.responseText).headers.authorization ?? null : null]);
+      out.push([
+        port(u),
+        x.status,
+        port(x.responseURL),
+        x.status === 200 ? (JSON.parse(x.responseText).headers.authorization ?? null) : null,
+      ]);
     }
     const x = new w.XMLHttpRequest();
     x.open('GET', `${c.BASE}/echo`, true, 'user', 'pass');
@@ -795,7 +1347,11 @@ const SCENARIOS = {
   },
   async dataURLs(w, c) {
     const out = [];
-    for (const [method, url] of [['GET', 'data:text/plain;base64,aGk='], ['POST', 'data:,x'], ['GET', 'data:text/html,%3Cp%3E']]) {
+    for (const [method, url] of [
+      ['GET', 'data:text/plain;base64,aGk='],
+      ['POST', 'data:,x'],
+      ['GET', 'data:text/html,%3Cp%3E'],
+    ]) {
       const { x, log } = await request(w, method, url, { body: method === 'POST' ? 'a' : undefined, upload: true });
       out.push([x.status, x.statusText, x.responseText, x.getAllResponseHeaders(), x.responseURL, log]);
     }
@@ -810,11 +1366,17 @@ const atLeast = (version, min) => {
   for (let i = 0; i < 3; i++) if (version[i] !== min[i]) return version[i] > min[i];
   return true;
 };
-const satisfies = (range) => range.split('||').some((alternative) => alternative.trim().split(/\s+/).every((comparator) => {
-  const match = /^(\^|>=)(\d+)(?:\.(\d+))?(?:\.(\d+))?$/.exec(comparator);
-  const min = match.slice(2).map((part) => Number(part ?? 0));
-  return atLeast(nodeVersion, min) && (match[1] === '>=' || nodeVersion[0] === min[0]);
-}));
+const satisfies = (range) =>
+  range.split('||').some((alternative) =>
+    alternative
+      .trim()
+      .split(/\s+/)
+      .every((comparator) => {
+        const match = /^(\^|>=)(\d+)(?:\.(\d+))?(?:\.(\d+))?$/.exec(comparator);
+        const min = match.slice(2).map((part) => Number(part ?? 0));
+        return atLeast(nodeVersion, min) && (match[1] === '>=' || nodeVersion[0] === min[0]);
+      }),
+  );
 
 // Console output, as both print it: the first line, without "Error: ".
 // jsdom before 27 words a listener's exception "Uncaught [Error: boom]".
@@ -827,44 +1389,77 @@ const message = (e) => String(e?.message ?? e).replace(/^Uncaught \[\w*Error: (.
 async function run(window, scenario, ctx, errors) {
   // Ports are the server's (each side has its own).
   const result = await scenario(window, ctx);
-  return { result: result === undefined ? result : JSON.parse(port(JSON.stringify(result))), errors: errors.map((e) => port(message(e))) };
+  return {
+    result: result === undefined ? result : JSON.parse(port(JSON.stringify(result))),
+    errors: errors.map((e) => port(message(e))),
+  };
 }
 
 // Every scenario on jsdom 20, 27, 28 and 30 (each side of the two
 // boundaries), a few on 22, 25 and 26.
 const parityTests = [];
-const VERSIONS = { jsdom20: 'all', jsdom22: ['shape', 'events', 'cors', 'timeouts'], jsdom25: ['bodies', 'aborts', 'aboutBlankFrames'], jsdom26: ['states', 'setRequestHeader', 'errors', 'aboutBlankFrames'],
-  jsdom27: 'all', jsdom28: 'all', jsdom30: 'all' };
+const VERSIONS = {
+  jsdom20: 'all',
+  jsdom22: ['shape', 'events', 'cors', 'timeouts'],
+  jsdom25: ['bodies', 'aborts', 'aboutBlankFrames'],
+  jsdom26: ['states', 'setRequestHeader', 'errors', 'aboutBlankFrames'],
+  jsdom27: 'all',
+  jsdom28: 'all',
+  jsdom30: 'all',
+};
 for (const [alias, which] of Object.entries(VERSIONS)) {
   const pkg = require(`${alias}/package.json`);
   const jsdom = Number.parseInt(pkg.version, 10);
-  const skip = pkg.engines?.node && !satisfies(pkg.engines.node) && `jsdom ${pkg.version} needs Node ${pkg.engines.node}`;
+  const skip =
+    pkg.engines?.node && !satisfies(pkg.engines.node) && `jsdom ${pkg.version} needs Node ${pkg.engines.node}`;
   for (const [name, scenario] of Object.entries(SCENARIOS)) {
     if (which !== 'all' && !which.includes(name)) continue;
-    parityTests.push([`${name} (jsdom ${pkg.version})`, skip, async () => {
-      const { JSDOM, VirtualConsole } = require(alias);
-      // jsdom and warpdom run at the same time, each against its own server.
-      const servers = await Promise.all([startServer(), startServer()]);
-      const contexts = servers.map((srv) => ({ jsdom, server: srv, PORT: srv.port, BASE: `http://localhost:${srv.port}`, CROSS: `http://127.0.0.1:${srv.port}`, DEAD }));
-      const theirErrors = [];
-      const virtualConsole = new VirtualConsole();
-      virtualConsole.on('jsdomError', (e) => theirErrors.push(e));
-      const theirs = new JSDOM('<!doctype html><html><head></head><body></body></html>', { url: `${contexts[0].BASE}/page/index.html`, runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole });
-      const ours = createWindow({ url: `${contexts[1].BASE}/page/index.html`, jsdom: pkg.version });
-      const ourErrors = [];
-      ours[S].onUnhandledError = (e) => ourErrors.push(e);
-      ours[S].reportNotImplemented = (text) => ourErrors.push(text);
-      let expected, actual;
-      try {
-        [expected, actual] = await Promise.all([run(theirs.window, scenario, contexts[0], theirErrors), run(ours, scenario, contexts[1], ourErrors)]);
-      } finally {
-        theirs.window.close();
-        await Promise.all(servers.map((srv) => srv.close()));
-      }
-      // Network failures are reported in other words (Node's http module vs fetch).
-      if (name === 'errors' || name === 'failedResponses') { expected.errors = expected.errors.length; actual.errors = actual.errors.length; }
-      assert.deepEqual(actual, expected);
-    }]);
+    parityTests.push([
+      `${name} (jsdom ${pkg.version})`,
+      skip,
+      async () => {
+        const { JSDOM, VirtualConsole } = require(alias);
+        // jsdom and warpdom run at the same time, each against its own server.
+        const servers = await Promise.all([startServer(), startServer()]);
+        const contexts = servers.map((srv) => ({
+          jsdom,
+          server: srv,
+          PORT: srv.port,
+          BASE: `http://localhost:${srv.port}`,
+          CROSS: `http://127.0.0.1:${srv.port}`,
+          DEAD,
+        }));
+        const theirErrors = [];
+        const virtualConsole = new VirtualConsole();
+        virtualConsole.on('jsdomError', (e) => theirErrors.push(e));
+        const theirs = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
+          url: `${contexts[0].BASE}/page/index.html`,
+          runScripts: 'dangerously',
+          pretendToBeVisual: true,
+          virtualConsole,
+        });
+        const ours = createWindow({ url: `${contexts[1].BASE}/page/index.html`, jsdom: pkg.version });
+        const ourErrors = [];
+        ours[S].onUnhandledError = (e) => ourErrors.push(e);
+        ours[S].reportNotImplemented = (text) => ourErrors.push(text);
+        let expected, actual;
+        try {
+          [expected, actual] = await Promise.all([
+            run(theirs.window, scenario, contexts[0], theirErrors),
+            run(ours, scenario, contexts[1], ourErrors),
+          ]);
+        } finally {
+          theirs.window.close();
+          await Promise.all(servers.map((srv) => srv.close()));
+        }
+        // Network failures are reported in other words (Node's http module vs fetch).
+        if (name === 'errors' || name === 'failedResponses') {
+          expected.errors = expected.errors.length;
+          actual.errors = actual.errors.length;
+        }
+        assert.deepEqual(actual, expected);
+      },
+    ]);
   }
 }
 // Several at a time: most of the time goes to waiting for the server.
@@ -881,7 +1476,11 @@ test('XMLHttpRequest: the interfaces are created on first use', () => {
   }
   assert.equal(typeof w.XMLHttpRequest, 'function');
   assert.equal(typeof Object.getOwnPropertyDescriptor(w, 'XMLHttpRequest').value, 'function');
-  assert.equal(typeof Object.getOwnPropertyDescriptor(w, 'XMLHttpRequestUpload').get, 'function', 'the upload interface waits for its first use');
+  assert.equal(
+    typeof Object.getOwnPropertyDescriptor(w, 'XMLHttpRequestUpload').get,
+    'function',
+    'the upload interface waits for its first use',
+  );
 });
 
 test('XMLHttpRequest: each window has its own interfaces', () => {
@@ -894,7 +1493,8 @@ test('XMLHttpRequest: each window has its own interfaces', () => {
 
 test('xhr: false leaves the three interfaces out, in frames too; ProgressEvent stays', () => {
   const w = createWindow({ xhr: false, url: 'http://localhost/' });
-  for (const name of ['XMLHttpRequest', 'XMLHttpRequestEventTarget', 'XMLHttpRequestUpload']) assert.equal(name in w, false, name);
+  for (const name of ['XMLHttpRequest', 'XMLHttpRequestEventTarget', 'XMLHttpRequestUpload'])
+    assert.equal(name in w, false, name);
   assert.equal(typeof w.ProgressEvent, 'function');
   const iframe = w.document.createElement('iframe');
   w.document.body.append(iframe);
@@ -903,22 +1503,34 @@ test('xhr: false leaves the three interfaces out, in frames too; ProgressEvent s
   const frame = on.document.createElement('iframe');
   on.document.body.append(frame);
   assert.equal(typeof frame.contentWindow.XMLHttpRequest, 'function');
-  for (const option of [undefined, 0, null, 'no']) assert.equal(typeof createWindow({ xhr: option }).XMLHttpRequest, 'function', String(option));
+  for (const option of [undefined, 0, null, 'no'])
+    assert.equal(typeof createWindow({ xhr: option }).XMLHttpRequest, 'function', String(option));
 });
 
 test('xhr: Vitest environmentOptions.warpdom.xhr and Jest testEnvironmentOptions.xhr', async () => {
   const { default: vitest } = await import('../src/vitest.js');
-  for (const [options, has] of [[{ warpdom: { xhr: false } }, false], [{}, true], [{ warpdom: { xhr: true } }, true]]) {
+  for (const [options, has] of [
+    [{ warpdom: { xhr: false } }, false],
+    [{}, true],
+    [{ warpdom: { xhr: true } }, true],
+  ]) {
     const env = await vitest.setupVM(options);
     try {
       const vm = await import('node:vm');
-      assert.equal(vm.runInContext('typeof XMLHttpRequest', env.getVmContext()), has ? 'function' : 'undefined', JSON.stringify(options));
+      assert.equal(
+        vm.runInContext('typeof XMLHttpRequest', env.getVmContext()),
+        has ? 'function' : 'undefined',
+        JSON.stringify(options),
+      );
     } finally {
       env.teardown();
     }
   }
   const { default: JestEnvironment } = await import('../src/jest.js');
-  for (const [options, has] of [[{ xhr: false }, false], [{}, true]]) {
+  for (const [options, has] of [
+    [{ xhr: false }, false],
+    [{}, true],
+  ]) {
     const env = new JestEnvironment({ projectConfig: { rootDir: process.cwd(), testEnvironmentOptions: options } });
     try {
       assert.equal(typeof env.global.XMLHttpRequest, has ? 'function' : 'undefined', JSON.stringify(options));
@@ -935,7 +1547,14 @@ test('XMLHttpRequest: synchronous requests throw at send(), with what to do', ()
   x.onreadystatechange = () => log.push(x.readyState);
   x.onloadstart = () => log.push('loadstart');
   x.open('GET', `${BASE}/text`, false);
-  assert.throws(() => x.send(), (e) => e instanceof DOMException && e.name === 'NotSupportedError' && /synchronous XMLHttpRequest/.test(e.message) && /asynchronous/.test(e.message));
+  assert.throws(
+    () => x.send(),
+    (e) =>
+      e instanceof DOMException &&
+      e.name === 'NotSupportedError' &&
+      /synchronous XMLHttpRequest/.test(e.message) &&
+      /asynchronous/.test(e.message),
+  );
   assert.deepEqual([log, x.readyState], [[1], 1]);
   // The request can still be opened again, asynchronously.
   x.open('GET', `${BASE}/text`);
@@ -965,7 +1584,7 @@ test('XMLHttpRequest: a window reset or an environment teardown stops its reques
   assert.deepEqual(events, []);
 });
 
-test('XMLHttpRequest: a window reset or an environment teardown stops its frames\' requests too', async () => {
+test("XMLHttpRequest: a window reset or an environment teardown stops its frames' requests too", async () => {
   // A frame's and a nested frame's request each, then the reset or teardown.
   const start = (w, events) => {
     const frame = w.document.createElement('iframe');
@@ -996,7 +1615,14 @@ test('XMLHttpRequest: a window reset or an environment teardown stops its frames
   start(vm.getVmContext(), vmTeardown);
   vm.teardown();
   await wait(300);
-  assert.deepEqual([reset, teardown, vmTeardown], [[1, 1], [1, 1], [1, 1]]);
+  assert.deepEqual(
+    [reset, teardown, vmTeardown],
+    [
+      [1, 1],
+      [1, 1],
+      [1, 1],
+    ],
+  );
 });
 
 test('XMLHttpRequest: fake timers on the global do not stop requests or timeouts', async () => {
@@ -1004,7 +1630,18 @@ test('XMLHttpRequest: fake timers on the global do not stop requests or timeouts
   const { setTimeout: realSetTimeout } = globalThis;
   // A fake that never fires, with the timer object's methods Node's own
   // fetch calls.
-  globalThis.setTimeout = () => ({ ref() { return this; }, unref() { return this; }, hasRef: () => false, refresh() { return this; } });
+  globalThis.setTimeout = () => ({
+    ref() {
+      return this;
+    },
+    unref() {
+      return this;
+    },
+    hasRef: () => false,
+    refresh() {
+      return this;
+    },
+  });
   try {
     const x = new w.XMLHttpRequest();
     const log = [];
@@ -1051,26 +1688,38 @@ test('XMLHttpRequest: a faked or frozen Date does not change how much of a timeo
       Date.now = realNow;
     }
   };
-  for (const [fake, afterSend] of [[() => { const t = realNow(); return () => t; }, false], [() => () => realNow() + 10_000, true]]) {
+  for (const [fake, afterSend] of [
+    [
+      () => {
+        const t = realNow();
+        return () => t;
+      },
+      false,
+    ],
+    [() => () => realNow() + 10_000, true],
+  ]) {
     const [type, elapsed] = await outcome(fake, afterSend);
     assert.equal(type, 'timeout');
     assert.ok(elapsed >= 340 && elapsed < 540, `timed out after ${elapsed} ms`);
   }
 });
 
-test('XMLHttpRequest: responses and documents belong to the window\'s realm', async () => {
+test("XMLHttpRequest: responses and documents belong to the window's realm", async () => {
   const { default: JestEnvironment } = await import('../src/jest.js');
   const env = new JestEnvironment({ projectConfig: { rootDir: process.cwd(), testEnvironmentOptions: { url: PAGE } } });
   try {
     const vm = await import('node:vm');
-    const result = await vm.runInContext(`(async () => {
+    const result = await vm.runInContext(
+      `(async () => {
       const get = (type, url) => new Promise((resolve) => { const x = new XMLHttpRequest(); x.responseType = type; x.onload = () => resolve(x.response); x.open('GET', url); x.send(); });
       const json = await get('json', '${BASE}/type?ct=application/json&body=%7B%22a%22%3A%5B1%5D%7D');
       const buffer = await get('arraybuffer', '${BASE}/type?body=AB');
       const blob = await get('blob', '${BASE}/type?body=AB');
       const doc = await get('document', '${BASE}/type?ct=text/html&body=x');
       return [json instanceof Object, json.a instanceof Array, buffer instanceof ArrayBuffer, blob instanceof Blob, doc instanceof Document, doc.ownerDocument];
-    })()`, env.getVmContext());
+    })()`,
+      env.getVmContext(),
+    );
     assert.deepEqual([...result], [true, true, true, true, true, null]);
   } finally {
     await env.teardown();
@@ -1082,8 +1731,10 @@ test('XMLHttpRequest: responses and documents belong to the window\'s realm', as
 test('XMLHttpRequest differences from jsdom: headers sorted and combined, cookies not shared, file: URLs fail', async () => {
   const w = createWindow({ url: PAGE });
   const { x } = await request(w, 'GET', `${BASE}/text`);
-  assert.equal(x.getAllResponseHeaders().replace(/date: [^\r]+/, 'date: D'),
-    'connection: keep-alive\r\ncontent-type: text/plain; charset=utf-8\r\ndate: D\r\nkeep-alive: timeout=5\r\ntransfer-encoding: chunked\r\nx-a: 1\r\nx-b: 2\r\nx-multi: a, b');
+  assert.equal(
+    x.getAllResponseHeaders().replace(/date: [^\r]+/, 'date: D'),
+    'connection: keep-alive\r\ncontent-type: text/plain; charset=utf-8\r\ndate: D\r\nkeep-alive: timeout=5\r\ntransfer-encoding: chunked\r\nx-a: 1\r\nx-b: 2\r\nx-multi: a, b',
+  );
   // jsdom: document.cookie gets the response's cookies, and requests send the document's.
   await request(w, 'GET', `${BASE}/setcookie`);
   assert.equal(w.document.cookie, '');
@@ -1100,8 +1751,19 @@ test('XMLHttpRequest differences from jsdom: headers sorted and combined, cookie
   const legacy = createWindow({ url: PAGE, jsdom: '27.4.0' });
   legacy[S].reportNotImplemented = () => {};
   const n = server.requests.length;
-  const { x: redirected, log: events } = await request(legacy, 'GET', `${CROSS}/redirect?code=302&to=${encodeURIComponent(`${CROSS}/echo?acao=*`)}`);
-  assert.deepEqual([redirected.status, events.filter((l) => /^(load|error) /.test(l)).map((l) => l.split(' ')[0]), server.requests.length - n], [0, ['error'], 1]);
+  const { x: redirected, log: events } = await request(
+    legacy,
+    'GET',
+    `${CROSS}/redirect?code=302&to=${encodeURIComponent(`${CROSS}/echo?acao=*`)}`,
+  );
+  assert.deepEqual(
+    [
+      redirected.status,
+      events.filter((l) => /^(load|error) /.test(l)).map((l) => l.split(' ')[0]),
+      server.requests.length - n,
+    ],
+    [0, ['error'], 1],
+  );
   // An about:blank frame's requests send no Referer (jsdom: about:blank).
   const frame = w.document.createElement('iframe');
   w.document.body.append(frame);
@@ -1136,18 +1798,39 @@ test('XMLHttpRequest: a request stopped while its response arrives fires nothing
       let fetched;
       // The response arrives; a continuation registered on fetch's promise
       // after XHR's stops the request before XHR goes on with it.
-      globalThis.fetch = () => (fetched = Promise.resolve().then(() => new Response(new ReadableStream({
-        start(controller) { controller.enqueue(new TextEncoder().encode('stale')); controller.close(); },
-        cancel() { cancelled = true; },
-      }), { headers: { 'content-type': 'text/plain' } })));
+      globalThis.fetch = () =>
+        (fetched = Promise.resolve().then(
+          () =>
+            new Response(
+              new ReadableStream({
+                start(controller) {
+                  controller.enqueue(new TextEncoder().encode('stale'));
+                  controller.close();
+                },
+                cancel() {
+                  cancelled = true;
+                },
+              }),
+              { headers: { 'content-type': 'text/plain' } },
+            ),
+        ));
       x.open('GET', `${BASE}/text`);
       x.send();
       fetched.then(() => (stopWith === 'abort' ? x.abort() : x.open('GET', `${BASE}/echo`)));
       await wait(50);
-      assert.deepEqual([stopWith, log.filter((l) => !l.startsWith('loadstart'))], [stopWith, stopWith === 'abort'
-        ? ['readystatechange 1 0', 'readystatechange 4 0', 'abort 4 0 false/0/0', 'loadend 4 0 false/0/0']
-        : ['readystatechange 1 0']]);
-      assert.deepEqual([x.readyState, x.status, x.responseText, x.getAllResponseHeaders(), cancelled], [stopWith === 'abort' ? 0 : 1, 0, '', '', true]);
+      assert.deepEqual(
+        [stopWith, log.filter((l) => !l.startsWith('loadstart'))],
+        [
+          stopWith,
+          stopWith === 'abort'
+            ? ['readystatechange 1 0', 'readystatechange 4 0', 'abort 4 0 false/0/0', 'loadend 4 0 false/0/0']
+            : ['readystatechange 1 0'],
+        ],
+      );
+      assert.deepEqual(
+        [x.readyState, x.status, x.responseText, x.getAllResponseHeaders(), cancelled],
+        [stopWith === 'abort' ? 0 : 1, 0, '', '', true],
+      );
     }
   } finally {
     globalThis.fetch = hostFetch;
@@ -1158,13 +1841,27 @@ test('XMLHttpRequest: a request stopped while its response arrives fires nothing
 // mock may, ignores the abort signal (chunks: what it sends before waiting
 // forever).
 function recordingResponse(record, chunks = [], init = {}) {
-  return new Response(new ReadableStream({
-    start(controller) { for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk)); },
-    cancel() { record.cancelled = true; },
-  }), { headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' }, ...init });
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk));
+      },
+      cancel() {
+        record.cancelled = true;
+      },
+    }),
+    {
+      headers: {
+        'content-type': 'text/plain',
+        'access-control-allow-origin': '*',
+        'access-control-allow-headers': '*',
+      },
+      ...init,
+    },
+  );
 }
 
-test('XMLHttpRequest: a request stopped while its preflight is pending cancels the preflight\'s body (#92)', async () => {
+test("XMLHttpRequest: a request stopped while its preflight is pending cancels the preflight's body (#92)", async () => {
   const hostFetch = globalThis.fetch;
   try {
     for (const stopWith of ['abort', 'open', 'teardown']) {
@@ -1173,7 +1870,9 @@ test('XMLHttpRequest: a request stopped while its preflight is pending cancels t
       const methods = [];
       globalThis.fetch = (url, init) => {
         methods.push(init.method);
-        return new Promise((resolve) => { answer = () => resolve(recordingResponse(record)); });
+        return new Promise((resolve) => {
+          answer = () => resolve(recordingResponse(record));
+        });
       };
       const w = createWindow({ url: PAGE });
       snapshotWindow(w);
@@ -1187,8 +1886,15 @@ test('XMLHttpRequest: a request stopped while its preflight is pending cancels t
       else resetWindow(w);
       answer();
       await wait(20);
-      assert.deepEqual([stopWith, methods, record.cancelled, log.filter((l) => !/^(readystatechange 1|loadstart)/.test(l))],
-        [stopWith, ['OPTIONS'], true, stopWith === 'abort' ? ['readystatechange 4 0', 'abort 4 0 false/0/0', 'loadend 4 0 false/0/0'] : []]);
+      assert.deepEqual(
+        [stopWith, methods, record.cancelled, log.filter((l) => !/^(readystatechange 1|loadstart)/.test(l))],
+        [
+          stopWith,
+          ['OPTIONS'],
+          true,
+          stopWith === 'abort' ? ['readystatechange 4 0', 'abort 4 0 false/0/0', 'loadend 4 0 false/0/0'] : [],
+        ],
+      );
     }
   } finally {
     globalThis.fetch = hostFetch;
@@ -1215,8 +1921,19 @@ test('XMLHttpRequest: a request stopped while it waits for more of the body canc
       else if (stopWith === 'open') x.open('GET', `${BASE}/text`);
       else if (stopWith === 'teardown') resetWindow(w);
       await wait(stopWith === 'timeout' ? 100 : 20);
-      assert.deepEqual([stopWith, record.cancelled, log.at(-1)], [stopWith,
-        true, { abort: 'loadend 4 0 false/0/0', open: 'readystatechange 1 0', teardown: 'progress 3 200 false/4/0', timeout: 'loadend 4 200 false/0/0' }[stopWith]]);
+      assert.deepEqual(
+        [stopWith, record.cancelled, log.at(-1)],
+        [
+          stopWith,
+          true,
+          {
+            abort: 'loadend 4 0 false/0/0',
+            open: 'readystatechange 1 0',
+            teardown: 'progress 3 200 false/4/0',
+            timeout: 'loadend 4 200 false/0/0',
+          }[stopWith],
+        ],
+      );
     }
   } finally {
     globalThis.fetch = hostFetch;
@@ -1237,19 +1954,43 @@ test('XMLHttpRequest: a request stopped in an upload handler fires nothing more 
         const x = new w.XMLHttpRequest();
         const log = [];
         logEvents(x, log, true);
-        x.upload.addEventListener('progress', () => {
-          if (stopWith === 'abort') x.abort(); else x.open('GET', `${BASE}/text`);
-          log.push(stopWith);
-        }, { once: true });
+        x.upload.addEventListener(
+          'progress',
+          () => {
+            if (stopWith === 'abort') x.abort();
+            else x.open('GET', `${BASE}/text`);
+            log.push(stopWith);
+          },
+          { once: true },
+        );
         x.open('POST', `${BASE}/echo`);
         x.send('body');
         await wait(30);
         const after = log.slice(log.findIndex((l) => l.startsWith('upload.progress')));
         const status = jsdom === '27.4.0' ? 200 : 0;
-        assert.deepEqual([jsdom, stopWith, record.cancelled, after, x.status], [jsdom, stopWith, true, stopWith === 'abort'
-          ? [`upload.progress ${jsdom === '27.4.0' ? 2 : 1} true/4/4`, 'readystatechange 4 0', 'abort 4 0 false/0/0', 'loadend 4 0 false/0/0', 'abort']
-          // Reopened in OPENED (from 28): no readystatechange.
-          : [`upload.progress ${jsdom === '27.4.0' ? 2 : 1} true/4/4`, ...(jsdom === '27.4.0' ? ['readystatechange 1 200'] : []), 'open'], stopWith === 'abort' ? 0 : status]);
+        assert.deepEqual(
+          [jsdom, stopWith, record.cancelled, after, x.status],
+          [
+            jsdom,
+            stopWith,
+            true,
+            stopWith === 'abort'
+              ? [
+                  `upload.progress ${jsdom === '27.4.0' ? 2 : 1} true/4/4`,
+                  'readystatechange 4 0',
+                  'abort 4 0 false/0/0',
+                  'loadend 4 0 false/0/0',
+                  'abort',
+                ]
+              : // Reopened in OPENED (from 28): no readystatechange.
+                [
+                  `upload.progress ${jsdom === '27.4.0' ? 2 : 1} true/4/4`,
+                  ...(jsdom === '27.4.0' ? ['readystatechange 1 200'] : []),
+                  'open',
+                ],
+            stopWith === 'abort' ? 0 : status,
+          ],
+        );
       }
     }
   } finally {
@@ -1266,8 +2007,20 @@ test('XMLHttpRequest: every header name the author sets reaches fetch, __proto__
   };
   try {
     const w = createWindow({ url: PAGE });
-    await request(w, 'GET', `${BASE}/text`, { prep: (x) => { x.setRequestHeader('__proto__', 'p'); x.setRequestHeader('constructor', 'c'); x.setRequestHeader('X-A', '1'); } });
-    assert.deepEqual(seen, [[['__proto__', 'p'], ['constructor', 'c'], ['x-a', '1']]]);
+    await request(w, 'GET', `${BASE}/text`, {
+      prep: (x) => {
+        x.setRequestHeader('__proto__', 'p');
+        x.setRequestHeader('constructor', 'c');
+        x.setRequestHeader('X-A', '1');
+      },
+    });
+    assert.deepEqual(seen, [
+      [
+        ['__proto__', 'p'],
+        ['constructor', 'c'],
+        ['x-a', '1'],
+      ],
+    ]);
   } finally {
     globalThis.fetch = hostFetch;
   }
@@ -1295,32 +2048,62 @@ test('XMLHttpRequest: profile boundaries (jsdom 28.0.0 undici; network errors re
     x.open('POST', `http://localhost:${DEAD}/`);
     return attempt(() => x.send(new Uint8Array(new SharedArrayBuffer(4))));
   };
-  assert.deepEqual(['27.0.0', '27.0.1'].map(shared), ['undefined', "TypeError/TypeError: Failed to execute 'send' on 'XMLHttpRequest': parameter 1 is a view on a SharedArrayBuffer, which is not allowed."]);
+  assert.deepEqual(['27.0.0', '27.0.1'].map(shared), [
+    'undefined',
+    "TypeError/TypeError: Failed to execute 'send' on 'XMLHttpRequest': parameter 1 is a view on a SharedArrayBuffer, which is not allowed.",
+  ]);
   // A charset naming the replacement encoding decodes to U+FFFD from 27.4.0 (27.3.0: as UTF-8).
   const replacement = async (jsdom) => {
-    const { x } = await request(createWindow({ url: PAGE, jsdom }), 'GET', `${BASE}/type?ct=${encodeURIComponent('text/plain;charset=iso-2022-kr')}&body=abc`);
+    const { x } = await request(
+      createWindow({ url: PAGE, jsdom }),
+      'GET',
+      `${BASE}/type?ct=${encodeURIComponent('text/plain;charset=iso-2022-kr')}&body=abc`,
+    );
     return x.responseText;
   };
   assert.deepEqual(await Promise.all(['27.3.0', '27.4.0'].map(replacement)), ['abc', '\ufffd']);
 });
 
-test('XMLHttpRequest: fetch is asked to omit the host\'s credentials (cookies) on requests, preflights and redirect retries (Copilot review on #89)', async () => {
+test("XMLHttpRequest: fetch is asked to omit the host's credentials (cookies) on requests, preflights and redirect retries (Copilot review on #89)", async () => {
   const hostFetch = globalThis.fetch;
   const calls = [];
   globalThis.fetch = async (url, init) => {
     calls.push(`${init.method} ${init.redirect} ${init.credentials}`);
-    if (init.method === 'OPTIONS') return new Response(null, { status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' } });
-    if (init.redirect === 'manual' && calls.length === 2) return { type: 'opaqueredirect', status: 0, statusText: '', headers: new Headers(), body: null, redirected: false, url: '' };
+    if (init.method === 'OPTIONS')
+      return new Response(null, {
+        status: 204,
+        headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' },
+      });
+    if (init.redirect === 'manual' && calls.length === 2)
+      return {
+        type: 'opaqueredirect',
+        status: 0,
+        statusText: '',
+        headers: new Headers(),
+        body: null,
+        redirected: false,
+        url: '',
+      };
     return new Response('ok', { headers: { 'access-control-allow-origin': '*' } });
   };
   try {
     const w = createWindow({ url: PAGE });
     await request(w, 'PUT', `${CROSS}/echo`, { body: 'x' });
     await request(w, 'GET', `${BASE}/text`);
-    await request(w, 'GET', `${BASE}/text`, { prep: (x) => { x.withCredentials = true; } });
+    await request(w, 'GET', `${BASE}/text`, {
+      prep: (x) => {
+        x.withCredentials = true;
+      },
+    });
     // A preflight, the request (an opaque redirect), its retry, then two
     // requests (one withCredentials: still no host cookies).
-    assert.deepEqual(calls, ['OPTIONS manual omit', 'PUT manual omit', 'PUT follow omit', 'GET follow omit', 'GET follow omit']);
+    assert.deepEqual(calls, [
+      'OPTIONS manual omit',
+      'PUT manual omit',
+      'PUT follow omit',
+      'GET follow omit',
+      'GET follow omit',
+    ]);
   } finally {
     globalThis.fetch = hostFetch;
   }
@@ -1335,7 +2118,16 @@ test('XMLHttpRequest: a host whose fetch hides redirects (opaqueredirect) follow
       // (status 0, no Location); 'follow' gives the final response.
       globalThis.fetch = async (url, init) => {
         calls.push(`${init.method} ${port(url)} ${init.redirect}`);
-        if (init.redirect === 'manual') return { type: 'opaqueredirect', status: 0, statusText: '', headers: new Headers(), body: null, redirected: false, url: '' };
+        if (init.redirect === 'manual')
+          return {
+            type: 'opaqueredirect',
+            status: 0,
+            statusText: '',
+            headers: new Headers(),
+            body: null,
+            redirected: false,
+            url: '',
+          };
         const response = new Response(`body of ${init.method}`, { headers: { 'content-type': 'text/plain' } });
         Object.defineProperties(response, { redirected: { value: true }, url: { value: `${BASE}/final` } });
         return response;
@@ -1343,12 +2135,25 @@ test('XMLHttpRequest: a host whose fetch hides redirects (opaqueredirect) follow
       const w = createWindow({ url: PAGE, jsdom });
       const first = await request(w, 'POST', `${BASE}/redirect#frag`, { body: 'x' });
       const second = await request(w, 'GET', `${BASE}/redirect`);
-      assert.deepEqual([first.x.status, first.x.responseText, port(first.x.responseURL), first.log.at(-2).split(' ')[0]],
-        [200, 'body of POST', jsdom === '27.4.0' ? 'http://localhost:PORT/final' : 'http://localhost:PORT/final#frag', 'load']);
-      assert.deepEqual([second.x.status, second.x.responseText, port(second.x.responseURL)], [200, 'body of GET', 'http://localhost:PORT/final']);
+      assert.deepEqual(
+        [first.x.status, first.x.responseText, port(first.x.responseURL), first.log.at(-2).split(' ')[0]],
+        [
+          200,
+          'body of POST',
+          jsdom === '27.4.0' ? 'http://localhost:PORT/final' : 'http://localhost:PORT/final#frag',
+          'load',
+        ],
+      );
+      assert.deepEqual(
+        [second.x.status, second.x.responseText, port(second.x.responseURL)],
+        [200, 'body of GET', 'http://localhost:PORT/final'],
+      );
       // The request that finds it out is sent again; later ones go straight to 'follow'.
       assert.deepEqual(calls, [
-        'POST http://localhost:PORT/redirect#frag manual', 'POST http://localhost:PORT/redirect#frag follow', 'GET http://localhost:PORT/redirect follow']);
+        'POST http://localhost:PORT/redirect#frag manual',
+        'POST http://localhost:PORT/redirect#frag follow',
+        'GET http://localhost:PORT/redirect follow',
+      ]);
     }
   } finally {
     globalThis.fetch = hostFetch;

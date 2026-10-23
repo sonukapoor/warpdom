@@ -4,8 +4,20 @@
 // attributes change (attrsRev), and writing through the single attribute
 // write path.
 import {
-  S, state, initNode, domError, HTML_NS, idChanged, attributesChanged, hooks, observed,
-  asciiLowercase, validElementLocalName, validAttributeLocalName, validNamespacePrefix, tooFewArguments,
+  S,
+  state,
+  initNode,
+  domError,
+  HTML_NS,
+  idChanged,
+  attributesChanged,
+  hooks,
+  observed,
+  asciiLowercase,
+  validElementLocalName,
+  validAttributeLocalName,
+  validNamespacePrefix,
+  tooFewArguments,
 } from './internal.js';
 import { liveList } from './collections.js';
 import { styleAttributeChanged } from './css.js';
@@ -21,7 +33,10 @@ export const attributeSteps = new Map();
 // the order added; the last function returned runs after the report).
 export function addAttributeStep(name, step) {
   const first = attributeSteps.get(name);
-  if (first === undefined) { attributeSteps.set(name, step); return; }
+  if (first === undefined) {
+    attributeSteps.set(name, step);
+    return;
+  }
   attributeSteps.set(name, (element, old, value) => {
     const a = first(element, old, value);
     const b = step(element, old, value);
@@ -40,8 +55,12 @@ export function writeAttribute(element, key, value, checkName) {
 }
 
 // Rare paths of writeAttributeValue, out of line so it stays small.
-function firstKeyByName(es, qn) { return keyByName(es, qn) ?? qn; }
-function forgetNamespace(es, key) { if (es.attrNS.delete(key) && es.attrNS.size === 0) es.attrNS = null; }
+function firstKeyByName(es, qn) {
+  return keyByName(es, qn) ?? qn;
+}
+function forgetNamespace(es, key) {
+  if (es.attrNS.delete(key) && es.attrNS.size === 0) es.attrNS = null;
+}
 
 function writeAttributeValue(element, key, value, checkName) {
   const es = state(element);
@@ -68,7 +87,8 @@ function writeAttributeValue(element, key, value, checkName) {
   if (hooks.ce !== null) hooks.ce.attributeChanged(element, key, old, value);
   // A removed attribute's namespace is kept until the steps above ran.
   if (value === undefined && es.attrNS != null) forgetNamespace(es, key);
-  if ((key === 'slot' || key === 'name') && hooks.slots !== null && es.doc[S].slotCount) hooks.slots.attributeChanged(element, key);
+  if ((key === 'slot' || key === 'name') && hooks.slots !== null && es.doc[S].slotCount)
+    hooks.slots.attributeChanged(element, key);
   if (after !== undefined) after();
 }
 
@@ -138,7 +158,9 @@ export function validateAndExtract(namespace, qualifiedName, element = false) {
     if (!validNamespacePrefix(prefix)) throw invalid();
   }
   if (element ? !validElementLocalName(local) : !validAttributeLocalName(local)) throw invalid();
-  const fail = () => { throw domError(`The namespace '${ns}' is not valid for the qualified name '${qn}'.`, 'NamespaceError'); };
+  const fail = () => {
+    throw domError(`The namespace '${ns}' is not valid for the qualified name '${qn}'.`, 'NamespaceError');
+  };
   if (prefix !== null && ns === null) fail();
   if (prefix === 'xml' && ns !== XML_NS) fail();
   if ((qn === 'xmlns' || prefix === 'xmlns') && ns !== XMLNS_NS) fail();
@@ -213,8 +235,13 @@ export function attrNode(element, key) {
   let attr = cache.get(key);
   if (!attr) {
     const info = key.charCodeAt(0) === 0 ? es.attrNS.get(key) : null;
-    attr = initNode(Object.create(es.doc[S].window[S].protos.Attr), ATTRIBUTE_NODE, es.doc,
-      { name: info === null ? key : info.qn, key, element, detachedValue: '', info });
+    attr = initNode(Object.create(es.doc[S].window[S].protos.Attr), ATTRIBUTE_NODE, es.doc, {
+      name: info === null ? key : info.qn,
+      key,
+      element,
+      detachedValue: '',
+      info,
+    });
     cache.set(key, attr);
   }
   return attr;
@@ -237,15 +264,25 @@ export const attrInfo = (s) => s.info ?? null;
 // document.createAttributeNS.
 export function createAttributeNS(document, namespace, qualifiedName) {
   const { ns, prefix, local, qn } = validateAndExtract(namespace, qualifiedName);
-  return initNode(Object.create(document[S].window[S].protos.Attr), ATTRIBUTE_NODE, document,
-    { name: qn, key: attrKey(ns, local), element: null, detachedValue: '', info: ns === null ? null : { ns, prefix, local, qn } });
+  return initNode(Object.create(document[S].window[S].protos.Attr), ATTRIBUTE_NODE, document, {
+    name: qn,
+    key: attrKey(ns, local),
+    element: null,
+    detachedValue: '',
+    info: ns === null ? null : { ns, prefix, local, qn },
+  });
 }
 
 export function createAttribute(document, name) {
   const n = checkAttributeName(String(name));
   const qn = document[S].xml ? n : asciiLowercase(n);
-  return initNode(Object.create(document[S].window[S].protos.Attr), ATTRIBUTE_NODE, document,
-    { name: qn, key: qn, element: null, detachedValue: '', info: null });
+  return initNode(Object.create(document[S].window[S].protos.Attr), ATTRIBUTE_NODE, document, {
+    name: qn,
+    key: qn,
+    element: null,
+    detachedValue: '',
+    info: null,
+  });
 }
 
 // Set an attribute (DOM): the attribute with the same namespace and local
@@ -253,7 +290,8 @@ export function createAttribute(document, name) {
 // appended.
 export function setAttributeNode(element, attr) {
   const as = state(attr);
-  if (as.element && as.element !== element) throw domError('The attribute is in use by another element.', 'InUseAttributeError');
+  if (as.element && as.element !== element)
+    throw domError('The attribute is in use by another element.', 'InUseAttributeError');
   if (as.element === element) return attr;
   const es = element[S];
   const key = as.key;
@@ -330,7 +368,11 @@ function tokens(list) {
 function validToken(token) {
   const t = String(token);
   if (t === '') throw domError('The token provided must not be empty.', 'SyntaxError');
-  if (/[\t\n\f\r ]/.test(t)) throw domError(`The token provided ('${t}') contains HTML space characters, which are not valid in tokens.`, 'InvalidCharacterError');
+  if (/[\t\n\f\r ]/.test(t))
+    throw domError(
+      `The token provided ('${t}') contains HTML space characters, which are not valid in tokens.`,
+      'InvalidCharacterError',
+    );
   return t;
 }
 
@@ -365,7 +407,10 @@ export function domStringMap(element, write) {
   const isData = (key) => typeof key === 'string' && !/-[a-z]/.test(key);
   es.dataset = new Proxy(target, {
     get(t, key, receiver) {
-      if (isData(key)) { const v = es.attrs.get(toAttribute(key)); if (v !== undefined) return v; }
+      if (isData(key)) {
+        const v = es.attrs.get(toAttribute(key));
+        if (v !== undefined) return v;
+      }
       return Reflect.get(t, key, receiver);
     },
     // The named property setter (HTML 3.2.6.6): a "-" followed by an ASCII
@@ -378,12 +423,16 @@ export function domStringMap(element, write) {
       write(element, checkAttributeName(toAttribute(key)), String(value));
       return true;
     },
-    has(t, key) { return (isData(key) && es.attrs.has(toAttribute(key))) || Reflect.has(t, key); },
+    has(t, key) {
+      return (isData(key) && es.attrs.has(toAttribute(key))) || Reflect.has(t, key);
+    },
     deleteProperty(t, key) {
       if (isData(key) && es.attrs.has(toAttribute(key))) write(element, toAttribute(key), undefined);
       return true;
     },
-    ownKeys() { return [...es.attrs.keys()].filter((a) => a.startsWith('data-')).map(toProperty); },
+    ownKeys() {
+      return [...es.attrs.keys()].filter((a) => a.startsWith('data-')).map(toProperty);
+    },
     getOwnPropertyDescriptor(t, key) {
       if (!isData(key)) return undefined;
       const v = es.attrs.get(toAttribute(key));
@@ -402,30 +451,61 @@ export const ATTRIBUTE_INTERFACES = [
     name: 'Attr',
     parent: 'Node',
     members: {
-      get name() { return state(this).name; },
-      get localName() { const s = state(this); return attrInfo(s)?.local ?? s.name; },
-      get nodeName() { return state(this).name; },
-      get namespaceURI() { return attrInfo(state(this))?.ns ?? null; },
-      get prefix() { return attrInfo(state(this))?.prefix ?? null; },
-      get specified() { state(this); return true; },
-      get ownerElement() { return state(this).element; },
-      get value() { const s = state(this); return s.element ? s.element[S].attrs.get(s.key) ?? '' : s.detachedValue; },
+      get name() {
+        return state(this).name;
+      },
+      get localName() {
+        const s = state(this);
+        return attrInfo(s)?.local ?? s.name;
+      },
+      get nodeName() {
+        return state(this).name;
+      },
+      get namespaceURI() {
+        return attrInfo(state(this))?.ns ?? null;
+      },
+      get prefix() {
+        return attrInfo(state(this))?.prefix ?? null;
+      },
+      get specified() {
+        state(this);
+        return true;
+      },
+      get ownerElement() {
+        return state(this).element;
+      },
+      get value() {
+        const s = state(this);
+        return s.element ? (s.element[S].attrs.get(s.key) ?? '') : s.detachedValue;
+      },
       set value(v) {
         const s = state(this);
         if (s.element) writeAttribute(s.element, s.key, String(v));
         else s.detachedValue = String(v);
       },
-      get nodeValue() { return this.value; },
-      set nodeValue(v) { this.value = v; },
-      get textContent() { return this.value; },
-      set textContent(v) { this.value = v; },
+      get nodeValue() {
+        return this.value;
+      },
+      set nodeValue(v) {
+        this.value = v;
+      },
+      get textContent() {
+        return this.value;
+      },
+      set textContent(v) {
+        this.value = v;
+      },
     },
   },
   {
     name: 'NamedNodeMap',
     members: {
-      get length() { return attributeArray(state(this).element).length; },
-      item(index) { return attributeArray(state(this).element)[index >>> 0] ?? null; },
+      get length() {
+        return attributeArray(state(this).element).length;
+      },
+      item(index) {
+        return attributeArray(state(this).element)[index >>> 0] ?? null;
+      },
       getNamedItem(name) {
         const el = state(this).element;
         const key = keyByName(el[S], attrName(el, name));
@@ -436,8 +516,12 @@ export const ATTRIBUTE_INTERFACES = [
         const name = findAttributeNS(el, ns, localName);
         return name === null ? null : attrNode(el, name);
       },
-      setNamedItem(attr) { return setAttributeNode(state(this).element, attr); },
-      setNamedItemNS(attr) { return setAttributeNode(state(this).element, attr); },
+      setNamedItem(attr) {
+        return setAttributeNode(state(this).element, attr);
+      },
+      setNamedItemNS(attr) {
+        return setAttributeNode(state(this).element, attr);
+      },
       removeNamedItem(name) {
         const attr = this.getNamedItem(name);
         if (!attr) throw domError(`No item with name '${name}' was found.`, 'NotFoundError');
@@ -448,17 +532,34 @@ export const ATTRIBUTE_INTERFACES = [
         if (!attr) throw domError(`No item with namespace '${ns}' and name '${localName}' was found.`, 'NotFoundError');
         return removeAttributeNode(state(this).element, attr);
       },
-      [Symbol.iterator]() { return attributeArray(state(this).element)[Symbol.iterator](); },
+      [Symbol.iterator]() {
+        return attributeArray(state(this).element)[Symbol.iterator]();
+      },
     },
   },
   {
     name: 'DOMTokenList',
     members: {
-      get length() { return tokenItems(this).length; },
-      get value() { const s = state(this); return s.element[S].attrs.get(s.attribute) ?? ''; },
-      set value(v) { const s = state(this); s.write(s.element, s.attribute, String(v)); },
-      item(index) { if (index === undefined && arguments.length < 1) tooFewArguments('DOMTokenList', 'item', 1, arguments.length); return tokenItems(this)[index] ?? null; },
-      contains(token) { if (token === undefined && arguments.length < 1) tooFewArguments('DOMTokenList', 'contains', 1, arguments.length); return tokenItems(this).includes(String(token)); },
+      get length() {
+        return tokenItems(this).length;
+      },
+      get value() {
+        const s = state(this);
+        return s.element[S].attrs.get(s.attribute) ?? '';
+      },
+      set value(v) {
+        const s = state(this);
+        s.write(s.element, s.attribute, String(v));
+      },
+      item(index) {
+        if (index === undefined && arguments.length < 1) tooFewArguments('DOMTokenList', 'item', 1, arguments.length);
+        return tokenItems(this)[index] ?? null;
+      },
+      contains(token) {
+        if (token === undefined && arguments.length < 1)
+          tooFewArguments('DOMTokenList', 'contains', 1, arguments.length);
+        return tokenItems(this).includes(String(token));
+      },
       add(...items) {
         const add = items.map(validToken);
         const current = tokenItems(this);
@@ -466,20 +567,31 @@ export const ATTRIBUTE_INTERFACES = [
       },
       remove(...items) {
         const remove = items.map(validToken);
-        writeTokens(this, tokenItems(this).filter((t) => !remove.includes(t)));
+        writeTokens(
+          this,
+          tokenItems(this).filter((t) => !remove.includes(t)),
+        );
       },
       toggle(token, force = undefined) {
         if (token === undefined && arguments.length < 1) tooFewArguments('DOMTokenList', 'toggle', 1, arguments.length);
         const t = validToken(token);
         const has = tokenItems(this).includes(t);
-        if (has && force !== true) { this.remove(t); return false; }
-        if (!has && force !== false) { this.add(t); return true; }
+        if (has && force !== true) {
+          this.remove(t);
+          return false;
+        }
+        if (!has && force !== false) {
+          this.add(t);
+          return true;
+        }
         return has;
       },
       replace(token, newToken) {
-        if (newToken === undefined && arguments.length < 2) tooFewArguments('DOMTokenList', 'replace', 2, arguments.length);
+        if (newToken === undefined && arguments.length < 2)
+          tooFewArguments('DOMTokenList', 'replace', 2, arguments.length);
         // Both are checked for emptiness before either for whitespace.
-        if (String(token) === '' || String(newToken) === '') throw domError('The token provided must not be empty.', 'SyntaxError');
+        if (String(token) === '' || String(newToken) === '')
+          throw domError('The token provided must not be empty.', 'SyntaxError');
         const t = validToken(token);
         const n = validToken(newToken);
         const current = tokenItems(this);
@@ -492,8 +604,14 @@ export const ATTRIBUTE_INTERFACES = [
         writeTokens(this, out);
         return true;
       },
-      supports(token) { void token; throw new TypeError("Failed to execute 'supports' on 'DOMTokenList': DOMTokenList has no supported tokens."); },
-      toString() { const s = state(this); return s.element[S].attrs.get(s.attribute) ?? ''; },
+      supports(token) {
+        void token;
+        throw new TypeError("Failed to execute 'supports' on 'DOMTokenList': DOMTokenList has no supported tokens.");
+      },
+      toString() {
+        const s = state(this);
+        return s.element[S].attrs.get(s.attribute) ?? '';
+      },
       // A value iterator over indexed properties (WebIDL): Array.prototype's
       // own functions, which read length and the indexed properties.
       forEach: Array.prototype.forEach,

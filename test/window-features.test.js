@@ -45,7 +45,16 @@ test('location and history', () => {
   const { location, history } = w;
   assert.ok(location instanceof w.Location && history instanceof w.History);
   assert.deepEqual(
-    [location.protocol, location.host, location.hostname, location.port, location.pathname, location.search, location.hash, location.origin],
+    [
+      location.protocol,
+      location.host,
+      location.hostname,
+      location.port,
+      location.pathname,
+      location.search,
+      location.hash,
+      location.origin,
+    ],
     ['http:', 'localhost:3000', 'localhost', '3000', '/app', '?q=1', '#top', 'http://localhost:3000'],
   );
   assert.equal(w.document.location, location);
@@ -83,8 +92,14 @@ test('insertAdjacentElement and insertAdjacentText', () => {
   el.insertAdjacentElement('beforeend', make('i'));
   el.insertAdjacentElement('afterend', make('u'));
   assert.equal(before.tagName, 'A');
-  assert.deepEqual([...parent.children].map((c) => c.tagName), ['A', 'P', 'U']);
-  assert.deepEqual([...el.children].map((c) => c.tagName), ['B', 'I']);
+  assert.deepEqual(
+    [...parent.children].map((c) => c.tagName),
+    ['A', 'P', 'U'],
+  );
+  assert.deepEqual(
+    [...el.children].map((c) => c.tagName),
+    ['B', 'I'],
+  );
   el.insertAdjacentText('beforeend', '!');
   assert.equal(el.lastChild.nodeValue, '!');
   assert.throws(() => el.insertAdjacentElement('nowhere', make('s')), { name: 'SyntaxError' });
@@ -95,7 +110,14 @@ parity('document visibility', (w) => {
   const d = w.document;
   const iframe = d.createElement('iframe');
   d.body.append(iframe);
-  return [d.visibilityState, d.hidden, iframe.contentDocument.visibilityState, iframe.contentDocument.hidden, 'onvisibilitychange' in d, 'onvisibilitychange' in d.body];
+  return [
+    d.visibilityState,
+    d.hidden,
+    iframe.contentDocument.visibilityState,
+    iframe.contentDocument.hidden,
+    'onvisibilitychange' in d,
+    'onvisibilitychange' in d.body,
+  ];
 });
 
 // Deviations: jsdom gives documents without a browsing context the old
@@ -112,29 +134,78 @@ test('document visibility without a browsing context; onvisibilitychange', () =>
 
 // Small Window members jsdom has (react-aria's tests read the global close).
 parity('window: close, stop, bars, name, status, origin, external, webkitURL', (w) => {
-  const bars = ['locationbar', 'menubar', 'personalbar', 'scrollbars', 'statusbar', 'toolbar'].map((b) => [Object.prototype.toString.call(w[b]), w[b].visible, w[b] === w[b]]);
-  const before = [w.name, w.status, w.origin, typeof w.close, w.close(), w.stop(), w.captureEvents(), w.releaseEvents(), w.closed];
+  const bars = ['locationbar', 'menubar', 'personalbar', 'scrollbars', 'statusbar', 'toolbar'].map((b) => [
+    Object.prototype.toString.call(w[b]),
+    w[b].visible,
+    w[b] === w[b],
+  ]);
+  const before = [
+    w.name,
+    w.status,
+    w.origin,
+    typeof w.close,
+    w.close(),
+    w.stop(),
+    w.captureEvents(),
+    w.releaseEvents(),
+    w.closed,
+  ];
   w.name = 'n';
   w.status = 's';
-  const external = [Object.prototype.toString.call(w.external), w.external.AddSearchProvider(), w.external.IsSearchProviderInstalled(), w.external === w.external];
+  const external = [
+    Object.prototype.toString.call(w.external),
+    w.external.AddSearchProvider(),
+    w.external.IsSearchProviderInstalled(),
+    w.external === w.external,
+  ];
   w.origin = 'replaced';
-  return [bars, before, w.name, w.status, external, w.origin, w.webkitURL === w.URL || w.webkitURL === URL, w.document.body.innerHTML === ''];
+  return [
+    bars,
+    before,
+    w.name,
+    w.status,
+    external,
+    w.origin,
+    w.webkitURL === w.URL || w.webkitURL === URL,
+    w.document.body.innerHTML === '',
+  ];
 });
 
 parity('legacy and document-only event handlers', (w) => {
   const d = w.document;
   const el = d.createElement('div');
-  const names = ['onwebkitanimationend', 'onwebkitanimationiteration', 'onwebkitanimationstart', 'onwebkittransitionend', 'onanimationend', 'ontransitionend'];
-  return [names.map((n) => [n in w, n in d, n in el]), 'onreadystatechange' in d, 'onreadystatechange' in el, typeof w.InputEvent.prototype.getTargetRanges];
+  const names = [
+    'onwebkitanimationend',
+    'onwebkitanimationiteration',
+    'onwebkitanimationstart',
+    'onwebkittransitionend',
+    'onanimationend',
+    'ontransitionend',
+  ];
+  return [
+    names.map((n) => [n in w, n in d, n in el]),
+    'onreadystatechange' in d,
+    'onreadystatechange' in el,
+    typeof w.InputEvent.prototype.getTargetRanges,
+  ];
 });
 
 // An exception in a queueMicrotask callback becomes an error event.
 parity('queueMicrotask reports exceptions', async (w) => {
   const seen = [];
-  w.addEventListener('error', (e) => { seen.push([e.constructor.name, e.message, e.error?.message, e.cancelable]); e.preventDefault(); });
-  w.queueMicrotask(() => { throw new Error('boom'); });
+  w.addEventListener('error', (e) => {
+    seen.push([e.constructor.name, e.message, e.error?.message, e.cancelable]);
+    e.preventDefault();
+  });
+  w.queueMicrotask(() => {
+    throw new Error('boom');
+  });
   let typeError;
-  try { w.queueMicrotask(42); } catch (e) { typeError = e.name; }
+  try {
+    w.queueMicrotask(42);
+  } catch (e) {
+    typeError = e.name;
+  }
   await new Promise((resolve) => setTimeout(resolve, 10));
   return [seen, typeError];
 });
@@ -142,15 +213,23 @@ parity('queueMicrotask reports exceptions', async (w) => {
 // jsdom 25 and 26 print the error's stack: compared on jsdom 30, and the
 // words of jsdom 20 to 26 checked below.
 for (const jsdom of [30]) {
-  parity(`"Not implemented" reports in the version's words (jsdom ${jsdom})`, (w) => {
-    w.document.body.innerHTML = '<form></form><canvas></canvas><video></video>';
-    w.alert('x');
-    w.scrollTo(0, 0);
-    try { w.document.querySelector('form').submit(); } catch { /* reported */ }
-    w.document.querySelector('canvas').getContext('2d');
-    w.document.querySelector('video').pause();
-    return null;
-  }, { jsdom });
+  parity(
+    `"Not implemented" reports in the version's words (jsdom ${jsdom})`,
+    (w) => {
+      w.document.body.innerHTML = '<form></form><canvas></canvas><video></video>';
+      w.alert('x');
+      w.scrollTo(0, 0);
+      try {
+        w.document.querySelector('form').submit();
+      } catch {
+        /* reported */
+      }
+      w.document.querySelector('canvas').getContext('2d');
+      w.document.querySelector('video').pause();
+      return null;
+    },
+    { jsdom },
+  );
 }
 
 test('"Not implemented" reports in jsdom 20 to 26\'s words', () => {
@@ -167,32 +246,84 @@ test('"Not implemented" reports in jsdom 20 to 26\'s words', () => {
   } finally {
     console.error = original;
   }
-  assert.deepEqual(messages, ['Not implemented: window.alert', 'Not implemented: HTMLFormElement.prototype.submit',
-    'Not implemented: HTMLCanvasElement.prototype.getContext (without installing the canvas npm package)', 'Not implemented: HTMLMediaElement.prototype.pause']);
+  assert.deepEqual(messages, [
+    'Not implemented: window.alert',
+    'Not implemented: HTMLFormElement.prototype.submit',
+    'Not implemented: HTMLCanvasElement.prototype.getContext (without installing the canvas npm package)',
+    'Not implemented: HTMLMediaElement.prototype.pause',
+  ]);
 });
 
 // navigator.plugins and navigator.mimeTypes, Plugin, MimeType, PluginArray
 // and MimeTypeArray (#58, #31, #33, #34, #54): empty legacy collections in
 // every jsdom version measured (20.0.3 to 30.1.3).
 for (const jsdom of [20, 26, 30]) {
-  parity(`navigator.plugins and mimeTypes: empty collections (jsdom ${jsdom})`, (w) => {
-    const caught = (f) => { try { return f(); } catch (err) { return err.constructor.name; } };
-    const n = w.navigator;
-    const shapes = ['Plugin', 'MimeType', 'PluginArray', 'MimeTypeArray'].map((name) => {
-      const C = w[name];
-      return [name, C.length, Object.getOwnPropertyNames(C.prototype).sort(), caught(() => new C()), Object.prototype.toString.call(C.prototype),
-        C.prototype[Symbol.iterator]?.name, typeof C.prototype.item === 'function' ? C.prototype.item.length : null];
-    });
-    const lists = [['plugins', 'PluginArray'], ['mimeTypes', 'MimeTypeArray']].map(([key, name]) => {
-      const list = n[key];
-      const strictSet = caught(() => { 'use strict'; list[0] = 'a'; });
-      list.expando = 1;
-      return [list === n[key], list instanceof w[name], list.length, list.item(0), list.item(-1), list.namedItem('application/pdf'), list[0], 0 in list,
-        [...list], Object.keys(list), String(list), JSON.stringify(list), strictSet, caught(() => list.item()), caught(() => list.namedItem())];
-    });
-    return [shapes, lists, n.plugins.refresh(), 'pdfViewerEnabled' in n, n.javaEnabled(), Object.getOwnPropertyNames(w.Navigator.prototype).includes('plugins'),
-      caught(() => { n.plugins = 5; }), n.plugins instanceof w.PluginArray];
-  }, { jsdom });
+  parity(
+    `navigator.plugins and mimeTypes: empty collections (jsdom ${jsdom})`,
+    (w) => {
+      const caught = (f) => {
+        try {
+          return f();
+        } catch (err) {
+          return err.constructor.name;
+        }
+      };
+      const n = w.navigator;
+      const shapes = ['Plugin', 'MimeType', 'PluginArray', 'MimeTypeArray'].map((name) => {
+        const C = w[name];
+        return [
+          name,
+          C.length,
+          Object.getOwnPropertyNames(C.prototype).sort(),
+          caught(() => new C()),
+          Object.prototype.toString.call(C.prototype),
+          C.prototype[Symbol.iterator]?.name,
+          typeof C.prototype.item === 'function' ? C.prototype.item.length : null,
+        ];
+      });
+      const lists = [
+        ['plugins', 'PluginArray'],
+        ['mimeTypes', 'MimeTypeArray'],
+      ].map(([key, name]) => {
+        const list = n[key];
+        const strictSet = caught(() => {
+          'use strict';
+          list[0] = 'a';
+        });
+        list.expando = 1;
+        return [
+          list === n[key],
+          list instanceof w[name],
+          list.length,
+          list.item(0),
+          list.item(-1),
+          list.namedItem('application/pdf'),
+          list[0],
+          0 in list,
+          [...list],
+          Object.keys(list),
+          String(list),
+          JSON.stringify(list),
+          strictSet,
+          caught(() => list.item()),
+          caught(() => list.namedItem()),
+        ];
+      });
+      return [
+        shapes,
+        lists,
+        n.plugins.refresh(),
+        'pdfViewerEnabled' in n,
+        n.javaEnabled(),
+        Object.getOwnPropertyNames(w.Navigator.prototype).includes('plugins'),
+        caught(() => {
+          n.plugins = 5;
+        }),
+        n.plugins instanceof w.PluginArray,
+      ];
+    },
+    { jsdom },
+  );
 }
 
 // Window member kinds and the prototype chain (#68; black box, every jsdom
@@ -202,25 +333,52 @@ for (const jsdom of [20, 26, 30]) {
 // enumerable, status and the viewport members own data properties before
 // 27 and own accessors from 27 (viewport setters replace them); before
 // 24.1.2 Window.prototype inherits from EventTarget.prototype directly.
-const VIEWPORT_KEYS = ['innerWidth', 'innerHeight', 'outerWidth', 'outerHeight', 'devicePixelRatio', 'scrollX', 'scrollY', 'pageXOffset',
-  'pageYOffset', 'screenX', 'screenY', 'screenLeft', 'screenTop'];
+const VIEWPORT_KEYS = [
+  'innerWidth',
+  'innerHeight',
+  'outerWidth',
+  'outerHeight',
+  'devicePixelRatio',
+  'scrollX',
+  'scrollY',
+  'pageXOffset',
+  'pageYOffset',
+  'screenX',
+  'screenY',
+  'screenLeft',
+  'screenTop',
+];
 const descriptorOf = (o, key) => {
   const d = Object.getOwnPropertyDescriptor(o, key);
   if (!d) return 'none';
   const flags = `${d.writable ? 'w' : ''}${d.enumerable ? 'e' : ''}${d.configurable ? 'c' : ''}`;
-  if ('value' in d) return `data ${typeof d.value === 'object' ? 'object' : typeof d.value === 'function' ? d.value.name : JSON.stringify(d.value)} ${flags}`;
+  if ('value' in d)
+    return `data ${typeof d.value === 'object' ? 'object' : typeof d.value === 'function' ? d.value.name : JSON.stringify(d.value)} ${flags}`;
   return `accessor ${d.get?.name ?? '-'}/${d.set?.name ?? '-'} ${flags}`;
 };
 const windowKindsScenario = (w) => {
   void w.webkitURL; // warpdom makes it on first read, as its interface objects
-  const out = ['document', 'window', 'self', 'name', 'status', 'webkitURL', ...VIEWPORT_KEYS].map((key) => `${key}: ${descriptorOf(w, key)}`);
+  const out = ['document', 'window', 'self', 'name', 'status', 'webkitURL', ...VIEWPORT_KEYS].map(
+    (key) => `${key}: ${descriptorOf(w, key)}`,
+  );
   const get = (key) => Object.getOwnPropertyDescriptor(w, key).get;
-  out.push(get('document').call({}) === w.document, get('window').call(undefined) === w, get('self').call({}) === w, w.webkitURL === w.URL);
+  out.push(
+    get('document').call({}) === w.document,
+    get('window').call(undefined) === w,
+    get('self').call({}) === w,
+    w.webkitURL === w.URL,
+  );
   if (get('innerWidth')) out.push(get('innerWidth').call({}), get('scrollY').call(undefined));
   return out;
 };
 const windowAssignmentScenario = (w) => {
-  const attempt = (f) => { try { return f(); } catch (e) { return e.constructor.name; } };
+  const attempt = (f) => {
+    try {
+      return f();
+    } catch (e) {
+      return e.constructor.name;
+    }
+  };
   const out = [];
   w.innerWidth = 500;
   out.push(w.innerWidth, descriptorOf(w, 'innerWidth'));
@@ -228,7 +386,13 @@ const windowAssignmentScenario = (w) => {
   out.push(w.scrollY);
   // A test's Object.defineProperty with a value only: writable stays as it was.
   Object.defineProperty(w, 'innerHeight', { value: 300 });
-  out.push(descriptorOf(w, 'innerHeight'), attempt(() => { w.innerHeight = 400; return w.innerHeight; }));
+  out.push(
+    descriptorOf(w, 'innerHeight'),
+    attempt(() => {
+      w.innerHeight = 400;
+      return w.innerHeight;
+    }),
+  );
   // vi.spyOn(window, 'devicePixelRatio', 'get') needs an accessor.
   const ratio = Object.getOwnPropertyDescriptor(w, 'devicePixelRatio');
   out.push(typeof ratio.get);
@@ -243,17 +407,38 @@ const windowAssignmentScenario = (w) => {
   out.push(typeof w.name, typeof w.status, descriptorOf(w, 'name'));
   w.webkitURL = 7;
   out.push(descriptorOf(w, 'webkitURL'));
-  out.push(attempt(() => { delete w.outerWidth; return String(w.outerWidth); }));
+  out.push(
+    attempt(() => {
+      delete w.outerWidth;
+      return String(w.outerWidth);
+    }),
+  );
   return out;
 };
 const windowChainScenario = (w) => {
   const d = w.document;
-  d.body.innerHTML = '<div id="named"></div><form name="f"></form><div id="addEventListener"></div><div id="location"></div><div id="toString"></div>';
+  d.body.innerHTML =
+    '<div id="named"></div><form name="f"></form><div id="addEventListener"></div><div id="location"></div><div id="toString"></div>';
   const parent = Object.getPrototypeOf(w.Window.prototype);
-  const out = [parent === w.EventTarget.prototype, Object.prototype.toString.call(parent), Object.prototype.toString.call(w.Window.prototype),
-    Object.getPrototypeOf(w.EventTarget.prototype) === Object.prototype || Object.getPrototypeOf(w.EventTarget.prototype) === w.Object?.prototype,
-    w.Window.prototype.constructor === w.Window, Reflect.ownKeys(w.Window.prototype).includes('constructor')];
-  out.push(String(w.named), 'named' in w, String(w.f), typeof w.addEventListener, String(w.location) === w.location.href, typeof w.toString, w.missing, 'missing' in w);
+  const out = [
+    parent === w.EventTarget.prototype,
+    Object.prototype.toString.call(parent),
+    Object.prototype.toString.call(w.Window.prototype),
+    Object.getPrototypeOf(w.EventTarget.prototype) === Object.prototype ||
+      Object.getPrototypeOf(w.EventTarget.prototype) === w.Object?.prototype,
+    w.Window.prototype.constructor === w.Window,
+    Reflect.ownKeys(w.Window.prototype).includes('constructor'),
+  ];
+  out.push(
+    String(w.named),
+    'named' in w,
+    String(w.f),
+    typeof w.addEventListener,
+    String(w.location) === w.location.href,
+    typeof w.toString,
+    w.missing,
+    'missing' in w,
+  );
   d.getElementById('named').remove();
   out.push(String(w.named), 'named' in w);
   return out;
@@ -281,10 +466,27 @@ const windowChainScenario = (w) => {
 // still lets the derived object have its own; warpdom's throws there (not
 // covered: jsdom 20 runs without self).
 const INHERITED_KEYS = ['self', 'name', 'status', 'innerWidth', 'scrollY', 'devicePixelRatio'];
-const LAZY_KEYS = ['console', 'Image', 'Option', 'Audio', 'HTMLCanvasElement', 'MutationObserver', 'webkitURL', 'HTMLDocument', 'WebSocket'];
-const sameDescriptor = (a, b) => b !== undefined && ('value' in a ? a.value === b.value : a.get === b.get && a.set === b.set);
+const LAZY_KEYS = [
+  'console',
+  'Image',
+  'Option',
+  'Audio',
+  'HTMLCanvasElement',
+  'MutationObserver',
+  'webkitURL',
+  'HTMLDocument',
+  'WebSocket',
+];
+const sameDescriptor = (a, b) =>
+  b !== undefined && ('value' in a ? a.value === b.value : a.get === b.get && a.set === b.set);
 const inheritedAssignmentScenario = (keys) => (w) => {
-  const attempt = (f) => { try { return f(); } catch (e) { return e.constructor.name; } };
+  const attempt = (f) => {
+    try {
+      return f();
+    } catch (e) {
+      return e.constructor.name;
+    }
+  };
   const out = [];
   const setters = ['self', 'outerHeight', 'status'].map((key) => [key, Object.getOwnPropertyDescriptor(w, key).set]);
   const statusGetter = Object.getOwnPropertyDescriptor(w, 'status').get;
@@ -294,29 +496,56 @@ const inheritedAssignmentScenario = (keys) => (w) => {
     // accessor's setter. Nothing reads them before this loop.
     const before = Object.getOwnPropertyDescriptor(w, key);
     const derived = Object.create(w);
-    const result = attempt(() => { derived[key] = 7; return 'ok'; });
+    const result = attempt(() => {
+      derived[key] = 7;
+      return 'ok';
+    });
     const own = Object.hasOwn(derived, key) ? descriptorOf(derived, key) : 'none';
-    const window = LAZY_KEYS.includes(key) ? (sameDescriptor(before, Object.getOwnPropertyDescriptor(w, key)) ? 'kept' : 'replaced') : descriptorOf(w, key);
+    const window = LAZY_KEYS.includes(key)
+      ? sameDescriptor(before, Object.getOwnPropertyDescriptor(w, key))
+        ? 'kept'
+        : 'replaced'
+      : descriptorOf(w, key);
     const reads = w[key] === 7 ? '7' : typeof w[key];
     out.push(`${key}: ${result}, own ${own}, window ${window} (reads ${reads}), derived reads ${String(derived[key])}`);
   }
   for (const [key, set] of setters) {
-    if (!set) { out.push(`${key}: no setter`); continue; }
+    if (!set) {
+      out.push(`${key}: no setter`);
+      continue;
+    }
     const other = {};
-    out.push(`${key} setter on another object: ${attempt(() => { set.call(other, 8); return 'ok'; })} ${Object.hasOwn(other, key)} ${descriptorOf(w, key)}`);
+    out.push(
+      `${key} setter on another object: ${attempt(() => {
+        set.call(other, 8);
+        return 'ok';
+      })} ${Object.hasOwn(other, key)} ${descriptorOf(w, key)}`,
+    );
     const derived = Object.create(w);
-    out.push(`${key} setter on a derived object: ${attempt(() => { set.call(derived, 9); return 'ok'; })} ${Object.hasOwn(derived, key)} ${descriptorOf(w, key)}`);
+    out.push(
+      `${key} setter on a derived object: ${attempt(() => {
+        set.call(derived, 9);
+        return 'ok';
+      })} ${Object.hasOwn(derived, key)} ${descriptorOf(w, key)}`,
+    );
   }
   if (statusGetter) out.push(`status getter: ${JSON.stringify(statusGetter.call({}))}`);
   return out;
 };
 for (const jsdom of [20, 22, 26, 27, 30]) {
   const keys = [...INHERITED_KEYS, ...LAZY_KEYS].filter((key) => jsdom >= 27 || key !== 'self');
-  parity(`assignments through an object inheriting from the window (jsdom ${jsdom})`, inheritedAssignmentScenario(keys), { jsdom });
+  parity(
+    `assignments through an object inheriting from the window (jsdom ${jsdom})`,
+    inheritedAssignmentScenario(keys),
+    { jsdom },
+  );
 }
 for (const jsdom of [22, 26]) {
-  parity(`assignments through an object inheriting from the window, without runScripts (jsdom ${jsdom})`,
-    inheritedAssignmentScenario([...INHERITED_KEYS, ...LAZY_KEYS]), { jsdom, runScripts: false });
+  parity(
+    `assignments through an object inheriting from the window, without runScripts (jsdom ${jsdom})`,
+    inheritedAssignmentScenario([...INHERITED_KEYS, ...LAZY_KEYS]),
+    { jsdom, runScripts: false },
+  );
 }
 
 test('window: assignments through an object inheriting from the window, per jsdom version', () => {
@@ -328,8 +557,14 @@ test('window: assignments through an object inheriting from the window, per jsdo
     for (const key of ['self', 'status', 'innerWidth', 'Image']) {
       const derived = Object.create(w);
       let result = 'ok';
-      try { derived[key] = 7; } catch (e) { result = e.constructor.name; }
-      out.push(`${key} ${result} ${Object.hasOwn(derived, key) ? 'own' : 'none'} ${w[key] === 7 || w[key] === '7' ? 'replaced' : 'kept'}`);
+      try {
+        derived[key] = 7;
+      } catch (e) {
+        result = e.constructor.name;
+      }
+      out.push(
+        `${key} ${result} ${Object.hasOwn(derived, key) ? 'own' : 'none'} ${w[key] === 7 || w[key] === '7' ? 'replaced' : 'kept'}`,
+      );
     }
     results[jsdom] = out.join(', ');
   }
@@ -354,8 +589,18 @@ test('window: assignments through an object inheriting from the window, per jsdo
 const RECEIVER_CASES = {
   none: (d) => d,
   'read-only': (d) => Object.defineProperty(d, KEY, { value: 1, writable: false, configurable: true }),
-  'writable, non-configurable': (d) => Object.defineProperty(d, KEY, { value: 1, writable: true, enumerable: false, configurable: false }),
-  accessor: (d) => Object.defineProperty(d, KEY, { get() { return 1; }, set() { throw new Error('own setter called'); }, configurable: true }),
+  'writable, non-configurable': (d) =>
+    Object.defineProperty(d, KEY, { value: 1, writable: true, enumerable: false, configurable: false }),
+  accessor: (d) =>
+    Object.defineProperty(d, KEY, {
+      get() {
+        return 1;
+      },
+      set() {
+        throw new Error('own setter called');
+      },
+      configurable: true,
+    }),
   'non-extensible': (d) => Object.preventExtensions(d),
 };
 let KEY;
@@ -368,11 +613,25 @@ const receiverScenario = (w) => {
       for (const [name, make] of Object.entries(RECEIVER_CASES)) {
         const before = Object.getOwnPropertyDescriptor(w, key);
         const receiver = make(Object.create(w));
-        const home = { __proto__: w, assign(v) { super[key] = v; } };
+        const home = {
+          __proto__: w,
+          assign(v) {
+            super[key] = v;
+          },
+        };
         let result = 'ok';
-        try { home.assign.call(receiver, 7); } catch (e) { result = e.constructor.name; }
+        try {
+          home.assign.call(receiver, 7);
+        } catch (e) {
+          result = e.constructor.name;
+        }
         const own = Object.getOwnPropertyDescriptor(receiver, key);
-        const flags = own === undefined ? 'none' : 'value' in own ? `${own.value} ${own.writable} ${own.enumerable} ${own.configurable}` : 'accessor';
+        const flags =
+          own === undefined
+            ? 'none'
+            : 'value' in own
+              ? `${own.value} ${own.writable} ${own.enumerable} ${own.configurable}`
+              : 'accessor';
         const window = sameDescriptor(before, Object.getOwnPropertyDescriptor(w, key)) ? 'kept' : 'replaced';
         out.push(`${key} ${phase} ${name}: ${result}, own ${flags}, window ${window}`);
       }
@@ -380,7 +639,10 @@ const receiverScenario = (w) => {
   }
   return out;
 };
-for (const jsdom of [20, 26, 30]) parity(`assignments reaching the window's data properties from a receiver (jsdom ${jsdom})`, receiverScenario, { jsdom });
+for (const jsdom of [20, 26, 30])
+  parity(`assignments reaching the window's data properties from a receiver (jsdom ${jsdom})`, receiverScenario, {
+    jsdom,
+  });
 
 test('window: inherited enumerable Object.prototype keys do not reach window creation', () => {
   Object.prototype.extra = 1;
@@ -405,12 +667,22 @@ test('window member kinds per jsdom version: boundaries 21.0.0, 24.1.2 and 27.0.
   const kinds = (jsdom) => {
     const w = createWindow({ jsdom });
     const parent = Object.getPrototypeOf(w.Window.prototype);
-    return [descriptorOf(w, 'document'), descriptorOf(w, 'self'), descriptorOf(w, 'innerWidth'), descriptorOf(w, 'status'),
-      parent === w.EventTarget.prototype ? 'EventTarget' : Object.prototype.toString.call(parent)];
+    return [
+      descriptorOf(w, 'document'),
+      descriptorOf(w, 'self'),
+      descriptorOf(w, 'innerWidth'),
+      descriptorOf(w, 'status'),
+      parent === w.EventTarget.prototype ? 'EventTarget' : Object.prototype.toString.call(parent),
+    ];
   };
   const legacy = ['accessor get document/- ec', 'accessor get self/- ec', 'data 1024 wec', 'data "" wec'];
   const data = ['accessor get document/- e', 'accessor get self/set self ec', 'data 1024 wec', 'data "" wec'];
-  const accessors = ['accessor get document/- e', 'accessor get self/set self ec', 'accessor get innerWidth/set innerWidth ec', 'accessor get status/set status ec'];
+  const accessors = [
+    'accessor get document/- e',
+    'accessor get self/set self ec',
+    'accessor get innerWidth/set innerWidth ec',
+    'accessor get status/set status ec',
+  ];
   assert.deepEqual(kinds('20.0.3'), [...legacy, 'EventTarget']);
   assert.deepEqual(kinds('21.0.0'), [...data, 'EventTarget']);
   assert.deepEqual(kinds('24.1.1'), [...data, 'EventTarget']);
@@ -424,15 +696,23 @@ test('window: self is replaceable from jsdom 21, document and window are not, in
   for (const jsdom of ['21.0.0', '30.1.3']) {
     const w = createWindow({ jsdom });
     const document = w.document;
-    assert.throws(() => { w.document = {}; }, TypeError);
-    assert.throws(() => { w.window = {}; }, TypeError);
-    assert.throws(() => { delete w.document; }, TypeError);
+    assert.throws(() => {
+      w.document = {};
+    }, TypeError);
+    assert.throws(() => {
+      w.window = {};
+    }, TypeError);
+    assert.throws(() => {
+      delete w.document;
+    }, TypeError);
     assert.equal(w.document, document);
     w.self = 7;
     assert.equal(descriptorOf(w, 'self'), 'data 7 wec');
   }
   const w = createWindow({ jsdom: '20.0.3' });
-  assert.throws(() => { w.self = 7; }, TypeError);
+  assert.throws(() => {
+    w.self = 7;
+  }, TypeError);
   delete w.document;
   assert.equal(w.document, undefined);
 });

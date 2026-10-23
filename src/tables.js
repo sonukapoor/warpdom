@@ -6,7 +6,10 @@
 import { S, state, domError, insert, remove, ELEMENT_NODE, HTML_NS } from './internal.js';
 import { liveList } from './collections.js';
 
-const isTag = (n, tag) => { const s = n[S]; return s.type === ELEMENT_NODE && s.ns === HTML_NS && s.tag === tag; };
+const isTag = (n, tag) => {
+  const s = n[S];
+  return s.type === ELEMENT_NODE && s.ns === HTML_NS && s.tag === tag;
+};
 const isSection = (n) => isTag(n, 'thead') || isTag(n, 'tbody') || isTag(n, 'tfoot');
 const isCell = (n) => isTag(n, 'td') || isTag(n, 'th');
 
@@ -37,17 +40,21 @@ function collection(el, key, compute) {
   const s = el[S];
   const lists = s.tableLists ?? (s.tableLists = new Map());
   let list = lists.get(key);
-  if (!list) lists.set(key, list = liveList(s.doc[S].window[S].protos.HTMLCollection, () => cached(el, key, compute)));
+  if (!list)
+    lists.set(key, (list = liveList(s.doc[S].window[S].protos.HTMLCollection, () => cached(el, key, compute))));
   return list;
 }
 
 const create = (el, tag) => state(el).doc.createElement(tag);
-const indexError = (index, length) => domError(`The index provided (${index}) is outside the range [-1, ${length}].`, 'IndexSizeError');
+const indexError = (index, length) =>
+  domError(`The index provided (${index}) is outside the range [-1, ${length}].`, 'IndexSizeError');
 
 // The table's rows: the thead's, then rows directly in the table or in its
 // tbodies (in tree order), then the tfoot's.
 function tableRows(table) {
-  const head = [], body = [], foot = [];
+  const head = [],
+    body = [],
+    foot = [];
   for (let c = table[S].first; c; c = c[S].next) {
     if (isTag(c, 'tr')) body.push(c);
     else if (isTag(c, 'thead')) head.push(...children(c, (n) => isTag(n, 'tr')));
@@ -62,9 +69,15 @@ function setSection(table, value, tag, place) {
   const property = tag === 'thead' ? 'tHead' : 'tFoot';
   // The IDL type (HTMLTableSectionElement) is checked first, then the tag.
   if (value !== null && !(value?.[S] && isSection(value))) {
-    throw new TypeError(`Failed to set the '${property}' property on 'HTMLTableElement': Failed to convert value to 'HTMLTableSectionElement'.`);
+    throw new TypeError(
+      `Failed to set the '${property}' property on 'HTMLTableElement': Failed to convert value to 'HTMLTableSectionElement'.`,
+    );
   }
-  if (value !== null && !isTag(value, tag)) throw domError(`Failed to set the '${tag === 'thead' ? 'tHead' : 'tFoot'}' property on 'HTMLTableElement': Not a ${tag} element.`, 'HierarchyRequestError');
+  if (value !== null && !isTag(value, tag))
+    throw domError(
+      `Failed to set the '${tag === 'thead' ? 'tHead' : 'tFoot'}' property on 'HTMLTableElement': Not a ${tag} element.`,
+      'HierarchyRequestError',
+    );
   const old = firstChild(table, tag);
   if (old) remove(table, old);
   if (value !== null) place(value);
@@ -78,7 +91,10 @@ function insertHead(table, head) {
 }
 
 export const TABLE_MEMBERS = {
-  get caption() { state(this); return firstChild(this, 'caption'); },
+  get caption() {
+    state(this);
+    return firstChild(this, 'caption');
+  },
   set caption(value) {
     state(this);
     const old = firstChild(this, 'caption');
@@ -88,9 +104,17 @@ export const TABLE_MEMBERS = {
   createCaption() {
     return firstChild(this, 'caption') ?? insert(this, create(this, 'caption'), this[S].first);
   },
-  deleteCaption() { const c = firstChild(this, 'caption'); if (c) remove(this, c); },
-  get tHead() { state(this); return firstChild(this, 'thead'); },
-  set tHead(value) { setSection(this, value, 'thead', (v) => insertHead(this, v)); },
+  deleteCaption() {
+    const c = firstChild(this, 'caption');
+    if (c) remove(this, c);
+  },
+  get tHead() {
+    state(this);
+    return firstChild(this, 'thead');
+  },
+  set tHead(value) {
+    setSection(this, value, 'thead', (v) => insertHead(this, v));
+  },
   createTHead() {
     const existing = firstChild(this, 'thead');
     if (existing) return existing;
@@ -98,12 +122,28 @@ export const TABLE_MEMBERS = {
     insertHead(this, head);
     return head;
   },
-  deleteTHead() { const h = firstChild(this, 'thead'); if (h) remove(this, h); },
-  get tFoot() { state(this); return firstChild(this, 'tfoot'); },
-  set tFoot(value) { setSection(this, value, 'tfoot', (v) => insert(this, v, null)); },
-  createTFoot() { return firstChild(this, 'tfoot') ?? insert(this, create(this, 'tfoot'), null); },
-  deleteTFoot() { const f = firstChild(this, 'tfoot'); if (f) remove(this, f); },
-  get tBodies() { state(this); return collection(this, 'tBodies', () => children(this, (n) => isTag(n, 'tbody'))); },
+  deleteTHead() {
+    const h = firstChild(this, 'thead');
+    if (h) remove(this, h);
+  },
+  get tFoot() {
+    state(this);
+    return firstChild(this, 'tfoot');
+  },
+  set tFoot(value) {
+    setSection(this, value, 'tfoot', (v) => insert(this, v, null));
+  },
+  createTFoot() {
+    return firstChild(this, 'tfoot') ?? insert(this, create(this, 'tfoot'), null);
+  },
+  deleteTFoot() {
+    const f = firstChild(this, 'tfoot');
+    if (f) remove(this, f);
+  },
+  get tBodies() {
+    state(this);
+    return collection(this, 'tBodies', () => children(this, (n) => isTag(n, 'tbody')));
+  },
   createTBody() {
     const body = create(this, 'tbody');
     let last = null;
@@ -111,7 +151,10 @@ export const TABLE_MEMBERS = {
     insert(this, body, last ? last[S].next : null);
     return body;
   },
-  get rows() { state(this); return collection(this, 'rows', () => tableRows(this)); },
+  get rows() {
+    state(this);
+    return collection(this, 'rows', () => tableRows(this));
+  },
   insertRow(index = -1) {
     state(this);
     const i = Number(index) | 0;
@@ -135,7 +178,10 @@ export const TABLE_MEMBERS = {
     state(this);
     const i = Number(index) | 0;
     const rows = tableRows(this);
-    if (i === -1) { if (rows.length) remove(rows[rows.length - 1][S].parent, rows[rows.length - 1]); return; }
+    if (i === -1) {
+      if (rows.length) remove(rows[rows.length - 1][S].parent, rows[rows.length - 1]);
+      return;
+    }
     if (i < 0 || i >= rows.length) throw indexError(i, rows.length);
     remove(rows[i][S].parent, rows[i]);
   },
@@ -144,7 +190,10 @@ export const TABLE_MEMBERS = {
 const sectionRows = (section) => children(section, (n) => isTag(n, 'tr'));
 
 export const SECTION_MEMBERS = {
-  get rows() { state(this); return collection(this, 'rows', () => sectionRows(this)); },
+  get rows() {
+    state(this);
+    return collection(this, 'rows', () => sectionRows(this));
+  },
   insertRow(index = -1) {
     state(this);
     const i = Number(index) | 0;
@@ -158,7 +207,10 @@ export const SECTION_MEMBERS = {
     state(this);
     const i = Number(index) | 0;
     const rows = sectionRows(this);
-    if (i === -1) { if (rows.length) remove(this, rows[rows.length - 1]); return; }
+    if (i === -1) {
+      if (rows.length) remove(this, rows[rows.length - 1]);
+      return;
+    }
     if (i < 0 || i >= rows.length) throw indexError(i, rows.length);
     remove(this, rows[i]);
   },
@@ -171,7 +223,11 @@ export const ROW_MEMBERS = {
     state(this);
     const parent = this[S].parent;
     if (!parent) return -1;
-    const table = isTag(parent, 'table') ? parent : isSection(parent) && parent[S].parent && isTag(parent[S].parent, 'table') ? parent[S].parent : null;
+    const table = isTag(parent, 'table')
+      ? parent
+      : isSection(parent) && parent[S].parent && isTag(parent[S].parent, 'table')
+        ? parent[S].parent
+        : null;
     return table ? tableRows(table).indexOf(this) : -1;
   },
   get sectionRowIndex() {
@@ -181,7 +237,10 @@ export const ROW_MEMBERS = {
     if (isTag(parent, 'table')) return tableRows(parent).indexOf(this);
     return isSection(parent) ? sectionRows(parent).indexOf(this) : -1;
   },
-  get cells() { state(this); return collection(this, 'cells', () => rowCells(this)); },
+  get cells() {
+    state(this);
+    return collection(this, 'cells', () => rowCells(this));
+  },
   insertCell(index = -1) {
     state(this);
     const i = Number(index) | 0;
@@ -195,7 +254,10 @@ export const ROW_MEMBERS = {
     state(this);
     const i = Number(index) | 0;
     const cells = rowCells(this);
-    if (i === -1) { if (cells.length) remove(this, cells[cells.length - 1]); return; }
+    if (i === -1) {
+      if (cells.length) remove(this, cells[cells.length - 1]);
+      return;
+    }
     if (i < 0 || i >= cells.length) throw indexError(i, cells.length);
     remove(this, cells[i]);
   },
@@ -214,5 +276,7 @@ export const CELL_MEMBERS = {
     const value = (state(this).attrs.get('scope') ?? '').toLowerCase();
     return SCOPES.has(value) ? value : '';
   },
-  set scope(v) { this.setAttribute('scope', String(v)); },
+  set scope(v) {
+    this.setAttribute('scope', String(v));
+  },
 };

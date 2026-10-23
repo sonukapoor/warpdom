@@ -9,5 +9,11 @@ const dir = path.resolve(process.argv[2] ?? fileURLToPath(new URL('..', import.m
 const load = (file) => import(pathToFileURL(path.join(dir, 'src', file)).href);
 const { createWindow } = await load('node.js');
 for (let i = 0; i < 100; i++) createWindow();
-const t = []; for (let r = 0; r < 15; r++) { const s = performance.now(); for (let i = 0; i < 50; i++) createWindow(); t.push((performance.now() - s) / 50 * 1000); }
-t.sort((a, b) => a - b); console.log(t[7].toFixed(1));
+const t = [];
+for (let r = 0; r < 15; r++) {
+  const s = performance.now();
+  for (let i = 0; i < 50; i++) createWindow();
+  t.push(((performance.now() - s) / 50) * 1000);
+}
+t.sort((a, b) => a - b);
+console.log(t[7].toFixed(1));

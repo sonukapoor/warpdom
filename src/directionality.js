@@ -33,12 +33,14 @@ function decodeRuns() {
 
 // 1: L, 2: R or AL, 0: any other type.
 function strongType(cp) {
-  if (cp < 0x80) return ((cp | 32) >= 97 && (cp | 32) <= 122) ? 1 : 0;
+  if (cp < 0x80) return (cp | 32) >= 97 && (cp | 32) <= 122 ? 1 : 0;
   if (runStarts === null) decodeRuns();
-  let lo = 0, hi = runStarts.length - 1;
+  let lo = 0,
+    hi = runStarts.length - 1;
   while (lo < hi) {
     const mid = (lo + hi + 1) >> 1;
-    if (runStarts[mid] <= cp) lo = mid; else hi = mid - 1;
+    if (runStarts[mid] <= cp) lo = mid;
+    else hi = mid - 1;
   }
   return runClasses[lo];
 }
@@ -55,7 +57,10 @@ export function firstStrongDirection(data) {
     }
     if (cp >= 0xd800 && cp <= 0xdbff && i + 1 < n) {
       const low = data.charCodeAt(i + 1);
-      if (low >= 0xdc00 && low <= 0xdfff) { cp = ((cp - 0xd800) << 10) + (low - 0xdc00) + 0x10000; i++; }
+      if (low >= 0xdc00 && low <= 0xdfff) {
+        cp = ((cp - 0xd800) << 10) + (low - 0xdc00) + 0x10000;
+        i++;
+      }
     }
     const type = strongType(cp);
     if (type === 1) return 'ltr';
@@ -75,7 +80,18 @@ function dirState(s) {
   return lower === 'ltr' || lower === 'rtl' || lower === 'auto' ? lower : undefined;
 }
 
-const AUTO_DIRECTION_INPUTS = new Set(['hidden', 'text', 'search', 'tel', 'url', 'email', 'password', 'submit', 'reset', 'button']);
+const AUTO_DIRECTION_INPUTS = new Set([
+  'hidden',
+  'text',
+  'search',
+  'tel',
+  'url',
+  'email',
+  'password',
+  'submit',
+  'reset',
+  'button',
+]);
 
 const isAutoDirectionFormControl = (el) => {
   const tag = el[S].tag;
@@ -113,7 +129,10 @@ function autoDirectionality(el) {
     if (nodes.length > 0) {
       for (const child of nodes) {
         const t = child[S].type;
-        const dir = t === TEXT_NODE || t === CDATA_SECTION_NODE ? firstStrongDirection(child[S].data) : containedText(child, true);
+        const dir =
+          t === TEXT_NODE || t === CDATA_SECTION_NODE
+            ? firstStrongDirection(child[S].data)
+            : containedText(child, true);
         if (dir !== null) return dir;
       }
       return null;
@@ -142,7 +161,10 @@ function containedText(element, canExcludeRoot) {
     if (s.type === ELEMENT_NODE) {
       if (!skipped(n)) {
         if (isShadowSlot(n)) return directionality(rootOf(n)[S].host);
-        if (s.first) { n = s.first; continue; }
+        if (s.first) {
+          n = s.first;
+          continue;
+        }
       }
     } else if (s.type === TEXT_NODE || s.type === CDATA_SECTION_NODE) {
       const dir = firstStrongDirection(s.data);

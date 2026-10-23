@@ -3,8 +3,21 @@
 // built from property descriptors that are prepared once per module load,
 // each interface's the first time any window creates it.
 import {
-  S, HIDDEN_STATE, hooks, initNode, insert, ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, DOCUMENT_TYPE_NODE,
-  CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE, lazyDataSetter, assignedThrough,
+  S,
+  HIDDEN_STATE,
+  hooks,
+  initNode,
+  insert,
+  ELEMENT_NODE,
+  TEXT_NODE,
+  COMMENT_NODE,
+  DOCUMENT_NODE,
+  DOCUMENT_FRAGMENT_NODE,
+  DOCUMENT_TYPE_NODE,
+  CDATA_SECTION_NODE,
+  PROCESSING_INSTRUCTION_NODE,
+  lazyDataSetter,
+  assignedThrough,
 } from './internal.js';
 import { INTERFACES, SVG_ELEMENTS, LEGACY_SVG_ELEMENTS, SVG_TYPES_INTERFACES, HTML_NS, SVG_NS } from './interfaces.js';
 import { HTML_ELEMENTS, PLAIN_TAGS } from './html-elements.js';
@@ -82,7 +95,13 @@ function addDescriptors(descriptors, members) {
     if (v && typeof v === 'object' && 'unscopables' in v) {
       // @@unscopables (WebIDL): a null-prototype object whose properties are
       // writable; made per window (see unscopablesOf).
-      descriptors[key] = { value: v.unscopables, enumerable: false, writable: false, configurable: true, unscopables: true };
+      descriptors[key] = {
+        value: v.unscopables,
+        enumerable: false,
+        writable: false,
+        configurable: true,
+        unscopables: true,
+      };
     } else if (v && typeof v === 'object' && 'constant' in v) {
       // Constants such as Node.ELEMENT_NODE: read-only, as in WebIDL.
       descriptors[key] = { value: v.constant, enumerable: true, writable: false, configurable: false };
@@ -104,9 +123,27 @@ function addDescriptors(descriptors, members) {
 // interfaces whose objects are proxies (their traps get the state from the
 // target and hide the key; a private field is not reachable through a proxy).
 // An interface may bring its own slot (Event, DOMRectReadOnly).
-const STATE_ON_OBJECT = new Set(['EventTarget', 'Node', 'Window', 'Storage', 'DOMStringMap', 'NodeList', 'HTMLCollection',
-  'NamedNodeMap', 'DOMTokenList', 'CSSRuleList', 'MediaList', 'StyleSheetList', 'TouchList', 'FileList', 'SVGStringList',
-  'Plugin', 'MimeType', 'PluginArray', 'MimeTypeArray']);
+const STATE_ON_OBJECT = new Set([
+  'EventTarget',
+  'Node',
+  'Window',
+  'Storage',
+  'DOMStringMap',
+  'NodeList',
+  'HTMLCollection',
+  'NamedNodeMap',
+  'DOMTokenList',
+  'CSSRuleList',
+  'MediaList',
+  'StyleSheetList',
+  'TouchList',
+  'FileList',
+  'SVGStringList',
+  'Plugin',
+  'MimeType',
+  'PluginArray',
+  'MimeTypeArray',
+]);
 const hidesState = (iface) => (!iface.parent || iface.parent === 'EventTarget') && !STATE_ON_OBJECT.has(iface.name);
 
 // Interfaces with the HTML element constructor: HTMLElement and its element interfaces.
@@ -135,14 +172,24 @@ function installGlobalOperations(window, proto) {
     if (name === 'constructor') continue;
     const { value } = Object.getOwnPropertyDescriptor(proto, name);
     if (typeof value !== 'function') continue;
-    const operation = { [name](...args) { return value.apply(this ?? window, args); } }[name];
+    const operation = {
+      [name](...args) {
+        return value.apply(this ?? window, args);
+      },
+    }[name];
     Object.defineProperty(operation, 'length', { value: value.length });
     Object.defineProperty(window, name, { value: operation, writable: true, enumerable: true, configurable: true });
   }
 }
 
-const DEVICE_AND_MEDIA_EVENTS = ['PromiseRejectionEvent', 'BlobEvent', 'DeviceMotionEvent', 'DeviceOrientationEvent',
-  'DeviceMotionEventAcceleration', 'DeviceMotionEventRotationRate'];
+const DEVICE_AND_MEDIA_EVENTS = [
+  'PromiseRejectionEvent',
+  'BlobEvent',
+  'DeviceMotionEvent',
+  'DeviceOrientationEvent',
+  'DeviceMotionEventAcceleration',
+  'DeviceMotionEventRotationRate',
+];
 
 // Interfaces and members a jsdom generation did not have yet, removed from
 // this window (its prototypes are its own). Libraries feature-detect them:
@@ -225,10 +272,18 @@ function cssMode(compat) {
 function defineSelfMembers(window, document) {
   const legacy = window[S].compat.jsdom < 21;
   const own = {
-    get document() { return document; },
-    get window() { return window; },
-    get self() { return window; },
-    set self(value) { Object.defineProperty(window, 'self', { value, writable: true, enumerable: true, configurable: true }); },
+    get document() {
+      return document;
+    },
+    get window() {
+      return window;
+    },
+    get self() {
+      return window;
+    },
+    set self(value) {
+      Object.defineProperty(window, 'self', { value, writable: true, enumerable: true, configurable: true });
+    },
   };
   const define = (key, configurable, withSetter = false) => {
     const { get, set } = Object.getOwnPropertyDescriptor(own, key);
@@ -263,8 +318,20 @@ export function createWindow(options = {}) {
     if (alias) {
       const ctor = materialize(alias);
       ctors[name] = ctor;
-      if (name === 'CSSStyleProperties') setValidationMode(ctor.prototype, cssMode(window[S].compat), window[S].compat.styleSurface, window[S].compat.legacyFont, window[S].compat.colorKeywords);
-      Object.defineProperty(protos, name, { value: ctor.prototype, writable: true, enumerable: true, configurable: true });
+      if (name === 'CSSStyleProperties')
+        setValidationMode(
+          ctor.prototype,
+          cssMode(window[S].compat),
+          window[S].compat.styleSurface,
+          window[S].compat.legacyFont,
+          window[S].compat.colorKeywords,
+        );
+      Object.defineProperty(protos, name, {
+        value: ctor.prototype,
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      });
       return ctor;
     }
     // An interface whose parent depends on the profile (CSSStyleRule)
@@ -277,12 +344,20 @@ export function createWindow(options = {}) {
     // (CSSStyleProperties' 1,600 accessors took ~1.5 ms). The prototype is
     // set afterwards; own keys, their order and descriptors are the same.
     let proto = Object.create(null);
-    const { keys, descriptors, unscopables } = descriptorsOf(iface, iface.variant ? iface.variant(window[S].compat) ?? null : null);
+    const { keys, descriptors, unscopables } = descriptorsOf(
+      iface,
+      iface.variant ? (iface.variant(window[S].compat) ?? null) : null,
+    );
     for (let i = 0; i < keys.length; i++) Object.defineProperty(proto, keys[i], descriptors[i]);
     if (unscopables) {
       const value = Object.create(null);
       for (const member of unscopables) value[member] = true;
-      Object.defineProperty(proto, Symbol.unscopables, { value, enumerable: false, writable: false, configurable: true });
+      Object.defineProperty(proto, Symbol.unscopables, {
+        value,
+        enumerable: false,
+        writable: false,
+        configurable: true,
+      });
     }
     if (iface.slot) Object.defineProperty(proto, iface.slot[0], iface.slot[1]);
     // Members a jsdom generation did not have (see applyCompat).
@@ -295,16 +370,24 @@ export function createWindow(options = {}) {
     // interface object: a function that is not a constructor and has no
     // prototype property (a method has neither).
     const ctor = iface.callback
-      ? { [name]() { throw new TypeError(`${name} is not a constructor`); } }[name]
+      ? {
+          [name]() {
+            throw new TypeError(`${name} is not a constructor`);
+          },
+        }[name]
       : iface.construct
-      ? function (...args) {
-        if (!new.target) throw new TypeError(`Failed to construct '${name}': Please use the 'new' operator.`);
-        return iface.construct(window, this, args);
-      }
-      : HTML_CONSTRUCTOR.has(name)
-        // [HTMLConstructor]: custom element classes construct through super().
-        ? function () { return htmlConstruct(window, ctor, new.target); }
-        : function () { throw new TypeError('Illegal constructor'); };
+        ? function (...args) {
+            if (!new.target) throw new TypeError(`Failed to construct '${name}': Please use the 'new' operator.`);
+            return iface.construct(window, this, args);
+          }
+        : HTML_CONSTRUCTOR.has(name)
+          ? // [HTMLConstructor]: custom element classes construct through super().
+            function () {
+              return htmlConstruct(window, ctor, new.target);
+            }
+          : function () {
+              throw new TypeError('Illegal constructor');
+            };
     Object.defineProperty(ctor, 'name', { value: name });
     // The constructor's required argument count (WebIDL); 0 when not given.
     if (iface.length) Object.defineProperty(ctor, 'length', { value: iface.length });
@@ -314,7 +397,8 @@ export function createWindow(options = {}) {
     }
     // The class string (WebIDL): Object.prototype.toString gives [object Name].
     // (Not before jsdom 29 for CSSStyleDeclaration: [object Object].)
-    if (!Object.hasOwn(proto, Symbol.toStringTag) && !iface.untagged?.(window[S].compat)) Object.defineProperty(proto, Symbol.toStringTag, { value: name, configurable: true });
+    if (!Object.hasOwn(proto, Symbol.toStringTag) && !iface.untagged?.(window[S].compat))
+      Object.defineProperty(proto, Symbol.toStringTag, { value: name, configurable: true });
     if (parent) Object.setPrototypeOf(ctor, parent);
     // Constants; a function of the compat object when they depend on the profile.
     const statics = typeof iface.statics === 'function' ? iface.statics(window[S].compat) : iface.statics;
@@ -329,7 +413,14 @@ export function createWindow(options = {}) {
     // CSS value validation: every property's grammar from jsdom 27; before,
     // jsdom checked a few dozen properties ('jsdom25': the same, with
     // url() serialized without quotes, as cssstyle before 4.3.1 did).
-    if (name === 'CSSStyleProperties') setValidationMode(proto, cssMode(window[S].compat), window[S].compat.styleSurface, window[S].compat.legacyFont, window[S].compat.colorKeywords);
+    if (name === 'CSSStyleProperties')
+      setValidationMode(
+        proto,
+        cssMode(window[S].compat),
+        window[S].compat.styleSurface,
+        window[S].compat.legacyFont,
+        window[S].compat.colorKeywords,
+      );
     Object.defineProperty(protos, name, { value: proto, writable: true, enumerable: true, configurable: true });
     if (Object.getOwnPropertyDescriptor(window, name)?.get === lazyGetters[name]) {
       Object.defineProperty(window, name, { value: ctor, writable: true, configurable: true });
@@ -341,31 +432,50 @@ export function createWindow(options = {}) {
   }
   for (const iface of ORDER) {
     const { name } = iface;
-    const get = lazyGetters[name] = () => materialize(name);
+    const get = (lazyGetters[name] = () => materialize(name));
     Object.defineProperty(window, name, {
       get,
       // Assigning replaces the constructor property (a mock), as for a
       // writable data property (also through an object that inherits from
       // the window, internal.js assignedThrough).
-      set(value) { if (!assignedThrough(window, this, name, value)) Object.defineProperty(window, name, { value, writable: true, configurable: true }); },
+      set(value) {
+        if (!assignedThrough(window, this, name, value))
+          Object.defineProperty(window, name, { value, writable: true, configurable: true });
+      },
       configurable: true,
     });
-    Object.defineProperty(protos, name, { get() { return materialize(name).prototype; }, enumerable: true, configurable: true });
+    Object.defineProperty(protos, name, {
+      get() {
+        return materialize(name).prototype;
+      },
+      enumerable: true,
+      configurable: true,
+    });
   }
   // webkitURL: the window's URL interface under another name, an own data
   // property, not enumerable (jsdom 20 to 30, black box); made on first
   // read, as the interface objects are.
-  const setWebkitURL = (value) => Object.defineProperty(window, 'webkitURL', { value, writable: true, configurable: true });
+  const setWebkitURL = (value) =>
+    Object.defineProperty(window, 'webkitURL', { value, writable: true, configurable: true });
   Object.defineProperty(window, 'webkitURL', {
-    get() { const ctor = materialize('URL'); setWebkitURL(ctor); return ctor; },
+    get() {
+      const ctor = materialize('URL');
+      setWebkitURL(ctor);
+      return ctor;
+    },
     set: lazyDataSetter(window, 'webkitURL', setWebkitURL),
     configurable: true,
   });
   // HTMLDocument (HTML, legacy): the Document interface object under
   // another name, as in jsdom.
-  const setHTMLDocument = (value) => Object.defineProperty(window, 'HTMLDocument', { value, writable: true, configurable: true });
+  const setHTMLDocument = (value) =>
+    Object.defineProperty(window, 'HTMLDocument', { value, writable: true, configurable: true });
   Object.defineProperty(window, 'HTMLDocument', {
-    get() { const ctor = materialize('Document'); setHTMLDocument(ctor); return ctor; },
+    get() {
+      const ctor = materialize('Document');
+      setHTMLDocument(ctor);
+      return ctor;
+    },
     set: lazyDataSetter(window, 'HTMLDocument', setHTMLDocument),
     configurable: true,
   });
@@ -380,14 +490,28 @@ export function createWindow(options = {}) {
     // sync: run a custom element's constructor now (createElement).
     // prefixed: split a prefix off the name at its colon (createElement
     // and the HTML parser keep the whole name as the local name).
-    createElementNS(ns, qualifiedName, doc = document, raw = false, proto = null, sync = false, is = null, prefixed = true) {
+    createElementNS(
+      ns,
+      qualifiedName,
+      doc = document,
+      raw = false,
+      proto = null,
+      sync = false,
+      is = null,
+      prefixed = true,
+    ) {
       const colon = prefixed ? qualifiedName.indexOf(':') : -1;
       const tag = colon >= 0 ? qualifiedName.slice(colon + 1) : qualifiedName;
       if (!raw && ns === HTML_NS && hooks.ce !== null) {
         const custom = createCustomElement(doc, tag, is, sync);
         if (custom) return custom;
       }
-      const element = create(proto ?? protos[interfaceFor(ns, tag, internals.compat)], ELEMENT_NODE, { tag, ns, attrs: new Map() }, doc);
+      const element = create(
+        proto ?? protos[interfaceFor(ns, tag, internals.compat)],
+        ELEMENT_NODE,
+        { tag, ns, attrs: new Map() },
+        doc,
+      );
       // The namespace prefix (createElementNS('...', 'svg:rect'), XML parsing).
       if (colon >= 0) element[S].prefix = qualifiedName.slice(0, colon);
       if ((tag === 'iframe' || tag === 'frame') && ns === HTML_NS) doc[S].frameCount = (doc[S].frameCount ?? 0) + 1;
@@ -403,42 +527,67 @@ export function createWindow(options = {}) {
         element[S].ceIs = is;
       }
       // form[i] and select[i] (forms.js).
-      if ((tag === 'form' || tag === 'select') && ns === HTML_NS) return hooks.indexedElement(element, tag, internals.compat);
+      if ((tag === 'form' || tag === 'select') && ns === HTML_NS)
+        return hooks.indexedElement(element, tag, internals.compat);
       return element;
     },
     createText: (data, doc = document) => create(protos.Text, TEXT_NODE, { data }, doc),
     createComment: (data, doc = document) => create(protos.Comment, COMMENT_NODE, { data }, doc),
     createFragment: (doc = document) => create(protos.DocumentFragment, DOCUMENT_FRAGMENT_NODE, undefined, doc),
-    createDoctype: (name, publicId, systemId, doc = document) => create(protos.DocumentType, DOCUMENT_TYPE_NODE, { name, publicId, systemId }, doc),
+    createDoctype: (name, publicId, systemId, doc = document) =>
+      create(protos.DocumentType, DOCUMENT_TYPE_NODE, { name, publicId, systemId }, doc),
     createCDATA: (data, doc = document) => create(protos.CDATASection, CDATA_SECTION_NODE, { data }, doc),
-    createPI: (target, data, doc = document) => create(protos.ProcessingInstruction, PROCESSING_INSTRUCTION_NODE, { data, target }, doc),
+    createPI: (target, data, doc = document) =>
+      create(protos.ProcessingInstruction, PROCESSING_INSTRUCTION_NODE, { data, target }, doc),
     initDocument: (doc, extra) => initNode(doc, DOCUMENT_NODE, doc, { window, contentType: 'text/html', ...extra }),
     // A document without a browsing context (defaultView null), as made by
     // DOMImplementation and new Document(); XML documents keep names as given.
     // DOMParser's XML documents are XML documents but not XMLDocument
     // objects (plain: true).
-    createDocument: ({ contentType = 'text/html', xml = false, plain = false } = {}) => internals.initDocument(
-      Object.create(xml && !plain ? protos.XMLDocument : protos.Document), { noView: true, url: 'about:blank', contentType, xml }),
+    createDocument: ({ contentType = 'text/html', xml = false, plain = false } = {}) =>
+      internals.initDocument(Object.create(xml && !plain ? protos.XMLDocument : protos.Document), {
+        noView: true,
+        url: 'about:blank',
+        contentType,
+        xml,
+      }),
     // Errors from event listeners that no 'error' listener handled. Logged
     // like jsdom does; test environments replace this to fail the test.
     // A frame's are reported where its top window reports jsdom's virtual
     // console errors (reportError): with jsdom under Jest and Vitest they
     // are logged and do not fail the test (only the top window's 'error'
     // event is watched).
-    onUnhandledError: options.nested ? (error) => options.nested.parent[S].reportError(error) : (error) => console.error(error),
+    onUnhandledError: options.nested
+      ? (error) => options.nested.parent[S].reportError(error)
+      : (error) => console.error(error),
     // jsdom's virtual console errors ("jsdomError"): test environments send
     // them where jsdom's environments do.
-    reportError: options.nested ? (error) => options.nested.parent[S].reportError(error) : (error) => console.error(error),
+    reportError: options.nested
+      ? (error) => options.nested.parent[S].reportError(error)
+      : (error) => console.error(error),
     // As jsdom reports unimplemented features (form submission, navigation)
     // through its virtual console, in its version's words; the test
     // environments send the text where jsdom's environments send it
     // (reportNotImplemented).
-    notImplemented: (message) => internals.reportNotImplemented(`Not implemented: ${internals.compat.jsdom < 27 ? legacyWords(message) : message}`),
+    notImplemented: (message) =>
+      internals.reportNotImplemented(
+        `Not implemented: ${internals.compat.jsdom < 27 ? legacyWords(message) : message}`,
+      ),
     // A frame reports where its top window does (jsdom: one virtual console).
-    reportNotImplemented: options.nested ? (...args) => options.nested.parent[S].reportNotImplemented(...args) : (text) => console.error(text),
+    reportNotImplemented: options.nested
+      ? (...args) => options.nested.parent[S].reportNotImplemented(...args)
+      : (text) => console.error(text),
     // An iframe's nested window (frames.js).
     // A frame's window behaves like the same jsdom generation as its parent.
-    createNestedWindow: ({ url, parent, frameElement }) => createWindow({ url, jsdom: parent[S].compat.version, cssstyle: parent[S].compat.cssstyle, fastFrames: parent[S].fastFrames, xhr: parent[S].xhr, nested: { parent, frameElement } }),
+    createNestedWindow: ({ url, parent, frameElement }) =>
+      createWindow({
+        url,
+        jsdom: parent[S].compat.version,
+        cssstyle: parent[S].compat.cssstyle,
+        fastFrames: parent[S].fastFrames,
+        xhr: parent[S].xhr,
+        nested: { parent, frameElement },
+      }),
     parentWindow: options.nested?.parent ?? null,
     frameElement: options.nested?.frameElement ?? null,
   };
@@ -449,11 +598,17 @@ export function createWindow(options = {}) {
   // Named access (window[id]): the named properties object between
   // Window.prototype and EventTarget.prototype (from jsdom 24.1.2; before,
   // Window.prototype does it, see materialize).
-  if (internals.compat.windowProperties) Object.setPrototypeOf(protos.Window, namedPropertiesObject(window, window, Object.getPrototypeOf(protos.Window)));
+  if (internals.compat.windowProperties)
+    Object.setPrototypeOf(protos.Window, namedPropertiesObject(window, window, Object.getPrototypeOf(protos.Window)));
   setupWindow(window, options);
   applyCompat(window, protos);
   installGlobalOperations(window, protos.Window);
-  Object.defineProperty(window, 'XPathException', { value: xpathException(), writable: true, enumerable: true, configurable: true });
+  Object.defineProperty(window, 'XPathException', {
+    value: xpathException(),
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  });
   internals.customElements = createRegistry(window);
 
   document = internals.initDocument(Object.create(protos.Document));

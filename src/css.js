@@ -7,7 +7,15 @@ import { STYLE_ACCESSORS } from './css-properties.js';
 import { SURFACES } from './style-surface.js';
 import { LONGHANDS, SHORTHANDS, COLOR_SHORTHANDS, ALIASES } from './css-data.js';
 import { isValidValue } from './css-values.js';
-import { expand, segments, serializeBox, serializeFont, positionLayers, legacyFont, LEGACY_FONT_LONGHANDS } from './shorthands.js';
+import {
+  expand,
+  segments,
+  serializeBox,
+  serializeFont,
+  positionLayers,
+  legacyFont,
+  LEGACY_FONT_LONGHANDS,
+} from './shorthands.js';
 import { resolveColor, systemColorKind } from './colors.js';
 
 // backgroundColor -> background-color, webkitAnimation/WebkitAnimation ->
@@ -22,14 +30,23 @@ function cssName(accessor) {
 // Split on `sep` outside parentheses and quotes (url(data:...;base64,...)).
 function splitOutside(text, sep) {
   const parts = [];
-  let depth = 0, quote = null, start = 0;
+  let depth = 0,
+    quote = null,
+    start = 0;
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
-    if (quote) { if (c === '\\') i++; else if (c === quote) quote = null; continue; }
+    if (quote) {
+      if (c === '\\') i++;
+      else if (c === quote) quote = null;
+      continue;
+    }
     if (c === '"' || c === "'") quote = c;
     else if (c === '(') depth++;
     else if (c === ')') depth = Math.max(0, depth - 1);
-    else if (c === sep && depth === 0) { parts.push(text.slice(start, i)); start = i + 1; }
+    else if (c === sep && depth === 0) {
+      parts.push(text.slice(start, i));
+      start = i + 1;
+    }
   }
   parts.push(text.slice(start));
   return parts;
@@ -55,13 +72,39 @@ const shortestBox = (value) => {
     if (parts.some((p, i) => i % 2 === 1 && p.trim() !== '')) return value;
     tokens = parts.filter((_, i) => i % 2 === 0);
   }
-  return tokens.length > 4 ? value : serializeBox([tokens[0], tokens[1] ?? tokens[0], tokens[2] ?? tokens[0], tokens[3] ?? tokens[1] ?? tokens[0]]);
+  return tokens.length > 4
+    ? value
+    : serializeBox([tokens[0], tokens[1] ?? tokens[0], tokens[2] ?? tokens[0], tokens[3] ?? tokens[1] ?? tokens[0]]);
 };
 // The length properties cssstyle 5 parses (black box, jsdom 27.0 to 28.0):
 // a 0 is 0px there, as written elsewhere (text-indent: 0, min-width: 0).
-const ZERO_PARSED_5 = new Set(['background-size', 'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width', 'border-spacing',
-  'top', 'right', 'bottom', 'left', 'flex-basis', 'font-size', 'height', 'width', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
-  'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'margin', 'padding', 'border-width']);
+const ZERO_PARSED_5 = new Set([
+  'background-size',
+  'border-top-width',
+  'border-right-width',
+  'border-bottom-width',
+  'border-left-width',
+  'border-spacing',
+  'top',
+  'right',
+  'bottom',
+  'left',
+  'flex-basis',
+  'font-size',
+  'height',
+  'width',
+  'margin-top',
+  'margin-right',
+  'margin-bottom',
+  'margin-left',
+  'padding-top',
+  'padding-right',
+  'padding-bottom',
+  'padding-left',
+  'margin',
+  'padding',
+  'border-width',
+]);
 const ZERO_LISTS = new Set(['margin', 'padding', 'border-width', 'border-spacing', 'background-position']);
 const zeroIsLength = new Map();
 function isLengthProperty(name) {
@@ -81,7 +124,10 @@ const holdsColors = new Map();
 function isColorProperty(name) {
   let result = holdsColors.get(name);
   if (result === undefined) {
-    result = name !== 'box-shadow' && name !== 'text-shadow' && (LONGHANDS[name]?.[2] === 1 || COLOR_SHORTHANDS.includes(name));
+    result =
+      name !== 'box-shadow' &&
+      name !== 'text-shadow' &&
+      (LONGHANDS[name]?.[2] === 1 || COLOR_SHORTHANDS.includes(name));
     holdsColors.set(name, result);
   }
   return result;
@@ -107,7 +153,7 @@ const colorCaches = new Map();
 function declaredColors(value) {
   const key = `${legacyColors} ${colorKeywords}`;
   let colorCache = colorCaches.get(key);
-  if (colorCache === undefined) colorCaches.set(key, colorCache = new Map());
+  if (colorCache === undefined) colorCaches.set(key, (colorCache = new Map()));
   let out = colorCache.get(value);
   if (out === undefined) {
     out = serializeColors(value);
@@ -125,7 +171,8 @@ function serializeColors(value) {
     const lower = token.toLowerCase();
     if (lower[0] === '#' || /^(rgba?|hsla?|hwb)\(/.test(lower)) parts[i] = resolveColor(token, legacyColors) ?? token;
     else if (resolveColor(lower) !== null || lower === 'currentcolor') {
-      parts[i] = colorKeywords === 'css2' || (colorKeywords === 'written' && systemColorKind(lower) !== 0) ? token : lower;
+      parts[i] =
+        colorKeywords === 'css2' || (colorKeywords === 'written' && systemColorKind(lower) !== 0) ? token : lower;
     }
   }
   return parts.join('');
@@ -149,12 +196,24 @@ function rejectsColor(name, value, surface) {
     const token = parts[i];
     if (!token) continue;
     const lower = token.toLowerCase();
-    if (oldParser && /^(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix)\(/.test(lower) && resolveColor(token, true) === null) return true;
+    if (
+      oldParser &&
+      /^(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix)\(/.test(lower) &&
+      resolveColor(token, true) === null
+    )
+      return true;
     // rgb() and hsl() in the comma syntax: numbers or percentages, not both.
     if (/^(rgba?|hsla?)\([^()]*,[^()]*\)$/.test(lower) && resolveColor(token, legacyColors) === null) return true;
     const kind = systemColorKind(lower);
-    if (kind === 1 && (colorKeywords === 'css2' || (colorKeywords === 'written' && lower.startsWith('selecteditem')))) return true;
-    if (kind !== 0 && shorthandSystem && ((BORDER_SHORTHAND.has(name) && name !== 'border') || ((name === 'background' || name === 'text-decoration') && parts.length === 1))) return true;
+    if (kind === 1 && (colorKeywords === 'css2' || (colorKeywords === 'written' && lower.startsWith('selecteditem'))))
+      return true;
+    if (
+      kind !== 0 &&
+      shorthandSystem &&
+      ((BORDER_SHORTHAND.has(name) && name !== 'border') ||
+        ((name === 'background' || name === 'text-decoration') && parts.length === 1))
+    )
+      return true;
   }
   return false;
 }
@@ -177,11 +236,19 @@ function functionArguments(value) {
       i = j;
       continue;
     }
-    if (c !== '(') { out += c; continue; }
-    let depth = 0, close = i;
+    if (c !== '(') {
+      out += c;
+      continue;
+    }
+    let depth = 0,
+      close = i;
     for (let quote = null; close < value.length; close++) {
       const d = value[close];
-      if (quote) { if (d === '\\') close++; else if (d === quote) quote = null; continue; }
+      if (quote) {
+        if (d === '\\') close++;
+        else if (d === quote) quote = null;
+        continue;
+      }
       if (d === '"' || d === "'") quote = d;
       else if (d === '(') depth++;
       else if (d === ')' && --depth === 0) break;
@@ -219,13 +286,22 @@ const unquoteUrls = (value) => value.replace(URL_FUNCTION, (m, dq, sq, raw) => `
 
 // A list (font families, background layers): ", " between its items
 // (jsdom 26 and later).
-const familyCommas = (value) => (value.includes(',') ? splitOutside(value, ',').map((f) => f.trim()).join(', ') : value);
+const familyCommas = (value) =>
+  value.includes(',')
+    ? splitOutside(value, ',')
+        .map((f) => f.trim())
+        .join(', ')
+    : value;
 
 // Numbers and dimensions at the top level serialize canonically (CSSOM):
 // .5 -> 0.5, 10.0px -> 10px, +1 -> 1. Not inside functions. Integers keep
 // all their digits (CSSOM: never in scientific notation).
 const INTEGER = /^[+-]?\d+$/;
-const integerText = (text) => text.replace(/^\+/, '').replace(/^(-?)0+(?=\d)/, '$1').replace(/^-0$/, '0');
+const integerText = (text) =>
+  text
+    .replace(/^\+/, '')
+    .replace(/^(-?)0+(?=\d)/, '$1')
+    .replace(/^-0$/, '0');
 const NUMBER_TOKEN = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)([a-z%]*)$/i;
 function canonicalNumbers(value) {
   if (!/\d/.test(value)) return value;
@@ -239,16 +315,20 @@ function canonicalNumbers(value) {
 
 // Runs of whitespace outside quotes as one space.
 function collapseSpaces(value) {
-  let out = '', quote = null;
+  let out = '',
+    quote = null;
   for (let i = 0; i < value.length; i++) {
     const c = value[i];
     if (quote !== null) {
       out += c;
       if (c === '\\' && i + 1 < value.length) out += value[++i];
       else if (c === quote) quote = null;
-    } else if (c === '"' || c === "'") { quote = c; out += c; }
-    else if (/\s/.test(c)) { if (!out.endsWith(' ')) out += ' '; }
-    else out += c;
+    } else if (c === '"' || c === "'") {
+      quote = c;
+      out += c;
+    } else if (/\s/.test(c)) {
+      if (!out.endsWith(' ')) out += ' ';
+    } else out += c;
   }
   return out;
 }
@@ -269,14 +349,21 @@ const CALC_PRODUCT = /^(.+?)\s*([*/])\s*(.+)$/;
 const ABSOLUTE_UNITS = new Set(['in', 'cm', 'mm', 'q', 'pt', 'pc']);
 // Left out: border widths (cssstyle 4.3 drops calc() there) and
 // line-height (kept as written before 4.4).
-const BORDER_WIDTHS = new Set(['border-width', 'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width']);
+const BORDER_WIDTHS = new Set([
+  'border-width',
+  'border-top-width',
+  'border-right-width',
+  'border-bottom-width',
+  'border-left-width',
+]);
 const sixDigits = (n) => String(Number(n.toPrecision(6)));
 function calcTerm(text) {
   const m = CALC_TERM.exec(text);
   if (m === null) {
     const p = CALC_PRODUCT.exec(text);
     if (p === null) return null;
-    const a = CALC_TERM.exec(p[1]), b = CALC_TERM.exec(p[3]);
+    const a = CALC_TERM.exec(p[1]),
+      b = CALC_TERM.exec(p[3]);
     if (a === null || b === null || (a[2] && b[2]) || (p[2] === '/' && b[2])) return null;
     const [term, factor] = a[2] || p[2] === '/' ? [a, b] : [b, a];
     const n = p[2] === '/' ? Number(term[1]) / Number(factor[1]) : Number(term[1]) * Number(factor[1]);
@@ -284,7 +371,11 @@ function calcTerm(text) {
   }
   const unit = (m[2] ?? '').toLowerCase();
   // Kept as written, apart from the number's form (.5 is 0.5).
-  return { n: Number(m[1]), unit, text: `${m[1].startsWith('+') ? '+' : ''}${INTEGER.test(m[1]) ? integerText(m[1]) : Number(m[1])}` };
+  return {
+    n: Number(m[1]),
+    unit,
+    text: `${m[1].startsWith('+') ? '+' : ''}${INTEGER.test(m[1]) ? integerText(m[1]) : Number(m[1])}`,
+  };
 }
 const unitRank = (unit) => (unit === '' ? '0' : unit === '%' ? '1' : `2${unit}`);
 function simplifyCalc(value) {
@@ -293,21 +384,36 @@ function simplifyCalc(value) {
   if (/[()]/.test(inner)) return value;
   const parts = inner.split(' ');
   let terms;
-  const plus = parts.indexOf('+'), minus = parts.indexOf('-');
+  const plus = parts.indexOf('+'),
+    minus = parts.indexOf('-');
   const op = plus >= 0 ? plus : minus;
   if (op < 0) terms = [calcTerm(inner)];
   else {
     if ((plus >= 0 && minus >= 0) || parts.lastIndexOf(parts[op]) !== op) return value;
     const second = calcTerm(parts.slice(op + 1).join(' '));
-    if (second !== null && parts[op] === '-') { second.n = -second.n; second.text = second.text === null ? null : second.text.startsWith('-') ? second.text.slice(1) : `-${second.text.replace(/^\+/, '')}`; }
+    if (second !== null && parts[op] === '-') {
+      second.n = -second.n;
+      second.text =
+        second.text === null
+          ? null
+          : second.text.startsWith('-')
+            ? second.text.slice(1)
+            : `-${second.text.replace(/^\+/, '')}`;
+    }
     terms = [calcTerm(parts.slice(0, op).join(' ')), second];
   }
   if (terms.some((t) => t === null || ABSOLUTE_UNITS.has(t.unit))) return value;
   const number = (t) => `${t.text ?? sixDigits(t.n)}${t.unit}`;
-  if (terms.length === 2 && terms[0].unit === terms[1].unit) return `calc(${sixDigits(terms[0].n + terms[1].n)}${terms[0].unit})`;
+  if (terms.length === 2 && terms[0].unit === terms[1].unit)
+    return `calc(${sixDigits(terms[0].n + terms[1].n)}${terms[0].unit})`;
   if (terms.length === 1) return `calc(${number(terms[0])})`;
   // A dimension subtracted stays after the first term (calc(100vh - 64px)).
-  if (parts[op] === '-' && terms[1].unit !== '' && terms[1].unit !== '%' && unitRank(terms[1].unit) < unitRank(terms[0].unit)) {
+  if (
+    parts[op] === '-' &&
+    terms[1].unit !== '' &&
+    terms[1].unit !== '%' &&
+    unitRank(terms[1].unit) < unitRank(terms[0].unit)
+  ) {
     return `calc(${number(terms[0])} - ${number(terms[1]).replace(/^-/, '')})`;
   }
   terms.sort((a, b) => (unitRank(a.unit) < unitRank(b.unit) ? -1 : unitRank(a.unit) > unitRank(b.unit) ? 1 : 0));
@@ -324,29 +430,135 @@ function simplifyCalc(value) {
 // properties jsdom 26 checked, flex-basis, border-spacing, font-weight and
 // font-variant accepted values outside their ranges; they are left out, and
 // flex is checked although jsdom 26 took a negative basis.)
-const JSDOM26_VALIDATED = new Set(['-webkit-text-fill-color', '-webkit-text-stroke-color', 'background', 'background-attachment', 'background-color',
-  'background-image', 'background-position', 'background-repeat', 'border', 'border-bottom', 'border-bottom-color', 'border-bottom-style', 'border-bottom-width',
-  'border-collapse', 'border-color', 'border-left', 'border-left-color', 'border-left-style', 'border-left-width', 'border-right', 'border-right-color', 'border-right-style',
-  'border-right-width', 'border-style', 'border-top', 'border-top-color', 'border-top-style', 'border-top-width', 'border-width', 'bottom',
-  'clear', 'clip', 'color', 'flex', 'float', 'flood-color', 'font', 'font-family', 'font-size', 'font-style', 'height',
-  'left', 'lighting-color', 'line-height', 'margin', 'margin-bottom', 'margin-left', 'margin-right', 'margin-top', 'opacity', 'outline-color',
-  'padding', 'padding-bottom', 'padding-left', 'padding-right', 'padding-top', 'right', 'stop-color', 'top', 'width']);
+const JSDOM26_VALIDATED = new Set([
+  '-webkit-text-fill-color',
+  '-webkit-text-stroke-color',
+  'background',
+  'background-attachment',
+  'background-color',
+  'background-image',
+  'background-position',
+  'background-repeat',
+  'border',
+  'border-bottom',
+  'border-bottom-color',
+  'border-bottom-style',
+  'border-bottom-width',
+  'border-collapse',
+  'border-color',
+  'border-left',
+  'border-left-color',
+  'border-left-style',
+  'border-left-width',
+  'border-right',
+  'border-right-color',
+  'border-right-style',
+  'border-right-width',
+  'border-style',
+  'border-top',
+  'border-top-color',
+  'border-top-style',
+  'border-top-width',
+  'border-width',
+  'bottom',
+  'clear',
+  'clip',
+  'color',
+  'flex',
+  'float',
+  'flood-color',
+  'font',
+  'font-family',
+  'font-size',
+  'font-style',
+  'height',
+  'left',
+  'lighting-color',
+  'line-height',
+  'margin',
+  'margin-bottom',
+  'margin-left',
+  'margin-right',
+  'margin-top',
+  'opacity',
+  'outline-color',
+  'padding',
+  'padding-bottom',
+  'padding-left',
+  'padding-right',
+  'padding-top',
+  'right',
+  'stop-color',
+  'top',
+  'width',
+]);
 // Properties jsdom 26 (cssstyle 4) parses; it keeps the others' values as
 // written (min-height: 0 stays 0, gap: +.5 stays +.5). Measured with
 // cssstyle 4.4 to 4.6.
-const JSDOM26_PARSED = new Set(['-webkit-text-fill-color', '-webkit-text-stroke-color', 'background-color', 'background-image', 'border-bottom-color',
-  'border-bottom-width', 'border-left-color', 'border-left-width', 'border-right-color', 'border-right-width', 'border-spacing', 'border-top-color',
-  'border-top-width', 'bottom', 'color', 'flex-basis', 'flex-grow', 'flex-shrink', 'flood-color', 'font-family', 'font-size', 'font-weight', 'height',
-  'left', 'lighting-color', 'line-height', 'margin-bottom', 'margin-left', 'margin-right', 'margin-top', 'opacity', 'outline-color', 'padding-bottom',
-  'padding-left', 'padding-right', 'padding-top', 'right', 'stop-color', 'top', 'width', 'background', 'background-position', 'border', 'border-bottom',
-  'border-color', 'border-left', 'border-right', 'border-top', 'border-width', 'flex', 'font', 'font-variant', 'margin', 'padding']);
+const JSDOM26_PARSED = new Set([
+  '-webkit-text-fill-color',
+  '-webkit-text-stroke-color',
+  'background-color',
+  'background-image',
+  'border-bottom-color',
+  'border-bottom-width',
+  'border-left-color',
+  'border-left-width',
+  'border-right-color',
+  'border-right-width',
+  'border-spacing',
+  'border-top-color',
+  'border-top-width',
+  'bottom',
+  'color',
+  'flex-basis',
+  'flex-grow',
+  'flex-shrink',
+  'flood-color',
+  'font-family',
+  'font-size',
+  'font-weight',
+  'height',
+  'left',
+  'lighting-color',
+  'line-height',
+  'margin-bottom',
+  'margin-left',
+  'margin-right',
+  'margin-top',
+  'opacity',
+  'outline-color',
+  'padding-bottom',
+  'padding-left',
+  'padding-right',
+  'padding-top',
+  'right',
+  'stop-color',
+  'top',
+  'width',
+  'background',
+  'background-position',
+  'border',
+  'border-bottom',
+  'border-color',
+  'border-left',
+  'border-right',
+  'border-top',
+  'border-width',
+  'flex',
+  'font',
+  'font-variant',
+  'margin',
+  'padding',
+]);
 // 'jsdom25' is 'jsdom26' with unquoted url()s (cssstyle before 4.3.1);
 // 'jsdom22' (cssstyle 3: jsdom 21 to 23) is 'jsdom25' without calc() in
 // margins and paddings; 'jsdom20' (cssstyle 2) the same. 'jsdom27' (jsdom
 // 27 to 29) is 'spec' with jsdom 26's border and clip (borderValue,
 // clipValue). The properties each profile knows are its style surface
 // (styleSurface), not its mode.
-export const isLegacyMode = (mode) => mode === 'jsdom26' || mode === 'jsdom25' || mode === 'jsdom22' || mode === 'jsdom20';
+export const isLegacyMode = (mode) =>
+  mode === 'jsdom26' || mode === 'jsdom25' || mode === 'jsdom22' || mode === 'jsdom20';
 const isSpecMode = (mode) => mode === 'spec' || mode === 'jsdom27';
 const modes = new WeakMap(); // CSSStyleProperties prototype -> mode
 const surfaces = new WeakMap(); // CSSStyleProperties prototype -> styleSurface (profiles before jsdom 30.1)
@@ -362,7 +574,13 @@ const surfaces = new WeakMap(); // CSSStyleProperties prototype -> styleSurface 
 // colorKeywords).
 export function setValidationMode(proto, mode, surfaceKey = null, fontVariant = null, colors = null) {
   modes.set(proto, mode);
-  if (surfaceKey !== null) surfaces.set(proto, fontVariant === null && colors === null ? styleSurface(surfaceKey) : variantSurface(surfaceKey, fontVariant, colors));
+  if (surfaceKey !== null)
+    surfaces.set(
+      proto,
+      fontVariant === null && colors === null
+        ? styleSurface(surfaceKey)
+        : variantSurface(surfaceKey, fontVariant, colors),
+    );
 }
 
 // A style surface with cssstyle's font shorthand before 4.4, or its color
@@ -420,7 +638,8 @@ export function styleSurface(key) {
   return surface;
 }
 const missing = (surface, accessor, name) => surface.drops.has(name) && !surface.writes.has(accessor);
-export const missingAccessors = (surface) => STYLE_ACCESSORS.filter((accessor) => missing(surface, accessor, cssName(accessor)));
+export const missingAccessors = (surface) =>
+  STYLE_ACCESSORS.filter((accessor) => missing(surface, accessor, cssName(accessor)));
 const modeOf = (proto) => modes.get(proto) ?? 'spec';
 export const validationModeOf = (window) => modeOf(window[S].protos.CSSStyleProperties);
 export const protosMode = (protos) => modeOf(protos.CSSStyleProperties);
@@ -431,36 +650,61 @@ export const styleSurfaceOf = (window) => surfaceOf(window[S].protos.CSSStylePro
 
 // A property name CSSOM accepts: a custom property, or one the
 // specifications define. Others are dropped (style.setProperty('foo', ...)).
-const isKnownProperty = (name) => name.startsWith('--') || LONGHANDS[name] !== undefined || SHORTHANDS[name] !== undefined || ALIASES[name] !== undefined;
+const isKnownProperty = (name) =>
+  name.startsWith('--') ||
+  LONGHANDS[name] !== undefined ||
+  SHORTHANDS[name] !== undefined ||
+  ALIASES[name] !== undefined;
 
 // Declared values by mode, property and raw value: style writes repeat the
 // same few values, so each is validated and serialized once. INVALID marks
 // a value the property's grammar rejects.
 const INVALID = null;
-const declaredCaches = { spec: new Map(), jsdom27: new Map(), jsdom26: new Map(), jsdom25: new Map(), jsdom22: new Map(), jsdom20: new Map(), page: new Map() }; // mode -> property -> (raw value -> serialized)
+const declaredCaches = {
+  spec: new Map(),
+  jsdom27: new Map(),
+  jsdom26: new Map(),
+  jsdom25: new Map(),
+  jsdom22: new Map(),
+  jsdom20: new Map(),
+  page: new Map(),
+}; // mode -> property -> (raw value -> serialized)
 // surface: the profile's (styleSurface), null for jsdom 30.1 and later; the
 // names it drops are dropped by setProperty and parsing (dropped), not
 // here: an accessor may still write one (cssstyle 2's webkitTextFillColor).
 function declaredValue(name, value, mode = 'spec', surface = null) {
   const cache = surface === null ? declaredCaches[mode] : (surface.caches[mode] ??= new Map());
   let byValue = cache.get(name);
-  if (byValue === undefined) cache.set(name, byValue = new Map());
+  if (byValue === undefined) cache.set(name, (byValue = new Map()));
   let out = byValue.get(value);
   if (out === undefined) {
-    legacyColors = surface === null || surface.legacyFont !== 'cssstyle4.1' ? false : mode === 'jsdom20' || mode === 'jsdom22' ? 'cssstyle3' : true;
-    colorKeywords = surface !== null ? surface.colors ?? null : null;
+    legacyColors =
+      surface === null || surface.legacyFont !== 'cssstyle4.1'
+        ? false
+        : mode === 'jsdom20' || mode === 'jsdom22'
+          ? 'cssstyle3'
+          : true;
+    colorKeywords = surface !== null ? (surface.colors ?? null) : null;
     zeroAsWritten = surface !== null && (surface.key === 'cssstyle5' || surface.key === 'cssstyle5.0');
     if (mode === 'page') out = pageDescriptorValue(name, value);
-    else if (surface !== null && surface.extras.has(name)) out = name === 'azimuth' ? azimuthValue(value, surface) : value;
+    else if (surface !== null && surface.extras.has(name))
+      out = name === 'azimuth' ? azimuthValue(value, surface) : value;
     else if (!isKnownProperty(name)) out = INVALID;
-    else if (isLegacyFont(surface, name)) out = /^inherit$/i.test(value) ? INVALID : legacyFont(value, surface.legacyFont) ?? INVALID;
+    else if (isLegacyFont(surface, name))
+      out = /^inherit$/i.test(value) ? INVALID : (legacyFont(value, surface.legacyFont) ?? INVALID);
     else {
       out = versionedValue(name, value, mode);
       if (out === undefined) {
         const checked = isSpecMode(mode) || JSDOM26_VALIDATED.has(name);
         out = !checked || isValidValue(name, value) ? serializeDeclared(name, value, mode) : INVALID;
       }
-      if (out !== INVALID && isColorProperty(name) && (isSpecMode(mode) || JSDOM26_VALIDATED.has(name)) && rejectsColor(name, value, surface)) out = INVALID;
+      if (
+        out !== INVALID &&
+        isColorProperty(name) &&
+        (isSpecMode(mode) || JSDOM26_VALIDATED.has(name)) &&
+        rejectsColor(name, value, surface)
+      )
+        out = INVALID;
     }
     if (byValue.size >= 500) byValue.clear();
     byValue.set(value, out);
@@ -476,7 +720,17 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
 // value as written, 5.3 only the CSS-wide keywords ('keywords'); 6.0 and
 // jsdom 29 have no azimuth.
 const AZIMUTH_KINDS = { cssstyle2: 'angle', cssstyle3: 'angle', 'cssstyle4.1': 'angle', cssstyle5: 'keywords' };
-const AZIMUTH_POSITIONS = Object.assign(Object.create(null), { 'left-side': 270, 'far-left': 300, left: 320, 'center-left': 340, center: 0, 'center-right': 20, right: 40, 'far-right': 60, 'right-side': 90 });
+const AZIMUTH_POSITIONS = Object.assign(Object.create(null), {
+  'left-side': 270,
+  'far-left': 300,
+  left: 320,
+  'center-left': 340,
+  center: 0,
+  'center-right': 20,
+  right: 40,
+  'far-right': 60,
+  'right-side': 90,
+});
 const AZIMUTH_ANGLE = /^([+-]?(?:\d+(?:\.\d+)?|\.\d+))(deg|grad|rad)$/;
 const AZIMUTH_NAN_ANGLE = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?(?:deg|grad|rad|turn)$/;
 export const hasAngleAzimuth = (surfaceKey) => AZIMUTH_KINDS[surfaceKey] === 'angle';
@@ -491,7 +745,7 @@ function azimuthValue(value, surface) {
     const angle = AZIMUTH_ANGLE.exec(value);
     if (angle !== null) {
       const n = Number(angle[1]);
-      degrees = angle[2] === 'deg' ? n : angle[2] === 'grad' ? n * 360 / 400 : n * 180 / Math.PI;
+      degrees = angle[2] === 'deg' ? n : angle[2] === 'grad' ? (n * 360) / 400 : (n * 180) / Math.PI;
     }
   }
   if (degrees === undefined) {
@@ -501,13 +755,14 @@ function azimuthValue(value, surface) {
       degrees = words[0] === 'behind' ? 180 : AZIMUTH_POSITIONS[words[0]];
     } else if (words.length === 2 && (words[0] === 'behind' || words[1] === 'behind')) {
       const other = words[0] === 'behind' ? words[1] : words[0];
-      degrees = other === 'behind' ? 180 : AZIMUTH_POSITIONS[other] === undefined ? undefined : 180 - AZIMUTH_POSITIONS[other];
+      degrees =
+        other === 'behind' ? 180 : AZIMUTH_POSITIONS[other] === undefined ? undefined : 180 - AZIMUTH_POSITIONS[other];
     }
     if (degrees === undefined) return INVALID;
   }
   // Into [0, 360]: 720deg is 360deg, -360deg 0deg.
   if (degrees > 360) degrees = degrees % 360 || 360;
-  else if (degrees < 0) degrees = degrees % 360 + (degrees % 360 < 0 ? 360 : 0);
+  else if (degrees < 0) degrees = (degrees % 360) + (degrees % 360 < 0 ? 360 : 0);
   return `${degrees}deg`;
 }
 
@@ -517,24 +772,44 @@ function azimuthValue(value, surface) {
 function versionedValue(name, value, mode) {
   if (isLegacyMode(mode)) {
     const lower = value.toLowerCase();
-    const kind = CSS_WIDE_KEYWORD.test(value) ? lower : lower === 'auto' ? 'auto' : lower.includes('var(') ? 'var' : null;
+    const kind = CSS_WIDE_KEYWORD.test(value)
+      ? lower
+      : lower === 'auto'
+        ? 'auto'
+        : lower.includes('var(')
+          ? 'var'
+          : null;
     if (kind !== null && droppedBy(mode, kind, name)) return INVALID;
     // cssstyle before 4.4 keeps currentColor, border-spacing: 0 and a
     // border width of 0 as written; before 4.3.1 border-color lowercased.
     if (colorKeywords === 'css2') {
       if (lower === 'currentcolor' && isColorProperty(name)) return value;
       if ((name === 'border-spacing' || BORDER_WIDTHS.has(name)) && ZERO.test(value)) return value;
-      if (name === 'border-color' && mode !== 'jsdom26') return isValidValue(name, value) && !rejectsColor(name, value, null) ? lower : INVALID;
+      if (name === 'border-color' && mode !== 'jsdom26')
+        return isValidValue(name, value) && !rejectsColor(name, value, null) ? lower : INVALID;
     }
   }
-  if ((mode === 'jsdom26' || mode === 'jsdom27') && name === 'border-style' && value.toLowerCase() === 'none') return INVALID;
+  if ((mode === 'jsdom26' || mode === 'jsdom27') && name === 'border-style' && value.toLowerCase() === 'none')
+    return INVALID;
   // jsdom 30 writes a single-number aspect-ratio as a ratio.
   if (mode === 'spec' && name === 'aspect-ratio' && /^\+?(\d+\.?\d*|\.\d+)$/.test(value)) return `${Number(value)} / 1`;
-  if ((mode === 'jsdom20' || mode === 'jsdom22') && (name.startsWith('margin') || name.startsWith('padding')) && /calc\(/i.test(value)) return INVALID;
+  if (
+    (mode === 'jsdom20' || mode === 'jsdom22') &&
+    (name.startsWith('margin') || name.startsWith('padding')) &&
+    /calc\(/i.test(value)
+  )
+    return INVALID;
   if (BORDER_SHORTHAND.has(name)) return borderValue(name, value, mode);
   if (name === 'clip') return clipValue(value, mode);
   // jsdom 30 keeps outline as written (colors, numbers, order), a 0 as 0px.
-  if (name === 'outline' && mode === 'spec') return !isValidValue(name, value) ? INVALID : CSS_WIDE_KEYWORD.test(value) ? value.toLowerCase() : ZERO.test(value) ? '0px' : value;
+  if (name === 'outline' && mode === 'spec')
+    return !isValidValue(name, value)
+      ? INVALID
+      : CSS_WIDE_KEYWORD.test(value)
+        ? value.toLowerCase()
+        : ZERO.test(value)
+          ? '0px'
+          : value;
   return undefined;
 }
 
@@ -543,16 +818,24 @@ function versionedValue(name, value, mode) {
 // 20 to 25 drop the same ones.
 const DROPPED = {
   legacy: {
-    inherit: 'border-bottom-color border-bottom-style border-bottom-width border-left-color border-left-style border-left-width border-right-color border-right-style border-right-width border-top-color border-top-style border-top-width bottom color flex-grow flex-shrink flood-color font-size left lighting-color margin-bottom margin-left margin-right margin-top opacity outline-color padding-bottom padding-left padding-right padding-top right stop-color top background border-color border-style border-width flex font',
-    initial: 'background-attachment background-color background-image background-repeat border-bottom-color border-bottom-style border-bottom-width border-collapse border-left-color border-left-style border-left-width border-right-color border-right-style border-right-width border-top-color border-top-style border-top-width bottom clear clip color flex-basis flex-grow flex-shrink flood-color font-size height left lighting-color margin-bottom margin-left margin-right margin-top opacity outline-color padding-bottom padding-left padding-right padding-top right stop-color top width background background-position border-color border-style border-width',
-    unset: 'background-attachment background-color background-image background-repeat border-bottom-color border-bottom-style border-bottom-width border-collapse border-left-color border-left-style border-left-width border-right-color border-right-style border-right-width border-top-color border-top-style border-top-width bottom clear clip color flex-basis flex-grow flex-shrink flood-color font-size height left lighting-color margin-bottom margin-left margin-right margin-top opacity outline-color padding-bottom padding-left padding-right padding-top right stop-color top width background background-position border-color border-style border-width flex',
-    revert: 'background-attachment background-color background-image background-repeat border-bottom-color border-bottom-style border-bottom-width border-collapse border-left-color border-left-style border-left-width border-right-color border-right-style border-right-width border-top-color border-top-style border-top-width bottom clear clip color flex-basis flex-grow flex-shrink flood-color font-size height left lighting-color margin-bottom margin-left margin-right margin-top opacity outline-color padding-bottom padding-left padding-right padding-top right stop-color top width background background-position border-color border-style border-width flex margin padding',
+    inherit:
+      'border-bottom-color border-bottom-style border-bottom-width border-left-color border-left-style border-left-width border-right-color border-right-style border-right-width border-top-color border-top-style border-top-width bottom color flex-grow flex-shrink flood-color font-size left lighting-color margin-bottom margin-left margin-right margin-top opacity outline-color padding-bottom padding-left padding-right padding-top right stop-color top background border-color border-style border-width flex font',
+    initial:
+      'background-attachment background-color background-image background-repeat border-bottom-color border-bottom-style border-bottom-width border-collapse border-left-color border-left-style border-left-width border-right-color border-right-style border-right-width border-top-color border-top-style border-top-width bottom clear clip color flex-basis flex-grow flex-shrink flood-color font-size height left lighting-color margin-bottom margin-left margin-right margin-top opacity outline-color padding-bottom padding-left padding-right padding-top right stop-color top width background background-position border-color border-style border-width',
+    unset:
+      'background-attachment background-color background-image background-repeat border-bottom-color border-bottom-style border-bottom-width border-collapse border-left-color border-left-style border-left-width border-right-color border-right-style border-right-width border-top-color border-top-style border-top-width bottom clear clip color flex-basis flex-grow flex-shrink flood-color font-size height left lighting-color margin-bottom margin-left margin-right margin-top opacity outline-color padding-bottom padding-left padding-right padding-top right stop-color top width background background-position border-color border-style border-width flex',
+    revert:
+      'background-attachment background-color background-image background-repeat border-bottom-color border-bottom-style border-bottom-width border-collapse border-left-color border-left-style border-left-width border-right-color border-right-style border-right-width border-top-color border-top-style border-top-width bottom clear clip color flex-basis flex-grow flex-shrink flood-color font-size height left lighting-color margin-bottom margin-left margin-right margin-top opacity outline-color padding-bottom padding-left padding-right padding-top right stop-color top width background background-position border-color border-style border-width flex margin padding',
     var: 'background-attachment background-color background-image background-repeat border-bottom-color border-bottom-style border-bottom-width border-collapse border-left-color border-left-style border-left-width border-right-color border-right-style border-right-width border-top-color border-top-style border-top-width bottom clear clip color flex-basis flex-grow flex-shrink flood-color font-size height left lighting-color margin-bottom margin-left margin-right margin-top opacity outline-color padding-bottom padding-left padding-right padding-top right stop-color top width background background-position border-color border-style border-width flex margin padding',
     auto: 'bottom flex-grow flex-shrink left outline-color right top flex',
   },
   jsdom26: {
-    inherit: 'flex-grow flex-shrink background flex font', initial: 'flex-grow flex-shrink background font', unset: 'flex-grow flex-shrink background flex font',
-    revert: 'flex-grow flex-shrink background flex font', var: 'font-variant', auto: 'border-spacing flex-grow flex-shrink font-weight outline-color font-variant',
+    inherit: 'flex-grow flex-shrink background flex font',
+    initial: 'flex-grow flex-shrink background font',
+    unset: 'flex-grow flex-shrink background flex font',
+    revert: 'flex-grow flex-shrink background flex font',
+    var: 'font-variant',
+    auto: 'border-spacing flex-grow flex-shrink font-weight outline-color font-variant',
   },
 };
 let droppedSets = null;
@@ -588,7 +871,9 @@ function borderValue(name, value, mode) {
   const legacy = isLegacyMode(mode) && mode !== 'jsdom26';
   if (/var\(|env\(|attr\(/i.test(value)) return legacy ? INVALID : value;
   const parts = segments(value);
-  let width = null, style = null, color = null;
+  let width = null,
+    style = null,
+    color = null;
   const side = name !== 'border';
   for (let i = 0; i < parts.length; i += 2) {
     const token = parts[i];
@@ -596,7 +881,10 @@ function borderValue(name, value, mode) {
     if (i > 0 && parts[i - 1].includes(',')) return serializeDeclared(name, value, mode);
     if (BORDER_STYLE.test(token)) {
       const lower = token.toLowerCase();
-      if (side && mode !== 'spec' && (lower === 'none' || (lower === 'hidden' && !legacy))) { width = color = null; style = ''; } else style = token;
+      if (side && mode !== 'spec' && (lower === 'none' || (lower === 'hidden' && !legacy))) {
+        width = color = null;
+        style = '';
+      } else style = token;
     } else if (BORDER_WIDTH.test(token)) width = token;
     else color = token;
   }
@@ -611,10 +899,17 @@ function borderValue(name, value, mode) {
     if (!legacy) style = null;
   }
   if (width === null && style === null && color === null) return INVALID;
-  if (width !== null) width = legacy ? (ZERO.test(width) && !side ? '0px' : width) : ZERO.test(width) ? '0px' : canonicalNumbers(width);
+  if (width !== null)
+    width = legacy ? (ZERO.test(width) && !side ? '0px' : width) : ZERO.test(width) ? '0px' : canonicalNumbers(width);
   // cssstyle before 4.4: as written on the sides; on border lowercased
   // before 4.3.1.
-  if (color !== null) color = colorKeywords === 'css2' && side ? color : colorKeywords === 'css2' && legacy ? color.toLowerCase() : declaredColors(color);
+  if (color !== null)
+    color =
+      colorKeywords === 'css2' && side
+        ? color
+        : colorKeywords === 'css2' && legacy
+          ? color.toLowerCase()
+          : declaredColors(color);
   return [width, style, color].filter((part) => part !== null).join(' ');
 }
 
@@ -635,9 +930,20 @@ function clipValue(value, mode) {
 
 // @page descriptors (CSS Paged Media 3, CSSOM's CSSPageDescriptors): the
 // margins as the margin properties, size, page-orientation, marks, bleed.
-const PAGE_DESCRIPTORS = ['margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left', 'size', 'page-orientation', 'marks', 'bleed'];
+const PAGE_DESCRIPTORS = [
+  'margin',
+  'margin-top',
+  'margin-right',
+  'margin-bottom',
+  'margin-left',
+  'size',
+  'page-orientation',
+  'marks',
+  'bleed',
+];
 const PAGE_SIZES = new Set(['a5', 'a4', 'a3', 'b5', 'b4', 'jis-b5', 'jis-b4', 'letter', 'legal', 'ledger']);
-const LENGTH = /^(0|\+?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?(px|cm|mm|q|in|pt|pc|em|rem|ex|rex|cap|rcap|ch|rch|ic|ric|lh|rlh|vw|vh|vi|vb|vmin|vmax))$/i;
+const LENGTH =
+  /^(0|\+?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?(px|cm|mm|q|in|pt|pc|em|rem|ex|rex|cap|rcap|ch|rch|ic|ric|lh|rlh|vw|vh|vi|vb|vmin|vmax))$/i;
 function pageDescriptorValue(name, value) {
   if (name.startsWith('margin')) return isValidValue(name, value) ? serializeDeclared(name, value, 'spec') : INVALID;
   const words = value.toLowerCase().split(/\s+/);
@@ -645,7 +951,10 @@ function pageDescriptorValue(name, value) {
   let valid = false;
   if (name === 'page-orientation') valid = one === 'upright' || one === 'rotate-left' || one === 'rotate-right';
   else if (name === 'bleed') valid = one === 'auto' || (one !== null && LENGTH.test(one));
-  else if (name === 'marks') valid = one === 'none' || (words.length <= 2 && new Set(words).size === words.length && words.every((w) => w === 'crop' || w === 'cross'));
+  else if (name === 'marks')
+    valid =
+      one === 'none' ||
+      (words.length <= 2 && new Set(words).size === words.length && words.every((w) => w === 'crop' || w === 'cross'));
   else if (name === 'size') {
     if (one === 'auto') valid = true;
     else if (words.length <= 2 && words.every((w) => LENGTH.test(w))) valid = true;
@@ -663,13 +972,26 @@ function pageDescriptorValue(name, value) {
 // inline-block. jsdom 26 kept them as written.
 const OUTER = new Set(['block', 'inline', 'run-in']);
 const INNER = new Set(['flow', 'flow-root', 'table', 'flex', 'grid', 'ruby']);
-const SHORT = { 'block flow': 'block', 'inline flow': 'inline', 'run-in flow': 'run-in', 'block flow-root': 'flow-root', 'inline flow-root': 'inline-block',
-  'block flex': 'flex', 'inline flex': 'inline-flex', 'block grid': 'grid', 'inline grid': 'inline-grid', 'block table': 'table',
-  'inline table': 'inline-table', 'inline ruby': 'ruby' };
+const SHORT = {
+  'block flow': 'block',
+  'inline flow': 'inline',
+  'run-in flow': 'run-in',
+  'block flow-root': 'flow-root',
+  'inline flow-root': 'inline-block',
+  'block flex': 'flex',
+  'inline flex': 'inline-flex',
+  'block grid': 'grid',
+  'inline grid': 'inline-grid',
+  'block table': 'table',
+  'inline table': 'inline-table',
+  'inline ruby': 'ruby',
+};
 function displayShortForm(value) {
   const keywords = value.toLowerCase().split(/\s+/);
   if (keywords.length < 2) return value;
-  let outer = null, inner = null, listItem = false;
+  let outer = null,
+    inner = null,
+    listItem = false;
   for (const k of keywords) {
     if (OUTER.has(k) && outer === null) outer = k;
     else if (INNER.has(k) && inner === null) inner = k;
@@ -678,7 +1000,8 @@ function displayShortForm(value) {
   }
   inner ??= 'flow';
   outer ??= inner === 'ruby' ? 'inline' : 'block';
-  if (listItem) return [outer === 'block' ? null : outer, inner === 'flow' ? null : inner, 'list-item'].filter(Boolean).join(' ');
+  if (listItem)
+    return [outer === 'block' ? null : outer, inner === 'flow' ? null : inner, 'list-item'].filter(Boolean).join(' ');
   return SHORT[`${outer} ${inner}`] ?? `${outer} ${inner}`;
 }
 
@@ -694,22 +1017,30 @@ function flexLonghands(value) {
   const numbers = [];
   let basis = null;
   for (const part of parts) {
-    if (/^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(part) && numbers.length < 2 && (basis === null || numbers.length > 0)) numbers.push(String(Number(part)));
+    if (
+      /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(part) &&
+      numbers.length < 2 &&
+      (basis === null || numbers.length > 0)
+    )
+      numbers.push(String(Number(part)));
     else basis = ZERO.test(part) ? '0px' : part;
   }
   return `${numbers[0] ?? '1'} ${numbers[1] ?? '1'} ${basis ?? '0%'}`;
 }
 
 function shortRepeat(value) {
-  return value.split(',').map((layer) => {
-    const parts = layer.trim().split(/\s+/);
-    if (parts.length !== 2) return layer.trim();
-    const [x, y] = parts.map((p) => p.toLowerCase());
-    if (x === y) return parts[0];
-    if (x === 'repeat' && y === 'no-repeat') return 'repeat-x';
-    if (x === 'no-repeat' && y === 'repeat') return 'repeat-y';
-    return parts.join(' ');
-  }).join(', ');
+  return value
+    .split(',')
+    .map((layer) => {
+      const parts = layer.trim().split(/\s+/);
+      if (parts.length !== 2) return layer.trim();
+      const [x, y] = parts.map((p) => p.toLowerCase());
+      if (x === y) return parts[0];
+      if (x === 'repeat' && y === 'no-repeat') return 'repeat-x';
+      if (x === 'no-repeat' && y === 'repeat') return 'repeat-y';
+      return parts.join(' ');
+    })
+    .join(', ');
 }
 
 const CSS_WIDE_KEYWORD = /^(initial|inherit|unset|revert|revert-layer)$/i;
@@ -721,7 +1052,8 @@ function serializeDeclared(name, value, mode) {
   // CSS-wide keywords are ASCII case-insensitive and serialize lowercased.
   if (value.length <= 12 && CSS_WIDE_KEYWORD.test(value)) return value.toLowerCase();
   if (isLegacyMode(mode) && !JSDOM26_PARSED.has(name)) return value;
-  if (mode === 'jsdom26' && value.startsWith('calc(') && isLengthProperty(name) && !BORDER_WIDTHS.has(name)) value = simplifyCalc(value);
+  if (mode === 'jsdom26' && value.startsWith('calc(') && isLengthProperty(name) && !BORDER_WIDTHS.has(name))
+    value = simplifyCalc(value);
   if (name === 'display' && isSpecMode(mode)) return displayShortForm(value);
   if (name === 'flex') return flexLonghands(canonicalNumbers(value));
   if (name === 'font') return familyCommas(serializeFont(canonicalNumbers(value)));
@@ -743,9 +1075,11 @@ function serializeDeclared(name, value, mode) {
   // jsdom 26 with cssstyle 4.3.1 and later writes each run of whitespace
   // in background and background-image as one space (black box: a
   // gradient written over several lines).
-  if (mode === 'jsdom26' && (name === 'background' || name === 'background-image') && /\s\s|[\t\n\r\f]/.test(value)) value = collapseSpaces(value);
+  if (mode === 'jsdom26' && (name === 'background' || name === 'background-image') && /\s\s|[\t\n\r\f]/.test(value))
+    value = collapseSpaces(value);
   if (value.includes('(')) {
-    if (isSpecMode(mode) && name !== 'border-image' && /(min|max|clamp|gradient)\(/i.test(value)) value = functionArguments(value);
+    if (isSpecMode(mode) && name !== 'border-image' && /(min|max|clamp|gradient)\(/i.test(value))
+      value = functionArguments(value);
     // jsdom 27 and later keep url() as written in a value with var().
     if (QUOTED_URLS[mode]?.has(name) && !(isSpecMode(mode) && /var\(/i.test(value))) value = quoteUrls(value);
     else if (UNQUOTED_URLS[mode]?.has(name)) value = unquoteUrls(value);
@@ -787,9 +1121,15 @@ function parseInto(decls, text, mode, surface = null) {
     let value = part.slice(colon + 1).trim();
     let important = false;
     const bang = value.match(/\s*!\s*important\s*$/i);
-    if (bang) { important = true; value = value.slice(0, bang.index).trim(); }
+    if (bang) {
+      important = true;
+      value = value.slice(0, bang.index).trim();
+    }
     if (!name || !value || dropped(surface, name)) continue;
-    if (isLegacyFont(surface, name) && /^inherit$/i.test(value)) { removeLegacyFont(decls, surface); continue; }
+    if (isLegacyFont(surface, name) && /^inherit$/i.test(value)) {
+      removeLegacyFont(decls, surface);
+      continue;
+    }
     const declared = declaredValue(name, value, mode, surface);
     if (declared === INVALID) continue;
     if (!isLegacyMode(mode)) {
@@ -836,7 +1176,9 @@ const propertyName = (name) => {
 };
 
 function tooFew(method, required, present) {
-  throw new TypeError(`Failed to execute '${method}' on 'CSSStyleDeclaration': ${required} argument${required > 1 ? 's' : ''} required, but only ${present} present.`);
+  throw new TypeError(
+    `Failed to execute '${method}' on 'CSSStyleDeclaration': ${required} argument${required > 1 ? 's' : ''} required, but only ${present} present.`,
+  );
 }
 
 // A declaration list's declarations (a style attribute's value).
@@ -862,19 +1204,26 @@ MERGED.jsdom27 = MERGED.spec;
 const MERGEABLE = new Set(MERGED.spec.flatMap(([, longhands]) => longhands));
 function serialize(decls, mode = 'spec') {
   let merged = null; // longhand -> shorthand to write in its place ('' to skip)
-  if (decls.mergeable === true && decls.size >= 2) for (const [shorthand, longhands] of MERGED[mode]) {
-    const first = decls.get(longhands[0]);
-    if (first === undefined || !longhands.every((l) => decls.get(l)?.important === first.important)) continue;
-    const values = longhands.map((l) => decls.get(l).value);
-    const value = isLegacyMode(mode) ? values.join(' ') : COMPOSED[shorthand](values);
-    merged ??= new Map();
-    let place = null;
-    for (const name of decls.keys()) if (longhands.includes(name)) { place = name; break; }
-    for (const l of longhands) merged.set(l, l === place ? { name: shorthand, value, important: first.important } : '');
-  }
+  if (decls.mergeable === true && decls.size >= 2)
+    for (const [shorthand, longhands] of MERGED[mode]) {
+      const first = decls.get(longhands[0]);
+      if (first === undefined || !longhands.every((l) => decls.get(l)?.important === first.important)) continue;
+      const values = longhands.map((l) => decls.get(l).value);
+      const value = isLegacyMode(mode) ? values.join(' ') : COMPOSED[shorthand](values);
+      merged ??= new Map();
+      let place = null;
+      for (const name of decls.keys())
+        if (longhands.includes(name)) {
+          place = name;
+          break;
+        }
+      for (const l of longhands)
+        merged.set(l, l === place ? { name: shorthand, value, important: first.important } : '');
+    }
   let out = '';
   if (merged === null) {
-    for (const [name, { value, important }] of decls) out += `${out ? ' ' : ''}${name}: ${value}${important ? ' !important' : ''};`;
+    for (const [name, { value, important }] of decls)
+      out += `${out ? ' ' : ''}${name}: ${value}${important ? ' !important' : ''};`;
     return out;
   }
   for (const [name, decl] of decls) {
@@ -922,9 +1271,13 @@ export function escapeIdentifier(value) {
     const c = input.charCodeAt(i);
     const ch = input[i];
     if (c === 0) out += '\ufffd';
-    else if ((c >= 0x1 && c <= 0x1f) || c === 0x7f
-      || (i === 0 && c >= 0x30 && c <= 0x39)
-      || (i === 1 && c >= 0x30 && c <= 0x39 && input.charCodeAt(0) === 0x2d)) out += `\\${c.toString(16)} `;
+    else if (
+      (c >= 0x1 && c <= 0x1f) ||
+      c === 0x7f ||
+      (i === 0 && c >= 0x30 && c <= 0x39) ||
+      (i === 1 && c >= 0x30 && c <= 0x39 && input.charCodeAt(0) === 0x2d)
+    )
+      out += `\\${c.toString(16)} `;
     else if (i === 0 && ch === '-' && input.length === 1) out += `\\${ch}`;
     else if (c >= 0x80 || ch === '-' || ch === '_' || /[0-9A-Za-z]/.test(ch)) out += ch;
     else out += `\\${ch}`;
@@ -944,7 +1297,9 @@ const supportsDeclaration = (property, value) => {
 // nested conditions and selector(); unknown syntax is false.
 function supportsCondition(text, matchesSelector, declaration = supportsDeclaration) {
   let i = 0;
-  const ws = () => { while (/\s/.test(text[i] ?? '')) i++; };
+  const ws = () => {
+    while (/\s/.test(text[i] ?? '')) i++;
+  };
   const group = () => {
     // Text up to the matching closing parenthesis.
     let depth = 1;
@@ -958,7 +1313,10 @@ function supportsCondition(text, matchesSelector, declaration = supportsDeclarat
   };
   const inParens = () => {
     ws();
-    if (/^not[\s(]/i.test(text.slice(i, i + 4))) { i += 3; return !inParens(); }
+    if (/^not[\s(]/i.test(text.slice(i, i + 4))) {
+      i += 3;
+      return !inParens();
+    }
     if (/^selector\(/i.test(text.slice(i))) {
       i += 9;
       const inner = group();
@@ -1004,11 +1362,13 @@ export const supportsRuleMatches = (text) => supportsCondition(String(text), () 
 export function cssNamespace(matchesSelector) {
   const namespace = {
     escape(ident) {
-      if (arguments.length === 0) throw new TypeError("Failed to execute 'escape' on 'CSS': 1 argument required, but only 0 present.");
+      if (arguments.length === 0)
+        throw new TypeError("Failed to execute 'escape' on 'CSS': 1 argument required, but only 0 present.");
       return escapeIdentifier(ident);
     },
     supports(...args) {
-      if (args.length === 0) throw new TypeError("Failed to execute 'supports' on 'CSS': 1 argument required, but only 0 present.");
+      if (args.length === 0)
+        throw new TypeError("Failed to execute 'supports' on 'CSS': 1 argument required, but only 0 present.");
       if (args.length >= 2) return supportsDeclaration(args[0], args[1]);
       const text = String(args[0]);
       // A bare declaration is treated as if wrapped in parentheses.
@@ -1021,12 +1381,22 @@ export function cssNamespace(matchesSelector) {
 
 export function computedStyle(element, proto) {
   const style = Object.create(proto);
-  initStyleState(style, { element, computed: true, decls: new Map(), mode: modeOf(proto), indexed: 0, surface: surfaceOf(proto) });
+  initStyleState(style, {
+    element,
+    computed: true,
+    decls: new Map(),
+    mode: modeOf(proto),
+    indexed: 0,
+    surface: surfaceOf(proto),
+  });
   return style;
 }
 
 function readOnly() {
-  throw domError("Failed to execute on 'CSSStyleDeclaration': These styles are computed, and therefore read-only.", 'NoModificationAllowedError');
+  throw domError(
+    "Failed to execute on 'CSSStyleDeclaration': These styles are computed, and therefore read-only.",
+    'NoModificationAllowedError',
+  );
 }
 
 // Writes to computed styles, which tests use to fake a layout (react-aria
@@ -1070,7 +1440,8 @@ const valueOf = (style, name) => {
   if (s.computed) return computedOverride(s, name) ?? computed.value(s.element, name);
   const decl = s.decls.get(name);
   if (decl) return decl.value;
-  if (LONGHANDS[name] || (s.decls.legacyFont !== undefined && LEGACY_FONT_LONGHANDS.has(name))) return fromShorthand(s.decls, name);
+  if (LONGHANDS[name] || (s.decls.legacyFont !== undefined && LEGACY_FONT_LONGHANDS.has(name)))
+    return fromShorthand(s.decls, name);
   // jsdom 26 read background as the background-color set alone.
   if (name === 'background' && isLegacyMode(s.mode)) return s.decls.get('background-color')?.value ?? '';
   if (COMPOSED[name]) return composeShorthand(s.decls, name, s.surface?.colors === 'css2');
@@ -1083,7 +1454,8 @@ const valueOf = (style, name) => {
 // 1px solid red), a side in its shortest form (border: red gives
 // border-top red, border: none medium).
 const BORDER_READS = {};
-const BOX_SIDES = ['top', 'right', 'bottom', 'left'], BORDER_PARTS = ['width', 'style', 'color'];
+const BOX_SIDES = ['top', 'right', 'bottom', 'left'],
+  BORDER_PARTS = ['width', 'style', 'color'];
 for (const part of BORDER_PARTS) BORDER_READS[`border-${part}`] = BOX_SIDES.map((side) => `border-${side}-${part}`);
 for (const side of BOX_SIDES) BORDER_READS[`border-${side}`] = BORDER_PARTS.map((part) => `border-${side}-${part}`);
 const BORDER_INITIAL = ['medium', 'none', 'currentcolor'];
@@ -1103,8 +1475,22 @@ function composeBorder(decls, name) {
 // Shorthands whose longhands a declaration block reads through them, as in
 // jsdom (its CSS layer expands these; overflow: hidden leaves overflow-x
 // empty there, and tests rely on that).
-export const EXPANDED_SHORTHANDS = new Set(['background', 'background-position', 'border', 'border-top', 'border-right', 'border-bottom', 'border-left',
-  'border-color', 'border-style', 'border-width', 'flex', 'font', 'margin', 'padding']);
+export const EXPANDED_SHORTHANDS = new Set([
+  'background',
+  'background-position',
+  'border',
+  'border-top',
+  'border-right',
+  'border-bottom',
+  'border-left',
+  'border-color',
+  'border-style',
+  'border-width',
+  'flex',
+  'font',
+  'margin',
+  'padding',
+]);
 
 // A longhand set by a declared shorthand (margin-top from margin: 0 auto);
 // the last such shorthand wins.
@@ -1127,7 +1513,8 @@ const COMPOSED = {
     // background: inherit gives background-position inherit (jsdom 28.1 and later).
     if (x === y && CSS_WIDE_KEYWORD.test(x)) return x;
     if (!x.includes(',') && !y.includes(',')) return `${x} ${y}`;
-    const xs = x.split(/\s*,\s*/), ys = y.split(/\s*,\s*/);
+    const xs = x.split(/\s*,\s*/),
+      ys = y.split(/\s*,\s*/);
     return xs.map((part, i) => `${part} ${ys[i] ?? ys[ys.length - 1]}`).join(', ');
   },
 };
@@ -1153,12 +1540,32 @@ function composeShorthand(decls, name, legacyBox = false) {
 const BORDER_SIDES = ['top', 'right', 'bottom', 'left'];
 const RESETS = {
   flex: ['flex', 'flex-grow', 'flex-shrink', 'flex-basis'],
-  background: ['background', 'background-color', 'background-image', 'background-repeat', 'background-attachment', 'background-position'],
-  border: ['border', 'border-width', 'border-style', 'border-color', ...BORDER_SIDES.flatMap((side) => [`border-${side}`, `border-${side}-width`, `border-${side}-style`, `border-${side}-color`])],
+  background: [
+    'background',
+    'background-color',
+    'background-image',
+    'background-repeat',
+    'background-attachment',
+    'background-position',
+  ],
+  border: [
+    'border',
+    'border-width',
+    'border-style',
+    'border-color',
+    ...BORDER_SIDES.flatMap((side) => [
+      `border-${side}`,
+      `border-${side}-width`,
+      `border-${side}-style`,
+      `border-${side}-color`,
+    ]),
+  ],
 };
-for (const side of BORDER_SIDES) RESETS[`border-${side}`] = [`border-${side}`, `border-${side}-width`, `border-${side}-style`, `border-${side}-color`];
+for (const side of BORDER_SIDES)
+  RESETS[`border-${side}`] = [`border-${side}`, `border-${side}-width`, `border-${side}-style`, `border-${side}-color`];
 // (A surface has a legacyFont variant before cssstyle 4.4.)
-const resets = (surface, name, text) => !text.includes('var(') || (name === 'flex' && surface?.legacyFont === undefined);
+const resets = (surface, name, text) =>
+  !text.includes('var(') || (name === 'flex' && surface?.legacyFont === undefined);
 
 function setDeclaration(style, name, value, priority = '') {
   const s = styleState(style);
@@ -1173,7 +1580,10 @@ function setDeclaration(style, name, value, priority = '') {
   if (isLegacyFont(s.surface, name) && /^inherit$/i.test(raw)) raw = '';
   // The style attribute is updated only when a declaration changed (CSSOM).
   if (raw === '') {
-    if (isLegacyFont(s.surface, name) ? removeLegacyFont(s.decls, s.surface) : s.decls.delete(name)) { reindex(style); sync(style); }
+    if (isLegacyFont(s.surface, name) ? removeLegacyFont(s.decls, s.surface) : s.decls.delete(name)) {
+      reindex(style);
+      sync(style);
+    }
     return;
   }
   // Unknown properties and invalid values are ignored (CSSOM).
@@ -1209,20 +1619,36 @@ function styleDescriptors(surfaceKey = null) {
   for (const accessor of STYLE_ACCESSORS) {
     const name = cssName(accessor);
     if (surface === null) descriptors[accessor] = styleAccessor(name);
-    else if (!missing(surface, accessor, name)) descriptors[accessor] = styleAccessor(surface.writes.get(accessor) ?? name);
+    else if (!missing(surface, accessor, name))
+      descriptors[accessor] = styleAccessor(surface.writes.get(accessor) ?? name);
   }
   if (surface !== null) for (const [accessor, name] of surface.writes) descriptors[accessor] ??= styleAccessor(name);
   // cssstyle 2 to 4.3: style.azimuth = '' (or null) is ignored, as an
   // invalid value; setProperty('azimuth', '') removes it.
   if (hasAngleAzimuth(surfaceKey)) {
     const { get, set } = descriptors.azimuth;
-    descriptors.azimuth = { get, set(value) { if (value !== null && String(value).trim() !== '') set.call(this, value); }, enumerable: true, configurable: true };
+    descriptors.azimuth = {
+      get,
+      set(value) {
+        if (value !== null && String(value).trim() !== '') set.call(this, value);
+      },
+      enumerable: true,
+      configurable: true,
+    };
   }
   return descriptors;
 }
 // The computed style's background and border side accessors of jsdom 26
 // and earlier (cascade.js legacyAccessorValue).
-const COMPOSED_ACCESSORS = new Set(['background', 'border-top', 'border-right', 'border-bottom', 'border-left', 'margin', 'padding']);
+const COMPOSED_ACCESSORS = new Set([
+  'background',
+  'border-top',
+  'border-right',
+  'border-bottom',
+  'border-left',
+  'margin',
+  'padding',
+]);
 function composedValue(style, name) {
   const s = styleState(style);
   if (s.computed) {
@@ -1232,12 +1658,16 @@ function composedValue(style, name) {
   const value = valueOf(style, name);
   // cssstyle 4.4 and later (jsdom 26): the margin and padding accessors
   // read the shortest form, getPropertyValue() and cssText as written.
-  return (name === 'margin' || name === 'padding') && isLegacyMode(s.mode) && s.surface?.colors !== 'css2' ? shortestBox(value) : value;
+  return (name === 'margin' || name === 'padding') && isLegacyMode(s.mode) && s.surface?.colors !== 'css2'
+    ? shortestBox(value)
+    : value;
 }
 function styleAccessor(name) {
   if (COMPOSED_ACCESSORS.has(name)) {
     return {
-      get() { return composedValue(this, name); },
+      get() {
+        return composedValue(this, name);
+      },
       set(value) {
         const s = styleState(this);
         if (s.computed) writeComputed(s, name, value);
@@ -1248,7 +1678,9 @@ function styleAccessor(name) {
     };
   }
   return {
-    get() { return valueOf(this, name); },
+    get() {
+      return valueOf(this, name);
+    },
     set(value) {
       const s = styleState(this);
       if (s.computed) writeComputed(s, name, value);
@@ -1263,7 +1695,12 @@ function styleAccessor(name) {
 // own @@iterator, CSSStyleDeclaration's (black box, jsdom 29.1.1 and 30.1.3).
 function propertiesDescriptors(surfaceKey) {
   const descriptors = styleDescriptors(surfaceKey);
-  descriptors[Symbol.iterator] = { value: Array.prototype.values, writable: true, enumerable: false, configurable: true };
+  descriptors[Symbol.iterator] = {
+    value: Array.prototype.values,
+    writable: true,
+    enumerable: false,
+    configurable: true,
+  };
   return descriptors;
 }
 
@@ -1275,8 +1712,12 @@ function pageDescriptors() {
     const camel = name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
     for (const key of camel === name ? [name] : [name, camel]) {
       const accessor = {
-        get() { return valueOf(this, name); },
-        set(value) { setDeclaration(this, name, value === null ? '' : value); },
+        get() {
+          return valueOf(this, name);
+        },
+        set(value) {
+          setDeclaration(this, name, value === null ? '' : value);
+        },
         enumerable: true,
         configurable: true,
       };
@@ -1299,7 +1740,11 @@ function setPropertyOf(style, name, value, priority) {
 function removePropertyOf(style, name) {
   const key = propertyName(name);
   const s = styleState(style);
-  const previous = s.computed ? (mutableComputed(s) ? valueOf(style, key) : readOnly()) : s.decls.get(key)?.value ?? '';
+  const previous = s.computed
+    ? mutableComputed(s)
+      ? valueOf(style, key)
+      : readOnly()
+    : (s.decls.get(key)?.value ?? '');
   setDeclaration(style, key, '');
   return previous;
 }
@@ -1315,26 +1760,51 @@ function removePropertyOf(style, name) {
 // getPropertyShorthand and isPropertyImplicit, which return undefined.
 // Later: not enumerable (cssFloat too), item/0, setProperty/2 (3 in
 // cssstyle 5.3: 'E'). cssstyle's own underscore members are left out.
-const LEGACY_GROUPS = { cssstyle2: 'A', cssstyle3: 'A', 'cssstyle4.1': 'A', 'cssstyle4.4': 'D', 'cssstyle5.0': 'D', cssstyle5: 'E', 'cssstyle6.0': 'F', 'cssstyle6.1': 'F' };
+const LEGACY_GROUPS = {
+  cssstyle2: 'A',
+  cssstyle3: 'A',
+  'cssstyle4.1': 'A',
+  'cssstyle4.4': 'D',
+  'cssstyle5.0': 'D',
+  cssstyle5: 'E',
+  'cssstyle6.0': 'F',
+  'cssstyle6.1': 'F',
+};
 const LEGACY_SHARED = {
-  getPropertyValue(name) { return valueOf(this, propertyName(name)); },
-  getPropertyPriority(name) { return priorityOf(this, name); },
-  removeProperty(name) { return removePropertyOf(this, name); },
+  getPropertyValue(name) {
+    return valueOf(this, propertyName(name));
+  },
+  getPropertyPriority(name) {
+    return priorityOf(this, name);
+  },
+  removeProperty(name) {
+    return removePropertyOf(this, name);
+  },
 };
 const LEGACY_METHODS = {
   A: {
     ...LEGACY_SHARED,
-    item(index) { return index === undefined && arguments.length === 0 ? undefined : itemOf(this, index); },
-    setProperty(name, value, priority) { if (value !== undefined) setPropertyOf(this, name, value, priority); },
+    item(index) {
+      return index === undefined && arguments.length === 0 ? undefined : itemOf(this, index);
+    },
+    setProperty(name, value, priority) {
+      if (value !== undefined) setPropertyOf(this, name, value, priority);
+    },
     getPropertyCSSValue() {},
     getPropertyShorthand() {},
     isPropertyImplicit() {},
   },
   D: {
     ...LEGACY_SHARED,
-    item() { if (arguments.length === 0) tooFew('item', 1, 0); return itemOf(this, arguments[0]); },
+    item() {
+      if (arguments.length === 0) tooFew('item', 1, 0);
+      return itemOf(this, arguments[0]);
+    },
     setProperty(name, value, priority = '') {
-      if (value === undefined) { if (arguments.length === 0) tooFew('setProperty', 2, 0); return; }
+      if (value === undefined) {
+        if (arguments.length === 0) tooFew('setProperty', 2, 0);
+        return;
+      }
       setPropertyOf(this, name, value, priority);
     },
   },
@@ -1343,7 +1813,10 @@ LEGACY_METHODS.F = LEGACY_METHODS.D;
 LEGACY_METHODS.E = {
   ...LEGACY_METHODS.D,
   setProperty(name, value, priority) {
-    if (value === undefined) { if (arguments.length === 0) tooFew('setProperty', 2, 0); return; }
+    if (value === undefined) {
+      if (arguments.length === 0) tooFew('setProperty', 2, 0);
+      return;
+    }
     setPropertyOf(this, name, value, priority);
   },
 };
@@ -1356,9 +1829,11 @@ function legacyDeclaration(members, surfaceKey) {
   if (!enumerable && descriptors.cssFloat) descriptors.cssFloat = { ...descriptors.cssFloat, enumerable: false };
   for (const key of ['cssText', 'length', 'parentRule']) descriptors[key] = { ...members[key], enumerable };
   const methods = LEGACY_METHODS[group];
-  for (const key of Object.keys(methods)) descriptors[key] = { value: methods[key], writable: true, enumerable, configurable: true };
+  for (const key of Object.keys(methods))
+    descriptors[key] = { value: methods[key], writable: true, enumerable, configurable: true };
   // No @@iterator (nor @@toStringTag: untagged).
-  for (const key of Reflect.ownKeys(members)) if (typeof key !== 'symbol' && !(key in descriptors)) descriptors[key] = members[key];
+  for (const key of Reflect.ownKeys(members))
+    if (typeof key !== 'symbol' && !(key in descriptors)) descriptors[key] = members[key];
   return descriptors;
 }
 
@@ -1367,7 +1842,10 @@ export const CSS_INTERFACES = [
     name: 'CSSStyleDeclaration',
     slot: [S, STYLE_SLOT.descriptor],
     members: {
-      get cssText() { const s = styleState(this); return serialize(s.decls, s.mode); },
+      get cssText() {
+        const s = styleState(this);
+        return serialize(s.decls, s.mode);
+      },
       set cssText(text) {
         const s = styleState(this);
         if (s.computed) {
@@ -1382,8 +1860,12 @@ export const CSS_INTERFACES = [
         reindex(this);
         sync(this);
       },
-      get length() { return styleState(this).decls.size; },
-      get parentRule() { return styleState(this).parentRule ?? null; },
+      get length() {
+        return styleState(this).decls.size;
+      },
+      get parentRule() {
+        return styleState(this).parentRule ?? null;
+      },
       item(index) {
         if (index === undefined && arguments.length === 0) tooFew('item', 1, 0);
         return itemOf(this, index);
@@ -1431,7 +1913,14 @@ export const CSS_INTERFACES = [
 // mode: 'page' for an @page rule's descriptors.
 export function declarationBlock(proto, text, parentRule, mode = modeOf(proto)) {
   const style = Object.create(proto);
-  initStyleState(style, { element: null, decls: new Map(), parentRule, mode, indexed: 0, surface: mode === 'page' ? null : surfaceOf(proto) });
+  initStyleState(style, {
+    element: null,
+    decls: new Map(),
+    parentRule,
+    mode,
+    indexed: 0,
+    surface: mode === 'page' ? null : surfaceOf(proto),
+  });
   parseInto(styleState(style).decls, text, styleState(style).mode, styleState(style).surface);
   reindex(style);
   return style;
@@ -1455,5 +1944,9 @@ export function styleOf(element, proto) {
 // Called when the style attribute is set or removed directly.
 export function styleAttributeChanged(element) {
   const es = element[S];
-  if (es.style) { const s = styleState(es.style); parseInto(s.decls, es.attrs.get('style'), s.mode, s.surface); reindex(es.style); }
+  if (es.style) {
+    const s = styleState(es.style);
+    parseInto(s.decls, es.attrs.get('style'), s.mode, s.surface);
+    reindex(es.style);
+  }
 }

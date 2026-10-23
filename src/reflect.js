@@ -47,62 +47,111 @@ export function resolveURL(element, attr) {
   const hit = cache.get(attr);
   if (hit && hit.raw === raw && hit.base === base) return hit.href;
   let href;
-  try { href = new URL(raw, base).href; } catch { href = raw; }
+  try {
+    href = new URL(raw, base).href;
+  } catch {
+    href = raw;
+  }
   cache.set(attr, { raw, base, href });
   return href;
 }
 
 // WebIDL USVString conversion: lone surrogates become U+FFFD.
-const toUSVString = (v) => { const s = String(v); return typeof s.toWellFormed === 'function' ? s.toWellFormed() : s; };
+const toUSVString = (v) => {
+  const s = String(v);
+  return typeof s.toWellFormed === 'function' ? s.toWellFormed() : s;
+};
 
 const get = (el, attr) => state(el).attrs.get(attr);
 const set = (el, attr, value) => writeAttribute(el, attr, value);
 
 function accessor([, attr, kind, options = {}]) {
   switch (kind) {
-    case 'string': if (options.usv) return {
-      get() { return get(this, attr) ?? ''; },
-      set(v) { set(this, attr, toUSVString(v)); },
-    };
-    return options.nullToEmpty ? {
-      get() { return get(this, attr) ?? ''; },
-      set(v) { set(this, attr, v === null ? '' : String(v)); },
-    } : {
-      get() { return get(this, attr) ?? ''; },
-      set(v) { set(this, attr, String(v)); },
-    };
-    case 'nullable': return {
-      get() { return get(this, attr) ?? null; },
-      set(v) { state(this); set(this, attr, v == null ? undefined : String(v)); }, // WebIDL: undefined converts to null for a nullable type
-    };
-    case 'url': return {
-      get() { return resolveURL(this, attr); },
-      set(v) { set(this, attr, String(v)); },
-    };
-    case 'boolean': return {
-      get() { return state(this).attrs.has(attr); },
-      set(v) { state(this); set(this, attr, v ? '' : undefined); },
-    };
-    case 'tokens': return {
-      get() { state(this); return tokenList(this, attr, writeAttribute); },
-      set(v) { state(this); set(this, attr, String(v)); },
-    };
-    case 'long': return {
-      get() {
-        const value = get(this, attr);
-        if (value !== undefined) {
-          const n = options.nonNegative ? parseNonNegativeInteger(value) : parseInteger(value);
-          if (n !== null && n >= LONG_MIN && n <= LONG_MAX) return n;
-        }
-        return options.default ?? (options.nonNegative ? -1 : 0);
-      },
-      set(v) {
-        state(this);
-        const n = toLong(v);
-        if (options.nonNegative && n < 0) throw domError(`The value provided (${n}) is not non-negative.`, 'IndexSizeError');
-        set(this, attr, String(n));
-      },
-    };
+    case 'string':
+      if (options.usv)
+        return {
+          get() {
+            return get(this, attr) ?? '';
+          },
+          set(v) {
+            set(this, attr, toUSVString(v));
+          },
+        };
+      return options.nullToEmpty
+        ? {
+            get() {
+              return get(this, attr) ?? '';
+            },
+            set(v) {
+              set(this, attr, v === null ? '' : String(v));
+            },
+          }
+        : {
+            get() {
+              return get(this, attr) ?? '';
+            },
+            set(v) {
+              set(this, attr, String(v));
+            },
+          };
+    case 'nullable':
+      return {
+        get() {
+          return get(this, attr) ?? null;
+        },
+        set(v) {
+          state(this);
+          set(this, attr, v == null ? undefined : String(v));
+        }, // WebIDL: undefined converts to null for a nullable type
+      };
+    case 'url':
+      return {
+        get() {
+          return resolveURL(this, attr);
+        },
+        set(v) {
+          set(this, attr, String(v));
+        },
+      };
+    case 'boolean':
+      return {
+        get() {
+          return state(this).attrs.has(attr);
+        },
+        set(v) {
+          state(this);
+          set(this, attr, v ? '' : undefined);
+        },
+      };
+    case 'tokens':
+      return {
+        get() {
+          state(this);
+          return tokenList(this, attr, writeAttribute);
+        },
+        set(v) {
+          state(this);
+          set(this, attr, String(v));
+        },
+      };
+    case 'long':
+      return {
+        get() {
+          const value = get(this, attr);
+          if (value !== undefined) {
+            const n = options.nonNegative ? parseNonNegativeInteger(value) : parseInteger(value);
+            if (n !== null && n >= LONG_MIN && n <= LONG_MAX) return n;
+          }
+          return options.default ?? (options.nonNegative ? -1 : 0);
+        },
+        set(v) {
+          state(this);
+          const n = toLong(v);
+          if (options.nonNegative && n < 0)
+            throw domError(`The value provided (${n}) is not non-negative.`, 'IndexSizeError');
+          set(this, attr, String(n));
+        },
+      };
     case 'unsigned': {
       const positive = options.positive || options.positiveWithFallback;
       const minimum = options.range ? options.range[0] : positive ? 1 : 0;
@@ -120,44 +169,52 @@ function accessor([, attr, kind, options = {}]) {
         set(v) {
           state(this);
           const n = toUnsignedLong(v);
-          if (options.positive && n === 0) throw domError('The value provided is 0, which is an invalid size.', 'IndexSizeError');
+          if (options.positive && n === 0)
+            throw domError('The value provided is 0, which is an invalid size.', 'IndexSizeError');
           const low = positive ? 1 : 0;
-          const value = n >= low && n <= LONG_MAX ? n : options.default ?? low;
+          const value = n >= low && n <= LONG_MAX ? n : (options.default ?? low);
           set(this, attr, String(value));
         },
       };
     }
-    case 'double': return {
-      get() {
-        const value = get(this, attr);
-        if (value !== undefined) {
-          const n = parseFloatingPoint(value);
-          if (n !== null && (n > 0 || !options.positive)) return n;
-        }
-        return options.default ?? 0;
-      },
-      set(v) {
-        state(this);
-        const n = Number(v);
-        if (!Number.isFinite(n)) throw new TypeError(`Failed to set the '${attr}' property: The provided double value is non-finite.`);
-        if (options.positive && !(n > 0)) return;
-        set(this, attr, String(n));
-      },
-    };
+    case 'double':
+      return {
+        get() {
+          const value = get(this, attr);
+          if (value !== undefined) {
+            const n = parseFloatingPoint(value);
+            if (n !== null && (n > 0 || !options.positive)) return n;
+          }
+          return options.default ?? 0;
+        },
+        set(v) {
+          state(this);
+          const n = Number(v);
+          if (!Number.isFinite(n))
+            throw new TypeError(`Failed to set the '${attr}' property: The provided double value is non-finite.`);
+          if (options.positive && !(n > 0)) return;
+          set(this, attr, String(n));
+        },
+      };
     // Enumerated attributes limited to only known values: the canonical
     // keyword, or the missing/invalid value defaults.
-    case 'enumerated': return {
-      get() {
-        const value = get(this, attr);
-        if (value === undefined) return options.missing;
-        const keyword = asciiLowercase(value);
-        if (options.keywords.includes(keyword)) return keyword;
-        if (keyword === '' && options.empty !== undefined) return options.empty;
-        return options.invalid;
-      },
-      set(v) { state(this); set(this, attr, v == null && options.missing === null ? undefined : String(v)); }, // nullable: undefined is null
-    };
-    default: throw new Error(`unknown reflection kind ${kind}`);
+    case 'enumerated':
+      return {
+        get() {
+          const value = get(this, attr);
+          if (value === undefined) return options.missing;
+          const keyword = asciiLowercase(value);
+          if (options.keywords.includes(keyword)) return keyword;
+          if (keyword === '' && options.empty !== undefined) return options.empty;
+          return options.invalid;
+        },
+        set(v) {
+          state(this);
+          set(this, attr, v == null && options.missing === null ? undefined : String(v));
+        }, // nullable: undefined is null
+      };
+    default:
+      throw new Error(`unknown reflection kind ${kind}`);
   }
 }
 
@@ -169,44 +226,96 @@ const CORS = { keywords: ['anonymous', 'use-credentials'], empty: 'anonymous', m
 // known values, with no missing value default.
 const SUBMITTER = [
   ['formMethod', 'formmethod', 'enumerated', { keywords: ['get', 'post', 'dialog'], missing: '', invalid: 'get' }],
-  ['formEnctype', 'formenctype', 'enumerated', {
-    keywords: ['application/x-www-form-urlencoded', 'multipart/form-data', 'text/plain'],
-    missing: '', invalid: 'application/x-www-form-urlencoded',
-  }],
+  [
+    'formEnctype',
+    'formenctype',
+    'enumerated',
+    {
+      keywords: ['application/x-www-form-urlencoded', 'multipart/form-data', 'text/plain'],
+      missing: '',
+      invalid: 'application/x-www-form-urlencoded',
+    },
+  ],
 ];
 
 // Reflections the standard gives in prose rather than in its IDL.
 const PROSE_REFLECTIONS = [
-  ['HTMLElement', [
-    ['inputMode', 'inputmode', 'enumerated', { keywords: ['none', 'text', 'tel', 'url', 'email', 'numeric', 'decimal', 'search'], missing: '', invalid: '' }],
-  ]],
+  [
+    'HTMLElement',
+    [
+      [
+        'inputMode',
+        'inputmode',
+        'enumerated',
+        { keywords: ['none', 'text', 'tel', 'url', 'email', 'numeric', 'decimal', 'search'], missing: '', invalid: '' },
+      ],
+    ],
+  ],
   ['HTMLImageElement', [['crossOrigin', 'crossorigin', 'enumerated', CORS]]],
   ['HTMLLinkElement', [['crossOrigin', 'crossorigin', 'enumerated', CORS]]],
   ['HTMLScriptElement', [['crossOrigin', 'crossorigin', 'enumerated', CORS]]],
-  ['HTMLMediaElement', [
-    ['crossOrigin', 'crossorigin', 'enumerated', CORS],
-    // Missing and invalid defaults are implementation-defined; the standard suggests metadata.
-    ['preload', 'preload', 'enumerated', { keywords: ['none', 'metadata', 'auto'], empty: 'auto', missing: 'metadata', invalid: 'metadata' }],
-  ]],
-  ['HTMLTrackElement', [
-    ['kind', 'kind', 'enumerated', { keywords: ['subtitles', 'captions', 'descriptions', 'chapters', 'metadata'], missing: 'subtitles', invalid: 'metadata' }],
-  ]],
-  ['HTMLCanvasElement', [
-    ['width', 'width', 'unsigned', { default: 300 }],
-    ['height', 'height', 'unsigned', { default: 150 }],
-  ]],
+  [
+    'HTMLMediaElement',
+    [
+      ['crossOrigin', 'crossorigin', 'enumerated', CORS],
+      // Missing and invalid defaults are implementation-defined; the standard suggests metadata.
+      [
+        'preload',
+        'preload',
+        'enumerated',
+        { keywords: ['none', 'metadata', 'auto'], empty: 'auto', missing: 'metadata', invalid: 'metadata' },
+      ],
+    ],
+  ],
+  [
+    'HTMLTrackElement',
+    [
+      [
+        'kind',
+        'kind',
+        'enumerated',
+        {
+          keywords: ['subtitles', 'captions', 'descriptions', 'chapters', 'metadata'],
+          missing: 'subtitles',
+          invalid: 'metadata',
+        },
+      ],
+    ],
+  ],
+  [
+    'HTMLCanvasElement',
+    [
+      ['width', 'width', 'unsigned', { default: 300 }],
+      ['height', 'height', 'unsigned', { default: 150 }],
+    ],
+  ],
   ['HTMLInputElement', [['size', 'size', 'unsigned', { positive: true, default: 20 }]]],
   // jsdom has autofocus on these four element interfaces and inputMode
   // (reflected as written, not enumerated) on input and textarea, as their
   // own members (black box 20.0.3 to 30.1.3); HTMLElement's stay for other
   // elements.
   ['HTMLButtonElement', [['autofocus', 'autofocus', 'boolean']]],
-  ['HTMLInputElement', [['autofocus', 'autofocus', 'boolean'], ['inputMode', 'inputmode', 'string']]],
+  [
+    'HTMLInputElement',
+    [
+      ['autofocus', 'autofocus', 'boolean'],
+      ['inputMode', 'inputmode', 'string'],
+    ],
+  ],
   ['HTMLSelectElement', [['autofocus', 'autofocus', 'boolean']]],
-  ['HTMLTextAreaElement', [['autofocus', 'autofocus', 'boolean'], ['inputMode', 'inputmode', 'string']]],
+  [
+    'HTMLTextAreaElement',
+    [
+      ['autofocus', 'autofocus', 'boolean'],
+      ['inputMode', 'inputmode', 'string'],
+    ],
+  ],
   ['HTMLButtonElement', SUBMITTER],
   ['HTMLInputElement', SUBMITTER],
-  ['HTMLFormElement', [['autocomplete', 'autocomplete', 'enumerated', { keywords: ['on', 'off'], missing: 'on', invalid: 'on' }]]],
+  [
+    'HTMLFormElement',
+    [['autocomplete', 'autocomplete', 'enumerated', { keywords: ['on', 'off'], missing: 'on', invalid: 'on' }]],
+  ],
   ['HTMLIFrameElement', [['srcdoc', 'srcdoc', 'string']]],
 ];
 
@@ -215,18 +324,29 @@ const PROSE_REFLECTIONS = [
 // shipping/billing and field names), or '' for anything else.
 const autofill = {
   get() {
-    const tokens = (get(this, 'autocomplete') ?? '').trim().toLowerCase().split(/[\t\n\f\r ]+/).filter(Boolean);
+    const tokens = (get(this, 'autocomplete') ?? '')
+      .trim()
+      .toLowerCase()
+      .split(/[\t\n\f\r ]+/)
+      .filter(Boolean);
     return tokens.length > 0 && tokens.every((t) => /^[a-z0-9-]+$/.test(t)) ? tokens.join(' ') : '';
   },
-  set(v) { set(this, 'autocomplete', String(v)); },
+  set(v) {
+    set(this, 'autocomplete', String(v));
+  },
 };
 
 // nonce (HTMLElement and SVGElement): jsdom reflects the content attribute
 // (black box, jsdom 20 to 30), where the standard keeps an internal slot
 // that setting the IDL attribute does not write back.
 export const NONCE = {
-  get() { return state(this).attrs.get('nonce') ?? ''; },
-  set(v) { state(this); set(this, 'nonce', String(v)); },
+  get() {
+    return state(this).attrs.get('nonce') ?? '';
+  },
+  set(v) {
+    state(this);
+    set(this, 'nonce', String(v));
+  },
 };
 
 // formAction reflects a URL, except that a missing or empty attribute gives
@@ -236,7 +356,9 @@ const formAction = {
     const value = get(this, 'formaction');
     return value === undefined || value === '' ? state(this).doc.URL : resolveURL(this, 'formaction');
   },
-  set(v) { set(this, 'formaction', String(v)); },
+  set(v) {
+    set(this, 'formaction', String(v));
+  },
 };
 
 const OTHER = [

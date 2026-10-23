@@ -4,24 +4,79 @@
 // createWindow(). Members sit on the same interface as in jsdom, because
 // tests spy on them there.
 import {
-  S, state, initNode, insert, remove, asciiLowercase, validElementLocalName, htmlElementName, replace, replaceAll, checkReplaceAll, textOf, contains, domError, rootOf, nextInTree,
-  childArray, elementChildArray, collectElements, elementById, setData, replaceData, adopt, shadowIncludingRoot, reactionScope,
-  ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, DOCUMENT_TYPE_NODE, HTML_NS, SVG_NS, connected,
-  CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE, isCharacterData,
-  namedAttributesSet, tooFewArguments, hooks,
+  S,
+  state,
+  initNode,
+  insert,
+  remove,
+  asciiLowercase,
+  validElementLocalName,
+  htmlElementName,
+  replace,
+  replaceAll,
+  checkReplaceAll,
+  textOf,
+  contains,
+  domError,
+  rootOf,
+  nextInTree,
+  childArray,
+  elementChildArray,
+  collectElements,
+  elementById,
+  setData,
+  replaceData,
+  adopt,
+  shadowIncludingRoot,
+  reactionScope,
+  ELEMENT_NODE,
+  TEXT_NODE,
+  COMMENT_NODE,
+  DOCUMENT_NODE,
+  DOCUMENT_FRAGMENT_NODE,
+  DOCUMENT_TYPE_NODE,
+  HTML_NS,
+  SVG_NS,
+  connected,
+  CDATA_SECTION_NODE,
+  PROCESSING_INSTRUCTION_NODE,
+  isCharacterData,
+  namedAttributesSet,
+  tooFewArguments,
+  hooks,
 } from './internal.js';
 import { XML_INTERFACES, XML_DOCUMENT_MEMBERS } from './xml.js';
 import { CSS_INTERFACES, styleOf } from './css.js';
 import { hasReflections, reflectedMembers } from './reflect.js';
-import { GLOBAL_HANDLER_MEMBERS, WINDOW_HANDLER_MEMBERS, eventHandlerAttributesAdded, handlerMembers, handlerVariant, adjustHandlers } from './event-handlers.js';
+import {
+  GLOBAL_HANDLER_MEMBERS,
+  WINDOW_HANDLER_MEMBERS,
+  eventHandlerAttributesAdded,
+  handlerMembers,
+  handlerVariant,
+  adjustHandlers,
+} from './event-handlers.js';
 import { CUSTOM_ELEMENT_INTERFACES, ATTACH_INTERNALS_MEMBERS, lookUp } from './custom-elements.js';
 import { RANGE_INTERFACES, newRange, getSelection, splitText, normalize } from './ranges.js';
 import { CSSOM_INTERFACES, STYLE_ELEMENT_MEMBERS, documentStyleSheets } from './cssom.js';
 import { FOCUS_MEMBERS, DOCUMENT_FOCUS_MEMBERS } from './focus.js';
 import { FORM_INTERFACES, FORM_MEMBERS, clickMember, labelsMember, cloneFormState } from './forms.js';
-import { GEOMETRY_INTERFACES, ELEMENT_LAYOUT, HTML_ELEMENT_LAYOUT, getInnerText, setInnerText, setOuterText } from './layout.js';
+import {
+  GEOMETRY_INTERFACES,
+  ELEMENT_LAYOUT,
+  HTML_ELEMENT_LAYOUT,
+  getInnerText,
+  setInnerText,
+  setOuterText,
+} from './layout.js';
 import { querySelectorAll as selectAll, matches as matchSelector, closest as closestMatch } from './selectors.js';
-import { DOM_PARSING_INTERFACES, innerMarkup, outerMarkup, XPATH_INTERFACES, XPATH_EVALUATOR_MEMBERS } from './dom-parsing.js';
+import {
+  DOM_PARSING_INTERFACES,
+  innerMarkup,
+  outerMarkup,
+  XPATH_INTERFACES,
+  XPATH_EVALUATOR_MEMBERS,
+} from './dom-parsing.js';
 import { FILE_READER_INTERFACES } from './file-reader.js';
 import { XHR_INTERFACES } from './xhr.js';
 import { BLOB_INTERFACES } from './file-reader.js';
@@ -44,11 +99,36 @@ import { EVENT_INTERFACES, createEvent, retarget } from './events.js';
 import { MUTATION_INTERFACES } from './mutation.js';
 import { FEATURE_INTERFACES, WINDOW_MEMBERS, URL_INTERFACES } from './window-features.js';
 import { TRAVERSAL_INTERFACES, createTreeWalker, createNodeIterator } from './traversal.js';
-import { parseFragment, parseDocument, serializeChildren, setInnerHTML, setOuterHTML, insertAdjacentHTML, templateContent } from './html.js';
 import {
-  ATTRIBUTE_INTERFACES, writeAttribute, attrName, attrNode, namedNodeMap, tokenList, domStringMap,
-  setAttributeNode, removeAttributeNode, createAttribute, findAttributeNS, setAttributeNS, checkAttributeName, validateAndExtract, createAttributeNS, attrInfo,
-  keyByName, valueByName, attributeNames, removeAttributeByName,
+  parseFragment,
+  parseDocument,
+  serializeChildren,
+  setInnerHTML,
+  setOuterHTML,
+  insertAdjacentHTML,
+  templateContent,
+} from './html.js';
+import {
+  ATTRIBUTE_INTERFACES,
+  writeAttribute,
+  attrName,
+  attrNode,
+  namedNodeMap,
+  tokenList,
+  domStringMap,
+  setAttributeNode,
+  removeAttributeNode,
+  createAttribute,
+  findAttributeNS,
+  setAttributeNS,
+  checkAttributeName,
+  validateAndExtract,
+  createAttributeNS,
+  attrInfo,
+  keyByName,
+  valueByName,
+  attributeNames,
+  removeAttributeByName,
 } from './attributes.js';
 
 // Member objects merged in order, as a list window.js reads when it first
@@ -62,18 +142,26 @@ const internals = (node) => win(node)[S];
 const queries = {
   querySelector(selector) {
     state(this);
-    if (selector === undefined && arguments.length < 1) tooFewArguments(this.constructor?.name ?? 'Node', 'querySelector', 1, arguments.length);
+    if (selector === undefined && arguments.length < 1)
+      tooFewArguments(this.constructor?.name ?? 'Node', 'querySelector', 1, arguments.length);
     return selectAll(this, selector, true)[0] ?? null;
   },
   querySelectorAll(selector) {
     state(this);
-    if (selector === undefined && arguments.length < 1) tooFewArguments(this.constructor?.name ?? 'Node', 'querySelectorAll', 1, arguments.length);
+    if (selector === undefined && arguments.length < 1)
+      tooFewArguments(this.constructor?.name ?? 'Node', 'querySelectorAll', 1, arguments.length);
     return staticList(internals(this).protos.NodeList, selectAll(this, selector));
   },
 };
 
-const firstElement = (s) => { for (let c = s.first; c; c = c[S].next) if (c[S].type === ELEMENT_NODE) return c; return null; };
-const lastElement = (s) => { for (let c = s.last; c; c = c[S].prev) if (c[S].type === ELEMENT_NODE) return c; return null; };
+const firstElement = (s) => {
+  for (let c = s.first; c; c = c[S].next) if (c[S].type === ELEMENT_NODE) return c;
+  return null;
+};
+const lastElement = (s) => {
+  for (let c = s.last; c; c = c[S].prev) if (c[S].type === ELEMENT_NODE) return c;
+  return null;
+};
 
 // Nodes and strings (as text) for append/prepend/before/after/replaceWith.
 function toNode(node, items) {
@@ -90,13 +178,26 @@ const parentNode = mix(queries, {
   [Symbol.unscopables]: { unscopables: ['prepend', 'append', 'replaceChildren'] },
   get children() {
     const s = state(this);
-    return s.childElements ?? (s.childElements = liveList(internals(this).protos.HTMLCollection, () => elementChildArray(this)));
+    return (
+      s.childElements ??
+      (s.childElements = liveList(internals(this).protos.HTMLCollection, () => elementChildArray(this)))
+    );
   },
-  get firstElementChild() { return firstElement(state(this)); },
-  get lastElementChild() { return lastElement(state(this)); },
-  get childElementCount() { return elementChildArray(this).length; },
-  append(...items) { if (items.length) insert(this, toNode(this, items), null); },
-  prepend(...items) { if (items.length) insert(this, toNode(this, items), state(this).first); },
+  get firstElementChild() {
+    return firstElement(state(this));
+  },
+  get lastElementChild() {
+    return lastElement(state(this));
+  },
+  get childElementCount() {
+    return elementChildArray(this).length;
+  },
+  append(...items) {
+    if (items.length) insert(this, toNode(this, items), null);
+  },
+  prepend(...items) {
+    if (items.length) insert(this, toNode(this, items), state(this).first);
+  },
   replaceChildren(...items) {
     const node = items.length ? toNode(this, items) : null;
     state(this);
@@ -140,7 +241,10 @@ const childNode = {
       else remove(p, this);
     } else if (node) insert(p, node, next);
   },
-  remove() { const p = state(this).parent; if (p) remove(p, this); },
+  remove() {
+    const p = state(this).parent;
+    if (p) remove(p, this);
+  },
 };
 
 // NonDocumentTypeChildNode mixin (Element, CharacterData).
@@ -156,21 +260,39 @@ const elementSiblings = {
 };
 
 const NODE_TYPES = {
-  ELEMENT_NODE: 1, ATTRIBUTE_NODE: 2, TEXT_NODE: 3, CDATA_SECTION_NODE: 4, ENTITY_REFERENCE_NODE: 5,
-  ENTITY_NODE: 6, PROCESSING_INSTRUCTION_NODE: 7, COMMENT_NODE: 8, DOCUMENT_NODE: 9, DOCUMENT_TYPE_NODE: 10,
-  DOCUMENT_FRAGMENT_NODE: 11, NOTATION_NODE: 12, DOCUMENT_POSITION_DISCONNECTED: 1, DOCUMENT_POSITION_PRECEDING: 2,
-  DOCUMENT_POSITION_FOLLOWING: 4, DOCUMENT_POSITION_CONTAINS: 8, DOCUMENT_POSITION_CONTAINED_BY: 16,
+  ELEMENT_NODE: 1,
+  ATTRIBUTE_NODE: 2,
+  TEXT_NODE: 3,
+  CDATA_SECTION_NODE: 4,
+  ENTITY_REFERENCE_NODE: 5,
+  ENTITY_NODE: 6,
+  PROCESSING_INSTRUCTION_NODE: 7,
+  COMMENT_NODE: 8,
+  DOCUMENT_NODE: 9,
+  DOCUMENT_TYPE_NODE: 10,
+  DOCUMENT_FRAGMENT_NODE: 11,
+  NOTATION_NODE: 12,
+  DOCUMENT_POSITION_DISCONNECTED: 1,
+  DOCUMENT_POSITION_PRECEDING: 2,
+  DOCUMENT_POSITION_FOLLOWING: 4,
+  DOCUMENT_POSITION_CONTAINS: 8,
+  DOCUMENT_POSITION_CONTAINED_BY: 16,
   DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC: 32,
 };
 
-const ancestry = (node) => { const chain = []; for (let n = node; n; n = n[S].parent) chain.push(n); return chain.reverse(); };
+const ancestry = (node) => {
+  const chain = [];
+  for (let n = node; n; n = n[S].parent) chain.push(n);
+  return chain.reverse();
+};
 
 function compareDocumentPosition(a, b) {
   if (a === b) return 0;
   if (rootOf(a) !== rootOf(b)) return 1 | 32 | 4;
   if (contains(a, b)) return 16 | 4;
   if (contains(b, a)) return 8 | 2;
-  const ca = ancestry(a), cb = ancestry(b);
+  const ca = ancestry(a),
+    cb = ancestry(b);
   let i = 0;
   while (ca[i] === cb[i]) i++;
   // ca[i] and cb[i] are siblings: b precedes a if it comes first.
@@ -188,11 +310,19 @@ const XMLNS_NAMESPACE = 'http://www.w3.org/2000/xmlns/';
 function namespaceElement(node) {
   const s = node[S];
   switch (s.type) {
-    case ELEMENT_NODE: return node;
-    case DOCUMENT_NODE: return firstElement(s);
-    case DOCUMENT_TYPE_NODE: case DOCUMENT_FRAGMENT_NODE: return null;
-    case ATTRIBUTE_NODE: return s.element ?? null;
-    default: { const p = s.parent; return p !== null && p[S].type === ELEMENT_NODE ? p : null; }
+    case ELEMENT_NODE:
+      return node;
+    case DOCUMENT_NODE:
+      return firstElement(s);
+    case DOCUMENT_TYPE_NODE:
+    case DOCUMENT_FRAGMENT_NODE:
+      return null;
+    case ATTRIBUTE_NODE:
+      return s.element ?? null;
+    default: {
+      const p = s.parent;
+      return p !== null && p[S].type === ELEMENT_NODE ? p : null;
+    }
   }
 }
 
@@ -206,7 +336,10 @@ function locateNamespace(node, prefix) {
     if (s.attrNS) {
       for (const [name, info] of s.attrNS) {
         if (info.ns !== XMLNS_NAMESPACE) continue;
-        if ((info.prefix === 'xmlns' && info.local === prefix) || (prefix === null && info.prefix === null && info.local === 'xmlns')) {
+        if (
+          (info.prefix === 'xmlns' && info.local === prefix) ||
+          (prefix === null && info.prefix === null && info.local === 'xmlns')
+        ) {
           const value = s.attrs.get(name);
           return value === '' ? null : value;
         }
@@ -225,7 +358,8 @@ function locatePrefix(element, namespace) {
     if (s.ns === namespace && s.prefix !== undefined) return s.prefix;
     if (s.attrNS) {
       for (const [name, info] of s.attrNS) {
-        if (info.ns === XMLNS_NAMESPACE && info.prefix === 'xmlns' && s.attrs.get(name) === namespace) return info.local;
+        if (info.ns === XMLNS_NAMESPACE && info.prefix === 'xmlns' && s.attrs.get(name) === namespace)
+          return info.local;
       }
     }
     const p = s.parent;
@@ -244,7 +378,13 @@ function isEqualNode(a, b) {
       if (as.name !== bs.name || as.publicId !== bs.publicId || as.systemId !== bs.systemId) return false;
       break;
     case ELEMENT_NODE: {
-      if (as.ns !== bs.ns || as.tag !== bs.tag || (as.prefix ?? null) !== (bs.prefix ?? null) || as.attrs.size !== bs.attrs.size) return false;
+      if (
+        as.ns !== bs.ns ||
+        as.tag !== bs.tag ||
+        (as.prefix ?? null) !== (bs.prefix ?? null) ||
+        as.attrs.size !== bs.attrs.size
+      )
+        return false;
       // Attributes are keyed by namespace and local name.
       for (const [key, value] of as.attrs) if (bs.attrs.get(key) !== value) return false;
       break;
@@ -263,7 +403,9 @@ function isEqualNode(a, b) {
 // ASCII lowercase (DOM names): other characters keep their case.
 const asciiLower = asciiLowercase;
 const invalidName = (name) => domError(`'${name}' is not a valid name.`, 'InvalidCharacterError');
-const throwInvalidName = (name) => { throw invalidName(name); };
+const throwInvalidName = (name) => {
+  throw invalidName(name);
+};
 // createElement names seen before (validated and lowercased), so the usual
 // call costs one map lookup.
 const HTML_NAMES = new Map();
@@ -274,7 +416,10 @@ function htmlName(name) {
   return lower;
 }
 
-const hasOnAttribute = (attrs) => { for (const name of attrs.keys()) if (name.startsWith('on')) return true; return false; };
+const hasOnAttribute = (attrs) => {
+  for (const name of attrs.keys()) if (name.startsWith('on')) return true;
+  return false;
+};
 
 export const clone = (node, deep, doc) => reactionScope(cloneNode, node, deep, doc);
 
@@ -283,7 +428,16 @@ function cloneNode(node, deep, doc) {
   const w = doc[S].window[S];
   let copy;
   if (s.type === ELEMENT_NODE) {
-    copy = w.createElementNS(s.ns, s.prefix ? `${s.prefix}:${s.tag}` : s.tag, doc, false, null, false, s.ceIs ?? null, !!s.prefix);
+    copy = w.createElementNS(
+      s.ns,
+      s.prefix ? `${s.prefix}:${s.tag}` : s.tag,
+      doc,
+      false,
+      null,
+      false,
+      s.ceIs ?? null,
+      !!s.prefix,
+    );
     copy[S].attrs = new Map(s.attrs);
     // A clone of a script that already started is already started.
     if (s.script === 'started') copy[S].script = 'started';
@@ -302,13 +456,23 @@ function cloneNode(node, deep, doc) {
     // A document of the same interface, type, URL and mode, without a
     // browsing context; its children belong to it.
     copy = w.initDocument(Object.create(Object.getPrototypeOf(node)), {
-      noView: true, url: node.URL, contentType: s.contentType, xml: !!s.xml, mode: s.mode ?? 'no-quirks',
+      noView: true,
+      url: node.URL,
+      contentType: s.contentType,
+      xml: !!s.xml,
+      mode: s.mode ?? 'no-quirks',
     });
     // And the same encoding (an XMLHttpRequest response document's charset).
     if (s.charset !== undefined) copy[S].charset = s.charset;
     doc = copy;
   } else if (s.type === ATTRIBUTE_NODE) {
-    copy = initNode(Object.create(w.protos.Attr), ATTRIBUTE_NODE, doc, { name: s.name, key: s.key, element: null, detachedValue: node.value, info: attrInfo(s) });
+    copy = initNode(Object.create(w.protos.Attr), ATTRIBUTE_NODE, doc, {
+      name: s.name,
+      key: s.key,
+      element: null,
+      detachedValue: node.value,
+      info: attrInfo(s),
+    });
   } else throw domError('Cloning this node is not supported yet.', 'NotSupportedError');
   if (deep) {
     for (let c = s.first; c; c = c[S].next) insert(copy, cloneNode(c, true, doc), null);
@@ -333,8 +497,10 @@ const qualifiedName = (s) => (s.prefix === undefined ? s.tag : `${s.prefix}:${s.
 // Uppercased for HTML elements in HTML documents only (cached per element).
 // HTML elements in HTML documents: the qualified name in ASCII uppercase
 // (createElement('\u0131nput').tagName is '\u0131NPUT'), cached.
-const asciiUpper = (name) => (/[^\0-\x7f]/.test(name) ? name.replace(/[a-z]+/g, (m) => m.toUpperCase()) : name.toUpperCase());
-const qualifiedTagName = (s) => (s.ns === HTML_NS && !s.doc[S].xml ? (s.upper ?? (s.upper = asciiUpper(qualifiedName(s)))) : qualifiedName(s));
+const asciiUpper = (name) =>
+  /[^\0-\x7f]/.test(name) ? name.replace(/[a-z]+/g, (m) => m.toUpperCase()) : name.toUpperCase();
+const qualifiedTagName = (s) =>
+  s.ns === HTML_NS && !s.doc[S].xml ? (s.upper ?? (s.upper = asciiUpper(qualifiedName(s)))) : qualifiedName(s);
 const shadowState = (self) => {
   const s = state(self);
   if (!s.shadow) throw new TypeError('Illegal invocation');
@@ -342,27 +508,69 @@ const shadowState = (self) => {
 };
 
 // Valid shadow host names (DOM): autonomous custom elements and these.
-const SHADOW_HOSTS = new Set(['article', 'aside', 'blockquote', 'body', 'div', 'footer', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-  'header', 'main', 'nav', 'p', 'section', 'span']);
+const SHADOW_HOSTS = new Set([
+  'article',
+  'aside',
+  'blockquote',
+  'body',
+  'div',
+  'footer',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'header',
+  'main',
+  'nav',
+  'p',
+  'section',
+  'span',
+]);
 
 // Attach a shadow root (DOM), without declarative shadow roots or custom
 // element definitions yet.
 function attachShadow(element, init) {
   const es = element[S];
   const mode = init?.mode;
-  if (mode !== 'open' && mode !== 'closed') throw new TypeError("Failed to execute 'attachShadow' on 'Element': The provided value is not a valid enum value of type ShadowRootMode.");
-  if (es.ns !== HTML_NS) throw domError("Failed to execute 'attachShadow' on 'Element': This element does not support attachShadow", 'NotSupportedError');
+  if (mode !== 'open' && mode !== 'closed')
+    throw new TypeError(
+      "Failed to execute 'attachShadow' on 'Element': The provided value is not a valid enum value of type ShadowRootMode.",
+    );
+  if (es.ns !== HTML_NS)
+    throw domError(
+      "Failed to execute 'attachShadow' on 'Element': This element does not support attachShadow",
+      'NotSupportedError',
+    );
   const customName = es.tag.includes('-');
-  if (!customName && !SHADOW_HOSTS.has(es.tag)) throw domError("Failed to execute 'attachShadow' on 'Element': This element does not support attachShadow", 'NotSupportedError');
+  if (!customName && !SHADOW_HOSTS.has(es.tag))
+    throw domError(
+      "Failed to execute 'attachShadow' on 'Element': This element does not support attachShadow",
+      'NotSupportedError',
+    );
   // A definition with disabledFeatures 'shadow' (looked up, so also before
   // the element is upgraded), with jsdom's message (20 to 30).
-  if (hooks.ce !== null && (customName || (es.ceIs !== undefined && es.ceIs !== null)) && lookUp(es.doc, es.ns, es.tag, es.ceIs ?? null)?.disableShadow) {
+  if (
+    hooks.ce !== null &&
+    (customName || (es.ceIs !== undefined && es.ceIs !== null)) &&
+    lookUp(es.doc, es.ns, es.tag, es.ceIs ?? null)?.disableShadow
+  ) {
     throw domError('Shadow root cannot be create on a custom element with disabled shadow', 'NotSupportedError');
   }
-  if (es.shadowRoot) throw domError("Failed to execute 'attachShadow' on 'Element': Shadow root cannot be created on a host which already hosts a shadow tree.", 'NotSupportedError');
+  if (es.shadowRoot)
+    throw domError(
+      "Failed to execute 'attachShadow' on 'Element': Shadow root cannot be created on a host which already hosts a shadow tree.",
+      'NotSupportedError',
+    );
   const shadow = initNode(Object.create(internals(element).protos.ShadowRoot), DOCUMENT_FRAGMENT_NODE, es.doc, {
-    shadow: true, host: element, mode, delegatesFocus: !!init.delegatesFocus, serializable: !!init.serializable,
-    slotAssignment: init.slotAssignment === 'manual' ? 'manual' : 'named', clonable: !!init.clonable,
+    shadow: true,
+    host: element,
+    mode,
+    delegatesFocus: !!init.delegatesFocus,
+    serializable: !!init.serializable,
+    slotAssignment: init.slotAssignment === 'manual' ? 'manual' : 'named',
+    clonable: !!init.clonable,
   });
   es.shadowRoot = shadow;
   return shadow;
@@ -370,15 +578,25 @@ function attachShadow(element, init) {
 
 function documentWrite(doc, text) {
   const s = state(doc);
-  if (s.xml) throw domError("Failed to execute 'write' on 'Document': Only HTML documents support write().", 'InvalidStateError');
+  if (s.xml)
+    throw domError(
+      "Failed to execute 'write' on 'Document': Only HTML documents support write().",
+      'InvalidStateError',
+    );
   if (s.writeBuffer === undefined) doc.open();
   s.writeBuffer += text;
   while (s.first) remove(doc, s.first);
   parseDocument(doc, s.writeBuffer);
 }
 
-const isHTMLTag = (node, tag) => { const s = node[S]; return s.type === ELEMENT_NODE && s.ns === HTML_NS && s.tag === tag; };
-const htmlElement = (doc) => { const el = firstElement(doc[S]); return el && isHTMLTag(el, 'html') ? el : null; };
+const isHTMLTag = (node, tag) => {
+  const s = node[S];
+  return s.type === ELEMENT_NODE && s.ns === HTML_NS && s.tag === tag;
+};
+const htmlElement = (doc) => {
+  const el = firstElement(doc[S]);
+  return el && isHTMLTag(el, 'html') ? el : null;
+};
 // The head element: the html element's first head child.
 function headElement(doc) {
   const html = htmlElement(doc);
@@ -388,7 +606,8 @@ function headElement(doc) {
 // The body element: the html element's first body or frameset child.
 function bodyElement(doc) {
   const html = htmlElement(doc);
-  if (html) for (let c = html[S].first; c; c = c[S].next) if (isHTMLTag(c, 'body') || isHTMLTag(c, 'frameset')) return c;
+  if (html)
+    for (let c = html[S].first; c; c = c[S].next) if (isHTMLTag(c, 'body') || isHTMLTag(c, 'frameset')) return c;
   return null;
 }
 // The title element: the first HTML title element in the document.
@@ -401,22 +620,36 @@ function* descendantElements(root) {
 }
 
 // Text nodes, CDATA sections included.
-const isText = (node) => { const t = node[S].type; return t === TEXT_NODE || t === CDATA_SECTION_NODE; };
+const isText = (node) => {
+  const t = node[S].type;
+  return t === TEXT_NODE || t === CDATA_SECTION_NODE;
+};
 
 const isTemplateEl = (el) => el[S].ns === HTML_NS && el[S].tag === 'template';
 
 const reflect = (attr) => ({
-  get() { return state(this).attrs.get(attr) ?? ''; },
-  set(v) { writeAttribute(this, attr, String(v)); },
+  get() {
+    return state(this).attrs.get(attr) ?? '';
+  },
+  set(v) {
+    writeAttribute(this, attr, String(v));
+  },
 });
 
 const htmlOrSvgElement = {
-  get dataset() { state(this); return domStringMap(this, writeAttribute); },
+  get dataset() {
+    state(this);
+    return domStringMap(this, writeAttribute);
+  },
 };
 
 const inlineStyle = {
-  get style() { return styleOf(this, internals(this).protos.CSSStyleProperties); },
-  set style(text) { styleOf(this, internals(this).protos.CSSStyleProperties).cssText = text; },
+  get style() {
+    return styleOf(this, internals(this).protos.CSSStyleProperties);
+  },
+  set style(text) {
+    styleOf(this, internals(this).protos.CSSStyleProperties).cssText = text;
+  },
 };
 
 export const INTERFACES = [
@@ -446,7 +679,13 @@ export const INTERFACES = [
   {
     name: 'Window',
     parent: 'EventTarget',
-    members: mix(GLOBAL_HANDLER_MEMBERS, WINDOW_HANDLER_MEMBERS, WINDOW_MEMBERS, WINDOW_FRAME_MEMBERS, STORAGE_WINDOW_MEMBERS),
+    members: mix(
+      GLOBAL_HANDLER_MEMBERS,
+      WINDOW_HANDLER_MEMBERS,
+      WINDOW_MEMBERS,
+      WINDOW_FRAME_MEMBERS,
+      STORAGE_WINDOW_MEMBERS,
+    ),
     // The event handlers of the profile's jsdom (event-handlers.js).
     variant: handlerVariant,
     adjust: (descriptors, variant) => adjustHandlers(descriptors, variant, true),
@@ -457,300 +696,622 @@ export const INTERFACES = [
     statics: NODE_TYPES,
     members: {
       ...Object.fromEntries(Object.entries(NODE_TYPES).map(([k, v]) => [k, { constant: v }])),
-      get nodeType() { return state(this).type; },
+      get nodeType() {
+        return state(this).type;
+      },
       get nodeName() {
         const s = state(this);
         switch (s.type) {
-          case ELEMENT_NODE: return qualifiedTagName(s);
-          case TEXT_NODE: return '#text';
-          case COMMENT_NODE: return '#comment';
-          case CDATA_SECTION_NODE: return '#cdata-section';
-          case PROCESSING_INSTRUCTION_NODE: return s.target;
-          case DOCUMENT_NODE: return '#document';
-          case DOCUMENT_TYPE_NODE: return s.name;
-          default: return '#document-fragment';
+          case ELEMENT_NODE:
+            return qualifiedTagName(s);
+          case TEXT_NODE:
+            return '#text';
+          case COMMENT_NODE:
+            return '#comment';
+          case CDATA_SECTION_NODE:
+            return '#cdata-section';
+          case PROCESSING_INSTRUCTION_NODE:
+            return s.target;
+          case DOCUMENT_NODE:
+            return '#document';
+          case DOCUMENT_TYPE_NODE:
+            return s.name;
+          default:
+            return '#document-fragment';
         }
       },
-      get nodeValue() { const s = state(this); return isCharacterData(s.type) ? s.data : null; },
-      set nodeValue(v) { const s = state(this); if (isCharacterData(s.type)) setData(this, String(v ?? '')); },
-      get ownerDocument() { const s = state(this); return s.type === DOCUMENT_NODE ? null : s.doc; },
-      get parentNode() { return state(this).parent; },
-      get parentElement() { const p = state(this).parent; return p && p[S].type === ELEMENT_NODE ? p : null; },
+      get nodeValue() {
+        const s = state(this);
+        return isCharacterData(s.type) ? s.data : null;
+      },
+      set nodeValue(v) {
+        const s = state(this);
+        if (isCharacterData(s.type)) setData(this, String(v ?? ''));
+      },
+      get ownerDocument() {
+        const s = state(this);
+        return s.type === DOCUMENT_NODE ? null : s.doc;
+      },
+      get parentNode() {
+        return state(this).parent;
+      },
+      get parentElement() {
+        const p = state(this).parent;
+        return p && p[S].type === ELEMENT_NODE ? p : null;
+      },
       get childNodes() {
         const s = state(this);
         return s.childList ?? (s.childList = liveList(internals(this).protos.NodeList, () => childArray(this)));
       },
-      get firstChild() { return state(this).first; },
-      get lastChild() { return state(this).last; },
-      get nextSibling() { return state(this).next; },
-      get previousSibling() { return state(this).prev; },
-      get isConnected() { state(this); return connected(this); },
-      get baseURI() { return nodeBaseURI(this); },
-      getRootNode(options = undefined) { state(this); return options?.composed ? shadowIncludingRoot(this) : rootOf(this); },
-      get textContent() { const t = state(this).type; return t === DOCUMENT_NODE || t === DOCUMENT_TYPE_NODE ? null : textOf(this); },
+      get firstChild() {
+        return state(this).first;
+      },
+      get lastChild() {
+        return state(this).last;
+      },
+      get nextSibling() {
+        return state(this).next;
+      },
+      get previousSibling() {
+        return state(this).prev;
+      },
+      get isConnected() {
+        state(this);
+        return connected(this);
+      },
+      get baseURI() {
+        return nodeBaseURI(this);
+      },
+      getRootNode(options = undefined) {
+        state(this);
+        return options?.composed ? shadowIncludingRoot(this) : rootOf(this);
+      },
+      get textContent() {
+        const t = state(this).type;
+        return t === DOCUMENT_NODE || t === DOCUMENT_TYPE_NODE ? null : textOf(this);
+      },
       set textContent(value) {
         const s = state(this);
         if (s.type === DOCUMENT_NODE || s.type === DOCUMENT_TYPE_NODE) return;
-        if (isCharacterData(s.type)) { setData(this, String(value ?? '')); return; }
+        if (isCharacterData(s.type)) {
+          setData(this, String(value ?? ''));
+          return;
+        }
         const text = value == null ? '' : String(value);
         replaceAll(this, text ? internals(this).createText(text, s.doc) : null);
       },
-      appendChild(node) { return insert(this, node, null); },
+      appendChild(node) {
+        return insert(this, node, null);
+      },
       insertBefore(node, ref) {
         // The child argument is required (it may be null or undefined).
-        if (ref === undefined && arguments.length < 2) throw new TypeError("Failed to execute 'insertBefore' on 'Node': 2 arguments required, but only 1 present.");
+        if (ref === undefined && arguments.length < 2)
+          throw new TypeError("Failed to execute 'insertBefore' on 'Node': 2 arguments required, but only 1 present.");
         return insert(this, node, ref ?? null);
       },
-      removeChild(node) { return remove(this, node); },
-      replaceChild(node, child) { return replace(this, node, child); },
-      cloneNode(deep = false) { const s = state(this); return clone(this, deep, s.type === DOCUMENT_NODE ? this : s.doc); },
+      removeChild(node) {
+        return remove(this, node);
+      },
+      replaceChild(node, child) {
+        return replace(this, node, child);
+      },
+      cloneNode(deep = false) {
+        const s = state(this);
+        return clone(this, deep, s.type === DOCUMENT_NODE ? this : s.doc);
+      },
       contains(node) {
-        if (node == null) { state(this); if (node === undefined && arguments.length < 1) tooFewArguments('Node', 'contains', 1, arguments.length); return false; }
+        if (node == null) {
+          state(this);
+          if (node === undefined && arguments.length < 1) tooFewArguments('Node', 'contains', 1, arguments.length);
+          return false;
+        }
         return contains(this, node);
       },
-      compareDocumentPosition(other) { return compareDocumentPosition(this, other); },
-      isSameNode(other) { state(this); if (other === undefined && arguments.length < 1) tooFewArguments('Node', 'isSameNode', 1, arguments.length); return this === other; },
+      compareDocumentPosition(other) {
+        return compareDocumentPosition(this, other);
+      },
+      isSameNode(other) {
+        state(this);
+        if (other === undefined && arguments.length < 1) tooFewArguments('Node', 'isSameNode', 1, arguments.length);
+        return this === other;
+      },
       lookupNamespaceURI(prefix) {
         state(this);
-        if (prefix === undefined && arguments.length < 1) tooFewArguments('Node', 'lookupNamespaceURI', 1, arguments.length);
+        if (prefix === undefined && arguments.length < 1)
+          tooFewArguments('Node', 'lookupNamespaceURI', 1, arguments.length);
         const p = prefix == null || prefix === '' ? null : String(prefix);
         return locateNamespace(this, p);
       },
       lookupPrefix(namespace) {
         state(this);
-        if (namespace === undefined && arguments.length < 1) tooFewArguments('Node', 'lookupPrefix', 1, arguments.length);
+        if (namespace === undefined && arguments.length < 1)
+          tooFewArguments('Node', 'lookupPrefix', 1, arguments.length);
         if (namespace == null || namespace === '') return null;
         const start = namespaceElement(this);
         return start === null ? null : locatePrefix(start, String(namespace));
       },
       isDefaultNamespace(namespace) {
         state(this);
-        if (namespace === undefined && arguments.length < 1) tooFewArguments('Node', 'isDefaultNamespace', 1, arguments.length);
+        if (namespace === undefined && arguments.length < 1)
+          tooFewArguments('Node', 'isDefaultNamespace', 1, arguments.length);
         const ns = namespace == null || namespace === '' ? null : String(namespace);
         return locateNamespace(this, null) === ns;
       },
-      isEqualNode(other) { state(this); if (other === undefined && arguments.length < 1) tooFewArguments('Node', 'isEqualNode', 1, arguments.length); return other != null && isEqualNode(this, state(other) && other); },
-      hasChildNodes() { return state(this).count > 0; },
-      normalize() { state(this); normalize(this); },
+      isEqualNode(other) {
+        state(this);
+        if (other === undefined && arguments.length < 1) tooFewArguments('Node', 'isEqualNode', 1, arguments.length);
+        return other != null && isEqualNode(this, state(other) && other);
+      },
+      hasChildNodes() {
+        return state(this).count > 0;
+      },
+      normalize() {
+        state(this);
+        normalize(this);
+      },
     },
   },
   {
     name: 'Document',
     parent: 'Node',
     // new Document(): an XML document without a browsing context, as in jsdom.
-    construct: (w, self) => w[S].initDocument(self, { noView: true, url: 'about:blank', contentType: 'application/xml', xml: true }),
+    construct: (w, self) =>
+      w[S].initDocument(self, { noView: true, url: 'about:blank', contentType: 'application/xml', xml: true }),
     // The event handlers of the profile's jsdom (event-handlers.js).
     variant: handlerVariant,
     adjust: adjustHandlers,
-    members: mix(parentNode, DOCUMENT_FOCUS_MEMBERS, GLOBAL_HANDLER_MEMBERS, XML_DOCUMENT_MEMBERS, XPATH_EVALUATOR_MEMBERS, {
-      get defaultView() { const s = state(this); return s.noView ? null : s.window; },
-      get URL() { const s = state(this); return s.url ?? s.window[S].url.href; },
-      get documentURI() { state(this); return this.URL; },
-      // Page visibility: a document in a window is always visible (as in jsdom
-      // with pretendToBeVisual, which test environments use); one without a
-      // browsing context is hidden.
-      get visibilityState() { return state(this).noView ? 'hidden' : 'visible'; },
-      get hidden() { return !!state(this).noView; },
-      ...handlerMembers(['onreadystatechange', 'onvisibilitychange']),
-      get cookie() { state(this); return documentCookie(this); },
-      set cookie(v) { state(this); setDocumentCookie(this, v); },
-      get location() { const s = state(this); return s.noView ? null : s.window[S].location; },
-      get documentElement() { return firstElement(state(this)); },
-      get doctype() {
-        for (let c = state(this).first; c; c = c[S].next) if (c[S].type === DOCUMENT_TYPE_NODE) return c;
-        return null;
-      },
-      get head() { return headElement(this); },
-      get body() { return bodyElement(this); },
-      // The html element's dir attribute, limited to only known values.
-      get dir() { const html = htmlElement(this); return html ? knownDir(html[S].attrs.get('dir')) : ''; },
-      set dir(v) { const html = htmlElement(this); if (html) writeAttribute(html, 'dir', String(v)); },
-      // HTML 3.1.6: replaces the body element, or appends to the document
-      // element when there is none.
-      set body(value) {
-        state(this);
-        const vs = value?.[S];
-        if (value !== null && (vs === undefined || vs.type !== ELEMENT_NODE || vs.ns !== HTML_NS)) {
-          throw new TypeError("Failed to set the 'body' property on 'Document': The provided value is not of type 'HTMLElement'.");
-        }
-        if (value === null || (vs.tag !== 'body' && vs.tag !== 'frameset')) {
-          throw domError("Failed to set the 'body' property on 'Document': The new body element is of type '" + (value === null ? 'null' : vs.tag.toUpperCase()) + "'. It must be either a 'BODY' or 'FRAMESET' element.", 'HierarchyRequestError');
-        }
-        const body = bodyElement(this);
-        if (value === body) return;
-        if (body !== null) { replace(body[S].parent, value, body); return; }
-        const root = firstElement(state(this));
-        if (root === null) throw domError("Failed to set the 'body' property on 'Document': No document element exists.", 'HierarchyRequestError');
-        insert(root, value, null);
-      },
-      // HTML 3.1.3: an SVG document's title is its root's first SVG title
-      // child; otherwise the first HTML title element. ASCII whitespace is
-      // stripped and collapsed (other spaces, like U+00A0, are kept).
-      get title() {
-        const root = firstElement(state(this));
-        let title = null;
-        if (root !== null && root[S].ns === SVG_NS && root[S].tag === 'svg') {
-          for (let c = root[S].first; c; c = c[S].next) if (c[S].type === ELEMENT_NODE && c[S].ns === SVG_NS && c[S].tag === 'title') { title = c; break; }
-        } else title = titleElement(this);
-        if (title === null) return '';
-        let text = '';
-        for (let c = title[S].first; c; c = c[S].next) if (c[S].type === TEXT_NODE) text += c[S].data;
-        return text.replace(/[\t\n\f\r ]+/g, ' ').replace(/^ | $/g, '');
-      },
-      set title(value) {
-        const root = firstElement(state(this));
-        const text = String(value);
-        if (root === null) return;
-        const rs = root[S];
-        let title = null;
-        if (rs.ns === SVG_NS && rs.tag === 'svg') {
-          for (let c = rs.first; c; c = c[S].next) if (c[S].type === ELEMENT_NODE && c[S].ns === SVG_NS && c[S].tag === 'title') { title = c; break; }
-          if (title === null) title = insert(root, internals(this).createElementNS(SVG_NS, 'title', this), rs.first);
-        } else if (rs.ns === HTML_NS) {
-          title = titleElement(this);
-          if (title === null) {
-            const head = headElement(this);
-            if (!head) return;
-            title = insert(head, internals(this).createElementNS(HTML_NS, 'title', this), null);
+    members: mix(
+      parentNode,
+      DOCUMENT_FOCUS_MEMBERS,
+      GLOBAL_HANDLER_MEMBERS,
+      XML_DOCUMENT_MEMBERS,
+      XPATH_EVALUATOR_MEMBERS,
+      {
+        get defaultView() {
+          const s = state(this);
+          return s.noView ? null : s.window;
+        },
+        get URL() {
+          const s = state(this);
+          return s.url ?? s.window[S].url.href;
+        },
+        get documentURI() {
+          state(this);
+          return this.URL;
+        },
+        // Page visibility: a document in a window is always visible (as in jsdom
+        // with pretendToBeVisual, which test environments use); one without a
+        // browsing context is hidden.
+        get visibilityState() {
+          return state(this).noView ? 'hidden' : 'visible';
+        },
+        get hidden() {
+          return !!state(this).noView;
+        },
+        ...handlerMembers(['onreadystatechange', 'onvisibilitychange']),
+        get cookie() {
+          state(this);
+          return documentCookie(this);
+        },
+        set cookie(v) {
+          state(this);
+          setDocumentCookie(this, v);
+        },
+        get location() {
+          const s = state(this);
+          return s.noView ? null : s.window[S].location;
+        },
+        get documentElement() {
+          return firstElement(state(this));
+        },
+        get doctype() {
+          for (let c = state(this).first; c; c = c[S].next) if (c[S].type === DOCUMENT_TYPE_NODE) return c;
+          return null;
+        },
+        get head() {
+          return headElement(this);
+        },
+        get body() {
+          return bodyElement(this);
+        },
+        // The html element's dir attribute, limited to only known values.
+        get dir() {
+          const html = htmlElement(this);
+          return html ? knownDir(html[S].attrs.get('dir')) : '';
+        },
+        set dir(v) {
+          const html = htmlElement(this);
+          if (html) writeAttribute(html, 'dir', String(v));
+        },
+        // HTML 3.1.6: replaces the body element, or appends to the document
+        // element when there is none.
+        set body(value) {
+          state(this);
+          const vs = value?.[S];
+          if (value !== null && (vs === undefined || vs.type !== ELEMENT_NODE || vs.ns !== HTML_NS)) {
+            throw new TypeError(
+              "Failed to set the 'body' property on 'Document': The provided value is not of type 'HTMLElement'.",
+            );
           }
-        } else return;
-        replaceAll(title, text ? internals(this).createText(text, this) : null);
+          if (value === null || (vs.tag !== 'body' && vs.tag !== 'frameset')) {
+            throw domError(
+              "Failed to set the 'body' property on 'Document': The new body element is of type '" +
+                (value === null ? 'null' : vs.tag.toUpperCase()) +
+                "'. It must be either a 'BODY' or 'FRAMESET' element.",
+              'HierarchyRequestError',
+            );
+          }
+          const body = bodyElement(this);
+          if (value === body) return;
+          if (body !== null) {
+            replace(body[S].parent, value, body);
+            return;
+          }
+          const root = firstElement(state(this));
+          if (root === null)
+            throw domError(
+              "Failed to set the 'body' property on 'Document': No document element exists.",
+              'HierarchyRequestError',
+            );
+          insert(root, value, null);
+        },
+        // HTML 3.1.3: an SVG document's title is its root's first SVG title
+        // child; otherwise the first HTML title element. ASCII whitespace is
+        // stripped and collapsed (other spaces, like U+00A0, are kept).
+        get title() {
+          const root = firstElement(state(this));
+          let title = null;
+          if (root !== null && root[S].ns === SVG_NS && root[S].tag === 'svg') {
+            for (let c = root[S].first; c; c = c[S].next)
+              if (c[S].type === ELEMENT_NODE && c[S].ns === SVG_NS && c[S].tag === 'title') {
+                title = c;
+                break;
+              }
+          } else title = titleElement(this);
+          if (title === null) return '';
+          let text = '';
+          for (let c = title[S].first; c; c = c[S].next) if (c[S].type === TEXT_NODE) text += c[S].data;
+          return text.replace(/[\t\n\f\r ]+/g, ' ').replace(/^ | $/g, '');
+        },
+        set title(value) {
+          const root = firstElement(state(this));
+          const text = String(value);
+          if (root === null) return;
+          const rs = root[S];
+          let title = null;
+          if (rs.ns === SVG_NS && rs.tag === 'svg') {
+            for (let c = rs.first; c; c = c[S].next)
+              if (c[S].type === ELEMENT_NODE && c[S].ns === SVG_NS && c[S].tag === 'title') {
+                title = c;
+                break;
+              }
+            if (title === null) title = insert(root, internals(this).createElementNS(SVG_NS, 'title', this), rs.first);
+          } else if (rs.ns === HTML_NS) {
+            title = titleElement(this);
+            if (title === null) {
+              const head = headElement(this);
+              if (!head) return;
+              title = insert(head, internals(this).createElementNS(HTML_NS, 'title', this), null);
+            }
+          } else return;
+          replaceAll(title, text ? internals(this).createText(text, this) : null);
+        },
+        get styleSheets() {
+          state(this);
+          return documentStyleSheets(this);
+        },
+        createRange() {
+          const s = state(this);
+          return newRange(s.window, this, 0);
+        },
+        // The script element whose classic script is running (scripts.js).
+        get currentScript() {
+          return state(this).currentScript ?? null;
+        },
+        // document.open/write/close (HTML 8.4): open() empties the document
+        // and starts an input stream; each write appends to it and the
+        // document is reparsed from the stream, so content is there at once.
+        open() {
+          const s = state(this);
+          if (s.xml)
+            throw domError(
+              "Failed to execute 'open' on 'Document': Only HTML documents support open().",
+              'InvalidStateError',
+            );
+          while (s.first) remove(this, s.first);
+          s.writeBuffer = '';
+          return this;
+        },
+        write(...text) {
+          documentWrite(this, text.join(''));
+        },
+        writeln(...text) {
+          documentWrite(this, `${text.join('')}\n`);
+        },
+        close() {
+          const s = state(this);
+          if (s.xml)
+            throw domError(
+              "Failed to execute 'close' on 'Document': Only HTML documents support close().",
+              'InvalidStateError',
+            );
+          s.writeBuffer = undefined;
+        },
+        get scripts() {
+          return documentCollection(this, 'scripts', (el) => isHTMLTag(el, 'script'));
+        },
+        get forms() {
+          return documentCollection(this, 'forms', (el) => isHTMLTag(el, 'form'));
+        },
+        get images() {
+          return documentCollection(this, 'images', (el) => isHTMLTag(el, 'img'));
+        },
+        get embeds() {
+          return documentCollection(this, 'embeds', (el) => isHTMLTag(el, 'embed'));
+        },
+        get plugins() {
+          return documentCollection(this, 'embeds', (el) => isHTMLTag(el, 'embed'));
+        },
+        get links() {
+          return documentCollection(
+            this,
+            'links',
+            (el) => (isHTMLTag(el, 'a') || isHTMLTag(el, 'area')) && el[S].attrs.has('href'),
+          );
+        },
+        get anchors() {
+          return documentCollection(this, 'anchors', (el) => isHTMLTag(el, 'a') && el[S].attrs.has('name'));
+        },
+        get fgColor() {
+          return bodyColor(this, 'text');
+        },
+        set fgColor(v) {
+          setBodyColor(this, 'text', v);
+        },
+        get linkColor() {
+          return bodyColor(this, 'link');
+        },
+        set linkColor(v) {
+          setBodyColor(this, 'link', v);
+        },
+        get vlinkColor() {
+          return bodyColor(this, 'vlink');
+        },
+        set vlinkColor(v) {
+          setBodyColor(this, 'vlink', v);
+        },
+        get alinkColor() {
+          return bodyColor(this, 'alink');
+        },
+        set alinkColor(v) {
+          setBodyColor(this, 'alink', v);
+        },
+        get bgColor() {
+          return bodyColor(this, 'bgcolor');
+        },
+        set bgColor(v) {
+          setBodyColor(this, 'bgcolor', v);
+        },
+        // Never matches: <applet> is HTMLUnknownElement (HTML, obsolete features).
+        get applets() {
+          return documentCollection(this, 'applets', () => false);
+        },
+        // Legacy no-ops (HTML, obsolete features).
+        clear() {
+          state(this);
+        },
+        captureEvents() {
+          state(this);
+        },
+        releaseEvents() {
+          state(this);
+        },
+        // No document is loaded from another (no navigation), so no referrer.
+        get referrer() {
+          state(this);
+          return '';
+        },
+        // The source file's modification time is not known, so the current
+        // time, in local time as MM/DD/YYYY hh:mm:ss (HTML 3.1.3).
+        get lastModified() {
+          state(this);
+          return formatLastModified(new Date());
+        },
+        getSelection() {
+          state(this);
+          return getSelection(this);
+        },
+        get implementation() {
+          const s = state(this);
+          if (!s.implementation) {
+            s.implementation = Object.create(internals(this).protos.DOMImplementation);
+            s.implementation[S] = { doc: this };
+          }
+          return s.implementation;
+        },
+        get compatMode() {
+          return state(this).mode === 'quirks' ? 'BackCompat' : 'CSS1Compat';
+        },
+        get contentType() {
+          return state(this).contentType;
+        },
+        // UTF-8, except an XMLHttpRequest response document's (its charset).
+        get characterSet() {
+          return state(this).charset ?? 'UTF-8';
+        },
+        get charset() {
+          return state(this).charset ?? 'UTF-8';
+        },
+        get inputEncoding() {
+          return state(this).charset ?? 'UTF-8';
+        },
+        get readyState() {
+          state(this);
+          return 'complete';
+        },
+        createElement(tagName, options = undefined) {
+          const s = state(this);
+          if (tagName === undefined && arguments.length < 1)
+            tooFewArguments('Document', 'createElement', 1, arguments.length);
+          const name = String(tagName);
+          const is =
+            typeof options === 'object' && options !== null && options.is !== undefined ? String(options.is) : null;
+          // HTML documents lowercase and use the HTML namespace; XML documents do neither.
+          if (s.xml && !validElementLocalName(name)) throwInvalidName(name);
+          return s.xml
+            ? internals(this).createElementNS(
+                s.contentType === 'application/xhtml+xml' ? HTML_NS : null,
+                name,
+                this,
+                false,
+                null,
+                true,
+                is,
+                false,
+              )
+            : internals(this).createElementNS(
+                HTML_NS,
+                HTML_NAMES.get(name) ?? htmlName(name),
+                this,
+                false,
+                null,
+                true,
+                is,
+                false,
+              );
+        },
+        createElementNS(ns, qualifiedName, options = undefined) {
+          state(this);
+          if (qualifiedName === undefined && arguments.length < 2)
+            tooFewArguments('Document', 'createElementNS', 2, arguments.length);
+          const { ns: namespace, prefix, qn } = validateAndExtract(ns, qualifiedName, true);
+          const is =
+            typeof options === 'object' && options !== null && options.is !== undefined ? String(options.is) : null;
+          const element = internals(this).createElementNS(namespace, qn, this, false, null, true, is);
+          // The prefix is kept only when there is one (most elements have none).
+          if (prefix !== null) element[S].prefix = prefix;
+          return element;
+        },
+        createTextNode(data) {
+          state(this);
+          if (data === undefined && arguments.length < 1)
+            tooFewArguments('Document', 'createTextNode', 1, arguments.length);
+          return internals(this).createText(String(data), this);
+        },
+        createComment(data) {
+          state(this);
+          if (data === undefined && arguments.length < 1)
+            tooFewArguments('Document', 'createComment', 1, arguments.length);
+          return internals(this).createComment(String(data), this);
+        },
+        createDocumentFragment() {
+          state(this);
+          return internals(this).createFragment(this);
+        },
+        importNode(node, deep = false) {
+          state(this);
+          if (state(node).type === DOCUMENT_NODE)
+            throw domError('The node provided is a document, which may not be imported.', 'NotSupportedError');
+          return clone(node, deep, this);
+        },
+        adoptNode(node) {
+          state(this);
+          const s = state(node);
+          if (s.type === DOCUMENT_NODE)
+            throw domError('The node provided is a document, which may not be adopted.', 'NotSupportedError');
+          if (s.shadow === true)
+            throw domError('The node provided is a shadow root, which may not be adopted.', 'HierarchyRequestError');
+          if (s.parent) remove(s.parent, node);
+          adopt(node, this);
+          return node;
+        },
+        createEvent(name) {
+          const s = state(this);
+          if (name === undefined && arguments.length < 1)
+            tooFewArguments('Document', 'createEvent', 1, arguments.length);
+          return createEvent(s.window, name);
+        },
+        createAttribute(name) {
+          state(this);
+          if (name === undefined && arguments.length < 1)
+            tooFewArguments('Document', 'createAttribute', 1, arguments.length);
+          return createAttribute(this, name);
+        },
+        createAttributeNS(ns, qualifiedName) {
+          state(this);
+          if (qualifiedName === undefined && arguments.length < 2)
+            tooFewArguments('Document', 'createAttributeNS', 2, arguments.length);
+          return createAttributeNS(this, ns, qualifiedName);
+        },
+        createTreeWalker(root, whatToShow = undefined, filter = undefined) {
+          return createTreeWalker(state(this).window, root, whatToShow, filter);
+        },
+        createNodeIterator(root, whatToShow = undefined, filter = undefined) {
+          return createNodeIterator(state(this).window, root, whatToShow, filter);
+        },
+        getElementById(id) {
+          state(this);
+          if (id === undefined && arguments.length < 1)
+            tooFewArguments('Document', 'getElementById', 1, arguments.length);
+          return elementById(this, String(id));
+        },
+        getElementsByTagName(tag) {
+          state(this);
+          if (tag === undefined && arguments.length < 1)
+            tooFewArguments('Document', 'getElementsByTagName', 1, arguments.length);
+          return byTagName(this, tag);
+        },
+        getElementsByTagNameNS(ns, localName) {
+          state(this);
+          if (localName === undefined && arguments.length < 2)
+            tooFewArguments('Document', 'getElementsByTagNameNS', 2, arguments.length);
+          return byTagNameNS(this, ns, localName);
+        },
+        getElementsByClassName(names) {
+          state(this);
+          if (names === undefined && arguments.length < 1)
+            tooFewArguments('Document', 'getElementsByClassName', 1, arguments.length);
+          return byClassName(this, names);
+        },
+        // HTML elements with this name attribute, as a live NodeList.
+        getElementsByName(elementName) {
+          const name = String(elementName);
+          return liveElements(
+            this,
+            (el) => el[S].ns === HTML_NS && el[S].attrs.get('name') === name,
+            internals(this).protos.NodeList,
+          );
+        },
       },
-      get styleSheets() { state(this); return documentStyleSheets(this); },
-      createRange() { const s = state(this); return newRange(s.window, this, 0); },
-      // The script element whose classic script is running (scripts.js).
-      get currentScript() { return state(this).currentScript ?? null; },
-      // document.open/write/close (HTML 8.4): open() empties the document
-      // and starts an input stream; each write appends to it and the
-      // document is reparsed from the stream, so content is there at once.
-      open() {
-        const s = state(this);
-        if (s.xml) throw domError("Failed to execute 'open' on 'Document': Only HTML documents support open().", 'InvalidStateError');
-        while (s.first) remove(this, s.first);
-        s.writeBuffer = '';
-        return this;
-      },
-      write(...text) { documentWrite(this, text.join('')); },
-      writeln(...text) { documentWrite(this, `${text.join('')}\n`); },
-      close() {
-        const s = state(this);
-        if (s.xml) throw domError("Failed to execute 'close' on 'Document': Only HTML documents support close().", 'InvalidStateError');
-        s.writeBuffer = undefined;
-      },
-      get scripts() { return documentCollection(this, 'scripts', (el) => isHTMLTag(el, 'script')); },
-      get forms() { return documentCollection(this, 'forms', (el) => isHTMLTag(el, 'form')); },
-      get images() { return documentCollection(this, 'images', (el) => isHTMLTag(el, 'img')); },
-      get embeds() { return documentCollection(this, 'embeds', (el) => isHTMLTag(el, 'embed')); },
-      get plugins() { return documentCollection(this, 'embeds', (el) => isHTMLTag(el, 'embed')); },
-      get links() { return documentCollection(this, 'links', (el) => (isHTMLTag(el, 'a') || isHTMLTag(el, 'area')) && el[S].attrs.has('href')); },
-      get anchors() { return documentCollection(this, 'anchors', (el) => isHTMLTag(el, 'a') && el[S].attrs.has('name')); },
-      get fgColor() { return bodyColor(this, 'text'); },
-      set fgColor(v) { setBodyColor(this, 'text', v); },
-      get linkColor() { return bodyColor(this, 'link'); },
-      set linkColor(v) { setBodyColor(this, 'link', v); },
-      get vlinkColor() { return bodyColor(this, 'vlink'); },
-      set vlinkColor(v) { setBodyColor(this, 'vlink', v); },
-      get alinkColor() { return bodyColor(this, 'alink'); },
-      set alinkColor(v) { setBodyColor(this, 'alink', v); },
-      get bgColor() { return bodyColor(this, 'bgcolor'); },
-      set bgColor(v) { setBodyColor(this, 'bgcolor', v); },
-      // Never matches: <applet> is HTMLUnknownElement (HTML, obsolete features).
-      get applets() { return documentCollection(this, 'applets', () => false); },
-      // Legacy no-ops (HTML, obsolete features).
-      clear() { state(this); },
-      captureEvents() { state(this); },
-      releaseEvents() { state(this); },
-      // No document is loaded from another (no navigation), so no referrer.
-      get referrer() { state(this); return ''; },
-      // The source file's modification time is not known, so the current
-      // time, in local time as MM/DD/YYYY hh:mm:ss (HTML 3.1.3).
-      get lastModified() { state(this); return formatLastModified(new Date()); },
-      getSelection() { state(this); return getSelection(this); },
-      get implementation() {
-        const s = state(this);
-        if (!s.implementation) {
-          s.implementation = Object.create(internals(this).protos.DOMImplementation);
-          s.implementation[S] = { doc: this };
-        }
-        return s.implementation;
-      },
-      get compatMode() { return state(this).mode === 'quirks' ? 'BackCompat' : 'CSS1Compat'; },
-      get contentType() { return state(this).contentType; },
-      // UTF-8, except an XMLHttpRequest response document's (its charset).
-      get characterSet() { return state(this).charset ?? 'UTF-8'; },
-      get charset() { return state(this).charset ?? 'UTF-8'; },
-      get inputEncoding() { return state(this).charset ?? 'UTF-8'; },
-      get readyState() { state(this); return 'complete'; },
-      createElement(tagName, options = undefined) {
-        const s = state(this);
-        if (tagName === undefined && arguments.length < 1) tooFewArguments('Document', 'createElement', 1, arguments.length);
-        const name = String(tagName);
-        const is = typeof options === 'object' && options !== null && options.is !== undefined ? String(options.is) : null;
-        // HTML documents lowercase and use the HTML namespace; XML documents do neither.
-        if (s.xml && !validElementLocalName(name)) throwInvalidName(name);
-        return s.xml ? internals(this).createElementNS(s.contentType === 'application/xhtml+xml' ? HTML_NS : null, name, this, false, null, true, is, false)
-          : internals(this).createElementNS(HTML_NS, HTML_NAMES.get(name) ?? htmlName(name), this, false, null, true, is, false);
-      },
-      createElementNS(ns, qualifiedName, options = undefined) {
-        state(this);
-        if (qualifiedName === undefined && arguments.length < 2) tooFewArguments('Document', 'createElementNS', 2, arguments.length);
-        const { ns: namespace, prefix, qn } = validateAndExtract(ns, qualifiedName, true);
-        const is = typeof options === 'object' && options !== null && options.is !== undefined ? String(options.is) : null;
-        const element = internals(this).createElementNS(namespace, qn, this, false, null, true, is);
-        // The prefix is kept only when there is one (most elements have none).
-        if (prefix !== null) element[S].prefix = prefix;
-        return element;
-      },
-      createTextNode(data) { state(this); if (data === undefined && arguments.length < 1) tooFewArguments('Document', 'createTextNode', 1, arguments.length); return internals(this).createText(String(data), this); },
-      createComment(data) { state(this); if (data === undefined && arguments.length < 1) tooFewArguments('Document', 'createComment', 1, arguments.length); return internals(this).createComment(String(data), this); },
-      createDocumentFragment() { state(this); return internals(this).createFragment(this); },
-      importNode(node, deep = false) {
-        state(this);
-        if (state(node).type === DOCUMENT_NODE) throw domError('The node provided is a document, which may not be imported.', 'NotSupportedError');
-        return clone(node, deep, this);
-      },
-      adoptNode(node) {
-        state(this);
-        const s = state(node);
-        if (s.type === DOCUMENT_NODE) throw domError('The node provided is a document, which may not be adopted.', 'NotSupportedError');
-        if (s.shadow === true) throw domError('The node provided is a shadow root, which may not be adopted.', 'HierarchyRequestError');
-        if (s.parent) remove(s.parent, node);
-        adopt(node, this);
-        return node;
-      },
-      createEvent(name) { const s = state(this); if (name === undefined && arguments.length < 1) tooFewArguments('Document', 'createEvent', 1, arguments.length); return createEvent(s.window, name); },
-      createAttribute(name) { state(this); if (name === undefined && arguments.length < 1) tooFewArguments('Document', 'createAttribute', 1, arguments.length); return createAttribute(this, name); },
-      createAttributeNS(ns, qualifiedName) { state(this); if (qualifiedName === undefined && arguments.length < 2) tooFewArguments('Document', 'createAttributeNS', 2, arguments.length); return createAttributeNS(this, ns, qualifiedName); },
-      createTreeWalker(root, whatToShow = undefined, filter = undefined) { return createTreeWalker(state(this).window, root, whatToShow, filter); },
-      createNodeIterator(root, whatToShow = undefined, filter = undefined) { return createNodeIterator(state(this).window, root, whatToShow, filter); },
-      getElementById(id) { state(this); if (id === undefined && arguments.length < 1) tooFewArguments('Document', 'getElementById', 1, arguments.length); return elementById(this, String(id)); },
-      getElementsByTagName(tag) { state(this); if (tag === undefined && arguments.length < 1) tooFewArguments('Document', 'getElementsByTagName', 1, arguments.length); return byTagName(this, tag); },
-      getElementsByTagNameNS(ns, localName) { state(this); if (localName === undefined && arguments.length < 2) tooFewArguments('Document', 'getElementsByTagNameNS', 2, arguments.length); return byTagNameNS(this, ns, localName); },
-      getElementsByClassName(names) { state(this); if (names === undefined && arguments.length < 1) tooFewArguments('Document', 'getElementsByClassName', 1, arguments.length); return byClassName(this, names); },
-      // HTML elements with this name attribute, as a live NodeList.
-      getElementsByName(elementName) {
-        const name = String(elementName);
-        return liveElements(this, (el) => el[S].ns === HTML_NS && el[S].attrs.get('name') === name, internals(this).protos.NodeList);
-      },
-    }),
+    ),
   },
   { name: 'XMLDocument', parent: 'Document', members: {} },
   {
     name: 'DocumentType',
     parent: 'Node',
     members: mix(childNode, {
-      get name() { return state(this).name; },
-      get publicId() { return state(this).publicId; },
-      get systemId() { return state(this).systemId; },
+      get name() {
+        return state(this).name;
+      },
+      get publicId() {
+        return state(this).publicId;
+      },
+      get systemId() {
+        return state(this).systemId;
+      },
     }),
   },
   {
     name: 'DOMImplementation',
     members: {
-      hasFeature() { state(this); return true; },
+      hasFeature() {
+        state(this);
+        return true;
+      },
       createDocumentType(name, publicId, systemId) {
         const doc = state(this).doc;
-        if (systemId === undefined && arguments.length < 3) tooFewArguments('DOMImplementation', 'createDocumentType', 3, arguments.length);
+        if (systemId === undefined && arguments.length < 3)
+          tooFewArguments('DOMImplementation', 'createDocumentType', 3, arguments.length);
         // A valid doctype name: no ASCII whitespace, NULL or ">".
         if (/[\t\n\f\r \0>]/.test(String(name))) throw invalidName(name);
         return internals(doc).createDoctype(String(name), String(publicId), String(systemId), doc);
@@ -770,10 +1331,15 @@ export const INTERFACES = [
       },
       createDocument(namespace, qualifiedName, doctype = null) {
         const w = internals(state(this).doc);
-        if (arguments.length < 2) throw new TypeError("Failed to execute 'createDocument' on 'DOMImplementation': 2 arguments required.");
+        if (arguments.length < 2)
+          throw new TypeError("Failed to execute 'createDocument' on 'DOMImplementation': 2 arguments required.");
         const name = qualifiedName === null ? '' : String(qualifiedName);
-        const { ns, prefix } = name === '' ? { ns: namespace == null || namespace === '' ? null : String(namespace), prefix: null } : validateAndExtract(namespace, name, true);
-        const contentType = ns === HTML_NS ? 'application/xhtml+xml' : ns === SVG_NS ? 'image/svg+xml' : 'application/xml';
+        const { ns, prefix } =
+          name === ''
+            ? { ns: namespace == null || namespace === '' ? null : String(namespace), prefix: null }
+            : validateAndExtract(namespace, name, true);
+        const contentType =
+          ns === HTML_NS ? 'application/xhtml+xml' : ns === SVG_NS ? 'image/svg+xml' : 'application/xml';
         const doc = w.createDocument({ contentType, xml: true });
         if (doctype !== null) insert(doc, doctype, null);
         if (name !== '') {
@@ -792,7 +1358,8 @@ export const INTERFACES = [
       getElementById(id) {
         state(this);
         if (id === '') return null;
-        if (id === undefined && arguments.length < 1) tooFewArguments('DocumentFragment', 'getElementById', 1, arguments.length);
+        if (id === undefined && arguments.length < 1)
+          tooFewArguments('DocumentFragment', 'getElementById', 1, arguments.length);
         const wanted = String(id);
         return collectElements(this, (el) => el[S].attrs.get('id') === wanted, true)[0] ?? null;
       },
@@ -803,61 +1370,115 @@ export const INTERFACES = [
   {
     name: 'ShadowRoot',
     parent: 'DocumentFragment',
-    members: mix({
-      get mode() { return shadowState(this).mode; },
-      get delegatesFocus() { return shadowState(this).delegatesFocus; },
-      get serializable() { return shadowState(this).serializable; },
-      get slotAssignment() { return shadowState(this).slotAssignment; },
-      get clonable() { return shadowState(this).clonable; },
-      get host() { return shadowState(this).host; },
-      get innerHTML() { shadowState(this); return serializeChildren(this); },
-      set innerHTML(html) {
-        const s = shadowState(this);
-        const fragment = parseFragment(s.doc, s.host, String(html));
-        while (s.first) remove(this, s.first);
-        insert(this, fragment, null);
+    members: mix(
+      {
+        get mode() {
+          return shadowState(this).mode;
+        },
+        get delegatesFocus() {
+          return shadowState(this).delegatesFocus;
+        },
+        get serializable() {
+          return shadowState(this).serializable;
+        },
+        get slotAssignment() {
+          return shadowState(this).slotAssignment;
+        },
+        get clonable() {
+          return shadowState(this).clonable;
+        },
+        get host() {
+          return shadowState(this).host;
+        },
+        get innerHTML() {
+          shadowState(this);
+          return serializeChildren(this);
+        },
+        set innerHTML(html) {
+          const s = shadowState(this);
+          const fragment = parseFragment(s.doc, s.host, String(html));
+          while (s.first) remove(this, s.first);
+          insert(this, fragment, null);
+        },
+        getHTML() {
+          shadowState(this);
+          return serializeChildren(this);
+        },
+        setHTMLUnsafe(html) {
+          this.innerHTML = html;
+        },
+        // The focused element, retargeted against this shadow root.
+        get activeElement() {
+          const s = shadowState(this);
+          const focused = s.doc[S].focused;
+          if (!focused || focused === s.doc) return null;
+          const candidate = retarget(focused, this);
+          return rootOf(candidate) === this ? candidate : null;
+        },
       },
-      getHTML() { shadowState(this); return serializeChildren(this); },
-      setHTMLUnsafe(html) { this.innerHTML = html; },
-      // The focused element, retargeted against this shadow root.
-      get activeElement() {
-        const s = shadowState(this);
-        const focused = s.doc[S].focused;
-        if (!focused || focused === s.doc) return null;
-        const candidate = retarget(focused, this);
-        return rootOf(candidate) === this ? candidate : null;
-      },
-    }, { onslotchange: GLOBAL_HANDLER_MEMBERS.onslotchange }),
+      { onslotchange: GLOBAL_HANDLER_MEMBERS.onslotchange },
+    ),
   },
   {
     name: 'CharacterData',
     parent: 'Node',
     members: mix(childNode, elementSiblings, {
-      get data() { return state(this).data; },
-      set data(value) { state(this); setData(this, value === null ? '' : String(value)); },
-      get length() { return state(this).data.length; },
+      get data() {
+        return state(this).data;
+      },
+      set data(value) {
+        state(this);
+        setData(this, value === null ? '' : String(value));
+      },
+      get length() {
+        return state(this).data.length;
+      },
       substringData(offset, count) {
-        if (arguments.length < 2) throw new TypeError("Failed to execute 'substringData' on 'CharacterData': 2 arguments required.");
+        if (arguments.length < 2)
+          throw new TypeError("Failed to execute 'substringData' on 'CharacterData': 2 arguments required.");
         const data = state(this).data;
         const o = Number(offset) >>> 0;
-        if (o > data.length) throw domError(`The offset ${o} is greater than the node's length (${data.length}).`, 'IndexSizeError');
+        if (o > data.length)
+          throw domError(`The offset ${o} is greater than the node's length (${data.length}).`, 'IndexSizeError');
         return data.substr(o, Number(count) >>> 0);
       },
       appendData(data) {
         const s = state(this);
-        if (arguments.length < 1) throw new TypeError("Failed to execute 'appendData' on 'CharacterData': 1 argument required, but only 0 present.");
+        if (arguments.length < 1)
+          throw new TypeError(
+            "Failed to execute 'appendData' on 'CharacterData': 1 argument required, but only 0 present.",
+          );
         replaceData(this, s.data.length, 0, String(data));
       },
-      insertData(offset, data) { state(this); if (data === undefined && arguments.length < 2) tooFewArguments('CharacterData', 'insertData', 2, arguments.length); replaceData(this, Number(offset) >>> 0, 0, String(data)); },
-      deleteData(offset, count) { state(this); if (count === undefined && arguments.length < 2) tooFewArguments('CharacterData', 'deleteData', 2, arguments.length); replaceData(this, Number(offset) >>> 0, Number(count) >>> 0, ''); },
-      replaceData(offset, count, data) { state(this); if (data === undefined && arguments.length < 3) tooFewArguments('CharacterData', 'replaceData', 3, arguments.length); replaceData(this, Number(offset) >>> 0, Number(count) >>> 0, String(data)); },
+      insertData(offset, data) {
+        state(this);
+        if (data === undefined && arguments.length < 2)
+          tooFewArguments('CharacterData', 'insertData', 2, arguments.length);
+        replaceData(this, Number(offset) >>> 0, 0, String(data));
+      },
+      deleteData(offset, count) {
+        state(this);
+        if (count === undefined && arguments.length < 2)
+          tooFewArguments('CharacterData', 'deleteData', 2, arguments.length);
+        replaceData(this, Number(offset) >>> 0, Number(count) >>> 0, '');
+      },
+      replaceData(offset, count, data) {
+        state(this);
+        if (data === undefined && arguments.length < 3)
+          tooFewArguments('CharacterData', 'replaceData', 3, arguments.length);
+        replaceData(this, Number(offset) >>> 0, Number(count) >>> 0, String(data));
+      },
     }),
   },
   {
     name: 'Text',
     parent: 'CharacterData',
     members: {
-      splitText(offset) { state(this); if (offset === undefined && arguments.length < 1) tooFewArguments('Text', 'splitText', 1, arguments.length); return splitText(this, Number(offset) >>> 0); },
+      splitText(offset) {
+        state(this);
+        if (offset === undefined && arguments.length < 1) tooFewArguments('Text', 'splitText', 1, arguments.length);
+        return splitText(this, Number(offset) >>> 0);
+      },
       ...SLOTTABLE_MEMBERS,
       // The data of the contiguous Text nodes, in tree order.
       get wholeText() {
@@ -868,24 +1489,55 @@ export const INTERFACES = [
         return text;
       },
     },
-    construct: (w, self, [data = '']) => initNode(self, TEXT_NODE, w.document, { data: String(data) }) },
-  { name: 'Comment', parent: 'CharacterData', members: {}, construct: (w, self, [data = '']) => initNode(self, COMMENT_NODE, w.document, { data: String(data) }) },
+    construct: (w, self, [data = '']) => initNode(self, TEXT_NODE, w.document, { data: String(data) }),
+  },
+  {
+    name: 'Comment',
+    parent: 'CharacterData',
+    members: {},
+    construct: (w, self, [data = '']) => initNode(self, COMMENT_NODE, w.document, { data: String(data) }),
+  },
   {
     name: 'Element',
     parent: 'Node',
     members: mix(parentNode, childNode, elementSiblings, ELEMENT_LAYOUT, {
-      [Symbol.unscopables]: { unscopables: ['slot', 'before', 'after', 'replaceWith', 'remove', 'prepend', 'append', 'replaceChildren'] },
-      get namespaceURI() { return state(this).ns; },
-      get prefix() { return state(this).prefix ?? null; },
-      get tagName() { return qualifiedTagName(state(this)); },
-      attachShadow(init) { state(this); return attachShadow(this, init); },
-      get shadowRoot() { const shadow = state(this).shadowRoot; return shadow && shadow[S].mode === 'open' ? shadow : null; },
-      get localName() { return state(this).tag; },
+      [Symbol.unscopables]: {
+        unscopables: ['slot', 'before', 'after', 'replaceWith', 'remove', 'prepend', 'append', 'replaceChildren'],
+      },
+      get namespaceURI() {
+        return state(this).ns;
+      },
+      get prefix() {
+        return state(this).prefix ?? null;
+      },
+      get tagName() {
+        return qualifiedTagName(state(this));
+      },
+      attachShadow(init) {
+        state(this);
+        return attachShadow(this, init);
+      },
+      get shadowRoot() {
+        const shadow = state(this).shadowRoot;
+        return shadow && shadow[S].mode === 'open' ? shadow : null;
+      },
+      get localName() {
+        return state(this).tag;
+      },
       ...SLOTTABLE_MEMBERS,
-      get slot() { return state(this).attrs.get('slot') ?? ''; },
-      set slot(v) { state(this); writeAttribute(this, 'slot', String(v)); },
-      get id() { return state(this).attrs.get('id') ?? ''; },
-      set id(v) { this.setAttribute('id', v); },
+      get slot() {
+        return state(this).attrs.get('slot') ?? '';
+      },
+      set slot(v) {
+        state(this);
+        writeAttribute(this, 'slot', String(v));
+      },
+      get id() {
+        return state(this).attrs.get('id') ?? '';
+      },
+      set id(v) {
+        this.setAttribute('id', v);
+      },
       className: reflect('class'),
       getAttribute(name) {
         const s = state(this);
@@ -893,32 +1545,112 @@ export const INTERFACES = [
         const qn = attrName(this, name);
         return (s.attrNS == null ? s.attrs.get(qn) : valueByName(s, qn)) ?? null;
       },
-      getAttributeNames() { return attributeNames(state(this)); },
-      get attributes() { return namedNodeMap(this); },
-      getAttributeNode(name) { if (name === undefined && arguments.length < 1) tooFewArguments('Element', 'getAttributeNode', 1, arguments.length); const key = keyByName(state(this), attrName(this, name)); return key !== null ? attrNode(this, key) : null; },
-      getAttributeNodeNS(ns, localName) { state(this); if (localName === undefined && arguments.length < 2) tooFewArguments('Element', 'getAttributeNodeNS', 2, arguments.length); const name = findAttributeNS(this, ns, localName); return name === null ? null : attrNode(this, name); },
-      getAttributeNS(ns, localName) { state(this); if (localName === undefined && arguments.length < 2) tooFewArguments('Element', 'getAttributeNS', 2, arguments.length); const name = findAttributeNS(this, ns, localName); return name === null ? null : this[S].attrs.get(name); },
-      hasAttributeNS(ns, localName) { state(this); if (localName === undefined && arguments.length < 2) tooFewArguments('Element', 'hasAttributeNS', 2, arguments.length); return findAttributeNS(this, ns, localName) !== null; },
-      setAttributeNS(ns, qualifiedName, value) { state(this); if (value === undefined && arguments.length < 3) tooFewArguments('Element', 'setAttributeNS', 3, arguments.length); setAttributeNS(this, ns, qualifiedName, value); },
-      removeAttributeNS(ns, localName) { state(this); if (localName === undefined && arguments.length < 2) tooFewArguments('Element', 'removeAttributeNS', 2, arguments.length); const name = findAttributeNS(this, ns, localName); if (name !== null) writeAttribute(this, name, undefined); },
-      setAttributeNode(attr) { state(this); return setAttributeNode(this, attr); },
-      setAttributeNodeNS(attr) { state(this); return setAttributeNode(this, attr); },
-      removeAttributeNode(attr) { state(this); return removeAttributeNode(this, attr); },
-      get classList() { state(this); return tokenList(this, 'class', writeAttribute); },
-      set classList(v) { this.classList.value = v; },
+      getAttributeNames() {
+        return attributeNames(state(this));
+      },
+      get attributes() {
+        return namedNodeMap(this);
+      },
+      getAttributeNode(name) {
+        if (name === undefined && arguments.length < 1)
+          tooFewArguments('Element', 'getAttributeNode', 1, arguments.length);
+        const key = keyByName(state(this), attrName(this, name));
+        return key !== null ? attrNode(this, key) : null;
+      },
+      getAttributeNodeNS(ns, localName) {
+        state(this);
+        if (localName === undefined && arguments.length < 2)
+          tooFewArguments('Element', 'getAttributeNodeNS', 2, arguments.length);
+        const name = findAttributeNS(this, ns, localName);
+        return name === null ? null : attrNode(this, name);
+      },
+      getAttributeNS(ns, localName) {
+        state(this);
+        if (localName === undefined && arguments.length < 2)
+          tooFewArguments('Element', 'getAttributeNS', 2, arguments.length);
+        const name = findAttributeNS(this, ns, localName);
+        return name === null ? null : this[S].attrs.get(name);
+      },
+      hasAttributeNS(ns, localName) {
+        state(this);
+        if (localName === undefined && arguments.length < 2)
+          tooFewArguments('Element', 'hasAttributeNS', 2, arguments.length);
+        return findAttributeNS(this, ns, localName) !== null;
+      },
+      setAttributeNS(ns, qualifiedName, value) {
+        state(this);
+        if (value === undefined && arguments.length < 3)
+          tooFewArguments('Element', 'setAttributeNS', 3, arguments.length);
+        setAttributeNS(this, ns, qualifiedName, value);
+      },
+      removeAttributeNS(ns, localName) {
+        state(this);
+        if (localName === undefined && arguments.length < 2)
+          tooFewArguments('Element', 'removeAttributeNS', 2, arguments.length);
+        const name = findAttributeNS(this, ns, localName);
+        if (name !== null) writeAttribute(this, name, undefined);
+      },
+      setAttributeNode(attr) {
+        state(this);
+        return setAttributeNode(this, attr);
+      },
+      setAttributeNodeNS(attr) {
+        state(this);
+        return setAttributeNode(this, attr);
+      },
+      removeAttributeNode(attr) {
+        state(this);
+        return removeAttributeNode(this, attr);
+      },
+      get classList() {
+        state(this);
+        return tokenList(this, 'class', writeAttribute);
+      },
+      set classList(v) {
+        this.classList.value = v;
+      },
       // The first attribute with the name, in any namespace, else a new one in none.
-      setAttribute(name, value) { state(this); if (value === undefined && arguments.length < 2) tooFewArguments('Element', 'setAttribute', 2, arguments.length); writeAttribute(this, attrName(this, name), String(value), true); },
-      hasAttribute(name) { const s = state(this); if (name === undefined && arguments.length < 1) tooFewArguments('Element', 'hasAttribute', 1, arguments.length); return keyByName(s, attrName(this, name)) !== null; },
-      hasAttributes() { return state(this).attrs.size > 0; },
-      removeAttribute(name) { state(this); if (name === undefined && arguments.length < 1) tooFewArguments('Element', 'removeAttribute', 1, arguments.length); removeAttributeByName(this, attrName(this, name)); },
-      get innerHTML() { state(this); return innerMarkup(this); },
-      set innerHTML(html) { setInnerHTML(this, html == null ? '' : html); },
-      get outerHTML() { state(this); return outerMarkup(this); },
-      set outerHTML(html) { setOuterHTML(this, html == null ? '' : html); },
-      insertAdjacentHTML(position, html) { insertAdjacentHTML(this, position, html); },
+      setAttribute(name, value) {
+        state(this);
+        if (value === undefined && arguments.length < 2)
+          tooFewArguments('Element', 'setAttribute', 2, arguments.length);
+        writeAttribute(this, attrName(this, name), String(value), true);
+      },
+      hasAttribute(name) {
+        const s = state(this);
+        if (name === undefined && arguments.length < 1) tooFewArguments('Element', 'hasAttribute', 1, arguments.length);
+        return keyByName(s, attrName(this, name)) !== null;
+      },
+      hasAttributes() {
+        return state(this).attrs.size > 0;
+      },
+      removeAttribute(name) {
+        state(this);
+        if (name === undefined && arguments.length < 1)
+          tooFewArguments('Element', 'removeAttribute', 1, arguments.length);
+        removeAttributeByName(this, attrName(this, name));
+      },
+      get innerHTML() {
+        state(this);
+        return innerMarkup(this);
+      },
+      set innerHTML(html) {
+        setInnerHTML(this, html == null ? '' : html);
+      },
+      get outerHTML() {
+        state(this);
+        return outerMarkup(this);
+      },
+      set outerHTML(html) {
+        setOuterHTML(this, html == null ? '' : html);
+      },
+      insertAdjacentHTML(position, html) {
+        insertAdjacentHTML(this, position, html);
+      },
       toggleAttribute(name, force = undefined) {
         state(this);
-        if (name === undefined && arguments.length < 1) tooFewArguments('Element', 'toggleAttribute', 1, arguments.length);
+        if (name === undefined && arguments.length < 1)
+          tooFewArguments('Element', 'toggleAttribute', 1, arguments.length);
         checkAttributeName(String(name));
         const has = this.hasAttribute(name);
         const want = force === undefined ? !has : !!force;
@@ -926,58 +1658,142 @@ export const INTERFACES = [
         if (!want && has) this.removeAttribute(name);
         return want;
       },
-      matches(selector) { state(this); if (selector === undefined && arguments.length < 1) tooFewArguments('Element', 'matches', 1, arguments.length); return matchSelector(this, selector); },
-      webkitMatchesSelector(selector) { state(this); if (selector === undefined && arguments.length < 1) tooFewArguments('Element', 'webkitMatchesSelector', 1, arguments.length); return matchSelector(this, selector); },
-      closest(selector) { state(this); if (selector === undefined && arguments.length < 1) tooFewArguments('Element', 'closest', 1, arguments.length); return closestMatch(this, selector); },
-      getElementsByTagName(tag) { state(this); if (tag === undefined && arguments.length < 1) tooFewArguments('Element', 'getElementsByTagName', 1, arguments.length); return byTagName(this, tag); },
-      getElementsByTagNameNS(ns, localName) { state(this); if (localName === undefined && arguments.length < 2) tooFewArguments('Element', 'getElementsByTagNameNS', 2, arguments.length); return byTagNameNS(this, ns, localName); },
-      getElementsByClassName(names) { state(this); if (names === undefined && arguments.length < 1) tooFewArguments('Element', 'getElementsByClassName', 1, arguments.length); return byClassName(this, names); },
+      matches(selector) {
+        state(this);
+        if (selector === undefined && arguments.length < 1) tooFewArguments('Element', 'matches', 1, arguments.length);
+        return matchSelector(this, selector);
+      },
+      webkitMatchesSelector(selector) {
+        state(this);
+        if (selector === undefined && arguments.length < 1)
+          tooFewArguments('Element', 'webkitMatchesSelector', 1, arguments.length);
+        return matchSelector(this, selector);
+      },
+      closest(selector) {
+        state(this);
+        if (selector === undefined && arguments.length < 1) tooFewArguments('Element', 'closest', 1, arguments.length);
+        return closestMatch(this, selector);
+      },
+      getElementsByTagName(tag) {
+        state(this);
+        if (tag === undefined && arguments.length < 1)
+          tooFewArguments('Element', 'getElementsByTagName', 1, arguments.length);
+        return byTagName(this, tag);
+      },
+      getElementsByTagNameNS(ns, localName) {
+        state(this);
+        if (localName === undefined && arguments.length < 2)
+          tooFewArguments('Element', 'getElementsByTagNameNS', 2, arguments.length);
+        return byTagNameNS(this, ns, localName);
+      },
+      getElementsByClassName(names) {
+        state(this);
+        if (names === undefined && arguments.length < 1)
+          tooFewArguments('Element', 'getElementsByClassName', 1, arguments.length);
+        return byClassName(this, names);
+      },
       insertAdjacentElement(position, element) {
         state(this);
-        if (element === undefined && arguments.length < 2) tooFewArguments('Element', 'insertAdjacentElement', 2, arguments.length);
-        if (element?.[S]?.type !== ELEMENT_NODE) throw new TypeError("Failed to execute 'insertAdjacentElement' on 'Element': parameter 2 is not of type 'Element'.");
+        if (element === undefined && arguments.length < 2)
+          tooFewArguments('Element', 'insertAdjacentElement', 2, arguments.length);
+        if (element?.[S]?.type !== ELEMENT_NODE)
+          throw new TypeError(
+            "Failed to execute 'insertAdjacentElement' on 'Element': parameter 2 is not of type 'Element'.",
+          );
         return insertAdjacent(this, position, element);
       },
-      insertAdjacentText(position, data) { state(this); if (data === undefined && arguments.length < 2) tooFewArguments('Element', 'insertAdjacentText', 2, arguments.length); insertAdjacent(this, position, state(this).doc.createTextNode(String(data))); },
+      insertAdjacentText(position, data) {
+        state(this);
+        if (data === undefined && arguments.length < 2)
+          tooFewArguments('Element', 'insertAdjacentText', 2, arguments.length);
+        insertAdjacent(this, position, state(this).doc.createTextNode(String(data)));
+      },
     }),
   },
   {
     name: 'HTMLElement',
     parent: 'Element',
     // attachInternals() from jsdom 23.1.0 (custom-elements.js).
-    compat(proto, compat) { if (!compat.elementInternals) delete proto.attachInternals; },
+    compat(proto, compat) {
+      if (!compat.elementInternals) delete proto.attachInternals;
+    },
     // The event handlers of the profile's jsdom (event-handlers.js).
     variant: handlerVariant,
     adjust: adjustHandlers,
-    members: mix(inlineStyle, htmlOrSvgElement, HTML_ELEMENT_LAYOUT, clickMember, ATTACH_INTERNALS_MEMBERS, FOCUS_MEMBERS, GLOBAL_HANDLER_MEMBERS, {
-      get dir() { return knownDir(state(this).attrs.get('dir')); },
-      set dir(v) { writeAttribute(this, 'dir', String(v)); },
-      // Translation mode (HTML 3.2.6.3).
-      get translate() { state(this); return translationEnabled(this); },
-      set translate(v) { state(this); writeAttribute(this, 'translate', v ? 'yes' : 'no'); },
-      // innerText and outerText (HTML 3.2.7; src/layout.js).
-      get innerText() { state(this); return getInnerText(this); },
-      set innerText(v) { state(this); setInnerText(this, v === null ? '' : String(v), internals(this)); },
-      get outerText() { state(this); return getInnerText(this); },
-      set outerText(v) { state(this); setOuterText(this, v === null ? '' : String(v), internals(this)); },
-      get hidden() { return state(this).attrs.has('hidden'); },
-      set hidden(v) { state(this); writeAttribute(this, 'hidden', v ? '' : undefined); },
-      // The draggable attribute (HTML 6.11.7): true or false (any case),
-      // else auto: images and links with an href are draggable.
-      get draggable() {
-        const s = state(this);
-        const v = s.attrs.get('draggable');
-        if (v !== undefined) {
-          const lower = v.toLowerCase();
-          if (lower === 'true') return true;
-          if (lower === 'false') return false;
-        }
-        return s.tag === 'img' || (s.tag === 'a' && s.attrs.has('href'));
+    members: mix(
+      inlineStyle,
+      htmlOrSvgElement,
+      HTML_ELEMENT_LAYOUT,
+      clickMember,
+      ATTACH_INTERNALS_MEMBERS,
+      FOCUS_MEMBERS,
+      GLOBAL_HANDLER_MEMBERS,
+      {
+        get dir() {
+          return knownDir(state(this).attrs.get('dir'));
+        },
+        set dir(v) {
+          writeAttribute(this, 'dir', String(v));
+        },
+        // Translation mode (HTML 3.2.6.3).
+        get translate() {
+          state(this);
+          return translationEnabled(this);
+        },
+        set translate(v) {
+          state(this);
+          writeAttribute(this, 'translate', v ? 'yes' : 'no');
+        },
+        // innerText and outerText (HTML 3.2.7; src/layout.js).
+        get innerText() {
+          state(this);
+          return getInnerText(this);
+        },
+        set innerText(v) {
+          state(this);
+          setInnerText(this, v === null ? '' : String(v), internals(this));
+        },
+        get outerText() {
+          state(this);
+          return getInnerText(this);
+        },
+        set outerText(v) {
+          state(this);
+          setOuterText(this, v === null ? '' : String(v), internals(this));
+        },
+        get hidden() {
+          return state(this).attrs.has('hidden');
+        },
+        set hidden(v) {
+          state(this);
+          writeAttribute(this, 'hidden', v ? '' : undefined);
+        },
+        // The draggable attribute (HTML 6.11.7): true or false (any case),
+        // else auto: images and links with an href are draggable.
+        get draggable() {
+          const s = state(this);
+          const v = s.attrs.get('draggable');
+          if (v !== undefined) {
+            const lower = v.toLowerCase();
+            if (lower === 'true') return true;
+            if (lower === 'false') return false;
+          }
+          return s.tag === 'img' || (s.tag === 'a' && s.attrs.has('href'));
+        },
+        set draggable(v) {
+          state(this);
+          writeAttribute(this, 'draggable', v ? 'true' : 'false');
+        },
       },
-      set draggable(v) { state(this); writeAttribute(this, 'draggable', v ? 'true' : 'false'); },
-    }),
+    ),
   },
-  { name: 'SVGElement', parent: 'Element', variant: handlerVariant, adjust: adjustHandlers, members: mix(FOCUS_MEMBERS, SVG_ELEMENT_MEMBERS, inlineStyle, htmlOrSvgElement, GLOBAL_HANDLER_MEMBERS) },
+  {
+    name: 'SVGElement',
+    parent: 'Element',
+    variant: handlerVariant,
+    adjust: adjustHandlers,
+    members: mix(FOCUS_MEMBERS, SVG_ELEMENT_MEMBERS, inlineStyle, htmlOrSvgElement, GLOBAL_HANDLER_MEMBERS),
+  },
   ...SVG_INTERFACES,
 ];
 
@@ -1006,11 +1822,25 @@ function translationEnabled(element) {
 function insertAdjacent(element, position, node) {
   const s = state(element);
   switch (String(position).toLowerCase()) {
-    case 'beforebegin': if (!s.parent) return null; insert(s.parent, node, element); return node;
-    case 'afterbegin': insert(element, node, s.first); return node;
-    case 'beforeend': insert(element, node, null); return node;
-    case 'afterend': if (!s.parent) return null; insert(s.parent, node, s.next); return node;
-    default: throw domError(`The value provided ('${position}') is not one of 'beforeBegin', 'afterBegin', 'beforeEnd', or 'afterEnd'.`, 'SyntaxError');
+    case 'beforebegin':
+      if (!s.parent) return null;
+      insert(s.parent, node, element);
+      return node;
+    case 'afterbegin':
+      insert(element, node, s.first);
+      return node;
+    case 'beforeend':
+      insert(element, node, null);
+      return node;
+    case 'afterend':
+      if (!s.parent) return null;
+      insert(s.parent, node, s.next);
+      return node;
+    default:
+      throw domError(
+        `The value provided ('${position}') is not one of 'beforeBegin', 'afterBegin', 'beforeEnd', or 'afterEnd'.`,
+        'SyntaxError',
+      );
   }
 }
 
@@ -1022,7 +1852,10 @@ function liveElements(root, test, proto = internals(root).protos.HTMLCollection)
   let rev = -1;
   return liveList(proto, () => {
     const current = doc[S].treeRev ?? 0;
-    if (rev !== current) { cache = collectElements(root, test); rev = current; }
+    if (rev !== current) {
+      cache = collectElements(root, test);
+      rev = current;
+    }
     return cache;
   });
 }
@@ -1034,7 +1867,7 @@ function liveElements(root, test, proto = internals(root).protos.HTMLCollection)
 // (a frameset does not count).
 function bodyColor(doc, attr) {
   const body = doc.body;
-  return body && isHTMLTag(body, 'body') ? body[S].attrs.get(attr) ?? '' : '';
+  return body && isHTMLTag(body, 'body') ? (body[S].attrs.get(attr) ?? '') : '';
 }
 function setBodyColor(doc, attr, v) {
   const body = doc.body;
@@ -1063,7 +1896,10 @@ function byTagName(root, tag) {
   // made; it keeps matching that way if root moves to another document.
   if ((s.type === DOCUMENT_NODE ? s : s.doc[S]).xml) return liveElements(root, (el) => qualifiedName(el[S]) === name);
   const lower = asciiLower(name);
-  return liveElements(root, (el) => { const es = el[S]; return qualifiedName(es) === (es.ns === HTML_NS ? lower : name); });
+  return liveElements(root, (el) => {
+    const es = el[S];
+    return qualifiedName(es) === (es.ns === HTML_NS ? lower : name);
+  });
 }
 
 // Elements with this namespace and local name ("*" matches any).
@@ -1080,7 +1916,9 @@ function byTagNameNS(root, namespace, localName) {
 // Class names are split on ASCII whitespace only (DOM ordered sets).
 // Class names compare ASCII case-insensitively in quirks mode documents.
 function byClassName(root, names) {
-  const wanted = String(names).split(/[\t\n\f\r ]+/).filter(Boolean);
+  const wanted = String(names)
+    .split(/[\t\n\f\r ]+/)
+    .filter(Boolean);
   const wantedLower = wanted.map(asciiLowercase);
   const doc = state(root).type === DOCUMENT_NODE ? root : state(root).doc;
   return liveElements(root, (el) => {
@@ -1098,27 +1936,61 @@ function byClassName(root, names) {
 // interface as they are implemented.
 // No canvas: as jsdom without the canvas package, these report "Not
 // implemented" and return null.
-const canvasNotImplemented = (el, method) => win(el)[S].notImplemented(`HTMLCanvasElement's ${method}() method: without installing the canvas npm package`);
+const canvasNotImplemented = (el, method) =>
+  win(el)[S].notImplemented(`HTMLCanvasElement's ${method}() method: without installing the canvas npm package`);
 // Window event handlers, forwarded to the window (event-handlers.js).
 INTERFACES.push({ name: 'HTMLBodyElement', parent: 'HTMLElement', members: WINDOW_HANDLER_MEMBERS });
 INTERFACES.push({ name: 'HTMLFrameSetElement', parent: 'HTMLElement', members: WINDOW_HANDLER_MEMBERS });
 INTERFACES.push({ name: 'HTMLStyleElement', parent: 'HTMLElement', members: STYLE_ELEMENT_MEMBERS });
 // Linked style sheets are not fetched (jsdom's default), so they have no sheet.
-INTERFACES.push({ name: 'HTMLLinkElement', parent: 'HTMLElement', members: { get sheet() { state(this); return null; } } });
+INTERFACES.push({
+  name: 'HTMLLinkElement',
+  parent: 'HTMLElement',
+  members: {
+    get sheet() {
+      state(this);
+      return null;
+    },
+  },
+});
 INTERFACES.push({
   name: 'HTMLCanvasElement',
   parent: 'HTMLElement',
   members: {
-    getContext() { state(this); canvasNotImplemented(this, 'getContext'); return null; },
-    toDataURL() { state(this); canvasNotImplemented(this, 'toDataURL'); return null; },
-    toBlob() { state(this); canvasNotImplemented(this, 'toBlob'); },
+    getContext() {
+      state(this);
+      canvasNotImplemented(this, 'getContext');
+      return null;
+    },
+    toDataURL() {
+      state(this);
+      canvasNotImplemented(this, 'toDataURL');
+      return null;
+    },
+    toBlob() {
+      state(this);
+      canvasNotImplemented(this, 'toBlob');
+    },
   },
 });
 // The HTMLHyperlinkElementUtils mixin (hyperlinks.js).
-INTERFACES.push({ name: 'HTMLAnchorElement', parent: 'HTMLElement', members: [HYPERLINK_MEMBERS, {
-  get text() { state(this); return this.textContent; },
-  set text(v) { state(this); this.textContent = String(v); },
-}] });
+INTERFACES.push({
+  name: 'HTMLAnchorElement',
+  parent: 'HTMLElement',
+  members: [
+    HYPERLINK_MEMBERS,
+    {
+      get text() {
+        state(this);
+        return this.textContent;
+      },
+      set text(v) {
+        state(this);
+        this.textContent = String(v);
+      },
+    },
+  ],
+});
 INTERFACES.push({ name: 'HTMLAreaElement', parent: 'HTMLElement', members: HYPERLINK_MEMBERS });
 INTERFACES.push({ name: 'HTMLImageElement', parent: 'HTMLElement', members: IMAGE_MEMBERS });
 INTERFACES.push({ name: 'HTMLBaseElement', parent: 'HTMLElement', members: BASE_MEMBERS });
@@ -1128,7 +2000,12 @@ INTERFACES.push({ name: 'HTMLFrameElement', parent: 'HTMLElement', members: IFRA
 INTERFACES.push({ name: 'HTMLSlotElement', parent: 'HTMLElement', members: SLOT_MEMBERS });
 // Constants are on the interface object and its prototype (WebIDL).
 const asConstants = (table) => Object.fromEntries(Object.entries(table).map(([k, v]) => [k, { constant: v }]));
-INTERFACES.push({ name: 'HTMLMediaElement', parent: 'HTMLElement', members: [MEDIA_MEMBERS, asConstants(MEDIA_STATICS)], statics: MEDIA_STATICS });
+INTERFACES.push({
+  name: 'HTMLMediaElement',
+  parent: 'HTMLElement',
+  members: [MEDIA_MEMBERS, asConstants(MEDIA_STATICS)],
+  statics: MEDIA_STATICS,
+});
 INTERFACES.push({ name: 'HTMLVideoElement', parent: 'HTMLMediaElement', members: VIDEO_MEMBERS });
 INTERFACES.push({ name: 'HTMLTableElement', parent: 'HTMLElement', members: TABLE_MEMBERS });
 INTERFACES.push({ name: 'HTMLTableSectionElement', parent: 'HTMLElement', members: SECTION_MEMBERS });
@@ -1145,7 +2022,10 @@ const childTextMembers = {
     for (let c = this[S].first; c; c = c[S].next) if (c[S].type === TEXT_NODE) text += c[S].data;
     return text;
   },
-  set text(v) { state(this); this.textContent = String(v); },
+  set text(v) {
+    state(this);
+    this.textContent = String(v);
+  },
 };
 INTERFACES.push({ name: 'HTMLTitleElement', parent: 'HTMLElement', members: childTextMembers });
 INTERFACES.push({ name: 'HTMLScriptElement', parent: 'HTMLElement', members: childTextMembers });
@@ -1154,15 +2034,60 @@ const descendantCollection = (el, key, tag) => {
   const s = state(el);
   return s[key] ?? (s[key] = liveElements(el, (n) => isHTMLTag(n, tag)));
 };
-INTERFACES.push({ name: 'HTMLDataListElement', parent: 'HTMLElement', members: { get options() { return descendantCollection(this, 'optionsCollection', 'option'); } } });
-INTERFACES.push({ name: 'HTMLMapElement', parent: 'HTMLElement', members: { get areas() { return descendantCollection(this, 'areasCollection', 'area'); } } });
+INTERFACES.push({
+  name: 'HTMLDataListElement',
+  parent: 'HTMLElement',
+  members: {
+    get options() {
+      return descendantCollection(this, 'optionsCollection', 'option');
+    },
+  },
+});
+INTERFACES.push({
+  name: 'HTMLMapElement',
+  parent: 'HTMLElement',
+  members: {
+    get areas() {
+      return descendantCollection(this, 'areasCollection', 'area');
+    },
+  },
+});
 // Text tracks are not loaded: readyState stays NONE.
 const TRACK_STATES = { NONE: 0, LOADING: 1, LOADED: 2, ERROR: 3 };
-INTERFACES.push({ name: 'HTMLTrackElement', parent: 'HTMLElement', statics: TRACK_STATES,
-  members: [{ get readyState() { state(this); return 0; } }, asConstants(TRACK_STATES)] });
+INTERFACES.push({
+  name: 'HTMLTrackElement',
+  parent: 'HTMLElement',
+  statics: TRACK_STATES,
+  members: [
+    {
+      get readyState() {
+        state(this);
+        return 0;
+      },
+    },
+    asConstants(TRACK_STATES),
+  ],
+});
 // Nested content is not loaded: no document (as jsdom).
-INTERFACES.push({ name: 'HTMLObjectElement', parent: 'HTMLElement', members: { get contentDocument() { state(this); return null; } } });
-INTERFACES.push({ name: 'HTMLTemplateElement', parent: 'HTMLElement', members: { get content() { return templateContent(this); } } });
+INTERFACES.push({
+  name: 'HTMLObjectElement',
+  parent: 'HTMLElement',
+  members: {
+    get contentDocument() {
+      state(this);
+      return null;
+    },
+  },
+});
+INTERFACES.push({
+  name: 'HTMLTemplateElement',
+  parent: 'HTMLElement',
+  members: {
+    get content() {
+      return templateContent(this);
+    },
+  },
+});
 {
   const defined = new Set(INTERFACES.map((i) => i.name));
   for (const [name, parent] of HTML_ELEMENTS) if (!defined.has(name)) INTERFACES.push({ name, parent, members: {} });
@@ -1179,7 +2104,9 @@ for (const iface of INTERFACES) {
 {
   const form = INTERFACES.find((i) => i.name === 'HTMLFormElement');
   form.variant = (compat) => (compat.formIndexed ? null : 'unindexed');
-  form.adjust = (descriptors) => { delete descriptors[Symbol.iterator]; };
+  form.adjust = (descriptors) => {
+    delete descriptors[Symbol.iterator];
+  };
 }
 
 export { SVG_ELEMENTS, LEGACY_SVG_ELEMENTS, SVG_TYPES_INTERFACES } from './svg.js';

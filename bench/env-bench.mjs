@@ -13,9 +13,18 @@ const run = () => {
   const g = {};
   const r = env.setup(g, {});
   g.document.body.appendChild(g.document.createElement('div'));
-  void g.HTMLElement; void g.Event; void g.MouseEvent; void g.KeyboardEvent;
+  void g.HTMLElement;
+  void g.Event;
+  void g.MouseEvent;
+  void g.KeyboardEvent;
   r.teardown();
 };
 for (let i = 0; i < 50; i++) run();
-const t = []; for (let r = 0; r < 15; r++) { const s = performance.now(); for (let i = 0; i < 30; i++) run(); t.push((performance.now() - s) / 30 * 1000); }
-t.sort((a, b) => a - b); console.log(t[7].toFixed(0));
+const t = [];
+for (let r = 0; r < 15; r++) {
+  const s = performance.now();
+  for (let i = 0; i < 30; i++) run();
+  t.push(((performance.now() - s) / 30) * 1000);
+}
+t.sort((a, b) => a - b);
+console.log(t[7].toFixed(0));

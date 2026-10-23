@@ -26,7 +26,9 @@ export function findConfig(dir, runner) {
     const pkg = path.join(dir, 'package.json');
     try {
       if (readJson(pkg).jest) return pkg;
-    } catch { /* no or unreadable package.json */ }
+    } catch {
+      /* no or unreadable package.json */
+    }
   }
   return null;
 }
@@ -68,7 +70,9 @@ export function detectRunner(dir, { runner = null, config = null } = {}) {
     runner ??= runnerOfConfig(file);
     if (!runner) return { error: `cannot tell the runner from ${config}; pass --runner vitest or --runner jest` };
     const bin = findBin(dir, runner);
-    return bin ? { runner, config: file, bin } : { error: `${runner} is not installed here (no node_modules/.bin/${runner})` };
+    return bin
+      ? { runner, config: file, bin }
+      : { error: `${runner} is not installed here (no node_modules/.bin/${runner})` };
   }
   const found = {};
   for (const r of runner ? [runner] : ['vitest', 'jest']) {
@@ -76,13 +80,22 @@ export function detectRunner(dir, { runner = null, config = null } = {}) {
     if (bin) found[r] = { runner: r, config: findConfig(dir, r), bin };
   }
   // A Vitest workspace file without a config counts as Vitest's config.
-  const withConfig = Object.values(found).filter((f) => f.config || (f.runner === 'vitest' && findVitestWorkspace(dir)));
+  const withConfig = Object.values(found).filter(
+    (f) => f.config || (f.runner === 'vitest' && findVitestWorkspace(dir)),
+  );
   if (withConfig.length === 1) return withConfig[0];
-  if (withConfig.length > 1) return { error: 'both Vitest and Jest are configured here; pass --runner vitest or --runner jest' };
+  if (withConfig.length > 1)
+    return { error: 'both Vitest and Jest are configured here; pass --runner vitest or --runner jest' };
   if (runner && found[runner]) return found[runner];
   if (found.jest && !found.vitest) return found.jest;
-  if (found.vitest && found.jest) return { error: 'both Vitest and Jest are installed and neither has a config here; pass --runner vitest or --runner jest' };
-  if (found.vitest) return { error: 'no Vitest config found here (vitest.config.* or vite.config.*); run compare where you run vitest' };
+  if (found.vitest && found.jest)
+    return {
+      error: 'both Vitest and Jest are installed and neither has a config here; pass --runner vitest or --runner jest',
+    };
+  if (found.vitest)
+    return {
+      error: 'no Vitest config found here (vitest.config.* or vite.config.*); run compare where you run vitest',
+    };
   return { error: 'neither Vitest nor Jest is installed here; run compare where you run your tests' };
 }
 
@@ -100,7 +113,11 @@ export function packageDir(fromDir, name) {
 export function packageVersion(fromDir, name) {
   const dir = packageDir(fromDir, name);
   if (!dir) return null;
-  try { return readJson(path.join(dir, 'package.json')).version ?? null; } catch { return null; }
+  try {
+    return readJson(path.join(dir, 'package.json')).version ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // warpdom as the project would load it: an installed copy inside the
@@ -121,9 +138,10 @@ export function domVersion(dir, runner, environment) {
   const lib = /happy-dom/.test(environment ?? '') ? 'happy-dom' : 'jsdom';
   // Jest loads the DOM through its environment package; Vitest from the
   // project, else through itself.
-  const via = runner === 'jest'
-    ? [environment, lib === 'jsdom' ? 'jest-environment-jsdom' : '@happy-dom/jest-environment']
-    : ['vitest'];
+  const via =
+    runner === 'jest'
+      ? [environment, lib === 'jsdom' ? 'jest-environment-jsdom' : '@happy-dom/jest-environment']
+      : ['vitest'];
   const from = runner === 'jest' ? [] : [dir];
   for (const name of via) {
     if (!name || name === 'jsdom' || name === 'happy-dom' || path.isAbsolute(name)) continue;
@@ -190,14 +208,19 @@ export function takeConfigArg(args) {
 // for, else Vitest or Jest, whichever the script runs.
 function scriptCommand(dir, runner = null) {
   let script;
-  try { script = readJson(path.join(dir, 'package.json')).scripts?.test; } catch { return null; }
+  try {
+    script = readJson(path.join(dir, 'package.json')).scripts?.test;
+  } catch {
+    return null;
+  }
   if (typeof script !== 'string') return null;
   const isRunner = (w, r) => w === r || w.endsWith(`/${r}`) || new RegExp(`(^|/)${r}(/bin/${r})?\\.[mc]?js$`).test(w);
   for (const command of script.split(/&&|\|\||;/)) {
     const words = command.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [];
     for (const r of runner ? [runner] : ['vitest', 'jest']) {
       const at = words.findIndex((w) => isRunner(w, r));
-      if (at >= 0) return { runner: r, before: words.slice(0, at), after: words.slice(at + 1).map((w) => w.replace(/["']/g, '')) };
+      if (at >= 0)
+        return { runner: r, before: words.slice(0, at), after: words.slice(at + 1).map((w) => w.replace(/["']/g, '')) };
     }
   }
   return null;
@@ -232,7 +255,8 @@ export function scriptRunnerArgs(dir, runner = null) {
   const words = command.after;
   for (let i = 0; i < words.length; i++) {
     const w = words[i];
-    const [flag, inline] = w.startsWith('--') && w.includes('=') ? [w.slice(0, w.indexOf('=')), w.slice(w.indexOf('=') + 1)] : [w, null];
+    const [flag, inline] =
+      w.startsWith('--') && w.includes('=') ? [w.slice(0, w.indexOf('=')), w.slice(w.indexOf('=') + 1)] : [w, null];
     const take = () => inline ?? (i + 1 < words.length ? words[++i] : null);
     if (flag === '--config' || flag === '-c') config = take() ?? config;
     else if (flag === '--project' && command.runner === 'vitest') {

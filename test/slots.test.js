@@ -13,11 +13,25 @@ parity('slots: assignment, flattening and assignedSlot', async (w) => {
   root.innerHTML = '<slot name="a"></slot><slot id=def>fallback<em>f</em></slot><slot name="a" id=dup></slot>';
   const [sa, sdef, sdup] = root.querySelectorAll('slot');
   const log = [];
-  for (const s of [sa, sdef, sdup]) s.addEventListener('slotchange', (e) => log.push(['slotchange', s.id || s.name, e.bubbles, e.composed, names(s.assignedNodes())]));
+  for (const s of [sa, sdef, sdup])
+    s.addEventListener('slotchange', (e) =>
+      log.push(['slotchange', s.id || s.name, e.bubbles, e.composed, names(s.assignedNodes())]),
+    );
   const out = {
-    assigned: [names(sa.assignedNodes()), names(sa.assignedElements()), names(sdef.assignedNodes()), names(sdup.assignedNodes())],
+    assigned: [
+      names(sa.assignedNodes()),
+      names(sa.assignedElements()),
+      names(sdef.assignedNodes()),
+      names(sdup.assignedNodes()),
+    ],
     flatten: [names(sdup.assignedNodes({ flatten: true })), names(sdef.assignedNodes({ flatten: true }))],
-    assignedSlot: [host.firstChild.assignedSlot === sa, host.childNodes[1].assignedSlot === sdef, host.lastChild.assignedSlot, sa.name, host.firstChild.slot],
+    assignedSlot: [
+      host.firstChild.assignedSlot === sa,
+      host.childNodes[1].assignedSlot === sdef,
+      host.lastChild.assignedSlot,
+      sa.name,
+      host.firstChild.slot,
+    ],
   };
   host.querySelector('b').slot = 'a';
   log.push('sync');
@@ -44,7 +58,10 @@ parity('slots: what fires slotchange', async (w) => {
   slot.addEventListener('slotchange', () => log.push('initial insert'));
   host.attachShadow({ mode: 'open' }).appendChild(slot);
   const host2 = d.body.appendChild(d.createElement('div'));
-  host2.attachShadow({ mode: 'open' }).appendChild(d.createElement('slot')).addEventListener('slotchange', () => log.push('child added to host'));
+  host2
+    .attachShadow({ mode: 'open' })
+    .appendChild(d.createElement('slot'))
+    .addEventListener('slotchange', () => log.push('child added to host'));
   host2.appendChild(d.createElement('p'));
   const s3 = d.createElement('slot');
   s3.addEventListener('slotchange', () => log.push('fallback child added'));
@@ -80,15 +97,28 @@ test('slots: no slot bookkeeping in documents without slots', () => {
 // browsers do; tests written for jsdom see the host's values, so warpdom
 // keeps them.
 for (const jsdom of [30, 26, 25]) {
-  parity(`slotted elements inherit from the host, as in jsdom (jsdom ${jsdom})`, (w) => {
-    const d = w.document;
-    d.body.innerHTML = '<div id=host style="color: blue; font-size: 20px; visibility: hidden"><span id=s>x</span><em id=u slot=none>y</em></div>';
-    const host = d.getElementById('host');
-    const shadow = host.attachShadow({ mode: 'open' });
-    shadow.innerHTML = '<div style="color: red; font-size: 30px; visibility: visible; cursor: text"><slot></slot></div>';
-    const style = (el) => { const c = w.getComputedStyle(el); return [c.color, c.fontSize, c.visibility, c.cursor]; };
-    return { slotted: style(d.getElementById('s')), unslotted: style(d.getElementById('u')), slot: style(shadow.querySelector('slot')) };
-  }, { jsdom });
+  parity(
+    `slotted elements inherit from the host, as in jsdom (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      d.body.innerHTML =
+        '<div id=host style="color: blue; font-size: 20px; visibility: hidden"><span id=s>x</span><em id=u slot=none>y</em></div>';
+      const host = d.getElementById('host');
+      const shadow = host.attachShadow({ mode: 'open' });
+      shadow.innerHTML =
+        '<div style="color: red; font-size: 30px; visibility: visible; cursor: text"><slot></slot></div>';
+      const style = (el) => {
+        const c = w.getComputedStyle(el);
+        return [c.color, c.fontSize, c.visibility, c.cursor];
+      };
+      return {
+        slotted: style(d.getElementById('s')),
+        unslotted: style(d.getElementById('u')),
+        slot: style(shadow.querySelector('slot')),
+      };
+    },
+    { jsdom },
+  );
 }
 
 // Event paths go through a slottable's assigned slot (DOM: get the parent).
@@ -96,46 +126,62 @@ for (const jsdom of [30, 26, 25]) {
 // host: its path still goes through that slot, shadow root and host until
 // it is assigned again (tanstack-query's lit-query tests rely on it).
 for (const jsdom of [30, 26, 20]) {
-  parity(`slots: event paths through assigned slots, and jsdom's last assigned slot (jsdom ${jsdom})`, (w) => {
-    const d = w.document;
-    const names = (e) => e.composedPath().map((n) => n.localName ?? n.nodeName ?? 'window').join('>');
-    const host = d.createElement('x-host');
-    const sr = host.attachShadow({ mode: 'open' });
-    sr.innerHTML = '<slot></slot><slot name=n></slot>';
-    const child = d.createElement('x-child');
-    const text = d.createTextNode('t');
-    host.append(child, text);
-    const div = d.body.appendChild(d.createElement('div'));
-    div.append(host);
-    const other = d.body.appendChild(d.createElement('section'));
-    const out = [];
-    const fire = (node, init = { bubbles: true, composed: true }) => {
-      let p = null;
-      const l = (e) => { p = names(e); };
-      node.addEventListener('e', l);
-      node.dispatchEvent(new w.Event('e', init));
-      node.removeEventListener('e', l);
-      return p;
-    };
-    const seen = [];
-    for (const [n, t] of [['host', host], ['div', div], ['other', other], ['slot', sr.firstChild]]) t.addEventListener('e', () => seen.push(n));
-    out.push(fire(child), fire(text), fire(child, { bubbles: true }), seen.splice(0));
-    child.setAttribute('slot', 'n');
-    out.push(fire(child), child.assignedSlot?.getAttribute('name'));
-    other.append(child);
-    out.push(fire(child), child.assignedSlot, seen.splice(0));
-    host.append(child);
-    child.removeAttribute('slot');
-    out.push(fire(child));
-    child.remove();
-    out.push(fire(child));
-    // A slot inserted after the slottable.
-    const h2 = d.body.appendChild(d.createElement('x-h2'));
-    const c2 = h2.appendChild(d.createElement('x-c2'));
-    const sr2 = h2.attachShadow({ mode: 'closed' });
-    out.push(fire(c2));
-    sr2.innerHTML = '<slot></slot>';
-    out.push(fire(c2));
-    return out;
-  }, { jsdom });
+  parity(
+    `slots: event paths through assigned slots, and jsdom's last assigned slot (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const names = (e) =>
+        e
+          .composedPath()
+          .map((n) => n.localName ?? n.nodeName ?? 'window')
+          .join('>');
+      const host = d.createElement('x-host');
+      const sr = host.attachShadow({ mode: 'open' });
+      sr.innerHTML = '<slot></slot><slot name=n></slot>';
+      const child = d.createElement('x-child');
+      const text = d.createTextNode('t');
+      host.append(child, text);
+      const div = d.body.appendChild(d.createElement('div'));
+      div.append(host);
+      const other = d.body.appendChild(d.createElement('section'));
+      const out = [];
+      const fire = (node, init = { bubbles: true, composed: true }) => {
+        let p = null;
+        const l = (e) => {
+          p = names(e);
+        };
+        node.addEventListener('e', l);
+        node.dispatchEvent(new w.Event('e', init));
+        node.removeEventListener('e', l);
+        return p;
+      };
+      const seen = [];
+      for (const [n, t] of [
+        ['host', host],
+        ['div', div],
+        ['other', other],
+        ['slot', sr.firstChild],
+      ])
+        t.addEventListener('e', () => seen.push(n));
+      out.push(fire(child), fire(text), fire(child, { bubbles: true }), seen.splice(0));
+      child.setAttribute('slot', 'n');
+      out.push(fire(child), child.assignedSlot?.getAttribute('name'));
+      other.append(child);
+      out.push(fire(child), child.assignedSlot, seen.splice(0));
+      host.append(child);
+      child.removeAttribute('slot');
+      out.push(fire(child));
+      child.remove();
+      out.push(fire(child));
+      // A slot inserted after the slottable.
+      const h2 = d.body.appendChild(d.createElement('x-h2'));
+      const c2 = h2.appendChild(d.createElement('x-c2'));
+      const sr2 = h2.attachShadow({ mode: 'closed' });
+      out.push(fire(c2));
+      sr2.innerHTML = '<slot></slot>';
+      out.push(fire(c2));
+      return out;
+    },
+    { jsdom },
+  );
 }

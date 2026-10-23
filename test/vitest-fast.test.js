@@ -8,9 +8,29 @@ import { fileURLToPath } from 'node:url';
 import { withFastMode, fsId, projectCliOptions, REPORTER } from '../src/vitest-fast.js';
 import { environment as ENVIRONMENT_PATH } from '../src/vitest-environment.js';
 import {
-  filesOf, untrusted, unattributedErrors, errorFiles, differingFiles, merge, summary, chooseMode, slowSplit, afterSplitRun, cliOptions, deadline,
-  SLOW_RUNS, RELEARN_AFTER, SUITE_CHANGE,
-  MARGIN, LEARN_DEADLINE, RUN_DEADLINE, SPLIT_RUNS, splitArgs, withoutProjects, namesReporters, main,
+  filesOf,
+  untrusted,
+  unattributedErrors,
+  errorFiles,
+  differingFiles,
+  merge,
+  summary,
+  chooseMode,
+  slowSplit,
+  afterSplitRun,
+  cliOptions,
+  deadline,
+  SLOW_RUNS,
+  RELEARN_AFTER,
+  SUITE_CHANGE,
+  MARGIN,
+  LEARN_DEADLINE,
+  RUN_DEADLINE,
+  SPLIT_RUNS,
+  splitArgs,
+  withoutProjects,
+  namesReporters,
+  main,
 } from '../src/vitest-fast-cli.js';
 import { runReport, stackFiles } from '../src/vitest-fast-reporter.js';
 
@@ -18,7 +38,9 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const withEnv = (env, fn) => {
   const saved = { ...process.env };
   Object.assign(process.env, env);
-  try { return fn(); } finally {
+  try {
+    return fn();
+  } finally {
     for (const k of Object.keys(env)) delete process.env[k];
     Object.assign(process.env, saved);
   }
@@ -27,7 +49,11 @@ const NO_CACHE = { cache: '/nonexistent/fast-mode.json' };
 async function quietly(fn) {
   const write = process.stderr.write;
   process.stderr.write = () => true;
-  try { return await fn(); } finally { process.stderr.write = write; }
+  try {
+    return await fn();
+  } finally {
+    process.stderr.write = write;
+  }
 }
 
 // --- the config transform ---------------------------------------------------------
@@ -35,21 +61,37 @@ async function quietly(fn) {
 test('withFastMode: unchanged until something is learned, or when isolated is faster', () => {
   const config = { test: { environment: '/path/to/env.js' } };
   assert.equal(withFastMode(config, NO_CACHE), config);
-  assert.equal(withEnv({ WARPDOM_FAST_MODE: 'isolated' }, () => withFastMode(config)), config);
+  assert.equal(
+    withEnv({ WARPDOM_FAST_MODE: 'isolated' }, () => withFastMode(config)),
+    config,
+  );
   // Except that the name 'warpdom' becomes the environment's path.
   assert.equal(withFastMode({ test: { environment: 'warpdom' } }, NO_CACHE).test.environment, ENVIRONMENT_PATH);
 });
 
 test('withFastMode: a fast project, and an isolated one for the files to isolate', () => {
-  const config = { plugins: ['p'], test: { environment: 'warpdom', setupFiles: './setup.ts', include: ['src/**/*.test.ts'], exclude: ['e2e/**'] } };
-  const out = withEnv({ WARPDOM_FAST_MODE: 'split', WARPDOM_FAST_ISOLATE: JSON.stringify(['src/leaky.test.ts']) }, () => withFastMode(config, NO_CACHE));
+  const config = {
+    plugins: ['p'],
+    test: { environment: 'warpdom', setupFiles: './setup.ts', include: ['src/**/*.test.ts'], exclude: ['e2e/**'] },
+  };
+  const out = withEnv({ WARPDOM_FAST_MODE: 'split', WARPDOM_FAST_ISOLATE: JSON.stringify(['src/leaky.test.ts']) }, () =>
+    withFastMode(config, NO_CACHE),
+  );
   assert.deepEqual(out.plugins, ['p']);
   assert.deepEqual(out.test.setupFiles, [], 'the projects take over the setup files');
-  assert.equal(out.test.include, undefined, 'and the include: merged into a project that extends the file, it made the isolated project run every file');
+  assert.equal(
+    out.test.include,
+    undefined,
+    'and the include: merged into a project that extends the file, it made the isolated project run every file',
+  );
   const [fast, isolated] = out.test.projects;
   assert.equal(fast.test.name, 'warpdom');
   assert.equal(fast.test.isolate, false);
-  assert.equal(fast.test.environment, fsId(ENVIRONMENT_PATH), "the environment as a /@fs/ id (Vitest 3's shared workers)");
+  assert.equal(
+    fast.test.environment,
+    fsId(ENVIRONMENT_PATH),
+    "the environment as a /@fs/ id (Vitest 3's shared workers)",
+  );
   assert.match(fast.test.setupFiles[0], /vitest-reset\.js$/, 'the reset runs first');
   assert.equal(fast.test.setupFiles[1], './setup.ts');
   assert.deepEqual(fast.test.include, ['src/**/*.test.ts']);
@@ -60,19 +102,32 @@ test('withFastMode: a fast project, and an isolated one for the files to isolate
   assert.deepEqual(isolated.test.setupFiles, ['./setup.ts']);
   assert.equal(isolated.test.typecheck.enabled, false, 'type tests run once, in the fast project');
   // Without test.projects both stand for the root project: they get its command-line options.
-  assert.deepEqual(fast.plugins.map((p) => p.name), ['warpdom:fast-mode-cli-options']);
-  assert.deepEqual(isolated.plugins.map((p) => p.name), ['warpdom:fast-mode-cli-options']);
+  assert.deepEqual(
+    fast.plugins.map((p) => p.name),
+    ['warpdom:fast-mode-cli-options'],
+  );
+  assert.deepEqual(
+    isolated.plugins.map((p) => p.name),
+    ['warpdom:fast-mode-cli-options'],
+  );
 });
 
 test('withFastMode: learning runs everything fast; a rerun only the files it names', () => {
-  const out = withEnv({ WARPDOM_FAST_MODE: 'fast', WARPDOM_FAST_ISOLATE: '["x.test.ts"]' }, () => withFastMode({ test: {} }, NO_CACHE));
+  const out = withEnv({ WARPDOM_FAST_MODE: 'fast', WARPDOM_FAST_ISOLATE: '["x.test.ts"]' }, () =>
+    withFastMode({ test: {} }, NO_CACHE),
+  );
   assert.equal(out.test.projects.length, 1);
   assert.ok(out.test.projects[0].test.exclude.includes('**/node_modules/**'), "Vitest's default exclusions are kept");
   const dir = mkdtempSync(join(tmpdir(), 'warpdom-fast-'));
   const cache = join(dir, 'fast-mode.json');
   writeFileSync(cache, JSON.stringify({ version: 2, mode: 'split', isolate: ['old.test.ts'], leaky: [] }));
-  const rerun = withEnv({ WARPDOM_FAST_ISOLATE: '["new.test.ts"]', WARPDOM_FAST_RERUN: '1' }, () => withFastMode({ test: {} }, { cache }));
-  assert.deepEqual(rerun.test.projects.map((p) => [p.test.name, p.test.include]), [['warpdom (isolated)', [resolve('new.test.ts')]]]);
+  const rerun = withEnv({ WARPDOM_FAST_ISOLATE: '["new.test.ts"]', WARPDOM_FAST_RERUN: '1' }, () =>
+    withFastMode({ test: {} }, { cache }),
+  );
+  assert.deepEqual(
+    rerun.test.projects.map((p) => [p.test.name, p.test.include]),
+    [['warpdom (isolated)', [resolve('new.test.ts')]]],
+  );
   const split = withFastMode({ test: {} }, { cache });
   assert.deepEqual(split.test.projects[1].test.include, [resolve('old.test.ts')], 'the cache says split');
   writeFileSync(cache, JSON.stringify({ version: 1, mode: 'split', leaky: ['old.test.ts'] }));
@@ -85,10 +140,17 @@ test("withFastMode: the CLI's reporter after the configured reporters, unless th
   const report = { WARPDOM_FAST_REPORT: '/tmp/r.json', GITHUB_ACTIONS: '' };
   const plain = withEnv({ ...report, WARPDOM_FAST_MODE: 'isolated' }, () => withFastMode({ test: {} }, NO_CACHE));
   assert.deepEqual(plain.test.reporters, ['default', REPORTER]);
-  const own = withEnv({ ...report, WARPDOM_FAST_MODE: 'split' }, () => withFastMode({ test: { reporters: [['junit', {}]] } }, NO_CACHE));
+  const own = withEnv({ ...report, WARPDOM_FAST_MODE: 'split' }, () =>
+    withFastMode({ test: { reporters: [['junit', {}]] } }, NO_CACHE),
+  );
   assert.deepEqual(own.test.reporters, [['junit', {}], REPORTER]);
   const cli = { test: {} };
-  assert.equal(withEnv({ ...report, WARPDOM_FAST_REPORTER: 'cli', WARPDOM_FAST_MODE: 'isolated' }, () => withFastMode(cli, NO_CACHE)), cli);
+  assert.equal(
+    withEnv({ ...report, WARPDOM_FAST_REPORTER: 'cli', WARPDOM_FAST_MODE: 'isolated' }, () =>
+      withFastMode(cli, NO_CACHE),
+    ),
+    cli,
+  );
   assert.ok(namesReporters(['--reporter=dot']) && namesReporters(['--reporter', 'dot']) && !namesReporters(['--run']));
 });
 
@@ -105,21 +167,45 @@ test('withFastMode: a named project of several is split; others keep the root se
   };
   const env = { WARPDOM_FAST_MODE: 'split', WARPDOM_FAST_ISOLATE: '["a.spec.ts"]' };
   const out = withEnv(env, () => withFastMode(config, { project: 'unit', ...NO_CACHE }));
-  assert.deepEqual(out.test.projects.map((p) => p.test.name), ['browser', 'unit', 'unit (isolated)']);
+  assert.deepEqual(
+    out.test.projects.map((p) => p.test.name),
+    ['browser', 'unit', 'unit (isolated)'],
+  );
   assert.deepEqual(out.test.projects[0].test.setupFiles, ['root.ts', 'browser.ts']);
-  assert.deepEqual(out.test.projects[0].test.include, ['**/*.spec.ts'], 'projects that extend the root keep its include');
+  assert.deepEqual(
+    out.test.projects[0].test.include,
+    ['**/*.spec.ts'],
+    'projects that extend the root keep its include',
+  );
   assert.deepEqual(out.test.projects[1].test.setupFiles.slice(1), ['root.ts', 'unit.ts']);
   assert.equal(out.test.projects[1].test.environment, fsId(ENVIRONMENT_PATH));
-  assert.deepEqual(out.test.projects[1].plugins, [], 'test.projects: Vitest passes the command line to projects itself');
-  const rerun = withEnv({ ...env, WARPDOM_FAST_RERUN: '1' }, () => withFastMode(config, { project: 'unit', ...NO_CACHE }));
-  assert.deepEqual(rerun.test.projects.map((p) => p.test.name), ['unit (isolated)']);
+  assert.deepEqual(
+    out.test.projects[1].plugins,
+    [],
+    'test.projects: Vitest passes the command line to projects itself',
+  );
+  const rerun = withEnv({ ...env, WARPDOM_FAST_RERUN: '1' }, () =>
+    withFastMode(config, { project: 'unit', ...NO_CACHE }),
+  );
+  assert.deepEqual(
+    rerun.test.projects.map((p) => p.test.name),
+    ['unit (isolated)'],
+  );
   assert.throws(() => withEnv(env, () => withFastMode(config, NO_CACHE)), /name the project/);
   const fn = withFastMode(() => config, { project: 'unit', ...NO_CACHE });
   assert.equal(typeof fn, 'function');
   assert.equal(withEnv(env, () => fn({})).test.projects.length, 3, 'config functions are wrapped');
   const promised = withFastMode(Promise.resolve(config), { project: 'unit', ...NO_CACHE });
   assert.equal(typeof promised.then, 'function', 'config promises too');
-  assert.deepEqual(splitArgs(['--project', 'unit', '--project=x', 'a']), ['--project', 'unit', '--project', 'unit (isolated)', '--project=x', '--project=x (isolated)', 'a']);
+  assert.deepEqual(splitArgs(['--project', 'unit', '--project=x', 'a']), [
+    '--project',
+    'unit',
+    '--project',
+    'unit (isolated)',
+    '--project=x',
+    '--project=x (isolated)',
+    'a',
+  ]);
   assert.deepEqual(withoutProjects(['--project', 'unit', '--project=x', 'a']), ['a']);
 });
 
@@ -132,8 +218,20 @@ test('fsId: absolute paths in /@fs/ form, the rest unchanged', () => {
 });
 
 test("projectCliOptions: the root's command-line options a project needs (typecheck, ...), not the runner's", () => {
-  const options = { typecheck: { enabled: false }, coverage: { enabled: false }, retry: 0, reporter: ['json'], isolate: true, hookTimeout: 5, environment: 'warpdom' };
-  assert.deepEqual(projectCliOptions(options), { typecheck: { enabled: false }, hookTimeout: 5, environment: ENVIRONMENT_PATH });
+  const options = {
+    typecheck: { enabled: false },
+    coverage: { enabled: false },
+    retry: 0,
+    reporter: ['json'],
+    isolate: true,
+    hookTimeout: 5,
+    environment: 'warpdom',
+  };
+  assert.deepEqual(projectCliOptions(options), {
+    typecheck: { enabled: false },
+    hookTimeout: 5,
+    environment: ENVIRONMENT_PATH,
+  });
   assert.equal(projectCliOptions(options, { fast: true }).environment, fsId(ENVIRONMENT_PATH));
   assert.deepEqual(projectCliOptions({}), {});
 });
@@ -165,7 +263,14 @@ test('chooseMode: split only when it beats isolated by more than the noise margi
 
 test('after a split run: one slow run does not switch the mode', () => {
   assert.deepEqual([SLOW_RUNS, RELEARN_AFTER, SUITE_CHANGE], [3, 10, 0.1]);
-  const learned = { mode: 'split', isolate: [], leaky: [], learned: { isolated: 100, split: 60, files: 50 }, runs: [], slowStreak: 0 };
+  const learned = {
+    mode: 'split',
+    isolate: [],
+    leaky: [],
+    learned: { isolated: 100, split: 60, files: 50 },
+    runs: [],
+    slowStreak: 0,
+  };
   // A slow runner (1.6x): 96 s against 60 s learned, then normal again.
   let { state, switched } = afterSplitRun(learned, { seconds: 160, files: 50 });
   assert.equal(switched, false);
@@ -179,17 +284,41 @@ test('after a split run: one slow run does not switch the mode', () => {
 
 test('after a split run: persistent slowness switches to isolated, with the reason, the times and a re-learning due', () => {
   const now = new Date('2026-10-14T12:00:00Z');
-  let state = { mode: 'split', isolate: [], leaky: [], learned: { isolated: 100, split: 60, files: 50 }, runs: [], decisions: [{ at: 'x', mode: 'split', reason: 'learned' }] };
+  let state = {
+    mode: 'split',
+    isolate: [],
+    leaky: [],
+    learned: { isolated: 100, split: 60, files: 50 },
+    runs: [],
+    decisions: [{ at: 'x', mode: 'split', reason: 'learned' }],
+  };
   for (const seconds of [110, 120]) ({ state } = afterSplitRun(state, { seconds, files: 50 }, { now }));
   const out = afterSplitRun(state, { seconds: 130, files: 50 }, { now });
   assert.equal(out.switched, true);
   assert.equal(out.state.mode, 'isolated');
   assert.equal(out.state.relearnIn, RELEARN_AFTER);
-  assert.match(out.state.reason, /^3 split runs in a row took longer than the learned isolated 100 s plus the margin \(last 110, 120, 130 s\)$/);
-  assert.deepEqual(out.state.decisions.map((d) => d.mode), ['split', 'isolated'], 'every decision is kept, newest last');
-  assert.deepEqual(out.state.decisions[1], { at: now.toISOString(), mode: 'isolated', reason: out.state.reason, isolated: 100, splitRuns: [110, 120, 130] });
+  assert.match(
+    out.state.reason,
+    /^3 split runs in a row took longer than the learned isolated 100 s plus the margin \(last 110, 120, 130 s\)$/,
+  );
+  assert.deepEqual(
+    out.state.decisions.map((d) => d.mode),
+    ['split', 'isolated'],
+    'every decision is kept, newest last',
+  );
+  assert.deepEqual(out.state.decisions[1], {
+    at: now.toISOString(),
+    mode: 'isolated',
+    reason: out.state.reason,
+    isolated: 100,
+    splitRuns: [110, 120, 130],
+  });
   // Configurable: --slow-runs and --relearn-after (0: never).
-  const quick = afterSplitRun({ ...state, slowStreak: 0 }, { seconds: 130, files: 50 }, { slowRuns: 1, relearnAfter: 0 });
+  const quick = afterSplitRun(
+    { ...state, slowStreak: 0 },
+    { seconds: 130, files: 50 },
+    { slowRuns: 1, relearnAfter: 0 },
+  );
   assert.deepEqual([quick.switched, quick.state.relearnIn], [true, undefined]);
   // Slow by less than the margin is not slow.
   let near = { ...state, slowStreak: 0 };
@@ -202,12 +331,18 @@ test('after a split run: a suite whose test files changed by more than 10% learn
   assert.equal(afterSplitRun(state, { seconds: 50, files: 55 }).state.relearn, undefined, '10% is not a change');
   assert.match(afterSplitRun(state, { seconds: 50, files: 56 }).state.relearn, /56 test files, learned with 50/);
   assert.match(afterSplitRun(state, { seconds: 50, files: 44 }).state.relearn, /44 test files/);
-  assert.equal(afterSplitRun({ ...state, learned: { isolated: 100 } }, { seconds: 50, files: 5 }).state.relearn, undefined, 'older states have no file count');
+  assert.equal(
+    afterSplitRun({ ...state, learned: { isolated: 100 } }, { seconds: 50, files: 5 }).state.relearn,
+    undefined,
+    'older states have no file count',
+  );
 });
 
 test('the CLI options: --learn, --slow-runs, --relearn-after; the rest goes to Vitest', () => {
   assert.deepEqual(cliOptions(['run', '--learn', '--slow-runs=2', '--relearn-after=0', '--project', 'unit']), {
-    args: ['--project', 'unit'], relearn: true, options: { slowRuns: 2, relearnAfter: 0 },
+    args: ['--project', 'unit'],
+    relearn: true,
+    options: { slowRuns: 2, relearnAfter: 0 },
   });
   assert.deepEqual(cliOptions(['--slow-runs=0']).options, { slowRuns: 1 }, 'at least one');
 });
@@ -215,67 +350,172 @@ test('the CLI options: --learn, --slow-runs, --relearn-after; the rest goes to V
 // --- results ----------------------------------------------------------------------
 
 const report = (files, errors = []) => ({
-  files: files.map(([file, state, tests, typecheck]) => ({ file, project: 'warpdom', state, tests, ...(typecheck ? { typecheck } : {}) })),
+  files: files.map(([file, state, tests, typecheck]) => ({
+    file,
+    project: 'warpdom',
+    state,
+    tests,
+    ...(typecheck ? { typecheck } : {}),
+  })),
   errors,
 });
 const runOf = (r) => ({ files: filesOf(r), errors: r.errors ?? [] });
 
 test('results: differing files, missing tests and files, unhandled errors', () => {
-  const iso = runOf(report([
-    ['/a', 'passed', [['t', 'passed']]],
-    ['/b', 'passed', [['t', 'passed'], ['u', 'skipped']]],
-    ['/c', 'passed', [['t', 'passed']]],
-    ['/d', 'failed', [['t', 'failed']]],
-    ['/e', 'passed', [['t', 'passed'], ['t', 'passed']]],
-    ['/f', 'passed', [['t', 'passed']]],
-  ]));
-  const shared = runOf(report([
-    ['/a', 'passed', [['t', 'passed']]],
-    ['/b', 'passed', [['t', 'passed'], ['u', 'pending']]], // a test that did not run (a hang, a timeout)
-    ['/d', 'failed', [['t', 'failed']]],
-    ['/e', 'passed', [['t', 'passed']]], // one of two same-named tests missing
-    ['/f', 'passed', [['t', 'passed']]],
-    ['/types.spec-d.ts', 'failed', [['x', 'failed']], true],
-  ], [{ file: '/f', message: 'boom' }, { file: null, message: 'where?' }]));
+  const iso = runOf(
+    report([
+      ['/a', 'passed', [['t', 'passed']]],
+      [
+        '/b',
+        'passed',
+        [
+          ['t', 'passed'],
+          ['u', 'skipped'],
+        ],
+      ],
+      ['/c', 'passed', [['t', 'passed']]],
+      ['/d', 'failed', [['t', 'failed']]],
+      [
+        '/e',
+        'passed',
+        [
+          ['t', 'passed'],
+          ['t', 'passed'],
+        ],
+      ],
+      ['/f', 'passed', [['t', 'passed']]],
+    ]),
+  );
+  const shared = runOf(
+    report(
+      [
+        ['/a', 'passed', [['t', 'passed']]],
+        [
+          '/b',
+          'passed',
+          [
+            ['t', 'passed'],
+            ['u', 'pending'],
+          ],
+        ], // a test that did not run (a hang, a timeout)
+        ['/d', 'failed', [['t', 'failed']]],
+        ['/e', 'passed', [['t', 'passed']]], // one of two same-named tests missing
+        ['/f', 'passed', [['t', 'passed']]],
+        ['/types.spec-d.ts', 'failed', [['x', 'failed']], true],
+      ],
+      [
+        { file: '/f', message: 'boom' },
+        { file: null, message: 'where?' },
+      ],
+    ),
+  );
   assert.deepEqual([...differingFiles(iso, shared)].sort(), ['/b', '/c', '/e'], 'c has no result at all');
-  assert.deepEqual([...untrusted(shared)].sort(), ['/d', '/f'], 'failed, or an unhandled error from the file; type tests never');
+  assert.deepEqual(
+    [...untrusted(shared)].sort(),
+    ['/d', '/f'],
+    'failed, or an unhandled error from the file; type tests never',
+  );
   assert.equal(unattributedErrors(shared), 1);
   assert.deepEqual(differingFiles(iso, iso), new Set());
 });
 
 test('results: rerun results replace the first, summary counts', () => {
-  const first = filesOf(report([['/a', 'passed', [['a1', 'passed']]], ['/b', 'failed', [['b1', 'failed'], ['b2', 'passed']]], ['/c', 'failed', []]]));
-  const rerun = filesOf(report([['/b', 'passed', [['b1', 'passed'], ['b2', 'passed']]], ['/c', 'failed', [['c1', 'failed']]]]));
+  const first = filesOf(
+    report([
+      ['/a', 'passed', [['a1', 'passed']]],
+      [
+        '/b',
+        'failed',
+        [
+          ['b1', 'failed'],
+          ['b2', 'passed'],
+        ],
+      ],
+      ['/c', 'failed', []],
+    ]),
+  );
+  const rerun = filesOf(
+    report([
+      [
+        '/b',
+        'passed',
+        [
+          ['b1', 'passed'],
+          ['b2', 'passed'],
+        ],
+      ],
+      ['/c', 'failed', [['c1', 'failed']]],
+    ]),
+  );
   assert.deepEqual(summary(merge(first, rerun)), { passed: 3, failed: 1, skipped: 0, failedFiles: 1 });
 });
 
 test('the reporter: per file its project, state and tests; errors with their file', () => {
-  const tests = [{ fullName: 'x > t', result: () => ({ state: 'passed' }) }, { fullName: 'u', result: () => undefined }];
-  const module = { moduleId: '/a.test.ts', project: { name: 'warpdom' }, state: () => 'passed', children: { allTests: () => tests }, task: { meta: {} } };
+  const tests = [
+    { fullName: 'x > t', result: () => ({ state: 'passed' }) },
+    { fullName: 'u', result: () => undefined },
+  ];
+  const module = {
+    moduleId: '/a.test.ts',
+    project: { name: 'warpdom' },
+    state: () => 'passed',
+    children: { allTests: () => tests },
+    task: { meta: {} },
+  };
   const typeModule = { ...module, moduleId: '/t.test-d.ts', task: { meta: { typecheck: true } } };
-  const out = runReport([module, typeModule], [{ message: 'm', VITEST_TEST_PATH: '/a.test.ts' }, new Error('n')], 'passed');
-  assert.deepEqual(out.files[0], { file: '/a.test.ts', project: 'warpdom', state: 'passed', tests: [['x > t', 'passed'], ['u', 'pending']] });
+  const out = runReport(
+    [module, typeModule],
+    [{ message: 'm', VITEST_TEST_PATH: '/a.test.ts' }, new Error('n')],
+    'passed',
+  );
+  assert.deepEqual(out.files[0], {
+    file: '/a.test.ts',
+    project: 'warpdom',
+    state: 'passed',
+    tests: [
+      ['x > t', 'passed'],
+      ['u', 'pending'],
+    ],
+  });
   assert.equal(out.files[1].typecheck, true);
-  assert.deepEqual(out.errors, [{ file: '/a.test.ts', sources: [], message: 'm' }, { file: null, sources: [], message: 'n' }]);
+  assert.deepEqual(out.errors, [
+    { file: '/a.test.ts', sources: [], message: 'm' },
+    { file: null, sources: [], message: 'n' },
+  ]);
 });
 
 test("the reporter: an error's sources are the run's test files its stack names", () => {
-  const module = (moduleId) => ({ moduleId, project: { name: 'warpdom' }, state: () => 'passed', children: { allTests: () => [] }, task: { meta: {} } });
+  const module = (moduleId) => ({
+    moduleId,
+    project: { name: 'warpdom' },
+    state: () => 'passed',
+    children: { allTests: () => [] },
+    task: { meta: {} },
+  });
   const modules = [module('/p/a.test.ts'), module('/p/b.test.ts')];
   // Vitest's parsed frames: an un-awaited vi.waitFor of a, timing out while b runs.
   const parsed = {
-    message: 'Timed out in waitFor!', VITEST_TEST_PATH: '/p/b.test.ts',
+    message: 'Timed out in waitFor!',
+    VITEST_TEST_PATH: '/p/b.test.ts',
     stacks: [{ file: '/p/node_modules/vitest/dist/chunk.js' }, { file: '/p/a.test.ts' }, { file: '/p/a.test.ts' }],
   };
   // Only the stack text: absolute paths and file URLs.
-  const text = { message: 'x', VITEST_TEST_PATH: '/p/b.test.ts', stack: 'Error: x\n    at f (file:///p/node_modules/x.js:1:2)\n    at /p/a.test.ts:70:8\n    at g (file:///p/b.test.ts:3:4)\n    at new Promise (<anonymous>)' };
+  const text = {
+    message: 'x',
+    VITEST_TEST_PATH: '/p/b.test.ts',
+    stack:
+      'Error: x\n    at f (file:///p/node_modules/x.js:1:2)\n    at /p/a.test.ts:70:8\n    at g (file:///p/b.test.ts:3:4)\n    at new Promise (<anonymous>)',
+  };
   const none = { message: 'y', VITEST_TEST_PATH: '/p/b.test.ts', stack: 'Error: y\n    at h (/p/src/lib.js:1:1)' };
   const out = runReport(modules, [parsed, text, none]);
-  assert.deepEqual(out.errors.map((e) => [e.file, e.sources]), [
-    ['/p/b.test.ts', ['/p/a.test.ts']],
-    ['/p/b.test.ts', ['/p/a.test.ts', '/p/b.test.ts']],
-    ['/p/b.test.ts', []],
-  ]);
+  assert.deepEqual(
+    out.errors.map((e) => [e.file, e.sources]),
+    [
+      ['/p/b.test.ts', ['/p/a.test.ts']],
+      ['/p/b.test.ts', ['/p/a.test.ts', '/p/b.test.ts']],
+      ['/p/b.test.ts', []],
+    ],
+  );
   assert.deepEqual(stackFiles(text), ['/p/node_modules/x.js', '/p/a.test.ts', '/p/b.test.ts']);
   assert.deepEqual(stackFiles({}), []);
 });
@@ -285,10 +525,18 @@ test('results: an unhandled error counts against the files it comes from, else t
   assert.deepEqual(errorFiles({ file: '/b', sources: [] }), ['/b']);
   assert.deepEqual(errorFiles({ file: '/b' }), ['/b'], 'reports without sources');
   assert.deepEqual(errorFiles({ file: null, sources: ['/a'] }), ['/a']);
-  const run = runOf(report([['/a', 'passed', [['t', 'passed']]], ['/b', 'passed', [['t', 'passed']]]], [
-    { file: '/b', sources: ['/a'], message: 'thrown by a while b ran' },
-    { file: null, sources: ['/a'], message: 'thrown by a after the run' },
-  ]));
+  const run = runOf(
+    report(
+      [
+        ['/a', 'passed', [['t', 'passed']]],
+        ['/b', 'passed', [['t', 'passed']]],
+      ],
+      [
+        { file: '/b', sources: ['/a'], message: 'thrown by a while b ran' },
+        { file: null, sources: ['/a'], message: 'thrown by a after the run' },
+      ],
+    ),
+  );
   assert.deepEqual([...untrusted(run)], ['/a']);
   assert.equal(unattributedErrors(run), 0);
 });
@@ -297,20 +545,43 @@ test('results: an unhandled error counts against the files it comes from, else t
 
 const fixture = join(root, 'fixtures/vitest-fast');
 const vitest = join(root, 'node_modules/vitest/vitest.mjs');
-const listFiles = (env, args = []) => String(execFileSync(process.execPath, [vitest, 'list', '--filesOnly', ...args], {
-  cwd: fixture, stdio: 'pipe', env: { ...process.env, ...env, FAST_FIXTURE_CACHE: '/nonexistent/fast-mode.json' },
-})).split('\n').filter((l) => /\.spec(-d)?\.[jt]s$/.test(l)).map((l) => l.replace(/^\[[^\]]+\] /, '')).sort();
+const listFiles = (env, args = []) =>
+  String(
+    execFileSync(process.execPath, [vitest, 'list', '--filesOnly', ...args], {
+      cwd: fixture,
+      stdio: 'pipe',
+      env: { ...process.env, ...env, FAST_FIXTURE_CACHE: '/nonexistent/fast-mode.json' },
+    }),
+  )
+    .split('\n')
+    .filter((l) => /\.spec(-d)?\.[jt]s$/.test(l))
+    .map((l) => l.replace(/^\[[^\]]+\] /, ''))
+    .sort();
 
 test("split runs exactly the project's own files: --typecheck.enabled=false keeps type tests out", () => {
   const off = ['--typecheck.enabled=false'];
   const plain = listFiles({ WARPDOM_FAST_MODE: 'isolated' }, off);
   assert.deepEqual(plain, ['a-sets.spec.js', 'b-reads.spec.js', 'c-clean.spec.js']);
-  assert.deepEqual(listFiles({ WARPDOM_FAST_MODE: 'split', WARPDOM_FAST_ISOLATE: '["b-reads.spec.js"]' }, off), plain, 'split: each file once, no type tests');
+  assert.deepEqual(
+    listFiles({ WARPDOM_FAST_MODE: 'split', WARPDOM_FAST_ISOLATE: '["b-reads.spec.js"]' }, off),
+    plain,
+    'split: each file once, no type tests',
+  );
   assert.deepEqual(listFiles({ WARPDOM_FAST_MODE: 'fast' }, off), plain);
-  assert.deepEqual(listFiles({ WARPDOM_FAST_MODE: 'split', WARPDOM_FAST_ISOLATE: '["b-reads.spec.js"]', WARPDOM_FAST_RERUN: '1' }, off), ['b-reads.spec.js']);
+  assert.deepEqual(
+    listFiles(
+      { WARPDOM_FAST_MODE: 'split', WARPDOM_FAST_ISOLATE: '["b-reads.spec.js"]', WARPDOM_FAST_RERUN: '1' },
+      off,
+    ),
+    ['b-reads.spec.js'],
+  );
   const typed = listFiles({ WARPDOM_FAST_MODE: 'isolated' });
   assert.ok(typed.includes('types.spec-d.ts'), 'typecheck on in the config: type tests listed');
-  assert.deepEqual(listFiles({ WARPDOM_FAST_MODE: 'split', WARPDOM_FAST_ISOLATE: '["b-reads.spec.js"]' }), typed, 'and once in the split too');
+  assert.deepEqual(
+    listFiles({ WARPDOM_FAST_MODE: 'split', WARPDOM_FAST_ISOLATE: '["b-reads.spec.js"]' }),
+    typed,
+    'and once in the split too',
+  );
 });
 
 test('warpdom vitest run: learning finds the leaking file; a newly leaking file is rerun, not a false failure', async () => {
@@ -326,10 +597,20 @@ test('warpdom vitest run: learning finds the leaking file; a newly leaking file 
     assert.ok(state.learned.isolated > 0 && state.learned.split > 0);
     // Split mode with nothing isolated: b fails without isolation, passes on
     // its rerun, and runs isolated from then on.
-    writeFileSync(cacheFile, JSON.stringify({ version: 2, mode: 'split', isolate: [], leaky: [], learned: { isolated: 600 } }));
-    assert.equal(await quietly(() => main(['run', '--typecheck.enabled=false'], fixture)), 0, 'the rerun result counts');
+    writeFileSync(
+      cacheFile,
+      JSON.stringify({ version: 2, mode: 'split', isolate: [], leaky: [], learned: { isolated: 600 } }),
+    );
+    assert.equal(
+      await quietly(() => main(['run', '--typecheck.enabled=false'], fixture)),
+      0,
+      'the rerun result counts',
+    );
     const after = JSON.parse(readFileSync(cacheFile, 'utf8'));
-    assert.deepEqual([after.mode, after.isolate, after.leaky, after.runs.length], ['split', ['b-reads.spec.js'], ['b-reads.spec.js'], 1]);
+    assert.deepEqual(
+      [after.mode, after.isolate, after.leaky, after.runs.length],
+      ['split', ['b-reads.spec.js'], ['b-reads.spec.js'], 1],
+    );
   } finally {
     rmSync(join(fixture, '.warpdom'), { recursive: true, force: true });
   }
@@ -349,7 +630,10 @@ test('warpdom vitest run: an error a file leaves behind isolates that file, not 
     assert.deepEqual([state.isolate, state.leaky], [['a-leaves.spec.js'], ['a-leaves.spec.js']]);
     assert.match(state.reason, /^split /, 'the split reproduced the isolated run');
     // Split mode with nothing isolated: the error is a's, so a is rerun and isolated.
-    writeFileSync(cacheFile, JSON.stringify({ version: 2, mode: 'split', isolate: [], leaky: [], learned: { isolated: 600 } }));
+    writeFileSync(
+      cacheFile,
+      JSON.stringify({ version: 2, mode: 'split', isolate: [], leaky: [], learned: { isolated: 600 } }),
+    );
     assert.equal(await quietly(() => main(['run'], stray)), 0);
     const after = JSON.parse(readFileSync(cacheFile, 'utf8'));
     assert.deepEqual([after.mode, after.isolate], ['split', ['a-leaves.spec.js']]);
@@ -368,8 +652,13 @@ function fakeVitest(scenario) {
   const pkg = join(dir, 'node_modules/vitest');
   mkdirSync(pkg, { recursive: true });
   writeFileSync(join(dir, 'package.json'), '{}');
-  writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name: 'vitest', version: '3.2.4', type: 'module', bin: { vitest: 'vitest.mjs' } }));
-  writeFileSync(join(pkg, 'vitest.mjs'), `
+  writeFileSync(
+    join(pkg, 'package.json'),
+    JSON.stringify({ name: 'vitest', version: '3.2.4', type: 'module', bin: { vitest: 'vitest.mjs' } }),
+  );
+  writeFileSync(
+    join(pkg, 'vitest.mjs'),
+    `
 import { writeFileSync, appendFileSync, readFileSync } from 'node:fs';
 const scenario = ${JSON.stringify(scenario(dir))};
 const mode = process.env.WARPDOM_FAST_RERUN === '1' ? 'rerun' : process.env.WARPDOM_FAST_MODE;
@@ -383,15 +672,21 @@ if (reportFile) setTimeout(() => {
   writeFileSync(reportFile, JSON.stringify({ reason: 'passed', files: s.files, errors: s.errors ?? [] }));
   process.exit(s.files.some((f) => f.state === 'failed') ? 1 : 0);
 }, (s.sleep ?? 0) * 1000);
-`);
+`,
+  );
   return {
     dir,
-    runs: () => (existsSync(join(dir, 'runs.log')) ? readFileSync(join(dir, 'runs.log'), 'utf8').trim().split('\n') : []),
+    runs: () =>
+      existsSync(join(dir, 'runs.log')) ? readFileSync(join(dir, 'runs.log'), 'utf8').trim().split('\n') : [],
     state: () => JSON.parse(readFileSync(join(dir, '.warpdom/fast-mode.json'), 'utf8')),
-    setState: (s) => { mkdirSync(join(dir, '.warpdom'), { recursive: true }); writeFileSync(join(dir, '.warpdom/fast-mode.json'), JSON.stringify({ version: 2, ...s })); },
+    setState: (s) => {
+      mkdirSync(join(dir, '.warpdom'), { recursive: true });
+      writeFileSync(join(dir, '.warpdom/fast-mode.json'), JSON.stringify({ version: 2, ...s }));
+    },
   };
 }
-const passing = (dir, ...names) => names.map((n) => ({ file: join(dir, n), project: 'warpdom', state: 'passed', tests: [['t', 'passed']] }));
+const passing = (dir, ...names) =>
+  names.map((n) => ({ file: join(dir, n), project: 'warpdom', state: 'passed', tests: [['t', 'passed']] }));
 const short = { learn: { factor: 1, seconds: 1.5 }, run: { factor: 1, seconds: 1.5 } };
 
 test('learning: a run without isolation that hangs is stopped at its deadline, and the mode is isolated', async () => {
@@ -420,13 +715,20 @@ test('learning: missing results without isolation isolate the file; split if equ
 });
 
 test('learning: unhandled errors without a file, or a split whose results differ twice, keep isolated mode', async () => {
-  const err = fakeVitest((d) => ({ isolated: { files: passing(d, 'a', 'b') }, fast: { files: passing(d, 'a', 'b'), errors: [{ file: null, message: 'x' }] } }));
+  const err = fakeVitest((d) => ({
+    isolated: { files: passing(d, 'a', 'b') },
+    fast: { files: passing(d, 'a', 'b'), errors: [{ file: null, message: 'x' }] },
+  }));
   await quietly(() => main(['run'], err.dir, short));
   assert.equal(err.state().mode, 'isolated');
   assert.match(err.state().reason, /unhandled errors outside any test file/);
   const differ = fakeVitest((d) => {
     const iso = passing(d, 'a', 'b');
-    return { isolated: { sleep: 3, files: iso }, fast: { files: iso }, split: { files: [iso[0], { ...iso[1], state: 'failed', tests: [['t', 'failed']] }] } };
+    return {
+      isolated: { sleep: 3, files: iso },
+      fast: { files: iso },
+      split: { files: [iso[0], { ...iso[1], state: 'failed', tests: [['t', 'failed']] }] },
+    };
   });
   await quietly(() => main(['run'], differ.dir, short));
   assert.equal(differ.state().mode, 'isolated');
@@ -448,7 +750,11 @@ test('learning: errors left behind by files, one shown per split run, isolate th
     };
   });
   await quietly(() => main(['run'], fake.dir, short));
-  assert.deepEqual([fake.state().mode, fake.state().isolate], ['split', ['a', 'b']], 'the files the errors came from, not d');
+  assert.deepEqual(
+    [fake.state().mode, fake.state().isolate],
+    ['split', ['a', 'b']],
+    'the files the errors came from, not d',
+  );
   assert.deepEqual(fake.runs(), ['isolated', 'fast', 'split', 'split', 'split']);
 });
 
@@ -468,7 +774,10 @@ test('split runs: failing files rerun once and isolated from then on, real failu
     const files = passing(d, 'a', 'b', 'c');
     const failed = (f) => ({ ...f, state: 'failed', tests: [['t', 'failed']] });
     // 0.8 s: slow against a learned isolated time of 0.01 s (plus the 0.5 s margin).
-    return { split: { sleep: 0.8, files: [files[0], failed(files[1]), failed(files[2])] }, rerun: { files: [files[1], failed(files[2])] } };
+    return {
+      split: { sleep: 0.8, files: [files[0], failed(files[1]), failed(files[2])] },
+      rerun: { files: [files[1], failed(files[2])] },
+    };
   });
   fake.setState({ mode: 'split', isolate: [], leaky: [], learned: { isolated: 100 } });
   assert.equal(await quietly(() => main(['run'], fake.dir, short)), 1, 'c fails isolated too: a real failure');
@@ -484,7 +793,9 @@ test('split runs: failing files rerun once and isolated from then on, real failu
 
 test('split runs: a slow run between fast ones keeps split mode', async () => {
   // Learned isolated 3 s (slow beyond 3.5 s); the second split run takes 5 s.
-  const fake = fakeVitest((d) => ({ split: [{ files: passing(d, 'a') }, { sleep: 5, files: passing(d, 'a') }, { files: passing(d, 'a') }] }));
+  const fake = fakeVitest((d) => ({
+    split: [{ files: passing(d, 'a') }, { sleep: 5, files: passing(d, 'a') }, { files: passing(d, 'a') }],
+  }));
   fake.setState({ mode: 'split', isolate: [], leaky: [], learned: { isolated: 3, files: 1 } });
   const long = { learn: { factor: 1, seconds: 30 }, run: { factor: 1, seconds: 30 } };
   for (let i = 0; i < 3; i++) await quietly(() => main(['run'], fake.dir, long));
@@ -494,8 +805,20 @@ test('split runs: a slow run between fast ones keeps split mode', async () => {
 });
 
 test('isolated by slow split runs: plain runs, then learning again (recovery); isolated by a learning stays plain', async () => {
-  const fake = fakeVitest((d) => ({ isolated: { sleep: 3, files: passing(d, 'a', 'b') }, fast: { files: passing(d, 'a', 'b') }, split: { files: passing(d, 'a', 'b') } }));
-  fake.setState({ mode: 'isolated', reason: '3 split runs in a row ...', isolate: [], leaky: [], learned: { isolated: 1, files: 2 }, relearnIn: 2, decisions: [{ at: 'x', mode: 'isolated', reason: 'slow' }] });
+  const fake = fakeVitest((d) => ({
+    isolated: { sleep: 3, files: passing(d, 'a', 'b') },
+    fast: { files: passing(d, 'a', 'b') },
+    split: { files: passing(d, 'a', 'b') },
+  }));
+  fake.setState({
+    mode: 'isolated',
+    reason: '3 split runs in a row ...',
+    isolate: [],
+    leaky: [],
+    learned: { isolated: 1, files: 2 },
+    relearnIn: 2,
+    decisions: [{ at: 'x', mode: 'isolated', reason: 'slow' }],
+  });
   const argv = process.argv;
   try {
     for (let i = 0; i < 2; i++) assert.equal(await quietly(() => main(['run'], fake.dir, short)), null);
@@ -508,11 +831,26 @@ test('isolated by slow split runs: plain runs, then learning again (recovery); i
   // (Node runs the stand-in's module once per process: one in-process entry.)
   assert.deepEqual(fake.runs(), ['isolated (in process)', 'isolated', 'fast', 'split']);
   const state = fake.state();
-  assert.deepEqual([state.mode, state.relearnIn, state.learned.files, state.learned.splits.length], ['split', undefined, 2, 1]);
-  assert.deepEqual(state.decisions.map((d) => [d.mode, d.learning]), [['isolated', undefined], ['split', 'isolated since 3 slow split runs; measuring again']]);
+  assert.deepEqual(
+    [state.mode, state.relearnIn, state.learned.files, state.learned.splits.length],
+    ['split', undefined, 2, 1],
+  );
+  assert.deepEqual(
+    state.decisions.map((d) => [d.mode, d.learning]),
+    [
+      ['isolated', undefined],
+      ['split', 'isolated since 3 slow split runs; measuring again'],
+    ],
+  );
   // Isolated by a learning: no counting, no re-learning.
   const plain = fakeVitest((d) => ({ isolated: { files: passing(d, 'a') } }));
-  plain.setState({ mode: 'isolated', reason: 'split does not beat isolated', isolate: [], leaky: [], learned: { isolated: 1 } });
+  plain.setState({
+    mode: 'isolated',
+    reason: 'split does not beat isolated',
+    isolate: [],
+    leaky: [],
+    learned: { isolated: 1 },
+  });
   const before = readFileSync(join(plain.dir, '.warpdom/fast-mode.json'), 'utf8');
   try {
     for (let i = 0; i < 3; i++) await main(['run'], plain.dir);
@@ -520,12 +858,20 @@ test('isolated by slow split runs: plain runs, then learning again (recovery); i
     process.argv = argv;
     delete process.env.WARPDOM_FAST_MODE;
   }
-  assert.equal(readFileSync(join(plain.dir, '.warpdom/fast-mode.json'), 'utf8'), before, 'the state file is not even written');
+  assert.equal(
+    readFileSync(join(plain.dir, '.warpdom/fast-mode.json'), 'utf8'),
+    before,
+    'the state file is not even written',
+  );
   assert.deepEqual(plain.runs(), ['isolated (in process)']);
 });
 
 test('split runs: a changed suite learns again on the next run', async () => {
-  const fake = fakeVitest((d) => ({ isolated: { sleep: 3, files: passing(d, 'a', 'b', 'c') }, fast: { files: passing(d, 'a', 'b', 'c') }, split: { files: passing(d, 'a', 'b', 'c') } }));
+  const fake = fakeVitest((d) => ({
+    isolated: { sleep: 3, files: passing(d, 'a', 'b', 'c') },
+    fast: { files: passing(d, 'a', 'b', 'c') },
+    split: { files: passing(d, 'a', 'b', 'c') },
+  }));
   fake.setState({ mode: 'split', isolate: [], leaky: [], learned: { isolated: 600, files: 2 } });
   await quietly(() => main(['run'], fake.dir, short));
   assert.match(fake.state().relearn, /3 test files, learned with 2/);

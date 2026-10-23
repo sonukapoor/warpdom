@@ -6,18 +6,69 @@ import { spawnSync } from 'node:child_process';
 import { glob } from '../compare/projects.js';
 
 // Directories never searched: dependencies, build output, caches, VCS.
-export const SKIP_DIRS = new Set(['node_modules', '.git', '.hg', '.svn', 'dist', 'build', 'coverage', '.next', '.nuxt',
-  '.svelte-kit', '.turbo', '.cache', '.output', '.vercel', '.yarn', '.pnpm-store', 'bower_components', 'jspm_packages',
-  '.warpdom-migrate', '.warpdom-compare', '.angular', '.parcel-cache', '.docusaurus', 'storybook-static']);
+export const SKIP_DIRS = new Set([
+  'node_modules',
+  '.git',
+  '.hg',
+  '.svn',
+  'dist',
+  'build',
+  'coverage',
+  '.next',
+  '.nuxt',
+  '.svelte-kit',
+  '.turbo',
+  '.cache',
+  '.output',
+  '.vercel',
+  '.yarn',
+  '.pnpm-store',
+  'bower_components',
+  'jspm_packages',
+  '.warpdom-migrate',
+  '.warpdom-compare',
+  '.angular',
+  '.parcel-cache',
+  '.docusaurus',
+  'storybook-static',
+]);
 export const SCRIPT_EXTS = new Set(['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.mts', '.cts']);
 // Files read for mentions of jsdom (besides scripts).
-const TEXT_EXTS = new Set([...SCRIPT_EXTS, '.vue', '.svelte', '.astro', '.json', '.jsonc', '.json5', '.md', '.mdx', '.yml', '.yaml', '.toml', '.sh', '.html']);
+const TEXT_EXTS = new Set([
+  ...SCRIPT_EXTS,
+  '.vue',
+  '.svelte',
+  '.astro',
+  '.json',
+  '.jsonc',
+  '.json5',
+  '.md',
+  '.mdx',
+  '.yml',
+  '.yaml',
+  '.toml',
+  '.sh',
+  '.html',
+]);
 const TEXT_NAMES = new Set(['.npmrc', '.yarnrc', '.mocharc', 'Makefile', 'Dockerfile']);
-export const LOCKFILES = new Set(['package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lock', 'bun.lockb']);
+export const LOCKFILES = new Set([
+  'package-lock.json',
+  'npm-shrinkwrap.json',
+  'pnpm-lock.yaml',
+  'yarn.lock',
+  'bun.lock',
+  'bun.lockb',
+]);
 const MAX_SIZE = 1024 * 1024;
 
 export const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
-export const readText = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return null; } };
+export const readText = (file) => {
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch {
+    return null;
+  }
+};
 export const posix = (p) => p.split(path.sep).join('/');
 
 // Every file of the project worth reading, relative POSIX paths, sorted:
@@ -30,7 +81,11 @@ export function walk(root, { ignored = ignoredPaths(root) } = {}) {
   const files = [];
   const visit = (dir, rel) => {
     let entries;
-    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
     for (const e of entries) {
       if (e.isSymbolicLink()) continue;
       const abs = path.join(dir, e.name);
@@ -41,10 +96,21 @@ export function walk(root, { ignored = ignoredPaths(root) } = {}) {
       }
       if (!e.isFile()) continue;
       const ext = path.extname(e.name).toLowerCase();
-      if (!TEXT_EXTS.has(ext) && !TEXT_NAMES.has(e.name) && !e.name.startsWith('.mocharc') && e.name !== 'bunfig.toml' && e.name !== '.yarnrc.yml') continue;
+      if (
+        !TEXT_EXTS.has(ext) &&
+        !TEXT_NAMES.has(e.name) &&
+        !e.name.startsWith('.mocharc') &&
+        e.name !== 'bunfig.toml' &&
+        e.name !== '.yarnrc.yml'
+      )
+        continue;
       if (/\.min\.[cm]?js$/.test(e.name) || ignored.has(r, false)) continue;
       let size;
-      try { size = fs.statSync(abs).size; } catch { continue; }
+      try {
+        size = fs.statSync(abs).size;
+      } catch {
+        continue;
+      }
       if (size > MAX_SIZE && !LOCKFILES.has(e.name)) continue;
       files.push({ rel: r, abs, ext, name: e.name, size });
     }
@@ -60,7 +126,11 @@ export function walk(root, { ignored = ignoredPaths(root) } = {}) {
 // Outside one, the .gitignore files of root and its directories, read
 // with the common pattern rules (*, **, ?, a leading or trailing /, !).
 export function ignoredPaths(root) {
-  const res = spawnSync('git', ['ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z'], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const res = spawnSync('git', ['ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z'], {
+    cwd: root,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+  });
   if (res.status === 0 && !res.error) {
     const files = new Set();
     const dirs = new Set();
@@ -120,7 +190,10 @@ export function parseGitignore(text) {
     let line = raw.replace(/(?<!\\)\s+$/, '');
     if (!line || line.startsWith('#')) continue;
     let negate = false;
-    if (line.startsWith('!')) { negate = true; line = line.slice(1); }
+    if (line.startsWith('!')) {
+      negate = true;
+      line = line.slice(1);
+    }
     line = line.replace(/^\\([#!])/, '$1');
     const dirOnly = line.endsWith('/');
     if (dirOnly) line = line.slice(0, -1);
@@ -132,14 +205,23 @@ export function parseGitignore(text) {
     for (let i = 0; i < line.length; i++) {
       const c = line[i];
       if (c === '*' && line[i + 1] === '*') {
-        if (line[i + 2] === '/') { re += '(?:.*/)?'; i += 2; } else { re += '.*'; i++; }
+        if (line[i + 2] === '/') {
+          re += '(?:.*/)?';
+          i += 2;
+        } else {
+          re += '.*';
+          i++;
+        }
       } else if (c === '*') re += '[^/]*';
       else if (c === '?') re += '[^/]';
       else if (c === '\\' && i + 1 < line.length) re += line[++i].replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
       else if (c === '[') {
         const close = line.indexOf(']', i + 1);
         if (close < 0) re += '\\[';
-        else { re += `[${line.slice(i + 1, close).replace(/^!/, '^')}]`; i = close; }
+        else {
+          re += `[${line.slice(i + 1, close).replace(/^!/, '^')}]`;
+          i = close;
+        }
       } else re += c.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
     }
     rules.push({ re: new RegExp(anchored ? `^${re}$` : `(?:^|/)${re}$`), negate, dirOnly });
@@ -160,9 +242,18 @@ export function yamlTopLevel(text) {
     if (top && !/^\s/.test(line)) {
       const key = top[1].replace(/^['"]|['"]$/g, '');
       const value = top[2].trim();
-      if (value === '' || value === '|' || value === '>') { list = key; out[key] = []; } else {
+      if (value === '' || value === '|' || value === '>') {
+        list = key;
+        out[key] = [];
+      } else {
         list = null;
-        out[key] = value.startsWith('[') ? value.slice(1, -1).split(',').map((s) => unquote(s.trim())).filter(Boolean) : unquote(value);
+        out[key] = value.startsWith('[')
+          ? value
+              .slice(1, -1)
+              .split(',')
+              .map((s) => unquote(s.trim()))
+              .filter(Boolean)
+          : unquote(value);
       }
       continue;
     }
@@ -177,25 +268,45 @@ const unquote = (s) => s.replace(/^(['"])(.*)\1$/, '$2');
 // The workspace packages: { tool, patterns, dirs (absolute, root first) }.
 export function workspaces(root) {
   let pkg = {};
-  try { pkg = readJson(path.join(root, 'package.json')); } catch { /* none */ }
+  try {
+    pkg = readJson(path.join(root, 'package.json'));
+  } catch {
+    /* none */
+  }
   let tool = null;
   let patterns = [];
   const pnpm = readText(path.join(root, 'pnpm-workspace.yaml'));
   if (pnpm !== null) {
     const packages = yamlTopLevel(pnpm).packages;
-    if (Array.isArray(packages)) { tool = 'pnpm workspaces'; patterns = packages; }
+    if (Array.isArray(packages)) {
+      tool = 'pnpm workspaces';
+      patterns = packages;
+    }
   }
   if (!tool && pkg.workspaces) {
     const list = Array.isArray(pkg.workspaces) ? pkg.workspaces : pkg.workspaces.packages;
-    if (Array.isArray(list)) { tool = 'workspaces (package.json)'; patterns = list; }
+    if (Array.isArray(list)) {
+      tool = 'workspaces (package.json)';
+      patterns = list;
+    }
   }
   if (!tool) {
     try {
       const lerna = readJson(path.join(root, 'lerna.json'));
-      if (Array.isArray(lerna.packages)) { tool = 'lerna'; patterns = lerna.packages; }
-    } catch { /* none */ }
+      if (Array.isArray(lerna.packages)) {
+        tool = 'lerna';
+        patterns = lerna.packages;
+      }
+    } catch {
+      /* none */
+    }
   }
-  const excluded = new Set(patterns.filter((p) => p.startsWith('!')).flatMap((p) => glob(p.slice(1).replace(/\/$/, ''), root)).map((d) => d.replace(/\/$/, '')));
+  const excluded = new Set(
+    patterns
+      .filter((p) => p.startsWith('!'))
+      .flatMap((p) => glob(p.slice(1).replace(/\/$/, ''), root))
+      .map((d) => d.replace(/\/$/, '')),
+  );
   const dirs = new Set([root]);
   for (const p of patterns.filter((x) => !x.startsWith('!'))) {
     for (const match of glob(p.replace(/\/$/, ''), root)) {
@@ -213,7 +324,9 @@ export function workspaceRootAbove(dir) {
     try {
       const pkg = readJson(path.join(d, 'package.json'));
       if (pkg.workspaces) return d;
-    } catch { /* none */ }
+    } catch {
+      /* none */
+    }
   }
   return null;
 }
@@ -221,18 +334,38 @@ export function workspaceRootAbove(dir) {
 // The package manager: { name, version, source, lockfile }.
 export function packageManager(root) {
   let field = null;
-  try { field = readJson(path.join(root, 'package.json')).packageManager ?? null; } catch { /* none */ }
+  try {
+    field = readJson(path.join(root, 'package.json')).packageManager ?? null;
+  } catch {
+    /* none */
+  }
   const locks = [...LOCKFILES].filter((f) => fs.existsSync(path.join(root, f)));
-  const byLock = { 'pnpm-lock.yaml': 'pnpm', 'yarn.lock': 'yarn', 'package-lock.json': 'npm', 'npm-shrinkwrap.json': 'npm', 'bun.lock': 'bun', 'bun.lockb': 'bun' };
+  const byLock = {
+    'pnpm-lock.yaml': 'pnpm',
+    'yarn.lock': 'yarn',
+    'package-lock.json': 'npm',
+    'npm-shrinkwrap.json': 'npm',
+    'bun.lock': 'bun',
+    'bun.lockb': 'bun',
+  };
   if (typeof field === 'string') {
     const m = /^(npm|pnpm|yarn|bun)@([^+\s]+)/.exec(field);
-    if (m) return { name: m[1], version: m[2], source: 'packageManager field', lockfile: locks.find((l) => byLock[l] === m[1]) ?? null, lockfiles: locks };
+    if (m)
+      return {
+        name: m[1],
+        version: m[2],
+        source: 'packageManager field',
+        lockfile: locks.find((l) => byLock[l] === m[1]) ?? null,
+        lockfiles: locks,
+      };
   }
-  if (locks.length) return { name: byLock[locks[0]], version: null, source: locks[0], lockfile: locks[0], lockfiles: locks };
+  if (locks.length)
+    return { name: byLock[locks[0]], version: null, source: locks[0], lockfile: locks[0], lockfiles: locks };
   return { name: 'npm', version: null, source: 'default (no lockfile)', lockfile: null, lockfiles: [] };
 }
 
-export const installCommand = (pm) => ({ pnpm: 'pnpm install', yarn: 'yarn install', bun: 'bun install' }[pm] ?? 'npm install');
+export const installCommand = (pm) =>
+  ({ pnpm: 'pnpm install', yarn: 'yarn install', bun: 'bun install' })[pm] ?? 'npm install';
 
 const parseIni = (text) => {
   const out = {};
@@ -268,12 +401,28 @@ export function releaseAgeSettings(root) {
     const y = yamlTopLevel(pnpmYaml);
     if (y.minimumReleaseAge != null && y.minimumReleaseAge !== '') {
       const minutes = durationMinutes(y.minimumReleaseAge, 1);
-      if (minutes) out.push({ manager: 'pnpm', setting: 'minimumReleaseAge', file: 'pnpm-workspace.yaml', minutes, exclude: Array.isArray(y.minimumReleaseAgeExclude) ? y.minimumReleaseAgeExclude : [], excludeSetting: 'minimumReleaseAgeExclude' });
+      if (minutes)
+        out.push({
+          manager: 'pnpm',
+          setting: 'minimumReleaseAge',
+          file: 'pnpm-workspace.yaml',
+          minutes,
+          exclude: Array.isArray(y.minimumReleaseAgeExclude) ? y.minimumReleaseAgeExclude : [],
+          excludeSetting: 'minimumReleaseAgeExclude',
+        });
     }
   }
   if (npmrc['minimum-release-age']) {
     const minutes = durationMinutes(npmrc['minimum-release-age'], 1);
-    if (minutes) out.push({ manager: 'pnpm', setting: 'minimum-release-age', file: '.npmrc', minutes, exclude: [].concat(npmrc['minimum-release-age-exclude'] ?? []), excludeSetting: 'minimum-release-age-exclude' });
+    if (minutes)
+      out.push({
+        manager: 'pnpm',
+        setting: 'minimum-release-age',
+        file: '.npmrc',
+        minutes,
+        exclude: [].concat(npmrc['minimum-release-age-exclude'] ?? []),
+        excludeSetting: 'minimum-release-age-exclude',
+      });
   }
   if (npmrc['min-release-age']) {
     const minutes = durationMinutes(npmrc['min-release-age'], 1440);
@@ -285,7 +434,15 @@ export function releaseAgeSettings(root) {
     const y = yamlTopLevel(yarnrc);
     if (y.npmMinimalAgeGate != null && y.npmMinimalAgeGate !== '') {
       const minutes = durationMinutes(y.npmMinimalAgeGate, 1);
-      if (minutes) out.push({ manager: 'yarn', setting: 'npmMinimalAgeGate', file: '.yarnrc.yml', minutes, exclude: Array.isArray(y.npmPreapprovedPackages) ? y.npmPreapprovedPackages : [], excludeSetting: 'npmPreapprovedPackages' });
+      if (minutes)
+        out.push({
+          manager: 'yarn',
+          setting: 'npmMinimalAgeGate',
+          file: '.yarnrc.yml',
+          minutes,
+          exclude: Array.isArray(y.npmPreapprovedPackages) ? y.npmPreapprovedPackages : [],
+          excludeSetting: 'npmPreapprovedPackages',
+        });
     }
   }
   const bunfig = readText(path.join(root, 'bunfig.toml'));
@@ -293,7 +450,19 @@ export function releaseAgeSettings(root) {
     const m = /^\s*minimumReleaseAge\s*=\s*(\d+)/m.exec(bunfig);
     if (m) {
       const ex = /^\s*minimumReleaseAgeExcludes\s*=\s*\[([^\]]*)\]/m.exec(bunfig);
-      out.push({ manager: 'bun', setting: 'install.minimumReleaseAge', file: 'bunfig.toml', minutes: Number(m[1]) / 60, exclude: ex ? ex[1].split(',').map((s) => unquote(s.trim())).filter(Boolean) : [], excludeSetting: 'install.minimumReleaseAgeExcludes' });
+      out.push({
+        manager: 'bun',
+        setting: 'install.minimumReleaseAge',
+        file: 'bunfig.toml',
+        minutes: Number(m[1]) / 60,
+        exclude: ex
+          ? ex[1]
+              .split(',')
+              .map((s) => unquote(s.trim()))
+              .filter(Boolean)
+          : [],
+        excludeSetting: 'install.minimumReleaseAgeExcludes',
+      });
     }
   }
   return out;
@@ -301,28 +470,38 @@ export function releaseAgeSettings(root) {
 
 // Whether a release-age exclusion pattern ('@mui/*', 'warpdom') covers a
 // package name.
-export const excludedBy = (patterns, name) => patterns.some((p) => {
-  // A version suffix (warpdom@0.1.3) is ignored: any version counts.
-  const pattern = String(p).startsWith('@') ? String(p).replace(/^(@[^@]+)@.*$/, '$1') : String(p).replace(/@.*$/, '');
-  const re = new RegExp(`^${pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`);
-  return re.test(name);
-});
+export const excludedBy = (patterns, name) =>
+  patterns.some((p) => {
+    // A version suffix (warpdom@0.1.3) is ignored: any version counts.
+    const pattern = String(p).startsWith('@')
+      ? String(p).replace(/^(@[^@]+)@.*$/, '$1')
+      : String(p).replace(/@.*$/, '');
+    const re = new RegExp(`^${pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`);
+    return re.test(name);
+  });
 
 // Publication data from the npm registry: { version, time } for each
 // package (null when the registry cannot be reached).
 export async function registryInfo(names, { fetchImpl = globalThis.fetch, timeoutMs = 5000 } = {}) {
   const out = {};
-  await Promise.all(names.map(async (name) => {
-    try {
-      const res = await fetchImpl(`https://registry.npmjs.org/${name.replace('/', '%2f')}`, { signal: AbortSignal.timeout(timeoutMs) });
-      if (!res.ok) { out[name] = null; return; }
-      const doc = await res.json();
-      const version = doc['dist-tags']?.latest ?? null;
-      out[name] = { version, time: version ? doc.time?.[version] ?? null : null };
-    } catch {
-      out[name] = null;
-    }
-  }));
+  await Promise.all(
+    names.map(async (name) => {
+      try {
+        const res = await fetchImpl(`https://registry.npmjs.org/${name.replace('/', '%2f')}`, {
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        if (!res.ok) {
+          out[name] = null;
+          return;
+        }
+        const doc = await res.json();
+        const version = doc['dist-tags']?.latest ?? null;
+        out[name] = { version, time: version ? (doc.time?.[version] ?? null) : null };
+      } catch {
+        out[name] = null;
+      }
+    }),
+  );
   return out;
 }
 
@@ -339,5 +518,6 @@ export function gitDirty(dir) {
 export function writeOutputDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, '.gitignore');
-  if (!fs.existsSync(file)) fs.writeFileSync(file, '# Written by warpdom migrate: this folder holds its plan and is not committed.\n*\n');
+  if (!fs.existsSync(file))
+    fs.writeFileSync(file, '# Written by warpdom migrate: this folder holds its plan and is not committed.\n*\n');
 }

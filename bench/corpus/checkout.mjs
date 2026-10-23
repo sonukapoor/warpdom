@@ -48,21 +48,33 @@ export function main(argv) {
     else if (a === '--install') opts.install = 'always';
     else if (a === '--no-install') opts.install = 'never';
     else if (a === '--no-build') opts.build = false;
-    else if (a.startsWith('-')) { console.error(`unknown option ${a}`); return 2; } else opts.projects.push(...a.split(',').filter(Boolean));
+    else if (a.startsWith('-')) {
+      console.error(`unknown option ${a}`);
+      return 2;
+    } else opts.projects.push(...a.split(',').filter(Boolean));
   }
   const reposDir = opts.reposDir ? path.resolve(expandHome(opts.reposDir)) : defaultReposDir();
   const corpus = readCorpus(opts.corpus);
   const pins = readPins(corpus.file);
-  if (!opts.projects.length) { console.error('usage: node bench/corpus/checkout.mjs [options] <project...>'); return 2; }
+  if (!opts.projects.length) {
+    console.error('usage: node bench/corpus/checkout.mjs [options] <project...>');
+    return 2;
+  }
   let failed = 0;
   for (const name of opts.projects) {
     const project = corpus.projects.find((p) => p.name === name);
     const pin = pins[name];
-    if (!project || !pin) { console.error(`${name}: not in ${corpus.file} or ${pinsFileFor(corpus.file)}`); failed++; continue; }
+    if (!project || !pin) {
+      console.error(`${name}: not in ${corpus.file} or ${pinsFileFor(corpus.file)}`);
+      failed++;
+      continue;
+    }
     const dir = projectDir(project, corpus.file, reposDir);
     if (fs.existsSync(dir)) {
       const head = spawnSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout?.trim();
-      console.log(`${name}: ${dir} exists, left at ${head ? head.slice(0, 10) : 'an unknown commit'}${head && head !== pin.commit ? ` (the pin is ${pin.commit.slice(0, 10)})` : ''}`);
+      console.log(
+        `${name}: ${dir} exists, left at ${head ? head.slice(0, 10) : 'an unknown commit'}${head && head !== pin.commit ? ` (the pin is ${pin.commit.slice(0, 10)})` : ''}`,
+      );
     } else {
       fs.mkdirSync(dir, { recursive: true });
       // A shallow fetch of exactly the pinned commit.
@@ -72,12 +84,26 @@ export function main(argv) {
       git(dir, 'checkout', '-q', 'FETCH_HEAD');
       console.log(`${name}: ${pin.commit.slice(0, 10)} in ${dir}`);
     }
-    if (project.install !== false && (opts.install === 'always' || (opts.install === 'auto' && !fs.existsSync(path.join(dir, 'node_modules'))))) {
+    if (
+      project.install !== false &&
+      (opts.install === 'always' || (opts.install === 'auto' && !fs.existsSync(path.join(dir, 'node_modules'))))
+    ) {
       // Without a package.json here, npm would walk up and install into a parent.
-      if (!fs.existsSync(path.join(dir, 'package.json'))) { console.error(`${name}: no package.json in ${dir}`); failed++; continue; }
-      if (sh(project.install || installCommand(dir), dir) !== 0) { console.error(`${name}: install failed`); failed++; continue; }
+      if (!fs.existsSync(path.join(dir, 'package.json'))) {
+        console.error(`${name}: no package.json in ${dir}`);
+        failed++;
+        continue;
+      }
+      if (sh(project.install || installCommand(dir), dir) !== 0) {
+        console.error(`${name}: install failed`);
+        failed++;
+        continue;
+      }
     }
-    if (project.build && opts.build && sh(project.build, dir) !== 0) { console.error(`${name}: build failed`); failed++; }
+    if (project.build && opts.build && sh(project.build, dir) !== 0) {
+      console.error(`${name}: build failed`);
+      failed++;
+    }
   }
   return failed ? 1 : 0;
 }

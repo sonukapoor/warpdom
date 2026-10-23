@@ -51,7 +51,10 @@ function withEnvironmentPath(config) {
   const projects = config?.test?.projects;
   if (!uses(config?.test) && !(Array.isArray(projects) && projects.some((p) => uses(p?.test)))) return config;
   const test = { ...named(config.test) };
-  if (Array.isArray(projects)) test.projects = projects.map((p) => (p && typeof p === 'object' && uses(p.test) ? { ...p, test: named(p.test) } : p));
+  if (Array.isArray(projects))
+    test.projects = projects.map((p) =>
+      p && typeof p === 'object' && uses(p.test) ? { ...p, test: named(p.test) } : p,
+    );
   return { ...config, test };
 }
 
@@ -67,7 +70,11 @@ function runSettings(cacheFile) {
   const cache = readCache(cacheFile);
   const mode = process.env.WARPDOM_FAST_MODE ?? cache?.mode ?? 'isolated';
   let extra = [];
-  try { extra = JSON.parse(process.env.WARPDOM_FAST_ISOLATE ?? '[]'); } catch { extra = []; }
+  try {
+    extra = JSON.parse(process.env.WARPDOM_FAST_ISOLATE ?? '[]');
+  } catch {
+    extra = [];
+  }
   const rerun = process.env.WARPDOM_FAST_RERUN === '1';
   // A rerun runs exactly the files it names.
   const files = mode === 'fast' ? [] : rerun ? extra : [...(cache?.isolate ?? []), ...extra];
@@ -79,7 +86,10 @@ function runSettings(cacheFile) {
 // (it does when the arguments name reporters, which replace the config's).
 function withReporter(test) {
   if (!process.env.WARPDOM_FAST_REPORT || process.env.WARPDOM_FAST_REPORTER === 'cli') return test;
-  const own = test.reporters == null ? ['default', ...(process.env.GITHUB_ACTIONS === 'true' ? ['github-actions'] : [])] : list(test.reporters);
+  const own =
+    test.reporters == null
+      ? ['default', ...(process.env.GITHUB_ACTIONS === 'true' ? ['github-actions'] : [])]
+      : list(test.reporters);
   return { ...test, reporters: [...own, REPORTER] };
 }
 
@@ -92,9 +102,26 @@ function withReporter(test) {
 // arguments (Vitest's own parser) in a config hook of the generated
 // projects, so they run exactly the root project's files and tests.
 export const PROJECT_CLI_OPTIONS = [
-  'typecheck', 'environment', 'dir', 'hookTimeout', 'teardownTimeout', 'maxConcurrency', 'silent',
-  'clearMocks', 'mockReset', 'restoreMocks', 'unstubEnvs', 'unstubGlobals', 'css', 'deps', 'server',
-  'slowTestThreshold', 'includeTaskLocation', 'chaiConfig', 'diff', 'expect',
+  'typecheck',
+  'environment',
+  'dir',
+  'hookTimeout',
+  'teardownTimeout',
+  'maxConcurrency',
+  'silent',
+  'clearMocks',
+  'mockReset',
+  'restoreMocks',
+  'unstubEnvs',
+  'unstubGlobals',
+  'css',
+  'deps',
+  'server',
+  'slowTestThreshold',
+  'includeTaskLocation',
+  'chaiConfig',
+  'diff',
+  'expect',
 ];
 export function projectCliOptions(options, { fast = false } = {}) {
   const out = {};
@@ -131,10 +158,18 @@ function transform(original, { cache, project }) {
   const projects = test.projects ?? null;
   let index = -1;
   if (projects) {
-    index = project === undefined && projects.length === 1 ? 0 : projects.findIndex((p) => typeof p === 'object' && p.test?.name === project);
-    if (index < 0) throw new Error(`warpdom fast mode: name the project to run fast: withFastMode(config, { project: '<name>' })${project ? ` (no project named '${project}')` : ''}.`);
+    index =
+      project === undefined && projects.length === 1
+        ? 0
+        : projects.findIndex((p) => typeof p === 'object' && p.test?.name === project);
+    if (index < 0)
+      throw new Error(
+        `warpdom fast mode: name the project to run fast: withFastMode(config, { project: '<name>' })${project ? ` (no project named '${project}')` : ''}.`,
+      );
     if (rootSetup.length && projects.some((p) => typeof p !== 'object')) {
-      throw new Error('warpdom fast mode: with root setupFiles, projects must be inline objects (the setup files move into each project).');
+      throw new Error(
+        'warpdom fast mode: with root setupFiles, projects must be inline objects (the setup files move into each project).',
+      );
     }
   }
   // Without test.projects the split stands for the root project, so it gets
@@ -145,7 +180,10 @@ function transform(original, { cache, project }) {
   // Root setup files move into each project, so warpdom's reset runs before
   // all of a fast file's setup (it removes window properties added since
   // the window was created).
-  const withRootSetup = (p) => (typeof p === 'object' && p.extends !== false ? [...rootSetup, ...list(p.test?.setupFiles)] : list(p.test?.setupFiles));
+  const withRootSetup = (p) =>
+    typeof p === 'object' && p.extends !== false
+      ? [...rootSetup, ...list(p.test?.setupFiles)]
+      : list(p.test?.setupFiles);
   const setup = withRootSetup(target);
   const environment = target.test?.environment ?? (target.extends ? test.environment : undefined);
   // A project that extends the config file gets the root's include merged
@@ -170,10 +208,20 @@ function transform(original, { cache, project }) {
   const isolated = {
     ...target,
     plugins: plugins(false),
-    test: { ...target.test, name: isolatedName(name), isolate: true, setupFiles: setup, include: isolate, typecheck: { ...target.test?.typecheck, enabled: false } },
+    test: {
+      ...target.test,
+      name: isolatedName(name),
+      isolate: true,
+      setupFiles: setup,
+      include: isolate,
+      typecheck: { ...target.test?.typecheck, enabled: false },
+    },
   };
-  const others = (projects ?? []).filter((_, i) => i !== index)
-    .map((p) => (typeof p === 'object' ? { ...p, test: { ...p.test, ...withInclude(p), setupFiles: withRootSetup(p) } } : p));
+  const others = (projects ?? [])
+    .filter((_, i) => i !== index)
+    .map((p) =>
+      typeof p === 'object' ? { ...p, test: { ...p.test, ...withInclude(p), setupFiles: withRootSetup(p) } } : p,
+    );
   const result = rerun ? [isolated] : [...others, fast, ...(isolate.length ? [isolated] : [])];
   const { include: _rootInclude, ...rootTest } = withReporter(test);
   return { ...config, test: { ...rootTest, setupFiles: [], projects: result } };
@@ -187,7 +235,9 @@ export function withFastMode(config = {}, { cache = CACHE_FILE, project } = {}) 
   if (typeof config === 'function') {
     return (env) => {
       const c = config(env);
-      return typeof c?.then === 'function' ? c.then((v) => transform(v, { cache, project })) : transform(c, { cache, project });
+      return typeof c?.then === 'function'
+        ? c.then((v) => transform(v, { cache, project }))
+        : transform(c, { cache, project });
     };
   }
   return transform(config, { cache, project });

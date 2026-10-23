@@ -30,15 +30,29 @@ export const S = Symbol('warpdom');
 // DOMElement plugin), and clones, which Jest's messages walk, hide it
 // (cloneNode).
 export function hiddenSlot() {
-  class Through { constructor(object) { return object; } }
+  class Through {
+    constructor(object) {
+      return object;
+    }
+  }
   class Slot extends Through {
     #state;
-    constructor(object, value) { super(object); this.#state = value; }
+    constructor(object, value) {
+      super(object);
+      this.#state = value;
+    }
     static get = (object) => object.#state;
-    static init = (object, value) => { new Slot(object, value); };
+    static init = (object, value) => {
+      new Slot(object, value);
+    };
     static descriptor = {
-      get() { return #state in this ? this.#state : undefined; },
-      set(value) { if (#state in this) this.#state = value; else new Slot(this, value); },
+      get() {
+        return #state in this ? this.#state : undefined;
+      },
+      set(value) {
+        if (#state in this) this.#state = value;
+        else new Slot(this, value);
+      },
       enumerable: false,
       configurable: true,
     };
@@ -62,12 +76,21 @@ export const SVG_NS = 'http://www.w3.org/2000/svg';
 // Change notifications for MutationObserver (set by mutation.js). Called only
 // when the document has observers: see observed().
 export const hooks = {
-  childList: null, attribute: null, characterData: null, removed: null, activation: null, frames: null, slots: null,
+  childList: null,
+  attribute: null,
+  characterData: null,
+  removed: null,
+  activation: null,
+  frames: null,
+  slots: null,
   // Script elements becoming connected (scripts.js); called only in
   // documents that have had a script element made by script.
   scripts: null,
   // Live range updates (ranges.js); called only when a document has live ranges.
-  rangeInsert: null, rangeRemove: null, rangeReplaceData: null, rangeAdopt: null,
+  rangeInsert: null,
+  rangeRemove: null,
+  rangeReplaceData: null,
+  rangeAdopt: null,
   // NodeIterator pre-removing steps (traversal.js); called only when a
   // document has node iterators.
   nodeIteratorRemove: null,
@@ -95,7 +118,10 @@ export const hooks = {
 export const reactionScope = (fn, a, b, c, d) => (hooks.ce === null ? fn(a, b, c, d) : hooks.ce.scope(fn, a, b, c, d));
 
 // The live ranges of a document, if any (a Set of WeakRefs, see ranges.js).
-const hasRanges = (doc) => { const r = doc[S].ranges; return r !== undefined && r.size !== 0; };
+const hasRanges = (doc) => {
+  const r = doc[S].ranges;
+  return r !== undefined && r.size !== 0;
+};
 
 const ownerDocument = (node) => (node[S].type === DOCUMENT_NODE ? node : node[S].doc);
 export const observed = (node) => ownerDocument(node)[S].observerCount > 0;
@@ -108,7 +134,9 @@ export const observed = (node) => ownerDocument(node)[S].observerCount > 0;
 // receiver gets or updates its own property as with jsdom's data
 // properties (black box, 20.0.3 to 30.1.3), see assignedThrough.
 export function lazyDataSetter(window, name, define) {
-  return function (value) { if (!assignedThrough(window, this, name, value)) define(value); };
+  return function (value) {
+    if (!assignedThrough(window, this, name, value)) define(value);
+  };
 }
 
 // The part of that for an object that inherits from the window: true when
@@ -147,12 +175,23 @@ export function state(node) {
 // a TypeError. Callers test the last required argument for undefined first,
 // so the common path never reads arguments.length.
 export function tooFewArguments(iface, method, required, present) {
-  throw new TypeError(`Failed to execute '${method}' on '${iface}': ${required} argument${required > 1 ? 's' : ''} required, but only ${present} present.`);
+  throw new TypeError(
+    `Failed to execute '${method}' on '${iface}': ${required} argument${required > 1 ? 's' : ''} required, but only ${present} present.`,
+  );
 }
 
 export function initNode(node, type, doc, extra) {
   node[S] = {
-    type, doc, parent: null, first: null, last: null, prev: null, next: null, count: 0, rev: 0, ...extra,
+    type,
+    doc,
+    parent: null,
+    first: null,
+    last: null,
+    prev: null,
+    next: null,
+    count: 0,
+    rev: 0,
+    ...extra,
   };
   return node;
 }
@@ -180,7 +219,8 @@ export function validElementLocalName(name) {
   if (c < 97 || c > 122) return SPECIAL_ELEMENT_NAME.test(name);
   for (let i = 1; i < n; i++) {
     const d = name.charCodeAt(i);
-    if (d <= 32 ? d === 0 || d === 9 || d === 10 || d === 12 || d === 13 || d === 32 : d === 47 || d === 62) return false;
+    if (d <= 32 ? d === 0 || d === 9 || d === 10 || d === 12 || d === 13 || d === 32 : d === 47 || d === 62)
+      return false;
   }
   return true;
 }
@@ -190,7 +230,7 @@ export function htmlElementName(name) {
   const n = name.length;
   if (n === 0) return null;
   const c = name.charCodeAt(0);
-  if (((c | 32) < 97 || (c | 32) > 122)) return SPECIAL_ELEMENT_NAME.test(name) ? asciiLowercase(name) : null;
+  if ((c | 32) < 97 || (c | 32) > 122) return SPECIAL_ELEMENT_NAME.test(name) ? asciiLowercase(name) : null;
   let upper = c < 97;
   for (let i = 1; i < n; i++) {
     const d = name.charCodeAt(i);
@@ -208,7 +248,8 @@ export function validAttributeLocalName(name) {
   if (n === 0) return false;
   for (let i = 0; i < n; i++) {
     const d = name.charCodeAt(i);
-    if (d <= 32 ? d === 0 || d === 9 || d === 10 || d === 12 || d === 13 || d === 32 : d === 47 || d === 61 || d === 62) return false;
+    if (d <= 32 ? d === 0 || d === 9 || d === 10 || d === 12 || d === 13 || d === 32 : d === 47 || d === 61 || d === 62)
+      return false;
   }
   return true;
 }
@@ -240,7 +281,12 @@ export function platformGlobal(name) {
   return () => {
     if (!read) {
       read = true;
-      value = descriptor === undefined ? PLATFORM_GLOBAL[name] : descriptor.get ? descriptor.get.call(PLATFORM_GLOBAL) : descriptor.value;
+      value =
+        descriptor === undefined
+          ? PLATFORM_GLOBAL[name]
+          : descriptor.get
+            ? descriptor.get.call(PLATFORM_GLOBAL)
+            : descriptor.value;
     }
     return value;
   };
@@ -263,7 +309,8 @@ export function rootOf(node) {
 }
 
 // Elements that can be document named properties (document-named.js).
-export const isNamedTag = (tag) => tag === 'img' || tag === 'form' || tag === 'iframe' || tag === 'embed' || tag === 'object';
+export const isNamedTag = (tag) =>
+  tag === 'img' || tag === 'form' || tag === 'iframe' || tag === 'embed' || tag === 'object';
 
 // After an element (state s) got attributes other than through
 // writeAttribute (parsing, cloning) or moved to doc: counts it in doc's
@@ -330,7 +377,7 @@ const invalidInDocument = (node) => hierarchyError(`Invalid insertion of ${node.
 const mayHost = (ns) => ns.first !== null || ns.shadowRoot != null || ns.content != null;
 
 // The host of a shadow root or of a template's contents, or null.
-const hostOf = (s) => (s.shadow === true ? s.host : s.templateHost ?? null);
+const hostOf = (s) => (s.shadow === true ? s.host : (s.templateHost ?? null));
 
 // node is a host-including inclusive ancestor of other.
 function hostIncludingContains(node, other) {
@@ -370,7 +417,8 @@ function checkInsert(parent, ps, node, ns, child, replacing) {
     if (pt !== DOCUMENT_NODE) return root;
     if (nt === TEXT_NODE) throw hierarchyError(`#text node can't be inserted in #document parent.`);
   } else if (nt === DOCUMENT_TYPE_NODE) {
-    if (pt !== DOCUMENT_NODE) throw hierarchyError(`${node.nodeName} node can't be inserted in ${parent.nodeName} parent.`);
+    if (pt !== DOCUMENT_NODE)
+      throw hierarchyError(`${node.nodeName} node can't be inserted in ${parent.nodeName} parent.`);
   } else if (nt !== DOCUMENT_FRAGMENT_NODE && ns.data === undefined) {
     throw hierarchyError(`${node.nodeName} node can't be inserted in parent node.`);
   }
@@ -494,7 +542,9 @@ function insertNode(parent, node, ref) {
     return insertChecked(parent, node, child, root, false);
   }
   const root = checkInsert(parent, ps, node, ns, child, false);
-  return ns.type === DOCUMENT_FRAGMENT_NODE ? insertFragment(parent, node, child, root, false) : insertChecked(parent, node, child, root, false);
+  return ns.type === DOCUMENT_FRAGMENT_NODE
+    ? insertFragment(parent, node, child, root, false)
+    : insertChecked(parent, node, child, root, false);
 }
 
 // Insert a fragment's children (DOM "insert" for a DocumentFragment).
@@ -502,7 +552,8 @@ function insertNode(parent, node, ref) {
 function insertFragment(parent, node, ref, root, quiet) {
   const ps = parent[S];
   const doc = ps.type === DOCUMENT_NODE ? parent : ps.doc;
-  if (doc[S].scriptCount && hooks.scripts !== null) return hooks.scripts.fragment(doc, insertFragmentChildren, parent, node, ref, root, quiet);
+  if (doc[S].scriptCount && hooks.scripts !== null)
+    return hooks.scripts.fragment(doc, insertFragmentChildren, parent, node, ref, root, quiet);
   return insertFragmentChildren(parent, node, ref, root, quiet);
 }
 
@@ -543,8 +594,10 @@ function insertChecked(parent, node, ref, root, quiet) {
   const prev = ref ? ref[S].prev : ps.last;
   ns.prev = prev;
   ns.next = ref ?? null;
-  if (prev) prev[S].next = node; else ps.first = node;
-  if (ref) ref[S].prev = node; else ps.last = node;
+  if (prev) prev[S].next = node;
+  else ps.first = node;
+  if (ref) ref[S].prev = node;
+  else ps.last = node;
   ns.parent = parent;
   ps.count++;
   changed(parent);
@@ -589,7 +642,8 @@ export function adopt(node, doc) {
     if (s.attrNodes) for (const attr of s.attrNodes.values()) attr[S].doc = doc;
     // Mutation observer registrations move with their node: observed()
     // counts them per document.
-    if (s.observers !== undefined && s.observers.length !== 0 && oldDoc !== doc) moveObserverCount(s.observers, oldDoc, doc);
+    if (s.observers !== undefined && s.observers.length !== 0 && oldDoc !== doc)
+      moveObserverCount(s.observers, oldDoc, doc);
     if (s.content) adopt(s.content, templateContentsOwner(doc));
   }
   if (hooks.ce !== null && oldDoc !== doc) hooks.ce.adopted(node, oldDoc, doc);
@@ -625,12 +679,14 @@ function removeNode(parent, node, quiet) {
   // Connected matters only for the id index and frames: skip the walk to the
   // root when the document has neither.
   const ods = ownerDoc[S];
-  const connected = ((ods.ids !== undefined && ods.ids.size !== 0) || ods.frameCount) ? isConnected(parent) : false;
+  const connected = (ods.ids !== undefined && ods.ids.size !== 0) || ods.frameCount ? isConnected(parent) : false;
   const wasConnected = hooks.ce !== null && shadowIncludingRoot(parent)[S].type === DOCUMENT_NODE;
   const prev = ns.prev;
   const next = ns.next;
-  if (ns.prev) ns.prev[S].next = ns.next; else ps.first = ns.next;
-  if (ns.next) ns.next[S].prev = ns.prev; else ps.last = ns.prev;
+  if (ns.prev) ns.prev[S].next = ns.next;
+  else ps.first = ns.next;
+  if (ns.next) ns.next[S].prev = ns.prev;
+  else ps.last = ns.prev;
   ns.prev = ns.next = ns.parent = null;
   ps.count--;
   changed(parent);
@@ -729,7 +785,10 @@ export function attributesChanged(element) {
 // cheaper on the insertion path than a missing field of every document).
 const tracking = { detached: false };
 export const trackDetachedStyles = (ds) => {
-  if (ds.detachedRev === undefined) { ds.detachedRev = 0; tracking.detached = true; }
+  if (ds.detachedRev === undefined) {
+    ds.detachedRev = 0;
+    tracking.detached = true;
+  }
 };
 
 // Called when an element's id attribute changes.
@@ -810,7 +869,8 @@ export function replaceData(node, offset, count, data) {
   const s = node[S];
   const old = s.data;
   const length = old.length;
-  if (offset > length) throw domError(`The offset ${offset} is greater than the node's length (${length}).`, 'IndexSizeError');
+  if (offset > length)
+    throw domError(`The offset ${offset} is greater than the node's length (${length}).`, 'IndexSizeError');
   if (offset + count > length) count = length - offset;
   if (observed(node)) hooks.characterData(node, old);
   s.data = old.slice(0, offset) + data + old.slice(offset + count);
@@ -840,7 +900,8 @@ export function nodeLength(node) {
 }
 
 // Character data: Text, CDATASection, ProcessingInstruction, Comment.
-export const isCharacterData = (type) => type === TEXT_NODE || type === COMMENT_NODE || type === CDATA_SECTION_NODE || type === PROCESSING_INSTRUCTION_NODE;
+export const isCharacterData = (type) =>
+  type === TEXT_NODE || type === COMMENT_NODE || type === CDATA_SECTION_NODE || type === PROCESSING_INSTRUCTION_NODE;
 
 // Text nodes include CDATA sections (CDATASection inherits from Text).
 export function textOf(node) {
