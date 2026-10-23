@@ -349,8 +349,8 @@ Every change goes through the same checks, and all of them are public:
   20 to 30 and compare results), never copied from its source. Each
   measured difference becomes a profile setting ("Which jsdom warpdom
   behaves like", above) and a test.
-- **Tests on every push** (`npm test`, about 1,400 tests on Node 22.22 and
-  24): unit tests, parity tests that run the same code on warpdom and on
+- **Tests on every pull request and every push to main** (`npm test`, about
+  1,400 tests on Node 22.22 and 24): unit tests, parity tests that run the same code on warpdom and on
   the matching jsdom version side by side, and an API test that walks the
   windows of the newest jsdom of every major from 20 to 30 and fails when
   warpdom lacks a member jsdom has (known exceptions are listed in the
