@@ -188,8 +188,10 @@ CI:
   Ant Design #59606 is not reopened for now.
 - Go back to a library only with a concrete trigger: 1.0, or a named
   project that has run warpdom in CI for a few months.
-- Applications first, after `compare` shows zero differences and a
-  measured speedup on their own suite.
+- Applications first, after `compare` on their own suite shows zero
+  differences with nothing left out (no files or projects reported as not
+  compared, no flaky baseline or warpdom results; check the Vitest grouping
+  caveat in the README) and a measured speedup.
 
 | # | Step | Why | Status |
 |---|---|---|---|
