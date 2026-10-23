@@ -350,3 +350,153 @@ test('style: -webkit-overflow-scrolling is kept from cssstyle 4.4', () => {
   assert.equal(write({ jsdom: '26.1.0', cssstyle: '4.4.0' }), '-webkit-overflow-scrolling: touch;');
   assert.equal(write({ jsdom: '27.4.0', cssstyle: '5.3.7' }), '-webkit-overflow-scrolling: touch;');
 });
+
+// A declaration list with an empty declaration (a leading semicolon, a
+// name without a colon, a colon without a value): jsdom 20 to 26
+// (cssstyle 2.3.0 to 4.6.0) read the name up to the next colon and the
+// value from the first character after the colon, semicolons included, so
+// the next declaration is lost with it; from jsdom 27 it is read on its
+// own (black box; #129: react-overlays' modals append
+// ';overflow: hidden;padding-right: 0px;' to cssText).
+const EMPTY_DECLARATIONS = [
+  ';overflow: hidden;padding-right: 0px;',
+  ';color: red',
+  ';;color: red; margin: 0',
+  ' ;color: red;margin: 0',
+  'color: red;;margin: 0;padding: 1px',
+  'color: red; ; margin: 0; padding: 1px',
+  'x;color: red;margin: 0',
+  ':;color: red;margin: 0',
+  'color;margin: 0; padding: 1px',
+  'color:;margin: 0;padding: 1px',
+  'color: ;;margin: 0;padding: 1px',
+  'color: !important;margin: 0',
+  '--x:;color: red;margin: 0',
+  '--x: ;;color: red;margin: 0',
+  '--a: 1;--x:;;--y: 2;--z: 3',
+  ';--x: 1;--y: 2',
+  "color: red;'a;b';margin: 0;padding: 1px",
+  'color: red;;',
+  ';',
+];
+for (const jsdom of [30, 27, 26, 25, 22, 20])
+  parity(
+    `style: an empty declaration in a declaration list (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const out = EMPTY_DECLARATIONS.map((text) => {
+        const s = d.createElement('div').style;
+        s.cssText = text;
+        return `${text} -> ${s.cssText} (${s.getPropertyValue('--x')})`;
+      });
+      const el = d.body.appendChild(d.createElement('div'));
+      el.style.color = 'blue';
+      el.style.cssText += ';overflow: hidden;padding-right: 0px;';
+      out.push(el.getAttribute('style'), el.style.overflow);
+      el.setAttribute('style', ';margin: 1px;padding: 2px');
+      out.push(el.style.cssText, el.style.margin, w.getComputedStyle(el).paddingTop);
+      // Style sheets: the cascade drops the same declarations. (jsdom 27 to
+      // 29 report this sheet on the console as not parsed.)
+      if (jsdom === 27) return out;
+      d.head.innerHTML = '<style>.a{;margin: 3px; padding: 4px} .b{margin:;padding: 5px}</style>';
+      for (const name of ['a', 'b']) {
+        const div = d.body.appendChild(d.createElement('div'));
+        div.className = name;
+        const cs = w.getComputedStyle(div);
+        out.push(`${cs.marginTop} ${cs.paddingTop}`);
+      }
+      return out;
+    },
+    { jsdom },
+  );
+
+// The background shorthand per generation (black box; #130: Mattermost's
+// snapshots have background: 0px from style.background = '0' on jsdom 26):
+// cssstyle before 4.4 (jsdom 20 to 25 here) rejects a unitless 0 and keeps
+// the last of a repeated component in the order color image repeat
+// attachment position; cssstyle 4.4 to 4.6 (jsdom 26) writes 0px and
+// rejects repeated components and two-value positions, in the order image
+// position repeat attachment color; jsdom 27 and later center a one-value
+// position and leave out initial values, jsdom 27 to 29 losing a position
+// of two values.
+const BACKGROUNDS = [
+  '0',
+  0,
+  '0px',
+  '0 0',
+  '-0',
+  '00',
+  'none',
+  'Red',
+  '#fff',
+  'transparent',
+  'currentColor',
+  'url(a.png)',
+  'url("a.png") no-repeat',
+  'red url(a.png) no-repeat center',
+  'url(a.png) red',
+  'fixed red no-repeat url(a.png) top',
+  'center',
+  'top',
+  'Center',
+  'top left',
+  '10px 20px',
+  'none 0',
+  '0 red',
+  'transparent 0',
+  'url(a.png) 0',
+  'url(a.png) 0 0',
+  'url(a.png) no-repeat 0 0 red',
+  'url(a.png) no-repeat left center',
+  'url(a.png) 0 0 / cover',
+  'url(a.png) center / contain no-repeat',
+  'transparent url(a.png) no-repeat 0 0',
+  'red blue',
+  'none url(a.png)',
+  'no-repeat repeat-x',
+  'repeat no-repeat',
+  'no-repeat fixed',
+  'space',
+  'local',
+  'red border-box',
+  'url(a.png) border-box padding-box',
+  'red, blue',
+  '1',
+  '1px 2px',
+  'url(a.png) 0 0 !important',
+];
+// Where jsdom 27 and later set every longhand to its initial value (cssText
+// lists them; not modeled).
+const ALL_INITIAL = new Set(['0 0', '-0', '00', 'top left', '10px 20px', '1px 2px']);
+for (const jsdom of [30, 29, 28, 27, 26, 25, 22, 20])
+  parity(
+    `style: the background shorthand (jsdom ${jsdom})`,
+    (w) =>
+      BACKGROUNDS.filter((value) => !(jsdom >= 27 && jsdom < 30 && ALL_INITIAL.has(value))).flatMap((value) => {
+        const set = w.document.createElement('div').style;
+        set.background = value;
+        const text = w.document.createElement('div').style;
+        text.cssText = `background: ${value}`;
+        return [`${value} -> ${set.cssText}`, text.cssText];
+      }),
+    { jsdom },
+  );
+
+test('style: the background shorthand with cssstyle 4.4 and 4.5', () => {
+  const write = (cssstyle, value) => {
+    const s = createWindow({ jsdom: '26.1.0', cssstyle }).document.body.style;
+    s.background = value;
+    return s.cssText;
+  };
+  // Measured with jsdom 23.2.0 and 26.1.0.
+  for (const cssstyle of ['4.4.0', '4.5.0']) {
+    assert.equal(write(cssstyle, '0'), 'background: 0px;');
+    assert.equal(write(cssstyle, '00'), '');
+    assert.equal(write(cssstyle, 'NONE'), 'background: NONE;');
+    assert.equal(write(cssstyle, 'Red url(a.png) Fixed'), 'background: url("a.png") fixed red;');
+    assert.equal(write(cssstyle, 'url(a.png) 0px 0px'), '');
+  }
+  assert.equal(write('4.6.0', 'NONE'), 'background: none;');
+  assert.equal(write('4.3.1', '0'), '');
+  assert.equal(write('4.3.1', 'url(a.png) 10px 20px'), 'background: url("a.png") 20px;');
+});

@@ -693,7 +693,7 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
     else if (isLegacyFont(surface, name))
       out = /^inherit$/i.test(value) ? INVALID : (legacyFont(value, surface.legacyFont) ?? INVALID);
     else {
-      out = versionedValue(name, value, mode);
+      out = versionedValue(name, value, mode, surface);
       if (out === undefined) {
         const checked = isSpecMode(mode) || JSDOM26_VALIDATED.has(name);
         out = !checked || isValidValue(name, value) ? serializeDeclared(name, value, mode) : INVALID;
@@ -769,7 +769,7 @@ function azimuthValue(value, surface) {
 // Values whose serialization depends on the jsdom version beyond the
 // modes' general rules (black box, jsdom 20 to 30); undefined for the
 // others. Runs once per property and raw value (declaredValue caches it).
-function versionedValue(name, value, mode) {
+function versionedValue(name, value, mode, surface) {
   if (isLegacyMode(mode)) {
     const lower = value.toLowerCase();
     const kind = CSS_WIDE_KEYWORD.test(value)
@@ -799,6 +799,10 @@ function versionedValue(name, value, mode) {
     /calc\(/i.test(value)
   )
     return INVALID;
+  if (name === 'background') {
+    const background = backgroundValue(value, mode, surface);
+    if (background !== undefined) return background;
+  }
   if (BORDER_SHORTHAND.has(name)) return borderValue(name, value, mode);
   if (name === 'clip') return clipValue(value, mode);
   // jsdom 30 keeps outline as written (colors, numbers, order), a 0 as 0px.
@@ -911,6 +915,162 @@ function borderValue(name, value, mode) {
           ? color.toLowerCase()
           : declaredColors(color);
   return [width, style, color].filter((part) => part !== null).join(' ');
+}
+
+// The background shorthand with one layer, as each generation of jsdom
+// parses and serializes it (black box, cssstyle 2.3 to 6.2 and jsdom 20 to
+// 30.1.3; #130). Components: image (url(), a gradient or none), position,
+// size (after a slash), repeat, attachment, origin and clip boxes, color.
+// - cssstyle before 4.4 (jsdom 20 to 26 with it): no unitless 0 (rejected),
+//   no size, space, round, local or boxes; a component given twice keeps
+//   the last (10px 20px is 20px); written color image repeat attachment
+//   position, as written.
+// - cssstyle 4.4 to 4.6: a 0 is 0px; a component given twice (a two-value
+//   position too: 0 0, top left) rejects the value, and so do a size,
+//   boxes and several layers; written image position repeat attachment
+//   color, keywords lowercased (none only from 4.6).
+// - jsdom 27 and later: one position value is centered on the other axis
+//   (0 is 0px center) and initial values are left out (none, repeat,
+//   scroll, transparent); written image position / size repeat attachment
+//   origin clip color. jsdom 27 to 29 lose a position of two or more
+//   values (url(a.png) 0 0 is url("a.png"); a size stays, behind 0% 0% in
+//   jsdom 29), and before 29 reject two boxes.
+// undefined where the generation sets every longhand to its initial value
+// instead (cssText then lists them: jsdom 27 and later with 0 0 alone,
+// NONE, repeat) or for values left to the general rules (var(), CSS-wide
+// keywords, several layers from jsdom 27).
+const BG_REPEATS = new Set(['repeat', 'repeat-x', 'repeat-y', 'no-repeat']);
+const BG_REPEATS_4_4 = new Set([...BG_REPEATS, 'space', 'round']);
+const BG_ATTACHMENTS = new Set(['scroll', 'fixed']);
+const BG_ATTACHMENTS_4_4 = new Set([...BG_ATTACHMENTS, 'local']);
+const BG_BOXES = new Set(['border-box', 'padding-box', 'content-box']);
+const BG_POSITIONS = new Set(['left', 'right', 'top', 'bottom', 'center']);
+const BG_SIZES = /^(auto|cover|contain)$/i;
+const BG_DIMENSION = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?([a-z]+|%)$/i;
+const BG_GRADIENT = /^(-webkit-)?(repeating-)?(linear|radial|conic)-gradient\(/i;
+const sizeToken = (t) => {
+  if (ZERO.test(t)) return '0px';
+  return BG_SIZES.test(t) ? t.toLowerCase() : t;
+};
+function backgroundValue(value, mode, surface) {
+  if (/var\(|env\(|attr\(/i.test(value) || CSS_WIDE_KEYWORD.test(value)) return undefined;
+  const legacy = isLegacyMode(mode);
+  const old = legacy && colorKeywords === 'css2'; // cssstyle before 4.4
+  if (splitOutside(value, ',').length > 1) return legacy ? INVALID : undefined;
+  const tokens = [];
+  for (const token of segments(value).filter((t, i) => i % 2 === 0 && t !== '')) {
+    if (token.includes('/') && !token.includes('(')) {
+      token.split('/').forEach((part, i) => {
+        if (i) tokens.push('/');
+        if (part) tokens.push(part);
+      });
+    } else tokens.push(token);
+  }
+  const repeats = old ? BG_REPEATS : BG_REPEATS_4_4;
+  const attachments = old ? BG_ATTACHMENTS : BG_ATTACHMENTS_4_4;
+  const found = { image: null, position: null, size: null, repeat: null, attachment: null, boxes: null, color: null };
+  // A component given again: the last wins before cssstyle 4.4, later the
+  // value is rejected (jsdom 27 and later read two repeats as one value).
+  const put = (key, token) => {
+    if (found[key] !== null && !old) return false;
+    found[key] = token;
+    return true;
+  };
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    const lower = token.toLowerCase();
+    const gradient = BG_GRADIENT.test(token);
+    if (lower === 'none' || token.startsWith('url(') || (!legacy && /^url\(/i.test(token)) || gradient) {
+      // Gradients from cssstyle 4 (jsdom 23.1 and later; measured: 4.3.0).
+      if (gradient && (mode === 'jsdom20' || mode === 'jsdom22')) return INVALID;
+      if (lower === 'none' && token !== 'none' && !legacy) return undefined;
+      if (!put('image', token)) return INVALID;
+    } else if (repeats.has(lower)) {
+      if (!legacy && found.repeat !== null && !/^repeat-[xy]$/.test(lower) && !/ /.test(found.repeat))
+        found.repeat += ` ${token}`;
+      else if (!put('repeat', token)) return INVALID;
+    } else if (attachments.has(lower)) {
+      if (!put('attachment', token)) return INVALID;
+    } else if (BG_BOXES.has(lower) && !legacy) {
+      if (found.boxes !== null && found.boxes.length === 2) return INVALID;
+      (found.boxes ??= []).push(lower);
+    } else if (BG_POSITIONS.has(lower) || BG_DIMENSION.test(token) || ZERO.test(token) || /^calc\(/i.test(token)) {
+      if (old && !BG_POSITIONS.has(lower) && !BG_DIMENSION.test(token)) return INVALID;
+      // cssstyle 4.4 to 4.6 read 0, +0, -0 and 0.0 as 0px, not 00.
+      if (legacy && !old && ZERO.test(token) && !/^[+-]?(0(\.0*)?|\.0+)$/.test(token)) return INVALID;
+      // jsdom 27 to 29: a unitless zero other than 0 sets the initial values.
+      if (mode === 'jsdom27' && ZERO.test(token) && token !== '0') return undefined;
+      if (old) found.position = token;
+      else if (legacy) {
+        if (!put('position', token)) return INVALID;
+      } else {
+        if (found.position !== null) return INVALID;
+        let j = i;
+        while (j < tokens.length && j - i < 4) {
+          const t = tokens[j];
+          if (!BG_POSITIONS.has(t.toLowerCase()) && !BG_DIMENSION.test(t) && !ZERO.test(t) && !/^calc\(/i.test(t))
+            break;
+          j++;
+        }
+        found.position = tokens.slice(i, j).map((t) => (BG_POSITIONS.has(t.toLowerCase()) ? t.toLowerCase() : t));
+        i = j - 1;
+        if (tokens[j] === '/') {
+          let k = j + 1;
+          while (
+            k < tokens.length &&
+            k - j <= 2 &&
+            (BG_DIMENSION.test(tokens[k]) || ZERO.test(tokens[k]) || BG_SIZES.test(tokens[k]))
+          )
+            k++;
+          if (k === j + 1) return INVALID;
+          found.size = tokens
+            .slice(j + 1, k)
+            .map(sizeToken)
+            .join(' ');
+          i = k - 1;
+        }
+      }
+    } else if (lower === 'currentcolor' || lower === 'transparent' || resolveColor(token) !== null) {
+      if (!put('color', token)) return INVALID;
+    } else return INVALID;
+  }
+  const image = found.image === null ? null : serializeDeclared('background-image', found.image, mode);
+  const color = found.color === null ? null : serializeDeclared('background-color', found.color, mode);
+  if (old) return [color, image, found.repeat, found.attachment, found.position].filter((p) => p !== null).join(' ');
+  if (legacy) {
+    const keyword = (t) => (t === null ? null : t.toLowerCase());
+    let position = keyword(found.position);
+    if (position !== null && ZERO.test(position)) position = '0px';
+    // cssstyle 4.4 and 4.5 keep none as written.
+    const written = image !== null && image.toLowerCase() === 'none' && colorKeywords === null ? 'none' : image;
+    return [written, position, keyword(found.repeat), keyword(found.attachment), color]
+      .filter((p) => p !== null)
+      .join(' ');
+  }
+  const parts = [];
+  if (image !== null && image !== 'none') parts.push(image);
+  let position = null;
+  if (found.position !== null) {
+    if (mode === 'jsdom27' && found.position.length > 1) {
+      // Lost (jsdom 27 to 29); a size stays, behind the initial position in 29.
+      if (found.size !== null) position = surface?.key?.startsWith('jsdom29') ? '0% 0%' : '';
+    } else {
+      const layers = positionLayers(found.position.join(' '));
+      if (!layers) return INVALID;
+      position = layers[0].map((t) => (ZERO.test(t) ? '0px' : t.replace(/ ([+-]?0+\.?0*|\.0+)$/, ' 0px'))).join(' ');
+    }
+  }
+  if (position !== null) parts.push(found.size !== null ? `${position} / ${found.size}`.trim() : position);
+  const repeat = found.repeat === null ? null : shortRepeat(found.repeat.toLowerCase());
+  if (repeat !== null && repeat !== 'repeat') parts.push(repeat);
+  if (found.attachment !== null && found.attachment.toLowerCase() !== 'scroll')
+    parts.push(found.attachment.toLowerCase());
+  if (found.boxes !== null) {
+    if (found.boxes.length === 2 && mode === 'jsdom27' && !surface?.key?.startsWith('jsdom29')) return INVALID;
+    parts.push(...found.boxes);
+  }
+  if (color !== null && color !== 'transparent') parts.push(color);
+  return parts.length ? parts.join(' ') : undefined;
 }
 
 // clip: auto, or rect() with comma-separated lengths (0 is 0px). jsdom 30
@@ -1114,11 +1274,30 @@ function parseInto(decls, text, mode, surface = null) {
   // property, or a longhand of an important shorthand (CSS Cascade), as in
   // jsdom 27 and later; jsdom 26 let the last one win.
   let covered = null;
-  for (const part of splitOutside(String(text ?? ''), ';')) {
+  // jsdom 20 to 26 (cssstyle 2.3.0 to 4.6.0, black box; #129) read a name
+  // up to the next colon and a value from the first character after the
+  // colon and its spaces, semicolons included: an empty declaration runs
+  // on into the next one, which is lost with it (;color: red and x;color:
+  // red declare nothing, color:;;margin: 0 neither, --x:;color: red is --x
+  // with the value ;color: red).
+  const runsOn = isLegacyMode(mode);
+  let carried = null;
+  for (let part of splitOutside(String(text ?? ''), ';')) {
+    if (carried !== null) {
+      part = `${carried};${part}`;
+      carried = null;
+    }
     const colon = part.indexOf(':');
-    if (colon < 0) continue;
+    if (colon < 0) {
+      if (runsOn) carried = part;
+      continue;
+    }
     const name = propertyName(part.slice(0, colon).trim());
     let value = part.slice(colon + 1).trim();
+    if (runsOn && (value === '' || (value[0] === ';' && /^[\s;]*$/.test(value)))) {
+      carried = part;
+      continue;
+    }
     let important = false;
     const bang = value.match(/\s*!\s*important\s*$/i);
     if (bang) {
