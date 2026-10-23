@@ -341,7 +341,8 @@ testEnvironmentOptions: { fastFrames: true }
 
 ## How warpdom is verified
 
-Every change goes through the same checks, and all of them are public:
+Some checks run on every change, others on a schedule; all of them are
+public:
 
 - **jsdom as a black-box reference.** Behavior comes from the WHATWG and
   W3C specifications. Where jsdom differs from them, or from itself across
@@ -359,10 +360,12 @@ Every change goes through the same checks, and all of them are public:
   warpdom lacks a member jsdom has
   ([test/jsdom-api-superset.test.js](test/jsdom-api-superset.test.js); known
   exceptions are listed in the test).
-- **Real test suites before merging.** Open-source component libraries
-  (React, Vue, Svelte, Solid and Angular) and two applications run on jsdom
-  and on warpdom on GitHub-hosted runners, and every test's result is
-  compared ([corpus-timing.yml](.github/workflows/corpus-timing.yml),
+- **Real test suites before merging a behavior change.** The maintainer
+  starts a comparison (a manually started workflow, not an automatic check)
+  in which open-source component libraries (React, Vue, Svelte, Solid and
+  Angular) and two applications run on jsdom and on warpdom on
+  GitHub-hosted runners, and every test's result is compared
+  ([corpus-timing.yml](.github/workflows/corpus-timing.yml),
   [dom-api-tracer](https://github.com/sonukapoor/dom-api-tracer)). These
   suites also drove many fixes, so they are regression checks, not an
   independent validation; the method and every number are in
