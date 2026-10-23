@@ -190,7 +190,7 @@ CI:
   project that has run warpdom in CI for a few months.
 - Applications first, after `compare --rounds 3` (or more) on their own
   suite shows zero differences with nothing left out (no files or projects reported as not
-  compared, no flaky baseline or warpdom results; check the Vitest grouping
+  compared or not run, no flaky baseline or warpdom results; check the Vitest grouping
   caveat in the README) and a measured speedup.
 
 | # | Step | Why | Status |
