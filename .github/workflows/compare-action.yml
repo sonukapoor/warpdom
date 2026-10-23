@@ -1,0 +1,99 @@
+# Self-test of the warpdom compare GitHub Action (compare-action/), run on
+# this checkout's own code: the package is packed, and the action installs
+# that tarball with npx in fixtures/compare-vitest, a project with known
+# differences (2 regressions, 1 fixed, 7 tests). Checks the outputs, that
+# differences do not fail the job by default, that fail-on does, and posts
+# (or updates) one pull request comment. Pull requests from forks get a
+# read-only token: the comment is skipped with a warning, which this also
+# exercises.
+name: compare-action
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'compare-action/**'
+      - 'src/compare/**'
+      - 'bin/**'
+      - 'package.json'
+      - '.github/workflows/compare-action.yml'
+  pull_request:
+    paths:
+      - 'compare-action/**'
+      - 'src/compare/**'
+      - 'bin/**'
+      - 'package.json'
+      - '.github/workflows/compare-action.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  self-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Pack this checkout
+        id: pack
+        run: echo "tgz=$RUNNER_TEMP/$(npm pack --pack-destination "$RUNNER_TEMP" | tail -n 1)" >> "$GITHUB_OUTPUT"
+
+      - name: Compare (default, non-blocking)
+        id: compare
+        uses: ./compare-action
+        with:
+          working-directory: fixtures/compare-vitest
+          warpdom-version: ${{ steps.pack.outputs.tgz }}
+          pr-comment: 'true'
+          artifact-name: warpdom-compare-self-test
+      - name: Check the outputs
+        env:
+          EXIT_CODE: ${{ steps.compare.outputs.exit-code }}
+          COMPARED: ${{ steps.compare.outputs.compared }}
+          REGRESSIONS: ${{ steps.compare.outputs.regressions }}
+          FIXED: ${{ steps.compare.outputs.fixed }}
+          DIFFERENCES: ${{ steps.compare.outputs.differences }}
+          SPEEDUP: ${{ steps.compare.outputs.speedup }}
+          REPORT_DIR: ${{ steps.compare.outputs.report-dir }}
+        run: |
+          echo "exit-code=$EXIT_CODE compared=$COMPARED regressions=$REGRESSIONS fixed=$FIXED differences=$DIFFERENCES speedup=$SPEEDUP"
+          test "$EXIT_CODE" = 1
+          test "$COMPARED" = 7
+          test "$REGRESSIONS" = 2
+          test "$FIXED" = 1
+          test "$DIFFERENCES" = 3
+          test -n "$SPEEDUP"
+          test -f "$REPORT_DIR/results.json"
+          test -f "$REPORT_DIR/report.md"
+          test -z "$(git status --porcelain)"
+
+      - name: Compare with fail-on (must fail)
+        id: gate
+        continue-on-error: true
+        uses: ./compare-action
+        with:
+          working-directory: fixtures/compare-vitest
+          warpdom-version: ${{ steps.pack.outputs.tgz }}
+          correctness: 'true'
+          fail-on: regressions
+          job-summary: 'false'
+          artifact-name: ''
+      - name: Check that fail-on failed the step
+        env:
+          OUTCOME: ${{ steps.gate.outcome }}
+          REGRESSIONS: ${{ steps.gate.outputs.regressions }}
+          SPEEDUP: ${{ steps.gate.outputs.speedup }}
+        run: |
+          test "$OUTCOME" = failure
+          test "$REGRESSIONS" = 2
+          test -z "$SPEEDUP"

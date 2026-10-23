@@ -373,6 +373,125 @@ path. dom-api-tracer goes back to tracing which DOM APIs suites use.
 Timing in CI is noisy (shared 2- or 4-core machines). The docs recommend
 `--correctness` there, and timing locally or with several rounds.
 
+## GitHub Action
+
+`compare-action/` in this repository is a composite action around the same
+CLI, for a CI job that compares on every pull request without switching
+anything: the project keeps running its tests on jsdom (or happy-dom); the
+action reports what would change on warpdom and how much time it would
+save.
+
+```yaml
+# .github/workflows/warpdom-compare.yml
+name: warpdom compare
+on: pull_request
+
+permissions:
+  contents: read
+  pull-requests: write # only for pr-comment; leave out otherwise
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24 # warpdom needs Node 22.12 or newer
+          cache: npm
+      - run: npm ci # however the project installs; build steps its tests need go here too
+      - uses: sonukapoor/warpdom/compare-action@main # better: a release tag or commit SHA
+        with:
+          pr-comment: true
+```
+
+What it does:
+
+1. Runs `npx --yes --package warpdom@<warpdom-version> -- warpdom compare`
+   in `working-directory`, with the job's Node (from the caller's
+   `actions/setup-node`; the action does not install Node). warpdom comes
+   from npm into npm's cache for this job only; compare copies it into
+   `node_modules/.warpdom-compare/` for the runs and removes it afterwards,
+   as under plain `npx`. The project's `package.json`, lockfile and config
+   are not touched, and compare checks that `git status` is unchanged. The
+   project's own jsdom (or happy-dom) and runner are used: no other package
+   is installed.
+2. Writes the job summary: runner and versions, how many tests have the
+   same status, the baseline and warpdom test times, the speedup and the
+   time saved per run, and a table of the tests whose status differs
+   (regressions first, up to `max-tests`), with warpdom's first error line.
+3. With `pr-comment: true`, creates one comment on the pull request, and
+   updates that same comment on later pushes (found by a hidden marker per
+   working directory).
+4. Uploads `report.md`, `results.json` and the runner logs as an artifact.
+5. Sets outputs (`exit-code`, `compared`, `regressions`, `fixed`,
+   `differences`, `baseline-ms`, `warpdom-ms`, `speedup`, `report-dir`) for
+   later steps.
+
+| Input | Default | Meaning |
+|---|---|---|
+| `working-directory` | `.` | Where `vitest` or `jest` is normally run (a package or a monorepo root) |
+| `warpdom-version` | `latest` | The warpdom version or dist-tag from npm, or a path to a packed `.tgz` |
+| `rounds` | `1` | Timed rounds (`--rounds`); 1 is labeled indicative |
+| `correctness` | `false` | Results only, no timing (`--correctness`) |
+| `baseline` | detected | `jsdom` or `happy-dom` |
+| `runner` | detected | `vitest` or `jest`, when both are configured |
+| `workers` | runner's | The runner's worker limit |
+| `timeout` | `30` | Minutes per run |
+| `runner-args` | | Arguments for every run, one per line (after `--`) |
+| `fail-on` | `nothing` | `nothing`, `regressions` or `differences` |
+| `job-summary` | `true` | Write the job summary |
+| `pr-comment` | `false` | Create or update one pull request comment |
+| `github-token` | `github.token` | Token for the comment |
+| `max-tests` | `50` | Differing tests listed in the summary and comment |
+| `artifact-name` | `warpdom-compare` | The report artifact; empty to skip the upload |
+
+**Non-blocking.** By default the action never fails the job: not for
+differences, not when the comparison cannot run (no runner found, Node too
+old, npx could not install warpdom), and not for a failed comment or
+upload. It warns instead and says why in the summary. `fail-on:
+regressions` fails the step when a test passes on the baseline and fails on
+warpdom, `fail-on: differences` on any status change; with either, a
+comparison that cannot run fails too, so a gate never passes silently. The
+step fails only after the summary, comment and artifact are written.
+
+**Pull request comments and forks.** The comment needs `pull-requests:
+write` on the job. Pull requests from forks get a read-only token on the
+`pull_request` event: the action then skips the comment with a warning,
+and the job summary has the same content. Do not switch to
+`pull_request_target` for the comment: it would run the fork's test code
+with a write token. On `push` and other events there is no pull request and
+no comment.
+
+**Timing in CI.** Hosted runners are shared and noisy, and one round is
+labeled indicative. The times are the runner's own test durations (the npx
+install is not counted). For numbers to quote, use `rounds: 3` (eight runs
+instead of two: a warm-up pair and three timed pairs), or run `npx warpdom compare --rounds 3` locally.
+
+**Monorepos and matrices.** One step per package with its own
+`working-directory`; give each its own `artifact-name` (two uploads with
+one name in a job or matrix fail, and the action ignores that failure, so
+the second report would be missing). Each working directory gets its own
+pull request comment.
+
+**Security.** No secrets are needed: the token is GitHub's own
+`github.token` and is only used, when `pr-comment` is true, for GitHub's
+issue comments API. Inputs reach the action's script only through
+environment variables, never through `${{ }}` in its shell text, and
+`warpdom compare` is started without a shell; numbers, choices and the
+package spec are validated (`warpdom-version` must be a version, dist-tag
+or `.tgz` path, so it cannot name another package). The only other network
+access is npm installing warpdom. Pin the action to a commit SHA, as for
+any third-party action, or to a release tag that contains it (releases after
+0.1.7); `@main` follows this repository's default branch.
+
+**Runners.** Tested on `ubuntu-latest` (`.github/workflows/compare-action.yml`
+runs it on `fixtures/compare-vitest` for this repository's pull requests).
+macOS runners work the same way; Windows is not tested.
+
 ## Out of scope for v1
 
 - Vitest browser mode (nothing to switch), Bun test, Mocha/Karma, `node:test`.
