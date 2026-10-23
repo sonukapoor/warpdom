@@ -19,7 +19,10 @@ function fakeJestProject() {
   writeFileSync(join(dir, 'package.json'), '{}');
   pkg('jest-util', 'exports.installCommonGlobals = (g) => { g.process = { env: {} }; return g; };');
   pkg('jest-mock', 'exports.ModuleMocker = class { constructor(g) { this.global = g; } };');
-  pkg('@jest/fake-timers', 'class T { constructor(o) { this.options = o; } dispose() { this.disposed = true; } }\nexports.LegacyFakeTimers = T; exports.ModernFakeTimers = T;');
+  pkg(
+    '@jest/fake-timers',
+    'class T { constructor(o) { this.options = o; } dispose() { this.disposed = true; } }\nexports.LegacyFakeTimers = T; exports.ModernFakeTimers = T;',
+  );
   return dir;
 }
 
@@ -27,22 +30,52 @@ test('Jest environment: a warpdom window as the global, with what jest-environme
   const rootDir = fakeJestProject();
   let env;
   try {
-    env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: {} } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+    env = new WarpdomEnvironment(
+      { globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: {} } },
+      { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') },
+    );
     await env.setup();
     // Values from the test's realm, copied out (its arrays have another Array.prototype).
-    const run = (code) => { const v = vm.runInContext(code, env.getVmContext()); return typeof v === 'object' && v !== null ? JSON.parse(JSON.stringify(v)) : v; };
+    const run = (code) => {
+      const v = vm.runInContext(code, env.getVmContext());
+      return typeof v === 'object' && v !== null ? JSON.parse(JSON.stringify(v)) : v;
+    };
     assert.equal(run('document.body.appendChild(document.createElement("div")).tagName'), 'DIV');
-    assert.equal(run('window === globalThis && self === window && global === window && document.defaultView === window'), true);
+    assert.equal(
+      run('window === globalThis && self === window && global === window && document.defaultView === window'),
+      true,
+    );
     assert.equal(run('location.href'), 'http://localhost/');
     assert.deepEqual(run('[typeof setTimeout(() => {}, 0), typeof setInterval(() => {}, 1000)]'), ['number', 'number']);
-    assert.deepEqual(run('["Buffer", "URL", "AbortController", "Blob", "crypto", "process"].map((n) => typeof globalThis[n] !== "undefined")'), [true, true, true, true, true, true]);
-    assert.deepEqual(run('["setImmediate", "TextEncoder", "structuredClone", "fetch", "require"].map((n) => typeof globalThis[n])'), ['undefined', 'undefined', 'undefined', 'undefined', 'undefined']);
+    assert.deepEqual(
+      run(
+        '["Buffer", "URL", "AbortController", "Blob", "crypto", "process"].map((n) => typeof globalThis[n] !== "undefined")',
+      ),
+      [true, true, true, true, true, true],
+    );
+    assert.deepEqual(
+      run('["setImmediate", "TextEncoder", "structuredClone", "fetch", "require"].map((n) => typeof globalThis[n])'),
+      ['undefined', 'undefined', 'undefined', 'undefined', 'undefined'],
+    );
     // The window's AbortSignal, whose timeout() runs on the global's
     // setTimeout (so Jest's fake timers control it), as jsdom's.
-    assert.equal(run('Object.prototype.toString.call(new AbortController().signal) + (AbortSignal === window.AbortSignal)'), '[object AbortSignal]true');
-    assert.equal(run('(() => { const calls = []; const real = setTimeout; globalThis.setTimeout = (fn, ms) => { calls.push(ms); fn(); }; const s = AbortSignal.timeout(600); globalThis.setTimeout = real; return calls[0] + ":" + s.aborted + ":" + s.reason.name; })()'), '600:true:TimeoutError');
+    assert.equal(
+      run('Object.prototype.toString.call(new AbortController().signal) + (AbortSignal === window.AbortSignal)'),
+      '[object AbortSignal]true',
+    );
+    assert.equal(
+      run(
+        '(() => { const calls = []; const real = setTimeout; globalThis.setTimeout = (fn, ms) => { calls.push(ms); fn(); }; const s = AbortSignal.timeout(600); globalThis.setTimeout = real; return calls[0] + ":" + s.aborted + ":" + s.reason.name; })()',
+      ),
+      '600:true:TimeoutError',
+    );
     // Events at the window have the global as target and this, as jsdom's.
-    assert.equal(run('(() => { let seen; window.addEventListener("focus", function (e) { seen = [e.target === window, e.currentTarget === globalThis, this === window, e.composedPath()[0] === window]; }); window.dispatchEvent(new Event("focus")); return seen.join(); })()'), 'true,true,true,true');
+    assert.equal(
+      run(
+        '(() => { let seen; window.addEventListener("focus", function (e) { seen = [e.target === window, e.currentTarget === globalThis, this === window, e.composedPath()[0] === window]; }); window.dispatchEvent(new Event("focus")); return seen.join(); })()',
+      ),
+      'true,true,true,true',
+    );
     assert.deepEqual(env.exportConditions(), ['browser']);
     assert.ok(env.moduleMocker && env.fakeTimers && env.fakeTimersModern);
     const timers = env.fakeTimers;
@@ -57,17 +90,28 @@ test('Jest environment: a warpdom window as the global, with what jest-environme
 
 test('Jest environment: follows the jsdom and cssstyle jest-environment-jsdom loads', async () => {
   const rootDir = fakeJestProject();
-  const pkg = (dir, json) => { mkdirSync(join(rootDir, dir), { recursive: true }); writeFileSync(join(rootDir, dir, 'package.json'), JSON.stringify(json)); };
+  const pkg = (dir, json) => {
+    mkdirSync(join(rootDir, dir), { recursive: true });
+    writeFileSync(join(rootDir, dir, 'package.json'), JSON.stringify(json));
+  };
   pkg('node_modules/jest-environment-jsdom', { name: 'jest-environment-jsdom', version: '29.7.0' });
   pkg('node_modules/jsdom', { name: 'jsdom', version: '25.0.1' });
   pkg('node_modules/jsdom/node_modules/cssstyle', { name: 'cssstyle', version: '4.1.0' });
   let env;
   try {
-    env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: {} } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+    env = new WarpdomEnvironment(
+      { globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: {} } },
+      { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') },
+    );
     await env.setup();
     const run = (code) => vm.runInContext(code, env.getVmContext());
     // cssstyle 4.1: url() without quotes, no root color.
-    assert.equal(run('const d = document.createElement("div"); d.style.backgroundImage = "url(\'a.png\')"; d.style.backgroundImage'), 'url(a.png)');
+    assert.equal(
+      run(
+        'const d = document.createElement("div"); d.style.backgroundImage = "url(\'a.png\')"; d.style.backgroundImage',
+      ),
+      'url(a.png)',
+    );
     assert.equal(run('getComputedStyle(document.body.appendChild(document.createElement("p"))).color'), '');
   } finally {
     await env?.teardown();
@@ -77,11 +121,20 @@ test('Jest environment: follows the jsdom and cssstyle jest-environment-jsdom lo
 
 test('Jest environment: testEnvironmentOptions.fastFrames', async () => {
   const rootDir = fakeJestProject();
-  for (const [options, fast] of [[{ fastFrames: true }, true], [{}, false]]) {
-    const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: options } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+  for (const [options, fast] of [
+    [{ fastFrames: true }, true],
+    [{}, false],
+  ]) {
+    const env = new WarpdomEnvironment(
+      { globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: options } },
+      { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') },
+    );
     await env.setup();
     try {
-      const ms = await vm.runInContext('(async () => { const t = Date.now(); for (let i = 0; i < 3; i++) await new Promise((r) => requestAnimationFrame(r)); return Date.now() - t; })()', env.getVmContext());
+      const ms = await vm.runInContext(
+        '(async () => { const t = Date.now(); for (let i = 0; i < 3; i++) await new Promise((r) => requestAnimationFrame(r)); return Date.now() - t; })()',
+        env.getVmContext(),
+      );
       assert.equal(ms < 40, fast, `${JSON.stringify(options)}: 3 frames in ${ms} ms`);
     } finally {
       await env.teardown();
@@ -98,18 +151,27 @@ test('Jest environment: assigning document, window or top is ignored, location n
   const rootDir = fakeJestProject();
   let env;
   try {
-    env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: {} } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+    env = new WarpdomEnvironment(
+      { globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: {} } },
+      { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') },
+    );
     await env.setup();
     const run = (code) => vm.runInContext(code, env.getVmContext());
-    assert.equal(run(`(() => { 'use strict';
+    assert.equal(
+      run(`(() => { 'use strict';
       const real = document;
       global.document = { ...document, body: null };
       window.document = {};
       window.top = 1;
       global.window = 2;
       return [document === real, window.document === real, document.createElement('p').tagName, window.top === globalThis, window === globalThis].join();
-    })()`), 'true,true,P,true,true');
-    assert.equal(run(`(() => { 'use strict'; window.location = '#h'; return location.href; })()`), 'http://localhost/#h');
+    })()`),
+      'true,true,P,true,true',
+    );
+    assert.equal(
+      run(`(() => { 'use strict'; window.location = '#h'; return location.href; })()`),
+      'http://localhost/#h',
+    );
     assert.equal(run('Object.getOwnPropertyDescriptor(globalThis, "document").set'), undefined);
   } finally {
     if (env?.global) await env.teardown();
@@ -123,11 +185,17 @@ test('Jest environment: "Not implemented" reports reach the test\'s console as e
   const rootDir = fakeJestProject();
   let env;
   try {
-    env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom: '20.0.3' } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+    env = new WarpdomEnvironment(
+      { globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom: '20.0.3' } } },
+      { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') },
+    );
     await env.setup();
     const seen = [];
     env.global.console = { error: (e) => seen.push([e instanceof Error, e.message, e.type]) };
-    vm.runInContext('alert("x"); getComputedStyle(document.body, "::before"); document.createElement("form").submit()', env.getVmContext());
+    vm.runInContext(
+      'alert("x"); getComputedStyle(document.body, "::before"); document.createElement("form").submit()',
+      env.getVmContext(),
+    );
     assert.deepEqual(seen, [
       [true, 'Not implemented: window.alert', 'not implemented'],
       [true, 'Not implemented: window.computedStyle(elt, pseudoElt)', 'not implemented'],
@@ -143,19 +211,32 @@ test('Jest environment: "Not implemented" reports reach the test\'s console as e
 // listener exception does not fail the test (only the top window's 'error'
 // event is watched); jsdom's virtual console sends it to the test's console
 // as "Uncaught [...]" (Copilot review on #89).
-test('Jest environment: a frame\'s listener errors reach the test\'s console and do not fail the test, as with jsdom', async () => {
-  for (const [jsdom, type, link] of [['20.0.3', 'unhandled exception', 'detail'], ['30.1.3', 'unhandled-exception', 'cause']]) {
+test("Jest environment: a frame's listener errors reach the test's console and do not fail the test, as with jsdom", async () => {
+  for (const [jsdom, type, link] of [
+    ['20.0.3', 'unhandled exception', 'detail'],
+    ['30.1.3', 'unhandled-exception', 'cause'],
+  ]) {
     const rootDir = fakeJestProject();
     let env;
     const emit = process.emit;
     const uncaught = [];
-    process.emit = function (name, ...args) { if (name === 'uncaughtException') { uncaught.push(args[0]); return true; } return emit.call(this, name, ...args); };
+    process.emit = function (name, ...args) {
+      if (name === 'uncaughtException') {
+        uncaught.push(args[0]);
+        return true;
+      }
+      return emit.call(this, name, ...args);
+    };
     try {
-      env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      env = new WarpdomEnvironment(
+        { globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } },
+        { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') },
+      );
       await env.setup();
       const seen = [];
       env.global.console = { error: (e) => seen.push([e instanceof Error, e.message, e.type, String(e[link])]) };
-      await vm.runInContext(`(async () => {
+      await vm.runInContext(
+        `(async () => {
         const frame = document.body.appendChild(document.createElement('iframe'));
         const inner = frame.contentDocument.body.appendChild(frame.contentDocument.createElement('iframe'));
         for (const [doc, text] of [[frame.contentDocument, 'frame'], [inner.contentDocument, 'nested frame']]) {
@@ -170,11 +251,22 @@ test('Jest environment: a frame\'s listener errors reach the test\'s console and
           x.open('GET', 'data:text/plain,ok');
           x.send();
         });
-      })()`, env.getVmContext());
-      assert.deepEqual(seen, ['frame', 'nested frame', 'xhr onload'].map((m) => [true, `Uncaught [Error: ${m}]`, type, `Error: ${m}`]));
+      })()`,
+        env.getVmContext(),
+      );
+      assert.deepEqual(
+        seen,
+        ['frame', 'nested frame', 'xhr onload'].map((m) => [true, `Uncaught [Error: ${m}]`, type, `Error: ${m}`]),
+      );
       // The top window's still fail the test.
-      vm.runInContext('const b = document.body.appendChild(document.createElement("button")); b.addEventListener("click", () => { throw new Error("top"); }); b.click();', env.getVmContext());
-      assert.deepEqual(uncaught.map((e) => e.message), ['top']);
+      vm.runInContext(
+        'const b = document.body.appendChild(document.createElement("button")); b.addEventListener("click", () => { throw new Error("top"); }); b.click();',
+        env.getVmContext(),
+      );
+      assert.deepEqual(
+        uncaught.map((e) => e.message),
+        ['top'],
+      );
     } finally {
       process.emit = emit;
       if (env?.global) await env.teardown();
@@ -193,17 +285,35 @@ test('Jest environment: after teardown the global keeps its members, as a closed
   const rootDir = fakeJestProject();
   let env;
   try {
-    env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: {} } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+    env = new WarpdomEnvironment(
+      { globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: {} } },
+      { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') },
+    );
     await env.setup();
     const context = env.getVmContext();
     // Values from the test's realm, copied out.
-    const run = (code) => { const v = vm.runInContext(code, context); return typeof v === 'object' && v !== null ? JSON.parse(JSON.stringify(v)) : v; };
-    run('globalThis.seen = []; window.addEventListener("x", () => seen.push("window")); globalThis.el = document.body.appendChild(document.createElement("p")); el.addEventListener("click", () => seen.push("click"));');
+    const run = (code) => {
+      const v = vm.runInContext(code, context);
+      return typeof v === 'object' && v !== null ? JSON.parse(JSON.stringify(v)) : v;
+    };
+    run(
+      'globalThis.seen = []; window.addEventListener("x", () => seen.push("window")); globalThis.el = document.body.appendChild(document.createElement("p")); el.addEventListener("click", () => seen.push("click"));',
+    );
     await env.teardown();
-    assert.deepEqual(run('["document", "location", "history", "localStorage", "sessionStorage"].map((n) => typeof globalThis[n])'), Array(5).fill('undefined'));
-    assert.deepEqual(run('[typeof queueMicrotask, typeof Node, typeof Event, typeof getComputedStyle, window === globalThis, typeof navigator]'),
-      ['function', 'function', 'function', 'function', true, 'object']);
-    assert.deepEqual(run('[setTimeout(() => seen.push("timeout"), 0), setInterval(() => seen.push("interval"), 0)]'), [0, 0]);
+    assert.deepEqual(
+      run('["document", "location", "history", "localStorage", "sessionStorage"].map((n) => typeof globalThis[n])'),
+      Array(5).fill('undefined'),
+    );
+    assert.deepEqual(
+      run(
+        '[typeof queueMicrotask, typeof Node, typeof Event, typeof getComputedStyle, window === globalThis, typeof navigator]',
+      ),
+      ['function', 'function', 'function', 'function', true, 'object'],
+    );
+    assert.deepEqual(
+      run('[setTimeout(() => seen.push("timeout"), 0), setInterval(() => seen.push("interval"), 0)]'),
+      [0, 0],
+    );
     run('queueMicrotask(() => seen.push("microtask")); dispatchEvent(new Event("x")); el.click();');
     await new Promise((resolve) => setTimeout(resolve, 20));
     assert.deepEqual(run('seen.join()'), 'click,microtask');
@@ -218,7 +328,7 @@ test('Jest environment: after teardown the global keeps its members, as a closed
 // package's Jest 27 copies were hoisted, and Jest 30's runtime got Jest
 // 27's ModuleMocker (no replaceProperty). Here the project resolves the
 // Jest 27 copies and the running jest-runtime has its own Jest 30 ones.
-test('Jest environment: Jest\'s helpers come from the running jest-runtime, in a layout with several Jest versions', async () => {
+test("Jest environment: Jest's helpers come from the running jest-runtime, in a layout with several Jest versions", async () => {
   const rootDir = fakeJestProject();
   const pkg = (dir, name, source) => {
     const d = join(rootDir, dir, 'node_modules', name);
@@ -232,11 +342,27 @@ test('Jest environment: Jest\'s helpers come from the running jest-runtime, in a
   const runtime = join(rootDir, 'node_modules/jest-runtime/build/index.js');
   writeFileSync(runtime, '');
   const nested = 'node_modules/jest-runtime';
-  pkg(nested, 'jest-util', 'exports.installCommonGlobals = (g) => { g.process = { env: {} }; g.jestUtil = 30; return g; };');
-  pkg(nested, 'jest-mock', 'exports.ModuleMocker = class { constructor() { this.version = 30; } replaceProperty() {} };');
-  pkg(nested, '@jest/fake-timers', 'class T { constructor() { this.version = 30; } dispose() {} }\nexports.LegacyFakeTimers = T; exports.ModernFakeTimers = T;');
+  pkg(
+    nested,
+    'jest-util',
+    'exports.installCommonGlobals = (g) => { g.process = { env: {} }; g.jestUtil = 30; return g; };',
+  );
+  pkg(
+    nested,
+    'jest-mock',
+    'exports.ModuleMocker = class { constructor() { this.version = 30; } replaceProperty() {} };',
+  );
+  pkg(
+    nested,
+    '@jest/fake-timers',
+    'class T { constructor() { this.version = 30; } dispose() {} }\nexports.LegacyFakeTimers = T; exports.ModernFakeTimers = T;',
+  );
   const cache = createRequire(import.meta.url).cache;
-  const make = () => new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: {} } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+  const make = () =>
+    new WarpdomEnvironment(
+      { globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: {} } },
+      { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') },
+    );
   try {
     // No Jest running: the project's copies.
     let env = make();
@@ -245,7 +371,16 @@ test('Jest environment: Jest\'s helpers come from the running jest-runtime, in a
     // jest-runner has loaded jest-runtime: its copies.
     createRequire(import.meta.url)(runtime);
     env = make();
-    assert.deepEqual([env.moduleMocker.version, typeof env.moduleMocker.replaceProperty, env.fakeTimers.version, env.fakeTimersModern.version, env.global.jestUtil], [30, 'function', 30, 30, 30]);
+    assert.deepEqual(
+      [
+        env.moduleMocker.version,
+        typeof env.moduleMocker.replaceProperty,
+        env.fakeTimers.version,
+        env.fakeTimersModern.version,
+        env.global.jestUtil,
+      ],
+      [30, 'function', 30, 30, 30],
+    );
     await env.teardown();
   } finally {
     delete cache[runtime];
@@ -256,7 +391,7 @@ test('Jest environment: Jest\'s helpers come from the running jest-runtime, in a
 // As jest-environment-jsdom (black box, jsdom 20 and 26 through Jest 29 and
 // 30): crypto, performance, Blob and File are the window's; TextEncoder
 // from jsdom 27.4, its arrays of the test's realm.
-test('Jest environment: crypto, performance, Blob, File and TextEncoder are the window\'s', async () => {
+test("Jest environment: crypto, performance, Blob, File and TextEncoder are the window's", async () => {
   const rootDir = fakeJestProject();
   try {
     for (const [jsdom, expected] of [
@@ -264,17 +399,44 @@ test('Jest environment: crypto, performance, Blob, File and TextEncoder are the 
       ['26.1.0', '[object Crypto],undefined,function,undefined,undefined,true,undefined'],
       ['30.1.3', '[object Crypto],undefined,function,undefined,function,true,function'],
     ]) {
-      const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      const env = new WarpdomEnvironment(
+        { globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } },
+        { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') },
+      );
       try {
         const run = (code) => vm.runInContext(code, env.getVmContext());
-        assert.equal(run('[Object.prototype.toString.call(crypto), typeof crypto.subtle, typeof crypto.randomUUID, typeof performance.mark, typeof TextEncoder, new Blob(["a"]) instanceof Blob, typeof Blob.prototype.text].join()'), expected, jsdom);
-        assert.equal(run('crypto === window.crypto && performance === window.performance && crypto.getRandomValues(new Uint8Array(2)) instanceof Uint8Array'), true);
+        assert.equal(
+          run(
+            '[Object.prototype.toString.call(crypto), typeof crypto.subtle, typeof crypto.randomUUID, typeof performance.mark, typeof TextEncoder, new Blob(["a"]) instanceof Blob, typeof Blob.prototype.text].join()',
+          ),
+          expected,
+          jsdom,
+        );
+        assert.equal(
+          run(
+            'crypto === window.crypto && performance === window.performance && crypto.getRandomValues(new Uint8Array(2)) instanceof Uint8Array',
+          ),
+          true,
+        );
         if (jsdom === '30.1.3') {
-          assert.equal(run('new TextEncoder().encode("a") instanceof Uint8Array && new Blob(["a"]).arrayBuffer() instanceof Promise'), true);
-          assert.equal(await run('new Blob(["ab"]).arrayBuffer().then((b) => b instanceof ArrayBuffer && b.byteLength)'), 2);
+          assert.equal(
+            run(
+              'new TextEncoder().encode("a") instanceof Uint8Array && new Blob(["a"]).arrayBuffer() instanceof Promise',
+            ),
+            true,
+          );
+          assert.equal(
+            await run('new Blob(["ab"]).arrayBuffer().then((b) => b instanceof ArrayBuffer && b.byteLength)'),
+            2,
+          );
         }
         // Jest's modern fake timers assign the global's performance (strict code).
-        assert.equal(run('"use strict"; const real = performance; globalThis.performance = { now: () => 5 }; const t = performance.now(); globalThis.performance = real; t'), 5);
+        assert.equal(
+          run(
+            '"use strict"; const real = performance; globalThis.performance = { now: () => 5 }; const t = performance.now(); globalThis.performance = real; t',
+          ),
+          5,
+        );
       } finally {
         await env.teardown();
       }
@@ -298,15 +460,29 @@ test('Jest environment: URL, URLSearchParams, Headers, console and WebAssembly a
     ]) {
       const logged = [];
       const testConsole = { log: (...args) => logged.push(args.join(' ')) };
-      const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console: testConsole, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      const env = new WarpdomEnvironment(
+        { globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } },
+        { console: testConsole, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') },
+      );
       try {
         const run = (code) => vm.runInContext(code, env.getVmContext());
-        assert.equal(run(`[typeof URL.createObjectURL, typeof URL.revokeObjectURL, typeof URL.parse, "size" in URLSearchParams.prototype,
+        assert.equal(
+          run(`[typeof URL.createObjectURL, typeof URL.revokeObjectURL, typeof URL.parse, "size" in URLSearchParams.prototype,
           typeof Headers.prototype.getSetCookie, (() => { try { new URL("nope"); } catch (e) { return e.message; } })(),
           URL === window.URL && URLSearchParams === window.URLSearchParams && Headers === window.Headers && webkitURL === URL,
-          new URL("http://a/?b=1").searchParams instanceof URLSearchParams].join()`), expected, jsdom);
-        assert.equal(run('WebAssembly === window.WebAssembly && Object.getPrototypeOf(Object.getPrototypeOf(new WebAssembly.Memory({ initial: 1 }))) === Object.prototype'), true);
-        run('document.body.innerHTML = "<iframe></iframe>"; document.querySelector("iframe").contentWindow.console.log("from", "frame")');
+          new URL("http://a/?b=1").searchParams instanceof URLSearchParams].join()`),
+          expected,
+          jsdom,
+        );
+        assert.equal(
+          run(
+            'WebAssembly === window.WebAssembly && Object.getPrototypeOf(Object.getPrototypeOf(new WebAssembly.Memory({ initial: 1 }))) === Object.prototype',
+          ),
+          true,
+        );
+        run(
+          'document.body.innerHTML = "<iframe></iframe>"; document.querySelector("iframe").contentWindow.console.log("from", "frame")',
+        );
         assert.deepEqual(logged, ['from frame']);
       } finally {
         await env.teardown();
@@ -321,10 +497,13 @@ test('Jest environment: URL, URLSearchParams, Headers, console and WebAssembly a
 // window, so WebSocket and window.WebSocket are one property, which a test
 // can replace for its file. jsdom's is its own interface; warpdom's is
 // Node's (a fresh file gets it back).
-test('Jest environment: WebSocket is the window\'s, which is Node\'s; a test can replace it', async () => {
+test("Jest environment: WebSocket is the window's, which is Node's; a test can replace it", async () => {
   const rootDir = fakeJestProject();
   const make = async () => {
-    const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: {} } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+    const env = new WarpdomEnvironment(
+      { globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: {} } },
+      { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') },
+    );
     await env.setup();
     return env;
   };
@@ -333,10 +512,26 @@ test('Jest environment: WebSocket is the window\'s, which is Node\'s; a test can
     try {
       const run = (code) => vm.runInContext(code, env.getVmContext());
       assert.equal(run('WebSocket'), globalThis.WebSocket);
-      assert.equal(run('WebSocket === window.WebSocket && WebSocket === document.defaultView.WebSocket && "WebSocket" in window'), true);
-      assert.equal(run('Object.getOwnPropertyDescriptor(globalThis, "WebSocket").enumerable || Object.keys(window).includes("WebSocket")'), false);
-      assert.equal(run('(() => { const Mock = function Mock() {}; window.WebSocket = Mock; return globalThis.WebSocket === Mock && WebSocket === Mock; })()'), true);
-      assert.equal(run('(() => { const Mock = class {}; globalThis.WebSocket = Mock; return window.WebSocket === Mock; })()'), true);
+      assert.equal(
+        run('WebSocket === window.WebSocket && WebSocket === document.defaultView.WebSocket && "WebSocket" in window'),
+        true,
+      );
+      assert.equal(
+        run(
+          'Object.getOwnPropertyDescriptor(globalThis, "WebSocket").enumerable || Object.keys(window).includes("WebSocket")',
+        ),
+        false,
+      );
+      assert.equal(
+        run(
+          '(() => { const Mock = function Mock() {}; window.WebSocket = Mock; return globalThis.WebSocket === Mock && WebSocket === Mock; })()',
+        ),
+        true,
+      );
+      assert.equal(
+        run('(() => { const Mock = class {}; globalThis.WebSocket = Mock; return window.WebSocket === Mock; })()'),
+        true,
+      );
     } finally {
       await env.teardown();
     }
@@ -361,9 +556,13 @@ test('Jest environment: viewport members, name, status and self as on jsdom per 
   try {
     const results = {};
     for (const jsdom of ['20.0.3', '26.1.0', '30.1.3']) {
-      const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      const env = new WarpdomEnvironment(
+        { globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } },
+        { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') },
+      );
       await env.setup();
-      results[jsdom] = vm.runInContext(`(() => {
+      results[jsdom] = vm.runInContext(
+        `(() => {
         'use strict';
         const kind = (key) => { const d = Object.getOwnPropertyDescriptor(window, key); return ('value' in d ? 'data ' : 'accessor ') + (d.set ? 's' : '') + (d.writable ? 'w' : '') + (d.enumerable ? 'e' : '') + (d.configurable ? 'c' : ''); };
         const out = [kind('innerWidth'), kind('name'), kind('status'), kind('self')];
@@ -376,7 +575,9 @@ test('Jest environment: viewport members, name, status and self as on jsdom per 
         try { window.self = 7; self = window.self === 7; } catch (e) { self = e.constructor.name; }
         out.push(window.innerWidth + ' ' + kind('innerWidth'), assigned, typeof window.status, self);
         return out.join(' | ');
-      })()`, env.getVmContext());
+      })()`,
+        env.getVmContext(),
+      );
       await env.teardown();
     }
     assert.deepEqual(results, {
@@ -395,14 +596,18 @@ test('Jest environment: viewport members, name, status and self as on jsdom per 
 // and the test's assignments, also a second assignment to a [Replaceable]
 // accessor (jsdom 27 and later) and Object.defineProperty, and what it
 // assigns to window is the test's.
-test('Jest environment: inline event handlers read the global\'s members', async () => {
+test("Jest environment: inline event handlers read the global's members", async () => {
   const rootDir = fakeJestProject();
   try {
     const results = {};
     for (const jsdom of ['20.0.3', '26.1.0', '30.1.3']) {
-      const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      const env = new WarpdomEnvironment(
+        { globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } },
+        { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') },
+      );
       await env.setup();
-      results[jsdom] = vm.runInContext(`(() => {
+      results[jsdom] = vm.runInContext(
+        `(() => {
         const div = document.createElement('div');
         div.setAttribute('onclick', 'document.body.dataset.r = [innerWidth, window.innerWidth, name, outerWidth, scrollY, innerHeight, status].join(); window.fromHandler = 1');
         document.body.append(div);
@@ -416,7 +621,9 @@ test('Jest environment: inline event handlers read the global\'s members', async
         click();
         out.push(window.fromHandler);
         return out.join(' | ');
-      })()`, env.getVmContext());
+      })()`,
+        env.getVmContext(),
+      );
       await env.teardown();
     }
     const expected = '1024,1024,,1024,0,768, | 640,640,n1,700,0,768, | 800,800,n2,900,5,333,st | 1';
@@ -443,9 +650,13 @@ test('Jest environment: assignments through an object inheriting from the global
   try {
     const results = {};
     for (const jsdom of ['20.0.3', '26.1.0', '30.1.3']) {
-      const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      const env = new WarpdomEnvironment(
+        { globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } },
+        { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') },
+      );
       await env.setup();
-      results[jsdom] = vm.runInContext(`(() => {
+      results[jsdom] = vm.runInContext(
+        `(() => {
         'use strict';
         const out = [];
         const keys = ${JSON.stringify(jsdom === '30.1.3' ? ['name', 'Image', 'MutationObserver'] : ['self', 'parent', 'innerWidth', 'status', 'name', 'Image', 'MutationObserver'])};
@@ -462,7 +673,9 @@ test('Jest environment: assignments through an object inheriting from the global
           out.push(key + ' setter ' + Object.hasOwn(other, key) + ' ' + String(window[key]));
         }
         return out.join(', ');
-      })()`, env.getVmContext());
+      })()`,
+        env.getVmContext(),
+      );
       await env.teardown();
     }
     const derived = 'self true false, parent true false, innerWidth true false, status true false, ';
@@ -487,9 +700,13 @@ test('Jest environment: inline event handlers find named elements', async () => 
   try {
     const results = {};
     for (const jsdom of ['20.0.3', '26.1.0', '30.1.3']) {
-      const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      const env = new WarpdomEnvironment(
+        { globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } },
+        { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') },
+      );
       await env.setup();
-      results[jsdom] = vm.runInContext(`(() => {
+      results[jsdom] = vm.runInContext(
+        `(() => {
         window.shadowed = 'g';
         document.body.innerHTML = '<div id="result"></div><form name="fname"></form><div id="dup"></div><span id="dup"></span><div id="gone"></div>'
           + '<div id="shadowed"></div><div id="setTimeout"></div><div id="an"></div>'
@@ -502,10 +719,13 @@ test('Jest environment: inline event handlers find named elements', async () => 
         button.click();
         out.push(document.body.dataset.r, window.an, globalThis.fresh);
         return out.join(' | ');
-      })()`, env.getVmContext());
+      })()`,
+        env.getVmContext(),
+      );
       await env.teardown();
     }
-    const expected = 'ok | FORM,2,undefined,object,undefined,g,function,object | FORM,2,object,undefined,undefined,g,function,number | 5 | 6';
+    const expected =
+      'ok | FORM,2,undefined,object,undefined,g,function,object | FORM,2,object,undefined,undefined,g,function,number | 5 | 6';
     assert.deepEqual(results, { '20.0.3': expected, '26.1.0': expected, '30.1.3': expected });
   } finally {
     rmSync(rootDir, { recursive: true, force: true });
@@ -525,9 +745,13 @@ test('Jest environment: handler scope before script bindings; frame aliases are 
   try {
     const results = {};
     for (const jsdom of ['20.0.3', '26.1.0', '30.1.3']) {
-      const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      const env = new WarpdomEnvironment(
+        { globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } },
+        { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') },
+      );
       await env.setup();
-      results[jsdom] = vm.runInContext(`(() => {
+      results[jsdom] = vm.runInContext(
+        `(() => {
         const out = [];
         const iframe = document.createElement('iframe');
         document.body.append(iframe);
@@ -552,11 +776,14 @@ test('Jest environment: handler scope before script bindings; frame aliases are 
         document.head.append(s2);
         out.push(document.body.dataset.c);
         return out.join(' | ');
-      })()`, env.getVmContext());
+      })()`,
+        env.getVmContext(),
+      );
       await env.teardown();
     }
-    const expected = 'true,true,true,true,true | updated,updated,640 | 800,800 | undefined'
-      + ' | object,[object HTMLDivElement],[object HTMLDivElement],true | string,[object HTMLDivElement]1,8,true | 42,7,[object HTMLDivElement]11,8';
+    const expected =
+      'true,true,true,true,true | updated,updated,640 | 800,800 | undefined' +
+      ' | object,[object HTMLDivElement],[object HTMLDivElement],true | string,[object HTMLDivElement]1,8,true | 42,7,[object HTMLDivElement]11,8';
     assert.deepEqual(results, { '20.0.3': expected, '26.1.0': expected, '30.1.3': expected });
   } finally {
     rmSync(rootDir, { recursive: true, force: true });
@@ -567,14 +794,18 @@ test('Jest environment: handler scope before script bindings; frame aliases are 
 // just named objects in an inline handler: the global, document, form and
 // element scopes stay (jest-environment-jsdom and Vitest's VM pools, black
 // box on jsdom 20.0.3, 26.1.0 and 30.1.3).
-test('Jest environment: named objects do not replace an inline handler\'s scopes', async () => {
+test("Jest environment: named objects do not replace an inline handler's scopes", async () => {
   const rootDir = fakeJestProject();
   try {
     const results = {};
     for (const jsdom of ['20.0.3', '26.1.0', '30.1.3']) {
-      const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      const env = new WarpdomEnvironment(
+        { globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } },
+        { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') },
+      );
       await env.setup();
-      results[jsdom] = vm.runInContext(`(() => {
+      results[jsdom] = vm.runInContext(
+        `(() => {
         window.shadowed = 'g';
         document.body.innerHTML = '<div id="__window"></div><div id="__named"></div><div id="__document"></div><div id="__element"></div><div id="shadowed"></div><form name="__form"></form>'
           + '<form id="f"><input><button id="b" type="button" onclick="document.body.dataset.r = [String(shadowed), id, typeof getElementById, elements.length, typeof setTimeout, __window.id].join()"></button></form>'
@@ -582,7 +813,9 @@ test('Jest environment: named objects do not replace an inline handler\'s scopes
         document.getElementById('b').click();
         document.getElementById('c').click();
         return document.body.dataset.r + ' | ' + document.body.dataset.s;
-      })()`, env.getVmContext());
+      })()`,
+        env.getVmContext(),
+      );
       await env.teardown();
     }
     const expected = 'g,b,function,2,function,__window | g,c,function,function';
@@ -601,9 +834,13 @@ test('Jest environment: event.view is the global', async () => {
   try {
     const results = {};
     for (const jsdom of ['20.0.3', '26.1.0', '30.1.3']) {
-      const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      const env = new WarpdomEnvironment(
+        { globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } },
+        { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') },
+      );
       await env.setup();
-      results[jsdom] = vm.runInContext(`(() => {
+      results[jsdom] = vm.runInContext(
+        `(() => {
         window.name = 'updated';
         window.innerWidth = 800;
         document.body.innerHTML = '<input id="i"><label id="l">x<input id="li" type="checkbox"></label><button id="b"></button>';
@@ -618,10 +855,13 @@ test('Jest environment: event.view is the global', async () => {
         document.getElementById('l').click();
         views.push(new MouseEvent('x', { view: window }).view === window);
         return views.join(' ');
-      })()`, env.getVmContext());
+      })()`,
+        env.getVmContext(),
+      );
       await env.teardown();
     }
-    const expected = 'focus:true,updated,800 focusin:true,updated,800 blur:true,updated,800 click:true,updated,800 label:true,updated,800 true';
+    const expected =
+      'focus:true,updated,800 focusin:true,updated,800 blur:true,updated,800 click:true,updated,800 label:true,updated,800 true';
     assert.deepEqual(results, { '20.0.3': expected, '26.1.0': expected, '30.1.3': expected });
   } finally {
     rmSync(rootDir, { recursive: true, force: true });
@@ -640,7 +880,10 @@ test('Jest environment: jest.spyOn on the style accessors as with jsdom, per pro
     const rootDir = fakeJestProject();
     let env;
     try {
-      env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } }, { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') });
+      env = new WarpdomEnvironment(
+        { globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } },
+        { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') },
+      );
       await env.setup();
       const g = env.global;
       const jest = new ModuleMocker(g);
@@ -648,9 +891,18 @@ test('Jest environment: jest.spyOn on the style accessors as with jsdom, per pro
       el.style.width = '10px';
       assert.equal(typeof g.CSSStyleProperties, legacy ? 'undefined' : 'function', jsdom);
       if (!legacy) assert.throws(() => jest.spyOn(g.CSSStyleDeclaration.prototype, 'width', 'get'), jsdom);
-      const width = jest.spyOn(legacy ? g.CSSStyleDeclaration.prototype : g.CSSStyleProperties.prototype, 'width', 'get').mockReturnValue('42px');
+      const width = jest
+        .spyOn(legacy ? g.CSSStyleDeclaration.prototype : g.CSSStyleProperties.prototype, 'width', 'get')
+        .mockReturnValue('42px');
       const set = jest.spyOn(legacy ? g.CSSStyleDeclaration.prototype : g.CSSStyleProperties.prototype, 'width', 'set');
-      assert.equal(vm.runInContext('el => [el.style.width, getComputedStyle(el).width, (el.style.width = "5px", "")].join()', env.getVmContext())(el), '42px,42px,', jsdom);
+      assert.equal(
+        vm.runInContext(
+          'el => [el.style.width, getComputedStyle(el).width, (el.style.width = "5px", "")].join()',
+          env.getVmContext(),
+        )(el),
+        '42px,42px,',
+        jsdom,
+      );
       assert.equal(width.mock.calls.length, 2, jsdom);
       assert.deepEqual(set.mock.calls, [['5px']], jsdom);
       // In reverse order: each restores the descriptor it replaced.

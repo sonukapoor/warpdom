@@ -137,7 +137,8 @@ function update(doc, element, inTree) {
     } else list.push(element);
   }
   const by = ds.namedBy ?? (ds.namedBy = new Map());
-  if (now === NONE) by.delete(element); else by.set(element, now);
+  if (now === NONE) by.delete(element);
+  else by.set(element, now);
 }
 
 hooks.named = {

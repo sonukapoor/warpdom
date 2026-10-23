@@ -13,8 +13,10 @@ test('outerHTML and innerHTML serialize the tree', () => {
   div.appendChild(document.createComment(' note '));
   const span = div.appendChild(document.createElement('span'));
   span.textContent = 'x';
-  assert.equal(div.outerHTML,
-    '<div id="main" title="a &quot;quote&quot; &amp; more&nbsp;">1 &lt; 2 &amp; 3 &gt; 2&nbsp;<br><!-- note --><span>x</span></div>');
+  assert.equal(
+    div.outerHTML,
+    '<div id="main" title="a &quot;quote&quot; &amp; more&nbsp;">1 &lt; 2 &amp; 3 &gt; 2&nbsp;<br><!-- note --><span>x</span></div>',
+  );
   assert.equal(div.innerHTML, '1 &lt; 2 &amp; 3 &gt; 2&nbsp;<br><!-- note --><span>x</span>');
   assert.ok('outerHTML' in div); // Testing Library's prettyDOM checks this
 });
@@ -44,7 +46,10 @@ test('setting innerHTML parses HTML into real nodes', () => {
   assert.equal(document.getElementById('first').textContent, 'One & two', 'parsed ids are indexed');
   assert.equal(host.childNodes[1].nodeType, 8);
   assert.equal(host.lastChild.nodeValue, 'text');
-  assert.equal(host.innerHTML, '<ul class="list"><li id="first">One &amp; <b>two</b></li><li>Three</li></ul><!--c-->text');
+  assert.equal(
+    host.innerHTML,
+    '<ul class="list"><li id="first">One &amp; <b>two</b></li><li>Three</li></ul><!--c-->text',
+  );
   host.innerHTML = '';
   assert.equal(host.childNodes.length, 0);
 });
@@ -106,17 +111,41 @@ htmlParity('cloning a template copies its contents when deep', (w) => {
   t.innerHTML = '<p id="a">x</p><b>y</b>';
   const deep = t.cloneNode(true);
   const shallow = t.cloneNode(false);
-  return [deep.content.childNodes.length, deep.content.firstElementChild.id, deep.content.firstChild !== t.content.firstChild, shallow.content.childNodes.length, deep.innerHTML];
+  return [
+    deep.content.childNodes.length,
+    deep.content.firstElementChild.id,
+    deep.content.firstChild !== t.content.firstChild,
+    shallow.content.childNodes.length,
+    deep.innerHTML,
+  ];
 });
 
 htmlParity('hyperlinks: URL members of <a> and <area>', (w) => {
   const d = w.document;
-  const read = (el) => ['href', 'origin', 'protocol', 'username', 'password', 'host', 'hostname', 'port', 'pathname', 'search', 'hash']
-    .map((k) => el[k]).concat(String(el));
-  const a = (href) => { const el = d.createElement('a'); if (href !== undefined) el.setAttribute('href', href); return el; };
+  const read = (el) =>
+    ['href', 'origin', 'protocol', 'username', 'password', 'host', 'hostname', 'port', 'pathname', 'search', 'hash']
+      .map((k) => el[k])
+      .concat(String(el));
+  const a = (href) => {
+    const el = d.createElement('a');
+    if (href !== undefined) el.setAttribute('href', href);
+    return el;
+  };
   const out = {};
-  for (const href of [undefined, '', '#', '#x', '/p?q=1#h', 'other', 'https://u:p@example.com:8080/a/b?c#d', 'mailto:me@example.com',
-    'http://[bad', 'javascript:void(0)', 'file:///tmp/x']) out[String(href)] = read(a(href));
+  for (const href of [
+    undefined,
+    '',
+    '#',
+    '#x',
+    '/p?q=1#h',
+    'other',
+    'https://u:p@example.com:8080/a/b?c#d',
+    'mailto:me@example.com',
+    'http://[bad',
+    'javascript:void(0)',
+    'file:///tmp/x',
+  ])
+    out[String(href)] = read(a(href));
   const set = a('https://example.com/a?b#c');
   set.protocol = 'http';
   set.username = 'me';
@@ -158,11 +187,14 @@ const tick = async () => {
 
 htmlParity('hyperlinks: following links', async (w) => {
   const d = w.document;
-  d.body.innerHTML = '<a id=h href="#sec">h</a><a id=o href="/other">o</a><a id=n>n</a><a id=p href="#prev">p</a>'
-    + '<a id=x href="https://example.org/">x</a><a id=same href="">s</a><a id=q href="?q=1">q</a>'
-    + '<a id=t href="#t" target=_blank>t</a><a id=dl href="#dl" download>d</a><map><area id=ar href="#area"></map>';
+  d.body.innerHTML =
+    '<a id=h href="#sec">h</a><a id=o href="/other">o</a><a id=n>n</a><a id=p href="#prev">p</a>' +
+    '<a id=x href="https://example.org/">x</a><a id=same href="">s</a><a id=q href="?q=1">q</a>' +
+    '<a id=t href="#t" target=_blank>t</a><a id=dl href="#dl" download>d</a><map><area id=ar href="#area"></map>';
   const log = [];
-  w.addEventListener('hashchange', (e) => log.push(['hashchange', e.constructor.name, e.oldURL, e.newURL, e.bubbles, e.cancelable, w.history.length]));
+  w.addEventListener('hashchange', (e) =>
+    log.push(['hashchange', e.constructor.name, e.oldURL, e.newURL, e.bubbles, e.cancelable, w.history.length]),
+  );
   w.addEventListener('popstate', (e) => log.push(['popstate', e.constructor.name, w.location.hash]));
   d.getElementById('p').addEventListener('click', (e) => e.preventDefault());
   for (const id of ['h', 'o', 'p', 'x', 'same', 'q', 't', 'dl', 'ar']) {
@@ -267,17 +299,54 @@ htmlParity('media elements without media', (w) => {
   const a = d.createElement('audio');
   const out = {
     calls: [v.play(), v.pause(), v.load(), v.canPlayType('video/mp4')],
-    state: ['paused', 'ended', 'currentTime', 'duration', 'volume', 'muted', 'readyState', 'networkState', 'playbackRate',
-      'defaultPlaybackRate', 'seeking', 'currentSrc', 'autoplay', 'loop', 'controls', 'src', 'poster'].map((k) => v[k]),
+    state: [
+      'paused',
+      'ended',
+      'currentTime',
+      'duration',
+      'volume',
+      'muted',
+      'readyState',
+      'networkState',
+      'playbackRate',
+      'defaultPlaybackRate',
+      'seeking',
+      'currentSrc',
+      'autoplay',
+      'loop',
+      'controls',
+      'src',
+      'poster',
+    ].map((k) => v[k]),
     ranges: [v.buffered.length, a.seekable.length],
-    statics: [w.HTMLMediaElement.HAVE_NOTHING, w.HTMLMediaElement.HAVE_ENOUGH_DATA, w.HTMLMediaElement.NETWORK_NO_SOURCE, a instanceof w.HTMLMediaElement],
+    statics: [
+      w.HTMLMediaElement.HAVE_NOTHING,
+      w.HTMLMediaElement.HAVE_ENOUGH_DATA,
+      w.HTMLMediaElement.NETWORK_NO_SOURCE,
+      a instanceof w.HTMLMediaElement,
+    ],
     video: [v.videoWidth, v.videoHeight],
   };
-  v.currentTime = 5; v.volume = 0.5; v.muted = true; v.playbackRate = 2;
+  v.currentTime = 5;
+  v.volume = 0.5;
+  v.muted = true;
+  v.playbackRate = 2;
   out.set = [v.currentTime, v.volume, v.muted, v.playbackRate];
   const errors = [];
-  for (const fn of [() => { v.volume = 2; }, () => { v.currentTime = NaN; }]) {
-    try { fn(); errors.push('ok'); } catch (e) { errors.push([e.constructor.name, e.name]); }
+  for (const fn of [
+    () => {
+      v.volume = 2;
+    },
+    () => {
+      v.currentTime = NaN;
+    },
+  ]) {
+    try {
+      fn();
+      errors.push('ok');
+    } catch (e) {
+      errors.push([e.constructor.name, e.name]);
+    }
   }
   out.errors = errors;
   return out;
@@ -286,13 +355,27 @@ htmlParity('media elements without media', (w) => {
 // audioTracks, videoTracks and textTracks (#57): an empty array per
 // element, as in jsdom 20 to 30.
 for (const jsdom of [20, 30]) {
-  parity(`media elements: audioTracks, videoTracks and textTracks (jsdom ${jsdom})`, (w) => {
-    const v = w.document.createElement('video');
-    const a = w.document.createElement('audio');
-    v.audioTracks.push('x');
-    return [['audioTracks', 'videoTracks', 'textTracks'].map((k) => [Array.isArray(v[k]), v[k].length, v[k] === v[k], v[k] !== a[k], a[k].length]),
-      v.cloneNode().audioTracks.length, 'AudioTrackList' in w, 'VideoTrackList' in w];
-  }, { jsdom });
+  parity(
+    `media elements: audioTracks, videoTracks and textTracks (jsdom ${jsdom})`,
+    (w) => {
+      const v = w.document.createElement('video');
+      const a = w.document.createElement('audio');
+      v.audioTracks.push('x');
+      return [
+        ['audioTracks', 'videoTracks', 'textTracks'].map((k) => [
+          Array.isArray(v[k]),
+          v[k].length,
+          v[k] === v[k],
+          v[k] !== a[k],
+          a[k].length,
+        ]),
+        v.cloneNode().audioTracks.length,
+        'AudioTrackList' in w,
+        'VideoTrackList' in w,
+      ];
+    },
+    { jsdom },
+  );
 }
 
 // Deliberate deviations: buffered, played and seekable are TimeRanges whose
@@ -324,16 +407,40 @@ htmlParity('tables: sections, rows and cells', (w) => {
   out.push(shape(), t.rows.length, t.tBodies.length, t.caption?.tagName, t.tHead === head, t.createTHead() === head);
   out.push([...t.rows].map((r) => [r.rowIndex, r.sectionRowIndex, r.parentNode.tagName]));
   const row = t.rows[1];
-  row.insertCell(); row.insertCell(0); row.insertCell(-1);
-  out.push(row.cells.length, [...row.cells].map((c) => c.cellIndex), row.cells[0] === row.cells[0]);
+  row.insertCell();
+  row.insertCell(0);
+  row.insertCell(-1);
+  out.push(
+    row.cells.length,
+    [...row.cells].map((c) => c.cellIndex),
+    row.cells[0] === row.cells[0],
+  );
   const live = t.rows;
-  t.deleteRow(-1); t.deleteRow(0); row.deleteCell(0); row.deleteCell(-1);
+  t.deleteRow(-1);
+  t.deleteRow(0);
+  row.deleteCell(0);
+  row.deleteCell(-1);
   out.push(live.length, row.cells.length, shape());
-  t.deleteCaption(); t.deleteTHead(); t.deleteTFoot();
+  t.deleteCaption();
+  t.deleteTHead();
+  t.deleteTFoot();
   out.push(shape());
   const errors = [];
-  for (const fn of [() => t.insertRow(99), () => t.deleteRow(99), () => row.insertCell(-2), () => head.insertRow(5), () => { t.tHead = d.createElement('div'); }]) {
-    try { fn(); errors.push('ok'); } catch (e) { errors.push(e.name); }
+  for (const fn of [
+    () => t.insertRow(99),
+    () => t.deleteRow(99),
+    () => row.insertCell(-2),
+    () => head.insertRow(5),
+    () => {
+      t.tHead = d.createElement('div');
+    },
+  ]) {
+    try {
+      fn();
+      errors.push('ok');
+    } catch (e) {
+      errors.push(e.name);
+    }
   }
   out.push(errors);
   const td = d.createElement('td');
@@ -357,7 +464,23 @@ htmlParity('legacy event initializers', (w) => {
   const msg = new w.MessageEvent('x');
   msg.initMessageEvent('message', false, false, { a: 1 }, 'http://o', '7', null, []);
   return [
-    [m.type, m.bubbles, m.cancelable, m.view === w, m.detail, m.screenX, m.screenY, m.clientX, m.clientY, m.ctrlKey, m.altKey, m.shiftKey, m.metaKey, m.button, m.relatedTarget === d.body],
+    [
+      m.type,
+      m.bubbles,
+      m.cancelable,
+      m.view === w,
+      m.detail,
+      m.screenX,
+      m.screenY,
+      m.clientX,
+      m.clientY,
+      m.ctrlKey,
+      m.altKey,
+      m.shiftKey,
+      m.metaKey,
+      m.button,
+      m.relatedTarget === d.body,
+    ],
     [k.type, k.bubbles, k.cancelable, k.key, k.altKey, k.metaKey, k.ctrlKey],
     [u.type, u.detail, u.view === w],
     [c.type, c.data],
@@ -369,7 +492,12 @@ htmlParity('legacy event initializers', (w) => {
 test('tables: setting tHead to another kind of section', () => {
   const w = createWindow();
   const t = w.document.createElement('table');
-  assert.throws(() => { t.tHead = w.document.createElement('tbody'); }, { name: 'HierarchyRequestError' });
+  assert.throws(
+    () => {
+      t.tHead = w.document.createElement('tbody');
+    },
+    { name: 'HierarchyRequestError' },
+  );
 });
 
 // Base URLs: Node.baseURI and URL attributes follow the first base element
@@ -395,7 +523,8 @@ parity('base URLs', (w) => {
   out.push(d.baseURI, b2.href);
   b2.setAttribute('href', 'http://[bad');
   out.push(d.baseURI, b2.href);
-  b.remove(); b2.remove();
+  b.remove();
+  b2.remove();
   out.push(d.baseURI, a.href);
   w.history.pushState(null, '', '/new/path?q#h');
   out.push(d.baseURI, a.href);
@@ -419,7 +548,15 @@ parity('img: width, height, natural sizes, complete', (w) => {
   const img = d.createElement('img');
   img.width = 33;
   img.height = '44';
-  out.push([img.getAttribute('width'), img.getAttribute('height'), img.width, img.naturalWidth, img.naturalHeight, img.complete, img.currentSrc]);
+  out.push([
+    img.getAttribute('width'),
+    img.getAttribute('height'),
+    img.width,
+    img.naturalWidth,
+    img.naturalHeight,
+    img.complete,
+    img.currentSrc,
+  ]);
   img.src = 'x.png';
   out.push([img.complete, img.currentSrc]);
   const legacy = new w.Image(5, 6);
@@ -432,39 +569,60 @@ parity('img: width, height, natural sizes, complete', (w) => {
 // contentDocument, media/keyboard/wheel constants on prototypes, navigator
 // productSub/vendorSub.
 for (const jsdom of [26, 30]) {
-  parity(`element members: text, options, areas, labels, constants (jsdom ${jsdom})`, (w) => {
-    const d = w.document;
-    d.body.innerHTML = '<map><area><b><area></b></map><datalist><option>1</option><b><option>2</option></b></datalist>'
-      + '<meter id=m></meter><label for=m>M</label><progress></progress><object></object><a>x<b>y</b></a>';
-    const title = d.createElement('title');
-    title.innerHTML = 'a<b>x</b>c';
-    title.append(d.createComment('c'));
-    const script = d.createElement('script');
-    script.textContent = 'p';
-    script.append(d.createComment('c'), d.createTextNode('q'));
-    const out = [title.text, script.text];
-    title.text = 'new';
-    script.text = 's';
-    const a = d.querySelector('a');
-    out.push(title.childNodes.length, title.innerHTML, script.childNodes.length, a.text);
-    a.text = 'z';
-    const datalist = d.querySelector('datalist');
-    const options = datalist.options;
-    datalist.append(d.createElement('option'));
-    const areas = d.querySelector('map').areas;
-    out.push(a.innerHTML, options.length, options === datalist.options, options instanceof w.HTMLCollection,
-      areas.length, areas[1] === d.querySelectorAll('area')[1],
-      d.querySelector('meter').labels.length, d.querySelector('progress').labels.length,
-      d.querySelector('object').contentDocument,
-      d.createElement('track').readyState, w.HTMLTrackElement.LOADED, w.HTMLTrackElement.prototype.ERROR,
-      w.HTMLMediaElement.prototype.HAVE_ENOUGH_DATA, d.createElement('audio').NETWORK_NO_SOURCE,
-      w.KeyboardEvent.prototype.DOM_KEY_LOCATION_NUMPAD, new w.KeyboardEvent('x').DOM_KEY_LOCATION_LEFT,
-      w.WheelEvent.prototype.DOM_DELTA_PAGE, w.navigator.productSub, w.navigator.vendorSub);
-    return out;
-  }, { jsdom });
+  parity(
+    `element members: text, options, areas, labels, constants (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      d.body.innerHTML =
+        '<map><area><b><area></b></map><datalist><option>1</option><b><option>2</option></b></datalist>' +
+        '<meter id=m></meter><label for=m>M</label><progress></progress><object></object><a>x<b>y</b></a>';
+      const title = d.createElement('title');
+      title.innerHTML = 'a<b>x</b>c';
+      title.append(d.createComment('c'));
+      const script = d.createElement('script');
+      script.textContent = 'p';
+      script.append(d.createComment('c'), d.createTextNode('q'));
+      const out = [title.text, script.text];
+      title.text = 'new';
+      script.text = 's';
+      const a = d.querySelector('a');
+      out.push(title.childNodes.length, title.innerHTML, script.childNodes.length, a.text);
+      a.text = 'z';
+      const datalist = d.querySelector('datalist');
+      const options = datalist.options;
+      datalist.append(d.createElement('option'));
+      const areas = d.querySelector('map').areas;
+      out.push(
+        a.innerHTML,
+        options.length,
+        options === datalist.options,
+        options instanceof w.HTMLCollection,
+        areas.length,
+        areas[1] === d.querySelectorAll('area')[1],
+        d.querySelector('meter').labels.length,
+        d.querySelector('progress').labels.length,
+        d.querySelector('object').contentDocument,
+        d.createElement('track').readyState,
+        w.HTMLTrackElement.LOADED,
+        w.HTMLTrackElement.prototype.ERROR,
+        w.HTMLMediaElement.prototype.HAVE_ENOUGH_DATA,
+        d.createElement('audio').NETWORK_NO_SOURCE,
+        w.KeyboardEvent.prototype.DOM_KEY_LOCATION_NUMPAD,
+        new w.KeyboardEvent('x').DOM_KEY_LOCATION_LEFT,
+        w.WheelEvent.prototype.DOM_DELTA_PAGE,
+        w.navigator.productSub,
+        w.navigator.vendorSub,
+      );
+      return out;
+    },
+    { jsdom },
+  );
 }
 
-parity('PointerEvent persistentDeviceId', (w) => [new w.PointerEvent('x').persistentDeviceId, new w.PointerEvent('x', { persistentDeviceId: 5 }).persistentDeviceId]);
+parity('PointerEvent persistentDeviceId', (w) => [
+  new w.PointerEvent('x').persistentDeviceId,
+  new w.PointerEvent('x', { persistentDeviceId: 5 }).persistentDeviceId,
+]);
 
 // Whether jsdom's queued volumechange runs before or after a zero-delay
 // timer depends on the event loop phase (it passes alone and fails after
@@ -480,7 +638,9 @@ const settle = async () => {
 parity('media: muted and volume changes queue volumechange (jsdom 30)', async (w) => {
   const a = w.document.createElement('audio');
   const log = [];
-  a.addEventListener('volumechange', (e) => log.push(['volumechange', a.muted, a.volume, e.isTrusted, e.bubbles, e.cancelable]));
+  a.addEventListener('volumechange', (e) =>
+    log.push(['volumechange', a.muted, a.volume, e.isTrusted, e.bubbles, e.cancelable]),
+  );
   a.muted = true;
   log.push('muted');
   a.muted = true;
@@ -501,8 +661,17 @@ parity('media: muted and volume changes queue volumechange (jsdom 30)', async (w
 parity('draggable', (w) => {
   const d = w.document;
   const out = [];
-  for (const [tag, attrs] of [['div', {}], ['div', { draggable: 'true' }], ['div', { draggable: 'FALSE' }], ['div', { draggable: 'auto' }],
-    ['img', {}], ['img', { draggable: 'false' }], ['a', {}], ['a', { href: 'x' }], ['span', { draggable: '' }]]) {
+  for (const [tag, attrs] of [
+    ['div', {}],
+    ['div', { draggable: 'true' }],
+    ['div', { draggable: 'FALSE' }],
+    ['div', { draggable: 'auto' }],
+    ['img', {}],
+    ['img', { draggable: 'false' }],
+    ['a', {}],
+    ['a', { href: 'x' }],
+    ['span', { draggable: '' }],
+  ]) {
     const e = d.createElement(tag);
     for (const k in attrs) e.setAttribute(k, attrs[k]);
     out.push(e.draggable);
@@ -511,18 +680,26 @@ parity('draggable', (w) => {
   div.draggable = true;
   out.push(div.getAttribute('draggable'));
   div.draggable = 0;
-  out.push(div.getAttribute('draggable'), 'draggable' in w.HTMLElement.prototype, 'draggable' in d.createElementNS('http://www.w3.org/2000/svg', 'svg'));
+  out.push(
+    div.getAttribute('draggable'),
+    'draggable' in w.HTMLElement.prototype,
+    'draggable' in d.createElementNS('http://www.w3.org/2000/svg', 'svg'),
+  );
   return out;
 });
 
-parity('media: volumechange before jsdom 30 (synchronous)', async (w) => {
-  const a = w.document.createElement('audio');
-  const log = [];
-  a.addEventListener('volumechange', () => log.push(['volumechange', a.muted, a.volume]));
-  a.muted = true;
-  log.push('muted');
-  a.volume = 0.5;
-  log.push('volume');
-  await new Promise((r) => setTimeout(r, 0));
-  return log;
-}, { jsdom: 26 });
+parity(
+  'media: volumechange before jsdom 30 (synchronous)',
+  async (w) => {
+    const a = w.document.createElement('audio');
+    const log = [];
+    a.addEventListener('volumechange', () => log.push(['volumechange', a.muted, a.volume]));
+    a.muted = true;
+    log.push('muted');
+    a.volume = 0.5;
+    log.push('volume');
+    await new Promise((r) => setTimeout(r, 0));
+    return log;
+  },
+  { jsdom: 26 },
+);

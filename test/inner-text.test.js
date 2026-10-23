@@ -117,5 +117,10 @@ test('the outerText setter replaces the element and merges adjacent text', () =>
   assert.equal(p.innerHTML, 'a1<br>2b');
   assert.equal(p.childNodes.length, 3);
   assert.equal(d.createElement('span').outerText, '');
-  assert.throws(() => { d.createElement('span').outerText = 'x'; }, { name: 'NoModificationAllowedError' });
+  assert.throws(
+    () => {
+      d.createElement('span').outerText = 'x';
+    },
+    { name: 'NoModificationAllowedError' },
+  );
 });

@@ -7,9 +7,27 @@
 // core calls only when the document has live ranges, so documents without
 // ranges pay nothing.
 import {
-  S, state, domError, hooks, ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE,
-  DOCUMENT_TYPE_NODE, HTML_NS, rootOf, insert, remove, replaceData, indexOf, nodeLength, contains, nextInTree,
-  containsFromDoc, tooFewArguments,
+  S,
+  state,
+  domError,
+  hooks,
+  ELEMENT_NODE,
+  TEXT_NODE,
+  COMMENT_NODE,
+  DOCUMENT_NODE,
+  DOCUMENT_FRAGMENT_NODE,
+  DOCUMENT_TYPE_NODE,
+  HTML_NS,
+  rootOf,
+  insert,
+  remove,
+  replaceData,
+  indexOf,
+  nodeLength,
+  contains,
+  nextInTree,
+  containsFromDoc,
+  tooFewArguments,
 } from './internal.js';
 import { parseFragment } from './html.js';
 import { dispatch } from './events.js';
@@ -50,8 +68,10 @@ function position(nodeA, offsetA, nodeB, offsetB) {
 }
 
 function checkBoundary(node, offset) {
-  if (node[S].type === DOCUMENT_TYPE_NODE) throw domError('DocumentType nodes cannot be range boundaries.', 'InvalidNodeTypeError');
-  if (offset > nodeLength(node)) throw domError(`The offset ${offset} is larger than the node's length (${nodeLength(node)}).`, 'IndexSizeError');
+  if (node[S].type === DOCUMENT_TYPE_NODE)
+    throw domError('DocumentType nodes cannot be range boundaries.', 'InvalidNodeTypeError');
+  if (offset > nodeLength(node))
+    throw domError(`The offset ${offset} is larger than the node's length (${nodeLength(node)}).`, 'IndexSizeError');
 }
 
 // --- live range registry -----------------------------------------------------------
@@ -80,7 +100,8 @@ function forEachRange(doc, fn) {
   if (!set) return;
   for (const ref of set) {
     const range = ref.deref();
-    if (range) fn(range[S]); else set.delete(ref);
+    if (range) fn(range[S]);
+    else set.delete(ref);
   }
 }
 
@@ -108,7 +129,14 @@ function selectionRange(window, startNode, startOffset, endNode = startNode, end
 export function newRange(window, startNode, startOffset, endNode = startNode, endOffset = startOffset) {
   const range = Object.create(window[S].protos.Range);
   range[S] = {
-    startNode, startOffset, endNode, endOffset, doc: null, ref: null, selection: null, exposed: true,
+    startNode,
+    startOffset,
+    endNode,
+    endOffset,
+    doc: null,
+    ref: null,
+    selection: null,
+    exposed: true,
   };
   range[S].ref = new WeakRef(range);
   register(range, docOf(startNode));
@@ -123,7 +151,10 @@ hooks.rangeInsert = (doc, parent, child) => {
   let index = -1;
   for (const ref of set) {
     const range = ref.deref();
-    if (range === undefined) { set.delete(ref); continue; }
+    if (range === undefined) {
+      set.delete(ref);
+      continue;
+    }
     const r = range[S];
     if (r.startNode !== parent && r.endNode !== parent) continue;
     if (index < 0) index = indexOf(child);
@@ -147,14 +178,24 @@ hooks.rangeRemove = (doc, parent, node) => {
   let index = -1;
   for (const ref of set) {
     const range = ref.deref();
-    if (range === undefined) { set.delete(ref); continue; }
+    if (range === undefined) {
+      set.delete(ref);
+      continue;
+    }
     const r = range[S];
     const inStart = leaf ? r.startNode === node : containsFromDoc(ds, node, r.startNode);
-    const inEnd = r.endNode === r.startNode ? inStart : leaf ? r.endNode === node : containsFromDoc(ds, node, r.endNode);
+    const inEnd =
+      r.endNode === r.startNode ? inStart : leaf ? r.endNode === node : containsFromDoc(ds, node, r.endNode);
     if (!inStart && !inEnd && r.startNode !== parent && r.endNode !== parent) continue;
     if (index < 0) index = indexOf(node);
-    if (inStart) { r.startNode = parent; r.startOffset = index; }
-    if (inEnd) { r.endNode = parent; r.endOffset = index; }
+    if (inStart) {
+      r.startNode = parent;
+      r.startOffset = index;
+    }
+    if (inEnd) {
+      r.endNode = parent;
+      r.endOffset = index;
+    }
     if (r.startNode === parent && r.startOffset > index) r.startOffset--;
     if (r.endNode === parent && r.endOffset > index) r.endOffset--;
   }
@@ -187,8 +228,14 @@ export function splitText(node, offset) {
     insert(parent, newNode, s.next);
     const index = indexOf(node);
     forEachRange(s.doc, (r) => {
-      if (r.startNode === node && r.startOffset > offset) { r.startNode = newNode; r.startOffset -= offset; }
-      if (r.endNode === node && r.endOffset > offset) { r.endNode = newNode; r.endOffset -= offset; }
+      if (r.startNode === node && r.startOffset > offset) {
+        r.startNode = newNode;
+        r.startOffset -= offset;
+      }
+      if (r.endNode === node && r.endOffset > offset) {
+        r.endNode = newNode;
+        r.endOffset -= offset;
+      }
       if (r.startNode === parent && r.startOffset === index + 1) r.startOffset++;
       if (r.endNode === parent && r.endOffset === index + 1) r.endOffset++;
     });
@@ -205,7 +252,10 @@ export function normalize(root) {
     const s = node[S];
     if (!s.parent || !contains(root, node)) continue; // merged into an earlier node
     let length = s.data.length;
-    if (length === 0) { remove(s.parent, node); continue; }
+    if (length === 0) {
+      remove(s.parent, node);
+      continue;
+    }
     let data = '';
     for (let n = s.next; n && isText(n); n = n[S].next) data += n[S].data;
     replaceData(node, length, 0, data);
@@ -214,10 +264,22 @@ export function normalize(root) {
       const parent = current[S].parent;
       const index = indexOf(current);
       forEachRange(s.doc, (r) => {
-        if (r.startNode === current) { r.startNode = node; r.startOffset += length; }
-        if (r.endNode === current) { r.endNode = node; r.endOffset += length; }
-        if (r.startNode === parent && r.startOffset === index) { r.startNode = node; r.startOffset = length; }
-        if (r.endNode === parent && r.endOffset === index) { r.endNode = node; r.endOffset = length; }
+        if (r.startNode === current) {
+          r.startNode = node;
+          r.startOffset += length;
+        }
+        if (r.endNode === current) {
+          r.endNode = node;
+          r.endOffset += length;
+        }
+        if (r.startNode === parent && r.startOffset === index) {
+          r.startNode = node;
+          r.startOffset = length;
+        }
+        if (r.endNode === parent && r.endOffset === index) {
+          r.endNode = node;
+          r.endOffset = length;
+        }
       });
       length += current[S].data.length;
       current = current[S].next;
@@ -233,7 +295,8 @@ const collapsed = (r) => r.startNode === r.endNode && r.startOffset === r.endOff
 function setStart(range, node, offset) {
   checkBoundary(node, offset);
   const r = range[S];
-  if (rootOf(node) !== rootOf(r.startNode) || position(node, offset, r.endNode, r.endOffset) > 0) setEndPoint(range, node, offset);
+  if (rootOf(node) !== rootOf(r.startNode) || position(node, offset, r.endNode, r.endOffset) > 0)
+    setEndPoint(range, node, offset);
   setStartPoint(range, node, offset);
   boundaryChanged(range);
 }
@@ -241,7 +304,8 @@ function setStart(range, node, offset) {
 function setEnd(range, node, offset) {
   checkBoundary(node, offset);
   const r = range[S];
-  if (rootOf(node) !== rootOf(r.startNode) || position(node, offset, r.startNode, r.startOffset) < 0) setStartPoint(range, node, offset);
+  if (rootOf(node) !== rootOf(r.startNode) || position(node, offset, r.startNode, r.startOffset) < 0)
+    setStartPoint(range, node, offset);
   setEndPoint(range, node, offset);
   boundaryChanged(range);
 }
@@ -267,9 +331,10 @@ function commonAncestor(r) {
 }
 
 // Contained: (node, 0) after start and (node, length) before end.
-const isContained = (node, r) => rootOf(node) === rootOf(r.startNode)
-  && position(node, 0, r.startNode, r.startOffset) > 0
-  && position(node, nodeLength(node), r.endNode, r.endOffset) < 0;
+const isContained = (node, r) =>
+  rootOf(node) === rootOf(r.startNode) &&
+  position(node, 0, r.startNode, r.startOffset) > 0 &&
+  position(node, nodeLength(node), r.endNode, r.endOffset) < 0;
 
 const isPartiallyContained = (node, r) => contains(node, r.startNode) !== contains(node, r.endNode);
 
@@ -286,7 +351,8 @@ function rangeParts(r) {
     if (!contains(r.endNode, r.startNode) && isPartiallyContained(c, r)) lastPartial = c;
     if (isContained(c, r)) contained.push(c);
   }
-  if (contained.some((c) => c[S].type === DOCUMENT_TYPE_NODE)) throw domError('The range contains a doctype.', 'HierarchyRequestError');
+  if (contained.some((c) => c[S].type === DOCUMENT_TYPE_NODE))
+    throw domError('The range contains a doctype.', 'HierarchyRequestError');
   return { common, firstPartial, lastPartial, contained };
 }
 
@@ -429,10 +495,15 @@ function insertNode(range, node) {
 
 function surroundContents(range, newParent) {
   const r = range[S];
-  for (let n = r.startNode; n; n = n[S].parent) if (n[S].type !== TEXT_NODE && isPartiallyContained(n, r)) throw domError('The range partially contains a non-Text node.', 'InvalidStateError');
-  for (let n = r.endNode; n; n = n[S].parent) if (n[S].type !== TEXT_NODE && isPartiallyContained(n, r)) throw domError('The range partially contains a non-Text node.', 'InvalidStateError');
+  for (let n = r.startNode; n; n = n[S].parent)
+    if (n[S].type !== TEXT_NODE && isPartiallyContained(n, r))
+      throw domError('The range partially contains a non-Text node.', 'InvalidStateError');
+  for (let n = r.endNode; n; n = n[S].parent)
+    if (n[S].type !== TEXT_NODE && isPartiallyContained(n, r))
+      throw domError('The range partially contains a non-Text node.', 'InvalidStateError');
   const t = newParent[S].type;
-  if (t === DOCUMENT_NODE || t === DOCUMENT_TYPE_NODE || t === DOCUMENT_FRAGMENT_NODE) throw domError('The node cannot surround the range.', 'InvalidNodeTypeError');
+  if (t === DOCUMENT_NODE || t === DOCUMENT_TYPE_NODE || t === DOCUMENT_FRAGMENT_NODE)
+    throw domError('The node cannot surround the range.', 'InvalidNodeTypeError');
   const fragment = extract(range);
   while (newParent[S].first) remove(newParent, newParent[S].first);
   insertNode(range, newParent);
@@ -478,8 +549,13 @@ function setSelectionRange(selection, range, direction = 'forward') {
   ss.range = range;
   ss.direction = range ? direction : 'none';
   if (range) range[S].selection = selection;
-  const same = old && range && old[S].startNode === range[S].startNode && old[S].startOffset === range[S].startOffset
-    && old[S].endNode === range[S].endNode && old[S].endOffset === range[S].endOffset;
+  const same =
+    old &&
+    range &&
+    old[S].startNode === range[S].startNode &&
+    old[S].startOffset === range[S].startOffset &&
+    old[S].endNode === range[S].endNode &&
+    old[S].endOffset === range[S].endOffset;
   if (old !== range && !same) scheduleSelectionChange(ss.doc);
 }
 
@@ -507,7 +583,10 @@ function anchorFocus(selection) {
 const inDocument = (node, doc) => rootOf(node) === doc;
 
 function collapseSelection(selection, node, offset = 0) {
-  if (node === null) { setSelectionRange(selection, null); return; }
+  if (node === null) {
+    setSelectionRange(selection, null);
+    return;
+  }
   checkBoundary(node, offset);
   const doc = selection[S].doc;
   if (!inDocument(node, doc)) return;
@@ -536,11 +615,21 @@ export const RANGE_INTERFACES = [
   {
     name: 'AbstractRange',
     members: {
-      get startContainer() { return rangeState(this).startNode; },
-      get startOffset() { return rangeState(this).startOffset; },
-      get endContainer() { return rangeState(this).endNode; },
-      get endOffset() { return rangeState(this).endOffset; },
-      get collapsed() { return collapsed(rangeState(this)); },
+      get startContainer() {
+        return rangeState(this).startNode;
+      },
+      get startOffset() {
+        return rangeState(this).startOffset;
+      },
+      get endContainer() {
+        return rangeState(this).endNode;
+      },
+      get endOffset() {
+        return rangeState(this).endOffset;
+      },
+      get collapsed() {
+        return collapsed(rangeState(this));
+      },
     },
   },
   {
@@ -549,13 +638,21 @@ export const RANGE_INTERFACES = [
     parent: 'AbstractRange',
     construct: (w, self, [init]) => {
       // StaticRangeInit: all four members are required.
-      if (!init?.startContainer?.[S] || !init?.endContainer?.[S]) throw new TypeError("Failed to construct 'StaticRange': required member is undefined.");
-      if (init.startOffset === undefined || init.endOffset === undefined) throw new TypeError("Failed to construct 'StaticRange': required member is undefined.");
+      if (!init?.startContainer?.[S] || !init?.endContainer?.[S])
+        throw new TypeError("Failed to construct 'StaticRange': required member is undefined.");
+      if (init.startOffset === undefined || init.endOffset === undefined)
+        throw new TypeError("Failed to construct 'StaticRange': required member is undefined.");
       for (const node of [init.startContainer, init.endContainer]) {
         const t = node[S].type;
-        if (t === DOCUMENT_TYPE_NODE || t === 2) throw domError('DocumentType and Attr nodes cannot be range boundaries.', 'InvalidNodeTypeError');
+        if (t === DOCUMENT_TYPE_NODE || t === 2)
+          throw domError('DocumentType and Attr nodes cannot be range boundaries.', 'InvalidNodeTypeError');
       }
-      self[S] = { startNode: init.startContainer, startOffset: toOffset(init.startOffset), endNode: init.endContainer, endOffset: toOffset(init.endOffset) };
+      self[S] = {
+        startNode: init.startContainer,
+        startOffset: toOffset(init.startOffset),
+        endNode: init.endContainer,
+        endOffset: toOffset(init.endOffset),
+      };
       return self;
     },
     members: {},
@@ -567,23 +664,49 @@ export const RANGE_INTERFACES = [
     construct: (w) => newRange(w, w.document, 0),
     members: {
       ...Object.fromEntries(Object.entries(RANGE_CONSTANTS).map(([k, v]) => [k, { constant: v }])),
-      get commonAncestorContainer() { return commonAncestor(rangeState(this)); },
-      setStart(node, offset) { rangeState(this); if (offset === undefined && arguments.length < 2) tooFewArguments('Range', 'setStart', 2, arguments.length); setStart(this, state(node) && node, toOffset(offset)); },
-      setEnd(node, offset) { rangeState(this); if (offset === undefined && arguments.length < 2) tooFewArguments('Range', 'setEnd', 2, arguments.length); setEnd(this, state(node) && node, toOffset(offset)); },
-      setStartBefore(node) { rangeState(this); setStart(this, parentOrThrow(node), indexOf(node)); },
-      setStartAfter(node) { rangeState(this); setStart(this, parentOrThrow(node), indexOf(node) + 1); },
-      setEndBefore(node) { rangeState(this); setEnd(this, parentOrThrow(node), indexOf(node)); },
-      setEndAfter(node) { rangeState(this); setEnd(this, parentOrThrow(node), indexOf(node) + 1); },
+      get commonAncestorContainer() {
+        return commonAncestor(rangeState(this));
+      },
+      setStart(node, offset) {
+        rangeState(this);
+        if (offset === undefined && arguments.length < 2) tooFewArguments('Range', 'setStart', 2, arguments.length);
+        setStart(this, state(node) && node, toOffset(offset));
+      },
+      setEnd(node, offset) {
+        rangeState(this);
+        if (offset === undefined && arguments.length < 2) tooFewArguments('Range', 'setEnd', 2, arguments.length);
+        setEnd(this, state(node) && node, toOffset(offset));
+      },
+      setStartBefore(node) {
+        rangeState(this);
+        setStart(this, parentOrThrow(node), indexOf(node));
+      },
+      setStartAfter(node) {
+        rangeState(this);
+        setStart(this, parentOrThrow(node), indexOf(node) + 1);
+      },
+      setEndBefore(node) {
+        rangeState(this);
+        setEnd(this, parentOrThrow(node), indexOf(node));
+      },
+      setEndAfter(node) {
+        rangeState(this);
+        setEnd(this, parentOrThrow(node), indexOf(node) + 1);
+      },
       collapse(toStart = false) {
         const r = rangeState(this);
         if (toStart) setEndPoint(this, r.startNode, r.startOffset);
         else setStartPoint(this, r.endNode, r.endOffset);
         boundaryChanged(this);
       },
-      selectNode(node) { rangeState(this); selectNode(this, node); },
+      selectNode(node) {
+        rangeState(this);
+        selectNode(this, node);
+      },
       selectNodeContents(node) {
         rangeState(this);
-        if (state(node).type === DOCUMENT_TYPE_NODE) throw domError('DocumentType nodes cannot be range boundaries.', 'InvalidNodeTypeError');
+        if (state(node).type === DOCUMENT_TYPE_NODE)
+          throw domError('DocumentType nodes cannot be range boundaries.', 'InvalidNodeTypeError');
         setStartPoint(this, node, 0);
         setEndPoint(this, node, nodeLength(node));
         boundaryChanged(this);
@@ -593,22 +716,48 @@ export const RANGE_INTERFACES = [
         const o = rangeState(sourceRange);
         // unsigned short (WebIDL): NaN and infinities are 0, modulo 2^16.
         const h = Number(how) & 0xffff;
-        if (h > 3) throw domError('The comparison method provided must be one of START_TO_START, START_TO_END, END_TO_END, or END_TO_START.', 'NotSupportedError');
-        if (rootOf(r.startNode) !== rootOf(o.startNode)) throw domError('The two Ranges are not in the same tree.', 'WrongDocumentError');
+        if (h > 3)
+          throw domError(
+            'The comparison method provided must be one of START_TO_START, START_TO_END, END_TO_END, or END_TO_START.',
+            'NotSupportedError',
+          );
+        if (rootOf(r.startNode) !== rootOf(o.startNode))
+          throw domError('The two Ranges are not in the same tree.', 'WrongDocumentError');
         const [thisNode, thisOffset] = h === 0 || h === 3 ? [r.startNode, r.startOffset] : [r.endNode, r.endOffset];
         const [srcNode, srcOffset] = h === 0 || h === 1 ? [o.startNode, o.startOffset] : [o.endNode, o.endOffset];
         return position(thisNode, thisOffset, srcNode, srcOffset);
       },
-      deleteContents() { rangeState(this); deleteContents(this); },
-      extractContents() { rangeState(this); return extract(this); },
-      cloneContents() { rangeState(this); return cloneContents(this); },
-      insertNode(node) { rangeState(this); insertNode(this, state(node) && node); },
-      surroundContents(newParent) { rangeState(this); surroundContents(this, state(newParent) && newParent); },
-      cloneRange() { const r = rangeState(this); return newRange(docOf(r.startNode)[S].window, r.startNode, r.startOffset, r.endNode, r.endOffset); },
-      detach() { rangeState(this); },
+      deleteContents() {
+        rangeState(this);
+        deleteContents(this);
+      },
+      extractContents() {
+        rangeState(this);
+        return extract(this);
+      },
+      cloneContents() {
+        rangeState(this);
+        return cloneContents(this);
+      },
+      insertNode(node) {
+        rangeState(this);
+        insertNode(this, state(node) && node);
+      },
+      surroundContents(newParent) {
+        rangeState(this);
+        surroundContents(this, state(newParent) && newParent);
+      },
+      cloneRange() {
+        const r = rangeState(this);
+        return newRange(docOf(r.startNode)[S].window, r.startNode, r.startOffset, r.endNode, r.endOffset);
+      },
+      detach() {
+        rangeState(this);
+      },
       isPointInRange(node, offset) {
         const r = rangeState(this);
-        if (offset === undefined && arguments.length < 2) tooFewArguments('Range', 'isPointInRange', 2, arguments.length);
+        if (offset === undefined && arguments.length < 2)
+          tooFewArguments('Range', 'isPointInRange', 2, arguments.length);
         if (rootOf(node) !== rootOf(r.startNode)) return false;
         const o = toOffset(offset);
         checkBoundary(node, o);
@@ -617,7 +766,8 @@ export const RANGE_INTERFACES = [
       comparePoint(node, offset) {
         const r = rangeState(this);
         if (offset === undefined && arguments.length < 2) tooFewArguments('Range', 'comparePoint', 2, arguments.length);
-        if (rootOf(node) !== rootOf(r.startNode)) throw domError('The node and the range are not in the same tree.', 'WrongDocumentError');
+        if (rootOf(node) !== rootOf(r.startNode))
+          throw domError('The node and the range are not in the same tree.', 'WrongDocumentError');
         const o = toOffset(offset);
         checkBoundary(node, o);
         if (position(node, o, r.startNode, r.startOffset) < 0) return -1;
@@ -630,48 +780,88 @@ export const RANGE_INTERFACES = [
         const parent = node[S].parent;
         if (!parent) return true;
         const offset = indexOf(node);
-        return position(parent, offset, r.endNode, r.endOffset) < 0 && position(parent, offset + 1, r.startNode, r.startOffset) > 0;
+        return (
+          position(parent, offset, r.endNode, r.endOffset) < 0 &&
+          position(parent, offset + 1, r.startNode, r.startOffset) > 0
+        );
       },
-      toString() { return rangeText(rangeState(this)); },
+      toString() {
+        return rangeText(rangeState(this));
+      },
       // DOM Parsing: parse in the context of the start node's element.
       createContextualFragment(markup) {
         const r = rangeState(this);
-        if (arguments.length === 0) throw new TypeError("Failed to execute 'createContextualFragment' on 'Range': 1 argument required, but only 0 present.");
+        if (arguments.length === 0)
+          throw new TypeError(
+            "Failed to execute 'createContextualFragment' on 'Range': 1 argument required, but only 0 present.",
+          );
         const node = r.startNode;
         const t = node[S].type;
-        let element = t === ELEMENT_NODE ? node
-          : t === TEXT_NODE || t === COMMENT_NODE ? (node[S].parent?.[S].type === ELEMENT_NODE ? node[S].parent : null) : null;
+        let element =
+          t === ELEMENT_NODE
+            ? node
+            : t === TEXT_NODE || t === COMMENT_NODE
+              ? node[S].parent?.[S].type === ELEMENT_NODE
+                ? node[S].parent
+                : null
+              : null;
         const doc = docOf(node);
-        if (!element || (element[S].ns === HTML_NS && element[S].tag === 'html' && !doc[S].xml)) element = doc.createElement('body');
+        if (!element || (element[S].ns === HTML_NS && element[S].tag === 'html' && !doc[S].xml))
+          element = doc.createElement('body');
         return parseFragment(doc, element, String(markup));
       },
       // No layout: as for elements, empty.
-      getBoundingClientRect() { rangeState(this); return new (docOf(this[S].startNode)[S].window.DOMRect)(); },
-      getClientRects() { rangeState(this); return []; },
+      getBoundingClientRect() {
+        rangeState(this);
+        return new (docOf(this[S].startNode)[S].window.DOMRect)();
+      },
+      getClientRects() {
+        rangeState(this);
+        return [];
+      },
     },
   },
   {
     name: 'Selection',
     members: {
-      get anchorNode() { state(this); return anchorFocus(this)?.anchorNode ?? null; },
-      get anchorOffset() { state(this); return anchorFocus(this)?.anchorOffset ?? 0; },
-      get focusNode() { state(this); return anchorFocus(this)?.focusNode ?? null; },
-      get focusOffset() { state(this); return anchorFocus(this)?.focusOffset ?? 0; },
+      get anchorNode() {
+        state(this);
+        return anchorFocus(this)?.anchorNode ?? null;
+      },
+      get anchorOffset() {
+        state(this);
+        return anchorFocus(this)?.anchorOffset ?? 0;
+      },
+      get focusNode() {
+        state(this);
+        return anchorFocus(this)?.focusNode ?? null;
+      },
+      get focusOffset() {
+        state(this);
+        return anchorFocus(this)?.focusOffset ?? 0;
+      },
       get isCollapsed() {
         state(this);
         const af = anchorFocus(this);
         return !af || (af.anchorNode === af.focusNode && af.anchorOffset === af.focusOffset);
       },
-      get rangeCount() { state(this); return anchorFocus(this) ? 1 : 0; },
+      get rangeCount() {
+        state(this);
+        return anchorFocus(this) ? 1 : 0;
+      },
       get type() {
         state(this);
         if (!anchorFocus(this)) return 'None';
         return collapsed(this[S].range[S]) ? 'Caret' : 'Range';
       },
-      get direction() { const ss = state(this); return ss.range ? ss.direction : 'none'; },
+      get direction() {
+        const ss = state(this);
+        return ss.range ? ss.direction : 'none';
+      },
       getRangeAt(index) {
         state(this);
-        if (Number(index) !== 0 || !anchorFocus(this)) throw domError('The index is not in the allowed range.', 'IndexSizeError');
+        if (Number(index) !== 0 || !anchorFocus(this))
+          throw domError('The index is not in the allowed range.', 'IndexSizeError');
         const range = this[S].range;
         range[S].exposed = true;
         return range;
@@ -686,16 +876,33 @@ export const RANGE_INTERFACES = [
         if (state(this).range !== range) throw domError('The given range is not in the selection.', 'NotFoundError');
         setSelectionRange(this, null);
       },
-      removeAllRanges() { if (state(this).range) setSelectionRange(this, null); },
-      empty() { this.removeAllRanges(); },
+      removeAllRanges() {
+        if (state(this).range) setSelectionRange(this, null);
+      },
+      empty() {
+        this.removeAllRanges();
+      },
       getComposedRanges() {
         const ss = state(this);
         if (!ss.range) return [];
         const r = ss.range[S];
-        return [new (ss.doc[S].window.StaticRange)({ startContainer: r.startNode, startOffset: r.startOffset, endContainer: r.endNode, endOffset: r.endOffset })];
+        return [
+          new ss.doc[S].window.StaticRange({
+            startContainer: r.startNode,
+            startOffset: r.startOffset,
+            endContainer: r.endNode,
+            endOffset: r.endOffset,
+          }),
+        ];
       },
-      collapse(node, offset = 0) { state(this); collapseSelection(this, node, toOffset(offset)); },
-      setPosition(node, offset = 0) { state(this); collapseSelection(this, node, toOffset(offset)); },
+      collapse(node, offset = 0) {
+        state(this);
+        collapseSelection(this, node, toOffset(offset));
+      },
+      setPosition(node, offset = 0) {
+        state(this);
+        collapseSelection(this, node, toOffset(offset));
+      },
       collapseToStart() {
         const ss = state(this);
         if (!ss.range) throw domError('There is no selection to collapse.', 'InvalidStateError');
@@ -720,7 +927,8 @@ export const RANGE_INTERFACES = [
         const window = ss.doc[S].window;
         let range;
         if (rootOf(node) !== rootOf(ss.range[S].startNode)) range = selectionRange(window, node, o);
-        else if (position(anchorNode, anchorOffset, node, o) <= 0) range = selectionRange(window, anchorNode, anchorOffset, node, o);
+        else if (position(anchorNode, anchorOffset, node, o) <= 0)
+          range = selectionRange(window, anchorNode, anchorOffset, node, o);
         else range = selectionRange(window, node, o, anchorNode, anchorOffset);
         setSelectionRange(this, range, position(node, o, anchorNode, anchorOffset) < 0 ? 'backward' : 'forward');
       },
@@ -728,22 +936,28 @@ export const RANGE_INTERFACES = [
         const ss = state(this);
         const ao = toOffset(anchorOffset);
         const fo = toOffset(focusOffset);
-        if (ao > nodeLength(anchorNode) || fo > nodeLength(focusNode)) throw domError('The offset is larger than the node\'s length.', 'IndexSizeError');
+        if (ao > nodeLength(anchorNode) || fo > nodeLength(focusNode))
+          throw domError("The offset is larger than the node's length.", 'IndexSizeError');
         if (!inDocument(anchorNode, ss.doc) || !inDocument(focusNode, ss.doc)) return;
         checkBoundary(anchorNode, ao);
         checkBoundary(focusNode, fo);
         const window = ss.doc[S].window;
         const backward = position(focusNode, fo, anchorNode, ao) < 0;
-        const range = backward ? selectionRange(window, focusNode, fo, anchorNode, ao) : selectionRange(window, anchorNode, ao, focusNode, fo);
+        const range = backward
+          ? selectionRange(window, focusNode, fo, anchorNode, ao)
+          : selectionRange(window, anchorNode, ao, focusNode, fo);
         setSelectionRange(this, range, backward ? 'backward' : 'forward');
       },
       selectAllChildren(node) {
         const ss = state(this);
-        if (state(node).type === DOCUMENT_TYPE_NODE) throw domError('DocumentType nodes cannot be selected.', 'InvalidNodeTypeError');
+        if (state(node).type === DOCUMENT_TYPE_NODE)
+          throw domError('DocumentType nodes cannot be selected.', 'InvalidNodeTypeError');
         if (rootOf(node) !== ss.doc) return;
         setSelectionRange(this, selectionRange(ss.doc[S].window, node, 0, node, node[S].count));
       },
-      modify() { state(this); }, // needs layout
+      modify() {
+        state(this);
+      }, // needs layout
       deleteFromDocument() {
         state(this);
         if (anchorFocus(this)) deleteContents(this[S].range);
@@ -757,7 +971,10 @@ export const RANGE_INTERFACES = [
           ? position(r.startNode, r.startOffset, node, length) <= 0 && position(r.endNode, r.endOffset, node, 0) >= 0
           : position(r.startNode, r.startOffset, node, 0) <= 0 && position(r.endNode, r.endOffset, node, length) >= 0;
       },
-      toString() { const ss = state(this); return ss.range ? rangeText(ss.range[S]) : ''; },
+      toString() {
+        const ss = state(this);
+        return ss.range ? rangeText(ss.range[S]) : '';
+      },
     },
   },
 ];

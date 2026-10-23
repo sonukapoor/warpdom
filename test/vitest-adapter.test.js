@@ -11,7 +11,15 @@ import { createWindow } from '../src/index.js';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const run = (...args) => {
   try {
-    return { code: 0, out: String(execFileSync('node_modules/.bin/vitest', ['run', '--root', 'fixtures/vitest', '--maxWorkers=1', ...args], { cwd: root, stdio: 'pipe' })) };
+    return {
+      code: 0,
+      out: String(
+        execFileSync('node_modules/.bin/vitest', ['run', '--root', 'fixtures/vitest', '--maxWorkers=1', ...args], {
+          cwd: root,
+          stdio: 'pipe',
+        }),
+      ),
+    };
   } catch (err) {
     return { code: err.status, out: String(err.stdout) + String(err.stderr) };
   }
@@ -38,7 +46,10 @@ test('an error thrown in an event listener fails the run, as with jsdom', () => 
     let out = '';
     let code = 0;
     try {
-      execFileSync('node_modules/.bin/vitest', ['run', '--root', 'fixtures/vitest-errors', ...environment], { cwd: root, stdio: 'pipe' });
+      execFileSync('node_modules/.bin/vitest', ['run', '--root', 'fixtures/vitest-errors', ...environment], {
+        cwd: root,
+        stdio: 'pipe',
+      });
     } catch (err) {
       code = err.status;
       out = String(err.stdout) + String(err.stderr);
@@ -51,9 +62,13 @@ test('an error thrown in an event listener fails the run, as with jsdom', () => 
 // Black box (Vitest 5, jsdom 30): a frame's uncaught listener exception
 // (an XMLHttpRequest onload too) goes to jsdom's virtual console, which
 // Vitest prints; the test passes (Copilot review on #89).
-test('an error thrown in a frame\'s listener is logged and does not fail the test, as with jsdom', () => {
+test("an error thrown in a frame's listener is logged and does not fail the test, as with jsdom", () => {
   for (const environment of [[], ['--environment', 'jsdom']]) {
-    const result = spawnSync('node_modules/.bin/vitest', ['run', '--root', 'fixtures/vitest-frame-errors', ...environment], { cwd: root, encoding: 'utf8' });
+    const result = spawnSync(
+      'node_modules/.bin/vitest',
+      ['run', '--root', 'fixtures/vitest-frame-errors', ...environment],
+      { cwd: root, encoding: 'utf8' },
+    );
     const out = (result.stdout + result.stderr).replace(/\x1b\[[0-9;]*m/g, '');
     assert.equal(result.status, 0, environment.join(' ') || 'warpdom');
     assert.match(out, /Tests {2}2 passed \(2\)/);
@@ -67,7 +82,10 @@ test('setupVM: Node globals that are lazy getters work in the context (crypto)',
   const vmModule = await import('node:vm');
   const result = await environment.setupVM();
   try {
-    const types = vmModule.runInContext('[typeof crypto, typeof crypto.randomUUID, typeof performance.now, typeof setTimeout]', result.getVmContext());
+    const types = vmModule.runInContext(
+      '[typeof crypto, typeof crypto.randomUUID, typeof performance.now, typeof setTimeout]',
+      result.getVmContext(),
+    );
     assert.deepEqual([...types], ['object', 'function', 'function', 'function']);
   } finally {
     result.teardown();
@@ -79,15 +97,22 @@ test('setupVM: Node globals that are lazy getters work in the context (crypto)',
 // jsdom 27.4 too (Node's here). Elsewhere crypto, performance, TextEncoder
 // and TextDecoder are Node's, and Crypto, Performance, Blob and File the
 // window's.
-test('setupVM: crypto, performance, Blob, File and TextEncoder are the window\'s', async () => {
+test("setupVM: crypto, performance, Blob, File and TextEncoder are the window's", async () => {
   const { default: environment } = await import('../src/vitest.js');
   const vmModule = await import('node:vm');
-  for (const [jsdom, encoder] of [['30.1.3', 'window'], ['26.1.0', 'node']]) {
+  for (const [jsdom, encoder] of [
+    ['30.1.3', 'window'],
+    ['26.1.0', 'node'],
+  ]) {
     const result = await environment.setupVM({ warpdom: { jsdom } });
     try {
       const run = (code) => vmModule.runInContext(code, result.getVmContext());
-      assert.equal(run('[Object.prototype.toString.call(crypto), typeof crypto.subtle, crypto instanceof Crypto, performance instanceof Performance, typeof performance.mark, new Blob(["a"]) instanceof window.Blob, new File([], "x") instanceof Blob].join()'),
-        '[object Crypto],undefined,true,true,undefined,true,true');
+      assert.equal(
+        run(
+          '[Object.prototype.toString.call(crypto), typeof crypto.subtle, crypto instanceof Crypto, performance instanceof Performance, typeof performance.mark, new Blob(["a"]) instanceof window.Blob, new File([], "x") instanceof Blob].join()',
+        ),
+        '[object Crypto],undefined,true,true,undefined,true,true',
+      );
       assert.equal(run('typeof TextEncoder === "function" && TextEncoder === window.TextEncoder'), true);
       assert.equal(run('new TextEncoder().encode("a") instanceof Uint8Array'), encoder === 'window');
       assert.equal(run('Object.prototype.toString.call(new TextDecoder())'), '[object TextDecoder]');
@@ -99,10 +124,14 @@ test('setupVM: crypto, performance, Blob, File and TextEncoder are the window\'s
   }
 });
 
-test('setup: crypto, performance, TextEncoder and TextDecoder stay Node\'s; the reset clears Node\'s marks', async () => {
+test("setup: crypto, performance, TextEncoder and TextDecoder stay Node's; the reset clears Node's marks", async () => {
   const { default: environment } = await import('../src/vitest.js');
   const cleared = [];
-  const host = { crypto: 'node crypto', TextEncoder: 'node encoder', performance: { clearMarks: () => cleared.push('marks'), clearMeasures: () => cleared.push('measures') } };
+  const host = {
+    crypto: 'node crypto',
+    TextEncoder: 'node encoder',
+    performance: { clearMarks: () => cleared.push('marks'), clearMeasures: () => cleared.push('measures') },
+  };
   const global = { ...host };
   const env = environment.setup(global, { warpdom: { jsdom: '30.1.3' } });
   try {
@@ -123,7 +152,10 @@ test('setup: crypto, performance, TextEncoder and TextDecoder stay Node\'s; the 
 
 test('the jsdom profile follows the jsdom Vitest would load', () => {
   const root = mkdtempSync(join(tmpdir(), 'warpdom-jsdom-'));
-  const pkg = (dir, json) => { mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, 'package.json'), JSON.stringify(json)); };
+  const pkg = (dir, json) => {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'package.json'), JSON.stringify(json));
+  };
   try {
     pkg(root, { name: 'project' });
     assert.equal(jsdomVersion({}, root), undefined);
@@ -141,7 +173,10 @@ test('the jsdom profile follows the jsdom Vitest would load', () => {
 });
 
 test('the jsdom profile includes the cssstyle that jsdom loads', () => {
-  const pkg = (dir, json) => { mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, 'package.json'), JSON.stringify(json)); };
+  const pkg = (dir, json) => {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'package.json'), JSON.stringify(json));
+  };
   // A fresh project per case (Node caches module resolution).
   const project = (cssstyleDirs, options = {}) => {
     const root = mkdtempSync(join(tmpdir(), 'warpdom-cssstyle-'));
@@ -157,10 +192,22 @@ test('the jsdom profile includes the cssstyle that jsdom loads', () => {
   assert.deepEqual(project([]), { jsdom: '25.0.1', cssstyle: undefined });
   // Hoisted beside jsdom, or nested in it (nested wins, as for Node).
   assert.deepEqual(project([['node_modules/cssstyle', '4.6.0']]), { jsdom: '25.0.1', cssstyle: '4.6.0' });
-  assert.deepEqual(project([['node_modules/cssstyle', '4.6.0'], ['node_modules/jsdom/node_modules/cssstyle', '4.1.0']]), { jsdom: '25.0.1', cssstyle: '4.1.0' });
+  assert.deepEqual(
+    project([
+      ['node_modules/cssstyle', '4.6.0'],
+      ['node_modules/jsdom/node_modules/cssstyle', '4.1.0'],
+    ]),
+    { jsdom: '25.0.1', cssstyle: '4.1.0' },
+  );
   // Options override; a jsdom version given alone does not use the installed cssstyle.
-  assert.deepEqual(project([['node_modules/cssstyle', '4.6.0']], { warpdom: { cssstyle: '4.4.0' } }), { jsdom: '25.0.1', cssstyle: '4.4.0' });
-  assert.deepEqual(project([['node_modules/cssstyle', '4.6.0']], { warpdom: { jsdom: 26 } }), { jsdom: 26, cssstyle: undefined });
+  assert.deepEqual(project([['node_modules/cssstyle', '4.6.0']], { warpdom: { cssstyle: '4.4.0' } }), {
+    jsdom: '25.0.1',
+    cssstyle: '4.4.0',
+  });
+  assert.deepEqual(project([['node_modules/cssstyle', '4.6.0']], { warpdom: { jsdom: 26 } }), {
+    jsdom: 26,
+    cssstyle: undefined,
+  });
 });
 
 test('the global EventTarget methods act on the window, or on another this', () => {
@@ -171,7 +218,9 @@ test('the global EventTarget methods act on the window, or on another this', () 
     const { body } = window.document;
     const seen = [];
     // A custom this (as a browser's inherited window.addEventListener).
-    global.addEventListener.call(body, 'a', function () { seen.push(this === body ? 'body' : 'other'); });
+    global.addEventListener.call(body, 'a', function () {
+      seen.push(this === body ? 'body' : 'other');
+    });
     body.dispatchEvent(new window.Event('a'));
     // Unbound and through the global: the window.
     const { addEventListener } = global;
@@ -206,12 +255,18 @@ test('globals Vitest defines for members jsdom lacks read the window (matchMedia
   assert.equal('matchMedia' in global, false);
 });
 
-test('Vitest keeps Node\'s AbortController and AbortSignal, as its jsdom environment does', async () => {
+test("Vitest keeps Node's AbortController and AbortSignal, as its jsdom environment does", async () => {
   const { default: environment } = await import('../src/vitest.js');
   const vmModule = await import('node:vm');
   const vmResult = await environment.setupVM();
   try {
-    assert.equal(vmModule.runInContext('AbortController === this.__nodeAbort', Object.assign(vmResult.getVmContext(), { __nodeAbort: AbortController })), true);
+    assert.equal(
+      vmModule.runInContext(
+        'AbortController === this.__nodeAbort',
+        Object.assign(vmResult.getVmContext(), { __nodeAbort: AbortController }),
+      ),
+      true,
+    );
   } finally {
     vmResult.teardown();
   }
@@ -254,12 +309,18 @@ test('Vitest: assigning the global document is ignored in VM pools and replaces 
   try {
     const context = vmResult.getVmContext();
     const vm = await import('node:vm');
-    assert.equal(vm.runInContext(`(() => { 'use strict';
+    assert.equal(
+      vm.runInContext(
+        `(() => { 'use strict';
       const real = document;
       globalThis.document = {};
       window.top = 1;
       return [document === real, top === globalThis].join();
-    })()`, context), 'true,true');
+    })()`,
+        context,
+      ),
+      'true,true',
+    );
   } finally {
     vmResult.teardown();
   }
@@ -327,29 +388,47 @@ test('setupVM: URL, URLSearchParams, Headers, console and WebAssembly as with js
     assert.equal(resolveObjectURL(url), undefined);
     assert.equal(run('URLSearchParams'), URLSearchParams);
     assert.equal(run('Headers'), Headers);
-    assert.equal(run('Object.getPrototypeOf(Object.getPrototypeOf(new WebAssembly.Memory({ initial: 1 }))) === Object.prototype'), true);
+    assert.equal(
+      run('Object.getPrototypeOf(Object.getPrototypeOf(new WebAssembly.Memory({ initial: 1 }))) === Object.prototype'),
+      true,
+    );
     // Until Vitest puts its console there: the window's, writing to the setup's console.
     assert.equal(run('Object.getOwnPropertyDescriptor(globalThis, "console").enumerable'), false);
     const original = console.info;
     let got;
-    console.info = (x) => { got = x; };
-    try { run('console.info("to setup")'); } finally { console.info = original; }
+    console.info = (x) => {
+      got = x;
+    };
+    try {
+      run('console.info("to setup")');
+    } finally {
+      console.info = original;
+    }
     assert.equal(got, 'to setup');
   } finally {
     result.teardown();
   }
 });
 
-test('setup: URL is Vitest\'s, kept per file by the reset; URLSearchParams, Headers, console and WebAssembly stay the global\'s', async () => {
+test("setup: URL is Vitest's, kept per file by the reset; URLSearchParams, Headers, console and WebAssembly stay the global's", async () => {
   const { default: environment } = await import('../src/vitest.js');
   const { URL: NodeURL } = await import('node:url');
-  const host = { URL: 'node URL', URLSearchParams: 'node params', Headers: 'node headers', console: 'node console', WebAssembly: 'node wasm' };
+  const host = {
+    URL: 'node URL',
+    URLSearchParams: 'node params',
+    Headers: 'node headers',
+    console: 'node console',
+    WebAssembly: 'node wasm',
+  };
   const global = { ...host };
   const env = environment.setup(global, { warpdom: { jsdom: '30.1.3' } });
   try {
     const U = global.URL;
     assert.equal(Object.getPrototypeOf(U), NodeURL);
-    assert.deepEqual([global.URLSearchParams, global.Headers, global.console, global.WebAssembly], ['node params', 'node headers', 'node console', 'node wasm']);
+    assert.deepEqual(
+      [global.URLSearchParams, global.Headers, global.console, global.WebAssembly],
+      ['node params', 'node headers', 'node console', 'node wasm'],
+    );
     assert.equal(typeof global.webkitURL.createObjectURL, 'undefined');
     assert.equal(new global.webkitURL('http://a/').href, 'http://a/');
     assert.match(U.createObjectURL(new global.Blob(['a'])), /^blob:nodedata:/);
@@ -378,7 +457,13 @@ test('Vitest: WebSocket is one object on the global and the window, and tests ca
       let out = '';
       let code = 0;
       try {
-        out = String(execFileSync('node_modules/.bin/vitest', ['run', '--root', 'fixtures/vitest-websocket', '--pool', pool, ...environment], { cwd: root, stdio: 'pipe' }));
+        out = String(
+          execFileSync(
+            'node_modules/.bin/vitest',
+            ['run', '--root', 'fixtures/vitest-websocket', '--pool', pool, ...environment],
+            { cwd: root, stdio: 'pipe' },
+          ),
+        );
       } catch (err) {
         code = err.status;
         out = String(err.stdout) + String(err.stderr);
@@ -389,16 +474,22 @@ test('Vitest: WebSocket is one object on the global and the window, and tests ca
   }
 });
 
-test('setupVM and setup: the window\'s WebSocket is Node\'s; setup leaves the global\'s', async () => {
+test("setupVM and setup: the window's WebSocket is Node's; setup leaves the global's", async () => {
   const { default: environment } = await import('../src/vitest.js');
   const vmModule = await import('node:vm');
   const result = await environment.setupVM();
   try {
     const context = result.getVmContext();
     assert.equal(vmModule.runInContext('WebSocket', context), WebSocket);
-    assert.equal(vmModule.runInContext('WebSocket === window.WebSocket && WebSocket === document.defaultView.WebSocket', context), true);
+    assert.equal(
+      vmModule.runInContext('WebSocket === window.WebSocket && WebSocket === document.defaultView.WebSocket', context),
+      true,
+    );
     vmModule.runInContext('window.WebSocket = class Mock {}', context);
-    assert.equal(vmModule.runInContext('WebSocket.name === "Mock" && globalThis.WebSocket === window.WebSocket', context), true);
+    assert.equal(
+      vmModule.runInContext('WebSocket.name === "Mock" && globalThis.WebSocket === window.WebSocket', context),
+      true,
+    );
   } finally {
     result.teardown();
   }
@@ -407,7 +498,12 @@ test('setupVM and setup: the window\'s WebSocket is Node\'s; setup leaves the gl
   const global = { WebSocket: 'node ws' };
   const env = environment.setup(global);
   try {
-    assert.deepEqual(Object.getOwnPropertyDescriptor(global, 'WebSocket'), { value: 'node ws', writable: true, enumerable: true, configurable: true });
+    assert.deepEqual(Object.getOwnPropertyDescriptor(global, 'WebSocket'), {
+      value: 'node ws',
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    });
     global[Symbol.for('warpdom.vitest.reset')]();
     assert.equal(global.WebSocket, 'node ws');
   } finally {
@@ -423,17 +519,29 @@ test('setupVM and setup: the window\'s WebSocket is Node\'s; setup leaves the gl
 // 30.1.3; the fixture lists the results).
 test('Vitest: viewport members, name, status and self as with jsdom, per pool and profile', () => {
   const cases = [
-    ['forks', [], 'forks'], ['vmThreads', [], 'vm'],
-    ['forks', ['--environment', 'jsdom'], 'forks'], ['vmThreads', ['--environment', 'jsdom'], 'vm'],
-    ['forks', [], 'forks', '26.1.0'], ['vmThreads', [], 'vm-legacy', '26.1.0'], ['vmThreads', [], 'vm-legacy', '20.0.3'],
+    ['forks', [], 'forks'],
+    ['vmThreads', [], 'vm'],
+    ['forks', ['--environment', 'jsdom'], 'forks'],
+    ['vmThreads', ['--environment', 'jsdom'], 'vm'],
+    ['forks', [], 'forks', '26.1.0'],
+    ['vmThreads', [], 'vm-legacy', '26.1.0'],
+    ['vmThreads', [], 'vm-legacy', '20.0.3'],
   ];
   for (const [pool, environment, expect, jsdom] of cases) {
     let out = '';
     let code = 0;
     try {
-      out = String(execFileSync('node_modules/.bin/vitest', ['run', '--root', 'fixtures/vitest-viewport', '--pool', pool, ...environment], {
-        cwd: root, stdio: 'pipe', env: { ...process.env, VIEWPORT_EXPECT: expect, ...(jsdom ? { VIEWPORT_JSDOM: jsdom } : {}) },
-      }));
+      out = String(
+        execFileSync(
+          'node_modules/.bin/vitest',
+          ['run', '--root', 'fixtures/vitest-viewport', '--pool', pool, ...environment],
+          {
+            cwd: root,
+            stdio: 'pipe',
+            env: { ...process.env, VIEWPORT_EXPECT: expect, ...(jsdom ? { VIEWPORT_JSDOM: jsdom } : {}) },
+          },
+        ),
+      );
     } catch (err) {
       code = err.status;
       out = String(err.stdout) + String(err.stderr);
@@ -448,11 +556,23 @@ test('Vitest: viewport members, name, status and self as with jsdom, per pool an
 // jsdom 29, CSSStyleProperties' later (black box, jsdom 20.0.3 to 30.1.3;
 // the installed jsdom checks the fixture's expectations).
 test('Vitest: vi.spyOn on the style accessors as with jsdom, per profile', () => {
-  const cases = [[[], 'declaration', '20.0.3'], [[], 'declaration', '26.1.0'], [[], 'declaration', '28.1.0'], [[], 'properties', '30.1.3'], [['--environment', 'jsdom'], 'properties']];
+  const cases = [
+    [[], 'declaration', '20.0.3'],
+    [[], 'declaration', '26.1.0'],
+    [[], 'declaration', '28.1.0'],
+    [[], 'properties', '30.1.3'],
+    [['--environment', 'jsdom'], 'properties'],
+  ];
   for (const [environment, expect, jsdom] of cases) {
-    const result = spawnSync('node_modules/.bin/vitest', ['run', '--root', 'fixtures/vitest-style-spy', ...environment], {
-      cwd: root, encoding: 'utf8', env: { ...process.env, STYLE_SPY_EXPECT: expect, ...(jsdom ? { STYLE_SPY_JSDOM: jsdom } : {}) },
-    });
+    const result = spawnSync(
+      'node_modules/.bin/vitest',
+      ['run', '--root', 'fixtures/vitest-style-spy', ...environment],
+      {
+        cwd: root,
+        encoding: 'utf8',
+        env: { ...process.env, STYLE_SPY_EXPECT: expect, ...(jsdom ? { STYLE_SPY_JSDOM: jsdom } : {}) },
+      },
+    );
     // Vitest colors its output on CI (GitHub Actions); match the plain text.
     const out = (result.stdout + result.stderr).replace(/\x1b\[[0-9;]*m/g, '');
     assert.equal(result.status, 0, `${environment.join(' ') || 'warpdom'} ${jsdom ?? ''}: ${out}`);
@@ -474,12 +594,23 @@ test('Vitest: replaced globals keep their enumerability in forks and threads', a
   const env = environment.setup(global);
   try {
     const keys = Object.keys(global);
-    assert.deepEqual(['navigator', 'window', 'self', 'top', 'parent'].filter((k) => !keys.includes(k)), []);
-    assert.deepEqual(['document', 'location', 'innerWidth', 'addEventListener', 'HTMLElement'].filter((k) => keys.includes(k)), []);
+    assert.deepEqual(
+      ['navigator', 'window', 'self', 'top', 'parent'].filter((k) => !keys.includes(k)),
+      [],
+    );
+    assert.deepEqual(
+      ['document', 'location', 'innerWidth', 'addEventListener', 'HTMLElement'].filter((k) => keys.includes(k)),
+      [],
+    );
     assert.notEqual(global.navigator, navigator);
   } finally {
     env.teardown();
   }
   assert.equal(global.navigator, navigator);
-  assert.deepEqual(Object.getOwnPropertyDescriptor(global, 'location'), { value: 'hidden', writable: true, enumerable: false, configurable: true });
+  assert.deepEqual(Object.getOwnPropertyDescriptor(global, 'location'), {
+    value: 'hidden',
+    writable: true,
+    enumerable: false,
+    configurable: true,
+  });
 });

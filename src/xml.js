@@ -4,8 +4,16 @@
 // @rgrove/parse-xml, loaded the first time XML is parsed, like parse5 for
 // HTML; namespaces (Namespaces in XML 1.0) are resolved here, on its tree.
 import {
-  S, state, insert, remove, domError, hooks, HTML_NS, ELEMENT_NODE,
-  namedAttributesSet, tooFewArguments,
+  S,
+  state,
+  insert,
+  remove,
+  domError,
+  hooks,
+  HTML_NS,
+  ELEMENT_NODE,
+  namedAttributesSet,
+  tooFewArguments,
 } from './internal.js';
 import { XML_NS, XMLNS_NS } from './attributes.js';
 import { eventHandlerAttributesAdded } from './event-handlers.js';
@@ -24,7 +32,8 @@ export function setXmlParserLoader(loader) {
 
 function getXmlParser() {
   if (!xmlParser) {
-    if (!loadXmlParser) throw new Error('warpdom: no XML parser available. Import warpdom from Node, or call setXmlParserLoader().');
+    if (!loadXmlParser)
+      throw new Error('warpdom: no XML parser available. Import warpdom from Node, or call setXmlParserLoader().');
     xmlParser = loadXmlParser();
   }
   return xmlParser;
@@ -32,8 +41,9 @@ function getXmlParser() {
 
 // --- names (XML 1.0 Name production) --------------------------------------------
 
-const NAME_START = ':A-Z_a-z\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u02FF\\u0370-\\u037D\\u037F-\\u1FFF\\u200C\\u200D'
-  + '\\u2070-\\u218F\\u2C00-\\u2FEF\\u3001-\\uD7FF\\uF900-\\uFDCF\\uFDF0-\\uFFFD\\u{10000}-\\u{EFFFF}';
+const NAME_START =
+  ':A-Z_a-z\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u02FF\\u0370-\\u037D\\u037F-\\u1FFF\\u200C\\u200D' +
+  '\\u2070-\\u218F\\u2C00-\\u2FEF\\u3001-\\uD7FF\\uF900-\\uFDCF\\uFDF0-\\uFFFD\\u{10000}-\\u{EFFFF}';
 const NAME_CHAR = `${NAME_START}\\-.0-9\\u00B7\\u0300-\\u036F\\u203F\\u2040`;
 const NAME = new RegExp(`^[${NAME_START}][${NAME_CHAR}]*$`, 'u');
 const NCNAME = new RegExp(`^[${NAME_START.slice(1)}][${NAME_CHAR.slice(1)}]*$`, 'u');
@@ -47,7 +57,11 @@ export const XML_INTERFACES = [
   {
     name: 'ProcessingInstruction',
     parent: 'CharacterData',
-    members: { get target() { return state(this).target; } },
+    members: {
+      get target() {
+        return state(this).target;
+      },
+    },
   },
 ];
 
@@ -56,19 +70,37 @@ const internals = (doc) => doc[S].window[S];
 export const XML_DOCUMENT_MEMBERS = {
   createCDATASection(data) {
     const s = state(this);
-    if (data === undefined && arguments.length < 1) tooFewArguments('Document', 'createCDATASection', 1, arguments.length);
-    if (!s.xml) throw domError('Failed to execute \'createCDATASection\' on \'Document\': This operation is not supported for HTML documents.', 'NotSupportedError');
+    if (data === undefined && arguments.length < 1)
+      tooFewArguments('Document', 'createCDATASection', 1, arguments.length);
+    if (!s.xml)
+      throw domError(
+        "Failed to execute 'createCDATASection' on 'Document': This operation is not supported for HTML documents.",
+        'NotSupportedError',
+      );
     const text = String(data);
-    if (text.includes(']]>')) throw domError('Failed to execute \'createCDATASection\' on \'Document\': String cannot contain \']]>\' since that is the end delimiter of a CData section.', 'InvalidCharacterError');
+    if (text.includes(']]>'))
+      throw domError(
+        "Failed to execute 'createCDATASection' on 'Document': String cannot contain ']]>' since that is the end delimiter of a CData section.",
+        'InvalidCharacterError',
+      );
     return internals(this).createCDATA(text, this);
   },
   createProcessingInstruction(target, data) {
     state(this);
-    if (data === undefined && arguments.length < 2) tooFewArguments('Document', 'createProcessingInstruction', 2, arguments.length);
+    if (data === undefined && arguments.length < 2)
+      tooFewArguments('Document', 'createProcessingInstruction', 2, arguments.length);
     const t = String(target);
     const d = String(data);
-    if (!NAME.test(t)) throw domError(`Failed to execute 'createProcessingInstruction' on 'Document': The target provided ('${t}') is not a valid name.`, 'InvalidCharacterError');
-    if (d.includes('?>')) throw domError(`Failed to execute 'createProcessingInstruction' on 'Document': The data provided ('${d}') contains '?>'.`, 'InvalidCharacterError');
+    if (!NAME.test(t))
+      throw domError(
+        `Failed to execute 'createProcessingInstruction' on 'Document': The target provided ('${t}') is not a valid name.`,
+        'InvalidCharacterError',
+      );
+    if (d.includes('?>'))
+      throw domError(
+        `Failed to execute 'createProcessingInstruction' on 'Document': The data provided ('${d}') contains '?>'.`,
+        'InvalidCharacterError',
+      );
     return internals(this).createPI(t, d, this);
   },
 };
@@ -79,7 +111,10 @@ const OPTIONS_BASE = { preserveCdata: true, preserveComments: true, preserveDocu
 
 // A well-formedness or namespace error, with the position it was found at.
 class XmlSyntaxError extends Error {
-  constructor(message, pos) { super(message); this.pos = pos; }
+  constructor(message, pos) {
+    super(message);
+    this.pos = pos;
+  }
 }
 
 // General entities declared in a doctype's internal subset (internal
@@ -95,7 +130,8 @@ function declaredEntities(subset) {
   for (let m = declaration.exec(subset); m; m = declaration.exec(subset)) {
     if (entities.has(m[1])) continue; // the first declaration binds (XML 1.0 4.2)
     const value = (m[2] ?? m[3]).replace(/&(#x[0-9a-fA-F]+|#[0-9]+|[^\s&;]+);/g, (all, ref) => {
-      if (ref[0] === '#') return String.fromCodePoint(ref[1] === 'x' ? parseInt(ref.slice(2), 16) : Number(ref.slice(1)));
+      if (ref[0] === '#')
+        return String.fromCodePoint(ref[1] === 'x' ? parseInt(ref.slice(2), 16) : Number(ref.slice(1)));
       return PREDEFINED[ref] ?? entities.get(ref) ?? all;
     });
     // Bound expansion (entities made of entities grow exponentially).
@@ -131,16 +167,28 @@ function build(w, doc, parent, xmlNodes, scope, inTemplate) {
   for (const n of xmlNodes) {
     let node;
     switch (n.type) {
-      case 'element': node = buildElement(w, doc, n, scope, inTemplate); break;
-      case 'text': node = w.createText(n.text, doc); break;
-      case 'cdata': node = w.createCDATA(n.text, doc); break;
-      case 'comment': node = w.createComment(n.content, doc); break;
+      case 'element':
+        node = buildElement(w, doc, n, scope, inTemplate);
+        break;
+      case 'text':
+        node = w.createText(n.text, doc);
+        break;
+      case 'cdata':
+        node = w.createCDATA(n.text, doc);
+        break;
+      case 'comment':
+        node = w.createComment(n.content, doc);
+        break;
       case 'pi':
-        if (n.name.includes(':')) throw new XmlSyntaxError('colons are forbidden in processing instruction targets', n.start);
+        if (n.name.includes(':'))
+          throw new XmlSyntaxError('colons are forbidden in processing instruction targets', n.start);
         node = w.createPI(n.name, n.content, doc);
         break;
-      case 'doctype': node = w.createDoctype(n.name, n.publicId ?? '', n.systemId ?? '', doc); break;
-      default: continue;
+      case 'doctype':
+        node = w.createDoctype(n.name, n.publicId ?? '', n.systemId ?? '', doc);
+        break;
+      default:
+        continue;
     }
     if (node) insert(parent, node, null);
   }
@@ -168,14 +216,16 @@ function buildElement(w, doc, n, parentScope, inTemplate) {
     const value = n.attributes[name];
     if (scope === parentScope) scope = new Map(parentScope);
     if (name === 'xmlns') {
-      if (value === XML_NS || value === XMLNS_NS) throw new XmlSyntaxError(`reserved namespace as the default namespace: ${value}`, pos);
+      if (value === XML_NS || value === XMLNS_NS)
+        throw new XmlSyntaxError(`reserved namespace as the default namespace: ${value}`, pos);
       scope.set('', value);
       continue;
     }
     const prefix = name.slice(6);
     if (!NCNAME.test(prefix)) throw new XmlSyntaxError(`invalid namespace prefix: ${prefix}`, pos);
     if (prefix === 'xmlns') throw new XmlSyntaxError('the xmlns prefix cannot be declared', pos);
-    if ((prefix === 'xml') !== (value === XML_NS)) throw new XmlSyntaxError(`the xml prefix and namespace bind only to each other: ${name}`, pos);
+    if ((prefix === 'xml') !== (value === XML_NS))
+      throw new XmlSyntaxError(`the xml prefix and namespace bind only to each other: ${name}`, pos);
     if (value === XMLNS_NS) throw new XmlSyntaxError('the xmlns namespace cannot be bound to a prefix', pos);
     if (value === '') throw new XmlSyntaxError(`a prefix cannot be undeclared: ${name}`, pos);
     scope.set(prefix, value);
@@ -216,7 +266,12 @@ function buildElement(w, doc, n, parentScope, inTemplate) {
     if (attrNs !== null) {
       const attrKey = `\0${attrNs}\0${attrLocal}`;
       attrs.set(attrKey, value);
-      (es.attrNS ?? (es.attrNS = new Map())).set(attrKey, { ns: attrNs, prefix: attrPrefix, local: attrLocal, qn: name });
+      (es.attrNS ?? (es.attrNS = new Map())).set(attrKey, {
+        ns: attrNs,
+        prefix: attrPrefix,
+        local: attrLocal,
+        qn: name,
+      });
       continue;
     }
     attrs.set(name, value);
@@ -242,7 +297,10 @@ function position(text, pos) {
   let line = 1;
   let column = 0;
   for (let i = 0; i < pos && i < text.length; i++) {
-    if (text[i] === '\n') { line++; column = 0; } else column++;
+    if (text[i] === '\n') {
+      line++;
+      column = 0;
+    } else column++;
   }
   return `${line}:${column}`;
 }
@@ -252,8 +310,10 @@ const errorMessage = (error) => error.message.split('\n')[0].replace(/ \(line \d
 
 // The input is decoded from UTF-8 bytes in a browser, so lone surrogates
 // (which UTF-8 cannot encode) arrive as U+FFFD.
-const scalarValues = (text) => (typeof text.toWellFormed === 'function' ? text.toWellFormed()
-  : text.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '\uFFFD'));
+const scalarValues = (text) =>
+  typeof text.toWellFormed === 'function'
+    ? text.toWellFormed()
+    : text.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '\uFFFD');
 
 export const PARSER_ERROR_NS = 'http://www.mozilla.org/newlayout/xml/parsererror.xml';
 
@@ -296,7 +356,8 @@ function inScopeNamespaces(context) {
     if (s.prefix && s.ns !== null && !scope.has(s.prefix)) scope.set(s.prefix, s.ns);
     if (s.attrNS) {
       for (const [key, info] of s.attrNS) {
-        if (info.ns === XMLNS_NS && info.prefix === 'xmlns' && !scope.has(info.local)) scope.set(info.local, s.attrs.get(key) ?? '');
+        if (info.ns === XMLNS_NS && info.prefix === 'xmlns' && !scope.has(info.local))
+          scope.set(info.local, s.attrs.get(key) ?? '');
       }
     }
   }
@@ -315,7 +376,7 @@ export function parseXMLFragment(doc, context, markup) {
   const w = internals(doc);
   const cs = context[S];
   const scope = cs.type === ELEMENT_NODE ? inScopeNamespaces(context) : new Map();
-  const defaultNs = cs.type === ELEMENT_NODE ? cs.ns ?? '' : '';
+  const defaultNs = cs.type === ELEMENT_NODE ? (cs.ns ?? '') : '';
   let start = `<w xmlns="${escapeAttr(defaultNs)}"`;
   for (const [prefix, ns] of scope) if (ns !== '') start += ` xmlns:${prefix}="${escapeAttr(ns)}"`;
   const fragment = w.createFragment(doc);

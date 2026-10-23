@@ -8,8 +8,17 @@ const id = (el) => (el ? el.id || el.nodeName : null);
 
 function logFocusEvents(w, log) {
   for (const type of ['focus', 'blur', 'focusin', 'focusout']) {
-    w.document.addEventListener(type, (e) => log.push(`${type}:${id(e.target)}:${id(e.relatedTarget)}:${e.bubbles}:${e.constructor.name}:${id(w.document.activeElement)}`), true);
-    w.addEventListener(type, (e) => { if (e.target === w) log.push(`window ${type}`); });
+    w.document.addEventListener(
+      type,
+      (e) =>
+        log.push(
+          `${type}:${id(e.target)}:${id(e.relatedTarget)}:${e.bubbles}:${e.constructor.name}:${id(w.document.activeElement)}`,
+        ),
+      true,
+    );
+    w.addEventListener(type, (e) => {
+      if (e.target === w) log.push(`window ${type}`);
+    });
   }
 }
 
@@ -33,11 +42,14 @@ parity('focus and blur: activeElement, events, relatedTarget', (w) => {
 });
 
 parity('which elements are focusable', (w) => {
-  const d = html(w, `<input id="i"><input id="hid" type="hidden"><input id="dis" disabled><button id="dt" disabled tabindex="0"></button>
+  const d = html(
+    w,
+    `<input id="i"><input id="hid" type="hidden"><input id="dis" disabled><button id="dt" disabled tabindex="0"></button>
     <div id="t0" tabindex="0"></div><div id="tm" tabindex="-1"></div><div id="tn" tabindex="-1"></div><a id="a1" href="#">l</a><a id="a2">l</a>
     <span id="ce" contenteditable></span><details><summary id="s1">s</summary><summary id="s2">s</summary></details>
     <fieldset disabled><button id="fs"></button></fieldset><div hidden><input id="inhidden"></div><div style="display:none"><input id="innone"></div>
-    <svg><a id="sa" href="#"></a><circle id="sc" tabindex="0"></circle><rect id="sr"></rect></svg><iframe id="f"></iframe>`);
+    <svg><a id="sa" href="#"></a><circle id="sc" tabindex="0"></circle><rect id="sr"></rect></svg><iframe id="f"></iframe>`,
+  );
   const detached = d.createElement('input');
   detached.id = 'detached';
   const out = [];
@@ -115,7 +127,11 @@ parity('tabIndex reflection and focus selectors', (w) => {
   x.setAttribute('tabindex', ' 7 ');
   out.push(x.tabIndex);
   d.getElementById('i').focus();
-  out.push(d.querySelector(':focus')?.id, d.querySelector('div:focus-within')?.id, d.getElementById('i').matches(':focus'));
+  out.push(
+    d.querySelector(':focus')?.id,
+    d.querySelector('div:focus-within')?.id,
+    d.getElementById('i').matches(':focus'),
+  );
   return out;
 });
 
@@ -151,10 +167,17 @@ test('tabIndex follows the standard for non-integer values', () => {
 // jsdom before 30.1.2 focused elements that display: none or the hidden
 // attribute keep from being rendered (ark-ui focuses a [hidden] input).
 const renderingScenario = (w) => {
-  const d = html(w, `<input id="h" hidden><input id="n" style="display:none"><div hidden><input id="in"></div>
-    <input id="t" type="hidden"><div id="host"></div>`);
+  const d = html(
+    w,
+    `<input id="h" hidden><input id="n" style="display:none"><div hidden><input id="in"></div>
+    <input id="t" type="hidden"><div id="host"></div>`,
+  );
   const result = [];
-  for (const el of [...d.querySelectorAll('input')]) { el.focus(); result.push(id(d.activeElement)); d.activeElement.blur(); }
+  for (const el of [...d.querySelectorAll('input')]) {
+    el.focus();
+    result.push(id(d.activeElement));
+    d.activeElement.blur();
+  }
   const root = d.getElementById('host').attachShadow({ mode: 'open' });
   root.innerHTML = '<input id="s" hidden>';
   root.getElementById('s').focus();
@@ -173,7 +196,15 @@ test('focus: the rendering check starts with jsdom 30.1.2', () => {
     input.focus();
     return w.document.activeElement === input;
   };
-  assert.deepEqual(['26.1.0', '30.1.1', '30.1.2', '31.0.0', 29, 30, 31].map(focusesHidden), [true, true, false, false, true, false, false]);
+  assert.deepEqual(['26.1.0', '30.1.1', '30.1.2', '31.0.0', 29, 30, 31].map(focusesHidden), [
+    true,
+    true,
+    false,
+    false,
+    true,
+    false,
+    false,
+  ]);
 });
 
 test('the focus fixup sees through shadow roots and across a window reset', async () => {

@@ -31,42 +31,76 @@ const WINDOW_HANDLERS = new Set(WINDOW_EVENT_HANDLERS);
 // inertHandler), and they have an inert onloadend (#67). Before 27.0.0 the
 // window has onautocomplete, onautocompleteerror and onsort, which work
 // (only as IDL attributes: body has none).
-const HANDLERS_FROM_22_1 = ['onbeforeinput', 'onbeforematch', 'onbeforetoggle', 'oncontextlost', 'oncontextrestored', 'oncopy',
-  'oncut', 'onformdata', 'onpaste', 'onscrollend', 'onslotchange', 'ontouchcancel', 'ontouchend', 'ontouchmove', 'ontouchstart',
-  'onwebkitanimationend', 'onwebkitanimationiteration', 'onwebkitanimationstart', 'onwebkittransitionend'];
-const POINTER_HANDLERS = ['ongotpointercapture', 'onlostpointercapture', 'onpointercancel', 'onpointerdown', 'onpointerenter',
-  'onpointerleave', 'onpointermove', 'onpointerout', 'onpointerover', 'onpointerrawupdate', 'onpointerup'];
+const HANDLERS_FROM_22_1 = [
+  'onbeforeinput',
+  'onbeforematch',
+  'onbeforetoggle',
+  'oncontextlost',
+  'oncontextrestored',
+  'oncopy',
+  'oncut',
+  'onformdata',
+  'onpaste',
+  'onscrollend',
+  'onslotchange',
+  'ontouchcancel',
+  'ontouchend',
+  'ontouchmove',
+  'ontouchstart',
+  'onwebkitanimationend',
+  'onwebkitanimationiteration',
+  'onwebkitanimationstart',
+  'onwebkittransitionend',
+];
+const POINTER_HANDLERS = [
+  'ongotpointercapture',
+  'onlostpointercapture',
+  'onpointercancel',
+  'onpointerdown',
+  'onpointerenter',
+  'onpointerleave',
+  'onpointermove',
+  'onpointerout',
+  'onpointerover',
+  'onpointerrawupdate',
+  'onpointerup',
+];
 const LEGACY_INERT = ['onauxclick', 'onloadend'];
 const LEGACY_WINDOW_HANDLERS = ['onautocomplete', 'onautocompleteerror', 'onsort'];
 const LEGACY_ABSENT = new Set([...HANDLERS_FROM_22_1, ...LEGACY_INERT]);
 const POINTER = new Set(POINTER_HANDLERS);
 // A content attribute that is no event handler in the profile's jsdom.
-const absentHandler = (compat, name) => (compat.legacyHandlers && LEGACY_ABSENT.has(name)) || (compat.jsdom < 27 && POINTER.has(name));
+const absentHandler = (compat, name) =>
+  (compat.legacyHandlers && LEGACY_ABSENT.has(name)) || (compat.jsdom < 27 && POINTER.has(name));
 
 // An inert event handler IDL attribute, as jsdom has some (black box): it
 // keeps the value assigned (a function or an object, else null; undefined
 // until set), its content attribute is ignored and it is never called.
 function inertHandler(name) {
-  return Object.getOwnPropertyDescriptor({
-    get [name]() {
-      const s = this?.[S];
-      if (!s) throw new TypeError('Illegal invocation');
-      return s.inertHandlers?.get(name);
+  return Object.getOwnPropertyDescriptor(
+    {
+      get [name]() {
+        const s = this?.[S];
+        if (!s) throw new TypeError('Illegal invocation');
+        return s.inertHandlers?.get(name);
+      },
+      set [name](value) {
+        const s = this?.[S];
+        if (!s) throw new TypeError('Illegal invocation');
+        const map = s.inertHandlers ?? (s.inertHandlers = new Map());
+        map.set(name, typeof value === 'function' || (typeof value === 'object' && value !== null) ? value : null);
+      },
     },
-    set [name](value) {
-      const s = this?.[S];
-      if (!s) throw new TypeError('Illegal invocation');
-      const map = s.inertHandlers ?? (s.inertHandlers = new Map());
-      map.set(name, typeof value === 'function' || (typeof value === 'object' && value !== null) ? value : null);
-    },
-  }, name);
+    name,
+  );
 }
 const INERT = Object.fromEntries(LEGACY_INERT.map((name) => [name, inertHandler(name)]));
 
 // The event handlers of the profile's jsdom, as a variant of the
 // interfaces with GlobalEventHandlers' members (HTMLElement, SVGElement,
 // Document, Window; window.js descriptorsOf): null for jsdom 27 and later.
-export const handlerVariant = (compat) => (compat.legacyHandlers ? 'before 22.1' : compat.jsdom < 27 ? 'before 27' : null);
+export const handlerVariant = (compat) =>
+  compat.legacyHandlers ? 'before 22.1' : compat.jsdom < 27 ? 'before 27' : null;
 
 // Changes an interface's descriptors for a handlerVariant (forWindow: the
 // Window interface's).
@@ -74,7 +108,8 @@ export function adjustHandlers(descriptors, variant, forWindow = false) {
   if (variant === null) return;
   for (const name of POINTER_HANDLERS) delete descriptors[name];
   if (forWindow) {
-    for (const name of LEGACY_WINDOW_HANDLERS) descriptors[name] = { ...LEGACY_WINDOW_MEMBERS[name], enumerable: true, configurable: true };
+    for (const name of LEGACY_WINDOW_HANDLERS)
+      descriptors[name] = { ...LEGACY_WINDOW_MEMBERS[name], enumerable: true, configurable: true };
   }
   if (variant !== 'before 22.1') return;
   for (const name of HANDLERS_FROM_22_1) delete descriptors[name];
@@ -91,10 +126,12 @@ const WINDOW_REFLECTING_BODY = new Set(['onblur', 'onerror', 'onfocus', 'onload'
 const RAW = Symbol('raw handler');
 
 const isWindow = (target) => target[S].isWindow === true;
-const isBodyOrFrameset = (s) => s.type === ELEMENT_NODE && s.ns === HTML_NS && (s.tag === 'body' || s.tag === 'frameset');
+const isBodyOrFrameset = (s) =>
+  s.type === ELEMENT_NODE && s.ns === HTML_NS && (s.tag === 'body' || s.tag === 'frameset');
 // Before jsdom 28.1.0 an svg element's window event handlers (and the
 // handlers body reflects) are its window's, as body's are (black box).
-const isForwardingSvg = (s) => s.tag === 'svg' && s.type === ELEMENT_NODE && s.ns === SVG_NS && s.doc[S].window[S].compat.svgWindowHandlers === true;
+const isForwardingSvg = (s) =>
+  s.tag === 'svg' && s.type === ELEMENT_NODE && s.ns === SVG_NS && s.doc[S].window[S].compat.svgWindowHandlers === true;
 const forwardsToWindow = (s) => isBodyOrFrameset(s) || isForwardingSvg(s);
 
 // Determining the target of an event handler.
@@ -108,7 +145,7 @@ function handlerEntry(target, name) {
   const s = target[S];
   const map = s.handlers ?? (s.handlers = new Map());
   let entry = map.get(name);
-  if (!entry) map.set(name, entry = { value: null, listener: null });
+  if (!entry) map.set(name, (entry = { value: null, listener: null }));
   return entry;
 }
 
@@ -195,7 +232,8 @@ function processHandler(target, name, event) {
   if (typeof callback !== 'function') return; // null, or an object that is not callable
   const es = eventState(event);
   const current = es.currentTarget;
-  const special = es.type === 'error' && current !== null && isWindow(current) && es.message !== undefined && 'lineno' in es;
+  const special =
+    es.type === 'error' && current !== null && isWindow(current) && es.message !== undefined && 'lineno' in es;
   const result = special
     ? callback.call(exposed(current), es.message, es.filename, es.lineno, es.colno, es.error)
     : callback.call(exposed(current), event);
@@ -249,7 +287,9 @@ function svgWindowHandler(name) {
     },
   };
 }
-export const SVG_WINDOW_HANDLER_MEMBERS = Object.fromEntries(WINDOW_EVENT_HANDLERS.map((name) => [name, svgWindowHandler(name)]));
+export const SVG_WINDOW_HANDLER_MEMBERS = Object.fromEntries(
+  WINDOW_EVENT_HANDLERS.map((name) => [name, svgWindowHandler(name)]),
+);
 
 // --- content attributes ---------------------------------------------------------------------
 
@@ -260,7 +300,8 @@ const GLOBAL = new Set(GLOBAL_EVENT_HANDLERS);
 // have the window's.
 function contentAttributeChanged(element, name, value) {
   const s = element[S];
-  const applies = (s.ns === HTML_NS || s.ns === SVG_NS) && (GLOBAL.has(name) || (forwardsToWindow(s) && WINDOW_HANDLERS.has(name)));
+  const applies =
+    (s.ns === HTML_NS || s.ns === SVG_NS) && (GLOBAL.has(name) || (forwardsToWindow(s) && WINDOW_HANDLERS.has(name)));
   if (!applies || absentHandler(s.doc[S].window[S].compat, name)) return;
   const target = handlerTarget(element, name);
   if (!target) return;

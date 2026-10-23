@@ -3,7 +3,17 @@
 // subclasses with their init dictionaries, and legacy createEvent/initEvent.
 // An exception in a listener is reported as an `error` event on the window
 // and dispatch continues, as in browsers and jsdom.
-import { S, state, hiddenSlot, domError, DOCUMENT_NODE, ELEMENT_NODE, HTML_NS, hooks, tooFewArguments } from './internal.js';
+import {
+  S,
+  state,
+  hiddenSlot,
+  domError,
+  DOCUMENT_NODE,
+  ELEMENT_NODE,
+  HTML_NS,
+  hooks,
+  tooFewArguments,
+} from './internal.js';
 import { liveList } from './collections.js';
 
 // --- EventTarget -------------------------------------------------------------
@@ -24,7 +34,9 @@ function flatten(options) {
   const signal = o.signal;
   // signal is an AbortSignal, not nullable (warpdom's or the host's).
   if (signal !== undefined && (signal === null || typeof signal !== 'object')) {
-    throw new TypeError("Failed to read the 'signal' property from 'AddEventListenerOptions': Failed to convert value to 'AbortSignal'.");
+    throw new TypeError(
+      "Failed to read the 'signal' property from 'AddEventListenerOptions': Failed to convert value to 'AbortSignal'.",
+    );
   }
   return { capture: !!o.capture, once: !!o.once, passive: o.passive === undefined ? null : !!o.passive, signal };
 }
@@ -42,10 +54,18 @@ function defaultPassive(type, target) {
   const p = s.parent[S];
   if (p.type === DOCUMENT_NODE) return true; // the document element
   // The body: the first body or frameset child of the html document element.
-  if (s.ns !== HTML_NS || s.tag !== 'body' || p.type !== ELEMENT_NODE || p.parent === null || p.parent[S].type !== DOCUMENT_NODE) return false;
+  if (
+    s.ns !== HTML_NS ||
+    s.tag !== 'body' ||
+    p.type !== ELEMENT_NODE ||
+    p.parent === null ||
+    p.parent[S].type !== DOCUMENT_NODE
+  )
+    return false;
   for (let c = p.first; c !== null; c = c[S].next) {
     const cs = c[S];
-    if (cs.type === ELEMENT_NODE && cs.ns === HTML_NS && (cs.tag === 'body' || cs.tag === 'frameset')) return c === target;
+    if (cs.type === ELEMENT_NODE && cs.ns === HTML_NS && (cs.tag === 'body' || cs.tag === 'frameset'))
+      return c === target;
   }
   return false;
 }
@@ -53,7 +73,11 @@ function defaultPassive(type, target) {
 // --- shadow trees -------------------------------------------------------------------
 
 const isNode = (t) => t?.[S]?.type !== undefined;
-const rootOf = (node) => { let n = node; while (n[S].parent) n = n[S].parent; return n; };
+const rootOf = (node) => {
+  let n = node;
+  while (n[S].parent) n = n[S].parent;
+  return n;
+};
 const isShadowRoot = (node) => node[S].shadow === true;
 
 // A is a shadow-including inclusive ancestor of B.
@@ -84,7 +108,7 @@ export function retarget(a, b) {
 function getTheParent(target, event, slots = false) {
   const s = target[S];
   if (!s || s.type === undefined) return null; // windows and plain EventTargets
-  if (s.type === DOCUMENT_NODE) return eventState(event).type === 'load' || s.noView ? null : s.window ?? null;
+  if (s.type === DOCUMENT_NODE) return eventState(event).type === 'load' || s.noView ? null : (s.window ?? null);
   if (s.shadow) {
     const first = eventState(event).path[0].target;
     return !eventState(event).composed && isNode(first) && rootOf(first) === target ? null : s.host;
@@ -112,7 +136,8 @@ export function reportError(target, error) {
   // Nodes: their document's window; other targets that belong to a window
   // (XMLHttpRequest, FileReader) keep it in their state.
   const ts = target[S];
-  const window = ts?.type === DOCUMENT_NODE ? ts.window : ts?.doc?.[S]?.window ?? (ts?.isWindow ? target : ts?.window ?? target);
+  const window =
+    ts?.type === DOCUMENT_NODE ? ts.window : (ts?.doc?.[S]?.window ?? (ts?.isWindow ? target : (ts?.window ?? target)));
   const ErrorEvent = window?.ErrorEvent;
   if (!ErrorEvent) throw error;
   const ws = window[S];
@@ -123,7 +148,10 @@ export function reportError(target, error) {
   ws.errorReporting = true;
   let handled;
   try {
-    handled = !dispatch(window, new ErrorEvent('error', { cancelable: true, error, message: String(error?.message ?? error) }));
+    handled = !dispatch(
+      window,
+      new ErrorEvent('error', { cancelable: true, error, message: String(error?.message ?? error) }),
+    );
   } finally {
     ws.errorReporting = false;
   }
@@ -185,7 +213,7 @@ function windowOf(target) {
   else if (s.type === undefined) w = s.window ?? null;
   else {
     const doc = s.type === DOCUMENT_NODE ? target : s.doc;
-    w = doc === undefined ? null : doc[S].window ?? null;
+    w = doc === undefined ? null : (doc[S].window ?? null);
   }
   if (w === null || w === undefined) return null;
   while (w[S].parentWindow) w = w[S].parentWindow;
@@ -267,15 +295,22 @@ export function dispatch(target, event, trusted = true) {
       let currentRoot = isNode(target) ? rootOf(target) : null;
       // Slots are looked at only in documents that have slot elements.
       const ts = target[S];
-      const slots = hooks.slots !== null && ts !== undefined && ts.type !== undefined
-        && !!(ts.type === DOCUMENT_NODE ? ts.slotCount : ts.doc[S].slotCount);
+      const slots =
+        hooks.slots !== null &&
+        ts !== undefined &&
+        ts.type !== undefined &&
+        !!(ts.type === DOCUMENT_NODE ? ts.slotCount : ts.doc[S].slotCount);
       let previous = target;
       let parent = getTheParent(target, event, slots);
       while (parent) {
         if (originalRelated !== null) relatedTarget = retarget(originalRelated, parent);
-        const inClosed = slots && previous[S] !== undefined && previous[S].parent !== parent && slotInClosedTree(previous, parent);
-        const inCurrentTree = parent[S]?.isWindow || (isNode(parent) && currentRoot !== null
-          && (!isShadowRoot(currentRoot) || shadowIncludingInclusiveAncestor(currentRoot, parent)));
+        const inClosed =
+          slots && previous[S] !== undefined && previous[S].parent !== parent && slotInClosedTree(previous, parent);
+        const inCurrentTree =
+          parent[S]?.isWindow ||
+          (isNode(parent) &&
+            currentRoot !== null &&
+            (!isShadowRoot(currentRoot) || shadowIncludingInclusiveAncestor(currentRoot, parent)));
         if (inCurrentTree) {
           if (isActivationEvent && es.bubbles && !activation) activation = hooks.activation(parent);
           appendToPath(path, parent, null, relatedTarget, inClosed);
@@ -343,7 +378,10 @@ function composedPath(event) {
   let hiddenLevel = 0;
   for (let i = path.length - 1; i >= 0; i--) {
     if (path[i].rootOfClosedTree) hiddenLevel++;
-    if (path[i].target === currentTarget) { currentIndex = i; break; }
+    if (path[i].target === currentTarget) {
+      currentIndex = i;
+      break;
+    }
     if (path[i].slotInClosedTree) hiddenLevel--;
   }
   let level = hiddenLevel;
@@ -391,7 +429,8 @@ export function cancel(event) {
 const eventTarget = {
   addEventListener(type, callback, options) {
     state(this);
-    if (callback === undefined && arguments.length < 2) tooFewArguments('EventTarget', 'addEventListener', 2, arguments.length);
+    if (callback === undefined && arguments.length < 2)
+      tooFewArguments('EventTarget', 'addEventListener', 2, arguments.length);
     const { capture, once, passive: given, signal } = flatten(options);
     if (signal?.aborted) return;
     if (callback == null) return;
@@ -407,14 +446,20 @@ const eventTarget = {
   },
   removeEventListener(type, callback, options) {
     state(this);
-    if (callback === undefined && arguments.length < 2) tooFewArguments('EventTarget', 'removeEventListener', 2, arguments.length);
+    if (callback === undefined && arguments.length < 2)
+      tooFewArguments('EventTarget', 'removeEventListener', 2, arguments.length);
     // EventListenerOptions: only capture is read.
-    const capture = options !== null && (typeof options === 'object' || typeof options === 'function') ? !!options.capture : !!options;
+    const capture =
+      options !== null && (typeof options === 'object' || typeof options === 'function')
+        ? !!options.capture
+        : !!options;
     const list = this[S]?.listeners?.get(String(type));
     const entry = list?.find((e) => e.callback === callback && e.capture === capture);
     if (entry) removeEntry(this, String(type), entry);
   },
-  dispatchEvent(event) { return dispatch(this, event, false); },
+  dispatchEvent(event) {
+    return dispatch(this, event, false);
+  },
 };
 // WebIDL lengths: the required arguments (options is optional).
 Object.defineProperty(eventTarget.addEventListener, 'length', { value: 2 });
@@ -424,7 +469,12 @@ Object.defineProperty(eventTarget.removeEventListener, 'length', { value: 2 });
 
 const PHASES = { NONE: 0, CAPTURING_PHASE: 1, AT_TARGET: 2, BUBBLING_PHASE: 3 };
 const DELTA_MODES = { DOM_DELTA_PIXEL: 0, DOM_DELTA_LINE: 1, DOM_DELTA_PAGE: 2 };
-const KEY_LOCATIONS = { DOM_KEY_LOCATION_STANDARD: 0, DOM_KEY_LOCATION_LEFT: 1, DOM_KEY_LOCATION_RIGHT: 2, DOM_KEY_LOCATION_NUMPAD: 3 };
+const KEY_LOCATIONS = {
+  DOM_KEY_LOCATION_STANDARD: 0,
+  DOM_KEY_LOCATION_LEFT: 1,
+  DOM_KEY_LOCATION_RIGHT: 2,
+  DOM_KEY_LOCATION_NUMPAD: 3,
+};
 // Constants are on the interface object and its prototype (WebIDL).
 const constants = (table) => Object.fromEntries(Object.entries(table).map(([k, v]) => [k, { constant: v }]));
 // An event's timeStamp is Date.now() when it is created, as in jsdom 20 to
@@ -447,9 +497,23 @@ const setEventState = EVENT_SLOT.init;
 
 function initEventState(self, type, init, initialized = true) {
   setEventState(self, {
-    type: String(type), bubbles: !!init.bubbles, cancelable: !!init.cancelable, composed: !!init.composed,
-    target: null, currentTarget: null, eventPhase: 0, canceled: false, stopped: false, stopImmediate: false,
-    dispatching: false, initialized, isTrusted: false, inPassiveListener: false, timeStamp: now(), path: [], realm: null,
+    type: String(type),
+    bubbles: !!init.bubbles,
+    cancelable: !!init.cancelable,
+    composed: !!init.composed,
+    target: null,
+    currentTarget: null,
+    eventPhase: 0,
+    canceled: false,
+    stopped: false,
+    stopImmediate: false,
+    dispatching: false,
+    initialized,
+    isTrusted: false,
+    inPassiveListener: false,
+    timeStamp: now(),
+    path: [],
+    realm: null,
   });
 }
 
@@ -465,20 +529,37 @@ export function eventConstruct(name, fields = {}) {
   const keys = entries.map((e) => e[0]);
   const hasView = 'view' in fields;
   const template = {
-    type: '', bubbles: false, cancelable: false, composed: false,
-    target: null, currentTarget: null, eventPhase: 0, canceled: false, stopped: false, stopImmediate: false,
-    dispatching: false, initialized: true, isTrusted: false, inPassiveListener: false, timeStamp: 0, path: null, realm: null,
+    type: '',
+    bubbles: false,
+    cancelable: false,
+    composed: false,
+    target: null,
+    currentTarget: null,
+    eventPhase: 0,
+    canceled: false,
+    stopped: false,
+    stopImmediate: false,
+    dispatching: false,
+    initialized: true,
+    isTrusted: false,
+    inPassiveListener: false,
+    timeStamp: 0,
+    path: null,
+    realm: null,
     ...fields,
   };
   return (w, self, [type, init]) => {
-    if (type === undefined) throw new TypeError(`Failed to construct '${name}': 1 argument required, but only 0 present.`);
+    if (type === undefined)
+      throw new TypeError(`Failed to construct '${name}': 1 argument required, but only 0 present.`);
     const dict = init ?? {};
     // UIEventInit's view is a Window or null. Objects are accepted: test
     // environments pass the global that stands for the window.
     if (hasView) {
       const view = dict.view;
       if (view != null && typeof view !== 'object' && typeof view !== 'function') {
-        throw new TypeError(`Failed to construct '${name}': Failed to read the 'view' property from 'UIEventInit': The provided value is not of type 'Window'.`);
+        throw new TypeError(
+          `Failed to construct '${name}': Failed to read the 'view' property from 'UIEventInit': The provided value is not of type 'Window'.`,
+        );
       }
     }
     if (keys.length === 0) {
@@ -511,7 +592,17 @@ export function eventConstruct(name, fields = {}) {
 }
 
 // Read-only accessors for init fields.
-export const fieldGetters = (fields) => Object.fromEntries(Object.keys(fields).map((key) => [key, { get() { return eventState(this)[key]; } }]));
+export const fieldGetters = (fields) =>
+  Object.fromEntries(
+    Object.keys(fields).map((key) => [
+      key,
+      {
+        get() {
+          return eventState(this)[key];
+        },
+      },
+    ]),
+  );
 
 const MODIFIERS = { Control: 'ctrlKey', Shift: 'shiftKey', Alt: 'altKey', Meta: 'metaKey' };
 // The other modifier keys of UI Events' EventModifierInit (modifierCapsLock,
@@ -522,7 +613,10 @@ const MODIFIERS = { Control: 'ctrlKey', Shift: 'shiftKey', Alt: 'altKey', Meta: 
 // ten absent keys from every dictionary cost 12-20% of construction); they
 // are read when getModifierState asks for one.
 const EXTRA_MODIFIER_INIT = Object.fromEntries(
-  ['AltGraph', 'CapsLock', 'Fn', 'FnLock', 'Hyper', 'NumLock', 'ScrollLock', 'Super', 'Symbol', 'SymbolLock'].map((key) => [key, `modifier${key}`]));
+  ['AltGraph', 'CapsLock', 'Fn', 'FnLock', 'Hyper', 'NumLock', 'ScrollLock', 'Super', 'Symbol', 'SymbolLock'].map(
+    (key) => [key, `modifier${key}`],
+  ),
+);
 const withModifierInit = (construct) => (w, self, args) => {
   construct(w, self, args);
   eventState(self).modifierInit = args[1] ?? null;
@@ -541,17 +635,44 @@ const modifierState = {
 const UI_FIELDS = { view: null, detail: 0, which: 0 };
 const MODIFIER_FIELDS = { ctrlKey: false, shiftKey: false, altKey: false, metaKey: false };
 const MOUSE_FIELDS = {
-  ...UI_FIELDS, ...MODIFIER_FIELDS, screenX: 0, screenY: 0, clientX: 0, clientY: 0,
-  button: 0, buttons: 0, relatedTarget: null, movementX: 0, movementY: 0,
+  ...UI_FIELDS,
+  ...MODIFIER_FIELDS,
+  screenX: 0,
+  screenY: 0,
+  clientX: 0,
+  clientY: 0,
+  button: 0,
+  buttons: 0,
+  relatedTarget: null,
+  movementX: 0,
+  movementY: 0,
 };
 const POINTER_FIELDS = {
-  ...MOUSE_FIELDS, pointerId: 0, width: 1, height: 1, pressure: 0, tangentialPressure: 0,
-  tiltX: 0, tiltY: 0, twist: 0, altitudeAngle: Math.PI / 2, azimuthAngle: 0, pointerType: '', isPrimary: false,
+  ...MOUSE_FIELDS,
+  pointerId: 0,
+  width: 1,
+  height: 1,
+  pressure: 0,
+  tangentialPressure: 0,
+  tiltX: 0,
+  tiltY: 0,
+  twist: 0,
+  altitudeAngle: Math.PI / 2,
+  azimuthAngle: 0,
+  pointerType: '',
+  isPrimary: false,
   persistentDeviceId: 0,
 };
 const KEYBOARD_FIELDS = {
-  ...UI_FIELDS, ...MODIFIER_FIELDS, key: '', code: '', location: 0, repeat: false, isComposing: false,
-  charCode: 0, keyCode: 0,
+  ...UI_FIELDS,
+  ...MODIFIER_FIELDS,
+  key: '',
+  code: '',
+  location: 0,
+  repeat: false,
+  isComposing: false,
+  charCode: 0,
+  keyCode: 0,
 };
 const FOCUS_FIELDS = { ...UI_FIELDS, relatedTarget: null };
 const COMPOSITION_FIELDS = { ...UI_FIELDS, data: '' };
@@ -573,7 +694,9 @@ function constructTouchEvent(w, self, args) {
   for (const key of TOUCH_LISTS) {
     const value = dict[key];
     if (value !== undefined && (value === null || typeof value[Symbol.iterator] !== 'function')) {
-      throw new TypeError(`Failed to construct 'TouchEvent': parameter 2 has member '${key}' that is not an iterable object.`);
+      throw new TypeError(
+        `Failed to construct 'TouchEvent': parameter 2 has member '${key}' that is not an iterable object.`,
+      );
     }
     const touches = value === undefined ? [] : Array.from(value);
     es[key] = liveList(w[S].protos.TouchList, () => touches);
@@ -581,7 +704,16 @@ function constructTouchEvent(w, self, args) {
   return self;
 }
 
-const touchListGetters = Object.fromEntries(TOUCH_LISTS.map((key) => [key, { get() { return eventState(this)[key]; } }]));
+const touchListGetters = Object.fromEntries(
+  TOUCH_LISTS.map((key) => [
+    key,
+    {
+      get() {
+        return eventState(this)[key];
+      },
+    },
+  ]),
+);
 
 // MessageEvent: source is not checked to be a window or port (as in
 // jsdom: tests pass stand-ins); ports is a copy of the given sequence.
@@ -605,7 +737,10 @@ function constructTransitionEvent(w, self, args) {
   es.propertyName = dict.propertyName === undefined ? '' : String(dict.propertyName);
   es.pseudoElement = dict.pseudoElement === undefined ? '' : String(dict.pseudoElement);
   const elapsed = dict.elapsedTime === undefined ? 0 : Number(dict.elapsedTime);
-  if (!Number.isFinite(elapsed)) throw new TypeError("Failed to construct 'TransitionEvent': Failed to read the 'elapsedTime' property from 'TransitionEventInit': The provided float value is non-finite.");
+  if (!Number.isFinite(elapsed))
+    throw new TypeError(
+      "Failed to construct 'TransitionEvent': Failed to read the 'elapsedTime' property from 'TransitionEventInit': The provided float value is non-finite.",
+    );
   es.elapsedTime = elapsed;
   return self;
 }
@@ -637,7 +772,12 @@ function legacyInit(event, type, bubbles, cancelable, fields) {
 
 const own = (fields, parentFields) => Object.fromEntries(Object.entries(fields).filter(([k]) => !(k in parentFields)));
 const STORAGE_FIELDS = { key: null, oldValue: null, newValue: null, url: '', storageArea: null };
-const DEVICE_MOTION_FIELDS = { acceleration: null, accelerationIncludingGravity: null, rotationRate: null, interval: 0 };
+const DEVICE_MOTION_FIELDS = {
+  acceleration: null,
+  accelerationIncludingGravity: null,
+  rotationRate: null,
+  interval: 0,
+};
 const DEVICE_ORIENTATION_FIELDS = { alpha: null, beta: null, gamma: null, absolute: false };
 const MOUSE_OWN = own(MOUSE_FIELDS, UI_FIELDS);
 
@@ -646,27 +786,37 @@ const MOUSE_OWN = own(MOUSE_FIELDS, UI_FIELDS);
 // an empty one; other values that are not objects throw.
 function initDictionary(name, init) {
   if (init === undefined || init === null) return {};
-  if (typeof init !== 'object' && typeof init !== 'function') throw new TypeError(`Failed to construct '${name}': parameter 2 is not an object.`);
+  if (typeof init !== 'object' && typeof init !== 'function')
+    throw new TypeError(`Failed to construct '${name}': parameter 2 is not an object.`);
   return init;
 }
 
 function requireArguments(name, required, args) {
   if (args.length < required) {
-    throw new TypeError(`Failed to construct '${name}': ${required} argument${required > 1 ? 's' : ''} required, but only ${args.length} present.`);
+    throw new TypeError(
+      `Failed to construct '${name}': ${required} argument${required > 1 ? 's' : ''} required, but only ${args.length} present.`,
+    );
   }
-  if (typeof args[0] === 'symbol') throw new TypeError(`Failed to construct '${name}': parameter 1 is a symbol, which cannot be converted to a string.`);
+  if (typeof args[0] === 'symbol')
+    throw new TypeError(
+      `Failed to construct '${name}': parameter 1 is a symbol, which cannot be converted to a string.`,
+    );
 }
 
 // A double member (path names it in the message, as "a' that has member 'x").
 function finiteDouble(name, path, value) {
   const n = Number(value);
-  if (!Number.isFinite(n)) throw new TypeError(`Failed to construct '${name}': parameter 2 has member '${path}' that is not a finite floating-point value.`);
+  if (!Number.isFinite(n))
+    throw new TypeError(
+      `Failed to construct '${name}': parameter 2 has member '${path}' that is not a finite floating-point value.`,
+    );
   return n;
 }
 
 // A nullable double member (DeviceOrientationEventInit, DeviceMotionEvent's
 // acceleration and rotation rate members): undefined and null are null.
-const nullableDouble = (name, path, value) => (value === undefined || value === null ? null : finiteDouble(name, path, value));
+const nullableDouble = (name, path, value) =>
+  value === undefined || value === null ? null : finiteDouble(name, path, value);
 
 // PromiseRejectionEvent (HTML 8.1.7.3), from jsdom 27: promise is required
 // and any object (a thenable or function too), reason any value. jsdom
@@ -678,7 +828,9 @@ function constructPromiseRejectionEvent(w, self, args) {
   const promise = dict.promise;
   if (promise === undefined) throw new TypeError("promise is required in 'PromiseRejectionEventInit'");
   if (promise === null || (typeof promise !== 'object' && typeof promise !== 'function')) {
-    throw new TypeError("Failed to construct 'PromiseRejectionEvent': parameter 2 has member 'promise' that is not an object.");
+    throw new TypeError(
+      "Failed to construct 'PromiseRejectionEvent': parameter 2 has member 'promise' that is not an object.",
+    );
   }
   const es = eventState(self);
   es.promise = promise;
@@ -695,11 +847,17 @@ function constructBlobEvent(w, self, args) {
   initEventState(self, args[0], dict);
   const data = dict.data;
   if (data === undefined) throw new TypeError("data is required in 'BlobEventInit'");
-  if (hooks.blobs?.blobData(data) === undefined) throw new TypeError("Failed to construct 'BlobEvent': parameter 2 has member 'data' that is not of type 'Blob'.");
+  if (hooks.blobs?.blobData(data) === undefined)
+    throw new TypeError("Failed to construct 'BlobEvent': parameter 2 has member 'data' that is not of type 'Blob'.");
   const timecode = dict.timecode;
   const es = eventState(self);
   es.data = data;
-  es.timecode = timecode === undefined ? (w[S].compat.blobEventNaNTimecode ? NaN : 0) : finiteDouble('BlobEvent', 'timecode', timecode);
+  es.timecode =
+    timecode === undefined
+      ? w[S].compat.blobEventNaNTimecode
+        ? NaN
+        : 0
+      : finiteDouble('BlobEvent', 'timecode', timecode);
   return self;
 }
 
@@ -730,10 +888,13 @@ const ROTATION_KEYS = ['alpha', 'beta', 'gamma'];
 function motionMember(member, value, Impl, keys) {
   if (value === undefined) return null;
   if (value !== null && typeof value !== 'object' && typeof value !== 'function') {
-    throw new TypeError(`Failed to construct 'DeviceMotionEvent': parameter 2 has member '${member}' that is not an object.`);
+    throw new TypeError(
+      `Failed to construct 'DeviceMotionEvent': parameter 2 has member '${member}' that is not an object.`,
+    );
   }
   const result = new Impl();
-  for (const key of keys) result[key] = nullableDouble('DeviceMotionEvent', `${member}' that has member '${key}`, value?.[key]);
+  for (const key of keys)
+    result[key] = nullableDouble('DeviceMotionEvent', `${member}' that has member '${key}`, value?.[key]);
   return result;
 }
 
@@ -745,8 +906,18 @@ function constructDeviceMotionEvent(w, self, args) {
   deviceMotionEventFields(w, self, args);
   const dict = args[1] ?? {};
   const es = eventState(self);
-  es.acceleration = motionMember('acceleration', dict.acceleration, DeviceMotionEventAccelerationImpl, ACCELERATION_KEYS);
-  es.accelerationIncludingGravity = motionMember('accelerationIncludingGravity', dict.accelerationIncludingGravity, DeviceMotionEventAccelerationImpl, ACCELERATION_KEYS);
+  es.acceleration = motionMember(
+    'acceleration',
+    dict.acceleration,
+    DeviceMotionEventAccelerationImpl,
+    ACCELERATION_KEYS,
+  );
+  es.accelerationIncludingGravity = motionMember(
+    'accelerationIncludingGravity',
+    dict.accelerationIncludingGravity,
+    DeviceMotionEventAccelerationImpl,
+    ACCELERATION_KEYS,
+  );
   const interval = dict.interval;
   es.interval = interval === undefined ? 0 : finiteDouble('DeviceMotionEvent', 'interval', interval);
   es.rotationRate = motionMember('rotationRate', dict.rotationRate, DeviceMotionEventRotationRateImpl, ROTATION_KEYS);
@@ -766,15 +937,29 @@ function constructDeviceOrientationEvent(w, self, args) {
 
 // Interfaces of the acceleration and rotation rate members, never
 // instantiated (as in jsdom): illegal constructors whose accessors throw.
-const motionGetters = (keys) => Object.fromEntries(keys.map((key) => [key, { get() { return state(this)[key]; } }]));
+const motionGetters = (keys) =>
+  Object.fromEntries(
+    keys.map((key) => [
+      key,
+      {
+        get() {
+          return state(this)[key];
+        },
+      },
+    ]),
+  );
 
 export const EVENT_INTERFACES = [
-  { name: 'EventTarget', members: eventTarget, construct: (w, self) => {
-    // Not enumerable (see hiddenSlot in internal.js); EventTarget.prototype
-    // has no accessor for S, as nodes inherit it.
-    Object.defineProperty(self, S, { value: { window: w }, writable: true, configurable: true });
-    return self;
-  } },
+  {
+    name: 'EventTarget',
+    members: eventTarget,
+    construct: (w, self) => {
+      // Not enumerable (see hiddenSlot in internal.js); EventTarget.prototype
+      // has no accessor for S, as nodes inherit it.
+      Object.defineProperty(self, S, { value: { window: w }, writable: true, configurable: true });
+      return self;
+    },
+  },
   {
     name: 'Event',
     slot: [S, EVENT_SLOT.descriptor],
@@ -782,158 +967,442 @@ export const EVENT_INTERFACES = [
     construct: eventConstruct('Event'),
     members: {
       ...Object.fromEntries(Object.entries(PHASES).map(([k, v]) => [k, { constant: v }])),
-      get type() { return eventState(this).type; },
-      get target() { return exposed(eventState(this).target); },
-      get srcElement() { return exposed(eventState(this).target); },
-      get currentTarget() { return exposed(eventState(this).currentTarget); },
-      get eventPhase() { return eventState(this).eventPhase; },
-      get bubbles() { return eventState(this).bubbles; },
-      get cancelable() { return eventState(this).cancelable; },
-      get composed() { return eventState(this).composed; },
-      get defaultPrevented() { return eventState(this).canceled; },
-      get returnValue() { return !eventState(this).canceled; },
-      set returnValue(v) { if (!v) this.preventDefault(); },
-      get cancelBubble() { return eventState(this).stopped; },
-      get isTrusted() { return eventState(this).isTrusted; },
-      set cancelBubble(v) { const s = eventState(this); if (v) s.stopped = true; },
-      get timeStamp() { return eventState(this).timeStamp; },
-      composedPath() { eventState(this); return composedPath(this).map(exposed); },
-      preventDefault() { const s = eventState(this); if (s.cancelable && !s.inPassiveListener) s.canceled = true; },
-      stopPropagation() { eventState(this).stopped = true; },
-      stopImmediatePropagation() { const s = eventState(this); s.stopped = true; s.stopImmediate = true; },
+      get type() {
+        return eventState(this).type;
+      },
+      get target() {
+        return exposed(eventState(this).target);
+      },
+      get srcElement() {
+        return exposed(eventState(this).target);
+      },
+      get currentTarget() {
+        return exposed(eventState(this).currentTarget);
+      },
+      get eventPhase() {
+        return eventState(this).eventPhase;
+      },
+      get bubbles() {
+        return eventState(this).bubbles;
+      },
+      get cancelable() {
+        return eventState(this).cancelable;
+      },
+      get composed() {
+        return eventState(this).composed;
+      },
+      get defaultPrevented() {
+        return eventState(this).canceled;
+      },
+      get returnValue() {
+        return !eventState(this).canceled;
+      },
+      set returnValue(v) {
+        if (!v) this.preventDefault();
+      },
+      get cancelBubble() {
+        return eventState(this).stopped;
+      },
+      get isTrusted() {
+        return eventState(this).isTrusted;
+      },
+      set cancelBubble(v) {
+        const s = eventState(this);
+        if (v) s.stopped = true;
+      },
+      get timeStamp() {
+        return eventState(this).timeStamp;
+      },
+      composedPath() {
+        eventState(this);
+        return composedPath(this).map(exposed);
+      },
+      preventDefault() {
+        const s = eventState(this);
+        if (s.cancelable && !s.inPassiveListener) s.canceled = true;
+      },
+      stopPropagation() {
+        eventState(this).stopped = true;
+      },
+      stopImmediatePropagation() {
+        const s = eventState(this);
+        s.stopped = true;
+        s.stopImmediate = true;
+      },
       initEvent(type, bubbles = false, cancelable = false) {
         const s = eventState(this);
         if (type === undefined && arguments.length === 0) tooFewArguments('Event', 'initEvent', 1, 0);
         if (s.dispatching) return;
-        Object.assign(s, { type: String(type), bubbles: !!bubbles, cancelable: !!cancelable, initialized: true, canceled: false, stopped: false, stopImmediate: false, target: null });
+        Object.assign(s, {
+          type: String(type),
+          bubbles: !!bubbles,
+          cancelable: !!cancelable,
+          initialized: true,
+          canceled: false,
+          stopped: false,
+          stopImmediate: false,
+          target: null,
+        });
       },
     },
   },
-  { name: 'CustomEvent', parent: 'Event', construct: eventConstruct('CustomEvent', { detail: null }), members: {
-    get detail() { return eventState(this).detail; },
-    initCustomEvent(type, bubbles = undefined, cancelable = undefined, detail = undefined) {
-      const s = eventState(this);
-      if (type === undefined && arguments.length === 0) tooFewArguments('CustomEvent', 'initCustomEvent', 1, 0);
-      if (s.dispatching) return;
-      this.initEvent(type, bubbles, cancelable);
-      s.detail = detail ?? null;
+  {
+    name: 'CustomEvent',
+    parent: 'Event',
+    construct: eventConstruct('CustomEvent', { detail: null }),
+    members: {
+      get detail() {
+        return eventState(this).detail;
+      },
+      initCustomEvent(type, bubbles = undefined, cancelable = undefined, detail = undefined) {
+        const s = eventState(this);
+        if (type === undefined && arguments.length === 0) tooFewArguments('CustomEvent', 'initCustomEvent', 1, 0);
+        if (s.dispatching) return;
+        this.initEvent(type, bubbles, cancelable);
+        s.detail = detail ?? null;
+      },
     },
-  } },
-  { name: 'UIEvent', parent: 'Event', construct: eventConstruct('UIEvent', UI_FIELDS), members: {
-    ...fieldGetters(UI_FIELDS),
-    // A window installed as a VM context's global (Jest, Vitest's VM pools)
-    // is that global, as event.target is: the events warpdom fires (focus,
-    // blur, click()) name the window as their view, and jsdom's view there
-    // is the global, which holds what the test assigns (black box: Vitest
-    // vmThreads and Jest on jsdom 20.0.3, 26.1.0 and 30.1.3).
-    view: { get() { return exposed(eventState(this).view); } },
-    initUIEvent(type, bubbles, cancelable, view, detail) { legacyInit(this, type, bubbles, cancelable, { view: view ?? null, detail: Number(detail) | 0 }); },
-  } },
-  { name: 'MouseEvent', parent: 'UIEvent', construct: withModifierInit(eventConstruct('MouseEvent', MOUSE_FIELDS)), members: {
-    ...fieldGetters(MOUSE_OWN), ...modifierState,
-    initMouseEvent(type, bubbles, cancelable, view, detail, screenX, screenY, clientX, clientY, ctrlKey, altKey, shiftKey, metaKey, button, relatedTarget) {
-      legacyInit(this, type, bubbles, cancelable, {
-        view: view ?? null, detail: Number(detail) | 0, screenX: Number(screenX) | 0, screenY: Number(screenY) | 0,
-        clientX: Number(clientX) | 0, clientY: Number(clientY) | 0, ctrlKey: !!ctrlKey, altKey: !!altKey, shiftKey: !!shiftKey,
-        metaKey: !!metaKey, button: Number(button) | 0, relatedTarget: relatedTarget ?? null,
-      });
+  },
+  {
+    name: 'UIEvent',
+    parent: 'Event',
+    construct: eventConstruct('UIEvent', UI_FIELDS),
+    members: {
+      ...fieldGetters(UI_FIELDS),
+      // A window installed as a VM context's global (Jest, Vitest's VM pools)
+      // is that global, as event.target is: the events warpdom fires (focus,
+      // blur, click()) name the window as their view, and jsdom's view there
+      // is the global, which holds what the test assigns (black box: Vitest
+      // vmThreads and Jest on jsdom 20.0.3, 26.1.0 and 30.1.3).
+      view: {
+        get() {
+          return exposed(eventState(this).view);
+        },
+      },
+      initUIEvent(type, bubbles, cancelable, view, detail) {
+        legacyInit(this, type, bubbles, cancelable, { view: view ?? null, detail: Number(detail) | 0 });
+      },
     },
-    get pageX() { return eventState(this).clientX; },
-    get pageY() { return eventState(this).clientY; },
-    get x() { return eventState(this).clientX; },
-    get y() { return eventState(this).clientY; },
-    // Without layout the target's padding edge is at 0, 0, as in jsdom 22
-    // to 30 (black box: offsetX is clientX).
-    get offsetX() { return eventState(this).clientX; },
-    get offsetY() { return eventState(this).clientY; },
-  } },
-  { name: 'PointerEvent', parent: 'MouseEvent', construct: withModifierInit(eventConstruct('PointerEvent', POINTER_FIELDS)), members: {
-    ...fieldGetters(own(POINTER_FIELDS, MOUSE_FIELDS)),
-    getCoalescedEvents() { return []; },
-    getPredictedEvents() { return []; },
-  } },
-  { name: 'WheelEvent', parent: 'MouseEvent', statics: DELTA_MODES,
-    construct: withModifierInit(eventConstruct('WheelEvent', WHEEL_FIELDS)), members: { ...fieldGetters(own(WHEEL_FIELDS, MOUSE_FIELDS)), ...constants(DELTA_MODES) } },
-  { name: 'KeyboardEvent', parent: 'UIEvent', statics: KEY_LOCATIONS,
-    construct: withModifierInit(eventConstruct('KeyboardEvent', KEYBOARD_FIELDS)), members: {
-      ...fieldGetters(own(KEYBOARD_FIELDS, UI_FIELDS)), ...modifierState, ...constants(KEY_LOCATIONS),
-      initKeyboardEvent(type, bubbles, cancelable, view, key, location, ctrlKey, altKey, shiftKey, metaKey) {
+  },
+  {
+    name: 'MouseEvent',
+    parent: 'UIEvent',
+    construct: withModifierInit(eventConstruct('MouseEvent', MOUSE_FIELDS)),
+    members: {
+      ...fieldGetters(MOUSE_OWN),
+      ...modifierState,
+      initMouseEvent(
+        type,
+        bubbles,
+        cancelable,
+        view,
+        detail,
+        screenX,
+        screenY,
+        clientX,
+        clientY,
+        ctrlKey,
+        altKey,
+        shiftKey,
+        metaKey,
+        button,
+        relatedTarget,
+      ) {
         legacyInit(this, type, bubbles, cancelable, {
-          view: view ?? null, key: key == null ? '' : String(key), location: Number(location) >>> 0,
-          ctrlKey: !!ctrlKey, altKey: !!altKey, shiftKey: !!shiftKey, metaKey: !!metaKey,
+          view: view ?? null,
+          detail: Number(detail) | 0,
+          screenX: Number(screenX) | 0,
+          screenY: Number(screenY) | 0,
+          clientX: Number(clientX) | 0,
+          clientY: Number(clientY) | 0,
+          ctrlKey: !!ctrlKey,
+          altKey: !!altKey,
+          shiftKey: !!shiftKey,
+          metaKey: !!metaKey,
+          button: Number(button) | 0,
+          relatedTarget: relatedTarget ?? null,
         });
       },
-    } },
-  { name: 'TouchEvent', parent: 'UIEvent', construct: constructTouchEvent, members: {
-    ...fieldGetters(own(TOUCH_FIELDS, UI_FIELDS)), ...touchListGetters,
-  } },
-  { name: 'CompositionEvent', parent: 'UIEvent', construct: eventConstruct('CompositionEvent', COMPOSITION_FIELDS), members: {
-    ...fieldGetters(own(COMPOSITION_FIELDS, UI_FIELDS)),
-    initCompositionEvent(type, bubbles, cancelable, view, data) { legacyInit(this, type, bubbles, cancelable, { view: view ?? null, data: data == null ? '' : String(data) }); },
-  } },
-  { name: 'FocusEvent', parent: 'UIEvent', construct: eventConstruct('FocusEvent', FOCUS_FIELDS), members: fieldGetters(own(FOCUS_FIELDS, UI_FIELDS)) },
-  { name: 'InputEvent', parent: 'UIEvent', construct: eventConstruct('InputEvent', INPUT_FIELDS), members: {
-    ...fieldGetters(own(INPUT_FIELDS, UI_FIELDS)),
-  } },
-  { name: 'MessageEvent', parent: 'Event', construct: constructMessageEvent, members: {
-    ...fieldGetters(own(MESSAGE_FIELDS, { ports: null })),
-    get ports() { return eventState(this).ports; },
-    initMessageEvent(type, bubbles = undefined, cancelable = undefined, data = undefined, origin = undefined, lastEventId = undefined, source = undefined, ports = undefined) {
-      legacyInit(this, type, bubbles, cancelable, { data: data ?? null, origin: String(origin ?? ''), lastEventId: String(lastEventId ?? ''), source: source ?? null, ports: Array.from(ports ?? []) });
+      get pageX() {
+        return eventState(this).clientX;
+      },
+      get pageY() {
+        return eventState(this).clientY;
+      },
+      get x() {
+        return eventState(this).clientX;
+      },
+      get y() {
+        return eventState(this).clientY;
+      },
+      // Without layout the target's padding edge is at 0, 0, as in jsdom 22
+      // to 30 (black box: offsetX is clientX).
+      get offsetX() {
+        return eventState(this).clientX;
+      },
+      get offsetY() {
+        return eventState(this).clientY;
+      },
     },
-  } },
+  },
+  {
+    name: 'PointerEvent',
+    parent: 'MouseEvent',
+    construct: withModifierInit(eventConstruct('PointerEvent', POINTER_FIELDS)),
+    members: {
+      ...fieldGetters(own(POINTER_FIELDS, MOUSE_FIELDS)),
+      getCoalescedEvents() {
+        return [];
+      },
+      getPredictedEvents() {
+        return [];
+      },
+    },
+  },
+  {
+    name: 'WheelEvent',
+    parent: 'MouseEvent',
+    statics: DELTA_MODES,
+    construct: withModifierInit(eventConstruct('WheelEvent', WHEEL_FIELDS)),
+    members: { ...fieldGetters(own(WHEEL_FIELDS, MOUSE_FIELDS)), ...constants(DELTA_MODES) },
+  },
+  {
+    name: 'KeyboardEvent',
+    parent: 'UIEvent',
+    statics: KEY_LOCATIONS,
+    construct: withModifierInit(eventConstruct('KeyboardEvent', KEYBOARD_FIELDS)),
+    members: {
+      ...fieldGetters(own(KEYBOARD_FIELDS, UI_FIELDS)),
+      ...modifierState,
+      ...constants(KEY_LOCATIONS),
+      initKeyboardEvent(type, bubbles, cancelable, view, key, location, ctrlKey, altKey, shiftKey, metaKey) {
+        legacyInit(this, type, bubbles, cancelable, {
+          view: view ?? null,
+          key: key == null ? '' : String(key),
+          location: Number(location) >>> 0,
+          ctrlKey: !!ctrlKey,
+          altKey: !!altKey,
+          shiftKey: !!shiftKey,
+          metaKey: !!metaKey,
+        });
+      },
+    },
+  },
+  {
+    name: 'TouchEvent',
+    parent: 'UIEvent',
+    construct: constructTouchEvent,
+    members: {
+      ...fieldGetters(own(TOUCH_FIELDS, UI_FIELDS)),
+      ...touchListGetters,
+    },
+  },
+  {
+    name: 'CompositionEvent',
+    parent: 'UIEvent',
+    construct: eventConstruct('CompositionEvent', COMPOSITION_FIELDS),
+    members: {
+      ...fieldGetters(own(COMPOSITION_FIELDS, UI_FIELDS)),
+      initCompositionEvent(type, bubbles, cancelable, view, data) {
+        legacyInit(this, type, bubbles, cancelable, { view: view ?? null, data: data == null ? '' : String(data) });
+      },
+    },
+  },
+  {
+    name: 'FocusEvent',
+    parent: 'UIEvent',
+    construct: eventConstruct('FocusEvent', FOCUS_FIELDS),
+    members: fieldGetters(own(FOCUS_FIELDS, UI_FIELDS)),
+  },
+  {
+    name: 'InputEvent',
+    parent: 'UIEvent',
+    construct: eventConstruct('InputEvent', INPUT_FIELDS),
+    members: {
+      ...fieldGetters(own(INPUT_FIELDS, UI_FIELDS)),
+    },
+  },
+  {
+    name: 'MessageEvent',
+    parent: 'Event',
+    construct: constructMessageEvent,
+    members: {
+      ...fieldGetters(own(MESSAGE_FIELDS, { ports: null })),
+      get ports() {
+        return eventState(this).ports;
+      },
+      initMessageEvent(
+        type,
+        bubbles = undefined,
+        cancelable = undefined,
+        data = undefined,
+        origin = undefined,
+        lastEventId = undefined,
+        source = undefined,
+        ports = undefined,
+      ) {
+        legacyInit(this, type, bubbles, cancelable, {
+          data: data ?? null,
+          origin: String(origin ?? ''),
+          lastEventId: String(lastEventId ?? ''),
+          source: source ?? null,
+          ports: Array.from(ports ?? []),
+        });
+      },
+    },
+  },
   // CSS Transitions: jsdom has TransitionEvent from 27 (no AnimationEvent),
   // and React picks transitionend over webkitTransitionEnd only when it
   // exists. Not made by createEvent (jsdom neither).
-  { name: 'TransitionEvent', parent: 'Event', construct: constructTransitionEvent, members: fieldGetters(TRANSITION_FIELDS) },
+  {
+    name: 'TransitionEvent',
+    parent: 'Event',
+    construct: constructTransitionEvent,
+    members: fieldGetters(TRANSITION_FIELDS),
+  },
   { name: 'CloseEvent', parent: 'Event', construct: constructCloseEvent, members: fieldGetters(CLOSE_FIELDS) },
-  { name: 'ToggleEvent', parent: 'Event', construct: eventConstruct('ToggleEvent', { oldState: '', newState: '' }), members: fieldGetters({ oldState: '', newState: '' }) },
-  { name: 'PopStateEvent', parent: 'Event', construct: eventConstruct('PopStateEvent', { state: null }), members: fieldGetters({ state: null }) },
-  { name: 'HashChangeEvent', parent: 'Event', construct: eventConstruct('HashChangeEvent', { oldURL: '', newURL: '' }), members: fieldGetters({ oldURL: '', newURL: '' }) },
-  { name: 'SubmitEvent', parent: 'Event', construct: eventConstruct('SubmitEvent', { submitter: null }), members: fieldGetters({ submitter: null }) },
-  { name: 'ErrorEvent', parent: 'Event', construct: eventConstruct('ErrorEvent', ERROR_FIELDS), members: fieldGetters(ERROR_FIELDS) },
-  { name: 'StorageEvent', parent: 'Event', construct: eventConstruct('StorageEvent', STORAGE_FIELDS), members: {
-    ...fieldGetters(STORAGE_FIELDS),
-    initStorageEvent(type, bubbles = false, cancelable = false, key = null, oldValue = null, newValue = null, url = '', storageArea = null) {
-      legacyInit(this, type, bubbles, cancelable, {
-        key: key === null ? null : String(key), oldValue: oldValue === null ? null : String(oldValue),
-        newValue: newValue === null ? null : String(newValue), url: String(url), storageArea,
-      });
+  {
+    name: 'ToggleEvent',
+    parent: 'Event',
+    construct: eventConstruct('ToggleEvent', { oldState: '', newState: '' }),
+    members: fieldGetters({ oldState: '', newState: '' }),
+  },
+  {
+    name: 'PopStateEvent',
+    parent: 'Event',
+    construct: eventConstruct('PopStateEvent', { state: null }),
+    members: fieldGetters({ state: null }),
+  },
+  {
+    name: 'HashChangeEvent',
+    parent: 'Event',
+    construct: eventConstruct('HashChangeEvent', { oldURL: '', newURL: '' }),
+    members: fieldGetters({ oldURL: '', newURL: '' }),
+  },
+  {
+    name: 'SubmitEvent',
+    parent: 'Event',
+    construct: eventConstruct('SubmitEvent', { submitter: null }),
+    members: fieldGetters({ submitter: null }),
+  },
+  {
+    name: 'ErrorEvent',
+    parent: 'Event',
+    construct: eventConstruct('ErrorEvent', ERROR_FIELDS),
+    members: fieldGetters(ERROR_FIELDS),
+  },
+  {
+    name: 'StorageEvent',
+    parent: 'Event',
+    construct: eventConstruct('StorageEvent', STORAGE_FIELDS),
+    members: {
+      ...fieldGetters(STORAGE_FIELDS),
+      initStorageEvent(
+        type,
+        bubbles = false,
+        cancelable = false,
+        key = null,
+        oldValue = null,
+        newValue = null,
+        url = '',
+        storageArea = null,
+      ) {
+        legacyInit(this, type, bubbles, cancelable, {
+          key: key === null ? null : String(key),
+          oldValue: oldValue === null ? null : String(oldValue),
+          newValue: newValue === null ? null : String(newValue),
+          url: String(url),
+          storageArea,
+        });
+      },
     },
-  } },
-  { name: 'DeviceMotionEvent', parent: 'Event', construct: constructDeviceMotionEvent, members: fieldGetters(DEVICE_MOTION_FIELDS) },
-  { name: 'DeviceOrientationEvent', parent: 'Event', construct: constructDeviceOrientationEvent, members: fieldGetters(DEVICE_ORIENTATION_FIELDS) },
+  },
+  {
+    name: 'DeviceMotionEvent',
+    parent: 'Event',
+    construct: constructDeviceMotionEvent,
+    members: fieldGetters(DEVICE_MOTION_FIELDS),
+  },
+  {
+    name: 'DeviceOrientationEvent',
+    parent: 'Event',
+    construct: constructDeviceOrientationEvent,
+    members: fieldGetters(DEVICE_ORIENTATION_FIELDS),
+  },
   { name: 'DeviceMotionEventAcceleration', members: motionGetters(ACCELERATION_KEYS) },
   { name: 'DeviceMotionEventRotationRate', members: motionGetters(ROTATION_KEYS) },
-  { name: 'PromiseRejectionEvent', parent: 'Event', construct: constructPromiseRejectionEvent, members: fieldGetters({ promise: null, reason: undefined }) },
-  { name: 'BlobEvent', parent: 'Event', construct: constructBlobEvent, members: fieldGetters({ data: null, timecode: 0 }) },
-  { name: 'PageTransitionEvent', parent: 'Event', construct: constructPageTransitionEvent, members: fieldGetters({ persisted: false }) },
+  {
+    name: 'PromiseRejectionEvent',
+    parent: 'Event',
+    construct: constructPromiseRejectionEvent,
+    members: fieldGetters({ promise: null, reason: undefined }),
+  },
+  {
+    name: 'BlobEvent',
+    parent: 'Event',
+    construct: constructBlobEvent,
+    members: fieldGetters({ data: null, timecode: 0 }),
+  },
+  {
+    name: 'PageTransitionEvent',
+    parent: 'Event',
+    construct: constructPageTransitionEvent,
+    members: fieldGetters({ persisted: false }),
+  },
   // Not constructible: only createEvent (and navigation, not modeled) make one.
-  { name: 'BeforeUnloadEvent', parent: 'Event', members: {
-    get returnValue() { return eventState(this).unloadReturnValue ?? ''; },
-    set returnValue(v) { eventState(this).unloadReturnValue = String(v); },
-  } },
+  {
+    name: 'BeforeUnloadEvent',
+    parent: 'Event',
+    members: {
+      get returnValue() {
+        return eventState(this).unloadReturnValue ?? '';
+      },
+      set returnValue(v) {
+        eventState(this).unloadReturnValue = String(v);
+      },
+    },
+  },
 ];
 // The constructors' length (WebIDL: required arguments): the type.
 for (const iface of EVENT_INTERFACES) if (iface.construct && iface.name !== 'EventTarget') iface.length = 1;
 // PromiseRejectionEvent and BlobEvent require their init dictionary.
-for (const iface of EVENT_INTERFACES) if (iface.name === 'PromiseRejectionEvent' || iface.name === 'BlobEvent') iface.length = 2;
+for (const iface of EVENT_INTERFACES)
+  if (iface.name === 'PromiseRejectionEvent' || iface.name === 'BlobEvent') iface.length = 2;
 
 // document.createEvent(interface): an uninitialized event of that interface.
 // The DOM standard's createEvent table (ASCII case-insensitive), for the
 // interfaces warpdom has (dragevent and textevent: no DragEvent, TextEvent).
 const LEGACY_EVENT_NAMES = {
-  beforeunloadevent: 'BeforeUnloadEvent', compositionevent: 'CompositionEvent', customevent: 'CustomEvent',
-  devicemotionevent: 'DeviceMotionEvent', deviceorientationevent: 'DeviceOrientationEvent', event: 'Event', events: 'Event',
-  focusevent: 'FocusEvent', hashchangeevent: 'HashChangeEvent', htmlevents: 'Event', keyboardevent: 'KeyboardEvent',
-  messageevent: 'MessageEvent', mouseevent: 'MouseEvent', mouseevents: 'MouseEvent', storageevent: 'StorageEvent',
-  svgevents: 'Event', touchevent: 'TouchEvent', uievent: 'UIEvent', uievents: 'UIEvent',
+  beforeunloadevent: 'BeforeUnloadEvent',
+  compositionevent: 'CompositionEvent',
+  customevent: 'CustomEvent',
+  devicemotionevent: 'DeviceMotionEvent',
+  deviceorientationevent: 'DeviceOrientationEvent',
+  event: 'Event',
+  events: 'Event',
+  focusevent: 'FocusEvent',
+  hashchangeevent: 'HashChangeEvent',
+  htmlevents: 'Event',
+  keyboardevent: 'KeyboardEvent',
+  messageevent: 'MessageEvent',
+  mouseevent: 'MouseEvent',
+  mouseevents: 'MouseEvent',
+  storageevent: 'StorageEvent',
+  svgevents: 'Event',
+  touchevent: 'TouchEvent',
+  uievent: 'UIEvent',
+  uievents: 'UIEvent',
 };
 
 export function createEvent(window, name) {
-  const iface = Object.hasOwn(LEGACY_EVENT_NAMES, String(name).toLowerCase()) ? LEGACY_EVENT_NAMES[String(name).toLowerCase()] : undefined;
+  const iface = Object.hasOwn(LEGACY_EVENT_NAMES, String(name).toLowerCase())
+    ? LEGACY_EVENT_NAMES[String(name).toLowerCase()]
+    : undefined;
   // jsdom has the device events from 27 (createEvent too).
-  if (!iface || (window[S].compat.jsdom < 27 && (iface === 'DeviceMotionEvent' || iface === 'DeviceOrientationEvent'))) {
+  if (
+    !iface ||
+    (window[S].compat.jsdom < 27 && (iface === 'DeviceMotionEvent' || iface === 'DeviceOrientationEvent'))
+  ) {
     throw domError(`The provided event type ("${name}") is invalid.`, 'NotSupportedError');
   }
   let event;

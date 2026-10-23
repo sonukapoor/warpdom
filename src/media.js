@@ -11,7 +11,19 @@ const report = (el, method) => windowOf(el)[S].notImplemented(`HTMLMediaElement'
 
 function media(el) {
   const s = state(el);
-  return s.media ?? (s.media = { currentTime: 0, volume: 1, muted: false, playbackRate: 1, defaultPlaybackRate: 1, audioTracks: null, videoTracks: null, textTracks: null });
+  return (
+    s.media ??
+    (s.media = {
+      currentTime: 0,
+      volume: 1,
+      muted: false,
+      playbackRate: 1,
+      defaultPlaybackRate: 1,
+      audioTracks: null,
+      videoTracks: null,
+      textTracks: null,
+    })
+  );
 }
 
 // A change of volume or muted fires volumechange at the element: in a
@@ -26,7 +38,10 @@ function volumeChanged(el) {
 
 function finite(name, v) {
   const n = Number(v);
-  if (!Number.isFinite(n)) throw new TypeError(`Failed to set the '${name}' property on 'HTMLMediaElement': The provided double value is non-finite.`);
+  if (!Number.isFinite(n))
+    throw new TypeError(
+      `Failed to set the '${name}' property on 'HTMLMediaElement': The provided double value is non-finite.`,
+    );
   return n;
 }
 
@@ -38,39 +53,102 @@ function emptyRanges(el) {
 }
 
 export const MEDIA_MEMBERS = {
-  play() { report(this, 'play'); },
-  pause() { report(this, 'pause'); },
-  load() { report(this, 'load'); },
-  addTextTrack() { report(this, 'addTextTrack'); },
-  canPlayType(type) { state(this); void type; return ''; },
-  get paused() { state(this); return true; },
-  get ended() { state(this); return false; },
-  get seeking() { state(this); return false; },
-  get duration() { state(this); return NaN; },
-  get readyState() { state(this); return 0; },
-  get networkState() { state(this); return 0; },
-  get error() { state(this); return null; },
-  get currentSrc() { state(this); return ''; },
-  get buffered() { return emptyRanges(this); },
-  get played() { return emptyRanges(this); },
-  get seekable() { return emptyRanges(this); },
+  play() {
+    report(this, 'play');
+  },
+  pause() {
+    report(this, 'pause');
+  },
+  load() {
+    report(this, 'load');
+  },
+  addTextTrack() {
+    report(this, 'addTextTrack');
+  },
+  canPlayType(type) {
+    state(this);
+    void type;
+    return '';
+  },
+  get paused() {
+    state(this);
+    return true;
+  },
+  get ended() {
+    state(this);
+    return false;
+  },
+  get seeking() {
+    state(this);
+    return false;
+  },
+  get duration() {
+    state(this);
+    return NaN;
+  },
+  get readyState() {
+    state(this);
+    return 0;
+  },
+  get networkState() {
+    state(this);
+    return 0;
+  },
+  get error() {
+    state(this);
+    return null;
+  },
+  get currentSrc() {
+    state(this);
+    return '';
+  },
+  get buffered() {
+    return emptyRanges(this);
+  },
+  get played() {
+    return emptyRanges(this);
+  },
+  get seekable() {
+    return emptyRanges(this);
+  },
   // The track lists are empty arrays, the same one on every read, as in
   // jsdom 20 to 30 (no AudioTrackList, VideoTrackList or TextTrackList).
-  get audioTracks() { const m = media(this); return m.audioTracks ?? (m.audioTracks = []); },
-  get videoTracks() { const m = media(this); return m.videoTracks ?? (m.videoTracks = []); },
-  get textTracks() { const m = media(this); return m.textTracks ?? (m.textTracks = []); },
-  get currentTime() { return media(this).currentTime; },
-  set currentTime(v) { media(this).currentTime = finite('currentTime', v); },
-  get volume() { return media(this).volume; },
+  get audioTracks() {
+    const m = media(this);
+    return m.audioTracks ?? (m.audioTracks = []);
+  },
+  get videoTracks() {
+    const m = media(this);
+    return m.videoTracks ?? (m.videoTracks = []);
+  },
+  get textTracks() {
+    const m = media(this);
+    return m.textTracks ?? (m.textTracks = []);
+  },
+  get currentTime() {
+    return media(this).currentTime;
+  },
+  set currentTime(v) {
+    media(this).currentTime = finite('currentTime', v);
+  },
+  get volume() {
+    return media(this).volume;
+  },
   set volume(v) {
     const n = finite('volume', v);
-    if (n < 0 || n > 1) throw domError(`Failed to set the 'volume' property on 'HTMLMediaElement': The volume provided (${n}) is outside the range [0, 1].`, 'IndexSizeError');
+    if (n < 0 || n > 1)
+      throw domError(
+        `Failed to set the 'volume' property on 'HTMLMediaElement': The volume provided (${n}) is outside the range [0, 1].`,
+        'IndexSizeError',
+      );
     const m = media(this);
     if (m.volume === n) return;
     m.volume = n;
     volumeChanged(this);
   },
-  get muted() { return media(this).muted; },
+  get muted() {
+    return media(this).muted;
+  },
   set muted(v) {
     const m = media(this);
     const muted = !!v;
@@ -78,31 +156,65 @@ export const MEDIA_MEMBERS = {
     m.muted = muted;
     volumeChanged(this);
   },
-  get playbackRate() { return media(this).playbackRate; },
-  set playbackRate(v) { media(this).playbackRate = finite('playbackRate', v); },
-  get defaultPlaybackRate() { return media(this).defaultPlaybackRate; },
-  set defaultPlaybackRate(v) { media(this).defaultPlaybackRate = finite('defaultPlaybackRate', v); },
+  get playbackRate() {
+    return media(this).playbackRate;
+  },
+  set playbackRate(v) {
+    media(this).playbackRate = finite('playbackRate', v);
+  },
+  get defaultPlaybackRate() {
+    return media(this).defaultPlaybackRate;
+  },
+  set defaultPlaybackRate(v) {
+    media(this).defaultPlaybackRate = finite('defaultPlaybackRate', v);
+  },
 };
 
 export const MEDIA_STATICS = {
-  NETWORK_EMPTY: 0, NETWORK_IDLE: 1, NETWORK_LOADING: 2, NETWORK_NO_SOURCE: 3,
-  HAVE_NOTHING: 0, HAVE_METADATA: 1, HAVE_CURRENT_DATA: 2, HAVE_FUTURE_DATA: 3, HAVE_ENOUGH_DATA: 4,
+  NETWORK_EMPTY: 0,
+  NETWORK_IDLE: 1,
+  NETWORK_LOADING: 2,
+  NETWORK_NO_SOURCE: 3,
+  HAVE_NOTHING: 0,
+  HAVE_METADATA: 1,
+  HAVE_CURRENT_DATA: 2,
+  HAVE_FUTURE_DATA: 3,
+  HAVE_ENOUGH_DATA: 4,
 };
 
 // No video frames: intrinsic dimensions are 0.
 export const VIDEO_MEMBERS = {
-  get videoWidth() { state(this); return 0; },
-  get videoHeight() { state(this); return 0; },
+  get videoWidth() {
+    state(this);
+    return 0;
+  },
+  get videoHeight() {
+    state(this);
+    return 0;
+  },
 };
 
-const outOfRange = (index) => domError(`Failed to execute on 'TimeRanges': The index provided (${index}) is greater than or equal to the maximum bound (0).`, 'IndexSizeError');
+const outOfRange = (index) =>
+  domError(
+    `Failed to execute on 'TimeRanges': The index provided (${index}) is greater than or equal to the maximum bound (0).`,
+    'IndexSizeError',
+  );
 
 export const TIME_RANGES_INTERFACE = {
   name: 'TimeRanges',
   members: {
-    get length() { state(this); return 0; },
-    start(index) { state(this); throw outOfRange(index); },
-    end(index) { state(this); throw outOfRange(index); },
+    get length() {
+      state(this);
+      return 0;
+    },
+    start(index) {
+      state(this);
+      throw outOfRange(index);
+    },
+    end(index) {
+      state(this);
+      throw outOfRange(index);
+    },
   },
 };
 
@@ -115,12 +227,32 @@ const imageSize = (el, attr) => {
   return raw === undefined ? 0 : Number(raw) >>> 0;
 };
 export const IMAGE_MEMBERS = {
-  get width() { return imageSize(this, 'width'); },
-  set width(v) { this.setAttribute('width', String(Number(v) >>> 0)); },
-  get height() { return imageSize(this, 'height'); },
-  set height(v) { this.setAttribute('height', String(Number(v) >>> 0)); },
-  get naturalWidth() { state(this); return 0; },
-  get naturalHeight() { state(this); return 0; },
-  get complete() { const src = state(this).attrs.get('src'); return src === undefined || src === ''; },
-  get currentSrc() { state(this); return ''; },
+  get width() {
+    return imageSize(this, 'width');
+  },
+  set width(v) {
+    this.setAttribute('width', String(Number(v) >>> 0));
+  },
+  get height() {
+    return imageSize(this, 'height');
+  },
+  set height(v) {
+    this.setAttribute('height', String(Number(v) >>> 0));
+  },
+  get naturalWidth() {
+    state(this);
+    return 0;
+  },
+  get naturalHeight() {
+    state(this);
+    return 0;
+  },
+  get complete() {
+    const src = state(this).attrs.get('src');
+    return src === undefined || src === '';
+  },
+  get currentSrc() {
+    state(this);
+    return '';
+  },
 };

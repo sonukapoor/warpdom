@@ -23,7 +23,12 @@ import { join } from 'node:path';
 
 export const ORIGIN = 'http://web-platform.test:8000';
 export const HTTPS_ORIGIN = 'https://web-platform.test:8443';
-const WPT_HOSTS = new Set(['web-platform.test', 'www.web-platform.test', 'www1.web-platform.test', 'www2.web-platform.test']);
+const WPT_HOSTS = new Set([
+  'web-platform.test',
+  'www.web-platform.test',
+  'www1.web-platform.test',
+  'www2.web-platform.test',
+]);
 
 // The HTML document WPT's server generates for foo.any.js and foo.window.js
 // (documented under "testharness.js tests" > "Auto-generated test
@@ -33,9 +38,10 @@ export function wrapperHtml(test) {
   if (test.long) meta.push('<meta name="timeout" content="long">');
   if (test.title) meta.push(`<title>${escapeHtml(test.title)}</title>`);
   const scripts = (test.scripts ?? []).map((src) => `<script src="${escapeHtml(src)}"></script>`);
-  const global = test.kind === 'any'
-    ? '<script>\nself.GLOBAL = {\n  isWindow: function() { return true; },\n  isWorker: function() { return false; },\n  isShadowRealm: function() { return false; },\n};\n</script>\n'
-    : '';
+  const global =
+    test.kind === 'any'
+      ? '<script>\nself.GLOBAL = {\n  isWindow: function() { return true; },\n  isWorker: function() { return false; },\n  isShadowRealm: function() { return false; },\n};\n</script>\n'
+      : '';
   const base = test.file.split('/').pop();
   return `<!doctype html>\n<meta charset=utf-8>\n${meta.join('\n')}\n${global}<script src="/resources/testharness.js"></script>\n<script src="/resources/testharnessreport.js"></script>\n${scripts.join('\n')}\n<div id=log></div>\n<script src="${escapeHtml(base)}"></script>\n`;
 }
@@ -46,17 +52,28 @@ const escapeHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;
 // server: hosts, ports, the request's query and location.
 export function substitute(text, url) {
   const u = new URL(url);
-  const ports = { http: ['8000', '8001'], https: ['8443', '8444'], ws: ['8888'], wss: ['8889'], 'h2': ['9000'] };
+  const ports = { http: ['8000', '8001'], https: ['8443', '8444'], ws: ['8888'], wss: ['8889'], h2: ['9000'] };
   return text.replace(/\{\{([^}]+)\}\}/g, (all, expr) => {
     expr = expr.trim();
     if (expr === 'host') return 'web-platform.test';
     let m;
     if ((m = /^domains\[([^\]]*)\]$/.exec(expr))) return m[1] ? `${m[1]}.web-platform.test` : 'web-platform.test';
-    if ((m = /^hosts\[[^\]]*\]\[([^\]]*)\]$/.exec(expr))) return m[1] ? `${m[1]}.web-platform.test` : 'web-platform.test';
+    if ((m = /^hosts\[[^\]]*\]\[([^\]]*)\]$/.exec(expr)))
+      return m[1] ? `${m[1]}.web-platform.test` : 'web-platform.test';
     if ((m = /^ports\[(\w+)\]\[(\d+)\]$/.exec(expr))) return ports[m[1]]?.[Number(m[2])] ?? all;
     if ((m = /^GET\[([^\]]*)\]$/.exec(expr))) return u.searchParams.get(m[1]) ?? '';
     if ((m = /^location\[(\w+)\]$/.exec(expr))) {
-      const map = { host: u.host, hostname: u.hostname, port: u.port, scheme: u.protocol.slice(0, -1), path: u.pathname, query: u.search, server: u.origin, href: u.href, pathname: u.pathname };
+      const map = {
+        host: u.host,
+        hostname: u.hostname,
+        port: u.port,
+        scheme: u.protocol.slice(0, -1),
+        path: u.pathname,
+        query: u.search,
+        server: u.origin,
+        href: u.href,
+        pathname: u.pathname,
+      };
       return map[m[1]] ?? all;
     }
     if (expr === 'uuid()') return crypto.randomUUID();
@@ -77,8 +94,21 @@ export function wptFile(wptRoot, url) {
   return existsSync(file) && statSync(file).isFile() ? file : null;
 }
 
-const MIME = { js: 'text/javascript', html: 'text/html', htm: 'text/html', css: 'text/css', json: 'application/json', xml: 'application/xml',
-  xhtml: 'application/xhtml+xml', svg: 'image/svg+xml', txt: 'text/plain', idl: 'text/plain', png: 'image/png', gif: 'image/gif', jpg: 'image/jpeg' };
+const MIME = {
+  js: 'text/javascript',
+  html: 'text/html',
+  htm: 'text/html',
+  css: 'text/css',
+  json: 'application/json',
+  xml: 'application/xml',
+  xhtml: 'application/xhtml+xml',
+  svg: 'image/svg+xml',
+  txt: 'text/plain',
+  idl: 'text/plain',
+  png: 'image/png',
+  gif: 'image/gif',
+  jpg: 'image/jpeg',
+};
 
 // The host's fetch, for data: and blob: URLs (warpdom's XMLHttpRequest
 // fetches through the global's fetch, which the runner replaces).
@@ -90,26 +120,58 @@ const hostFetch = globalThis.fetch;
 // Static files only: no headers files, no Python handlers.
 export function wptFetch(wptRoot, baseUrl) {
   return async function fetch(input, init) {
-    const href = typeof input === 'string' ? input : input?.url ?? String(input);
+    const href = typeof input === 'string' ? input : (input?.url ?? String(input));
     const url = new URL(href, baseUrl());
     if (url.protocol === 'data:' || url.protocol === 'blob:') return hostFetch(url.href, init);
-    if (!WPT_HOSTS.has(url.hostname)) throw new TypeError('Failed to fetch (network access is not available in this runner)');
+    if (!WPT_HOSTS.has(url.hostname))
+      throw new TypeError('Failed to fetch (network access is not available in this runner)');
     const file = wptFile(wptRoot, url);
     if (!file) return new Response('', { status: 404, statusText: 'Not Found' });
     const ext = file.split('.').pop();
-    const response = new Response(readFileSync(file), { status: 200, headers: { 'content-type': MIME[ext] ?? 'application/octet-stream' } });
+    const response = new Response(readFileSync(file), {
+      status: 200,
+      headers: { 'content-type': MIME[ext] ?? 'application/octet-stream' },
+    });
     Object.defineProperty(response, 'url', { value: url.href });
     return response;
   };
 }
 
-const JS_TYPES = new Set(['', 'text/javascript', 'application/javascript', 'application/ecmascript', 'application/x-ecmascript',
-  'application/x-javascript', 'text/ecmascript', 'text/javascript1.0', 'text/javascript1.1', 'text/javascript1.2',
-  'text/javascript1.3', 'text/javascript1.4', 'text/javascript1.5', 'text/jscript', 'text/livescript', 'text/x-ecmascript', 'text/x-javascript']);
+const JS_TYPES = new Set([
+  '',
+  'text/javascript',
+  'application/javascript',
+  'application/ecmascript',
+  'application/x-ecmascript',
+  'application/x-javascript',
+  'text/ecmascript',
+  'text/javascript1.0',
+  'text/javascript1.1',
+  'text/javascript1.2',
+  'text/javascript1.3',
+  'text/javascript1.4',
+  'text/javascript1.5',
+  'text/jscript',
+  'text/livescript',
+  'text/x-ecmascript',
+  'text/x-javascript',
+]);
 
 // Elements whose children are moved with them (raw text, or content the
 // parser builds before anything can observe it).
-const KEEP_CHILDREN = new Set(['SCRIPT', 'STYLE', 'TEXTAREA', 'TITLE', 'XMP', 'IFRAME', 'NOEMBED', 'NOFRAMES', 'NOSCRIPT', 'PLAINTEXT', 'OPTION']);
+const KEEP_CHILDREN = new Set([
+  'SCRIPT',
+  'STYLE',
+  'TEXTAREA',
+  'TITLE',
+  'XMP',
+  'IFRAME',
+  'NOEMBED',
+  'NOFRAMES',
+  'NOSCRIPT',
+  'PLAINTEXT',
+  'OPTION',
+]);
 
 // Loads the test page into engine.window. host provides { yieldToTasks(),
 // reporterSource, note(message) }. Returns when load has been dispatched.
@@ -128,12 +190,22 @@ export async function loadPage(engine, test, { wptRoot, reporterSource, yieldToT
   engine.adoptDocumentMode?.(parsed);
 
   const later = []; // deferred and async classic scripts, in document order
-  const baseUrl = () => (typeof document.baseURI === 'string' && document.baseURI !== 'about:blank' ? document.baseURI : testUrl);
-  Object.defineProperty(engine.global, 'fetch', { value: wptFetch(wptRoot, baseUrl), writable: true, configurable: true, enumerable: false });
+  const baseUrl = () =>
+    typeof document.baseURI === 'string' && document.baseURI !== 'about:blank' ? document.baseURI : testUrl;
+  Object.defineProperty(engine.global, 'fetch', {
+    value: wptFetch(wptRoot, baseUrl),
+    writable: true,
+    configurable: true,
+    enumerable: false,
+  });
 
   function scriptSource(src) {
     let url;
-    try { url = new URL(src, baseUrl()); } catch { return null; }
+    try {
+      url = new URL(src, baseUrl());
+    } catch {
+      return null;
+    }
     if (!WPT_HOSTS.has(url.hostname)) return null;
     if (url.pathname === '/resources/testharnessreport.js') return { code: reporterSource, filename: url.href };
     const file = wptFile(wptRoot, url);
@@ -169,7 +241,10 @@ export async function loadPage(engine, test, { wptRoot, reporterSource, yieldToT
         return;
       }
       const src = script.getAttribute('src');
-      const source = src != null ? scriptSource(src) : { code: script.textContent, filename: `${testUrl}#inline-module-${++inlineModules}` };
+      const source =
+        src != null
+          ? scriptSource(src)
+          : { code: script.textContent, filename: `${testUrl}#inline-module-${++inlineModules}` };
       if (!source) {
         fire(script, 'error');
         return;

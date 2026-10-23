@@ -24,7 +24,16 @@
 import { S, state, domError, tooFewArguments, PLATFORM_GLOBAL, PlatformURL as URL, DOCUMENT_NODE } from './internal.js';
 import { dispatch } from './events.js';
 import { handlerMembers } from './event-handlers.js';
-import { decodeText, encodingOf, webidlString, bufferBytes, isSharedArrayBuffer, realmOf, utf8Encode, PlatformTextDecoder } from './encoding.js';
+import {
+  decodeText,
+  encodingOf,
+  webidlString,
+  bufferBytes,
+  isSharedArrayBuffer,
+  realmOf,
+  utf8Encode,
+  PlatformTextDecoder,
+} from './encoding.js';
 import { blobData, makeBlob } from './file-reader.js';
 import { documentBaseURL } from './base-url.js';
 import { innerMarkup, serializeXML } from './dom-parsing.js';
@@ -43,7 +52,11 @@ const hostSetTimeout = PLATFORM_GLOBAL.setTimeout?.bind(PLATFORM_GLOBAL);
 const hostClearTimeout = PLATFORM_GLOBAL.clearTimeout?.bind(PLATFORM_GLOBAL);
 const hostNow = PLATFORM_GLOBAL.Date.now.bind(PLATFORM_GLOBAL.Date);
 
-const UNSENT = 0, OPENED = 1, HEADERS_RECEIVED = 2, LOADING = 3, DONE = 4;
+const UNSENT = 0,
+  OPENED = 1,
+  HEADERS_RECEIVED = 2,
+  LOADING = 3,
+  DONE = 4;
 const STATES = { UNSENT, OPENED, HEADERS_RECEIVED, LOADING, DONE };
 
 const TOKEN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
@@ -53,15 +66,42 @@ const NORMALIZED_METHODS = new Set(['DELETE', 'GET', 'HEAD', 'OPTIONS', 'POST', 
 
 // Forbidden request header names (Fetch, without Set-Cookie, which jsdom
 // sends): setting one silently does nothing.
-const FORBIDDEN_HEADERS = new Set(['accept-charset', 'accept-encoding', 'access-control-request-headers', 'access-control-request-method',
-  'connection', 'content-length', 'cookie', 'cookie2', 'date', 'dnt', 'expect', 'host', 'keep-alive', 'origin', 'referer',
-  'te', 'trailer', 'transfer-encoding', 'upgrade', 'via']);
+const FORBIDDEN_HEADERS = new Set([
+  'accept-charset',
+  'accept-encoding',
+  'access-control-request-headers',
+  'access-control-request-method',
+  'connection',
+  'content-length',
+  'cookie',
+  'cookie2',
+  'date',
+  'dnt',
+  'expect',
+  'host',
+  'keep-alive',
+  'origin',
+  'referer',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade',
+  'via',
+]);
 const METHOD_OVERRIDE_HEADERS = new Set(['x-http-method', 'x-http-method-override', 'x-method-override']);
 // Author headers that need no CORS preflight (jsdom: Content-Type with any value).
 const SIMPLE_HEADERS = new Set(['accept', 'accept-language', 'content-language', 'content-type']);
 // Response headers a cross-origin response exposes without
 // Access-Control-Expose-Headers (CORS-safelisted response header names).
-const SAFELISTED_RESPONSE = new Set(['cache-control', 'content-language', 'content-length', 'content-type', 'expires', 'last-modified', 'pragma']);
+const SAFELISTED_RESPONSE = new Set([
+  'cache-control',
+  'content-language',
+  'content-length',
+  'content-type',
+  'expires',
+  'last-modified',
+  'pragma',
+]);
 
 // --- MIME types (MIME Sniffing 4.4 and 4.5) ---------------------------------------------------
 
@@ -103,7 +143,8 @@ function parseMime(input) {
       i = end;
       if (value === '') continue;
     }
-    if (name !== '' && TOKEN.test(name) && QUOTED_OK.test(value) && !mime.params.has(name)) mime.params.set(name, value);
+    if (name !== '' && TOKEN.test(name) && QUOTED_OK.test(value) && !mime.params.has(name))
+      mime.params.set(name, value);
   }
   return mime;
 }
@@ -146,13 +187,27 @@ const xhrState = (self) => {
 // A response: status, statusText, url, headers (a fetch Headers, or null
 // for a network error), exposed (for a cross-origin response: the header
 // names it exposes, or null for all) and the body received so far.
-const networkError = () => ({ status: 0, statusText: '', url: '', headers: null, exposed: null, chunks: [], length: 0, bytes: null, total: 0, computable: false });
+const networkError = () => ({
+  status: 0,
+  statusText: '',
+  url: '',
+  headers: null,
+  exposed: null,
+  chunks: [],
+  length: 0,
+  bytes: null,
+  total: 0,
+  computable: false,
+});
 
 function responseBytes(r) {
   if (r.bytes !== null && r.bytes.length === r.length) return r.bytes;
   const bytes = new Uint8Array(r.length);
   let at = 0;
-  for (const c of r.chunks) { bytes.set(c, at); at += c.length; }
+  for (const c of r.chunks) {
+    bytes.set(c, at);
+    at += c.length;
+  }
   r.chunks = r.length ? [bytes] : [];
   r.bytes = bytes;
   return bytes;
@@ -184,8 +239,16 @@ function decodeBody(s, bytes) {
   const label = charsetLabel(s);
   // The replacement encoding (iso-2022-kr and the like): one U+FFFD for
   // any input, unless a byte order mark decides (jsdom before 27.4: UTF-8).
-  if (label !== undefined && bytes.length !== 0 && s.window[S].compat.xhrReplacement && encodingOf(label) === 'replacement'
-    && !(bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) && !(bytes[0] === 0xfe && bytes[1] === 0xff) && !(bytes[0] === 0xff && bytes[1] === 0xfe)) return '\ufffd';
+  if (
+    label !== undefined &&
+    bytes.length !== 0 &&
+    s.window[S].compat.xhrReplacement &&
+    encodingOf(label) === 'replacement' &&
+    !(bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) &&
+    !(bytes[0] === 0xfe && bytes[1] === 0xff) &&
+    !(bytes[0] === 0xff && bytes[1] === 0xfe)
+  )
+    return '\ufffd';
   return decodeText(bytes, label);
 }
 
@@ -205,7 +268,8 @@ function encodingName(s, bytes) {
 // An encoding's name as the Encoding standard writes it (characterSet:
 // "ISO-8859-2", "Shift_JIS"; as jsdom), from warpdom's lowercase one.
 const MIXED_CASE_NAMES = { ibm866: 'IBM866', gbk: 'GBK', big5: 'Big5', shift_jis: 'Shift_JIS' };
-const canonicalName = (name) => MIXED_CASE_NAMES[name] ?? (/^(utf|iso|koi8|euc)-/.test(name) ? name.toUpperCase() : name);
+const canonicalName = (name) =>
+  MIXED_CASE_NAMES[name] ?? (/^(utf|iso|koi8|euc)-/.test(name) ? name.toUpperCase() : name);
 
 let utf8Decoder = null;
 const utf8Decode = (bytes) => (utf8Decoder ??= new PlatformTextDecoder()).decode(bytes);
@@ -287,7 +351,10 @@ function concat(parts) {
   for (const p of parts) size += p.length;
   const out = new Uint8Array(size);
   let at = 0;
-  for (const p of parts) { out.set(p, at); at += p.length; }
+  for (const p of parts) {
+    out.set(p, at);
+    at += p.length;
+  }
   return out;
 }
 
@@ -306,18 +373,33 @@ function extractBody(body, legacy, legacyMultipart, rejectsShared) {
   if (body?.[S]?.type === DOCUMENT_NODE) {
     // XHR serializes without the well-formed flag (as jsdom).
     const bytes = utf8Encode(body[S].xml ? serializeXML(body) : innerMarkup(body));
-    return { body: bodyOf(bytes), length: bytes.length, type: body[S].xml ? 'application/xml;charset=UTF-8' : 'text/html;charset=UTF-8', text: true };
+    return {
+      body: bodyOf(bytes),
+      length: bytes.length,
+      type: body[S].xml ? 'application/xml;charset=UTF-8' : 'text/html;charset=UTF-8',
+      text: true,
+    };
   }
   const blob = blobData(body);
-  if (blob !== undefined) return { body: bodyOf(blob.bytes), length: blob.bytes.length, type: blob.type || fallback, text: false };
-  if (typeof PlatformBlob === 'function' && body instanceof PlatformBlob) return { body, length: body.size, type: body.type || fallback, text: false };
+  if (blob !== undefined)
+    return { body: bodyOf(blob.bytes), length: blob.bytes.length, type: blob.type || fallback, text: false };
+  if (typeof PlatformBlob === 'function' && body instanceof PlatformBlob)
+    return { body, length: body.size, type: body.type || fallback, text: false };
   if (rejectsShared && ArrayBuffer.isView(body) && isSharedArrayBuffer(body.buffer)) {
-    throw new TypeError("Failed to execute 'send' on 'XMLHttpRequest': parameter 1 is a view on a SharedArrayBuffer, which is not allowed.");
+    throw new TypeError(
+      "Failed to execute 'send' on 'XMLHttpRequest': parameter 1 is a view on a SharedArrayBuffer, which is not allowed.",
+    );
   }
   const view = bufferBytes(body);
-  if (view !== null) { const bytes = view.slice(); return { body: bodyOf(bytes), length: bytes.length, type: fallback, text: false }; }
+  if (view !== null) {
+    const bytes = view.slice();
+    return { body: bodyOf(bytes), length: bytes.length, type: fallback, text: false };
+  }
   const entries = formDataEntries(body);
-  if (entries !== null) { const { bytes, type } = multipart(entries, legacyMultipart); return { body: bodyOf(bytes), length: bytes.length, type, text: false }; }
+  if (entries !== null) {
+    const { bytes, type } = multipart(entries, legacyMultipart);
+    return { body: bodyOf(bytes), length: bytes.length, type, text: false };
+  }
   // Strings, and everything else (URLSearchParams too, as in jsdom) as a string.
   const bytes = utf8Encode(String(body).toWellFormed?.() ?? String(body));
   return { body: bodyOf(bytes), length: bytes.length, type: 'text/plain;charset=UTF-8', text: true };
@@ -329,7 +411,11 @@ function extractBody(body, legacy, legacyMultipart, rejectsShared) {
 function corsError(response, origin, credentials) {
   const allow = response.headers.get('access-control-allow-origin');
   if (allow === '*' && !credentials) return null;
-  if (allow === '*' || (allow === origin && credentials && response.headers.get('access-control-allow-credentials') !== 'true')) return 'Credentials forbidden';
+  if (
+    allow === '*' ||
+    (allow === origin && credentials && response.headers.get('access-control-allow-credentials') !== 'true')
+  )
+    return 'Credentials forbidden';
   return allow === origin ? null : `Cross origin ${origin} forbidden`;
 }
 
@@ -400,14 +486,27 @@ async function fetchFollowing(fetch, s, req) {
     // a header named __proto__.
     // credentials 'omit': warpdom has no cookies, and a host's (a browser's)
     // must not go with the request.
-    const init = { method, headers: Object.entries(headers), body, credentials: 'omit', redirect: hostFollows.has(fetch) ? 'follow' : 'manual', signal };
+    const init = {
+      method,
+      headers: Object.entries(headers),
+      body,
+      credentials: 'omit',
+      redirect: hostFollows.has(fetch) ? 'follow' : 'manual',
+      signal,
+    };
     let response = await fetch(fetchURL, init);
-    if (s.req !== req) { response.body?.cancel().catch(() => {}); return null; }
+    if (s.req !== req) {
+      response.body?.cancel().catch(() => {});
+      return null;
+    }
     if (response.type === 'opaqueredirect' && init.redirect === 'manual') {
       hostFollows.add(fetch);
       init.redirect = 'follow';
       response = await fetch(fetchURL, init);
-      if (s.req !== req) { response.body?.cancel().catch(() => {}); return null; }
+      if (s.req !== req) {
+        response.body?.cancel().catch(() => {});
+        return null;
+      }
     }
     if (init.redirect === 'follow' && response.redirected) {
       const final = new URL(response.url);
@@ -423,7 +522,11 @@ async function fetchFollowing(fetch, s, req) {
     response.body?.cancel().catch(() => {});
     if (redirects === 20) return 'Error: Maximum number of redirects exceeded';
     let next;
-    try { next = new URL(location, url); } catch { return `Error: Invalid redirect location ${location}`; }
+    try {
+      next = new URL(location, url);
+    } catch {
+      return `Error: Invalid redirect location ${location}`;
+    }
     if (!httpURL(next)) return `Error: Redirect to an unsupported scheme ${next.protocol}`;
     if (next.hash === '' && !location.includes('#') && !legacy) next.hash = url.hash;
     const hopCross = url.origin !== origin;
@@ -437,7 +540,10 @@ async function fetchFollowing(fetch, s, req) {
     if (hopCross && next.origin !== url.origin && (legacy || cross || nextCross)) tainted = true;
     headers = Object.assign(Object.create(null), headers);
     const status = response.status;
-    if (((status === 301 || status === 302) && method === 'POST') || (status === 303 && method !== 'GET' && method !== 'HEAD')) {
+    if (
+      ((status === 301 || status === 302) && method === 'POST') ||
+      (status === 303 && method !== 'GET' && method !== 'HEAD')
+    ) {
       method = 'GET';
       body = null;
       for (const name of BODY_HEADERS) deleteHeader(headers, name);
@@ -452,7 +558,11 @@ async function fetchFollowing(fetch, s, req) {
   }
 }
 
-const headerList = (value) => (value ?? '').split(',').map((v) => v.trim().toLowerCase()).filter((v) => v !== '');
+const headerList = (value) =>
+  (value ?? '')
+    .split(',')
+    .map((v) => v.trim().toLowerCase())
+    .filter((v) => v !== '');
 
 // --- the request ------------------------------------------------------------------------------
 
@@ -465,7 +575,9 @@ function requestError(xhr, s, type) {
   s.uploadComplete = true;
   const uploadEvents = uploadPending && s.uploadListener && upload !== null;
   if (type === 'timeout') {
-    if (uploadPending) { if (uploadEvents) fireProgress(upload, window, 'progress'); } else fireProgress(xhr, window, 'progress');
+    if (uploadPending) {
+      if (uploadEvents) fireProgress(upload, window, 'progress');
+    } else fireProgress(xhr, window, 'progress');
   }
   s.state = DONE;
   s.send = false;
@@ -486,7 +598,11 @@ function stop(s) {
   if (req.timer !== null) hostClearTimeout(req.timer);
   req.timer = null;
   s.window[S].pendingRequests?.delete(req);
-  try { req.controller?.abort(); } catch { /* the host's abort */ }
+  try {
+    req.controller?.abort();
+  } catch {
+    /* the host's abort */
+  }
   // A read in progress ends too, where the stream ignores the abort signal
   // (a fetch mock's).
   req.reader?.cancel().catch(() => {});
@@ -524,7 +640,10 @@ function armTimeout(xhr, s, req) {
   req.timer = null;
   if (s.timeout === 0) return;
   const remaining = Math.max(0, s.timeout - (hostNow() - req.start));
-  req.timer = hostSetTimeout(() => { req.timer = null; timedOut(xhr, s, req); }, remaining);
+  req.timer = hostSetTimeout(() => {
+    req.timer = null;
+    timedOut(xhr, s, req);
+  }, remaining);
 }
 
 function completeUpload(s, req, cross) {
@@ -548,31 +667,65 @@ async function run(xhr, s, req) {
   const window = s.window;
   const compat = window[S].compat;
   const fetch = PLATFORM_GLOBAL.fetch;
-  if (req.urlError !== null) { await null; fail(xhr, s, req, req.urlError); return; }
-  if (typeof fetch !== 'function') { fail(xhr, s, req, 'fetch is not available'); return; }
+  if (req.urlError !== null) {
+    await null;
+    fail(xhr, s, req, req.urlError);
+    return;
+  }
+  if (typeof fetch !== 'function') {
+    fail(xhr, s, req, 'fetch is not available');
+    return;
+  }
   const { method, origin, cross, credentials } = req;
   let response;
   try {
     if (req.preflight) {
-      const headers = { Origin: origin, 'Access-Control-Request-Method': method, 'User-Agent': req.userAgent, Accept: '*/*', 'Accept-Language': 'en' };
+      const headers = {
+        Origin: origin,
+        'Access-Control-Request-Method': method,
+        'User-Agent': req.userAgent,
+        Accept: '*/*',
+        'Accept-Language': 'en',
+      };
       if (req.unsafe.length) headers['Access-Control-Request-Headers'] = req.unsafe.join(', ');
-      const preflight = await fetch(req.fetchURL, { method: 'OPTIONS', headers, credentials: 'omit', redirect: 'manual', signal: req.controller.signal });
+      const preflight = await fetch(req.fetchURL, {
+        method: 'OPTIONS',
+        headers,
+        credentials: 'omit',
+        redirect: 'manual',
+        signal: req.controller.signal,
+      });
       // The body is not read (also when the request was stopped meanwhile:
       // a fetch mock may not stop its stream on the abort signal).
       preflight.body?.cancel().catch(() => {});
       if (s.req !== req) return;
-      if (preflight.status < 200 || preflight.status > 299) { fail(xhr, s, req, `Error: Response for preflight has invalid HTTP status code ${preflight.status}`); return; }
+      if (preflight.status < 200 || preflight.status > 299) {
+        fail(xhr, s, req, `Error: Response for preflight has invalid HTTP status code ${preflight.status}`);
+        return;
+      }
       const denied = corsError(preflight, origin, credentials);
-      if (denied !== null) { fail(xhr, s, req, denied); return; }
+      if (denied !== null) {
+        fail(xhr, s, req, denied);
+        return;
+      }
       const allowed = headerList(preflight.headers.get('access-control-allow-headers'));
       const missing = allowed.includes('*') ? [] : req.unsafe.filter((name) => !allowed.includes(name.toLowerCase()));
-      if (missing.length) { fail(xhr, s, req, `Headers ${missing.join(', ')} forbidden`); return; }
+      if (missing.length) {
+        fail(xhr, s, req, `Headers ${missing.join(', ')} forbidden`);
+        return;
+      }
     }
     const result = await fetchFollowing(fetch, s, req);
     if (result === null) return;
     // Stopped (abort(), open(), a teardown) while fetchFollowing() returned.
-    if (s.req !== req) { if (typeof result === 'object') result.response.body?.cancel().catch(() => {}); return; }
-    if (typeof result === 'string') { fail(xhr, s, req, result); return; }
+    if (s.req !== req) {
+      if (typeof result === 'object') result.response.body?.cancel().catch(() => {});
+      return;
+    }
+    if (typeof result === 'string') {
+      fail(xhr, s, req, result);
+      return;
+    }
     response = result;
   } catch (error) {
     fail(xhr, s, req, error?.cause?.message || error?.cause?.name || error?.message);
@@ -589,25 +742,46 @@ async function run(xhr, s, req) {
   let exposed = null;
   if (checked) {
     const list = headerList(response.headers.get('access-control-expose-headers'));
-    exposed = list.includes('*') && !credentials && compat.xhrUndici ? null : new Set([...SAFELISTED_RESPONSE, ...list]);
+    exposed =
+      list.includes('*') && !credentials && compat.xhrUndici ? null : new Set([...SAFELISTED_RESPONSE, ...list]);
   }
   const length = response.headers.get('content-length');
-  const total = length !== null && /^\d+$/.test(length) && !response.headers.has('content-encoding') ? Number(length) : 0;
+  const total =
+    length !== null && /^\d+$/.test(length) && !response.headers.has('content-encoding') ? Number(length) : 0;
   // jsdom 28 and later complete the upload before HEADERS_RECEIVED, and its
   // handlers see no response yet (status 0, no URL or headers); earlier
   // ones after it. A request stopped in a handler cancels the body (jsdom
   // fires the upload's remaining events, and from 28 a readystatechange,
   // after the abort: warpdom does not, as the standard).
-  if (compat.xhrUndici && !completeUpload(s, req, cross)) { response.body?.cancel().catch(() => {}); return; }
+  if (compat.xhrUndici && !completeUpload(s, req, cross)) {
+    response.body?.cancel().catch(() => {});
+    return;
+  }
   // As jsdom, the URL keeps its fragment when there was no redirect.
-  s.response = { status: response.status, statusText: response.statusText, url: finalURL, headers: response.headers, exposed,
-    chunks: [], length: 0, bytes: null, total, computable: total !== 0 };
+  s.response = {
+    status: response.status,
+    statusText: response.statusText,
+    url: finalURL,
+    headers: response.headers,
+    exposed,
+    chunks: [],
+    length: 0,
+    bytes: null,
+    total,
+    computable: total !== 0,
+  };
   s.responseObject = undefined;
   s.text = null;
   s.state = HEADERS_RECEIVED;
   fireStateChange(xhr, window);
-  if (s.req !== req) { response.body?.cancel().catch(() => {}); return; }
-  if (!compat.xhrUndici && !completeUpload(s, req, cross)) { response.body?.cancel().catch(() => {}); return; }
+  if (s.req !== req) {
+    response.body?.cancel().catch(() => {});
+    return;
+  }
+  if (!compat.xhrUndici && !completeUpload(s, req, cross)) {
+    response.body?.cancel().catch(() => {});
+    return;
+  }
 
   const r = s.response;
   if (response.body !== null) {
@@ -621,16 +795,28 @@ async function run(xhr, s, req) {
         fail(xhr, s, req, error?.message);
         return;
       }
-      if (s.req !== req) { reader.cancel().catch(() => {}); return; }
-      if (chunk.done) { req.reader = null; break; }
+      if (s.req !== req) {
+        reader.cancel().catch(() => {});
+        return;
+      }
+      if (chunk.done) {
+        req.reader = null;
+        break;
+      }
       if (chunk.value.length === 0) continue;
       r.chunks.push(chunk.value);
       r.length += chunk.value.length;
       s.state = LOADING;
       fireStateChange(xhr, window);
-      if (s.req !== req) { reader.cancel().catch(() => {}); return; }
+      if (s.req !== req) {
+        reader.cancel().catch(() => {});
+        return;
+      }
       fireProgress(xhr, window, 'progress', r.length, r.total, r.computable);
-      if (s.req !== req) { reader.cancel().catch(() => {}); return; }
+      if (s.req !== req) {
+        reader.cancel().catch(() => {});
+        return;
+      }
     }
   }
   // An empty body: jsdom 28 and later fire one progress event, in HEADERS_RECEIVED.
@@ -651,20 +837,29 @@ async function run(xhr, s, req) {
 function send(xhr, s, body) {
   if (s.state !== OPENED || s.send) throw domError(INVALID_STATE, 'InvalidStateError');
   if (s.sync) {
-    throw domError('warpdom does not support synchronous XMLHttpRequest (open() with async set to false): its core cannot block on a request. '
-      + 'Make the request asynchronous, or run this test with jsdom.', 'NotSupportedError');
+    throw domError(
+      'warpdom does not support synchronous XMLHttpRequest (open() with async set to false): its core cannot block on a request. ' +
+        'Make the request asynchronous, or run this test with jsdom.',
+      'NotSupportedError',
+    );
   }
   const window = s.window;
   const compat = window[S].compat;
   const legacy = !compat.xhrUndici;
   const method = s.method;
-  const extracted = body === undefined || body === null || method === 'GET' || method === 'HEAD' ? null : extractBody(body, legacy, compat.jsdom < 26, compat.xhrRejectsShared);
+  const extracted =
+    body === undefined || body === null || method === 'GET' || method === 'HEAD'
+      ? null
+      : extractBody(body, legacy, compat.jsdom < 26, compat.xhrRejectsShared);
 
   // A record without a prototype: every accepted name (__proto__ too) is
   // its own property, as fetch reads it.
   const headers = Object.create(null);
   const names = new Map(); // lowercase -> name as sent
-  for (const [name, value] of s.headers) { headers[name] = value; names.set(name.toLowerCase(), name); }
+  for (const [name, value] of s.headers) {
+    headers[name] = value;
+    names.set(name.toLowerCase(), name);
+  }
   if (extracted !== null) {
     const contentType = names.get('content-type');
     if (contentType !== undefined) {
@@ -691,7 +886,9 @@ function send(xhr, s, body) {
   if (!names.has('accept')) headers.Accept = '*/*';
   if (!names.has('accept-language')) headers['Accept-Language'] = 'en';
   // The author may set User-Agent (no longer a forbidden header).
-  const userAgent = names.has('user-agent') ? headers[names.get('user-agent')] : (headers['User-Agent'] = userAgentOf(window));
+  const userAgent = names.has('user-agent')
+    ? headers[names.get('user-agent')]
+    : (headers['User-Agent'] = userAgentOf(window));
   headers['Accept-Encoding'] = 'gzip, deflate';
   if (docURL.protocol === 'http:' || docURL.protocol === 'https:') headers.Referer = referrerOf(docURL);
   if (cross) headers.Origin = origin;
@@ -715,12 +912,26 @@ function send(xhr, s, body) {
   s.send = true;
   const unsafe = [...names.entries()].filter(([lower]) => !SIMPLE_HEADERS.has(lower)).map(([, name]) => name);
   const req = {
-    url: url.href, fetchURL, method: legacy && method.toUpperCase() === 'PATCH' ? 'PATCH' : method, headers, body: extracted?.body ?? null, length: extracted?.length ?? 0,
-    origin, cross, credentials: s.withCredentials, unsafe, userAgent, data: url.protocol === 'data:',
+    url: url.href,
+    fetchURL,
+    method: legacy && method.toUpperCase() === 'PATCH' ? 'PATCH' : method,
+    headers,
+    body: extracted?.body ?? null,
+    length: extracted?.length ?? 0,
+    origin,
+    cross,
+    credentials: s.withCredentials,
+    unsafe,
+    userAgent,
+    data: url.protocol === 'data:',
     preflight: cross && (!['GET', 'HEAD', 'POST'].includes(method) || unsafe.length > 0 || s.uploadListener),
     // The platform's AbortController, as its fetch takes the signal (the
     // CommonJS bundle may be evaluated in a context without one).
-    controller: typeof PLATFORM_GLOBAL.AbortController === 'function' ? new PLATFORM_GLOBAL.AbortController() : null, reader: null, timer: null, start: hostNow(), urlError,
+    controller: typeof PLATFORM_GLOBAL.AbortController === 'function' ? new PLATFORM_GLOBAL.AbortController() : null,
+    reader: null,
+    timer: null,
+    start: hostNow(),
+    urlError,
   };
   s.req = req;
   const pending = window[S].pendingRequests ?? (window[S].pendingRequests = new Set());
@@ -748,10 +959,12 @@ function open(xhr, s, method, url, rest) {
   // name and password are converted (USVString?) and not used.
   const m = byteString(webidlString(method, 'parameter 1', OPEN_CONTEXT), 1, 'open');
   const u = webidlString(url, 'parameter 2', OPEN_CONTEXT);
-  for (let i = 1; i < 3 && i < rest.length; i++) if (rest[i] != null) webidlString(rest[i], `parameter ${i + 3}`, OPEN_CONTEXT);
+  for (let i = 1; i < 3 && i < rest.length; i++)
+    if (rest[i] != null) webidlString(rest[i], `parameter ${i + 3}`, OPEN_CONTEXT);
   if (!TOKEN.test(m)) throw domError('The string did not match the expected pattern.', 'SyntaxError');
   const upper = m.toUpperCase();
-  if (upper === 'CONNECT' || upper === 'TRACE' || upper === 'TRACK') throw domError('The operation is insecure.', 'SecurityError');
+  if (upper === 'CONNECT' || upper === 'TRACE' || upper === 'TRACK')
+    throw domError('The operation is insecure.', 'SecurityError');
   let parsed;
   try {
     parsed = new URL(u, documentBaseURL(window.document));
@@ -761,7 +974,8 @@ function open(xhr, s, method, url, rest) {
   // open(method, url) is asynchronous; with a third argument, its boolean
   // value decides (undefined is false).
   const sync = rest.length > 0 && !rest[0];
-  if (sync && (s.timeout !== 0 || s.responseType !== '')) throw domError('The object does not support the operation or argument.', 'InvalidAccessError');
+  if (sync && (s.timeout !== 0 || s.responseType !== ''))
+    throw domError('The object does not support the operation or argument.', 'InvalidAccessError');
   stop(s);
   s.send = false;
   s.uploadListener = false;
@@ -772,7 +986,10 @@ function open(xhr, s, method, url, rest) {
   // jsdom before 28 keeps the previous response's status and status text.
   const previous = s.response;
   s.response = networkError();
-  if (legacy) { s.response.status = previous.status; s.response.statusText = previous.statusText; }
+  if (legacy) {
+    s.response.status = previous.status;
+    s.response.statusText = previous.statusText;
+  }
   s.responseObject = undefined;
   s.text = null;
   if (s.state !== OPENED) {
@@ -783,15 +1000,27 @@ function open(xhr, s, method, url, rest) {
 
 function setRequestHeader(s, name, value) {
   const legacy = !s.window[S].compat.xhrUndici;
-  if (s.state !== OPENED) throw domError(legacy ? INVALID_STATE : 'setRequestHeader() can only be called in the OPENED state.', 'InvalidStateError');
-  if (s.send) throw domError(legacy ? INVALID_STATE : 'setRequestHeader() cannot be called after send()', 'InvalidStateError');
+  if (s.state !== OPENED)
+    throw domError(
+      legacy ? INVALID_STATE : 'setRequestHeader() can only be called in the OPENED state.',
+      'InvalidStateError',
+    );
+  if (s.send)
+    throw domError(legacy ? INVALID_STATE : 'setRequestHeader() cannot be called after send()', 'InvalidStateError');
   const n = byteString(name, 1);
   const v = byteString(value, 2).replace(/^[\t\n\r ]+|[\t\n\r ]+$/g, '');
-  if (!TOKEN.test(n)) throw domError(legacy ? 'The string did not match the expected pattern.' : 'Invalid header name', 'SyntaxError');
-  if (/[\0\r\n]/.test(v)) throw domError(legacy ? 'The string did not match the expected pattern.' : 'Invalid header value', 'SyntaxError');
+  if (!TOKEN.test(n))
+    throw domError(legacy ? 'The string did not match the expected pattern.' : 'Invalid header name', 'SyntaxError');
+  if (/[\0\r\n]/.test(v))
+    throw domError(legacy ? 'The string did not match the expected pattern.' : 'Invalid header value', 'SyntaxError');
   const lower = n.toLowerCase();
   if (FORBIDDEN_HEADERS.has(lower) || lower.startsWith('proxy-') || lower.startsWith('sec-')) return;
-  if (!legacy && METHOD_OVERRIDE_HEADERS.has(lower) && v.split(',').some((part) => /^(CONNECT|TRACE|TRACK)$/i.test(part.trim()))) return;
+  if (
+    !legacy &&
+    METHOD_OVERRIDE_HEADERS.has(lower) &&
+    v.split(',').some((part) => /^(CONNECT|TRACE|TRACK)$/i.test(part.trim()))
+  )
+    return;
   const existing = s.headers.find((h) => h[0].toLowerCase() === lower);
   if (existing) existing[1] = `${existing[1]}, ${v}`;
   else s.headers.push([n, v]);
@@ -800,12 +1029,16 @@ function setRequestHeader(s, name, value) {
 function byteString(value, index, method = 'setRequestHeader') {
   const s = String(value);
   // eslint-disable-next-line no-control-regex
-  if (/[^\u0000-\u00ff]/.test(s)) throw new TypeError(`Failed to execute '${method}' on 'XMLHttpRequest': parameter ${index} is not a valid ByteString.`);
+  if (/[^\u0000-\u00ff]/.test(s))
+    throw new TypeError(
+      `Failed to execute '${method}' on 'XMLHttpRequest': parameter ${index} is not a valid ByteString.`,
+    );
   return s;
 }
 
 // Whether a response header is visible to the page.
-const visible = (r, name) => name !== 'set-cookie' && name !== 'set-cookie2' && (r.exposed === null || r.exposed.has(name));
+const visible = (r, name) =>
+  name !== 'set-cookie' && name !== 'set-cookie2' && (r.exposed === null || r.exposed.has(name));
 
 function response(s) {
   const type = s.responseType;
@@ -813,7 +1046,8 @@ function response(s) {
   const r = s.response;
   // jsdom gives the bytes received so far for arraybuffer and blob before DONE.
   if (s.state !== DONE) {
-    if ((type === 'arraybuffer' || type === 'blob') && (s.state === HEADERS_RECEIVED || s.state === LOADING)) return binaryResponse(s, type, responseBytes(r).slice());
+    if ((type === 'arraybuffer' || type === 'blob') && (s.state === HEADERS_RECEIVED || s.state === LOADING))
+      return binaryResponse(s, type, responseBytes(r).slice());
     return null;
   }
   // A network error (fetch failed, CORS): null, as in jsdom, not an empty
@@ -827,7 +1061,11 @@ function response(s) {
     value = null;
     if (r.length !== 0) {
       // UTF-8, whatever the response says (a UTF-16 byte order mark is not one).
-      try { value = realmOf(s.window).JSON.parse(utf8Decode(responseBytes(r))); } catch { value = null; }
+      try {
+        value = realmOf(s.window).JSON.parse(utf8Decode(responseBytes(r)));
+      } catch {
+        value = null;
+      }
     }
   } else {
     value = documentResponse(s);
@@ -842,7 +1080,7 @@ function binaryResponse(s, type, bytes) {
     return (AB === Uint8Array ? bytes : new AB(bytes)).buffer;
   }
   const mime = s.overrideMime;
-  const blobType = mime !== null ? essence(mime) : s.response.headers?.get('content-type') ?? '';
+  const blobType = mime !== null ? essence(mime) : (s.response.headers?.get('content-type') ?? '');
   return makeBlob(s.window, bytes, /[^\x20-\x7e]/.test(blobType) ? '' : blobType.toLowerCase());
 }
 
@@ -867,16 +1105,34 @@ export const XHR_INTERFACES = [
     statics: STATES,
     construct: (window, self) => {
       self[S] = {
-        xhr: true, window, state: UNSENT, send: false, sync: false, method: 'GET', url: null, headers: [], timeout: 0, withCredentials: false,
-        responseType: '', overrideMime: null, upload: null, uploadComplete: true, uploadListener: false, req: null,
-        response: networkError(), responseObject: undefined, text: null,
+        xhr: true,
+        window,
+        state: UNSENT,
+        send: false,
+        sync: false,
+        method: 'GET',
+        url: null,
+        headers: [],
+        timeout: 0,
+        withCredentials: false,
+        responseType: '',
+        overrideMime: null,
+        upload: null,
+        uploadComplete: true,
+        uploadListener: false,
+        req: null,
+        response: networkError(),
+        responseObject: undefined,
+        text: null,
       };
       return self;
     },
     members: {
       ...handlerMembers(['onreadystatechange']),
       ...Object.fromEntries(Object.entries(STATES).map(([k, v]) => [k, { constant: v }])),
-      get readyState() { return xhrState(this).state; },
+      get readyState() {
+        return xhrState(this).state;
+      },
       open(method, url, ...rest) {
         const s = xhrState(this);
         if (url === undefined && arguments.length < 2) tooFewArguments('XMLHttpRequest', 'open', 2, arguments.length);
@@ -884,10 +1140,13 @@ export const XHR_INTERFACES = [
       },
       setRequestHeader(name, value) {
         const s = xhrState(this);
-        if (value === undefined && arguments.length < 2) tooFewArguments('XMLHttpRequest', 'setRequestHeader', 2, arguments.length);
+        if (value === undefined && arguments.length < 2)
+          tooFewArguments('XMLHttpRequest', 'setRequestHeader', 2, arguments.length);
         setRequestHeader(s, name, value);
       },
-      get timeout() { return xhrState(this).timeout; },
+      get timeout() {
+        return xhrState(this).timeout;
+      },
       set timeout(value) {
         const s = xhrState(this);
         if (s.sync) throw domError('The object does not support the operation or argument.', 'InvalidAccessError');
@@ -898,14 +1157,20 @@ export const XHR_INTERFACES = [
         const req = s.req;
         if (req !== null && req.timer !== null) armTimeout(this, s, req);
       },
-      get withCredentials() { return xhrState(this).withCredentials; },
+      get withCredentials() {
+        return xhrState(this).withCredentials;
+      },
       set withCredentials(value) {
         const s = xhrState(this);
         if ((s.state !== UNSENT && s.state !== OPENED) || s.send) throw domError(INVALID_STATE, 'InvalidStateError');
         s.withCredentials = !!value;
       },
-      get upload() { return uploadOf(xhrState(this)); },
-      send(body = null) { send(this, xhrState(this), body); },
+      get upload() {
+        return uploadOf(xhrState(this));
+      },
+      send(body = null) {
+        send(this, xhrState(this), body);
+      },
       abort() {
         const s = xhrState(this);
         stop(s);
@@ -927,9 +1192,15 @@ export const XHR_INTERFACES = [
           s.text = null;
         }
       },
-      get responseURL() { return xhrState(this).response.url; },
-      get status() { return xhrState(this).response.status; },
-      get statusText() { return xhrState(this).response.statusText; },
+      get responseURL() {
+        return xhrState(this).response.url;
+      },
+      get status() {
+        return xhrState(this).response.status;
+      },
+      get statusText() {
+        return xhrState(this).response.statusText;
+      },
       getResponseHeader(name) {
         const s = xhrState(this);
         if (name === undefined && arguments.length < 1) tooFewArguments('XMLHttpRequest', 'getResponseHeader', 1, 0);
@@ -954,7 +1225,9 @@ export const XHR_INTERFACES = [
         if (s.state === LOADING || s.state === DONE) throw domError(INVALID_STATE, 'InvalidStateError');
         s.overrideMime = parseMime(mime) ?? { type: 'application', subtype: 'octet-stream', params: new Map() };
       },
-      get responseType() { return xhrState(this).responseType; },
+      get responseType() {
+        return xhrState(this).responseType;
+      },
       set responseType(value) {
         const s = xhrState(this);
         // An invalid value is ignored before the setter's steps (WebIDL enumeration).
@@ -964,7 +1237,9 @@ export const XHR_INTERFACES = [
         if (s.sync) throw domError('The object does not support the operation or argument.', 'InvalidAccessError');
         s.responseType = type;
       },
-      get response() { return response(xhrState(this)); },
+      get response() {
+        return response(xhrState(this));
+      },
       get responseText() {
         const s = xhrState(this);
         if (s.responseType !== '' && s.responseType !== 'text') throw domError(INVALID_STATE, 'InvalidStateError');

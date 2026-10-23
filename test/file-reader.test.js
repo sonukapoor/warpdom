@@ -12,8 +12,25 @@ function read(w, method, blob, ...args) {
     const log = [r.readyState, r.result, r.error];
     for (const type of ['loadstart', 'progress', 'load', 'error', 'abort', 'loadend']) {
       r.addEventListener(type, (e) => {
-        log.push([type, e.constructor.name, e.lengthComputable, e.loaded, e.total, r.readyState, e.bubbles, e.cancelable]);
-        if (type === 'loadend') resolve([...log, r.readyState, r.result instanceof ArrayBuffer || r.result?.constructor?.name === 'ArrayBuffer' ? [...new Uint8Array(r.result)] : r.result, r.error]);
+        log.push([
+          type,
+          e.constructor.name,
+          e.lengthComputable,
+          e.loaded,
+          e.total,
+          r.readyState,
+          e.bubbles,
+          e.cancelable,
+        ]);
+        if (type === 'loadend')
+          resolve([
+            ...log,
+            r.readyState,
+            r.result instanceof ArrayBuffer || r.result?.constructor?.name === 'ArrayBuffer'
+              ? [...new Uint8Array(r.result)]
+              : r.result,
+            r.error,
+          ]);
       });
     }
     r[method](blob, ...args);
@@ -58,19 +75,30 @@ parity('FileReader: abort, busy reader, bad arguments, handlers', async (w) => {
   const out = [w.FileReader.EMPTY, w.FileReader.LOADING, w.FileReader.DONE, new w.FileReader().DONE];
   const r = new w.FileReader();
   const events = [];
-  for (const type of ['loadstart', 'progress', 'load', 'abort', 'loadend']) r.addEventListener(type, () => events.push([type, r.readyState]));
+  for (const type of ['loadstart', 'progress', 'load', 'abort', 'loadend'])
+    r.addEventListener(type, () => events.push([type, r.readyState]));
   r.readAsText(new B(['x']));
-  try { r.readAsText(new B(['y'])); } catch (e) { out.push(e.name); }
+  try {
+    r.readAsText(new B(['y']));
+  } catch (e) {
+    out.push(e.name);
+  }
   r.abort();
   out.push(r.readyState, r.result);
   await new Promise((resolve) => setTimeout(resolve, 20));
   out.push(events);
-  try { new w.FileReader().readAsText('not a blob'); } catch (e) { out.push(e.name); }
+  try {
+    new w.FileReader().readAsText('not a blob');
+  } catch (e) {
+    out.push(e.name);
+  }
   const h = new w.FileReader();
   const order = [];
   h.onload = () => order.push('onload');
   h.addEventListener('load', () => order.push('listener'));
-  h.onloadend = function () { order.push(this === h); };
+  h.onloadend = function () {
+    order.push(this === h);
+  };
   h.readAsText(new B(['z']));
   await new Promise((resolve) => setTimeout(resolve, 20));
   out.push(order, typeof h.onprogress);
@@ -83,5 +111,16 @@ parity('FileReader: abort, busy reader, bad arguments, handlers', async (w) => {
 parity('ProgressEvent', (w) => {
   const e = new w.ProgressEvent('progress', { lengthComputable: true, loaded: 5, total: 10, bubbles: true });
   const d = new w.ProgressEvent('x');
-  return [e.type, e.lengthComputable, e.loaded, e.total, e.bubbles, e instanceof w.Event, d.lengthComputable, d.loaded, d.total, Object.prototype.toString.call(e)];
+  return [
+    e.type,
+    e.lengthComputable,
+    e.loaded,
+    e.total,
+    e.bubbles,
+    e instanceof w.Event,
+    d.lengthComputable,
+    d.loaded,
+    d.total,
+    Object.prototype.toString.call(e),
+  ];
 });

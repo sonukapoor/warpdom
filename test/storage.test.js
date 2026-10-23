@@ -11,18 +11,47 @@ parity('Web Storage: localStorage and sessionStorage', (w) => {
   ls.c = '3';
   ls.length = 'x';
   const out = {
-    read: [ls.length, ls.key(0), ls.key(1), ls.key(2), ls.key(9), ls.getItem('a'), typeof ls.getItem('a'), ls.getItem('zz'), ls.c, ls.zz,
-      'a' in ls, 'zz' in ls, ls.getItem('length')],
+    read: [
+      ls.length,
+      ls.key(0),
+      ls.key(1),
+      ls.key(2),
+      ls.key(9),
+      ls.getItem('a'),
+      typeof ls.getItem('a'),
+      ls.getItem('zz'),
+      ls.c,
+      ls.zz,
+      'a' in ls,
+      'zz' in ls,
+      ls.getItem('length'),
+    ],
     keys: Object.keys(ls).filter((k) => k !== 'length'),
     json: JSON.stringify(ls),
-    shape: [Object.prototype.toString.call(ls), ls instanceof w.Storage, w.sessionStorage === ls, w.sessionStorage.length, w.localStorage === ls],
+    shape: [
+      Object.prototype.toString.call(ls),
+      ls instanceof w.Storage,
+      w.sessionStorage === ls,
+      w.sessionStorage.length,
+      w.localStorage === ls,
+    ],
   };
   delete ls.c;
   ls.removeItem('b');
   out.after = [Object.keys(ls).filter((k) => k !== 'length'), ls.length];
   const errors = [];
-  for (const fn of [() => ls.setItem(), () => ls.getItem(), () => ls.setItem('big', 'x'.repeat(6e6)), () => new w.Storage()]) {
-    try { fn(); errors.push('ok'); } catch (e) { errors.push([e.constructor.name, e.name, e.message]); }
+  for (const fn of [
+    () => ls.setItem(),
+    () => ls.getItem(),
+    () => ls.setItem('big', 'x'.repeat(6e6)),
+    () => new w.Storage(),
+  ]) {
+    try {
+      fn();
+      errors.push('ok');
+    } catch (e) {
+      errors.push([e.constructor.name, e.name, e.message]);
+    }
   }
   out.errors = errors;
   ls.clear();
@@ -44,7 +73,11 @@ test('Web Storage: opaque origins and the per-file reset', () => {
 test('QuotaExceededError instances are of their class (Node 24.6 returned a plain DOMException)', () => {
   const w = createWindow({ url: 'http://localhost/' });
   let error;
-  try { w.localStorage.setItem('x', 'y'.repeat(5000001)); } catch (e) { error = e; }
+  try {
+    w.localStorage.setItem('x', 'y'.repeat(5000001));
+  } catch (e) {
+    error = e;
+  }
   assert.ok(error instanceof w.QuotaExceededError);
   assert.ok(error instanceof w.DOMException);
   assert.equal(error.constructor.name, 'QuotaExceededError');

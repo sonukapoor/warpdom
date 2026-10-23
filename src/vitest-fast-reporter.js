@@ -31,7 +31,11 @@ export function stackFiles(error) {
   if (Array.isArray(error?.stacks) && error.stacks.length) return error.stacks.map((f) => f?.file).filter(Boolean);
   const out = [];
   for (const [, path] of String(error?.stack ?? '').matchAll(FRAME)) {
-    try { out.push(path.startsWith('file:') ? fileURLToPath(path) : path); } catch { /* not a path */ }
+    try {
+      out.push(path.startsWith('file:') ? fileURLToPath(path) : path);
+    } catch {
+      /* not a path */
+    }
   }
   return out;
 }

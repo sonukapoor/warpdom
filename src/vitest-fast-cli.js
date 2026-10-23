@@ -59,7 +59,9 @@ export function chooseMode(isolatedSeconds, splitSeconds) {
 // in a row. A faster run resets the count.
 export const SLOW_RUNS = 3;
 export const slowSplit = (isolatedSeconds, splitSeconds) =>
-  !(isolatedSeconds > 0) || !(splitSeconds > 0) || splitSeconds > isolatedSeconds + Math.max(isolatedSeconds * MARGIN, MARGIN_SECONDS);
+  !(isolatedSeconds > 0) ||
+  !(splitSeconds > 0) ||
+  splitSeconds > isolatedSeconds + Math.max(isolatedSeconds * MARGIN, MARGIN_SECONDS);
 // Isolated mode reached that way (not by a learning, which compares both
 // modes on one machine minutes apart) learns again after RELEARN_AFTER
 // plain runs: the slowness may have been the machine's, not the split's.
@@ -73,7 +75,11 @@ export const DECISIONS = 10;
 
 // The state after a split run: { state, switched } (switched: the mode
 // became isolated). files: the number of test files the run had.
-export function afterSplitRun(state, { seconds, files }, { slowRuns = SLOW_RUNS, relearnAfter = RELEARN_AFTER, now = new Date() } = {}) {
+export function afterSplitRun(
+  state,
+  { seconds, files },
+  { slowRuns = SLOW_RUNS, relearnAfter = RELEARN_AFTER, now = new Date() } = {},
+) {
   const isolatedSeconds = state.learned?.isolated;
   const slow = slowSplit(isolatedSeconds, seconds);
   const slowStreak = slow ? (state.slowStreak ?? 0) + 1 : 0;
@@ -87,7 +93,13 @@ export function afterSplitRun(state, { seconds, files }, { slowRuns = SLOW_RUNS,
   const reason = `${slowStreak} split runs in a row took longer than the learned isolated ${isolatedSeconds} s plus the margin (last ${runs.slice(-slowStreak).join(', ')} s)`;
   const decided = decision(now, 'isolated', reason, { isolated: isolatedSeconds, splitRuns: runs.slice(-slowStreak) });
   return {
-    state: { ...next, mode: 'isolated', reason, relearnIn: relearnAfter > 0 ? relearnAfter : undefined, decisions: [...(state.decisions ?? []), decided].slice(-DECISIONS) },
+    state: {
+      ...next,
+      mode: 'isolated',
+      reason,
+      relearnIn: relearnAfter > 0 ? relearnAfter : undefined,
+      decisions: [...(state.decisions ?? []), decided].slice(-DECISIONS),
+    },
     switched: true,
     slow,
   };
@@ -104,7 +116,8 @@ export const RUN_DEADLINE = { factor: 1.5, seconds: 30 };
 // without isolation only when a later file is still running then, so one
 // run may reveal some of the files that leave them and the next another.
 export const SPLIT_RUNS = 4;
-export const deadline = (isolatedSeconds, { factor, seconds }) => (isolatedSeconds > 0 ? isolatedSeconds * factor + seconds : null);
+export const deadline = (isolatedSeconds, { factor, seconds }) =>
+  isolatedSeconds > 0 ? isolatedSeconds * factor + seconds : null;
 
 // --- results ------------------------------------------------------------------------
 
@@ -129,7 +142,9 @@ export function filesOf(report) {
 export function readReport(file) {
   try {
     const report = JSON.parse(readFileSync(file, 'utf8'));
-    const typesFailed = (report.files ?? []).filter((f) => f.typecheck && (f.state === 'failed' || f.tests.some(([, st]) => st === 'failed'))).length;
+    const typesFailed = (report.files ?? []).filter(
+      (f) => f.typecheck && (f.state === 'failed' || f.tests.some(([, st]) => st === 'failed')),
+    ).length;
     return { reason: report.reason, files: filesOf(report), errors: report.errors ?? [], typesFailed };
   } catch {
     return null;
@@ -161,8 +176,15 @@ export function differingFiles(reference, run) {
   const out = new Set();
   for (const [name, ref] of reference.files) {
     const f = run.files.get(name);
-    if (!f || f.state !== ref.state || f.tests.size !== ref.tests.size) { out.add(name); continue; }
-    for (const [test, state] of ref.tests) if (f.tests.get(test) !== state) { out.add(name); break; }
+    if (!f || f.state !== ref.state || f.tests.size !== ref.tests.size) {
+      out.add(name);
+      continue;
+    }
+    for (const [test, state] of ref.tests)
+      if (f.tests.get(test) !== state) {
+        out.add(name);
+        break;
+      }
   }
   for (const name of run.files.keys()) if (!reference.files.has(name)) out.add(name);
   return out;
@@ -176,7 +198,10 @@ export function merge(first, rerun) {
 }
 
 export function summary(files) {
-  let passed = 0, failed = 0, skipped = 0, failedFiles = 0;
+  let passed = 0,
+    failed = 0,
+    skipped = 0,
+    failedFiles = 0;
   for (const f of files.values()) {
     if (failedFile(f)) failedFiles++;
     for (const s of f.tests.values()) {
@@ -195,9 +220,13 @@ export function splitArgs(args) {
   const out = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
-    if (a === '--project' && i + 1 < args.length) { out.push(a, args[i + 1], a, isolatedName(args[i + 1])); i++; }
-    else if (a.startsWith('--project=')) { const name = a.slice(10); out.push(a, `--project=${isolatedName(name)}`); }
-    else out.push(a);
+    if (a === '--project' && i + 1 < args.length) {
+      out.push(a, args[i + 1], a, isolatedName(args[i + 1]));
+      i++;
+    } else if (a.startsWith('--project=')) {
+      const name = a.slice(10);
+      out.push(a, `--project=${isolatedName(name)}`);
+    } else out.push(a);
   }
   return out;
 }
@@ -205,7 +234,10 @@ export function splitArgs(args) {
 export function withoutProjects(args) {
   const out = [];
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--project') { i++; continue; }
+    if (args[i] === '--project') {
+      i++;
+      continue;
+    }
     if (args[i].startsWith('--project=')) continue;
     out.push(args[i]);
   }
@@ -251,17 +283,34 @@ function runVitest({ cwd, bin, args, env, quiet = false, limit = null }) {
   const group = process.platform !== 'win32';
   const started = performance.now();
   const child = spawn(process.execPath, argv, {
-    cwd, detached: group, stdio: quiet ? 'ignore' : 'inherit',
+    cwd,
+    detached: group,
+    stdio: quiet ? 'ignore' : 'inherit',
     env: { ...process.env, ...env, WARPDOM_FAST_REPORT: report, WARPDOM_FAST_REPORTER: cli ? 'cli' : 'config' },
   });
-  const kill = (signal) => { try { if (group) process.kill(-child.pid, signal); else child.kill(signal); } catch { /* gone */ } };
+  const kill = (signal) => {
+    try {
+      if (group) process.kill(-child.pid, signal);
+      else child.kill(signal);
+    } catch {
+      /* gone */
+    }
+  };
   // Ctrl-C reaches this process only (the run has a process group of its
   // own): pass it on, and stop the CLI once the run has ended.
   let interrupted = false;
-  const forward = () => { interrupted = true; kill('SIGINT'); };
+  const forward = () => {
+    interrupted = true;
+    kill('SIGINT');
+  };
   process.on('SIGINT', forward);
   let stopped = false;
-  const timer = limit ? setTimeout(() => { stopped = true; kill('SIGKILL'); }, limit * 1000) : null;
+  const timer = limit
+    ? setTimeout(() => {
+        stopped = true;
+        kill('SIGKILL');
+      }, limit * 1000)
+    : null;
   return new Promise((done) => {
     child.on('exit', (code, signal) => {
       const seconds = (performance.now() - started) / 1000;
@@ -286,7 +335,8 @@ function writeCache(file, data) {
 
 // Why a run's results cannot be used, or null.
 function unusable(r, label) {
-  if (r.stopped) return `the ${label} run took longer than ${label === 'split' || label === 'fast' ? 'its deadline' : 'allowed'} (${round1(r.seconds)} s; stopped)`;
+  if (r.stopped)
+    return `the ${label} run took longer than ${label === 'split' || label === 'fast' ? 'its deadline' : 'allowed'} (${round1(r.seconds)} s; stopped)`;
   if (!r.run) return `the ${label} run wrote no report (exit ${r.signal ?? r.status})`;
   if (unattributedErrors(r.run)) return `the ${label} run had unhandled errors outside any test file`;
   return null;
@@ -302,7 +352,9 @@ async function learn({ cwd, bin, args, cacheFile, limits, why = null, history = 
   const iso = await runVitest({ cwd, bin, args, env: { WARPDOM_FAST_MODE: 'isolated' } });
   const files = fileCount(iso.run);
   const store = (mode, reason, data) => {
-    const decisions = [...history, decision(now, mode, reason, { learning: why ?? 'first', ...data.learned })].slice(-DECISIONS);
+    const decisions = [...history, decision(now, mode, reason, { learning: why ?? 'first', ...data.learned })].slice(
+      -DECISIONS,
+    );
     writeCache(cacheFile, { mode, reason, isolate: [], leaky: [], runs: [], slowStreak: 0, ...data, decisions });
   };
   const save = (mode, reason, extra = {}) => {
@@ -314,7 +366,10 @@ async function learn({ cwd, bin, args, cacheFile, limits, why = null, history = 
   const limit = deadline(iso.seconds, limits.learn);
   const fast = await runVitest({ cwd, bin, args, env: { WARPDOM_FAST_MODE: 'fast' }, quiet: true, limit });
   const fastProblem = unusable(fast, 'fast');
-  if (fastProblem) return save('isolated', fastProblem, { learned: { isolated: round1(iso.seconds), fast: round1(fast.seconds), files } });
+  if (fastProblem)
+    return save('isolated', fastProblem, {
+      learned: { isolated: round1(iso.seconds), fast: round1(fast.seconds), files },
+    });
   // Files to isolate: their results without isolation differ, or cannot
   // be trusted. leaky: those that pass isolated.
   const isolate = new Set([...differingFiles(iso.run, fast.run), ...untrusted(fast.run)]);
@@ -325,14 +380,27 @@ async function learn({ cwd, bin, args, cacheFile, limits, why = null, history = 
   // showed this time) join the isolated ones, for up to SPLIT_RUNS runs.
   for (let attempt = 0; attempt < SPLIT_RUNS; attempt++) {
     split = await runVitest({
-      cwd, bin, args: splitArgs(args), quiet: true, limit,
+      cwd,
+      bin,
+      args: splitArgs(args),
+      quiet: true,
+      limit,
       env: { WARPDOM_FAST_MODE: 'split', WARPDOM_FAST_ISOLATE: JSON.stringify(rel(cwd, isolate)) },
     });
     splits.push(round1(split.seconds));
-    const timings = { isolated: round1(iso.seconds), fast: round1(fast.seconds), split: round1(split.seconds), splits, files };
+    const timings = {
+      isolated: round1(iso.seconds),
+      fast: round1(fast.seconds),
+      split: round1(split.seconds),
+      splits,
+      files,
+    };
     const problem = unusable(split, 'split');
     if (problem) return save('isolated', problem, { learned: timings });
-    const differs = new Set([...differingFiles(iso.run, split.run), ...[...untrusted(split.run)].filter((f) => !isolate.has(f))]);
+    const differs = new Set([
+      ...differingFiles(iso.run, split.run),
+      ...[...untrusted(split.run)].filter((f) => !isolate.has(f)),
+    ]);
     if (differs.size === 0) break;
     if (attempt === SPLIT_RUNS - 1) {
       return save('isolated', `the split's results differ from the isolated run's in ${differs.size} more file(s)`, {
@@ -345,14 +413,23 @@ async function learn({ cwd, bin, args, cacheFile, limits, why = null, history = 
   const leaky = [...isolate].filter((f) => iso.run.files.has(f) && !failedFile(iso.run.files.get(f)));
   // splits: every split run of the learning (the last decides); the
   // learning cost beyond the isolated run is fast + the sum of splits.
-  const learned = { isolated: round1(iso.seconds), fast: round1(fast.seconds), split: round1(split.seconds), splits, files };
+  const learned = {
+    isolated: round1(iso.seconds),
+    fast: round1(fast.seconds),
+    split: round1(split.seconds),
+    splits,
+    files,
+  };
   // Both times come from this learning, on this machine, minutes apart.
   const mode = chooseMode(iso.seconds, split.seconds);
-  const reason = mode === 'split'
-    ? `split ${learned.split} s beats isolated ${learned.isolated} s by more than the margin`
-    : `split ${learned.split} s does not beat isolated ${learned.isolated} s by more than the margin`;
+  const reason =
+    mode === 'split'
+      ? `split ${learned.split} s beats isolated ${learned.isolated} s by more than the margin`
+      : `split ${learned.split} s does not beat isolated ${learned.isolated} s by more than the margin`;
   store(mode, reason, { isolate: rel(cwd, isolate), leaky: rel(cwd, leaky), learned });
-  say(`learned: ${isolate.size} file(s) to isolate (${leaky.length} leak); isolated ${learned.isolated} s, split ${learned.split} s: using ${mode} (${relative(cwd, cacheFile)})`);
+  say(
+    `learned: ${isolate.size} file(s) to isolate (${leaky.length} leak); isolated ${learned.isolated} s, split ${learned.split} s: using ${mode} (${relative(cwd, cacheFile)})`,
+  );
   return iso.status;
 }
 
@@ -378,11 +455,20 @@ async function run({ cwd, bin, args, cacheFile, cache, limits, options }) {
   // A run that could not be used (stopped at its deadline, no report,
   // errors outside test files) ends split mode at once, until --learn.
   const toIsolated = (reason, extra = {}) => {
-    const decisions = [...(cache.decisions ?? []), decision(now, 'isolated', reason, { isolated: isolatedSeconds, split: extra.runs?.at(-1) })].slice(-DECISIONS);
+    const decisions = [
+      ...(cache.decisions ?? []),
+      decision(now, 'isolated', reason, { isolated: isolatedSeconds, split: extra.runs?.at(-1) }),
+    ].slice(-DECISIONS);
     writeCache(cacheFile, { ...cache, ...extra, mode: 'isolated', reason, relearnIn: undefined, decisions });
     say(`${reason}: isolated runs from now on (warpdom vitest run --learn learns again)`);
   };
-  const first = await runVitest({ cwd, bin, args: splitArgs(args), env: { WARPDOM_FAST_MODE: 'split' }, limit: deadline(isolatedSeconds, limits.run) });
+  const first = await runVitest({
+    cwd,
+    bin,
+    args: splitArgs(args),
+    env: { WARPDOM_FAST_MODE: 'split' },
+    limit: deadline(isolatedSeconds, limits.run),
+  });
   const problem = unusable(first, 'split');
   if (problem) {
     say(`${problem}; running isolated`);
@@ -398,7 +484,9 @@ async function run({ cwd, bin, args, cacheFile, cache, limits, options }) {
     say(`${rerunFiles.length} file(s) failed without isolation; running them again isolated`);
     const extra = rel(cwd, rerunFiles);
     const rerun = await runVitest({
-      cwd, bin, args: [...withoutProjects(args), ...extra],
+      cwd,
+      bin,
+      args: [...withoutProjects(args), ...extra],
       env: { WARPDOM_FAST_MODE: 'split', WARPDOM_FAST_ISOLATE: JSON.stringify(extra), WARPDOM_FAST_RERUN: '1' },
     });
     if (!rerun.run) {
@@ -406,17 +494,29 @@ async function run({ cwd, bin, args, cacheFile, cache, limits, options }) {
       return 1;
     }
     const leaky = rerunFiles.filter((f) => rerun.run.files.has(f) && !failedFile(rerun.run.files.get(f)));
-    state = { ...cache, isolate: [...new Set([...cache.isolate, ...extra])].sort(), leaky: [...new Set([...(cache.leaky ?? []), ...rel(cwd, leaky)])].sort() };
+    state = {
+      ...cache,
+      isolate: [...new Set([...cache.isolate, ...extra])].sort(),
+      leaky: [...new Set([...(cache.leaky ?? []), ...rel(cwd, leaky)])].sort(),
+    };
     if (leaky.length) say(`${leaky.length} file(s) leak state between test files: ${rel(cwd, leaky).join(', ')}`);
     say(`they run isolated from now on (${extra.length} file(s))`);
     const merged = summary(merge(first.run.files, rerun.run.files));
-    say(`result: ${merged.passed} passed, ${merged.failed} failed, ${merged.skipped} skipped (failing files rerun isolated)`);
+    say(
+      `result: ${merged.passed} passed, ${merged.failed} failed, ${merged.skipped} skipped (failing files rerun isolated)`,
+    );
     status = merged.failedFiles > 0 || first.run.typesFailed > 0 || unattributedErrors(rerun.run) ? 1 : rerun.status;
   }
   const after = afterSplitRun(state, { seconds: first.seconds, files: fileCount(first.run) }, { ...options, now });
   writeCache(cacheFile, after.state);
-  if (after.switched) say(`${after.state.reason}: isolated runs from now on; learning again after ${after.state.relearnIn ?? 'no'} isolated run(s) (warpdom vitest run --learn learns now)`);
-  else if (after.slow) say(`the split run took ${round1(first.seconds)} s, longer than the learned isolated ${isolatedSeconds} s plus the margin (${after.state.slowStreak} of ${options.slowRuns ?? SLOW_RUNS} in a row before isolated mode)`);
+  if (after.switched)
+    say(
+      `${after.state.reason}: isolated runs from now on; learning again after ${after.state.relearnIn ?? 'no'} isolated run(s) (warpdom vitest run --learn learns now)`,
+    );
+  else if (after.slow)
+    say(
+      `the split run took ${round1(first.seconds)} s, longer than the learned isolated ${isolatedSeconds} s plus the margin (${after.state.slowStreak} of ${options.slowRuns ?? SLOW_RUNS} in a row before isolated mode)`,
+    );
   if (after.state.relearn && !cache.relearn) say(`${after.state.relearn}: learning again on the next run`);
   return status;
 }
@@ -431,7 +531,11 @@ export function cliOptions(argv) {
   let relearn = false;
   for (const a of argv) {
     const m = /^--(slow-runs|relearn-after)=(\d+)$/.exec(a);
-    if (m) options[m[1] === 'slow-runs' ? 'slowRuns' : 'relearnAfter'] = Math.max(Number(m[2]), m[1] === 'slow-runs' ? 1 : 0);
+    if (m)
+      options[m[1] === 'slow-runs' ? 'slowRuns' : 'relearnAfter'] = Math.max(
+        Number(m[2]),
+        m[1] === 'slow-runs' ? 1 : 0,
+      );
     else if (a === '--learn') relearn = true;
     else if (a !== 'run') args.push(a);
   }
