@@ -955,6 +955,11 @@ const sizeToken = (t) => {
 function backgroundValue(value, mode, surface) {
   if (/var\(|env\(|attr\(/i.test(value) || CSS_WIDE_KEYWORD.test(value)) return undefined;
   const legacy = isLegacyMode(mode);
+  // jsdom 27 and later: math functions (calc(10px + 5%) is calc(5% + 10px)
+  // in jsdom 30, rejected before) are left to the general rules.
+  if (!legacy && /(calc|min|max|clamp)\(/i.test(value)) return undefined;
+  // The grammar first, as for other properties in these modes.
+  if (!legacy && !isValidValue('background', value)) return INVALID;
   const old = legacy && colorKeywords === 'css2'; // cssstyle before 4.4
   if (splitOutside(value, ',').length > 1) return legacy ? INVALID : undefined;
   const tokens = [];
@@ -986,7 +991,14 @@ function backgroundValue(value, mode, surface) {
       if (lower === 'none' && token !== 'none' && !legacy) return undefined;
       if (!put('image', token)) return INVALID;
     } else if (repeats.has(lower)) {
-      if (!legacy && found.repeat !== null && !/^repeat-[xy]$/.test(lower) && !/ /.test(found.repeat))
+      // (repeat-x and repeat-y take no second keyword.)
+      if (
+        !legacy &&
+        found.repeat !== null &&
+        !/^repeat-[xy]$/.test(lower) &&
+        !/^repeat-[xy]$/i.test(found.repeat) &&
+        !/ /.test(found.repeat)
+      )
         found.repeat += ` ${token}`;
       else if (!put('repeat', token)) return INVALID;
     } else if (attachments.has(lower)) {
@@ -1022,7 +1034,9 @@ function backgroundValue(value, mode, surface) {
             (BG_DIMENSION.test(tokens[k]) || ZERO.test(tokens[k]) || BG_SIZES.test(tokens[k]))
           )
             k++;
-          if (k === j + 1) return INVALID;
+          // One or two lengths or autos, or cover or contain alone.
+          if (k === j + 1 || (k === j + 3 && tokens.slice(j + 1, k).some((t) => /^(cover|contain)$/i.test(t))))
+            return INVALID;
           found.size = tokens
             .slice(j + 1, k)
             .map(sizeToken)
@@ -1032,7 +1046,10 @@ function backgroundValue(value, mode, surface) {
       }
     } else if (lower === 'currentcolor' || lower === 'transparent' || resolveColor(token) !== null) {
       if (!put('color', token)) return INVALID;
-    } else return INVALID;
+    } else if (legacy) return INVALID;
+    // Other syntax (image-set(), url( unclosed) jsdom 27 and later read
+    // their own way: left to the general rules.
+    else return undefined;
   }
   const image = found.image === null ? null : serializeDeclared('background-image', found.image, mode);
   const color = found.color === null ? null : serializeDeclared('background-color', found.color, mode);
