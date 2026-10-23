@@ -83,6 +83,15 @@ export function readInputs(env) {
   };
 }
 
+// The environment for npx and the project's tests: the action's inputs left
+// out, so the comment token never reaches npm or test code.
+export function childEnvironment(env) {
+  const out = {};
+  for (const [key, value] of Object.entries(env)) if (!key.startsWith('INPUT_')) out[key] = value;
+  out.npm_config_update_notifier = 'false';
+  return out;
+}
+
 // The arguments for npx: `npx --yes --package <spec> -- warpdom compare ...`.
 export function compareArgs(inputs, out) {
   const args = ['--yes', '--package', inputs.spec, '--', 'warpdom', 'compare', '--out', out];
@@ -166,6 +175,14 @@ function testName(d) {
   return `${cell(d.file, 120)} › ${cell(d.name)}${project}`;
 }
 
+// The first error line, from the side that failed: compare takes it from
+// warpdom's run when warpdom failed, else from the baseline's.
+function errorText(d, baseline) {
+  const message = cell(d.message);
+  if (!message) return '-';
+  return d.warpdom === 'failed' ? message : `on ${baseline}: ${message}`;
+}
+
 function differenceLines(c, baseline, maxTests, artifactName) {
   const order = { regression: 0, fixed: 1, other: 2 };
   const diffs = [...c.differences].sort((a, b) => order[a.class] - order[b.class] || a.key.localeCompare(b.key));
@@ -174,12 +191,12 @@ function differenceLines(c, baseline, maxTests, artifactName) {
     '',
     `#### Tests whose status differs (${diffs.length})`,
     '',
-    `| Change | Test | Message on warpdom |`,
+    '| Change | Test | Error |',
     '|---|---|---|',
   ];
   for (const d of shown) {
     const change = CHANGE[d.class] ?? `${cell(d.baseline, 20)} → ${cell(d.warpdom, 20)}`;
-    out.push(`| ${change} | ${testName(d)} | ${cell(d.message) || '-'} |`);
+    out.push(`| ${change} | ${testName(d)} | ${errorText(d, baseline)} |`);
   }
   if (diffs.length > shown.length) {
     const where = artifactName ? ` in the \`${cell(artifactName, 100)}\` artifact (report.md, results.json)` : '';
@@ -196,8 +213,12 @@ function differenceLines(c, baseline, maxTests, artifactName) {
 
 function resultLine(c, baseline) {
   const differ = c.differences.length;
-  if (!differ)
+  const flaky = (c.flakyBaseline?.length ?? 0) + (c.flakyWarpdom?.length ?? 0);
+  if (!differ && !flaky)
     return `**Results:** ${count(c.compared, 'test')} compared, all with the same status on ${baseline} and warpdom.`;
+  if (!differ) {
+    return `**Results:** ${count(c.compared, 'test')} compared, ${c.same.toLocaleString('en-US')} with the same status and no status changes; ${count(flaky, 'flaky test')} not counted (below).`;
+  }
   const parts = [];
   const r = c.regressions;
   const f = c.fixed;

@@ -479,7 +479,9 @@ pull request comment.
 
 **Security.** No secrets are needed: the token is GitHub's own
 `github.token` and is only used, when `pr-comment` is true, for GitHub's
-issue comments API. Inputs reach the action's script only through
+issue comments API. The action passes the token to its script only when
+`pr-comment` is true, and npx and the project's tests never see it (the
+script leaves its inputs out of their environment). Inputs reach the action's script only through
 environment variables, never through `${{ }}` in its shell text, and
 `warpdom compare` is started without a shell; numbers, choices and the
 package spec are validated (`warpdom-version` must be a version, dist-tag

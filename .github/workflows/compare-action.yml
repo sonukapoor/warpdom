@@ -13,6 +13,8 @@ on:
     branches: [main]
     paths:
       - 'compare-action/**'
+      - 'fixtures/compare-vitest/**'
+      - 'test/compare-action.test.js'
       - 'src/compare/**'
       - 'bin/**'
       - 'package.json'
@@ -20,6 +22,8 @@ on:
   pull_request:
     paths:
       - 'compare-action/**'
+      - 'fixtures/compare-vitest/**'
+      - 'test/compare-action.test.js'
       - 'src/compare/**'
       - 'bin/**'
       - 'package.json'

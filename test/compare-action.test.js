@@ -24,6 +24,7 @@ import {
   commandText,
   upsertComment,
   commentFailure,
+  childEnvironment,
   COMMENT_LIMIT,
 } from '../compare-action/lib.mjs';
 
@@ -175,6 +176,11 @@ test('compare action: the npx arguments, runner arguments kept whole', () => {
   ]);
 });
 
+test('compare action: npx and the tests get no INPUT_ variables (no token)', () => {
+  const env = childEnvironment({ PATH: '/bin', INPUT_GITHUB_TOKEN: 'secret', INPUT_ROUNDS: '1', CI: 'true' });
+  assert.deepEqual(env, { PATH: '/bin', CI: 'true', npm_config_update_notifier: 'false' });
+});
+
 test('compare action: Node version check', () => {
   assert.equal(nodeSupported('22.12.0'), true);
   assert.equal(nodeSupported('v24.1.0'), true);
@@ -231,6 +237,25 @@ test('compare action: summary with differences, sorted and capped', () => {
 });
 
 test('compare action: summary variants', () => {
+  const fixedOnly = renderSummary(result({ differences: [diff('a', 'fixed')] }));
+  assert.match(
+    fixedOnly,
+    /\| fail → pass \| a\.spec\.js › a \| on jsdom: AssertionError: expected 1 to be 2 \|/,
+    "the baseline's error is labeled",
+  );
+
+  const flakyOnly = renderSummary(
+    result({
+      differences: [],
+      correctness: { ...result({ differences: [] }).correctness, same: 9, flakyWarpdom: [{}] },
+    }),
+  );
+  assert.match(
+    flakyOnly,
+    /10 tests compared, 9 with the same status and no status changes; 1 flaky test not counted \(below\)\./,
+  );
+  assert.match(flakyOnly, /Also: 1 test flaky on warpdom/);
+
   const same = renderSummary(result({ differences: [] }));
   assert.match(same, /10 tests compared, all with the same status on jsdom and warpdom\./);
   assert.doesNotMatch(same, /Tests whose status differs/);
@@ -405,8 +430,13 @@ test('compare action: action.yml passes every input through the environment, nev
   assert.ok(inputs.length >= 15, inputs.join());
   for (const name of inputs) {
     const variable = `INPUT_${name.toUpperCase().replace(/-/g, '_')}`;
-    assert.match(yml, new RegExp(`${variable}: \\$\\{\\{ inputs\\.${name} \\}\\}`), name);
+    assert.match(yml, new RegExp(`${variable}: \\$\\{\\{ .*inputs\\.${name}\\b`), name);
   }
+  assert.match(
+    yml,
+    /INPUT_GITHUB_TOKEN: \$\{\{ inputs\.pr-comment == 'true' && inputs\.github-token \|\| '' \}\}/,
+    'the token only with pr-comment',
+  );
   const runs = [...yml.matchAll(/run: \|?\n?((?: {8}.*\n)+|.*\n)/g)].map((m) => m[1]);
   assert.ok(runs.length >= 2);
   for (const script of runs) assert.doesNotMatch(script, /\$\{\{/, script);

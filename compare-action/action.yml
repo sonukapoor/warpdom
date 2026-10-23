@@ -110,7 +110,9 @@ runs:
         INPUT_FAIL_ON: ${{ inputs.fail-on }}
         INPUT_JOB_SUMMARY: ${{ inputs.job-summary }}
         INPUT_PR_COMMENT: ${{ inputs.pr-comment }}
-        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+        # The token only when a comment is wanted; the script also keeps
+        # every INPUT_ variable out of the environment of npx and the tests.
+        INPUT_GITHUB_TOKEN: ${{ inputs.pr-comment == 'true' && inputs.github-token || '' }}
         INPUT_MAX_TESTS: ${{ inputs.max-tests }}
         INPUT_ARTIFACT_NAME: ${{ inputs.artifact-name }}
     # An upload error (e.g. the same artifact name from a matrix) must not

@@ -21,6 +21,7 @@ import {
   upsertComment,
   commentFailure,
   commandText,
+  childEnvironment,
   MIN_NODE,
 } from './lib.mjs';
 
@@ -104,7 +105,7 @@ async function main() {
     const res = spawnSync(command, args, {
       cwd,
       stdio: 'inherit',
-      env: { ...env, npm_config_update_notifier: 'false' },
+      env: childEnvironment(env),
     });
     exitCode = res.status;
     if (res.error) notice('warning', `could not start npx: ${res.error.message}`);
