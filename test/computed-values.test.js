@@ -532,3 +532,25 @@ test('computed values: a pending longhand and a declared one meet by order befor
   w.document.body.innerHTML = '<div class="d"><table><tbody><tr><td></td></tr></tbody></table></div>';
   assert.equal(w.getComputedStyle(w.document.querySelector('td')).paddingBottom, '7px');
 });
+
+// A longhand, a shorthand without var() and a shorthand with var(), all
+// matching (padding-bottom, black box): jsdom 26.1.0 gives '' and 30.1.3
+// gives '0' for the first order, 7px when the longhand comes last. jsdom 27
+// to 29 give 8px for the first order, which isn't modeled yet.
+test('computed values: a longhand, a shorthand and a var() shorthand', () => {
+  const td = '<div class="d"><table><tbody><tr><td></td></tr></tbody></table></div>';
+  const CASES = [
+    ['.d.d td { padding-bottom: 7px !important } .d td { padding: 8px !important } td { padding: var(--p) !important }', { '26.1.0': '', '30.1.3': '0' }],
+    ['td { padding: var(--p) !important } .d td { padding: 8px !important } .d.d td { padding-bottom: 7px !important }', { '26.1.0': '7px', '30.1.3': '7px' }],
+    ['.d td { padding: 8px !important } td { padding: var(--p) !important } .d.d td { padding-bottom: 7px !important }', { '26.1.0': '7px', '30.1.3': '7px' }],
+    ['.d.d td { padding-bottom: 7px } .d td { padding: 8px } td { padding: var(--p) }', { '26.1.0': '', '30.1.3': '7px' }],
+  ];
+  for (const [css, expected] of CASES) {
+    for (const [jsdom, value] of Object.entries(expected)) {
+      const w = createWindow({ jsdom });
+      w.document.head.innerHTML = `<style>${css}</style>`;
+      w.document.body.innerHTML = td;
+      assert.equal(w.getComputedStyle(w.document.querySelector('td')).paddingBottom, value, `${jsdom} ${css}`);
+    }
+  }
+});
