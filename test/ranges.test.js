@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createWindow } from '../src/node.js';
 import { parity, html } from './parity.js';
 
-const point = (node) => (node ? (node.id || node.nodeName) : null);
+const point = (node) => (node ? node.id || node.nodeName : null);
 const describe = (r) => [point(r.startContainer), r.startOffset, point(r.endContainer), r.endOffset, r.collapsed];
 const markup = (frag) => [...frag.childNodes].map((n) => n.outerHTML ?? `#${n.data}`).join('');
 
@@ -17,7 +17,12 @@ parity('character data editing', (w) => {
   t.replaceData(0, 1, '<<');
   out.push(t.data, t.length);
   for (const f of [() => t.substringData(99, 1), () => t.insertData(99, 'x')]) {
-    try { f(); out.push('ok'); } catch (e) { out.push(e.name); }
+    try {
+      f();
+      out.push('ok');
+    } catch (e) {
+      out.push(e.name);
+    }
   }
   t.data = null;
   out.push(JSON.stringify(t.data));
@@ -58,10 +63,25 @@ parity('range boundaries, comparisons, toString', (w) => {
   const other = d.createRange();
   other.selectNode(d.getElementById('c'));
   out.push([0, 1, 2, 3].map((how) => r.compareBoundaryPoints(how, other)));
-  out.push(r.comparePoint(d.getElementById('b').firstChild, 1), r.comparePoint(d.getElementById('c'), 0), r.isPointInRange(a, 0), r.isPointInRange(d.getElementById('c'), 0));
+  out.push(
+    r.comparePoint(d.getElementById('b').firstChild, 1),
+    r.comparePoint(d.getElementById('c'), 0),
+    r.isPointInRange(a, 0),
+    r.isPointInRange(d.getElementById('c'), 0),
+  );
   out.push(r.intersectsNode(d.getElementById('b')), r.intersectsNode(d.getElementById('c')), r.intersectsNode(d.body));
-  for (const f of [() => r.setStart(d.doctype, 0), () => r.setStart(a, 9), () => r.compareBoundaryPoints(7, other), () => r.setStartBefore(d)]) {
-    try { f(); out.push('ok'); } catch (e) { out.push(e.name); }
+  for (const f of [
+    () => r.setStart(d.doctype, 0),
+    () => r.setStart(a, 9),
+    () => r.compareBoundaryPoints(7, other),
+    () => r.setStartBefore(d),
+  ]) {
+    try {
+      f();
+      out.push('ok');
+    } catch (e) {
+      out.push(e.name);
+    }
   }
   r.collapse(true);
   out.push(describe(r));
@@ -82,8 +102,14 @@ parity('extract, clone and delete contents', (w) => {
   return [
     run((r) => r.cloneContents()),
     run((r) => r.extractContents()),
-    run((r) => { r.deleteContents(); return null; }),
-    run((r) => { r.setEnd(r.startContainer, 3); return r.extractContents(); }),
+    run((r) => {
+      r.deleteContents();
+      return null;
+    }),
+    run((r) => {
+      r.setEnd(r.startContainer, 3);
+      return r.extractContents();
+    }),
   ];
 });
 
@@ -101,7 +127,12 @@ parity('insertNode and surroundContents', (w) => {
   const r2 = d.createRange();
   r2.setStart(p.firstChild, 0);
   r2.setEnd(p.lastChild, 0);
-  try { r2.surroundContents(d.createElement('u')); out.push('ok'); } catch (e) { out.push(e.name); }
+  try {
+    r2.surroundContents(d.createElement('u'));
+    out.push('ok');
+  } catch (e) {
+    out.push(e.name);
+  }
   return out;
 });
 
@@ -132,7 +163,16 @@ parity('live ranges follow mutations', (w) => {
 parity('selection', (w) => {
   const d = html(w, '<p id="p">hello <b id="b">bold</b> world</p><input id="i">');
   const s = d.getSelection();
-  const state = () => [point(s.anchorNode), s.anchorOffset, point(s.focusNode), s.focusOffset, s.isCollapsed, s.rangeCount, s.type, s.toString()];
+  const state = () => [
+    point(s.anchorNode),
+    s.anchorOffset,
+    point(s.focusNode),
+    s.focusOffset,
+    s.isCollapsed,
+    s.rangeCount,
+    s.type,
+    s.toString(),
+  ];
   const out = [s === w.getSelection(), s === d.getSelection(), state()];
   const p = d.getElementById('p');
   s.collapse(p.firstChild, 2);
@@ -142,7 +182,12 @@ parity('selection', (w) => {
   s.extend(p.firstChild, 0);
   out.push('backward', state());
   s.setBaseAndExtent(p.lastChild, 3, p.firstChild, 1);
-  out.push(state(), s.getRangeAt(0) === s.getRangeAt(0), s.containsNode(d.getElementById('b')), s.containsNode(d.getElementById('b'), true));
+  out.push(
+    state(),
+    s.getRangeAt(0) === s.getRangeAt(0),
+    s.containsNode(d.getElementById('b')),
+    s.containsNode(d.getElementById('b'), true),
+  );
   s.selectAllChildren(p);
   out.push(state());
   s.collapseToEnd();
@@ -157,7 +202,12 @@ parity('selection', (w) => {
   s.deleteFromDocument();
   out.push(p.innerHTML, state());
   for (const f of [() => s.getRangeAt(1), () => s.removeRange(d.createRange()), () => s.collapse(d.doctype, 0)]) {
-    try { f(); out.push('ok'); } catch (e) { out.push(e.name); }
+    try {
+      f();
+      out.push('ok');
+    } catch (e) {
+      out.push(e.name);
+    }
   }
   s.empty();
   out.push(state());
@@ -338,7 +388,7 @@ parity('live ranges: the selection at the focused element as its ancestors go', 
   return out;
 });
 
-test('a range at a focused element in a shadow tree is not moved by removing the host\'s ancestors', () => {
+test("a range at a focused element in a shadow tree is not moved by removing the host's ancestors", () => {
   const w = createWindow();
   const d = w.document;
   const wrap = d.body.appendChild(d.createElement('div'));
@@ -356,12 +406,24 @@ test('a range at a focused element in a shadow tree is not moved by removing the
 });
 
 // Calls each case and records the error name, or 'ok'.
-const outcomes = (cases) => cases.map((f) => { try { f(); return 'ok'; } catch (e) { return e.name; } });
+const outcomes = (cases) =>
+  cases.map((f) => {
+    try {
+      f();
+      return 'ok';
+    } catch (e) {
+      return e.name;
+    }
+  });
 
 parity('compareBoundaryPoints converts how as an unsigned short', (w) => {
   const r = w.document.createRange();
   return [NaN, Infinity, -Infinity, 65536, 65537, 65539, 65540, -1, 2.9].map((how) => {
-    try { return r.compareBoundaryPoints(how, r); } catch (e) { return e.name; }
+    try {
+      return r.compareBoundaryPoints(how, r);
+    } catch (e) {
+      return e.name;
+    }
   });
 });
 

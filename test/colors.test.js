@@ -6,9 +6,25 @@ import { createWindow } from '../src/node.js';
 
 parity('computed colors: named, hex, rgb() and hsl()', (w) => {
   const e = w.document.body.appendChild(w.document.createElement('div'));
-  const colors = [...NAMED_COLORS, '#f00', '#00ff0080', '#abcd', '#123456', 'rgb(1,2,3)', 'rgba(1, 2, 3, 0.5)',
-    'rgb(10% 20% 30% / 40%)', 'rgba(0,0,0,0)', 'hsl(120, 100%, 25%)', 'hsla(240,50%,50%,0.3)', 'hsl(0 0% 50%)',
-    'transparent', 'RED', 'rgb(300,-5,2.5)', 'rgba(0,0,0,.87)', 'rgba(25,118,210,0.04)'];
+  const colors = [
+    ...NAMED_COLORS,
+    '#f00',
+    '#00ff0080',
+    '#abcd',
+    '#123456',
+    'rgb(1,2,3)',
+    'rgba(1, 2, 3, 0.5)',
+    'rgb(10% 20% 30% / 40%)',
+    'rgba(0,0,0,0)',
+    'hsl(120, 100%, 25%)',
+    'hsla(240,50%,50%,0.3)',
+    'hsl(0 0% 50%)',
+    'transparent',
+    'RED',
+    'rgb(300,-5,2.5)',
+    'rgba(0,0,0,.87)',
+    'rgba(25,118,210,0.04)',
+  ];
   return colors.map((c) => {
     e.style.color = '';
     e.style.color = c;
@@ -24,9 +40,30 @@ parity('computed colors: named, hex, rgb() and hsl()', (w) => {
 // there).
 const roundedColors = (w, modern = true) => {
   const e = w.document.body.appendChild(w.document.createElement('div'));
-  const colors = ['hsl(102, 53%, 61%)', 'hsl(0, 16%, 68%)', 'hsl(0, 42%, 24%)', 'hsl(0, 81%, 68%)', 'hsl(0, 0%, 79%)', 'hsl(0, 0%, 39%)',
-    ...(modern ? ['hsla(102, 53%, 61%, 0.5)', 'hsl(102 53% 61%)', 'rgb(113.45, 0, 0)', 'rgb(113.44, 0, 0)', 'rgb(44.5%, 64.5%, 4.5%)', 'rgb(79%, 0%, 0%)',
-      'hwb(205 6% 9%)', 'hwb(205 6% 9% / 0.5)', 'hwb(0 0% 0%)', 'hwb(120 50% 60%)', 'hwb(0 39% 21%)', 'HWB(205 6% 9%)'] : [])];
+  const colors = [
+    'hsl(102, 53%, 61%)',
+    'hsl(0, 16%, 68%)',
+    'hsl(0, 42%, 24%)',
+    'hsl(0, 81%, 68%)',
+    'hsl(0, 0%, 79%)',
+    'hsl(0, 0%, 39%)',
+    ...(modern
+      ? [
+          'hsla(102, 53%, 61%, 0.5)',
+          'hsl(102 53% 61%)',
+          'rgb(113.45, 0, 0)',
+          'rgb(113.44, 0, 0)',
+          'rgb(44.5%, 64.5%, 4.5%)',
+          'rgb(79%, 0%, 0%)',
+          'hwb(205 6% 9%)',
+          'hwb(205 6% 9% / 0.5)',
+          'hwb(0 0% 0%)',
+          'hwb(120 50% 60%)',
+          'hwb(0 39% 21%)',
+          'HWB(205 6% 9%)',
+        ]
+      : []),
+  ];
   return colors.map((c) => {
     e.style.color = '';
     e.style.color = c;

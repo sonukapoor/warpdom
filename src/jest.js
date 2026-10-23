@@ -65,7 +65,9 @@ function jestRequire(rootDir) {
   try {
     require.resolve('@jest/fake-timers');
     return require;
-  } catch { /* through jest's dependencies */ }
+  } catch {
+    /* through jest's dependencies */
+  }
   try {
     require.resolve('jest/package.json');
   } catch {
@@ -88,16 +90,23 @@ function numericTimers(target) {
     const start = (callback, delay, ...args) => {
       if (closed) return 0;
       const id = next++;
-      const handle = set((...a) => {
-        if (set === setTimeout) handles.delete(id);
-        if (typeof callback === 'function') callback(...a);
-      }, delay, ...args);
+      const handle = set(
+        (...a) => {
+          if (set === setTimeout) handles.delete(id);
+          if (typeof callback === 'function') callback(...a);
+        },
+        delay,
+        ...args,
+      );
       handles.set(id, handle);
       return id;
     };
     const stop = (id) => {
       const handle = handles.get(id);
-      if (handle !== undefined) { clear(handle); handles.delete(id); }
+      if (handle !== undefined) {
+        clear(handle);
+        handles.delete(id);
+      }
     };
     return [start, stop];
   };
@@ -105,8 +114,18 @@ function numericTimers(target) {
   const [setI, clearI] = wrap(setInterval, clearInterval);
   Object.assign(target, { setTimeout: setT, clearTimeout: clearT, setInterval: setI, clearInterval: clearI });
   // A shared clear works for either kind, as in browsers.
-  target.clearTimeout = target.clearInterval = (id) => { clearT(id); clearI(id); };
-  return () => { closed = true; for (const h of handles.values()) { clearTimeout(h); clearInterval(h); } handles.clear(); };
+  target.clearTimeout = target.clearInterval = (id) => {
+    clearT(id);
+    clearI(id);
+  };
+  return () => {
+    closed = true;
+    for (const h of handles.values()) {
+      clearTimeout(h);
+      clearInterval(h);
+    }
+    handles.clear();
+  };
 }
 
 // The members a closed jsdom window reads as undefined (black box, jsdom
@@ -120,10 +139,16 @@ const CLOSED_WINDOW_UNDEFINED = ['document', 'location', 'history', 'localStorag
 function jsdomProfile(rootDir, options) {
   if (options.jsdom != null) return { jsdom: options.jsdom, cssstyle: options.cssstyle };
   try {
-    const envRequire = createRequire(createRequire(join(rootDir, 'package.json')).resolve('jest-environment-jsdom/package.json'));
+    const envRequire = createRequire(
+      createRequire(join(rootDir, 'package.json')).resolve('jest-environment-jsdom/package.json'),
+    );
     const jsdomRequire = createRequire(envRequire.resolve('jsdom/package.json'));
     let cssstyle = options.cssstyle;
-    try { cssstyle ??= jsdomRequire('cssstyle/package.json').version; } catch { /* not found */ }
+    try {
+      cssstyle ??= jsdomRequire('cssstyle/package.json').version;
+    } catch {
+      /* not found */
+    }
     const jsdom = jsdomRequire('./package.json').version;
     warnNewerJsdom(jsdom);
     return { jsdom, cssstyle };
@@ -145,7 +170,12 @@ export default class WarpdomEnvironment {
     const options = projectConfig.testEnvironmentOptions ?? {};
 
     // jest-environment-jsdom's default URL.
-    const window = createWindow({ url: options.url ?? 'http://localhost/', ...(ablated('latest-profile') ? {} : jsdomProfile(projectConfig.rootDir ?? process.cwd(), options)), fastFrames: options.fastFrames === true, xhr: options.xhr !== false });
+    const window = createWindow({
+      url: options.url ?? 'http://localhost/',
+      ...(ablated('latest-profile') ? {} : jsdomProfile(projectConfig.rootDir ?? process.cwd(), options)),
+      fastFrames: options.fastFrames === true,
+      xhr: options.xhr !== false,
+    });
     if (ablated('eager-interfaces')) materializeAll(window);
     // An error thrown in an event listener fails the test, unless the test
     // listens for 'error' on the window (as with jest-environment-jsdom).
@@ -156,7 +186,8 @@ export default class WarpdomEnvironment {
     installWindow(sandbox, window, { unforgeable: true });
     for (const name of HOST_GLOBALS) {
       // Values, not descriptors: some are lazy getters bound to Node's global (crypto).
-      if (!(name in sandbox) && name in globalThis) Object.defineProperty(sandbox, name, { value: globalThis[name], writable: true, configurable: true });
+      if (!(name in sandbox) && name in globalThis)
+        Object.defineProperty(sandbox, name, { value: globalThis[name], writable: true, configurable: true });
     }
     this.clearTimers = numericTimers(sandbox);
     vm.createContext(sandbox);
@@ -195,7 +226,9 @@ export default class WarpdomEnvironment {
 
     this.moduleMocker = new ModuleMocker(global);
     this.fakeTimers = new LegacyFakeTimers({
-      config: projectConfig, global, moduleMocker: this.moduleMocker,
+      config: projectConfig,
+      global,
+      moduleMocker: this.moduleMocker,
       timerConfig: { idToRef: (id) => id, refToId: (ref) => ref },
     });
     this.fakeTimersModern = new ModernFakeTimers({ config: projectConfig, global });

@@ -10,14 +10,33 @@
 // ctx: { em, rem, lh, rlh } in px, read lazily (ctx.em() and so on): only a
 // value with such a unit asks for its element's font size.
 
-const VIEWPORT_WIDTH = 1024, VIEWPORT_HEIGHT = 768;
+const VIEWPORT_WIDTH = 1024,
+  VIEWPORT_HEIGHT = 768;
 const ABSOLUTE = { px: 1, cm: 96 / 2.54, mm: 96 / 25.4, q: 96 / 101.6, in: 96, pt: 4 / 3, pc: 16 };
-const VIEWPORT = { vw: VIEWPORT_WIDTH / 100, vi: VIEWPORT_WIDTH / 100, vh: VIEWPORT_HEIGHT / 100, vb: VIEWPORT_HEIGHT / 100,
-  vmin: Math.min(VIEWPORT_WIDTH, VIEWPORT_HEIGHT) / 100, vmax: Math.max(VIEWPORT_WIDTH, VIEWPORT_HEIGHT) / 100 };
+const VIEWPORT = {
+  vw: VIEWPORT_WIDTH / 100,
+  vi: VIEWPORT_WIDTH / 100,
+  vh: VIEWPORT_HEIGHT / 100,
+  vb: VIEWPORT_HEIGHT / 100,
+  vmin: Math.min(VIEWPORT_WIDTH, VIEWPORT_HEIGHT) / 100,
+  vmax: Math.max(VIEWPORT_WIDTH, VIEWPORT_HEIGHT) / 100,
+};
 // Font-relative units: [context length, factor] (ex and ch half an em,
 // cap and ic one).
-const RELATIVE = { em: ['em', 1], ex: ['em', 0.5], ch: ['em', 0.5], cap: ['em', 1], ic: ['em', 1], lh: ['lh', 1],
-  rem: ['rem', 1], rex: ['rem', 0.5], rch: ['rem', 0.5], rcap: ['rem', 1], ric: ['rem', 1], rlh: ['rlh', 1] };
+const RELATIVE = {
+  em: ['em', 1],
+  ex: ['em', 0.5],
+  ch: ['em', 0.5],
+  cap: ['em', 1],
+  ic: ['em', 1],
+  lh: ['lh', 1],
+  rem: ['rem', 1],
+  rex: ['rem', 0.5],
+  rch: ['rem', 0.5],
+  rcap: ['rem', 1],
+  ric: ['rem', 1],
+  rlh: ['rlh', 1],
+};
 
 export const sixDigits = (n) => String(Number(n.toPrecision(6)));
 
@@ -61,7 +80,10 @@ function evaluate(tokens, ctx) {
     const t = tokens[i++];
     if (t === undefined) return null;
     if (t.fn !== undefined) return call(t.fn);
-    if (t.op === '(') { const v = sum(); return v !== null && expect(')') ? v : null; }
+    if (t.op === '(') {
+      const v = sum();
+      return v !== null && expect(')') ? v : null;
+    }
     if (t.n === undefined) return null;
     if (t.unit === '') return { n: t.n };
     if (t.unit === '%') return null;
@@ -92,7 +114,12 @@ function evaluate(tokens, ctx) {
       if (right === null) return null;
       if (op === '*') {
         if (left.px !== undefined && right.px !== undefined) return null;
-        left = left.px !== undefined ? { px: left.px * right.n } : right.px !== undefined ? { px: right.px * left.n } : { n: left.n * right.n };
+        left =
+          left.px !== undefined
+            ? { px: left.px * right.n }
+            : right.px !== undefined
+              ? { px: right.px * left.n }
+              : { n: left.n * right.n };
       } else {
         if (right.px !== undefined || right.n === 0) return null;
         left = left.px !== undefined ? { px: left.px / right.n } : { n: left.n / right.n };
@@ -144,7 +171,16 @@ export function mayResolve(value) {
 
 // font-size keywords (CSS Fonts 4 at medium 16px, as jsdom 30 gives them)
 // and larger and smaller (a ratio of 1.2).
-export const FONT_SIZE_KEYWORDS = { 'xx-small': 9, 'x-small': 10, small: 13, medium: 16, large: 18, 'x-large': 24, 'xx-large': 32, 'xxx-large': 48 };
+export const FONT_SIZE_KEYWORDS = {
+  'xx-small': 9,
+  'x-small': 10,
+  small: 13,
+  medium: 16,
+  large: 18,
+  'x-large': 24,
+  'xx-large': 32,
+  'xxx-large': 48,
+};
 
 // font-weight bolder and lighter (CSS Fonts 4, 2.2) from the parent's
 // (bolder keeps 900 to 1000).

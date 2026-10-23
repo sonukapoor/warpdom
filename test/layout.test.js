@@ -17,8 +17,18 @@ test('getBoundingClientRect and getClientRects return zeros, as in jsdom', () =>
 test('sizes are 0, offsetParent is null, scroll positions store what is set', () => {
   const w = createWindow();
   const el = w.document.body.appendChild(w.document.createElement('div'));
-  for (const name of ['clientWidth', 'clientHeight', 'clientTop', 'clientLeft', 'scrollWidth', 'scrollHeight',
-    'offsetWidth', 'offsetHeight', 'offsetTop', 'offsetLeft']) {
+  for (const name of [
+    'clientWidth',
+    'clientHeight',
+    'clientTop',
+    'clientLeft',
+    'scrollWidth',
+    'scrollHeight',
+    'offsetWidth',
+    'offsetHeight',
+    'offsetTop',
+    'offsetLeft',
+  ]) {
     assert.equal(el[name], 0, name);
   }
   assert.equal(el.offsetParent, null);
@@ -27,7 +37,10 @@ test('sizes are 0, offsetParent is null, scroll positions store what is set', ()
   el.scrollLeft = '7';
   assert.equal(el.scrollTop, 50);
   assert.equal(el.scrollLeft, 7);
-  assert.ok(Object.getOwnPropertyDescriptor(w.HTMLElement.prototype, 'offsetWidth').get, 'tests redefine these on the prototype');
+  assert.ok(
+    Object.getOwnPropertyDescriptor(w.HTMLElement.prototype, 'offsetWidth').get,
+    'tests redefine these on the prototype',
+  );
   assert.ok(Object.getOwnPropertyDescriptor(w.Element.prototype, 'clientWidth').get);
   assert.equal(el.scrollIntoView, undefined, 'jsdom has no scrollIntoView; tests stub it');
 });
@@ -41,7 +54,13 @@ test('DOMRect and DOMRectReadOnly', () => {
   assert.equal(r.left, -4, 'negative sizes');
   assert.deepEqual(r.toJSON(), { x: 1, y: 2, width: -5, height: 4, top: 2, right: 1, bottom: 6, left: -4 });
   const ro = new w.DOMRectReadOnly();
-  assert.throws(() => { ro.x = 9; }, TypeError, 'read-only (strict mode)');
+  assert.throws(
+    () => {
+      ro.x = 9;
+    },
+    TypeError,
+    'read-only (strict mode)',
+  );
   assert.equal(ro.x, 0);
   const from = w.DOMRect.fromRect({ x: 1, width: 5 });
   assert.ok(from instanceof w.DOMRect);

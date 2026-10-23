@@ -5,8 +5,20 @@
 // serializeToString requires); innerHTML and outerHTML of nodes in XML
 // documents use it with them.
 import {
-  S, state, domError, HTML_NS, ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, DOCUMENT_TYPE_NODE,
-  CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE, elementById, tooFewArguments,
+  S,
+  state,
+  domError,
+  HTML_NS,
+  ELEMENT_NODE,
+  TEXT_NODE,
+  COMMENT_NODE,
+  DOCUMENT_NODE,
+  DOCUMENT_FRAGMENT_NODE,
+  DOCUMENT_TYPE_NODE,
+  CDATA_SECTION_NODE,
+  PROCESSING_INSTRUCTION_NODE,
+  elementById,
+  tooFewArguments,
 } from './internal.js';
 import { XML_NS, XMLNS_NS, attrNode } from './attributes.js';
 import { reportError } from './events.js';
@@ -19,7 +31,9 @@ function parseFromString(parser, string, type) {
   const window = state(parser).window;
   const t = String(type);
   if (!SUPPORTED_TYPES.has(t)) {
-    throw new TypeError(`Failed to execute 'parseFromString' on 'DOMParser': parameter 2 '${t}' is not a valid enumeration value for SupportedType`);
+    throw new TypeError(
+      `Failed to execute 'parseFromString' on 'DOMParser': parameter 2 '${t}' is not a valid enumeration value for SupportedType`,
+    );
   }
   const ws = window[S];
   if (t === 'text/html') {
@@ -56,18 +70,49 @@ export function outerMarkup(element) {
 
 // --- XML serialization --------------------------------------------------------------
 
-const VOID = new Set(['area', 'base', 'basefont', 'bgsound', 'br', 'col', 'embed', 'frame', 'hr', 'img', 'input',
-  'keygen', 'link', 'menuitem', 'meta', 'param', 'source', 'track', 'wbr']);
+const VOID = new Set([
+  'area',
+  'base',
+  'basefont',
+  'bgsound',
+  'br',
+  'col',
+  'embed',
+  'frame',
+  'hr',
+  'img',
+  'input',
+  'keygen',
+  'link',
+  'menuitem',
+  'meta',
+  'param',
+  'source',
+  'track',
+  'wbr',
+]);
 
 const escapeText = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 // Tabs and line breaks in attribute values are written as character
 // references, so they survive attribute value normalization when parsed.
-const ATTRIBUTE_ESCAPES = { '&': '&amp;', '"': '&quot;', '<': '&lt;', '>': '&gt;', '\t': '&#x9;', '\n': '&#xA;', '\r': '&#xD;' };
+const ATTRIBUTE_ESCAPES = {
+  '&': '&amp;',
+  '"': '&quot;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '\t': '&#x9;',
+  '\n': '&#xA;',
+  '\r': '&#xD;',
+};
 const escapeAttribute = (s) => (/[&"<>\t\n\r]/.test(s) ? s.replace(/[&"<>\t\n\r]/g, (c) => ATTRIBUTE_ESCAPES[c]) : s);
 
 // The namespace prefix map: namespace -> prefixes, copied per element.
 const copyMap = (map) => new Map([...map].map(([ns, prefixes]) => [ns, prefixes.slice()]));
-const addPrefix = (map, ns, prefix) => { const list = map.get(ns); if (list) list.push(prefix); else map.set(ns, [prefix]); };
+const addPrefix = (map, ns, prefix) => {
+  const list = map.get(ns);
+  if (list) list.push(prefix);
+  else map.set(ns, [prefix]);
+};
 
 function preferredPrefix(map, ns, preferred) {
   const candidates = map.get(ns);
@@ -87,7 +132,10 @@ function recordNamespaces(element, map, localPrefixes) {
   let defaultNs = null;
   for (const attr of element.attributes) {
     if (attr.namespaceURI !== XMLNS_NS) continue;
-    if (attr.prefix === null) { defaultNs = attr.value; continue; }
+    if (attr.prefix === null) {
+      defaultNs = attr.value;
+      continue;
+    }
     if (attr.prefix !== 'xmlns') continue;
     const prefix = attr.localName;
     const ns = attr.value === '' ? null : attr.value;
@@ -99,7 +147,8 @@ function recordNamespaces(element, map, localPrefixes) {
 }
 
 // XML 1.0 Char production (no lone surrogates, no C0 controls but tab, LF, CR).
-const NOT_CHAR = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+const NOT_CHAR =
+  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 const notWellFormed = (what) => domError(`Failed to serialize: ${what} is not well-formed.`, 'InvalidStateError');
 
 function serializeAttributes(element, map, index, localPrefixes, ignoreDefaultNsAttribute) {
@@ -112,9 +161,11 @@ function serializeAttributes(element, map, index, localPrefixes, ignoreDefaultNs
       const key = `${ns} ${attr.localName}`;
       if (seen.has(key)) throw notWellFormed('an element with duplicate attributes');
       seen.add(key);
-      if (attr.localName.includes(':') || !isXmlName(attr.localName) || (attr.localName === 'xmlns' && ns === null)) throw notWellFormed(`the attribute name ${attr.localName}`);
+      if (attr.localName.includes(':') || !isXmlName(attr.localName) || (attr.localName === 'xmlns' && ns === null))
+        throw notWellFormed(`the attribute name ${attr.localName}`);
       if (NOT_CHAR.test(attr.value)) throw notWellFormed('an attribute value');
-      if (ns === XMLNS_NS && (attr.value === XMLNS_NS || (attr.prefix !== null && attr.value === ''))) throw notWellFormed('a namespace declaration');
+      if (ns === XMLNS_NS && (attr.value === XMLNS_NS || (attr.prefix !== null && attr.value === '')))
+        throw notWellFormed('a namespace declaration');
     }
     if (ns !== null) {
       prefix = preferredPrefix(map, ns, attr.prefix);
@@ -135,7 +186,8 @@ function serializeAttributes(element, map, index, localPrefixes, ignoreDefaultNs
 }
 
 function serializeElement(element, contextNs, parentMap, index) {
-  if (index.wellFormed && (element.localName.includes(':') || !isXmlName(element.localName))) throw notWellFormed(`the element name ${element.localName}`);
+  if (index.wellFormed && (element.localName.includes(':') || !isXmlName(element.localName)))
+    throw notWellFormed(`the element name ${element.localName}`);
   const map = copyMap(parentMap);
   const localPrefixes = new Map();
   const localDefaultNs = recordNamespaces(element, map, localPrefixes);
@@ -155,7 +207,8 @@ function serializeElement(element, contextNs, parentMap, index) {
     if (prefix === 'xmlns') prefix = candidate ?? prefix;
     if (candidate !== null) {
       qualifiedName = `${candidate}:${local}`;
-      if (localDefaultNs !== null && localDefaultNs !== XML_NS) inheritedNs = localDefaultNs === '' ? null : localDefaultNs;
+      if (localDefaultNs !== null && localDefaultNs !== XML_NS)
+        inheritedNs = localDefaultNs === '' ? null : localDefaultNs;
       markup += qualifiedName;
     } else if (prefix !== null) {
       if (localPrefixes.has(prefix)) prefix = generatePrefix(map, ns, index);
@@ -186,8 +239,13 @@ function serializeElement(element, contextNs, parentMap, index) {
 
 function serializeDoctype(node, wellFormed) {
   const { name, publicId, systemId } = node;
-  if (wellFormed && (/[^\x20\x0D\x0Aa-zA-Z0-9\-'()+,./:=?;!*#@$_%]/.test(publicId) || NOT_CHAR.test(systemId)
-    || (systemId.includes('"') && systemId.includes("'")))) throw notWellFormed('the doctype');
+  if (
+    wellFormed &&
+    (/[^\x20\x0D\x0Aa-zA-Z0-9\-'()+,./:=?;!*#@$_%]/.test(publicId) ||
+      NOT_CHAR.test(systemId) ||
+      (systemId.includes('"') && systemId.includes("'")))
+  )
+    throw notWellFormed('the doctype');
   let out = `<!DOCTYPE ${name}`;
   if (publicId !== '') out += ` PUBLIC "${publicId}"`;
   else if (systemId !== '') out += ' SYSTEM';
@@ -199,25 +257,36 @@ function serializeNode(node, contextNs, map, index) {
   const s = node[S];
   const wellFormed = index.wellFormed === true;
   switch (s.type) {
-    case ELEMENT_NODE: return serializeElement(node, contextNs, map, index);
+    case ELEMENT_NODE:
+      return serializeElement(node, contextNs, map, index);
     case TEXT_NODE:
       if (wellFormed && NOT_CHAR.test(s.data)) throw notWellFormed('a text node');
       return escapeText(s.data);
-    case CDATA_SECTION_NODE: return `<![CDATA[${s.data}]]>`;
+    case CDATA_SECTION_NODE:
+      return `<![CDATA[${s.data}]]>`;
     case COMMENT_NODE:
-      if (wellFormed && (NOT_CHAR.test(s.data) || s.data.includes('--') || s.data.endsWith('-'))) throw notWellFormed('a comment');
+      if (wellFormed && (NOT_CHAR.test(s.data) || s.data.includes('--') || s.data.endsWith('-')))
+        throw notWellFormed('a comment');
       return `<!--${s.data}-->`;
     case PROCESSING_INSTRUCTION_NODE:
-      if (wellFormed && (s.target.includes(':') || s.target.toLowerCase() === 'xml' || NOT_CHAR.test(s.data) || s.data.includes('?>'))) throw notWellFormed('a processing instruction');
+      if (
+        wellFormed &&
+        (s.target.includes(':') || s.target.toLowerCase() === 'xml' || NOT_CHAR.test(s.data) || s.data.includes('?>'))
+      )
+        throw notWellFormed('a processing instruction');
       return `<?${s.target} ${s.data}?>`;
-    case DOCUMENT_TYPE_NODE: return serializeDoctype(node, wellFormed);
-    case DOCUMENT_NODE: case DOCUMENT_FRAGMENT_NODE: {
-      if (wellFormed && s.type === DOCUMENT_NODE && node.documentElement === null) throw notWellFormed('a document without an element');
+    case DOCUMENT_TYPE_NODE:
+      return serializeDoctype(node, wellFormed);
+    case DOCUMENT_NODE:
+    case DOCUMENT_FRAGMENT_NODE: {
+      if (wellFormed && s.type === DOCUMENT_NODE && node.documentElement === null)
+        throw notWellFormed('a document without an element');
       let out = '';
       for (let c = s.first; c; c = c[S].next) out += serializeNode(c, contextNs, map, index);
       return out;
     }
-    default: return '';
+    default:
+      return '';
   }
 }
 
@@ -228,18 +297,29 @@ export function serializeXML(node) {
 export const DOM_PARSING_INTERFACES = [
   {
     name: 'DOMParser',
-    construct: (window, self) => { self[S] = { window }; return self; },
+    construct: (window, self) => {
+      self[S] = { window };
+      return self;
+    },
     members: {
-      parseFromString(string, type) { return parseFromString(this, string, type); },
+      parseFromString(string, type) {
+        return parseFromString(this, string, type);
+      },
     },
   },
   {
     name: 'XMLSerializer',
-    construct: (window, self) => { self[S] = { window }; return self; },
+    construct: (window, self) => {
+      self[S] = { window };
+      return self;
+    },
     members: {
       serializeToString(node) {
         state(this);
-        if (!node?.[S] || node[S].type === undefined) throw new TypeError("Failed to execute 'serializeToString' on 'XMLSerializer': parameter 1 is not of type 'Node'.");
+        if (!node?.[S] || node[S].type === undefined)
+          throw new TypeError(
+            "Failed to execute 'serializeToString' on 'XMLSerializer': parameter 1 is not of type 'Node'.",
+          );
         return serializeXML(node);
       },
     },
@@ -286,33 +366,48 @@ export function setXPathLoader(loader) {
 
 function getEngine() {
   if (engine === null) {
-    if (!loadXPath) throw new Error('warpdom: no XPath engine available. Import warpdom from Node, or call setXPathLoader().');
+    if (!loadXPath)
+      throw new Error('warpdom: no XPath engine available. Import warpdom from Node, or call setXPathLoader().');
     engine = loadXPath().createXPath({ S, HTML_NS, XML_NS, XMLNS_NS, attrNode, elementById, domError });
   }
   return engine;
 }
 
 const RESULT_TYPES = {
-  ANY_TYPE: 0, NUMBER_TYPE: 1, STRING_TYPE: 2, BOOLEAN_TYPE: 3, UNORDERED_NODE_ITERATOR_TYPE: 4, ORDERED_NODE_ITERATOR_TYPE: 5,
-  UNORDERED_NODE_SNAPSHOT_TYPE: 6, ORDERED_NODE_SNAPSHOT_TYPE: 7, ANY_UNORDERED_NODE_TYPE: 8, FIRST_ORDERED_NODE_TYPE: 9,
+  ANY_TYPE: 0,
+  NUMBER_TYPE: 1,
+  STRING_TYPE: 2,
+  BOOLEAN_TYPE: 3,
+  UNORDERED_NODE_ITERATOR_TYPE: 4,
+  ORDERED_NODE_ITERATOR_TYPE: 5,
+  UNORDERED_NODE_SNAPSHOT_TYPE: 6,
+  ORDERED_NODE_SNAPSHOT_TYPE: 7,
+  ANY_UNORDERED_NODE_TYPE: 8,
+  FIRST_ORDERED_NODE_TYPE: 9,
 };
 
 const isNode = (v) => v != null && typeof v === 'object' && typeof v[S]?.type === 'number';
 
 function checkNode(node, method, interfaceName) {
-  if (!isNode(node)) throw new TypeError(`Failed to execute '${method}' on '${interfaceName}': parameter is not of type 'Node'.`);
+  if (!isNode(node))
+    throw new TypeError(`Failed to execute '${method}' on '${interfaceName}': parameter is not of type 'Node'.`);
 }
 
 function checkResolver(resolver, method, interfaceName) {
   if (resolver == null) return null;
   if (typeof resolver !== 'object' && typeof resolver !== 'function') {
-    throw new TypeError(`Failed to execute '${method}' on '${interfaceName}': The provided value is not of type 'XPathNSResolver'.`);
+    throw new TypeError(
+      `Failed to execute '${method}' on '${interfaceName}': The provided value is not of type 'XPathNSResolver'.`,
+    );
   }
   return resolver;
 }
 
 // WebIDL unsigned short.
-const unsignedShort = (v) => { const n = Number(v); return Number.isFinite(n) ? ((Math.trunc(n) % 65536) + 65536) % 65536 : 0; };
+const unsignedShort = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? ((Math.trunc(n) % 65536) + 65536) % 65536 : 0;
+};
 
 // Evaluates a compiled expression and makes its XPathResult (DOM,
 // "evaluate"): node-sets for the node-set types, a type error otherwise.
@@ -325,26 +420,43 @@ function makeResult(window, compiled, contextNode, typeArg) {
   let resultType = type;
   let stored = value;
   switch (type) {
-    case 0: resultType = nodes ? 4 : typeof value === 'number' ? 1 : typeof value === 'string' ? 2 : 3; break;
-    case 1: stored = xp.toNumber(value); break;
-    case 2: stored = xp.toString(value); break;
-    case 3: stored = xp.toBoolean(value); break;
+    case 0:
+      resultType = nodes ? 4 : typeof value === 'number' ? 1 : typeof value === 'string' ? 2 : 3;
+      break;
+    case 1:
+      stored = xp.toNumber(value);
+      break;
+    case 2:
+      stored = xp.toString(value);
+      break;
+    case 3:
+      stored = xp.toBoolean(value);
+      break;
     default:
-      if (!nodes) throw new TypeError(`The expression '${compiled.text}' does not evaluate to a node-set, so it cannot be converted to the result type ${type}.`);
+      if (!nodes)
+        throw new TypeError(
+          `The expression '${compiled.text}' does not evaluate to a node-set, so it cannot be converted to the result type ${type}.`,
+        );
   }
   const doc = contextNode[S].doc;
   const result = Object.create(window[S].protos.XPathResult);
   result[S] = {
-    xpathResult: true, type: resultType, value: stored, index: 0, doc,
+    xpathResult: true,
+    type: resultType,
+    value: stored,
+    index: 0,
+    doc,
     // jsdom 30 invalidates iterators on tree and attribute changes, as the
     // standard says; earlier jsdom versions did not.
-    rev: window[S].compat?.jsdom >= 30 ? doc[S].treeRev ?? 0 : -1,
+    rev: window[S].compat?.jsdom >= 30 ? (doc[S].treeRev ?? 0) : -1,
   };
   return result;
 }
 
 function compileWith(window, expression, resolver) {
-  return getEngine().compile(typeof expression === 'string' ? expression : String(expression), resolver, (error) => reportError(window, error));
+  return getEngine().compile(typeof expression === 'string' ? expression : String(expression), resolver, (error) =>
+    reportError(window, error),
+  );
 }
 
 function resultState(result) {
@@ -354,7 +466,10 @@ function resultState(result) {
 }
 
 function expectType(s, types, member) {
-  if (!types.includes(s.type)) throw new TypeError(`Failed to read the '${member}' property from 'XPathResult': The result type is not ${types.length > 1 ? 'one of the types' : 'the type'} for which it is defined.`);
+  if (!types.includes(s.type))
+    throw new TypeError(
+      `Failed to read the '${member}' property from 'XPathResult': The result type is not ${types.length > 1 ? 'one of the types' : 'the type'} for which it is defined.`,
+    );
 }
 
 const iteratorInvalid = (s) => (s.type === 4 || s.type === 5) && s.rev !== -1 && (s.doc[S].treeRev ?? 0) !== s.rev;
@@ -364,7 +479,8 @@ const iteratorInvalid = (s) => (s.type === 4 || s.type === 5) && s.rev !== -1 &&
 export const XPATH_EVALUATOR_MEMBERS = {
   createExpression(expression, resolver = null) {
     const { window } = state(this);
-    if (expression === undefined && arguments.length < 1) tooFewArguments('Document', 'createExpression', 1, arguments.length);
+    if (expression === undefined && arguments.length < 1)
+      tooFewArguments('Document', 'createExpression', 1, arguments.length);
     const r = checkResolver(resolver, 'createExpression', 'Document');
     const compiled = compileWith(window, expression, r);
     const expr = Object.create(window[S].protos.XPathExpression);
@@ -381,7 +497,8 @@ export const XPATH_EVALUATOR_MEMBERS = {
     const text = typeof expression === 'string' ? expression : String(expression);
     checkNode(contextNode, 'evaluate', 'Document');
     const r = checkResolver(resolver, 'evaluate', 'Document');
-    if (result != null && result[S]?.xpathResult !== true) throw new TypeError("Failed to execute 'evaluate' on 'Document': parameter 5 is not of type 'XPathResult'.");
+    if (result != null && result[S]?.xpathResult !== true)
+      throw new TypeError("Failed to execute 'evaluate' on 'Document': parameter 5 is not of type 'XPathResult'.");
     return makeResult(window, compileWith(window, text, r), contextNode, type);
   },
 };
@@ -394,22 +511,53 @@ export const XPATH_INTERFACES = [
     statics: RESULT_TYPES,
     members: {
       ...constants,
-      get resultType() { return resultState(this).type; },
-      get numberValue() { const s = resultState(this); expectType(s, [1], 'numberValue'); return s.value; },
-      get stringValue() { const s = resultState(this); expectType(s, [2], 'stringValue'); return s.value; },
-      get booleanValue() { const s = resultState(this); expectType(s, [3], 'booleanValue'); return s.value; },
-      get singleNodeValue() { const s = resultState(this); expectType(s, [8, 9], 'singleNodeValue'); return s.value[0] ?? null; },
-      get invalidIteratorState() { return iteratorInvalid(resultState(this)); },
-      get snapshotLength() { const s = resultState(this); expectType(s, [6, 7], 'snapshotLength'); return s.value.length; },
+      get resultType() {
+        return resultState(this).type;
+      },
+      get numberValue() {
+        const s = resultState(this);
+        expectType(s, [1], 'numberValue');
+        return s.value;
+      },
+      get stringValue() {
+        const s = resultState(this);
+        expectType(s, [2], 'stringValue');
+        return s.value;
+      },
+      get booleanValue() {
+        const s = resultState(this);
+        expectType(s, [3], 'booleanValue');
+        return s.value;
+      },
+      get singleNodeValue() {
+        const s = resultState(this);
+        expectType(s, [8, 9], 'singleNodeValue');
+        return s.value[0] ?? null;
+      },
+      get invalidIteratorState() {
+        return iteratorInvalid(resultState(this));
+      },
+      get snapshotLength() {
+        const s = resultState(this);
+        expectType(s, [6, 7], 'snapshotLength');
+        return s.value.length;
+      },
       iterateNext() {
         const s = resultState(this);
-        if (s.type !== 4 && s.type !== 5) throw new TypeError("Failed to execute 'iterateNext' on 'XPathResult': The result type is not an iterator type.");
-        if (iteratorInvalid(s)) throw domError('The document has mutated since the result was returned.', 'InvalidStateError');
+        if (s.type !== 4 && s.type !== 5)
+          throw new TypeError(
+            "Failed to execute 'iterateNext' on 'XPathResult': The result type is not an iterator type.",
+          );
+        if (iteratorInvalid(s))
+          throw domError('The document has mutated since the result was returned.', 'InvalidStateError');
         return s.index < s.value.length ? s.value[s.index++] : null;
       },
       snapshotItem(index) {
         const s = resultState(this);
-        if (s.type !== 6 && s.type !== 7) throw new TypeError("Failed to execute 'snapshotItem' on 'XPathResult': The result type is not a snapshot type.");
+        if (s.type !== 6 && s.type !== 7)
+          throw new TypeError(
+            "Failed to execute 'snapshotItem' on 'XPathResult': The result type is not a snapshot type.",
+          );
         return s.value[Number(index) >>> 0] ?? null;
       },
     },
@@ -421,7 +569,10 @@ export const XPATH_INTERFACES = [
         const s = state(this);
         if (s.xpathExpression !== true) throw new TypeError('Illegal invocation');
         checkNode(contextNode, 'evaluate', 'XPathExpression');
-        if (result != null && result[S]?.xpathResult !== true) throw new TypeError("Failed to execute 'evaluate' on 'XPathExpression': parameter 3 is not of type 'XPathResult'.");
+        if (result != null && result[S]?.xpathResult !== true)
+          throw new TypeError(
+            "Failed to execute 'evaluate' on 'XPathExpression': parameter 3 is not of type 'XPathResult'.",
+          );
         return makeResult(s.window, s.compiled, contextNode, type);
       },
     },
@@ -429,6 +580,9 @@ export const XPATH_INTERFACES = [
   {
     name: 'XPathEvaluator',
     members: XPATH_EVALUATOR_MEMBERS,
-    construct: (w, self) => { self[S] = { window: w }; return self; },
+    construct: (w, self) => {
+      self[S] = { window: w };
+      return self;
+    },
   },
 ];

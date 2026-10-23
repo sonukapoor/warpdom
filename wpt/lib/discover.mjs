@@ -75,11 +75,20 @@ export function discover(wptRoot, paths) {
       const variants = [...source.matchAll(HTML_VARIANT)].map((m) => m[1]);
       const long = HTML_TIMEOUT_LONG.test(source);
       for (const variant of variants.length ? variants : ['']) {
-        tests.push({ id: path + variant, file: path, kind: 'html', url: '/' + path + variant, long, testdriver: USES_TESTDRIVER.test(source), tentative: TENTATIVE.test(path) });
+        tests.push({
+          id: path + variant,
+          file: path,
+          kind: 'html',
+          url: '/' + path + variant,
+          long,
+          testdriver: USES_TESTDRIVER.test(source),
+          tentative: TENTATIVE.test(path),
+        });
       }
     } else if (/\.(xhtml|xht|svg|xml)$/.test(name)) {
       const source = readFileSync(abs, 'utf8');
-      if (USES_TESTHARNESS.test(source)) notRunnable.push({ id: path, reason: 'XML document (not loaded by this harness)' });
+      if (USES_TESTHARNESS.test(source))
+        notRunnable.push({ id: path, reason: 'XML document (not loaded by this harness)' });
     } else if (/\.(any|window)\.js$/.test(name)) {
       const source = readFileSync(abs, 'utf8');
       const meta = parseJsMeta(source);
@@ -94,7 +103,17 @@ export function discover(wptRoot, paths) {
       const scripts = meta.filter(([k]) => k === 'script').map(([, v]) => v);
       const title = meta.find(([k]) => k === 'title')?.[1];
       for (const variant of variants.length ? variants : ['']) {
-        tests.push({ id: htmlPath + variant, file: path, kind, url: '/' + htmlPath + variant, long, scripts, title, testdriver: scripts.some((s) => USES_TESTDRIVER.test(s)), tentative: TENTATIVE.test(path) });
+        tests.push({
+          id: htmlPath + variant,
+          file: path,
+          kind,
+          url: '/' + htmlPath + variant,
+          long,
+          scripts,
+          title,
+          testdriver: scripts.some((s) => USES_TESTDRIVER.test(s)),
+          tentative: TENTATIVE.test(path),
+        });
       }
     } else if (WORKER_ONLY.test(name)) {
       notRunnable.push({ id: path, reason: 'worker scope' });

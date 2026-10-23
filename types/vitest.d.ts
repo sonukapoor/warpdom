@@ -25,7 +25,10 @@ declare const environment: WarpdomVitestEnvironment;
 export default environment;
 
 /** The jsdom profile the environment uses: `environmentOptions.warpdom`, else the installed jsdom (and its cssstyle). */
-export function jsdomProfile(options?: WarpdomVitestEnvironmentOptions, root?: string): {
+export function jsdomProfile(
+  options?: WarpdomVitestEnvironmentOptions,
+  root?: string,
+): {
   jsdom: JsdomVersion | undefined;
   cssstyle: string | undefined;
 };

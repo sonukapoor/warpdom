@@ -3,8 +3,25 @@
 // lazily the first time something is parsed, so test files that never
 // parse HTML do not pay for loading it).
 import {
-  S, state, insert, remove, replace, replaceAll, domError, hooks, reactionScope, HTML_NS, templateContentsOwner,
-  ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_NODE, DOCUMENT_FRAGMENT_NODE, DOCUMENT_TYPE_NODE, CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE,
+  S,
+  state,
+  insert,
+  remove,
+  replace,
+  replaceAll,
+  domError,
+  hooks,
+  reactionScope,
+  HTML_NS,
+  templateContentsOwner,
+  ELEMENT_NODE,
+  TEXT_NODE,
+  COMMENT_NODE,
+  DOCUMENT_NODE,
+  DOCUMENT_FRAGMENT_NODE,
+  DOCUMENT_TYPE_NODE,
+  CDATA_SECTION_NODE,
+  PROCESSING_INSTRUCTION_NODE,
   namedAttributesSet,
 } from './internal.js';
 import { parseXMLFragment } from './xml.js';
@@ -24,7 +41,8 @@ export function setParserLoader(loader) {
 
 function getParser() {
   if (!parser) {
-    if (!loadParser) throw new Error('warpdom: no HTML parser available. Import warpdom from Node, or call setParserLoader().');
+    if (!loadParser)
+      throw new Error('warpdom: no HTML parser available. Import warpdom from Node, or call setParserLoader().');
     parser = loadParser();
   }
   return parser;
@@ -34,19 +52,36 @@ function getParser() {
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const MATHML_NS = 'http://www.w3.org/1998/Math/MathML';
-const VOID = new Set(['area', 'base', 'basefont', 'bgsound', 'br', 'col', 'embed', 'frame', 'hr', 'img', 'input',
-  'keygen', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
+const VOID = new Set([
+  'area',
+  'base',
+  'basefont',
+  'bgsound',
+  'br',
+  'col',
+  'embed',
+  'frame',
+  'hr',
+  'img',
+  'input',
+  'keygen',
+  'link',
+  'meta',
+  'param',
+  'source',
+  'track',
+  'wbr',
+]);
 const RAW_TEXT = new Set(['style', 'script', 'xmp', 'iframe', 'noembed', 'noframes', 'plaintext']);
 
-const escapeText = (s) => (/[&<> ]/.test(s)
-  ? s.replace(/&/g, '&amp;').replace(/ /g, '&nbsp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  : s);
-const escapeAttribute = (s) => (/[&" ]/.test(s)
-  ? s.replace(/&/g, '&amp;').replace(/ /g, '&nbsp;').replace(/"/g, '&quot;')
-  : s);
+const escapeText = (s) =>
+  /[&<> ]/.test(s) ? s.replace(/&/g, '&amp;').replace(/ /g, '&nbsp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : s;
+const escapeAttribute = (s) =>
+  /[&" ]/.test(s) ? s.replace(/&/g, '&amp;').replace(/ /g, '&nbsp;').replace(/"/g, '&quot;') : s;
 
 // Elements outside the HTML, SVG and MathML namespaces keep their prefix.
-const tagNameOf = (s) => (s.prefix === undefined || s.ns === HTML_NS || s.ns === SVG_NS || s.ns === MATHML_NS ? s.tag : `${s.prefix}:${s.tag}`);
+const tagNameOf = (s) =>
+  s.prefix === undefined || s.ns === HTML_NS || s.ns === SVG_NS || s.ns === MATHML_NS ? s.tag : `${s.prefix}:${s.tag}`;
 
 function serializeElement(el) {
   const s = el[S];
@@ -57,7 +92,9 @@ function serializeElement(el) {
   // Attributes by qualified name, as jsdom serializes them (the standard
   // writes xlink: for the XLink namespace whatever the prefix).
   if (s.attrNS == null) for (const [name, value] of s.attrs) out += ` ${name}="${escapeAttribute(value)}"`;
-  else for (const [key, value] of s.attrs) out += ` ${key.charCodeAt(0) === 0 ? s.attrNS.get(key).qn : key}="${escapeAttribute(value)}"`;
+  else
+    for (const [key, value] of s.attrs)
+      out += ` ${key.charCodeAt(0) === 0 ? s.attrNS.get(key).qn : key}="${escapeAttribute(value)}"`;
   out += '>';
   if (s.ns === HTML_NS && VOID.has(s.tag)) return out;
   const contentRoot = s.ns === HTML_NS && s.tag === 'template' && s.content ? s.content : el;
@@ -71,14 +108,26 @@ export function serializeChildren(node) {
   for (let c = s.first; c; c = c[S].next) {
     const cs = c[S];
     switch (cs.type) {
-      case ELEMENT_NODE: out += serializeElement(c); break;
+      case ELEMENT_NODE:
+        out += serializeElement(c);
+        break;
       // A CDATA section is a Text node to the HTML serializer.
-      case TEXT_NODE: case CDATA_SECTION_NODE: out += raw ? cs.data : escapeText(cs.data); break;
-      case COMMENT_NODE: out += `<!--${cs.data}-->`; break;
-      case PROCESSING_INSTRUCTION_NODE: out += `<?${cs.target} ${cs.data}>`; break;
+      case TEXT_NODE:
+      case CDATA_SECTION_NODE:
+        out += raw ? cs.data : escapeText(cs.data);
+        break;
+      case COMMENT_NODE:
+        out += `<!--${cs.data}-->`;
+        break;
+      case PROCESSING_INSTRUCTION_NODE:
+        out += `<?${cs.target} ${cs.data}>`;
+        break;
       // Only a document has one (XMLHttpRequest's send(document)).
-      case DOCUMENT_TYPE_NODE: out += `<!DOCTYPE ${cs.name}>`; break;
-      default: break;
+      case DOCUMENT_TYPE_NODE:
+        out += `<!DOCTYPE ${cs.name}>`;
+        break;
+      default:
+        break;
     }
   }
   return out;
@@ -121,11 +170,21 @@ function appendAst(internals, parent, astNodes, doc, inTemplate = false) {
     let node;
     if (n.nodeName === '#text') node = internals.createText(n.value, doc);
     else if (n.nodeName === '#comment') node = internals.createComment(n.data, doc);
-    else if (n.nodeName === '#documentType') node = internals.createDoctype(n.name ?? '', n.publicId ?? '', n.systemId ?? '', doc);
+    else if (n.nodeName === '#documentType')
+      node = internals.createDoctype(n.name ?? '', n.publicId ?? '', n.systemId ?? '', doc);
     else if (n.tagName) {
       let is = null;
       for (const a of n.attrs) if (a.name === 'is' && !a.prefix) is = a.value;
-      node = internals.createElementNS(n.namespaceURI, n.tagName, doc, true, null, false, n.namespaceURI === HTML_NS ? is : null, false);
+      node = internals.createElementNS(
+        n.namespaceURI,
+        n.tagName,
+        doc,
+        true,
+        null,
+        false,
+        n.namespaceURI === HTML_NS ? is : null,
+        false,
+      );
       const attrs = node[S].attrs;
       let handlers = false;
       for (const a of n.attrs) {
@@ -135,7 +194,12 @@ function appendAst(internals, parent, astNodes, doc, inTemplate = false) {
           const key = `\0${a.namespace}\0${a.name}`;
           attrs.set(key, a.value);
           const ns = node[S].attrNS ?? (node[S].attrNS = new Map());
-          ns.set(key, { ns: a.namespace, prefix: a.prefix || null, local: a.name, qn: a.prefix ? `${a.prefix}:${a.name}` : a.name });
+          ns.set(key, {
+            ns: a.namespace,
+            prefix: a.prefix || null,
+            local: a.name,
+            qn: a.prefix ? `${a.prefix}:${a.name}` : a.name,
+          });
           continue;
         }
         attrs.set(a.name, a.value);
@@ -145,7 +209,8 @@ function appendAst(internals, parent, astNodes, doc, inTemplate = false) {
       if (n.attrs.length !== 0) namedAttributesSet(node[S], doc);
       // A parsed <details open> queues its toggle event, as adding the
       // attribute would.
-      if (n.tagName === 'details' && n.namespaceURI === HTML_NS && attrs.has('open')) attributeSteps.get('open')?.(node, undefined, attrs.get('open'));
+      if (n.tagName === 'details' && n.namespaceURI === HTML_NS && attrs.has('open'))
+        attributeSteps.get('open')?.(node, undefined, attrs.get('open'));
       // A checked input may be a radio button: its group is updated on
       // insertion (forms.js).
       if (n.tagName === 'input' && attrs.has('checked')) doc[S].checkedRadios = true;
@@ -153,8 +218,7 @@ function appendAst(internals, parent, astNodes, doc, inTemplate = false) {
       if (n.content) {
         const content = templateContent(node);
         appendAst(internals, content, n.content.childNodes, content[S].doc, true);
-      }
-      else appendAst(internals, node, n.childNodes, doc, inTemplate);
+      } else appendAst(internals, node, n.childNodes, doc, inTemplate);
     } else continue;
     insert(parent, node, null);
   }
@@ -189,7 +253,11 @@ function outerHTML(element, html) {
   const s = state(element);
   const parent = s.parent;
   if (!parent) return;
-  if (parent[S].type === DOCUMENT_NODE) throw domError('Failed to set the \'outerHTML\' property on \'Element\': This element\'s parent is of type \'#document\'.', 'NoModificationAllowedError');
+  if (parent[S].type === DOCUMENT_NODE)
+    throw domError(
+      "Failed to set the 'outerHTML' property on 'Element': This element's parent is of type '#document'.",
+      'NoModificationAllowedError',
+    );
   const context = parent[S].type === DOCUMENT_FRAGMENT_NODE ? s.doc.createElement('body') : parent;
   replace(parent, parseFragment(s.doc, context, html), element);
 }
@@ -202,12 +270,16 @@ function adjacentHTML(element, position, html) {
   let context;
   if (where === 'beforebegin' || where === 'afterend') {
     context = s.parent;
-    if (!context || context[S].type === DOCUMENT_NODE) throw domError('The element has no parent.', 'NoModificationAllowedError');
+    if (!context || context[S].type === DOCUMENT_NODE)
+      throw domError('The element has no parent.', 'NoModificationAllowedError');
     if (context[S].type === DOCUMENT_FRAGMENT_NODE) context = s.doc.createElement('body');
   } else if (where === 'afterbegin' || where === 'beforeend') {
     context = element;
   } else {
-    throw domError(`The value provided ('${position}') is not one of 'beforeBegin', 'afterBegin', 'beforeEnd', or 'afterEnd'.`, 'SyntaxError');
+    throw domError(
+      `The value provided ('${position}') is not one of 'beforeBegin', 'afterBegin', 'beforeEnd', or 'afterEnd'.`,
+      'SyntaxError',
+    );
   }
   const fragment = parseFragment(s.doc, context, html);
   if (where === 'beforebegin') insert(s.parent, fragment, element);

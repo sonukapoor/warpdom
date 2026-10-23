@@ -43,7 +43,10 @@ const fragmentScripts = (w) => {
   b.id = 'b';
   g.appendChild(b);
   w.document.body.appendChild(g);
-  w.document.body.replaceChildren(script(w, 'log.push(document.body.childNodes.length)'), script(w, 'log.push(document.body.childNodes.length)'));
+  w.document.body.replaceChildren(
+    script(w, 'log.push(document.body.childNodes.length)'),
+    script(w, 'log.push(document.body.childNodes.length)'),
+  );
   return w.log;
 };
 parity('scripts inserted with a fragment (jsdom 30)', fragmentScripts);
@@ -86,7 +89,17 @@ parity('parser-made scripts do not run, their clones do', (w) => {
 
 parity('script types and language', (w) => {
   w.log = [];
-  for (const type of ['module', 'text/plain', 'application/json', 'text/javascript', 'TEXT/JAVASCRIPT', '', 'application/ecmascript', ' text/javascript ', 'text/javascript; charset=utf-8']) {
+  for (const type of [
+    'module',
+    'text/plain',
+    'application/json',
+    'text/javascript',
+    'TEXT/JAVASCRIPT',
+    '',
+    'application/ecmascript',
+    ' text/javascript ',
+    'text/javascript; charset=utf-8',
+  ]) {
     w.document.body.appendChild(script(w, `log.push(${JSON.stringify(type)})`, { type }));
   }
   w.document.body.appendChild(script(w, 'log.push("vbscript")', { language: 'vbscript' }));
@@ -125,7 +138,10 @@ parity('scripts that do not run: src, documents without a window, SVG', (w) => {
 
 parity('document.currentScript and errors', (w) => {
   w.log = [];
-  w.addEventListener('error', (e) => { e.preventDefault(); w.log.push(['error', e.message, e.error?.name]); });
+  w.addEventListener('error', (e) => {
+    e.preventDefault();
+    w.log.push(['error', e.message, e.error?.name]);
+  });
   const s = script(w, 'log.push(document.currentScript === window.current)');
   w.current = s;
   w.document.body.appendChild(s);

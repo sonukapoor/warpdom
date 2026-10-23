@@ -55,8 +55,18 @@ test('reflection kinds', () => {
   assert.equal(track.kind, 'metadata');
   const input = d.createElement('input');
   assert.equal(input.size, 20);
-  assert.throws(() => { input.size = 0; }, { name: 'IndexSizeError' });
-  assert.throws(() => { input.maxLength = -1; }, { name: 'IndexSizeError' });
+  assert.throws(
+    () => {
+      input.size = 0;
+    },
+    { name: 'IndexSizeError' },
+  );
+  assert.throws(
+    () => {
+      input.maxLength = -1;
+    },
+    { name: 'IndexSizeError' },
+  );
   const progress = d.createElement('progress');
   assert.equal(progress.max, 1);
   progress.setAttribute('max', '-3');
@@ -80,14 +90,18 @@ parity('ARIA reflection (ARIAMixin)', (w) => {
 // WebIDL: undefined converts to null for a nullable DOMString, so it removes
 // the attribute (jsdom 26 and 30 alike).
 for (const jsdom of [26, 30]) {
-  parity(`ARIA reflection: undefined removes the attribute (jsdom ${jsdom})`, (w) => {
-    const div = w.document.createElement('div');
-    div.setAttribute('aria-label', 'x');
-    div.setAttribute('role', 'button');
-    div.ariaLabel = undefined;
-    div.role = undefined;
-    return [div.ariaLabel, div.role, div.hasAttribute('aria-label'), div.hasAttribute('role')];
-  }, { jsdom });
+  parity(
+    `ARIA reflection: undefined removes the attribute (jsdom ${jsdom})`,
+    (w) => {
+      const div = w.document.createElement('div');
+      div.setAttribute('aria-label', 'x');
+      div.setAttribute('role', 'button');
+      div.ariaLabel = undefined;
+      div.role = undefined;
+      return [div.ariaLabel, div.role, div.hasAttribute('aria-label'), div.hasAttribute('role')];
+    },
+    { jsdom },
+  );
 }
 
 // "-0" parses to 0 (an IDL long has no -0), and a nullable enumerated
@@ -106,8 +120,14 @@ parity('reflection: "-0" is 0, crossOrigin = undefined removes the attribute', (
   const img = d.createElement('img');
   img.crossOrigin = 'anonymous';
   img.crossOrigin = null;
-  return [Object.is(link.tabIndex, 0), Object.is(input.maxLength, 0), Object.is(ol.start, 0),
-    video.getAttribute('crossorigin'), video.crossOrigin, img.hasAttribute('crossorigin')];
+  return [
+    Object.is(link.tabIndex, 0),
+    Object.is(input.maxLength, 0),
+    Object.is(ol.start, 0),
+    video.getAttribute('crossorigin'),
+    video.crossOrigin,
+    img.hasAttribute('crossorigin'),
+  ];
 });
 
 // Keywords compare ASCII case-insensitively (the Kelvin sign is not "k"),
@@ -130,8 +150,16 @@ parity('reflection: ASCII case-insensitive keywords, "1.e2", null as ""', (w) =>
   iframe.marginHeight = null;
   const body = d.createElement('body');
   body.bgColor = null;
-  return [input.type, button.type, form.method, progress.max, meter.max,
-    img.getAttribute('border'), iframe.getAttribute('marginheight'), body.getAttribute('bgcolor')];
+  return [
+    input.type,
+    button.type,
+    form.method,
+    progress.max,
+    meter.max,
+    img.getAttribute('border'),
+    iframe.getAttribute('marginheight'),
+    body.getAttribute('bgcolor'),
+  ];
 });
 
 // Submit buttons' formAction, formMethod and formEnctype (jsdom lacks them;
@@ -145,12 +173,17 @@ test('formAction, formMethod, formEnctype', () => {
     el.setAttribute('formaction', 'go?x=1');
     el.setAttribute('formmethod', 'POST');
     el.setAttribute('formenctype', 'Text/Plain');
-    assert.deepEqual([el.formAction, el.formMethod, el.formEnctype], ['http://localhost:3000/dir/go?x=1', 'post', 'text/plain']);
+    assert.deepEqual(
+      [el.formAction, el.formMethod, el.formEnctype],
+      ['http://localhost:3000/dir/go?x=1', 'post', 'text/plain'],
+    );
     el.formMethod = 'put';
     el.formEnctype = '';
     el.formAction = '';
-    assert.deepEqual([el.getAttribute('formmethod'), el.formMethod, el.formEnctype, el.formAction],
-      ['put', 'get', 'application/x-www-form-urlencoded', 'http://localhost:3000/dir/page']);
+    assert.deepEqual(
+      [el.getAttribute('formmethod'), el.formMethod, el.formEnctype, el.formAction],
+      ['put', 'get', 'application/x-www-form-urlencoded', 'http://localhost:3000/dir/page'],
+    );
   }
 });
 
@@ -173,17 +206,24 @@ test('USVString reflections replace lone surrogates', () => {
 // there).
 const unknownElementsScenario = (w) => {
   const d = w.document;
-  d.body.innerHTML = '<search id="s">x</search><select><button><selectedcontent></selectedcontent></button><option>a</option></select><menuitem id="m"></menuitem>';
+  d.body.innerHTML =
+    '<search id="s">x</search><select><button><selectedcontent></selectedcontent></button><option>a</option></select><menuitem id="m"></menuitem>';
   const out = [d.body.innerHTML, 'HTMLSelectedContentElement' in w];
   for (const tag of ['search', 'selectedcontent', 'menuitem']) {
     const e = d.createElement(tag);
     d.body.append(e);
-    out.push(e.constructor.name, e instanceof w.HTMLUnknownElement, Object.getPrototypeOf(e) === w.HTMLUnknownElement.prototype,
-      w.getComputedStyle(e).display, Object.prototype.toString.call(e));
+    out.push(
+      e.constructor.name,
+      e instanceof w.HTMLUnknownElement,
+      Object.getPrototypeOf(e) === w.HTMLUnknownElement.prototype,
+      w.getComputedStyle(e).display,
+      Object.prototype.toString.call(e),
+    );
   }
   return out;
 };
-for (const jsdom of [20, 26, 30]) parity(`search, selectedcontent and menuitem (jsdom ${jsdom})`, unknownElementsScenario, { jsdom });
+for (const jsdom of [20, 26, 30])
+  parity(`search, selectedcontent and menuitem (jsdom ${jsdom})`, unknownElementsScenario, { jsdom });
 
 test('<search> display per jsdom version: boundary 27.0.0', () => {
   const display = (jsdom) => {

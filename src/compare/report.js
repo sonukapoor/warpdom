@@ -17,7 +17,8 @@ export function environmentLabel(environment) {
   if (!/^([a-zA-Z]:)?[\\/]/.test(value)) return value;
   const parts = value.split(/[\\/]/);
   const i = parts.lastIndexOf('node_modules');
-  const pkg = i >= 0 && parts[i + 1] ? (parts[i + 1].startsWith('@') ? `${parts[i + 1]}/${parts[i + 2]}` : parts[i + 1]) : null;
+  const pkg =
+    i >= 0 && parts[i + 1] ? (parts[i + 1].startsWith('@') ? `${parts[i + 1]}/${parts[i + 2]}` : parts[i + 1]) : null;
   if (pkg === '.warpdom-compare' || pkg === 'warpdom' || (!pkg && parts.includes('warpdom'))) return 'warpdom';
   if (pkg === '@happy-dom/jest-environment') return 'happy-dom';
   if (pkg?.startsWith('jest-environment-')) return pkg.slice('jest-environment-'.length);
@@ -36,7 +37,7 @@ function baselineLabel(result) {
 function header(result) {
   if (!result.runner) return 'warpdom compare';
   const dom = result.baseline;
-  const domText = dom?.version ? `${dom.name} ${dom.version}` : dom?.name ?? 'unknown';
+  const domText = dom?.version ? `${dom.name} ${dom.version}` : (dom?.name ?? 'unknown');
   const profile = dom?.name === 'jsdom' && dom.version ? ` (warpdom's jsdom-${dom.version.split('.')[0]} profile)` : '';
   const runner = `${result.runner}${result.runnerVersion ? ` ${result.runnerVersion}` : ''}`;
   const projects = (result.projects?.length ?? 0) > 1 ? `, ${plural(result.projects.length, 'project')}` : '';
@@ -49,32 +50,50 @@ function notComparedLines(result) {
   const lines = [];
   const pinned = result.pinned;
   if (pinned?.switched) {
-    lines.push(`${plural(pinned.switched, 'file')} ${pinned.switched === 1 ? 'pins' : 'pin'} ${pinned.switchedEnvironments.join('/')} with a comment; switched`);
-    if (pinned.withOptions) lines.push(`(${plural(pinned.withOptions, 'switched file')} also ${pinned.withOptions === 1 ? 'sets' : 'set'} @vitest-environment-options, which stay keyed by the original name and do not reach warpdom)`);
+    lines.push(
+      `${plural(pinned.switched, 'file')} ${pinned.switched === 1 ? 'pins' : 'pin'} ${pinned.switchedEnvironments.join('/')} with a comment; switched`,
+    );
+    if (pinned.withOptions)
+      lines.push(
+        `(${plural(pinned.withOptions, 'switched file')} also ${pinned.withOptions === 1 ? 'sets' : 'set'} @vitest-environment-options, which stay keyed by the original name and do not reach warpdom)`,
+      );
   }
   if (pinned?.notSwitched ?? pinned?.files) {
     const n = pinned.notSwitched ?? pinned.files;
-    const why = result.runner === 'jest' ? ' (Jest: only comments choosing jsdom, on a jsdom baseline, are switched)' : '';
-    lines.push(`Not compared: ${plural(n, 'file')} (${plural(pinned.tests, 'test')}) ${n === 1 ? 'chooses' : 'choose'} ${(pinned.notSwitchedEnvironments ?? pinned.environments).join('/')} with a comment and were not switched${why}`);
+    const why =
+      result.runner === 'jest' ? ' (Jest: only comments choosing jsdom, on a jsdom baseline, are switched)' : '';
+    lines.push(
+      `Not compared: ${plural(n, 'file')} (${plural(pinned.tests, 'test')}) ${n === 1 ? 'chooses' : 'choose'} ${(pinned.notSwitchedEnvironments ?? pinned.environments).join('/')} with a comment and were not switched${why}`,
+    );
   }
   const unswitched = (result.projects ?? []).filter((p) => p.unswitched);
   if (unswitched.length) {
     const byProject = result.correctness?.byProject ?? {};
     const tests = unswitched.reduce((n, p) => n + (byProject[p.name ?? '']?.notCompared ?? 0), 0);
-    lines.push(`Not compared: ${plural(unswitched.length, 'project')} on ${[...new Set(unswitched.map((p) => environmentLabel(p.environment)))].join(', ')}${tests ? ` (${plural(tests, 'test')})` : ''} that compare could not switch`);
+    lines.push(
+      `Not compared: ${plural(unswitched.length, 'project')} on ${[...new Set(unswitched.map((p) => environmentLabel(p.environment)))].join(', ')}${tests ? ` (${plural(tests, 'test')})` : ''} that compare could not switch`,
+    );
   }
   const notRun = (result.projects ?? []).filter((p) => p.notRun);
   if (notRun.length) lines.push(`Not run: ${plural(notRun.length, 'project')} in browser mode (left out of both runs)`);
   const others = (result.projects ?? []).filter((p) => !p.dom && !p.unswitched && !p.notRun);
   if (others.length) {
     const environments = [...new Set(others.filter((p) => !p.browser).map((p) => environmentLabel(p.environment)))];
-    const where = [environments.length ? `on ${environments.join(', ')}` : null, others.some((p) => p.browser) ? 'in browser mode' : null].filter(Boolean).join(' and ');
+    const where = [
+      environments.length ? `on ${environments.join(', ')}` : null,
+      others.some((p) => p.browser) ? 'in browser mode' : null,
+    ]
+      .filter(Boolean)
+      .join(' and ');
     const byProject = result.correctness?.byProject ?? {};
     const tests = others.reduce((n, p) => n + (byProject[p.name ?? '']?.notCompared ?? 0), 0);
-    lines.push(`Not compared: ${plural(others.length, 'project')} ${where}${tests ? ` (${plural(tests, 'test')})` : ''}, ran unchanged in both runs`);
+    lines.push(
+      `Not compared: ${plural(others.length, 'project')} ${where}${tests ? ` (${plural(tests, 'test')})` : ''}, ran unchanged in both runs`,
+    );
   }
   const changed = result.correctness?.notComparedChanged?.length;
-  if (changed) lines.push(`(${plural(changed, 'test')} not compared changed status between runs anyway: listed in the report)`);
+  if (changed)
+    lines.push(`(${plural(changed, 'test')} not compared changed status between runs anyway: listed in the report)`);
   return lines;
 }
 
@@ -83,7 +102,9 @@ function resultLines(result) {
   const base = baselineLabel(result);
   const lines = [];
   if (!c.differences.length) {
-    lines.push(`${plural(c.compared - c.flakyBaseline.length - c.flakyWarpdom.length, 'test')}, all with the same status on ${base} and warpdom`);
+    lines.push(
+      `${plural(c.compared - c.flakyBaseline.length - c.flakyWarpdom.length, 'test')}, all with the same status on ${base} and warpdom`,
+    );
   } else {
     const parts = [];
     if (c.regressions) parts.push(`${c.regressions} pass on ${base} and fail on warpdom`);
@@ -91,7 +112,8 @@ function resultLines(result) {
     if (c.other) parts.push(`${c.other} other (skipped or missing on one side)`);
     lines.push(`${plural(c.compared, 'test')}, ${plural(c.same, 'test')} with the same status; ${parts.join(', ')}`);
   }
-  if (c.flakyBaseline.length) lines.push(`(${c.flakyBaseline.length} flaky on ${base} itself: listed in the report, not counted)`);
+  if (c.flakyBaseline.length)
+    lines.push(`(${c.flakyBaseline.length} flaky on ${base} itself: listed in the report, not counted)`);
   if (c.flakyWarpdom.length) lines.push(`(${c.flakyWarpdom.length} flaky on warpdom only: listed in the report)`);
   return lines;
 }
@@ -103,12 +125,19 @@ function speedLines(result) {
   const base = baselineLabel(result);
   const w = Math.max(base.length, 8) + 2;
   const lines = [`${pad('round', 8)}${pad(base, w)}warpdom`];
-  for (const r of t.perRound) lines.push(`${pad(r.round, 8)}${pad(secs(r.baselineMs), w)}${pad(secs(r.warpdomMs), 9)}${t.rounds > 1 ? ` ${times(r.baselineMs / r.warpdomMs)}` : ''}`);
+  for (const r of t.perRound)
+    lines.push(
+      `${pad(r.round, 8)}${pad(secs(r.baselineMs), w)}${pad(secs(r.warpdomMs), 9)}${t.rounds > 1 ? ` ${times(r.baselineMs / r.warpdomMs)}` : ''}`,
+    );
   const spread = t.rounds > 1 && t.spread ? ` (spread ${times(t.spread.min)}-${times(t.spread.max)})` : '';
-  if (t.rounds > 1) lines.push(`${pad('median', 8)}${pad(secs(t.baselineMs), w)}${pad(secs(t.warpdomMs), 9)} ${speedPhrase(t.speedup)}${spread}`);
+  if (t.rounds > 1)
+    lines.push(
+      `${pad('median', 8)}${pad(secs(t.baselineMs), w)}${pad(secs(t.warpdomMs), 9)} ${speedPhrase(t.speedup)}${spread}`,
+    );
   else lines[1] += `  ${speedPhrase(t.speedup)}`;
   if (t.indicative) lines.push('indicative, single round: use --rounds 3 for numbers worth quoting');
-  if (t.noisy) lines.push('the rounds differ by more than 10%: the machine was busy; use more rounds or close other programs');
+  if (t.noisy)
+    lines.push('the rounds differ by more than 10%: the machine was busy; use more rounds or close other programs');
   lines.push(`times: ${t.source === 'runner' ? "the runner's reported duration" : 'wall clock of the runner process'}`);
   return lines;
 }
@@ -138,7 +167,10 @@ export function renderConsole(result, { reportPath = null, groupLimit = 10 } = {
     if (result.error) out.push(section('Error', [result.error]), '');
   }
   if (result.gitChanges?.length) {
-    out.push(section('Warning', ['files in the project changed during the comparison:', ...result.gitChanges.slice(0, 10)]), '');
+    out.push(
+      section('Warning', ['files in the project changed during the comparison:', ...result.gitChanges.slice(0, 10)]),
+      '',
+    );
   }
   for (const w of result.warnings ?? []) out.push(section('Warning', [w]), '');
   if (reportPath) out.push(section('Report', [`${reportPath} (shareable summary: no file or test names)`]));
@@ -155,13 +187,23 @@ function projectTable(result, md) {
   if (names.length < 2 && !names.some(Boolean)) return;
   const base = baselineLabel(result);
   md.push('### Projects', '');
-  md.push(`| Project | Environment | Compared | Same | Pass on ${base}, fail on warpdom | Fail on ${base}, pass on warpdom | Other | Flaky | Not compared |`);
+  md.push(
+    `| Project | Environment | Compared | Same | Pass on ${base}, fail on warpdom | Fail on ${base}, pass on warpdom | Other | Flaky | Not compared |`,
+  );
   md.push('|---|---|---:|---:|---:|---:|---:|---:|---:|');
   for (const name of names) {
     const p = projects.find((x) => (x.name ?? '') === name);
     const n = byProject[name] ?? { compared: 0, same: 0, regressions: 0, fixed: 0, other: 0, flaky: 0, notCompared: 0 };
-    const environment = !p ? '-' : p.notRun ? 'browser mode (not run)' : p.browser ? 'browser mode' : `${environmentLabel(p.environment)}${p.unswitched ? ' (not switched, not compared)' : p.dom ? '' : ' (not compared)'}`;
-    md.push(`| ${name || '(unnamed)'} | ${environment} | ${n.compared} | ${n.same} | ${n.regressions} | ${n.fixed} | ${n.other} | ${n.flaky} | ${n.notCompared} |`);
+    const environment = !p
+      ? '-'
+      : p.notRun
+        ? 'browser mode (not run)'
+        : p.browser
+          ? 'browser mode'
+          : `${environmentLabel(p.environment)}${p.unswitched ? ' (not switched, not compared)' : p.dom ? '' : ' (not compared)'}`;
+    md.push(
+      `| ${name || '(unnamed)'} | ${environment} | ${n.compared} | ${n.same} | ${n.regressions} | ${n.fixed} | ${n.other} | ${n.flaky} | ${n.notCompared} |`,
+    );
   }
   md.push('');
 }
@@ -178,10 +220,14 @@ export function renderMarkdown(result) {
   md.push('```', header(result), '```', '');
   md.push(`- Runner: ${result.runner} ${result.runnerVersion ?? ''}`.trimEnd());
   md.push(`- Baseline: ${result.baseline?.name ?? '-'} ${result.baseline?.version ?? ''}`.trimEnd());
-  md.push(`- warpdom: ${result.warpdom?.version ?? '-'} (${result.warpdom?.source === 'installed' ? 'installed in the project' : 'copied into node_modules for the run'})`);
+  md.push(
+    `- warpdom: ${result.warpdom?.version ?? '-'} (${result.warpdom?.source === 'installed' ? 'installed in the project' : 'copied into node_modules for the run'})`,
+  );
   const machine = machineLine(result.environment);
   if (machine) md.push(`- Machine: ${machine}`);
-  md.push(`- Mode: ${result.mode === 'correctness' ? 'correctness (one run each, no speed claims)' : `${plural(result.timing?.rounds ?? 0, 'timed round')}${result.warmup ? ' after an untimed warm-up pair' : ''}`}`);
+  md.push(
+    `- Mode: ${result.mode === 'correctness' ? 'correctness (one run each, no speed claims)' : `${plural(result.timing?.rounds ?? 0, 'timed round')}${result.warmup ? ' after an untimed warm-up pair' : ''}`}`,
+  );
   if (result.error) md.push(`- Error: ${result.error}`);
   md.push('');
   if (result.correctness) {
@@ -189,9 +235,15 @@ export function renderMarkdown(result) {
     md.push('### Results', '');
     md.push('| | Tests |', '|---|---:|');
     md.push(`| Compared | ${c.compared} |`, `| Same status | ${c.same} |`);
-    md.push(`| Pass on ${base}, fail on warpdom | ${c.regressions} |`, `| Fail on ${base}, pass on warpdom | ${c.fixed} |`);
+    md.push(
+      `| Pass on ${base}, fail on warpdom | ${c.regressions} |`,
+      `| Fail on ${base}, pass on warpdom | ${c.fixed} |`,
+    );
     md.push(`| Other (skipped or missing on one side) | ${c.other} |`);
-    md.push(`| Flaky on ${base} itself (not counted) | ${c.flakyBaseline.length} |`, `| Flaky on warpdom only | ${c.flakyWarpdom.length} |`);
+    md.push(
+      `| Flaky on ${base} itself (not counted) | ${c.flakyBaseline.length} |`,
+      `| Flaky on warpdom only | ${c.flakyWarpdom.length} |`,
+    );
     md.push('');
     for (const line of notComparedLines(result)) md.push(`- ${line}`);
     if (notComparedLines(result).length) md.push('');
@@ -200,18 +252,28 @@ export function renderMarkdown(result) {
     const t = result.timing;
     md.push('### Speed', '');
     md.push(`| Round | ${base} | warpdom | Ratio |`, '|---|---:|---:|---:|');
-    for (const r of t.perRound) md.push(`| ${r.round} | ${secs(r.baselineMs)} | ${secs(r.warpdomMs)} | ${times(r.baselineMs / r.warpdomMs)} |`);
+    for (const r of t.perRound)
+      md.push(`| ${r.round} | ${secs(r.baselineMs)} | ${secs(r.warpdomMs)} | ${times(r.baselineMs / r.warpdomMs)} |`);
     md.push(`| **median** | ${secs(t.baselineMs)} | ${secs(t.warpdomMs)} | **${speedPhrase(t.speedup)}** |`, '');
-    if (t.spread && t.rounds > 1) md.push(`Spread of the per-round ratios: ${times(t.spread.min)}-${times(t.spread.max)}.`);
+    if (t.spread && t.rounds > 1)
+      md.push(`Spread of the per-round ratios: ${times(t.spread.min)}-${times(t.spread.max)}.`);
     if (t.indicative) md.push('Indicative: a single round. Use `--rounds 3` or more for numbers worth quoting.');
-    if (t.noisy) md.push('The rounds differ by more than 10%: the machine was busy. Use more rounds or close other programs.');
-    md.push(`Times are ${t.source === 'runner' ? "the runner's reported duration" : 'the wall clock of the runner process'}.`, '');
+    if (t.noisy)
+      md.push('The rounds differ by more than 10%: the machine was busy. Use more rounds or close other programs.');
+    md.push(
+      `Times are ${t.source === 'runner' ? "the runner's reported duration" : 'the wall clock of the runner process'}.`,
+      '',
+    );
   }
   md.push('## Details', '');
   if (result.correctness) {
     const c = result.correctness;
     projectTable(result, md);
-    const titles = { regression: `Pass on ${base}, fail on warpdom`, fixed: `Fail on ${base}, pass on warpdom`, other: 'Other' };
+    const titles = {
+      regression: `Pass on ${base}, fail on warpdom`,
+      fixed: `Fail on ${base}, pass on warpdom`,
+      other: 'Other',
+    };
     for (const cls of ['regression', 'fixed', 'other']) {
       const groups = c.groups.filter((g) => g.class === cls);
       if (!groups.length) continue;
@@ -225,22 +287,37 @@ export function renderMarkdown(result) {
       }
     }
     const unswitched = 'Changed status in tests that were not compared (same environment in both runs)';
-    for (const [title, list] of [[`Flaky on ${base} itself`, c.flakyBaseline], ['Flaky on warpdom only', c.flakyWarpdom], [unswitched, c.notComparedChanged ?? []]]) {
+    for (const [title, list] of [
+      [`Flaky on ${base} itself`, c.flakyBaseline],
+      ['Flaky on warpdom only', c.flakyWarpdom],
+      [unswitched, c.notComparedChanged ?? []],
+    ]) {
       if (!list.length) continue;
       md.push(`### ${title}`, '');
-      for (const t of list) md.push(`- ${testLabel(t)}: ${base} ${t.baseline.join(', ')}; warpdom ${t.warpdom.join(', ')}`);
+      for (const t of list)
+        md.push(`- ${testLabel(t)}: ${base} ${t.baseline.join(', ')}; warpdom ${t.warpdom.join(', ')}`);
       md.push('');
     }
     if (result.pinned?.files) {
       md.push('### Files that choose their environment with a comment', '');
-      for (const f of result.pinned.list) md.push(`- \`${f.file}\`: ${f.environment}${f.switched ? ', switched' : ', not switched'}${f.options ? ' (has @vitest-environment-options, not passed to warpdom)' : ''}`);
+      for (const f of result.pinned.list)
+        md.push(
+          `- \`${f.file}\`: ${f.environment}${f.switched ? ', switched' : ', not switched'}${f.options ? ' (has @vitest-environment-options, not passed to warpdom)' : ''}`,
+        );
       md.push('');
     }
   }
   if (result.runs?.length) {
-    md.push('### Runs', '', '| # | Environment | Round | Exit | Time | Passed | Failed | Log |', '|---:|---|---|---:|---:|---:|---:|---|');
+    md.push(
+      '### Runs',
+      '',
+      '| # | Environment | Round | Exit | Time | Passed | Failed | Log |',
+      '|---:|---|---|---:|---:|---:|---:|---|',
+    );
     for (const r of result.runs) {
-      md.push(`| ${r.index} | ${r.side === 'baseline' ? base : 'warpdom'} | ${r.warmup ? 'warm-up' : r.round ?? '-'} | ${r.code ?? r.signal ?? '-'} | ${secs(r.ms)} | ${r.counts?.passed ?? '-'} | ${r.counts?.failed ?? '-'} | ${r.log} |`);
+      md.push(
+        `| ${r.index} | ${r.side === 'baseline' ? base : 'warpdom'} | ${r.warmup ? 'warm-up' : (r.round ?? '-')} | ${r.code ?? r.signal ?? '-'} | ${secs(r.ms)} | ${r.counts?.passed ?? '-'} | ${r.counts?.failed ?? '-'} | ${r.log} |`,
+      );
     }
     md.push('');
   }

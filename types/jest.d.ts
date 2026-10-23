@@ -37,7 +37,10 @@ export interface WarpdomJestProjectConfig {
 /** A Jest test environment (Jest 27 to 30) whose global object is a warpdom window. */
 export default class WarpdomEnvironment {
   /** Jest 28 and later pass `{ globalConfig, projectConfig }`; Jest 27 the project config. */
-  constructor(config: { projectConfig: WarpdomJestProjectConfig; globalConfig?: unknown } | WarpdomJestProjectConfig, context?: unknown);
+  constructor(
+    config: { projectConfig: WarpdomJestProjectConfig; globalConfig?: unknown } | WarpdomJestProjectConfig,
+    context?: unknown,
+  );
   /** The test file's global object (the VM context's), null after teardown. */
   global: WarpdomWindow;
   /** The warpdom window behind the global object, null after teardown. */

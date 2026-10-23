@@ -21,7 +21,10 @@ const t2 = performance.now(); createWindow(); const t3 = performance.now(); cons
 
 const runs = [];
 for (let i = 0; i < 7; i++) {
-  const [load, first] = String(execFileSync(process.execPath, ['--input-type=module', '-e', probe])).trim().split(' ').map(Number);
+  const [load, first] = String(execFileSync(process.execPath, ['--input-type=module', '-e', probe]))
+    .trim()
+    .split(' ')
+    .map(Number);
   runs.push({ load, first });
 }
 const median = (xs) => xs.sort((a, b) => a - b)[xs.length >> 1];
@@ -35,7 +38,18 @@ if (!json) {
 const { createWindow } = await import(entry);
 for (let i = 0; i < 20; i++) createWindow();
 const times = [];
-for (let i = 0; i < 200; i++) { const t = performance.now(); createWindow(); times.push(performance.now() - t); }
+for (let i = 0; i < 200; i++) {
+  const t = performance.now();
+  createWindow();
+  times.push(performance.now() - t);
+}
 const nextWindows = median(times);
-if (json) console.log(JSON.stringify({ unit: 'ms', dir, results: { 'cold load': coldLoad, 'first window': firstWindow, 'next windows': nextWindows } }));
+if (json)
+  console.log(
+    JSON.stringify({
+      unit: 'ms',
+      dir,
+      results: { 'cold load': coldLoad, 'first window': firstWindow, 'next windows': nextWindows },
+    }),
+  );
 else console.log(`next windows   ${nextWindows.toFixed(3)} ms (median of 200)`);

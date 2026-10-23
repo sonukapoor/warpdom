@@ -15,11 +15,25 @@ test('warpdom/vitest/environment: an absolute path to the Vitest environment', a
 });
 
 test("withFastMode: environment 'warpdom' becomes the path, in the root and inline projects", () => {
-  const out = withFastMode({ test: { environment: 'warpdom', projects: [{ test: { name: 'a', environment: 'warpdom' } }, { test: { name: 'b', environment: 'node' } }, 'packages/*'] } },
-    { cache: '/nonexistent/fast-mode.json', project: 'a' });
+  const out = withFastMode(
+    {
+      test: {
+        environment: 'warpdom',
+        projects: [
+          { test: { name: 'a', environment: 'warpdom' } },
+          { test: { name: 'b', environment: 'node' } },
+          'packages/*',
+        ],
+      },
+    },
+    { cache: '/nonexistent/fast-mode.json', project: 'a' },
+  );
   assert.equal(out.test.environment, environment);
   assert.equal(out.test.projects[0].test.environment, environment);
   assert.equal(out.test.projects[1].test.environment, 'node');
   assert.equal(out.test.projects[2], 'packages/*');
-  assert.equal(withFastMode({ test: { environment: '/x/env.js' } }, { cache: '/nonexistent' }).test.environment, '/x/env.js');
+  assert.equal(
+    withFastMode({ test: { environment: '/x/env.js' } }, { cache: '/nonexistent' }).test.environment,
+    '/x/env.js',
+  );
 });

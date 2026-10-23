@@ -8,7 +8,11 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('..', import.meta.url));
 // Each case runs in its own process: the switch is read once at load.
 const run = (ablate, code) => {
-  const res = spawnSync(process.execPath, ['--input-type=module', '-e', code], { cwd: root, encoding: 'utf8', env: { ...process.env, WARPDOM_ABLATE: ablate } });
+  const res = spawnSync(process.execPath, ['--input-type=module', '-e', code], {
+    cwd: root,
+    encoding: 'utf8',
+    env: { ...process.env, WARPDOM_ABLATE: ablate },
+  });
   assert.equal(res.status, 0, res.stderr);
   return JSON.parse(res.stdout);
 };
@@ -18,7 +22,8 @@ test('eager-interfaces: materializeAll creates every interface of a window', asy
   const { createWindow } = await import('../src/index.js');
   const { materializeAll } = await import('../src/ablate.js');
   const w = createWindow();
-  const lazy = () => Object.getOwnPropertyNames(w).filter((n) => /^[A-Z]/.test(n) && Object.getOwnPropertyDescriptor(w, n)?.get).length;
+  const lazy = () =>
+    Object.getOwnPropertyNames(w).filter((n) => /^[A-Z]/.test(n) && Object.getOwnPropertyDescriptor(w, n)?.get).length;
   assert.ok(lazy() > 100, 'interfaces are created on first use');
   materializeAll(w);
   assert.equal(lazy(), 0, 'none left to create');
@@ -48,4 +53,3 @@ test('latest-profile: the latest jsdom profile whatever the project uses', () =>
   assert.equal(run('', code), '');
   assert.equal(run('latest-profile', code), 'rgb(0, 0, 0)');
 });
-

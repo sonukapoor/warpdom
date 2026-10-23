@@ -37,8 +37,14 @@ function tokenize(text) {
     const out = [];
     while (i < n) {
       const c = text[i];
-      if (c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f') { i++; continue; }
-      if (close && c === close) { i++; return out; }
+      if (c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f') {
+        i++;
+        continue;
+      }
+      if (close && c === close) {
+        i++;
+        return out;
+      }
       if (c === ')' || c === ']' || c === '}') return null; // unbalanced
       if (c === '"' || c === "'") {
         const end = text.indexOf(c, i + 1);
@@ -47,7 +53,11 @@ function tokenize(text) {
         i = end + 1;
         continue;
       }
-      if (c === ',') { out.push({ t: 'comma' }); i++; continue; }
+      if (c === ',') {
+        out.push({ t: 'comma' });
+        i++;
+        continue;
+      }
       if (c === '(' || c === '[' || c === '{') {
         i++;
         const items = list(c === '(' ? ')' : c === '[' ? ']' : '}');
@@ -57,8 +67,13 @@ function tokenize(text) {
       }
       if (c === '#') {
         const m = IDENT_CHARS.exec(text.slice(i + 1));
-        if (m) { out.push({ t: 'hash', v: m[0] }); i += 1 + m[0].length; continue; }
-        out.push({ t: 'delim', v: c }); i++;
+        if (m) {
+          out.push({ t: 'hash', v: m[0] });
+          i += 1 + m[0].length;
+          continue;
+        }
+        out.push({ t: 'delim', v: c });
+        i++;
         continue;
       }
       const rest = text.slice(i);
@@ -67,7 +82,11 @@ function tokenize(text) {
         i += num[0].length;
         const v = Number(num[0]);
         const int = /^[+-]?\d+$/.test(num[0]);
-        if (text[i] === '%') { out.push({ t: 'percentage', v }); i++; continue; }
+        if (text[i] === '%') {
+          out.push({ t: 'percentage', v });
+          i++;
+          continue;
+        }
         const unit = IDENT_CHARS.exec(text.slice(i));
         if (unit && IDENT_START.test(text.slice(i, i + 2))) {
           out.push({ t: 'dimension', v, unit: unit[0].toLowerCase() });
@@ -112,9 +131,17 @@ function findClose(text, from) {
   let depth = 0;
   for (let i = from; i < text.length; i++) {
     const c = text[i];
-    if (c === '"' || c === "'") { const end = text.indexOf(c, i + 1); if (end === -1) return -1; i = end; continue; }
+    if (c === '"' || c === "'") {
+      const end = text.indexOf(c, i + 1);
+      if (end === -1) return -1;
+      i = end;
+      continue;
+    }
     if (c === '(') depth++;
-    else if (c === ')') { if (depth === 0) return i; depth--; }
+    else if (c === ')') {
+      if (depth === 0) return i;
+      depth--;
+    }
   }
   return -1;
 }
@@ -131,24 +158,38 @@ class Unsupported extends Error {}
 function parseGrammar(syntax) {
   let i = 0;
   const s = syntax;
-  const ws = () => { while (i < s.length && /\s/.test(s[i])) i++; };
+  const ws = () => {
+    while (i < s.length && /\s/.test(s[i])) i++;
+  };
 
   function parseAlternatives(stop) {
     const items = [parseAny(stop)];
     ws();
-    while (s[i] === '|' && s[i + 1] !== '|') { i++; items.push(parseAny(stop)); ws(); }
+    while (s[i] === '|' && s[i + 1] !== '|') {
+      i++;
+      items.push(parseAny(stop));
+      ws();
+    }
     return items.length === 1 ? items[0] : { k: 'one', items };
   }
   function parseAny(stop) {
     const items = [parseAll(stop)];
     ws();
-    while (s[i] === '|' && s[i + 1] === '|') { i += 2; items.push(parseAll(stop)); ws(); }
+    while (s[i] === '|' && s[i + 1] === '|') {
+      i += 2;
+      items.push(parseAll(stop));
+      ws();
+    }
     return items.length === 1 ? items[0] : { k: 'any', items };
   }
   function parseAll(stop) {
     const items = [parseSeq(stop)];
     ws();
-    while (s[i] === '&' && s[i + 1] === '&') { i += 2; items.push(parseSeq(stop)); ws(); }
+    while (s[i] === '&' && s[i + 1] === '&') {
+      i += 2;
+      items.push(parseSeq(stop));
+      ws();
+    }
     return items.length === 1 ? items[0] : { k: 'all', items };
   }
   function parseSeq(stop) {
@@ -165,14 +206,25 @@ function parseGrammar(syntax) {
     let node = parseTerm(stop);
     for (;;) {
       const c = s[i];
-      if (c === '?') { node = { k: 'rep', node, min: 0, max: 1 }; i++; }
-      else if (c === '*') { node = { k: 'rep', node, min: 0, max: Infinity }; i++; }
-      else if (c === '+') { node = { k: 'rep', node, min: 1, max: Infinity }; i++; }
-      else if (c === '#') {
+      if (c === '?') {
+        node = { k: 'rep', node, min: 0, max: 1 };
         i++;
-        let min = 1, max = Infinity;
+      } else if (c === '*') {
+        node = { k: 'rep', node, min: 0, max: Infinity };
+        i++;
+      } else if (c === '+') {
+        node = { k: 'rep', node, min: 1, max: Infinity };
+        i++;
+      } else if (c === '#') {
+        i++;
+        let min = 1,
+          max = Infinity;
         const m = /^\{(\d+)(,(\d*))?\}/.exec(s.slice(i));
-        if (m) { min = +m[1]; max = m[2] ? (m[3] ? +m[3] : Infinity) : min; i += m[0].length; }
+        if (m) {
+          min = +m[1];
+          max = m[2] ? (m[3] ? +m[3] : Infinity) : min;
+          i += m[0].length;
+        }
         node = { k: 'rep', node, min, max, comma: true };
       } else if (c === '{') {
         const m = /^\{(\d+)(,(\d*))?\}/.exec(s.slice(i));
@@ -181,8 +233,10 @@ function parseGrammar(syntax) {
         const max = m[2] ? (m[3] ? +m[3] : Infinity) : min;
         node = { k: 'rep', node, min, max };
         i += m[0].length;
-      } else if (c === '!') { node = { k: 'required', node }; i++; }
-      else break;
+      } else if (c === '!') {
+        node = { k: 'required', node };
+        i++;
+      } else break;
     }
     return node;
   }
@@ -214,7 +268,10 @@ function parseGrammar(syntax) {
       i = end + 1;
       return { k: 'lit', v };
     }
-    if (c === ',' || c === '/' || c === ':' || c === ';' || c === '=') { i++; return { k: 'lit', v: c }; }
+    if (c === ',' || c === '/' || c === ':' || c === ';' || c === '=') {
+      i++;
+      return { k: 'lit', v: c };
+    }
     if (c === '(') {
       i++;
       const body = parseOptionalBody(')');
@@ -232,7 +289,10 @@ function parseGrammar(syntax) {
   }
   function parseOptionalBody(close) {
     ws();
-    if (s[i] === close) { i++; return null; }
+    if (s[i] === close) {
+      i++;
+      return null;
+    }
     const body = parseAlternatives(close);
     ws();
     if (s[i] !== close) throw new Unsupported('close');
@@ -255,16 +315,90 @@ function parseGrammar(syntax) {
 
 // --- primitive types -----------------------------------------------------------------------
 
-const LENGTH_UNITS = new Set(['px', 'cm', 'mm', 'q', 'in', 'pt', 'pc', 'em', 'rem', 'ex', 'rex', 'cap', 'rcap', 'ch', 'rch', 'ic', 'ric', 'lh', 'rlh',
-  'vw', 'vh', 'vi', 'vb', 'vmin', 'vmax', 'svw', 'svh', 'svi', 'svb', 'svmin', 'svmax', 'lvw', 'lvh', 'lvi', 'lvb', 'lvmin', 'lvmax',
-  'dvw', 'dvh', 'dvi', 'dvb', 'dvmin', 'dvmax', 'cqw', 'cqh', 'cqi', 'cqb', 'cqmin', 'cqmax']);
+const LENGTH_UNITS = new Set([
+  'px',
+  'cm',
+  'mm',
+  'q',
+  'in',
+  'pt',
+  'pc',
+  'em',
+  'rem',
+  'ex',
+  'rex',
+  'cap',
+  'rcap',
+  'ch',
+  'rch',
+  'ic',
+  'ric',
+  'lh',
+  'rlh',
+  'vw',
+  'vh',
+  'vi',
+  'vb',
+  'vmin',
+  'vmax',
+  'svw',
+  'svh',
+  'svi',
+  'svb',
+  'svmin',
+  'svmax',
+  'lvw',
+  'lvh',
+  'lvi',
+  'lvb',
+  'lvmin',
+  'lvmax',
+  'dvw',
+  'dvh',
+  'dvi',
+  'dvb',
+  'dvmin',
+  'dvmax',
+  'cqw',
+  'cqh',
+  'cqi',
+  'cqb',
+  'cqmin',
+  'cqmax',
+]);
 const ANGLE_UNITS = new Set(['deg', 'grad', 'rad', 'turn']);
 const TIME_UNITS = new Set(['s', 'ms']);
 const FREQUENCY_UNITS = new Set(['hz', 'khz']);
 const RESOLUTION_UNITS = new Set(['dpi', 'dpcm', 'dppx', 'x']);
 const CSS_WIDE = new Set(['initial', 'inherit', 'unset', 'revert', 'revert-layer']);
-const MATH = new Set(['calc', 'min', 'max', 'clamp', 'round', 'mod', 'rem', 'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'atan2',
-  'pow', 'sqrt', 'hypot', 'log', 'exp', 'abs', 'sign', 'calc-size', 'progress', 'random', 'sibling-count', 'sibling-index']);
+const MATH = new Set([
+  'calc',
+  'min',
+  'max',
+  'clamp',
+  'round',
+  'mod',
+  'rem',
+  'sin',
+  'cos',
+  'tan',
+  'asin',
+  'acos',
+  'atan',
+  'atan2',
+  'pow',
+  'sqrt',
+  'hypot',
+  'log',
+  'exp',
+  'abs',
+  'sign',
+  'calc-size',
+  'progress',
+  'random',
+  'sibling-count',
+  'sibling-index',
+]);
 
 const inRange = (v, range) => !range || (v >= range[0] && v <= range[1]);
 const isMath = (tok) => tok.t === 'function' && MATH.has(tok.name);
@@ -316,7 +450,11 @@ function typeNode(name) {
   let node = null;
   const syntax = TYPE_SYNTAX[name];
   if (syntax) {
-    try { node = parseGrammar(syntax); } catch (error) { if (!(error instanceof Unsupported)) throw error; }
+    try {
+      node = parseGrammar(syntax);
+    } catch (error) {
+      if (!(error instanceof Unsupported)) throw error;
+    }
   }
   compiled.set(name, node);
   return node;
@@ -330,7 +468,11 @@ function propertyNode(name) {
   let node = null;
   const syntax = PROPERTY_SYNTAX[name];
   if (syntax) {
-    try { node = parseGrammar(syntax); } catch (error) { if (!(error instanceof Unsupported)) throw error; }
+    try {
+      node = parseGrammar(syntax);
+    } catch (error) {
+      if (!(error instanceof Unsupported)) throw error;
+    }
   }
   propertyNodes.set(name, node);
   return node;
@@ -359,7 +501,8 @@ function match(node, tokens, pos) {
       if (node.v === ',') return tok.t === 'comma' ? [pos + 1] : [];
       return tok.t === 'delim' && tok.v === node.v ? [pos + 1] : [];
     }
-    case 'type': return matchType(node, tokens, pos);
+    case 'type':
+      return matchType(node, tokens, pos);
     case 'prop': {
       const p = propertyNode(node.name);
       if (!p) throw UNKNOWN;
@@ -384,7 +527,8 @@ function match(node, tokens, pos) {
           // Comma elision (CSS Values 4, 2.6): a comma next to the start or
           // end of the value, or to another comma, is omitted along with the
           // optional part beside it.
-          if (item.k === 'lit' && item.v === ',' && (p === 0 || p === tokens.length || tokens[p - 1]?.t === 'comma')) next = union(next, [p]);
+          if (item.k === 'lit' && item.v === ',' && (p === 0 || p === tokens.length || tokens[p - 1]?.t === 'comma'))
+            next = union(next, [p]);
         }
         if (next.length === 0) return [];
         ends = next;
@@ -396,14 +540,18 @@ function match(node, tokens, pos) {
       for (const item of node.items) ends = union(ends, match(item, tokens, pos));
       return ends;
     }
-    case 'any': return matchUnordered(node.items, tokens, pos, false);
-    case 'all': return matchUnordered(node.items, tokens, pos, true);
-    case 'rep': return matchRepeat(node, tokens, pos);
+    case 'any':
+      return matchUnordered(node.items, tokens, pos, false);
+    case 'all':
+      return matchUnordered(node.items, tokens, pos, true);
+    case 'rep':
+      return matchRepeat(node, tokens, pos);
     case 'required': {
       // At least one value inside the group must be present.
       return match(node.node, tokens, pos).filter((end) => end > pos);
     }
-    default: throw UNKNOWN;
+    default:
+      throw UNKNOWN;
   }
 }
 
@@ -418,7 +566,8 @@ function matchType(node, tokens, pos) {
     // Colors: parsed by the color module (the same as computed values).
     return colorToken(tok, name) ? [pos + 1] : [];
   }
-  if (name === 'url') return tok.t === 'url' || (tok.t === 'function' && (tok.name === 'url' || tok.name === 'src')) ? [pos + 1] : [];
+  if (name === 'url')
+    return tok.t === 'url' || (tok.t === 'function' && (tok.name === 'url' || tok.name === 'src')) ? [pos + 1] : [];
   if (name === 'declaration-value' || name === 'any-value') return anyRest(tokens, pos);
   const fn = name.endsWith('()') ? name.slice(0, -2).toLowerCase() : null;
   if (fn && tok.t === 'function' && tok.name !== fn) return [];
@@ -428,7 +577,9 @@ function matchType(node, tokens, pos) {
   // the numeric tokens they consume.
   const ends = match(sub, tokens, pos);
   if (!range) return ends;
-  return ends.filter((end) => tokens.slice(pos, end).every((t) => !('v' in t) || typeof t.v !== 'number' || inRange(t.v, range)));
+  return ends.filter((end) =>
+    tokens.slice(pos, end).every((t) => !('v' in t) || typeof t.v !== 'number' || inRange(t.v, range)),
+  );
 }
 
 // <declaration-value>, <any-value>: one or more of anything.
@@ -438,12 +589,27 @@ function anyRest(tokens, pos) {
   return ends;
 }
 
-const COLOR_FUNCTIONS = new Set(['rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'lab', 'lch', 'oklab', 'oklch', 'color', 'color-mix', 'light-dark',
-  'contrast-color', 'device-cmyk']);
+const COLOR_FUNCTIONS = new Set([
+  'rgb',
+  'rgba',
+  'hsl',
+  'hsla',
+  'hwb',
+  'lab',
+  'lch',
+  'oklab',
+  'oklch',
+  'color',
+  'color-mix',
+  'light-dark',
+  'contrast-color',
+  'device-cmyk',
+]);
 const colorCache = new Map();
 function colorToken(tok, name) {
   if (tok.t === 'ident') {
-    if (tok.v === 'currentcolor' || tok.v === 'transparent') return name === 'color' || name === 'color-base' || tok.v === 'transparent';
+    if (tok.v === 'currentcolor' || tok.v === 'transparent')
+      return name === 'color' || name === 'color-base' || tok.v === 'transparent';
     return parseColorCached(tok.v);
   }
   if (tok.t === 'hash') return PRIMITIVES['hex-color'](tok);
@@ -453,7 +619,10 @@ function colorToken(tok, name) {
 }
 function parseColorCached(ident) {
   let ok = colorCache.get(ident);
-  if (ok === undefined) { ok = resolveColor(ident) !== null; colorCache.set(ident, ok); }
+  if (ok === undefined) {
+    ok = resolveColor(ident) !== null;
+    colorCache.set(ident, ok);
+  }
   return ok;
 }
 
@@ -514,7 +683,14 @@ function matchesWhole(node, tokens) {
 function hasVar(tokens) {
   for (const tok of tokens) {
     if (tok.t === 'function') {
-      if (tok.name === 'var' || tok.name === 'env' || tok.name === 'attr' || tok.name === 'inherit' || tok.name === 'if') return true;
+      if (
+        tok.name === 'var' ||
+        tok.name === 'env' ||
+        tok.name === 'attr' ||
+        tok.name === 'inherit' ||
+        tok.name === 'if'
+      )
+        return true;
       if (hasVar(tok.args)) return true;
     } else if (tok.t === 'block' && hasVar(tok.items)) return true;
   }
@@ -530,7 +706,16 @@ function hasVar(tokens) {
 // [1,1000]) are not shaped: 400 and 1001 have the same shape.
 const isDigit = (c) => c >= 48 && c <= 57;
 // Characters after which a digit continues a word or hash token.
-const isWordChar = (c) => (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c === 45 || c === 35 || c === 46 || c === 92 || c > 127;
+const isWordChar = (c) =>
+  (c >= 48 && c <= 57) ||
+  (c >= 65 && c <= 90) ||
+  (c >= 97 && c <= 122) ||
+  c === 95 ||
+  c === 45 ||
+  c === 35 ||
+  c === 46 ||
+  c === 92 ||
+  c > 127;
 function shapeOf(value) {
   let out = '';
   let last = 0;
@@ -539,7 +724,8 @@ function shapeOf(value) {
     let c = value.charCodeAt(i);
     let j = i;
     let negative = false;
-    if (c === 43 || c === 45) { // + -
+    if (c === 43 || c === 45) {
+      // + -
       const next = value.charCodeAt(i + 1);
       if (!(isDigit(next) || (next === 46 && isDigit(value.charCodeAt(i + 2))))) continue;
       negative = c === 45;
@@ -550,19 +736,31 @@ function shapeOf(value) {
     // The number: digits, a fraction, an exponent.
     let zero = true;
     let integer = true;
-    while (j < n && isDigit(value.charCodeAt(j))) { if (value.charCodeAt(j) !== 48) zero = false; j++; }
+    while (j < n && isDigit(value.charCodeAt(j))) {
+      if (value.charCodeAt(j) !== 48) zero = false;
+      j++;
+    }
     if (value.charCodeAt(j) === 46 && isDigit(value.charCodeAt(j + 1))) {
       integer = false;
       j++;
-      while (j < n && isDigit(value.charCodeAt(j))) { if (value.charCodeAt(j) !== 48) zero = false; j++; }
+      while (j < n && isDigit(value.charCodeAt(j))) {
+        if (value.charCodeAt(j) !== 48) zero = false;
+        j++;
+      }
     }
     const e = value.charCodeAt(j);
-    if ((e === 101 || e === 69) && (isDigit(value.charCodeAt(j + 1)) || ((value.charCodeAt(j + 1) === 43 || value.charCodeAt(j + 1) === 45) && isDigit(value.charCodeAt(j + 2))))) {
+    if (
+      (e === 101 || e === 69) &&
+      (isDigit(value.charCodeAt(j + 1)) ||
+        ((value.charCodeAt(j + 1) === 43 || value.charCodeAt(j + 1) === 45) && isDigit(value.charCodeAt(j + 2))))
+    ) {
       integer = false;
       j += 2;
       while (j < n && isDigit(value.charCodeAt(j))) j++;
     }
-    out += value.slice(last, i) + (zero ? '\u0000' : negative ? (integer ? '\u0003' : '\u0004') : (integer ? '\u0001' : '\u0002'));
+    out +=
+      value.slice(last, i) +
+      (zero ? '\u0000' : negative ? (integer ? '\u0003' : '\u0004') : integer ? '\u0001' : '\u0002');
     last = j;
     i = j - 1;
   }
@@ -584,10 +782,19 @@ function hasFiniteBound(node, seen = new Set()) {
       seen.add("'" + node.name);
       return hasFiniteBound(propertyNode(node.name), seen);
     }
-    case 'fn': case 'block': return hasFiniteBound(node.body, seen);
-    case 'rep': case 'required': return hasFiniteBound(node.node, seen);
-    case 'seq': case 'one': case 'any': case 'all': return node.items.some((item) => hasFiniteBound(item, seen));
-    default: return false;
+    case 'fn':
+    case 'block':
+      return hasFiniteBound(node.body, seen);
+    case 'rep':
+    case 'required':
+      return hasFiniteBound(node.node, seen);
+    case 'seq':
+    case 'one':
+    case 'any':
+    case 'all':
+      return node.items.some((item) => hasFiniteBound(item, seen));
+    default:
+      return false;
   }
 }
 
@@ -656,5 +863,10 @@ export function validationReason(name, value) {
   if (!node) return 'unparsed';
   const tokens = tokenize(value);
   if (!tokens || tokens.length === 0) return 'invalid';
-  try { return matchesWhole(node, tokens) ? 'grammar' : 'invalid'; } catch (error) { if (error === UNKNOWN) return 'unknown'; throw error; }
+  try {
+    return matchesWhole(node, tokens) ? 'grammar' : 'invalid';
+  } catch (error) {
+    if (error === UNKNOWN) return 'unknown';
+    throw error;
+  }
 }

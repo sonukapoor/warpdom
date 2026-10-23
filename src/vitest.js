@@ -26,9 +26,11 @@ const SELF_KEYS = ['window', 'self', 'top', 'parent'];
 // ...)), as the inherited EventTarget methods of a browser's window do.
 const EVENT_TARGET_METHODS = ['addEventListener', 'removeEventListener', 'dispatchEvent'];
 function eventTargetMethod(fn, window) {
-  const method = { [fn.name](...args) {
-    return fn.apply(this != null && this[S] !== undefined ? this : window, args);
-  } }[fn.name];
+  const method = {
+    [fn.name](...args) {
+      return fn.apply(this != null && this[S] !== undefined ? this : window, args);
+    },
+  }[fn.name];
   Object.defineProperty(method, 'length', { value: fn.length });
   return method;
 }
@@ -85,10 +87,13 @@ function vitestURL() {
 function installURL(global) {
   const original = Object.getOwnPropertyDescriptor(global, 'URL');
   const URL = vitestURL();
-  const define = () => Object.defineProperty(global, 'URL', { value: URL, writable: true, enumerable: false, configurable: true });
+  const define = () =>
+    Object.defineProperty(global, 'URL', { value: URL, writable: true, enumerable: false, configurable: true });
   define();
   const statics = new Map(Reflect.ownKeys(URL).map((key) => [key, Object.getOwnPropertyDescriptor(URL, key)]));
-  const members = new Map(Reflect.ownKeys(URL.prototype).map((key) => [key, Object.getOwnPropertyDescriptor(URL.prototype, key)]));
+  const members = new Map(
+    Reflect.ownKeys(URL.prototype).map((key) => [key, Object.getOwnPropertyDescriptor(URL.prototype, key)]),
+  );
   const put = (object, snapshot) => {
     for (const key of Reflect.ownKeys(object)) if (!snapshot.has(key)) Reflect.deleteProperty(object, key);
     for (const [key, descriptor] of snapshot) Reflect.defineProperty(object, key, descriptor);
@@ -148,7 +153,9 @@ export function installWindow(global, window, { hostKeys = [], alwaysKeys = [], 
     for (const name of Object.getOwnPropertyNames(p)) if (name !== 'constructor') names.add(name);
   }
   for (const key of alwaysKeys) names.add(key);
-  const keys = [...names].filter((k) => !SELF_KEYS.includes(k) && !hostKeys.includes(k) && !GLOBAL_OWN_KEYS.includes(k));
+  const keys = [...names].filter(
+    (k) => !SELF_KEYS.includes(k) && !hostKeys.includes(k) && !GLOBAL_OWN_KEYS.includes(k),
+  );
   const overrides = new Map(); // key -> value assigned through the global
   for (const key of keys) {
     const original = Object.getOwnPropertyDescriptor(global, key);
@@ -158,12 +165,23 @@ export function installWindow(global, window, { hostKeys = [], alwaysKeys = [], 
     // (webkitURL once read) are not bound.
     const descriptor = findDescriptor(window, key);
     const value = descriptor && 'value' in descriptor ? descriptor.value : undefined;
-    const bound = typeof value === 'function' && !isClassLike(key) && !Object.hasOwn(value, 'prototype')
-      ? (EVENT_TARGET_METHODS.includes(key) ? eventTargetMethod(value, window) : value.bind(window)) : null;
+    const bound =
+      typeof value === 'function' && !isClassLike(key) && !Object.hasOwn(value, 'prototype')
+        ? EVENT_TARGET_METHODS.includes(key)
+          ? eventTargetMethod(value, window)
+          : value.bind(window)
+        : null;
     if (unforgeable && UNFORGEABLE_KEYS.includes(key)) {
       Object.defineProperty(global, key, {
-        get() { return window[key]; },
-        set: key === 'location' ? (v) => { window.location.href = v; } : undefined,
+        get() {
+          return window[key];
+        },
+        set:
+          key === 'location'
+            ? (v) => {
+                window.location.href = v;
+              }
+            : undefined,
         enumerable: true,
         configurable: true,
       });
@@ -182,8 +200,12 @@ export function installWindow(global, window, { hostKeys = [], alwaysKeys = [], 
     // and frameset elements set the window's handlers too.
     if (value === undefined && key.startsWith('on') && !alwaysKeys.includes(key)) {
       Object.defineProperty(global, key, {
-        get() { return window[key]; },
-        set(v) { window[key] = v; },
+        get() {
+          return window[key];
+        },
+        set(v) {
+          window[key] = v;
+        },
         configurable: true,
       });
       continue;
@@ -197,21 +219,29 @@ export function installWindow(global, window, { hostKeys = [], alwaysKeys = [], 
     // with a data property (innerWidth from jsdom 27, external, a method,
     // an interface object) becomes the same data property of the global,
     // and one it keeps an accessor (status) is read from the window.
-    const accepts = unforgeable && descriptor !== undefined && ('value' in descriptor ? descriptor.writable : descriptor.set !== undefined);
+    const accepts =
+      unforgeable &&
+      descriptor !== undefined &&
+      ('value' in descriptor ? descriptor.writable : descriptor.set !== undefined);
     Object.defineProperty(global, key, {
-      get() { return overrides.has(key) ? overrides.get(key) : bound ?? window[key]; },
+      get() {
+        return overrides.has(key) ? overrides.get(key) : (bound ?? window[key]);
+      },
       set: accepts
         ? (v) => {
-          Reflect.set(window, key, v);
-          const own = Object.getOwnPropertyDescriptor(window, key);
-          if (own && 'value' in own) Object.defineProperty(global, key, { ...own });
-        }
-        : (v) => { overrides.set(key, v); Reflect.set(window, key, v); },
+            Reflect.set(window, key, v);
+            const own = Object.getOwnPropertyDescriptor(window, key);
+            if (own && 'value' in own) Object.defineProperty(global, key, { ...own });
+          }
+        : (v) => {
+            overrides.set(key, v);
+            Reflect.set(window, key, v);
+          },
       // Elsewhere (Vitest's forks and threads pools) a global the window's
       // member replaces keeps its enumerability (Node's navigator stays in
       // Object.keys(globalThis)) and a new one is not enumerable, as with
       // Vitest's jsdom environment (black box: jsdom 20.0.3, 26.1.0, 30.1.3).
-      enumerable: unforgeable ? descriptor !== undefined && descriptor.enumerable : original?.enumerable ?? false,
+      enumerable: unforgeable ? descriptor !== undefined && descriptor.enumerable : (original?.enumerable ?? false),
       configurable: true,
     });
   }
@@ -249,10 +279,17 @@ export function defineUnforgeableSelf(target, key, value) {
 // member, #90). Elsewhere (Vitest's other pools): writable, enumerable,
 // configurable data properties.
 export function defineSelfKey(target, key, value, window, unforgeable) {
-  const data = (v) => Object.defineProperty(target, key, { value: v, writable: true, enumerable: true, configurable: true });
+  const data = (v) =>
+    Object.defineProperty(target, key, { value: v, writable: true, enumerable: true, configurable: true });
   if (!unforgeable) data(value);
   else if (UNFORGEABLE_SELF_KEYS.includes(key)) defineUnforgeableSelf(target, key, value);
-  else Object.defineProperty(target, key, { get: () => value, set: window[S].compat.jsdom >= 21 ? data : undefined, enumerable: true, configurable: true });
+  else
+    Object.defineProperty(target, key, {
+      get: () => value,
+      set: window[S].compat.jsdom >= 21 ? data : undefined,
+      enumerable: true,
+      configurable: true,
+    });
 }
 
 // Set by the environment for warpdom/vitest/reset (a setup file that runs
@@ -267,7 +304,9 @@ let hostGlobals = null;
 function nodeHostGlobals() {
   if (!hostGlobals) {
     const intrinsics = new Set(vm.runInNewContext('Object.getOwnPropertyNames(globalThis)'));
-    hostGlobals = Object.getOwnPropertyNames(globalThis).filter((name) => !intrinsics.has(name) && name !== 'globalThis');
+    hostGlobals = Object.getOwnPropertyNames(globalThis).filter(
+      (name) => !intrinsics.has(name) && name !== 'globalThis',
+    );
   }
   return hostGlobals;
 }
@@ -286,9 +325,17 @@ export function jsdomProfile(options, root = process.cwd()) {
   } catch {
     try {
       path = createRequire(project.resolve('vitest/package.json')).resolve('jsdom/package.json');
-    } catch { /* no jsdom installed */ }
+    } catch {
+      /* no jsdom installed */
+    }
   }
-  const read = (from, name) => { try { return createRequire(from)(`${name}/package.json`).version; } catch { return undefined; } };
+  const read = (from, name) => {
+    try {
+      return createRequire(from)(`${name}/package.json`).version;
+    } catch {
+      return undefined;
+    }
+  };
   const installed = path ? read(path, 'jsdom') : undefined;
   if (set.jsdom == null) warnNewerJsdom(installed);
   return {
@@ -304,7 +351,12 @@ if (ablated('no-query-cache')) setQueryCache(false);
 function createTestWindow(options) {
   // environmentOptions.warpdom.url, as environmentOptions.jsdom.url for
   // Vitest's jsdom environment, whose default is this URL as well.
-  const window = createWindow({ url: options?.warpdom?.url ?? 'http://localhost:3000', ...(ablated('latest-profile') ? {} : jsdomProfile(options)), fastFrames: options?.warpdom?.fastFrames === true, xhr: options?.warpdom?.xhr !== false });
+  const window = createWindow({
+    url: options?.warpdom?.url ?? 'http://localhost:3000',
+    ...(ablated('latest-profile') ? {} : jsdomProfile(options)),
+    fastFrames: options?.warpdom?.fastFrames === true,
+    xhr: options?.warpdom?.xhr !== false,
+  });
   if (ablated('eager-interfaces')) materializeAll(window);
   // Like Vitest's jsdom environment: an error thrown in an event listener
   // fails the test, unless the test listens for 'error' on the window.
@@ -346,15 +398,25 @@ export default {
   async setupVM(options) {
     const window = createTestWindow(options);
     const sandbox = {};
-    const restore = installWindow(sandbox, window, { hostKeys: VITEST_VM_HOST_KEYS, alwaysKeys: VITEST_ALWAYS_KEYS, unforgeable: true });
+    const restore = installWindow(sandbox, window, {
+      hostKeys: VITEST_VM_HOST_KEYS,
+      alwaysKeys: VITEST_ALWAYS_KEYS,
+      unforgeable: true,
+    });
     installURL(sandbox);
     // The global's console starts as the window's, as jsdom's does there;
     // Vitest then assigns its own (black box: a non-enumerable property
     // with every jsdom).
-    Object.defineProperty(sandbox, 'console', { value: window.console, writable: true, enumerable: false, configurable: true });
+    Object.defineProperty(sandbox, 'console', {
+      value: window.console,
+      writable: true,
+      enumerable: false,
+      configurable: true,
+    });
     for (const name of nodeHostGlobals()) {
       // Values, not descriptors: some are lazy getters bound to Node's global (crypto).
-      if (!(name in sandbox)) Object.defineProperty(sandbox, name, { value: globalThis[name], writable: true, configurable: true });
+      if (!(name in sandbox))
+        Object.defineProperty(sandbox, name, { value: globalThis[name], writable: true, configurable: true });
     }
     vm.createContext(sandbox);
     const globalProxy = vm.runInContext('this', sandbox);
@@ -364,8 +426,13 @@ export default {
     // Classic scripts run in the context, as jsdom's do (scripts.js).
     window[S].runScript = (source) => vm.runInContext(source, sandbox);
     return {
-      getVmContext() { return sandbox; },
-      teardown() { abortWindowRequests(window); restore(); },
+      getVmContext() {
+        return sandbox;
+      },
+      teardown() {
+        abortWindowRequests(window);
+        restore();
+      },
     };
   },
   setup(global, options) {
@@ -377,21 +444,24 @@ export default {
     window[S].runScript = (source) => (0, eval)(source);
     snapshotWindow(window);
     global[RESET] = ablated('fresh-window')
-      // Ablation: a new window per file instead of the in-place reset.
-      ? () => {
-        restore();
-        window = createTestWindow(options);
-        restore = installWindow(global, window, { hostKeys: VITEST_GLOBAL_HOST_KEYS, alwaysKeys: VITEST_ALWAYS_KEYS });
-        url.reset();
-        clearHostTimeline(global);
-        window[S].runScript = (source) => (0, eval)(source);
-      }
+      ? // Ablation: a new window per file instead of the in-place reset.
+        () => {
+          restore();
+          window = createTestWindow(options);
+          restore = installWindow(global, window, {
+            hostKeys: VITEST_GLOBAL_HOST_KEYS,
+            alwaysKeys: VITEST_ALWAYS_KEYS,
+          });
+          url.reset();
+          clearHostTimeline(global);
+          window[S].runScript = (source) => (0, eval)(source);
+        }
       : () => {
-        restore.resetOverrides();
-        resetWindow(window);
-        url.reset();
-        clearHostTimeline(global);
-      };
+          restore.resetOverrides();
+          resetWindow(window);
+          url.reset();
+          clearHostTimeline(global);
+        };
     return {
       teardown() {
         delete global[RESET];

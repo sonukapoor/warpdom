@@ -97,7 +97,10 @@ test('resetWindow: observers of the kept body and html forget them, and disconne
   resetWindow(w);
   // The next file's code disconnects observers a module still holds
   // (naive-ui: @juggle/resize-observer's on the body threw here).
-  assert.doesNotThrow(() => { onBody.disconnect(); onHtml.disconnect(); });
+  assert.doesNotThrow(() => {
+    onBody.disconnect();
+    onHtml.disconnect();
+  });
   assert.deepEqual(onBody.takeRecords(), [], 'pending records went with the reset');
   // Observing again works, and the old registration is gone (one record batch, not two).
   onBody.observe(d.body, { childList: true });
@@ -145,7 +148,11 @@ test('resetWindow: a navigator first used after the snapshot, and one used befor
 
   const after = createWindow();
   snapshotWindow(after);
-  assert.equal(Object.getOwnPropertyDescriptor(after[S].protos, 'Navigator').get !== undefined, true, 'Navigator not created yet');
+  assert.equal(
+    Object.getOwnPropertyDescriptor(after[S].protos, 'Navigator').get !== undefined,
+    true,
+    'Navigator not created yet',
+  );
   Object.defineProperty(after.navigator, 'clipboard', { get: () => ({}), configurable: true });
   resetWindow(after);
   assert.equal('clipboard' in after.navigator, false);
@@ -216,7 +223,10 @@ test('resetWindow forgets inert event handlers (jsdom 20 profile)', () => {
   d.head.onauxclick = f;
   d.body.onauxclick = f;
   resetWindow(w);
-  assert.deepEqual([d.onloadend, d.onauxclick, d.documentElement.onloadend, d.head.onauxclick, d.body.onauxclick], [undefined, undefined, undefined, undefined, undefined]);
+  assert.deepEqual(
+    [d.onloadend, d.onauxclick, d.documentElement.onloadend, d.head.onauxclick, d.body.onauxclick],
+    [undefined, undefined, undefined, undefined, undefined],
+  );
 });
 
 // A property whose value stays but whose flags change is restored too.
@@ -230,7 +240,11 @@ test('resetWindow restores descriptor flags changed without the value', () => {
     Object.defineProperty(w, 'name', { enumerable: false });
     Object.defineProperty(w, 'status', { configurable: true, enumerable: false });
     resetWindow(w);
-    assert.deepEqual(['innerWidth', 'name', 'status'].map((key) => Object.getOwnPropertyDescriptor(w, key)), before, jsdom);
+    assert.deepEqual(
+      ['innerWidth', 'name', 'status'].map((key) => Object.getOwnPropertyDescriptor(w, key)),
+      before,
+      jsdom,
+    );
     w.innerWidth = 640;
     assert.equal(w.innerWidth, 640, jsdom);
     // A property made non-configurable stays, without an error.

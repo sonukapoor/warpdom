@@ -31,12 +31,21 @@ export function parseLockfile(root, lockfile) {
 function npmLock(text) {
   const out = { entries: [], importers: new Map(), kind: 'npm' };
   let doc;
-  try { doc = JSON.parse(text); } catch { return out; }
+  try {
+    doc = JSON.parse(text);
+  } catch {
+    return out;
+  }
   const packages = doc.packages ?? {};
   for (const [key, entry] of Object.entries(packages)) {
     if (!key.includes('node_modules/')) continue;
     const name = entry.name ?? key.slice(key.lastIndexOf('node_modules/') + 'node_modules/'.length);
-    out.entries.push({ name, version: entry.version, deps: { ...entry.dependencies, ...entry.optionalDependencies }, key });
+    out.entries.push({
+      name,
+      version: entry.version,
+      deps: { ...entry.dependencies, ...entry.optionalDependencies },
+      key,
+    });
   }
   // A workspace package resolves name from its own node_modules, else the root's.
   const dirs = new Set(['', ...Object.keys(packages).filter((k) => k && !k.includes('node_modules/'))]);
@@ -67,7 +76,10 @@ function pnpmLock(text) {
     const indent = indentOf(line);
     if (indent === 0) {
       section = line.replace(/:.*$/, '');
-      entry = null; importer = null; depBlock = null; pendingDep = null;
+      entry = null;
+      importer = null;
+      depBlock = null;
+      pendingDep = null;
       // v5 single-package lockfiles list dependencies at the top level.
       if (['dependencies', 'devDependencies', 'optionalDependencies'].includes(section)) {
         importer = out.importers.get('') ?? {};
@@ -83,14 +95,16 @@ function pnpmLock(text) {
         importer = {};
         out.importers.set(dir === '.' ? '' : dir, importer);
         depBlock = null;
-      } else if (indent === 4) depBlock = /^(dependencies|devDependencies|optionalDependencies):$/.test(trimmed) ? trimmed : null;
+      } else if (indent === 4)
+        depBlock = /^(dependencies|devDependencies|optionalDependencies):$/.test(trimmed) ? trimmed : null;
       else if (indent === 6 && depBlock && importer) {
         const m = /^(['"]?)(.+?)\1:\s*(.*)$/.exec(trimmed);
         if (m) {
           pendingDep = m[2];
           if (m[3]) importer[pendingDep] = stripPeers(m[3]);
         }
-      } else if (indent === 8 && pendingDep && importer && trimmed.startsWith('version:')) importer[pendingDep] = stripPeers(trimmed.slice('version:'.length));
+      } else if (indent === 8 && pendingDep && importer && trimmed.startsWith('version:'))
+        importer[pendingDep] = stripPeers(trimmed.slice('version:'.length));
       continue;
     }
     if (['dependencies', 'devDependencies', 'optionalDependencies'].includes(section) && importer && indent === 2) {
@@ -101,7 +115,13 @@ function pnpmLock(text) {
       }
       continue;
     }
-    if (['dependencies', 'devDependencies', 'optionalDependencies'].includes(section) && importer && indent === 4 && pendingDep && trimmed.startsWith('version:')) {
+    if (
+      ['dependencies', 'devDependencies', 'optionalDependencies'].includes(section) &&
+      importer &&
+      indent === 4 &&
+      pendingDep &&
+      trimmed.startsWith('version:')
+    ) {
       importer[pendingDep] = stripPeers(trimmed.slice('version:'.length));
       continue;
     }
@@ -116,7 +136,8 @@ function pnpmLock(text) {
         out.entries.push(entry);
       }
       depBlock = null;
-    } else if (indent === 4 && entry) depBlock = /^(dependencies|optionalDependencies):$/.test(trimmed) ? trimmed : null;
+    } else if (indent === 4 && entry)
+      depBlock = /^(dependencies|optionalDependencies):$/.test(trimmed) ? trimmed : null;
     else if (indent === 6 && entry && depBlock) {
       const m = /^(['"]?)(.+?)\1:\s*(.*)$/.exec(trimmed);
       if (m) entry.deps[m[2]] = stripPeers(m[3].replace(/^['"]|['"]$/g, ''));
@@ -134,9 +155,17 @@ function yarnLock(text) {
     const indent = line.length - line.trimStart().length;
     const trimmed = line.trim();
     if (indent === 0 && trimmed.endsWith(':')) {
-      const specs = trimmed.slice(0, -1).split(/,\s*/).map((s) => s.replace(/^['"]|['"]$/g, ''));
+      const specs = trimmed
+        .slice(0, -1)
+        .split(/,\s*/)
+        .map((s) => s.replace(/^['"]|['"]$/g, ''));
       const m = /^(@?[^@]+)@/.exec(specs[0]);
-      entry = { name: m ? m[1] : specs[0], version: null, deps: {}, specs: specs.map((s) => s.slice((m ? m[1].length : 0) + 1).replace(/^npm:/, '')) };
+      entry = {
+        name: m ? m[1] : specs[0],
+        version: null,
+        deps: {},
+        specs: specs.map((s) => s.slice((m ? m[1].length : 0) + 1).replace(/^npm:/, '')),
+      };
       out.entries.push(entry);
       inDeps = false;
       continue;
@@ -179,7 +208,9 @@ export function dependencyVersion(lock, name, version, dep) {
   if (/^\d+\.\d+\.\d+/.test(v)) return v;
   // npm: a range; the copy nested under the package, else the hoisted one.
   if (e.key) {
-    const nested = lock.entries.find((x) => x.key === `${e.key}/node_modules/${dep}`) ?? lock.entries.find((x) => x.key === `node_modules/${dep}`);
+    const nested =
+      lock.entries.find((x) => x.key === `${e.key}/node_modules/${dep}`) ??
+      lock.entries.find((x) => x.key === `node_modules/${dep}`);
     if (nested?.version) return nested.version;
   }
   // yarn: a range; the entry that resolves it.

@@ -14,7 +14,10 @@ import { abortWindowRequests } from './xhr.js';
 import { windowOrigin } from './window-features.js';
 
 // iframe and frame elements.
-const isIframe = (n) => { const s = n[S]; return s.type === ELEMENT_NODE && s.ns === HTML_NS && (s.tag === 'iframe' || s.tag === 'frame'); };
+const isIframe = (n) => {
+  const s = n[S];
+  return s.type === ELEMENT_NODE && s.ns === HTML_NS && (s.tag === 'iframe' || s.tag === 'frame');
+};
 
 // Iframes in node's subtree, shadow trees included.
 function forEachIframe(node, fn) {
@@ -49,7 +52,11 @@ function createFrame(iframe) {
   const src = es.attrs.get('src');
   let url = 'about:blank';
   if (src !== undefined && src.trim() !== '') {
-    try { url = new URL(src, doc[S].url ?? parent[S].url).href; } catch { /* about:blank */ }
+    try {
+      url = new URL(src, doc[S].url ?? parent[S].url).href;
+    } catch {
+      /* about:blank */
+    }
   }
   const child = parent[S].createNestedWindow({ url, parent, frameElement: iframe });
   if (url === 'about:blank') {
@@ -90,13 +97,23 @@ function destroyFrame(iframe) {
 }
 
 hooks.frames = {
-  inserted(node) { forEachIframe(node, createFrame); },
-  removed(node) { forEachIframe(node, destroyFrame); },
+  inserted(node) {
+    forEachIframe(node, createFrame);
+  },
+  removed(node) {
+    forEachIframe(node, destroyFrame);
+  },
 };
 
 export const IFRAME_MEMBERS = {
-  get contentWindow() { const s = this[S]; return s?.frameWindow ?? null; },
-  get contentDocument() { const s = this[S]; return s?.frameWindow?.document ?? null; },
+  get contentWindow() {
+    const s = this[S];
+    return s?.frameWindow ?? null;
+  },
+  get contentDocument() {
+    const s = this[S];
+    return s?.frameWindow?.document ?? null;
+  },
 };
 
 // getSVGDocument() (HTML 4.8.5, iframe only here, as in jsdom): the content
@@ -119,13 +136,21 @@ export const IFRAME_ONLY_MEMBERS = {
 // (black box: Vitest vmThreads on jsdom 20.0.3, 26.1.0 and 30.1.3): what
 // the test assigns to window (name, innerWidth) is read through them too.
 export const WINDOW_FRAME_MEMBERS = {
-  get parent() { return exposed(this[S].parentWindow ?? this); },
+  get parent() {
+    return exposed(this[S].parentWindow ?? this);
+  },
   get top() {
     let w = this;
     while (w[S].parentWindow) w = w[S].parentWindow;
     return exposed(w);
   },
-  get frameElement() { return this[S].frameElement ?? null; },
-  get frames() { return exposed(this); },
-  get length() { return this[S].childFrames?.length ?? 0; },
+  get frameElement() {
+    return this[S].frameElement ?? null;
+  },
+  get frames() {
+    return exposed(this);
+  },
+  get length() {
+    return this[S].childFrames?.length ?? 0;
+  },
 };

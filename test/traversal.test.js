@@ -24,7 +24,7 @@ test('NodeFilter constants', () => {
   const { w } = fixture();
   assert.equal(w.NodeFilter.SHOW_ELEMENT, 1);
   assert.equal(w.NodeFilter.SHOW_TEXT, 4);
-  assert.equal(w.NodeFilter.SHOW_ALL, 0xFFFFFFFF);
+  assert.equal(w.NodeFilter.SHOW_ALL, 0xffffffff);
   assert.deepEqual([w.NodeFilter.FILTER_ACCEPT, w.NodeFilter.FILTER_REJECT, w.NodeFilter.FILTER_SKIP], [1, 2, 3]);
 });
 
@@ -43,11 +43,15 @@ test('TreeWalker nextNode and previousNode in document order', () => {
 
 test('TreeWalker filters: SKIP visits children, REJECT skips the subtree', () => {
   const { w, document, root } = fixture();
-  const skipB = document.createTreeWalker(root, w.NodeFilter.SHOW_ELEMENT, (n) => (n.nodeName === 'B' ? w.NodeFilter.FILTER_SKIP : w.NodeFilter.FILTER_ACCEPT));
+  const skipB = document.createTreeWalker(root, w.NodeFilter.SHOW_ELEMENT, (n) =>
+    n.nodeName === 'B' ? w.NodeFilter.FILTER_SKIP : w.NodeFilter.FILTER_ACCEPT,
+  );
   const seen = [];
   for (let n = skipB.nextNode(); n; n = skipB.nextNode()) seen.push(n);
   assert.deepEqual(names(seen), ['a', 'c', 'd', 'e']);
-  const rejectB = document.createTreeWalker(root, w.NodeFilter.SHOW_ELEMENT, { acceptNode: (n) => (n.nodeName === 'B' ? 2 : 1) });
+  const rejectB = document.createTreeWalker(root, w.NodeFilter.SHOW_ELEMENT, {
+    acceptNode: (n) => (n.nodeName === 'B' ? 2 : 1),
+  });
   const seen2 = [];
   for (let n = rejectB.nextNode(); n; n = rejectB.nextNode()) seen2.push(n);
   assert.deepEqual(names(seen2), ['a', 'e']);
@@ -65,7 +69,7 @@ test('TreeWalker structural moves and currentNode', () => {
   assert.equal(walker.nextSibling(), null);
   assert.equal(walker.currentNode, d);
   const all = document.createTreeWalker(root);
-  assert.equal(all.whatToShow, 0xFFFFFFFF);
+  assert.equal(all.whatToShow, 0xffffffff);
   all.firstChild();
   assert.equal(all.nextSibling().nodeType, 3, 'text nodes with SHOW_ALL');
 });
@@ -86,15 +90,23 @@ parity('NodeIterator: removing nodes moves the reference', (w) => {
   const root = d.createElement('div');
   root.innerHTML = '<p><b>1</b><i>2</i></p><span>3</span><em>4</em>';
   const it = d.createNodeIterator(root, w.NodeFilter.SHOW_ELEMENT);
-  it.nextNode(); it.nextNode(); it.nextNode(); // root, p, b
+  it.nextNode();
+  it.nextNode();
+  it.nextNode(); // root, p, b
   const out = [];
   const record = () => out.push([it.referenceNode.nodeName, it.pointerBeforeReferenceNode]);
-  root.querySelector('b').remove(); record();
-  it.previousNode(); record();
-  root.querySelector('p').remove(); record();
-  out.push(it.nextNode().nodeName); record();
-  root.querySelector('span').remove(); record();
-  out.push(it.nextNode()?.nodeName); record();
+  root.querySelector('b').remove();
+  record();
+  it.previousNode();
+  record();
+  root.querySelector('p').remove();
+  record();
+  out.push(it.nextNode().nodeName);
+  record();
+  root.querySelector('span').remove();
+  record();
+  out.push(it.nextNode()?.nodeName);
+  record();
   return out;
 });
 
@@ -104,7 +116,10 @@ parity('NodeIterator: a filter that removes the node it is given', (w) => {
   root.innerHTML = '<a-el></a-el><b-el></b-el><c-el></c-el>';
   const [a, b] = root.children;
   const it = d.createNodeIterator(root, w.NodeFilter.SHOW_ELEMENT, {
-    acceptNode(node) { if (node === b) b.remove(); return w.NodeFilter.FILTER_ACCEPT; },
+    acceptNode(node) {
+      if (node === b) b.remove();
+      return w.NodeFilter.FILTER_ACCEPT;
+    },
   });
   const out = [it.nextNode().localName, it.nextNode().localName, it.nextNode().localName];
   out.push(it.referenceNode === a, it.pointerBeforeReferenceNode, it.nextNode().localName);
@@ -116,6 +131,10 @@ parity('NodeIterator: a filter that removes the node it is given', (w) => {
 parity('NodeFilter has no prototype and is not a constructor', (w) => {
   const N = w.NodeFilter;
   let error = null;
-  try { new N(); } catch (e) { error = e.name; }
+  try {
+    new N();
+  } catch (e) {
+    error = e.name;
+  }
   return [typeof N, 'prototype' in N, N.SHOW_ELEMENT, N.FILTER_SKIP, N.name, error];
 });

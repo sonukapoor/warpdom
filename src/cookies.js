@@ -26,7 +26,8 @@ function cookieURL(doc) {
   return url.protocol === 'http:' || url.protocol === 'https:' ? url : null;
 }
 
-const isLocalhost = (host) => host === 'localhost' || host.endsWith('.localhost') || host === '127.0.0.1' || host === '[::1]';
+const isLocalhost = (host) =>
+  host === 'localhost' || host.endsWith('.localhost') || host === '127.0.0.1' || host === '[::1]';
 const isSecure = (url) => url.protocol === 'https:' || isLocalhost(url.hostname);
 
 // The default path: the URL's path up to (not including) its last '/'.
@@ -65,15 +66,23 @@ function setCookie(doc, url, input) {
   if ((!name && !value) || CONTROL.test(name) || CONTROL.test(value)) return;
 
   const now = Date.now();
-  let expires = null, maxAge = null, domain = '', path = null, secure = false;
+  let expires = null,
+    maxAge = null,
+    domain = '',
+    path = null,
+    secure = false;
   for (const attribute of attributes) {
     const at = attribute.indexOf('=');
     const key = (at === -1 ? attribute : attribute.slice(0, at)).trim().toLowerCase();
     const v = at === -1 ? '' : attribute.slice(at + 1).trim();
-    if (key === 'expires') { const t = Date.parse(v); if (!Number.isNaN(t)) expires = t; }
-    else if (key === 'max-age') { if (/^-?\d+$/.test(v)) maxAge = Number(v); }
-    else if (key === 'domain') { if (v) domain = (v.startsWith('.') ? v.slice(1) : v).toLowerCase(); }
-    else if (key === 'path') path = v.startsWith('/') ? v : null;
+    if (key === 'expires') {
+      const t = Date.parse(v);
+      if (!Number.isNaN(t)) expires = t;
+    } else if (key === 'max-age') {
+      if (/^-?\d+$/.test(v)) maxAge = Number(v);
+    } else if (key === 'domain') {
+      if (v) domain = (v.startsWith('.') ? v.slice(1) : v).toLowerCase();
+    } else if (key === 'path') path = v.startsWith('/') ? v : null;
     else if (key === 'secure') secure = true;
     else if (key === 'httponly') return;
   }
@@ -86,7 +95,16 @@ function setCookie(doc, url, input) {
   if ((name.startsWith('__Secure-') || name.startsWith('__Host-')) && !secure) return;
   if (name.startsWith('__Host-') && (domain || path !== '/')) return;
 
-  const cookie = { name, value, domain: domain || host, hostOnly: !domain, path: path ?? defaultPath(url), secure, expires, created: 0 };
+  const cookie = {
+    name,
+    value,
+    domain: domain || host,
+    hostOnly: !domain,
+    path: path ?? defaultPath(url),
+    secure,
+    expires,
+    created: 0,
+  };
   const jar = store(doc);
   const i = jar.list.findIndex((c) => c.name === cookie.name && c.domain === cookie.domain && c.path === cookie.path);
   if (i !== -1) {
@@ -108,7 +126,12 @@ function getCookies(doc, url) {
   const secure = isSecure(url);
   jar.list = jar.list.filter((c) => !expired(c, now));
   return jar.list
-    .filter((c) => (c.hostOnly ? host === c.domain : domainMatch(host, c.domain)) && pathMatch(url.pathname, c.path) && (!c.secure || secure))
+    .filter(
+      (c) =>
+        (c.hostOnly ? host === c.domain : domainMatch(host, c.domain)) &&
+        pathMatch(url.pathname, c.path) &&
+        (!c.secure || secure),
+    )
     .sort((a, b) => b.path.length - a.path.length || a.created - b.created)
     .map((c) => (c.name ? `${c.name}=${c.value}` : c.value))
     .join('; ');

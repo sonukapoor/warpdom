@@ -20,12 +20,28 @@ export function hasMinWorkers(bin) {
 // dominate the time and write files), the worker limit, then the user's
 // runner arguments.
 // reporter (Vitest): a reporter file recording each test file's project.
-export function runnerArgs(runner, { config, resultsFile, workers = null, minWorkers = false, reporter = null, args = [] }) {
-  const limit = !workers ? []
-    : runner === 'vitest' && minWorkers ? ['--minWorkers=1', `--maxWorkers=${workers}`]
+export function runnerArgs(
+  runner,
+  { config, resultsFile, workers = null, minWorkers = false, reporter = null, args = [] },
+) {
+  const limit = !workers
+    ? []
+    : runner === 'vitest' && minWorkers
+      ? ['--minWorkers=1', `--maxWorkers=${workers}`]
       : [`--maxWorkers=${workers}`];
   return runner === 'vitest'
-    ? ['run', '--config', config, '--reporter=default', '--reporter=json', ...(reporter ? [`--reporter=${reporter}`] : []), `--outputFile.json=${resultsFile}`, '--coverage.enabled=false', ...limit, ...args]
+    ? [
+        'run',
+        '--config',
+        config,
+        '--reporter=default',
+        '--reporter=json',
+        ...(reporter ? [`--reporter=${reporter}`] : []),
+        `--outputFile.json=${resultsFile}`,
+        '--coverage.enabled=false',
+        ...limit,
+        ...args,
+      ]
     : ['--config', config, '--ci', '--json', `--outputFile=${resultsFile}`, '--coverage=false', ...limit, ...args];
 }
 
@@ -41,14 +57,20 @@ export function runProcess(cmd, args, { cwd, env = {}, timeoutMs = null, logFile
     const chunks = [];
     let timedOut = false;
     const child = spawn(cmd, args, {
-      cwd, detached: process.platform !== 'win32',
+      cwd,
+      detached: process.platform !== 'win32',
       env: { ...process.env, CI: '1', ...env },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     current = child;
     child.stdout.on('data', (d) => chunks.push(d));
     child.stderr.on('data', (d) => chunks.push(d));
-    const timer = timeoutMs ? setTimeout(() => { timedOut = true; killTree(child); }, timeoutMs) : null;
+    const timer = timeoutMs
+      ? setTimeout(() => {
+          timedOut = true;
+          killTree(child);
+        }, timeoutMs)
+      : null;
     const finish = (code, signal, error) => {
       clearTimeout(timer);
       if (current === child) current = null;
@@ -69,14 +91,21 @@ export function killTree(child, signal = 'SIGTERM') {
   try {
     if (process.platform !== 'win32') process.kill(-child.pid, signal);
     else child.kill(signal);
-  } catch { /* already gone */ }
+  } catch {
+    /* already gone */
+  }
 }
 
 // Whether any process of the child's group (the runner and its workers) is
 // still running.
 function groupAlive(child) {
   if (process.platform === 'win32') return child.exitCode === null && child.signalCode === null;
-  try { process.kill(-child.pid, 0); return true; } catch (err) { return err.code === 'EPERM'; }
+  try {
+    process.kill(-child.pid, 0);
+    return true;
+  } catch (err) {
+    return err.code === 'EPERM';
+  }
 }
 
 // Stops the runner and its workers and waits until they are gone (they may
@@ -99,7 +128,12 @@ export function normalizeStatus(status) {
   return 'skipped'; // pending, skipped, disabled
 }
 
-const firstLine = (message) => (message ?? '').replace(ANSI, '').split('\n').map((s) => s.trim()).find(Boolean) ?? '';
+const firstLine = (message) =>
+  (message ?? '')
+    .replace(ANSI, '')
+    .split('\n')
+    .map((s) => s.trim())
+    .find(Boolean) ?? '';
 
 // Tests of a runner JSON report (Vitest's json reporter or Jest's --json;
 // the same shape): Map(key -> { project, file, name, status, message }). The
@@ -125,13 +159,25 @@ export function testsOf(report, root, projects = null) {
     const prefix = project ? `${project}::${file}` : file;
     const results = t.assertionResults ?? [];
     if (!results.length && t.status === 'failed') {
-      tests.set(`${prefix}::(file)`, { project, file, name: '(file)', status: 'failed', message: firstLine(t.message) });
+      tests.set(`${prefix}::(file)`, {
+        project,
+        file,
+        name: '(file)',
+        status: 'failed',
+        message: firstLine(t.message),
+      });
     }
     for (const a of results) {
       const name = a.ancestorTitles ? [...a.ancestorTitles, a.title].join(' > ') : a.fullName;
       let key = `${prefix}::${name}`;
       for (let i = 2; tests.has(key); i++) key = `${prefix}::${name} #${i}`;
-      tests.set(key, { project, file, name, status: normalizeStatus(a.status), message: firstLine(a.failureMessages?.[0]) });
+      tests.set(key, {
+        project,
+        file,
+        name,
+        status: normalizeStatus(a.status),
+        message: firstLine(a.failureMessages?.[0]),
+      });
     }
   }
   return tests;
@@ -140,7 +186,10 @@ export function testsOf(report, root, projects = null) {
 export function countsOf(tests) {
   const counts = { tests: 0, passed: 0, failed: 0, skipped: 0, todo: 0 };
   for (const t of tests.values()) {
-    if (t.name === '(file)') { counts.failed++; continue; }
+    if (t.name === '(file)') {
+      counts.failed++;
+      continue;
+    }
     counts.tests++;
     counts[t.status]++;
   }
@@ -160,5 +209,9 @@ export function runnerDuration(runner, report, output) {
 }
 
 export function readReport(file) {
-  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return null;
+  }
 }
