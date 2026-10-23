@@ -13,13 +13,22 @@ test('attributes is a live NamedNodeMap of Attr nodes', () => {
   assert.equal(el.attributes, attrs, 'same object');
   assert.equal(attrs.length, 2);
   assert.ok(attrs[0] instanceof w.Attr && attrs[0] instanceof w.Node);
-  assert.deepEqual(Array.from(attrs).map((a) => [a.name, a.value]), [['id', 'a'], ['title', 't']]);
+  assert.deepEqual(
+    Array.from(attrs).map((a) => [a.name, a.value]),
+    [
+      ['id', 'a'],
+      ['title', 't'],
+    ],
+  );
   assert.equal(attrs.getNamedItem('title').value, 't');
   assert.equal(attrs.item(5), null);
   el.setAttribute('role', 'button');
   assert.equal(attrs.length, 3, 'live');
   el.removeAttribute('id');
-  assert.deepEqual([...attrs].map((a) => a.name), ['title', 'role']);
+  assert.deepEqual(
+    [...attrs].map((a) => a.name),
+    ['title', 'role'],
+  );
 });
 
 test('Attr nodes: identity, ownerElement, value write-through', () => {
@@ -29,7 +38,10 @@ test('Attr nodes: identity, ownerElement, value write-through', () => {
   const attr = el.getAttributeNode('id');
   assert.equal(attr, el.getAttributeNode('id'));
   assert.equal(attr, el.attributes[0]);
-  assert.deepEqual([attr.name, attr.localName, attr.nodeName, attr.nodeType, attr.ownerElement, attr.specified], ['id', 'id', 'id', 2, el, true]);
+  assert.deepEqual(
+    [attr.name, attr.localName, attr.nodeName, attr.nodeType, attr.ownerElement, attr.specified],
+    ['id', 'id', 'id', 2, el, true],
+  );
   attr.value = 'b';
   assert.equal(el.getAttribute('id'), 'b');
   assert.equal(el.getAttributeNode('missing'), null);
@@ -104,16 +116,22 @@ parity('NamedNodeMap named properties', (w) => {
   xml.documentElement.setAttribute('Mixed', 'y');
   const a = el.attributes;
   return {
-    tabindex: a.tabindex?.value, dataX: a['data-x']?.value, camel: a.tabIndex?.value, upper: a.TABINDEX?.value, missing: a.nope,
+    tabindex: a.tabindex?.value,
+    dataX: a['data-x']?.value,
+    camel: a.tabIndex?.value,
+    upper: a.TABINDEX?.value,
+    missing: a.nope,
     inCamel: 'tabIndex' in a,
-    inTab: 'tabindex' in a, inMissing: 'nope' in a, length: a.length,
+    inTab: 'tabindex' in a,
+    inMissing: 'nope' in a,
+    length: a.length,
     afterRemove: (el.removeAttribute('tabindex'), a.tabindex),
-    svgViewBox: svg.attributes.viewBox?.value, svgLower: svg.attributes.viewbox,
+    svgViewBox: svg.attributes.viewBox?.value,
+    svgLower: svg.attributes.viewbox,
     xmlMixed: xml.documentElement.attributes.Mixed?.value,
     keys: Object.keys(a),
   };
 });
-
 
 const XLINK = 'http://www.w3.org/1999/xlink';
 
@@ -125,10 +143,20 @@ parity('namespaced attributes', (w) => {
   svg.setAttributeNS(XLINK, 'other:href', '#b');
   const attr = svg.getAttributeNodeNS(XLINK, 'href');
   const out = {
-    get: [svg.getAttributeNS(XLINK, 'href'), svg.getAttribute('xlink:href'), svg.getAttributeNS(null, 'viewBox'), svg.getAttributeNS('', 'viewBox'), svg.getAttributeNS(XLINK, 'nope')],
+    get: [
+      svg.getAttributeNS(XLINK, 'href'),
+      svg.getAttribute('xlink:href'),
+      svg.getAttributeNS(null, 'viewBox'),
+      svg.getAttributeNS('', 'viewBox'),
+      svg.getAttributeNS(XLINK, 'nope'),
+    ],
     has: [svg.hasAttributeNS(XLINK, 'href'), svg.hasAttributeNS(null, 'href'), svg.hasAttribute('xlink:href')],
     attr: [attr.name, attr.localName, attr.prefix, attr.namespaceURI, attr.value],
-    plain: [svg.getAttributeNode('viewBox').namespaceURI, svg.getAttributeNode('viewBox').prefix, svg.getAttributeNode('viewBox').localName],
+    plain: [
+      svg.getAttributeNode('viewBox').namespaceURI,
+      svg.getAttributeNode('viewBox').prefix,
+      svg.getAttributeNode('viewBox').localName,
+    ],
     names: svg.getAttributeNames(),
     map: [svg.attributes.getNamedItemNS(XLINK, 'href')?.value, svg.attributes.getNamedItemNS(null, 'viewBox')?.value],
     html: svg.outerHTML,
@@ -139,8 +167,20 @@ parity('namespaced attributes', (w) => {
   div.setAttributeNS(null, 'Data-X', '1');
   out.htmlElement = [div.getAttributeNames(), div.getAttribute('data-x'), div.getAttributeNS(null, 'Data-X')];
   const errors = [];
-  for (const [ns, qn] of [[null, 'a:b'], [XLINK, 'xml:x'], [XLINK, 'xmlns'], ['http://www.w3.org/2000/xmlns/', 'x'], [XLINK, ':x'], [XLINK, 'a b']]) {
-    try { div.setAttributeNS(ns, qn, ''); errors.push('ok'); } catch (e) { errors.push(e.name); }
+  for (const [ns, qn] of [
+    [null, 'a:b'],
+    [XLINK, 'xml:x'],
+    [XLINK, 'xmlns'],
+    ['http://www.w3.org/2000/xmlns/', 'x'],
+    [XLINK, ':x'],
+    [XLINK, 'a b'],
+  ]) {
+    try {
+      div.setAttributeNS(ns, qn, '');
+      errors.push('ok');
+    } catch (e) {
+      errors.push(e.name);
+    }
   }
   out.errors = errors;
   return out;
@@ -151,66 +191,94 @@ parity('namespaced attributes', (w) => {
 // steps of HTML attributes (id, style, event handlers, slot, form controls)
 // apply to attributes in no namespace only.
 for (const jsdom of [30, 26, 25]) {
-  parity(`attributes with one qualified name in different namespaces (jsdom ${jsdom})`, (w) => {
-    const d = w.document;
-    const el = d.createElement('div');
-    el.setAttributeNS('urn:a', 'x', '1');
-    el.setAttribute('x', '2');
-    el.setAttributeNS('urn:b', 'x', '3');
-    el.setAttributeNS('urn:c', 'p:x', '4');
-    el.setAttributeNS('urn:d', 'p:x', '5');
-    const list = () => [...el.attributes].map((a) => [a.name, a.prefix, a.localName, a.namespaceURI, a.value]);
-    const out = {
-      first: [el.getAttribute('x'), el.getAttribute('p:x'), el.hasAttribute('p:x'), el.getAttributeNode('x').namespaceURI],
-      byNs: [el.getAttributeNS(null, 'x'), el.getAttributeNS('urn:b', 'x'), el.getAttributeNS('urn:d', 'x'), el.attributes.getNamedItemNS('urn:c', 'x').value],
-      names: el.getAttributeNames(),
-      own: Object.getOwnPropertyNames(el.attributes),
-      named: [el.attributes.x.namespaceURI, el.attributes['p:x'].value, el.attributes.getNamedItem('x').value],
-      html: el.outerHTML,
-      list: list(),
-    };
-    el.setAttribute('x', 'changed');
-    el.toggleAttribute('p:x');
-    out.afterSet = list();
-    el.removeAttribute('x');
-    out.afterRemove = [list(), el.getAttribute('x')];
-    el.attributes.removeNamedItem('x');
-    out.afterRemoveNamed = list();
-    el.removeAttributeNS('urn:d', 'x');
-    out.afterRemoveNS = list();
-    out.equal = [el.isEqualNode(el.cloneNode()), el.cloneNode().outerHTML];
-    const other = d.createElement('div');
-    other.setAttributeNS('urn:x', 'x', '1');
-    const same = d.createElement('div');
-    same.setAttribute('x', '1');
-    out.notEqual = other.isEqualNode(same);
-    return out;
-  }, { jsdom });
+  parity(
+    `attributes with one qualified name in different namespaces (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const el = d.createElement('div');
+      el.setAttributeNS('urn:a', 'x', '1');
+      el.setAttribute('x', '2');
+      el.setAttributeNS('urn:b', 'x', '3');
+      el.setAttributeNS('urn:c', 'p:x', '4');
+      el.setAttributeNS('urn:d', 'p:x', '5');
+      const list = () => [...el.attributes].map((a) => [a.name, a.prefix, a.localName, a.namespaceURI, a.value]);
+      const out = {
+        first: [
+          el.getAttribute('x'),
+          el.getAttribute('p:x'),
+          el.hasAttribute('p:x'),
+          el.getAttributeNode('x').namespaceURI,
+        ],
+        byNs: [
+          el.getAttributeNS(null, 'x'),
+          el.getAttributeNS('urn:b', 'x'),
+          el.getAttributeNS('urn:d', 'x'),
+          el.attributes.getNamedItemNS('urn:c', 'x').value,
+        ],
+        names: el.getAttributeNames(),
+        own: Object.getOwnPropertyNames(el.attributes),
+        named: [el.attributes.x.namespaceURI, el.attributes['p:x'].value, el.attributes.getNamedItem('x').value],
+        html: el.outerHTML,
+        list: list(),
+      };
+      el.setAttribute('x', 'changed');
+      el.toggleAttribute('p:x');
+      out.afterSet = list();
+      el.removeAttribute('x');
+      out.afterRemove = [list(), el.getAttribute('x')];
+      el.attributes.removeNamedItem('x');
+      out.afterRemoveNamed = list();
+      el.removeAttributeNS('urn:d', 'x');
+      out.afterRemoveNS = list();
+      out.equal = [el.isEqualNode(el.cloneNode()), el.cloneNode().outerHTML];
+      const other = d.createElement('div');
+      other.setAttributeNS('urn:x', 'x', '1');
+      const same = d.createElement('div');
+      same.setAttribute('x', '1');
+      out.notEqual = other.isEqualNode(same);
+      return out;
+    },
+    { jsdom },
+  );
 
-  parity(`setAttributeNode replaces in place and keeps order (jsdom ${jsdom})`, (w) => {
-    const d = w.document;
-    const el = d.createElement('div');
-    el.setAttribute('a', '1');
-    el.setAttributeNS('urn:x', 'p:b', '2');
-    el.setAttribute('c', '3');
-    const replacement = d.createAttributeNS('urn:x', 'q:b');
-    replacement.value = 'new';
-    const old = el.setAttributeNodeNS(replacement);
-    const plain = d.createAttribute('A');
-    plain.value = 'x';
-    const oldA = el.setAttributeNode(plain);
-    return {
-      old: [old.name, old.value, old.ownerElement, old.namespaceURI],
-      oldA: [oldA.name, oldA.value, oldA.ownerElement],
-      list: [...el.attributes].map((a) => [a.name, a.value]),
-      // (jsdom 25 and 26 still find the replaced attribute by its old
-      // qualified name, p:b; jsdom 30 does not.)
-      getB: [el.getAttribute('q:b'), jsdom === 30 ? el.getAttribute('p:b') : null],
-      same: el.setAttributeNode(plain) === null,
-      inUse: (() => { try { d.createElement('p').setAttributeNode(plain); return 'ok'; } catch (e) { return e.name; } })(),
-      detached: (() => { el.removeAttributeNode(replacement); return [replacement.ownerElement, replacement.value, replacement.prefix, replacement.name]; })(),
-    };
-  }, { jsdom });
+  parity(
+    `setAttributeNode replaces in place and keeps order (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const el = d.createElement('div');
+      el.setAttribute('a', '1');
+      el.setAttributeNS('urn:x', 'p:b', '2');
+      el.setAttribute('c', '3');
+      const replacement = d.createAttributeNS('urn:x', 'q:b');
+      replacement.value = 'new';
+      const old = el.setAttributeNodeNS(replacement);
+      const plain = d.createAttribute('A');
+      plain.value = 'x';
+      const oldA = el.setAttributeNode(plain);
+      return {
+        old: [old.name, old.value, old.ownerElement, old.namespaceURI],
+        oldA: [oldA.name, oldA.value, oldA.ownerElement],
+        list: [...el.attributes].map((a) => [a.name, a.value]),
+        // (jsdom 25 and 26 still find the replaced attribute by its old
+        // qualified name, p:b; jsdom 30 does not.)
+        getB: [el.getAttribute('q:b'), jsdom === 30 ? el.getAttribute('p:b') : null],
+        same: el.setAttributeNode(plain) === null,
+        inUse: (() => {
+          try {
+            d.createElement('p').setAttributeNode(plain);
+            return 'ok';
+          } catch (e) {
+            return e.name;
+          }
+        })(),
+        detached: (() => {
+          el.removeAttributeNode(replacement);
+          return [replacement.ownerElement, replacement.value, replacement.prefix, replacement.name];
+        })(),
+      };
+    },
+    { jsdom },
+  );
 }
 
 parity('namespaced attributes do not run the change steps of HTML attributes', async (w) => {
@@ -245,13 +313,22 @@ parity('namespaced attributes do not run the change steps of HTML attributes', a
 parity('namespaced attribute mutation records and custom element callbacks', async (w) => {
   const d = w.document;
   const calls = [];
-  w.customElements.define('ns-attr-el', class extends w.HTMLElement {
-    static get observedAttributes() { return ['x']; }
-    attributeChangedCallback(...args) { calls.push(args); }
-  });
+  w.customElements.define(
+    'ns-attr-el',
+    class extends w.HTMLElement {
+      static get observedAttributes() {
+        return ['x'];
+      }
+      attributeChangedCallback(...args) {
+        calls.push(args);
+      }
+    },
+  );
   const el = d.createElement('ns-attr-el');
   const records = [];
-  const mo = new w.MutationObserver((r) => records.push(...r.map((m) => [m.attributeName, m.attributeNamespace, m.oldValue])));
+  const mo = new w.MutationObserver((r) =>
+    records.push(...r.map((m) => [m.attributeName, m.attributeNamespace, m.oldValue])),
+  );
   mo.observe(el, { attributes: true, attributeOldValue: true });
   el.setAttributeNS('urn:a', 'p:x', '1');
   el.setAttribute('x', '2');
@@ -264,7 +341,8 @@ parity('namespaced attribute mutation records and custom element callbacks', asy
 
 parity('parsed foreign attributes and serialization by qualified name', (w) => {
   const d = w.document;
-  d.body.innerHTML = '<svg><use xlink:href="#a" xml:lang="en" xmlns:foo="urn:foo" foo:bar="1" xmlns="http://www.w3.org/2000/svg"></use></svg><div xlink:href="x"></div>';
+  d.body.innerHTML =
+    '<svg><use xlink:href="#a" xml:lang="en" xmlns:foo="urn:foo" foo:bar="1" xmlns="http://www.w3.org/2000/svg"></use></svg><div xlink:href="x"></div>';
   const use = d.querySelector('use');
   const div = d.querySelector('div');
   const info = (el) => [...el.attributes].map((a) => [a.name, a.prefix, a.localName, a.namespaceURI]);
@@ -277,7 +355,12 @@ parity('parsed foreign attributes and serialization by qualified name', (w) => {
     use: info(use),
     div: info(div),
     html: [use.outerHTML, div.outerHTML, el.outerHTML, x.serializeToString(el)],
-    get: [use.getAttribute('xlink:href'), use.getAttributeNS('http://www.w3.org/1999/xlink', 'href'), use.getAttributeNS(null, 'href'), div.getAttributeNS(null, 'xlink:href')],
+    get: [
+      use.getAttribute('xlink:href'),
+      use.getAttributeNS('http://www.w3.org/1999/xlink', 'href'),
+      use.getAttributeNS(null, 'href'),
+      div.getAttributeNS(null, 'xlink:href'),
+    ],
     selectors: ['[xlink\\:href]', '[foo\\:bar]', '[xml\\:lang]', '[*|lang]'].map((s) => d.querySelectorAll(s).length),
     clone: use.cloneNode().outerHTML,
   };
@@ -289,5 +372,12 @@ parity('attribute names keep their case on HTML elements in XML documents', (w) 
   e.setAttribute('FOO', '1');
   const h = w.document.createElement('div');
   h.setAttribute('FOO', '1');
-  return [e.getAttributeNames(), e.getAttribute('foo'), e.getAttribute('FOO'), e.hasAttribute('foo'), Object.getOwnPropertyNames(e.attributes), h.getAttributeNames()];
+  return [
+    e.getAttributeNames(),
+    e.getAttribute('foo'),
+    e.getAttribute('FOO'),
+    e.hasAttribute('foo'),
+    Object.getOwnPropertyNames(e.attributes),
+    h.getAttributeNames(),
+  ];
 });

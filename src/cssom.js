@@ -5,14 +5,28 @@
 //
 // Values are kept as written: unlike jsdom 30 they are not normalized
 // (jsdom serializes `margin: 0` as `0px`).
-import { S, state, domError, cssomChanges, ELEMENT_NODE, TEXT_NODE, HTML_NS, nextInTree, connected, PlatformURL as URL } from './internal.js';
+import {
+  S,
+  state,
+  domError,
+  cssomChanges,
+  ELEMENT_NODE,
+  TEXT_NODE,
+  HTML_NS,
+  nextInTree,
+  connected,
+  PlatformURL as URL,
+} from './internal.js';
 import { declarationBlock, serializeDeclarations, escapeIdentifier, protosMode, isLegacyMode } from './css.js';
 import { liveList } from './collections.js';
 import { fallbackBaseURL } from './base-url.js';
 
 // WebIDL: an operation called with fewer arguments than it requires throws.
 function required(count, n, iface, method) {
-  if (count < n) throw new TypeError(`Failed to execute '${method}' on '${iface}': ${n} argument${n > 1 ? 's' : ''} required, but only ${count} present.`);
+  if (count < n)
+    throw new TypeError(
+      `Failed to execute '${method}' on '${iface}': ${n} argument${n > 1 ? 's' : ''} required, but only ${count} present.`,
+    );
 }
 
 // --- parsing ---------------------------------------------------------------------
@@ -37,7 +51,10 @@ function preludeEnd(text, i) {
   let depth = 0;
   while (i < text.length) {
     const next = skipToken(text, i);
-    if (next !== i) { i = next; continue; }
+    if (next !== i) {
+      i = next;
+      continue;
+    }
     const c = text[i];
     if (c === '(' || c === '[') depth++;
     else if ((c === ')' || c === ']') && depth > 0) depth--;
@@ -53,7 +70,10 @@ function blockEnd(text, open) {
   let i = open;
   while (i < text.length) {
     const next = skipToken(text, i);
-    if (next !== i) { i = next; continue; }
+    if (next !== i) {
+      i = next;
+      continue;
+    }
     if (text[i] === '{') depth++;
     else if (text[i] === '}' && --depth === 0) return i;
     i++;
@@ -72,11 +92,24 @@ export function parseRules(text, strict = false) {
   let i = 0;
   while (i < text.length) {
     while (i < text.length && /[\s]/.test(text[i])) i++;
-    if (text.startsWith('/*', i)) { i = skipToken(text, i); continue; }
-    if (text.startsWith('<!--', i)) { i += 4; continue; }
-    if (text.startsWith('-->', i)) { i += 3; continue; }
+    if (text.startsWith('/*', i)) {
+      i = skipToken(text, i);
+      continue;
+    }
+    if (text.startsWith('<!--', i)) {
+      i += 4;
+      continue;
+    }
+    if (text.startsWith('-->', i)) {
+      i += 3;
+      continue;
+    }
     if (i >= text.length) break;
-    if (text[i] === '}' || text[i] === ';') { if (strict) records.push({ invalid: true }); i++; continue; }
+    if (text[i] === '}' || text[i] === ';') {
+      if (strict) records.push({ invalid: true });
+      i++;
+      continue;
+    }
     const end = preludeEnd(text, i);
     const prelude = stripComments(text.slice(i, end)).trim();
     let body = null;
@@ -119,7 +152,12 @@ export function validSelector(text) {
   let empty = true; // the current complex selector has no content yet
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
-    if (c === '\\') { i++; start = false; empty = false; continue; }
+    if (c === '\\') {
+      i++;
+      start = false;
+      empty = false;
+      continue;
+    }
     if (c === '"' || c === "'") {
       if (stack.length === 0) return false;
       const next = skipToken(text, i);
@@ -127,12 +165,28 @@ export function validSelector(text) {
       i = next - 1;
       continue;
     }
-    if (c === '(' || c === '[') { stack.push(c === '(' ? ')' : ']'); start = false; empty = false; continue; }
-    if (c === ')' || c === ']') { if (stack.pop() !== c) return false; continue; }
+    if (c === '(' || c === '[') {
+      stack.push(c === '(' ? ')' : ']');
+      start = false;
+      empty = false;
+      continue;
+    }
+    if (c === ')' || c === ']') {
+      if (stack.pop() !== c) return false;
+      continue;
+    }
     if (stack.length) continue;
     if (c === '{' || c === '}' || c === ';') return false;
-    if (c === ',') { if (empty) return false; empty = true; start = true; continue; }
-    if (/\s/.test(c) || c === '>' || c === '+' || c === '~') { start = true; continue; }
+    if (c === ',') {
+      if (empty) return false;
+      empty = true;
+      start = true;
+      continue;
+    }
+    if (/\s/.test(c) || c === '>' || c === '+' || c === '~') {
+      start = true;
+      continue;
+    }
     if (start && /[0-9]/.test(c)) return false;
     start = false;
     empty = false;
@@ -150,7 +204,14 @@ function pageSelector(text) {
     const m = /^(-?[A-Za-z_][\w-]*)?((?::[A-Za-z]+)*)$/.exec(part.trim());
     if (!m || part.trim() === '') return null;
     const pseudos = m[2].toLowerCase();
-    if (pseudos && !pseudos.split(':').slice(1).every((p) => p === 'left' || p === 'right' || p === 'first' || p === 'blank')) return null;
+    if (
+      pseudos &&
+      !pseudos
+        .split(':')
+        .slice(1)
+        .every((p) => p === 'left' || p === 'right' || p === 'first' || p === 'blank')
+    )
+      return null;
     parts.push((m[1] ?? '') + pseudos);
   }
   return parts.join(', ');
@@ -184,14 +245,20 @@ function mediaTokens(query) {
   let i = 0;
   while (i < query.length) {
     const c = query[i];
-    if (/\s/.test(c)) { i++; continue; }
+    if (/\s/.test(c)) {
+      i++;
+      continue;
+    }
     const ident = /^-?[a-z_][\w-]*/.exec(query.slice(i));
     if (c === '(' || (ident && query[i + ident[0].length] === '(')) {
       let depth = 0;
       let j = c === '(' ? i : i + ident[0].length;
       for (; j < query.length; j++) {
         const next = skipToken(query, j);
-        if (next !== j) { j = next - 1; continue; }
+        if (next !== j) {
+          j = next - 1;
+          continue;
+        }
         if (query[j] === '(') depth++;
         else if (query[j] === ')' && --depth === 0) break;
       }
@@ -214,7 +281,12 @@ function validMediaQuery(query) {
   const is = (word) => tokens[i]?.ident === word;
   // <media-condition>: not <in-parens> | <in-parens> [ and | or <in-parens> ]*
   const condition = (allowOr) => {
-    if (is('not')) { i++; if (!tokens[i]?.group) return false; i++; return true; }
+    if (is('not')) {
+      i++;
+      if (!tokens[i]?.group) return false;
+      i++;
+      return true;
+    }
     if (!tokens[i]?.group) return false;
     i++;
     let op = null;
@@ -250,14 +322,21 @@ function normalizeMedium(text) {
 // The queries of a media query list (commas outside parentheses).
 function splitMedia(text) {
   const parts = [];
-  let depth = 0, start = 0;
+  let depth = 0,
+    start = 0;
   for (let i = 0; i < text.length; i++) {
     const next = skipToken(text, i);
-    if (next !== i) { i = next - 1; continue; }
+    if (next !== i) {
+      i = next - 1;
+      continue;
+    }
     const c = text[i];
     if (c === '(') depth++;
     else if (c === ')' && depth > 0) depth--;
-    else if (c === ',' && depth === 0) { parts.push(text.slice(start, i)); start = i + 1; }
+    else if (c === ',' && depth === 0) {
+      parts.push(text.slice(start, i));
+      start = i + 1;
+    }
   }
   parts.push(text.slice(start));
   return parts;
@@ -266,16 +345,53 @@ function splitMedia(text) {
 // --- rules ----------------------------------------------------------------------
 
 export const RULE_TYPES = {
-  STYLE_RULE: 1, CHARSET_RULE: 2, IMPORT_RULE: 3, MEDIA_RULE: 4, FONT_FACE_RULE: 5, PAGE_RULE: 6,
-  MARGIN_RULE: 9, NAMESPACE_RULE: 10, KEYFRAMES_RULE: 7, KEYFRAME_RULE: 8, COUNTER_STYLE_RULE: 11,
-  SUPPORTS_RULE: 12, FONT_FEATURE_VALUES_RULE: 14,
+  STYLE_RULE: 1,
+  CHARSET_RULE: 2,
+  IMPORT_RULE: 3,
+  MEDIA_RULE: 4,
+  FONT_FACE_RULE: 5,
+  PAGE_RULE: 6,
+  MARGIN_RULE: 9,
+  NAMESPACE_RULE: 10,
+  KEYFRAMES_RULE: 7,
+  KEYFRAME_RULE: 8,
+  COUNTER_STYLE_RULE: 11,
+  SUPPORTS_RULE: 12,
+  FONT_FEATURE_VALUES_RULE: 14,
 };
 
 const KEYFRAMES = new Set(['keyframes', '-webkit-keyframes', '-moz-keyframes', '-o-keyframes']);
-const MARGINS = new Set(['top-left-corner', 'top-left', 'top-center', 'top-right', 'top-right-corner', 'bottom-left-corner', 'bottom-left',
-  'bottom-center', 'bottom-right', 'bottom-right-corner', 'left-top', 'left-middle', 'left-bottom', 'right-top', 'right-middle', 'right-bottom']);
+const MARGINS = new Set([
+  'top-left-corner',
+  'top-left',
+  'top-center',
+  'top-right',
+  'top-right-corner',
+  'bottom-left-corner',
+  'bottom-left',
+  'bottom-center',
+  'bottom-right',
+  'bottom-right-corner',
+  'left-top',
+  'left-middle',
+  'left-bottom',
+  'right-top',
+  'right-middle',
+  'right-bottom',
+]);
 
-const COUNTER_DESCRIPTORS = ['system', 'symbols', 'additive-symbols', 'negative', 'prefix', 'suffix', 'range', 'pad', 'speak-as', 'fallback'];
+const COUNTER_DESCRIPTORS = [
+  'system',
+  'symbols',
+  'additive-symbols',
+  'negative',
+  'prefix',
+  'suffix',
+  'range',
+  'pad',
+  'speak-as',
+  'fallback',
+];
 
 function makeRule(protos, iface, sheet, parentRule, data) {
   const rule = Object.create(protos[iface]);
@@ -333,7 +449,8 @@ function functionAt(text, name) {
   let depth = 0;
   for (let i = open[0].length - 1; i < text.length; i++) {
     if (text[i] === '(') depth++;
-    else if (text[i] === ')' && --depth === 0) return { inner: text.slice(open[0].length, i).trim(), after: text.slice(i + 1).trim() };
+    else if (text[i] === ')' && --depth === 0)
+      return { inner: text.slice(open[0].length, i).trim(), after: text.slice(i + 1).trim() };
   }
   return null;
 }
@@ -346,12 +463,26 @@ function importRule(protos, prelude, sheet, parentRule) {
   let layerName = null;
   let supportsText = null;
   const layer = functionAt(rest, 'layer');
-  if (layer && /^-?[A-Za-z_][\w-]*(\.-?[A-Za-z_][\w-]*)*$/.test(layer.inner)) { layerName = layer.inner; rest = layer.after; }
-  else if (/^layer(\s|$)/i.test(rest)) { layerName = ''; rest = rest.slice(5).trim(); }
+  if (layer && /^-?[A-Za-z_][\w-]*(\.-?[A-Za-z_][\w-]*)*$/.test(layer.inner)) {
+    layerName = layer.inner;
+    rest = layer.after;
+  } else if (/^layer(\s|$)/i.test(rest)) {
+    layerName = '';
+    rest = rest.slice(5).trim();
+  }
   const supports = functionAt(rest, 'supports');
-  if (supports) { supportsText = supports.inner; rest = supports.after; }
+  if (supports) {
+    supportsText = supports.inner;
+    rest = supports.after;
+  }
   const href = (m[2] ?? m[4]).replace(/\\(.)/g, '$1');
-  return makeRule(protos, 'CSSImportRule', sheet, parentRule, { href, layerName, supportsText, media: mediaList(protos, rest), styleSheet: null });
+  return makeRule(protos, 'CSSImportRule', sheet, parentRule, {
+    href,
+    layerName,
+    supportsText,
+    media: mediaList(protos, rest),
+    styleSheet: null,
+  });
 }
 
 // An @page rule's body: descriptors, and margin rules (@top-left { ... }).
@@ -361,12 +492,21 @@ function pageRule(protos, selector, body, sheet, parentRule) {
   let i = 0;
   while (i < body.length) {
     const at = body.indexOf('@', i);
-    if (at < 0) { declarations += body.slice(i); break; }
+    if (at < 0) {
+      declarations += body.slice(i);
+      break;
+    }
     declarations += body.slice(i, at);
     const end = preludeEnd(body, at);
-    if (body[end] !== '{') { i = end + 1; continue; }
+    if (body[end] !== '{') {
+      i = end + 1;
+      continue;
+    }
     const close = blockEnd(body, end);
-    const name = body.slice(at + 1, end).trim().toLowerCase();
+    const name = body
+      .slice(at + 1, end)
+      .trim()
+      .toLowerCase();
     if (MARGINS.has(name)) {
       const margin = makeRule(protos, 'CSSMarginRule', sheet, rule, { name });
       margin[S].style = declarationBlock(protos.CSSStyleProperties, body.slice(end + 1, close), margin);
@@ -397,14 +537,26 @@ function createRule(protos, record, sheet, parentRule) {
     // [ <container-name> ]? <container-query>
     const m = /^(-?[A-Za-z_][\w-]*)?\s*(.*)$/s.exec(prelude);
     const named = m[1] && !/^(not|and|or)$/i.test(m[1]) && m[2] !== '';
-    rule = makeRule(protos, 'CSSContainerRule', sheet, parentRule, { conditionText: prelude, containerName: named ? m[1] : '', containerQuery: named ? m[2] : prelude });
+    rule = makeRule(protos, 'CSSContainerRule', sheet, parentRule, {
+      conditionText: prelude,
+      containerName: named ? m[1] : '',
+      containerQuery: named ? m[2] : prelude,
+    });
   } else if (at === 'scope' && body !== null) {
     // [ ( <scope-start> ) ]? [ to ( <scope-end> ) ]?
     const m = /^(?:\(([^()]*)\))?\s*(?:to\s*\(([^()]*)\))?$/is.exec(prelude);
     if (!m) return null;
-    rule = makeRule(protos, 'CSSScopeRule', sheet, parentRule, { prelude, start: m[1]?.trim() ?? null, end: m[2]?.trim() ?? null });
+    rule = makeRule(protos, 'CSSScopeRule', sheet, parentRule, {
+      prelude,
+      start: m[1]?.trim() ?? null,
+      end: m[2]?.trim() ?? null,
+    });
   } else if (at === 'counter-style' && body !== null) {
-    if (!/^-?[A-Za-z_][\w-]*$/.test(prelude) || /^(none|decimal|disc|square|circle|disclosure-open|disclosure-closed)$/i.test(prelude)) return null;
+    if (
+      !/^-?[A-Za-z_][\w-]*$/.test(prelude) ||
+      /^(none|decimal|disc|square|circle|disclosure-open|disclosure-closed)$/i.test(prelude)
+    )
+      return null;
     const descriptors = new Map();
     for (const part of body.split(';')) {
       const colon = part.indexOf(':');
@@ -415,7 +567,13 @@ function createRule(protos, record, sheet, parentRule) {
     }
     return makeRule(protos, 'CSSCounterStyleRule', sheet, parentRule, { name: prelude, descriptors });
   } else if (at === 'layer') {
-    if (body === null) return makeRule(protos, 'CSSLayerStatementRule', sheet, parentRule, { nameList: prelude.split(',').map((n) => n.trim()).filter(Boolean) });
+    if (body === null)
+      return makeRule(protos, 'CSSLayerStatementRule', sheet, parentRule, {
+        nameList: prelude
+          .split(',')
+          .map((n) => n.trim())
+          .filter(Boolean),
+      });
     rule = makeRule(protos, 'CSSLayerBlockRule', sheet, parentRule, { name: prelude });
   } else if (at === 'import' && body === null) {
     return importRule(protos, prelude, sheet, parentRule);
@@ -428,7 +586,9 @@ function createRule(protos, record, sheet, parentRule) {
     return selector === null ? null : pageRule(protos, selector, body, sheet, parentRule);
   } else if (KEYFRAMES.has(at) && body !== null) {
     rule = makeRule(protos, 'CSSKeyframesRule', sheet, parentRule, { name: prelude, indexed: 0 });
-    rule[S].rules = parseRules(body).map((r) => keyframe(protos, r, sheet, rule)).filter(Boolean);
+    rule[S].rules = parseRules(body)
+      .map((r) => keyframe(protos, r, sheet, rule))
+      .filter(Boolean);
     indexKeyframes(rule);
     return rule;
   } else if (at === 'namespace' && body === null) {
@@ -455,7 +615,8 @@ function keyframe(protos, record, sheet, parentRule) {
 // keyframes change (rare).
 function indexKeyframes(rule) {
   const s = rule[S];
-  for (let i = 0; i < s.rules.length; i++) Object.defineProperty(rule, i, { value: s.rules[i], enumerable: true, configurable: true });
+  for (let i = 0; i < s.rules.length; i++)
+    Object.defineProperty(rule, i, { value: s.rules[i], enumerable: true, configurable: true });
   for (let i = s.rules.length; i < s.indexed; i++) delete rule[i];
   s.indexed = s.rules.length;
 }
@@ -481,40 +642,54 @@ const nested = (rules) => (rules.length ? `{\n${rules.map((r) => `  ${ruleText(r
 // A keyframes name: an identifier, or a string where an identifier is not
 // allowed (CSS-wide keywords, default, none).
 function keyframesName(name) {
-  if (name === '' || /^(initial|inherit|unset|revert|revert-layer|default|none)$/i.test(name)) return serializeString(name);
+  if (name === '' || /^(initial|inherit|unset|revert|revert-layer|default|none)$/i.test(name))
+    return serializeString(name);
   return escapeIdentifier(name);
 }
 
 function ruleText(rule) {
   const s = rule[S];
   switch (Object.getPrototypeOf(rule)) {
-    case s.protos.CSSStyleRule: return `${s.selectorText} ${styleText(s.style)}`;
-    case s.protos.CSSMediaRule: return `@media ${s.media[S].list.join(', ')} ${nested(s.rules)}`;
-    case s.protos.CSSSupportsRule: return `@supports ${s.conditionText} ${nested(s.rules)}`;
-    case s.protos.CSSContainerRule: return `@container ${s.conditionText} ${nested(s.rules)}`;
-    case s.protos.CSSScopeRule: return `@scope ${s.prelude ? `${s.prelude} ` : ''}${nested(s.rules)}`;
+    case s.protos.CSSStyleRule:
+      return `${s.selectorText} ${styleText(s.style)}`;
+    case s.protos.CSSMediaRule:
+      return `@media ${s.media[S].list.join(', ')} ${nested(s.rules)}`;
+    case s.protos.CSSSupportsRule:
+      return `@supports ${s.conditionText} ${nested(s.rules)}`;
+    case s.protos.CSSContainerRule:
+      return `@container ${s.conditionText} ${nested(s.rules)}`;
+    case s.protos.CSSScopeRule:
+      return `@scope ${s.prelude ? `${s.prelude} ` : ''}${nested(s.rules)}`;
     case s.protos.CSSCounterStyleRule: {
       const body = [...s.descriptors].map(([name, value]) => `${name}: ${value};`).join(' ');
       return `@counter-style ${s.name} ${body ? `{ ${body} }` : '{ }'}`;
     }
-    case s.protos.CSSLayerBlockRule: return `@layer ${s.name} ${nested(s.rules)}`;
-    case s.protos.CSSLayerStatementRule: return `@layer ${s.nameList.join(', ')};`;
+    case s.protos.CSSLayerBlockRule:
+      return `@layer ${s.name} ${nested(s.rules)}`;
+    case s.protos.CSSLayerStatementRule:
+      return `@layer ${s.nameList.join(', ')};`;
     case s.protos.CSSImportRule: {
       const media = s.media[S].list.join(', ');
       const layer = s.layerName === null ? '' : s.layerName === '' ? ' layer' : ` layer(${s.layerName})`;
       const supports = s.supportsText === null ? '' : ` supports(${s.supportsText})`;
       return `@import url(${serializeString(s.href)})${layer}${supports}${media ? ` ${media}` : ''};`;
     }
-    case s.protos.CSSFontFaceRule: return `@font-face ${styleText(s.style)}`;
+    case s.protos.CSSFontFaceRule:
+      return `@font-face ${styleText(s.style)}`;
     case s.protos.CSSPageRule: {
       const body = [serializeDeclarations(s.style), ...s.rules.map(ruleText)].filter(Boolean).join(' ');
       return `@page${s.selectorText ? ` ${s.selectorText}` : ''} ${body ? `{ ${body} }` : '{ }'}`;
     }
-    case s.protos.CSSMarginRule: return `@${s.name} ${styleText(s.style)}`;
-    case s.protos.CSSKeyframesRule: return `@keyframes ${keyframesName(s.name)} { ${s.rules.map(ruleText).join(' ')} }`;
-    case s.protos.CSSKeyframeRule: return `${s.keyText} ${styleText(s.style)}`;
-    case s.protos.CSSNamespaceRule: return `@namespace ${s.prefix ? `${s.prefix} ` : ''}url(${serializeString(s.namespaceURI)});`;
-    default: return '';
+    case s.protos.CSSMarginRule:
+      return `@${s.name} ${styleText(s.style)}`;
+    case s.protos.CSSKeyframesRule:
+      return `@keyframes ${keyframesName(s.name)} { ${s.rules.map(ruleText).join(' ')} }`;
+    case s.protos.CSSKeyframeRule:
+      return `${s.keyText} ${styleText(s.style)}`;
+    case s.protos.CSSNamespaceRule:
+      return `@namespace ${s.prefix ? `${s.prefix} ` : ''}url(${serializeString(s.namespaceURI)});`;
+    default:
+      return '';
   }
 }
 
@@ -534,16 +709,19 @@ function cssRuleList(owner) {
 function insertRule(owner, text, index, sheet, parentRule, nested) {
   const s = owner[S];
   const i = index === undefined ? 0 : index >>> 0;
-  if (i > s.rules.length) throw domError(`The index provided (${i}) is larger than the maximum index (${s.rules.length}).`, 'IndexSizeError');
+  if (i > s.rules.length)
+    throw domError(`The index provided (${i}) is larger than the maximum index (${s.rules.length}).`, 'IndexSizeError');
   const record = parseOneRule(String(text), s.protos);
   const rule = record && createRule(s.protos, record, sheet, parentRule);
   if (!rule) throw domError(`Failed to parse the rule '${text}'.`, 'SyntaxError');
   const before = s.rules.slice(0, i);
   const after = s.rules.slice(i);
-  if ((nested && (isImport(rule) || isNamespace(rule)))
-    || (isImport(rule) && before.some((r) => !isImport(r)))
-    || (isNamespace(rule) && (before.some((r) => !isImport(r) && !isNamespace(r)) || after.some(isImport)))
-    || (!isImport(rule) && !isNamespace(rule) && after.some((r) => isImport(r) || isNamespace(r)))) {
+  if (
+    (nested && (isImport(rule) || isNamespace(rule))) ||
+    (isImport(rule) && before.some((r) => !isImport(r))) ||
+    (isNamespace(rule) && (before.some((r) => !isImport(r) && !isNamespace(r)) || after.some(isImport))) ||
+    (!isImport(rule) && !isNamespace(rule) && after.some((r) => isImport(r) || isNamespace(r)))
+  ) {
     throw domError('Cannot insert the rule at this position.', 'HierarchyRequestError');
   }
   if (isNamespace(rule) && s.rules.some((r) => !isImport(r) && !isNamespace(r))) {
@@ -557,7 +735,11 @@ function insertRule(owner, text, index, sheet, parentRule, nested) {
 function deleteRule(owner, index) {
   const s = owner[S];
   const i = index >>> 0;
-  if (i >= s.rules.length) throw domError(`The index provided (${i}) is larger than the maximum index (${s.rules.length - 1}).`, 'IndexSizeError');
+  if (i >= s.rules.length)
+    throw domError(
+      `The index provided (${i}) is larger than the maximum index (${s.rules.length - 1}).`,
+      'IndexSizeError',
+    );
   const rule = s.rules[i];
   if (isNamespace(rule) && s.rules.some((r) => !isImport(r) && !isNamespace(r))) {
     throw domError('Cannot delete a @namespace rule from a list with other rules.', 'InvalidStateError');
@@ -589,8 +771,18 @@ function setMediaText(list, text) {
 function newSheet(protos, data) {
   const sheet = Object.create(protos.CSSStyleSheet);
   sheet[S] = {
-    protos, ownerNode: null, ownerRule: null, parentSheet: null, href: null, baseURL: null, title: null,
-    disabled: false, media: null, rules: [], constructed: false, ...data,
+    protos,
+    ownerNode: null,
+    ownerRule: null,
+    parentSheet: null,
+    href: null,
+    baseURL: null,
+    title: null,
+    disabled: false,
+    media: null,
+    rules: [],
+    constructed: false,
+    ...data,
   };
   return sheet;
 }
@@ -618,7 +810,11 @@ function importedSheet(rule) {
   const s = rule[S];
   if (!s.styleSheet) {
     let href = s.href;
-    try { href = new URL(s.href, s.sheet ? sheetBase(s.sheet) : undefined).href; } catch { /* kept as written */ }
+    try {
+      href = new URL(s.href, s.sheet ? sheetBase(s.sheet) : undefined).href;
+    } catch {
+      /* kept as written */
+    }
     s.styleSheet = newSheet(s.protos, { ownerRule: rule, parentSheet: s.sheet, href, media: s.media });
   }
   return s.styleSheet;
@@ -638,13 +834,21 @@ const isConnected = connected;
 export function styleElementSheet(el) {
   const s = el[S];
   if (!isConnected(el)) {
-    if (s.sheet) { s.sheet[S].ownerNode = null; s.sheet = null; }
+    if (s.sheet) {
+      s.sheet[S].ownerNode = null;
+      s.sheet = null;
+    }
     return null;
   }
   const text = childText(el);
   if (!s.sheet || s.sheetText !== text || s.sheetRev !== s.rev) {
     if (s.sheet) s.sheet[S].ownerNode = null;
-    s.sheet = createSheet(s.doc[S].window[S].protos, { ownerNode: el, text, media: s.attrs.get('media') ?? '', title: s.attrs.get('title') || null });
+    s.sheet = createSheet(s.doc[S].window[S].protos, {
+      ownerNode: el,
+      text,
+      media: s.attrs.get('media') ?? '',
+      title: s.attrs.get('title') || null,
+    });
     s.sheetText = text;
     s.sheetRev = s.rev;
   }
@@ -681,7 +885,10 @@ function ownerNodeOf(sheet) {
 // HTMLStyleElement's sheet, and disabled, which is its sheet's disabled
 // flag (HTML; false and ignored without a sheet), as in jsdom 30.
 export const STYLE_ELEMENT_MEMBERS = {
-  get sheet() { state(this); return styleElementSheet(this); },
+  get sheet() {
+    state(this);
+    return styleElementSheet(this);
+  },
   get disabled() {
     state(this);
     const sheet = styleElementSheet(this);
@@ -690,7 +897,10 @@ export const STYLE_ELEMENT_MEMBERS = {
   set disabled(v) {
     state(this);
     const sheet = styleElementSheet(this);
-    if (sheet) { sheet[S].disabled = !!v; cssomChanges.rev++; }
+    if (sheet) {
+      sheet[S].disabled = !!v;
+      cssomChanges.rev++;
+    }
   },
 };
 
@@ -699,7 +909,10 @@ export const STYLE_ELEMENT_MEMBERS = {
 const rules = (self) => state(self).rules;
 
 const groupingMembers = {
-  get cssRules() { state(this); return cssRuleList(this); },
+  get cssRules() {
+    state(this);
+    return cssRuleList(this);
+  },
   insertRule(rule, index = 0) {
     const s = state(this);
     required(arguments.length, 1, 'CSSGroupingRule', 'insertRule');
@@ -714,8 +927,13 @@ const groupingMembers = {
 
 // [PutForwards=mediaText] media.
 const mediaMember = {
-  get media() { return state(this).media; },
-  set media(v) { setMediaText(state(this).media, v); cssomChanges.rev++; },
+  get media() {
+    return state(this).media;
+  },
+  set media(v) {
+    setMediaText(state(this).media, v);
+    cssomChanges.rev++;
+  },
 };
 
 export const CSSOM_INTERFACES = [
@@ -728,70 +946,149 @@ export const CSSOM_INTERFACES = [
         const s = state(this);
         const p = s.protos;
         switch (Object.getPrototypeOf(this)) {
-          case p.CSSStyleRule: return 1;
-          case p.CSSImportRule: return 3;
-          case p.CSSMediaRule: return 4;
-          case p.CSSFontFaceRule: return 5;
-          case p.CSSPageRule: return 6;
-          case p.CSSKeyframesRule: return 7;
-          case p.CSSKeyframeRule: return 8;
-          case p.CSSMarginRule: return 9;
-          case p.CSSNamespaceRule: return 10;
-          case p.CSSCounterStyleRule: return 11;
-          case p.CSSSupportsRule: return 12;
-          default: return 0;
+          case p.CSSStyleRule:
+            return 1;
+          case p.CSSImportRule:
+            return 3;
+          case p.CSSMediaRule:
+            return 4;
+          case p.CSSFontFaceRule:
+            return 5;
+          case p.CSSPageRule:
+            return 6;
+          case p.CSSKeyframesRule:
+            return 7;
+          case p.CSSKeyframeRule:
+            return 8;
+          case p.CSSMarginRule:
+            return 9;
+          case p.CSSNamespaceRule:
+            return 10;
+          case p.CSSCounterStyleRule:
+            return 11;
+          case p.CSSSupportsRule:
+            return 12;
+          default:
+            return 0;
         }
       },
-      get cssText() { state(this); return ruleText(this); },
-      set cssText(v) { state(this); },
-      get parentRule() { return state(this).parentRule; },
-      get parentStyleSheet() { return state(this).sheet; },
+      get cssText() {
+        state(this);
+        return ruleText(this);
+      },
+      set cssText(v) {
+        state(this);
+      },
+      get parentRule() {
+        return state(this).parentRule;
+      },
+      get parentStyleSheet() {
+        return state(this).sheet;
+      },
     },
   },
   { name: 'CSSGroupingRule', parent: 'CSSRule', members: groupingMembers },
-  { name: 'CSSConditionRule', parent: 'CSSGroupingRule', members: { get conditionText() { const s = state(this); return s.media ? s.media[S].list.join(', ') : s.conditionText; } } },
+  {
+    name: 'CSSConditionRule',
+    parent: 'CSSGroupingRule',
+    members: {
+      get conditionText() {
+        const s = state(this);
+        return s.media ? s.media[S].list.join(', ') : s.conditionText;
+      },
+    },
+  },
   // matches from jsdom 29 (compat.mediaRuleMatches): jsdom evaluates no
   // media features, so a list matches when it is empty or has an "all" or
   // "screen" query, as the cascade applies @media rules (cascade.js).
   {
     name: 'CSSMediaRule',
     parent: 'CSSConditionRule',
-    members: [mediaMember, {
-      get matches() {
-        const list = state(this).media[S].list;
-        return list.length === 0 || list.includes('all') || list.includes('screen');
+    members: [
+      mediaMember,
+      {
+        get matches() {
+          const list = state(this).media[S].list;
+          return list.length === 0 || list.includes('all') || list.includes('screen');
+        },
       },
-    }],
-    compat(proto, compat) { if (!compat.mediaRuleMatches) delete proto.matches; },
+    ],
+    compat(proto, compat) {
+      if (!compat.mediaRuleMatches) delete proto.matches;
+    },
   },
   { name: 'CSSSupportsRule', parent: 'CSSConditionRule', members: {} },
   {
     name: 'CSSContainerRule',
     parent: 'CSSConditionRule',
-    members: { get containerName() { return state(this).containerName; }, get containerQuery() { return state(this).containerQuery; } },
+    members: {
+      get containerName() {
+        return state(this).containerName;
+      },
+      get containerQuery() {
+        return state(this).containerQuery;
+      },
+    },
   },
   {
     name: 'CSSScopeRule',
     parent: 'CSSGroupingRule',
-    members: { get start() { return state(this).start; }, get end() { return state(this).end; } },
+    members: {
+      get start() {
+        return state(this).start;
+      },
+      get end() {
+        return state(this).end;
+      },
+    },
   },
   {
     name: 'CSSCounterStyleRule',
     parent: 'CSSRule',
     members: {
-      get name() { return state(this).name; },
-      set name(v) { state(this).name = String(v); },
-      ...Object.fromEntries(COUNTER_DESCRIPTORS.map((name) => {
-        const key = name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
-        return [key, {
-          get() { return state(this).descriptors.get(name) ?? ''; },
-          set(v) { const value = String(v).trim(); if (value) state(this).descriptors.set(name, value); },
-        }];
-      })),
+      get name() {
+        return state(this).name;
+      },
+      set name(v) {
+        state(this).name = String(v);
+      },
+      ...Object.fromEntries(
+        COUNTER_DESCRIPTORS.map((name) => {
+          const key = name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+          return [
+            key,
+            {
+              get() {
+                return state(this).descriptors.get(name) ?? '';
+              },
+              set(v) {
+                const value = String(v).trim();
+                if (value) state(this).descriptors.set(name, value);
+              },
+            },
+          ];
+        }),
+      ),
     },
   },
-  { name: 'CSSLayerBlockRule', parent: 'CSSGroupingRule', members: { get name() { return state(this).name; } } },
-  { name: 'CSSLayerStatementRule', parent: 'CSSRule', members: { get nameList() { return Object.freeze(state(this).nameList.slice()); } } },
+  {
+    name: 'CSSLayerBlockRule',
+    parent: 'CSSGroupingRule',
+    members: {
+      get name() {
+        return state(this).name;
+      },
+    },
+  },
+  {
+    name: 'CSSLayerStatementRule',
+    parent: 'CSSRule',
+    members: {
+      get nameList() {
+        return Object.freeze(state(this).nameList.slice());
+      },
+    },
+  },
   // CSS Nesting's declarations after a nested rule, from jsdom 27.2
   // (applyCompat in window.js). warpdom's style sheets have no nested rules
   // yet, so none is ever made: only the interface (style [PutForwards=cssText]).
@@ -799,77 +1096,132 @@ export const CSSOM_INTERFACES = [
     name: 'CSSNestedDeclarations',
     parent: 'CSSRule',
     members: {
-      get style() { return state(this).style; },
-      set style(v) { state(this).style.cssText = v; },
+      get style() {
+        return state(this).style;
+      },
+      set style(v) {
+        state(this).style.cssText = v;
+      },
     },
   },
   {
     name: 'CSSStyleRule',
     parent: 'CSSGroupingRule',
     members: {
-      get selectorText() { return state(this).selectorText; },
+      get selectorText() {
+        return state(this).selectorText;
+      },
       set selectorText(v) {
         const s = state(this);
         const t = String(v).trim();
-        if (validSelector(t)) { s.selectorText = t; cssomChanges.rev++; }
+        if (validSelector(t)) {
+          s.selectorText = t;
+          cssomChanges.rev++;
+        }
       },
-      get style() { return state(this).style; },
-      set style(v) { state(this).style.cssText = v; },
+      get style() {
+        return state(this).style;
+      },
+      set style(v) {
+        state(this).style.cssText = v;
+      },
     },
   },
   {
     name: 'CSSImportRule',
     parent: 'CSSRule',
-    members: [{
-      get href() { return state(this).href; },
-    }, mediaMember, {
-      get styleSheet() { state(this); return importedSheet(this); },
-      get layerName() { return state(this).layerName; },
-      get supportsText() { return state(this).supportsText; },
-    }],
+    members: [
+      {
+        get href() {
+          return state(this).href;
+        },
+      },
+      mediaMember,
+      {
+        get styleSheet() {
+          state(this);
+          return importedSheet(this);
+        },
+        get layerName() {
+          return state(this).layerName;
+        },
+        get supportsText() {
+          return state(this).supportsText;
+        },
+      },
+    ],
   },
   {
     name: 'CSSFontFaceRule',
     parent: 'CSSRule',
-    members: { get style() { return state(this).style; } },
+    members: {
+      get style() {
+        return state(this).style;
+      },
+    },
   },
   {
     name: 'CSSPageRule',
     parent: 'CSSGroupingRule',
     members: {
-      get selectorText() { return state(this).selectorText; },
+      get selectorText() {
+        return state(this).selectorText;
+      },
       set selectorText(v) {
         const s = state(this);
         const selector = pageSelector(v);
         if (selector !== null) s.selectorText = selector;
       },
-      get style() { return state(this).style; },
-      set style(v) { state(this).style.cssText = v; },
+      get style() {
+        return state(this).style;
+      },
+      set style(v) {
+        state(this).style.cssText = v;
+      },
     },
   },
   {
     name: 'CSSMarginRule',
     parent: 'CSSRule',
     members: {
-      get name() { return state(this).name; },
-      get style() { return state(this).style; },
-      set style(v) { state(this).style.cssText = v; },
+      get name() {
+        return state(this).name;
+      },
+      get style() {
+        return state(this).style;
+      },
+      set style(v) {
+        state(this).style.cssText = v;
+      },
     },
   },
   {
     name: 'CSSKeyframesRule',
     parent: 'CSSRule',
     members: {
-      get name() { return state(this).name; },
-      set name(v) { state(this).name = String(v); },
-      get cssRules() { state(this); return cssRuleList(this); },
-      get length() { return rules(this).length; },
+      get name() {
+        return state(this).name;
+      },
+      set name(v) {
+        state(this).name = String(v);
+      },
+      get cssRules() {
+        state(this);
+        return cssRuleList(this);
+      },
+      get length() {
+        return rules(this).length;
+      },
       appendRule(text) {
         const s = state(this);
         required(arguments.length, 1, 'CSSKeyframesRule', 'appendRule');
         const record = parseOneRule(String(text), s.protos);
         const rule = record && keyframe(s.protos, record, s.sheet, this);
-        if (rule) { s.rules.push(rule); indexKeyframes(this); cssomChanges.rev++; }
+        if (rule) {
+          s.rules.push(rule);
+          indexKeyframes(this);
+          cssomChanges.rev++;
+        }
       },
       deleteRule(select) {
         const s = state(this);
@@ -885,7 +1237,7 @@ export const CSSOM_INTERFACES = [
       findRule(select) {
         required(arguments.length, 1, 'CSSKeyframesRule', 'findRule');
         const key = keyText(select);
-        return key === null ? null : rules(this).findLast((r) => r[S].keyText === key) ?? null;
+        return key === null ? null : (rules(this).findLast((r) => r[S].keyText === key) ?? null);
       },
     },
   },
@@ -893,40 +1245,65 @@ export const CSSOM_INTERFACES = [
     name: 'CSSKeyframeRule',
     parent: 'CSSRule',
     members: {
-      get keyText() { return state(this).keyText; },
+      get keyText() {
+        return state(this).keyText;
+      },
       set keyText(v) {
         const s = state(this);
         const key = keyText(v);
         if (key === null) throw domError(`The key '${v}' is invalid and cannot be parsed.`, 'SyntaxError');
         s.keyText = key;
       },
-      get style() { return state(this).style; },
-      set style(v) { state(this).style.cssText = v; },
+      get style() {
+        return state(this).style;
+      },
+      set style(v) {
+        state(this).style.cssText = v;
+      },
     },
   },
   {
     name: 'CSSNamespaceRule',
     parent: 'CSSRule',
-    members: { get namespaceURI() { return state(this).namespaceURI; }, get prefix() { return state(this).prefix; } },
+    members: {
+      get namespaceURI() {
+        return state(this).namespaceURI;
+      },
+      get prefix() {
+        return state(this).prefix;
+      },
+    },
   },
   {
     name: 'CSSRuleList',
     members: {
-      get length() { return state(this).items().length; },
+      get length() {
+        return state(this).items().length;
+      },
       item(index) {
         const s = state(this);
         required(arguments.length, 1, 'CSSRuleList', 'item');
         return s.items()[index >>> 0] ?? null;
       },
-      [Symbol.iterator]() { return state(this).items()[Symbol.iterator](); },
+      [Symbol.iterator]() {
+        return state(this).items()[Symbol.iterator]();
+      },
     },
   },
   {
     name: 'MediaList',
     members: {
-      get mediaText() { return state(this).list.join(', '); },
-      set mediaText(v) { state(this); setMediaText(this, v === null ? '' : v); cssomChanges.rev++; },
-      get length() { return state(this).list.length; },
+      get mediaText() {
+        return state(this).list.join(', ');
+      },
+      set mediaText(v) {
+        state(this);
+        setMediaText(this, v === null ? '' : v);
+        cssomChanges.rev++;
+      },
+      get length() {
+        return state(this).list.length;
+      },
       item(index) {
         const s = state(this);
         required(arguments.length, 1, 'MediaList', 'item');
@@ -940,7 +1317,10 @@ export const CSSOM_INTERFACES = [
         const queries = splitMedia(text);
         if (text.trim() === '' || queries.length !== 1) return;
         const m = normalizeMedium(queries[0]);
-        if (!list.some((q) => mediumKey(q) === mediumKey(m))) { list.push(m); cssomChanges.rev++; }
+        if (!list.some((q) => mediumKey(q) === mediumKey(m))) {
+          list.push(m);
+          cssomChanges.rev++;
+        }
       },
       // CSSOM: removes every query equal to the one given.
       deleteMedium(medium) {
@@ -948,24 +1328,36 @@ export const CSSOM_INTERFACES = [
         required(arguments.length, 1, 'MediaList', 'deleteMedium');
         const m = mediumKey(normalizeMedium(medium));
         let removed = false;
-        for (let i = list.length - 1; i >= 0; i--) if (mediumKey(list[i]) === m) { list.splice(i, 1); removed = true; }
+        for (let i = list.length - 1; i >= 0; i--)
+          if (mediumKey(list[i]) === m) {
+            list.splice(i, 1);
+            removed = true;
+          }
         if (!removed) throw domError(`Failed to delete '${medium}'.`, 'NotFoundError');
         cssomChanges.rev++;
       },
-      toString() { return state(this).list.join(', '); },
-      [Symbol.iterator]() { return state(this).list[Symbol.iterator](); },
+      toString() {
+        return state(this).list.join(', ');
+      },
+      [Symbol.iterator]() {
+        return state(this).list[Symbol.iterator]();
+      },
     },
   },
   {
     name: 'StyleSheetList',
     members: {
-      get length() { return state(this).items().length; },
+      get length() {
+        return state(this).items().length;
+      },
       item(index) {
         const s = state(this);
         required(arguments.length, 1, 'StyleSheetList', 'item');
         return s.items()[index >>> 0] ?? null;
       },
-      [Symbol.iterator]() { return state(this).items()[Symbol.iterator](); },
+      [Symbol.iterator]() {
+        return state(this).items()[Symbol.iterator]();
+      },
     },
   },
   {
@@ -978,16 +1370,37 @@ export const CSSOM_INTERFACES = [
     compat(proto, { jsdom }) {
       if (jsdom < 27) for (const name of ['ownerNode', 'href', 'title', 'type']) delete proto[name];
     },
-    members: [{
-      get type() { state(this); return 'text/css'; },
-      get href() { return state(this).href; },
-      get ownerNode() { state(this); return ownerNodeOf(this); },
-      get parentStyleSheet() { return state(this).parentSheet; },
-      get title() { return state(this).title; },
-    }, mediaMember, {
-      get disabled() { return state(this).disabled; },
-      set disabled(v) { state(this).disabled = !!v; cssomChanges.rev++; },
-    }],
+    members: [
+      {
+        get type() {
+          state(this);
+          return 'text/css';
+        },
+        get href() {
+          return state(this).href;
+        },
+        get ownerNode() {
+          state(this);
+          return ownerNodeOf(this);
+        },
+        get parentStyleSheet() {
+          return state(this).parentSheet;
+        },
+        get title() {
+          return state(this).title;
+        },
+      },
+      mediaMember,
+      {
+        get disabled() {
+          return state(this).disabled;
+        },
+        set disabled(v) {
+          state(this).disabled = !!v;
+          cssomChanges.rev++;
+        },
+      },
+    ],
   },
   {
     name: 'CSSStyleSheet',
@@ -998,18 +1411,32 @@ export const CSSOM_INTERFACES = [
       const media = options?.media;
       let baseURL = String(fallbackBaseURL(w.document));
       if (options?.baseURL != null) {
-        try { baseURL = new URL(String(options.baseURL), baseURL).href; } catch { throw domError(`Invalid base URL '${options.baseURL}'.`, 'NotAllowedError'); }
+        try {
+          baseURL = new URL(String(options.baseURL), baseURL).href;
+        } catch {
+          throw domError(`Invalid base URL '${options.baseURL}'.`, 'NotAllowedError');
+        }
       }
       self[S] = newSheet(protos, {
-        baseURL, constructed: true, disabled: !!options?.disabled,
-        media: mediaList(protos, media?.[S]?.list ? media.mediaText : media ?? ''),
+        baseURL,
+        constructed: true,
+        disabled: !!options?.disabled,
+        media: mediaList(protos, media?.[S]?.list ? media.mediaText : (media ?? '')),
       })[S];
       return self;
     },
     members: {
-      get ownerRule() { return state(this).ownerRule; },
-      get cssRules() { state(this); return cssRuleList(this); },
-      get rules() { state(this); return cssRuleList(this); },
+      get ownerRule() {
+        return state(this).ownerRule;
+      },
+      get cssRules() {
+        state(this);
+        return cssRuleList(this);
+      },
+      get rules() {
+        state(this);
+        return cssRuleList(this);
+      },
       insertRule(rule, index = 0) {
         state(this);
         required(arguments.length, 1, 'CSSStyleSheet', 'insertRule');
@@ -1025,11 +1452,15 @@ export const CSSOM_INTERFACES = [
         insertRule(this, `${selector} { ${style} }`, index === undefined ? s.rules.length : index, this, null, false);
         return -1;
       },
-      removeRule(index = 0) { state(this); deleteRule(this, index); },
+      removeRule(index = 0) {
+        state(this);
+        deleteRule(this, index);
+      },
       replaceSync(text) {
         const s = state(this);
         required(arguments.length, 1, 'CSSStyleSheet', 'replaceSync');
-        if (!s.constructed) throw domError("Can't call replaceSync on non-constructed CSSStyleSheets.", 'NotAllowedError');
+        if (!s.constructed)
+          throw domError("Can't call replaceSync on non-constructed CSSStyleSheets.", 'NotAllowedError');
         const old = s.rules;
         s.rules = ruleList(s.protos, String(text), this, null).filter((r) => !isImport(r));
         for (const rule of old) detach(rule);
@@ -1039,10 +1470,13 @@ export const CSSOM_INTERFACES = [
         try {
           const s = state(this);
           required(arguments.length, 1, 'CSSStyleSheet', 'replace');
-          if (!s.constructed) throw domError("Can't call replace on non-constructed CSSStyleSheets.", 'NotAllowedError');
+          if (!s.constructed)
+            throw domError("Can't call replace on non-constructed CSSStyleSheets.", 'NotAllowedError');
           this.replaceSync(text);
           return Promise.resolve(this);
-        } catch (e) { return Promise.reject(e); }
+        } catch (e) {
+          return Promise.reject(e);
+        }
       },
     },
   },

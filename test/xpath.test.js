@@ -19,88 +19,147 @@ const MARKUP = `
 
 const nodeNames = (r) => {
   const out = [];
-  for (let n = r.iterateNext(); n; n = r.iterateNext()) out.push(n.nodeName + (n.nodeType === 1 && n.id ? `#${n.id}` : ''));
+  for (let n = r.iterateNext(); n; n = r.iterateNext())
+    out.push(n.nodeName + (n.nodeType === 1 && n.id ? `#${n.id}` : ''));
   return out;
 };
 
 for (const jsdom of [30, 26, 25]) {
-  parity(`XPath queries tests use (jsdom ${jsdom})`, (w) => {
-    const d = html(w, MARKUP);
-    const R = w.XPathResult;
-    const snapshot = (expr, ctx = d) => {
-      const r = d.evaluate(expr, ctx, null, R.ORDERED_NODE_SNAPSHOT_TYPE, null);
-      const out = [];
-      for (let i = 0; i < r.snapshotLength; i++) out.push(r.snapshotItem(i).nodeName);
-      return out;
-    };
-    const first = (expr) => d.evaluate(expr, d, null, R.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue?.textContent ?? null;
-    return {
-      byText: first("//button[text()='Save']"),
-      contains: first("//li[contains(text(), 'Tw')]"),
-      containsClass: snapshot("//li[contains(@class, 'item')]"),
-      normalize: first("//p[normalize-space()='Some text here']"),
-      dot: first("//li[contains(., 'bold')]"),
-      attr: snapshot('//button[@disabled]'),
-      attrValue: first("//input[@name='email']/@value"),
-      position: [first('//li[2]'), first('(//li)[last()]'), first('//ul/li[position() > 2]')],
-      axes: [snapshot('//b/ancestor::*'), snapshot('//h1/following-sibling::*'), snapshot('//li[3]/preceding-sibling::li'), first('//label/../input/@name')],
-      unions: snapshot('//h1 | //button | //h1'),
-      text: snapshot('//li/text()'),
-      comments: snapshot('//comment()'),
-      svg: snapshot('//svg/*'),
-      caseInsensitive: [snapshot('//LI'), snapshot('//Button[@TYPE]')],
-      counts: ['count(//li)', 'count(//*)', 'sum(//nothing)', 'string-length(//h1)', '1 + 2 * 3', '7 mod 3', '10 div 4', 'floor(2.7)', 'ceiling(2.1)', 'round(1.5)']
-        .map((e) => d.evaluate(e, d, null, R.NUMBER_TYPE, null).numberValue),
-      strings: ['string(//h1)', 'concat(//h1, "-", count(//li))', 'translate("abc", "ab", "AB")', 'substring-before("a-b", "-")', 'substring-after("a-b", "-")', 'substring("12345", 2, 3)', 'normalize-space("  a   b  ")', 'string(//li[2])']
-        .map((e) => d.evaluate(e, d, null, R.STRING_TYPE, null).stringValue),
-      booleans: ['//li = "One"', 'count(//li) > 2', 'not(//table)', 'boolean(//h1)', 'starts-with("abc", "ab")', '"1" = 1']
-        .map((e) => d.evaluate(e, d, null, R.BOOLEAN_TYPE, null).booleanValue),
-      any: ['count(//li)', 'string(//h1)', '//h1 = "Title"', '//li'].map((e) => d.evaluate(e, d, null, R.ANY_TYPE, null).resultType),
-      iterate: nodeNames(d.evaluate('//li', d, null, R.ORDERED_NODE_ITERATOR_TYPE, null)),
-      relative: snapshot('li', d.querySelector('ul')),
-      contextElement: d.evaluate('string(./h1)', d.getElementById('app'), null, R.STRING_TYPE, null).stringValue,
-      id: snapshot('id("app")'),
-      expression: d.createExpression('count(//li)', null).evaluate(d, R.NUMBER_TYPE, null).numberValue,
-      evaluator: new w.XPathEvaluator().evaluate('count(//button)', d, null, R.NUMBER_TYPE, null).numberValue,
-      constants: Object.keys(R).filter((k) => /^[A-Z_]+$/.test(k)).map((k) => [k, R[k], R.prototype[k]]),
-      instance: d.evaluate('1', d, null, 0, null) instanceof R,
-      // (A TypeError in jsdom 30 and warpdom; jsdom 25 and 26 throw an Error named XPathException.)
-      nodeSetType: (() => { try { d.evaluate('1 + 1', d, null, R.ORDERED_NODE_SNAPSHOT_TYPE, null); return 'ok'; } catch { return 'threw'; } })(),
-      emptyFirst: d.evaluate('//table', d, null, R.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue,
-    };
-  }, { jsdom });
+  parity(
+    `XPath queries tests use (jsdom ${jsdom})`,
+    (w) => {
+      const d = html(w, MARKUP);
+      const R = w.XPathResult;
+      const snapshot = (expr, ctx = d) => {
+        const r = d.evaluate(expr, ctx, null, R.ORDERED_NODE_SNAPSHOT_TYPE, null);
+        const out = [];
+        for (let i = 0; i < r.snapshotLength; i++) out.push(r.snapshotItem(i).nodeName);
+        return out;
+      };
+      const first = (expr) =>
+        d.evaluate(expr, d, null, R.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue?.textContent ?? null;
+      return {
+        byText: first("//button[text()='Save']"),
+        contains: first("//li[contains(text(), 'Tw')]"),
+        containsClass: snapshot("//li[contains(@class, 'item')]"),
+        normalize: first("//p[normalize-space()='Some text here']"),
+        dot: first("//li[contains(., 'bold')]"),
+        attr: snapshot('//button[@disabled]'),
+        attrValue: first("//input[@name='email']/@value"),
+        position: [first('//li[2]'), first('(//li)[last()]'), first('//ul/li[position() > 2]')],
+        axes: [
+          snapshot('//b/ancestor::*'),
+          snapshot('//h1/following-sibling::*'),
+          snapshot('//li[3]/preceding-sibling::li'),
+          first('//label/../input/@name'),
+        ],
+        unions: snapshot('//h1 | //button | //h1'),
+        text: snapshot('//li/text()'),
+        comments: snapshot('//comment()'),
+        svg: snapshot('//svg/*'),
+        caseInsensitive: [snapshot('//LI'), snapshot('//Button[@TYPE]')],
+        counts: [
+          'count(//li)',
+          'count(//*)',
+          'sum(//nothing)',
+          'string-length(//h1)',
+          '1 + 2 * 3',
+          '7 mod 3',
+          '10 div 4',
+          'floor(2.7)',
+          'ceiling(2.1)',
+          'round(1.5)',
+        ].map((e) => d.evaluate(e, d, null, R.NUMBER_TYPE, null).numberValue),
+        strings: [
+          'string(//h1)',
+          'concat(//h1, "-", count(//li))',
+          'translate("abc", "ab", "AB")',
+          'substring-before("a-b", "-")',
+          'substring-after("a-b", "-")',
+          'substring("12345", 2, 3)',
+          'normalize-space("  a   b  ")',
+          'string(//li[2])',
+        ].map((e) => d.evaluate(e, d, null, R.STRING_TYPE, null).stringValue),
+        booleans: [
+          '//li = "One"',
+          'count(//li) > 2',
+          'not(//table)',
+          'boolean(//h1)',
+          'starts-with("abc", "ab")',
+          '"1" = 1',
+        ].map((e) => d.evaluate(e, d, null, R.BOOLEAN_TYPE, null).booleanValue),
+        any: ['count(//li)', 'string(//h1)', '//h1 = "Title"', '//li'].map(
+          (e) => d.evaluate(e, d, null, R.ANY_TYPE, null).resultType,
+        ),
+        iterate: nodeNames(d.evaluate('//li', d, null, R.ORDERED_NODE_ITERATOR_TYPE, null)),
+        relative: snapshot('li', d.querySelector('ul')),
+        contextElement: d.evaluate('string(./h1)', d.getElementById('app'), null, R.STRING_TYPE, null).stringValue,
+        id: snapshot('id("app")'),
+        expression: d.createExpression('count(//li)', null).evaluate(d, R.NUMBER_TYPE, null).numberValue,
+        evaluator: new w.XPathEvaluator().evaluate('count(//button)', d, null, R.NUMBER_TYPE, null).numberValue,
+        constants: Object.keys(R)
+          .filter((k) => /^[A-Z_]+$/.test(k))
+          .map((k) => [k, R[k], R.prototype[k]]),
+        instance: d.evaluate('1', d, null, 0, null) instanceof R,
+        // (A TypeError in jsdom 30 and warpdom; jsdom 25 and 26 throw an Error named XPathException.)
+        nodeSetType: (() => {
+          try {
+            d.evaluate('1 + 1', d, null, R.ORDERED_NODE_SNAPSHOT_TYPE, null);
+            return 'ok';
+          } catch {
+            return 'threw';
+          }
+        })(),
+        emptyFirst: d.evaluate('//table', d, null, R.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue,
+      };
+    },
+    { jsdom },
+  );
 }
 
 // jsdom 30 invalidates iterators on tree and attribute changes (not text
 // changes), as the standard says; jsdom 25 and 26 do not.
 for (const jsdom of [30, 26]) {
-  parity(`XPath iterator invalidation (jsdom ${jsdom})`, (w) => {
-    const d = html(w, '<ul><li>a</li><li>b</li></ul>');
-    const R = w.XPathResult;
-    const out = {};
-    const attempt = (r) => { try { return r.iterateNext()?.textContent ?? null; } catch (e) { return e.name; } };
-    let r = d.evaluate('//li', d, null, R.ORDERED_NODE_ITERATOR_TYPE, null);
-    attempt(r);
-    d.querySelector('li').firstChild.data = 'x';
-    out.text = [r.invalidIteratorState, attempt(r)];
-    r = d.evaluate('//li', d, null, R.ORDERED_NODE_ITERATOR_TYPE, null);
-    attempt(r);
-    d.querySelector('li').setAttribute('a', '1');
-    out.attribute = [r.invalidIteratorState, attempt(r)];
-    r = d.evaluate('//li', d, null, R.UNORDERED_NODE_ITERATOR_TYPE, null);
-    d.querySelector('ul').append(d.createElement('li'));
-    out.tree = [r.invalidIteratorState, attempt(r)];
-    const snapshot = d.evaluate('//li', d, null, R.ORDERED_NODE_SNAPSHOT_TYPE, null);
-    d.querySelector('ul').append(d.createElement('li'));
-    out.snapshot = [snapshot.invalidIteratorState, snapshot.snapshotLength];
-    return out;
-  }, { jsdom });
+  parity(
+    `XPath iterator invalidation (jsdom ${jsdom})`,
+    (w) => {
+      const d = html(w, '<ul><li>a</li><li>b</li></ul>');
+      const R = w.XPathResult;
+      const out = {};
+      const attempt = (r) => {
+        try {
+          return r.iterateNext()?.textContent ?? null;
+        } catch (e) {
+          return e.name;
+        }
+      };
+      let r = d.evaluate('//li', d, null, R.ORDERED_NODE_ITERATOR_TYPE, null);
+      attempt(r);
+      d.querySelector('li').firstChild.data = 'x';
+      out.text = [r.invalidIteratorState, attempt(r)];
+      r = d.evaluate('//li', d, null, R.ORDERED_NODE_ITERATOR_TYPE, null);
+      attempt(r);
+      d.querySelector('li').setAttribute('a', '1');
+      out.attribute = [r.invalidIteratorState, attempt(r)];
+      r = d.evaluate('//li', d, null, R.UNORDERED_NODE_ITERATOR_TYPE, null);
+      d.querySelector('ul').append(d.createElement('li'));
+      out.tree = [r.invalidIteratorState, attempt(r)];
+      const snapshot = d.evaluate('//li', d, null, R.ORDERED_NODE_SNAPSHOT_TYPE, null);
+      d.querySelector('ul').append(d.createElement('li'));
+      out.snapshot = [snapshot.invalidIteratorState, snapshot.snapshotLength];
+      return out;
+    },
+    { jsdom },
+  );
 }
 
 parity('XPath in an XML document from DOMParser', (w) => {
-  const x = new w.DOMParser().parseFromString('<feed xmlns="http://www.w3.org/2005/Atom" xmlns:m="urn:m"><entry><title>A</title><m:x>1</m:x></entry><entry><title>B</title></entry></feed>', 'application/xml');
+  const x = new w.DOMParser().parseFromString(
+    '<feed xmlns="http://www.w3.org/2005/Atom" xmlns:m="urn:m"><entry><title>A</title><m:x>1</m:x></entry><entry><title>B</title></entry></feed>',
+    'application/xml',
+  );
   const R = w.XPathResult;
-  const resolver = (p) => ({ a: 'http://www.w3.org/2005/Atom', m: 'urn:m' }[p] ?? null);
+  const resolver = (p) => ({ a: 'http://www.w3.org/2005/Atom', m: 'urn:m' })[p] ?? null;
   const strings = (e, r = null) => {
     const res = x.evaluate(e, x, r, R.ORDERED_NODE_SNAPSHOT_TYPE, null);
     const out = [];
@@ -156,15 +215,33 @@ test('XPath follows the standard where jsdom is broken: functions, prefixes, num
 test('XPath reports resolver exceptions and treats the prefix as undefined', () => {
   const w = createWindow();
   const errors = [];
-  w.addEventListener('error', (e) => { e.preventDefault(); errors.push(e.error.message); });
-  assert.throws(() => w.document.evaluate('//x:p', w.document, () => { throw new Error('boom'); }, 0, null), { name: 'NamespaceError' });
+  w.addEventListener('error', (e) => {
+    e.preventDefault();
+    errors.push(e.error.message);
+  });
+  assert.throws(
+    () =>
+      w.document.evaluate(
+        '//x:p',
+        w.document,
+        () => {
+          throw new Error('boom');
+        },
+        0,
+        null,
+      ),
+    { name: 'NamespaceError' },
+  );
   assert.deepEqual(errors, ['boom']);
 });
 
 test('the XPath engine loads on first use only', async () => {
   const { createWindow: create, setXPathLoader } = await import('../src/index.js');
   let loads = 0;
-  setXPathLoader(() => { loads++; return XPATH; });
+  setXPathLoader(() => {
+    loads++;
+    return XPATH;
+  });
   const w = create();
   void w.XPathResult;
   void new w.XPathEvaluator();
@@ -178,15 +255,41 @@ const XPATH = await import('../src/xpath.cjs');
 
 // XPathException (#67): on jsdom's window in every version (black box,
 // 20.0.0 to 30.1.3), a function returning an Error named XPathException.
-const describe = (d) => (d ? `${'value' in d ? `data ${typeof d.value === 'function' ? 'function' : JSON.stringify(d.value)}` : 'accessor'} ${d.writable ? 'w' : ''}${d.enumerable ? 'e' : ''}${d.configurable ? 'c' : ''}` : 'none');
+const describe = (d) =>
+  d
+    ? `${'value' in d ? `data ${typeof d.value === 'function' ? 'function' : JSON.stringify(d.value)}` : 'accessor'} ${d.writable ? 'w' : ''}${d.enumerable ? 'e' : ''}${d.configurable ? 'c' : ''}`
+    : 'none';
 const xpathExceptionScenario = (w) => {
   const X = w.XPathException;
-  const statics = ['INVALID_EXPRESSION_ERR', 'TYPE_ERR', 'prototype'].map((key) => `${key}: ${describe(Object.getOwnPropertyDescriptor(X, key))}`);
-  const error = (e) => [Object.prototype.toString.call(e), Reflect.ownKeys(e).map(String).join(), e.name, e.code, e.message, String(e), e instanceof X, e instanceof Error];
-  return [describe(Object.getOwnPropertyDescriptor(w, 'XPathException')), typeof X, X.name, X.length, statics,
-    Reflect.ownKeys(X.prototype).map(String), Object.getPrototypeOf(X.prototype) === Object.prototype, Object.prototype.toString.call(X.prototype),
-    error(new X(51, 'bad expression')), error(new X()), error(X(52, 'wrong type')), error(X(52)),
-    'XPathException' in w.document, typeof w.document.XPathException];
+  const statics = ['INVALID_EXPRESSION_ERR', 'TYPE_ERR', 'prototype'].map(
+    (key) => `${key}: ${describe(Object.getOwnPropertyDescriptor(X, key))}`,
+  );
+  const error = (e) => [
+    Object.prototype.toString.call(e),
+    Reflect.ownKeys(e).map(String).join(),
+    e.name,
+    e.code,
+    e.message,
+    String(e),
+    e instanceof X,
+    e instanceof Error,
+  ];
+  return [
+    describe(Object.getOwnPropertyDescriptor(w, 'XPathException')),
+    typeof X,
+    X.name,
+    X.length,
+    statics,
+    Reflect.ownKeys(X.prototype).map(String),
+    Object.getPrototypeOf(X.prototype) === Object.prototype,
+    Object.prototype.toString.call(X.prototype),
+    error(new X(51, 'bad expression')),
+    error(new X()),
+    error(X(52, 'wrong type')),
+    error(X(52)),
+    'XPathException' in w.document,
+    typeof w.document.XPathException,
+  ];
 };
 for (const jsdom of [20, 25, 30]) parity(`XPathException (jsdom ${jsdom})`, xpathExceptionScenario, { jsdom });
 

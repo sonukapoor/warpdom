@@ -9,7 +9,15 @@ import { handlerMembers } from './event-handlers.js';
 
 function createSignal(window) {
   const signal = Object.create(window[S].protos.AbortSignal);
-  signal[S] = { window, aborted: false, reason: undefined, algorithms: [], dependent: false, sources: null, dependents: null };
+  signal[S] = {
+    window,
+    aborted: false,
+    reason: undefined,
+    algorithms: [],
+    dependent: false,
+    sources: null,
+    dependents: null,
+  };
   return signal;
 }
 
@@ -54,10 +62,17 @@ const isSignal = (value) => value?.[S] && 'aborted' in value[S] && 'dependent' i
 export const ABORT_INTERFACES = [
   {
     name: 'AbortController',
-    construct: (window, self) => { self[S] = { signal: createSignal(window) }; return self; },
+    construct: (window, self) => {
+      self[S] = { signal: createSignal(window) };
+      return self;
+    },
     members: {
-      get signal() { return state(this).signal; },
-      abort(reason = undefined) { signalAbort(state(this).signal, reason); },
+      get signal() {
+        return state(this).signal;
+      },
+      abort(reason = undefined) {
+        signalAbort(state(this).signal, reason);
+      },
     },
   },
   {
@@ -71,15 +86,22 @@ export const ABORT_INTERFACES = [
       },
       timeout(milliseconds) {
         const ms = Number(milliseconds);
-        if (!Number.isFinite(ms) || ms < 0) throw new TypeError(`Failed to execute 'timeout' on 'AbortSignal': Value is outside the 'unsigned long long' value range.`);
+        if (!Number.isFinite(ms) || ms < 0)
+          throw new TypeError(
+            `Failed to execute 'timeout' on 'AbortSignal': Value is outside the 'unsigned long long' value range.`,
+          );
         const signal = createSignal(window);
-        timerHost(window).setTimeout(() => signalAbort(signal, domError('The operation timed out.', 'TimeoutError')), ms);
+        timerHost(window).setTimeout(
+          () => signalAbort(signal, domError('The operation timed out.', 'TimeoutError')),
+          ms,
+        );
         return signal;
       },
       any(signals) {
         const list = [...signals];
         for (const source of list) {
-          if (!isSignal(source)) throw new TypeError("Failed to execute 'any' on 'AbortSignal': Failed to convert value to 'AbortSignal'.");
+          if (!isSignal(source))
+            throw new TypeError("Failed to execute 'any' on 'AbortSignal': Failed to convert value to 'AbortSignal'.");
         }
         const result = createSignal(window);
         const aborted = list.find((source) => source[S].aborted);
@@ -104,8 +126,12 @@ export const ABORT_INTERFACES = [
       },
     }),
     members: {
-      get aborted() { return state(this).aborted; },
-      get reason() { return state(this).reason; },
+      get aborted() {
+        return state(this).aborted;
+      },
+      get reason() {
+        return state(this).reason;
+      },
       throwIfAborted() {
         const s = state(this);
         if (s.aborted) throw s.reason;

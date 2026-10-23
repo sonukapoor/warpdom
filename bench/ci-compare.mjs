@@ -22,7 +22,9 @@ const opt = (name, fallback) => {
 };
 const sides = { base: opt('base'), head: opt('head') };
 if (!sides.base || !sides.head) {
-  console.error('usage: node bench/ci-compare.mjs --base <dir> --head <dir> [--rounds 5] [--markdown out.md] [--json out.json]');
+  console.error(
+    'usage: node bench/ci-compare.mjs --base <dir> --head <dir> [--rounds 5] [--markdown out.md] [--json out.json]',
+  );
   process.exit(2);
 }
 const rounds = Number(opt('rounds', '5'));
@@ -37,7 +39,9 @@ const benches = [
 
 const run = (bench, dir) => {
   const target = path.resolve(dir);
-  const out = execFileSync(process.execPath, [path.join(here, bench.script), '--json', ...bench.extra, target], { encoding: 'utf8' });
+  const out = execFileSync(process.execPath, [path.join(here, bench.script), '--json', ...bench.extra, target], {
+    encoding: 'utf8',
+  });
   const { dir: measured, results } = JSON.parse(out.trim().split('\n').pop());
   // Self-check: the script measured the requested checkout, not its own.
   if (measured !== target) throw new Error(`${bench.script} measured ${measured}, expected ${target}`);
@@ -71,7 +75,8 @@ const median = (xs) => {
   const mid = s.length >> 1;
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 };
-const fmt = (x) => (x === null ? 'n/a' : x >= 100 ? x.toFixed(0) : x >= 10 ? x.toFixed(1) : x >= 1 ? x.toFixed(2) : x.toFixed(3));
+const fmt = (x) =>
+  x === null ? 'n/a' : x >= 100 ? x.toFixed(0) : x >= 10 ? x.toFixed(1) : x >= 1 ? x.toFixed(2) : x.toFixed(3);
 
 const report = { rounds, node: process.version, labels, benches: [] };
 let slower = 0;
@@ -85,8 +90,13 @@ for (const b of benches) {
     const head = median(s.head);
     const change = base !== null && head !== null ? head / base - 1 : null;
     let flag = '';
-    if (change !== null && change > THRESHOLD) { flag = '**slower**'; slower++; }
-    else if (change !== null && change < -THRESHOLD) { flag = 'faster'; faster++; }
+    if (change !== null && change > THRESHOLD) {
+      flag = '**slower**';
+      slower++;
+    } else if (change !== null && change < -THRESHOLD) {
+      flag = 'faster';
+      faster++;
+    }
     if (change !== null) total++;
     rows.push({ measure, base, head, change, flag, samples: s });
   }
@@ -100,14 +110,18 @@ for (const b of benches) {
   lines.push('');
 }
 
-const summary = slower === 0
-  ? `No measure more than ${THRESHOLD * 100}% slower (${faster} more than ${THRESHOLD * 100}% faster, ${total} compared).`
-  : `**${slower} of ${total} measures more than ${THRESHOLD * 100}% slower**, ${faster} more than ${THRESHOLD * 100}% faster.`;
+const summary =
+  slower === 0
+    ? `No measure more than ${THRESHOLD * 100}% slower (${faster} more than ${THRESHOLD * 100}% faster, ${total} compared).`
+    : `**${slower} of ${total} measures more than ${THRESHOLD * 100}% slower**, ${faster} more than ${THRESHOLD * 100}% faster.`;
 
 const raw = ['<details><summary>All rounds</summary>', ''];
 for (const b of report.benches) {
   raw.push(`**${b.title}** (${b.unit})`, '', '| Measure | Base | Head |', '| --- | --- | --- |');
-  for (const r of b.rows) raw.push(`| ${r.measure.replace(/\|/g, '\\|')} | ${r.samples.base.map(fmt).join(', ')} | ${r.samples.head.map(fmt).join(', ')} |`);
+  for (const r of b.rows)
+    raw.push(
+      `| ${r.measure.replace(/\|/g, '\\|')} | ${r.samples.base.map(fmt).join(', ')} | ${r.samples.head.map(fmt).join(', ')} |`,
+    );
   raw.push('');
 }
 raw.push('</details>');

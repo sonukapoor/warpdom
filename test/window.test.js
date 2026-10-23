@@ -12,7 +12,8 @@ function shape(proto) {
     return `${String(key)} ${kind} ${d.enumerable} ${d.configurable}`;
   });
   const chain = [];
-  for (let p = Object.getPrototypeOf(proto); p; p = Object.getPrototypeOf(p)) chain.push(Object.hasOwn(p, 'constructor') ? p.constructor.name : '?');
+  for (let p = Object.getPrototypeOf(proto); p; p = Object.getPrototypeOf(p))
+    chain.push(Object.hasOwn(p, 'constructor') ? p.constructor.name : '?');
   return { members, chain };
 }
 
@@ -34,16 +35,32 @@ test('an interface created first in a later window has the same members, descrip
   assert.deepEqual(out.fresh, out.lateShapes);
   // And as in this process.
   const w = createWindow();
-  const names = ['CSSStyleProperties', 'HTMLInputElement', 'HTMLTableCellElement', 'HTMLElement', 'Element', 'Node', 'KeyboardEvent', 'Range'];
-  assert.deepEqual(names.map((n) => shape(w[n].prototype)), out.lateShapes);
+  const names = [
+    'CSSStyleProperties',
+    'HTMLInputElement',
+    'HTMLTableCellElement',
+    'HTMLElement',
+    'Element',
+    'Node',
+    'KeyboardEvent',
+    'Range',
+  ];
+  assert.deepEqual(
+    names.map((n) => shape(w[n].prototype)),
+    out.lateShapes,
+  );
   const [style, input, cell] = out.lateShapes;
   assert.deepEqual(style.chain, ['CSSStyleDeclaration', 'Object']);
   assert.ok(style.members.length > 1000);
   assert.ok(style.members.includes('backgroundColor accessor:function:function true true'));
   assert.ok(style.members.includes('cssFloat accessor:function:function true true'));
   assert.deepEqual(input.chain, ['HTMLElement', 'Element', 'Node', 'EventTarget', 'Object']);
-  for (const member of ['value accessor:function:function true true', 'required accessor:function:function true true',
-    'autocomplete accessor:function:function true true', 'select value:function:true true true']) {
+  for (const member of [
+    'value accessor:function:function true true',
+    'required accessor:function:function true true',
+    'autocomplete accessor:function:function true true',
+    'select value:function:true true true',
+  ]) {
     assert.ok(input.members.includes(member), member);
   }
   assert.ok(cell.members.includes('colSpan accessor:function:function true true'));
@@ -194,7 +211,10 @@ test('events: listeners, bubbling, stopPropagation, preventDefault', () => {
   inner.addEventListener('click', onInner); // duplicates are ignored
   outer.addEventListener('click', (e) => seen.push(['outer', e.currentTarget === outer]));
   inner.dispatchEvent(new w.Event('click', { bubbles: true }));
-  assert.deepEqual(seen, [['inner', true, true], ['outer', true]]);
+  assert.deepEqual(seen, [
+    ['inner', true, true],
+    ['outer', true],
+  ]);
 
   seen.length = 0;
   inner.removeEventListener('click', onInner);
@@ -253,11 +273,34 @@ parity('class strings: Object.prototype.toString names the interface', (w) => {
   const e = d.createElement('div');
   e.innerHTML = '<input><select><option></option></select>';
   const objects = [
-    w, d, d.doctype, d.implementation, e, e.firstChild, e.style, e.classList, e.attributes, e.childNodes, e.children,
-    d.createTextNode('x'), d.createComment('x'), d.createDocumentFragment(), d.createRange(), w.getSelection(),
-    new w.Event('x'), new w.MouseEvent('click'), new w.CustomEvent('x'), w.navigator, w.location, w.history,
-    w.screen, d.createElementNS('http://www.w3.org/2000/svg', 'svg'), e.querySelectorAll('*'), e.querySelector('select').options,
-    d.createTreeWalker(d), new w.MutationObserver(() => {}),
+    w,
+    d,
+    d.doctype,
+    d.implementation,
+    e,
+    e.firstChild,
+    e.style,
+    e.classList,
+    e.attributes,
+    e.childNodes,
+    e.children,
+    d.createTextNode('x'),
+    d.createComment('x'),
+    d.createDocumentFragment(),
+    d.createRange(),
+    w.getSelection(),
+    new w.Event('x'),
+    new w.MouseEvent('click'),
+    new w.CustomEvent('x'),
+    w.navigator,
+    w.location,
+    w.history,
+    w.screen,
+    d.createElementNS('http://www.w3.org/2000/svg', 'svg'),
+    e.querySelectorAll('*'),
+    e.querySelector('select').options,
+    d.createTreeWalker(d),
+    new w.MutationObserver(() => {}),
   ];
   return objects.map((o) => Object.prototype.toString.call(o));
 });

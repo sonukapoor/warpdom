@@ -11,10 +11,13 @@
 import { S, ELEMENT_NODE, TEXT_NODE, HTML_NS, hooks, rootOf, nextInTree } from './internal.js';
 import { dispatch } from './events.js';
 
-const isSlot = (n) => { const s = n[S]; return s.type === ELEMENT_NODE && s.ns === HTML_NS && s.tag === 'slot'; };
+const isSlot = (n) => {
+  const s = n[S];
+  return s.type === ELEMENT_NODE && s.ns === HTML_NS && s.tag === 'slot';
+};
 const isShadowRoot = (n) => n[S].shadow === true;
 const slotName = (slot) => slot[S].attrs.get('name') ?? '';
-const slottableName = (node) => (node[S].type === ELEMENT_NODE ? node[S].attrs.get('slot') ?? '' : '');
+const slottableName = (node) => (node[S].type === ELEMENT_NODE ? (node[S].attrs.get('slot') ?? '') : '');
 const isSlottable = (n) => n[S].type === ELEMENT_NODE || n[S].type === TEXT_NODE;
 
 // The shadow root's slots by name (the first in tree order wins), cached
@@ -170,16 +173,24 @@ hooks.slots = {
   attributeChanged(element, name) {
     if (name === 'slot') {
       const parent = element[S].parent;
-      if (isHost(parent)) { schedule(parent[S].shadowRoot); remember(element); }
+      if (isHost(parent)) {
+        schedule(parent[S].shadowRoot);
+        remember(element);
+      }
     } else if (name === 'name' && isSlot(element)) {
       const root = rootOf(element);
-      if (isShadowRoot(root)) { schedule(root); rememberHost(root[S].host); }
+      if (isShadowRoot(root)) {
+        schedule(root);
+        rememberHost(root[S].host);
+      }
     }
   },
 };
 
 export const SLOT_MEMBERS = {
-  assignedNodes(options = undefined) { return options?.flatten ? flattened(this, []) : assignedNodes(this); },
+  assignedNodes(options = undefined) {
+    return options?.flatten ? flattened(this, []) : assignedNodes(this);
+  },
   assignedElements(options = undefined) {
     const nodes = options?.flatten ? flattened(this, []) : assignedNodes(this);
     return nodes.filter((n) => n[S].type === ELEMENT_NODE);
@@ -189,5 +200,9 @@ export const SLOT_MEMBERS = {
 // Element and Text (the Slottable mixin), as an accessor description to
 // spread into their members.
 export const SLOTTABLE_MEMBERS = {
-  assignedSlot: { get() { return findSlot(this, true); } },
+  assignedSlot: {
+    get() {
+      return findSlot(this, true);
+    },
+  },
 };

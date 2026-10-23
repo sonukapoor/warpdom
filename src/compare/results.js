@@ -25,11 +25,26 @@ const distinct = (values) => [...new Set(values)];
 // way in both runs and are not compared; those whose status changed anyway
 // are listed in notComparedChanged. byProject: the counts per project name
 // ('' for a single unnamed project).
-export function compareRuns(baselineRuns, warpdomRuns, { skipFiles = new Set(), skipProjects = new Set(), keepFiles = new Set() } = {}) {
+export function compareRuns(
+  baselineRuns,
+  warpdomRuns,
+  { skipFiles = new Set(), skipProjects = new Set(), keepFiles = new Set() } = {},
+) {
   const keys = new Set();
   for (const run of [...baselineRuns, ...warpdomRuns]) for (const key of run.keys()) keys.add(key);
-  const out = { compared: 0, same: 0, notCompared: 0, notComparedFiles: 0, notComparedChanged: [], flakyBaseline: [], flakyWarpdom: [], differences: [], byProject: {} };
-  const counts = (project) => (out.byProject[project] ??= { compared: 0, same: 0, regressions: 0, fixed: 0, other: 0, flaky: 0, notCompared: 0 });
+  const out = {
+    compared: 0,
+    same: 0,
+    notCompared: 0,
+    notComparedFiles: 0,
+    notComparedChanged: [],
+    flakyBaseline: [],
+    flakyWarpdom: [],
+    differences: [],
+    byProject: {},
+  };
+  const counts = (project) =>
+    (out.byProject[project] ??= { compared: 0, same: 0, regressions: 0, fixed: 0, other: 0, flaky: 0, notCompared: 0 });
   for (const key of keys) {
     const info = [...baselineRuns, ...warpdomRuns].map((r) => r.get(key)).find(Boolean);
     const isFile = info.name === '(file)';
@@ -40,17 +55,39 @@ export function compareRuns(baselineRuns, warpdomRuns, { skipFiles = new Set(), 
     const pc = counts(project);
     const pinnedFile = skipFiles.has(info.file);
     if (pinnedFile || (skipProjects.has(project) && !keepFiles.has(info.file))) {
-      if (!isFile) { out.notCompared++; pc.notCompared++; if (pinnedFile) out.notComparedFiles++; }
+      if (!isFile) {
+        out.notCompared++;
+        pc.notCompared++;
+        if (pinnedFile) out.notComparedFiles++;
+      }
       // Both runs used the same environment here; a change is the test's own
       // (or leaked state from other files), worth listing but not counting.
       if (distinct([...bs, ...ws]).length > 1) out.notComparedChanged.push({ ...entry, baseline: bs, warpdom: ws });
       continue;
     }
-    if (!isFile) { out.compared++; pc.compared++; }
-    if (distinct(bs).length > 1) { out.flakyBaseline.push({ ...entry, baseline: bs, warpdom: ws }); pc.flaky++; continue; }
-    if (distinct(ws).length > 1) { out.flakyWarpdom.push({ ...entry, baseline: bs, warpdom: ws }); pc.flaky++; continue; }
-    const [b] = bs, [w] = ws;
-    if (b === w) { if (!isFile) { out.same++; pc.same++; } continue; }
+    if (!isFile) {
+      out.compared++;
+      pc.compared++;
+    }
+    if (distinct(bs).length > 1) {
+      out.flakyBaseline.push({ ...entry, baseline: bs, warpdom: ws });
+      pc.flaky++;
+      continue;
+    }
+    if (distinct(ws).length > 1) {
+      out.flakyWarpdom.push({ ...entry, baseline: bs, warpdom: ws });
+      pc.flaky++;
+      continue;
+    }
+    const [b] = bs,
+      [w] = ws;
+    if (b === w) {
+      if (!isFile) {
+        out.same++;
+        pc.same++;
+      }
+      continue;
+    }
     const side = w === 'failed' ? warpdomRuns : baselineRuns;
     const message = side.map((r) => r.get(key)?.message).find(Boolean) ?? '';
     const cls = classify(b, w, isFile);
@@ -70,7 +107,8 @@ export function groupDifferences(differences) {
   for (const d of differences) {
     const message = d.message.slice(0, 150);
     const id = `${d.baseline} -> ${d.warpdom} | ${message.replace(/\d+/g, 'N')}`;
-    if (!groups.has(id)) groups.set(id, { class: d.class, change: `${d.baseline} -> ${d.warpdom}`, message, tests: [] });
+    if (!groups.has(id))
+      groups.set(id, { class: d.class, change: `${d.baseline} -> ${d.warpdom}`, message, tests: [] });
     groups.get(id).tests.push({ project: d.project ?? '', file: d.file, name: d.name });
   }
   const order = { regression: 0, fixed: 1, other: 2 };
@@ -94,9 +132,14 @@ export function timingSummary(rounds) {
   const speedup = baselineMs && warpdomMs ? baselineMs / warpdomMs : null;
   const spread = ratios.length ? { min: Math.min(...ratios), max: Math.max(...ratios) } : null;
   return {
-    rounds: rounds.length, baselineMs, warpdomMs, speedup, ratios, spread,
+    rounds: rounds.length,
+    baselineMs,
+    warpdomMs,
+    speedup,
+    ratios,
+    spread,
     indicative: rounds.length < 2,
-    noisy: Boolean(spread && speedup && rounds.length > 1 && (spread.max - spread.min) / speedup > 0.10),
+    noisy: Boolean(spread && speedup && rounds.length > 1 && (spread.max - spread.min) / speedup > 0.1),
   };
 }
 

@@ -38,7 +38,10 @@ test('childNodes and children are live NodeList and HTMLCollection', () => {
   assert.equal(kids[0], ul.firstChild);
   assert.equal(kids.item(2), ul.lastChild);
   assert.equal(kids[5], undefined);
-  assert.deepEqual([...elements].map((e) => e.tagName), ['LI', 'LI']);
+  assert.deepEqual(
+    [...elements].map((e) => e.tagName),
+    ['LI', 'LI'],
+  );
   let n = 0;
   kids.forEach(() => n++);
   assert.equal(n, 3);
@@ -248,7 +251,10 @@ test('cloneNode: the internal state of clones is not enumerable (test runners wa
   el.firstChild.textContent = 'a';
   const copy = el.cloneNode(true);
   for (const n of [copy, copy.firstChild, copy.lastChild]) {
-    assert.deepEqual(Object.getOwnPropertySymbols(n).filter((s) => Object.prototype.propertyIsEnumerable.call(n, s)), []);
+    assert.deepEqual(
+      Object.getOwnPropertySymbols(n).filter((s) => Object.prototype.propertyIsEnumerable.call(n, s)),
+      [],
+    );
   }
   assert.equal(copy.firstChild.textContent, 'a');
   copy.firstChild.textContent = 'b';
@@ -260,40 +266,50 @@ test('cloneNode: the internal state of clones is not enumerable (test runners wa
 test('pre-insertion validity error messages', () => {
   const w = createWindow();
   const d = w.document;
-  const message = (f) => { try { f(); return 'ok'; } catch (e) { return `${e.name}: ${e.message}`; } };
+  const message = (f) => {
+    try {
+      f();
+      return 'ok';
+    } catch (e) {
+      return `${e.name}: ${e.message}`;
+    }
+  };
   const div = d.createElement('div');
   const xml = d.implementation.createDocument(null, null, null);
   xml.appendChild(xml.createElement('e'));
   const host = d.createElement('div');
   const shadow = host.attachShadow({ mode: 'open' });
   const template = d.createElement('template');
-  assert.deepEqual([
-    message(() => d.createTextNode('a').appendChild(div)),
-    message(() => d.createComment('a').insertBefore(div, null)),
-    message(() => div.appendChild(div)),
-    message(() => div.insertBefore(d.createElement('a'), d.createElement('b'))),
-    message(() => div.replaceChild(d.createElement('a'), d.createElement('b'))),
-    message(() => div.appendChild(d)),
-    message(() => div.appendChild(d.implementation.createDocumentType('html', '', ''))),
-    message(() => d.appendChild(d.createTextNode('x'))),
-    message(() => d.appendChild(d.createElement('x'))),
-    message(() => xml.appendChild(xml.createElement('f'))),
-    message(() => shadow.appendChild(host)),
-    message(() => template.content.appendChild(template)),
-  ], [
-    "HierarchyRequestError: Node can't be inserted in a #text parent.",
-    "HierarchyRequestError: Node can't be inserted in a #comment parent.",
-    'HierarchyRequestError: The operation would yield an incorrect node tree.',
-    'NotFoundError: The child can not be found in the parent.',
-    'NotFoundError: The child can not be found in the parent.',
-    "HierarchyRequestError: #document node can't be inserted in parent node.",
-    "HierarchyRequestError: html node can't be inserted in DIV parent.",
-    "HierarchyRequestError: #text node can't be inserted in #document parent.",
-    'HierarchyRequestError: Invalid insertion of X node in #document node.',
-    'HierarchyRequestError: Invalid insertion of f node in #document node.',
-    'HierarchyRequestError: The operation would yield an incorrect node tree.',
-    'HierarchyRequestError: The operation would yield an incorrect node tree.',
-  ]);
+  assert.deepEqual(
+    [
+      message(() => d.createTextNode('a').appendChild(div)),
+      message(() => d.createComment('a').insertBefore(div, null)),
+      message(() => div.appendChild(div)),
+      message(() => div.insertBefore(d.createElement('a'), d.createElement('b'))),
+      message(() => div.replaceChild(d.createElement('a'), d.createElement('b'))),
+      message(() => div.appendChild(d)),
+      message(() => div.appendChild(d.implementation.createDocumentType('html', '', ''))),
+      message(() => d.appendChild(d.createTextNode('x'))),
+      message(() => d.appendChild(d.createElement('x'))),
+      message(() => xml.appendChild(xml.createElement('f'))),
+      message(() => shadow.appendChild(host)),
+      message(() => template.content.appendChild(template)),
+    ],
+    [
+      "HierarchyRequestError: Node can't be inserted in a #text parent.",
+      "HierarchyRequestError: Node can't be inserted in a #comment parent.",
+      'HierarchyRequestError: The operation would yield an incorrect node tree.',
+      'NotFoundError: The child can not be found in the parent.',
+      'NotFoundError: The child can not be found in the parent.',
+      "HierarchyRequestError: #document node can't be inserted in parent node.",
+      "HierarchyRequestError: html node can't be inserted in DIV parent.",
+      "HierarchyRequestError: #text node can't be inserted in #document parent.",
+      'HierarchyRequestError: Invalid insertion of X node in #document node.',
+      'HierarchyRequestError: Invalid insertion of f node in #document node.',
+      'HierarchyRequestError: The operation would yield an incorrect node tree.',
+      'HierarchyRequestError: The operation would yield an incorrect node tree.',
+    ],
+  );
 });
 
 parity('createElement keeps a name with colons as the local name; tagName uppercases ASCII only', (w) => {
@@ -307,7 +323,12 @@ parity('createElement keeps a name with colons as the local name; tagName upperc
   div.innerHTML = '<x:y></x:y>';
   out.push([div.firstChild.localName, div.firstChild.prefix, div.firstChild.tagName]);
   const ns = (q) => d.createElementNS('http://www.w3.org/1999/xhtml', q);
-  out.push([ns('SPAN').constructor.name, ns('x:SPAN').constructor.name, ns('span').constructor.name, ns('x:span').prefix]);
+  out.push([
+    ns('SPAN').constructor.name,
+    ns('x:SPAN').constructor.name,
+    ns('span').constructor.name,
+    ns('x:span').prefix,
+  ]);
   return out;
 });
 
@@ -317,9 +338,21 @@ parity('getElementById(""), quirks-mode class names, insertAdjacentElement with 
   frag.append(d.createElement('div'));
   frag.firstChild.id = '';
   const quirks = new w.DOMParser().parseFromString('<p class="a A"></p><p class="A"></p>', 'text/html');
-  const standards = new w.DOMParser().parseFromString('<!doctype html><p class="a A"></p><p class="A"></p>', 'text/html');
+  const standards = new w.DOMParser().parseFromString(
+    '<!doctype html><p class="a A"></p><p class="A"></p>',
+    'text/html',
+  );
   let error;
-  try { d.body.insertAdjacentElement('afterbegin', d.implementation.createDocumentType('html', '', '')); } catch (e) { error = e.name; }
-  return [frag.getElementById(''), quirks.compatMode, quirks.getElementsByClassName('a').length,
-    standards.getElementsByClassName('a').length, error];
+  try {
+    d.body.insertAdjacentElement('afterbegin', d.implementation.createDocumentType('html', '', ''));
+  } catch (e) {
+    error = e.name;
+  }
+  return [
+    frag.getElementById(''),
+    quirks.compatMode,
+    quirks.getElementsByClassName('a').length,
+    standards.getElementsByClassName('a').length,
+    error,
+  ];
 });

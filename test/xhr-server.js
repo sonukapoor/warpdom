@@ -29,7 +29,11 @@ export function startServer() {
   let held = [];
   const server = http.createServer(async (req, res) => {
     const chunks = [];
-    try { for await (const c of req) chunks.push(c); } catch { return; }
+    try {
+      for await (const c of req) chunks.push(c);
+    } catch {
+      return;
+    }
     const body = Buffer.concat(chunks);
     const url = new URL(req.url, 'http://x');
     const q = Object.fromEntries(url.searchParams);
@@ -41,22 +45,39 @@ export function startServer() {
     if (req.method === 'OPTIONS' && q.preflight !== undefined) {
       const answer = () => {
         if (res.destroyed) return;
-        res.writeHead(q.preflight === 'fail' ? 500 : 204, { ...cors, 'access-control-allow-headers': q.acah ?? '', 'access-control-allow-methods': q.acam ?? '' });
+        res.writeHead(q.preflight === 'fail' ? 500 : 204, {
+          ...cors,
+          'access-control-allow-headers': q.acah ?? '',
+          'access-control-allow-methods': q.acam ?? '',
+        });
         res.end();
       };
-      if (q.pfwait) setTimeout(answer, Number(q.pfwait)); else answer();
+      if (q.pfwait) setTimeout(answer, Number(q.pfwait));
+      else answer();
       return;
     }
     switch (url.pathname) {
       case '/echo': {
-        const headers = Object.entries(req.headers).filter(([name]) => !CLIENT_HEADERS.test(name)).sort(([a], [b]) => (a < b ? -1 : 1));
+        const headers = Object.entries(req.headers)
+          .filter(([name]) => !CLIENT_HEADERS.test(name))
+          .sort(([a], [b]) => (a < b ? -1 : 1));
         res.writeHead(200, { 'content-type': 'application/json', ...cors });
-        res.end(JSON.stringify({ method: req.method, body: body.toString('latin1'), headers: Object.fromEntries(headers) }));
+        res.end(
+          JSON.stringify({ method: req.method, body: body.toString('latin1'), headers: Object.fromEntries(headers) }),
+        );
         return;
       }
       case '/text':
-        res.writeHead(200, 'OK', [['Content-Type', 'text/plain; charset=utf-8'], ['X-B', '2'], ['X-A', '1'], ['X-Multi', 'a'], ['X-Multi', 'b'],
-          ['Set-Cookie', 'sc=1; Path=/'], ['Set-Cookie2', 'x'], ...Object.entries(cors)]);
+        res.writeHead(200, 'OK', [
+          ['Content-Type', 'text/plain; charset=utf-8'],
+          ['X-B', '2'],
+          ['X-A', '1'],
+          ['X-Multi', 'a'],
+          ['X-Multi', 'b'],
+          ['Set-Cookie', 'sc=1; Path=/'],
+          ['Set-Cookie2', 'x'],
+          ...Object.entries(cors),
+        ]);
         res.end('hello é');
         return;
       case '/type':
@@ -78,13 +99,18 @@ export function startServer() {
           let i = 0;
           const tick = () => {
             if (res.destroyed) return;
-            if (i++ >= n) { if (!q.step) res.end(); return; }
+            if (i++ >= n) {
+              if (!q.step) res.end();
+              return;
+            }
             res.write('x'.repeat(Number(q.size ?? 10)));
-            if (q.step) held.push(tick); else setTimeout(tick, Number(q.ms ?? 50));
+            if (q.step) held.push(tick);
+            else setTimeout(tick, Number(q.ms ?? 50));
           };
           tick();
         };
-        if (q.wait) setTimeout(send, Number(q.wait)); else send();
+        if (q.wait) setTimeout(send, Number(q.wait));
+        else send();
         return;
       }
       case '/hang':
@@ -98,14 +124,29 @@ export function startServer() {
         res.end('not found');
     }
   });
-  server.on('connection', (socket) => { sockets.add(socket); socket.on('close', () => sockets.delete(socket)); });
-  return new Promise((resolve) => server.listen(0, () => resolve({
-    port: server.address().port,
-    requests,
-    // Sends the next chunk of each stepped /slow response.
-    release: () => { const ticks = held; held = []; for (const tick of ticks) tick(); },
-    close: () => new Promise((done) => { for (const s of sockets) s.destroy(); server.close(done); }),
-  })));
+  server.on('connection', (socket) => {
+    sockets.add(socket);
+    socket.on('close', () => sockets.delete(socket));
+  });
+  return new Promise((resolve) =>
+    server.listen(0, () =>
+      resolve({
+        port: server.address().port,
+        requests,
+        // Sends the next chunk of each stepped /slow response.
+        release: () => {
+          const ticks = held;
+          held = [];
+          for (const tick of ticks) tick();
+        },
+        close: () =>
+          new Promise((done) => {
+            for (const s of sockets) s.destroy();
+            server.close(done);
+          }),
+      }),
+    ),
+  );
 }
 
 // A port nothing listens on (a server that was closed).

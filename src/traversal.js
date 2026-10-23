@@ -2,13 +2,27 @@
 // traversal algorithms on the linked tree (no arrays, no allocation per step).
 import { S, state, domError, hooks, DOCUMENT_NODE } from './internal.js';
 
-const ACCEPT = 1, REJECT = 2, SKIP = 3;
+const ACCEPT = 1,
+  REJECT = 2,
+  SKIP = 3;
 
 export const NODE_FILTER = {
-  FILTER_ACCEPT: 1, FILTER_REJECT: 2, FILTER_SKIP: 3,
-  SHOW_ALL: 0xFFFFFFFF, SHOW_ELEMENT: 0x1, SHOW_ATTRIBUTE: 0x2, SHOW_TEXT: 0x4, SHOW_CDATA_SECTION: 0x8,
-  SHOW_ENTITY_REFERENCE: 0x10, SHOW_ENTITY: 0x20, SHOW_PROCESSING_INSTRUCTION: 0x40, SHOW_COMMENT: 0x80,
-  SHOW_DOCUMENT: 0x100, SHOW_DOCUMENT_TYPE: 0x200, SHOW_DOCUMENT_FRAGMENT: 0x400, SHOW_NOTATION: 0x800,
+  FILTER_ACCEPT: 1,
+  FILTER_REJECT: 2,
+  FILTER_SKIP: 3,
+  SHOW_ALL: 0xffffffff,
+  SHOW_ELEMENT: 0x1,
+  SHOW_ATTRIBUTE: 0x2,
+  SHOW_TEXT: 0x4,
+  SHOW_CDATA_SECTION: 0x8,
+  SHOW_ENTITY_REFERENCE: 0x10,
+  SHOW_ENTITY: 0x20,
+  SHOW_PROCESSING_INSTRUCTION: 0x40,
+  SHOW_COMMENT: 0x80,
+  SHOW_DOCUMENT: 0x100,
+  SHOW_DOCUMENT_TYPE: 0x200,
+  SHOW_DOCUMENT_FRAGMENT: 0x400,
+  SHOW_NOTATION: 0x800,
 };
 
 function filter(traverser, node) {
@@ -37,14 +51,23 @@ function traverseChildren(walker, type) {
   let node = type === 'first' ? first(s.current) : last(s.current);
   while (node) {
     const result = filter(walker, node);
-    if (result === ACCEPT) { s.current = node; return node; }
+    if (result === ACCEPT) {
+      s.current = node;
+      return node;
+    }
     if (result === SKIP) {
       const child = type === 'first' ? first(node) : last(node);
-      if (child) { node = child; continue; }
+      if (child) {
+        node = child;
+        continue;
+      }
     }
     while (node) {
       const sibling = type === 'first' ? next(node) : prev(node);
-      if (sibling) { node = sibling; break; }
+      if (sibling) {
+        node = sibling;
+        break;
+      }
       const p = parent(node);
       if (!p || p === s.root || p === s.current) return null;
       node = p;
@@ -62,7 +85,10 @@ function traverseSiblings(walker, type) {
     while (sibling) {
       node = sibling;
       const result = filter(walker, node);
-      if (result === ACCEPT) { s.current = node; return node; }
+      if (result === ACCEPT) {
+        s.current = node;
+        return node;
+      }
       sibling = type === 'next' ? first(node) : last(node);
       if (result === REJECT || !sibling) sibling = type === 'next' ? next(node) : prev(node);
     }
@@ -73,23 +99,31 @@ function traverseSiblings(walker, type) {
 }
 
 const createState = (root, whatToShow, filterArg) => ({
-  root, whatToShow: whatToShow === undefined ? NODE_FILTER.SHOW_ALL : whatToShow >>> 0, filter: filterArg ?? null, active: false,
+  root,
+  whatToShow: whatToShow === undefined ? NODE_FILTER.SHOW_ALL : whatToShow >>> 0,
+  filter: filterArg ?? null,
+  active: false,
 });
 
 export function createTreeWalker(window, root, whatToShow, filterArg) {
-  if (!root?.[S]) throw new TypeError("Failed to execute 'createTreeWalker' on 'Document': parameter 1 is not of type 'Node'.");
+  if (!root?.[S])
+    throw new TypeError("Failed to execute 'createTreeWalker' on 'Document': parameter 1 is not of type 'Node'.");
   const walker = Object.create(window[S].protos.TreeWalker);
   walker[S] = { ...createState(root, whatToShow, filterArg), current: root };
   return walker;
 }
 
 export function createNodeIterator(window, root, whatToShow, filterArg) {
-  if (!root?.[S]) throw new TypeError("Failed to execute 'createNodeIterator' on 'Document': parameter 1 is not of type 'Node'.");
+  if (!root?.[S])
+    throw new TypeError("Failed to execute 'createNodeIterator' on 'Document': parameter 1 is not of type 'Node'.");
   const it = Object.create(window[S].protos.NodeIterator);
   it[S] = {
-    ...createState(root, whatToShow, filterArg), reference: root, beforeReference: true,
+    ...createState(root, whatToShow, filterArg),
+    reference: root,
+    beforeReference: true,
     // The position of a traversal in progress (while its filter runs).
-    candidate: null, candidateBefore: false,
+    candidate: null,
+    candidateBefore: false,
   };
   // Registered with the root's document for the pre-removing steps.
   const doc = root[S].type === DOCUMENT_NODE ? root : root[S].doc;
@@ -105,14 +139,23 @@ function preRemoveAll(doc, toBeRemoved) {
   const set = doc[S].iterators;
   for (const ref of set) {
     const it = ref.deref();
-    if (it === undefined) { set.delete(ref); continue; }
+    if (it === undefined) {
+      set.delete(ref);
+      continue;
+    }
     const s = it[S];
     if (toBeRemoved === s.root) continue;
     const r = adjust(s.root, toBeRemoved, s.reference, s.beforeReference);
-    if (r !== null) { s.reference = r.node; s.beforeReference = r.before; }
+    if (r !== null) {
+      s.reference = r.node;
+      s.beforeReference = r.before;
+    }
     if (s.candidate !== null) {
       const c = adjust(s.root, toBeRemoved, s.candidate, s.candidateBefore);
-      if (c !== null) { s.candidate = c.node; s.candidateBefore = c.before; }
+      if (c !== null) {
+        s.candidate = c.node;
+        s.candidateBefore = c.before;
+      }
     }
   }
 }
@@ -120,7 +163,11 @@ function preRemoveAll(doc, toBeRemoved) {
 // The new position for (node, before) when toBeRemoved goes, or null.
 function adjust(root, toBeRemoved, node, before) {
   let inside = false;
-  for (let n = node; n; n = parent(n)) if (n === toBeRemoved) { inside = true; break; }
+  for (let n = node; n; n = parent(n))
+    if (n === toBeRemoved) {
+      inside = true;
+      break;
+    }
   if (!inside) return null;
   if (before) {
     for (let n = toBeRemoved; n && n !== root; n = parent(n)) if (next(n)) return { node: next(n), before: true };
@@ -156,8 +203,14 @@ function iterate(it, forward) {
   try {
     for (;;) {
       if (forward) {
-        if (!before) { node = following(node, s.root); if (!node) return null; } else before = false;
-      } else if (before) { node = preceding(node, s.root); if (!node) return null; } else before = true;
+        if (!before) {
+          node = following(node, s.root);
+          if (!node) return null;
+        } else before = false;
+      } else if (before) {
+        node = preceding(node, s.root);
+        if (!node) return null;
+      } else before = true;
       s.candidate = node;
       s.candidateBefore = before;
       const result = filter(it, node);
@@ -184,18 +237,29 @@ const mix = (...objects) => {
 };
 
 const common = {
-  get root() { return state(this).root; },
-  get whatToShow() { return state(this).whatToShow; },
-  get filter() { return state(this).filter; },
+  get root() {
+    return state(this).root;
+  },
+  get whatToShow() {
+    return state(this).whatToShow;
+  },
+  get filter() {
+    return state(this).filter;
+  },
 };
 
 export const TRAVERSAL_INTERFACES = [
   {
     name: 'TreeWalker',
     members: mix(common, {
-      get currentNode() { return state(this).current; },
+      get currentNode() {
+        return state(this).current;
+      },
       set currentNode(node) {
-        if (!node?.[S]) throw new TypeError("Failed to set the 'currentNode' property on 'TreeWalker': The provided value is not of type 'Node'.");
+        if (!node?.[S])
+          throw new TypeError(
+            "Failed to set the 'currentNode' property on 'TreeWalker': The provided value is not of type 'Node'.",
+          );
         state(this).current = node;
       },
       parentNode() {
@@ -203,14 +267,25 @@ export const TRAVERSAL_INTERFACES = [
         let node = s.current;
         while (node && node !== s.root) {
           node = parent(node);
-          if (node && filter(this, node) === ACCEPT) { s.current = node; return node; }
+          if (node && filter(this, node) === ACCEPT) {
+            s.current = node;
+            return node;
+          }
         }
         return null;
       },
-      firstChild() { return traverseChildren(this, 'first'); },
-      lastChild() { return traverseChildren(this, 'last'); },
-      nextSibling() { return traverseSiblings(this, 'next'); },
-      previousSibling() { return traverseSiblings(this, 'previous'); },
+      firstChild() {
+        return traverseChildren(this, 'first');
+      },
+      lastChild() {
+        return traverseChildren(this, 'last');
+      },
+      nextSibling() {
+        return traverseSiblings(this, 'next');
+      },
+      previousSibling() {
+        return traverseSiblings(this, 'previous');
+      },
       previousNode() {
         const s = state(this);
         let node = s.current;
@@ -223,12 +298,18 @@ export const TRAVERSAL_INTERFACES = [
               node = last(node);
               result = filter(this, node);
             }
-            if (result === ACCEPT) { s.current = node; return node; }
+            if (result === ACCEPT) {
+              s.current = node;
+              return node;
+            }
             sibling = prev(node);
           }
           if (node === s.root || !parent(node)) return null;
           node = parent(node);
-          if (filter(this, node) === ACCEPT) { s.current = node; return node; }
+          if (filter(this, node) === ACCEPT) {
+            s.current = node;
+            return node;
+          }
         }
         return null;
       },
@@ -240,7 +321,10 @@ export const TRAVERSAL_INTERFACES = [
           while (result !== REJECT && first(node)) {
             node = first(node);
             result = filter(this, node);
-            if (result === ACCEPT) { s.current = node; return node; }
+            if (result === ACCEPT) {
+              s.current = node;
+              return node;
+            }
           }
           let sibling = null;
           for (let t = node; t; t = parent(t)) {
@@ -251,7 +335,10 @@ export const TRAVERSAL_INTERFACES = [
           if (!sibling) return null;
           node = sibling;
           result = filter(this, node);
-          if (result === ACCEPT) { s.current = node; return node; }
+          if (result === ACCEPT) {
+            s.current = node;
+            return node;
+          }
         }
       },
     }),
@@ -259,11 +346,21 @@ export const TRAVERSAL_INTERFACES = [
   {
     name: 'NodeIterator',
     members: mix(common, {
-      get referenceNode() { return state(this).reference; },
-      get pointerBeforeReferenceNode() { return state(this).beforeReference; },
-      nextNode() { return iterate(this, true); },
-      previousNode() { return iterate(this, false); },
-      detach() { state(this); },
+      get referenceNode() {
+        return state(this).reference;
+      },
+      get pointerBeforeReferenceNode() {
+        return state(this).beforeReference;
+      },
+      nextNode() {
+        return iterate(this, true);
+      },
+      previousNode() {
+        return iterate(this, false);
+      },
+      detach() {
+        state(this);
+      },
     }),
   },
   { name: 'NodeFilter', callback: true, statics: NODE_FILTER, members: {} },

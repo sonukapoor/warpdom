@@ -2,7 +2,13 @@
 import { compare, summary, renderMarkdown, type CompareResult } from 'warpdom/compare';
 import { migrate, renderConsole, REMOVABLE, ENVIRONMENT_PACKAGE } from 'warpdom/migrate';
 
-const result: CompareResult = await compare({ cwd: '.', rounds: 3, workers: 2, baseline: 'jsdom', log: (message) => message });
+const result: CompareResult = await compare({
+  cwd: '.',
+  rounds: 3,
+  workers: 2,
+  baseline: 'jsdom',
+  log: (message) => message,
+});
 const code: 0 | 1 | 2 = result.exitCode;
 const regressions: number | undefined = result.correctness?.regressions;
 const speedup: number | null | undefined = result.timing?.speedup;

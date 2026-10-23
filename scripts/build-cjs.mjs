@@ -36,8 +36,9 @@ const { metafile } = await build({
   // PLATFORM_GLOBAL), also when Jest evaluates the bundle in a test file's
   // VM context: vm.runInThisContext runs in Node's main context.
   banner: {
-    js: `// warpdom ${version}: CommonJS build (scripts/build-cjs.mjs); the source is src/.\n'use strict';\n`
-      + "const __warpdomPlatformGlobal = require('node:vm').runInThisContext('globalThis');",
+    js:
+      `// warpdom ${version}: CommonJS build (scripts/build-cjs.mjs); the source is src/.\n'use strict';\n` +
+      "const __warpdomPlatformGlobal = require('node:vm').runInThisContext('globalThis');",
   },
   // Function and class names are observable (constructor.name, error
   // messages): keep them when the bundle renames clashing top-level names.
@@ -59,7 +60,14 @@ for (const name of [...packages].sort()) {
   const pkg = JSON.parse(readFileSync(`${dir}/package.json`, 'utf8'));
   const file = readdirSync(dir).find((f) => /^licen[sc]e/i.test(f));
   notices += ` *\n * ${name} ${pkg.version} (${pkg.license})\n`;
-  if (file) notices += readFileSync(`${dir}/${file}`, 'utf8').trim().split('\n').map((l) => ` * ${l}`.trimEnd()).join('\n').replaceAll('*/', '* /') + '\n';
+  if (file)
+    notices +=
+      readFileSync(`${dir}/${file}`, 'utf8')
+        .trim()
+        .split('\n')
+        .map((l) => ` * ${l}`.trimEnd())
+        .join('\n')
+        .replaceAll('*/', '* /') + '\n';
 }
 appendFileSync(outfile, `${notices} */\n`);
 

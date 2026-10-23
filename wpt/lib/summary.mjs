@@ -59,7 +59,8 @@ export function markdownTable(run, options) {
     `| Directory | Files | Harness OK | All pass | Subtests | Passed | Pass rate | Score | Skipped |`,
     `|---|---:|---:|---:|---:|---:|---:|---:|---:|`,
   ];
-  const row = (name, g) => `| ${name} | ${g.files} | ${g.ok} | ${g.allPass} | ${g.subtests} | ${g.passed} | ${pct(g.passed, g.subtests)} | ${pct(g.score, g.files)} | ${g.skipped} |`;
+  const row = (name, g) =>
+    `| ${name} | ${g.files} | ${g.ok} | ${g.allPass} | ${g.subtests} | ${g.passed} | ${pct(g.passed, g.subtests)} | ${pct(g.score, g.files)} | ${g.skipped} |`;
   for (const [dir, g] of groups) lines.push(row(dir, g));
   lines.push(row('**Total**', total));
   return lines.join('\n');
@@ -99,9 +100,11 @@ export function compareTable(runs, { depth } = {}) {
   const names = runs.map((r) => `${r.meta.engine}`);
   const head = `| Directory | Files | Subtests | ${names.map((n) => `${n} passed | ${n} rate | ${n} score`).join(' | ')} |`;
   const sep = `|---|---:|---:|${names.map(() => '---:|---:|---:').join('|')}|`;
-  const cells = (gs) => gs.map((g) => `${g.passed} | ${pct(g.passed, g.subtests)} | ${pct(g.score, g.files)}`).join(' | ');
+  const cells = (gs) =>
+    gs.map((g) => `${g.passed} | ${pct(g.passed, g.subtests)} | ${pct(g.score, g.files)}`).join(' | ');
   const lines = [head, sep];
-  for (const [dir, gs] of [...groups].sort(([a], [b]) => (a < b ? -1 : 1))) lines.push(`| ${dir} | ${gs[0].files} | ${gs[0].subtests} | ${cells(gs)} |`);
+  for (const [dir, gs] of [...groups].sort(([a], [b]) => (a < b ? -1 : 1)))
+    lines.push(`| ${dir} | ${gs[0].files} | ${gs[0].subtests} | ${cells(gs)} |`);
   lines.push(`| **Total** | ${total[0].files} | ${total[0].subtests} | ${cells(total)} |`);
   return lines.join('\n');
 }
@@ -114,7 +117,8 @@ export function regressions(a, b) {
     if (!rb) continue;
     const statusB = new Map((rb.subtests ?? []).map((s) => [s.name, s.status]));
     for (const s of ra.subtests ?? []) {
-      if (s.status === 'PASS' && statusB.get(s.name) !== 'PASS') out.push({ id, name: s.name, other: statusB.get(s.name) ?? 'MISSING' });
+      if (s.status === 'PASS' && statusB.get(s.name) !== 'PASS')
+        out.push({ id, name: s.name, other: statusB.get(s.name) ?? 'MISSING' });
     }
   }
   return out;

@@ -21,19 +21,29 @@ export function expandBraces(pattern) {
   let start = -1;
   for (let i = 0; i < pattern.length; i++) {
     const c = pattern[i];
-    if (c === '\\') { i++; continue; }
-    if (c === '{') { if (depth++ === 0) start = i; } else if (c === '}' && depth > 0 && --depth === 0) {
+    if (c === '\\') {
+      i++;
+      continue;
+    }
+    if (c === '{') {
+      if (depth++ === 0) start = i;
+    } else if (c === '}' && depth > 0 && --depth === 0) {
       const body = pattern.slice(start + 1, i);
       const parts = [];
-      let d = 0, from = 0;
+      let d = 0,
+        from = 0;
       for (let j = 0; j < body.length; j++) {
         if (body[j] === '{') d++;
         else if (body[j] === '}') d--;
-        else if (body[j] === ',' && d === 0) { parts.push(body.slice(from, j)); from = j + 1; }
+        else if (body[j] === ',' && d === 0) {
+          parts.push(body.slice(from, j));
+          from = j + 1;
+        }
       }
       parts.push(body.slice(from));
       if (parts.length < 2) continue;
-      const before = pattern.slice(0, start), after = pattern.slice(i + 1);
+      const before = pattern.slice(0, start),
+        after = pattern.slice(i + 1);
       return parts.flatMap((p) => expandBraces(before + p + after));
     }
   }
@@ -50,7 +60,10 @@ function segmentSource(segment) {
     else if (c === '?') out += '[^/]';
     else if (c === '[') {
       const end = segment.indexOf(']', i + 2);
-      if (end < 0) { out += '\\['; continue; }
+      if (end < 0) {
+        out += '\\[';
+        continue;
+      }
       let body = segment.slice(i + 1, end);
       if (body[0] === '!') body = `^${body.slice(1)}`;
       out += `[${body.replace(/\\/g, '\\\\')}]`;
@@ -91,14 +104,22 @@ export function glob(pattern, cwd) {
     const maxDepth = rest.includes('**') ? Infinity : rest.length;
     const walk = (dir, rel, depth) => {
       let entries;
-      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
       for (const entry of entries) {
         if (SKIP_DIRS.has(entry.name) || entry.name === '.DS_Store' || entry.name.includes('.timestamp-')) continue;
         const full = path.join(dir, entry.name);
         const relPath = rel ? `${rel}/${entry.name}` : entry.name;
         let isDir = entry.isDirectory();
         if (entry.isSymbolicLink()) {
-          try { isDir = fs.statSync(full).isDirectory(); } catch { continue; }
+          try {
+            isDir = fs.statSync(full).isDirectory();
+          } catch {
+            continue;
+          }
         }
         if (re.test(relPath)) found.add(isDir ? `${full}/` : full);
         if (isDir && depth + 1 < maxDepth && !entry.isSymbolicLink()) walk(full, relPath, depth + 1);
@@ -109,7 +130,13 @@ export function glob(pattern, cwd) {
   return [...found].sort();
 }
 
-const statOf = (file) => { try { return fs.statSync(file); } catch { return null; } };
+const statOf = (file) => {
+  try {
+    return fs.statSync(file);
+  } catch {
+    return null;
+  }
+};
 
 // Vitest: each string of test.projects (or a workspace) as the runner
 // resolves it: a config file, a directory's vitest.config.* / vite.config.*,
@@ -127,7 +154,10 @@ export function resolveVitestProjects(patterns, root) {
     return { config: file };
   };
   for (const pattern of patterns) {
-    if (pattern.startsWith('!')) { out.set(pattern, []); continue; }
+    if (pattern.startsWith('!')) {
+      out.set(pattern, []);
+      continue;
+    }
     const value = pattern.replace('<rootDir>', root);
     if (!isDynamicPattern(value)) {
       const file = path.resolve(root, value);
@@ -136,7 +166,12 @@ export function resolveVitestProjects(patterns, root) {
       out.set(pattern, [entryOf(stat.isDirectory() ? `${file.replace(/\/$/, '')}/` : file)]);
       continue;
     }
-    out.set(pattern, glob(value, root).filter((f) => !excluded.has(f)).map(entryOf));
+    out.set(
+      pattern,
+      glob(value, root)
+        .filter((f) => !excluded.has(f))
+        .map(entryOf),
+    );
   }
   return out;
 }
@@ -151,7 +186,9 @@ const JEST_CONFIG_EXTS = ['.js', '.ts', '.mjs', '.cjs', '.mts', '.cts', '.json']
 export function resolveJestProjects(patterns, { rootDir, configDir, cwd }) {
   const out = new Map();
   for (const pattern of patterns) {
-    const value = pattern.startsWith('<rootDir>') ? path.resolve(rootDir, `.${pattern.slice('<rootDir>'.length)}`) : pattern;
+    const value = pattern.startsWith('<rootDir>')
+      ? path.resolve(rootDir, `.${pattern.slice('<rootDir>'.length)}`)
+      : pattern;
     let matches = isDynamicPattern(value) ? glob(value, cwd) : [];
     if (!matches.length) matches = [path.resolve(configDir, value)];
     const entries = [];

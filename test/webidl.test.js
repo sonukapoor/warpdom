@@ -7,7 +7,15 @@ import { createWindow } from '../src/index.js';
 import { parity } from './parity.js';
 
 // Calls each case and records the error name, or 'ok'.
-const outcomes = (cases) => cases.map((f) => { try { f(); return 'ok'; } catch (e) { return e.name; } });
+const outcomes = (cases) =>
+  cases.map((f) => {
+    try {
+      f();
+      return 'ok';
+    } catch (e) {
+      return e.name;
+    }
+  });
 
 parity('operations called with too few arguments throw a TypeError', (w) => {
   const d = w.document;
@@ -16,31 +24,74 @@ parity('operations called with too few arguments throw a TypeError', (w) => {
   const range = d.createRange();
   const xml = d.implementation.createDocument(null, null);
   return outcomes([
-    () => el.getAttribute(), () => el.setAttribute('a'), () => el.hasAttribute(), () => el.removeAttribute(),
-    () => el.toggleAttribute(), () => el.getAttributeNS(null), () => el.setAttributeNS(null, 'a'),
-    () => el.matches(), () => el.closest(), () => el.querySelector(), () => el.querySelectorAll(),
-    () => el.getElementsByTagName(), () => el.getElementsByClassName(), () => el.insertAdjacentText('beforeend'),
-    () => el.addEventListener('x'), () => el.removeEventListener('x'), () => el.contains(), () => el.isSameNode(),
-    () => el.isEqualNode(), () => el.lookupPrefix(), () => el.classList.contains(), () => el.classList.toggle(),
-    () => el.classList.replace('a'), () => el.children.item(), () => el.childNodes.item(),
-    () => d.createElement(), () => d.createElementNS(null), () => d.createTextNode(), () => d.createComment(),
-    () => d.createEvent(), () => d.getElementById(), () => d.createAttribute(), () => d.createExpression(),
-    () => xml.createProcessingInstruction('a'), () => xml.createCDATASection(),
+    () => el.getAttribute(),
+    () => el.setAttribute('a'),
+    () => el.hasAttribute(),
+    () => el.removeAttribute(),
+    () => el.toggleAttribute(),
+    () => el.getAttributeNS(null),
+    () => el.setAttributeNS(null, 'a'),
+    () => el.matches(),
+    () => el.closest(),
+    () => el.querySelector(),
+    () => el.querySelectorAll(),
+    () => el.getElementsByTagName(),
+    () => el.getElementsByClassName(),
+    () => el.insertAdjacentText('beforeend'),
+    () => el.addEventListener('x'),
+    () => el.removeEventListener('x'),
+    () => el.contains(),
+    () => el.isSameNode(),
+    () => el.isEqualNode(),
+    () => el.lookupPrefix(),
+    () => el.classList.contains(),
+    () => el.classList.toggle(),
+    () => el.classList.replace('a'),
+    () => el.children.item(),
+    () => el.childNodes.item(),
+    () => d.createElement(),
+    () => d.createElementNS(null),
+    () => d.createTextNode(),
+    () => d.createComment(),
+    () => d.createEvent(),
+    () => d.getElementById(),
+    () => d.createAttribute(),
+    () => d.createExpression(),
+    () => xml.createProcessingInstruction('a'),
+    () => xml.createCDATASection(),
     () => d.implementation.createDocumentType('a', ''),
-    () => text.insertData(0), () => text.deleteData(0), () => text.replaceData(0, 0), () => text.splitText(),
-    () => range.setStart(d.body), () => range.setEnd(d.body), () => range.comparePoint(d.body), () => range.isPointInRange(d.body),
-    () => new w.Event('x').initEvent(), () => new w.CustomEvent('x').initCustomEvent(),
+    () => text.insertData(0),
+    () => text.deleteData(0),
+    () => text.replaceData(0, 0),
+    () => text.splitText(),
+    () => range.setStart(d.body),
+    () => range.setEnd(d.body),
+    () => range.comparePoint(d.body),
+    () => range.isPointInRange(d.body),
+    () => new w.Event('x').initEvent(),
+    () => new w.CustomEvent('x').initCustomEvent(),
     // Explicit undefined is an argument.
-    () => el.setAttribute('a', undefined), () => el.getAttribute(undefined), () => el.contains(undefined),
+    () => el.setAttribute('a', undefined),
+    () => el.getAttribute(undefined),
+    () => el.contains(undefined),
     () => el.addEventListener('x', undefined),
   ]);
 });
 
 parity('constructor and operation lengths', (w) => [
-  w.Event.length, w.CustomEvent.length, w.MouseEvent.length, w.KeyboardEvent.length, w.MutationObserver.length,
-  w.StaticRange.length, w.EventTarget.length, w.Range.length, w.Text.length,
-  w.EventTarget.prototype.addEventListener.length, w.EventTarget.prototype.removeEventListener.length,
-  w.Document.prototype.createElement.length, w.Document.prototype.createElementNS.length,
+  w.Event.length,
+  w.CustomEvent.length,
+  w.MouseEvent.length,
+  w.KeyboardEvent.length,
+  w.MutationObserver.length,
+  w.StaticRange.length,
+  w.EventTarget.length,
+  w.Range.length,
+  w.Text.length,
+  w.EventTarget.prototype.addEventListener.length,
+  w.EventTarget.prototype.removeEventListener.length,
+  w.Document.prototype.createElement.length,
+  w.Document.prototype.createElementNS.length,
 ]);
 
 // Deliberate deviation (PLAN.md): isTrusted is an accessor on

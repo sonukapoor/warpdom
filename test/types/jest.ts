@@ -1,7 +1,13 @@
 // The Jest environment's types: options, and a custom environment built on it.
 import WarpdomEnvironment, { type WarpdomJestEnvironmentOptions } from 'warpdom/jest';
 
-const testEnvironmentOptions: WarpdomJestEnvironmentOptions = { url: 'http://localhost/', jsdom: 26, fastFrames: true, xhr: false, customExportConditions: ['browser'] };
+const testEnvironmentOptions: WarpdomJestEnvironmentOptions = {
+  url: 'http://localhost/',
+  jsdom: 26,
+  fastFrames: true,
+  xhr: false,
+  customExportConditions: ['browser'],
+};
 export const config = { testEnvironment: 'warpdom/jest', testEnvironmentOptions };
 
 export class CustomEnvironment extends WarpdomEnvironment {

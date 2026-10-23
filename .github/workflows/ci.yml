@@ -1,7 +1,9 @@
 # Unit and parity tests (npm test) and the type tests (npm run test:types)
 # on every push and pull request, on Node 22.22 (the oldest Node that jsdom 30
 # and its undici declare support for; package.json engines still says
-# >=22.12) and the current LTS. In parallel, a dependency scan with CVE
+# >=22.12) and the current LTS. A lint job checks the formatting (Prettier)
+# and the readability rules (ESLint; existing violations are listed in
+# eslint-suppressions.json). In parallel, a dependency scan with CVE
 # Lite CLI: a full scan (dev dependencies included, report only) goes to
 # GitHub Code Scanning as SARIF, and the job fails on a high or critical
 # advisory in a production dependency.
@@ -32,6 +34,19 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run test:types
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
 
   dependencies:
     runs-on: ubuntu-latest

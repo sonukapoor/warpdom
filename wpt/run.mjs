@@ -23,9 +23,23 @@ const here = dirname(fileURLToPath(import.meta.url));
 
 function parseArgs(argv) {
   const opts = {
-    paths: [], engines: ['warpdom'], wpt: process.env.WPT_DIR ?? join(homedir(), 'Projects/wpt'),
-    warpdom: resolve(here, '..'), sample: 0, seed: 1, jobs: 1, maxMemory: 1536, timeoutMultiplier: 1, filter: null, exclude: [],
-    skip: true, testdriver: false, tentative: false, out: null, depth: 0, quiet: false,
+    paths: [],
+    engines: ['warpdom'],
+    wpt: process.env.WPT_DIR ?? join(homedir(), 'Projects/wpt'),
+    warpdom: resolve(here, '..'),
+    sample: 0,
+    seed: 1,
+    jobs: 1,
+    maxMemory: 1536,
+    timeoutMultiplier: 1,
+    filter: null,
+    exclude: [],
+    skip: true,
+    testdriver: false,
+    tentative: false,
+    out: null,
+    depth: 0,
+    quiet: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -56,7 +70,11 @@ function parseArgs(argv) {
 }
 
 const git = (dir, ...args) => {
-  try { return execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim(); } catch { return null; }
+  try {
+    return execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim();
+  } catch {
+    return null;
+  }
 };
 
 function environment(opts, engine) {
@@ -96,7 +114,7 @@ function loadExpectations() {
 function skipReason(test, engine, entries) {
   for (const e of entries) {
     if (e.engines && !e.engines.includes(engine)) continue;
-    const match = e.path.endsWith('/') ? test.id.startsWith(e.path) : (test.id === e.path || test.file === e.path);
+    const match = e.path.endsWith('/') ? test.id.startsWith(e.path) : test.id === e.path || test.file === e.path;
     if (match) return e.reason;
   }
   return null;
@@ -118,7 +136,11 @@ function runOne(test, engine, opts) {
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
       // The JS heap limit leaves room under the memory limit for native
       // memory (buffers, code), which the watchdog below counts too.
-      execArgv: [`--max-old-space-size=${Math.floor(opts.maxMemory * 0.75)}`, '--experimental-vm-modules', '--no-warnings'],
+      execArgv: [
+        `--max-old-space-size=${Math.floor(opts.maxMemory * 0.75)}`,
+        '--experimental-vm-modules',
+        '--no-warnings',
+      ],
     });
     // Memory watchdog: the process's resident memory, polled from here (a
     // check inside the test process would not run during a long synchronous
@@ -127,11 +149,16 @@ function runOne(test, engine, opts) {
       execFile('ps', ['-o', 'rss=', '-p', String(child.pid)], (error, out) => {
         const kb = Number.parseInt(out, 10);
         if (!error && kb > opts.maxMemory * 1024) {
-          end({ harness: 'CRASH', message: `runner: memory limit exceeded (${Math.round(kb / 1024)} MB resident, limit ${opts.maxMemory} MB), process killed` });
+          end({
+            harness: 'CRASH',
+            message: `runner: memory limit exceeded (${Math.round(kb / 1024)} MB resident, limit ${opts.maxMemory} MB), process killed`,
+          });
         }
       });
     }, 250);
-    const keep = (chunk) => { log = (log + chunk).slice(-4000); };
+    const keep = (chunk) => {
+      log = (log + chunk).slice(-4000);
+    };
     child.stdout.on('data', keep);
     child.stderr.on('data', keep);
     const hardTimeout = (test.long ? 60000 : 10000) * opts.timeoutMultiplier + 15000;
@@ -142,19 +169,36 @@ function runOne(test, engine, opts) {
       clearInterval(watchdog);
       child.kill('SIGKILL');
       const durationMs = Date.now() - started;
-      const result = { file: test.file, harness: record.harness, message: record.message ?? null, durationMs, subtests: record.subtests ?? streamed };
+      const result = {
+        file: test.file,
+        harness: record.harness,
+        message: record.message ?? null,
+        durationMs,
+        subtests: record.subtests ?? streamed,
+      };
       if (record.stack) result.stack = record.stack;
       if (record.notes?.length) result.notes = record.notes;
       if (result.harness !== 'OK' && log.trim()) result.log = log.trim();
       resolveRun(result);
     };
-    const timer = setTimeout(() => end({ harness: 'TIMEOUT', message: 'runner: hard timeout, process killed' }), hardTimeout);
+    const timer = setTimeout(
+      () => end({ harness: 'TIMEOUT', message: 'runner: hard timeout, process killed' }),
+      hardTimeout,
+    );
     child.on('message', (m) => {
       if (m.type === 'result') streamed.push(m.subtest);
       else if (m.type === 'complete') end(m);
     });
-    child.on('exit', (code, signal) => end({ harness: 'CRASH', message: `runner: process exited (${signal ?? code}) without completion` }));
-    child.send({ test, engine, wptRoot: opts.wpt, warpdomDir: opts.warpdom, timeoutMultiplier: opts.timeoutMultiplier });
+    child.on('exit', (code, signal) =>
+      end({ harness: 'CRASH', message: `runner: process exited (${signal ?? code}) without completion` }),
+    );
+    child.send({
+      test,
+      engine,
+      wptRoot: opts.wpt,
+      warpdomDir: opts.warpdom,
+      timeoutMultiplier: opts.timeoutMultiplier,
+    });
   });
 }
 
@@ -178,7 +222,9 @@ async function runEngine(engine, tests, opts, expectations, notRunnable) {
       finished++;
       if (!opts.quiet) {
         const passed = r.subtests.filter((s) => s.status === 'PASS').length;
-        process.stderr.write(`[${engine} ${finished}/${queue.length}] ${r.harness.padEnd(7)} ${String(passed).padStart(4)}/${String(r.subtests.length).padEnd(4)} ${(r.durationMs / 1000).toFixed(1).padStart(5)}s ${test.id}\n`);
+        process.stderr.write(
+          `[${engine} ${finished}/${queue.length}] ${r.harness.padEnd(7)} ${String(passed).padStart(4)}/${String(r.subtests.length).padEnd(4)} ${(r.durationMs / 1000).toFixed(1).padStart(5)}s ${test.id}\n`,
+        );
       }
     }
   };
@@ -196,7 +242,9 @@ async function main() {
   const plannedMb = opts.jobs * opts.maxMemory;
   const freeMb = Math.round(freemem() / 1048576);
   if (plannedMb > freeMb / 2) {
-    process.stderr.write(`warning: --jobs ${opts.jobs} x --max-memory ${opts.maxMemory} MB = ${plannedMb} MB, more than half of the ${freeMb} MB free; consider --jobs 1 or running large directories (html/dom) separately\n`);
+    process.stderr.write(
+      `warning: --jobs ${opts.jobs} x --max-memory ${opts.maxMemory} MB = ${plannedMb} MB, more than half of the ${freeMb} MB free; consider --jobs 1 or running large directories (html/dom) separately\n`,
+    );
   }
   let { tests, notRunnable } = discover(opts.wpt, opts.paths);
   if (opts.filter) tests = tests.filter((t) => t.id.includes(opts.filter));
@@ -210,7 +258,14 @@ async function main() {
     // Sample among the tests that run, so a sample of n runs n files; the
     // skipped tests of the paths are still listed as skipped.
     const skippedForAll = (t) => opts.engines.every((e) => skipFor(t, e, opts, expectations));
-    tests = [...sample(tests.filter((t) => !skippedForAll(t)), opts.sample, opts.seed), ...tests.filter(skippedForAll)];
+    tests = [
+      ...sample(
+        tests.filter((t) => !skippedForAll(t)),
+        opts.sample,
+        opts.seed,
+      ),
+      ...tests.filter(skippedForAll),
+    ];
   }
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
   const out = opts.out ?? join(here, 'results', stamp);
@@ -224,10 +279,15 @@ async function main() {
   const md = [];
   for (const run of runs) {
     const m = run.meta;
-    md.push(`## ${m.engine}${m.engineVersion ? ' ' + m.engineVersion : ''}`, '',
+    md.push(
+      `## ${m.engine}${m.engineVersion ? ' ' + m.engineVersion : ''}`,
+      '',
       `warpdom ${m.warpdomCommit?.slice(0, 10)}${m.warpdomSrcDirty ? ' (src modified)' : ''}, WPT ${m.wptCommit?.slice(0, 10)}, Node ${m.node}, ${m.date}, wall clock ${(m.wallClockMs / 1000).toFixed(1)} s` +
-      `${m.sample ? `, sample ${m.sample.n} files (seed ${m.sample.seed})` : ''}, timeout multiplier ${m.timeoutMultiplier}`, '',
-      markdownTable(run, { depth: opts.depth }), '');
+        `${m.sample ? `, sample ${m.sample.n} files (seed ${m.sample.seed})` : ''}, timeout multiplier ${m.timeoutMultiplier}`,
+      '',
+      markdownTable(run, { depth: opts.depth }),
+      '',
+    );
   }
   if (runs.length > 1) md.push('## Side by side', '', compareTable(runs, { depth: opts.depth }), '');
   writeFileSync(join(out, 'summary.md'), md.join('\n'));

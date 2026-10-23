@@ -47,10 +47,21 @@ function styleCheck(version) {
   const dir = join(cache, `jsdom-${version}`);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'package.json'), '{"private":true}');
-  execFileSync('npm', ['install', '--no-audit', '--no-fund', '--silent', `jsdom@${version}`], { cwd: dir, stdio: 'inherit' });
-  const out = execFileSync(process.execPath, [join(root, 'scripts/gen-style-surface.mjs'), '--check', dir, 'base', '--cache', join(cache, 'surface')], { cwd: root, encoding: 'utf8' });
+  execFileSync('npm', ['install', '--no-audit', '--no-fund', '--silent', `jsdom@${version}`], {
+    cwd: dir,
+    stdio: 'inherit',
+  });
+  const out = execFileSync(
+    process.execPath,
+    [join(root, 'scripts/gen-style-surface.mjs'), '--check', dir, 'base', '--cache', join(cache, 'surface')],
+    { cwd: root, encoding: 'utf8' },
+  );
   let cssstyle;
-  try { cssstyle = createRequire(join(dir, 'node_modules/jsdom/package.json'))('cssstyle/package.json').version; } catch { /* not found */ }
+  try {
+    cssstyle = createRequire(join(dir, 'node_modules/jsdom/package.json'))('cssstyle/package.json').version;
+  } catch {
+    /* not found */
+  }
   return { result: out.trim().split('\n').at(-1), cssstyle };
 }
 
@@ -67,7 +78,9 @@ if (newerJsdomWarning(jsdom) !== null) {
 }
 
 const style = styleCheck(jsdom);
-lines.push(`- style surface of jsdom@${jsdom} (cssstyle ${style.cssstyle ?? 'none'}) against the default profile: ${style.result}`);
+lines.push(
+  `- style surface of jsdom@${jsdom} (cssstyle ${style.cssstyle ?? 'none'}) against the default profile: ${style.result}`,
+);
 if (style.result.includes('DIFFERENT')) {
   findings.push({
     title: `Upstream: inline style surface of jsdom ${jsdom} with cssstyle ${style.cssstyle ?? 'none'} differs from warpdom's default profile`,
@@ -90,17 +103,30 @@ lines.push('', findings.length ? `## Findings (${findings.length})` : 'No findin
 for (const f of findings) lines.push(`- ${f.title}`);
 
 if (args.includes('--issues') && findings.length) {
-  const titles = new Set(JSON.parse(execFileSync('gh', ['issue', 'list', '--state', 'all', '--search', 'Upstream: in:title', '--limit', '200', '--json', 'title'], { encoding: 'utf8' })).map((i) => i.title));
+  const titles = new Set(
+    JSON.parse(
+      execFileSync(
+        'gh',
+        ['issue', 'list', '--state', 'all', '--search', 'Upstream: in:title', '--limit', '200', '--json', 'title'],
+        { encoding: 'utf8' },
+      ),
+    ).map((i) => i.title),
+  );
   for (const f of findings) {
-    if (titles.has(f.title)) { lines.push(`  (issue exists: ${f.title})`); continue; }
-    const url = execFileSync('gh', ['issue', 'create', '--title', f.title, '--body', f.body], { encoding: 'utf8' }).trim();
+    if (titles.has(f.title)) {
+      lines.push(`  (issue exists: ${f.title})`);
+      continue;
+    }
+    const url = execFileSync('gh', ['issue', 'create', '--title', f.title, '--body', f.body], {
+      encoding: 'utf8',
+    }).trim();
     lines.push(`  opened ${url}`);
   }
 }
 
 if (args.includes('--gap-issues')) {
   try {
-    lines.push(...await runGapIssues({ apply: Boolean(process.env.GH_TOKEN) }));
+    lines.push(...(await runGapIssues({ apply: Boolean(process.env.GH_TOKEN) })));
   } catch (error) {
     lines.push('', '## DOMParity API gaps', '', `- failed: ${error.message}`);
     process.exitCode = 1;

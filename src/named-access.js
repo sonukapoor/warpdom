@@ -92,12 +92,18 @@ export function namedPropertiesObject(window, holder, next) {
       if (value !== undefined) return { value, writable: true, enumerable: false, configurable: true };
       return Reflect.getOwnPropertyDescriptor(t, key);
     },
-    defineProperty() { return false; },
+    defineProperty() {
+      return false;
+    },
     deleteProperty(t, key) {
       return lookup(t, key) === undefined && Reflect.deleteProperty(t, key);
     },
-    setPrototypeOf() { return false; },
-    preventExtensions() { return false; },
+    setPrototypeOf() {
+      return false;
+    },
+    preventExtensions() {
+      return false;
+    },
   });
   return proxy;
 }
@@ -113,7 +119,8 @@ export function namedPropertiesObject(window, holder, next) {
 export function namedAccessPrototype(window, target) {
   let proxy = null;
   const lookup = (t, key) => {
-    if (typeof key !== 'string' || key === 'document' || Object.hasOwn(t, key) || key in Object.prototype) return undefined;
+    if (typeof key !== 'string' || key === 'document' || Object.hasOwn(t, key) || key in Object.prototype)
+      return undefined;
     const value = namedValue(window, key);
     return value === undefined || hidden(window, proxy, key) ? undefined : value;
   };

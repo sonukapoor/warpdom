@@ -22,12 +22,29 @@
 import vm from 'node:vm';
 
 const INTRINSICS = new Set(vm.runInNewContext('Object.getOwnPropertyNames(globalThis)'));
-const WELL_KNOWN = new Set(Object.getOwnPropertyNames(Symbol).map((name) => Symbol[name]).filter((s) => typeof s === 'symbol'));
+const WELL_KNOWN = new Set(
+  Object.getOwnPropertyNames(Symbol)
+    .map((name) => Symbol[name])
+    .filter((s) => typeof s === 'symbol'),
+);
 
 // Objects the window exposes; their members are walked whatever their
 // interface.
-const OBJECTS = ['document', 'navigator', 'location', 'history', 'screen', 'localStorage', 'sessionStorage', 'performance',
-  'crypto', 'customElements', 'console', 'CSS', 'visualViewport'];
+const OBJECTS = [
+  'document',
+  'navigator',
+  'location',
+  'history',
+  'screen',
+  'localStorage',
+  'sessionStorage',
+  'performance',
+  'crypto',
+  'customElements',
+  'console',
+  'CSS',
+  'visualViewport',
+];
 // Objects reached through those, for their interface (it may not be on the
 // window).
 const MORE = {
@@ -60,13 +77,56 @@ const MORE = {
 // SVG elements tests create (charts, icons), and the ones with an
 // interface of their own in jsdom (the walk records which interface each
 // gets).
-export const SVG_TAGS = ['svg', 'g', 'path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon', 'text', 'tspan',
-  'textPath', 'defs', 'use', 'symbol', 'image', 'foreignObject', 'linearGradient', 'radialGradient', 'stop', 'pattern',
-  'clipPath', 'mask', 'marker', 'filter', 'feGaussianBlur', 'feColorMatrix', 'feOffset', 'title', 'desc', 'metadata',
-  'switch', 'a', 'style', 'script', 'view', 'animate', 'set', 'animateTransform'];
+export const SVG_TAGS = [
+  'svg',
+  'g',
+  'path',
+  'rect',
+  'circle',
+  'ellipse',
+  'line',
+  'polyline',
+  'polygon',
+  'text',
+  'tspan',
+  'textPath',
+  'defs',
+  'use',
+  'symbol',
+  'image',
+  'foreignObject',
+  'linearGradient',
+  'radialGradient',
+  'stop',
+  'pattern',
+  'clipPath',
+  'mask',
+  'marker',
+  'filter',
+  'feGaussianBlur',
+  'feColorMatrix',
+  'feOffset',
+  'title',
+  'desc',
+  'metadata',
+  'switch',
+  'a',
+  'style',
+  'script',
+  'view',
+  'animate',
+  'set',
+  'animateTransform',
+];
 
 const kindOf = (d) => (d.get || d.set ? 'accessor' : typeof d.value === 'function' ? 'method' : 'data');
-const read = (object, key) => { try { return object[key]; } catch { return undefined; } };
+const read = (object, key) => {
+  try {
+    return object[key];
+  } catch {
+    return undefined;
+  }
+};
 const isObject = (value) => value !== null && (typeof value === 'object' || typeof value === 'function');
 // A key's name in a path, or null for one that is not walked.
 const keyName = (key) => {
@@ -77,7 +137,11 @@ const keyName = (key) => {
 export function apiSurface(window, htmlTags) {
   const out = new Map();
   const walked = new Set(); // prototypes already walked
-  const isBase = (o) => o === Object.prototype || o === window.Object?.prototype || o === Function.prototype || o === window.Function?.prototype;
+  const isBase = (o) =>
+    o === Object.prototype ||
+    o === window.Object?.prototype ||
+    o === Function.prototype ||
+    o === window.Function?.prototype;
   // A function's length, name and prototype; arguments and caller are a
   // sloppy-mode function's (jsdom's XPath interfaces), not API.
   const STATIC_SKIP = new Set(['length', 'name', 'prototype', 'arguments', 'caller']);
@@ -93,7 +157,8 @@ export function apiSurface(window, htmlTags) {
       for (const key of Reflect.ownKeys(o)) {
         const name = keyName(key);
         const path = `${label}.${name}`;
-        if (name !== null && name !== 'constructor' && !out.has(path)) out.set(path, kindOf(Object.getOwnPropertyDescriptor(o, key)));
+        if (name !== null && name !== 'constructor' && !out.has(path))
+          out.set(path, kindOf(Object.getOwnPropertyDescriptor(o, key)));
       }
     }
   };
@@ -128,7 +193,8 @@ export function apiSurface(window, htmlTags) {
   // The window, with what it inherits (Window, EventTarget).
   const windowNames = new Set();
   for (let o = window; o && !isBase(o); o = Object.getPrototypeOf(o)) {
-    for (const key of Reflect.ownKeys(o)) if (typeof key === 'string' && !INTRINSICS.has(key) && keyName(key) !== null) windowNames.add(key);
+    for (const key of Reflect.ownKeys(o))
+      if (typeof key === 'string' && !INTRINSICS.has(key) && keyName(key) !== null) windowNames.add(key);
   }
   // Reading every member first turns lazily created members (warpdom's
   // interfaces) into what they become.
@@ -153,7 +219,11 @@ export function apiSurface(window, htmlTags) {
   }
   for (const [label, get] of Object.entries(MORE)) {
     let value;
-    try { value = get(window); } catch { continue; }
+    try {
+      value = get(window);
+    } catch {
+      continue;
+    }
     if (isObject(value)) instance(value, label);
   }
   const doc = window.document;
@@ -188,7 +258,7 @@ export function differences(jsdom, warpdom) {
   for (const [path, value] of jsdom) {
     const ours = warpdom.get(path);
     if (ours === value) continue;
-    out.push([path, ours !== undefined ? `jsdom ${value}, warpdom ${ours}` : foundOn(warpdom, path) ?? 'missing']);
+    out.push([path, ours !== undefined ? `jsdom ${value}, warpdom ${ours}` : (foundOn(warpdom, path) ?? 'missing')]);
   }
   return out;
 }

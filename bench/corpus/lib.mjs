@@ -33,8 +33,10 @@ export function readCorpus(file) {
     if (!Array.isArray(p.packages) || !p.packages.length) throw new Error(`${corpusFile}: ${p.name} has no packages`);
     for (const pkg of p.packages) {
       if (typeof pkg.dir !== 'string') throw new Error(`${corpusFile}: ${p.name}: a package without "dir"`);
-      if (!['vitest', 'jest'].includes(pkg.runner)) throw new Error(`${corpusFile}: ${p.name} ${pkg.dir}: runner must be vitest or jest`);
-      if (pkg.args != null && !Array.isArray(pkg.args)) throw new Error(`${corpusFile}: ${p.name} ${pkg.dir}: "args" must be a list`);
+      if (!['vitest', 'jest'].includes(pkg.runner))
+        throw new Error(`${corpusFile}: ${p.name} ${pkg.dir}: runner must be vitest or jest`);
+      if (pkg.args != null && !Array.isArray(pkg.args))
+        throw new Error(`${corpusFile}: ${p.name} ${pkg.dir}: "args" must be a list`);
     }
   }
   return { file: corpusFile, projects: corpus.projects };
@@ -43,7 +45,9 @@ export function readCorpus(file) {
 // corpus.json is pinned in pins.json, any other <name>.json in <name>-pins.json.
 export function pinsFileFor(corpusFile) {
   const file = path.resolve(corpusFile);
-  return path.basename(file) === 'corpus.json' ? path.join(path.dirname(file), 'pins.json') : file.replace(/\.json$/, '-pins.json');
+  return path.basename(file) === 'corpus.json'
+    ? path.join(path.dirname(file), 'pins.json')
+    : file.replace(/\.json$/, '-pins.json');
 }
 
 export function readPins(corpusFile) {
@@ -62,7 +66,10 @@ export function projectDir(project, corpusFile, reposDir) {
 
 // File-name stem for a package directory ('.' would make hidden files).
 export function slugFor(dir) {
-  const slug = dir.replace(/^\.\/?/, '').replace(/[^\w.-]+/g, '_').replace(/^[._]+|[._]+$/g, '');
+  const slug = dir
+    .replace(/^\.\/?/, '')
+    .replace(/[^\w.-]+/g, '_')
+    .replace(/^[._]+|[._]+$/g, '');
   return slug || 'root';
 }
 
@@ -84,9 +91,12 @@ export function packageOptions(pkg) {
 // always included. Only the default pool is supported.
 export function parseConfigs(text) {
   const names = [];
-  for (const word of String(text).split(/[\s,]+/).filter(Boolean)) {
+  for (const word of String(text)
+    .split(/[\s,]+/)
+    .filter(Boolean)) {
     const m = /^(jsdom|warpdom|happy-dom)(?:-default)?$/.exec(word);
-    if (!m) throw new Error(`configuration ${word} is not supported (jsdom, warpdom or happy-dom, optionally with -default)`);
+    if (!m)
+      throw new Error(`configuration ${word} is not supported (jsdom, warpdom or happy-dom, optionally with -default)`);
     if (!names.includes(m[1])) names.push(m[1]);
   }
   if (!names.includes('warpdom')) names.push('warpdom');
@@ -125,11 +135,23 @@ export function projectRows(project, packages, { rounds, configs }) {
       let anyTests = false;
       for (const pkg of active) {
         const run = pkg.runs.find((r) => !r.warmup && r.round === round && r.config === config);
-        if (!run || !run.tests || run.ms == null) { complete = false; continue; }
+        if (!run || !run.tests || run.ms == null) {
+          complete = false;
+          continue;
+        }
         seconds += run.ms / 1000;
-        if (pkg.reference) { differs += countDiffering(pkg.reference, run.tests); anyTests = true; }
+        if (pkg.reference) {
+          differs += countDiffering(pkg.reference, run.tests);
+          anyTests = true;
+        }
       }
-      rows.push({ round, project, config: `${config}-default`, seconds: complete ? seconds : null, differs: anyTests ? differs : null });
+      rows.push({
+        round,
+        project,
+        config: `${config}-default`,
+        seconds: complete ? seconds : null,
+        differs: anyTests ? differs : null,
+      });
     }
   }
   return rows;
@@ -142,7 +164,8 @@ export function referenceTests(runs) {
   return (valid.find((r) => r.config === 'jsdom') ?? valid[0])?.tests ?? null;
 }
 
-export const csvLine = (r) => `${r.round},${r.project},${r.config},${r.seconds == null ? 'NA' : r.seconds.toFixed(1)},${r.differs == null ? 'NA' : r.differs}`;
+export const csvLine = (r) =>
+  `${r.round},${r.project},${r.config},${r.seconds == null ? 'NA' : r.seconds.toFixed(1)},${r.differs == null ? 'NA' : r.differs}`;
 
 export function appendRows(csvFile, rows) {
   fs.mkdirSync(path.dirname(path.resolve(csvFile)), { recursive: true });
@@ -160,7 +183,11 @@ function git(dir) {
   };
   const commit = run('rev-parse', 'HEAD');
   if (!commit) return null;
-  return { commit, branch: run('rev-parse', '--abbrev-ref', 'HEAD'), dirty: run('status', '--porcelain', '--untracked-files=no') !== '' };
+  return {
+    commit,
+    branch: run('rev-parse', '--abbrev-ref', 'HEAD'),
+    dirty: run('status', '--porcelain', '--untracked-files=no') !== '',
+  };
 }
 
 // The environment of a corpus run (as dom-api-tracer's record-env.mjs):
@@ -168,14 +195,23 @@ function git(dir) {
 // warpdom's commit, Node, OS, CPU, memory, load.
 export function environmentRecord({ corpus, reposDir, projects = null }) {
   let pins = {};
-  try { pins = readPins(corpus.file); } catch { /* no pins file */ }
+  try {
+    pins = readPins(corpus.file);
+  } catch {
+    /* no pins file */
+  }
   const checkouts = {};
   for (const p of corpus.projects) {
     if (projects && !projects.includes(p.name)) continue;
     const dir = projectDir(p, corpus.file, reposDir);
     const g = git(dir);
     checkouts[p.name] = fs.existsSync(dir)
-      ? { dir, ...g, pinned: pins[p.name]?.commit ?? null, matchesPin: Boolean(g?.commit && pins[p.name]?.commit === g.commit) }
+      ? {
+          dir,
+          ...g,
+          pinned: pins[p.name]?.commit ?? null,
+          matchesPin: Boolean(g?.commit && pins[p.name]?.commit === g.commit),
+        }
       : { dir, missing: true };
   }
   const cpus = os.cpus();
@@ -183,7 +219,11 @@ export function environmentRecord({ corpus, reposDir, projects = null }) {
     recordedAt: new Date().toISOString(),
     node: process.version,
     os: { platform: os.platform(), release: os.release(), version: os.version?.() ?? null, arch: os.arch() },
-    cpu: { model: cpus[0]?.model ?? null, cores: cpus.length, availableParallelism: os.availableParallelism?.() ?? null },
+    cpu: {
+      model: cpus[0]?.model ?? null,
+      cores: cpus.length,
+      availableParallelism: os.availableParallelism?.() ?? null,
+    },
     memory: { totalBytes: os.totalmem(), totalGiB: +(os.totalmem() / 2 ** 30).toFixed(1) },
     loadAverage: os.loadavg(),
     corpus: path.relative(WARPDOM_ROOT, corpus.file),

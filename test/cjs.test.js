@@ -21,13 +21,28 @@ const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 // context (by default one whose global object has no TextEncoder, as with
 // jest-environment-jsdom), with a require() that loads Node's built-in
 // modules and nothing else (Jest's cannot load ES modules such as parse5).
-function loadInContext(context = vm.createContext({ console, setTimeout, clearTimeout, setInterval, clearInterval, queueMicrotask, URL, DOMException })) {
+function loadInContext(
+  context = vm.createContext({
+    console,
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+    queueMicrotask,
+    URL,
+    DOMException,
+  }),
+) {
   const require = (name) => {
     if (!isBuiltin(name)) throw new Error(`require('${name}') in the sandbox`);
     return createRequire(bundleFile)(name);
   };
   const module = { exports: {} };
-  const wrapper = vm.runInContext(`(function (exports, require, module, __filename, __dirname) {${readFileSync(bundleFile, 'utf8')}\n})`, context, { filename: bundleFile });
+  const wrapper = vm.runInContext(
+    `(function (exports, require, module, __filename, __dirname) {${readFileSync(bundleFile, 'utf8')}\n})`,
+    context,
+    { filename: bundleFile },
+  );
   wrapper(module.exports, require, module, bundleFile, dirname(bundleFile));
   return { exports: module.exports, context };
 }
@@ -46,18 +61,27 @@ test('CommonJS build: works in a Jest-like VM context, without loading packages 
   // HTML (parse5), XML (@rgrove/parse-xml) and XPath (src/xpath.cjs) are bundled.
   document.body.innerHTML = '<p id="x">hi <b>there</b></p>';
   assert.equal(document.getElementById('x').textContent, 'hi there');
-  assert.equal(new window.DOMParser().parseFromString('<a><b/></a>', 'application/xml').documentElement.firstChild.tagName, 'b');
+  assert.equal(
+    new window.DOMParser().parseFromString('<a><b/></a>', 'application/xml').documentElement.firstChild.tagName,
+    'b',
+  );
   assert.equal(document.evaluate('//b', document, null, 9, null).singleNodeValue.tagName, 'B');
   // Platform globals come from Node, not the context's global object:
   // TextEncoder (missing there), crypto and performance.
   const bytes = new window.TextEncoder().encode('hé');
   assert.deepEqual([...bytes], [104, 195, 169]);
-  assert.ok(bytes instanceof vm.runInContext('Uint8Array', context), 'the bytes are of the context, as the window\'s are');
+  assert.ok(
+    bytes instanceof vm.runInContext('Uint8Array', context),
+    "the bytes are of the context, as the window's are",
+  );
   assert.match(window.crypto.randomUUID(), /^[0-9a-f-]{36}$/);
   assert.equal(typeof window.performance.now(), 'number');
   // Names kept, errors as from the ES modules.
   assert.equal(window.HTMLElement.name, 'HTMLElement');
-  assert.throws(() => document.createElement('1'), (e) => e.name === 'InvalidCharacterError');
+  assert.throws(
+    () => document.createElement('1'),
+    (e) => e.name === 'InvalidCharacterError',
+  );
   // Strict code, as the ES modules are.
   assert.match(readFileSync(bundleFile, 'utf8'), /^(\/\/.*\n)*'use strict';\n/);
 });
@@ -69,13 +93,41 @@ test('CommonJS build: loaded in a VM context with fake timers and a frozen Date 
     // Jest's fake timers in the test file's context: timers that never fire,
     // a Date that stands still.
     const frozen = Date.now();
-    class FrozenDate extends Date { static now() { return frozen; } }
-    const never = () => ({ ref() { return this; }, unref() { return this; }, hasRef: () => false, refresh() { return this; } });
-    const context = vm.createContext({ console, setTimeout: never, clearTimeout: () => {}, setInterval: never, clearInterval: () => {}, Date: FrozenDate, queueMicrotask, URL, DOMException });
+    class FrozenDate extends Date {
+      static now() {
+        return frozen;
+      }
+    }
+    const never = () => ({
+      ref() {
+        return this;
+      },
+      unref() {
+        return this;
+      },
+      hasRef: () => false,
+      refresh() {
+        return this;
+      },
+    });
+    const context = vm.createContext({
+      console,
+      setTimeout: never,
+      clearTimeout: () => {},
+      setInterval: never,
+      clearInterval: () => {},
+      Date: FrozenDate,
+      queueMicrotask,
+      URL,
+      DOMException,
+    });
     const { exports: warpdom } = loadInContext(context);
     const window = warpdom.createWindow({ url: `http://localhost:${server.port}/page/index.html` });
     const x = new window.XMLHttpRequest();
-    const fired = new Promise((resolve) => { x.ontimeout = () => resolve('timeout'); setTimeout(() => resolve('no timeout'), 2000); });
+    const fired = new Promise((resolve) => {
+      x.ontimeout = () => resolve('timeout');
+      setTimeout(() => resolve('no timeout'), 2000);
+    });
     x.open('GET', `http://localhost:${server.port}/hang`);
     x.timeout = 50;
     x.send();
@@ -91,13 +143,14 @@ test('CommonJS build: in a VM context without AbortController, preflighted reque
   try {
     const { exports: warpdom } = loadInContext();
     const window = warpdom.createWindow({ url: `http://localhost:${server.port}/page/index.html` });
-    const send = (method, url, stop) => new Promise((resolve) => {
-      const x = new window.XMLHttpRequest();
-      x.onloadend = () => resolve([x.status, x.responseText === '' ? '' : JSON.parse(x.responseText).method]);
-      x.open(method, url);
-      x.send('x');
-      if (stop) x.abort();
-    });
+    const send = (method, url, stop) =>
+      new Promise((resolve) => {
+        const x = new window.XMLHttpRequest();
+        x.onloadend = () => resolve([x.status, x.responseText === '' ? '' : JSON.parse(x.responseText).method]);
+        x.open(method, url);
+        x.send('x');
+        if (stop) x.abort();
+      });
     // Cross-origin PUT: a preflight first (it used req.controller.signal).
     assert.deepEqual(await send('PUT', `http://127.0.0.1:${server.port}/echo?acao=*&preflight=ok`), [200, 'PUT']);
     assert.deepEqual(await send('POST', `http://localhost:${server.port}/hang`, true), [0, '']);
@@ -115,7 +168,8 @@ test('CommonJS build: in a VM context without btoa, the jsdom 20 profile sends U
     const window = warpdom.createWindow({ url: `http://localhost:${server.port}/page/index.html`, jsdom: '20.0.3' });
     const authorization = await new Promise((resolve) => {
       const x = new window.XMLHttpRequest();
-      x.onloadend = () => resolve(x.status === 200 ? JSON.parse(x.responseText).headers.authorization : `status ${x.status}`);
+      x.onloadend = () =>
+        resolve(x.status === 200 ? JSON.parse(x.responseText).headers.authorization : `status ${x.status}`);
       x.open('GET', `http://%C3%A9:p@localhost:${server.port}/echo`);
       x.send();
     });
@@ -130,7 +184,10 @@ test('CommonJS build: in a VM context without atob and btoa, window.atob, window
   assert.equal(vm.runInContext('typeof atob + typeof btoa', context), 'undefinedundefined');
   const window = warpdom.createWindow({ url: 'https://example.com/' });
   assert.deepEqual([window.btoa('hi\u00e9'), window.atob('aGk=')], ['aGnp', 'hi']);
-  assert.throws(() => window.btoa('\u20ac'), (e) => e.name === 'InvalidCharacterError');
+  assert.throws(
+    () => window.btoa('\u20ac'),
+    (e) => e.name === 'InvalidCharacterError',
+  );
   const reader = new window.FileReader();
   const url = await new Promise((resolve, reject) => {
     reader.onload = () => resolve(reader.result);
@@ -152,7 +209,10 @@ test('CommonJS build: in the VM context of warpdom/jest, whose global object is 
   fake('jest-util', 'exports.installCommonGlobals = (g) => g;');
   fake('jest-mock', 'exports.ModuleMocker = class {};');
   fake('@jest/fake-timers', 'class T { dispose() {} }\nexports.LegacyFakeTimers = T; exports.ModernFakeTimers = T;');
-  const env = new WarpdomEnvironment({ globalConfig: {}, projectConfig: { rootDir: dir, testEnvironmentOptions: {} } }, {});
+  const env = new WarpdomEnvironment(
+    { globalConfig: {}, projectConfig: { rootDir: dir, testEnvironmentOptions: {} } },
+    {},
+  );
   try {
     await env.setup();
     const { exports: warpdom } = loadInContext(env.getVmContext());
@@ -206,7 +266,10 @@ test('export conditions: Node gets the ES modules, Jest the CommonJS build, Type
   for (const [path, value] of Object.entries(pkg.exports)) {
     if (path === './package.json') continue;
     const leaves = [];
-    const walk = (v) => { if (v.default && typeof v.default === 'string') leaves.push(v); else for (const x of Object.values(v)) walk(x); };
+    const walk = (v) => {
+      if (v.default && typeof v.default === 'string') leaves.push(v);
+      else for (const x of Object.values(v)) walk(x);
+    };
     walk(value);
     for (const leaf of leaves) assert.equal(Object.keys(leaf)[0], 'types', path);
   }
@@ -220,5 +283,8 @@ test('require("warpdom") in Node is the ES module (one copy for import and requi
 });
 
 test('the CommonJS types are a copy of the ES module types', () => {
-  assert.equal(readFileSync(join(root, 'dist/warpdom.d.cts'), 'utf8'), readFileSync(join(root, 'types/index.d.ts'), 'utf8'));
+  assert.equal(
+    readFileSync(join(root, 'dist/warpdom.d.cts'), 'utf8'),
+    readFileSync(join(root, 'types/index.d.ts'), 'utf8'),
+  );
 });

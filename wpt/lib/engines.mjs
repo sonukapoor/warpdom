@@ -22,7 +22,10 @@ export async function createEngine(name, { url, warpdomDir, log }) {
 async function createWarpdom(url, warpdomDir, log) {
   const src = (file) => import(pathToFileURL(join(warpdomDir, 'src', file)).href);
   const [{ createWindow }, { installWindow, VITEST_HOST_KEYS }, { S }, events] = await Promise.all([
-    src('node.js'), src('vitest.js'), src('internal.js'), src('events.js'),
+    src('node.js'),
+    src('vitest.js'),
+    src('internal.js'),
+    src('events.js'),
   ]);
   const window = createWindow({ url });
   // As the Vitest environment: the host's timers stay (warpdom's window
@@ -39,7 +42,11 @@ async function createWarpdom(url, warpdomDir, log) {
     const value = window[key];
     const descriptor = Object.getOwnPropertyDescriptor(window, key);
     if (typeof value !== 'function' && typeof value !== 'object') continue;
-    Object.defineProperty(globalThis, key, 'value' in descriptor ? descriptor : { value, writable: true, enumerable: false, configurable: true });
+    Object.defineProperty(
+      globalThis,
+      key,
+      'value' in descriptor ? descriptor : { value, writable: true, enumerable: false, configurable: true },
+    );
   }
   // Named access (window[id], and ids as global variables): the global is
   // the window here, as in a browser. Checkouts before named access lack it.
@@ -59,7 +66,9 @@ async function createWarpdom(url, warpdomDir, log) {
     reportError: (error) => events.reportError(window, error),
     // The parser sets the document's mode from the page's doctype (quirks
     // without one); the runner parses with DOMParser, so the mode is copied.
-    adoptDocumentMode: (parsed) => { if (parsed[S]?.mode) window.document[S].mode = parsed[S].mode; },
+    adoptDocumentMode: (parsed) => {
+      if (parsed[S]?.mode) window.document[S].mode = parsed[S].mode;
+    },
     // Events the page load fires (DOMContentLoaded, load, a script's load
     // and error) are trusted in a browser; warpdom can fire them so.
     fire: (target, event) => events.dispatch(target === globalThis ? window : target, event),
@@ -93,7 +102,10 @@ async function createJsdom(url, warpdomDir, log) {
     evaluateModule: (code, url, load) => evaluateModule(code, url, context, load),
     reportError: (error) => {
       if (typeof window.reportError === 'function') window.reportError(error);
-      else window.dispatchEvent(new window.ErrorEvent('error', { error, message: String(error?.message ?? error), cancelable: true }));
+      else
+        window.dispatchEvent(
+          new window.ErrorEvent('error', { error, message: String(error?.message ?? error), cancelable: true }),
+        );
     },
     dispatchRejection: (reason, promise) => dispatchRejection(window, reason, promise),
     // No public API fires trusted events in jsdom; these are untrusted.
@@ -113,7 +125,9 @@ async function evaluateModule(code, url, context, load) {
       module = new vm.SourceTextModule(source, {
         identifier: id,
         context,
-        initializeImportMeta(meta) { meta.url = id; },
+        initializeImportMeta(meta) {
+          meta.url = id;
+        },
         importModuleDynamically: async (specifier, referrer) => {
           const imported = await resolve(specifier, referrer);
           await imported.link(resolve);

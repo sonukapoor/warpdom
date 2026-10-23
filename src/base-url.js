@@ -12,7 +12,10 @@ import { writeAttribute } from './attributes.js';
 // The document's URL: its own, else its window's; for an iframe's
 // about:blank document, its creator's base URL (frames.js: the creator
 // document's, or the one kept from the first use).
-export const fallbackBaseURL = (doc) => { const ds = doc[S]; return ds.url ?? (ds.aboutBase === undefined ? ds.window[S].url : aboutBaseURL(ds)); };
+export const fallbackBaseURL = (doc) => {
+  const ds = doc[S];
+  return ds.url ?? (ds.aboutBase === undefined ? ds.window[S].url : aboutBaseURL(ds));
+};
 function aboutBaseURL(ds) {
   if (typeof ds.aboutBase === 'string') return ds.aboutBase;
   const url = toString(documentBaseURL(ds.aboutBase));
@@ -26,7 +29,11 @@ const toString = (url) => (typeof url === 'string' ? url : url.href);
 // document's fallback base URL; the fallback itself when that fails.
 function frozenBaseURL(base) {
   const fallback = toString(fallbackBaseURL(base[S].doc));
-  try { return new URL(base[S].attrs.get('href'), fallback).href; } catch { return fallback; }
+  try {
+    return new URL(base[S].attrs.get('href'), fallback).href;
+  } catch {
+    return fallback;
+  }
 }
 
 function firstBase(doc) {
@@ -65,7 +72,14 @@ export const BASE_MEMBERS = {
     const fallback = toString(fallbackBaseURL(s.doc));
     const raw = s.attrs.get('href');
     if (raw === undefined) return fallback;
-    try { return new URL(raw, fallback).href; } catch { return raw; }
+    try {
+      return new URL(raw, fallback).href;
+    } catch {
+      return raw;
+    }
   },
-  set href(v) { state(this); writeAttribute(this, 'href', String(v)); },
+  set href(v) {
+    state(this);
+    writeAttribute(this, 'href', String(v));
+  },
 };

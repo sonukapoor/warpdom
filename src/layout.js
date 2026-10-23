@@ -5,8 +5,22 @@
 // Also innerText and outerText, which depend on rendering (below; kept in
 // this module rather than their own, as each module file adds load time).
 import {
-  S, state, hiddenSlot, ELEMENT_NODE, TEXT_NODE, CDATA_SECTION_NODE, HTML_NS, SVG_NS,
-  connected, textOf, insert, replaceAll, replace, replaceData, remove, domError,
+  S,
+  state,
+  hiddenSlot,
+  ELEMENT_NODE,
+  TEXT_NODE,
+  CDATA_SECTION_NODE,
+  HTML_NS,
+  SVG_NS,
+  connected,
+  textOf,
+  insert,
+  replaceAll,
+  replace,
+  replaceData,
+  remove,
+  domError,
 } from './internal.js';
 import { computedValue } from './cascade.js';
 import { findSlot } from './slots.js';
@@ -17,25 +31,69 @@ export const ELEMENT_LAYOUT = {
     state(this);
     return { x: 0, y: 0, bottom: 0, height: 0, left: 0, right: 0, top: 0, width: 0 };
   },
-  getClientRects() { state(this); return []; },
-  get clientWidth() { state(this); return 0; },
-  get clientHeight() { state(this); return 0; },
-  get clientTop() { state(this); return 0; },
-  get clientLeft() { state(this); return 0; },
-  get scrollWidth() { state(this); return 0; },
-  get scrollHeight() { state(this); return 0; },
-  get scrollTop() { return state(this).scrollTop ?? 0; },
-  set scrollTop(v) { state(this).scrollTop = toDouble(v); },
-  get scrollLeft() { return state(this).scrollLeft ?? 0; },
-  set scrollLeft(v) { state(this).scrollLeft = toDouble(v); },
+  getClientRects() {
+    state(this);
+    return [];
+  },
+  get clientWidth() {
+    state(this);
+    return 0;
+  },
+  get clientHeight() {
+    state(this);
+    return 0;
+  },
+  get clientTop() {
+    state(this);
+    return 0;
+  },
+  get clientLeft() {
+    state(this);
+    return 0;
+  },
+  get scrollWidth() {
+    state(this);
+    return 0;
+  },
+  get scrollHeight() {
+    state(this);
+    return 0;
+  },
+  get scrollTop() {
+    return state(this).scrollTop ?? 0;
+  },
+  set scrollTop(v) {
+    state(this).scrollTop = toDouble(v);
+  },
+  get scrollLeft() {
+    return state(this).scrollLeft ?? 0;
+  },
+  set scrollLeft(v) {
+    state(this).scrollLeft = toDouble(v);
+  },
 };
 
 export const HTML_ELEMENT_LAYOUT = {
-  get offsetParent() { state(this); return null; },
-  get offsetWidth() { state(this); return 0; },
-  get offsetHeight() { state(this); return 0; },
-  get offsetTop() { state(this); return 0; },
-  get offsetLeft() { state(this); return 0; },
+  get offsetParent() {
+    state(this);
+    return null;
+  },
+  get offsetWidth() {
+    state(this);
+    return 0;
+  },
+  get offsetHeight() {
+    state(this);
+    return 0;
+  },
+  get offsetTop() {
+    state(this);
+    return 0;
+  },
+  get offsetLeft() {
+    state(this);
+    return 0;
+  },
 };
 
 function toDouble(v) {
@@ -69,15 +127,35 @@ export const GEOMETRY_INTERFACES = [
     construct: (w, self, [x, y, width, height]) => rect(self, x, y, width, height),
     statics: { fromRect },
     members: {
-      get x() { return r(this).x; },
-      get y() { return r(this).y; },
-      get width() { return r(this).width; },
-      get height() { return r(this).height; },
+      get x() {
+        return r(this).x;
+      },
+      get y() {
+        return r(this).y;
+      },
+      get width() {
+        return r(this).width;
+      },
+      get height() {
+        return r(this).height;
+      },
       // Math.min/max propagate NaN, as the spec intends.
-      get top() { const s = r(this); return Math.min(s.y, s.y + s.height); },
-      get right() { const s = r(this); return Math.max(s.x, s.x + s.width); },
-      get bottom() { const s = r(this); return Math.max(s.y, s.y + s.height); },
-      get left() { const s = r(this); return Math.min(s.x, s.x + s.width); },
+      get top() {
+        const s = r(this);
+        return Math.min(s.y, s.y + s.height);
+      },
+      get right() {
+        const s = r(this);
+        return Math.max(s.x, s.x + s.width);
+      },
+      get bottom() {
+        const s = r(this);
+        return Math.max(s.y, s.y + s.height);
+      },
+      get left() {
+        const s = r(this);
+        return Math.min(s.x, s.x + s.width);
+      },
       toJSON() {
         const { x, y, width, height, top, right, bottom, left } = this;
         return { x, y, width, height, top, right, bottom, left };
@@ -90,14 +168,30 @@ export const GEOMETRY_INTERFACES = [
     construct: (w, self, [x, y, width, height]) => rect(self, x, y, width, height),
     statics: { fromRect },
     members: {
-      get x() { return r(this).x; },
-      set x(v) { r(this).x = Number(v); },
-      get y() { return r(this).y; },
-      set y(v) { r(this).y = Number(v); },
-      get width() { return r(this).width; },
-      set width(v) { r(this).width = Number(v); },
-      get height() { return r(this).height; },
-      set height(v) { r(this).height = Number(v); },
+      get x() {
+        return r(this).x;
+      },
+      set x(v) {
+        r(this).x = Number(v);
+      },
+      get y() {
+        return r(this).y;
+      },
+      set y(v) {
+        r(this).y = Number(v);
+      },
+      get width() {
+        return r(this).width;
+      },
+      set width(v) {
+        r(this).width = Number(v);
+      },
+      get height() {
+        return r(this).height;
+      },
+      set height(v) {
+        r(this).height = Number(v);
+      },
     },
   },
 ];
@@ -116,15 +210,51 @@ export const GEOMETRY_INTERFACES = [
 
 // Elements whose contents are not rendered as text (replaced elements and
 // embedded content): they are atomic inlines with no text.
-const REPLACED = new Set(['img', 'input', 'textarea', 'iframe', 'video', 'audio', 'canvas', 'object', 'embed', 'meter', 'progress']);
-const TABLE_INTERNAL = new Set(['table', 'inline-table', 'table-row-group', 'table-header-group', 'table-footer-group', 'table-row',
-  'table-column-group', 'table-column']);
-const BLOCK_LEVEL = new Set(['block', 'list-item', 'table', 'flex', 'grid', 'flow-root', 'table-caption', 'ruby-base-container']);
+const REPLACED = new Set([
+  'img',
+  'input',
+  'textarea',
+  'iframe',
+  'video',
+  'audio',
+  'canvas',
+  'object',
+  'embed',
+  'meter',
+  'progress',
+]);
+const TABLE_INTERNAL = new Set([
+  'table',
+  'inline-table',
+  'table-row-group',
+  'table-header-group',
+  'table-footer-group',
+  'table-row',
+  'table-column-group',
+  'table-column',
+]);
+const BLOCK_LEVEL = new Set([
+  'block',
+  'list-item',
+  'table',
+  'flex',
+  'grid',
+  'flow-root',
+  'table-caption',
+  'ruby-base-container',
+]);
 const ATOMIC = new Set(['inline-block', 'inline-flex', 'inline-grid', 'inline-table', 'inline flow-root']);
 // SVG elements that render no text.
 const SVG_TEXT = new Set(['text', 'tspan', 'textPath']);
 // White-space of elements whose user agent style sets it (HTML 15.3.3).
-const UA_WHITE_SPACE = new Map([['pre', 'pre'], ['listing', 'pre'], ['xmp', 'pre'], ['plaintext', 'pre'], ['textarea', 'pre-wrap'], ['nobr', 'nowrap']]);
+const UA_WHITE_SPACE = new Map([
+  ['pre', 'pre'],
+  ['listing', 'pre'],
+  ['xmp', 'pre'],
+  ['plaintext', 'pre'],
+  ['textarea', 'pre-wrap'],
+  ['nobr', 'nowrap'],
+]);
 
 const isHTML = (el) => el[S].ns === HTML_NS;
 const isElement = (n) => n[S].type === ELEMENT_NODE;
@@ -157,7 +287,12 @@ function childRendered(parent, child) {
     }
     // noscript content is not rendered when scripting is enabled.
     if (ps.tag === 'noscript') return false;
-    if (ps.tag === 'select' || (ps.tag === 'optgroup' && inSelect(parent))) return isElement(child) && isHTML(child) && (child[S].tag === 'option' || (child[S].tag === 'optgroup' && ps.tag === 'select'));
+    if (ps.tag === 'select' || (ps.tag === 'optgroup' && inSelect(parent)))
+      return (
+        isElement(child) &&
+        isHTML(child) &&
+        (child[S].tag === 'option' || (child[S].tag === 'optgroup' && ps.tag === 'select'))
+      );
     return true;
   }
   if (ps.ns === SVG_NS) {
@@ -167,8 +302,23 @@ function childRendered(parent, child) {
   }
   return true;
 }
-const SVG_HIDDEN = new Set(['defs', 'clipPath', 'mask', 'pattern', 'linearGradient', 'radialGradient', 'stop', 'symbol', 'marker',
-  'title', 'desc', 'metadata', 'filter', 'style', 'script']);
+const SVG_HIDDEN = new Set([
+  'defs',
+  'clipPath',
+  'mask',
+  'pattern',
+  'linearGradient',
+  'radialGradient',
+  'stop',
+  'symbol',
+  'marker',
+  'title',
+  'desc',
+  'metadata',
+  'filter',
+  'style',
+  'script',
+]);
 
 const inSelect = (el) => {
   const p = el[S].parent;
@@ -185,7 +335,7 @@ function firstSummary(details) {
 // display: none or content that is not rendered.
 function beingRendered(el) {
   if (el[S].doc[S].noView || !connected(el)) return false;
-  for (let n = el; n; ) {
+  for (let n = el; n;) {
     if (isElement(n) && display(n) === 'none') return false;
     const p = flatParent(n);
     if (p === null) return true;
@@ -206,12 +356,17 @@ class Builder {
 
   content(text) {
     if (text === '') return;
-    if (this.pending) { this.out.push(' '); this.pending = false; }
+    if (this.pending) {
+      this.out.push(' ');
+      this.pending = false;
+    }
     this.out.push(text);
     this.lineStart = false;
   }
 
-  space() { if (!this.lineStart) this.pending = true; }
+  space() {
+    if (!this.lineStart) this.pending = true;
+  }
 
   // A forced line break (br, a preserved newline): spaces before it go.
   hard(text) {
@@ -229,7 +384,10 @@ class Builder {
 
   // An atomic inline: content outside, its own lines inside.
   open() {
-    if (this.pending) { this.out.push(' '); this.pending = false; }
+    if (this.pending) {
+      this.out.push(' ');
+      this.pending = false;
+    }
     this.lineStart = true;
   }
 
@@ -247,7 +405,10 @@ class Builder {
     let text = '';
     for (let i = start; i < end; i++) {
       const item = out[i];
-      if (typeof item !== 'number') { text += item; continue; }
+      if (typeof item !== 'number') {
+        text += item;
+        continue;
+      }
       let max = item;
       while (i + 1 < end && typeof out[i + 1] === 'number') max = Math.max(max, out[++i]);
       text += '\n'.repeat(max);
@@ -266,8 +427,10 @@ function transform(text, mode, el) {
       const lang = el ? languageOf(el) : '';
       return lang ? text.toLocaleLowerCase(lang) : text.toLowerCase();
     }
-    case 'capitalize': return text.replace(/(^|[^\p{L}\p{N}'’])(\p{L})/gu, (m, before, letter) => before + letter.toUpperCase());
-    default: return text;
+    case 'capitalize':
+      return text.replace(/(^|[^\p{L}\p{N}'’])(\p{L})/gu, (m, before, letter) => before + letter.toUpperCase());
+    default:
+      return text;
   }
 }
 
@@ -275,7 +438,11 @@ function languageOf(el) {
   for (let n = el; n && isElement(n); n = n[S].parent) {
     const lang = n[S].attrs.get('lang');
     if (lang !== undefined) {
-      try { return Intl.getCanonicalLocales(lang)[0] ?? ''; } catch { return ''; }
+      try {
+        return Intl.getCanonicalLocales(lang)[0] ?? '';
+      } catch {
+        return '';
+      }
     }
   }
   return '';
@@ -360,7 +527,10 @@ function isLastRow(row) {
     if (isElement(n)) {
       const d = display(n);
       if (d === 'table-row') return false;
-      if (d === 'table' || d === 'inline-table' || d === 'none') { n = next(n, true); continue; }
+      if (d === 'table' || d === 'inline-table' || d === 'none') {
+        n = next(n, true);
+        continue;
+      }
     }
     n = next(n, false);
   }
@@ -385,13 +555,22 @@ function collect(b, node, ctx) {
   const visible = visibility === 'visible';
   const child = {
     visible,
-    ws: html && UA_WHITE_SPACE.has(s.tag) && computedValue(node, 'white-space') === '' ? UA_WHITE_SPACE.get(s.tag) : inheritedOr(node, 'white-space', ctx.ws),
+    ws:
+      html && UA_WHITE_SPACE.has(s.tag) && computedValue(node, 'white-space') === ''
+        ? UA_WHITE_SPACE.get(s.tag)
+        : inheritedOr(node, 'white-space', ctx.ws),
     tt: inheritedOr(node, 'text-transform', ctx.tt),
     el: node,
     tableInternal: TABLE_INTERNAL.has(d),
   };
-  if (d === 'contents') { children(b, node, child); return; }
-  if (html && s.tag === 'br') { if (visible) b.hard('\n'); return; }
+  if (d === 'contents') {
+    children(b, node, child);
+    return;
+  }
+  if (html && s.tag === 'br') {
+    if (visible) b.hard('\n');
+    return;
+  }
   const replaced = html && REPLACED.has(s.tag);
   let kind = ctx.blockify ? 'block' : 'inline';
   if (BLOCK_LEVEL.has(d) || (html && (s.tag === 'option' || s.tag === 'optgroup'))) kind = 'block';
@@ -408,7 +587,7 @@ function collect(b, node, ctx) {
   child.blockify = flex;
   // A p gets two required line breaks, other block-level boxes one.
   const p = html && s.tag === 'p' ? 2 : null;
-  const before = !visible ? null : p ?? (kind === 'block' ? 1 : kind === 'atomic' || kind === 'inline' ? null : 0);
+  const before = !visible ? null : (p ?? (kind === 'block' ? 1 : kind === 'atomic' || kind === 'inline' ? null : 0));
   if (kind === 'atomic') {
     if (p !== null && visible) b.count(2);
     b.open();
@@ -442,7 +621,10 @@ export function getInnerText(el) {
   const visible = inheritedOr(el, 'visibility', 'visible') === 'visible';
   const ctx = {
     visible,
-    ws: s.ns === HTML_NS && UA_WHITE_SPACE.has(s.tag) && computedValue(el, 'white-space') === '' ? UA_WHITE_SPACE.get(s.tag) : ancestorWhiteSpace(el),
+    ws:
+      s.ns === HTML_NS && UA_WHITE_SPACE.has(s.tag) && computedValue(el, 'white-space') === ''
+        ? UA_WHITE_SPACE.get(s.tag)
+        : ancestorWhiteSpace(el),
     tt: ancestorValue(el, 'text-transform', 'none'),
     el,
     tableInternal: TABLE_INTERNAL.has(d),
