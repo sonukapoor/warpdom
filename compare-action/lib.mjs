@@ -236,8 +236,8 @@ export function renderSummary(result, options = {}) {
   const title = `### warpdom compare: \`${cell(workingDirectory, 120)}\``;
   const footer = [
     '',
-    '<sub>By the warpdom compare action: your tests and config are unchanged; ' +
-      'warpdom is installed for this job only. See https://github.com/sonukapoor/warpdom/blob/main/docs/compare.md</sub>',
+    '<sub>By the warpdom compare action: your tests, config and dependencies are unchanged. ' +
+      'See https://github.com/sonukapoor/warpdom/blob/main/docs/compare.md</sub>',
   ];
   if (skipped) return [title, '', skipped, ...footer].join('\n') + '\n';
   if (!result) {
