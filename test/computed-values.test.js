@@ -850,6 +850,23 @@ const SHEET_CHANGES = {
     (d) => d.head.firstChild.appendChild(d.createTextNode(' ')),
   ],
   moved: [['.a > td { color: blue }', '.b > td { color: red }'], (d) => d.head.prepend(d.head.lastChild)],
+  // A comment or an element in a style element does not make a new sheet.
+  comment: [
+    ['.a > td { color: blue }', '.b > td { color: red }'],
+    (d) => d.head.firstChild.appendChild(d.createComment('c')),
+  ],
+  element: [
+    ['.a > td { color: blue }', '.b > td { color: red }'],
+    (d) => d.head.firstChild.appendChild(d.createElement('b')),
+  ],
+  // A moved style element's sheet is made again from its text.
+  movedAfterEdit: [
+    ['.a > td { color: red }', '.b > td { color: red }'],
+    (d) => {
+      d.styleSheets[1].cssRules[0].style.color = 'blue';
+      d.head.prepend(d.head.lastChild);
+    },
+  ],
   insertRule: [['.a > td { color: blue }', '.b > td { color: red }'], (d) => d.styleSheets[0].insertRule('td { }', 1)],
   ruleStyle: [
     ['.a.b > td { color: red } td { color: blue }'],
