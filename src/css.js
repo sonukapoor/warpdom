@@ -1617,10 +1617,11 @@ function readOnly() {
 }
 
 // Writes to computed styles, which tests use to fake a layout (react-aria
-// sets position on the result of getComputedStyle). jsdom before 28 let
-// any write change that one object; since 28, setting a property changes
-// that object and the element's computed value until its document
-// changes, and the methods throw as the standard says.
+// sets position on the result of getComputedStyle). jsdom before 28.1.0
+// (black box: 28.0.0 still does) let any write change that one object;
+// since 28.1.0, setting a property changes that object and the element's
+// computed value until its document changes, and the methods throw as the
+// standard says.
 const mutableComputed = (s) => s.element[S].doc[S].window[S].compat.mutableComputedStyle;
 
 function computedOverride(s, name) {
@@ -1635,13 +1636,13 @@ function computedOverride(s, name) {
 function writeComputed(s, name, value) {
   const raw = value === null ? '' : String(value).trim();
   if (mutableComputed(s)) {
-    // As on el.style (black box, jsdom 20 to 27.4): an empty value removes
+    // As on el.style (black box, jsdom 20 to 28.0.0): an empty value removes
     // the property, an invalid one is ignored, others are serialized.
     const text = raw === '' ? '' : declaredValue(name, raw, s.mode, s.surface);
     if (text !== INVALID) (s.overrides ??= new Map()).set(name, text);
     return;
   }
-  // Removing a declaration from a computed style throws, as in jsdom 28+.
+  // Removing a declaration from a computed style throws, as from jsdom 28.1.0.
   if (raw === '') readOnly();
   const text = declaredValue(name, raw, s.mode, s.surface);
   if (text === INVALID) return;

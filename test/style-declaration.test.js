@@ -255,10 +255,11 @@ for (const jsdom of [20, 22, 25, 26, 27, 28, 29]) {
   );
 }
 
-// Writes to the computed object before jsdom 28 go through the same
-// setters as el.style (black box, jsdom 20 to 27.4): azimuth is converted
+// Writes to the computed object before jsdom 28.1.0 go through the same
+// setters as el.style (black box, jsdom 20 to 28.0.0): azimuth is converted
 // or ignored as there, invalid values are ignored, an empty value removes
-// the property; from 28 the setters still validate and the methods throw.
+// the property; from 28.1.0 the setters still validate and the methods
+// throw.
 for (const jsdom of [20, 22, 25, 26, 27, 28]) {
   parity(
     `jsdom ${jsdom}: writes to the computed style`,

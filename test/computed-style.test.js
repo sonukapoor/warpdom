@@ -453,7 +453,7 @@ test("getComputedStyle: the user agent sheet's !important declarations win from 
 });
 
 // Writes to computed styles (react-aria fakes a layout this way): jsdom
-// before 28 lets every write change that object; from 28, setting a
+// before 28.1.0 lets every write change that object; from 28.1.0, setting a
 // property changes the element's value until the document changes.
 const computedWrites = (w) => {
   const d = w.document;

@@ -1620,7 +1620,7 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
   return {
     version: jsdom,
     jsdom: version[0],
-    mutableComputedStyle: version[0] < 28,
+    mutableComputedStyle: before(version, [28, 1, 0]),
     // Computed style (cascade.js), black box per release: before 29.0.2
     // undeclared properties compute to '' and CSS-wide keywords to
     // themselves (jsdom 29.0.0 and 29.0.1 too); unset to '' before 28.1
@@ -1693,6 +1693,12 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // !important ones (cascade.js cascadeByOrder); before 28.1.0 all
     // declarations meet by order (documentOrder).
     pendingByOrder: pendingLonghands ? pendingByOrderMode(version) : null,
+    // A declaration with var() in a style rule is not !important (black
+    // box: its rule's cssText drops the !important from jsdom 27.1.0 to
+    // 29.1.1; in the cascade, where !important counts from 28.1.0, from
+    // 28.1.0 to 29.1.1: padding: var(--p) !important does not override
+    // padding: 1px !important). Custom properties keep it (cascade.js).
+    varDropsImportant: !before(version, [28, 1, 0]) && version[0] <= 29,
     // cssstyle's font shorthand before 4.4 (shorthands.js legacyFont).
     legacyFont: css === null || !before(css, [4, 4, 0]) ? null : before(css, [4, 2, 0]) ? 'cssstyle4.1' : 'cssstyle4.2',
     // cssstyle 4.4 and later: the computed style's background and border

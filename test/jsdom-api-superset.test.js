@@ -9,6 +9,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
 import { createWindow } from '../src/node.js';
 import { NEWEST_MODELED_JSDOM } from '../src/window-features.js';
 import { HTML_ELEMENTS, PLAIN_TAGS } from '../src/html-elements.js';
@@ -134,6 +136,35 @@ for (const alias of ALIASES) {
     );
   });
 }
+
+// Each alias loads the cssstyle it depends on, as a single-jsdom install
+// does (#138): jsdom 27.1.0 to 28.1.0 parse style sheets with
+// @acemir/cssom, which requires cssstyle without declaring it and so gets
+// the one npm puts next to it. package.json holds the root @acemir/cssom
+// slot with an empty package (test/fixtures/acemir-cssom-slot), so npm
+// nests the real one under each alias, next to that jsdom's cssstyle.
+// Checked in a process per alias: every cssstyle module loaded once a
+// window has parsed a style sheet.
+test('every jsdom alias loads its own cssstyle only', () => {
+  const probe = `
+    const { JSDOM } = require(process.argv[1]);
+    new JSDOM('<style>div { color: var(--c) }</style><div></div>').window.document.styleSheets[0].cssRules[0].style.cssText;
+    const dirs = new Set();
+    for (const file of Object.keys(require.cache)) {
+      const match = /^(.*[\\/]node_modules[\\/]cssstyle)[\\/]/.exec(file);
+      if (match) dirs.add(match[1]);
+    }
+    console.log(JSON.stringify([...dirs]));`;
+  for (const alias of ALIASES) {
+    const manifest = require.resolve(`${alias}/package.json`);
+    if (!require(manifest).dependencies?.cssstyle) continue;
+    const own = path.dirname(createRequire(manifest).resolve('cssstyle/package.json'));
+    const loaded = JSON.parse(
+      execFileSync(process.execPath, ['-e', probe, path.dirname(manifest)], { encoding: 'utf8' }),
+    );
+    assert.deepEqual(loaded, [own], alias);
+  }
+});
 
 test('the versions cover every major from 20 to 30 and the newest modeled', () => {
   const versions = ALIASES.map((alias) => require(`${alias}/package.json`).version);

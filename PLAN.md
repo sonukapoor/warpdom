@@ -3944,9 +3944,9 @@ parses style sheets with the cssstyle `@acemir/cssom` resolves, and the
 jsdoms install had a hoisted cssstyle 2.3.0 next to it (sheets then drop
 CSS 4 system colors, fit-content, uppercase units, use the old hsl() and
 hex alpha). Clean installs (jsdoms-36) keep them; warpdom follows the clean
-install. The repository's jsdom27/28 aliases resolve the root cssstyle
-4.6.0 there too, so parity scenarios for 27/28 avoid sheet values where
-4.6 and 5.3 differ. Projects with jest-environment-jsdom 29 beside jsdom
+install. The repository's jsdom27/28 aliases resolved the root cssstyle
+4.6.0 there too, so parity scenarios for 27/28 avoided sheet values where
+4.6 and 5.3 differ (fixed by #138: each alias now loads its own). Projects with jest-environment-jsdom 29 beside jsdom
 27+ can hit the artifact for real; not modeled.
 
 Implementation: colors.js (jsdom's system color table, the CSS 2 set,
@@ -4310,3 +4310,51 @@ parent.
 Measurement matrix (145 cases x 18 releases, scratchpad m121): 579
 case-release differences fixed, none added; differences left are #136,
 #137, #113's in-order block model and older pre-existing ones.
+
+## 2026-10-24: each jsdom alias loads its own cssstyle (branch fix/jsdom-alias-cssstyle, #138)
+
+- Problem: jsdom 27.1.0 to 28.1.0 parse style sheets with @acemir/cssom,
+  which requires cssstyle without declaring it. In the devDependency tree
+  one @acemir/cssom was hoisted to the root and resolved the root cssstyle
+  (4.6.0, for jsdom23/24/26), so jsdom27 (27.4.0) and jsdom28 (28.1.0)
+  loaded two cssstyles: their own for the style attribute and 4.6.0 for
+  sheets. A single-jsdom install loads one: 5.3.7 for 27.1.x to 28.0.x,
+  6.2.0 for 28.1.0 (checked through require.cache after a window parses a
+  sheet, scratchpad/jsdoms-clean). The shared scratch install (jsdoms,
+  cssstyle 2.3.0 at the root) was worse: sheets dropped var() and CSS-wide
+  keyword declarations for 27.1 to 28.1.
+- Fix: a root devDependency "@acemir/cssom":
+  "file:test/fixtures/acemir-cssom-slot" (an empty private package) holds
+  the root slot, so npm nests the real @acemir/cssom under jsdom27 and
+  jsdom28, where it resolves that jsdom's cssstyle exactly as jsdom does.
+  Chosen over npm overrides (an override replaces a version on an existing
+  edge; @acemir/cssom has no cssstyle edge to override, and one shared copy
+  serves both aliases), nested per-version installs (an extra install step
+  and cache in CI, imports by path in the tests) and a resolution shim (one
+  module instance is shared by both aliases, so a shim cannot give each its
+  own cssstyle). No CI change: npm ci installs the link. The guard test
+  (jsdom-api-superset.test.js) checks in a process per alias that only the
+  alias's own cssstyle is loaded once a sheet is parsed.
+- Re-run: one parity test changed result, "shorthands with var(), per
+  version (jsdom 28)": jsdom 28.1.0 with its own cssstyle gives padding 1px
+  for .i { padding: 1px !important } .j { padding: var(--p) !important }.
+  Black box (clean installs of 26.1.0 to 30.1.3): from 27.1.0 to 29.1.1 a
+  declaration with var() in a style rule loses its !important (rule
+  cssText "padding: var(--p);", priority ''), custom properties keep it;
+  the cascade shows it from 28.1.0 (before, rules apply in document order,
+  #139). warpdom: compat.varDropsImportant (28.1.0 to 29.1.1) makes such
+  declarations normal in the rule index; it replaces the two jsdom 29
+  special cases ("an !important shorthand with var() does not override
+  another !important one"). Checked on 12 cascade cases on 27.4.0, 28.0.0,
+  28.1.0, 29.0.0, 29.1.1 and 30.1.3.
+- The parity scenarios for 27 and 28 were also run against clean installs
+  of 27.0.1, 27.1.0, 27.2.0, 27.3.0, 27.4.0, 28.0.0 and 28.1.0 with each
+  release's own profile: 28.0.0 still lets tests write to computed styles
+  (28.1.0 throws); compat.mutableComputedStyle is now before 28.1.0 (was
+  before 28). The document-order boundary of #139 (28.1.0) and the
+  parity scenarios of #116, #118 and #132 pass on those clean installs.
+- Not modeled (#141): the rule cssText and getPropertyPriority()
+  of var() declarations from 27.1.0 to 29.1.1, and the style attribute's
+  (from 27.0.0 a var() declaration loses !important there too; border:
+  var(--b) !important is dropped to 28.1.0).
+

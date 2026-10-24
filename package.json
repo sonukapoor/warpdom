@@ -108,6 +108,7 @@
     "lint": "eslint ."
   },
   "devDependencies": {
+    "@acemir/cssom": "file:test/fixtures/acemir-cssom-slot",
     "@happy-dom/jest-environment": "^20.14.6",
     "@webref/css": "^8.7.6",
     "@webref/elements": "^2.9.1",
