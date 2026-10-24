@@ -235,6 +235,15 @@ report's summary contains no file or test names, so it can be shared.
 Monorepos with Vitest projects or workspaces and Jest projects are
 supported. Details: [docs/compare.md](docs/compare.md).
 
+In CI, the [warpdom compare action](docs/compare.md#github-action) runs
+the same comparison in a non-blocking job on every pull request and puts the
+differing tests and the time saved in the job summary (and, optionally, one
+pull request comment), without switching anything:
+
+```yaml
+- uses: sonukapoor/warpdom/compare-action@main # better: a release tag or commit SHA
+```
+
 One caveat: on the warpdom side, compare switches Vitest test files that
 pin jsdom with a comment to another environment name than the config's,
 so they run in a separate group (see Setup). In a suite with
