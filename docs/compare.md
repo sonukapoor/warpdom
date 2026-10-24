@@ -303,9 +303,11 @@ is matched by occurrence). With it:
   key in every run, so by key alone it would be missing on one side or
   flaky on both. Compare matches such tests by position: within one file
   and describe path, the tests whose key is not in every run are paired
-  in the order the runner reports them, but only when every run has the
-  same number of them (so a test that is only missing on one side is never
-  paired with another). The describe path may vary too: tests whose
+  in the order the runner reports them. Tests found in every run are
+  boundaries: only the tests between the same two of them are paired, and
+  only when every run has the same number there (so a test that is only
+  missing on one side is never paired with another). A pairing that would
+  give a name seen in several runs two different partners is dropped. The describe path may vary too: tests whose
   describe path is not in every run are then matched per file in the same
   way (tests in a describe block found in every run are only matched
   within it). Matched tests are compared like the others (a regression

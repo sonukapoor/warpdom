@@ -19,12 +19,15 @@ const distinct = (values) => [...new Set(values)];
 // the title, like it.each over new Date()) have a new key in every run.
 // They are matched by position: the keys that are not in every run are
 // paired in report order, per file and describe path, then per file for
-// those whose describe path is not in every run (it varies too), but only
-// where every run has the same number of them, so a test missing on one
-// side is not paired with another. A key in all the runs of one side and none of the other (with
-// two runs or more there) is that side's own test, not a varying name.
-// Returns the runs (baseline's, then warpdom's) with each pair under one
-// key, and that key's name in each run (Map(key -> names)).
+// those whose describe path is not in every run (it varies too). Tests in
+// every run are boundaries: only the keys between the same two of them are
+// paired, and only where every run has the same number there, so a test
+// missing on one side is not paired with another. A pairing that would
+// give a key found in several runs two identities is dropped. A key in all
+// the runs of one side and none of the other (with two runs or more
+// there) is that side's own test, not a varying name. Returns the runs
+// (baseline's, then warpdom's) with each pair under one key, and that
+// key's name in each run (Map(key -> names)).
 export function matchVaryingNames(baselineRuns, warpdomRuns) {
   const runs = [...baselineRuns, ...warpdomRuns];
   const inAll = (list, key) => list.every((run) => run.has(key));
@@ -32,8 +35,8 @@ export function matchVaryingNames(baselineRuns, warpdomRuns) {
   const sideOnly = (key) =>
     (baselineRuns.length > 1 && inAll(baselineRuns, key) && inNone(warpdomRuns, key)) ||
     (warpdomRuns.length > 1 && inAll(warpdomRuns, key) && inNone(baselineRuns, key));
-  const varies = (key) => !inAll(runs, key) && !sideOnly(key);
   const renamed = runs.map(() => new Map());
+  const identity = new Map(); // original key -> its key after matching
   const names = new Map();
   const suiteOf = (t) => JSON.stringify([t.project ?? '', t.file, t.suite ?? '']);
   // Describe paths in every run: their tests are matched per describe path
@@ -41,28 +44,51 @@ export function matchVaryingNames(baselineRuns, warpdomRuns) {
   const suites = runs.map((run) => new Set([...run.values()].map(suiteOf)));
   const stableSuite = (t) => suites.every((set) => set.has(suiteOf(t)));
   const pair = (groupOf, filter = () => true) => {
-    const groups = new Map();
+    const segments = new Map();
     runs.forEach((run, i) => {
+      const boundary = new Map(); // group -> the last test in every run
       for (const [key, t] of run) {
-        if (t.name === '(file)' || renamed[i].has(key) || !varies(key) || !filter(t)) continue;
+        if (t.name === '(file)') continue;
         const group = groupOf(t);
-        const perRun = groups.get(group) ?? runs.map(() => []);
-        groups.set(group, perRun);
+        // In every run, or already matched in every run: a boundary.
+        const matched = renamed[i].get(key);
+        if (matched || inAll(runs, key)) {
+          boundary.set(group, matched ?? key);
+          continue;
+        }
+        if (sideOnly(key) || !filter(t)) continue;
+        const segment = JSON.stringify([group, boundary.get(group) ?? null]);
+        const perRun = segments.get(segment) ?? runs.map(() => []);
+        segments.set(segment, perRun);
         perRun[i].push(key);
       }
     });
-    for (const perRun of groups.values()) {
+    for (const perRun of segments.values()) {
       const n = perRun[0].length;
       if (!perRun.every((keys) => keys.length === n)) continue;
-      for (let p = 0; p < n; p++) {
-        const key = `${perRun[0][p]} (name varies)`;
-        if (runs.some((run) => run.has(key))) continue;
-        perRun.forEach((keys, i) => renamed[i].set(keys[p], key));
+      const pairs = [];
+      for (let p = 0; p < n; p++) pairs.push(`${perRun[0][p]} (name varies)`);
+      // Each original key keeps one identity (it may be in several runs).
+      const local = new Map();
+      let ok = !pairs.some((key) => runs.some((run) => run.has(key)));
+      for (let p = 0; ok && p < n; p++) {
+        for (const keys of perRun) {
+          const known = local.get(keys[p]) ?? identity.get(keys[p]);
+          if (known && known !== pairs[p]) ok = false;
+          local.set(keys[p], pairs[p]);
+        }
+      }
+      if (!ok) continue;
+      pairs.forEach((key, p) => {
+        perRun.forEach((keys, i) => {
+          renamed[i].set(keys[p], key);
+          identity.set(keys[p], key);
+        });
         names.set(
           key,
           perRun.map((keys, i) => runs[i].get(keys[p]).name),
         );
-      }
+      });
     }
   };
   pair(suiteOf);

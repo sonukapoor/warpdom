@@ -1018,7 +1018,9 @@ test('compare results: tests whose name varies between runs are matched by posit
   // "second", and pairing A/A, B/C, C/D would hide it.
   const blocks = (t, tests) =>
     testsOf(
-      report([['/p/c.test.js', tests.map(([title, status, suite]) => [`${title} ${t}`, status, null, [suite]])]]),
+      report([
+        ['/p/c.test.js', tests.map(([title, status, suite]) => [`${title} ${t}`.trim(), status, null, [suite]])],
+      ]),
       '/p',
     );
   const uneven = compareRuns(
@@ -1040,6 +1042,77 @@ test('compare results: tests whose name varies between runs are matched by posit
   assert.deepEqual(uneven.nameVaries, []);
   assert.equal(uneven.same, 0);
   assert.equal(uneven.differences.length, 6, 'each a test missing on one side, as without matching');
+  // Tests in every run are boundaries: A/B and B/C would cross "anchor"
+  // and hide B's regression.
+  const anchored = (t, tests) => {
+    const run = blocks(t, tests);
+    const entries = [...run];
+    entries.splice(tests.anchorAt, 0, [
+      'c.test.js::s > anchor',
+      { file: 'c.test.js', name: 's > anchor', suite: 's', status: 'passed', message: '' },
+    ]);
+    return new Map(entries);
+  };
+  const crossing = compareRuns(
+    [
+      anchored(
+        1,
+        Object.assign(
+          [
+            ['A', 'failed', 's'],
+            ['B', 'passed', 's'],
+          ],
+          { anchorAt: 1 },
+        ),
+      ),
+    ],
+    [
+      anchored(
+        2,
+        Object.assign(
+          [
+            ['B', 'failed', 's'],
+            ['C', 'passed', 's'],
+          ],
+          { anchorAt: 0 },
+        ),
+      ),
+    ],
+  );
+  assert.deepEqual(crossing.nameVaries, []);
+  assert.equal(crossing.same, 1, 'only the anchor');
+  assert.equal(crossing.differences.length, 4, 'each a test missing on one side, as without matching');
+  // A key in several runs keeps one identity: C would be A's on the
+  // baseline and B's on warpdom, hiding tests that come and go.
+  const plain = (tests) => blocks('', tests);
+  const contradictory = compareRuns(
+    [
+      plain([
+        ['A', 'passed', 's'],
+        ['B', 'failed', 's'],
+      ]),
+      plain([
+        ['C', 'passed', 's'],
+        ['B', 'failed', 's'],
+      ]),
+    ],
+    [
+      plain([
+        ['A', 'passed', 's'],
+        ['B', 'failed', 's'],
+      ]),
+      plain([
+        ['A', 'passed', 's'],
+        ['C', 'failed', 's'],
+      ]),
+    ],
+  );
+  assert.deepEqual(contradictory.nameVaries, []);
+  assert.deepEqual(
+    [...contradictory.flakyBaseline, ...contradictory.flakyWarpdom].map((t) => t.name),
+    ['s > A', 's > C', 's > B'],
+    'tests that come and go stay flaky',
+  );
   // Not compared (a pinned file): not listed as matched and compared.
   const pinned = compareRuns([stamped(1)], [stamped(2)], { skipFiles: new Set(['a.test.js', 'b.test.js']) });
   assert.deepEqual(pinned.nameVaries, []);
