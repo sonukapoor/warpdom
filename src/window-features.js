@@ -1592,7 +1592,7 @@ function cssomShape(version) {
 // cssstyle it loads): the window's compat object (window[S].compat), made
 // before its interfaces, whose members can depend on it.
 function pendingByOrderMode(version) {
-  if (version[0] < 28) return 'latest';
+  if (before(version, [28, 1, 0])) return null;
   return before(version, [30, 1, 3]) ? 'all' : 'important';
 }
 
@@ -1640,6 +1640,15 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // The user agent sheet's !important declarations win over the page's
     // from 28.1.0 (ua-sheet.js).
     uaImportant: !before(version, [28, 1, 0]),
+    // Before 28.1.0 (black box, 20.0.0 to 28.0.0) the page's style rules
+    // apply in document order, without specificity or !important: the
+    // latest matching declaration wins, the style attribute over all of
+    // them, and any of them over the user agent sheet (the hidden
+    // attribute's display: none too) (cascade.js).
+    documentOrder: before(version, [28, 1, 0]),
+    // document.styleSheets in the order the sheets were created, before
+    // 30.1.2 (cssom.js documentStyleSheets).
+    sheetsByCreation: before(version, [30, 1, 2]),
     // Text selection (forms.js), black box per release: before 21.1.2 the
     // select event is dispatched synchronously and is cancelable (from
     // 21.1.2 in a task, not cancelable), and setRangeText() takes the new
@@ -1679,9 +1688,10 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // cssstyle 4.4 and later (jsdom 23.1 to 26 with it; 4.4, 4.5 and 4.6
     // measured), and in jsdom 27 and later (cascade.js cascadeExpand).
     pendingLonghands,
-    // A pending longhand and one declared as itself meet by order: the
-    // latest of each before 28, each one's cascade winner to 30.1.2, from
-    // 30.1.3 only !important ones (cascade.js cascadeByOrder).
+    // A pending longhand and one declared as itself meet by order: each
+    // one's cascade winner from 28.1.0 to 30.1.2, from 30.1.3 only
+    // !important ones (cascade.js cascadeByOrder); before 28.1.0 all
+    // declarations meet by order (documentOrder).
     pendingByOrder: pendingLonghands ? pendingByOrderMode(version) : null,
     // cssstyle's font shorthand before 4.4 (shorthands.js legacyFont).
     legacyFont: css === null || !before(css, [4, 4, 0]) ? null : before(css, [4, 2, 0]) ? 'cssstyle4.1' : 'cssstyle4.2',

@@ -971,16 +971,26 @@ export function styleElementSheet(el) {
 
 const isStyleElement = (n) => n[S].type === ELEMENT_NODE && n[S].tag === 'style' && n[S].ns === HTML_NS;
 
+const byStamp = (a, b) => (a[S].sheetStamp ?? 0) - (b[S].sheetStamp ?? 0);
+
 export function documentStyleSheets(doc) {
   const ds = doc[S];
   if (!ds.styleSheetList) {
+    // Before jsdom 30.1.2 (black box, 20.0.0 to 30.0.1) the sheets are in
+    // the order they were created (internal.js sheetCreated), not in tree
+    // order: a <style> inserted before another, or one whose text changes
+    // (to the same text too), comes last.
+    const byCreation = ds.window[S].compat.sheetsByCreation;
     ds.styleSheetList = liveList(ds.window[S].protos.StyleSheetList, () => {
       const rev = ds.treeRev ?? 0;
-      if (ds.styleElementsRev !== rev) {
+      const styleRev = byCreation ? (ds.styleRev ?? 0) : 0;
+      if (ds.styleElementsRev !== rev || ds.styleElementsStyleRev !== styleRev) {
         const els = [];
         for (let n = ds.first; n; n = nextInTree(n, doc)) if (isStyleElement(n)) els.push(n);
+        if (byCreation) els.sort(byStamp);
         ds.styleElements = els;
         ds.styleElementsRev = rev;
+        ds.styleElementsStyleRev = styleRev;
       }
       return ds.styleElements.map(styleElementSheet).filter(Boolean);
     });

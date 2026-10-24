@@ -601,6 +601,7 @@ function insertChecked(parent, node, ref, root, quiet) {
   ns.parent = parent;
   ps.count++;
   changed(parent);
+  if (ps.tag === 'style') sheetCreated(ps);
   if (connected) indexIds(node, true, doc[S].namedCandidates !== undefined);
   if (doc[S].checkedRadios === true && hooks.radios !== null) hooks.radios(node, connected);
   if (!quiet && observed(parent)) hooks.childList(parent, [node], [], ns.prev, ns.next);
@@ -690,6 +691,7 @@ function removeNode(parent, node, quiet) {
   ns.prev = ns.next = ns.parent = null;
   ps.count--;
   changed(parent);
+  if (ps.tag === 'style') sheetCreated(ps);
   const named = ods.namedBy !== undefined && ods.namedBy.size !== 0;
   if (connected || named) indexIds(node, false, named, connected);
   // Focus fixup: removing the focused element (also from inside a shadow
@@ -746,6 +748,7 @@ function indexIds(node, add, named, ids = true) {
   for (let n = node; n; n = nextInTree(n, node)) {
     const s = n[S];
     if (s.type === ELEMENT_NODE) {
+      if (add && s.tag === 'style') sheetCreated(s);
       if (ids) {
         const id = s.attrs.get('id');
         if (id !== undefined && id !== '') updateId(s.doc, id, n, add);
@@ -875,8 +878,20 @@ export function replaceData(node, offset, count, data) {
   if (observed(node)) hooks.characterData(node, old);
   s.data = old.slice(0, offset) + data + old.slice(offset + count);
   // A style element's text: its style sheet changes.
-  if (s.parent && s.parent[S].tag === 'style') s.doc[S].styleRev = (s.doc[S].styleRev ?? 0) + 1;
+  if (s.parent && s.parent[S].tag === 'style') {
+    s.doc[S].styleRev = (s.doc[S].styleRev ?? 0) + 1;
+    sheetCreated(s.parent[S]);
+  }
   if (hasRanges(s.doc)) hooks.rangeReplaceData(s.doc, node, offset, count, data.length);
+}
+
+// When a <style> element's style sheet was (re)created, as jsdom creates it:
+// on the element's insertion into a document (indexIds walks the inserted
+// subtree then) and on any change of its children or their text. Before
+// jsdom 30.1.2 document.styleSheets is in that order (cssom.js).
+let sheetStamps = 0;
+function sheetCreated(s) {
+  if (s.ns === HTML_NS) s.sheetStamp = ++sheetStamps;
 }
 
 // Changes to style rules (insertRule, deleteRule, a rule's declarations,
