@@ -306,8 +306,9 @@ is matched by occurrence). With it:
   in the order the runner reports them. Tests found in every run are
   boundaries: only the tests between the same two of them are paired, and
   only when every run has the same number there (so a test that is only
-  missing on one side is never paired with another). A pairing that would
-  give a name seen in several runs two different partners is dropped. The describe path may vary too: tests whose
+  missing on one side is never paired with another). A name seen in
+  several runs must be at the same place in each, or the tests around it
+  are not paired. The describe path may vary too: tests whose
   describe path is not in every run are then matched per file in the same
   way (tests in a describe block found in every run are only matched
   within it). Matched tests are compared like the others (a regression

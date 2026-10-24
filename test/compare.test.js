@@ -1113,6 +1113,38 @@ test('compare results: tests whose name varies between runs are matched by posit
     ['s > A', 's > C', 's > B'],
     'tests that come and go stay flaky',
   );
+  // Segments are bounded on both sides: with "left" and "right" in another
+  // order, A/C and B/B would hide B's regression.
+  const seq = (...tests) => plain(tests.map((t) => [t.replace(/!$/, ''), t.endsWith('!') ? 'failed' : 'passed', 's']));
+  const reordered = compareRuns([seq('left', 'A1!', 'right', 'B1')], [seq('right', 'C2', 'left', 'B2!')]);
+  assert.deepEqual(reordered.nameVaries, []);
+  assert.equal(reordered.differences.length, 4);
+  // Every place of a key must be its column in one segment: A is before
+  // "anchor" in one run and after it in two.
+  const split = compareRuns(
+    [seq('A', 'anchor'), seq('C', 'anchor', 'A')],
+    [seq('B', 'anchor'), seq('D', 'anchor', 'A!')],
+  );
+  assert.deepEqual(split.nameVaries, []);
+  assert.deepEqual(
+    split.flakyWarpdom.map((t) => t.name),
+    ['s > A', 's > B', 's > D'],
+    'A passes on every baseline run: flaky on warpdom only',
+  );
+  assert.deepEqual(
+    split.flakyBaseline.map((t) => t.name),
+    ['s > C'],
+  );
+  const moved = compareRuns([seq('K', 'anchor', 'M')], [seq('L', 'anchor', 'K')]);
+  assert.deepEqual(moved.nameVaries, []);
+  assert.deepEqual(
+    moved.differences.map((d) => [d.name, d.baseline, d.warpdom]),
+    [
+      ['s > M', 'passed', 'missing'],
+      ['s > L', 'missing', 'passed'],
+    ],
+    'K is the same test in both runs, not a missing one',
+  );
   // Not compared (a pinned file): not listed as matched and compared.
   const pinned = compareRuns([stamped(1)], [stamped(2)], { skipFiles: new Set(['a.test.js', 'b.test.js']) });
   assert.deepEqual(pinned.nameVaries, []);
