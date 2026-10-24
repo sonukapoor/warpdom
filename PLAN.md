@@ -4296,8 +4296,12 @@ Implemented as compat.documentOrder (before 28.1.0: the rule index is
 sorted by order alone and every rule declaration is normal; the hidden
 attribute's display: none comes with the user agent sheet, under the
 rules) and compat.sheetsByCreation (before 30.1.2: internal.js stamps a
-style element when it is inserted into a document and when its children
-or their text change; documentStyleSheets sorts by that). The 'latest'
+style element when it is inserted into a document and when a text child
+is inserted, removed or its data set, to the same data too, but not for a
+comment or an element child; documentStyleSheets sorts by that). In every
+release those make a new sheet from the element's text, without the old
+sheet's CSSOM edits (a moved style element too, which warpdom kept
+before; review on #139). The 'latest'
 mode of compat.pendingByOrder is gone (document order covers it), and
 mediaApplies applies all/empty lists from 29. The newer profiles' hot path
 is unchanged: one tag test per inserted element and per child change of a
