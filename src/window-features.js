@@ -1579,10 +1579,23 @@ function styleSurfaceKey(version, css) {
   return before(css, [6, 1, 0]) ? 'cssstyle6.0' : 'cssstyle6.1';
 }
 
+// The shape of the CSS rule interfaces for a jsdom version (profileCompat).
+function cssomShape(version) {
+  if (version[0] >= 29) return null;
+  if (!before(version, [27, 1, 0])) return 'acemir';
+  if (!before(version, [26, 0, 0])) return 'cssom26';
+  return before(version, [24, 1, 0]) ? 'cssom20' : 'cssom24';
+}
+
 // Compatibility with the jsdom generation the tests were written for
 // (option jsdom: its version, or its major version; option cssstyle: the
 // cssstyle it loads): the window's compat object (window[S].compat), made
 // before its interfaces, whose members can depend on it.
+function pendingByOrderMode(version) {
+  if (version[0] < 28) return 'latest';
+  return before(version, [30, 1, 3]) ? 'all' : 'important';
+}
+
 export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
   // Behaviors that changed between versions in ways tests observe. jsdom
   // before 29 left most computed style values empty, and before 28 let
@@ -1601,6 +1614,9 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
   const cssDefault = before(version, [21, 1, 0]) ? '2.3.0' : before(version, [23, 1, 0]) ? '3.0.0' : null;
   const cssText = version[0] < 27 ? (cssstyle ?? cssDefault) : null;
   const css = cssText != null ? parseJsdomVersion(cssText) : null;
+  const pendingLonghands =
+    version[0] >= 27 ||
+    (css === null ? !before(version, [23, 1, 0]) : css[0] > 4 || (css[0] === 4 && !before(css, [4, 4, 0])));
   return {
     version: jsdom,
     jsdom: version[0],
@@ -1662,9 +1678,11 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // and earlier ones (padding-top '', from 29.0.2 its initial 0): with
     // cssstyle 4.4 and later (jsdom 23.1 to 26 with it; 4.4, 4.5 and 4.6
     // measured), and in jsdom 27 and later (cascade.js cascadeExpand).
-    pendingLonghands:
-      version[0] >= 27 ||
-      (css === null ? !before(version, [23, 1, 0]) : css[0] > 4 || (css[0] === 4 && !before(css, [4, 4, 0]))),
+    pendingLonghands,
+    // A pending longhand and one declared as itself meet by order: the
+    // latest of each before 28, each one's cascade winner to 30.1.2, from
+    // 30.1.3 only !important ones (cascade.js cascadeByOrder).
+    pendingByOrder: pendingLonghands ? pendingByOrderMode(version) : null,
     // cssstyle's font shorthand before 4.4 (shorthands.js legacyFont).
     legacyFont: css === null || !before(css, [4, 4, 0]) ? null : before(css, [4, 2, 0]) ? 'cssstyle4.1' : 'cssstyle4.2',
     // cssstyle 4.4 and later: the computed style's background and border
@@ -1728,9 +1746,18 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     setCookieList: !before(version, [24, 1, 0]),
     // BlobEvent's timecode without one in the init: 0 before 30.1.0, NaN from it.
     blobEventNaNTimecode: !before(version, [30, 1, 0]),
-    // CSSMediaRule's matches from 29.0.0, CSSNestedDeclarations from 27.2.0.
+    // CSSMediaRule's and CSSSupportsRule's matches from 29.0.0,
+    // CSSNestedDeclarations from 27.2.0.
     mediaRuleMatches: version[0] >= 29,
     nestedDeclarations: !before(version, [27, 2, 0]),
+    // The shape of the CSS rule interfaces (cssom.js CSSOM_SHAPE and ACEMIR_SHAPE), black box
+    // per release, by the CSSOM library jsdom loads: before 27.1.0 cssom and
+    // rrweb-cssom ('cssom': CSSStyleRule extends CSSRule, data members on
+    // the prototypes, CSSStyleRule.parse(); the CSSRule constants of rrweb-
+    // cssom 0.6 before 24.1.0, 0.7 to 25.x, 0.8 from 26.0.0), from 27.1.0
+    // to 28 @acemir/cssom ('acemir': type data and cssText on each rule
+    // interface, constants on CSSRule.prototype); from 29 jsdom's own (null).
+    cssomShape: cssomShape(version),
     // ElementInternals and attachInternals() from 23.1.0, its labels and
     // form-associated custom elements from 26.0.0; its role and ARIA
     // accessors throw before 27.0.0.

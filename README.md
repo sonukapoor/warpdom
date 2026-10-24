@@ -235,6 +235,15 @@ report's summary contains no file or test names, so it can be shared.
 Monorepos with Vitest projects or workspaces and Jest projects are
 supported. Details: [docs/compare.md](docs/compare.md).
 
+In CI, the [warpdom compare action](docs/compare.md#github-action) runs
+the same comparison in a non-blocking job on every pull request and puts the
+differing tests and the time saved in the job summary (and, optionally, one
+pull request comment), without switching anything:
+
+```yaml
+- uses: sonukapoor/warpdom/compare-action@main # better: a release tag or commit SHA
+```
+
 One caveat: on the warpdom side, compare switches Vitest test files that
 pin jsdom with a comment to another environment name than the config's,
 so they run in a separate group (see Setup). In a suite with
@@ -338,6 +347,60 @@ test: { environment, environmentOptions: { warpdom: { fastFrames: true } } }
 // Jest
 testEnvironmentOptions: { fastFrames: true }
 ```
+
+## How warpdom is verified
+
+Some checks run on every change, others on a schedule; all of them are
+public:
+
+- **jsdom as a black-box reference.** Behavior comes from the WHATWG and
+  W3C specifications. Where jsdom differs from them, or from itself across
+  versions, the difference is measured from outside (scripts that run jsdom
+  20 to 30 and compare results), never copied from its source. Each
+  measured difference becomes a profile setting
+  ([Which jsdom warpdom behaves like](#which-jsdom-warpdom-behaves-like))
+  and a test.
+- **Tests on every pull request and every push to main**
+  ([ci.yml](.github/workflows/ci.yml): `npm test`, about 1,400 tests on
+  Node 22.22 and 24): unit tests, parity tests that run the same code on
+  warpdom and on the matching jsdom version side by side
+  ([test/parity.js](test/parity.js)), and an API test that walks the
+  windows of the newest jsdom of every major from 20 to 30 and fails when
+  warpdom lacks a member jsdom has
+  ([test/jsdom-api-superset.test.js](test/jsdom-api-superset.test.js); known
+  exceptions are listed in the test).
+- **Real test suites before merging a behavior change.** The maintainer
+  starts a comparison (a manually started workflow, not an automatic check)
+  in which open-source component libraries (React, Vue, Svelte, Solid and
+  Angular) and two applications run on jsdom and on warpdom on
+  GitHub-hosted runners, and every test's result is compared
+  ([corpus-timing.yml](.github/workflows/corpus-timing.yml),
+  [dom-api-tracer](https://github.com/sonukapoor/dom-api-tracer)). These
+  suites also drove many fixes, so they are regression checks, not an
+  independent validation; the method and every number are in
+  [docs/research/](docs/research/README.md). The remaining differences are
+  listed in [Differences from jsdom](#differences-from-jsdom).
+- **Web Platform Tests** on 17 areas, monthly at the newest WPT
+  ([wpt.yml](.github/workflows/wpt.yml),
+  [Web Platform Tests](#web-platform-tests)).
+- **Benchmarks on pull requests**
+  ([bench.yml](.github/workflows/bench.yml)): the same scripts on the base
+  and the head, alternating on one runner, posted as a comment (for pull
+  requests from forks and Dependabot, in the run's summary instead).
+- **Review and supply chain**: every change is a pull request with
+  automated code review and a dependency scan (CVE Lite CLI, in
+  [ci.yml](.github/workflows/ci.yml)); workflow actions are pinned to
+  commits except CVE Lite CLI, which follows its `v1` tag on purpose;
+  OpenSSF Scorecard runs on pushes to main and weekly
+  ([scorecard.yml](.github/workflows/scorecard.yml)); releases are published
+  from GitHub Actions with npm provenance ([RELEASING.md](RELEASING.md)).
+- **Watching upstream** ([upstream-watch.yml](.github/workflows/upstream-watch.yml)):
+  a weekly job opens an issue when a jsdom newer than the newest modeled
+  one, a changed inline style surface, or a new Vitest or Jest major
+  appears.
+
+You can run the same comparison on your own suite with
+[`warpdom compare`](#check-your-suite-first-warpdom-compare).
 
 ## Measured
 

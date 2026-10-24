@@ -166,6 +166,47 @@ Current numbers to beat (2026-10-21): 4 stars, about 420 npm downloads a
 month, one maintainer. A competitor, vitest-environment-rsdom ("drop-in jsdom
 replacement accelerated with Rust"), appeared on 2026-10-09.
 
+## Adoption plan after the library declines (2026-10-23)
+
+Why: Vuetify (closed), Mantine (closed 2026-10-21) and MUI
+([mui/material-ui#49502](https://github.com/mui/material-ui/issues/49502),
+on hold 2026-10-23) accepted the speed and parity numbers and declined a
+young dependency in their test stack. MUI also said it may drop jsdom for
+real-browser tests. So the next stretch is about being a safe dependency,
+not about more speed or parity. This plan extends the traction plan above
+and is worked through in order.
+
+Positioning: warpdom is for projects that keep a simulated DOM in their
+unit tests for speed: applications, mid-size libraries and Jest users.
+Projects moving their DOM tests to real browsers are not the audience.
+
+Outreach rules until 1.0, or until two or three projects run warpdom in
+CI:
+- No new adoption PRs to large libraries (Ant Design, Radix, React
+  Spectrum and similar). Open RFCs and PRs (MUI) stay open and quiet: no
+  pushes, rebases or pings; one short reply where a maintainer answered.
+  Ant Design #59606 is not reopened for now.
+- Go back to a library only with a concrete trigger: 1.0, or a named
+  project that has run warpdom in CI for a few months.
+- Applications first, after `compare --rounds 3` (or more) on their own
+  suite shows zero differences with nothing left out (no files or projects reported as not
+  compared or not run, no flaky baseline or warpdom results; check the Vitest grouping
+  caveat in the README) and a measured speedup.
+
+| # | Step | Why | Status |
+|---|---|---|---|
+| A1 | Release 0.1.8, the first from CI with npm provenance | The release history and provenance are the first maturity signals | Waiting on #118 (Ant Design regression from #103) and merges |
+| A2 | Release every one to two weeks, small, with release notes | A steady npm history answers "two weeks old" | Starts after 0.1.8 |
+| A3 | README: how warpdom is verified (black-box measurement against 19 jsdom versions, WPT, the corpus of 20+ real suites run before every merge, review on every change, benchmarks on every PR) | Answers the quality concern behind "mostly AI generated" with evidence, not argument | Open |
+| A4 | Publicly checkable compatibility: DOMParity and WPT pass rates updated automatically | "Same results as jsdom" becomes something anyone can check | DOMParity live; automation open |
+| A5 | The compare GitHub Action (traction item 3): a non-blocking job that runs a project's suite on jsdom and warpdom and reports differences and time saved | Evidence on other projects' own CI without asking for a decision | Open |
+| A6 | Applications (traction item 4): screen n8n, Grafana, Mattermost and Superset by jsdom unit-test CI time, run `compare`, then one carefully measured PR | Applications care about CI minutes and adopt younger tools | Open |
+| A7 | Easy way back: document an opt-in setup with a one-line revert, and the compare mode as a safety net | Lowers the cost of saying yes | Open |
+| A8 | Cascade parity found while fixing #117: #121 (jsdom 20 to 27.4 ignore specificity), #122, #123 | Suites on jsdom 26/27, Ant Design among them | Open |
+
+The MUI reply (to be posted by Sonu) accepts the hold, leaves the draft
+PR open, and names the 1.0 criteria as the bar.
+
 ## Product
 
 **warpdom: a DOM for unit tests that loads almost instantly and behaves like
@@ -3943,6 +3984,43 @@ cssText as written in 27.0; color: initial '' with cssstyle 4.3.1; a
 border shorthand's hex alpha rounded down in 22.1-26; author lowercase
 `currentcolor` in a full border with cssstyle 2/3 (computed '').
 
+## 2026-10-22: a pending longhand meets a declared one by order (branch fix/antd-descriptions-padding)
+
+Corpus regression from #103: 8 Ant Design tests (Descriptions, nested
+descriptions preserve inner styles, inner bordered) failed on warpdom and
+passed on jsdom 26.1.0. The bordered cell rule declares `padding:
+var(--p) var(--q)` (more specific), a later rule `padding-bottom: var(--b)`
+(and `padding-bottom: 0` for the last row). #103 made the shorthand's
+longhands pending, and the pending padding-bottom won by specificity:
+computed padding-bottom '' where jsdom gives `var(--b)`.
+
+Black box (jsdom 26.1.0 with cssstyle 4.3.1, 4.4.0, 4.6.0; 27.4.0, 28.1.0,
+29.0.2, 29.1.0, 29.1.1, 30.0.0, 30.1.0 to 30.1.3): a pending longhand and a
+longhand declared as itself meet by document order, whatever their
+specificity and importance (an !important shorthand with var() loses to a
+later plain longhand, an !important longhand to a later var() shorthand),
+across style elements too; from 30.1.3 the cascade decides, but two
+!important ones still meet by order. cssstyle before 4.4 declares no
+pending longhands (unchanged). Before 28 the latest matching pending and
+declared ones meet (jsdom applies rules in document order: `.d.d td {
+padding: var(--a) } td { padding-bottom: 7px } td { padding: var(--a) }`
+leaves padding-bottom pending), from 28 each declared property's winner
+by specificity (7px there). Implemented as compat.pendingByOrder
+('latest' before 28, 'all' to 30.1.2, 'important' from 30.1.3) and
+cascade.js cascadeByOrder (one scan; it stops at a first match from a
+shorthand without var(), and is skipped for a normal inline declaration
+with no !important rules: 400 cache-miss reads with 5,000 unrelated
+var() rules 55.7 -> 40.7 ms on the 26.1.0 profile, 53.5 -> 39.4 ms on
+30.1.2, Node 22.23.3); a
+longhand from a shorthand without var() still meets the pending one by
+the cascade.
+
+Left (measured, not modeled): jsdom 20 to 27.4 cascade author rules by
+document order without specificity (`.a.b > td { color: red } td { color:
+blue }` computes blue; 28.1 and later by specificity); a shorthand with
+var() against a later shorthand without it (26/27 by order, 29 to 30.1.2
+the one without var() wins).
+
 ## 2026-10-21: window setters and their receiver (branch fix/setter-receivers, #90)
 
 #90 (from Copilot's review of #87): the window's self setter, and self and
@@ -4109,10 +4187,73 @@ little traction yet, so 1.0 gets a public, checkable definition:
 
 Status on 2026-10-21: met 3 (corpus check for 0.1.7); 5 and 7 nearly
 (typed except the Vitest `url` option, missing from WarpdomVitestOptions;
-setXPathLoader only in its type); not met 1 and 2 (KNOWN has 5 entries
-under #70 and #71; open parity issues #51, #70, #71, #76, #84, #90, #97,
+setXPathLoader only in its type); not met 1 and 2 (KNOWN had 5 entries
+under #70 and #71, none after fix/parity-70-71; open parity issues #51, #70, #71, #76, #84, #90, #97,
 #98 and the audit #17), 4 (WPT run of 2026-10-19: html/semantics behind,
 #51; domparsing 341 vs 342 subtests, no issue yet) and 6 (0.1.7 changed a
 default). Proposed numbers to confirm on the PR: 25 suites, 3 releases
 and 6 weeks, 4 weeks to model a new jsdom, deprecations kept 2 minor
 releases and 3 months, security answer within 7 days.
+
+## 2026-10-22: form and CSS rule shapes per jsdom version (branch fix/parity-70-71, #70, #71)
+
+Black box (property descriptors, prototype chains, behavior) on jsdom
+20.0.3, 21.1.2, 22.0.0, 22.1.0, 23.2.0, 24.0.0, 24.1.0, 24.1.3, 25.0.1,
+26.0.0, 26.1.0, 27.0.0, 27.1.0, 27.2.0, 27.4.0, 28.0.0, 28.1.0, 29.1.1 and
+30.1.3. The API superset test's KNOWN list is now empty: every walked
+path jsdom has, warpdom has with the same kind, place and parent.
+
+- **#70, forms.** HTMLFormControlsCollection, HTMLOptionsCollection and
+  RadioNodeList have their own @@iterator in every version (jsdom: each
+  Array.prototype.values; warpdom: the same function as HTMLCollection's
+  and NodeList's). A form is iterable from 26.1.0, with form[i]
+  (compat.formIndexed; 26.0.0 has neither); the form's descriptors are a
+  variant. autofocus is an own member of HTMLButtonElement,
+  HTMLInputElement, HTMLSelectElement and HTMLTextAreaElement, inputMode of
+  HTMLInputElement and HTMLTextAreaElement, in every version; jsdom has
+  neither on HTMLElement (warpdom keeps HTMLElement's for other elements)
+  and reflects inputMode as written (input.inputMode is 'NUMERIC' for
+  inputmode="NUMERIC"), so the own inputMode does too.
+- **#70, CSS (29+).** CSSSupportsRule.matches: jsdom's evaluation,
+  measured on 24 conditions: selector() false, custom properties false,
+  !important accepted, a bare declaration false (CSS.supports differs on
+  those; css.js supportsRuleMatches). CSSKeyframesRule's @@iterator is
+  Array.prototype.values (keyframes are indexed properties).
+  CSSStyleProperties already had its own @@iterator.
+- **#71, CSS rules before 29 (compat.cssomShape).** The shape follows the
+  CSSOM library each jsdom installs: before 27.1.0 cssom 0.5 and
+  rrweb-cssom 0.6 (to 24.0.x), 0.7 (24.1.0 to 25.x), 0.8 (26.0.0 to
+  27.0.x); 27.1.0 to 28.x @acemir/cssom. Before 27.1.0: CSSStyleRule
+  extends CSSRule (no cssRules, insertRule); each rule interface's
+  prototype has parentRule and parentStyleSheet (null), type and, for
+  @media, @supports, @container and @layer blocks, cssRules ([]) as
+  writable data properties, cssText an accessor; CSSConditionRule's
+  conditionText and cssText are data (''); each rule has its own
+  parentRule, parentStyleSheet, cssRules and (@supports) conditionText,
+  as jsdom's do (set when the rule is made: only in those profiles, a
+  WeakSet lookup per rule otherwise); deleting a rule resets its
+  parentRule but keeps its parentStyleSheet; a style sheet has its own
+  parentStyleSheet and CSSStyleSheet.prototype a data one and toString()
+  (each rule's text and a line break). CSSStyleRule.parse(text) and the
+  style rule cssText setter take the selector before the last complete
+  block and every block's declarations (parse('garbage') has the empty
+  selector and cssText ''); @import's cssText setter and @media's and
+  @container's conditionText setters reparse. 27.1.0 to 28: type a
+  read-only data property and cssText a getter on each rule interface
+  (types: @container 17, @layer block 18, statements and @scope 0),
+  CSSRule's constants and cssRule ('') on its prototype,
+  CSSImportRule.prototype.parse (a function named value that reparses the
+  rule), CSSKeyframesRule's own @@iterator and CSSStyleSheet toString().
+  CSSRule's constants: UNKNOWN_RULE, DOCUMENT_RULE, VIEWPORT_RULE and
+  REGION_STYLE_RULE before 29, CONTAINER_RULE and STARTING_STYLE_RULE from
+  24.1.0, LAYER_BLOCK_RULE from 26.0.0 (as warpdom's other constants:
+  read-only; jsdom's statics are writable). Descriptors per variant
+  (window.js iface.variant/adjust), the parent per profile
+  (iface.parentFor) and statics as a function of the compat object.
+  Not modeled: jsdom before 29 serializes rules differently and cannot
+  parse @container or @layer before 24.1/26.0; parse() on
+  CSSNamespaceRule and CSSCounterStyleRule (27.1.0 to 28, not on jsdom's
+  window); 26's CSSLayerBlockRule.layerNameText; old jsdom's rule.style
+  being cssom's declaration object (color null when not set).
+- Cost: none per node; sheet parsing 2,000 rules and window creation the
+  same as main within noise (Node 22.23.3).

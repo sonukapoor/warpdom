@@ -695,3 +695,134 @@ test('computed values: shorthands with var() before cssstyle 4.4 keep the user a
     assert.equal(w.getComputedStyle(el).paddingTop, top, cssstyle);
   }
 });
+
+// A pending longhand and a longhand declared as itself meet by order, not
+// by importance or specificity, before jsdom 30.1.3 (from it only two
+// !important ones do). Ant Design's bordered Descriptions declares
+// padding: var(--p) var(--q) on its cells and padding-bottom: var(--b) in
+// a later, less specific rule (and padding-bottom: 0 for the last row);
+// its tests read the cell's padding-bottom.
+const BY_ORDER_PROPS = [
+  'padding',
+  'padding-top',
+  'padding-bottom',
+  'padding-left',
+  'margin',
+  'margin-bottom',
+  'border-bottom-width',
+  'border-bottom',
+];
+const BY_ORDER = {
+  antd: `.d.d > .v > table > tbody > .r > td { padding: var(--p) var(--q) }
+    .d > .v > table > tbody > .r > td { padding-bottom: var(--b) }
+    .d > .v > table > tbody > .r:last-child > td { padding-bottom: 0 }`,
+  shorthandFirst: '.d.d td { padding: var(--p) var(--q) } td { padding-bottom: 7px }',
+  shorthandLast: '.d.d td { padding-bottom: 7px } td { padding: var(--p) }',
+  importantShorthand: '.d.d td { padding: var(--p) !important } td { padding-bottom: 7px }',
+  importantLonghand: 'td { padding-bottom: 7px !important } .d.d td { padding: var(--p) }',
+  bothImportantShorthandFirst: '.d.d td { padding: var(--p) !important } td { padding-bottom: 7px !important }',
+  bothImportantShorthandLast: '.d.d td { padding-bottom: 7px !important } td { padding: var(--p) !important }',
+  margin: '.d.d td { margin: var(--m) } td { margin-bottom: 7px }',
+  borderSide: '.d.d td { border-bottom: var(--b) } td { border-bottom-width: 7px }',
+  laterSheet: ['.d.d td { padding: var(--p) }', 'td { padding-bottom: 7px }'],
+  // Three rules: before jsdom 28 the latest of each (pending here), from
+  // 28 each declared property's winner by specificity (7px). The two
+  // shorthands have one value: before 28 jsdom's padding is the later
+  // one's, by document order (not modeled).
+  pendingAfter: '.d.d td { padding: var(--a) } td { padding-bottom: 7px } td { padding: var(--a) }',
+  pendingAfterMoreSpecific: 'td { padding: var(--a) } td { padding-bottom: 7px } .d.d td { padding: var(--a) }',
+  declaredAfter: '.d.d td { padding-bottom: 3px } td { padding: var(--a) } td { padding-bottom: 7px }',
+  declaredAfterMoreSpecific: 'td { padding-bottom: 3px } td { padding: var(--a) } .d.d td { padding-bottom: 7px }',
+  importantBetween: '.d.d td { padding: var(--a) } td { padding-bottom: 7px !important } td { padding: var(--a) }',
+  styleAttribute: '.d.d td { padding: var(--p) } td { padding-bottom: 7px }',
+  // The style attribute's padding-bottom over pending and declared ones.
+  styleAttributeLonghand: '.d.d td { padding: var(--p) } td { padding-bottom: 7px } td { padding: var(--q) }',
+  styleAttributeImportant: '.d.d td { padding: var(--p) !important } td { padding-bottom: 7px }',
+  // A shorthand without var() that wins, with pending rules elsewhere.
+  settledWinner: '.d.d td { padding: 8px } .none td { padding: var(--p) } .none td { padding-bottom: 7px }',
+};
+function pendingByOrder(w) {
+  const d = w.document;
+  const out = {};
+  for (const [key, css] of Object.entries(BY_ORDER)) {
+    d.head.textContent = '';
+    // One style element per sheet, in order.
+    for (const text of [css].flat()) d.head.appendChild(d.createElement('style')).textContent = text;
+    d.body.innerHTML =
+      '<div class="d"><div class="v"><table><tbody><tr class="r"><td>a</td></tr><tr class="r"><td>b</td></tr></tbody></table></div></div>';
+    for (const td of d.querySelectorAll('td')) {
+      if (key === 'styleAttribute') td.setAttribute('style', 'padding-top: 2px');
+      if (key.startsWith('styleAttribute') && key !== 'styleAttribute') td.setAttribute('style', 'padding-bottom: 3px');
+      const cs = w.getComputedStyle(td);
+      out[`${key} ${td.textContent}`] = BY_ORDER_PROPS.map((p) => [cs.getPropertyValue(p), cs[p]]);
+    }
+  }
+  return out;
+}
+for (const jsdom of [26, 27, 28, 29, 30])
+  parity(`computed values: a pending longhand and a declared one meet by order (jsdom ${jsdom})`, pendingByOrder, {
+    jsdom,
+  });
+
+test('computed values: a pending longhand and a declared one meet by order before jsdom 30.1.3', () => {
+  const read = (jsdom, css) => {
+    const w = createWindow({ jsdom });
+    const d = w.document;
+    d.head.innerHTML = `<style>${css}</style>`;
+    d.body.innerHTML = '<div class="d"><table><tbody><tr><td></td></tr></tbody></table></div>';
+    return w.getComputedStyle(d.querySelector('td')).paddingBottom;
+  };
+  // jsdom 30.1.0 to 30.1.2: the later one; 30.1.3: the more specific one,
+  // the later one of two !important ones.
+  for (const [jsdom, first, last, important] of [
+    ['30.1.2', '7px', '0', '7px'],
+    ['30.1.3', '0', '7px', '7px'],
+  ]) {
+    assert.equal(read(jsdom, '.d.d td { padding: var(--p) } td { padding-bottom: 7px }'), first, jsdom);
+    assert.equal(read(jsdom, '.d.d td { padding-bottom: 7px } td { padding: var(--p) }'), last, jsdom);
+    assert.equal(
+      read(jsdom, '.d.d td { padding: var(--p) !important } td { padding-bottom: 7px !important }'),
+      important,
+      jsdom,
+    );
+  }
+  // Before cssstyle 4.4 a shorthand with var() declares no longhands.
+  const w = createWindow({ jsdom: '26.1.0', cssstyle: '4.1.0' });
+  w.document.head.innerHTML = '<style>.d.d td { padding: var(--p) } td { padding-bottom: 7px }</style>';
+  w.document.body.innerHTML = '<div class="d"><table><tbody><tr><td></td></tr></tbody></table></div>';
+  assert.equal(w.getComputedStyle(w.document.querySelector('td')).paddingBottom, '7px');
+});
+
+// A longhand, a shorthand without var() and a shorthand with var(), all
+// matching (padding-bottom, black box): jsdom 26.1.0 gives '' and 30.1.3
+// gives '0' for the first order, 7px when the longhand comes last. jsdom 27
+// to 29 give 8px for the first order, which isn't modeled yet.
+test('computed values: a longhand, a shorthand and a var() shorthand', () => {
+  const td = '<div class="d"><table><tbody><tr><td></td></tr></tbody></table></div>';
+  const CASES = [
+    [
+      '.d.d td { padding-bottom: 7px !important } .d td { padding: 8px !important } td { padding: var(--p) !important }',
+      { '26.1.0': '', '30.1.3': '0' },
+    ],
+    [
+      'td { padding: var(--p) !important } .d td { padding: 8px !important } .d.d td { padding-bottom: 7px !important }',
+      { '26.1.0': '7px', '30.1.3': '7px' },
+    ],
+    [
+      '.d td { padding: 8px !important } td { padding: var(--p) !important } .d.d td { padding-bottom: 7px !important }',
+      { '26.1.0': '7px', '30.1.3': '7px' },
+    ],
+    [
+      '.d.d td { padding-bottom: 7px } .d td { padding: 8px } td { padding: var(--p) }',
+      { '26.1.0': '', '30.1.3': '7px' },
+    ],
+  ];
+  for (const [css, expected] of CASES) {
+    for (const [jsdom, value] of Object.entries(expected)) {
+      const w = createWindow({ jsdom });
+      w.document.head.innerHTML = `<style>${css}</style>`;
+      w.document.body.innerHTML = td;
+      assert.equal(w.getComputedStyle(w.document.querySelector('td')).paddingBottom, value, `${jsdom} ${css}`);
+    }
+  }
+});

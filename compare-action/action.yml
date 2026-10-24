@@ -1,0 +1,138 @@
+# warpdom compare as a GitHub Action: runs the caller's own test suite on
+# jsdom (or happy-dom) and on warpdom with `npx warpdom compare`, and reports
+# the tests whose status differs and the time saved in the job summary and,
+# optionally, one pull request comment. Non-blocking by default: differences
+# never fail the job unless fail-on asks for it. Nothing in the caller's
+# repository is changed; warpdom comes from npm for this job only.
+# Docs: docs/compare.md, "GitHub Action".
+name: warpdom compare
+description: Run your tests on jsdom and on warpdom, and report result differences and time saved, without switching anything.
+author: Sonu Kapoor
+branding:
+  icon: activity
+  color: blue
+
+inputs:
+  working-directory:
+    description: Where vitest or jest is normally run (a package, or a monorepo root), relative to the workspace.
+    default: '.'
+  warpdom-version:
+    description: The warpdom version or dist-tag to install from npm for this job, or a path to a packed .tgz. A warpdom the project already has installed is used instead (the summary says so).
+    default: latest
+  rounds:
+    description: Timed rounds, each running the baseline and warpdom. 1 is labeled indicative; CI machines are noisy.
+    default: '1'
+  correctness:
+    description: 'true: one run each, results only, no timing.'
+    default: 'false'
+  baseline:
+    description: jsdom or happy-dom. Default (empty) is what the project uses.
+    default: ''
+  runner:
+    description: vitest or jest, when both are configured. Default (empty) is detected.
+    default: ''
+  workers:
+    description: The runner's worker limit for every run. Default (empty) is the runner's own.
+    default: ''
+  timeout:
+    description: Minutes per run.
+    default: '30'
+  runner-args:
+    description: Arguments for every run, one per line (a file filter, --project x, --config <file>).
+    default: ''
+  fail-on:
+    description: 'nothing (default: never fail), regressions (a test passes on the baseline and fails on warpdom) or differences (any status change). With regressions or differences, a comparison that cannot run fails too.'
+    default: nothing
+  job-summary:
+    description: Write the report to the job summary.
+    default: 'true'
+  pr-comment:
+    description: Create or update one comment on the pull request. Needs "pull-requests write" permission; skipped with a warning when the token is read-only (pull requests from forks).
+    default: 'false'
+  github-token:
+    description: Token for the pull request comment. Only used when pr-comment is true.
+    default: ${{ github.token }}
+  comment-author:
+    description: 'The login the comment is posted as, when github-token is an app token (for example my-app[bot]). Default (empty): the token''s user, or github-actions[bot] for the Actions token.'
+    default: ''
+  max-tests:
+    description: The most differing tests to list in the summary and comment; the artifact has all.
+    default: '50'
+  artifact-name:
+    description: Name of the artifact with report.md, results.json and the runner logs. Empty to skip the upload.
+    default: warpdom-compare
+
+outputs:
+  exit-code:
+    description: warpdom compare's exit code (0 no regressions, 1 regressions, 2 could not run); empty when it did not run.
+    value: ${{ steps.compare.outputs.exit-code }}
+  compared:
+    description: Tests compared.
+    value: ${{ steps.compare.outputs.compared }}
+  regressions:
+    description: Tests that pass on the baseline and fail on warpdom.
+    value: ${{ steps.compare.outputs.regressions }}
+  fixed:
+    description: Tests that fail on the baseline and pass on warpdom.
+    value: ${{ steps.compare.outputs.fixed }}
+  differences:
+    description: Tests whose status differs.
+    value: ${{ steps.compare.outputs.differences }}
+  baseline-ms:
+    description: The baseline's test time in ms (median of the rounds); empty in correctness mode.
+    value: ${{ steps.compare.outputs.baseline-ms }}
+  warpdom-ms:
+    description: warpdom's test time in ms (median of the rounds); empty in correctness mode.
+    value: ${{ steps.compare.outputs.warpdom-ms }}
+  speedup:
+    description: baseline-ms / warpdom-ms with two decimals (above 1 means warpdom is faster).
+    value: ${{ steps.compare.outputs.speedup }}
+  report-dir:
+    description: The directory with report.md, results.json and logs (under RUNNER_TEMP).
+    value: ${{ steps.compare.outputs.report-dir }}
+
+runs:
+  using: composite
+  steps:
+    # Inputs reach the script only through the environment, never through
+    # ${{ }} in the script text, so no input can inject shell code; the
+    # script starts npx without a shell.
+    - id: compare
+      shell: bash
+      run: node "$GITHUB_ACTION_PATH/main.mjs"
+      env:
+        INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        INPUT_WARPDOM_VERSION: ${{ inputs.warpdom-version }}
+        INPUT_ROUNDS: ${{ inputs.rounds }}
+        INPUT_CORRECTNESS: ${{ inputs.correctness }}
+        INPUT_BASELINE: ${{ inputs.baseline }}
+        INPUT_RUNNER: ${{ inputs.runner }}
+        INPUT_WORKERS: ${{ inputs.workers }}
+        INPUT_TIMEOUT: ${{ inputs.timeout }}
+        INPUT_RUNNER_ARGS: ${{ inputs.runner-args }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_JOB_SUMMARY: ${{ inputs.job-summary }}
+        INPUT_PR_COMMENT: ${{ inputs.pr-comment }}
+        # The token only when a comment is wanted; the script also keeps
+        # every INPUT_ variable out of the environment of npx and the tests.
+        INPUT_GITHUB_TOKEN: ${{ inputs.pr-comment == 'true' && inputs.github-token || '' }}
+        INPUT_COMMENT_AUTHOR: ${{ inputs.comment-author }}
+        INPUT_MAX_TESTS: ${{ inputs.max-tests }}
+        INPUT_ARTIFACT_NAME: ${{ inputs.artifact-name }}
+    # An upload error (e.g. the same artifact name from a matrix) must not
+    # fail the job: set artifact-name per matrix entry to keep each report.
+    - if: always() && inputs.artifact-name != '' && steps.compare.outputs.report-dir != ''
+      continue-on-error: true
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ steps.compare.outputs.report-dir }}
+        if-no-files-found: ignore
+        retention-days: 14
+    - if: steps.compare.outputs.fail == 'true'
+      shell: bash
+      run: |
+        echo "::error::warpdom compare: fail-on is $FAIL_ON and the comparison found differences or could not run; see the job summary."
+        exit 1
+      env:
+        FAIL_ON: ${{ inputs.fail-on }}

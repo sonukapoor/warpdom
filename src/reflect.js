@@ -290,6 +290,26 @@ const PROSE_REFLECTIONS = [
     ],
   ],
   ['HTMLInputElement', [['size', 'size', 'unsigned', { positive: true, default: 20 }]]],
+  // jsdom has autofocus on these four element interfaces and inputMode
+  // (reflected as written, not enumerated) on input and textarea, as their
+  // own members (black box 20.0.3 to 30.1.3); HTMLElement's stay for other
+  // elements.
+  ['HTMLButtonElement', [['autofocus', 'autofocus', 'boolean']]],
+  [
+    'HTMLInputElement',
+    [
+      ['autofocus', 'autofocus', 'boolean'],
+      ['inputMode', 'inputmode', 'string'],
+    ],
+  ],
+  ['HTMLSelectElement', [['autofocus', 'autofocus', 'boolean']]],
+  [
+    'HTMLTextAreaElement',
+    [
+      ['autofocus', 'autofocus', 'boolean'],
+      ['inputMode', 'inputmode', 'string'],
+    ],
+  ],
   ['HTMLButtonElement', SUBMITTER],
   ['HTMLInputElement', SUBMITTER],
   [
