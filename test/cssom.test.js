@@ -586,3 +586,447 @@ test('CSSNestedDeclarations from jsdom 27.2.0, CSSMediaRule.matches from 29.0.0'
     assert.equal('matches' in w.CSSMediaRule.prototype, matches, `CSSMediaRule.matches in jsdom ${jsdom}`);
   }
 });
+
+// The rule interfaces' shape per jsdom generation (#71): cssom and
+// rrweb-cssom before 27.1.0 (CSSStyleRule extends CSSRule; parentRule,
+// parentStyleSheet, type, cssRules and conditionText data properties on the
+// prototypes and own on each rule; CSSStyleRule.parse(); deleting a rule
+// keeps its parentStyleSheet), @acemir/cssom from 27.1.0 to 28 (type and
+// cssText on each interface, constants on CSSRule.prototype, cssRule,
+// CSSImportRule.prototype.parse()), jsdom's own from 29.
+for (const jsdom of [22, 26, 28, 30]) {
+  parity(
+    `CSS rule object shape (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const st = d.createElement('style');
+      st.textContent =
+        '@import url(a.css) screen; a { color: red } @media screen { b { color: blue } } @supports (display: grid) { c { color: green } } @keyframes k { from { top: 0 } to { top: 1px } } @font-face { font-family: F }';
+      d.head.appendChild(st);
+      const sheet = st.sheet;
+      const chain = (o) => {
+        const out = [];
+        for (
+          let p = Object.getPrototypeOf(o);
+          p && p.constructor !== w.Object && p.constructor !== Object;
+          p = Object.getPrototypeOf(p)
+        )
+          out.push(p.constructor.name);
+        return out;
+      };
+      const kind = (o, k) => {
+        const x = Object.getOwnPropertyDescriptor(o, k);
+        if (!x) return null;
+        if (x.get || x.set) return ['accessor', !!x.set, x.enumerable, x.configurable];
+        let value = x.value;
+        if (typeof value === 'function') value = 'function';
+        else if (Array.isArray(value)) value = 'array';
+        return ['data', value, x.writable, x.enumerable, x.configurable];
+      };
+      const out = [];
+      for (const rule of sheet.cssRules) {
+        out.push([
+          chain(rule),
+          rule.type,
+          rule.parentRule,
+          rule.parentStyleSheet === sheet,
+          Object.hasOwn(rule, 'parentRule'),
+          Object.hasOwn(rule, 'parentStyleSheet'),
+          'cssRules' in rule,
+          'conditionText' in rule ? rule.conditionText : '-',
+          Object.hasOwn(rule, 'conditionText'),
+        ]);
+        if (rule.cssRules?.length)
+          out.push([rule.cssRules[0].parentRule === rule, rule.cssRules[0].parentStyleSheet === sheet]);
+        const proto = Object.getPrototypeOf(rule);
+        // (warpdom's CSSKeyframesRule.prototype has cssRules in every version)
+        out.push(
+          [
+            'type',
+            'cssText',
+            'parentRule',
+            'parentStyleSheet',
+            rule.type === 7 ? 'type' : 'cssRules',
+            'conditionText',
+            'parse',
+          ].map((k) => kind(proto, k)),
+        );
+      }
+      const keyframes = [...sheet.cssRules].find((r) => r.type === 7);
+      try {
+        out.push([...keyframes].length);
+      } catch (err) {
+        out.push(err.constructor.name);
+      }
+      out.push(
+        [
+          'UNKNOWN_RULE',
+          'DOCUMENT_RULE',
+          'VIEWPORT_RULE',
+          'REGION_STYLE_RULE',
+          'CONTAINER_RULE',
+          'LAYER_BLOCK_RULE',
+          'STARTING_STYLE_RULE',
+        ].map((k) => [w.CSSRule[k], w.CSSRule.prototype[k], k in w.CSSRule.prototype]),
+      );
+      out.push(kind(w.CSSRule.prototype, 'cssRule'));
+      out.push(Object.getPrototypeOf(w.CSSStyleRule.prototype).constructor.name, kind(w.CSSStyleRule, 'parse'));
+      // (jsdom 27.1.0 to 28's CSSStyleSheet extends another named CSSStyleSheet, which has toString)
+      const ownToString = ![w.Object?.prototype.toString, Object.prototype.toString].includes(sheet.toString);
+      out.push(ownToString, kind(w.CSSStyleSheet.prototype, 'parentStyleSheet'));
+      out.push(
+        sheet.toString() ===
+          (ownToString ? [...sheet.cssRules].map((r) => `${r.cssText}\n`).join('') : '[object CSSStyleSheet]'),
+      );
+      out.push(sheet.cssRules[0].styleSheet.parentStyleSheet === sheet, sheet.parentStyleSheet);
+      // Deleting rules: parentRule becomes null; parentStyleSheet stays before 27.1.0.
+      const media = sheet.cssRules[2];
+      const inner = media.cssRules[0];
+      media.deleteRule(0);
+      const top = sheet.cssRules[1];
+      sheet.deleteRule(1);
+      out.push([inner.parentRule, inner.parentStyleSheet === sheet, top.parentRule, top.parentStyleSheet === sheet]);
+      // @media's conditionText sets its media before 27.1.0 (a getter after).
+      try {
+        media.conditionText = 'print';
+      } catch (err) {
+        out.push(err.constructor.name);
+      }
+      out.push(media.media.mediaText);
+      return out;
+    },
+    { jsdom },
+  );
+}
+
+// CSSStyleRule.parse() and the style rule cssText setter before jsdom 27.1.0.
+for (const jsdom of [20, 26]) {
+  parity(
+    `CSSStyleRule.parse() and the cssText setter (jsdom ${jsdom})`,
+    (w) => {
+      const out = [];
+      // (the declarations through getPropertyValue: jsdom's parsed rules have cssom's declaration objects)
+      for (const text of [
+        'a { color: red }',
+        'a{color:red} b{top:1px}',
+        '@media x { a {} }',
+        'garbage',
+        '',
+        'a { color: red',
+        ' p , q { top : 1px } ',
+      ]) {
+        const rule = w.CSSStyleRule.parse(text);
+        const { style } = rule;
+        out.push([
+          rule.constructor.name,
+          rule.selectorText,
+          style.getPropertyValue('color'),
+          style.getPropertyValue('top'),
+          rule.parentRule,
+          rule.parentStyleSheet,
+          rule.type,
+          rule.selectorText === '' ? rule.cssText : '-',
+        ]);
+      }
+      out.push(w.CSSStyleRule.parse.name, w.CSSStyleRule.parse.length);
+      const st = w.document.head.appendChild(w.document.createElement('style'));
+      st.textContent = 'a { color: red }';
+      const rule = st.sheet.cssRules[0];
+      rule.cssText = 'q { top: 1px } r { left: 2px }';
+      out.push(
+        rule.selectorText,
+        rule.style.getPropertyValue('top'),
+        rule.style.getPropertyValue('left'),
+        rule.style.getPropertyValue('color'),
+      );
+      rule.cssText = 'garbage';
+      out.push(rule.selectorText);
+      rule.cssText = 'b[title="/*x*/"] { color: red }';
+      out.push(rule.selectorText);
+      return out;
+    },
+    { jsdom },
+  );
+}
+
+// CSSImportRule.prototype.parse() (jsdom 27.1.0 to 28): reparses the rule.
+parity(
+  'CSSImportRule.prototype.parse() (jsdom 28)',
+  (w) => {
+    const st = w.document.createElement('style');
+    st.textContent = '@import url(a.css);';
+    w.document.head.appendChild(st);
+    const rule = st.sheet.cssRules[0];
+    const { parse } = w.CSSImportRule.prototype;
+    const out = [
+      parse.name,
+      parse.length,
+      parse.call(rule, '@import url(b.css) print;'),
+      rule.href,
+      rule.media.mediaText,
+    ];
+    out.push(
+      parse.call(w.CSSImportRule.prototype, '@import url(c.css);'),
+      rule.href,
+      typeof new parse('@import url(d.css);'),
+    );
+    try {
+      parse.call(rule);
+    } catch (err) {
+      out.push(err.constructor.name);
+    }
+    out.push(rule.cssRule, rule.UNKNOWN_RULE, rule.LAYER_BLOCK_RULE);
+    return out;
+  },
+  { jsdom: 28 },
+);
+
+// CSSSupportsRule.matches (#70): from jsdom 29, the condition evaluated
+// (selector() false, custom properties false, a bare declaration false).
+for (const jsdom of [28, 29, 30]) {
+  parity(
+    `CSSSupportsRule.matches (jsdom ${jsdom})`,
+    (w) => {
+      const conditions = [
+        '(display: grid)',
+        '(display: foo)',
+        '(foo: bar)',
+        'not (display: grid)',
+        'not (display: foo)',
+        '(display: grid) and (color: red)',
+        '(display: grid) and (color: nope)',
+        '(display: foo) or (color: red)',
+        'selector(div)',
+        'not selector(div)',
+        '((display: grid))',
+        '(--x: 1)',
+        '(DISPLAY: GRID)',
+        '(color: red !important)',
+        '(display: grid) and selector(a)',
+        '(display: grid) or selector(a)',
+        '(margin: 0 auto)',
+      ];
+      const st = w.document.createElement('style');
+      st.textContent = conditions.map((c) => `@supports ${c} { a { color: red } }`).join('\n');
+      w.document.head.appendChild(st);
+      const d = Object.getOwnPropertyDescriptor(w.CSSSupportsRule.prototype, 'matches');
+      const out = [d ? [typeof d.get, d.set, d.enumerable, d.configurable] : null];
+      for (const rule of st.sheet.cssRules) out.push(`${rule.conditionText}: ${rule.matches}`);
+      if (d)
+        try {
+          d.get.call({});
+        } catch (err) {
+          out.push(err.constructor.name);
+        }
+      return out;
+    },
+    { jsdom },
+  );
+}
+
+// The shape's version boundaries (black box: jsdom's CSSOM library per
+// release; rrweb-cssom 0.6 to 24.0.x, 0.7 from 24.1.0, 0.8 from 26.0.0,
+// @acemir/cssom from 27.1.0).
+test('CSS rule shape boundaries', () => {
+  for (const [jsdom, container, layer, parent, parse, importParse] of [
+    ['24.0.0', false, false, 'CSSRule', true, false],
+    ['24.1.0', true, false, 'CSSRule', true, false],
+    ['26.0.0', true, true, 'CSSRule', true, false],
+    ['27.0.0', true, true, 'CSSRule', true, false],
+    ['27.1.0', true, true, 'CSSGroupingRule', false, true],
+    ['28.1.0', true, true, 'CSSGroupingRule', false, true],
+    ['29.0.0', false, false, 'CSSGroupingRule', false, false],
+  ]) {
+    const w = createWindow({ jsdom });
+    assert.equal('CONTAINER_RULE' in w.CSSRule, container, `CONTAINER_RULE in jsdom ${jsdom}`);
+    assert.equal('LAYER_BLOCK_RULE' in w.CSSRule, layer, `LAYER_BLOCK_RULE in jsdom ${jsdom}`);
+    assert.equal(
+      Object.getPrototypeOf(w.CSSStyleRule.prototype),
+      w[parent].prototype,
+      `CSSStyleRule's parent in jsdom ${jsdom}`,
+    );
+    assert.equal(typeof w.CSSStyleRule.parse === 'function', parse, `CSSStyleRule.parse in jsdom ${jsdom}`);
+    assert.equal(
+      Object.hasOwn(w.CSSImportRule.prototype, 'parse'),
+      importParse,
+      `CSSImportRule.prototype.parse in jsdom ${jsdom}`,
+    );
+  }
+});
+
+test('CSS rule shapes stay per window', () => {
+  const old = createWindow({ jsdom: '26.1.0' });
+  const current = createWindow();
+  old.document.head.innerHTML = '<style>@media screen { a { color: red } }</style>';
+  current.document.head.innerHTML = '<style>@media screen { a { color: red } }</style>';
+  assert.equal(Object.hasOwn(old.document.styleSheets[0].cssRules[0], 'cssRules'), true);
+  assert.equal(Object.hasOwn(current.document.styleSheets[0].cssRules[0], 'cssRules'), false);
+  assert.equal(current.document.styleSheets[0].cssRules[0].parentStyleSheet, current.document.styleSheets[0]);
+  assert.equal(Object.getPrototypeOf(current.CSSStyleRule.prototype), current.CSSGroupingRule.prototype);
+});
+
+// Legacy setters and parsing details (Copilot and CodeRabbit review on
+// #116). Rule text is compared through its condition and declarations:
+// jsdom before 29 serializes rules differently.
+for (const jsdom of [20, 26]) {
+  parity(
+    `CSSStyleRule.parse() with braces in strings and comments (jsdom ${jsdom})`,
+    (w) =>
+      [
+        'a { content: "}"; color: red; }',
+        'a[title="{"] { color: red; }',
+        'a /* { */ { color: red }',
+        "a { content: '{' ; top: 1px }",
+        'a[title="/*x*/"] { color: red }',
+        "a[title='/*x*/'] /* c */ { color: red }",
+      ].map((text) => {
+        const rule = w.CSSStyleRule.parse(text);
+        return [rule.selectorText, ...['content', 'color', 'top'].map((name) => rule.style.getPropertyValue(name))];
+      }),
+    { jsdom },
+  );
+
+  parity(
+    `an @import rule's cssText setter (jsdom ${jsdom})`,
+    (w) => {
+      const st = w.document.createElement('style');
+      st.textContent = '@import url(a.css) screen;';
+      w.document.head.appendChild(st);
+      const rule = st.sheet.cssRules[0];
+      // Text without media keeps the media; '@IMPORT' and other text change nothing.
+      // Without the closing semicolon the media are kept too.
+      return [
+        '@import url(b.css) print;',
+        'garbage',
+        'a { color: red }',
+        '@import "c.css";',
+        '@import url(d.css) tv, print;',
+        '@IMPORT url(e.css);',
+        '@import url(f.css) print',
+        '@import url(g.css) screen ;',
+      ].map((text) => {
+        rule.cssText = text;
+        return `${rule.href} [${rule.media.mediaText}]`;
+      });
+    },
+    { jsdom },
+  );
+
+  parity(
+    `an @supports rule's own conditionText is its text (jsdom ${jsdom})`,
+    (w) => {
+      const st = w.document.createElement('style');
+      st.textContent = '@supports (display: grid) { a { color: red } }';
+      w.document.head.appendChild(st);
+      const rule = st.sheet.cssRules[0];
+      rule.conditionText = '(display: flex)';
+      return [
+        rule.conditionText,
+        rule.cssText.startsWith('@supports (display: flex) {'),
+        st.sheet.toString().startsWith('@supports (display: flex) {'),
+      ];
+    },
+    { jsdom },
+  );
+}
+
+parity(
+  "constructed style sheets' own parentStyleSheet (jsdom 26)",
+  (w) => {
+    const sheet = new w.CSSStyleSheet();
+    const d = Object.getOwnPropertyDescriptor(sheet, 'parentStyleSheet');
+    return [d && [d.value, d.writable, d.enumerable, d.configurable], sheet.parentStyleSheet];
+  },
+  { jsdom: 26 },
+);
+
+parity(
+  "@container's conditionText setter (jsdom 26)",
+  (w) => {
+    const st = w.document.createElement('style');
+    st.textContent =
+      '@container (min-width: 1px) { b { top: 1px } } @container side (min-width: 1px) { c { top: 1px } }';
+    w.document.head.appendChild(st);
+    const [unnamed, named] = st.sheet.cssRules;
+    unnamed.conditionText = '(max-width: 2px)';
+    named.conditionText = 'other (max-width: 3px)';
+    return [unnamed, named].map((rule) => [
+      rule.conditionText,
+      rule.cssText.startsWith(`@container ${rule.conditionText} {`),
+    ]);
+  },
+  { jsdom: 26 },
+);
+
+parity(
+  'CSSImportRule.prototype.parse() keeps media and ignores other text (jsdom 28)',
+  (w) => {
+    const st = w.document.createElement('style');
+    st.textContent = '@import url(a.css) screen;';
+    w.document.head.appendChild(st);
+    const rule = st.sheet.cssRules[0];
+    return [
+      '@import url(b.css) print;',
+      '@import "c.css";',
+      '@import url(d.css) tv, print;',
+      'garbage',
+      '@IMPORT url(g.css);',
+      'a { color: red }',
+    ].map((text) => {
+      rule.parse(text);
+      return `${rule.href} [${rule.media.mediaText}]`;
+    });
+  },
+  { jsdom: 28 },
+);
+
+// Before jsdom 27.1.0 a grouping rule's own cssRules can be replaced with an
+// array, which insertRule(), deleteRule(), cssText and the cascade then
+// use (Copilot review on #116).
+parity(
+  'a replaced cssRules array of an @media rule (jsdom 26)',
+  (w) => {
+    const st = w.document.createElement('style');
+    st.textContent = '@media screen { p.z { color: red } }';
+    w.document.head.appendChild(st);
+    w.document.body.innerHTML = '<p class=z>x</p>';
+    const media = st.sheet.cssRules[0];
+    const list = [];
+    media.cssRules = list;
+    const out = [
+      media.cssRules === list,
+      media.cssText.includes('p.z'),
+      w.getComputedStyle(w.document.body.firstChild).color,
+    ];
+    media.insertRule('b { top: 1px }', 0);
+    out.push(
+      list.length,
+      list[0].selectorText,
+      list[0].parentRule === media,
+      media.cssText.includes('b {'),
+      media.cssText.includes('p.z'),
+    );
+    media.deleteRule(0);
+    out.push(list.length, media.cssText.includes('b {'));
+    return out;
+  },
+  { jsdom: 26 },
+);
+
+// Comment markers inside strings are not comments (style sheets of every profile).
+for (const jsdom of [26, 30]) {
+  parity(
+    `comment markers in quoted selectors (jsdom ${jsdom})`,
+    (w) => {
+      const st = w.document.createElement('style');
+      st.textContent = 'a[title="/*x*/"] { color: red } b[title=\'/*y*/\'] { color: blue }';
+      w.document.head.appendChild(st);
+      w.document.body.innerHTML = '<a title="/*x*/">x</a>';
+      return [
+        [...st.sheet.cssRules].map((rule) => rule.selectorText),
+        w.getComputedStyle(w.document.body.firstChild).color,
+      ];
+    },
+    { jsdom },
+  );
+}

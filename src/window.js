@@ -334,7 +334,10 @@ export function createWindow(options = {}) {
       });
       return ctor;
     }
-    const parent = iface.parent ? materialize(iface.parent) : null;
+    // An interface whose parent depends on the profile (CSSStyleRule)
+    // names it with parentFor(compat).
+    const parentName = iface.parentFor?.(window[S].compat) ?? iface.parent;
+    const parent = parentName ? materialize(parentName) : null;
     // Members are defined on an object without a prototype, which V8 keeps
     // as a dictionary: defining them on an object with a prototype walks
     // through a new hidden class per member, rebuilt for every window
@@ -397,7 +400,9 @@ export function createWindow(options = {}) {
     if (!Object.hasOwn(proto, Symbol.toStringTag) && !iface.untagged?.(window[S].compat))
       Object.defineProperty(proto, Symbol.toStringTag, { value: name, configurable: true });
     if (parent) Object.setPrototypeOf(ctor, parent);
-    for (const [key, value] of Object.entries(iface.statics ?? {})) {
+    // Constants; a function of the compat object when they depend on the profile.
+    const statics = typeof iface.statics === 'function' ? iface.statics(window[S].compat) : iface.statics;
+    for (const [key, value] of Object.entries(statics ?? {})) {
       Object.defineProperty(ctor, key, { value, enumerable: true, writable: false, configurable: false });
     }
     // Static operations that need the window (AbortSignal.timeout).

@@ -1295,7 +1295,7 @@ const supportsDeclaration = (property, value) => {
 
 // A <supports-condition> (CSS Conditional Rules): not / and / or, (decl),
 // nested conditions and selector(); unknown syntax is false.
-function supportsCondition(text, matchesSelector) {
+function supportsCondition(text, matchesSelector, declaration = supportsDeclaration) {
   let i = 0;
   const ws = () => {
     while (/\s/.test(text[i] ?? '')) i++;
@@ -1328,10 +1328,10 @@ function supportsCondition(text, matchesSelector) {
     if (inner === null) return null;
     const colon = inner.indexOf(':');
     if (/^\s*(not\b|\()/i.test(inner) || colon < 0) return condition(inner);
-    return supportsDeclaration(inner.slice(0, colon), inner.slice(colon + 1));
+    return declaration(inner.slice(0, colon), inner.slice(colon + 1));
   };
   const condition = (sub) => {
-    if (sub !== undefined) return supportsCondition(sub, matchesSelector);
+    if (sub !== undefined) return supportsCondition(sub, matchesSelector, declaration);
     let result = inParens();
     if (result === null) return null;
     for (;;) {
@@ -1349,6 +1349,15 @@ function supportsCondition(text, matchesSelector) {
   ws();
   return result === true && i >= text.length;
 }
+
+// CSSSupportsRule's matches (jsdom 29 and later, black box 29.1.1 and
+// 30.1.3): the condition as written (no bare declaration), selector()
+// false, a custom property false, !important allowed.
+const ruleDeclaration = (property, value) => {
+  const name = property.trim();
+  return !name.startsWith('--') && supportsDeclaration(name, value.replace(/!\s*important\s*$/i, ''));
+};
+export const supportsRuleMatches = (text) => supportsCondition(String(text), () => false, ruleDeclaration);
 
 export function cssNamespace(matchesSelector) {
   const namespace = {
