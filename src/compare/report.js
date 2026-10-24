@@ -115,6 +115,11 @@ function resultLines(result) {
   if (c.flakyBaseline.length)
     lines.push(`(${c.flakyBaseline.length} flaky on ${base} itself: listed in the report, not counted)`);
   if (c.flakyWarpdom.length) lines.push(`(${c.flakyWarpdom.length} flaky on warpdom only: listed in the report)`);
+  const varies = c.nameVaries?.length;
+  if (varies)
+    lines.push(
+      `(${plural(varies, 'test')} with a name that varies between runs, matched by position and compared: listed in the report)`,
+    );
   return lines;
 }
 
@@ -244,6 +249,8 @@ export function renderMarkdown(result) {
       `| Flaky on ${base} itself (not counted) | ${c.flakyBaseline.length} |`,
       `| Flaky on warpdom only | ${c.flakyWarpdom.length} |`,
     );
+    if (c.nameVaries?.length)
+      md.push(`| Name varies between runs (matched by position, compared) | ${c.nameVaries.length} |`);
     md.push('');
     for (const line of notComparedLines(result)) md.push(`- ${line}`);
     if (notComparedLines(result).length) md.push('');
@@ -296,6 +303,23 @@ export function renderMarkdown(result) {
       md.push(`### ${title}`, '');
       for (const t of list)
         md.push(`- ${testLabel(t)}: ${base} ${t.baseline.join(', ')}; warpdom ${t.warpdom.join(', ')}`);
+      md.push('');
+    }
+    if (c.nameVaries?.length) {
+      md.push('### Name varies between runs (matched by position)', '');
+      md.push(
+        'Matched by file, describe path and position, and compared like the other tests. The names in the runs:',
+        '',
+      );
+      for (const t of c.nameVaries) {
+        const names = [...new Set(t.names)];
+        const shown = names
+          .slice(0, 3)
+          .map((n) => `\`${n.replaceAll('`', "'")}\``)
+          .join(', ');
+        const more = names.length > 3 ? `, ... ${names.length - 3} more` : '';
+        md.push(`- ${t.project ? `[${t.project}] ` : ''}\`${t.file}\`: ${shown}${more}`);
+      }
       md.push('');
     }
     if (result.pinned?.files) {

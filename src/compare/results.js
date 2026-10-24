@@ -15,6 +15,58 @@ export function classify(baseline, warpdom, isFile = false) {
 
 const distinct = (values) => [...new Set(values)];
 
+// Tests whose name changes from run to run (a timestamp or random value in
+// the title, like it.each over new Date()) have a new key in every run.
+// They are matched by position: per file and describe path first, then per
+// file for the rest (the describe path may vary too), the keys that are not
+// in every run are paired in report order, but only where every run has the
+// same number of them, so a test missing on one side is not paired with
+// another. A key in all the runs of one side and none of the other (with
+// two runs or more there) is that side's own test, not a varying name.
+// Returns the runs (baseline's, then warpdom's) with each pair under one
+// key, and that key's name in each run (Map(key -> names)).
+export function matchVaryingNames(baselineRuns, warpdomRuns) {
+  const runs = [...baselineRuns, ...warpdomRuns];
+  const inAll = (list, key) => list.every((run) => run.has(key));
+  const inNone = (list, key) => !list.some((run) => run.has(key));
+  const sideOnly = (key) =>
+    (baselineRuns.length > 1 && inAll(baselineRuns, key) && inNone(warpdomRuns, key)) ||
+    (warpdomRuns.length > 1 && inAll(warpdomRuns, key) && inNone(baselineRuns, key));
+  const varies = (key) => !inAll(runs, key) && !sideOnly(key);
+  const renamed = runs.map(() => new Map());
+  const names = new Map();
+  const pair = (groupOf) => {
+    const groups = new Map();
+    runs.forEach((run, i) => {
+      for (const [key, t] of run) {
+        if (t.name === '(file)' || renamed[i].has(key) || !varies(key)) continue;
+        const group = groupOf(t);
+        const perRun = groups.get(group) ?? runs.map(() => []);
+        groups.set(group, perRun);
+        perRun[i].push(key);
+      }
+    });
+    for (const perRun of groups.values()) {
+      const n = perRun[0].length;
+      if (!perRun.every((keys) => keys.length === n)) continue;
+      for (let p = 0; p < n; p++) {
+        const key = `${perRun[0][p]} (name varies)`;
+        if (runs.some((run) => run.has(key))) continue;
+        perRun.forEach((keys, i) => renamed[i].set(keys[p], key));
+        names.set(
+          key,
+          perRun.map((keys, i) => runs[i].get(keys[p]).name),
+        );
+      }
+    }
+  };
+  pair((t) => JSON.stringify([t.project ?? '', t.file, t.suite ?? '']));
+  pair((t) => JSON.stringify([t.project ?? '', t.file]));
+  if (!names.size) return { runs, names };
+  const remapped = runs.map((run, i) => new Map([...run].map(([key, t]) => [renamed[i].get(key) ?? key, t])));
+  return { runs: remapped, names };
+}
+
 // baselineRuns, warpdomRuns: the tests of every run per side (warm-up
 // included). A test whose status varies between the baseline's runs is
 // flaky on the baseline itself: listed, not counted. One that varies only
@@ -23,15 +75,21 @@ const distinct = (values) => [...new Set(values)];
 // were not switched) and in skipProjects (projects on node or in browser
 // mode, except files in keepFiles, whose comment was switched) ran the same
 // way in both runs and are not compared; those whose status changed anyway
-// are listed in notComparedChanged. byProject: the counts per project name
-// ('' for a single unnamed project).
+// are listed in notComparedChanged. Tests whose name varies between runs
+// are matched by position (matchVaryingNames), compared like the others
+// and also listed in nameVaries with their names. byProject: the counts
+// per project name ('' for a single unnamed project).
 export function compareRuns(
   baselineRuns,
   warpdomRuns,
   { skipFiles = new Set(), skipProjects = new Set(), keepFiles = new Set() } = {},
 ) {
+  const matched = matchVaryingNames(baselineRuns, warpdomRuns);
+  const names = matched.names;
+  baselineRuns = matched.runs.slice(0, baselineRuns.length);
+  warpdomRuns = matched.runs.slice(baselineRuns.length);
   const keys = new Set();
-  for (const run of [...baselineRuns, ...warpdomRuns]) for (const key of run.keys()) keys.add(key);
+  for (const run of matched.runs) for (const key of run.keys()) keys.add(key);
   const out = {
     compared: 0,
     same: 0,
@@ -40,6 +98,7 @@ export function compareRuns(
     notComparedChanged: [],
     flakyBaseline: [],
     flakyWarpdom: [],
+    nameVaries: [],
     differences: [],
     byProject: {},
   };
@@ -53,6 +112,7 @@ export function compareRuns(
     const bs = baselineRuns.map((r) => r.get(key)?.status ?? MISSING);
     const ws = warpdomRuns.map((r) => r.get(key)?.status ?? MISSING);
     const pc = counts(project);
+    if (names.has(key)) out.nameVaries.push({ ...entry, names: names.get(key), baseline: bs, warpdom: ws });
     const pinnedFile = skipFiles.has(info.file);
     if (pinnedFile || (skipProjects.has(project) && !keepFiles.has(info.file))) {
       if (!isFile) {

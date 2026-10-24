@@ -310,6 +310,10 @@ export function renderSummary(result, options = {}) {
     if (c.flakyBaseline?.length)
       notes.push(`${count(c.flakyBaseline.length, 'test')} flaky on ${baseline} itself (not counted)`);
     if (c.flakyWarpdom?.length) notes.push(`${count(c.flakyWarpdom.length, 'test')} flaky on warpdom`);
+    if (c.nameVaries?.length)
+      notes.push(
+        `${count(c.nameVaries.length, 'test')} with a name that varies between runs (a timestamp or random value), matched by position and compared`,
+      );
     if (c.notCompared)
       notes.push(
         `${count(c.notCompared, 'test')} not compared (node or browser projects, or files pinned to another environment)`,

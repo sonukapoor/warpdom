@@ -308,6 +308,19 @@ test('compare action: summary variants', () => {
   );
   assert.match(flakyOnly, /Also: 1 test flaky on warpdom/);
 
+  const varies = renderSummary(
+    result({
+      differences: [],
+      correctness: { ...result({ differences: [] }).correctness, same: 10, nameVaries: [{}, {}] },
+    }),
+  );
+  assert.match(varies, /10 tests compared, all with the same status on jsdom and warpdom\./, 'not counted as flaky');
+  assert.match(
+    varies,
+    /Also: 2 tests with a name that varies between runs \(a timestamp or random value\), matched by position and compared\./,
+  );
+  assert.doesNotMatch(renderSummary(result()), /name that varies/);
+
   const installed = renderSummary(result({ warpdom: { source: 'installed', version: '0.1.7' } }));
   assert.match(installed, /warpdom 0\.1\.7 is installed in the project, so the comparison used that copy/);
   assert.doesNotMatch(renderSummary(result()), /is installed in the project/);

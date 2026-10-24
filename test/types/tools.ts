@@ -11,6 +11,7 @@ const result: CompareResult = await compare({
 });
 const code: 0 | 1 | 2 = result.exitCode;
 const regressions: number | undefined = result.correctness?.regressions;
+const varyingNames: string[] | undefined = result.correctness?.nameVaries[0]?.names;
 const speedup: number | null | undefined = result.timing?.speedup;
 const text: string = summary(result) + renderMarkdown(result);
 // @ts-expect-error: baseline is jsdom or happy-dom
@@ -21,4 +22,4 @@ const changed: string[] = plan.changedFiles;
 const lines: string = renderConsole(plan);
 const removable: string[] = REMOVABLE;
 const jestPackage: 'jest-environment-warpdom' = ENVIRONMENT_PACKAGE.jest;
-void [code, regressions, speedup, text, changed, lines, removable, jestPackage];
+void [code, regressions, varyingNames, speedup, text, changed, lines, removable, jestPackage];
