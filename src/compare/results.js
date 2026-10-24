@@ -17,11 +17,11 @@ const distinct = (values) => [...new Set(values)];
 
 // Tests whose name changes from run to run (a timestamp or random value in
 // the title, like it.each over new Date()) have a new key in every run.
-// They are matched by position: per file and describe path first, then per
-// file for the rest (the describe path may vary too), the keys that are not
-// in every run are paired in report order, but only where every run has the
-// same number of them, so a test missing on one side is not paired with
-// another. A key in all the runs of one side and none of the other (with
+// They are matched by position: the keys that are not in every run are
+// paired in report order, per file and describe path, then per file for
+// those whose describe path is not in every run (it varies too), but only
+// where every run has the same number of them, so a test missing on one
+// side is not paired with another. A key in all the runs of one side and none of the other (with
 // two runs or more there) is that side's own test, not a varying name.
 // Returns the runs (baseline's, then warpdom's) with each pair under one
 // key, and that key's name in each run (Map(key -> names)).
@@ -35,11 +35,16 @@ export function matchVaryingNames(baselineRuns, warpdomRuns) {
   const varies = (key) => !inAll(runs, key) && !sideOnly(key);
   const renamed = runs.map(() => new Map());
   const names = new Map();
-  const pair = (groupOf) => {
+  const suiteOf = (t) => JSON.stringify([t.project ?? '', t.file, t.suite ?? '']);
+  // Describe paths in every run: their tests are matched per describe path
+  // only (a file-wide pairing could pair tests across describe blocks).
+  const suites = runs.map((run) => new Set([...run.values()].map(suiteOf)));
+  const stableSuite = (t) => suites.every((set) => set.has(suiteOf(t)));
+  const pair = (groupOf, filter = () => true) => {
     const groups = new Map();
     runs.forEach((run, i) => {
       for (const [key, t] of run) {
-        if (t.name === '(file)' || renamed[i].has(key) || !varies(key)) continue;
+        if (t.name === '(file)' || renamed[i].has(key) || !varies(key) || !filter(t)) continue;
         const group = groupOf(t);
         const perRun = groups.get(group) ?? runs.map(() => []);
         groups.set(group, perRun);
@@ -60,8 +65,11 @@ export function matchVaryingNames(baselineRuns, warpdomRuns) {
       }
     }
   };
-  pair((t) => JSON.stringify([t.project ?? '', t.file, t.suite ?? '']));
-  pair((t) => JSON.stringify([t.project ?? '', t.file]));
+  pair(suiteOf);
+  pair(
+    (t) => JSON.stringify([t.project ?? '', t.file]),
+    (t) => !stableSuite(t),
+  );
   if (!names.size) return { runs, names };
   const remapped = runs.map((run, i) => new Map([...run].map(([key, t]) => [renamed[i].get(key) ?? key, t])));
   return { runs: remapped, names };
@@ -112,7 +120,6 @@ export function compareRuns(
     const bs = baselineRuns.map((r) => r.get(key)?.status ?? MISSING);
     const ws = warpdomRuns.map((r) => r.get(key)?.status ?? MISSING);
     const pc = counts(project);
-    if (names.has(key)) out.nameVaries.push({ ...entry, names: names.get(key), baseline: bs, warpdom: ws });
     const pinnedFile = skipFiles.has(info.file);
     if (pinnedFile || (skipProjects.has(project) && !keepFiles.has(info.file))) {
       if (!isFile) {
@@ -129,6 +136,7 @@ export function compareRuns(
       out.compared++;
       pc.compared++;
     }
+    if (names.has(key)) out.nameVaries.push({ ...entry, names: names.get(key), baseline: bs, warpdom: ws });
     if (distinct(bs).length > 1) {
       out.flakyBaseline.push({ ...entry, baseline: bs, warpdom: ws });
       pc.flaky++;

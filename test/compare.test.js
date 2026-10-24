@@ -1014,6 +1014,37 @@ test('compare results: tests whose name varies between runs are matched by posit
   assert.equal(once.nameVaries.length, 5);
   assert.deepEqual(once.differences, []);
   assert.equal(once.same, once.compared);
+  // Uneven describe blocks are not paired file-wide: C regresses in
+  // "second", and pairing A/A, B/C, C/D would hide it.
+  const blocks = (t, tests) =>
+    testsOf(
+      report([['/p/c.test.js', tests.map(([title, status, suite]) => [`${title} ${t}`, status, null, [suite]])]]),
+      '/p',
+    );
+  const uneven = compareRuns(
+    [
+      blocks(1, [
+        ['A', 'passed', 'first'],
+        ['B', 'failed', 'first'],
+        ['C', 'passed', 'second'],
+      ]),
+    ],
+    [
+      blocks(2, [
+        ['A', 'passed', 'first'],
+        ['C', 'failed', 'second'],
+        ['D', 'passed', 'second'],
+      ]),
+    ],
+  );
+  assert.deepEqual(uneven.nameVaries, []);
+  assert.equal(uneven.same, 0);
+  assert.equal(uneven.differences.length, 6, 'each a test missing on one side, as without matching');
+  // Not compared (a pinned file): not listed as matched and compared.
+  const pinned = compareRuns([stamped(1)], [stamped(2)], { skipFiles: new Set(['a.test.js', 'b.test.js']) });
+  assert.deepEqual(pinned.nameVaries, []);
+  assert.equal(pinned.compared, 0);
+  assert.deepEqual(pinned.notComparedChanged, [], 'matched, so no status change');
   // Names the same in every run: nothing to match.
   const stable = compareRuns([stamped(1)], [stamped(1)]);
   assert.deepEqual(stable.nameVaries, []);

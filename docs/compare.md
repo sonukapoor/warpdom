@@ -305,12 +305,15 @@ is matched by occurrence). With it:
   and describe path, the tests whose key is not in every run are paired
   in the order the runner reports them, but only when every run has the
   same number of them (so a test that is only missing on one side is never
-  paired with another). The describe path may vary too: what is left is
-  then matched per file in the same way. Matched tests are compared like
-  the others (a regression there still counts, and status changes between
-  rounds are still flaky) and are also listed under "Name varies between
-  runs" in the report, with their names; the terminal and the action's
-  summary give their number.
+  paired with another). The describe path may vary too: tests whose
+  describe path is not in every run are then matched per file in the same
+  way (tests in a describe block found in every run are only matched
+  within it). Matched tests are compared like the others (a regression
+  there still counts, and status changes between rounds are still flaky)
+  and are also listed under "Name varies between runs" in the report, with
+  their names; the terminal and the action's summary give their number.
+  Tests that are not compared (pinned files, node projects) are not
+  listed.
 - **Flaky detection:** with two or more runs per environment (warm-up
   included), a test whose baseline status
   differs between rounds is flaky. It is listed separately and not counted
