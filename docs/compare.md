@@ -298,6 +298,25 @@ is matched by occurrence). With it:
 - The test key is package, file, the full name (describe path + title) and
   an index for duplicate names.
 - Statuses: passed, failed, skipped, todo, missing (not in that run).
+- **Names that vary between runs:** a test with a timestamp or a random
+  value in its name (`it.each([new Date()])('formats %s', ...)`) has a new
+  key in every run, so by key alone it would be missing on one side or
+  flaky on both. Compare matches such tests by position: within one file
+  and describe path, the tests whose key is not in every run are paired
+  in the order the runner reports them. Tests found in every run are
+  boundaries: only the tests between the same two of them are paired, and
+  only when every run has the same number there (so a test that is only
+  missing on one side is never paired with another). A name seen in
+  several runs must be at the same place in each, or the tests around it
+  are not paired. The describe path may vary too: tests whose
+  describe path is not in every run are then matched per file in the same
+  way (tests in a describe block found in every run are only matched
+  within it). Matched tests are compared like the others (a regression
+  there still counts, and status changes between rounds are still flaky)
+  and are also listed under "Name varies between runs" in the report, with
+  their names; the terminal and the action's summary give their number.
+  Tests that are not compared (pinned files, node projects) are not
+  listed.
 - **Flaky detection:** with two or more runs per environment (warm-up
   included), a test whose baseline status
   differs between rounds is flaky. It is listed separately and not counted
@@ -432,7 +451,8 @@ What it does:
    time saved per run, and a table of the tests whose status differs
    (regressions first, up to `max-tests`), with the first error line.
    Test files that fail to load on one side are listed and counted apart
-   from the tests.
+   from the tests. Flaky tests and tests whose name varies between runs
+   (see Correctness) are counted in a closing "Also:" line.
 3. With `pr-comment: true`, creates one comment on the pull request, and
    updates that same comment on later pushes (found by a hidden marker per
    working directory, in a comment by the token's author: the token's

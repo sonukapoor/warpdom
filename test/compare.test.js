@@ -943,6 +943,219 @@ test('compare results: classes, flaky tests, files not compared', () => {
   );
 });
 
+// n8n's quickjsExpressionShadow/compare.test.ts: it.each over new Date()
+// and DateTime.now() puts a timestamp in the name, a new key in every run.
+test('compare results: tests whose name varies between runs are matched by position, not flaky', () => {
+  const stamped = (t, { warpdom = false, flaky = false, gone = false } = {}) =>
+    testsOf(
+      report([
+        [
+          '/p/a.test.js',
+          [
+            [`valueType(${t}) is number`, 'passed', null, ['valueType']],
+            ['valueType(text) is string', 'passed', null, ['valueType']],
+            [`at ${t}: jsdom only`, warpdom ? 'failed' : 'passed', warpdom ? 'Error: on warpdom' : null, ['valueType']],
+            [`at ${t}: flaky`, flaky ? 'failed' : 'passed', null, ['valueType']],
+            ...(warpdom ? [] : [['only on jsdom', 'passed', null, ['valueType']]]),
+            ['inner', 'passed', null, [`run of ${t}`]],
+          ],
+        ],
+        ['/p/b.test.js', [['kept', 'passed'], ...(gone ? [] : [[`stamp ${t}`, 'passed']])]],
+      ]),
+      '/p',
+    );
+  const c = compareRuns(
+    [stamped(1001), stamped(1002, { flaky: true })],
+    [stamped(1003, { warpdom: true }), stamped(1004, { warpdom: true, gone: true })],
+  );
+  assert.deepEqual(
+    c.nameVaries.map((t) => [t.file, t.name, t.names]),
+    [
+      [
+        'a.test.js',
+        'valueType > valueType(1001) is number',
+        [1001, 1002, 1003, 1004].map((t) => `valueType > valueType(${t}) is number`),
+      ],
+      [
+        'a.test.js',
+        'valueType > at 1001: jsdom only',
+        [1001, 1002, 1003, 1004].map((t) => `valueType > at ${t}: jsdom only`),
+      ],
+      ['a.test.js', 'valueType > at 1001: flaky', [1001, 1002, 1003, 1004].map((t) => `valueType > at ${t}: flaky`)],
+      ['a.test.js', 'run of 1001 > inner', [1001, 1002, 1003, 1004].map((t) => `run of ${t} > inner`)],
+    ],
+    'per describe path first, then per file (the describe path varies too)',
+  );
+  assert.deepEqual(
+    c.differences.map((d) => [d.name, d.baseline, d.warpdom, d.class]),
+    [
+      ['valueType > at 1001: jsdom only', 'passed', 'failed', 'regression'],
+      ['valueType > only on jsdom', 'passed', 'missing', 'other'],
+    ],
+    'compared like the others; a test of one side only is not paired with a varying name',
+  );
+  assert.equal(c.differences[0].message, 'Error: on warpdom');
+  assert.deepEqual(
+    c.flakyBaseline.map((t) => t.name),
+    ['valueType > at 1001: flaky', 'stamp 1001', 'stamp 1002'],
+    'status changes between rounds are still flaky; where a run has fewer such tests, none are paired',
+  );
+  assert.deepEqual(
+    c.flakyWarpdom.map((t) => t.name),
+    ['stamp 1003'],
+  );
+  assert.equal(c.compared, 10);
+  assert.equal(c.same, 4);
+  assert.equal(c.byProject[''].flaky, 4);
+
+  // One run each (--correctness): without matching, each would be a
+  // passed -> missing and a missing -> passed difference.
+  const once = compareRuns([stamped(1)], [stamped(2)]);
+  assert.equal(once.nameVaries.length, 5);
+  assert.deepEqual(once.differences, []);
+  assert.equal(once.same, once.compared);
+  // Uneven describe blocks are not paired file-wide: C regresses in
+  // "second", and pairing A/A, B/C, C/D would hide it.
+  const blocks = (t, tests) =>
+    testsOf(
+      report([
+        ['/p/c.test.js', tests.map(([title, status, suite]) => [`${title} ${t}`.trim(), status, null, [suite]])],
+      ]),
+      '/p',
+    );
+  const uneven = compareRuns(
+    [
+      blocks(1, [
+        ['A', 'passed', 'first'],
+        ['B', 'failed', 'first'],
+        ['C', 'passed', 'second'],
+      ]),
+    ],
+    [
+      blocks(2, [
+        ['A', 'passed', 'first'],
+        ['C', 'failed', 'second'],
+        ['D', 'passed', 'second'],
+      ]),
+    ],
+  );
+  assert.deepEqual(uneven.nameVaries, []);
+  assert.equal(uneven.same, 0);
+  assert.equal(uneven.differences.length, 6, 'each a test missing on one side, as without matching');
+  // Tests in every run are boundaries: A/B and B/C would cross "anchor"
+  // and hide B's regression.
+  const anchored = (t, tests) => {
+    const run = blocks(t, tests);
+    const entries = [...run];
+    entries.splice(tests.anchorAt, 0, [
+      'c.test.js::s > anchor',
+      { file: 'c.test.js', name: 's > anchor', suite: 's', status: 'passed', message: '' },
+    ]);
+    return new Map(entries);
+  };
+  const crossing = compareRuns(
+    [
+      anchored(
+        1,
+        Object.assign(
+          [
+            ['A', 'failed', 's'],
+            ['B', 'passed', 's'],
+          ],
+          { anchorAt: 1 },
+        ),
+      ),
+    ],
+    [
+      anchored(
+        2,
+        Object.assign(
+          [
+            ['B', 'failed', 's'],
+            ['C', 'passed', 's'],
+          ],
+          { anchorAt: 0 },
+        ),
+      ),
+    ],
+  );
+  assert.deepEqual(crossing.nameVaries, []);
+  assert.equal(crossing.same, 1, 'only the anchor');
+  assert.equal(crossing.differences.length, 4, 'each a test missing on one side, as without matching');
+  // A key in several runs keeps one identity: C would be A's on the
+  // baseline and B's on warpdom, hiding tests that come and go.
+  const plain = (tests) => blocks('', tests);
+  const contradictory = compareRuns(
+    [
+      plain([
+        ['A', 'passed', 's'],
+        ['B', 'failed', 's'],
+      ]),
+      plain([
+        ['C', 'passed', 's'],
+        ['B', 'failed', 's'],
+      ]),
+    ],
+    [
+      plain([
+        ['A', 'passed', 's'],
+        ['B', 'failed', 's'],
+      ]),
+      plain([
+        ['A', 'passed', 's'],
+        ['C', 'failed', 's'],
+      ]),
+    ],
+  );
+  assert.deepEqual(contradictory.nameVaries, []);
+  assert.deepEqual(
+    [...contradictory.flakyBaseline, ...contradictory.flakyWarpdom].map((t) => t.name),
+    ['s > A', 's > C', 's > B'],
+    'tests that come and go stay flaky',
+  );
+  // Segments are bounded on both sides: with "left" and "right" in another
+  // order, A/C and B/B would hide B's regression.
+  const seq = (...tests) => plain(tests.map((t) => [t.replace(/!$/, ''), t.endsWith('!') ? 'failed' : 'passed', 's']));
+  const reordered = compareRuns([seq('left', 'A1!', 'right', 'B1')], [seq('right', 'C2', 'left', 'B2!')]);
+  assert.deepEqual(reordered.nameVaries, []);
+  assert.equal(reordered.differences.length, 4);
+  // Every place of a key must be its column in one segment: A is before
+  // "anchor" in one run and after it in two.
+  const split = compareRuns(
+    [seq('A', 'anchor'), seq('C', 'anchor', 'A')],
+    [seq('B', 'anchor'), seq('D', 'anchor', 'A!')],
+  );
+  assert.deepEqual(split.nameVaries, []);
+  assert.deepEqual(
+    split.flakyWarpdom.map((t) => t.name),
+    ['s > A', 's > B', 's > D'],
+    'A passes on every baseline run: flaky on warpdom only',
+  );
+  assert.deepEqual(
+    split.flakyBaseline.map((t) => t.name),
+    ['s > C'],
+  );
+  const moved = compareRuns([seq('K', 'anchor', 'M')], [seq('L', 'anchor', 'K')]);
+  assert.deepEqual(moved.nameVaries, []);
+  assert.deepEqual(
+    moved.differences.map((d) => [d.name, d.baseline, d.warpdom]),
+    [
+      ['s > M', 'passed', 'missing'],
+      ['s > L', 'missing', 'passed'],
+    ],
+    'K is the same test in both runs, not a missing one',
+  );
+  // Not compared (a pinned file): not listed as matched and compared.
+  const pinned = compareRuns([stamped(1)], [stamped(2)], { skipFiles: new Set(['a.test.js', 'b.test.js']) });
+  assert.deepEqual(pinned.nameVaries, []);
+  assert.equal(pinned.compared, 0);
+  assert.deepEqual(pinned.notComparedChanged, [], 'matched, so no status change');
+  // Names the same in every run: nothing to match.
+  const stable = compareRuns([stamped(1)], [stamped(1)]);
+  assert.deepEqual(stable.nameVaries, []);
+  assert.equal(stable.same, stable.compared);
+});
+
 test('compare results: timing, run order, exit codes', () => {
   assert.equal(median([3, 1, 2]), 2);
   assert.equal(median([4, 1, 2, 3]), 2.5);
@@ -1145,6 +1358,29 @@ test('compare report: terminal summary and report.md', () => {
   assert.match(sameText, /119 tests, all with the same status on jsdom and warpdom/);
   assert.match(sameText, /\(1 flaky on jsdom itself: listed in the report, not counted\)/);
   assert.match(sameText, /Speed {5}not measured \(--correctness\)/);
+
+  const names = ['at 2026-10-24T10:00:00.001Z: `x`', 'at 2026-10-24T10:00:03.502Z: `x`'];
+  const varies = sampleResult({
+    correctness: {
+      ...result.correctness,
+      nameVaries: [
+        { project: '', file: 'src/stamp.test.js', name: names[0], names, baseline: ['passed'], warpdom: ['passed'] },
+      ],
+    },
+  });
+  assert.match(
+    renderConsole(varies),
+    /\(1 test with a name that varies between runs, matched by position and compared: listed in the report\)/,
+  );
+  const [variesSummary, variesDetails] = renderMarkdown(varies).split('## Details');
+  assert.match(variesSummary, /\| Name varies between runs \(matched by position, compared\) \| 1 \|/);
+  assert.doesNotMatch(variesSummary, /stamp\.test/, 'names in the details only');
+  assert.match(
+    variesDetails,
+    /### Name varies between runs \(matched by position\)\n\n.*\n\n- `src\/stamp\.test\.js`: `at 2026-10-24T10:00:00\.001Z: 'x'`, `at 2026-10-24T10:00:03\.502Z: 'x'`\n/,
+  );
+  assert.doesNotMatch(renderMarkdown(result), /Name varies/, 'not shown when there are none');
+  assert.doesNotMatch(renderConsole(result), /name that varies/);
 
   const failed = renderConsole({
     runner: null,
@@ -1404,6 +1640,46 @@ test('compare end to end (Vitest): differences, exit code 1, nothing left behind
     assert.ok(fs.existsSync(path.join(dir, '.warpdom-compare', 'logs', '2-warpdom.log')));
     assert.deepEqual(leftovers(dir), []);
     assert.ok(!fs.existsSync(path.join(dir, '.warpdom-compare', 'pending.json')));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Names with timestamps (n8n's quickjsExpressionShadow/compare.test.ts): a
+// new name in every run, matched by position, not flaky.
+const STAMP = /\d{4}-\d\d-\d\dT[\d:.]+Z|\d{10,}/g;
+test('compare end to end (Vitest): tests whose name varies between runs', () => {
+  const dir = fixtureProject('compare-vitest-names', vitestLinks());
+  try {
+    const res = compareCli(dir, ['--rounds', '2']);
+    assert.equal(res.status, 1, res.stdout + res.stderr);
+    assert.match(res.stdout, /4 tests, 3 tests with the same status; 1 pass on jsdom and fail on warpdom/);
+    assert.match(
+      res.stdout,
+      /\(3 tests with a name that varies between runs, matched by position and compared: listed in the report\)/,
+    );
+    assert.doesNotMatch(res.stdout, /flaky/);
+    const result = JSON.parse(fs.readFileSync(path.join(dir, '.warpdom-compare', 'results.json'), 'utf8'));
+    assert.equal(result.runs.length, 6);
+    assert.deepEqual(result.correctness.flakyBaseline, []);
+    assert.deepEqual(result.correctness.flakyWarpdom, []);
+    assert.deepEqual(
+      result.correctness.nameVaries.map((t) => [t.name.replace(STAMP, 'N'), new Set(t.names).size]),
+      [
+        ['valueType > valueType(N) is number', 6],
+        ['valueType > at N: passes on jsdom only', 6],
+        ['run of N > in a describe whose name varies', 6],
+      ],
+    );
+    assert.deepEqual(
+      result.correctness.differences.map((d) => [d.name.replace(STAMP, 'N'), d.class]),
+      [['valueType > at N: passes on jsdom only', 'regression']],
+    );
+    assert.match(
+      fs.readFileSync(path.join(dir, '.warpdom-compare', 'report.md'), 'utf8'),
+      /### Name varies between runs/,
+    );
+    assert.deepEqual(leftovers(dir), []);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -1775,6 +2051,34 @@ test(
       assert.ok(
         !fs.existsSync(path.join(dir, 'node_modules', 'jest-environment-jest-environment-jsdom')),
         'temporary package removed',
+      );
+      assert.deepEqual(leftovers(dir), []);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  'compare end to end (Jest): tests whose name varies between runs',
+  { skip: !jestModules && 'set WARPDOM_COMPARE_JEST to a node_modules with jest' },
+  () => {
+    const dir = fixtureProject('compare-jest-names', {
+      jest: path.join(jestModules, 'jest'),
+      'jest-environment-jsdom': path.join(jestModules, 'jest-environment-jsdom'),
+      '.bin/jest': fs.realpathSync(path.join(jestModules, '.bin', 'jest')),
+    });
+    try {
+      const res = compareCli(dir, ['--rounds', '2']);
+      assert.equal(res.status, 1, res.stdout + res.stderr);
+      assert.match(res.stdout, /4 tests, 3 tests with the same status; 1 pass on jsdom and fail on warpdom/);
+      assert.match(res.stdout, /\(3 tests with a name that varies between runs, matched by position and compared/);
+      assert.doesNotMatch(res.stdout, /flaky/);
+      const result = JSON.parse(fs.readFileSync(path.join(dir, '.warpdom-compare', 'results.json'), 'utf8'));
+      assert.equal(result.correctness.nameVaries.length, 3);
+      assert.deepEqual(
+        result.correctness.differences.map((d) => d.class),
+        ['regression'],
       );
       assert.deepEqual(leftovers(dir), []);
     } finally {

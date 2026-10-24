@@ -73,6 +73,16 @@ export interface VaryingTest {
   warpdom: TestStatus[];
 }
 
+/**
+ * A test whose name changed between runs (a timestamp or random value in
+ * its title), matched by file, describe path and position and compared like
+ * the others.
+ */
+export interface NameVariesTest extends VaryingTest {
+  /** Its name in each run, baseline runs first. */
+  names: string[];
+}
+
 export interface ProjectCounts {
   compared: number;
   same: number;
@@ -94,6 +104,8 @@ export interface CorrectnessResult {
   notComparedChanged: VaryingTest[];
   flakyBaseline: VaryingTest[];
   flakyWarpdom: VaryingTest[];
+  /** Tests whose name varies between runs (also in the counts above). */
+  nameVaries: NameVariesTest[];
   differences: TestDifference[];
   /** Differences grouped by status change and first error line (set by compare()). */
   groups?: DifferenceGroup[];
@@ -198,6 +210,8 @@ export interface RunTest {
   status: TestStatus;
   message?: string;
   project?: string;
+  /** The describe path, for matching tests whose name varies between runs. */
+  suite?: string;
 }
 
 /** Compares the tests of the baseline's runs with warpdom's (maps from test key to result). */

@@ -136,9 +136,10 @@ const firstLine = (message) =>
     .find(Boolean) ?? '';
 
 // Tests of a runner JSON report (Vitest's json reporter or Jest's --json;
-// the same shape): Map(key -> { project, file, name, status, message }). The
-// key is the project (when it has a name), the file (relative to root), the
-// full name (describe path and title) and an index for duplicate names. A
+// the same shape): Map(key -> { project, file, name, suite, status,
+// message }). The key is the project (when it has a name), the file
+// (relative to root), the full name (describe path and title) and an index
+// for duplicate names; suite is the describe path ('' without one). A
 // file that failed without running tests (a load error) is one entry named
 // "(file)". projects: what compare's reporter recorded ({ files: [[path,
 // project]] } in the report's order; a file in several projects appears
@@ -175,6 +176,7 @@ export function testsOf(report, root, projects = null) {
         project,
         file,
         name,
+        suite: (a.ancestorTitles ?? []).join(' > '),
         status: normalizeStatus(a.status),
         message: firstLine(a.failureMessages?.[0]),
       });
