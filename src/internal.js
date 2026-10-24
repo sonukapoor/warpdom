@@ -748,7 +748,7 @@ function indexIds(node, add, named, ids = true) {
   for (let n = node; n; n = nextInTree(n, node)) {
     const s = n[S];
     if (s.type === ELEMENT_NODE) {
-      if (add && s.tag === 'style') sheetCreated(s, true);
+      if (add && s.tag === 'style') sheetCreated(s);
       if (ids) {
         const id = s.attrs.get('id');
         if (id !== undefined && id !== '') updateId(s.doc, id, n, add);
@@ -885,18 +885,19 @@ export function replaceData(node, offset, count, data) {
   if (hasRanges(s.doc)) hooks.rangeReplaceData(s.doc, node, offset, count, data.length);
 }
 
-// When a <style> element's style sheet was (re)created, as jsdom creates it
-// (black box, 20.0.3 to 30.1.3): on the element's insertion into a document
-// (indexIds walks the inserted subtree then), which makes a new sheet from
-// its text (CSSOM edits of the old one are gone), and when a text child is
-// inserted, removed or changed (not a comment or an element). Before jsdom
-// 30.1.2 document.styleSheets is in that order (cssom.js).
+// When a <style> element's style sheet is made again from its text, as
+// jsdom makes it (black box, 20.0.3 to 30.1.3): on the element's insertion
+// into a document (indexIds walks the inserted subtree then) and when a
+// text child is inserted, removed or its data set (to the same data too;
+// not a comment or an element). The new sheet has none of the old one's
+// CSSOM edits (sheetRev: cssom.js styleElementSheet). Before jsdom 30.1.2
+// document.styleSheets is in that order (cssom.js).
 let sheetStamps = 0;
 const isText = (s) => s.type === TEXT_NODE || s.type === CDATA_SECTION_NODE;
-function sheetCreated(s, inserted = false) {
+function sheetCreated(s) {
   if (s.ns !== HTML_NS) return;
   s.sheetStamp = ++sheetStamps;
-  if (inserted) s.sheetRev = -1;
+  s.sheetRev = -1;
 }
 
 // Changes to style rules (insertRule, deleteRule, a rule's declarations,

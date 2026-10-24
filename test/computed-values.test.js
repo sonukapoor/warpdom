@@ -859,12 +859,21 @@ const SHEET_CHANGES = {
     ['.a > td { color: blue }', '.b > td { color: red }'],
     (d) => d.head.firstChild.appendChild(d.createElement('b')),
   ],
-  // A moved style element's sheet is made again from its text.
+  // A moved style element's sheet is made again from its text, and so is
+  // one whose text is set to the same data.
   movedAfterEdit: [
     ['.a > td { color: red }', '.b > td { color: red }'],
     (d) => {
       d.styleSheets[1].cssRules[0].style.color = 'blue';
       d.head.prepend(d.head.lastChild);
+    },
+  ],
+  sameDataAfterEdit: [
+    ['.a > td { color: red }', '.b > td { color: red }'],
+    (d) => {
+      d.styleSheets[0].cssRules[0].style.color = 'blue';
+      const text = d.head.firstChild.firstChild;
+      text.data = text.data;
     },
   ],
   insertRule: [['.a > td { color: blue }', '.b > td { color: red }'], (d) => d.styleSheets[0].insertRule('td { }', 1)],
