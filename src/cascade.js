@@ -102,12 +102,16 @@ function cascadeExpand(property, value, legacyFont, compat = null, inline = fals
 
 function addDeclarations(index, decls, entries, counter, compat) {
   for (const [property, { value, important }] of decls) {
+    // A longhand declared as itself (padding-bottom: 7px), not through a
+    // shorthand: it meets a pending longhand by order (cascadeByOrder).
+    const direct = SHORTHANDS[ALIASES[property] ?? property] === undefined;
     for (const [name, v] of cascadeExpand(property, value, decls.legacyFont, compat)) {
       let lists = index.get(name);
-      if (!lists) index.set(name, (lists = { normal: [], important: [] }));
+      if (!lists) index.set(name, (lists = { normal: [], important: [], pending: false }));
+      if (v === PENDING) lists.pending = true;
       const order = counter.n++;
       for (const { match, specificity } of entries)
-        (important ? lists.important : lists.normal).push({ match, specificity, order, value: v });
+        (important ? lists.important : lists.normal).push({ match, specificity, order, value: v, important, direct });
     }
   }
 }
@@ -260,6 +264,59 @@ function firstMatch(list, element, settled = false) {
   return undefined;
 }
 
+// A pending longhand and a longhand declared as itself meet by order, not
+// by importance or specificity (compat.pendingByOrder, black box: jsdom 26
+// with cssstyle 4.4 and 4.6, 27.4, 28.1, 29.0.0 to 30.1.2): the later one
+// wins. Ant Design's bordered Descriptions declares padding: var(--p)
+// var(--q) on its cells and padding-bottom: var(--b) in a later, less
+// specific rule; jsdom gives padding-bottom var(--b) there.
+// - 'latest' (before 28): the latest matching pending entry and the latest
+//   one declared as itself, as jsdom applies its rules in document order
+//   (.d.d td { padding: var(--a) } td { padding-bottom: 7px } td { padding:
+//   var(--b) } leaves padding-bottom pending).
+// - 'all' (28 to 30.1.2): the cascade's first of each, each declared
+//   property's winner by specificity (7px there).
+// - 'important' (30.1.3 and later): only two !important ones.
+// The entry that wins, or undefined when the cascade decides (no such
+// pair, or another declaration wins anyway).
+function cascadeByOrder(lists, element, compat) {
+  const mode = compat.pendingByOrder;
+  const latest = mode === 'latest';
+  // One scan, important then normal: the first matching entry (the
+  // cascade's winner), the first (latest: the last in document order)
+  // pending one and one declared as itself, and the first !important one
+  // not pending (jsdom 29 below).
+  let winner, pending, direct, importantSettled;
+  for (let i = 0; i < 2; i++) {
+    if (mode === 'important' && i === 1) break;
+    const list = i === 0 ? lists.important : lists.normal;
+    for (const entry of list) {
+      if (entry.value === HIDE_UA) continue;
+      const isPending = entry.value === PENDING;
+      const wanted =
+        latest ||
+        winner === undefined ||
+        (isPending && pending === undefined) ||
+        (entry.direct && direct === undefined) ||
+        (i === 0 && !isPending && importantSettled === undefined);
+      if (!wanted || !entry.match(element, NO_SCOPE)) continue;
+      // A first match from a shorthand without var() wins as the cascade
+      // decides: no need to look further.
+      if (winner === undefined && !isPending && !entry.direct) return undefined;
+      winner ??= entry;
+      if (!isPending && i === 0) importantSettled ??= entry;
+      if (isPending && (pending === undefined || (latest && entry.order > pending.order))) pending = entry;
+      if (entry.direct && (direct === undefined || (latest && entry.order > direct.order))) direct = entry;
+    }
+  }
+  if (pending === undefined || direct === undefined) return undefined;
+  // As cascade decides without order: past an !important pending one in
+  // jsdom 29 (29.0.0 to 29.1.1) to another !important declaration.
+  if (winner.value === PENDING && compat.jsdom === 29 && winner.important) winner = importantSettled ?? winner;
+  if (winner.value !== PENDING && !winner.direct) return undefined;
+  return direct.order > pending.order ? direct : pending;
+}
+
 // The cascaded value: important inline, important rules, inline, rules.
 // Cached per element until its root's rules, the document's tree or
 // attributes, or its style attribute change.
@@ -342,9 +399,15 @@ function cascade(element, index, inlineMap, name) {
   }
   if (inline?.important) return inline.value;
   const lists = index.get(name);
+  // A normal inline declaration wins over normal rules: no order to check
+  // without !important ones.
+  if (lists?.pending && window[S].compat.pendingByOrder && (!inline || lists.important.length)) {
+    const entry = cascadeByOrder(lists, element, window[S].compat);
+    if (entry !== undefined) return entry.important || !inline ? entry.value : inline.value;
+  }
   if (lists?.important.length) {
     const v = firstMatch(lists.important, element);
-    // jsdom 29 (black box, 29.1.1): an !important shorthand with var()
+    // jsdom 29 (black box, 29.0.0 to 29.1.1): an !important shorthand with var()
     // does not override another !important declaration of its longhands.
     if (v === PENDING && window[S].compat.jsdom === 29) return firstMatch(lists.important, element, true) ?? v;
     if (v !== undefined) return v;
