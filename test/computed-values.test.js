@@ -725,10 +725,9 @@ const BY_ORDER = {
   margin: '.d.d td { margin: var(--m) } td { margin-bottom: 7px }',
   borderSide: '.d.d td { border-bottom: var(--b) } td { border-bottom-width: 7px }',
   laterSheet: ['.d.d td { padding: var(--p) }', 'td { padding-bottom: 7px }'],
-  // Three rules: before jsdom 28 the latest of each (pending here), from
-  // 28 each declared property's winner by specificity (7px). The two
-  // shorthands have one value: before 28 jsdom's padding is the later
-  // one's, by document order (not modeled).
+  // Three rules: before jsdom 28.1 the latest one (pending here: all rules
+  // apply in document order), from 28.1 each declared property's winner by
+  // specificity (7px).
   pendingAfter: '.d.d td { padding: var(--a) } td { padding-bottom: 7px } td { padding: var(--a) }',
   pendingAfterMoreSpecific: 'td { padding: var(--a) } td { padding-bottom: 7px } .d.d td { padding: var(--a) }',
   declaredAfter: '.d.d td { padding-bottom: 3px } td { padding: var(--a) } td { padding-bottom: 7px }',
@@ -791,6 +790,215 @@ test('computed values: a pending longhand and a declared one meet by order befor
   w.document.head.innerHTML = '<style>.d.d td { padding: var(--p) } td { padding-bottom: 7px }</style>';
   w.document.body.innerHTML = '<div class="d"><table><tbody><tr><td></td></tr></tbody></table></div>';
   assert.equal(w.getComputedStyle(w.document.querySelector('td')).paddingBottom, '7px');
+});
+
+// --- document order (#121) ---------------------------------------------------------
+
+// Before jsdom 28.1.0 (black box, 20.0.0 to 28.0.0, on clean installs of
+// each release) the page's style rules apply in document order: selector
+// specificity and !important count for nothing, the style attribute wins
+// over all rules, and any rule over the user agent sheet. The sheets are
+// in document.styleSheets order, which before 30.1.2 is the order they
+// were created in (a <style> inserted before another, or one whose text
+// changes, comes last). Rules in @media screen apply at their place, in
+// @media all (or an empty list) only from 29.
+const ORDER_PROPS = ['color', 'padding-top', 'padding-bottom', 'padding', 'border-top-color', 'display', '--x'];
+const ORDER = {
+  specificity: '.a.b > td { color: red } td { color: blue }',
+  specificityLast: 'td { color: blue } .a.b > td { color: red }',
+  id: '#c { color: red } td { color: blue }',
+  selectorList: '.b, .a.b > td { color: red } td { color: blue }',
+  important: 'td { color: blue !important } .a.b > td { color: red }',
+  importantBoth: '#c { color: red !important } td { color: blue !important }',
+  importantSameSpecificity: '.a > td { color: red !important } .b > td { color: blue }',
+  sheets: ['.a.b > td { color: red }', 'td { color: blue }'],
+  sheetsLast: ['td { color: blue }', '.a.b > td { color: red }'],
+  mediaScreen: '@media screen { .a.b > td { color: red } } td { color: blue }',
+  mediaScreenLast: '.a.b > td { color: red } @media screen { td { color: blue } }',
+  mediaAll: '.a > td { color: red } @media all { .b > td { color: blue } }',
+  mediaEmpty: '.a > td { color: red } @media { .b > td { color: blue } }',
+  supports: '.a > td { color: red } @supports (color: red) { .b > td { color: blue } }',
+  custom: '.a.b > td { --x: 1 } td { --x: 2 }',
+  longhandFirst: '.a.b > td { padding-top: 2px } td { padding: 1px }',
+  shorthandFirst: '.a.b > td { padding: 1px } td { padding-top: 2px }',
+  border: '.a.b > td { border: 1px solid red } td { border-top-color: blue }',
+  display: '.a.b > td { display: none } td { display: block }',
+  pendingFirst: '.a.b > td { padding: var(--p) } td { padding-bottom: 7px }',
+  pendingLast: '.a.b > td { padding-bottom: 7px } td { padding: var(--p) }',
+  pendingThree: '.a.b > td { padding: var(--a) } td { padding-bottom: 7px } td { padding: var(--b) }',
+  varThenPlain: '.a.b > td { padding: var(--p) } td { padding: 3px }',
+  plainThenVar: '.a.b > td { padding: 3px } td { padding: var(--p) }',
+  styleAttribute: 'td { color: blue !important }',
+  styleAttributeImportant: 'td { color: blue !important }',
+};
+// Sheets changed after they were made: [initial sheets, change].
+const SHEET_CHANGES = {
+  insertedBefore: [
+    ['.b > td { color: red }'],
+    (d) => d.head.prepend(Object.assign(d.createElement('style'), { textContent: '.a > td { color: blue }' })),
+  ],
+  textChanged: [
+    ['.a > td { color: blue }', '.b > td { color: red }'],
+    (d) => (d.head.firstChild.textContent = '.a > td { color: green }'),
+  ],
+  sameText: [
+    ['.a > td { color: blue }', '.b > td { color: red }'],
+    (d) => (d.head.firstChild.textContent = d.head.firstChild.textContent),
+  ],
+  textAppended: [
+    ['.a > td { color: blue }', '.b > td { color: red }'],
+    (d) => d.head.firstChild.appendChild(d.createTextNode(' ')),
+  ],
+  moved: [['.a > td { color: blue }', '.b > td { color: red }'], (d) => d.head.prepend(d.head.lastChild)],
+  // A comment or an element in a style element does not make a new sheet.
+  comment: [
+    ['.a > td { color: blue }', '.b > td { color: red }'],
+    (d) => d.head.firstChild.appendChild(d.createComment('c')),
+  ],
+  element: [
+    ['.a > td { color: blue }', '.b > td { color: red }'],
+    (d) => d.head.firstChild.appendChild(d.createElement('b')),
+  ],
+  // A moved style element's sheet is made again from its text, and so is
+  // one whose text is set to the same data.
+  movedAfterEdit: [
+    ['.a > td { color: red }', '.b > td { color: red }'],
+    (d) => {
+      d.styleSheets[1].cssRules[0].style.color = 'blue';
+      d.head.prepend(d.head.lastChild);
+    },
+  ],
+  sameDataAfterEdit: [
+    ['.a > td { color: red }', '.b > td { color: red }'],
+    (d) => {
+      d.styleSheets[0].cssRules[0].style.color = 'blue';
+      const text = d.head.firstChild.firstChild;
+      text.data = text.data;
+    },
+  ],
+  insertRule: [['.a > td { color: blue }', '.b > td { color: red }'], (d) => d.styleSheets[0].insertRule('td { }', 1)],
+  ruleStyle: [
+    ['.a.b > td { color: red } td { color: blue }'],
+    (d) => (d.styleSheets[0].cssRules[0].style.color = 'green'),
+  ],
+  insertRuleFirst: [['.a.b > td { color: red }'], (d) => d.styleSheets[0].insertRule('td { color: blue }', 0)],
+};
+const ORDER_TABLE = '<table><tbody><tr class="a b"><td id="c">a</td></tr></tbody></table>';
+function documentOrder(w, skip = new Set()) {
+  const d = w.document;
+  const out = {};
+  const sheets = (texts) => {
+    d.head.textContent = '';
+    for (const text of texts) d.head.appendChild(d.createElement('style')).textContent = text;
+  };
+  const record = (key) => {
+    const td = d.querySelector('td');
+    const cs = w.getComputedStyle(td);
+    out[key] = ORDER_PROPS.map((p) => cs.getPropertyValue(p));
+  };
+  for (const [key, css] of Object.entries(ORDER)) {
+    if (skip.has(key)) continue;
+    sheets([css].flat());
+    d.body.innerHTML = ORDER_TABLE;
+    if (key === 'styleAttribute') d.querySelector('td').setAttribute('style', 'color: green');
+    if (key === 'styleAttributeImportant') d.querySelector('td').setAttribute('style', 'color: green !important');
+    record(key);
+  }
+  d.body.innerHTML = ORDER_TABLE;
+  for (const [key, [texts, change]] of Object.entries(SHEET_CHANGES)) {
+    if (skip.has(key)) continue;
+    sheets(texts);
+    w.getComputedStyle(d.querySelector('td')).color;
+    change(d);
+    record(key);
+    out[`${key} sheets`] = [...d.styleSheets].map((sheet) => [...sheet.cssRules].map((r) => r.selectorText).join());
+  }
+  return out;
+}
+// From jsdom 28.1 these differ otherwise, not modeled: two !important
+// rules meet by order, a shorthand after a more specific longhand wins
+// (to 30.1.2) (#136), and a rule's style edited after a read does not
+// change the computed style (to 30.0.1, #137).
+const NEWER_GAPS = new Set(['importantBoth', 'longhandFirst', 'shorthandFirst', 'border', 'varThenPlain', 'ruleStyle']);
+for (const jsdom of JSDOMS)
+  parity(
+    `computed values: style rules in document order before jsdom 28.1 (jsdom ${jsdom})`,
+    (w) => documentOrder(w, jsdom >= 28 ? NEWER_GAPS : undefined),
+    { jsdom },
+  );
+
+// Before jsdom 28.1.0 the user agent sheet is under all of the page's
+// rules, its [hidden] { display: none } too: a display rule shows an element
+// with the hidden attribute. (From 28.1.0 jsdom cascades the user agent
+// sheet's rules with the page's by specificity, not modeled: #136.)
+function underRules(w) {
+  const d = w.document;
+  d.head.innerHTML =
+    '<style>* { font-weight: normal } :where(div) { display: inline } .x { display: block } span { display: flex } #t { display: block } .a.b { display: none } div.a { display: block }</style>';
+  d.body.innerHTML =
+    '<b>b</b><div>div</div><p class="x" hidden>p</p><span hidden>span</span><section id="t" hidden>s</section><div class="a b" hidden>d</div><i hidden>i</i><div hidden style="display: inline">inline</div><embed hidden>';
+  return [...d.body.children].map((el) => {
+    const cs = w.getComputedStyle(el);
+    return [el.localName, cs.display, cs.fontWeight];
+  });
+}
+for (const jsdom of [20, 22, 25, 26, 27])
+  parity(`computed values: the user agent sheet under all rules before jsdom 28.1 (jsdom ${jsdom})`, underRules, {
+    jsdom,
+  });
+
+test('computed values: document order to jsdom 28.0.0, specificity from 28.1.0', () => {
+  const read = (jsdom, css, markup = ORDER_TABLE, prop = 'color') => {
+    const w = createWindow({ jsdom });
+    w.document.head.innerHTML = `<style>${css}</style>`;
+    w.document.body.innerHTML = markup;
+    return w
+      .getComputedStyle(
+        w.document.body.firstElementChild.matches('table')
+          ? w.document.querySelector('td')
+          : w.document.body.firstElementChild,
+      )
+      .getPropertyValue(prop);
+  };
+  for (const [jsdom, specificity, important, hidden] of [
+    ['20.0.0', 'blue', 'red', 'block'],
+    ['27.4.0', 'rgb(0, 0, 255)', 'rgb(255, 0, 0)', 'block'],
+    ['28.0.0', 'rgb(0, 0, 255)', 'rgb(255, 0, 0)', 'block'],
+    ['28.1.0', 'rgb(255, 0, 0)', 'rgb(0, 0, 255)', 'none'],
+  ]) {
+    assert.equal(read(jsdom, ORDER.specificity), specificity, jsdom);
+    assert.equal(read(jsdom, ORDER.important), important, jsdom);
+    assert.equal(read(jsdom, 'div { display: block }', '<div hidden></div>', 'display'), hidden, jsdom);
+  }
+});
+
+test('computed values: @media all applies from jsdom 29.0.0', () => {
+  for (const [jsdom, color] of [
+    ['28.1.0', 'rgb(0, 0, 0)'],
+    ['29.0.0', 'rgb(0, 0, 255)'],
+  ]) {
+    const w = createWindow({ jsdom });
+    w.document.head.innerHTML = '<style>@media all { div { color: blue } }</style>';
+    w.document.body.innerHTML = '<div></div>';
+    assert.equal(w.getComputedStyle(w.document.querySelector('div')).color, color, jsdom);
+  }
+});
+
+test('computed values: style sheets in creation order before jsdom 30.1.2', () => {
+  for (const [jsdom, order, color] of [
+    ['30.0.1', '.b .a', 'rgb(0, 0, 255)'],
+    ['30.1.2', '.a .b', 'rgb(255, 0, 0)'],
+  ]) {
+    const w = createWindow({ jsdom });
+    const d = w.document;
+    d.head.innerHTML = '<style>.b { color: red }</style>';
+    d.body.innerHTML = '<div class="a b"></div>';
+    const style = d.createElement('style');
+    style.textContent = '.a { color: blue }';
+    d.head.prepend(style);
+    assert.equal([...d.styleSheets].map((s) => s.cssRules[0].selectorText).join(' '), order, jsdom);
+    assert.equal(w.getComputedStyle(d.querySelector('div')).color, color, jsdom);
+  }
 });
 
 // A longhand, a shorthand without var() and a shorthand with var(), all

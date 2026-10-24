@@ -7,13 +7,15 @@
 //
 // Each root (a document or a shadow root) keeps an index of its style
 // rules' declarations by longhand, sorted by importance, specificity and
-// order; it is rebuilt only when the root's style sheets or their rules
-// change. Reading a property tests only the rules that declare it.
+// order (before jsdom 28.1.0 by order alone: compat.documentOrder); it is
+// rebuilt only when the root's style sheets or their rules change.
+// Reading a property tests only the rules that declare it.
 //
 // As in jsdom, and so as tests expect: rules inside @media, @supports and
 // @layer blocks are not applied, constructed (adopted) style sheets are
 // not applied, and the hidden attribute hides an element whatever its
-// display rules say (but not over its style attribute).
+// display rules say (but not over its style attribute; before jsdom 28.1.0
+// not over display rules either).
 import {
   S,
   ELEMENT_NODE,
@@ -101,7 +103,12 @@ function cascadeExpand(property, value, legacyFont, compat = null, inline = fals
 }
 
 function addDeclarations(index, decls, entries, counter, compat) {
-  for (const [property, { value, important }] of decls) {
+  // Before jsdom 28.1.0 !important in a style rule counts for nothing
+  // (documentOrder).
+  const ordered = compat?.documentOrder === true;
+  for (const [property, decl] of decls) {
+    const value = decl.value;
+    const important = decl.important && !ordered;
     // A longhand declared as itself (padding-bottom: 7px), not through a
     // shorthand: it meets a pending longhand by order (cascadeByOrder).
     const direct = SHORTHANDS[ALIASES[property] ?? property] === undefined;
@@ -117,14 +124,22 @@ function addDeclarations(index, decls, entries, counter, compat) {
 }
 
 const bySpecificityThenOrder = (a, b) => b.specificity - a.specificity || b.order - a.order;
+// Before jsdom 28.1.0 (black box, 20.0.0 to 28.0.0): the page's style rules
+// apply in document order, their selectors' specificity and !important
+// aside (.a.b > td { color: red } td { color: blue } gives blue; td {
+// color: blue !important } .a.b > td { color: red } gives red, and so
+// does a style attribute's color over a rule's !important one). The sheets
+// in document.styleSheets order, a rule in @media screen at its place.
+const byOrder = (a, b) => b.order - a.order;
 
 // Whether the style rules of a top-level @media rule apply, as in jsdom
-// (which evaluates no media features): jsdom 27 and later apply a list
-// with an empty, "all" or "screen" query; jsdom 26 one with "screen".
-// Rules inside other grouping rules never apply, as in jsdom.
-function mediaApplies(rule, mode) {
+// (which evaluates no media features): jsdom 29 and later apply a list
+// with an empty, "all" or "screen" query; before (black box, 20.0.0 to
+// 28.1.0) one with "screen". Rules inside other grouping rules never
+// apply, as in jsdom.
+function mediaApplies(rule, mode, compat) {
   const list = rule[S].media[S].list;
-  if (isLegacyMode(mode)) return list.includes('screen');
+  if (isLegacyMode(mode) || compat.jsdom < 29) return list.includes('screen');
   return list.length === 0 || list.includes('all') || list.includes('screen');
 }
 
@@ -146,16 +161,17 @@ function buildIndex(sheets, mode, compat) {
     for (const rule of ss.rules) {
       const proto = Object.getPrototypeOf(rule);
       if (proto === ss.protos.CSSStyleRule) addRule(rule);
-      else if (proto === ss.protos.CSSMediaRule && mediaApplies(rule, mode)) {
+      else if (proto === ss.protos.CSSMediaRule && mediaApplies(rule, mode, compat)) {
         // (ruleArray: before jsdom 27.1.0 the rule's cssRules, which may be replaced)
         for (const inner of ruleArray(rule))
           if (inner?.[S] && Object.getPrototypeOf(inner) === ss.protos.CSSStyleRule) addRule(inner);
       }
     }
   }
+  const compare = compat?.documentOrder ? byOrder : bySpecificityThenOrder;
   for (const lists of index.values()) {
-    lists.normal.sort(bySpecificityThenOrder);
-    lists.important.sort(bySpecificityThenOrder);
+    lists.normal.sort(compare);
+    lists.important.sort(compare);
   }
   return index;
 }
@@ -265,27 +281,23 @@ function firstMatch(list, element, settled = false) {
 }
 
 // A pending longhand and a longhand declared as itself meet by order, not
-// by importance or specificity (compat.pendingByOrder, black box: jsdom 26
-// with cssstyle 4.4 and 4.6, 27.4, 28.1, 29.0.0 to 30.1.2): the later one
-// wins. Ant Design's bordered Descriptions declares padding: var(--p)
-// var(--q) on its cells and padding-bottom: var(--b) in a later, less
-// specific rule; jsdom gives padding-bottom var(--b) there.
-// - 'latest' (before 28): the latest matching pending entry and the latest
-//   one declared as itself, as jsdom applies its rules in document order
-//   (.d.d td { padding: var(--a) } td { padding-bottom: 7px } td { padding:
-//   var(--b) } leaves padding-bottom pending).
-// - 'all' (28 to 30.1.2): the cascade's first of each, each declared
-//   property's winner by specificity (7px there).
+// by importance or specificity (compat.pendingByOrder, black box: jsdom
+// 28.1, 29.0.0 to 30.1.2): the later one wins. Ant Design's bordered
+// Descriptions declares padding: var(--p) var(--q) on its cells and
+// padding-bottom: var(--b) in a later, less specific rule; jsdom gives
+// padding-bottom var(--b) there. (Before 28.1.0 all declarations meet by
+// order: compat.documentOrder.)
+// - 'all' (28.1 to 30.1.2): the cascade's first of each, each declared
+//   property's winner by specificity (.d.d td { padding: var(--a) } td {
+//   padding-bottom: 7px } td { padding: var(--b) } gives 7px).
 // - 'important' (30.1.3 and later): only two !important ones.
 // The entry that wins, or undefined when the cascade decides (no such
 // pair, or another declaration wins anyway).
 function cascadeByOrder(lists, element, compat) {
   const mode = compat.pendingByOrder;
-  const latest = mode === 'latest';
   // One scan, important then normal: the first matching entry (the
-  // cascade's winner), the first (latest: the last in document order)
-  // pending one and one declared as itself, and the first !important one
-  // not pending (jsdom 29 below).
+  // cascade's winner), the first pending one and one declared as itself,
+  // and the first !important one not pending (jsdom 29 below).
   let winner, pending, direct, importantSettled;
   for (let i = 0; i < 2; i++) {
     if (mode === 'important' && i === 1) break;
@@ -294,7 +306,6 @@ function cascadeByOrder(lists, element, compat) {
       if (entry.value === HIDE_UA) continue;
       const isPending = entry.value === PENDING;
       const wanted =
-        latest ||
         winner === undefined ||
         (isPending && pending === undefined) ||
         (entry.direct && direct === undefined) ||
@@ -305,8 +316,8 @@ function cascadeByOrder(lists, element, compat) {
       if (winner === undefined && !isPending && !entry.direct) return undefined;
       winner ??= entry;
       if (!isPending && i === 0) importantSettled ??= entry;
-      if (isPending && (pending === undefined || (latest && entry.order > pending.order))) pending = entry;
-      if (entry.direct && (direct === undefined || (latest && entry.order > direct.order))) direct = entry;
+      if (isPending) pending ??= entry;
+      if (entry.direct) direct ??= entry;
     }
   }
   if (pending === undefined || direct === undefined) return undefined;
@@ -417,8 +428,12 @@ function cascade(element, index, inlineMap, name) {
     const v = firstMatch(lists.normal, element);
     if (v !== undefined) return v;
   }
-  // The user agent sheet (ua-sheet.js), under the page's.
+  // The user agent sheet (ua-sheet.js), under the page's. Before jsdom
+  // 28.1.0 the hidden attribute's display: none is the user agent sheet's
+  // too: a display rule wins over it (div { display: block } shows a div
+  // with hidden).
   if (uaHidden) return undefined;
+  if (name === 'display' && window[S].compat.documentOrder && hiddenHides(element, window[S].compat)) return 'none';
   return (uaImportant ? undefined : uaValue(ua.important, element)) ?? uaValue(ua.normal, element);
 }
 
@@ -915,16 +930,19 @@ export function computedValue(element, property) {
   return longhandValue(element, name, data, custom, compat, cascaded(element, name));
 }
 
+// The hidden attribute hides an element; from jsdom 27 not an embed
+// (embed[hidden] is inline in the user agent sheet).
+const hiddenHides = (element, compat) =>
+  element[S].ns === HTML_NS && element[S].attrs.has('hidden') && (compat.jsdom < 27 || element[S].tag !== 'embed');
+
 function longhandValue(element, name, data, custom, compat, value) {
-  // As in jsdom: the hidden attribute wins over display rules, not over
-  // the style attribute; from jsdom 27 not on embed (embed[hidden] is
-  // inline in the user agent sheet).
+  // As in jsdom from 28.1.0: the hidden attribute wins over display rules,
+  // not over the style attribute (before, see cascade).
   if (
     name === 'display' &&
-    element[S].ns === HTML_NS &&
-    element[S].attrs.has('hidden') &&
-    !inlineDeclarations(element)?.has('display') &&
-    (compat.jsdom < 27 || element[S].tag !== 'embed')
+    !compat.documentOrder &&
+    hiddenHides(element, compat) &&
+    !inlineDeclarations(element)?.has('display')
   )
     return 'none';
   if (compat.legacyComputedStyle) {

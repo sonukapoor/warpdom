@@ -202,7 +202,7 @@ CI:
 | A5 | The compare GitHub Action (traction item 3): a non-blocking job that runs a project's suite on jsdom and warpdom and reports differences and time saved | Evidence on other projects' own CI without asking for a decision | Open |
 | A6 | Applications (traction item 4): screen n8n, Grafana, Mattermost and Superset by jsdom unit-test CI time, run `compare`, then one carefully measured PR | Applications care about CI minutes and adopt younger tools | Open |
 | A7 | Easy way back: document an opt-in setup with a one-line revert, and the compare mode as a safety net | Lowers the cost of saying yes | Open |
-| A8 | Cascade parity found while fixing #117: #121 (jsdom 20 to 27.4 ignore specificity), #122, #123 | Suites on jsdom 26/27, Ant Design among them | Open |
+| A8 | Cascade parity found while fixing #117: #121 (jsdom 20 to 28.0 ignore specificity), #122, #123; found with #121: #136, #137, #138 | Suites on jsdom 26/27, Ant Design among them | #121 in review (fix/document-order-cascade) |
 
 The MUI reply (to be posted by Sonu) accepts the hold, leaves the draft
 PR open, and names the 1.0 criteria as the bar.
@@ -4257,3 +4257,56 @@ path jsdom has, warpdom has with the same kind, place and parent.
   being cssom's declaration object (color null when not set).
 - Cost: none per node; sheet parsing 2,000 rules and window creation the
   same as main within noise (Node 22.23.3).
+
+## 2026-10-24: style rules in document order before jsdom 28.1 (branch fix/document-order-cascade, #121)
+
+Black box, on clean installs (one jsdom release per directory; see #138
+for why the shared installs are not reliable for 27.1 to 28.1), 20.0.0 to
+30.1.3:
+- Before 28.1.0 (20.0.0 to 28.0.0) getComputedStyle applies the page's
+  style rules in document order: specificity counts for nothing (`.a.b >
+  td { color: red } td { color: blue }` gives blue; from 28.1.0 red), and
+  so does !important in a rule (`td { color: blue !important } .a.b > td {
+  color: red }` gives red; the style attribute's color wins over a rule's
+  !important one). The boundary is 28.0.0/28.1.0, not 27.4/28.0.
+- The style attribute wins over all rules, its own !important or not.
+- The user agent sheet is under every rule: `* { display: inline }` makes
+  a div inline, and any display rule shows an element with the hidden
+  attribute (`div { display: block }`). From 28.1.0 the user agent rules
+  cascade with the page's by specificity (#136, not modeled).
+- Rules in `@media screen` apply at their place in the order; `@media all`
+  and an empty list do not apply before 29.0.0 (warpdom applied them from
+  27); @supports and @layer never.
+- Shorthands and longhands, and the pending longhands of a var()
+  shorthand (#118), meet by order like everything else: the later
+  declaration wins (`.a.b > td { padding: 1px } td { padding-top: 2px }`
+  gives 2px, the reverse 1px; `.a.b > td { padding-bottom: 7px } td {
+  padding: var(--p) }` leaves padding-bottom pending, '').
+- Ties: same as in later releases (the later rule).
+- The sheets in document.styleSheets order, which before 30.1.2 (20.0.0
+  to 30.0.1) is the order the sheets were created in, not tree order: a
+  `<style>` inserted before another, or one whose text changes (even to the
+  same text, or a text node appended), comes last; moving one (remove and
+  insert) too; insertRule and the media attribute do not. That also
+  decides ties in 28.1 to 30.0.1. `<link rel=stylesheet>` sheets (with
+  resources: 'usable') come in when loaded, after the style elements, before
+  30.1.2; warpdom loads none. No release has adoptedStyleSheets.
+
+Implemented as compat.documentOrder (before 28.1.0: the rule index is
+sorted by order alone and every rule declaration is normal; the hidden
+attribute's display: none comes with the user agent sheet, under the
+rules) and compat.sheetsByCreation (before 30.1.2: internal.js stamps a
+style element when it is inserted into a document and when a text child
+is inserted, removed or its data set, to the same data too, but not for a
+comment or an element child; documentStyleSheets sorts by that). In every
+release those make a new sheet from the element's text, without the old
+sheet's CSSOM edits (a moved style element too, which warpdom kept
+before; review on #139). The 'latest'
+mode of compat.pendingByOrder is gone (document order covers it), and
+mediaApplies applies all/empty lists from 29. The newer profiles' hot path
+is unchanged: one tag test per inserted element and per child change of a
+parent.
+
+Measurement matrix (145 cases x 18 releases, scratchpad m121): 579
+case-release differences fixed, none added; differences left are #136,
+#137, #113's in-order block model and older pre-existing ones.
