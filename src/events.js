@@ -426,44 +426,56 @@ export function cancel(event) {
   if (s.cancelable && !s.inPassiveListener) s.canceled = true;
 }
 
-const eventTarget = {
-  addEventListener(type, callback, options) {
-    state(this);
-    if (callback === undefined && arguments.length < 2)
-      tooFewArguments('EventTarget', 'addEventListener', 2, arguments.length);
-    const { capture, once, passive: given, signal } = flatten(options);
-    if (signal?.aborted) return;
-    if (callback == null) return;
-    const map = listenersOf(this);
-    const key = String(type);
-    const passive = given !== null ? given : defaultPassive(key, this);
-    const list = map.get(key) ?? [];
-    if (list.some((e) => e.callback === callback && e.capture === capture)) return;
-    const entry = { callback, capture, once, passive, removed: false };
-    list.push(entry);
-    map.set(key, list);
-    signal?.addEventListener?.('abort', () => removeEntry(this, key, entry), { once: true });
-  },
-  removeEventListener(type, callback, options) {
-    state(this);
-    if (callback === undefined && arguments.length < 2)
-      tooFewArguments('EventTarget', 'removeEventListener', 2, arguments.length);
-    // EventListenerOptions: only capture is read.
-    const capture =
-      options !== null && (typeof options === 'object' || typeof options === 'function')
-        ? !!options.capture
-        : !!options;
-    const list = this[S]?.listeners?.get(String(type));
-    const entry = list?.find((e) => e.callback === callback && e.capture === capture);
-    if (entry) removeEntry(this, String(type), entry);
-  },
-  dispatchEvent(event) {
-    return dispatch(this, event, false);
-  },
-};
-// WebIDL lengths: the required arguments (options is optional).
-Object.defineProperty(eventTarget.addEventListener, 'length', { value: 2 });
-Object.defineProperty(eventTarget.removeEventListener, 'length', { value: 2 });
+// EventTarget's operations, made per window (EVENT_INTERFACES perWindow):
+// called without a this value (const { removeEventListener } = node), they
+// act on the window, as WebIDL's operations do on the global object of
+// their realm (black box, jsdom 20.0.3 to 30.1.3; #128). Another receiver
+// that is not an EventTarget throws.
+function eventTargetMembers(window) {
+  const members = {
+    addEventListener(type, callback, options) {
+      const target = this ?? window;
+      state(target);
+      if (callback === undefined && arguments.length < 2)
+        tooFewArguments('EventTarget', 'addEventListener', 2, arguments.length);
+      const { capture, once, passive: given, signal } = flatten(options);
+      if (signal?.aborted) return;
+      if (callback == null) return;
+      const map = listenersOf(target);
+      const key = String(type);
+      const passive = given !== null ? given : defaultPassive(key, target);
+      const list = map.get(key) ?? [];
+      if (list.some((e) => e.callback === callback && e.capture === capture)) return;
+      const entry = { callback, capture, once, passive, removed: false };
+      list.push(entry);
+      map.set(key, list);
+      signal?.addEventListener?.('abort', () => removeEntry(target, key, entry), { once: true });
+    },
+    removeEventListener(type, callback, options) {
+      const target = this ?? window;
+      state(target);
+      if (callback === undefined && arguments.length < 2)
+        tooFewArguments('EventTarget', 'removeEventListener', 2, arguments.length);
+      // EventListenerOptions: only capture is read.
+      const capture =
+        options !== null && (typeof options === 'object' || typeof options === 'function')
+          ? !!options.capture
+          : !!options;
+      const list = target[S]?.listeners?.get(String(type));
+      const entry = list?.find((e) => e.callback === callback && e.capture === capture);
+      if (entry) removeEntry(target, String(type), entry);
+    },
+    dispatchEvent(event) {
+      const target = this ?? window;
+      state(target);
+      return dispatch(target, event, false);
+    },
+  };
+  // WebIDL lengths: the required arguments (options is optional).
+  Object.defineProperty(members.addEventListener, 'length', { value: 2 });
+  Object.defineProperty(members.removeEventListener, 'length', { value: 2 });
+  return members;
+}
 
 // --- Event and subclasses -----------------------------------------------------
 
@@ -952,7 +964,18 @@ const motionGetters = (keys) =>
 export const EVENT_INTERFACES = [
   {
     name: 'EventTarget',
-    members: eventTarget,
+    // The keys and attributes; each window gets its own functions.
+    members: eventTargetMembers(null),
+    perWindow: (proto, window) => {
+      const members = eventTargetMembers(window);
+      for (const key of Object.keys(members))
+        Object.defineProperty(proto, key, {
+          value: members[key],
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
+    },
     construct: (w, self) => {
       // Not enumerable (see hiddenSlot in internal.js); EventTarget.prototype
       // has no accessor for S, as nodes inherit it.

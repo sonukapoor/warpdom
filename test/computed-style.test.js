@@ -723,7 +723,7 @@ test('getComputedStyle: background and border side accessors compose from csssty
   ]);
   assert.deepEqual(read('4.4.0', 'background: red url(a.png) fixed'), [
     'url("a.png") fixed rgb(255, 0, 0)',
-    'red url("a.png") fixed',
+    'url("a.png") fixed red',
     'CanvasText',
     'CanvasText',
   ]);
