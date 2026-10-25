@@ -146,7 +146,7 @@ for (const alias of ALIASES) {
 // Checked in a process per alias: every cssstyle module loaded once a
 // window has parsed a style sheet.
 test('every jsdom alias loads its own cssstyle only', () => {
-  const probe = `
+  const probe = String.raw`
     const { JSDOM } = require(process.argv[1]);
     new JSDOM('<style>div { color: var(--c) }</style><div></div>').window.document.styleSheets[0].cssRules[0].style.cssText;
     const dirs = new Set();
