@@ -104,11 +104,13 @@ function cascadeExpand(property, value, legacyFont, compat = null, inline = fals
 
 function addDeclarations(index, decls, entries, counter, compat) {
   // Before jsdom 28.1.0 !important in a style rule counts for nothing
-  // (documentOrder).
+  // (documentOrder); to 29.1.1 a declaration with var() in a style rule is
+  // not !important (compat.varDropsImportant).
   const ordered = compat?.documentOrder === true;
+  const varDrops = compat?.varDropsImportant === true;
   for (const [property, decl] of decls) {
     const value = decl.value;
-    const important = decl.important && !ordered;
+    const important = decl.important && !ordered && !(varDrops && !property.startsWith('--') && value.includes('var('));
     // A longhand declared as itself (padding-bottom: 7px), not through a
     // shorthand: it meets a pending longhand by order (cascadeByOrder).
     const direct = SHORTHANDS[ALIASES[property] ?? property] === undefined;
@@ -266,14 +268,13 @@ function inlineDeclarations(element) {
   return map;
 }
 
-// The first matching entry's value, past HIDE_UA ones (noted in uaHidden);
-// settled: past PENDING ones too.
+// The first matching entry's value, past HIDE_UA ones (noted in uaHidden).
 const NO_SCOPE = {};
 let uaHidden = false;
-function firstMatch(list, element, settled = false) {
+function firstMatch(list, element) {
   for (const entry of list) {
     const value = entry.value;
-    if ((settled && value === PENDING) || !entry.match(element, NO_SCOPE)) continue;
+    if (!entry.match(element, NO_SCOPE)) continue;
     if (value !== HIDE_UA) return value;
     uaHidden = true;
   }
@@ -296,9 +297,8 @@ function firstMatch(list, element, settled = false) {
 function cascadeByOrder(lists, element, compat) {
   const mode = compat.pendingByOrder;
   // One scan, important then normal: the first matching entry (the
-  // cascade's winner), the first pending one and one declared as itself,
-  // and the first !important one not pending (jsdom 29 below).
-  let winner, pending, direct, importantSettled;
+  // cascade's winner), the first pending one and one declared as itself.
+  let winner, pending, direct;
   for (let i = 0; i < 2; i++) {
     if (mode === 'important' && i === 1) break;
     const list = i === 0 ? lists.important : lists.normal;
@@ -306,24 +306,17 @@ function cascadeByOrder(lists, element, compat) {
       if (entry.value === HIDE_UA) continue;
       const isPending = entry.value === PENDING;
       const wanted =
-        winner === undefined ||
-        (isPending && pending === undefined) ||
-        (entry.direct && direct === undefined) ||
-        (i === 0 && !isPending && importantSettled === undefined);
+        winner === undefined || (isPending && pending === undefined) || (entry.direct && direct === undefined);
       if (!wanted || !entry.match(element, NO_SCOPE)) continue;
       // A first match from a shorthand without var() wins as the cascade
       // decides: no need to look further.
       if (winner === undefined && !isPending && !entry.direct) return undefined;
       winner ??= entry;
-      if (!isPending && i === 0) importantSettled ??= entry;
       if (isPending) pending ??= entry;
       if (entry.direct) direct ??= entry;
     }
   }
   if (pending === undefined || direct === undefined) return undefined;
-  // As cascade decides without order: past an !important pending one in
-  // jsdom 29 (29.0.0 to 29.1.1) to another !important declaration.
-  if (winner.value === PENDING && compat.jsdom === 29 && winner.important) winner = importantSettled ?? winner;
   if (winner.value !== PENDING && !winner.direct) return undefined;
   return direct.order > pending.order ? direct : pending;
 }
@@ -418,9 +411,6 @@ function cascade(element, index, inlineMap, name) {
   }
   if (lists?.important.length) {
     const v = firstMatch(lists.important, element);
-    // jsdom 29 (black box, 29.0.0 to 29.1.1): an !important shorthand with var()
-    // does not override another !important declaration of its longhands.
-    if (v === PENDING && window[S].compat.jsdom === 29) return firstMatch(lists.important, element, true) ?? v;
     if (v !== undefined) return v;
   }
   if (inline) return inline.value;

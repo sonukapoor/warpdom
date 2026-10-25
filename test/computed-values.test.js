@@ -589,7 +589,7 @@ for (const jsdom of JSDOMS) parity(`computed values: shorthands with var() (jsdo
 
 // Their per-version details from jsdom 26 (cssstyle 4.6): before 27 the
 // border shorthands hide only the user agent sheet's widths and styles
-// (and a side its own longhands), in jsdom 29 an !important one does not
+// (and a side its own longhands), in jsdom 28.1 and 29 an !important one does not
 // override another !important declaration, and in the style attribute a
 // longhand after one is dropped from 27 (before, the shorthand is).
 const VAR_DETAIL_PROPS = [
@@ -999,6 +999,37 @@ test('computed values: style sheets in creation order before jsdom 30.1.2', () =
     assert.equal([...d.styleSheets].map((s) => s.cssRules[0].selectorText).join(' '), order, jsdom);
     assert.equal(w.getComputedStyle(d.querySelector('div')).color, color, jsdom);
   }
+});
+
+// jsdom 28.0.0 (black box, a single-jsdom install of each release) is
+// 27.4.0 here and 28.1.0 is 29: writes to computed styles (from 28.1.0 the
+// methods throw), and a declaration with var() in a style rule is not
+// !important from 28.1.0 to 29.1.1 (an !important padding: 1px wins over
+// padding: var(--p) !important, a more specific color: red over color:
+// var(--c, blue) !important; before 28.1.0 rules apply in document order).
+test('computed values: computed style writes and var() with !important in rules from jsdom 28.1.0', () => {
+  const read = (jsdom) => {
+    const w = createWindow({ jsdom });
+    const d = w.document;
+    d.head.innerHTML =
+      '<style>.i { padding: 1px !important } .j { padding: var(--p) !important } .k.k { color: red } .k { color: var(--c, blue) !important }</style>';
+    d.body.innerHTML = '<p class="i j k"></p>';
+    const cs = w.getComputedStyle(d.querySelector('p'));
+    let write = 'ok';
+    try {
+      cs.setProperty('width', '10px');
+    } catch (e) {
+      write = e.name;
+    }
+    return [cs.paddingTop, cs.color, write];
+  };
+  assert.deepEqual(['27.4.0', '28.0.0', '28.1.0', '29.1.1', '30.1.3'].map(read), [
+    ['', 'var(--c, blue)', 'ok'],
+    ['', 'var(--c, blue)', 'ok'],
+    ['1px', 'rgb(255, 0, 0)', 'NoModificationAllowedError'],
+    ['1px', 'rgb(255, 0, 0)', 'NoModificationAllowedError'],
+    ['0', 'var(--c, blue)', 'NoModificationAllowedError'],
+  ]);
 });
 
 // A longhand, a shorthand without var() and a shorthand with var(), all

@@ -1,0 +1,6 @@
+{
+  "name": "@acemir/cssom",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Not @acemir/cssom: an empty package that holds the root node_modules/@acemir/cssom slot, so npm nests the real one under each jsdom alias that depends on it (jsdom27, jsdom28). It requires cssstyle without declaring it, and nested it resolves that jsdom's own cssstyle, as in a single-jsdom install (#138)."
+}
