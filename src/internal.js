@@ -129,41 +129,54 @@ export const observed = (node) => ownerDocument(node)[S].observerCount > 0;
 // The setter of a window's own data property that is made on first read
 // (interface objects, Image, console, webkitURL, ...: an accessor until
 // then). It does what assigning the data property does: on the window,
-// define(value) replaces the accessor; through an object that inherits from
-// the window (Object.create(window).Image = x, super.Image = x) the
-// receiver gets or updates its own property as with jsdom's data
-// properties (black box, 20.0.3 to 30.1.3), see assignedThrough.
+// define(value) replaces the accessor; with any other receiver (an object
+// that inherits from the window: Object.create(window).Image = x; any
+// object: super.Image = x in a method called on it, Reflect.set(window,
+// 'Image', x, {})) the receiver gets or updates its own property as with
+// jsdom's data properties (black box, 20.0.3 to 30.1.3), see
+// assignedThrough.
 export function lazyDataSetter(window, name, define) {
   return function (value) {
     if (!assignedThrough(window, this, name, value)) define(value);
   };
 }
 
-// The part of that for an object that inherits from the window: true when
-// receiver is one (the window is on its prototype chain), false for the
-// window itself and anything else. The window's member stands for a
-// writable data property, so this is OrdinarySet's receiver step: an own
-// writable data property of the receiver gets the value and keeps its
-// flags; a read-only or accessor own property, or a new property on a
-// non-extensible receiver, is a failed assignment. A setter cannot return
-// that failure, so it throws a TypeError, as a strict-mode assignment to
-// the data property does (sloppy code and Reflect.set get false there
-// instead; see PLAN.md, #96).
+// The part of that for a receiver other than the window: false for the
+// window itself, true otherwise. The window's member stands for a writable
+// data property, so this is OrdinarySet's receiver step, whatever the
+// receiver inherits from (its prototypes are not looked at, so a proxy's
+// getPrototypeOf trap is not called): an own writable data property of the
+// receiver gets the value and keeps its flags; a read-only or accessor own
+// property, a new property on a non-extensible receiver or a primitive
+// receiver is a failed assignment. A setter cannot return that failure, so
+// it throws a TypeError, as a strict-mode assignment to the data property
+// does (sloppy code and Reflect.set get false there instead; see PLAN.md,
+// #96). A receiver whose own property is the window's accessor itself (a
+// proxy over the window) shows the window's data property: it gets the
+// value as that property, with the accessor's flags (#98).
 export function assignedThrough(window, receiver, name, value) {
-  if (receiver === window || !isPrototypeOf.call(window, receiver)) return false;
+  if (receiver === window) return false;
+  if (receiver === null || (typeof receiver !== 'object' && typeof receiver !== 'function')) {
+    throw new TypeError(`Cannot create property '${String(name)}' on ${typeof receiver} '${String(receiver)}'`);
+  }
   const own = Reflect.getOwnPropertyDescriptor(receiver, name);
   if (own === undefined) {
     if (!Reflect.defineProperty(receiver, name, { value, writable: true, enumerable: true, configurable: true })) {
       throw new TypeError(`Cannot add property ${String(name)}, object is not extensible`);
     }
   } else if (!('value' in own)) {
-    throw new TypeError(`Cannot redefine property: ${String(name)}`);
+    if (own.set === undefined || own.set !== Reflect.getOwnPropertyDescriptor(window, name)?.set) {
+      throw new TypeError(`Cannot redefine property: ${String(name)}`);
+    }
+    const data = { value, writable: true, enumerable: own.enumerable, configurable: own.configurable };
+    if (!Reflect.defineProperty(receiver, name, data)) {
+      throw new TypeError(`Cannot assign to read only property '${String(name)}' of object`);
+    }
   } else if (!own.writable || !Reflect.defineProperty(receiver, name, { value })) {
     throw new TypeError(`Cannot assign to read only property '${String(name)}' of object`);
   }
   return true;
 }
-const { isPrototypeOf } = Object.prototype;
 
 export function state(node) {
   const s = node != null ? node[S] : undefined;

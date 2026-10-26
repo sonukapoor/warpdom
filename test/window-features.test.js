@@ -644,6 +644,98 @@ for (const jsdom of [20, 26, 30])
     jsdom,
   });
 
+// The same with receivers that do not inherit from the window (#98): a
+// plain object gets its own property and the window keeps its member; a
+// primitive or frozen receiver fails (a TypeError in strict code). The
+// receiver's prototypes are not looked at: a proxy's throwing
+// getPrototypeOf trap is not called. A proxy over the window is an alias:
+// assigning through it replaces the window's member, as on the window. Each
+// case runs cold and materialized, and the window's member is put back
+// after it (black box, jsdom 20.0.3 to 30.1.3).
+const OTHER_RECEIVERS = {
+  plain: () => ({}),
+  primitive: () => 5,
+  frozen: () => Object.freeze({}),
+  'proxy over a derived object': (w) =>
+    new Proxy(Object.create(w), {
+      getPrototypeOf() {
+        throw new RangeError('getPrototypeOf trap');
+      },
+    }),
+};
+const otherReceiverScenario = (w) => {
+  const out = [];
+  const flags = (d) => {
+    if (d === undefined) return 'none';
+    return 'value' in d ? `${d.value === 7} ${d.writable} ${d.enumerable} ${d.configurable}` : 'accessor';
+  };
+  const attempt = (f) => {
+    try {
+      const r = f();
+      return r === undefined ? 'ok' : String(r);
+    } catch (e) {
+      return e.constructor.name;
+    }
+  };
+  for (const key of ['Image', 'MutationObserver', 'console', 'webkitURL', 'HTMLDocument', 'WebSocket']) {
+    for (const phase of ['cold', 'materialized']) {
+      if (phase === 'materialized') void w[key];
+      const before = Object.getOwnPropertyDescriptor(w, key);
+      const report = (name, result, receiver) => {
+        const after = Object.getOwnPropertyDescriptor(w, key);
+        const window = sameDescriptor(before, after) ? 'kept' : `replaced ${flags(after)}`;
+        const own = Object(receiver) === receiver ? flags(Object.getOwnPropertyDescriptor(receiver, key)) : '-';
+        out.push(`${key} ${phase} ${name}: ${result}, own ${own}, window ${window}`);
+        Object.defineProperty(w, key, before);
+      };
+      const home = {
+        __proto__: w,
+        assign(v) {
+          super[key] = v;
+        },
+      };
+      for (const [name, make] of Object.entries(OTHER_RECEIVERS)) {
+        const receiver = make(w);
+        report(
+          `super, ${name}`,
+          attempt(() => home.assign.call(receiver, 7)),
+          receiver,
+        );
+      }
+      const plain = {};
+      report(
+        'Reflect.set, plain',
+        attempt(() => Reflect.set(w, key, 7, plain)),
+        plain,
+      );
+      const alias = new Proxy(w, {
+        getPrototypeOf() {
+          throw new RangeError('getPrototypeOf trap');
+        },
+      });
+      report(
+        'proxy over the window',
+        attempt(() => {
+          alias[key] = 7;
+        }),
+      );
+      report(
+        'Reflect.set, proxy over the window',
+        attempt(() => Reflect.set(w, key, 7, alias)),
+      );
+    }
+  }
+  return out;
+};
+for (const jsdom of [20, 26, 30])
+  parity(
+    `assignments reaching the window's data properties from other receivers (jsdom ${jsdom})`,
+    otherReceiverScenario,
+    {
+      jsdom,
+    },
+  );
+
 test('window: inherited enumerable Object.prototype keys do not reach window creation', () => {
   Object.prototype.extra = 1;
   try {

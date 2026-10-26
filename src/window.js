@@ -439,8 +439,8 @@ export function createWindow(options = {}) {
     Object.defineProperty(window, name, {
       get,
       // Assigning replaces the constructor property (a mock), as for a
-      // writable data property (also through an object that inherits from
-      // the window, internal.js assignedThrough).
+      // writable data property (another receiver gets its own property,
+      // internal.js assignedThrough).
       set(value) {
         if (!assignedThrough(window, this, name, value))
           Object.defineProperty(window, name, { value, writable: true, configurable: true });

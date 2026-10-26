@@ -4358,3 +4358,40 @@ case-release differences fixed, none added; differences left are #136,
   (from 27.0.0 a var() declaration loses !important there too; border:
   var(--b) !important is dropped to 28.1.0).
 
+
+## 2026-10-26: lazy window members and receivers that are not the window (branch fix/98-lazy-setters, #98)
+
+The setters of the members made on first read (interface objects, Image,
+Option, Audio, console, webkitURL, HTMLDocument, WebSocket) handled only
+the window and objects inheriting from it (isPrototypeOf): any other
+receiver replaced the window's member while it was cold and got its own
+property once materialized (`super.Image = 7` called on `{}`,
+`Reflect.set(window, 'Image', 7, {})`), and isPrototypeOf called a
+proxy's getPrototypeOf trap (a throwing trap failed cold, not
+materialized).
+
+Black box (jsdom 20.0.3, 21.1.2, 22.1.0, 23.2.0, 24.1.3, 25.0.1, 26.1.0,
+27.4.0, 28.1.0, 29.1.1, 30.1.3 with runScripts; the same cold and
+materialized in every version, console enumerable before 27): a plain
+object, or a proxy over an object derived from the window with a throwing
+getPrototypeOf trap, gets its own data property (writable, enumerable,
+configurable) and the window keeps its member; a primitive or frozen
+receiver fails (TypeError in strict code, Reflect.set false); a proxy over
+the window is an alias: assigning through it (or Reflect.set with it as
+receiver) replaces the window's member with a data property with the
+member's flags, and the trap is not called.
+
+Now assignedThrough does OrdinarySet's receiver step for every receiver
+but the window without looking at its prototypes; a receiver whose own
+property is the window's lazy accessor itself (a proxy over the window)
+gets the value as a data property with the accessor's flags. No change to
+window creation (bench:load the same). Tests: window-features.test.js
+"from other receivers" (jsdom 20, 26, 30; also run on 22, 25, 27, 28, 29),
+cold and materialized.
+
+Left as they are (setters cannot return false): Reflect.set with a
+primitive, frozen or other failing receiver throws a TypeError where jsdom
+returns false (as before for derived receivers, #96); through a proxy over
+the window with a defineProperty trap, the trap sees a full data
+descriptor (value, writable, enumerable, configurable) where jsdom's sees
+{ value }.
