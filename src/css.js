@@ -28,8 +28,8 @@ function cssName(accessor) {
 }
 
 // Split on `sep` outside parentheses and quotes (url(data:...;base64,...)).
-// tokens: also outside [] and {} blocks, and not on an escaped character
-// (\!), as CSS tokenizes a value.
+// tokens: also outside [] and {} blocks and comments, and not on an
+// escaped character (\!), as CSS tokenizes a value.
 const CLOSERS = { '(': ')', '[': ']', '{': '}' };
 function splitOutside(text, sep, tokens = false) {
   const parts = [];
@@ -47,7 +47,10 @@ function splitOutside(text, sep, tokens = false) {
     if (c === '"' || c === "'") quote = c;
     else if (tokens) {
       if (c === '\\') i++;
-      else if (CLOSERS[c]) open.push(CLOSERS[c]);
+      else if (c === '/' && text[i + 1] === '*') {
+        const end = text.indexOf('*/', i + 2);
+        i = end < 0 ? text.length : end + 1;
+      } else if (CLOSERS[c]) open.push(CLOSERS[c]);
       else if (c === open.at(-1)) open.pop();
       else if (c === sep && open.length === 0) {
         parts.push(text.slice(start, i));
@@ -584,8 +587,9 @@ const surfaces = new WeakMap(); // CSSStyleProperties prototype -> styleSurface 
 // shorthand before 4.4 ('cssstyle4.1' or 'cssstyle4.2', see legacyFont in
 // shorthands.js), or null. colorKeywords: how its cssstyle writes color
 // keywords ('css2', 'written' or null). varDropsImportant,
-// customDropsImportant and borderVarDrops: declarations that lose their
-// !important, and border ones with var() that are dropped (parseInto).
+// varInStrings, customDropsImportant and borderVarDrops: declarations
+// that lose their !important, and border ones with var() that are
+// dropped (parseInto, dropsImportant).
 export function setValidationMode(proto, mode, compat = {}) {
   modes.set(proto, mode);
   const key = compat.styleSurface ?? null;
@@ -593,6 +597,7 @@ export function setValidationMode(proto, mode, compat = {}) {
   const legacyFont = compat.legacyFont ?? null;
   const colors = compat.colorKeywords ?? null;
   const varDropsImportant = compat.varDropsImportant ?? null;
+  const varInStrings = compat.varInStrings === true;
   const customDropsImportant = compat.customDropsImportant === true;
   const borderVarDrops = compat.borderVarDrops === true;
   if (
@@ -606,7 +611,7 @@ export function setValidationMode(proto, mode, compat = {}) {
     return;
   }
   // Built once per variant: window creation only looks it up.
-  const id = `${key} ${legacyFont} ${colors} ${varDropsImportant} ${customDropsImportant} ${borderVarDrops}`;
+  const id = `${key} ${legacyFont} ${colors} ${varDropsImportant} ${varInStrings} ${customDropsImportant} ${borderVarDrops}`;
   let surface = variantSurfaces.get(id);
   if (surface === undefined) {
     surface = {
@@ -614,6 +619,7 @@ export function setValidationMode(proto, mode, compat = {}) {
       caches: Object.create(null),
       colors,
       varDropsImportant,
+      varInStrings,
       customDropsImportant,
       borderVarDrops,
     };
@@ -1341,11 +1347,33 @@ function serializeDeclared(name, value, mode) {
 // customDropsImportant): in a rule's declarations (inRule: parsed with its
 // style sheet, or set through its style), or else in a style attribute,
 // an element's cssText or setProperty.
+// var() outside strings (font-family: "var(--face)" is not), but in
+// jsdom 27 (varInStrings, black box 27.4.0: content: "var(--x)"
+// !important loses it; font-family and background ones keep it there,
+// which is not modeled).
 function dropsImportant(surface, name, value, inRule) {
   if (surface === null) return false;
   if (name.startsWith('--')) return !inRule && surface.customDropsImportant === true;
   const drops = surface.varDropsImportant;
-  return (drops === 'all' || (drops === 'declarations' && !inRule)) && value.includes('var(');
+  return (
+    (drops === 'all' || (drops === 'declarations' && !inRule)) &&
+    (surface.varInStrings ? value.includes('var(') : hasVar(value))
+  );
+}
+// var( outside quoted strings.
+function hasVar(value) {
+  if (!value.includes('var(')) return false;
+  if (!value.includes('"') && !value.includes("'")) return true;
+  let quote = null;
+  for (let i = 0; i < value.length; i++) {
+    const c = value[i];
+    if (quote) {
+      if (c === '\\') i++;
+      else if (c === quote) quote = null;
+    } else if (c === '"' || c === "'") quote = c;
+    else if (c === 'v' && value.startsWith('var(', i)) return true;
+  }
+  return false;
 }
 // A priority token left over outside quotes, functions and [] {} blocks,
 // not escaped (color: var(--c)
@@ -1406,7 +1434,7 @@ function parseInto(decls, text, mode, surface = null, context = null) {
     }
     if (!name || !value || dropped(surface, name)) continue;
     if (!sheet && !runsOn && value.includes('!') && strayPriority(value, important)) continue;
-    if (borderVarDrops && BORDER_AND_SIDES.has(name) && value.includes('var(')) {
+    if (borderVarDrops && BORDER_AND_SIDES.has(name) && hasVar(value)) {
       if (name !== 'border') continue;
       decls.clear();
       return;

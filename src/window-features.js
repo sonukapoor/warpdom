@@ -1710,6 +1710,10 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // !important; color: red is color: var(--c)); in a style sheet it does
     // not (css.js parseInto).
     varDropsImportant: varDropsImportantMode(version),
+    // jsdom 27 also finds the var() in a string (content: "var(--x)"
+    // !important is content: "var(--x)"); 28 and 29 do not (black box,
+    // 27.4.0 to 29.1.1; css.js dropsImportant).
+    varInStrings: version[0] === 27,
     // cssstyle 4.6 (jsdom 23.1 to 26 with it, the default there): a custom
     // property is not !important in a style attribute, cssText and
     // setProperty (--x: 1px !important is --x: 1px); 4.1 keeps it, 4.2 to

@@ -726,3 +726,44 @@ test('style: a ! in a block or escaped is part of the value (default profile)', 
     assert.equal(el.style.cssText, `--x: ${value}; left: 1px;`);
   }
 });
+// A comment is not a priority token, and var() in a string is not a
+// var() function (#154 review, black box, jsdom 27.4.0 to 30.1.3): --x:
+// red /*!important*/ is kept; border: "var(--b)" is an invalid border,
+// not one with var() that empties the block (27, 28), and font-family:
+// "var(--face)" !important keeps its !important from 28 (27 drops it for
+// content: "var(--x)" !important, but not for font-family or
+// background-image, which is not modeled).
+const COMMENTS_AND_STRINGS = [
+  '--x: red /*!important*/',
+  '--x: 1 /* !important */ !important',
+  'color: var(--c) /*!important*/',
+  'color: var(--c) /* !important */ !important',
+  'color: red; border: "var(--b)"; width: 1px',
+  'content: "var(--x)" !important',
+  'background-image: url(var(--image).png) !important',
+];
+const STRINGS_FROM_28 = [
+  'font-family: "var(--face)" !important',
+  'font-family: a, "var(--face)" !important',
+  'background-image: url("var(--image).png") !important',
+];
+for (const jsdom of [30, 29, 28, 27])
+  parity(
+    `style: comments and strings are not priority tokens or var() (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const out = [];
+      for (const text of jsdom >= 28 ? [...COMMENTS_AND_STRINGS, ...STRINGS_FROM_28] : COMMENTS_AND_STRINGS) {
+        const el = d.createElement('div');
+        el.setAttribute('style', `${text}; margin: 0px`);
+        const set = d.createElement('div');
+        set.style.cssText = text;
+        out.push(`${text} | ${el.style.cssText} | ${set.style.cssText}`);
+      }
+      const prop = d.createElement('div');
+      prop.style.setProperty('font-family', '"var(--face)"', 'important');
+      if (jsdom >= 28) out.push(prop.style.cssText);
+      return out;
+    },
+    { jsdom },
+  );
