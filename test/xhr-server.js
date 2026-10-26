@@ -22,7 +22,53 @@ import http from 'node:http';
 
 const CLIENT_HEADERS = /^(user-agent|sec-fetch-.*|host|connection|keep-alive)$/;
 
-export async function startServer() {
+// Listens on the port (0: one the system picks) and the host (every address
+// when undefined); resolves to { server } or to { error }.
+function bind(port, host, handler) {
+  const server = http.createServer(handler);
+  return new Promise((resolve) => {
+    server.once('error', (error) => resolve({ error }));
+    server.listen(port, host, () => resolve({ server }));
+  });
+}
+
+const close = (server) => new Promise((done) => server.close(done));
+
+// Whether the system lets a listener on the loopback host sit beside a
+// listener on every address with the same port (macOS: yes, Linux: no).
+// Proven, not assumed: the bind beside our own wildcard listener succeeds,
+// or fails and then succeeds once that listener is closed (a failure that
+// stays means another program has host and the port: try another port).
+const besideWildcard = new Map();
+function loopbackBesideWildcard(host) {
+  if (!besideWildcard.has(host)) besideWildcard.set(host, probeBesideWildcard(host));
+  return besideWildcard.get(host);
+}
+async function probeBesideWildcard(host) {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const wildcard = await bind(0);
+    if (wildcard.error) throw wildcard.error;
+    const { port } = wildcard.server.address();
+    const beside = await bind(port, host);
+    await close(wildcard.server);
+    if (beside.server) {
+      await close(beside.server);
+      return true;
+    }
+    if (beside.error.code !== 'EADDRINUSE') throw beside.error;
+    const alone = await bind(port, host);
+    if (alone.server) {
+      await close(alone.server);
+      return false;
+    }
+  }
+  throw new Error(`cannot tell whether ${host} listeners sit beside wildcard ones`);
+}
+
+const LOOPBACK = ['127.0.0.1', '::1'];
+
+// port: the port to try first (tests); later attempts take one the system picks.
+export async function startServer({ port: first = 0 } = {}) {
   const requests = [];
   const sockets = new Set();
   // Stepped /slow responses waiting for release() to send their next chunk.
@@ -124,26 +170,45 @@ export async function startServer() {
         res.end('not found');
     }
   };
-  const listen = (port, host) => {
-    const server = http.createServer(handle);
-    server.on('connection', (socket) => {
+  const listen = async (port, host) => {
+    const result = await bind(port, host, handle);
+    result.server?.on('connection', (socket) => {
       sockets.add(socket);
       socket.on('close', () => sockets.delete(socket));
     });
-    return new Promise((resolve) => {
-      server.once('error', () => resolve(null));
-      server.listen(port, host, () => resolve(server));
-    });
+    return result;
   };
   // On all addresses, and on each loopback address by itself where the
   // system lets a server listen there besides (macOS): there another
   // program's server on 127.0.0.1 or ::1 and the same port would get the
-  // requests for that address (Linux refuses it that port).
-  const main = await listen(0);
-  const { port } = main.address();
-  const servers = [main, ...(await Promise.all(['127.0.0.1', '::1'].map((host) => listen(port, host))))].filter(
-    Boolean,
-  );
+  // requests for that address (Linux refuses it that port). Such a port is
+  // given up for another one.
+  const listenAll = async (port) => {
+    const main = await listen(port);
+    if (main.error) {
+      if (main.error.code === 'EADDRINUSE' && port !== 0) return null;
+      throw main.error;
+    }
+    const servers = [main.server];
+    for (const host of LOOPBACK) {
+      const own = await listen(main.server.address().port, host);
+      if (own.server) servers.push(own.server);
+      // Not EADDRINUSE: an address the system does not have (::1 without
+      // IPv6). EADDRINUSE: our own wildcard listener where loopback ones
+      // cannot sit beside it (it serves host), else another program.
+      else if (own.error.code === 'EADDRINUSE' && (await loopbackBesideWildcard(host))) {
+        await Promise.all(servers.map(close));
+        return null;
+      }
+    }
+    return servers;
+  };
+  let servers = null;
+  for (let attempt = 0; !servers; attempt++) {
+    if (attempt === 20) throw new Error('no port free on every loopback address');
+    servers = await listenAll(attempt === 0 ? first : 0);
+  }
+  const { port } = servers[0].address();
   return {
     port,
     requests,
@@ -155,7 +220,7 @@ export async function startServer() {
     },
     close: () => {
       for (const s of sockets) s.destroy();
-      return Promise.all(servers.map((server) => new Promise((done) => server.close(done))));
+      return Promise.all(servers.map(close));
     },
   };
 }
@@ -167,12 +232,8 @@ export const EPHEMERAL_PORTS_FROM = 32768;
 // Whether nothing listens on the port and host (a host the system does not
 // have, such as ::1 without IPv6, counts as free).
 async function free(port, host) {
-  const server = http.createServer();
-  const error = await new Promise((resolve) => {
-    server.once('error', resolve);
-    server.listen(port, host, () => resolve(null));
-  });
-  if (error === null) await new Promise((resolve) => server.close(resolve));
+  const { server, error } = await bind(port, host);
+  if (server) await close(server);
   return error?.code !== 'EADDRINUSE';
 }
 

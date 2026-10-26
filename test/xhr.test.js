@@ -7,6 +7,7 @@
 import { test, suite, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import http from 'node:http';
 import net from 'node:net';
 import { createWindow } from '../src/node.js';
 import { S } from '../src/internal.js';
@@ -1479,15 +1480,48 @@ test('XMLHttpRequest tests: the refused port is below the ports test servers get
   const ports = [PORT, ...started.map((srv) => srv.port)];
   await Promise.all(started.map((srv) => srv.close()));
   for (const p of ports) assert.ok(p >= EPHEMERAL_PORTS_FROM, `test server port ${p}`);
-  const code = await new Promise((resolve) => {
-    const socket = net.connect(DEAD, 'localhost');
-    socket.on('connect', () => {
-      socket.destroy();
-      resolve('connected');
+  // Each loopback address by itself: with localhost, a failed ::1 attempt
+  // (no IPv6) would give its code to the error for both attempts.
+  const refusal = (host) =>
+    new Promise((resolve) => {
+      const socket = net.connect({ port: DEAD, host });
+      socket.on('connect', () => {
+        socket.destroy();
+        resolve('connected');
+      });
+      socket.on('error', (e) => resolve(e.code));
     });
-    socket.on('error', (e) => resolve(e.code));
-  });
-  assert.equal(code, 'ECONNREFUSED');
+  assert.equal(await refusal('127.0.0.1'), 'ECONNREFUSED');
+  const v6 = await refusal('::1');
+  assert.ok(
+    ['ECONNREFUSED', 'EADDRNOTAVAIL', 'EAFNOSUPPORT', 'ENETUNREACH', 'EHOSTUNREACH'].includes(v6),
+    `::1: ${v6}`,
+  );
+});
+
+// Another program's server on a loopback address and a test server's port
+// would get the requests for that address (macOS lets both listen there):
+// the test server takes another port.
+test('XMLHttpRequest tests: a test server does not share its port with another program on 127.0.0.1', async () => {
+  const other = http.createServer((req, res) => res.end('other program'));
+  await new Promise((resolve) => other.listen(0, '127.0.0.1', resolve));
+  const srv = await startServer({ port: other.address().port });
+  try {
+    const body = await new Promise((resolve, reject) => {
+      http
+        .get(`http://127.0.0.1:${srv.port}/type?body=test%20server`, (res) => {
+          let text = '';
+          res.setEncoding('utf8');
+          res.on('data', (c) => (text += c));
+          res.on('end', () => resolve(text));
+        })
+        .on('error', reject);
+    });
+    assert.equal(body, 'test server');
+  } finally {
+    await srv.close();
+    await new Promise((resolve) => other.close(resolve));
+  }
 });
 
 // --- warpdom ------------------------------------------------------------------------------------
