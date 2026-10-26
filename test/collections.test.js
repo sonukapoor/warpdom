@@ -505,6 +505,18 @@ parity('list iteration functions borrowed for a Proxy read only its length and i
   ];
 });
 
+// forEach calls the callback as Array.prototype.forEach does, not through
+// its call property.
+parity('NodeList forEach calls a callback whose call property is undefined', (w) => {
+  const d = html(w, '<a></a><b></b>');
+  const seen = [];
+  const callback = function (node, i, list) {
+    seen.push(node.nodeName, i, list === d.body.childNodes, this.tag);
+  };
+  callback.call = undefined;
+  return [attempt(() => d.body.childNodes.forEach(callback, { tag: 't' })), seen];
+});
+
 // Called on a list with another list read in between (Array.prototype's
 // functions then, as jsdom's are), they still see its changes.
 parity('list iteration functions called on a list after reading another list', (w) => {

@@ -247,6 +247,9 @@ export function staticList(proto, array) {
 const VALUES = 0,
   KEYS = 1,
   ENTRIES = 2;
+// Calls the callback without reading its call property, as
+// Array.prototype.forEach does.
+const { apply } = Reflect;
 const ARRAY_ITERATOR = Object.getPrototypeOf([][Symbol.iterator]());
 const { forEach: arrayForEach, keys: arrayKeys, values: arrayValues, entries: arrayEntries } = Array.prototype;
 
@@ -298,7 +301,7 @@ const iteration = {
     const length = s.items().length;
     for (let i = 0; i < length; i++) {
       const array = s.items();
-      if (i < array.length) callback.call(thisArg, array[i], i, this);
+      if (i < array.length) apply(callback, thisArg, [array[i], i, this]);
     }
   },
   entries() {
