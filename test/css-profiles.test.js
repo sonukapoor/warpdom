@@ -668,8 +668,8 @@ test('style: var() with !important by jsdom and cssstyle version', () => {
 // review, black box, jsdom 27.4.0 to 30.1.3): the style attribute, an
 // element's cssText and a rule's cssText drop the declaration (color:
 // var(--c) !important !important, var(--c) !, var(--c) !important !foo);
-// one in quotes or in a function is part of the value. setProperty keeps
-// it as written, as before.
+// one in quotes, in a function, in a [] or {} block or escaped (\!) is
+// part of the value. setProperty keeps it as written, as before.
 const STRAY_PRIORITY = [
   'var(--c) !important !important',
   'var(--c)!important!important',
@@ -680,6 +680,15 @@ const STRAY_PRIORITY = [
   'var(--c, "!important") !important',
   'var(--c, a !important)',
   'f(!important) var(--c)',
+  '[!important]',
+  '{!important}',
+  'a [b !important] c',
+  '[!] !important',
+  '[!important] !important',
+  '{!important} !important',
+  'foo\\!important bar',
+  'before \\!important after',
+  'var(--c) \\!important \\!x',
 ];
 for (const jsdom of [30, 29, 28, 27])
   parity(
@@ -705,3 +714,15 @@ for (const jsdom of [30, 29, 28, 27])
     },
     { jsdom },
   );
+// The default profile (the latest jsdom) keeps a ! that is in a block or
+// escaped (#154, #155 review; jsdom 30.1.3 black box).
+test('style: a ! in a block or escaped is part of the value (default profile)', () => {
+  const d = createWindow().document;
+  for (const value of ['[!important]', '{!important}', 'foo\\!important bar', 'before \\!important after']) {
+    const el = d.createElement('div');
+    el.setAttribute('style', `--x: ${value}`);
+    assert.equal(el.style.cssText, `--x: ${value};`);
+    el.style.cssText = `--x: ${value}; left: 1px`;
+    assert.equal(el.style.cssText, `--x: ${value}; left: 1px;`);
+  }
+});

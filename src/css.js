@@ -28,8 +28,12 @@ function cssName(accessor) {
 }
 
 // Split on `sep` outside parentheses and quotes (url(data:...;base64,...)).
-function splitOutside(text, sep) {
+// tokens: also outside [] and {} blocks, and not on an escaped character
+// (\!), as CSS tokenizes a value.
+const CLOSERS = { '(': ')', '[': ']', '{': '}' };
+function splitOutside(text, sep, tokens = false) {
   const parts = [];
+  const open = [];
   let depth = 0,
     quote = null,
     start = 0;
@@ -41,7 +45,15 @@ function splitOutside(text, sep) {
       continue;
     }
     if (c === '"' || c === "'") quote = c;
-    else if (c === '(') depth++;
+    else if (tokens) {
+      if (c === '\\') i++;
+      else if (CLOSERS[c]) open.push(CLOSERS[c]);
+      else if (c === open.at(-1)) open.pop();
+      else if (c === sep && open.length === 0) {
+        parts.push(text.slice(start, i));
+        start = i + 1;
+      }
+    } else if (c === '(') depth++;
     else if (c === ')') depth = Math.max(0, depth - 1);
     else if (c === sep && depth === 0) {
       parts.push(text.slice(start, i));
@@ -1335,12 +1347,13 @@ function dropsImportant(surface, name, value, inRule) {
   const drops = surface.varDropsImportant;
   return (drops === 'all' || (drops === 'declarations' && !inRule)) && value.includes('var(');
 }
-// A priority token left over outside quotes and functions (color: var(--c)
+// A priority token left over outside quotes, functions and [] {} blocks,
+// not escaped (color: var(--c)
 // !important !important, var(--c) !, var(--c) !important !foo): jsdom 27
 // and later drop the declaration from a style attribute and from cssText
 // (black box, 27.4.0 to 30.1.3); var(--c) !foo alone is not modeled.
 function strayPriority(value, important) {
-  const parts = splitOutside(value, '!');
+  const parts = splitOutside(value, '!', true);
   if (parts.length === 1) return false;
   if (important) return true;
   for (let i = 1; i < parts.length; i++) if (/^\s*(important\b|$)/i.test(parts[i])) return true;
