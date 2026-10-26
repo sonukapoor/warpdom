@@ -612,6 +612,32 @@ test('style: separators and malformed url() in the background shorthand with css
   }
 });
 
+// Whitespace after url( that the unquoted body also accepts (CR, form feed,
+// vertical tab, no-break space) is read in linear time (#150 review: 32768
+// carriage returns took about 0.8 s per assignment).
+test('style: a malformed url() after long whitespace in the background shorthand is rejected quickly', () => {
+  const values = ['\r', '\f', '\v', ' '].flatMap((ws) => [
+    `url(${ws.repeat(32768)}a.png)junk`,
+    `url(${ws.repeat(32768)}"a.png")junk`,
+  ]);
+  for (const options of [
+    { jsdom: '20.0.3', cssstyle: '2.3.0' },
+    { jsdom: '26.1.0', cssstyle: '4.3.1' },
+    { jsdom: '26.1.0' },
+  ]) {
+    const window = createWindow(options);
+    for (const value of values) {
+      const s = window.document.createElement('div').style;
+      s.background = 'red';
+      const start = performance.now();
+      s.background = value;
+      const elapsed = performance.now() - start;
+      assert.equal(s.cssText, 'background: red;');
+      assert.ok(elapsed < 200, `${JSON.stringify(options)} ${JSON.stringify(value.slice(0, 5))}: ${elapsed} ms`);
+    }
+  }
+});
+
 // An invalid background leaves the declared one in place, and jsdom 27 and
 // later compute the position their own serialization wrote (url("a.png")
 // center center: lost in 27 to 29, 50% 50% in 30; #132 review).

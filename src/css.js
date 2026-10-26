@@ -974,10 +974,13 @@ const BG_SEPARATOR = /[ \t\n\r\f,]/;
 // elsewhere (url(a.png ), url("a b.png")), an unclosed or mixed quote
 // (url("a'b.png")), a parenthesis, or before cssstyle 4.4 an escaped quote,
 // space or parenthesis reject it. From 4.4 an escaped double quote is kept.
+// (?!\s): the unquoted body accepts a carriage return, form feed, vertical
+// tab or no-break space too; the whitespace after url( is all read first, so
+// a malformed value is rejected in linear time (#150 review).
 const BG_URL_OLD =
-  /^url\(\s*(?:"(?:\\[^"'()\s]|[^"'()\\ \t\n])*"|'(?:\\[^"'()\s]|[^"'()\\ \t\n])*'|(?:\\[^"'()\s]|[^"'()\\ \t\n])*)\)$/;
+  /^url\(\s*(?!\s)(?:"(?:\\[^"'()\s]|[^"'()\\ \t\n])*"|'(?:\\[^"'()\s]|[^"'()\\ \t\n])*'|(?:\\[^"'()\s]|[^"'()\\ \t\n])*)\)$/;
 const BG_URL_4_4 =
-  /^url\(\s*(?:"(?:\\[^'()\s]|[^"'()\\ \t\n])*"|'(?:\\[^"'()\s]|[^"'()\\ \t\n])*'|(?:\\[^'()\s]|[^"'()\\ \t\n])*)\)$/;
+  /^url\(\s*(?!\s)(?:"(?:\\[^'()\s]|[^"'()\\ \t\n])*"|'(?:\\[^"'()\s]|[^"'()\\ \t\n])*'|(?:\\[^'()\s]|[^"'()\\ \t\n])*)\)$/;
 const legacyLength = (token, surface, old) => {
   if (!old) return BG_LENGTH_4.test(token.toLowerCase());
   return surface?.legacyFont === 'cssstyle4.1' ? BG_LENGTH_3.test(token) : BG_LENGTH_4.test(token);
