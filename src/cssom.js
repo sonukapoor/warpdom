@@ -419,6 +419,9 @@ const COUNTER_DESCRIPTORS = [
 // rule interfaces' prototypes and each rule has its own, as in jsdom.
 const LEGACY_RULES = new WeakSet();
 const legacyRules = (protos) => LEGACY_RULES.has(protos.CSSRule);
+// The CSSRule prototypes of windows whose profile has jsdom's own CSSOM
+// (from jsdom 29; cssomShape null).
+const OWN_CSSOM = new WeakSet();
 // The rule interfaces whose prototypes have a cssRules data property there.
 const OWN_RULE_LISTS = new Set(['CSSMediaRule', 'CSSSupportsRule', 'CSSContainerRule', 'CSSLayerBlockRule']);
 
@@ -720,8 +723,9 @@ function indexKeyframes(rule) {
 // rules inside it keep theirs (black box 27.1.0 to 30.1.3, #120). Before
 // jsdom 27.1.0 only its parentRule is reset: its parentStyleSheet stays,
 // and so does the sheet an @import rule's style sheet gets when first read
-// after (black box 21.1.2 to 27.0.0). `deep` (replaceSync()): the rules
-// inside it no longer belong to the sheet either (black box 29.1.1, 30.1.3).
+// after (black box 21.1.2 to 27.0.0). `deep` (replaceSync() from jsdom
+// 29): the rules inside it no longer belong to the sheet or to their
+// parent rules either (black box 29.1.1, 30.1.3).
 function detach(rule, deep = false) {
   const s = rule[S];
   s.parentRule = null;
@@ -730,6 +734,7 @@ function detach(rule, deep = false) {
   if (deep) {
     const unsheet = (r) => {
       r[S].sheet = null;
+      r[S].parentRule = null;
       if (r[S].rules) for (const child of r[S].rules) unsheet(child);
     };
     unsheet(rule);
@@ -830,16 +835,24 @@ export function ruleArray(owner) {
 
 // What the cascade read of a rule's own cssRules before jsdom 27.1.0, which
 // a test can replace, or change when it is an array, without insertRule()
-// or deleteRule() (#120); null for other rules.
+// or deleteRule() (#120); null for other rules. Only an array's rules are
+// kept: changes to a CSSRuleList go through the CSSOM (cssomChanges).
 export function ruleListSnapshot(owner) {
   if (!Object.hasOwn(owner, 'cssRules') || !legacyRules(owner[S].protos)) return null;
-  return { owner, list: owner.cssRules, rules: ruleArray(owner).slice() };
+  const list = owner.cssRules;
+  return { owner, list, rules: Array.isArray(list) ? list.slice() : null };
 }
 
-export function ruleListChanged({ owner, list, rules }) {
-  if (owner.cssRules !== list) return true;
-  const now = ruleArray(owner);
-  return now.length !== rules.length || now.some((rule, i) => rule !== rules[i]);
+// Whether a snapshot's list was replaced or, for an array, changed at any
+// index (a deleted one included: delete leaves the length as it was).
+export function ruleListChanged(snapshot) {
+  const list = snapshot.owner.cssRules;
+  if (list !== snapshot.list) return true;
+  const rules = snapshot.rules;
+  if (rules === null) return false;
+  if (list.length !== rules.length) return true;
+  for (let i = 0; i < rules.length; i++) if (list[i] !== rules[i]) return true;
+  return false;
 }
 
 function cssRuleList(owner) {
@@ -1301,6 +1314,7 @@ export const CSSOM_INTERFACES = [
     statics: (compat) => RULE_STATICS[compat.cssomShape] ?? RULE_TYPES,
     compat(proto, compat) {
       if (ruleVariant(compat) === 'cssom') LEGACY_RULES.add(proto);
+      else if (compat.cssomShape === null) OWN_CSSOM.add(proto);
     },
     members: {
       ...Object.fromEntries(Object.entries(RULE_TYPES).map(([k, v]) => [k, { constant: v }])),
@@ -1846,7 +1860,10 @@ export const CSSOM_INTERFACES = [
           throw domError("Can't call replaceSync on non-constructed CSSStyleSheets.", 'NotAllowedError');
         const old = s.rules;
         s.rules = ruleList(s.protos, String(text), this, null).filter((r) => !isImport(r));
-        for (const rule of old) detach(rule, true);
+        // jsdom 27.4.0 and 28.1.0 leave the old rules in the sheet, and in
+        // their parent rules (black box, #120); before jsdom 27 there is no
+        // replaceSync() (warpdom's keeps them there too).
+        if (OWN_CSSOM.has(s.protos.CSSRule)) for (const rule of old) detach(rule, true);
         cssomChanges.rev++;
       },
       replace(text) {

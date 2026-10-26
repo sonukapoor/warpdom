@@ -299,14 +299,34 @@ parity('media lists are normalized', (w) => {
   return out;
 });
 
-parity('replaceSync detaches the old rules', (w) => {
-  const sheet = new w.CSSStyleSheet();
-  sheet.replaceSync('a { color: red } @media all { b { color: blue } }');
-  const [a, media] = sheet.cssRules;
-  const inner = media.cssRules[0];
-  sheet.replaceSync('c { color: green }');
-  return [a.parentStyleSheet, media.parentStyleSheet, inner.parentStyleSheet, sheet.cssRules.length];
-});
+// replaceSync() detaches the old rules and the rules inside them (their
+// parentStyleSheet and parentRule become null) from jsdom 29; jsdom 27.4.0
+// and 28.1.0 leave them in the sheet (#120).
+for (const jsdom of [27, 28, 29, 30]) {
+  parity(
+    `replaceSync and the old rules (jsdom ${jsdom})`,
+    (w) => {
+      const sheet = new w.CSSStyleSheet();
+      sheet.replaceSync(
+        'a { color: red } @media all { b { color: blue } @media print { i {} } } @supports (x: y) { c {} }',
+      );
+      const [a, media, supports] = sheet.cssRules;
+      const [inner, nested] = media.cssRules;
+      const rules = [a, media, supports, inner, nested, nested.cssRules[0], supports.cssRules[0]];
+      const parents = rules.map((rule) => rule.parentRule);
+      sheet.replaceSync('c { color: green }');
+      media.insertRule('d { top: 1px }', 0);
+      const added = media.cssRules[0];
+      return [
+        rules.map((rule) => rule.parentStyleSheet === sheet || rule.parentStyleSheet),
+        rules.map((rule, i) => rule.parentRule === parents[i] || rule.parentRule),
+        [added.parentStyleSheet === sheet || added.parentStyleSheet, added.parentRule === media],
+        sheet.cssRules.length,
+      ];
+    },
+    { jsdom },
+  );
+}
 
 parity("a removed style element's sheet has no owner node", (w) => {
   const st = w.document.createElement('style');
@@ -1177,9 +1197,9 @@ for (const jsdom of [22, 26]) {
 }
 
 // Before jsdom 27.1.0 the cascade follows a grouping rule's cssRules after
-// a test replaces it, or changes the array it was replaced with, even
-// after getComputedStyle() (elements created after, or after a change to
-// the document).
+// a test replaces it, or changes the array it was replaced with (a
+// deleted index included), even after getComputedStyle() (elements
+// created after, or after a change to the document).
 for (const jsdom of [22, 26]) {
   parity(
     `the cascade after a replaced cssRules (jsdom ${jsdom})`,
@@ -1196,6 +1216,11 @@ for (const jsdom of [22, 26]) {
           media.cssRules = [other];
           w.getComputedStyle(w.document.body.firstChild).color;
           media.cssRules.splice(0, 1);
+        },
+        deleteFromReplacement: (media, other) => {
+          media.cssRules = [other];
+          w.getComputedStyle(w.document.body.firstChild).color;
+          delete media.cssRules[0];
         },
       };
       return Object.entries(changes).map(([name, change]) => {
