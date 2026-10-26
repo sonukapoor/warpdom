@@ -540,7 +540,8 @@ function setImportText(rule, text) {
   s.layerName = parts.layerName;
   s.supportsText = parts.supportsText;
   if (parts.media.trim() !== '') setMediaText(s.media, parts.media);
-  s.styleSheet = null;
+  // The rule keeps its style sheet and the rules inserted into it (black
+  // box 20.0.3 to 28.1.0, #120).
   cssomChanges.rev++;
 }
 
@@ -715,18 +716,33 @@ function indexKeyframes(rule) {
   s.indexed = s.rules.length;
 }
 
-// A rule taken out of its list: it and the rules inside it no longer
-// belong to a style sheet.
-function detach(rule) {
-  rule[S].parentRule = null;
-  // jsdom before 27.1.0 resets the rule's parentRule only (its
-  // parentStyleSheet stays, black box).
-  if (legacyRules(rule[S].protos)) rule.parentRule = null;
-  const unsheet = (r) => {
-    r[S].sheet = null;
-    if (r[S].rules) for (const child of r[S].rules) unsheet(child);
-  };
-  unsheet(rule);
+// A rule taken out of its list no longer belongs to a style sheet; the
+// rules inside it keep theirs (black box 27.1.0 to 30.1.3, #120). Before
+// jsdom 27.1.0 only its parentRule is reset: its parentStyleSheet stays,
+// and so does the sheet an @import rule's style sheet gets when first read
+// after (black box 21.1.2 to 27.0.0). `deep` (replaceSync()): the rules
+// inside it no longer belong to the sheet either (black box 29.1.1, 30.1.3).
+function detach(rule, deep = false) {
+  const s = rule[S];
+  s.parentRule = null;
+  const legacy = legacyRules(s.protos);
+  if (legacy) rule.parentRule = null;
+  if (deep) {
+    const unsheet = (r) => {
+      r[S].sheet = null;
+      if (r[S].rules) for (const child of r[S].rules) unsheet(child);
+    };
+    unsheet(rule);
+    return;
+  }
+  if (legacy) return;
+  if (isImport(rule)) {
+    // Its style sheet's parentStyleSheet becomes null; one first read
+    // after resolves its href as before (jsdom 29 and 30).
+    if (s.styleSheet) s.styleSheet[S].parentSheet = null;
+    else if (s.sheet) s.baseURL = sheetBase(s.sheet);
+  }
+  s.sheet = null;
 }
 
 function styleText(style) {
@@ -796,15 +812,34 @@ function ruleText(rule) {
 
 // The rules a sheet or rule's insertRule(), deleteRule() and text use:
 // before jsdom 27.1.0 an @media, @supports, @container or @layer rule's own
-// cssRules, which a test can replace with an array (black box 26.1.0 and
-// 27.0.0: insertions, deletions and the cascade then use that array).
+// cssRules, which a test can replace with an array or with another rule's
+// or sheet's list (black box 21.1.2 to 27.0.0: insertions, deletions, text
+// and the cascade then use that list, which jsdom's rules then share).
 export function ruleArray(owner) {
   const s = owner[S];
   if (s.ruleList !== undefined && Object.hasOwn(owner, 'cssRules') && legacyRules(s.protos)) {
     const own = owner.cssRules;
-    if (own !== s.ruleList && Array.isArray(own)) return own;
+    if (own !== s.ruleList) {
+      if (Array.isArray(own)) return own;
+      const shared = own?.[S]?.owner;
+      if (shared) return shared.rules;
+    }
   }
   return s.rules;
+}
+
+// What the cascade read of a rule's own cssRules before jsdom 27.1.0, which
+// a test can replace, or change when it is an array, without insertRule()
+// or deleteRule() (#120); null for other rules.
+export function ruleListSnapshot(owner) {
+  if (!Object.hasOwn(owner, 'cssRules') || !legacyRules(owner[S].protos)) return null;
+  return { owner, list: owner.cssRules, rules: ruleArray(owner).slice() };
+}
+
+export function ruleListChanged({ owner, list, rules }) {
+  if (owner.cssRules !== list) return true;
+  const now = ruleArray(owner);
+  return now.length !== rules.length || now.some((rule, i) => rule !== rules[i]);
 }
 
 function cssRuleList(owner) {
@@ -812,6 +847,7 @@ function cssRuleList(owner) {
   if (!s.ruleList) {
     s.ruleList = liveList(s.protos.CSSRuleList, () => s.rules);
     s.ruleList[S].protos = s.protos;
+    s.ruleList[S].owner = s;
   }
   return s.ruleList;
 }
@@ -925,7 +961,7 @@ function importedSheet(rule) {
   if (!s.styleSheet) {
     let href = s.href;
     try {
-      href = new URL(s.href, s.sheet ? sheetBase(s.sheet) : undefined).href;
+      href = new URL(s.href, s.sheet ? sheetBase(s.sheet) : s.baseURL).href;
     } catch {
       /* kept as written */
     }
@@ -1040,7 +1076,14 @@ const groupingMembers = {
   insertRule(rule, index = 0) {
     const s = state(this);
     required(arguments.length, 1, 'CSSGroupingRule', 'insertRule');
-    return insertRule(this, rule, index, s.sheet, this, true);
+    if (!legacyRules(s.protos)) return insertRule(this, rule, index, s.sheet, this, true);
+    // Before jsdom 27.1.0 the new rule, and the rules inside it, belong to
+    // a style sheet of their own that holds only it, a new one per call,
+    // whether or not this rule is in a sheet (black box 21.1.2 to 27.0.0, #120).
+    const sheet = newSheet(s.protos, {});
+    const i = insertRule(this, rule, index, sheet, this, true);
+    sheet[S].rules = [ruleArray(this)[i]];
+    return i;
   },
   deleteRule(index) {
     state(this);
@@ -1803,7 +1846,7 @@ export const CSSOM_INTERFACES = [
           throw domError("Can't call replaceSync on non-constructed CSSStyleSheets.", 'NotAllowedError');
         const old = s.rules;
         s.rules = ruleList(s.protos, String(text), this, null).filter((r) => !isImport(r));
-        for (const rule of old) detach(rule);
+        for (const rule of old) detach(rule, true);
         cssomChanges.rev++;
       },
       replace(text) {

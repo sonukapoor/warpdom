@@ -1518,12 +1518,21 @@ function supportsCondition(text, matchesSelector, declaration = supportsDeclarat
     while (/\s/.test(text[i] ?? '')) i++;
   };
   const group = () => {
-    // Text up to the matching closing parenthesis.
+    // Text up to the matching closing parenthesis; parentheses in strings,
+    // escapes and comments do not count (#120).
     let depth = 1;
     const start = i;
     while (i < text.length && depth > 0) {
-      if (text[i] === '(') depth++;
-      else if (text[i] === ')') depth--;
+      const c = text[i];
+      if (c === '"' || c === "'") {
+        i++;
+        while (i < text.length && text[i] !== c) i += text[i] === '\\' ? 2 : 1;
+      } else if (c === '\\') i++;
+      else if (c === '/' && text[i + 1] === '*') {
+        const end = text.indexOf('*/', i + 2);
+        i = end < 0 ? text.length : end + 1;
+      } else if (c === '(') depth++;
+      else if (c === ')') depth--;
       i++;
     }
     return depth === 0 ? text.slice(start, i - 1) : null;

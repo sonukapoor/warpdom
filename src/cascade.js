@@ -34,7 +34,7 @@ import { compileRuleSelector } from './selectors.js';
 import { directionality } from './directionality.js';
 import { absoluteLength, mayResolve, sixDigits, FONT_SIZE_KEYWORDS, relativeWeight } from './lengths.js';
 import { uaDeclarations, uaValue } from './ua-sheet.js';
-import { documentStyleSheets, styleElementSheet, ruleArray } from './cssom.js';
+import { documentStyleSheets, styleElementSheet, ruleArray, ruleListSnapshot, ruleListChanged } from './cssom.js';
 import {
   parseDeclarations,
   computed,
@@ -145,7 +145,9 @@ function mediaApplies(rule, mode, compat) {
   return list.length === 0 || list.includes('all') || list.includes('screen');
 }
 
-function buildIndex(sheets, mode, compat) {
+// lists: what was read of rule lists a test can change without the CSSOM
+// knowing (ruleListSnapshot).
+function buildIndex(sheets, mode, compat, lists) {
   const index = new Map();
   const counter = { n: 0 };
   const addRule = (rule) => {
@@ -165,6 +167,8 @@ function buildIndex(sheets, mode, compat) {
       if (proto === ss.protos.CSSStyleRule) addRule(rule);
       else if (proto === ss.protos.CSSMediaRule && mediaApplies(rule, mode, compat)) {
         // (ruleArray: before jsdom 27.1.0 the rule's cssRules, which may be replaced)
+        const snapshot = ruleListSnapshot(rule);
+        if (snapshot) lists.push(snapshot);
         for (const inner of ruleArray(rule))
           if (inner?.[S] && Object.getPrototypeOf(inner) === ss.protos.CSSStyleRule) addRule(inner);
       }
@@ -204,18 +208,18 @@ function ruleIndex(element) {
   const root = (lastRoot = rootOf(element));
   const holder = root[S].shadow === true ? root[S] : ds;
   const cached = holder.cascade;
+  if (cached?.lists.some(ruleListChanged)) cssomChanges.rev++;
   const treeRev = ds.treeRev ?? 0;
   const styleRev = ds.styleRev ?? 0;
   if (cached && cached.treeRev === treeRev && cached.styleRev === styleRev && cached.cssomRev === cssomChanges.rev)
     return cached.index;
   const sheets = holder === ds ? documentStyleSheets(es.doc)[S].items() : shadowSheets(root);
-  const index =
-    cached && cached.cssomRev === cssomChanges.rev && sameSheets(cached.sheets, sheets)
-      ? cached.index
-      : sheets.length
-        ? buildIndex(sheets, validationModeOf(ds.window), ds.window[S].compat)
-        : EMPTY;
-  holder.cascade = { treeRev, styleRev, cssomRev: cssomChanges.rev, sheets: sheets.slice(), index };
+  const reuse = cached && cached.cssomRev === cssomChanges.rev && sameSheets(cached.sheets, sheets);
+  const lists = reuse ? cached.lists : [];
+  let index = EMPTY;
+  if (reuse) index = cached.index;
+  else if (sheets.length) index = buildIndex(sheets, validationModeOf(ds.window), ds.window[S].compat, lists);
+  holder.cascade = { treeRev, styleRev, cssomRev: cssomChanges.rev, sheets: sheets.slice(), index, lists };
   return index;
 }
 

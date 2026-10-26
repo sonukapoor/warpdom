@@ -1030,3 +1030,210 @@ for (const jsdom of [26, 30]) {
     { jsdom },
   );
 }
+
+// Legacy CSSOM edge cases (#120).
+
+// CSSSupportsRule.matches and CSS.supports: parentheses in strings,
+// escapes and comments do not end a condition's group.
+for (const jsdom of [29, 30]) {
+  parity(
+    `@supports conditions with quoted parentheses (jsdom ${jsdom})`,
+    (w) => {
+      const conditions = [
+        '(font-family: "(")',
+        "(font-family: ')')",
+        '(font-family: "a)b")',
+        '(content: "\\)")',
+        '(font-family: a /* ) */)',
+        '(display: grid) and (font-family: "(")',
+        '(content: "(") or (display: foo)',
+        'not (content: ")")',
+        '(content: ")") and (display: foo)',
+        '((content: ")"))',
+        '(font-family: "(" )and (display: grid)',
+        '(width: calc(1px + ")"))',
+      ];
+      const st = w.document.createElement('style');
+      st.textContent = conditions.map((c) => `@supports ${c} { a { color: red } }`).join('\n');
+      w.document.head.appendChild(st);
+      const out = [...st.sheet.cssRules].map((rule) => rule.matches);
+      if (w.CSS?.supports)
+        for (const c of [...conditions.filter((c) => !c.includes('/*')), '(content: "(")) or (display: grid)'])
+          out.push(`${c}: ${w.CSS.supports(c)}`);
+      return out;
+    },
+    { jsdom },
+  );
+}
+
+// Before jsdom 27.1.0 a rule inserted into a grouping rule belongs to a
+// new style sheet holding only it (one per call), whether or not the
+// grouping rule is in a sheet; a deleted rule keeps its sheet, and so does
+// a deleted @import rule's style sheet, read before or after.
+for (const jsdom of [22, 26]) {
+  parity(
+    `the style sheet of rules inserted into grouping rules (jsdom ${jsdom})`,
+    (w) => {
+      const st = w.document.createElement('style');
+      st.textContent = '@import url(a.css); @import url(b.css); @media screen { a { color: red } } @supports (x: y) {}';
+      w.document.head.appendChild(st);
+      const { sheet } = st;
+      const [early, late, media, supports] = sheet.cssRules;
+      const own = (rule) => {
+        const p = rule.parentStyleSheet;
+        return [
+          p === sheet,
+          p instanceof w.CSSStyleSheet,
+          [...w.document.styleSheets].includes(p),
+          p.cssRules.length,
+          p.cssRules[0] === rule,
+          p.parentStyleSheet,
+        ];
+      };
+      media.insertRule('b { top: 1px }', 0);
+      const attached = media.cssRules[0];
+      const out = [own(attached)];
+      const earlySheet = early.styleSheet;
+      const old = media.cssRules[1];
+      for (let i = 3; i >= 0; i--) sheet.deleteRule(i);
+      media.insertRule('c { top: 1px }', 0);
+      media.insertRule('@media print { d { top: 1px } }', 0);
+      supports.insertRule('e { top: 1px }', 0);
+      const [nested, inserted] = media.cssRules;
+      out.push(
+        own(inserted),
+        own(nested),
+        own(supports.cssRules[0]),
+        inserted.parentStyleSheet !== attached.parentStyleSheet,
+        nested.cssRules[0].parentStyleSheet === nested.parentStyleSheet,
+        [media, old, early, late].map((rule) => rule.parentStyleSheet === sheet),
+        [earlySheet.parentStyleSheet === sheet, late.styleSheet.parentStyleSheet === sheet],
+      );
+      return out;
+    },
+    { jsdom },
+  );
+}
+
+// From jsdom 27.1.0 a deleted rule's parentStyleSheet is null, the rules
+// inside it keep theirs, and so does a deleted @import rule's style sheet
+// (null, read before or after); jsdom 29 and 30 resolve the href of one
+// read after against the document. (A rule inserted into a deleted rule:
+// a sheet of its own in 27.1.0 to 28, null from 29.)
+for (const jsdom of [28, 30]) {
+  parity(
+    `the style sheet of deleted rules (jsdom ${jsdom})`,
+    (w) => {
+      const st = w.document.createElement('style');
+      st.textContent =
+        '@import url(a.css); @import url(b.css); @media screen { a { color: red } @media print { i {} } }';
+      w.document.head.appendChild(st);
+      const { sheet } = st;
+      const [early, late, media] = sheet.cssRules;
+      const earlySheet = early.styleSheet;
+      const [old, inner] = media.cssRules;
+      for (let i = 2; i >= 0; i--) sheet.deleteRule(i);
+      const out = [
+        [media, old, inner, inner.cssRules[0], early, late].map((rule) => rule.parentStyleSheet === sheet),
+        [earlySheet.parentStyleSheet, late.styleSheet.parentStyleSheet, early.styleSheet === earlySheet],
+      ];
+      if (jsdom >= 29) {
+        media.insertRule('b { top: 1px }', 0);
+        out.push(media.cssRules[0].parentStyleSheet, late.styleSheet.href);
+      }
+      return out;
+    },
+    { jsdom },
+  );
+}
+
+// Before jsdom 27.1.0 a grouping rule's cssRules can be another rule's list,
+// which both rules then share.
+for (const jsdom of [22, 26]) {
+  parity(
+    `grouping rules sharing a cssRules list (jsdom ${jsdom})`,
+    (w) => {
+      const st = w.document.createElement('style');
+      st.textContent = '@media screen { p.a { color: red } } @media screen { p.b { top: 1px } }';
+      w.document.head.appendChild(st);
+      const [first, second] = st.sheet.cssRules;
+      const color = () => w.getComputedStyle(w.document.body.appendChild(w.document.createElement('p'))).color;
+      first.cssRules = second.cssRules;
+      const out = [first.cssRules === second.cssRules, first.cssText.includes('p.b'), first.cssText.includes('p.a')];
+      first.insertRule('p { color: green }', 0);
+      out.push(
+        second.cssRules.length,
+        second.cssRules[0].parentRule === first,
+        second.cssText.includes('green'),
+        first.cssText.includes('green'),
+        color(),
+      );
+      second.deleteRule(0);
+      out.push(first.cssRules.length, first.cssText.includes('green'), color());
+      return out;
+    },
+    { jsdom },
+  );
+}
+
+// Before jsdom 27.1.0 the cascade follows a grouping rule's cssRules after
+// a test replaces it, or changes the array it was replaced with, even
+// after getComputedStyle() (elements created after, or after a change to
+// the document).
+for (const jsdom of [22, 26]) {
+  parity(
+    `the cascade after a replaced cssRules (jsdom ${jsdom})`,
+    (w) => {
+      const changes = {
+        replace: (media) => (media.cssRules = []),
+        replaceWithOther: (media, other) => (media.cssRules = [other]),
+        pushToReplacement: (media, other) => {
+          media.cssRules = [];
+          w.getComputedStyle(w.document.body.firstChild).color;
+          media.cssRules.push(other);
+        },
+        spliceReplacement: (media, other) => {
+          media.cssRules = [other];
+          w.getComputedStyle(w.document.body.firstChild).color;
+          media.cssRules.splice(0, 1);
+        },
+      };
+      return Object.entries(changes).map(([name, change]) => {
+        w.document.head.innerHTML =
+          '<style>@media screen { p { color: red } } @media print { p { color: blue } }</style>';
+        w.document.body.innerHTML = '<p>x</p>';
+        const [media, print] = w.document.styleSheets[0].cssRules;
+        const before = w.getComputedStyle(w.document.body.firstChild).color;
+        change(media, print.cssRules[0]);
+        const fresh = w.getComputedStyle(w.document.body.appendChild(w.document.createElement('p'))).color;
+        w.document.body.firstChild.setAttribute('data-x', '1');
+        return `${name}: ${before} ${fresh} ${w.getComputedStyle(w.document.body.firstChild).color}`;
+      });
+    },
+    { jsdom },
+  );
+}
+
+// Reparsing an @import rule (its cssText before jsdom 27.1.0, parse() from
+// 27.1.0 to 28) keeps its style sheet and the rules inserted into it.
+for (const jsdom of [20, 26, 28]) {
+  parity(
+    `an @import rule's style sheet after reparsing (jsdom ${jsdom})`,
+    (w) => {
+      const st = w.document.createElement('style');
+      st.textContent = '@import url(a.css) screen;';
+      w.document.head.appendChild(st);
+      const rule = st.sheet.cssRules[0];
+      const reparse = (text) => (jsdom >= 27 ? rule.parse(text) : (rule.cssText = text));
+      const imported = rule.styleSheet;
+      imported.insertRule('a { color: red }', 0);
+      return ['@import url(a.css) screen;', '@import url(b.css) print;', 'garbage', '@import url(c.css) tv'].map(
+        (text) => {
+          reparse(text);
+          return [rule.href, rule.styleSheet === imported, rule.styleSheet.cssRules.length];
+        },
+      );
+    },
+    { jsdom },
+  );
+}
