@@ -1213,8 +1213,24 @@ for (const jsdom of [30, 29, 28, 27, 26])
         if (inline) td.setAttribute('style', inline);
         else td.removeAttribute('style');
         const cs = w.getComputedStyle(td);
-        out.push(`${css} | ${inline ?? ''} | ${cs.paddingTop} ${cs.paddingBottom}`);
+        // The shorthand from the same block from jsdom 28.1.0 (#155 review);
+        // before, not modeled in every case.
+        out.push(`${css} | ${inline ?? ''} | ${cs.paddingTop} ${cs.paddingBottom} | ${jsdom >= 28 ? cs.padding : ''}`);
       });
+      // margin as padding.
+      for (const css of [
+        '.d.d td { margin: var(--m) } td { margin: 8px }',
+        'td { margin: 8px } .d.d td { margin: var(--m) }',
+        '.d.d td { margin-bottom: 7px } td { margin: var(--m) }',
+        'td { margin: var(--m) } .d td { margin-top: 2px }',
+        '.d.d td { margin: 1px 2px } td { margin-left: 3px }',
+        '.d.d td { margin: 1px !important } td { margin: var(--m) !important }',
+      ]) {
+        style.textContent = css;
+        td.removeAttribute('style');
+        const cs = w.getComputedStyle(td);
+        out.push(`${css} | ${cs.marginTop} ${cs.marginLeft} | ${cs.margin}`);
+      }
       style.textContent =
         '.d.d td { color: red !important; margin: 1px !important } td { color: blue !important; margin-bottom: 2px !important }';
       td.removeAttribute('style');

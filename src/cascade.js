@@ -364,11 +364,12 @@ function cascadeByOrder(lists, element, compat) {
 // leaves an !important longhand, and the block keeps the shorthand only
 // while its longhands share its importance (before jsdom 30 an !important
 // longhand set over an !important shorthand loses its !important:
-// compat.longhandLosesImportant). The longhand's entry in the block, or
+// compat.longhandLosesImportant). The block's entry for the longhand, or
+// for the shorthand itself while the block holds it (shorthandValue), or
 // undefined; null when another shorthand declares one of the longhands.
 // The block is kept with the element's cascaded values, for its other
 // longhands.
-const IN_ORDER = new Map(['margin', 'padding'].flatMap((s) => SHORTHANDS[s].map((l) => [l, s])));
+const IN_ORDER = new Map(['margin', 'padding'].flatMap((s) => [[s, s], ...SHORTHANDS[s].map((l) => [l, s])]));
 function cascadeInOrder(index, element, name, shorthand, compat, inlineMap) {
   const cache = element[S].cascaded;
   const blocks = (cache.blocks ??= new Map());
@@ -406,6 +407,14 @@ function inOrderBlock(index, element, shorthand, compat, inlineMap) {
         event.values.set(longhand, entry.value);
       }
   }
+  // The shorthand's own declared values (padding: 8px, padding: var(--p)).
+  const declared = index.get(shorthand);
+  if (declared !== undefined)
+    for (const list of [declared.normal, declared.important])
+      for (const entry of list) {
+        const event = events.get(entry.decl);
+        if (event !== undefined) event.own = entry.value;
+      }
   // The style attribute's, last, over every rule: its shorthand with var()
   // (pending longhands), then its other longhands.
   const ordered = [...events.values()].sort((a, b) => a.decl - b.decl);
@@ -418,6 +427,7 @@ function inOrderBlock(index, element, shorthand, compat, inlineMap) {
         important: pending.important,
         specificity: Infinity,
         values: new Map(longhands.map((l) => [l, PENDING])),
+        own: inlineMap.get(shorthand)?.value,
       });
     longhands.forEach((l, i) => {
       const entry = inline[i];
@@ -433,7 +443,7 @@ function inOrderBlock(index, element, shorthand, compat, inlineMap) {
   const block = new Map(); // longhand -> { value, important, from }
   if (ordered.length === 0) return block;
   const loses = compat.longhandLosesImportant === true;
-  let own = null; // the shorthand's own entry: { pending, important }
+  let own = null; // the shorthand's own entry: { pending, important, value }
   const last = new Map(); // name -> { important, specificity } of the declaration that set it
   const held = (n) => (n === shorthand ? own?.important : block.get(n)?.important) === true;
   const wins = (n, event) => {
@@ -463,7 +473,7 @@ function inOrderBlock(index, element, shorthand, compat, inlineMap) {
       else if (block.get(l)?.important && !event.important) whole = false;
       else block.set(l, { value: event.values.get(l), important: event.important, from: shorthand });
     }
-    own = whole ? { pending, important: event.important } : null;
+    own = whole ? { pending, important: event.important, value: event.own } : null;
   };
   const record = (n, event) => last.set(n, { important: event.important, specificity: event.specificity });
   for (const event of ordered) {
@@ -485,6 +495,9 @@ function inOrderBlock(index, element, shorthand, compat, inlineMap) {
       record(shorthand, event);
     }
   }
+  // The shorthand itself while the block holds it (shorthandValue).
+  if (own !== null && own.value !== undefined)
+    block.set(shorthand, { value: own.value, important: own.important, from: shorthand });
   return block;
 }
 
@@ -835,6 +848,15 @@ function shorthandValue(element, name) {
     // computes to that value (gap: inherit, padding: var(--x)), and one
     // jsdom does not expand (cascadeExpand) to its declared value alone.
     const own = cascaded(element, name);
+    // jsdom 28.1.0 (cascadeInOrder, black box): margin and padding from
+    // the block their declarations apply to, '' when its longhands differ
+    // in importance (.d.d td { padding: 8px } td { padding-bottom: 7px
+    // !important }); its shorthand is cascaded(element, name).
+    const block = element[S].cascaded?.blocks?.get(name);
+    if (block != null && block.size > 0) {
+      const important = block.get(SHORTHANDS[name][0])?.important === true;
+      if (SHORTHANDS[name].some((l) => (block.get(l)?.important === true) !== important)) return '';
+    }
     // '' when a longhand declared over it wins (padding: var(--p), then
     // padding-top: 5px), which its pending longhands otherwise do.
     if (

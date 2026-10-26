@@ -4461,3 +4461,11 @@ rule index and cascade()).
   profiles (30.1.3 unchanged).
 - Not modeled: the other shorthand families (border, font, background,
   flex) still use the specificity model with pendingByOrder.
+- Review fix (#155): computed margin and padding (the shorthands) come
+  from the same block in 28.1.0: the block keeps the shorthand while it
+  holds it (cascaded(element, 'padding')), and the shorthand reads ''
+  when the block's longhands differ in importance (.d.d td { padding:
+  var(--p) } td { padding: 8px } gives 8px, was ''). The matrix reads the
+  shorthand from 28 (360 cases plus 6 margin ones, 0 mismatches on 28,
+  29 and 30.1.3); before 28 the shorthand still differs in 57 (27.4.0)
+  and 67 (26.1.0) of the 360 cases (not modeled, #157).
