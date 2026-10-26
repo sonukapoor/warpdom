@@ -67,8 +67,9 @@ async function probeBesideWildcard(host) {
 
 const LOOPBACK = ['127.0.0.1', '::1'];
 
-// port: the port to try first (tests); later attempts take one the system picks.
-export async function startServer({ port: first = 0 } = {}) {
+// port: the port to try first (tests); later attempts take one the system
+// picks. probe: whether loopback listeners sit beside wildcard ones (tests).
+export async function startServer({ port: first = 0, probe = loopbackBesideWildcard } = {}) {
   const requests = [];
   const sockets = new Set();
   // Stepped /slow responses waiting for release() to send their next chunk.
@@ -190,16 +191,23 @@ export async function startServer({ port: first = 0 } = {}) {
       throw main.error;
     }
     const servers = [main.server];
-    for (const host of LOOPBACK) {
-      const own = await listen(main.server.address().port, host);
-      if (own.server) servers.push(own.server);
-      // Not EADDRINUSE: an address the system does not have (::1 without
-      // IPv6). EADDRINUSE: our own wildcard listener where loopback ones
-      // cannot sit beside it (it serves host), else another program.
-      else if (own.error.code === 'EADDRINUSE' && (await loopbackBesideWildcard(host))) {
-        await Promise.all(servers.map(close));
-        return null;
+    try {
+      for (const host of LOOPBACK) {
+        const own = await listen(main.server.address().port, host);
+        if (own.server) servers.push(own.server);
+        // Not EADDRINUSE: an address the system does not have (::1 without
+        // IPv6). EADDRINUSE: our own wildcard listener where loopback ones
+        // cannot sit beside it (it serves host), else another program.
+        else if (own.error.code === 'EADDRINUSE' && (await probe(host))) {
+          await Promise.all(servers.map(close));
+          return null;
+        }
       }
+    } catch (error) {
+      // The probe could not tell: no listener stays open to keep the
+      // process alive.
+      await Promise.all(servers.map(close));
+      throw error;
     }
     return servers;
   };
