@@ -1039,11 +1039,14 @@ test('computed values: computed style writes and var() with !important in rules 
 // 7px when the longhand comes last.
 test('computed values: a longhand, a shorthand and a var() shorthand', () => {
   const td = '<div class="d"><table><tbody><tr><td></td></tr></tbody></table></div>';
-  const last = { '26.1.0': '7px', '27.4.0': '7px', '28.1.0': '7px', '29.1.1': '7px', '30.1.2': '7px', '30.1.3': '7px' };
+  // The expected values by jsdom release, in this order.
+  const RELEASES = ['26.1.0', '27.4.0', '28.1.0', '29.1.1', '30.1.2', '30.1.3'];
+  const by = (...values) => Object.fromEntries(RELEASES.map((jsdom, i) => [jsdom, values[i]]));
+  const last = by('7px', '7px', '7px', '7px', '7px', '7px');
   const CASES = [
     [
       '.d.d td { padding-bottom: 7px !important } .d td { padding: 8px !important } td { padding: var(--p) !important }',
-      { '26.1.0': '', '27.4.0': '', '28.1.0': '8px', '29.1.1': '8px', '30.1.2': '0', '30.1.3': '0' },
+      by('', '', '8px', '8px', '0', '0'),
     ],
     [
       'td { padding: var(--p) !important } .d td { padding: 8px !important } .d.d td { padding-bottom: 7px !important }',
@@ -1055,7 +1058,7 @@ test('computed values: a longhand, a shorthand and a var() shorthand', () => {
     ],
     [
       '.d.d td { padding-bottom: 7px } .d td { padding: 8px } td { padding: var(--p) }',
-      { '26.1.0': '', '27.4.0': '', '28.1.0': '8px', '29.1.1': '8px', '30.1.2': '8px', '30.1.3': '7px' },
+      by('', '', '8px', '8px', '8px', '7px'),
     ],
   ];
   for (const [css, expected] of CASES) {
@@ -1350,3 +1353,31 @@ test('computed values: the later of two !important declarations wins from jsdom 
   }
   assert.equal(read('27.4.0', normal), 'rgb(0, 0, 255)');
 });
+
+// An !important longhand set over an !important shorthand loses its
+// !important before jsdom 30 (compat.longhandLosesImportant); after that
+// any later declaration of it wins, whatever its specificity (black box,
+// 28.1.0 and 29.1.1: .d.d td { padding-bottom: 7px !important } then td {
+// padding-bottom: 1px } gives 1px; 30.1.3 keeps 7px).
+for (const jsdom of [30, 29, 28])
+  parity(
+    `computed values: a longhand that lost its !important in the block (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      d.body.innerHTML = '<div class="d"><table><tbody><tr><td></td></tr></tbody></table></div>';
+      const td = d.querySelector('td');
+      const style = d.head.appendChild(d.createElement('style'));
+      return [
+        '.d td { padding: 8px !important } .d.d td { padding-bottom: 7px !important } td { padding-bottom: 1px }',
+        '.d td { padding: 8px !important } td { padding-bottom: 7px !important } .d.d td { padding-bottom: 1px }',
+        '.d td { padding: 8px !important } .d.d td { padding-bottom: 7px !important } td { padding: 1px }',
+        '.d.d td { padding: 8px !important } td { padding-bottom: 7px !important } .d td { padding-bottom: 1px } td { padding-bottom: 2px }',
+        '.d td { margin: 8px !important } .d.d td { margin-bottom: 7px !important } td { margin-bottom: 1px }',
+      ].map((css) => {
+        style.textContent = css;
+        const cs = w.getComputedStyle(td);
+        return `${css} | ${cs.paddingTop} ${cs.paddingBottom} ${cs.marginBottom} | ${cs.padding}`;
+      });
+    },
+    { jsdom },
+  );
