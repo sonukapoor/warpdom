@@ -326,10 +326,11 @@ class ListIterator {
 Object.setPrototypeOf(ListIterator.prototype, ARRAY_ITERATOR);
 for (const key of ['constructor', 'next']) Object.defineProperty(ListIterator.prototype, key, { enumerable: false });
 
-// ToLength (ECMAScript), with the common case first.
+// ToLength (ECMAScript), with the common case first. Unary plus is ToNumber:
+// a BigInt, or an object that converts to one, throws (Number() takes them).
 function toLength(v) {
   if (typeof v === 'number' && v >= 0 && v <= 4294967295 && v === Math.floor(v)) return v;
-  const n = Math.trunc(Number(v));
+  const n = Math.trunc(+v);
   return n > 0 ? Math.min(n, Number.MAX_SAFE_INTEGER) : 0;
 }
 

@@ -584,6 +584,20 @@ parity('list iteration honors an overridden length', (w) => {
   return out;
 });
 
+// An overriding length is converted as ToLength converts it: a BigInt, or an
+// object that converts to one, throws a TypeError; a string is a number.
+parity('list iteration converts an overridden length with ToLength', (w) => {
+  const lengths = [1n, { valueOf: () => 1n }, Symbol('s'), { valueOf: () => '1' }, '2'];
+  return lengths.map((length) => {
+    const p = w.document.createElement('div');
+    p.innerHTML = '<a></a><b></b>';
+    const list = p.childNodes;
+    const it = list.values();
+    Object.defineProperty(list, 'length', { value: length, configurable: true });
+    return [attempt(() => [...it].length), attempt(() => [...list.keys()].length)];
+  });
+});
+
 test('a RadioNodeList is filtered again only after a change', () => {
   const w = createWindow();
   const d = w.document;
