@@ -87,6 +87,8 @@ class ListState {
     // Internal state belongs to the collection itself, not to objects that
     // inherit from it (an HTMLCollection used as a prototype).
     if (key === S) return receiver === this.proxy ? this : undefined;
+    // @@iterator: for...of and spreading call it right after.
+    lastState = this;
     return Reflect.get(t, key, receiver);
   }
 
@@ -227,50 +229,89 @@ export function staticList(proto, array) {
   return (s.proxy = new Proxy(Object.create(proto), s));
 }
 
-// Iterators over a list's current items (WebIDL value and pair iterators
-// read the length and the item at each step, as Array.prototype.values
-// does), so iterating a live list sees changes made since it started.
-// The list's items are its cached array, rebuilt only after a change.
+// The list interfaces' iteration functions. In jsdom (black box 20.0.3 to
+// 30.1.3) the @@iterator of NodeList, HTMLCollection, NamedNodeMap, FileList,
+// StyleSheetList, of CSSRuleList and MediaList from 29, and of the subclasses
+// HTMLFormControlsCollection, HTMLOptionsCollection and RadioNodeList is
+// Array.prototype.values itself, and NodeList's forEach, keys, values and
+// entries are Array.prototype's. Those read the length and the item through
+// the list's Proxy traps at every step, about three times the cost of
+// reading the cached items directly, so warpdom keeps its own functions with
+// the same name, length and behavior: an iterator reads the length and the
+// item at each step (iterating a live list sees changes made since it
+// started; once done it stays done), forEach reads the length once and skips
+// the indices removed meanwhile, and any other this value (an array-like
+// they are borrowed for) or an invalid callback goes to Array.prototype's.
+// The iterators inherit from %ArrayIteratorPrototype%: Iterator helpers and
+// the class string are the same.
 const VALUES = 0,
   KEYS = 1,
   ENTRIES = 2;
-class ListIterator {
-  constructor(list, kind) {
-    this.list = list;
-    this.kind = kind;
-    this.index = 0;
-  }
-  next() {
-    const list = this.list;
-    if (list === null) return { value: undefined, done: true };
-    const array = items(list);
-    const i = this.index;
-    if (i >= array.length) {
-      this.list = null;
-      return { value: undefined, done: true };
-    }
-    this.index = i + 1;
-    const kind = this.kind;
-    return { value: kind === VALUES ? array[i] : kind === KEYS ? i : [i, array[i]], done: false };
-  }
-  [Symbol.iterator]() {
-    return this;
-  }
-}
-Object.defineProperty(ListIterator.prototype, Symbol.toStringTag, { value: 'Array Iterator', configurable: true });
-for (const key of ['constructor', 'next', Symbol.iterator]) {
-  Object.defineProperty(ListIterator.prototype, key, { enumerable: false });
+const ARRAY_ITERATOR = Object.getPrototypeOf([][Symbol.iterator]());
+const { forEach: arrayForEach, keys: arrayKeys, values: arrayValues, entries: arrayEntries } = Array.prototype;
+
+// The list's state, or null when this is not a list.
+function listState(list) {
+  const last = lastState;
+  if (last !== null && last.proxy === list) return last;
+  const s = list != null ? list[S] : undefined;
+  return s instanceof ListState ? s : null;
 }
 
-// The list interfaces' @@iterator; their subclasses (HTMLFormControlsCollection,
-// HTMLOptionsCollection, RadioNodeList) have the same function as their own,
-// as in jsdom (black box 20.0.3 to 30.1.3: Array.prototype.values on each).
-export const iterate = {
-  [Symbol.iterator]() {
-    items(this);
-    return new ListIterator(this, VALUES);
+class ListIterator {
+  // Private: an Array Iterator has no own properties.
+  #state;
+  #kind;
+  #index = 0;
+  constructor(state, kind) {
+    this.#state = state;
+    this.#kind = kind;
+  }
+  next() {
+    const s = this.#state;
+    if (s === null) return { value: undefined, done: true };
+    const array = s.items();
+    const i = this.#index;
+    if (i >= array.length) {
+      this.#state = null;
+      return { value: undefined, done: true };
+    }
+    this.#index = i + 1;
+    const kind = this.#kind;
+    if (kind === VALUES) return { value: array[i], done: false };
+    return { value: kind === KEYS ? i : [i, array[i]], done: false };
+  }
+}
+Object.setPrototypeOf(ListIterator.prototype, ARRAY_ITERATOR);
+for (const key of ['constructor', 'next']) Object.defineProperty(ListIterator.prototype, key, { enumerable: false });
+
+const iteration = {
+  forEach(callback, thisArg = undefined) {
+    const s = listState(this);
+    if (s === null || typeof callback !== 'function') return arrayForEach.call(this, callback, thisArg);
+    const length = s.items().length;
+    for (let i = 0; i < length; i++) {
+      const array = s.items();
+      if (i < array.length) callback.call(thisArg, array[i], i, this);
+    }
+  },
+  entries() {
+    const s = listState(this);
+    return s === null ? arrayEntries.call(this) : new ListIterator(s, ENTRIES);
+  },
+  keys() {
+    const s = listState(this);
+    return s === null ? arrayKeys.call(this) : new ListIterator(s, KEYS);
+  },
+  values() {
+    const s = listState(this);
+    return s === null ? arrayValues.call(this) : new ListIterator(s, VALUES);
   },
 };
+
+// The list interfaces' @@iterator (their subclasses have the same function
+// as their own, as in jsdom).
+export const iterate = { [Symbol.iterator]: iteration.values };
 
 // item(index) takes a WebIDL unsigned long: ToUint32 (item(-1) is
 // item(4294967295)).
@@ -289,21 +330,7 @@ export const COLLECTION_INTERFACES = [
         return items(this).length;
       },
       ...item,
-      forEach(callback, thisArg) {
-        items(this).forEach((node, i) => callback.call(thisArg, node, i, this));
-      },
-      entries() {
-        items(this);
-        return new ListIterator(this, ENTRIES);
-      },
-      keys() {
-        items(this);
-        return new ListIterator(this, KEYS);
-      },
-      values() {
-        items(this);
-        return new ListIterator(this, VALUES);
-      },
+      ...iteration,
       ...iterate,
     },
   },

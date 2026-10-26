@@ -301,6 +301,179 @@ parity('iterating a live NodeList or HTMLCollection sees changes made meanwhile'
   ];
 });
 
+// jsdom's are Array.prototype's own functions (black box 20.0.3 to 30.1.3);
+// warpdom's have their name, length and behavior but not their identity
+// (collections.js), so the identity is left out here.
+const LIST_INTERFACES = [
+  'NodeList',
+  'HTMLCollection',
+  'NamedNodeMap',
+  'FileList',
+  'StyleSheetList',
+  'HTMLFormControlsCollection',
+  'HTMLOptionsCollection',
+  'RadioNodeList',
+  'HTMLSelectElement',
+];
+
+parity("list interfaces' @@iterator and NodeList's iteration functions have Array.prototype's shape", (w) => {
+  const shape = (proto, key) => {
+    const d = Object.getOwnPropertyDescriptor(proto, key);
+    return d && [typeof d.value, d.value.name, d.value.length, d.writable, d.enumerable, d.configurable];
+  };
+  const NL = w.NodeList.prototype;
+  return [
+    LIST_INTERFACES.map((name) => [name, shape(w[name].prototype, Symbol.iterator)]),
+    ['forEach', 'keys', 'values', 'entries'].map((key) => [key, shape(NL, key)]),
+    NL.values === NL[Symbol.iterator],
+    ['HTMLCollection', 'NamedNodeMap', 'RadioNodeList'].map(
+      (name) => w[name].prototype[Symbol.iterator] === NL[Symbol.iterator],
+    ),
+    'prototype' in NL.values,
+    attempt(() => new NL.values()),
+  ];
+});
+
+parity("list iteration functions borrowed for other array-like objects work as Array.prototype's", (w) => {
+  const NL = w.NodeList.prototype;
+  const it = NL[Symbol.iterator];
+  const seen = [];
+  return [
+    attempt(() => [...it.call([1, 2])]),
+    attempt(() => [...it.call({ length: 2, 0: 'a', 1: 'b' })]),
+    attempt(() => [...it.call('ab')]),
+    attempt(() => [...w.HTMLCollection.prototype[Symbol.iterator].call(['c'])]),
+    attempt(() => [...NL.keys.call({ length: 2 })]),
+    attempt(() => JSON.stringify([...NL.entries.call(['x'])])),
+    attempt(() => [...NL.values.call(w.document.body.children)].length),
+    attempt(() => NL.forEach.call(['a', 'b'], (v, i, l) => seen.push(v, i, Array.isArray(l)))),
+    seen,
+    attempt(() => it.call(null)),
+    attempt(() => it.call(undefined)),
+    attempt(() => NL.forEach.call(null, () => {})),
+    attempt(() => w.document.body.childNodes.forEach()),
+    attempt(() => w.document.body.childNodes.forEach({})),
+    attempt(() => [...it.call(Object.create(w.document.body.childNodes))]),
+  ];
+});
+
+parity("a list's iterators: Array Iterator objects with Iterator helpers, live, done for good once done", (w) => {
+  const d = w.document;
+  const parent = d.createElement('div');
+  parent.innerHTML = '<b></b><i></i><u></u>';
+  const it = parent.childNodes.values();
+  const done = parent.children[Symbol.iterator]();
+  [...done];
+  parent.append(d.createElement('p'));
+  const after = done.next();
+  const entries = parent.childNodes.entries();
+  const first = entries.next().value;
+  parent.firstChild.remove();
+  const second = entries.next().value;
+  return [
+    Object.prototype.toString.call(it),
+    it[Symbol.iterator]() === it,
+    Object.hasOwn(it, 'next'),
+    typeof it.map,
+    attempt(() => JSON.stringify(it.map((n) => n.nodeName).toArray())),
+    after.done,
+    [first[0], first[1].nodeName, second[0], second[1].nodeName],
+    JSON.stringify(Object.keys(it)),
+  ];
+});
+
+// Iterating a list reads its current length and item at each step, as
+// Array.prototype.values does; forEach reads the length once and skips the
+// indices removed meanwhile, as Array.prototype.forEach does. NamedNodeMap
+// and a select's options are live too.
+parity('iterating and forEach over live lists while removing and adding items', (w) => {
+  const d = w.document;
+  const fresh = () =>
+    html(
+      w,
+      '<div id=d><a></a><b></b><i></i><u></u></div><select id=s><option>1<option>2<option>3<option>4</select>' +
+        '<form id=f><input name=x><input name=y><input name=z></form>',
+    );
+  const out = [];
+  fresh();
+  let seen = [];
+  d.getElementById('d').childNodes.forEach((n, i, l) => {
+    seen.push(n.nodeName, i, l === d.getElementById('d').childNodes);
+    n.remove();
+  });
+  out.push(seen, d.getElementById('d').childNodes.length);
+  fresh();
+  let calls = 0;
+  d.getElementById('d').childNodes.forEach(() => {
+    if (calls++ < 10) d.getElementById('d').append(d.createElement('p'));
+  });
+  out.push(calls);
+  fresh();
+  seen = [];
+  d.querySelectorAll('#d > *').forEach((n) => {
+    seen.push(n.nodeName);
+    n.remove();
+  });
+  out.push(seen);
+  fresh();
+  seen = [];
+  for (const n of d.getElementById('d').children) {
+    seen.push(n.nodeName);
+    n.remove();
+  }
+  out.push(seen);
+  fresh();
+  seen = [];
+  for (const o of d.getElementById('s')) {
+    seen.push(o.text);
+    o.remove();
+  }
+  out.push(seen);
+  fresh();
+  seen = [];
+  for (const o of d.getElementById('s').options) {
+    seen.push(o.text);
+    o.remove();
+  }
+  out.push(seen);
+  fresh();
+  seen = [];
+  for (const el of d.getElementById('f').elements) {
+    seen.push(el.name);
+    el.remove();
+  }
+  out.push(seen);
+  const p = d.createElement('p');
+  for (const name of ['a', 'b', 'c']) p.setAttribute(name, '');
+  seen = [];
+  for (const a of p.attributes) {
+    seen.push(a.name);
+    p.removeAttribute(a.name);
+  }
+  out.push(seen);
+  return out;
+});
+
+// MediaList is iterable from jsdom 29 (black box: no @@iterator in 20.0.3 to
+// 28.1.0); the style sheet lists iterate their current items.
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30]) {
+  parity(
+    `style sheet lists and MediaList iteration (jsdom ${jsdom})`,
+    (w) => {
+      const d = html(w, '<style>@media screen, print { a {} b {} }</style><style></style>');
+      const media = d.styleSheets[0].cssRules[0].media;
+      return [
+        Symbol.iterator in w.MediaList.prototype,
+        attempt(() => [...media]),
+        [...d.styleSheets].length,
+        [...d.styleSheets[0].cssRules].map((r) => r.constructor.name),
+        [...d.styleSheets[0].cssRules[0].cssRules].length,
+      ];
+    },
+    { jsdom },
+  );
+}
+
 parity(
   'static NodeList from querySelectorAll: own properties, read-only, undeletable, unchanged by later changes',
   (w) => {

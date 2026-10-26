@@ -21,7 +21,7 @@
   },
   "src/collections.js": {
     "no-nested-ternary": {
-      "count": 2
+      "count": 1
     }
   },
   "src/colors.js": {

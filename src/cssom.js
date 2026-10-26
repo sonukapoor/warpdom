@@ -25,7 +25,7 @@ import {
   isLegacyMode,
   supportsRuleMatches,
 } from './css.js';
-import { liveList } from './collections.js';
+import { liveList, iterate } from './collections.js';
 import { fallbackBaseURL } from './base-url.js';
 
 // WebIDL: an operation called with fewer arguments than it requires throws.
@@ -1624,13 +1624,16 @@ export const CSSOM_INTERFACES = [
         required(arguments.length, 1, 'CSSRuleList', 'item');
         return s.items()[index >>> 0] ?? null;
       },
-      [Symbol.iterator]() {
-        return state(this).items()[Symbol.iterator]();
-      },
+      // Over the live indexed properties, as jsdom's (collections.js).
+      ...iterate,
     },
   },
   {
     name: 'MediaList',
+    // Not iterable before jsdom 29 (black box 20.0.3 to 28.1.0: no @@iterator).
+    compat(proto, { jsdom }) {
+      if (jsdom < 29) delete proto[Symbol.iterator];
+    },
     members: {
       get mediaText() {
         return state(this).list.join(', ');
@@ -1678,9 +1681,9 @@ export const CSSOM_INTERFACES = [
       toString() {
         return state(this).list.join(', ');
       },
-      [Symbol.iterator]() {
-        return state(this).list[Symbol.iterator]();
-      },
+      // Over the live indexed properties, as jsdom 29's (collections.js);
+      // earlier jsdom's MediaList is not iterable (compat).
+      ...iterate,
     },
   },
   {
@@ -1694,9 +1697,8 @@ export const CSSOM_INTERFACES = [
         required(arguments.length, 1, 'StyleSheetList', 'item');
         return s.items()[index >>> 0] ?? null;
       },
-      [Symbol.iterator]() {
-        return state(this).items()[Symbol.iterator]();
-      },
+      // Over the live indexed properties, as jsdom's (collections.js).
+      ...iterate,
     },
   },
   {

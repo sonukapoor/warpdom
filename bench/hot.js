@@ -118,6 +118,30 @@ const cases = {
       },
     ];
   },
+  'for...of childNodes': (w) => {
+    const root = container(w);
+    return [
+      N,
+      () => {
+        let n = 0;
+        for (const kid of root.childNodes) n += kid.nodeType;
+        return n;
+      },
+    ];
+  },
+  'childNodes.forEach': (w) => {
+    const root = container(w);
+    return [
+      N,
+      () => {
+        let n = 0;
+        root.childNodes.forEach((kid) => {
+          n += kid.nodeType;
+        });
+        return n;
+      },
+    ];
+  },
   'firstElementChild + nextElementSibling': (w) => {
     const root = container(w);
     return [

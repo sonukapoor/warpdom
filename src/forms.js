@@ -1991,12 +1991,9 @@ export const FORM_MEMBERS = new Map([
         return this.options.namedItem(name);
       },
       // Iterable over its options, as an interface with an indexed getter
-      // (WebIDL). jsdom's is Array.prototype.values over indexed properties;
-      // warpdom iterates the list of options directly (the same items).
-      [Symbol.iterator]() {
-        state(this);
-        return listOfOptions(this).slice()[Symbol.iterator]();
-      },
+      // (WebIDL): Array.prototype.values over the live indexed properties,
+      // as in jsdom.
+      [Symbol.iterator]: Array.prototype.values,
       add(element, before = undefined) {
         this.options.add(element, before);
       },
