@@ -387,12 +387,13 @@ test('compare action: summary variants', () => {
 
 test('compare action: the comment carries a marker per working directory and stays under the limit', () => {
   const body = renderComment('### report\n', 'packages/ui');
-  // The marker, then a line telling this release's comments from earlier ones.
-  assert.equal(body, `${marker('packages/ui')}\n<!-- warpdom-compare-format:2 -->\n### report\n`);
+  assert.ok(body.startsWith(`${marker('packages/ui')}\n### report`));
   assert.notEqual(marker('a'), marker('b'));
-  // Paths cell() leaves unchanged keep the marker earlier releases wrote.
+  // Paths whose cell() decodes back to them keep the marker earlier releases wrote.
   assert.equal(marker('packages/ui'), '<!-- warpdom-compare-action:packages/ui -->');
   assert.equal(marker('.'), '<!-- warpdom-compare-action:. -->');
+  for (const dir of ['a&b', 'a&amp;b', 'a|b', 'a\\|b', 'a<b>', "a'b", 'a b'])
+    assert.equal(marker(dir), `<!-- warpdom-compare-action:${cell(dir)} -->`, dir);
   const long = renderComment('x'.repeat(COMMENT_LIMIT * 2), '.');
   assert.ok(long.length < COMMENT_LIMIT + 100);
   assert.match(long, /shortened; the job summary has the rest/);
@@ -592,52 +593,28 @@ test('compare action: two overlapping runs leave one report', async () => {
 // Reports from releases before #133 began with cell(path) as the marker.
 const legacyReport = (id, user, dir) => ({ id, body: `<!-- warpdom-compare-action:${cell(dir)} -->\nold`, user });
 
-test('compare action: a report under an earlier, rewritten marker is marked out of date (#133)', async () => {
-  const dir = `packages/${'a'.repeat(190)}/one`;
-  const args = commentArgs(null, { workingDirectory: dir, body: renderComment('new\n', dir) });
-  const gh = fakeGitHub([legacyReport(7, bot, dir)]);
-  assert.deepEqual(await upsertComment({ ...args, fetch: gh.fetch }), { action: 'created', id: 1000, stale: [7] });
-  assert.deepEqual(writes(gh.calls), [
-    ['POST', '/issues/5/comments'],
-    ['PATCH', '/issues/comments/7'],
-  ]);
-  const [old, created] = gh.state;
-  // Still found by an earlier release's run under the same marker, its
-  // content kept, with a note saying it is no longer updated.
-  assert.ok(old.body.startsWith(`<!-- warpdom-compare-action:${cell(dir)} -->\n`), old.body);
-  assert.match(old.body, /out of date/);
-  assert.ok(old.body.endsWith('\nold'), old.body);
-  assert.ok(created.body.startsWith(marker(dir)));
-  // A later run updates its own report and leaves the marked one alone.
-  const calls = gh.calls.length;
-  assert.deepEqual(await upsertComment({ ...args, fetch: gh.fetch }), { action: 'updated', id: 1000 });
-  assert.deepEqual(writes(gh.calls.slice(calls)), [['PATCH', '/issues/comments/1000']]);
-  // A first run after the upgrade that finds two concurrent copies marks it once.
-  const raced = fakeGitHub([legacyReport(7, bot, dir)], { racer: { id: 900, body: args.body, user: bot } });
-  assert.deepEqual(await upsertComment({ ...args, fetch: raced.fetch }), { action: 'updated', id: 900, stale: [7] });
+test('compare action: a report from an earlier release is updated when its marker is unambiguous (#133)', async () => {
+  // cell() escaped these reversibly, so the earlier marker was this path's alone.
+  for (const dir of ['packages/ui', 'a&b', 'a|b']) {
+    const gh = fakeGitHub([legacyReport(8, bot, dir)]);
+    const args = { workingDirectory: dir, body: renderComment('new\n', dir) };
+    assert.deepEqual(await upsertComment(commentArgs(gh.fetch, args)), { action: 'updated', id: 8 }, dir);
+    assert.deepEqual(writes(gh.calls), [['PATCH', '/issues/comments/8']]);
+    assert.equal(gh.state[0].body, args.body);
+  }
 });
 
-test('compare action: an earlier marker shared with another working directory is not touched (#133)', async () => {
-  // 'a`b' was written under cell('a`b') = "a'b", which is also the marker of
-  // the working directory "a'b". Its report from this release is not marked.
-  const current = { id: 3, body: renderComment('other\n', "a'b"), user: bot };
-  const app = { login: 'other-app[bot]', type: 'Bot' };
-  const others = [current, legacyReport(4, app, 'a`b'), legacyReport(5, bot, 'a&b'), report(6, bot, 'x')];
-  const gh = fakeGitHub(others);
-  const args = commentArgs(gh.fetch, { workingDirectory: 'a`b', body: renderComment('new\n', 'a`b') });
-  assert.deepEqual(await upsertComment(args), { action: 'created', id: 1000 });
-  assert.deepEqual(writes(gh.calls), [['POST', '/issues/5/comments']]);
-  assert.deepEqual(
-    gh.state.slice(0, 4).map((c) => c.body),
-    others.map((c) => c.body),
-  );
-  // A path cell() leaves unchanged keeps its marker: an earlier release's
-  // report is its own and is updated, never marked.
-  const short = fakeGitHub([legacyReport(8, bot, 'packages/ui')]);
-  const shortArgs = { workingDirectory: 'packages/ui', body: renderComment('new\n', 'packages/ui') };
-  assert.deepEqual(await upsertComment(commentArgs(short.fetch, shortArgs)), { action: 'updated', id: 8 });
-  assert.deepEqual(writes(short.calls), [['PATCH', '/issues/comments/8']]);
-  assert.equal(short.state[0].body, shortArgs.body);
+test('compare action: an earlier report under a lossy marker is never touched (#133)', async () => {
+  // cell('a`b') = "a'b" is also the marker of the working directory "a'b",
+  // and cell() of a long path is the marker of its shortened form: either
+  // working directory may own the comment and update it at any time.
+  for (const dir of ['a`b', `packages/${'a'.repeat(190)}/one`]) {
+    const gh = fakeGitHub([legacyReport(7, bot, dir)]);
+    const args = { workingDirectory: dir, body: renderComment('new\n', dir) };
+    assert.deepEqual(await upsertComment(commentArgs(gh.fetch, args)), { action: 'created', id: 1000 }, dir);
+    assert.deepEqual(writes(gh.calls), [['POST', '/issues/5/comments']]);
+    assert.equal(gh.state[0].body, legacyReport(7, bot, dir).body);
+  }
 });
 
 test('compare action: a read-only token (fork pull request) gives a warning, not a failure', async () => {
