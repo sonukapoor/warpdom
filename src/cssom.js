@@ -745,7 +745,7 @@ function detach(rule, deep = false) {
     // Its style sheet's parentStyleSheet becomes null; one first read
     // after resolves its href as before (jsdom 29 and 30).
     if (s.styleSheet) s.styleSheet[S].parentSheet = null;
-    else if (s.sheet) s.baseURL = sheetBase(s.sheet);
+    else if (s.sheet && OWN_CSSOM.has(s.protos.CSSRule)) s.baseURL = sheetBase(s.sheet);
   }
   s.sheet = null;
 }
@@ -876,6 +876,7 @@ function insertRule(owner, text, index, sheet, parentRule, nested) {
   const record = parseOneRule(String(text), s.protos);
   const rule = record && createRule(s.protos, record, sheet, parentRule);
   if (!rule) throw domError(`Failed to parse the rule '${text}'.`, 'SyntaxError');
+  if (isImport(rule)) rule[S].inserted = true;
   const before = list.slice(0, i);
   const after = list.slice(i);
   if (
@@ -969,15 +970,19 @@ function sheetBase(sheet) {
 
 // An @import rule's style sheet: created when first read, empty (warpdom
 // does not fetch style sheets), sharing the rule's media list, as in jsdom.
+// Its href: null before jsdom 29 (black box 20.0.3 to 28.1.0), and from 29
+// for a rule from insertRule() (black box 29.1.1, 30.1.3); else the rule's
+// URL resolved against its sheet's (a deleted rule's: the one its sheet had).
 function importedSheet(rule) {
   const s = rule[S];
   if (!s.styleSheet) {
-    let href = s.href;
-    try {
-      href = new URL(s.href, s.sheet ? sheetBase(s.sheet) : s.baseURL).href;
-    } catch {
-      /* kept as written */
-    }
+    let href = null;
+    if (OWN_CSSOM.has(s.protos.CSSRule) && !s.inserted)
+      try {
+        href = new URL(s.href, s.sheet ? sheetBase(s.sheet) : s.baseURL).href;
+      } catch {
+        href = s.href; // kept as written
+      }
     s.styleSheet = newSheet(s.protos, { ownerRule: rule, parentSheet: s.sheet, href, media: s.media });
   }
   return s.styleSheet;

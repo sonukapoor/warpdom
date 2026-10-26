@@ -1139,7 +1139,9 @@ for (const jsdom of [22, 26]) {
 // inside it keep theirs, and so does a deleted @import rule's style sheet
 // (null, read before or after); jsdom 29 and 30 resolve the href of one
 // read after against the document. (A rule inserted into a deleted rule:
-// a sheet of its own in 27.1.0 to 28, null from 29.)
+// a sheet of its own in 27.1.0 to 28, null from 29.) An @import rule's
+// style sheet has a null href before jsdom 29, and from 29 when the rule
+// comes from insertRule() (into the document's sheet or an imported one).
 for (const jsdom of [28, 30]) {
   parity(
     `the style sheet of deleted rules (jsdom ${jsdom})`,
@@ -1149,17 +1151,25 @@ for (const jsdom of [28, 30]) {
         '@import url(a.css); @import url(b.css); @media screen { a { color: red } @media print { i {} } }';
       w.document.head.appendChild(st);
       const { sheet } = st;
+      sheet.insertRule('@import url(inserted.css)', 0);
+      const inserted = sheet.cssRules[0];
+      sheet.deleteRule(0);
       const [early, late, media] = sheet.cssRules;
       const earlySheet = early.styleSheet;
+      earlySheet.insertRule('@import url(child.css)', 0);
+      earlySheet.insertRule('@import url(kept.css)', 0);
+      const [kept, child] = earlySheet.cssRules;
+      earlySheet.deleteRule(1);
       const [old, inner] = media.cssRules;
       for (let i = 2; i >= 0; i--) sheet.deleteRule(i);
       const out = [
         [media, old, inner, inner.cssRules[0], early, late].map((rule) => rule.parentStyleSheet === sheet),
         [earlySheet.parentStyleSheet, late.styleSheet.parentStyleSheet, early.styleSheet === earlySheet],
+        [earlySheet.href, late.styleSheet.href, kept.styleSheet.href, child.styleSheet.href, inserted.styleSheet.href],
       ];
       if (jsdom >= 29) {
         media.insertRule('b { top: 1px }', 0);
-        out.push(media.cssRules[0].parentStyleSheet, late.styleSheet.href);
+        out.push(media.cssRules[0].parentStyleSheet);
       }
       return out;
     },
