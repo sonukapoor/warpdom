@@ -663,3 +663,45 @@ test('style: var() with !important by jsdom and cssstyle version', () => {
   assert.deepEqual(read({ jsdom: '29.1.1' }), [dropped, dropped, 'color: red; border: var(--b);']);
   assert.deepEqual(read({ jsdom: '30.1.3' }), [both, both, 'color: red; border: var(--b);']);
 });
+
+// A priority token left over after the declaration's !important (#154
+// review, black box, jsdom 27.4.0 to 30.1.3): the style attribute, an
+// element's cssText and a rule's cssText drop the declaration (color:
+// var(--c) !important !important, var(--c) !, var(--c) !important !foo);
+// one in quotes or in a function is part of the value. setProperty keeps
+// it as written, as before.
+const STRAY_PRIORITY = [
+  'var(--c) !important !important',
+  'var(--c)!important!important',
+  'var(--c) ! important ! important',
+  'var(--c) !IMPORTANT !important',
+  'var(--c) !',
+  'var(--c) !important !foo',
+  'var(--c, "!important") !important',
+  'var(--c, a !important)',
+  'f(!important) var(--c)',
+];
+for (const jsdom of [30, 29, 28, 27])
+  parity(
+    `style: a priority token left over (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const out = [];
+      d.head.innerHTML = '<style>.r { top: 0 }</style>';
+      const rule = d.styleSheets[0].cssRules[0].style;
+      for (const name of ['color', 'margin', '--x'])
+        for (const value of STRAY_PRIORITY) {
+          const text = `${name}: ${value}; left: 1px`;
+          const el = d.createElement('div');
+          el.setAttribute('style', text);
+          const set = d.createElement('div');
+          set.style.cssText = text;
+          const prop = d.createElement('div');
+          prop.style.setProperty(name, value);
+          rule.cssText = text;
+          out.push(`${text} | ${el.style.cssText} | ${set.style.cssText} | ${prop.style.cssText} | ${rule.cssText}`);
+        }
+      return out;
+    },
+    { jsdom },
+  );

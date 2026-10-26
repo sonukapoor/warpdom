@@ -1125,3 +1125,95 @@ for (const jsdom of [30, 29, 28, 27])
     },
     { jsdom },
   );
+
+// A declaration with a priority token left over is dropped from the style
+// attribute (#154 review, black box, jsdom 27.4.0 to 30.1.3): border-width:
+// var(--w) !important !important leaves the rules' border widths alone.
+for (const jsdom of [30, 29, 28, 27])
+  parity(
+    `computed values: the style attribute's var() with a priority token left over (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const out = [];
+      for (const rules of [
+        '',
+        'border-top-width: 3px; border-top-style: solid',
+        'border-width: 3px !important; border-style: solid',
+      ]) {
+        d.head.innerHTML = `<style>.r.r { ${rules} }</style>`;
+        for (const inline of [
+          'border-width: var(--w) !important !important',
+          'border-style: var(--s) !important !important',
+          'padding: var(--p) !important !important',
+          'color: var(--c) !important !important',
+          'border-width: var(--w) !',
+        ]) {
+          d.body.innerHTML = '<textarea class="r"></textarea>';
+          const t = d.body.firstChild;
+          t.setAttribute('style', inline);
+          const cs = w.getComputedStyle(t);
+          out.push(
+            `${rules} | ${inline} | ${['border-top-width', 'border-top-style', 'padding-top', 'color'].map((name) => cs.getPropertyValue(name)).join(' ')}`,
+          );
+        }
+      }
+      return out;
+    },
+    { jsdom },
+  );
+
+// After a style write the cascade parses the text the style wrote, but
+// keeps what that text does not show (#154 review, black box, jsdom 27.4.0
+// to 30.1.3): style.setProperty('border', 'var(--b)') after style.color
+// keeps the color (the attribute, parsed as such, declares nothing in
+// jsdom 27 and 28), and padding: var(--p) !important from the attribute
+// keeps its place against .r { padding-top: 3px !important } after an
+// opacity write that serializes it without !important.
+for (const jsdom of [30, 29, 28, 27])
+  parity(
+    `computed values: the style's declarations after style writes (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const out = [];
+      const read = (el, names) => {
+        const cs = w.getComputedStyle(el);
+        return names.map((name) => cs.getPropertyValue(name)).join(' ');
+      };
+      for (const name of ['border', 'border-top', 'border-width']) {
+        d.head.innerHTML = '';
+        d.body.innerHTML = '<p></p>';
+        const p = d.body.firstChild;
+        p.style.color = 'red';
+        p.style.setProperty(name, 'var(--b)');
+        out.push(
+          `${name} | ${p.getAttribute('style')} | ${read(p, ['color', 'border-top-width', 'border-top-style'])}`,
+        );
+        p.style.opacity = '0.5';
+        out.push(`${name} | ${read(p, ['color', 'opacity'])}`);
+      }
+      for (const rule of ['padding-top: 3px !important', 'padding: 3px !important', 'padding-top: 3px']) {
+        d.head.innerHTML = `<style>.r.r { ${rule} }</style>`;
+        d.body.innerHTML = '<p class="r"></p>';
+        const p = d.body.firstChild;
+        p.setAttribute('style', 'padding: var(--p, 5px) !important');
+        const before = read(p, ['padding-top']);
+        p.style.opacity = '0.5';
+        out.push(`${rule} | ${before} | ${p.getAttribute('style')} | ${read(p, ['padding-top', 'opacity'])}`);
+        p.style.color = 'green';
+        out.push(`${rule} | ${read(p, ['padding-top', 'color'])}`);
+        p.setAttribute('style', 'padding: 7px !important; color: blue');
+        out.push(`${rule} | ${p.style.cssText} | ${read(p, ['padding-top', 'color'])}`);
+      }
+      d.head.innerHTML = '';
+      d.body.innerHTML = '<p></p>';
+      const p = d.body.firstChild;
+      p.setAttribute('style', 'color: var(--c, blue) !important');
+      p.style.opacity = '0.5';
+      p.style.color = 'green';
+      out.push(`${p.getAttribute('style')} | ${read(p, ['color'])}`);
+      p.removeAttribute('style');
+      out.push(`${p.style.cssText} | ${read(p, ['color', 'opacity'])}`);
+      return out;
+    },
+    { jsdom },
+  );

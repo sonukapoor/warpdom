@@ -37,6 +37,7 @@ import { uaDeclarations, uaValue } from './ua-sheet.js';
 import { documentStyleSheets, styleElementSheet, ruleArray } from './cssom.js';
 import {
   parseDeclarations,
+  writtenDeclarations,
   computed,
   validationModeOf,
   styleSurfaceOf,
@@ -229,7 +230,8 @@ function ruleIndex(element) {
 
 // --- the cascade ---------------------------------------------------------------------
 
-// The style attribute's declarations, expanded, cached per attribute value.
+// The style attribute's declarations, expanded, cached per attribute value
+// (css.js clears the cache when the element's style object changes).
 function inlineDeclarations(element) {
   const es = element[S];
   const text = es.attrs.get('style');
@@ -237,13 +239,14 @@ function inlineDeclarations(element) {
   if (es.inlineCascade?.text === text) return es.inlineCascade.map;
   const map = new Map();
   const mode = validationModeOf(es.doc[S].window);
-  const decls = parseDeclarations(text, mode, styleSurfaceOf(es.doc[S].window));
+  const written = writtenDeclarations(element, text);
+  const decls = parseDeclarations(text, mode, styleSurfaceOf(es.doc[S].window), written !== null);
   const compat = es.doc[S].window[S].compat;
   for (const [property, { value, important, masked }] of decls) {
     // A declaration with var() and !important that lost it (masked,
     // compat.varDropsImportant) is still !important to the attribute's
     // others (strong), not to the cascade.
-    const strong = important || masked === true;
+    const strong = important || masked === true || written?.get(property)?.masked === true;
     const entries = cascadeExpand(property, value, decls.legacyFont, compat);
     const shorthand = entries.length > 1 && entries[entries.length - 1][1] === PENDING ? entries[0][0] : null;
     // From jsdom 29 a border shorthand with var() after one of its

@@ -4404,3 +4404,16 @@ case-release differences fixed, none added; differences left are #136,
   replace an earlier !important one (27 to 30); from 29 a normal pending
   inline longhand against !important rules.
 
+- Review fixes (#154): a declaration with a priority token left over
+  (color: var(--c) !important !important, var(--c) !, var(--c) !important
+  !foo, outside quotes and functions) is dropped from the style attribute,
+  an element's cssText and a rule's cssText, as jsdom 27.4.0 to 30.1.3 do
+  (the 2 regressions above now match). After a style write the cascade
+  parses the text the style wrote (jsdom computes from it: background:
+  url(a.png) center loses its position in 27 to 29) without dropping
+  border declarations with var(), and keeps the masked declarations from
+  the style object (css.js writtenDeclarations; jsdom 27 to 30:
+  style.setProperty('border', 'var(--b)') after style.color keeps the
+  color, an opacity write keeps padding: var(--p) !important masked).
+  setValidationMode looks the variant surface up before building it
+  (152 ns a call, was 236).
