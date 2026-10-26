@@ -1596,6 +1596,11 @@ function pendingByOrderMode(version) {
   return before(version, [30, 1, 3]) ? 'all' : 'important';
 }
 
+function varDropsImportantMode(version) {
+  if (version[0] < 27 || version[0] > 29) return null;
+  return before(version, [27, 1, 0]) ? 'declarations' : 'all';
+}
+
 export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
   // Behaviors that changed between versions in ways tests observe. jsdom
   // before 29 left most computed style values empty, and before 28 let
@@ -1693,12 +1698,29 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // !important ones (cascade.js cascadeByOrder); before 28.1.0 all
     // declarations meet by order (documentOrder).
     pendingByOrder: pendingLonghands ? pendingByOrderMode(version) : null,
-    // A declaration with var() in a style rule is not !important (black
-    // box: its rule's cssText drops the !important from jsdom 27.1.0 to
-    // 29.1.1; in the cascade, where !important counts from 28.1.0, from
-    // 28.1.0 to 29.1.1: padding: var(--p) !important does not override
-    // padding: 1px !important). Custom properties keep it (cascade.js).
-    varDropsImportant: !before(version, [28, 1, 0]) && version[0] <= 29,
+    // A declaration with var() is not !important (black box, read through
+    // cssText and getPropertyPriority: 27.4.0, 28.1.0 and 29.1.1 drop it,
+    // 26.1.0 and 30.1.3 keep it; 27.0.1 and 27.1.0 measured with a
+    // single-jsdom install, #141), custom properties aside: from jsdom
+    // 27.0.0 to 29.1.1 in a style attribute, cssText and setProperty
+    // ('declarations'), from 27.1.0 in style sheets too ('all'). In the cascade, where !important counts from 28.1.0,
+    // padding: var(--p) !important does not override padding: 1px
+    // !important, in a rule or the attribute. In the attribute it still
+    // keeps later normal declarations of its property out (color: var(--c)
+    // !important; color: red is color: var(--c)); in a style sheet it does
+    // not (css.js parseInto).
+    varDropsImportant: varDropsImportantMode(version),
+    // cssstyle 4.6 (jsdom 23.1 to 26 with it, the default there): a custom
+    // property is not !important in a style attribute, cssText and
+    // setProperty (--x: 1px !important is --x: 1px); 4.1 keeps it, 4.2 to
+    // 4.5 are not measured.
+    customDropsImportant: version[0] < 27 && (css === null || (css[0] === 4 && !before(css, [4, 6, 0]))),
+    // jsdom 27.0.0 to 28.1.0 (cssstyle 5 and 6): in a style attribute or
+    // cssText, border declared with var() (border: var(--b)) leaves the
+    // block empty, and one of its sides (border-top: 1px solid var(--c))
+    // is dropped; setProperty keeps them, and so do style sheets (css.js
+    // parseInto).
+    borderVarDrops: version[0] === 27 || version[0] === 28,
     // cssstyle's font shorthand before 4.4 (shorthands.js legacyFont).
     legacyFont: css === null || !before(css, [4, 4, 0]) ? null : before(css, [4, 2, 0]) ? 'cssstyle4.1' : 'cssstyle4.2',
     // cssstyle 4.4 and later: the computed style's background and border

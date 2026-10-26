@@ -1065,3 +1065,63 @@ test('computed values: a longhand, a shorthand and a var() shorthand', () => {
     }
   }
 });
+
+// A style attribute's declarations with var() and !important (#141, black
+// box): from jsdom 28.1.0 to 29.1.1 they are not !important to the
+// cascade (an !important rule's color: red wins over color: var(--c, blue)
+// !important), but a pending longhand of one meets the rules' winner by
+// order unless that comes from the same shorthand; in the attribute they
+// stay !important to the other declarations. In jsdom 27 and 28 border and
+// its sides with var() are dropped from the attribute, border-width and
+// the others declare their longhands pending.
+const INLINE_VAR_IMPORTANT = [
+  'color: var(--c, blue) !important',
+  'padding: var(--p, 5px) !important',
+  'padding-top: var(--p, 5px) !important',
+  'margin: 1px var(--m, 2px) !important',
+  'border: var(--b, 1px solid) !important',
+  'border-top: var(--b, 1px solid) !important',
+  'border-width: var(--b, 1px) !important',
+  'border-style: var(--b) !important',
+  'background: var(--g) !important',
+  'padding-top: 5px !important; padding: var(--p) !important',
+  'color: var(--c, blue) !important; color: green',
+  'color: red; border-top: var(--b); margin-top: 1px',
+];
+const RULES_IMPORTANT = [
+  'color: red !important; padding-top: 3px !important; margin-top: 4px !important; border-top-width: 3px !important; border-top-style: solid !important; background-color: red !important',
+  'color: red !important; padding: 3px !important; margin: 4px !important; border: 3px solid !important; background: red !important',
+  'border-top: 3px solid !important',
+  'border-width: 3px !important; border-style: solid !important',
+  'color: red; padding-top: 3px; margin-top: 4px; border-top-width: 3px; border-top-style: solid',
+];
+const VAR_IMPORTANT_PROPS = [
+  'color',
+  'padding-top',
+  'margin-top',
+  'border-top-width',
+  'border-top-style',
+  'background-color',
+];
+for (const jsdom of [30, 29, 28, 27])
+  parity(
+    `computed values: the style attribute's var() with !important against rules (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const out = [];
+      for (const rules of RULES_IMPORTANT) {
+        d.head.innerHTML = `<style>.r.r { ${rules} }</style>`;
+        // From jsdom 29 a normal pending one against !important rules is not
+        // modeled.
+        for (const inline of INLINE_VAR_IMPORTANT.filter((text) => jsdom < 29 || text.includes('!important'))) {
+          d.body.innerHTML = '<p class="r"></p>';
+          const p = d.body.firstChild;
+          p.setAttribute('style', inline);
+          const cs = w.getComputedStyle(p);
+          out.push(`${inline} | ${VAR_IMPORTANT_PROPS.map((name) => cs.getPropertyValue(name)).join(' ')}`);
+        }
+      }
+      return out;
+    },
+    { jsdom },
+  );

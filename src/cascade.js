@@ -62,8 +62,10 @@ import {
 // the page's border longhands alone, but for a side's own, and hides the
 // user agent sheet's border widths and styles, all four sides (HIDE_UA:
 // border-width: var(--w) gives a textarea border-top-width and
-// border-top-style ''); in the style attribute they declare nothing in
-// jsdom 27 and 28.
+// border-top-style ''); in a style attribute in jsdom 27 and 28 border
+// and its sides with var() are dropped as it is parsed
+// (compat.borderVarDrops), border-width, -style and -color declare their
+// longhands pending (black box, 27.4.0 and 28.1.0).
 const PENDING = '\0pending';
 const HIDE_UA = '\0hide-ua';
 const BORDER_FAMILY = new Set([
@@ -76,6 +78,7 @@ const BORDER_FAMILY = new Set([
   'border-color',
   'border-style',
 ]);
+const BORDER_SIDE_OR_ALL = /^border(-(top|right|bottom|left))?$/;
 const UA_BORDER = [
   'border',
   'border-width',
@@ -83,44 +86,49 @@ const UA_BORDER = [
   'border-color',
   ...['top', 'right', 'bottom', 'left'].flatMap((side) => [`border-${side}-width`, `border-${side}-style`]),
 ];
-function cascadeExpand(property, value, legacyFont, compat = null, inline = false) {
+function cascadeExpand(property, value, legacyFont, compat = null) {
   const name = ALIASES[property] ?? property;
   const longhands = SHORTHANDS[name];
   if (longhands !== undefined && !EXPANDED_SHORTHANDS.has(name)) return [[name, value]];
   if (compat?.pendingLonghands && longhands !== undefined && value.includes('var(')) {
-    if (!BORDER_FAMILY.has(name)) return [[name, value], ...longhands.map((l) => [l, PENDING])];
-    if (compat.jsdom < 27) {
-      // A side (border-top: var(--b)) declares its own longhands pending.
-      const side = BORDER_SIDE.test(name);
-      const out = [[name, value]];
-      for (const l of UA_BORDER) if (!side || !longhands.includes(l)) out.push([l, HIDE_UA]);
-      if (side) for (const l of longhands) out.push([l, PENDING]);
-      return out;
-    }
-    if (!inline || compat.jsdom >= 29) return [[name, value], ...longhands.map((l) => [l, PENDING])];
+    if (!BORDER_FAMILY.has(name) || compat.jsdom >= 27) return [[name, value], ...longhands.map((l) => [l, PENDING])];
+    // A side (border-top: var(--b)) declares its own longhands pending.
+    const side = BORDER_SIDE.test(name);
+    const out = [[name, value]];
+    for (const l of UA_BORDER) if (!side || !longhands.includes(l)) out.push([l, HIDE_UA]);
+    if (side) for (const l of longhands) out.push([l, PENDING]);
+    return out;
   }
   return expand(property, value, legacyFont);
 }
 
 function addDeclarations(index, decls, entries, counter, compat) {
   // Before jsdom 28.1.0 !important in a style rule counts for nothing
-  // (documentOrder); to 29.1.1 a declaration with var() in a style rule is
-  // not !important (compat.varDropsImportant).
+  // (documentOrder); to 29.1.1 a declaration with var() is parsed without
+  // it (compat.varDropsImportant, css.js parseInto).
   const ordered = compat?.documentOrder === true;
-  const varDrops = compat?.varDropsImportant === true;
   for (const [property, decl] of decls) {
     const value = decl.value;
-    const important = decl.important && !ordered && !(varDrops && !property.startsWith('--') && value.includes('var('));
+    const important = decl.important && !ordered;
     // A longhand declared as itself (padding-bottom: 7px), not through a
     // shorthand: it meets a pending longhand by order (cascadeByOrder).
-    const direct = SHORTHANDS[ALIASES[property] ?? property] === undefined;
+    const from = ALIASES[property] ?? property;
+    const direct = SHORTHANDS[from] === undefined;
     for (const [name, v] of cascadeExpand(property, value, decls.legacyFont, compat)) {
       let lists = index.get(name);
       if (!lists) index.set(name, (lists = { normal: [], important: [], pending: false }));
       if (v === PENDING) lists.pending = true;
       const order = counter.n++;
       for (const { match, specificity } of entries)
-        (important ? lists.important : lists.normal).push({ match, specificity, order, value: v, important, direct });
+        (important ? lists.important : lists.normal).push({
+          match,
+          specificity,
+          order,
+          value: v,
+          important,
+          direct,
+          from,
+        });
     }
   }
 }
@@ -231,8 +239,12 @@ function inlineDeclarations(element) {
   const mode = validationModeOf(es.doc[S].window);
   const decls = parseDeclarations(text, mode, styleSurfaceOf(es.doc[S].window));
   const compat = es.doc[S].window[S].compat;
-  for (const [property, { value, important }] of decls) {
-    const entries = cascadeExpand(property, value, decls.legacyFont, compat, true);
+  for (const [property, { value, important, masked }] of decls) {
+    // A declaration with var() and !important that lost it (masked,
+    // compat.varDropsImportant) is still !important to the attribute's
+    // others (strong), not to the cascade.
+    const strong = important || masked === true;
+    const entries = cascadeExpand(property, value, decls.legacyFont, compat);
     const shorthand = entries.length > 1 && entries[entries.length - 1][1] === PENDING ? entries[0][0] : null;
     // From jsdom 29 a border shorthand with var() after one of its
     // longhands in the attribute declares nothing.
@@ -259,9 +271,9 @@ function inlineDeclarations(element) {
           prior = undefined;
         }
       }
-      if (!important && prior?.important) continue;
+      if (!strong && prior?.strong) continue;
       if (v === HIDE_UA && prior !== undefined) continue;
-      map.set(name, v === PENDING ? { value: v, important, from: shorthand } : { value: v, important });
+      map.set(name, v === PENDING ? { value: v, important, strong, from: shorthand } : { value: v, important, strong });
     }
   }
   es.inlineCascade = { text, map };
@@ -278,6 +290,12 @@ function firstMatch(list, element) {
     if (value !== HIDE_UA) return value;
     uaHidden = true;
   }
+  return undefined;
+}
+
+// The first matching entry, past HIDE_UA ones.
+function firstMatchEntry(list, element) {
+  for (const entry of list) if (entry.value !== HIDE_UA && entry.match(element, NO_SCOPE)) return entry;
   return undefined;
 }
 
@@ -403,6 +421,22 @@ function cascade(element, index, inlineMap, name) {
   }
   if (inline?.important) return inline.value;
   const lists = index.get(name);
+  // A pending inline longhand declared !important that lost it
+  // (compat.varDropsImportant) meets the cascade's winner by order, as the
+  // latest, unless that comes from the same shorthand (black box, jsdom
+  // 28.1.0 to 29.1.1): padding: var(--p) !important in the attribute wins
+  // over .r { padding-top: 3px !important }, not over .r { padding: 3px
+  // !important }; border and its sides are never the same (border:
+  // var(--b) !important over .r { border: 3px solid !important }).
+  if (
+    inline?.value === PENDING &&
+    inline.strong &&
+    lists?.important.length &&
+    window[S].compat.pendingByOrder === 'all'
+  ) {
+    const winner = firstMatchEntry(lists.important, element);
+    if (winner !== undefined && (winner.from !== inline.from || BORDER_SIDE_OR_ALL.test(winner.from))) return PENDING;
+  }
   // A normal inline declaration wins over normal rules: no order to check
   // without !important ones.
   if (lists?.pending && window[S].compat.pendingByOrder && (!inline || lists.important.length)) {

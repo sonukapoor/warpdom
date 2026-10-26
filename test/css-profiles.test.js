@@ -545,3 +545,121 @@ for (const jsdom of [30, 29, 28, 27, 26, 20])
     },
     { jsdom },
   );
+
+// !important on a declaration with var() (#141, black box): from jsdom
+// 27.0.0 to 29.1.1 the style attribute, cssText and setProperty drop it
+// (in the attribute it still keeps a later normal declaration of the
+// property out), and so do style sheets from 27.1.0; custom properties
+// keep it, but with cssstyle 4.6 (jsdom 26) in the attribute, cssText and
+// setProperty. In jsdom 27 and 28 the attribute's border with var()
+// declares nothing at all, a side with var() is dropped.
+const VAR_IMPORTANT = [
+  'padding: var(--p) !important',
+  'color: var(--c) !important',
+  'margin: 1px var(--m) !important',
+  'background: var(--b) !important; color: red !important',
+  'width: calc(var(--w) + 1px) !important; height: 1px !important',
+  'font: var(--f) !important',
+  'border-width: var(--w) !important',
+  'color: var(--c) !important; width: 1px !important',
+  '--x: 1px !important',
+  '--x: var(--y) !important; --z: 2px',
+];
+const VAR_IMPORTANT_ATTRIBUTE = [
+  'color: var(--c) !important; color: red',
+  'padding: var(--p) !important; padding-top: 1px',
+  'border: var(--b) !important',
+  'color: red; border: 1px solid var(--c); width: 1px',
+  'color: red; border-top: var(--b); width: 1px',
+  'border-left: var(--b) !important; color: red !important',
+];
+const PRIORITY_NAMES = [
+  'padding',
+  'color',
+  'margin',
+  'background',
+  'width',
+  'height',
+  'font',
+  'border-width',
+  '--x',
+  '--z',
+];
+const readBlock = (style) =>
+  `${style.cssText} (${style.length}) ${PRIORITY_NAMES.filter((name) => style.getPropertyPriority(name)).join(' ')}`;
+for (const jsdom of [30, 29, 28, 27, 26])
+  parity(
+    `style: var() with !important (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const out = [];
+      // jsdom 26 replaces a shorthand with a later longhand of it (not
+      // modeled).
+      const attribute = VAR_IMPORTANT_ATTRIBUTE.filter((text) => jsdom >= 27 || !text.includes('padding-top'));
+      for (const text of [...VAR_IMPORTANT, ...attribute]) {
+        const el = d.createElement('div');
+        el.setAttribute('style', text);
+        out.push(readBlock(el.style));
+        el.style.opacity = '0';
+        out.push(el.getAttribute('style'));
+        const set = d.createElement('div');
+        set.style.cssText = text;
+        out.push(readBlock(set.style));
+      }
+      const sheet = d.head.appendChild(d.createElement('style'));
+      sheet.textContent = VAR_IMPORTANT.map((text, i) => `.r${i} { ${text} }`).join('\n');
+      for (const rule of sheet.sheet.cssRules) out.push(readBlock(rule.style));
+      const rule = sheet.sheet.cssRules[0];
+      rule.style.cssText = 'color: var(--c) !important; padding: var(--p) !important';
+      out.push(readBlock(rule.style));
+      for (const [name, value] of [
+        ['padding', 'var(--p)'],
+        ['color', 'var(--c)'],
+        ['border', 'var(--b)'],
+        ['--x', '1px'],
+      ]) {
+        const el = d.createElement('div');
+        el.style.setProperty(name, value, 'important');
+        rule.style.setProperty(name, value, 'important');
+        out.push(readBlock(el.style), readBlock(rule.style));
+      }
+      return out;
+    },
+    { jsdom },
+  );
+
+// Where those versions start (#141; 27.0.1 and 27.1.0 measured with a
+// single-jsdom install of each release): the style attribute drops the
+// !important from 27.0.1, style sheets from 27.1.0; cssstyle 4.1.0 keeps
+// a custom property's, 4.6.0 drops it.
+test('style: var() with !important by jsdom and cssstyle version', () => {
+  const read = (profile) => {
+    const w = createWindow(profile);
+    const el = w.document.createElement('div');
+    el.setAttribute('style', 'padding: var(--p) !important; --x: 1px !important');
+    const sheet = w.document.head.appendChild(w.document.createElement('style'));
+    sheet.textContent = '.r { padding: var(--p) !important; --x: 1px !important }';
+    const border = w.document.createElement('div');
+    border.setAttribute('style', 'color: red; border: var(--b)');
+    return [el.style.cssText, sheet.sheet.cssRules[0].style.cssText, border.style.cssText];
+  };
+  const both = 'padding: var(--p) !important; --x: 1px !important;';
+  const dropped = 'padding: var(--p); --x: 1px !important;';
+  const custom = (cssstyle) => {
+    const el = createWindow({ jsdom: '26.1.0', cssstyle }).document.createElement('div');
+    el.setAttribute('style', '--x: 1px !important');
+    return el.style.cssText;
+  };
+  assert.equal(custom('4.1.0'), '--x: 1px !important;');
+  assert.equal(custom('4.6.0'), '--x: 1px;');
+  assert.deepEqual(read({ jsdom: '26.1.0', cssstyle: '4.6.0' }), [
+    'padding: var(--p) !important; --x: 1px;',
+    both,
+    'color: red; border: var(--b);',
+  ]);
+  assert.deepEqual(read({ jsdom: '27.0.1' }), [dropped, both, '']);
+  assert.deepEqual(read({ jsdom: '27.1.0' }), [dropped, dropped, '']);
+  assert.deepEqual(read({ jsdom: '28.1.0' }), [dropped, dropped, '']);
+  assert.deepEqual(read({ jsdom: '29.1.1' }), [dropped, dropped, 'color: red; border: var(--b);']);
+  assert.deepEqual(read({ jsdom: '30.1.3' }), [both, both, 'color: red; border: var(--b);']);
+});

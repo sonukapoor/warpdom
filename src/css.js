@@ -562,36 +562,43 @@ export const isLegacyMode = (mode) =>
 const isSpecMode = (mode) => mode === 'spec' || mode === 'jsdom27';
 const modes = new WeakMap(); // CSSStyleProperties prototype -> mode
 const surfaces = new WeakMap(); // CSSStyleProperties prototype -> styleSurface (profiles before jsdom 30.1)
-// surfaceKey: the profile's style surface (src/style-surface.js), or null
-// for jsdom 30.1 and later. The prototype was built with the surface's
-// accessors (styleDescriptors): jsdom 26 with cssstyle 4.6 has no
+// The profile's compat (window-features.js profileCompat): styleSurface,
+// its style surface (src/style-surface.js), or null for jsdom 30.1 and
+// later. The prototype was built with the surface's accessors
+// (styleDescriptors): jsdom 26 with cssstyle 4.6 has no
 // style.webkitUserSelect, and assigning it creates an own data property
 // (react-spectrum's usePress tests save and restore it that way); cssstyle
-// 2 to 4.3 write it as webkit-user-select.
-// fontVariant: cssstyle's font shorthand before 4.4 ('cssstyle4.1' or
-// 'cssstyle4.2', see legacyFont in shorthands.js), or null. colors: how
-// its cssstyle writes color keywords ('css2', 'written' or null, see
-// colorKeywords).
-export function setValidationMode(proto, mode, surfaceKey = null, fontVariant = null, colors = null) {
+// 2 to 4.3 write it as webkit-user-select. legacyFont: cssstyle's font
+// shorthand before 4.4 ('cssstyle4.1' or 'cssstyle4.2', see legacyFont in
+// shorthands.js), or null. colorKeywords: how its cssstyle writes color
+// keywords ('css2', 'written' or null). varDropsImportant,
+// customDropsImportant and borderVarDrops: declarations that lose their
+// !important, and border ones with var() that are dropped (parseInto).
+export function setValidationMode(proto, mode, compat = {}) {
   modes.set(proto, mode);
-  if (surfaceKey !== null)
-    surfaces.set(
-      proto,
-      fontVariant === null && colors === null
-        ? styleSurface(surfaceKey)
-        : variantSurface(surfaceKey, fontVariant, colors),
-    );
+  const key = compat.styleSurface ?? null;
+  if (key === null) return;
+  const variant = {
+    legacyFont: compat.legacyFont ?? null,
+    colors: compat.colorKeywords ?? null,
+    varDropsImportant: compat.varDropsImportant ?? null,
+    customDropsImportant: compat.customDropsImportant === true,
+    borderVarDrops: compat.borderVarDrops === true,
+  };
+  const plain = Object.values(variant).every((value) => value === null || value === false);
+  surfaces.set(proto, plain ? styleSurface(key) : variantSurface(key, variant));
 }
 
-// A style surface with cssstyle's font shorthand before 4.4, or its color
-// keywords before 4.6: the same names, its own declared value caches.
+// A style surface with cssstyle's font shorthand before 4.4, its color
+// keywords before 4.6, or declarations that lose their !important: the
+// same names, its own declared value caches.
 const variantSurfaces = new Map();
-function variantSurface(key, variant, colors) {
-  const id = `${key} ${variant} ${colors}`;
+function variantSurface(key, variant) {
+  const id = `${key} ${Object.values(variant).join(' ')}`;
   let surface = variantSurfaces.get(id);
   if (surface === undefined) {
-    surface = { ...styleSurface(key), caches: Object.create(null), colors };
-    if (variant !== null) surface.legacyFont = variant;
+    surface = { ...styleSurface(key), caches: Object.create(null), ...variant };
+    if (variant.legacyFont === null) delete surface.legacyFont;
     variantSurfaces.set(id, surface);
   }
   return surface;
@@ -1306,12 +1313,30 @@ function serializeDeclared(name, value, mode) {
   return tokens.join(' ');
 }
 
-function parseInto(decls, text, mode, surface = null) {
+// A declaration that loses its !important (compat.varDropsImportant and
+// customDropsImportant): in a rule's declarations (inRule: parsed with its
+// style sheet, or set through its style), or else in a style attribute,
+// an element's cssText or setProperty.
+function dropsImportant(surface, name, value, inRule) {
+  if (surface === null) return false;
+  if (name.startsWith('--')) return !inRule && surface.customDropsImportant === true;
+  const drops = surface.varDropsImportant;
+  return (drops === 'all' || (drops === 'declarations' && !inRule)) && value.includes('var(');
+}
+const BORDER_AND_SIDES = new Set(['border', 'border-top', 'border-right', 'border-bottom', 'border-left']);
+
+// context: 'sheet' for a rule's declarations parsed with its style sheet,
+// 'rule' for its style's cssText, else null (a style attribute, an
+// element's cssText).
+function parseInto(decls, text, mode, surface = null, context = null) {
+  const sheet = context === 'sheet';
+  const inRule = context !== null;
   decls.clear();
   // A normal declaration does not override an important one for the same
   // property, or a longhand of an important shorthand (CSS Cascade), as in
   // jsdom 27 and later; jsdom 26 let the last one win.
   let covered = null;
+  const borderVarDrops = !sheet && surface?.borderVarDrops === true;
   // jsdom 20 to 26 (cssstyle 2.3.0 to 4.6.0, black box; #129) read a name
   // up to the next colon and a value from the first character after the
   // colon and its spaces, semicolons included: an empty declaration runs
@@ -1343,19 +1368,37 @@ function parseInto(decls, text, mode, surface = null) {
       value = value.slice(0, bang.index).trim();
     }
     if (!name || !value || dropped(surface, name)) continue;
+    if (borderVarDrops && BORDER_AND_SIDES.has(name) && value.includes('var(')) {
+      if (name !== 'border') continue;
+      decls.clear();
+      return;
+    }
     if (isLegacyFont(surface, name) && /^inherit$/i.test(value)) {
       removeLegacyFont(decls, surface);
       continue;
     }
     const declared = declaredValue(name, value, mode, surface);
     if (declared === INVALID) continue;
+    // One that loses its !important is written without it; in a style
+    // sheet it is a normal declaration, elsewhere it is still !important
+    // to the block's other declarations (masked: black box, jsdom 27 to
+    // 29), not to the cascade (cascade.js).
+    const kept = important && !dropsImportant(surface, name, value, inRule);
     if (!isLegacyMode(mode)) {
       if (!important && (covered?.has(name) || decls.get(name)?.important)) continue;
-      if (important && SHORTHANDS[name]) for (const longhand of SHORTHANDS[name]) (covered ??= new Set()).add(longhand);
+      if (kept || (important && !sheet)) {
+        if (SHORTHANDS[name]) for (const longhand of SHORTHANDS[name]) (covered ??= new Set()).add(longhand);
+        if (!kept) (covered ??= new Set()).add(name);
+      }
     }
     if (MERGEABLE.has(name)) decls.mergeable = true;
     if (isLegacyFont(surface, name)) removeLegacyFont(decls, surface, false);
-    decls.set(name, { value: declared, important });
+    decls.set(
+      name,
+      kept === important || sheet
+        ? { value: declared, important: kept }
+        : { value: declared, important: false, masked: true },
+    );
   }
 }
 
@@ -1807,7 +1850,8 @@ function setDeclaration(style, name, value, priority = '') {
   // Unknown properties and invalid values are ignored (CSSOM).
   const text = declaredValue(name, raw, s.mode, s.surface);
   if (text === INVALID) return;
-  const important = String(priority).toLowerCase() === 'important';
+  const important =
+    String(priority).toLowerCase() === 'important' && !dropsImportant(s.surface, name, text, s.parentRule != null);
   if (isLegacyFont(s.surface, name) && removeLegacyFont(s.decls, s.surface)) reindex(style);
   if (RESETS[name] !== undefined && isLegacyMode(s.mode) && resets(s.surface, name, text)) {
     let removed = false;
@@ -2074,7 +2118,7 @@ export const CSS_INTERFACES = [
           s.replaced = true;
           return;
         }
-        parseInto(s.decls, text, s.mode, s.surface);
+        parseInto(s.decls, text, s.mode, s.surface, s.parentRule ? 'rule' : null);
         reindex(this);
         sync(this);
       },
@@ -2139,7 +2183,7 @@ export function declarationBlock(proto, text, parentRule, mode = modeOf(proto)) 
     indexed: 0,
     surface: mode === 'page' ? null : surfaceOf(proto),
   });
-  parseInto(styleState(style).decls, text, styleState(style).mode, styleState(style).surface);
+  parseInto(styleState(style).decls, text, styleState(style).mode, styleState(style).surface, 'sheet');
   reindex(style);
   return style;
 }
