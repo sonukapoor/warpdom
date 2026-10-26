@@ -153,6 +153,25 @@ export function marker(workingDirectory) {
   return `<!-- warpdom-compare-action:${cell(dir, 60)} | sha256:${hash} -->`;
 }
 
+// The marker releases before #133 wrote: cell() of the path. For a path
+// cell() rewrites it differs from marker(), and it may be shared with other
+// working directories, so it does not identify one.
+function legacyMarker(workingDirectory) {
+  return `<!-- warpdom-compare-action:${cell(String(workingDirectory ?? ''))} -->`;
+}
+
+// The line after the marker in comments from this release, which tells them
+// from an earlier release's report under the same marker; and the one in an
+// earlier report marked out of date.
+const CURRENT = '<!-- warpdom-compare-format:2 -->';
+const STALE = '<!-- warpdom-compare-stale -->';
+const STALE_NOTE = [
+  '> [!NOTE]',
+  '> This report is out of date. An earlier version of the warpdom compare action wrote it and later runs',
+  '> post their report separately: that version could give working directories with long names, or with',
+  "> characters such as backticks, '&' or '|', the same marker, so this report may be for another one.",
+].join('\n');
+
 function versionOf(dom) {
   if (!dom) return 'baseline';
   return dom.version ? `${dom.name} ${dom.version}` : dom.name;
@@ -345,7 +364,7 @@ export function renderSummary(result, options = {}) {
 // The pull request comment: the summary with a marker, so later runs update
 // the same comment (one per working directory).
 export function renderComment(summaryText, workingDirectory) {
-  let body = `${marker(workingDirectory)}\n${summaryText}`;
+  let body = `${marker(workingDirectory)}\n${CURRENT}\n${summaryText}`;
   if (body.length > COMMENT_LIMIT)
     body = `${body.slice(0, COMMENT_LIMIT)}\n\n…(shortened; the job summary has the rest)\n`;
   return body;
@@ -389,8 +408,9 @@ export function commandText(text) {
 
 // Creates the pull request comment, or updates the one an earlier run left
 // (found by its marker and author). Resolves to { action: 'created' |
-// 'updated' | 'skipped' } or rejects with an Error carrying the HTTP
-// status. Only GitHub's API is called, with the token the caller passed.
+// 'updated' | 'skipped' }, with `stale` (comment ids) when earlier reports
+// under an old marker were marked out of date, or rejects with an Error
+// carrying the HTTP status. Only GitHub's API is called, with the token the caller passed.
 export async function upsertComment({
   fetch,
   api,
@@ -427,18 +447,33 @@ export async function upsertComment({
     return method === 'DELETE' ? null : res.json();
   };
   const tag = marker(workingDirectory);
+  // A path whose marker changed in #133: an earlier release's report under
+  // the old marker, unless already marked out of date or written by this
+  // release for a working directory whose marker it is.
+  const legacy = legacyMarker(workingDirectory);
+  const isLegacy = (text) =>
+    legacy !== tag &&
+    text.startsWith(`${legacy}\n`) &&
+    !text.startsWith(`${legacy}\n${CURRENT}\n`) &&
+    !text.startsWith(`${legacy}\n${STALE}\n`);
   const base = `${api}/repos/${repository}`;
   const ours = await commentAuthor(call, api, author);
-  // Every report of ours for this working directory, oldest first, and
-  // whether all comments were searched.
+  // Every report of ours for this working directory, oldest first, earlier
+  // releases' reports under its old marker, and whether all comments were
+  // searched.
   const scan = async () => {
     const found = [];
+    const old = [];
     for (let page = 1; page <= maxPages; page++) {
       const list = await call('GET', `${base}/issues/${number}/comments?per_page=100&page=${page}`);
-      for (const c of list) if (typeof c.body === 'string' && c.body.startsWith(tag) && ours(c.user)) found.push(c);
-      if (list.length < 100) return { found, complete: true };
+      for (const c of list) {
+        if (typeof c.body !== 'string' || !ours(c.user)) continue;
+        if (c.body.startsWith(tag)) found.push(c);
+        else if (isLegacy(c.body)) old.push(c);
+      }
+      if (list.length < 100) return { found, old, complete: true };
     }
-    return { found, complete: false };
+    return { found, old, complete: false };
   };
   const first = await scan();
   if (first.found.length) {
@@ -463,11 +498,24 @@ export async function upsertComment({
       if (err.status !== 404) throw err;
     });
   }
-  if (keep.id !== created.id) {
-    await call('PATCH', `${base}/issues/comments/${keep.id}`, { body });
-    return { action: 'updated', id: keep.id };
+  if (keep.id !== created.id) await call('PATCH', `${base}/issues/comments/${keep.id}`, { body });
+  // This working directory's first report under its new marker: an earlier
+  // release's report under the old one would stay visible with stale
+  // results. It may be another working directory's (old markers collide),
+  // so it is not deleted or replaced: it gets a note, its content kept and
+  // its marker unchanged (a run of an earlier release still finds it, and
+  // replaces the note).
+  const stale = [];
+  for (const c of after.old) {
+    const rest = c.body.slice(legacy.length + 1);
+    await call('PATCH', `${base}/issues/comments/${c.id}`, { body: `${legacy}\n${STALE}\n${STALE_NOTE}\n\n${rest}` });
+    stale.push(c.id);
   }
-  return { action: 'created', id: created.id };
+  return {
+    action: keep.id === created.id ? 'created' : 'updated',
+    id: keep.id,
+    ...(stale.length ? { stale } : {}),
+  };
 }
 
 // Which comments this token wrote. `author` (the comment-author input)

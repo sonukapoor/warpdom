@@ -69,7 +69,10 @@ async function comment(inputs, text) {
     });
     if (done.action === 'skipped')
       notice('warning', `pr-comment: no comment, to avoid a duplicate report: ${done.reason}.`);
-    else process.stdout.write(`pr-comment: ${done.action} comment ${done.id} on #${number}.\n`);
+    else {
+      const stale = done.stale ? `; marked earlier report ${done.stale.join(', ')} out of date` : '';
+      process.stdout.write(`pr-comment: ${done.action} comment ${done.id} on #${number}${stale}.\n`);
+    }
   } catch (err) {
     notice('warning', commentFailure(err));
   }
