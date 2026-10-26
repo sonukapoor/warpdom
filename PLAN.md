@@ -4421,3 +4421,43 @@ case-release differences fixed, none added; differences left are #136,
   both declarations of style.color = 'red' and style.setProperty('border',
   'var(--b)')); any other text is parsed and clears that marker
   (es.styleWritten; resetWindow clears it too).
+
+## 2026-10-26: box shorthands in document order, !important by order (branch fix/122-var-shorthand-cascade, #122)
+
+Stacked on fix/141-var-important-serialization (both change cascade.js's
+rule index and cascade()).
+
+- Re-measured with each jsdom alias loading its own cssstyle (#138):
+  27.4.0 gives '' for both of the issue's rows (as warpdom did; the
+  issue's 8px predates #138). The gap is 28.1.0 to 30.1.2.
+- Black box: every order, importance and specificity of padding-bottom:
+  7px, padding: 8px and padding: var(--p) (three rules and pairs, 360
+  cases, on a td and on a span) on all 12 aliases. jsdom 28.1.0 to
+  30.1.2 behave as if the matching declarations were applied in document
+  order to one declaration block with setProperty, each name only when
+  it wins over the declaration that set it last; an emulation using the
+  aliases' own declaration blocks reproduced all 360 cases on 28.1.0,
+  29.1.1 and 30.1.2. The block's own rules (measured with setProperty):
+  a shorthand sets its longhands and itself, a normal one leaving an
+  !important longhand; with var() it empties its longhands; a longhand
+  set after it removes the shorthand; before 30 an !important longhand
+  set over an !important shorthand loses its !important.
+- From 28.1.0 (to 30.1.3) the later of two !important declarations wins
+  whatever their specificity (.d.d p { color: red !important } p {
+  color: blue !important } is blue); 30.1.3 is otherwise the existing
+  model.
+- warpdom: lists.important sorted by order; cascade.js cascadeInOrder for
+  margin, padding and their longhands when compat.pendingByOrder is
+  'all' (28.1.0 to 30.1.2), the style attribute last; a new
+  compat.longhandLosesImportant (before 30). Matrix: 28.1.0 111, 29.1.1
+  111, 30.1.2 141, 30.1.3 62 mismatches of 360 to 0 (all aliases 0).
+  Random rule sets with a style attribute (695 cases, padding and
+  margin): 28.1.0 74 to 36, 30.1.2 89 to 38, 30.1.3 57 to 46; every
+  remaining one has a rule with two declarations (the style sheet parse,
+  #141's follow-up). Diff harness: 108 of 1.27M values changed, all now
+  as jsdom. The emulation scans all of the family's matching
+  declarations: getComputedStyle of margin and padding on a synthetic
+  page of 600 margin/padding rules took 1.9x as long on 28.1 to 30.1.2
+  profiles (30.1.3 unchanged).
+- Not modeled: the other shorthand families (border, font, background,
+  flex) still use the specificity model with pendingByOrder.
