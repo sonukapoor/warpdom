@@ -4416,4 +4416,8 @@ case-release differences fixed, none added; differences left are #136,
   style.setProperty('border', 'var(--b)') after style.color keeps the
   color, an opacity write keeps padding: var(--p) !important masked).
   setValidationMode looks the variant surface up before building it
-  (152 ns a call, was 236).
+  (152 ns a call, was 236). Set directly to the text the style last wrote,
+  the style attribute is not parsed again (jsdom 27.4.0 and 28.1.0 keep
+  both declarations of style.color = 'red' and style.setProperty('border',
+  'var(--b)')); any other text is parsed and clears that marker
+  (es.styleWritten; resetWindow clears it too).

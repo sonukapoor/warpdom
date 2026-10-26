@@ -2230,12 +2230,21 @@ export function styleOf(element, proto) {
   return es.style;
 }
 
-// Called when the style attribute is set or removed directly.
+// Called when the style attribute is set or removed directly. Set to the
+// text the style last wrote (sync), the declarations stay as they are
+// (black box, jsdom 27.4.0 and 28.1.0: after style.color = 'red' and
+// style.setProperty('border', 'var(--b)'), setting the attribute to its
+// own value keeps both, though parsed it declares nothing); any other
+// text is parsed, and the written text no longer stands for the
+// declarations (writtenDeclarations).
 export function styleAttributeChanged(element) {
   const es = element[S];
+  const text = es.attrs.get('style');
+  if (es.styleWritten !== undefined && es.styleWritten === text) return;
+  es.styleWritten = undefined;
   if (es.style) {
     const s = styleState(es.style);
-    parseInto(s.decls, es.attrs.get('style'), s.mode, s.surface);
+    parseInto(s.decls, text, s.mode, s.surface);
     reindex(es.style);
     es.inlineCascade = null;
   }

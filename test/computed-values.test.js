@@ -1213,6 +1213,42 @@ for (const jsdom of [30, 29, 28, 27])
       out.push(`${p.getAttribute('style')} | ${read(p, ['color'])}`);
       p.removeAttribute('style');
       out.push(`${p.style.cssText} | ${read(p, ['color', 'opacity'])}`);
+      // Set to the text the style wrote, the attribute is not parsed again
+      // (jsdom 27 and 28 keep both declarations); any other text is.
+      const sequences = [
+        (q) => q.setAttribute('style', q.getAttribute('style')),
+        (q) => {
+          q.setAttribute('style', q.getAttribute('style'));
+          q.setAttribute('style', q.getAttribute('style'));
+        },
+        (q) => {
+          const text = q.getAttribute('style');
+          q.removeAttribute('style');
+          q.setAttribute('style', text);
+        },
+        (q) => {
+          const text = q.getAttribute('style');
+          q.setAttribute('style', 'color: blue');
+          q.setAttribute('style', text);
+        },
+        (q) => q.setAttribute('style', `${q.getAttribute('style')} `),
+      ];
+      for (const [i, sequence] of sequences.entries()) {
+        d.head.innerHTML = '<style>.r.r { padding-top: 3px !important }</style>';
+        d.body.innerHTML = '<p class="r"></p><p class="r"></p>';
+        const [a, b] = d.body.children;
+        a.style.color = 'red';
+        a.style.setProperty('border', 'var(--b)');
+        sequence(a);
+        b.setAttribute('style', 'padding: var(--p, 5px) !important');
+        b.style.opacity = '0.5';
+        sequence(b);
+        // Parsed again, padding: var(--p, 5px) is a normal pending one
+        // against an !important rule (not modeled, #147).
+        out.push(
+          `${i} | ${a.style.cssText} | ${read(a, ['color', 'border-top-width'])} | ${b.style.cssText} | ${i < 2 ? read(b, ['padding-top']) : ''}`,
+        );
+      }
       return out;
     },
     { jsdom },

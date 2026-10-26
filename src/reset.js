@@ -212,6 +212,7 @@ export function resetWindow(window) {
       if (ns.attrNS) ns.attrNS = null;
     }
     if (ns.style) clearDeclarations(ns.style);
+    if (ns.styleWritten !== undefined) ns.styleWritten = undefined;
     ns.listeners = undefined;
     ns.handlers = undefined;
     ns.inertHandlers = undefined;
