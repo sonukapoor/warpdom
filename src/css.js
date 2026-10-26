@@ -962,6 +962,22 @@ const sizeToken = (t) => {
 const BG_LENGTH_3 = /^[+-]?(\d+\.?\d*|\.\d+)(px|cm|mm|in|pt|pc|em|ex|ch|rem|vh|vw|%)$/;
 const BG_LENGTH_4 =
   /^[+-]?((0|[1-9]\d*)(\.\d*)?|\.\d+)(e[+-]?\d+)?(px|cm|mm|q|in|pt|pc|em|ex|ch|rem|lh|rlh|vmin|vmax|[sld]?v[hwbi]|%)$/;
+// The characters between components (black box, #134): cssstyle 2.3 to 4.6
+// split at any JavaScript whitespace (a carriage return, form feed, vertical
+// tab or no-break space too); jsdom 27 and later at CSS whitespace (space,
+// tab, line feed, carriage return, form feed), the grammar rejecting others.
+const BG_SEPARATOR_LEGACY = /[\s,]/;
+const BG_SEPARATOR = /[ \t\n\r\f,]/;
+// A url() component as cssstyle 2.3 to 4.6 accept it (black box, #134): it
+// ends at its closing parenthesis (url(a.png)junk and url("a.png) are
+// invalid); whitespace after url( is skipped, but space, tab and line feed
+// elsewhere (url(a.png ), url("a b.png")), an unclosed or mixed quote
+// (url("a'b.png")), a parenthesis, or before cssstyle 4.4 an escaped quote,
+// space or parenthesis reject it. From 4.4 an escaped double quote is kept.
+const BG_URL_OLD =
+  /^url\(\s*(?:"(?:\\[^"'()\s]|[^"'()\\ \t\n])*"|'(?:\\[^"'()\s]|[^"'()\\ \t\n])*'|(?:\\[^"'()\s]|[^"'()\\ \t\n])*)\)$/;
+const BG_URL_4_4 =
+  /^url\(\s*(?:"(?:\\[^'()\s]|[^"'()\\ \t\n])*"|'(?:\\[^"'()\s]|[^"'()\\ \t\n])*'|(?:\\[^'()\s]|[^"'()\\ \t\n])*)\)$/;
 const legacyLength = (token, surface, old) => {
   if (!old) return BG_LENGTH_4.test(token.toLowerCase());
   return surface?.legacyFont === 'cssstyle4.1' ? BG_LENGTH_3.test(token) : BG_LENGTH_4.test(token);
@@ -977,7 +993,10 @@ function backgroundValue(value, mode, surface) {
   const old = legacy && colorKeywords === 'css2'; // cssstyle before 4.4
   if (splitOutside(value, ',').length > 1) return legacy ? INVALID : undefined;
   const tokens = [];
-  for (const token of segments(value).filter((t, i) => i % 2 === 0 && t !== '')) {
+  const components = segments(value, legacy ? BG_SEPARATOR_LEGACY : BG_SEPARATOR).filter(
+    (t, i) => i % 2 === 0 && t !== '',
+  );
+  for (const token of components) {
     if (token.includes('/') && !token.includes('(')) {
       token.split('/').forEach((part, i) => {
         if (i) tokens.push('/');
@@ -1003,8 +1022,9 @@ function backgroundValue(value, mode, surface) {
       // Gradients from cssstyle 4 (jsdom 23.1 and later; measured: 4.3.0).
       if (gradient && (mode === 'jsdom20' || mode === 'jsdom22')) return INVALID;
       if (lower === 'none' && token !== 'none' && !legacy) return undefined;
-      // cssstyle rejects a url() with a parenthesis inside (url("a(b).png")).
-      if (legacy && /^url\(.*[()].*\)$/.test(token)) return INVALID;
+      // cssstyle rejects a malformed url() (url("a.png), url(a.png)junk) and
+      // one with a parenthesis inside (url("a(b).png")).
+      if (legacy && token.startsWith('url(') && !(old ? BG_URL_OLD : BG_URL_4_4).test(token)) return INVALID;
       if (!put('image', token)) return INVALID;
     } else if (repeats.has(lower)) {
       // (repeat-x and repeat-y take no second keyword.)
