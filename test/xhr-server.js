@@ -22,12 +22,12 @@ import http from 'node:http';
 
 const CLIENT_HEADERS = /^(user-agent|sec-fetch-.*|host|connection|keep-alive)$/;
 
-export function startServer() {
+export async function startServer() {
   const requests = [];
   const sockets = new Set();
   // Stepped /slow responses waiting for release() to send their next chunk.
   let held = [];
-  const server = http.createServer(async (req, res) => {
+  const handle = async (req, res) => {
     const chunks = [];
     try {
       for await (const c of req) chunks.push(c);
@@ -123,37 +123,69 @@ export function startServer() {
         res.writeHead(404);
         res.end('not found');
     }
-  });
-  server.on('connection', (socket) => {
-    sockets.add(socket);
-    socket.on('close', () => sockets.delete(socket));
-  });
-  return new Promise((resolve) =>
-    server.listen(0, () =>
-      resolve({
-        port: server.address().port,
-        requests,
-        // Sends the next chunk of each stepped /slow response.
-        release: () => {
-          const ticks = held;
-          held = [];
-          for (const tick of ticks) tick();
-        },
-        close: () =>
-          new Promise((done) => {
-            for (const s of sockets) s.destroy();
-            server.close(done);
-          }),
-      }),
-    ),
+  };
+  const listen = (port, host) => {
+    const server = http.createServer(handle);
+    server.on('connection', (socket) => {
+      sockets.add(socket);
+      socket.on('close', () => sockets.delete(socket));
+    });
+    return new Promise((resolve) => {
+      server.once('error', () => resolve(null));
+      server.listen(port, host, () => resolve(server));
+    });
+  };
+  // On all addresses, and on each loopback address by itself where the
+  // system lets a server listen there besides (macOS): there another
+  // program's server on 127.0.0.1 or ::1 and the same port would get the
+  // requests for that address (Linux refuses it that port).
+  const main = await listen(0);
+  const { port } = main.address();
+  const servers = [main, ...(await Promise.all(['127.0.0.1', '::1'].map((host) => listen(port, host))))].filter(
+    Boolean,
   );
+  return {
+    port,
+    requests,
+    // Sends the next chunk of each stepped /slow response.
+    release: () => {
+      const ticks = held;
+      held = [];
+      for (const tick of ticks) tick();
+    },
+    close: () => {
+      for (const s of sockets) s.destroy();
+      return Promise.all(servers.map((server) => new Promise((done) => server.close(done))));
+    },
+  };
 }
 
-// A port nothing listens on (a server that was closed).
-export async function closedPort() {
+// The ports servers listening on port 0 get theirs from start here or
+// higher (Linux 32768 to 60999, macOS and Windows 49152 to 65535).
+export const EPHEMERAL_PORTS_FROM = 32768;
+
+// Whether nothing listens on the port and host (a host the system does not
+// have, such as ::1 without IPv6, counts as free).
+async function free(port, host) {
   const server = http.createServer();
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const { port } = server.address();
-  await new Promise((resolve) => server.close(resolve));
-  return port;
+  const error = await new Promise((resolve) => {
+    server.once('error', resolve);
+    server.listen(port, host, () => resolve(null));
+  });
+  if (error === null) await new Promise((resolve) => server.close(resolve));
+  return error?.code !== 'EADDRINUSE';
+}
+
+// A port nothing listens on, for requests that must be refused: one below
+// the ephemeral ports, free when chosen (on every address, and on each
+// loopback address by itself, see startServer). Not a closed ephemeral port:
+// a test server started later can get that one and answer the requests
+// (#109: a refused request got that server's 404, and the parity scenario
+// running on it saw the refused requests' preflights).
+export async function closedPort() {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const port = 20000 + Math.floor(Math.random() * (EPHEMERAL_PORTS_FROM - 20000));
+    if ((await free(port)) && (await free(port, '127.0.0.1')) && (await free(port, '::1'))) return port;
+  }
+  throw new Error('no free port below the ephemeral ports');
 }

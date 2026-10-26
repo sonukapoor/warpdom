@@ -7,10 +7,11 @@
 import { test, suite, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import net from 'node:net';
 import { createWindow } from '../src/node.js';
 import { S } from '../src/internal.js';
 import { snapshotWindow, resetWindow } from '../src/reset.js';
-import { startServer, closedPort } from './xhr-server.js';
+import { startServer, closedPort, EPHEMERAL_PORTS_FROM } from './xhr-server.js';
 
 const require = createRequire(import.meta.url);
 const server = await startServer();
@@ -1465,6 +1466,28 @@ for (const [alias, which] of Object.entries(VERSIONS)) {
 // Several at a time: most of the time goes to waiting for the server.
 suite('XMLHttpRequest parity with jsdom', { concurrency: 6 }, () => {
   for (const [name, skip, fn] of parityTests) test(name, { skip }, fn);
+});
+
+// The refused port is never one a test server gets: scenarios run
+// concurrently, each starting servers on port 0, and a closed ephemeral port
+// handed to one of them made it answer another scenario's refused requests
+// (#109: a refused request got a 404, and the cors scenario saw the refused
+// requests' preflights).
+test('XMLHttpRequest tests: the refused port is below the ports test servers get, and refuses connections', async () => {
+  assert.ok(DEAD >= 1024 && DEAD < EPHEMERAL_PORTS_FROM, `refused port ${DEAD}`);
+  const started = await Promise.all(Array.from({ length: 20 }, () => startServer()));
+  const ports = [PORT, ...started.map((srv) => srv.port)];
+  await Promise.all(started.map((srv) => srv.close()));
+  for (const p of ports) assert.ok(p >= EPHEMERAL_PORTS_FROM, `test server port ${p}`);
+  const code = await new Promise((resolve) => {
+    const socket = net.connect(DEAD, 'localhost');
+    socket.on('connect', () => {
+      socket.destroy();
+      resolve('connected');
+    });
+    socket.on('error', (e) => resolve(e.code));
+  });
+  assert.equal(code, 'ECONNREFUSED');
 });
 
 // --- warpdom ------------------------------------------------------------------------------------
