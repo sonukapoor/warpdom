@@ -4,6 +4,8 @@
 // Node built-ins only, no dependencies; runs on the caller's Node, which may
 // be older than warpdom's own minimum, so it only uses long-supported syntax.
 
+import { createHash } from 'node:crypto';
+
 export const MIN_NODE = [22, 12];
 export const FAIL_ON = ['nothing', 'regressions', 'differences'];
 export const COMMENT_LIMIT = 60_000;
@@ -138,8 +140,17 @@ const count = (n, one, many = `${one}s`) => `${n.toLocaleString('en-US')} ${n ==
 const verb = (n, one, many) => (n === 1 ? one : many);
 const CHANGE = { regression: 'pass → fail', fixed: 'fail → pass' };
 
+// The comment's marker names the exact working directory. A path that cell()
+// leaves unchanged is used as is, so comments from earlier releases keep
+// their marker. Any other path (longer than a cell, or with characters cell()
+// replaces) would be shortened or rewritten, and two such paths could share a
+// marker: it gets a readable prefix and a hash of the exact path instead. The
+// '|' keeps the two forms apart, since an unchanged path has none.
 export function marker(workingDirectory) {
-  return `<!-- warpdom-compare-action:${cell(workingDirectory)} -->`;
+  const dir = String(workingDirectory ?? '');
+  if (cell(dir) === dir) return `<!-- warpdom-compare-action:${dir} -->`;
+  const hash = createHash('sha256').update(dir).digest('hex');
+  return `<!-- warpdom-compare-action:${cell(dir, 60)} | sha256:${hash} -->`;
 }
 
 function versionOf(dom) {

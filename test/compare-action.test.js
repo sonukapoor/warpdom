@@ -389,9 +389,32 @@ test('compare action: the comment carries a marker per working directory and sta
   const body = renderComment('### report\n', 'packages/ui');
   assert.ok(body.startsWith(`${marker('packages/ui')}\n### report`));
   assert.notEqual(marker('a'), marker('b'));
+  // Paths cell() leaves unchanged keep the marker earlier releases wrote.
+  assert.equal(marker('packages/ui'), '<!-- warpdom-compare-action:packages/ui -->');
+  assert.equal(marker('.'), '<!-- warpdom-compare-action:. -->');
   const long = renderComment('x'.repeat(COMMENT_LIMIT * 2), '.');
   assert.ok(long.length < COMMENT_LIMIT + 100);
   assert.match(long, /shortened; the job summary has the rest/);
+});
+
+test('compare action: distinct working directories never share a marker (#133)', () => {
+  // Longer than a cell and the same for the first 199 characters.
+  const prefix = `packages/${'a'.repeat(190)}`;
+  const long = [`${prefix}/one`, `${prefix}/two`];
+  // Different paths that cell() rewrites to the same text.
+  const rewritten = ['a`b', "a'b", 'a\nb', 'a b', ' a b', 'a&b', 'a&amp;b', 'a|b', 'a\\|b'];
+  const dirs = [...long, ...rewritten];
+  const markers = dirs.map(marker);
+  assert.equal(new Set(markers).size, dirs.length);
+  for (const m of markers) {
+    assert.match(m, /^<!-- warpdom-compare-action:[^\n]* -->$/);
+    assert.ok(m.length < 200, m);
+  }
+  // The long paths keep a readable prefix and are told apart by a hash.
+  assert.ok(markers[0].startsWith(`<!-- warpdom-compare-action:${prefix.slice(0, 59)}…`), markers[0]);
+  assert.match(markers[0], / \| sha256:[0-9a-f]{64} -->$/);
+  // No marker is a prefix of another, so upsertComment's startsWith match is exact.
+  for (const a of markers) for (const b of markers) if (a !== b) assert.ok(!b.startsWith(a), `${a} / ${b}`);
 });
 
 test('compare action: step outputs', () => {
