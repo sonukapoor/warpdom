@@ -4080,7 +4080,7 @@ member where jsdom's data properties give the derived object its own. Now:
   defineWindowAccessors).
 - The lazy members' setters give an object that inherits from the window
   its own property (writable, enumerable, configurable) and leave the
-  window's (internal.js lazyDataSetter, assignedThrough). Copilot's review
+  window's (internal.js lazyDataSetter, assignThrough). Copilot's review
   of 4cc1bc8 on #96: they defined that property whatever the receiver
   already had. Now they follow OrdinarySet's receiver step, as the data
   property does (`super.Image = 7` from a method of an object inheriting
@@ -4381,17 +4381,38 @@ the window is an alias: assigning through it (or Reflect.set with it as
 receiver) replaces the window's member with a data property with the
 member's flags, and the trap is not called.
 
-Now assignedThrough does OrdinarySet's receiver step for every receiver
-but the window without looking at its prototypes; a receiver whose own
-property is the window's lazy accessor itself (a proxy over the window)
-gets the value as a data property with the accessor's flags. No change to
-window creation (bench:load the same). Tests: window-features.test.js
-"from other receivers" (jsdom 20, 26, 30; also run on 22, 25, 27, 28, 29),
-cold and materialized.
+Now the setter, with a receiver other than the window, makes the window's
+member first (as a read does; only while the window's property is still
+that accessor) and then does OrdinarySet's receiver step without looking
+at the receiver's prototypes (internal.js lazyDataSetter, assignThrough).
+A proxy over the window then shows the data property, so it gets the value
+through its defineProperty trap with `{ value }` as in jsdom. The first
+version of this branch instead gave a receiver whose own property was the
+window's lazy accessor (matched by setter) a data property with the
+accessor's flags; Copilot's review on #153 noted two differences between
+cold and materialized there: a proxy whose getOwnPropertyDescriptor trap
+takes the descriptor and then reads target[name] (making the member)
+returned the accessor while the window's was already a data property, a
+TypeError cold (jsdom 20.0.3 to 30.1.3 and warpdom materialized: the
+window's member replaced, traps getOwnPropertyDescriptor then
+defineProperty with { value }); and a copy of the cold accessor on another
+object passed the check, so `super.Image = 7` called on it replaced the
+copy cold but failed (TypeError) once the window's member was made, where
+the engine finds the copy's accessor and does not call the setter. Now
+both are the same cold and materialized: the trap case matches jsdom, and
+a copy of a member's descriptor taken before its first read (an accessor;
+jsdom's copy is a writable data property and gets the value) fails
+assignment (TypeError, the copy kept) through super, Reflect.set or the
+copy itself. The setter cannot tell an assignment to the copy from one
+through the window, and the latter fails once the member is made, so this
+is the only behavior the same before and after the read. Making the
+member costs nothing at window creation: interface setters are inlined in
+window.js (bench:load: next windows 0.211 to 0.215 ms base, 0.211 to 0.215
+ms head, alternating rounds). Tests: window-features.test.js "from other
+receivers" (with the reentrant trap; jsdom 20, 26, 30; also run on 22, 25,
+27, 28, 29) and "a copy of a member made on first read", cold and
+materialized.
 
 Left as they are (setters cannot return false): Reflect.set with a
 primitive, frozen or other failing receiver throws a TypeError where jsdom
-returns false (as before for derived receivers, #96); through a proxy over
-the window with a defineProperty trap, the trap sees a full data
-descriptor (value, writable, enumerable, configurable) where jsdom's sees
-{ value }.
+returns false (as before for derived receivers, #96).

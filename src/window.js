@@ -17,7 +17,7 @@ import {
   CDATA_SECTION_NODE,
   PROCESSING_INSTRUCTION_NODE,
   lazyDataSetter,
-  assignedThrough,
+  assignThrough,
 } from './internal.js';
 import { INTERFACES, SVG_ELEMENTS, LEGACY_SVG_ELEMENTS, SVG_TYPES_INTERFACES, HTML_NS, SVG_NS } from './interfaces.js';
 import { HTML_ELEMENTS, PLAIN_TAGS } from './html-elements.js';
@@ -433,20 +433,19 @@ export function createWindow(options = {}) {
     window[S]?.onMaterialize?.(name, proto);
     return ctor;
   }
+  // Assigning replaces the constructor property (a mock), as for a
+  // writable data property (another receiver gets its own property,
+  // internal.js lazyDataSetter, inlined: one closure per interface).
+  const defineInterface = (value, name) =>
+    Object.defineProperty(window, name, { value, writable: true, configurable: true });
   for (const iface of ORDER) {
     const { name } = iface;
     const get = (lazyGetters[name] = () => materialize(name));
-    Object.defineProperty(window, name, {
-      get,
-      // Assigning replaces the constructor property (a mock), as for a
-      // writable data property (another receiver gets its own property,
-      // internal.js assignedThrough).
-      set(value) {
-        if (!assignedThrough(window, this, name, value))
-          Object.defineProperty(window, name, { value, writable: true, configurable: true });
-      },
-      configurable: true,
-    });
+    const set = function (value) {
+      if (this === window) defineInterface(value, name);
+      else assignThrough(window, this, name, value, set, defineInterface);
+    };
+    Object.defineProperty(window, name, { get, set, configurable: true });
     Object.defineProperty(protos, name, {
       get() {
         return materialize(name).prototype;

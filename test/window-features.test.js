@@ -477,8 +477,13 @@ const LAZY_KEYS = [
   'HTMLDocument',
   'WebSocket',
 ];
-const sameDescriptor = (a, b) =>
-  b !== undefined && ('value' in a ? a.value === b.value : a.get === b.get && a.set === b.set);
+// Whether an assignment of 7 replaced the window's member. Not the
+// descriptor: warpdom makes a member on first read (an accessor until then)
+// and before another receiver gets a value (internal.js lazyDataSetter).
+const windowMember = (w, key) => {
+  const d = Object.getOwnPropertyDescriptor(w, key);
+  return d !== undefined && d.value !== 7 ? 'kept' : 'replaced';
+};
 const inheritedAssignmentScenario = (keys) => (w) => {
   const attempt = (f) => {
     try {
@@ -491,21 +496,16 @@ const inheritedAssignmentScenario = (keys) => (w) => {
   const setters = ['self', 'outerHeight', 'status'].map((key) => [key, Object.getOwnPropertyDescriptor(w, key).set]);
   const statusGetter = Object.getOwnPropertyDescriptor(w, 'status').get;
   for (const key of keys) {
-    // The descriptor, not w[key]: warpdom makes the lazy members on first
-    // read (an accessor until then), and the assignment must reach that
-    // accessor's setter. Nothing reads them before this loop.
-    const before = Object.getOwnPropertyDescriptor(w, key);
+    // Nothing reads the lazy members before this loop: warpdom makes them
+    // on first read (an accessor until then), and the assignment must reach
+    // that accessor's setter.
     const derived = Object.create(w);
     const result = attempt(() => {
       derived[key] = 7;
       return 'ok';
     });
     const own = Object.hasOwn(derived, key) ? descriptorOf(derived, key) : 'none';
-    const window = LAZY_KEYS.includes(key)
-      ? sameDescriptor(before, Object.getOwnPropertyDescriptor(w, key))
-        ? 'kept'
-        : 'replaced'
-      : descriptorOf(w, key);
+    const window = LAZY_KEYS.includes(key) ? windowMember(w, key) : descriptorOf(w, key);
     const reads = w[key] === 7 ? '7' : typeof w[key];
     out.push(`${key}: ${result}, own ${own}, window ${window} (reads ${reads}), derived reads ${String(derived[key])}`);
   }
@@ -611,7 +611,6 @@ const receiverScenario = (w) => {
     for (const phase of ['cold', 'materialized']) {
       if (phase === 'materialized') void w[key];
       for (const [name, make] of Object.entries(RECEIVER_CASES)) {
-        const before = Object.getOwnPropertyDescriptor(w, key);
         const receiver = make(Object.create(w));
         const home = {
           __proto__: w,
@@ -632,7 +631,7 @@ const receiverScenario = (w) => {
             : 'value' in own
               ? `${own.value} ${own.writable} ${own.enumerable} ${own.configurable}`
               : 'accessor';
-        const window = sameDescriptor(before, Object.getOwnPropertyDescriptor(w, key)) ? 'kept' : 'replaced';
+        const window = windowMember(w, key);
         out.push(`${key} ${phase} ${name}: ${result}, own ${flags}, window ${window}`);
       }
     }
@@ -683,7 +682,7 @@ const otherReceiverScenario = (w) => {
       const before = Object.getOwnPropertyDescriptor(w, key);
       const report = (name, result, receiver) => {
         const after = Object.getOwnPropertyDescriptor(w, key);
-        const window = sameDescriptor(before, after) ? 'kept' : `replaced ${flags(after)}`;
+        const window = windowMember(w, key) === 'kept' ? 'kept' : `replaced ${flags(after)}`;
         const own = Object(receiver) === receiver ? flags(Object.getOwnPropertyDescriptor(receiver, key)) : '-';
         out.push(`${key} ${phase} ${name}: ${result}, own ${own}, window ${window}`);
         Object.defineProperty(w, key, before);
@@ -723,6 +722,26 @@ const otherReceiverScenario = (w) => {
         'Reflect.set, proxy over the window',
         attempt(() => Reflect.set(w, key, 7, alias)),
       );
+      // A descriptor trap that reads the member (made on first read in
+      // warpdom) after taking its descriptor: the same as the proxy above,
+      // and the traps see what jsdom's see.
+      const traps = [];
+      const reentrant = new Proxy(w, {
+        getOwnPropertyDescriptor(target, k) {
+          traps.push('getOwnPropertyDescriptor');
+          const d = Reflect.getOwnPropertyDescriptor(target, k);
+          void target[k];
+          return d;
+        },
+        defineProperty(target, k, d) {
+          traps.push(`defineProperty ${Object.keys(d)}`);
+          return Reflect.defineProperty(target, k, d);
+        },
+      });
+      const reentrantResult = attempt(() => {
+        reentrant[key] = 7;
+      });
+      report('proxy over the window, reentrant descriptor trap', `${reentrantResult} (${traps.join(', ')})`);
     }
   }
   return out;
@@ -735,6 +754,49 @@ for (const jsdom of [20, 26, 30])
       jsdom,
     },
   );
+
+// A copy of a member's descriptor taken before its first read is the
+// accessor warpdom has until then (jsdom's: a data property). Once the
+// window's member is made, assigning through the window (super, Reflect.set)
+// (super) finds the copy's accessor and fails without calling its setter;
+// the setter does the same before, and when called through the copy, so a
+// copy is not mistaken for a proxy over the window (#98).
+test('window: a copy of a member made on first read fails assignment, before and after the read', () => {
+  const run = (phase) => {
+    const out = [];
+    for (const key of ['Image', 'MutationObserver', 'console', 'webkitURL', 'HTMLDocument', 'WebSocket']) {
+      const w = createWindow();
+      const copy = Object.defineProperty({}, key, Object.getOwnPropertyDescriptor(w, key));
+      const lazy = Object.getOwnPropertyDescriptor(copy, key);
+      if (phase === 'materialized') void w[key];
+      const home = {
+        __proto__: w,
+        assign(v) {
+          super[key] = v;
+        },
+      };
+      for (const [name, f] of [
+        ['super', () => home.assign.call(copy, 7)],
+        ['own', () => (copy[key] = 7)],
+      ]) {
+        let result = 'ok';
+        try {
+          result = String(f());
+        } catch (e) {
+          result = e.constructor.name;
+        }
+        const own = Object.getOwnPropertyDescriptor(copy, key);
+        out.push(
+          `${key} ${name}: ${result}, copy ${own.get === lazy.get ? 'kept' : 'changed'}, window ${w[key] === 7 ? 'changed' : 'kept'}`,
+        );
+      }
+    }
+    return out;
+  };
+  const cold = run('cold');
+  assert.deepEqual(cold, run('materialized'));
+  for (const line of cold) assert.match(line, /^\w+ \w+: TypeError, copy kept, window kept$/);
+});
 
 test('window: inherited enumerable Object.prototype keys do not reach window creation', () => {
   Object.prototype.extra = 1;
