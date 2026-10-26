@@ -2286,9 +2286,19 @@ function formControlsNamedItem(list, name) {
   const found = items(list).filter((el) => attr(el, 'id') === key || attr(el, 'name') === key);
   if (found.length === 0) return null;
   if (found.length === 1) return found[0];
-  return liveList(state(list).protos.RadioNodeList, () =>
-    items(list).filter((el) => attr(el, 'id') === key || attr(el, 'name') === key),
-  );
+  // Filtered again only when the form's elements are new (any change to the
+  // tree or an attribute makes them new, forms.js cached): iterating reads
+  // the items at every step.
+  let from = null;
+  let radios = null;
+  return liveList(state(list).protos.RadioNodeList, () => {
+    const all = items(list);
+    if (all !== from) {
+      from = all;
+      radios = all.filter((el) => attr(el, 'id') === key || attr(el, 'name') === key);
+    }
+    return radios;
+  });
 }
 
 const FORM_CONTROLS_NAMED = { get: formControlsNamedItem, names: htmlCollectionNames, unenumerable: true };

@@ -540,6 +540,63 @@ parity('list iteration functions called on a list after reading another list', (
   return [seen, [first[0], first[1].nodeName], second.done, [...NL.keys.call(kids)]];
 });
 
+// An own length, a length redefined on the prototype or another prototype
+// is what iterating and forEach read, whichever list was read last, as
+// Array.prototype's functions read it.
+parity('list iteration honors an overridden length', (w) => {
+  const d = html(w, '<div id=d><a></a><b></b></div><p></p>');
+  const other = d.body.children;
+  const list = d.getElementById('d').childNodes;
+  const count = (fn) => {
+    let n = 0;
+    fn(() => n++);
+    return n;
+  };
+  const out = [];
+  Object.defineProperty(list, 'length', { value: 0, configurable: true });
+  const { values, forEach } = list;
+  out.push(
+    list.length,
+    [...list].length,
+    count((cb) => list.forEach(cb)),
+  );
+  void other.length;
+  out.push([...values.call(list)].length);
+  void other.length;
+  out.push(count((cb) => forEach.call(list, cb)));
+  delete list.length;
+  out.push([...list].length);
+  const kids = d.body.childNodes;
+  const it = kids.values();
+  it.next();
+  Object.defineProperty(kids, 'length', { value: 1, configurable: true });
+  out.push(it.next().done);
+  const length = Object.getOwnPropertyDescriptor(w.HTMLCollection.prototype, 'length');
+  Object.defineProperty(w.HTMLCollection.prototype, 'length', { get: () => 1, configurable: true });
+  out.push(
+    [...other].length,
+    count((cb) => Array.prototype.forEach.call(other, cb)),
+  );
+  Object.defineProperty(w.HTMLCollection.prototype, 'length', length);
+  const tagged = d.getElementsByTagName('*');
+  Object.setPrototypeOf(tagged, Object.create(w.HTMLCollection.prototype, { length: { value: 2 } }));
+  out.push([...tagged].length);
+  return out;
+});
+
+test('a RadioNodeList is filtered again only after a change', () => {
+  const w = createWindow();
+  const d = w.document;
+  d.body.innerHTML = '<form><input type=radio name=r><input type=radio name=r></form>';
+  const list = d.forms[0].elements.namedItem('r')[S];
+  const first = list.items();
+  const same = list.items() === first;
+  d.forms[0].elements[0].name = 'x';
+  const renamed = list.items();
+  d.forms[0].append(Object.assign(d.createElement('input'), { type: 'radio', name: 'r' }));
+  assert.deepEqual([same, renamed !== first, renamed.length, list.items().length], [true, true, 1, 2]);
+});
+
 // document.styleSheets is live while it is iterated: sheets added, removed
 // or replaced (new text) meanwhile show at the steps after.
 for (const jsdom of [20, 29, 30]) {

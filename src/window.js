@@ -26,6 +26,7 @@ import { setValidationMode } from './css.js';
 import { namedPropertiesObject, namedAccessPrototype } from './named-access.js';
 import './document-named.js';
 import { xpathException } from './dom-parsing.js';
+import { iterate, listLengthGetter } from './collections.js';
 import { createCustomElement, createRegistry, htmlConstruct, isValidCustomElementName } from './custom-elements.js';
 
 // Once per module load: the interfaces in order, parents before children.
@@ -74,6 +75,10 @@ function descriptorsOf(iface, variant = null) {
     else addDescriptors(descriptors, members);
     if (variant !== null && iface.adjust) descriptors = iface.adjust(descriptors, variant) ?? descriptors;
   }
+  // A list interface's length getter: its iteration functions use their
+  // cached items while it is the length they find (collections.js).
+  if (descriptors[Symbol.iterator]?.value === iterate[Symbol.iterator] && descriptors.length?.get)
+    listLengthGetter(descriptors.length.get);
   const keys = Reflect.ownKeys(descriptors);
   table = { keys, descriptors: keys.map((key) => descriptors[key]), unscopables: null };
   // The @@unscopables descriptor is left out of the shared list: each
