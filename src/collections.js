@@ -240,8 +240,8 @@ export function staticList(proto, array) {
 // the same name, length and behavior: an iterator reads the length and the
 // item at each step (iterating a live list sees changes made since it
 // started; once done it stays done), forEach reads the length once and skips
-// the indices removed meanwhile, and any other this value (an array-like
-// they are borrowed for) or an invalid callback goes to Array.prototype's.
+// the indices removed meanwhile, and any other this value or an invalid
+// callback goes to Array.prototype's.
 // The iterators inherit from %ArrayIteratorPrototype%: Iterator helpers and
 // the class string are the same.
 const VALUES = 0,
@@ -250,12 +250,18 @@ const VALUES = 0,
 const ARRAY_ITERATOR = Object.getPrototypeOf([][Symbol.iterator]());
 const { forEach: arrayForEach, keys: arrayKeys, values: arrayValues, entries: arrayEntries } = Array.prototype;
 
-// The list's state, or null when this is not a list.
+// The list's state when this is the list whose get trap ran last, else
+// null. That is the list for list.forEach(), list.values(), for...of and
+// spreading (each reads the function through the list a moment before). Any
+// other this value goes to Array.prototype's function, which behaves the
+// same on a list (jsdom's is that function), only slower; nothing else is
+// read from it first: borrowed for another array-like (a Proxy among them)
+// the functions make only Array.prototype's accesses, and recognizing a
+// list by identity instead (a WeakMap or a private field per list) cost
+// every new list, querySelectorAll's among them, about 60 ns.
 function listState(list) {
   const last = lastState;
-  if (last !== null && last.proxy === list) return last;
-  const s = list != null ? list[S] : undefined;
-  return s instanceof ListState ? s : null;
+  return last !== null && last.proxy === list ? last : null;
 }
 
 class ListIterator {

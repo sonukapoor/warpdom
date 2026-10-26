@@ -980,10 +980,17 @@ export function documentStyleSheets(doc) {
     // the order they were created (internal.js sheetCreated), not in tree
     // order: a <style> inserted before another, or one whose text changes
     // (to the same text too), comes last.
+    //
+    // The sheets are cached until the tree or a style element's text changes
+    // (the revisions cascade.js keys its sheet list on too): iterating the
+    // list reads its items at every step, as jsdom's does, so rebuilding
+    // them each time made a pass over n sheets quadratic.
     const byCreation = ds.window[S].compat.sheetsByCreation;
     ds.styleSheetList = liveList(ds.window[S].protos.StyleSheetList, () => {
       const rev = ds.treeRev ?? 0;
-      const styleRev = byCreation ? (ds.styleRev ?? 0) : 0;
+      const textRev = ds.styleRev ?? 0;
+      if (ds.styleSheetsRev === rev && ds.styleSheetsTextRev === textRev) return ds.styleSheets;
+      const styleRev = byCreation ? textRev : 0;
       if (ds.styleElementsRev !== rev || ds.styleElementsStyleRev !== styleRev) {
         const els = [];
         for (let n = ds.first; n; n = nextInTree(n, doc)) if (isStyleElement(n)) els.push(n);
@@ -992,7 +999,10 @@ export function documentStyleSheets(doc) {
         ds.styleElementsRev = rev;
         ds.styleElementsStyleRev = styleRev;
       }
-      return ds.styleElements.map(styleElementSheet).filter(Boolean);
+      ds.styleSheets = ds.styleElements.map(styleElementSheet).filter(Boolean);
+      ds.styleSheetsRev = rev;
+      ds.styleSheetsTextRev = textRev;
+      return ds.styleSheets;
     });
   }
   return ds.styleSheetList;

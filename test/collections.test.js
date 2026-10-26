@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 import { parity, html } from './parity.js';
 import { createWindow } from '../src/node.js';
 import { installWindow } from '../src/vitest.js';
+import { documentStyleSheets } from '../src/cssom.js';
+import { S } from '../src/internal.js';
 
 const attempt = (fn) => {
   try {
@@ -473,6 +475,115 @@ for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30]) {
     { jsdom },
   );
 }
+
+// Borrowed for a Proxy, they make only Array.prototype's accesses (a get
+// trap that rejects symbol keys never sees one).
+parity('list iteration functions borrowed for a Proxy read only its length and indices', (w) => {
+  const NL = w.NodeList.prototype;
+  const traps = [];
+  const proxy = new Proxy(['a', 'b'], {
+    get(t, key, receiver) {
+      traps.push(typeof key === 'symbol' ? 'symbol' : key);
+      if (typeof key === 'symbol') throw new TypeError('symbol key');
+      return Reflect.get(t, key, receiver);
+    },
+  });
+  const run = (fn) => {
+    traps.length = 0;
+    return [attempt(fn), traps.join()];
+  };
+  return [
+    run(() => {
+      const seen = [];
+      NL.forEach.call(proxy, (v) => seen.push(v));
+      return seen;
+    }),
+    run(() => [...NL.keys.call(proxy)]),
+    run(() => [...NL.values.call(proxy)]),
+    run(() => JSON.stringify([...NL.entries.call(proxy)])),
+    run(() => [...w.HTMLCollection.prototype[Symbol.iterator].call(proxy)]),
+  ];
+});
+
+// Called on a list with another list read in between (Array.prototype's
+// functions then, as jsdom's are), they still see its changes.
+parity('list iteration functions called on a list after reading another list', (w) => {
+  const d = html(w, '<div id=d><a></a><b></b><i></i></div>');
+  const NL = w.NodeList.prototype;
+  const other = d.body.children;
+  const kids = d.getElementById('d').childNodes;
+  const seen = [];
+  const { forEach } = kids;
+  void other.length;
+  forEach.call(kids, (n, i, list) => {
+    seen.push(n.nodeName, i, list === kids);
+    n.remove();
+  });
+  d.getElementById('d').innerHTML = '<a></a><b></b>';
+  const it = NL.entries.call(kids);
+  void other.length;
+  const first = it.next().value;
+  kids[0].remove();
+  const second = it.next();
+  return [seen, [first[0], first[1].nodeName], second.done, [...NL.keys.call(kids)]];
+});
+
+// document.styleSheets is live while it is iterated: sheets added, removed
+// or replaced (new text) meanwhile show at the steps after.
+for (const jsdom of [20, 29, 30]) {
+  parity(
+    `iterating document.styleSheets while adding, removing and changing style elements (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const reset = () => {
+        d.head.innerHTML = '<style>.a{}</style><style>.b{}</style><style>.c{}</style>';
+      };
+      const pass = (change) => {
+        reset();
+        const seen = [];
+        let step = 0;
+        for (const sheet of d.styleSheets) {
+          seen.push(sheet.cssRules[0].selectorText);
+          change(step++);
+        }
+        return seen.join();
+      };
+      const style = (text) => {
+        const el = d.createElement('style');
+        el.textContent = text;
+        return el;
+      };
+      return [
+        pass((i) => i === 0 && d.head.append(style('.d{}'))),
+        pass(() => d.head.firstElementChild.remove()),
+        pass((i) => i === 0 && (d.head.children[2].textContent = '.z{}')),
+        pass((i) => i === 0 && (d.head.children[0].textContent = '.y{}')),
+        pass((i) => i === 0 && (d.head.children[1].firstChild.data = '.q{}')),
+        pass((i) => i === 1 && d.head.prepend(style('.p{}'))),
+      ];
+    },
+    { jsdom },
+  );
+}
+
+// Iterating reads the items at every step, so they are not rebuilt while
+// nothing changed (rebuilding made a pass over n sheets quadratic).
+test("document.styleSheets' items are rebuilt only after a change", () => {
+  const w = createWindow();
+  const d = w.document;
+  d.head.innerHTML = '<style>.a{}</style><style>.b{}</style>';
+  const list = documentStyleSheets(d)[S];
+  const first = list.items();
+  const same = list.items() === first;
+  d.head.firstElementChild.firstChild.data = '.c{}';
+  const afterText = list.items();
+  d.head.append(d.createElement('style'));
+  const afterTree = list.items();
+  assert.deepEqual(
+    [same, afterText !== first, afterText[1] === first[1], afterTree !== afterText, afterTree.length],
+    [true, true, true, true, 3],
+  );
+});
 
 parity(
   'static NodeList from querySelectorAll: own properties, read-only, undeletable, unchanged by later changes',
