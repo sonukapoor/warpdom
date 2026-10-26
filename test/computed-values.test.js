@@ -1243,6 +1243,35 @@ for (const jsdom of [30, 29, 28, 27, 26])
     { jsdom },
   );
 
+// A style attribute's margin or padding shorthand over a rule's with a
+// CSS-wide keyword (#155 review, black box, jsdom 27.4.0 to 30.1.3): the
+// attribute's value, 4px, not inherit.
+for (const jsdom of [30, 29, 28, 27])
+  parity(
+    `computed values: an inline box shorthand over a rule's CSS-wide keyword (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const style = d.head.appendChild(d.createElement('style'));
+      const p = d.body.appendChild(d.createElement('p'));
+      const out = [];
+      for (const [css, inline] of [
+        ['p { padding: inherit }', 'padding: 4px'],
+        ['p { margin: inherit }', 'margin: 4px'],
+        ['p { padding: initial }', 'padding: 4px'],
+        ['p { padding: unset }', 'padding: 4px 2px'],
+        ['p { margin: 1px }', 'margin: 4px'],
+      ]) {
+        style.textContent = css;
+        p.setAttribute('style', inline);
+        const cs = w.getComputedStyle(p);
+        const name = css.includes('margin') ? 'margin' : 'padding';
+        out.push(`${css} | ${inline} | ${cs.getPropertyValue(name)} ${cs.getPropertyValue(`${name}-top`)}`);
+      }
+      return out;
+    },
+    { jsdom },
+  );
+
 // After a style write the cascade parses the text the style wrote, but
 // keeps what that text does not show (#154 review, black box, jsdom 27.4.0
 // to 30.1.3): style.setProperty('border', 'var(--b)') after style.color

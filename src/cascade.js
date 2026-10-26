@@ -253,6 +253,7 @@ function inlineDeclarations(element) {
     // compat.varDropsImportant) is still !important to the attribute's
     // others (strong), not to the cascade.
     const strong = important || masked === true || written?.get(property)?.masked === true;
+    const from = ALIASES[property] ?? property;
     const entries = cascadeExpand(property, value, decls.legacyFont, compat);
     const shorthand = entries.length > 1 && entries[entries.length - 1][1] === PENDING ? entries[0][0] : null;
     // From jsdom 29 a border shorthand with var() after one of its
@@ -282,7 +283,11 @@ function inlineDeclarations(element) {
       }
       if (!strong && prior?.strong) continue;
       if (v === HIDE_UA && prior !== undefined) continue;
-      map.set(name, v === PENDING ? { value: v, important, strong, from: shorthand } : { value: v, important, strong });
+      // via: the declaration's property (cascadeInOrder).
+      map.set(
+        name,
+        v === PENDING ? { value: v, important, strong, from: shorthand } : { value: v, important, strong, via: from },
+      );
     }
   }
   es.inlineCascade = { text, map };
@@ -415,23 +420,34 @@ function inOrderBlock(index, element, shorthand, compat, inlineMap) {
         const event = events.get(entry.decl);
         if (event !== undefined) event.own = entry.value;
       }
-  // The style attribute's, last, over every rule: its shorthand with var()
-  // (pending longhands), then its other longhands.
+  // The style attribute's, last, over every rule: its shorthand (with
+  // var(): pending longhands), then its other longhands. The shorthand
+  // keeps its own value (padding: 4px over p { padding: inherit }).
   const ordered = [...events.values()].sort((a, b) => a.decl - b.decl);
   if (inlineMap) {
     const inline = longhands.map((l) => inlineMap.get(l));
     const pending = inline.find((entry) => entry?.value === PENDING && entry.from === shorthand);
+    const whole = inlineMap.get(shorthand);
     if (pending !== undefined)
       ordered.push({
         from: shorthand,
         important: pending.important,
         specificity: Infinity,
         values: new Map(longhands.map((l) => [l, PENDING])),
-        own: inlineMap.get(shorthand)?.value,
+        own: whole?.value,
+      });
+    const plain = pending === undefined && whole?.via === shorthand;
+    if (plain)
+      ordered.push({
+        from: shorthand,
+        important: whole.important,
+        specificity: Infinity,
+        values: new Map(longhands.map((l, i) => [l, inline[i]?.value])),
+        own: whole.value,
       });
     longhands.forEach((l, i) => {
       const entry = inline[i];
-      if (entry !== undefined && entry.value !== PENDING)
+      if (entry !== undefined && entry.value !== PENDING && !(plain && entry.via === shorthand))
         ordered.push({
           from: l,
           important: entry.important,
