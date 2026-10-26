@@ -143,26 +143,26 @@ export function lazyDataSetter(window, name, define) {
   return set;
 }
 
-// The part of that for a receiver other than the window. The window's
-// member is made first (as on a read; set is its setter, so a member
-// replaced since is left alone), so the receiver sees what it sees once the
-// member is made: a proxy over the window, or one whose descriptor trap
-// reads the member, shows the data property; a copy of the accessor stays
-// an accessor (#98). Then this is OrdinarySet's receiver step, whatever the
-// receiver inherits from (its prototypes are not looked at, so a proxy's
-// getPrototypeOf trap is not called): an own writable data property of the
-// receiver gets the value and keeps its flags; a read-only or accessor own
-// property, a new property on a non-extensible receiver or a primitive
-// receiver is a failed assignment. A setter cannot return that failure, so
-// it throws a TypeError, as a strict-mode assignment to the data property
-// does (sloppy code and Reflect.set get false there instead; see PLAN.md,
-// #96).
+// The part of that for a receiver other than the window. The window's member is
+// made first (as on a read; set is its setter, so a member replaced since is
+// left alone, and so is one made non-configurable before its first read, which
+// cannot become the data property), so the receiver sees what it sees once the
+// member is made: a proxy over the window, or one whose descriptor trap reads
+// the member, shows the data property; a copy of the accessor stays an accessor
+// (#98). Then this is OrdinarySet's receiver step, whatever the receiver
+// inherits from (its prototypes are not looked at, so a proxy's getPrototypeOf
+// trap is not called): an own writable data property of the receiver gets the
+// value and keeps its flags; a read-only or accessor own property, a new
+// property on a non-extensible receiver or a primitive receiver is a failed
+// assignment. A setter cannot return that failure, so it throws a TypeError, as
+// a strict-mode assignment to the data property does (sloppy code and
+// Reflect.set get false there instead; see PLAN.md, #96).
 export function assignThrough(window, receiver, name, value, set, define) {
   if (receiver === null || (typeof receiver !== 'object' && typeof receiver !== 'function')) {
     throw new TypeError(`Cannot create property '${String(name)}' on ${typeof receiver} '${String(receiver)}'`);
   }
   const current = Reflect.getOwnPropertyDescriptor(window, name);
-  if (current !== undefined && current.set === set) define(current.get.call(window), name);
+  if (current !== undefined && current.set === set && current.configurable) define(current.get.call(window), name);
   const own = Reflect.getOwnPropertyDescriptor(receiver, name);
   if (own === undefined) {
     if (!Reflect.defineProperty(receiver, name, { value, writable: true, enumerable: true, configurable: true })) {

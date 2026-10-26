@@ -662,7 +662,11 @@ const OTHER_RECEIVERS = {
       },
     }),
 };
-const otherReceiverScenario = (w) => {
+// Each phase runs on its own window: on a window whose cold cases ran, an
+// interface's constructor is cached and the member put back is the lazy
+// accessor again, so a later read would not make the data property. The
+// materialized phase records that the member is one before its cases.
+const otherReceiverScenario = (phase) => (w) => {
   const out = [];
   const flags = (d) => {
     if (d === undefined) return 'none';
@@ -677,83 +681,125 @@ const otherReceiverScenario = (w) => {
     }
   };
   for (const key of ['Image', 'MutationObserver', 'console', 'webkitURL', 'HTMLDocument', 'WebSocket']) {
-    for (const phase of ['cold', 'materialized']) {
-      if (phase === 'materialized') void w[key];
-      const before = Object.getOwnPropertyDescriptor(w, key);
-      const report = (name, result, receiver) => {
-        const after = Object.getOwnPropertyDescriptor(w, key);
-        const window = windowMember(w, key) === 'kept' ? 'kept' : `replaced ${flags(after)}`;
-        const own = Object(receiver) === receiver ? flags(Object.getOwnPropertyDescriptor(receiver, key)) : '-';
-        out.push(`${key} ${phase} ${name}: ${result}, own ${own}, window ${window}`);
-        Object.defineProperty(w, key, before);
-      };
-      const home = {
-        __proto__: w,
-        assign(v) {
-          super[key] = v;
-        },
-      };
-      for (const [name, make] of Object.entries(OTHER_RECEIVERS)) {
-        const receiver = make(w);
-        report(
-          `super, ${name}`,
-          attempt(() => home.assign.call(receiver, 7)),
-          receiver,
-        );
-      }
-      const plain = {};
-      report(
-        'Reflect.set, plain',
-        attempt(() => Reflect.set(w, key, 7, plain)),
-        plain,
-      );
-      const alias = new Proxy(w, {
-        getPrototypeOf() {
-          throw new RangeError('getPrototypeOf trap');
-        },
-      });
-      report(
-        'proxy over the window',
-        attempt(() => {
-          alias[key] = 7;
-        }),
-      );
-      report(
-        'Reflect.set, proxy over the window',
-        attempt(() => Reflect.set(w, key, 7, alias)),
-      );
-      // A descriptor trap that reads the member (made on first read in
-      // warpdom) after taking its descriptor: the same as the proxy above,
-      // and the traps see what jsdom's see.
-      const traps = [];
-      const reentrant = new Proxy(w, {
-        getOwnPropertyDescriptor(target, k) {
-          traps.push('getOwnPropertyDescriptor');
-          const d = Reflect.getOwnPropertyDescriptor(target, k);
-          void target[k];
-          return d;
-        },
-        defineProperty(target, k, d) {
-          traps.push(`defineProperty ${Object.keys(d)}`);
-          return Reflect.defineProperty(target, k, d);
-        },
-      });
-      const reentrantResult = attempt(() => {
-        reentrant[key] = 7;
-      });
-      report('proxy over the window, reentrant descriptor trap', `${reentrantResult} (${traps.join(', ')})`);
+    if (phase === 'materialized') {
+      void w[key];
+      out.push(`${key} materialized: window ${flags(Object.getOwnPropertyDescriptor(w, key))}`);
     }
+    const before = Object.getOwnPropertyDescriptor(w, key);
+    const report = (name, result, receiver) => {
+      const after = Object.getOwnPropertyDescriptor(w, key);
+      const window = windowMember(w, key) === 'kept' ? 'kept' : `replaced ${flags(after)}`;
+      const own = Object(receiver) === receiver ? flags(Object.getOwnPropertyDescriptor(receiver, key)) : '-';
+      out.push(`${key} ${phase} ${name}: ${result}, own ${own}, window ${window}`);
+      Object.defineProperty(w, key, before);
+    };
+    const home = {
+      __proto__: w,
+      assign(v) {
+        super[key] = v;
+      },
+    };
+    for (const [name, make] of Object.entries(OTHER_RECEIVERS)) {
+      const receiver = make(w);
+      report(
+        `super, ${name}`,
+        attempt(() => home.assign.call(receiver, 7)),
+        receiver,
+      );
+    }
+    const plain = {};
+    report(
+      'Reflect.set, plain',
+      attempt(() => Reflect.set(w, key, 7, plain)),
+      plain,
+    );
+    const alias = new Proxy(w, {
+      getPrototypeOf() {
+        throw new RangeError('getPrototypeOf trap');
+      },
+    });
+    report(
+      'proxy over the window',
+      attempt(() => {
+        alias[key] = 7;
+      }),
+    );
+    report(
+      'Reflect.set, proxy over the window',
+      attempt(() => Reflect.set(w, key, 7, alias)),
+    );
+    // A descriptor trap that reads the member (made on first read in
+    // warpdom) after taking its descriptor: the same as the proxy above,
+    // and the traps see what jsdom's see.
+    const traps = [];
+    const reentrant = new Proxy(w, {
+      getOwnPropertyDescriptor(target, k) {
+        traps.push('getOwnPropertyDescriptor');
+        const d = Reflect.getOwnPropertyDescriptor(target, k);
+        void target[k];
+        return d;
+      },
+      defineProperty(target, k, d) {
+        traps.push(`defineProperty ${Object.keys(d)}`);
+        return Reflect.defineProperty(target, k, d);
+      },
+    });
+    const reentrantResult = attempt(() => {
+      reentrant[key] = 7;
+    });
+    report('proxy over the window, reentrant descriptor trap', `${reentrantResult} (${traps.join(', ')})`);
   }
   return out;
 };
 for (const jsdom of [20, 26, 30])
-  parity(
-    `assignments reaching the window's data properties from other receivers (jsdom ${jsdom})`,
-    otherReceiverScenario,
-    {
-      jsdom,
-    },
-  );
+  for (const phase of ['cold', 'materialized'])
+    parity(
+      `assignments reaching the window's data properties from other receivers (${phase}, jsdom ${jsdom})`,
+      otherReceiverScenario(phase),
+      { jsdom },
+    );
+
+// A member made non-configurable before its first read (warpdom's accessor
+// is locked then; jsdom's data property stays writable): assigning through
+// an object that inherits from the window, or with Reflect.set and a plain
+// receiver, gives the receiver its own property, cold or materialized
+// (black box, jsdom 20.0.3 to 30.1.3). Each phase runs on its own window;
+// the cold phase does not read the member.
+const lockedReceiverScenario = (phase) => (w) => {
+  const out = [];
+  for (const key of ['Image', 'MutationObserver', 'console', 'webkitURL', 'HTMLDocument', 'WebSocket']) {
+    if (phase === 'materialized') void w[key];
+    Object.defineProperty(w, key, { configurable: false });
+    const attempt = (f) => {
+      try {
+        f();
+        return 'ok';
+      } catch (e) {
+        return e.constructor.name;
+      }
+    };
+    const derived = Object.create(w);
+    const plain = {};
+    const results = [
+      attempt(() => {
+        derived[key] = 7;
+      }),
+      attempt(() => {
+        if (!Reflect.set(w, key, 8, plain)) throw new Error('false');
+      }),
+    ];
+    const own = (o) => JSON.stringify(Object.getOwnPropertyDescriptor(o, key));
+    out.push(`${key} ${phase}: ${results.join(' ')}, own ${own(derived)} ${own(plain)}`);
+  }
+  return out;
+};
+for (const jsdom of [20, 26, 30])
+  for (const phase of ['cold', 'materialized'])
+    parity(
+      `assignments from other receivers to a locked window member (${phase}, jsdom ${jsdom})`,
+      lockedReceiverScenario(phase),
+      { jsdom },
+    );
 
 // A copy of a member's descriptor taken before its first read is the
 // accessor warpdom has until then (jsdom's: a data property). Once the
