@@ -396,18 +396,19 @@ function inOrderBlock(index, element, shorthand, compat, inlineMap) {
   if (family !== undefined) {
     const { records } = family;
     const epoch = ++inOrderEpoch;
-    const specificity = (record) => inOrder.specificity(record, element, epoch);
-    if (family.foreign && records.some((record) => record.foreign && specificity(record) >= 0)) return null;
+    if (family.foreign)
+      for (let i = 0; i < records.length; i++)
+        if (records[i].foreign && inOrder.specificity(records[i], element, epoch) >= 0) return null;
     // An !important shorthand without var() sets the whole block, whatever
     // came before it: from the last one that matches.
     let start = 0;
     for (let i = records.length - 1; i > 0; i--)
-      if (records[i].resets && specificity(records[i]) >= 0) {
+      if (records[i].resets && inOrder.specificity(records[i], element, epoch) >= 0) {
         start = i;
         break;
       }
     for (let i = start; i < records.length; i++) {
-      const s = specificity(records[i]);
+      const s = inOrder.specificity(records[i], element, epoch);
       if (s >= 0) block.apply(records[i], s);
     }
   }
