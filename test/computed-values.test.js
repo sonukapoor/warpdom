@@ -1033,27 +1033,32 @@ test('computed values: computed style writes and var() with !important in rules 
 });
 
 // A longhand, a shorthand without var() and a shorthand with var(), all
-// matching (padding-bottom, black box): jsdom 26.1.0 gives '' and 30.1.3
-// gives '0' for the first order, 7px when the longhand comes last. jsdom 27
-// to 29 give 8px for the first order, which isn't modeled yet.
+// matching (padding-bottom, black box, each jsdom alias with its own
+// cssstyle): 26.1.0 and 27.4.0 give '' for the first order, 28.1.0 to
+// 30.1.2 apply them in document order (8px, #122), 30.1.3 gives '0';
+// 7px when the longhand comes last.
 test('computed values: a longhand, a shorthand and a var() shorthand', () => {
   const td = '<div class="d"><table><tbody><tr><td></td></tr></tbody></table></div>';
+  // The expected values by jsdom release, in this order.
+  const RELEASES = ['26.1.0', '27.4.0', '28.1.0', '29.1.1', '30.1.2', '30.1.3'];
+  const by = (...values) => Object.fromEntries(RELEASES.map((jsdom, i) => [jsdom, values[i]]));
+  const last = by('7px', '7px', '7px', '7px', '7px', '7px');
   const CASES = [
     [
       '.d.d td { padding-bottom: 7px !important } .d td { padding: 8px !important } td { padding: var(--p) !important }',
-      { '26.1.0': '', '30.1.3': '0' },
+      by('', '', '8px', '8px', '0', '0'),
     ],
     [
       'td { padding: var(--p) !important } .d td { padding: 8px !important } .d.d td { padding-bottom: 7px !important }',
-      { '26.1.0': '7px', '30.1.3': '7px' },
+      last,
     ],
     [
       '.d td { padding: 8px !important } td { padding: var(--p) !important } .d.d td { padding-bottom: 7px !important }',
-      { '26.1.0': '7px', '30.1.3': '7px' },
+      last,
     ],
     [
       '.d.d td { padding-bottom: 7px } .d td { padding: 8px } td { padding: var(--p) }',
-      { '26.1.0': '', '30.1.3': '7px' },
+      by('', '', '8px', '8px', '8px', '7px'),
     ],
   ];
   for (const [css, expected] of CASES) {
@@ -1162,6 +1167,111 @@ for (const jsdom of [30, 29, 28, 27])
     { jsdom },
   );
 
+// The page's declarations of a box shorthand and its longhands (#122,
+// black box): every order, importance and specificity of padding-bottom:
+// 7px, padding: 8px and padding: var(--p) in three rules (and of two of
+// them), with and without a style attribute. From jsdom 28.1.0 to 30.1.2
+// they apply in document order, as setProperty would (cascade.js
+// cascadeInOrder); from 28.1.0 the later of two !important declarations
+// wins whatever their specificity.
+const IN_ORDER_DECLS = { L: 'padding-bottom: 7px', P: 'padding: 8px', V: 'padding: var(--p)' };
+const IN_ORDER_SELECTORS = ['.d.d td', '.d td', 'td'];
+const permutations = (items) =>
+  items.length <= 1
+    ? [items]
+    : items.flatMap((item, i) => permutations([...items.slice(0, i), ...items.slice(i + 1)]).map((p) => [item, ...p]));
+const IN_ORDER_CASES = [];
+for (const kinds of [
+  ...permutations(['L', 'P', 'V']),
+  ...permutations(['L', 'P']),
+  ['L', 'V'],
+  ['V', 'L'],
+  ['P', 'V'],
+  ['V', 'P'],
+])
+  for (const selectors of permutations([0, 1, 2]))
+    for (let important = 0; important < 1 << kinds.length; important++)
+      IN_ORDER_CASES.push(
+        kinds
+          .map(
+            (kind, i) =>
+              `${IN_ORDER_SELECTORS[selectors[i]]} { ${IN_ORDER_DECLS[kind]}${important & (1 << i) ? ' !important' : ''} }`,
+          )
+          .join(' '),
+      );
+const IN_ORDER_INLINE = ['padding-bottom: 5px', 'padding: var(--q)', 'padding-top: 3px !important', 'padding: 4px'];
+for (const jsdom of [30, 29, 28, 27, 26])
+  parity(
+    `computed values: box shorthands and longhands in document order (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      d.body.innerHTML = '<div class="d"><table><tbody><tr><td></td></tr></tbody></table></div>';
+      const td = d.querySelector('td');
+      const style = d.head.appendChild(d.createElement('style'));
+      const out = [];
+      IN_ORDER_CASES.forEach((css, i) => {
+        style.textContent = css;
+        // A style attribute on every fifth case.
+        const inline = i % 5 === 0 ? IN_ORDER_INLINE[(i / 5) % IN_ORDER_INLINE.length] : null;
+        if (inline) td.setAttribute('style', inline);
+        else td.removeAttribute('style');
+        const cs = w.getComputedStyle(td);
+        // The shorthand from the same block from jsdom 28.1.0 (#155 review);
+        // before, not modeled in every case.
+        out.push(`${css} | ${inline ?? ''} | ${cs.paddingTop} ${cs.paddingBottom} | ${jsdom >= 28 ? cs.padding : ''}`);
+      });
+      // margin as padding.
+      for (const css of [
+        '.d.d td { margin: var(--m) } td { margin: 8px }',
+        'td { margin: 8px } .d.d td { margin: var(--m) }',
+        '.d.d td { margin-bottom: 7px } td { margin: var(--m) }',
+        'td { margin: var(--m) } .d td { margin-top: 2px }',
+        '.d.d td { margin: 1px 2px } td { margin-left: 3px }',
+        '.d.d td { margin: 1px !important } td { margin: var(--m) !important }',
+      ]) {
+        style.textContent = css;
+        td.removeAttribute('style');
+        const cs = w.getComputedStyle(td);
+        out.push(`${css} | ${cs.marginTop} ${cs.marginLeft} | ${cs.margin}`);
+      }
+      style.textContent =
+        '.d.d td { color: red !important; margin: 1px !important } td { color: blue !important; margin-bottom: 2px !important }';
+      td.removeAttribute('style');
+      out.push(`${w.getComputedStyle(td).color} ${w.getComputedStyle(td).marginBottom}`);
+      return out;
+    },
+    { jsdom },
+  );
+
+// A style attribute's margin or padding shorthand over a rule's with a
+// CSS-wide keyword (#155 review, black box, jsdom 27.4.0 to 30.1.3): the
+// attribute's value, 4px, not inherit.
+for (const jsdom of [30, 29, 28, 27])
+  parity(
+    `computed values: an inline box shorthand over a rule's CSS-wide keyword (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const style = d.head.appendChild(d.createElement('style'));
+      const p = d.body.appendChild(d.createElement('p'));
+      const out = [];
+      for (const [css, inline] of [
+        ['p { padding: inherit }', 'padding: 4px'],
+        ['p { margin: inherit }', 'margin: 4px'],
+        ['p { padding: initial }', 'padding: 4px'],
+        ['p { padding: unset }', 'padding: 4px 2px'],
+        ['p { margin: 1px }', 'margin: 4px'],
+      ]) {
+        style.textContent = css;
+        p.setAttribute('style', inline);
+        const cs = w.getComputedStyle(p);
+        const name = css.includes('margin') ? 'margin' : 'padding';
+        out.push(`${css} | ${inline} | ${cs.getPropertyValue(name)} ${cs.getPropertyValue(`${name}-top`)}`);
+      }
+      return out;
+    },
+    { jsdom },
+  );
+
 // After a style write the cascade parses the text the style wrote, but
 // keeps what that text does not show (#154 review, black box, jsdom 27.4.0
 // to 30.1.3): style.setProperty('border', 'var(--b)') after style.color
@@ -1250,6 +1360,53 @@ for (const jsdom of [30, 29, 28, 27])
         );
       }
       return out;
+    },
+    { jsdom },
+  );
+
+// From jsdom 28.1.0 (black box, 28.1.0 to 30.1.3) the later of two
+// !important declarations wins whatever their specificity; normal ones by
+// specificity. Before, all of them in document order (#121).
+test('computed values: the later of two !important declarations wins from jsdom 28.1.0', () => {
+  const read = (jsdom, css) => {
+    const w = createWindow({ jsdom });
+    w.document.head.innerHTML = `<style>${css}</style>`;
+    w.document.body.innerHTML = '<div class="d"><p></p></div>';
+    return w.getComputedStyle(w.document.querySelector('p')).color;
+  };
+  const important = '.d.d p { color: red !important } p { color: blue !important }';
+  const normal = '.d.d p { color: red } p { color: blue }';
+  for (const jsdom of ['28.1.0', '29.1.1', '30.1.2', '30.1.3']) {
+    assert.equal(read(jsdom, important), 'rgb(0, 0, 255)', jsdom);
+    assert.equal(read(jsdom, normal), 'rgb(255, 0, 0)', jsdom);
+  }
+  assert.equal(read('27.4.0', normal), 'rgb(0, 0, 255)');
+});
+
+// An !important longhand set over an !important shorthand loses its
+// !important before jsdom 30 (compat.longhandLosesImportant); after that
+// any later declaration of it wins, whatever its specificity (black box,
+// 28.1.0 and 29.1.1: .d.d td { padding-bottom: 7px !important } then td {
+// padding-bottom: 1px } gives 1px; 30.1.3 keeps 7px).
+for (const jsdom of [30, 29, 28])
+  parity(
+    `computed values: a longhand that lost its !important in the block (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      d.body.innerHTML = '<div class="d"><table><tbody><tr><td></td></tr></tbody></table></div>';
+      const td = d.querySelector('td');
+      const style = d.head.appendChild(d.createElement('style'));
+      return [
+        '.d td { padding: 8px !important } .d.d td { padding-bottom: 7px !important } td { padding-bottom: 1px }',
+        '.d td { padding: 8px !important } td { padding-bottom: 7px !important } .d.d td { padding-bottom: 1px }',
+        '.d td { padding: 8px !important } .d.d td { padding-bottom: 7px !important } td { padding: 1px }',
+        '.d.d td { padding: 8px !important } td { padding-bottom: 7px !important } .d td { padding-bottom: 1px } td { padding-bottom: 2px }',
+        '.d td { margin: 8px !important } .d.d td { margin-bottom: 7px !important } td { margin-bottom: 1px }',
+      ].map((css) => {
+        style.textContent = css;
+        const cs = w.getComputedStyle(td);
+        return `${css} | ${cs.paddingTop} ${cs.paddingBottom} ${cs.marginBottom} | ${cs.padding}`;
+      });
     },
     { jsdom },
   );

@@ -115,6 +115,8 @@ function addDeclarations(index, decls, entries, counter, compat) {
     // shorthand: it meets a pending longhand by order (cascadeByOrder).
     const from = ALIASES[property] ?? property;
     const direct = SHORTHANDS[from] === undefined;
+    // The declaration (cascadeInOrder groups its longhands' entries).
+    const id = counter.decls++;
     for (const [name, v] of cascadeExpand(property, value, decls.legacyFont, compat)) {
       let lists = index.get(name);
       if (!lists) index.set(name, (lists = { normal: [], important: [], pending: false }));
@@ -129,6 +131,7 @@ function addDeclarations(index, decls, entries, counter, compat) {
           important,
           direct,
           from,
+          decl: id,
         });
     }
   }
@@ -158,7 +161,7 @@ function mediaApplies(rule, mode, compat) {
 // knowing (ruleListSnapshot).
 function buildIndex(sheets, mode, compat, lists) {
   const index = new Map();
-  const counter = { n: 0 };
+  const counter = { n: 0, decls: 0 };
   const addRule = (rule) => {
     let entries;
     try {
@@ -183,10 +186,13 @@ function buildIndex(sheets, mode, compat, lists) {
       }
     }
   }
-  const compare = compat?.documentOrder ? byOrder : bySpecificityThenOrder;
+  // From jsdom 28.1.0 (black box, 28.1.0 to 30.1.3) the later of two
+  // !important declarations wins, whatever their selectors' specificity
+  // (.a.b td { color: red !important } td { color: blue !important } gives
+  // blue); before, every declaration applies in document order.
   for (const lists of index.values()) {
-    lists.normal.sort(compare);
-    lists.important.sort(compare);
+    lists.normal.sort(compat?.documentOrder ? byOrder : bySpecificityThenOrder);
+    lists.important.sort(byOrder);
   }
   return index;
 }
@@ -251,6 +257,7 @@ function inlineDeclarations(element) {
     // compat.varDropsImportant) is still !important to the attribute's
     // others (strong), not to the cascade.
     const strong = important || masked === true || written?.get(property)?.masked === true;
+    const from = ALIASES[property] ?? property;
     const entries = cascadeExpand(property, value, decls.legacyFont, compat);
     const shorthand = entries.length > 1 && entries[entries.length - 1][1] === PENDING ? entries[0][0] : null;
     // From jsdom 29 a border shorthand with var() after one of its
@@ -280,7 +287,11 @@ function inlineDeclarations(element) {
       }
       if (!strong && prior?.strong) continue;
       if (v === HIDE_UA && prior !== undefined) continue;
-      map.set(name, v === PENDING ? { value: v, important, strong, from: shorthand } : { value: v, important, strong });
+      // via: the declaration's property (cascadeInOrder).
+      map.set(
+        name,
+        v === PENDING ? { value: v, important, strong, from: shorthand } : { value: v, important, strong, via: from },
+      );
     }
   }
   es.inlineCascade = { text, map };
@@ -346,6 +357,170 @@ function cascadeByOrder(lists, element, compat) {
   return direct.order > pending.order ? direct : pending;
 }
 
+// jsdom 28.1.0 to 30.1.2 (compat.pendingByOrder 'all', black box: every
+// order, importance and specificity of padding-bottom: 7px, padding: 8px
+// and padding: var(--p) on 28.1.0, 29.1.1 and 30.1.2): the page's
+// declarations of margin, padding and their longhands apply in document
+// order to one declaration block, as setProperty would, each name only
+// if it wins over the one that set it last: an !important one over a
+// normal one, the later of two !important ones, a normal one with at
+// least its specificity, anything over an !important one the block no
+// longer holds as such. A shorthand's longhands, then the shorthand
+// itself (padding: 8px in a later, less specific rule still sets
+// padding-bottom: .d.d td { padding-bottom: 7px } td { padding: 8px }
+// gives 8px); with var() only the shorthand, which empties its longhands
+// (pending), and a longhand set after it removes it. A normal shorthand
+// leaves an !important longhand, and the block keeps the shorthand only
+// while its longhands share its importance (before jsdom 30 an !important
+// longhand set over an !important shorthand loses its !important:
+// compat.longhandLosesImportant). The block's entry for the longhand, or
+// for the shorthand itself while the block holds it (shorthandValue), or
+// undefined; null when another shorthand declares one of the longhands.
+// The block is kept with the element's cascaded values, for its other
+// longhands.
+const IN_ORDER = new Map(['margin', 'padding'].flatMap((s) => [[s, s], ...SHORTHANDS[s].map((l) => [l, s])]));
+function cascadeInOrder(index, element, name, shorthand, compat, inlineMap) {
+  const cache = element[S].cascaded;
+  const blocks = (cache.blocks ??= new Map());
+  let block = blocks.get(shorthand);
+  if (block === undefined) blocks.set(shorthand, (block = inOrderBlock(index, element, shorthand, compat, inlineMap)));
+  return block === null ? null : block.get(name);
+}
+function inOrderBlock(index, element, shorthand, compat, inlineMap) {
+  const longhands = SHORTHANDS[shorthand];
+  // The matching declarations, by declaration, with their selectors' highest specificity.
+  const events = new Map();
+  const matched = new Map();
+  for (const longhand of longhands) {
+    const lists = index.get(longhand);
+    if (lists === undefined) continue;
+    for (const list of [lists.normal, lists.important])
+      for (const entry of list) {
+        let matches = matched.get(entry.match);
+        if (matches === undefined) matched.set(entry.match, (matches = entry.match(element, NO_SCOPE)));
+        if (!matches) continue;
+        if (entry.from !== shorthand && entry.from !== longhand) return null;
+        let event = events.get(entry.decl);
+        if (event === undefined)
+          events.set(
+            entry.decl,
+            (event = {
+              decl: entry.decl,
+              from: entry.from,
+              important: entry.important,
+              specificity: entry.specificity,
+              values: new Map(),
+            }),
+          );
+        else if (entry.specificity > event.specificity) event.specificity = entry.specificity;
+        event.values.set(longhand, entry.value);
+      }
+  }
+  // The shorthand's own declared values (padding: 8px, padding: var(--p)).
+  const declared = index.get(shorthand);
+  if (declared !== undefined)
+    for (const list of [declared.normal, declared.important])
+      for (const entry of list) {
+        const event = events.get(entry.decl);
+        if (event !== undefined) event.own = entry.value;
+      }
+  // The style attribute's, last, over every rule: its shorthand (with
+  // var(): pending longhands), then its other longhands. The shorthand
+  // keeps its own value (padding: 4px over p { padding: inherit }).
+  const ordered = [...events.values()].sort((a, b) => a.decl - b.decl);
+  if (inlineMap) {
+    const inline = longhands.map((l) => inlineMap.get(l));
+    const pending = inline.find((entry) => entry?.value === PENDING && entry.from === shorthand);
+    const whole = inlineMap.get(shorthand);
+    if (pending !== undefined)
+      ordered.push({
+        from: shorthand,
+        important: pending.important,
+        specificity: Infinity,
+        values: new Map(longhands.map((l) => [l, PENDING])),
+        own: whole?.value,
+      });
+    const plain = pending === undefined && whole?.via === shorthand;
+    if (plain)
+      ordered.push({
+        from: shorthand,
+        important: whole.important,
+        specificity: Infinity,
+        values: new Map(longhands.map((l, i) => [l, inline[i]?.value])),
+        own: whole.value,
+      });
+    longhands.forEach((l, i) => {
+      const entry = inline[i];
+      if (entry !== undefined && entry.value !== PENDING && !(plain && entry.via === shorthand))
+        ordered.push({
+          from: l,
+          important: entry.important,
+          specificity: Infinity,
+          values: new Map([[l, entry.value]]),
+        });
+    });
+  }
+  const block = new Map(); // longhand -> { value, important, from }
+  if (ordered.length === 0) return block;
+  const loses = compat.longhandLosesImportant === true;
+  let own = null; // the shorthand's own entry: { pending, important, value }
+  const last = new Map(); // name -> { important, specificity } of the declaration that set it
+  const held = (n) => (n === shorthand ? own?.important : block.get(n)?.important) === true;
+  const wins = (n, event) => {
+    const prior = last.get(n);
+    if (prior === undefined) return true;
+    const important = held(n);
+    if (prior.important && !important) return true;
+    if (event.important !== important) return event.important;
+    return event.important || event.specificity >= prior.specificity;
+  };
+  const setLonghand = (longhand, value, event) => {
+    let important = event.important;
+    if (own !== null) {
+      if (own.pending) own = null;
+      else if (loses ? own.important || important : own.important !== important) {
+        if (loses && own.important && important) important = false;
+        own = null;
+      }
+    }
+    block.set(longhand, { value, important, from: event.from });
+  };
+  const setShorthand = (event) => {
+    const pending = event.values.get(longhands[0]) === PENDING;
+    let whole = true;
+    for (const l of longhands) {
+      if (pending) block.set(l, { value: PENDING, important: false, from: shorthand });
+      else if (block.get(l)?.important && !event.important) whole = false;
+      else block.set(l, { value: event.values.get(l), important: event.important, from: shorthand });
+    }
+    own = whole ? { pending, important: event.important, value: event.own } : null;
+  };
+  const record = (n, event) => last.set(n, { important: event.important, specificity: event.specificity });
+  for (const event of ordered) {
+    if (event.from !== shorthand) {
+      if (wins(event.from, event)) {
+        setLonghand(event.from, event.values.get(event.from), event);
+        record(event.from, event);
+      }
+      continue;
+    }
+    if (event.values.get(longhands[0]) !== PENDING)
+      for (const l of longhands)
+        if (wins(l, event)) {
+          setLonghand(l, event.values.get(l), event);
+          record(l, event);
+        }
+    if (wins(shorthand, event)) {
+      setShorthand(event);
+      record(shorthand, event);
+    }
+  }
+  // The shorthand itself while the block holds it (shorthandValue).
+  if (own !== null && own.value !== undefined)
+    block.set(shorthand, { value: own.value, important: own.important, from: shorthand });
+  return block;
+}
+
 // The cascaded value: important inline, important rules, inline, rules.
 // Cached per element until its root's rules, the document's tree or
 // attributes, or its style attribute change.
@@ -385,6 +560,7 @@ function cascaded(element, name) {
       detachedRev: ds.detachedRev,
       cssomRev: cssomChanges.rev,
       fontSize: undefined,
+      blocks: undefined,
     };
   } else if (cache.values.has(name)) return cache.values.get(name);
   let value = cascade(element, index, inlineMap, name);
@@ -427,6 +603,11 @@ function cascade(element, index, inlineMap, name) {
     inline = undefined;
   }
   if (inline?.important) return inline.value;
+  const shorthand = window[S].compat.pendingByOrder === 'all' ? IN_ORDER.get(name) : undefined;
+  const ruled =
+    shorthand === undefined ? null : cascadeInOrder(index, element, name, shorthand, window[S].compat, inlineMap);
+  if (ruled !== null)
+    return ruled === undefined ? cascadeUserAgent(element, name, ua, uaImportant, window) : ruled.value;
   const lists = index.get(name);
   // A pending inline longhand declared !important that lost it
   // (compat.varDropsImportant) meets the cascade's winner by order, as the
@@ -459,10 +640,14 @@ function cascade(element, index, inlineMap, name) {
     const v = firstMatch(lists.normal, element);
     if (v !== undefined) return v;
   }
-  // The user agent sheet (ua-sheet.js), under the page's. Before jsdom
-  // 28.1.0 the hidden attribute's display: none is the user agent sheet's
-  // too: a display rule wins over it (div { display: block } shows a div
-  // with hidden).
+  return cascadeUserAgent(element, name, ua, uaImportant, window);
+}
+
+// The user agent sheet (ua-sheet.js), under the page's. Before jsdom
+// 28.1.0 the hidden attribute's display: none is the user agent sheet's
+// too: a display rule wins over it (div { display: block } shows a div
+// with hidden).
+function cascadeUserAgent(element, name, ua, uaImportant, window) {
   if (uaHidden) return undefined;
   if (name === 'display' && window[S].compat.documentOrder && hiddenHides(element, window[S].compat)) return 'none';
   return (uaImportant ? undefined : uaValue(ua.important, element)) ?? uaValue(ua.normal, element);
@@ -683,6 +868,15 @@ function shorthandValue(element, name) {
     // computes to that value (gap: inherit, padding: var(--x)), and one
     // jsdom does not expand (cascadeExpand) to its declared value alone.
     const own = cascaded(element, name);
+    // jsdom 28.1.0 (cascadeInOrder, black box): margin and padding from
+    // the block their declarations apply to, '' when its longhands differ
+    // in importance (.d.d td { padding: 8px } td { padding-bottom: 7px
+    // !important }); its shorthand is cascaded(element, name).
+    const block = element[S].cascaded?.blocks?.get(name);
+    if (block != null && block.size > 0) {
+      const important = block.get(SHORTHANDS[name][0])?.important === true;
+      if (SHORTHANDS[name].some((l) => (block.get(l)?.important === true) !== important)) return '';
+    }
     // '' when a longhand declared over it wins (padding: var(--p), then
     // padding-top: 5px), which its pending longhands otherwise do.
     if (

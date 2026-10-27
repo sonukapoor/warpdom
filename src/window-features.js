@@ -1698,6 +1698,13 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // !important ones (cascade.js cascadeByOrder); before 28.1.0 all
     // declarations meet by order (documentOrder).
     pendingByOrder: pendingLonghands ? pendingByOrderMode(version) : null,
+    // Before jsdom 30 (black box: 28.1.0 and 29.1.1 lose it, 30.1.2 keeps
+    // it) an !important longhand set over an !important shorthand loses its
+    // !important (setProperty('padding', '8px', 'important') then
+    // setProperty('padding-bottom', '7px', 'important') reads
+    // padding-bottom: 7px), in the computed style's cascade too (cascade.js
+    // cascadeInOrder).
+    longhandLosesImportant: version[0] < 30,
     // A declaration with var() is not !important (black box, read through
     // cssText and getPropertyPriority: 27.4.0, 28.1.0 and 29.1.1 drop it,
     // 26.1.0 and 30.1.3 keep it; 27.0.1 and 27.1.0 measured with a
