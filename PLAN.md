@@ -4356,8 +4356,71 @@ case-release differences fixed, none added; differences left are #136,
 - Not modeled (#141): the rule cssText and getPropertyPriority()
   of var() declarations from 27.1.0 to 29.1.1, and the style attribute's
   (from 27.0.0 a var() declaration loses !important there too; border:
-  var(--b) !important is dropped to 28.1.0).
+  var(--b) !important is dropped to 28.1.0). Done: see below.
 
+## 2026-10-26: var() with !important in declarations (branch fix/141-var-important-serialization, #141)
+
+- Black box on the aliases (20.0.3 to 30.1.3, each with its own
+  cssstyle), boundaries inside 27 from #141's single-jsdom installs:
+  - 27.0.0 to 29.1.1: a declaration with var() (not a custom property)
+    loses its !important in the style attribute, cssText and setProperty
+    (cssText without it, getPropertyPriority ''); style sheets from 27.1.0
+    (rule cssText, insertRule, rule.style setters). In the attribute it
+    still keeps later normal declarations of the property out (color:
+    var(--c) !important; color: red is color: var(--c)); in a sheet it is
+    a normal declaration (color: red wins).
+  - 28.1.0 to 29.1.1, cascade: the attribute's color: var(--c, blue)
+    !important loses to a rule's color: red !important; a pending longhand
+    of padding: var(--p) !important still wins over .r { padding-top: 3px
+    !important } (by order, as the latest), not over .r { padding: 3px
+    !important }; border and its sides count as different shorthands.
+  - 27.0.0 to 28.1.0: in the attribute and cssText, border: var(--b) (any
+    value with var()) leaves the whole block empty, border-top and the
+    other sides with var() are dropped; setProperty and sheets keep them;
+    border-width, -style and -color with var() declare pending longhands.
+  - cssstyle 4.6.0 (jsdom 23.2.0, 24.1.3, 26.1.0): a custom property loses
+    its !important in the attribute, cssText and setProperty, not in rule
+    styles; 4.1.0 (jsdom 25.0.1) keeps it; 4.2 to 4.5 not measured.
+- warpdom: compat.varDropsImportant ('declarations' 27.0.x, 'all' 27.1.0
+  to 29.1.1), compat.customDropsImportant, compat.borderVarDrops, carried
+  on the style surface (setValidationMode now takes the compat object);
+  css.js parseInto drops the !important (masked in the attribute),
+  cascade.js no longer drops it itself and lets a masked pending inline
+  longhand meet the rules' winner by order.
+- Diff harness (warpdom before/after on 1.27M values: setProperty, the
+  attribute and a rule for every property with 19 values, normal and
+  !important, plus computed values, on all 12 aliases): 25,331 changed,
+  each checked against jsdom: 25,273 now match, 56 still differ (both
+  before and after), 2 regressed (computed, "border-width: var(--w)
+  !important !important" in 27.4.0 and 28.1.0: a doubled !important jsdom
+  drops, warpdom keeps; pending now). Every other value unchanged.
+- Not modeled: in style sheets (27.0.0 to 30.1.3) the last declaration of
+  a property wins whatever its importance (color: red !important; color:
+  blue is blue); a longhand after a var() shorthand replaces it in a sheet
+  and with cssstyle 4.x; shorthands set every longhand (length 5 for
+  padding: 2px) from 27; VAR(--c) (uppercase) declares nothing from 27;
+  before 26 (cssstyle 2.3 to 4.1) style sheets keep var() declarations
+  warpdom drops; in the attribute an !important var() declaration does not
+  replace an earlier !important one (27 to 30); from 29 a normal pending
+  inline longhand against !important rules.
+
+- Review fixes (#154): a declaration with a priority token left over
+  (color: var(--c) !important !important, var(--c) !, var(--c) !important
+  !foo, outside quotes and functions) is dropped from the style attribute,
+  an element's cssText and a rule's cssText, as jsdom 27.4.0 to 30.1.3 do
+  (the 2 regressions above now match). After a style write the cascade
+  parses the text the style wrote (jsdom computes from it: background:
+  url(a.png) center loses its position in 27 to 29) without dropping
+  border declarations with var(), and keeps the masked declarations from
+  the style object (css.js writtenDeclarations; jsdom 27 to 30:
+  style.setProperty('border', 'var(--b)') after style.color keeps the
+  color, an opacity write keeps padding: var(--p) !important masked).
+  setValidationMode looks the variant surface up before building it
+  (152 ns a call, was 236). Set directly to the text the style last wrote,
+  the style attribute is not parsed again (jsdom 27.4.0 and 28.1.0 keep
+  both declarations of style.color = 'red' and style.setProperty('border',
+  'var(--b)')); any other text is parsed and clears that marker
+  (es.styleWritten; resetWindow clears it too).
 
 ## 2026-10-26: lazy window members and receivers that are not the window (branch fix/98-lazy-setters, #98)
 

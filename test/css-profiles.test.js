@@ -663,3 +663,225 @@ for (const jsdom of [30, 29, 28, 27, 26, 20])
     },
     { jsdom },
   );
+
+// !important on a declaration with var() (#141, black box): from jsdom
+// 27.0.0 to 29.1.1 the style attribute, cssText and setProperty drop it
+// (in the attribute it still keeps a later normal declaration of the
+// property out), and so do style sheets from 27.1.0; custom properties
+// keep it, but with cssstyle 4.6 (jsdom 26) in the attribute, cssText and
+// setProperty. In jsdom 27 and 28 the attribute's border with var()
+// declares nothing at all, a side with var() is dropped.
+const VAR_IMPORTANT = [
+  'padding: var(--p) !important',
+  'color: var(--c) !important',
+  'margin: 1px var(--m) !important',
+  'background: var(--b) !important; color: red !important',
+  'width: calc(var(--w) + 1px) !important; height: 1px !important',
+  'font: var(--f) !important',
+  'border-width: var(--w) !important',
+  'color: var(--c) !important; width: 1px !important',
+  '--x: 1px !important',
+  '--x: var(--y) !important; --z: 2px',
+];
+const VAR_IMPORTANT_ATTRIBUTE = [
+  'color: var(--c) !important; color: red',
+  'padding: var(--p) !important; padding-top: 1px',
+  'border: var(--b) !important',
+  'color: red; border: 1px solid var(--c); width: 1px',
+  'color: red; border-top: var(--b); width: 1px',
+  'border-left: var(--b) !important; color: red !important',
+];
+const PRIORITY_NAMES = [
+  'padding',
+  'color',
+  'margin',
+  'background',
+  'width',
+  'height',
+  'font',
+  'border-width',
+  '--x',
+  '--z',
+];
+const readBlock = (style) =>
+  `${style.cssText} (${style.length}) ${PRIORITY_NAMES.filter((name) => style.getPropertyPriority(name)).join(' ')}`;
+for (const jsdom of [30, 29, 28, 27, 26])
+  parity(
+    `style: var() with !important (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const out = [];
+      // jsdom 26 replaces a shorthand with a later longhand of it (not
+      // modeled).
+      const attribute = VAR_IMPORTANT_ATTRIBUTE.filter((text) => jsdom >= 27 || !text.includes('padding-top'));
+      for (const text of [...VAR_IMPORTANT, ...attribute]) {
+        const el = d.createElement('div');
+        el.setAttribute('style', text);
+        out.push(readBlock(el.style));
+        el.style.opacity = '0';
+        out.push(el.getAttribute('style'));
+        const set = d.createElement('div');
+        set.style.cssText = text;
+        out.push(readBlock(set.style));
+      }
+      const sheet = d.head.appendChild(d.createElement('style'));
+      sheet.textContent = VAR_IMPORTANT.map((text, i) => `.r${i} { ${text} }`).join('\n');
+      for (const rule of sheet.sheet.cssRules) out.push(readBlock(rule.style));
+      const rule = sheet.sheet.cssRules[0];
+      rule.style.cssText = 'color: var(--c) !important; padding: var(--p) !important';
+      out.push(readBlock(rule.style));
+      for (const [name, value] of [
+        ['padding', 'var(--p)'],
+        ['color', 'var(--c)'],
+        ['border', 'var(--b)'],
+        ['--x', '1px'],
+      ]) {
+        const el = d.createElement('div');
+        el.style.setProperty(name, value, 'important');
+        rule.style.setProperty(name, value, 'important');
+        out.push(readBlock(el.style), readBlock(rule.style));
+      }
+      return out;
+    },
+    { jsdom },
+  );
+
+// Where those versions start (#141; 27.0.1 and 27.1.0 measured with a
+// single-jsdom install of each release): the style attribute drops the
+// !important from 27.0.1, style sheets from 27.1.0; cssstyle 4.1.0 keeps
+// a custom property's, 4.6.0 drops it.
+test('style: var() with !important by jsdom and cssstyle version', () => {
+  const read = (profile) => {
+    const w = createWindow(profile);
+    const el = w.document.createElement('div');
+    el.setAttribute('style', 'padding: var(--p) !important; --x: 1px !important');
+    const sheet = w.document.head.appendChild(w.document.createElement('style'));
+    sheet.textContent = '.r { padding: var(--p) !important; --x: 1px !important }';
+    const border = w.document.createElement('div');
+    border.setAttribute('style', 'color: red; border: var(--b)');
+    return [el.style.cssText, sheet.sheet.cssRules[0].style.cssText, border.style.cssText];
+  };
+  const both = 'padding: var(--p) !important; --x: 1px !important;';
+  const dropped = 'padding: var(--p); --x: 1px !important;';
+  const custom = (cssstyle) => {
+    const el = createWindow({ jsdom: '26.1.0', cssstyle }).document.createElement('div');
+    el.setAttribute('style', '--x: 1px !important');
+    return el.style.cssText;
+  };
+  assert.equal(custom('4.1.0'), '--x: 1px !important;');
+  assert.equal(custom('4.6.0'), '--x: 1px;');
+  assert.deepEqual(read({ jsdom: '26.1.0', cssstyle: '4.6.0' }), [
+    'padding: var(--p) !important; --x: 1px;',
+    both,
+    'color: red; border: var(--b);',
+  ]);
+  assert.deepEqual(read({ jsdom: '27.0.1' }), [dropped, both, '']);
+  assert.deepEqual(read({ jsdom: '27.1.0' }), [dropped, dropped, '']);
+  assert.deepEqual(read({ jsdom: '28.1.0' }), [dropped, dropped, '']);
+  assert.deepEqual(read({ jsdom: '29.1.1' }), [dropped, dropped, 'color: red; border: var(--b);']);
+  assert.deepEqual(read({ jsdom: '30.1.3' }), [both, both, 'color: red; border: var(--b);']);
+});
+
+// A priority token left over after the declaration's !important (#154
+// review, black box, jsdom 27.4.0 to 30.1.3): the style attribute, an
+// element's cssText and a rule's cssText drop the declaration (color:
+// var(--c) !important !important, var(--c) !, var(--c) !important !foo);
+// one in quotes, in a function, in a [] or {} block or escaped (\!) is
+// part of the value. setProperty keeps it as written, as before.
+const STRAY_PRIORITY = [
+  'var(--c) !important !important',
+  'var(--c)!important!important',
+  'var(--c) ! important ! important',
+  'var(--c) !IMPORTANT !important',
+  'var(--c) !',
+  'var(--c) !important !foo',
+  'var(--c, "!important") !important',
+  'var(--c, a !important)',
+  'f(!important) var(--c)',
+  '[!important]',
+  '{!important}',
+  'a [b !important] c',
+  '[!] !important',
+  '[!important] !important',
+  '{!important} !important',
+  'foo\\!important bar',
+  'before \\!important after',
+  'var(--c) \\!important \\!x',
+];
+for (const jsdom of [30, 29, 28, 27])
+  parity(
+    `style: a priority token left over (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const out = [];
+      d.head.innerHTML = '<style>.r { top: 0 }</style>';
+      const rule = d.styleSheets[0].cssRules[0].style;
+      for (const name of ['color', 'margin', '--x'])
+        for (const value of STRAY_PRIORITY) {
+          const text = `${name}: ${value}; left: 1px`;
+          const el = d.createElement('div');
+          el.setAttribute('style', text);
+          const set = d.createElement('div');
+          set.style.cssText = text;
+          const prop = d.createElement('div');
+          prop.style.setProperty(name, value);
+          rule.cssText = text;
+          out.push(`${text} | ${el.style.cssText} | ${set.style.cssText} | ${prop.style.cssText} | ${rule.cssText}`);
+        }
+      return out;
+    },
+    { jsdom },
+  );
+// The default profile (the latest jsdom) keeps a ! that is in a block or
+// escaped (#154, #155 review; jsdom 30.1.3 black box).
+test('style: a ! in a block or escaped is part of the value (default profile)', () => {
+  const d = createWindow().document;
+  for (const value of ['[!important]', '{!important}', 'foo\\!important bar', 'before \\!important after']) {
+    const el = d.createElement('div');
+    el.setAttribute('style', `--x: ${value}`);
+    assert.equal(el.style.cssText, `--x: ${value};`);
+    el.style.cssText = `--x: ${value}; left: 1px`;
+    assert.equal(el.style.cssText, `--x: ${value}; left: 1px;`);
+  }
+});
+// A comment is not a priority token, and var() in a string is not a
+// var() function (#154 review, black box, jsdom 27.4.0 to 30.1.3): --x:
+// red /*!important*/ is kept; border: "var(--b)" is an invalid border,
+// not one with var() that empties the block (27, 28), and font-family:
+// "var(--face)" !important keeps its !important from 28 (27 drops it for
+// content: "var(--x)" !important, but not for font-family or
+// background-image, which is not modeled).
+const COMMENTS_AND_STRINGS = [
+  '--x: red /*!important*/',
+  '--x: 1 /* !important */ !important',
+  'color: var(--c) /*!important*/',
+  'color: var(--c) /* !important */ !important',
+  'color: red; border: "var(--b)"; width: 1px',
+  'content: "var(--x)" !important',
+  'background-image: url(var(--image).png) !important',
+];
+const STRINGS_FROM_28 = [
+  'font-family: "var(--face)" !important',
+  'font-family: a, "var(--face)" !important',
+  'background-image: url("var(--image).png") !important',
+];
+for (const jsdom of [30, 29, 28, 27])
+  parity(
+    `style: comments and strings are not priority tokens or var() (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const out = [];
+      for (const text of jsdom >= 28 ? [...COMMENTS_AND_STRINGS, ...STRINGS_FROM_28] : COMMENTS_AND_STRINGS) {
+        const el = d.createElement('div');
+        el.setAttribute('style', `${text}; margin: 0px`);
+        const set = d.createElement('div');
+        set.style.cssText = text;
+        out.push(`${text} | ${el.style.cssText} | ${set.style.cssText}`);
+      }
+      const prop = d.createElement('div');
+      prop.style.setProperty('font-family', '"var(--face)"', 'important');
+      if (jsdom >= 28) out.push(prop.style.cssText);
+      return out;
+    },
+    { jsdom },
+  );

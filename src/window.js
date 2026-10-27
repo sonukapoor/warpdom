@@ -323,14 +323,7 @@ export function createWindow(options = {}) {
     if (alias) {
       const ctor = materialize(alias);
       ctors[name] = ctor;
-      if (name === 'CSSStyleProperties')
-        setValidationMode(
-          ctor.prototype,
-          cssMode(window[S].compat),
-          window[S].compat.styleSurface,
-          window[S].compat.legacyFont,
-          window[S].compat.colorKeywords,
-        );
+      if (name === 'CSSStyleProperties') setValidationMode(ctor.prototype, cssMode(window[S].compat), window[S].compat);
       Object.defineProperty(protos, name, {
         value: ctor.prototype,
         writable: true,
@@ -421,14 +414,7 @@ export function createWindow(options = {}) {
     // CSS value validation: every property's grammar from jsdom 27; before,
     // jsdom checked a few dozen properties ('jsdom25': the same, with
     // url() serialized without quotes, as cssstyle before 4.3.1 did).
-    if (name === 'CSSStyleProperties')
-      setValidationMode(
-        proto,
-        cssMode(window[S].compat),
-        window[S].compat.styleSurface,
-        window[S].compat.legacyFont,
-        window[S].compat.colorKeywords,
-      );
+    if (name === 'CSSStyleProperties') setValidationMode(proto, cssMode(window[S].compat), window[S].compat);
     Object.defineProperty(protos, name, { value: proto, writable: true, enumerable: true, configurable: true });
     if (Object.getOwnPropertyDescriptor(window, name)?.get === lazyGetters[name]) {
       Object.defineProperty(window, name, { value: ctor, writable: true, configurable: true });

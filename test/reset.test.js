@@ -268,3 +268,18 @@ test('resetWindow restores viewport values assigned as -0', () => {
     assert.deepEqual([Object.is(w.scrollY, 0), Object.is(w.pageXOffset, 0)], [true, true], jsdom);
   }
 });
+
+// The style attribute a style write serialized is not parsed again when
+// set to that text (css.js styleAttributeChanged); a reset forgets it.
+test('resetWindow: the body style a style write left is forgotten', () => {
+  const w = createWindow({ url: 'http://localhost:3000/', jsdom: '28.1.0' });
+  snapshotWindow(w);
+  const body = w.document.body;
+  body.style.color = 'red';
+  body.style.setProperty('border', 'var(--b)');
+  const written = body.getAttribute('style');
+  resetWindow(w);
+  body.setAttribute('style', written);
+  assert.equal(body.style.cssText, '');
+  assert.equal(w.getComputedStyle(body).color, 'rgb(0, 0, 0)');
+});
