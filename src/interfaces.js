@@ -136,6 +136,9 @@ import {
 // in its place). Nothing is copied at load.
 const mix = (...objects) => objects.flat();
 
+// Element's ARIAMixin members (Element compat).
+const ARIA_MEMBER = /^(?:role|aria[A-Z]\w*)$/;
+
 const win = (node) => state(node).doc[S].window;
 const internals = (node) => win(node)[S];
 
@@ -1500,6 +1503,14 @@ export const INTERFACES = [
   {
     name: 'Element',
     parent: 'Node',
+    // role and the ARIA attributes (ARIAMixin) from jsdom 23.1.0. Before,
+    // Vue sets ariaLabel as an attribute named arialabel, not as a property
+    // (Element Plus's table-v2 tests read those attributes).
+    // Left out of the cached descriptors of a 'no-aria' variant.
+    variant: (compat) => (compat.ariaMixin ? null : 'no-aria'),
+    adjust(descriptors) {
+      for (const key of Object.keys(descriptors)) if (ARIA_MEMBER.test(key)) delete descriptors[key];
+    },
     members: mix(parentNode, childNode, elementSiblings, ELEMENT_LAYOUT, {
       [Symbol.unscopables]: {
         unscopables: ['slot', 'before', 'after', 'replaceWith', 'remove', 'prepend', 'append', 'replaceChildren'],

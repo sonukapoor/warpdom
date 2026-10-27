@@ -124,7 +124,8 @@ on, as measured on jsdom's releases: `crypto.randomUUID()` from 22.1.0,
 argument of its `has()` and `delete()` from 23.0.0, `ElementInternals` and
 `attachInternals()` from 23.1.0 (its `labels` and form-associated custom
 elements from 26.0.0, its role and ARIA accessors throw jsdom's TypeError
-until 27.0.0), `Headers`' `getSetCookie()` (separate `Set-Cookie` values)
+until 27.0.0), Element's `role` and ARIA attributes (`ariaLabel`, ...)
+also from 23.1.0, `Headers`' `getSetCookie()` (separate `Set-Cookie` values)
 from 24.1.0, the SVG element interfaces of `g`, `defs`, `desc`,
 `metadata`, `switch` and `symbol`, `SVGRect`, `viewBox`,
 `preserveAspectRatio` and `createSVGRect()` from 26.1.0,
@@ -137,7 +138,8 @@ from 24.1.0, the SVG element interfaces of `g`, `defs`, `desc`,
 `WebAssembly`, `WebSocket`, `XMLHttpRequest`, `SVGNumber`, `SVGStringList`, `SVGAnimatedString`,
 `PageTransitionEvent`, the empty `navigator.plugins` and
 `navigator.mimeTypes`, and media elements' `audioTracks` and `videoTracks`
-exist in every version). Before 28.1.0 an `svg` element's window event
+exist in every version). Before 30.1.1 a disabled button, input, select or textarea with a
+`tabindex` attribute (also one in a disabled fieldset) can be focused. Before 28.1.0 an `svg` element's window event
 handlers (`onunload`, `onmessage`, ...) are the window's, as `body`'s are.
 Event handlers follow the version too: `oncopy`, `oncut`, `onpaste`,
 `onbeforeinput`, the touch handlers and 11 others from 22.1.0 (before,
@@ -621,7 +623,8 @@ Other deliberate differences:
   every event (much faster to create events; only interface-shape checks
   can tell).
 - `tabindex="abc"` gives the element's default tab index (jsdom: 0); a
-  disabled `fieldset` is not focusable.
+  disabled `fieldset`, `optgroup` or `option` is not focusable, also with
+  a `tabindex` (jsdom focuses one in every version).
 - Standard behavior where jsdom deviates: `FormData` and disabled options,
   `formnovalidate`, `Selection.containsNode`, event handler re-registration
   order, failed custom elements and `:defined`, XPath functions jsdom's

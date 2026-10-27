@@ -57,7 +57,9 @@ function isSuggestedFocusable(el) {
   }
 }
 
-function isActuallyDisabled(el) {
+// formControlsOnly: only the fieldset, optgroup and option checks apply (the
+// pre-30.1.1 exception for form controls with a tabindex).
+function isActuallyDisabled(el, formControlsOnly = false) {
   const s = el[S];
   if (s.ns !== HTML_NS) return false;
   switch (s.tag) {
@@ -65,7 +67,7 @@ function isActuallyDisabled(el) {
     case 'input':
     case 'select':
     case 'textarea':
-      return isDisabled(el);
+      return !formControlsOnly && isDisabled(el);
     case 'fieldset':
     case 'optgroup':
     case 'option':
@@ -91,8 +93,14 @@ function isRendered(el) {
   return true;
 }
 
+// jsdom before 30.1.1 focused a disabled button, input, select or textarea
+// that has a tabindex (Element Plus's focus utilities give one
+// tabindex="-1" and focus it). A disabled fieldset, optgroup or option
+// stays unfocusable in every profile (a deliberate difference).
 export function isFocusableElement(el) {
-  return isRendered(el) && !isActuallyDisabled(el) && (tabindexValue(el) !== null || isSuggestedFocusable(el));
+  if (!isRendered(el)) return false;
+  if (tabindexValue(el) !== null) return !isActuallyDisabled(el, el[S].doc[S].window[S].compat.disabledTabindexFocus);
+  return !isActuallyDisabled(el) && isSuggestedFocusable(el);
 }
 
 // The document's viewport is a focusable area when it has a browsing context.

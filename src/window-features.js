@@ -1679,6 +1679,9 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // characters before 24.0.0 and from 30.1.0 (between: elsewhere).
     hardWrap: before(version, [24, 0, 0]) || !before(version, [30, 1, 0]),
     focusIgnoresRendering: before(version, [30, 1, 2]),
+    // A disabled button, input, select or textarea with a tabindex is
+    // focusable before 30.1.1 (black box: 16.4.0 to 30.1.0 focus it).
+    disabledTabindexFocus: before(version, [30, 1, 1]),
     detachedCheckableEvents: before(version, [16, 5, 2]),
     cssstyle: version[0] < 27 ? (css ? cssText : undefined) : (cssstyle ?? undefined),
     cssstyleMajor: css ? css[0] : 0,
@@ -1811,6 +1814,9 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // form-associated custom elements from 26.0.0; its role and ARIA
     // accessors throw before 27.0.0.
     elementInternals: !before(version, [23, 1, 0]),
+    // Element's role and ARIA attribute accessors, also from 23.1.0
+    // (black box: none in 16.4.0 to 23.0.1).
+    ariaMixin: !before(version, [23, 1, 0]),
     internalsLabels: !before(version, [26, 0, 0]),
     internalsAria: !before(version, [27, 0, 0]),
     rootColor:

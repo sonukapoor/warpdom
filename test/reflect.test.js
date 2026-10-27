@@ -87,6 +87,32 @@ parity('ARIA reflection (ARIAMixin)', (w) => {
   return out;
 });
 
+// Before jsdom 23.1.0 Element has no role or ARIA accessors: an assignment
+// is an expando, and Vue sets ariaLabel as an attribute named arialabel
+// (Element Plus's table-v2 tests read it).
+const noAriaScenario = (w) => {
+  const div = w.document.createElement('div');
+  const members = Object.getOwnPropertyNames(w.Element.prototype).filter((k) => /^(role|aria[A-Z])/.test(k));
+  div.ariaLabel = 'Close';
+  div.role = 'button';
+  return [members, 'ariaExpanded' in div, div.hasAttribute('aria-label'), div.hasAttribute('role'), div.ariaLabel];
+};
+for (const jsdom of [20, 22]) parity(`no ARIA reflection (jsdom ${jsdom})`, noAriaScenario, { jsdom });
+
+test('ARIA reflection per jsdom version: boundary 23.1.0', () => {
+  const has = (jsdom) => 'ariaLabel' in createWindow({ jsdom }).document.body;
+  assert.deepEqual(['16.4.0', '22.1.0', '23.0.1', '23.1.0', '26.1.0', 16, 23, 30].map(has), [
+    false,
+    false,
+    false,
+    true,
+    true,
+    false,
+    true,
+    true,
+  ]);
+});
+
 // WebIDL: undefined converts to null for a nullable DOMString, so it removes
 // the attribute (jsdom 26 and 30 alike).
 for (const jsdom of [26, 30]) {
