@@ -1991,12 +1991,9 @@ export const FORM_MEMBERS = new Map([
         return this.options.namedItem(name);
       },
       // Iterable over its options, as an interface with an indexed getter
-      // (WebIDL). jsdom's is Array.prototype.values over indexed properties;
-      // warpdom iterates the list of options directly (the same items).
-      [Symbol.iterator]() {
-        state(this);
-        return listOfOptions(this).slice()[Symbol.iterator]();
-      },
+      // (WebIDL): Array.prototype.values over the live indexed properties,
+      // as in jsdom.
+      [Symbol.iterator]: Array.prototype.values,
       add(element, before = undefined) {
         this.options.add(element, before);
       },
@@ -2289,9 +2286,19 @@ function formControlsNamedItem(list, name) {
   const found = items(list).filter((el) => attr(el, 'id') === key || attr(el, 'name') === key);
   if (found.length === 0) return null;
   if (found.length === 1) return found[0];
-  return liveList(state(list).protos.RadioNodeList, () =>
-    items(list).filter((el) => attr(el, 'id') === key || attr(el, 'name') === key),
-  );
+  // Filtered again only when the form's elements are new (any change to the
+  // tree or an attribute makes them new, forms.js cached): iterating reads
+  // the items at every step.
+  let from = null;
+  let radios = null;
+  return liveList(state(list).protos.RadioNodeList, () => {
+    const all = items(list);
+    if (all !== from) {
+      from = all;
+      radios = all.filter((el) => attr(el, 'id') === key || attr(el, 'name') === key);
+    }
+    return radios;
+  });
 }
 
 const FORM_CONTROLS_NAMED = { get: formControlsNamedItem, names: htmlCollectionNames, unenumerable: true };

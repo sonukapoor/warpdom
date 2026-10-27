@@ -19,7 +19,7 @@ import {
   validNamespacePrefix,
   tooFewArguments,
 } from './internal.js';
-import { liveList } from './collections.js';
+import { liveList, iterate } from './collections.js';
 import { styleAttributeChanged } from './css.js';
 
 const ATTRIBUTE_NODE = 2;
@@ -532,9 +532,8 @@ export const ATTRIBUTE_INTERFACES = [
         if (!attr) throw domError(`No item with namespace '${ns}' and name '${localName}' was found.`, 'NotFoundError');
         return removeAttributeNode(state(this).element, attr);
       },
-      [Symbol.iterator]() {
-        return attributeArray(state(this).element)[Symbol.iterator]();
-      },
+      // Over the live indexed properties, as jsdom's (collections.js).
+      ...iterate,
     },
   },
   {

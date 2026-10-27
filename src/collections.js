@@ -62,6 +62,10 @@ class ListState {
     this.named = named;
     this.setIndex = setIndex;
     this.proxy = null;
+    this.target = null;
+    // Set once the list has an own length or another prototype: its
+    // iteration functions then read its length and items as properties.
+    this.custom = false;
   }
 
   items() {
@@ -87,6 +91,8 @@ class ListState {
     // Internal state belongs to the collection itself, not to objects that
     // inherit from it (an HTMLCollection used as a prototype).
     if (key === S) return receiver === this.proxy ? this : undefined;
+    // @@iterator: for...of and spreading call it right after.
+    lastState = this;
     return Reflect.get(t, key, receiver);
   }
 
@@ -133,7 +139,13 @@ class ListState {
       this.named.get(this.proxy, key) !== null
     )
       return false;
+    if (key === 'length') this.custom = true;
     return Reflect.defineProperty(t, key, desc);
+  }
+
+  setPrototypeOf(t, proto) {
+    this.custom = true;
+    return Reflect.setPrototypeOf(t, proto);
   }
 
   set(t, key, value, receiver) {
@@ -217,60 +229,140 @@ export function liveList(proto, getItems, named = undefined, setIndex = null) {
     named !== undefined ? named : typeof proto.namedItem === 'function' ? HTML_COLLECTION_NAMED : null,
     setIndex,
   );
-  return (s.proxy = new Proxy(Object.create(proto), s));
+  return (s.proxy = new Proxy((s.target = Object.create(proto)), s));
 }
 
 // A static NodeList (querySelectorAll) over an array that never changes.
 // The caller must not mutate the array afterwards.
 export function staticList(proto, array) {
   const s = new ListState(array, null, null, null);
-  return (s.proxy = new Proxy(Object.create(proto), s));
+  return (s.proxy = new Proxy((s.target = Object.create(proto)), s));
 }
 
-// Iterators over a list's current items (WebIDL value and pair iterators
-// read the length and the item at each step, as Array.prototype.values
-// does), so iterating a live list sees changes made since it started.
-// The list's items are its cached array, rebuilt only after a change.
+// The list interfaces' iteration functions. In jsdom (black box 20.0.3 to
+// 30.1.3) the @@iterator of NodeList, HTMLCollection, NamedNodeMap, FileList,
+// StyleSheetList, of CSSRuleList and MediaList from 29, and of the subclasses
+// HTMLFormControlsCollection, HTMLOptionsCollection and RadioNodeList is
+// Array.prototype.values itself, and NodeList's forEach, keys, values and
+// entries are Array.prototype's. Those read the length and the item through
+// the list's Proxy traps at every step, about three times the cost of
+// reading the cached items directly, so warpdom keeps its own functions with
+// the same name, length and behavior: an iterator reads the length and the
+// item at each step (iterating a live list sees changes made since it
+// started; once done it stays done), forEach reads the length once and skips
+// the indices removed meanwhile, and any other this value, a list whose
+// length is not the interface's own, or an invalid callback goes to
+// Array.prototype's.
+// The iterators inherit from %ArrayIteratorPrototype%: Iterator helpers and
+// the class string are the same.
 const VALUES = 0,
   KEYS = 1,
   ENTRIES = 2;
-class ListIterator {
-  constructor(list, kind) {
-    this.list = list;
-    this.kind = kind;
-    this.index = 0;
-  }
-  next() {
-    const list = this.list;
-    if (list === null) return { value: undefined, done: true };
-    const array = items(list);
-    const i = this.index;
-    if (i >= array.length) {
-      this.list = null;
-      return { value: undefined, done: true };
-    }
-    this.index = i + 1;
-    const kind = this.kind;
-    return { value: kind === VALUES ? array[i] : kind === KEYS ? i : [i, array[i]], done: false };
-  }
-  [Symbol.iterator]() {
-    return this;
-  }
-}
-Object.defineProperty(ListIterator.prototype, Symbol.toStringTag, { value: 'Array Iterator', configurable: true });
-for (const key of ['constructor', 'next', Symbol.iterator]) {
-  Object.defineProperty(ListIterator.prototype, key, { enumerable: false });
+// Calls the callback without reading its call property, as
+// Array.prototype.forEach does.
+const { apply } = Reflect;
+const ARRAY_ITERATOR = Object.getPrototypeOf([][Symbol.iterator]());
+const { forEach: arrayForEach, keys: arrayKeys, values: arrayValues, entries: arrayEntries } = Array.prototype;
+
+// The list's state when this is the list whose get trap ran last, else
+// null. That is the list for list.forEach(), list.values(), for...of and
+// spreading (each reads the function through the list a moment before). Any
+// other this value goes to Array.prototype's function, which behaves the
+// same on a list (jsdom's is that function), only slower; nothing else is
+// read from it first: borrowed for another array-like (a Proxy among them)
+// the functions make only Array.prototype's accesses, and recognizing a
+// list by identity instead (a WeakMap or a private field per list) cost
+// every new list, querySelectorAll's among them, about 60 ns.
+function listState(list) {
+  const last = lastState;
+  return last !== null && last.proxy === list ? last : null;
 }
 
-// The list interfaces' @@iterator; their subclasses (HTMLFormControlsCollection,
-// HTMLOptionsCollection, RadioNodeList) have the same function as their own,
-// as in jsdom (black box 20.0.3 to 30.1.3: Array.prototype.values on each).
-export const iterate = {
-  [Symbol.iterator]() {
-    items(this);
-    return new ListIterator(this, VALUES);
+// The list interfaces' own length getters (window.js registers them).
+const LENGTH_GETTERS = new WeakSet();
+export function listLengthGetter(get) {
+  LENGTH_GETTERS.add(get);
+}
+const lookupGetter = Object.prototype.__lookupGetter__;
+
+// The list's state when this is that list and its length is the interface's
+// own (its cached items' length), else null: an own length, another
+// prototype or a length redefined on a prototype is read as a property, as
+// Array.prototype's functions read it.
+function plainListState(list) {
+  const s = listState(list);
+  return s !== null && !s.custom && LENGTH_GETTERS.has(lookupGetter.call(s.target, 'length')) ? s : null;
+}
+
+class ListIterator {
+  // Private: an Array Iterator has no own properties.
+  #state;
+  #kind;
+  #index = 0;
+  constructor(state, kind) {
+    this.#state = state;
+    this.#kind = kind;
+  }
+  // As an Array Iterator: the length and the item at each step, from the
+  // cached items, or as properties once the list has an own length (or
+  // another prototype) made after the iterator.
+  next() {
+    const s = this.#state;
+    if (s === null) return { value: undefined, done: true };
+    const custom = s.custom;
+    const array = custom ? null : s.items();
+    const i = this.#index;
+    if (i >= (custom ? toLength(s.proxy.length) : array.length)) {
+      this.#state = null;
+      return { value: undefined, done: true };
+    }
+    this.#index = i + 1;
+    const kind = this.#kind;
+    if (kind === KEYS) return { value: i, done: false };
+    const value = custom ? s.proxy[i] : array[i];
+    return { value: kind === VALUES ? value : [i, value], done: false };
+  }
+}
+Object.setPrototypeOf(ListIterator.prototype, ARRAY_ITERATOR);
+for (const key of ['constructor', 'next']) Object.defineProperty(ListIterator.prototype, key, { enumerable: false });
+
+// ToLength (ECMAScript), with the common case first. Unary plus is ToNumber:
+// a BigInt, or an object that converts to one, throws (Number() takes them).
+function toLength(v) {
+  if (typeof v === 'number' && v >= 0 && v <= 4294967295 && v === Math.floor(v)) return v;
+  const n = Math.trunc(+v);
+  return n > 0 ? Math.min(n, Number.MAX_SAFE_INTEGER) : 0;
+}
+
+const iteration = {
+  forEach(callback, thisArg = undefined) {
+    const s = plainListState(this);
+    if (s === null || typeof callback !== 'function') return arrayForEach.call(this, callback, thisArg);
+    const length = s.items().length;
+    for (let i = 0; i < length; i++) {
+      const array = s.items();
+      if (i < array.length) apply(callback, thisArg, [array[i], i, this]);
+      // An index the list no longer has: a prototype's, as for an array.
+      else if (i in this) apply(callback, thisArg, [this[i], i, this]);
+    }
+  },
+  entries() {
+    const s = plainListState(this);
+    return s === null ? arrayEntries.call(this) : new ListIterator(s, ENTRIES);
+  },
+  keys() {
+    const s = plainListState(this);
+    return s === null ? arrayKeys.call(this) : new ListIterator(s, KEYS);
+  },
+  values() {
+    const s = plainListState(this);
+    return s === null ? arrayValues.call(this) : new ListIterator(s, VALUES);
   },
 };
+
+// The list interfaces' @@iterator (their subclasses have the same function
+// as their own, as in jsdom).
+export const iterate = { [Symbol.iterator]: iteration.values };
 
 // item(index) takes a WebIDL unsigned long: ToUint32 (item(-1) is
 // item(4294967295)).
@@ -289,21 +381,7 @@ export const COLLECTION_INTERFACES = [
         return items(this).length;
       },
       ...item,
-      forEach(callback, thisArg) {
-        items(this).forEach((node, i) => callback.call(thisArg, node, i, this));
-      },
-      entries() {
-        items(this);
-        return new ListIterator(this, ENTRIES);
-      },
-      keys() {
-        items(this);
-        return new ListIterator(this, KEYS);
-      },
-      values() {
-        items(this);
-        return new ListIterator(this, VALUES);
-      },
+      ...iteration,
       ...iterate,
     },
   },
