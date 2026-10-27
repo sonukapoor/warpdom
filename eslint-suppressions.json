@@ -221,7 +221,7 @@
   },
   "test/window-features.test.js": {
     "no-nested-ternary": {
-      "count": 3
+      "count": 2
     }
   },
   "test/xhr.test.js": {
