@@ -124,7 +124,8 @@ on, as measured on jsdom's releases: `crypto.randomUUID()` from 22.1.0,
 argument of its `has()` and `delete()` from 23.0.0, `ElementInternals` and
 `attachInternals()` from 23.1.0 (its `labels` and form-associated custom
 elements from 26.0.0, its role and ARIA accessors throw jsdom's TypeError
-until 27.0.0), `Headers`' `getSetCookie()` (separate `Set-Cookie` values)
+until 27.0.0), Element's `role` and ARIA attributes (`ariaLabel`, ...)
+also from 23.1.0, `Headers`' `getSetCookie()` (separate `Set-Cookie` values)
 from 24.1.0, the SVG element interfaces of `g`, `defs`, `desc`,
 `metadata`, `switch` and `symbol`, `SVGRect`, `viewBox`,
 `preserveAspectRatio` and `createSVGRect()` from 26.1.0,
