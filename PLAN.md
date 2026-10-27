@@ -4469,6 +4469,7 @@ rule index and cascade()).
   shorthand from 28 (360 cases plus 6 margin ones, 0 mismatches on 28,
   29 and 30.1.3); before 28 the shorthand still differs in 57 (27.4.0)
   and 67 (26.1.0) of the 360 cases (not modeled, #157).
+
 ## 2026-10-26: lazy window members and receivers that are not the window (branch fix/98-lazy-setters, #98)
 
 The setters of the members made on first read (interface objects, Image,
