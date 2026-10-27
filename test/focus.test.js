@@ -248,6 +248,22 @@ test('focus: disabled controls with a tabindex stop being focusable in jsdom 30.
   ]);
 });
 
+// The pre-30.1.1 exception covers form controls only: a disabled fieldset,
+// optgroup or option with a tabindex stays unfocusable in every profile, as
+// in 'focus follows the standard where jsdom differs' (jsdom focuses them).
+test('focus: a disabled fieldset, optgroup or option is not focusable in older profiles', () => {
+  for (const jsdom of ['16.4.0', 20, 29, '30.1.0', undefined]) {
+    const w = createWindow({ jsdom });
+    const d = w.document;
+    d.body.innerHTML = `<fieldset id="f" disabled tabindex="0"></fieldset><fieldset id="m" disabled tabindex="-1"></fieldset>
+      <select><optgroup id="g" disabled tabindex="0"></optgroup><option id="o" disabled tabindex="0">o</option></select>`;
+    for (const el of d.querySelectorAll('[id]')) {
+      el.focus();
+      assert.equal(d.activeElement, d.body, `${el.id}, jsdom ${jsdom ?? 'latest'}`);
+    }
+  }
+});
+
 test('the focus fixup sees through shadow roots and across a window reset', async () => {
   const { resetWindow, snapshotWindow } = await import('../src/reset.js');
   const w = createWindow();

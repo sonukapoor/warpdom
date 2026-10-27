@@ -139,7 +139,7 @@ from 24.1.0, the SVG element interfaces of `g`, `defs`, `desc`,
 `PageTransitionEvent`, the empty `navigator.plugins` and
 `navigator.mimeTypes`, and media elements' `audioTracks` and `videoTracks`
 exist in every version). Before 30.1.1 a disabled button, input, select or textarea with a
-`tabindex` attribute can be focused. Before 28.1.0 an `svg` element's window event
+`tabindex` attribute (also one in a disabled fieldset) can be focused. Before 28.1.0 an `svg` element's window event
 handlers (`onunload`, `onmessage`, ...) are the window's, as `body`'s are.
 Event handlers follow the version too: `oncopy`, `oncut`, `onpaste`,
 `onbeforeinput`, the touch handlers and 11 others from 22.1.0 (before,
@@ -623,7 +623,8 @@ Other deliberate differences:
   every event (much faster to create events; only interface-shape checks
   can tell).
 - `tabindex="abc"` gives the element's default tab index (jsdom: 0); a
-  disabled `fieldset` is not focusable.
+  disabled `fieldset`, `optgroup` or `option` is not focusable, also with
+  a `tabindex` (jsdom focuses one in every version).
 - Standard behavior where jsdom deviates: `FormData` and disabled options,
   `formnovalidate`, `Selection.containsNode`, event handler re-registration
   order, failed custom elements and `:defined`, XPath functions jsdom's
