@@ -483,6 +483,27 @@ const BACKGROUNDS = [
   // A parenthesis inside url(): rejected before jsdom 27.
   'red url("calc(icon)")',
   'url("a(b).png") red',
+  // Separators (#134): any JavaScript whitespace before jsdom 27 (a vertical
+  // tab, a no-break space too), CSS whitespace from 27 (CR and form feed).
+  'fixed\r\nno-repeat',
+  'fixed\rno-repeat',
+  'fixed\fno-repeat',
+  'red\furl(a.png)',
+  'url(a.png)\rred',
+  'url(a.png)\f0\f0',
+  'url(a.png) center\f/\fcover',
+  '\fred\r',
+  'red\vblue',
+  'red\u00a0blue',
+  // url() components (#134) that each generation reads alike.
+  'url(a.png)junk',
+  'url(a.png) junk',
+  'url( a.png )',
+  'url( "a.png")',
+  'url("a b.png")',
+  "url('a\"b.png')",
+  'url("")',
+  'URL(a.png)',
 ];
 // Where jsdom 27 and later set every longhand to its initial value (cssText
 // lists them; not modeled).
@@ -518,6 +539,103 @@ test('style: the background shorthand with cssstyle 4.4 and 4.5', () => {
   assert.equal(write('4.6.0', 'NONE'), 'background: none;');
   assert.equal(write('4.3.1', '0'), '');
   assert.equal(write('4.3.1', 'url(a.png) 10px 20px'), 'background: url("a.png") 20px;');
+});
+
+// A malformed url() component is invalid before jsdom 27 and leaves the
+// declared background in place (#134): an unclosed quote or url(, text after
+// the closing parenthesis, whitespace inside (not after url(), a quote or,
+// before cssstyle 4.4, an escaped quote. jsdom 27 and later read these as CSS
+// tokens (url("a.png) is url("a.png)")): not modeled.
+const MALFORMED_URLS = [
+  'url("a.png)',
+  "url('a.png)",
+  'red url("a.png)',
+  'url(a.png',
+  'url(a.png)red',
+  'url(a.png)0',
+  'url(a.png)/x',
+  'url("a.png")junk',
+  'url("a.png"x)',
+  'url("a.png" )',
+  'url(a.png )',
+  'url(a.png\t)',
+  'url(a.png\r\n)',
+  'url(a b.png)',
+  'url(a.png x)',
+  'url(a"b.png)',
+  "url(a'b.png)",
+  'url("a.png""b")',
+  'url("a.png\'")',
+  'url(a\\ b.png) red',
+  'url("a\\"b.png")',
+  'url(\fa.png)',
+  'url(a.png)\fjunk',
+];
+for (const jsdom of [26, 25, 22, 20])
+  parity(
+    `style: a malformed url() in the background shorthand (jsdom ${jsdom})`,
+    (w) =>
+      MALFORMED_URLS.flatMap((value) => {
+        const s = w.document.createElement('div').style;
+        s.background = 'red';
+        s.background = value;
+        const text = w.document.createElement('div').style;
+        text.cssText = `background: ${value}`;
+        return [`${value} -> ${s.cssText}`, text.cssText];
+      }),
+    { jsdom },
+  );
+
+test('style: separators and malformed url() in the background shorthand with cssstyle 4.2 to 4.5 (#134)', () => {
+  const write = (cssstyle, value) => {
+    const s = createWindow({ jsdom: '26.1.0', cssstyle }).document.body.style;
+    s.background = 'red';
+    s.background = value;
+    return s.cssText;
+  };
+  // Measured with jsdom 26.1.0 and each cssstyle.
+  const withImage = {
+    '4.2.0': 'background: red url(a.png);',
+    '4.3.1': 'background: red url("a.png");',
+    '4.4.0': 'background: url("a.png") red;',
+    '4.5.0': 'background: url("a.png") red;',
+  };
+  for (const cssstyle of Object.keys(withImage)) {
+    const old = cssstyle < '4.4';
+    assert.equal(write(cssstyle, 'fixed\r\nno-repeat'), 'background: no-repeat fixed;');
+    assert.equal(write(cssstyle, 'fixed\fno-repeat'), 'background: no-repeat fixed;');
+    assert.equal(write(cssstyle, 'red\vblue'), old ? 'background: blue;' : 'background: red;');
+    assert.equal(write(cssstyle, 'url(a.png)\fred'), withImage[cssstyle]);
+    for (const value of ['url("a.png)', 'url(a.png)junk', 'url(a.png', 'url(a b.png)', 'url("a.png" )', 'url(a.png)/x'])
+      assert.equal(write(cssstyle, value), 'background: red;', `${cssstyle} ${value}`);
+    assert.equal(write(cssstyle, 'url("a\\"b.png")'), old ? 'background: red;' : 'background: url("a\\"b.png");');
+  }
+});
+
+// Whitespace after url( that the unquoted body also accepts (CR, form feed,
+// vertical tab, no-break space) is read in linear time (#150 review: 32768
+// carriage returns took about 0.8 s per assignment).
+test('style: a malformed url() after long whitespace in the background shorthand is rejected quickly', () => {
+  const values = ['\r', '\f', '\v', ' '].flatMap((ws) => [
+    `url(${ws.repeat(32768)}a.png)junk`,
+    `url(${ws.repeat(32768)}"a.png")junk`,
+  ]);
+  for (const options of [
+    { jsdom: '20.0.3', cssstyle: '2.3.0' },
+    { jsdom: '26.1.0', cssstyle: '4.3.1' },
+    { jsdom: '26.1.0' },
+  ]) {
+    const window = createWindow(options);
+    for (const value of values) {
+      const s = window.document.createElement('div').style;
+      s.background = 'red';
+      const start = performance.now();
+      s.background = value;
+      const elapsed = performance.now() - start;
+      assert.equal(s.cssText, 'background: red;');
+      assert.ok(elapsed < 200, `${JSON.stringify(options)} ${JSON.stringify(value.slice(0, 5))}: ${elapsed} ms`);
+    }
+  }
 });
 
 // An invalid background leaves the declared one in place, and jsdom 27 and

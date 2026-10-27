@@ -7,10 +7,12 @@
 import { test, suite, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import http from 'node:http';
+import net from 'node:net';
 import { createWindow } from '../src/node.js';
 import { S } from '../src/internal.js';
 import { snapshotWindow, resetWindow } from '../src/reset.js';
-import { startServer, closedPort } from './xhr-server.js';
+import { startServer, closedPort, EPHEMERAL_PORTS_FROM } from './xhr-server.js';
 
 const require = createRequire(import.meta.url);
 const server = await startServer();
@@ -1465,6 +1467,87 @@ for (const [alias, which] of Object.entries(VERSIONS)) {
 // Several at a time: most of the time goes to waiting for the server.
 suite('XMLHttpRequest parity with jsdom', { concurrency: 6 }, () => {
   for (const [name, skip, fn] of parityTests) test(name, { skip }, fn);
+});
+
+// The refused port is never one a test server gets: scenarios run
+// concurrently, each starting servers on port 0, and a closed ephemeral port
+// handed to one of them made it answer another scenario's refused requests
+// (#109: a refused request got a 404, and the cors scenario saw the refused
+// requests' preflights).
+test('XMLHttpRequest tests: the refused port is below the ports test servers get, and refuses connections', async () => {
+  assert.ok(DEAD >= 1024 && DEAD < EPHEMERAL_PORTS_FROM, `refused port ${DEAD}`);
+  const started = await Promise.all(Array.from({ length: 20 }, () => startServer()));
+  const ports = [PORT, ...started.map((srv) => srv.port)];
+  await Promise.all(started.map((srv) => srv.close()));
+  for (const p of ports) assert.ok(p >= EPHEMERAL_PORTS_FROM, `test server port ${p}`);
+  // Each loopback address by itself: with localhost, a failed ::1 attempt
+  // (no IPv6) would give its code to the error for both attempts.
+  const refusal = (host) =>
+    new Promise((resolve) => {
+      const socket = net.connect({ port: DEAD, host });
+      socket.on('connect', () => {
+        socket.destroy();
+        resolve('connected');
+      });
+      socket.on('error', (e) => resolve(e.code));
+    });
+  assert.equal(await refusal('127.0.0.1'), 'ECONNREFUSED');
+  const v6 = await refusal('::1');
+  assert.ok(
+    ['ECONNREFUSED', 'EADDRNOTAVAIL', 'EAFNOSUPPORT', 'ENETUNREACH', 'EHOSTUNREACH'].includes(v6),
+    `::1: ${v6}`,
+  );
+});
+
+// Another program's server on a loopback address and a test server's port
+// would get the requests for that address (macOS lets both listen there):
+// the test server takes another port.
+test('XMLHttpRequest tests: a test server does not share its port with another program on 127.0.0.1', async () => {
+  const other = http.createServer((req, res) => res.end('other program'));
+  await new Promise((resolve) => other.listen(0, '127.0.0.1', resolve));
+  const srv = await startServer({ port: other.address().port });
+  try {
+    const body = await new Promise((resolve, reject) => {
+      http
+        .get(`http://127.0.0.1:${srv.port}/type?body=test%20server`, (res) => {
+          let text = '';
+          res.setEncoding('utf8');
+          res.on('data', (c) => (text += c));
+          res.on('end', () => resolve(text));
+        })
+        .on('error', reject);
+    });
+    assert.equal(body, 'test server');
+  } finally {
+    await srv.close();
+    await new Promise((resolve) => other.close(resolve));
+  }
+});
+
+// The probe of whether loopback listeners sit beside wildcard ones can fail
+// (20 inconclusive attempts): startServer() rejects without leaving a
+// listener open (one would keep node --test running).
+test('XMLHttpRequest tests: a test server whose loopback probe fails leaves no listener open', async () => {
+  const other = http.createServer((req, res) => res.end('other program'));
+  await new Promise((resolve) => other.listen(0, '127.0.0.1', resolve));
+  // A closed listener stays listed for a turn or two of the event loop.
+  const listeners = async () => {
+    for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve));
+    return process.getActiveResourcesInfo().filter((r) => r === 'TCPServerWrap').length;
+  };
+  const before = await listeners();
+  let probed = false;
+  const probe = async () => {
+    probed = true;
+    throw new Error('probe failed');
+  };
+  try {
+    await assert.rejects(startServer({ port: other.address().port, probe }), /probe failed/);
+    assert.ok(probed);
+    assert.equal(await listeners(), before);
+  } finally {
+    await new Promise((resolve) => other.close(resolve));
+  }
 });
 
 // --- warpdom ------------------------------------------------------------------------------------
