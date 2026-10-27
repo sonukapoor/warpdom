@@ -4,6 +4,8 @@
 // Node built-ins only, no dependencies; runs on the caller's Node, which may
 // be older than warpdom's own minimum, so it only uses long-supported syntax.
 
+import { createHash } from 'node:crypto';
+
 export const MIN_NODE = [22, 12];
 export const FAIL_ON = ['nothing', 'regressions', 'differences'];
 export const COMMENT_LIMIT = 60_000;
@@ -138,8 +140,21 @@ const count = (n, one, many = `${one}s`) => `${n.toLocaleString('en-US')} ${n ==
 const verb = (n, one, many) => (n === 1 ? one : many);
 const CHANGE = { regression: 'pass → fail', fixed: 'fail → pass' };
 
+// The comment's marker names the exact working directory. Earlier releases
+// wrote cell() of the path, which is kept whenever it decodes back to the
+// path (cell() only escaped '&', '<', '>' and '|'): such a marker is that
+// path's alone, and its existing report is still found. A path cell()
+// shortens or rewrites lossily (backticks, line breaks, surrounding spaces)
+// could share that form with another path, so it gets a readable prefix and
+// a hash of the exact path instead. The ' | ' keeps the two forms apart,
+// since cell() always escapes '|'.
 export function marker(workingDirectory) {
-  return `<!-- warpdom-compare-action:${cell(workingDirectory)} -->`;
+  const dir = String(workingDirectory ?? '');
+  const shown = cell(dir);
+  const decoded = shown.replace(/\\\|/g, '|').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  if (decoded === dir) return `<!-- warpdom-compare-action:${shown} -->`;
+  const hash = createHash('sha256').update(dir).digest('hex');
+  return `<!-- warpdom-compare-action:${cell(dir, 60)} | sha256:${hash} -->`;
 }
 
 function versionOf(dom) {
