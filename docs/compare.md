@@ -461,7 +461,11 @@ What it does:
    finding it, it skips with a warning rather than post a second report.
    If two runs overlap and both post, the older report is kept and the
    newer one deleted; the `concurrency` group in the example avoids the
-   overlap in the first place.
+   overlap in the first place. Releases up to 0.1.10 could give working
+   directories with names over 200 characters, or with backticks, line
+   breaks or surrounding spaces, a marker shared with another directory;
+   such a directory now gets its own report, and the earlier one is left
+   unchanged (it may be another directory's), so delete it by hand.
 4. Uploads `report.md`, `results.json` and the runner logs as an artifact
    (from a new directory under `RUNNER_TEMP` per invocation).
 5. Sets outputs (`exit-code`, `compared`, `regressions`, `fixed`,
