@@ -207,6 +207,47 @@ test('focus: the rendering check starts with jsdom 30.1.2', () => {
   ]);
 });
 
+// jsdom before 30.1.1 focused a disabled control that has a tabindex
+// (Element Plus's tryFocus sets tabindex="-1" and focuses a disabled input).
+const disabledScenario = (w) => {
+  const d = html(
+    w,
+    `<input id="i" disabled tabindex="-1"><button id="b" disabled tabindex="0">b</button>
+    <select id="s" disabled tabindex="-1"></select><textarea id="t" disabled tabindex="2"></textarea>
+    <fieldset disabled><input id="f" tabindex="-1"><input id="g"></fieldset>
+    <input id="n" disabled><input id="x" disabled tabindex="x">`,
+  );
+  return [...d.querySelectorAll('[id]')].map((el) => {
+    el.focus();
+    const focused = d.activeElement === el;
+    d.activeElement.blur();
+    return `${el.id}:${focused}`;
+  });
+};
+parity('focus: a disabled control with a tabindex, jsdom 20 profile', disabledScenario, { jsdom: 20 });
+parity('focus: a disabled control with a tabindex, jsdom 29 profile', disabledScenario, { jsdom: 29 });
+parity('focus: a disabled control with a tabindex', disabledScenario);
+
+test('focus: disabled controls with a tabindex stop being focusable in jsdom 30.1.1', () => {
+  const focusesDisabled = (jsdom) => {
+    const w = createWindow({ jsdom });
+    w.document.body.innerHTML = '<input disabled tabindex="-1">';
+    const input = w.document.body.firstChild;
+    input.focus();
+    return w.document.activeElement === input;
+  };
+  assert.deepEqual(['16.4.0', '23.0.1', '30.1.0', '30.1.1', '30.1.3', 16, 29, 30].map(focusesDisabled), [
+    true,
+    true,
+    true,
+    false,
+    false,
+    true,
+    true,
+    false,
+  ]);
+});
+
 test('the focus fixup sees through shadow roots and across a window reset', async () => {
   const { resetWindow, snapshotWindow } = await import('../src/reset.js');
   const w = createWindow();

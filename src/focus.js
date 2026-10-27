@@ -91,8 +91,12 @@ function isRendered(el) {
   return true;
 }
 
+// jsdom before 30.1.1 focused a disabled control that has a tabindex
+// (Element Plus's focus utilities give one tabindex="-1" and focus it).
 export function isFocusableElement(el) {
-  return isRendered(el) && !isActuallyDisabled(el) && (tabindexValue(el) !== null || isSuggestedFocusable(el));
+  if (!isRendered(el)) return false;
+  if (tabindexValue(el) !== null) return el[S].doc[S].window[S].compat.disabledTabindexFocus || !isActuallyDisabled(el);
+  return !isActuallyDisabled(el) && isSuggestedFocusable(el);
 }
 
 // The document's viewport is a focusable area when it has a browsing context.

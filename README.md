@@ -137,7 +137,8 @@ from 24.1.0, the SVG element interfaces of `g`, `defs`, `desc`,
 `WebAssembly`, `WebSocket`, `XMLHttpRequest`, `SVGNumber`, `SVGStringList`, `SVGAnimatedString`,
 `PageTransitionEvent`, the empty `navigator.plugins` and
 `navigator.mimeTypes`, and media elements' `audioTracks` and `videoTracks`
-exist in every version). Before 28.1.0 an `svg` element's window event
+exist in every version). Before 30.1.1 a disabled button, input, select or textarea with a
+`tabindex` attribute can be focused. Before 28.1.0 an `svg` element's window event
 handlers (`onunload`, `onmessage`, ...) are the window's, as `body`'s are.
 Event handlers follow the version too: `oncopy`, `oncut`, `onpaste`,
 `onbeforeinput`, the touch handlers and 11 others from 22.1.0 (before,
