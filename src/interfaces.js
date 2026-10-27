@@ -1506,9 +1506,10 @@ export const INTERFACES = [
     // role and the ARIA attributes (ARIAMixin) from jsdom 23.1.0. Before,
     // Vue sets ariaLabel as an attribute named arialabel, not as a property
     // (Element Plus's table-v2 tests read those attributes).
-    compat(proto, compat) {
-      if (compat.ariaMixin) return;
-      for (const key of Object.getOwnPropertyNames(proto)) if (ARIA_MEMBER.test(key)) delete proto[key];
+    // Left out of the cached descriptors of a 'no-aria' variant.
+    variant: (compat) => (compat.ariaMixin ? null : 'no-aria'),
+    adjust(descriptors) {
+      for (const key of Object.keys(descriptors)) if (ARIA_MEMBER.test(key)) delete descriptors[key];
     },
     members: mix(parentNode, childNode, elementSiblings, ELEMENT_LAYOUT, {
       [Symbol.unscopables]: {
