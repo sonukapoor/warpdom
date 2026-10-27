@@ -16,7 +16,7 @@
   },
   "src/cascade.js": {
     "no-nested-ternary": {
-      "count": 4
+      "count": 3
     }
   },
   "src/collections.js": {
