@@ -2,6 +2,8 @@
 // traversal algorithms on the linked tree (no arrays, no allocation per step).
 import { S, state, domError, hooks, DOCUMENT_NODE } from './internal.js';
 
+const { apply } = Reflect;
+
 const ACCEPT = 1,
   REJECT = 2,
   SKIP = 3;
@@ -33,7 +35,9 @@ function filter(traverser, node) {
   if (s.filter == null) return ACCEPT;
   s.active = true;
   try {
-    const result = typeof s.filter === 'function' ? s.filter(node) : s.filter.acceptNode(node);
+    // A function is called with an undefined this (not the state object it
+    // is stored on), an object's acceptNode with the object.
+    const result = typeof s.filter === 'function' ? apply(s.filter, undefined, [node]) : s.filter.acceptNode(node);
     return Number(result);
   } finally {
     s.active = false;

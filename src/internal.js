@@ -190,6 +190,17 @@ export function tooFewArguments(iface, method, required, present) {
   );
 }
 
+// The callback argument of an iterable's forEach (FormData, URLSearchParams,
+// Headers), with jsdom's messages.
+export function checkForEachCallback(callback, present) {
+  if (present < 1)
+    throw new TypeError("Failed to execute 'forEach' on 'iterable': 1 argument required, but only 0 present.");
+  if (typeof callback !== 'function')
+    throw new TypeError(
+      "Failed to execute 'forEach' on 'iterable': The callback provided as parameter 1 is not a function",
+    );
+}
+
 export function initNode(node, type, doc, extra) {
   node[S] = {
     type,

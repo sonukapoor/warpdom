@@ -10,6 +10,10 @@ import { formOwner } from './forms.js';
 import { namedScope } from './named-access.js';
 import { GLOBAL_EVENT_HANDLERS, WINDOW_EVENT_HANDLERS } from './event-handler-names.js';
 
+// Handlers are called with Reflect.apply, captured at load: not through
+// their own call property, as jsdom calls them.
+const { apply } = Reflect;
+
 // The event handler event type: the name without "on", except four
 // prefixed animation and transition handlers.
 const EVENT_TYPES = {
@@ -235,8 +239,8 @@ function processHandler(target, name, event) {
   const special =
     es.type === 'error' && current !== null && isWindow(current) && es.message !== undefined && 'lineno' in es;
   const result = special
-    ? callback.call(exposed(current), es.message, es.filename, es.lineno, es.colno, es.error)
-    : callback.call(exposed(current), event);
+    ? apply(callback, exposed(current), [es.message, es.filename, es.lineno, es.colno, es.error])
+    : apply(callback, exposed(current), [event]);
   if (special ? result === true : result === false) cancel(event);
 }
 

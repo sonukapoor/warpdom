@@ -15,6 +15,10 @@ import { S, state, domError, hooks, ELEMENT_NODE, HTML_NS, nextInTree, connected
 import { reportError } from './events.js';
 import { labelsList } from './forms.js';
 
+// Lifecycle callbacks are called with Reflect.apply, captured at load: not
+// through their own apply property, as jsdom calls them.
+const { apply } = Reflect;
+
 // --- valid custom element names ---------------------------------------------------
 
 const PCEN = /^[a-z][-.0-9_a-z·À-ÖØ-öø-ͽͿ-῿‌‍‿⁀⁰-↏Ⰰ-⿯、-퟿豈-﷏ﷰ-�\u{10000}-\u{effff}]*$/u;
@@ -64,7 +68,7 @@ function flush() {
           }
         } else {
           try {
-            reaction.callback.apply(element, reaction.args);
+            apply(reaction.callback, element, reaction.args);
           } catch (error) {
             reportError(element, error);
           }

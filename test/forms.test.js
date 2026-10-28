@@ -2060,3 +2060,37 @@ for (const jsdom of [26, 30]) {
     { jsdom },
   );
 }
+
+// FormData forEach calls the callback directly, as jsdom does (20.0.3 and
+// 30), not through its own call property; a callback that is not callable
+// throws even when there are no entries.
+for (const jsdom of [20, 30]) {
+  parity(
+    `FormData forEach: a callback whose call property is overwritten (jsdom ${jsdom})`,
+    (w) => {
+      const seen = [];
+      const fd = new w.FormData();
+      fd.append('a', '1');
+      fd.append('b', '2');
+      const callback = function (value, name, data) {
+        seen.push(value, name, data === fd, this.tag, arguments.length);
+      };
+      callback.call = undefined;
+      const run = (fn) => {
+        try {
+          return fn();
+        } catch (e) {
+          return `${e.name}: ${e.message}`;
+        }
+      };
+      return [
+        run(() => fd.forEach(callback, { tag: 't' })),
+        seen,
+        run(() => new w.FormData().forEach({})),
+        run(() => fd.forEach(1)),
+        run(() => fd.forEach()),
+      ];
+    },
+    { jsdom },
+  );
+}

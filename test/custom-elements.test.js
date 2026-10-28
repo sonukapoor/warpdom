@@ -454,3 +454,34 @@ test('ElementInternals version boundaries: 23.1.0, labels 26.0.0, ARIA 27.0.0', 
     );
   }
 });
+
+// Lifecycle callbacks are called directly, as jsdom does (20.0.3 and 30),
+// not through their own apply property.
+for (const jsdom of [20, 30]) {
+  parity(
+    `custom element callbacks whose apply property is overwritten (jsdom ${jsdom})`,
+    (w) => {
+      const seen = [];
+      const record = (name) => {
+        const fn = function (...args) {
+          seen.push(name, this.localName, args.join());
+        };
+        fn.apply = () => seen.push('own apply');
+        return fn;
+      };
+      const C = class extends w.HTMLElement {
+        static observedAttributes = ['a'];
+      };
+      C.prototype.connectedCallback = record('connected');
+      C.prototype.attributeChangedCallback = record('attribute');
+      C.prototype.disconnectedCallback = record('disconnected');
+      w.customElements.define('x-apply', C);
+      const el = w.document.createElement('x-apply');
+      w.document.body.append(el);
+      el.setAttribute('a', '1');
+      el.remove();
+      return seen;
+    },
+    { jsdom },
+  );
+}

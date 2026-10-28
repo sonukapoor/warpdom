@@ -930,3 +930,22 @@ test('window: the per-file reset puts back the viewport, name and status', async
     assert.deepEqual([w.innerWidth, w.innerHeight, w.name, w.status], [1024, 768, '', ''], jsdom);
   }
 });
+
+// URLSearchParams and Headers forEach call the callback directly, as jsdom
+// does (20.0.3 and 30), not through its own call property.
+for (const jsdom of [20, 30]) {
+  parity(
+    `URLSearchParams and Headers forEach: a callback whose call property is overwritten (jsdom ${jsdom})`,
+    (w) => {
+      const seen = [];
+      const callback = function (value, name, list) {
+        seen.push(value, name, list.constructor.name, this.tag, arguments.length);
+      };
+      callback.call = () => seen.push('own call');
+      new w.URLSearchParams('a=1&b=2').forEach(callback, { tag: 'u' });
+      new w.Headers({ c: '3' }).forEach(callback, { tag: 'h' });
+      return seen;
+    },
+    { jsdom },
+  );
+}

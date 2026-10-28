@@ -159,3 +159,25 @@ test('a registration moves with its node to another document', async () => {
   await Promise.resolve();
   assert.equal(log.length, 2);
 });
+
+// The observer's callback is called directly, as jsdom does (20.0.3 and
+// 30), not through its own call property.
+for (const jsdom of [20, 30]) {
+  styleParity(
+    `MutationObserver: a callback whose call property is overwritten (jsdom ${jsdom})`,
+    async (w) => {
+      const seen = [];
+      const callback = function (records, observer) {
+        seen.push(records.length, records[0].type, observer === mo, this === mo, arguments.length);
+      };
+      callback.call = undefined;
+      const mo = new w.MutationObserver(callback);
+      mo.observe(w.document.body, { childList: true });
+      w.document.body.append('x');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      mo.disconnect();
+      return seen;
+    },
+    { jsdom },
+  );
+}
