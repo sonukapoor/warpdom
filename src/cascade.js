@@ -215,12 +215,14 @@ const sameSheets = (a, b) => a.length === b.length && a.every((sheet, i) => shee
 const EMPTY = new Map();
 
 // The rule index for an element's root: its shadow root's style sheets,
-// else its document's (disconnected elements too, as in jsdom).
-let lastRoot = null; // the root ruleIndex found last (for cascaded)
-function ruleIndex(element) {
+// else its document's (disconnected elements too, as in jsdom). root:
+// the element's root (rootOf), from the caller, which needs it too: kept
+// local to each call, as a getComputedStyle() run from a test's cssRules
+// getter (ruleListChanged) calls this again, and a module-level root would
+// keep its document (and window) alive after the window is gone (#165).
+function ruleIndex(element, root) {
   const es = element[S];
   const ds = es.doc[S];
-  const root = (lastRoot = rootOf(element));
   const holder = root[S].shadow === true ? root[S] : ds;
   const cached = holder.cascade;
   if (cached?.lists.some(ruleListChanged)) cssomChanges.rev++;
@@ -657,13 +659,13 @@ function cascaded(element, name) {
     cache.values.set(name, value);
     return value;
   }
-  const index = ruleIndex(element);
+  const root = rootOf(element);
+  const index = ruleIndex(element, root);
   const rev = ds.treeRev ?? 0;
   const inlineMap = inlineDeclarations(element);
   if (!cache || cache.index !== index || cache.rev !== rev || cache.inline !== inlineMap) {
     // Connected: the root ruleIndex found is the document, or a shadow
     // root whose host is connected.
-    const root = lastRoot;
     const detached =
       keepsDetached(ds) && root[S].type !== DOCUMENT_NODE && !(root[S].shadow === true && connected(root[S].host));
     if (detached) trackDetachedStyles(ds);

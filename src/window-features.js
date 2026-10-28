@@ -23,7 +23,7 @@ import { QuotaExceededError } from './storage.js';
 import { navigate, traverse, hostTimeout } from './navigation.js';
 import { VERSION } from './version.js';
 import { typedArrayName, realmOf, webidlString } from './encoding.js';
-import { staticList } from './collections.js';
+import { staticList, forgetLastList } from './collections.js';
 
 // forEach callbacks are called with Reflect.apply, captured at load: not
 // through their own call property, as jsdom calls them.
@@ -322,10 +322,12 @@ const notImplementedMethods = Object.fromEntries(
 
 // Window members that do nothing here (HTML standard, 7.2.2): close() and
 // stop() for a window scripts did not open, and the legacy captureEvents()
-// and releaseEvents().
+// and releaseEvents(). close() only lets the window go: the list cache
+// (collections.js) no longer keeps it alive.
 const noOps = {
   close() {
     state(this);
+    forgetLastList();
   },
   stop() {
     state(this);

@@ -11,6 +11,7 @@ import { S, HTML_NS, ELEMENT_NODE, hooks, nextInTree, PlatformURL as URL } from 
 import { dispatch, exposed } from './events.js';
 import { clearWindowTimers } from './window-features.js';
 import { abortWindowRequests } from './xhr.js';
+import { forgetLastList } from './collections.js';
 import { windowOrigin } from './window-features.js';
 
 // iframe and frame elements.
@@ -90,6 +91,7 @@ function destroyFrame(iframe) {
   hooks.discardedWindows++;
   clearWindowTimers(child);
   abortWindowRequests(child);
+  forgetLastList();
   const parent = child[S].parentWindow;
   const frames = parent[S].childFrames;
   frames.splice(frames.indexOf(child), 1);
