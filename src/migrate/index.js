@@ -1401,12 +1401,24 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
   // installed, or used by the other runner or another package, is not one
   // of them.
   const ranOn = new Map(); // `${pkg.rel}\0${runner}` -> Set of 'jsdom' / 'happy-dom'
-  for (const e of edits) {
-    if (e.pin || e.renamed || !e.from || !e.runner) continue;
-    const dom = /happy/.test(e.from) ? 'happy-dom' : 'jsdom';
-    const key = `${targetOf(e.file, e.runner).rel}\0${e.runner}`;
+  const ran = (key, dom) => {
     if (!ranOn.has(key)) ranOn.set(key, new Set());
     ranOn.get(key).add(dom);
+  };
+  for (const e of edits) {
+    if (e.pin || e.renamed || !e.from || !e.runner) continue;
+    ran(`${targetOf(e.file, e.runner).rel}\0${e.runner}`, /happy/.test(e.from) ? 'happy-dom' : 'jsdom');
+  }
+  // Tests already on warpdom (environments migrate left as they were) ran
+  // on the profile of the jsdom warpdom found installed: with them, a
+  // removed jsdom still gets its version note even when every environment
+  // changed here was happy-dom (#185).
+  const onWarpdom = new Set();
+  for (const u of uses) {
+    if (!u.runner || otherOf(u.file)) continue;
+    const key = `${targetOf(u.file, u.runner).rel}\0${u.runner}`;
+    onWarpdom.add(key);
+    ran(key, 'jsdom');
   }
   // Unknown (no environment of that runner changed here, e.g. one already
   // on warpdom): assumed, as before.
@@ -1588,11 +1600,13 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
     if (e.pin || e.renamed || !e.from || !e.runner) continue;
     const pkg = targetOf(e.file, e.runner);
     const key = `${pkg.rel}\0${e.runner}`;
-    if (!changedEnvs.has(key)) changedEnvs.set(key, { pkg, runner: e.runner, froms: new Set() });
+    if (!changedEnvs.has(key)) changedEnvs.set(key, { pkg, runner: e.runner, froms: new Set(), key });
     changedEnvs.get(key).froms.add(e.from);
   }
-  for (const { pkg, runner, froms } of changedEnvs.values()) {
-    if ([...froms].every((f) => /happy/.test(f))) {
+  for (const { pkg, runner, froms, key } of changedEnvs.values()) {
+    // Only happy-dom changed, and no test already on warpdom (which follows
+    // the installed jsdom) beside them.
+    if ([...froms].every((f) => /happy/.test(f)) && !onWarpdom.has(key)) {
       const name = runner === 'vitest' ? 'happy-dom' : '@happy-dom/jest-environment';
       const decl = chainOf(pkg).find((p) => declared(p, name));
       const v = decl ? usedVersion(decl, name, decl.json[declared(decl, name)][name]).version : null;

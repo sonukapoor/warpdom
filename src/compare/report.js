@@ -1,7 +1,7 @@
 // Rendering a comparison for `warpdom compare`: the terminal summary and
 // report.md. The report's Summary part names no files or tests, so it can
 // be pasted into a public issue; the Details part lists them.
-import { PINNED_TARGET } from './wrappers.js';
+import { PINNED_TARGET, isWarpdomEnvironment } from './wrappers.js';
 
 const secs = (ms) => (ms == null ? '-' : `${(ms / 1000).toFixed(ms < 10_000 ? 2 : 1)} s`);
 const times = (x) => `${x.toFixed(2)}x`;
@@ -19,7 +19,9 @@ export function environmentLabel(environment) {
   const i = parts.lastIndexOf('node_modules');
   const pkg =
     i >= 0 && parts[i + 1] ? (parts[i + 1].startsWith('@') ? `${parts[i + 1]}/${parts[i + 2]}` : parts[i + 1]) : null;
-  if (pkg === '.warpdom-compare' || pkg === 'warpdom' || (!pkg && parts.includes('warpdom'))) return 'warpdom';
+  // Outside node_modules, warpdom's entry points in a linked checkout, not
+  // any path through a directory named warpdom (#185).
+  if (pkg === '.warpdom-compare' || pkg === 'warpdom' || (!pkg && isWarpdomEnvironment(value))) return 'warpdom';
   if (pkg === '@happy-dom/jest-environment') return 'happy-dom';
   if (pkg?.startsWith('jest-environment-')) return pkg.slice('jest-environment-'.length);
   return pkg ?? parts.at(-1);

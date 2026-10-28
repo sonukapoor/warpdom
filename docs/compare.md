@@ -124,8 +124,12 @@ the warpdom runs (#172). warpdom counts as on warpdom by name or path:
 `warpdom/vitest/environment`, `warpdom/jest`, a path into an installed
 warpdom package (judged by the package after the last `node_modules`, so
 `.../warpdom/node_modules/jest-environment-node/...` in a checkout named
-warpdom stays on Node), or, outside `node_modules`, a path into a
-`warpdom` directory. The header says "for a project on warpdom", also when
+warpdom stays on Node), or, outside `node_modules` (a linked checkout),
+a path to one of warpdom's environments: `.../warpdom/src/vitest.js`,
+`.../warpdom/src/jest.js`, or a `vitest-environment-warpdom` or
+`jest-environment-warpdom` directory. A project's own environment in a
+directory named warpdom (`/work/warpdom/custom-node.js`) is not warpdom
+and stays as it is. The header says "for a project on warpdom", also when
 only projects in other config files or files' comments are on warpdom
 (known from the first run).
 
@@ -162,6 +166,12 @@ only projects in other config files or files' comments are on warpdom
 - A project with projects on jsdom and on warpdom: with `--baseline`, both
   kinds are compared; without it, only those on jsdom or happy-dom, as
   before.
+- A project still on warpdom in the baseline run (one compare could not
+  reach, such as a Vitest 5 project listed inside a project config file)
+  ran on warpdom in both runs: it is reported as not switched and not
+  compared. When no other project is compared, compare stops with exit
+  code 2 ("nothing to compare: ... 1 project on warpdom still ran on
+  warpdom in the jsdom run: compare could not switch it").
 
 ### Switching the environment without touching the project
 
@@ -308,7 +318,9 @@ is matched by occurrence). With it:
   browser-mode projects are not run (except Vitest files whose comment switched them to a DOM),
   and status changes there are listed in the details;
 - a DOM project still on jsdom or happy-dom in the warpdom run (one
-  compare could not reach) is reported as not switched and not compared;
+  compare could not reach) is reported as not switched and not compared,
+  and so is, with `--baseline`, a project still on warpdom in the baseline
+  run;
 - `report.md` details have a table per project (compared, same, each
   difference class, flaky, not compared). The summary gives counts only:
   project names may be private, so they appear in the details only.

@@ -90,12 +90,16 @@ const DOM_NAMES = ['jsdom', 'happy-dom'];
 
 // No project on jsdom or happy-dom. A project already on warpdom (migrated)
 // is compared only with --baseline, which names the DOM to run it on.
-const nothingToCompare = (environments, baseline) => {
+// unswitched: projects on warpdom that still ran on warpdom in the baseline
+// run (--baseline), which compare could not reach.
+const nothingToCompare = (environments, baseline, unswitched = 0) => {
   const seen = [...new Set(environments)];
-  const hint =
-    !baseline && seen.some(isWarpdomEnvironment)
-      ? '; the project already runs on warpdom: add --baseline jsdom (or happy-dom) to run its baseline on that DOM, which must be installed'
-      : '';
+  let hint = '';
+  if (!baseline && seen.some(isWarpdomEnvironment))
+    hint =
+      '; the project already runs on warpdom: add --baseline jsdom (or happy-dom) to run its baseline on that DOM, which must be installed';
+  else if (unswitched)
+    hint = `; ${unswitched === 1 ? '1 project' : `${unswitched} projects`} on warpdom still ran on warpdom in the ${baseline} run: compare could not switch ${unswitched === 1 ? 'it' : 'them'} (projects listed inside a project config file are not reached)`;
   return new CompareError(
     `nothing to compare: no project runs on jsdom or happy-dom (found: ${seen.join(', ') || 'none'})${hint}`,
   );
@@ -668,10 +672,16 @@ export async function compare(options = {}) {
             projectsFromRun = true;
             // Jest gives resolved paths: judged by the package name, so a
             // checkout in a directory named after jsdom is not mistaken.
-            result.projects = ran.projects.map((p) => ({
-              ...p,
-              dom: !p.browser && isCompared(environmentLabel(p.environment)),
-            }));
+            // With --baseline, a project still on warpdom in the baseline run
+            // (one compare could not reach, e.g. listed by a nested project
+            // config) ran on warpdom twice: not compared, and said so.
+            result.projects = ran.projects.map((p) => {
+              const environment = environmentLabel(p.environment);
+              const stayed = fromWarpdom && side === 'baseline' && !p.browser && isWarpdomEnvironment(environment);
+              return stayed
+                ? { ...p, dom: false, unswitched: true }
+                : { ...p, dom: !p.browser && isCompared(environment) };
+            });
             // Browser-mode projects are left out of both runs: listed as not run.
             for (const p of meta.projects.filter((x) => x.browser)) {
               if (!result.projects.some((x) => x.name === p.name))
@@ -689,6 +699,7 @@ export async function compare(options = {}) {
               throw nothingToCompare(
                 result.projects.map((p) => (p.browser ? 'browser mode' : environmentLabel(p.environment))),
                 options.baseline,
+                result.projects.filter((p) => p.unswitched).length,
               );
             }
           } else {
