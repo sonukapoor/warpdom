@@ -1703,9 +1703,14 @@ const FORM_DATA_INTERFACES = [
         for (const e of entriesOf(this).slice()) yield e.value;
       },
       forEach(callback, thisArg = undefined) {
-        const entries = entriesOf(this).slice();
         checkForEachCallback(callback, arguments.length);
-        for (const e of entries) apply(callback, thisArg, [e.value, e.name, this]);
+        // The live entry list, by index, as jsdom walks it: entries the
+        // callback appends are visited, ones it deletes are skipped (delete
+        // and set replace the list, so it is read again each step).
+        for (let i = 0; i < entriesOf(this).length; i++) {
+          const e = entriesOf(this)[i];
+          apply(callback, thisArg, [e.value, e.name, this]);
+        }
       },
       [Symbol.iterator]() {
         return this.entries();

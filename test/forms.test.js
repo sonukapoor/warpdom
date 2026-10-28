@@ -2094,3 +2094,41 @@ for (const jsdom of [20, 30]) {
     { jsdom },
   );
 }
+
+// FormData forEach walks the live entry list by index, as jsdom does (20.0.3
+// and 30): an entry appended by the callback is visited, one deleted before
+// its turn is skipped, and deleting an earlier entry shifts the index.
+for (const jsdom of [20, 30]) {
+  parity(
+    `FormData forEach: entries appended or deleted by the callback (jsdom ${jsdom})`,
+    (w) => {
+      const make = () => {
+        const fd = new w.FormData();
+        fd.append('a', '1');
+        fd.append('b', '2');
+        fd.append('c', '3');
+        return fd;
+      };
+      const appended = [];
+      const a = make();
+      a.forEach((value, name) => {
+        appended.push(name);
+        if (name === 'a') a.append('d', '4');
+      });
+      const deleted = [];
+      const d = make();
+      d.forEach((value, name) => {
+        deleted.push(name);
+        if (name === 'a') d.delete('b');
+      });
+      const earlier = [];
+      const e = make();
+      e.forEach((value, name) => {
+        earlier.push(name);
+        if (name === 'b') e.delete('a');
+      });
+      return [appended, deleted, earlier];
+    },
+    { jsdom },
+  );
+}

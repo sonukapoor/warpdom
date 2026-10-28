@@ -2,8 +2,6 @@
 // traversal algorithms on the linked tree (no arrays, no allocation per step).
 import { S, state, domError, hooks, DOCUMENT_NODE } from './internal.js';
 
-const { apply } = Reflect;
-
 const ACCEPT = 1,
   REJECT = 2,
   SKIP = 3;
@@ -36,8 +34,11 @@ function filter(traverser, node) {
   s.active = true;
   try {
     // A function is called with an undefined this (not the state object it
-    // is stored on), an object's acceptNode with the object.
-    const result = typeof s.filter === 'function' ? apply(s.filter, undefined, [node]) : s.filter.acceptNode(node);
+    // is stored on) and without reading its call property, an object's
+    // acceptNode with the object. A plain call of a local does both with
+    // no argument array per node.
+    const f = s.filter;
+    const result = typeof f === 'function' ? f(node) : f.acceptNode(node);
     return Number(result);
   } finally {
     s.active = false;
