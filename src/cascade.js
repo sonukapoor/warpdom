@@ -13,9 +13,9 @@
 //
 // As in jsdom, and so as tests expect: rules inside @media, @supports and
 // @layer blocks are not applied, constructed (adopted) style sheets are
-// not applied, and the hidden attribute hides an element whatever its
-// display rules say (but not over its style attribute; before jsdom 28.1.0
-// not over display rules either).
+// not applied. The hidden attribute's display: none comes with the user
+// agent sheet: before jsdom 28.1.0 under every display rule, from 28.1.0
+// as a rule of its own specificity.
 import {
   S,
   ELEMENT_NODE,
@@ -33,7 +33,7 @@ import { segments, expand, serializeBox, BOX, PAIRS, CSS_WIDE, backgroundCompone
 import { compileRuleSelector } from './selectors.js';
 import { directionality } from './directionality.js';
 import { absoluteLength, mayResolve, sixDigits, FONT_SIZE_KEYWORDS, relativeWeight } from './lengths.js';
-import { uaDeclarations, uaValue } from './ua-sheet.js';
+import { uaDeclarations, uaValue, uaRuleOver, uaInOrder } from './ua-sheet.js';
 import { documentStyleSheets, styleElementSheet, ruleArray, ruleListSnapshot, ruleListChanged } from './cssom.js';
 import {
   parseDeclarations,
@@ -381,6 +381,7 @@ function cascadeByOrder(lists, element, compat) {
 // The block is kept with the element's cascaded values, for its other
 // longhands.
 const IN_ORDER = new Map(['margin', 'padding'].flatMap((s) => [[s, s], ...SHORTHANDS[s].map((l) => [l, s])]));
+const IN_ORDER_NAMES = new Map(['margin', 'padding'].map((s) => [s, [s, ...SHORTHANDS[s]]]));
 function cascadeInOrder(index, element, name, shorthand, compat, inlineMap) {
   const cache = element[S].cascaded;
   const blocks = (cache.blocks ??= new Map());
@@ -392,6 +393,7 @@ let inOrderEpoch = 0;
 function inOrderBlock(index, element, shorthand, compat, inlineMap) {
   const longhands = SHORTHANDS[shorthand];
   const block = new OrderedBlock(shorthand, compat.longhandLosesImportant === true);
+  userAgentInOrder(block, element, shorthand, longhands);
   // The matching declarations in document order, with their selectors' highest specificity.
   const inOrder = index.inOrder;
   const family = inOrder?.families.get(shorthand);
@@ -454,6 +456,39 @@ function inOrderBlock(index, element, shorthand, compat, inlineMap) {
     });
   }
   return block.result(longhands);
+}
+
+// The user agent sheet's declarations come first in the block (black box,
+// jsdom 28.1.0 to 30.1.2, #136), in its order, each with its selectors'
+// highest matching specificity: td { padding-top: 3px } * { padding: 0 }
+// gives a cell 3px 1px 1px, as td { padding: 1px } sets the shorthand
+// before the page's rules.
+function userAgentInOrder(block, element, shorthand, longhands) {
+  const es = element[S];
+  const list = uaInOrder(es.doc[S].window, shorthand, IN_ORDER_NAMES.get(shorthand), cascadeExpand);
+  for (let i = 0; i < list.length; i++) {
+    const decl = list[i];
+    let specificity = decl.simple.includes(es.tag) ? 1 : -1;
+    for (const { match, specificity: s } of decl.complex)
+      if (s > specificity && match(element, NO_SCOPE)) specificity = s;
+    if (specificity < 0) continue;
+    const record = (decl.record ??= inOrderRecord(decl, shorthand, longhands));
+    if (record !== null) block.apply(record, specificity);
+  }
+}
+// A user agent declaration as a block record (OrderedBlock.apply), null
+// for one the block takes no part in (an !important one, which cascade()
+// applies first, or one of another shorthand).
+function inOrderRecord(decl, shorthand, longhands) {
+  const slot = decl.via === shorthand ? SHORTHAND_SLOT : longhands.indexOf(decl.via);
+  if (decl.important || slot < 0) return null;
+  return {
+    slot,
+    from: decl.via,
+    important: false,
+    values: longhands.map((l) => decl.values.get(l)),
+    own: decl.values.get(shorthand),
+  };
 }
 
 // The declarations of margin, padding or their longhands (inOrderBlock),
@@ -707,13 +742,6 @@ function keepsDetached(ds) {
 function cascade(element, index, inlineMap, name) {
   const window = element[S].doc[S].window;
   const ua = uaDeclarations(window, name, cascadeExpand);
-  // jsdom 28.1.0 and later: the user agent sheet's !important
-  // declarations win over the page's.
-  const uaImportant = window[S].compat.uaImportant;
-  if (uaImportant) {
-    const v = uaValue(ua.important, element);
-    if (v !== undefined) return v;
-  }
   uaHidden = false;
   let inline = inlineMap?.get(name);
   if (inline?.value === HIDE_UA) {
@@ -721,6 +749,18 @@ function cascade(element, index, inlineMap, name) {
     inline = undefined;
   }
   if (inline?.important) return inline.value;
+  // jsdom 28.1.0 and later: the user agent sheet's !important
+  // declarations win over the page's others; as they come first, the
+  // later of two !important ones is the page's (black box, 28.1.0 to
+  // 30.1.3: * { display: block !important } shows an input[type=hidden]).
+  const uaImportant = window[S].compat.uaImportant;
+  if (uaImportant && ua.important !== null) {
+    const v = uaValue(ua.important, element);
+    if (v !== undefined) {
+      const important = index.get(name)?.important;
+      if (!important?.length || firstMatchEntry(important, element) === undefined) return v;
+    }
+  }
   const shorthand = window[S].compat.pendingByOrder === 'all' ? IN_ORDER.get(name) : undefined;
   const ruled =
     shorthand === undefined ? null : cascadeInOrder(index, element, name, shorthand, window[S].compat, inlineMap);
@@ -747,7 +787,10 @@ function cascade(element, index, inlineMap, name) {
   // without !important ones.
   if (lists?.pending && window[S].compat.pendingByOrder && (!inline || lists.important.length)) {
     const entry = cascadeByOrder(lists, element, window[S].compat);
-    if (entry !== undefined) return entry.important || !inline ? entry.value : inline.value;
+    if (entry !== undefined) {
+      if (entry.important) return entry.value;
+      return inline ? inline.value : pageOrUserAgent(entry, element, name, ua, window[S].compat);
+    }
   }
   if (lists?.important.length) {
     const v = firstMatch(lists.important, element);
@@ -755,21 +798,67 @@ function cascade(element, index, inlineMap, name) {
   }
   if (inline) return inline.value;
   if (lists?.normal.length) {
-    const v = firstMatch(lists.normal, element);
-    if (v !== undefined) return v;
+    if (window[S].compat.uaBySpecificity) {
+      // (no HIDE_UA entries from jsdom 27)
+      let entry;
+      for (const e of lists.normal)
+        if (e.match(element, NO_SCOPE)) {
+          entry = e;
+          break;
+        }
+      if (entry !== undefined) return pageOrUserAgent(entry, element, name, ua, window[S].compat);
+    } else {
+      const v = firstMatch(lists.normal, element);
+      if (v !== undefined) return v;
+    }
   }
   return cascadeUserAgent(element, name, ua, uaImportant, window);
 }
 
-// The user agent sheet (ua-sheet.js), under the page's. Before jsdom
-// 28.1.0 the hidden attribute's display: none is the user agent sheet's
-// too: a display rule wins over it (div { display: block } shows a div
-// with hidden).
+// The user agent sheet (ua-sheet.js), under the page's. The hidden
+// attribute's display: none is the user agent sheet's too: before jsdom
+// 28.1.0 a display rule wins over it (div { display: block } shows a div
+// with hidden), from 28.1.0 one at least as specific (pageOrUserAgent).
 function cascadeUserAgent(element, name, ua, uaImportant, window) {
   if (uaHidden) return undefined;
-  if (name === 'display' && window[S].compat.documentOrder && hiddenHides(element, window[S].compat)) return 'none';
+  if (name === 'display' && hiddenHides(element, window[S].compat)) return 'none';
   return (uaImportant ? undefined : uaValue(ua.important, element)) ?? uaValue(ua.normal, element);
 }
+
+// From jsdom 28.1.0 (compat.uaBySpecificity, black box: 28.1.0 to 30.1.3)
+// the user agent sheet's rules are cascaded with the page's, before them:
+// the page's normal declaration that wins (entry) gives way to a more
+// specific user agent rule (* { display: inline } leaves a div block, *
+// { font-weight: normal } a b bolder, .x { display: block } an element
+// with hidden none). The hidden attribute's display: none is a rule as
+// specific as [hidden]:not([hidden=until-found i]):not(embed): div.x.y and
+// [hidden][hidden]:not(embed) show such an element, div.x and [hidden] do
+// not. To 30.1.2 (compat.pendingByOrder 'all') the page's shorthand wins
+// over a user agent longhand, or a shorthand that does not contain it,
+// whatever their specificity, as the declarations are set in order into one
+// block (inOrderBlock): * { font: 10px serif } gives an h1 10px, * {
+// border: 0 } an hr no border (hr { border-style: inset }), * { border-top:
+// 0 } not an iframe (iframe { border: 2px inset }).
+const HIDDEN_RULE = Object.freeze({ specificity: 2001, order: -1, value: 'none', via: 'display' });
+function pageOrUserAgent(entry, element, name, ua, compat) {
+  const specificity = entry.specificity;
+  let rule = uaRuleOver(ua.normal, element, specificity);
+  if (
+    name === 'display' &&
+    specificity < HIDDEN_RULE.specificity &&
+    (rule === undefined || rule.specificity < HIDDEN_RULE.specificity) &&
+    hiddenHides(element, compat)
+  )
+    rule = HIDDEN_RULE;
+  if (rule === undefined) return entry.value;
+  if (compat.pendingByOrder === 'all' && !entry.direct && !contains(rule.via, entry.from)) return entry.value;
+  return rule.value;
+}
+
+// Whether a declared property sets every longhand another one sets.
+const contains = (property, other) =>
+  property === other ||
+  (SHORTHANDS[property] !== undefined && SHORTHANDS[other].every((l) => SHORTHANDS[property].includes(l)));
 
 // --- computed values ------------------------------------------------------------------
 
@@ -1279,15 +1368,6 @@ const hiddenHides = (element, compat) =>
   element[S].ns === HTML_NS && element[S].attrs.has('hidden') && (compat.jsdom < 27 || element[S].tag !== 'embed');
 
 function longhandValue(element, name, data, custom, compat, value) {
-  // As in jsdom from 28.1.0: the hidden attribute wins over display rules,
-  // not over the style attribute (before, see cascade).
-  if (
-    name === 'display' &&
-    !compat.documentOrder &&
-    hiddenHides(element, compat) &&
-    !inlineDeclarations(element)?.has('display')
-  )
-    return 'none';
   if (compat.legacyComputedStyle) {
     // jsdom before 29.0.2: custom properties are not inherited either;
     // from jsdom 27 the direction of elements with dir, bdi and

@@ -1641,8 +1641,14 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     rawComputedValues:
       before(version, [29, 0, 2]) || !before(version, [30, 1, 0]) ? null : version[0] === 29 ? '29' : '30.0',
     // The user agent sheet's !important declarations win over the page's
-    // from 28.1.0 (ua-sheet.js).
+    // normal ones from 28.1.0 (ua-sheet.js); the page's !important ones,
+    // later, over them.
     uaImportant: !before(version, [28, 1, 0]),
+    // From 28.1.0 (black box, 28.1.0 to 30.1.3) its other declarations meet
+    // the page's by specificity, the page's winning ties (* { display:
+    // inline } leaves a div block); the hidden attribute's display: none
+    // is one of them (cascade.js pageOrUserAgent).
+    uaBySpecificity: !before(version, [28, 1, 0]),
     // Before 28.1.0 (black box, 20.0.0 to 28.0.0) the page's style rules
     // apply in document order, without specificity or !important: the
     // latest matching declaration wins, the style attribute over all of
