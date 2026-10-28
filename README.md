@@ -284,9 +284,10 @@ leaves it out). Details:
 
 ## Going back to jsdom
 
-warpdom is one setting, so going back is one line. jsdom (with Jest,
+warpdom is one setting, so going back is one line (with fast mode, also
+remove `withFastMode` and `warpdom vitest run`). jsdom (with Jest,
 `jest-environment-jsdom`) must be installed; `warpdom migrate` removes it,
-so reinstall it first.
+so reinstall the version you had before first.
 
 ```js
 // The whole project

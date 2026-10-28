@@ -3,15 +3,22 @@
 warpdom is chosen by one setting: the test environment. Changing that
 setting back to `jsdom` (or `happy-dom`) is all it takes to run your tests
 on jsdom again, for the whole project, for one test file or for one run.
-Nothing else in your tests depends on warpdom.
+Only fast mode needs more (see [Fast mode](#the-whole-project) below).
 
-The one requirement: the DOM you go back to must be installed. `warpdom
-migrate` removes jsdom, happy-dom and their environment packages when
-nothing else uses them, so after a migration reinstall them first:
+The one requirement: the DOM you go back to must be installed, at the
+version your tests used before. `warpdom migrate` removes jsdom, happy-dom
+and their environment packages when nothing else uses them, and lists
+each with its version under "Changed dependencies" in
+`.warpdom-migrate/plan.md` (for example "remove `jsdom` ^26.1.0"); the
+package.json in git from before the migration has them too. Reinstall
+that version. Without one, npm installs the newest, which can change
+results (measured: a Vitest project on jsdom 26.1.0 got 30.1.3; a Jest 29
+project on jest-environment-jsdom 29.7.0 got 30.5.2, which runs jsdom
+26.1.0 instead of 20.0.3).
 
 ```sh
-npm install --save-dev jsdom                  # Vitest
-npm install --save-dev jest-environment-jsdom # Jest 28 and later
+npm install --save-dev jsdom@<version>                  # Vitest
+npm install --save-dev jest-environment-jsdom@<version> # Jest 28 and later
 ```
 
 (`happy-dom` for Vitest, `@happy-dom/jest-environment` for Jest.) Without
@@ -19,7 +26,7 @@ it, Jest stops with "Test environment jest-environment-jsdom cannot be
 found", and Vitest cannot load the environment.
 
 Each command and config below was run on a small Vitest 5.0 project and a
-small Jest 30.5 project with warpdom 0.1.10, switching to warpdom and back.
+small Jest 30.5 and 29.7 project with warpdom 0.1.10, switching to warpdom and back.
 
 ## The whole project
 
@@ -49,9 +56,26 @@ Options for warpdom that stay in the config (`environmentOptions.warpdom`
 with Vitest; `jsdom` or `fastFrames` in `testEnvironmentOptions` with
 Jest) are ignored by jsdom; you can remove them.
 
+**A page URL (Vitest).** `warpdom migrate` moves `environmentOptions.jsdom`
+when it holds only `url` to `environmentOptions.warpdom`. jsdom does not
+read that, so its tests then run at `http://localhost:3000/`. Move `url`
+back to `environmentOptions.jsdom`, or keep both to switch back and forth:
+
+```js
+environmentOptions: {
+  warpdom: { url: 'http://example.test/app/' },
+  jsdom: { url: 'http://example.test/app/' },
+},
+```
+
+With Jest, `testEnvironmentOptions.url` is read by both and stays.
+
 **Fast mode.** Replace `withFastMode(...)` with `defineConfig(...)` (or
 remove the wrapper), run `vitest run` instead of `warpdom vitest run`, and
-delete `.warpdom/fast-mode.json`.
+delete `.warpdom/fast-mode.json`. Changing only the environment is not
+enough: once fast mode has learned to split the suite, `withFastMode`
+still runs most files without isolation, so jsdom files share one window
+(warpdom's reset between files resets only warpdom's window).
 
 ## One test file
 
@@ -94,15 +118,28 @@ npm test -- --env=jsdom           # Jest
 ```
 
 For happy-dom: `--environment happy-dom` (Vitest), and
-`--env=@happy-dom/jest-environment` (Jest). These also work with fast mode
-(`npx warpdom vitest run --environment jsdom`). Files with an environment
-comment keep that environment.
+`--env=@happy-dom/jest-environment` (Jest). Files with an environment
+comment keep that environment; `warpdom migrate` changed `jsdom` in those
+comments to `warpdom`.
 
-For a CI run on a project whose package.json no longer lists jsdom,
-install it for that run only:
+With fast mode, add `--isolate` and run Vitest itself, not
+`warpdom vitest run`: otherwise most files run without isolation and share
+one jsdom window, and the warpdom CLI records the jsdom run's results in
+`.warpdom/fast-mode.json`.
 
 ```sh
-npm install --no-save jest-environment-jsdom
+npx vitest run --environment jsdom --isolate
+```
+
+For a CI run on a project whose package.json no longer lists jsdom,
+install it for that run only (`<version>`: the one from before the
+migration, see above):
+
+```sh
+npm install --no-save jsdom@<version>                  # Vitest
+npx vitest run --environment jsdom
+
+npm install --no-save jest-environment-jsdom@<version> # Jest
 npx jest --env=jsdom
 ```
 
@@ -164,7 +201,10 @@ module.exports = {
 };
 ```
 
-`npx vitest run` and `npx jest` then run every test twice, once per DOM.
+`npx vitest run` and `npx jest` then run every test twice, once per DOM,
+except files with an environment comment: they run on that environment in
+both projects, and `warpdom migrate` set those comments to `warpdom`.
+Remove the comment from the files you want on both DOMs.
 One of them: `npx vitest run --project jsdom`, `npx jest --selectProjects
 jsdom`.
 
@@ -195,18 +235,23 @@ Use your package manager's install command (`pnpm install`, `yarn`,
 
 ## Uninstalling
 
-With the environment set back to jsdom everywhere (config, file comments,
-scripts):
+First set the environment back to jsdom everywhere (config, file
+comments, scripts) and remove what still uses warpdom: imports such as
+`warpdom/vitest/environment`, `warpdom/vitest/fast`, `warpdom/vitest/reset`
+in configs and setup files, and `warpdom` in CI workflows. A config that
+still imports warpdom fails to load once it is uninstalled. To find them:
+
+```sh
+grep -rn warpdom --exclude-dir=node_modules --exclude-dir=.git .
+```
+
+Then:
 
 ```sh
 npm uninstall warpdom vitest-environment-warpdom   # Vitest
 npm uninstall warpdom jest-environment-warpdom     # Jest
 rm -rf .warpdom .warpdom-migrate .warpdom-compare
 ```
-
-Then search for leftovers: `grep -rn warpdom --exclude-dir=node_modules .`
-(imports such as `warpdom/vitest/environment`, `warpdom/vitest/fast`,
-`warpdom/vitest/reset` in setup files, and `warpdom` in CI workflows).
 
 ## A test that needs jsdom's behavior
 
