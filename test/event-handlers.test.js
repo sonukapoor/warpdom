@@ -277,3 +277,29 @@ const legacyHandlersScenario = (w) => {
 };
 for (const jsdom of [20, 22, 26, 30])
   parity(`jsdom ${jsdom}: onloadend, onautocomplete, onautocompleteerror, onsort`, legacyHandlersScenario, { jsdom });
+
+// Event handlers are called directly, as jsdom does (20.0.3 and 30), not
+// through their own call property: an element's, and the window's onerror
+// with its five arguments.
+for (const jsdom of [20, 30]) {
+  parity(
+    `event handlers: a function whose call property is overwritten (jsdom ${jsdom})`,
+    (w) => {
+      const seen = [];
+      const handler = function (...args) {
+        seen.push(
+          this === w ? 'window' : this.nodeName,
+          args.length,
+          typeof args[0] === 'string' ? args[0] : args[0].type,
+        );
+      };
+      handler.call = undefined;
+      w.document.body.onclick = handler;
+      w.onerror = handler;
+      w.document.body.dispatchEvent(new w.Event('click'));
+      w.dispatchEvent(new w.ErrorEvent('error', { message: 'm' }));
+      return [seen, w.document.body.onclick === handler];
+    },
+    { jsdom },
+  );
+}

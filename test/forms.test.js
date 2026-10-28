@@ -2060,3 +2060,75 @@ for (const jsdom of [26, 30]) {
     { jsdom },
   );
 }
+
+// FormData forEach calls the callback directly, as jsdom does (20.0.3 and
+// 30), not through its own call property; a callback that is not callable
+// throws even when there are no entries.
+for (const jsdom of [20, 30]) {
+  parity(
+    `FormData forEach: a callback whose call property is overwritten (jsdom ${jsdom})`,
+    (w) => {
+      const seen = [];
+      const fd = new w.FormData();
+      fd.append('a', '1');
+      fd.append('b', '2');
+      const callback = function (value, name, data) {
+        seen.push(value, name, data === fd, this.tag, arguments.length);
+      };
+      callback.call = undefined;
+      const run = (fn) => {
+        try {
+          return fn();
+        } catch (e) {
+          return `${e.name}: ${e.message}`;
+        }
+      };
+      return [
+        run(() => fd.forEach(callback, { tag: 't' })),
+        seen,
+        run(() => new w.FormData().forEach({})),
+        run(() => fd.forEach(1)),
+        run(() => fd.forEach()),
+      ];
+    },
+    { jsdom },
+  );
+}
+
+// FormData forEach walks the live entry list by index, as jsdom does (20.0.3
+// and 30): an entry appended by the callback is visited, one deleted before
+// its turn is skipped, and deleting an earlier entry shifts the index.
+for (const jsdom of [20, 30]) {
+  parity(
+    `FormData forEach: entries appended or deleted by the callback (jsdom ${jsdom})`,
+    (w) => {
+      const make = () => {
+        const fd = new w.FormData();
+        fd.append('a', '1');
+        fd.append('b', '2');
+        fd.append('c', '3');
+        return fd;
+      };
+      const appended = [];
+      const a = make();
+      a.forEach((value, name) => {
+        appended.push(name);
+        if (name === 'a') a.append('d', '4');
+      });
+      const deleted = [];
+      const d = make();
+      d.forEach((value, name) => {
+        deleted.push(name);
+        if (name === 'a') d.delete('b');
+      });
+      const earlier = [];
+      const e = make();
+      e.forEach((value, name) => {
+        earlier.push(name);
+        if (name === 'b') e.delete('a');
+      });
+      return [appended, deleted, earlier];
+    },
+    { jsdom },
+  );
+}

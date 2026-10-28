@@ -138,3 +138,31 @@ parity('NodeFilter has no prototype and is not a constructor', (w) => {
   }
   return [typeof N, 'prototype' in N, N.SHOW_ELEMENT, N.FILTER_SKIP, N.name, error];
 });
+
+// A filter function is called with an undefined this, as jsdom does
+// (20.0.3 and 30); an object's acceptNode with the object.
+for (const jsdom of [20, 30]) {
+  parity(
+    `TreeWalker and NodeIterator filters: the this value (jsdom ${jsdom})`,
+    (w) => {
+      'use strict';
+      const seen = [];
+      w.document.body.innerHTML = '<i></i>';
+      const filter = function (node) {
+        seen.push(this === undefined ? 'undefined' : typeof this, node.nodeName);
+        return 1;
+      };
+      w.document.createTreeWalker(w.document.body, 1, filter).nextNode();
+      w.document.createNodeIterator(w.document.body, 1, filter).nextNode();
+      const object = {
+        acceptNode(node) {
+          seen.push(this === object, node.nodeName);
+          return 1;
+        },
+      };
+      w.document.createTreeWalker(w.document.body, 1, object).nextNode();
+      return seen;
+    },
+    { jsdom },
+  );
+}

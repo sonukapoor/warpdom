@@ -28,6 +28,7 @@ import {
   asciiLowercase,
   PlatformURL as URL,
   tooFewArguments,
+  checkForEachCallback,
 } from './internal.js';
 import { writeAttribute, attributeSteps, addAttributeStep, tokenList } from './attributes.js';
 import { liveList, htmlCollectionNames, indexedElement, iterate } from './collections.js';
@@ -1614,6 +1615,9 @@ function constructEntryList(form, submitter = null) {
 }
 
 const entriesOf = (self) => state(self).entries;
+// The callback is called with Reflect.apply, captured at load: not through
+// its own call property, as jsdom calls it.
+const { apply } = Reflect;
 
 // A FormData's entries (XMLHttpRequest's send), or null for other values.
 export function formDataEntries(value) {
@@ -1698,8 +1702,15 @@ const FORM_DATA_INTERFACES = [
       *values() {
         for (const e of entriesOf(this).slice()) yield e.value;
       },
-      forEach(callback, thisArg) {
-        for (const e of entriesOf(this).slice()) callback.call(thisArg, e.value, e.name, this);
+      forEach(callback, thisArg = undefined) {
+        checkForEachCallback(callback, arguments.length);
+        // The live entry list, by index, as jsdom walks it: entries the
+        // callback appends are visited, ones it deletes are skipped (delete
+        // and set replace the list, so it is read again each step).
+        for (let i = 0; i < entriesOf(this).length; i++) {
+          const e = entriesOf(this)[i];
+          apply(callback, thisArg, [e.value, e.name, this]);
+        }
       },
       [Symbol.iterator]() {
         return this.entries();

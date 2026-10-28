@@ -970,3 +970,24 @@ test('EventTarget: each window has its own operations, acting on that window wit
   w.dispatchEvent(new w.Event('x'));
   assert.equal(hits, 1);
 });
+
+// Listener functions are called directly, as jsdom does (20.0.3 and 30),
+// not through their own call property.
+for (const jsdom of [20, 30]) {
+  parity(
+    `event listeners: a function whose call property is overwritten (jsdom ${jsdom})`,
+    (w) => {
+      const seen = [];
+      const listener = function (event) {
+        seen.push(event.type, this === w ? 'window' : this.nodeName, arguments.length);
+      };
+      listener.call = () => seen.push('own call');
+      w.document.body.addEventListener('x', listener);
+      w.addEventListener('x', listener);
+      w.document.body.dispatchEvent(new w.Event('x'));
+      w.dispatchEvent(new w.Event('x'));
+      return seen;
+    },
+    { jsdom },
+  );
+}

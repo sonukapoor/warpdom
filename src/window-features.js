@@ -9,6 +9,7 @@ import {
   lazyDataSetter,
   domError,
   tooFewArguments,
+  checkForEachCallback,
   platformGlobal,
   PLATFORM_GLOBAL,
   PlatformURL,
@@ -23,6 +24,10 @@ import { navigate, traverse, hostTimeout } from './navigation.js';
 import { VERSION } from './version.js';
 import { typedArrayName, realmOf, webidlString } from './encoding.js';
 import { staticList } from './collections.js';
+
+// forEach callbacks are called with Reflect.apply, captured at load: not
+// through their own call property, as jsdom calls them.
+const { apply } = Reflect;
 
 // The jsdom version warpdom behaves like by default.
 export const LATEST_JSDOM = 30;
@@ -863,15 +868,6 @@ const argument = (value, index, method, iface = 'URLSearchParams') =>
   webidlString(value, `parameter ${index}`, `Failed to execute '${method}' on '${iface}'`);
 
 // forEach (WebIDL pair iterators): its errors name the 'iterable'.
-function checkCallback(callback, present) {
-  if (present < 1)
-    throw new TypeError("Failed to execute 'forEach' on 'iterable': 1 argument required, but only 0 present.");
-  if (typeof callback !== 'function')
-    throw new TypeError(
-      "Failed to execute 'forEach' on 'iterable': The callback provided as parameter 1 is not a function",
-    );
-}
-
 const URL_SEARCH_PARAMS_INTERFACE = {
   name: 'URLSearchParams',
   construct(window, self, [init]) {
@@ -943,9 +939,9 @@ const URL_SEARCH_PARAMS_INTERFACE = {
     },
     forEach(callback, thisArg = undefined) {
       const { params } = state(this);
-      checkCallback(callback, arguments.length);
+      checkForEachCallback(callback, arguments.length);
       params.forEach((value, name) => {
-        callback.call(thisArg, value, name, this);
+        apply(callback, thisArg, [value, name, this]);
       });
     },
     toString() {
@@ -1134,10 +1130,10 @@ const HEADERS_INTERFACE = {
     },
     forEach(callback, thisArg = undefined) {
       const s = state(this);
-      checkCallback(callback, arguments.length);
+      checkForEachCallback(callback, arguments.length);
       for (let i = 0; i < sortedHeaders(s).length; i++) {
         const [name, value] = sortedHeaders(s)[i];
-        callback.call(thisArg, value, name, this);
+        apply(callback, thisArg, [value, name, this]);
       }
     },
   },

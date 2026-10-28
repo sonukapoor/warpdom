@@ -5,6 +5,10 @@
 import { S, state, hooks } from './internal.js';
 import { liveList } from './collections.js';
 
+// The observer's callback is called with Reflect.apply, captured at load:
+// not through its own call property, as jsdom calls it.
+const { apply } = Reflect;
+
 const windowOf = (node) => node[S].doc[S].window;
 let observerIds = 0;
 
@@ -59,7 +63,7 @@ function scheduleDelivery(window, observer) {
       const records = os.records;
       os.records = [];
       try {
-        os.callback.call(obs, records, obs);
+        apply(os.callback, obs, [records, obs]);
       } catch (error) {
         ws.onUnhandledError(error);
       }

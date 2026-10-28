@@ -16,6 +16,10 @@ import {
 } from './internal.js';
 import { liveList } from './collections.js';
 
+// Listener functions are called with Reflect.apply, captured at load: not
+// through their own call property, as jsdom calls them.
+const { apply } = Reflect;
+
 // --- EventTarget -------------------------------------------------------------
 
 const listenersOf = (target) => {
@@ -235,7 +239,7 @@ function invokeListeners(node, event, es, list, phase) {
     es.inPassiveListener = entry.passive;
     try {
       const cb = entry.callback;
-      if (typeof cb === 'function') cb.call(exposed(node), event);
+      if (typeof cb === 'function') apply(cb, exposed(node), [event]);
       else cb.handleEvent(event);
     } catch (error) {
       reportError(node, error);

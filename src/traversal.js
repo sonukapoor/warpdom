@@ -33,7 +33,12 @@ function filter(traverser, node) {
   if (s.filter == null) return ACCEPT;
   s.active = true;
   try {
-    const result = typeof s.filter === 'function' ? s.filter(node) : s.filter.acceptNode(node);
+    // A function is called with an undefined this (not the state object it
+    // is stored on) and without reading its call property, an object's
+    // acceptNode with the object. A plain call of a local does both with
+    // no argument array per node.
+    const f = s.filter;
+    const result = typeof f === 'function' ? f(node) : f.acceptNode(node);
     return Number(result);
   } finally {
     s.active = false;
