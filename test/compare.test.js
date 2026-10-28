@@ -17,6 +17,7 @@ import {
   PINNED_PACKAGE,
   warpdomVitestEnvironment,
   fsId,
+  isWarpdomEnvironment,
 } from '../src/compare/wrappers.js';
 import {
   isDynamicPattern,
@@ -695,6 +696,104 @@ test('compare wrappers (#172): with fromWarpdom, projects and files on warpdom a
   const warpdom = readPinned(PINNED_TARGET, files, { fromWarpdom: true });
   assert.equal(warpdom.files['a.spec.js'], `// @vitest-environment ${PINNED_TARGET}\n`);
   assert.equal(readPinned('jsdom', files).files['a.spec.js'], files['a.spec.js'], 'not without fromWarpdom');
+});
+
+test('compare wrappers (#172): warpdom by package, environmentMatchGlobs, and the warpdom environments switched are logged', async () => {
+  // A path counts by the package after its last node_modules; a directory
+  // named warpdom above it does not make it warpdom.
+  for (const e of [
+    'warpdom',
+    'warpdom/jest',
+    'warpdom/vitest/environment',
+    'jest-environment-warpdom',
+    'vitest-environment-warpdom',
+    '/p/node_modules/warpdom/src/jest.js',
+    '/work/warpdom/node_modules/warpdom/src/jest.js',
+    'C:\\work\\node_modules\\jest-environment-warpdom\\index.js',
+    '/home/me/warpdom/src/jest.js',
+  ])
+    assert.equal(isWarpdomEnvironment(e), true, e);
+  for (const e of [
+    'node',
+    'jsdom',
+    'warpdom-compare',
+    '/work/warpdom/node_modules/jest-environment-node/build/index.js',
+    'C:\\work\\warpdom\\node_modules\\jest-environment-jsdom\\build\\index.js',
+    '/work/warpdom/node_modules/.pnpm/node_modules/jest-environment-node/build/index.js',
+  ])
+    assert.equal(isWarpdomEnvironment(e), false, e);
+
+  const dir = tmp('from-warpdom-2');
+  const log = path.join(dir, 'from-warpdom.log');
+  const saved = process.env.WARPDOM_COMPARE_FROM_WARPDOM_LOG;
+  process.env.WARPDOM_COMPARE_FROM_WARPDOM_LOG = log;
+  try {
+    const require = createRequire(path.join(dir, 'x.js'));
+    const vitest = async (name, config, options) => {
+      write(path.join(dir, `${name}.config.mjs`), `export default ${JSON.stringify(config)};`);
+      const wrapper = write(
+        path.join(dir, `${name}.warpdom-compare.mjs`),
+        vitestWrapper(path.join(dir, `${name}.config.mjs`), options),
+      );
+      return (await import(pathToFileURL(wrapper).href)).default({ mode: 'test' });
+    };
+    // Vitest 2 and 3: environmentMatchGlobs choose a file's environment
+    // over test.environment, so their DOM targets are switched too.
+    const globs = [
+      ['**/*.dom.spec.js', 'warpdom'],
+      ['**/*.jsdom.spec.js', 'jsdom'],
+      ['**/*.node.spec.js', 'node'],
+    ];
+    const config = {
+      test: {
+        environment: 'node',
+        environmentMatchGlobs: globs,
+        projects: [{ test: { name: 'a', environmentMatchGlobs: globs } }],
+      },
+    };
+    const baseline = await vitest('g1', config, { environment: 'jsdom', fromWarpdom: true });
+    assert.equal(baseline.test.environment, 'node');
+    const switched = [
+      ['**/*.dom.spec.js', 'jsdom'],
+      ['**/*.jsdom.spec.js', 'jsdom'],
+      ['**/*.node.spec.js', 'node'],
+    ];
+    assert.deepEqual(baseline.test.environmentMatchGlobs, switched);
+    assert.deepEqual(baseline.test.projects[0].test.environmentMatchGlobs, switched);
+    const warpdom = await vitest('g2', config, { environment: PINNED_TARGET });
+    assert.deepEqual(warpdom.test.environmentMatchGlobs, [
+      ['**/*.dom.spec.js', 'warpdom'],
+      ['**/*.jsdom.spec.js', PINNED_TARGET],
+      ['**/*.node.spec.js', 'node'],
+    ]);
+    const kept = await vitest('g3', config, {});
+    assert.deepEqual(kept.test.environmentMatchGlobs, globs, 'the baseline run without --baseline keeps them');
+
+    // Jest: a resolved Node environment in a checkout named warpdom stays.
+    const nodeEnv = '/work/warpdom/node_modules/jest-environment-node/build/index.js';
+    const file = write(
+      path.join(dir, 'j.config.js'),
+      `module.exports = { projects: [{ testEnvironment: ${JSON.stringify(nodeEnv)} }, { testEnvironment: 'warpdom' }] };`,
+    );
+    const jestCfg = await require(
+      write(path.join(dir, 'j.warpdom-compare.cjs'), jestWrapper(file, { environment: 'jsdom', fromWarpdom: true })),
+    )();
+    assert.deepEqual(
+      jestCfg.projects.map((p) => p.testEnvironment),
+      [nodeEnv, 'jsdom'],
+    );
+    // The warpdom environments the wrappers switched, for the report
+    // (projects in other config files are only seen there).
+    assert.deepEqual(fs.readFileSync(log, 'utf8').split('\n').filter(Boolean).sort(), [
+      'warpdom',
+      'warpdom',
+      'warpdom',
+    ]);
+  } finally {
+    if (saved === undefined) delete process.env.WARPDOM_COMPARE_FROM_WARPDOM_LOG;
+    else process.env.WARPDOM_COMPARE_FROM_WARPDOM_LOG = saved;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 // --- detection ---------------------------------------------------------------
@@ -1964,6 +2063,11 @@ test('compare end to end (#172): a project on warpdom needs --baseline, and gets
     assert.equal(res.status, 1, res.stdout + res.stderr);
     const out = res.stdout.replace(/\x1b\[[0-9;]*m/g, '');
     assert.match(out, /baseline jsdom \d/);
+    assert.match(out, /^warpdom compare: vitest [^\n]*, baseline jsdom [^\n]*, for a project on warpdom$/m);
+    assert.match(
+      fs.readFileSync(path.join(dir, '.warpdom-compare', 'report.md'), 'utf8'),
+      /^- The project runs on warpdom: its projects and files on warpdom ran on jsdom in the baseline runs \(--baseline\)$/m,
+    );
     assert.match(
       out,
       /7 tests, 4 tests with the same status; 2 pass on jsdom and fail on warpdom, 1 fail on jsdom and pass on warpdom/,
@@ -1979,6 +2083,59 @@ test('compare end to end (#172): a project on warpdom needs --baseline, and gets
       ['pinned-happy.spec.js', 'happy-dom', true, 'jsdom'],
       ['pinned.spec.js', 'warpdom', true, 'jsdom'],
     ]);
+    assert.deepEqual(leftovers(dir), []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('compare end to end (#172): --baseline on a project on node whose files choose warpdom with a comment', () => {
+  const dir = migratedProject();
+  try {
+    fs.writeFileSync(path.join(dir, 'vitest.config.js'), "export default { test: { include: ['*.spec.js'] } };");
+    const res = compareCli(dir, ['--correctness', '--baseline', 'jsdom']);
+    const out = res.stdout.replace(/\x1b\[[0-9;]*m/g, '');
+    assert.equal(res.status, 1, out + res.stderr);
+    assert.match(out, /, for a project on warpdom$/m);
+    const result = JSON.parse(fs.readFileSync(path.join(dir, '.warpdom-compare', 'results.json'), 'utf8'));
+    assert.equal(result.fromWarpdom, true);
+    assert.deepEqual(
+      result.correctness.differences.map((d) => [d.name, d.class]),
+      [['pinned to jsdom: passes on jsdom only', 'regression']],
+    );
+    assert.deepEqual(leftovers(dir), []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// The root config lists a project file whose environment is warpdom: only
+// the run shows it.
+function migratedChildProject() {
+  const dir = migratedProject();
+  fs.mkdirSync(path.join(dir, 'a'));
+  for (const f of ['differ.spec.js', 'same.spec.js']) fs.renameSync(path.join(dir, f), path.join(dir, 'a', f));
+  for (const f of ['pinned.spec.js', 'pinned-happy.spec.js']) fs.rmSync(path.join(dir, f));
+  fs.writeFileSync(
+    path.join(dir, 'a', 'vitest.config.js'),
+    "export default { test: { include: ['*.spec.js'], environment: 'warpdom' } };",
+  );
+  fs.writeFileSync(
+    path.join(dir, 'vitest.config.js'),
+    "export default { test: { projects: ['./a/vitest.config.js'] } };",
+  );
+  return dir;
+}
+
+test('compare end to end (#172): --baseline on a project on warpdom in another config file', () => {
+  const dir = migratedChildProject();
+  try {
+    const res = compareCli(dir, ['--correctness', '--baseline', 'jsdom']);
+    const out = res.stdout.replace(/\x1b\[[0-9;]*m/g, '');
+    assert.equal(res.status, 1, out + res.stderr);
+    assert.match(out, /, for a project on warpdom$/m);
+    const result = JSON.parse(fs.readFileSync(path.join(dir, '.warpdom-compare', 'results.json'), 'utf8'));
+    assert.equal(result.fromWarpdom, true);
     assert.deepEqual(leftovers(dir), []);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
