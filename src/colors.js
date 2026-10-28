@@ -213,6 +213,52 @@ const SYSTEM = {
   windowframe: 0x333333,
   windowtext: 0x000000,
 };
+// The same under a computed color-scheme of 'dark' (black box, 27.4.0 to
+// 30.1.3; ButtonText's rgb(255, 255, 155) as jsdom gives it).
+const DARK_SYSTEM = {
+  accentcolor: 0x0033ff,
+  accentcolortext: 0xffffff,
+  activetext: 0xff6666,
+  buttonborder: 0xcccccc,
+  buttonface: 0x333333,
+  buttontext: 0xffff9b,
+  canvas: 0x000000,
+  canvastext: 0xffffff,
+  field: 0x000000,
+  fieldtext: 0xffffff,
+  graytext: 0x999999,
+  highlight: 0x0033ff,
+  highlighttext: 0x000000,
+  linktext: 0x00ccff,
+  mark: 0xcc0099,
+  marktext: 0xffffff,
+  selecteditem: 0x0033ff,
+  selecteditemtext: 0x000000,
+  visitedtext: 0xff33ff,
+  activeborder: 0xcccccc,
+  activecaption: 0x000000,
+  appworkspace: 0x000000,
+  background: 0x000000,
+  buttonhighlight: 0x333333,
+  buttonshadow: 0x333333,
+  captiontext: 0xffffff,
+  inactiveborder: 0xcccccc,
+  inactivecaption: 0x000000,
+  inactivecaptiontext: 0x999999,
+  infobackground: 0x000000,
+  infotext: 0xffffff,
+  menu: 0x000000,
+  menutext: 0xffffff,
+  scrollbar: 0x000000,
+  threeddarkshadow: 0xcccccc,
+  threedface: 0x333333,
+  threedhighlight: 0xcccccc,
+  threedlightshadow: 0xcccccc,
+  threedshadow: 0xcccccc,
+  window: 0x000000,
+  windowframe: 0xcccccc,
+  windowtext: 0xffffff,
+};
 // CSS 2's system colors, the only ones cssstyle before 4.4 knows (black
 // box, 2.3.0 to 4.3.1): with ButtonText, GrayText, Highlight and
 // HighlightText the deprecated ones.
@@ -456,3 +502,10 @@ export function resolveColor(token, legacy = false) {
 }
 
 export const NAMED_COLORS = Object.keys(NAMED);
+
+// A lowercased system color's computed value under a color-scheme of
+// 'dark' (rgb()), by name; no entry for any other color.
+export const DARK_SYSTEM_COLORS = Object.assign(
+  Object.create(null),
+  Object.fromEntries(Object.entries(DARK_SYSTEM).map(([name, n]) => [name, fromHex(n)])),
+);

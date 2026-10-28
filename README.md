@@ -166,7 +166,8 @@ earlier, and `azimuth` with cssstyle 5.3 and earlier (as an angle until
 Computed values follow the version too: colors stay as declared before
 22.1.0 (`red`, `transparent`, `GrayText`), named and hex colors resolve from
 22.1.0 while system colors stay keywords until 26, and from 27.0.0 system
-colors are jsdom's (`ButtonFace` is `rgb(204, 204, 204)`); before
+colors are jsdom's (`ButtonFace` is `rgb(204, 204, 204)`, under
+`color-scheme: dark` `rgb(51, 51, 51)`); before
 cssstyle 4.4 color keywords keep their case and only CSS 2's system colors
 exist (`ThreeDFace`, not `Canvas`). A declared `0` stays `0` before 28.1.0
 where cssstyle does not parse the property (`text-indent`, `min-width`);
