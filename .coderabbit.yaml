@@ -2,9 +2,10 @@
 language: en-US
 reviews:
   profile: chill
-  # Request changes while CodeRabbit has open comments; approve once they are
-  # resolved and no pre-merge check is in an error state.
-  request_changes_workflow: true
+  # Request changes for blocking findings; approve once the required threads
+  # are resolved, the latest commit is reviewed and pre-merge checks pass.
+  auto_approvals:
+    enabled: true
   high_level_summary: true
   poem: false
   sequence_diagrams: false
