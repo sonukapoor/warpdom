@@ -42,7 +42,7 @@ projects).
 | `--fast-frames` | off | Run warpdom with its `fastFrames` option ([fast-frames.md](fast-frames.md)) to see its speedup and which tests change |
 | `--explore` | off | Also try runner settings (pool, isolation) on warpdom; see below |
 | `--workers <n>` | runner default | Passed as the runner's worker limit to every run |
-| `--baseline <env>` | detected | `jsdom` or `happy-dom`; what warpdom is compared with |
+| `--baseline <env>` | detected | `jsdom` or `happy-dom`; what warpdom is compared with. On a project already on warpdom (after `warpdom migrate`), required: see [A project already on warpdom](#a-project-already-on-warpdom) |
 | `--out <dir>` | `.warpdom-compare/` | Report, JSON results, logs |
 | `--timeout <min>` | 30 | Per run |
 | `-- <args>` | | Passed to every run (a file filter, `--project x`, `--config <file>`; these two replace the test script's) |
@@ -97,6 +97,8 @@ first, with warpdom's error message for each group.
   and the report says so per project (see "Monorepos"). Vitest
   browser-mode projects are left out of both runs (no browser starts) and
   reported as not run.
+- **A project already on warpdom** (after `warpdom migrate`): compared
+  only with `--baseline`; see below.
 - **Node flags:** flags the package.json `test` script gives the runner
   (`node --experimental-vm-modules .../jest.js`, `NODE_OPTIONS=... jest`)
   are passed on in `NODE_OPTIONS`, without debugger flags. When a run does
@@ -106,6 +108,40 @@ first, with warpdom's error message for each group.
 - **jsdom version:** the installed jsdom (the same detection as the Vitest
   adapter's `jsdomVersion`), so warpdom runs with the matching profile.
   The report names it.
+
+### A project already on warpdom
+
+After `warpdom migrate`, the config and the environment comments say
+`warpdom`. Without `--baseline`, compare stops with exit code 2: "nothing
+to compare: no project runs on jsdom or happy-dom (found: warpdom); the
+project already runs on warpdom: add --baseline jsdom (or happy-dom) to
+run its baseline on that DOM, which must be installed".
+
+With `--baseline jsdom` (or `happy-dom`), projects on warpdom are switched
+like projects on jsdom: to that DOM in the baseline runs and to warpdom in
+the warpdom runs (#172). warpdom counts as on warpdom by name or path:
+`warpdom`, `vitest-environment-warpdom`, `jest-environment-warpdom`,
+`warpdom/vitest/environment`, `warpdom/jest`, or a path into a `warpdom`
+directory. The header says "for a project on warpdom".
+
+- The DOM must be installed in the project (`jsdom` for Vitest,
+  `jest-environment-jsdom` for Jest; `happy-dom`, or
+  `@happy-dom/jest-environment`). migrate removes them; without one,
+  compare stops with exit code 2 before running anything:
+  "--baseline jsdom: jsdom is not installed here; ...". To install it for
+  one run only: `npm install --no-save jsdom@<version>`, with the version
+  from before the migration ([switching-back.md](switching-back.md)).
+- Vitest: files whose comment says `@vitest-environment warpdom` are
+  switched as well (to the baseline and to warpdom, see below).
+- Jest: files whose docblock says `@jest-environment warpdom` are not
+  switched (the name resolves to the installed jest-environment-warpdom,
+  which compare does not shadow); they are reported as not compared.
+- warpdom options in the config (`environmentOptions.warpdom` with Vitest,
+  `jsdom` in `testEnvironmentOptions` with Jest) stay in the baseline run;
+  jsdom and happy-dom ignore them.
+- A project with projects on jsdom and on warpdom: with `--baseline`, both
+  kinds are compared; without it, only those on jsdom or happy-dom, as
+  before.
 
 ### Switching the environment without touching the project
 

@@ -42,7 +42,9 @@ again: [switching-back.md](switching-back.md).
 **Run `warpdom compare` before migrating.** It runs the suite on jsdom (or
 happy-dom) and on warpdom and lists every test whose result changes; it
 needs jsdom still installed, which stops being true after the migration and
-`pnpm install`.
+`pnpm install`. After the migration, `warpdom compare --baseline jsdom`
+compares again once jsdom is installed
+([switching-back.md](switching-back.md#both-side-by-side)).
 
 ## What it changes
 
@@ -242,6 +244,12 @@ anyway (jsdom 30.1.2 or later with Vitest, 26 with Jest), nothing is
 written. `--no-keep-jsdom-version` leaves the version out and only reports
 it. happy-dom suites get a note instead: warpdom behaves like jsdom, so
 `warpdom compare --baseline happy-dom` shows what changes.
+
+Both come from the environments migrate changed, not from what is
+installed: a happy-dom (or `@happy-dom/jest-environment`) that no test
+used gets no note, and a jsdom that no test used (every test on
+happy-dom) is not pinned. When migrate changed no environment in a
+package, a removed jsdom is pinned as above.
 
 ## Release-age settings
 

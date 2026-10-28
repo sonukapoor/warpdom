@@ -22,7 +22,8 @@ Options:
                       without the 16.7 ms wait; opt-in because a few tests can
                       change result): shows the speed and what changes
   --workers <n>       The runner's worker limit for every run (default: the runner's)
-  --baseline <env>    jsdom or happy-dom (default: what the project uses)
+  --baseline <env>    jsdom or happy-dom (default: what the project uses;
+                      required on a project already on warpdom)
   --runner <name>     vitest or jest, when both are configured
   --out <dir>         Report, JSON results and logs (default: .warpdom-compare)
   --timeout <min>     Per run (default 30)
