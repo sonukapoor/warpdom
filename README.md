@@ -295,9 +295,14 @@ test: { environment: 'jsdom' }   // Vitest
 testEnvironment: 'jsdom'         // Jest
 ```
 
+One test file (wins over the config and the command line; with Jest, as
+the file's first comment):
+
 ```js
-// One test file (wins over the config and the command line)
 // @vitest-environment jsdom
+```
+
+```js
 /** @jest-environment jsdom */
 ```
 

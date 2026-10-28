@@ -52,6 +52,11 @@ module.exports = {
 };
 ```
 
+**Scripts.** `warpdom migrate` also changed `--environment jsdom` and
+`--env=jsdom` in package.json scripts to `warpdom`; change them back. The
+flag wins over the config, and adding a second one
+(`npm test -- --environment jsdom`) makes Vitest and Jest fail.
+
 Options for warpdom that stay in the config (`environmentOptions.warpdom`
 with Vitest; `jsdom` or `fastFrames` in `testEnvironmentOptions` with
 Jest) are ignored by jsdom; you can remove them.
@@ -117,6 +122,10 @@ npm test -- --environment jsdom   # Vitest
 npm test -- --env=jsdom           # Jest
 ```
 
+With Vitest `test.projects`, the flag does not reach the projects; change
+their `environment`, or run a jsdom project
+([Both side by side](#both-side-by-side)).
+
 For happy-dom: `--environment happy-dom` (Vitest), and
 `--env=@happy-dom/jest-environment` (Jest). Files with an environment
 comment keep that environment; `warpdom migrate` changed `jsdom` in those
@@ -145,7 +154,9 @@ npx jest --env=jsdom
 
 To choose the DOM with an environment variable instead (for example a CI
 matrix), read one in the config. warpdom has no variable of its own for
-this.
+this. The name `'warpdom'` here and below needs `vitest-environment-warpdom`
+or `jest-environment-warpdom` (`warpdom migrate` adds it); without it, use
+the path from [Setup](../README.md#setup).
 
 ```js
 // vitest.config.js
@@ -235,7 +246,7 @@ Use your package manager's install command (`pnpm install`, `yarn`,
 
 ## Uninstalling
 
-First set the environment back to jsdom everywhere (config, file
+First set the environment back to jsdom or happy-dom everywhere (config, file
 comments, scripts) and remove what still uses warpdom: imports such as
 `warpdom/vitest/environment`, `warpdom/vitest/fast`, `warpdom/vitest/reset`
 in configs and setup files, and `warpdom` in CI workflows. A config that
