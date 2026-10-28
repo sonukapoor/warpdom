@@ -31,15 +31,17 @@ function forEachIframe(node, fn) {
 
 // The parent window's index properties (window[0], ...) follow its frames,
 // also on the VM context's global it is installed as (Jest, Vitest's VM
-// pools), which frames returns there.
+// pools), which frames returns there. An index a test made
+// non-configurable stays (Reflect: no TypeError, which would stop a removal
+// or resetWindow halfway).
 function syncIndexes(window, previousLength) {
   const frames = window[S].childFrames;
   const { globalProxy } = window[S];
   for (const target of globalProxy ? [window, globalProxy] : [window]) {
-    for (let i = frames.length; i < previousLength; i++) delete target[i];
+    for (let i = frames.length; i < previousLength; i++) Reflect.deleteProperty(target, i);
     for (let i = 0; i < frames.length; i++) {
       const child = frames[i];
-      Object.defineProperty(target, i, { get: () => child, configurable: true, enumerable: true });
+      Reflect.defineProperty(target, i, { get: () => child, configurable: true, enumerable: true });
     }
   }
 }
@@ -80,16 +82,25 @@ function createFrame(iframe) {
   }, 0);
 }
 
+// The discarded window's tasks never run: its timers (and so
+// AbortSignal.timeout of its realm) stop, as in jsdom, and so do those of
+// the frames nested in it (jsdom 20 to 30, black box: an interval in an
+// iframe's iframe stops when the outer iframe is removed). The nested
+// frames stay its frames (jsdom 30 keeps its length, earlier ones do not).
+function discardWindow(window) {
+  window[S].discarded = true;
+  hooks.discardedWindows++;
+  clearWindowTimers(window);
+  const frames = window[S].childFrames;
+  if (frames) for (const child of frames) discardWindow(child);
+}
+
 function destroyFrame(iframe) {
   const es = iframe[S];
   const child = es.frameWindow;
   if (!child) return;
   es.frameWindow = null;
-  // The discarded window's tasks never run: its timers (and so
-  // AbortSignal.timeout of its realm) stop, as in jsdom.
-  child[S].discarded = true;
-  hooks.discardedWindows++;
-  clearWindowTimers(child);
+  discardWindow(child);
   abortWindowRequests(child);
   forgetLastList();
   const parent = child[S].parentWindow;

@@ -334,3 +334,43 @@ test('resetWindow keeps the frame windows of iframes still connected', () => {
   resetWindow(w);
   assert.deepEqual([w.length, w[0] === kept.contentWindow, w[1]], [1, true, undefined]);
 });
+
+// A frame in a discarded frame stops too: its timers never run (jsdom 20
+// to 30, black box: an interval in a nested iframe stops when the outer
+// iframe is removed). Review on #176.
+test('resetWindow stops the timers of frames nested in a discarded frame', async () => {
+  const w = createWindow();
+  snapshotWindow(w);
+  const outer = w.document.body.appendChild(w.document.createElement('iframe'));
+  const od = outer.contentDocument;
+  const inner = od.body.appendChild(od.createElement('iframe')).contentWindow;
+  let ticks = 0;
+  inner.setInterval(() => ticks++, 2);
+  resetWindow(w);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(ticks, 0);
+});
+
+// A frame index property the snapshot had (an iframe in the document when
+// it was taken) does not outlive its frame (CodeRabbit review on #176).
+test('resetWindow drops a frame index property the snapshot had', () => {
+  const w = createWindow();
+  const iframe = w.document.body.appendChild(w.document.createElement('iframe'));
+  snapshotWindow(w);
+  iframe.remove();
+  resetWindow(w);
+  assert.deepEqual([w.length, w[0], '0' in w], [0, undefined, false]);
+});
+
+// A test that made a frame index non-configurable does not make the reset
+// throw: the property stays, the rest of the reset runs (Copilot review on
+// #176).
+test('resetWindow with a non-configurable frame index property', () => {
+  const w = createWindow();
+  snapshotWindow(w);
+  w.document.body.appendChild(w.document.createElement('iframe'));
+  Object.defineProperty(w, '0', { configurable: false });
+  w.document.title = 'changed';
+  resetWindow(w);
+  assert.deepEqual([w.length, w.document.title], [0, '']);
+});
