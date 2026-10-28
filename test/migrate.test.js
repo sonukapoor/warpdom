@@ -1273,3 +1273,149 @@ test('migrate (#39): the cssstyle a removed jsdom loaded is pinned when it chang
     },
   );
 });
+
+test('migrate (#172): a one-line package.json that already lists warpdom gets no empty "add" in its manual item', () =>
+  tempProject(
+    {
+      'package.json': `{"private":true,"devDependencies":{"happy-dom":"^20.0.0","jsdom":"^29.1.1","vitest":"^5.0.0","vitest-environment-warpdom":"^${ENVIRONMENT_PACKAGE_VERSION}","warpdom":"^${VERSION}"}}\n`,
+      'vitest.config.js': "export default { test: { environment: 'jsdom' } };\n",
+    },
+    async (dir) => {
+      installed(dir, 'jsdom', { version: '29.1.1' });
+      installed(dir, 'happy-dom', { version: '20.0.0' });
+      const r = await run(dir);
+      assert.deepEqual(
+        r.manual.map((m) => [m.file, m.reason]),
+        [['package.json', 'devDependencies is not one entry per line; remove jsdom, happy-dom by hand']],
+      );
+      const out = renderConsole(r) + renderMarkdown(r);
+      assert.doesNotMatch(out, /and add|add {2}by hand/);
+    },
+  ));
+
+test('migrate (#172): the version notes name the DOM the tests ran on, not one merely installed', async () => {
+  // Vitest: every test on jsdom, happy-dom installed but unused.
+  await tempProject(
+    {
+      'package.json':
+        '{\n  "private": true,\n  "devDependencies": {\n    "happy-dom": "^20.0.0",\n    "jsdom": "^26.1.0",\n    "vitest": "^5.0.0"\n  }\n}\n',
+      'vitest.config.js': "export default {\n  test: {\n    environment: 'jsdom',\n  },\n};\n",
+    },
+    async (dir) => {
+      installed(dir, 'jsdom', { version: '26.1.0' });
+      installed(dir, 'happy-dom', { version: '20.0.0' });
+      const r = await run(dir);
+      const notes = r.profile.join('\n');
+      assert.doesNotMatch(notes, /happy-dom/);
+      assert.match(notes, /pinned jsdom 26\.1\.0/);
+      assert.match(renderMarkdown(r), /the tests ran on jsdom 26\.1\.0/);
+      assert.doesNotMatch(renderConsole(r) + renderMarkdown(r), /ran on happy-dom/);
+    },
+  );
+  // Jest: every test on jsdom, @happy-dom/jest-environment installed but unused.
+  await tempProject(
+    {
+      'package.json':
+        '{\n  "private": true,\n  "devDependencies": {\n    "@happy-dom/jest-environment": "^20.0.0",\n    "jest": "^30.0.0",\n    "jest-environment-jsdom": "^30.0.0"\n  }\n}\n',
+      'jest.config.js': "module.exports = {\n  testEnvironment: 'jsdom',\n};\n",
+    },
+    async (dir) => {
+      installed(dir, 'jest-environment-jsdom', { version: '30.0.0' });
+      installed(dir, 'jest-environment-jsdom/node_modules/jsdom', { version: '26.1.0' });
+      installed(dir, '@happy-dom/jest-environment', { version: '20.0.0' });
+      const r = await run(dir);
+      assert.doesNotMatch(r.profile.join('\n'), /happy-dom/);
+      assert.doesNotMatch(renderConsole(r) + renderMarkdown(r), /ran on happy-dom/);
+      assert.deepEqual(
+        r.profiles.map((p) => p.before),
+        ['jsdom 26.1.0 (through jest-environment-jsdom 30.0.0)'],
+      );
+    },
+  );
+  // Vitest: every test on happy-dom, jsdom installed but unused: the
+  // happy-dom note, and no jsdom version pinned for tests that never ran on it.
+  await tempProject(
+    {
+      'package.json':
+        '{\n  "private": true,\n  "devDependencies": {\n    "happy-dom": "^20.0.0",\n    "jsdom": "^25.0.1",\n    "vitest": "^5.0.0"\n  }\n}\n',
+      'vitest.config.js': "export default {\n  test: {\n    environment: 'happy-dom',\n  },\n};\n",
+    },
+    async (dir) => {
+      installed(dir, 'jsdom', { version: '25.0.1' });
+      installed(dir, 'happy-dom', { version: '20.0.0' });
+      const r = await run(dir);
+      const notes = r.profile.join('\n');
+      assert.match(notes, /package\.json: these tests ran on happy-dom/);
+      assert.doesNotMatch(notes, /jsdom 25\.0\.1/);
+      assert.deepEqual(
+        r.edits.map((e) => [e.kind, e.from]),
+        [['environment', 'happy-dom']],
+      );
+    },
+  );
+});
+
+test('migrate (#172): a jsdom version is pinned only for the runner and package whose tests ran on jsdom', async () => {
+  // Vitest on happy-dom, Jest on jsdom (through jest-environment-jsdom),
+  // and an unused jsdom 25: Jest's jsdom is no reason to pin jsdom 25 for Vitest.
+  await tempProject(
+    {
+      'package.json':
+        '{\n  "private": true,\n  "devDependencies": {\n    "happy-dom": "^20.0.0",\n    "jest": "^30.0.0",\n    "jest-environment-jsdom": "^30.0.0",\n    "jsdom": "^25.0.1",\n    "vitest": "^5.0.0"\n  }\n}\n',
+      'vitest.config.js': "export default {\n  test: {\n    environment: 'happy-dom',\n  },\n};\n",
+      'jest.config.js': "module.exports = {\n  testEnvironment: 'jsdom',\n};\n",
+    },
+    async (dir) => {
+      installed(dir, 'jsdom', { version: '25.0.1' });
+      installed(dir, 'happy-dom', { version: '20.0.0' });
+      installed(dir, 'jest-environment-jsdom', { version: '30.0.0' });
+      installed(dir, 'jest-environment-jsdom/node_modules/jsdom', { version: '26.1.0' });
+      const r = await run(dir);
+      assert.doesNotMatch(r.profile.join('\n'), /jsdom 25\.0\.1/);
+      assert.deepEqual(
+        r.edits.filter((e) => /nvironmentOptions$/.test(e.kind)).map((e) => e.file),
+        [],
+      );
+    },
+  );
+  // A workspace root on happy-dom with an unused jsdom 25, and a package
+  // below it on jsdom: the package's jsdom is no reason to pin jsdom 25 at the root.
+  await tempProject(
+    {
+      'package.json':
+        '{\n  "private": true,\n  "workspaces": ["packages/*"],\n  "devDependencies": {\n    "happy-dom": "^20.0.0",\n    "jsdom": "^25.0.1",\n    "vitest": "^5.0.0"\n  }\n}\n',
+      'vitest.config.js': "export default {\n  test: {\n    environment: 'happy-dom',\n  },\n};\n",
+      'packages/a/package.json':
+        '{\n  "name": "a",\n  "private": true,\n  "devDependencies": {\n    "jsdom": "^26.1.0",\n    "vitest": "^5.0.0"\n  }\n}\n',
+      'packages/a/vitest.config.js': "export default {\n  test: {\n    environment: 'jsdom',\n  },\n};\n",
+      'packages/a/node_modules/jsdom/package.json': '{"name":"jsdom","version":"26.1.0"}',
+    },
+    async (dir) => {
+      installed(dir, 'jsdom', { version: '25.0.1' });
+      installed(dir, 'happy-dom', { version: '20.0.0' });
+      const r = await run(dir);
+      assert.deepEqual(
+        r.edits.filter((e) => /nvironmentOptions$/.test(e.kind)).map((e) => [e.file, e.to]),
+        [['packages/a/vitest.config.js', '26.1.0']],
+      );
+      assert.doesNotMatch(r.profile.join('\n'), /jsdom 25\.0\.1/);
+    },
+  );
+  // Vitest already on warpdom, Jest on happy-dom changed here: the jsdom
+  // that warpdom follows under Vitest still gets its note.
+  await tempProject(
+    {
+      'package.json': `{\n  "private": true,\n  "devDependencies": {\n    "@happy-dom/jest-environment": "^20.0.0",\n    "jest": "^30.0.0",\n    "jsdom": "^25.0.1",\n    "vitest": "^5.0.0",\n    "vitest-environment-warpdom": "^${ENVIRONMENT_PACKAGE_VERSION}",\n    "warpdom": "^${VERSION}"\n  }\n}\n`,
+      'vitest.config.js': "export default {\n  test: {\n    environment: 'warpdom',\n  },\n};\n",
+      'jest.config.js': "module.exports = {\n  testEnvironment: '@happy-dom/jest-environment',\n};\n",
+    },
+    async (dir) => {
+      installed(dir, 'jsdom', { version: '25.0.1' });
+      installed(dir, '@happy-dom/jest-environment', { version: '20.0.0' });
+      const r = await run(dir);
+      const notes = r.profile.join('\n');
+      assert.match(notes, /these tests ran on happy-dom/);
+      assert.match(notes, /follows the jsdom it finds installed, here jsdom 25\.0\.1/);
+    },
+  );
+});

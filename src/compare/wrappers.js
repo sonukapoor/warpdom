@@ -21,6 +21,31 @@ export const PROBE_MARKER = '[warpdom compare] config probe';
 export const PINNED_TARGET = 'warpdom-compare';
 export const PINNED_PACKAGE = `vitest-environment-${PINNED_TARGET}`;
 
+// warpdom as a test environment: its name, its package names or a path
+// into it ('warpdom', 'warpdom/vitest/environment', 'jest-environment-warpdom',
+// .../node_modules/warpdom/src/jest.js), not compare's own PINNED_TARGET.
+// A path into node_modules counts by the package after the last
+// node_modules, so a checkout in a directory named warpdom does not make
+// .../warpdom/node_modules/jest-environment-node warpdom; outside
+// node_modules, by a directory named warpdom (a linked checkout).
+// With --baseline, projects and files already on warpdom (a migrated
+// project) are switched like those on jsdom or happy-dom (fromWarpdom).
+const WARPDOM_PACKAGE = /^((vitest|jest)-environment-)?warpdom([\\/]|$)/;
+const WARPDOM_DIRECTORY = /(^|[\\/])((vitest|jest)-environment-)?warpdom([\\/]|$)/;
+// The same test in the generated wrappers (any: ': any' in a TS Jest wrapper).
+const isWarpdomSource = (any = '') => `(e${any}) => {
+  const s = String(e ?? '');
+  const parts = s.split(/[\\\\/]/);
+  const i = parts.lastIndexOf('node_modules');
+  return i >= 0 ? ${WARPDOM_PACKAGE}.test(parts.slice(i + 1).join('/')) : ${WARPDOM_DIRECTORY}.test(s);
+}`;
+export const isWarpdomEnvironment = (environment) => {
+  const s = String(environment ?? '');
+  const parts = s.split(/[\\/]/);
+  const i = parts.lastIndexOf('node_modules');
+  return i >= 0 ? WARPDOM_PACKAGE.test(parts.slice(i + 1).join('/')) : WARPDOM_DIRECTORY.test(s);
+};
+
 // A path as a Vite /@fs/ id (as ../vitest-fast.js fsId, which this module
 // cannot import: it loads Vitest).
 export const fsId = (file) => {
@@ -78,7 +103,7 @@ const importPath = (from, file) => {
 // environmentId: what the environment name resolves to in the test
 // workers (warpdomVitestEnvironment), through a plugin added to the config
 // and every inline project.
-function vitestHelpers({ environment, links, warpdomOptions, environmentId }) {
+function vitestHelpers({ environment, links, warpdomOptions, environmentId, fromWarpdom }) {
   return `const ENVIRONMENT = ${JSON.stringify(environment)};
 const ENVIRONMENT_ID = ${JSON.stringify(environmentId ?? null)};
 const environmentPlugin = {
@@ -90,12 +115,33 @@ const withPlugin = (c) => (ENVIRONMENT_ID ? { ...c, plugins: [...[].concat(c.plu
 const WARPDOM_OPTIONS = ${JSON.stringify(warpdomOptions ?? null)};
 const LINKS = ${JSON.stringify({ patterns: links?.patterns ?? {}, extends: links?.extends ?? {} })};
 const isObject = (v) => v && typeof v === 'object' && !Array.isArray(v) && typeof v.then !== 'function';
-const isDom = (e) => e === 'jsdom' || e === 'happy-dom';
+const FROM_WARPDOM = ${JSON.stringify(Boolean(fromWarpdom))};
+const isWarpdom = ${isWarpdomSource()};
+const isDom = (e) => e === 'jsdom' || e === 'happy-dom' || (FROM_WARPDOM && isWarpdom(e));
+// The warpdom environments switched, logged for the report: projects in
+// other config files are only seen here.
+const noteSwitched = (e) => {
+  if (FROM_WARPDOM && isWarpdom(e) && process.env.WARPDOM_COMPARE_FROM_WARPDOM_LOG)
+    fs.appendFileSync(process.env.WARPDOM_COMPARE_FROM_WARPDOM_LOG, String(e) + '\\n');
+  return true;
+};
 const usesBrowser = (t) => Boolean(t?.browser?.enabled);
 const withOptions = (test) => (WARPDOM_OPTIONS
   ? { ...test, environmentOptions: { ...test.environmentOptions, warpdom: { ...test.environmentOptions?.warpdom, ...WARPDOM_OPTIONS } } } : test);
-const switchDom = (test) => (ENVIRONMENT && isDom(test?.environment) && !usesBrowser(test)
-  ? withOptions({ ...test, environment: ENVIRONMENT }) : test);
+// environmentMatchGlobs (Vitest 2 and 3) choose a file's environment over
+// test.environment: their DOM targets are switched too.
+const domGlob = (g) => Array.isArray(g) && isDom(g[1]);
+const switchDom = (test) => {
+  if (!ENVIRONMENT || usesBrowser(test)) return test;
+  const environment = isDom(test?.environment) && noteSwitched(test.environment);
+  const globs = Array.isArray(test?.environmentMatchGlobs) && test.environmentMatchGlobs.some(domGlob);
+  if (!environment && !globs) return test;
+  return withOptions({
+    ...test,
+    ...(environment ? { environment: ENVIRONMENT } : {}),
+    ...(globs ? { environmentMatchGlobs: test.environmentMatchGlobs.map((g) => (domGlob(g) && noteSwitched(g[1]) ? [g[0], ENVIRONMENT, ...g.slice(2)] : g)) } : {}),
+  });
+};
 const relink = (p) => (typeof p.extends === 'string' && LINKS.extends[p.extends] ? { ...p, extends: LINKS.extends[p.extends] } : p);
 const switchProject = (p) => {
   const q = relink(p);
@@ -117,7 +163,7 @@ const mapProjects = (list) => list.flatMap((p) => {
 }
 
 // The pinned-comment switch (see vitestWrapper), once per process.
-function pinnedPatch(pinned) {
+function pinnedPatch(pinned, fromWarpdom) {
   return `// Vitest (2 to 5) takes a file's environment from a \`@vitest-environment
 // <name>\` (or @jest-environment) comment, reading the file with
 // fs.promises.readFile in this process. Pinned jsdom/happy-dom files are
@@ -125,8 +171,9 @@ function pinnedPatch(pinned) {
 // (a comment, so the transform is unaffected). Each switched file is logged
 // to WARPDOM_COMPARE_PINNED_LOG (path, original name, and "options" when
 // the file also has @vitest-environment-options, which stay keyed by the
-// original name).
+// original name). With fromWarpdom, files pinned to warpdom are switched too.
 const PINNED = ${JSON.stringify(pinned)};
+const PINNED_FROM = ${JSON.stringify(['jsdom', 'happy-dom', ...(fromWarpdom ? ['warpdom'] : [])])};
 if (PINNED && !fs.promises.readFile.warpdomComparePinned) {
   const readFile = fs.promises.readFile;
   const PRAGMA = /(@(?:vitest|jest)-environment\\s+)([\\w-]+)\\b/;
@@ -135,7 +182,7 @@ if (PINNED && !fs.promises.readFile.warpdomComparePinned) {
     const content = await readFile.call(this, file, ...rest);
     if (typeof content !== 'string') return content;
     const m = content.match(PRAGMA);
-    if (!m || !['jsdom', 'happy-dom'].includes(m[2]) || m[2] === PINNED) return content;
+    if (!m || !PINNED_FROM.includes(m[2]) || m[2] === PINNED) return content;
     const name = String(file);
     if (process.env.WARPDOM_COMPARE_PINNED_LOG && !switched.has(name)) {
       switched.add(name);
@@ -159,7 +206,8 @@ if (PINNED && !fs.promises.readFile.warpdomComparePinned) {
 //   by default from Vitest 5, only with `extends: true` before);
 // - links: { patterns, extends } from compare's resolution of project
 //   strings, and workspace: the workspace wrapper to use (Vitest 2 and 3);
-// - probeWorkspace: a workspace file the probe imports to describe it.
+// - probeWorkspace: a workspace file the probe imports to describe it;
+// - fromWarpdom: projects and pinned files on warpdom are switched too.
 export function vitestWrapper(
   base,
   {
@@ -170,6 +218,7 @@ export function vitestWrapper(
     probeWorkspace = null,
     warpdomOptions = null,
     environmentId = null,
+    fromWarpdom = false,
   } = {},
 ) {
   const dir = base ? path.dirname(base) : null;
@@ -183,8 +232,8 @@ import path from 'node:path';
 ${importBase}
 ${importWorkspace}
 
-${pinnedPatch(pinned)}
-${vitestHelpers({ environment, links, warpdomOptions, environmentId })}
+${pinnedPatch(pinned, fromWarpdom)}
+${vitestHelpers({ environment, links, warpdomOptions, environmentId, fromWarpdom })}
 const MAJOR = ${JSON.stringify(major)};
 const WORKSPACE = ${JSON.stringify(links?.workspace ?? null)};
 const nameOf = (t) => (typeof t?.name === 'string' ? t.name : t?.name?.label ?? null);
@@ -235,12 +284,13 @@ export default async (env) => {
 // the same array, with inline projects switched and strings replaced.
 export function vitestWorkspaceWrapper(
   workspace,
-  { environment = null, links = null, warpdomOptions = null, environmentId = null } = {},
+  { environment = null, links = null, warpdomOptions = null, environmentId = null, fromWarpdom = false } = {},
 ) {
   return `// Generated by warpdom compare. Safe to delete.
+import fs from 'node:fs';
 import workspace from './${path.basename(workspace)}';
 
-${vitestHelpers({ environment, links, warpdomOptions, environmentId })}
+${vitestHelpers({ environment, links, warpdomOptions, environmentId, fromWarpdom })}
 
 export default mapProjects(workspace);
 `;
@@ -331,10 +381,11 @@ module.exports = class WarpdomCompareProjects {
 // - links: { patterns } from compare's resolution of project strings;
 // - self: this wrapper's own path, for projects that point back at the
 //   root config;
-// - reporter: the reporter recording each file's project.
+// - reporter: the reporter recording each file's project;
+// - fromWarpdom: projects on warpdom are switched too.
 export function jestWrapper(
   base,
-  { environment = null, links = null, self = null, reporter = null, warpdomOptions = null } = {},
+  { environment = null, links = null, self = null, reporter = null, warpdomOptions = null, fromWarpdom = false } = {},
 ) {
   const ext = base ? path.extname(base) : '.cjs';
   const ts = ext === '.ts';
@@ -360,10 +411,17 @@ const SELF = ${JSON.stringify(self)};
 const REPORTER = ${JSON.stringify(reporter)};
 const DIR = ${JSON.stringify(base ? path.dirname(base) : null)};
 const SELF_REFS = ['<rootDir>', '<rootDir>/', '.', './'];
-const isDom = (e${any}) => /jsdom|happy-dom/.test(String(e ?? ''));
+const FROM_WARPDOM = ${JSON.stringify(Boolean(fromWarpdom))};
+const isWarpdom = ${isWarpdomSource(any)};
+const isDom = (e${any}) => /jsdom|happy-dom/.test(String(e ?? '')) || (FROM_WARPDOM && isWarpdom(e));
 const WARPDOM_OPTIONS${any} = ${JSON.stringify(warpdomOptions)};
-const switchDom = (c${any}) => (ENVIRONMENT && isDom(c.testEnvironment)
-  ? { ...c, testEnvironment: ENVIRONMENT, ...(WARPDOM_OPTIONS ? { testEnvironmentOptions: { ...c.testEnvironmentOptions, ...WARPDOM_OPTIONS } } : {}) } : c);
+// The warpdom environments switched, logged for the report (below).
+const SWITCHED${any} = [];
+const switchDom = (c${any}) => {
+  if (!ENVIRONMENT || !isDom(c.testEnvironment)) return c;
+  if (FROM_WARPDOM && isWarpdom(c.testEnvironment)) SWITCHED.push(String(c.testEnvironment));
+  return { ...c, testEnvironment: ENVIRONMENT, ...(WARPDOM_OPTIONS ? { testEnvironmentOptions: { ...c.testEnvironmentOptions, ...WARPDOM_OPTIONS } } : {}) };
+};
 const isSelf = (p${any}) => typeof p === 'string' && (SELF_REFS.includes(p) || p === SELF);
 
 ${ts ? 'export default' : 'module.exports ='} async () => {
@@ -384,22 +442,29 @@ ${ts ? 'export default' : 'module.exports ='} async () => {
   }
   const projects = Array.isArray(cfg.projects) ? cfg.projects : null;
   const nameOf = (c${any}) => (typeof c.displayName === 'string' ? c.displayName : c.displayName?.name ?? null);
-  if (!projects) meta.projects.push({ name: nameOf(cfg), environment: cfg.testEnvironment ?? 'node', browser: false });
+  const path = await import('node:path');
+  meta.root = path.resolve(DIR ?? process.cwd(), cfg.rootDir ?? '.');
+  // Each project's rootDir, from which Jest resolves its testEnvironment:
+  // an inline project's is relative to this config's directory (as is its
+  // <rootDir>), not to the root rootDir.
+  const base = DIR ?? process.cwd();
+  const rootOf = (c${any}) =>
+    typeof c.rootDir === 'string' ? path.resolve(base, c.rootDir.replace(/^<rootDir>/, base)) : base;
+  if (!projects) meta.projects.push({ name: nameOf(cfg), environment: cfg.testEnvironment ?? 'node', browser: false, root: meta.root });
   else {
     for (const p of projects) {
       if (!p || typeof p !== 'object') { meta.external++; continue; }
-      meta.projects.push({ name: nameOf(p), environment: p.testEnvironment ?? 'node', browser: false });
+      meta.projects.push({ name: nameOf(p), environment: p.testEnvironment ?? 'node', browser: false, root: rootOf(p) });
     }
   }
-  if (process.env.WARPDOM_COMPARE_META) {
-    const path = await import('node:path');
-    meta.root = path.resolve(DIR ?? process.cwd(), cfg.rootDir ?? '.');
+  if (process.env.WARPDOM_COMPARE_META)
     (await import('node:fs')).writeFileSync(process.env.WARPDOM_COMPARE_META, JSON.stringify(meta));
-  }
   if (process.env.WARPDOM_COMPARE_PROBE) throw new Error(${JSON.stringify(PROBE_MARKER)});
   cfg = switchDom(cfg);
   // Inline projects do not inherit the root testEnvironment.
   if (projects) cfg.projects = projects.map((p${any}) => (p && typeof p === 'object' ? switchDom(p) : p));
+  if (SWITCHED.length && process.env.WARPDOM_COMPARE_FROM_WARPDOM_LOG)
+    (await import('node:fs')).appendFileSync(process.env.WARPDOM_COMPARE_FROM_WARPDOM_LOG, SWITCHED.splice(0).join('\\n') + '\\n');
   if (REPORTER) cfg.reporters = [...(cfg.reporters ?? ['default']), REPORTER];
   return cfg;
 };

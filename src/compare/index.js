@@ -38,6 +38,7 @@ import {
   PROBE_MARKER,
   PINNED_TARGET,
   warpdomVitestEnvironment,
+  isWarpdomEnvironment,
 } from './wrappers.js';
 import { resolveVitestProjects, resolveJestProjects } from './projects.js';
 import { createRequire } from 'node:module';
@@ -86,6 +87,38 @@ const environmentPackage = (runner, name) =>
   runner === 'vitest' ? name : name === 'happy-dom' ? '@happy-dom/jest-environment' : 'jest-environment-jsdom';
 
 const DOM_NAMES = ['jsdom', 'happy-dom'];
+
+// No project on jsdom or happy-dom. A project already on warpdom (migrated)
+// is compared only with --baseline, which names the DOM to run it on.
+const nothingToCompare = (environments, baseline) => {
+  const seen = [...new Set(environments)];
+  const hint =
+    !baseline && seen.some(isWarpdomEnvironment)
+      ? '; the project already runs on warpdom: add --baseline jsdom (or happy-dom) to run its baseline on that DOM, which must be installed'
+      : '';
+  return new CompareError(
+    `nothing to compare: no project runs on jsdom or happy-dom (found: ${seen.join(', ') || 'none'})${hint}`,
+  );
+};
+
+// Whether a run switched an environment already on warpdom: a project
+// (the wrappers' log) or a file's comment (the pinned log: path, original
+// name, options).
+const switchedFromWarpdom = (fromWarpdomLog, pinnedLog) => {
+  const read = (file) => {
+    try {
+      return fs.readFileSync(file, 'utf8');
+    } catch {
+      return '';
+    }
+  };
+  return (
+    read(fromWarpdomLog).trim() !== '' ||
+    read(pinnedLog)
+      .split('\n')
+      .some((line) => isWarpdomEnvironment(line.split('\t')[1]))
+  );
+};
 
 const firstErrorLine = (output) =>
   output
@@ -136,6 +169,7 @@ export async function compare(options = {}) {
     mode: correctness ? 'correctness' : 'timing',
     exitCode: 2,
     error: null,
+    fromWarpdom: false,
     warnings: [],
     runner: null,
     runnerVersion: null,
@@ -233,6 +267,12 @@ export async function compare(options = {}) {
     }
     if (options.baseline && !DOM_NAMES.includes(options.baseline))
       throw new CompareError('--baseline must be jsdom or happy-dom');
+    // With --baseline, projects and files already on warpdom (a migrated
+    // project) run on that DOM in the baseline runs and on warpdom in the
+    // warpdom runs, like those on jsdom or happy-dom.
+    const fromWarpdom = Boolean(options.baseline);
+    const isCompared = (environment) =>
+      isDomEnvironment(runner, environment) || (fromWarpdom && isWarpdomEnvironment(environment));
     for (const name of options.alsoEnvironments ?? []) {
       if (!DOM_NAMES.includes(name)) throw new CompareError(`alsoEnvironments: ${name} is not jsdom or happy-dom`);
     }
@@ -336,17 +376,25 @@ export async function compare(options = {}) {
     }
     result.external = externalConfigs.size + externalDirs;
 
-    result.projects = meta.projects.map((p) => ({ ...p, dom: !p.browser && isDomEnvironment(runner, p.environment) }));
+    result.projects = meta.projects.map(({ root: _root, ...p }) => ({
+      ...p,
+      dom: !p.browser && isCompared(p.environment),
+    }));
     const domProjects = result.projects.filter((p) => p.dom);
     // Projects in other files (and inline ones extending them) are only known
     // once they run: compare goes ahead and checks after the first run.
     const unknown = (meta.unknown ?? 0) + result.external;
     const nodeOnly = options.requireDom === false && result.projects.some((p) => !p.browser);
-    if (!domProjects.length && !unknown && !nodeOnly) {
-      const seen =
-        [...new Set(result.projects.map((p) => (p.browser ? 'browser mode' : p.environment)))].join(', ') || 'none';
-      throw new CompareError(`nothing to compare: no project runs on jsdom or happy-dom (found: ${seen})`);
-    }
+    // With --baseline, test files may choose a DOM (or warpdom, after
+    // migrate) with a comment in projects on node: those are read from the
+    // first run, which decides (projects, pinned files) after it.
+    const commentsDecide = Boolean(options.baseline) && result.projects.some((p) => !p.browser);
+    if (!domProjects.length && !unknown && !nodeOnly && !commentsDecide)
+      throw nothingToCompare(
+        result.projects.map((p) => (p.browser ? 'browser mode' : p.environment)),
+        options.baseline,
+      );
+    result.fromWarpdom = domProjects.some((p) => isWarpdomEnvironment(p.environment));
     const counts = new Map();
     for (const p of domProjects) {
       const name = /happy-dom/.test(p.environment) ? 'happy-dom' : 'jsdom';
@@ -397,6 +445,28 @@ export async function compare(options = {}) {
     }
     if (provided.includes(baselineName))
       result.baseline = { ...versionOf(result.baseline, baselineName), provided: true };
+    // A migrated project may no longer have the DOM it is compared with:
+    // checked here for the projects in the root config, and after the first
+    // baseline run for those in other files and the files choosing warpdom
+    // with a comment (only known from the run). Looked up where the runner
+    // looks: Vitest loads jsdom and happy-dom from its own location, Jest an
+    // environment from each project's rootDir (those of the root config's
+    // projects on warpdom; the directory compare runs in for the others).
+    const baselinePackage = environmentPackage(runner, baselineName);
+    let baselineDirs = meta.projects.filter((p) => isWarpdomEnvironment(p.environment) && p.root).map((p) => p.root);
+    if (runner === 'vitest')
+      baselineDirs = [packageDir(path.dirname(path.dirname(path.dirname(bin))), 'vitest') ?? cwd];
+    if (!baselineDirs.length) baselineDirs = [cwd];
+    const baselineMissing = () =>
+      result.fromWarpdom &&
+      !provided.includes(baselineName) &&
+      baselineDirs.some((dir) => !packageDir(dir, baselinePackage));
+    const baselineMissingError = () =>
+      new CompareError(
+        `--baseline ${baselineName}: ${baselinePackage} is not installed here; install the version the tests used before (npm install --no-save ${baselinePackage}@<version>) and run compare again`,
+      );
+    if (!domProjects.some((p) => isDomEnvironment(runner, p.environment)) && baselineMissing())
+      throw baselineMissingError();
 
     // --- warpdom inside the project ---------------------------------------
     let warpdomDir = installedWarpdom(cwd);
@@ -460,7 +530,7 @@ export async function compare(options = {}) {
       if (workspace) {
         links.workspace = writeTemp(
           path.join(path.dirname(workspace), workspaceWrapperName(workspace, role)),
-          vitestWorkspaceWrapper(workspace, { environment, environmentId, links, warpdomOptions: wo }),
+          vitestWorkspaceWrapper(workspace, { environment, environmentId, links, warpdomOptions: wo, fromWarpdom }),
         );
       }
       for (const file of externalConfigs) {
@@ -468,15 +538,15 @@ export async function compare(options = {}) {
         writeTemp(
           own,
           runner === 'vitest'
-            ? vitestWrapper(file, { environment, environmentId, pinned, major, warpdomOptions: wo })
-            : jestWrapper(file, { environment, self: own, warpdomOptions: wo }),
+            ? vitestWrapper(file, { environment, environmentId, pinned, major, warpdomOptions: wo, fromWarpdom })
+            : jestWrapper(file, { environment, self: own, warpdomOptions: wo, fromWarpdom }),
         );
       }
       wrappers[role] = writeTemp(
         root,
         runner === 'vitest'
-          ? vitestWrapper(config, { environment, environmentId, pinned, major, links, warpdomOptions: wo })
-          : jestWrapper(config, { environment, links, self: root, reporter, warpdomOptions: wo }),
+          ? vitestWrapper(config, { environment, environmentId, pinned, major, links, warpdomOptions: wo, fromWarpdom })
+          : jestWrapper(config, { environment, links, self: root, reporter, warpdomOptions: wo, fromWarpdom }),
       );
     }
     const pinnedLogs = Object.fromEntries(sides.map((side) => [side, []]));
@@ -514,6 +584,8 @@ export async function compare(options = {}) {
         const pinnedLog = path.join(out, 'logs', `${name}.pinned.tsv`);
         pinnedLogs[side].push(pinnedLog);
         const projectsFile = path.join(out, 'runs', `${name}.projects.json`);
+        // The warpdom environments the wrappers switched (fromWarpdom).
+        const fromWarpdomLog = path.join(out, 'logs', `${name}.from-warpdom.log`);
         // Jest: files pinned to jsdom switch to warpdom in warpdom runs only
         // (on a jsdom baseline; the package exists just for the run), and to
         // happy-dom in happy-dom runs (alsoEnvironments).
@@ -526,7 +598,11 @@ export async function compare(options = {}) {
             wrappers[side],
             resultsFile,
             logFile,
-            { WARPDOM_COMPARE_PINNED_LOG: pinnedLog, WARPDOM_COMPARE_PROJECTS: projectsFile },
+            {
+              WARPDOM_COMPARE_PINNED_LOG: pinnedLog,
+              WARPDOM_COMPARE_PROJECTS: projectsFile,
+              WARPDOM_COMPARE_FROM_WARPDOM_LOG: fromWarpdomLog,
+            },
             reporter,
           );
         } finally {
@@ -546,16 +622,26 @@ export async function compare(options = {}) {
           results: path.relative(out, resultsFile),
         };
         result.runs.push(run);
+        // Projects in other config files and files choosing warpdom with a
+        // comment: only the run shows that the project is on warpdom.
+        if (fromWarpdom && !result.fromWarpdom && switchedFromWarpdom(fromWarpdomLog, pinnedLog))
+          result.fromWarpdom = true;
+        const noBaseline = side === 'baseline' && baselineMissing();
         if (res.timedOut)
           throw new CompareError(
             `the ${label} run timed out after ${options.timeout ?? 30} min (see ${shown(logFile)})`,
           );
         if (!report) {
+          if (noBaseline) throw baselineMissingError();
           const why = firstErrorLine(res.output);
           throw new CompareError(
             `the ${label} run produced no results${why ? `: ${why}` : ''} (see ${shown(logFile)})${flagsHint()}`,
           );
         }
+        // Vitest runs the other projects when one cannot load its
+        // environment (Jest stops at the config): their tests do not make
+        // the comparison valid.
+        if (noBaseline && runner === 'vitest') throw baselineMissingError();
         const runTests = testsOf(report, cwd, ran);
         if (ran?.projects)
           run.projects = ran.projects.map((p) => ({
@@ -567,11 +653,12 @@ export async function compare(options = {}) {
         tests[side].push(runTests);
         if (!pinned) {
           const files = (report.testResults ?? []).map((t) => t.name);
-          const comments = environmentComments(files, runner);
+          const comments = environmentComments(files, runner, { warpdom: fromWarpdom });
           pinned = [...comments].map(([file, environment]) => ({
             file: path.relative(cwd, file).split(path.sep).join('/'),
             environment,
           }));
+          if (pinned.some((p) => isWarpdomEnvironment(p.environment))) result.fromWarpdom = true;
         }
         // The projects that ran, from the first (baseline) run: all of them,
         // including those in other files, with their environments.
@@ -583,7 +670,7 @@ export async function compare(options = {}) {
             // checkout in a directory named after jsdom is not mistaken.
             result.projects = ran.projects.map((p) => ({
               ...p,
-              dom: !p.browser && isDomEnvironment(runner, environmentLabel(p.environment)),
+              dom: !p.browser && isCompared(environmentLabel(p.environment)),
             }));
             // Browser-mode projects are left out of both runs: listed as not run.
             for (const p of meta.projects.filter((x) => x.browser)) {
@@ -598,10 +685,11 @@ export async function compare(options = {}) {
               !switchable &&
               !(options.requireDom === false && result.projects.some((p) => !p.browser))
             ) {
-              const seen = [
-                ...new Set(result.projects.map((p) => (p.browser ? 'browser mode' : environmentLabel(p.environment)))),
-              ].join(', ');
-              throw new CompareError(`nothing to compare: no project runs on jsdom or happy-dom (found: ${seen})`);
+              if (noBaseline) throw baselineMissingError();
+              throw nothingToCompare(
+                result.projects.map((p) => (p.browser ? 'browser mode' : environmentLabel(p.environment))),
+                options.baseline,
+              );
             }
           } else {
             result.warnings.push(
@@ -625,8 +713,10 @@ export async function compare(options = {}) {
         log(
           `  [${index}/${total}] ${label.padEnd(9)} ${(pair.warmup ? 'warm-up' : correctness ? '' : `round ${pair.round}`).padEnd(8)} ${((run.runnerMs ?? run.wallMs) / 1000).toFixed(1).padStart(6)} s  ${run.counts.passed} passed, ${run.counts.failed} failed${run.counts.skipped ? `, ${run.counts.skipped} skipped` : ''}`,
         );
-        if (side === 'baseline' && i === 0 && run.counts.tests === 0)
+        if (side === 'baseline' && i === 0 && run.counts.tests === 0) {
+          if (noBaseline) throw baselineMissingError();
           throw new CompareError(`no tests ran on ${label} (see ${shown(logFile)})${flagsHint()}`);
+        }
       }
     }
 

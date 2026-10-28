@@ -17,7 +17,11 @@ export interface CompareOptions {
   correctness?: boolean;
   /** The runner's worker limit for every run. */
   workers?: number;
-  /** What warpdom is compared with. Default: what the project uses. */
+  /**
+   * What warpdom is compared with. Default: what the project uses. Required
+   * on a project already on warpdom, whose projects and files on warpdom then
+   * run on this DOM in the baseline runs.
+   */
   baseline?: CompareDom;
   /** vitest or jest, when both are configured. */
   runner?: CompareRunner;
@@ -158,6 +162,8 @@ export interface CompareResult {
   exitCode: 0 | 1 | 2;
   /** Why the comparison could not run, else null. */
   error: string | null;
+  /** The project runs on warpdom (migrated); its baseline ran on the --baseline DOM. */
+  fromWarpdom: boolean;
   warnings: string[];
   runner: CompareRunner | null;
   runnerVersion: string | null;

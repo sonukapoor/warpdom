@@ -42,7 +42,8 @@ function header(result) {
   const runner = `${result.runner}${result.runnerVersion ? ` ${result.runnerVersion}` : ''}`;
   const projects = (result.projects?.length ?? 0) > 1 ? `, ${plural(result.projects.length, 'project')}` : '';
   const opts = result.warpdomOptions?.fastFrames ? ', warpdom with fastFrames' : '';
-  return `warpdom compare: ${runner}${projects}, baseline ${domText}${profile}${opts}`;
+  const from = result.fromWarpdom ? ', for a project on warpdom' : '';
+  return `warpdom compare: ${runner}${projects}, baseline ${domText}${profile}${from}${opts}`;
 }
 
 // Lines about what was not compared (no names).
@@ -225,6 +226,10 @@ export function renderMarkdown(result) {
   md.push('```', header(result), '```', '');
   md.push(`- Runner: ${result.runner} ${result.runnerVersion ?? ''}`.trimEnd());
   md.push(`- Baseline: ${result.baseline?.name ?? '-'} ${result.baseline?.version ?? ''}`.trimEnd());
+  if (result.fromWarpdom)
+    md.push(
+      `- The project runs on warpdom: its projects and files on warpdom ran on ${result.baseline?.name ?? 'the baseline'} in the baseline runs (--baseline)`,
+    );
   md.push(
     `- warpdom: ${result.warpdom?.version ?? '-'} (${result.warpdom?.source === 'installed' ? 'installed in the project' : 'copied into node_modules for the run'})`,
   );

@@ -1395,6 +1395,24 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       source: `through jest-environment-jsdom ${used.version}${installed || locked ? '' : `, which depends on jsdom ${version}`}`,
     };
   };
+  // The DOMs the tests ran on before the migration, from the environments
+  // changed (configs, projects, comments, flags), per package (the one a
+  // pin for them goes to, targetOf) and runner: a DOM package merely
+  // installed, or used by the other runner or another package, is not one
+  // of them.
+  const ranOn = new Map(); // `${pkg.rel}\0${runner}` -> Set of 'jsdom' / 'happy-dom'
+  for (const e of edits) {
+    if (e.pin || e.renamed || !e.from || !e.runner) continue;
+    const dom = /happy/.test(e.from) ? 'happy-dom' : 'jsdom';
+    const key = `${targetOf(e.file, e.runner).rel}\0${e.runner}`;
+    if (!ranOn.has(key)) ranOn.set(key, new Set());
+    ranOn.get(key).add(dom);
+  }
+  // Unknown (no environment of that runner changed here, e.g. one already
+  // on warpdom): assumed, as before.
+  const ranOnDom = (relDir, runner, dom) =>
+    !ranOn.has(`${relDir}\0${runner}`) || ranOn.get(`${relDir}\0${runner}`).has(dom);
+  const ranOnHappyDom = (relDir) => ['vitest', 'jest'].some((r) => ranOn.get(`${relDir}\0${r}`)?.has('happy-dom'));
   const pins = new Map(); // pkg.rel -> { runner, version, cssstyle, base, option, where }
   for (const [relDir, list] of removals) {
     const pkg = pkgs.get(relDir);
@@ -1404,11 +1422,15 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       if (r.name === 'jsdom' && (runners.has('vitest') || !runners.has('jest'))) runner = 'vitest';
       else if (r.name === 'jest-environment-jsdom') runner = 'jest';
       else if (r.name === 'happy-dom' || r.name === '@happy-dom/jest-environment') {
+        if (!ranOnHappyDom(relDir)) continue;
         result.profile.push(
           `${pkg.file}: these tests ran on happy-dom; warpdom behaves like jsdom, so run \`npx warpdom compare --baseline happy-dom\` before applying to see what changes.`,
         );
         continue;
       } else continue;
+      // jsdom installed, but every test of this runner here ran on
+      // happy-dom: no jsdom behavior to keep.
+      if (!ranOnDom(relDir, runner, 'jsdom')) continue;
       const before = domProfileOf(pkg, runner);
       const version = before?.version;
       // jsdom 28 and earlier: the cssstyle it loaded counts too.
@@ -1627,7 +1649,12 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
         manual.push({
           file: pkg.file,
           line: null,
-          reason: `${section} is not one entry per line; ${c.remove.length ? `remove ${c.remove.join(', ')} and ` : ''}add ${c.add.map((d) => `"${d.name}": "${d.spec}"`).join(', ')} by hand`,
+          reason: `${section} is not one entry per line; ${[
+            c.remove.length ? `remove ${c.remove.join(', ')}` : null,
+            c.add.length ? `add ${c.add.map((d) => `"${d.name}": "${d.spec}"`).join(', ')}` : null,
+          ]
+            .filter(Boolean)
+            .join(' and ')} by hand`,
         });
         continue;
       }
@@ -1650,7 +1677,7 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
         manual.push({
           file: fileRel,
           line: null,
-          reason: `the "${cat}" catalog was not found: add ${c.add.map((d) => d.name).join(', ')} to it`,
+          reason: `the "${cat}" catalog was not found${c.add.length ? `: add ${c.add.map((d) => d.name).join(', ')} to it` : ''}`,
         });
         continue;
       }
@@ -1660,7 +1687,7 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
         manual.push({
           file: fileRel,
           line: null,
-          reason: `the "${cat}" catalog was not found: add ${c.add.map((d) => `${d.name}: ${d.spec}`).join(', ')}`,
+          reason: `the "${cat}" catalog was not found${c.add.length ? `: add ${c.add.map((d) => `${d.name}: ${d.spec}`).join(', ')}` : ''}`,
         });
         continue;
       }

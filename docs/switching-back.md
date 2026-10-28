@@ -180,14 +180,29 @@ TEST_DOM=jsdom npm test
 
 ## Both side by side
 
-**Before migrating**, `npx warpdom compare` runs your suite on its configured
-DOM (jsdom or happy-dom) and on warpdom and lists every test whose result changes. It does not edit your
+`npx warpdom compare` runs your suite on jsdom (or happy-dom) and on
+warpdom and lists every test whose result changes. It does not edit your
 source or config; it writes its report to `.warpdom-compare/`
-([compare.md](compare.md)). It needs a config that still picks
-jsdom or happy-dom; on a project already switched to warpdom it stops with
-"nothing to compare".
+([compare.md](compare.md)).
 
-**After migrating**, run the same tests on both with two projects:
+**Before migrating**, it runs on the DOM your config picks.
+
+**After migrating**, name the DOM with `--baseline`; it must be installed
+(see the start of this page):
+
+```sh
+npm install --no-save jsdom@<version>                  # Vitest
+npm install --no-save jest-environment-jsdom@<version> # Jest
+npx warpdom compare --baseline jsdom
+```
+
+Projects and files on warpdom then run on jsdom in the baseline run and on
+warpdom in the other. Jest files with a `@jest-environment warpdom`
+docblock are not switched and not compared. Without `--baseline`, compare
+stops with "nothing to compare" and says to add it.
+
+To run the same tests on both DOMs with your runner itself, add two
+projects:
 
 ```js
 // vitest.config.js (Vitest 3.2 and later; before, a vitest.workspace file)
