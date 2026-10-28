@@ -180,8 +180,8 @@ TEST_DOM=jsdom npm test
 
 ## Both side by side
 
-**Before migrating**, `npx warpdom compare` runs your suite on jsdom and on
-warpdom and lists every test whose result changes. It does not edit your
+**Before migrating**, `npx warpdom compare` runs your suite on its configured
+DOM (jsdom or happy-dom) and on warpdom and lists every test whose result changes. It does not edit your
 source or config; it writes its report to `.warpdom-compare/`
 ([compare.md](compare.md)). It needs a config that still picks
 jsdom or happy-dom; on a project already switched to warpdom it stops with
