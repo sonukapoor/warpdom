@@ -337,7 +337,9 @@ test('resetWindow keeps the frame windows of iframes still connected', () => {
 
 // A frame in a discarded frame stops too: its timers never run (jsdom 20
 // to 30, black box: an interval in a nested iframe stops when the outer
-// iframe is removed). Review on #176.
+// iframe is removed). Review on #176. The interval is cleared in any case:
+// left running when the reset does not stop it, it kept node --test from
+// exiting instead of reporting the failure.
 test('resetWindow stops the timers of frames nested in a discarded frame', async () => {
   const w = createWindow();
   snapshotWindow(w);
@@ -345,9 +347,13 @@ test('resetWindow stops the timers of frames nested in a discarded frame', async
   const od = outer.contentDocument;
   const inner = od.body.appendChild(od.createElement('iframe')).contentWindow;
   let ticks = 0;
-  inner.setInterval(() => ticks++, 2);
-  resetWindow(w);
-  await new Promise((resolve) => setTimeout(resolve, 30));
+  const interval = inner.setInterval(() => ticks++, 2);
+  try {
+    resetWindow(w);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  } finally {
+    inner.clearInterval(interval);
+  }
   assert.equal(ticks, 0);
 });
 
