@@ -375,8 +375,50 @@ test('resetWindow with a non-configurable frame index property', () => {
   const w = createWindow();
   snapshotWindow(w);
   w.document.body.appendChild(w.document.createElement('iframe'));
+  const child = w[0];
   Object.defineProperty(w, '0', { configurable: false });
   w.document.title = 'changed';
   resetWindow(w);
   assert.deepEqual([w.length, w.document.title], [0, '']);
+  // The property left reads the window's frames: it does not keep the
+  // discarded frame window reachable (CodeRabbit review on #176).
+  assert.deepEqual([w[0] === child, w[0]], [false, undefined]);
+  const next = w.document.body.appendChild(w.document.createElement('iframe'));
+  assert.equal(w[0], next.contentWindow);
+});
+
+// An index property the snapshot had without a frame (a value a setup file
+// assigned) comes back with the rest of the snapshot, also when a frame
+// took its place before the reset (Copilot review on #176).
+test('resetWindow restores an index property the snapshot had without a frame', () => {
+  const w = createWindow();
+  w[0] = 'saved';
+  w[1] = 'saved too';
+  snapshotWindow(w);
+  w.document.body.appendChild(w.document.createElement('iframe'));
+  w.document.body.appendChild(w.document.createElement('iframe'));
+  assert.equal(w[0], w.frames[0]);
+  resetWindow(w);
+  assert.deepEqual([w.length, w[0], w[1]], [0, 'saved', 'saved too']);
+});
+
+// Discarding many sibling frames redefines no index property per discarded
+// frame: the indexes are synchronized once, after all of them went
+// (Copilot review on #176).
+test('resetWindow synchronizes the frame indexes once', () => {
+  const w = createWindow();
+  snapshotWindow(w);
+  for (let i = 0; i < 50; i++) w.document.body.appendChild(w.document.createElement('iframe'));
+  const define = Reflect.defineProperty;
+  let indexDefinitions = 0;
+  Reflect.defineProperty = (target, key, descriptor) => {
+    if (target === w && /^\d+$/.test(String(key))) indexDefinitions++;
+    return define(target, key, descriptor);
+  };
+  try {
+    resetWindow(w);
+  } finally {
+    Reflect.defineProperty = define;
+  }
+  assert.deepEqual([w.length, indexDefinitions], [0, 0]);
 });

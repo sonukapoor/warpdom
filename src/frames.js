@@ -33,15 +33,19 @@ function forEachIframe(node, fn) {
 // also on the VM context's global it is installed as (Jest, Vitest's VM
 // pools), which frames returns there. An index a test made
 // non-configurable stays (Reflect: no TypeError, which would stop a removal
-// or resetWindow halfway).
-function syncIndexes(window, previousLength) {
+// or resetWindow halfway); its getter reads the frames, so it never keeps a
+// discarded frame window reachable. After resetWindow's restore the
+// window's own index properties past the frames are the snapshot's (a value
+// a setup file assigned): they stay.
+function syncIndexes(window, previousLength, restored = false) {
   const frames = window[S].childFrames;
   const { globalProxy } = window[S];
   for (const target of globalProxy ? [window, globalProxy] : [window]) {
-    for (let i = frames.length; i < previousLength; i++) Reflect.deleteProperty(target, i);
+    if (!(restored && target === window)) {
+      for (let i = frames.length; i < previousLength; i++) Reflect.deleteProperty(target, i);
+    }
     for (let i = 0; i < frames.length; i++) {
-      const child = frames[i];
-      Reflect.defineProperty(target, i, { get: () => child, configurable: true, enumerable: true });
+      Reflect.defineProperty(target, i, { get: () => frames[i], configurable: true, enumerable: true });
     }
   }
 }
@@ -95,7 +99,9 @@ function discardWindow(window) {
   if (frames) for (const child of frames) discardWindow(child);
 }
 
-function destroyFrame(iframe) {
+// sync false: the caller synchronizes the indexes once, after the last
+// frame it discards (resetWindow).
+function destroyFrame(iframe, sync = true) {
   const es = iframe[S];
   const child = es.frameWindow;
   if (!child) return;
@@ -106,7 +112,7 @@ function destroyFrame(iframe) {
   const parent = child[S].parentWindow;
   const frames = parent[S].childFrames;
   frames.splice(frames.indexOf(child), 1);
-  syncIndexes(parent, frames.length + 1);
+  if (sync) syncIndexes(parent, frames.length + 1);
 }
 
 hooks.frames = {
@@ -127,9 +133,9 @@ hooks.frames = {
     const length = frames.length;
     for (const child of [...frames]) {
       const iframe = child[S].frameElement;
-      if (!connected(iframe)) destroyFrame(iframe);
+      if (!connected(iframe)) destroyFrame(iframe, false);
     }
-    syncIndexes(window, length);
+    syncIndexes(window, length, true);
   },
 };
 
