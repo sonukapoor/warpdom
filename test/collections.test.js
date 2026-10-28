@@ -758,8 +758,8 @@ parity('NodeList members on an object inheriting from a NodeList, after the Node
 });
 
 // The list-state cache (collections.js) holds the last list read, and with
-// it that list's window: closing, resetting or tearing down a window, or
-// removing an iframe, must let it be collected (#165). So must the
+// it that list's window: closing, resetting or tearing down a window (each
+// Vitest and Jest environment teardown), or removing an iframe, must let it be collected (#165). So must the
 // cascade's last root (cascade.js) after getComputedStyle. Run with --expose-gc
 // in a child process; each case reports whether a WeakRef to the window's
 // document (or a removed node) was cleared.
@@ -768,6 +768,7 @@ test('the last list read does not keep a closed, reset or torn-down window alive
     const { createWindow } = await import('./src/node.js');
     const { resetWindow, snapshotWindow } = await import('./src/reset.js');
     const { default: env } = await import('./src/vitest.js');
+    const { default: JestEnvironment } = await import('./src/jest.js');
     const collected = async (ref) => {
       for (let i = 0; i < 10 && ref.deref() !== undefined; i++) {
         await new Promise(setImmediate);
@@ -803,6 +804,30 @@ test('the last list read does not keep a closed, reset or torn-down window alive
       return doc;
     })();
     result.teardown = await collected(ref);
+    // Vitest's VM pools: the teardown returned by setupVM.
+    ref = await (async () => {
+      const { getVmContext, teardown } = await env.setupVM({});
+      const context = getVmContext();
+      context.document.body.childNodes.forEach(() => {});
+      const doc = new WeakRef(context.document);
+      teardown();
+      return doc;
+    })();
+    result.teardownVM = await collected(ref);
+    // The Jest environment's teardown(), with the Jest packages installed here.
+    ref = await (async () => {
+      const jest = new JestEnvironment(
+        { globalConfig: {}, projectConfig: { rootDir: process.cwd(), testEnvironmentOptions: {} } },
+        { console, docblockPragmas: {}, testPath: process.cwd() + '/a.test.js' },
+      );
+      await jest.setup();
+      const context = jest.getVmContext();
+      context.document.body.childNodes.forEach(() => {});
+      const doc = new WeakRef(context.document);
+      await jest.teardown();
+      return doc;
+    })();
+    result.teardownJest = await collected(ref);
     ref = (() => {
       const frame = kept.document.body.appendChild(kept.document.createElement('iframe'));
       const doc = frame.contentDocument;
@@ -829,5 +854,13 @@ test('the last list read does not keep a closed, reset or torn-down window alive
     encoding: 'utf8',
   });
   assert.equal(res.status, 0, res.stderr);
-  assert.deepEqual(JSON.parse(res.stdout), { close: true, reset: true, teardown: true, frame: true, style: true });
+  assert.deepEqual(JSON.parse(res.stdout), {
+    close: true,
+    reset: true,
+    teardown: true,
+    teardownVM: true,
+    teardownJest: true,
+    frame: true,
+    style: true,
+  });
 });
