@@ -10,6 +10,7 @@
 | `style-bench.mjs` | inline style writes with repeated values (cache hits) | ns per write |
 | `style-miss-bench.mjs` | inline style writes, repeated vs unique values (unique: CSS value validation and serialization run) | ns per write, both cases |
 | `cascade-bench.mjs` | getComputedStyle with 300 style sheets and 500 elements, per pass and per pass after a class change; warpdom and jsdom | ms per pass |
+| `box-cascade-bench.mjs` | getComputedStyle margin and padding reads after a class change, per jsdom profile (second argument; margin and padding apply in document order in 28.1.0 to 30.1.2): 600 matching rules, 600 mostly non-matching rules, a small page | µs per element, per page |
 | `dispatch-bench.mjs` | dispatchEvent through a 10-deep tree with a listener per level | ns per dispatch |
 | `url-bench.mjs` | `a.href` after a tree change (base URL cache miss) and cached | ns per read |
 | `window-bench.mjs` | createWindow, warm | µs per window |

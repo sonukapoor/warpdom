@@ -115,9 +115,9 @@ function addDeclarations(index, decls, entries, counter, compat) {
     // shorthand: it meets a pending longhand by order (cascadeByOrder).
     const from = ALIASES[property] ?? property;
     const direct = SHORTHANDS[from] === undefined;
-    // The declaration (cascadeInOrder groups its longhands' entries).
-    const id = counter.decls++;
-    for (const [name, v] of cascadeExpand(property, value, decls.legacyFont, compat)) {
+    const pairs = cascadeExpand(property, value, decls.legacyFont, compat);
+    index.inOrder.add(pairs, entries, from, important);
+    for (const [name, v] of pairs) {
       let lists = index.get(name);
       if (!lists) index.set(name, (lists = { normal: [], important: [], pending: false }));
       if (v === PENDING) lists.pending = true;
@@ -131,7 +131,6 @@ function addDeclarations(index, decls, entries, counter, compat) {
           important,
           direct,
           from,
-          decl: id,
         });
     }
   }
@@ -161,7 +160,8 @@ function mediaApplies(rule, mode, compat) {
 // knowing (ruleListSnapshot).
 function buildIndex(sheets, mode, compat, lists) {
   const index = new Map();
-  const counter = { n: 0, decls: 0 };
+  index.inOrder = new InOrderIndex();
+  const counter = { n: 0 };
   const addRule = (rule) => {
     let entries;
     try {
@@ -386,139 +386,255 @@ function cascadeInOrder(index, element, name, shorthand, compat, inlineMap) {
   if (block === undefined) blocks.set(shorthand, (block = inOrderBlock(index, element, shorthand, compat, inlineMap)));
   return block === null ? null : block.get(name);
 }
+let inOrderEpoch = 0;
 function inOrderBlock(index, element, shorthand, compat, inlineMap) {
   const longhands = SHORTHANDS[shorthand];
-  // The matching declarations, by declaration, with their selectors' highest specificity.
-  const events = new Map();
-  const matched = new Map();
-  for (const longhand of longhands) {
-    const lists = index.get(longhand);
-    if (lists === undefined) continue;
-    for (const list of [lists.normal, lists.important])
-      for (const entry of list) {
-        let matches = matched.get(entry.match);
-        if (matches === undefined) matched.set(entry.match, (matches = entry.match(element, NO_SCOPE)));
-        if (!matches) continue;
-        if (entry.from !== shorthand && entry.from !== longhand) return null;
-        let event = events.get(entry.decl);
-        if (event === undefined)
-          events.set(
-            entry.decl,
-            (event = {
-              decl: entry.decl,
-              from: entry.from,
-              important: entry.important,
-              specificity: entry.specificity,
-              values: new Map(),
-            }),
-          );
-        else if (entry.specificity > event.specificity) event.specificity = entry.specificity;
-        event.values.set(longhand, entry.value);
+  const block = new OrderedBlock(shorthand, compat.longhandLosesImportant === true);
+  // The matching declarations in document order, with their selectors' highest specificity.
+  const inOrder = index.inOrder;
+  const family = inOrder?.families.get(shorthand);
+  if (family !== undefined) {
+    const { records } = family;
+    const epoch = ++inOrderEpoch;
+    if (family.foreign)
+      for (let i = 0; i < records.length; i++)
+        if (records[i].foreign && inOrder.specificity(records[i], element, epoch) >= 0) return null;
+    // An !important shorthand without var() sets the whole block, whatever
+    // came before it: from the last one that matches.
+    let start = 0;
+    for (let i = records.length - 1; i > 0; i--)
+      if (records[i].resets && inOrder.specificity(records[i], element, epoch) >= 0) {
+        start = i;
+        break;
       }
+    for (let i = start; i < records.length; i++) {
+      const s = inOrder.specificity(records[i], element, epoch);
+      if (s >= 0) block.apply(records[i], s);
+    }
   }
-  // The shorthand's own declared values (padding: 8px, padding: var(--p)).
-  const declared = index.get(shorthand);
-  if (declared !== undefined)
-    for (const list of [declared.normal, declared.important])
-      for (const entry of list) {
-        const event = events.get(entry.decl);
-        if (event !== undefined) event.own = entry.value;
-      }
   // The style attribute's, last, over every rule: its shorthand (with
   // var(): pending longhands), then its other longhands. The shorthand
   // keeps its own value (padding: 4px over p { padding: inherit }).
-  const ordered = [...events.values()].sort((a, b) => a.decl - b.decl);
   if (inlineMap) {
     const inline = longhands.map((l) => inlineMap.get(l));
     const pending = inline.find((entry) => entry?.value === PENDING && entry.from === shorthand);
     const whole = inlineMap.get(shorthand);
     if (pending !== undefined)
-      ordered.push({
-        from: shorthand,
-        important: pending.important,
-        specificity: Infinity,
-        values: new Map(longhands.map((l) => [l, PENDING])),
-        own: whole?.value,
-      });
+      block.apply(
+        {
+          slot: SHORTHAND_SLOT,
+          from: shorthand,
+          important: pending.important,
+          values: PENDING_VALUES,
+          own: whole?.value,
+        },
+        Infinity,
+      );
     const plain = pending === undefined && whole?.via === shorthand;
     if (plain)
-      ordered.push({
-        from: shorthand,
-        important: whole.important,
-        specificity: Infinity,
-        values: new Map(longhands.map((l, i) => [l, inline[i]?.value])),
-        own: whole.value,
-      });
+      block.apply(
+        {
+          slot: SHORTHAND_SLOT,
+          from: shorthand,
+          important: whole.important,
+          values: inline.map((entry) => entry?.value),
+          own: whole.value,
+        },
+        Infinity,
+      );
     longhands.forEach((l, i) => {
       const entry = inline[i];
-      if (entry !== undefined && entry.value !== PENDING && !(plain && entry.via === shorthand))
-        ordered.push({
-          from: l,
-          important: entry.important,
-          specificity: Infinity,
-          values: new Map([[l, entry.value]]),
-        });
+      if (entry !== undefined && entry.value !== PENDING && !(plain && entry.via === shorthand)) {
+        const values = [];
+        values[i] = entry.value;
+        block.apply({ slot: i, from: l, important: entry.important, values }, Infinity);
+      }
     });
   }
-  const block = new Map(); // longhand -> { value, important, from }
-  if (ordered.length === 0) return block;
-  const loses = compat.longhandLosesImportant === true;
-  let own = null; // the shorthand's own entry: { pending, important, value }
-  const last = new Map(); // name -> { important, specificity } of the declaration that set it
-  const held = (n) => (n === shorthand ? own?.important : block.get(n)?.important) === true;
-  const wins = (n, event) => {
-    const prior = last.get(n);
-    if (prior === undefined) return true;
-    const important = held(n);
-    if (prior.important && !important) return true;
-    if (event.important !== important) return event.important;
-    return event.important || event.specificity >= prior.specificity;
-  };
-  const setLonghand = (longhand, value, event) => {
-    let important = event.important;
-    if (own !== null) {
-      if (own.pending) own = null;
-      else if (loses ? own.important || important : own.important !== important) {
-        if (loses && own.important && important) important = false;
-        own = null;
+  return block.result(longhands);
+}
+
+// The declarations of margin, padding or their longhands (inOrderBlock),
+// kept with the rule index: per shorthand in document order, one record
+// per declaration that declares one of its longhands: { slot (of its
+// property: OrderedBlock), from, important, entries (its rule's
+// selectors), selectors (their id), values (by slot), own (the
+// shorthand's value), foreign (another shorthand declares a longhand),
+// resets (an !important shorthand without var(): sets the whole block) }.
+class InOrderIndex {
+  constructor() {
+    this.families = new Map(); // shorthand -> { records, foreign }
+    this.selectorIds = new Map(); // a rule's selector entries -> their id
+    // By selector id: the inOrderBlock call that matched them last, and
+    // their highest matching specificity then (-1 when none match).
+    this.epochs = [];
+    this.specificities = [];
+  }
+  add(pairs, entries, from, important) {
+    let records = null;
+    for (const [name, value] of pairs) {
+      const shorthand = IN_ORDER.get(name);
+      if (shorthand === undefined) continue;
+      const longhands = SHORTHANDS[shorthand];
+      records ??= new Map();
+      let record = records.get(shorthand);
+      if (record === undefined) {
+        record = {
+          slot: from === shorthand ? SHORTHAND_SLOT : longhands.indexOf(from),
+          from,
+          important,
+          entries,
+          selectors: this.selectorId(entries),
+          values: [undefined, undefined, undefined, undefined],
+          own: undefined,
+          foreign: false,
+          resets: false,
+          longhands: 0,
+        };
+        records.set(shorthand, record);
+      }
+      if (name === shorthand) record.own = value;
+      else {
+        record.values[longhands.indexOf(name)] = value;
+        record.longhands++;
+        if (from !== shorthand && from !== name) record.foreign = true;
       }
     }
-    block.set(longhand, { value, important, from: event.from });
-  };
-  const setShorthand = (event) => {
-    const pending = event.values.get(longhands[0]) === PENDING;
-    let whole = true;
-    for (const l of longhands) {
-      if (pending) block.set(l, { value: PENDING, important: false, from: shorthand });
-      else if (block.get(l)?.important && !event.important) whole = false;
-      else block.set(l, { value: event.values.get(l), important: event.important, from: shorthand });
-    }
-    own = whole ? { pending, important: event.important, value: event.own } : null;
-  };
-  const record = (n, event) => last.set(n, { important: event.important, specificity: event.specificity });
-  for (const event of ordered) {
-    if (event.from !== shorthand) {
-      if (wins(event.from, event)) {
-        setLonghand(event.from, event.values.get(event.from), event);
-        record(event.from, event);
-      }
-      continue;
-    }
-    if (event.values.get(longhands[0]) !== PENDING)
-      for (const l of longhands)
-        if (wins(l, event)) {
-          setLonghand(l, event.values.get(l), event);
-          record(l, event);
-        }
-    if (wins(shorthand, event)) {
-      setShorthand(event);
-      record(shorthand, event);
+    if (records === null) return;
+    for (const [shorthand, record] of records) {
+      // A declaration of the shorthand alone takes no part.
+      if (record.longhands === 0) continue;
+      record.resets = record.slot === SHORTHAND_SLOT && important === true && record.values[0] !== PENDING;
+      let family = this.families.get(shorthand);
+      if (family === undefined) this.families.set(shorthand, (family = { records: [], foreign: false }));
+      family.records.push(record);
+      if (record.foreign) family.foreign = true;
     }
   }
-  // The shorthand itself while the block holds it (shorthandValue).
-  if (own !== null && own.value !== undefined)
-    block.set(shorthand, { value: own.value, important: own.important, from: shorthand });
-  return block;
+  selectorId(entries) {
+    let id = this.selectorIds.get(entries);
+    if (id === undefined) {
+      this.selectorIds.set(entries, (id = this.epochs.length));
+      this.epochs.push(0);
+      this.specificities.push(-1);
+    }
+    return id;
+  }
+  // The highest specificity of a record's selectors that match the element,
+  // -1 when none do; each selector list matched once per inOrderBlock call.
+  specificity(record, element, epoch) {
+    const id = record.selectors;
+    if (this.epochs[id] === epoch) return this.specificities[id];
+    let specificity = -1;
+    for (const entry of record.entries)
+      if (entry.specificity > specificity && entry.match(element, NO_SCOPE)) specificity = entry.specificity;
+    this.epochs[id] = epoch;
+    this.specificities[id] = specificity;
+    return specificity;
+  }
+}
+
+// The declaration block inOrderBlock applies declarations to: per longhand (slots 0 to 3, as in
+// SHORTHANDS) its value, importance and source declaration's property, the
+// shorthand's own entry while the block holds it, and per name (the
+// shorthand in SHORTHAND_SLOT) the importance and specificity of the
+// declaration that set it last. A declaration (an index.inOrder record or
+// one of the style attribute): { slot, from, important, values (by slot),
+// own (the shorthand's value) }.
+const SHORTHAND_SLOT = 4;
+const PENDING_VALUES = [PENDING, PENDING, PENDING, PENDING];
+class OrderedBlock {
+  constructor(shorthand, loses) {
+    this.shorthand = shorthand;
+    this.loses = loses;
+    this.has = [false, false, false, false];
+    this.values = [undefined, undefined, undefined, undefined];
+    this.important = [false, false, false, false];
+    this.from = [undefined, undefined, undefined, undefined];
+    this.own = null; // { pending, important, value }
+    this.set = [false, false, false, false, false];
+    this.lastImportant = [false, false, false, false, false];
+    this.lastSpecificity = [0, 0, 0, 0, 0];
+  }
+  held(slot) {
+    return (slot === SHORTHAND_SLOT ? this.own?.important : this.has[slot] && this.important[slot]) === true;
+  }
+  wins(slot, decl, specificity) {
+    if (!this.set[slot]) return true;
+    const important = this.held(slot);
+    if (this.lastImportant[slot] && !important) return true;
+    if (decl.important !== important) return decl.important;
+    return decl.important || specificity >= this.lastSpecificity[slot];
+  }
+  record(slot, decl, specificity) {
+    this.set[slot] = true;
+    this.lastImportant[slot] = decl.important;
+    this.lastSpecificity[slot] = specificity;
+  }
+  put(slot, value, important, from) {
+    this.has[slot] = true;
+    this.values[slot] = value;
+    this.important[slot] = important;
+    this.from[slot] = from;
+  }
+  setLonghand(slot, decl) {
+    let important = decl.important;
+    const own = this.own;
+    if (own !== null) {
+      if (own.pending) this.own = null;
+      else if (this.loses ? own.important || important : own.important !== important) {
+        if (this.loses && own.important && important) important = false;
+        this.own = null;
+      }
+    }
+    this.put(slot, decl.values[slot], important, decl.from);
+  }
+  setShorthand(decl) {
+    const pending = decl.values[0] === PENDING;
+    let whole = true;
+    for (let slot = 0; slot < 4; slot++) {
+      if (pending) this.put(slot, PENDING, false, this.shorthand);
+      else if (this.has[slot] && this.important[slot] && !decl.important) whole = false;
+      else this.put(slot, decl.values[slot], decl.important, this.shorthand);
+    }
+    this.own = whole ? { pending, important: decl.important, value: decl.own } : null;
+  }
+  apply(decl, specificity) {
+    const slot = decl.slot;
+    if (slot !== SHORTHAND_SLOT) {
+      if (this.wins(slot, decl, specificity)) {
+        this.setLonghand(slot, decl);
+        this.record(slot, decl, specificity);
+      }
+      return;
+    }
+    if (decl.values[0] !== PENDING)
+      for (let l = 0; l < 4; l++)
+        if (this.wins(l, decl, specificity)) {
+          this.setLonghand(l, decl);
+          this.record(l, decl, specificity);
+        }
+    if (this.wins(SHORTHAND_SLOT, decl, specificity)) {
+      this.setShorthand(decl);
+      this.record(SHORTHAND_SLOT, decl, specificity);
+    }
+  }
+  // longhand -> { value, important, from }, and the shorthand itself while
+  // the block holds it (shorthandValue).
+  result(longhands) {
+    const block = new Map();
+    for (let slot = 0; slot < 4; slot++)
+      if (this.has[slot])
+        block.set(longhands[slot], {
+          value: this.values[slot],
+          important: this.important[slot],
+          from: this.from[slot],
+        });
+    const own = this.own;
+    if (own !== null && own.value !== undefined)
+      block.set(this.shorthand, { value: own.value, important: own.important, from: this.shorthand });
+    return block;
+  }
 }
 
 // The cascaded value: important inline, important rules, inline, rules.
