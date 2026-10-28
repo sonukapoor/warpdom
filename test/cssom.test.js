@@ -1249,6 +1249,48 @@ for (const jsdom of [22, 26]) {
   );
 }
 
+// Before jsdom 27.1.0 the cascade reads a grouping rule's own cssRules; a
+// test's getter there can call getComputedStyle() itself, and the outer
+// call still computes (Copilot review on #169).
+for (const jsdom of [22, 26]) {
+  parity(
+    `getComputedStyle() inside a cssRules getter (jsdom ${jsdom})`,
+    (w) => {
+      w.document.head.innerHTML = '<style>@media screen { p { color: red } }</style>';
+      w.document.body.innerHTML = '<p>x</p><span>y</span>';
+      const [media] = w.document.styleSheets[0].cssRules;
+      const rules = [...media.cssRules];
+      let inside = false;
+      const reads = [];
+      Object.defineProperty(media, 'cssRules', {
+        configurable: true,
+        get() {
+          if (!inside) {
+            inside = true;
+            try {
+              reads.push(w.getComputedStyle(w.document.body.lastChild).color);
+            } finally {
+              inside = false;
+            }
+          }
+          return rules;
+        },
+      });
+      const out = [];
+      for (let i = 0; i < 3; i++) {
+        try {
+          out.push(w.getComputedStyle(w.document.body.firstChild).color);
+        } catch (e) {
+          out.push(`throws ${e.constructor.name}`);
+        }
+        w.document.body.firstChild.setAttribute('data-x', String(i));
+      }
+      return [out, reads.length > 0];
+    },
+    { jsdom },
+  );
+}
+
 // Reparsing an @import rule (its cssText before jsdom 27.1.0, parse() from
 // 27.1.0 to 28) keeps its style sheet and the rules inserted into it.
 for (const jsdom of [20, 26, 28]) {
