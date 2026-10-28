@@ -612,6 +612,129 @@ test('style: separators and malformed url() in the background shorthand with css
   }
 });
 
+// A url() component rejected only for an escaped ', (, ), space, tab, line
+// feed, carriage return or form feed (#163, black box): with cssstyle 4.4
+// to 4.6 (jsdom 23.2, 24.1 and 26.1 alike), the first time a process meets
+// it, it sets no image; the other longhands are removed, the background
+// image kept (url("a\'b.png") after background: red declares nothing; red
+// url("a\'b.png") is background: red). Later it is invalid, unless it has
+// an escaped carriage return or form feed. Before cssstyle 4.4 invalid.
+// Each test has its own url()s: jsdom's cache and warpdom's are per process.
+const escapedUrls = (p) => [
+  `url("${p}\\'b.png")`,
+  `url('${p}\\'b.png')`,
+  `url(${p}\\'b.png)`,
+  `url(\\'${p}.png)`,
+  `url("${p}\\(b.png")`,
+  `url(${p}\\(b.png)`,
+  `url("${p}\\)b.png")`,
+  `url(${p}\\)b.png)`,
+  `url('${p}\\)b.png')`,
+  `url("${p}\\ b.png")`,
+  `url(${p}\\ b.png)`,
+  `url("${p}\\\tb.png")`,
+  `url(${p}\\\tb.png)`,
+  `url("${p}\\\nb.png")`,
+  `url("${p}\\\rb.png")`,
+  `url("${p}\\\fb.png")`,
+  `url( "${p}\\'c.png")`,
+];
+const ESCAPED_PRELUDE = 'color: blue; background: red; background-repeat: no-repeat';
+// all: with the other components, setProperty, cssText and background-image
+// (jsdom 26); older versions have quirks of their own there (#163: not modeled).
+function escapedUrlScenario(w, p, all = true) {
+  const style = (text = ESCAPED_PRELUDE) => {
+    const s = w.document.createElement('div').style;
+    s.cssText = text;
+    return s;
+  };
+  const out = [];
+  const write = (s, value, how = 'set') => {
+    if (how === 'set') s.background = value;
+    else s.setProperty('background', value, how);
+    return s.cssText;
+  };
+  // Each one twice: first, then cached (a carriage return or form feed: never cached).
+  for (const value of escapedUrls(p))
+    if (all || !/\\[\r\f]/.test(value))
+      out.push(`${JSON.stringify(value)} -> ${write(style(), value)} | ${write(style(), value)}`);
+  if (!all) return out;
+  // With other components, or through setProperty and cssText (quoted).
+  const u = (id, escaped = "'") => `url("${p}-${id}\\${escaped}b.png")`;
+  out.push(write(style(), `red ${u(1)}`), write(style(), `red ${u(1)}`));
+  out.push(write(style(), `${u(2, ' ')} no-repeat`), write(style('color: blue'), `${u(3, '(')} fixed 10px Red`));
+  out.push(write(style(), `green ${u(4)}`, 'important'), write(style(), u(4), ''));
+  // (An invalid declaration in cssText removes an earlier one of its property: not modeled.)
+  for (const value of [u(5), `red ${u(6, ')')}`])
+    out.push(
+      style(`color: blue; background: green; background: ${value}; width: 1px`).cssText,
+      style(`color: blue; background: ${value}; width: 1px`).cssText,
+    );
+  // Combined with a component that is invalid or given twice: invalid, and the url() is met.
+  out.push(write(style(), `${u(7)} none`), write(style(), `${u(7)} url(b.png)`), write(style(), u(7)));
+  out.push(write(style(), `${u(8)} bogus`), write(style(), u(8)));
+  // The background image the declaration had stays.
+  out.push(
+    write(style('background-color: red; background-image: url(x.png) !important; color: blue'), `${u(9)} no-repeat`),
+    write(style('background: url(x.png) fixed'), u(10)),
+    write(style('background-image: none'), `red ${u(11)}`),
+  );
+  // background-image meets it too (its own value is not modeled).
+  style().backgroundImage = u(12);
+  style().setProperty('background-image', u(13, '('));
+  out.push(write(style(), u(12)), write(style(), u(13, '(')));
+  // A hex escape and an unescaped quote or space are invalid; escaped
+  // double quotes are kept (#134).
+  for (const value of [`url("${p}\\62 .png")`, `url("${p}'b.png")`, `url("${p} b.png")`, `url("${p}\\"b.png")`])
+    out.push(write(style(), value));
+  return out;
+}
+for (const jsdom of [26, 25, 22, 20])
+  parity(
+    `style: a url() with an escaped quote, parenthesis or space in the background shorthand (jsdom ${jsdom}, #163)`,
+    (w) => escapedUrlScenario(w, `e${jsdom}`, jsdom === 26),
+    { jsdom },
+  );
+
+test('style: a url() with an escaped quote in the background shorthand with cssstyle 4.4 to 4.6 (#163)', () => {
+  // Measured with jsdom 23.2.0 and 24.1.3 (cssstyle 4.6.0), and 26.1.0 with 4.4.0 and 4.5.0.
+  for (const options of [
+    { jsdom: '23.2.0', cssstyle: '4.6.0' },
+    { jsdom: '24.1.3', cssstyle: '4.6.0' },
+    { jsdom: '26.1.0', cssstyle: '4.4.0' },
+    { jsdom: '26.1.0', cssstyle: '4.5.0' },
+  ]) {
+    const w = createWindow(options);
+    const p = `${options.jsdom}-${options.cssstyle}`;
+    const write = (value, text = ESCAPED_PRELUDE) => {
+      const s = w.document.createElement('div').style;
+      s.cssText = text;
+      s.background = value;
+      return s.cssText;
+    };
+    const unchanged = `${ESCAPED_PRELUDE};`;
+    for (const value of escapedUrls(p)) {
+      assert.equal(write(value), 'color: blue;', `${p} ${value}`);
+      assert.equal(write(value), /\\[\r\f]/.test(value) ? 'color: blue;' : unchanged, `${p} ${value} again`);
+    }
+    const [quote, , , , paren, , , , , space] = escapedUrls(`${p}-2`);
+    assert.equal(write(`red ${quote}`), 'color: blue; background: red;');
+    assert.equal(write(`red ${quote}`), unchanged);
+    assert.equal(write(`${space} no-repeat`), 'color: blue; background: no-repeat;');
+    assert.equal(
+      write(`${paren} 10px`, 'background-image: url(x.png); color: blue'),
+      'color: blue; background: url("x.png") 10px;',
+    );
+    assert.equal(write(`url("${p}\\62 .png")`), unchanged);
+  }
+  // Before cssstyle 4.4: invalid.
+  const w = createWindow({ jsdom: '26.1.0', cssstyle: '4.3.1' });
+  const s = w.document.createElement('div').style;
+  s.cssText = ESCAPED_PRELUDE;
+  s.background = `url("old\\'b.png")`;
+  assert.equal(s.cssText, `${ESCAPED_PRELUDE};`);
+});
+
 // Whitespace after url( that the unquoted body also accepts (CR, form feed,
 // vertical tab, no-break space) is read in linear time (#150 review: 32768
 // carriage returns took about 0.8 s per assignment).

@@ -1018,6 +1018,57 @@ const BG_URL_OLD =
   /^url\(\s*(?!\s)(?:"(?:\\[^"'()\s]|[^"'()\\ \t\n])*"|'(?:\\[^"'()\s]|[^"'()\\ \t\n])*'|(?:\\[^"'()\s]|[^"'()\\ \t\n])*)\)$/;
 const BG_URL_4_4 =
   /^url\(\s*(?!\s)(?:"(?:\\[^'()\s]|[^"'()\\ \t\n])*"|'(?:\\[^"'()\s]|[^"'()\\ \t\n])*'|(?:\\[^'()\s]|[^"'()\\ \t\n])*)\)$/;
+// cssstyle 4.4 to 4.6 (black box, #163: jsdom 23.2, 24.1 and 26.1 alike) and
+// a url() component BG_URL_4_4 rejects only for an escaped ', (, ), space,
+// tab, line feed, carriage return or form feed: the first time the process
+// meets that url(), in the background shorthand or background-image, it is
+// an image that sets nothing. The shorthand's other components apply, the
+// background image the declaration had stays and the other longhands are
+// removed (url("a\'b.png") alone declares nothing; red url("a\'b.png") is
+// background: red). Later the url() is invalid (cssstyle caches it), unless
+// it has an escaped carriage return or form feed: those are never cached.
+// Not modeled: cssstyle's cache evicting it (about 800 other url()s later),
+// background-image's own value (the url() unescaped the first time, invalid
+// later), several layers.
+const BG_URL_ESCAPED =
+  /^url\(\s*(?!\s)(?:"(?:\\(?:[^\s]|[ \t\n\r\f])|[^"'()\\ \t\n])*"|'(?:\\(?:[^\s]|[ \t\n\r\f])|[^"'()\\ \t\n])*'|(?:\\(?:[^\s]|[ \t\n\r\f])|[^"'()\\ \t\n])*)\)$/;
+const BG_PLACEHOLDER = 'url(#)';
+const metUrls = new Set(); // url() components cssstyle has met (per process, as its cache)
+const escapedUrl = (token) => token.startsWith('url(') && !BG_URL_4_4.test(token) && BG_URL_ESCAPED.test(token);
+// Records a url() met; true if it was met before (and is cached).
+function meetUrl(token) {
+  if (/\\[\r\f]/.test(token)) return false;
+  if (metUrls.has(token)) return true;
+  if (metUrls.size >= 500) metUrls.clear();
+  metUrls.add(token);
+  return false;
+}
+// background-image set to a url() the shorthand would read as above.
+function meetImage(name, value, mode, surface) {
+  if (name === 'background-image' && mode === 'jsdom26' && surface?.key === 'cssstyle4.4' && escapedUrl(value))
+    meetUrl(value);
+}
+// The background declaration a value declaredValue rejected sets (decls:
+// the block's declarations), or INVALID: '' when it declares nothing.
+function escapedUrlBackground(decls, value, mode, surface) {
+  if (mode !== 'jsdom26' || surface?.key !== 'cssstyle4.4' || !value.includes('\\')) return INVALID;
+  if (splitOutside(value, ',').length > 1 || /var\(|env\(|attr\(/i.test(value)) return INVALID;
+  const urls = segments(value, BG_SEPARATOR_LEGACY).filter((t, i) => i % 2 === 0 && escapedUrl(t));
+  if (urls.length === 0) return INVALID;
+  let cached = false;
+  for (const url of urls) cached = meetUrl(url) || cached;
+  if (cached || urls.length > 1) return INVALID;
+  const out = declaredValue('background', value.replace(urls[0], BG_PLACEHOLDER), mode, surface);
+  if (out === INVALID) return INVALID;
+  const placeholder = serializeDeclared('background-image', BG_PLACEHOLDER, mode);
+  const rest = out.startsWith(placeholder) ? out.slice(placeholder.length).trim() : out;
+  let image = decls.get('background-image')?.value;
+  if (image === undefined) {
+    const first = segments(decls.get('background')?.value ?? '', BG_SEPARATOR_LEGACY)[0];
+    if (first.toLowerCase() === 'none' || first.startsWith('url(') || BG_GRADIENT.test(first)) image = first;
+  }
+  return [image, rest].filter(Boolean).join(' ');
+}
 const legacyLength = (token, surface, old) => {
   if (!old) return BG_LENGTH_4.test(token.toLowerCase());
   return surface?.legacyFont === 'cssstyle4.1' ? BG_LENGTH_3.test(token) : BG_LENGTH_4.test(token);
@@ -1416,7 +1467,9 @@ const BORDER_AND_SIDES = new Set(['border', 'border-top', 'border-right', 'borde
 // 'rule' for its style's cssText, 'written' for a style attribute a style
 // write serialized (writtenDeclarations), else null (a style attribute, an
 // element's cssText).
-function parseInto(decls, text, mode, surface = null, context = null) {
+// element: an element's style object parses it (escapedUrlBackground meets
+// its url()s).
+function parseInto(decls, text, mode, surface = null, context = null, element = false) {
   const sheet = context === 'sheet';
   const inRule = sheet || context === 'rule';
   decls.clear();
@@ -1466,8 +1519,15 @@ function parseInto(decls, text, mode, surface = null, context = null) {
       removeLegacyFont(decls, surface);
       continue;
     }
-    const declared = declaredValue(name, value, mode, surface);
-    if (declared === INVALID) continue;
+    let declared = declaredValue(name, value, mode, surface);
+    if (element) {
+      if (declared === INVALID && name === 'background') {
+        declared = escapedUrlBackground(decls, value, mode, surface);
+        if (declared !== INVALID) for (const n of RESETS.background) decls.delete(n);
+      }
+      meetImage(name, value, mode, surface);
+    }
+    if (declared === INVALID || declared === '') continue;
     // One that loses its !important is written without it; in a style
     // sheet it is a normal declaration, elsewhere it is still !important
     // to the block's other declarations (masked: black box, jsdom 27 to
@@ -1948,8 +2008,20 @@ function setDeclaration(style, name, value, priority = '') {
     return;
   }
   // Unknown properties and invalid values are ignored (CSSOM).
-  const text = declaredValue(name, raw, s.mode, s.surface);
+  let text = declaredValue(name, raw, s.mode, s.surface);
+  if (text === INVALID && name === 'background' && !s.parentRule)
+    text = escapedUrlBackground(s.decls, raw, s.mode, s.surface);
+  if (!s.parentRule) meetImage(name, raw, s.mode, s.surface);
   if (text === INVALID) return;
+  if (text === '') {
+    let removed = false;
+    for (const n of RESETS.background) removed = s.decls.delete(n) || removed;
+    if (removed) {
+      reindex(style);
+      sync(style);
+    }
+    return;
+  }
   const important =
     String(priority).toLowerCase() === 'important' && !dropsImportant(s.surface, name, text, s.parentRule != null);
   if (isLegacyFont(s.surface, name) && removeLegacyFont(s.decls, s.surface)) reindex(style);
@@ -2218,7 +2290,7 @@ export const CSS_INTERFACES = [
           s.replaced = true;
           return;
         }
-        parseInto(s.decls, text, s.mode, s.surface, s.parentRule ? 'rule' : null);
+        parseInto(s.decls, text, s.mode, s.surface, s.parentRule ? 'rule' : null, !s.parentRule);
         reindex(this);
         sync(this);
       },
@@ -2296,7 +2368,14 @@ export function styleOf(element, proto) {
   if (!es.style) {
     const style = Object.create(proto);
     initStyleState(style, { element, decls: new Map(), mode: modeOf(proto), indexed: 0, surface: surfaceOf(proto) });
-    parseInto(styleState(style).decls, es.attrs.get('style'), styleState(style).mode, styleState(style).surface);
+    parseInto(
+      styleState(style).decls,
+      es.attrs.get('style'),
+      styleState(style).mode,
+      styleState(style).surface,
+      null,
+      true,
+    );
     reindex(style);
     es.style = style;
   }
@@ -2317,7 +2396,7 @@ export function styleAttributeChanged(element) {
   es.styleWritten = undefined;
   if (es.style) {
     const s = styleState(es.style);
-    parseInto(s.decls, text, s.mode, s.surface);
+    parseInto(s.decls, text, s.mode, s.surface, null, true);
     reindex(es.style);
     es.inlineCascade = null;
   }
