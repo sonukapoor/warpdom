@@ -248,8 +248,12 @@ it. happy-dom suites get a note instead: warpdom behaves like jsdom, so
 Both come from the environments migrate changed, not from what is
 installed: a happy-dom (or `@happy-dom/jest-environment`) that no test
 used gets no note, and a jsdom that no test used (every test on
-happy-dom) is not pinned. When migrate changed no environment in a
-package, a removed jsdom is pinned as above.
+happy-dom) is not pinned. This is per package and runner: a jsdom that
+only Jest's tests ran on (through `jest-environment-jsdom`) or only the
+tests of another package ran on is not pinned in a Vitest config whose
+tests ran on happy-dom. When migrate changed no environment of a runner in
+a package (for example Vitest already on warpdom), a removed jsdom is
+pinned or noted as above.
 
 ## Release-age settings
 
