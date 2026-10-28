@@ -36,6 +36,9 @@ the project, rather than in a temporary directory where it is easily
 lost. Exit code 0 when the plan was made or applied, 2 when it could not
 be (no package.json).
 
+To undo a migration, or to run single files or single runs on jsdom
+again: [switching-back.md](switching-back.md).
+
 **Run `warpdom compare` before migrating.** It runs the suite on jsdom (or
 happy-dom) and on warpdom and lists every test whose result changes; it
 needs jsdom still installed, which stops being true after the migration and
