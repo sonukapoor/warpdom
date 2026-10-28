@@ -181,8 +181,9 @@ TEST_DOM=jsdom npm test
 ## Both side by side
 
 **Before migrating**, `npx warpdom compare` runs your suite on jsdom and on
-warpdom and lists every test whose result changes, without editing
-anything ([compare.md](compare.md)). It needs a config that still picks
+warpdom and lists every test whose result changes. It does not edit your
+source or config; it writes its report to `.warpdom-compare/`
+([compare.md](compare.md)). It needs a config that still picks
 jsdom or happy-dom; on a project already switched to warpdom it stops with
 "nothing to compare".
 
@@ -263,6 +264,9 @@ npm uninstall warpdom vitest-environment-warpdom   # Vitest
 npm uninstall warpdom jest-environment-warpdom     # Jest
 rm -rf .warpdom .warpdom-migrate .warpdom-compare
 ```
+
+With pnpm, yarn or bun, use `pnpm remove`, `yarn remove` or `bun remove` with
+the same package names, so their lockfile is updated too.
 
 ## A test that needs jsdom's behavior
 
