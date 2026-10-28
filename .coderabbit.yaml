@@ -2,8 +2,9 @@
 language: en-US
 reviews:
   profile: chill
-  # Never approve or request changes; comments only.
-  request_changes_workflow: false
+  # Request changes while CodeRabbit has open comments; approve once they are
+  # resolved and no pre-merge check is in an error state.
+  request_changes_workflow: true
   high_level_summary: true
   poem: false
   sequence_diagrams: false
