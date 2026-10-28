@@ -229,6 +229,8 @@ export function resetWindow(window) {
   insert(doc, html, null);
   insert(html, head, null);
   insert(html, body, null);
+  // The frame windows of the iframes now out of the document go (#173).
+  if (hooks.frames !== null) hooks.frames.reset(window);
 
   // Document state.
   ds.listeners = undefined;

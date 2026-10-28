@@ -283,3 +283,54 @@ test('resetWindow: the body style a style write left is forgotten', () => {
   assert.equal(body.style.cssText, '');
   assert.equal(w.getComputedStyle(body).color, 'rgb(0, 0, 0)');
 });
+
+// The frame windows of the iframes a reset discards go with them (#173):
+// the window is as fresh as a new one (length 0), the frames' timers stop,
+// and the next iframe is frame 0. One in a nested element, and one moved
+// out after the reset (its removal from a detached tree runs no hooks).
+test('resetWindow discards the frame windows of the document iframes', async () => {
+  const w = createWindow({ url: 'http://localhost:3000/' });
+  snapshotWindow(w);
+  const d = w.document;
+  const top = d.body.appendChild(d.createElement('iframe'));
+  const nested = d.body.appendChild(d.createElement('div')).appendChild(d.createElement('iframe'));
+  const child = top.contentWindow;
+  const fired = [];
+  child.setTimeout(() => fired.push('timeout'), 5);
+  assert.equal(w.length, 2);
+  resetWindow(w);
+  assert.deepEqual(
+    [w.length, w.frames.length, w[0], w[1], top.contentWindow, nested.contentDocument],
+    [0, 0, undefined, undefined, null, null],
+  );
+  const div = d.createElement('div');
+  div.append(top);
+  top.remove();
+  assert.equal(w.length, 0);
+  const next = d.body.appendChild(d.createElement('iframe'));
+  assert.deepEqual([w.length, w[0] === next.contentWindow, next.contentWindow !== child], [1, true, true]);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.deepEqual(fired, []);
+});
+
+// A frame of an iframe still in the document after the reset stays: one in
+// a shadow root of the kept body (the reset keeps the body's shadow root).
+test('resetWindow keeps the frame windows of iframes still connected', () => {
+  const w = createWindow();
+  snapshotWindow(w);
+  const d = w.document;
+  const body = d.body;
+  body.remove();
+  const kept = body.attachShadow({ mode: 'open' }).appendChild(d.createElement('iframe'));
+  d.documentElement.append(body);
+  const gone = body.appendChild(d.createElement('iframe'));
+  assert.equal(w.length, 2);
+  resetWindow(w);
+  assert.deepEqual(
+    [kept.isConnected, w.length, w[0] === kept.contentWindow, gone.contentWindow],
+    [true, 1, true, null],
+  );
+  // No frame discarded: the index property stays all the same.
+  resetWindow(w);
+  assert.deepEqual([w.length, w[0] === kept.contentWindow, w[1]], [1, true, undefined]);
+});

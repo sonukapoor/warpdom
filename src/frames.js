@@ -7,7 +7,7 @@
 // iframe: the tree calls these hooks only when the document's frameCount
 // is non-zero (counted at creation and adoption, in window.js and
 // internal.js).
-import { S, HTML_NS, ELEMENT_NODE, hooks, nextInTree, PlatformURL as URL } from './internal.js';
+import { S, HTML_NS, ELEMENT_NODE, hooks, nextInTree, connected, PlatformURL as URL } from './internal.js';
 import { dispatch, exposed } from './events.js';
 import { clearWindowTimers } from './window-features.js';
 import { abortWindowRequests } from './xhr.js';
@@ -104,6 +104,21 @@ hooks.frames = {
   },
   removed(node) {
     forEachIframe(node, destroyFrame);
+  },
+  // resetWindow (reset.js) detaches the document's tree without the
+  // removal hooks: the frames of the iframes it took out of the document
+  // are discarded, as a fresh window has none (#173). Its restore of the
+  // window's own properties deleted the index properties; those of the
+  // frames left (an iframe in the kept body's shadow root) come back.
+  reset(window) {
+    const frames = window[S].childFrames;
+    if (!frames?.length) return;
+    const length = frames.length;
+    for (const child of [...frames]) {
+      const iframe = child[S].frameElement;
+      if (!connected(iframe)) destroyFrame(iframe);
+    }
+    syncIndexes(window, length);
   },
 };
 
