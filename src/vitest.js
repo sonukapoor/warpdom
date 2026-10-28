@@ -259,6 +259,8 @@ export function installWindow(global, window, { hostKeys = [], alwaysKeys = [], 
   // Forget values assigned to window members through the global (mocks of
   // matchMedia, scrollTo, ...), as a fresh window would.
   restore.resetOverrides = () => overrides.clear();
+  // The global's window members, for the per-file reset.
+  restore.keys = [...keys, ...SELF_KEYS];
   return restore;
 }
 
@@ -296,6 +298,54 @@ export function defineSelfKey(target, key, value, window, unforgeable) {
 // Set by the environment for warpdom/vitest/reset (a setup file that runs
 // before each test file): resets the window in place.
 const RESET = Symbol.for('warpdom.vitest.reset');
+// Called by that setup file when the file's tests start (a beforeAll hook):
+// the global's own properties then are the file's setup (setup files and
+// the modules loaded so far, which load once per worker without isolation:
+// deleting what they set would leave later files without it). Those added
+// after it (window.x = 1 in a test or hook; outside the VM pools the
+// window is the worker's global) are removed by the next file's reset.
+const MARK = Symbol.for('warpdom.vitest.mark');
+
+// The global's own properties when a file's tests start (MARK), and the
+// descriptors of its window members then.
+function markGlobal(global, members) {
+  return {
+    keys: new Set(Reflect.ownKeys(global)),
+    members: new Map(members.map((key) => [key, Object.getOwnPropertyDescriptor(global, key)])),
+  };
+}
+
+// Istanbul's coverage objects (Vitest's coverage-istanbul, and the default
+// name): created by the first instrumented module loaded, possibly in a
+// test (a dynamic import), and collected when the worker ends.
+const KEPT_GLOBAL_KEYS = new Set(['__VITEST_COVERAGE__', '__coverage__']);
+
+// Puts the global back as marked: properties added since are deleted, and
+// window members a test redefined or deleted (Object.defineProperty(window,
+// 'innerWidth', { value: 500 })) get their descriptor back. Other
+// properties the global had are Node's and Vitest's (fetch, the worker's
+// state), left alone. A property made non-configurable stays (as in
+// resetWindow).
+function restoreGlobal(global, mark) {
+  if (!mark) return;
+  for (const key of Reflect.ownKeys(global))
+    if (!mark.keys.has(key) && !KEPT_GLOBAL_KEYS.has(key)) Reflect.deleteProperty(global, key);
+  for (const [key, descriptor] of mark.members) {
+    const current = Object.getOwnPropertyDescriptor(global, key);
+    if (!descriptor) {
+      if (current) Reflect.deleteProperty(global, key);
+    } else if (
+      !current ||
+      current.get !== descriptor.get ||
+      current.set !== descriptor.set ||
+      !Object.is(current.value, descriptor.value) ||
+      current.writable !== descriptor.writable ||
+      current.enumerable !== descriptor.enumerable ||
+      current.configurable !== descriptor.configurable
+    )
+      Reflect.defineProperty(global, key, descriptor);
+  }
+}
 
 const userErrorListeners = (window) => window[S].listeners?.get('error')?.length ?? 0;
 
@@ -445,9 +495,15 @@ export default {
     // installed in (scripts.js): an indirect eval.
     window[S].runScript = (source) => (0, eval)(source);
     snapshotWindow(window);
+    let mark = null;
+    global[MARK] = () => {
+      mark = markGlobal(global, restore.keys);
+    };
     global[RESET] = ablated('fresh-window')
       ? // Ablation: a new window per file instead of the in-place reset.
         () => {
+          restoreGlobal(global, mark);
+          mark = null;
           restore();
           window = createTestWindow(options);
           restore = installWindow(global, window, {
@@ -459,6 +515,7 @@ export default {
           window[S].runScript = (source) => (0, eval)(source);
         }
       : () => {
+          restoreGlobal(global, mark);
           restore.resetOverrides();
           resetWindow(window);
           url.reset();
@@ -467,6 +524,7 @@ export default {
     return {
       teardown() {
         delete global[RESET];
+        delete global[MARK];
         // Requests still running stop without events, as closing jsdom's window stops them.
         abortWindowRequests(window);
         forgetLastList();

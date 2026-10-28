@@ -178,8 +178,8 @@ function transform(original, { cache, project }) {
   const plugins = (fast) => (projects ? list(target.plugins) : [...list(target.plugins), cliOptionsPlugin(fast)]);
   const name = target.test?.name ?? 'warpdom';
   // Root setup files move into each project, so warpdom's reset runs before
-  // all of a fast file's setup (it removes window properties added since
-  // the window was created).
+  // all of a fast file's setup (it removes the global's properties a
+  // previous file's tests added, keeping those of its setup and modules).
   const withRootSetup = (p) =>
     typeof p === 'object' && p.extends !== false
       ? [...rootSetup, ...list(p.test?.setupFiles)]

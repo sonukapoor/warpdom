@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -582,6 +582,24 @@ test("split runs exactly the project's own files: --typecheck.enabled=false keep
     typed,
     'and once in the split too',
   );
+});
+
+// #175: without isolation the window is the worker's global, so a test's
+// window.x = 1 stayed there for the next file. a-sets.spec.js adds and
+// redefines globals in a test; c-clean.spec.js, later in the same worker,
+// must not see them, while the setup file's and shared modules' globals
+// (set once per worker) stay.
+test("without isolation, the reset removes globals a previous file's tests added, not its setup's", () => {
+  const result = spawnSync(process.execPath, [vitest, 'run', '--typecheck.enabled=false', '--reporter=verbose'], {
+    cwd: fixture,
+    encoding: 'utf8',
+    env: { ...process.env, WARPDOM_FAST_MODE: 'fast', FAST_FIXTURE_CACHE: '/nonexistent/fast-mode.json' },
+  });
+  const out = (result.stdout + result.stderr).replace(/\x1b\[[0-9;]*m/g, '');
+  const failed = [...out.matchAll(/^\s*\u00d7 (.+?)(?: \d+ms)?$/gm)].map((m) => m[1].trim());
+  // b-reads.spec.js leaks through module state, which no reset reaches.
+  assert.deepEqual(failed, ['|warpdom| b-reads.spec.js > b: module state is fresh'], out);
+  assert.match(out, /Tests {2}1 failed \| 4 passed \(5\)/, out);
 });
 
 test('warpdom vitest run: learning finds the leaking file; a newly leaking file is rerun, not a false failure', async () => {

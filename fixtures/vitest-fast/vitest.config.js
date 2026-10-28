@@ -13,6 +13,7 @@ export default withFastMode({
   test: {
     include: ['*.spec.js'],
     environment: 'warpdom',
+    setupFiles: ['./setup.js'],
     typecheck: { enabled: true, include: ['*.spec-d.ts'] },
     sequence: { sequencer: ByName },
     maxWorkers: 1,
