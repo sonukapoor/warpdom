@@ -282,6 +282,42 @@ your tests keep their current jsdom behavior (`--no-keep-jsdom-version`
 leaves it out). Details:
 [docs/migrate.md](docs/migrate.md).
 
+## Going back to jsdom
+
+warpdom is one setting, so going back is one line (with fast mode, also
+remove `withFastMode` and `warpdom vitest run`). jsdom (with Jest,
+`jest-environment-jsdom`) must be installed; `warpdom migrate` removes it,
+so reinstall the version you had before first.
+
+```js
+// The whole project
+test: { environment: 'jsdom' }   // Vitest
+testEnvironment: 'jsdom'         // Jest
+```
+
+One test file (wins over the config and the command line; with Jest, as
+the file's first comment):
+
+```js
+// @vitest-environment jsdom
+```
+
+```js
+/** @jest-environment jsdom */
+```
+
+```sh
+# One run, no file edited
+npx vitest run --environment jsdom
+npx jest --env=jsdom
+```
+
+For happy-dom: `happy-dom` (Vitest), `@happy-dom/jest-environment`
+(Jest). To undo `warpdom migrate`: `git restore .` (or `git revert` its
+commit), then install. Running both DOMs side by side, CI-only switches,
+uninstalling, and reporting a test that needs jsdom's behavior:
+[docs/switching-back.md](docs/switching-back.md).
+
 ## Faster still
 
 **Fast mode (Vitest).** Vitest isolates every test file, and reloading
