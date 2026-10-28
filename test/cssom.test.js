@@ -1251,7 +1251,8 @@ for (const jsdom of [22, 26]) {
 
 // Before jsdom 27.1.0 the cascade reads a grouping rule's own cssRules; a
 // test's getter there can call getComputedStyle() itself, and the outer
-// call still computes (Copilot review on #169).
+// call still computes, for its own root: a disconnected element keeps its
+// first values (Copilot and CodeRabbit reviews on #169).
 for (const jsdom of [22, 26]) {
   parity(
     `getComputedStyle() inside a cssRules getter (jsdom ${jsdom})`,
@@ -1276,14 +1277,17 @@ for (const jsdom of [22, 26]) {
           return rules;
         },
       });
+      const detached = w.document.createElement('p');
       const out = [];
       for (let i = 0; i < 3; i++) {
-        try {
-          out.push(w.getComputedStyle(w.document.body.firstChild).color);
-        } catch (e) {
-          out.push(`throws ${e.constructor.name}`);
+        for (const element of [w.document.body.firstChild, detached]) {
+          try {
+            out.push(w.getComputedStyle(element).color);
+          } catch (e) {
+            out.push(`throws ${e.constructor.name}`);
+          }
         }
-        w.document.body.firstChild.setAttribute('data-x', String(i));
+        detached.style.color = ['blue', 'green', 'black'][i];
       }
       return [out, reads.length > 0];
     },
