@@ -376,7 +376,10 @@ export async function compare(options = {}) {
     }
     result.external = externalConfigs.size + externalDirs;
 
-    result.projects = meta.projects.map((p) => ({ ...p, dom: !p.browser && isCompared(p.environment) }));
+    result.projects = meta.projects.map(({ root: _root, ...p }) => ({
+      ...p,
+      dom: !p.browser && isCompared(p.environment),
+    }));
     const domProjects = result.projects.filter((p) => p.dom);
     // Projects in other files (and inline ones extending them) are only known
     // once they run: compare goes ahead and checks after the first run.
@@ -443,12 +446,21 @@ export async function compare(options = {}) {
     if (provided.includes(baselineName))
       result.baseline = { ...versionOf(result.baseline, baselineName), provided: true };
     // A migrated project may no longer have the DOM it is compared with:
-    // checked here for the projects in the root config, and after a
-    // baseline run that ran nothing for those in other files and the files
-    // choosing warpdom with a comment (only known from the run).
+    // checked here for the projects in the root config, and after the first
+    // baseline run for those in other files and the files choosing warpdom
+    // with a comment (only known from the run). Looked up where the runner
+    // looks: Vitest loads jsdom and happy-dom from its own location, Jest an
+    // environment from each project's rootDir (those of the root config's
+    // projects on warpdom; the directory compare runs in for the others).
     const baselinePackage = environmentPackage(runner, baselineName);
+    let baselineDirs = meta.projects.filter((p) => isWarpdomEnvironment(p.environment) && p.root).map((p) => p.root);
+    if (runner === 'vitest')
+      baselineDirs = [packageDir(path.dirname(path.dirname(path.dirname(bin))), 'vitest') ?? cwd];
+    if (!baselineDirs.length) baselineDirs = [cwd];
     const baselineMissing = () =>
-      result.fromWarpdom && !provided.includes(baselineName) && !packageDir(cwd, baselinePackage);
+      result.fromWarpdom &&
+      !provided.includes(baselineName) &&
+      baselineDirs.some((dir) => !packageDir(dir, baselinePackage));
     const baselineMissingError = () =>
       new CompareError(
         `--baseline ${baselineName}: ${baselinePackage} is not installed here; install the version the tests used before (npm install --no-save ${baselinePackage}@<version>) and run compare again`,
@@ -626,6 +638,10 @@ export async function compare(options = {}) {
             `the ${label} run produced no results${why ? `: ${why}` : ''} (see ${shown(logFile)})${flagsHint()}`,
           );
         }
+        // Vitest runs the other projects when one cannot load its
+        // environment (Jest stops at the config): their tests do not make
+        // the comparison valid.
+        if (noBaseline && runner === 'vitest') throw baselineMissingError();
         const runTests = testsOf(report, cwd, ran);
         if (ran?.projects)
           run.projects = ran.projects.map((p) => ({

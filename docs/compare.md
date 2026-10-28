@@ -129,15 +129,20 @@ warpdom stays on Node), or, outside `node_modules`, a path into a
 only projects in other config files or files' comments are on warpdom
 (known from the first run).
 
-- The DOM must be installed in the project (`jsdom` for Vitest,
-  `jest-environment-jsdom` for Jest; `happy-dom`, or
-  `@happy-dom/jest-environment`). migrate removes them; without one,
-  compare stops with exit code 2 before running anything:
-  "--baseline jsdom: jsdom is not installed here; ...". When only projects
-  in other config files or files' comments are on warpdom, the same error
-  comes after the first baseline run, when it ran nothing. To install it for
-  one run only: `npm install --no-save jsdom@<version>`, with the version
-  from before the migration ([switching-back.md](switching-back.md)).
+- The DOM must be installed where the runner loads it from (`jsdom` for
+  Vitest, `jest-environment-jsdom` for Jest; `happy-dom`, or
+  `@happy-dom/jest-environment`): Vitest loads jsdom and happy-dom from its
+  own location (its `node_modules` or one above), Jest an environment from
+  each project's `rootDir` (so a package of a monorepo may have it in its
+  own `node_modules`). migrate removes them; without one, compare stops
+  with exit code 2 before running anything: "--baseline jsdom: jsdom is
+  not installed here; ...". When only projects in other config files or
+  files' comments are on warpdom, the same error comes after the first
+  baseline run (with Vitest also when other projects' tests ran in it, as
+  Vitest runs them when one project cannot load its environment). To
+  install it for one run only: `npm install --no-save jsdom@<version>`,
+  with the version from before the migration
+  ([switching-back.md](switching-back.md)).
 - Vitest: files whose comment says `@vitest-environment warpdom` are
   switched as well (to the baseline and to warpdom, see below), also in a
   project whose config stays on `node`: with `--baseline`, a project with
@@ -145,7 +150,9 @@ only projects in other config files or files' comments are on warpdom
   the files that ran decide whether there is something to compare (the
   same holds for files choosing jsdom or happy-dom).
 - Vitest 2 and 3: `environmentMatchGlobs` targets on warpdom are switched
-  like `test.environment` (see below).
+  like `test.environment` (see below). In a project whose `environment`
+  is `node`, the files the globs put on a DOM are not compared yet: the
+  project counts as on node.
 - Jest: files whose docblock says `@jest-environment warpdom` are not
   switched (the name resolves to the installed jest-environment-warpdom,
   which compare does not shadow); they are reported as not compared.

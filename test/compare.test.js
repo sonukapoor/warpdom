@@ -599,8 +599,23 @@ test('compare wrappers: Jest switches jsdom-like environments, drops self-refere
       external: 1,
       patterns: ['./other'],
       root: dir,
-      projects: [{ name: 'Web', environment: 'jsdom', browser: false }],
+      projects: [{ name: 'Web', environment: 'jsdom', browser: false, root: dir }],
     });
+    // Each project's rootDir, from which Jest resolves its environment
+    // (an inline project's from the config's directory, as Jest does).
+    process.env.WARPDOM_COMPARE_META = meta;
+    try {
+      await load(
+        'd.config.js',
+        `module.exports = { rootDir: 'r', projects: [{ rootDir: '<rootDir>/packages/a', testEnvironment: 'warpdom/jest' }, { rootDir: 'b' }, {}] };`,
+      );
+    } finally {
+      delete process.env.WARPDOM_COMPARE_META;
+    }
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(meta, 'utf8')).projects.map((p) => p.root),
+      [path.join(dir, 'packages', 'a'), path.join(dir, 'b'), dir],
+    );
     const pkg = await load('package.json', JSON.stringify({ name: 'x', jest: { testEnvironment: 'jsdom' } }));
     assert.equal(pkg.testEnvironment, '/w/jest.js', 'package.json "jest"');
     assert.deepEqual(await load('none.cjs', '', null), {}, 'no config: Jest defaults');
@@ -2111,8 +2126,8 @@ test('compare end to end (#172): --baseline on a project on node whose files cho
 
 // The root config lists a project file whose environment is warpdom: only
 // the run shows it.
-function migratedChildProject() {
-  const dir = migratedProject();
+function migratedChildProject(links = vitestLinks()) {
+  const dir = migratedProject(links);
   fs.mkdirSync(path.join(dir, 'a'));
   for (const f of ['differ.spec.js', 'same.spec.js']) fs.renameSync(path.join(dir, f), path.join(dir, 'a', f));
   for (const f of ['pinned.spec.js', 'pinned-happy.spec.js']) fs.rmSync(path.join(dir, f));
@@ -2142,14 +2157,79 @@ test('compare end to end (#172): --baseline on a project on warpdom in another c
   }
 });
 
+// Vitest loads jsdom from its own location (the repository's node_modules
+// for the linked one): a copy of Vitest with the repository's other
+// packages linked next to it, and no jsdom.
+function withoutJsdom(dir) {
+  const modules = path.join(dir, 'node_modules');
+  fs.rmSync(path.join(modules, 'vitest'), { recursive: true, force: true });
+  fs.cpSync(fs.realpathSync(path.join(root, 'node_modules', 'vitest')), path.join(modules, 'vitest'), {
+    recursive: true,
+  });
+  for (const name of fs.readdirSync(path.join(root, 'node_modules'))) {
+    if (['jsdom', 'vitest', '.bin', 'warpdom'].includes(name) || fs.existsSync(path.join(modules, name))) continue;
+    fs.symlinkSync(path.join(root, 'node_modules', name), path.join(modules, name));
+  }
+  return dir;
+}
+
 test('compare end to end (#172): --baseline on a project on warpdom without that DOM installed', () => {
+  const { jsdom, ...links } = vitestLinks();
+  assert.ok(jsdom);
+  const dir = withoutJsdom(migratedProject(links));
+  try {
+    const res = compareCli(dir, ['--correctness', '--baseline', 'jsdom']);
+    assert.equal(res.status, 2, res.stdout + res.stderr);
+    assert.match(res.stdout.replace(/\x1b\[[0-9;]*m/g, ''), /--baseline jsdom: jsdom is not installed here/);
+    assert.deepEqual(leftovers(dir), []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// jsdom not in the project but where Vitest loads it from (next to the
+// linked Vitest, as with a hoisted or pnpm install): the baseline runs.
+test('compare end to end (#172): --baseline with the DOM installed where Vitest loads it from', () => {
   const { jsdom, ...links } = vitestLinks();
   assert.ok(jsdom);
   const dir = migratedProject(links);
   try {
     const res = compareCli(dir, ['--correctness', '--baseline', 'jsdom']);
-    assert.equal(res.status, 2, res.stdout + res.stderr);
-    assert.match(res.stdout.replace(/\x1b\[[0-9;]*m/g, ''), /--baseline jsdom: jsdom is not installed here/);
+    const out = res.stdout.replace(/\x1b\[[0-9;]*m/g, '');
+    assert.equal(res.status, 1, out + res.stderr);
+    const result = JSON.parse(fs.readFileSync(path.join(dir, '.warpdom-compare', 'results.json'), 'utf8'));
+    assert.equal(result.error, null);
+    assert.equal(
+      result.baseline.version,
+      JSON.parse(fs.readFileSync(path.join(jsdom, 'package.json'), 'utf8')).version,
+    );
+    assert.ok(result.correctness.differences.length > 0);
+    assert.deepEqual(leftovers(dir), []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// A project on warpdom in another config file next to a project on node
+// whose tests run: the node tests must not hide that the warpdom project
+// could not load the baseline DOM.
+test('compare end to end (#172): --baseline without that DOM installed, a project on node running beside', () => {
+  const { jsdom, ...links } = vitestLinks();
+  assert.ok(jsdom);
+  const dir = withoutJsdom(migratedChildProject(links));
+  try {
+    write(
+      path.join(dir, 'node.spec.js'),
+      "import { test, expect } from 'vitest';\ntest('node', () => expect(1).toBe(1));\n",
+    );
+    fs.writeFileSync(
+      path.join(dir, 'vitest.config.js'),
+      "export default { test: { projects: ['./a/vitest.config.js', { test: { name: 'node', include: ['node.spec.js'] } }] } };",
+    );
+    const res = compareCli(dir, ['--correctness', '--baseline', 'jsdom']);
+    const out = res.stdout.replace(/\x1b\[[0-9;]*m/g, '');
+    assert.equal(res.status, 2, out + res.stderr);
+    assert.match(out, /--baseline jsdom: jsdom is not installed here/);
     assert.deepEqual(leftovers(dir), []);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

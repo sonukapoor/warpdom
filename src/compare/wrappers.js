@@ -442,18 +442,23 @@ ${ts ? 'export default' : 'module.exports ='} async () => {
   }
   const projects = Array.isArray(cfg.projects) ? cfg.projects : null;
   const nameOf = (c${any}) => (typeof c.displayName === 'string' ? c.displayName : c.displayName?.name ?? null);
-  if (!projects) meta.projects.push({ name: nameOf(cfg), environment: cfg.testEnvironment ?? 'node', browser: false });
+  const path = await import('node:path');
+  meta.root = path.resolve(DIR ?? process.cwd(), cfg.rootDir ?? '.');
+  // Each project's rootDir, from which Jest resolves its testEnvironment:
+  // an inline project's is relative to this config's directory (as is its
+  // <rootDir>), not to the root rootDir.
+  const base = DIR ?? process.cwd();
+  const rootOf = (c${any}) =>
+    typeof c.rootDir === 'string' ? path.resolve(base, c.rootDir.replace(/^<rootDir>/, base)) : base;
+  if (!projects) meta.projects.push({ name: nameOf(cfg), environment: cfg.testEnvironment ?? 'node', browser: false, root: meta.root });
   else {
     for (const p of projects) {
       if (!p || typeof p !== 'object') { meta.external++; continue; }
-      meta.projects.push({ name: nameOf(p), environment: p.testEnvironment ?? 'node', browser: false });
+      meta.projects.push({ name: nameOf(p), environment: p.testEnvironment ?? 'node', browser: false, root: rootOf(p) });
     }
   }
-  if (process.env.WARPDOM_COMPARE_META) {
-    const path = await import('node:path');
-    meta.root = path.resolve(DIR ?? process.cwd(), cfg.rootDir ?? '.');
+  if (process.env.WARPDOM_COMPARE_META)
     (await import('node:fs')).writeFileSync(process.env.WARPDOM_COMPARE_META, JSON.stringify(meta));
-  }
   if (process.env.WARPDOM_COMPARE_PROBE) throw new Error(${JSON.stringify(PROBE_MARKER)});
   cfg = switchDom(cfg);
   // Inline projects do not inherit the root testEnvironment.
