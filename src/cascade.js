@@ -542,12 +542,15 @@ function cascaded(element, name) {
     return value;
   }
   const index = ruleIndex(element);
+  // Read once and dropped: a module-level root would keep its document (and
+  // window) alive after the window is gone (#165).
+  const root = lastRoot;
+  lastRoot = null;
   const rev = ds.treeRev ?? 0;
   const inlineMap = inlineDeclarations(element);
   if (!cache || cache.index !== index || cache.rev !== rev || cache.inline !== inlineMap) {
     // Connected: the root ruleIndex found is the document, or a shadow
     // root whose host is connected.
-    const root = lastRoot;
     const detached =
       keepsDetached(ds) && root[S].type !== DOCUMENT_NODE && !(root[S].shadow === true && connected(root[S].host));
     if (detached) trackDetachedStyles(ds);

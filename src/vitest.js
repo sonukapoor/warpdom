@@ -18,6 +18,7 @@ import { resetWindow, snapshotWindow } from './reset.js';
 import { HOST_TIMER_KEYS, warnNewerJsdom } from './window-features.js';
 import { blobData } from './file-reader.js';
 import { abortWindowRequests } from './xhr.js';
+import { forgetLastList } from './collections.js';
 
 const SELF_KEYS = ['window', 'self', 'top', 'parent'];
 
@@ -431,6 +432,7 @@ export default {
       },
       teardown() {
         abortWindowRequests(window);
+        forgetLastList();
         restore();
       },
     };
@@ -467,6 +469,7 @@ export default {
         delete global[RESET];
         // Requests still running stop without events, as closing jsdom's window stops them.
         abortWindowRequests(window);
+        forgetLastList();
         restore();
         url.restore();
       },

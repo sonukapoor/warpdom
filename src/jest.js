@@ -25,6 +25,7 @@ import { ablated, materializeAll } from './ablate.js';
 import { setQueryCache } from './selectors.js';
 import { warnNewerJsdom } from './window-features.js';
 import { abortWindowRequests } from './xhr.js';
+import { forgetLastList } from './collections.js';
 
 if (ablated('no-query-cache')) setQueryCache(false);
 
@@ -249,6 +250,7 @@ export default class WarpdomEnvironment {
     this.clearTimers?.();
     // Requests still running stop without events, as closing jsdom's window stops them.
     if (this.window) abortWindowRequests(this.window);
+    forgetLastList();
     if (this.context) {
       for (const key of CLOSED_WINDOW_UNDEFINED) {
         Object.defineProperty(this.context, key, { get: () => undefined, enumerable: true, configurable: true });

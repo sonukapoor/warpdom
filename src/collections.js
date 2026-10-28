@@ -34,8 +34,16 @@ function arrayIndex(key) {
 // that trap a moment before, so they find their state here instead of
 // reading list[S] through the Proxy a second time. A state belongs to one
 // list, so the identity check makes any stale value harmless; it keeps at
-// most one list reachable.
+// most one list reachable, and with it that list's window, so closing,
+// resetting or tearing down a window forgets it (forgetLastList()).
 let lastState = null;
+
+// Drops the cached state: a closed window, or the nodes a reset removed,
+// are then not kept alive by the last list a test read. The next access to
+// a list sets it again.
+export function forgetLastList() {
+  lastState = null;
+}
 
 const items = (list) => {
   const last = lastState;

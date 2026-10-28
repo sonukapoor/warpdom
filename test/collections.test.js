@@ -7,6 +7,8 @@ import { createWindow } from '../src/node.js';
 import { installWindow } from '../src/vitest.js';
 import { documentStyleSheets } from '../src/cssom.js';
 import { S } from '../src/internal.js';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const attempt = (fn) => {
   try {
@@ -753,4 +755,79 @@ parity('NodeList members on an object inheriting from a NodeList, after the Node
     attempt(() => Object.getOwnPropertyDescriptor(w.NodeList.prototype, 'length').get.call(kids)),
     list.length,
   ];
+});
+
+// The list-state cache (collections.js) holds the last list read, and with
+// it that list's window: closing, resetting or tearing down a window, or
+// removing an iframe, must let it be collected (#165). So must the
+// cascade's last root (cascade.js) after getComputedStyle. Run with --expose-gc
+// in a child process; each case reports whether a WeakRef to the window's
+// document (or a removed node) was cleared.
+test('the last list read does not keep a closed, reset or torn-down window alive', () => {
+  const code = `
+    const { createWindow } = await import('./src/node.js');
+    const { resetWindow, snapshotWindow } = await import('./src/reset.js');
+    const { default: env } = await import('./src/vitest.js');
+    const collected = async (ref) => {
+      for (let i = 0; i < 10 && ref.deref() !== undefined; i++) {
+        await new Promise(setImmediate);
+        gc();
+      }
+      return ref.deref() === undefined;
+    };
+    const result = {};
+    let ref = (() => {
+      const w = createWindow();
+      w.document.body.innerHTML = '<p></p>';
+      w.document.body.childNodes.length;
+      w.close();
+      return new WeakRef(w.document);
+    })();
+    result.close = await collected(ref);
+    const kept = createWindow();
+    snapshotWindow(kept);
+    ref = (() => {
+      const el = kept.document.body.appendChild(kept.document.createElement('div'));
+      el.innerHTML = '<b></b>';
+      for (const n of el.childNodes) n.nodeName;
+      return new WeakRef(el);
+    })();
+    resetWindow(kept);
+    result.reset = await collected(ref);
+    ref = (() => {
+      const g = {};
+      const { teardown } = env.setup(g, {});
+      g.document.body.childNodes.forEach(() => {});
+      const doc = new WeakRef(g.document);
+      teardown();
+      return doc;
+    })();
+    result.teardown = await collected(ref);
+    ref = (() => {
+      const frame = kept.document.body.appendChild(kept.document.createElement('iframe'));
+      const doc = frame.contentDocument;
+      doc.body.innerHTML = '<p></p>';
+      doc.querySelectorAll('p').length;
+      frame.remove();
+      return new WeakRef(doc);
+    })();
+    result.frame = await collected(ref);
+    // The cascade's last rule-index root (cascade.js), the same kind of cache.
+    ref = (() => {
+      const w = createWindow();
+      w.document.body.innerHTML = '<style>p { color: red }</style><p></p>';
+      const p = w.document.body.lastChild;
+      w.getComputedStyle(p).color;
+      w.close();
+      return new WeakRef(w.document);
+    })();
+    result.style = await collected(ref);
+    console.log(JSON.stringify(result));
+  `;
+  const res = spawnSync(process.execPath, ['--expose-gc', '--input-type=module', '-e', code], {
+    cwd: fileURLToPath(new URL('..', import.meta.url)),
+    encoding: 'utf8',
+  });
+  assert.equal(res.status, 0, res.stderr);
+  assert.deepEqual(JSON.parse(res.stdout), { close: true, reset: true, teardown: true, frame: true, style: true });
 });

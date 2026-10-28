@@ -26,6 +26,7 @@ import { clearCookies } from './cookies.js';
 import { clearWindowTimers } from './window-features.js';
 import { abortWindowRequests } from './xhr.js';
 import { clearDeclarations } from './css.js';
+import { forgetLastList } from './collections.js';
 
 // Own properties (string and symbol keys) of an object, as descriptors.
 const ownProperties = (object) =>
@@ -165,6 +166,7 @@ export function resetWindow(window) {
   }
   clearWindowTimers(window);
   abortWindowRequests(window);
+  forgetLastList();
   clearStorage(window);
   clearCookies(window);
   ws.url = new URL(ws.initialURL);
