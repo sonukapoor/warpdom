@@ -2256,6 +2256,26 @@ test('compare end to end (#185): --baseline with a nested project still on warpd
       /nothing to compare: no project runs on jsdom or happy-dom \(found: warpdom\); 1 project on warpdom still ran on warpdom in the jsdom run: compare could not switch it/,
     );
     assert.deepEqual(leftovers(dir), []);
+
+    // A file choosing an environment whose name only contains jsdom: the
+    // wrapper does not switch it, so it does not make the run comparable.
+    write(
+      path.join(dir, 'node_modules', 'vitest-environment-custom-jsdom', 'package.json'),
+      '{ "name": "vitest-environment-custom-jsdom", "main": "index.js" }',
+    );
+    write(
+      path.join(dir, 'node_modules', 'vitest-environment-custom-jsdom', 'index.js'),
+      "module.exports = { name: 'custom-jsdom', viteEnvironment: 'ssr', transformMode: 'ssr', setup: () => ({ teardown() {} }) };",
+    );
+    write(
+      path.join(dir, 'n', 'b', 'custom.spec.js'),
+      "// @vitest-environment custom-jsdom\nimport { test } from 'vitest';\ntest('custom', () => {});\n",
+    );
+    const custom = compareCli(dir, ['--correctness', '--baseline', 'jsdom']);
+    const customText = (custom.stdout + custom.stderr).replace(/\x1b\[[0-9;]*m/g, '');
+    assert.equal(custom.status, 2, customText);
+    assert.match(customText, /nothing to compare: no project runs on jsdom or happy-dom \(found: warpdom\)/);
+    assert.deepEqual(leftovers(dir), []);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

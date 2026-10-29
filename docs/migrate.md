@@ -258,6 +258,13 @@ jsdom, since warpdom follows the jsdom it finds installed: with Vitest
 already on warpdom and one file still choosing happy-dom, removing jsdom
 still gets its note (the happy-dom note as well); with no environment
 literal changed in a config, the note says to add the version by hand.
+An environment already on warpdom that the pin does not reach (another
+inline Vitest or Jest project in the same config) gets its own note to add
+the version next to it, and the profile is not reported as kept. Not
+counted: a warpdom environment whose options name a jsdom version
+(`environmentOptions.warpdom.jsdom`, `testEnvironmentOptions.jsdom`), which
+warpdom follows instead of the installed jsdom, and warpdom environments in
+fixture directories, which migrate does not change.
 
 ## Release-age settings
 

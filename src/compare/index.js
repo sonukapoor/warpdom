@@ -687,9 +687,13 @@ export async function compare(options = {}) {
               if (!result.projects.some((x) => x.name === p.name))
                 result.projects.push({ ...p, dom: false, notRun: true });
             }
+            // A file whose comment the wrapper switches (the names its
+            // pinned-comment switch takes: not custom-jsdom and the like).
+            const vitestSwitches = new Set([...DOM_NAMES, ...(fromWarpdom ? ['warpdom'] : [])]);
             const switchable =
-              pinned.length > 0 &&
-              (runner === 'vitest' || (baselineName === 'jsdom' && pinned.some((p) => JEST_JSDOM.has(p.environment))));
+              runner === 'vitest'
+                ? pinned.some((p) => vitestSwitches.has(p.environment))
+                : baselineName === 'jsdom' && pinned.some((p) => JEST_JSDOM.has(p.environment));
             if (
               !result.projects.some((p) => p.dom) &&
               !switchable &&

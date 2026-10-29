@@ -171,7 +171,10 @@ only projects in other config files or files' comments are on warpdom
   ran on warpdom in both runs: it is reported as not switched and not
   compared. When no other project is compared, compare stops with exit
   code 2 ("nothing to compare: ... 1 project on warpdom still ran on
-  warpdom in the jsdom run: compare could not switch it").
+  warpdom in the jsdom run: compare could not switch it"). A file comment
+  counts only when compare switches it (`jsdom`, `happy-dom` or, with
+  `--baseline`, `warpdom`): one choosing `custom-jsdom` does not keep
+  compare going.
 
 ### Switching the environment without touching the project
 
