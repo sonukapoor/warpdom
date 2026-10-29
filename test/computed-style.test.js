@@ -215,6 +215,58 @@ const shadowSheetsScenario = (w) => {
 for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30])
   parity(`getComputedStyle: shadow trees' style sheets (jsdom ${jsdom})`, shadowSheetsScenario, { jsdom });
 
+// The order of document.styleSheets with shadow trees' sheets (black box,
+// 30.1.2 and 30.1.3) after sheets are removed: the surviving sheets keep
+// their order, each new sheet placed when it is made among the sheets
+// there then, also with no read between changes.
+const shadowSheetOrderScenario = (w) => {
+  const d = w.document;
+  const ids = () => [...d.styleSheets].map((s) => s.ownerNode.id).join();
+  const mk = (parent, id, color, before) => {
+    const s = d.createElement('style');
+    s.id = id;
+    s.textContent = `div { color: ${color} }`;
+    parent.insertBefore(s, before ?? null);
+    return s;
+  };
+  const div = d.body.appendChild(d.createElement('div'));
+  const color = () => w.getComputedStyle(div).color;
+  const out = [];
+  const root = d.body.appendChild(d.createElement('section')).attachShadow({ mode: 'open' });
+  const d1 = mk(d.head, 'd1', 'red');
+  const s1 = mk(root, 's1', 'green');
+  const d2 = mk(d.head, 'd2', 'blue');
+  out.push(ids());
+  d1.remove();
+  out.push(ids(), color());
+  // Made and removed with no read between; removed, then made.
+  const d3 = mk(d.head, 'd3', 'red', d2);
+  mk(d.head, 'd4', 'purple', d2);
+  d3.remove();
+  out.push(ids(), color());
+  d.getElementById('d4').remove();
+  mk(d.head, 'd5', 'olive', d2);
+  out.push(ids(), color());
+  // A document sheet moved; texts changed.
+  d.head.appendChild(d.getElementById('d5'));
+  out.push(ids(), color());
+  d2.textContent = 'div { color: navy }';
+  out.push(ids(), color());
+  s1.textContent = 'div { color: teal }';
+  out.push(ids(), color());
+  // A second shadow tree; its host removed and inserted again.
+  const host = d.body.appendChild(d.createElement('p'));
+  mk(host.attachShadow({ mode: 'open' }), 's2', 'lime');
+  mk(d.head, 'd6', 'maroon', d2);
+  out.push(ids(), color());
+  host.remove();
+  out.push(ids(), color());
+  d.body.appendChild(host);
+  out.push(ids(), color());
+  return out;
+};
+parity("getComputedStyle: shadow trees' style sheets after removals (jsdom 30)", shadowSheetOrderScenario);
+
 // Computed styles kept after rule edits (#137, black box): from jsdom 21
 // to 30.1.1 an element's computed style, once read, is kept until the
 // document's own tree changes; rule edits do not refresh it, insertRule()

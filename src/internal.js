@@ -778,7 +778,7 @@ function indexIds(node, add, named, ids = true) {
   for (let n = node; n; n = nextInTree(n, node)) {
     const s = n[S];
     if (s.type === ELEMENT_NODE) {
-      if (add && s.tag === 'style') sheetCreated(s);
+      if (add && s.tag === 'style') sheetCreated(s, n);
       if (add && s.shadowRoot != null && shadowSheets(s.doc)) stampStyles(s.shadowRoot, s.shadowRoot);
       if (ids) {
         const id = s.attrs.get('id');
@@ -951,7 +951,7 @@ function stampStyles(node, root) {
   for (let n = node; n; n = nextInTree(n, root)) {
     const s = n[S];
     if (s.type !== ELEMENT_NODE) continue;
-    if (s.tag === 'style') sheetCreated(s);
+    if (s.tag === 'style') sheetCreated(s, n);
     if (s.shadowRoot != null) stampStyles(s.shadowRoot, s.shadowRoot);
   }
 }
@@ -965,16 +965,69 @@ const isText = (s) => s.type === TEXT_NODE || s.type === CDATA_SECTION_NODE;
 // in a disconnected shadow tree makes no sheet and refreshes nothing.
 function styleTextChanged(node) {
   const s = node[S];
-  sheetCreated(s);
+  sheetCreated(s, node);
   if (rootOf(node)[S].shadow === true) {
     s.textSheet = connected(node);
     if (s.textSheet) ruleListsChanged(s.doc[S].window?.[S].protos);
   }
 }
-function sheetCreated(s) {
+function sheetCreated(s, node) {
   if (s.ns !== HTML_NS) return;
   s.sheetStamp = ++sheetStamps;
   s.sheetRev = -1;
+  if (s.doc[S].sheetOrder !== undefined || shadowSheets(s.doc)) orderSheet(s, node);
+}
+
+// From jsdom 30.1.2 document.styleSheets is a list each sheet is put in
+// when it is made (connected), after the last sheet of its own tree there
+// then that precedes it in tree order, else first, and taken out when it
+// goes (black box, 30.1.2 and 30.1.3): with sheets of shadow trees the
+// order depends on what was there when each was made. sheetOrder (made
+// with the first shadow tree's sheet; before it the order is tree order)
+// keeps that list as { el, stamp } records (cssom.js documentStyleSheets);
+// a record whose element got another sheet or left is skipped, and
+// dropped once the list doubles.
+function orderSheet(s, node) {
+  const doc = s.doc;
+  const ds = doc[S];
+  const root = rootOf(node);
+  let list = ds.sheetOrder;
+  if (list === undefined) {
+    if (root[S].shadow !== true || !connected(node)) return;
+    list = ds.sheetOrder = [];
+    for (let n = ds.first; n; n = nextInTree(n, doc)) {
+      const t = n[S];
+      if (t.type === ELEMENT_NODE && t.tag === 'style' && t.ns === HTML_NS && t.sheetStamp !== undefined && n !== node)
+        list.push({ el: n, stamp: t.sheetStamp });
+    }
+  } else if ((root[S].shadow === true ? shadowIncludingRoot(root) : root) !== doc) return;
+  if (list.length > 2 * (ds.sheetOrderKept ?? 0) + 8) {
+    let j = 0;
+    for (const r of list) if (r.el[S].sheetStamp === r.stamp && connected(r.el)) list[j++] = r;
+    list.length = ds.sheetOrderKept = j;
+  }
+  // (a record of the new sheet's tree: one of a sheet there now)
+  let i = list.length;
+  for (; i > 0; i--) {
+    const r = list[i - 1];
+    if (r.el[S].sheetStamp === r.stamp && rootOf(r.el) === root && treePrecedes(r.el, node)) break;
+  }
+  list.splice(i, 0, { el: node, stamp: s.sheetStamp });
+}
+
+// Whether a comes before b in tree order (same root, a !== b).
+function treePrecedes(a, b) {
+  const ancestors = new Set();
+  for (let n = a; n; n = n[S].parent) ancestors.add(n);
+  if (ancestors.has(b)) return false;
+  let childB = b;
+  while (!ancestors.has(childB[S].parent)) childB = childB[S].parent;
+  const common = childB[S].parent;
+  if (common === a) return true;
+  let childA = a;
+  while (childA[S].parent !== common) childA = childA[S].parent;
+  for (let n = childA[S].next; n; n = n[S].next) if (n === childB) return true;
+  return false;
 }
 
 // Changes to style rules (insertRule, deleteRule, a rule's declarations,

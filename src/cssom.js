@@ -1037,19 +1037,16 @@ const isStyleElement = (n) => n[S].type === ELEMENT_NODE && n[S].tag === 'style'
 const byStamp = (a, b) => (a[S].sheetStamp ?? 0) - (b[S].sheetStamp ?? 0);
 
 // The <style> elements of the document and its shadow trees in tree order:
-// when there are any in shadow trees, records { el, root, pos } (pos: the
-// place in this walk, each shadow tree's after its host) for
-// shadowIncludingOrder.
+// when there are any in shadow trees, as records { el } (for
+// shadowIncludingOrder).
 function styleElementsOf(doc) {
   const records = [];
   let inShadow = false;
-  let pos = 0;
   const walk = (root) => {
     for (let n = root[S].first; n; n = nextInTree(n, root)) {
       const s = n[S];
       if (s.type !== ELEMENT_NODE) continue;
-      if (s.tag === 'style' && s.ns === HTML_NS) records.push({ el: n, root, pos });
-      pos++;
+      if (s.tag === 'style' && s.ns === HTML_NS) records.push(n);
       if (s.shadowRoot != null) {
         const before = records.length;
         walk(s.shadowRoot);
@@ -1058,25 +1055,28 @@ function styleElementsOf(doc) {
     }
   };
   walk(doc);
-  return inShadow ? records : records.map((r) => r.el);
+  return inShadow ? records.map((el) => ({ el })) : records;
 }
 
 // From jsdom 30.1.2 (black box, 30.1.2 and 30.1.3) document.styleSheets
-// lists the shadow trees' sheets too, each sheet put in the list when it is
-// made (creation order: internal.js sheetCreated) after the last one of
-// its own tree that precedes it in tree order, else first: nodes of two
-// trees compare as disconnected (compareDocumentPosition gives 37 both
-// ways). So a head's <style id=d1> and then a shadow tree's <style id=s1>
-// give s1, d1; a <style id=d2> then inserted before d1 gives d2, s1, d1,
-// and one after d1 s1, d1, d2.
-function shadowIncludingOrder(records) {
+// lists the shadow trees' sheets too, each sheet put in the list when it
+// is made (creation order: internal.js sheetCreated) after the last one of
+// its own tree there then that precedes it in tree order, else first:
+// nodes of two trees compare as disconnected (compareDocumentPosition
+// gives 37 both ways). So a head's <style id=d1> and then a shadow tree's
+// <style id=s1> give s1, d1; a <style id=d2> then inserted before d1
+// gives d2, s1, d1, and one after d1 s1, d1, d2; removing d1 then leaves
+// s1, d2. internal.js orderSheet keeps that list (sheetOrder); records:
+// the style elements there are now (styleElementsOf).
+function shadowIncludingOrder(doc, records) {
+  const order = doc[S].sheetOrder;
+  const els = new Set(records.map((r) => r.el));
   const list = [];
-  for (const r of records.sort((a, b) => byStamp(a.el, b.el))) {
-    let i = list.length;
-    while (i > 0 && !(list[i - 1].root === r.root && list[i - 1].pos < r.pos)) i--;
-    list.splice(i, 0, r);
-  }
-  return list.map((r) => r.el);
+  if (order !== undefined)
+    for (const r of order) if (r.el[S].sheetStamp === r.stamp && els.delete(r.el)) list.push(r.el);
+  // (none left: each sheet made since the first shadow tree's is in order)
+  if (els.size !== 0) for (const el of [...els].sort(byStamp)) list.push(el);
+  return list;
 }
 
 export function documentStyleSheets(doc) {
@@ -1104,7 +1104,7 @@ export function documentStyleSheets(doc) {
         if (byCreation) {
           if (ds.shadowStyleSheets) els = els.map((r) => r.el);
           els.sort(byStamp);
-        } else if (ds.shadowStyleSheets) els = shadowIncludingOrder(els);
+        } else if (ds.shadowStyleSheets) els = shadowIncludingOrder(doc, els);
         ds.styleElements = els;
         ds.styleElementsRev = rev;
         ds.styleElementsStyleRev = styleRev;
