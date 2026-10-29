@@ -4527,3 +4527,38 @@ materialized.
 Left as they are (setters cannot return false): Reflect.set with a
 primitive, frozen or other failing receiver throws a TypeError where jsdom
 returns false (as before for derived receivers, #96).
+
+## 2026-10-28: status
+
+Releases: 0.1.8 (2026-10-24), 0.1.9 (10-25), 0.1.10 (10-26) and 0.1.11
+(10-28), each published from CI with npm provenance and checked with a fresh
+install. Every behavior change in them passed the corpus check (19 suites
+plus Ant Design, Mantine, Excalidraw and wire-webapp) with no test changing
+status apart from the documented differences.
+
+Merged since 0.1.11 (for 0.1.12): #169 (the list cache and the cascade's
+rule root no longer keep a closed window alive), #170 (callbacks invoked
+directly, as jsdom does), #171 (docs: switching back to jsdom), #178
+(migrate notes, `compare --baseline` on a migrated project), #182/#183
+(CodeRabbit approves or requests changes).
+
+Open pull requests: #176 (`resetWindow` releases frame windows), #177
+(FormData iterators walk the live list), #180 (the user agent sheet by
+specificity from jsdom 28.1), #186 (fast mode: globals a test file added
+are removed before the next file), #188 (`color-scheme: dark` system colors
+from jsdom 27, closes #51). Corpus: Ant Design moved its Jest config to
+`.jest.ts` on 2026-10-28; dom-api-tracer#8 makes the harness follow the
+rename, and the open pull requests' Ant Design results come from that
+branch.
+
+1.0 criteria: [docs/road-to-1.0.md](docs/road-to-1.0.md) (updated today).
+Criterion 1 is met (the API superset test's allowlist is empty). The
+others wait on the open parity issues (mostly narrow version-specific CSS
+differences), two more suites in the corpus check (23 of 25), a fresh
+Web Platform Tests run, the Vitest `url` option's
+type, `setXPathLoader` docs, and six weeks without a breaking change.
+
+Next: the cascade issues that build on #180 (#137, #123, #147, #179), the
+fast-mode follow-up for top-level code in test files (documented limit in
+docs/fast-mode.md), and the adoption plan's n8n measurement (A6) on an idle
+machine.
