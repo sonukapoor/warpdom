@@ -253,8 +253,12 @@ only Jest's tests ran on (through `jest-environment-jsdom`) or only the
 tests of another package ran on is not pinned in a Vitest config whose
 tests ran on happy-dom. When migrate changed no environment of a runner in
 a package (for example Vitest already on warpdom), a removed jsdom is
-pinned or noted as above. Tests already on warpdom count as tests on
-jsdom, since warpdom follows the jsdom it finds installed: with Vitest
+pinned or noted as above, and Vitest and Jest in one package each keep
+their own version. Tests already on warpdom (`'warpdom'`, the
+`vitest-environment-warpdom` or `jest-environment-warpdom` name, a path
+into warpdom, an `environment` imported from `warpdom/vitest/environment`)
+count as tests on jsdom, since warpdom follows the jsdom it finds
+installed: with Vitest
 already on warpdom and one file still choosing happy-dom, removing jsdom
 still gets its note (the happy-dom note as well); with no environment
 literal changed in a config, the note says to add the version by hand.

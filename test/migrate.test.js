@@ -1605,3 +1605,81 @@ test('migrate (#190 review): a nullish jsdom option follows the installed jsdom;
     },
   );
 });
+
+test('migrate (#190 review): warpdom by package name, imported environments and both runners in one package keep their jsdom versions', async () => {
+  // testEnvironment: 'jest-environment-warpdom' (the companion package's
+  // name) follows the installed jest-environment-jsdom's jsdom 20 like
+  // 'warpdom' does: removing it gets the version note.
+  await tempProject(
+    {
+      'package.json': `{\n  "private": true,\n  "devDependencies": {\n    "@happy-dom/jest-environment": "^20.0.0",\n    "jest": "^30.0.0",\n    "jest-environment-jsdom": "^29.7.0",\n    "jest-environment-warpdom": "^${ENVIRONMENT_PACKAGE_VERSION}",\n    "warpdom": "^${VERSION}"\n  }\n}\n`,
+      'jest.config.js': "module.exports = {\n  testEnvironment: 'jest-environment-warpdom',\n};\n",
+      'happy.test.js': "/** @jest-environment @happy-dom/jest-environment */\ntest('x', () => {});\n",
+    },
+    async (dir) => {
+      installed(dir, 'jest-environment-jsdom', { version: '29.7.0' });
+      installed(dir, 'jest-environment-jsdom/node_modules/jsdom', { version: '20.0.3' });
+      installed(dir, '@happy-dom/jest-environment', { version: '20.0.0' });
+      const r = await run(dir);
+      assert.match(r.profile.join('\n'), /follows the jsdom it finds installed, here jsdom 20\.0\.3/);
+      assert.deepEqual(
+        r.profiles.map((p) => [p.runner, p.before.split(' (')[0], p.same]),
+        [['jest', 'jsdom 20.0.3', false]],
+      );
+    },
+  );
+  // Vitest on jsdom 25 and Jest already on warpdom (following
+  // jest-environment-jsdom's jsdom 20) in one package: each runner keeps
+  // its own version; Jest's does not replace Vitest's pin.
+  await tempProject(
+    {
+      'package.json': `{\n  "private": true,\n  "devDependencies": {\n    "@happy-dom/jest-environment": "^20.0.0",\n    "jest": "^30.0.0",\n    "jest-environment-jsdom": "^29.7.0",\n    "jsdom": "^25.0.1",\n    "vitest": "^5.0.0",\n    "warpdom": "^${VERSION}"\n  }\n}\n`,
+      'vitest.config.js':
+        "export default {\n  test: {\n    environment: 'jsdom',\n    include: ['**/*.spec.js'],\n  },\n};\n",
+      'jest.config.js': "module.exports = {\n  testEnvironment: 'warpdom',\n};\n",
+      'happy.test.js': "/** @jest-environment @happy-dom/jest-environment */\ntest('x', () => {});\n",
+    },
+    async (dir) => {
+      installed(dir, 'jsdom', { version: '25.0.1' });
+      installed(dir, 'jest-environment-jsdom', { version: '29.7.0' });
+      installed(dir, 'jest-environment-jsdom/node_modules/jsdom', { version: '20.0.3' });
+      installed(dir, '@happy-dom/jest-environment', { version: '20.0.0' });
+      const r = await run(dir, { apply: true });
+      assert.match(
+        read(dir, 'vitest.config.js'),
+        /environment: 'warpdom',\n {4}environmentOptions: \{ warpdom: \{ jsdom: '25\.0\.1' \} \},/,
+      );
+      assert.match(r.profile.join('\n'), /add testEnvironmentOptions: \{ jsdom: '20\.0\.3' \} by hand/);
+      assert.deepEqual(
+        r.profiles.map((p) => [p.runner, p.before.split(' (')[0], p.same]),
+        [
+          ['vitest', 'jsdom 25.0.1', true],
+          ['jest', 'jsdom 20.0.3', false],
+        ],
+      );
+    },
+  );
+  // environment imported from warpdom/vitest/environment in inline project
+  // 'a', 'b' on happy-dom: the pin next to b does not reach a, which gets
+  // its own note, and the profile is not kept.
+  await tempProject(
+    {
+      'package.json': `{\n  "private": true,\n  "devDependencies": {\n    "happy-dom": "^20.0.0",\n    "jsdom": "^25.0.1",\n    "vitest": "^5.0.0",\n    "warpdom": "^${VERSION}"\n  }\n}\n`,
+      'vitest.config.js':
+        "import { environment } from 'warpdom/vitest/environment';\n\nexport default {\n  test: {\n    projects: [\n      { test: { name: 'a', environment } },\n      { test: { name: 'b', environment: 'happy-dom' } },\n    ],\n  },\n};\n",
+    },
+    async (dir) => {
+      installed(dir, 'jsdom', { version: '25.0.1' });
+      installed(dir, 'happy-dom', { version: '20.0.0' });
+      const r = await run(dir);
+      assert.match(
+        r.profile.join('\n'),
+        /vitest\.config\.js:6: this environment, already warpdom, is not pinned: add environmentOptions: \{ warpdom: \{ jsdom: '25\.0\.1' \} \} next to it by hand/,
+      );
+      assert.deepEqual(
+        r.profiles.map((p) => [p.before.split(' (')[0], p.same]),
+        [['jsdom 25.0.1', false]],
+      );
+    },
+  );
+});
