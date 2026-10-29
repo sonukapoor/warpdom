@@ -252,15 +252,16 @@ export function installWindow(global, window, { hostKeys = [], alwaysKeys = [], 
     defineSelfKey(global, key, global, window, unforgeable);
   }
   Object.defineProperty(window.document, 'defaultView', { get: () => global, configurable: true });
+  // The global's window members, for restore and the per-file reset.
+  keys.push(...SELF_KEYS);
   const restore = () => {
-    for (const key of [...keys, ...SELF_KEYS]) delete global[key];
+    for (const key of keys) delete global[key];
     for (const [key, descriptor] of originals) Object.defineProperty(global, key, descriptor);
   };
   // Forget values assigned to window members through the global (mocks of
   // matchMedia, scrollTo, ...), as a fresh window would.
   restore.resetOverrides = () => overrides.clear();
-  // The global's window members, for the per-file reset.
-  restore.keys = [...keys, ...SELF_KEYS];
+  restore.keys = keys;
   return restore;
 }
 
@@ -516,6 +517,9 @@ export default {
         }
       : () => {
           restoreGlobal(global, mark);
+          // Used once: a file whose tests all skip takes no mark, and an
+          // older one would delete what its imports set (modules stay loaded).
+          mark = null;
           restore.resetOverrides();
           resetWindow(window);
           url.reset();

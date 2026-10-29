@@ -15,7 +15,8 @@ export default withFastMode({
     environment: 'warpdom',
     setupFiles: ['./setup.js'],
     typecheck: { enabled: true, include: ['*.spec-d.ts'] },
-    sequence: { sequencer: ByName },
+    // Vitest 2-4's default for setupFiles (5 runs them in order).
+    sequence: { sequencer: ByName, setupFiles: 'parallel' },
     maxWorkers: 1,
   },
 }, { cache: process.env.FAST_FIXTURE_CACHE ?? '.warpdom/fast-mode.json' });

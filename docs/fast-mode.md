@@ -177,8 +177,14 @@ was 3-8% slower than the drop-in on 5 of 11 tuning suites).
   gone for every later file. A test file's top-level code runs in that
   phase too, so what it adds stays; a property made non-configurable
   stays, as in `resetWindow()`. Node's and Vitest's own globals that a
-  test reassigns (`global.fetch = vi.fn()`) are not restored; use
-  `vi.stubGlobal`. About 0.1 ms per file.
+  test reassigns (`global.fetch = vi.fn()`) are not restored, nor is a
+  global a module loaded once set (a polyfill's `IntersectionObserver`)
+  when a test replaces it; use `vi.stubGlobal`. A file whose tests all
+  skip runs no `beforeAll`, so the next reset deletes nothing. The fast
+  project runs its setup files in order (`sequence.setupFiles: 'list'`,
+  set on the root config too, where Vitest 2-4 read it; their default,
+  `'parallel'`, could run the reset after a setup file and undo what it
+  did). About 0.1 ms per file.
 - **Same files and tests as the project's run.** Vitest passes only a few
   command-line options to the projects of `test.projects` (isolate, pool,
   retry, testTimeout, ...); the split's projects stood for the root
