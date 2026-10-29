@@ -1322,7 +1322,7 @@ const PLUGIN_INTERFACES = [
 // 30.1.3): an own data property, writable, not enumerable, configurable.
 // warpdom's is the platform's WebSocket (Node's from 22), not an own
 // interface: its events and errors are the platform's, not the window's
-// (README, "Differences from jsdom"). Without one on the platform the
+// (docs/differences.md). Without one on the platform the
 // window has none. Node defines it as a lazy property that loads its
 // WebSocket client on first access, also through
 // Object.getOwnPropertyDescriptor (~10 ms), so it is read on the window's
