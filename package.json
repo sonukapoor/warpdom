@@ -27,7 +27,17 @@
     "web-platform",
     "whatwg",
     "vitest-environment",
-    "jest-environment"
+    "jest-environment",
+    "dom-testing",
+    "unit-testing",
+    "component-testing",
+    "jsdom-alternative",
+    "happy-dom-alternative",
+    "html",
+    "css",
+    "getcomputedstyle",
+    "web-platform-tests",
+    "fast"
   ],
   "main": "./dist/warpdom.cjs",
   "types": "./types/index.d.ts",
