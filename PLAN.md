@@ -4554,7 +4554,8 @@ branch.
 1.0 criteria: [docs/road-to-1.0.md](docs/road-to-1.0.md) (updated today).
 Criterion 1 is met (the API superset test's allowlist is empty). The
 others wait on the open parity issues (mostly narrow version-specific CSS
-differences), a fresh Web Platform Tests run, the Vitest `url` option's
+differences), two more suites in the corpus check (23 of 25), a fresh
+Web Platform Tests run, the Vitest `url` option's
 type, `setXPathLoader` docs, and six weeks without a breaking change.
 
 Next: the cascade issues that build on #180 (#137, #123, #147, #179), the
