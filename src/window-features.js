@@ -1658,6 +1658,22 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // document.styleSheets in the order the sheets were created, before
     // 30.1.2 (cssom.js documentStyleSheets).
     sheetsByCreation: before(version, [30, 1, 2]),
+    // A <style> in a shadow tree has a style sheet from 30.1.2 (black box,
+    // 20.0.3 to 30.1.3): before, its sheet is null and it applies to
+    // nothing; from 30.1.2 its sheet is in document.styleSheets and
+    // applies to every element, the document's and other shadow trees'
+    // too (cssom.js documentStyleSheets). In every version the document's
+    // sheets apply in shadow trees (cascade.js ruleIndex).
+    shadowSheets: !before(version, [30, 1, 2]),
+    // From 21 to 30.1.1 (black box: 21.1.2 to 29.1.1 measured; 20.0.3 and
+    // 30.1.2 do not) an element's computed style, once read, is kept until
+    // the document's own tree changes (a node inserted or removed, an
+    // attribute or text set; not in a shadow tree or a disconnected one):
+    // editing a rule's declarations or selector does not change it, and
+    // neither do insertRule() and deleteRule() before 29 (cascade.js
+    // cascaded).
+    keptComputedStyle: version[0] >= 21 && before(version, [30, 1, 2]),
+    ruleListRefreshes: version[0] >= 29,
     // Text selection (forms.js), black box per release: before 21.1.2 the
     // select event is dispatched synchronously and is cancelable (from
     // 21.1.2 in a task, not cancelable), and setRangeText() takes the new
