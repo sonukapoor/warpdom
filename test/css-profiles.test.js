@@ -715,6 +715,12 @@ function escapedUrlScenario(w, p, all = true) {
   out.push(write(style(), `${u(22, '(')} no-repeat`), host.firstChild.style.cssText);
   w.document.createElementNS('urn:x', 'x').setAttribute('style', `background: ${u(23, '(')}`);
   out.push(write(style(), u(23, '(')));
+  // The same through the XML parser (an SVG document from DOMParser).
+  const svg = new w.DOMParser().parseFromString(
+    `<svg xmlns="http://www.w3.org/2000/svg"><rect style='color: blue; background: ${u(24, '(')} fixed'/></svg>`,
+    'image/svg+xml',
+  );
+  out.push(write(style(), `${u(24, '(')} fixed`), svg.documentElement.firstChild.style.cssText);
   // An earlier !important background-color is removed (#191 review).
   out.push(element(`background-color: red !important; background: ${u(21)}`).style.cssText);
   // A hex escape and an unescaped quote or space are invalid; escaped

@@ -2405,8 +2405,8 @@ export function styleOf(element, proto) {
 // the attribute is parsed when set, before the style is first read, so its
 // url()s are met then; set to the value it had, it is not parsed again.
 // Only HTML and SVG elements have an inline style (interfaces.js
-// inlineStyle); the HTML parser calls this for a parsed style attribute
-// with a backslash (html.js).
+// inlineStyle); the HTML and XML parsers call this for a parsed style
+// attribute with a backslash (html.js, xml.js).
 export function styleAttributeChanged(element, old) {
   const es = element[S];
   const text = es.attrs.get('style');
