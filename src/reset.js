@@ -116,6 +116,10 @@ function dropObservers(node, ds) {
 export function snapshotWindow(window) {
   const ws = window[S];
   ws.snapshot = ownProperties(window);
+  // The frame index properties (window[0], ...) follow the frames
+  // (frames.js), not the snapshot: one restored would outlive its frame.
+  const frameCount = ws.childFrames?.length ?? 0;
+  for (let i = 0; i < frameCount; i++) ws.snapshot.delete(String(i));
   ws.documentSnapshot = ownProperties(window.document);
   ws.initialURL = ws.url.href;
   // The initial tree's nodes, kept by reset (libraries hold document.body).
@@ -229,6 +233,8 @@ export function resetWindow(window) {
   insert(doc, html, null);
   insert(html, head, null);
   insert(html, body, null);
+  // The frame windows of the iframes now out of the document go (#173).
+  if (hooks.frames !== null) hooks.frames.reset(window);
 
   // Document state.
   ds.listeners = undefined;

@@ -185,3 +185,34 @@ test('iframe getSVGDocument(): null unless the content document is an SVG docume
     assert.throws(() => w.HTMLIFrameElement.prototype.getSVGDocument.call({}), TypeError);
   }
 });
+
+// The parent window's frames after an iframe is removed (#173): connected,
+// in a removed subtree, moved into a detached element and removed from it,
+// and replaced by innerHTML. contentWindow is left out (a deliberate
+// deviation, above).
+parity('iframes: window.length, indexes and frames after removal', (w) => {
+  const d = w.document;
+  const frames = () => [w.length, w.frames.length, w[0] === undefined, w.frames === w, '0' in w];
+  const out = {};
+  const a = d.body.appendChild(d.createElement('iframe'));
+  out.inserted = frames();
+  a.remove();
+  out.removed = frames();
+  d.body.appendChild(a);
+  out.reinserted = [...frames(), w[0] === a.contentWindow];
+  const div = d.createElement('div');
+  div.append(a);
+  out.movedToDetached = frames();
+  a.remove();
+  out.removedFromDetached = frames();
+  const host = d.body.appendChild(d.createElement('div'));
+  host.innerHTML = '<iframe></iframe><p><iframe></iframe></p>';
+  out.subtree = frames();
+  host.remove();
+  out.subtreeRemoved = frames();
+  d.body.innerHTML = '<iframe></iframe><iframe></iframe>';
+  out.innerHTML = [...frames(), w[1] === d.body.lastChild.contentWindow];
+  d.body.innerHTML = '';
+  out.cleared = frames();
+  return out;
+});
