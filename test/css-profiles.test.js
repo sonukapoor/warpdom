@@ -885,3 +885,99 @@ for (const jsdom of [30, 29, 28, 27])
     },
     { jsdom },
   );
+
+// border: none and border-style: none (#179, black box, 27.4.0 to 30.1.3):
+// from jsdom 27 kept everywhere, a none style left out of border and its
+// sides (border: none is border: medium, border-top: 0 none is
+// border-top: 0px); CSS-wide keywords on border and its sides kept, but in
+// jsdom 27 and 28 they leave a style attribute's or a cssText's block
+// empty (setProperty and style sheets keep them).
+const BORDER_NONE = [
+  'border: none',
+  'border: NONE',
+  'border: 1px none',
+  'border: none red',
+  'border-top: none',
+  'border-right: 0 none',
+  'border-bottom: 1px none',
+  'border-left: none 0',
+  'border-top: 1px hidden',
+  'border-style: none',
+  'border-style: none solid',
+  'border-top-style: none',
+  'border: inherit',
+  'border-top: unset',
+  'color: red; border: initial',
+  'color: red; border-left: inherit',
+  'color: red; border-top: var(--b)',
+];
+for (const jsdom of [30, 29, 28, 27])
+  parity(
+    `style: border: none and border-style: none (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const sheet = d.head.appendChild(d.createElement('style'));
+      sheet.textContent = BORDER_NONE.map((text, i) => `.r${i} { ${text} }`).join('\n');
+      const rules = [...sheet.sheet.cssRules];
+      const out = rules.map((rule) => rule.style.cssText);
+      BORDER_NONE.forEach((text, i) => {
+        const rule = rules[i];
+        rule.style.cssText = text;
+        const el = d.createElement('div');
+        el.setAttribute('style', text);
+        const set = d.createElement('div');
+        set.style.cssText = text;
+        const prop = d.createElement('div');
+        const ruleProp = rules[(i + 1) % rules.length].style;
+        ruleProp.cssText = '';
+        for (const part of text.split('; ')) {
+          const [name, value] = part.split(': ');
+          prop.style.setProperty(name, value);
+          ruleProp.setProperty(name, value);
+        }
+        out.push([text, rule.style.cssText, el.style.cssText, set.style.cssText, prop.style.cssText].join(' | '));
+        out.push(`${ruleProp.cssText} | ${prop.getAttribute('style')}`);
+      });
+      return out;
+    },
+    { jsdom },
+  );
+// The computed longhands they give (the #136 diff harness's case among
+// them: in jsdom 28.1 the user agent sheet's iframe { border: 2px inset }
+// meets the page's by specificity).
+const BORDER_NONE_COMPUTED = [
+  ':is(iframe, .z) { border: none } * { border: 0 }',
+  '* { border: 0 } :is(iframe, .z) { border: none }',
+  'iframe, hr { border: none }',
+  'iframe, hr { border-style: none }',
+  'iframe, hr { border-top: none }',
+  'hr, div { border: 1px none }',
+  'div { border: solid }',
+];
+const BORDER_LONGHANDS = ['border-top-style', 'border-top-width', 'border-left-style', 'border-bottom-width'];
+// And on a div, border-width and border-style: before jsdom 29 the parts
+// border declares or their initial values.
+const BORDER_BOX = ['border-width', 'border-style'];
+for (const jsdom of [30, 29, 28, 27])
+  parity(
+    `getComputedStyle: border: none and border-style: none (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const out = [];
+      const read = (el, names = BORDER_LONGHANDS) =>
+        names.map((name) => w.getComputedStyle(el).getPropertyValue(name)).join(' ');
+      const all = (el) => `${read(el)} ${el.localName === 'div' ? read(el, BORDER_BOX) : ''}`;
+      for (const css of BORDER_NONE_COMPUTED) {
+        d.head.innerHTML = `<style>${css}</style>`;
+        d.body.innerHTML = '<iframe class="z"></iframe><hr><div></div>';
+        out.push(`${css} | ${[...d.body.children].map(all).join(' | ')}`);
+      }
+      d.head.innerHTML = '';
+      for (const text of ['border: none', 'border: 0', 'border: solid', 'border-style: none', 'border: 1px none']) {
+        d.body.innerHTML = `<hr style="${text}"><div style="${text}"></div>`;
+        out.push(`${text} | ${[...d.body.children].map(all).join(' | ')}`);
+      }
+      return out;
+    },
+    { jsdom },
+  );

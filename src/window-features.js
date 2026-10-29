@@ -1734,10 +1734,12 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // 4.5 are not measured.
     customDropsImportant: version[0] < 27 && (css === null || (css[0] === 4 && !before(css, [4, 6, 0]))),
     // jsdom 27.0.0 to 28.1.0 (cssstyle 5 and 6): in a style attribute or
-    // cssText, border declared with var() (border: var(--b)) leaves the
-    // block empty, and one of its sides (border-top: 1px solid var(--c))
-    // is dropped; setProperty keeps them, and so do style sheets (css.js
-    // parseInto).
+    // cssText (an element's or a rule's), border declared with var()
+    // (border: var(--b)) or border or a side with a CSS-wide keyword
+    // (border-top: inherit, #179) leaves the block empty, and a side with
+    // var() (border-top: 1px solid var(--c)) is dropped; setProperty keeps
+    // them, and so do style sheets (css.js parseInto; black box, 27.4.0 and
+    // 28.1.0).
     borderVarDrops: version[0] === 27 || version[0] === 28,
     // cssstyle's font shorthand before 4.4 (shorthands.js legacyFont).
     legacyFont: css === null || !before(css, [4, 4, 0]) ? null : before(css, [4, 2, 0]) ? 'cssstyle4.1' : 'cssstyle4.2',

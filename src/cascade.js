@@ -1183,6 +1183,14 @@ function legacyBorderValue(element, name) {
   if (value.includes('var(')) return name === 'border' ? value : '';
   if (own && part >= 0) return value;
   const parts = borderParts(value);
+  // jsdom 27 and 28: border-width and border-style from border are its
+  // width and style, or their initial values (border: solid gives
+  // border-width medium, border: 0 border-style none; black box, 27.4.0
+  // and 28.1.0, #179).
+  if (part === 0 || part === 1) {
+    if (parts[part] === '' && element[S].doc[S].window[S].compat.jsdom >= 27) return part === 0 ? 'medium' : 'none';
+    return parts[part];
+  }
   return part >= 0 ? parts[part] : parts.filter((p) => p !== '').join(' ');
 }
 
