@@ -708,6 +708,13 @@ function escapedUrlScenario(w, p, all = true) {
   const twice = element(`background: ${u(20)} fixed`);
   twice.setAttribute('style', `background: ${u(20)} fixed`);
   out.push(twice.style.cssText);
+  // Parsed markup is parsed as set; an element without an inline style
+  // (not HTML or SVG) does not meet its url() (#191 review).
+  const host = w.document.createElement('div');
+  host.innerHTML = `<div style='color: blue; background: ${u(22, '(')} no-repeat'></div>`;
+  out.push(write(style(), `${u(22, '(')} no-repeat`), host.firstChild.style.cssText);
+  w.document.createElementNS('urn:x', 'x').setAttribute('style', `background: ${u(23, '(')}`);
+  out.push(write(style(), u(23, '(')));
   // An earlier !important background-color is removed (#191 review).
   out.push(element(`background-color: red !important; background: ${u(21)}`).style.cssText);
   // A hex escape and an unescaped quote or space are invalid; escaped

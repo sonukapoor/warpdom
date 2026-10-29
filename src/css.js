@@ -2,7 +2,18 @@
 // CSSStyleProperties (an accessor per CSS property name), as in jsdom 30.
 // Declarations are kept in order in a Map, and every change is written back to
 // the element's style attribute; a new style attribute re-parses them.
-import { S, state, hiddenSlot, domError, ELEMENT_NODE, cssomChanges, attributesChanged, hooks } from './internal.js';
+import {
+  S,
+  state,
+  hiddenSlot,
+  domError,
+  ELEMENT_NODE,
+  HTML_NS,
+  SVG_NS,
+  cssomChanges,
+  attributesChanged,
+  hooks,
+} from './internal.js';
 import { STYLE_ACCESSORS } from './css-properties.js';
 import { SURFACES } from './style-surface.js';
 import { LONGHANDS, SHORTHANDS, COLOR_SHORTHANDS, ALIASES } from './css-data.js';
@@ -2393,6 +2404,9 @@ export function styleOf(element, proto) {
 // With cssstyle 4.4 to 4.6 (escapedUrlBackground, black box, #163 review)
 // the attribute is parsed when set, before the style is first read, so its
 // url()s are met then; set to the value it had, it is not parsed again.
+// Only HTML and SVG elements have an inline style (interfaces.js
+// inlineStyle); the HTML parser calls this for a parsed style attribute
+// with a backslash (html.js).
 export function styleAttributeChanged(element, old) {
   const es = element[S];
   const text = es.attrs.get('style');
@@ -2401,7 +2415,8 @@ export function styleAttributeChanged(element, old) {
   const metAtWrite = modeOf(proto) === 'jsdom26' && surfaceOf(proto)?.key === 'cssstyle4.4';
   if (metAtWrite && text === old) return;
   es.styleWritten = undefined;
-  if (!es.style && metAtWrite && text?.includes('\\')) styleOf(element, proto);
+  if (!es.style && metAtWrite && text?.includes('\\') && (es.ns === HTML_NS || es.ns === SVG_NS))
+    styleOf(element, proto);
   else if (es.style) {
     const s = styleState(es.style);
     parseInto(s.decls, text, s.mode, s.surface, null, true);
