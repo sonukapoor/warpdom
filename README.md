@@ -565,8 +565,9 @@ The other differences, in full in [docs/differences.md](https://github.com/sonuk
 | [XMLHttpRequest](https://github.com/sonukapoor/warpdom/blob/main/docs/differences.md#xmlhttprequest) | Requests go through the host's `fetch`: header lists, cookies, sync requests, `file:` URLs, `Referer` and a few event orders differ |
 
 Not implemented (jsdom lacks these too): layout (sizes and positions are
-0, as in jsdom), `inert`, loading external style sheets, scripts or pages,
-navigation to other documents.
+0, as in jsdom), `inert`, navigation to other documents. Not implemented
+in warpdom only: loading external style sheets, scripts or pages, which
+jsdom does when configured to (`resources: 'usable'`).
 
 ## API
 
@@ -622,7 +623,8 @@ run; and one tracking issue, "Beyond jsdom: core APIs other test DOMs
 have", whose checklist lists the "Test DOM core" APIs neither jsdom nor
 warpdom has but happy-dom does, rewritten each run with ticked boxes
 kept. What an existing API issue names is skipped, and nothing happens
-when the data has not changed. Run `node scripts/api-gaps.mjs` locally
+when the data has not changed and no gaps are pending (a run that hit the
+limit of 15 issues files the rest on later runs, with the same data). Run `node scripts/api-gaps.mjs` locally
 for a dry run that prints what it would open.
 
 CI scans the dependencies with [CVE Lite CLI](https://github.com/OWASP/cve-lite-cli)

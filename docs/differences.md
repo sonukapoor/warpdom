@@ -136,8 +136,11 @@ and Jest, and tests replace it as on jsdom (`window.WebSocket = Mock`,
 ## Not implemented
 
 jsdom lacks these too: layout (sizes and positions are 0, as in jsdom),
-`inert`, loading external style sheets, scripts or pages, navigation to
-other documents.
+`inert`, navigation to other documents.
+
+warpdom only: loading external style sheets, scripts or pages. jsdom loads
+them when configured to (`resources: 'usable'`, and `runScripts` for
+scripts); warpdom loads none.
 
 ## Results that change for other reasons
 
@@ -148,7 +151,7 @@ a deliberate difference:
 | --- | --- | --- | --- |
 | ariakit | 7 | Fail on jsdom and pass on warpdom, in every round | They fail on jsdom. They count as differences because the goal is jsdom's results |
 | ark-ui | Toast and NumberInput `largeStep` tests | Fail on jsdom and pass on warpdom, in some rounds | As ariakit |
-| melt-ui | A Context Menu test | Fails on warpdom in some rounds (7 of 17) | Speed-sensitive. It stubs `requestAnimationFrame` with a 16 ms timer, and warpdom finishes a Svelte transition sooner. A Dropdown Menu test of the same kind fails on jsdom too now and then; for the Context Menu test the cause is inferred from that one, not shown |
+| melt-ui | A Context Menu test | Fails on warpdom in some rounds (7 of 17) | Speed-sensitive, demonstrated: it stubs `requestAnimationFrame` with a 16 ms timer, and whether it passes depends on where that timer's tick lands relative to two key presses. warpdom reaches the toggling key press sooner than jsdom, and jsdom fails the same way when slowed down (controlled slowdowns and timestamped logs: `docs/research/data/investigations/melt-ui-timing/README.md`) |
 | solid | Its transition test | On CI, failed on warpdom in 24 of 27 rounds and never on jsdom | Order dependence. solid's suite shares module state between files (`isolate: false`). The test fails whenever `suspense.spec` ran before it in the same worker without `external-source.spec` in between, on jsdom and on warpdom: in all 32 such runs, and it passed in all 98 others. On CI the harness gave solid's files with an `@vitest-environment` comment another environment name than the config on warpdom only, which put them in a separate group (see [Setup](../README.md#setup)) |
 | solid-primitives | 4 timer tests | Time out in 4 of 17 rounds | Order dependence. One of its files leaves fake timers on; the timer tests that run after it in the same worker time out, on jsdom too when forced into that order. On CI that order occurred only under warpdom |
 
@@ -168,7 +171,7 @@ these differences from jsdom:
 | `file:` URLs | Fail with a network error | Reads the file |
 | `Sec-Fetch-Mode` header | Requests carry fetch's | Not sent |
 | A `DataView` body | Sent | jsdom 28 and later send none |
-| The method `patch` in lowercase | Sent as is, and makes Node print a warning once | Sent as is |
+| The method `patch` in lowercase | Before the jsdom 28 profile: sent as `PATCH`. From 28: sent as is, and Node prints a warning once | Before 28: `PATCH` (Node's HTTP client). From 28: sent as is |
 | `Referer` from an `about:blank` iframe | None | `about:blank` |
 | `Referer` and the page URL's credentials or fragment | Never carried, as Referrer Policy says | Sends the document's URL with both, and before 28 sends a redirected request's previous URL as requested |
 | Redirects, where the host's `fetch` hides them (in a browser, `redirect: 'manual'` gives an opaque redirect) | The host follows them with its own checks and only the final response gets jsdom's; the first redirected request is sent a second time to find this out. Node, Deno and Bun expose redirects | — |
