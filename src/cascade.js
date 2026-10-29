@@ -23,6 +23,7 @@ import {
   HTML_NS,
   rootOf,
   cssomChanges,
+  ruleListRev,
   connected,
   trackDetachedStyles,
 } from './internal.js';
@@ -738,7 +739,8 @@ function keepsDetached(ds) {
 // an attribute is set or a node inserted; an element not read before gets
 // green; a shadow tree's element stays blue after its own class changes.
 // Edits of a rule's declarations or selector do not refresh it, and
-// insertRule() and deleteRule() only from jsdom 29 (cssomChanges.lists).
+// insertRule() and deleteRule() only from jsdom 29, on the element's
+// window's sheets (internal.js ruleListRev).
 function keptStyles(ds) {
   let kept = ds.keptStyles;
   if (kept === undefined) kept = ds.keptStyles = ds.window[S].compat.keptComputedStyle === true;
@@ -747,7 +749,10 @@ function keptStyles(ds) {
 // The CSSOM revision a kept cache is valid for.
 function keptCssomRev(ds, kept) {
   if (!kept) return cssomChanges.rev;
-  return ds.window[S].compat.ruleListRefreshes ? cssomChanges.lists : 0;
+  if (!ds.window[S].compat.ruleListRefreshes) return 0;
+  let lists = ds.ruleLists;
+  if (lists === undefined) lists = ds.ruleLists = ruleListRev(ds.window[S].protos);
+  return lists.rev;
 }
 
 // The declared value that wins (PENDING for a pending longhand: undeclared

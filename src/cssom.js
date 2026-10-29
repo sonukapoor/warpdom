@@ -10,6 +10,7 @@ import {
   state,
   domError,
   cssomChanges,
+  ruleListsChanged,
   ELEMENT_NODE,
   TEXT_NODE,
   HTML_NS,
@@ -893,7 +894,7 @@ function insertRule(owner, text, index, sheet, parentRule, nested) {
   }
   list.splice(i, 0, rule);
   cssomChanges.rev++;
-  cssomChanges.lists++;
+  ruleListsChanged(s.protos);
   return i;
 }
 
@@ -911,7 +912,7 @@ function deleteRule(owner, index) {
   }
   list.splice(i, 1);
   cssomChanges.rev++;
-  cssomChanges.lists++;
+  ruleListsChanged(owner[S].protos);
   detach(rule);
 }
 

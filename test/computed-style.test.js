@@ -289,6 +289,52 @@ const keptScenario = (jsdom) => (w) => {
 for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30])
   parity(`getComputedStyle: kept after rule edits (jsdom ${jsdom})`, keptScenario(jsdom), { jsdom });
 
+// What refreshes kept computed styles, continued (black box, 22.1.0 to
+// 30.1.3): insertRule() and deleteRule() on another window's sheet (an
+// iframe's) refresh nothing, on the document's own from 29; text set in a
+// disconnected shadow tree's <style> refreshes nothing, in a connected
+// one's from 29; changes after a first refresh with no read between them
+// still leave the next read refreshed.
+const keptRefreshScenario = (w) => {
+  const d = w.document;
+  const color = (el) => w.getComputedStyle(el).color;
+  const out = [];
+  d.head.innerHTML = '<style>div { color: blue }</style>';
+  const a = d.body.appendChild(d.createElement('div'));
+  const rule = d.styleSheets[0].cssRules[0];
+  const frame = d.body.appendChild(d.createElement('iframe')).contentDocument;
+  frame.head.appendChild(frame.createElement('style')).textContent = 'p { color: red }';
+  out.push(color(a));
+  rule.style.color = 'green';
+  frame.styleSheets[0].insertRule('i { color: red }', 1);
+  out.push(color(a));
+  frame.styleSheets[0].deleteRule(0);
+  out.push(color(a));
+  const lone = d.createElement('section').attachShadow({ mode: 'open' });
+  const style = lone.appendChild(d.createElement('style'));
+  style.textContent = 'i { color: pink }';
+  out.push(color(a));
+  style.appendChild(d.createTextNode('b { color: red }'));
+  out.push(color(a));
+  const shadowStyle = d.body.appendChild(d.createElement('section')).attachShadow({ mode: 'open' });
+  out.push(color(a));
+  rule.style.color = 'olive';
+  shadowStyle.appendChild(d.createElement('style')).textContent = 'i { color: red }';
+  out.push(color(a));
+  d.styleSheets[0].insertRule('i { color: red }', 1);
+  out.push(color(a));
+  d.body.appendChild(d.createComment('c'));
+  rule.style.color = 'navy';
+  d.body.appendChild(d.createComment('c'));
+  d.body.lastChild.remove();
+  out.push(color(a));
+  return out;
+};
+for (const jsdom of [22, 28, 29, 30])
+  parity(`getComputedStyle: kept styles refreshed by their own window (jsdom ${jsdom})`, keptRefreshScenario, {
+    jsdom,
+  });
+
 // jsdom (20 to 30) does not substitute var(): a value with var() computes
 // to itself and inherits so (jest-dom's toHaveStyle({ color:
 // 'var(--accent-color)' }) passes on it; wire-webapp's tests rely on it).
