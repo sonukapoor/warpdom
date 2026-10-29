@@ -1060,7 +1060,42 @@ function initialValue(element, name, data) {
 
 function inheritedValue(element, name, data) {
   const parent = inheritParent(element);
-  return parent ? computedValue(parent, name) : initialValue(element, name, data);
+  if (parent === null) return initialValue(element, name, data);
+  if (data[2] === 1 && name !== 'color' && !element[S].doc[S].window[S].compat.legacyComputedStyle) {
+    const source = colorSource(parent, name, data);
+    return source === null ? currentColor(element) : computedValue(source, name);
+  }
+  return computedValue(parent, name);
+}
+
+// jsdom 29.0.2 and later (black box: 29.1.1, 30.1.2, 30.1.3): a computed
+// currentcolor is inherited as the keyword, so it resolves to the
+// inheriting element's own color (color: red; border: inherit under a
+// parent whose border colors are their initial currentcolor gives red, as
+// does fill inherited from fill: currentColor). colorSource: the element
+// whose computed value element has (through inherit, unset or no
+// declaration of an inherited property), or null when that value is
+// currentcolor (declared, or the initial value; outline-color's initial
+// value is transparent here: initialValue). Not modeled: jsdom 29.1.1
+// gives a border or border-color shorthand's currentcolor or CSS-wide
+// keyword a fixed color in some cases, which its children inherit.
+const initialCurrentColor = (name, data) => data[0] === 'currentcolor' && name !== 'outline-color';
+function colorSource(element, name, data) {
+  for (let e = element; ;) {
+    const value = cascaded(e, name);
+    const keyword = value?.toLowerCase();
+    if (keyword === 'currentcolor') return null;
+    if (keyword === 'inherit' || ((keyword === undefined || keyword === 'unset') && data[1])) {
+      const parent = inheritParent(e);
+      if (parent === null) return initialCurrentColor(name, data) ? null : e;
+      e = parent;
+    } else if (
+      (keyword === undefined || keyword === 'initial' || keyword === 'unset') &&
+      initialCurrentColor(name, data)
+    )
+      return null;
+    else return e;
+  }
 }
 
 const CUSTOM = [null, 1, 0, 0];
