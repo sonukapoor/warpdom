@@ -11,5 +11,7 @@
   "types": "./index.d.ts",
   "files": ["index.js", "index.d.ts"],
   "peerDependencies": { "warpdom": ">=0.1.0", "vitest": ">=2" },
-  "keywords": ["vitest", "vitest-environment", "warpdom", "jsdom", "dom", "testing"]
+  "keywords": ["vitest", "vitest-environment", "warpdom", "jsdom", "dom", "testing", "vitest-environment-jsdom", "test-environment", "jsdom-alternative", "unit-testing"],
+  "homepage": "https://github.com/sonukapoor/warpdom#readme",
+  "bugs": { "url": "https://github.com/sonukapoor/warpdom/issues" }
 }
