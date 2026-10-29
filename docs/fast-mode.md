@@ -171,7 +171,12 @@ was 3-8% slower than the drop-in on 5 of 11 tuning suites).
   global's properties added after the previous file's tests started (a
   `beforeAll` of `warpdom/vitest/reset`) and puts back the window members
   a test redefined or deleted (`Object.defineProperty(window,
-  'innerWidth', ...)`). What the file's setup files and imports set stays:
+  'innerWidth', ...)`), except one that is again as it was before the
+  file's setup files ran: Vitest's cleanup or the file's tests undid a
+  `vi.stubGlobal` or accessor `vi.spyOn` of its setup, and putting the
+  stub back made the next setup's stub keep it as the original value
+  (the setup files run again and redo their changes). What the file's
+  setup files and imports set stays:
   without isolation a module loads once per worker, so a global it sets
   (a polyfill, a test helper's `global.ResizeObserver = ...`) would be
   gone for every later file. A test file's top-level code runs in that

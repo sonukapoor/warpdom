@@ -600,7 +600,8 @@ test("split runs exactly the project's own files: --typecheck.enabled=false keep
 // window.x = 1 stayed there for the next file. a-sets.spec.js adds and
 // redefines globals in a test; c-clean.spec.js, later in the same worker,
 // must not see them, while the setup file's and shared modules' globals
-// (set once per worker) stay.
+// (set once per worker) stay. The setup's vi.stubGlobal and accessor
+// vi.spyOn, undone by Vitest's cleanup or a test, are not put back.
 test("without isolation, the reset removes globals a previous file's tests added, not its setup's", () => {
   const result = spawnSync(process.execPath, [vitest, 'run', '--typecheck.enabled=false', '--reporter=verbose'], {
     cwd: fixture,
@@ -614,7 +615,7 @@ test("without isolation, the reset removes globals a previous file's tests added
   );
   // b-reads.spec.js leaks through module state, which no reset reaches.
   assert.deepEqual(failed, ['b-reads.spec.js > b: module state is fresh'], out);
-  assert.match(out, /Tests {2}1 failed \| 4 passed \| 1 skipped \(6\)/, out);
+  assert.match(out, /Tests {2}1 failed \| 6 passed \| 1 skipped \(8\)/, out);
 });
 
 test('warpdom vitest run: learning finds the leaking file; a newly leaking file is rerun, not a false failure', async () => {

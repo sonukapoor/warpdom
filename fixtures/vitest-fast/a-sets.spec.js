@@ -1,4 +1,4 @@
-import { test, expect } from 'vitest';
+import { test, expect, vi } from 'vitest';
 import { shared } from './state.js';
 import { helper } from './helper.js';
 
@@ -19,4 +19,12 @@ test('a: leaves globals behind', () => {
   window[Symbol.for('warpdom.fixture')] = 1;
   Object.defineProperty(window, 'innerWidth', { value: 500, writable: true, configurable: true });
   delete window.scrollTo;
+});
+
+// Undone during the file: the next file's reset must not put them back.
+test("a: undoes its setup's stub and spy", () => {
+  expect([window.innerHeight, window.outerHeight]).toEqual([500, 1]);
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  expect([window.innerHeight, window.outerHeight]).toEqual([768, 768]);
 });

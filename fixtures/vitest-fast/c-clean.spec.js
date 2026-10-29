@@ -1,4 +1,4 @@
-import { test, expect } from 'vitest';
+import { test, expect, vi } from 'vitest';
 import { helper } from './helper.js';
 import './skipped-dep.js';
 
@@ -25,4 +25,12 @@ test("c: no globals a previous file's tests added; its setup's and modules' stay
   // This file's setup ran after warpdom's reset, even with parallel setup files.
   const runs = globalThis.__setupRuns;
   expect([globalThis.__setupLater, window.matchMedia.run]).toEqual([runs > 1 ? runs : undefined, runs]);
+});
+
+test("c: this file's setup stubs and spies undo to the window's own values", () => {
+  expect([window.innerHeight, window.outerHeight]).toEqual([500, 1]);
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  expect([window.innerHeight, window.outerHeight]).toEqual([768, 768]);
+  expect(vi.isMockFunction(Object.getOwnPropertyDescriptor(window, 'outerHeight').get)).toBe(false);
 });
