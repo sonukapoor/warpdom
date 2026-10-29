@@ -17,6 +17,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { packageDir, packageVersion, findConfig, findVitestWorkspace } from '../compare/detect.js';
+import { isWarpdomEnvironment } from '../compare/wrappers.js';
 import { analyze, tokenize, lineIndex, leadingComments, moduleSpecifiers, typeOnlyReference } from './js.js';
 import { applyEdits, replaceLiteral, editDependencies, editCatalog, catalogEntries } from './edits.js';
 import {
@@ -147,7 +148,8 @@ const unique = (xs) => [...new Set(xs)];
 // Whether the options beside an environment property (prop, of analysis a)
 // name the jsdom version warpdom behaves like: environmentOptions.warpdom.jsdom
 // (Vitest), testEnvironmentOptions.jsdom (Jest). warpdom then follows that
-// version, not the installed jsdom.
+// version, not the installed jsdom; a null or undefined value does not
+// (warpdom then falls back to the installed jsdom).
 const namesJsdomVersion = (a, prop, runner) => {
   const objectOf = (frame, key) => {
     const q = frame && a.properties.find((x) => x.frame === frame && x.key === key);
@@ -155,7 +157,12 @@ const namesJsdomVersion = (a, prop, runner) => {
   };
   let options = objectOf(prop.frame, runner === 'vitest' ? 'environmentOptions' : 'testEnvironmentOptions');
   if (runner === 'vitest') options = objectOf(options, 'warpdom');
-  return Boolean(options && a.properties.some((x) => x.frame === options && x.key === 'jsdom'));
+  const q = options && a.properties.find((x) => x.frame === options && x.key === 'jsdom');
+  if (!q) return false;
+  const t = a.tokens[q.valueStart];
+  const nullish =
+    t?.type === 'ident' && (t.value === 'null' || t.value === 'undefined') && q.valueEnd - q.valueStart === 1;
+  return !nullish;
 };
 const majorOf = (v) => {
   const m = /(\d+)(?:\.\d+)?/.exec(String(v ?? ''));
@@ -801,7 +808,9 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
     }
     if (to - from === 1 && literals.length === 1) {
       const v = tokens[from].value;
-      if (v === 'warpdom' || /warpdom\//.test(v ?? ''))
+      // A path counts only into warpdom itself, not a project's own
+      // environment in a directory named warpdom (as compare, #185).
+      if (v === 'warpdom' || (/warpdom\//.test(v ?? '') && isWarpdomEnvironment(v)))
         uses.push({ file, runner, pathOnly: v !== 'warpdom', prop: p, a });
       else if (v === null)
         addManual(file, at, `${p.key} is built from a template string (\`${exprText(text, a, from, to)}\`)`, runner);

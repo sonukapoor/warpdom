@@ -1570,3 +1570,38 @@ test('migrate (#185): a warpdom config that names its jsdom version does not fol
     );
   }
 });
+
+test('migrate (#190 review): a nullish jsdom option follows the installed jsdom; a custom environment in a warpdom directory is not warpdom', async () => {
+  const project = (config) => ({
+    'package.json': `{\n  "private": true,\n  "devDependencies": {\n    "happy-dom": "^20.0.0",\n    "jsdom": "^25.0.1",\n    "vitest": "^5.0.0",\n    "warpdom": "^${VERSION}"\n  }\n}\n`,
+    'vitest.config.js': config,
+    'happy.spec.js': "// @vitest-environment happy-dom\nimport { test } from 'vitest';\n",
+    'warpdom/custom.js': 'export default {};\n',
+  });
+  const install = (dir) => {
+    installed(dir, 'jsdom', { version: '25.0.1' });
+    installed(dir, 'happy-dom', { version: '20.0.0' });
+  };
+  // jsdom: null or undefined: warpdom falls back to the installed jsdom.
+  for (const value of ['null', 'undefined'])
+    await tempProject(
+      project(
+        `export default {\n  test: {\n    environment: 'warpdom',\n    environmentOptions: { warpdom: { jsdom: ${value} } },\n  },\n};\n`,
+      ),
+      async (dir) => {
+        install(dir);
+        const r = await run(dir);
+        assert.match(r.profile.join('\n'), /follows the jsdom it finds installed, here jsdom 25\.0\.1/, value);
+      },
+    );
+  // A project's own environment under ./warpdom/ does not follow any jsdom.
+  await tempProject(
+    project("export default {\n  test: {\n    environment: './warpdom/custom.js',\n  },\n};\n"),
+    async (dir) => {
+      install(dir);
+      const r = await run(dir);
+      assert.doesNotMatch(r.profile.join('\n'), /follows the jsdom it finds installed/);
+      assert.ok(!r.edits.some((e) => e.pin), 'no jsdom pin');
+    },
+  );
+});
