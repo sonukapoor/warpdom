@@ -122,7 +122,7 @@ Interfaces, members, event handlers, the window's shape, style objects and
 computed values follow the version, as measured on jsdom's releases: for
 example, `crypto.randomUUID()` exists from jsdom 22.1.0, and computed
 lengths are px from 30.0.0. The full list, as tables by area:
-[docs/jsdom-versions.md](docs/jsdom-versions.md).
+[docs/jsdom-versions.md](https://github.com/sonukapoor/warpdom/blob/main/docs/jsdom-versions.md).
 
 warpdom models jsdom 20.0.3 to 30.1.3. With a newer jsdom installed (a
 later minor or major release), tests get jsdom 30.1.3's behavior and
@@ -141,7 +141,7 @@ to undici, and the profile follows). HTTP libraries that look for it
 with jsdom: msw answers the request the XHR makes through `fetch` (so a
 cross-origin mocked response needs `Access-Control-Allow-Origin`, as on
 jsdom), and nock answers XHR itself. The differences are listed in
-[docs/differences.md](docs/differences.md#xmlhttprequest).
+[docs/differences.md](https://github.com/sonukapoor/warpdom/blob/main/docs/differences.md#xmlhttprequest).
 
 Before XMLHttpRequest, axios used Node's HTTP client under warpdom. To keep
 that (no `XMLHttpRequest` at all):
@@ -552,17 +552,17 @@ that changed a test in the 25 measured suites:
 
 <!-- source: PLAN.md "Deliberate deviations from jsdom" (DOMException, svelte whitespace-at-block-start; ownerNode measured per release, tanstack-query PiPContext.test.tsx; handsontable jsdomThemeCssFilter.unit.js); docs/research/data/ci-2026-10-13-208ad49-RESULTS.md 7 (svelte 27 of 27 rounds, tanstack-query 17 of 17, handsontable 22 of 22) -->
 
-The other differences, in full in [docs/differences.md](docs/differences.md):
+The other differences, in full in [docs/differences.md](https://github.com/sonukapoor/warpdom/blob/main/docs/differences.md):
 
 | Category | In short |
 | --- | --- |
-| [Results that change for other reasons](docs/differences.md#results-that-change-for-other-reasons) | Tests that fail on jsdom and pass on warpdom (ariakit, ark-ui), one speed-sensitive test (melt-ui), two order dependences of the projects' own suites (solid, solid-primitives) |
-| [Events and focus](docs/differences.md#events-and-focus) | `isTrusted` is a prototype accessor; `tabindex="abc"` and disabled `fieldset`, `optgroup` and `option` focus as the standard says |
-| [Standard behavior where jsdom deviates](docs/differences.md#standard-behavior-where-jsdom-deviates) | `FormData`, `formnovalidate`, `Selection`, custom elements, XPath, MutationObserver, `document.write`, CSSOM, XML serialization, iframes and more |
-| [Additions jsdom lacks](docs/differences.md#additions-jsdom-lacks) | `innerText`, `ToggleEvent`, `TouchList`, Range rects and others |
-| [Styles](docs/differences.md#styles) | `MediaList` and indexed style properties the same in every profile; spied style setters see assignments only; some cssstyle details and computed values not modeled |
-| [Platform objects](docs/differences.md#platform-objects) | `FileReader`, `TextDecoder`, `URL`, `WebAssembly` in iframes, `WebSocket` |
-| [XMLHttpRequest](docs/differences.md#xmlhttprequest) | Requests go through the host's `fetch`: header lists, cookies, sync requests, `file:` URLs, `Referer` and a few event orders differ |
+| [Results that change for other reasons](https://github.com/sonukapoor/warpdom/blob/main/docs/differences.md#results-that-change-for-other-reasons) | Tests that fail on jsdom and pass on warpdom (ariakit, ark-ui), one speed-sensitive test (melt-ui), two order dependences of the projects' own suites (solid, solid-primitives) |
+| [Events and focus](https://github.com/sonukapoor/warpdom/blob/main/docs/differences.md#events-and-focus) | `isTrusted` is a prototype accessor; `tabindex="abc"` gives the default tab index; a disabled `fieldset`, `optgroup` or `option` is not focusable, as the standard says |
+| [Standard behavior where jsdom deviates](https://github.com/sonukapoor/warpdom/blob/main/docs/differences.md#standard-behavior-where-jsdom-deviates) | `FormData`, `formnovalidate`, `Selection`, custom elements, XPath, MutationObserver, `document.write`, CSSOM, XML serialization, iframes and more |
+| [Additions jsdom lacks](https://github.com/sonukapoor/warpdom/blob/main/docs/differences.md#additions-jsdom-lacks) | `innerText`, `ToggleEvent`, `TouchList`, Range rects and others |
+| [Styles](https://github.com/sonukapoor/warpdom/blob/main/docs/differences.md#styles) | `MediaList` and indexed style properties the same in every profile; spied style setters see assignments only; some cssstyle details and computed values not modeled |
+| [Platform objects](https://github.com/sonukapoor/warpdom/blob/main/docs/differences.md#platform-objects) | `FileReader`, `TextDecoder`, `URL`, `WebAssembly` in iframes, `WebSocket` |
+| [XMLHttpRequest](https://github.com/sonukapoor/warpdom/blob/main/docs/differences.md#xmlhttprequest) | Requests go through the host's `fetch`: header lists, cookies, sync requests, `file:` URLs, `Referer` and a few event orders differ |
 
 Not implemented (jsdom lacks these too): layout (sizes and positions are
 0, as in jsdom), `inert`, loading external style sheets, scripts or pages,

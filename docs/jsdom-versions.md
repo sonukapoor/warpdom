@@ -29,7 +29,7 @@ on.
 | `CSSNestedDeclarations` | 27.2.0 |
 | `TextEncoder` and `TextDecoder` | 27.4.0 |
 | Blob's `text()`, `arrayBuffer()` and `bytes()` | 28.1.0 |
-| `CSSMediaRule.matches` | 29.0.0 |
+| `CSSMediaRule.matches` and `CSSSupportsRule.matches` | 29.0.0 |
 
 ## APIs in every version
 

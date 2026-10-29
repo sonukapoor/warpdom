@@ -91,6 +91,11 @@ Not modeled:
   warpdom)
 - jsdom 29.0.0's internal classes behind `getComputedStyle()`
 - a `CSSStyleRule`'s `style` without accessors before 27.1.0
+- CSS Nesting: warpdom's style sheets keep only the declarations before a
+  nested rule and drop the rule (`.a { color: red; & .b {} margin: 0 }`),
+  so no `CSSNestedDeclarations` is made. jsdom 27.2 and 28 keep the nested
+  rule and drop the later declarations; from 29 they also become a
+  `CSSNestedDeclarations`
 - `getComputedStyle().azimuth` with cssstyle 4.2 and 4.3 (`NaNdeg` for an
   angle, jsdom's is empty)
 
@@ -119,7 +124,7 @@ warpdom follows the cssstyle jsdom itself installs.
 | `TextDecoder` labels | Trims only ASCII whitespace from labels, as the Encoding standard says | Accepts labels with other whitespace or NUL around them |
 | `TextDecoder` encodings | Decodes Big5, EUC-JP, EUC-KR, GBK, gb18030, ISO-2022-JP and Shift_JIS with the platform's decoders | Differs from the platform's decoders for a few byte sequences |
 | `URL` | Parses with the platform's parser (Ada in Node), as `URL` does in Vitest's jsdom environment (WPT url/: warpdom 7,136 of 8,784 subtests) | whatwg-url; differs for some internationalized host names (IDNA) and opaque paths with trailing spaces (WPT url/: jsdom 6,394) |
-| An iframe's `WebAssembly` | Its parent's (warpdom's frames share one realm) | The iframe's own (each frame is its own realm) |
+| An iframe's `WebAssembly` | Its parent's (warpdom's frames share one realm) | The iframe's own when scripts run in the window (`runScripts`, as in Jest's and Vitest's jsdom environments); without, both are Node's |
 | `WebSocket` | The platform's (Node's, from Node 22), as `URL` is Node's under Vitest. Its sockets and events are Node's, not the window's: `event instanceof window.MessageEvent` and `socket instanceof window.EventTarget` are false, and its errors are Node's. Without a platform `WebSocket` the window has none | Its own |
 
 The window's `WebSocket` and the global's are the same object in Vitest
