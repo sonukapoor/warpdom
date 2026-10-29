@@ -675,6 +675,8 @@ function cascaded(element, name) {
   if (
     cache !== undefined &&
     cache.detached &&
+    // Moved to another document: its counters say nothing about these values.
+    cache.doc === ds &&
     cache.detachedRev === ds.detachedRev &&
     cache.cssomRev === keptCssomRev(ds, cache.kept)
   ) {
@@ -704,6 +706,7 @@ function cascaded(element, name) {
       values: new Map(),
       detached,
       kept,
+      doc: ds,
       detachedRev: ds.detachedRev,
       cssomRev: keptCssomRev(ds, kept),
       fontSize: undefined,

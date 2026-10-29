@@ -387,6 +387,29 @@ for (const jsdom of [22, 28, 29, 30])
     jsdom,
   });
 
+// A kept element moved into another document (an iframe's) computes with
+// that document's rules, also when both documents' counters match (#198
+// review).
+const keptMoveScenario = (w) => {
+  const A = w.document;
+  const f = A.body.appendChild(A.createElement('iframe'));
+  const wb = f.contentWindow;
+  const B = f.contentDocument;
+  A.head.innerHTML = '<style>div { color: blue }</style>';
+  B.head.appendChild(B.createElement('style')).textContent = 'div { color: green }';
+  const a = A.body.appendChild(A.createElement('div'));
+  const b = B.body.appendChild(B.createElement('div'));
+  const out = [w.getComputedStyle(a).color, wb.getComputedStyle(b).color];
+  A.body.appendChild(A.createElement('p'));
+  out.push(w.getComputedStyle(a).color);
+  B.body.appendChild(B.createElement('p'));
+  B.body.appendChild(a);
+  out.push(wb.getComputedStyle(a).color);
+  return out;
+};
+for (const jsdom of [22, 25, 29, 30])
+  parity(`getComputedStyle: a kept element moved to another document (jsdom ${jsdom})`, keptMoveScenario, { jsdom });
+
 // jsdom (20 to 30) does not substitute var(): a value with var() computes
 // to itself and inherits so (jest-dom's toHaveStyle({ color:
 // 'var(--accent-color)' }) passes on it; wire-webapp's tests rely on it).
