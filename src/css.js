@@ -1052,8 +1052,9 @@ function meetImage(name, value, mode, surface) {
 // the block's declarations), or INVALID: '' when it declares nothing.
 function escapedUrlBackground(decls, value, mode, surface) {
   if (mode !== 'jsdom26' || surface?.key !== 'cssstyle4.4' || !value.includes('\\')) return INVALID;
-  if (splitOutside(value, ',').length > 1 || /var\(|env\(|attr\(/i.test(value)) return INVALID;
-  const urls = segments(value, BG_SEPARATOR_LEGACY).filter((t, i) => i % 2 === 0 && escapedUrl(t));
+  // Escape-aware: url(a\'b.png) no-repeat is a url() and no-repeat.
+  if (splitOutside(value, ',', true).length > 1 || /var\(|env\(|attr\(/i.test(value)) return INVALID;
+  const urls = segments(value, BG_SEPARATOR_LEGACY, true).filter((t, i) => i % 2 === 0 && escapedUrl(t));
   if (urls.length === 0) return INVALID;
   let cached = false;
   for (const url of urls) cached = meetUrl(url) || cached;
@@ -2389,12 +2390,19 @@ export function styleOf(element, proto) {
 // own value keeps both, though parsed it declares nothing); any other
 // text is parsed, and the written text no longer stands for the
 // declarations (writtenDeclarations).
-export function styleAttributeChanged(element) {
+// With cssstyle 4.4 to 4.6 (escapedUrlBackground, black box, #163 review)
+// the attribute is parsed when set, before the style is first read, so its
+// url()s are met then; set to the value it had, it is not parsed again.
+export function styleAttributeChanged(element, old) {
   const es = element[S];
   const text = es.attrs.get('style');
   if (es.styleWritten !== undefined && es.styleWritten === text) return;
+  const proto = es.doc?.[S]?.window?.[S]?.protos.CSSStyleProperties;
+  const metAtWrite = modeOf(proto) === 'jsdom26' && surfaceOf(proto)?.key === 'cssstyle4.4';
+  if (metAtWrite && text === old) return;
   es.styleWritten = undefined;
-  if (es.style) {
+  if (!es.style && metAtWrite && text?.includes('\\')) styleOf(element, proto);
+  else if (es.style) {
     const s = styleState(es.style);
     parseInto(s.decls, text, s.mode, s.surface, null, true);
     reindex(es.style);

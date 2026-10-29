@@ -683,6 +683,33 @@ function escapedUrlScenario(w, p, all = true) {
   style().backgroundImage = u(12);
   style().setProperty('background-image', u(13, '('));
   out.push(write(style(), u(12)), write(style(), u(13, '(')));
+  // Unquoted, an escaped quote or parenthesis is in the url() (#191 review).
+  out.push(write(style(), `url(${p}-14\\(b.png) no-repeat`), write(style(), `url(${p}-14\\(b.png) no-repeat`));
+  out.push(write(style(), `url(${p}-15\\'b.png) fixed`), write(style(), `no-repeat url(${p}-16\\'b.png) fixed`));
+  // A style attribute is parsed when set, before the style is read (its
+  // url()s are met then); set to the value it has, it is not parsed again.
+  const element = (text) => {
+    const e = w.document.createElement('div');
+    e.setAttribute('style', text);
+    return e;
+  };
+  const lazy = element(`color: blue; background: ${u(17)}`);
+  out.push(write(style(), u(17)), lazy.style.cssText);
+  const again = element(`color: blue; background: red ${u(18, '(')} no-repeat`);
+  out.push(again.style.cssText);
+  again.setAttribute('style', again.getAttribute('style'));
+  out.push(again.style.cssText);
+  again.setAttribute('style', `${again.getAttribute('style')} `);
+  out.push(again.style.cssText);
+  const read = w.document.createElement('div');
+  void read.style;
+  read.setAttribute('style', `background: ${u(19, ' ')} fixed`);
+  out.push(read.style.cssText, element(`background: ${u(19, ' ')} fixed`).style.cssText);
+  const twice = element(`background: ${u(20)} fixed`);
+  twice.setAttribute('style', `background: ${u(20)} fixed`);
+  out.push(twice.style.cssText);
+  // An earlier !important background-color is removed (#191 review).
+  out.push(element(`background-color: red !important; background: ${u(21)}`).style.cssText);
   // A hex escape and an unescaped quote or space are invalid; escaped
   // double quotes are kept (#134).
   for (const value of [`url("${p}\\62 .png")`, `url("${p}'b.png")`, `url("${p} b.png")`, `url("${p}\\"b.png")`])
@@ -726,6 +753,16 @@ test('style: a url() with an escaped quote in the background shorthand with csss
       'color: blue; background: url("x.png") 10px;',
     );
     assert.equal(write(`url("${p}\\62 .png")`), unchanged);
+    // Unquoted (#191 review).
+    assert.equal(write(`url(${p}-3\\(b.png) no-repeat`), 'color: blue; background: no-repeat;');
+    assert.equal(write(`url(${p}-3\\'b.png) fixed`), 'color: blue; background: fixed;');
+    // A style attribute is parsed when set, not again when set to the value it has.
+    const [fresh] = escapedUrls(`${p}-4`);
+    const e = w.document.createElement('div');
+    e.setAttribute('style', `color: blue; background: red ${fresh}`);
+    assert.equal(write(fresh), unchanged);
+    e.setAttribute('style', e.getAttribute('style'));
+    assert.equal(e.style.cssText, 'color: blue; background: red;');
   }
   // Before cssstyle 4.4: invalid.
   const w = createWindow({ jsdom: '26.1.0', cssstyle: '4.3.1' });
