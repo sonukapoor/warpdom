@@ -821,10 +821,13 @@ const OPAQUE_RGBA = /^rgba\((\d+, \d+, \d+), 1\)$/;
 // color-scheme (rule index lookups for the element and each ancestor) is
 // skipped when no rule of the element's root and no style attribute up
 // the inheritance chain declares it (or all); an ancestor in another root,
-// or not cascaded yet, takes the full path.
+// or not cascaded yet, takes the full path, as does a disconnected element
+// whose computed values are kept (its style attributes, and its
+// ancestors', may have changed since; see cascaded).
 function darkScheme(element) {
-  const index = element[S].cascaded?.index;
-  if (index !== undefined && !index.has('color-scheme') && !index.has('all')) {
+  const cache = element[S].cascaded;
+  const index = cache?.index;
+  if (index !== undefined && !cache.detached && !index.has('color-scheme') && !index.has('all')) {
     let declared = false;
     for (let n = element; n !== null && !declared; n = inheritParent(n)) {
       const inline = inlineDeclarations(n);

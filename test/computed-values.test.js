@@ -248,6 +248,34 @@ function colorSchemes(w) {
 }
 for (const jsdom of JSDOMS) parity(`computed values: color-scheme (jsdom ${jsdom}, #51)`, colorSchemes, { jsdom });
 
+// A disconnected element keeps its computed color-scheme, and the system
+// colors that follow it, until the document changes, also when its style
+// attribute or an ancestor's changes (#188 review).
+function detachedColorSchemes(w) {
+  const d = w.document;
+  const out = {};
+  const get = (el) => `${w.getComputedStyle(el).color}|${w.getComputedStyle(el).colorScheme}`;
+  const el = d.createElement('div');
+  el.style.cssText = 'color: CanvasText; color-scheme: dark';
+  out.detached = [get(el)];
+  el.style.colorScheme = '';
+  out.detached.push(get(el));
+  d.body.append(d.createElement('span'));
+  out.detached.push(get(el));
+  const parent = d.createElement('div');
+  parent.style.colorScheme = 'dark';
+  const child = parent.appendChild(d.createElement('div'));
+  child.style.color = 'Canvas';
+  out.detachedChild = [get(child)];
+  parent.style.colorScheme = '';
+  out.detachedChild.push(get(child));
+  return out;
+}
+for (const jsdom of [27, 28, 29, 30])
+  parity(`computed values: color-scheme of a disconnected element (jsdom ${jsdom}, #51)`, detachedColorSchemes, {
+    jsdom,
+  });
+
 // --- zero lengths ------------------------------------------------------------------
 
 // A 0 length stays 0 before jsdom 28.1.0 where cssstyle does not parse the
