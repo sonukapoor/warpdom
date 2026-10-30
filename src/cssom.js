@@ -743,6 +743,26 @@ function keyframe(protos, record, sheet, parentRule) {
   return rule;
 }
 
+// The keyframes a CSSKeyframesRule's appendRule(), deleteRule(), findRule()
+// and cssText use: in jsdom 27.1.0 to 28 (black box 27.4.0, 28.1.0) its
+// cssRules property, which a test can replace with an array or anything
+// else (methods the value lacks then throw TypeErrors, as there); the own
+// indices keep following the original list (indexKeyframes).
+function keyframeRules(rule) {
+  const s = rule[S];
+  if (ACEMIR_RULES.has(s.protos.CSSRule)) {
+    const own = rule.cssRules;
+    if (own !== s.ruleList) return own;
+  }
+  return s.rules;
+}
+
+// The index of the last keyframe of a list (or array-like) with a key.
+function findKeyframe(list, key) {
+  for (let i = list.length - 1; i >= 0; i--) if (list[i]?.[S]?.keyText === key) return i;
+  return -1;
+}
+
 // CSSKeyframesRule's indexed getter: own properties, rebuilt when its
 // keyframes change (rare). In jsdom 27.1.0 to 28 (black box 27.4.0,
 // 28.1.0) getters of this.cssRules[i], not enumerable.
@@ -847,7 +867,7 @@ function ruleText(rule) {
     case s.protos.CSSKeyframesRule: {
       // (jsdom 27.1.0 to 28: its own name property, which can be assigned)
       const name = ACEMIR_RULES.has(s.protos.CSSRule) ? String(rule.name) : s.name;
-      return `@keyframes ${keyframesName(name)} { ${s.rules.map(ruleText).join(' ')} }`;
+      return `@keyframes ${keyframesName(name)} { ${keyframeRules(rule).map(ruleText).join(' ')} }`;
     }
     case s.protos.CSSKeyframeRule:
       return `${s.keyText} ${styleText(s.style)}`;
@@ -1739,18 +1759,19 @@ export const CSSOM_INTERFACES = [
         const record = parseOneRule(String(text), s.protos);
         const rule = record && keyframe(s.protos, record, s.sheet, this);
         if (rule) {
-          s.rules.push(rule);
+          keyframeRules(this).push(rule);
           indexKeyframes(this);
           cssomChanges.rev++;
         }
       },
       deleteRule(select) {
-        const s = state(this);
+        state(this);
         required(arguments.length, 1, 'CSSKeyframesRule', 'deleteRule');
         const key = keyText(select);
-        const i = key === null ? -1 : s.rules.findLastIndex((r) => r[S].keyText === key);
+        const list = keyframeRules(this);
+        const i = key === null ? -1 : findKeyframe(list, key);
         if (i < 0) return;
-        const [rule] = s.rules.splice(i, 1);
+        const [rule] = list.splice(i, 1);
         detach(rule);
         indexKeyframes(this);
         cssomChanges.rev++;
@@ -1758,7 +1779,11 @@ export const CSSOM_INTERFACES = [
       findRule(select) {
         required(arguments.length, 1, 'CSSKeyframesRule', 'findRule');
         const key = keyText(select);
-        return key === null ? null : (rules(this).findLast((r) => r[S].keyText === key) ?? null);
+        if (key === null) return null;
+        state(this);
+        const list = keyframeRules(this);
+        const i = findKeyframe(list, key);
+        return i < 0 ? null : list[i];
       },
       // Iterable over its keyframes (indexed properties) from jsdom 29;
       // 27.1.0 to 28 have another function (ACEMIR_SHAPE), earlier none.

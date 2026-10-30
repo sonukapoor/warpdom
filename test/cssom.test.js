@@ -1410,3 +1410,68 @@ for (const jsdom of [27, 28, 29, 30]) {
     { jsdom },
   );
 }
+
+// CSSKeyframesRule in jsdom 27.1.0 to 28: appendRule(), deleteRule(),
+// findRule() and cssText use the rule's cssRules property, so a list
+// assigned to it is the one they change and read; the own indices keep
+// the original list's length (#145, review on #207).
+for (const jsdom of [27, 28]) {
+  parity(
+    `CSSKeyframesRule: an assigned cssRules list (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      d.head.innerHTML =
+        '<style>@keyframes k { 0% { color: red } 20% { color: blue } } @keyframes j { 10% { color: red } 30% { color: red } 60% { color: red } }</style>';
+      const [r, j] = d.styleSheets[0].cssRules;
+      const indices = () => Object.getOwnPropertyNames(r).filter((k) => /^\d/.test(k));
+      const text = () => r.cssText.replace(/\s+/g, ' ');
+      const attempt = (f) => {
+        try {
+          return f();
+        } catch (err) {
+          return err.constructor.name;
+        }
+      };
+      const out = [];
+      const original = r.cssRules;
+      const replaced = [];
+      r.cssRules = replaced;
+      out.push([r.length, indices(), r[0], text(), r.findRule('0%')]);
+      r.appendRule('50% { color: red }');
+      out.push([r.length, replaced.length, replaced[0].keyText, replaced[0].parentRule === r, r[0].keyText]);
+      out.push([text(), r.findRule('50%') === replaced[0], [...r].map((k) => k.keyText), indices()]);
+      const theirs = [...j.cssRules];
+      r.cssRules = theirs;
+      out.push([r.length, text(), r.findRule('60%') === theirs[2], theirs[0].parentRule === j]);
+      r.deleteRule('30%');
+      out.push([r.length, theirs.length, j.cssRules.length, text(), theirs.map((k) => k.keyText), indices()]);
+      const gone = j.cssRules[0];
+      r.cssRules = [gone];
+      r.deleteRule('10%');
+      out.push([gone.parentRule, j.cssRules.length, r.length]);
+      r.cssRules = original;
+      out.push([r.length, text(), r[1].keyText, indices()]);
+      r.deleteRule('0%');
+      out.push([r.length, text(), r[0].keyText, indices()]);
+      r.cssRules = { length: 1, 0: j.cssRules[0] };
+      out.push([
+        r.length,
+        attempt(() => r.findRule('10%') === j.cssRules[0]),
+        attempt(() => r.findRule('nope')),
+        attempt(() => r.deleteRule('nope')),
+        attempt(() => r.cssText),
+        attempt(() => r.deleteRule('10%')),
+        attempt(() => r.appendRule('5% { color: red }')),
+      ]);
+      r.cssRules = undefined;
+      out.push(
+        ['length', 'cssText'].map((k) => attempt(() => r[k])),
+        attempt(() => r.findRule('10%')),
+        attempt(() => r.deleteRule('10%')),
+        attempt(() => r.appendRule('5% { color: red }')),
+      );
+      return out;
+    },
+    { jsdom },
+  );
+}
