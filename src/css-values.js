@@ -233,24 +233,36 @@ function readEscape(text, i, put) {
   else if (j < text.length && isSpace(text.charCodeAt(j))) j++;
   return j;
 }
-// The index after the unquoted url() starting at text[i] (url( in any
-// case, then no quote): a url token, or a bad one's remnants, runs to its
-// ")" past escapes (url(a"b.png) and url(a\\(b.png) are one token, their
-// quote and parenthesis no string or block), or to the end; i when no
-// such url() starts there.
-export function urlTokenEnd(text, i) {
-  const c = text[i];
-  if ((c !== 'u' && c !== 'U') || text[i + 3] !== '(' || text.slice(i + 1, i + 3).toLowerCase() !== 'rl') return i;
-  if (i > 0 && /[\w\\-]/.test(text[i - 1])) return i;
-  let j = i + 4;
-  while (j < text.length && isSpace(text.charCodeAt(j))) j++;
-  if (text[j] === '"' || text[j] === "'") return i;
-  for (; j < text.length; j++) {
-    if (text[j] === '\\') j++;
-    else if (text[j] === ')') return j + 1;
+// The index after the unquoted url() whose "(" is at text[open] (url in
+// any case before it, then no quote): a url token, or a bad one's
+// remnants, runs to its ")" past escapes (url(a"b.png) and url(a\\(b.png)
+// are one token, their quote and parenthesis no string or block), or to
+// the end; -1 when no such url() opens there. Character codes only: the
+// declaration splitters call it at every "(".
+export function urlTokenEnd(text, open) {
+  if (
+    open < 3 ||
+    (text.charCodeAt(open - 1) | 32) !== 108 ||
+    (text.charCodeAt(open - 2) | 32) !== 114 ||
+    (text.charCodeAt(open - 3) | 32) !== 117 ||
+    (open > 3 && isNameCode(text.charCodeAt(open - 4)))
+  )
+    return -1;
+  const n = text.length;
+  let j = open + 1;
+  while (j < n && isSpace(text.charCodeAt(j))) j++;
+  const q = text.charCodeAt(j);
+  if (q === 34 || q === 39) return -1;
+  for (; j < n; j++) {
+    const c = text.charCodeAt(j);
+    if (c === 92) j++;
+    else if (c === 41) return j + 1;
   }
-  return text.length;
+  return n;
 }
+// A character of a name (or a backslash): url( after it is no url().
+const isNameCode = (c) =>
+  (c >= 48 && c <= 57) || ((c | 32) >= 97 && (c | 32) <= 122) || c === 95 || c === 45 || c === 92 || c > 127;
 // Line breaks in a url() string read as spaces (isValidValue sets it per property).
 let newlineSpaces = false;
 

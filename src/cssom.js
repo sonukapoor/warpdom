@@ -49,7 +49,10 @@ function skipToken(text, i) {
     return end < 0 ? text.length : end + 2;
   }
   const c = text[i];
-  if (c === 'u' || c === 'U') return urlTokenEnd(text, i);
+  if (c === '(') {
+    const end = urlTokenEnd(text, i);
+    if (end !== -1) return end;
+  }
   if (c === '"' || c === "'") {
     let j = i + 1;
     while (j < text.length && text[j] !== c) j += text[j] === '\\' ? 2 : 1;

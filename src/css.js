@@ -40,11 +40,9 @@ function cssName(accessor) {
 
 // Split on `sep` outside parentheses and quotes (url(data:...;base64,...)).
 // tokens: also outside [] and {} blocks and comments, and not on an
-// escaped character (\!), as CSS tokenizes a value. An unquoted url() is
-// one token (urlTokenEnd). lineBreaks: a line break ends a string (CSS
-// Syntax 3: a bad string; jsdom 27 and later), else it runs on.
+// escaped character (\!), as CSS tokenizes a value.
 const CLOSERS = { '(': ')', '[': ']', '{': '}' };
-function splitOutside(text, sep, tokens = false, lineBreaks = false) {
+function splitOutside(text, sep, tokens = false) {
   const parts = [];
   const open = [];
   let depth = 0,
@@ -54,15 +52,8 @@ function splitOutside(text, sep, tokens = false, lineBreaks = false) {
     const c = text[i];
     if (quote) {
       if (c === '\\') i++;
-      else if (c === quote || (lineBreaks && (c === '\n' || c === '\r' || c === '\f'))) quote = null;
+      else if (c === quote) quote = null;
       continue;
-    }
-    if (c === 'u' || c === 'U') {
-      const end = urlTokenEnd(text, i);
-      if (end !== i) {
-        i = end - 1;
-        continue;
-      }
     }
     if (c === '"' || c === "'") quote = c;
     else if (tokens) {
@@ -79,6 +70,55 @@ function splitOutside(text, sep, tokens = false, lineBreaks = false) {
     } else if (c === '(') depth++;
     else if (c === ')') depth = Math.max(0, depth - 1);
     else if (c === sep && depth === 0) {
+      parts.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(text.slice(start));
+  return parts;
+}
+// A declaration block's declarations as jsdom 27 and later read them
+// (CSS Syntax 3, #144): an unquoted url() is one token to its ")"
+// (urlTokenEnd: url(a"b.png) opens no string, url(a(b.png) no block),
+// and a line break ends a string (a bad string). Only for a text where
+// that differs from splitOutside (cssSplitNeeded): an unquoted url() with
+// a quote, parenthesis or backslash inside, or a quoted url() and a line
+// break. Character codes and indexOf: style writes are a hot path.
+function cssSplitNeeded(text) {
+  let quoted = false;
+  for (let i = text.indexOf('url('); i !== -1; i = text.indexOf('url(', i + 4)) {
+    const q = text.charCodeAt(i + 4);
+    if (q === 34 || q === 39) {
+      quoted = true;
+      continue;
+    }
+    for (let j = i + 4; j < text.length; j++) {
+      const c = text.charCodeAt(j);
+      if (c === 41) break;
+      if (c === 34 || c === 39 || c === 40 || c === 92) return true;
+    }
+  }
+  return quoted && (text.indexOf('\n') !== -1 || text.indexOf('\r') !== -1 || text.indexOf('\f') !== -1);
+}
+function splitDeclarations(text) {
+  const parts = [];
+  let depth = 0,
+    quote = null,
+    start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === '\\') i++;
+      else if (c === quote || c === '\n' || c === '\r' || c === '\f') quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'") quote = c;
+    else if (c === '(') {
+      const end = urlTokenEnd(text, i);
+      if (end === -1) depth++;
+      else i = end - 1;
+    } else if (c === ')') depth = Math.max(0, depth - 1);
+    else if (c === ';' && depth === 0) {
       parts.push(text.slice(start, i));
       start = i + 1;
     }
@@ -1575,7 +1615,9 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   const runsOn = isLegacyMode(mode);
   if (runsOn && !inRule && context !== 'written' && unclosedLegacy(String(text ?? ''))) return;
   let carried = null;
-  for (let part of splitOutside(String(text ?? ''), ';', false, !runsOn)) {
+  const source = String(text ?? '');
+  const lineBreaks = !runsOn && cssSplitNeeded(source);
+  for (let part of lineBreaks ? splitDeclarations(source) : splitOutside(source, ';')) {
     if (carried !== null) {
       part = `${carried};${part}`;
       carried = null;
@@ -1601,7 +1643,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     // A url() with a line break in its string (a bad string) is invalid
     // here, though background-image takes it through the style object
     // (jsdom 27 and later, #144).
-    if (!runsOn && value.includes('url(') && hasBadString(value)) continue;
+    if (lineBreaks && value.includes('url(') && hasBadString(value)) continue;
     if (!sheet && !runsOn && value.includes('!') && strayPriority(value, important)) continue;
     if (borderVarDrops && BORDER_AND_SIDES.has(name)) {
       // A CSS-wide keyword on border or a side leaves the block empty.
