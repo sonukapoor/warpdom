@@ -200,6 +200,82 @@ function dialogs(w) {
 }
 for (const jsdom of JSDOMS) parity(`computed values: dialog (jsdom ${jsdom}, #76)`, dialogs, { jsdom });
 
+// System colors under color-scheme (#51, WPT the-dialog-element/
+// default-color.html): from jsdom 27 a system color takes its dark value
+// where the computed color-scheme is exactly 'dark' (not 'light dark',
+// 'dark light', 'only dark' or 'inherit'); color-scheme inherits from 29.
+function colorSchemes(w) {
+  const d = w.document;
+  d.head.innerHTML = `<style>
+    :root { background-color: Canvas; color: CanvasText }
+    #light { color-scheme: light } #dark { color-scheme: dark }
+    .dk { color-scheme: dark } .ca { color: CanvasText; background-color: Canvas }
+    .f { color: FieldText; background-color: Field; border: 1px solid ButtonBorder; outline-color: LinkText }
+    .ld { color-scheme: light dark } .dl { color-scheme: dark light } .od { color-scheme: only dark }
+    .inh { color-scheme: inherit } .imp { color-scheme: dark !important }
+    .cur { background-color: currentColor }
+  </style>
+  <dialog id=dialog open>x</dialog><dialog id=light open>x</dialog><dialog id=dark open>x</dialog>
+  <div class="dk ca" id=a><span id=a1></span><span id=a2 class=ca></span><span id=a3 class="inh ca"></span><dialog id=a4 open></dialog></div>
+  <div class="dk f" id=b></div><div class="ld ca" id=c></div><div class="dl ca" id=e></div><div class="od ca" id=g></div>
+  <div class="imp ca cur" id=i></div><dialog id=j style="color-scheme: dark; color: red" open></dialog>`;
+  const out = {};
+  // A dialog's border colors left out: jsdom 29 gives the top, right and
+  // bottom ones rgb(0, 0, 0) whatever the color (a separate gap).
+  for (const el of d.querySelectorAll('[id]')) {
+    const props = el.localName === 'dialog' ? ['color', 'background-color'] : COLORS;
+    out[el.id] = read(w, el, [...props, 'color-scheme']);
+  }
+  out.root = read(w, d.documentElement, COLORS);
+  // A style attribute up the chain, before and after it changes.
+  const outer = d.body.appendChild(d.createElement('section'));
+  const inner = outer.appendChild(d.createElement('p'));
+  inner.className = 'ca';
+  out.inner = [read(w, inner, ['color'])];
+  outer.style.colorScheme = 'dark';
+  out.inner.push(read(w, inner, ['color']));
+  outer.style.colorScheme = '';
+  out.inner.push(read(w, inner, ['color']));
+  const el = d.body.appendChild(d.createElement('div'));
+  el.style.colorScheme = 'dark';
+  // Every system color (CSS Color 4, 6.2 and 6.2.1).
+  const SYSTEM_COLORS = `AccentColor AccentColorText ActiveText ButtonBorder ButtonFace ButtonText Canvas CanvasText Field FieldText GrayText Highlight HighlightText LinkText Mark MarkText SelectedItem SelectedItemText VisitedText ActiveBorder ActiveCaption AppWorkspace Background ButtonHighlight ButtonShadow CaptionText InactiveBorder InactiveCaption InactiveCaptionText InfoBackground InfoText Menu MenuText Scrollbar ThreeDDarkShadow ThreeDFace ThreeDHighlight ThreeDLightShadow ThreeDShadow Window WindowFrame WindowText`;
+  for (const value of SYSTEM_COLORS.split(/\s+/)) {
+    el.style.color = value;
+    out[value] = read(w, el, ['color']);
+  }
+  return out;
+}
+for (const jsdom of JSDOMS) parity(`computed values: color-scheme (jsdom ${jsdom}, #51)`, colorSchemes, { jsdom });
+
+// A disconnected element keeps its computed color-scheme, and the system
+// colors that follow it, until the document changes, also when its style
+// attribute or an ancestor's changes (#188 review).
+function detachedColorSchemes(w) {
+  const d = w.document;
+  const out = {};
+  const get = (el) => `${w.getComputedStyle(el).color}|${w.getComputedStyle(el).colorScheme}`;
+  const el = d.createElement('div');
+  el.style.cssText = 'color: CanvasText; color-scheme: dark';
+  out.detached = [get(el)];
+  el.style.colorScheme = '';
+  out.detached.push(get(el));
+  d.body.append(d.createElement('span'));
+  out.detached.push(get(el));
+  const parent = d.createElement('div');
+  parent.style.colorScheme = 'dark';
+  const child = parent.appendChild(d.createElement('div'));
+  child.style.color = 'Canvas';
+  out.detachedChild = [get(child)];
+  parent.style.colorScheme = '';
+  out.detachedChild.push(get(child));
+  return out;
+}
+for (const jsdom of [27, 28, 29, 30])
+  parity(`computed values: color-scheme of a disconnected element (jsdom ${jsdom}, #51)`, detachedColorSchemes, {
+    jsdom,
+  });
+
 // --- zero lengths ------------------------------------------------------------------
 
 // A 0 length stays 0 before jsdom 28.1.0 where cssstyle does not parse the

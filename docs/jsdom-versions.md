@@ -80,7 +80,7 @@ takes the window's Blobs), as with jsdom.
 | Colors stay as declared (`red`, `transparent`, `GrayText`) | Before 22.1.0 |
 | Named and hex colors resolve | From 22.1.0 |
 | System colors stay keywords | Until 26 |
-| System colors are jsdom's (`ButtonFace` is `rgb(204, 204, 204)`) | From 27.0.0 |
+| System colors are jsdom's (`ButtonFace` is `rgb(204, 204, 204)`, under `color-scheme: dark` `rgb(51, 51, 51)`) | From 27.0.0 |
 | Color keywords keep their case and only CSS 2's system colors exist (`ThreeDFace`, not `Canvas`) | Before cssstyle 4.4 |
 | A declared `0` stays `0` where cssstyle does not parse the property (`text-indent`, `min-width`) | Before 28.1.0 |
 | `margin`, `padding` and `border-width` keep their declared form (`2px 6px 3px 6px`) | Before 27.0.0 |

@@ -28,7 +28,7 @@ import {
   trackDetachedStyles,
 } from './internal.js';
 import { LONGHANDS, SHORTHANDS, ALIASES } from './css-data.js';
-import { resolveColor, systemColorKind } from './colors.js';
+import { DARK_SYSTEM_COLORS, resolveColor, systemColorKind } from './colors.js';
 import { segments, expand, serializeBox, BOX, PAIRS, CSS_WIDE, backgroundComponents } from './shorthands.js';
 import { compileRuleSelector } from './selectors.js';
 import { directionality } from './directionality.js';
@@ -925,6 +925,30 @@ function currentColor(element) {
 // a border side shorthand's color as written there (cssstyle before 4.4)
 // hsl() and RGB() too, a hex alpha to 3 decimals rounded down.
 const OPAQUE_RGBA = /^rgba\((\d+, \d+, \d+), 1\)$/;
+
+// Whether the element's computed color-scheme is 'dark'. The cascade of
+// color-scheme (rule index lookups for the element and each ancestor) is
+// skipped when no rule of the element's root and no style attribute up
+// the inheritance chain declares it (or all); an ancestor in another root,
+// or not cascaded yet, takes the full path, as does a disconnected element
+// whose computed values are kept (its style attributes, and its
+// ancestors', may have changed since; see cascaded).
+function darkScheme(element) {
+  const cache = element[S].cascaded;
+  const index = cache?.index;
+  if (index !== undefined && !cache.detached && !index.has('color-scheme') && !index.has('all')) {
+    let declared = false;
+    for (let n = element; n !== null && !declared; n = inheritParent(n)) {
+      const inline = inlineDeclarations(n);
+      declared =
+        (n !== element && n[S].cascaded?.index !== index) ||
+        (inline !== null && (inline.has('color-scheme') || inline.has('all')));
+    }
+    if (!declared) return false;
+  }
+  return computedValue(element, 'color-scheme') === 'dark';
+}
+
 function computeColors(element, name, value, data) {
   const compat = element[S].doc[S].window[S].compat;
   // cssstyle before 4.4 leaves a border's colors undeclared when it gives
@@ -951,7 +975,11 @@ function computeColors(element, name, value, data) {
       }
       parts[i] = name === 'color' ? inheritedValue(element, 'color', data) : currentColor(element);
     } else if (compat.computedColors !== 'keywords') {
-      parts[i] = resolveColor(token, compat.legacyColors) ?? token;
+      // From jsdom 27 a system color takes its dark value where the
+      // computed color-scheme is exactly 'dark' (not 'light dark' or
+      // 'only dark'; black box, 27.4.0 to 30.1.3).
+      const dark = DARK_SYSTEM_COLORS[lower];
+      parts[i] = dark !== undefined && darkScheme(element) ? dark : (resolveColor(token, compat.legacyColors) ?? token);
     } else if (systemColorKind(lower) === 0 && !lower.startsWith('hsl') && !/^[a-zA-Z]*[A-Z][a-zA-Z]*\(/.test(token)) {
       parts[i] = resolveColor(token, lower[0] === '#' ? 'floor' : compat.legacyColors) ?? token;
     }
