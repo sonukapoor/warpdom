@@ -26,24 +26,29 @@ export const PINNED_PACKAGE = `vitest-environment-${PINNED_TARGET}`;
 // .../node_modules/warpdom/src/jest.js), not compare's own PINNED_TARGET.
 // A path into node_modules counts by the package after the last
 // node_modules, so a checkout in a directory named warpdom does not make
-// .../warpdom/node_modules/jest-environment-node warpdom; outside
-// node_modules, by a directory named warpdom (a linked checkout).
+// .../warpdom/node_modules/jest-environment-node warpdom. Outside
+// node_modules (a linked checkout), only by warpdom's environment entry
+// points: .../warpdom/src/vitest.js or src/jest.js, or a directory
+// vitest-environment-warpdom or jest-environment-warpdom (its index.js), so
+// a project's own environment in a directory named warpdom
+// (/work/warpdom/custom-node.js) is not warpdom (#185).
 // With --baseline, projects and files already on warpdom (a migrated
 // project) are switched like those on jsdom or happy-dom (fromWarpdom).
 const WARPDOM_PACKAGE = /^((vitest|jest)-environment-)?warpdom([\\/]|$)/;
-const WARPDOM_DIRECTORY = /(^|[\\/])((vitest|jest)-environment-)?warpdom([\\/]|$)/;
+const WARPDOM_ENTRY =
+  /(^|[\\/])(warpdom[\\/]src[\\/](vitest|jest)(\.js)?|(vitest|jest)-environment-warpdom([\\/]index(\.js)?)?[\\/]?)$/;
 // The same test in the generated wrappers (any: ': any' in a TS Jest wrapper).
 const isWarpdomSource = (any = '') => `(e${any}) => {
   const s = String(e ?? '');
   const parts = s.split(/[\\\\/]/);
   const i = parts.lastIndexOf('node_modules');
-  return i >= 0 ? ${WARPDOM_PACKAGE}.test(parts.slice(i + 1).join('/')) : ${WARPDOM_DIRECTORY}.test(s);
+  return i >= 0 ? ${WARPDOM_PACKAGE}.test(parts.slice(i + 1).join('/')) : ${WARPDOM_PACKAGE}.test(s) || ${WARPDOM_ENTRY}.test(s);
 }`;
 export const isWarpdomEnvironment = (environment) => {
   const s = String(environment ?? '');
   const parts = s.split(/[\\/]/);
   const i = parts.lastIndexOf('node_modules');
-  return i >= 0 ? WARPDOM_PACKAGE.test(parts.slice(i + 1).join('/')) : WARPDOM_DIRECTORY.test(s);
+  return i >= 0 ? WARPDOM_PACKAGE.test(parts.slice(i + 1).join('/')) : WARPDOM_PACKAGE.test(s) || WARPDOM_ENTRY.test(s);
 };
 
 // A path as a Vite /@fs/ id (as ../vitest-fast.js fsId, which this module
