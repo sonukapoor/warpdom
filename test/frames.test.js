@@ -355,3 +355,53 @@ test('iframes in shadow trees: removal discards the window, the indexes stay', a
     assert.equal(fired, false, "the discarded window's timers stop");
   }
 });
+
+// A host moved from another document takes its shadow trees along (DOM
+// "adopt" covers the shadow-including descendants): their nodes' owner
+// document is the new one in every version, and from 30.1.0 a shadow-tree
+// iframe gets its window in the new document's window, also when that
+// document had no iframe before and when the host comes from a frame's
+// document (connected there first or not). Live ranges in the shadow tree
+// follow its mutations after the move.
+const adoptedShadowFramesScenario = async (w) => {
+  const d = w.document;
+  const out = {};
+  const move = (from, connectFirst) => {
+    const host = from.createElement('div');
+    const shadow = host.attachShadow({ mode: 'open' });
+    const p = shadow.appendChild(from.createElement('p'));
+    const f = shadow.appendChild(from.createElement('iframe'));
+    const range = from.createRange();
+    range.setStart(shadow, 1);
+    if (connectFirst) from.body.append(host);
+    const before = f.contentWindow !== null;
+    d.body.append(host);
+    shadow.prepend(from.createElement('b'));
+    const cw = f.contentWindow;
+    const fromWindow = from.defaultView;
+    const result = [
+      before,
+      [f, p, shadow].map((n) => n.ownerDocument === d),
+      cw !== null,
+      cw === null ? null : [cw.parent === w, cw.top === w, cw.frameElement === f],
+      range.startOffset,
+      w.length,
+      fromWindow === null ? null : fromWindow.length,
+    ];
+    // jsdom keeps a removed iframe's contentWindow (the deliberate
+    // deviation above), so only the frames count after the removal.
+    host.remove();
+    result.push(w.length);
+    return result;
+  };
+  out.inert = move(d.implementation.createHTMLDocument(''), false);
+  const light = d.body.appendChild(d.createElement('iframe'));
+  out.frameDoc = move(light.contentDocument, false);
+  out.frameDocConnected = move(light.contentDocument, true);
+  out.indexes = [w.length, w[0] === light.contentWindow, '1' in w];
+  return out;
+};
+for (const jsdom of [20, 26, 29, 30])
+  parity(`iframes in shadow trees: a host moved from another document (jsdom ${jsdom})`, adoptedShadowFramesScenario, {
+    jsdom,
+  });

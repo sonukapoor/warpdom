@@ -665,9 +665,15 @@ export function templateContentsOwner(doc) {
   return ds.templateDoc;
 }
 
-// Moves node and its subtree to another document (DOM "adopt").
+// Moves node and its subtree to another document (DOM "adopt"), shadow
+// trees included (their iframes then get their window in doc, #205).
 export function adopt(node, doc) {
   const oldDoc = node[S].doc;
+  adoptTree(node, oldDoc, doc);
+  if (hooks.ce !== null && oldDoc !== doc) hooks.ce.adopted(node, oldDoc, doc);
+}
+
+function adoptTree(node, oldDoc, doc) {
   for (let n = node; n; n = nextInTree(n, node)) {
     const s = n[S];
     s.doc = doc;
@@ -683,8 +689,8 @@ export function adopt(node, doc) {
     if (s.observers !== undefined && s.observers.length !== 0 && oldDoc !== doc)
       moveObserverCount(s.observers, oldDoc, doc);
     if (s.content) adopt(s.content, templateContentsOwner(doc));
+    if (s.shadowRoot) adoptTree(s.shadowRoot, oldDoc, doc);
   }
-  if (hooks.ce !== null && oldDoc !== doc) hooks.ce.adopted(node, oldDoc, doc);
   // Live ranges inside the adopted subtree now follow the new document's
   // mutations.
   if (oldDoc !== doc && hasRanges(oldDoc)) hooks.rangeAdopt(node, oldDoc, doc);
