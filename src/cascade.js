@@ -695,12 +695,12 @@ function cascaded(element, name) {
     // Whether colorDeclared may keep its answer with these values: they
     // are dropped on any change of the element's ancestors. Where values
     // are kept (jsdom 21 to 30.1.1), only a change in the document's own
-    // tree drops them (see keptStyles), so only there; elsewhere a
+    // tree drops them (see keptStyles), so only there: undefined until
+    // colorDeclared finds the element's root (which stays in or out of
+    // the document's tree while these values are kept); elsewhere a
     // connected element's.
-    let settled = true;
-    if (kept) {
-      settled = rootOf(element)[S].type === DOCUMENT_NODE;
-    } else if (keepsDetached(ds)) {
+    let settled = kept ? undefined : true;
+    if (!kept && keepsDetached(ds)) {
       // Connected: the element's root is the document, or a shadow root
       // whose host is connected.
       const root = rootOf(element);
@@ -1004,15 +1004,21 @@ const inheritsColor = (value) => value === undefined || INHERITING.has(value.toL
 // element's cascaded values (dropped with them on any tree, attribute or
 // style sheet change; see cascaded), so that a chain of elements that
 // each declare color-scheme walks its ancestors once, not once per level.
+// The chain is one tree's elements (inheritParent), so the settlement of
+// kept values not known yet is found once per walk, from its top.
 function colorDeclared(element) {
   let declared = false;
+  let cached = false;
+  let top = element;
   const path = [];
   for (let e = element; e !== null; e = inheritParent(e)) {
+    top = e;
     const value = cascaded(e, 'color');
     const cache = e[S].cascaded;
-    if (cache.settled) {
+    if (cache.settled !== false) {
       if (cache.colorDeclared !== undefined) {
         declared = cache.colorDeclared;
+        cached = true;
         break;
       }
       path.push(cache);
@@ -1022,7 +1028,15 @@ function colorDeclared(element) {
       break;
     }
   }
-  for (const cache of path) cache.colorDeclared = declared;
+  let settled;
+  for (const cache of path) {
+    if (cache.settled === undefined) {
+      // An ancestor that kept its answer is in the document's tree.
+      settled ??= cached || rootOf(top)[S].type === DOCUMENT_NODE;
+      cache.settled = settled;
+    }
+    if (cache.settled) cache.colorDeclared = declared;
+  }
   return declared;
 }
 

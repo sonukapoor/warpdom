@@ -438,6 +438,28 @@ test('computed values: a kept deep color-scheme chain looks up its declared colo
     );
   }
 });
+// Whether kept values are in the document's tree is found only by that
+// lookup, once per walk: a cold read of a deep leaf's color does not walk
+// to the root from every ancestor (quadratic in the depth), nor at all
+// without color-scheme.
+test('computed values: kept values find their root only for the declared color lookup (#193)', () => {
+  for (const jsdom of ['22.1.0', '29.1.1']) {
+    for (const scheme of [false, true]) {
+      const w = createWindow({ jsdom });
+      const d = w.document;
+      d.head.innerHTML = `<style>${scheme ? '* { color-scheme: dark } ' : ''}body { color: red }</style>`;
+      const els = [];
+      for (let p = d.body, i = 0; i < 40; i++) els.push((p = p.appendChild(d.createElement('div'))));
+      const color = w.getComputedStyle(els[39]).color;
+      const settled = els.slice(0, -1).map((el) => el[S].cascaded.settled);
+      assert.deepEqual(
+        [color, settled],
+        ['rgb(255, 0, 0)', els.slice(1).map(() => (scheme && jsdom === '29.1.1' ? true : undefined))],
+        `${jsdom} ${scheme}`,
+      );
+    }
+  }
+});
 
 // The page's color-scheme on :root, and the boundaries between releases
 // (black box, every release from 27.0.0 to 30.1.3): body and its children
