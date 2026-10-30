@@ -31,21 +31,34 @@ function forEachIframe(node, fn) {
 
 // The parent window's index properties (window[0], ...) follow its frames,
 // also on the VM context's global it is installed as (Jest, Vitest's VM
-// pools), which frames returns there. An index a test made
-// non-configurable stays (Reflect: no TypeError, which would stop a removal
-// or resetWindow halfway); its getter reads the frames, so it never keeps a
-// discarded frame window reachable. After resetWindow's restore the
-// window's own index properties past the frames are the snapshot's (a value
-// a setup file assigned): they stay.
-function syncIndexes(window, previousLength, restored = false) {
-  const frames = window[S].childFrames;
-  const { globalProxy } = window[S];
-  for (const target of globalProxy ? [window, globalProxy] : [window]) {
-    if (!(restored && target === window)) {
-      for (let i = frames.length; i < previousLength; i++) Reflect.deleteProperty(target, i);
+// pools), which frames returns there. As in jsdom (20 to 30, black box),
+// every insertion and removal of a frame puts back each index a test
+// deleted or redefined since. Each index has one getter, which reads
+// frames[i]: one already in place is kept, so an insertion defines only the
+// new index (#184). An index a test made non-configurable stays (Reflect:
+// no TypeError, which would stop a removal or resetWindow halfway); its
+// getter reads the frames, so it never keeps a discarded frame window
+// reachable.
+function syncIndexes(window, previousLength, restoring = false) {
+  const ws = window[S];
+  const frames = ws.childFrames;
+  const getters = ws.indexGetters ?? (ws.indexGetters = []);
+  for (let i = getters.length; i < frames.length; i++) getters.push(() => frames[i]);
+  for (const target of ws.globalProxy ? [window, ws.globalProxy] : [window]) {
+    for (let i = frames.length; i < previousLength; i++) {
+      // After resetWindow's restore, the window's own index properties past
+      // the frames are the snapshot's (a value a setup file assigned), also
+      // those an iframe inserted during the reset took (a connectedCallback
+      // run by the reinsertion of the kept body, #184).
+      const saved = restoring && target === window ? ws.snapshot.get(String(i)) : undefined;
+      if (saved === undefined) Reflect.deleteProperty(target, i);
+      else if (Object.getOwnPropertyDescriptor(target, i)?.get === getters[i]) Reflect.defineProperty(target, i, saved);
     }
     for (let i = 0; i < frames.length; i++) {
-      Reflect.defineProperty(target, i, { get: () => frames[i], configurable: true, enumerable: true });
+      const current = Object.getOwnPropertyDescriptor(target, i);
+      if (current?.get !== getters[i] || !current.enumerable) {
+        Reflect.defineProperty(target, i, { get: getters[i], configurable: true, enumerable: true });
+      }
     }
   }
 }

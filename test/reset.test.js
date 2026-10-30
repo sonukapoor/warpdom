@@ -422,3 +422,34 @@ test('resetWindow synchronizes the frame indexes once', () => {
   }
   assert.deepEqual([w.length, indexDefinitions], [0, 0]);
 });
+
+// An iframe inserted while resetWindow runs (by a connectedCallback in the
+// kept body's shadow tree, run by the reinsertion of the body) gets index
+// 0 once the old frame is discarded; the index it took first goes, or is
+// the snapshot's again (#184).
+for (const saved of [false, true]) {
+  test(`resetWindow with an iframe inserted during the reset${saved ? ', over a snapshotted index' : ''}`, () => {
+    const w = createWindow();
+    if (saved) w[1] = 'saved';
+    snapshotWindow(w);
+    const d = w.document;
+    let insert = false;
+    w.customElements.define(
+      'x-inserts-iframe',
+      class extends w.HTMLElement {
+        connectedCallback() {
+          if (insert) d.body.append(d.createElement('iframe'));
+        }
+      },
+    );
+    d.body.attachShadow({ mode: 'open' }).append(d.createElement('x-inserts-iframe'));
+    d.body.append(d.createElement('iframe'));
+    insert = true;
+    resetWindow(w);
+    insert = false;
+    assert.deepEqual(
+      [w.length, w[0] === d.body.lastChild.contentWindow, '1' in w, w[1]],
+      [1, true, saved, saved ? 'saved' : undefined],
+    );
+  });
+}
