@@ -1693,6 +1693,10 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // From 30.1.0 a checked radio button unchecks its group when it becomes
     // connected or its form attribute changes.
     radioConnected: !before(version, [30, 1, 0]),
+    // An iframe in a shadow tree gets a window when it becomes connected
+    // from 30.1.0 (black box, 20.0.3 to 30.1.3: 30.0.0 and 30.0.1 give it
+    // none); in no version does it count in window.length (frames.js).
+    shadowFrames: !before(version, [30, 1, 0]),
     // form[i] (form.elements[i]) from 26.1.0.
     formIndexed: !before(version, [26, 1, 0]),
     // textarea wrap="hard" with a cols attribute breaks lines every cols
