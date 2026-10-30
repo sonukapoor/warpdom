@@ -55,13 +55,15 @@ function syncIndexes(window, previousLength, restoring = false) {
       // the frames are the snapshot's (a value a setup file assigned), also
       // those an iframe inserted during the reset took or, removed again,
       // deleted (a connectedCallback run by the reinsertion of the kept
-      // body, #184).
+      // body, #184), and one that callback assigned after (CodeRabbit
+      // review on #206); one made non-configurable stays. The snapshot is
+      // the window's own properties: the VM context's global gets none of
+      // them (it had none, and resetWindow only runs without one).
       const saved = restoring && target === window ? ws.snapshot.get(String(i)) : undefined;
       if (saved === undefined) {
         Reflect.deleteProperty(target, i);
-      } else {
-        const current = Object.getOwnPropertyDescriptor(target, i);
-        if (!current || current.get === getters[i]) Reflect.defineProperty(target, i, saved);
+      } else if (Object.getOwnPropertyDescriptor(target, i)?.configurable !== false) {
+        Reflect.defineProperty(target, i, saved);
       }
     }
     for (let i = 0; i < frames.length; i++) {

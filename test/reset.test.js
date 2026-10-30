@@ -482,3 +482,62 @@ for (const oldFrame of [false, true]) {
     assert.deepEqual([w.length, w[0], w[1]], [0, 'saved', 'saved too']);
   });
 }
+
+// An index the same connectedCallback assigns after the iframe went is the
+// snapshot's again, unless it made it non-configurable (CodeRabbit review
+// on #206).
+test('resetWindow restores an index a connectedCallback assigned after inserting and removing an iframe', () => {
+  const w = createWindow();
+  w[0] = 'saved';
+  w[1] = 'saved too';
+  snapshotWindow(w);
+  const d = w.document;
+  let insert = false;
+  w.customElements.define(
+    'x-inserts-iframe',
+    class extends w.HTMLElement {
+      connectedCallback() {
+        if (!insert) return;
+        d.body.append(d.createElement('iframe'));
+        d.body.append(d.createElement('iframe'));
+        d.body.lastChild.remove();
+        d.body.lastChild.remove();
+        w[0] = 'dirty';
+        Object.defineProperty(w, 1, { value: 'fixed', configurable: false });
+      }
+    },
+  );
+  d.body.attachShadow({ mode: 'open' }).append(d.createElement('x-inserts-iframe'));
+  insert = true;
+  resetWindow(w);
+  insert = false;
+  assert.deepEqual([w.length, w[0], w[1]], [0, 'saved', 'fixed']);
+});
+
+// The snapshot is the window's own properties: the VM context's global the
+// window is installed as gets none of its index values, as it had none
+// (CodeRabbit review on #206).
+test('resetWindow leaves the VM global without the index an iframe inserted and removed during the reset took', async () => {
+  const vm = await import('node:vm');
+  const w = createWindow();
+  const global = vm.runInContext('this', vm.createContext({}));
+  w[S].globalProxy = global;
+  w[0] = 'saved';
+  snapshotWindow(w);
+  const d = w.document;
+  let insert = false;
+  w.customElements.define(
+    'x-inserts-iframe',
+    class extends w.HTMLElement {
+      connectedCallback() {
+        if (insert) d.body.append(d.createElement('iframe'));
+        if (insert) d.body.lastChild.remove();
+      }
+    },
+  );
+  d.body.attachShadow({ mode: 'open' }).append(d.createElement('x-inserts-iframe'));
+  insert = true;
+  resetWindow(w);
+  insert = false;
+  assert.deepEqual([w[0], Object.hasOwn(global, 0)], ['saved', false]);
+});
