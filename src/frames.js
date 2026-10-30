@@ -34,7 +34,7 @@ function forEachIframe(node, fn) {
 // pools), which frames returns there. As in jsdom (20 to 30, black box),
 // every insertion and removal of a frame puts back each index a test
 // deleted or redefined since. Each index has one getter, which reads
-// frames[i]: one already in place is kept, so an insertion defines only the
+// the window's frames[i]: one already in place is kept, so an insertion defines only the
 // new index (#184). An index a test made non-configurable stays (Reflect:
 // no TypeError, which would stop a removal or resetWindow halfway); its
 // getter reads the frames, so it never keeps a discarded frame window
@@ -48,7 +48,7 @@ function syncIndexes(window, previousLength, restoring = false) {
     ws.resetIndexes = Math.max(ws.resetIndexes, previousLength, frames.length);
   }
   const getters = ws.indexGetters ?? (ws.indexGetters = []);
-  for (let i = getters.length; i < frames.length; i++) getters.push(() => frames[i]);
+  for (let i = getters.length; i < frames.length; i++) getters.push(() => ws.childFrames[i]);
   for (const target of ws.globalProxy ? [window, ws.globalProxy] : [window]) {
     for (let i = frames.length; i < previousLength; i++) {
       // After resetWindow's restore, the window's own index properties past
@@ -58,7 +58,7 @@ function syncIndexes(window, previousLength, restoring = false) {
       // body, #184), and one that callback assigned after (CodeRabbit
       // review on #206); one made non-configurable stays. The snapshot is
       // the window's own properties: the VM context's global gets none of
-      // them (it had none, and resetWindow only runs without one).
+      // them (a value set on the window is not one of the global's).
       const saved = restoring && target === window ? ws.snapshot.get(String(i)) : undefined;
       if (saved === undefined) {
         Reflect.deleteProperty(target, i);
@@ -68,6 +68,7 @@ function syncIndexes(window, previousLength, restoring = false) {
     }
     for (let i = 0; i < frames.length; i++) {
       const current = Object.getOwnPropertyDescriptor(target, i);
+      if (current?.configurable === false) continue;
       if (current?.get !== getters[i] || !current.enumerable) {
         Reflect.defineProperty(target, i, { get: getters[i], configurable: true, enumerable: true });
       }
