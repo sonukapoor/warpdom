@@ -189,7 +189,12 @@ was 3-8% slower than the drop-in on 5 of 11 tuning suites).
   project runs its setup files in order (`sequence.setupFiles: 'list'`,
   set on the root config too, where Vitest 2-4 read it; their default,
   `'parallel'`, could run the reset after a setup file and undo what it
-  did). About 0.1 ms per file.
+  did). Vitest 3 tears the environment down and sets it up again on
+  the same global for every file (Vitest 4 and 5 once per worker), so
+  the mark is kept per global, not per setup (#196: on Vitest 3.2 the
+  reset found no mark and did nothing); the new window's members are
+  already fresh, and only the added properties are deleted. About
+  0.1 ms per file.
 - **Same files and tests as the project's run.** Vitest passes only a few
   command-line options to the projects of `test.projects` (isolate, pool,
   retry, testTimeout, ...); the split's projects stood for the root

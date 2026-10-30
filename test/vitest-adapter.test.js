@@ -446,6 +446,53 @@ test("setup: URL is Vitest's, kept per file by the reset; URLSearchParams, Heade
   assert.equal(global.URL, 'node URL');
 });
 
+// #196: without isolation Vitest 3 (measured: 3.2.4, forks and threads)
+// tears the environment down and calls setup() on the same global for
+// every file; Vitest 4 and 5 call it once per worker. The mark the
+// previous file took must reach the next file's reset, and the marked
+// window members (the previous window's) must not come back.
+test("setup again on the same global (Vitest 3): the reset removes the previous file's globals", async () => {
+  const { default: environment } = await import('../src/vitest.js');
+  const RESET = Symbol.for('warpdom.vitest.reset');
+  const MARK = Symbol.for('warpdom.vitest.mark');
+  const global = {};
+  const afterReset = [];
+  // One test file: setup(), the setup files (warpdom's reset first, then
+  // the project's), the mark when its tests start (unless all skip), its
+  // tests, teardown().
+  const file = ({ imports = () => {}, tests = () => {}, skipped = false }) => {
+    const env = environment.setup(global, { warpdom: { jsdom: '30.1.3' } });
+    try {
+      global[RESET]();
+      afterReset.push([global.innerWidth, global.innerHeight]);
+      // The project's setup file stubs a window member (vi.stubGlobal).
+      Object.defineProperty(global, 'innerHeight', { value: 500, writable: true, configurable: true });
+      imports();
+      if (!skipped) global[MARK]();
+      tests();
+    } finally {
+      env.teardown();
+    }
+  };
+  file({
+    tests() {
+      global.__added = 1;
+      Object.defineProperty(global, 'innerWidth', { value: 500, writable: true, configurable: true });
+    },
+  });
+  // All skipped: no mark; what its imports set stays for the next files.
+  file({ imports: () => (global.__skippedDep = 1), skipped: true });
+  file({
+    tests() {
+      assert.equal('__added' in global, false);
+      assert.equal(global.__skippedDep, 1);
+    },
+  });
+  file({ tests: () => assert.equal(global.__skippedDep, 1) });
+  // The marked stub of the previous file's setup is not put back.
+  assert.deepEqual(afterReset, Array(4).fill([1024, 768]));
+});
+
 // Black box (Vitest 5, jsdom 30, every pool): the global's WebSocket and
 // the window's are one, and vi.stubGlobal or an assignment to
 // window.WebSocket replaces both. warpdom's is Node's: in the forks and
