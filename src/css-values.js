@@ -106,8 +106,9 @@ function tokenize(text) {
           if (lower === 'url') {
             // url( unquoted ) is a url token; url("...") a function.
             const url = readUrl(text, i, newlineSpaces);
-            // url(var(--image).png) is kept, as a value with var() (jsdom).
-            const close = url === null && /var\(/i.test(text.slice(i)) ? findClose(text, i) : -1;
+            // A bad url() in a value with var() is kept to its ")", as the
+            // value is (jsdom): url(var(--image).png), var(--a, url(a b.png)).
+            const close = url === null && /var\(/i.test(text) ? findClose(text, i) : -1;
             if (url === null && close === -1) return null;
             out.push({ t: 'url' });
             i = url === null ? close + 1 : url.end;
@@ -261,7 +262,7 @@ export function urlTokenEnd(text, open) {
   return n;
 }
 // A character of a name (or a backslash): url( after it is no url().
-const isNameCode = (c) =>
+export const isNameCode = (c) =>
   (c >= 48 && c <= 57) || ((c | 32) >= 97 && (c | 32) <= 122) || c === 95 || c === 45 || c === 92 || c > 127;
 // Line breaks in a url() string read as spaces (isValidValue sets it per property).
 let newlineSpaces = false;
@@ -287,8 +288,9 @@ export function serializeUrls(value, escapes, newlines = false) {
     else if (
       (c === 'u' || c === 'U') &&
       value[i + 3] === '(' &&
-      value.slice(i, i + 3).toLowerCase() === 'url' &&
-      (i === 0 || !/[\w\\-]/.test(value[i - 1]))
+      (value.charCodeAt(i + 1) | 32) === 114 &&
+      (value.charCodeAt(i + 2) | 32) === 108 &&
+      (i === 0 || !isNameCode(value.charCodeAt(i - 1)))
     ) {
       const url = readUrl(value, i + 4, newlines);
       if (url === null) continue;

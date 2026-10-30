@@ -322,3 +322,68 @@ for (const jsdom of [30, 27])
       ),
     { jsdom },
   );
+
+// A comment's quotes and parentheses open no string or block (jsdom 20 to
+// 26 declare nothing for an unclosed one); an unclosed comment is unclosed
+// there too. The comments are after the last declaration: warpdom does not
+// read comments between declarations or in values (#162).
+for (const jsdom of [30, 27, 26, 25, 22, 20])
+  parity(
+    `style: quotes and parentheses in a comment (jsdom ${jsdom}, #144)`,
+    (w) => {
+      const d = w.document;
+      return [
+        ['color: red; width: 1px; /* " */', true],
+        ["color: red; width: 1px; /* ' */", true],
+        ['color: red; width: 1px; /* ( */', true],
+        ['color: red; width: 1px; /* x', false],
+      ].map(([text, sheets]) => {
+        const s = d.createElement('div').style;
+        s.cssText = text;
+        const e = d.createElement('div');
+        e.setAttribute('style', text);
+        const row = [s.cssText, e.style.cssText];
+        if (sheets) {
+          const sheet = d.createElement('style');
+          sheet.textContent = `#t { ${text} }`;
+          d.head.append(sheet);
+          row.push(sheet.sheet.cssRules[0]?.style.cssText ?? 'no rule');
+          sheet.remove();
+        }
+        return `${JSON.stringify(text)} -> ${row.join(' | ')}`;
+      });
+    },
+    { jsdom },
+  );
+
+// A value with var() is kept as written, its url()s too, malformed ones
+// included (url(a b.png) after var(), not only url(var(--i).png)); jsdom 26
+// does not collapse its whitespace either (var(--a,  myurl(x   y))). jsdom
+// 20 to 25 drop var() in these properties.
+for (const jsdom of [30, 29, 28, 27, 26, 25, 20])
+  parity(
+    `style: url() in a value with var() (jsdom ${jsdom}, #144)`,
+    (w) => {
+      const p = `v${jsdom}-`;
+      return ['background-image', 'background', 'list-style-image', 'marker-start'].flatMap((name) =>
+        [
+          `var(--a, url(${p}a b.png))`,
+          `var(--a) url(${p}b c.png)`,
+          `var(--a, url(${p}c(d.png)))`,
+          `var(--a) url(${p}d${B}(e.png)`,
+          `var(--a) url(${p}e.png)`,
+          `var(--a, url('${p}f.png'))`,
+          `var(--a) url(${p}g${B}62.png)`,
+          `var(--a,  myurl(${p}h   i))`,
+          'var(--a)  red',
+        ].map((value) => {
+          const s = w.document.createElement('div').style;
+          s.setProperty(name, value);
+          const t = w.document.createElement('div').style;
+          t.cssText = `${name}: ${value}`;
+          return `${name}: ${JSON.stringify(value)} -> ${s.cssText} | ${t.cssText}`;
+        }),
+      );
+    },
+    { jsdom },
+  );

@@ -17,7 +17,7 @@ import {
 import { STYLE_ACCESSORS } from './css-properties.js';
 import { SURFACES } from './style-surface.js';
 import { LONGHANDS, SHORTHANDS, COLOR_SHORTHANDS, ALIASES } from './css-data.js';
-import { isValidValue, readUrl, serializeUrls, urlTokenEnd } from './css-values.js';
+import { isNameCode, isValidValue, readUrl, serializeUrls, urlTokenEnd } from './css-values.js';
 import {
   expand,
   segments,
@@ -437,8 +437,10 @@ function collapseSpaces(value) {
     } else if (c === '"' || c === "'") {
       quote = c;
       out += c;
-    } else if (c === '(' && out.endsWith('url')) {
-      // A url()'s insides as written (url(a\rb.png) keeps its carriage return).
+    } else if (c === '(' && out.endsWith('url') && (out.length === 3 || !isNameCode(out.charCodeAt(out.length - 4)))) {
+      // A url()'s insides as written (url(a\rb.png) keeps its carriage
+      // return); not another function's whose name ends in url (myurl()).
+      // cssstyle 4.3.1 to 4.6 read url( in lowercase only.
       const url = /^\((?:"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|\\[\s\S]|[^)])*\)?/.exec(value.slice(i))[0];
       out += url;
       i += url.length - 1;
@@ -919,8 +921,9 @@ function versionedValue(name, value, mode, surface) {
           ? 'var'
           : null;
     if (kind !== null && droppedBy(mode, kind, name)) return INVALID;
-    // background-image's url()s as cssstyle reads them, the rest by its grammar.
-    if (name === 'background-image' && /url\(/i.test(value)) {
+    // background-image's url()s as cssstyle reads them, the rest by its
+    // grammar; with var() the value is kept as written (jsdom 26).
+    if (name === 'background-image' && kind !== 'var' && /url\(/i.test(value)) {
       if (!legacyImageUrls(value)) return INVALID;
       return isValidValue(name, value.replace(LEGACY_URLS, 'url(x)')) ? serializeDeclared(name, value, mode) : INVALID;
     }
@@ -1504,8 +1507,14 @@ function serializeDeclared(name, value, mode) {
   if (isColorProperty(name)) value = declaredColors(value);
   // jsdom 26 with cssstyle 4.3.1 and later writes each run of whitespace
   // in background and background-image as one space (black box: a
-  // gradient written over several lines).
-  if (mode === 'jsdom26' && (name === 'background' || name === 'background-image') && /\s\s|[\t\n\r\f]/.test(value))
+  // gradient written over several lines), but in a value with var(),
+  // which it keeps as written.
+  if (
+    mode === 'jsdom26' &&
+    (name === 'background' || name === 'background-image') &&
+    /\s\s|[\t\n\r\f]/.test(value) &&
+    !/var\(/i.test(value)
+  )
     value = collapseSpaces(value);
   if (value.includes('(')) {
     if (isSpecMode(mode) && name !== 'border-image' && /(min|max|clamp|gradient)\(/i.test(value))
@@ -1527,7 +1536,7 @@ function serializeDeclared(name, value, mode) {
         !/var\(/i.test(value)
       )
         value = serializeUrls(value, urlStyle === 'spec' ? 'spec' : 'quotes', image);
-    } else if (LEGACY_URL_NAMES.has(name)) value = legacyUrls(name, value, mode);
+    } else if (LEGACY_URL_NAMES.has(name) && !/var\(/i.test(value)) value = legacyUrls(name, value, mode);
     return name === 'background' || name === 'background-image' ? familyCommas(value) : value;
   }
   const box = BOX_SHORTHANDS.has(name);
@@ -1702,9 +1711,10 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
 }
 
 // jsdom 20 to 26 (black box, #144): a style attribute or cssText with an
-// unclosed string or parenthesis declares nothing (url("a.png, url(a(b.png),
-// calc(1px). A backslash escapes only in a string: url(a\(b.png) leaves a
-// parenthesis open, url(a\"b.png) a string.
+// unclosed string, parenthesis or comment declares nothing (url("a.png,
+// url(a(b.png), calc(1px, /* x). A backslash escapes only in a string:
+// url(a\(b.png) leaves a parenthesis open, url(a\"b.png) a string. Quotes
+// and parentheses in a comment do not count (/* " */).
 function unclosedLegacy(text) {
   let depth = 0;
   let quote = null;
@@ -1713,6 +1723,10 @@ function unclosedLegacy(text) {
     if (quote !== null) {
       if (c === '\\') i++;
       else if (c === quote) quote = null;
+    } else if (c === '/' && text[i + 1] === '*') {
+      i = text.indexOf('*/', i + 2);
+      if (i === -1) return true;
+      i++;
     } else if (c === '"' || c === "'") quote = c;
     else if (c === '(') depth++;
     else if (c === ')' && depth > 0) depth--;
