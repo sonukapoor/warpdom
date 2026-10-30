@@ -697,8 +697,9 @@ function cascaded(element, name) {
     // are kept (jsdom 21 to 30.1.1), only a change in the document's own
     // tree drops them (see keptStyles), so only there: undefined until
     // colorDeclared finds the element's root (which stays in or out of
-    // the document's tree while these values are kept); elsewhere a
-    // connected element's.
+    // the document's tree while these values are kept). Elsewhere it is
+    // true, except where a disconnected element's values are kept
+    // (keepsDetached): there it is whether the element is connected.
     let settled = kept ? undefined : true;
     if (!kept && keepsDetached(ds)) {
       // Connected: the element's root is the document, or a shadow root
