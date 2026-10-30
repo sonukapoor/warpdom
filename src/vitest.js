@@ -357,16 +357,17 @@ function restoreGlobal(global, mark, start) {
 }
 
 // The per-file reset's state for each global: the mark (taken when a
-// file's tests start, used once by the next file's reset) and the window
-// members' descriptors when the file's setup files start. Kept per global,
-// not per setup(): Vitest 3 (measured: 3.2.4) tears the environment down
-// and calls setup() again for every file of a shared worker, and the next
-// file's reset then belongs to a new setup (#196). Vitest 4 and 5 call it
-// once per worker.
+// file's tests start, used once by the next file's reset), the window
+// members' descriptors when the file's setup files start, and those the
+// last setup() installed (used once, by the reset after it). Kept per
+// global, not per setup(): Vitest 3 (measured: 3.2.4) tears the
+// environment down and calls setup() again for every file of a shared
+// worker, and the next file's reset then belongs to a new setup (#196).
+// Vitest 4 and 5 call it once per worker.
 const fileStates = new WeakMap();
 function fileState(global) {
   let state = fileStates.get(global);
-  if (!state) fileStates.set(global, (state = { mark: null, start: null }));
+  if (!state) fileStates.set(global, (state = { mark: null, start: null, installed: null }));
   return state;
 }
 
@@ -374,11 +375,25 @@ function fileState(global) {
 // members are new, so the next reset only removes the properties added
 // since the mark; putting back the marked members would put back the
 // previous window's.
-function startSetup(global) {
+function startSetup(global, members) {
   const state = fileState(global);
   if (state.mark) state.mark = { keys: state.mark.keys, members: new Map() };
   state.start = null;
+  state.installed = memberDescriptors(global, members);
   return state;
+}
+
+// The members setup() installed, put back where something changed them
+// before the reset: Vitest's cleanup (vitest-reset.js) restores what the
+// previous file stubbed (vi.stubGlobal('document', ...)) as it was then,
+// the previous window's on Vitest 3; the mark's deletions remove a member
+// the previous file's imports deleted before its mark (modules stay
+// loaded), which the new window has again. Vitest 4 and 5 change none
+// before the first reset (measured: 4.1.12, 5.0.3).
+function restoreInstalled(global, installed) {
+  for (const [key, descriptor] of installed)
+    if (descriptor && !sameDescriptor(Object.getOwnPropertyDescriptor(global, key), descriptor))
+      Reflect.defineProperty(global, key, descriptor);
 }
 
 const userErrorListeners = (window) => window[S].listeners?.get('error')?.length ?? 0;
@@ -529,7 +544,7 @@ export default {
     // installed in (scripts.js): an indirect eval.
     window[S].runScript = (source) => (0, eval)(source);
     snapshotWindow(window);
-    const state = startSetup(global);
+    const state = startSetup(global, restore.keys);
     global[MARK] = () => {
       state.mark = markGlobal(global, restore.keys);
     };
@@ -551,6 +566,8 @@ export default {
         }
       : () => {
           restoreGlobal(global, state.mark, state.start);
+          if (state.installed) restoreInstalled(global, state.installed);
+          state.installed = null;
           // Used once: a file whose tests all skip takes no mark, and an
           // older one would delete what its imports set (modules stay loaded).
           state.mark = null;

@@ -450,23 +450,46 @@ test("setup: URL is Vitest's, kept per file by the reset; URLSearchParams, Heade
 // tears the environment down and calls setup() on the same global for
 // every file; Vitest 4 and 5 call it once per worker. The mark the
 // previous file took must reach the next file's reset, and the marked
-// window members (the previous window's) must not come back.
+// window members (the previous window's) must not come back. Modules and
+// vi's stubs stay as in Vitest 4: Vitest's cleanup before the reset puts
+// back a member the previous file stubbed as it was then (the previous
+// window's), and a member its imports deleted before its mark is not in
+// the mark; the reset keeps the new window's.
 test("setup again on the same global (Vitest 3): the reset removes the previous file's globals", async () => {
   const { default: environment } = await import('../src/vitest.js');
   const RESET = Symbol.for('warpdom.vitest.reset');
   const MARK = Symbol.for('warpdom.vitest.mark');
   const global = {};
   const afterReset = [];
-  // One test file: setup(), the setup files (warpdom's reset first, then
-  // the project's), the mark when its tests start (unless all skip), its
-  // tests, teardown().
+  // vi.stubGlobal and vi.unstubAllGlobals (Vitest 3.2.4's), one vi per worker.
+  const stubs = new Map();
+  const stubGlobal = (key, value) => {
+    if (!stubs.has(key)) stubs.set(key, Object.getOwnPropertyDescriptor(global, key));
+    Object.defineProperty(global, key, { value, writable: true, enumerable: true, configurable: true });
+  };
+  const unstubAllGlobals = () => {
+    for (const [key, original] of stubs)
+      if (original) Object.defineProperty(global, key, original);
+      else Reflect.deleteProperty(global, key);
+    stubs.clear();
+  };
+  // One test file: setup(), the setup files (warpdom's reset after
+  // Vitest's cleanup, then the project's), the mark when its tests start
+  // (unless all skip), its tests, teardown().
   const file = ({ imports = () => {}, tests = () => {}, skipped = false }) => {
     const env = environment.setup(global, { warpdom: { jsdom: '30.1.3' } });
     try {
+      unstubAllGlobals();
       global[RESET]();
-      afterReset.push([global.innerWidth, global.innerHeight]);
-      // The project's setup file stubs a window member (vi.stubGlobal).
-      Object.defineProperty(global, 'innerHeight', { value: 500, writable: true, configurable: true });
+      afterReset.push([
+        global.innerWidth,
+        global.innerHeight,
+        typeof global.scrollTo,
+        global.document instanceof global.Document,
+      ]);
+      // The project's setup file stubs window members.
+      stubGlobal('innerHeight', 500);
+      if (skipped) stubGlobal('document', null);
       imports();
       if (!skipped) global[MARK]();
       tests();
@@ -475,9 +498,11 @@ test("setup again on the same global (Vitest 3): the reset removes the previous 
     }
   };
   file({
+    imports: () => delete global.scrollTo,
     tests() {
       global.__added = 1;
       Object.defineProperty(global, 'innerWidth', { value: 500, writable: true, configurable: true });
+      stubGlobal('document', null);
     },
   });
   // All skipped: no mark; what its imports set stays for the next files.
@@ -489,8 +514,7 @@ test("setup again on the same global (Vitest 3): the reset removes the previous 
     },
   });
   file({ tests: () => assert.equal(global.__skippedDep, 1) });
-  // The marked stub of the previous file's setup is not put back.
-  assert.deepEqual(afterReset, Array(4).fill([1024, 768]));
+  assert.deepEqual(afterReset, Array(4).fill([1024, 768, 'function', true]));
 });
 
 // Black box (Vitest 5, jsdom 30, every pool): the global's WebSocket and
