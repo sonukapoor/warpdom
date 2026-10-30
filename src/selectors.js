@@ -572,9 +572,18 @@ const DYNAMIC = new Set([
   'invalid',
 ]);
 let compilingDynamic = false;
+// Pseudo-classes whose result can change with text data alone (a dir=auto
+// element's text, a textarea's or an option's text as their value): rule
+// selectors using them make computed styles follow text changes
+// (cascade.js buildIndex, textDependent).
+const TEXT_DEPENDENT = new Set(['dir', 'valid', 'invalid', 'placeholder-shown']);
+let compilingText = false;
 
 function compilePseudo({ name, arg }) {
-  if (DYNAMIC.has(name)) compilingDynamic = true;
+  if (DYNAMIC.has(name)) {
+    compilingDynamic = true;
+    if (TEXT_DEPENDENT.has(name)) compilingText = true;
+  }
   switch (name) {
     case 'not': {
       const m = compileList(arg);
@@ -939,7 +948,11 @@ export function compileRuleSelector(selector) {
     const parser = new Parser(text);
     const list = parser.list();
     if (parser.i < parser.text.length) throw invalid(text);
-    entries = list.map((complex) => ({ match: compileComplex(complex), specificity: complexSpecificity(complex) }));
+    entries = list.map((complex) => {
+      compilingText = false;
+      const match = compileComplex(complex);
+      return { match, specificity: complexSpecificity(complex), text: compilingText };
+    });
     if (ruleCache.size >= CACHE_LIMIT) ruleCache.clear();
     ruleCache.set(text, entries);
   }

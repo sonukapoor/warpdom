@@ -161,6 +161,7 @@ function mediaApplies(rule, mode, compat) {
 function buildIndex(sheets, mode, compat, lists) {
   const index = new Map();
   index.inOrder = new InOrderIndex();
+  index.textDependent = false;
   const counter = { n: 0 };
   const addRule = (rule) => {
     let entries;
@@ -169,6 +170,7 @@ function buildIndex(sheets, mode, compat, lists) {
     } catch {
       return;
     }
+    for (const entry of entries) if (entry.text) index.textDependent = true;
     addDeclarations(index, rule[S].style[S].decls, entries, counter, compat);
   };
   for (const sheet of sheets) {
@@ -688,9 +690,10 @@ function cascaded(element, name) {
   }
   const index = ruleIndex(element);
   const rev = ds.treeRev ?? 0;
-  // Text data changes too (internal.js replaceData): they leave the tree as
-  // it was, but not every match (:dir(auto), a textarea's :invalid).
-  const textRev = ds.textRev ?? 0;
+  // Text data changes too (internal.js replaceData) when a rule's selector
+  // can match by text (:dir(auto), a textarea's :invalid): they leave the
+  // tree as it was, not those matches.
+  const textRev = index.textDependent === true ? (ds.textRev ?? 0) : 0;
   const inlineMap = inlineDeclarations(element);
   if (!cache || cache.index !== index || cache.rev !== rev || cache.textRev !== textRev || cache.inline !== inlineMap) {
     const kept = keptStyles(ds);
