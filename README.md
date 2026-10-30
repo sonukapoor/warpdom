@@ -674,7 +674,7 @@ Other deliberate differences:
   throws a TypeError from inside jsdom).
 - Additions jsdom lacks: `innerText`/`outerText`, `Selection.direction`,
   Range `getClientRects()`/`getBoundingClientRect()` (empty), `ToggleEvent`,
-  `TouchList`, `TimeRanges` on media elements, element interfaces and
+  `TimeRanges` on media elements, element interfaces and
   reflected attributes from the current HTML standard (but `<search>`,
   `<selectedcontent>` and `<menuitem>` are `HTMLUnknownElement`, as in
   jsdom).

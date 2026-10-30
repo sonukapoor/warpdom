@@ -141,7 +141,6 @@ const STATE_ON_OBJECT = new Set([
   'CSSRuleList',
   'MediaList',
   'StyleSheetList',
-  'TouchList',
   'FileList',
   'SVGStringList',
   'Plugin',
@@ -208,6 +207,10 @@ function applyCompat(window, protos) {
   // Before jsdom 29 style objects are CSSStyleDeclarations (css.js
   // legacyDeclaration).
   if (jsdom < 29) delete window.CSSStyleProperties;
+  // Nor is CSSRuleList a global before jsdom 29 (black box 20.0.3 to
+  // 28.1.0; the rule lists are arrays there, from 27.1.0 of a class
+  // extending Array).
+  if (jsdom < 29) delete window.CSSRuleList;
   if (!window[S].compat.nestedDeclarations) delete window.CSSNestedDeclarations;
   if (!window[S].compat.elementInternals) delete window.ElementInternals;
   // Option xhr: false (createWindow): no XMLHttpRequest, as before warpdom

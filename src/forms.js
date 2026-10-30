@@ -2118,14 +2118,7 @@ export const FORM_MEMBERS = new Map([
     'HTMLFormElement',
     {
       get elements() {
-        const list = collection(
-          this,
-          'elementsList',
-          'HTMLFormControlsCollection',
-          () => formElements(this),
-          FORM_CONTROLS_NAMED,
-        );
-        return list;
+        return state(this).elementsList ?? formControls(this);
       },
       get length() {
         state(this);
@@ -2320,21 +2313,42 @@ function stepBy(el, n, up) {
 
 const items = (list) => state(list).items();
 
+// A form's HTMLFormControlsCollection (form.elements). Its state keeps the
+// elements it gave last (seen), which its RadioNodeLists filter.
+function formControls(form) {
+  const list = collection(
+    form,
+    'elementsList',
+    'HTMLFormControlsCollection',
+    () => (ls.seen = formElements(form)),
+    FORM_CONTROLS_NAMED,
+  );
+  const ls = list[S];
+  ls.seen = null;
+  return list;
+}
+
 // HTMLFormControlsCollection's named getter: one element, or a RadioNodeList
 // when several have the name.
+// The RadioNodeList is filtered again only when the collection has given
+// other elements since (jsdom, black box 20.0.3 to 30.1.3): a read through
+// form.elements (its length, an index, namedItem, a named property,
+// iteration) after a change to the tree or an attribute; then the elements
+// it gave are filtered by their names and ids at that moment. Changes
+// alone (adding, removing or renaming a control, form.length, form[i],
+// checkValidity(), reset(), FormData) leave the list as it was. Iterating
+// reads the items at every step.
 function formControlsNamedItem(list, name) {
   const key = String(name);
   if (key === '') return null;
+  const ls = state(list);
   const found = items(list).filter((el) => attr(el, 'id') === key || attr(el, 'name') === key);
   if (found.length === 0) return null;
   if (found.length === 1) return found[0];
-  // Filtered again only when the form's elements are new (any change to the
-  // tree or an attribute makes them new, forms.js cached): iterating reads
-  // the items at every step.
-  let from = null;
-  let radios = null;
-  return liveList(state(list).protos.RadioNodeList, () => {
-    const all = items(list);
+  let from = ls.seen;
+  let radios = found;
+  return liveList(ls.protos.RadioNodeList, () => {
+    const all = ls.seen;
     if (all !== from) {
       from = all;
       radios = all.filter((el) => attr(el, 'id') === key || attr(el, 'name') === key);

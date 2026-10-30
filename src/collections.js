@@ -404,17 +404,6 @@ export const COLLECTION_INTERFACES = [
       ...iterate,
     },
   },
-  // Touch Events: a TouchEvent's touch lists.
-  {
-    name: 'TouchList',
-    members: {
-      get length() {
-        return items(this).length;
-      },
-      ...item,
-      ...iterate,
-    },
-  },
   {
     name: 'HTMLCollection',
     members: {

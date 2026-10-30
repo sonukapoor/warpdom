@@ -600,17 +600,25 @@ parity('list iteration converts an overridden length with ToLength', (w) => {
   });
 });
 
-test('a RadioNodeList is filtered again only after a change', () => {
+test('a RadioNodeList is filtered again only when form.elements gives other elements', () => {
   const w = createWindow();
   const d = w.document;
   d.body.innerHTML = '<form><input type=radio name=r><input type=radio name=r></form>';
-  const list = d.forms[0].elements.namedItem('r')[S];
+  const form = d.forms[0];
+  const list = form.elements.namedItem('r')[S];
   const first = list.items();
   const same = list.items() === first;
-  d.forms[0].elements[0].name = 'x';
+  form.elements[0].name = 'x';
+  const unread = list.items() === first;
+  void form.elements.length;
   const renamed = list.items();
-  d.forms[0].append(Object.assign(d.createElement('input'), { type: 'radio', name: 'r' }));
-  assert.deepEqual([same, renamed !== first, renamed.length, list.items().length], [true, true, 1, 2]);
+  form.append(Object.assign(d.createElement('input'), { type: 'radio', name: 'r' }));
+  const appended = list.items().length;
+  void form.elements.length;
+  assert.deepEqual(
+    [same, unread, renamed !== first, renamed.length, appended, list.items().length],
+    [true, true, true, 1, 1, 2],
+  );
 });
 
 // document.styleSheets is live while it is iterated: sheets added, removed

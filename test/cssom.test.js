@@ -1318,3 +1318,95 @@ for (const jsdom of [20, 26, 28]) {
     { jsdom },
   );
 }
+
+// CSSRuleList is a global from jsdom 29 only (#145).
+for (const jsdom of [20, 28, 29, 30]) {
+  parity(
+    `CSSRuleList global (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      d.head.innerHTML = '<style>a { color: red }</style>';
+      return ['CSSRuleList' in w, typeof w.CSSRuleList, d.styleSheets[0].cssRules.length];
+    },
+    { jsdom },
+  );
+}
+
+// CSSKeyframesRule in jsdom 27.1.0 to 28 (@acemir/cssom): name and cssRules
+// are each rule's own data properties, length and the indices its own
+// getters of this.cssRules, and @@iterator returns a plain object with
+// next() over this.cssRules as it was when called; from 29 they are on the
+// prototype and @@iterator is Array.prototype.values (#145).
+for (const jsdom of [27, 28, 29, 30]) {
+  parity(
+    `CSSKeyframesRule: own members and iteration (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      d.head.innerHTML =
+        '<style>@keyframes k { 0% { color: red } 50% { color: blue } } @keyframes j { 10% { color: red } }</style>';
+      const [r, r2] = d.styleSheets[0].cssRules;
+      const kind = (o, k) => {
+        const desc = Object.getOwnPropertyDescriptor(o, k);
+        if (!desc) return '-';
+        const what = 'value' in desc ? `value ${typeof desc.value} ${desc.writable}` : `get ${desc.get?.name}`;
+        return `${what} ${desc.enumerable} ${desc.configurable}`;
+      };
+      const proto = Object.getPrototypeOf(r);
+      const out = [
+        Reflect.ownKeys(r)
+          .map(String)
+          .filter((k) => !k.startsWith('_') && !k.startsWith('Symbol(')),
+        ['name', 'cssRules', 'length', '0', '2'].map((k) => [kind(r, k), kind(proto, k)]),
+        [kind(proto, Symbol.iterator), proto[Symbol.iterator].name, proto[Symbol.iterator].length],
+        [r.length, r[0].keyText, r[1].keyText, r.cssRules === r.cssRules, r.name],
+        [...r].map((k) => k.keyText),
+      ];
+      const attempt = (f) => {
+        try {
+          return f();
+        } catch (err) {
+          return err.constructor.name;
+        }
+      };
+      const it = r[Symbol.iterator]();
+      out.push([
+        Object.getPrototypeOf(it) === Object.prototype,
+        Reflect.ownKeys(it),
+        typeof it[Symbol.iterator],
+        it.next().value.keyText,
+      ]);
+      r.appendRule('70% { color: pink }');
+      const steps = [];
+      for (let step = it.next(), n = 0; !step.done && n < 5; step = it.next(), n++) steps.push(step.value.keyText);
+      const done = it.next();
+      r.appendRule('80% { color: pink }');
+      out.push(steps, Object.keys(done), it.next().done, r.length);
+      out.push(Object.getOwnPropertyNames(r).filter((k) => /^\d/.test(k)));
+      r.deleteRule('0%');
+      out.push(
+        r.length,
+        r[0].keyText,
+        Object.getOwnPropertyNames(r).filter((k) => /^\d/.test(k)),
+      );
+      // Borrowed and inherited.
+      out.push(
+        attempt(() => [...{ [Symbol.iterator]: proto[Symbol.iterator], cssRules: ['x'] }].join()),
+        attempt(() => JSON.stringify(proto[Symbol.iterator].call({}).next())),
+        attempt(() => {
+          const o = Object.create(r);
+          return [o.length, o[0] === r[0], o.name];
+        }),
+        attempt(() => {
+          r2.name = 'q';
+          return [r2.name, r2.cssText.startsWith('@keyframes q')];
+        }),
+        attempt(() => {
+          const get = Object.getOwnPropertyDescriptor(r, 'length')?.get;
+          return get ? get.call(r2) : 'no getter';
+        }),
+      );
+      return out;
+    },
+    { jsdom },
+  );
+}
