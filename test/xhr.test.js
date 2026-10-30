@@ -3,7 +3,7 @@
 // test/xhr-server.js), the profile boundaries (jsdom 28.0.0 moved XHR
 // from Node's http module to undici; jsdom before 27 reports network
 // errors on the virtual console), the xhr option, laziness, and the
-// documented differences (README, "Differences from jsdom").
+// documented differences (docs/differences.md, "XMLHttpRequest").
 import { test, suite, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -1809,7 +1809,7 @@ test("XMLHttpRequest: responses and documents belong to the window's realm", asy
   }
 });
 
-// Documented differences (README, "Differences from jsdom"), so a change in
+// Documented differences (docs/differences.md, "XMLHttpRequest"), so a change in
 // them is noticed.
 test('XMLHttpRequest differences from jsdom: headers sorted and combined, cookies not shared, file: URLs fail', async () => {
   const w = createWindow({ url: PAGE });

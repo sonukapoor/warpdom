@@ -118,85 +118,17 @@ test: { environment, environmentOptions: { warpdom: { jsdom: '26.1.0' } } }
 testEnvironmentOptions: { jsdom: '26.1.0' }
 ```
 
-Interfaces and members jsdom added along the way exist from that version
-on, as measured on jsdom's releases: `crypto.randomUUID()` from 22.1.0,
-`URL.parse()`, `URL.canParse()`, `URLSearchParams.size` and the value
-argument of its `has()` and `delete()` from 23.0.0, `ElementInternals` and
-`attachInternals()` from 23.1.0 (its `labels` and form-associated custom
-elements from 26.0.0, its role and ARIA accessors throw jsdom's TypeError
-until 27.0.0), Element's `role` and ARIA attributes (`ariaLabel`, ...)
-also from 23.1.0, `Headers`' `getSetCookie()` (separate `Set-Cookie` values)
-from 24.1.0, the SVG element interfaces of `g`, `defs`, `desc`,
-`metadata`, `switch` and `symbol`, `SVGRect`, `viewBox`,
-`preserveAspectRatio` and `createSVGRect()` from 26.1.0,
-`PromiseRejectionEvent`, `BlobEvent`, `DeviceMotionEvent`,
-`DeviceOrientationEvent` and their member interfaces from 27.0.0,
-`CSSNestedDeclarations` from 27.2.0, `TextEncoder` and `TextDecoder` from
-27.4.0, Blob's `text()`, `arrayBuffer()` and `bytes()` from 28.1.0,
-`CSSMediaRule.matches` from 29.0.0 (`window.crypto`, `window.performance`,
-`Blob`, `File`, `URL`, `URLSearchParams`, `Headers`, `console`,
-`WebAssembly`, `WebSocket`, `XMLHttpRequest`, `SVGNumber`, `SVGStringList`, `SVGAnimatedString`,
-`PageTransitionEvent`, the empty `navigator.plugins` and
-`navigator.mimeTypes`, and media elements' `audioTracks` and `videoTracks`
-exist in every version). Before 30.1.1 a disabled button, input, select or textarea with a
-`tabindex` attribute (also one in a disabled fieldset) can be focused. Before 28.1.0 an `svg` element's window event
-handlers (`onunload`, `onmessage`, ...) are the window's, as `body`'s are.
-Event handlers follow the version too: `oncopy`, `oncut`, `onpaste`,
-`onbeforeinput`, the touch handlers and 11 others from 22.1.0 (before,
-`onauxclick` and `onloadend` keep what is assigned but never run, and their
-content attributes do nothing), the pointer event handlers from 27.0.0,
-and the window's `onautocomplete`, `onautocompleteerror` and `onsort` until
-26.1.0. The window's viewport members (`innerWidth`, `scrollY`,
-`devicePixelRatio`, ...) and `status` are plain data properties until
-26.1.0 and accessors from 27.0.0 (whose viewport setters replace them),
-as in jsdom, also on the global of Jest and Vitest's VM pools; `name` is a
-data property and `document`, `window` and `self` are accessors in every
-version, and before 24.1.2 `Window.prototype` inherits from `EventTarget`
-directly. `<search>` is `display: block` from 27.0.0.
-Before 29.0.0 `el.style` and `getComputedStyle()` give `CSSStyleDeclaration`
-objects whose prototype has the property accessors (`width`, ...) and the
-methods, and there is no `CSSStyleProperties`, so
-`vi.spyOn(CSSStyleDeclaration.prototype, 'width', 'get')` (or `jest.spyOn`)
-sees `el.style.width` and computed reads as with jsdom; from 29.0.0 the
-accessors are `CSSStyleProperties.prototype`'s. cssstyle's
-`getPropertyCSSValue()`, `getPropertyShorthand()` and
-`isPropertyImplicit()` (returning `undefined`) exist with cssstyle 4.3 and
-earlier, and `azimuth` with cssstyle 5.3 and earlier (as an angle until
-4.3, CSS-wide keywords only in 5.3), as they do in jsdom.
-Computed values follow the version too: colors stay as declared before
-22.1.0 (`red`, `transparent`, `GrayText`), named and hex colors resolve from
-22.1.0 while system colors stay keywords until 26, and from 27.0.0 system
-colors are jsdom's (`ButtonFace` is `rgb(204, 204, 204)`); before
-cssstyle 4.4 color keywords keep their case and only CSS 2's system colors
-exist (`ThreeDFace`, not `Canvas`). A declared `0` stays `0` before 28.1.0
-where cssstyle does not parse the property (`text-indent`, `min-width`);
-`margin`, `padding` and `border-width` keep their declared form before
-27.0.0 (`2px 6px 3px 6px`); from 29.0.2 `font-family` is
-`depends on user agent` when not declared and `vertical-align: inherit`
-inherits; from 30.0.0 lengths are px (`h1` 32px, `calc(1em + 2px)`, `10vw`
-102.4px) and font size keywords too, and from 30.1.0 `bolder` and
-`lighter` are weights. An SVG `a` with an `href` matches `:link`.
-As in jsdom, the window's `URL` has no `createObjectURL()`; under Vitest
-the global `URL` is Vitest's (Node's, with a `createObjectURL()` that
-takes the window's Blobs), as with jsdom.
+Interfaces, members, event handlers, the window's shape, style objects and
+computed values follow the version, as measured on jsdom's releases: for
+example, `crypto.randomUUID()` exists from jsdom 22.1.0, and computed
+lengths are px from 30.0.0. The full list, as tables by area:
+[docs/jsdom-versions.md](https://github.com/sonukapoor/warpdom/blob/main/docs/jsdom-versions.md).
 
 warpdom models jsdom 20.0.3 to 30.1.3. With a newer jsdom installed (a
 later minor or major release), tests get jsdom 30.1.3's behavior and
 warpdom prints a warning once; a weekly check
 ([upstream-watch](.github/workflows/upstream-watch.yml)) opens an issue
 when such a release appears.
-
-The same weekly check reads [DOMParity](https://domparity.github.io)'s
-existence data and files the gaps it finds
-([scripts/api-gaps.mjs](scripts/api-gaps.mjs)): one issue (labels `parity`,
-`missing-api`) per interface jsdom has that warpdom lacks, or with members
-jsdom has that warpdom lacks, at most 15 a run; and one tracking issue,
-"Beyond jsdom: core APIs other test DOMs have", whose checklist lists the
-"Test DOM core" APIs neither jsdom nor warpdom has but happy-dom does,
-rewritten each run with ticked boxes kept. What an existing API issue names
-is skipped, and nothing happens when the data has not changed. Run
-`node scripts/api-gaps.mjs` locally for a dry run that prints what it would
-open.
 
 ### XMLHttpRequest and request mocking
 
@@ -208,8 +140,8 @@ to undici, and the profile follows). HTTP libraries that look for it
 (axios) take their XHR adapter, as with jsdom. Request mocking works as
 with jsdom: msw answers the request the XHR makes through `fetch` (so a
 cross-origin mocked response needs `Access-Control-Allow-Origin`, as on
-jsdom), and nock answers XHR itself. The differences are listed under
-[Differences from jsdom](#differences-from-jsdom).
+jsdom), and nock answers XHR itself. The differences are listed in
+[docs/differences.md](https://github.com/sonukapoor/warpdom/blob/main/docs/differences.md#xmlhttprequest).
 
 Before XMLHttpRequest, axios used Node's HTTP client under warpdom. To keep
 that (no `XMLHttpRequest` at all):
@@ -605,169 +537,37 @@ Full tables, method, profiles and caveats:
 ## Differences from jsdom
 
 API by API, how warpdom, jsdom, happy-dom and linkedom each support the
-web platform (behavior checks for commonly used APIs, existence of every
-Web IDL interface and member) is on [DOMParity](https://domparity.github.io),
-a separate reference site with the same method for every engine (maintained
-by warpdom's author).
+web platform is on [DOMParity](https://domparity.github.io), a separate
+reference site (maintained by warpdom's author).
 
 warpdom matches jsdom's observable behavior where tests depend on it, and
-otherwise follows the standards. Deliberate differences, each with a test
-(full list in [PLAN.md](PLAN.md), "Deliberate deviations from jsdom").
-Those that changed a test in the 25 measured suites:
+otherwise follows the standards. Deliberate differences, each with a test,
+that changed a test in the 25 measured suites:
 
-- `DOMException` is an `Error` in the test's realm, as the standard says
-  (in Vitest's default pools jsdom's is not): 1 svelte test.
-- `CSSStyleSheet.ownerNode` is the owning element in the jsdom 27 and 28
-  profiles, as in jsdom 29 and later; the jsdom 20 to 26 profiles have no
-  `ownerNode`, as those versions. Measured on each release, jsdom 27.0 has
-  no `ownerNode`, 27.1 and 27.2 give `null`, and 27.3 to 28.1 an internal
-  object that is not a Node: 1 tanstack-query test (jsdom 27.4).
-- warpdom reports no style-sheet parse errors to the console. jsdom 16
-  cannot parse CSS nesting, drops such a sheet and reports "Could not
-  parse CSS stylesheet": 3 handsontable tests of its filter for that
-  message (`jsdomThemeCssFilter.unit.js`).
+| Area | warpdom | jsdom | Seen in |
+| --- | --- | --- | --- |
+| `DOMException` | An `Error` in the test's realm, as the standard says | Not one in Vitest's default pools | 1 svelte test |
+| `CSSStyleSheet.ownerNode` | The owning element in the jsdom 27 and 28 profiles, as in jsdom 29 and later; none in the 20 to 26 profiles, as those versions | 27.0: none; 27.1 and 27.2: `null`; 27.3 to 28.1: an internal object that is not a Node | 1 tanstack-query test (jsdom 27.4) |
+| Style-sheet parse errors | Not reported to the console | jsdom 16 cannot parse CSS nesting, drops such a sheet and reports "Could not parse CSS stylesheet" | 3 handsontable tests of its filter for that message (`jsdomThemeCssFilter.unit.js`) |
+
 <!-- source: PLAN.md "Deliberate deviations from jsdom" (DOMException, svelte whitespace-at-block-start; ownerNode measured per release, tanstack-query PiPContext.test.tsx; handsontable jsdomThemeCssFilter.unit.js); docs/research/data/ci-2026-10-13-208ad49-RESULTS.md 7 (svelte 27 of 27 rounds, tanstack-query 17 of 17, handsontable 22 of 22) -->
 
-Results that change for other reasons:
+The other differences, in full in [docs/differences.md](https://github.com/sonukapoor/warpdom/blob/main/docs/differences.md):
 
-- **Tests that fail on jsdom and pass on warpdom:** ariakit 7 (in every
-  round), and ark-ui's Toast and NumberInput `largeStep` tests (some
-  rounds). They count as differences because the goal is jsdom's results.
-- **Speed-sensitive (melt-ui):** a Context Menu test fails in some rounds
-  (7 of 17) on warpdom. It stubs `requestAnimationFrame` with a 16 ms
-  timer, and warpdom finishes a Svelte transition sooner. A Dropdown Menu
-  test of the same kind fails on jsdom too now and then; for the Context
-  Menu test the cause is inferred from that one, not shown.
-- **Order dependence (solid):** solid's suite shares module state between
-  files (`isolate: false`). Its transition test fails whenever
-  `suspense.spec` ran before it in the same worker without
-  `external-source.spec` in between, on jsdom and on warpdom: in all 32
-  such runs, and it passed in all 98 others. On CI it failed on warpdom
-  in 24 of 27 rounds and never on jsdom, because the harness gave solid's
-  files with an `@vitest-environment` comment another environment name
-  than the config on warpdom only, which put them in a separate group (see
-  Setup).
-- **Order dependence (solid-primitives):** one of its files leaves fake
-  timers on; 4 timer tests that run after it in the same worker time out
-  (4 of 17 rounds), on jsdom too when forced into that order. On CI that
-  order occurred only under warpdom.
-<!-- source: docs/research/data/ci-2026-10-13-208ad49-RESULTS.md 7 (ariakit 23 of 23 rounds; ark-ui largeStep 10 of 27, Toast 25 of 27; melt-ui Context Menu 7 of 17, speed-sensitive by analogy; solid-primitives 4 of 17, forced order fails on jsdom too, held-out/local-2026-10-12-solid-primitives-order/; slow order warpdom-only on CI); ci-2026-10-13-208ad49-correctness-jsdom-learned.tsv (melt-ui Dropdown Menu 2 of 5 rounds on jsdom); docs/research/data/investigations/solid-transition/README.md (solid: 24 of 27 rounds; 130 runs, 32 failed, 98 passed; environment groups) -->
-
-Other deliberate differences:
-
-- `isTrusted` is an accessor on `Event.prototype`, not an own property of
-  every event (much faster to create events; only interface-shape checks
-  can tell).
-- `tabindex="abc"` gives the element's default tab index (jsdom: 0); a
-  disabled `fieldset`, `optgroup` or `option` is not focusable, also with
-  a `tabindex` (jsdom focuses one in every version).
-- Standard behavior where jsdom deviates: `FormData` and disabled options,
-  `formnovalidate`, `Selection.containsNode`, event handler re-registration
-  order, failed custom elements and `:defined`, XPath functions jsdom's
-  engine gets wrong, namespaced attributes in selectors and `dataset`,
-  MutationObserver's transient observers and notification order,
-  directionality in shadow trees, `document.write` across several calls,
-  `visibilityState` and cookies of documents without a browsing context,
-  CSSOM rule-list and `@page` rules, XML serialization details,
-  `getElementsByName` (HTML elements only), a removed iframe's
-  `contentWindow` (null), an iframe's `getSVGDocument()` (null; jsdom's
-  throws a TypeError from inside jsdom).
-- Additions jsdom lacks: `innerText`/`outerText`, `Selection.direction`,
-  Range `getClientRects()`/`getBoundingClientRect()` (empty), `ToggleEvent`,
-  `TouchList`, `TimeRanges` on media elements, element interfaces and
-  reflected attributes from the current HTML standard (but `<search>`,
-  `<selectedcontent>` and `<menuitem>` are `HTMLUnknownElement`, as in
-  jsdom).
-- Kept the same in every jsdom profile: `MediaList` normalization (jsdom
-  30's) and writable style indexed properties (jsdom 26's).
-- Style declarations: with cssstyle 5.3 and earlier (jsdom 20 to 28.0),
-  jsdom's `setProperty()`, `cssText` and the `style` attribute (and its
-  `getComputedStyle()`) also call the property setters, so a spied setter
-  sees them; warpdom's call it for assignments only (`style.width = ...`).
-  Not modeled either: cssstyle's `length` setter and underscore members,
-  the accessor functions' names (`get width` from jsdom 29, `get` in
-  warpdom), jsdom 29.0.0's internal classes behind `getComputedStyle()`, a
-  `CSSStyleRule`'s `style` without accessors before 27.1.0, and
-  `getComputedStyle().azimuth` with cssstyle 4.2 and 4.3 (`NaNdeg` for
-  an angle, jsdom's is empty).
-- Computed values not modeled: the `font` shorthand composed from its
-  longhands (jsdom's `getComputedStyle().font` and `el.style.font`), a
-  shorthand followed by one of its longhands in a declaration block
-  (jsdom stores the longhands: `margin: 1px 2px; margin-top: 3px` reads
-  `3px 2px 1px`), `!important` in style sheets before jsdom 29 (jsdom
-  ignores it there), jsdom 30's `calc()` mixing percentages and em
-  (`calc(100% - 0px)`), and the uppercase units and `calc()`
-  simplification of declared values in jsdom 29 and 30. jsdom 27.1 and
-  later parse style sheets with the cssstyle that `@acemir/cssom` finds,
-  so with an older cssstyle installed beside it (such as Jest 29's 2.3.0)
-  its sheets drop `Canvas` and `fit-content`; warpdom follows the cssstyle
-  jsdom itself installs.
-- `FileReader` also reads the platform's `Blob` (one from Node's `fetch` in
-  Vitest); jsdom's throws a TypeError. `TextDecoder` trims only ASCII
-  whitespace from labels, as the Encoding standard says (jsdom accepts
-  labels with other whitespace or NUL around them), and decodes Big5,
-  EUC-JP, EUC-KR, GBK, gb18030, ISO-2022-JP and Shift_JIS with the
-  platform's decoders, which differ from jsdom's for a few byte sequences.
-- `URL` parses with the platform's parser (Ada in Node), as `URL` does in
-  Vitest's jsdom environment: for some internationalized host names
-  (IDNA) and opaque paths with trailing spaces it differs from jsdom's
-  whatwg-url (WPT url/: warpdom 7,136 of 8,784 subtests, jsdom 6,394).
-  An iframe's `WebAssembly` is its parent's (warpdom's frames share one
-  realm).
-- `WebSocket` is the platform's (Node's, from Node 22), as `URL` is
-  Node's under Vitest; jsdom has its own. The window's and the global's
-  are the same object in Vitest and Jest, and tests replace it as on
-  jsdom (`window.WebSocket = Mock`, `vi.stubGlobal`). Its sockets and
-  events are Node's, not the window's: `event instanceof window.MessageEvent`
-  and `socket instanceof window.EventTarget` are false, and its errors
-  are Node's. Without a platform `WebSocket` the window has none.
-<!-- source: PLAN.md "Deliberate deviations from jsdom" -->
+| Category | In short |
+| --- | --- |
+| [Results that change for other reasons](https://github.com/sonukapoor/warpdom/blob/main/docs/differences.md#results-that-change-for-other-reasons) | Tests that fail on jsdom and pass on warpdom (ariakit, ark-ui), one speed-sensitive test (melt-ui), two order dependences of the projects' own suites (solid, solid-primitives) |
+| [Events and focus](https://github.com/sonukapoor/warpdom/blob/main/docs/differences.md#events-and-focus) | `isTrusted` is a prototype accessor; `tabindex="abc"` gives the default tab index; a disabled `fieldset`, `optgroup` or `option` is not focusable, as the standard says |
+| [Standard behavior where jsdom deviates](https://github.com/sonukapoor/warpdom/blob/main/docs/differences.md#standard-behavior-where-jsdom-deviates) | `FormData`, `formnovalidate`, `Selection`, custom elements, XPath, MutationObserver, `document.write`, CSSOM, XML serialization, iframes and more |
+| [Additions jsdom lacks](https://github.com/sonukapoor/warpdom/blob/main/docs/differences.md#additions-jsdom-lacks) | `innerText`, `ToggleEvent`, `TouchList`, Range rects and others |
+| [Styles](https://github.com/sonukapoor/warpdom/blob/main/docs/differences.md#styles) | `MediaList` and indexed style properties the same in every profile; spied style setters see assignments only; some cssstyle details and computed values not modeled |
+| [Platform objects](https://github.com/sonukapoor/warpdom/blob/main/docs/differences.md#platform-objects) | `FileReader`, `TextDecoder`, `URL`, `WebAssembly` in iframes, `WebSocket` |
+| [XMLHttpRequest](https://github.com/sonukapoor/warpdom/blob/main/docs/differences.md#xmlhttprequest) | Requests go through the host's `fetch`: header lists, cookies, sync requests, `file:` URLs, `Referer` and a few event orders differ |
 
 Not implemented (jsdom lacks these too): layout (sizes and positions are
-0, as in jsdom), `inert`, loading external style sheets, scripts or pages,
-navigation to other documents.
-
-`XMLHttpRequest` makes its requests with the host's `fetch`, which decides
-these differences from jsdom:
-
-- `getAllResponseHeaders()` lists the headers sorted by name, with repeated
-  headers combined into one line (jsdom: in the order received, and from
-  jsdom 28 each repeated header on its own line). `getResponseHeader()` is
-  the same.
-- Upload progress is not measured: the upload's `progress`, `load` and
-  `loadend` events report the whole body when the response's headers
-  arrive, as jsdom's do.
-- Synchronous requests (`open(method, url, false)`) throw a
-  `NotSupportedError` at `send()`; jsdom runs them in a child process.
-- Cookies are neither sent nor stored. jsdom shares its cookie jar with
-  `document.cookie`: a response's `Set-Cookie` shows up in
-  `document.cookie`, and requests send the document's cookies.
-- `file:` URLs fail with a network error (jsdom reads the file).
-- Requests carry fetch's `Sec-Fetch-Mode` header. A `DataView` body is
-  sent (jsdom 28 and later send none). The method `patch` in lowercase is
-  sent as is, as jsdom does, and makes Node print a warning once. Requests
-  from an `about:blank` iframe send no `Referer` (jsdom: `about:blank`).
-- The `Referer` never carries the page URL's credentials or fragment, as
-  Referrer Policy says. jsdom sends the document's URL with both, and
-  before 28 sends a redirected request's previous URL as requested.
-- Where the host's `fetch` hides redirects (in a browser, `redirect: 'manual'`
-  gives an opaque redirect), the host follows them with its own checks and
-  only the final response gets jsdom's; the first redirected request is
-  sent a second time to find this out. Node, Deno and Bun expose redirects.
-- Browser hosts are not supported for cross-origin requests yet: a
-  browser's `fetch` hides the CORS headers warpdom checks, so allowed
-  cross-origin responses fail
-  ([#91](https://github.com/sonukapoor/warpdom/issues/91)). Requests never
-  carry the host's own cookies (`credentials: 'omit'`).
-- A redirect that fails its CORS check is a network error. jsdom before 28
-  fires `error` and then goes on to follow the redirect and fire `load`.
-- A request stopped (`abort()`, `open()`) in an upload `progress` or `load`
-  handler fires nothing more. jsdom goes on with the upload's remaining
-  `load` and `loadend`, and from 28 fires `readystatechange` (readyState 2)
-  at the stopped or reopened request.
-- jsdom 20 to 26 report network errors on the virtual console; warpdom's
-  test environments report them where they report "Not implemented"
-  messages, in jsdom's words for CORS failures and with fetch's for others.
+0, as in jsdom), `inert`, navigation to other documents. Not implemented
+in warpdom only: loading external style sheets, scripts or pages, which
+jsdom does when configured to (`resources: 'usable'`).
 
 ## API
 
@@ -811,6 +611,21 @@ rewritten. `git config blame.ignoreRevsFile .git-blame-ignore-revs` keeps
 the formatting commit out of `git blame`.
 Releases are published from GitHub Actions with npm provenance when a
 version tag is pushed: [RELEASING.md](RELEASING.md).
+
+The weekly upstream check
+([upstream-watch](.github/workflows/upstream-watch.yml)), which opens an
+issue when a jsdom release newer than the modeled range appears, also
+reads [DOMParity](https://domparity.github.io)'s existence data and files
+the gaps it finds ([scripts/api-gaps.mjs](scripts/api-gaps.mjs)): one
+issue (labels `parity`, `missing-api`) per interface jsdom has that
+warpdom lacks, or with members jsdom has that warpdom lacks, at most 15 a
+run; and one tracking issue, "Beyond jsdom: core APIs other test DOMs
+have", whose checklist lists the "Test DOM core" APIs neither jsdom nor
+warpdom has but happy-dom does, rewritten each run with ticked boxes
+kept. What an existing API issue names is skipped, and nothing happens
+when the data has not changed and no gaps are pending (a run that hit the
+limit of 15 issues files the rest on later runs, with the same data). Run `node scripts/api-gaps.mjs` locally
+for a dry run that prints what it would open.
 
 CI scans the dependencies with [CVE Lite CLI](https://github.com/OWASP/cve-lite-cli)
 (fails on high or critical advisories in production dependencies; results in
