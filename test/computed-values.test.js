@@ -7,6 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createWindow } from '../src/index.js';
+import { S } from '../src/internal.js';
 import { parity } from './parity.js';
 
 const JSDOMS = [20, 22, 25, 26, 27, 28, 29, 30];
@@ -372,14 +373,14 @@ for (const jsdom of [27, 28])
 // color declared far up (the declaration is looked up once per chain and
 // kept with the cascaded values): the values follow changes of the
 // ancestors' colors, their color-schemes and the style sheet.
-function deepSchemeChain(w) {
+function deepSchemeChain(w, leafProps = ['color', 'border-top-color']) {
   const d = w.document;
   d.head.innerHTML = '<style>* { color-scheme: dark } body { color: red }</style>';
   const els = [];
   for (let p = d.body, i = 0; i < 40; i++) els.push((p = p.appendChild(d.createElement('div'))));
   const [middle, leaf] = [els[20], els[39]];
   const out = [];
-  const snap = () => out.push(read(w, leaf, ['color', 'border-top-color']), read(w, middle, ['color']));
+  const snap = () => out.push(read(w, leaf, leafProps), read(w, middle, ['color']));
   leaf.style.colorScheme = 'inherit';
   snap();
   d.body.style.cssText = 'color: initial; color-scheme: light';
@@ -401,6 +402,42 @@ for (const jsdom of [27, 30])
   parity(`computed values: a deep color-scheme chain under a declared color (jsdom ${jsdom}, #193)`, deepSchemeChain, {
     jsdom,
   });
+// jsdom 29.1.1 keeps every element's computed style (keptStyles), and the
+// lookup with it. The leaf's color only: its border color, once els[38]
+// turns light, is not jsdom 29.1.1's (from jsdom 29.0.2 to 30.1.2 some
+// colors follow the order of the reads; not modeled, see inheritedValue).
+parity(
+  'computed values: a deep color-scheme chain under a declared color, kept styles (jsdom 29, #193)',
+  (w) => deepSchemeChain(w, ['color']),
+  { jsdom: 29 },
+);
+// Where computed styles are kept (jsdom 21 to 30.1.1), the declared color
+// is looked up once per chain in the document's tree as elsewhere (each
+// read walked the chain before: quadratic in its depth), but not in a
+// shadow tree, whose changes do not drop the kept values.
+test('computed values: a kept deep color-scheme chain looks up its declared color once (#193)', () => {
+  for (const jsdom of ['29.1.1', '30.1.1']) {
+    const w = createWindow({ jsdom });
+    const d = w.document;
+    d.head.innerHTML = '<style>* { color-scheme: dark } body { color: red }</style>';
+    const build = (parent) => {
+      const els = [];
+      for (let p = parent, i = 0; i < 40; i++) els.push((p = p.appendChild(d.createElement('div'))));
+      return els;
+    };
+    const els = build(d.body);
+    const shadow = build(d.body.appendChild(d.createElement('div')).attachShadow({ mode: 'open' }));
+    const color = w.getComputedStyle(els[39]).color;
+    w.getComputedStyle(shadow[39]).color;
+    // The leaf's parent and its ancestors keep the answer.
+    const memo = (chain) => chain.slice(0, -1).map((el) => el[S].cascaded.colorDeclared);
+    assert.deepEqual(
+      [color, memo(els), memo(shadow)],
+      ['rgb(255, 0, 0)', els.slice(1).map(() => true), shadow.slice(1).map(() => undefined)],
+      jsdom,
+    );
+  }
+});
 
 // The page's color-scheme on :root, and the boundaries between releases
 // (black box, every release from 27.0.0 to 30.1.3): body and its children

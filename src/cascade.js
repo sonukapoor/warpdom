@@ -692,11 +692,20 @@ function cascaded(element, name) {
   if (!cache || cache.index !== index || cache.rev !== rev || cache.inline !== inlineMap) {
     const kept = keptStyles(ds);
     let detached = kept;
-    if (!kept && keepsDetached(ds)) {
+    // Whether colorDeclared may keep its answer with these values: they
+    // are dropped on any change of the element's ancestors. Where values
+    // are kept (jsdom 21 to 30.1.1), only a change in the document's own
+    // tree drops them (see keptStyles), so only there; elsewhere a
+    // connected element's.
+    let settled = true;
+    if (kept) {
+      settled = rootOf(element)[S].type === DOCUMENT_NODE;
+    } else if (keepsDetached(ds)) {
       // Connected: the element's root is the document, or a shadow root
       // whose host is connected.
       const root = rootOf(element);
       detached = root[S].type !== DOCUMENT_NODE && !(root[S].shadow === true && connected(root[S].host));
+      settled = !detached;
     }
     if (detached) trackDetachedStyles(ds, kept);
     cache = es.cascaded = {
@@ -706,6 +715,7 @@ function cascaded(element, name) {
       values: new Map(),
       detached,
       kept,
+      settled,
       doc: ds,
       detachedRev: ds.detachedRev,
       cssomRev: keptCssomRev(ds, kept),
@@ -990,9 +1000,9 @@ function declaresScheme(element) {
 const inheritsColor = (value) => value === undefined || INHERITING.has(value.toLowerCase());
 
 // Whether an element or one up its inheritance chain declares a color it
-// inherits (not initial, which stops the search). Kept with each
-// connected element's cascaded values (dropped with them on any tree,
-// attribute or style sheet change), so that a chain of elements that
+// inherits (not initial, which stops the search). Kept with each settled
+// element's cascaded values (dropped with them on any tree, attribute or
+// style sheet change; see cascaded), so that a chain of elements that
 // each declare color-scheme walks its ancestors once, not once per level.
 function colorDeclared(element) {
   let declared = false;
@@ -1000,7 +1010,7 @@ function colorDeclared(element) {
   for (let e = element; e !== null; e = inheritParent(e)) {
     const value = cascaded(e, 'color');
     const cache = e[S].cascaded;
-    if (!cache.detached) {
+    if (cache.settled) {
       if (cache.colorDeclared !== undefined) {
         declared = cache.colorDeclared;
         break;
