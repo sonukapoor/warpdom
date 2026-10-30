@@ -1482,6 +1482,13 @@ const BORDER_COLOR = /^border-(top|right|bottom|left)-color$/;
 
 function legacyDefault(element, name) {
   if (name === 'display') return element[S].doc[S].window[S].compat.jsdom >= 27 ? 'inline' : '';
+  // From jsdom 27 (black box, 27.4.0 and 28.1.0) caret-color, whose
+  // CSS-wide keywords it resolves (KEYWORD_RESOLVED), is inherited, else
+  // auto, under any color-scheme.
+  if (name === 'caret-color' && element[S].doc[S].window[S].compat.jsdom >= 27) {
+    const parent = inheritParent(element);
+    return parent ? computedValue(parent, name) : 'auto';
+  }
   if (name === 'color' || name in LEGACY_INHERITED) {
     const parent = inheritParent(element);
     if (parent) return computedValue(parent, name);

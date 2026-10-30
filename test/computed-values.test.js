@@ -341,6 +341,33 @@ for (const jsdom of [27, 28, 29, 30])
     jsdom,
   });
 
+// caret-color, which jsdom 27 to 29.0.1 resolve the CSS-wide keywords of
+// (black box, 27.4.0 and 28.1.0): inherited, auto when no ancestor
+// declares it, whatever the color-scheme.
+function caretColors(w) {
+  const d = w.document;
+  const out = {};
+  for (const scheme of ['', 'dark']) {
+    d.documentElement.style.colorScheme = scheme;
+    for (const parentStyle of ['', 'caret-color: red'])
+      for (const childStyle of ['', 'caret-color: inherit', 'caret-color: unset', 'caret-color: initial']) {
+        const parent = d.body.appendChild(d.createElement('div'));
+        parent.setAttribute('style', parentStyle);
+        const child = parent.appendChild(d.createElement('span'));
+        child.setAttribute('style', childStyle);
+        out[`${scheme}|${parentStyle}|${childStyle}`] = read(w, d.documentElement, ['caret-color'])
+          .concat(read(w, parent, ['caret-color']))
+          .concat(read(w, child, ['caret-color']));
+      }
+  }
+  const detached = d.createElement('div');
+  detached.style.caretColor = 'unset';
+  out.detached = read(w, detached, ['caret-color']);
+  return out;
+}
+for (const jsdom of [27, 28])
+  parity(`computed values: caret-color inherited, else auto (jsdom ${jsdom}, #193)`, caretColors, { jsdom });
+
 // A deep chain where every element declares color-scheme and inherits a
 // color declared far up (the declaration is looked up once per chain and
 // kept with the cascaded values): the values follow changes of the
