@@ -104,7 +104,8 @@ function tokenize(text) {
           i++;
           const lower = name.toLowerCase();
           if (lower === 'url') {
-            // url( unquoted ) is a url token; url("...") a function.
+            // Both url( unquoted ) and url("...") are read by readUrl and give
+            // one url token here (CSS Syntax makes the quoted form a function).
             const url = readUrl(text, i, newlineSpaces);
             // A bad url() in a value with var() is kept to its ")", as the
             // value is (jsdom): url(var(--image).png), var(--a, url(a b.png)).

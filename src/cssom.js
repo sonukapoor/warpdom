@@ -41,7 +41,8 @@ function required(count, n, iface, method) {
 
 // --- parsing ---------------------------------------------------------------------
 
-// Index after a comment, string or unquoted url() starting at i, or i if
+// Index after a comment or string starting at i, or after an unquoted
+// url() whose "(" is at i (the caller has read the url name), or i if
 // none starts there.
 function skipToken(text, i) {
   if (text[i] === '/' && text[i + 1] === '*') {

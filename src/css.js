@@ -1734,7 +1734,9 @@ function unclosedLegacy(text) {
   return quote !== null || depth > 0;
 }
 
-// Does a string in the value (outside comments) have a line break?
+// Does a string in the value have a line break? Comments are not skipped:
+// a value with a comment and a url() is dropped before this anyway, as
+// comments in values are not modeled (#162).
 function hasBadString(value) {
   let quote = null;
   for (let i = 0; i < value.length; i++) {
