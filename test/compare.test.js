@@ -936,6 +936,18 @@ test('compare detection: environment comments, --config among runner arguments',
         [e, 'custom'],
       ],
     );
+    // Vitest reads the whole file: a comment after a long header counts.
+    const header = `/* ${'x'.repeat(20000)} */\n`;
+    const f = write(path.join(dir, 'f.test.js'), `${header}// @vitest-environment node\n`);
+    const g = write(path.join(dir, 'g.test.js'), `${header}// @vitest-environment jsdom\n`);
+    assert.deepEqual(
+      [...environmentComments([f, g], 'vitest', { any: true })],
+      [
+        [f, 'node'],
+        [g, 'jsdom'],
+      ],
+    );
+    assert.deepEqual([...environmentComments([f, g], 'vitest')], [[g, 'jsdom']]);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -1147,6 +1159,28 @@ test('compare runs (#181): the environment environmentMatchGlobs give each file,
   assert.equal(matchesGlob('/r/a.dom.spec.js', '**/*.!(dom).spec.js', '/r'), false);
   assert.equal(matchesGlob('/r/src/a.dom.spec.js', 'src/**/!(*.node).spec.js', '/r'), true);
   assert.equal(matchesGlob('/r/src/a.node.spec.js', 'src/**/!(*.node).spec.js', '/r'), false);
+  // Ranges, as Vitest 2 and 3 match them (picomatch): the sorted ends make
+  // a character class; one that is not a valid class is matched literally.
+  const range = (name, pattern) => matchesGlob(`/r/${name}.spec.js`, `**/${pattern}.spec.js`, '/r');
+  for (const n of ['a1', 'a2', 'a3']) assert.equal(range(n, 'a{1..3}'), true, n);
+  assert.equal(range('a4', 'a{1..3}'), false);
+  for (const n of ['e1', 'e2', 'e3']) assert.equal(range(n, 'e{3..1}'), true, `${n}, reversed`);
+  for (const n of ['da', 'db', 'dc']) assert.equal(range(n, 'd{a..c}'), true, n);
+  assert.equal(range('dd', 'd{a..c}'), false);
+  // {1..10} is [1-10]: 1 or 0.
+  assert.equal(range('f1', 'f{1..10}'), true);
+  for (const n of ['f5', 'f10']) assert.equal(range(n, 'f{1..10}'), false, n);
+  // A step is one more end: {1..9..2} is [1-2-9].
+  for (const n of ['c1', 'c2', 'c9']) assert.equal(range(n, 'c{1..9..2}'), true, n);
+  for (const n of ['c3', 'c5']) assert.equal(range(n, 'c{1..9..2}'), false, n);
+  // [01-03] is not a valid class: the literal text.
+  for (const n of ['b01', 'b1']) assert.equal(range(n, 'b{01..03}'), false, n);
+  assert.equal(range('b01..03', 'b{01..03}'), true);
+  // Commas beside a range join the class ([,-1-3-q]); ranges side by side.
+  for (const n of ['z1', 'zq', 'z,']) assert.equal(range(n, 'z{1..3,q}'), true, n);
+  assert.equal(range('z2', 'z{1..3,q}'), false);
+  for (const n of ['y1a', 'y3b']) assert.equal(range(n, 'y{1..3}{a..b}'), true, n);
+  assert.equal(range('y4a', 'y{1..3}{a..b}'), false);
 
   const ran = {
     files: [
@@ -2849,7 +2883,9 @@ test(
 // Vitest 2 and 3: a project on node whose environmentMatchGlobs put files on
 // a DOM (#181), from the compare-vitest fixture: dom.spec.js differs
 // between jsdom and warpdom, node.spec.js runs on node.
-function globProject(config) {
+// Projects go in a workspace file (`workspace`, a list), which both Vitest 2
+// and 3 load: `test.projects` needs Vitest 3.2.
+function globProject(config, workspace) {
   const dir = fixtureProject('compare-vitest', {
     vitest: fs.realpathSync(path.join(legacyModules, 'vitest')),
     jsdom: fs.existsSync(path.join(legacyModules, 'jsdom'))
@@ -2863,7 +2899,10 @@ function globProject(config) {
     path.join(dir, 'node.spec.js'),
     "import { test, expect } from 'vitest';\ntest('on node', () => { expect(typeof document).toBe('undefined'); });\n",
   );
-  fs.writeFileSync(path.join(dir, 'vitest.config.js'), `export default ${config};\n`);
+  if (workspace) {
+    fs.rmSync(path.join(dir, 'vitest.config.js'));
+    fs.writeFileSync(path.join(dir, 'vitest.workspace.js'), `export default ${workspace};\n`);
+  } else fs.writeFileSync(path.join(dir, 'vitest.config.js'), `export default ${config};\n`);
   return dir;
 }
 const globDifferences = [
@@ -2909,10 +2948,13 @@ test(
   'compare end to end (#181): environmentMatchGlobs in a project on node beside a project on jsdom',
   { skip: !legacyModules && 'set WARPDOM_COMPARE_VITEST_LEGACY to a node_modules with vitest 2 or 3' },
   () => {
-    const dir = globProject(`{ test: { projects: [
+    const dir = globProject(
+      null,
+      `[
       { test: { name: 'web', include: ['web/*.spec.js'], environment: 'jsdom' } },
       { test: { name: 'server', include: ['*.spec.js'], environmentMatchGlobs: [['**/*.dom.spec.js', 'jsdom']] } },
-    ] } }`);
+    ]`,
+    );
     try {
       write(
         path.join(dir, 'web', 'web.spec.js'),
@@ -2981,11 +3023,14 @@ test(
   () => {
     // happy-dom is not installed: only the participating project's jsdom
     // can be the baseline.
-    const dir = globProject(`{ test: { projects: [
-      { test: { name: 'b', include: ['b/*.spec.js'], browser: { enabled: true, provider: 'playwright', instances: [{ browser: 'chromium' }] },
+    const dir = globProject(
+      null,
+      `[
+      { test: { name: 'b', include: ['b/*.spec.js'], browser: { enabled: true, provider: 'playwright', name: 'chromium' },
         environmentMatchGlobs: [['**/*.x.js', 'happy-dom'], ['**/*.y.js', 'happy-dom']] } },
       { test: { name: 'server', include: ['*.spec.js'], environmentMatchGlobs: [['**/*.dom.spec.js', 'jsdom']] } },
-    ] } }`);
+    ]`,
+    );
     try {
       const res = compareCli(dir, ['--correctness']);
       const out = res.stdout.replace(/\x1b\[[0-9;]*m/g, '');

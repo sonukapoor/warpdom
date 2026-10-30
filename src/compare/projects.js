@@ -148,6 +148,28 @@ export function globRegExp(pattern, { dot = true } = {}) {
   return new RegExp(`${source}/?$`);
 }
 
+// {a..b} ranges as picomatch (Vitest 2 and 3) matches them: the ends (and
+// any commas beside them), sorted as strings, make a character class
+// ({1..3}: [1-3], {1..10}: [1-10], {1..9..2}: [1-2-9], {1..3,q}:
+// [,-1-3-q]); ends that make no valid class are the literal text
+// ({01..03}: "01..03").
+function braceRanges(pattern) {
+  return pattern.replace(/(?<!\\)\{((?:[^{}\\./*?[\]()!@+^-]|\.\.)+)\}/g, (match, body) => {
+    if (!body.includes('..') || body.includes('...')) return match;
+    const ends = body
+      .split(/(,)|\.\./)
+      .filter(Boolean)
+      .sort();
+    const value = `[${ends.join('-')}]`;
+    try {
+      new RegExp(value);
+      return value;
+    } catch {
+      return ends.join('..');
+    }
+  });
+}
+
 // Whether a file matches a glob as Vitest matches environmentMatchGlobs
 // (picomatch's isMatch with the project root as cwd; Vitest resolves the
 // globs against the root first): both as POSIX paths, a relative glob
@@ -156,9 +178,8 @@ export function globRegExp(pattern, { dot = true } = {}) {
 export function matchesGlob(file, pattern, root) {
   const posix = (p) => p.split(path.sep).join('/').replace(/^\/+/, '');
   const target = posix(path.resolve(file));
-  return expandBraces(posix(path.isAbsolute(pattern) ? pattern : path.resolve(root, pattern))).some((p) =>
-    globRegExp(p, { dot: false }).test(target),
-  );
+  const resolved = posix(path.isAbsolute(pattern) ? pattern : path.resolve(root, pattern));
+  return expandBraces(braceRanges(resolved)).some((p) => globRegExp(p, { dot: false }).test(target));
 }
 
 const SKIP_DIRS = new Set(['node_modules', '.git']);

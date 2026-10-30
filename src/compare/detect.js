@@ -165,25 +165,31 @@ const DOCBLOCK = {
   jest: /@jest-environment\s+([^\s*]+)/,
 };
 
+function fileHead(file, bytes) {
+  const fd = fs.openSync(file, 'r');
+  try {
+    const buffer = Buffer.alloc(bytes);
+    return buffer.toString('utf8', 0, fs.readSync(fd, buffer, 0, buffer.length, 0));
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 // Test files that choose a DOM environment with a comment
 // (`// @vitest-environment jsdom`, `@jest-environment jsdom`): such a
 // comment overrides the config, so these files are not switched.
 // warpdom: files choosing warpdom count too (--baseline on a migrated project).
 // any: every file with an environment comment (it overrides
 // environmentMatchGlobs as well).
+// Vitest finds the comment anywhere in the file, so the whole file is read
+// (Jest: the first 8 KB).
 // Returns Map(file -> environment).
 export function environmentComments(files, runner, { warpdom = false, any = false } = {}) {
   const pinned = new Map();
   for (const file of files) {
     let head;
     try {
-      const fd = fs.openSync(file, 'r');
-      try {
-        const buffer = Buffer.alloc(8192);
-        head = buffer.toString('utf8', 0, fs.readSync(fd, buffer, 0, buffer.length, 0));
-      } finally {
-        fs.closeSync(fd);
-      }
+      head = runner === 'jest' ? fileHead(file, 8192) : fs.readFileSync(file, 'utf8');
     } catch {
       continue;
     }
