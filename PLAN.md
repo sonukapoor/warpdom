@@ -4562,3 +4562,60 @@ Next: the cascade issues that build on #180 (#137, #123, #147, #179), the
 fast-mode follow-up for top-level code in test files (documented limit in
 docs/fast-mode.md), and the adoption plan's n8n measurement (A6) on an idle
 machine.
+
+## 2026-10-30: status
+
+**Merged 2026-10-29 and 10-30, for 0.1.12:**
+- #176: `resetWindow` releases frame windows (#173).
+- #177: FormData iterators walk the live list (#174).
+- #180: the user agent sheet cascades by specificity from jsdom 28.1 (#136).
+- #186: fast mode removes the globals a file added (#175).
+- #188: `color-scheme: dark` system colors (#51).
+- #190: `compare`/`migrate` edge cases (#185).
+- #191: escaped `url()` with cssstyle 4.4 to 4.6 (#163).
+- #195: `border: none` in jsdom 27 to 29 (#179).
+- #197: the README's version details and differences move to
+  docs/jsdom-versions.md and docs/differences.md.
+- #198: shadow trees' style sheets and kept computed values (#137).
+- #206: one index-property definition per frame insertion (#184).
+- #194: npm keywords.
+
+dom-api-tracer#9 and #12 follow wire-webapp's switch to npm, Just and
+Node 26 `devEngines`.
+
+**0.1.12 (#209)** is waiting on #210 (#196, the fast-mode reset on
+Vitest 3.2). Its release corpus check, on all four corpora, is clean.
+
+**Open pull requests:**
+- #207: #145, collections.
+- #210: #196.
+- #211: #205 (iframes in shadow trees get a window from jsdom 30.1.0 and are
+  never counted in `window.length`; `adopt()` now walks shadow trees, which
+  also fixes #204).
+- #212: #181, `compare` with file comments and `environmentMatchGlobs`.
+- #215: CONTRIBUTING.md.
+
+**Decisions:**
+- **Touch lists are plain arrays and there is no `TouchList`** (#145),
+  as in every jsdom. The browser-like `TouchList` changed results for tests
+  written against jsdom: array methods, `Array.isArray`, snapshots and
+  `toStrictEqual`. A browser-like `TouchList` belongs with the opt-in APIs
+  (M2), off by default.
+- **Review stop rule:** after about three review rounds, the remaining
+  marginal items are filed as one issue.
+- **Code review:** the maintainer no longer reviews diffs. Copilot and
+  CodeRabbit reviews, parity tests against real jsdom, corpus runs for
+  behavior changes and benchmarks for hot paths are the bar.
+- **Benchmark noise:** "first window" on CI runners lands at two speed
+  levels. A single run over 5% (#207's +12.9%, #198's +15.2%) needs a rerun
+  and a local check before it is treated as a regression.
+
+**Contributors:** issues are labeled "good first issue" (#146, #203,
+#213, #214) and "help wanted" (#9, #10, #12, #161, #202). CONTRIBUTING.md
+(#215) explains black-box measurement and parity tests.
+
+**Next:**
+- In progress: #193 (the dark-scheme default text color) and #200
+  (`migrate`: map warpdom comments to their projects).
+- After those: #199 (computed colors), #202 (`:empty`), #192 and #201
+  (fast-mode stubs), #208 (CSSOM leftovers).
