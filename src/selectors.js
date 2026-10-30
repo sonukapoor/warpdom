@@ -556,8 +556,9 @@ function compileAttribute({ name, op, value, insensitive, ns }) {
 
 // Pseudo-classes whose result can change without a tree or attribute change
 // (form state, focus, text data): selectors using them are never result-cached.
+// :empty is not one: any text child counts (see compilePseudo).
 const DYNAMIC = new Set([
-  'empty',
+  'dir',
   'checked',
   'focus',
   'focus-visible',
@@ -621,11 +622,14 @@ function compilePseudo({ name, arg }) {
         return nthMatches(nthIndex(el, fromEnd, ofType, ofTest && ((n) => ofTest(n, ctx))), a, b);
       };
     }
+    // As jsdom (black box, 20.0.3 to 30.1.3): a text child, even an empty
+    // one, is content; comments, processing instructions and CDATA
+    // sections are not. So text data changes never change :empty.
     case 'empty':
       return (el) => {
         for (let c = el[S].first; c; c = c[S].next) {
           const t = c[S].type;
-          if (t === ELEMENT_NODE || (t === 3 && c[S].data !== '')) return false;
+          if (t === ELEMENT_NODE || t === 3) return false;
         }
         return true;
       };

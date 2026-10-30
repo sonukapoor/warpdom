@@ -688,8 +688,11 @@ function cascaded(element, name) {
   }
   const index = ruleIndex(element);
   const rev = ds.treeRev ?? 0;
+  // Text data changes too (internal.js replaceData): they leave the tree as
+  // it was, but not every match (:dir(auto), a textarea's :invalid).
+  const textRev = ds.textRev ?? 0;
   const inlineMap = inlineDeclarations(element);
-  if (!cache || cache.index !== index || cache.rev !== rev || cache.inline !== inlineMap) {
+  if (!cache || cache.index !== index || cache.rev !== rev || cache.textRev !== textRev || cache.inline !== inlineMap) {
     const kept = keptStyles(ds);
     let detached = kept;
     if (!kept && keepsDetached(ds)) {
@@ -702,6 +705,7 @@ function cascaded(element, name) {
     cache = es.cascaded = {
       index,
       rev,
+      textRev,
       inline: inlineMap,
       values: new Map(),
       detached,

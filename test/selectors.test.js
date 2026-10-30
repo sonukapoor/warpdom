@@ -161,9 +161,12 @@ test('cached query results and positions follow tree, attribute and text changes
   e.id = 'e';
   assert.deepEqual(q('p:empty'), ['e']);
   const t = e.appendChild(document.createTextNode(''));
-  assert.deepEqual(q('p:empty'), ['e'], 'empty text keeps :empty');
+  assert.deepEqual(q('p:empty'), [], 'any text child, as in jsdom');
   t.data = 'x';
   assert.deepEqual(q('p:empty'), [], 'text data change');
+  e.appendChild(document.createComment('c'));
+  e.removeChild(t);
+  assert.deepEqual(q('p:empty'), ['e'], 'a comment alone');
   assert.notEqual(document.querySelectorAll('li'), document.querySelectorAll('li'), 'a new NodeList per call');
 });
 
@@ -217,3 +220,84 @@ parity('selectors: *| and | namespaces, forgiving :is, preprocessing, :host', (w
     ...['|h', '*|h', 'h', '|b', '#sp\0aces', '#sp\\0 aces', '#spac\\65\r\ns', '#spac\\65\fs'].map((s) => count(d, s)),
   ];
 });
+
+// :empty and text (#202, black box, jsdom 20.0.3 to 30.1.3, the same in
+// all): an element with a text child does not match, whatever its data
+// (empty, whitespace); comments, processing instructions and CDATA
+// sections do not count. Text data changes refresh what depends on text:
+// :dir(auto) (querySelectorAll too) and a textarea's validity, in
+// getComputedStyle as well; from 21 to 30.1.1 too, where computed values
+// are kept until the document's tree changes.
+const emptyTextScenario = (w) => {
+  const d = w.document;
+  d.head.innerHTML =
+    '<style>div { color: green } div:empty { color: blue } textarea { color: green } textarea:invalid { color: blue }' +
+    ' p:dir(rtl) { color: red }</style>';
+  const color = (el) => w.getComputedStyle(el).color;
+  const div = (...kids) => {
+    const el = d.body.appendChild(d.createElement('div'));
+    for (const k of kids) el.appendChild(k);
+    return el;
+  };
+  const els = [
+    div(),
+    div(d.createTextNode('')),
+    div(d.createTextNode(' ')),
+    div(d.createComment('')),
+    div(d.createProcessingInstruction('x', 'y')),
+    div(d.createTextNode(''), d.createTextNode('')),
+  ];
+  const sel = (el) => [d.querySelector('div:empty') === el, el.matches(':empty'), el.closest(':empty') === el];
+  const out = els.map((el) => [color(el), ...sel(el)]);
+  out.push(d.querySelectorAll('div:empty').length);
+  // Text data changes.
+  const [, a, b] = els;
+  a.firstChild.data = 'x';
+  b.firstChild.data = '';
+  out.push(color(a), color(b), a.matches(':empty'), b.matches(':empty'));
+  a.firstChild.appendData('y');
+  a.removeChild(a.firstChild);
+  b.textContent = '';
+  out.push(color(a), color(b), d.querySelectorAll('div:empty').length);
+  const ta = d.body.appendChild(d.createElement('textarea'));
+  ta.required = true;
+  ta.appendChild(d.createTextNode(''));
+  out.push(color(ta), ta.matches(':invalid'));
+  ta.firstChild.data = 'x';
+  out.push(color(ta), ta.matches(':invalid'));
+  const p = d.body.appendChild(d.createElement('p'));
+  p.dir = 'auto';
+  p.textContent = 'x';
+  out.push(color(p), d.querySelectorAll('p:dir(rtl)').length);
+  p.firstChild.data = '\u05d0';
+  out.push(color(p), d.querySelectorAll('p:dir(rtl)').length, p.matches(':dir(rtl)'));
+  // An XML document: CDATA sections do not count, empty or not.
+  const x = new w.DOMParser().parseFromString('<r><a/><b/><c/></r>', 'application/xml');
+  const [xa, xb, xc] = x.documentElement.children;
+  xa.appendChild(x.createCDATASection(''));
+  xb.appendChild(x.createTextNode(''));
+  xc.appendChild(x.createCDATASection('z'));
+  out.push(
+    [xa, xb, xc].map((e) => e.matches(':empty')),
+    x.querySelectorAll(':empty').length,
+  );
+  // From 21 to 30.1.1 text set in a disconnected tree or a shadow tree
+  // keeps kept values (a rule edit shows only after a tree change).
+  d.head.innerHTML = '<style>div { color: blue }</style>';
+  d.body.innerHTML = '<div></div><section></section>';
+  const kept = d.body.firstChild;
+  const rule = d.styleSheets[0].cssRules[0];
+  out.push(color(kept));
+  rule.style.color = 'green';
+  d.createElement('p').appendChild(d.createTextNode('x')).data = 'y';
+  out.push(color(kept));
+  const shadow = d.body.lastChild.attachShadow({ mode: 'open' });
+  shadow.innerHTML = '<i>q</i>';
+  out.push(color(kept));
+  rule.style.color = 'red';
+  shadow.firstChild.firstChild.data = 'r';
+  out.push(color(kept));
+  return out;
+};
+for (const jsdom of [20, 22, 25, 27, 28, 29, 30])
+  parity(`selectors: :empty with text children, text changes (jsdom ${jsdom})`, emptyTextScenario, { jsdom });

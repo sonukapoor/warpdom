@@ -924,8 +924,12 @@ export function replaceData(node, offset, count, data) {
   if (offset + count > length) count = length - offset;
   if (observed(node)) hooks.characterData(node, old);
   s.data = old.slice(0, offset) + data + old.slice(offset + count);
+  // Text can change selector matches (:dir(auto), a textarea's validity),
+  // so computed styles (cascade.js cascaded) are made again, as in jsdom.
+  const ds = s.doc[S];
+  ds.textRev = (ds.textRev ?? 0) + 1;
   // Text set in the connected tree refreshes kept computed styles too.
-  if (tracking.detached) keptRefresh(s.doc[S], node);
+  if (tracking.detached) keptRefresh(ds, node);
   // A style element's text: its style sheet changes.
   if (s.parent && s.parent[S].tag === 'style') {
     s.doc[S].styleRev = (s.doc[S].styleRev ?? 0) + 1;
