@@ -21,7 +21,9 @@ export const LEGACY_EXCLUDE = [
 const defaultExclude = (major) => (major < 4 ? LEGACY_EXCLUDE : DEFAULT_EXCLUDE);
 
 const isP = (t, v) => t?.type === 'punct' && t.value === v;
-const escape = (c) => c.replace(/[.+^${}()|\\/]/g, '\\$&');
+// Every regular expression metacharacter: an escaped glob character
+// (\[, \*, \?) stays literal.
+const escape = (c) => c.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
 
 // One path segment of a glob (no braces) as a regular expression source;
 // null for what this matcher does not model (negated extglobs).
@@ -102,11 +104,13 @@ export function selects(file, include, exclude) {
   return inc === true && exc === false ? true : null;
 }
 
-// The elements of the array literal whose '[' is at token index open:
-// each one's object literal (an object, or defineProject({ ... })), or
-// null when an element is anything else (a string naming a directory or
-// config file, a spread, a variable, a call).
-function arrayObjects(a, open) {
+// The elements of the array literal whose '[' is at token index open and
+// whose ']' at close (the end of the property's value: not an array that
+// a call such as .concat() adds to): each one's object literal (an
+// object, or defineProject({ ... })), or null when an element is anything
+// else (a string naming a directory or config file, a spread, a variable,
+// a call).
+function arrayObjects(a, open, close) {
   const { tokens } = a;
   if (!isP(tokens[open], '[')) return null;
   const out = [];
@@ -121,7 +125,7 @@ function arrayObjects(a, open) {
         if (!obj) return null;
         out.push(obj);
       }
-      if (isP(t, ']')) return out;
+      if (isP(t, ']')) return k === close ? out : null;
       start = k + 1;
       continue;
     }
@@ -251,12 +255,30 @@ function projectOf(a, obj, { base, parentRoot, major, inline }) {
 
 const MERGES = new Set(['mergeConfig', 'merge', 'deepmerge', 'defu', 'assign']);
 
-// The object literal a config file exports (export default { ... },
-// defineConfig({ ... }), module.exports = { ... }); null for anything else
-// (a variable, a function, a call that builds it).
-function exportedObject(a) {
+// The token index of the bracket closing the one at open.
+function closeOf(tokens, open) {
+  let depth = 0;
+  for (let k = open; k < tokens.length; k++) {
+    const t = tokens[k];
+    if (isP(t, '(') || isP(t, '[') || isP(t, '{')) depth++;
+    else if ((isP(t, ')') || isP(t, ']') || isP(t, '}')) && --depth === 0) return k;
+  }
+  return -1;
+}
+
+// What a config file exports (export default ..., module.exports = ...):
+// { object, within }. object: the object literal it is (export default
+// { ... }, defineConfig({ ... }), or a variable declared as one), else
+// null. within: the token range [open, close] of defineConfig's argument
+// when that is something else (a function returning the config), else
+// null. null when the file exports nothing migrate finds.
+function exported(a) {
   const { tokens } = a;
   const is = (t, v) => t?.type === 'ident' && t.value === v;
+  const objectAt = (v) => {
+    while (is(tokens[v], 'defineConfig') && isP(tokens[v + 1], '(')) v += 2;
+    return isP(tokens[v], '{') ? (a.objects.find((o) => o.open === v) ?? null) : null;
+  };
   for (let k = 0; k < tokens.length; k++) {
     let v = -1;
     if (is(tokens[k], 'export') && is(tokens[k + 1], 'default')) v = k + 2;
@@ -268,8 +290,20 @@ function exportedObject(a) {
     )
       v = k + 4;
     if (v < 0) continue;
-    while (is(tokens[v], 'defineConfig') && isP(tokens[v + 1], '(')) v += 2;
-    return isP(tokens[v], '{') ? (a.objects.find((o) => o.open === v) ?? null) : null;
+    let within = null;
+    while (is(tokens[v], 'defineConfig') && isP(tokens[v + 1], '(')) {
+      within = [v + 1, closeOf(tokens, v + 1)];
+      v += 2;
+    }
+    let object = objectAt(v);
+    // A variable: the object literal it is declared as.
+    const t = tokens[v];
+    if (!object && t?.type === 'ident' && !isP(tokens[v + 1], '(') && !isP(tokens[v + 1], '.')) {
+      const decl = (j) => ['const', 'let', 'var'].some((d) => is(tokens[j], d)) && is(tokens[j + 1], t.value);
+      const j = tokens.findIndex((_, i) => decl(i));
+      if (j >= 0 && isP(tokens[j + 2], '=')) object = objectAt(j + 3);
+    }
+    return { object, within: object ? null : within };
   }
   return null;
 }
@@ -291,11 +325,19 @@ export function vitestProjects(a, { major = 5, base = '' } = {}) {
   if (roots.length > 1) return null;
   // No test options at all: the config is one project without any, when
   // it is an object literal that takes nothing from elsewhere (a spread).
+  const out = exported(a);
   if (!roots.length) {
-    const obj = exportedObject(a);
+    const obj = out?.object;
     if (!obj || a.spreads.some((s) => s.frame === obj)) return null;
     return { inline: false, projects: [{ frame: null, keyToken: 0, dir: '', root: '', inherits: false }] };
   }
+  // The `test` options of the exported config: its object literal's, or
+  // inside the function defineConfig is given. Not an object the config
+  // does not export (export default buildConfig()).
+  const holder = roots[0].frame;
+  const ok =
+    out && (holder === out.object || (out.within && holder.open > out.within[0] && holder.close < out.within[1]));
+  if (!ok) return null;
   // The config object itself (the one holding `test`).
   const root = projectOf(a, roots[0].frame, { base, major, inline: false });
   if (!root) return null;
@@ -304,7 +346,7 @@ export function vitestProjects(a, { major = 5, base = '' } = {}) {
   );
   if (!list.length) return { inline: false, projects: [root] };
   if (list.length > 1) return null;
-  const objects = arrayObjects(a, list[0].valueStart);
+  const objects = arrayObjects(a, list[0].valueStart, list[0].valueEnd - 1);
   if (!objects) return null;
   const selection = ['include', 'exclude', 'dir'].some((key) => own(a, root.frame, key));
   const projects = [];

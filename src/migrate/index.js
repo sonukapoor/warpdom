@@ -1460,10 +1460,16 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
     const a = analysisOf(configRel);
     if (!a) return null;
     const configDir = path.dirname(config);
+    // The Vitest major: installed or locked, else a declared range only
+    // when it stays within one major (^3.2.0, ~3.2.0, 3.x, 3.2.1; not
+    // >=3.2.0 or ^3.2.0 || ^4.0.0, which a fresh install may meet with a
+    // newer major); null for every major it may be.
     const vitestPkg = chainOf(owner).find((p) => declared(p, 'vitest'));
-    const major = vitestPkg
-      ? majorOf(usedVersion(vitestPkg, 'vitest', vitestPkg.json[declared(vitestPkg, 'vitest')].vitest).version)
-      : null;
+    const used = vitestPkg && usedVersion(vitestPkg, 'vitest', vitestPkg.json[declared(vitestPkg, 'vitest')].vitest);
+    const one = /^\s*[\^~=v]?\s*(\d+)(?:\.(?:\d+|[xX*])){0,2}(?:-[\w.]+)?\s*$/;
+    let major = null;
+    if (used)
+      major = used.how === 'declared' ? Number(one.exec(used.version)?.[1] ?? NaN) || null : majorOf(used.version);
     // Vitest runs in the package's directory, or (a config above it) maybe
     // in the config's own.
     const bases = unique(['', posix(path.relative(configDir, owner.dir))]);

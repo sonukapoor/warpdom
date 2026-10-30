@@ -287,11 +287,15 @@ reach gets a note listing the files, to add the version to that project's
 test options by hand, and the profile is not reported as kept. When
 migrate cannot tell the project (a workspace file or projects named by
 path or glob, `--config` or `--root` in a script, a Vitest config between
-the file and its package, a merged or spread config, `extends` naming a
+the file and its package, a merged or spread config, `test` options outside
+what the config exports (`export default buildConfig()`),
+projects not in one array literal (`[...].concat(...)`), `extends` naming a
 file, an inheriting project whose root config sets `include`, `exclude` or
 `dir`, absolute roots, include or exclude globs that are not string
 literals or use negations or brace ranges, no project selecting the file,
-an answer that depends on a Vitest version migrate cannot read), the
+an answer that depends on a Vitest version migrate cannot read, or on
+which major a declared range such as `>=3.2.0` installs when Vitest is
+neither installed nor locked), the
 profile is reported as uncertain (`same: null`) and one note lists the
 files, rather than assuming the pin reaches them.
 `@jest-environment` comments still count for their package and runner.
