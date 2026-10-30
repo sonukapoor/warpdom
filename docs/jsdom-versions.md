@@ -81,6 +81,8 @@ takes the window's Blobs), as with jsdom.
 | Named and hex colors resolve | From 22.1.0 |
 | System colors stay keywords | Until 26 |
 | System colors are jsdom's (`ButtonFace` is `rgb(204, 204, 204)`, under `color-scheme: dark` `rgb(51, 51, 51)`) | From 27.0.0 |
+| `color`, `background-color`, the border colors, `display`, `pointer-events` and `visibility` resolve `inherit`, `initial` and `unset` (`color: initial` is `rgb(0, 0, 0)`); a root under `color-scheme: dark` (the html element, or a disconnected tree's top) is white, and its descendants inherit that | From 27.0.0 to 29.0.1 |
+| An element under `color-scheme: dark` that sets no color, and inherits none set above it, is white, and its border colors (`currentcolor`) its parent's color | From 29.0.2 |
 | Color keywords keep their case and only CSS 2's system colors exist (`ThreeDFace`, not `Canvas`) | Before cssstyle 4.4 |
 | A declared `0` stays `0` where cssstyle does not parse the property (`text-indent`, `min-width`) | Before 28.1.0 |
 | `margin`, `padding` and `border-width` keep their declared form (`2px 6px 3px 6px`) | Before 27.0.0 |

@@ -276,6 +276,98 @@ for (const jsdom of [27, 28, 29, 30])
     jsdom,
   });
 
+// The default text color under color-scheme: dark (#193). jsdom 27 to
+// 29.0.1: a root (the html element, or a disconnected or shadow tree's
+// top) has CanvasText under its color-scheme, which its descendants
+// inherit; color, background-color, the border colors, display,
+// pointer-events and visibility resolve inherit, initial and unset. From
+// 29.0.2: an element that inherits its color, with none declared up the
+// chain, has CanvasText under its own color-scheme, while its currentcolor
+// is its parent's color. Each chain is built, then read from the top down:
+// jsdom 29.0.2 to 30.1.2 give some values by the order of the reads and
+// insertions (not modeled).
+const DARK_PROPS = [
+  'color',
+  'border-top-color',
+  'outline-color',
+  'text-decoration-color',
+  '-webkit-text-fill-color',
+  'background-color',
+  'color-scheme',
+];
+function darkDefaultColors(w) {
+  const d = w.document;
+  const out = {};
+  const chain = (name, parent, styles) => {
+    let p = parent;
+    const els = styles.map((style) => {
+      const el = d.createElement('div');
+      el.setAttribute('style', style);
+      if (p !== null) p.appendChild(el);
+      return (p = el);
+    });
+    out[name] = els.map((el) => read(w, el, DARK_PROPS));
+  };
+  chain('detached', null, ['color-scheme: dark', '', 'color-scheme: light']);
+  chain('connected', d.body, ['color-scheme: dark', '', 'color-scheme: light', '']);
+  chain('initial', d.body, ['color-scheme: dark; color: initial', 'color-scheme: light', 'color: initial']);
+  chain('keywords', d.body, ['color-scheme: dark; color: inherit', 'color: unset; border-top-color: initial']);
+  chain('currentcolor', d.body, ['color-scheme: dark; color: currentcolor', 'color-scheme: light']);
+  chain('declared', d.body, [
+    'color: CanvasText',
+    'color-scheme: dark',
+    'color: red; color-scheme: light',
+    'color-scheme: dark',
+  ]);
+  chain('detachedInitial', null, ['color-scheme: dark; color: initial; background-color: inherit']);
+  const host = d.body.appendChild(d.createElement('div'));
+  chain('shadow', host.attachShadow({ mode: 'open' }), ['color-scheme: dark', '']);
+  // The CSS-wide keywords where jsdom 27 to 29.0.1 resolve them.
+  const kw = d.body.appendChild(d.createElement('div'));
+  kw.style.cssText =
+    'display: inherit; visibility: initial; pointer-events: unset; background-color: initial; border-block-start-color: unset; border-left-color: inherit';
+  out.keywordProps = read(w, kw, [
+    'display',
+    'visibility',
+    'pointer-events',
+    'background-color',
+    'border-block-start-color',
+    'border-left-color',
+  ]);
+  return out;
+}
+for (const jsdom of [27, 28, 29, 30])
+  parity(`computed values: the default color under color-scheme: dark (jsdom ${jsdom}, #193)`, darkDefaultColors, {
+    jsdom,
+  });
+
+// The page's color-scheme on :root, and the boundaries between releases
+// (black box, every release from 27.0.0 to 30.1.3): body and its children
+// white from 27.0.0, a dark div under a light body white from 29.0.2.
+function rootScheme(w) {
+  const d = w.document;
+  d.head.innerHTML = '<style>:root { color-scheme: dark }</style>';
+  const div = d.body.appendChild(d.createElement('div'));
+  const dark = d.body.appendChild(d.createElement('div'));
+  d.body.style.colorScheme = 'light';
+  dark.style.colorScheme = 'dark';
+  const cs = (el) => w.getComputedStyle(el).color;
+  return [cs(d.documentElement), cs(d.body), cs(div), cs(dark)];
+}
+for (const jsdom of [27, 28, 29, 30])
+  parity(`computed values: :root { color-scheme: dark } (jsdom ${jsdom}, #193)`, rootScheme, { jsdom });
+test('computed values: the default color under color-scheme: dark, by release (#193)', () => {
+  const W = 'rgb(255, 255, 255)',
+    B = 'rgb(0, 0, 0)';
+  const expected = { '26.1.0': ['canvastext', 'canvastext', 'canvastext', 'canvastext'], '27.0.0': [W, W, W, W] };
+  expected['29.0.1'] = expected['27.0.0'];
+  // From 29.0.2 color-scheme inherits: body is light, its div black, the
+  // dark one white.
+  expected['29.0.2'] = [W, B, B, W];
+  for (const [jsdom, values] of Object.entries(expected))
+    assert.deepEqual(rootScheme(createWindow({ jsdom, cssstyle: '4.6.0' })), values, jsdom);
+});
+
 // --- zero lengths ------------------------------------------------------------------
 
 // A 0 length stays 0 before jsdom 28.1.0 where cssstyle does not parse the

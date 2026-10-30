@@ -908,12 +908,20 @@ const RAW_KEYWORDS = new Set([
 
 // currentcolor: the computed color; transparent when that is a var()
 // value jsdom does not substitute (jsdom 29 and later; before, the
-// var() value itself).
+// var() value itself). From jsdom 29.0.2 (black box, to 30.1.3) the
+// color of an element that inherits it (none declared, inherit or unset)
+// is its parent's, where its own color is CanvasText under its own
+// color-scheme (inheritedValue): with color-scheme: dark under a light
+// body its color is white, its border colors black.
 function currentColor(element) {
-  const color = computedValue(element, 'color');
-  return color.includes('var(') && !element[S].doc[S].window[S].compat?.legacyComputedStyle
-    ? 'rgba(0, 0, 0, 0)'
-    : color;
+  const compat = element[S].doc[S].window[S].compat;
+  let source = element;
+  if (!compat.legacyComputedStyle && declaresScheme(element)) {
+    const parent = inheritParent(element);
+    if (parent !== null && inheritsColor(cascaded(element, 'color'))) source = parent;
+  }
+  const color = computedValue(source, 'color');
+  return color.includes('var(') && !compat.legacyComputedStyle ? 'rgba(0, 0, 0, 0)' : color;
 }
 
 // Computes a specified value: colors resolved, currentcolor to the color
@@ -947,6 +955,35 @@ function darkScheme(element) {
     if (!declared) return false;
   }
   return computedValue(element, 'color-scheme') === 'dark';
+}
+
+// Whether the element declares its own color-scheme (not inherit or
+// unset), so that its computed color-scheme may differ from its parent's;
+// false at once when no rule of its root and not its style attribute
+// declares color-scheme (or all), as for darkScheme.
+const INHERITING = new Set(['inherit', 'unset']);
+function declaresScheme(element) {
+  const cache = element[S].cascaded;
+  const index = cache?.index;
+  if (index !== undefined && !cache.detached && !index.has('color-scheme') && !index.has('all')) {
+    const inline = inlineDeclarations(element);
+    if (inline === null || (!inline.has('color-scheme') && !inline.has('all'))) return false;
+  }
+  const value = cascaded(element, 'color-scheme');
+  return value !== undefined && !INHERITING.has(value.toLowerCase());
+}
+
+// Whether a cascaded color is inherited: none declared, inherit or unset.
+const inheritsColor = (value) => value === undefined || INHERITING.has(value.toLowerCase());
+
+// Whether an element or one up its inheritance chain declares a color it
+// inherits (not initial, which stops the search).
+function colorDeclared(element) {
+  for (let e = element; e !== null; e = inheritParent(e)) {
+    const value = cascaded(e, 'color');
+    if (!inheritsColor(value)) return value.toLowerCase() !== 'initial';
+  }
+  return false;
 }
 
 function computeColors(element, name, value, data) {
@@ -1109,10 +1146,23 @@ function initialValue(element, name, data) {
 function inheritedValue(element, name, data) {
   const parent = inheritParent(element);
   if (parent === null) return initialValue(element, name, data);
-  if (data[2] === 1 && name !== 'color' && !element[S].doc[S].window[S].compat.legacyComputedStyle) {
+  const legacy = element[S].doc[S].window[S].compat.legacyComputedStyle;
+  if (data[2] === 1 && name !== 'color' && !legacy) {
     const source = colorSource(parent, name, data);
     return source === null ? currentColor(element) : computedValue(source, name);
   }
+  // jsdom 29.0.2 and later (black box, to 30.1.3): an inherited color
+  // that no element up the chain declares (or one declares initial) is
+  // CanvasText under the element's own color-scheme, not its parent's
+  // value (color-scheme: dark under a light body gives white); one
+  // declared, CanvasText included, is inherited as computed. Only an
+  // element that declares its color-scheme can differ from its parent.
+  // Not modeled: jsdom 29.0.2 to 30.1.2 give some of these colors by the
+  // order of reads and insertions (a border color read before color makes
+  // color the parent's; to 30.0.1 a currentcolor under a light element in
+  // a dark one, its ancestors not read first, takes the dark one's).
+  if (name === 'color' && !legacy && declaresScheme(element) && !colorDeclared(parent))
+    return initialValue(element, name, data);
   return computedValue(parent, name);
 }
 
@@ -1402,7 +1452,10 @@ function legacyDefault(element, name) {
     const parent = inheritParent(element);
     if (parent) return computedValue(parent, name);
     if (name !== 'color') return LEGACY_INHERITED[name];
-    return element[S].doc[S].window[S].compat.rootColor;
+    // From jsdom 27 CanvasText under the element's color-scheme (white
+    // under dark; black box, 27.0.0 to 29.0.1).
+    const compat = element[S].doc[S].window[S].compat;
+    return compat.jsdom >= 27 && darkScheme(element) ? DARK_SYSTEM_COLORS.canvastext : compat.rootColor;
   }
   // jsdom before 22.1.0: '' (compat.computedColors).
   if (name === 'background-color')
@@ -1420,7 +1473,24 @@ function legacyDefault(element, name) {
 // nothing were declared, but to '' for display (jsdom 20 keeps it too, and
 // jsdom 28.1 to 29.0.1). From jsdom 27, display: initial and unset compute
 // to inline.
+// Except, from jsdom 27 (black box, every release 27.0.0 to 29.0.1), for
+// the properties it computes: color, background-color, the border colors,
+// caret-color, display, pointer-events and visibility compute inherit,
+// initial and unset as CSS defines them (color: initial is CanvasText
+// under the element's color-scheme, border-top-color: inherit the
+// parent's border-top-color, display: inherit the parent's display).
 const declaredComputed = (element) => element[S].doc[S].window[S].compat.legacyComputedStyle;
+const KEYWORD_RESOLVED = new Set([
+  'color',
+  'background-color',
+  'caret-color',
+  'display',
+  'pointer-events',
+  'visibility',
+  ...['top', 'right', 'bottom', 'left', 'block-start', 'block-end', 'inline-start', 'inline-end'].map(
+    (side) => `border-${side}-color`,
+  ),
+]);
 const legacyUnset = (element, value) => value === 'unset' && element[S].doc[S].window[S].compat.unsetUndeclared;
 
 // The HTML standard's rendering section sets `direction` from the
@@ -1468,8 +1538,12 @@ function longhandValue(element, name, data, custom, compat, value) {
       return custom ? '' : legacyDefault(element, name);
     }
     if (name === 'display' && compat.jsdom >= 27 && (value === 'initial' || value === 'unset')) return 'inline';
-    if (legacyUnset(element, value)) return custom || name === 'display' ? '' : legacyDefault(element, name);
-    if (!custom && CSS_WIDE.has(value)) return value;
+    // From jsdom 27 the properties it computes resolve inherit, initial
+    // and unset (KEYWORD_RESOLVED).
+    if (!(compat.jsdom >= 27 && KEYWORD_RESOLVED.has(name) && RESOLVED_KEYWORDS.has(value.toLowerCase()))) {
+      if (legacyUnset(element, value)) return custom || name === 'display' ? '' : legacyDefault(element, name);
+      if (!custom && CSS_WIDE.has(value)) return value;
+    }
   }
   if (value === undefined && name === 'direction' && uaDirection(element)) return directionality(element);
   // As in jsdom (20 to 30, black box): a value with var() is not
