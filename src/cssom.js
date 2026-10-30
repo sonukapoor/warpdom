@@ -747,14 +747,26 @@ function keyframe(protos, record, sheet, parentRule) {
 // and cssText use: in jsdom 27.1.0 to 28 (black box 27.4.0, 28.1.0) its
 // cssRules property, which a test can replace with an array or anything
 // else (methods the value lacks then throw TypeErrors, as there); the own
-// indices keep following the original list (indexKeyframes).
+// indices keep following the original list (indexKeyframes). Another
+// rule's or a sheet's CSSRuleList is that owner's rules, which the two
+// then share (black box 27.4.0, 28.1.0: appendRule() and deleteRule()
+// change the other keyframes rule's length, indices and text too).
 function keyframeRules(rule) {
   const s = rule[S];
   if (ACEMIR_RULES.has(s.protos.CSSRule)) {
     const own = rule.cssRules;
-    if (own !== s.ruleList) return own;
+    if (own !== s.ruleList) return own?.[S]?.owner?.rules ?? own;
   }
   return s.rules;
+}
+
+// After appendRule() or deleteRule(): the indices of the rule and of the
+// keyframes rule whose list it was assigned, if any.
+function keyframesChanged(rule) {
+  indexKeyframes(rule);
+  const shared = ACEMIR_RULES.has(rule[S].protos.CSSRule) ? rule.cssRules?.[S]?.rule : undefined;
+  if (shared !== undefined && shared !== rule && shared[S].indexed !== undefined) indexKeyframes(shared);
+  cssomChanges.rev++;
 }
 
 // The index of the last keyframe of a list (or array-like) with a key.
@@ -926,6 +938,7 @@ function cssRuleList(owner) {
     s.ruleList = liveList(s.protos.CSSRuleList, () => s.rules);
     s.ruleList[S].protos = s.protos;
     s.ruleList[S].owner = s;
+    s.ruleList[S].rule = owner;
   }
   return s.ruleList;
 }
@@ -1760,8 +1773,7 @@ export const CSSOM_INTERFACES = [
         const rule = record && keyframe(s.protos, record, s.sheet, this);
         if (rule) {
           keyframeRules(this).push(rule);
-          indexKeyframes(this);
-          cssomChanges.rev++;
+          keyframesChanged(this);
         }
       },
       deleteRule(select) {
@@ -1773,8 +1785,7 @@ export const CSSOM_INTERFACES = [
         if (i < 0) return;
         const [rule] = list.splice(i, 1);
         detach(rule);
-        indexKeyframes(this);
-        cssomChanges.rev++;
+        keyframesChanged(this);
       },
       findRule(select) {
         required(arguments.length, 1, 'CSSKeyframesRule', 'findRule');

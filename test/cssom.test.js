@@ -1475,3 +1475,47 @@ for (const jsdom of [27, 28]) {
     { jsdom },
   );
 }
+
+// The same with another keyframes rule's (or the sheet's) CSSRuleList
+// assigned: the two rules share its keyframes, so appendRule() and
+// deleteRule() on either change the other's length, indices and text
+// (review on #207).
+for (const jsdom of [27, 28]) {
+  parity(
+    `CSSKeyframesRule: another rule's cssRules assigned (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      d.head.innerHTML =
+        '<style>@keyframes k { 0% { color: red } 20% { color: blue } } @keyframes j { 10% { color: red } 30% { color: red } 60% { color: red } }</style>';
+      const sheet = d.styleSheets[0];
+      const [r, j] = sheet.cssRules;
+      const indices = (x) => Object.getOwnPropertyNames(x).filter((k) => /^\d/.test(k));
+      const text = (x) => x.cssText.replace(/\s+/g, ' ');
+      const state = () => [r.length, j.length, text(r), text(j), indices(r), indices(j)];
+      const out = [];
+      r.cssRules = j.cssRules;
+      out.push(
+        state(),
+        r.findRule('30%') === j.cssRules[1],
+        r.findRule('0%'),
+        [...r].map((k) => k.keyText),
+      );
+      r.appendRule('50% { color: green }');
+      const added = j.cssRules[3];
+      out.push(state(), added.parentRule === r, j[3] === added);
+      const gone = j.cssRules[1];
+      r.deleteRule('30%');
+      out.push(state(), gone.parentRule, j[1].keyText);
+      r.deleteRule('nope');
+      j.appendRule('70% { color: red }');
+      out.push(state());
+      j.deleteRule('10%');
+      out.push(state(), r[0].keyText);
+      r.cssRules = sheet.cssRules;
+      r.appendRule('80% { color: red }');
+      out.push(r.length, sheet.cssRules.length, sheet.cssRules[2].keyText, r.findRule('80%') === sheet.cssRules[2]);
+      return out;
+    },
+    { jsdom },
+  );
+}
