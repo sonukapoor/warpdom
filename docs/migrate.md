@@ -270,6 +270,25 @@ counted: a warpdom environment whose options name a jsdom version
 warpdom follows instead of the installed jsdom, and warpdom environments in
 fixture directories, which migrate does not change.
 
+A test file that picks warpdom (or jsdom, which migrate changes to
+warpdom) with a `@vitest-environment` comment takes the options of the
+Vitest project that runs it. migrate finds that project the way Vitest
+does: the nearest Vitest config from the file's directory up, then, when
+it has inline `test.projects` (or `test.workspace`), every project whose
+`root`, `test.dir`, `test.include` and `test.exclude` select the file
+(Vitest's defaults when they are not set; `...configDefaults.include` /
+`exclude` are read as those defaults), else the config itself. A file whose
+projects all name a jsdom version does not count; a project that runs a
+commented file and that the pin does not reach gets a note listing the
+files, to add the version to that project's test options by hand, and
+the profile is not reported as kept. When migrate cannot tell the project
+(a workspace file or projects named by path or glob, `--config` in a
+script, a merged or spread config, `extends`, include or exclude globs
+that are not string literals or use negations, no project selecting the
+file), the profile is reported as uncertain (`same: null`) and one note
+lists the files, rather than assuming the pin reaches them.
+`@jest-environment` comments still count for their package and runner.
+
 ## Release-age settings
 
 Package managers can refuse versions younger than a minimum age. migrate
