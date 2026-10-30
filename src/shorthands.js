@@ -9,8 +9,9 @@ import { resolveColor, NAMED_COLORS } from './colors.js';
 // Splits a value at top-level whitespace and commas, keeping functions and
 // strings whole: [token, separator, token, ...] that joins back to the value.
 // separator: a pattern matching the characters that split, or null for
-// space, tab, line feed and comma.
-export function segments(value, separator = null) {
+// space, tab, line feed and comma. escapes: a backslash outside a string
+// escapes the next character too (url(a\(b.png) is one token).
+export function segments(value, separator = null, escapes = false) {
   const out = [];
   let depth = 0,
     quote = null,
@@ -22,7 +23,8 @@ export function segments(value, separator = null) {
       else if (c === quote) quote = null;
       continue;
     }
-    if (c === '"' || c === "'") quote = c;
+    if (escapes && c === '\\') i++;
+    else if (c === '"' || c === "'") quote = c;
     else if (c === '(') depth++;
     else if (c === ')') depth = Math.max(0, depth - 1);
     else if (

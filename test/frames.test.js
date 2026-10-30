@@ -216,3 +216,58 @@ parity('iframes: window.length, indexes and frames after removal', (w) => {
   out.cleared = frames();
   return out;
 });
+
+// An index a test deleted or redefined comes back at the next insertion or
+// removal of a frame, as in jsdom (20 to 30, black box), also while each
+// insertion defines only its own index (#184). The scenario runs in strict
+// mode: the assignment to an index throws (a getter without a setter).
+parity('iframes: deleted and redefined indexes come back with the next frame change', (w) => {
+  const d = w.document;
+  const out = {};
+  const a = d.body.appendChild(d.createElement('iframe'));
+  out.deleted = [delete w[0], '0' in w];
+  const b = d.body.appendChild(d.createElement('iframe'));
+  out.afterInsert = ['0' in w, w[0] === a.contentWindow, w[1] === b.contentWindow];
+  try {
+    w[0] = 'x';
+  } catch (error) {
+    out.assign = error.constructor === TypeError;
+  }
+  Object.defineProperty(w, 1, { value: 'v', configurable: true, writable: true });
+  delete w[0];
+  const c = d.body.appendChild(d.createElement('iframe'));
+  c.remove();
+  out.afterRemove = ['0' in w, w[0] === a.contentWindow, w[1] === b.contentWindow, '2' in w, w.length];
+  Object.defineProperty(w, 0, { value: 'v', configurable: true, writable: true });
+  d.body.appendChild(d.createElement('div'));
+  out.otherInsert = typeof w[0];
+  a.remove();
+  out.shifted = [w[0] === b.contentWindow, '1' in w, Object.keys(w).filter((key) => /^\d+$/.test(key))];
+  return out;
+});
+
+// Inserting a frame defines only its own index property, and removing one
+// defines none: inserting 50 sibling frames made 1,275 definitions (#184).
+test('iframes: an insertion defines only the new index property', () => {
+  const w = createWindow();
+  const d = w.document;
+  const define = Reflect.defineProperty;
+  let definitions = 0;
+  Reflect.defineProperty = (target, key, descriptor) => {
+    if (target === w && /^\d+$/.test(String(key))) definitions++;
+    return define(target, key, descriptor);
+  };
+  let afterInsertions;
+  try {
+    for (let i = 0; i < 50; i++) d.body.appendChild(d.createElement('iframe'));
+    afterInsertions = definitions;
+    d.body.firstChild.remove();
+    d.body.lastChild.remove();
+  } finally {
+    Reflect.defineProperty = define;
+  }
+  assert.deepEqual(
+    [afterInsertions, definitions, w.length, w[0] === d.body.firstChild.contentWindow],
+    [50, 50, 48, true],
+  );
+});

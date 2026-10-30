@@ -178,8 +178,8 @@ function transform(original, { cache, project }) {
   const plugins = (fast) => (projects ? list(target.plugins) : [...list(target.plugins), cliOptionsPlugin(fast)]);
   const name = target.test?.name ?? 'warpdom';
   // Root setup files move into each project, so warpdom's reset runs before
-  // all of a fast file's setup (it removes window properties added since
-  // the window was created).
+  // all of a fast file's setup (it removes the global's properties a
+  // previous file's tests added, keeping those of its setup and modules).
   const withRootSetup = (p) =>
     typeof p === 'object' && p.extends !== false
       ? [...rootSetup, ...list(p.test?.setupFiles)]
@@ -201,6 +201,11 @@ function transform(original, { cache, project }) {
       ...(environment ? { environment: fsId(environment) } : {}),
       ...withInclude(target),
       setupFiles: [RESET, ...setup],
+      // One after the other, so the reset runs before the file's own setup:
+      // in parallel (Vitest 2-4's default) a setup file could finish first,
+      // and the reset then put back window members it replaced and delete
+      // globals it added. Vitest 2-4 take the order from the root config.
+      sequence: { ...target.test?.sequence, setupFiles: 'list' },
       exclude: [...(target.test?.exclude ?? test.exclude ?? configDefaults.exclude), ...isolate],
     },
   };
@@ -224,7 +229,10 @@ function transform(original, { cache, project }) {
     );
   const result = rerun ? [isolated] : [...others, fast, ...(isolate.length ? [isolated] : [])];
   const { include: _rootInclude, ...rootTest } = withReporter(test);
-  return { ...config, test: { ...rootTest, setupFiles: [], projects: result } };
+  return {
+    ...config,
+    test: { ...rootTest, sequence: { ...rootTest.sequence, setupFiles: 'list' }, setupFiles: [], projects: result },
+  };
 }
 
 // Returns the Vitest config with the fast and isolated projects, or the

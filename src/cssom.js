@@ -10,10 +10,12 @@ import {
   state,
   domError,
   cssomChanges,
+  ruleListsChanged,
   ELEMENT_NODE,
   TEXT_NODE,
   HTML_NS,
   nextInTree,
+  rootOf,
   connected,
   PlatformURL as URL,
 } from './internal.js';
@@ -935,6 +937,7 @@ function insertRule(owner, text, index, sheet, parentRule, nested) {
   }
   list.splice(i, 0, rule);
   cssomChanges.rev++;
+  ruleListsChanged(s.protos);
   return i;
 }
 
@@ -952,6 +955,7 @@ function deleteRule(owner, index) {
   }
   list.splice(i, 1);
   cssomChanges.rev++;
+  ruleListsChanged(owner[S].protos);
   detach(rule);
 }
 
@@ -1041,10 +1045,15 @@ const isConnected = connected;
 
 // A <style> element's sheet: parsed while it is in a document, replaced
 // when its children or their text change (HTML: update a style block),
-// null when it is not in a document. A replaced sheet loses its owner node.
+// null when it is not in a document, or before jsdom 30.1.2 in a shadow
+// tree (compat.shadowSheets) unless its text changed there (internal.js
+// styleTextChanged). A replaced sheet loses its owner node.
 export function styleElementSheet(el) {
   const s = el[S];
-  if (!isConnected(el)) {
+  if (
+    !isConnected(el) ||
+    (s.textSheet !== true && rootOf(el)[S].shadow === true && !s.doc[S].window[S].compat.shadowSheets)
+  ) {
     if (s.sheet) {
       s.sheet[S].ownerNode = null;
       s.sheet = null;
@@ -1070,6 +1079,49 @@ const isStyleElement = (n) => n[S].type === ELEMENT_NODE && n[S].tag === 'style'
 
 const byStamp = (a, b) => (a[S].sheetStamp ?? 0) - (b[S].sheetStamp ?? 0);
 
+// The <style> elements of the document and its shadow trees in tree order:
+// when there are any in shadow trees, as records { el } (for
+// shadowIncludingOrder).
+function styleElementsOf(doc) {
+  const records = [];
+  let inShadow = false;
+  const walk = (root) => {
+    for (let n = root[S].first; n; n = nextInTree(n, root)) {
+      const s = n[S];
+      if (s.type !== ELEMENT_NODE) continue;
+      if (s.tag === 'style' && s.ns === HTML_NS) records.push(n);
+      if (s.shadowRoot != null) {
+        const before = records.length;
+        walk(s.shadowRoot);
+        if (records.length !== before) inShadow = true;
+      }
+    }
+  };
+  walk(doc);
+  return inShadow ? records.map((el) => ({ el })) : records;
+}
+
+// From jsdom 30.1.2 (black box, 30.1.2 and 30.1.3) document.styleSheets
+// lists the shadow trees' sheets too, each sheet put in the list when it
+// is made (creation order: internal.js sheetCreated) after the last one of
+// its own tree there then that precedes it in tree order, else first:
+// nodes of two trees compare as disconnected (compareDocumentPosition
+// gives 37 both ways). So a head's <style id=d1> and then a shadow tree's
+// <style id=s1> give s1, d1; a <style id=d2> then inserted before d1
+// gives d2, s1, d1, and one after d1 s1, d1, d2; removing d1 then leaves
+// s1, d2. internal.js orderSheet keeps that list (sheetOrder); records:
+// the style elements there are now (styleElementsOf).
+function shadowIncludingOrder(doc, records) {
+  const order = doc[S].sheetOrder;
+  const els = new Set(records.map((r) => r.el));
+  const list = [];
+  if (order !== undefined)
+    for (const r of order) if (r.el[S].sheetStamp === r.stamp && els.delete(r.el)) list.push(r.el);
+  // (none left: each sheet made since the first shadow tree's is in order)
+  if (els.size !== 0) for (const el of [...els].sort(byStamp)) list.push(el);
+  return list;
+}
+
 export function documentStyleSheets(doc) {
   const ds = doc[S];
   if (!ds.styleSheetList) {
@@ -1087,11 +1139,15 @@ export function documentStyleSheets(doc) {
       const rev = ds.treeRev ?? 0;
       const textRev = ds.styleRev ?? 0;
       if (ds.styleSheetsRev === rev && ds.styleSheetsTextRev === textRev) return ds.styleSheets;
-      const styleRev = byCreation ? textRev : 0;
+      // (by creation too with shadow trees' sheets)
+      const styleRev = byCreation || ds.shadowStyleSheets === true ? textRev : 0;
       if (ds.styleElementsRev !== rev || ds.styleElementsStyleRev !== styleRev) {
-        const els = [];
-        for (let n = ds.first; n; n = nextInTree(n, doc)) if (isStyleElement(n)) els.push(n);
-        if (byCreation) els.sort(byStamp);
+        let els = styleElementsOf(doc);
+        ds.shadowStyleSheets = els.length !== 0 && els[0].el !== undefined;
+        if (byCreation) {
+          if (ds.shadowStyleSheets) els = els.map((r) => r.el);
+          els.sort(byStamp);
+        } else if (ds.shadowStyleSheets) els = shadowIncludingOrder(doc, els);
         ds.styleElements = els;
         ds.styleElementsRev = rev;
         ds.styleElementsStyleRev = styleRev;

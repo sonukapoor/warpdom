@@ -27,6 +27,7 @@ import {
 import { parseXMLFragment } from './xml.js';
 import { eventHandlerAttributesAdded } from './event-handlers.js';
 import { attributeSteps } from './attributes.js';
+import { styleAttributeChanged } from './css.js';
 
 // --- parser loading -------------------------------------------------------------
 
@@ -206,6 +207,8 @@ function appendAst(internals, parent, astNodes, doc, inTemplate = false) {
         if (a.name.startsWith('on')) handlers = true;
       }
       if (handlers) eventHandlerAttributesAdded(node);
+      // A parsed style attribute is parsed as set (escaped url()s, #163).
+      if (attrs.get('style')?.includes('\\')) styleAttributeChanged(node, undefined);
       if (n.attrs.length !== 0) namedAttributesSet(node[S], doc);
       // A parsed <details open> queues its toggle event, as adding the
       // attribute would.

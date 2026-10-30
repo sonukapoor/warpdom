@@ -17,6 +17,7 @@ import {
 } from './internal.js';
 import { XML_NS, XMLNS_NS } from './attributes.js';
 import { eventHandlerAttributesAdded } from './event-handlers.js';
+import { styleAttributeChanged } from './css.js';
 
 // --- parser loading -------------------------------------------------------------
 
@@ -278,6 +279,8 @@ function buildElement(w, doc, n, parentScope, inTemplate) {
     if (name.startsWith('on')) handlers = true;
   }
   if (handlers) eventHandlerAttributesAdded(element);
+  // A parsed style attribute is parsed as set (escaped url()s, #163).
+  if (attrs.get('style')?.includes('\\')) styleAttributeChanged(element, undefined);
   if (es.attrs.size !== 0) namedAttributesSet(es, doc);
   if (!inTemplate && hooks.ce !== null) hooks.ce.created(element);
   // A template's children go into its contents (HTML, the XML parser).

@@ -400,6 +400,65 @@ test('computed values: font-family depends on user agent from jsdom 29.0.2', () 
   }
 });
 
+// --- inherited currentcolor ------------------------------------------------------
+
+// From jsdom 29.0.2 currentcolor is inherited as the keyword: it resolves
+// to the inheriting element's own color, through inherit (longhands and
+// the border, border side, border-color, outline, column-rule and
+// text-decoration shorthands), unset and plain inheritance (fill,
+// -webkit-text-fill-color, text-emphasis-color), from a declared
+// currentcolor or the initial one (border colors, text-decoration-color,
+// column-rule-color; outline-color's initial is transparent). jsdom 29.1.1
+// gives a border or border-color shorthand's currentcolor (and CSS-wide
+// keywords) a fixed color in some cases (a style sheet's against a color
+// from the style attribute; its children inherit that color), which
+// warpdom does not model: the scenario keeps clear of them there.
+const CURRENT_COLOR_PROPS = [
+  'border-top-color',
+  'border-left-color',
+  'outline-color',
+  'text-decoration-color',
+  'column-rule-color',
+  'background-color',
+  'fill',
+  'flood-color',
+  '-webkit-text-fill-color',
+  'text-emphasis-color',
+];
+function currentColorInherited(w) {
+  const d = w.document;
+  d.head.innerHTML =
+    '<style>.cc { color: blue; border-top-color: currentColor; outline-color: currentcolor; fill: CURRENTCOLOR; background-color: currentcolor !important; flood-color: currentcolor }' +
+    ' .i { color: red; border-top-color: inherit; outline-color: inherit; background-color: inherit; flood-color: inherit; column-rule: inherit }' +
+    ' .b { color: red; border: inherit }</style>';
+  const p = 'color: blue';
+  d.body.innerHTML =
+    `<div style="${p}"><p id="initial" class="b"></p></div>` +
+    `<div style="${p}"><p id="attr" style="color: red; border: inherit"></p></div>` +
+    `<div style="${p}; border-top: 1px solid"><p id="side" style="color: red; border-top: inherit"><span id="nested" style="color: lime; border-top-color: inherit"></span></p></div>` +
+    `<div class="cc"><p id="sheet" class="i"><span id="plain" style="color: lime"></span></p></div>` +
+    `<div class="cc"><p id="attrs" style="color: red; border-top-color: inherit; border-left: inherit; outline: inherit; text-decoration: inherit; background-color: inherit; flood-color: inherit; fill: unset"><span id="deeper" style="color: lime; fill: inherit"></span></p></div>` +
+    `<div style="${p}; border-top-color: green; fill: green; outline-color: green"><p id="control" style="color: red; border-top-color: inherit; outline-color: inherit"></p></div>` +
+    `<div style="${p}"><p id="unset" style="color: red; border-top-color: unset; -webkit-text-fill-color: unset"></p></div>` +
+    `<div style="${p}"><p id="emphasis" style="color: red; text-emphasis-color: initial"><span id="emphasized" style="color: lime"></span></p></div>` +
+    `<div style="${p}; border-top-color: inherit"><p id="keyword" style="color: red; border-top-color: inherit"></p></div>`;
+  const out = {};
+  for (const el of d.querySelectorAll('[id]')) out[el.id] = read(w, el, CURRENT_COLOR_PROPS);
+  return out;
+}
+for (const jsdom of [29, 30])
+  parity(`computed values: inherited currentcolor (jsdom ${jsdom})`, currentColorInherited, { jsdom });
+
+// jsdom 30: through the border shorthands too, at any depth.
+parity('computed values: inherited currentcolor through border shorthands (jsdom 30)', (w) => {
+  const d = w.document;
+  d.head.innerHTML = '<style>.s { border: inherit } .c { border-color: inherit }</style>';
+  d.body.innerHTML =
+    '<div style="color: blue; border: 1px solid"><p class="s" style="color: red"><span class="c" style="color: lime">' +
+    '<b style="color: yellow; border-top: inherit"></b></span></p></div>';
+  return [...d.querySelectorAll('*')].map((el) => read(w, el, ['border-top-color', 'border-left-color']));
+});
+
 // --- lengths, font sizes and weights (jsdom 30) -------------------------------------
 
 // jsdom 30 computes lengths to px: em from the element's font size (font

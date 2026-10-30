@@ -612,6 +612,179 @@ test('style: separators and malformed url() in the background shorthand with css
   }
 });
 
+// A url() component rejected only for an escaped ', (, ), space, tab, line
+// feed, carriage return or form feed (#163, black box): with cssstyle 4.4
+// to 4.6 (jsdom 23.2, 24.1 and 26.1 alike), the first time a process meets
+// it, it sets no image; the other longhands are removed, the background
+// image kept (url("a\'b.png") after background: red declares nothing; red
+// url("a\'b.png") is background: red). Later it is invalid, unless it has
+// an escaped carriage return or form feed. Before cssstyle 4.4 invalid.
+// Each test has its own url()s: jsdom's cache and warpdom's are per process.
+const escapedUrls = (p) => [
+  `url("${p}\\'b.png")`,
+  `url('${p}\\'b.png')`,
+  `url(${p}\\'b.png)`,
+  `url(\\'${p}.png)`,
+  `url("${p}\\(b.png")`,
+  `url(${p}\\(b.png)`,
+  `url("${p}\\)b.png")`,
+  `url(${p}\\)b.png)`,
+  `url('${p}\\)b.png')`,
+  `url("${p}\\ b.png")`,
+  `url(${p}\\ b.png)`,
+  `url("${p}\\\tb.png")`,
+  `url(${p}\\\tb.png)`,
+  `url("${p}\\\nb.png")`,
+  `url("${p}\\\rb.png")`,
+  `url("${p}\\\fb.png")`,
+  `url( "${p}\\'c.png")`,
+];
+const ESCAPED_PRELUDE = 'color: blue; background: red; background-repeat: no-repeat';
+// all: with the other components, setProperty, cssText and background-image
+// (jsdom 26); older versions have quirks of their own there (#163: not modeled).
+function escapedUrlScenario(w, p, all = true) {
+  const style = (text = ESCAPED_PRELUDE) => {
+    const s = w.document.createElement('div').style;
+    s.cssText = text;
+    return s;
+  };
+  const out = [];
+  const write = (s, value, how = 'set') => {
+    if (how === 'set') s.background = value;
+    else s.setProperty('background', value, how);
+    return s.cssText;
+  };
+  // Each one twice: first, then cached (a carriage return or form feed: never cached).
+  for (const value of escapedUrls(p))
+    if (all || !/\\[\r\f]/.test(value))
+      out.push(`${JSON.stringify(value)} -> ${write(style(), value)} | ${write(style(), value)}`);
+  if (!all) return out;
+  // With other components, or through setProperty and cssText (quoted).
+  const u = (id, escaped = "'") => `url("${p}-${id}\\${escaped}b.png")`;
+  out.push(write(style(), `red ${u(1)}`), write(style(), `red ${u(1)}`));
+  out.push(write(style(), `${u(2, ' ')} no-repeat`), write(style('color: blue'), `${u(3, '(')} fixed 10px Red`));
+  out.push(write(style(), `green ${u(4)}`, 'important'), write(style(), u(4), ''));
+  // (An invalid declaration in cssText removes an earlier one of its property: not modeled.)
+  for (const value of [u(5), `red ${u(6, ')')}`])
+    out.push(
+      style(`color: blue; background: green; background: ${value}; width: 1px`).cssText,
+      style(`color: blue; background: ${value}; width: 1px`).cssText,
+    );
+  // Combined with a component that is invalid or given twice: invalid, and the url() is met.
+  out.push(write(style(), `${u(7)} none`), write(style(), `${u(7)} url(b.png)`), write(style(), u(7)));
+  out.push(write(style(), `${u(8)} bogus`), write(style(), u(8)));
+  // The background image the declaration had stays.
+  out.push(
+    write(style('background-color: red; background-image: url(x.png) !important; color: blue'), `${u(9)} no-repeat`),
+    write(style('background: url(x.png) fixed'), u(10)),
+    write(style('background-image: none'), `red ${u(11)}`),
+  );
+  // background-image meets it too (its own value is not modeled).
+  style().backgroundImage = u(12);
+  style().setProperty('background-image', u(13, '('));
+  out.push(write(style(), u(12)), write(style(), u(13, '(')));
+  // Unquoted, an escaped quote or parenthesis is in the url() (#191 review).
+  out.push(write(style(), `url(${p}-14\\(b.png) no-repeat`), write(style(), `url(${p}-14\\(b.png) no-repeat`));
+  out.push(write(style(), `url(${p}-15\\'b.png) fixed`), write(style(), `no-repeat url(${p}-16\\'b.png) fixed`));
+  // A style attribute is parsed when set, before the style is read (its
+  // url()s are met then); set to the value it has, it is not parsed again.
+  const element = (text) => {
+    const e = w.document.createElement('div');
+    e.setAttribute('style', text);
+    return e;
+  };
+  const lazy = element(`color: blue; background: ${u(17)}`);
+  out.push(write(style(), u(17)), lazy.style.cssText);
+  const again = element(`color: blue; background: red ${u(18, '(')} no-repeat`);
+  out.push(again.style.cssText);
+  again.setAttribute('style', again.getAttribute('style'));
+  out.push(again.style.cssText);
+  again.setAttribute('style', `${again.getAttribute('style')} `);
+  out.push(again.style.cssText);
+  const read = w.document.createElement('div');
+  void read.style;
+  read.setAttribute('style', `background: ${u(19, ' ')} fixed`);
+  out.push(read.style.cssText, element(`background: ${u(19, ' ')} fixed`).style.cssText);
+  const twice = element(`background: ${u(20)} fixed`);
+  twice.setAttribute('style', `background: ${u(20)} fixed`);
+  out.push(twice.style.cssText);
+  // Parsed markup is parsed as set; an element without an inline style
+  // (not HTML or SVG) does not meet its url() (#191 review).
+  const host = w.document.createElement('div');
+  host.innerHTML = `<div style='color: blue; background: ${u(22, '(')} no-repeat'></div>`;
+  out.push(write(style(), `${u(22, '(')} no-repeat`), host.firstChild.style.cssText);
+  w.document.createElementNS('urn:x', 'x').setAttribute('style', `background: ${u(23, '(')}`);
+  out.push(write(style(), u(23, '(')));
+  // The same through the XML parser (an SVG document from DOMParser).
+  const svg = new w.DOMParser().parseFromString(
+    `<svg xmlns="http://www.w3.org/2000/svg"><rect style='color: blue; background: ${u(24, '(')} fixed'/></svg>`,
+    'image/svg+xml',
+  );
+  out.push(write(style(), `${u(24, '(')} fixed`), svg.documentElement.firstChild.style.cssText);
+  // An earlier !important background-color is removed (#191 review).
+  out.push(element(`background-color: red !important; background: ${u(21)}`).style.cssText);
+  // A hex escape and an unescaped quote or space are invalid; escaped
+  // double quotes are kept (#134).
+  for (const value of [`url("${p}\\62 .png")`, `url("${p}'b.png")`, `url("${p} b.png")`, `url("${p}\\"b.png")`])
+    out.push(write(style(), value));
+  return out;
+}
+for (const jsdom of [26, 25, 22, 20])
+  parity(
+    `style: a url() with an escaped quote, parenthesis or space in the background shorthand (jsdom ${jsdom}, #163)`,
+    (w) => escapedUrlScenario(w, `e${jsdom}`, jsdom === 26),
+    { jsdom },
+  );
+
+test('style: a url() with an escaped quote in the background shorthand with cssstyle 4.4 to 4.6 (#163)', () => {
+  // Measured with jsdom 23.2.0 and 24.1.3 (cssstyle 4.6.0), and 26.1.0 with 4.4.0 and 4.5.0.
+  for (const options of [
+    { jsdom: '23.2.0', cssstyle: '4.6.0' },
+    { jsdom: '24.1.3', cssstyle: '4.6.0' },
+    { jsdom: '26.1.0', cssstyle: '4.4.0' },
+    { jsdom: '26.1.0', cssstyle: '4.5.0' },
+  ]) {
+    const w = createWindow(options);
+    const p = `${options.jsdom}-${options.cssstyle}`;
+    const write = (value, text = ESCAPED_PRELUDE) => {
+      const s = w.document.createElement('div').style;
+      s.cssText = text;
+      s.background = value;
+      return s.cssText;
+    };
+    const unchanged = `${ESCAPED_PRELUDE};`;
+    for (const value of escapedUrls(p)) {
+      assert.equal(write(value), 'color: blue;', `${p} ${value}`);
+      assert.equal(write(value), /\\[\r\f]/.test(value) ? 'color: blue;' : unchanged, `${p} ${value} again`);
+    }
+    const [quote, , , , paren, , , , , space] = escapedUrls(`${p}-2`);
+    assert.equal(write(`red ${quote}`), 'color: blue; background: red;');
+    assert.equal(write(`red ${quote}`), unchanged);
+    assert.equal(write(`${space} no-repeat`), 'color: blue; background: no-repeat;');
+    assert.equal(
+      write(`${paren} 10px`, 'background-image: url(x.png); color: blue'),
+      'color: blue; background: url("x.png") 10px;',
+    );
+    assert.equal(write(`url("${p}\\62 .png")`), unchanged);
+    // Unquoted (#191 review).
+    assert.equal(write(`url(${p}-3\\(b.png) no-repeat`), 'color: blue; background: no-repeat;');
+    assert.equal(write(`url(${p}-3\\'b.png) fixed`), 'color: blue; background: fixed;');
+    // A style attribute is parsed when set, not again when set to the value it has.
+    const [fresh] = escapedUrls(`${p}-4`);
+    const e = w.document.createElement('div');
+    e.setAttribute('style', `color: blue; background: red ${fresh}`);
+    assert.equal(write(fresh), unchanged);
+    e.setAttribute('style', e.getAttribute('style'));
+    assert.equal(e.style.cssText, 'color: blue; background: red;');
+  }
+  // Before cssstyle 4.4: invalid.
+  const w = createWindow({ jsdom: '26.1.0', cssstyle: '4.3.1' });
+  const s = w.document.createElement('div').style;
+  s.cssText = ESCAPED_PRELUDE;
+  s.background = `url("old\\'b.png")`;
+  assert.equal(s.cssText, `${ESCAPED_PRELUDE};`);
+});
+
 // Whitespace after url( that the unquoted body also accepts (CR, form feed,
 // vertical tab, no-break space) is read in linear time (#150 review: 32768
 // carriage returns took about 0.8 s per assignment).
@@ -881,6 +1054,102 @@ for (const jsdom of [30, 29, 28, 27])
       const prop = d.createElement('div');
       prop.style.setProperty('font-family', '"var(--face)"', 'important');
       if (jsdom >= 28) out.push(prop.style.cssText);
+      return out;
+    },
+    { jsdom },
+  );
+
+// border: none and border-style: none (#179, black box, 27.4.0 to 30.1.3):
+// from jsdom 27 kept everywhere, a none style left out of border and its
+// sides (border: none is border: medium, border-top: 0 none is
+// border-top: 0px); CSS-wide keywords on border and its sides kept, but in
+// jsdom 27 and 28 they leave a style attribute's or a cssText's block
+// empty (setProperty and style sheets keep them).
+const BORDER_NONE = [
+  'border: none',
+  'border: NONE',
+  'border: 1px none',
+  'border: none red',
+  'border-top: none',
+  'border-right: 0 none',
+  'border-bottom: 1px none',
+  'border-left: none 0',
+  'border-top: 1px hidden',
+  'border-style: none',
+  'border-style: none solid',
+  'border-top-style: none',
+  'border: inherit',
+  'border-top: unset',
+  'color: red; border: initial',
+  'color: red; border-left: inherit',
+  'color: red; border-top: var(--b)',
+];
+for (const jsdom of [30, 29, 28, 27])
+  parity(
+    `style: border: none and border-style: none (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const sheet = d.head.appendChild(d.createElement('style'));
+      sheet.textContent = BORDER_NONE.map((text, i) => `.r${i} { ${text} }`).join('\n');
+      const rules = [...sheet.sheet.cssRules];
+      const out = rules.map((rule) => rule.style.cssText);
+      BORDER_NONE.forEach((text, i) => {
+        const rule = rules[i];
+        rule.style.cssText = text;
+        const el = d.createElement('div');
+        el.setAttribute('style', text);
+        const set = d.createElement('div');
+        set.style.cssText = text;
+        const prop = d.createElement('div');
+        const ruleProp = rules[(i + 1) % rules.length].style;
+        ruleProp.cssText = '';
+        for (const part of text.split('; ')) {
+          const [name, value] = part.split(': ');
+          prop.style.setProperty(name, value);
+          ruleProp.setProperty(name, value);
+        }
+        out.push([text, rule.style.cssText, el.style.cssText, set.style.cssText, prop.style.cssText].join(' | '));
+        out.push(`${ruleProp.cssText} | ${prop.getAttribute('style')}`);
+      });
+      return out;
+    },
+    { jsdom },
+  );
+// The computed longhands they give (the #136 diff harness's case among
+// them: in jsdom 28.1 the user agent sheet's iframe { border: 2px inset }
+// meets the page's by specificity).
+const BORDER_NONE_COMPUTED = [
+  ':is(iframe, .z) { border: none } * { border: 0 }',
+  '* { border: 0 } :is(iframe, .z) { border: none }',
+  'iframe, hr { border: none }',
+  'iframe, hr { border-style: none }',
+  'iframe, hr { border-top: none }',
+  'hr, div { border: 1px none }',
+  'div { border: solid }',
+];
+const BORDER_LONGHANDS = ['border-top-style', 'border-top-width', 'border-left-style', 'border-bottom-width'];
+// And on a div, border-width and border-style: before jsdom 29 the parts
+// border declares or their initial values.
+const BORDER_BOX = ['border-width', 'border-style'];
+for (const jsdom of [30, 29, 28, 27])
+  parity(
+    `getComputedStyle: border: none and border-style: none (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const out = [];
+      const read = (el, names = BORDER_LONGHANDS) =>
+        names.map((name) => w.getComputedStyle(el).getPropertyValue(name)).join(' ');
+      const all = (el) => `${read(el)} ${el.localName === 'div' ? read(el, BORDER_BOX) : ''}`;
+      for (const css of BORDER_NONE_COMPUTED) {
+        d.head.innerHTML = `<style>${css}</style>`;
+        d.body.innerHTML = '<iframe class="z"></iframe><hr><div></div>';
+        out.push(`${css} | ${[...d.body.children].map(all).join(' | ')}`);
+      }
+      d.head.innerHTML = '';
+      for (const text of ['border: none', 'border: 0', 'border: solid', 'border-style: none', 'border: 1px none']) {
+        d.body.innerHTML = `<hr style="${text}"><div style="${text}"></div>`;
+        out.push(`${text} | ${[...d.body.children].map(all).join(' | ')}`);
+      }
       return out;
     },
     { jsdom },

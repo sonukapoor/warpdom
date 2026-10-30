@@ -618,7 +618,7 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   - **WebSocket:** option A, `window.WebSocket` is the host's WebSocket
     (Node's), aliased, not an own interface (branch
     fix/websocket-window, 2026-10-19 below). Its events and errors are
-    Node's, not the window's (README, "Differences from jsdom"). An own
+    Node's, not the window's (docs/differences.md). An own
     spec implementation wrapping the host's (option B, 1-2 days) only if
     `warpdom compare` or a user report shows a test that needs it: the
     tracer saw WebSocket in 1 test file of 1 project, which already
@@ -3905,7 +3905,7 @@ CSSStyleProperties' in every profile).
   computed classes, CSSStyleRule.style without accessors before 27.1.0,
   computed azimuth with cssstyle 4.2/4.3 (NaNdeg vs ''), and cssText
   `azimuth: inherit !important` with cssstyle 5.3 (jsdom drops the
-  priority). README "Differences from jsdom" lists them.
+  priority). docs/differences.md lists them.
 
 
 ## 2026-10-21: computed values per jsdom version (branch fix/computed-values, #84, #76)

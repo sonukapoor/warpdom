@@ -22,8 +22,8 @@ import {
   DOCUMENT_NODE,
   HTML_NS,
   rootOf,
-  nextInTree,
   cssomChanges,
+  ruleListRev,
   connected,
   trackDetachedStyles,
 } from './internal.js';
@@ -34,7 +34,7 @@ import { compileRuleSelector } from './selectors.js';
 import { directionality } from './directionality.js';
 import { absoluteLength, mayResolve, sixDigits, FONT_SIZE_KEYWORDS, relativeWeight } from './lengths.js';
 import { uaDeclarations, uaValue, uaRuleOver, uaInOrder } from './ua-sheet.js';
-import { documentStyleSheets, styleElementSheet, ruleArray, ruleListSnapshot, ruleListChanged } from './cssom.js';
+import { documentStyleSheets, ruleArray, ruleListSnapshot, ruleListChanged } from './cssom.js';
 import {
   parseDeclarations,
   writtenDeclarations,
@@ -197,46 +197,35 @@ function buildIndex(sheets, mode, compat, lists) {
   return index;
 }
 
-const isStyleElement = (n) => n[S].type === ELEMENT_NODE && n[S].tag === 'style' && n[S].ns === HTML_NS;
-
-function shadowSheets(root) {
-  const sheets = [];
-  for (let n = root[S].first; n; n = nextInTree(n, root)) {
-    if (isStyleElement(n)) {
-      const sheet = styleElementSheet(n);
-      if (sheet) sheets.push(sheet);
-    }
-  }
-  return sheets;
-}
-
 const sameSheets = (a, b) => a.length === b.length && a.every((sheet, i) => sheet === b[i]);
 
 const EMPTY = new Map();
 
-// The rule index for an element's root: its shadow root's style sheets,
-// else its document's (disconnected elements too, as in jsdom). root:
-// the element's root (rootOf), from the caller, which needs it too: kept
-// local to each call, as a getComputedStyle() run from a test's cssRules
-// getter (ruleListChanged) calls this again, and a module-level root would
-// keep its document (and window) alive after the window is gone (#165).
-function ruleIndex(element, root) {
+// The rule index of an element's document: its style sheets
+// (document.styleSheets) apply to every element of it, in shadow trees and
+// disconnected ones too, as in jsdom (black box, 20.0.3 to 30.1.3: a
+// shadow tree's div gets the document's div { color: red }, its own <style>
+// applying from 30.1.2 only, as one of the document's: cssom.js
+// documentStyleSheets). The element is kept local to each call, as a
+// getComputedStyle() run from a test's cssRules getter (ruleListChanged)
+// calls this again, and a module-level one would keep its document (and
+// window) alive after the window is gone (#165).
+function ruleIndex(element) {
   const es = element[S];
   const ds = es.doc[S];
-  const holder = root[S].shadow === true ? root[S] : ds;
-  const cached = holder.cascade;
+  const cached = ds.cascade;
   if (cached?.lists.some(ruleListChanged)) cssomChanges.rev++;
   const treeRev = ds.treeRev ?? 0;
   const styleRev = ds.styleRev ?? 0;
   if (cached && cached.treeRev === treeRev && cached.styleRev === styleRev && cached.cssomRev === cssomChanges.rev)
     return cached.index;
-  const sheets = holder === ds ? documentStyleSheets(es.doc)[S].items() : shadowSheets(root);
+  const sheets = documentStyleSheets(es.doc)[S].items();
   const reuse = cached && cached.cssomRev === cssomChanges.rev && sameSheets(cached.sheets, sheets);
   const lists = reuse ? cached.lists : [];
   let index = EMPTY;
   if (reuse) index = cached.index;
   else if (sheets.length) index = buildIndex(sheets, validationModeOf(ds.window), ds.window[S].compat, lists);
-  holder.cascade = { treeRev, styleRev, cssomRev: cssomChanges.rev, sheets: sheets.slice(), index, lists };
+  ds.cascade = { treeRev, styleRev, cssomRev: cssomChanges.rev, sheets: sheets.slice(), index, lists };
   return index;
 }
 
@@ -675,18 +664,21 @@ class OrderedBlock {
 }
 
 // The cascaded value: important inline, important rules, inline, rules.
-// Cached per element until its root's rules, the document's tree or
-// attributes, or its style attribute change.
+// Cached per element until the document's rules, tree or attributes, or
+// its style attribute change.
 function cascaded(element, name) {
   const es = element[S];
   const ds = es.doc[S];
   let cache = es.cascaded;
-  // A disconnected element's values stay as they were (see below).
+  // A disconnected element's values stay as they were, and from jsdom 21
+  // to 30.1.1 any element's (see below).
   if (
     cache !== undefined &&
     cache.detached &&
+    // Moved to another document: its counters say nothing about these values.
+    cache.doc === ds &&
     cache.detachedRev === ds.detachedRev &&
-    cache.cssomRev === cssomChanges.rev
+    cache.cssomRev === keptCssomRev(ds, cache.kept)
   ) {
     if (cache.values.has(name)) return cache.values.get(name);
     let value = cascade(element, cache.index, cache.inline, name);
@@ -694,24 +686,29 @@ function cascaded(element, name) {
     cache.values.set(name, value);
     return value;
   }
-  const root = rootOf(element);
-  const index = ruleIndex(element, root);
+  const index = ruleIndex(element);
   const rev = ds.treeRev ?? 0;
   const inlineMap = inlineDeclarations(element);
   if (!cache || cache.index !== index || cache.rev !== rev || cache.inline !== inlineMap) {
-    // Connected: the root ruleIndex found is the document, or a shadow
-    // root whose host is connected.
-    const detached =
-      keepsDetached(ds) && root[S].type !== DOCUMENT_NODE && !(root[S].shadow === true && connected(root[S].host));
-    if (detached) trackDetachedStyles(ds);
+    const kept = keptStyles(ds);
+    let detached = kept;
+    if (!kept && keepsDetached(ds)) {
+      // Connected: the element's root is the document, or a shadow root
+      // whose host is connected.
+      const root = rootOf(element);
+      detached = root[S].type !== DOCUMENT_NODE && !(root[S].shadow === true && connected(root[S].host));
+    }
+    if (detached) trackDetachedStyles(ds, kept);
     cache = es.cascaded = {
       index,
       rev,
       inline: inlineMap,
       values: new Map(),
       detached,
+      kept,
+      doc: ds,
       detachedRev: ds.detachedRev,
-      cssomRev: cssomChanges.rev,
+      cssomRev: keptCssomRev(ds, kept),
       fontSize: undefined,
       blocks: undefined,
     };
@@ -735,6 +732,30 @@ function keepsDetached(ds) {
   let keeps = ds.keepsDetached;
   if (keeps === undefined) keeps = ds.keepsDetached = ds.window[S].compat.jsdom >= 21;
   return keeps;
+}
+
+// From jsdom 21 to 30.1.1 (compat.keptComputedStyle, black box: 21.1.2 to
+// 29.1.1) every element's computed style is kept so, from its first read
+// until the document's own tree changes (internal.js keptChange: not its
+// shadow trees, nor disconnected ones): with div { color: blue }, a div's
+// color read, then the rule's color set to green, the div stays blue until
+// an attribute is set or a node inserted; an element not read before gets
+// green; a shadow tree's element stays blue after its own class changes.
+// Edits of a rule's declarations or selector do not refresh it, and
+// insertRule() and deleteRule() only from jsdom 29, on the element's
+// window's sheets (internal.js ruleListRev).
+function keptStyles(ds) {
+  let kept = ds.keptStyles;
+  if (kept === undefined) kept = ds.keptStyles = ds.window[S].compat.keptComputedStyle === true;
+  return kept;
+}
+// The CSSOM revision a kept cache is valid for.
+function keptCssomRev(ds, kept) {
+  if (!kept) return cssomChanges.rev;
+  if (!ds.window[S].compat.ruleListRefreshes) return 0;
+  let lists = ds.ruleLists;
+  if (lists === undefined) lists = ds.ruleLists = ruleListRev(ds.window[S].protos);
+  return lists.rev;
 }
 
 // The declared value that wins (PENDING for a pending longhand: undeclared
@@ -862,13 +883,12 @@ const contains = (property, other) =>
 
 // --- computed values ------------------------------------------------------------------
 
-// The parent in the flat tree, for inheritance: a shadow root's children
-// inherit from its host.
+// The parent element, for inheritance: as in jsdom (black box, 20.0.3 to
+// 30.1.3) a shadow root's children inherit nothing from its host (a host
+// with color: red or visibility: hidden leaves them black and visible).
 function inheritParent(element) {
   const p = element[S].parent;
-  if (!p) return null;
-  if (p[S].type === ELEMENT_NODE) return p;
-  return p[S].shadow === true ? p[S].host : null;
+  return p !== null && p[S].type === ELEMENT_NODE ? p : null;
 }
 
 const FONT_SIZES = { medium: '16px' };
@@ -1060,7 +1080,42 @@ function initialValue(element, name, data) {
 
 function inheritedValue(element, name, data) {
   const parent = inheritParent(element);
-  return parent ? computedValue(parent, name) : initialValue(element, name, data);
+  if (parent === null) return initialValue(element, name, data);
+  if (data[2] === 1 && name !== 'color' && !element[S].doc[S].window[S].compat.legacyComputedStyle) {
+    const source = colorSource(parent, name, data);
+    return source === null ? currentColor(element) : computedValue(source, name);
+  }
+  return computedValue(parent, name);
+}
+
+// jsdom 29.0.2 and later (black box: 29.1.1, 30.1.2, 30.1.3): a computed
+// currentcolor is inherited as the keyword, so it resolves to the
+// inheriting element's own color (color: red; border: inherit under a
+// parent whose border colors are their initial currentcolor gives red, as
+// does fill inherited from fill: currentColor). colorSource: the element
+// whose computed value element has (through inherit, unset or no
+// declaration of an inherited property), or null when that value is
+// currentcolor (declared, or the initial value; outline-color's initial
+// value is transparent here: initialValue). Not modeled: jsdom 29.1.1
+// gives a border or border-color shorthand's currentcolor or CSS-wide
+// keyword a fixed color in some cases, which its children inherit.
+const initialCurrentColor = (name, data) => data[0] === 'currentcolor' && name !== 'outline-color';
+function colorSource(element, name, data) {
+  for (let e = element; ;) {
+    const value = cascaded(e, name);
+    const keyword = value?.toLowerCase();
+    if (keyword === 'currentcolor') return null;
+    if (keyword === 'inherit' || ((keyword === undefined || keyword === 'unset') && data[1])) {
+      const parent = inheritParent(e);
+      if (parent === null) return initialCurrentColor(name, data) ? null : e;
+      e = parent;
+    } else if (
+      (keyword === undefined || keyword === 'initial' || keyword === 'unset') &&
+      initialCurrentColor(name, data)
+    )
+      return null;
+    else return e;
+  }
 }
 
 const CUSTOM = [null, 1, 0, 0];
@@ -1183,6 +1238,14 @@ function legacyBorderValue(element, name) {
   if (value.includes('var(')) return name === 'border' ? value : '';
   if (own && part >= 0) return value;
   const parts = borderParts(value);
+  // jsdom 27 and 28: border-width and border-style from border are its
+  // width and style, or their initial values (border: solid gives
+  // border-width medium, border: 0 border-style none; black box, 27.4.0
+  // and 28.1.0, #179).
+  if (part === 0 || part === 1) {
+    if (parts[part] === '' && element[S].doc[S].window[S].compat.jsdom >= 27) return part === 0 ? 'medium' : 'none';
+    return parts[part];
+  }
   return part >= 0 ? parts[part] : parts.filter((p) => p !== '').join(' ');
 }
 

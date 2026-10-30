@@ -164,6 +164,32 @@ was 3-8% slower than the drop-in on 5 of 11 tuning suites).
 - **Deadlines.** A learning run without isolation is stopped at 1.25 x
   t_iso + 10 s, a split run at 1.5 x t_iso + 30 s (its state may come from
   another machine). The process group is killed, workers included.
+- **The global between files.** Outside Vitest's VM pools the window is
+  the worker's global, so `window.x = 1` in a test stayed for the next
+  file of the worker (#175: the CLI saw the next file fail, reran it
+  isolated and isolated it from then on). The reset now deletes the
+  global's properties added after the previous file's tests started (a
+  `beforeAll` of `warpdom/vitest/reset`) and puts back the window members
+  a test redefined or deleted (`Object.defineProperty(window,
+  'innerWidth', ...)`), except one that is again as it was before the
+  file's setup files ran: Vitest's cleanup or the file's tests undid a
+  `vi.stubGlobal` or accessor `vi.spyOn` of its setup, and putting the
+  stub back made the next setup's stub keep it as the original value
+  (the setup files run again and redo their changes). What the file's
+  setup files and imports set stays:
+  without isolation a module loads once per worker, so a global it sets
+  (a polyfill, a test helper's `global.ResizeObserver = ...`) would be
+  gone for every later file. A test file's top-level code runs in that
+  phase too, so what it adds stays; a property made non-configurable
+  stays, as in `resetWindow()`. Node's and Vitest's own globals that a
+  test reassigns (`global.fetch = vi.fn()`) are not restored, nor is a
+  global a module loaded once set (a polyfill's `IntersectionObserver`)
+  when a test replaces it; use `vi.stubGlobal`. A file whose tests all
+  skip runs no `beforeAll`, so the next reset deletes nothing. The fast
+  project runs its setup files in order (`sequence.setupFiles: 'list'`,
+  set on the root config too, where Vitest 2-4 read it; their default,
+  `'parallel'`, could run the reset after a setup file and undo what it
+  did). About 0.1 ms per file.
 - **Same files and tests as the project's run.** Vitest passes only a few
   command-line options to the projects of `test.projects` (isolate, pool,
   retry, testTimeout, ...); the split's projects stood for the root

@@ -811,6 +811,57 @@ test('compare wrappers (#172): warpdom by package, environmentMatchGlobs, and th
   }
 });
 
+// A project in a directory named warpdom with its own environment there:
+// only warpdom's entry points count outside node_modules (#185).
+test('compare wrappers (#185): a custom environment in a directory named warpdom is not warpdom', async () => {
+  const custom = ['/work/warpdom/custom-node.js', 'C:\\work\\warpdom\\envs\\node.js', '/work/warpdom/src/node-env.js'];
+  for (const e of custom) assert.equal(isWarpdomEnvironment(e), false, e);
+  for (const e of [
+    '/home/me/warpdom/src/vitest.js',
+    '/home/me/warpdom/src/jest',
+    'C:\\me\\warpdom\\src\\jest.js',
+    '/home/me/warpdom/packages/jest-environment-warpdom',
+    '/home/me/warpdom/packages/vitest-environment-warpdom/index.js',
+  ])
+    assert.equal(isWarpdomEnvironment(e), true, e);
+  assert.equal(environmentLabel('/work/warpdom/custom-node.js'), 'custom-node.js');
+  assert.equal(environmentLabel('/home/me/warpdom/src/jest.js'), 'warpdom');
+
+  const dir = tmp('custom-in-warpdom');
+  try {
+    const projects = [...custom, '/home/me/warpdom/src/vitest.js'];
+    write(
+      path.join(dir, 'v.config.mjs'),
+      `export default ${JSON.stringify({ test: { projects: projects.map((environment) => ({ test: { environment } })) } })};`,
+    );
+    const vitest = await import(
+      pathToFileURL(
+        write(
+          path.join(dir, 'v.warpdom-compare.mjs'),
+          vitestWrapper(path.join(dir, 'v.config.mjs'), { environment: 'jsdom', fromWarpdom: true }),
+        ),
+      ).href
+    );
+    assert.deepEqual(
+      (await vitest.default({ mode: 'test' })).test.projects.map((p) => p.test.environment),
+      [...custom, 'jsdom'],
+    );
+    const file = write(
+      path.join(dir, 'j.config.js'),
+      `module.exports = { projects: ${JSON.stringify(projects.map((testEnvironment) => ({ testEnvironment })))} };`,
+    );
+    const jest = await createRequire(path.join(dir, 'x.js'))(
+      write(path.join(dir, 'j.warpdom-compare.cjs'), jestWrapper(file, { environment: 'jsdom', fromWarpdom: true })),
+    )();
+    assert.deepEqual(
+      jest.projects.map((p) => p.testEnvironment),
+      [...custom, 'jsdom'],
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // --- detection ---------------------------------------------------------------
 
 test('compare detection: config lookup order, binaries, the runner', () => {
@@ -2151,6 +2202,79 @@ test('compare end to end (#172): --baseline on a project on warpdom in another c
     assert.match(out, /, for a project on warpdom$/m);
     const result = JSON.parse(fs.readFileSync(path.join(dir, '.warpdom-compare', 'results.json'), 'utf8'));
     assert.equal(result.fromWarpdom, true);
+    assert.deepEqual(leftovers(dir), []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Vitest 5 nested projects: a project config listing another project
+// config by path. compare does not reach the inner one, so it stays on
+// warpdom in the baseline run: not compared (#185).
+test('compare end to end (#185): --baseline with a nested project still on warpdom in the baseline run', () => {
+  const dir = migratedChildProject();
+  try {
+    for (const f of ['differ.spec.js', 'same.spec.js'])
+      fs.copyFileSync(path.join(dir, 'a', f), write(path.join(dir, 'n', 'b', f), ''));
+    write(path.join(dir, 'n', 'vitest.config.js'), "export default { test: { projects: ['./b/vitest.config.js'] } };");
+    write(
+      path.join(dir, 'n', 'b', 'vitest.config.js'),
+      "export default { test: { name: 'nested', include: ['*.spec.js'], environment: 'warpdom' } };",
+    );
+    fs.writeFileSync(
+      path.join(dir, 'a', 'vitest.config.js'),
+      "export default { test: { name: 'a', include: ['*.spec.js'], environment: 'warpdom' } };",
+    );
+    fs.writeFileSync(
+      path.join(dir, 'vitest.config.js'),
+      "export default { test: { projects: ['./a/vitest.config.js', './n/vitest.config.js'] } };",
+    );
+    const res = compareCli(dir, ['--correctness', '--baseline', 'jsdom']);
+    const out = res.stdout.replace(/\x1b\[[0-9;]*m/g, '');
+    assert.equal(res.status, 1, out + res.stderr);
+    assert.match(out, / Not compared: 1 project on warpdom \(5 tests\) that compare could not switch$/m);
+    const result = JSON.parse(fs.readFileSync(path.join(dir, '.warpdom-compare', 'results.json'), 'utf8'));
+    const nested = result.projects.find((p) => /nested/.test(p.name));
+    assert.deepEqual([nested.dom, nested.unswitched], [false, true]);
+    assert.equal(result.projects.find((p) => p.name === 'a').dom, true);
+    assert.deepEqual(result.correctness.differences.map((d) => [d.name, d.class]).sort(), [
+      ['passes on jsdom only', 'regression'],
+      ['passes on warpdom only', 'fixed'],
+    ]);
+    assert.deepEqual(leftovers(dir), []);
+
+    // Only the nested project: nothing is compared.
+    fs.writeFileSync(
+      path.join(dir, 'vitest.config.js'),
+      "export default { test: { projects: ['./n/vitest.config.js'] } };",
+    );
+    const only = compareCli(dir, ['--correctness', '--baseline', 'jsdom']);
+    const text = (only.stdout + only.stderr).replace(/\x1b\[[0-9;]*m/g, '');
+    assert.equal(only.status, 2, text);
+    assert.match(
+      text,
+      /nothing to compare: no project runs on jsdom or happy-dom \(found: warpdom\); 1 project on warpdom still ran on warpdom in the jsdom run: compare could not switch it/,
+    );
+    assert.deepEqual(leftovers(dir), []);
+
+    // A file choosing an environment whose name only contains jsdom: the
+    // wrapper does not switch it, so it does not make the run comparable.
+    write(
+      path.join(dir, 'node_modules', 'vitest-environment-custom-jsdom', 'package.json'),
+      '{ "name": "vitest-environment-custom-jsdom", "main": "index.js" }',
+    );
+    write(
+      path.join(dir, 'node_modules', 'vitest-environment-custom-jsdom', 'index.js'),
+      "module.exports = { name: 'custom-jsdom', viteEnvironment: 'ssr', transformMode: 'ssr', setup: () => ({ teardown() {} }) };",
+    );
+    write(
+      path.join(dir, 'n', 'b', 'custom.spec.js'),
+      "// @vitest-environment custom-jsdom\nimport { test } from 'vitest';\ntest('custom', () => {});\n",
+    );
+    const custom = compareCli(dir, ['--correctness', '--baseline', 'jsdom']);
+    const customText = (custom.stdout + custom.stderr).replace(/\x1b\[[0-9;]*m/g, '');
+    assert.equal(custom.status, 2, customText);
+    assert.match(customText, /nothing to compare: no project runs on jsdom or happy-dom \(found: warpdom\)/);
     assert.deepEqual(leftovers(dir), []);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

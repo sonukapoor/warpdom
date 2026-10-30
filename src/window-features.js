@@ -1322,7 +1322,7 @@ const PLUGIN_INTERFACES = [
 // 30.1.3): an own data property, writable, not enumerable, configurable.
 // warpdom's is the platform's WebSocket (Node's from 22), not an own
 // interface: its events and errors are the platform's, not the window's
-// (README, "Differences from jsdom"). Without one on the platform the
+// (docs/differences.md). Without one on the platform the
 // window has none. Node defines it as a lazy property that loads its
 // WebSocket client on first access, also through
 // Object.getOwnPropertyDescriptor (~10 ms), so it is read on the window's
@@ -1658,6 +1658,22 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // document.styleSheets in the order the sheets were created, before
     // 30.1.2 (cssom.js documentStyleSheets).
     sheetsByCreation: before(version, [30, 1, 2]),
+    // A <style> in a shadow tree has a style sheet from 30.1.2 (black box,
+    // 20.0.3 to 30.1.3): before, its sheet is null and it applies to
+    // nothing; from 30.1.2 its sheet is in document.styleSheets and
+    // applies to every element, the document's and other shadow trees'
+    // too (cssom.js documentStyleSheets). In every version the document's
+    // sheets apply in shadow trees (cascade.js ruleIndex).
+    shadowSheets: !before(version, [30, 1, 2]),
+    // From 21 to 30.1.1 (black box: 21.1.2 to 29.1.1 measured; 20.0.3 and
+    // 30.1.2 do not) an element's computed style, once read, is kept until
+    // the document's own tree changes (a node inserted or removed, an
+    // attribute or text set; not in a shadow tree or a disconnected one):
+    // editing a rule's declarations or selector does not change it, and
+    // neither do insertRule() and deleteRule() before 29 (cascade.js
+    // cascaded).
+    keptComputedStyle: version[0] >= 21 && before(version, [30, 1, 2]),
+    ruleListRefreshes: version[0] >= 29,
     // Text selection (forms.js), black box per release: before 21.1.2 the
     // select event is dispatched synchronously and is cancelable (from
     // 21.1.2 in a task, not cancelable), and setRangeText() takes the new
@@ -1734,10 +1750,12 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // 4.5 are not measured.
     customDropsImportant: version[0] < 27 && (css === null || (css[0] === 4 && !before(css, [4, 6, 0]))),
     // jsdom 27.0.0 to 28.1.0 (cssstyle 5 and 6): in a style attribute or
-    // cssText, border declared with var() (border: var(--b)) leaves the
-    // block empty, and one of its sides (border-top: 1px solid var(--c))
-    // is dropped; setProperty keeps them, and so do style sheets (css.js
-    // parseInto).
+    // cssText (an element's or a rule's), border declared with var()
+    // (border: var(--b)) or border or a side with a CSS-wide keyword
+    // (border-top: inherit, #179) leaves the block empty, and a side with
+    // var() (border-top: 1px solid var(--c)) is dropped; setProperty keeps
+    // them, and so do style sheets (css.js parseInto; black box, 27.4.0 and
+    // 28.1.0).
     borderVarDrops: version[0] === 27 || version[0] === 28,
     // cssstyle's font shorthand before 4.4 (shorthands.js legacyFont).
     legacyFont: css === null || !before(css, [4, 4, 0]) ? null : before(css, [4, 2, 0]) ? 'cssstyle4.1' : 'cssstyle4.2',
