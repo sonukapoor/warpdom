@@ -341,6 +341,40 @@ for (const jsdom of [27, 28, 29, 30])
     jsdom,
   });
 
+// A deep chain where every element declares color-scheme and inherits a
+// color declared far up (the declaration is looked up once per chain and
+// kept with the cascaded values): the values follow changes of the
+// ancestors' colors, their color-schemes and the style sheet.
+function deepSchemeChain(w) {
+  const d = w.document;
+  d.head.innerHTML = '<style>* { color-scheme: dark } body { color: red }</style>';
+  const els = [];
+  for (let p = d.body, i = 0; i < 40; i++) els.push((p = p.appendChild(d.createElement('div'))));
+  const [middle, leaf] = [els[20], els[39]];
+  const out = [];
+  const snap = () => out.push(read(w, leaf, ['color', 'border-top-color']), read(w, middle, ['color']));
+  leaf.style.colorScheme = 'inherit';
+  snap();
+  d.body.style.cssText = 'color: initial; color-scheme: light';
+  snap();
+  middle.style.color = 'blue';
+  snap();
+  middle.style.color = '';
+  snap();
+  els[38].style.colorScheme = 'light';
+  snap();
+  leaf.style.colorScheme = 'dark';
+  snap();
+  d.body.style.cssText = '';
+  d.head.firstChild.textContent = '* { color-scheme: dark } body { color: green }';
+  snap();
+  return out;
+}
+for (const jsdom of [27, 30])
+  parity(`computed values: a deep color-scheme chain under a declared color (jsdom ${jsdom}, #193)`, deepSchemeChain, {
+    jsdom,
+  });
+
 // The page's color-scheme on :root, and the boundaries between releases
 // (black box, every release from 27.0.0 to 30.1.3): body and its children
 // white from 27.0.0, a dark div under a light body white from 29.0.2.
