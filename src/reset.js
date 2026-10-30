@@ -229,6 +229,7 @@ export function resetWindow(window) {
   ds.ids = undefined;
   hooks.named.reset(ds);
   const [doctype, html, head, body] = ws.initialNodes.map(({ node }) => node);
+  if (hooks.frames !== null) hooks.frames.resetStart(window);
   insert(doc, doctype, null);
   insert(doc, html, null);
   insert(html, head, null);

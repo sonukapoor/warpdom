@@ -38,21 +38,31 @@ function forEachIframe(node, fn) {
 // new index (#184). An index a test made non-configurable stays (Reflect:
 // no TypeError, which would stop a removal or resetWindow halfway); its
 // getter reads the frames, so it never keeps a discarded frame window
-// reachable.
+// reachable. While resetWindow runs, ws.resetIndexes is the number of
+// indexes it may have touched so far (the frames' before it, and those of
+// iframes a connectedCallback inserted, also when removed again).
 function syncIndexes(window, previousLength, restoring = false) {
   const ws = window[S];
   const frames = ws.childFrames;
+  if (ws.resetIndexes !== undefined) {
+    ws.resetIndexes = Math.max(ws.resetIndexes, previousLength, frames.length);
+  }
   const getters = ws.indexGetters ?? (ws.indexGetters = []);
   for (let i = getters.length; i < frames.length; i++) getters.push(() => frames[i]);
   for (const target of ws.globalProxy ? [window, ws.globalProxy] : [window]) {
     for (let i = frames.length; i < previousLength; i++) {
       // After resetWindow's restore, the window's own index properties past
       // the frames are the snapshot's (a value a setup file assigned), also
-      // those an iframe inserted during the reset took (a connectedCallback
-      // run by the reinsertion of the kept body, #184).
+      // those an iframe inserted during the reset took or, removed again,
+      // deleted (a connectedCallback run by the reinsertion of the kept
+      // body, #184).
       const saved = restoring && target === window ? ws.snapshot.get(String(i)) : undefined;
-      if (saved === undefined) Reflect.deleteProperty(target, i);
-      else if (Object.getOwnPropertyDescriptor(target, i)?.get === getters[i]) Reflect.defineProperty(target, i, saved);
+      if (saved === undefined) {
+        Reflect.deleteProperty(target, i);
+      } else {
+        const current = Object.getOwnPropertyDescriptor(target, i);
+        if (!current || current.get === getters[i]) Reflect.defineProperty(target, i, saved);
+      }
     }
     for (let i = 0; i < frames.length; i++) {
       const current = Object.getOwnPropertyDescriptor(target, i);
@@ -139,16 +149,26 @@ hooks.frames = {
   // removal hooks: the frames of the iframes it took out of the document
   // are discarded, as a fresh window has none (#173). Its restore of the
   // window's own properties deleted the index properties; those of the
-  // frames left (an iframe in the kept body's shadow root) come back.
+  // frames left (an iframe in the kept body's shadow root) come back, and
+  // every other index touched during the reset is the snapshot's again.
+  // resetStart runs before the kept tree is inserted again.
+  resetStart(window) {
+    const ws = window[S];
+    ws.resetIndexes = ws.childFrames?.length ?? 0;
+  },
   reset(window) {
-    const frames = window[S].childFrames;
-    if (!frames?.length) return;
-    const length = frames.length;
-    for (const child of [...frames]) {
-      const iframe = child[S].frameElement;
-      if (!connected(iframe)) destroyFrame(iframe, false);
+    const ws = window[S];
+    const touched = ws.resetIndexes ?? 0;
+    ws.resetIndexes = undefined;
+    const frames = ws.childFrames;
+    if (!frames?.length && touched === 0) return;
+    if (frames) {
+      for (const child of [...frames]) {
+        const iframe = child[S].frameElement;
+        if (!connected(iframe)) destroyFrame(iframe, false);
+      }
     }
-    syncIndexes(window, length, true);
+    syncIndexes(window, touched, true);
   },
 };
 
