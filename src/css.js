@@ -580,9 +580,8 @@ const JSDOM26_PARSED = new Set([
 // 'jsdom25' is 'jsdom26' with unquoted url()s (cssstyle before 4.3.1);
 // 'jsdom22' (cssstyle 3: jsdom 21 to 23) is 'jsdom25' without calc() in
 // margins and paddings; 'jsdom20' (cssstyle 2) the same. 'jsdom27' (jsdom
-// 27 to 29) is 'spec' with jsdom 26's border and clip (borderValue,
-// clipValue). The properties each profile knows are its style surface
-// (styleSurface), not its mode.
+// 27 to 29) is 'spec' with jsdom 26's clip (clipValue). The properties
+// each profile knows are its style surface (styleSurface), not its mode.
 export const isLegacyMode = (mode) =>
   mode === 'jsdom26' || mode === 'jsdom25' || mode === 'jsdom22' || mode === 'jsdom20';
 const isSpecMode = (mode) => mode === 'spec' || mode === 'jsdom27';
@@ -837,8 +836,9 @@ function versionedValue(name, value, mode, surface) {
         return isValidValue(name, value) && !rejectsColor(name, value, null) ? lower : INVALID;
     }
   }
-  if ((mode === 'jsdom26' || mode === 'jsdom27') && name === 'border-style' && value.toLowerCase() === 'none')
-    return INVALID;
+  // jsdom 26 (cssstyle 4.3.1 and later) drops border-style: none; jsdom
+  // 27 and later keep it (black box, 27.4.0 to 30.1.3, #179).
+  if (mode === 'jsdom26' && name === 'border-style' && value.toLowerCase() === 'none') return INVALID;
   // jsdom 30 writes a single-number aspect-ratio as a ratio.
   if (mode === 'spec' && name === 'aspect-ratio' && /^\+?(\d+\.?\d*|\.\d+)$/.test(value)) return `${Number(value)} / 1`;
   if (
@@ -903,10 +903,14 @@ function droppedBy(mode, kind, name) {
 }
 
 // border and its sides (width, style and color in any order), as jsdom's
-// versions serialize them (black box; cssstyle in jsdom 20 to 26):
-// - jsdom 30 ('spec'): the shortest form, width style color, without
-//   initial values (medium, none, currentcolor); all initial is medium.
-// - jsdom 26 to 29: width style color, a 0 width as 0px; on border a none
+// versions serialize them (black box, jsdom 20 to 30.1.3):
+// - jsdom 27 to 30 ('spec', 'jsdom27'): the shortest form, width style
+//   color, without initial values (medium, none, currentcolor); all
+//   initial is medium (border: none is border: medium, border-top: 0 none
+//   is border-top: 0px; #179). CSS-wide keywords are kept, lowercased (in
+//   jsdom 27 and 28 a style attribute or cssText with one is left empty:
+//   parseInto, borderVarDrops).
+// - jsdom 26: width style color, a 0 width as 0px; on border a none
 //   style is left out, alone it drops the declaration; on a side none and
 //   hidden clear what came before them (border-top: 0 none drops it,
 //   none 0 is 0px). CSS-wide keywords drop the declaration.
@@ -918,8 +922,8 @@ const BORDER_STYLE = /^(none|hidden|dotted|dashed|solid|double|groove|ridge|inse
 const BORDER_WIDTH = /^(thin|medium|thick|calc\(.*\)|[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?[a-z]*)$/i;
 function borderValue(name, value, mode) {
   if (!isValidValue(name, value)) return INVALID;
-  const keyword = CSS_WIDE_KEYWORD.test(value);
-  if (keyword) return mode === 'spec' ? value.toLowerCase() : INVALID;
+  const spec = isSpecMode(mode);
+  if (CSS_WIDE_KEYWORD.test(value)) return spec ? value.toLowerCase() : INVALID;
   const legacy = isLegacyMode(mode) && mode !== 'jsdom26';
   if (/var\(|env\(|attr\(/i.test(value)) return legacy ? INVALID : value;
   const parts = segments(value);
@@ -933,7 +937,7 @@ function borderValue(name, value, mode) {
     if (i > 0 && parts[i - 1].includes(',')) return serializeDeclared(name, value, mode);
     if (BORDER_STYLE.test(token)) {
       const lower = token.toLowerCase();
-      if (side && mode !== 'spec' && (lower === 'none' || (lower === 'hidden' && !legacy))) {
+      if (side && !spec && (lower === 'none' || (lower === 'hidden' && !legacy))) {
         width = color = null;
         style = '';
       } else style = token;
@@ -941,7 +945,7 @@ function borderValue(name, value, mode) {
     else color = token;
   }
   if (style === '') style = null;
-  if (mode === 'spec') {
+  if (spec) {
     if (width !== null && width.toLowerCase() === 'medium') width = null;
     if (style !== null && style.toLowerCase() === 'none') style = null;
     if (color !== null && color.toLowerCase() === 'currentcolor') color = null;
@@ -1489,7 +1493,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   // property, or a longhand of an important shorthand (CSS Cascade), as in
   // jsdom 27 and later; jsdom 26 let the last one win.
   let covered = null;
-  const borderVarDrops = !inRule && context !== 'written' && surface?.borderVarDrops === true;
+  const borderVarDrops = !sheet && context !== 'written' && surface?.borderVarDrops === true;
   // jsdom 20 to 26 (cssstyle 2.3.0 to 4.6.0, black box; #129) read a name
   // up to the next colon and a value from the first character after the
   // colon and its spaces, semicolons included: an empty declaration runs
@@ -1522,10 +1526,17 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     }
     if (!name || !value || dropped(surface, name)) continue;
     if (!sheet && !runsOn && value.includes('!') && strayPriority(value, important)) continue;
-    if (borderVarDrops && BORDER_AND_SIDES.has(name) && hasVar(value)) {
-      if (name !== 'border') continue;
-      decls.clear();
-      return;
+    if (borderVarDrops && BORDER_AND_SIDES.has(name)) {
+      // A CSS-wide keyword on border or a side leaves the block empty.
+      if (CSS_WIDE_KEYWORD.test(value)) {
+        decls.clear();
+        return;
+      }
+      if (hasVar(value)) {
+        if (name !== 'border') continue;
+        decls.clear();
+        return;
+      }
     }
     if (isLegacyFont(surface, name) && /^inherit$/i.test(value)) {
       removeLegacyFont(decls, surface);
