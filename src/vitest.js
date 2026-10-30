@@ -252,13 +252,16 @@ export function installWindow(global, window, { hostKeys = [], alwaysKeys = [], 
     defineSelfKey(global, key, global, window, unforgeable);
   }
   Object.defineProperty(window.document, 'defaultView', { get: () => global, configurable: true });
+  // The global's window members, for restore and the per-file reset.
+  keys.push(...SELF_KEYS);
   const restore = () => {
-    for (const key of [...keys, ...SELF_KEYS]) delete global[key];
+    for (const key of keys) delete global[key];
     for (const [key, descriptor] of originals) Object.defineProperty(global, key, descriptor);
   };
   // Forget values assigned to window members through the global (mocks of
   // matchMedia, scrollTo, ...), as a fresh window would.
   restore.resetOverrides = () => overrides.clear();
+  restore.keys = keys;
   return restore;
 }
 
@@ -296,6 +299,62 @@ export function defineSelfKey(target, key, value, window, unforgeable) {
 // Set by the environment for warpdom/vitest/reset (a setup file that runs
 // before each test file): resets the window in place.
 const RESET = Symbol.for('warpdom.vitest.reset');
+// Called by that setup file when the file's tests start (a beforeAll hook):
+// the global's own properties then are the file's setup (setup files and
+// the modules loaded so far, which load once per worker without isolation:
+// deleting what they set would leave later files without it). Those added
+// after it (window.x = 1 in a test or hook; outside the VM pools the
+// window is the worker's global) are removed by the next file's reset.
+const MARK = Symbol.for('warpdom.vitest.mark');
+
+// The descriptors of the global's window members.
+const memberDescriptors = (global, members) =>
+  new Map(members.map((key) => [key, Object.getOwnPropertyDescriptor(global, key)]));
+
+// The global's own properties when a file's tests start (MARK), and the
+// descriptors of its window members then.
+function markGlobal(global, members) {
+  return { keys: new Set(Reflect.ownKeys(global)), members: memberDescriptors(global, members) };
+}
+
+const sameDescriptor = (a, b) =>
+  a === b ||
+  (a !== undefined &&
+    b !== undefined &&
+    a.get === b.get &&
+    a.set === b.set &&
+    Object.is(a.value, b.value) &&
+    a.writable === b.writable &&
+    a.enumerable === b.enumerable &&
+    a.configurable === b.configurable);
+
+// Istanbul's coverage objects (Vitest's coverage-istanbul, and the default
+// name): created by the first instrumented module loaded, possibly in a
+// test (a dynamic import), and collected when the worker ends.
+const KEPT_GLOBAL_KEYS = new Set(['__VITEST_COVERAGE__', '__coverage__']);
+
+// Puts the global back as marked: properties added since are deleted, and
+// window members a test redefined or deleted (Object.defineProperty(window,
+// 'innerWidth', { value: 500 })) get their descriptor back. Other
+// properties the global had are Node's and Vitest's (fetch, the worker's
+// state), left alone. A property made non-configurable stays (as in
+// resetWindow). A member that is again as it was before the file's setup
+// files ran (start) stays: Vitest's cleanup (vitest-reset.js, before this)
+// or the file's tests undid a stub or spy its setup made (vi.stubGlobal,
+// vi.spyOn(window, 'innerWidth', 'get')), and putting that back would make
+// the next setup's stub take it as the original value. Setup files run
+// again before the next file, and make their changes again.
+function restoreGlobal(global, mark, start) {
+  if (!mark) return;
+  for (const key of Reflect.ownKeys(global))
+    if (!mark.keys.has(key) && !KEPT_GLOBAL_KEYS.has(key)) Reflect.deleteProperty(global, key);
+  for (const [key, descriptor] of mark.members) {
+    const current = Object.getOwnPropertyDescriptor(global, key);
+    if (sameDescriptor(current, descriptor) || (start?.has(key) && sameDescriptor(current, start.get(key)))) continue;
+    if (!descriptor) Reflect.deleteProperty(global, key);
+    else Reflect.defineProperty(global, key, descriptor);
+  }
+}
 
 const userErrorListeners = (window) => window[S].listeners?.get('error')?.length ?? 0;
 
@@ -445,9 +504,17 @@ export default {
     // installed in (scripts.js): an indirect eval.
     window[S].runScript = (source) => (0, eval)(source);
     snapshotWindow(window);
+    let mark = null;
+    // The window members when the file's setup files start (after the reset).
+    let start = null;
+    global[MARK] = () => {
+      mark = markGlobal(global, restore.keys);
+    };
     global[RESET] = ablated('fresh-window')
       ? // Ablation: a new window per file instead of the in-place reset.
         () => {
+          restoreGlobal(global, mark, start);
+          mark = null;
           restore();
           window = createTestWindow(options);
           restore = installWindow(global, window, {
@@ -457,16 +524,23 @@ export default {
           url.reset();
           clearHostTimeline(global);
           window[S].runScript = (source) => (0, eval)(source);
+          start = memberDescriptors(global, restore.keys);
         }
       : () => {
+          restoreGlobal(global, mark, start);
+          // Used once: a file whose tests all skip takes no mark, and an
+          // older one would delete what its imports set (modules stay loaded).
+          mark = null;
           restore.resetOverrides();
           resetWindow(window);
           url.reset();
           clearHostTimeline(global);
+          start = memberDescriptors(global, restore.keys);
         };
     return {
       teardown() {
         delete global[RESET];
+        delete global[MARK];
         // Requests still running stop without events, as closing jsdom's window stops them.
         abortWindowRequests(window);
         forgetLastList();

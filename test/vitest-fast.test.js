@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -72,7 +72,13 @@ test('withFastMode: unchanged until something is learned, or when isolated is fa
 test('withFastMode: a fast project, and an isolated one for the files to isolate', () => {
   const config = {
     plugins: ['p'],
-    test: { environment: 'warpdom', setupFiles: './setup.ts', include: ['src/**/*.test.ts'], exclude: ['e2e/**'] },
+    test: {
+      environment: 'warpdom',
+      setupFiles: './setup.ts',
+      include: ['src/**/*.test.ts'],
+      exclude: ['e2e/**'],
+      sequence: { shuffle: true, setupFiles: 'parallel' },
+    },
   };
   const out = withEnv({ WARPDOM_FAST_MODE: 'split', WARPDOM_FAST_ISOLATE: JSON.stringify(['src/leaky.test.ts']) }, () =>
     withFastMode(config, NO_CACHE),
@@ -94,6 +100,12 @@ test('withFastMode: a fast project, and an isolated one for the files to isolate
   );
   assert.match(fast.test.setupFiles[0], /vitest-reset\.js$/, 'the reset runs first');
   assert.equal(fast.test.setupFiles[1], './setup.ts');
+  // Not in parallel (Vitest 2-4's default), which could run the reset after
+  // the file's setup; Vitest 2-4 read the order from the root config.
+  assert.deepEqual(
+    [out.test.sequence, fast.test.sequence],
+    [{ shuffle: true, setupFiles: 'list' }, { setupFiles: 'list' }],
+  );
   assert.deepEqual(fast.test.include, ['src/**/*.test.ts']);
   assert.deepEqual(fast.test.exclude, ['e2e/**', resolve('src/leaky.test.ts')]);
   assert.equal(isolated.test.name, 'warpdom (isolated)');
@@ -561,7 +573,7 @@ const listFiles = (env, args = []) =>
 test("split runs exactly the project's own files: --typecheck.enabled=false keeps type tests out", () => {
   const off = ['--typecheck.enabled=false'];
   const plain = listFiles({ WARPDOM_FAST_MODE: 'isolated' }, off);
-  assert.deepEqual(plain, ['a-sets.spec.js', 'b-reads.spec.js', 'c-clean.spec.js']);
+  assert.deepEqual(plain, ['a-sets.spec.js', 'b-reads.spec.js', 'b-skipped.spec.js', 'c-clean.spec.js']);
   assert.deepEqual(
     listFiles({ WARPDOM_FAST_MODE: 'split', WARPDOM_FAST_ISOLATE: '["b-reads.spec.js"]' }, off),
     plain,
@@ -582,6 +594,28 @@ test("split runs exactly the project's own files: --typecheck.enabled=false keep
     typed,
     'and once in the split too',
   );
+});
+
+// #175: without isolation the window is the worker's global, so a test's
+// window.x = 1 stayed there for the next file. a-sets.spec.js adds and
+// redefines globals in a test; c-clean.spec.js, later in the same worker,
+// must not see them, while the setup file's and shared modules' globals
+// (set once per worker) stay. The setup's vi.stubGlobal and accessor
+// vi.spyOn, undone by Vitest's cleanup or a test, are not put back.
+test("without isolation, the reset removes globals a previous file's tests added, not its setup's", () => {
+  const result = spawnSync(process.execPath, [vitest, 'run', '--typecheck.enabled=false', '--reporter=verbose'], {
+    cwd: fixture,
+    encoding: 'utf8',
+    env: { ...process.env, WARPDOM_FAST_MODE: 'fast', FAST_FIXTURE_CACHE: '/nonexistent/fast-mode.json' },
+  });
+  const out = (result.stdout + result.stderr).replace(/\x1b\[[0-9;]*m/g, '');
+  // The project's label is "|warpdom|" without colors, " warpdom " with them (CI).
+  const failed = [...out.matchAll(/^\s*\u00d7 (?:\|warpdom\||\s*warpdom )\s*(.+?)(?: \d+ms)?$/gm)].map((m) =>
+    m[1].trim(),
+  );
+  // b-reads.spec.js leaks through module state, which no reset reaches.
+  assert.deepEqual(failed, ['b-reads.spec.js > b: module state is fresh'], out);
+  assert.match(out, /Tests {2}1 failed \| 6 passed \| 1 skipped \(8\)/, out);
 });
 
 test('warpdom vitest run: learning finds the leaking file; a newly leaking file is rerun, not a false failure', async () => {
