@@ -17,8 +17,9 @@
 //   applied), unicode-bidi: isolate on block elements, padding-inline-start
 //   on lists, :link colors, details and summary, popover, the form
 //   controls' initial text properties and appearance; from 28.1.0 its
-//   !important declarations win over the page's (overflow: clip on
-//   inputs, display: none on input[type=hidden]).
+//   !important declarations win over the page's normal ones (overflow:
+//   clip on inputs, display: none on input[type=hidden]), and the others
+//   meet the page's by specificity (cascade.js pageOrUserAgent).
 //
 // Where warpdom's computed values differ from jsdom's whatever the sheet
 // says, the sheet still declares what jsdom's does (system colors stay
@@ -27,8 +28,8 @@
 // here).
 //
 // The cascade (cascade.js) reads a property from here only when no style
-// rule or style attribute declares it (from 28.1.0 the !important ones
-// first). Rules of a single type selector sit in a map by tag (one
+// rule or style attribute declares it; from 28.1.0 the !important ones
+// first, and the others against the page's rules by specificity. Rules of a single type selector sit in a map by tag (one
 // lookup); the others (all more specific) by the tag they require, tested
 // in specificity order. A sheet is split once per CSS mode and style
 // surface; a property's declarations are parsed and indexed when it is
@@ -214,6 +215,14 @@ marquee { text-align: initial; overflow: hidden !important }
 
 const SIMPLE = /^[a-z][a-z0-9]*$/;
 
+// An attribute a selector without a subject tag requires ('popover' for
+// [popover]:not(:popover-open), 'href' for :link), or null.
+function subjectAttribute(selector) {
+  const subject = selector.slice(selector.lastIndexOf(' ') + 1);
+  if (subject.startsWith(':link') || subject.startsWith(':visited')) return 'href';
+  return /^\[([a-z-]+)[\]=]/.exec(subject)?.[1] ?? null;
+}
+
 // Splits a sheet into [selectors, declarations] pairs.
 function rules(text) {
   const out = [];
@@ -259,10 +268,14 @@ function subjectTag(selector) {
   return /^[a-z][a-z0-9]*/.exec(selector.slice(start))?.[0] ?? null;
 }
 
-// A property's declarations at one importance: the values of single type
-// selector rules by tag, and the other rules (all more specific than a
-// type selector) by the tag they require, or in any when they require none.
-const newEntry = () => ({ tags: new Map(), byTag: new Map(), any: [] });
+// A property's declarations at one importance: the rules of single type
+// selectors by tag, and the other rules (all more specific than a type
+// selector) by the tag they require, or in any when they require none;
+// anyAttributes: the attributes one of which the rules in any require
+// ([popover], :link), null when one of them requires none. A rule: {
+// specificity, order, value, via (the declared property: border for
+// border: 2px inset) }, and match for the others.
+const newEntry = () => ({ tags: new Map(), byTag: new Map(), any: [], anyAttributes: [] });
 
 // The sheet split into rules and declarations, text only: values are
 // parsed (validated by the profile's CSS rules) and selectors compiled
@@ -298,7 +311,9 @@ function compiledRule(rule) {
     } catch {
       continue;
     }
-    for (const { match, specificity } of compiled) complex.push({ match, specificity, tag: subjectTag(selector) });
+    const tag = subjectTag(selector);
+    for (const { match, specificity } of compiled)
+      complex.push({ match, specificity, tag, attribute: tag === null ? subjectAttribute(selector) : null });
   }
   return (rule.compiled = { simple, complex });
 }
@@ -314,32 +329,41 @@ function sheetIndex(text, mode, surface, expand) {
   return { decls: splitSheet(text), mode, surface, expand, names: new Map() };
 }
 
+// A declaration's [name, value, important, declared property] entries,
+// parsed and expanded when first needed.
+function parsedDeclaration(index, decl) {
+  if (decl.parsed === null) {
+    const parsed = parseDeclarations(decl.text, index.mode, index.surface);
+    decl.parsed = [];
+    for (const [property, { value, important }] of parsed) {
+      for (const [n, v] of index.expand(property, value, parsed.legacyFont))
+        decl.parsed.push([n, v, important, property]);
+    }
+  }
+  return decl.parsed;
+}
+
 const NONE = Object.freeze({ normal: null, important: null });
 function declarationsOf(index, name) {
   let slot = index.names.get(name);
   if (slot !== undefined) return slot;
   for (const decl of index.decls) {
     if (!mayDeclare(decl.property, name)) continue;
-    if (decl.parsed === null) {
-      const parsed = parseDeclarations(decl.text, index.mode, index.surface);
-      decl.parsed = [];
-      for (const [property, { value, important }] of parsed) {
-        for (const [n, v] of index.expand(property, value, parsed.legacyFont)) decl.parsed.push([n, v, important]);
-      }
-    }
-    for (const [n, v, important] of decl.parsed) {
+    for (const [n, v, important, via] of parsedDeclaration(index, decl)) {
       if (n !== name) continue;
       slot ??= { normal: null, important: null };
       const entry = important ? (slot.important ??= newEntry()) : (slot.normal ??= newEntry());
       const { simple, complex } = compiledRule(decl.rule);
-      for (const tag of simple) entry.tags.set(tag, v);
-      for (const { match, specificity, tag } of complex) {
+      for (const tag of simple) entry.tags.set(tag, { specificity: 1, order: decl.order, value: v, via });
+      for (const { match, specificity, tag, attribute } of complex) {
         let list = entry.any;
         if (tag !== null) {
           list = entry.byTag.get(tag);
           if (!list) entry.byTag.set(tag, (list = []));
-        }
-        list.push({ match, specificity, order: decl.order, value: v });
+        } else if (attribute === null) entry.anyAttributes = null;
+        else if (entry.anyAttributes !== null && !entry.anyAttributes.includes(attribute))
+          entry.anyAttributes.push(attribute);
+        list.push({ match, specificity, order: decl.order, value: v, via });
       }
     }
   }
@@ -366,7 +390,7 @@ function lookup(entry, element) {
   const own = firstRule(entry.byTag.get(tag), element);
   const any = entry.any.length ? firstRule(entry.any, element) : null;
   const rule = own === null ? any : any === null || bySpecificityThenOrder(own, any) <= 0 ? own : any;
-  return rule !== null ? rule.value : entry.tags.get(tag);
+  return rule ?? entry.tags.get(tag);
 }
 
 // The sheets indexed, by generation, mode and surface (null: jsdom 30.1
@@ -400,6 +424,65 @@ export function uaDeclarations(window, name, expand) {
   return declarationsOf(window[S].uaIndex ?? indexFor(window, expand), name);
 }
 
-// A declaration's value for an element (entry: one importance of
-// uaDeclarations), or undefined.
-export const uaValue = (entry, element) => (entry === null ? undefined : lookup(entry, element));
+// The rule that declares a value for an element when it is more specific
+// than specificity, or undefined: the cascade's test against a page rule,
+// which skips the rules that cannot be (the lists are by specificity) and,
+// without the attributes they require, those without a subject tag.
+function hasAny(attrs, names) {
+  if (names === null) return true;
+  for (let i = 0; i < names.length; i++) if (attrs.has(names[i])) return true;
+  return false;
+}
+export function uaRuleOver(entry, element, specificity) {
+  if (entry === null) return undefined;
+  const es = element[S];
+  const tag = es.tag;
+  let rule = null;
+  const own = entry.byTag.get(tag);
+  if (own !== undefined && own[0].specificity > specificity) rule = firstRule(own, element);
+  const any = entry.any;
+  if (
+    any.length &&
+    any[0].specificity > specificity &&
+    (rule === null || any[0].specificity > rule.specificity) &&
+    hasAny(es.attrs, entry.anyAttributes)
+  ) {
+    const other = firstRule(any, element);
+    if (other !== null && (rule === null || bySpecificityThenOrder(rule, other) > 0)) rule = other;
+  }
+  if (rule === null && specificity < 1) rule = entry.tags.get(tag) ?? null;
+  return rule !== null && rule.specificity > specificity ? rule : undefined;
+}
+
+// The declarations that set one of names (a shorthand and its longhands),
+// in the sheet's order, for the in-order cascade (cascade.js
+// userAgentInOrder): { via (the declared property), important, values
+// (name -> value), simple (type selectors), complex ({ match, specificity
+// }) }; key names the list, kept with the sheet's index.
+export function uaInOrder(window, key, names, expand) {
+  const index = window[S].uaIndex ?? indexFor(window, expand);
+  const lists = (index.inOrder ??= new Map());
+  let list = lists.get(key);
+  if (list !== undefined) return list;
+  list = [];
+  for (const decl of index.decls) {
+    if (!names.some((name) => mayDeclare(decl.property, name))) continue;
+    let values = null,
+      important = false,
+      via = null;
+    for (const [n, v, imp, property] of parsedDeclaration(index, decl)) {
+      if (!names.includes(n)) continue;
+      (values ??= new Map()).set(n, v);
+      important = imp;
+      via = property;
+    }
+    if (values === null) continue;
+    const { simple, complex } = compiledRule(decl.rule);
+    list.push({ via, important, values, simple, complex });
+  }
+  lists.set(key, list);
+  return list;
+}
+
+// A declaration's value for an element, or undefined.
+export const uaValue = (entry, element) => (entry === null ? undefined : lookup(entry, element)?.value);

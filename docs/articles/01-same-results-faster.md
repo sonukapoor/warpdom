@@ -587,7 +587,7 @@ can meet, and they are not comparable with browser numbers on wpt.fyi.
   Vitest 3.2 or later. Some suites in the corpus could not be compared at
   all yet (ag-grid's behavioural suite times out; element-plus pins jsdom
   16).
-<!-- source: docs/research/README.md 5 "Threats to validity", 2.1 (excluded projects), 3.7 ("no longer held out"); README.md "Differences from jsdom" (innerText and XPath are implemented) -->
+<!-- source: docs/research/README.md 5 "Threats to validity", 2.1 (excluded projects), 3.7 ("no longer held out"); docs/differences.md (innerText and XPath are implemented) -->
 
 ## What's next
 

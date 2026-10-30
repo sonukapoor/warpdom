@@ -2,7 +2,18 @@
 // CSSStyleProperties (an accessor per CSS property name), as in jsdom 30.
 // Declarations are kept in order in a Map, and every change is written back to
 // the element's style attribute; a new style attribute re-parses them.
-import { S, state, hiddenSlot, domError, ELEMENT_NODE, cssomChanges, attributesChanged, hooks } from './internal.js';
+import {
+  S,
+  state,
+  hiddenSlot,
+  domError,
+  ELEMENT_NODE,
+  HTML_NS,
+  SVG_NS,
+  cssomChanges,
+  attributesChanged,
+  hooks,
+} from './internal.js';
 import { STYLE_ACCESSORS } from './css-properties.js';
 import { SURFACES } from './style-surface.js';
 import { LONGHANDS, SHORTHANDS, COLOR_SHORTHANDS, ALIASES } from './css-data.js';
@@ -569,9 +580,8 @@ const JSDOM26_PARSED = new Set([
 // 'jsdom25' is 'jsdom26' with unquoted url()s (cssstyle before 4.3.1);
 // 'jsdom22' (cssstyle 3: jsdom 21 to 23) is 'jsdom25' without calc() in
 // margins and paddings; 'jsdom20' (cssstyle 2) the same. 'jsdom27' (jsdom
-// 27 to 29) is 'spec' with jsdom 26's border and clip (borderValue,
-// clipValue). The properties each profile knows are its style surface
-// (styleSurface), not its mode.
+// 27 to 29) is 'spec' with jsdom 26's clip (clipValue). The properties
+// each profile knows are its style surface (styleSurface), not its mode.
 export const isLegacyMode = (mode) =>
   mode === 'jsdom26' || mode === 'jsdom25' || mode === 'jsdom22' || mode === 'jsdom20';
 const isSpecMode = (mode) => mode === 'spec' || mode === 'jsdom27';
@@ -826,8 +836,9 @@ function versionedValue(name, value, mode, surface) {
         return isValidValue(name, value) && !rejectsColor(name, value, null) ? lower : INVALID;
     }
   }
-  if ((mode === 'jsdom26' || mode === 'jsdom27') && name === 'border-style' && value.toLowerCase() === 'none')
-    return INVALID;
+  // jsdom 26 (cssstyle 4.3.1 and later) drops border-style: none; jsdom
+  // 27 and later keep it (black box, 27.4.0 to 30.1.3, #179).
+  if (mode === 'jsdom26' && name === 'border-style' && value.toLowerCase() === 'none') return INVALID;
   // jsdom 30 writes a single-number aspect-ratio as a ratio.
   if (mode === 'spec' && name === 'aspect-ratio' && /^\+?(\d+\.?\d*|\.\d+)$/.test(value)) return `${Number(value)} / 1`;
   if (
@@ -892,10 +903,14 @@ function droppedBy(mode, kind, name) {
 }
 
 // border and its sides (width, style and color in any order), as jsdom's
-// versions serialize them (black box; cssstyle in jsdom 20 to 26):
-// - jsdom 30 ('spec'): the shortest form, width style color, without
-//   initial values (medium, none, currentcolor); all initial is medium.
-// - jsdom 26 to 29: width style color, a 0 width as 0px; on border a none
+// versions serialize them (black box, jsdom 20 to 30.1.3):
+// - jsdom 27 to 30 ('spec', 'jsdom27'): the shortest form, width style
+//   color, without initial values (medium, none, currentcolor); all
+//   initial is medium (border: none is border: medium, border-top: 0 none
+//   is border-top: 0px; #179). CSS-wide keywords are kept, lowercased (in
+//   jsdom 27 and 28 a style attribute or cssText with one is left empty:
+//   parseInto, borderVarDrops).
+// - jsdom 26: width style color, a 0 width as 0px; on border a none
 //   style is left out, alone it drops the declaration; on a side none and
 //   hidden clear what came before them (border-top: 0 none drops it,
 //   none 0 is 0px). CSS-wide keywords drop the declaration.
@@ -907,8 +922,8 @@ const BORDER_STYLE = /^(none|hidden|dotted|dashed|solid|double|groove|ridge|inse
 const BORDER_WIDTH = /^(thin|medium|thick|calc\(.*\)|[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?[a-z]*)$/i;
 function borderValue(name, value, mode) {
   if (!isValidValue(name, value)) return INVALID;
-  const keyword = CSS_WIDE_KEYWORD.test(value);
-  if (keyword) return mode === 'spec' ? value.toLowerCase() : INVALID;
+  const spec = isSpecMode(mode);
+  if (CSS_WIDE_KEYWORD.test(value)) return spec ? value.toLowerCase() : INVALID;
   const legacy = isLegacyMode(mode) && mode !== 'jsdom26';
   if (/var\(|env\(|attr\(/i.test(value)) return legacy ? INVALID : value;
   const parts = segments(value);
@@ -922,7 +937,7 @@ function borderValue(name, value, mode) {
     if (i > 0 && parts[i - 1].includes(',')) return serializeDeclared(name, value, mode);
     if (BORDER_STYLE.test(token)) {
       const lower = token.toLowerCase();
-      if (side && mode !== 'spec' && (lower === 'none' || (lower === 'hidden' && !legacy))) {
+      if (side && !spec && (lower === 'none' || (lower === 'hidden' && !legacy))) {
         width = color = null;
         style = '';
       } else style = token;
@@ -930,7 +945,7 @@ function borderValue(name, value, mode) {
     else color = token;
   }
   if (style === '') style = null;
-  if (mode === 'spec') {
+  if (spec) {
     if (width !== null && width.toLowerCase() === 'medium') width = null;
     if (style !== null && style.toLowerCase() === 'none') style = null;
     if (color !== null && color.toLowerCase() === 'currentcolor') color = null;
@@ -1018,6 +1033,58 @@ const BG_URL_OLD =
   /^url\(\s*(?!\s)(?:"(?:\\[^"'()\s]|[^"'()\\ \t\n])*"|'(?:\\[^"'()\s]|[^"'()\\ \t\n])*'|(?:\\[^"'()\s]|[^"'()\\ \t\n])*)\)$/;
 const BG_URL_4_4 =
   /^url\(\s*(?!\s)(?:"(?:\\[^'()\s]|[^"'()\\ \t\n])*"|'(?:\\[^"'()\s]|[^"'()\\ \t\n])*'|(?:\\[^'()\s]|[^"'()\\ \t\n])*)\)$/;
+// cssstyle 4.4 to 4.6 (black box, #163: jsdom 23.2, 24.1 and 26.1 alike) and
+// a url() component BG_URL_4_4 rejects only for an escaped ', (, ), space,
+// tab, line feed, carriage return or form feed: the first time the process
+// meets that url(), in the background shorthand or background-image, it is
+// an image that sets nothing. The shorthand's other components apply, the
+// background image the declaration had stays and the other longhands are
+// removed (url("a\'b.png") alone declares nothing; red url("a\'b.png") is
+// background: red). Later the url() is invalid (cssstyle caches it), unless
+// it has an escaped carriage return or form feed: those are never cached.
+// Not modeled: cssstyle's cache evicting it (about 800 other url()s later),
+// background-image's own value (the url() unescaped the first time, invalid
+// later), several layers.
+const BG_URL_ESCAPED =
+  /^url\(\s*(?!\s)(?:"(?:\\(?:[^\s]|[ \t\n\r\f])|[^"'()\\ \t\n])*"|'(?:\\(?:[^\s]|[ \t\n\r\f])|[^"'()\\ \t\n])*'|(?:\\(?:[^\s]|[ \t\n\r\f])|[^"'()\\ \t\n])*)\)$/;
+const BG_PLACEHOLDER = 'url(#)';
+const metUrls = new Set(); // url() components cssstyle has met (per process, as its cache)
+const escapedUrl = (token) => token.startsWith('url(') && !BG_URL_4_4.test(token) && BG_URL_ESCAPED.test(token);
+// Records a url() met; true if it was met before (and is cached).
+function meetUrl(token) {
+  if (/\\[\r\f]/.test(token)) return false;
+  if (metUrls.has(token)) return true;
+  if (metUrls.size >= 500) metUrls.clear();
+  metUrls.add(token);
+  return false;
+}
+// background-image set to a url() the shorthand would read as above.
+function meetImage(name, value, mode, surface) {
+  if (name === 'background-image' && mode === 'jsdom26' && surface?.key === 'cssstyle4.4' && escapedUrl(value))
+    meetUrl(value);
+}
+// The background declaration a value declaredValue rejected sets (decls:
+// the block's declarations), or INVALID: '' when it declares nothing.
+function escapedUrlBackground(decls, value, mode, surface) {
+  if (mode !== 'jsdom26' || surface?.key !== 'cssstyle4.4' || !value.includes('\\')) return INVALID;
+  // Escape-aware: url(a\'b.png) no-repeat is a url() and no-repeat.
+  if (splitOutside(value, ',', true).length > 1 || /var\(|env\(|attr\(/i.test(value)) return INVALID;
+  const urls = segments(value, BG_SEPARATOR_LEGACY, true).filter((t, i) => i % 2 === 0 && escapedUrl(t));
+  if (urls.length === 0) return INVALID;
+  let cached = false;
+  for (const url of urls) cached = meetUrl(url) || cached;
+  if (cached || urls.length > 1) return INVALID;
+  const out = declaredValue('background', value.replace(urls[0], BG_PLACEHOLDER), mode, surface);
+  if (out === INVALID) return INVALID;
+  const placeholder = serializeDeclared('background-image', BG_PLACEHOLDER, mode);
+  const rest = out.startsWith(placeholder) ? out.slice(placeholder.length).trim() : out;
+  let image = decls.get('background-image')?.value;
+  if (image === undefined) {
+    const first = segments(decls.get('background')?.value ?? '', BG_SEPARATOR_LEGACY)[0];
+    if (first.toLowerCase() === 'none' || first.startsWith('url(') || BG_GRADIENT.test(first)) image = first;
+  }
+  return [image, rest].filter(Boolean).join(' ');
+}
 const legacyLength = (token, surface, old) => {
   if (!old) return BG_LENGTH_4.test(token.toLowerCase());
   return surface?.legacyFont === 'cssstyle4.1' ? BG_LENGTH_3.test(token) : BG_LENGTH_4.test(token);
@@ -1416,7 +1483,9 @@ const BORDER_AND_SIDES = new Set(['border', 'border-top', 'border-right', 'borde
 // 'rule' for its style's cssText, 'written' for a style attribute a style
 // write serialized (writtenDeclarations), else null (a style attribute, an
 // element's cssText).
-function parseInto(decls, text, mode, surface = null, context = null) {
+// element: an element's style object parses it (escapedUrlBackground meets
+// its url()s).
+function parseInto(decls, text, mode, surface = null, context = null, element = false) {
   const sheet = context === 'sheet';
   const inRule = sheet || context === 'rule';
   decls.clear();
@@ -1424,7 +1493,7 @@ function parseInto(decls, text, mode, surface = null, context = null) {
   // property, or a longhand of an important shorthand (CSS Cascade), as in
   // jsdom 27 and later; jsdom 26 let the last one win.
   let covered = null;
-  const borderVarDrops = !inRule && context !== 'written' && surface?.borderVarDrops === true;
+  const borderVarDrops = !sheet && context !== 'written' && surface?.borderVarDrops === true;
   // jsdom 20 to 26 (cssstyle 2.3.0 to 4.6.0, black box; #129) read a name
   // up to the next colon and a value from the first character after the
   // colon and its spaces, semicolons included: an empty declaration runs
@@ -1457,17 +1526,31 @@ function parseInto(decls, text, mode, surface = null, context = null) {
     }
     if (!name || !value || dropped(surface, name)) continue;
     if (!sheet && !runsOn && value.includes('!') && strayPriority(value, important)) continue;
-    if (borderVarDrops && BORDER_AND_SIDES.has(name) && hasVar(value)) {
-      if (name !== 'border') continue;
-      decls.clear();
-      return;
+    if (borderVarDrops && BORDER_AND_SIDES.has(name)) {
+      // A CSS-wide keyword on border or a side leaves the block empty.
+      if (CSS_WIDE_KEYWORD.test(value)) {
+        decls.clear();
+        return;
+      }
+      if (hasVar(value)) {
+        if (name !== 'border') continue;
+        decls.clear();
+        return;
+      }
     }
     if (isLegacyFont(surface, name) && /^inherit$/i.test(value)) {
       removeLegacyFont(decls, surface);
       continue;
     }
-    const declared = declaredValue(name, value, mode, surface);
-    if (declared === INVALID) continue;
+    let declared = declaredValue(name, value, mode, surface);
+    if (element) {
+      if (declared === INVALID && name === 'background') {
+        declared = escapedUrlBackground(decls, value, mode, surface);
+        if (declared !== INVALID) for (const n of RESETS.background) decls.delete(n);
+      }
+      meetImage(name, value, mode, surface);
+    }
+    if (declared === INVALID || declared === '') continue;
     // One that loses its !important is written without it; in a style
     // sheet it is a normal declaration, elsewhere it is still !important
     // to the block's other declarations (masked: black box, jsdom 27 to
@@ -1948,8 +2031,20 @@ function setDeclaration(style, name, value, priority = '') {
     return;
   }
   // Unknown properties and invalid values are ignored (CSSOM).
-  const text = declaredValue(name, raw, s.mode, s.surface);
+  let text = declaredValue(name, raw, s.mode, s.surface);
+  if (text === INVALID && name === 'background' && !s.parentRule)
+    text = escapedUrlBackground(s.decls, raw, s.mode, s.surface);
+  if (!s.parentRule) meetImage(name, raw, s.mode, s.surface);
   if (text === INVALID) return;
+  if (text === '') {
+    let removed = false;
+    for (const n of RESETS.background) removed = s.decls.delete(n) || removed;
+    if (removed) {
+      reindex(style);
+      sync(style);
+    }
+    return;
+  }
   const important =
     String(priority).toLowerCase() === 'important' && !dropsImportant(s.surface, name, text, s.parentRule != null);
   if (isLegacyFont(s.surface, name) && removeLegacyFont(s.decls, s.surface)) reindex(style);
@@ -2218,7 +2313,7 @@ export const CSS_INTERFACES = [
           s.replaced = true;
           return;
         }
-        parseInto(s.decls, text, s.mode, s.surface, s.parentRule ? 'rule' : null);
+        parseInto(s.decls, text, s.mode, s.surface, s.parentRule ? 'rule' : null, !s.parentRule);
         reindex(this);
         sync(this);
       },
@@ -2296,7 +2391,14 @@ export function styleOf(element, proto) {
   if (!es.style) {
     const style = Object.create(proto);
     initStyleState(style, { element, decls: new Map(), mode: modeOf(proto), indexed: 0, surface: surfaceOf(proto) });
-    parseInto(styleState(style).decls, es.attrs.get('style'), styleState(style).mode, styleState(style).surface);
+    parseInto(
+      styleState(style).decls,
+      es.attrs.get('style'),
+      styleState(style).mode,
+      styleState(style).surface,
+      null,
+      true,
+    );
     reindex(style);
     es.style = style;
   }
@@ -2310,14 +2412,25 @@ export function styleOf(element, proto) {
 // own value keeps both, though parsed it declares nothing); any other
 // text is parsed, and the written text no longer stands for the
 // declarations (writtenDeclarations).
-export function styleAttributeChanged(element) {
+// With cssstyle 4.4 to 4.6 (escapedUrlBackground, black box, #163 review)
+// the attribute is parsed when set, before the style is first read, so its
+// url()s are met then; set to the value it had, it is not parsed again.
+// Only HTML and SVG elements have an inline style (interfaces.js
+// inlineStyle); the HTML and XML parsers call this for a parsed style
+// attribute with a backslash (html.js, xml.js).
+export function styleAttributeChanged(element, old) {
   const es = element[S];
   const text = es.attrs.get('style');
   if (es.styleWritten !== undefined && es.styleWritten === text) return;
+  const proto = es.doc?.[S]?.window?.[S]?.protos.CSSStyleProperties;
+  const metAtWrite = modeOf(proto) === 'jsdom26' && surfaceOf(proto)?.key === 'cssstyle4.4';
+  if (metAtWrite && text === old) return;
   es.styleWritten = undefined;
-  if (es.style) {
+  if (!es.style && metAtWrite && text?.includes('\\') && (es.ns === HTML_NS || es.ns === SVG_NS))
+    styleOf(element, proto);
+  else if (es.style) {
     const s = styleState(es.style);
-    parseInto(s.decls, text, s.mode, s.surface);
+    parseInto(s.decls, text, s.mode, s.surface, null, true);
     reindex(es.style);
     es.inlineCascade = null;
   }

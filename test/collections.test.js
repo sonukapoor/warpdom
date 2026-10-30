@@ -759,10 +759,11 @@ parity('NodeList members on an object inheriting from a NodeList, after the Node
 
 // The list-state cache (collections.js) holds the last list read, and with
 // it that list's window: closing, resetting or tearing down a window (each
-// Vitest and Jest environment teardown), or removing an iframe, must let it be collected (#165). So must the
-// cascade's last root (cascade.js) after getComputedStyle. Run with --expose-gc
-// in a child process; each case reports whether a WeakRef to the window's
-// document (or a removed node) was cleared.
+// Vitest and Jest environment teardown), or removing an iframe, must let it be collected (#165).
+// So must the cascade's last root (cascade.js) after getComputedStyle, and
+// a reset the frame windows of the iframes it discards (#173). Run with
+// --expose-gc in a child process; each case reports whether a WeakRef to
+// the window's document (or a removed node, or a frame window) was cleared.
 test('the last list read does not keep a closed, reset or torn-down window alive', () => {
   const code = `
     const { createWindow } = await import('./src/node.js');
@@ -837,6 +838,14 @@ test('the last list read does not keep a closed, reset or torn-down window alive
       return new WeakRef(doc);
     })();
     result.frame = await collected(ref);
+    // A frame window of an iframe the reset discards (#173).
+    ref = (() => {
+      const frame = kept.document.body.appendChild(kept.document.createElement('iframe'));
+      frame.contentDocument.body.innerHTML = '<p></p>';
+      return new WeakRef(frame.contentWindow);
+    })();
+    resetWindow(kept);
+    result.resetFrame = await collected(ref);
     // The cascade's last rule-index root (cascade.js), the same kind of cache.
     ref = (() => {
       const w = createWindow();
@@ -861,6 +870,7 @@ test('the last list read does not keep a closed, reset or torn-down window alive
     teardownVM: true,
     teardownJest: true,
     frame: true,
+    resetFrame: true,
     style: true,
   });
 });

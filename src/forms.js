@@ -1627,6 +1627,37 @@ export function formDataEntries(value) {
     : null;
 }
 
+// The FormData iterator (WebIDL default iterator objects), as jsdom's: a
+// shared "FormData Iterator" prototype inheriting %IteratorPrototype%, and
+// the live entry list read by index at each step (delete and set replace
+// it), so entries appended, deleted or set between next() calls are seen,
+// and next() after done reads the list again.
+const ENTRIES = (e) => [e.name, e.value];
+const KEYS = (e) => e.name;
+const VALUES = (e) => e.value;
+const ITERATION = Symbol('FormData iteration');
+const FORM_DATA_ITERATOR = Object.create(Object.getPrototypeOf(Object.getPrototypeOf([][Symbol.iterator]())), {
+  next: {
+    value: function next() {
+      const it = this?.[ITERATION];
+      if (it === undefined) throw new TypeError('next() called on a value that is not a FormData iterator object');
+      const { entries } = it.target;
+      if (it.index >= entries.length) return { value: undefined, done: true };
+      return { value: it.kind(entries[it.index++]), done: false };
+    },
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  },
+  [Symbol.toStringTag]: { value: 'FormData Iterator', configurable: true },
+});
+
+function formDataIterator(self, kind) {
+  const iterator = Object.create(FORM_DATA_ITERATOR);
+  Object.defineProperty(iterator, ITERATION, { value: { target: state(self), kind, index: 0 } });
+  return iterator;
+}
+
 const FORM_DATA_INTERFACES = [
   {
     name: 'FormData',
@@ -1693,14 +1724,14 @@ const FORM_DATA_INTERFACES = [
         });
         if (!replaced) s.entries.push(entry);
       },
-      *entries() {
-        for (const e of entriesOf(this).slice()) yield [e.name, e.value];
+      entries() {
+        return formDataIterator(this, ENTRIES);
       },
-      *keys() {
-        for (const e of entriesOf(this).slice()) yield e.name;
+      keys() {
+        return formDataIterator(this, KEYS);
       },
-      *values() {
-        for (const e of entriesOf(this).slice()) yield e.value;
+      values() {
+        return formDataIterator(this, VALUES);
       },
       forEach(callback, thisArg = undefined) {
         checkForEachCallback(callback, arguments.length);
@@ -1711,9 +1742,6 @@ const FORM_DATA_INTERFACES = [
           const e = entriesOf(this)[i];
           apply(callback, thisArg, [e.value, e.name, this]);
         }
-      },
-      [Symbol.iterator]() {
-        return this.entries();
       },
     },
   },
@@ -1729,6 +1757,9 @@ const FORM_DATA_INTERFACES = [
     members: fieldGetters({ formData: null }),
   },
 ];
+
+// @@iterator is the entries() function (WebIDL pair iterators).
+FORM_DATA_INTERFACES[0].members[Symbol.iterator] = FORM_DATA_INTERFACES[0].members.entries;
 
 // --- interfaces ---------------------------------------------------------------------
 

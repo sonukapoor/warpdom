@@ -172,18 +172,243 @@ parity('getComputedStyle: hidden and display', (w) => {
   return ['a', 'b', 'c', 'd'].map((id) => w.getComputedStyle(d.getElementById(id)).display);
 });
 
-test('getComputedStyle: shadow trees use their own style sheets', () => {
-  const w = createWindow();
+// Shadow trees' style sheets (#137, black box, jsdom 20.0.3 to 30.1.3):
+// every element gets the document's sheets, a shadow tree's too, and
+// inherits nothing from a host; a <style> in a shadow tree has a sheet
+// from 30.1.2 only (before, once its text changes there), which is then
+// the document's: in document.styleSheets, applying to every element.
+const shadowSheetsScenario = (w) => {
   const d = w.document;
-  d.head.innerHTML = '<style>.z{width:1px;color:red}</style>';
-  const host = d.body.appendChild(d.createElement('div'));
-  const root = host.attachShadow({ mode: 'open' });
-  root.innerHTML = '<style>.z{width:3px}</style><div class="z"></div>';
-  host.style.color = 'blue';
-  const inner = root.lastChild;
-  assert.equal(w.getComputedStyle(inner).width, '3px');
-  assert.equal(w.getComputedStyle(inner).color, 'rgb(0, 0, 255)', 'inherits from the host, not document rules');
-});
+  const sheetIds = () => [...d.styleSheets].map((s) => s.cssRules[0].style.getPropertyValue('color')).join();
+  const color = (el) => w.getComputedStyle(el).color;
+  d.head.innerHTML = '<style id=d1>.z { width: 1px; color: red } p { display: none }</style>';
+  d.body.innerHTML = '<div id=l></div><section id=h style="color: blue; visibility: hidden"></section>';
+  const root = d.getElementById('h').attachShadow({ mode: 'open' });
+  root.innerHTML = '<style id=s1>.z { width: 3px } div { color: green }</style><div class=z></div><p></p>';
+  const inner = root.querySelector('div');
+  const style = root.querySelector('style');
+  const out = [
+    w.getComputedStyle(inner).width,
+    color(inner),
+    w.getComputedStyle(inner).visibility,
+    w.getComputedStyle(root.querySelector('p')).display,
+    color(d.getElementById('l')),
+    style.sheet === null,
+    sheetIds(),
+  ];
+  // Two shadow trees, the second's sheet made first; a head <style> added last.
+  d.body.innerHTML = '<p id=a></p><p id=b></p><div id=m></div>';
+  const rb = d.getElementById('b').attachShadow({ mode: 'open' });
+  rb.innerHTML = '<style id=sb>div { color: green }</style>';
+  const ra = d.getElementById('a').attachShadow({ mode: 'open' });
+  ra.innerHTML = '<style id=sa>div { color: blue }</style>';
+  const late = d.createElement('style');
+  late.id = 'd2';
+  late.textContent = 'div { color: red }';
+  d.head.appendChild(late);
+  out.push(sheetIds(), color(d.getElementById('m')));
+  // Text set in a connected shadow tree's <style>.
+  rb.querySelector('style').textContent = 'div { color: purple }';
+  out.push(sheetIds(), rb.querySelector('style').sheet === null, color(d.getElementById('m')));
+  return out;
+};
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30])
+  parity(`getComputedStyle: shadow trees' style sheets (jsdom ${jsdom})`, shadowSheetsScenario, { jsdom });
+
+// The order of document.styleSheets with shadow trees' sheets (black box,
+// 30.1.2 and 30.1.3) after sheets are removed: the surviving sheets keep
+// their order, each new sheet placed when it is made among the sheets
+// there then, also with no read between changes.
+const shadowSheetOrderScenario = (w) => {
+  const d = w.document;
+  const ids = () => [...d.styleSheets].map((s) => s.ownerNode.id).join();
+  const mk = (parent, id, color, before) => {
+    const s = d.createElement('style');
+    s.id = id;
+    s.textContent = `div { color: ${color} }`;
+    parent.insertBefore(s, before ?? null);
+    return s;
+  };
+  const div = d.body.appendChild(d.createElement('div'));
+  const color = () => w.getComputedStyle(div).color;
+  const out = [];
+  const root = d.body.appendChild(d.createElement('section')).attachShadow({ mode: 'open' });
+  const d1 = mk(d.head, 'd1', 'red');
+  const s1 = mk(root, 's1', 'green');
+  const d2 = mk(d.head, 'd2', 'blue');
+  out.push(ids());
+  d1.remove();
+  out.push(ids(), color());
+  // Made and removed with no read between; removed, then made.
+  const d3 = mk(d.head, 'd3', 'red', d2);
+  mk(d.head, 'd4', 'purple', d2);
+  d3.remove();
+  out.push(ids(), color());
+  d.getElementById('d4').remove();
+  mk(d.head, 'd5', 'olive', d2);
+  out.push(ids(), color());
+  // A document sheet moved; texts changed.
+  d.head.appendChild(d.getElementById('d5'));
+  out.push(ids(), color());
+  d2.textContent = 'div { color: navy }';
+  out.push(ids(), color());
+  s1.textContent = 'div { color: teal }';
+  out.push(ids(), color());
+  // A second shadow tree; its host removed and inserted again.
+  const host = d.body.appendChild(d.createElement('p'));
+  mk(host.attachShadow({ mode: 'open' }), 's2', 'lime');
+  mk(d.head, 'd6', 'maroon', d2);
+  out.push(ids(), color());
+  host.remove();
+  out.push(ids(), color());
+  d.body.appendChild(host);
+  out.push(ids(), color());
+  return out;
+};
+parity("getComputedStyle: shadow trees' style sheets after removals (jsdom 30)", shadowSheetOrderScenario);
+
+// Computed styles kept after rule edits (#137, black box): from jsdom 21
+// to 30.1.1 an element's computed style, once read, is kept until the
+// document's own tree changes; rule edits do not refresh it, insertRule()
+// and deleteRule() from 29 do, changes in shadow trees and disconnected
+// trees do not. 20.0.3 and 30.1.2 keep nothing (but disconnected elements).
+const keptScenario = (jsdom) => (w) => {
+  const d = w.document;
+  const color = (el) => w.getComputedStyle(el).color;
+  const out = [];
+  const reset = () => {
+    d.head.innerHTML = '<style>div { color: blue; display: block } .x { color: purple }</style>';
+    d.body.innerHTML = '<div id=a><span></span></div><div id=b></div><p>t</p><section id=h></section>';
+    const root = d.getElementById('h').attachShadow({ mode: 'open' });
+    root.innerHTML = '<div></div><i></i>';
+    return { a: d.getElementById('a'), b: d.getElementById('b'), rule: d.styleSheets[0].cssRules[0], root };
+  };
+  let { a, b, rule, root } = reset();
+  out.push(color(a));
+  rule.style.color = 'green';
+  out.push(color(a), color(b));
+  a.setAttribute('title', 't');
+  out.push(color(a));
+  // Another property of an element read before; text in the document.
+  ({ a, rule } = reset());
+  w.getComputedStyle(a).display;
+  rule.style.color = 'green';
+  out.push(color(a));
+  d.querySelector('p').firstChild.data = 'u';
+  out.push(color(a));
+  // insertRule and deleteRule; selectorText.
+  ({ a } = reset());
+  color(a);
+  d.styleSheets[0].insertRule('div { color: green }', 1);
+  out.push(color(a));
+  ({ a } = reset());
+  color(a);
+  d.styleSheets[0].deleteRule(0);
+  out.push(color(a));
+  ({ a, rule } = reset());
+  color(a);
+  rule.selectorText = 'p';
+  out.push(color(a));
+  // Changes in a shadow tree and a disconnected one; an element in a
+  // shadow tree after its own class changes.
+  ({ a, rule, root } = reset());
+  const inner = root.querySelector('div');
+  out.push(color(a), color(inner));
+  rule.style.color = 'green';
+  root.querySelector('i').setAttribute('title', 't');
+  d.createElement('div').setAttribute('title', 't');
+  inner.className = 'x';
+  out.push(color(a), color(inner));
+  d.body.appendChild(d.createComment('c'));
+  out.push(color(a), color(inner));
+  // A disconnected element: text set in the document refreshes it.
+  ({ rule } = reset());
+  const lone = d.createElement('div');
+  out.push(color(lone));
+  rule.style.color = 'green';
+  out.push(color(lone));
+  d.querySelector('p').firstChild.data = 'u';
+  out.push(color(lone));
+  // A parent read before its child (jsdom 20 inherits no color).
+  if (jsdom !== 20) {
+    ({ a, rule } = reset());
+    color(a);
+    rule.style.color = 'green';
+    out.push(color(a.firstChild));
+  }
+  return out;
+};
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30])
+  parity(`getComputedStyle: kept after rule edits (jsdom ${jsdom})`, keptScenario(jsdom), { jsdom });
+
+// What refreshes kept computed styles, continued (black box, 22.1.0 to
+// 30.1.3): insertRule() and deleteRule() on another window's sheet (an
+// iframe's) refresh nothing, on the document's own from 29; text set in a
+// disconnected shadow tree's <style> refreshes nothing, in a connected
+// one's from 29; changes after a first refresh with no read between them
+// still leave the next read refreshed.
+const keptRefreshScenario = (w) => {
+  const d = w.document;
+  const color = (el) => w.getComputedStyle(el).color;
+  const out = [];
+  d.head.innerHTML = '<style>div { color: blue }</style>';
+  const a = d.body.appendChild(d.createElement('div'));
+  const rule = d.styleSheets[0].cssRules[0];
+  const frame = d.body.appendChild(d.createElement('iframe')).contentDocument;
+  frame.head.appendChild(frame.createElement('style')).textContent = 'p { color: red }';
+  out.push(color(a));
+  rule.style.color = 'green';
+  frame.styleSheets[0].insertRule('i { color: red }', 1);
+  out.push(color(a));
+  frame.styleSheets[0].deleteRule(0);
+  out.push(color(a));
+  const lone = d.createElement('section').attachShadow({ mode: 'open' });
+  const style = lone.appendChild(d.createElement('style'));
+  style.textContent = 'i { color: pink }';
+  out.push(color(a));
+  style.appendChild(d.createTextNode('b { color: red }'));
+  out.push(color(a));
+  const shadowStyle = d.body.appendChild(d.createElement('section')).attachShadow({ mode: 'open' });
+  out.push(color(a));
+  rule.style.color = 'olive';
+  shadowStyle.appendChild(d.createElement('style')).textContent = 'i { color: red }';
+  out.push(color(a));
+  d.styleSheets[0].insertRule('i { color: red }', 1);
+  out.push(color(a));
+  d.body.appendChild(d.createComment('c'));
+  rule.style.color = 'navy';
+  d.body.appendChild(d.createComment('c'));
+  d.body.lastChild.remove();
+  out.push(color(a));
+  return out;
+};
+for (const jsdom of [22, 28, 29, 30])
+  parity(`getComputedStyle: kept styles refreshed by their own window (jsdom ${jsdom})`, keptRefreshScenario, {
+    jsdom,
+  });
+
+// A kept element moved into another document (an iframe's) computes with
+// that document's rules, also when both documents' counters match (#198
+// review).
+const keptMoveScenario = (w) => {
+  const A = w.document;
+  const f = A.body.appendChild(A.createElement('iframe'));
+  const wb = f.contentWindow;
+  const B = f.contentDocument;
+  A.head.innerHTML = '<style>div { color: blue }</style>';
+  B.head.appendChild(B.createElement('style')).textContent = 'div { color: green }';
+  const a = A.body.appendChild(A.createElement('div'));
+  const b = B.body.appendChild(B.createElement('div'));
+  const out = [w.getComputedStyle(a).color, wb.getComputedStyle(b).color];
+  A.body.appendChild(A.createElement('p'));
+  out.push(w.getComputedStyle(a).color);
+  B.body.appendChild(B.createElement('p'));
+  B.body.appendChild(a);
+  out.push(wb.getComputedStyle(a).color);
+  return out;
+};
+for (const jsdom of [22, 25, 29, 30])
+  parity(`getComputedStyle: a kept element moved to another document (jsdom ${jsdom})`, keptMoveScenario, { jsdom });
 
 // jsdom (20 to 30) does not substitute var(): a value with var() computes
 // to itself and inherits so (jest-dom's toHaveStyle({ color:

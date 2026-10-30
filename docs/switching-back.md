@@ -290,5 +290,4 @@ with the comment above, and please open an issue with the test (or a
 small reproduction), the jsdom version and the error:
 https://github.com/sonukapoor/warpdom/issues/new. warpdom aims for jsdom's
 results, so such a difference is a bug unless it is one of the deliberate
-differences listed in the README
-([Differences from jsdom](../README.md#differences-from-jsdom)).
+differences listed in [differences.md](differences.md).

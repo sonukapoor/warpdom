@@ -17,6 +17,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { packageDir, packageVersion, findConfig, findVitestWorkspace } from '../compare/detect.js';
+import { isWarpdomEnvironment } from '../compare/wrappers.js';
 import { analyze, tokenize, lineIndex, leadingComments, moduleSpecifiers, typeOnlyReference } from './js.js';
 import { applyEdits, replaceLiteral, editDependencies, editCatalog, catalogEntries } from './edits.js';
 import {
@@ -144,6 +145,25 @@ const MENTION = /jsdom|happy-?dom/i;
 class MigrateError extends Error {}
 
 const unique = (xs) => [...new Set(xs)];
+// Whether the options beside an environment property (prop, of analysis a)
+// name the jsdom version warpdom behaves like: environmentOptions.warpdom.jsdom
+// (Vitest), testEnvironmentOptions.jsdom (Jest). warpdom then follows that
+// version, not the installed jsdom; a null or undefined value does not
+// (warpdom then falls back to the installed jsdom).
+const namesJsdomVersion = (a, prop, runner) => {
+  const objectOf = (frame, key) => {
+    const q = frame && a.properties.find((x) => x.frame === frame && x.key === key);
+    return q ? a.objects.find((o) => o.open === q.valueStart) : null;
+  };
+  let options = objectOf(prop.frame, runner === 'vitest' ? 'environmentOptions' : 'testEnvironmentOptions');
+  if (runner === 'vitest') options = objectOf(options, 'warpdom');
+  const q = options && a.properties.find((x) => x.frame === options && x.key === 'jsdom');
+  if (!q) return false;
+  const t = a.tokens[q.valueStart];
+  const nullish =
+    t?.type === 'ident' && (t.value === 'null' || t.value === 'undefined') && q.valueEnd - q.valueStart === 1;
+  return !nullish;
+};
 const majorOf = (v) => {
   const m = /(\d+)(?:\.\d+)?/.exec(String(v ?? ''));
   return m ? Number(m[1]) : null;
@@ -788,7 +808,12 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
     }
     if (to - from === 1 && literals.length === 1) {
       const v = tokens[from].value;
-      if (v === 'warpdom' || /warpdom\//.test(v ?? '')) uses.push({ file, runner, pathOnly: v !== 'warpdom' });
+      // warpdom's name, its environment packages (jest-environment-warpdom)
+      // or a path into warpdom itself, not a project's own environment in a
+      // directory named warpdom (as compare, #185). Only a path needs no
+      // environment package.
+      if (isWarpdomEnvironment(v))
+        uses.push({ file, runner, pathOnly: !/^((vitest|jest)-environment-)?warpdom$/.test(v), prop: p, a });
       else if (v === null)
         addManual(file, at, `${p.key} is built from a template string (\`${exprText(text, a, from, to)}\`)`, runner);
       else if (runner === 'jest' && /jsdom|happy-dom/.test(v))
@@ -853,7 +878,7 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       return null;
     })();
     if (imported && imported.startsWith('warpdom')) {
-      uses.push({ file, runner, pathOnly: true });
+      uses.push({ file, runner, pathOnly: true, prop: p, a });
       return;
     }
     if (decl < 0) {
@@ -888,7 +913,7 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       return;
     }
     if (!DOM_ENVIRONMENTS[runner].has(value.value)) {
-      if (value.value === 'warpdom') uses.push({ file, runner });
+      if (value.value === 'warpdom') uses.push({ file, runner, prop: p, a });
       return;
     }
     // Every other use of the name must be an environment value.
@@ -1401,19 +1426,39 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
   // installed, or used by the other runner or another package, is not one
   // of them.
   const ranOn = new Map(); // `${pkg.rel}\0${runner}` -> Set of 'jsdom' / 'happy-dom'
-  for (const e of edits) {
-    if (e.pin || e.renamed || !e.from || !e.runner) continue;
-    const dom = /happy/.test(e.from) ? 'happy-dom' : 'jsdom';
-    const key = `${targetOf(e.file, e.runner).rel}\0${e.runner}`;
+  const ran = (key, dom) => {
     if (!ranOn.has(key)) ranOn.set(key, new Set());
     ranOn.get(key).add(dom);
+  };
+  for (const e of edits) {
+    if (e.pin || e.renamed || !e.from || !e.runner) continue;
+    ran(`${targetOf(e.file, e.runner).rel}\0${e.runner}`, /happy/.test(e.from) ? 'happy-dom' : 'jsdom');
+  }
+  // Tests already on warpdom (environments migrate left as they were) ran
+  // on the profile of the jsdom warpdom found installed: with them, a
+  // removed jsdom still gets its version note even when every environment
+  // changed here was happy-dom (#185).
+  // Not those in fixtures (migrate does not change them), nor a config's
+  // environment whose options name a jsdom version (warpdom follows that).
+  const onWarpdom = new Set();
+  const followers = []; // config environments on warpdom that follow the installed jsdom
+  for (const u of uses) {
+    if (!u.runner || otherOf(u.file) || FIXTURE_DIR.test(u.file)) continue;
+    if (u.prop && namesJsdomVersion(u.a, u.prop, u.runner)) continue;
+    const pkg = targetOf(u.file, u.runner);
+    const key = `${pkg.rel}\0${u.runner}`;
+    onWarpdom.add(key);
+    ran(key, 'jsdom');
+    if (u.prop) followers.push({ ...u, pkg });
   }
   // Unknown (no environment of that runner changed here, e.g. one already
   // on warpdom): assumed, as before.
   const ranOnDom = (relDir, runner, dom) =>
     !ranOn.has(`${relDir}\0${runner}`) || ranOn.get(`${relDir}\0${runner}`).has(dom);
   const ranOnHappyDom = (relDir) => ['vitest', 'jest'].some((r) => ranOn.get(`${relDir}\0${r}`)?.has('happy-dom'));
-  const pins = new Map(); // pkg.rel -> { runner, version, cssstyle, base, option, where }
+  // Per package and runner (Vitest and Jest in one package each follow
+  // their own jsdom).
+  const pins = new Map(); // `${pkg.rel}\0${runner}` -> { runner, version, cssstyle, base, option, where }
   for (const [relDir, list] of removals) {
     const pkg = pkgs.get(relDir);
     const runners = needs.get(relDir)?.runners ?? new Set();
@@ -1443,7 +1488,7 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       const named = `jsdom ${version}${cssstyle ? ` with cssstyle ${cssstyle}` : ''}`;
       const base = `${pkg.file}: warpdom follows the jsdom it finds installed, here ${named} (${before.source}); without it, it follows jsdom ${DEFAULT_PROFILE[runner]}`;
       if (keepJsdomVersion) {
-        pins.set(relDir, { runner, version, cssstyle, named, base, option });
+        pins.set(`${relDir}\0${runner}`, { runner, version, cssstyle, named, base, option });
       } else {
         result.profile.push(
           `${base}. To keep ${named}'s behavior, add ${option} to the config (--no-keep-jsdom-version left it out).`,
@@ -1451,8 +1496,12 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       }
     }
   }
+  // Packages with an environment already on warpdom that the pin did not
+  // reach (its project's options are not where the pin went).
+  const unpinned = new Map(); // `${pkg.rel}\0${runner}` -> ['file:line', ...]
   if (pins.size) {
     const pinned = new Set();
+    const pinnedFrames = new Set(); // the config objects that got the pin (or already name a version)
     const why = (pin, where) => {
       pin.where = where;
       return `${where}: pinned jsdom ${pin.version}${pin.cssstyle ? ` and cssstyle ${pin.cssstyle}` : ''} (${pin.runner === 'vitest' ? 'environmentOptions.warpdom.jsdom' : 'testEnvironmentOptions.jsdom'}), because warpdom follows the installed jsdom and, once it is removed, would follow jsdom ${DEFAULT_PROFILE[pin.runner]}; this keeps the tests' current behavior (${pin.base.split(': ')[0]})`;
@@ -1460,8 +1509,9 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
     for (const e of [...edits]) {
       if (!e.meta || (e.kind !== 'environment' && e.kind !== 'testEnvironment')) continue;
       const pkg = targetOf(e.file, e.runner);
-      const pin = pins.get(pkg.rel);
-      if (!pin || pin.runner !== e.runner) continue;
+      const key = `${pkg.rel}\0${e.runner}`;
+      const pin = pins.get(key);
+      if (!pin) continue;
       const { prop, a, text } = e.meta;
       const json = e.file.endsWith('.json');
       const q = json ? '"' : (a.tokens.find((t) => t.start === e.start)?.quote ?? "'");
@@ -1500,7 +1550,8 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
           result.profile.push(
             `${pin.base}. ${where}: ${optionKey} is not an object literal or already names a jsdom version; check that it says ${pin.version}.`,
           );
-          pinned.add(pkg.rel);
+          pinned.add(key);
+          pinnedFrames.add(prop.frame);
           continue;
         }
         const first = a.properties.find((x) => x.frame === obj);
@@ -1528,7 +1579,8 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
           inline: !insert.text.endsWith(eol),
         });
         result.profile.push(why(pin, `${e.file}:${line}`));
-        pinned.add(pkg.rel);
+        pinned.add(key);
+        pinnedFrames.add(prop.frame);
         continue;
       }
       const keyTok = a.tokens[prop.keyToken];
@@ -1553,7 +1605,8 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
           inline: true,
         });
         result.profile.push(why(pin, where));
-        pinned.add(pkg.rel);
+        pinned.add(key);
+        pinnedFrames.add(prop.frame);
         continue;
       }
       const insert =
@@ -1571,13 +1624,28 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
         pin: true,
       });
       result.profile.push(why(pin, `${e.file}:${e.line + 1}`));
-      pinned.add(pkg.rel);
+      pinned.add(key);
+      pinnedFrames.add(prop.frame);
     }
-    for (const [relDir, pin] of pins) {
-      if (!pinned.has(relDir))
+    for (const [key, pin] of pins) {
+      if (!pinned.has(key))
         result.profile.push(
           `${pin.base}. No environment literal in a config to put it next to: add ${pin.option} by hand to keep ${pin.named}'s behavior.`,
         );
+    }
+    // An environment already on warpdom in another project (an inline
+    // Vitest project, a Jest project) follows the installed jsdom too, and
+    // the pin next to the changed environment does not reach it (#185).
+    for (const u of followers) {
+      const key = `${u.pkg.rel}\0${u.runner}`;
+      const pin = pins.get(key);
+      if (!pin || !pinned.has(key) || pinnedFrames.has(u.prop.frame)) continue;
+      const where = `${u.file}:${lineIndex(textOf(u.file)).lineOf(u.a.tokens[u.prop.keyToken].start)}`;
+      if (!unpinned.has(key)) unpinned.set(key, []);
+      unpinned.get(key).push(where);
+      result.profile.push(
+        `${pin.base}. ${where}: this environment, already warpdom, is not pinned: add ${pin.option} next to it by hand to keep ${pin.named}'s behavior.`,
+      );
     }
     applyAll();
   }
@@ -1588,11 +1656,13 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
     if (e.pin || e.renamed || !e.from || !e.runner) continue;
     const pkg = targetOf(e.file, e.runner);
     const key = `${pkg.rel}\0${e.runner}`;
-    if (!changedEnvs.has(key)) changedEnvs.set(key, { pkg, runner: e.runner, froms: new Set() });
+    if (!changedEnvs.has(key)) changedEnvs.set(key, { pkg, runner: e.runner, froms: new Set(), key });
     changedEnvs.get(key).froms.add(e.from);
   }
-  for (const { pkg, runner, froms } of changedEnvs.values()) {
-    if ([...froms].every((f) => /happy/.test(f))) {
+  for (const { pkg, runner, froms, key } of changedEnvs.values()) {
+    // Only happy-dom changed, and no test already on warpdom (which follows
+    // the installed jsdom) beside them.
+    if ([...froms].every((f) => /happy/.test(f)) && !onWarpdom.has(key)) {
       const name = runner === 'vitest' ? 'happy-dom' : '@happy-dom/jest-environment';
       const decl = chainOf(pkg).find((p) => declared(p, name));
       const v = decl ? usedVersion(decl, name, decl.json[declared(decl, name)][name]).version : null;
@@ -1611,14 +1681,15 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       : runner === 'jest'
         ? "the jsdom of Jest's own jest-environment-jsdom (not declared)"
         : 'a jsdom Vitest resolves itself (not declared)';
-    const pin = before ? pins.get(before.decl.rel) : null;
+    const pin = before ? pins.get(`${before.decl.rel}\0${runner}`) : null;
     const oldName = runner === 'vitest' ? 'jsdom' : 'jest-environment-jsdom';
     const stays = before && !removals.get(before.decl.rel)?.some((r) => r.name === oldName);
     let after;
     let same;
     if (pin?.where && pin.runner === runner) {
-      after = `jsdom ${pin.version}${pin.cssstyle ? ` + cssstyle ${pin.cssstyle}` : ''}, pinned at ${pin.where}`;
-      same = true;
+      const missing = unpinned.get(`${before.decl.rel}\0${runner}`);
+      after = `jsdom ${pin.version}${pin.cssstyle ? ` + cssstyle ${pin.cssstyle}` : ''}, pinned at ${pin.where}${missing ? `; not at ${missing.join(', ')} (already warpdom), which follows jsdom ${DEFAULT_PROFILE[runner]} once ${oldName} is removed unless pinned by hand` : ''}`;
+      same = !missing;
     } else if (stays) {
       after =
         runner === 'vitest'

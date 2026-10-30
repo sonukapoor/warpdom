@@ -373,13 +373,14 @@ export function shadowIncludingContains(a, b) {
   return false;
 }
 
-function changed(parent) {
+// root: parent's root (rootOf) when the caller has it.
+function changed(parent, root) {
   const ps = parent[S];
   ps.rev++;
   const doc = ps.type === DOCUMENT_NODE ? parent : ps.doc;
   const ds = doc[S];
   ds.treeRev = (ds.treeRev ?? 0) + 1;
-  if (tracking.detached && ds.detachedRev !== undefined && connected(parent)) ds.detachedRev++;
+  if (tracking.detached) keptRefresh(ds, parent, root);
 }
 
 export function insert(parent, node, ref) {
@@ -621,9 +622,17 @@ function insertChecked(parent, node, ref, root, quiet) {
   else ps.last = node;
   ns.parent = parent;
   ps.count++;
-  changed(parent);
-  if (ps.tag === 'style' && isText(ns)) sheetCreated(ps);
+  changed(parent, moved ? undefined : root);
+  if (ps.tag === 'style' && isText(ns)) styleTextChanged(parent);
+  if (ns.tag === 'style') ns.textSheet = undefined;
   if (connected) indexIds(node, true, doc[S].namedCandidates !== undefined);
+  else if (
+    root[S].shadow === true &&
+    ns.type === ELEMENT_NODE &&
+    shadowSheets(doc) &&
+    shadowIncludingRoot(root)[S].type === DOCUMENT_NODE
+  )
+    stampStyles(node, node);
   if (doc[S].checkedRadios === true && hooks.radios !== null) hooks.radios(node, connected);
   if (!quiet && observed(parent)) hooks.childList(parent, [node], [], ns.prev, ns.next);
   if (hooks.ce !== null) hooks.ce.inserted(node);
@@ -712,7 +721,7 @@ function removeNode(parent, node, quiet) {
   ns.prev = ns.next = ns.parent = null;
   ps.count--;
   changed(parent);
-  if (ps.tag === 'style' && isText(ns)) sheetCreated(ps);
+  if (ps.tag === 'style' && isText(ns)) styleTextChanged(parent);
   const named = ods.namedBy !== undefined && ods.namedBy.size !== 0;
   if (connected || named) indexIds(node, false, named, connected);
   // Focus fixup: removing the focused element (also from inside a shadow
@@ -769,7 +778,8 @@ function indexIds(node, add, named, ids = true) {
   for (let n = node; n; n = nextInTree(n, node)) {
     const s = n[S];
     if (s.type === ELEMENT_NODE) {
-      if (add && s.tag === 'style') sheetCreated(s);
+      if (add && s.tag === 'style') sheetCreated(s, n);
+      if (add && s.shadowRoot != null && shadowSheets(s.doc)) stampStyles(s.shadowRoot, s.shadowRoot);
       if (ids) {
         const id = s.attrs.get('id');
         if (id !== undefined && id !== '') updateId(s.doc, id, n, add);
@@ -797,23 +807,39 @@ function updateId(doc, id, element, add) {
 export function attributesChanged(element) {
   const ds = element[S].doc[S];
   ds.treeRev = (ds.treeRev ?? 0) + 1;
-  if (tracking.detached && ds.detachedRev !== undefined && connected(element)) ds.detachedRev++;
+  if (tracking.detached) keptRefresh(ds, element);
 }
 
 // Changes in the document's connected tree, counted once a disconnected
 // element's computed style was read (cascade.js, cascaded): jsdom 21 and
 // later keep such an element's computed values until the connected tree
 // or the style sheets change; changes in its own detached tree, its style
-// attribute included, do not refresh them.
+// attribute included, do not refresh them. From 21 to 30.1.1 (keptTree:
+// compat.keptComputedStyle) every element's values are kept so, and only
+// changes in the document's own tree count, not in its shadow trees
+// (black box, 21.1.2 to 29.1.1).
 // tracking.detached: whether any document counts them (a module flag,
 // cheaper on the insertion path than a missing field of every document).
+// detachedRead: whether a kept value was read since the last counted
+// change; until one is, a change refreshes nothing more, and the walk to
+// the node's root (keptChange) is skipped: a test that reads styles once
+// and then renders pays it once, not on every mutation.
 const tracking = { detached: false };
-export const trackDetachedStyles = (ds) => {
+export const trackDetachedStyles = (ds, keptTree) => {
   if (ds.detachedRev === undefined) {
     ds.detachedRev = 0;
+    ds.keptTree = keptTree;
     tracking.detached = true;
   }
+  ds.detachedRead = true;
 };
+const keptChange = (ds, node, root) => (ds.keptTree === true ? (root ?? rootOf(node))[S] === ds : connected(node));
+function keptRefresh(ds, node, root) {
+  if (ds.detachedRead === true && keptChange(ds, node, root)) {
+    ds.detachedRev++;
+    ds.detachedRead = false;
+  }
+}
 
 // Called when an element's id attribute changes.
 export function idChanged(element, oldId, newId) {
@@ -898,10 +924,12 @@ export function replaceData(node, offset, count, data) {
   if (offset + count > length) count = length - offset;
   if (observed(node)) hooks.characterData(node, old);
   s.data = old.slice(0, offset) + data + old.slice(offset + count);
+  // Text set in the connected tree refreshes kept computed styles too.
+  if (tracking.detached) keptRefresh(s.doc[S], node);
   // A style element's text: its style sheet changes.
   if (s.parent && s.parent[S].tag === 'style') {
     s.doc[S].styleRev = (s.doc[S].styleRev ?? 0) + 1;
-    if (isText(s)) sheetCreated(s.parent[S]);
+    if (isText(s)) styleTextChanged(s.parent);
   }
   if (hasRanges(s.doc)) hooks.rangeReplaceData(s.doc, node, offset, count, data.length);
 }
@@ -914,16 +942,113 @@ export function replaceData(node, offset, count, data) {
 // CSSOM edits (sheetRev: cssom.js styleElementSheet). Before jsdom 30.1.2
 // document.styleSheets is in that order (cssom.js).
 let sheetStamps = 0;
+// From jsdom 30.1.2 a <style> in a shadow tree has a sheet too, made when
+// it becomes connected: inserted into a connected shadow tree, or its
+// host inserted into a document (cssom.js documentStyleSheets orders the
+// sheets by then).
+const shadowSheets = (doc) => doc[S].window?.[S].compat?.shadowSheets === true;
+function stampStyles(node, root) {
+  for (let n = node; n; n = nextInTree(n, root)) {
+    const s = n[S];
+    if (s.type !== ELEMENT_NODE) continue;
+    if (s.tag === 'style') sheetCreated(s, n);
+    if (s.shadowRoot != null) stampStyles(s.shadowRoot, s.shadowRoot);
+  }
+}
 const isText = (s) => s.type === TEXT_NODE || s.type === CDATA_SECTION_NODE;
-function sheetCreated(s) {
+// Before jsdom 30.1.2 a <style> in a shadow tree has a sheet only once its
+// text changes while it is connected (black box, 20.0.3 to 29.1.1: a text
+// set or a text node appended then; not its insertion, nor a text set
+// before), and that sheet is the document's as from 30.1.2 (cssom.js
+// styleElementSheet). From jsdom 29 a sheet made so refreshes kept
+// computed styles, as insertRule() does (ruleListsChanged); a text change
+// in a disconnected shadow tree makes no sheet and refreshes nothing.
+function styleTextChanged(node) {
+  const s = node[S];
+  sheetCreated(s, node);
+  if (rootOf(node)[S].shadow === true) {
+    s.textSheet = connected(node);
+    if (s.textSheet) ruleListsChanged(s.doc[S].window?.[S].protos);
+  }
+}
+function sheetCreated(s, node) {
   if (s.ns !== HTML_NS) return;
   s.sheetStamp = ++sheetStamps;
   s.sheetRev = -1;
+  if (s.doc[S].sheetOrder !== undefined || shadowSheets(s.doc)) orderSheet(s, node);
+}
+
+// From jsdom 30.1.2 document.styleSheets is a list each sheet is put in
+// when it is made (connected), after the last sheet of its own tree there
+// then that precedes it in tree order, else first, and taken out when it
+// goes (black box, 30.1.2 and 30.1.3): with sheets of shadow trees the
+// order depends on what was there when each was made. sheetOrder (made
+// with the first shadow tree's sheet; before it the order is tree order)
+// keeps that list as { el, stamp } records (cssom.js documentStyleSheets);
+// a record whose element got another sheet or left is skipped, and
+// dropped once the list doubles.
+function orderSheet(s, node) {
+  const doc = s.doc;
+  const ds = doc[S];
+  const root = rootOf(node);
+  let list = ds.sheetOrder;
+  if (list === undefined) {
+    if (root[S].shadow !== true || !connected(node)) return;
+    list = ds.sheetOrder = [];
+    for (let n = ds.first; n; n = nextInTree(n, doc)) {
+      const t = n[S];
+      if (t.type === ELEMENT_NODE && t.tag === 'style' && t.ns === HTML_NS && t.sheetStamp !== undefined && n !== node)
+        list.push({ el: n, stamp: t.sheetStamp });
+    }
+  } else if ((root[S].shadow === true ? shadowIncludingRoot(root) : root) !== doc) return;
+  if (list.length > 2 * (ds.sheetOrderKept ?? 0) + 8) {
+    let j = 0;
+    for (const r of list) if (r.el[S].sheetStamp === r.stamp && connected(r.el)) list[j++] = r;
+    list.length = ds.sheetOrderKept = j;
+  }
+  // (a record of the new sheet's tree: one of a sheet there now)
+  let i = list.length;
+  for (; i > 0; i--) {
+    const r = list[i - 1];
+    if (r.el[S].sheetStamp === r.stamp && rootOf(r.el) === root && treePrecedes(r.el, node)) break;
+  }
+  list.splice(i, 0, { el: node, stamp: s.sheetStamp });
+}
+
+// Whether a comes before b in tree order (same root, a !== b).
+function treePrecedes(a, b) {
+  const ancestors = new Set();
+  for (let n = a; n; n = n[S].parent) ancestors.add(n);
+  if (ancestors.has(b)) return false;
+  let childB = b;
+  while (!ancestors.has(childB[S].parent)) childB = childB[S].parent;
+  const common = childB[S].parent;
+  if (common === a) return true;
+  let childA = a;
+  while (childA[S].parent !== common) childA = childA[S].parent;
+  for (let n = childA[S].next; n; n = n[S].next) if (n === childB) return true;
+  return false;
 }
 
 // Changes to style rules (insertRule, deleteRule, a rule's declarations,
 // a sheet's disabled flag), for computed style caches.
 export const cssomChanges = { rev: 0 };
+
+// insertRule() and deleteRule() calls (and the sheets styleTextChanged
+// makes) per window, keyed by its protos, which its style sheets and rules
+// carry: from jsdom 29 they refresh kept computed styles (cascade.js
+// cascaded), of that window's documents only (black box, 29.1.1: a read
+// in one window stays after insertRule() on another window's sheet).
+const ruleListRevs = new WeakMap();
+export function ruleListRev(protos) {
+  let box = ruleListRevs.get(protos);
+  if (box === undefined) ruleListRevs.set(protos, (box = { rev: 0 }));
+  return box;
+}
+export function ruleListsChanged(protos) {
+  const box = protos === undefined ? undefined : ruleListRevs.get(protos);
+  if (box !== undefined) box.rev++;
+}
 
 export const setData = (node, value) => replaceData(node, 0, node[S].data.length, value);
 

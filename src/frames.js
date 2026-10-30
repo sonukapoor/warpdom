@@ -7,7 +7,7 @@
 // iframe: the tree calls these hooks only when the document's frameCount
 // is non-zero (counted at creation and adoption, in window.js and
 // internal.js).
-import { S, HTML_NS, ELEMENT_NODE, hooks, nextInTree, PlatformURL as URL } from './internal.js';
+import { S, HTML_NS, ELEMENT_NODE, hooks, nextInTree, connected, PlatformURL as URL } from './internal.js';
 import { dispatch, exposed } from './events.js';
 import { clearWindowTimers } from './window-features.js';
 import { abortWindowRequests } from './xhr.js';
@@ -31,15 +31,47 @@ function forEachIframe(node, fn) {
 
 // The parent window's index properties (window[0], ...) follow its frames,
 // also on the VM context's global it is installed as (Jest, Vitest's VM
-// pools), which frames returns there.
-function syncIndexes(window, previousLength) {
-  const frames = window[S].childFrames;
-  const { globalProxy } = window[S];
-  for (const target of globalProxy ? [window, globalProxy] : [window]) {
-    for (let i = frames.length; i < previousLength; i++) delete target[i];
+// pools), which frames returns there. As in jsdom (20 to 30, black box),
+// every insertion and removal of a frame puts back each index a test
+// deleted or redefined since. Each index has one getter, which reads
+// the window's frames[i]: one already in place is kept, so an insertion defines only the
+// new index (#184). An index a test made non-configurable stays (Reflect:
+// no TypeError, which would stop a removal or resetWindow halfway); its
+// getter reads the frames, so it never keeps a discarded frame window
+// reachable. While resetWindow runs, ws.resetIndexes is the number of
+// indexes it may have touched so far (the frames' before it, and those of
+// iframes a connectedCallback inserted, also when removed again).
+function syncIndexes(window, previousLength, restoring = false) {
+  const ws = window[S];
+  const frames = ws.childFrames;
+  if (ws.resetIndexes !== undefined) {
+    ws.resetIndexes = Math.max(ws.resetIndexes, previousLength, frames.length);
+  }
+  const getters = ws.indexGetters ?? (ws.indexGetters = []);
+  for (let i = getters.length; i < frames.length; i++) getters.push(() => ws.childFrames[i]);
+  for (const target of ws.globalProxy ? [window, ws.globalProxy] : [window]) {
+    for (let i = frames.length; i < previousLength; i++) {
+      // After resetWindow's restore, the window's own index properties past
+      // the frames are the snapshot's (a value a setup file assigned), also
+      // those an iframe inserted during the reset took or, removed again,
+      // deleted (a connectedCallback run by the reinsertion of the kept
+      // body, #184), and one that callback assigned after (CodeRabbit
+      // review on #206); one made non-configurable stays. The snapshot is
+      // the window's own properties: the VM context's global gets none of
+      // them (a value set on the window is not one of the global's).
+      const saved = restoring && target === window ? ws.snapshot.get(String(i)) : undefined;
+      if (saved === undefined) {
+        Reflect.deleteProperty(target, i);
+      } else if (Object.getOwnPropertyDescriptor(target, i)?.configurable !== false) {
+        Reflect.defineProperty(target, i, saved);
+      }
+    }
     for (let i = 0; i < frames.length; i++) {
-      const child = frames[i];
-      Object.defineProperty(target, i, { get: () => child, configurable: true, enumerable: true });
+      const current = Object.getOwnPropertyDescriptor(target, i);
+      if (current?.configurable === false) continue;
+      if (current?.get !== getters[i] || !current.enumerable) {
+        Reflect.defineProperty(target, i, { get: getters[i], configurable: true, enumerable: true });
+      }
     }
   }
 }
@@ -80,22 +112,33 @@ function createFrame(iframe) {
   }, 0);
 }
 
-function destroyFrame(iframe) {
+// The discarded window's tasks never run: its timers (and so
+// AbortSignal.timeout of its realm) stop, as in jsdom, and so do those of
+// the frames nested in it (jsdom 20 to 30, black box: an interval in an
+// iframe's iframe stops when the outer iframe is removed). The nested
+// frames stay its frames (jsdom 30 keeps its length, earlier ones do not).
+function discardWindow(window) {
+  window[S].discarded = true;
+  hooks.discardedWindows++;
+  clearWindowTimers(window);
+  const frames = window[S].childFrames;
+  if (frames) for (const child of frames) discardWindow(child);
+}
+
+// sync false: the caller synchronizes the indexes once, after the last
+// frame it discards (resetWindow).
+function destroyFrame(iframe, sync = true) {
   const es = iframe[S];
   const child = es.frameWindow;
   if (!child) return;
   es.frameWindow = null;
-  // The discarded window's tasks never run: its timers (and so
-  // AbortSignal.timeout of its realm) stop, as in jsdom.
-  child[S].discarded = true;
-  hooks.discardedWindows++;
-  clearWindowTimers(child);
+  discardWindow(child);
   abortWindowRequests(child);
   forgetLastList();
   const parent = child[S].parentWindow;
   const frames = parent[S].childFrames;
   frames.splice(frames.indexOf(child), 1);
-  syncIndexes(parent, frames.length + 1);
+  if (sync) syncIndexes(parent, frames.length + 1);
 }
 
 hooks.frames = {
@@ -104,6 +147,31 @@ hooks.frames = {
   },
   removed(node) {
     forEachIframe(node, destroyFrame);
+  },
+  // resetWindow (reset.js) detaches the document's tree without the
+  // removal hooks: the frames of the iframes it took out of the document
+  // are discarded, as a fresh window has none (#173). Its restore of the
+  // window's own properties deleted the index properties; those of the
+  // frames left (an iframe in the kept body's shadow root) come back, and
+  // every other index touched during the reset is the snapshot's again.
+  // resetStart runs before the kept tree is inserted again.
+  resetStart(window) {
+    const ws = window[S];
+    ws.resetIndexes = ws.childFrames?.length ?? 0;
+  },
+  reset(window) {
+    const ws = window[S];
+    const touched = ws.resetIndexes ?? 0;
+    ws.resetIndexes = undefined;
+    const frames = ws.childFrames;
+    if (!frames?.length && touched === 0) return;
+    if (frames) {
+      for (const child of [...frames]) {
+        const iframe = child[S].frameElement;
+        if (!connected(iframe)) destroyFrame(iframe, false);
+      }
+    }
+    syncIndexes(window, touched, true);
   },
 };
 

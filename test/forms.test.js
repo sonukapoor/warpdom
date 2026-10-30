@@ -2132,3 +2132,79 @@ for (const jsdom of [20, 30]) {
     { jsdom },
   );
 }
+
+// FormData's iterators walk the live entry list by index too (jsdom 20.0.3
+// to 30): entries(), keys(), values() and @@iterator see entries appended,
+// deleted or set between next() calls, and next() after done reads the list
+// again. They are WebIDL default iterator objects: a shared
+// "FormData Iterator" prototype with next(), inheriting %IteratorPrototype%,
+// and @@iterator is the entries function.
+for (const jsdom of [20, 30]) {
+  parity(
+    `FormData iterators: entries appended, deleted or set between next() calls (jsdom ${jsdom})`,
+    (w) => {
+      const make = () => {
+        const fd = new w.FormData();
+        fd.append('a', '1');
+        fd.append('b', '2');
+        fd.append('c', '3');
+        return fd;
+      };
+      const changes = {
+        append: [0, (fd) => fd.append('d', '4')],
+        deleteLater: [0, (fd) => fd.delete('b')],
+        deleteEarlier: [1, (fd) => fd.delete('a')],
+        setLater: [0, (fd) => fd.set('c', 'x')],
+        setNew: [0, (fd) => fd.set('e', '5')],
+      };
+      const result = {};
+      for (const kind of ['entries', 'keys', 'values', 'iterator']) {
+        for (const [label, [at, change]] of Object.entries(changes)) {
+          const fd = make();
+          const it = kind === 'iterator' ? fd[Symbol.iterator]() : fd[kind]();
+          const seen = [];
+          for (let r = it.next(); !r.done; r = it.next()) {
+            seen.push(r.value);
+            if (seen.length === at + 1) change(fd);
+          }
+          result[`${kind} ${label}`] = seen;
+        }
+        const fd = make();
+        const it = kind === 'iterator' ? fd[Symbol.iterator]() : fd[kind]();
+        const steps = [it.next(), it.next(), it.next(), it.next()];
+        fd.append('d', '4');
+        steps.push(it.next(), it.next());
+        result[`${kind} after done`] = steps;
+      }
+      const fd = make();
+      const it = fd.entries();
+      const proto = Object.getPrototypeOf(it);
+      let error;
+      try {
+        proto.next.call({});
+      } catch (e) {
+        error = [e.name, e.message];
+      }
+      result.shape = {
+        tag: Object.prototype.toString.call(it),
+        own: Reflect.ownKeys(it).length,
+        protoKeys: Reflect.ownKeys(proto).map(String),
+        next: Object.getOwnPropertyDescriptor(proto, 'next'),
+        tagDescriptor: Object.getOwnPropertyDescriptor(proto, Symbol.toStringTag),
+        // %IteratorPrototype% (of the window's realm in jsdom).
+        iteratorPrototype: [
+          Object.prototype.toString.call(Object.getPrototypeOf(proto)),
+          Object.hasOwn(Object.getPrototypeOf(proto), Symbol.iterator),
+        ],
+        shared: Object.getPrototypeOf(fd.keys()) === proto && Object.getPrototypeOf(fd.values()) === proto,
+        atAtIterator: w.FormData.prototype[Symbol.iterator] === w.FormData.prototype.entries,
+        selfIterable: it[Symbol.iterator]() === it,
+        error,
+      };
+      result.shape.next = result.shape.next && { ...result.shape.next, value: typeof result.shape.next.value };
+      // jsdom's results and descriptors are objects of the window's realm.
+      return JSON.parse(JSON.stringify(result));
+    },
+    { jsdom },
+  );
+}

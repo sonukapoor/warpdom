@@ -476,6 +476,65 @@ test('computed values: font-family depends on user agent from jsdom 29.0.2', () 
   }
 });
 
+// --- inherited currentcolor ------------------------------------------------------
+
+// From jsdom 29.0.2 currentcolor is inherited as the keyword: it resolves
+// to the inheriting element's own color, through inherit (longhands and
+// the border, border side, border-color, outline, column-rule and
+// text-decoration shorthands), unset and plain inheritance (fill,
+// -webkit-text-fill-color, text-emphasis-color), from a declared
+// currentcolor or the initial one (border colors, text-decoration-color,
+// column-rule-color; outline-color's initial is transparent). jsdom 29.1.1
+// gives a border or border-color shorthand's currentcolor (and CSS-wide
+// keywords) a fixed color in some cases (a style sheet's against a color
+// from the style attribute; its children inherit that color), which
+// warpdom does not model: the scenario keeps clear of them there.
+const CURRENT_COLOR_PROPS = [
+  'border-top-color',
+  'border-left-color',
+  'outline-color',
+  'text-decoration-color',
+  'column-rule-color',
+  'background-color',
+  'fill',
+  'flood-color',
+  '-webkit-text-fill-color',
+  'text-emphasis-color',
+];
+function currentColorInherited(w) {
+  const d = w.document;
+  d.head.innerHTML =
+    '<style>.cc { color: blue; border-top-color: currentColor; outline-color: currentcolor; fill: CURRENTCOLOR; background-color: currentcolor !important; flood-color: currentcolor }' +
+    ' .i { color: red; border-top-color: inherit; outline-color: inherit; background-color: inherit; flood-color: inherit; column-rule: inherit }' +
+    ' .b { color: red; border: inherit }</style>';
+  const p = 'color: blue';
+  d.body.innerHTML =
+    `<div style="${p}"><p id="initial" class="b"></p></div>` +
+    `<div style="${p}"><p id="attr" style="color: red; border: inherit"></p></div>` +
+    `<div style="${p}; border-top: 1px solid"><p id="side" style="color: red; border-top: inherit"><span id="nested" style="color: lime; border-top-color: inherit"></span></p></div>` +
+    `<div class="cc"><p id="sheet" class="i"><span id="plain" style="color: lime"></span></p></div>` +
+    `<div class="cc"><p id="attrs" style="color: red; border-top-color: inherit; border-left: inherit; outline: inherit; text-decoration: inherit; background-color: inherit; flood-color: inherit; fill: unset"><span id="deeper" style="color: lime; fill: inherit"></span></p></div>` +
+    `<div style="${p}; border-top-color: green; fill: green; outline-color: green"><p id="control" style="color: red; border-top-color: inherit; outline-color: inherit"></p></div>` +
+    `<div style="${p}"><p id="unset" style="color: red; border-top-color: unset; -webkit-text-fill-color: unset"></p></div>` +
+    `<div style="${p}"><p id="emphasis" style="color: red; text-emphasis-color: initial"><span id="emphasized" style="color: lime"></span></p></div>` +
+    `<div style="${p}; border-top-color: inherit"><p id="keyword" style="color: red; border-top-color: inherit"></p></div>`;
+  const out = {};
+  for (const el of d.querySelectorAll('[id]')) out[el.id] = read(w, el, CURRENT_COLOR_PROPS);
+  return out;
+}
+for (const jsdom of [29, 30])
+  parity(`computed values: inherited currentcolor (jsdom ${jsdom})`, currentColorInherited, { jsdom });
+
+// jsdom 30: through the border shorthands too, at any depth.
+parity('computed values: inherited currentcolor through border shorthands (jsdom 30)', (w) => {
+  const d = w.document;
+  d.head.innerHTML = '<style>.s { border: inherit } .c { border-color: inherit }</style>';
+  d.body.innerHTML =
+    '<div style="color: blue; border: 1px solid"><p class="s" style="color: red"><span class="c" style="color: lime">' +
+    '<b style="color: yellow; border-top: inherit"></b></span></p></div>';
+  return [...d.querySelectorAll('*')].map((el) => read(w, el, ['border-top-color', 'border-left-color']));
+});
+
 // --- lengths, font sizes and weights (jsdom 30) -------------------------------------
 
 // jsdom 30 computes lengths to px: em from the element's font size (font
@@ -991,11 +1050,9 @@ function documentOrder(w, skip = new Set()) {
   }
   return out;
 }
-// From jsdom 28.1 these differ otherwise, not modeled: two !important
-// rules meet by order, a shorthand after a more specific longhand wins
-// (to 30.1.2) (#136), and a rule's style edited after a read does not
-// change the computed style (to 30.0.1, #137).
-const NEWER_GAPS = new Set(['importantBoth', 'longhandFirst', 'shorthandFirst', 'border', 'varThenPlain', 'ruleStyle']);
+// From jsdom 28.1 a rule's style edited after a read does not change the
+// computed style (to 30.0.1, #137), not modeled.
+const NEWER_GAPS = new Set(['ruleStyle']);
 for (const jsdom of JSDOMS)
   parity(
     `computed values: style rules in document order before jsdom 28.1 (jsdom ${jsdom})`,
@@ -1005,23 +1062,167 @@ for (const jsdom of JSDOMS)
 
 // Before jsdom 28.1.0 the user agent sheet is under all of the page's
 // rules, its [hidden] { display: none } too: a display rule shows an element
-// with the hidden attribute. (From 28.1.0 jsdom cascades the user agent
-// sheet's rules with the page's by specificity, not modeled: #136.)
+// with the hidden attribute. From 28.1.0 (black box, 28.1.0 to 30.1.3, #136)
+// jsdom cascades the user agent sheet's rules with the page's by
+// specificity, the page's winning ties: * { font-weight: normal } leaves a b
+// bolder, :where(div) { display: inline } a div block, and the hidden
+// attribute's display: none is a rule as specific as
+// [hidden]:not([hidden=until-found i]):not(embed): .x or div.x does not show
+// an element with hidden, div.x.y and #t do.
 function underRules(w) {
   const d = w.document;
   d.head.innerHTML =
-    '<style>* { font-weight: normal } :where(div) { display: inline } .x { display: block } span { display: flex } #t { display: block } .a.b { display: none } div.a { display: block }</style>';
+    '<style>* { font-weight: normal } div { display: inline } .x { display: block } span { display: flex } #t { display: block } .a.b { display: none } div.a { display: block } div.c.d { display: block }</style>';
   d.body.innerHTML =
-    '<b>b</b><div>div</div><p class="x" hidden>p</p><span hidden>span</span><section id="t" hidden>s</section><div class="a b" hidden>d</div><i hidden>i</i><div hidden style="display: inline">inline</div><embed hidden>';
+    '<b>b</b><div>div</div><p class="x" hidden>p</p><span hidden>span</span><section id="t" hidden>s</section><div class="a b" hidden>d</div><div class="c d" hidden>cd</div><i hidden>i</i><div hidden style="display: inline">inline</div><embed hidden>';
   return [...d.body.children].map((el) => {
     const cs = w.getComputedStyle(el);
     return [el.localName, cs.display, cs.fontWeight];
   });
 }
-for (const jsdom of [20, 22, 25, 26, 27])
-  parity(`computed values: the user agent sheet under all rules before jsdom 28.1 (jsdom ${jsdom})`, underRules, {
-    jsdom,
+for (const jsdom of JSDOMS)
+  parity(`computed values: the user agent sheet and the page's rules (jsdom ${jsdom})`, underRules, { jsdom });
+
+// From jsdom 28.1.0 (black box, 28.1.0 to 30.1.3, #136): user agent rules
+// against the page's by specificity, for each kind of declaration. To
+// 30.1.2 the page's shorthand wins over a user agent longhand, or a
+// shorthand it does not contain, whatever their specificity (* { font:
+// 10px serif } gives an h1 10px; * { border: 0 } an hr no border, but not *
+// { border-top: 0 } an iframe, whose border: 2px inset contains it), and
+// margin and padding apply in document order after the user agent sheet's
+// (td { padding-top: 3px } * { padding: 0 } gives a cell 3px 1px 1px).
+const UA_CASES = [
+  [
+    '* { display: inline }',
+    '<p></p><li></li><span></span><dialog></dialog><embed hidden><div popover></div>',
+    'display',
+  ],
+  ['[hidden] { display: block }', '<div hidden></div><span hidden></span>', 'display'],
+  ['[hidden][hidden]:not(embed) { display: block }', '<div hidden></div>', 'display'],
+  [
+    '.x.y { display: block }',
+    '<div class="x y" hidden></div><dialog class="x y"></dialog><div class="x y" popover></div>',
+    'display',
+  ],
+  [
+    '.x { display: flex } dialog.x { display: block }',
+    '<dialog class="x"></dialog><dialog></dialog><dialog class="x" open hidden></dialog>',
+    'display',
+  ],
+  [
+    '#t { display: block }',
+    '<div id="t" hidden></div><div id="t" popover hidden></div><div id="t" popover></div>',
+    'display',
+  ],
+  ['* { display: block !important }', '<div hidden></div><input type="hidden">', 'display'],
+  ['.x.y.z { display: block }', '<div class="x y z" popover hidden></div>', 'display'],
+  ['* { font-weight: normal }', '<b></b><h1></h1><strong></strong><th></th>', 'font-weight'],
+  ['b { font-weight: normal }', '<b></b>', 'font-weight'],
+  ['body { font-weight: normal }', '<b></b>', 'font-weight'],
+  ['* { font-style: normal }', '<em></em><i></i>', 'font-style'],
+  ['* { font-size: 10px }', '<h1></h1><small></small>', 'font-size'],
+  ['* { font: 10px serif }', '<h1></h1><code></code>', 'font-size'],
+  ['* { font: 10px serif }', '<b></b><h1></h1>', 'font-weight'],
+  ['* { font: 10px serif }', '<code></code>', 'font-family'],
+  ['* { font-family: serif }', '<code></code><pre></pre>', 'font-family'],
+  ['* { color: red }', '<a href="x"></a><mark></mark><b><mark><i></i></mark></b>', 'color'],
+  ['a { color: red }', '<a href="x"></a><a></a>', 'color'],
+  ['* { text-decoration: none }', '<a href="x"></a><u></u>', 'text-decoration'],
+  ['* { list-style-type: none } ul { list-style-type: square }', '<ul><li><ul></ul></li></ul>', 'list-style-type'],
+  ['* { white-space: normal } * { unicode-bidi: normal }', '<pre></pre><div></div>', 'white-space'],
+  ['* { unicode-bidi: normal }', '<div></div><bdi></bdi>', 'unicode-bidi'],
+  ['* { box-sizing: content-box; text-align: left }', '<button></button>', 'box-sizing'],
+  ['* { box-sizing: content-box; text-align: left }', '<button></button>', 'text-align'],
+  ['* { background: red }', '<mark></mark>', 'background-color'],
+  ['* { background-color: red }', '<mark></mark><dialog open></dialog>', 'background-color'],
+  ['* { overflow: visible }', '<hr>', 'overflow'],
+  ['* { position: static }', '<dialog open></dialog>', 'position'],
+  ['* { border: 0 }', '<hr><iframe></iframe><fieldset></fieldset>', 'border-top-width'],
+  ['* { border: 0 }', '<hr><fieldset></fieldset>', 'border-top-style'],
+  ['* { border-top: 0 }', '<hr><iframe></iframe>', 'border-top-style'],
+  ['* { border-top: 0 }', '<iframe></iframe>', 'border-top-width'],
+  ['* { border-width: 0 }', '<hr><iframe></iframe>', 'border-top-width'],
+  ['* { border-style: none }', '<hr>', 'border-top-style'],
+  ['* { border-top-style: none }', '<hr>', 'border-top-style'],
+  ['* { border-color: red }', '<fieldset></fieldset>', 'border-top-color'],
+  ['* { margin: 0 }', '<dialog open></dialog>', 'margin-top'],
+  ['* { margin-top: 0 }', '<dialog open></dialog>', 'margin'],
+  ['* { padding: 0 }', '<dialog open></dialog><div popover></div>', 'padding-top'],
+  ['[popover] { padding: 0 }', '<div popover></div>', 'padding-top'],
+  ['* { padding-top: 0 }', '<table><tr><td></td></tr></table>', 'padding'],
+  ['* { padding-top: 0 }', '<table><tr><td style="padding-left: 2px"></td></tr></table>', 'padding'],
+  ['* { padding: 0 }', '<table><tr><td style="padding-top: 2px"></td></tr></table>', 'padding'],
+  ['td { padding: 0 }', '<table><tr><td></td></tr></table>', 'padding'],
+  ['* { padding: 0 !important }', '<table><tr><td></td></tr></table>', 'padding'],
+  ['* { padding-top: 0 !important }', '<table><tr><td></td></tr></table>', 'padding-top'],
+  ['* { padding: 0 } td { padding-top: 3px }', '<table><tr><td></td></tr></table>', 'padding'],
+  ['td { padding-top: 3px } * { padding: 0 }', '<table><tr><td></td></tr></table>', 'padding'],
+  ['td { padding-top: 3px } * { padding: 0 }', '<table><tr><td></td></tr></table>', 'padding-left'],
+  ['* { padding: var(--p) }', '<table><tr><td></td></tr></table>', 'padding-top'],
+  ['* { padding-top: var(--p) }', '<table><tr><td></td></tr></table>', 'padding-top'],
+  ['* { vertical-align: top }', '<table><tr><td></td></tr></table>', 'vertical-align'],
+
+  [':where(div) { display: inline } td { display: block } html { display: inline }', '<div></div>', 'display'],
+  [':where(b) { font-weight: normal }', '<b></b>', 'font-weight'],
+  [':where(td) { padding: 0 }', '<table><tr><td></td></tr></table>', 'padding-left'],
+];
+function userAgentBySpecificity(w) {
+  const d = w.document;
+  return UA_CASES.map(([css, markup, prop]) => {
+    d.head.innerHTML = `<style>${css}</style>`;
+    d.body.innerHTML = markup;
+    const els = markup.startsWith('<table') ? [d.querySelector('td')] : [...d.body.querySelectorAll('*')];
+    return [css, prop, ...els.map((el) => w.getComputedStyle(el).getPropertyValue(prop))];
   });
+}
+// jsdom 28.1.0 is measured on a fresh window per case: from the second
+// element it reads in a window, depending on the page's rules, it can
+// leave out the user agent sheet's [hidden], [popover], dialog:not([open])
+// and :link rules (with .x.y { display: block }, <i></i><div class="x y"
+// hidden> gives the div block, alone none; with :where(p) { color: red }
+// a later <div popover> is block). 29 and later do not (not modeled).
+for (const jsdom of [29, 30])
+  parity(
+    `computed values: the user agent sheet by specificity from jsdom 28.1 (jsdom ${jsdom})`,
+    userAgentBySpecificity,
+    {
+      jsdom,
+    },
+  );
+// The same cases, and the 30.1.3 values (the shorthand by specificity:
+// * { font: 10px serif } leaves an h1 20px).
+test('computed values: the user agent sheet by specificity in jsdom 28.1.0 and 30.1.3', () => {
+  for (const [css, markup, prop, ...expected] of [
+    ['.x.y { display: block }', '<div class="x y" hidden></div>', 'display', 'none', 'none'],
+    ['div.x.y { display: block }', '<div class="x y" hidden></div>', 'display', 'block', 'block'],
+    ['#t { display: block }', '<div id="t" hidden></div>', 'display', 'block', 'block'],
+    ['.x { display: block }', '<dialog class="x"></dialog>', 'display', 'none', 'none'],
+    ['dialog.x { display: block }', '<dialog class="x"></dialog>', 'display', 'block', 'block'],
+    ['* { display: inline }', '<li></li>', 'display', 'list-item', 'list-item'],
+    ['* { display: block !important }', '<input type="hidden">', 'display', 'block', 'block'],
+    ['* { font-weight: normal }', '<b></b>', 'font-weight', 'bolder', '700'],
+    ['* { font: 10px serif }', '<h1></h1>', 'font-size', '10px', '20px'],
+    ['* { border: 0 }', '<hr>', 'border-top-width', '0px', '1px'],
+    ['* { border-top: 0 }', '<iframe></iframe>', 'border-top-width', '2px', '2px'],
+    ['* { margin-top: 0 }', '<dialog open></dialog>', 'margin', 'auto', 'auto'],
+    [
+      'td { padding-top: 3px } * { padding: 0 }',
+      '<table><tr><td></td></tr></table>',
+      'padding',
+      '3px 1px 1px',
+      '3px 1px 1px',
+    ],
+    ['* { padding: var(--p) }', '<table><tr><td></td></tr></table>', 'padding-top', '1px', '1px'],
+  ]) {
+    for (const [i, jsdom] of ['28.1.0', '30.1.3'].entries()) {
+      const w = createWindow({ jsdom });
+      w.document.head.innerHTML = `<style>${css}</style>`;
+      w.document.body.innerHTML = markup;
+      const el = markup.startsWith('<table') ? w.document.querySelector('td') : w.document.body.firstElementChild;
+      assert.equal(w.getComputedStyle(el).getPropertyValue(prop), expected[i], `${jsdom} ${css} ${markup}`);
+    }
+  }
+});
 
 test('computed values: document order to jsdom 28.0.0, specificity from 28.1.0', () => {
   const read = (jsdom, css, markup = ORDER_TABLE, prop = 'color') => {

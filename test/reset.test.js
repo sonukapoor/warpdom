@@ -283,3 +283,261 @@ test('resetWindow: the body style a style write left is forgotten', () => {
   assert.equal(body.style.cssText, '');
   assert.equal(w.getComputedStyle(body).color, 'rgb(0, 0, 0)');
 });
+
+// The frame windows of the iframes a reset discards go with them (#173):
+// the window is as fresh as a new one (length 0), the frames' timers stop,
+// and the next iframe is frame 0. One in a nested element, and one moved
+// out after the reset (its removal from a detached tree runs no hooks).
+test('resetWindow discards the frame windows of the document iframes', async () => {
+  const w = createWindow({ url: 'http://localhost:3000/' });
+  snapshotWindow(w);
+  const d = w.document;
+  const top = d.body.appendChild(d.createElement('iframe'));
+  const nested = d.body.appendChild(d.createElement('div')).appendChild(d.createElement('iframe'));
+  const child = top.contentWindow;
+  const fired = [];
+  child.setTimeout(() => fired.push('timeout'), 5);
+  assert.equal(w.length, 2);
+  resetWindow(w);
+  assert.deepEqual(
+    [w.length, w.frames.length, w[0], w[1], top.contentWindow, nested.contentDocument],
+    [0, 0, undefined, undefined, null, null],
+  );
+  const div = d.createElement('div');
+  div.append(top);
+  top.remove();
+  assert.equal(w.length, 0);
+  const next = d.body.appendChild(d.createElement('iframe'));
+  assert.deepEqual([w.length, w[0] === next.contentWindow, next.contentWindow !== child], [1, true, true]);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.deepEqual(fired, []);
+});
+
+// A frame of an iframe still in the document after the reset stays: one in
+// a shadow root of the kept body (the reset keeps the body's shadow root).
+test('resetWindow keeps the frame windows of iframes still connected', () => {
+  const w = createWindow();
+  snapshotWindow(w);
+  const d = w.document;
+  const body = d.body;
+  body.remove();
+  const kept = body.attachShadow({ mode: 'open' }).appendChild(d.createElement('iframe'));
+  d.documentElement.append(body);
+  const gone = body.appendChild(d.createElement('iframe'));
+  assert.equal(w.length, 2);
+  resetWindow(w);
+  assert.deepEqual(
+    [kept.isConnected, w.length, w[0] === kept.contentWindow, gone.contentWindow],
+    [true, 1, true, null],
+  );
+  // No frame discarded: the index property stays all the same.
+  resetWindow(w);
+  assert.deepEqual([w.length, w[0] === kept.contentWindow, w[1]], [1, true, undefined]);
+});
+
+// A frame in a discarded frame stops too: its timers never run (jsdom 20
+// to 30, black box: an interval in a nested iframe stops when the outer
+// iframe is removed). Review on #176. The interval is cleared in any case:
+// left running when the reset does not stop it, it kept node --test from
+// exiting instead of reporting the failure.
+test('resetWindow stops the timers of frames nested in a discarded frame', async () => {
+  const w = createWindow();
+  snapshotWindow(w);
+  const outer = w.document.body.appendChild(w.document.createElement('iframe'));
+  const od = outer.contentDocument;
+  const inner = od.body.appendChild(od.createElement('iframe')).contentWindow;
+  let ticks = 0;
+  const interval = inner.setInterval(() => ticks++, 2);
+  try {
+    resetWindow(w);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  } finally {
+    inner.clearInterval(interval);
+  }
+  assert.equal(ticks, 0);
+});
+
+// A frame index property the snapshot had (an iframe in the document when
+// it was taken) does not outlive its frame (CodeRabbit review on #176).
+test('resetWindow drops a frame index property the snapshot had', () => {
+  const w = createWindow();
+  const iframe = w.document.body.appendChild(w.document.createElement('iframe'));
+  snapshotWindow(w);
+  iframe.remove();
+  resetWindow(w);
+  assert.deepEqual([w.length, w[0], '0' in w], [0, undefined, false]);
+});
+
+// A test that made a frame index non-configurable does not make the reset
+// throw: the property stays, the rest of the reset runs (Copilot review on
+// #176).
+test('resetWindow with a non-configurable frame index property', () => {
+  const w = createWindow();
+  snapshotWindow(w);
+  w.document.body.appendChild(w.document.createElement('iframe'));
+  const child = w[0];
+  Object.defineProperty(w, '0', { configurable: false });
+  w.document.title = 'changed';
+  resetWindow(w);
+  assert.deepEqual([w.length, w.document.title], [0, '']);
+  // The property left reads the window's frames: it does not keep the
+  // discarded frame window reachable (CodeRabbit review on #176).
+  assert.deepEqual([w[0] === child, w[0]], [false, undefined]);
+  const next = w.document.body.appendChild(w.document.createElement('iframe'));
+  assert.equal(w[0], next.contentWindow);
+});
+
+// An index property the snapshot had without a frame (a value a setup file
+// assigned) comes back with the rest of the snapshot, also when a frame
+// took its place before the reset (Copilot review on #176).
+test('resetWindow restores an index property the snapshot had without a frame', () => {
+  const w = createWindow();
+  w[0] = 'saved';
+  w[1] = 'saved too';
+  snapshotWindow(w);
+  w.document.body.appendChild(w.document.createElement('iframe'));
+  w.document.body.appendChild(w.document.createElement('iframe'));
+  assert.equal(w[0], w.frames[0]);
+  resetWindow(w);
+  assert.deepEqual([w.length, w[0], w[1]], [0, 'saved', 'saved too']);
+});
+
+// Discarding many sibling frames redefines no index property per discarded
+// frame: the indexes are synchronized once, after all of them went
+// (Copilot review on #176).
+test('resetWindow synchronizes the frame indexes once', () => {
+  const w = createWindow();
+  snapshotWindow(w);
+  for (let i = 0; i < 50; i++) w.document.body.appendChild(w.document.createElement('iframe'));
+  const define = Reflect.defineProperty;
+  let indexDefinitions = 0;
+  Reflect.defineProperty = (target, key, descriptor) => {
+    if (target === w && /^\d+$/.test(String(key))) indexDefinitions++;
+    return define(target, key, descriptor);
+  };
+  try {
+    resetWindow(w);
+  } finally {
+    Reflect.defineProperty = define;
+  }
+  assert.deepEqual([w.length, indexDefinitions], [0, 0]);
+});
+
+// An iframe inserted while resetWindow runs (by a connectedCallback in the
+// kept body's shadow tree, run by the reinsertion of the body) gets index
+// 0 once the old frame is discarded; the index it took first goes, or is
+// the snapshot's again (#184).
+for (const saved of [false, true]) {
+  test(`resetWindow with an iframe inserted during the reset${saved ? ', over a snapshotted index' : ''}`, () => {
+    const w = createWindow();
+    if (saved) w[1] = 'saved';
+    snapshotWindow(w);
+    const d = w.document;
+    let insert = false;
+    w.customElements.define(
+      'x-inserts-iframe',
+      class extends w.HTMLElement {
+        connectedCallback() {
+          if (insert) d.body.append(d.createElement('iframe'));
+        }
+      },
+    );
+    d.body.attachShadow({ mode: 'open' }).append(d.createElement('x-inserts-iframe'));
+    d.body.append(d.createElement('iframe'));
+    insert = true;
+    resetWindow(w);
+    insert = false;
+    assert.deepEqual(
+      [w.length, w[0] === d.body.lastChild.contentWindow, '1' in w, w[1]],
+      [1, true, saved, saved ? 'saved' : undefined],
+    );
+  });
+}
+
+// An iframe a connectedCallback inserts and removes again while resetWindow
+// runs leaves the snapshot's index properties in place, with an old frame
+// discarded or none (Copilot review on #206).
+for (const oldFrame of [false, true]) {
+  test(`resetWindow with an iframe inserted and removed during the reset${oldFrame ? ', with an old frame' : ''}`, () => {
+    const w = createWindow();
+    w[0] = 'saved';
+    w[1] = 'saved too';
+    snapshotWindow(w);
+    const d = w.document;
+    let insert = false;
+    w.customElements.define(
+      'x-inserts-iframe',
+      class extends w.HTMLElement {
+        connectedCallback() {
+          if (insert) d.body.append(d.createElement('iframe'));
+          if (insert) d.body.lastChild.remove();
+        }
+      },
+    );
+    d.body.attachShadow({ mode: 'open' }).append(d.createElement('x-inserts-iframe'));
+    if (oldFrame) d.body.append(d.createElement('iframe'));
+    insert = true;
+    resetWindow(w);
+    insert = false;
+    assert.deepEqual([w.length, w[0], w[1]], [0, 'saved', 'saved too']);
+  });
+}
+
+// An index the same connectedCallback assigns after the iframe went is the
+// snapshot's again, unless it made it non-configurable (CodeRabbit review
+// on #206).
+test('resetWindow restores an index a connectedCallback assigned after inserting and removing an iframe', () => {
+  const w = createWindow();
+  w[0] = 'saved';
+  w[1] = 'saved too';
+  snapshotWindow(w);
+  const d = w.document;
+  let insert = false;
+  w.customElements.define(
+    'x-inserts-iframe',
+    class extends w.HTMLElement {
+      connectedCallback() {
+        if (!insert) return;
+        d.body.append(d.createElement('iframe'));
+        d.body.append(d.createElement('iframe'));
+        d.body.lastChild.remove();
+        d.body.lastChild.remove();
+        w[0] = 'dirty';
+        Object.defineProperty(w, 1, { value: 'fixed', configurable: false });
+      }
+    },
+  );
+  d.body.attachShadow({ mode: 'open' }).append(d.createElement('x-inserts-iframe'));
+  insert = true;
+  resetWindow(w);
+  insert = false;
+  assert.deepEqual([w.length, w[0], w[1]], [0, 'saved', 'fixed']);
+});
+
+// The snapshot is the window's own properties: the VM context's global the
+// window is installed as gets none of its index values, as it had none
+// (CodeRabbit review on #206).
+test('resetWindow leaves the VM global without the index an iframe inserted and removed during the reset took', async () => {
+  const vm = await import('node:vm');
+  const w = createWindow();
+  const global = vm.runInContext('this', vm.createContext({}));
+  w[S].globalProxy = global;
+  w[0] = 'saved';
+  snapshotWindow(w);
+  const d = w.document;
+  let insert = false;
+  w.customElements.define(
+    'x-inserts-iframe',
+    class extends w.HTMLElement {
+      connectedCallback() {
+        if (insert) d.body.append(d.createElement('iframe'));
+        if (insert) d.body.lastChild.remove();
+      }
+    },
+  );
+  d.body.attachShadow({ mode: 'open' }).append(d.createElement('x-inserts-iframe'));
+  insert = true;
+  resetWindow(w);
+  insert = false;
+  assert.deepEqual([w[0], Object.hasOwn(global, 0)], ['saved', false]);
+});
