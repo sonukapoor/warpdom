@@ -83,16 +83,24 @@ function splitOutside(text, sep, tokens = false) {
 // and a line break ends a string (a bad string). Only for a text where
 // that differs from splitOutside (cssSplitNeeded): an unquoted url() with
 // a quote, parenthesis or backslash inside, or a quoted url() and a line
-// break. Character codes and indexOf: style writes are a hot path.
+// break. url( in any case (URL(a"b.png)). Character codes and indexOf:
+// style writes are a hot path.
 function cssSplitNeeded(text) {
   let quoted = false;
-  for (let i = text.indexOf('url('); i !== -1; i = text.indexOf('url(', i + 4)) {
-    const q = text.charCodeAt(i + 4);
+  for (let open = text.indexOf('('); open !== -1; open = text.indexOf('(', open + 1)) {
+    if (
+      open < 3 ||
+      (text.charCodeAt(open - 1) | 32) !== 108 ||
+      (text.charCodeAt(open - 2) | 32) !== 114 ||
+      (text.charCodeAt(open - 3) | 32) !== 117
+    )
+      continue;
+    const q = text.charCodeAt(open + 1);
     if (q === 34 || q === 39) {
       quoted = true;
       continue;
     }
-    for (let j = i + 4; j < text.length; j++) {
+    for (let j = open + 1; j < text.length; j++) {
       const c = text.charCodeAt(j);
       if (c === 41) break;
       if (c === 34 || c === 39 || c === 40 || c === 92) return true;
@@ -1643,7 +1651,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     // A url() with a line break in its string (a bad string) is invalid
     // here, though background-image takes it through the style object
     // (jsdom 27 and later, #144).
-    if (lineBreaks && value.includes('url(') && hasBadString(value)) continue;
+    if (lineBreaks && /url\(/i.test(value) && hasBadString(value)) continue;
     if (!sheet && !runsOn && value.includes('!') && strayPriority(value, important)) continue;
     if (borderVarDrops && BORDER_AND_SIDES.has(name)) {
       // A CSS-wide keyword on border or a side leaves the block empty.

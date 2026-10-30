@@ -864,7 +864,9 @@ function hasVar(tokens) {
 // or negative, integer or not) and its unit. Numbers inside identifiers and
 // hash tokens (#123456, translate3d) are kept as written. Properties whose
 // grammar has a numeric bound other than 0 and infinity (font-weight's
-// [1,1000]) are not shaped: 400 and 1001 have the same shape.
+// [1,1000]) are not shaped: 400 and 1001 have the same shape. A value
+// with a character U+0000 to U+0004, a placeholder's, has no shape (null):
+// url(/\x01.png) is invalid, url(/1.png) valid (#144).
 const isDigit = (c) => c >= 48 && c <= 57;
 // Characters after which a digit continues a word or hash token.
 const isWordChar = (c) =>
@@ -883,6 +885,7 @@ function shapeOf(value) {
   const n = value.length;
   for (let i = 0; i < n; i++) {
     let c = value.charCodeAt(i);
+    if (c <= 4) return null;
     let j = i;
     let negative = false;
     if (c === 43 || c === 45) {
@@ -981,6 +984,7 @@ export function isValidValue(name, value) {
   if (!node) return true;
   if (shapes === null) return checkValue(node, value);
   const shape = shapeOf(value);
+  if (shape === null) return checkValue(node, value);
   let valid = shapes.get(shape);
   if (valid === undefined) {
     valid = checkValue(node, value);

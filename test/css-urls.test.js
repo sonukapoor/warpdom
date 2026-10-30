@@ -266,3 +266,59 @@ for (const jsdom of [30, 28, 27])
       }),
     { jsdom },
   );
+
+// url( in any case opens a url token in a declaration block (jsdom 27 and
+// later): URL(a"b.png) opens no string, URL(a(b.png) no block, and a line
+// break in URL("a\nb.png") is a bad string. Sheets in jsdom 27 not modeled.
+for (const jsdom of [30, 29, 27])
+  parity(
+    `style: URL() in any case in a declaration block (jsdom ${jsdom}, #144)`,
+    (w) => {
+      const d = w.document;
+      const p = `u${jsdom}-`;
+      return [
+        `background: URL(${p}a"b.png); color: red`,
+        `marker-start: URL(${p}a(b.png); color: red`,
+        `marker-start: Url(${p}a${B}(b.png); color: red`,
+        `color: red; background-image: URL("${p}a\nb.png"); width: 1px`,
+        `color: red; marker-start: uRl("${p}a\nb.png"); width: 1px`,
+      ].flatMap((text) => {
+        const s = d.createElement('div').style;
+        s.cssText = text;
+        const e = d.createElement('div');
+        e.setAttribute('style', text);
+        const row = [s.cssText, e.style.cssText];
+        if (jsdom !== 27) {
+          const sheet = d.createElement('style');
+          sheet.textContent = `#t { ${text} }`;
+          d.head.append(sheet);
+          row.push(sheet.sheet.cssRules[0]?.style.cssText ?? 'no rule');
+          sheet.remove();
+        }
+        return `${JSON.stringify(text)} -> ${row.join(' | ')}`;
+      });
+    },
+    { jsdom },
+  );
+
+// A control character in a url() is not a number's placeholder in the
+// validity cache (shapeOf): url(/1.png) and url(/\x01.png) differ, in
+// either order, in properties whose validity is cached by shape.
+for (const jsdom of [30, 27])
+  parity(
+    `style: url() with a control character after one with a digit (jsdom ${jsdom}, #144)`,
+    (w) =>
+      ['marker-start', 'clip-path', 'offset-path'].flatMap((name) =>
+        [
+          [`url(/k${jsdom}${name}/1.png)`, `url(/k${jsdom}${name}/\x01.png)`],
+          [`url(/m${jsdom}${name}/\x01.png)`, `url(/m${jsdom}${name}/3.png)`],
+        ].flatMap((pair) =>
+          pair.map((value) => {
+            const s = w.document.createElement('div').style;
+            s.setProperty(name, value);
+            return `${name}: ${JSON.stringify(value)} -> ${s.cssText}`;
+          }),
+        ),
+      ),
+    { jsdom },
+  );
