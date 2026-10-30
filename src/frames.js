@@ -173,10 +173,10 @@ hooks.frames = {
   // removal hooks: the frames of the iframes it took out of the document
   // are discarded, as a fresh window has none (#173); those of iframes in
   // the kept body's shadow root stay. Its restore of the window's own
-  // properties deleted the index properties; those of the frames left (an
-  // iframe a connectedCallback in that shadow tree inserted into the body)
-  // come back, and every other index touched during the reset is the
-  // snapshot's again.
+  // properties deleted the index properties. Those of the frames left come
+  // back: such a frame is an iframe that a connectedCallback inserted into
+  // the body while the kept shadow tree was being inserted again. Every
+  // other index touched during the reset is the snapshot's again.
   // resetStart runs before the kept tree is inserted again.
   resetStart(window) {
     const ws = window[S];
