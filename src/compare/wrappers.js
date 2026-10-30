@@ -256,7 +256,10 @@ export default async (env) => {
       source: Array.isArray(test.projects) ? 'projects' : Array.isArray(test.workspace) ? 'workspace' : list ? 'workspace-file' : null,
       workspace: typeof test.workspace === 'string' && !Array.isArray(test.projects) ? path.resolve(root, test.workspace) : null,
     };
-    if (!list) meta.projects.push({ name: nameOf(test), environment: test.environment ?? 'node', browser: usesBrowser(test) });
+    // The environments environmentMatchGlobs (Vitest 2 and 3) choose.
+    const globsOf = (t) => (Array.isArray(t?.environmentMatchGlobs) ? t.environmentMatchGlobs.filter(Array.isArray).map((g) => g[1]) : []);
+    const withGlobs = (p, globs) => (globs.length ? { ...p, globs } : p);
+    if (!list) meta.projects.push(withGlobs({ name: nameOf(test), environment: test.environment ?? 'node', browser: usesBrowser(test) }, globsOf(test)));
     for (const p of list ?? []) {
       if (typeof p === 'string') { meta.patterns.push(p); continue; }
       let v;
@@ -267,7 +270,8 @@ export default async (env) => {
       const inherits = v.extends === true || (MAJOR >= 5 && v.extends == null);
       const environment = v.test?.environment ?? (inherits ? test.environment ?? 'node' : typeof v.extends === 'string' ? null : 'node');
       if (environment == null) meta.unknown++;
-      meta.projects.push({ name: nameOf(v.test), environment, browser: usesBrowser(v.test) || (inherits && usesBrowser(test)) });
+      const globs = v.test?.environmentMatchGlobs ? globsOf(v.test) : inherits ? globsOf(test) : [];
+      meta.projects.push(withGlobs({ name: nameOf(v.test), environment, browser: usesBrowser(v.test) || (inherits && usesBrowser(test)) }, globs));
     }
     fs.writeFileSync(process.env.WARPDOM_COMPARE_META, JSON.stringify(meta));
   }
@@ -318,8 +322,11 @@ export default class WarpdomCompareProjects {
 
   write(files) {
     if (!process.env.WARPDOM_COMPARE_PROJECTS) return;
+    // environmentMatchGlobs (Vitest 2 and 3, resolved against the root):
+    // compare matches the files to them (#181).
     const projects = (this.ctx?.projects ?? []).map((p) => ({
       name: nameOf(p), environment: p.config?.environment ?? null, browser: Boolean(p.config?.browser?.enabled),
+      ...(p.config?.environmentMatchGlobs?.length ? { globs: p.config.environmentMatchGlobs, root: p.config.root ?? null } : {}),
     }));
     fs.writeFileSync(process.env.WARPDOM_COMPARE_PROJECTS, JSON.stringify({
       files: (files ?? []).map((f) => [f.filepath, f.projectName ?? '']), projects,

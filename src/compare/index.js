@@ -63,6 +63,7 @@ import {
   runnerDuration,
   readReport,
   stopTree,
+  globEnvironments,
 } from './run.js';
 import { compareRuns, groupDifferences, timingSummary, pairOrder, exitCode } from './results.js';
 import { environmentRecord } from './env.js';
@@ -182,6 +183,7 @@ export async function compare(options = {}) {
     projects: [],
     external: 0,
     pinned: null,
+    globs: null,
     warmup: false,
     runs: [],
     correctness: null,
@@ -389,10 +391,15 @@ export async function compare(options = {}) {
     // once they run: compare goes ahead and checks after the first run.
     const unknown = (meta.unknown ?? 0) + result.external;
     const nodeOnly = options.requireDom === false && result.projects.some((p) => !p.browser);
-    // With --baseline, test files may choose a DOM (or warpdom, after
-    // migrate) with a comment in projects on node: those are read from the
-    // first run, which decides (projects, pinned files) after it.
-    const commentsDecide = Boolean(options.baseline) && result.projects.some((p) => !p.browser);
+    // Test files may choose a DOM (or, with --baseline, warpdom after
+    // migrate) with a comment, or by a project's environmentMatchGlobs, in
+    // projects on node: those are known from the first run, which decides
+    // (projects, pinned files, files the globs put on a DOM) after it (#181).
+    // Without --baseline, a project on warpdom stops here, with the hint to
+    // add it.
+    const commentsDecide =
+      result.projects.some((p) => !p.browser) &&
+      (fromWarpdom || !result.projects.some((p) => isWarpdomEnvironment(p.environment)));
     if (!domProjects.length && !unknown && !nodeOnly && !commentsDecide)
       throw nothingToCompare(
         result.projects.map((p) => (p.browser ? 'browser mode' : p.environment)),
@@ -400,10 +407,14 @@ export async function compare(options = {}) {
       );
     result.fromWarpdom = domProjects.some((p) => isWarpdomEnvironment(p.environment));
     const counts = new Map();
-    for (const p of domProjects) {
-      const name = /happy-dom/.test(p.environment) ? 'happy-dom' : 'jsdom';
+    const count = (environment) => {
+      const name = /happy-dom/.test(environment) ? 'happy-dom' : 'jsdom';
       counts.set(name, (counts.get(name) ?? 0) + 1);
-    }
+    };
+    for (const p of domProjects) count(p.environment);
+    // Without a DOM project, the DOMs environmentMatchGlobs choose.
+    if (!domProjects.length)
+      for (const p of result.projects) for (const g of p.globs ?? []) if (isDomEnvironment(runner, g)) count(g);
     // Without a DOM project in the root config, the installed DOM decides.
     const guessed = packageDir(cwd, 'jsdom') || !packageDir(cwd, 'happy-dom') ? 'jsdom' : 'happy-dom';
     const baselineName = options.baseline ?? [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? guessed;
@@ -574,6 +585,9 @@ export async function compare(options = {}) {
       }
     };
     let pinned = null;
+    // Files environmentMatchGlobs put on a DOM in a project that is not
+    // (from the first run): [{ project, file, environment }].
+    let globbed = [];
     let projectsRan = false;
     let projectsFromRun = false;
     let checkedSwitch = false;
@@ -675,7 +689,7 @@ export async function compare(options = {}) {
             // With --baseline, a project still on warpdom in the baseline run
             // (one compare could not reach, e.g. listed by a nested project
             // config) ran on warpdom twice: not compared, and said so.
-            result.projects = ran.projects.map((p) => {
+            result.projects = ran.projects.map(({ globs: _globs, root: _root, ...p }) => {
               const environment = environmentLabel(p.environment);
               const stayed = fromWarpdom && side === 'baseline' && !p.browser && isWarpdomEnvironment(environment);
               return stayed
@@ -694,9 +708,28 @@ export async function compare(options = {}) {
               runner === 'vitest'
                 ? pinned.some((p) => vitestSwitches.has(p.environment))
                 : baselineName === 'jsdom' && pinned.some((p) => JEST_JSDOM.has(p.environment));
+            // Files environmentMatchGlobs put on jsdom or happy-dom in this
+            // run (the wrappers switch the globs' targets), in projects not
+            // compared as a whole; a file's own comment overrides the globs.
+            const others = new Set(
+              result.projects.filter((p) => !p.dom && !p.browser && !p.unswitched).map((p) => p.name ?? ''),
+            );
+            const candidates = globEnvironments(ran, cwd).filter(
+              (g) => others.has(g.project) && isDomEnvironment(runner, environmentLabel(g.environment)),
+            );
+            const commented = environmentComments(
+              [...new Set(candidates.map((g) => path.resolve(cwd, g.file)))],
+              runner,
+              { any: true },
+            );
+            const ownComment = new Set(
+              [...commented.keys()].map((f) => path.relative(cwd, f).split(path.sep).join('/')),
+            );
+            globbed = candidates.filter((g) => !ownComment.has(g.file));
             if (
               !result.projects.some((p) => p.dom) &&
               !switchable &&
+              !globbed.length &&
               !(options.requireDom === false && result.projects.some((p) => !p.browser))
             ) {
               if (noBaseline) throw baselineMissingError();
@@ -717,6 +750,13 @@ export async function compare(options = {}) {
         // ran the same way twice: not compared, and said so.
         if (side === 'warpdom' && projectsFromRun && !checkedSwitch && ran?.projects) {
           checkedSwitch = true;
+          // Files the globs put on a DOM count as switched when their glob
+          // gave them warpdom here.
+          const onWarpdom = globEnvironments(ran, cwd);
+          for (const g of globbed) {
+            const there = onWarpdom.find((w) => w.project === g.project && w.file === g.file);
+            g.switched = environmentLabel(there?.environment) === 'warpdom';
+          }
           for (const p of ran.projects) {
             const project = result.projects.find((x) => x.name === p.name);
             if (project?.dom && !p.browser && isDomEnvironment(runner, environmentLabel(p.environment))) {
@@ -768,7 +808,10 @@ export async function compare(options = {}) {
     // not compared, except files whose comment switched them to a DOM.
     const skipProjects = new Set(projectsFromRun ? result.projects.filter((p) => !p.dom).map((p) => p.name) : []);
     const keepFiles = new Set(pinned.filter((p) => p.switched).map((p) => p.file));
-    const c = compareRuns(tests.baseline, tests.warpdom, { skipFiles, skipProjects, keepFiles });
+    // Files the globs switched, by project: compared, the rest of their
+    // project not.
+    const keepTests = new Set(globbed.filter((g) => g.switched).map((g) => `${g.project}::${g.file}`));
+    const c = compareRuns(tests.baseline, tests.warpdom, { skipFiles, skipProjects, keepFiles, keepTests });
     c.groups = groupDifferences(c.differences);
     result.correctness = c;
     result.pinned = {
@@ -782,8 +825,20 @@ export async function compare(options = {}) {
       notSwitched: pinned.length - pinned.filter((p) => p.switched).length,
       notSwitchedEnvironments: [...new Set(pinned.filter((p) => !p.switched).map((p) => p.environment))],
     };
+    // environmentMatchGlobs: the files they put on a DOM in projects on node.
+    const globSwitched = globbed.filter((g) => g.switched);
+    result.globs = {
+      files: globbed.length,
+      list: globbed.map((g) => ({ ...g, switched: Boolean(g.switched) })),
+      switched: globSwitched.length,
+      environments: [...new Set(globSwitched.map((g) => environmentLabel(g.environment)))],
+      notSwitched: globbed.length - globSwitched.length,
+      notSwitchedEnvironments: [
+        ...new Set(globbed.filter((g) => !g.switched).map((g) => environmentLabel(g.environment))),
+      ],
+    };
     for (const name of extras) {
-      const e = compareRuns(tests.baseline, tests[name], { skipFiles, skipProjects, keepFiles });
+      const e = compareRuns(tests.baseline, tests[name], { skipFiles, skipProjects, keepFiles, keepTests });
       e.groups = groupDifferences(e.differences);
       result.also[name].correctness = e;
     }

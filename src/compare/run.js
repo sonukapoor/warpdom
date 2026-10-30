@@ -3,6 +3,31 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
+import { matchesGlob } from './projects.js';
+
+// The environment Vitest's environmentMatchGlobs (Vitest 2 and 3) gave each
+// file of a run, from what the reporter recorded (each project's globs and
+// root): [{ project, file, environment }], files relative to cwd. The
+// first matching glob wins, as in Vitest; a file's comment, which overrides
+// the globs, is left to the caller.
+export function globEnvironments(ran, cwd) {
+  const out = [];
+  const projects = new Map((ran?.projects ?? []).map((p) => [p.name ?? '', p]));
+  for (const [file, name] of ran?.files ?? []) {
+    const p = projects.get(name ?? '');
+    if (!p?.globs?.length || p.browser) continue;
+    const glob = p.globs.find(
+      (g) => Array.isArray(g) && typeof g[0] === 'string' && matchesGlob(file, g[0], p.root ?? cwd),
+    );
+    if (glob)
+      out.push({
+        project: name ?? '',
+        file: path.relative(cwd, file).split(path.sep).join('/'),
+        environment: String(glob[1]),
+      });
+  }
+  return out;
+}
 
 // Vitest before 4 rejects a maxWorkers below its default minWorkers, and
 // later versions removed --minWorkers: ask the binary whether it has it.

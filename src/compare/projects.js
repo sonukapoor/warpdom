@@ -75,15 +75,33 @@ function segmentSource(segment) {
 }
 
 // A glob (no braces) as a regular expression over a relative POSIX path.
-export function globRegExp(pattern) {
+// dot: false keeps wildcards from matching a name that starts with a dot
+// (picomatch's default, as in environmentMatchGlobs).
+export function globRegExp(pattern, { dot = true } = {}) {
   const segments = pattern.split('/').filter(Boolean);
+  const noDot = dot ? '' : '(?!\\.)';
+  // A final ** : anything below, or (dot: false) names not starting with a dot.
+  const rest = dot ? '.*' : `(?:${noDot}[^/]+(?:/|$))*`;
   let source = '^';
   segments.forEach((segment, i) => {
     const last = i === segments.length - 1;
-    if (segment === '**') source += last ? '.*' : '(?:[^/]+/)*';
-    else source += segmentSource(segment) + (last ? '' : '/');
+    if (segment === '**') source += last ? rest : `(?:${noDot}[^/]+/)*`;
+    else source += (segment.startsWith('.') ? '' : noDot) + segmentSource(segment) + (last ? '' : '/');
   });
   return new RegExp(`${source}/?$`);
+}
+
+// Whether a file matches a glob as Vitest matches environmentMatchGlobs
+// (picomatch's isMatch with the project root as cwd; Vitest resolves the
+// globs against the root first): both as POSIX paths, a relative glob
+// resolved against root, braces expanded, wildcards not matching names
+// that start with a dot.
+export function matchesGlob(file, pattern, root) {
+  const posix = (p) => p.split(path.sep).join('/').replace(/^\/+/, '');
+  const target = posix(path.resolve(file));
+  return expandBraces(posix(path.isAbsolute(pattern) ? pattern : path.resolve(root, pattern))).some((p) =>
+    globRegExp(p, { dot: false }).test(target),
+  );
 }
 
 const SKIP_DIRS = new Set(['node_modules', '.git']);

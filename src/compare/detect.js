@@ -169,8 +169,10 @@ const DOCBLOCK = {
 // (`// @vitest-environment jsdom`, `@jest-environment jsdom`): such a
 // comment overrides the config, so these files are not switched.
 // warpdom: files choosing warpdom count too (--baseline on a migrated project).
+// any: every file with an environment comment (it overrides
+// environmentMatchGlobs as well).
 // Returns Map(file -> environment).
-export function environmentComments(files, runner, { warpdom = false } = {}) {
+export function environmentComments(files, runner, { warpdom = false, any = false } = {}) {
   const pinned = new Map();
   for (const file of files) {
     let head;
@@ -186,7 +188,7 @@ export function environmentComments(files, runner, { warpdom = false } = {}) {
       continue;
     }
     const match = head.match(DOCBLOCK[runner] ?? DOCBLOCK.vitest);
-    if (match && (/jsdom|happy-dom/.test(match[1]) || (warpdom && isWarpdomEnvironment(match[1]))))
+    if (match && (any || /jsdom|happy-dom/.test(match[1]) || (warpdom && isWarpdomEnvironment(match[1]))))
       pinned.set(file, match[1]);
   }
   return pinned;
