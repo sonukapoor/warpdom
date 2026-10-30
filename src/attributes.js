@@ -78,7 +78,7 @@ function writeAttributeValue(element, key, value, checkName) {
   } else attrs.set(key, value);
   es.attrsRev = (es.attrsRev ?? 0) + 1;
   attributesChanged(element);
-  if (key === 'style') styleAttributeChanged(element);
+  if (key === 'style') styleAttributeChanged(element, old);
   const step = attributeSteps.get(key);
   // A step can return a function to run after the change is reported (it
   // changes other attributes, whose records come after this one's).
