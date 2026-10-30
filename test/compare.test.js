@@ -58,6 +58,7 @@ import {
   runnerDuration,
   normalizeStatus,
   globEnvironments,
+  runnerGlobMatcher,
 } from '../src/compare/run.js';
 import {
   classify,
@@ -925,6 +926,16 @@ test('compare detection: environment comments, --config among runner arguments',
       ],
     );
     assert.deepEqual([...environmentComments([a, b], 'jest')], [[b, 'happy-dom']], 'Jest reads only @jest-environment');
+    // any: every environment comment (they override environmentMatchGlobs).
+    const e = write(path.join(dir, 'e.test.js'), '// @vitest-environment custom\n');
+    assert.deepEqual(
+      [...environmentComments([a, c, d, e], 'vitest', { any: true })],
+      [
+        [a, 'jsdom'],
+        [c, 'node'],
+        [e, 'custom'],
+      ],
+    );
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -1115,6 +1126,27 @@ test('compare runs (#181): the environment environmentMatchGlobs give each file,
   assert.equal(matchesGlob('/r/src/ui/b.tsx', '/r/src/**/*.{tsx,jsx}', '/r'), true, 'braces');
   assert.equal(matchesGlob('/r/src/ui/deep/b.ts', '/r/src/ui/**', '/r'), true, 'a directory');
   assert.equal(matchesGlob('/r/src/b.ts', '/r/src/ui/**', '/r'), false);
+  // Character classes never match a path separator.
+  assert.equal(matchesGlob('/r/a/b.spec.js', '/r/a[^x]b.spec.js', '/r'), false, 'negated class and /');
+  assert.equal(matchesGlob('/r/a/b.spec.js', '/r/a[!x]b.spec.js', '/r'), false, 'negated class (!) and /');
+  assert.equal(matchesGlob('/r/ayb.spec.js', '/r/a[^x]b.spec.js', '/r'), true);
+  assert.equal(matchesGlob('/r/axb.spec.js', '/r/a[^x]b.spec.js', '/r'), false);
+  // Extglobs.
+  assert.equal(matchesGlob('/r/a.dom.spec.js', '**/*.@(dom|web).spec.js', '/r'), true, '@(...)');
+  assert.equal(matchesGlob('/r/x/a.web.spec.js', '**/*.@(dom|web).spec.js', '/r'), true);
+  assert.equal(matchesGlob('/r/a.node.spec.js', '**/*.@(dom|web).spec.js', '/r'), false);
+  assert.equal(matchesGlob('/r/.a.dom.spec.js', '**/*.@(dom|web).spec.js', '/r'), false, 'dot name');
+  assert.equal(matchesGlob('/r/a.dxx.spec.js', '**/*.@(d*|w?b).spec.js', '/r'), true, 'wildcards inside');
+  assert.equal(matchesGlob('/r/aab.spec.js', '**/+(a|b).spec.js', '/r'), true, '+(...)');
+  assert.equal(matchesGlob('/r/.spec.js', '**/+(a|b).spec.js', '/r'), false);
+  assert.equal(matchesGlob('/r/x.spec.js', '**/*(a|b)x.spec.js', '/r'), true, '*(...)');
+  assert.equal(matchesGlob('/r/ax.spec.js', '**/?(a|b)x.spec.js', '/r'), true, '?(...)');
+  assert.equal(matchesGlob('/r/abx.spec.js', '**/?(a|b)x.spec.js', '/r'), false);
+  assert.equal(matchesGlob('/r/b/c.spec.js', '**/@(a|b/c).spec.js', '/r'), true, 'a separator inside');
+  assert.equal(matchesGlob('/r/a.node.spec.js', '**/*.!(dom).spec.js', '/r'), true, '!(...)');
+  assert.equal(matchesGlob('/r/a.dom.spec.js', '**/*.!(dom).spec.js', '/r'), false);
+  assert.equal(matchesGlob('/r/src/a.dom.spec.js', 'src/**/!(*.node).spec.js', '/r'), true);
+  assert.equal(matchesGlob('/r/src/a.node.spec.js', 'src/**/!(*.node).spec.js', '/r'), false);
 
   const ran = {
     files: [
@@ -1147,6 +1179,50 @@ test('compare runs (#181): the environment environmentMatchGlobs give each file,
     'the first matching glob, by project; browser-mode projects left out',
   );
   assert.deepEqual(globEnvironments({ files: ran.files, projects: [{ name: '' }] }, '/r'), [], 'no globs');
+  // First match with the matcher's verdicts: a Node rule that only an
+  // extglob or a negated class selects comes before a catch-all jsdom rule.
+  const ordered = (glob) => ({
+    files: [
+      ['/r/a.node.spec.js', ''],
+      ['/r/a/b.spec.js', ''],
+    ],
+    projects: [
+      {
+        name: '',
+        environment: 'node',
+        globs: [
+          [glob, 'node'],
+          ['/r/**', 'jsdom'],
+        ],
+        root: '/r',
+      },
+    ],
+  });
+  assert.deepEqual(
+    globEnvironments(ordered('/r/**/*.@(node|server).spec.js'), '/r').map((g) => [g.file, g.environment]),
+    [
+      ['a.node.spec.js', 'node'],
+      ['a/b.spec.js', 'jsdom'],
+    ],
+  );
+  assert.deepEqual(
+    globEnvironments(ordered('/r/a[^x]b.spec.js'), '/r').map((g) => [g.file, g.environment]),
+    [
+      ['a.node.spec.js', 'jsdom'],
+      ['a/b.spec.js', 'jsdom'],
+    ],
+  );
+  // A matcher passed in (the runner's own) decides.
+  const calls = [];
+  const custom = (file, glob, root) => (calls.push([file, glob, root]), glob.endsWith('node.spec.js'));
+  assert.deepEqual(
+    globEnvironments(ordered('/r/**/node.spec.js'), '/r', custom).map((g) => [g.file, g.environment]),
+    [
+      ['a.node.spec.js', 'node'],
+      ['a/b.spec.js', 'node'],
+    ],
+  );
+  assert.deepEqual(calls[0], ['/r/a.node.spec.js', '/r/**/node.spec.js', '/r']);
   assert.deepEqual(globEnvironments(null, '/r'), []);
 
   // compareRuns keeps such a file of a project not compared, in that
@@ -1165,6 +1241,33 @@ test('compare runs (#181): the environment environmentMatchGlobs give each file,
     ['server::a.dom.spec.js::t'],
   );
   assert.equal(c.notCompared, 1);
+});
+
+test('compare runs (#181): environmentMatchGlobs matched with the picomatch Vitest imports', () => {
+  const dir = tmp('runner-glob');
+  try {
+    const vitest = path.join(dir, 'node_modules', 'vitest');
+    write(path.join(vitest, 'package.json'), JSON.stringify({ name: 'vitest', dependencies: { picomatch: '^4.0.2' } }));
+    fs.symlinkSync(path.join(root, 'node_modules', 'picomatch'), path.join(dir, 'node_modules', 'picomatch'));
+    const isMatch = runnerGlobMatcher(vitest);
+    assert.notEqual(isMatch, matchesGlob);
+    // Vitest resolves a glob against the project root and calls
+    // picomatch's isMatch with the root as cwd.
+    assert.equal(isMatch('/r/a.dom.spec.js', '**/*.@(dom|web).spec.js', '/r'), true);
+    assert.equal(isMatch('/r/a/b.spec.js', '/r/a[^x]b.spec.js', '/r'), false);
+    assert.equal(isMatch('/x/a.dom.spec.js', '**/*.dom.spec.js', '/r'), false);
+    // picomatch's own reading, not the built-in matcher's.
+    assert.equal(isMatch('/r/axb.spec.js', '/r/a[!x]b.spec.js', '/r'), true);
+    assert.equal(matchesGlob('/r/axb.spec.js', '/r/a[!x]b.spec.js', '/r'), false);
+
+    // Vitest 2 bundles its matcher: the built-in one.
+    write(path.join(vitest, 'package.json'), JSON.stringify({ name: 'vitest', dependencies: {} }));
+    assert.equal(runnerGlobMatcher(vitest), matchesGlob);
+    assert.equal(runnerGlobMatcher(null), matchesGlob);
+    assert.equal(runnerGlobMatcher(path.join(dir, 'missing')), matchesGlob);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('compare wrappers (#181): the reporter records environmentMatchGlobs, the probe their environments', async () => {
@@ -2345,6 +2448,36 @@ test('compare end to end (#181): a project on node whose files choose jsdom or h
   }
 });
 
+test('compare end to end (#181): a browser-mode project inheriting warpdom beside a project on node with a pinned file', () => {
+  const dir = fixtureProject('compare-vitest', vitestLinks());
+  try {
+    fs.rmSync(path.join(dir, 'pinned-happy.spec.js'));
+    // The browser-mode project is left out of both runs: its environment
+    // does not stop compare before the run finds the pinned file.
+    fs.writeFileSync(
+      path.join(dir, 'vitest.config.js'),
+      `export default { test: { environment: 'warpdom', projects: [
+        { extends: true, test: { name: 'b', include: ['b/*.spec.js'], browser: { enabled: true } } },
+        { test: { name: 'server', include: ['*.spec.js'], environment: 'node' } },
+      ] } };`,
+    );
+    const res = compareCli(dir, ['--correctness']);
+    const out = res.stdout.replace(/\x1b\[[0-9;]*m/g, '');
+    assert.equal(res.status, 1, out + res.stderr);
+    assert.match(out, /baseline jsdom \d/);
+    assert.match(out, /1 file pins jsdom with a comment; switched/);
+    assert.match(out, /Not run: 1 project in browser mode/);
+    const result = JSON.parse(fs.readFileSync(path.join(dir, '.warpdom-compare', 'results.json'), 'utf8'));
+    assert.deepEqual(
+      result.correctness.differences.map((d) => [d.project, d.name, d.class]),
+      [['server', 'pinned to jsdom: passes on jsdom only', 'regression']],
+    );
+    assert.deepEqual(leftovers(dir), []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // The root config lists a project file whose environment is warpdom: only
 // the run shows it.
 function migratedChildProject(links = vitestLinks()) {
@@ -2835,6 +2968,68 @@ test(
       assert.match(out, /1 file in projects on node is put on jsdom by environmentMatchGlobs; switched/);
       const result = JSON.parse(fs.readFileSync(path.join(dir, '.warpdom-compare', 'results.json'), 'utf8'));
       assert.deepEqual(result.correctness.differences.map((d) => [d.name, d.class]).sort(), globDifferences);
+      assert.deepEqual(leftovers(dir), []);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  'compare end to end (#181): a browser-mode project with happy-dom globs does not choose the baseline of a project on node',
+  { skip: !legacyModules && 'set WARPDOM_COMPARE_VITEST_LEGACY to a node_modules with vitest 2 or 3' },
+  () => {
+    // happy-dom is not installed: only the participating project's jsdom
+    // can be the baseline.
+    const dir = globProject(`{ test: { projects: [
+      { test: { name: 'b', include: ['b/*.spec.js'], browser: { enabled: true, provider: 'playwright', instances: [{ browser: 'chromium' }] },
+        environmentMatchGlobs: [['**/*.x.js', 'happy-dom'], ['**/*.y.js', 'happy-dom']] } },
+      { test: { name: 'server', include: ['*.spec.js'], environmentMatchGlobs: [['**/*.dom.spec.js', 'jsdom']] } },
+    ] } }`);
+    try {
+      const res = compareCli(dir, ['--correctness']);
+      const out = res.stdout.replace(/\x1b\[[0-9;]*m/g, '');
+      assert.equal(res.status, 1, out + res.stderr);
+      assert.match(out, /baseline jsdom \d/);
+      assert.match(out, /1 file in projects on node is put on jsdom by environmentMatchGlobs; switched/);
+      const result = JSON.parse(fs.readFileSync(path.join(dir, '.warpdom-compare', 'results.json'), 'utf8'));
+      assert.deepEqual(result.correctness.differences.map((d) => [d.name, d.class]).sort(), globDifferences);
+      assert.deepEqual(leftovers(dir), []);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  'compare end to end (#181): a file comment overrides the environmentMatchGlobs that match it',
+  { skip: !legacyModules && 'set WARPDOM_COMPARE_VITEST_LEGACY to a node_modules with vitest 2 or 3' },
+  () => {
+    const dir = globProject(
+      "{ test: { include: ['*.spec.js'], environmentMatchGlobs: [['**/*.dom.spec.js', 'jsdom']] } }",
+    );
+    try {
+      // A second file the glob matches, kept on node by its comment.
+      write(
+        path.join(dir, 'b.dom.spec.js'),
+        "// @vitest-environment node\nimport { test, expect } from 'vitest';\ntest('kept on node', () => { expect(typeof document).toBe('undefined'); });\n",
+      );
+      const res = compareCli(dir, ['--correctness']);
+      const out = res.stdout.replace(/\x1b\[[0-9;]*m/g, '');
+      assert.equal(res.status, 1, out + res.stderr);
+      assert.match(out, /1 file in projects on node is put on jsdom by environmentMatchGlobs; switched/);
+      assert.match(out, /Not compared: 1 project on node \(2 tests\), ran unchanged in both runs/);
+      const result = JSON.parse(fs.readFileSync(path.join(dir, '.warpdom-compare', 'results.json'), 'utf8'));
+      assert.deepEqual(result.globs.list, [
+        { project: '', file: 'a.dom.spec.js', environment: 'jsdom', switched: true },
+      ]);
+      assert.deepEqual(result.correctness.differences.map((d) => [d.name, d.class]).sort(), globDifferences);
+
+      // The only file the glob matches chooses node: nothing to compare.
+      fs.rmSync(path.join(dir, 'a.dom.spec.js'));
+      const none = compareCli(dir, ['--correctness']);
+      assert.equal(none.status, 2, none.stdout + none.stderr);
+      assert.match(none.stdout, /nothing to compare/);
       assert.deepEqual(leftovers(dir), []);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });

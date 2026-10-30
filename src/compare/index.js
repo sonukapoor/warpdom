@@ -64,6 +64,7 @@ import {
   readReport,
   stopTree,
   globEnvironments,
+  runnerGlobMatcher,
 } from './run.js';
 import { compareRuns, groupDifferences, timingSummary, pairOrder, exitCode } from './results.js';
 import { environmentRecord } from './env.js';
@@ -395,11 +396,11 @@ export async function compare(options = {}) {
     // migrate) with a comment, or by a project's environmentMatchGlobs, in
     // projects on node: those are known from the first run, which decides
     // (projects, pinned files, files the globs put on a DOM) after it (#181).
-    // Without --baseline, a project on warpdom stops here, with the hint to
-    // add it.
+    // Without --baseline, a project on warpdom (not in browser mode, which
+    // is left out of both runs) stops here, with the hint to add it.
     const commentsDecide =
       result.projects.some((p) => !p.browser) &&
-      (fromWarpdom || !result.projects.some((p) => isWarpdomEnvironment(p.environment)));
+      (fromWarpdom || !result.projects.some((p) => !p.browser && isWarpdomEnvironment(p.environment)));
     if (!domProjects.length && !unknown && !nodeOnly && !commentsDecide)
       throw nothingToCompare(
         result.projects.map((p) => (p.browser ? 'browser mode' : p.environment)),
@@ -412,9 +413,11 @@ export async function compare(options = {}) {
       counts.set(name, (counts.get(name) ?? 0) + 1);
     };
     for (const p of domProjects) count(p.environment);
-    // Without a DOM project, the DOMs environmentMatchGlobs choose.
+    // Without a DOM project, the DOMs environmentMatchGlobs choose (browser-mode
+    // projects are left out of both runs).
     if (!domProjects.length)
-      for (const p of result.projects) for (const g of p.globs ?? []) if (isDomEnvironment(runner, g)) count(g);
+      for (const p of result.projects.filter((x) => !x.browser))
+        for (const g of p.globs ?? []) if (isDomEnvironment(runner, g)) count(g);
     // Without a DOM project in the root config, the installed DOM decides.
     const guessed = packageDir(cwd, 'jsdom') || !packageDir(cwd, 'happy-dom') ? 'jsdom' : 'happy-dom';
     const baselineName = options.baseline ?? [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? guessed;
@@ -469,8 +472,10 @@ export async function compare(options = {}) {
     // projects on warpdom; the directory compare runs in for the others).
     const baselinePackage = environmentPackage(runner, baselineName);
     let baselineDirs = meta.projects.filter((p) => isWarpdomEnvironment(p.environment) && p.root).map((p) => p.root);
-    if (runner === 'vitest')
-      baselineDirs = [packageDir(path.dirname(path.dirname(path.dirname(bin))), 'vitest') ?? cwd];
+    const vitestDir = runner === 'vitest' ? packageDir(path.dirname(path.dirname(path.dirname(bin))), 'vitest') : null;
+    if (runner === 'vitest') baselineDirs = [vitestDir ?? cwd];
+    // environmentMatchGlobs matched as the project's Vitest matches them.
+    const globMatcher = runnerGlobMatcher(vitestDir);
     if (!baselineDirs.length) baselineDirs = [cwd];
     const baselineMissing = () =>
       result.fromWarpdom &&
@@ -714,7 +719,7 @@ export async function compare(options = {}) {
             const others = new Set(
               result.projects.filter((p) => !p.dom && !p.browser && !p.unswitched).map((p) => p.name ?? ''),
             );
-            const candidates = globEnvironments(ran, cwd).filter(
+            const candidates = globEnvironments(ran, cwd, globMatcher).filter(
               (g) => others.has(g.project) && isDomEnvironment(runner, environmentLabel(g.environment)),
             );
             const commented = environmentComments(
@@ -752,7 +757,7 @@ export async function compare(options = {}) {
           checkedSwitch = true;
           // Files the globs put on a DOM count as switched when their glob
           // gave them warpdom here.
-          const onWarpdom = globEnvironments(ran, cwd);
+          const onWarpdom = globEnvironments(ran, cwd, globMatcher);
           for (const g of globbed) {
             const there = onWarpdom.find((w) => w.project === g.project && w.file === g.file);
             g.switched = environmentLabel(there?.environment) === 'warpdom';

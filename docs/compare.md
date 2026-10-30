@@ -106,16 +106,19 @@ first, with warpdom's error message for each group.
   project runs on jsdom or happy-dom (found: node)"). So a project with
   no DOM at all costs one run of its tests before that message (a
   project on warpdom without `--baseline` still stops at once, with the
-  hint to add it). The
+  hint to add it; a browser-mode project, left out of both runs, does
+  not count as one). The
   baseline name comes from the globs' DOM targets, else from the
   installed packages (jsdom first); `--baseline` overrides it.
 - **Vitest 2 and 3 `environmentMatchGlobs`** in a project on node: the
   wrappers switch their jsdom and happy-dom targets (below), and compare
   matches the files that ran to the globs the reporter recorded for their
-  project (resolved against the project root, as Vitest does, matched like
-  picomatch: `*`, `**`, `?`, `[...]`, `{a,b}`, no dot names unless the
-  glob names them; the first matching glob wins, and a file's own
-  environment comment overrides them). Those files are compared, the
+  project (resolved against the project root, as Vitest does, and matched
+  with the picomatch Vitest 3 depends on; Vitest 2 bundles its matcher, so
+  there compare uses its own, with the same rules: `*`, `**`, `?`,
+  `[...]`, `{a,b}`, extglobs such as `@(a|b)` and `!(a)`, no dot names
+  unless the glob names them; the first matching glob wins, and a file's
+  own environment comment overrides them). Those files are compared, the
   rest of the project is not; the report says "N files in projects on
   node are put on jsdom by environmentMatchGlobs; switched", and the
   details list them. A file whose glob did not give it warpdom in the

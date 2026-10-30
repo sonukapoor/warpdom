@@ -3,21 +3,42 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { matchesGlob } from './projects.js';
+
+// How Vitest matches environmentMatchGlobs: Vitest 3 imports picomatch (a
+// dependency, resolved from Vitest's own directory) and calls its isMatch
+// with the glob resolved against the project root and the root as cwd.
+// Vitest 2 bundles its matcher, and a picomatch that cannot be loaded leaves
+// the built-in matcher (projects.js), which follows the same rules.
+export function runnerGlobMatcher(vitestDir) {
+  if (!vitestDir) return matchesGlob;
+  try {
+    const manifest = path.join(vitestDir, 'package.json');
+    if (!JSON.parse(fs.readFileSync(manifest, 'utf8')).dependencies?.picomatch) return matchesGlob;
+    const pm = createRequire(manifest)('picomatch');
+    if (typeof pm?.isMatch !== 'function') return matchesGlob;
+    const posix = (p) => p.split(path.sep).join('/');
+    return (file, glob, root) => pm.isMatch(posix(file), posix(path.resolve(root, glob)), { cwd: posix(root) });
+  } catch {
+    return matchesGlob;
+  }
+}
 
 // The environment Vitest's environmentMatchGlobs (Vitest 2 and 3) gave each
 // file of a run, from what the reporter recorded (each project's globs and
 // root): [{ project, file, environment }], files relative to cwd. The
 // first matching glob wins, as in Vitest; a file's comment, which overrides
-// the globs, is left to the caller.
-export function globEnvironments(ran, cwd) {
+// the globs, is left to the caller. isMatch(file, glob, root): the
+// runner's matcher (runnerGlobMatcher).
+export function globEnvironments(ran, cwd, isMatch = matchesGlob) {
   const out = [];
   const projects = new Map((ran?.projects ?? []).map((p) => [p.name ?? '', p]));
   for (const [file, name] of ran?.files ?? []) {
     const p = projects.get(name ?? '');
     if (!p?.globs?.length || p.browser) continue;
     const glob = p.globs.find(
-      (g) => Array.isArray(g) && typeof g[0] === 'string' && matchesGlob(file, g[0], p.root ?? cwd),
+      (g) => Array.isArray(g) && typeof g[0] === 'string' && isMatch(file, g[0], p.root ?? cwd),
     );
     if (glob)
       out.push({
