@@ -7,6 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createWindow } from '../src/index.js';
+import { S } from '../src/internal.js';
 import { parity } from './parity.js';
 
 const JSDOMS = [20, 22, 25, 26, 27, 28, 29, 30];
@@ -275,6 +276,217 @@ for (const jsdom of [27, 28, 29, 30])
   parity(`computed values: color-scheme of a disconnected element (jsdom ${jsdom}, #51)`, detachedColorSchemes, {
     jsdom,
   });
+
+// The default text color under color-scheme: dark (#193). jsdom 27 to
+// 29.0.1: a root (the html element, or a disconnected or shadow tree's
+// top) has CanvasText under its color-scheme, which its descendants
+// inherit; color, background-color, the border colors, display,
+// pointer-events and visibility resolve inherit, initial and unset. From
+// 29.0.2: an element that inherits its color, with none declared up the
+// chain, has CanvasText under its own color-scheme, while its currentcolor
+// is its parent's color. Each chain is built, then read from the top down:
+// jsdom 29.0.2 to 30.1.2 give some values by the order of the reads and
+// insertions (not modeled).
+const DARK_PROPS = [
+  'color',
+  'border-top-color',
+  'outline-color',
+  'text-decoration-color',
+  '-webkit-text-fill-color',
+  'background-color',
+  'color-scheme',
+];
+function darkDefaultColors(w) {
+  const d = w.document;
+  const out = {};
+  const chain = (name, parent, styles) => {
+    let p = parent;
+    const els = styles.map((style) => {
+      const el = d.createElement('div');
+      el.setAttribute('style', style);
+      if (p !== null) p.appendChild(el);
+      return (p = el);
+    });
+    out[name] = els.map((el) => read(w, el, DARK_PROPS));
+  };
+  chain('detached', null, ['color-scheme: dark', '', 'color-scheme: light']);
+  chain('connected', d.body, ['color-scheme: dark', '', 'color-scheme: light', '']);
+  chain('initial', d.body, ['color-scheme: dark; color: initial', 'color-scheme: light', 'color: initial']);
+  chain('keywords', d.body, ['color-scheme: dark; color: inherit', 'color: unset; border-top-color: initial']);
+  chain('currentcolor', d.body, ['color-scheme: dark; color: currentcolor', 'color-scheme: light']);
+  chain('declared', d.body, [
+    'color: CanvasText',
+    'color-scheme: dark',
+    'color: red; color-scheme: light',
+    'color-scheme: dark',
+  ]);
+  chain('detachedInitial', null, ['color-scheme: dark; color: initial; background-color: inherit']);
+  const host = d.body.appendChild(d.createElement('div'));
+  chain('shadow', host.attachShadow({ mode: 'open' }), ['color-scheme: dark', '']);
+  // The CSS-wide keywords where jsdom 27 to 29.0.1 resolve them.
+  const kw = d.body.appendChild(d.createElement('div'));
+  kw.style.cssText =
+    'display: inherit; visibility: initial; pointer-events: unset; background-color: initial; border-block-start-color: unset; border-left-color: inherit';
+  out.keywordProps = read(w, kw, [
+    'display',
+    'visibility',
+    'pointer-events',
+    'background-color',
+    'border-block-start-color',
+    'border-left-color',
+  ]);
+  return out;
+}
+for (const jsdom of [27, 28, 29, 30])
+  parity(`computed values: the default color under color-scheme: dark (jsdom ${jsdom}, #193)`, darkDefaultColors, {
+    jsdom,
+  });
+
+// caret-color, which jsdom 27 to 29.0.1 resolve the CSS-wide keywords of
+// (black box, 27.4.0 and 28.1.0): inherited, auto when no ancestor
+// declares it, whatever the color-scheme.
+function caretColors(w) {
+  const d = w.document;
+  const out = {};
+  for (const scheme of ['', 'dark']) {
+    d.documentElement.style.colorScheme = scheme;
+    for (const parentStyle of ['', 'caret-color: red'])
+      for (const childStyle of ['', 'caret-color: inherit', 'caret-color: unset', 'caret-color: initial']) {
+        const parent = d.body.appendChild(d.createElement('div'));
+        parent.setAttribute('style', parentStyle);
+        const child = parent.appendChild(d.createElement('span'));
+        child.setAttribute('style', childStyle);
+        out[`${scheme}|${parentStyle}|${childStyle}`] = read(w, d.documentElement, ['caret-color'])
+          .concat(read(w, parent, ['caret-color']))
+          .concat(read(w, child, ['caret-color']));
+      }
+  }
+  const detached = d.createElement('div');
+  detached.style.caretColor = 'unset';
+  out.detached = read(w, detached, ['caret-color']);
+  return out;
+}
+for (const jsdom of [27, 28])
+  parity(`computed values: caret-color inherited, else auto (jsdom ${jsdom}, #193)`, caretColors, { jsdom });
+
+// A deep chain where every element declares color-scheme and inherits a
+// color declared far up (the declaration is looked up once per chain and
+// kept with the cascaded values): the values follow changes of the
+// ancestors' colors, their color-schemes and the style sheet.
+function deepSchemeChain(w, leafProps = ['color', 'border-top-color']) {
+  const d = w.document;
+  d.head.innerHTML = '<style>* { color-scheme: dark } body { color: red }</style>';
+  const els = [];
+  for (let p = d.body, i = 0; i < 40; i++) els.push((p = p.appendChild(d.createElement('div'))));
+  const [middle, leaf] = [els[20], els[39]];
+  const out = [];
+  const snap = () => out.push(read(w, leaf, leafProps), read(w, middle, ['color']));
+  leaf.style.colorScheme = 'inherit';
+  snap();
+  d.body.style.cssText = 'color: initial; color-scheme: light';
+  snap();
+  middle.style.color = 'blue';
+  snap();
+  middle.style.color = '';
+  snap();
+  els[38].style.colorScheme = 'light';
+  snap();
+  leaf.style.colorScheme = 'dark';
+  snap();
+  d.body.style.cssText = '';
+  d.head.firstChild.textContent = '* { color-scheme: dark } body { color: green }';
+  snap();
+  return out;
+}
+for (const jsdom of [27, 30])
+  parity(`computed values: a deep color-scheme chain under a declared color (jsdom ${jsdom}, #193)`, deepSchemeChain, {
+    jsdom,
+  });
+// jsdom 29.1.1 keeps every element's computed style (keptStyles), and the
+// lookup with it. The leaf's color only: its border color, once els[38]
+// turns light, is not jsdom 29.1.1's (from jsdom 29.0.2 to 30.1.2 some
+// colors follow the order of the reads; not modeled, see inheritedValue).
+parity(
+  'computed values: a deep color-scheme chain under a declared color, kept styles (jsdom 29, #193)',
+  (w) => deepSchemeChain(w, ['color']),
+  { jsdom: 29 },
+);
+// Where computed styles are kept (jsdom 21 to 30.1.1), the declared color
+// is looked up once per chain in the document's tree as elsewhere (each
+// read walked the chain before: quadratic in its depth), but not in a
+// shadow tree, whose changes do not drop the kept values.
+test('computed values: a kept deep color-scheme chain looks up its declared color once (#193)', () => {
+  for (const jsdom of ['29.1.1', '30.1.1']) {
+    const w = createWindow({ jsdom });
+    const d = w.document;
+    d.head.innerHTML = '<style>* { color-scheme: dark } body { color: red }</style>';
+    const build = (parent) => {
+      const els = [];
+      for (let p = parent, i = 0; i < 40; i++) els.push((p = p.appendChild(d.createElement('div'))));
+      return els;
+    };
+    const els = build(d.body);
+    const shadow = build(d.body.appendChild(d.createElement('div')).attachShadow({ mode: 'open' }));
+    const color = w.getComputedStyle(els[39]).color;
+    w.getComputedStyle(shadow[39]).color;
+    // The leaf's parent and its ancestors keep the answer.
+    const memo = (chain) => chain.slice(0, -1).map((el) => el[S].cascaded.colorDeclared);
+    assert.deepEqual(
+      [color, memo(els), memo(shadow)],
+      ['rgb(255, 0, 0)', els.slice(1).map(() => true), shadow.slice(1).map(() => undefined)],
+      jsdom,
+    );
+  }
+});
+// Whether kept values are in the document's tree is found only by that
+// lookup, once per walk: a cold read of a deep leaf's color does not walk
+// to the root from every ancestor (quadratic in the depth), nor at all
+// without color-scheme.
+test('computed values: kept values find their root only for the declared color lookup (#193)', () => {
+  for (const jsdom of ['22.1.0', '29.1.1']) {
+    for (const scheme of [false, true]) {
+      const w = createWindow({ jsdom });
+      const d = w.document;
+      d.head.innerHTML = `<style>${scheme ? '* { color-scheme: dark } ' : ''}body { color: red }</style>`;
+      const els = [];
+      for (let p = d.body, i = 0; i < 40; i++) els.push((p = p.appendChild(d.createElement('div'))));
+      const color = w.getComputedStyle(els[39]).color;
+      const settled = els.slice(0, -1).map((el) => el[S].cascaded.settled);
+      assert.deepEqual(
+        [color, settled],
+        ['rgb(255, 0, 0)', els.slice(1).map(() => (scheme && jsdom === '29.1.1' ? true : undefined))],
+        `${jsdom} ${scheme}`,
+      );
+    }
+  }
+});
+
+// The page's color-scheme on :root, and the boundaries between releases
+// (black box, every release from 27.0.0 to 30.1.3): body and its children
+// white from 27.0.0, a dark div under a light body white from 29.0.2.
+function rootScheme(w) {
+  const d = w.document;
+  d.head.innerHTML = '<style>:root { color-scheme: dark }</style>';
+  const div = d.body.appendChild(d.createElement('div'));
+  const dark = d.body.appendChild(d.createElement('div'));
+  d.body.style.colorScheme = 'light';
+  dark.style.colorScheme = 'dark';
+  const cs = (el) => w.getComputedStyle(el).color;
+  return [cs(d.documentElement), cs(d.body), cs(div), cs(dark)];
+}
+for (const jsdom of [27, 28, 29, 30])
+  parity(`computed values: :root { color-scheme: dark } (jsdom ${jsdom}, #193)`, rootScheme, { jsdom });
+test('computed values: the default color under color-scheme: dark, by release (#193)', () => {
+  const W = 'rgb(255, 255, 255)',
+    B = 'rgb(0, 0, 0)';
+  const expected = { '26.1.0': ['canvastext', 'canvastext', 'canvastext', 'canvastext'], '27.0.0': [W, W, W, W] };
+  expected['29.0.1'] = expected['27.0.0'];
+  // From 29.0.2 color-scheme inherits: body is light, its div black, the
+  // dark one white.
+  expected['29.0.2'] = [W, B, B, W];
+  for (const [jsdom, values] of Object.entries(expected))
+    assert.deepEqual(rootScheme(createWindow({ jsdom, cssstyle: '4.6.0' })), values, jsdom);
+});
 
 // --- zero lengths ------------------------------------------------------------------
 

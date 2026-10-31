@@ -1626,7 +1626,8 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     mutableComputedStyle: before(version, [28, 1, 0]),
     // Computed style (cascade.js), black box per release: before 29.0.2
     // undeclared properties compute to '' and CSS-wide keywords to
-    // themselves (jsdom 29.0.0 and 29.0.1 too); unset to '' before 28.1
+    // themselves (jsdom 29.0.0 and 29.0.1 too; from 27 not those of color,
+    // display and the few others it computes); unset to '' before 28.1
     // (from jsdom 21). From 29.0.2 a shorthand jsdom does not expand
     // computes a CSS-wide keyword to 'see individual properties' or its own
     // initial value, and its border shorthands (border-radius,
