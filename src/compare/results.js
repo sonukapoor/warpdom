@@ -108,7 +108,9 @@ export function matchVaryingNames(baselineRuns, warpdomRuns) {
 // between warpdom's runs is listed separately (it may be warpdom's).
 // Tests in skipFiles (files that pin their environment with a comment and
 // were not switched) and in skipProjects (projects on node or in browser
-// mode, except files in keepFiles, whose comment was switched) ran the same
+// mode, except files in keepFiles, whose comment was switched, and
+// 'project::file' entries of keepTests, files environmentMatchGlobs put on a
+// DOM and the wrappers switched) ran the same
 // way in both runs and are not compared; those whose status changed anyway
 // are listed in notComparedChanged. Tests whose name varies between runs
 // are matched by position (matchVaryingNames), compared like the others
@@ -117,7 +119,7 @@ export function matchVaryingNames(baselineRuns, warpdomRuns) {
 export function compareRuns(
   baselineRuns,
   warpdomRuns,
-  { skipFiles = new Set(), skipProjects = new Set(), keepFiles = new Set() } = {},
+  { skipFiles = new Set(), skipProjects = new Set(), keepFiles = new Set(), keepTests = new Set() } = {},
 ) {
   const matched = matchVaryingNames(baselineRuns, warpdomRuns);
   const names = matched.names;
@@ -148,7 +150,8 @@ export function compareRuns(
     const ws = warpdomRuns.map((r) => r.get(key)?.status ?? MISSING);
     const pc = counts(project);
     const pinnedFile = skipFiles.has(info.file);
-    if (pinnedFile || (skipProjects.has(project) && !keepFiles.has(info.file))) {
+    const kept = keepFiles.has(info.file) || keepTests.has(`${project}::${info.file}`);
+    if (pinnedFile || (skipProjects.has(project) && !kept)) {
       if (!isFile) {
         out.notCompared++;
         pc.notCompared++;

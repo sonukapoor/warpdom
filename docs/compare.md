@@ -94,9 +94,35 @@ first, with warpdom's error message for each group.
   `--project` filters in the script are passed on unless `--` gives one.
 - **Environment per project:** only projects on jsdom or happy-dom switch.
   Node projects run unchanged in both runs; their tests are not compared,
-  and the report says so per project (see "Monorepos"). Vitest
-  browser-mode projects are left out of both runs (no browser starts) and
-  reported as not run.
+  and the report says so per project (see "Monorepos"), except their
+  files that choose jsdom or happy-dom with a comment (see "Per-file
+  environment comments") or, with Vitest 2 and 3, by
+  `environmentMatchGlobs` (see below). Vitest browser-mode projects are
+  left out of both runs (no browser starts) and reported as not run.
+- **No project on a DOM in the config** (#181): compare runs the baseline
+  once, and the files that ran decide: it goes on when a comment it
+  switches or a project's `environmentMatchGlobs` put a file on jsdom or
+  happy-dom, else it stops with exit code 2 ("nothing to compare: no
+  project runs on jsdom or happy-dom (found: node)"). So a project with
+  no DOM at all costs one run of its tests before that message (a
+  project on warpdom without `--baseline` still stops at once, with the
+  hint to add it; a browser-mode project, left out of both runs, does
+  not count as one). The
+  baseline name comes from the globs' DOM targets, else from the
+  installed packages (jsdom first); `--baseline` overrides it.
+- **Vitest 2 and 3 `environmentMatchGlobs`** in a project on node: the
+  wrappers switch their jsdom and happy-dom targets (below), and compare
+  matches the files that ran to the globs the reporter recorded for their
+  project (resolved against the project root, as Vitest does, and matched
+  with the picomatch Vitest 3 depends on; Vitest 2 bundles its matcher, so
+  there compare uses its own, with the same rules: `*`, `**`, `?`,
+  `[...]`, `{a,b}`, extglobs such as `@(a|b)` and `!(a)`, no dot names
+  unless the glob names them; the first matching glob wins, and a file's
+  own environment comment overrides them). Those files are compared, the
+  rest of the project is not; the report says "N files in projects on
+  node are put on jsdom by environmentMatchGlobs; switched", and the
+  details list them. A file whose glob did not give it warpdom in the
+  warpdom run is reported as not switched and not compared.
 - **A project already on warpdom** (after `warpdom migrate`): compared
   only with `--baseline`; see below.
 - **Node flags:** flags the package.json `test` script gives the runner
@@ -149,14 +175,15 @@ only projects in other config files or files' comments are on warpdom
   ([switching-back.md](switching-back.md)).
 - Vitest: files whose comment says `@vitest-environment warpdom` are
   switched as well (to the baseline and to warpdom, see below), also in a
-  project whose config stays on `node`: with `--baseline`, a project with
-  no project on a DOM in its root config is run once, and the comments of
-  the files that ran decide whether there is something to compare (the
-  same holds for files choosing jsdom or happy-dom).
+  project whose config stays on `node`: a project with no project on a
+  DOM in its root config is run once, and the comments of the files that
+  ran decide whether there is something to compare (with or without
+  `--baseline`, for files choosing jsdom or happy-dom too; #181).
 - Vitest 2 and 3: `environmentMatchGlobs` targets on warpdom are switched
   like `test.environment` (see below). In a project whose `environment`
-  is `node`, the files the globs put on a DOM are not compared yet: the
-  project counts as on node.
+  is `node`, the files the globs put on warpdom ran on the baseline DOM in
+  the baseline run and are compared, the rest of the project is not
+  (#181); the report counts them as put on that DOM.
 - Jest: files whose docblock says `@jest-environment warpdom` are not
   switched (the name resolves to the installed jest-environment-warpdom,
   which compare does not shadow); they are reported as not compared.
@@ -318,8 +345,9 @@ is matched by occurrence). With it:
   two sets of tests;
 - the projects come from the first baseline run, including those in other
   files, with their environments; projects on node are not compared,
-  browser-mode projects are not run (except Vitest files whose comment switched them to a DOM),
-  and status changes there are listed in the details;
+  browser-mode projects are not run (except Vitest files whose comment, or
+  whose project's `environmentMatchGlobs`, switched them to a DOM), and
+  status changes there are listed in the details;
 - a DOM project still on jsdom or happy-dom in the warpdom run (one
   compare could not reach) is reported as not switched and not compared,
   and so is, with `--baseline`, a project still on warpdom in the baseline
@@ -334,7 +362,8 @@ is matched by occurrence). With it:
   compare" check for them happens after the first baseline run, and when
   the root config defines no DOM project itself, the baseline name (jsdom
   or happy-dom, which also decides how pinned comments switch on the
-  baseline) is taken from the installed packages, jsdom first.
+  baseline) is taken from the DOM targets of the root config's
+  `environmentMatchGlobs`, else from the installed packages, jsdom first.
   `--baseline` overrides it.
 - Strings inside project config files (Vitest 5 nested projects) are not
   resolved; such projects run unswitched and are reported as such.

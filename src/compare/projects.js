@@ -52,22 +52,78 @@ export function expandBraces(pattern) {
 
 const escape = (c) => c.replace(/[.+^${}()|\\]/g, '\\$&');
 
+// The index of the bracket closing the one at `open` ("(" or "["), or -1.
+function closing(text, open) {
+  if (text[open] === '[') return text.indexOf(']', open + 2);
+  let depth = 0;
+  for (let i = open; i < text.length; i++) {
+    const c = text[i];
+    if (c === '\\') i++;
+    else if (c === '[') {
+      const end = closing(text, i);
+      if (end > 0) i = end;
+    } else if (c === '(') depth++;
+    else if (c === ')' && --depth === 0) return i;
+  }
+  return -1;
+}
+
+// Splits text at a separator outside parentheses and character classes.
+function splitOutside(text, separator) {
+  const parts = [];
+  let from = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '\\') i++;
+    else if (c === '(' || c === '[') {
+      const end = closing(text, i);
+      if (end > 0) i = end;
+    } else if (c === separator) {
+      parts.push(text.slice(from, i));
+      from = i + 1;
+    }
+  }
+  parts.push(text.slice(from));
+  return parts;
+}
+
+// An extglob's alternatives, which may span path segments (@(a|b/c)).
+const alternatives = (body) =>
+  splitOutside(body, '|')
+    .map((alt) => splitOutside(alt, '/').map(segmentSource).join('/'))
+    .join('|');
+
+const EXTGLOB = { '@': '', '?': '?', '*': '*', '+': '+' };
+
 function segmentSource(segment) {
   let out = '';
   for (let i = 0; i < segment.length; i++) {
     const c = segment[i];
+    const end = '@?*+!'.includes(c) && segment[i + 1] === '(' ? closing(segment, i + 1) : -1;
+    if (end > 0) {
+      const alts = alternatives(segment.slice(i + 2, end));
+      if (c !== '!') {
+        out += `(?:${alts})${EXTGLOB[c]}`;
+        i = end;
+        continue;
+      }
+      // !(a|b): any name part but those, given what follows in the segment.
+      const rest = segmentSource(segment.slice(end + 1));
+      return `${out}(?:(?!(?:${alts})${rest}(?:/|$))[^/]*?)${rest}`;
+    }
     if (c === '*') out += '[^/]*';
     else if (c === '?') out += '[^/]';
     else if (c === '[') {
-      const end = segment.indexOf(']', i + 2);
-      if (end < 0) {
+      const close = closing(segment, i);
+      if (close < 0) {
         out += '\\[';
         continue;
       }
-      let body = segment.slice(i + 1, end);
-      if (body[0] === '!') body = `^${body.slice(1)}`;
-      out += `[${body.replace(/\\/g, '\\\\')}]`;
-      i = end;
+      let body = segment.slice(i + 1, close).replace(/\\/g, '\\\\');
+      // A negated class never matches a path separator.
+      if (body[0] === '!' || body[0] === '^') body = `^/${body.slice(1)}`;
+      out += `[${body}]`;
+      i = close;
     } else if (c === '\\' && i + 1 < segment.length) out += escape(segment[++i]);
     else out += escape(c);
   }
@@ -75,15 +131,55 @@ function segmentSource(segment) {
 }
 
 // A glob (no braces) as a regular expression over a relative POSIX path.
-export function globRegExp(pattern) {
-  const segments = pattern.split('/').filter(Boolean);
+// dot: false keeps wildcards from matching a name that starts with a dot
+// (picomatch's default, as in environmentMatchGlobs). Extglobs too:
+// @(a|b), ?(...), *(...), +(...), !(...).
+export function globRegExp(pattern, { dot = true } = {}) {
+  const segments = splitOutside(pattern, '/').filter(Boolean);
+  const noDot = dot ? '' : '(?!\\.)';
+  // A final ** : anything below, or (dot: false) names not starting with a dot.
+  const rest = dot ? '.*' : `(?:${noDot}[^/]+(?:/|$))*`;
   let source = '^';
   segments.forEach((segment, i) => {
     const last = i === segments.length - 1;
-    if (segment === '**') source += last ? '.*' : '(?:[^/]+/)*';
-    else source += segmentSource(segment) + (last ? '' : '/');
+    if (segment === '**') source += last ? rest : `(?:${noDot}[^/]+/)*`;
+    else source += (segment.startsWith('.') ? '' : noDot) + segmentSource(segment) + (last ? '' : '/');
   });
   return new RegExp(`${source}/?$`);
+}
+
+// {a..b} ranges as picomatch (Vitest 2 and 3) matches them: the ends (and
+// any commas beside them), sorted as strings, make a character class
+// ({1..3}: [1-3], {1..10}: [1-10], {1..9..2}: [1-2-9], {1..3,q}:
+// [,-1-3-q]); ends that make no valid class are the literal text
+// ({01..03}: "01..03").
+function braceRanges(pattern) {
+  return pattern.replace(/(?<!\\)\{((?:[^{}\\./*?[\]()!@+^-]|\.\.)+)\}/g, (match, body) => {
+    if (!body.includes('..') || body.includes('...')) return match;
+    const ends = body
+      .split(/(,)|\.\./)
+      .filter(Boolean)
+      .sort();
+    const value = `[${ends.join('-')}]`;
+    try {
+      new RegExp(value);
+      return value;
+    } catch {
+      return ends.join('..');
+    }
+  });
+}
+
+// Whether a file matches a glob as Vitest matches environmentMatchGlobs
+// (picomatch's isMatch with the project root as cwd; Vitest resolves the
+// globs against the root first): both as POSIX paths, a relative glob
+// resolved against root, braces expanded, wildcards not matching names
+// that start with a dot.
+export function matchesGlob(file, pattern, root) {
+  const posix = (p) => p.split(path.sep).join('/').replace(/^\/+/, '');
+  const target = posix(path.resolve(file));
+  const resolved = posix(path.isAbsolute(pattern) ? pattern : path.resolve(root, pattern));
+  return expandBraces(braceRanges(resolved)).some((p) => globRegExp(p, { dot: false }).test(target));
 }
 
 const SKIP_DIRS = new Set(['node_modules', '.git']);

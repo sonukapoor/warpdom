@@ -69,6 +69,16 @@ function notComparedLines(result) {
       `Not compared: ${plural(n, 'file')} (${plural(pinned.tests, 'test')}) ${n === 1 ? 'chooses' : 'choose'} ${(pinned.notSwitchedEnvironments ?? pinned.environments).join('/')} with a comment and were not switched${why}`,
     );
   }
+  // Files environmentMatchGlobs put on a DOM in projects on node (#181).
+  const globs = result.globs;
+  if (globs?.switched)
+    lines.push(
+      `${plural(globs.switched, 'file')} in projects on node ${globs.switched === 1 ? 'is' : 'are'} put on ${globs.environments.join('/')} by environmentMatchGlobs; switched`,
+    );
+  if (globs?.notSwitched)
+    lines.push(
+      `Not compared: ${plural(globs.notSwitched, 'file')} environmentMatchGlobs put on ${globs.notSwitchedEnvironments.join('/')} ${globs.notSwitched === 1 ? 'was' : 'were'} not switched`,
+    );
   const unswitched = (result.projects ?? []).filter((p) => p.unswitched);
   if (unswitched.length) {
     const byProject = result.correctness?.byProject ?? {};
@@ -337,6 +347,14 @@ export function renderMarkdown(result) {
         );
       md.push('');
     }
+  }
+  if (result.correctness && result.globs?.files) {
+    md.push('### Files environmentMatchGlobs put on a DOM', '');
+    for (const g of result.globs.list)
+      md.push(
+        `- ${g.project ? `[${g.project}] ` : ''}\`${g.file}\`: ${environmentLabel(g.environment)}${g.switched ? ', switched' : ', not switched'}`,
+      );
+    md.push('');
   }
   if (result.runs?.length) {
     md.push(

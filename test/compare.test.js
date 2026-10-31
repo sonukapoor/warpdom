@@ -9,6 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   vitestWrapper,
   vitestWorkspaceWrapper,
+  vitestReporter,
   jestWrapper,
   wrapperName,
   workspaceWrapperName,
@@ -24,6 +25,7 @@ import {
   expandBraces,
   globRegExp,
   glob,
+  matchesGlob,
   resolveVitestProjects,
   resolveJestProjects,
 } from '../src/compare/projects.js';
@@ -49,7 +51,15 @@ import {
   gitStatus,
   statusChanges,
 } from '../src/compare/files.js';
-import { runnerArgs, testsOf, countsOf, runnerDuration, normalizeStatus } from '../src/compare/run.js';
+import {
+  runnerArgs,
+  testsOf,
+  countsOf,
+  runnerDuration,
+  normalizeStatus,
+  globEnvironments,
+  runnerGlobMatcher,
+} from '../src/compare/run.js';
 import {
   classify,
   compareRuns,
@@ -916,6 +926,28 @@ test('compare detection: environment comments, --config among runner arguments',
       ],
     );
     assert.deepEqual([...environmentComments([a, b], 'jest')], [[b, 'happy-dom']], 'Jest reads only @jest-environment');
+    // any: every environment comment (they override environmentMatchGlobs).
+    const e = write(path.join(dir, 'e.test.js'), '// @vitest-environment custom\n');
+    assert.deepEqual(
+      [...environmentComments([a, c, d, e], 'vitest', { any: true })],
+      [
+        [a, 'jsdom'],
+        [c, 'node'],
+        [e, 'custom'],
+      ],
+    );
+    // Vitest reads the whole file: a comment after a long header counts.
+    const header = `/* ${'x'.repeat(20000)} */\n`;
+    const f = write(path.join(dir, 'f.test.js'), `${header}// @vitest-environment node\n`);
+    const g = write(path.join(dir, 'g.test.js'), `${header}// @vitest-environment jsdom\n`);
+    assert.deepEqual(
+      [...environmentComments([f, g], 'vitest', { any: true })],
+      [
+        [f, 'node'],
+        [g, 'jsdom'],
+      ],
+    );
+    assert.deepEqual([...environmentComments([f, g], 'vitest')], [[g, 'jsdom']]);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -1093,6 +1125,242 @@ test('compare results: projects not on a DOM are not compared, counts per projec
     groupDifferences(c.differences)[0].tests.map((t) => t.project),
     ['web', 'node'],
   );
+});
+
+test('compare runs (#181): the environment environmentMatchGlobs give each file, as Vitest matches them', () => {
+  // Vitest resolves the globs against the project root and matches with
+  // picomatch: wildcards skip names starting with a dot.
+  assert.equal(matchesGlob('/r/src/a.dom.spec.js', '/r/**/*.dom.spec.js', '/r'), true);
+  assert.equal(matchesGlob('/r/a.dom.spec.js', '**/*.dom.spec.js', '/r'), true, 'relative to the root');
+  assert.equal(matchesGlob('/x/a.dom.spec.js', '**/*.dom.spec.js', '/r'), false, 'outside the root');
+  assert.equal(matchesGlob('/r/.cache/a.dom.spec.js', '/r/**/*.dom.spec.js', '/r'), false, 'dot directory');
+  assert.equal(matchesGlob('/r/.cache/a.dom.spec.js', '/r/.cache/*.spec.js', '/r'), true, 'named dot directory');
+  assert.equal(matchesGlob('/r/src/ui/b.tsx', '/r/src/**/*.{tsx,jsx}', '/r'), true, 'braces');
+  assert.equal(matchesGlob('/r/src/ui/deep/b.ts', '/r/src/ui/**', '/r'), true, 'a directory');
+  assert.equal(matchesGlob('/r/src/b.ts', '/r/src/ui/**', '/r'), false);
+  // Character classes never match a path separator.
+  assert.equal(matchesGlob('/r/a/b.spec.js', '/r/a[^x]b.spec.js', '/r'), false, 'negated class and /');
+  assert.equal(matchesGlob('/r/a/b.spec.js', '/r/a[!x]b.spec.js', '/r'), false, 'negated class (!) and /');
+  assert.equal(matchesGlob('/r/ayb.spec.js', '/r/a[^x]b.spec.js', '/r'), true);
+  assert.equal(matchesGlob('/r/axb.spec.js', '/r/a[^x]b.spec.js', '/r'), false);
+  // Extglobs.
+  assert.equal(matchesGlob('/r/a.dom.spec.js', '**/*.@(dom|web).spec.js', '/r'), true, '@(...)');
+  assert.equal(matchesGlob('/r/x/a.web.spec.js', '**/*.@(dom|web).spec.js', '/r'), true);
+  assert.equal(matchesGlob('/r/a.node.spec.js', '**/*.@(dom|web).spec.js', '/r'), false);
+  assert.equal(matchesGlob('/r/.a.dom.spec.js', '**/*.@(dom|web).spec.js', '/r'), false, 'dot name');
+  assert.equal(matchesGlob('/r/a.dxx.spec.js', '**/*.@(d*|w?b).spec.js', '/r'), true, 'wildcards inside');
+  assert.equal(matchesGlob('/r/aab.spec.js', '**/+(a|b).spec.js', '/r'), true, '+(...)');
+  assert.equal(matchesGlob('/r/.spec.js', '**/+(a|b).spec.js', '/r'), false);
+  assert.equal(matchesGlob('/r/x.spec.js', '**/*(a|b)x.spec.js', '/r'), true, '*(...)');
+  assert.equal(matchesGlob('/r/ax.spec.js', '**/?(a|b)x.spec.js', '/r'), true, '?(...)');
+  assert.equal(matchesGlob('/r/abx.spec.js', '**/?(a|b)x.spec.js', '/r'), false);
+  assert.equal(matchesGlob('/r/b/c.spec.js', '**/@(a|b/c).spec.js', '/r'), true, 'a separator inside');
+  assert.equal(matchesGlob('/r/a.node.spec.js', '**/*.!(dom).spec.js', '/r'), true, '!(...)');
+  assert.equal(matchesGlob('/r/a.dom.spec.js', '**/*.!(dom).spec.js', '/r'), false);
+  assert.equal(matchesGlob('/r/src/a.dom.spec.js', 'src/**/!(*.node).spec.js', '/r'), true);
+  assert.equal(matchesGlob('/r/src/a.node.spec.js', 'src/**/!(*.node).spec.js', '/r'), false);
+  // Ranges, as Vitest 2 and 3 match them (picomatch): the sorted ends make
+  // a character class; one that is not a valid class is matched literally.
+  const range = (name, pattern) => matchesGlob(`/r/${name}.spec.js`, `**/${pattern}.spec.js`, '/r');
+  for (const n of ['a1', 'a2', 'a3']) assert.equal(range(n, 'a{1..3}'), true, n);
+  assert.equal(range('a4', 'a{1..3}'), false);
+  for (const n of ['e1', 'e2', 'e3']) assert.equal(range(n, 'e{3..1}'), true, `${n}, reversed`);
+  for (const n of ['da', 'db', 'dc']) assert.equal(range(n, 'd{a..c}'), true, n);
+  assert.equal(range('dd', 'd{a..c}'), false);
+  // {1..10} is [1-10]: 1 or 0.
+  assert.equal(range('f1', 'f{1..10}'), true);
+  for (const n of ['f5', 'f10']) assert.equal(range(n, 'f{1..10}'), false, n);
+  // A step is one more end: {1..9..2} is [1-2-9].
+  for (const n of ['c1', 'c2', 'c9']) assert.equal(range(n, 'c{1..9..2}'), true, n);
+  for (const n of ['c3', 'c5']) assert.equal(range(n, 'c{1..9..2}'), false, n);
+  // [01-03] is not a valid class: the literal text.
+  for (const n of ['b01', 'b1']) assert.equal(range(n, 'b{01..03}'), false, n);
+  assert.equal(range('b01..03', 'b{01..03}'), true);
+  // Commas beside a range join the class ([,-1-3-q]); ranges side by side.
+  for (const n of ['z1', 'zq', 'z,']) assert.equal(range(n, 'z{1..3,q}'), true, n);
+  assert.equal(range('z2', 'z{1..3,q}'), false);
+  for (const n of ['y1a', 'y3b']) assert.equal(range(n, 'y{1..3}{a..b}'), true, n);
+  assert.equal(range('y4a', 'y{1..3}{a..b}'), false);
+
+  const ran = {
+    files: [
+      ['/r/a.dom.spec.js', ''],
+      ['/r/b.spec.js', ''],
+      ['/r/ui/c.spec.js', ''],
+      ['/r/w/d.dom.spec.js', 'browser'],
+    ],
+    projects: [
+      {
+        name: '',
+        environment: 'node',
+        globs: [
+          ['/r/**/*.dom.spec.js', 'jsdom'],
+          ['/r/ui/**', 'happy-dom'],
+          ['/r/**/*.spec.js', 'edge-runtime'],
+        ],
+        root: '/r',
+      },
+      { name: 'browser', environment: 'node', browser: true, globs: [['/r/**', 'jsdom']], root: '/r' },
+    ],
+  };
+  assert.deepEqual(
+    globEnvironments(ran, '/r'),
+    [
+      { project: '', file: 'a.dom.spec.js', environment: 'jsdom' },
+      { project: '', file: 'b.spec.js', environment: 'edge-runtime' },
+      { project: '', file: 'ui/c.spec.js', environment: 'happy-dom' },
+    ],
+    'the first matching glob, by project; browser-mode projects left out',
+  );
+  assert.deepEqual(globEnvironments({ files: ran.files, projects: [{ name: '' }] }, '/r'), [], 'no globs');
+  // First match with the matcher's verdicts: a Node rule that only an
+  // extglob or a negated class selects comes before a catch-all jsdom rule.
+  const ordered = (glob) => ({
+    files: [
+      ['/r/a.node.spec.js', ''],
+      ['/r/a/b.spec.js', ''],
+    ],
+    projects: [
+      {
+        name: '',
+        environment: 'node',
+        globs: [
+          [glob, 'node'],
+          ['/r/**', 'jsdom'],
+        ],
+        root: '/r',
+      },
+    ],
+  });
+  assert.deepEqual(
+    globEnvironments(ordered('/r/**/*.@(node|server).spec.js'), '/r').map((g) => [g.file, g.environment]),
+    [
+      ['a.node.spec.js', 'node'],
+      ['a/b.spec.js', 'jsdom'],
+    ],
+  );
+  assert.deepEqual(
+    globEnvironments(ordered('/r/a[^x]b.spec.js'), '/r').map((g) => [g.file, g.environment]),
+    [
+      ['a.node.spec.js', 'jsdom'],
+      ['a/b.spec.js', 'jsdom'],
+    ],
+  );
+  // A matcher passed in (the runner's own) decides.
+  const calls = [];
+  const custom = (file, glob, root) => (calls.push([file, glob, root]), glob.endsWith('node.spec.js'));
+  assert.deepEqual(
+    globEnvironments(ordered('/r/**/node.spec.js'), '/r', custom).map((g) => [g.file, g.environment]),
+    [
+      ['a.node.spec.js', 'node'],
+      ['a/b.spec.js', 'node'],
+    ],
+  );
+  assert.deepEqual(calls[0], ['/r/a.node.spec.js', '/r/**/node.spec.js', '/r']);
+  assert.deepEqual(globEnvironments(null, '/r'), []);
+
+  // compareRuns keeps such a file of a project not compared, in that
+  // project only.
+  const entry = (project, file, status) => [
+    `${project}::${file}::t`,
+    { project, file, name: 't', status, message: '' },
+  ];
+  const c = compareRuns(
+    [new Map([entry('server', 'a.dom.spec.js', 'passed'), entry('other', 'a.dom.spec.js', 'passed')])],
+    [new Map([entry('server', 'a.dom.spec.js', 'failed'), entry('other', 'a.dom.spec.js', 'failed')])],
+    { skipProjects: new Set(['server', 'other']), keepTests: new Set(['server::a.dom.spec.js']) },
+  );
+  assert.deepEqual(
+    c.differences.map((d) => d.key),
+    ['server::a.dom.spec.js::t'],
+  );
+  assert.equal(c.notCompared, 1);
+});
+
+test('compare runs (#181): environmentMatchGlobs matched with the picomatch Vitest imports', () => {
+  const dir = tmp('runner-glob');
+  try {
+    const vitest = path.join(dir, 'node_modules', 'vitest');
+    write(path.join(vitest, 'package.json'), JSON.stringify({ name: 'vitest', dependencies: { picomatch: '^4.0.2' } }));
+    fs.symlinkSync(path.join(root, 'node_modules', 'picomatch'), path.join(dir, 'node_modules', 'picomatch'));
+    const isMatch = runnerGlobMatcher(vitest);
+    assert.notEqual(isMatch, matchesGlob);
+    // Vitest resolves a glob against the project root and calls
+    // picomatch's isMatch with the root as cwd.
+    assert.equal(isMatch('/r/a.dom.spec.js', '**/*.@(dom|web).spec.js', '/r'), true);
+    assert.equal(isMatch('/r/a/b.spec.js', '/r/a[^x]b.spec.js', '/r'), false);
+    assert.equal(isMatch('/x/a.dom.spec.js', '**/*.dom.spec.js', '/r'), false);
+    // picomatch's own reading, not the built-in matcher's.
+    assert.equal(isMatch('/r/axb.spec.js', '/r/a[!x]b.spec.js', '/r'), true);
+    assert.equal(matchesGlob('/r/axb.spec.js', '/r/a[!x]b.spec.js', '/r'), false);
+
+    // Vitest 2 bundles its matcher: the built-in one.
+    write(path.join(vitest, 'package.json'), JSON.stringify({ name: 'vitest', dependencies: {} }));
+    assert.equal(runnerGlobMatcher(vitest), matchesGlob);
+    assert.equal(runnerGlobMatcher(null), matchesGlob);
+    assert.equal(runnerGlobMatcher(path.join(dir, 'missing')), matchesGlob);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('compare wrappers (#181): the reporter records environmentMatchGlobs, the probe their environments', async () => {
+  const dir = tmp('reporter-globs');
+  try {
+    const file = write(path.join(dir, 'reporter.mjs'), vitestReporter());
+    const out = path.join(dir, 'projects.json');
+    const { default: Reporter } = await import(pathToFileURL(file).href);
+    const reporter = new Reporter();
+    reporter.onInit({
+      projects: [
+        { name: '', config: { environment: 'node', environmentMatchGlobs: [['/r/**/*.dom.js', 'jsdom']], root: '/r' } },
+        { name: 'web', config: { environment: 'jsdom', environmentMatchGlobs: [] } },
+      ],
+    });
+    process.env.WARPDOM_COMPARE_PROJECTS = out;
+    try {
+      reporter.onFinished([{ filepath: '/r/a.dom.js', projectName: '' }]);
+    } finally {
+      delete process.env.WARPDOM_COMPARE_PROJECTS;
+    }
+    assert.deepEqual(JSON.parse(fs.readFileSync(out, 'utf8')), {
+      files: [['/r/a.dom.js', '']],
+      projects: [
+        { name: '', environment: 'node', browser: false, globs: [['/r/**/*.dom.js', 'jsdom']], root: '/r' },
+        { name: 'web', environment: 'jsdom', browser: false },
+      ],
+    });
+
+    write(
+      path.join(dir, 'vitest.config.mjs'),
+      `export default { test: { environmentMatchGlobs: [['**/*.dom.js', 'happy-dom']], projects: [
+        { extends: true, test: { name: 'inherits' } },
+        { test: { name: 'own', environmentMatchGlobs: [['**/*.web.js', 'jsdom']] } },
+        { test: { name: 'none' } },
+      ] } };`,
+    );
+    const wrapper = write(
+      path.join(dir, 'vitest.config.warpdom-compare.probe.mjs'),
+      vitestWrapper(path.join(dir, 'vitest.config.mjs'), { major: 3 }),
+    );
+    const meta = path.join(dir, 'meta.json');
+    process.env.WARPDOM_COMPARE_META = meta;
+    try {
+      await (await import(pathToFileURL(wrapper).href)).default({ mode: 'test' });
+    } finally {
+      delete process.env.WARPDOM_COMPARE_META;
+    }
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(meta, 'utf8')).projects.map((p) => [p.name, p.globs ?? null]),
+      [
+        ['inherits', ['happy-dom']],
+        ['own', ['jsdom']],
+        ['none', null],
+      ],
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 const run = (entries) =>
@@ -2175,6 +2443,75 @@ test('compare end to end (#172): --baseline on a project on node whose files cho
   }
 });
 
+test('compare end to end (#181): a project on node whose files choose jsdom or happy-dom with a comment, no --baseline', () => {
+  const dir = fixtureProject('compare-vitest', vitestLinks());
+  try {
+    fs.writeFileSync(path.join(dir, 'vitest.config.js'), "export default { test: { include: ['*.spec.js'] } };");
+    const res = compareCli(dir, ['--correctness']);
+    const out = res.stdout.replace(/\x1b\[[0-9;]*m/g, '');
+    assert.equal(res.status, 1, out + res.stderr);
+    assert.match(out, /baseline jsdom \d/);
+    assert.match(out, /2 files pin happy-dom\/jsdom with a comment; switched/);
+    assert.match(out, /Not compared: 1 project on node \(\d+ tests\), ran unchanged in both runs/);
+    const result = JSON.parse(fs.readFileSync(path.join(dir, '.warpdom-compare', 'results.json'), 'utf8'));
+    assert.equal(result.fromWarpdom, false);
+    assert.deepEqual(
+      result.correctness.differences.map((d) => [d.name, d.class]),
+      [['pinned to jsdom: passes on jsdom only', 'regression']],
+    );
+    assert.deepEqual(result.pinned.list.map((p) => [p.file, p.environment, p.switched, p.baseline ?? null]).sort(), [
+      ['pinned-happy.spec.js', 'happy-dom', true, 'jsdom'],
+      ['pinned.spec.js', 'jsdom', true, null],
+    ]);
+    assert.deepEqual(leftovers(dir), []);
+
+    // A comment compare does not switch leaves nothing to compare, after
+    // one run.
+    fs.rmSync(path.join(dir, 'pinned-happy.spec.js'));
+    const pinned = path.join(dir, 'pinned.spec.js');
+    fs.writeFileSync(
+      pinned,
+      fs.readFileSync(pinned, 'utf8').replace('@vitest-environment jsdom', '@vitest-environment node'),
+    );
+    const none = compareCli(dir, ['--correctness']);
+    assert.equal(none.status, 2, none.stdout + none.stderr);
+    assert.match(none.stdout, /nothing to compare: no project runs on jsdom or happy-dom \(found: node\)/);
+    assert.deepEqual(leftovers(dir), []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('compare end to end (#181): a browser-mode project inheriting warpdom beside a project on node with a pinned file', () => {
+  const dir = fixtureProject('compare-vitest', vitestLinks());
+  try {
+    fs.rmSync(path.join(dir, 'pinned-happy.spec.js'));
+    // The browser-mode project is left out of both runs: its environment
+    // does not stop compare before the run finds the pinned file.
+    fs.writeFileSync(
+      path.join(dir, 'vitest.config.js'),
+      `export default { test: { environment: 'warpdom', projects: [
+        { extends: true, test: { name: 'b', include: ['b/*.spec.js'], browser: { enabled: true } } },
+        { test: { name: 'server', include: ['*.spec.js'], environment: 'node' } },
+      ] } };`,
+    );
+    const res = compareCli(dir, ['--correctness']);
+    const out = res.stdout.replace(/\x1b\[[0-9;]*m/g, '');
+    assert.equal(res.status, 1, out + res.stderr);
+    assert.match(out, /baseline jsdom \d/);
+    assert.match(out, /1 file pins jsdom with a comment; switched/);
+    assert.match(out, /Not run: 1 project in browser mode/);
+    const result = JSON.parse(fs.readFileSync(path.join(dir, '.warpdom-compare', 'results.json'), 'utf8'));
+    assert.deepEqual(
+      result.correctness.differences.map((d) => [d.project, d.name, d.class]),
+      [['server', 'pinned to jsdom: passes on jsdom only', 'regression']],
+    );
+    assert.deepEqual(leftovers(dir), []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // The root config lists a project file whose environment is warpdom: only
 // the run shows it.
 function migratedChildProject(links = vitestLinks()) {
@@ -2543,6 +2880,208 @@ test(
   },
 );
 
+// Vitest 2 and 3: a project on node whose environmentMatchGlobs put files on
+// a DOM (#181), from the compare-vitest fixture: dom.spec.js differs
+// between jsdom and warpdom, node.spec.js runs on node.
+// Projects go in a workspace file (`workspace`, a list), which both Vitest 2
+// and 3 load: `test.projects` needs Vitest 3.2.
+function globProject(config, workspace) {
+  const dir = fixtureProject('compare-vitest', {
+    vitest: fs.realpathSync(path.join(legacyModules, 'vitest')),
+    jsdom: fs.existsSync(path.join(legacyModules, 'jsdom'))
+      ? fs.realpathSync(path.join(legacyModules, 'jsdom'))
+      : path.join(root, 'node_modules', 'jsdom'),
+    '.bin/vitest': '../vitest/vitest.mjs',
+  });
+  for (const f of ['pinned.spec.js', 'pinned-happy.spec.js', 'same.spec.js']) fs.rmSync(path.join(dir, f));
+  fs.renameSync(path.join(dir, 'differ.spec.js'), path.join(dir, 'a.dom.spec.js'));
+  write(
+    path.join(dir, 'node.spec.js'),
+    "import { test, expect } from 'vitest';\ntest('on node', () => { expect(typeof document).toBe('undefined'); });\n",
+  );
+  if (workspace) {
+    fs.rmSync(path.join(dir, 'vitest.config.js'));
+    fs.writeFileSync(path.join(dir, 'vitest.workspace.js'), `export default ${workspace};\n`);
+  } else fs.writeFileSync(path.join(dir, 'vitest.config.js'), `export default ${config};\n`);
+  return dir;
+}
+const globDifferences = [
+  ['passes on jsdom only', 'regression'],
+  ['passes on warpdom only', 'fixed'],
+];
+
+test(
+  'compare end to end (#181): Vitest environmentMatchGlobs put files of a project on node on jsdom',
+  { skip: !legacyModules && 'set WARPDOM_COMPARE_VITEST_LEGACY to a node_modules with vitest 2 or 3' },
+  () => {
+    const dir = globProject(
+      "{ test: { include: ['*.spec.js'], environmentMatchGlobs: [['**/*.dom.spec.js', 'jsdom']] } }",
+    );
+    try {
+      const res = compareCli(dir, ['--correctness']);
+      const out = res.stdout.replace(/\x1b\[[0-9;]*m/g, '');
+      assert.equal(res.status, 1, out + res.stderr);
+      assert.match(out, /baseline jsdom \d/);
+      assert.match(
+        out,
+        /3 tests, 1 test with the same status; 1 pass on jsdom and fail on warpdom, 1 fail on jsdom and pass on warpdom/,
+      );
+      assert.match(out, /1 file in projects on node is put on jsdom by environmentMatchGlobs; switched/);
+      assert.match(out, /Not compared: 1 project on node \(1 test\), ran unchanged in both runs/);
+      const result = JSON.parse(fs.readFileSync(path.join(dir, '.warpdom-compare', 'results.json'), 'utf8'));
+      assert.deepEqual(result.correctness.differences.map((d) => [d.name, d.class]).sort(), globDifferences);
+      assert.deepEqual(result.globs.list, [
+        { project: '', file: 'a.dom.spec.js', environment: 'jsdom', switched: true },
+      ]);
+      assert.match(
+        fs.readFileSync(path.join(dir, '.warpdom-compare', 'report.md'), 'utf8'),
+        /^- `a\.dom\.spec\.js`: jsdom, switched$/m,
+      );
+      assert.deepEqual(leftovers(dir), []);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  'compare end to end (#181): environmentMatchGlobs in a project on node beside a project on jsdom',
+  { skip: !legacyModules && 'set WARPDOM_COMPARE_VITEST_LEGACY to a node_modules with vitest 2 or 3' },
+  () => {
+    const dir = globProject(
+      null,
+      `[
+      { test: { name: 'web', include: ['web/*.spec.js'], environment: 'jsdom' } },
+      { test: { name: 'server', include: ['*.spec.js'], environmentMatchGlobs: [['**/*.dom.spec.js', 'jsdom']] } },
+    ]`,
+    );
+    try {
+      write(
+        path.join(dir, 'web', 'web.spec.js'),
+        "import { test, expect } from 'vitest';\ntest('on a DOM', () => { expect(typeof document).toBe('object'); });\n",
+      );
+      const res = compareCli(dir, ['--correctness']);
+      const out = res.stdout.replace(/\x1b\[[0-9;]*m/g, '');
+      assert.equal(res.status, 1, out + res.stderr);
+      assert.match(
+        out,
+        /4 tests, 2 tests with the same status; 1 pass on jsdom and fail on warpdom, 1 fail on jsdom and pass on warpdom/,
+      );
+      assert.match(out, /Not compared: 1 project on node \(1 test\), ran unchanged in both runs/);
+      const result = JSON.parse(fs.readFileSync(path.join(dir, '.warpdom-compare', 'results.json'), 'utf8'));
+      assert.deepEqual(result.correctness.differences.map((d) => [d.project, d.name, d.class]).sort(), [
+        ['server', 'passes on jsdom only', 'regression'],
+        ['server', 'passes on warpdom only', 'fixed'],
+      ]);
+      assert.deepEqual(result.globs.list, [
+        { project: 'server', file: 'a.dom.spec.js', environment: 'jsdom', switched: true },
+      ]);
+      assert.deepEqual(leftovers(dir), []);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  'compare end to end (#181): --baseline with environmentMatchGlobs choosing warpdom in a project on node',
+  { skip: !legacyModules && 'set WARPDOM_COMPARE_VITEST_LEGACY to a node_modules with vitest 2 or 3' },
+  () => {
+    const dir = globProject(
+      "{ test: { include: ['*.spec.js'], environmentMatchGlobs: [['**/*.dom.spec.js', 'warpdom']] } }",
+    );
+    try {
+      write(
+        path.join(dir, 'node_modules', 'vitest-environment-warpdom', 'package.json'),
+        JSON.stringify({ name: 'vitest-environment-warpdom', type: 'module', exports: './index.js' }),
+      );
+      write(
+        path.join(dir, 'node_modules', 'vitest-environment-warpdom', 'index.js'),
+        `export { default } from ${JSON.stringify(pathToFileURL(path.join(root, 'src', 'vitest.js')).href)};\n`,
+      );
+      const plain = compareCli(dir, ['--correctness']);
+      assert.equal(plain.status, 2, plain.stdout + plain.stderr);
+      assert.match(plain.stdout, /nothing to compare: no project runs on jsdom or happy-dom \(found: node\)/);
+
+      const res = compareCli(dir, ['--correctness', '--baseline', 'jsdom']);
+      const out = res.stdout.replace(/\x1b\[[0-9;]*m/g, '');
+      assert.equal(res.status, 1, out + res.stderr);
+      assert.match(out, /, for a project on warpdom$/m);
+      assert.match(out, /1 file in projects on node is put on jsdom by environmentMatchGlobs; switched/);
+      const result = JSON.parse(fs.readFileSync(path.join(dir, '.warpdom-compare', 'results.json'), 'utf8'));
+      assert.deepEqual(result.correctness.differences.map((d) => [d.name, d.class]).sort(), globDifferences);
+      assert.deepEqual(leftovers(dir), []);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  'compare end to end (#181): a browser-mode project with happy-dom globs does not choose the baseline of a project on node',
+  { skip: !legacyModules && 'set WARPDOM_COMPARE_VITEST_LEGACY to a node_modules with vitest 2 or 3' },
+  () => {
+    // happy-dom is not installed: only the participating project's jsdom
+    // can be the baseline.
+    const dir = globProject(
+      null,
+      `[
+      { test: { name: 'b', include: ['b/*.spec.js'], browser: { enabled: true, provider: 'playwright', name: 'chromium' },
+        environmentMatchGlobs: [['**/*.x.js', 'happy-dom'], ['**/*.y.js', 'happy-dom']] } },
+      { test: { name: 'server', include: ['*.spec.js'], environmentMatchGlobs: [['**/*.dom.spec.js', 'jsdom']] } },
+    ]`,
+    );
+    try {
+      const res = compareCli(dir, ['--correctness']);
+      const out = res.stdout.replace(/\x1b\[[0-9;]*m/g, '');
+      assert.equal(res.status, 1, out + res.stderr);
+      assert.match(out, /baseline jsdom \d/);
+      assert.match(out, /1 file in projects on node is put on jsdom by environmentMatchGlobs; switched/);
+      const result = JSON.parse(fs.readFileSync(path.join(dir, '.warpdom-compare', 'results.json'), 'utf8'));
+      assert.deepEqual(result.correctness.differences.map((d) => [d.name, d.class]).sort(), globDifferences);
+      assert.deepEqual(leftovers(dir), []);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  'compare end to end (#181): a file comment overrides the environmentMatchGlobs that match it',
+  { skip: !legacyModules && 'set WARPDOM_COMPARE_VITEST_LEGACY to a node_modules with vitest 2 or 3' },
+  () => {
+    const dir = globProject(
+      "{ test: { include: ['*.spec.js'], environmentMatchGlobs: [['**/*.dom.spec.js', 'jsdom']] } }",
+    );
+    try {
+      // A second file the glob matches, kept on node by its comment.
+      write(
+        path.join(dir, 'b.dom.spec.js'),
+        "// @vitest-environment node\nimport { test, expect } from 'vitest';\ntest('kept on node', () => { expect(typeof document).toBe('undefined'); });\n",
+      );
+      const res = compareCli(dir, ['--correctness']);
+      const out = res.stdout.replace(/\x1b\[[0-9;]*m/g, '');
+      assert.equal(res.status, 1, out + res.stderr);
+      assert.match(out, /1 file in projects on node is put on jsdom by environmentMatchGlobs; switched/);
+      assert.match(out, /Not compared: 1 project on node \(2 tests\), ran unchanged in both runs/);
+      const result = JSON.parse(fs.readFileSync(path.join(dir, '.warpdom-compare', 'results.json'), 'utf8'));
+      assert.deepEqual(result.globs.list, [
+        { project: '', file: 'a.dom.spec.js', environment: 'jsdom', switched: true },
+      ]);
+      assert.deepEqual(result.correctness.differences.map((d) => [d.name, d.class]).sort(), globDifferences);
+
+      // The only file the glob matches chooses node: nothing to compare.
+      fs.rmSync(path.join(dir, 'a.dom.spec.js'));
+      const none = compareCli(dir, ['--correctness']);
+      assert.equal(none.status, 2, none.stdout + none.stderr);
+      assert.match(none.stdout, /nothing to compare/);
+      assert.deepEqual(leftovers(dir), []);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
 // Jest is not a dependency of warpdom: this runs when WARPDOM_COMPARE_JEST
 // names a node_modules directory that has jest and jest-environment-jsdom.
 const jestModules = process.env.WARPDOM_COMPARE_JEST;
@@ -2573,6 +3112,44 @@ test(
       assert.ok(
         !fs.existsSync(path.join(dir, 'node_modules', 'jest-environment-jest-environment-jsdom')),
         'temporary package removed',
+      );
+      assert.deepEqual(leftovers(dir), []);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  'compare end to end (Jest, #181): a project on node whose file chooses jsdom with a comment, no --baseline',
+  { skip: !jestModules && 'set WARPDOM_COMPARE_JEST to a node_modules with jest' },
+  () => {
+    const dir = fixtureProject('compare-jest', {
+      jest: path.join(jestModules, 'jest'),
+      'jest-environment-jsdom': path.join(jestModules, 'jest-environment-jsdom'),
+      '.bin/jest': fs.realpathSync(path.join(jestModules, '.bin', 'jest')),
+    });
+    try {
+      fs.writeFileSync(
+        path.join(dir, 'jest.config.js'),
+        "module.exports = { testEnvironment: 'node', testMatch: ['<rootDir>/*.spec.js'] };",
+      );
+      // On node, the differing file is the same in both runs: a DOM test
+      // only in the pinned file.
+      fs.writeFileSync(
+        path.join(dir, 'pinned.spec.js'),
+        "/**\n * @jest-environment jsdom\n */\ntest('passes on jsdom only', () => {\n  expect(navigator.userAgent.includes('warpdom/')).toBe(false);\n});\n",
+      );
+      const res = compareCli(dir, ['--correctness']);
+      const out = res.stdout.replace(/\x1b\[[0-9;]*m/g, '');
+      assert.equal(res.status, 1, out + res.stderr);
+      assert.match(out, /1 test, 0 tests with the same status; 1 pass on jsdom and fail on warpdom/);
+      assert.match(out, /1 file pins jsdom with a comment; switched/);
+      assert.match(out, /Not compared: 1 project on node/);
+      const result = JSON.parse(fs.readFileSync(path.join(dir, '.warpdom-compare', 'results.json'), 'utf8'));
+      assert.deepEqual(
+        result.pinned.list.map((f) => [f.file, f.environment, f.switched]),
+        [['pinned.spec.js', 'jsdom', true]],
       );
       assert.deepEqual(leftovers(dir), []);
     } finally {
