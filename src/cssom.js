@@ -424,6 +424,9 @@ const legacyRules = (protos) => LEGACY_RULES.has(protos.CSSRule);
 // The CSSRule prototypes of windows whose profile has jsdom's own CSSOM
 // (from jsdom 29; cssomShape null).
 const OWN_CSSOM = new WeakSet();
+// The CSSRule prototypes of windows whose profile has @acemir/cssom's shape
+// (jsdom 27.1.0 to 28; ACEMIR_SHAPE below).
+const ACEMIR_RULES = new WeakSet();
 // The rule interfaces whose prototypes have a cssRules data property there.
 const OWN_RULE_LISTS = new Set(['CSSMediaRule', 'CSSSupportsRule', 'CSSContainerRule', 'CSSLayerBlockRule']);
 
@@ -436,6 +439,16 @@ function makeRule(protos, iface, sheet, parentRule, data) {
     rule.parentStyleSheet = sheet;
     if (OWN_RULE_LISTS.has(iface)) rule.cssRules = cssRuleList(rule);
     if (iface === 'CSSSupportsRule') rule.conditionText = data.conditionText;
+  } else if (iface === 'CSSKeyframesRule' && ACEMIR_RULES.has(protos.CSSRule)) {
+    // jsdom 27.1.0 to 28 (black box 27.4.0, 28.1.0): name and cssRules are
+    // the rule's own data properties, length its own getter of
+    // this.cssRules.length (indexKeyframes: the indices too); the
+    // prototype has none of them.
+    Object.defineProperties(rule, {
+      name: { value: data.name, writable: true, enumerable: true, configurable: true },
+      cssRules: { value: cssRuleList(rule), writable: true, enumerable: true, configurable: true },
+      length: { get: keyframesLength, configurable: true },
+    });
   }
   return rule;
 }
@@ -702,6 +715,25 @@ function createRule(protos, record, sheet, parentRule) {
   return rule;
 }
 
+// The own length getter and indexed getters of a CSSKeyframesRule in jsdom
+// 27.1.0 to 28 (named get, as jsdom's); one getter per index, shared.
+function keyframesLength() {
+  return this.cssRules.length;
+}
+Object.defineProperty(keyframesLength, 'name', { value: 'get' });
+const KEYFRAME_GETTERS = [];
+function keyframeGetter(i) {
+  let get = KEYFRAME_GETTERS[i];
+  if (get === undefined) {
+    get = function () {
+      return this.cssRules[i];
+    };
+    Object.defineProperty(get, 'name', { value: 'get' });
+    KEYFRAME_GETTERS[i] = get;
+  }
+  return get;
+}
+
 function keyframe(protos, record, sheet, parentRule) {
   if (record.selector === undefined) return null;
   const key = keyText(record.selector);
@@ -711,12 +743,52 @@ function keyframe(protos, record, sheet, parentRule) {
   return rule;
 }
 
+// The keyframes a CSSKeyframesRule's appendRule(), deleteRule(), findRule()
+// and cssText use: in jsdom 27.1.0 to 28 (black box 27.4.0, 28.1.0) its
+// cssRules property, which a test can replace with an array or anything
+// else (methods the value lacks then throw TypeErrors, as there); the own
+// indices keep following the original list (indexKeyframes). Another
+// rule's or a sheet's CSSRuleList is that owner's rules, which the two
+// then share (black box 27.4.0, 28.1.0: appendRule() and deleteRule()
+// change the other keyframes rule's length, indices and text too).
+function keyframeRules(rule) {
+  const s = rule[S];
+  if (ACEMIR_RULES.has(s.protos.CSSRule)) {
+    const own = rule.cssRules;
+    if (own !== s.ruleList) return own?.[S]?.owner?.rules ?? own;
+  }
+  return s.rules;
+}
+
+// After appendRule() or deleteRule(): the indices of the rule and of the
+// keyframes rule whose list it was assigned, if any.
+function keyframesChanged(rule) {
+  indexKeyframes(rule);
+  const shared = ACEMIR_RULES.has(rule[S].protos.CSSRule) ? rule.cssRules?.[S]?.rule : undefined;
+  if (shared !== undefined && shared !== rule && shared[S].indexed !== undefined) indexKeyframes(shared);
+  cssomChanges.rev++;
+}
+
+// The index of the last keyframe of a list (or array-like) with a key.
+function findKeyframe(list, key) {
+  for (let i = list.length - 1; i >= 0; i--) if (list[i]?.[S]?.keyText === key) return i;
+  return -1;
+}
+
 // CSSKeyframesRule's indexed getter: own properties, rebuilt when its
-// keyframes change (rare).
+// keyframes change (rare). In jsdom 27.1.0 to 28 (black box 27.4.0,
+// 28.1.0) getters of this.cssRules[i], not enumerable.
 function indexKeyframes(rule) {
   const s = rule[S];
+  const acemir = ACEMIR_RULES.has(s.protos.CSSRule);
   for (let i = 0; i < s.rules.length; i++)
-    Object.defineProperty(rule, i, { value: s.rules[i], enumerable: true, configurable: true });
+    Object.defineProperty(
+      rule,
+      i,
+      acemir
+        ? { get: keyframeGetter(i), enumerable: false, configurable: true }
+        : { value: s.rules[i], enumerable: true, configurable: true },
+    );
   for (let i = s.rules.length; i < s.indexed; i++) delete rule[i];
   s.indexed = s.rules.length;
 }
@@ -804,8 +876,11 @@ function ruleText(rule) {
     }
     case s.protos.CSSMarginRule:
       return `@${s.name} ${styleText(s.style)}`;
-    case s.protos.CSSKeyframesRule:
-      return `@keyframes ${keyframesName(s.name)} { ${s.rules.map(ruleText).join(' ')} }`;
+    case s.protos.CSSKeyframesRule: {
+      // (jsdom 27.1.0 to 28: its own name property, which can be assigned)
+      const name = ACEMIR_RULES.has(s.protos.CSSRule) ? String(rule.name) : s.name;
+      return `@keyframes ${keyframesName(name)} { ${keyframeRules(rule).map(ruleText).join(' ')} }`;
+    }
     case s.protos.CSSKeyframeRule:
       return `${s.keyText} ${styleText(s.style)}`;
     case s.protos.CSSNamespaceRule:
@@ -863,6 +938,7 @@ function cssRuleList(owner) {
     s.ruleList = liveList(s.protos.CSSRuleList, () => s.rules);
     s.ruleList[S].protos = s.protos;
     s.ruleList[S].owner = s;
+    s.ruleList[S].rule = owner;
   }
   return s.ruleList;
 }
@@ -1223,7 +1299,11 @@ function conditionTextOf() {
 const NO_RULES = Object.freeze([]);
 // Anonymous functions, as jsdom's (their name is ''): CSSStyleSheet's
 // toString() (each rule's text and a line break) and CSSKeyframesRule's
-// @@iterator before jsdom 29.
+// @@iterator before jsdom 29. That one (black box 27.4.0, 28.1.0) takes
+// this.cssRules when called and returns a plain object with next(),
+// without @@iterator, that reads that list's length and item at each step,
+// gives { done: true } at its end and goes on if keyframes are added
+// later. Called without a this value it takes the global object's.
 const [sheetText, keyframesIterator] = [
   function () {
     state(this);
@@ -1232,7 +1312,13 @@ const [sheetText, keyframesIterator] = [
       .join('');
   },
   function () {
-    return Array.prototype.values.call(this);
+    const list = (this ?? globalThis).cssRules;
+    let index = 0;
+    return {
+      next() {
+        return index < list.length ? { value: list[index++], done: false } : { done: true };
+      },
+    };
   },
 ];
 // CSSImportRule.prototype.parse (jsdom 27.1.0 to 28): reparses the rule
@@ -1371,11 +1457,14 @@ const ACEMIR_SHAPE = {
 
 // Members jsdom 29's interfaces have that the earlier shapes lack.
 const NEWER_MEMBERS = { CSSSupportsRule: ['matches'], CSSKeyframesRule: [Symbol.iterator] };
+// Members that are each rule's own in the @acemir/cssom shape (makeRule).
+const ACEMIR_OWN = { CSSKeyframesRule: ['name', 'cssRules', 'length'] };
 
 // The descriptors of a rule interface (or CSSStyleSheet) for a shape
 // variant, once per module load.
 function adjustRule(name, descriptors, variant) {
   for (const key of NEWER_MEMBERS[name] ?? []) delete descriptors[key];
+  if (variant === 'acemir') for (const key of ACEMIR_OWN[name] ?? []) delete descriptors[key];
   return Object.assign(descriptors, (variant === 'cssom' ? CSSOM_SHAPE : ACEMIR_SHAPE)[name]);
 }
 
@@ -1386,6 +1475,7 @@ export const CSSOM_INTERFACES = [
     compat(proto, compat) {
       if (ruleVariant(compat) === 'cssom') LEGACY_RULES.add(proto);
       else if (compat.cssomShape === null) OWN_CSSOM.add(proto);
+      else ACEMIR_RULES.add(proto);
     },
     members: {
       ...Object.fromEntries(Object.entries(RULE_TYPES).map(([k, v]) => [k, { constant: v }])),
@@ -1682,26 +1772,29 @@ export const CSSOM_INTERFACES = [
         const record = parseOneRule(String(text), s.protos);
         const rule = record && keyframe(s.protos, record, s.sheet, this);
         if (rule) {
-          s.rules.push(rule);
-          indexKeyframes(this);
-          cssomChanges.rev++;
+          keyframeRules(this).push(rule);
+          keyframesChanged(this);
         }
       },
       deleteRule(select) {
-        const s = state(this);
+        state(this);
         required(arguments.length, 1, 'CSSKeyframesRule', 'deleteRule');
         const key = keyText(select);
-        const i = key === null ? -1 : s.rules.findLastIndex((r) => r[S].keyText === key);
+        const list = keyframeRules(this);
+        const i = key === null ? -1 : findKeyframe(list, key);
         if (i < 0) return;
-        const [rule] = s.rules.splice(i, 1);
+        const [rule] = list.splice(i, 1);
         detach(rule);
-        indexKeyframes(this);
-        cssomChanges.rev++;
+        keyframesChanged(this);
       },
       findRule(select) {
         required(arguments.length, 1, 'CSSKeyframesRule', 'findRule');
         const key = keyText(select);
-        return key === null ? null : (rules(this).findLast((r) => r[S].keyText === key) ?? null);
+        if (key === null) return null;
+        state(this);
+        const list = keyframeRules(this);
+        const i = findKeyframe(list, key);
+        return i < 0 ? null : list[i];
       },
       // Iterable over its keyframes (indexed properties) from jsdom 29;
       // 27.1.0 to 28 have another function (ACEMIR_SHAPE), earlier none.

@@ -446,8 +446,6 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   null; jsdom leaves it undefined.
 - Clicking an `<a>` without `href` does nothing; jsdom navigates to the
   document's URL without its fragment.
-- A TouchEvent's touch lists are TouchLists (length, item(), indexing,
-  iteration), and TouchList exists; jsdom uses arrays.
 - getComputedStyle does not apply a disabled style sheet (jsdom does).
   (It no longer expands `flex-flow`: as in jsdom, flex-flow, gap,
   overflow, border-radius, inset, outline and the other shorthands jsdom

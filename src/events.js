@@ -14,7 +14,6 @@ import {
   hooks,
   tooFewArguments,
 } from './internal.js';
-import { liveList } from './collections.js';
 
 // Listener functions are called with Reflect.apply, captured at load: not
 // through their own call property, as jsdom calls them.
@@ -698,7 +697,9 @@ const ERROR_FIELDS = { message: '', filename: '', lineno: 0, colno: 0, error: un
 
 // TouchEvent (Touch Events): modifier keys and three touch lists. The
 // lists take any objects, as in jsdom: there is no Touch constructor, so
-// tests polyfill Touch with their own class.
+// tests polyfill Touch with their own class. As in jsdom (black box 20.0.3
+// to 30.1.3) each list is an array (a copy of the given iterable, the same
+// array at every read) and there is no TouchList.
 const TOUCH_FIELDS = { ...UI_FIELDS, ...MODIFIER_FIELDS };
 const TOUCH_LISTS = ['touches', 'targetTouches', 'changedTouches'];
 const touchEventFields = eventConstruct('TouchEvent', TOUCH_FIELDS);
@@ -714,8 +715,7 @@ function constructTouchEvent(w, self, args) {
         `Failed to construct 'TouchEvent': parameter 2 has member '${key}' that is not an iterable object.`,
       );
     }
-    const touches = value === undefined ? [] : Array.from(value);
-    es[key] = liveList(w[S].protos.TouchList, () => touches);
+    es[key] = value === undefined ? [] : Array.from(value);
   }
   return self;
 }

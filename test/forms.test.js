@@ -2208,3 +2208,72 @@ for (const jsdom of [20, 30]) {
     { jsdom },
   );
 }
+
+// A RadioNodeList (form.elements.namedItem(name) with several matches) is
+// filtered again only when form.elements has given other elements since: a
+// read through the collection after a change, then the names and ids at
+// that moment count. Changes alone, and reads that do not go through
+// form.elements, leave it as it was (#145).
+for (const jsdom of [20, 27, 30]) {
+  parity(
+    `RadioNodeList: filtered again after form.elements gives other elements (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const add = (form, name = 'a') => {
+        const input = form.appendChild(d.createElement('input'));
+        input.type = 'radio';
+        input.name = name;
+        input.value = 'n';
+        return input;
+      };
+      const steps = {
+        nothing: () => {},
+        append: (f) => add(f),
+        remove: (f) => f.querySelector('input').remove(),
+        rename: (f) => f.querySelector('input').setAttribute('name', 'z'),
+        nameOther: (f) => f.querySelector('[name=b]').setAttribute('name', 'a'),
+        idOther: (f) => (f.querySelector('[name=b]').id = 'a'),
+        formAttribute: () => d.getElementById('o').setAttribute('form', 'f'),
+        appendThenLength: (f) => (add(f), f.elements.length),
+        appendThenIndex: (f) => (add(f), f.elements[0]),
+        appendThenNamedItem: (f) => (add(f), f.elements.namedItem('b')),
+        appendThenNamed: (f) => (add(f), f.elements.b),
+        appendThenIterate: (f) => (add(f), [...f.elements]),
+        appendThenKeys: (f) => (add(f), Object.keys(f.elements)),
+        appendThenIn: (f) => (add(f), 'b' in f.elements),
+        appendThenGetter: (f) => (add(f), f.elements),
+        appendThenFormLength: (f) => (add(f), f.length),
+        appendThenCheckValidity: (f) => (add(f), f.checkValidity()),
+        appendThenFormData: (f) => (add(f), new w.FormData(f)),
+        appendThenOwnReads: (f, r) => (add(f), r.length, r.item(0), r.value, [...r]),
+        appendThenOtherForm: (f) => {
+          add(f);
+          d.body.insertAdjacentHTML('beforeend', '<form><input name=a></form>');
+          return d.forms[1].elements.length;
+        },
+        readThenRename: (f) => (f.elements.length, f.querySelector('input').setAttribute('name', 'z')),
+        renameThenRead: (f) => (f.querySelector('input').setAttribute('name', 'z'), f.elements.length),
+        appendReadAppend: (f) => (add(f), f.elements.length, add(f)),
+        readRenameThenList: (f) => (add(f), f.elements.length, f.querySelector('input').setAttribute('name', 'z')),
+      };
+      const out = {};
+      for (const [name, step] of Object.entries(steps)) {
+        d.body.innerHTML =
+          '<div><input name=a id=o value=o></div><form id=f><input type=radio name=a value=1><input type=radio name=a value=2><input name=b value=b></form>';
+        const f = d.forms[0];
+        const r = f.elements.namedItem('a');
+        const before = [...r].map((e) => e.value).join();
+        step(f, r);
+        out[name] = [before, r.length, [...r].map((e) => e.value).join(), r[0].isConnected];
+      }
+      // Two lists of the same name follow the collection alike.
+      d.body.innerHTML = '<form><input type=radio name=a><input type=radio name=a></form>';
+      const f = d.forms[0];
+      const [r1, r2] = [f.elements.namedItem('a'), f.elements.namedItem('a')];
+      add(f);
+      out.two = [r1 === r2, r1.length, r2.length, f.elements.length, r1.length, r2.length];
+      return out;
+    },
+    { jsdom },
+  );
+}

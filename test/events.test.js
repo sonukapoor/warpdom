@@ -249,15 +249,35 @@ parity('TouchEvent: touch lists from the init dictionary', (w) => {
   };
 });
 
-test('TouchEvent: lists are TouchLists (jsdom uses arrays)', () => {
-  const w = createWindow();
-  const touch = { identifier: 1 };
-  const e = new w.TouchEvent('touchend', { changedTouches: [touch] });
-  assert.ok(e.changedTouches instanceof w.TouchList);
-  assert.equal(e.changedTouches.item(0), touch);
-  assert.equal(e.changedTouches.item(1), null);
-  assert.equal(w.document.createEvent('TouchEvent') instanceof w.TouchEvent, true);
-});
+// A TouchEvent's touch lists are arrays: a copy of the given iterable, the
+// same array at every read; there is no TouchList (#145).
+for (const jsdom of [20, 30]) {
+  parity(
+    `TouchEvent: the touch lists are arrays, no TouchList (jsdom ${jsdom})`,
+    (w) => {
+      const touch = { identifier: 1 };
+      const given = [touch];
+      const e = new w.TouchEvent('touchend', { changedTouches: given, touches: new Set([touch]) });
+      const out = [
+        'TouchList' in w,
+        Array.isArray(e.changedTouches),
+        Object.getPrototypeOf(e.changedTouches) === Array.prototype,
+        e.changedTouches === given,
+        e.changedTouches === e.changedTouches,
+        e.changedTouches[0] === touch,
+        e.touches.length,
+        [Array.isArray(e.targetTouches), e.targetTouches.length, e.targetTouches === e.targetTouches],
+        typeof e.changedTouches.item,
+      ];
+      e.changedTouches.push(2);
+      out.push(e.changedTouches.length, given.length);
+      const created = w.document.createEvent('TouchEvent');
+      out.push(created instanceof w.TouchEvent, Array.isArray(created.touches), created.touches.length);
+      return out;
+    },
+    { jsdom },
+  );
+}
 
 parity('window.event: the current event while listeners run', (w) => {
   const d = w.document;
