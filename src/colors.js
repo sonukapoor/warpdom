@@ -535,7 +535,10 @@ const RGB_SERIALIZED = /^rgba?\(([^,]+), ([^,]+), ([^,)]+)(?:, ([^)]+))?\)$/;
 // box, 29.1.1, 30.1.2, 30.1.3): numbers or percentages (100% is 1), the
 // slash with or without spaces, channels kept outside 0 to 1, the alpha
 // clamped to 0 to 1. none and calc() are not modeled (left as declared).
-const SRGB_COMPONENT = '([+-]?(?:\\d+\\.?\\d*|\\.\\d+)(?:e[+-]?\\d+)?%?)';
+// A number's digit groups cannot overlap (\d+(?:\.\d*)? or \.\d+), so a
+// long malformed one is rejected in linear time.
+const NUMBER = '[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:e[+-]?\\d+)?';
+const SRGB_COMPONENT = `(${NUMBER}%?)`;
 const COLOR_FUNCTION = new RegExp(
   `^color\\(\\s*srgb\\s+${SRGB_COMPONENT}\\s+${SRGB_COMPONENT}\\s+${SRGB_COMPONENT}(?:\\s*\\/\\s*${SRGB_COMPONENT})?\\s*\\)$`,
   'i',
@@ -543,12 +546,13 @@ const COLOR_FUNCTION = new RegExp(
 const srgbComponent = (text) => (text.endsWith('%') ? Number(text.slice(0, -1)) / 100 : Number(text));
 
 // A computed color as [r, g, b, alpha] in sRGB (channels 0 to 1 but
-// color()'s, which may fall outside), or null.
-function colorChannels(text, current, rawAlpha) {
+// color()'s, which may fall outside), or null. depth: the number of
+// color-mix() it is nested in.
+function colorChannels(text, current, rawAlpha, depth) {
   const lower = text.toLowerCase();
   let resolved;
   if (lower === 'currentcolor') resolved = current();
-  else if (lower.startsWith('color-mix(')) resolved = mixColor(text, current, rawAlpha);
+  else if (lower.startsWith('color-mix(')) resolved = mixColor(text, current, rawAlpha, depth);
   else resolved = lower.startsWith('color(') ? text : resolveColor(text);
   if (resolved == null || resolved === false) return null;
   let channels;
@@ -566,12 +570,25 @@ function colorChannels(text, current, rawAlpha) {
 }
 
 // A color-mix() argument: a color and an optional percentage, in either
-// order.
+// order. Split at the last (or first) whitespace rather than by a regular
+// expression around the color, which backtracks quadratically on a long
+// run of whitespace.
+const PERCENTAGE = new RegExp(`^(${NUMBER})%$`, 'i');
+const isSpace = (c) => c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
 function mixArgument(text) {
-  const m = /^(.*?)\s+([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)%$/i.exec(text);
-  if (m !== null) return [m[1], Number(m[2])];
-  const n = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)%\s+(.*)$/i.exec(text);
-  return n !== null ? [n[2], Number(n[1])] : [text, null];
+  let i = text.length - 1;
+  while (i >= 0 && !isSpace(text[i])) i--;
+  if (i > 0) {
+    const m = PERCENTAGE.exec(text.slice(i + 1));
+    if (m !== null) return [text.slice(0, i).trimEnd(), Number(m[1])];
+  }
+  i = 0;
+  while (i < text.length && !isSpace(text[i])) i++;
+  if (i < text.length) {
+    const n = PERCENTAGE.exec(text.slice(0, i));
+    if (n !== null) return [text.slice(i).trimStart(), Number(n[1])];
+  }
+  return [text, null];
 }
 
 const sixDigits = (v) => String(Number(v.toPrecision(6)));
@@ -590,10 +607,14 @@ const sixDigits = (v) => String(Number(v.toPrecision(6)));
 // cannot compute either (not two colors, a percentage out of 0 to 100,
 // both 0%), which it computes to transparent where it keeps the
 // declaration (text-shadow: color-mix(in srgb, blue 0%, red 0%) 1px 1px).
-// current: the currentcolor's computed value.
-export function mixColor(token, current, rawAlpha) {
+// current: the currentcolor's computed value. A mix nested in 39 others
+// is left as declared (null), so a deeply nested value cannot overflow
+// the stack; jsdom 30 rejects a declaration nested 40 deep (black box,
+// 30.1.2, 30.1.3).
+const MIX_DEPTH = 39;
+export function mixColor(token, current, rawAlpha, depth = 0) {
   const open = token.indexOf('(');
-  if (!token.endsWith(')')) return null;
+  if (!token.endsWith(')') || depth >= MIX_DEPTH) return null;
   const args = topLevelArgs(token.slice(open + 1, -1));
   if (args.length !== 3) return false;
   if (!/^in\s+srgb$/i.test(args[0])) return null;
@@ -607,8 +628,8 @@ export function mixColor(token, current, rawAlpha) {
   if (p1 < 0 || p2 < 0 || p1 > 100 || p2 > 100) return false;
   const sum = p1 + p2;
   if (sum === 0) return false;
-  const c1 = colorChannels(text1, current, rawAlpha);
-  const c2 = colorChannels(text2, current, rawAlpha);
+  const c1 = colorChannels(text1, current, rawAlpha, depth + 1);
+  const c2 = colorChannels(text2, current, rawAlpha, depth + 1);
   if (c1 === null || c2 === null) return null;
   const w1 = p1 / sum,
     w2 = p2 / sum;

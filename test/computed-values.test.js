@@ -942,6 +942,22 @@ for (const jsdom of [27, 28, 29, 30])
     { jsdom },
   );
 
+// A color-mix() nested 40 deep or more is left as declared rather than
+// overflowing the stack (2000 deep threw a RangeError); jsdom 30 rejects
+// such a declaration.
+test('computed values: a deeply nested color-mix() does not throw (#199)', () => {
+  const w = createWindow({ jsdom: '30.1.3' });
+  const p = w.document.createElement('p');
+  w.document.body.append(p);
+  const nested = (depth) => 'color-mix(in srgb, '.repeat(depth) + 'red' + ', blue)'.repeat(depth);
+  p.style.backgroundColor = nested(39);
+  assert.match(w.getComputedStyle(p).backgroundColor, /^color\(srgb /);
+  for (const depth of [40, 2000]) {
+    p.style.backgroundColor = nested(depth);
+    assert.equal(w.getComputedStyle(p).backgroundColor, nested(depth));
+  }
+});
+
 // jsdom 29.0.2 and later: a shorthand it does not expand declared inherit
 // computes to the parent's value (its keyword value when the parent does
 // not declare it), at any depth.
