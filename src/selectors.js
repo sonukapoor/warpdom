@@ -556,8 +556,9 @@ function compileAttribute({ name, op, value, insensitive, ns }) {
 
 // Pseudo-classes whose result can change without a tree or attribute change
 // (form state, focus, text data): selectors using them are never result-cached.
+// :empty is not one: any text child counts (see compilePseudo).
 const DYNAMIC = new Set([
-  'empty',
+  'dir',
   'checked',
   'focus',
   'focus-visible',
@@ -571,9 +572,18 @@ const DYNAMIC = new Set([
   'invalid',
 ]);
 let compilingDynamic = false;
+// Pseudo-classes whose result can change with text data alone (a dir=auto
+// element's text, a textarea's or an option's text as their value): rule
+// selectors using them make computed styles follow text changes
+// (cascade.js buildIndex, textDependent).
+const TEXT_DEPENDENT = new Set(['dir', 'valid', 'invalid', 'placeholder-shown']);
+let compilingText = false;
 
 function compilePseudo({ name, arg }) {
-  if (DYNAMIC.has(name)) compilingDynamic = true;
+  if (DYNAMIC.has(name)) {
+    compilingDynamic = true;
+    if (TEXT_DEPENDENT.has(name)) compilingText = true;
+  }
   switch (name) {
     case 'not': {
       const m = compileList(arg);
@@ -621,11 +631,14 @@ function compilePseudo({ name, arg }) {
         return nthMatches(nthIndex(el, fromEnd, ofType, ofTest && ((n) => ofTest(n, ctx))), a, b);
       };
     }
+    // As jsdom (black box, 20.0.3 to 30.1.3): a text child, even an empty
+    // one, is content; comments, processing instructions and CDATA
+    // sections are not. So text data changes never change :empty.
     case 'empty':
       return (el) => {
         for (let c = el[S].first; c; c = c[S].next) {
           const t = c[S].type;
-          if (t === ELEMENT_NODE || (t === 3 && c[S].data !== '')) return false;
+          if (t === ELEMENT_NODE || t === 3) return false;
         }
         return true;
       };
@@ -935,7 +948,11 @@ export function compileRuleSelector(selector) {
     const parser = new Parser(text);
     const list = parser.list();
     if (parser.i < parser.text.length) throw invalid(text);
-    entries = list.map((complex) => ({ match: compileComplex(complex), specificity: complexSpecificity(complex) }));
+    entries = list.map((complex) => {
+      compilingText = false;
+      const match = compileComplex(complex);
+      return { match, specificity: complexSpecificity(complex), text: compilingText };
+    });
     if (ruleCache.size >= CACHE_LIMIT) ruleCache.clear();
     ruleCache.set(text, entries);
   }
