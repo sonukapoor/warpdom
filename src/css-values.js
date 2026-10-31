@@ -104,11 +104,15 @@ function tokenize(text) {
           i++;
           const lower = name.toLowerCase();
           if (lower === 'url') {
-            // url( unquoted ) is a url token; url("...") a function.
-            const close = findClose(text, i);
-            if (close === -1) return null;
+            // Both url( unquoted ) and url("...") are read by readUrl and give
+            // one url token here (CSS Syntax makes the quoted form a function).
+            const url = readUrl(text, i, newlineSpaces);
+            // A bad url() in a value with var() is kept to its ")", as the
+            // value is (jsdom): url(var(--image).png), var(--a, url(a b.png)).
+            const close = url === null && /var\(/i.test(text) ? findClose(text, i) : -1;
+            if (url === null && close === -1) return null;
             out.push({ t: 'url' });
-            i = close + 1;
+            i = url === null ? close + 1 : url.end;
             continue;
           }
           const args = list(')');
@@ -144,6 +148,166 @@ function findClose(text, from) {
     }
   }
   return -1;
+}
+
+// A url() as CSS Syntax 3 reads it (4.3.6 consume a url token, 4.3.5 a
+// string), as jsdom 27 and later do (black box, #144): from, just after
+// "url(", to { end: after its ")", url: the URL read }, or null. The
+// text's end closes an unclosed string or url() (url("a.png is
+// url("a.png")); whitespace inside an unquoted url, a quote, a "(", a
+// control character (a NUL too) or an escaped line break there make it a
+// bad url (null), and so does anything after the string but whitespace.
+// Escapes are read (url(a\62 .png) is ab.png, \0 U+FFFD). A line break in
+// a string is a bad string (null), unless newlines: one space for each run
+// (jsdom's background-image, set through the style object).
+export function readUrl(text, from, newlines = false) {
+  const n = text.length;
+  let i = from;
+  while (i < n && isSpace(text.charCodeAt(i))) i++;
+  let url = '';
+  const q = text[i];
+  if (q === '"' || q === "'") {
+    i++;
+    while (i < n) {
+      const c = text[i];
+      if (c === q) {
+        i++;
+        break;
+      }
+      if (c === '\n' || c === '\r' || c === '\f') {
+        if (!newlines) return null;
+        while (i < n && (text[i] === '\n' || text[i] === '\r' || text[i] === '\f')) i++;
+        url += ' ';
+        continue;
+      }
+      if (c === '\\') {
+        const next = text[i + 1];
+        if (next === undefined) i++;
+        else if (next === '\n' || next === '\f') i += 2;
+        else if (next === '\r') i += text[i + 2] === '\n' ? 3 : 2;
+        else i = readEscape(text, i, (cp) => (url += cp));
+        continue;
+      }
+      url += c;
+      i++;
+    }
+    while (i < n && isSpace(text.charCodeAt(i))) i++;
+    if (i < n && text[i] !== ')') return null;
+    return { end: Math.min(i + 1, n), url };
+  }
+  while (i < n) {
+    const c = text[i];
+    const code = text.charCodeAt(i);
+    if (c === ')') return { end: i + 1, url };
+    if (isSpace(code)) {
+      while (i < n && isSpace(text.charCodeAt(i))) i++;
+      if (i < n && text[i] !== ')') return null;
+      return { end: Math.min(i + 1, n), url };
+    }
+    if (c === '"' || c === "'" || c === '(' || code <= 8 || code === 11 || (code >= 14 && code <= 31) || code === 127)
+      return null;
+    if (c === '\\') {
+      const next = text[i + 1];
+      if (next === undefined || next === '\n' || next === '\r' || next === '\f') return null;
+      i = readEscape(text, i, (cp) => (url += cp));
+      continue;
+    }
+    url += c;
+    i++;
+  }
+  return { end: n, url };
+}
+const isSpace = (c) => c === 32 || c === 9 || c === 10 || c === 13 || c === 12;
+const HEX = /^[0-9a-fA-F]{1,6}/;
+// An escape at text[i] (a backslash): the code point it stands for, to put;
+// returns the index after it (and the one whitespace after a hex escape).
+function readEscape(text, i, put) {
+  const hex = HEX.exec(text.slice(i + 1, i + 7));
+  if (hex === null) {
+    const cp = text.codePointAt(i + 1);
+    put(String.fromCodePoint(cp));
+    return i + 1 + (cp > 0xffff ? 2 : 1);
+  }
+  const cp = parseInt(hex[0], 16);
+  put(cp === 0 || (cp >= 0xd800 && cp <= 0xdfff) || cp > 0x10ffff ? '\uFFFD' : String.fromCodePoint(cp));
+  let j = i + 1 + hex[0].length;
+  if (text[j] === '\r' && text[j + 1] === '\n') j += 2;
+  else if (j < text.length && isSpace(text.charCodeAt(j))) j++;
+  return j;
+}
+// The index after the unquoted url() whose "(" is at text[open] (url in
+// any case before it, then no quote): a url token, or a bad one's
+// remnants, runs to its ")" past escapes (url(a"b.png) and url(a\\(b.png)
+// are one token, their quote and parenthesis no string or block), or to
+// the end; -1 when no such url() opens there. Character codes only: the
+// declaration splitters call it at every "(".
+export function urlTokenEnd(text, open) {
+  if (
+    open < 3 ||
+    (text.charCodeAt(open - 1) | 32) !== 108 ||
+    (text.charCodeAt(open - 2) | 32) !== 114 ||
+    (text.charCodeAt(open - 3) | 32) !== 117 ||
+    (open > 3 && isNameCode(text.charCodeAt(open - 4)))
+  )
+    return -1;
+  const n = text.length;
+  let j = open + 1;
+  while (j < n && isSpace(text.charCodeAt(j))) j++;
+  const q = text.charCodeAt(j);
+  if (q === 34 || q === 39) return -1;
+  for (; j < n; j++) {
+    const c = text.charCodeAt(j);
+    if (c === 92) j++;
+    else if (c === 41) return j + 1;
+  }
+  return n;
+}
+// A character of a name (or a backslash): url( after it is no url().
+export const isNameCode = (c) =>
+  (c >= 48 && c <= 57) || ((c | 32) >= 97 && (c | 32) <= 122) || c === 95 || c === 45 || c === 92 || c > 127;
+// Line breaks in a url() string read as spaces (isValidValue sets it per property).
+let newlineSpaces = false;
+
+// Each url() in a value as jsdom 27 and later serialize it (black box,
+// #144): url("...") with the URL readUrl reads, closed at the text's end;
+// escapes 'spec' (jsdom 29 and later: ", \ and control characters escaped,
+// as CSSOM serializes a string) or 'quotes' (jsdom 27 and 28: " only).
+// newlines as readUrl's. A url() it cannot read stays as written.
+export function serializeUrls(value, escapes, newlines = false) {
+  let out = '';
+  let last = 0;
+  let quote = null;
+  for (let i = 0; i < value.length; i++) {
+    const c = value[i];
+    if (quote !== null) {
+      if (c === '\\') i++;
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'") quote = c;
+    else if (c === '\\') i++;
+    else if (
+      (c === 'u' || c === 'U') &&
+      value[i + 3] === '(' &&
+      (value.charCodeAt(i + 1) | 32) === 114 &&
+      (value.charCodeAt(i + 2) | 32) === 108 &&
+      (i === 0 || !isNameCode(value.charCodeAt(i - 1)))
+    ) {
+      const url = readUrl(value, i + 4, newlines);
+      if (url === null) continue;
+      out += `${value.slice(last, i)}url("${escapeUrl(url.url, escapes)}")`;
+      last = url.end;
+      i = url.end - 1;
+    }
+  }
+  return last === 0 ? value : out + value.slice(last);
+}
+function escapeUrl(url, escapes) {
+  if (escapes !== 'spec') return url.replace(/"/g, '\\"');
+  return url.replace(/["\\\0-\x1f\x7f]/g, (c) => {
+    if (c === '\0') return '\uFFFD';
+    return c === '"' || c === '\\' ? `\\${c}` : `\\${c.charCodeAt(0).toString(16)} `;
+  });
 }
 
 // --- grammar -------------------------------------------------------------------------------
@@ -703,7 +867,9 @@ function hasVar(tokens) {
 // or negative, integer or not) and its unit. Numbers inside identifiers and
 // hash tokens (#123456, translate3d) are kept as written. Properties whose
 // grammar has a numeric bound other than 0 and infinity (font-weight's
-// [1,1000]) are not shaped: 400 and 1001 have the same shape.
+// [1,1000]) are not shaped: 400 and 1001 have the same shape. A value
+// with a character U+0000 to U+0004, a placeholder's, has no shape (null):
+// url(/\x01.png) is invalid, url(/1.png) valid (#144).
 const isDigit = (c) => c >= 48 && c <= 57;
 // Characters after which a digit continues a word or hash token.
 const isWordChar = (c) =>
@@ -722,6 +888,7 @@ function shapeOf(value) {
   const n = value.length;
   for (let i = 0; i < n; i++) {
     let c = value.charCodeAt(i);
+    if (c <= 4) return null;
     let j = i;
     let negative = false;
     if (c === 43 || c === 45) {
@@ -815,10 +982,12 @@ function entryOf(name) {
 // the grammars or uses rules this module does not implement.
 export function isValidValue(name, value) {
   if (name.startsWith('--')) return true;
+  newlineSpaces = name === 'background-image';
   const { node, shapes } = entryOf(name);
   if (!node) return true;
   if (shapes === null) return checkValue(node, value);
   const shape = shapeOf(value);
+  if (shape === null) return checkValue(node, value);
   let valid = shapes.get(shape);
   if (valid === undefined) {
     valid = checkValue(node, value);

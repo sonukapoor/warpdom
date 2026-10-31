@@ -29,6 +29,7 @@ import {
 } from './css.js';
 import { liveList, iterate } from './collections.js';
 import { fallbackBaseURL } from './base-url.js';
+import { urlTokenEnd } from './css-values.js';
 
 // WebIDL: an operation called with fewer arguments than it requires throws.
 function required(count, n, iface, method) {
@@ -40,13 +41,19 @@ function required(count, n, iface, method) {
 
 // --- parsing ---------------------------------------------------------------------
 
-// Index after a comment or string starting at i, or i if neither starts there.
+// Index after a comment or string starting at i, or after an unquoted
+// url() whose "(" is at i (the caller has read the url name), or i if
+// none starts there.
 function skipToken(text, i) {
   if (text[i] === '/' && text[i + 1] === '*') {
     const end = text.indexOf('*/', i + 2);
     return end < 0 ? text.length : end + 2;
   }
   const c = text[i];
+  if (c === '(') {
+    const end = urlTokenEnd(text, i);
+    if (end !== -1) return end;
+  }
   if (c === '"' || c === "'") {
     let j = i + 1;
     while (j < text.length && text[j] !== c) j += text[j] === '\\' ? 2 : 1;

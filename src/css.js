@@ -17,7 +17,7 @@ import {
 import { STYLE_ACCESSORS } from './css-properties.js';
 import { SURFACES } from './style-surface.js';
 import { LONGHANDS, SHORTHANDS, COLOR_SHORTHANDS, ALIASES } from './css-data.js';
-import { isValidValue } from './css-values.js';
+import { isNameCode, isValidValue, readUrl, serializeUrls, urlTokenEnd } from './css-values.js';
 import {
   expand,
   segments,
@@ -70,6 +70,63 @@ function splitOutside(text, sep, tokens = false) {
     } else if (c === '(') depth++;
     else if (c === ')') depth = Math.max(0, depth - 1);
     else if (c === sep && depth === 0) {
+      parts.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(text.slice(start));
+  return parts;
+}
+// A declaration block's declarations as jsdom 27 and later read them
+// (CSS Syntax 3, #144): an unquoted url() is one token to its ")"
+// (urlTokenEnd: url(a"b.png) opens no string, url(a(b.png) no block),
+// and a line break ends a string (a bad string). Only for a text where
+// that differs from splitOutside (cssSplitNeeded): an unquoted url() with
+// a quote, parenthesis or backslash inside, or a quoted url() and a line
+// break. url( in any case (URL(a"b.png)). Character codes and indexOf:
+// style writes are a hot path.
+function cssSplitNeeded(text) {
+  let quoted = false;
+  for (let open = text.indexOf('('); open !== -1; open = text.indexOf('(', open + 1)) {
+    if (
+      open < 3 ||
+      (text.charCodeAt(open - 1) | 32) !== 108 ||
+      (text.charCodeAt(open - 2) | 32) !== 114 ||
+      (text.charCodeAt(open - 3) | 32) !== 117
+    )
+      continue;
+    const q = text.charCodeAt(open + 1);
+    if (q === 34 || q === 39) {
+      quoted = true;
+      continue;
+    }
+    for (let j = open + 1; j < text.length; j++) {
+      const c = text.charCodeAt(j);
+      if (c === 41) break;
+      if (c === 34 || c === 39 || c === 40 || c === 92) return true;
+    }
+  }
+  return quoted && (text.indexOf('\n') !== -1 || text.indexOf('\r') !== -1 || text.indexOf('\f') !== -1);
+}
+function splitDeclarations(text) {
+  const parts = [];
+  let depth = 0,
+    quote = null,
+    start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === '\\') i++;
+      else if (c === quote || c === '\n' || c === '\r' || c === '\f') quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'") quote = c;
+    else if (c === '(') {
+      const end = urlTokenEnd(text, i);
+      if (end === -1) depth++;
+      else i = end - 1;
+    } else if (c === ')') depth = Math.max(0, depth - 1);
+    else if (c === ';' && depth === 0) {
       parts.push(text.slice(start, i));
       start = i + 1;
     }
@@ -175,6 +232,11 @@ let colorKeywords = null;
 // cssstyle 5 (jsdom 27.0 to 28.0, set by declaredValue): a 0 stays 0 except
 // in the properties it parses (ZERO_PARSED_5).
 let zeroAsWritten = false;
+// How jsdom 27 and later serialize url() (set by declaredValue; black box,
+// #144): 'spec' (jsdom 29 and later), 'quotes' (cssstyle 6, jsdom 28: only
+// a double quote escaped) or 'written' (cssstyle 5, jsdom 27: as 'quotes'
+// in background and background-image, as written elsewhere).
+let urlStyle = 'spec';
 const colorCaches = new Map();
 function declaredColors(value) {
   const key = `${legacyColors} ${colorKeywords}`;
@@ -291,24 +353,47 @@ function functionArguments(value) {
   return out;
 }
 
-// url() serialized with a quoted string, as jsdom does for these
-// properties (jsdom 26: the background ones); in 'jsdom25' mode (cssstyle
-// before 4.3.1) the background ones without quotes: url(a.png).
-const QUOTED_URLS = {
-  spec: new Set(['background', 'background-image', 'content', 'list-style-image', 'mask-image', 'filter']),
-  jsdom26: new Set(['background', 'background-image']),
-};
-QUOTED_URLS.jsdom27 = QUOTED_URLS.spec;
-const UNQUOTED_URLS = { jsdom25: QUOTED_URLS.jsdom26, jsdom22: QUOTED_URLS.jsdom26, jsdom20: QUOTED_URLS.jsdom26 };
+// A url() component as cssstyle 2.3 to 4.6 read it in background-image
+// (black box, #144): whitespace after url( is skipped; inside, an escape
+// (\\X: any character, a space or line feed too) or any character but a
+// quote, a parenthesis, space, tab or line feed (a carriage return, form
+// feed, control character or no-break space is kept); in quotes the same.
+// Other url()s are invalid (url(a b.png), url(a.png ), url("a.png),
+// url(a.png)junk, url(a"b.png), URL(a.png)). The background shorthand
+// reads its own (BG_URL_OLD and BG_URL_4_4).
+const LEGACY_URL_BODY = String.raw`(?:\\[\s\S]|[^"'()\\ \t\n])*`;
+const LEGACY_URL = new RegExp(
+  String.raw`^url\(\s*(?!\s)(?:"${LEGACY_URL_BODY}"|'${LEGACY_URL_BODY}'|${LEGACY_URL_BODY})\)$`,
+);
+const LEGACY_URLS = new RegExp(
+  String.raw`url\(\s*(?!\s)("${LEGACY_URL_BODY}"|'${LEGACY_URL_BODY}'|${LEGACY_URL_BODY})\)`,
+  'g',
+);
+const LEGACY_URL_NAMES = new Set(['background', 'background-image']);
+// A well-formed url() (to look past its insides).
 const URL_FUNCTION = /\burl\(\s*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|([^"'()\s]*))\s*\)/gi;
-function quoteUrls(value) {
-  return value.replace(URL_FUNCTION, (m, dq, sq, raw) => {
-    if (dq !== undefined) return `url("${dq}")`;
-    const text = sq ?? raw;
-    return `url("${text.replace(/(^|[^\\])"/g, '$1\\"')}")`;
+// Every url() component of a background-image value is one LEGACY_URL reads.
+const legacyImageUrls = (value) =>
+  segments(value, BG_SEPARATOR_LEGACY, true).every((t, i) => i % 2 === 1 || !/url\(/i.test(t) || LEGACY_URL.test(t));
+const unescapeLegacy = (text) => text.replace(/\\([\s\S])/g, '$1');
+// url() in background and background-image as cssstyle 2.3 to 4.6 write
+// it (black box, #144): before 4.3.1 ('jsdom25', 'jsdom22' and 'jsdom20')
+// without quotes, background-image's as written (url(a\62.png)), the
+// shorthand's with each escape read as the character after the backslash
+// (url(a62.png)); from 4.3.1 ('jsdom26') in double quotes, escapes read so
+// and a double quote or backslash escaped again (url("a\\b.png"); the
+// shorthand with cssstyle 4.3.1 reads the escapes twice: url("ab.png")).
+function legacyUrls(name, value, mode) {
+  if (!value.includes('url(')) return value;
+  const shorthand = name === 'background';
+  return value.replace(LEGACY_URLS, (m, body) => {
+    if (body[0] === '"' || body[0] === "'") body = body.slice(1, -1);
+    if (mode !== 'jsdom26') return `url(${shorthand ? unescapeLegacy(body) : body})`;
+    let url = unescapeLegacy(body);
+    if (shorthand && colorKeywords === 'css2') url = unescapeLegacy(url);
+    return `url("${url.replace(/["\\]/g, '\\$&')}")`;
   });
 }
-const unquoteUrls = (value) => value.replace(URL_FUNCTION, (m, dq, sq, raw) => `url(${dq ?? sq ?? raw})`);
 
 // A list (font families, background layers): ", " between its items
 // (jsdom 26 and later).
@@ -352,6 +437,13 @@ function collapseSpaces(value) {
     } else if (c === '"' || c === "'") {
       quote = c;
       out += c;
+    } else if (c === '(' && out.endsWith('url') && (out.length === 3 || !isNameCode(out.charCodeAt(out.length - 4)))) {
+      // A url()'s insides as written (url(a\rb.png) keeps its carriage
+      // return); not another function's whose name ends in url (myurl()).
+      // cssstyle 4.3.1 to 4.6 read url( in lowercase only.
+      const url = /^\((?:"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|\\[\s\S]|[^)])*\)?/.exec(value.slice(i))[0];
+      out += url;
+      i += url.length - 1;
     } else if (/\s/.test(c)) {
       if (!out.endsWith(' ')) out += ' ';
     } else out += c;
@@ -733,6 +825,8 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
           : true;
     colorKeywords = surface !== null ? (surface.colors ?? null) : null;
     zeroAsWritten = surface !== null && (surface.key === 'cssstyle5' || surface.key === 'cssstyle5.0');
+    if (surface === null || !surface.key.startsWith('cssstyle')) urlStyle = 'spec';
+    else urlStyle = surface.key.startsWith('cssstyle6') ? 'quotes' : 'written';
     if (mode === 'page') out = pageDescriptorValue(name, value);
     else if (surface !== null && surface.extras.has(name))
       out = name === 'azimuth' ? azimuthValue(value, surface) : value;
@@ -827,6 +921,12 @@ function versionedValue(name, value, mode, surface) {
           ? 'var'
           : null;
     if (kind !== null && droppedBy(mode, kind, name)) return INVALID;
+    // background-image's url()s as cssstyle reads them, the rest by its
+    // grammar; with var() the value is kept as written (jsdom 26).
+    if (name === 'background-image' && kind !== 'var' && /url\(/i.test(value)) {
+      if (!legacyImageUrls(value)) return INVALID;
+      return isValidValue(name, value.replace(LEGACY_URLS, 'url(x)')) ? serializeDeclared(name, value, mode) : INVALID;
+    }
     // cssstyle before 4.4 keeps currentColor, border-spacing: 0 and a
     // border width of 0 as written; before 4.3.1 border-color lowercased.
     if (colorKeywords === 'css2') {
@@ -1032,19 +1132,20 @@ const BG_SEPARATOR = /[ \t\n\r\f,]/;
 const BG_URL_OLD =
   /^url\(\s*(?!\s)(?:"(?:\\[^"'()\s]|[^"'()\\ \t\n])*"|'(?:\\[^"'()\s]|[^"'()\\ \t\n])*'|(?:\\[^"'()\s]|[^"'()\\ \t\n])*)\)$/;
 const BG_URL_4_4 =
-  /^url\(\s*(?!\s)(?:"(?:\\[^'()\s]|[^"'()\\ \t\n])*"|'(?:\\[^"'()\s]|[^"'()\\ \t\n])*'|(?:\\[^'()\s]|[^"'()\\ \t\n])*)\)$/;
+  /^url\(\s*(?!\s)(?:"(?:\\[^'()\s]|[^"'()\\ \t\n\r\f])*"|'(?:\\[^"'()\s]|[^"'()\\ \t\n\r\f])*'|(?:\\[^'()\s]|[^"'()\\ \t\n\r\f])*)\)$/;
 // cssstyle 4.4 to 4.6 (black box, #163: jsdom 23.2, 24.1 and 26.1 alike) and
 // a url() component BG_URL_4_4 rejects only for an escaped ', (, ), space,
-// tab, line feed, carriage return or form feed: the first time the process
-// meets that url(), in the background shorthand or background-image, it is
-// an image that sets nothing. The shorthand's other components apply, the
-// background image the declaration had stays and the other longhands are
-// removed (url("a\'b.png") alone declares nothing; red url("a\'b.png") is
-// background: red). Later the url() is invalid (cssstyle caches it), unless
-// it has an escaped carriage return or form feed: those are never cached.
-// Not modeled: cssstyle's cache evicting it (about 800 other url()s later),
-// background-image's own value (the url() unescaped the first time, invalid
-// later), several layers.
+// tab, line feed, carriage return or form feed, or a carriage return or form
+// feed (#144): the first time the process meets that url(), in the
+// background shorthand, it is an image that sets nothing. The shorthand's
+// other components apply, the background image the declaration had stays
+// and the other longhands are removed (url("a\'b.png") alone declares
+// nothing; red url("a\'b.png") is background: red). Later the url() is
+// invalid (cssstyle caches it), unless it has a carriage return or form
+// feed, escaped or not: those are never cached. In background-image (from
+// cssstyle 4.3.1, meetImage) it is the url() with its escapes read the first
+// time, later invalid. Not modeled: cssstyle's cache evicting it (about 800
+// other url()s later), several layers.
 const BG_URL_ESCAPED =
   /^url\(\s*(?!\s)(?:"(?:\\(?:[^\s]|[ \t\n\r\f])|[^"'()\\ \t\n])*"|'(?:\\(?:[^\s]|[ \t\n\r\f])|[^"'()\\ \t\n])*'|(?:\\(?:[^\s]|[ \t\n\r\f])|[^"'()\\ \t\n])*)\)$/;
 const BG_PLACEHOLDER = 'url(#)';
@@ -1052,21 +1153,23 @@ const metUrls = new Set(); // url() components cssstyle has met (per process, as
 const escapedUrl = (token) => token.startsWith('url(') && !BG_URL_4_4.test(token) && BG_URL_ESCAPED.test(token);
 // Records a url() met; true if it was met before (and is cached).
 function meetUrl(token) {
-  if (/\\[\r\f]/.test(token)) return false;
+  if (/[\r\f]/.test(token)) return false;
   if (metUrls.has(token)) return true;
   if (metUrls.size >= 500) metUrls.clear();
   metUrls.add(token);
   return false;
 }
-// background-image set to a url() the shorthand would read as above.
-function meetImage(name, value, mode, surface) {
-  if (name === 'background-image' && mode === 'jsdom26' && surface?.key === 'cssstyle4.4' && escapedUrl(value))
-    meetUrl(value);
+// background-image set to a url() the shorthand would read as above, with
+// cssstyle 4.3.1 to 4.6 (black box, #144): the first time it is the url()
+// with its escapes read (url("a b.png")), later invalid (true: cached),
+// unless it has a carriage return or form feed.
+function meetImage(name, value, mode) {
+  return name === 'background-image' && mode === 'jsdom26' && escapedUrl(value) && meetUrl(value);
 }
 // The background declaration a value declaredValue rejected sets (decls:
 // the block's declarations), or INVALID: '' when it declares nothing.
 function escapedUrlBackground(decls, value, mode, surface) {
-  if (mode !== 'jsdom26' || surface?.key !== 'cssstyle4.4' || !value.includes('\\')) return INVALID;
+  if (mode !== 'jsdom26' || surface?.key !== 'cssstyle4.4' || !/[\\\r\f]/.test(value)) return INVALID;
   // Escape-aware: url(a\'b.png) no-repeat is a url() and no-repeat.
   if (splitOutside(value, ',', true).length > 1 || /var\(|env\(|attr\(/i.test(value)) return INVALID;
   const urls = segments(value, BG_SEPARATOR_LEGACY, true).filter((t, i) => i % 2 === 0 && escapedUrl(t));
@@ -1100,7 +1203,7 @@ function backgroundValue(value, mode, surface) {
   const old = legacy && colorKeywords === 'css2'; // cssstyle before 4.4
   if (splitOutside(value, ',').length > 1) return legacy ? INVALID : undefined;
   const tokens = [];
-  const components = segments(value, legacy ? BG_SEPARATOR_LEGACY : BG_SEPARATOR).filter(
+  const components = segments(value, legacy ? BG_SEPARATOR_LEGACY : BG_SEPARATOR, true).filter(
     (t, i) => i % 2 === 0 && t !== '',
   );
   for (const token of components) {
@@ -1198,7 +1301,12 @@ function backgroundValue(value, mode, surface) {
     // their own way: left to the general rules.
     else return undefined;
   }
-  const image = found.image === null ? null : serializeDeclared('background-image', found.image, mode);
+  let image = null;
+  if (found.image !== null)
+    image =
+      legacy && found.image.startsWith('url(')
+        ? legacyUrls('background', found.image, mode)
+        : serializeDeclared('background-image', found.image, mode);
   const color = found.color === null ? null : serializeDeclared('background-color', found.color, mode);
   if (old) return [color, image, found.repeat, found.attachment, found.position].filter((p) => p !== null).join(' ');
   if (legacy) {
@@ -1399,15 +1507,36 @@ function serializeDeclared(name, value, mode) {
   if (isColorProperty(name)) value = declaredColors(value);
   // jsdom 26 with cssstyle 4.3.1 and later writes each run of whitespace
   // in background and background-image as one space (black box: a
-  // gradient written over several lines).
-  if (mode === 'jsdom26' && (name === 'background' || name === 'background-image') && /\s\s|[\t\n\r\f]/.test(value))
+  // gradient written over several lines), but in a value with var(),
+  // which it keeps as written.
+  if (
+    mode === 'jsdom26' &&
+    (name === 'background' || name === 'background-image') &&
+    /\s\s|[\t\n\r\f]/.test(value) &&
+    !/var\(/i.test(value)
+  )
     value = collapseSpaces(value);
   if (value.includes('(')) {
     if (isSpecMode(mode) && name !== 'border-image' && /(min|max|clamp|gradient)\(/i.test(value))
       value = functionArguments(value);
-    // jsdom 27 and later keep url() as written in a value with var().
-    if (QUOTED_URLS[mode]?.has(name) && !(isSpecMode(mode) && /var\(/i.test(value))) value = quoteUrls(value);
-    else if (UNQUOTED_URLS[mode]?.has(name)) value = unquoteUrls(value);
+    // jsdom 27 and later serialize the url()s in background and
+    // background-image, and from 28 a value that is one url() (fill:
+    // url(#a)) but in cursor; others keep them as written (fill: url(#a)
+    // none, mask-image: url(a.png), url(b.png)), and so does a value with
+    // var() (black box, #144).
+    if (isSpecMode(mode)) {
+      const image = name === 'background' || name === 'background-image';
+      if (
+        (image ||
+          (urlStyle !== 'written' &&
+            name !== 'cursor' &&
+            /^url\(/i.test(value) &&
+            readUrl(value, 4)?.end === value.length)) &&
+        /url\(/i.test(value) &&
+        !/var\(/i.test(value)
+      )
+        value = serializeUrls(value, urlStyle === 'spec' ? 'spec' : 'quotes', image);
+    } else if (LEGACY_URL_NAMES.has(name) && !/var\(/i.test(value)) value = legacyUrls(name, value, mode);
     return name === 'background' || name === 'background-image' ? familyCommas(value) : value;
   }
   const box = BOX_SHORTHANDS.has(name);
@@ -1501,8 +1630,11 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   // red declare nothing, color:;;margin: 0 neither, --x:;color: red is --x
   // with the value ;color: red).
   const runsOn = isLegacyMode(mode);
+  if (runsOn && !inRule && context !== 'written' && unclosedLegacy(String(text ?? ''))) return;
   let carried = null;
-  for (let part of splitOutside(String(text ?? ''), ';')) {
+  const source = String(text ?? '');
+  const lineBreaks = !runsOn && cssSplitNeeded(source);
+  for (let part of lineBreaks ? splitDeclarations(source) : splitOutside(source, ';')) {
     if (carried !== null) {
       part = `${carried};${part}`;
       carried = null;
@@ -1525,6 +1657,10 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       value = value.slice(0, bang.index).trim();
     }
     if (!name || !value || dropped(surface, name)) continue;
+    // A url() with a line break in its string (a bad string) is invalid
+    // here, though background-image takes it through the style object
+    // (jsdom 27 and later, #144).
+    if (lineBreaks && /url\(/i.test(value) && hasBadString(value)) continue;
     if (!sheet && !runsOn && value.includes('!') && strayPriority(value, important)) continue;
     if (borderVarDrops && BORDER_AND_SIDES.has(name)) {
       // A CSS-wide keyword on border or a side leaves the block empty.
@@ -1548,7 +1684,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
         declared = escapedUrlBackground(decls, value, mode, surface);
         if (declared !== INVALID) for (const n of RESETS.background) decls.delete(n);
       }
-      meetImage(name, value, mode, surface);
+      if (meetImage(name, value, mode)) declared = INVALID;
     }
     if (declared === INVALID || declared === '') continue;
     // One that loses its !important is written without it; in a style
@@ -1572,6 +1708,47 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
         : { value: declared, important: false, masked: true },
     );
   }
+}
+
+// jsdom 20 to 26 (black box, #144): a style attribute or cssText with an
+// unclosed string, parenthesis or comment declares nothing (url("a.png,
+// url(a(b.png), calc(1px, /* x). A backslash escapes only in a string:
+// url(a\(b.png) leaves a parenthesis open, url(a\"b.png) a string. Quotes
+// and parentheses in a comment do not count (/* " */).
+function unclosedLegacy(text) {
+  let depth = 0;
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote !== null) {
+      if (c === '\\') i++;
+      else if (c === quote) quote = null;
+    } else if (c === '/' && text[i + 1] === '*') {
+      i = text.indexOf('*/', i + 2);
+      if (i === -1) return true;
+      i++;
+    } else if (c === '"' || c === "'") quote = c;
+    else if (c === '(') depth++;
+    else if (c === ')' && depth > 0) depth--;
+  }
+  return quote !== null || depth > 0;
+}
+
+// Does a string in the value have a line break? Comments are not skipped:
+// a value with a comment and a url() is dropped before this anyway, as
+// comments in values are not modeled (#162).
+function hasBadString(value) {
+  let quote = null;
+  for (let i = 0; i < value.length; i++) {
+    const c = value[i];
+    if (quote === null) {
+      if (c === '"' || c === "'") quote = c;
+      else if (c === '\\') i++;
+    } else if (c === '\\') i++;
+    else if (c === quote) quote = null;
+    else if (c === '\n' || c === '\r' || c === '\f') return true;
+  }
+  return false;
 }
 
 // Indexed properties (CSSOM): style[i] is the i-th declaration's name. They
@@ -2034,7 +2211,7 @@ function setDeclaration(style, name, value, priority = '') {
   let text = declaredValue(name, raw, s.mode, s.surface);
   if (text === INVALID && name === 'background' && !s.parentRule)
     text = escapedUrlBackground(s.decls, raw, s.mode, s.surface);
-  if (!s.parentRule) meetImage(name, raw, s.mode, s.surface);
+  if (!s.parentRule && meetImage(name, raw, s.mode)) text = INVALID;
   if (text === INVALID) return;
   if (text === '') {
     let removed = false;
