@@ -1260,8 +1260,9 @@ export const XHR_INTERFACES = [
 // teardown and per-file reset, a discarded frame), and those of its
 // frames, nested ones included, as closing jsdom's window does.
 export function abortWindowRequests(window) {
-  const frames = window[S].childFrames;
-  if (frames) for (const child of frames) abortWindowRequests(child);
+  const { childFrames, shadowFrames } = window[S];
+  if (childFrames) for (const child of childFrames) abortWindowRequests(child);
+  if (shadowFrames) for (const child of shadowFrames) abortWindowRequests(child);
   const pending = window[S].pendingRequests;
   if (!pending) return;
   for (const req of [...pending]) req.abort();

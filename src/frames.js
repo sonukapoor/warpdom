@@ -20,12 +20,13 @@ const isIframe = (n) => {
   return s.type === ELEMENT_NODE && s.ns === HTML_NS && (s.tag === 'iframe' || s.tag === 'frame');
 };
 
-// Iframes in node's subtree, shadow trees included.
-function forEachIframe(node, fn) {
+// Iframes in node's subtree, shadow trees included; inShadow: the iframe
+// is in a shadow tree (node is, or it is in a shadow root below node).
+function forEachIframe(node, fn, inShadow) {
   for (let n = node; n; n = nextInTree(n, node)) {
     if (n[S].type !== ELEMENT_NODE) continue;
-    if (isIframe(n)) fn(n);
-    if (n[S].shadowRoot) forEachIframe(n[S].shadowRoot, fn);
+    if (isIframe(n)) fn(n, inShadow);
+    if (n[S].shadowRoot) forEachIframe(n[S].shadowRoot, fn, true);
   }
 }
 
@@ -76,12 +77,18 @@ function syncIndexes(window, previousLength, restoring = false) {
   }
 }
 
-function createFrame(iframe) {
+// An iframe in a shadow tree gets a window from jsdom 30.1.0 (black box,
+// 20.0.3 to 30.1.3; compat.shadowFrames), but is not one of the parent
+// window's frames in any version: window.length, frames and the index
+// properties leave it out (#205). Its window is in shadowFrames, for the
+// discarding and the request aborts of the parent window's frames.
+function createFrame(iframe, inShadow) {
   const es = iframe[S];
   if (es.frameWindow) return;
   const doc = es.doc;
   if (doc[S].noView) return;
   const parent = doc[S].window;
+  if (inShadow && !parent[S].compat.shadowFrames) return;
   const src = es.attrs.get('src');
   let url = 'about:blank';
   if (src !== undefined && src.trim() !== '') {
@@ -103,9 +110,14 @@ function createFrame(iframe) {
     cs.aboutBaseKept = parent[S].compat.jsdom >= 26;
   }
   es.frameWindow = child;
-  const frames = parent[S].childFrames ?? (parent[S].childFrames = []);
-  frames.push(child);
-  syncIndexes(parent, frames.length - 1);
+  if (inShadow) {
+    child[S].shadowFrame = true;
+    (parent[S].shadowFrames ?? (parent[S].shadowFrames = [])).push(child);
+  } else {
+    const frames = parent[S].childFrames ?? (parent[S].childFrames = []);
+    frames.push(child);
+    syncIndexes(parent, frames.length - 1);
+  }
   // The iframe load event steps run once the (empty) document is ready.
   parent[S].setTimeout(() => {
     if (es.frameWindow === child) dispatch(iframe, new parent.Event('load'));
@@ -121,8 +133,9 @@ function discardWindow(window) {
   window[S].discarded = true;
   hooks.discardedWindows++;
   clearWindowTimers(window);
-  const frames = window[S].childFrames;
-  if (frames) for (const child of frames) discardWindow(child);
+  const { childFrames, shadowFrames } = window[S];
+  if (childFrames) for (const child of childFrames) discardWindow(child);
+  if (shadowFrames) for (const child of shadowFrames) discardWindow(child);
 }
 
 // sync false: the caller synchronizes the indexes once, after the last
@@ -136,24 +149,34 @@ function destroyFrame(iframe, sync = true) {
   abortWindowRequests(child);
   forgetLastList();
   const parent = child[S].parentWindow;
+  if (child[S].shadowFrame) {
+    const frames = parent[S].shadowFrames;
+    frames.splice(frames.indexOf(child), 1);
+    return;
+  }
   const frames = parent[S].childFrames;
   frames.splice(frames.indexOf(child), 1);
   if (sync) syncIndexes(parent, frames.length + 1);
 }
 
+const destroyFrameNow = (iframe) => destroyFrame(iframe);
+
 hooks.frames = {
-  inserted(node) {
-    forEachIframe(node, createFrame);
+  // inShadow: node is in a (connected) shadow tree.
+  inserted(node, inShadow) {
+    forEachIframe(node, createFrame, inShadow);
   },
   removed(node) {
-    forEachIframe(node, destroyFrame);
+    forEachIframe(node, destroyFrameNow, false);
   },
   // resetWindow (reset.js) detaches the document's tree without the
   // removal hooks: the frames of the iframes it took out of the document
-  // are discarded, as a fresh window has none (#173). Its restore of the
-  // window's own properties deleted the index properties; those of the
-  // frames left (an iframe in the kept body's shadow root) come back, and
-  // every other index touched during the reset is the snapshot's again.
+  // are discarded, as a fresh window has none (#173); those of iframes in
+  // the kept body's shadow root stay. Its restore of the window's own
+  // properties deleted the index properties. Those of the frames left come
+  // back: such a frame is an iframe that a connectedCallback inserted into
+  // the body while the kept shadow tree was being inserted again. Every
+  // other index touched during the reset is the snapshot's again.
   // resetStart runs before the kept tree is inserted again.
   resetStart(window) {
     const ws = window[S];
@@ -163,6 +186,12 @@ hooks.frames = {
     const ws = window[S];
     const touched = ws.resetIndexes ?? 0;
     ws.resetIndexes = undefined;
+    if (ws.shadowFrames?.length) {
+      for (const child of [...ws.shadowFrames]) {
+        const iframe = child[S].frameElement;
+        if (!connected(iframe)) destroyFrame(iframe);
+      }
+    }
     const frames = ws.childFrames;
     if (!frames?.length && touched === 0) return;
     if (frames) {

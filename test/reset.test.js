@@ -315,24 +315,34 @@ test('resetWindow discards the frame windows of the document iframes', async () 
 
 // A frame of an iframe still in the document after the reset stays: one in
 // a shadow root of the kept body (the reset keeps the body's shadow root).
+// From jsdom 30.1.0 a shadow-tree iframe has a window, never one of the
+// window's frames (#205); a shadow-tree iframe removed during the reset
+// loses its window.
 test('resetWindow keeps the frame windows of iframes still connected', () => {
   const w = createWindow();
   snapshotWindow(w);
   const d = w.document;
   const body = d.body;
   body.remove();
-  const kept = body.attachShadow({ mode: 'open' }).appendChild(d.createElement('iframe'));
+  const shadow = body.attachShadow({ mode: 'open' });
+  const kept = shadow.appendChild(d.createElement('iframe'));
   d.documentElement.append(body);
+  const keptWindow = kept.contentWindow;
   const gone = body.appendChild(d.createElement('iframe'));
-  assert.equal(w.length, 2);
+  const goneHost = body.appendChild(d.createElement('div'));
+  const goneInShadow = goneHost.attachShadow({ mode: 'open' }).appendChild(d.createElement('iframe'));
+  assert.deepEqual([keptWindow !== null, goneInShadow.contentWindow !== null, w.length], [true, true, 1]);
   resetWindow(w);
   assert.deepEqual(
-    [kept.isConnected, w.length, w[0] === kept.contentWindow, gone.contentWindow],
-    [true, 1, true, null],
+    [kept.isConnected, kept.contentWindow === keptWindow, w.length, w[0], gone.contentWindow],
+    [true, true, 0, undefined, null],
   );
-  // No frame discarded: the index property stays all the same.
+  assert.equal(goneInShadow.contentWindow, null);
   resetWindow(w);
-  assert.deepEqual([w.length, w[0] === kept.contentWindow, w[1]], [1, true, undefined]);
+  assert.deepEqual([kept.contentWindow === keptWindow, w.length, w[0]], [true, 0, undefined]);
+  // An iframe in the document after the reset is window[0].
+  const next = body.appendChild(d.createElement('iframe'));
+  assert.deepEqual([w.length, w[0] === next.contentWindow, '1' in w], [1, true, false]);
 });
 
 // A frame in a discarded frame stops too: its timers never run (jsdom 20

@@ -360,6 +360,9 @@ export function shadowIncludingRoot(node) {
   return root;
 }
 
+// root is a connected shadow root (frames: only for documents with iframes).
+const connectedShadowRoot = (root) => root[S].shadow === true && shadowIncludingRoot(root)[S].type === DOCUMENT_NODE;
+
 // Connected (DOM): the shadow-including root is a document.
 export const connected = (node) => shadowIncludingRoot(node)[S].type === DOCUMENT_NODE;
 
@@ -636,8 +639,12 @@ function insertChecked(parent, node, ref, root, quiet) {
   if (doc[S].checkedRadios === true && hooks.radios !== null) hooks.radios(node, connected);
   if (!quiet && observed(parent)) hooks.childList(parent, [node], [], ns.prev, ns.next);
   if (hooks.ce !== null) hooks.ce.inserted(node);
-  // Iframes get nested windows (frames.js), only in documents that have any.
-  if (doc[S].frameCount && hooks.frames !== null && connected) hooks.frames.inserted(node);
+  // Iframes get nested windows (frames.js), only in documents that have any,
+  // also in a connected shadow tree (#205).
+  if (doc[S].frameCount && hooks.frames !== null) {
+    if (connected) hooks.frames.inserted(node, false);
+    else if (connectedShadowRoot(moved ? rootOf(parent) : root)) hooks.frames.inserted(node, true);
+  }
   // Slot assignment changes (slots.js), only in documents with slots.
   if (doc[S].slotCount && hooks.slots !== null) hooks.slots.inserted(parent, node);
   // Scripts run (scripts.js), only in documents that have runnable ones.
@@ -658,9 +665,15 @@ export function templateContentsOwner(doc) {
   return ds.templateDoc;
 }
 
-// Moves node and its subtree to another document (DOM "adopt").
+// Moves node and its subtree to another document (DOM "adopt"), shadow
+// trees included (their iframes then get their window in doc, #205).
 export function adopt(node, doc) {
   const oldDoc = node[S].doc;
+  adoptTree(node, oldDoc, doc);
+  if (hooks.ce !== null && oldDoc !== doc) hooks.ce.adopted(node, oldDoc, doc);
+}
+
+function adoptTree(node, oldDoc, doc) {
   for (let n = node; n; n = nextInTree(n, node)) {
     const s = n[S];
     s.doc = doc;
@@ -676,8 +689,8 @@ export function adopt(node, doc) {
     if (s.observers !== undefined && s.observers.length !== 0 && oldDoc !== doc)
       moveObserverCount(s.observers, oldDoc, doc);
     if (s.content) adopt(s.content, templateContentsOwner(doc));
+    if (s.shadowRoot) adoptTree(s.shadowRoot, oldDoc, doc);
   }
-  if (hooks.ce !== null && oldDoc !== doc) hooks.ce.adopted(node, oldDoc, doc);
   // Live ranges inside the adopted subtree now follow the new document's
   // mutations.
   if (oldDoc !== doc && hasRanges(oldDoc)) hooks.rangeAdopt(node, oldDoc, doc);
@@ -710,7 +723,8 @@ function removeNode(parent, node, quiet) {
   // Connected matters only for the id index and frames: skip the walk to the
   // root when the document has neither.
   const ods = ownerDoc[S];
-  const connected = (ods.ids !== undefined && ods.ids.size !== 0) || ods.frameCount ? isConnected(parent) : false;
+  const parentRoot = (ods.ids !== undefined && ods.ids.size !== 0) || ods.frameCount ? rootOf(parent) : null;
+  const connected = parentRoot !== null && parentRoot[S].type === DOCUMENT_NODE;
   const wasConnected = hooks.ce !== null && shadowIncludingRoot(parent)[S].type === DOCUMENT_NODE;
   const prev = ns.prev;
   const next = ns.next;
@@ -735,7 +749,8 @@ function removeNode(parent, node, quiet) {
     hooks.removed(parent, node);
   }
   if (hooks.ce !== null) hooks.ce.removed(node, wasConnected);
-  if (ods.frameCount && hooks.frames !== null && connected) hooks.frames.removed(node);
+  if (ods.frameCount && hooks.frames !== null && (connected || connectedShadowRoot(parentRoot)))
+    hooks.frames.removed(node);
   if (ods.slotCount && hooks.slots !== null) hooks.slots.removed(parent, node);
   return node;
 }

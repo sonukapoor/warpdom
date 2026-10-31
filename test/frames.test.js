@@ -128,10 +128,9 @@ test('frame elements get a nested window like iframes', () => {
   const w = createWindow();
   const d = w.document;
   const host = d.createElement('div');
-  const shadow = host.attachShadow({ mode: 'open' });
   const frame = d.createElement('frame');
   const iframe = d.createElement('iframe');
-  shadow.append(frame, iframe);
+  host.append(frame, iframe);
   assert.deepEqual([frame.contentWindow, iframe.contentWindow], [null, null]);
   d.body.append(host);
   assert.notEqual(frame.contentWindow, null);
@@ -271,3 +270,138 @@ test('iframes: an insertion defines only the new index property', () => {
     [50, 50, 48, true],
   );
 });
+
+// Iframes in shadow trees (#205): from jsdom 30.1.0 (black box, 20.0.3 to
+// 30.1.3; 30.0.0 and 30.0.1 have none) one that becomes connected gets a
+// window, whether its shadow root is connected already or its host is
+// inserted later, also in nested shadow trees; before, none does. In no
+// version do they count in window.length, frames or the index properties.
+// A light iframe moved into a shadow root loses its frame there before
+// 30.1.0 (jsdom keeps contentWindow, a deliberate deviation above, so it is
+// left out). The window of a removed one is left out too.
+const shadowFramesScenario = async (w) => {
+  const d = w.document;
+  const frames = () => [w.length, w.frames.length, '0' in w, w[0] === undefined, '1' in w];
+  const view = (f) => {
+    const cw = f.contentWindow;
+    if (cw === null) return [null, f.contentDocument];
+    return [cw.parent === w, cw.top === w, cw.frameElement === f, cw.document === f.contentDocument, cw.length];
+  };
+  const log = [];
+  const iframe = (name) => {
+    const f = d.createElement('iframe');
+    f.addEventListener('load', () => log.push(name));
+    return f;
+  };
+  const out = {};
+  const a = d.body.appendChild(d.createElement('div'));
+  const shadow = a.attachShadow({ mode: 'open' });
+  const connectedFrame = shadow.appendChild(iframe('connected'));
+  out.connected = [...view(connectedFrame), ...frames()];
+  shadow.appendChild(iframe('removed')).remove();
+  out.removed = frames();
+  const b = d.createElement('div');
+  const beforeFrame = b.attachShadow({ mode: 'open' }).appendChild(iframe('before'));
+  out.detached = view(beforeFrame);
+  d.body.append(b);
+  out.hostInserted = [...view(beforeFrame), ...frames()];
+  const c = d.body.appendChild(d.createElement('div'));
+  const inner = c.attachShadow({ mode: 'open' }).appendChild(d.createElement('span'));
+  const nested = inner.attachShadow({ mode: 'open' }).appendChild(d.createElement('p')).appendChild(iframe('nested'));
+  out.nested = [...view(nested), ...frames()];
+  const light = d.body.appendChild(iframe('light'));
+  out.light = [w[0] === light.contentWindow, ...frames()];
+  await tick();
+  out.loaded = [...log];
+  b.remove();
+  out.hostRemoved = frames();
+  d.body.append(b);
+  out.hostReinserted = [...view(beforeFrame), ...frames()];
+  const moved = d.body.appendChild(iframe('moved'));
+  shadow.append(moved);
+  out.moved = [w[1] === undefined, ...frames()];
+  await tick();
+  out.reloaded = log.slice(out.loaded.length);
+  return out;
+};
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30])
+  parity(`iframes in shadow trees: windows and frames (jsdom ${jsdom})`, shadowFramesScenario, { jsdom });
+
+// A shadow-tree iframe's window is discarded with it (the deliberate
+// deviation above), and the index properties stay those of the document's
+// frames.
+test('iframes in shadow trees: removal discards the window, the indexes stay', async () => {
+  for (const [jsdom, windows] of [
+    ['30.1.0', true],
+    ['30.0.1', false],
+  ]) {
+    const w = createWindow({ jsdom });
+    const d = w.document;
+    const light = d.body.appendChild(d.createElement('iframe'));
+    const host = d.body.appendChild(d.createElement('div'));
+    const shadow = host.attachShadow({ mode: 'open' });
+    const f = shadow.appendChild(d.createElement('iframe'));
+    const child = f.contentWindow;
+    assert.equal(child !== null, windows, jsdom);
+    let fired = false;
+    child?.setTimeout(() => (fired = true), 0);
+    assert.deepEqual([w.length, w[0] === light.contentWindow, '1' in w], [1, true, false]);
+    f.remove();
+    assert.deepEqual([f.contentWindow, w.length, w[0] === light.contentWindow], [null, 1, true]);
+    shadow.append(f);
+    host.remove();
+    assert.deepEqual([f.contentWindow, w.length, w[0] === light.contentWindow], [null, 1, true]);
+    await tick();
+    assert.equal(fired, false, "the discarded window's timers stop");
+  }
+});
+
+// A host moved from another document takes its shadow trees along (DOM
+// "adopt" covers the shadow-including descendants): their nodes' owner
+// document is the new one in every version, and from 30.1.0 a shadow-tree
+// iframe gets its window in the new document's window, also when that
+// document had no iframe before and when the host comes from a frame's
+// document (connected there first or not). Live ranges in the shadow tree
+// follow its mutations after the move.
+const adoptedShadowFramesScenario = async (w) => {
+  const d = w.document;
+  const out = {};
+  const move = (from, connectFirst) => {
+    const host = from.createElement('div');
+    const shadow = host.attachShadow({ mode: 'open' });
+    const p = shadow.appendChild(from.createElement('p'));
+    const f = shadow.appendChild(from.createElement('iframe'));
+    const range = from.createRange();
+    range.setStart(shadow, 1);
+    if (connectFirst) from.body.append(host);
+    const before = f.contentWindow !== null;
+    d.body.append(host);
+    shadow.prepend(from.createElement('b'));
+    const cw = f.contentWindow;
+    const fromWindow = from.defaultView;
+    const result = [
+      before,
+      [f, p, shadow].map((n) => n.ownerDocument === d),
+      cw !== null,
+      cw === null ? null : [cw.parent === w, cw.top === w, cw.frameElement === f],
+      range.startOffset,
+      w.length,
+      fromWindow === null ? null : fromWindow.length,
+    ];
+    // jsdom keeps a removed iframe's contentWindow (the deliberate
+    // deviation above), so only the frames count after the removal.
+    host.remove();
+    result.push(w.length);
+    return result;
+  };
+  out.inert = move(d.implementation.createHTMLDocument(''), false);
+  const light = d.body.appendChild(d.createElement('iframe'));
+  out.frameDoc = move(light.contentDocument, false);
+  out.frameDocConnected = move(light.contentDocument, true);
+  out.indexes = [w.length, w[0] === light.contentWindow, '1' in w];
+  return out;
+};
+for (const jsdom of [20, 26, 29, 30])
+  parity(`iframes in shadow trees: a host moved from another document (jsdom ${jsdom})`, adoptedShadowFramesScenario, {
+    jsdom,
+  });

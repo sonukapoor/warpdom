@@ -1668,13 +1668,17 @@ test('XMLHttpRequest: a window reset or an environment teardown stops its reques
 });
 
 test("XMLHttpRequest: a window reset or an environment teardown stops its frames' requests too", async () => {
-  // A frame's and a nested frame's request each, then the reset or teardown.
+  // A frame's, a nested frame's and a shadow-tree frame's request each
+  // (jsdom 30.1 gives a shadow-tree iframe a window, #205), then the reset
+  // or teardown.
   const start = (w, events) => {
     const frame = w.document.createElement('iframe');
     w.document.body.append(frame);
     const nested = frame.contentDocument.createElement('iframe');
     frame.contentDocument.body.append(nested);
-    for (const win of [frame.contentWindow, nested.contentWindow]) {
+    const host = w.document.body.appendChild(w.document.createElement('div'));
+    const inShadow = host.attachShadow({ mode: 'open' }).appendChild(w.document.createElement('iframe'));
+    for (const win of [frame.contentWindow, nested.contentWindow, inShadow.contentWindow]) {
       const x = new win.XMLHttpRequest();
       x.onreadystatechange = () => events.push(x.readyState);
       x.onloadend = () => events.push('loadend');
@@ -1688,7 +1692,11 @@ test("XMLHttpRequest: a window reset or an environment teardown stops its frames
   start(w, reset);
   resetWindow(w);
   const { default: JestEnvironment } = await import('../src/jest.js');
-  const env = new JestEnvironment({ projectConfig: { rootDir: process.cwd(), testEnvironmentOptions: { url: PAGE } } });
+  // The Jest environment defaults to the jsdom Jest brings (26 here), whose
+  // shadow-tree iframes have no window.
+  const env = new JestEnvironment({
+    projectConfig: { rootDir: process.cwd(), testEnvironmentOptions: { url: PAGE, jsdom: '30.1.0' } },
+  });
   const teardown = [];
   start(env.global, teardown);
   await env.teardown();
@@ -1701,9 +1709,9 @@ test("XMLHttpRequest: a window reset or an environment teardown stops its frames
   assert.deepEqual(
     [reset, teardown, vmTeardown],
     [
-      [1, 1],
-      [1, 1],
-      [1, 1],
+      [1, 1, 1],
+      [1, 1, 1],
+      [1, 1, 1],
     ],
   );
 });
