@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parity } from './parity.js';
-import { NAMED_COLORS } from '../src/colors.js';
+import { NAMED_COLORS, mixColor } from '../src/colors.js';
 import { createWindow } from '../src/node.js';
 
 parity('computed colors: named, hex, rgb() and hsl()', (w) => {
@@ -79,4 +79,27 @@ test('colors: cssstyle 4.2 rounds as jsdom 26 does', () => {
   s.color = 'hsl(102, 53%, 61%)';
   s.backgroundColor = 'hwb(205 6% 9%)';
   assert.equal(s.cssText, 'color: rgb(135, 208, 103); background-color: rgb(15, 142, 232);');
+});
+
+// A long malformed number or whitespace run in a color-mix() argument is
+// read in linear time (#223 review: 20000 digits in a color(srgb ...)
+// alpha took about 140 ms, 50000 about 1.7 s).
+test('colors: a long malformed color-mix() argument is read quickly', () => {
+  const digits = '1'.repeat(50000);
+  const spaces = ' '.repeat(50000);
+  const values = [
+    `color-mix(in srgb, color(srgb 1 0 0 / ${digits}x), red)`,
+    `color-mix(in srgb, color(srgb ${digits}x 0 0), red)`,
+    `color-mix(in srgb, red ${digits}x, blue)`,
+    `color-mix(in srgb, ${digits}x red, blue)`,
+    `color-mix(in srgb, red${spaces}x, blue)`,
+    `color-mix(in srgb, red${spaces}1x%, blue)`,
+  ];
+  for (const value of values) {
+    const start = performance.now();
+    const mixed = mixColor(value, () => 'rgb(0, 0, 0)', false);
+    const elapsed = performance.now() - start;
+    assert.equal(mixed, null);
+    assert.ok(elapsed < 200, `${JSON.stringify(value.slice(0, 40))}: ${elapsed} ms`);
+  }
 });

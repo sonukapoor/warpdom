@@ -28,7 +28,7 @@ import {
   trackDetachedStyles,
 } from './internal.js';
 import { LONGHANDS, SHORTHANDS, ALIASES } from './css-data.js';
-import { DARK_SYSTEM_COLORS, resolveColor, systemColorKind } from './colors.js';
+import { DARK_SYSTEM_COLORS, mixColor, resolveColor, systemColorKind } from './colors.js';
 import { segments, expand, serializeBox, BOX, PAIRS, CSS_WIDE, backgroundComponents } from './shorthands.js';
 import { compileRuleSelector } from './selectors.js';
 import { directionality } from './directionality.js';
@@ -1056,6 +1056,13 @@ function computeColors(element, name, value, data) {
   if (value === 'currentcolor' && compat.colorKeywords === 'css2' && BORDER_COLOR.test(name)) {
     return compat.computedColors === 'declared' ? '' : currentColor(element);
   }
+  if (compat.legacyComputedStyle) {
+    // jsdom 22.1 to 28 (black box, 22.1.0 to 28.1.0) resolve the colors
+    // of these properties only; others (fill, stroke, text-shadow,
+    // accent-color, scrollbar-color, text-decoration-color, ...) compute
+    // as declared.
+    if (compat.computedColors !== 'declared' && !LEGACY_RESOLVED_COLORS.has(name)) return value;
+  } else return resolvedColorValue(element, name, value, data, compat);
   const parts = segments(value);
   for (let i = 0; i < parts.length; i += 2) {
     const token = parts[i];
@@ -1084,6 +1091,86 @@ function computeColors(element, name, value, data) {
     }
   }
   return parts.join('');
+}
+
+const LEGACY_RESOLVED_COLORS = new Set([
+  'color',
+  'background-color',
+  'border-top-color',
+  'border-right-color',
+  'border-bottom-color',
+  'border-left-color',
+  'border-block-start-color',
+  'border-block-end-color',
+  'border-inline-start-color',
+  'border-inline-end-color',
+  'outline-color',
+  'caret-color',
+]);
+const IDENTIFIER = /^-?[a-z_][a-z0-9_-]*$/;
+// A value's first component: up to the first whitespace (space, tab,
+// newline, carriage return, form feed) or comma outside parentheses.
+function firstComponent(value) {
+  let depth = 0;
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    if (c === 40) depth++;
+    else if (c === 41) depth--;
+    else if (depth === 0 && (c === 32 || c === 44 || (c >= 9 && c <= 13 && c !== 11))) return value.slice(0, i);
+  }
+  return value;
+}
+
+// The index of the parenthesis that closes a value's first one, or -1.
+function closingParen(value) {
+  let depth = 0;
+  for (let i = value.indexOf('('); i >= 0 && i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    if (c === 40) depth++;
+    else if (c === 41 && --depth === 0) return i;
+  }
+  return -1;
+}
+
+// jsdom 29.0.2 and later (black box, 29.1.1 to 30.1.3) compute a property
+// that holds colors from its first component: a color gives that color
+// alone (scrollbar-color: red blue gives rgb(255, 0, 0), text-shadow: red
+// 1px 1px too), another keyword transparent (caret-color and accent-color
+// auto, stroke and fill none or context-stroke, text-shadow none,
+// scrollbar-color auto: rgba(0, 0, 0, 0)), anything else the value as
+// declared (text-shadow: 1px 1px currentcolor, fill: url(#x) red).
+// color-mix() in srgb is computed (colors.js mixColor), alone or followed
+// by other components (text-shadow: color-mix(in srgb, blue, red) 1px 1px
+// gives the mix alone, a mix it cannot compute transparent); a var()
+// anywhere in the value keeps it as declared.
+function resolvedColorValue(element, name, value, data, compat) {
+  const token = firstComponent(value);
+  const lower = token.toLowerCase();
+  let color;
+  if (lower === 'currentcolor')
+    color = name === 'color' ? inheritedValue(element, 'color', data) : currentColor(element);
+  else if (lower.startsWith('color-mix(')) {
+    // The function alone: what follows it need not start with a space
+    // (color-mix(in srgb, blue, red)1px 1px).
+    const end = closingParen(token);
+    if (end < 0 || value.toLowerCase().includes('var(')) return value;
+    // currentcolor resolved once per mix, and only if the mix names it (a
+    // chain of currentcolor mixes would otherwise resolve each parent's
+    // color twice per level).
+    let currentValue;
+    const current = () =>
+      (currentValue ??= name === 'color' ? inheritedValue(element, 'color', data) : currentColor(element));
+    const mixed = mixColor(token.slice(0, end + 1), current, compat.jsdom >= 30);
+    return mixed === false ? 'rgba(0, 0, 0, 0)' : (mixed ?? value);
+  } else {
+    // From jsdom 27 a system color takes its dark value where the
+    // computed color-scheme is exactly 'dark' (not 'light dark' or
+    // 'only dark'; black box, 27.4.0 to 30.1.3).
+    const dark = DARK_SYSTEM_COLORS[lower];
+    color = dark !== undefined && darkScheme(element) ? dark : resolveColor(token, compat.legacyColors);
+    if (color === null) return IDENTIFIER.test(lower) ? 'rgba(0, 0, 0, 0)' : value;
+  }
+  return color;
 }
 
 // --- absolute lengths (jsdom 30) ----------------------------------------------------
@@ -1508,20 +1595,18 @@ export function legacyAccessorValue(element, name) {
 // to Jest 30): a property neither the page nor the user agent sheet
 // declares computes to '', except display (inline from jsdom 27),
 // visibility, pointer-events and color (inherited), background-color and
-// the border colors.
-const LEGACY_INHERITED = { visibility: 'visible', 'pointer-events': 'auto' };
+// the border colors; from 22.1.0 caret-color (inherited, else auto, under
+// any color-scheme; black box, 22.1.0, 23.2.0, 24.1.3, 25.0.1, 26.1.0,
+// 27.4.0 and 28.1.0; '' in 20.0.3 and 21.1.2).
+const LEGACY_INHERITED = { visibility: 'visible', 'pointer-events': 'auto', 'caret-color': 'auto' };
 const BORDER_COLOR = /^border-(top|right|bottom|left)-color$/;
+// The logical ones too (black box, 22.1.0 to 28.1.0).
+const LOGICAL_BORDER_COLOR = /^border-(block|inline)-(start|end)-color$/;
 
 function legacyDefault(element, name) {
   if (name === 'display') return element[S].doc[S].window[S].compat.jsdom >= 27 ? 'inline' : '';
-  // From jsdom 27 (black box, 27.4.0 and 28.1.0) caret-color, whose
-  // CSS-wide keywords it resolves (KEYWORD_RESOLVED), is inherited, else
-  // auto, under any color-scheme.
-  if (name === 'caret-color' && element[S].doc[S].window[S].compat.jsdom >= 27) {
-    const parent = inheritParent(element);
-    return parent ? computedValue(parent, name) : 'auto';
-  }
   if (name === 'color' || name in LEGACY_INHERITED) {
+    if (name === 'caret-color' && element[S].doc[S].window[S].compat.computedColors === 'declared') return '';
     const parent = inheritParent(element);
     if (parent) return computedValue(parent, name);
     if (name !== 'color') return LEGACY_INHERITED[name];
@@ -1539,7 +1624,7 @@ function legacyDefault(element, name) {
   // jsdom before 22.1.0: '' (compat.computedColors).
   if (name === 'background-color')
     return element[S].doc[S].window[S].compat.computedColors === 'declared' ? '' : 'rgba(0, 0, 0, 0)';
-  if (BORDER_COLOR.test(name))
+  if (BORDER_COLOR.test(name) || LOGICAL_BORDER_COLOR.test(name))
     return element[S].doc[S].window[S].compat.computedColors === 'declared' ? '' : computedValue(element, 'color');
   return '';
 }
@@ -1552,12 +1637,14 @@ function legacyDefault(element, name) {
 // nothing were declared, but to '' for display (jsdom 20 keeps it too, and
 // jsdom 28.1 to 29.0.1). From jsdom 27, display: initial and unset compute
 // to inline.
-// Except, from jsdom 27 (black box, every release 27.0.0 to 29.0.1), for
-// the properties it computes: color, background-color, the border colors,
-// caret-color, display, pointer-events and visibility compute inherit,
-// initial and unset as CSS defines them (color: initial is CanvasText
-// under the element's color-scheme, border-top-color: inherit the
-// parent's border-top-color, display: inherit the parent's display).
+// Except, from jsdom 27 (black box, 27.4.0 and 28.1.0), for the
+// properties it computes: color, background-color, the border colors
+// (logical ones too), caret-color, display, pointer-events and visibility
+// compute inherit, initial and unset as CSS defines them (color: initial
+// is CanvasText under the element's color-scheme, border-top-color:
+// inherit the parent's computed border-top-color, the parent's color where
+// it declares none, display: inherit the parent's display), and
+// outline-color computes inherit only (legacyOutlineInherit).
 const declaredComputed = (element) => element[S].doc[S].window[S].compat.legacyComputedStyle;
 const KEYWORD_RESOLVED = new Set([
   'color',
@@ -1573,6 +1660,15 @@ const KEYWORD_RESOLVED = new Set([
 const keywordResolved = (compat, name, value) =>
   compat.jsdom >= 27 && KEYWORD_RESOLVED.has(name) && RESOLVED_KEYWORDS.has(value.toLowerCase());
 const legacyUnset = (element, value) => value === 'unset' && element[S].doc[S].window[S].compat.unsetUndeclared;
+
+// outline-color, from jsdom 27 (black box, 27.4.0 and 28.1.0): inherit
+// computes to the parent's computed value, or stays inherit where that is
+// '' (a parent without outline-color) or there is no parent; initial and
+// unset stay as declared (unset to '', as undeclared).
+function legacyOutlineInherit(element, value) {
+  const parent = inheritParent(element);
+  return (parent !== null && computedValue(parent, 'outline-color')) || value;
+}
 
 // The HTML standard's rendering section sets `direction` from the
 // directionality on elements with a dir attribute, bdi and
@@ -1620,10 +1716,14 @@ function longhandValue(element, name, data, custom, compat, value) {
     }
     if (name === 'display' && compat.jsdom >= 27 && (value === 'initial' || value === 'unset')) return 'inline';
     // From jsdom 27 the properties it computes resolve inherit, initial
-    // and unset (keywordResolved).
+    // and unset (keywordResolved), outline-color inherit.
     if (legacyUnset(element, value) && !keywordResolved(compat, name, value))
       return custom || name === 'display' ? '' : legacyDefault(element, name);
-    if (!custom && CSS_WIDE.has(value) && !keywordResolved(compat, name, value)) return value;
+    if (!custom && CSS_WIDE.has(value) && !keywordResolved(compat, name, value)) {
+      return name === 'outline-color' && compat.jsdom >= 27 && value === 'inherit'
+        ? legacyOutlineInherit(element, value)
+        : value;
+    }
   }
   if (value === undefined && name === 'direction' && uaDirection(element)) return directionality(element);
   // As in jsdom (20 to 30, black box): a value with var() is not
@@ -1784,9 +1884,9 @@ function composedLate(element, name) {
 // getComputedStyle(element).getPropertyValue(shorthand) in jsdom 29.0.2
 // and later (black box, 29.0.2 to 30.1.3): a shorthand jsdom does not
 // expand computes to its declared value (border-radius: var(--r) stays
-// var(--r)), to its keyword value (SHORTHAND_INITIALS) for inherit,
-// initial and unset, and to '' (from 30.1.3 its keyword value) when not
-// declared; its longhands are not set. Of those jsdom expands, padding,
+// var(--r)), to its keyword value (SHORTHAND_INITIALS) for initial and
+// unset, to the parent's value for inherit (below), and to '' (from
+// 30.1.3 its keyword value) when not declared; its longhands are not set. Of those jsdom expands, padding,
 // margin and the border ones compose their longhands; flex, background
 // and font are as declared (keyword values: flex 0 1 auto, background and
 // font 'see individual properties') until 30.1.3, from which flex and
@@ -1810,12 +1910,13 @@ function observedShorthand(element, name) {
   if (!expanded && compat.blankBorderShorthands && name.startsWith('border-')) return '';
   const own = cascaded(element, name);
   if (own !== undefined && !RESOLVED_KEYWORDS.has(own.toLowerCase())) return own;
-  // vertical-align (a shorthand in CSS Inline 3) inherits as a longhand
-  // (black box, 29.0.2 to 30.1.3; the user agent sheet's td and tr), its
-  // initial value baseline when the parent does not declare it.
-  if (name === 'vertical-align' && own !== undefined && own.toLowerCase() === 'inherit') {
+  // inherit gives the parent's value (black box, 29.1.1 to 30.1.3:
+  // box-shadow, text-decoration, outline, column-rule, caret; vertical-align,
+  // a shorthand in CSS Inline 3, for the user agent sheet's td and tr), its
+  // keyword value when the parent does not declare it.
+  if (own !== undefined && own.toLowerCase() === 'inherit') {
     const parent = inheritParent(element);
-    if (parent !== null) return observedShorthand(parent, name) || 'baseline';
+    if (parent !== null) return observedShorthand(parent, name) || shorthandInitial(name, compat);
   }
   if (own === undefined && (expanded || !compat.shorthandInitials)) return '';
   return shorthandInitial(name, compat);

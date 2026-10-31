@@ -509,3 +509,137 @@ export const DARK_SYSTEM_COLORS = Object.assign(
   Object.create(null),
   Object.fromEntries(Object.entries(DARK_SYSTEM).map(([name, n]) => [name, fromHex(n)])),
 );
+
+// --- color-mix() (jsdom 29.0.2 and later) -----------------------------------------
+
+// Splits a function's arguments at top-level commas.
+function topLevelArgs(inner) {
+  const out = [];
+  let depth = 0,
+    start = 0;
+  for (let i = 0; i < inner.length; i++) {
+    const c = inner[i];
+    if (c === '(') depth++;
+    else if (c === ')') depth--;
+    else if (c === ',' && depth === 0) {
+      out.push(inner.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  out.push(inner.slice(start).trim());
+  return out;
+}
+
+const RGB_SERIALIZED = /^rgba?\(([^,]+), ([^,]+), ([^,)]+)(?:, ([^)]+))?\)$/;
+// color(srgb r g b / alpha) as jsdom reads it inside color-mix() (black
+// box, 29.1.1, 30.1.2, 30.1.3): numbers or percentages (100% is 1), the
+// slash with or without spaces, channels kept outside 0 to 1, the alpha
+// clamped to 0 to 1. none and calc() are not modeled (left as declared).
+// A number's digit groups cannot overlap (\d+(?:\.\d*)? or \.\d+), so a
+// long malformed one is rejected in linear time.
+const NUMBER = '[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:e[+-]?\\d+)?';
+const SRGB_COMPONENT = `(${NUMBER}%?)`;
+const COLOR_FUNCTION = new RegExp(
+  `^color\\(\\s*srgb\\s+${SRGB_COMPONENT}\\s+${SRGB_COMPONENT}\\s+${SRGB_COMPONENT}(?:\\s*\\/\\s*${SRGB_COMPONENT})?\\s*\\)$`,
+  'i',
+);
+const srgbComponent = (text) => (text.endsWith('%') ? Number(text.slice(0, -1)) / 100 : Number(text));
+
+// A computed color as [r, g, b, alpha] in sRGB (channels 0 to 1 but
+// color()'s, which may fall outside), or null. depth: the number of
+// color-mix() it is nested in.
+function colorChannels(text, current, rawAlpha, depth) {
+  const lower = text.toLowerCase();
+  let resolved;
+  if (lower === 'currentcolor') resolved = current();
+  else if (lower.startsWith('color-mix(')) resolved = mixColor(text, current, rawAlpha, depth);
+  else resolved = lower.startsWith('color(') ? text : resolveColor(text);
+  if (resolved == null || resolved === false) return null;
+  let channels;
+  const rgb = RGB_SERIALIZED.exec(resolved);
+  if (rgb !== null) {
+    channels = [rgb[1], rgb[2], rgb[3]].map((c) => Number(c) / 255);
+    channels.push(rgb[4] === undefined ? 1 : Number(rgb[4]));
+  } else {
+    const fn = COLOR_FUNCTION.exec(resolved);
+    if (fn === null) return null;
+    channels = [fn[1], fn[2], fn[3], fn[4] ?? '1'].map(srgbComponent);
+    channels[3] = Math.min(1, Math.max(0, channels[3]));
+  }
+  // Not finite (NaN, or an overflowing 1e999): left as declared.
+  return channels.every(Number.isFinite) ? channels : null;
+}
+
+// A color-mix() argument: a color and an optional percentage, in either
+// order. Split at the last (or first) whitespace rather than by a regular
+// expression around the color, which backtracks quadratically on a long
+// run of whitespace.
+const PERCENTAGE = new RegExp(`^(${NUMBER})%$`, 'i');
+const isSpace = (c) => c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
+function mixArgument(text) {
+  let i = text.length - 1;
+  while (i >= 0 && !isSpace(text[i])) i--;
+  if (i > 0) {
+    const m = PERCENTAGE.exec(text.slice(i + 1));
+    if (m !== null) return [text.slice(0, i).trimEnd(), Number(m[1])];
+  }
+  i = 0;
+  while (i < text.length && !isSpace(text[i])) i++;
+  if (i < text.length) {
+    const n = PERCENTAGE.exec(text.slice(0, i));
+    if (n !== null) return [text.slice(i).trimStart(), Number(n[1])];
+  }
+  return [text, null];
+}
+
+const sixDigits = (v) => String(Number(v.toPrecision(6)));
+
+// The computed value of color-mix(in srgb, ...) as jsdom gives it (black
+// box, 29.1.1, 30.1.2, 30.1.3): color(srgb r g b),
+// channels to 6 significant digits, mixed premultiplied by alpha, with
+// / alpha when not opaque. The weights are the percentages over their sum
+// (a missing one 100% less the other, both missing 50%); when they add up
+// to less than 100% the alpha is multiplied by their sum. jsdom 29 rounds
+// the mixed alpha to 3 decimals (toFixed: 0.6665 is 0.666) before that
+// multiplier, jsdom 30 does not (color-mix(in srgb, blue 33.3333%, red)
+// has the alpha 0.9999999999999999 there). null for other color spaces
+// (srgb-linear, oklab, hsl, ...: jsdom's conversions are not modeled),
+// left as declared, and anything not understood; false for a mix jsdom
+// cannot compute either (not two colors, a percentage out of 0 to 100,
+// both 0%), which it computes to transparent where it keeps the
+// declaration (text-shadow: color-mix(in srgb, blue 0%, red 0%) 1px 1px).
+// current: the currentcolor's computed value. A mix nested in 39 others
+// is left as declared (null), so a deeply nested value cannot overflow
+// the stack; jsdom 30 rejects a declaration nested 40 deep (black box,
+// 30.1.2, 30.1.3).
+const MIX_DEPTH = 39;
+export function mixColor(token, current, rawAlpha, depth = 0) {
+  const open = token.indexOf('(');
+  if (!token.endsWith(')') || depth >= MIX_DEPTH) return null;
+  const args = topLevelArgs(token.slice(open + 1, -1));
+  if (args.length !== 3) return false;
+  if (!/^in\s+srgb$/i.test(args[0])) return null;
+  const [text1, given1] = mixArgument(args[1]);
+  const [text2, given2] = mixArgument(args[2]);
+  let p1 = given1,
+    p2 = given2;
+  if (p1 === null && p2 === null) p1 = p2 = 50;
+  else if (p1 === null) p1 = 100 - p2;
+  else if (p2 === null) p2 = 100 - p1;
+  if (p1 < 0 || p2 < 0 || p1 > 100 || p2 > 100) return false;
+  const sum = p1 + p2;
+  if (sum === 0) return false;
+  const c1 = colorChannels(text1, current, rawAlpha, depth + 1);
+  const c2 = colorChannels(text2, current, rawAlpha, depth + 1);
+  if (c1 === null || c2 === null) return null;
+  const w1 = p1 / sum,
+    w2 = p2 / sum;
+  const alpha = c1[3] * w1 + c2[3] * w2;
+  const channels = [0, 1, 2].map((i) =>
+    alpha === 0 ? c1[i] * w1 + c2[i] * w2 : (c1[i] * c1[3] * w1 + c2[i] * c2[3] * w2) / alpha,
+  );
+  let a = rawAlpha ? alpha : Number(alpha.toFixed(3));
+  if (sum < 100) a *= p1 / 100 + p2 / 100;
+  const body = `srgb ${channels.map(sixDigits).join(' ')}`;
+  return a === 1 ? `color(${body})` : `color(${body} / ${a})`;
+}
