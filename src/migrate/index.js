@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { packageDir, packageVersion, findConfig, findVitestWorkspace } from '../compare/detect.js';
 import { isWarpdomEnvironment } from '../compare/wrappers.js';
+import { vitestProjects, selects } from './projects.js';
 import { analyze, tokenize, lineIndex, leadingComments, moduleSpecifiers, typeOnlyReference } from './js.js';
 import { applyEdits, replaceLiteral, editDependencies, editCatalog, catalogEntries } from './edits.js';
 import {
@@ -145,25 +146,29 @@ const MENTION = /jsdom|happy-?dom/i;
 class MigrateError extends Error {}
 
 const unique = (xs) => [...new Set(xs)];
-// Whether the options beside an environment property (prop, of analysis a)
-// name the jsdom version warpdom behaves like: environmentOptions.warpdom.jsdom
+// Whether the options of a config object (frame, of analysis a: the one
+// holding an environment property, or a project's test options) name the
+// jsdom version warpdom behaves like: environmentOptions.warpdom.jsdom
 // (Vitest), testEnvironmentOptions.jsdom (Jest). warpdom then follows that
 // version, not the installed jsdom; a null or undefined value does not
 // (warpdom then falls back to the installed jsdom).
-const namesJsdomVersion = (a, prop, runner) => {
-  const objectOf = (frame, key) => {
-    const q = frame && a.properties.find((x) => x.frame === frame && x.key === key);
+// jsdomOption: true when they name one, false when the option is there but
+// null or undefined, undefined when it is not there.
+const jsdomOption = (a, frame, runner) => {
+  const objectOf = (f, key) => {
+    const q = f && a.properties.find((x) => x.frame === f && x.key === key);
     return q ? a.objects.find((o) => o.open === q.valueStart) : null;
   };
-  let options = objectOf(prop.frame, runner === 'vitest' ? 'environmentOptions' : 'testEnvironmentOptions');
+  let options = objectOf(frame, runner === 'vitest' ? 'environmentOptions' : 'testEnvironmentOptions');
   if (runner === 'vitest') options = objectOf(options, 'warpdom');
   const q = options && a.properties.find((x) => x.frame === options && x.key === 'jsdom');
-  if (!q) return false;
+  if (!q) return undefined;
   const t = a.tokens[q.valueStart];
   const nullish =
     t?.type === 'ident' && (t.value === 'null' || t.value === 'undefined') && q.valueEnd - q.valueStart === 1;
   return !nullish;
 };
+const namesJsdomVersion = (a, frame, runner) => jsdomOption(a, frame, runner) === true;
 const majorOf = (v) => {
   const m = /(\d+)(?:\.\d+)?/.exec(String(v ?? ''));
   return m ? Number(m[1]) : null;
@@ -1009,7 +1014,7 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
         const runner = m[1] === 'vitest' ? 'vitest' : (runnerOf(owner, 'jest') ?? 'jest');
         const start = c.start + m.index + m[0].length - value.length;
         if (value === 'warpdom') {
-          uses.push({ file: f.rel, runner });
+          uses.push({ file: f.rel, runner, comment: true, line: lineIndex(text).lineOf(start) });
           continue;
         }
         if (!ALL_DOM.has(value)) continue;
@@ -1420,6 +1425,91 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       source: `through jest-environment-jsdom ${used.version}${installed || locked ? '' : `, which depends on jsdom ${version}`}`,
     };
   };
+  // The Vitest projects that run a test file (#200), as Vitest picks them:
+  // the config Vitest finds where it runs (the file's package, the nearest
+  // config from there up), then its inline projects whose root, include
+  // and exclude select the file (or the config itself when it has none).
+  // Each { frames, where }: a project whose options do not name a jsdom
+  // version, and the config objects a pin reaching it may sit in (its test
+  // options, and the root config's when it inherits them). null when
+  // migrate cannot tell (a workspace file or projects named by glob, a
+  // --config or --root in a script, a config between the file and its
+  // package that a run from there would use, globs or options it cannot
+  // read, no project selecting it, an answer that depends on a Vitest
+  // version or run directory migrate cannot establish).
+  const commentProjects = (fileRel) => {
+    const owner = ownerOf(fileRel);
+    const scripts = chainOf(owner).flatMap((p) => Object.values(p.json.scripts ?? {}));
+    if (scripts.some((x) => typeof x === 'string' && /\bvitest\b[^&|;]*\s(--config|-c|--root|-r)[\s=]/.test(x)))
+      return null;
+    const configIn = (d) => {
+      const abs = path.join(cwd, d);
+      return findVitestWorkspace(abs) ? false : findConfig(abs, 'vitest');
+    };
+    // A config nearer the file than its package: Vitest uses it only when
+    // run from there.
+    for (let d = posix(path.dirname(fileRel)); d !== '.' && d !== owner.rel; d = posix(path.dirname(d)))
+      if (configIn(d) !== null) return null;
+    let config = null;
+    for (let d = owner.rel || '.'; ; d = posix(path.dirname(d))) {
+      config = configIn(d);
+      if (config !== null || d === '.') break;
+    }
+    if (!config) return null;
+    const configRel = rel(config);
+    const a = analysisOf(configRel);
+    if (!a) return null;
+    const configDir = path.dirname(config);
+    // The Vitest major: installed or locked, else a declared range only
+    // when it stays within one major (^3.2.0, ~3.2.0, 3.x, 3.2.1; not
+    // >=3.2.0 or ^3.2.0 || ^4.0.0, which a fresh install may meet with a
+    // newer major); null for every major it may be.
+    const vitestPkg = chainOf(owner).find((p) => declared(p, 'vitest'));
+    const used = vitestPkg && usedVersion(vitestPkg, 'vitest', vitestPkg.json[declared(vitestPkg, 'vitest')].vitest);
+    const one = /^\s*[\^~=v]?\s*(\d+)(?:\.(?:\d+|[xX*])){0,2}(?:-[\w.]+)?\s*$/;
+    let major = null;
+    if (used)
+      major = used.how === 'declared' ? Number(one.exec(used.version)?.[1] ?? NaN) || null : majorOf(used.version);
+    // Vitest runs in the package's directory, or (a config above it) maybe
+    // in the config's own.
+    const bases = unique(['', posix(path.relative(configDir, owner.dir))]);
+    const answers = [];
+    for (const m of major === null ? [3, 4, 5] : [major])
+      for (const base of bases) answers.push(projectsFor(a, configRel, configDir, fileRel, m, base));
+    const keyOf = (out) => JSON.stringify(out?.map((p) => [p.where, p.frames.map((f) => f.open)]) ?? null);
+    return answers.every((x) => keyOf(x) === keyOf(answers[0])) ? answers[0] : null;
+  };
+  const projectsFor = (a, configRel, configDir, fileRel, major, base) => {
+    const found = vitestProjects(a, { major, base });
+    if (!found) return null;
+    let selected = found.projects;
+    if (found.inline) {
+      selected = [];
+      for (const p of found.projects) {
+        if (!p.include || !p.exclude) return null;
+        const file = posix(path.relative(path.join(configDir, p.dir), path.join(cwd, fileRel)));
+        const s = selects(file, p.include, p.exclude);
+        if (s === null) return null;
+        if (s) selected.push(p);
+      }
+      if (!selected.length) return null;
+    }
+    const out = [];
+    for (const p of selected) {
+      // Its own environmentOptions.warpdom.jsdom, else the root config's
+      // when it inherits them (deep-merged).
+      const own = p.frame ? jsdomOption(a, p.frame, 'vitest') : undefined;
+      if (own === true) continue;
+      const inherited = p.parent ? jsdomOption(a, p.parent, 'vitest') : undefined;
+      if (inherited === true && own === undefined) continue;
+      if (inherited === true) return null; // its own null over the root's version
+      const where = p.frame
+        ? `${configRel}:${lineIndex(textOf(configRel)).lineOf(a.tokens[p.keyToken].start)}`
+        : configRel;
+      out.push({ frames: [p.frame, own === undefined && p.parent].filter(Boolean), where });
+    }
+    return out;
+  };
   // The DOMs the tests ran on before the migration, from the environments
   // changed (configs, projects, comments, flags), per package (the one a
   // pin for them goes to, targetOf) and runner: a DOM package merely
@@ -1440,16 +1530,61 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
   // changed here was happy-dom (#185).
   // Not those in fixtures (migrate does not change them), nor a config's
   // environment whose options name a jsdom version (warpdom follows that).
+  // A file that picks warpdom (or jsdom) with a @vitest-environment comment
+  // takes the options of the project that runs it (#200): one whose options
+  // name a jsdom version does not follow the installed jsdom, and a pin
+  // next to another project's environment does not reach it.
   const onWarpdom = new Set();
-  const followers = []; // config environments on warpdom that follow the installed jsdom
+  // Environments already on warpdom (in a config, or a comment's projects)
+  // that follow the installed jsdom: { pkg, runner, frames, where, file }
+  // (frames: the config objects a pin reaching it may sit in; file: the
+  // commented test file, null for a config environment).
+  const followers = [];
+  // Commented files whose project migrate cannot tell, per package and
+  // runner: ['file:line', ...].
+  const uncertain = new Map();
+  // Packages and runners with a test that surely follows the installed
+  // jsdom (not only commented files whose project migrate cannot tell).
+  const definite = new Set();
+  const commented = (file, line, runner, pkg) => {
+    const key = `${pkg.rel}\0${runner}`;
+    const projects = commentProjects(file);
+    if (projects === null) {
+      if (!uncertain.has(key)) uncertain.set(key, []);
+      uncertain.get(key).push(`${file}:${line}`);
+      return true;
+    }
+    for (const p of projects)
+      followers.push({ pkg, runner, frames: p.frames, where: p.where, file: `${file}:${line}` });
+    if (projects.length) definite.add(key);
+    return projects.length > 0;
+  };
   for (const u of uses) {
     if (!u.runner || otherOf(u.file) || FIXTURE_DIR.test(u.file)) continue;
-    if (u.prop && namesJsdomVersion(u.a, u.prop, u.runner)) continue;
+    if (u.prop && namesJsdomVersion(u.a, u.prop.frame, u.runner)) continue;
     const pkg = targetOf(u.file, u.runner);
     const key = `${pkg.rel}\0${u.runner}`;
+    // Every project that runs the file names its own jsdom version.
+    if (u.comment && u.runner === 'vitest' && !commented(u.file, u.line, u.runner, pkg)) continue;
     onWarpdom.add(key);
     ran(key, 'jsdom');
-    if (u.prop) followers.push({ ...u, pkg });
+    if (!u.comment || u.runner !== 'vitest') definite.add(key);
+    if (u.prop) {
+      const where = `${u.file}:${lineIndex(textOf(u.file)).lineOf(u.a.tokens[u.prop.keyToken].start)}`;
+      followers.push({ pkg, runner: u.runner, frames: [u.prop.frame], where, file: null });
+      definite.add(key);
+    }
+  }
+  // Files moved from jsdom by their comment ran on the installed jsdom too:
+  // the pin has to reach their project as well. Other environments moved
+  // from jsdom follow it unless their options name a version.
+  for (const e of edits) {
+    if (e.pin || e.renamed || !e.from || /happy/.test(e.from) || !e.runner) continue;
+    const pkg = targetOf(e.file, e.runner);
+    if (e.runner === 'vitest' && e.kind === '@vitest-environment comment') {
+      if (e.from === 'jsdom') commented(e.file, e.line, e.runner, pkg);
+    } else if (!(e.meta?.prop && namesJsdomVersion(e.meta.a, e.meta.prop.frame, e.runner)))
+      definite.add(`${pkg.rel}\0${e.runner}`);
   }
   // Unknown (no environment of that runner changed here, e.g. one already
   // on warpdom): assumed, as before.
@@ -1635,16 +1770,41 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
     }
     // An environment already on warpdom in another project (an inline
     // Vitest project, a Jest project) follows the installed jsdom too, and
-    // the pin next to the changed environment does not reach it (#185).
+    // the pin next to the changed environment does not reach it (#185);
+    // nor does it reach the project of a commented file (#200).
+    const unpin = (key, entry) => {
+      if (!unpinned.has(key)) unpinned.set(key, []);
+      unpinned.get(key).push(entry);
+    };
+    const byProject = new Map(); // project where -> { key, pin, where, files }
     for (const u of followers) {
       const key = `${u.pkg.rel}\0${u.runner}`;
       const pin = pins.get(key);
-      if (!pin || !pinned.has(key) || pinnedFrames.has(u.prop.frame)) continue;
-      const where = `${u.file}:${lineIndex(textOf(u.file)).lineOf(u.a.tokens[u.prop.keyToken].start)}`;
-      if (!unpinned.has(key)) unpinned.set(key, []);
-      unpinned.get(key).push(where);
+      if (!pin || !pinned.has(key) || u.frames.some((f) => pinnedFrames.has(f))) continue;
+      if (u.file === null) {
+        unpin(key, `${u.where} (already warpdom)`);
+        result.profile.push(
+          `${pin.base}. ${u.where}: this environment, already warpdom, is not pinned: add ${pin.option} next to it by hand to keep ${pin.named}'s behavior.`,
+        );
+        continue;
+      }
+      const id = `${key}\0${u.where}`;
+      if (!byProject.has(id)) byProject.set(id, { key, pin, where: u.where, files: [] });
+      if (!byProject.get(id).files.includes(u.file)) byProject.get(id).files.push(u.file);
+    }
+    for (const { key, pin, where, files } of byProject.values()) {
+      unpin(key, `${files.join(', ')} (its @vitest-environment comment; project at ${where})`);
       result.profile.push(
-        `${pin.base}. ${where}: this environment, already warpdom, is not pinned: add ${pin.option} next to it by hand to keep ${pin.named}'s behavior.`,
+        `${pin.base}. ${files.join(', ')}: ${files.length > 1 ? 'these files run' : 'this file runs'} on warpdom by ${files.length > 1 ? 'their' : 'its'} @vitest-environment comment, in the project at ${where}, which is not pinned: add ${pin.option} to that project's test options by hand to keep ${pin.named}'s behavior.`,
+      );
+    }
+    // Commented files whose project migrate cannot tell: one note.
+    // (Also when no pin was placed: the project may name a version.)
+    for (const [key, files] of uncertain) {
+      const pin = pins.get(key);
+      if (!pin) continue;
+      result.profile.push(
+        `${pin.base}. ${files.join(', ')}: migrate cannot tell which Vitest project runs ${files.length > 1 ? 'these files' : 'this file'} (${files.length > 1 ? 'their' : 'its'} @vitest-environment comment picks the environment, the project's options pick the jsdom version): unless that project's test options already name a jsdom version or get the pin, add ${pin.option} there by hand to keep ${pin.named}'s behavior.`,
       );
     }
     applyAll();
@@ -1688,8 +1848,11 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
     let same;
     if (pin?.where && pin.runner === runner) {
       const missing = unpinned.get(`${before.decl.rel}\0${runner}`);
-      after = `jsdom ${pin.version}${pin.cssstyle ? ` + cssstyle ${pin.cssstyle}` : ''}, pinned at ${pin.where}${missing ? `; not at ${missing.join(', ')} (already warpdom), which follows jsdom ${DEFAULT_PROFILE[runner]} once ${oldName} is removed unless pinned by hand` : ''}`;
-      same = !missing;
+      const unknown = uncertain.get(`${before.decl.rel}\0${runner}`);
+      after = `jsdom ${pin.version}${pin.cssstyle ? ` + cssstyle ${pin.cssstyle}` : ''}, pinned at ${pin.where}${missing ? `; not at ${missing.join(', ')}, which follows jsdom ${DEFAULT_PROFILE[runner]} once ${oldName} is removed unless pinned by hand` : ''}${unknown ? `; unknown for ${unknown.join(', ')} (migrate cannot tell which project runs ${unknown.length > 1 ? 'them' : 'it'})` : ''}`;
+      // Not kept where the pin does not reach; unknown where migrate cannot
+      // tell the project.
+      same = !missing && (unknown ? null : true);
     } else if (stays) {
       after =
         runner === 'vitest'
@@ -1705,6 +1868,13 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
         ? sameAsDefault(runner, before.version) &&
           !(before.cssstyle && cssstyleChangesProfile(before.version, before.cssstyle))
         : null;
+      // The only tests that follow the installed jsdom are commented files
+      // whose project migrate cannot tell: their project may name a version.
+      const unknown = before && uncertain.get(`${before.decl.rel}\0${runner}`);
+      if (same === false && unknown && !definite.has(`${before.decl.rel}\0${runner}`)) {
+        after += `; unknown for ${unknown.join(', ')} (migrate cannot tell which project runs ${unknown.length > 1 ? 'them' : 'it'}, nor whether its options name a jsdom version)`;
+        same = null;
+      }
     }
     result.profiles.push({ package: pkg.file, runner, before: beforeText, after, same });
   }
