@@ -342,7 +342,7 @@ for (const jsdom of [27, 28, 29, 30])
     jsdom,
   });
 
-// caret-color, which jsdom 27 to 29.0.1 resolve the CSS-wide keywords of
+// caret-color, which jsdom 27 resolves the CSS-wide keywords of
 // (black box, 27.4.0 and 28.1.0): inherited, auto when no ancestor
 // declares it, whatever the color-scheme.
 function caretColors(w) {
@@ -746,6 +746,273 @@ parity('computed values: inherited currentcolor through border shorthands (jsdom
     '<b style="color: yellow; border-top: inherit"></b></span></p></div>';
   return [...d.querySelectorAll('*')].map((el) => read(w, el, ['border-top-color', 'border-left-color']));
 });
+
+// --- other color properties (#199) ----------------------------------------------
+
+// jsdom 22.1 to 28 resolve the colors of color, background-color, the
+// border colors, outline-color and caret-color only (fill: red, stroke,
+// flood-color, text-shadow, accent-color and scrollbar-color stay as
+// declared); caret-color is inherited, else auto. From 29.0.2 a property
+// that holds colors computes from its first component: a color alone
+// (scrollbar-color: red blue, text-shadow: blue 1px 1px), another keyword
+// transparent (caret-color: auto, stroke: none, text-shadow: none), else
+// as declared (text-shadow: 1px 1px currentcolor).
+const OTHER_COLOR_PROPS = [
+  'caret-color',
+  'accent-color',
+  'stroke',
+  'fill',
+  'text-shadow',
+  'scrollbar-color',
+  'flood-color',
+  'stop-color',
+  'text-decoration-color',
+];
+function otherColors(w) {
+  const d = w.document;
+  d.body.innerHTML =
+    '<div style="color: blue; caret-color: red; accent-color: red; scrollbar-color: red blue; text-shadow: 1px 1px Blue"><p id="inherited"></p></div>' +
+    '<p id="keywords" style="color: red; caret-color: auto; accent-color: auto; stroke: none; fill: none; text-shadow: none; scrollbar-color: auto"></p>' +
+    '<p id="colors" style="color: red; stroke: red; fill: context-fill; flood-color: #00f; stop-color: currentcolor; text-decoration-color: currentcolor; text-shadow: blue 1px 1px; scrollbar-color: currentcolor red"></p>' +
+    '<p id="lists" style="color: red; text-shadow: 1px 1px blue, 2px 2px CurrentColor; stroke: url(#x) blue; fill: url(#x) red; scrollbar-color: transparent red"></p>' +
+    '<p id="initial"></p>';
+  const out = {};
+  for (const el of d.querySelectorAll('[id]')) out[el.id] = read(w, el, OTHER_COLOR_PROPS);
+  return out;
+}
+for (const jsdom of JSDOMS)
+  parity(`computed values: other color properties (jsdom ${jsdom}, #199)`, otherColors, { jsdom });
+
+// jsdom 27 and 28 compute inherit, initial and unset for color,
+// background-color, the border colors, caret-color, visibility,
+// pointer-events and display, and inherit for outline-color (the
+// parent's computed value: a border color it does not declare is its own
+// color); other properties keep the keyword, as before 27.
+const KEYWORD_PROPS = [
+  'color',
+  'background-color',
+  'border-top-color',
+  'border-block-start-color',
+  'outline-color',
+  'caret-color',
+  'visibility',
+  'pointer-events',
+  'display',
+  'fill',
+  'padding-top',
+];
+function colorKeywords(w) {
+  const d = w.document;
+  const all = (keyword) => KEYWORD_PROPS.map((p) => `${p}: ${keyword}`).join('; ');
+  d.body.innerHTML =
+    '<div style="color: blue; border-top-color: green; border-block-start-color: lime; outline-color: lime; caret-color: red; background-color: yellow; visibility: hidden; pointer-events: none; display: flex; fill: red; padding-top: 2px">' +
+    `<p id="inherit" style="${all('inherit')}"></p><p id="unset" style="${all('unset')}"></p></div>` +
+    `<div style="color: green"><p id="initial" style="${all('initial')}; color: red"></p></div>` +
+    '<div style="color: green"><span style="color: blue; border-top-color: inherit"><p id="chain" style="color: red; border-top-color: inherit"></p></span></div>' +
+    '<div style="color: green"><p id="undeclared" style="color: red; border-top-color: inherit; outline-color: inherit; caret-color: inherit; background-color: inherit"></p></div>';
+  const out = {};
+  for (const el of d.querySelectorAll('[id]')) out[el.id] = read(w, el, KEYWORD_PROPS);
+  return out;
+}
+// jsdom 20 computes color: inherit and unset to '' (not modeled).
+for (const jsdom of JSDOMS.filter((v) => v !== 20))
+  parity(`computed values: CSS-wide keywords of colors (jsdom ${jsdom}, #199)`, colorKeywords, { jsdom });
+
+// The keywords where the element has no parent or the parent declares no
+// value. From jsdom 27 outline-color: inherit gives the parent's computed
+// value (through a chain of inherit too), inherit where that is '' (no
+// outline-color declared up the chain; the outline shorthand on the parent
+// gives '' too) or there is no parent; outline-color: initial stays, unset is ''. The
+// other properties jsdom 27 computes resolve the keywords on the root and
+// on a detached element too, unset in 27.4.0 as in 28.1.0.
+const ROOT_KEYWORD_PROPS = [
+  'color',
+  'background-color',
+  'border-top-color',
+  'outline-color',
+  'caret-color',
+  'visibility',
+];
+function keywordsWithoutParent(w) {
+  const d = w.document;
+  const out = {};
+  for (const keyword of ['inherit', 'initial', 'unset']) {
+    const all = ROOT_KEYWORD_PROPS.map((p) => `${p}: ${keyword}`).join('; ');
+    d.documentElement.setAttribute('style', all);
+    out[`root ${keyword}`] = read(w, d.documentElement, ROOT_KEYWORD_PROPS).concat(read(w, d.body, ROOT_KEYWORD_PROPS));
+    d.documentElement.removeAttribute('style');
+    const detached = d.createElement('div');
+    detached.setAttribute('style', all);
+    out[`detached ${keyword}`] = read(w, detached, ROOT_KEYWORD_PROPS);
+    d.body.innerHTML =
+      `<div style="color: green"><p id="bare" style="${all}"></p></div>` +
+      `<div style="outline: 1px solid blue"><p id="shorthand" style="${all}"></p></div>` +
+      `<div style="color: green"><span style="outline-color: inherit"><p id="chain" style="${all}"></p></span></div>` +
+      `<div style="outline-color: blue"><span style="outline-color: inherit"><p id="declared" style="${all}"></p></span></div>`;
+    for (const el of d.querySelectorAll('[id]')) out[`${el.id} ${keyword}`] = read(w, el, ROOT_KEYWORD_PROPS);
+  }
+  return out;
+}
+for (const jsdom of JSDOMS.filter((v) => v !== 20))
+  parity(`computed values: CSS-wide keywords without a parent value (jsdom ${jsdom}, #199)`, keywordsWithoutParent, {
+    jsdom,
+  });
+
+// jsdom 29.0.2 and later compute color-mix() in srgb to color(srgb r g b
+// / a): premultiplied, channels to 6 significant digits; jsdom 29 rounds
+// the alpha to 3 decimals, 30 does not. A color(srgb ...) argument takes
+// percentages, a slash without spaces, channels outside 0 to 1 and an
+// alpha clamped to 0 to 1. Other color spaces, none and calc() are not
+// modeled (jsdom computes them; they stay as declared here).
+const MIXES = [
+  'color-mix(in srgb, currentcolor 50%, red)',
+  'color-mix(in srgb, blue 25%, red)',
+  'COLOR-MIX(IN SRGB, Blue, Red)',
+  'color-mix(in srgb, blue 30%, red 30%)',
+  'color-mix(in srgb, blue 60%, red 60%)',
+  'color-mix(in srgb, blue 33.3333%, red)',
+  'color-mix(in srgb, blue, transparent 66.6667%)',
+  'color-mix(in srgb, rgb(0 0 255 / 0.333333), red)',
+  'color-mix(in srgb, rgb(1 2 3 / 0.5), rgb(200 100 50 / 0.25))',
+  'color-mix(in srgb, #123456 33%, #abcdef)',
+  'color-mix(in srgb, hsl(120 50% 50%), red)',
+  'color-mix(in srgb, color-mix(in srgb, blue, red), white)',
+  'color-mix(in srgb, blue, color(srgb 0.1 0.2 0.3))',
+  'color-mix(in srgb, color(srgb 1 0 0/0.5), blue)',
+  'color-mix(in srgb, color(srgb 100% 0% 0% / 50%), blue)',
+  'color-mix(in srgb, color(srgb 1 0 0 / 2), blue)',
+  'color-mix(in srgb, color(srgb 1 0 0 / -1), blue)',
+  'color-mix(in srgb, color(srgb 150% -10% 0%), blue)',
+  'color-mix(in srgb, COLOR( SRGB 1e2% .5 +0/1e-1 ), blue)',
+  'color-mix(in srgb, transparent, transparent)',
+  'color-mix(in srgb, blue 99.99999%, red)',
+  'color-mix(in srgb, blue, var(--x))',
+];
+for (const jsdom of [29, 30])
+  parity(
+    `computed values: color-mix() (jsdom ${jsdom}, #199)`,
+    (w) => {
+      const d = w.document;
+      d.body.innerHTML = '<div><p></p></div>';
+      const p = d.querySelector('p');
+      return MIXES.map((mix) => {
+        p.setAttribute('style', `color: blue; border-top-color: ${mix}; background-color: ${mix}`);
+        p.parentNode.setAttribute('style', `color: ${mix.replace('currentcolor', 'green')}`);
+        const cs = w.getComputedStyle(p);
+        return `${mix} | ${cs.borderTopColor} | ${cs.backgroundColor} | ${w.getComputedStyle(p.parentNode).color}`;
+      });
+    },
+    { jsdom },
+  );
+
+// A property that holds colors computes color-mix() as its first
+// component to that color alone, whatever follows (text-shadow:
+// color-mix(...) 1px 1px, scrollbar-color: color-mix(...) green); a mix
+// it cannot compute (0% and 0%, three colors) gives transparent; a var() anywhere, or
+// color-mix() after another component, keeps the value as declared
+// (black box, 27.4.0 to 30.1.3; 27 and 28 keep every one as declared).
+const FIRST_MIXES = [
+  ['text-shadow', 'color-mix(in srgb, blue, red) 1px 1px'],
+  ['text-shadow', 'color-mix(in srgb, currentcolor 25%, red) 1px 1px 2px, red 2px 2px'],
+  ['text-shadow', 'COLOR-MIX(in srgb, blue, red)1px 1px'],
+  ['text-shadow', 'color-mix(in srgb, blue 0%, red 0%) 1px 1px'],
+  ['text-shadow', 'color-mix(in srgb, blue, red, green) 1px 1px'],
+  ['text-shadow', 'color-mix(in srgb, blue, red) 1px 1px var(--a)'],
+  ['text-shadow', '1px 1px color-mix(in srgb, blue, red)'],
+  ['scrollbar-color', 'color-mix(in srgb, blue, red) green'],
+  ['scrollbar-color', 'color-mix(in srgb, blue, red) var(--a)'],
+  ['scrollbar-color', 'color-mix(in srgb, var(--a), red) green'],
+  ['scrollbar-color', 'green color-mix(in srgb, blue, red)'],
+  ['stroke', 'color-mix(in srgb, blue 25%, red)'],
+  ['fill', 'url(#x) color-mix(in srgb, blue, red)'],
+  ['caret-color', 'color-mix(in srgb, blue, red)'],
+];
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `computed values: color-mix() followed by other components (jsdom ${jsdom}, #199)`,
+    (w) => {
+      const d = w.document;
+      d.body.innerHTML = '<div style="color: lime"><p></p></div>';
+      const p = d.querySelector('p');
+      return FIRST_MIXES.map(([prop, value]) => {
+        p.setAttribute('style', `${prop}: ${value}`);
+        return `${prop}: ${value} | ${p.style.getPropertyValue(prop)} | ${w.getComputedStyle(p).getPropertyValue(prop)}`;
+      });
+    },
+    { jsdom },
+  );
+
+// A color-mix() nested 40 deep or more is left as declared rather than
+// overflowing the stack (2000 deep threw a RangeError); jsdom 30 rejects
+// such a declaration.
+test('computed values: a deeply nested color-mix() does not throw (#199)', () => {
+  const w = createWindow({ jsdom: '30.1.3' });
+  const p = w.document.createElement('p');
+  w.document.body.append(p);
+  const nested = (depth) => 'color-mix(in srgb, '.repeat(depth) + 'red' + ', blue)'.repeat(depth);
+  p.style.backgroundColor = nested(39);
+  assert.match(w.getComputedStyle(p).backgroundColor, /^color\(srgb /);
+  for (const depth of [40, 2000]) {
+    p.style.backgroundColor = nested(depth);
+    assert.equal(w.getComputedStyle(p).backgroundColor, nested(depth));
+  }
+});
+
+// currentcolor is resolved once per mix: a chain of
+// color: color-mix(in srgb, currentcolor, currentcolor) resolved each
+// parent's color twice per level (2^n work).
+test('computed values: a chain of currentcolor mixes is linear (#199)', () => {
+  const w = createWindow({ jsdom: '30.1.3' });
+  let el = w.document.body;
+  el.style.color = 'rgb(255, 0, 0)';
+  for (let i = 0; i < 40; i++) {
+    el = el.appendChild(w.document.createElement('span'));
+    el.style.color = 'color-mix(in srgb, currentcolor, currentcolor)';
+  }
+  const start = performance.now();
+  assert.equal(w.getComputedStyle(el).color, 'color(srgb 1 0 0)');
+  assert.ok(performance.now() - start < 1000);
+});
+
+// Carriage return and form feed separate components as other whitespace
+// does (jsdom 29.1.1 and 30.1.3: text-shadow: blue\f1px 1px computes to
+// rgb(0, 0, 255)). A color() channel that overflows to Infinity is left
+// as declared (jsdom 29 and 30 throw a TypeError on setting it).
+test('computed values: CR and FF separate color components; an infinite channel is left as declared (#199)', () => {
+  const w = createWindow({ jsdom: '30.1.3' });
+  const p = w.document.createElement('p');
+  w.document.body.append(p);
+  for (const separator of ['\f', '\r']) {
+    p.style.textShadow = `blue${separator}1px 1px`;
+    assert.equal(w.getComputedStyle(p).textShadow, 'rgb(0, 0, 255)');
+  }
+  const infinite = 'color-mix(in srgb, color(srgb 1e999 0 0) 0%, red)';
+  p.style.backgroundColor = infinite;
+  assert.equal(w.getComputedStyle(p).backgroundColor, infinite);
+});
+
+// jsdom 29.0.2 and later: a shorthand it does not expand declared inherit
+// computes to the parent's value (its keyword value when the parent does
+// not declare it), at any depth.
+const INHERITED_SHORTHANDS = ['box-shadow', 'text-decoration', 'outline', 'column-rule', 'caret', 'vertical-align'];
+for (const jsdom of [29, 30])
+  parity(
+    `computed values: shorthands declared inherit (jsdom ${jsdom}, #199)`,
+    (w) => {
+      const d = w.document;
+      const inherit = INHERITED_SHORTHANDS.map((s) => `${s}: inherit`).join('; ');
+      d.head.innerHTML = `<style>.i { ${inherit} }</style>`;
+      d.body.innerHTML =
+        '<div style="box-shadow: 1px 1px red; text-decoration: underline red; outline: 1px solid red; column-rule: 2px dotted blue; caret: red; vertical-align: top">' +
+        `<p id="child" class="i"><span id="grandchild" style="${inherit}"></span></p></div>` +
+        '<div style="box-shadow: none; text-decoration: none"><p id="none" class="i"></p></div>' +
+        '<div><p id="undeclared" class="i"></p></div>';
+      const out = {};
+      for (const el of d.querySelectorAll('[id]')) out[el.id] = read(w, el, INHERITED_SHORTHANDS);
+      return out;
+    },
+    { jsdom },
+  );
 
 // --- lengths, font sizes and weights (jsdom 30) -------------------------------------
 
