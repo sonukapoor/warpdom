@@ -1877,9 +1877,9 @@ function composedLate(element, name) {
 // getComputedStyle(element).getPropertyValue(shorthand) in jsdom 29.0.2
 // and later (black box, 29.0.2 to 30.1.3): a shorthand jsdom does not
 // expand computes to its declared value (border-radius: var(--r) stays
-// var(--r)), to its keyword value (SHORTHAND_INITIALS) for inherit,
-// initial and unset, and to '' (from 30.1.3 its keyword value) when not
-// declared; its longhands are not set. Of those jsdom expands, padding,
+// var(--r)), to its keyword value (SHORTHAND_INITIALS) for initial and
+// unset, to the parent's value for inherit (below), and to '' (from
+// 30.1.3 its keyword value) when not declared; its longhands are not set. Of those jsdom expands, padding,
 // margin and the border ones compose their longhands; flex, background
 // and font are as declared (keyword values: flex 0 1 auto, background and
 // font 'see individual properties') until 30.1.3, from which flex and
