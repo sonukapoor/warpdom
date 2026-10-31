@@ -531,9 +531,19 @@ function topLevelArgs(inner) {
 }
 
 const RGB_SERIALIZED = /^rgba?\(([^,]+), ([^,]+), ([^,)]+)(?:, ([^)]+))?\)$/;
-const COLOR_FUNCTION = /^color\(srgb\s+(\S+)\s+(\S+)\s+(\S+)(?:\s*\/\s*(\S+))?\s*\)$/i;
+// color(srgb r g b / alpha) as jsdom reads it inside color-mix() (black
+// box, 29.1.1, 30.1.2, 30.1.3): numbers or percentages (100% is 1), the
+// slash with or without spaces, channels kept outside 0 to 1, the alpha
+// clamped to 0 to 1. none and calc() are not modeled (left as declared).
+const SRGB_COMPONENT = '([+-]?(?:\\d+\\.?\\d*|\\.\\d+)(?:e[+-]?\\d+)?%?)';
+const COLOR_FUNCTION = new RegExp(
+  `^color\\(\\s*srgb\\s+${SRGB_COMPONENT}\\s+${SRGB_COMPONENT}\\s+${SRGB_COMPONENT}(?:\\s*\\/\\s*${SRGB_COMPONENT})?\\s*\\)$`,
+  'i',
+);
+const srgbComponent = (text) => (text.endsWith('%') ? Number(text.slice(0, -1)) / 100 : Number(text));
 
-// A computed color as [r, g, b, alpha] in sRGB (channels 0 to 1), or null.
+// A computed color as [r, g, b, alpha] in sRGB (channels 0 to 1 but
+// color()'s, which may fall outside), or null.
 function colorChannels(text, current, rawAlpha) {
   const lower = text.toLowerCase();
   let resolved;
@@ -549,7 +559,8 @@ function colorChannels(text, current, rawAlpha) {
   } else {
     const fn = COLOR_FUNCTION.exec(resolved);
     if (fn === null) return null;
-    channels = [fn[1], fn[2], fn[3], fn[4] ?? '1'].map(Number);
+    channels = [fn[1], fn[2], fn[3], fn[4] ?? '1'].map(srgbComponent);
+    channels[3] = Math.min(1, Math.max(0, channels[3]));
   }
   return channels.some(Number.isNaN) ? null : channels;
 }

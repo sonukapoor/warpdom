@@ -860,8 +860,10 @@ for (const jsdom of JSDOMS.filter((v) => v !== 20))
 
 // jsdom 29.0.2 and later compute color-mix() in srgb to color(srgb r g b
 // / a): premultiplied, channels to 6 significant digits; jsdom 29 rounds
-// the alpha to 3 decimals, 30 does not. Other color spaces stay as declared
-// here (not modeled).
+// the alpha to 3 decimals, 30 does not. A color(srgb ...) argument takes
+// percentages, a slash without spaces, channels outside 0 to 1 and an
+// alpha clamped to 0 to 1. Other color spaces, none and calc() are not
+// modeled (jsdom computes them; they stay as declared here).
 const MIXES = [
   'color-mix(in srgb, currentcolor 50%, red)',
   'color-mix(in srgb, blue 25%, red)',
@@ -876,6 +878,12 @@ const MIXES = [
   'color-mix(in srgb, hsl(120 50% 50%), red)',
   'color-mix(in srgb, color-mix(in srgb, blue, red), white)',
   'color-mix(in srgb, blue, color(srgb 0.1 0.2 0.3))',
+  'color-mix(in srgb, color(srgb 1 0 0/0.5), blue)',
+  'color-mix(in srgb, color(srgb 100% 0% 0% / 50%), blue)',
+  'color-mix(in srgb, color(srgb 1 0 0 / 2), blue)',
+  'color-mix(in srgb, color(srgb 1 0 0 / -1), blue)',
+  'color-mix(in srgb, color(srgb 150% -10% 0%), blue)',
+  'color-mix(in srgb, COLOR( SRGB 1e2% .5 +0/1e-1 ), blue)',
   'color-mix(in srgb, transparent, transparent)',
   'color-mix(in srgb, blue 99.99999%, red)',
   'color-mix(in srgb, blue, var(--x))',
