@@ -897,6 +897,43 @@ for (const jsdom of [29, 30])
     { jsdom },
   );
 
+// A property that holds colors computes color-mix() as its first
+// component to that color alone, whatever follows (text-shadow:
+// color-mix(...) 1px 1px, scrollbar-color: color-mix(...) green); a mix
+// it cannot compute (0% and 0%, three colors) gives transparent; a var() anywhere, or
+// color-mix() after another component, keeps the value as declared
+// (black box, 27.4.0 to 30.1.3; 27 and 28 keep every one as declared).
+const FIRST_MIXES = [
+  ['text-shadow', 'color-mix(in srgb, blue, red) 1px 1px'],
+  ['text-shadow', 'color-mix(in srgb, currentcolor 25%, red) 1px 1px 2px, red 2px 2px'],
+  ['text-shadow', 'COLOR-MIX(in srgb, blue, red)1px 1px'],
+  ['text-shadow', 'color-mix(in srgb, blue 0%, red 0%) 1px 1px'],
+  ['text-shadow', 'color-mix(in srgb, blue, red, green) 1px 1px'],
+  ['text-shadow', 'color-mix(in srgb, blue, red) 1px 1px var(--a)'],
+  ['text-shadow', '1px 1px color-mix(in srgb, blue, red)'],
+  ['scrollbar-color', 'color-mix(in srgb, blue, red) green'],
+  ['scrollbar-color', 'color-mix(in srgb, blue, red) var(--a)'],
+  ['scrollbar-color', 'color-mix(in srgb, var(--a), red) green'],
+  ['scrollbar-color', 'green color-mix(in srgb, blue, red)'],
+  ['stroke', 'color-mix(in srgb, blue 25%, red)'],
+  ['fill', 'url(#x) color-mix(in srgb, blue, red)'],
+  ['caret-color', 'color-mix(in srgb, blue, red)'],
+];
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `computed values: color-mix() followed by other components (jsdom ${jsdom}, #199)`,
+    (w) => {
+      const d = w.document;
+      d.body.innerHTML = '<div style="color: lime"><p></p></div>';
+      const p = d.querySelector('p');
+      return FIRST_MIXES.map(([prop, value]) => {
+        p.setAttribute('style', `${prop}: ${value}`);
+        return `${prop}: ${value} | ${p.style.getPropertyValue(prop)} | ${w.getComputedStyle(p).getPropertyValue(prop)}`;
+      });
+    },
+    { jsdom },
+  );
+
 // jsdom 29.0.2 and later: a shorthand it does not expand declared inherit
 // computes to the parent's value (its keyword value when the parent does
 // not declare it), at any depth.

@@ -540,7 +540,7 @@ function colorChannels(text, current, rawAlpha) {
   if (lower === 'currentcolor') resolved = current();
   else if (lower.startsWith('color-mix(')) resolved = mixColor(text, current, rawAlpha);
   else resolved = lower.startsWith('color(') ? text : resolveColor(text);
-  if (resolved == null) return null;
+  if (resolved == null || resolved === false) return null;
   let channels;
   const rgb = RGB_SERIALIZED.exec(resolved);
   if (rgb !== null) {
@@ -575,13 +575,16 @@ const sixDigits = (v) => String(Number(v.toPrecision(6)));
 // multiplier, jsdom 30 does not (color-mix(in srgb, blue 33.3333%, red)
 // has the alpha 0.9999999999999999 there). null for other color spaces
 // (srgb-linear, oklab, hsl, ...: jsdom's conversions are not modeled),
-// left as declared, and anything not understood.
+// left as declared, and anything not understood; false for a mix jsdom
+// cannot compute either (not two colors, a percentage out of 0 to 100,
+// both 0%), which it computes to transparent where it keeps the
+// declaration (text-shadow: color-mix(in srgb, blue 0%, red 0%) 1px 1px).
 // current: the currentcolor's computed value.
 export function mixColor(token, current, rawAlpha) {
   const open = token.indexOf('(');
   if (!token.endsWith(')')) return null;
   const args = topLevelArgs(token.slice(open + 1, -1));
-  if (args.length !== 3) return null;
+  if (args.length !== 3) return false;
   if (!/^in\s+srgb$/i.test(args[0])) return null;
   const [text1, given1] = mixArgument(args[1]);
   const [text2, given2] = mixArgument(args[2]);
@@ -590,9 +593,9 @@ export function mixColor(token, current, rawAlpha) {
   if (p1 === null && p2 === null) p1 = p2 = 50;
   else if (p1 === null) p1 = 100 - p2;
   else if (p2 === null) p2 = 100 - p1;
-  if (p1 < 0 || p2 < 0 || p1 > 100 || p2 > 100) return null;
+  if (p1 < 0 || p2 < 0 || p1 > 100 || p2 > 100) return false;
   const sum = p1 + p2;
-  if (sum === 0) return null;
+  if (sum === 0) return false;
   const c1 = colorChannels(text1, current, rawAlpha);
   const c2 = colorChannels(text2, current, rawAlpha);
   if (c1 === null || c2 === null) return null;

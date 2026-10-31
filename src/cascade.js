@@ -1114,6 +1114,17 @@ function firstComponent(value) {
   return value;
 }
 
+// The index of the parenthesis that closes a value's first one, or -1.
+function closingParen(value) {
+  let depth = 0;
+  for (let i = value.indexOf('('); i >= 0 && i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    if (c === 40) depth++;
+    else if (c === 41 && --depth === 0) return i;
+  }
+  return -1;
+}
+
 // jsdom 29.0.2 and later (black box, 29.1.1 to 30.1.3) compute a property
 // that holds colors from its first component: a color gives that color
 // alone (scrollbar-color: red blue gives rgb(255, 0, 0), text-shadow: red
@@ -1121,7 +1132,10 @@ function firstComponent(value) {
 // auto, stroke and fill none or context-stroke, text-shadow none,
 // scrollbar-color auto: rgba(0, 0, 0, 0)), anything else the value as
 // declared (text-shadow: 1px 1px currentcolor, fill: url(#x) red).
-// color-mix() in srgb is computed (colors.js mixColor).
+// color-mix() in srgb is computed (colors.js mixColor), alone or followed
+// by other components (text-shadow: color-mix(in srgb, blue, red) 1px 1px
+// gives the mix alone, a mix it cannot compute transparent); a var()
+// anywhere in the value keeps it as declared.
 function resolvedColorValue(element, name, value, data, compat) {
   const token = firstComponent(value);
   const lower = token.toLowerCase();
@@ -1129,12 +1143,13 @@ function resolvedColorValue(element, name, value, data, compat) {
   if (lower === 'currentcolor')
     color = name === 'color' ? inheritedValue(element, 'color', data) : currentColor(element);
   else if (lower.startsWith('color-mix(')) {
-    // The whole value: color-mix() has spaces and commas.
-    if (value.endsWith(')') && !lower.includes('var(')) {
-      const current = () => (name === 'color' ? inheritedValue(element, 'color', data) : currentColor(element));
-      return mixColor(value, current, compat.jsdom >= 30) ?? value;
-    }
-    return value;
+    // The function alone: what follows it need not start with a space
+    // (color-mix(in srgb, blue, red)1px 1px).
+    const end = closingParen(token);
+    if (end < 0 || value.toLowerCase().includes('var(')) return value;
+    const current = () => (name === 'color' ? inheritedValue(element, 'color', data) : currentColor(element));
+    const mixed = mixColor(token.slice(0, end + 1), current, compat.jsdom >= 30);
+    return mixed === false ? 'rgba(0, 0, 0, 0)' : (mixed ?? value);
   } else {
     // From jsdom 27 a system color takes its dark value where the
     // computed color-scheme is exactly 'dark' (not 'light dark' or
