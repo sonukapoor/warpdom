@@ -1101,15 +1101,15 @@ const LEGACY_RESOLVED_COLORS = new Set([
   'caret-color',
 ]);
 const IDENTIFIER = /^-?[a-z_][a-z0-9_-]*$/;
-// A value's first component: up to the first space or comma outside
-// parentheses.
+// A value's first component: up to the first whitespace (space, tab,
+// newline, carriage return, form feed) or comma outside parentheses.
 function firstComponent(value) {
   let depth = 0;
   for (let i = 0; i < value.length; i++) {
     const c = value.charCodeAt(i);
     if (c === 40) depth++;
     else if (c === 41) depth--;
-    else if (depth === 0 && (c === 32 || c === 44 || c === 9 || c === 10)) return value.slice(0, i);
+    else if (depth === 0 && (c === 32 || c === 44 || (c >= 9 && c <= 13 && c !== 11))) return value.slice(0, i);
   }
   return value;
 }
@@ -1147,7 +1147,12 @@ function resolvedColorValue(element, name, value, data, compat) {
     // (color-mix(in srgb, blue, red)1px 1px).
     const end = closingParen(token);
     if (end < 0 || value.toLowerCase().includes('var(')) return value;
-    const current = () => (name === 'color' ? inheritedValue(element, 'color', data) : currentColor(element));
+    // currentcolor resolved once per mix, and only if the mix names it (a
+    // chain of currentcolor mixes would otherwise resolve each parent's
+    // color twice per level).
+    let currentValue;
+    const current = () =>
+      (currentValue ??= name === 'color' ? inheritedValue(element, 'color', data) : currentColor(element));
     const mixed = mixColor(token.slice(0, end + 1), current, compat.jsdom >= 30);
     return mixed === false ? 'rgba(0, 0, 0, 0)' : (mixed ?? value);
   } else {

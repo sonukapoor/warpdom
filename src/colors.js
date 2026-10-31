@@ -566,7 +566,8 @@ function colorChannels(text, current, rawAlpha, depth) {
     channels = [fn[1], fn[2], fn[3], fn[4] ?? '1'].map(srgbComponent);
     channels[3] = Math.min(1, Math.max(0, channels[3]));
   }
-  return channels.some(Number.isNaN) ? null : channels;
+  // Not finite (NaN, or an overflowing 1e999): left as declared.
+  return channels.every(Number.isFinite) ? channels : null;
 }
 
 // A color-mix() argument: a color and an optional percentage, in either

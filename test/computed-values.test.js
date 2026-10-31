@@ -958,6 +958,39 @@ test('computed values: a deeply nested color-mix() does not throw (#199)', () =>
   }
 });
 
+// currentcolor is resolved once per mix: a chain of
+// color: color-mix(in srgb, currentcolor, currentcolor) resolved each
+// parent's color twice per level (2^n work).
+test('computed values: a chain of currentcolor mixes is linear (#199)', () => {
+  const w = createWindow({ jsdom: '30.1.3' });
+  let el = w.document.body;
+  el.style.color = 'rgb(255, 0, 0)';
+  for (let i = 0; i < 40; i++) {
+    el = el.appendChild(w.document.createElement('span'));
+    el.style.color = 'color-mix(in srgb, currentcolor, currentcolor)';
+  }
+  const start = performance.now();
+  assert.equal(w.getComputedStyle(el).color, 'color(srgb 1 0 0)');
+  assert.ok(performance.now() - start < 1000);
+});
+
+// Carriage return and form feed separate components as other whitespace
+// does (jsdom 29.1.1 and 30.1.3: text-shadow: blue\f1px 1px computes to
+// rgb(0, 0, 255)). A color() channel that overflows to Infinity is left
+// as declared (jsdom 29 and 30 throw a TypeError on setting it).
+test('computed values: CR and FF separate color components; an infinite channel is left as declared (#199)', () => {
+  const w = createWindow({ jsdom: '30.1.3' });
+  const p = w.document.createElement('p');
+  w.document.body.append(p);
+  for (const separator of ['\f', '\r']) {
+    p.style.textShadow = `blue${separator}1px 1px`;
+    assert.equal(w.getComputedStyle(p).textShadow, 'rgb(0, 0, 255)');
+  }
+  const infinite = 'color-mix(in srgb, color(srgb 1e999 0 0) 0%, red)';
+  p.style.backgroundColor = infinite;
+  assert.equal(w.getComputedStyle(p).backgroundColor, infinite);
+});
+
 // jsdom 29.0.2 and later: a shorthand it does not expand declared inherit
 // computes to the parent's value (its keyword value when the parent does
 // not declare it), at any depth.
