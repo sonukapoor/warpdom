@@ -405,6 +405,20 @@ const keptMoveScenario = (w) => {
   B.body.appendChild(B.createElement('p'));
   B.body.appendChild(a);
   out.push(wb.getComputedStyle(a).color);
+  // A shadow host moved there too: its shadow trees, a nested one included,
+  // move to that document and compute with its rules; from jsdom 30.1.2
+  // their own sheets apply as well (#204).
+  const host = A.body.appendChild(A.createElement('section'));
+  const shadow = host.attachShadow({ mode: 'open' });
+  shadow.innerHTML = '<style>div { color: navy; background-color: navy }</style><div></div><p></p>';
+  const nested = shadow.lastChild.attachShadow({ mode: 'open' });
+  nested.innerHTML = '<style>div { color: olive; background-color: olive }</style><div></div>';
+  const inner = [shadow.children[1], nested.lastChild];
+  const read = (win, el) => [win.getComputedStyle(el).color, win.getComputedStyle(el).backgroundColor];
+  out.push(...inner.map((el) => read(w, el)));
+  B.body.appendChild(host);
+  out.push(...inner.map((el) => [...read(wb, el), el.ownerDocument === B]));
+  out.push(B.styleSheets.length);
   return out;
 };
 for (const jsdom of [22, 25, 29, 30])
