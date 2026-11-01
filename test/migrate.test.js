@@ -2479,3 +2479,29 @@ test('migrate (#221, review): files moved from jsdom by their comment, as their 
   assert.deepEqual(r.same, [false]);
   assert.match(r.notes, /packages\/app\/b\/y\.spec\.js:1: this file ran on jsdom 30\.1\.2 .*follows jsdom 26\.1\.0/);
 });
+
+test('migrate (#221): a sub-package on warpdom under a root that declares jsdom reads its own commented files', async () => {
+  // The root declares jsdom, packages/app warpdom: the profile is
+  // packages/app's, and so are its commented files. a/x.spec.js is on
+  // warpdom by its comment in a project whose options migrate cannot read
+  // (they may name a jsdom version): unknown, as in a single package.
+  const config = (extra = '') =>
+    `const opts = {};\nexport default {\n  test: {\n    projects: [\n      { test: { name: 'a', environment: 'node', include: ['a/**'], environmentOptions: opts } },\n      { test: { name: 'b', environment: 'node', include: ['b/**'], environmentOptions: { warpdom: { jsdom: '25.0.1' } } } },${extra}\n    ],\n  },\n};\n`;
+  const files = (extra) => ({
+    'package.json': `{\n  "private": true,\n  "workspaces": ["packages/*"],\n  "devDependencies": {\n    "jsdom": "^25.0.1",\n    "vitest": "^5.0.0"\n  }\n}\n`,
+    'packages/app/package.json': `{\n  "name": "app",\n  "private": true,\n  "devDependencies": {\n    "warpdom": "^${VERSION}"\n  }\n}\n`,
+    'packages/app/vitest.config.js': config(extra),
+    'packages/app/a/x.spec.js': warpdomComment,
+    'packages/app/b/y.spec.js': "// @vitest-environment jsdom\nimport { test } from 'vitest';\n",
+  });
+  await tempProject(files(), async (dir) => {
+    const { same, after } = await profileOf(dir);
+    assert.deepEqual(same, [null]);
+    assert.match(after, /unknown for packages\/app\/a\/x\.spec\.js:1/);
+  });
+  // A test that surely follows the installed jsdom: not kept.
+  await tempProject(files("\n      { test: { name: 'c', environment: 'jsdom', include: ['c/**'] } },"), async (dir) => {
+    const { same } = await profileOf(dir);
+    assert.deepEqual(same, [false]);
+  });
+});

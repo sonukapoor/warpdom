@@ -1922,14 +1922,17 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       : runner === 'jest'
         ? "the jsdom of Jest's own jest-environment-jsdom (not declared)"
         : 'a jsdom Vitest resolves itself (not declared)';
+    // unpinned, uncertain and definite are keyed like changedEnvs (the
+    // package migrate edits, targetOf); pins by the package jsdom is
+    // removed from.
     const pin = before ? pins.get(`${before.decl.rel}\0${runner}`) : null;
     const oldName = runner === 'vitest' ? 'jsdom' : 'jest-environment-jsdom';
     const stays = before && !removals.get(before.decl.rel)?.some((r) => r.name === oldName);
     let after;
     let same;
     if (pin?.where && pin.runner === runner) {
-      const missing = unpinned.get(`${before.decl.rel}\0${runner}`);
-      const unknown = uncertain.get(`${before.decl.rel}\0${runner}`);
+      const missing = unpinned.get(key);
+      const unknown = uncertain.get(key);
       after = `jsdom ${pin.version}${pin.cssstyle ? ` + cssstyle ${pin.cssstyle}` : ''}, pinned at ${pin.where}${missing ? `; not at ${missing.join(', ')}, which follows jsdom ${DEFAULT_PROFILE[runner]} once ${oldName} is removed unless pinned by hand` : ''}${unknown ? `; unknown for ${unknown.join(', ')} (migrate cannot tell which project runs ${unknown.length > 1 ? 'them' : 'it'})` : ''}`;
       // Not kept where the pin does not reach; unknown where migrate cannot
       // tell the project.
@@ -1951,16 +1954,15 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
         : null;
       // The only tests that follow the installed jsdom are commented files
       // whose project migrate cannot tell: their project may name a version.
-      const unknown = before && uncertain.get(`${before.decl.rel}\0${runner}`);
-      if (same === false && unknown && !definite.has(`${before.decl.rel}\0${runner}`)) {
+      const unknown = before && uncertain.get(key);
+      if (same === false && unknown && !definite.has(key)) {
         after += `; unknown for ${unknown.join(', ')} (migrate cannot tell which project runs ${unknown.length > 1 ? 'them' : 'it'}, nor whether its options name a jsdom version)`;
         same = null;
       }
     }
     // Files moved from jsdom by their comment into a project that names
     // another jsdom version (#221): migrate leaves that option as it is,
-    // and reports the change. Keyed like changedEnvs (the package migrate
-    // edits), not by where jsdom is declared.
+    // and reports the change.
     const ranOn = before?.version
       ? `jsdom ${before.version}${before.cssstyle ? ` + cssstyle ${before.cssstyle}` : ''}`
       : 'the installed jsdom';
