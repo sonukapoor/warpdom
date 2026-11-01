@@ -180,11 +180,18 @@ was 3-8% slower than the drop-in on 5 of 11 tuning suites).
   before the stub (#201: a setup file's import defines `innerHeight` as
   900, the setup file stubs it as 500; unstubbing gives 900, and the
   reset put 500 back). `warpdom/vitest/reset` wraps `vi.stubGlobal` and
-  `vi.spyOn` (on the global) to record the member's descriptor when
-  Vitest takes it as the mock's original between a reset and the mark:
-  the first stub since `vi.unstubAllGlobals`, a spy of a member no spy
-  replaces (a setup that undoes a stub, imports such a module, and stubs
-  again restores to the module's value). What the file's
+  `vi.spyOn` (on the global) to record, between a reset and the mark,
+  the member's descriptor before the first mock that replaces it: a
+  mock of a member another mock replaced (a spy of a stub, spies on
+  both accessors) keeps that original, and a mock after the setup undid
+  the earlier ones takes the member as it is then (a setup that undoes
+  a stub, imports such a module, and stubs again restores to the
+  module's value). Not covered: what Vitest's own cleanup does not put
+  back. Vitest 4 and 5's `vi.restoreAllMocks` leaves the getter spy when
+  both accessors of one member are spied on (measured: 4.1.12, 5.0.3),
+  and the reset then puts the file's spies back; Vitest 3's restores a
+  spy restored before (`mockRestore()`) again, to the member before
+  that spy (measured: 3.2.4). What the file's
   setup files and imports set stays:
   without isolation a module loads once per worker, so a global it sets
   (a polyfill, a test helper's `global.ResizeObserver = ...`) would be

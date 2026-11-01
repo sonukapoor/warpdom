@@ -462,12 +462,14 @@ test("setup again on the same global (Vitest 3): the reset removes the previous 
   const global = {};
   const afterReset = [];
   // vi.stubGlobal and vi.unstubAllGlobals (Vitest 3.2.4's), one vi per
-  // worker; warpdom/vitest/reset wraps stubGlobal to report the key (#201).
+  // worker; warpdom/vitest/reset wraps stubGlobal to report the mock (#201).
   const stubs = new Map();
   const stubGlobal = (key, value) => {
-    global[Symbol.for('warpdom.vitest.mocking')](key);
-    if (!stubs.has(key)) stubs.set(key, Object.getOwnPropertyDescriptor(global, key));
+    const before = Object.getOwnPropertyDescriptor(global, key);
+    const kept = stubs.has(key);
+    if (!kept) stubs.set(key, before);
     Object.defineProperty(global, key, { value, writable: true, enumerable: true, configurable: true });
+    global[Symbol.for('warpdom.vitest.mocking')](key, before, Object.getOwnPropertyDescriptor(global, key), kept);
   };
   const unstubAllGlobals = () => {
     for (const [key, original] of stubs)

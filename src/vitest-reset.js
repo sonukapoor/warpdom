@@ -15,32 +15,36 @@ vi.unstubAllGlobals();
 vi.unstubAllEnvs();
 // What a global was before the setup mocked it, where Vitest's cleanup puts
 // it back: a module loaded once may have changed it before (#201). The
-// wrappers report when Vitest takes the member's descriptor as the mock's
-// original: a stub of a key not stubbed since vi.unstubAllGlobals (Vitest's
-// own list of stubs, per worker as vi is), a spy of a member no spy
-// replaces (vi.spyOn returns the existing spy). vi is wrapped once.
+// wrappers report each mock of a global's key with its descriptors before
+// and after, and whether Vitest keeps an earlier stub's original (a stub of
+// a key stubbed since vi.unstubAllGlobals: Vitest's own list of stubs, per
+// worker as vi is). vi is wrapped once.
 const WRAPPED = Symbol.for('warpdom.vitest.wrapped');
 if (!vi[WRAPPED]) {
-  const mocking = (key, original) => globalThis[Symbol.for('warpdom.vitest.mocking')]?.(key, original);
   const { stubGlobal, unstubAllGlobals, spyOn } = vi;
+  const mock = (key, kept, call) => {
+    const before = Object.getOwnPropertyDescriptor(globalThis, key);
+    const result = call();
+    globalThis[Symbol.for('warpdom.vitest.mocking')]?.(
+      key,
+      before,
+      Object.getOwnPropertyDescriptor(globalThis, key),
+      kept,
+    );
+    return result;
+  };
   const stubbed = new Set();
   vi.stubGlobal = (name, value) => {
-    mocking(name, !stubbed.has(name));
+    const kept = stubbed.has(name);
     stubbed.add(name);
-    return stubGlobal(name, value);
+    return mock(name, kept, () => stubGlobal(name, value));
   };
   vi.unstubAllGlobals = () => {
     stubbed.clear();
     return unstubAllGlobals();
   };
-  vi.spyOn = (object, key, ...rest) => {
-    if (object === globalThis) {
-      const descriptor = Object.getOwnPropertyDescriptor(object, key);
-      const replaced = descriptor && (rest[0] ? descriptor[rest[0]] : (descriptor.value ?? descriptor.get));
-      mocking(key, !vi.isMockFunction(replaced));
-    }
-    return spyOn(object, key, ...rest);
-  };
+  vi.spyOn = (object, key, ...rest) =>
+    object === globalThis ? mock(key, false, () => spyOn(object, key, ...rest)) : spyOn(object, key, ...rest);
   vi[WRAPPED] = true;
 }
 const reset = globalThis[Symbol.for('warpdom.vitest.reset')];
