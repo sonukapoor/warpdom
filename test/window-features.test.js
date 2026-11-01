@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createWindow } from '../src/index.js';
 import { parity } from './parity.js';
+import { S } from '../src/internal.js';
 
 test('requestAnimationFrame runs callbacks with a timestamp; cancelAnimationFrame stops them', async () => {
   const w = createWindow();
@@ -1179,10 +1180,17 @@ test('window: a locked interface assigned before its first read is not made (#16
   const w = createWindow();
   for (const name of ['MutationObserver', 'CSSStyleProperties'])
     Object.defineProperty(w, name, { configurable: false });
+  // The prototypes stay accessors (made on first use) throughout.
+  const unmade = () =>
+    ['MutationObserver', 'CSSStyleProperties'].map(
+      (name) => typeof Object.getOwnPropertyDescriptor(w[S].protos, name)?.get,
+    );
+  assert.deepEqual(unmade(), ['function', 'function']);
   w.MutationObserver = 1;
   const mock = function CSSStyleProperties() {};
   w.CSSStyleProperties = mock;
   assert.equal(w.CSSStyleProperties, mock);
   assert.equal(w.CSSStyleProperties, mock);
   assert.equal(w.MutationObserver, 1);
+  assert.deepEqual(unmade(), ['function', 'function']);
 });
