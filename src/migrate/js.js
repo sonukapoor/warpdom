@@ -317,7 +317,9 @@ const isKeyToken = (t) =>
 // sits. Options: json (every `{` is an object).
 //
 // properties: { key, path, keyToken, valueStart, valueEnd (token indexes,
-//   end exclusive), shorthand, frame }
+//   end exclusive), shorthand, frame, computed, keyEnd } (a computed key:
+//   its string when it is one string literal, ['x'], else '[computed]';
+//   keyToken is its `[` and keyEnd its `]`)
 // sites (per string token index): { type: 'value', prop } directly the
 //   value of a property (inside parentheses too), { type: 'element',
 //   path, index } an element of an array literal, { type: 'arg', callee,
@@ -462,10 +464,18 @@ export function analyze(source, { json = false } = {}) {
         if (closing.kind === 'computed') {
           const parent = frames[frames.length - 1];
           if (isPunct(tokens[k + 1], ':') && parent.kind === 'object') {
+            // ['include']: one string literal is that key; anything else
+            // is a key migrate cannot read.
+            const inner = k === closing.open + 2 ? tokens[closing.open + 1] : null;
+            const literal = inner && (inner.type === 'string' || inner.type === 'template') && inner.value !== null;
+            const key = literal ? inner.value : '[computed]';
             parent.prop = {
-              key: '[computed]',
-              path: [...parent.path, '[computed]'],
-              keyToken: k,
+              key,
+              path: [...parent.path, key],
+              computed: true,
+              // The key spans [keyToken, keyEnd]: its `[` to its `]`.
+              keyToken: closing.open,
+              keyEnd: k,
               valueStart: k + 2,
               valueEnd: null,
               shorthand: false,

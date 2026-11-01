@@ -1246,7 +1246,9 @@ test('migrate (#39): the cssstyle a removed jsdom loaded is pinned when it chang
   assert.equal(cssstyleChangesProfile('26.1.0', '4.6.0'), false);
   assert.equal(cssstyleChangesProfile('26.1.0', '4.2.0'), true);
   assert.equal(cssstyleChangesProfile('20.0.3', '2.3.0'), false);
-  assert.equal(cssstyleChangesProfile('27.2.0', '5.3.1'), true);
+  // jsdom 27.2.0 installs cssstyle ^5.3.3: 5.3.1 is its profile, 5.0 is not.
+  assert.equal(cssstyleChangesProfile('27.2.0', '5.3.1'), false);
+  assert.equal(cssstyleChangesProfile('27.2.0', '5.0.0'), true);
   assert.equal(cssstyleChangesProfile('28.1.0', '6.1.0'), false);
   assert.equal(cssstyleChangesProfile('30.1.2', '5.0.0'), false);
   await tempProject(
@@ -2189,5 +2191,433 @@ test('migrate (#200, review 2): a declared Vitest range spanning majors is not r
         assert.deepEqual(same, [null], vitest);
       },
     );
+  }
+});
+
+test('migrate projects (#221): computed keys and defineConfig callbacks as migrate reads them', () => {
+  // A computed key that is one string literal is that key; any other is
+  // unknown.
+  const keys = analyze("x = { ['include']: 1, [`dir`]: 2, [name]: 3, ['a' + 'b']: 4 };").properties.map((p) => p.key);
+  assert.deepEqual(keys, ['include', 'dir', '[computed]', '[computed]']);
+  const read = (text) => {
+    const r = vitestProjects(analyze(text));
+    return r && r.projects.map((p) => [p.dir, p.include]);
+  };
+  assert.deepEqual(read("export default { test: { projects: [{ test: { ['include']: ['a/**'] } }] } };\n"), [
+    ['', ['a/**']],
+  ]);
+  // A key migrate cannot read may be include, exclude, dir or projects.
+  for (const config of [
+    "const key = 'include';\nexport default { test: { projects: [{ test: { [key]: ['a/**'] } }] } };\n",
+    "const key = 'projects';\nexport default { test: { [key]: [{ test: { include: ['a/**'] } }] } };\n",
+    "const key = 'root';\nexport default { test: { environment: 'node' }, [key]: 'web' };\n",
+  ])
+    assert.equal(read(config), null, config);
+  // defineConfig's function: the object it returns, when it has one clear
+  // return; not an object it merely declares.
+  assert.equal(
+    read("export default defineConfig(() => {\n  const unused = { test: { include: ['a/**'] } };\n  return {};\n});\n"),
+    null,
+  );
+  for (const config of [
+    "export default defineConfig(({ mode }) => {\n  const x = mode;\n  return { test: { include: ['a/**'] } };\n});\n",
+    "export default defineConfig(async () => ({ test: { include: ['a/**'] } }));\n",
+    "export default defineConfig(function () {\n  return { test: { include: ['a/**'] } };\n});\n",
+  ])
+    assert.deepEqual(read(config), [['', ['a/**']]], config);
+  for (const config of [
+    // Two returns, or one inside a block: which object is the config depends
+    // on the run.
+    "export default defineConfig(({ mode }) => {\n  if (mode === 'a') return { test: { include: ['a/**'] } };\n  return { test: { include: ['b/**'] } };\n});\n",
+    "export default defineConfig(({ mode }) => {\n  if (mode === 'a') {\n    return { test: { include: ['a/**'] } };\n  }\n});\n",
+    "export default defineConfig(({ mode }) => {\n  if (mode === 'a') return { test: { include: ['a/**'] } };\n});\n",
+    "export default defineConfig(() => {\n  return { test: { include: ['a/**'] } };\n  unreachable();\n});\n",
+    // A returned variable or call.
+    "export default defineConfig(() => {\n  const config = { test: { include: ['a/**'] } };\n  return config;\n});\n",
+    "export default defineConfig(() => build({ test: { include: ['a/**'] } }));\n",
+  ])
+    assert.equal(read(config), null, config);
+});
+
+test('migrate (#221): a file moved from jsdom by its comment, in a project that names another jsdom version', async () => {
+  // b/y.spec.js ran on the installed jsdom 25.0.1 (its comment picked
+  // jsdom, which does not read environmentOptions.warpdom); once warpdom,
+  // it follows the 26.1.0 its project names. migrate leaves that option
+  // as it is and reports the change.
+  const config = (version) =>
+    `export default {\n  test: {\n    projects: [\n      { test: { name: 'a', environment: 'jsdom', include: ['a/**'] } },\n      { test: { name: 'b', environment: 'node', include: ['b/**'], environmentOptions: { warpdom: { jsdom: '${version}' } } } },\n    ],\n  },\n};\n`;
+  const files = (version) => ({
+    'package.json': pkg200(),
+    'vitest.config.js': config(version),
+    'b/y.spec.js': "// @vitest-environment jsdom\nimport { test } from 'vitest';\n",
+  });
+  await tempProject(files('26.1.0'), async (dir) => {
+    const before = read(dir, 'vitest.config.js');
+    const { notes, same, after } = await profileOf(dir);
+    assert.match(
+      notes,
+      /b\/y\.spec\.js:1: this file ran on jsdom 25\.0\.1 by its @vitest-environment jsdom comment; on warpdom it follows jsdom 26\.1\.0, which its project at vitest\.config\.js:5 names \(environmentOptions\.warpdom\.jsdom\)/,
+    );
+    assert.deepEqual(same, [false]);
+    assert.match(after, /jsdom 26\.1\.0 for b\/y\.spec\.js:1 \(named by its project at vitest\.config\.js:5\)/);
+    // migrate plans no change to the project's own option.
+    assert.equal(read(dir, 'vitest.config.js'), before);
+    const r = await run(dir, { apply: true });
+    assert.ok(!r.edits.some((e) => e.pin && e.line === 5), 'no pin in project b');
+    assert.match(read(dir, 'vitest.config.js'), /environmentOptions: \{ warpdom: \{ jsdom: '26\.1\.0' \} \}/);
+  });
+  // The version the file ran on: kept.
+  await tempProject(files('25.0.1'), async (dir) => {
+    const { notes, same } = await profileOf(dir);
+    assert.doesNotMatch(notes, /b\/y\.spec\.js/);
+    assert.deepEqual(same, [true]);
+  });
+  // A version the project names that migrate cannot read: unknown.
+  await tempProject(
+    { ...files('x'), 'vitest.config.js': `const v = '26.1.0';\n${config('x').replace("'x'", 'v')}` },
+    async (dir) => {
+      const { notes, same } = await profileOf(dir);
+      assert.match(notes, /b\/y\.spec\.js:1: migrate cannot tell which Vitest project runs this file/);
+      assert.deepEqual(same, [null]);
+    },
+  );
+});
+
+test('migrate (#221): environment options migrate cannot read make the project unknown', async () => {
+  // Vitest 5: project 'a' inherits the root config, whose environment gets
+  // the pin; its own options come from a variable whose jsdom: null would
+  // override the pin. migrate cannot read them, so it does not count the
+  // pin as reaching the file.
+  for (const options of [
+    'environmentOptions: opts',
+    'environmentOptions: { ...opts }',
+    'environmentOptions: { warpdom: opts }',
+    'environmentOptions: { [key]: opts.warpdom }',
+  ]) {
+    await tempProject(
+      {
+        'package.json': pkg200(),
+        'vitest.config.js': `const key = 'warpdom';\nconst opts = { warpdom: { jsdom: null } };\nexport default {\n  test: {\n    environment: 'jsdom',\n    projects: [{ test: { name: 'a', ${options} } }],\n  },\n};\n`,
+        'a.spec.js': warpdomComment,
+      },
+      async (dir) => {
+        const { notes, same } = await profileOf(dir);
+        assert.match(notes, /vitest\.config\.js:6: pinned jsdom 25\.0\.1/, options);
+        assert.match(notes, /a\.spec\.js:1: migrate cannot tell which Vitest project runs this file/, options);
+        assert.deepEqual(same, [null], options);
+      },
+    );
+  }
+});
+
+test('migrate (#221): computed keys are read when they are string literals, else the project is unknown', async () => {
+  // Project 'a' selects a/x.check.js only by its include (not by Vitest's
+  // default include); 'b' (pinned) selects every .js file.
+  const files = (a, extra = '') => ({
+    'package.json': pkg200(),
+    'vitest.config.js': `${extra}${twoProjects(a, "include: ['**/*.js']")}`,
+    'a/x.check.js': warpdomComment,
+  });
+  await tempProject(files("['include']: ['a/**']"), async (dir) => {
+    const { notes, same } = await profileOf(dir);
+    assert.match(notes, /a\/x\.check\.js:1: this file runs on warpdom .*vitest\.config\.js:4, which is not pinned/);
+    assert.deepEqual(same, [false]);
+  });
+  await tempProject(files("[key]: ['a/**']", "const key = 'include';\n"), async (dir) => {
+    const { notes, same } = await profileOf(dir);
+    assert.match(notes, /a\/x\.check\.js:1: migrate cannot tell which Vitest project runs this file/);
+    assert.deepEqual(same, [null]);
+  });
+});
+
+test('migrate (#221): defineConfig callbacks count only the object they return', async () => {
+  // unused's environment gets the pin, but Vitest runs with the {} the
+  // function returns: the pin does not reach x.spec.js's project. Another
+  // `test` object in the file keeps the answer unknown rather than kept.
+  await tempProject(
+    {
+      'package.json': pkg200(),
+      'vitest.config.js':
+        "import { defineConfig } from 'vitest/config';\nexport default defineConfig(() => {\n  const unused = { test: { environment: 'jsdom' } };\n  return {};\n});\n",
+      'x.spec.js': warpdomComment,
+    },
+    async (dir) => {
+      const { notes, same } = await profileOf(dir);
+      assert.match(notes, /vitest\.config\.js:3: pinned jsdom 25\.0\.1/);
+      assert.match(notes, /x\.spec\.js:1: migrate cannot tell which Vitest project runs this file/);
+      assert.deepEqual(same, [null]);
+    },
+  );
+  // The returned object is the config: its test options hold the pin.
+  await tempProject(
+    {
+      'package.json': pkg200(),
+      'vitest.config.js':
+        "import { defineConfig } from 'vitest/config';\nexport default defineConfig(({ mode }) => {\n  const name = mode;\n  return { test: { name, environment: 'jsdom' } };\n});\n",
+      'x.spec.js': warpdomComment,
+    },
+    async (dir) => {
+      const { notes, same } = await profileOf(dir);
+      assert.doesNotMatch(notes, /not pinned|cannot tell/);
+      assert.deepEqual(same, [true]);
+    },
+  );
+});
+
+test('migrate (#221, review): defineConfig(config) and computed keys renamed whole', async () => {
+  // defineConfig given a variable: the object literal it is declared as.
+  const config =
+    "import { defineConfig } from 'vitest/config';\nconst config = { test: { environment: 'jsdom', include: ['a/**'] } };\nexport default defineConfig(config);\n";
+  assert.deepEqual(
+    vitestProjects(analyze(config)).projects.map((p) => p.include),
+    [['a/**']],
+  );
+  // ['jsdom'] (and a computed first key) are edited bracket and all.
+  for (const [options, expected] of [
+    ["{ ['jsdom']: { url: 'http://localhost/app' } }", "{ warpdom: { jsdom: '25.0.1', url: 'http://localhost/app' } }"],
+    ["{ [`jsdom`]: { url: 'http://localhost/app' } }", "{ warpdom: { jsdom: '25.0.1', url: 'http://localhost/app' } }"],
+    ["{\n      ['other']: 1,\n    }", "{\n      warpdom: { jsdom: '25.0.1' },\n      ['other']: 1,\n    }"],
+    [
+      "{ warpdom: {\n      ['url']: 'http://x/',\n    } }",
+      "{ warpdom: {\n      jsdom: '25.0.1',\n      ['url']: 'http://x/',\n    } }",
+    ],
+  ]) {
+    await tempProject(
+      {
+        'package.json': pkg200(),
+        'vitest.config.js': `export default {\n  test: {\n    environment: 'jsdom',\n    environmentOptions: ${options},\n  },\n};\n`,
+        'x.spec.js': "import { test } from 'vitest';\n",
+      },
+      async (dir) => {
+        installed(dir, 'jsdom', { version: '25.0.1' });
+        await run(dir, { apply: true });
+        assert.equal(
+          read(dir, 'vitest.config.js'),
+          `export default {\n  test: {\n    environment: 'warpdom',\n    environmentOptions: ${expected},\n  },\n};\n`,
+          options,
+        );
+      },
+    );
+  }
+});
+
+test('migrate (#221, review): files moved from jsdom by their comment, as their projects decide', async () => {
+  const node = (options) =>
+    `{ test: { name: 'b', environment: 'node', include: ['b/**'], environmentOptions: ${options} } }`;
+  const config = (options, head = '') =>
+    `${head}export default {\n  test: {\n    projects: [\n      { test: { name: 'a', environment: 'jsdom', include: ['a/**'] } },\n      ${node(options)},\n    ],\n  },\n};\n`;
+  // The profile migrate reports, with the given jsdom (and cssstyle)
+  // installed.
+  let out;
+  const check = (files, jsdom, cssstyle) =>
+    tempProject(files, async (dir) => {
+      installed(dir, 'jsdom', { version: jsdom });
+      if (cssstyle) installed(dir, 'cssstyle', { version: cssstyle });
+      const r = await run(dir);
+      out = { notes: r.profile.join('\n'), same: r.profiles.map((p) => p.same), after: r.profiles[0]?.after };
+    }).then(() => out);
+  const moved = { 'b/y.spec.js': "// @vitest-environment jsdom\nimport { test } from 'vitest';\n" };
+  const pkg = (jsdom) =>
+    `{\n  "private": true,\n  "devDependencies": {\n    "jsdom": "^${jsdom}",\n    "vitest": "^5.0.0",\n    "warpdom": "^${VERSION}"\n  }\n}\n`;
+
+  // Options migrate cannot read, with no pin needed (the installed jsdom is
+  // warpdom's default) or jsdom kept: they may name another version.
+  let r = await check(
+    { 'package.json': pkg('30.1.2'), 'vitest.config.js': config('opts', 'const opts = {};\n'), ...moved },
+    '30.1.2',
+  );
+  assert.deepEqual(r.same, [null]);
+  assert.match(r.notes, /b\/y\.spec\.js:1: this file ran on jsdom 30\.1\.2 .*cannot read its options/);
+  r = await check(
+    {
+      'package.json': pkg('25.0.1'),
+      'vitest.config.js': config('opts', 'const opts = {};\n'),
+      'src/dom.js': "import { JSDOM } from 'jsdom';\n",
+      ...moved,
+    },
+    '25.0.1',
+  );
+  assert.match(r.after, /it stays a dependency/);
+  assert.deepEqual(r.same, [null]);
+
+  // The same jsdom, but not the cssstyle the file ran on.
+  const css = (options) => ({ 'package.json': pkg('26.1.0'), 'vitest.config.js': config(options), ...moved });
+  r = await check(css("{ warpdom: { jsdom: '26.1.0' } }"), '26.1.0', '4.2.1');
+  assert.deepEqual(r.same, [false]);
+  assert.match(
+    r.notes,
+    /b\/y\.spec\.js:1: this file ran on jsdom 26\.1\.0 \+ cssstyle 4\.2\.1 .*jsdom 26\.1\.0 with the cssstyle warpdom models for it/,
+  );
+  r = await check(css("{ warpdom: { jsdom: '26.1.0', cssstyle: '4.2.1' } }"), '26.1.0', '4.2.1');
+  assert.deepEqual(r.same, [true]);
+  r = await check(css("{ warpdom: { jsdom: '26.1.0', cssstyle: v } }"), '26.1.0', '4.2.1');
+  assert.deepEqual(r.same, [null]);
+
+  // Only such files changed: the profile is what their projects name.
+  const only = (named) => ({
+    'package.json': pkg('25.0.1'),
+    'vitest.config.js': `export default {\n  test: {\n    environment: 'node',\n    environmentOptions: { warpdom: { jsdom: '${named}' } },\n  },\n};\n`,
+    'y.spec.js': "// @vitest-environment jsdom\nimport { test } from 'vitest';\n",
+  });
+  r = await check(only('25.0.1'), '25.0.1');
+  assert.deepEqual(r.same, [true]);
+  assert.equal(r.after, 'jsdom 25.0.1 for y.spec.js:1 (named by its project at vitest.config.js:2)');
+  r = await check(only('25'), '25.0.1');
+  assert.deepEqual(r.same, [null]);
+  r = await check(only('26.1.0'), '25.0.1');
+  assert.deepEqual(r.same, [false]);
+  assert.doesNotMatch(r.after, /its default/);
+
+  // A sub-package declares warpdom, the root jsdom: the file is still found.
+  r = await check(
+    {
+      'package.json': `{\n  "private": true,\n  "workspaces": ["packages/*"],\n  "devDependencies": {\n    "jsdom": "^30.1.2",\n    "vitest": "^5.0.0"\n  }\n}\n`,
+      'packages/app/package.json': `{\n  "name": "app",\n  "private": true,\n  "devDependencies": {\n    "warpdom": "^${VERSION}"\n  }\n}\n`,
+      'packages/app/vitest.config.js': config("{ warpdom: { jsdom: '26.1.0' } }"),
+      'packages/app/b/y.spec.js': moved['b/y.spec.js'],
+    },
+    '30.1.2',
+  );
+  assert.deepEqual(r.same, [false]);
+  assert.match(r.notes, /packages\/app\/b\/y\.spec\.js:1: this file ran on jsdom 30\.1\.2 .*follows jsdom 26\.1\.0/);
+});
+
+test('migrate (#221): a sub-package on warpdom under a root that declares jsdom reads its own commented files', async () => {
+  // The root declares jsdom, packages/app warpdom: the profile is
+  // packages/app's, and so are its commented files. a/x.spec.js is on
+  // warpdom by its comment in a project whose options migrate cannot read
+  // (they may name a jsdom version): unknown, as in a single package.
+  const config = (extra = '') =>
+    `const opts = {};\nexport default {\n  test: {\n    projects: [\n      { test: { name: 'a', environment: 'node', include: ['a/**'], environmentOptions: opts } },\n      { test: { name: 'b', environment: 'node', include: ['b/**'], environmentOptions: { warpdom: { jsdom: '25.0.1' } } } },${extra}\n    ],\n  },\n};\n`;
+  const files = (extra) => ({
+    'package.json': `{\n  "private": true,\n  "workspaces": ["packages/*"],\n  "devDependencies": {\n    "jsdom": "^25.0.1",\n    "vitest": "^5.0.0"\n  }\n}\n`,
+    'packages/app/package.json': `{\n  "name": "app",\n  "private": true,\n  "devDependencies": {\n    "warpdom": "^${VERSION}"\n  }\n}\n`,
+    'packages/app/vitest.config.js': config(extra),
+    'packages/app/a/x.spec.js': warpdomComment,
+    'packages/app/b/y.spec.js': "// @vitest-environment jsdom\nimport { test } from 'vitest';\n",
+  });
+  await tempProject(files(), async (dir) => {
+    const { same, after } = await profileOf(dir);
+    assert.deepEqual(same, [null]);
+    assert.match(after, /unknown for packages\/app\/a\/x\.spec\.js:1/);
+  });
+  // A test that surely follows the installed jsdom: not kept.
+  await tempProject(files("\n      { test: { name: 'c', environment: 'jsdom', include: ['c/**'] } },"), async (dir) => {
+    const { same } = await profileOf(dir);
+    assert.deepEqual(same, [false]);
+  });
+});
+
+test('migrate (#221, review 2): a config environment moved from jsdom whose options migrate cannot read', async () => {
+  // Once warpdom, the environment follows the version its options may
+  // name: unknown, whether no pin is needed (jsdom 30.1.2), jsdom stays,
+  // or the pin cannot go into them (jsdom 25.0.1).
+  const files = (jsdom, options, extra = {}) => ({
+    'package.json': `{\n  "private": true,\n  "devDependencies": {\n    "jsdom": "^${jsdom}",\n    "vitest": "^5.0.0",\n    "warpdom": "^${VERSION}"\n  }\n}\n`,
+    'vitest.config.js': `const opts = { warpdom: { jsdom: '26.1.0' } };\nexport default {\n  test: {\n    environment: 'jsdom',\n    environmentOptions: ${options},\n  },\n};\n`,
+    'x.spec.js': "import { test } from 'vitest';\n",
+    ...extra,
+  });
+  for (const [jsdom, options, extra] of [
+    ['30.1.2', 'opts'],
+    ['30.1.2', '{ ...opts }'],
+    ['30.1.2', '{ warpdom: opts.warpdom }'],
+    ['25.0.1', 'opts'],
+    ['25.0.1', 'opts', { 'src/dom.js': "import { JSDOM } from 'jsdom';\n" }],
+  ]) {
+    await tempProject(files(jsdom, options, extra), async (dir) => {
+      installed(dir, 'jsdom', { version: jsdom });
+      const r = await run(dir);
+      const label = `${jsdom} ${options}${extra ? ' (jsdom kept)' : ''}`;
+      assert.deepEqual(
+        r.profiles.map((p) => p.same),
+        [null],
+        label,
+      );
+      assert.match(r.profiles[0].after, /unknown for the environment at vitest\.config\.js:4/, label);
+      assert.match(r.profile.join('\n'), /vitest\.config\.js:4: this environment ran on jsdom /, label);
+    });
+  }
+  // Options it can read that name no version: kept by the pin.
+  await tempProject(files('25.0.1', "{ url: 'http://x/' }"), async (dir) => {
+    installed(dir, 'jsdom', { version: '25.0.1' });
+    const r = await run(dir);
+    assert.deepEqual(
+      r.profiles.map((p) => p.same),
+      [true],
+    );
+  });
+});
+
+test('migrate (#221, review 3): the cssstyle a jsdom installs, as warpdom models it', async () => {
+  // profileCompat's defaults: cssstyle 2.3 before jsdom 21.1, 3.0 from
+  // 21.1 to 23.0, the latest 4.x from 23.1 to 26, 5.3 for 27 to 28.0.
+  for (const [jsdom, cssstyle, changes] of [
+    ['21.0.0', '2.3.0', false],
+    ['21.0.0', '3.0.0', true],
+    ['22.1.0', '3.0.0', false],
+    ['23.1.0', '4.6.0', false],
+    ['23.1.0', '3.0.0', true],
+    ['28.0.0', '5.1.0', true],
+    ['28.0.0', '5.3.7', false],
+  ])
+    assert.equal(cssstyleChangesProfile(jsdom, cssstyle), changes, `${jsdom} ${cssstyle}`);
+  // A file moved from jsdom 23.1.0 (cssstyle 4.6.0) by its comment into a
+  // project naming jsdom 23.1.0 alone keeps its profile.
+  await tempProject(
+    {
+      'package.json': `{\n  "private": true,\n  "devDependencies": {\n    "jsdom": "^23.1.0",\n    "vitest": "^5.0.0",\n    "warpdom": "^${VERSION}"\n  }\n}\n`,
+      'vitest.config.js': `export default {\n  test: {\n    environment: 'node',\n    environmentOptions: { warpdom: { jsdom: '23.1.0' } },\n  },\n};\n`,
+      'y.spec.js': "// @vitest-environment jsdom\nimport { test } from 'vitest';\n",
+    },
+    async (dir) => {
+      installed(dir, 'jsdom', { version: '23.1.0' });
+      installed(dir, 'cssstyle', { version: '4.6.0' });
+      const r = await run(dir);
+      assert.deepEqual(
+        r.profiles.map((p) => p.same),
+        [true],
+      );
+    },
+  );
+});
+
+test('migrate (#221, review 3): files moved by their comment decide the profile alone only when nothing else changed', async () => {
+  // Project 'a' (its environment changed) names its jsdom version; 'b' runs
+  // b/y.spec.js, moved from jsdom by its comment, and names the one it ran
+  // on. 'a' follows its version once on warpdom: not kept when it differs.
+  const files = (installedJsdom, aEnv, aNamed, bNamed, extra = {}) => ({
+    'package.json': `{\n  "private": true,\n  "devDependencies": {\n    "jsdom": "^${installedJsdom}",\n    "vitest": "^5.0.0",\n    "warpdom": "^${VERSION}"${aEnv === 'happy-dom' ? ',\n    "happy-dom": "^15.0.0"' : ''}\n  }\n}\n`,
+    'vitest.config.js': `export default {\n  test: {\n    projects: [\n      { test: { name: 'a', environment: '${aEnv}', include: ['a/**'], environmentOptions: { warpdom: { jsdom: '${aNamed}' } } } },\n      { test: { name: 'b', environment: 'node', include: ['b/**'], environmentOptions: { warpdom: { jsdom: '${bNamed}' } } } },\n    ],\n  },\n};\n`,
+    'a/x.spec.js': "import { test } from 'vitest';\n",
+    'b/y.spec.js': "// @vitest-environment jsdom\nimport { test } from 'vitest';\n",
+    ...extra,
+  });
+  for (const [label, args, same, after] of [
+    [
+      'a jsdom environment naming 26.1.0',
+      ['25.0.1', 'jsdom', '26.1.0', '25.0.1'],
+      false,
+      /jsdom 26\.1\.0 for the environment at vitest\.config\.js:4/,
+    ],
+    [
+      'the same with jsdom 30.1.2 installed',
+      ['30.1.2', 'jsdom', '26.1.0', '30.1.2'],
+      false,
+      /jsdom 26\.1\.0 for the environment at vitest\.config\.js:4/,
+    ],
+    ['a happy-dom environment', ['25.0.1', 'happy-dom', '26.1.0', '25.0.1'], false, null],
+    ['both naming the installed jsdom', ['30.1.2', 'jsdom', '30.1.2', '30.1.2'], true, null],
+  ]) {
+    await tempProject(files(...args), async (dir) => {
+      installed(dir, 'jsdom', { version: args[0] });
+      const r = await run(dir);
+      assert.deepEqual(
+        r.profiles.map((p) => p.same),
+        [same],
+        label,
+      );
+      if (after) assert.match(r.profiles[0].after, after, label);
+    });
   }
 });

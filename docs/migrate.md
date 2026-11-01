@@ -225,7 +225,10 @@ lockfile's, else the declared range: `^26.1.0` pins `26`). For jsdom 28
 and earlier, whose behavior also depends on the cssstyle they load, the
 installed (or locked) cssstyle is pinned with it when it gives another
 profile than the one warpdom assumes for that jsdom (jsdom 26 with
-cssstyle 4.2.1: `{ jsdom: '26.1.0', cssstyle: '4.2.1' }`). It writes it in
+cssstyle 4.2.1: `{ jsdom: '26.1.0', cssstyle: '4.2.1' }`); the comparison
+uses the profile warpdom builds for each (cssstyle 2.3 before jsdom 21.1,
+3.0 from 21.1 to 23.0, the newest 4.x from 23.1 to 26, 5.3 for 27 and
+28.0). It writes it in
 the most local place, next to the environment it changed, and says why in
 the plan:
 
@@ -268,7 +271,14 @@ the version next to it, and the profile is not reported as kept. Not
 counted: a warpdom environment whose options name a jsdom version
 (`environmentOptions.warpdom.jsdom`, `testEnvironmentOptions.jsdom`), which
 warpdom follows instead of the installed jsdom, and warpdom environments in
-fixture directories, which migrate does not change.
+fixture directories, which migrate does not change. A Vitest environment
+changed from jsdom whose `environmentOptions` migrate cannot read
+(`environmentOptions: opts`, a spread, `warpdom: opts.warpdom`) may name a
+jsdom version warpdom then follows: the profile is reported as uncertain
+(`same: null`) with a note for it, unless another test surely changes it.
+One whose options name a jsdom version follows that version (and the
+cssstyle they name) once on warpdom: when it is not the one it ran on, a
+note says so and the profile is not reported as kept.
 
 A test file that picks warpdom (or jsdom, which migrate changes to
 warpdom) with a `@vitest-environment` comment takes the options of the
@@ -281,14 +291,44 @@ when they are not set: Vitest 2 and 3 also exclude `dist/`, `cypress/` and
 tool config files; `...configDefaults.include` / `exclude` are read as
 those defaults), else the config itself. Projects that inherit the root
 config (`extends: true`, or no `extends` from Vitest 5) take its jsdom
-version and its pin. A file whose projects all name a jsdom version does
-not count; a project that runs a commented file and that the pin does not
+version and its pin. A file on warpdom by its comment whose projects all
+name a jsdom version does not count: it ran on that version before. A file
+whose comment picked jsdom ran on the installed jsdom, which does not read
+`environmentOptions.warpdom`; in a project that names another version, it
+follows that version once on warpdom, with the cssstyle the project names
+(its own or inherited) or else the one warpdom models for that version.
+migrate leaves the option as it is (other files of the project may rely
+on it) and reports the change: a note per file, and the profile is not
+reported as kept (uncertain when one version is a prefix of the other,
+such as 25 and 25.0.1, or when migrate cannot read the cssstyle). When
+such files are the only environment changes of the package and runner
+(no config environment, no happy-dom one) and no other test follows the
+installed jsdom, the profile is theirs alone (kept when their projects
+name the jsdom they ran on); otherwise their results are combined with
+the rest (any change: not kept; any uncertainty: uncertain, unless another
+test surely changes the profile, which stays not kept). When migrate cannot
+tell the project of such a file, or read its options, the profile is
+uncertain even when no pin is needed or jsdom stays installed, unless another
+test surely changes it. Only what the
+config says can be read without running it counts: a key written as a
+string literal in brackets (`['include']`) is read as that key (and
+renamed whole: `['jsdom']: { url }` becomes `warpdom: { url }`), the
+config of `defineConfig(config)` is the object literal `config` is
+declared as, and the config of `defineConfig(() => ...)` is the object the function returns
+(an arrow function's object body, or its only `return { ... }`, not an
+object the function declares). A project that runs a commented file and
+that the pin does not
 reach gets a note listing the files, to add the version to that project's
 test options by hand, and the profile is not reported as kept. When
 migrate cannot tell the project (a workspace file or projects named by
 path or glob, `--config` or `--root` in a script, a Vitest config between
 the file and its package, a merged or spread config, `test` options outside
-what the config exports (`export default buildConfig()`),
+what the config exports (`export default buildConfig()`, or an object that
+`defineConfig`'s function declares but does not return), a function with
+several returns or a returned variable, computed keys that are not one
+string literal (`[key]: ...`), environment options it cannot read
+(`environmentOptions: opts`, spreads, a jsdom version that is not a
+string literal, a project's `null` over a version it inherits),
 projects not in one array literal (`[...].concat(...)`), `extends` naming a
 file, an inheriting project whose root config sets `include`, `exclude` or
 `dir`, absolute roots, include or exclude globs that are not string

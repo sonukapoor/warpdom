@@ -194,6 +194,10 @@ const posixJoin = (...parts) => {
   return out.join('/');
 };
 
+// Whether an object literal takes options migrate cannot read: a spread,
+// or a computed key that is not one string literal.
+export const unreadable = (a, frame) =>
+  a.spreads.some((s) => s.frame === frame) || a.properties.some((p) => p.frame === frame && p.key === '[computed]');
 const own = (a, frame, key) => (frame ? (a.properties.find((p) => p.frame === frame && p.key === key) ?? null) : null);
 const literal = (a, p) => {
   const t = p && p.valueEnd - p.valueStart === 1 ? a.tokens[p.valueStart] : null;
@@ -221,8 +225,10 @@ function projectOf(a, obj, { base, parentRoot, major, inline }) {
   const testProp = own(a, obj, 'test');
   const frame = testProp ? (a.objects.find((o) => o.open === testProp.valueStart) ?? null) : null;
   if (testProp && !frame) return null; // test: someVariable
-  // Options that come from elsewhere: spreads in the project or its test.
-  if (a.spreads.some((s) => s.frame === obj || (frame && s.frame === frame))) return null;
+  // Options that come from elsewhere (spreads) or keys migrate cannot read
+  // ([key]: ..., which may be include, root or projects), in the project or
+  // its test.
+  if (unreadable(a, obj) || (frame && unreadable(a, frame))) return null;
   const viteRoot = pathOption(a, own(a, obj, 'root'));
   const testRoot = pathOption(a, own(a, frame, 'root'));
   const dir = pathOption(a, own(a, frame, 'dir'));
@@ -266,12 +272,87 @@ function closeOf(tokens, open) {
   return -1;
 }
 
+// The object a function returns, for the function starting at token f
+// (an arrow function, async or not, or a function expression), when it
+// has one clear return: an arrow's object literal body, ({ ... }), or the
+// only `return { ... }` of its body, its last statement, directly in it
+// (no return inside a nested block or function, nor after `if (...)`).
+// null otherwise (several returns, a returned variable or call), since
+// which object is the config would depend on the run. end: the token
+// index right after the function.
+function returnedObject(a, f, end) {
+  const { tokens } = a;
+  const is = (t, v) => t?.type === 'ident' && t.value === v;
+  const objectAt = (k) => (isP(tokens[k], '{') ? (a.objects.find((o) => o.open === k) ?? null) : null);
+  // An object literal, maybe in parentheses, ending exactly at `to`
+  // (exclusive) but for closing parentheses, a `;` and trailing commas.
+  const objectUntil = (k, to) => {
+    let parens = 0;
+    while (isP(tokens[k], '(')) {
+      k++;
+      parens++;
+    }
+    const obj = objectAt(k);
+    if (!obj) return null;
+    let j = obj.close + 1;
+    for (; parens > 0 && isP(tokens[j], ')'); parens--) j++;
+    while (j < to && (isP(tokens[j], ';') || isP(tokens[j], ','))) j++;
+    return parens === 0 && j === to ? obj : null;
+  };
+  let k = f;
+  if (is(tokens[k], 'async')) k++;
+  let body;
+  if (is(tokens[k], 'function')) {
+    k++;
+    if (tokens[k]?.type === 'ident') k++;
+    if (!isP(tokens[k], '(')) return null;
+    body = closeOf(tokens, k) + 1;
+  } else {
+    if (isP(tokens[k], '(')) k = closeOf(tokens, k) + 1;
+    else if (tokens[k]?.type === 'ident') k++;
+    else return null;
+    if (!isP(tokens[k], '=>')) return null;
+    if (!isP(tokens[k + 1], '{')) return objectUntil(k + 1, end);
+    body = k + 1;
+  }
+  if (!isP(tokens[body], '{')) return null;
+  const close = closeOf(tokens, body);
+  // The function is the whole argument (not fn() or fn.call(...)).
+  let after = close + 1;
+  while (after < end && isP(tokens[after], ',')) after++;
+  if (close < 0 || after !== end) return null;
+  let only = null;
+  let depth = 0;
+  for (let j = body; j <= close; j++) {
+    const t = tokens[j];
+    if (isP(t, '(') || isP(t, '[') || isP(t, '{')) depth++;
+    else if (isP(t, ')') || isP(t, ']') || isP(t, '}')) depth--;
+    else if (is(t, 'return')) {
+      if (only !== null || depth !== 1) return null;
+      only = j;
+    }
+  }
+  // A statement of its own: not `if (x) return ...` or `else return ...`.
+  if (only === null || !(isP(tokens[only - 1], '{') || isP(tokens[only - 1], ';') || isP(tokens[only - 1], '}')))
+    return null;
+  // The statement ends at a `;` or at the body's closing brace, and is
+  // the last one.
+  let stop = only + 1;
+  for (let d = 0; stop < close; stop++) {
+    const t = tokens[stop];
+    if (isP(t, '(') || isP(t, '[') || isP(t, '{')) d++;
+    else if (isP(t, ')') || isP(t, ']') || isP(t, '}')) d--;
+    else if (d === 0 && isP(t, ';')) break;
+  }
+  const last = stop === close || (stop + 1 === close && isP(tokens[stop], ';'));
+  return last ? objectUntil(only + 1, stop) : null;
+}
+
 // What a config file exports (export default ..., module.exports = ...):
-// { object, within }. object: the object literal it is (export default
-// { ... }, defineConfig({ ... }), or a variable declared as one), else
-// null. within: the token range [open, close] of defineConfig's argument
-// when that is something else (a function returning the config), else
-// null. null when the file exports nothing migrate finds.
+// the object literal it is (export default { ... }, defineConfig({ ... }),
+// a variable declared as one, or the object the function given to
+// defineConfig returns, returnedObject), else null (also when the file
+// exports nothing migrate finds).
 function exported(a) {
   const { tokens } = a;
   const is = (t, v) => t?.type === 'ident' && t.value === v;
@@ -290,12 +371,17 @@ function exported(a) {
     )
       v = k + 4;
     if (v < 0) continue;
-    let within = null;
+    // The innermost defineConfig's closing parenthesis.
+    let argEnd = -1;
     while (is(tokens[v], 'defineConfig') && isP(tokens[v + 1], '(')) {
-      within = [v + 1, closeOf(tokens, v + 1)];
+      argEnd = closeOf(tokens, v + 1);
       v += 2;
     }
     let object = objectAt(v);
+    // defineConfig(config): a variable, read below; anything else that
+    // is not an object literal, the object a function returns.
+    const variable = tokens[v]?.type === 'ident' && (v + 1 === argEnd || (v + 2 === argEnd && isP(tokens[v + 1], ',')));
+    if (!object && argEnd >= 0 && !variable) return returnedObject(a, v, argEnd);
     // A variable: the object literal it is declared as.
     const t = tokens[v];
     if (!object && t?.type === 'ident' && !isP(tokens[v + 1], '(') && !isP(tokens[v + 1], '.')) {
@@ -303,7 +389,7 @@ function exported(a) {
       const j = tokens.findIndex((_, i) => decl(i));
       if (j >= 0 && isP(tokens[j + 2], '=')) object = objectAt(j + 3);
     }
-    return { object, within: object ? null : within };
+    return object;
   }
   return null;
 }
@@ -325,19 +411,16 @@ export function vitestProjects(a, { major = 5, base = '' } = {}) {
   if (roots.length > 1) return null;
   // No test options at all: the config is one project without any, when
   // it is an object literal that takes nothing from elsewhere (a spread).
-  const out = exported(a);
+  const config = exported(a);
   if (!roots.length) {
-    const obj = out?.object;
-    if (!obj || a.spreads.some((s) => s.frame === obj)) return null;
+    if (!config || unreadable(a, config)) return null;
     return { inline: false, projects: [{ frame: null, keyToken: 0, dir: '', root: '', inherits: false }] };
   }
-  // The `test` options of the exported config: its object literal's, or
-  // inside the function defineConfig is given. Not an object the config
-  // does not export (export default buildConfig()).
-  const holder = roots[0].frame;
-  const ok =
-    out && (holder === out.object || (out.within && holder.open > out.within[0] && holder.close < out.within[1]));
-  if (!ok) return null;
+  // The `test` options of the exported config (the object literal it is,
+  // or the one defineConfig's function returns): not an object the config
+  // does not export (export default buildConfig(), or an object the
+  // function declares but does not return).
+  if (!config || roots[0].frame !== config) return null;
   // The config object itself (the one holding `test`).
   const root = projectOf(a, roots[0].frame, { base, major, inline: false });
   if (!root) return null;
