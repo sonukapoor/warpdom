@@ -3,6 +3,14 @@ import { vi } from 'vitest';
 import './setup-dep.js';
 
 globalThis.__setupRuns = (globalThis.__setupRuns ?? 0) + 1;
+// A stub and a spy undone during the setup, then made again after an import
+// loaded once changed the members: their originals are the import's (#201).
+vi.stubGlobal('devicePixelRatio', 2);
+vi.unstubAllGlobals();
+vi.spyOn(window, 'screenX', 'get').mockReturnValue(2).mockRestore();
+await import('./setup-later-dep.js');
+vi.stubGlobal('devicePixelRatio', 500);
+vi.spyOn(window, 'screenX', 'get').mockReturnValue(1);
 // A global only later runs add, and a window member each run replaces (a
 // matchMedia mock): warpdom's reset, run before this file, must keep both.
 if (globalThis.__setupRuns > 1) globalThis.__setupLater = globalThis.__setupRuns;

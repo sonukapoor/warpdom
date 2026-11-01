@@ -307,8 +307,10 @@ const RESET = Symbol.for('warpdom.vitest.reset');
 // window is the worker's global) are removed by the next file's reset.
 const MARK = Symbol.for('warpdom.vitest.mark');
 // Called by that setup file's wrappers of vi.stubGlobal and vi.spyOn
-// (on the global) with the key about to be mocked: before the mark, the
-// key's descriptor then is what Vitest's cleanup puts back (#201).
+// (on the global) with the key about to be mocked, and whether Vitest
+// takes the key's descriptor then as the mock's original (the first stub
+// since vi.unstubAllGlobals, a spy of a member no spy replaces): before
+// the mark, that descriptor is what Vitest's cleanup puts back (#201).
 const MOCKING = Symbol.for('warpdom.vitest.mocking');
 
 // The descriptors of the global's window members.
@@ -560,9 +562,12 @@ export default {
       state.mark = markGlobal(global, restore.keys);
     };
     // Between a reset and the mark (the setup files and imports): mocks
-    // made later are a test's, undone to what the mark keeps.
-    global[MOCKING] = (key) => {
-      if (!state.mark && !state.mocked.has(key)) state.mocked.set(key, Object.getOwnPropertyDescriptor(global, key));
+    // made later are a test's, undone to what the mark keeps. A mock the
+    // setup undid and made again takes the member as it is then (a module
+    // loaded in between may have changed it), as Vitest does.
+    global[MOCKING] = (key, original) => {
+      if (!state.mark && (original || !state.mocked.has(key)))
+        state.mocked.set(key, Object.getOwnPropertyDescriptor(global, key));
     };
     global[RESET] = ablated('fresh-window')
       ? // Ablation: a new window per file instead of the in-place reset.

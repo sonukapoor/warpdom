@@ -1,6 +1,6 @@
 import { test, expect, vi } from 'vitest';
 import { shared } from './state.js';
-import { helper } from './helper.js';
+import { helper, members } from './helper.js';
 
 test('a: renders, and leaves module state behind', () => {
   document.body.innerHTML = '<p id="a">a</p>';
@@ -23,8 +23,8 @@ test('a: leaves globals behind', () => {
 
 // Undone during the file: the next file's reset must not put them back.
 test("a: undoes its setup's stub and spy", () => {
-  expect([window.innerHeight, window.outerHeight, window.outerWidth, window.screenY]).toEqual([500, 1, 500, 1]);
+  expect(members()).toEqual([500, 1, 500, 1, 500, 1]);
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
-  expect([window.innerHeight, window.outerHeight, window.outerWidth, window.screenY]).toEqual([768, 768, 900, 900]);
+  expect(members()).toEqual([768, 768, 900, 900, 900, 900]);
 });

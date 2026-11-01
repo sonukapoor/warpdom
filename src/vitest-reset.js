@@ -14,18 +14,31 @@ vi.restoreAllMocks();
 vi.unstubAllGlobals();
 vi.unstubAllEnvs();
 // What a global was before the setup mocked it, where Vitest's cleanup puts
-// it back: a module loaded once may have changed it before (#201). vi is
-// one object per worker; it is wrapped once.
+// it back: a module loaded once may have changed it before (#201). The
+// wrappers report when Vitest takes the member's descriptor as the mock's
+// original: a stub of a key not stubbed since vi.unstubAllGlobals (Vitest's
+// own list of stubs, per worker as vi is), a spy of a member no spy
+// replaces (vi.spyOn returns the existing spy). vi is wrapped once.
 const WRAPPED = Symbol.for('warpdom.vitest.wrapped');
 if (!vi[WRAPPED]) {
-  const mocking = (key) => globalThis[Symbol.for('warpdom.vitest.mocking')]?.(key);
-  const { stubGlobal, spyOn } = vi;
+  const mocking = (key, original) => globalThis[Symbol.for('warpdom.vitest.mocking')]?.(key, original);
+  const { stubGlobal, unstubAllGlobals, spyOn } = vi;
+  const stubbed = new Set();
   vi.stubGlobal = (name, value) => {
-    mocking(name);
+    mocking(name, !stubbed.has(name));
+    stubbed.add(name);
     return stubGlobal(name, value);
   };
+  vi.unstubAllGlobals = () => {
+    stubbed.clear();
+    return unstubAllGlobals();
+  };
   vi.spyOn = (object, key, ...rest) => {
-    if (object === globalThis) mocking(key);
+    if (object === globalThis) {
+      const descriptor = Object.getOwnPropertyDescriptor(object, key);
+      const replaced = descriptor && (rest[0] ? descriptor[rest[0]] : (descriptor.value ?? descriptor.get));
+      mocking(key, !vi.isMockFunction(replaced));
+    }
     return spyOn(object, key, ...rest);
   };
   vi[WRAPPED] = true;
