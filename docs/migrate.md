@@ -281,14 +281,31 @@ when they are not set: Vitest 2 and 3 also exclude `dist/`, `cypress/` and
 tool config files; `...configDefaults.include` / `exclude` are read as
 those defaults), else the config itself. Projects that inherit the root
 config (`extends: true`, or no `extends` from Vitest 5) take its jsdom
-version and its pin. A file whose projects all name a jsdom version does
-not count; a project that runs a commented file and that the pin does not
+version and its pin. A file on warpdom by its comment whose projects all
+name a jsdom version does not count: it ran on that version before. A file
+whose comment picked jsdom ran on the installed jsdom, which does not read
+`environmentOptions.warpdom`; in a project that names another version, it
+follows that version once on warpdom. migrate leaves the option as it is
+(other files of the project may rely on it) and reports the change: a note
+per file, and the profile is not reported as kept (uncertain when one
+version is a prefix of the other, such as 25 and 25.0.1). Only what the
+config says can be read without running it counts: a key written as a
+string literal in brackets (`['include']`) is read as that key, and the
+config of `defineConfig(() => ...)` is the object the function returns
+(an arrow function's object body, or its only `return { ... }`, not an
+object the function declares). A project that runs a commented file and
+that the pin does not
 reach gets a note listing the files, to add the version to that project's
 test options by hand, and the profile is not reported as kept. When
 migrate cannot tell the project (a workspace file or projects named by
 path or glob, `--config` or `--root` in a script, a Vitest config between
 the file and its package, a merged or spread config, `test` options outside
-what the config exports (`export default buildConfig()`),
+what the config exports (`export default buildConfig()`, or an object that
+`defineConfig`'s function declares but does not return), a function with
+several returns or a returned variable, computed keys that are not one
+string literal (`[key]: ...`), environment options it cannot read
+(`environmentOptions: opts`, spreads, a jsdom version that is not a
+string literal, a project's `null` over a version it inherits),
 projects not in one array literal (`[...].concat(...)`), `extends` naming a
 file, an inheriting project whose root config sets `include`, `exclude` or
 `dir`, absolute roots, include or exclude globs that are not string
