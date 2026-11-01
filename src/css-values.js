@@ -252,6 +252,18 @@ function readEscape(text, i, put) {
 // the end; -1 when no such url() opens there. Character codes only: the
 // declaration splitters call it at every "(".
 export function urlTokenEnd(text, open) {
+  if (!urlOpens(text, open)) return -1;
+  const n = text.length;
+  for (let j = open + 1; j < n; j++) {
+    const c = text.charCodeAt(j);
+    if (c === 92) j++;
+    else if (c === 41) return j + 1;
+  }
+  return n;
+}
+// Does an unquoted url() open at text[open], a "("? url in any case, not
+// after a name character, before it; no quote after it (past spaces).
+function urlOpens(text, open) {
   if (
     open < 3 ||
     (text.charCodeAt(open - 1) | 32) !== 108 ||
@@ -259,41 +271,66 @@ export function urlTokenEnd(text, open) {
     (text.charCodeAt(open - 3) | 32) !== 117 ||
     (open > 3 && isNameCode(text.charCodeAt(open - 4)))
   )
-    return -1;
-  const n = text.length;
+    return false;
   let j = open + 1;
-  while (j < n && isSpace(text.charCodeAt(j))) j++;
+  while (j < text.length && isSpace(text.charCodeAt(j))) j++;
   const q = text.charCodeAt(j);
-  if (q === 34 || q === 39) return -1;
-  for (; j < n; j++) {
-    const c = text.charCodeAt(j);
-    if (c === 92) j++;
-    else if (c === 41) return j + 1;
-  }
-  return n;
+  return q !== 34 && q !== 39;
 }
 // A var( function token, in any case, outside quoted strings: not after a
 // name character (notvar(, -var(, url(n-var(--a).png)) or in a string
 // (url("var(x).png")), as CSS Syntax 3 reads it; one in an unquoted url()
 // counts (url(var(--a).png), url(a\ var(--a).png); black box: jsdom 23 to
-// 30, #222). One pass, without allocating.
+// 30, #222). Quotes in an unquoted url() or a comment start no string:
+// url(a"b c.png) var(--a) and /* " */ var(--a) have var(), as var(--a)
+// url(a"b c.png) has; var( in a comment counts, closed or not
+// (url(a b.png) /* var( is kept; black box: jsdom 30.1.2). One pass,
+// without allocating.
 export function hasVarFunction(value) {
   if (!/var\(/i.test(value)) return false;
   const n = value.length;
-  let quote = 0;
+  let quote = 0; // a string's quote, or 1 in a comment, 2 in an unquoted url()
   let name = false; // the previous character continues a name
   for (let i = 0; i < n; i++) {
     const c = value.charCodeAt(i);
     if (c === 0x5c) {
       // \ and the character it escapes
       i++;
-      name = quote === 0 && i < n && isNameCode(value.charCodeAt(i));
-    } else if (quote !== 0) {
+      name = quote < 3 && i < n && isNameCode(value.charCodeAt(i));
+      continue;
+    }
+    if (quote > 2) {
       if (c === quote) quote = 0;
-    } else if (c === 0x22 || c === 0x27) {
-      quote = c;
+      continue;
+    }
+    if (quote === 0) {
+      if (c === 0x22 || c === 0x27) {
+        quote = c;
+        name = false;
+        continue;
+      }
+      if (c === 0x2f && value.charCodeAt(i + 1) === 0x2a) {
+        quote = 1;
+        i++;
+        name = false;
+        continue;
+      }
+      if (c === 0x28 && urlOpens(value, i)) {
+        quote = 2;
+        name = false;
+        continue;
+      }
+    } else if (quote === 1 && c === 0x2a && value.charCodeAt(i + 1) === 0x2f) {
+      quote = 0;
+      i++;
       name = false;
-    } else if (
+      continue;
+    } else if (quote === 2 && c === 0x29) {
+      quote = 0;
+      name = false;
+      continue;
+    }
+    if (
       !name &&
       (c | 0x20) === 0x76 &&
       (value.charCodeAt(i + 1) | 0x20) === 0x61 &&
@@ -301,7 +338,7 @@ export function hasVarFunction(value) {
       value.charCodeAt(i + 3) === 0x28
     )
       return true;
-    else name = isNameCode(c);
+    name = isNameCode(c);
   }
   return false;
 }

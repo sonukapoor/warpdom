@@ -415,7 +415,8 @@ function setEachWay(w, names, values, { sheets = false } = {}) {
 
 // A malformed url() in a value with var() is kept to its ")" with escaped
 // parentheses skipped, in a string or not, and an unquoted url() has no
-// strings (black box, jsdom 20.0.3 to 30.1.2, #222). jsdom 20 to 26 declare
+// strings, before var() or after it (black box, jsdom 20.0.3 to 30.1.2,
+// #222). jsdom 20 to 26 declare
 // nothing for a style attribute or cssText where an escaped "(" leaves a
 // parenthesis open. Not modeled: url(a\\(b c.png) and url(a(b c.png),
 // whose "(" opens nothing in jsdom (kept); style sheets in jsdom 27 and 28.
@@ -438,6 +439,9 @@ for (const jsdom of [30, 29, 28, 27, 26, 25, 22, 20])
           `var(--a) url("${p}a${B}"(b.png" c)`,
           `var(--a) url(${p}a"b c.png)`,
           `var(--a) url(${p}a'b c.png)`,
+          `url(${p}a"b c.png) var(--a)`,
+          `url(${p}a'b c.png) var(--a)`,
+          `url(${p}a"b.png) url(${p}c d.png) var(--a)`,
         ],
         { sheets: jsdom >= 29 },
       );
@@ -469,6 +473,9 @@ for (const jsdom of [30, 29, 28, 27, 26, 25, 22, 20])
           `url("${p}-var(x).png")`,
           `url("${p}var(x).png")`,
           `url("${p}var(x).png") var(--a)`,
+          `url("var(x)${p}.png")`,
+          `url('var(x)${p}.png')`,
+          `url('var(x)${p}a.png') url(${p}b.png)`,
           `url(var(--a)${p}.png)`,
           `url(${p}var(--a).png)`,
           `url(x${p}-var(--a).png)`,
