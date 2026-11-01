@@ -130,8 +130,9 @@ test('ShadowRoot exposes delegatesFocus, slotAssignment, clonable', () => {
 // ranges and mutation observers in them, slots, radio groups, template
 // contents, ids, custom elements (adoptedCallback, an upgrade by the new
 // document's registry). Focus stays where it was (jsdom: the old document's
-// activeElement is still the host). Scripts in a shadow tree run on the
-// move from jsdom 30.1.0.
+// activeElement is still the host). A script in the shadow tree of a host
+// never connected before runs when the host is inserted into the new
+// document from jsdom 30.1.0.
 const adoptedShadowScenario = async (w) => {
   const A = w.document;
   const f = A.body.appendChild(A.createElement('iframe'));
@@ -168,11 +169,15 @@ const adoptedShadowScenario = async (w) => {
   const content = sr.querySelector('template').content;
   const contentDoc = content.ownerDocument;
   sr.getElementById('i').focus();
+  // A script in the shadow tree of a host never connected to A, inserted
+  // straight into B.
+  const lone = A.createElement('div');
   const script = A.createElement('script');
   script.textContent = 'window.ran = (window.ran || 0) + 1';
-  nested.appendChild(script);
+  lone.attachShadow({ mode: 'open' }).appendChild(script);
   wb.customElements.define('y-moved', class extends wb.HTMLElement {});
   B.body.appendChild(host);
+  B.body.appendChild(lone);
   out.push([A.activeElement === host, B.activeElement === host, sr.activeElement === sr.getElementById('i')]);
   text.insertData(0, 'XX');
   out.push([range.startOffset, range.endOffset, range.toString()]);
