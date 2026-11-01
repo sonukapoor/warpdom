@@ -8,6 +8,8 @@ import {
   state,
   lazyDataSetter,
   lockedRead,
+  lockedValue,
+  NOT_LOCKED,
   domError,
   tooFewArguments,
   checkForEachCallback,
@@ -1336,6 +1338,8 @@ function setupWebSocket(window) {
     Reflect.defineProperty(window, 'WebSocket', { value, writable: true, enumerable: false, configurable: true });
   Object.defineProperty(window, 'WebSocket', {
     get() {
+      const kept = lockedValue(window, 'WebSocket');
+      if (kept !== NOT_LOCKED) return kept;
       const WebSocket = PLATFORM_GLOBAL.WebSocket;
       return define(WebSocket) ? WebSocket : lockedRead(window, 'WebSocket', WebSocket);
     },
@@ -1881,6 +1885,8 @@ export function setupWindow(window, { url: initial = 'about:blank', fastFrames =
   // that never uses them does not create their element interfaces.
   const factory = (name, protoName, init) => {
     const create = () => {
+      const kept = lockedValue(window, name);
+      if (kept !== NOT_LOCKED) return kept;
       const ctor = function (...args) {
         if (!new.target) throw new TypeError(`Failed to construct '${name}': Please use the 'new' operator.`);
         return init(window.document, args);

@@ -1126,3 +1126,29 @@ for (const jsdom of [20, 30]) {
     { jsdom },
   );
 }
+
+// A locked member's getter returns the kept value without making it again:
+// a host WebSocket getter that throws later does not affect it, and Image
+// is the same constructor (Copilot review on #227).
+test('window: a locked WebSocket or Image read again does not make it again (#160)', () => {
+  const w = createWindow();
+  for (const name of ['WebSocket', 'Image']) Object.defineProperty(w, name, { configurable: false });
+  const socket = w.WebSocket;
+  const image = w.Image;
+  const host = Object.getOwnPropertyDescriptor(globalThis, 'WebSocket');
+  Object.defineProperty(globalThis, 'WebSocket', {
+    get() {
+      throw new Error('host getter');
+    },
+    configurable: true,
+  });
+  try {
+    assert.equal(w.WebSocket, socket);
+  } finally {
+    if (host) Object.defineProperty(globalThis, 'WebSocket', host);
+    else delete globalThis.WebSocket;
+  }
+  assert.equal(w.Image, image);
+  w.WebSocket = undefined;
+  assert.equal(w.WebSocket, undefined);
+});

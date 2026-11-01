@@ -156,6 +156,15 @@ export function lazyDataSetter(window, name, define) {
 // look here: a getter or setter whose define succeeded never does.
 const lockedMembers = new WeakMap();
 
+// A getter's first step for a member whose making is not free (Image's
+// constructor, the host's WebSocket): the value kept for a locked member,
+// or NOT_LOCKED, so a locked read does not make the value again.
+export const NOT_LOCKED = Symbol('not locked');
+export function lockedValue(window, name) {
+  const values = lockedMembers.get(window);
+  return values !== undefined && values.has(name) ? values.get(name) : NOT_LOCKED;
+}
+
 // The getter's part: made is the value the getter made (or found).
 export function lockedRead(window, name, made) {
   let values = lockedMembers.get(window);
