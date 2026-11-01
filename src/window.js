@@ -448,7 +448,11 @@ export function createWindow(options = {}) {
     const { name } = iface;
     const get = (lazyGetters[name] = () => {
       const ctor = materialize(name);
-      return locked ? lockedRead(window, name, ctor) : ctor;
+      // Only a member still the locked accessor (materialize could not
+      // replace it) keeps a value.
+      return locked && Reflect.getOwnPropertyDescriptor(window, name)?.get === get
+        ? lockedRead(window, name, ctor)
+        : ctor;
     });
     const set = function (value) {
       if (this !== window) assignThrough(window, this, name, value, set, defineInterface, lock);

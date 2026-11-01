@@ -1152,3 +1152,22 @@ test('window: a locked WebSocket or Image read again does not make it again (#16
   w.WebSocket = undefined;
   assert.equal(w.WebSocket, undefined);
 });
+
+// After one interface object is locked, others read later become data
+// properties as usual and keep no value; a locked console assigned before
+// its first read is not made (Copilot review on #227).
+test('window: interfaces read after another is locked stay data properties; a locked console is not made (#160)', () => {
+  const w = createWindow();
+  Object.defineProperty(w, 'MutationObserver', { configurable: false });
+  w.MutationObserver = 1;
+  const ctor = w.Text;
+  assert.equal(typeof ctor, 'function');
+  assert.equal(Object.getOwnPropertyDescriptor(w, 'Text').value, ctor);
+  w.Text = 2;
+  assert.equal(w.Text, 2);
+  assert.equal(w.MutationObserver, 1);
+  const v = createWindow();
+  Object.defineProperty(v, 'console', { configurable: false });
+  v.console = 'kept';
+  assert.equal(v.console, 'kept');
+});

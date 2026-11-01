@@ -1216,6 +1216,8 @@ function setupConsole(window) {
     Reflect.defineProperty(window, 'console', { value, writable: true, enumerable, configurable: true });
   Object.defineProperty(window, 'console', {
     get() {
+      const kept = lockedValue(window, 'console');
+      if (kept !== NOT_LOCKED) return kept;
       const console = ws.console ?? (ws.console = createConsole(window));
       return define(console) ? console : lockedRead(window, 'console', console);
     },
