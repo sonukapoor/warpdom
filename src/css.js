@@ -17,7 +17,7 @@ import {
 import { STYLE_ACCESSORS } from './css-properties.js';
 import { SURFACES } from './style-surface.js';
 import { LONGHANDS, SHORTHANDS, COLOR_SHORTHANDS, ALIASES } from './css-data.js';
-import { isNameCode, isValidValue, readUrl, serializeUrls, urlTokenEnd } from './css-values.js';
+import { hasVarFunction, isNameCode, isValidValue, readUrl, serializeUrls, urlTokenEnd } from './css-values.js';
 import {
   expand,
   segments,
@@ -917,12 +917,14 @@ function versionedValue(name, value, mode, surface) {
       ? lower
       : lower === 'auto'
         ? 'auto'
-        : lower.includes('var(')
+        : hasVarFunction(lower)
           ? 'var'
           : null;
     if (kind !== null && droppedBy(mode, kind, name)) return INVALID;
     // background-image's url()s as cssstyle reads them, the rest by its
-    // grammar; with var() the value is kept as written (jsdom 26).
+    // grammar; with var() the value is kept as written (jsdom 26), but
+    // not with var( in a string or another name (url("notvar(x).png"),
+    // black box: cssstyle 4.3.1 to 4.6 drop it, #222).
     if (name === 'background-image' && kind !== 'var' && /url\(/i.test(value)) {
       if (!legacyImageUrls(value)) return INVALID;
       return isValidValue(name, value.replace(LEGACY_URLS, 'url(x)')) ? serializeDeclared(name, value, mode) : INVALID;
@@ -1193,7 +1195,12 @@ const legacyLength = (token, surface, old) => {
   return surface?.legacyFont === 'cssstyle4.1' ? BG_LENGTH_3.test(token) : BG_LENGTH_4.test(token);
 };
 function backgroundValue(value, mode, surface) {
-  if (/var\(|env\(|attr\(/i.test(value) || CSS_WIDE_KEYWORD.test(value)) return undefined;
+  // The regular expression first: most values have none of these.
+  if (
+    (/var\(|env\(|attr\(/i.test(value) && (hasVarFunction(value) || /env\(|attr\(/i.test(value))) ||
+    CSS_WIDE_KEYWORD.test(value)
+  )
+    return undefined;
   const legacy = isLegacyMode(mode);
   // jsdom 27 and later: math functions (calc(10px + 5%) is calc(5% + 10px)
   // in jsdom 30, rejected before) are left to the general rules.
@@ -1533,7 +1540,7 @@ function serializeDeclared(name, value, mode) {
             /^url\(/i.test(value) &&
             readUrl(value, 4)?.end === value.length)) &&
         /url\(/i.test(value) &&
-        !/var\(/i.test(value)
+        !hasVarFunction(value)
       )
         value = serializeUrls(value, urlStyle === 'spec' ? 'spec' : 'quotes', image);
     } else if (LEGACY_URL_NAMES.has(name) && !/var\(/i.test(value)) value = legacyUrls(name, value, mode);

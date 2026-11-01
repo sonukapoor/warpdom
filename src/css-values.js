@@ -33,6 +33,7 @@ const IDENT_CHARS = /^(?:[a-zA-Z0-9_\u0080-￿-]|\\.)+/;
 function tokenize(text) {
   let i = 0;
   const n = text.length;
+  let varFunction = null; // hasVarFunction(text), read at the first bad url()
   function list(close) {
     const out = [];
     while (i < n) {
@@ -109,7 +110,8 @@ function tokenize(text) {
             const url = readUrl(text, i, newlineSpaces);
             // A bad url() in a value with var() is kept to its ")", as the
             // value is (jsdom): url(var(--image).png), var(--a, url(a b.png)).
-            const close = url === null && /var\(/i.test(text) ? findClose(text, i) : -1;
+            if (url === null) varFunction ??= hasVarFunction(text);
+            const close = url === null && varFunction ? findClose(text, i) : -1;
             if (url === null && close === -1) return null;
             out.push({ t: 'url' });
             i = url === null ? close + 1 : url.end;
@@ -131,18 +133,26 @@ function tokenize(text) {
   return list(null);
 }
 
+// The ")" closing a url() from its insides, past nested parentheses, and
+// past strings in a quoted one (an unquoted one has no strings: url(a"b
+// c.png)); an escaped character is skipped, in a string or not (var(--a)
+// url(a\(b c.png); black box: jsdom 23 to 30 keep both, #222).
 function findClose(text, from) {
+  const n = text.length;
+  let i = from;
+  while (i < n && isSpace(text.charCodeAt(i))) i++;
+  const strings = text.charCodeAt(i) === 0x22 || text.charCodeAt(i) === 0x27;
   let depth = 0;
-  for (let i = from; i < text.length; i++) {
-    const c = text[i];
-    if (c === '"' || c === "'") {
-      const end = text.indexOf(c, i + 1);
-      if (end === -1) return -1;
-      i = end;
-      continue;
-    }
-    if (c === '(') depth++;
-    else if (c === ')') {
+  let quote = 0;
+  for (; i < n; i++) {
+    const c = text.charCodeAt(i);
+    if (c === 0x5c) {
+      i++; // \ and the character it escapes
+    } else if (quote !== 0) {
+      if (c === quote) quote = 0;
+    } else if (strings && (c === 0x22 || c === 0x27)) quote = c;
+    else if (c === 0x28) depth++;
+    else if (c === 0x29) {
       if (depth === 0) return i;
       depth--;
     }
@@ -261,6 +271,39 @@ export function urlTokenEnd(text, open) {
     else if (c === 41) return j + 1;
   }
   return n;
+}
+// A var( function token, in any case, outside quoted strings: not after a
+// name character (notvar(, -var(, url(n-var(--a).png)) or in a string
+// (url("var(x).png")), as CSS Syntax 3 reads it; one in an unquoted url()
+// counts (url(var(--a).png), url(a\ var(--a).png); black box: jsdom 23 to
+// 30, #222). One pass, without allocating.
+export function hasVarFunction(value) {
+  if (!/var\(/i.test(value)) return false;
+  const n = value.length;
+  let quote = 0;
+  let name = false; // the previous character continues a name
+  for (let i = 0; i < n; i++) {
+    const c = value.charCodeAt(i);
+    if (c === 0x5c) {
+      // \ and the character it escapes
+      i++;
+      name = quote === 0 && i < n && isNameCode(value.charCodeAt(i));
+    } else if (quote !== 0) {
+      if (c === quote) quote = 0;
+    } else if (c === 0x22 || c === 0x27) {
+      quote = c;
+      name = false;
+    } else if (
+      !name &&
+      (c | 0x20) === 0x76 &&
+      (value.charCodeAt(i + 1) | 0x20) === 0x61 &&
+      (value.charCodeAt(i + 2) | 0x20) === 0x72 &&
+      value.charCodeAt(i + 3) === 0x28
+    )
+      return true;
+    else name = isNameCode(c);
+  }
+  return false;
 }
 // A character of a name (or a backslash): url( after it is no url().
 export const isNameCode = (c) =>
