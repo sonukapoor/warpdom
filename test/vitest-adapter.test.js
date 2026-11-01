@@ -461,11 +461,15 @@ test("setup again on the same global (Vitest 3): the reset removes the previous 
   const MARK = Symbol.for('warpdom.vitest.mark');
   const global = {};
   const afterReset = [];
-  // vi.stubGlobal and vi.unstubAllGlobals (Vitest 3.2.4's), one vi per worker.
+  // vi.stubGlobal and vi.unstubAllGlobals (Vitest 3.2.4's), one vi per
+  // worker; warpdom/vitest/reset wraps stubGlobal to report the mock (#201).
   const stubs = new Map();
   const stubGlobal = (key, value) => {
-    if (!stubs.has(key)) stubs.set(key, Object.getOwnPropertyDescriptor(global, key));
+    const before = Object.getOwnPropertyDescriptor(global, key);
+    const kept = stubs.has(key);
+    if (!kept) stubs.set(key, before);
     Object.defineProperty(global, key, { value, writable: true, enumerable: true, configurable: true });
+    global[Symbol.for('warpdom.vitest.mocking')](key, before, Object.getOwnPropertyDescriptor(global, key), kept);
   };
   const unstubAllGlobals = () => {
     for (const [key, original] of stubs)
@@ -476,7 +480,7 @@ test("setup again on the same global (Vitest 3): the reset removes the previous 
   // One test file: setup(), the setup files (warpdom's reset after
   // Vitest's cleanup, then the project's), the mark when its tests start
   // (unless all skip), its tests, teardown().
-  const file = ({ imports = () => {}, tests = () => {}, skipped = false }) => {
+  const file = ({ setupDep = () => {}, imports = () => {}, tests = () => {}, skipped = false }) => {
     const env = environment.setup(global, { warpdom: { jsdom: '30.1.3' } });
     try {
       unstubAllGlobals();
@@ -486,9 +490,12 @@ test("setup again on the same global (Vitest 3): the reset removes the previous 
         global.innerHeight,
         typeof global.scrollTo,
         global.document instanceof global.Document,
+        global.outerWidth,
       ]);
-      // The project's setup file stubs window members.
+      // The project's setup file's import (loaded once), then its stubs of window members.
+      setupDep();
       stubGlobal('innerHeight', 500);
+      stubGlobal('outerWidth', 500);
       if (skipped) stubGlobal('document', null);
       imports();
       if (!skipped) global[MARK]();
@@ -498,8 +505,11 @@ test("setup again on the same global (Vitest 3): the reset removes the previous 
     }
   };
   file({
+    setupDep: () => Object.defineProperty(global, 'outerWidth', { value: 900, writable: true, configurable: true }),
     imports: () => delete global.scrollTo,
     tests() {
+      unstubAllGlobals();
+      assert.equal(global.outerWidth, 900);
       global.__added = 1;
       Object.defineProperty(global, 'innerWidth', { value: 500, writable: true, configurable: true });
       stubGlobal('document', null);
@@ -514,7 +524,9 @@ test("setup again on the same global (Vitest 3): the reset removes the previous 
     },
   });
   file({ tests: () => assert.equal(global.__skippedDep, 1) });
-  assert.deepEqual(afterReset, Array(4).fill([1024, 768, 'function', true]));
+  // A member a module loaded once changed is the new window's again, as
+  // Vitest 3.2.4 measured: setup() installs it for every file.
+  assert.deepEqual(afterReset, Array(4).fill([1024, 768, 'function', true, 1024]));
 });
 
 // Black box (Vitest 5, jsdom 30, every pool): the global's WebSocket and

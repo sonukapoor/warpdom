@@ -13,6 +13,40 @@ vi.useRealTimers();
 vi.restoreAllMocks();
 vi.unstubAllGlobals();
 vi.unstubAllEnvs();
+// What a global was before the setup mocked it, where Vitest's cleanup puts
+// it back: a module loaded once may have changed it before (#201). The
+// wrappers report each mock of a global's key with its descriptors before
+// and after, and whether Vitest keeps an earlier stub's original (a stub of
+// a key stubbed since vi.unstubAllGlobals: Vitest's own list of stubs, per
+// worker as vi is). vi is wrapped once.
+const WRAPPED = Symbol.for('warpdom.vitest.wrapped');
+if (!vi[WRAPPED]) {
+  const { stubGlobal, unstubAllGlobals, spyOn } = vi;
+  const mock = (key, kept, call) => {
+    const before = Object.getOwnPropertyDescriptor(globalThis, key);
+    const result = call();
+    globalThis[Symbol.for('warpdom.vitest.mocking')]?.(
+      key,
+      before,
+      Object.getOwnPropertyDescriptor(globalThis, key),
+      kept,
+    );
+    return result;
+  };
+  const stubbed = new Set();
+  vi.stubGlobal = (name, value) => {
+    const kept = stubbed.has(name);
+    stubbed.add(name);
+    return mock(name, kept, () => stubGlobal(name, value));
+  };
+  vi.unstubAllGlobals = () => {
+    stubbed.clear();
+    return unstubAllGlobals();
+  };
+  vi.spyOn = (object, key, ...rest) =>
+    object === globalThis ? mock(key, false, () => spyOn(object, key, ...rest)) : spyOn(object, key, ...rest);
+  vi[WRAPPED] = true;
+}
 const reset = globalThis[Symbol.for('warpdom.vitest.reset')];
 if (reset) reset();
 // When the file's tests start (its setup files and imports done), the
