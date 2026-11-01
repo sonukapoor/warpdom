@@ -197,6 +197,8 @@ test('hasVarFunction: comments, strings and unquoted url()s', () => {
     'url(a/*b.png) xvar(x)',
     '"/* var(x)"',
     'url(x-var(--a).png)',
+    // A backslash escapes nothing in a comment: \*/ ends it.
+    '/* \\*/ url("var(x).png")',
   ])
     assert.equal(hasVarFunction(value), false, value);
   // Linear: an unclosed comment, an unclosed url() and many url( openings.

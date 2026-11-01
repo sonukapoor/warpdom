@@ -293,8 +293,9 @@ export function hasVarFunction(value) {
   let name = false; // the previous character continues a name
   for (let i = 0; i < n; i++) {
     const c = value.charCodeAt(i);
-    if (c === 0x5c) {
-      // \ and the character it escapes
+    // \ and the character it escapes; not in a comment, where a backslash
+    // escapes nothing (/* \*/ ends the comment)
+    if (c === 0x5c && quote !== 1) {
       i++;
       name = quote < 3 && i < n && isNameCode(value.charCodeAt(i));
       continue;
