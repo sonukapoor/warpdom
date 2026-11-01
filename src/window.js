@@ -20,6 +20,8 @@ import {
   assignThrough,
   lockedRead,
   lockedWrite,
+  lockedValue,
+  NOT_LOCKED,
 } from './internal.js';
 import { INTERFACES, SVG_ELEMENTS, LEGACY_SVG_ELEMENTS, SVG_TYPES_INTERFACES, HTML_NS, SVG_NS } from './interfaces.js';
 import { HTML_ELEMENTS, PLAIN_TAGS } from './html-elements.js';
@@ -447,6 +449,12 @@ export function createWindow(options = {}) {
   for (const iface of ORDER) {
     const { name } = iface;
     const get = (lazyGetters[name] = () => {
+      // A locked member assigned before its first read returns that value
+      // without making the interface.
+      if (locked) {
+        const kept = lockedValue(window, name);
+        if (kept !== NOT_LOCKED) return kept;
+      }
       const ctor = materialize(name);
       // Only a member still the locked accessor (materialize could not
       // replace it) keeps a value.

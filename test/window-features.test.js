@@ -1171,3 +1171,18 @@ test('window: interfaces read after another is locked stay data properties; a lo
   v.console = 'kept';
   assert.equal(v.console, 'kept');
 });
+
+// An interface object locked and assigned before its first read is not
+// made: reading returns the assigned value, and its prototype stays unmade
+// (Copilot review on #227).
+test('window: a locked interface assigned before its first read is not made (#160)', () => {
+  const w = createWindow();
+  for (const name of ['MutationObserver', 'CSSStyleProperties'])
+    Object.defineProperty(w, name, { configurable: false });
+  w.MutationObserver = 1;
+  const mock = function CSSStyleProperties() {};
+  w.CSSStyleProperties = mock;
+  assert.equal(w.CSSStyleProperties, mock);
+  assert.equal(w.CSSStyleProperties, mock);
+  assert.equal(w.MutationObserver, 1);
+});
