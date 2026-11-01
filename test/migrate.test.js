@@ -2505,3 +2505,44 @@ test('migrate (#221): a sub-package on warpdom under a root that declares jsdom 
     assert.deepEqual(same, [false]);
   });
 });
+
+test('migrate (#221, review 2): a config environment moved from jsdom whose options migrate cannot read', async () => {
+  // Once warpdom, the environment follows the version its options may
+  // name: unknown, whether no pin is needed (jsdom 30.1.2), jsdom stays,
+  // or the pin cannot go into them (jsdom 25.0.1).
+  const files = (jsdom, options, extra = {}) => ({
+    'package.json': `{\n  "private": true,\n  "devDependencies": {\n    "jsdom": "^${jsdom}",\n    "vitest": "^5.0.0",\n    "warpdom": "^${VERSION}"\n  }\n}\n`,
+    'vitest.config.js': `const opts = { warpdom: { jsdom: '26.1.0' } };\nexport default {\n  test: {\n    environment: 'jsdom',\n    environmentOptions: ${options},\n  },\n};\n`,
+    'x.spec.js': "import { test } from 'vitest';\n",
+    ...extra,
+  });
+  for (const [jsdom, options, extra] of [
+    ['30.1.2', 'opts'],
+    ['30.1.2', '{ ...opts }'],
+    ['30.1.2', '{ warpdom: opts.warpdom }'],
+    ['25.0.1', 'opts'],
+    ['25.0.1', 'opts', { 'src/dom.js': "import { JSDOM } from 'jsdom';\n" }],
+  ]) {
+    await tempProject(files(jsdom, options, extra), async (dir) => {
+      installed(dir, 'jsdom', { version: jsdom });
+      const r = await run(dir);
+      const label = `${jsdom} ${options}${extra ? ' (jsdom kept)' : ''}`;
+      assert.deepEqual(
+        r.profiles.map((p) => p.same),
+        [null],
+        label,
+      );
+      assert.match(r.profiles[0].after, /unknown for the environment at vitest\.config\.js:4/, label);
+      assert.match(r.profile.join('\n'), /vitest\.config\.js:4: this environment ran on jsdom /, label);
+    });
+  }
+  // Options it can read that name no version: kept by the pin.
+  await tempProject(files('25.0.1', "{ url: 'http://x/' }"), async (dir) => {
+    installed(dir, 'jsdom', { version: '25.0.1' });
+    const r = await run(dir);
+    assert.deepEqual(
+      r.profiles.map((p) => p.same),
+      [true],
+    );
+  });
+});

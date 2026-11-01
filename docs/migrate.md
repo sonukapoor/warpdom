@@ -268,7 +268,11 @@ the version next to it, and the profile is not reported as kept. Not
 counted: a warpdom environment whose options name a jsdom version
 (`environmentOptions.warpdom.jsdom`, `testEnvironmentOptions.jsdom`), which
 warpdom follows instead of the installed jsdom, and warpdom environments in
-fixture directories, which migrate does not change.
+fixture directories, which migrate does not change. A Vitest environment
+changed from jsdom whose `environmentOptions` migrate cannot read
+(`environmentOptions: opts`, a spread, `warpdom: opts.warpdom`) may name a
+jsdom version warpdom then follows: the profile is reported as uncertain
+(`same: null`) with a note for it, unless another test surely changes it.
 
 A test file that picks warpdom (or jsdom, which migrate changes to
 warpdom) with a `@vitest-environment` comment takes the options of the

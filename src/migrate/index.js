@@ -1615,6 +1615,11 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
   // migrate cannot tell, per package and runner: the options may name
   // another jsdom version, which they follow now.
   const unreadFromJsdom = new Map();
+  // Vitest environments changed from jsdom whose environmentOptions migrate
+  // cannot read (environmentOptions: opts, spreads, a version that is not a
+  // string literal), per package and runner: once warpdom, they follow the
+  // version those options may name.
+  const unreadOptions = new Map();
   const commented = (file, line, runner, pkg, fromJsdom = false) => {
     const key = `${pkg.rel}\0${runner}`;
     const projects = commentProjects(file, fromJsdom);
@@ -1664,8 +1669,14 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
     const pkg = targetOf(e.file, e.runner);
     if (e.runner === 'vitest' && e.kind === '@vitest-environment comment') {
       if (e.from === 'jsdom') commented(e.file, e.line, e.runner, pkg, true);
-    } else if (!(e.meta?.prop && namesJsdomVersion(e.meta.a, e.meta.prop.frame, e.runner)))
-      definite.add(`${pkg.rel}\0${e.runner}`);
+    } else {
+      const key = `${pkg.rel}\0${e.runner}`;
+      const setting = e.runner === 'vitest' && e.meta?.prop ? warpdomSetting(e.meta.a, e.meta.prop.frame) : undefined;
+      if (setting === null) {
+        if (!unreadOptions.has(key)) unreadOptions.set(key, []);
+        unreadOptions.get(key).push(`${e.file}:${e.line}`);
+      } else if (!(e.meta?.prop && namesJsdomVersion(e.meta.a, e.meta.prop.frame, e.runner))) definite.add(key);
+    }
   }
   // Unknown (no environment of that runner changed here, e.g. one already
   // on warpdom): assumed, as before.
@@ -2019,6 +2030,16 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       same = null;
       result.profile.push(
         `${unread.join(', ')}: ${unread.length > 1 ? 'these files' : 'this file'} ran on ${ranOn} by ${unread.length > 1 ? 'their' : 'its'} @vitest-environment jsdom comment; migrate cannot tell which Vitest project runs ${unread.length > 1 ? 'them' : 'it'}, or cannot read its options: if they name another jsdom version (environmentOptions.warpdom.jsdom), ${unread.length > 1 ? 'they follow' : 'it follows'} that version on warpdom.`,
+      );
+    }
+    // Environments changed from jsdom whose options migrate cannot read:
+    // unknown unless another test surely changes the profile.
+    const unreadEnvs = unreadOptions.get(key);
+    if (unreadEnvs && (same === true || (same === false && !definite.has(key)))) {
+      after += `; unknown for the environment${unreadEnvs.length > 1 ? 's' : ''} at ${unreadEnvs.join(', ')} (migrate cannot read ${unreadEnvs.length > 1 ? 'their' : 'its'} environmentOptions, which may name another jsdom version)`;
+      same = null;
+      result.profile.push(
+        `${unreadEnvs.join(', ')}: ${unreadEnvs.length > 1 ? 'these environments' : 'this environment'} ran on ${ranOn}; migrate cannot read ${unreadEnvs.length > 1 ? 'their' : 'its'} environmentOptions: if they name a jsdom version (environmentOptions.warpdom.jsdom), the tests follow that version on warpdom.`,
       );
     }
     result.profiles.push({ package: pkg.file, runner, before: beforeText, after, same });
