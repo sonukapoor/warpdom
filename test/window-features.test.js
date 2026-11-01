@@ -921,6 +921,63 @@ test('window: members made on first read, frozen with the window before it, read
   }
 });
 
+// Assigning a member locked before its first read through a proxy over the
+// window defines { value } on the proxy: a defineProperty trap returning
+// false fails a strict-mode assignment, one returning true leaves the member
+// as it is, one forwarding to the window replaces it (black box, jsdom
+// 20.0.3 to 30.1.3). Sloppy assignments and Reflect.set get false there in
+// jsdom; warpdom's setter cannot return that, so they throw (PLAN.md, #96).
+const lockedProxyScenario = (w) => {
+  const out = [];
+  for (const key of LAZY_MEMBERS) {
+    Object.defineProperty(w, key, { configurable: false });
+    const made = w[key];
+    const line = [];
+    try {
+      new Proxy(w, { defineProperty: () => false })[key] = 7;
+      line.push('assigned');
+    } catch (e) {
+      line.push(`${e.constructor.name}: ${e.message}`);
+    }
+    line.push(w[key] === made);
+    new Proxy(w, { defineProperty: () => true })[key] = 8;
+    line.push(w[key] === made);
+    const seen = [];
+    new Proxy(w, {
+      defineProperty(target, name, descriptor) {
+        seen.push(`${String(name)} ${JSON.stringify(descriptor)}`);
+        return Reflect.defineProperty(target, name, descriptor);
+      },
+    })[key] = 9;
+    line.push(seen[0], w[key]);
+    out.push(`${key}: ${line.join(' ')}`);
+  }
+  return out;
+};
+for (const jsdom of [20, 26, 30])
+  parity(
+    `a window member locked before its first read, assigned through a proxy, honors its defineProperty trap (jsdom ${jsdom})`,
+    lockedProxyScenario,
+    { jsdom },
+  );
+
+// A per-file reset (reset.js) keeps the constructors made before it and puts
+// back their accessors; one locked after the reset and assigned through a
+// proxy over the window then reads as the value assigned.
+test('window: an interface object locked after a reset and assigned through a proxy reads as the value (#160)', async () => {
+  const { snapshotWindow, resetWindow } = await import('../src/reset.js');
+  const w = createWindow();
+  snapshotWindow(w);
+  const made = w.MutationObserver;
+  resetWindow(w);
+  Object.defineProperty(w, 'MutationObserver', { configurable: false });
+  new Proxy(w, {}).MutationObserver = 7;
+  assert.equal(w.MutationObserver, 7);
+  assert.equal(new Proxy(w, {}).MutationObserver, 7);
+  w.MutationObserver = made;
+  assert.equal(w.MutationObserver, made);
+});
+
 // A copy of a member's descriptor taken before its first read is the
 // accessor warpdom has until then (jsdom's: a data property). Once the
 // window's member is made, assigning through the window (super, Reflect.set)

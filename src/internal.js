@@ -170,8 +170,9 @@ export function lockedRead(window, name, made) {
 // does (a setter cannot return false, see assignThrough). Anything else that
 // made define fail (the setter called on the window through a copy of the
 // accessor, the window's member since replaced by a non-configurable one)
-// fails as defining it does.
-export function lockedWrite(window, name, value, set) {
+// fails as defining it does. onLock, when given, is told that a value was
+// kept (window.js's interface getters look here only after that).
+export function lockedWrite(window, name, value, set, onLock) {
   const current = Reflect.getOwnPropertyDescriptor(window, name);
   if (current === undefined || current.set !== set) {
     throw new TypeError(`Cannot redefine property: ${String(name)}`);
@@ -182,6 +183,7 @@ export function lockedWrite(window, name, value, set) {
   let values = lockedMembers.get(window);
   if (values === undefined) lockedMembers.set(window, (values = new Map()));
   values.set(name, value);
+  onLock?.();
 }
 
 // The part of that for a receiver other than the window. The window's member is
@@ -198,7 +200,7 @@ export function lockedWrite(window, name, value, set) {
 // assignment. A setter cannot return that failure, so it throws a TypeError, as
 // a strict-mode assignment to the data property does (sloppy code and
 // Reflect.set get false there instead; see PLAN.md, #96).
-export function assignThrough(window, receiver, name, value, set, define) {
+export function assignThrough(window, receiver, name, value, set, define, onLock) {
   if (receiver === null || (typeof receiver !== 'object' && typeof receiver !== 'function')) {
     throw new TypeError(`Cannot create property '${String(name)}' on ${typeof receiver} '${String(receiver)}'`);
   }
@@ -214,9 +216,26 @@ export function assignThrough(window, receiver, name, value, set, define) {
   const own = Reflect.getOwnPropertyDescriptor(receiver, name);
   if (locked && own !== undefined && own.set === set && !own.configurable) {
     // The receiver is a proxy over the window (or holds a locked copy of the
-    // accessor, which this cannot tell apart): the window's data property
-    // would get the value.
-    lockedWrite(window, name, value, set);
+    // accessor, which this cannot tell apart). jsdom's receiver step defines
+    // { value } on it: a proxy's defineProperty trap decides (black box, jsdom
+    // 20.0.3 to 30.1.3). Forwarded to the window, that would replace its data
+    // property, but the locked accessor rejects { value }, so false is also
+    // what a trap returning false gives: defining {} (which the accessor
+    // accepts) tells them apart, at the cost of a second trap call. A trap
+    // returning true leaves the window's member as it is; the proxy then
+    // reports { value } incompatible with its target's accessor (a TypeError),
+    // which the {} definition, accepted, tells apart from a trap's own error.
+    let defined;
+    try {
+      defined = Reflect.defineProperty(receiver, name, { value });
+    } catch (error) {
+      if (!(error instanceof TypeError) || !Reflect.defineProperty(receiver, name, {})) throw error;
+      return;
+    }
+    if (!defined && !Reflect.defineProperty(receiver, name, {})) {
+      throw new TypeError(`'defineProperty' on proxy: trap returned falsish for property '${String(name)}'`);
+    }
+    lockedWrite(window, name, value, set, onLock);
   } else if (own === undefined) {
     if (!Reflect.defineProperty(receiver, name, { value, writable: true, enumerable: true, configurable: true })) {
       throw new TypeError(`Cannot add property ${String(name)}, object is not extensible`);

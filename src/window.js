@@ -324,6 +324,9 @@ export function createWindow(options = {}) {
   // Whether a constructor property was locked so: until then, the getters
   // skip that lookup.
   let locked = false;
+  const lock = () => {
+    locked = true;
+  };
   function materialize(name) {
     const existing = ctors[name];
     if (existing) return existing;
@@ -448,11 +451,8 @@ export function createWindow(options = {}) {
       return locked ? lockedRead(window, name, ctor) : ctor;
     });
     const set = function (value) {
-      if (this !== window) assignThrough(window, this, name, value, set, defineInterface);
-      else if (!defineInterface(value, name)) {
-        lockedWrite(window, name, value, set);
-        locked = true;
-      }
+      if (this !== window) assignThrough(window, this, name, value, set, defineInterface, lock);
+      else if (!defineInterface(value, name)) lockedWrite(window, name, value, set, lock);
     };
     Object.defineProperty(window, name, { get, set, configurable: true });
     Object.defineProperty(protos, name, {

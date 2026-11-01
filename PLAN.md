@@ -4666,3 +4666,18 @@ and preventExtensions do not throw for profiles before jsdom 27. Tests:
 window-features.test.js "a window member locked before its first read"
 (jsdom 20, 26, 30; read first and assign first), "a window member sealed
 before its first read" (jsdom 30) and "frozen with the window before it".
+
+Review (Copilot on #227): assigning a locked member through a proxy over the
+window now defines `{ value }` on the proxy first, as jsdom's receiver step
+does (black box, 20.0.3, 26.1.0, 30.1.3): a defineProperty trap returning
+false fails a strict-mode assignment ("'defineProperty' on proxy: trap
+returned falsish for property 'Image'") and keeps the member, one returning
+true keeps it without an error, one forwarding to the window replaces it.
+The locked accessor rejects `{ value }`, so a forwarding trap and a false one
+both give false; a second definition, `{}`, tells them apart, and a trap sees
+that extra call (jsdom: one). Sloppy assignments and Reflect.set throw where
+jsdom returns false (#96). A value kept through a proxy now also turns on
+the interface getters' lookup: after a per-file reset the constructors are
+cached, so the getter did not look and still returned the constructor.
+Tests: "assigned through a proxy, honors its defineProperty trap" (jsdom 20,
+26, 30) and "locked after a reset and assigned through a proxy".
