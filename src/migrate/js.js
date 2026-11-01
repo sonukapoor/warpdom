@@ -317,8 +317,9 @@ const isKeyToken = (t) =>
 // sits. Options: json (every `{` is an object).
 //
 // properties: { key, path, keyToken, valueStart, valueEnd (token indexes,
-//   end exclusive), shorthand, frame, computed } (a computed key: its
-//   string when it is one string literal, ['x'], else '[computed]')
+//   end exclusive), shorthand, frame, computed, keyEnd } (a computed key:
+//   its string when it is one string literal, ['x'], else '[computed]';
+//   keyToken is its `[` and keyEnd its `]`)
 // sites (per string token index): { type: 'value', prop } directly the
 //   value of a property (inside parentheses too), { type: 'element',
 //   path, index } an element of an array literal, { type: 'arg', callee,
@@ -472,7 +473,9 @@ export function analyze(source, { json = false } = {}) {
               key,
               path: [...parent.path, key],
               computed: true,
-              keyToken: k,
+              // The key spans [keyToken, keyEnd]: its `[` to its `]`.
+              keyToken: closing.open,
+              keyEnd: k,
               valueStart: k + 2,
               valueEnd: null,
               shorthand: false,

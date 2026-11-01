@@ -169,13 +169,13 @@ const jsdomOption = (a, frame, runner) => {
   return !nullish;
 };
 const namesJsdomVersion = (a, frame, runner) => jsdomOption(a, frame, runner) === true;
-// The jsdom version a Vitest project's test options (frame) name in
-// environmentOptions.warpdom.jsdom, read only where migrate can read it
-// (#221): undefined when they name none, false for a null or undefined
-// value, the version when it is a string literal, null when migrate
-// cannot tell (options that are not object literals, spreads, computed
-// keys it cannot read, a version that is not a string literal).
-const jsdomSetting = (a, frame) => {
+// The jsdom (or cssstyle, name) version a Vitest project's test options
+// (frame) name in environmentOptions.warpdom, read only where migrate can
+// read it (#221): undefined when they name none, false for a null or
+// undefined value, the version when it is a string literal, null when
+// migrate cannot tell (options that are not object literals, spreads,
+// computed keys it cannot read, a version that is not a string literal).
+const warpdomSetting = (a, frame, name = 'jsdom') => {
   let options = frame;
   for (const key of ['environmentOptions', 'warpdom']) {
     if (unreadable(a, options)) return null;
@@ -185,7 +185,7 @@ const jsdomSetting = (a, frame) => {
     if (!options) return null;
   }
   if (unreadable(a, options)) return null;
-  const q = a.properties.find((x) => x.frame === options && x.key === 'jsdom');
+  const q = a.properties.find((x) => x.frame === options && x.key === name);
   if (!q) return undefined;
   const t = q.valueEnd - q.valueStart === 1 ? a.tokens[q.valueStart] : null;
   if (t?.type === 'ident' && (t.value === 'null' || t.value === 'undefined')) return false;
@@ -703,6 +703,8 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
         file,
         line,
         keyToken: tokens[p.keyToken],
+        // ['jsdom']: the whole key is renamed, brackets included.
+        keyEnd: tokens[p.keyEnd ?? p.keyToken],
         frame: options.frame,
         obj,
         url: tokens[url.valueStart].value,
@@ -1077,7 +1079,7 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
     edits.push({
       file: u.file,
       start: t.start,
-      end: t.end,
+      end: u.keyEnd.end,
       text: t.type === 'string' ? `${t.quote}warpdom${t.quote}` : 'warpdom',
       kind: 'environmentOptions (url)',
       runner: 'vitest',
@@ -1511,7 +1513,10 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
     const answers = [];
     for (const m of major === null ? [3, 4, 5] : [major])
       for (const base of bases) answers.push(projectsFor(a, configRel, configDir, fileRel, m, base, fromJsdom));
-    const keyOf = (out) => JSON.stringify(out?.map((p) => [p.where, p.frames.map((f) => f.open), p.named]) ?? null);
+    const keyOf = (out) =>
+      JSON.stringify(
+        out?.map((p) => [p.where, p.frames.map((f) => f.open), p.named, p.cssstyle ?? String(p.cssstyle)]) ?? null,
+      );
     return answers.every((x) => keyOf(x) === keyOf(answers[0])) ? answers[0] : null;
   };
   const projectsFor = (a, configRel, configDir, fileRel, major, base, fromJsdom) => {
@@ -1535,8 +1540,8 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       // when it inherits them (deep-merged). Options migrate cannot read
       // make the project unknown (#221): they may name a version, or a
       // null that overrides the root config's.
-      const own = p.frame ? jsdomSetting(a, p.frame) : undefined;
-      const inherited = p.parent ? jsdomSetting(a, p.parent) : undefined;
+      const own = p.frame ? warpdomSetting(a, p.frame) : undefined;
+      const inherited = p.parent ? warpdomSetting(a, p.parent) : undefined;
       if (own === null) return null;
       let named;
       if (typeof own === 'string') named = own;
@@ -1549,7 +1554,16 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
         : configRel;
       if (named !== undefined) {
         // A file already on warpdom ran on that version before as well.
-        if (fromJsdom) out.push({ frames: [], where, named });
+        if (fromJsdom) {
+          // The cssstyle warpdom takes with it: the one the options name
+          // (inherited the same way), else the one it models for that
+          // jsdom; null when migrate cannot tell.
+          const ownCss = p.frame ? warpdomSetting(a, p.frame, 'cssstyle') : undefined;
+          const inheritedCss = p.parent ? warpdomSetting(a, p.parent, 'cssstyle') : undefined;
+          let cssstyle = ownCss === undefined ? inheritedCss : ownCss;
+          if (ownCss === false && typeof inheritedCss === 'string') cssstyle = null;
+          out.push({ frames: [], where, named, cssstyle: cssstyle === false ? undefined : cssstyle });
+        }
         continue;
       }
       out.push({ frames: [p.frame, own === undefined && p.parent].filter(Boolean), where });
@@ -1593,22 +1607,31 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
   // jsdom (not only commented files whose project migrate cannot tell).
   const definite = new Set();
   // Files moved from jsdom by their comment into a project that names a
-  // jsdom version, per package and runner: [{ file, where, version }]
-  // (#221). They ran on the installed jsdom and follow that version now.
+  // jsdom version, per package and runner: [{ file, where, version,
+  // cssstyle }] (#221). They ran on the installed jsdom and follow that
+  // version now.
   const namedBy = new Map();
+  // Files moved from jsdom by their comment whose project, or its options,
+  // migrate cannot tell, per package and runner: the options may name
+  // another jsdom version, which they follow now.
+  const unreadFromJsdom = new Map();
   const commented = (file, line, runner, pkg, fromJsdom = false) => {
     const key = `${pkg.rel}\0${runner}`;
     const projects = commentProjects(file, fromJsdom);
     if (projects === null) {
       if (!uncertain.has(key)) uncertain.set(key, []);
       uncertain.get(key).push(`${file}:${line}`);
+      if (fromJsdom) {
+        if (!unreadFromJsdom.has(key)) unreadFromJsdom.set(key, []);
+        unreadFromJsdom.get(key).push(`${file}:${line}`);
+      }
       return true;
     }
     let follows = 0;
     for (const p of projects) {
       if (p.named !== undefined) {
         if (!namedBy.has(key)) namedBy.set(key, []);
-        namedBy.get(key).push({ file: `${file}:${line}`, where: p.where, version: p.named });
+        namedBy.get(key).push({ file: `${file}:${line}`, where: p.where, version: p.named, cssstyle: p.cssstyle });
         continue;
       }
       followers.push({ pkg, runner, frames: p.frames, where: p.where, file: `${file}:${line}` });
@@ -1936,21 +1959,64 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
     }
     // Files moved from jsdom by their comment into a project that names
     // another jsdom version (#221): migrate leaves that option as it is,
-    // and reports the change.
-    const ranOnVersion = before?.version ? `jsdom ${before.version}` : 'the installed jsdom';
-    for (const n of (before && namedBy.get(`${before.decl.rel}\0${runner}`)) ?? []) {
-      const kept = before.version ? sameVersion(n.version, before.version) : null;
-      if (kept === true) continue;
+    // and reports the change. Keyed like changedEnvs (the package migrate
+    // edits), not by where jsdom is declared.
+    const ranOn = before?.version
+      ? `jsdom ${before.version}${before.cssstyle ? ` + cssstyle ${before.cssstyle}` : ''}`
+      : 'the installed jsdom';
+    // Whether the profile a named project gives (cssstyle undefined: the
+    // one warpdom models for that jsdom) is the one the file ran on: true,
+    // false, or null when migrate cannot tell.
+    const keptBy = (n) => {
+      const jsdom = before?.version ? sameVersion(n.version, before.version) : null;
+      if (jsdom !== true) return jsdom;
+      if (n.cssstyle === null) return null;
+      const was = before.cssstyle && cssstyleChangesProfile(before.version, before.cssstyle) ? before.cssstyle : null;
+      const now = n.cssstyle && cssstyleChangesProfile(n.version, n.cssstyle) ? n.cssstyle : null;
+      if (was === now) return true;
+      return was && now ? sameVersion(now, was) : false;
+    };
+    const named = ((before && namedBy.get(key)) ?? []).map((n) => ({ ...n, kept: keptBy(n) }));
+    // Only such files changed (no test follows the installed jsdom or the
+    // default): the profile is theirs alone.
+    const onlyNamed = named.length > 0 && !definite.has(key) && !uncertain.has(key);
+    if (onlyNamed) {
+      after = '';
+      same = true;
+    }
+    for (const n of named) {
       const project = `its project at ${n.where}`;
-      if (kept === false) {
-        after += `; jsdom ${n.version} for ${n.file} (named by ${project})`;
-        same = false;
-      } else {
-        after += `; jsdom ${n.version} for ${n.file} (named by ${project}; migrate cannot tell whether it is the one the file ran on)`;
-        if (same !== false) same = null;
-      }
+      const profile = `jsdom ${n.version}${n.cssstyle ? ` + cssstyle ${n.cssstyle}` : ''}`;
+      // Kept: listed only when these files are the whole profile.
+      if (n.kept === true && !onlyNamed) continue;
+      const unsure = n.kept === null ? '; migrate cannot tell whether it is the one the file ran on' : '';
+      after += `${after ? '; ' : ''}${profile} for ${n.file} (named by ${project}${unsure})`;
+      if (n.kept === true) continue;
+      if (n.kept === false) same = false;
+      else if (same !== false) same = null;
+      const ran = `${n.file}: this file ran on ${ranOn} by its @vitest-environment jsdom comment`;
+      if (before?.version && sameVersion(n.version, before.version) === true) {
+        // The same jsdom, another cssstyle.
+        let css = 'the cssstyle warpdom models for it';
+        if (n.cssstyle) css = `cssstyle ${n.cssstyle}`;
+        else if (n.cssstyle === null) css = 'a cssstyle migrate cannot read';
+        const fix = before.cssstyle ? `have it name cssstyle: '${before.cssstyle}'` : 'remove its cssstyle';
+        result.profile.push(
+          `${ran}; on warpdom it follows what ${project} names (environmentOptions.warpdom): jsdom ${n.version} with ${css}. migrate leaves that option as it is: check that this file passes there, or ${fix}.`,
+        );
+      } else
+        result.profile.push(
+          `${ran}; on warpdom it follows jsdom ${n.version}, which ${project} names (environmentOptions.warpdom.jsdom). migrate leaves that option as it is: check that this file passes on jsdom ${n.version}, or move it to a project that names ${before?.version ?? 'the version it ran on'}.`,
+        );
+    }
+    // Files moved from jsdom by their comment whose project's options
+    // migrate cannot read: they may name another version.
+    const unread = unreadFromJsdom.get(key);
+    if (unread && same === true) {
+      after += `; unknown for ${unread.join(', ')} (migrate cannot tell which project runs ${unread.length > 1 ? 'them' : 'it'}, nor whether its options name another jsdom version)`;
+      same = null;
       result.profile.push(
-        `${n.file}: this file ran on ${ranOnVersion} by its @vitest-environment jsdom comment; on warpdom it follows jsdom ${n.version}, which ${project} names (environmentOptions.warpdom.jsdom). migrate leaves that option as it is: check that this file passes on jsdom ${n.version}, or move it to a project that names ${before?.version ?? 'the version it ran on'}.`,
+        `${unread.join(', ')}: ${unread.length > 1 ? 'these files' : 'this file'} ran on ${ranOn} by ${unread.length > 1 ? 'their' : 'its'} @vitest-environment jsdom comment; migrate cannot tell which Vitest project runs ${unread.length > 1 ? 'them' : 'it'}, or cannot read its options: if they name another jsdom version (environmentOptions.warpdom.jsdom), ${unread.length > 1 ? 'they follow' : 'it follows'} that version on warpdom.`,
       );
     }
     result.profiles.push({ package: pkg.file, runner, before: beforeText, after, same });

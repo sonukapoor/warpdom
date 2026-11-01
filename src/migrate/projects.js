@@ -378,7 +378,10 @@ function exported(a) {
       v += 2;
     }
     let object = objectAt(v);
-    if (!object && argEnd >= 0) return returnedObject(a, v, argEnd);
+    // defineConfig(config): a variable, read below; anything else that
+    // is not an object literal, the object a function returns.
+    const variable = tokens[v]?.type === 'ident' && (v + 1 === argEnd || (v + 2 === argEnd && isP(tokens[v + 1], ',')));
+    if (!object && argEnd >= 0 && !variable) return returnedObject(a, v, argEnd);
     // A variable: the object literal it is declared as.
     const t = tokens[v];
     if (!object && t?.type === 'ident' && !isP(tokens[v + 1], '(') && !isP(tokens[v + 1], '.')) {

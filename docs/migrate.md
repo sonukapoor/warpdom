@@ -285,13 +285,21 @@ version and its pin. A file on warpdom by its comment whose projects all
 name a jsdom version does not count: it ran on that version before. A file
 whose comment picked jsdom ran on the installed jsdom, which does not read
 `environmentOptions.warpdom`; in a project that names another version, it
-follows that version once on warpdom. migrate leaves the option as it is
-(other files of the project may rely on it) and reports the change: a note
-per file, and the profile is not reported as kept (uncertain when one
-version is a prefix of the other, such as 25 and 25.0.1). Only what the
+follows that version once on warpdom, with the cssstyle the project names
+(its own or inherited) or else the one warpdom models for that version.
+migrate leaves the option as it is (other files of the project may rely
+on it) and reports the change: a note per file, and the profile is not
+reported as kept (uncertain when one version is a prefix of the other,
+such as 25 and 25.0.1, or when migrate cannot read the cssstyle). When
+such files are the only tests that change, the profile is theirs alone
+(kept when their projects name the jsdom they ran on). When migrate cannot
+tell the project of such a file, or read its options, the profile is
+uncertain even when no pin is needed or jsdom stays installed. Only what the
 config says can be read without running it counts: a key written as a
-string literal in brackets (`['include']`) is read as that key, and the
-config of `defineConfig(() => ...)` is the object the function returns
+string literal in brackets (`['include']`) is read as that key (and
+renamed whole: `['jsdom']: { url }` becomes `warpdom: { url }`), the
+config of `defineConfig(config)` is the object literal `config` is
+declared as, and the config of `defineConfig(() => ...)` is the object the function returns
 (an arrow function's object body, or its only `return { ... }`, not an
 object the function declares). A project that runs a commented file and
 that the pin does not
