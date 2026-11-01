@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { packageDir, packageVersion, findConfig, findVitestWorkspace } from '../compare/detect.js';
 import { isWarpdomEnvironment } from '../compare/wrappers.js';
+import { profileCompat } from '../window-features.js';
 import { vitestProjects, selects, unreadable } from './projects.js';
 import { analyze, tokenize, lineIndex, leadingComments, moduleSpecifiers, typeOnlyReference } from './js.js';
 import { applyEdits, replaceLiteral, editDependencies, editCatalog, catalogEntries } from './edits.js';
@@ -115,27 +116,17 @@ const JEST_ENV_JSDOM = { 25: '15', 26: '16', 27: '16', 28: '19', 29: '20', 30: '
 const DEFAULT_PROFILE = { vitest: '30.1.2 (the newest it models)', jest: '26' };
 
 // Whether the cssstyle a jsdom loaded gives another profile than the one
-// warpdom assumes for that jsdom when none is given (src/window-features.js:
-// jsdom 20 cssstyle 2, 21 to 23 cssstyle 3, 24 to 26 the newest 4.x, 27
-// and 28.0 cssstyle 5.0 to 5.2, 28.1 and later the newest; 29 and later do
-// not depend on it).
+// warpdom assumes for that jsdom when none is given: derived from
+// profileCompat (src/window-features.js), the profile warpdom builds, so
+// the two cannot drift apart. Its cssstyle fields only name the version;
+// cssstyleMajor counts where it is 2 or 3 (src/window.js).
+const cssProfile = (jsdom, cssstyle) => {
+  const { version, cssstyle: name, cssstyleMajor, ...rest } = profileCompat({ jsdom, cssstyle });
+  return JSON.stringify({ ...rest, legacyCssstyle: cssstyleMajor === 2 || cssstyleMajor === 3 ? cssstyleMajor : 0 });
+};
 export function cssstyleChangesProfile(jsdom, cssstyle) {
-  const j = String(jsdom).split('.').map(Number);
-  const c = String(cssstyle).split('.').map(Number);
-  if (!Number.isFinite(j[0]) || !Number.isFinite(c[0])) return false;
-  const lt = (a, b) => {
-    for (let i = 0; i < 3; i++) if ((a[i] || 0) !== b[i]) return (a[i] || 0) < b[i];
-    return false;
-  };
-  if (j[0] >= 29) return false;
-  if (j[0] >= 27) {
-    const key = (v) =>
-      v[0] === 5 ? (lt(v, [5, 3, 0]) ? '5.0' : '5') : v[0] === 6 ? (lt(v, [6, 1, 0]) ? '6.0' : '6.1') : String(v[0]);
-    return key(c) !== (j[0] === 27 || lt(j, [28, 1, 0]) ? '5.0' : '6.1');
-  }
-  if (j[0] <= 20) return c[0] !== 2;
-  if (j[0] <= 23) return c[0] !== 3;
-  return c[0] !== 4 || lt(c, [4, 6, 0]);
+  if (!/^\d+(\.\d+){0,2}$/.test(String(jsdom)) || !/^\d+(\.\d+){0,2}$/.test(String(cssstyle))) return false;
+  return cssProfile(String(jsdom), String(cssstyle)) !== cssProfile(String(jsdom));
 }
 
 const CONFIG_NAME = /^(vite|vitest|jest)([.-][\w.-]*)?\.(c|m)?[jt]s$/;
@@ -1664,6 +1655,14 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
   // Files moved from jsdom by their comment ran on the installed jsdom too:
   // the pin has to reach their project as well. Other environments moved
   // from jsdom follow it unless their options name a version.
+  // Packages and runners with an environment change other than a file
+  // moved from jsdom by its comment (happy-dom ones too).
+  const otherChanges = new Set();
+  for (const e of edits) {
+    if (e.pin || e.renamed || !e.from || !e.runner) continue;
+    if (!(e.runner === 'vitest' && e.kind === '@vitest-environment comment' && e.from === 'jsdom'))
+      otherChanges.add(`${targetOf(e.file, e.runner).rel}\0${e.runner}`);
+  }
   for (const e of edits) {
     if (e.pin || e.renamed || !e.from || /happy/.test(e.from) || !e.runner) continue;
     const pkg = targetOf(e.file, e.runner);
@@ -1675,6 +1674,18 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       if (setting === null) {
         if (!unreadOptions.has(key)) unreadOptions.set(key, []);
         unreadOptions.get(key).push(`${e.file}:${e.line}`);
+      } else if (typeof setting === 'string') {
+        // It ran on the installed jsdom (jsdom's environment does not read
+        // environmentOptions.warpdom) and follows that version now.
+        const cssstyle = warpdomSetting(e.meta.a, e.meta.prop.frame, 'cssstyle');
+        if (!namedBy.has(key)) namedBy.set(key, []);
+        namedBy.get(key).push({
+          file: `${e.file}:${e.line}`,
+          where: `${e.file}:${e.line}`,
+          version: setting,
+          cssstyle: cssstyle === false ? undefined : cssstyle,
+          environment: true,
+        });
       } else if (!(e.meta?.prop && namesJsdomVersion(e.meta.a, e.meta.prop.frame, e.runner))) definite.add(key);
     }
   }
@@ -1992,22 +2003,29 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
     const named = ((before && namedBy.get(key)) ?? []).map((n) => ({ ...n, kept: keptBy(n) }));
     // Only such files changed (no test follows the installed jsdom or the
     // default): the profile is theirs alone.
-    const onlyNamed = named.length > 0 && !definite.has(key) && !uncertain.has(key);
+    const onlyNamed = named.length > 0 && !definite.has(key) && !uncertain.has(key) && !otherChanges.has(key);
     if (onlyNamed) {
       after = '';
       same = true;
     }
     for (const n of named) {
-      const project = `its project at ${n.where}`;
+      // A config environment moved from jsdom names it in its own options.
+      const project = n.environment ? `its environmentOptions at ${n.where}` : `its project at ${n.where}`;
       const profile = `jsdom ${n.version}${n.cssstyle ? ` + cssstyle ${n.cssstyle}` : ''}`;
       // Kept: listed only when these files are the whole profile.
       if (n.kept === true && !onlyNamed) continue;
       const unsure = n.kept === null ? '; migrate cannot tell whether it is the one the file ran on' : '';
-      after += `${after ? '; ' : ''}${profile} for ${n.file} (named by ${project}${unsure})`;
+      const target = n.environment
+        ? `the environment at ${n.where} (named by its environmentOptions`
+        : `${n.file} (named by ${project}`;
+      after += `${after ? '; ' : ''}${profile} for ${target}${unsure})`;
       if (n.kept === true) continue;
       if (n.kept === false) same = false;
       else if (same !== false) same = null;
-      const ran = `${n.file}: this file ran on ${ranOn} by its @vitest-environment jsdom comment`;
+      const ran = n.environment
+        ? `${n.file}: this environment ran on ${ranOn} (jsdom's environment does not read environmentOptions.warpdom)`
+        : `${n.file}: this file ran on ${ranOn} by its @vitest-environment jsdom comment`;
+      const what = n.environment ? 'its tests pass' : 'this file passes';
       if (before?.version && sameVersion(n.version, before.version) === true) {
         // The same jsdom, another cssstyle.
         let css = 'the cssstyle warpdom models for it';
@@ -2015,11 +2033,11 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
         else if (n.cssstyle === null) css = 'a cssstyle migrate cannot read';
         const fix = before.cssstyle ? `have it name cssstyle: '${before.cssstyle}'` : 'remove its cssstyle';
         result.profile.push(
-          `${ran}; on warpdom it follows what ${project} names (environmentOptions.warpdom): jsdom ${n.version} with ${css}. migrate leaves that option as it is: check that this file passes there, or ${fix}.`,
+          `${ran}; on warpdom it follows what ${project} names (environmentOptions.warpdom): jsdom ${n.version} with ${css}. migrate leaves that option as it is: check that ${what} there, or ${fix}.`,
         );
       } else
         result.profile.push(
-          `${ran}; on warpdom it follows jsdom ${n.version}, which ${project} names (environmentOptions.warpdom.jsdom). migrate leaves that option as it is: check that this file passes on jsdom ${n.version}, or move it to a project that names ${before?.version ?? 'the version it ran on'}.`,
+          `${ran}; on warpdom it follows jsdom ${n.version}, which ${project} names (environmentOptions.warpdom.jsdom). migrate leaves that option as it is: check that ${what} on jsdom ${n.version}, or ${n.environment ? 'have it name' : 'move it to a project that names'} ${before?.version ?? 'the version it ran on'}.`,
         );
     }
     // Files moved from jsdom by their comment whose project's options

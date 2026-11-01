@@ -225,7 +225,10 @@ lockfile's, else the declared range: `^26.1.0` pins `26`). For jsdom 28
 and earlier, whose behavior also depends on the cssstyle they load, the
 installed (or locked) cssstyle is pinned with it when it gives another
 profile than the one warpdom assumes for that jsdom (jsdom 26 with
-cssstyle 4.2.1: `{ jsdom: '26.1.0', cssstyle: '4.2.1' }`). It writes it in
+cssstyle 4.2.1: `{ jsdom: '26.1.0', cssstyle: '4.2.1' }`); the comparison
+uses the profile warpdom builds for each (cssstyle 2.3 before jsdom 21.1,
+3.0 from 21.1 to 23.0, the newest 4.x from 23.1 to 26, 5.3 for 27 and
+28.0). It writes it in
 the most local place, next to the environment it changed, and says why in
 the plan:
 
@@ -273,6 +276,9 @@ changed from jsdom whose `environmentOptions` migrate cannot read
 (`environmentOptions: opts`, a spread, `warpdom: opts.warpdom`) may name a
 jsdom version warpdom then follows: the profile is reported as uncertain
 (`same: null`) with a note for it, unless another test surely changes it.
+One whose options name a jsdom version follows that version (and the
+cssstyle they name) once on warpdom: when it is not the one it ran on, a
+note says so and the profile is not reported as kept.
 
 A test file that picks warpdom (or jsdom, which migrate changes to
 warpdom) with a `@vitest-environment` comment takes the options of the
@@ -295,8 +301,11 @@ migrate leaves the option as it is (other files of the project may rely
 on it) and reports the change: a note per file, and the profile is not
 reported as kept (uncertain when one version is a prefix of the other,
 such as 25 and 25.0.1, or when migrate cannot read the cssstyle). When
-such files are the only tests that change, the profile is theirs alone
-(kept when their projects name the jsdom they ran on). When migrate cannot
+such files are the only environment changes of the package and runner
+(no config environment, no happy-dom one) and no other test follows the
+installed jsdom, the profile is theirs alone (kept when their projects
+name the jsdom they ran on); otherwise their results are combined with
+the rest (any change: not kept; any uncertainty: uncertain). When migrate cannot
 tell the project of such a file, or read its options, the profile is
 uncertain even when no pin is needed or jsdom stays installed. Only what the
 config says can be read without running it counts: a key written as a

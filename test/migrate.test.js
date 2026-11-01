@@ -1246,7 +1246,9 @@ test('migrate (#39): the cssstyle a removed jsdom loaded is pinned when it chang
   assert.equal(cssstyleChangesProfile('26.1.0', '4.6.0'), false);
   assert.equal(cssstyleChangesProfile('26.1.0', '4.2.0'), true);
   assert.equal(cssstyleChangesProfile('20.0.3', '2.3.0'), false);
-  assert.equal(cssstyleChangesProfile('27.2.0', '5.3.1'), true);
+  // jsdom 27.2.0 installs cssstyle ^5.3.3: 5.3.1 is its profile, 5.0 is not.
+  assert.equal(cssstyleChangesProfile('27.2.0', '5.3.1'), false);
+  assert.equal(cssstyleChangesProfile('27.2.0', '5.0.0'), true);
   assert.equal(cssstyleChangesProfile('28.1.0', '6.1.0'), false);
   assert.equal(cssstyleChangesProfile('30.1.2', '5.0.0'), false);
   await tempProject(
@@ -2545,4 +2547,77 @@ test('migrate (#221, review 2): a config environment moved from jsdom whose opti
       [true],
     );
   });
+});
+
+test('migrate (#221, review 3): the cssstyle a jsdom installs, as warpdom models it', async () => {
+  // profileCompat's defaults: cssstyle 2.3 before jsdom 21.1, 3.0 from
+  // 21.1 to 23.0, the latest 4.x from 23.1 to 26, 5.3 for 27 to 28.0.
+  for (const [jsdom, cssstyle, changes] of [
+    ['21.0.0', '2.3.0', false],
+    ['21.0.0', '3.0.0', true],
+    ['22.1.0', '3.0.0', false],
+    ['23.1.0', '4.6.0', false],
+    ['23.1.0', '3.0.0', true],
+    ['28.0.0', '5.1.0', true],
+    ['28.0.0', '5.3.7', false],
+  ])
+    assert.equal(cssstyleChangesProfile(jsdom, cssstyle), changes, `${jsdom} ${cssstyle}`);
+  // A file moved from jsdom 23.1.0 (cssstyle 4.6.0) by its comment into a
+  // project naming jsdom 23.1.0 alone keeps its profile.
+  await tempProject(
+    {
+      'package.json': `{\n  "private": true,\n  "devDependencies": {\n    "jsdom": "^23.1.0",\n    "vitest": "^5.0.0",\n    "warpdom": "^${VERSION}"\n  }\n}\n`,
+      'vitest.config.js': `export default {\n  test: {\n    environment: 'node',\n    environmentOptions: { warpdom: { jsdom: '23.1.0' } },\n  },\n};\n`,
+      'y.spec.js': "// @vitest-environment jsdom\nimport { test } from 'vitest';\n",
+    },
+    async (dir) => {
+      installed(dir, 'jsdom', { version: '23.1.0' });
+      installed(dir, 'cssstyle', { version: '4.6.0' });
+      const r = await run(dir);
+      assert.deepEqual(
+        r.profiles.map((p) => p.same),
+        [true],
+      );
+    },
+  );
+});
+
+test('migrate (#221, review 3): files moved by their comment decide the profile alone only when nothing else changed', async () => {
+  // Project 'a' (its environment changed) names its jsdom version; 'b' runs
+  // b/y.spec.js, moved from jsdom by its comment, and names the one it ran
+  // on. 'a' follows its version once on warpdom: not kept when it differs.
+  const files = (installedJsdom, aEnv, aNamed, bNamed, extra = {}) => ({
+    'package.json': `{\n  "private": true,\n  "devDependencies": {\n    "jsdom": "^${installedJsdom}",\n    "vitest": "^5.0.0",\n    "warpdom": "^${VERSION}"${aEnv === 'happy-dom' ? ',\n    "happy-dom": "^15.0.0"' : ''}\n  }\n}\n`,
+    'vitest.config.js': `export default {\n  test: {\n    projects: [\n      { test: { name: 'a', environment: '${aEnv}', include: ['a/**'], environmentOptions: { warpdom: { jsdom: '${aNamed}' } } } },\n      { test: { name: 'b', environment: 'node', include: ['b/**'], environmentOptions: { warpdom: { jsdom: '${bNamed}' } } } },\n    ],\n  },\n};\n`,
+    'a/x.spec.js': "import { test } from 'vitest';\n",
+    'b/y.spec.js': "// @vitest-environment jsdom\nimport { test } from 'vitest';\n",
+    ...extra,
+  });
+  for (const [label, args, same, after] of [
+    [
+      'a jsdom environment naming 26.1.0',
+      ['25.0.1', 'jsdom', '26.1.0', '25.0.1'],
+      false,
+      /jsdom 26\.1\.0 for the environment at vitest\.config\.js:4/,
+    ],
+    [
+      'the same with jsdom 30.1.2 installed',
+      ['30.1.2', 'jsdom', '26.1.0', '30.1.2'],
+      false,
+      /jsdom 26\.1\.0 for the environment at vitest\.config\.js:4/,
+    ],
+    ['a happy-dom environment', ['25.0.1', 'happy-dom', '26.1.0', '25.0.1'], false, null],
+    ['both naming the installed jsdom', ['30.1.2', 'jsdom', '30.1.2', '30.1.2'], true, null],
+  ]) {
+    await tempProject(files(...args), async (dir) => {
+      installed(dir, 'jsdom', { version: args[0] });
+      const r = await run(dir);
+      assert.deepEqual(
+        r.profiles.map((p) => p.same),
+        [same],
+        label,
+      );
+      if (after) assert.match(r.profiles[0].after, after, label);
+    });
+  }
 });
