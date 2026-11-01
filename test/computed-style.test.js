@@ -406,7 +406,7 @@ const keptMoveScenario = (w) => {
   B.body.appendChild(a);
   out.push(wb.getComputedStyle(a).color);
   // A shadow host moved there too: its shadow trees, a nested one included,
-  // move to that document and compute with its rules; from jsdom 30.1.0
+  // move to that document and compute with its rules; from jsdom 30.1.2
   // their own sheets apply as well (#204).
   const host = A.body.appendChild(A.createElement('section'));
   const shadow = host.attachShadow({ mode: 'open' });
