@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createWindow } from '../src/index.js';
 import { parity } from './parity.js';
+import { S } from '../src/internal.js';
 
 test('requestAnimationFrame runs callbacks with a timestamp; cancelAnimationFrame stops them', async () => {
   const w = createWindow();
@@ -801,6 +802,183 @@ for (const jsdom of [20, 26, 30])
       { jsdom },
     );
 
+// A member made non-configurable before its first read (#160): jsdom's data
+// property stays writable, so it reads as the member (the same value each
+// time, also through a proxy over the window or an object inheriting from
+// it) and assigning on the window, with Reflect.set or through a proxy over
+// it replaces it; an object inheriting from the window gets its own property
+// (black box, jsdom 20.0.3 to 30.1.3; Object.seal from jsdom 27, before which
+// it throws on the window). warpdom's member is a locked accessor then, which
+// does the same (its descriptor is still an accessor's). 'assign' assigns
+// before the first read.
+const LAZY_MEMBERS = [
+  'Image',
+  'Option',
+  'Audio',
+  'MutationObserver',
+  'console',
+  'webkitURL',
+  'HTMLDocument',
+  'WebSocket',
+];
+const lockedMemberScenario = (lock, order) => (w) => {
+  const out = [];
+  const attempt = (f) => {
+    try {
+      return String(f());
+    } catch (e) {
+      return e.constructor.name;
+    }
+  };
+  const describe = (v) => (typeof v === 'function' ? `function ${v.name}` : typeof v);
+  for (const key of LAZY_MEMBERS) {
+    if (lock === 'seal') Object.seal(w);
+    else Object.defineProperty(w, key, { configurable: false });
+    const line = [];
+    if (order === 'assign') {
+      line.push(
+        attempt(() => (w[key] = 1)),
+        w[key],
+      );
+    }
+    line.push(describe(w[key]), w[key] === w[key], new Proxy(w, {})[key] === w[key], Object.create(w)[key] === w[key]);
+    const a = {};
+    line.push(
+      attempt(() => (w[key] = a)),
+      w[key] === a,
+    );
+    line.push(
+      attempt(() => Function('w', 'k', 'w[k] = 2')(w, key)),
+      w[key],
+    );
+    line.push(
+      attempt(() => Reflect.set(w, key, 3)),
+      w[key],
+    );
+    line.push(
+      attempt(() => (new Proxy(w, {})[key] = 4)),
+      w[key],
+    );
+    const derived = Object.create(w);
+    const plain = {};
+    line.push(
+      attempt(() => (derived[key] = 5)),
+      attempt(() => Reflect.set(w, key, 6, plain)),
+      w[key],
+    );
+    line.push(JSON.stringify(Object.getOwnPropertyDescriptor(derived, key)), plain[key]);
+    out.push(`${key}: ${line.join(' ')}`);
+  }
+  return out;
+};
+for (const jsdom of [20, 26, 30])
+  for (const order of ['read', 'assign'])
+    parity(
+      `a window member locked before its first read reads and is assigned as a data property (${order} first, jsdom ${jsdom})`,
+      lockedMemberScenario('defineProperty', order),
+      { jsdom },
+    );
+for (const order of ['read', 'assign'])
+  parity(
+    `a window member sealed before its first read reads and is assigned as a data property (${order} first)`,
+    lockedMemberScenario('seal', order),
+  );
+
+// Object.freeze(window) before a member's first read: from jsdom 27 the
+// member reads as the value (also through a proxy or an inheriting object)
+// and assignments fail with a TypeError, also through an inheriting object
+// (black box, 28.1.0 and 30.1.3; before 27, freezing the window throws).
+// Not a parity test: a frozen jsdom window fails on its load event. Sloppy
+// assignments and Reflect.set fail with false in jsdom; warpdom's setter
+// cannot return that, so they throw (PLAN.md, #96).
+test('window: members made on first read, frozen with the window before it, read and fail assignment (#160)', () => {
+  const w = createWindow();
+  const made = {};
+  Object.freeze(w);
+  for (const key of LAZY_MEMBERS) {
+    const v = w[key];
+    assert.ok(v !== undefined && v !== null, key);
+    assert.equal(w[key], v, key);
+    assert.equal(new Proxy(w, {})[key], v, key);
+    assert.equal(Object.create(w)[key], v, key);
+    made[key] = v;
+  }
+  for (const key of LAZY_MEMBERS) {
+    const derived = Object.create(w);
+    for (const f of [
+      () => (w[key] = 1),
+      () => (new Proxy(w, {})[key] = 1),
+      () => (derived[key] = 1),
+      () => Reflect.set(w, key, 1, {}),
+    ]) {
+      assert.throws(
+        f,
+        { name: 'TypeError', message: `Cannot assign to read only property '${key}' of object '[object Window]'` },
+        key,
+      );
+    }
+    assert.equal(w[key], made[key], key);
+    assert.equal(Object.hasOwn(derived, key), false, key);
+  }
+});
+
+// Assigning a member locked before its first read through a proxy over the
+// window defines { value } on the proxy: a defineProperty trap returning
+// false fails a strict-mode assignment, one returning true leaves the member
+// as it is, one forwarding to the window replaces it (black box, jsdom
+// 20.0.3 to 30.1.3). Sloppy assignments and Reflect.set get false there in
+// jsdom; warpdom's setter cannot return that, so they throw (PLAN.md, #96).
+const lockedProxyScenario = (w) => {
+  const out = [];
+  for (const key of LAZY_MEMBERS) {
+    Object.defineProperty(w, key, { configurable: false });
+    const made = w[key];
+    const line = [];
+    try {
+      new Proxy(w, { defineProperty: () => false })[key] = 7;
+      line.push('assigned');
+    } catch (e) {
+      line.push(`${e.constructor.name}: ${e.message}`);
+    }
+    line.push(w[key] === made);
+    new Proxy(w, { defineProperty: () => true })[key] = 8;
+    line.push(w[key] === made);
+    const seen = [];
+    new Proxy(w, {
+      defineProperty(target, name, descriptor) {
+        seen.push(`${String(name)} ${JSON.stringify(descriptor)}`);
+        return Reflect.defineProperty(target, name, descriptor);
+      },
+    })[key] = 9;
+    line.push(seen[0], w[key]);
+    out.push(`${key}: ${line.join(' ')}`);
+  }
+  return out;
+};
+for (const jsdom of [20, 26, 30])
+  parity(
+    `a window member locked before its first read, assigned through a proxy, honors its defineProperty trap (jsdom ${jsdom})`,
+    lockedProxyScenario,
+    { jsdom },
+  );
+
+// A per-file reset (reset.js) keeps the constructors made before it and puts
+// back their accessors; one locked after the reset and assigned through a
+// proxy over the window then reads as the value assigned.
+test('window: an interface object locked after a reset and assigned through a proxy reads as the value (#160)', async () => {
+  const { snapshotWindow, resetWindow } = await import('../src/reset.js');
+  const w = createWindow();
+  snapshotWindow(w);
+  const made = w.MutationObserver;
+  resetWindow(w);
+  Object.defineProperty(w, 'MutationObserver', { configurable: false });
+  new Proxy(w, {}).MutationObserver = 7;
+  assert.equal(w.MutationObserver, 7);
+  assert.equal(new Proxy(w, {}).MutationObserver, 7);
+  w.MutationObserver = made;
+  assert.equal(w.MutationObserver, made);
+});
+
 // A copy of a member's descriptor taken before its first read is the
 // accessor warpdom has until then (jsdom's: a data property). Once the
 // window's member is made, assigning through the window (super, Reflect.set)
@@ -949,3 +1127,70 @@ for (const jsdom of [20, 30]) {
     { jsdom },
   );
 }
+
+// A locked member's getter returns the kept value without making it again:
+// a host WebSocket getter that throws later does not affect it, and Image
+// is the same constructor (Copilot review on #227).
+test('window: a locked WebSocket or Image read again does not make it again (#160)', () => {
+  const w = createWindow();
+  for (const name of ['WebSocket', 'Image']) Object.defineProperty(w, name, { configurable: false });
+  const socket = w.WebSocket;
+  const image = w.Image;
+  const host = Object.getOwnPropertyDescriptor(globalThis, 'WebSocket');
+  Object.defineProperty(globalThis, 'WebSocket', {
+    get() {
+      throw new Error('host getter');
+    },
+    configurable: true,
+  });
+  try {
+    assert.equal(w.WebSocket, socket);
+  } finally {
+    if (host) Object.defineProperty(globalThis, 'WebSocket', host);
+    else delete globalThis.WebSocket;
+  }
+  assert.equal(w.Image, image);
+  w.WebSocket = undefined;
+  assert.equal(w.WebSocket, undefined);
+});
+
+// After one interface object is locked, others read later become data
+// properties as usual and keep no value; a locked console assigned before
+// its first read is not made (Copilot review on #227).
+test('window: interfaces read after another is locked stay data properties; a locked console is not made (#160)', () => {
+  const w = createWindow();
+  Object.defineProperty(w, 'MutationObserver', { configurable: false });
+  w.MutationObserver = 1;
+  const ctor = w.Text;
+  assert.equal(typeof ctor, 'function');
+  assert.equal(Object.getOwnPropertyDescriptor(w, 'Text').value, ctor);
+  w.Text = 2;
+  assert.equal(w.Text, 2);
+  assert.equal(w.MutationObserver, 1);
+  const v = createWindow();
+  Object.defineProperty(v, 'console', { configurable: false });
+  v.console = 'kept';
+  assert.equal(v.console, 'kept');
+});
+
+// An interface object locked and assigned before its first read is not
+// made: reading returns the assigned value, and its prototype stays unmade
+// (Copilot review on #227).
+test('window: a locked interface assigned before its first read is not made (#160)', () => {
+  const w = createWindow();
+  for (const name of ['MutationObserver', 'CSSStyleProperties'])
+    Object.defineProperty(w, name, { configurable: false });
+  // The prototypes stay accessors (made on first use) throughout.
+  const unmade = () =>
+    ['MutationObserver', 'CSSStyleProperties'].map(
+      (name) => typeof Object.getOwnPropertyDescriptor(w[S].protos, name)?.get,
+    );
+  assert.deepEqual(unmade(), ['function', 'function']);
+  w.MutationObserver = 1;
+  const mock = function CSSStyleProperties() {};
+  w.CSSStyleProperties = mock;
+  assert.equal(w.CSSStyleProperties, mock);
+  assert.equal(w.CSSStyleProperties, mock);
+  assert.equal(w.MutationObserver, 1);
+  assert.deepEqual(unmade(), ['function', 'function']);
+});

@@ -4617,3 +4617,67 @@ Vitest 3.2). Its release corpus check, on all four corpora, is clean.
   (`migrate`: map warpdom comments to their projects).
 - After those: #199 (computed colors), #202 (`:empty`), #192 and #201
   (fast-mode stubs), #208 (CSSOM leftovers).
+
+## 2026-11-01: window members locked before their first read (branch fix/160-locked-lazy-members, #160)
+
+A member made on first read (interface objects, Image, Option, Audio,
+console, webkitURL, HTMLDocument, WebSocket) made non-configurable before
+that read (`Object.defineProperty(window, 'Image', { configurable: false })`,
+`Object.seal(window)`, `Object.freeze(window)`) kept warpdom's accessor,
+which could no longer become the data property: reading it, assigning it on
+the window or through a proxy over it threw "Cannot redefine property"
+(interface objects read only from the second read on).
+
+Black box (jsdom 20.0.3, 22.1.0, 26.1.0, 28.1.0, 30.1.3 with runScripts):
+after `{ configurable: false }` the member is a writable, non-configurable
+data property: it reads as the member (the same value each time, also
+through a proxy over the window and Object.create(window)), and assigning on
+the window (strict or sloppy), with Reflect.set or through a proxy over it
+replaces it; an object inheriting from the window gets its own property.
+Object.seal, Object.freeze and Object.preventExtensions on the window throw
+before 27; from 27, seal is the same as `{ configurable: false }`, and after
+freeze the member reads as the value and every assignment fails (strict:
+TypeError "Cannot assign to read only property 'Image' of object '[object
+Window]'", also through an inheriting object, which gets no property; sloppy
+and Reflect.set: false). A frozen jsdom window then throws on its load event.
+
+Now the getters define the data property with Reflect.defineProperty, and
+when that fails they return the value kept for the window and name
+(internal.js lockedRead: the one made on the first such read, or assigned
+before it). The setters do the same: on the window, or through a proxy over
+it (the receiver's own property is the locked accessor), the value is kept
+(lockedWrite); on a frozen window the assignment fails with jsdom's
+TypeError, for every receiver. The interface getters look there only once a
+constructor property of the window was found locked (one closure flag). The
+first-read path is unchanged otherwise: window creation plus 20 first reads
+and 20 second reads, alternating runs, 267 to 290 µs base and 273 to 300 µs
+with this change.
+
+Left as they are: the locked member's descriptor is still an accessor's
+(jsdom: a data property, writable unless frozen); a frozen window's sloppy
+assignments and Reflect.set throw where jsdom returns false (#96); a locked
+copy of the accessor on another object is indistinguishable from a proxy
+over the window, so assigning to it updates the window's member;
+`Object.defineProperty(window, 'Image', { writable: false })` before the
+first read turns the accessor into a data property whose value is undefined
+(jsdom 28.1.0 and 30.1.3 keep the value read-only; 20.0.3 to 26.1.0 read
+undefined on the window too, the value through a proxy); Object.seal, freeze
+and preventExtensions do not throw for profiles before jsdom 27. Tests:
+window-features.test.js "a window member locked before its first read"
+(jsdom 20, 26, 30; read first and assign first), "a window member sealed
+before its first read" (jsdom 30) and "frozen with the window before it".
+
+Review (Copilot on #227): assigning a locked member through a proxy over the
+window now defines `{ value }` on the proxy first, as jsdom's receiver step
+does (black box, 20.0.3, 26.1.0, 30.1.3): a defineProperty trap returning
+false fails a strict-mode assignment ("'defineProperty' on proxy: trap
+returned falsish for property 'Image'") and keeps the member, one returning
+true keeps it without an error, one forwarding to the window replaces it.
+The locked accessor rejects `{ value }`, so a forwarding trap and a false one
+both give false; a second definition, `{}`, tells them apart, and a trap sees
+that extra call (jsdom: one). Sloppy assignments and Reflect.set throw where
+jsdom returns false (#96). A value kept through a proxy now also turns on
+the interface getters' lookup: after a per-file reset the constructors are
+cached, so the getter did not look and still returned the constructor.
+Tests: "assigned through a proxy, honors its defineProperty trap" (jsdom 20,
+26, 30) and "locked after a reset and assigned through a proxy".
