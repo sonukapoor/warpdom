@@ -2,7 +2,7 @@
 // properties are ignored by style writes, cssText and style attributes.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isValidValue } from '../src/css-values.js';
+import { hasVarFunction, isValidValue } from '../src/css-values.js';
 import { parity } from './parity.js';
 
 const writes = (w) => {
@@ -168,6 +168,43 @@ test('isValidValue: minified calc() and var(), and broken input', () => {
   }
   for (const value of ['a\\', '\\', '-\\', 'url(', 'calc(', '"unterminated'])
     assert.equal(typeof isValidValue('width', value), 'boolean');
+});
+
+// var( as a function token (#222): quotes in a comment or an unquoted url()
+// start no string, and var( in a comment counts, closed or not (jsdom 30.1.2
+// keeps url(a b.png) /* var( and url(a b.png) /* var( */). Values with
+// comments are not modeled yet (#162), so this is checked directly.
+test('hasVarFunction: comments, strings and unquoted url()s', () => {
+  for (const value of [
+    '/* " */ var(--a) url(a b.png)',
+    "/* ' */ var(--a)",
+    'url(a b.png) /* var( */',
+    'url(a b.png) /* var(',
+    'url(a b.png) /* " */ var(--a)',
+    'url(a"b c.png) var(--a)',
+    "url(a'b c.png) var(--a)",
+    'url( a"b.png) var(--a)',
+    'url(a"b.png) url(c d.png) var(--a)',
+    '"/*" var(--a)',
+    'url(var(--a).png)',
+  ])
+    assert.equal(hasVarFunction(value), true, value);
+  for (const value of [
+    'url("var(x).png")',
+    "url('var(x).png')",
+    'url( "var(x).png" )',
+    '/* x */ notvar(x)',
+    'url(a/*b.png) xvar(x)',
+    '"/* var(x)"',
+    'url(x-var(--a).png)',
+    // A backslash escapes nothing in a comment: \*/ ends it.
+    '/* \\*/ url("var(x).png")',
+  ])
+    assert.equal(hasVarFunction(value), false, value);
+  // Linear: an unclosed comment, an unclosed url() and many url( openings.
+  const n = 200000;
+  for (const value of ['/*'.repeat(n), 'url('.repeat(n), 'url( '.repeat(n), '/* "'.repeat(n)])
+    assert.equal(hasVarFunction(value + 'var('), true);
 });
 
 // CSS.supports validates values (jsdom 30); before jsdom 30 there is no CSS

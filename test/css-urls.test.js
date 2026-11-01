@@ -387,3 +387,103 @@ for (const jsdom of [30, 29, 28, 27, 26, 25, 20])
     },
     { jsdom },
   );
+
+// Each value set with setProperty, cssText and the style attribute (and a
+// style sheet where the profile models it).
+function setEachWay(w, names, values, { sheets = false } = {}) {
+  const d = w.document;
+  return names.flatMap((name) =>
+    values.map((value) => {
+      const s = d.createElement('div').style;
+      s.setProperty(name, value);
+      const t = d.createElement('div').style;
+      t.cssText = `color: blue; ${name}: ${value}`;
+      const e = d.createElement('div');
+      e.setAttribute('style', `color: blue; ${name}: ${value}`);
+      const row = [s.cssText, t.cssText, e.style.cssText];
+      if (sheets) {
+        const sheet = d.createElement('style');
+        sheet.textContent = `#t { color: blue; ${name}: ${value} }`;
+        d.head.append(sheet);
+        row.push(sheet.sheet.cssRules[0]?.style.cssText ?? 'no rule');
+        sheet.remove();
+      }
+      return `${name}: ${JSON.stringify(value)} -> ${row.join(' | ')}`;
+    }),
+  );
+}
+
+// A malformed url() in a value with var() is kept to its ")" with escaped
+// parentheses skipped, in a string or not, and an unquoted url() has no
+// strings, before var() or after it (black box, jsdom 20.0.3 to 30.1.2,
+// #222). jsdom 20 to 26 declare
+// nothing for a style attribute or cssText where an escaped "(" leaves a
+// parenthesis open. Not modeled: url(a\\(b c.png) and url(a(b c.png),
+// whose "(" opens nothing in jsdom (kept); style sheets in jsdom 27 and 28.
+for (const jsdom of [30, 29, 28, 27, 26, 25, 22, 20])
+  parity(
+    `style: escapes in a url() in a value with var() (jsdom ${jsdom}, #222)`,
+    (w) => {
+      const p = `e${jsdom}-`;
+      return setEachWay(
+        w,
+        ['background-image', 'background', 'list-style-image'],
+        [
+          `var(--a) url(${p}a${B}(b c.png)`,
+          `var(--a) url(${p}a${B})b c.png)`,
+          `var(--a) url(${p}a${B}(${B}(b c.png)`,
+          `url(${p}a${B}(b c.png) var(--a)`,
+          `var(--a, url(${p}a${B}(b c.png))`,
+          `var(--a, url(${p}a${B})b c.png))`,
+          `var(--a) url(${p}a b${B}).png)`,
+          `var(--a) url("${p}a${B}"(b.png" c)`,
+          `var(--a) url(${p}a"b c.png)`,
+          `var(--a) url(${p}a'b c.png)`,
+          `url(${p}a"b c.png) var(--a)`,
+          `url(${p}a'b c.png) var(--a)`,
+          `url(${p}a"b.png) url(${p}c d.png) var(--a)`,
+        ],
+        { sheets: jsdom >= 29 },
+      );
+    },
+    { jsdom },
+  );
+
+// var( in a url() string, or after a name character, is no var(): the
+// value's url()s are read as without it (cssstyle 4.3.1 to 4.6 drop
+// url("notvar(x).png") in background and background-image, as they drop
+// url("a(x).png"); jsdom 28 and later write url('notvar(x).png') in double
+// quotes). var( outside a string and not after a name character counts,
+// in an unquoted url() too: url(var(--a).png) is kept as written, and in
+// jsdom 27 and later url(n-var(--a).png) is a bad url() (black box, jsdom
+// 20.0.3 to 30.1.2, #222). Not modeled: VAR( in capitals, which jsdom does
+// not read as var(), and url(a.png)var(--a), which it drops.
+for (const jsdom of [30, 29, 28, 27, 26, 25, 22, 20])
+  parity(
+    `style: var( in a url() string (jsdom ${jsdom}, #222)`,
+    (w) => {
+      const p = `n${jsdom}-`;
+      return setEachWay(
+        w,
+        ['background-image', 'background', 'list-style-image'],
+        [
+          `url("${p}notvar(x).png")`,
+          `url('${p}notvar(x).png')`,
+          `url("${p}xvar(x).png")`,
+          `url("${p}-var(x).png")`,
+          `url("${p}var(x).png")`,
+          `url("${p}var(x).png") var(--a)`,
+          `url("var(x)${p}.png")`,
+          `url('var(x)${p}.png')`,
+          `url('var(x)${p}a.png') url(${p}b.png)`,
+          `url(var(--a)${p}.png)`,
+          `url(${p}var(--a).png)`,
+          `url(x${p}-var(--a).png)`,
+          `url(${p}a${B} var(--a).png)`,
+          `url(${p}a/var(--a).png)`,
+        ],
+        { sheets: jsdom >= 29 },
+      );
+    },
+    { jsdom },
+  );
