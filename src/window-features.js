@@ -7,6 +7,7 @@ import {
   S,
   state,
   lazyDataSetter,
+  lockedRead,
   domError,
   tooFewArguments,
   checkForEachCallback,
@@ -1210,12 +1211,11 @@ function setupConsole(window) {
   // (reset.js) keeps the object and puts back its methods.
   const enumerable = ws.compat.jsdom < 27;
   const define = (value) =>
-    Object.defineProperty(window, 'console', { value, writable: true, enumerable, configurable: true });
+    Reflect.defineProperty(window, 'console', { value, writable: true, enumerable, configurable: true });
   Object.defineProperty(window, 'console', {
     get() {
       const console = ws.console ?? (ws.console = createConsole(window));
-      define(console);
-      return console;
+      return define(console) ? console : lockedRead(window, 'console', console);
     },
     set: lazyDataSetter(window, 'console', define),
     enumerable,
@@ -1333,12 +1333,11 @@ const PLATFORM_HAS_WEBSOCKET = 'WebSocket' in PLATFORM_GLOBAL;
 function setupWebSocket(window) {
   if (!PLATFORM_HAS_WEBSOCKET) return;
   const define = (value) =>
-    Object.defineProperty(window, 'WebSocket', { value, writable: true, enumerable: false, configurable: true });
+    Reflect.defineProperty(window, 'WebSocket', { value, writable: true, enumerable: false, configurable: true });
   Object.defineProperty(window, 'WebSocket', {
     get() {
       const WebSocket = PLATFORM_GLOBAL.WebSocket;
-      define(WebSocket);
-      return WebSocket;
+      return define(WebSocket) ? WebSocket : lockedRead(window, 'WebSocket', WebSocket);
     },
     set: lazyDataSetter(window, 'WebSocket', define),
     enumerable: false,
@@ -1888,14 +1887,12 @@ export function setupWindow(window, { url: initial = 'about:blank', fastFrames =
       };
       Object.defineProperty(ctor, 'name', { value: name });
       Object.defineProperty(ctor, 'prototype', { value: ws.protos[protoName], writable: false });
-      Object.defineProperty(window, name, { value: ctor, writable: true, configurable: true });
-      return ctor;
+      return define(ctor) ? ctor : lockedRead(window, name, ctor);
     };
+    const define = (value) => Reflect.defineProperty(window, name, { value, writable: true, configurable: true });
     Object.defineProperty(window, name, {
       get: create,
-      set: lazyDataSetter(window, name, (value) =>
-        Object.defineProperty(window, name, { value, writable: true, configurable: true }),
-      ),
+      set: lazyDataSetter(window, name, define),
       configurable: true,
     });
   };

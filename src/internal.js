@@ -129,7 +129,9 @@ export const observed = (node) => ownerDocument(node)[S].observerCount > 0;
 // The setter of a window's own data property that is made on first read
 // (interface objects, Image, console, webkitURL, ...: an accessor until
 // then). It does what assigning the data property does: on the window,
-// define(value, name) replaces the accessor; with any other receiver (an
+// define(value, name) replaces the accessor (define returns false when the
+// accessor was made non-configurable before the first read: lockedWrite);
+// with any other receiver (an
 // object that inherits from the window: Object.create(window).Image = x;
 // any object: super.Image = x in a method called on it, Reflect.set(window,
 // 'Image', x, {})) the receiver gets or updates its own property as with
@@ -137,10 +139,49 @@ export const observed = (node) => ownerDocument(node)[S].observerCount > 0;
 // assignThrough.
 export function lazyDataSetter(window, name, define) {
   const set = function (value) {
-    if (this === window) define(value, name);
-    else assignThrough(window, this, name, value, set, define);
+    if (this !== window) assignThrough(window, this, name, value, set, define);
+    else if (!define(value, name)) lockedWrite(window, name, value, set);
   };
   return set;
+}
+
+// A window member made on first read whose accessor was made non-configurable
+// before that read (Object.defineProperty(window, 'Image', { configurable:
+// false }), Object.seal or Object.freeze on the window) cannot become the
+// data property jsdom has (#160). It then keeps its value here: the getter
+// returns the value made on the first read (or assigned before it), the
+// same each time, and assigning on the window (or through a proxy over it)
+// replaces it, as for jsdom's data property, which stays writable unless the
+// window was frozen (black box, jsdom 20.0.3 to 30.1.3). Only these paths
+// look here: a getter or setter whose define succeeded never does.
+const lockedMembers = new WeakMap();
+
+// The getter's part: made is the value the getter made (or found).
+export function lockedRead(window, name, made) {
+  let values = lockedMembers.get(window);
+  if (values === undefined) lockedMembers.set(window, (values = new Map()));
+  if (!values.has(name)) values.set(name, made);
+  return values.get(name);
+}
+
+// The setter's part, when define failed on the window. The window's member is
+// still the locked accessor (set is its setter): a frozen window's data
+// property would be read-only, so the assignment fails, as a strict-mode one
+// does (a setter cannot return false, see assignThrough). Anything else that
+// made define fail (the setter called on the window through a copy of the
+// accessor, the window's member since replaced by a non-configurable one)
+// fails as defining it does.
+export function lockedWrite(window, name, value, set) {
+  const current = Reflect.getOwnPropertyDescriptor(window, name);
+  if (current === undefined || current.set !== set) {
+    throw new TypeError(`Cannot redefine property: ${String(name)}`);
+  }
+  if (Object.isFrozen(window)) {
+    throw new TypeError(`Cannot assign to read only property '${String(name)}' of object '[object Window]'`);
+  }
+  let values = lockedMembers.get(window);
+  if (values === undefined) lockedMembers.set(window, (values = new Map()));
+  values.set(name, value);
 }
 
 // The part of that for a receiver other than the window. The window's member is
@@ -162,9 +203,21 @@ export function assignThrough(window, receiver, name, value, set, define) {
     throw new TypeError(`Cannot create property '${String(name)}' on ${typeof receiver} '${String(receiver)}'`);
   }
   const current = Reflect.getOwnPropertyDescriptor(window, name);
-  if (current !== undefined && current.set === set && current.configurable) define(current.get.call(window), name);
+  const locked = current !== undefined && current.set === set && !current.configurable;
+  if (current !== undefined && current.set === set && !locked) define(current.get.call(window), name);
+  // A member locked before its first read (lockedWrite): a frozen window's
+  // read-only data property fails the assignment for every receiver, before
+  // the receiver step (jsdom 28.1.0 and 30.1.3).
+  if (locked && Object.isFrozen(window)) {
+    throw new TypeError(`Cannot assign to read only property '${String(name)}' of object '[object Window]'`);
+  }
   const own = Reflect.getOwnPropertyDescriptor(receiver, name);
-  if (own === undefined) {
+  if (locked && own !== undefined && own.set === set && !own.configurable) {
+    // The receiver is a proxy over the window (or holds a locked copy of the
+    // accessor, which this cannot tell apart): the window's data property
+    // would get the value.
+    lockedWrite(window, name, value, set);
+  } else if (own === undefined) {
     if (!Reflect.defineProperty(receiver, name, { value, writable: true, enumerable: true, configurable: true })) {
       throw new TypeError(`Cannot add property ${String(name)}, object is not extensible`);
     }

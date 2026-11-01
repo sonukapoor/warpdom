@@ -801,6 +801,126 @@ for (const jsdom of [20, 26, 30])
       { jsdom },
     );
 
+// A member made non-configurable before its first read (#160): jsdom's data
+// property stays writable, so it reads as the member (the same value each
+// time, also through a proxy over the window or an object inheriting from
+// it) and assigning on the window, with Reflect.set or through a proxy over
+// it replaces it; an object inheriting from the window gets its own property
+// (black box, jsdom 20.0.3 to 30.1.3; Object.seal from jsdom 27, before which
+// it throws on the window). warpdom's member is a locked accessor then, which
+// does the same (its descriptor is still an accessor's). 'assign' assigns
+// before the first read.
+const LAZY_MEMBERS = [
+  'Image',
+  'Option',
+  'Audio',
+  'MutationObserver',
+  'console',
+  'webkitURL',
+  'HTMLDocument',
+  'WebSocket',
+];
+const lockedMemberScenario = (lock, order) => (w) => {
+  const out = [];
+  const attempt = (f) => {
+    try {
+      return String(f());
+    } catch (e) {
+      return e.constructor.name;
+    }
+  };
+  const describe = (v) => (typeof v === 'function' ? `function ${v.name}` : typeof v);
+  for (const key of LAZY_MEMBERS) {
+    if (lock === 'seal') Object.seal(w);
+    else Object.defineProperty(w, key, { configurable: false });
+    const line = [];
+    if (order === 'assign') {
+      line.push(
+        attempt(() => (w[key] = 1)),
+        w[key],
+      );
+    }
+    line.push(describe(w[key]), w[key] === w[key], new Proxy(w, {})[key] === w[key], Object.create(w)[key] === w[key]);
+    const a = {};
+    line.push(
+      attempt(() => (w[key] = a)),
+      w[key] === a,
+    );
+    line.push(
+      attempt(() => Function('w', 'k', 'w[k] = 2')(w, key)),
+      w[key],
+    );
+    line.push(
+      attempt(() => Reflect.set(w, key, 3)),
+      w[key],
+    );
+    line.push(
+      attempt(() => (new Proxy(w, {})[key] = 4)),
+      w[key],
+    );
+    const derived = Object.create(w);
+    const plain = {};
+    line.push(
+      attempt(() => (derived[key] = 5)),
+      attempt(() => Reflect.set(w, key, 6, plain)),
+      w[key],
+    );
+    line.push(JSON.stringify(Object.getOwnPropertyDescriptor(derived, key)), plain[key]);
+    out.push(`${key}: ${line.join(' ')}`);
+  }
+  return out;
+};
+for (const jsdom of [20, 26, 30])
+  for (const order of ['read', 'assign'])
+    parity(
+      `a window member locked before its first read reads and is assigned as a data property (${order} first, jsdom ${jsdom})`,
+      lockedMemberScenario('defineProperty', order),
+      { jsdom },
+    );
+for (const order of ['read', 'assign'])
+  parity(
+    `a window member sealed before its first read reads and is assigned as a data property (${order} first)`,
+    lockedMemberScenario('seal', order),
+  );
+
+// Object.freeze(window) before a member's first read: from jsdom 27 the
+// member reads as the value (also through a proxy or an inheriting object)
+// and assignments fail with a TypeError, also through an inheriting object
+// (black box, 28.1.0 and 30.1.3; before 27, freezing the window throws).
+// Not a parity test: a frozen jsdom window fails on its load event. Sloppy
+// assignments and Reflect.set fail with false in jsdom; warpdom's setter
+// cannot return that, so they throw (PLAN.md, #96).
+test('window: members made on first read, frozen with the window before it, read and fail assignment (#160)', () => {
+  const w = createWindow();
+  const made = {};
+  Object.freeze(w);
+  for (const key of LAZY_MEMBERS) {
+    const v = w[key];
+    assert.ok(v !== undefined && v !== null, key);
+    assert.equal(w[key], v, key);
+    assert.equal(new Proxy(w, {})[key], v, key);
+    assert.equal(Object.create(w)[key], v, key);
+    made[key] = v;
+  }
+  for (const key of LAZY_MEMBERS) {
+    const derived = Object.create(w);
+    for (const f of [
+      () => (w[key] = 1),
+      () => (new Proxy(w, {})[key] = 1),
+      () => (derived[key] = 1),
+      () => Reflect.set(w, key, 1, {}),
+    ]) {
+      assert.throws(
+        f,
+        { name: 'TypeError', message: `Cannot assign to read only property '${key}' of object '[object Window]'` },
+        key,
+      );
+    }
+    assert.equal(w[key], made[key], key);
+    assert.equal(Object.hasOwn(derived, key), false, key);
+  }
+});
+
 // A copy of a member's descriptor taken before its first read is the
 // accessor warpdom has until then (jsdom's: a data property). Once the
 // window's member is made, assigning through the window (super, Reflect.set)

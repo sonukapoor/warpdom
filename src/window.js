@@ -18,6 +18,8 @@ import {
   PROCESSING_INSTRUCTION_NODE,
   lazyDataSetter,
   assignThrough,
+  lockedRead,
+  lockedWrite,
 } from './internal.js';
 import { INTERFACES, SVG_ELEMENTS, LEGACY_SVG_ELEMENTS, SVG_TYPES_INTERFACES, HTML_NS, SVG_NS } from './interfaces.js';
 import { HTML_ELEMENTS, PLAIN_TAGS } from './html-elements.js';
@@ -315,6 +317,13 @@ export function createWindow(options = {}) {
   // so (window.PointerEvent removed by the jsdom profile, mocks).
   const ctors = Object.create(null);
   const lazyGetters = Object.create(null);
+  // False when the constructor property was locked before its first read
+  // (internal.js lockedRead).
+  const defineInterface = (value, name) =>
+    Reflect.defineProperty(window, name, { value, writable: true, configurable: true });
+  // Whether a constructor property was locked so: until then, the getters
+  // skip that lookup.
+  let locked = false;
   function materialize(name) {
     const existing = ctors[name];
     if (existing) return existing;
@@ -419,8 +428,10 @@ export function createWindow(options = {}) {
     // url() serialized without quotes, as cssstyle before 4.3.1 did).
     if (name === 'CSSStyleProperties') setValidationMode(proto, cssMode(window[S].compat), window[S].compat);
     Object.defineProperty(protos, name, { value: proto, writable: true, enumerable: true, configurable: true });
-    if (Object.getOwnPropertyDescriptor(window, name)?.get === lazyGetters[name]) {
-      Object.defineProperty(window, name, { value: ctor, writable: true, configurable: true });
+    // A constructor property locked before its first read stays the accessor
+    // (lockedRead, in its getter).
+    if (Object.getOwnPropertyDescriptor(window, name)?.get === lazyGetters[name] && !defineInterface(ctor, name)) {
+      locked = true;
     }
     // The reset (reset.js) snapshots the prototypes it restores that are
     // created after its snapshot.
@@ -430,14 +441,18 @@ export function createWindow(options = {}) {
   // Assigning replaces the constructor property (a mock), as for a
   // writable data property (another receiver gets its own property,
   // internal.js lazyDataSetter, inlined: one closure per interface).
-  const defineInterface = (value, name) =>
-    Object.defineProperty(window, name, { value, writable: true, configurable: true });
   for (const iface of ORDER) {
     const { name } = iface;
-    const get = (lazyGetters[name] = () => materialize(name));
+    const get = (lazyGetters[name] = () => {
+      const ctor = materialize(name);
+      return locked ? lockedRead(window, name, ctor) : ctor;
+    });
     const set = function (value) {
-      if (this === window) defineInterface(value, name);
-      else assignThrough(window, this, name, value, set, defineInterface);
+      if (this !== window) assignThrough(window, this, name, value, set, defineInterface);
+      else if (!defineInterface(value, name)) {
+        lockedWrite(window, name, value, set);
+        locked = true;
+      }
     };
     Object.defineProperty(window, name, { get, set, configurable: true });
     Object.defineProperty(protos, name, {
@@ -452,12 +467,11 @@ export function createWindow(options = {}) {
   // property, not enumerable (jsdom 20 to 30, black box); made on first
   // read, as the interface objects are.
   const setWebkitURL = (value) =>
-    Object.defineProperty(window, 'webkitURL', { value, writable: true, configurable: true });
+    Reflect.defineProperty(window, 'webkitURL', { value, writable: true, configurable: true });
   Object.defineProperty(window, 'webkitURL', {
     get() {
       const ctor = materialize('URL');
-      setWebkitURL(ctor);
-      return ctor;
+      return setWebkitURL(ctor) ? ctor : lockedRead(window, 'webkitURL', ctor);
     },
     set: lazyDataSetter(window, 'webkitURL', setWebkitURL),
     configurable: true,
@@ -465,12 +479,11 @@ export function createWindow(options = {}) {
   // HTMLDocument (HTML, legacy): the Document interface object under
   // another name, as in jsdom.
   const setHTMLDocument = (value) =>
-    Object.defineProperty(window, 'HTMLDocument', { value, writable: true, configurable: true });
+    Reflect.defineProperty(window, 'HTMLDocument', { value, writable: true, configurable: true });
   Object.defineProperty(window, 'HTMLDocument', {
     get() {
       const ctor = materialize('Document');
-      setHTMLDocument(ctor);
-      return ctor;
+      return setHTMLDocument(ctor) ? ctor : lockedRead(window, 'HTMLDocument', ctor);
     },
     set: lazyDataSetter(window, 'HTMLDocument', setHTMLDocument),
     configurable: true,
