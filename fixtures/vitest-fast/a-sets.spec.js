@@ -23,8 +23,8 @@ test('a: leaves globals behind', () => {
 
 // Undone during the file: the next file's reset must not put them back.
 test("a: undoes its setup's stub and spy", () => {
-  expect([window.innerHeight, window.outerHeight]).toEqual([500, 1]);
+  expect([window.innerHeight, window.outerHeight, window.outerWidth, window.screenY]).toEqual([500, 1, 500, 1]);
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
-  expect([window.innerHeight, window.outerHeight]).toEqual([768, 768]);
+  expect([window.innerHeight, window.outerHeight, window.outerWidth, window.screenY]).toEqual([768, 768, 900, 900]);
 });

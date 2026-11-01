@@ -28,9 +28,11 @@ test("c: no globals a previous file's tests added; its setup's and modules' stay
 });
 
 test("c: this file's setup stubs and spies undo to the window's own values", () => {
-  expect([window.innerHeight, window.outerHeight]).toEqual([500, 1]);
+  expect([window.innerHeight, window.outerHeight, window.outerWidth, window.screenY]).toEqual([500, 1, 500, 1]);
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
-  expect([window.innerHeight, window.outerHeight]).toEqual([768, 768]);
+  // The stub's and spy's originals are what setup-dep.js set when first loaded (#201).
+  expect([window.innerHeight, window.outerHeight, window.outerWidth, window.screenY]).toEqual([768, 768, 900, 900]);
   expect(vi.isMockFunction(Object.getOwnPropertyDescriptor(window, 'outerHeight').get)).toBe(false);
+  expect(vi.isMockFunction(Object.getOwnPropertyDescriptor(window, 'screenY').get)).toBe(false);
 });

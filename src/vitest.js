@@ -306,6 +306,10 @@ const RESET = Symbol.for('warpdom.vitest.reset');
 // after it (window.x = 1 in a test or hook; outside the VM pools the
 // window is the worker's global) are removed by the next file's reset.
 const MARK = Symbol.for('warpdom.vitest.mark');
+// Called by that setup file's wrappers of vi.stubGlobal and vi.spyOn
+// (on the global) with the key about to be mocked: before the mark, the
+// key's descriptor then is what Vitest's cleanup puts back (#201).
+const MOCKING = Symbol.for('warpdom.vitest.mocking');
 
 // The descriptors of the global's window members.
 const memberDescriptors = (global, members) =>
@@ -339,18 +343,23 @@ const KEPT_GLOBAL_KEYS = new Set(['__VITEST_COVERAGE__', '__coverage__']);
 // properties the global had are Node's and Vitest's (fetch, the worker's
 // state), left alone. A property made non-configurable stays (as in
 // resetWindow). A member that is again as it was before the file's setup
-// files ran (start) stays: Vitest's cleanup (vitest-reset.js, before this)
-// or the file's tests undid a stub or spy its setup made (vi.stubGlobal,
-// vi.spyOn(window, 'innerWidth', 'get')), and putting that back would make
-// the next setup's stub take it as the original value. Setup files run
-// again before the next file, and make their changes again.
-function restoreGlobal(global, mark, start) {
+// files ran (start), or before its setup mocked it (mocked), stays:
+// Vitest's cleanup (vitest-reset.js, before this) or the file's tests
+// undid a stub or spy its setup made (vi.stubGlobal, vi.spyOn(window,
+// 'innerWidth', 'get')), and putting that back would make the next setup's
+// stub take it as the original value. The two differ when a module loaded
+// once changed the member before the stub (#201). Setup files run again
+// before the next file, and make their changes again.
+function restoreGlobal(global, mark, start, mocked) {
   if (!mark) return;
+  const undone = (key, current) =>
+    (start?.has(key) && sameDescriptor(current, start.get(key))) ||
+    (mocked.has(key) && sameDescriptor(current, mocked.get(key)));
   for (const key of Reflect.ownKeys(global))
     if (!mark.keys.has(key) && !KEPT_GLOBAL_KEYS.has(key)) Reflect.deleteProperty(global, key);
   for (const [key, descriptor] of mark.members) {
     const current = Object.getOwnPropertyDescriptor(global, key);
-    if (sameDescriptor(current, descriptor) || (start?.has(key) && sameDescriptor(current, start.get(key)))) continue;
+    if (sameDescriptor(current, descriptor) || undone(key, current)) continue;
     if (!descriptor) Reflect.deleteProperty(global, key);
     else Reflect.defineProperty(global, key, descriptor);
   }
@@ -358,8 +367,10 @@ function restoreGlobal(global, mark, start) {
 
 // The per-file reset's state for each global: the mark (taken when a
 // file's tests start, used once by the next file's reset), the window
-// members' descriptors when the file's setup files start, and those the
-// last setup() installed (used once, by the reset after it). Kept per
+// members' descriptors when the file's setup files start, the
+// descriptors of the global's keys the setup mocked, before the first
+// mock of each (cleared by each reset), and those the last setup()
+// installed (used once, by the reset after it). Kept per
 // global, not per setup(): Vitest 3 (measured: 3.2.4) tears the
 // environment down and calls setup() again for every file of a shared
 // worker, and the next file's reset then belongs to a new setup (#196).
@@ -367,7 +378,7 @@ function restoreGlobal(global, mark, start) {
 const fileStates = new WeakMap();
 function fileState(global) {
   let state = fileStates.get(global);
-  if (!state) fileStates.set(global, (state = { mark: null, start: null, installed: null }));
+  if (!state) fileStates.set(global, (state = { mark: null, start: null, mocked: new Map(), installed: null }));
   return state;
 }
 
@@ -548,11 +559,17 @@ export default {
     global[MARK] = () => {
       state.mark = markGlobal(global, restore.keys);
     };
+    // Between a reset and the mark (the setup files and imports): mocks
+    // made later are a test's, undone to what the mark keeps.
+    global[MOCKING] = (key) => {
+      if (!state.mark && !state.mocked.has(key)) state.mocked.set(key, Object.getOwnPropertyDescriptor(global, key));
+    };
     global[RESET] = ablated('fresh-window')
       ? // Ablation: a new window per file instead of the in-place reset.
         () => {
-          restoreGlobal(global, state.mark, state.start);
+          restoreGlobal(global, state.mark, state.start, state.mocked);
           state.mark = null;
+          state.mocked.clear();
           restore();
           window = createTestWindow(options);
           restore = installWindow(global, window, {
@@ -565,7 +582,8 @@ export default {
           state.start = memberDescriptors(global, restore.keys);
         }
       : () => {
-          restoreGlobal(global, state.mark, state.start);
+          restoreGlobal(global, state.mark, state.start, state.mocked);
+          state.mocked.clear();
           if (state.installed) restoreInstalled(global, state.installed);
           state.installed = null;
           // Used once: a file whose tests all skip takes no mark, and an
@@ -581,6 +599,7 @@ export default {
       teardown() {
         delete global[RESET];
         delete global[MARK];
+        delete global[MOCKING];
         // Requests still running stop without events, as closing jsdom's window stops them.
         abortWindowRequests(window);
         forgetLastList();

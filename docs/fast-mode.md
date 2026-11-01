@@ -172,10 +172,16 @@ was 3-8% slower than the drop-in on 5 of 11 tuning suites).
   `beforeAll` of `warpdom/vitest/reset`) and puts back the window members
   a test redefined or deleted (`Object.defineProperty(window,
   'innerWidth', ...)`), except one that is again as it was before the
-  file's setup files ran: Vitest's cleanup or the file's tests undid a
-  `vi.stubGlobal` or accessor `vi.spyOn` of its setup, and putting the
-  stub back made the next setup's stub keep it as the original value
-  (the setup files run again and redo their changes). What the file's
+  file's setup files ran, or before its setup mocked it: Vitest's
+  cleanup or the file's tests undid a `vi.stubGlobal` or `vi.spyOn` of
+  its setup, and putting the stub back made the next setup's stub keep
+  it as the original value (the setup files run again and redo their
+  changes). The two differ when a module loaded once changed the member
+  before the stub (#201: a setup file's import defines `innerHeight` as
+  900, the setup file stubs it as 500; unstubbing gives 900, and the
+  reset put 500 back). `warpdom/vitest/reset` wraps `vi.stubGlobal` and
+  `vi.spyOn` (on the global) to record the member's descriptor before
+  the first mock between a reset and the mark. What the file's
   setup files and imports set stays:
   without isolation a module loads once per worker, so a global it sets
   (a polyfill, a test helper's `global.ResizeObserver = ...`) would be

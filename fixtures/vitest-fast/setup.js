@@ -14,3 +14,6 @@ Object.defineProperty(window, 'matchMedia', { value: matchMedia, writable: true,
 // (the next run's stub would then take the stub as the original value).
 vi.stubGlobal('innerHeight', 500);
 vi.spyOn(window, 'outerHeight', 'get').mockReturnValue(1);
+// A stub and a spy of members setup-dep.js changed once: undone, they are 900 (#201).
+vi.stubGlobal('outerWidth', 500);
+vi.spyOn(window, 'screenY', 'get').mockReturnValue(1);
