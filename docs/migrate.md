@@ -305,9 +305,11 @@ such files are the only environment changes of the package and runner
 (no config environment, no happy-dom one) and no other test follows the
 installed jsdom, the profile is theirs alone (kept when their projects
 name the jsdom they ran on); otherwise their results are combined with
-the rest (any change: not kept; any uncertainty: uncertain). When migrate cannot
+the rest (any change: not kept; any uncertainty: uncertain, unless another
+test surely changes the profile, which stays not kept). When migrate cannot
 tell the project of such a file, or read its options, the profile is
-uncertain even when no pin is needed or jsdom stays installed. Only what the
+uncertain even when no pin is needed or jsdom stays installed, unless another
+test surely changes it. Only what the
 config says can be read without running it counts: a key written as a
 string literal in brackets (`['include']`) is read as that key (and
 renamed whole: `['jsdom']: { url }` becomes `warpdom: { url }`), the
