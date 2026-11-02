@@ -16,3 +16,7 @@ Object.defineProperty(window, 'screenTop', stubbed(900));
 Object.defineProperty(window, 'status', { value: 'from dep', writable: true, configurable: true });
 // Replaces a member setup.js stubbed, spied on and unstubbed before importing this (#236 review).
 Object.defineProperty(window, 'moveBy', { value: Object.assign(() => {}, { fromDep: true }), writable: true, configurable: true });
+// Replaces one of two members holding one vi.fn(), and a member whose
+// accessors setup.js spied on and restored (#236 review).
+Object.defineProperty(window, 'resizeBy', { value: Object.assign(() => {}, { fromDep: true }), writable: true, configurable: true });
+Object.defineProperty(window, 'scrollX', { value: 900, writable: true, configurable: true });

@@ -24,12 +24,12 @@ test('a: leaves globals behind', () => {
 // Undone during the file: the next file's reset must not put them back.
 test("a: undoes its setup's stub and spy", () => {
   expect(members()).toEqual([500, 1, 500, 1, 500, 1]);
-  expect(restubbed()).toEqual([600, 500, 500]);
+  expect(restubbed()).toEqual([600, 500, 500, 500]);
   expect(layered()).toEqual([false, false, false]);
   // The spies first: the spy of a stub restores the stub.
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   expect(members()).toEqual([768, 768, 900, 900, 900, restoresTwice ? 0 : 900]);
   expect(layered()).toEqual([true, !restoresTwice, true]);
-  expect(restubbed()).toEqual([500, 900, 900]);
+  expect(restubbed()).toEqual([500, 900, 900, 900]);
 });

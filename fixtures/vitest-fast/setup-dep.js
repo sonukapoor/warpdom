@@ -13,3 +13,7 @@ Object.defineProperty(window, 'moveTo', { value: fromDep(() => {}), writable: tr
 Object.defineProperty(window, 'pageXOffset', { value: 900, writable: true, enumerable: true, configurable: true });
 // A vi.fn() each setup spies on, and a test many times (#236 review).
 globalThis.__persistentMock = vi.fn();
+// One vi.fn() held by two members (#236 review).
+const shared = vi.fn();
+for (const key of ['resizeBy', 'resizeTo'])
+  Object.defineProperty(window, key, { value: shared, writable: true, configurable: true });

@@ -35,7 +35,7 @@ if (!vi[WRAPPED]) {
     if (!mocks.has(key)) mocks.set(key, []);
     return mocks.get(key);
   };
-  // Every spy of the global, with its key and what it first replaced.
+  // Every spy of the global, with its keys and what it first replaced.
   const spies = new WeakMap();
   // The member before, with a spy Vitest's cleanup left (vi.restoreAllMocks
   // leaves the getter spy of a member spied on through both accessors,
@@ -93,18 +93,25 @@ if (!vi[WRAPPED]) {
     // vi.spyOn of a spy (or of a vi.fn()) returns it.
     const spy = spyOn(object, key, ...rest);
     const known = spies.get(spy);
-    if (known) known.key = key;
+    if (known) known.keys.add(key);
     else {
-      // One wrapper per spy, however often it is spied on and restored (#236 review).
-      const record = { key, original: before };
+      // One wrapper per spy, however often it is spied on and restored,
+      // and for each key whose member holds it (two members may hold one
+      // vi.fn()) (#236 review).
+      const record = { keys: new Set([key]), original: before };
       spies.set(spy, record);
       const { mockRestore } = spy;
       spy.mockRestore = function (...args) {
         return cleanup(
           () => {
-            const layers = mocks.get(record.key);
-            const index = layers ? layers.findIndex((layer) => layer.spy === spy) : -1;
-            if (index >= 0) layers.splice(index, 1);
+            // Restoring puts back the member the spy found: the spies made
+            // since (another accessor's) go too; a stub keeps its original.
+            for (const key of record.keys) {
+              const layers = mocks.get(key);
+              const index = layers ? layers.findIndex((layer) => layer.spy === spy) : -1;
+              if (index >= 0)
+                mocks.set(key, [...layers.slice(0, index), ...layers.slice(index + 1).filter((layer) => layer.stub)]);
+            }
           },
           () => mockRestore.apply(this, args),
         );

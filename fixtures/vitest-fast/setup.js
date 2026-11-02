@@ -7,6 +7,9 @@ globalThis.__setupRuns = (globalThis.__setupRuns ?? 0) + 1;
 // changes: each later file starts with the import's (#230).
 globalThis.__statusAtSetup ??= [];
 if (globalThis.__setupRuns > 1) globalThis.__statusAtSetup.push(window.status);
+// Likewise a member the setup spies on, sharing a vi.fn() with another (#236 review).
+globalThis.__sharedAtSetup ??= [];
+if (globalThis.__setupRuns > 1) globalThis.__sharedAtSetup.push(window.resizeBy.fromDep === true);
 // Whether warpdom's reset (run before this file) put back a previous
 // file's mocks of the members mocked twice below, or left the spy of one
 // (#230), for any file so far (it must not; this file's setup would undo
@@ -41,7 +44,18 @@ vi.spyOn(window, 'moveBy');
 vi.unstubAllGlobals();
 vi.spyOn(window, 'screenX', 'get').mockReturnValue(2).mockRestore();
 vi.spyOn(window, 'scrollBy').mockRestore();
+// Two members holding one vi.fn(): vi.spyOn returns it for both, and its
+// mockRestore ends both spies (#236 review).
+vi.spyOn(window, 'resizeBy');
+vi.spyOn(window, 'resizeTo');
+window.resizeBy.mockRestore();
+// Spies on both accessors, the getter's restored first, which removes the
+// setter spy too; stubbed after the import changes it (#236 review).
+const scrollXGetter = vi.spyOn(window, 'scrollX', 'get');
+vi.spyOn(window, 'scrollX', 'set');
+scrollXGetter.mockRestore();
 await import('./setup-later-dep.js');
+vi.stubGlobal('scrollX', 500);
 vi.stubGlobal('devicePixelRatio', 500);
 // Stubs whose originals are the import's, equal to the earlier stubs (#230).
 vi.stubGlobal('screenLeft', 600);

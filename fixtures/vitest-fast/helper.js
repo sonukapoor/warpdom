@@ -17,7 +17,7 @@ export const members = () => [
 ];
 // The members setup.js stubs again after the original changed to a
 // descriptor equal to an earlier stub's, or without changing it first (#230).
-export const restubbed = () => [window.screenLeft, window.screenTop, window.pageXOffset];
+export const restubbed = () => [window.screenLeft, window.screenTop, window.pageXOffset, window.scrollX];
 // The members setup.js mocks twice (a stub, then a spy of it) or spies on
 // after an import made it an accessor with a vi.fn() getter: whether each
 // is setup-dep.js's or setup-later-dep.js's again (a spy copies the
