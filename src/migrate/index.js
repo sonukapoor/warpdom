@@ -1717,11 +1717,16 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
   // sub-package declaring warpdom under a root declaring jsdom, #233).
   const pins = new Map(); // `${pkg.rel}\0${runner}` -> { runner, version, cssstyle, base, option, where }
   // The packages whose tests of a runner ran on the jsdom declared in
-  // relDir: those migrate edits whose nearest declaration it is, else
-  // relDir itself.
+  // relDir: those migrate edits, or whose tests are already on warpdom
+  // (also by a path, which needs no runner package), whose nearest
+  // declaration it is, else relDir itself.
   const pinTargets = (relDir, runner) => {
     const found = [...needs.values()]
-      .filter((n) => n.runners.has(runner) && domProfileOf(n.pkg, runner)?.decl.rel === relDir)
+      .filter(
+        (n) =>
+          (n.runners.has(runner) || onWarpdom.has(`${n.pkg.rel}\0${runner}`)) &&
+          domProfileOf(n.pkg, runner)?.decl.rel === relDir,
+      )
       .map((n) => n.pkg.rel);
     return found.length ? found : [relDir];
   };

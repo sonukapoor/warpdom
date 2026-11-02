@@ -2870,3 +2870,28 @@ test('migrate (#233, review 2): a sub-package file in the project of a root conf
     },
   );
 });
+
+test('migrate (#233, review 3): a root on warpdom by path keeps its pin note beside a migrated sub-package', async () => {
+  // The root imports its environment from warpdom/vitest/environment and
+  // follows its jsdom 25.0.1; packages/app changes a jsdom environment.
+  // Removing the root's jsdom changes the root's tests too: they get the
+  // add-by-hand note, not only packages/app its pin.
+  await tempProject(
+    {
+      'package.json': `{\n  "private": true,\n  "workspaces": ["packages/*"],\n  "devDependencies": {\n    "jsdom": "^25.0.1",\n    "vitest": "^5.0.0",\n    "warpdom": "^${VERSION}"\n  }\n}\n`,
+      'vitest.config.js':
+        "import { environment } from 'warpdom/vitest/environment';\n\nexport default {\n  test: {\n    environment,\n  },\n};\n",
+      'x.spec.js': "import { test } from 'vitest';\n",
+      'packages/app/package.json': `{\n  "name": "app",\n  "private": true,\n  "devDependencies": {\n    "warpdom": "^${VERSION}"\n  }\n}\n`,
+      'packages/app/vitest.config.js': "export default {\n  test: {\n    environment: 'jsdom',\n  },\n};\n",
+      'packages/app/x.spec.js': "import { test } from 'vitest';\n",
+    },
+    async (dir) => {
+      installed(dir, 'jsdom', { version: '25.0.1' });
+      const r = await run(dir);
+      const notes = r.profile.join('\n');
+      assert.match(notes, /packages\/app\/vitest\.config\.js:4: pinned jsdom 25\.0\.1/);
+      assert.match(notes, /No environment literal in a config to put it next to/);
+    },
+  );
+});
