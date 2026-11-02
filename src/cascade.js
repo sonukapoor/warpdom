@@ -1153,7 +1153,7 @@ function resolvedColorValue(element, name, value, data, compat) {
     // The function alone: what follows it need not start with a space
     // (color-mix(in srgb, blue, red)1px 1px).
     const end = closingParen(token);
-    if (end < 0 || value.toLowerCase().includes('var(')) return value;
+    if (end < 0 || value.includes('var(')) return value;
     // currentcolor resolved once per mix, and only if the mix names it (a
     // chain of currentcolor mixes would otherwise resolve each parent's
     // color twice per level).

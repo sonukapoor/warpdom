@@ -170,12 +170,14 @@ test('isValidValue: minified calc() and var(), and broken input', () => {
     assert.equal(typeof isValidValue('width', value), 'boolean');
 });
 
-// var( as a function token (#222): quotes in a comment or an unquoted url()
-// start no string, and var( in a comment counts, closed or not (jsdom 30.1.2
-// keeps url(a b.png) /* var( and url(a b.png) /* var( */). Values with
-// comments are not modeled yet (#162), so this is checked directly.
-test('hasVarFunction: comments, strings and unquoted url()s', () => {
+// var( as jsdom 23 to 30 read it (#222, #234): in lowercase, at the start or
+// after whitespace (JavaScript's \s), "(", "/" or "*", in a string or a
+// comment too (jsdom 30.1.2 keeps url(a b.png) /* var( and width: "a
+// var(--a)"). Values with comments are not modeled yet (#162), so this is
+// checked directly.
+test('hasVarFunction: what comes before var(', () => {
   for (const value of [
+    'var(--a)',
     '/* " */ var(--a) url(a b.png)',
     "/* ' */ var(--a)",
     'url(a b.png) /* var( */',
@@ -186,25 +188,45 @@ test('hasVarFunction: comments, strings and unquoted url()s', () => {
     'url( a"b.png) var(--a)',
     'url(a"b.png) url(c d.png) var(--a)',
     '"/*" var(--a)',
+    '"/* var(x)"',
     'url(var(--a).png)',
+    'url(a\\ var(--a).png)',
+    'url(a/var(--a).png)',
+    'calc(1px*var(--a))',
+    '1px\tvar(--a)',
+    '1px\u00a0var(--a)',
+    '1px\u3000var(--a)',
+    '1px\ufeffvar(--a)',
+    'var(--a,var(--b))',
+    'red,var(--a) var(--b)',
   ])
     assert.equal(hasVarFunction(value), true, value);
   for (const value of [
+    'VAR(--a)',
+    'Var(--a) red',
     'url("var(x).png")',
     "url('var(x).png')",
     'url( "var(x).png" )',
     '/* x */ notvar(x)',
     'url(a/*b.png) xvar(x)',
-    '"/* var(x)"',
     'url(x-var(--a).png)',
-    // A backslash escapes nothing in a comment: \*/ ends it.
     '/* \\*/ url("var(x).png")',
+    'url(a.png)var(--a)',
+    'url(a.png),var(--a)',
+    'url(a.png) ,var(--a)',
+    'red,var(--a)',
+    'rgb(1,var(--a),3)',
+    '1px+var(--a)',
+    '[var(--a)]',
+    "'x'var(--a)",
+    'x\\+var(--a)',
+    'url(x\\!var(--a).png)',
   ])
     assert.equal(hasVarFunction(value), false, value);
-  // Linear: an unclosed comment, an unclosed url() and many url( openings.
+  // Linear: many var( openings, none after a character that opens var().
   const n = 200000;
-  for (const value of ['/*'.repeat(n), 'url('.repeat(n), 'url( '.repeat(n), '/* "'.repeat(n)])
-    assert.equal(hasVarFunction(value + 'var('), true);
+  for (const value of ['xvar('.repeat(n), ',var('.repeat(n), 'url('.repeat(n), '/* "'.repeat(n)])
+    assert.equal(hasVarFunction(value + ' var('), true);
 });
 
 // CSS.supports validates values (jsdom 30); before jsdom 30 there is no CSS
