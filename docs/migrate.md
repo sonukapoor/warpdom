@@ -276,8 +276,11 @@ environment already on warpdom whose `environmentOptions` migrate cannot
 read (`environmentOptions: opts`, a spread, a jsdom version that is not a
 string literal) may name the version it follows: the pin does not reach it,
 a note says to add the version by hand unless its options name one, and
-the profile is reported as uncertain (`same: null`) rather than not kept.
-Not counted: a warpdom environment whose options name a jsdom version
+the profile is reported as uncertain (`same: null`) rather than not kept,
+also beside files moved into projects that name a jsdom version. When
+jsdom stays installed or is warpdom's default, such an environment follows
+the same jsdom (or the version its options name) before and after, and the
+profile stays kept. Not counted: a warpdom environment whose options name a jsdom version
 (`environmentOptions.warpdom.jsdom`, `testEnvironmentOptions.jsdom`), which
 warpdom follows instead of the installed jsdom, and warpdom environments in
 fixture directories, which migrate does not change. A Vitest environment

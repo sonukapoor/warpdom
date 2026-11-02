@@ -2052,8 +2052,14 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
     };
     const named = ((before && namedBy.get(key)) ?? []).map((n) => ({ ...n, kept: keptBy(n) }));
     // Only such files changed (no test follows the installed jsdom or the
-    // default): the profile is theirs alone.
-    const onlyNamed = named.length > 0 && !definite.has(key) && !uncertain.has(key) && !otherChanges.has(key);
+    // default, nor may an environment already on warpdom whose options
+    // migrate cannot read, #233): the profile is theirs alone.
+    const onlyNamed =
+      named.length > 0 &&
+      !definite.has(key) &&
+      !uncertain.has(key) &&
+      !otherChanges.has(key) &&
+      !unreadWarpdom.has(key);
     if (onlyNamed) {
       after = '';
       same = true;

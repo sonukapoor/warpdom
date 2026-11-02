@@ -2755,3 +2755,41 @@ test('migrate (#233): no pin note when only files in projects that name a versio
     assert.deepEqual(same, [false]);
   });
 });
+
+test('migrate (#233, review): an environment already on warpdom with unreadable options beside files that name a version', async () => {
+  // a/y.spec.js, moved from jsdom by its comment, follows the version its
+  // project names; project 'b', already warpdom, has options migrate
+  // cannot read. With jsdom 25.0.1 removed and no pin placed, 'b' follows
+  // jsdom 30.1.2 unless its options name a version: unknown. With jsdom
+  // 30.1.2 (warpdom's default) or jsdom kept, 'b' follows the same jsdom
+  // (or the version its options name) before and after: kept.
+  const files = (jsdom, extra = {}) => ({
+    'package.json': `{\n  "private": true,\n  "devDependencies": {\n    "jsdom": "^${jsdom}",\n    "vitest": "^5.0.0",\n    "warpdom": "^${VERSION}"\n  }\n}\n`,
+    'vitest.config.js': `const opts = {};\nexport default {\n  test: {\n    projects: [\n      { test: { name: 'a', environment: 'node', include: ['a/**'], environmentOptions: { warpdom: { jsdom: '${jsdom}' } } } },\n      { test: { name: 'b', environment: 'warpdom', include: ['b/**'], environmentOptions: opts } },\n    ],\n  },\n};\n`,
+    'a/y.spec.js': "// @vitest-environment jsdom\nimport { test } from 'vitest';\n",
+    ...extra,
+  });
+  for (const [label, jsdom, extra, same] of [
+    ['jsdom 25.0.1 removed', '25.0.1', {}, null],
+    ["warpdom's default", '30.1.2', {}, true],
+    ['jsdom kept', '25.0.1', { 'src/dom.js': "import { JSDOM } from 'jsdom';\n" }, true],
+  ]) {
+    await tempProject(files(jsdom, extra), async (dir) => {
+      installed(dir, 'jsdom', { version: jsdom });
+      const r = await run(dir);
+      assert.deepEqual(
+        r.profiles.map((p) => p.same),
+        [same],
+        label,
+      );
+      if (same === null) {
+        assert.match(
+          r.profiles[0].after,
+          /unknown for the environment at vitest\.config\.js:6 \(already warpdom/,
+          label,
+        );
+        assert.match(r.profile.join('\n'), /No environment literal/, label);
+      }
+    });
+  }
+});
