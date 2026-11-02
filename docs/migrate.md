@@ -230,7 +230,8 @@ uses the profile warpdom builds for each (cssstyle 2.3 before jsdom 21.1,
 3.0 from 21.1 to 23.0, the newest 4.x from 23.1 to 26, 5.3 for 27 and
 28.0). It writes it in
 the most local place, next to the environment it changed, and says why in
-the plan:
+the plan; in a workspace, that is the environment of the package migrate
+edits, also when jsdom is declared by a package above it (the root):
 
 ```js
 // Vitest
@@ -264,18 +265,28 @@ count as tests on jsdom, since warpdom follows the jsdom it finds
 installed: with Vitest
 already on warpdom and one file still choosing happy-dom, removing jsdom
 still gets its note (the happy-dom note as well); with no environment
-literal changed in a config, the note says to add the version by hand.
+literal changed in a config, the note says to add the version by hand
+(not when the only changes are files moved from jsdom by their comment
+into projects that name a jsdom version, and no test follows the installed
+jsdom: those files follow the version their project names).
 An environment already on warpdom that the pin does not reach (another
 inline Vitest or Jest project in the same config) gets its own note to add
-the version next to it, and the profile is not reported as kept. Not
-counted: a warpdom environment whose options name a jsdom version
+the version next to it, and the profile is not reported as kept. A Vitest
+environment already on warpdom whose `environmentOptions` migrate cannot
+read (`environmentOptions: opts`, a spread, a jsdom version that is not a
+string literal) may name the version it follows: the pin does not reach it,
+a note says to add the version by hand unless its options name one, and
+the profile is reported as uncertain (`same: null`) rather than not kept.
+Not counted: a warpdom environment whose options name a jsdom version
 (`environmentOptions.warpdom.jsdom`, `testEnvironmentOptions.jsdom`), which
 warpdom follows instead of the installed jsdom, and warpdom environments in
 fixture directories, which migrate does not change. A Vitest environment
 changed from jsdom whose `environmentOptions` migrate cannot read
 (`environmentOptions: opts`, a spread, `warpdom: opts.warpdom`) may name a
-jsdom version warpdom then follows: the profile is reported as uncertain
-(`same: null`) with a note for it, unless another test surely changes it.
+jsdom version warpdom then follows: it always gets a note, and the profile
+is reported as uncertain (`same: null`) unless another test surely changes
+it (one that follows the installed jsdom, or a file whose project names
+another jsdom version than the one it ran on).
 One whose options name a jsdom version follows that version (and the
 cssstyle they name) once on warpdom: when it is not the one it ran on, a
 note says so and the profile is not reported as kept.
