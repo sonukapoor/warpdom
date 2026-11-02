@@ -15,36 +15,67 @@ vi.unstubAllGlobals();
 vi.unstubAllEnvs();
 // What a global was before the setup mocked it, where Vitest's cleanup puts
 // it back: a module loaded once may have changed it before (#201). The
-// wrappers report each mock of a global's key with its descriptors before
-// and after, and whether Vitest keeps an earlier stub's original (a stub of
-// a key stubbed since vi.unstubAllGlobals: Vitest's own list of stubs, per
-// worker as vi is). vi is wrapped once.
+// wrappers follow each key of the global from its first mock to the
+// cleanup that ends its last (vi.unstubAllGlobals, vi.restoreAllMocks, a
+// spy's mockRestore): its original is the member before that first mock,
+// kept while any of them is in place, as Vitest's stubs and spies keep
+// theirs, whatever the member's descriptors are in between (#230). They
+// report each mock with the key's original, and the end of the key's
+// mocks, after the cleanup, with null. Tracked per worker, as vi is; vi is
+// wrapped once.
 const WRAPPED = Symbol.for('warpdom.vitest.wrapped');
 if (!vi[WRAPPED]) {
-  const { stubGlobal, unstubAllGlobals, spyOn } = vi;
-  const mock = (key, kept, call) => {
+  const { stubGlobal, unstubAllGlobals, spyOn, restoreAllMocks } = vi;
+  const report = (key, mock) => globalThis[Symbol.for('warpdom.vitest.mocking')]?.(key, mock);
+  // The keys with a mock in place: their original, whether a stub is
+  // among the mocks, and the spies.
+  const mocks = new Map();
+  const mocked = (key, call) => {
     const before = Object.getOwnPropertyDescriptor(globalThis, key);
     const result = call();
-    globalThis[Symbol.for('warpdom.vitest.mocking')]?.(
-      key,
-      before,
-      Object.getOwnPropertyDescriptor(globalThis, key),
-      kept,
-    );
+    let mock = mocks.get(key);
+    if (!mock) mocks.set(key, (mock = { original: before, stubbed: false, spies: new Set() }));
+    return [mock, result];
+  };
+  // Runs a cleanup after end(mock) for each mock it undoes, and reports
+  // the keys left with none.
+  const cleanup = (end, call) => {
+    const ended = [];
+    for (const [key, mock] of mocks) {
+      end(mock);
+      if (mock.stubbed || mock.spies.size) continue;
+      mocks.delete(key);
+      ended.push(key);
+    }
+    const result = call();
+    for (const key of ended) report(key, null);
     return result;
   };
-  const stubbed = new Set();
   vi.stubGlobal = (name, value) => {
-    const kept = stubbed.has(name);
-    stubbed.add(name);
-    return mock(name, kept, () => stubGlobal(name, value));
+    const [mock, result] = mocked(name, () => stubGlobal(name, value));
+    mock.stubbed = true;
+    report(name, mock);
+    return result;
   };
-  vi.unstubAllGlobals = () => {
-    stubbed.clear();
-    return unstubAllGlobals();
+  vi.unstubAllGlobals = () => cleanup((mock) => (mock.stubbed = false), unstubAllGlobals);
+  vi.restoreAllMocks = () => cleanup((mock) => mock.spies.clear(), restoreAllMocks);
+  vi.spyOn = (object, key, ...rest) => {
+    if (object !== globalThis) return spyOn(object, key, ...rest);
+    // vi.spyOn of a spy returns it.
+    const [mock, spy] = mocked(key, () => spyOn(object, key, ...rest));
+    if (!mock.spies.has(spy)) {
+      mock.spies.add(spy);
+      const { mockRestore } = spy;
+      spy.mockRestore = function (...args) {
+        return cleanup(
+          (other) => other === mock && mock.spies.delete(spy),
+          () => mockRestore.apply(this, args),
+        );
+      };
+    }
+    report(key, mock);
+    return spy;
   };
-  vi.spyOn = (object, key, ...rest) =>
-    object === globalThis ? mock(key, false, () => spyOn(object, key, ...rest)) : spyOn(object, key, ...rest);
   vi[WRAPPED] = true;
 }
 const reset = globalThis[Symbol.for('warpdom.vitest.reset')];

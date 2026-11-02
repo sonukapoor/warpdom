@@ -7,3 +7,5 @@ Object.defineProperty(window, 'screenY', { get: () => 900, configurable: true })
 // A member setup.js mocks twice: Vitest's cleanup puts this back (#228 review).
 const fromDep = (f) => Object.assign(f, { fromDep: true });
 Object.defineProperty(window, 'moveTo', { value: fromDep(() => {}), writable: true, configurable: true });
+// A member setup.js stubs without changing it, redefines and stubs again (#230).
+Object.defineProperty(window, 'pageXOffset', { value: 900, writable: true, enumerable: true, configurable: true });

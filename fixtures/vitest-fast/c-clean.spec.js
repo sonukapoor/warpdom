@@ -1,5 +1,5 @@
 import { test, expect, vi } from 'vitest';
-import { helper, members, layered, restoresTwice } from './helper.js';
+import { helper, members, layered, restubbed, restoresTwice } from './helper.js';
 import './skipped-dep.js';
 
 test('c: the window is fresh', () => {
@@ -29,7 +29,9 @@ test("c: no globals a previous file's tests added; its setup's and modules' stay
 
 test("c: this file's setup stubs and spies undo to the window's own values", () => {
   expect(members()).toEqual([500, 1, 500, 1, 500, 1]);
-  expect(globalThis.__mocksAtSetup).toEqual([false, false]);
+  expect(restubbed()).toEqual([600, 500, 500]);
+  expect(globalThis.__mocksAtSetup).toEqual([false, false, false, false]);
+  expect(globalThis.__statusAtSetup).toEqual(Array(globalThis.__setupRuns - 1).fill('from dep'));
   expect(layered()).toEqual([false, false]);
   // The spies first: the spy of a stub restores the stub.
   vi.restoreAllMocks();
@@ -38,6 +40,7 @@ test("c: this file's setup stubs and spies undo to the window's own values", () 
   // set when first loaded (#201).
   expect(members()).toEqual([768, 768, 900, 900, 900, restoresTwice ? 0 : 900]);
   expect(layered()).toEqual([true, !restoresTwice]);
+  expect(restubbed()).toEqual([500, 900, 900]);
   expect(vi.isMockFunction(Object.getOwnPropertyDescriptor(window, 'outerHeight').get)).toBe(false);
   expect(vi.isMockFunction(Object.getOwnPropertyDescriptor(window, 'screenY').get)).toBe(false);
   expect(vi.isMockFunction(Object.getOwnPropertyDescriptor(window, 'screenX').get)).toBe(false);

@@ -172,28 +172,38 @@ was 3-8% slower than the drop-in on 5 of 11 tuning suites).
   `beforeAll` of `warpdom/vitest/reset`) and puts back the window members
   a test redefined or deleted (`Object.defineProperty(window,
   'innerWidth', ...)`), except one that is again as it was before the
-  file's setup files ran, or before its setup mocked it: Vitest's
-  cleanup or the file's tests undid a `vi.stubGlobal` or `vi.spyOn` of
-  its setup, and putting the stub back made the next setup's stub keep
-  it as the original value (the setup files run again and redo their
-  changes). The two differ when a module loaded once changed the member
-  before the stub (#201: a setup file's import defines `innerHeight` as
-  900, the setup file stubs it as 500; unstubbing gives 900, and the
-  reset put 500 back). `warpdom/vitest/reset` wraps `vi.stubGlobal` and
-  `vi.spyOn` (on the global) to record, between a reset and the mark,
-  the member's descriptor before the first mock that replaces it: a
-  mock of a member another mock replaced (a spy of a stub, spies on
-  both accessors) keeps that original, and a mock after the setup undid
-  the earlier ones takes the member as it is then (a setup that undoes
-  a stub, imports such a module, and stubs again restores to the
-  module's value). Not covered: what Vitest's own cleanup does not put
-  back. Vitest 4 and 5's `vi.restoreAllMocks` leaves the getter spy when
-  both accessors of one member are spied on (measured: 4.1.12, 5.0.3),
-  and the reset then puts the file's spies back; Vitest 3's restores a
-  spy restored before (`mockRestore()`) again, to the member before
-  that spy (measured: 3.2.4). What the file's
-  setup files and imports set stays:
-  without isolation a module loads once per worker, so a global it sets
+  file's setup files ran. A member the setup mocked gets back what its
+  mocks replaced: Vitest's cleanup or the file's tests undid a
+  `vi.stubGlobal` or `vi.spyOn` of its setup, and putting the stub back
+  made the next setup's stub keep it as the original value (the setup
+  files run again and redo their changes). That differs from the member
+  before the setup files when a module loaded once changed it before the
+  stub (#201: a setup file's import defines `innerHeight` as 900, the
+  setup file stubs it as 500; unstubbing gives 900, and the reset put 500
+  back). `warpdom/vitest/reset` wraps `vi.stubGlobal`, `vi.spyOn` (on the
+  global), `vi.unstubAllGlobals`, `vi.restoreAllMocks` and each such
+  spy's `mockRestore` to follow every key from its first mock to the
+  cleanup that ends its last, as Vitest's stubs and spies keep their
+  originals: the original is the member before that first mock, whatever
+  its descriptors are in between. Comparing descriptors instead (#230)
+  took a module's descriptor equal to an ended stub's for that stub, and
+  missed a stub that left the descriptor as it was; either way the next
+  reset put a stub back. A mock after the setup's earlier mocks ended
+  takes the member as it is then (a setup that undoes a stub, imports
+  such a module, and stubs again restores to the module's value); a
+  member whose mocks ended before the file's tests started and that
+  something else changed since (the module) keeps that change. The reset
+  also undoes what Vitest's own cleanup leaves of the setup's mocks:
+  Vitest 4 and 5's `vi.restoreAllMocks` leaves the getter spy when both
+  accessors of one member are spied on (measured: 4.1.12, 5.0.3), which
+  the reset used to put back with the setter spy; it now gives the
+  member its original, also after a file whose tests all skipped. Not
+  covered: Vitest 3's `vi.restoreAllMocks` restores a spy restored before
+  (`mockRestore()`) again, to the member before that spy (measured:
+  3.2.4, without warpdom), after the cleanup the wrappers follow; on
+  Vitest 3 `setup()` installs a new window for every file anyway. What
+  the file's setup files and imports set stays: without isolation a
+  module loads once per worker, so a global it sets
   (a polyfill, a test helper's `global.ResizeObserver = ...`) would be
   gone for every later file. A test file's top-level code runs in that
   phase too, so what it adds stays; a property made non-configurable
@@ -201,7 +211,8 @@ was 3-8% slower than the drop-in on 5 of 11 tuning suites).
   test reassigns (`global.fetch = vi.fn()`) are not restored, nor is a
   global a module loaded once set (a polyfill's `IntersectionObserver`)
   when a test replaces it; use `vi.stubGlobal`. A file whose tests all
-  skip runs no `beforeAll`, so the next reset deletes nothing. The fast
+  skip runs no `beforeAll`, so the next reset deletes nothing; it only
+  gives the members that file's setup mocked their originals. The fast
   project runs its setup files in order (`sequence.setupFiles: 'list'`,
   set on the root config too, where Vitest 2-4 read it; their default,
   `'parallel'`, could run the reset after a setup file and undo what it

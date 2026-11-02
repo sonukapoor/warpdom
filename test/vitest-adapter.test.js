@@ -462,20 +462,22 @@ test("setup again on the same global (Vitest 3): the reset removes the previous 
   const global = {};
   const afterReset = [];
   // vi.stubGlobal and vi.unstubAllGlobals (Vitest 3.2.4's), one vi per
-  // worker; warpdom/vitest/reset wraps stubGlobal to report the mock (#201).
+  // worker; warpdom/vitest/reset wraps them to report each stub with its
+  // original (#201) and the stubs' end (#230).
+  const MOCKING = Symbol.for('warpdom.vitest.mocking');
   const stubs = new Map();
   const stubGlobal = (key, value) => {
-    const before = Object.getOwnPropertyDescriptor(global, key);
-    const kept = stubs.has(key);
-    if (!kept) stubs.set(key, before);
+    if (!stubs.has(key)) stubs.set(key, Object.getOwnPropertyDescriptor(global, key));
     Object.defineProperty(global, key, { value, writable: true, enumerable: true, configurable: true });
-    global[Symbol.for('warpdom.vitest.mocking')](key, before, Object.getOwnPropertyDescriptor(global, key), kept);
+    global[MOCKING](key, { original: stubs.get(key) });
   };
   const unstubAllGlobals = () => {
+    const keys = [...stubs.keys()];
     for (const [key, original] of stubs)
       if (original) Object.defineProperty(global, key, original);
       else Reflect.deleteProperty(global, key);
     stubs.clear();
+    for (const key of keys) global[MOCKING]?.(key, null);
   };
   // One test file: setup(), the setup files (warpdom's reset after
   // Vitest's cleanup, then the project's), the mark when its tests start
