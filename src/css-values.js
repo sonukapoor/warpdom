@@ -33,7 +33,7 @@ const IDENT_CHARS = /^(?:[a-zA-Z0-9_\u0080-￿-]|\\.)+/;
 function tokenize(text) {
   let i = 0;
   const n = text.length;
-  let varFunction = null; // hasVarFunction(text), read at the first bad url()
+  let math = 0; // math functions open
   function list(close) {
     const out = [];
     while (i < n) {
@@ -108,16 +108,23 @@ function tokenize(text) {
             // Both url( unquoted ) and url("...") are read by readUrl and give
             // one url token here (CSS Syntax makes the quoted form a function).
             const url = readUrl(text, i, newlineSpaces);
-            // A bad url() in a value with var() is kept to its ")", as the
-            // value is (jsdom): url(var(--image).png), var(--a, url(a b.png)).
-            if (url === null) varFunction ??= hasVarFunction(text);
-            const close = url === null && varFunction ? findClose(text, i) : -1;
-            if (url === null && close === -1) return null;
+            if (url === null) return null;
             out.push({ t: 'url' });
-            i = url === null ? close + 1 : url.end;
+            i = url.end;
             continue;
           }
+          // A var( here is one jsdom does not read as var() (checkTokens
+          // reads the others first): the value is invalid (red,var(--a),
+          // rgb(1,var(--a),3), VAR(--a); black box: jsdom 20 to 30, #234).
+          // In a math function, whose insides are not checked otherwise,
+          // only VAR(: jsdom 20 to 22, 25 and 27 to 30 drop calc(VAR(--a) +
+          // 1px) and calc(1px+var(--a)); 23, 24 and 26 keep both, the first
+          // as calc(1px + var(--a)). Not modeled: those differences.
+          if (lower === 'var' && (math === 0 || name !== 'var')) return null;
+          const inMath = MATH.has(lower);
+          if (inMath) math++;
           const args = list(')');
+          if (inMath) math--;
           if (!args) return null;
           out.push({ t: 'function', name: lower, args });
           continue;
@@ -131,33 +138,6 @@ function tokenize(text) {
     return close ? null : out;
   }
   return list(null);
-}
-
-// The ")" closing a url() from its insides, past nested parentheses, and
-// past strings in a quoted one (an unquoted one has no strings: url(a"b
-// c.png)); an escaped character is skipped, in a string or not (var(--a)
-// url(a\(b c.png); black box: jsdom 23 to 30 keep both, #222).
-function findClose(text, from) {
-  const n = text.length;
-  let i = from;
-  while (i < n && isSpace(text.charCodeAt(i))) i++;
-  const strings = text.charCodeAt(i) === 0x22 || text.charCodeAt(i) === 0x27;
-  let depth = 0;
-  let quote = 0;
-  for (; i < n; i++) {
-    const c = text.charCodeAt(i);
-    if (c === 0x5c) {
-      i++; // \ and the character it escapes
-    } else if (quote !== 0) {
-      if (c === quote) quote = 0;
-    } else if (strings && (c === 0x22 || c === 0x27)) quote = c;
-    else if (c === 0x28) depth++;
-    else if (c === 0x29) {
-      if (depth === 0) return i;
-      depth--;
-    }
-  }
-  return -1;
 }
 
 // A url() as CSS Syntax 3 reads it (4.3.6 consume a url token, 4.3.5 a
@@ -277,72 +257,34 @@ function urlOpens(text, open) {
   const q = text.charCodeAt(j);
   return q !== 34 && q !== 39;
 }
-// A var( function token, in any case, outside quoted strings: not after a
-// name character (notvar(, -var(, url(n-var(--a).png)) or in a string
-// (url("var(x).png")), as CSS Syntax 3 reads it; one in an unquoted url()
-// counts (url(var(--a).png), url(a\ var(--a).png); black box: jsdom 23 to
-// 30, #222). Quotes in an unquoted url() or a comment start no string:
-// url(a"b c.png) var(--a) and /* " */ var(--a) have var(), as var(--a)
-// url(a"b c.png) has; var( in a comment counts, closed or not
-// (url(a b.png) /* var( is kept; black box: jsdom 30.1.2). One pass,
-// without allocating.
+// Does the value have var()? jsdom 23 to 30 read var( in lowercase only,
+// at the value's start or after whitespace, "(", "/" or "*", wherever it
+// is: in a string or a comment too (black box, #234). var(--a) red,
+// calc(1px*var(--a)), url(var(--a).png), url(a\ var(--a).png), "a
+// var(--a)" and /* var( */ have var(); VAR(--a), notvar(, -var(,
+// url("var(x).png"), red,var(--a), url(a.png)var(--a), 1px+var(--a) and
+// x\+var(--a) have not (#222, #234). One pass, without allocating.
 export function hasVarFunction(value) {
-  if (!/var\(/i.test(value)) return false;
-  const n = value.length;
-  let quote = 0; // a string's quote, or 1 in a comment, 2 in an unquoted url()
-  let name = false; // the previous character continues a name
-  for (let i = 0; i < n; i++) {
-    const c = value.charCodeAt(i);
-    // \ and the character it escapes; not in a comment, where a backslash
-    // escapes nothing (/* \*/ ends the comment)
-    if (c === 0x5c && quote !== 1) {
-      i++;
-      name = quote < 3 && i < n && isNameCode(value.charCodeAt(i));
-      continue;
-    }
-    if (quote > 2) {
-      if (c === quote) quote = 0;
-      continue;
-    }
-    if (quote === 0) {
-      if (c === 0x22 || c === 0x27) {
-        quote = c;
-        name = false;
-        continue;
-      }
-      if (c === 0x2f && value.charCodeAt(i + 1) === 0x2a) {
-        quote = 1;
-        i++;
-        name = false;
-        continue;
-      }
-      if (c === 0x28 && urlOpens(value, i)) {
-        quote = 2;
-        name = false;
-        continue;
-      }
-    } else if (quote === 1 && c === 0x2a && value.charCodeAt(i + 1) === 0x2f) {
-      quote = 0;
-      i++;
-      name = false;
-      continue;
-    } else if (quote === 2 && c === 0x29) {
-      quote = 0;
-      name = false;
-      continue;
-    }
-    if (
-      !name &&
-      (c | 0x20) === 0x76 &&
-      (value.charCodeAt(i + 1) | 0x20) === 0x61 &&
-      (value.charCodeAt(i + 2) | 0x20) === 0x72 &&
-      value.charCodeAt(i + 3) === 0x28
-    )
-      return true;
-    name = isNameCode(c);
-  }
+  for (let i = value.indexOf('var('); i !== -1; i = value.indexOf('var(', i + 4))
+    if (i === 0 || opensVar(value.charCodeAt(i - 1))) return true;
   return false;
 }
+// Whitespace (as JavaScript's \s), "(", "/" or "*".
+const opensVar = (c) =>
+  c === 0x20 ||
+  (c >= 0x09 && c <= 0x0d) ||
+  c === 0x28 ||
+  c === 0x2f ||
+  c === 0x2a ||
+  c === 0xa0 ||
+  c === 0x1680 ||
+  (c >= 0x2000 && c <= 0x200a) ||
+  c === 0x2028 ||
+  c === 0x2029 ||
+  c === 0x202f ||
+  c === 0x205f ||
+  c === 0x3000 ||
+  c === 0xfeff;
 // A character of a name (or a backslash): url( after it is no url().
 export const isNameCode = (c) =>
   (c >= 48 && c <= 57) || ((c | 32) >= 97 && (c | 32) <= 122) || c === 95 || c === 45 || c === 92 || c > 127;
@@ -925,17 +867,11 @@ function matchesWhole(node, tokens) {
 
 // --- entry point -----------------------------------------------------------------------------
 
+// env(), attr(), inherit() or if() (var() is hasVarFunction's).
 function hasVar(tokens) {
   for (const tok of tokens) {
     if (tok.t === 'function') {
-      if (
-        tok.name === 'var' ||
-        tok.name === 'env' ||
-        tok.name === 'attr' ||
-        tok.name === 'inherit' ||
-        tok.name === 'if'
-      )
-        return true;
+      if (tok.name === 'env' || tok.name === 'attr' || tok.name === 'inherit' || tok.name === 'if') return true;
       if (hasVar(tok.args)) return true;
     } else if (tok.t === 'block' && hasVar(tok.items)) return true;
   }
@@ -1089,6 +1025,11 @@ function checkValue(node, value) {
 }
 
 function checkTokens(node, value) {
+  // A value with var() (as jsdom reads it: hasVarFunction) is valid
+  // whatever its tokens: a bad url(), a stray or unclosed parenthesis,
+  // bracket, brace or string (var(--a) ), url(a(b c.png) var(--a),
+  // var(--a) url(a.png; black box: jsdom 23 to 30, #234).
+  if (hasVarFunction(value)) return true;
   const tokens = tokenize(value);
   if (!tokens) return false;
   if (tokens.length === 0) return false;

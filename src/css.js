@@ -838,6 +838,8 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
       if (out === undefined) {
         const checked = isSpecMode(mode) || JSDOM26_VALIDATED.has(name);
         out = !checked || isValidValue(name, value) ? serializeDeclared(name, value, mode) : INVALID;
+        if (out === INVALID && name === 'background-image' && isSpecMode(mode) && value.includes('var('))
+          out = imageVarLayers(value, mode, surface);
       }
       if (
         out !== INVALID &&
@@ -851,6 +853,28 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
     byValue.set(value, out);
   }
   return out;
+}
+
+// background-image layers in jsdom 27 and later, set with setProperty or
+// in a style sheet: one or more with var() (as hasVarFunction reads it),
+// as written, and images (url(a.png),var(--a) is url("a.png"), var(--a),
+// none,var(--a) x is none, var(--a) x; red,var(--a) is invalid). A
+// declaration block drops them (parseInto; black box, #234).
+function imageVarLayers(value, mode, surface) {
+  const layers = splitOutside(value, ',', true);
+  if (layers.length < 2) return INVALID;
+  let withVar = false;
+  for (let i = 0; i < layers.length; i++) {
+    const layer = layers[i].trim();
+    if (hasVarFunction(layer)) {
+      withVar = true;
+      layers[i] = layer;
+    } else {
+      layers[i] = layer === '' ? INVALID : declaredValue('background-image', layer, mode, surface);
+      if (layers[i] === INVALID) return INVALID;
+    }
+  }
+  return withVar ? layers.join(', ') : INVALID;
 }
 
 // azimuth (CSS 2 aural style sheets), black box: cssstyle 2 to 4.3 write
@@ -913,13 +937,10 @@ function azimuthValue(value, surface) {
 function versionedValue(name, value, mode, surface) {
   if (isLegacyMode(mode)) {
     const lower = value.toLowerCase();
-    const kind = CSS_WIDE_KEYWORD.test(value)
-      ? lower
-      : lower === 'auto'
-        ? 'auto'
-        : hasVarFunction(lower)
-          ? 'var'
-          : null;
+    // cssstyle before 4.3.1 reads var( anywhere as var() (it drops
+    // calc(1px+var(--a)); black box, jsdom 20 to 22 and 25, #234).
+    const withVar = mode === 'jsdom26' ? hasVarFunction(value) : value.includes('var(');
+    const kind = CSS_WIDE_KEYWORD.test(value) ? lower : lower === 'auto' ? 'auto' : withVar ? 'var' : null;
     if (kind !== null && droppedBy(mode, kind, name)) return INVALID;
     // background-image's url()s as cssstyle reads them, the rest by its
     // grammar; with var() the value is kept as written (jsdom 26), but
@@ -1027,7 +1048,7 @@ function borderValue(name, value, mode) {
   const spec = isSpecMode(mode);
   if (CSS_WIDE_KEYWORD.test(value)) return spec ? value.toLowerCase() : INVALID;
   const legacy = isLegacyMode(mode) && mode !== 'jsdom26';
-  if (/var\(|env\(|attr\(/i.test(value)) return legacy ? INVALID : value;
+  if (VAR_ENV_ATTR.test(value)) return legacy ? INVALID : value;
   const parts = segments(value);
   let width = null,
     style = null,
@@ -1173,7 +1194,7 @@ function meetImage(name, value, mode) {
 function escapedUrlBackground(decls, value, mode, surface) {
   if (mode !== 'jsdom26' || surface?.key !== 'cssstyle4.4' || !/[\\\r\f]/.test(value)) return INVALID;
   // Escape-aware: url(a\'b.png) no-repeat is a url() and no-repeat.
-  if (splitOutside(value, ',', true).length > 1 || /var\(|env\(|attr\(/i.test(value)) return INVALID;
+  if (splitOutside(value, ',', true).length > 1 || VAR_ENV_ATTR.test(value)) return INVALID;
   const urls = segments(value, BG_SEPARATOR_LEGACY, true).filter((t, i) => i % 2 === 0 && escapedUrl(t));
   if (urls.length === 0) return INVALID;
   let cached = false;
@@ -1195,12 +1216,9 @@ const legacyLength = (token, surface, old) => {
   return surface?.legacyFont === 'cssstyle4.1' ? BG_LENGTH_3.test(token) : BG_LENGTH_4.test(token);
 };
 function backgroundValue(value, mode, surface) {
-  // The regular expression first: most values have none of these.
-  if (
-    (/var\(|env\(|attr\(/i.test(value) && (hasVarFunction(value) || /env\(|attr\(/i.test(value))) ||
-    CSS_WIDE_KEYWORD.test(value)
-  )
-    return undefined;
+  // var(), env() or attr() (a scan only when the text has var(), env( or
+  // attr( in it), or a CSS-wide keyword.
+  if (hasVarFunction(value) || ENV_ATTR.test(value) || CSS_WIDE_KEYWORD.test(value)) return undefined;
   const legacy = isLegacyMode(mode);
   // jsdom 27 and later: math functions (calc(10px + 5%) is calc(5% + 10px)
   // in jsdom 30, rejected before) are left to the general rules.
@@ -1453,7 +1471,7 @@ function flexLonghands(value) {
   if (lower === 'auto') return '1 1 auto';
   const parts = segments(value).filter((part, i) => i % 2 === 0 && part !== '');
   if (parts.length === 1 && /^(initial|inherit|unset|revert|revert-layer)$/i.test(parts[0])) return value;
-  if (/var\(|env\(|attr\(/i.test(value)) return value;
+  if (VAR_ENV_ATTR.test(value)) return value;
   const numbers = [];
   let basis = null;
   for (const part of parts) {
@@ -1484,6 +1502,10 @@ function shortRepeat(value) {
 }
 
 const CSS_WIDE_KEYWORD = /^(initial|inherit|unset|revert|revert-layer)$/i;
+// var() in lowercase only: jsdom reads VAR( as another function (black
+// box, jsdom 20 to 30, #234); env() and attr() in any case.
+const ENV_ATTR = /env\(|attr\(/i;
+const VAR_ENV_ATTR = /var\(|[eE][nN][vV]\(|[aA][tT][tT][rR]\(/;
 const KEEPS_NUMBERS_AS_WRITTEN = { jsdom25: true, jsdom22: true, jsdom20: true };
 const CANONICAL_NUMBERS_PRE_431 = new Set(['opacity', 'flex-grow', 'flex-shrink']);
 function serializeDeclared(name, value, mode) {
@@ -1520,7 +1542,7 @@ function serializeDeclared(name, value, mode) {
     mode === 'jsdom26' &&
     (name === 'background' || name === 'background-image') &&
     /\s\s|[\t\n\r\f]/.test(value) &&
-    !/var\(/i.test(value)
+    !value.includes('var(')
   )
     value = collapseSpaces(value);
   if (value.includes('(')) {
@@ -1543,8 +1565,12 @@ function serializeDeclared(name, value, mode) {
         !hasVarFunction(value)
       )
         value = serializeUrls(value, urlStyle === 'spec' ? 'spec' : 'quotes', image);
-    } else if (LEGACY_URL_NAMES.has(name) && !/var\(/i.test(value)) value = legacyUrls(name, value, mode);
-    return name === 'background' || name === 'background-image' ? familyCommas(value) : value;
+    } else if (LEGACY_URL_NAMES.has(name) && !value.includes('var(')) value = legacyUrls(name, value, mode);
+    // A value with var() keeps its commas as written (black box: jsdom 23
+    // to 30 write var(--a),url(a.png) and red,  var(--a); #234).
+    return (name === 'background' || name === 'background-image') && !hasVarFunction(value)
+      ? familyCommas(value)
+      : value;
   }
   const box = BOX_SHORTHANDS.has(name);
   if (!box && !value.includes('0')) return value;
@@ -1686,6 +1712,17 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       continue;
     }
     let declared = declaredValue(name, value, mode, surface);
+    // background-image layers with var() (imageVarLayers): not here.
+    if (
+      !sheet &&
+      declared !== INVALID &&
+      name === 'background-image' &&
+      isSpecMode(mode) &&
+      value.includes('var(') &&
+      !hasVarFunction(value) &&
+      !isValidValue(name, value)
+    )
+      continue;
     if (element) {
       if (declared === INVALID && name === 'background') {
         declared = escapedUrlBackground(decls, value, mode, surface);

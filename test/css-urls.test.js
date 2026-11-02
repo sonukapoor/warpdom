@@ -389,21 +389,21 @@ for (const jsdom of [30, 29, 28, 27, 26, 25, 20])
   );
 
 // Each value set with setProperty, cssText and the style attribute (and a
-// style sheet where the profile models it).
-function setEachWay(w, names, values, { sheets = false } = {}) {
+// style sheet where the profile models it), after another declaration.
+function setEachWay(w, names, values, { sheets = false, before = 'color: blue' } = {}) {
   const d = w.document;
   return names.flatMap((name) =>
     values.map((value) => {
       const s = d.createElement('div').style;
       s.setProperty(name, value);
       const t = d.createElement('div').style;
-      t.cssText = `color: blue; ${name}: ${value}`;
+      t.cssText = `${before}; ${name}: ${value}`;
       const e = d.createElement('div');
-      e.setAttribute('style', `color: blue; ${name}: ${value}`);
+      e.setAttribute('style', `${before}; ${name}: ${value}`);
       const row = [s.cssText, t.cssText, e.style.cssText];
       if (sheets) {
         const sheet = d.createElement('style');
-        sheet.textContent = `#t { color: blue; ${name}: ${value} }`;
+        sheet.textContent = `#t { ${before}; ${name}: ${value} }`;
         d.head.append(sheet);
         row.push(sheet.sheet.cssRules[0]?.style.cssText ?? 'no rule');
         sheet.remove();
@@ -481,6 +481,133 @@ for (const jsdom of [30, 29, 28, 27, 26, 25, 22, 20])
           `url(x${p}-var(--a).png)`,
           `url(${p}a${B} var(--a).png)`,
           `url(${p}a/var(--a).png)`,
+        ],
+        { sheets: jsdom >= 29 },
+      );
+    },
+    { jsdom },
+  );
+
+// A value with var() is kept whatever its parentheses: a stray ")" or "]",
+// or a bad url() with a "(" in it (black box: jsdom 23 to 30 keep them in
+// every way, jsdom 20 to 22 and 25 drop var() there anyway; #234).
+for (const jsdom of [30, 29, 28, 27, 26, 25, 22, 20])
+  parity(
+    `style: var() with unbalanced parentheses (jsdom ${jsdom}, #234)`,
+    (w) => {
+      const p = `u${jsdom}-`;
+      return setEachWay(
+        w,
+        ['background-image', 'background', 'width'],
+        [
+          'var(--a) )',
+          'var(--a))',
+          'var(--a) ]',
+          `var(--a) url(${p}a(b c.png)`,
+          `url(${p}a(b c.png) var(--a)`,
+          `var(--a) url(${p}a${B}${B}(b c.png)`,
+          `var(--a) url(${p}a(b).png)`,
+        ],
+        { sheets: jsdom >= 29 },
+      );
+    },
+    { jsdom },
+  );
+
+// The same, unclosed: setProperty keeps them (jsdom 23 to 30), and so do
+// cssText and the style attribute from jsdom 27; jsdom 20 to 26 declare
+// nothing there (#234). Not modeled: in a style sheet (jsdom 29 and 30) an
+// unclosed block runs on past the rule's "}", which joins the value.
+for (const jsdom of [30, 29, 28, 27, 26, 25, 22, 20])
+  parity(
+    `style: var() with unclosed parentheses (jsdom ${jsdom}, #234)`,
+    (w) => {
+      const p = `c${jsdom}-`;
+      return setEachWay(
+        w,
+        ['background-image', 'background', 'width'],
+        [
+          'var(--a) (',
+          'var(--a',
+          'var(--a) [',
+          'var(--a) foo(',
+          `var(--a) url(${p}a.png`,
+          `var(--a) url(${p}a b.png`,
+          'var(--a) "x',
+        ],
+      );
+    },
+    { jsdom },
+  );
+
+// VAR( in capitals is no var(): the value is read as without it, and so
+// dropped (black box: jsdom 20 to 30, #234). Not modeled: jsdom 23, 24 and
+// 26 keep calc(VAR(--a) + 1px) as calc(1px + var(--a)) and background:
+// VAR(--a) url(a.png) as url("a.png").
+for (const jsdom of [30, 29, 28, 27, 26, 25, 22, 20])
+  parity(
+    `style: VAR( in capitals (jsdom ${jsdom}, #234)`,
+    (w) => {
+      const p = `v${jsdom}-`;
+      return setEachWay(
+        w,
+        ['background-image', 'width', 'color', 'margin'],
+        [
+          'VAR(--a)',
+          'Var(--a)',
+          'vAr(--a) red',
+          `VAR(--a) url(${p}a.png)`,
+          `url(${p}a.png) VAR(--a)`,
+          'VAR(--a, 10px)',
+          'VAR(--a) )',
+          ...(jsdom === 26 ? [] : ['calc(VAR(--a) + 1px)']),
+        ],
+        { sheets: jsdom >= 29, before: 'top: 1px' },
+      );
+    },
+    { jsdom },
+  );
+
+// var( counts at the value's start or after whitespace, "(", "/" or "*":
+// url(a.png)var(--a), red,var(--a), 1px+var(--a) and x\+var(--a) have no
+// var() and are read as without it, url(a.png), var(--a) and "a var(--a)"
+// have one and are kept as written. background-image layers with var()
+// (url(a.png),var(--a)) are kept by setProperty and style sheets in jsdom
+// 27 and later, not by cssText or the style attribute (black box, jsdom
+// 20.0.3 to 30.1.2, #234).
+for (const jsdom of [30, 29, 28, 27, 26, 25, 22, 20])
+  parity(
+    `style: what comes before var( (jsdom ${jsdom}, #234)`,
+    (w) => {
+      const p = `b${jsdom}-`;
+      return setEachWay(
+        w,
+        ['background-image', 'background', 'width', 'list-style-image'],
+        [
+          `url(${p}a.png)var(--a)`,
+          `url(${p}a.png),var(--a)`,
+          `url(${p}a.png) ,var(--a)`,
+          `url("${p}a.png")var(--a)`,
+          `url(${p}a.png), var(--a)`,
+          `var(--a),url(${p}a.png)`,
+          `url(${p}a.png)/var(--a)`,
+          'none,var(--a)',
+          'linear-gradient(red,blue),var(--a)',
+          'red,var(--a)',
+          'red,  var(--a)',
+          'foo(x)var(--a)',
+          '1px+var(--a)',
+          '1px*var(--a)',
+          'rgb(1,var(--a),3)',
+          '"x"var(--a)',
+          '"a var(--a)"',
+          `x${B}+var(--a)`,
+          `url(${p}x${B}+var(--a).png)`,
+          `url(${p}x${B}!var(--a).png)`,
+          // cssstyle before 4.3.1 drops var( anywhere. Not modeled there:
+          // jsdom 27 to 30 drop these too, 26 keeps background: min(1px,
+          // var(--a)).
+          ...(jsdom <= 25 ? ['calc(1px+var(--a))', 'min(1px,var(--a))'] : []),
         ],
         { sheets: jsdom >= 29 },
       );
