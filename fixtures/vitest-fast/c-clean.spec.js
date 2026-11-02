@@ -33,6 +33,9 @@ test("c: this file's setup stubs and spies undo to the window's own values", () 
   expect(globalThis.__mocksAtSetup).toEqual(Array(7).fill(false));
   expect(globalThis.__statusAtSetup).toEqual(Array(globalThis.__setupRuns - 1).fill('from dep'));
   expect(globalThis.__sharedAtSetup).toEqual(Array(globalThis.__setupRuns - 1).fill(true));
+  expect(globalThis.__flagsAtSetup).toEqual(
+    Array.from({ length: globalThis.__setupRuns - 1 }, (_, i) => [true, i > 0]),
+  );
   expect(layered()).toEqual([false, false, false]);
   // The spies first: the spy of a stub restores the stub.
   vi.restoreAllMocks();

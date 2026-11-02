@@ -35,15 +35,18 @@ if (!vi[WRAPPED]) {
     if (!mocks.has(key)) mocks.set(key, []);
     return mocks.get(key);
   };
-  // Every spy of the global, with its keys and what it first replaced.
+  // Every spy of the global, with its keys and, for the key whose member
+  // vi.spyOn replaced with it, what it replaced (not for a vi.fn() the
+  // member held: vi.spyOn returns it and replaces nothing) (#236 review).
   const spies = new WeakMap();
   // The member before, with a spy Vitest's cleanup left (vi.restoreAllMocks
   // leaves the getter spy of a member spied on through both accessors,
   // Vitest 4 and 5; vi.spyOn of it returns it) as that spy found it
   // (#236 review).
-  const clean = (descriptor) => {
-    const left = [descriptor?.get, descriptor?.set, descriptor?.value].find((f) => spies.has(f));
-    return left ? spies.get(left).original : descriptor;
+  const slots = (descriptor) => [descriptor?.get, descriptor?.set, descriptor?.value];
+  const clean = (key, descriptor) => {
+    const left = slots(descriptor).find((f) => spies.get(f)?.originals.has(key));
+    return left ? spies.get(left).originals.get(key) : descriptor;
   };
   // Runs a cleanup after change() has removed the mocks it undoes, and
   // reports the keys left with none.
@@ -61,7 +64,7 @@ if (!vi[WRAPPED]) {
   };
   const reportMock = (key) => report(key, { original: mocks.get(key)[0].original });
   vi.stubGlobal = (name, value) => {
-    const before = clean(Object.getOwnPropertyDescriptor(globalThis, name));
+    const before = clean(name, Object.getOwnPropertyDescriptor(globalThis, name));
     const result = stubGlobal(name, value);
     const layers = layersOf(name);
     const stub = layers.findIndex((layer) => layer.stub);
@@ -89,16 +92,16 @@ if (!vi[WRAPPED]) {
     }, restoreAllMocks);
   vi.spyOn = (object, key, ...rest) => {
     if (object !== globalThis) return spyOn(object, key, ...rest);
-    const before = clean(Object.getOwnPropertyDescriptor(globalThis, key));
+    const raw = Object.getOwnPropertyDescriptor(globalThis, key);
+    const before = clean(key, raw);
     // vi.spyOn of a spy (or of a vi.fn()) returns it.
     const spy = spyOn(object, key, ...rest);
-    const known = spies.get(spy);
-    if (known) known.keys.add(key);
-    else {
+    let record = spies.get(spy);
+    if (!record) {
       // One wrapper per spy, however often it is spied on and restored,
       // and for each key whose member holds it (two members may hold one
       // vi.fn()) (#236 review).
-      const record = { keys: new Set([key]), original: before };
+      record = { keys: new Set(), originals: new Map() };
       spies.set(spy, record);
       const { mockRestore } = spy;
       spy.mockRestore = function (...args) {
@@ -117,6 +120,8 @@ if (!vi[WRAPPED]) {
         );
       };
     }
+    record.keys.add(key);
+    if (!slots(raw).includes(spy)) record.originals.set(key, before);
     const layers = layersOf(key);
     if (!layers.some((layer) => layer.spy === spy)) layers.push({ spy, original: before });
     reportMock(key);

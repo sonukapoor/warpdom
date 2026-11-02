@@ -188,7 +188,8 @@ was 3-8% slower than the drop-in on 5 of 11 tuning suites).
   its descriptors are in between. Unstubbing also ends the spies of the
   stub, which it replaces (a later stub then takes the member as it is),
   a spy of a getter spy Vitest's cleanup left takes the member before
-  that spy, and each spy's `mockRestore` is wrapped once, however often a
+  that spy (one `vi.spyOn` made; a `vi.fn()` the member held replaced
+  nothing, so the member as it is), and each spy's `mockRestore` is wrapped once, however often a
   global `vi.fn()` is spied on, and ends its spy for every member holding
   it (two members may hold one `vi.fn()`); restoring a spy also ends the
   spies made on the member since (the other accessor's), which the
