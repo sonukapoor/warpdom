@@ -211,7 +211,9 @@ newest jsdom it models (30.1.2) for Vitest, jsdom 26 for Jest.
 
 The plan says, per runner and package, which jsdom (and cssstyle) the
 tests ran on before and what warpdom will follow after, with the pin when
-there is one:
+there is one. When some of those tests ran on happy-dom (an environment or
+comment migrate changed from happy-dom), the profile is not reported as
+kept, whatever the tests that ran on jsdom keep:
 
 ```
 Jest (package.json): the tests ran on jsdom 26.1.0 + cssstyle 4.6.0 (through jest-environment-jsdom 30.5.2); warpdom will follow jsdom 26 with the newest cssstyle 4.x it models, its default once jest-environment-jsdom is removed (the same profile)
@@ -231,7 +233,9 @@ uses the profile warpdom builds for each (cssstyle 2.3 before jsdom 21.1,
 28.0). It writes it in
 the most local place, next to the environment it changed, and says why in
 the plan; in a workspace, that is the environment of the package migrate
-edits, also when jsdom is declared by a package above it (the root):
+edits, also when jsdom is declared by a package above it (the root). A
+package with no config of its own whose tests run in a project of a config
+above it that got the pin (the same version) counts as pinned there:
 
 ```js
 // Vitest

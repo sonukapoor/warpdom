@@ -1768,7 +1768,7 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
   const unpinned = new Map(); // `${pkg.rel}\0${runner}` -> ['file:line', ...]
   if (pins.size) {
     const pinned = new Set();
-    const pinnedFrames = new Set(); // the config objects that got the pin (or already name a version)
+    const pinnedFrames = new Map(); // the config objects that got the pin (or already name a version) -> that pin
     const why = (pin, where) => {
       pin.where = where;
       return `${where}: pinned jsdom ${pin.version}${pin.cssstyle ? ` and cssstyle ${pin.cssstyle}` : ''} (${pin.runner === 'vitest' ? 'environmentOptions.warpdom.jsdom' : 'testEnvironmentOptions.jsdom'}), because warpdom follows the installed jsdom and, once it is removed, would follow jsdom ${DEFAULT_PROFILE[pin.runner]}; this keeps the tests' current behavior (${pin.base.split(': ')[0]})`;
@@ -1818,7 +1818,7 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
             `${pin.base}. ${where}: ${optionKey} is not an object literal or already names a jsdom version; check that it says ${pin.version}.`,
           );
           pinned.add(key);
-          pinnedFrames.add(prop.frame);
+          pinnedFrames.set(prop.frame, pin);
           continue;
         }
         const first = a.properties.find((x) => x.frame === obj);
@@ -1847,7 +1847,7 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
         });
         result.profile.push(why(pin, `${e.file}:${line}`));
         pinned.add(key);
-        pinnedFrames.add(prop.frame);
+        pinnedFrames.set(prop.frame, pin);
         continue;
       }
       const keyTok = a.tokens[prop.keyToken];
@@ -1873,7 +1873,7 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
         });
         result.profile.push(why(pin, where));
         pinned.add(key);
-        pinnedFrames.add(prop.frame);
+        pinnedFrames.set(prop.frame, pin);
         continue;
       }
       const insert =
@@ -1892,7 +1892,21 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       });
       result.profile.push(why(pin, `${e.file}:${e.line + 1}`));
       pinned.add(key);
-      pinnedFrames.add(prop.frame);
+      pinnedFrames.set(prop.frame, pin);
+    }
+    // A package whose tests run in a project that another package's pin of
+    // the same version reached (a sub-package with no config of its own,
+    // run with the root config, #233): pinned there too. Its tests the pin
+    // does not reach get their notes below.
+    for (const [key, pin] of pins) {
+      if (pinned.has(key)) continue;
+      const at = followers
+        .filter((u) => `${u.pkg.rel}\0${u.runner}` === key)
+        .flatMap((u) => u.frames.map((f) => pinnedFrames.get(f)))
+        .find((p) => p?.where && p.option === pin.option);
+      if (!at) continue;
+      pin.where = at.where;
+      pinned.add(key);
     }
     // Only files moved by their comment into projects that name a version
     // changed, and no test follows the installed jsdom: nothing to pin (#233).
@@ -2118,6 +2132,12 @@ function run(result, { cwd, registry, keepJsdomVersion }) {
       result.profile.push(
         `${unreadEnvs.join(', ')}: ${unreadEnvs.length > 1 ? 'these environments' : 'this environment'} ran on ${ranOn}; migrate cannot read ${unreadEnvs.length > 1 ? 'their' : 'its'} environmentOptions: if they name a jsdom version (environmentOptions.warpdom.jsdom), the tests follow that version on warpdom.`,
       );
+    }
+    // Tests moved from happy-dom run on warpdom, which models jsdom: not
+    // kept, whatever the tests that ran on jsdom keep.
+    if ([...froms].some((f) => /happy/.test(f))) {
+      after += `${after ? '; ' : ''}the tests that ran on happy-dom run on warpdom (warpdom models jsdom, not happy-dom)`;
+      same = false;
     }
     result.profiles.push({ package: pkg.file, runner, before: beforeText, after, same });
   }

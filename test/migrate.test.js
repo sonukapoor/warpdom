@@ -2793,3 +2793,80 @@ test('migrate (#233, review): an environment already on warpdom with unreadable 
     });
   }
 });
+
+test('migrate (#233, review 2): a file moved from happy-dom beside an environment already on warpdom', async () => {
+  // x.spec.js ran on happy-dom; on warpdom it runs on jsdom's model: not
+  // kept, whatever the warpdom environment's options say.
+  for (const options of [
+    '',
+    'environmentOptions: { warpdom: { jsdom: version } }',
+    "environmentOptions: { warpdom: { jsdom: '30.1.2' } }",
+  ]) {
+    await tempProject(
+      {
+        'package.json': `{\n  "private": true,\n  "devDependencies": {\n    "happy-dom": "^15.0.0",\n    "jsdom": "^30.1.2",\n    "vitest": "^5.0.0",\n    "warpdom": "^${VERSION}"\n  }\n}\n`,
+        'vitest.config.js': `const version = '30.1.2';\nexport default {\n  test: {\n    environment: 'warpdom',${options ? `\n    ${options},` : ''}\n  },\n};\n`,
+        'x.spec.js': "// @vitest-environment happy-dom\nimport { test } from 'vitest';\n",
+      },
+      async (dir) => {
+        installed(dir, 'jsdom', { version: '30.1.2' });
+        installed(dir, 'happy-dom', { version: '15.0.0' });
+        const r = await run(dir);
+        assert.deepEqual(
+          r.profiles.map((p) => p.same),
+          [false],
+          options,
+        );
+        assert.match(r.profiles[0].after, /warpdom models jsdom, not happy-dom/, options);
+      },
+    );
+  }
+});
+
+test('migrate (#233, review 2): a sub-package file in the project of a root config that gets the pin', async () => {
+  // packages/c has no config: Vitest runs its file with the root config,
+  // whose environment gets the pin, so the file keeps jsdom 25.0.1.
+  const files = (extra = {}) => ({
+    'package.json': `{\n  "private": true,\n  "workspaces": ["packages/*"],\n  "devDependencies": {\n    "jsdom": "^25.0.1",\n    "vitest": "^5.0.0"\n  }\n}\n`,
+    'vitest.config.js': "export default {\n  test: {\n    environment: 'jsdom',\n  },\n};\n",
+    'packages/c/package.json': `{\n  "name": "c",\n  "private": true,\n  "devDependencies": {\n    "warpdom": "^${VERSION}"\n  }\n}\n`,
+    ...extra,
+  });
+  const y = { 'packages/c/y.spec.js': "// @vitest-environment jsdom\nimport { test } from 'vitest';\n" };
+  await tempProject(files(y), async (dir) => {
+    installed(dir, 'jsdom', { version: '25.0.1' });
+    const r = await run(dir);
+    const notes = r.profile.join('\n');
+    assert.doesNotMatch(notes, /No environment literal|not pinned/);
+    assert.deepEqual(
+      r.profiles.map((p) => [p.package, p.same]),
+      [
+        ['package.json', true],
+        ['packages/c/package.json', true],
+      ],
+    );
+    assert.match(r.profiles[1].after, /jsdom 25\.0\.1, pinned at vitest\.config\.js:4/);
+  });
+  // A second file, in a project the pin does not reach: not kept.
+  const config =
+    "export default {\n  test: {\n    projects: [\n      { test: { name: 'a', environment: 'jsdom', include: ['**/a/**'] } },\n      { test: { name: 'b', environment: 'node', include: ['**/b/**'] } },\n    ],\n  },\n};\n";
+  await tempProject(
+    files({
+      'vitest.config.js': config,
+      'packages/c/a/y.spec.js': "// @vitest-environment jsdom\nimport { test } from 'vitest';\n",
+      'packages/c/b/z.spec.js': "// @vitest-environment jsdom\nimport { test } from 'vitest';\n",
+    }),
+    async (dir) => {
+      installed(dir, 'jsdom', { version: '25.0.1' });
+      const r = await run(dir);
+      assert.match(
+        r.profile.join('\n'),
+        /packages\/c\/b\/z\.spec\.js:1: this file runs on warpdom .* which is not pinned/,
+      );
+      assert.deepEqual(
+        r.profiles.map((p) => p.same),
+        [true, false],
+      );
+    },
+  );
+});
