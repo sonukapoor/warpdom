@@ -3,19 +3,74 @@ import { vi } from 'vitest';
 import './setup-dep.js';
 
 globalThis.__setupRuns = (globalThis.__setupRuns ?? 0) + 1;
+// A member the setup stubs and unstubs, and an import it loads once then
+// changes: each later file starts with the import's (#230).
+globalThis.__statusAtSetup ??= [];
+if (globalThis.__setupRuns > 1) globalThis.__statusAtSetup.push(window.status);
+// Likewise a member the setup spies on, sharing a vi.fn() with another (#236 review).
+globalThis.__sharedAtSetup ??= [];
+if (globalThis.__setupRuns > 1) globalThis.__sharedAtSetup.push(window.resizeBy.fromDep === true);
+// Whether members holding a vi.fn() the setup spies on kept their own
+// descriptors: resizeTo's, not resizeBy's, and stop's as the last setup
+// changed it (#236 review).
+const enumerable = (key) => Object.getOwnPropertyDescriptor(window, key).enumerable;
+globalThis.__flagsAtSetup ??= [];
+if (globalThis.__setupRuns > 1) globalThis.__flagsAtSetup.push([enumerable('resizeTo'), enumerable('stop')]);
 // Whether warpdom's reset (run before this file) put back a previous
-// file's mocks of the members mocked twice below, for any file so far (it
-// must not; this file's setup would undo some of them again).
-const leftMocks = [window.moveTo, window.scrollBy].map((f) => vi.isMockFunction(f));
-globalThis.__mocksAtSetup = (globalThis.__mocksAtSetup ?? [false, false]).map((left, i) => left || leftMocks[i]);
+// file's mocks of the members mocked twice below, or left the spy of one
+// (#230), for any file so far (it must not; this file's setup would undo
+// some of them again).
+const accessors = (key) => Object.values(Object.getOwnPropertyDescriptor(window, key));
+const leftMocks = [window.moveTo, window.scrollBy, window.moveBy, ...accessors('pageYOffset'), ...accessors('scrollY')]
+  .filter((f) => typeof f === 'function')
+  .map((f) => vi.isMockFunction(f));
+globalThis.__mocksAtSetup = (globalThis.__mocksAtSetup ?? leftMocks.map(() => false)).map((left, i) => left || leftMocks[i]);
+// Spies on both accessors of one member, Vitest's restoreAllMocks (4 and
+// 5 leave the getter spy), and a spy of the getter again, which returns
+// that spy: their original is the member before the first spies (#236 review).
+vi.spyOn(window, 'scrollY', 'get').mockReturnValue(1);
+vi.spyOn(window, 'scrollY', 'set');
+vi.restoreAllMocks();
+vi.spyOn(window, 'scrollY', 'get').mockReturnValue(1);
+// A spy of a global vi.fn() a module loaded once set returns that vi.fn().
+vi.spyOn(window, '__persistentMock');
+// The same vi.fn() through a member whose descriptor changes after the first run.
+if (globalThis.__setupRuns > 1)
+  Object.defineProperty(window, 'stop', { value: window.stop, writable: true, enumerable: true, configurable: true });
+vi.spyOn(window, 'stop');
 // A stub and a spy undone during the setup, then made again after an import
 // loaded once changed the members: their originals are the import's (#201).
 vi.stubGlobal('devicePixelRatio', 2);
+// Stubs the import then matches: it defines each member with the stub's
+// descriptor, value included (#230).
+vi.stubGlobal('screenLeft', 500);
+vi.stubGlobal('screenTop', 900);
+// Not stubbed again after the import changes it.
+vi.stubGlobal('status', 'stub');
+// A stub and a spy of it, both undone by unstubbing, then a stub after the
+// import changes the member: its original is the import's (#236 review).
+vi.stubGlobal('moveBy', () => {});
+vi.spyOn(window, 'moveBy');
 vi.unstubAllGlobals();
 vi.spyOn(window, 'screenX', 'get').mockReturnValue(2).mockRestore();
 vi.spyOn(window, 'scrollBy').mockRestore();
+// Two members holding one vi.fn(): vi.spyOn returns it for both, and its
+// mockRestore ends both spies (#236 review).
+vi.spyOn(window, 'resizeBy');
+vi.spyOn(window, 'resizeTo');
+window.resizeBy.mockRestore();
+// Spies on both accessors, the getter's restored first, which removes the
+// setter spy too; stubbed after the import changes it (#236 review).
+const scrollXGetter = vi.spyOn(window, 'scrollX', 'get');
+vi.spyOn(window, 'scrollX', 'set');
+scrollXGetter.mockRestore();
 await import('./setup-later-dep.js');
+vi.stubGlobal('scrollX', 500);
 vi.stubGlobal('devicePixelRatio', 500);
+// Stubs whose originals are the import's, equal to the earlier stubs (#230).
+vi.stubGlobal('screenLeft', 600);
+vi.stubGlobal('screenTop', 500);
+vi.stubGlobal('moveBy', () => {});
 vi.spyOn(window, 'screenX', 'get').mockReturnValue(1);
 // A new spy of the function the import's vi.fn() getter returns.
 vi.spyOn(window, 'scrollBy');
@@ -37,3 +92,13 @@ vi.spyOn(window, 'screenY', 'get').mockReturnValue(1);
 // spy first), it is setup-dep.js's.
 vi.stubGlobal('moveTo', () => {});
 vi.spyOn(window, 'moveTo');
+// A stub that leaves setup-dep.js's descriptor as it is, a redefinition,
+// and a second stub: Vitest keeps the first stub's original, 900 (#230).
+vi.stubGlobal('pageXOffset', 900);
+Object.defineProperty(window, 'pageXOffset', { value: 800, writable: true, enumerable: true, configurable: true });
+vi.stubGlobal('pageXOffset', 500);
+// Spies on both accessors of one member: Vitest 4 and 5's restoreAllMocks
+// leaves the getter spy; the reset must not leave it, or put the spies
+// back, for the next file (#230).
+vi.spyOn(window, 'pageYOffset', 'get').mockReturnValue(1);
+vi.spyOn(window, 'pageYOffset', 'set');
