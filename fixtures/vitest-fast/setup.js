@@ -11,9 +11,20 @@ if (globalThis.__setupRuns > 1) globalThis.__statusAtSetup.push(window.status);
 // file's mocks of the members mocked twice below, or left the spy of one
 // (#230), for any file so far (it must not; this file's setup would undo
 // some of them again).
-const pageYOffset = () => Object.getOwnPropertyDescriptor(window, 'pageYOffset');
-const leftMocks = [window.moveTo, window.scrollBy, pageYOffset().get, pageYOffset().set].map((f) => vi.isMockFunction(f));
+const accessors = (key) => Object.values(Object.getOwnPropertyDescriptor(window, key));
+const leftMocks = [window.moveTo, window.scrollBy, window.moveBy, ...accessors('pageYOffset'), ...accessors('scrollY')]
+  .filter((f) => typeof f === 'function')
+  .map((f) => vi.isMockFunction(f));
 globalThis.__mocksAtSetup = (globalThis.__mocksAtSetup ?? leftMocks.map(() => false)).map((left, i) => left || leftMocks[i]);
+// Spies on both accessors of one member, Vitest's restoreAllMocks (4 and
+// 5 leave the getter spy), and a spy of the getter again, which returns
+// that spy: their original is the member before the first spies (#236 review).
+vi.spyOn(window, 'scrollY', 'get').mockReturnValue(1);
+vi.spyOn(window, 'scrollY', 'set');
+vi.restoreAllMocks();
+vi.spyOn(window, 'scrollY', 'get').mockReturnValue(1);
+// A spy of a global vi.fn() a module loaded once set returns that vi.fn().
+vi.spyOn(window, '__persistentMock');
 // A stub and a spy undone during the setup, then made again after an import
 // loaded once changed the members: their originals are the import's (#201).
 vi.stubGlobal('devicePixelRatio', 2);
@@ -23,6 +34,10 @@ vi.stubGlobal('screenLeft', 500);
 vi.stubGlobal('screenTop', 900);
 // Not stubbed again after the import changes it.
 vi.stubGlobal('status', 'stub');
+// A stub and a spy of it, both undone by unstubbing, then a stub after the
+// import changes the member: its original is the import's (#236 review).
+vi.stubGlobal('moveBy', () => {});
+vi.spyOn(window, 'moveBy');
 vi.unstubAllGlobals();
 vi.spyOn(window, 'screenX', 'get').mockReturnValue(2).mockRestore();
 vi.spyOn(window, 'scrollBy').mockRestore();
@@ -31,6 +46,7 @@ vi.stubGlobal('devicePixelRatio', 500);
 // Stubs whose originals are the import's, equal to the earlier stubs (#230).
 vi.stubGlobal('screenLeft', 600);
 vi.stubGlobal('screenTop', 500);
+vi.stubGlobal('moveBy', () => {});
 vi.spyOn(window, 'screenX', 'get').mockReturnValue(1);
 // A new spy of the function the import's vi.fn() getter returns.
 vi.spyOn(window, 'scrollBy');

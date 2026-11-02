@@ -185,7 +185,11 @@ was 3-8% slower than the drop-in on 5 of 11 tuning suites).
   spy's `mockRestore` to follow every key from its first mock to the
   cleanup that ends its last, as Vitest's stubs and spies keep their
   originals: the original is the member before that first mock, whatever
-  its descriptors are in between. Comparing descriptors instead (#230)
+  its descriptors are in between. Unstubbing also ends the spies of the
+  stub, which it replaces (a later stub then takes the member as it is),
+  a spy of a getter spy Vitest's cleanup left takes the member before
+  that spy, and each spy's `mockRestore` is wrapped once, however often a
+  global `vi.fn()` is spied on (#236 review). Comparing descriptors instead (#230)
   took a module's descriptor equal to an ended stub's for that stub, and
   missed a stub that left the descriptor as it was; either way the next
   reset put a stub back. A mock after the setup's earlier mocks ended

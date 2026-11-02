@@ -26,6 +26,7 @@ const fromDep = (f) => !vi.isMockFunction(f) && f.fromDep === true;
 export const layered = () => [
   fromDep(window.moveTo),
   fromDep(window.scrollBy),
+  fromDep(window.moveBy),
 ];
 // Vitest 3's vi.restoreAllMocks also restores a spy restored before (with
 // mockRestore): a member the setup spied on, restored, and spied on again

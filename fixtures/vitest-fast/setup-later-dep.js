@@ -14,3 +14,5 @@ Object.defineProperty(window, 'screenLeft', stubbed(500));
 Object.defineProperty(window, 'screenTop', stubbed(900));
 // Changes a member setup.js stubbed and unstubbed before importing this (#230).
 Object.defineProperty(window, 'status', { value: 'from dep', writable: true, configurable: true });
+// Replaces a member setup.js stubbed, spied on and unstubbed before importing this (#236 review).
+Object.defineProperty(window, 'moveBy', { value: Object.assign(() => {}, { fromDep: true }), writable: true, configurable: true });
