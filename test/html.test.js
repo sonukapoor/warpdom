@@ -382,7 +382,8 @@ for (const jsdom of [20, 30]) {
 // start()/end() throw for an index out of range, and error is null (jsdom
 // gives plain objects that return 0, and undefined).
 test('media elements: TimeRanges', () => {
-  const w = createWindow();
+  // TimeRanges: a global no jsdom has (#208).
+  const w = createWindow({ beyondJsdom: true });
   const v = w.document.createElement('video');
   assert.ok(v.buffered instanceof w.TimeRanges);
   assert.equal(Object.prototype.toString.call(v.played), '[object TimeRanges]');

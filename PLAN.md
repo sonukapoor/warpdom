@@ -438,8 +438,10 @@ warpdom follows the standard. Each has a test. To publish in the docs.
   each chunk.
 - `postMessage(message, '/')` is delivered ('/' is the window's own
   origin); jsdom drops it.
-- The details `toggle` event is a ToggleEvent (oldState, newState), and
-  ToggleEvent exists; jsdom fires a plain Event.
+- The details `toggle` event is a ToggleEvent (oldState, newState); jsdom
+  fires a plain Event. The ToggleEvent global, as those of the other
+  interfaces jsdom does not expose yet, only with option beyondJsdom
+  (#208; docs/jsdom-versions.md).
 - A removed iframe's `contentWindow` and `contentDocument` are null (its
   window is discarded); jsdom keeps returning the old ones.
 - After a fragment navigation `history.state` (and popstate's `state`) is

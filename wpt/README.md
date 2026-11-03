@@ -5,6 +5,9 @@ tests) against warpdom, and against jsdom as a reference, and reports a
 conformance number per WPT directory: test files, subtests, subtests passed.
 Every results file records the WPT commit, the warpdom commit, the engine
 version and the Node version, so numbers are comparable over time.
+warpdom runs with `beyondJsdom: true`: WPT measures conformance to the
+standards, so the interfaces a jsdom profile leaves out (because that jsdom
+does not expose them yet) are kept.
 
 The runner is written from WPT's public documentation (testharness.js API,
 test types, `META` comments, file name flags, generated boilerplate for

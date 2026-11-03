@@ -119,6 +119,28 @@ test('Jest environment: follows the jsdom and cssstyle jest-environment-jsdom lo
   }
 });
 
+// Globals the profile's jsdom does not have yet (#208, test/jsdom-globals.test.js).
+test('Jest environment: testEnvironmentOptions.beyondJsdom', async () => {
+  const rootDir = fakeJestProject();
+  for (const [options, expected] of [
+    [{ jsdom: 26 }, 'undefined,undefined'],
+    [{ jsdom: 26, beyondJsdom: true }, 'function,function'],
+  ]) {
+    const env = new WarpdomEnvironment(
+      { globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: options } },
+      { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') },
+    );
+    await env.setup();
+    try {
+      const types = vm.runInContext('[typeof ToggleEvent, typeof window.CSSKeyframesRule].join()', env.getVmContext());
+      assert.equal(types, expected, JSON.stringify(options));
+    } finally {
+      await env.teardown();
+    }
+  }
+  rmSync(rootDir, { recursive: true, force: true });
+});
+
 test('Jest environment: testEnvironmentOptions.fastFrames', async () => {
   const rootDir = fakeJestProject();
   for (const [options, fast] of [

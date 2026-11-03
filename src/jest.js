@@ -176,6 +176,7 @@ export default class WarpdomEnvironment {
       ...(ablated('latest-profile') ? {} : jsdomProfile(projectConfig.rootDir ?? process.cwd(), options)),
       fastFrames: options.fastFrames === true,
       xhr: options.xhr !== false,
+      beyondJsdom: options.beyondJsdom === true,
     });
     if (ablated('eager-interfaces')) materializeAll(window);
     // An error thrown in an event listener fails the test, unless the test

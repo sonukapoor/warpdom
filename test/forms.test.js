@@ -746,7 +746,8 @@ parity('details: one toggle event per task', async (w) => {
 // Deliberate deviation: jsdom fires a plain Event; the standard's toggle
 // event is a ToggleEvent with the old and new state.
 test('details: toggle is a ToggleEvent', async () => {
-  const w = createWindow();
+  // ToggleEvent: a global no jsdom has (#208).
+  const w = createWindow({ beyondJsdom: true });
   const det = w.document.body.appendChild(w.document.createElement('details'));
   const events = [];
   det.addEventListener('toggle', (e) => events.push(e));

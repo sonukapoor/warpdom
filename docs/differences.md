@@ -73,6 +73,14 @@ warpdom follows the standard for:
   standard (but `<search>`, `<selectedcontent>` and `<menuitem>` are
   `HTMLUnknownElement`, as in jsdom)
 
+The globals of interfaces jsdom does not expose (`ToggleEvent`,
+`TimeRanges`, `FormDataEvent`, `CSSMarginRule`, `CSSPageDescriptors`, and
+in earlier profiles the CSS rule interfaces, `DOMRect`, `BeforeUnloadEvent`
+and `QuotaExceededError`) are left out by default, so code that
+feature-detects them takes jsdom's path; their objects exist. The option
+`beyondJsdom: true` adds the globals
+([jsdom-versions.md](jsdom-versions.md#globals-that-appear-in-a-later-jsdom)).
+
 ### Styles
 
 Kept the same in every jsdom profile: `MediaList` normalization (jsdom

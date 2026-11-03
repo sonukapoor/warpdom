@@ -377,7 +377,8 @@ parity("a style element's sheet is replaced when its children change", (w) => {
 // jsdom 30 has no CSSPageDescriptors or CSSMarginRule, drops descriptors
 // that are not properties (size) and keeps invalid page selectors.
 test('@page rules: selectors, descriptors and margin rules (CSSOM)', () => {
-  const w = createWindow();
+  // CSSPageDescriptors and CSSMarginRule: globals no jsdom has (#208).
+  const w = createWindow({ beyondJsdom: true });
   const sheet = sheetOf(
     w,
     '@page :FIRST { margin: 1in 2in; size: a4 landscape; float: left; @top-left { color: red } } @page foo :left {}',
@@ -857,7 +858,8 @@ test('CSS rule shape boundaries', () => {
     ['28.1.0', true, true, 'CSSGroupingRule', false, true],
     ['29.0.0', false, false, 'CSSGroupingRule', false, false],
   ]) {
-    const w = createWindow({ jsdom });
+    // CSSGroupingRule: a global from jsdom 27.2.0 (#208).
+    const w = createWindow({ jsdom, beyondJsdom: true });
     assert.equal('CONTAINER_RULE' in w.CSSRule, container, `CONTAINER_RULE in jsdom ${jsdom}`);
     assert.equal('LAYER_BLOCK_RULE' in w.CSSRule, layer, `LAYER_BLOCK_RULE in jsdom ${jsdom}`);
     assert.equal(

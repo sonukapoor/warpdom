@@ -27,7 +27,9 @@ async function createWarpdom(url, warpdomDir, log) {
     src('internal.js'),
     src('events.js'),
   ]);
-  const window = createWindow({ url });
+  // WPT measures conformance to the standards, so the window keeps the
+  // interfaces the default jsdom profile leaves out (#208).
+  const window = createWindow({ url, beyondJsdom: true });
   // As the Vitest environment: the host's timers stay (warpdom's window
   // timers are built on them), and so does the host's WebSocket, which the
   // window's is (an accessor on the global would read itself).

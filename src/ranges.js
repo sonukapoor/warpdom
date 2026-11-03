@@ -813,7 +813,7 @@ export const RANGE_INTERFACES = [
       // No layout: as for elements, empty.
       getBoundingClientRect() {
         rangeState(this);
-        return new (docOf(this[S].startNode)[S].window.DOMRect)();
+        return new (docOf(this[S].startNode)[S].window[S].interfaceObject('DOMRect'))();
       },
       getClientRects() {
         rangeState(this);

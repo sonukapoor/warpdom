@@ -6,7 +6,7 @@ import warpdomEnvironment, { jsdomProfile, type WarpdomVitestOptions } from 'war
 import type { Environment } from 'vitest/runtime';
 import 'warpdom/vitest/reset';
 
-const warpdom: WarpdomVitestOptions = { jsdom: '26.1.0', fastFrames: true, xhr: false };
+const warpdom: WarpdomVitestOptions = { jsdom: '26.1.0', fastFrames: true, xhr: false, beyondJsdom: true };
 export default defineConfig(
   withFastMode(
     {
