@@ -183,19 +183,24 @@ test('Jest environment: assigning document, window or top is ignored, location n
 // test's console as Error objects; jsdom 20 to 26 word them window.alert.
 // getComputedStyle with a pseudo-element (black box, Jest 29.7 with
 // jest-environment-jsdom 29.7 and jsdom 20.0.3): jsdom 20 to 23 report it on
-// the method's this value, so a bare call, whose global is jsdom's window,
-// reports nothing, and window.getComputedStyle(...) reports it; jsdom 24
-// reports both.
+// the method's this value, so a call without one (bare, destructured,
+// .call(null) or .call(undefined)) reports nothing, and one on the window
+// (window., globalThis., self., which are the window there) reports it;
+// jsdom 24 reports them all.
+const PSEUDO_CALLS = [
+  'getComputedStyle(document.body, "::-webkit-scrollbar")',
+  'window.getComputedStyle(document.body, "::before")',
+  'globalThis.getComputedStyle(document.body, "::before")',
+  'self.getComputedStyle(document.body, "::before")',
+  '(() => { const { getComputedStyle: g } = window; g(document.body, "::before"); })()',
+  'getComputedStyle.call(null, document.body, "::before")',
+  'getComputedStyle.call(undefined, document.body, "::before")',
+  'getComputedStyle.call(globalThis, document.body, "::before")',
+];
 test('Jest environment: "Not implemented" reports reach the test\'s console as errors, in the profile\'s words', async () => {
-  for (const [jsdom, pseudo] of [
-    ['20.0.3', ['Not implemented: window.computedStyle(elt, pseudoElt)']],
-    [
-      '24.1.3',
-      [
-        'Not implemented: window.getComputedStyle(elt, pseudoElt)',
-        'Not implemented: window.getComputedStyle(elt, pseudoElt)',
-      ],
-    ],
+  for (const [jsdom, message, reported] of [
+    ['20.0.3', 'Not implemented: window.computedStyle(elt, pseudoElt)', [0, 1, 1, 1, 0, 0, 0, 1]],
+    ['24.1.3', 'Not implemented: window.getComputedStyle(elt, pseudoElt)', [1, 1, 1, 1, 1, 1, 1, 1]],
   ]) {
     const rootDir = fakeJestProject();
     let env;
@@ -207,15 +212,18 @@ test('Jest environment: "Not implemented" reports reach the test\'s console as e
       await env.setup();
       const seen = [];
       env.global.console = { error: (e) => seen.push([e instanceof Error, e.message, e.type]) };
-      vm.runInContext(
-        'alert("x"); getComputedStyle(document.body, "::-webkit-scrollbar"); window.getComputedStyle(document.body, "::before"); document.createElement("form").submit()',
-        env.getVmContext(),
-      );
+      vm.runInContext('alert("x"); document.createElement("form").submit()', env.getVmContext());
       assert.deepEqual(seen, [
         [true, 'Not implemented: window.alert', 'not implemented'],
-        ...pseudo.map((message) => [true, message, 'not implemented']),
         [true, 'Not implemented: HTMLFormElement.prototype.submit', 'not implemented'],
       ]);
+      const counts = PSEUDO_CALLS.map((code) => {
+        seen.length = 0;
+        vm.runInContext(code, env.getVmContext());
+        for (const entry of seen) assert.deepEqual(entry, [true, message, 'not implemented'], code);
+        return seen.length;
+      });
+      assert.deepEqual(counts, reported, `jsdom ${jsdom}`);
       // The style is the element's either way.
       assert.equal(vm.runInContext('getComputedStyle(document.body, "::after").display', env.getVmContext()), 'block');
     } finally {

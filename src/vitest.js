@@ -46,12 +46,16 @@ function globalMethod(key, method, window, unforgeable) {
 
 // Where the global is the window, as jsdom's window is in its environments,
 // a bare call (getComputedStyle(element)) has no this value, and an
-// operation that acts differently then (window.js) sees none.
+// operation that acts differently then (window.js) sees none; a null one
+// counts as none, as in window.js. Any other this value (window.,
+// globalThis., self.) is the window. The operations with a variant
+// (getComputedStyle) take at most two arguments: a fixed pair, with no
+// rest array per call on a hot path; length stays the operation's.
 function thislessOperation(key, operation, window) {
   const { method, thisless } = THISLESS.get(operation);
   const global = {
-    [key](...args) {
-      return this === undefined ? thisless.apply(window, args) : method.apply(window, args);
+    [key](a, b) {
+      return this == null ? thisless.call(window, a, b) : method.call(window, a, b);
     },
   }[key];
   Object.defineProperty(global, 'length', { value: operation.length });
