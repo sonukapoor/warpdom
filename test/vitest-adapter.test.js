@@ -92,6 +92,46 @@ test('setupVM: Node globals that are lazy getters work in the context (crypto)',
   }
 });
 
+// In the VM pools the global is the window, as jsdom's internal context is
+// there: a bare getComputedStyle() has no this value, and jsdom 20 to 23
+// report a pseudo-element only on one (window.getComputedStyle(...)).
+// Elsewhere Vitest binds the window's functions, so both report.
+test('setupVM: a bare getComputedStyle with a pseudo-element reports as jsdom does', async () => {
+  const { default: environment } = await import('../src/vitest.js');
+  const vmModule = await import('node:vm');
+  for (const [jsdom, reports] of [
+    ['20.0.3', 1],
+    ['30.1.3', 2],
+  ]) {
+    const result = await environment.setupVM({ warpdom: { jsdom } });
+    const seen = [];
+    const original = console.error;
+    console.error = (e) => seen.push(String(e));
+    try {
+      vmModule.runInContext(
+        'getComputedStyle(document.body, "::before"); window.getComputedStyle(document.body, "::before")',
+        result.getVmContext(),
+      );
+    } finally {
+      console.error = original;
+      result.teardown();
+    }
+    assert.equal(seen.length, reports, `jsdom ${jsdom}: ${seen.join(', ')}`);
+  }
+  const global = {};
+  const env = environment.setup(global, { warpdom: { jsdom: '20.0.3' } });
+  const seen = [];
+  const original = console.error;
+  console.error = (e) => seen.push(String(e));
+  try {
+    global.getComputedStyle(global.document.body, '::before');
+  } finally {
+    console.error = original;
+    env.teardown();
+  }
+  assert.equal(seen.length, 1);
+});
+
 // Black box (Vitest 5, jsdom 20 to 30): in the VM pools the global is the
 // window, with jsdom's crypto and performance; TextEncoder exists before
 // jsdom 27.4 too (Node's here). Elsewhere crypto, performance, TextEncoder

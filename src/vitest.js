@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { URL as NodeURL } from 'node:url';
 import { Blob as NodeBlob } from 'node:buffer';
 import { createWindow } from './node.js';
-import { S } from './internal.js';
+import { S, THISLESS } from './internal.js';
 import { ablated, materializeAll } from './ablate.js';
 import { setQueryCache } from './selectors.js';
 import { resetWindow, snapshotWindow } from './reset.js';
@@ -38,6 +38,27 @@ function eventTargetMethod(fn, window) {
 const isClassLike = (key) => /^[A-Z]/.test(key);
 
 // The descriptor of a property found on the object or its prototypes.
+// A method of the window on the global: bound to the window.
+function globalMethod(key, method, window, unforgeable) {
+  if (EVENT_TARGET_METHODS.includes(key)) return eventTargetMethod(method, window);
+  if (unforgeable && THISLESS.has(method)) return thislessOperation(key, method, window);
+  return method.bind(window);
+}
+
+// Where the global is the window, as jsdom's window is in its environments,
+// a bare call (getComputedStyle(element)) has no this value, and an
+// operation that acts differently then (window.js) sees none.
+function thislessOperation(key, operation, window) {
+  const { method, thisless } = THISLESS.get(operation);
+  const global = {
+    [key](...args) {
+      return this === undefined ? thisless.apply(window, args) : method.apply(window, args);
+    },
+  }[key];
+  Object.defineProperty(global, 'length', { value: operation.length });
+  return global;
+}
+
 function findDescriptor(object, key) {
   for (let o = object; o; o = Object.getPrototypeOf(o)) {
     const descriptor = Object.getOwnPropertyDescriptor(o, key);
@@ -168,9 +189,7 @@ export function installWindow(global, window, { hostKeys = [], alwaysKeys = [], 
     const value = descriptor && 'value' in descriptor ? descriptor.value : undefined;
     const bound =
       typeof value === 'function' && !isClassLike(key) && !Object.hasOwn(value, 'prototype')
-        ? EVENT_TARGET_METHODS.includes(key)
-          ? eventTargetMethod(value, window)
-          : value.bind(window)
+        ? globalMethod(key, value, window, unforgeable)
         : null;
     if (unforgeable && UNFORGEABLE_KEYS.includes(key)) {
       Object.defineProperty(global, key, {

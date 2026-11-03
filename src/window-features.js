@@ -10,6 +10,7 @@ import {
   lockedRead,
   lockedValue,
   NOT_LOCKED,
+  THISLESS,
   domError,
   tooFewArguments,
   checkForEachCallback,
@@ -465,6 +466,16 @@ export const WINDOW_MEMBERS = {
 
 // jsdom's words for getComputedStyle with a pseudo-element (black box: 20
 // to 23, 24 to 26, 27 and later).
+// jsdom 20 to 23 report a pseudo-element on the method's this value, so a
+// call without one (const { getComputedStyle } = window, or a bare
+// getComputedStyle() in Jest, whose global is jsdom's window) reports
+// nothing; jsdom 24 reports it on its own window (black box).
+THISLESS.set(WINDOW_MEMBERS.getComputedStyle, function getComputedStyle(element, pseudoElt = undefined) {
+  return state(this).compat.jsdom < 24
+    ? WINDOW_MEMBERS.getComputedStyle.call(this, element)
+    : WINDOW_MEMBERS.getComputedStyle.call(this, element, pseudoElt);
+});
+
 const pseudoElementMessage = (jsdom) =>
   jsdom >= 27
     ? "Window's getComputedStyle() method: with pseudo-elements"

@@ -248,6 +248,9 @@ test("getComputedStyle with a pseudo-element reports it as not implemented, in t
       const w = createWindow({ jsdom });
       const p = w.document.body.appendChild(w.document.createElement('p'));
       assert.equal(w.getComputedStyle(p, '::before').display, 'block');
+      // Without a this value: reported from jsdom 24.
+      const { getComputedStyle } = w;
+      getComputedStyle(p, '::before');
       w.getComputedStyle(p, null);
       w.getComputedStyle(p, '');
       w.getComputedStyle(p);
@@ -258,10 +261,8 @@ test("getComputedStyle with a pseudo-element reports it as not implemented, in t
   assert.deepEqual(messages, [
     'Not implemented: window.computedStyle(elt, pseudoElt)',
     'Not implemented: window.computedStyle(elt, pseudoElt)',
-    'Not implemented: window.getComputedStyle(elt, pseudoElt)',
-    'Not implemented: window.getComputedStyle(elt, pseudoElt)',
-    "Not implemented: Window's getComputedStyle() method: with pseudo-elements",
-    "Not implemented: Window's getComputedStyle() method: with pseudo-elements",
+    ...Array(4).fill('Not implemented: window.getComputedStyle(elt, pseudoElt)'),
+    ...Array(4).fill("Not implemented: Window's getComputedStyle() method: with pseudo-elements"),
   ]);
 });
 
@@ -269,6 +270,29 @@ parity("getComputedStyle with a pseudo-element: the element's style, reported (j
   const p = w.document.body.appendChild(w.document.createElement('p'));
   return [w.getComputedStyle(p, '::after').display, w.getComputedStyle(p, ' ').display];
 });
+
+// jsdom 20 to 23 report the pseudo-element on the method's this value:
+// called without one (as a bare getComputedStyle() is where the global is
+// jsdom's window, in Jest) nothing is reported; jsdom 24 to 30 report it
+// on their window (black box; 24 to 26 print the report's stack on the
+// default virtual console, so the test above covers them). Grafana's
+// drawers measure document.body's ::-webkit-scrollbar (@rc-component/util
+// getScrollBarSize) and its tests fail on any console output.
+for (const jsdom of [20, 22, 30]) {
+  parity(
+    `getComputedStyle with a pseudo-element, called without a this value (jsdom ${jsdom})`,
+    (w) => {
+      const p = w.document.body.appendChild(w.document.createElement('p'));
+      const { getComputedStyle } = w;
+      return [
+        getComputedStyle(p, '::-webkit-scrollbar').display,
+        getComputedStyle.call(null, p, '::before').display,
+        getComputedStyle.call(undefined, p, null).display,
+      ];
+    },
+    { jsdom },
+  );
+}
 
 // Profiles test/parity.js does not load: the accessors a few names have
 // there (black box, jsdom installed with that cssstyle; the full lists are

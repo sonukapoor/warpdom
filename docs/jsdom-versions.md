@@ -96,3 +96,7 @@ takes the window's Blobs), as with jsdom.
 - Before 30.1.1 a disabled button, input, select or textarea with a
   `tabindex` attribute (also one in a disabled fieldset) can be focused.
 - An SVG `a` with an `href` matches `:link`.
+- Before 24.0.0 `getComputedStyle(element, pseudoElt)` reports the
+  pseudo-element as not implemented only when called on the window
+  (`window.getComputedStyle(...)`): a bare `getComputedStyle(...)` in Jest,
+  whose global is the window, or a destructured one, reports nothing.

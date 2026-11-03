@@ -22,6 +22,7 @@ import {
   lockedWrite,
   lockedValue,
   NOT_LOCKED,
+  THISLESS,
 } from './internal.js';
 import { INTERFACES, SVG_ELEMENTS, LEGACY_SVG_ELEMENTS, SVG_TYPES_INTERFACES, HTML_NS, SVG_NS } from './interfaces.js';
 import { HTML_ELEMENTS, PLAIN_TAGS } from './html-elements.js';
@@ -180,11 +181,19 @@ function installGlobalOperations(window, proto) {
     if (name === 'constructor') continue;
     const { value } = Object.getOwnPropertyDescriptor(proto, name);
     if (typeof value !== 'function') continue;
-    const operation = {
-      [name](...args) {
-        return value.apply(this ?? window, args);
-      },
-    }[name];
+    const thisless = THISLESS.get(value);
+    const operation = thisless
+      ? {
+          [name](...args) {
+            return this == null ? thisless.apply(window, args) : value.apply(this, args);
+          },
+        }[name]
+      : {
+          [name](...args) {
+            return value.apply(this ?? window, args);
+          },
+        }[name];
+    if (thisless) THISLESS.set(operation, { method: value, thisless });
     Object.defineProperty(operation, 'length', { value: value.length });
     Object.defineProperty(window, name, { value: operation, writable: true, enumerable: true, configurable: true });
   }

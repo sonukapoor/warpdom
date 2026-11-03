@@ -174,11 +174,6 @@
       "count": 2
     }
   },
-  "src/vitest.js": {
-    "no-nested-ternary": {
-      "count": 1
-    }
-  },
   "src/window-features.js": {
     "no-nested-ternary": {
       "count": 15

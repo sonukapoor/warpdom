@@ -10,6 +10,13 @@
 // an id are indexed per document, so getElementById is O(1).
 export const S = Symbol('warpdom');
 
+// Window operations that act differently when called without a this value:
+// a Window.prototype method -> its variant for such calls; the window's own
+// operation made from it (window.js installGlobalOperations) -> { method,
+// thisless }, for globals that keep bare calls without one (vitest.js
+// installWindow).
+export const THISLESS = new WeakMap();
+
 // The internal state of objects other than nodes (events, FormData,
 // AbortSignal, style declarations, ...) is invisible even to reflection:
 // Jest's and Vitest's deep equality and pretty-format walk own enumerable
