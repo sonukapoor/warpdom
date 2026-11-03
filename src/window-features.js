@@ -1355,11 +1355,8 @@ function setupWebSocket(window) {
 // (black box).
 const LOCATION_SLOT = hiddenSlot();
 const locationState = (self) => {
-  try {
-    return LOCATION_SLOT.get(self);
-  } catch {
-    throw new TypeError('Illegal invocation');
-  }
+  if (!LOCATION_SLOT.has(self)) throw new TypeError('Illegal invocation');
+  return LOCATION_SLOT.get(self);
 };
 const locationURL = (self) => locationState(self).window[S].url;
 const locationGo = (self, next, replace) => navigate(locationState(self).window, next, replace);

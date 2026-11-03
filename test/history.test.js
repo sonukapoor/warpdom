@@ -269,6 +269,15 @@ for (const jsdom of [20, 22, 30]) {
         Reflect.deleteProperty(l, 'assign'),
         typeof l.assign,
         Object.getOwnPropertyDescriptor(l, 'search').get.name,
+        // The members' names: not writable, not enumerable, configurable.
+        Object.values(Object.getOwnPropertyDescriptors(l)).flatMap((d) =>
+          [d.get, d.set, d.value]
+            .filter((fn) => typeof fn === 'function')
+            .map((fn) => {
+              const name = Object.getOwnPropertyDescriptor(fn, 'name');
+              return `${name.value}:${name.writable}${name.enumerable}${name.configurable}`;
+            }),
+        ),
       ];
     },
     { jsdom, url: 'http://localhost:3000/page?x=1#h' },
@@ -301,3 +310,16 @@ for (const jsdom of [20, 22, 30]) {
     { jsdom, url: 'http://localhost:3000/page?x=1#h' },
   );
 }
+
+// A member called on anything but a Location throws warpdom's TypeError
+// (jsdom words it differently); the brand check itself throws nothing.
+test("location's members on another this value: Illegal invocation", () => {
+  const w = createWindow({ url: 'http://localhost:3000/page' });
+  const { get, set } = Object.getOwnPropertyDescriptor(w.location, 'href');
+  for (const self of [undefined, null, 1, 'x', {}, w.history, Object.create(w.Location.prototype)]) {
+    assert.throws(() => get.call(self), { name: 'TypeError', message: 'Illegal invocation' });
+    assert.throws(() => set.call(self, '#a'), { name: 'TypeError', message: 'Illegal invocation' });
+    assert.throws(() => w.location.reload.call(self), { name: 'TypeError', message: 'Illegal invocation' });
+  }
+  assert.equal(get.call(w.location), 'http://localhost:3000/page');
+});
