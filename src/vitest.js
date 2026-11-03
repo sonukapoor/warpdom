@@ -37,7 +37,6 @@ function eventTargetMethod(fn, window) {
 }
 const isClassLike = (key) => /^[A-Z]/.test(key);
 
-// The descriptor of a property found on the object or its prototypes.
 // A method of the window on the global: bound to the window.
 function globalMethod(key, method, window, unforgeable) {
   if (EVENT_TARGET_METHODS.includes(key)) return eventTargetMethod(method, window);
@@ -59,6 +58,7 @@ function thislessOperation(key, operation, window) {
   return global;
 }
 
+// The descriptor of a property found on the object or its prototypes.
 function findDescriptor(object, key) {
   for (let o = object; o; o = Object.getPrototypeOf(o)) {
     const descriptor = Object.getOwnPropertyDescriptor(o, key);
