@@ -253,7 +253,13 @@ for (const jsdom of [20, 22, 30]) {
       l.hash = 'next';
       return [
         flags,
-        Object.getOwnPropertyNames(w.Location.prototype),
+        // Symbols too: no internal state key on Location.prototype.
+        Reflect.ownKeys(w.Location.prototype).map(String),
+        // jsdom before 30 keeps its implementation under an own
+        // Symbol(impl), its internals; warpdom has none on the location.
+        Reflect.ownKeys(l)
+          .map(String)
+          .filter((key) => key !== 'Symbol(impl)'),
         Object.keys(copy),
         copy.href,
         new w.URL('apis/a?b=1', copy.href).href,

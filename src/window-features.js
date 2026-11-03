@@ -1347,9 +1347,10 @@ function setupWebSocket(window) {
 // libraries then resolve URLs against its href (msw's fetch interceptor:
 // new URL(input, location.href)). Defined on the one Location a window
 // makes, from descriptors built once.
-// A Location's state is a private field (hiddenSlot in internal.js), read
-// here directly rather than through the accessor on Location.prototype:
-// the members are the Location's own, and keep working after
+// A Location's state is a private field (hiddenSlot in internal.js), set
+// and read here directly: Location.prototype has no accessor for it, so
+// its own keys are jsdom's (constructor and @@toStringTag), and the
+// members, the Location's own, keep working after
 // Object.setPrototypeOf(location, null), which jsdom 20 to 30 allow
 // (black box).
 const LOCATION_SLOT = hiddenSlot();
@@ -1542,7 +1543,7 @@ export const FEATURE_INTERFACES = [
     },
   },
   // Location's members are its own properties (LOCATION_MEMBERS).
-  { name: 'Location', members: {}, slot: [S, LOCATION_SLOT.descriptor] },
+  { name: 'Location', members: {}, privateState: true },
   {
     name: 'History',
     members: {
@@ -1913,7 +1914,9 @@ export function setupWindow(window, { url: initial = 'about:blank', fastFrames =
   setupConsole(window);
   setupWebSocket(window);
   ws.setTimeout = globalThis.setTimeout.bind(globalThis);
-  ws.location = Object.defineProperties(make(window, 'Location', {}), LOCATION_DESCRIPTORS);
+  ws.location = Object.create(window[S].protos.Location);
+  LOCATION_SLOT.init(ws.location, { window });
+  Object.defineProperties(ws.location, LOCATION_DESCRIPTORS);
   ws.history = make(window, 'History', { entries: [{ state: null, url: ws.url }], index: 0, navigations: 0 });
 
   // Created on first use, like the interfaces (window.js), so a window
