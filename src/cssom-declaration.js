@@ -54,6 +54,76 @@ function put(style, name, value, priority) {
   style._importants[name] = priority;
 }
 
+// cssom's parse of a block without strings, comments, braces, at-signs,
+// '!', backslashes and empty declarations (a ';' with no declaration
+// before it starts the next name in cssom: width: 1px;; color: red
+// declares ;color), where every declaration has a name without
+// parentheses, a colon and a value not starting with '/', and every
+// parenthesis closes: what parseBlock gives, by slices (the sheets of
+// most suites), each name with the spaces in it dropped (spaced: there
+// were some). null for other text.
+const SIMPLE = /["'{}@!\\]|\/\*|^\s*;|;\s*;/;
+function simpleBlock(text) {
+  if (SIMPLE.test(text)) return null;
+  const out = [];
+  out.spaced = false;
+  let start = 0;
+  let colon = -1;
+  let depth = 0;
+  for (let i = 0; i <= text.length; i++) {
+    const c = i === text.length ? 59 : text.charCodeAt(i);
+    if (c === 40) {
+      if (colon < 0) return null;
+      depth++;
+    } else if (c === 41) {
+      if (depth > 0) depth--;
+    } else if (c === 58) {
+      if (colon < 0) colon = i;
+    } else if (c === 59 && depth === 0) {
+      let name = text.slice(start, colon < 0 ? i : colon).trim();
+      if (/\s/.test(name)) {
+        name = name.replace(/\s+/g, '');
+        out.spaced = true;
+      }
+      if (colon < 0) {
+        // Only spaces (or nothing) after the last declaration.
+        if (name !== '' || i !== text.length) return null;
+        break;
+      }
+      const value = text.slice(colon + 1, i).trim();
+      if (value === '' || name === '' || value[0] === '/') return null;
+      // (no '!': no priority, as cascadeEntry gives it)
+      out.push([name, value, false]);
+      start = i + 1;
+      colon = -1;
+    }
+  }
+  return depth === 0 ? out : null;
+}
+
+// Text without comments whose parse as a sheet's (css.js parseInto,
+// context 'cssom') may give cssom's declarations, which parsedPlain then
+// tells: as for simpleBlock, but with !important (cssom's priority too).
+const SHEET_SIMPLE = /["'{}@\\]|\/\*|!(?!important)|^\s*;|;\s*;/;
+export const simpleText = (text) => !SHEET_SIMPLE.test(text);
+
+// A block's text as cssom reads it, without its comments (also those in
+// an unquoted url(): url(foo/* x */bar.png) is url(foobar.png)), or null
+// where that takes cssom's parser (a quote, or an unclosed comment).
+export function withoutComments(text) {
+  if (!text.includes('/*')) return text;
+  if (text.includes('"') || text.includes("'")) return null;
+  let out = '';
+  let from = 0;
+  for (let open = text.indexOf('/*'); open !== -1; open = text.indexOf('/*', from)) {
+    const close = text.indexOf('*/', open + 2);
+    if (close === -1) return null;
+    out += text.slice(from, open);
+    from = close + 2;
+  }
+  return out + text.slice(from);
+}
+
 // cssom's parse errors, with the line and character in token.
 function fail(token, message, i) {
   const lines = token.substring(0, i).split('\n');
@@ -267,18 +337,60 @@ export function cssomDeclaration(text, parentRule, onChange) {
   return proxy;
 }
 
-// The declarations the cascade reads from it, as jsdom's cascade (its
-// style-rules.js): [name, value, important] in index order. Left out:
-// those with an empty value, which set nothing there, and those whose
-// value ends in a priority cssom did not take (red ! important), which
-// cssstyle rejects.
+// One declaration as jsdom's cascade (its style-rules.js) gives it to
+// cssstyle's setProperty: [name, value, important], the value a string
+// (rule.style.opacity = 0.5 is '0.5'; '' would remove it), or null
+// for one cssstyle rejects: a value ending in a priority cssom did not
+// take (red ! important), except a custom property's, kept as written.
+function cascadeEntry(name, value, priority) {
+  const n = String(name);
+  const v = String(value);
+  if (!n.startsWith('--') && /!\s*important\s*$/i.test(v)) return null;
+  return [n, v, priority === 'important'];
+}
+
+// The declarations the cascade reads from a cssom style, in index order.
 export function cssomEntries(style) {
   const out = [];
   for (let i = 0; i < style.length; i++) {
     const name = style[i];
-    const value = style.getPropertyValue(name);
-    if (typeof value !== 'string' || value.trim() === '' || /!\s*important\s*$/i.test(value)) continue;
-    out.push([String(name), value, style.getPropertyPriority(name) === 'important']);
+    const entry = cascadeEntry(name, style.getPropertyValue(name), style.getPropertyPriority(name));
+    if (entry !== null) out.push(entry);
+  }
+  return out;
+}
+
+// The same from a rule's declaration text, as the cssom style made from it
+// would give them (cssomDeclaration), without making it: cssom's parse,
+// each name once, at its first place with its last value and priority.
+export function blockEntries(text) {
+  const simple = simpleBlock(text);
+  if (simple !== null) return unique(simple);
+  const declarations = [];
+  try {
+    parseBlock(`${text}}`, 0, declarations);
+  } catch {
+    // (an unclosed string or comment: the declarations before it)
+  }
+  const entries = [];
+  for (const [name, value, priority] of unique(declarations)) {
+    const entry = cascadeEntry(name, value, priority);
+    if (entry !== null) entries.push(entry);
+  }
+  return entries;
+}
+
+// Each name once, at its first place, with its last value (cssom's
+// setProperty). Blocks are short: a linear search.
+function unique(declarations) {
+  const out = [];
+  outer: for (const declaration of declarations) {
+    for (let i = 0; i < out.length; i++)
+      if (out[i][0] === declaration[0]) {
+        out[i] = declaration;
+        continue outer;
+      }
+    out.push(declaration);
   }
   return out;
 }

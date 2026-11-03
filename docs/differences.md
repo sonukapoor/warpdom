@@ -103,7 +103,10 @@ Not modeled:
   `rule.style = 'x'` there replaces the object with the string), its
   `__starts` member, `expression()` values, and the rules cssom parses from
   text after a `}` in its `cssText` setter (only the `Unexpected }` error
-  is). Grouping rules, `@font-face` and keyframe rules keep warpdom's
+  is), and an empty value (`setProperty('color', '')`) removing the
+  property as earlier matching rules declare it too (jsdom's cascade
+  keeps one cssstyle declaration for all of them; warpdom's rule only
+  stops declaring it). Grouping rules, `@font-face` and keyframe rules keep warpdom's
   serialization and style objects (cssom: `@media screen {.a {color:
   red;}}`)
 - CSS Nesting: warpdom's style sheets keep only the declarations before a

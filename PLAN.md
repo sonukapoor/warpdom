@@ -4757,3 +4757,37 @@ comment in every rule 21.14 -> 20.45 ms (getComputedStyle there 12.5 ->
 18.4 ms, as the declarations with comments now apply). Tests: cssom.test.js
 "the cascade replays cssom's declarations" (parity 20, 22, 25, 26; 27.0.0
 and 27.0.1) and "comments in the cascade before 27.1.0" (parity 20 to 26).
+
+Review round 2 (#251), black box 20.0.3 to 27.0.1: the first cascade of a
+rule disagreed with cssom's declarations in cases the fast-path checks did
+not catch (27.0.x `margin: 1px !important; margin-left: 2px` lost
+margin-left until any change replayed it; `w i d t h: 1px` is width in
+cssom; `url(foo/* note */bar.png)` is url(foobar.png); `width: 1px;;
+color: red` declares `;color`; `border: ...; border-left-width: 2px;
+BORDER: 3px solid blue` gives a 3px left border). Building every rule's
+cascade from cssom's entries (blockEntries + replayDeclarations) cost +50
+to +90% on sheet parse (16.85 -> 31.86 ms in the 26.1.0 profile), so the
+sheet parse is kept where it gives the same by construction: the text
+without its comments (withoutComments; cssom drops them, in url() too)
+has none of cssom's special characters (simpleText: strings, braces,
+at-signs, backslashes, priorities other than !important, empty
+declarations), and parseInto in context 'cssom' kept every declaration it
+read, or dropped some only for invalid values (no !important, every name
+plain and declared once whatever its case: plainNames). Other rules are
+replayed from cssom's entries in order: a name given again is applied
+last (decls.delete before set), an empty value removes what the rule
+declared of that name (`COLOR: red; color: ''` is no color; `MARGIN: ''`
+keeps an earlier margin-left, as cssstyle does), custom properties are
+kept as written (`--x: a;b`, `red !IMPORTANT`), values are coerced to
+strings (`style.opacity = 0.5`). Left: an empty value removing the
+property as earlier rules declare it (jsdom's one cssstyle declaration
+over all matching rules; differences.md).
+
+Sheet parse (Node 22.17.1, 7 alternating runs, medians, 20 sheets x 400
+rules; origin/main / 45f4ea4 / this): 26.1.0 16.02 / 16.73 / 17.88 ms;
+20.0.3 15.58 / 20.07 / 19.28; a comment in every rule (26.1.0) 17.13 /
+20.57 / 19.51; 27.0.1 16.85 / 17.13 / 18.14; !important and font: 12px/1.5
+in every rule (26.1.0) 19.35 / 20.65 / 21.31; 30.1.3 15.90 / 15.83 / 16.10.
+getComputedStyle unchanged within noise. Tests: cssom.test.js "the
+cascade from cssom's declarations" and "replayed in order within a rule"
+(parity 20 to 26; 27.0.0 and 27.0.1 against measured values).

@@ -1755,3 +1755,193 @@ const ruleCommentScenario = (w) => {
 };
 for (const jsdom of [20, 22, 25, 26])
   parity(`CSSStyleRule style: comments in the cascade before 27.1.0 (jsdom ${jsdom})`, ruleCommentScenario, { jsdom });
+
+// The cascade of a style rule before jsdom 27.1.0 is built from cssom's
+// declarations, as jsdom's is (#251 review, black box 20.0.3 to 27.0.1):
+// comments dropped wherever they are (in url() too), spaces dropped from
+// names, a ';' with no declaration before it starting the next name,
+// names matched by exact case and applied in order (BORDER after border
+// resets what came between), !important not keeping a later declaration
+// out, custom properties kept as written, and values coerced to strings.
+const cssomBlockScenario = (w) => {
+  const blocks = [
+    'color: red /* c */; width: 1px',
+    '/* c */ color: red; width: 1px',
+    'color /* c */: red; width: 1px',
+    'margin: 1px /* c */ 2px; width: 1px',
+    'width: 1px; /* x */ width: 2px',
+    'background-image: url(foo/* note */bar.png)',
+    'w i d t h: 1px',
+    'a(b: c; width: 1px',
+    'width: 1px;; color: red',
+    'width: 1px; color red',
+    'color: ; width: 1px',
+    'margin: 1px; MARGIN-left: 2px; margin: 3px',
+    'margin-left: 4px; margin: 1px',
+    'margin: 1px !important; margin-left: 2px',
+    'border: 1px solid red; border-left-width: 2px; BORDER: 3px solid blue',
+    'width: 1px; Width: bogus',
+    'color: red; color: bogus',
+    'font: 12px/1.5 serif; width: 1px',
+    'width: / 2px; color: red',
+    'color: red !important; COLOR: blue',
+    'width: 1px !important foo',
+    'font: inherit; color: red',
+    'width: calc(100% - var(--q, 3px))',
+    '--x: 1',
+    'opacity: 1',
+  ];
+  const d = w.document;
+  d.body.innerHTML = blocks.map((_, i) => `<div class="k${i}"></div>`).join('');
+  const st = d.createElement('style');
+  st.textContent = blocks.map((b, i) => `.k${i} { ${b} }`).join('\n');
+  d.head.appendChild(st);
+  const read = () =>
+    blocks.map((_, i) => {
+      const s = w.getComputedStyle(d.querySelector(`.k${i}`));
+      return [
+        s.color,
+        s.width,
+        s.marginLeft,
+        s.backgroundImage,
+        s.borderLeftWidth,
+        s.font,
+        s.getPropertyValue('--x'),
+        s.opacity,
+      ];
+    });
+  const out = [read()];
+  const rules = st.sheet.cssRules;
+  const x = rules[blocks.indexOf('--x: 1')].style;
+  const touch = () => d.body.setAttribute('data-t', String(out.length));
+  for (const value of ['red !IMPORTANT', 'a;b', 'a ! important', '"open']) {
+    x.setProperty('--x', value);
+    touch();
+    out.push([x.cssText, read()[blocks.indexOf('--x: 1')][6]]);
+  }
+  const opacity = rules[blocks.indexOf('opacity: 1')].style;
+  opacity.opacity = 0.5;
+  touch();
+  out.push([opacity.cssText, read()[blocks.indexOf('opacity: 1')][7]]);
+  // A change elsewhere in a rule leaves its other declarations as they were.
+  rules[blocks.indexOf('margin: 1px !important; margin-left: 2px')].style.setProperty('padding', '1px');
+  rules[blocks.indexOf('w i d t h: 1px')].style.setProperty('padding', '1px');
+  touch();
+  out.push(read());
+  return out;
+};
+for (const jsdom of [20, 22, 25, 26])
+  parity(`CSSStyleRule style: the cascade from cssom's declarations (jsdom ${jsdom})`, cssomBlockScenario, { jsdom });
+
+// 27.0.0 and 27.0.1 (black box: the same for both).
+test("CSSStyleRule style: the cascade from cssom's declarations (jsdom 27.0.0, 27.0.1)", () => {
+  const expected = [
+    [
+      ['rgb(255, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(255, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(255, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '2px', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '2px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '', 'url("foobar.png")', '', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '2px', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '1px', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '2px', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '', '', '3px', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '', '', '', '12px / 1.5 serif', '', ''],
+      ['rgb(255, 0, 0)', '', '', '', '', '', '', ''],
+      ['rgb(0, 0, 255)', '', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '', '', '', '', '', ''],
+      ['rgb(255, 0, 0)', '', '', '', '', 'inherit', '', ''],
+      ['rgb(0, 0, 0)', 'calc(100% - var(--q, 3px))', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '', '', '', '', '1', ''],
+      ['rgb(0, 0, 0)', '', '', '', '', '', '', '1'],
+    ],
+    ['--x: red !IMPORTANT;', 'red !IMPORTANT'],
+    ['--x: a;b;', 'a;b'],
+    ['--x: a ! important;', 'a ! important'],
+    ['--x: "open;', '"open'],
+    ['opacity: 0.5;', '0.5'],
+    [
+      ['rgb(255, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(255, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(255, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '2px', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '2px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '', 'url("foobar.png")', '', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '2px', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '1px', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '2px', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '', '', '3px', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '', '', '', '12px / 1.5 serif', '', ''],
+      ['rgb(255, 0, 0)', '', '', '', '', '', '', ''],
+      ['rgb(0, 0, 255)', '', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '', '', '', '', '', ''],
+      ['rgb(255, 0, 0)', '', '', '', '', 'inherit', '', ''],
+      ['rgb(0, 0, 0)', 'calc(100% - var(--q, 3px))', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '', '', '', '', '"open', ''],
+      ['rgb(0, 0, 0)', '', '', '', '', '', '', '0.5'],
+    ],
+  ];
+  for (const jsdom of ['27.0.0', '27.0.1']) assert.deepEqual(cssomBlockScenario(createWindow({ jsdom })), expected);
+});
+
+// Replayed in order within a rule (#251 review, black box 20.0.3 to
+// 27.0.1): a shorthand given again resets the longhand declared between
+// (BACKGROUND after background-color), an empty value removes what the
+// rule declared of that name (COLOR: red; color: '' is no color; MARGIN:
+// '' keeps an earlier margin-left), and a change elsewhere in the rule
+// keeps the rest (27.0.x: margin: 1px!important; margin-left: 2px is 2px).
+const ruleReplayOrderScenario = (w) => {
+  const d = w.document;
+  d.body.innerHTML = '<div class="a"></div><div class="b"></div><div class="c"></div><div class="e"></div>';
+  const st = d.createElement('style');
+  st.textContent =
+    '.a { background: red; background-color: blue } .b { COLOR: red; color: blue } ' +
+    '.c { margin-left: 2px; MARGIN: 1px } .e { margin: 1px!important; margin-left: 2px }';
+  d.head.appendChild(st);
+  const [a, b, c, e] = st.sheet.cssRules;
+  const cs = (k) => w.getComputedStyle(d.querySelector(k));
+  let n = 0;
+  const touch = () => d.body.setAttribute('data-t', String(n++));
+  const out = [[cs('.a').backgroundColor, cs('.b').color, cs('.c').marginLeft, cs('.e').marginLeft]];
+  a.style.setProperty('BACKGROUND', 'green');
+  touch();
+  out.push([a.style.cssText, cs('.a').backgroundColor]);
+  b.style.color = '';
+  touch();
+  out.push([b.style.cssText, cs('.b').color]);
+  c.style.MARGIN = '';
+  touch();
+  out.push([c.style.cssText, cs('.c').marginLeft]);
+  e.style.setProperty('padding', '1px');
+  touch();
+  out.push([cs('.e').marginLeft]);
+  return out;
+};
+for (const jsdom of [20, 22, 25, 26])
+  parity(`CSSStyleRule style: replayed in order within a rule (jsdom ${jsdom})`, ruleReplayOrderScenario, { jsdom });
+test('CSSStyleRule style: replayed in order within a rule (jsdom 27.0.0, 27.0.1)', () => {
+  const expected = [
+    ['rgb(0, 0, 255)', 'rgb(0, 0, 255)', '1px', '2px'],
+    ['background: red; background-color: blue; BACKGROUND: green;', 'rgb(0, 128, 0)'],
+    ['COLOR: red; color: ;', 'rgb(0, 0, 0)'],
+    ['margin-left: 2px; MARGIN: ;', '2px'],
+    ['2px'],
+  ];
+  for (const jsdom of ['27.0.0', '27.0.1'])
+    assert.deepEqual(ruleReplayOrderScenario(createWindow({ jsdom })), expected);
+});
