@@ -228,3 +228,43 @@ test('animation frames are scheduled on the timers of the global the window is i
   queued[0][0]();
   assert.equal(ran, 2);
 });
+
+// Location's members are [LegacyUnforgeable]: own properties of the
+// location, enumerable, neither writable nor configurable, and none on
+// Location.prototype (black box, jsdom 20 to 30). Grafana's tests mock
+// reload with { ...window.location, reload }, and msw's fetch interceptor
+// then resolves a relative URL against that copy's href.
+for (const jsdom of [20, 22, 30]) {
+  parity(
+    `location's members are its own properties, so a spread copies them (jsdom ${jsdom})`,
+    (w) => {
+      const l = w.location;
+      const flags = Object.entries(Object.getOwnPropertyDescriptors(l)).map(
+        ([key, d]) =>
+          `${key}:${'value' in d ? `${typeof d.value}${d.writable ? 'W' : ''}` : `${d.get ? 'g' : ''}${d.set ? 's' : ''}`}${d.enumerable ? 'E' : ''}${d.configurable ? 'C' : ''}`,
+      );
+      const copy = { ...l, reload() {} };
+      let redefine;
+      try {
+        Object.defineProperty(l, 'href', { value: 'x' });
+      } catch (e) {
+        redefine = e.constructor.name;
+      }
+      l.hash = 'next';
+      return [
+        flags,
+        Object.getOwnPropertyNames(w.Location.prototype),
+        Object.keys(copy),
+        copy.href,
+        new w.URL('apis/a?b=1', copy.href).href,
+        redefine,
+        l.href,
+        String(l),
+        Reflect.deleteProperty(l, 'assign'),
+        typeof l.assign,
+        Object.getOwnPropertyDescriptor(l, 'search').get.name,
+      ];
+    },
+    { jsdom, url: 'http://localhost:3000/page?x=1#h' },
+  );
+}

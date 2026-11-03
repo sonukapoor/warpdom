@@ -187,10 +187,16 @@ test('resetWindow: own properties on location, history, screen, customElements, 
     object.added = 1;
     Object.defineProperty(object, 'accessor', { get: () => 2, configurable: true });
   }
-  Object.defineProperty(w.location, 'href', { value: 'http://mocked/', configurable: true });
   Object.defineProperty(w.screen, 'width', { value: 1920, configurable: true });
   resetWindow(w);
-  for (const object of objects) assert.deepEqual(Reflect.ownKeys(object), [], Object.prototype.toString.call(object));
+  // Location's members are its own (unforgeable) properties, which stay.
+  const unforgeable = Reflect.ownKeys(createWindow().location);
+  for (const object of objects)
+    assert.deepEqual(
+      Reflect.ownKeys(object),
+      object === w.location ? unforgeable : [],
+      Object.prototype.toString.call(object),
+    );
   assert.equal(w.location.href, 'http://localhost:3000/');
   assert.equal(w.screen.width, 0);
   assert.equal(w.location, objects[0], 'the same objects');

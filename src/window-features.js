@@ -1351,6 +1351,58 @@ function setupWebSocket(window) {
   });
 }
 
+// Location's members are [LegacyUnforgeable] (HTML): own properties of each
+// Location, enumerable and neither writable nor configurable, as in jsdom
+// 20 to 30, where Location.prototype has none. Tests copy the location
+// with a spread to mock one method ({ ...window.location, reload }), and
+// libraries then resolve URLs against its href (msw's fetch interceptor:
+// new URL(input, location.href)). Defined on the one Location a window
+// makes, from descriptors built once.
+const LOCATION_MEMBERS = {
+  assign(v) {
+    go(this, new URL(String(v), url(this).href));
+  },
+  replace(v) {
+    go(this, new URL(String(v), url(this).href), true);
+  },
+  reload() {
+    state(this);
+  },
+  get href() {
+    return url(this).href;
+  },
+  set href(v) {
+    go(this, new URL(String(v), url(this).href));
+  },
+  toString() {
+    return url(this).href;
+  },
+  get origin() {
+    return url(this).origin;
+  },
+  protocol: urlPart('protocol'),
+  host: urlPart('host'),
+  hostname: urlPart('hostname'),
+  port: urlPart('port'),
+  pathname: urlPart('pathname'),
+  search: urlPart('search'),
+  hash: urlPart('hash'),
+};
+// In jsdom's order (Object.keys(location), a spread's keys).
+const LOCATION_DESCRIPTORS = Object.fromEntries(
+  Object.entries(Object.getOwnPropertyDescriptors(LOCATION_MEMBERS)).map(([key, d]) => {
+    if (typeof d.value === 'function')
+      return [key, { value: d.value, writable: false, enumerable: true, configurable: false }];
+    const { get, set } = d.value ?? d;
+    for (const [fn, kind] of [
+      [get, 'get'],
+      [set, 'set'],
+    ])
+      if (fn) Object.defineProperty(fn, 'name', { value: `${kind} ${key}` });
+    return [key, { get, set, enumerable: true, configurable: false }];
+  }),
+);
+
 export const FEATURE_INTERFACES = [
   ...PLUGIN_INTERFACES,
   CRYPTO_INTERFACE,
@@ -1475,41 +1527,8 @@ export const FEATURE_INTERFACES = [
       },
     },
   },
-  {
-    name: 'Location',
-    members: {
-      href: {
-        get() {
-          return url(this).href;
-        },
-        set(v) {
-          go(this, new URL(String(v), url(this).href));
-        },
-      },
-      get origin() {
-        return url(this).origin;
-      },
-      protocol: urlPart('protocol'),
-      host: urlPart('host'),
-      hostname: urlPart('hostname'),
-      port: urlPart('port'),
-      pathname: urlPart('pathname'),
-      search: urlPart('search'),
-      hash: urlPart('hash'),
-      assign(v) {
-        go(this, new URL(String(v), url(this).href));
-      },
-      replace(v) {
-        go(this, new URL(String(v), url(this).href), true);
-      },
-      reload() {
-        state(this);
-      },
-      toString() {
-        return url(this).href;
-      },
-    },
-  },
+  // Location's members are its own properties (LOCATION_MEMBERS).
+  { name: 'Location', members: {} },
   {
     name: 'History',
     members: {
@@ -1880,7 +1899,7 @@ export function setupWindow(window, { url: initial = 'about:blank', fastFrames =
   setupConsole(window);
   setupWebSocket(window);
   ws.setTimeout = globalThis.setTimeout.bind(globalThis);
-  ws.location = make(window, 'Location', {});
+  ws.location = Object.defineProperties(make(window, 'Location', {}), LOCATION_DESCRIPTORS);
   ws.history = make(window, 'History', { entries: [{ state: null, url: ws.url }], index: 0, navigations: 0 });
 
   // Created on first use, like the interfaces (window.js), so a window
