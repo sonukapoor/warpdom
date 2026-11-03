@@ -1648,7 +1648,10 @@ const BORDER_AND_SIDES = new Set(['border', 'border-top', 'border-right', 'borde
 // element: an element's style object parses it (escapedUrlBackground meets
 // its url()s).
 function parseInto(decls, text, mode, surface = null, context = null, element = false) {
-  const sheet = context === 'sheet';
+  // 'cssom': a style rule's in a sheet before jsdom 27.1.0, which counts
+  // what it drops (droppedSome).
+  const counting = context === 'cssom';
+  const sheet = counting || context === 'sheet';
   const inRule = sheet || context === 'rule';
   decls.clear();
   // A normal declaration does not override an important one for the same
@@ -1664,6 +1667,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   // with the value ;color: red).
   const runsOn = isLegacyMode(mode);
   if (runsOn && !inRule && context !== 'written' && unclosedLegacy(String(text ?? ''))) return;
+  let named = 0;
   let carried = null;
   const source = String(text ?? '');
   const lineBreaks = !runsOn && cssSplitNeeded(source);
@@ -1678,6 +1682,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       continue;
     }
     const name = propertyName(part.slice(0, colon).trim());
+    named++;
     let value = part.slice(colon + 1).trim();
     if (runsOn && (value === '' || (value[0] === ';' && /^[\s;]*$/.test(value)))) {
       carried = part;
@@ -1752,6 +1757,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
         : { value: declared, important: false, masked: true },
     );
   }
+  if (counting) decls.droppedSome = named > decls.size;
 }
 
 // jsdom 20 to 26 (black box, #144): a style attribute or cssText with an
@@ -2589,7 +2595,7 @@ export const CSS_INTERFACES = [
 
 // A declaration block owned by a CSS rule (CSSStyleRule.style, ...).
 // mode: 'page' for an @page rule's descriptors.
-export function declarationBlock(proto, text, parentRule, mode = modeOf(proto)) {
+export function declarationBlock(proto, text, parentRule, mode = modeOf(proto), context = 'sheet') {
   const style = Object.create(proto);
   initStyleState(style, {
     element: null,
@@ -2599,10 +2605,23 @@ export function declarationBlock(proto, text, parentRule, mode = modeOf(proto)) 
     indexed: 0,
     surface: mode === 'page' ? null : surfaceOf(proto),
   });
-  parseInto(styleState(style).decls, text, styleState(style).mode, styleState(style).surface, 'sheet');
+  parseInto(styleState(style).decls, text, styleState(style).mode, styleState(style).surface, context);
   reindex(style);
   return style;
 }
+
+// A style rule's declarations parsed again from text, as a style sheet's
+// (cssom.js cssomStyle: before jsdom 27.1.0, after a change of the rule's
+// cssom style object). The caller reports the change to the cascade.
+export function reparseDeclarations(style, text) {
+  const s = styleState(style);
+  parseInto(s.decls, text, s.mode, s.surface, 'sheet');
+  reindex(style);
+}
+
+// Whether a style rule's declarations parsed in context 'cssom' dropped
+// or replaced one (an invalid value, a name declared again).
+export const droppedSome = (style) => styleState(style).decls.droppedSome === true;
 
 export const serializeDeclarations = (style) => serialize(styleState(style).decls, styleState(style).mode);
 

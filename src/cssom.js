@@ -26,7 +26,10 @@ import {
   protosMode,
   isLegacyMode,
   supportsRuleMatches,
+  reparseDeclarations,
+  droppedSome,
 } from './css.js';
+import { cssomDeclaration, cssomCascadeText } from './cssom-declaration.js';
 import { liveList, iterate } from './collections.js';
 import { fallbackBaseURL } from './base-url.js';
 import { urlTokenEnd } from './css-values.js';
@@ -601,8 +604,47 @@ function setStyleRuleText(rule, text) {
   }
   const s = rule[S];
   s.selectorText = selector;
-  s.style.cssText = declarations;
+  // cssom makes the rule a new style object too (cssomStyle).
+  s.body = declarations;
+  s.cssom = undefined;
+  cascadeFromCssom(rule);
   cssomChanges.rev++;
+}
+
+// A style rule's style in the cssom shape (jsdom before 27.1.0, #244):
+// cssom's declaration object, values as written (cssom-declaration.js),
+// made from the rule's text when first read. The rule's parsed
+// declarations (s.style) stay what the cascade reads: a change of the
+// object (its methods, or a write of its properties) parses them again
+// from its declarations, as jsdom's cascade gives those to cssstyle.
+function cssomStyle(rule) {
+  const s = rule[S];
+  if (s.cssom === undefined)
+    s.cssom = cssomDeclaration(s.body ?? '', rule, (style) => {
+      if (s.cssom !== style) return;
+      reparseDeclarations(s.style, cssomCascadeText(style));
+      cssomChanges.rev++;
+    });
+  return s.cssom;
+}
+// The parsed declarations from the cssom style at once, where they may
+// differ from the text's: with a name declared twice (color: red; color:
+// bogus gives no color, as cssom keeps only bogus), and from new text.
+function cascadeFromCssom(rule) {
+  reparseDeclarations(rule[S].style, cssomCascadeText(cssomStyle(rule)));
+}
+// Whether a declaration block may declare a name twice (a ';' in a string
+// may make it say so wrongly, which only costs time).
+function repeatsName(text) {
+  const names = new Set();
+  for (const part of text.split(';')) {
+    const colon = part.indexOf(':');
+    if (colon < 0) continue;
+    const name = part.slice(0, colon).trim().toLowerCase();
+    if (names.has(name)) return true;
+    names.add(name);
+  }
+  return false;
 }
 
 // An @page rule's body: descriptors, and margin rules (@top-left { ... }).
@@ -649,8 +691,18 @@ function containerParts(prelude) {
 function createRule(protos, record, sheet, parentRule) {
   if (record.selector !== undefined) {
     // A grouping rule (CSS nesting), with no nested rules parsed yet, as in jsdom.
-    const rule = makeRule(protos, 'CSSStyleRule', sheet, parentRule, { selectorText: record.selector, rules: [] });
-    rule[S].style = declarationBlock(protos.CSSStyleProperties, record.body, rule);
+    // body: the text its cssom style is made from (cssomStyle).
+    const legacy = legacyRules(protos);
+    const rule = makeRule(protos, 'CSSStyleRule', sheet, parentRule, {
+      selectorText: record.selector,
+      rules: [],
+      style: null,
+      body: legacy ? record.body : undefined,
+    });
+    rule[S].style = legacy
+      ? declarationBlock(protos.CSSStyleProperties, record.body, rule, undefined, 'cssom')
+      : declarationBlock(protos.CSSStyleProperties, record.body, rule);
+    if (legacy && droppedSome(rule[S].style) && repeatsName(record.body)) cascadeFromCssom(rule);
     return rule;
   }
   const { at, prelude, body } = record;
@@ -851,7 +903,10 @@ function ruleText(rule) {
   switch (Object.getPrototypeOf(rule)) {
     // Empty only from CSSStyleRule.parse() and the cssText setter before jsdom 27.1.0.
     case s.protos.CSSStyleRule:
-      return s.selectorText === '' ? '' : `${s.selectorText} ${styleText(s.style)}`;
+      if (s.selectorText === '') return '';
+      // cssom's (jsdom before 27.1.0): .a {color: red;}
+      if (legacyRules(s.protos)) return `${s.selectorText} {${cssomStyle(rule).cssText}}`;
+      return `${s.selectorText} ${styleText(s.style)}`;
     case s.protos.CSSMediaRule:
       return `@media ${s.media[S].list.join(', ')} ${nested(ruleArray(rule))}`;
     // (before jsdom 27.1.0 its own conditionText, which can be assigned)
@@ -1681,10 +1736,12 @@ export const CSSOM_INTERFACES = [
         }
       },
       get style() {
-        return state(this).style;
+        const s = state(this);
+        return legacyRules(s.protos) ? cssomStyle(this) : s.style;
       },
       set style(v) {
-        state(this).style.cssText = v;
+        const s = state(this);
+        (legacyRules(s.protos) ? cssomStyle(this) : s.style).cssText = v;
       },
     },
   },
