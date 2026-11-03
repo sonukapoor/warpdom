@@ -203,29 +203,55 @@ test('Jest environment: assigning document, window or top is ignored, location n
 
 // jest-environment-jsdom sends jsdom's "Not implemented" errors to the
 // test's console as Error objects; jsdom 20 to 26 word them window.alert.
+// getComputedStyle with a pseudo-element (black box, Jest 29.7 with
+// jest-environment-jsdom 29.7 and jsdom 20.0.3): jsdom 20 to 23 report it on
+// the method's this value, so a call without one (bare, destructured,
+// .call(null) or .call(undefined)) reports nothing, and one on the window
+// (window., globalThis., self., which are the window there) reports it;
+// jsdom 24 reports them all.
+const PSEUDO_CALLS = [
+  'getComputedStyle(document.body, "::-webkit-scrollbar")',
+  'window.getComputedStyle(document.body, "::before")',
+  'globalThis.getComputedStyle(document.body, "::before")',
+  'self.getComputedStyle(document.body, "::before")',
+  '(() => { const { getComputedStyle: g } = window; g(document.body, "::before"); })()',
+  'getComputedStyle.call(null, document.body, "::before")',
+  'getComputedStyle.call(undefined, document.body, "::before")',
+  'getComputedStyle.call(globalThis, document.body, "::before")',
+];
 test('Jest environment: "Not implemented" reports reach the test\'s console as errors, in the profile\'s words', async () => {
-  const rootDir = fakeJestProject();
-  let env;
-  try {
-    env = new WarpdomEnvironment(
-      { globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom: '20.0.3' } } },
-      { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') },
-    );
-    await env.setup();
-    const seen = [];
-    env.global.console = { error: (e) => seen.push([e instanceof Error, e.message, e.type]) };
-    vm.runInContext(
-      'alert("x"); getComputedStyle(document.body, "::before"); document.createElement("form").submit()',
-      env.getVmContext(),
-    );
-    assert.deepEqual(seen, [
-      [true, 'Not implemented: window.alert', 'not implemented'],
-      [true, 'Not implemented: window.computedStyle(elt, pseudoElt)', 'not implemented'],
-      [true, 'Not implemented: HTMLFormElement.prototype.submit', 'not implemented'],
-    ]);
-  } finally {
-    if (env?.global) await env.teardown();
-    rmSync(rootDir, { recursive: true, force: true });
+  for (const [jsdom, message, reported] of [
+    ['20.0.3', 'Not implemented: window.computedStyle(elt, pseudoElt)', [0, 1, 1, 1, 0, 0, 0, 1]],
+    ['24.1.3', 'Not implemented: window.getComputedStyle(elt, pseudoElt)', [1, 1, 1, 1, 1, 1, 1, 1]],
+  ]) {
+    const rootDir = fakeJestProject();
+    let env;
+    try {
+      env = new WarpdomEnvironment(
+        { globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } },
+        { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') },
+      );
+      await env.setup();
+      const seen = [];
+      env.global.console = { error: (e) => seen.push([e instanceof Error, e.message, e.type]) };
+      vm.runInContext('alert("x"); document.createElement("form").submit()', env.getVmContext());
+      assert.deepEqual(seen, [
+        [true, 'Not implemented: window.alert', 'not implemented'],
+        [true, 'Not implemented: HTMLFormElement.prototype.submit', 'not implemented'],
+      ]);
+      const counts = PSEUDO_CALLS.map((code) => {
+        seen.length = 0;
+        vm.runInContext(code, env.getVmContext());
+        for (const entry of seen) assert.deepEqual(entry, [true, message, 'not implemented'], code);
+        return seen.length;
+      });
+      assert.deepEqual(counts, reported, `jsdom ${jsdom}`);
+      // The style is the element's either way.
+      assert.equal(vm.runInContext('getComputedStyle(document.body, "::after").display', env.getVmContext()), 'block');
+    } finally {
+      if (env?.global) await env.teardown();
+      rmSync(rootDir, { recursive: true, force: true });
+    }
   }
 });
 

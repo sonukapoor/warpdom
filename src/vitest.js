@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { URL as NodeURL } from 'node:url';
 import { Blob as NodeBlob } from 'node:buffer';
 import { createWindow } from './node.js';
-import { S } from './internal.js';
+import { S, THISLESS } from './internal.js';
 import { ablated, materializeAll } from './ablate.js';
 import { setQueryCache } from './selectors.js';
 import { resetWindow, snapshotWindow } from './reset.js';
@@ -36,6 +36,31 @@ function eventTargetMethod(fn, window) {
   return method;
 }
 const isClassLike = (key) => /^[A-Z]/.test(key);
+
+// A method of the window on the global: bound to the window.
+function globalMethod(key, method, window, unforgeable) {
+  if (EVENT_TARGET_METHODS.includes(key)) return eventTargetMethod(method, window);
+  if (unforgeable && THISLESS.has(method)) return thislessOperation(key, method, window);
+  return method.bind(window);
+}
+
+// Where the global is the window, as jsdom's window is in its environments,
+// a bare call (getComputedStyle(element)) has no this value, and an
+// operation that acts differently then (window.js) sees none; a null one
+// counts as none, as in window.js. Any other this value (window.,
+// globalThis., self.) is the window. The operations with a variant
+// (getComputedStyle) take at most two arguments: a fixed pair, with no
+// rest array per call on a hot path; length stays the operation's.
+function thislessOperation(key, operation, window) {
+  const { method, thisless } = THISLESS.get(operation);
+  const global = {
+    [key](a, b) {
+      return this == null ? thisless.call(window, a, b) : method.call(window, a, b);
+    },
+  }[key];
+  Object.defineProperty(global, 'length', { value: operation.length });
+  return global;
+}
 
 // The descriptor of a property found on the object or its prototypes.
 function findDescriptor(object, key) {
@@ -168,9 +193,7 @@ export function installWindow(global, window, { hostKeys = [], alwaysKeys = [], 
     const value = descriptor && 'value' in descriptor ? descriptor.value : undefined;
     const bound =
       typeof value === 'function' && !isClassLike(key) && !Object.hasOwn(value, 'prototype')
-        ? EVENT_TARGET_METHODS.includes(key)
-          ? eventTargetMethod(value, window)
-          : value.bind(window)
+        ? globalMethod(key, value, window, unforgeable)
         : null;
     if (unforgeable && UNFORGEABLE_KEYS.includes(key)) {
       Object.defineProperty(global, key, {
