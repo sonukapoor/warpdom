@@ -1656,3 +1656,102 @@ test('CSSStyleRule style: cssom object up to 27.0.1, parsed from 27.1.0', () => 
     'rgb(255, 0, 0)',
   ]);
 });
+
+// The cascade of a cssom style before jsdom 27.1.0 (#251 review, black box
+// 20.0.3 to 27.0.1): jsdom gives each declaration on its own to cssstyle's
+// setProperty, in order. A later one replaces an earlier one whatever its
+// priority, a value holding a ';' sets nothing (no injected declaration),
+// and the sheet's own parse agrees with cssom's: comments (also before a
+// name), priorities cssom leaves in the value (red ! important), and a
+// name declared again after a comment. A value's toString that changes
+// another rule's style is seen too.
+const cssomCascadeScenario = (w) => {
+  const d = w.document;
+  d.body.innerHTML = ['a', 'b', 'c', 'e', 'f', 'g'].map((c) => `<div class="${c}" id="${c}"></div>`).join('');
+  const st = d.createElement('style');
+  st.textContent = `.a { color: red ! important } .b { color: red; /* note */ color: bogus }
+    .c { width: 5px } .e { width: 1px; /* x */ width: 2px } .f { color: green } .g { color: red !IMPORTANT }`;
+  d.head.appendChild(st);
+  const [a, b, c, e, f] = st.sheet.cssRules;
+  const cs = (id, p) => w.getComputedStyle(d.getElementById(id))[p];
+  const touch = () => d.body.setAttribute('data-t', String(Math.random()));
+  const out = [];
+  out.push([a.style.cssText, cs('a', 'color'), b.style.cssText, cs('b', 'color'), cs('e', 'width'), cs('g', 'color')]);
+  a.style.cssText = 'color: red!important; COLOR: blue';
+  touch();
+  out.push([a.style.cssText, cs('a', 'color')]);
+  a.style.cssText = '';
+  a.style.setProperty('color', 'red', 'important');
+  a.style.setProperty('display', 'block');
+  a.style.setProperty('COLOR', 'blue');
+  touch();
+  out.push([a.style.cssText, cs('a', 'color')]);
+  c.style.setProperty('color', 'red; display: none');
+  touch();
+  out.push([c.style.cssText, cs('c', 'color'), cs('c', 'display'), cs('c', 'width')]);
+  c.style.cssText = '';
+  c.style.setProperty('width', '3px; height: 9px');
+  touch();
+  out.push([c.style.cssText, cs('c', 'width'), cs('c', 'height')]);
+  let n = 0;
+  const value = {
+    toString() {
+      if (!n++) f.style.setProperty('color', 'blue');
+      return '7px';
+    },
+  };
+  c.style.cssText = '';
+  c.style.setProperty('width', value);
+  touch();
+  out.push([c.style.cssText, f.style.cssText, cs('c', 'width'), cs('f', 'color')]);
+  f.style.cssText = 'color: blue; COLOR: red !important';
+  touch();
+  out.push(cs('f', 'color'));
+  return out;
+};
+for (const jsdom of [20, 22, 25, 26])
+  parity(`CSSStyleRule style: the cascade replays cssom's declarations (jsdom ${jsdom})`, cssomCascadeScenario, {
+    jsdom,
+  });
+
+// 27.0.0 and 27.0.1 (cssstyle 5, black box): as in 26, with the root's
+// color rgb(0, 0, 0); an !important value does not keep a later one out.
+test("CSSStyleRule style: the cascade replays cssom's declarations (jsdom 27.0.0, 27.0.1)", () => {
+  for (const jsdom of ['27.0.0', '27.0.1'])
+    assert.deepEqual(cssomCascadeScenario(createWindow({ jsdom })), [
+      ['color: red ! important;', 'rgb(0, 0, 0)', 'color: bogus;', 'rgb(0, 0, 0)', '2px', 'rgb(0, 0, 0)'],
+      ['color: red !important; COLOR: blue;', 'rgb(0, 0, 255)'],
+      ['color: red !important; display: block; COLOR: blue;', 'rgb(0, 0, 255)'],
+      ['width: 5px; color: red; display: none;', 'rgb(0, 0, 0)', 'block', '5px'],
+      ['width: 3px; height: 9px;', '', ''],
+      ['width: 7px;', 'color: blue;', '7px', 'rgb(0, 0, 255)'],
+      'rgb(255, 0, 0)',
+    ]);
+});
+
+// Comments in a style rule before jsdom 27.1.0: cssom drops them wherever
+// they are, so the cascade does too (black box 20.0.3 to 27.0.1; jsdom 27.0.x
+// as 26 with its root color).
+const ruleCommentScenario = (w) => {
+  const cases = [
+    'color: red /* c */; width: 1px',
+    '/* c */ color: red; width: 1px',
+    'color /* c */: red; width: 1px',
+    'margin: 1px /* c */ 2px; width: 1px',
+    'color: red; /* c */',
+    'color:/* c */red; width: 1px',
+    'width: 1px; /* x */ width: 2px',
+    'content: "/* not a comment */"; width: 3px',
+  ];
+  const d = w.document;
+  d.body.innerHTML = cases.map((_, i) => `<div class="k${i}"></div>`).join('');
+  const st = d.createElement('style');
+  st.textContent = cases.map((c, i) => `.k${i} { ${c} }`).join('\n');
+  d.head.appendChild(st);
+  return cases.map((c, i) => {
+    const s = w.getComputedStyle(d.querySelector(`.k${i}`));
+    return [st.sheet.cssRules[i].style.cssText, s.color, s.width, s.marginLeft, s.content];
+  });
+};
+for (const jsdom of [20, 22, 25, 26])
+  parity(`CSSStyleRule style: comments in the cascade before 27.1.0 (jsdom ${jsdom})`, ruleCommentScenario, { jsdom });

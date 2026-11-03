@@ -26,10 +26,10 @@ import {
   protosMode,
   isLegacyMode,
   supportsRuleMatches,
-  reparseDeclarations,
+  replayDeclarations,
   droppedSome,
 } from './css.js';
-import { cssomDeclaration, cssomCascadeText } from './cssom-declaration.js';
+import { cssomDeclaration, cssomEntries } from './cssom-declaration.js';
 import { liveList, iterate } from './collections.js';
 import { fallbackBaseURL } from './base-url.js';
 import { urlTokenEnd } from './css-values.js';
@@ -103,16 +103,26 @@ function blockEnd(text, open) {
 // Text without its comments; comment markers in strings are kept.
 function stripComments(text) {
   if (!text.includes('/*')) return text;
+  // Text up to each comment is copied at once (from: where it starts).
   let out = '';
+  let from = 0;
   for (let i = 0; i < text.length;) {
+    const c = text[i];
+    if (c !== '/' && c !== '(' && c !== '"' && c !== "'") {
+      i++;
+      continue;
+    }
     const next = skipToken(text, i);
-    if (next === i) out += text[i++];
+    if (next === i) i++;
     else {
-      if (text[i] !== '/') out += text.slice(i, next);
+      if (c === '/') {
+        out += text.slice(from, i);
+        from = next;
+      }
       i = next;
     }
   }
-  return out;
+  return out + text.slice(from);
 }
 
 // Splits a list of rules into records: { selector, body } for style rules,
@@ -622,7 +632,7 @@ function cssomStyle(rule) {
   if (s.cssom === undefined)
     s.cssom = cssomDeclaration(s.body ?? '', rule, (style) => {
       if (s.cssom !== style) return;
-      reparseDeclarations(s.style, cssomCascadeText(style));
+      replayDeclarations(s.style, cssomEntries(style));
       cssomChanges.rev++;
     });
   return s.cssom;
@@ -631,8 +641,14 @@ function cssomStyle(rule) {
 // differ from the text's: with a name declared twice (color: red; color:
 // bogus gives no color, as cssom keeps only bogus), and from new text.
 function cascadeFromCssom(rule) {
-  reparseDeclarations(rule[S].style, cssomCascadeText(cssomStyle(rule)));
+  replayDeclarations(rule[S].style, cssomEntries(cssomStyle(rule)));
 }
+// Whether parsing a style rule's text (without its comments, which cssom
+// drops wherever they are) may give other declarations than cssom's: with
+// a priority other than !important (red ! important and red !IMPORTANT
+// stay in cssom's value, which cssstyle rejects), or, when one was
+// dropped or replaced, a name declared twice.
+const differsFromCssom = (style, text) => /!(?!important)/.test(text) || (droppedSome(style) && repeatsName(text));
 // Whether a declaration block may declare a name twice (a ';' in a string
 // may make it say so wrongly, which only costs time).
 function repeatsName(text) {
@@ -699,10 +715,14 @@ function createRule(protos, record, sheet, parentRule) {
       style: null,
       body: legacy ? record.body : undefined,
     });
-    rule[S].style = legacy
-      ? declarationBlock(protos.CSSStyleProperties, record.body, rule, undefined, 'cssom')
-      : declarationBlock(protos.CSSStyleProperties, record.body, rule);
-    if (legacy && droppedSome(rule[S].style) && repeatsName(record.body)) cascadeFromCssom(rule);
+    if (legacy) {
+      // As cssom reads it: comments dropped (width: 1px; /* x */ width: 2px
+      // is 2px, margin: 1px /* c */ 2px is 1px  2px; black box 20.0.3 to
+      // 27.0.1).
+      const text = stripComments(record.body);
+      rule[S].style = declarationBlock(protos.CSSStyleProperties, text, rule, undefined, 'cssom');
+      if (differsFromCssom(rule[S].style, text)) cascadeFromCssom(rule);
+    } else rule[S].style = declarationBlock(protos.CSSStyleProperties, record.body, rule);
     return rule;
   }
   const { at, prelude, body } = record;

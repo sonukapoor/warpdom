@@ -4738,3 +4738,22 @@ rule, `__starts`, cssom's format for grouping, font-face and keyframe
 rules. Side findings, not changed: a value with an upper-case unit (`3PX`)
 computes as written in warpdom (jsdom 20 to 25: '', from 26: `3px`); jsdom
 27 and 28 rewrite single quotes in selectorText to double quotes.
+
+Review round 1 (#251), black box 20.0.3 to 27.0.1: the cascade now replays
+the cssom object's declarations one by one (css.js replayDeclarations,
+context 'replay'), as jsdom gives each to cssstyle's setProperty: a later
+declaration replaces an earlier one whatever their priority (27.0.x:
+`color: red!important; COLOR: blue` is blue), and a value holding a ';'
+sets nothing (`setProperty('color', 'red; display: none')`: no color, display
+block). A rule's text is parsed without its comments, which cssom drops
+wherever they are (`width: 1px; /* x */ width: 2px` is 2px, `color: red /* c
+*/` is red; warpdom dropped the declaration before); a priority cssom
+leaves in the value (`red ! important`, `red !IMPORTANT`: no color) sends
+the rule through the replay. Batching of change reports is per object, so
+a value's toString changing another rule's style is seen. stripComments
+copies the text between comments at once. Sheet parse (26.1.0, 7
+alternating runs, medians, PR head -> this): 16.50 -> 16.55 ms; with a
+comment in every rule 21.14 -> 20.45 ms (getComputedStyle there 12.5 ->
+18.4 ms, as the declarations with comments now apply). Tests: cssom.test.js
+"the cascade replays cssom's declarations" (parity 20, 22, 25, 26; 27.0.0
+and 27.0.1) and "comments in the cascade before 27.1.0" (parity 20 to 26).

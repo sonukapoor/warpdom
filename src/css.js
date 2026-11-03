@@ -1649,11 +1649,13 @@ const BORDER_AND_SIDES = new Set(['border', 'border-top', 'border-right', 'borde
 // its url()s).
 function parseInto(decls, text, mode, surface = null, context = null, element = false) {
   // 'cssom': a style rule's in a sheet before jsdom 27.1.0, which counts
-  // what it drops (droppedSome).
+  // what it drops (droppedSome). 'replay': one more declaration given to
+  // a rule's (replayDeclarations).
   const counting = context === 'cssom';
-  const sheet = counting || context === 'sheet';
+  const replay = context === 'replay';
+  const sheet = counting || replay || context === 'sheet';
   const inRule = sheet || context === 'rule';
-  decls.clear();
+  if (!replay) decls.clear();
   // A normal declaration does not override an important one for the same
   // property, or a longhand of an important shorthand (CSS Cascade), as in
   // jsdom 27 and later; jsdom 26 let the last one win.
@@ -1741,7 +1743,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     // to the block's other declarations (masked: black box, jsdom 27 to
     // 29), not to the cascade (cascade.js).
     const kept = important && !dropsImportant(surface, name, value, inRule);
-    if (!isLegacyMode(mode)) {
+    if (!isLegacyMode(mode) && !replay) {
       if (!important && (covered?.has(name) || decls.get(name)?.important)) continue;
       if (kept || (important && !sheet)) {
         if (SHORTHANDS[name]) for (const longhand of SHORTHANDS[name]) (covered ??= new Set()).add(longhand);
@@ -2610,12 +2612,20 @@ export function declarationBlock(proto, text, parentRule, mode = modeOf(proto), 
   return style;
 }
 
-// A style rule's declarations parsed again from text, as a style sheet's
-// (cssom.js cssomStyle: before jsdom 27.1.0, after a change of the rule's
-// cssom style object). The caller reports the change to the cascade.
-export function reparseDeclarations(style, text) {
+// A style rule's declarations from its cssom style object's (cssom.js
+// cssomStyle: before jsdom 27.1.0), as jsdom's cascade makes them: each
+// [name, value, important] given on its own to cssstyle's setProperty, in
+// order, so a later one replaces an earlier one whatever their priority
+// (black box 20.0.3 to 27.0.1: color: red !important; COLOR: blue gives
+// blue), and a value that is not one declaration is invalid (color: red;
+// display: none sets neither). The caller reports the change.
+export function replayDeclarations(style, entries) {
   const s = styleState(style);
-  parseInto(s.decls, text, s.mode, s.surface, 'sheet');
+  parseInto(s.decls, '', s.mode, s.surface, 'sheet');
+  for (const [name, value, important] of entries) {
+    if (/[;:]/.test(name) || splitOutside(value, ';').length !== 1 || unclosedLegacy(value)) continue;
+    parseInto(s.decls, `${name}: ${value}${important ? ' !important' : ''}`, s.mode, s.surface, 'replay');
+  }
   reindex(style);
 }
 

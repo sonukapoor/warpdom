@@ -20,18 +20,19 @@ const splice = Array.prototype.splice;
 
 // The function told of a change, per declaration object (the Proxy).
 const hooks = new WeakMap();
-// While a method runs: its writes are one change, reported at the end.
-let batch = 0;
-function changed(style) {
-  if (batch === 0) hooks.get(style)?.(style);
-}
+// While a method of an object runs (per object: a value's toString may
+// change another rule's style): its writes are one change, reported at
+// the end.
+const running = new WeakMap();
+const quiet = (style) => running.get(style) > 0;
 function mutate(style, change) {
-  batch++;
+  running.set(style, (running.get(style) ?? 0) + 1);
   try {
     return change();
   } finally {
-    batch--;
-    changed(style);
+    const depth = running.get(style) - 1;
+    running.set(style, depth);
+    if (depth === 0) hooks.get(style)?.(style);
   }
 }
 
@@ -255,7 +256,7 @@ export function cssomDeclaration(text, parentRule, onChange) {
   // A write outside the methods (a set, defineProperty or delete) is a
   // change of its own.
   const write = (result) => {
-    if (batch === 0) onChange(proxy);
+    if (!quiet(proxy)) onChange(proxy);
     return result;
   };
   const proxy = new Proxy(style, {
@@ -266,19 +267,18 @@ export function cssomDeclaration(text, parentRule, onChange) {
   return proxy;
 }
 
-// The declarations the cascade reads from it: as jsdom's cascade (its
-// style-rules.js), each name with its value and priority in index order,
-// as text. Left out: those with an empty value, which set nothing there,
-// and those whose value ends in a priority cssom did not take (red !
-// important), which cssstyle rejects (as text it would be one).
-export function cssomCascadeText(style) {
-  let out = '';
+// The declarations the cascade reads from it, as jsdom's cascade (its
+// style-rules.js): [name, value, important] in index order. Left out:
+// those with an empty value, which set nothing there, and those whose
+// value ends in a priority cssom did not take (red ! important), which
+// cssstyle rejects.
+export function cssomEntries(style) {
+  const out = [];
   for (let i = 0; i < style.length; i++) {
     const name = style[i];
     const value = style.getPropertyValue(name);
     if (typeof value !== 'string' || value.trim() === '' || /!\s*important\s*$/i.test(value)) continue;
-    const priority = style.getPropertyPriority(name);
-    out += `${name}: ${value}${priority ? ` !${priority}` : ''}; `;
+    out.push([String(name), value, style.getPropertyPriority(name) === 'important']);
   }
   return out;
 }
