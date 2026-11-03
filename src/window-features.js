@@ -17,6 +17,7 @@ import {
   PLATFORM_GLOBAL,
   PlatformURL,
   PlatformURL as URL,
+  hiddenSlot,
 } from './internal.js';
 import { dispatch, reportError } from './events.js';
 import { computedStyle, cssNamespace } from './css.js';
@@ -494,18 +495,6 @@ const url = (self) => state(self).window[S].url;
 const setURL = (self, next) => {
   state(self).window[S].url = next;
 };
-// Location's setters navigate (navigation.js).
-const go = (self, next, replace) => navigate(state(self).window, next, replace);
-const urlPart = (part) => ({
-  get() {
-    return url(this)[part];
-  },
-  set(v) {
-    const next = new URL(url(this).href);
-    next[part] = v;
-    go(this, next);
-  },
-});
 
 // --- Performance ---------------------------------------------------------------------------------
 // Performance (High Resolution Time, 5): the window's clock. Its time
@@ -1358,27 +1347,52 @@ function setupWebSocket(window) {
 // libraries then resolve URLs against its href (msw's fetch interceptor:
 // new URL(input, location.href)). Defined on the one Location a window
 // makes, from descriptors built once.
+// A Location's state is a private field (hiddenSlot in internal.js), read
+// here directly rather than through the accessor on Location.prototype:
+// the members are the Location's own, and keep working after
+// Object.setPrototypeOf(location, null), which jsdom 20 to 30 allow
+// (black box).
+const LOCATION_SLOT = hiddenSlot();
+const locationState = (self) => {
+  try {
+    return LOCATION_SLOT.get(self);
+  } catch {
+    throw new TypeError('Illegal invocation');
+  }
+};
+const locationURL = (self) => locationState(self).window[S].url;
+const locationGo = (self, next, replace) => navigate(locationState(self).window, next, replace);
+const urlPart = (part) => ({
+  get() {
+    return locationURL(this)[part];
+  },
+  set(v) {
+    const next = new URL(locationURL(this).href);
+    next[part] = v;
+    locationGo(this, next);
+  },
+});
 const LOCATION_MEMBERS = {
   assign(v) {
-    go(this, new URL(String(v), url(this).href));
+    locationGo(this, new URL(String(v), locationURL(this).href));
   },
   replace(v) {
-    go(this, new URL(String(v), url(this).href), true);
+    locationGo(this, new URL(String(v), locationURL(this).href), true);
   },
   reload() {
-    state(this);
+    locationState(this);
   },
   get href() {
-    return url(this).href;
+    return locationURL(this).href;
   },
   set href(v) {
-    go(this, new URL(String(v), url(this).href));
+    locationGo(this, new URL(String(v), locationURL(this).href));
   },
   toString() {
-    return url(this).href;
+    return locationURL(this).href;
   },
   get origin() {
-    return url(this).origin;
+    return locationURL(this).origin;
   },
   protocol: urlPart('protocol'),
   host: urlPart('host'),
@@ -1528,7 +1542,7 @@ export const FEATURE_INTERFACES = [
     },
   },
   // Location's members are its own properties (LOCATION_MEMBERS).
-  { name: 'Location', members: {} },
+  { name: 'Location', members: {}, slot: [S, LOCATION_SLOT.descriptor] },
   {
     name: 'History',
     members: {

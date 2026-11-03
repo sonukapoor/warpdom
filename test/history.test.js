@@ -268,3 +268,30 @@ for (const jsdom of [20, 22, 30]) {
     { jsdom, url: 'http://localhost:3000/page?x=1#h' },
   );
 }
+
+// jsdom 20 to 30 let a test replace the location's prototype (it is an
+// ordinary object there), and its own members keep working: they read the
+// Location's state without going through Location.prototype.
+for (const jsdom of [20, 22, 30]) {
+  parity(
+    `location's own members work after its prototype is replaced (jsdom ${jsdom})`,
+    (w) => {
+      const l = w.location;
+      const log = [Reflect.setPrototypeOf(l, null), Object.getPrototypeOf(l)];
+      log.push(l.href, l.origin, l.protocol, l.host, l.hostname, l.port, l.pathname, l.search, l.hash);
+      log.push(l.toString(), String(l), `${l}`);
+      l.hash = 'a';
+      log.push(l.href);
+      l.href = '#b';
+      log.push(l.href);
+      l.assign('#c');
+      log.push(l.href);
+      l.replace('#d');
+      log.push(l.href, w.history.length, w.document.location === l);
+      log.push(Reflect.setPrototypeOf(l, {}), l.pathname);
+      log.push(Reflect.setPrototypeOf(l, w.Location.prototype), l.href);
+      return log;
+    },
+    { jsdom, url: 'http://localhost:3000/page?x=1#h' },
+  );
+}
