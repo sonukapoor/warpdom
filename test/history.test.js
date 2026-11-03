@@ -228,3 +228,98 @@ test('animation frames are scheduled on the timers of the global the window is i
   queued[0][0]();
   assert.equal(ran, 2);
 });
+
+// Location's members are [LegacyUnforgeable]: own properties of the
+// location, enumerable, neither writable nor configurable, and none on
+// Location.prototype (black box, jsdom 20 to 30). Grafana's tests mock
+// reload with { ...window.location, reload }, and msw's fetch interceptor
+// then resolves a relative URL against that copy's href.
+for (const jsdom of [20, 22, 30]) {
+  parity(
+    `location's members are its own properties, so a spread copies them (jsdom ${jsdom})`,
+    (w) => {
+      const l = w.location;
+      const flags = Object.entries(Object.getOwnPropertyDescriptors(l)).map(
+        ([key, d]) =>
+          `${key}:${'value' in d ? `${typeof d.value}${d.writable ? 'W' : ''}` : `${d.get ? 'g' : ''}${d.set ? 's' : ''}`}${d.enumerable ? 'E' : ''}${d.configurable ? 'C' : ''}`,
+      );
+      const copy = { ...l, reload() {} };
+      let redefine;
+      try {
+        Object.defineProperty(l, 'href', { value: 'x' });
+      } catch (e) {
+        redefine = e.constructor.name;
+      }
+      l.hash = 'next';
+      return [
+        flags,
+        // Symbols too: no internal state key on Location.prototype.
+        Reflect.ownKeys(w.Location.prototype).map(String),
+        // jsdom before 30 keeps its implementation under an own
+        // Symbol(impl), its internals; warpdom has none on the location.
+        Reflect.ownKeys(l)
+          .map(String)
+          .filter((key) => key !== 'Symbol(impl)'),
+        Object.keys(copy),
+        copy.href,
+        new w.URL('apis/a?b=1', copy.href).href,
+        redefine,
+        l.href,
+        String(l),
+        Reflect.deleteProperty(l, 'assign'),
+        typeof l.assign,
+        Object.getOwnPropertyDescriptor(l, 'search').get.name,
+        // The members' names: not writable, not enumerable, configurable.
+        Object.values(Object.getOwnPropertyDescriptors(l)).flatMap((d) =>
+          [d.get, d.set, d.value]
+            .filter((fn) => typeof fn === 'function')
+            .map((fn) => {
+              const name = Object.getOwnPropertyDescriptor(fn, 'name');
+              return `${name.value}:${name.writable}${name.enumerable}${name.configurable}`;
+            }),
+        ),
+      ];
+    },
+    { jsdom, url: 'http://localhost:3000/page?x=1#h' },
+  );
+}
+
+// jsdom 20 to 30 let a test replace the location's prototype (it is an
+// ordinary object there), and its own members keep working: they read the
+// Location's state without going through Location.prototype.
+for (const jsdom of [20, 22, 30]) {
+  parity(
+    `location's own members work after its prototype is replaced (jsdom ${jsdom})`,
+    (w) => {
+      const l = w.location;
+      const log = [Reflect.setPrototypeOf(l, null), Object.getPrototypeOf(l)];
+      log.push(l.href, l.origin, l.protocol, l.host, l.hostname, l.port, l.pathname, l.search, l.hash);
+      log.push(l.toString(), String(l), `${l}`);
+      l.hash = 'a';
+      log.push(l.href);
+      l.href = '#b';
+      log.push(l.href);
+      l.assign('#c');
+      log.push(l.href);
+      l.replace('#d');
+      log.push(l.href, w.history.length, w.document.location === l);
+      log.push(Reflect.setPrototypeOf(l, {}), l.pathname);
+      log.push(Reflect.setPrototypeOf(l, w.Location.prototype), l.href);
+      return log;
+    },
+    { jsdom, url: 'http://localhost:3000/page?x=1#h' },
+  );
+}
+
+// A member called on anything but a Location throws warpdom's TypeError
+// (jsdom words it differently); the brand check itself throws nothing.
+test("location's members on another this value: Illegal invocation", () => {
+  const w = createWindow({ url: 'http://localhost:3000/page' });
+  const { get, set } = Object.getOwnPropertyDescriptor(w.location, 'href');
+  for (const self of [undefined, null, 1, 'x', {}, w.history, Object.create(w.Location.prototype)]) {
+    assert.throws(() => get.call(self), { name: 'TypeError', message: 'Illegal invocation' });
+    assert.throws(() => set.call(self, '#a'), { name: 'TypeError', message: 'Illegal invocation' });
+    assert.throws(() => w.location.reload.call(self), { name: 'TypeError', message: 'Illegal invocation' });
+  }
+  assert.equal(get.call(w.location), 'http://localhost:3000/page');
+});

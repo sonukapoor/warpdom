@@ -18,6 +18,7 @@ import {
   PLATFORM_GLOBAL,
   PlatformURL,
   PlatformURL as URL,
+  hiddenSlot,
 } from './internal.js';
 import { dispatch, reportError } from './events.js';
 import { computedStyle, cssNamespace } from './css.js';
@@ -505,18 +506,6 @@ const url = (self) => state(self).window[S].url;
 const setURL = (self, next) => {
   state(self).window[S].url = next;
 };
-// Location's setters navigate (navigation.js).
-const go = (self, next, replace) => navigate(state(self).window, next, replace);
-const urlPart = (part) => ({
-  get() {
-    return url(this)[part];
-  },
-  set(v) {
-    const next = new URL(url(this).href);
-    next[part] = v;
-    go(this, next);
-  },
-});
 
 // --- Performance ---------------------------------------------------------------------------------
 // Performance (High Resolution Time, 5): the window's clock. Its time
@@ -1362,6 +1351,81 @@ function setupWebSocket(window) {
   });
 }
 
+// Location's members are [LegacyUnforgeable] (HTML): own properties of each
+// Location, enumerable and neither writable nor configurable, as in jsdom
+// 20 to 30, where Location.prototype has none. Tests copy the location
+// with a spread to mock one method ({ ...window.location, reload }), and
+// libraries then resolve URLs against its href (msw's fetch interceptor:
+// new URL(input, location.href)). Defined on the one Location a window
+// makes, from descriptors built once.
+// A Location's state is a private field (hiddenSlot in internal.js), set
+// and read here directly: Location.prototype has no accessor for it, so
+// its own keys are jsdom's (constructor and @@toStringTag), and the
+// members, the Location's own, keep working after
+// Object.setPrototypeOf(location, null), which jsdom 20 to 30 allow
+// (black box).
+const LOCATION_SLOT = hiddenSlot();
+const locationState = (self) => {
+  if (!LOCATION_SLOT.has(self)) throw new TypeError('Illegal invocation');
+  return LOCATION_SLOT.get(self);
+};
+const locationURL = (self) => locationState(self).window[S].url;
+const locationGo = (self, next, replace) => navigate(locationState(self).window, next, replace);
+const urlPart = (part) => ({
+  get() {
+    return locationURL(this)[part];
+  },
+  set(v) {
+    const next = new URL(locationURL(this).href);
+    next[part] = v;
+    locationGo(this, next);
+  },
+});
+const LOCATION_MEMBERS = {
+  assign(v) {
+    locationGo(this, new URL(String(v), locationURL(this).href));
+  },
+  replace(v) {
+    locationGo(this, new URL(String(v), locationURL(this).href), true);
+  },
+  reload() {
+    locationState(this);
+  },
+  get href() {
+    return locationURL(this).href;
+  },
+  set href(v) {
+    locationGo(this, new URL(String(v), locationURL(this).href));
+  },
+  toString() {
+    return locationURL(this).href;
+  },
+  get origin() {
+    return locationURL(this).origin;
+  },
+  protocol: urlPart('protocol'),
+  host: urlPart('host'),
+  hostname: urlPart('hostname'),
+  port: urlPart('port'),
+  pathname: urlPart('pathname'),
+  search: urlPart('search'),
+  hash: urlPart('hash'),
+};
+// In jsdom's order (Object.keys(location), a spread's keys).
+const LOCATION_DESCRIPTORS = Object.fromEntries(
+  Object.entries(Object.getOwnPropertyDescriptors(LOCATION_MEMBERS)).map(([key, d]) => {
+    if (typeof d.value === 'function')
+      return [key, { value: d.value, writable: false, enumerable: true, configurable: false }];
+    const { get, set } = d.value ?? d;
+    for (const [fn, kind] of [
+      [get, 'get'],
+      [set, 'set'],
+    ])
+      if (fn) Object.defineProperty(fn, 'name', { value: `${kind} ${key}` });
+    return [key, { get, set, enumerable: true, configurable: false }];
+  }),
+);
+
 export const FEATURE_INTERFACES = [
   ...PLUGIN_INTERFACES,
   CRYPTO_INTERFACE,
@@ -1486,41 +1550,8 @@ export const FEATURE_INTERFACES = [
       },
     },
   },
-  {
-    name: 'Location',
-    members: {
-      href: {
-        get() {
-          return url(this).href;
-        },
-        set(v) {
-          go(this, new URL(String(v), url(this).href));
-        },
-      },
-      get origin() {
-        return url(this).origin;
-      },
-      protocol: urlPart('protocol'),
-      host: urlPart('host'),
-      hostname: urlPart('hostname'),
-      port: urlPart('port'),
-      pathname: urlPart('pathname'),
-      search: urlPart('search'),
-      hash: urlPart('hash'),
-      assign(v) {
-        go(this, new URL(String(v), url(this).href));
-      },
-      replace(v) {
-        go(this, new URL(String(v), url(this).href), true);
-      },
-      reload() {
-        state(this);
-      },
-      toString() {
-        return url(this).href;
-      },
-    },
-  },
+  // Location's members are its own properties (LOCATION_MEMBERS).
+  { name: 'Location', members: {}, privateState: true },
   {
     name: 'History',
     members: {
@@ -1945,7 +1976,9 @@ export function setupWindow(window, { url: initial = 'about:blank', fastFrames =
   setupConsole(window);
   setupWebSocket(window);
   ws.setTimeout = globalThis.setTimeout.bind(globalThis);
-  ws.location = make(window, 'Location', {});
+  ws.location = Object.create(window[S].protos.Location);
+  LOCATION_SLOT.init(ws.location, { window });
+  Object.defineProperties(ws.location, LOCATION_DESCRIPTORS);
   ws.history = make(window, 'History', { entries: [{ state: null, url: ws.url }], index: 0, navigations: 0 });
 
   // Created on first use, like the interfaces (window.js), so a window

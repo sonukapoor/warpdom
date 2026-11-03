@@ -31,7 +31,9 @@ export const THISLESS = new WeakMap();
 //               through the accessor each read costs 2-4 ns more. get throws
 //               a TypeError for other objects, as state() does; init is for
 //               new objects only (it throws if the field exists: checking
-//               first made new Event 35% slower).
+//               first made new Event 35% slower);
+//   has         whether a value has the field, without throwing (a
+//               brand check: Location's members).
 // Nodes keep the plain property, the fastest for the hottest objects: test
 // frameworks compare and print nodes as DOM nodes (isEqualNode, the
 // DOMElement plugin), and clones, which Jest's messages walk, hide it
@@ -49,6 +51,7 @@ export function hiddenSlot() {
       this.#state = value;
     }
     static get = (object) => object.#state;
+    static has = (object) => Object(object) === object && #state in object;
     static init = (object, value) => {
       new Slot(object, value);
     };

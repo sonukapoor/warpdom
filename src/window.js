@@ -132,7 +132,8 @@ function addDescriptors(descriptors, members) {
 // EventTarget subclass, except nodes and the window (own property), and the
 // interfaces whose objects are proxies (their traps get the state from the
 // target and hide the key; a private field is not reachable through a proxy).
-// An interface may bring its own slot (Event, DOMRectReadOnly).
+// An interface may bring its own slot (Event, DOMRectReadOnly), or keep
+// its state where no accessor reaches it (privateState: Location).
 const STATE_ON_OBJECT = new Set([
   'EventTarget',
   'Node',
@@ -153,7 +154,8 @@ const STATE_ON_OBJECT = new Set([
   'PluginArray',
   'MimeTypeArray',
 ]);
-const hidesState = (iface) => (!iface.parent || iface.parent === 'EventTarget') && !STATE_ON_OBJECT.has(iface.name);
+const hidesState = (iface) =>
+  (!iface.parent || iface.parent === 'EventTarget') && !STATE_ON_OBJECT.has(iface.name) && !iface.privateState;
 
 // Interfaces with the HTML element constructor: HTMLElement and its element interfaces.
 const HTML_CONSTRUCTOR = new Set(['HTMLElement', ...HTML_ELEMENTS.map(([name]) => name)]);
