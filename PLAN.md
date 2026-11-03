@@ -4683,3 +4683,58 @@ the interface getters' lookup: after a per-file reset the constructors are
 cached, so the getter did not look and still returned the constructor.
 Tests: "assigned through a proxy, honors its defineProperty trap" (jsdom 20,
 26, 30) and "locked after a reset and assigned through a proxy".
+
+## 2026-11-03: a style rule's style as cssom's before jsdom 27.1.0 (branch fix/244-cssom-rule-style, #244)
+
+Grafana's TableNG styles.test.tsx (jsdom 20.0.2) reads
+`rule.style.getPropertyValue('background-color')` and expects the hex value
+as written, and finds a rule by its `var()` value, which warpdom's 20.0.3
+profile dropped: 7 tests failed.
+
+Black box (20.0.3, 22.1.0, 25.0.1, 26.1.0, 27.0.0, 27.0.1, 27.1.0, 27.4.0,
+30.1.3): the switch is 27.1.0, as for the rule shapes (cssomShape): up to
+27.0.1 a style rule's style is cssom's CSSStyleDeclaration
+(CSSStyleDeclaration.js and the declaration states of parse.js are the same
+in cssom 0.5 and rrweb-cssom 0.6 to 0.8). A plain object: own `length`,
+`parentRule`, `_importants`, indices and one property per name; values as
+written, names matched by exact case, last value at the first position for
+a repeated name, no shorthand expansion, no `item()` or camelCase
+accessors; `setProperty` stores `String(value)` and the priority as given;
+`cssText` set parses `#bogus{text}` and throws cssom's Error (`Unmatched "`,
+`Unexpected }`) after clearing; the rule serializes as `.a {color: red;}`.
+jsdom's cascade (style-rules.js) gives each declaration to cssstyle's
+setProperty in index order, so the computed style has parsed values,
+values the cssstyle version rejects drop out, and `color: red; color: bogus`
+in one rule computes no color (cssom kept only `bogus`).
+
+Now (cssom-declaration.js) the rule's `style` in the cssom shape is a port
+of that object, made on the first read of `style` or `cssText` from the
+rule's declaration text (kept as `body`); it is a Proxy that reports any
+write (its methods, or `rule.style.color = 'green'` as the #137 tests do).
+The rule's parsed declarations stay what the cascade reads; a change
+re-parses them from the cssom object's declarations in sheet context and
+bumps cssomChanges.rev, so the kept-style rules (#137) are unchanged. At
+sheet parse the cssom object is made at once only for a rule that dropped
+a declaration and repeats a name (parseInto counts the declarations in
+context 'cssom'). The rule's `cssText` setter and `CSSStyleRule.parse()`
+re-parse from the cssom object too.
+
+Benchmarks (Node 22.17.1, 5 to 7 alternating runs, medians, base -> this
+change): sheet parse in the 26.1.0 profile (20 sheets of 400 rules) 16.85
+-> 17.33 ms; 30.1.3 17.87 -> 17.99 ms; getComputedStyle 300 elements
+(26.1.0) unchanged within noise; box-cascade-bench 26.1.0 all 3.1 -> 3.0,
+miss 40.6 -> 41.2 µs/element; 20.0.3 all 4.2 -> 4.1 µs/element;
+cascade-bench read pass 0.48 -> 0.46 ms, mutate+read 1.72 -> 1.70 ms. The
+first read of a rule's style costs about 2 µs per rule (400 rules read
+twice: 1.25 -> 2.03 ms).
+
+Tests: cssom.test.js "CSSStyleRule style: values as written before 27.1.0"
+(parity, jsdom 20, 22, 25, 26: getPropertyValue, priorities, setProperty,
+removeProperty, cssText get and set with errors, direct writes,
+insertRule, the rule's cssText setter, and getComputedStyle after each) and
+"cssom object up to 27.0.1, parsed from 27.1.0". Not modeled (in
+differences.md): `style` and `selectorText` as own data properties of the
+rule, `__starts`, cssom's format for grouping, font-face and keyframe
+rules. Side findings, not changed: a value with an upper-case unit (`3PX`)
+computes as written in warpdom (jsdom 20 to 25: '', from 26: `3px`); jsdom
+27 and 28 rewrite single quotes in selectorText to double quotes.

@@ -1521,3 +1521,138 @@ for (const jsdom of [27, 28]) {
     { jsdom },
   );
 }
+
+// A style rule's style before jsdom 27.1.0 is cssom's declaration object
+// (#244, black box 20.0.3 to 27.0.1): values as written (hex, var(),
+// invalid values), the names' case kept, no shorthand expansion, cssom's
+// serialization; the cascade still parses them. From 27.1.0 the window's
+// CSSStyleDeclaration, with parsed values.
+const ruleStyleScenario = (w) => {
+  const d = w.document;
+  d.body.innerHTML = '<div class="a" id="d"></div><div class="b" id="e"></div>';
+  const st = d.createElement('style');
+  st.textContent = `.a { background-color: #34363a; COLOR: RGB(1, 2, 3); width: var(--x); height: bogus;
+      margin: 1px 2px; border-color: red !important; --my-Var: 5px; content: "a;b}"; /* c */ x-unknown: 1 }
+    .b { color: red; color: bogus; width: 10px; width: 20; COLOR: blue; Color: green }
+    .x:hover { background-color: var(--rdg-row-hover-background-color) }`;
+  d.head.appendChild(st);
+  const [rule, r2, hover] = st.sheet.cssRules;
+  const s = rule.style;
+  const cs = (id) => w.getComputedStyle(d.getElementById(id));
+  const read = (style) => [
+    style.cssText,
+    style.length,
+    Array.from({ length: style.length }, (_, i) => style[i]),
+    typeof style.item,
+    'backgroundColor' in style,
+    style instanceof w.CSSStyleDeclaration,
+    style.parentRule === rule || style.parentRule === r2,
+  ];
+  const out = [read(s), read(r2.style), rule.cssText, r2.cssText];
+  for (const p of [
+    'background-color',
+    'color',
+    'COLOR',
+    'width',
+    'height',
+    'margin',
+    'margin-top',
+    'border-color',
+    '--my-Var',
+  ])
+    out.push([p, s.getPropertyValue(p), s.getPropertyPriority(p)]);
+  // Grafana's TableNG test: a rule found by a var() value.
+  const found = [...st.sheet.cssRules].find((r) =>
+    r.style.getPropertyValue('background-color').includes('--rdg-row-hover-background-color'),
+  );
+  out.push(found?.selectorText ?? null, hover.style.getPropertyValue('background-color'));
+  // The cascade gets parsed values, and drops what the profile rejects.
+  const cascade = () =>
+    ['d', 'e'].map((id) => ['backgroundColor', 'color', 'width', 'height', 'marginLeft'].map((p) => cs(id)[p]));
+  out.push(cascade());
+  const touch = () => d.body.setAttribute('data-t', String(Math.random()).slice(0, 3));
+  const step = (f) => {
+    let r;
+    try {
+      r = f();
+    } catch (e) {
+      r = `${e.constructor === Error} ${e.message}`;
+    }
+    touch();
+    out.push([r, s.cssText, s.length, cascade()]);
+  };
+  step(() => s.setProperty('background-color', 'BLUE'));
+  step(() => s.setProperty('background-color', '#fff'));
+  step(() => s.setProperty('background-color', 'notacolor'));
+  step(() => s.setProperty('Font-Size', '12px'));
+  step(() => s.setProperty('padding', '7px 8px'));
+  step(() => s.setProperty('display', 'none', 'important'));
+  step(() => s.setProperty('top', '1px', 'IMPORTANT'));
+  step(() => s.setProperty('left', ''));
+  step(() => s.setProperty('right', null));
+  step(() => s.setProperty('z-index', 5));
+  step(() => s.setProperty('color', 'x'));
+  step(() => s.removeProperty('COLOR'));
+  step(() => s.removeProperty('color'));
+  step(() => s.removeProperty('nope'));
+  step(() => s.removeProperty('margin'));
+  step(() => {
+    s.width = '50px';
+    return s.getPropertyValue('width');
+  });
+  step(() => {
+    s.backgroundColor = 'red';
+    return s.getPropertyValue('background-color');
+  });
+  step(() => (s.cssText = 'color: GREEN; width: bogus; margin: 1px; --a: B '));
+  step(() => (s.cssText = 'color: red ! important;top:1px!important; e: f!IMPORTANT'));
+  step(() => (s.cssText = 'color: red /* x */; /* y */ width: 1px; font  size : 2px;; left: ; top: 1px'));
+  step(() => (s.cssText = 'color: red } .x { width: 1px'));
+  step(() => (s.cssText = 'content: "abc'));
+  step(() => (s.cssText = 'color: red; ; width: 3px; {x}; height:4px'));
+  step(() => (s.cssText = 'width: 3px /* x'));
+  step(() => {
+    st.sheet.insertRule('#e { color: #ABC; width: calc(1px + 2px); height: Var(--q, 3px) }', 0);
+    return [st.sheet.cssRules[0].style.cssText, st.sheet.cssRules[0].cssText];
+  });
+  step(() => {
+    rule.cssText = '.y { Color: Blue; width: 1px }';
+    return [rule.selectorText, rule.style.cssText, rule.style === s, rule.cssText];
+  });
+  return out;
+};
+for (const jsdom of [20, 22, 25, 26])
+  parity(`CSSStyleRule style: values as written before 27.1.0 (jsdom ${jsdom})`, ruleStyleScenario, { jsdom });
+
+// The switch is 27.1.0 (black box 27.0.0, 27.0.1, 27.1.0: cssom up to
+// 27.0.1, @acemir/cssom from 27.1.0).
+test('CSSStyleRule style: cssom object up to 27.0.1, parsed from 27.1.0', () => {
+  const read = (jsdom) => {
+    const w = createWindow({ jsdom });
+    const st = w.document.createElement('style');
+    st.textContent = '.a { background-color: #34363a; width: var(--x); height: bogus; color: red; color: bogus }';
+    w.document.head.appendChild(st);
+    w.document.body.innerHTML = '<div class="a"></div>';
+    const rule = st.sheet.cssRules[0];
+    return [
+      rule.style.cssText,
+      rule.cssText,
+      rule.style instanceof w.CSSStyleDeclaration,
+      w.getComputedStyle(w.document.body.firstChild).color,
+    ];
+  };
+  const legacy = [
+    'background-color: #34363a; width: var(--x); height: bogus; color: bogus;',
+    '.a {background-color: #34363a; width: var(--x); height: bogus; color: bogus;}',
+    false,
+    'rgb(0, 0, 0)',
+  ];
+  assert.deepEqual(read('27.0.0'), legacy);
+  assert.deepEqual(read('27.0.1'), legacy);
+  assert.deepEqual(read('27.1.0'), [
+    'background-color: rgb(52, 54, 58); width: var(--x); color: red;',
+    '.a { background-color: rgb(52, 54, 58); width: var(--x); color: red; }',
+    true,
+    'rgb(255, 0, 0)',
+  ]);
+});
