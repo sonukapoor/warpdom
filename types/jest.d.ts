@@ -21,6 +21,13 @@ export interface WarpdomJestEnvironmentOptions {
    * the host's HTTP client instead. Default `true`, as jsdom has it.
    */
   xhr?: boolean;
+  /**
+   * `true` keeps the interfaces warpdom has before the jsdom it follows
+   * exposes them as globals (`ToggleEvent`, `FormDataEvent`, `TimeRanges`,
+   * `CSSKeyframesRule` before jsdom 29, ...; docs/jsdom-versions.md).
+   * Default `false`: the window has the globals that jsdom version has.
+   */
+  beyondJsdom?: boolean;
   /** Export conditions for resolving packages. Default `['browser']`, as jest-environment-jsdom's. */
   customExportConditions?: string[];
   [key: string]: unknown;

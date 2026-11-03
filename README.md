@@ -123,6 +123,10 @@ computed values follow the version, as measured on jsdom's releases: for
 example, `crypto.randomUUID()` exists from jsdom 22.1.0, and computed
 lengths are px from 30.0.0. The full list, as tables by area:
 [docs/jsdom-versions.md](https://github.com/sonukapoor/warpdom/blob/main/docs/jsdom-versions.md).
+The window has the globals that jsdom version has; interfaces warpdom
+has before it (`ToggleEvent`, `TimeRanges`, the CSS rule interfaces
+before jsdom 29, ...) get their globals with `beyondJsdom: true`, set
+where `jsdom` is.
 
 warpdom models jsdom 20.0.3 to 30.1.3. With a newer jsdom installed (a
 later minor or major release), tests get jsdom 30.1.3's behavior and

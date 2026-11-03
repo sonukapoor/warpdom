@@ -31,6 +31,26 @@ on.
 | Blob's `text()`, `arrayBuffer()` and `bytes()` | 28.1.0 |
 | `CSSMediaRule.matches` and `CSSSupportsRule.matches` | 29.0.0 |
 
+## Globals that appear in a later jsdom
+
+Some interfaces exist in warpdom before the jsdom it follows makes them
+globals. The window has the globals of that jsdom version: the others are
+left out, as below. Their objects still exist and work, as in jsdom, whose
+classes exist without a global: a sheet's `@keyframes` rule is still a
+`CSSKeyframesRule` (its `constructor`, `instanceof rule.constructor`), and
+a details element's `toggle` event is still a `ToggleEvent`. The option
+`beyondJsdom: true` keeps them all, in every profile
+([api.md](api.md)).
+
+| Global | From jsdom |
+| --- | --- |
+| `DOMRect`, `DOMRectReadOnly` | 22.0.0 |
+| `BeforeUnloadEvent` | 27.0.0 |
+| `CSSConditionRule`, `CSSContainerRule`, `CSSGroupingRule`, `CSSLayerBlockRule`, `CSSLayerStatementRule`, `CSSScopeRule`, `CSSSupportsRule` | 27.2.0 |
+| `CSSCounterStyleRule`, `CSSFontFaceRule`, `CSSKeyframeRule`, `CSSKeyframesRule`, `CSSNamespaceRule`, `CSSPageRule` | 29.0.0 |
+| `QuotaExceededError` | 30.1.0 |
+| `CSSMarginRule`, `CSSPageDescriptors`, `FormDataEvent`, `TimeRanges`, `ToggleEvent` | none yet (30.1.3) |
+
 ## APIs in every version
 
 These exist in every modeled version:

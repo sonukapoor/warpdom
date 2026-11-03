@@ -243,6 +243,10 @@ function applyCompat(window, protos) {
     // events (createEvent makes no device events before, events.js).
     for (const name of DEVICE_AND_MEDIA_EVENTS) delete window[name];
   }
+  // Interfaces warpdom has before this jsdom exposes them (window-features.js
+  // LATER_GLOBALS), unless option beyondJsdom keeps them; only the global
+  // goes, the interface stays (internals.interfaceObject).
+  for (const name of window[S].compat.hiddenGlobals) delete window[name];
 }
 
 // jsdom 20 to 26 name unimplemented methods "window.alert" and
@@ -505,6 +509,10 @@ export function createWindow(options = {}) {
   const create = (proto, type, extra, doc) => initNode(Object.create(proto), type, doc, extra);
   const internals = {
     protos,
+    // An interface object, whether or not the window exposes it (a
+    // profile's hidden globals, applyCompat) and whatever the page assigned
+    // to its global.
+    interfaceObject: materialize,
     isWindow: true,
     // Node factories; doc is the owner document (the window's by default).
     // raw: skip custom element handling; proto: the interface to use;
@@ -605,6 +613,7 @@ export function createWindow(options = {}) {
         url,
         jsdom: parent[S].compat.version,
         cssstyle: parent[S].compat.cssstyle,
+        beyondJsdom: parent[S].compat.beyondJsdom,
         fastFrames: parent[S].fastFrames,
         xhr: parent[S].xhr,
         nested: { parent, frameElement },

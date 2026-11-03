@@ -920,7 +920,10 @@ attributeSteps.set('open', (el, old, value) => {
   const window = s.doc[S].window;
   window[S].setTimeout(() => {
     s.toggleTask = null;
-    dispatch(el, new window.ToggleEvent('toggle', { oldState: task.oldState, newState: task.newState }));
+    dispatch(
+      el,
+      new (window[S].interfaceObject('ToggleEvent'))('toggle', { oldState: task.oldState, newState: task.newState }),
+    );
   }, 0);
 });
 
@@ -1606,7 +1609,7 @@ function constructEntryList(form, submitter = null) {
     }
     const formData = Object.create(internalsOf(form).protos.FormData);
     formData[S] = { window, entries };
-    const event = new window.FormDataEvent('formdata', { bubbles: true, formData });
+    const event = new (window[S].interfaceObject('FormDataEvent'))('formdata', { bubbles: true, formData });
     dispatch(form, event);
   } finally {
     fs.constructingEntryList = false;

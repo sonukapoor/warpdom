@@ -6,6 +6,7 @@ const testEnvironmentOptions: WarpdomJestEnvironmentOptions = {
   jsdom: 26,
   fastFrames: true,
   xhr: false,
+  beyondJsdom: true,
   customExportConditions: ['browser'],
 };
 export const config = { testEnvironment: 'warpdom/jest', testEnvironmentOptions };

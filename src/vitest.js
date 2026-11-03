@@ -489,6 +489,7 @@ function createTestWindow(options) {
     ...(ablated('latest-profile') ? {} : jsdomProfile(options)),
     fastFrames: options?.warpdom?.fastFrames === true,
     xhr: options?.warpdom?.xhr !== false,
+    beyondJsdom: options?.warpdom?.beyondJsdom === true,
   });
   if (ablated('eager-interfaces')) materializeAll(window);
   // Like Vitest's jsdom environment: an error thrown in an event listener

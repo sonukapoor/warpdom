@@ -31,7 +31,7 @@ by `npm run test:types`):
 - The test environments: `warpdom/vitest/environment` (and
   `warpdom/vitest`), `warpdom/jest`, the companion packages
   `vitest-environment-warpdom` and `jest-environment-warpdom`, and their
-  options: `url`, `jsdom`, `cssstyle`, `fastFrames`, `xhr`
+  options: `url`, `jsdom`, `cssstyle`, `fastFrames`, `xhr`, `beyondJsdom`
   (`environmentOptions.warpdom` with Vitest, `testEnvironmentOptions` with
   Jest).
 - `createWindow(options)` from `warpdom` with the same options, and

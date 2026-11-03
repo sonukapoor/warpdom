@@ -46,12 +46,15 @@ another.
 | `jsdom` | the newest jsdom warpdom models | The jsdom version to behave like (`'26.1.0'`, or a major version, `26`): see README, "Which jsdom warpdom behaves like" |
 | `cssstyle` | the one that jsdom brings | For jsdom 26 and earlier, the cssstyle version it loads |
 | `fastFrames` | `false` | Animation frames without the real-time wait ([fast-frames.md](fast-frames.md)) |
+| `beyondJsdom` | `false` | `true` keeps the globals of interfaces warpdom has before the jsdom it follows exposes them (`ToggleEvent`, `FormDataEvent`, `TimeRanges`, `CSSKeyframesRule` before jsdom 29, ...: [jsdom-versions.md](jsdom-versions.md#globals-that-appear-in-a-later-jsdom)). By default the window has the globals that jsdom version has; the objects of the others exist either way. Frames inherit it |
 | `xhr` | `true` | `false` leaves out `XMLHttpRequest`, `XMLHttpRequestEventTarget` and `XMLHttpRequestUpload` (see README, "XMLHttpRequest and request mocking"); frames inherit it. Where the host's `fetch` hides redirects (browsers), the host follows them with its own checks, and the request that finds this out is sent twice. On browser hosts, cross-origin requests fail: the browser's `fetch` hides the CORS headers warpdom checks ([#91](https://github.com/sonukapoor/warpdom/issues/91)) |
 
 Scripts in parsed HTML do not run, as with jsdom's default (`runScripts`
 not set). The test environments set `url` (`http://localhost/` for Jest,
 `http://localhost:3000` for Vitest) and `jsdom` (the installed jsdom) for
-their windows; `createWindow` uses neither unless given.
+their windows; `createWindow` uses neither unless given. The environments
+take `beyondJsdom` as `environmentOptions.warpdom.beyondJsdom` (Vitest) and
+`testEnvironmentOptions.beyondJsdom` (Jest), as they take `xhr`.
 
 ## From jsdom
 

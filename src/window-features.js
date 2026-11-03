@@ -1604,7 +1604,57 @@ function varDropsImportantMode(version) {
   return before(version, [27, 1, 0]) ? 'declarations' : 'all';
 }
 
-export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
+// Interfaces warpdom has before the jsdom it follows exposes them as
+// globals (black box, every release 20.0.0 to 30.1.3): each entry is the
+// first jsdom release with them, null for none yet. A profile before that
+// release has no global of that name (window.js applyCompat); the
+// interface still exists, so objects of it (a sheet's @keyframes rule, the
+// event of a toggle) are as with the option. Option beyondJsdom keeps them
+// all.
+const LATER_GLOBALS = [
+  [
+    [22, 0, 0],
+    ['DOMRect', 'DOMRectReadOnly'],
+  ],
+  [[27, 0, 0], ['BeforeUnloadEvent']],
+  [
+    [27, 2, 0],
+    [
+      'CSSConditionRule',
+      'CSSContainerRule',
+      'CSSGroupingRule',
+      'CSSLayerBlockRule',
+      'CSSLayerStatementRule',
+      'CSSScopeRule',
+      'CSSSupportsRule',
+    ],
+  ],
+  [
+    [29, 0, 0],
+    [
+      'CSSCounterStyleRule',
+      'CSSFontFaceRule',
+      'CSSKeyframeRule',
+      'CSSKeyframesRule',
+      'CSSNamespaceRule',
+      'CSSPageRule',
+    ],
+  ],
+  [[30, 1, 0], ['QuotaExceededError']],
+  [null, ['CSSMarginRule', 'CSSPageDescriptors', 'FormDataEvent', 'TimeRanges', 'ToggleEvent']],
+];
+
+// The globals a profile leaves out (above), one array per release range.
+const laterGlobals = new Map();
+function laterGlobalsOf(version) {
+  const index = LATER_GLOBALS.findIndex(([from]) => from === null || before(version, from));
+  let names = laterGlobals.get(index);
+  if (!names) laterGlobals.set(index, (names = LATER_GLOBALS.slice(index).flatMap(([, list]) => list)));
+  return names;
+}
+const NO_GLOBALS = [];
+
+export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle, beyondJsdom = false } = {}) {
   // Behaviors that changed between versions in ways tests observe. jsdom
   // before 29 left most computed style values empty, and before 28 let
   // tests write to computed styles; before 30.1.2 focus() ignored
@@ -1834,6 +1884,10 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle } = {}) {
     // CSSNestedDeclarations from 27.2.0.
     mediaRuleMatches: version[0] >= 29,
     nestedDeclarations: !before(version, [27, 2, 0]),
+    // Option beyondJsdom: true keeps the interfaces the profile's jsdom does
+    // not expose yet (LATER_GLOBALS); else hiddenGlobals names them.
+    beyondJsdom: beyondJsdom === true,
+    hiddenGlobals: beyondJsdom === true ? NO_GLOBALS : laterGlobalsOf(version),
     // The shape of the CSS rule interfaces (cssom.js CSSOM_SHAPE and ACEMIR_SHAPE), black box
     // per release, by the CSSOM library jsdom loads: before 27.1.0 cssom and
     // rrweb-cssom ('cssom': CSSStyleRule extends CSSRule, data members on

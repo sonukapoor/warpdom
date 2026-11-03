@@ -7,6 +7,7 @@ const options: CreateWindowOptions = {
   cssstyle: '4.6.0',
   fastFrames: true,
   xhr: false,
+  beyondJsdom: true,
 };
 const window: WarpdomWindow = createWindow(options);
 createWindow();
@@ -35,6 +36,8 @@ createWindow({ runScripts: 'dangerously' });
 createWindow({ fastFrames: 'yes' });
 // @ts-expect-error: xhr is a boolean
 createWindow({ xhr: 'off' });
+// @ts-expect-error: beyondJsdom is a boolean
+createWindow({ beyondJsdom: 'yes' });
 
 // XMLHttpRequest is the DOM's.
 const xhr: XMLHttpRequest = new window.XMLHttpRequest();
