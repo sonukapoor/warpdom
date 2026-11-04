@@ -246,6 +246,38 @@ for (const jsdom of VERSIONS) {
     },
     opts,
   );
+  // A CSS-wide keyword or var() longhand after its shorthand, computed
+  // (#260 review): the style attribute then holds margin: inherit 1px 1px,
+  // which a declaration list rejects, but jsdom computes from the
+  // declarations it holds. jsdom 26 computes unset as written, which
+  // warpdom does not (not modeled, before this too), so 26 leaves it out.
+  parity(
+    `a keyword or var() longhand after its shorthand, computed (jsdom ${jsdom})`,
+    (w) => {
+      const out = [];
+      for (const family of ['margin', 'padding'])
+        for (const value of ['inherit', 'initial', 'unset', 'var(--m)']) {
+          if (jsdom === 26 && value === 'unset') continue;
+          for (const parent of [false, true]) {
+            const p = div(w);
+            if (parent) p.style[family] = '7px';
+            w.document.body.append(p);
+            const e = div(w);
+            p.append(e);
+            e.style[family] = '1px';
+            e.style[`${family}Top`] = value;
+            const cs = w.getComputedStyle(e);
+            out.push(
+              e.style.cssText,
+              Array.from(e.style).join(),
+              ...['Top', 'Right', 'Bottom', 'Left'].map((side) => cs[family + side]),
+            );
+          }
+        }
+      return out;
+    },
+    opts,
+  );
   // An !important var() longhand before its shorthand, parsed (#260
   // review): jsdom 27 to 29 prepare it as !important (the shorthand is
   // left out) and its setter drops the priority (margin: var(--m) 1px

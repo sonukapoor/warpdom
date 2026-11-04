@@ -2843,3 +2843,89 @@ export function writtenDeclarations(element, text) {
   const es = element[S];
   return es.style && es.styleWritten === text ? styleState(es.style).decls : null;
 }
+
+// The text cascade.js parses for an element's written style attribute
+// (text, the serialization of decls), as jsdom computes from the
+// declarations it holds (#260 review; black box 20.0.3 to 30.1.3):
+// - a margin or padding that mixes a CSS-wide keyword with other values
+//   (margin: inherit 1px 1px after style.margin = '1px';
+//   style.marginTop = 'inherit'), which a declaration list rejects though
+//   the style object holds it: from jsdom 27 its longhands as they are
+//   (the shorthand left out), with jsdom 26 its four sides at its place.
+//   jsdom 20 to 25 reject it there too;
+// - join (jsdom 27): the four longhands without their shorthand, one with
+//   var() but the last listed (style.marginTop = 'var(--m)' after
+//   style.margin = '1px'): the shorthand they make at the first one's
+//   place, which jsdom 27 computes empty (28 and later compute each
+//   longhand, and 27 does when the last one has the var()).
+export function cascadeText(decls, text, join = false) {
+  const box = decls.box;
+  if (decls.boxed !== true || box === 'A' || box === 'B') return text;
+  const joined = join && !decls.has('margin') && decls.has('margin-top') ? varGroup(decls, 'margin') : null;
+  const joinedPadding = join && !decls.has('padding') && decls.has('padding-top') ? varGroup(decls, 'padding') : null;
+  const mixed = mixedBoxKeyword(decls);
+  if (joined === null && joinedPadding === null && mixed === null) return text;
+  let out = '';
+  const add = (name, value, important) =>
+    (out += `${out ? ' ' : ''}${name}: ${value}${important ? ' !important' : ''};`);
+  const cover = box === 'C' || box === 'D' ? boxCover(decls) : null;
+  if (cover !== null && mixed !== null) for (const name of mixed) cover[name] = -1;
+  let i = -1;
+  for (const [name, { value, important }] of decls) {
+    i++;
+    if (cover !== null && coveredBy(cover, name, i, important)) continue;
+    let group = null;
+    if (name.startsWith('margin-')) group = joined;
+    else if (name.startsWith('padding-')) group = joinedPadding;
+    if (group !== null && BOX_LONGHANDS[group.name].includes(name)) {
+      if (name === group.first) add(group.name, group.value, group.important);
+    } else if (mixed?.includes(name)) {
+      if (box === 'B6') {
+        const [a, b = a, c = a, d = b] = value.split(' ');
+        const sides = [a, b, c, d];
+        BOX_LONGHANDS[name].forEach((longhand, k) => add(longhand, sides[k], important));
+      }
+    } else add(name, value, important);
+  }
+  return out;
+}
+const MIXED_KEYWORD = /(?:^| )(?:inherit|initial|unset|revert|revert-layer)(?: |$)/i;
+const isMixedKeyword = (value) => value.includes(' ') && !value.includes('(') && MIXED_KEYWORD.test(value);
+// The box shorthands listed with such a value, or null.
+function mixedBoxKeyword(decls) {
+  const margin = decls.get('margin');
+  const padding = decls.get('padding');
+  const m = margin !== undefined && isMixedKeyword(margin.value);
+  const p = padding !== undefined && isMixedKeyword(padding.value);
+  if (m) return p ? MIXED_BOTH : MIXED_MARGIN;
+  return p ? MIXED_PADDING : null;
+}
+const MIXED_BOTH = ['margin', 'padding'];
+const MIXED_MARGIN = ['margin'];
+const MIXED_PADDING = ['padding'];
+// The four longhands of a shorthand, all listed with one priority and one
+// with var(): the shorthand they make, or null.
+function varGroup(decls, shorthand) {
+  const values = [];
+  let first = null;
+  let important;
+  let withVar = false;
+  for (const longhand of BOX_LONGHANDS[shorthand]) {
+    const decl = decls.get(longhand);
+    if (decl === undefined || (important !== undefined && decl.important !== important)) return null;
+    important = decl.important;
+    values.push(decl.value);
+    if (decl.value.includes('var(')) withVar = true;
+  }
+  if (!withVar) return null;
+  // (jsdom 27 sets them again in order, and the last one set merges them
+  // unless it has var() itself.)
+  let last = null;
+  for (const name of decls.keys())
+    if (BOX_LONGHANDS[shorthand].includes(name)) {
+      first ??= name;
+      last = name;
+    }
+  if (decls.get(last).value.includes('var(')) return null;
+  return { name: shorthand, value: serializeBox(values), important, first };
+}
