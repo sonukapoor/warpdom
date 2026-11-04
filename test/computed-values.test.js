@@ -2224,3 +2224,18 @@ test('computed values: a style rule with a shorthand then its longhand (#259)', 
     assert.equal(w.getComputedStyle(div).backgroundColor, 'rgb(255, 0, 0)', jsdom);
   }
 });
+
+// font declared !important in a style sheet, before jsdom 28.1: its
+// longhands apply in document order, as every other declaration's, so the
+// style attribute's font-size wins (jsdom with cssstyle 4.6, 23.1 to 26,
+// and 27.0 to 28.0 keep the !important font's; docs/differences.md, not
+// modeled; #259).
+test('computed values: an !important font in a style sheet before jsdom 28.1 (#259)', () => {
+  for (const [jsdom, cssstyle] of [['26.1.0', '4.6.0'], ['27.4.0'], ['28.1.0']]) {
+    const w = createWindow({ jsdom, cssstyle });
+    w.document.head.innerHTML = '<style>div { font: 20px serif !important }</style>';
+    w.document.body.innerHTML = '<div style="font-size: 10px"></div>';
+    const expected = jsdom === '28.1.0' ? '20px' : '10px';
+    assert.equal(w.getComputedStyle(w.document.querySelector('div')).fontSize, expected, jsdom);
+  }
+});

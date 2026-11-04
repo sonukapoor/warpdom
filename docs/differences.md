@@ -141,6 +141,15 @@ Computed values not modeled:
   before the rule's `background-color` is edited or removed stays until
   the document's tree changes. warpdom keeps both declarations: it
   computes blue, and red once `background-color` is removed
+- a `font` shorthand declared `!important` in a style sheet, with
+  cssstyle 4.6 (jsdom 23.1 to 26) and in jsdom 27.0 to 28.0: jsdom keeps
+  its longhands against later normal declarations of them, in later rules
+  or the style attribute (`div { font: 20px serif !important }` with
+  `style="font-size: 10px"` computes 20px), and with cssstyle 4.6 against
+  a later normal `font` too. warpdom applies them in document order, as
+  every other declaration before 28.1, so 10px. `margin`, `border`,
+  `background`, `flex` and `list-style` do not do this, nor does `font`
+  with cssstyle 2.3, 3.0 and 4.1 (4.2 to 4.5 not measured)
 - `!important` in style sheets before jsdom 29 (jsdom ignores it there)
 - jsdom 30's `calc()` mixing percentages and em (`calc(100% - 0px)`)
 - the uppercase units and `calc()` simplification of declared values in
