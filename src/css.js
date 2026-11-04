@@ -1656,14 +1656,42 @@ const SPACED_NAME = /[ \t\n\r\f]|\/\*/;
 // 27 the declaration is invalid, as CSS Syntax makes it (an escaped space,
 // --a\ b, is part of the name), except in a style sheet in jsdom 27 and
 // 28 (@acemir/cssom), which removes the comments and keeps the whitespace
-// (--f o o; col or is no property).
-const UNESCAPED_SPACE = /(?<!\\)[ \t\n\r\f]|\/\*/;
+// (--f o o; col or is no property). Escapes are read whole: a whitespace
+// character after a hexadecimal one ends it (--\61 b is valid, its name
+// kept as written), and two backslashes escape each other (--a\\ b is
+// not).
 const COMMENTS = /\/\*[\s\S]*?(\*\/|$)/g;
 const CSS_SPACES = /[ \t\n\r\f]+/g;
 function spacedDeclarationName(rawName, runsOn, sheet, surface) {
   if (runsOn) return propertyName(rawName.replace(COMMENTS, '').replace(CSS_SPACES, ''));
   if (sheet && surface?.key?.startsWith('cssstyle')) return propertyName(rawName.replace(COMMENTS, ''));
-  return UNESCAPED_SPACE.test(rawName) ? null : propertyName(rawName);
+  return separatedName(rawName) ? null : propertyName(rawName);
+}
+// Whitespace or a comment in a name outside its escapes (CSS Syntax 4.3.7;
+// a backslash before a line break escapes nothing).
+function separatedName(name) {
+  for (let i = 0; i < name.length; i++) {
+    const c = name.charCodeAt(i);
+    if (c === 92) {
+      const escaped = name.charCodeAt(i + 1);
+      if (escaped === 10 || escaped === 13 || escaped === 12) return true;
+      if (!isHexDigit(escaped)) {
+        i++;
+        continue;
+      }
+      let end = i + 2;
+      while (end < i + 7 && isHexDigit(name.charCodeAt(end))) end++;
+      const next = name.charCodeAt(end);
+      if (next === 13 && name.charCodeAt(end + 1) === 10) end++;
+      else if (next !== 32 && next !== 9 && next !== 10 && next !== 13 && next !== 12) end--;
+      i = end;
+    } else if (c === 32 || c === 9 || c === 10 || c === 13 || c === 12) return true;
+    else if (c === 47 && name.charCodeAt(i + 1) === 42) return true;
+  }
+  return false;
+}
+function isHexDigit(c) {
+  return (c >= 48 && c <= 57) || ((c | 32) >= 97 && (c | 32) <= 102);
 }
 
 function parseInto(decls, text, mode, surface = null, context = null, element = false) {

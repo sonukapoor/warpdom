@@ -964,7 +964,9 @@ for (const jsdom of [20, 22, 25, 26])
 // col or is color); from 27 the declaration is invalid in a style
 // attribute, cssText and a rule's cssText, and in style sheets from 29;
 // jsdom 27 and 28's sheets remove the comments and keep the whitespace.
-// An escaped space (--a\ b) is part of the name from 27.
+// An escaped space (--a\ b) is part of the name from 27. (jsdom 30 also
+// reads CR LF and form feeds in a style attribute and cssText as line
+// feeds, in names and values, which warpdom does not.)
 const SPACED_NAMES = [
   '--f o o: 1',
   '--a/**/b: 1',
@@ -973,6 +975,19 @@ const SPACED_NAMES = [
   '--a\\ b: 1',
   '--x : 1',
   '--a\nb: 1',
+  // A whitespace character after a hexadecimal escape ends it (--\61 b
+  // is valid from 27, its name kept as written); two backslashes escape
+  // each other, so the space after them separates the name (--a\\ b).
+  '--\\61 b: 1',
+  '--\\61\tb: 1',
+  '--\\61\nb: 1',
+  '--\\000061 b: 1',
+  '--\\61  b: 1',
+  '--a\\\\ b: 1',
+  '--a\\\\\\ b: 1',
+  // A backslash before a tab escapes it, before a line break nothing.
+  '--a\\\tb: 1',
+  '--a\\\nb: 1',
 ];
 for (const jsdom of [20, 22, 26, 27, 28, 29, 30])
   parity(
@@ -1005,12 +1020,12 @@ for (const jsdom of [20, 22, 26, 27, 28, 29, 30])
 test('style: a declaration name with spaces in a style element (#259)', () => {
   const read = (jsdom) => {
     const w = createWindow({ jsdom });
-    w.document.head.innerHTML = '<style>div { --f o o: 1; --a/**/b: 2; color: red }</style>';
+    w.document.head.innerHTML = String.raw`<style>div { --f o o: 1; --a/**/b: 2; --\61 b: 3; --a\\ b: 4; color: red }</style>`;
     return w.document.styleSheets[0].cssRules[0].cssText;
   };
-  assert.equal(read('26.1.0'), 'div {--foo: 1; --ab: 2; color: red;}');
-  assert.equal(read('27.4.0'), 'div { --f o o: 1; --ab: 2; color: red; }');
-  assert.equal(read('28.1.0'), 'div { --f o o: 1; --ab: 2; color: red; }');
-  assert.equal(read('29.1.1'), 'div { color: red; }');
-  assert.equal(read('30.1.3'), 'div { color: red; }');
+  assert.equal(read('26.1.0'), String.raw`div {--foo: 1; --ab: 2; --\61b: 3; --a\\b: 4; color: red;}`);
+  assert.equal(read('27.4.0'), String.raw`div { --f o o: 1; --ab: 2; --\61 b: 3; --a\\ b: 4; color: red; }`);
+  assert.equal(read('28.1.0'), String.raw`div { --f o o: 1; --ab: 2; --\61 b: 3; --a\\ b: 4; color: red; }`);
+  assert.equal(read('29.1.1'), String.raw`div { --\61 b: 3; color: red; }`);
+  assert.equal(read('30.1.3'), String.raw`div { --\61 b: 3; color: red; }`);
 });
