@@ -1612,20 +1612,58 @@ function dropsImportant(surface, name, value, inRule) {
     (surface.varInStrings ? value.includes('var(') : hasVar(value))
   );
 }
-// var( outside quoted strings.
+// var( outside quoted strings; inside a comment it counts (jsdom 27 and
+// later keep color: red /*var(*/ as written), and a quote there opens no
+// string (#259).
 function hasVar(value) {
   if (!value.includes('var(')) return false;
   if (!value.includes('"') && !value.includes("'")) return true;
-  let quote = null;
   for (let i = 0; i < value.length; i++) {
     const c = value[i];
-    if (quote) {
-      if (c === '\\') i++;
-      else if (c === quote) quote = null;
-    } else if (c === '"' || c === "'") quote = c;
+    if (c === '\\') i++;
+    else if (c === '/' && value[i + 1] === '*') {
+      const end = commentEnd(value, i);
+      const at = value.indexOf('var(', i);
+      if (at !== -1 && at < end) return true;
+      i = end - 1;
+    } else if (c === '"' || c === "'") i = stringEnd(value, i, false) - 1;
     else if (c === 'v' && value.startsWith('var(', i)) return true;
   }
   return false;
+}
+// Scanners of declaration text, as CSS Syntax tokenizes it (#259): the end
+// of the comment that opens at text[i], after its */ (the text's end when
+// it is not closed), and of the string that opens there, after its
+// closing quote, or ~ the index of a line break that ends it first, a bad
+// string (lineBreaks: jsdom 27 and later's reading).
+function commentEnd(text, i) {
+  const close = text.indexOf('*/', i + 2);
+  return close < 0 ? text.length : close + 2;
+}
+function stringEnd(text, i, lineBreaks) {
+  const quote = text[i];
+  for (let j = i + 1; j < text.length; j++) {
+    const c = text[j];
+    if (c === '\\') j++;
+    else if (c === quote) return j + 1;
+    else if (lineBreaks && (c === '\n' || c === '\r' || c === '\f')) return ~j;
+  }
+  return text.length;
+}
+// The comments of a name (jsdom 27 and 28's style sheets remove them),
+// not an escaped /* (--a\/*x*/b).
+function withoutNameComments(name) {
+  let out = '';
+  let from = 0;
+  for (let i = 0; i < name.length; i++) {
+    if (name[i] === '\\') i++;
+    else if (name[i] === '/' && name[i + 1] === '*') {
+      out += name.slice(from, i);
+      from = commentEnd(name, i);
+      i = from - 1;
+    }
+  }
+  return out + name.slice(from);
 }
 // A priority token left over outside quotes, functions and [] {} blocks,
 // not escaped (color: var(--c)
@@ -1664,7 +1702,7 @@ const COMMENTS = /\/\*[\s\S]*?(\*\/|$)/g;
 const CSS_SPACES = /[ \t\n\r\f]+/g;
 function spacedDeclarationName(rawName, runsOn, sheet, surface) {
   if (runsOn) return propertyName(rawName.replace(COMMENTS, '').replace(CSS_SPACES, ''));
-  if (sheet && surface?.key?.startsWith('cssstyle')) return propertyName(rawName.replace(COMMENTS, ''));
+  if (sheet && surface?.key?.startsWith('cssstyle')) return propertyName(withoutNameComments(rawName));
   return separatedName(rawName) ? null : propertyName(rawName);
 }
 // Whitespace or a comment in a name outside its escapes (CSS Syntax 4.3.7;
@@ -1706,12 +1744,11 @@ function isHexDigit(c) {
 // comment counts, inside a string as surface.varInStrings says). A comment
 // inside a name leaves a space there, which makes the declaration invalid
 // from 27 (spacedDeclarationName); one before or after it does not.
-function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface) {
+function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface, escapes) {
   const parts = [];
   let spaced = '';
   let from = 0;
   let depth = 0;
-  let quote = null;
   let colon = -1;
   let head = 0;
   let custom = false;
@@ -1730,20 +1767,17 @@ function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface)
   };
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
-    if (quote) {
-      if (c === '\\') i++;
-      else if (c === quote || (lineBreaks && (c === '\n' || c === '\r' || c === '\f'))) quote = null;
-      continue;
-    }
-    if (c === '/' && text[i + 1] === '*') {
-      const close = text.indexOf('*/', i + 2);
-      if (close < 0 && unclosedDrops) return parts;
-      const stop = close < 0 ? text.length : close + 2;
+    if (c === '\\' && escapes) i++;
+    else if (c === '/' && text[i + 1] === '*') {
+      if (unclosedDrops && text.indexOf('*/', i + 2) < 0) return parts;
+      const stop = commentEnd(text, i);
       spaced += text.slice(from, i) + (policy === 'remove' ? '' : ' ');
       from = stop;
       i = stop - 1;
-    } else if (c === '"' || c === "'") quote = c;
-    else if (c === '(') {
+    } else if (c === '"' || c === "'") {
+      const end = stringEnd(text, i, lineBreaks);
+      i = (end < 0 ? ~end : end) - 1;
+    } else if (c === '(') {
       const close = policy === 'remove' ? -1 : urlTokenEnd(text, i);
       if (close === -1) depth++;
       else i = close - 1;
@@ -1769,10 +1803,10 @@ function commentedParts(source, runsOn, lineBreaks, context, surface) {
   const sheet = context === 'sheet';
   if (context === 'cssom' || context === 'replay' || (runsOn && (sheet || context === 'rule')))
     return lineBreaks ? splitDeclarations(source) : splitOutside(source, ';');
-  if (runsOn) return commentedDeclarations(source, 'remove', lineBreaks, false, surface);
+  if (runsOn) return commentedDeclarations(source, 'remove', lineBreaks, false, surface, false);
   if (sheet && surface?.key?.startsWith('cssstyle'))
-    return commentedDeclarations(source, 'remove', lineBreaks, true, surface);
-  return commentedDeclarations(source, sheet ? 'space' : 'inline', lineBreaks, false, surface);
+    return commentedDeclarations(source, 'remove', lineBreaks, true, surface, true);
+  return commentedDeclarations(source, sheet ? 'space' : 'inline', lineBreaks, false, surface, true);
 }
 
 function parseInto(decls, text, mode, surface = null, context = null, element = false) {
@@ -1964,15 +1998,15 @@ function unclosedLegacy(text) {
 // a value with a comment and a url() is dropped before this anyway, as
 // comments in values are not modeled (#162).
 function hasBadString(value) {
-  let quote = null;
   for (let i = 0; i < value.length; i++) {
     const c = value[i];
-    if (quote === null) {
-      if (c === '"' || c === "'") quote = c;
-      else if (c === '\\') i++;
-    } else if (c === '\\') i++;
-    else if (c === quote) quote = null;
-    else if (c === '\n' || c === '\r' || c === '\f') return true;
+    if (c === '\\') i++;
+    else if (c === '/' && value[i + 1] === '*') i = commentEnd(value, i) - 1;
+    else if (c === '"' || c === "'") {
+      const end = stringEnd(value, i, true);
+      if (end < 0) return true;
+      i = end - 1;
+    }
   }
   return false;
 }

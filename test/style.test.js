@@ -1027,6 +1027,14 @@ const COMMENTED = [
   'color: /*a*/ /*b*/ var(--c)/*;*/',
   'color: red /*var(*/',
   '--x: /*x*/var(--a)',
+  // A quote in a comment opens no string (for var() and for a bad string
+  // in a url() value), and an escaped / starts no comment from 27.
+  'background-image: var(--image, url("a.png")) /* user\'s\n image */',
+  'background-image: var(--i, url("a.png")) /* a"\n */',
+  'color: /* " */ var(--c) /*keep*/',
+  "color: /* ' */ red",
+  '--x: \\/*literal*/; color: red',
+  'color: red \\/*x*/',
 ];
 for (const jsdom of [20, 22, 26, 27, 28, 29, 30])
   parity(
