@@ -352,6 +352,29 @@ for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30]) {
     { jsdom },
   );
 }
+// jsdom 25 (cssstyle 4.1) rejects a gradient in any case (#261 review).
+parity(
+  'jsdom 25: gradients in mixed case',
+  (w) =>
+    ['background', 'background-image'].flatMap((name) =>
+      [
+        'LINEAR-GRADIENT(red, blue)',
+        'Linear-Gradient(red, blue)',
+        'RADIAL-GRADIENT(red, blue)',
+        'Repeating-Linear-Gradient(red, blue)',
+        'CONIC-GRADIENT(red, blue)',
+        '-WEBKIT-LINEAR-GRADIENT(red, blue)',
+        'url(a.png), LINEAR-GRADIENT(red, blue)',
+        'red LINEAR-GRADIENT(red, blue)',
+        'url(a.png)',
+      ].map((value) => {
+        const b = w.document.createElement('div');
+        b.style.cssText = `${name}: red; ${name}: ${value}`;
+        return `${name}: ${value} -> ${attempt(w, name, value)} | ${b.style.cssText}`;
+      }),
+    ),
+  { jsdom: 25 },
+);
 function attempt(w, name, value) {
   const s = w.document.createElement('div').style;
   s.setProperty(name, value);
@@ -374,6 +397,14 @@ test('lengths and sizing keywords with cssstyle 4.2 and 4.3 (#239)', () => {
     assert.equal(css(cssstyle, 'width', '10cqw'), '');
     assert.equal(css(cssstyle, 'width', 'fit-content'), '');
     assert.equal(css(cssstyle, 'margin', '1px 10dvh'), 'margin: 1px 10dvh;');
+    // An exponent with a leading zero is not a number there (#261 review).
+    assert.equal(css(cssstyle, 'width', '1e01px'), '');
+    assert.equal(css(cssstyle, 'width', '1e-01px'), '');
+    assert.equal(css(cssstyle, 'margin', '1px 1e01px'), '');
+    assert.equal(css(cssstyle, 'width', '1e1px'), 'width: 1e1px;');
+    assert.equal(css(cssstyle, 'font', '1e01px serif'), 'font: serif;');
+    assert.equal(css(cssstyle, 'font', 'bold 1e-01px serif'), 'font: serif bold;');
+    assert.equal(css(cssstyle, 'font', '1e1px serif'), 'font: serif 1e1px 1e1px;');
   }
   assert.equal(css('4.3.0', 'background', 'linear-gradient(red, blue)'), 'background: linear-gradient(red, blue);');
   assert.equal(css('4.4.0', 'width', 'fit-content'), 'width: fit-content;');

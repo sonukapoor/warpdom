@@ -997,7 +997,8 @@ function versionedValue(name, value, mode, surface) {
 // in 4.2 and 4.3 those of BG_LENGTH_4 in lowercase; min-content,
 // max-content and fit-content only from 4.4, and in flex-basis and flex
 // never fit-content. Gradients in background and background-image from
-// 4.3 (4.2 also rejects them, not modeled: it is read as 4.3 there).
+// 4.3 (4.2 also rejects them, not modeled: it is read as 4.3 there);
+// before 4.2 a gradient in any case (LINEAR-GRADIENT too).
 // Other properties (min-width, line-height, border-spacing, font) keep
 // such values as written.
 const LEGACY_MEASURED = new Set([
@@ -1038,7 +1039,8 @@ const SIZED = new Set(['width', 'height', 'flex-basis', 'flex']);
 // not start with a digit, or a . or sign before one), or one cssstyle
 // reads: before 4.2 px, cm, mm, in, pt, pc, em, ex, ch, rem, vh and vw
 // (BG_LENGTH_3) and %, in 4.2 and 4.3 its lengthRegEx's lowercase units,
-// an exponent and no leading zero. A value of such tokens, read in one
+// an exponent and no leading zero (in the exponent neither: 1e01px is
+// invalid there, 1e1px valid). A value of such tokens, read in one
 // linear pass (each token's first character picks one branch).
 const OTHER_TOKEN = String.raw`(?:[^\s\d.+-]|[+-](?![.\d])|\.(?!\d))\S*`;
 const NUMBER_4_1 = String.raw`[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:px|cm|mm|in|pt|pc|em|ex|ch|rem|vh|vw|%)?`;
@@ -1051,8 +1053,7 @@ const TOKEN_4_2 = new RegExp(`^(?:${OTHER_TOKEN}|${NUMBER_4_2})$`);
 const LEGACY_GRADIENT = /(?:^|[\s,])(?:-webkit-)?(?:repeating-)?(?:linear|radial|conic)-gradient\(/i;
 function legacyMeasureRejects(name, value, surface) {
   const era = surface?.legacyFont; // 'cssstyle4.1' before 4.2, 'cssstyle4.2' before 4.4
-  if (name === 'background' || name === 'background-image')
-    return era === 'cssstyle4.1' && value.includes('gradient(') && LEGACY_GRADIENT.test(value);
+  if (name === 'background' || name === 'background-image') return era === 'cssstyle4.1' && LEGACY_GRADIENT.test(value);
   if (!LEGACY_MEASURED.has(name)) return false;
   const sized = SIZED.has(name) && /content/i.test(value);
   if (era === undefined && !sized) return false;
