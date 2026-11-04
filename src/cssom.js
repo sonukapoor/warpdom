@@ -693,7 +693,14 @@ function pageRule(protos, selector, body, sheet, parentRule) {
     }
     i = close + 1;
   }
-  rule[S].style = declarationBlock(protos.CSSPageDescriptors, declarations, rule, 'page');
+  rule[S].style = declarationBlock(
+    protos.CSSPageDescriptors,
+    declarations,
+    rule,
+    'page',
+    'sheet',
+    protos.CSSStyleProperties,
+  );
   return rule;
 }
 

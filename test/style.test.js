@@ -645,6 +645,99 @@ for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30]) {
   });
 }
 
+// Style writes that leave a box shorthand twice in the style attribute
+// (padding: 8px !important; padding: 7px !important, the longhands set
+// after the shorthand): the computed style follows the style object, the
+// last one, not the first !important one (#266 review). Read: the
+// computed sides and the longhand's value, but after the shorthand set
+// over its longhands, where warpdom keeps the longhand's own (7px, jsdom
+// 8px: its longhands model, #104); not the attribute or cssText, which
+// jsdom 27 to 29 write as longhands (#104).
+const BOX_WRITES = {
+  'shorthand !important, then its longhands !important': (style, name) => {
+    style.setProperty(name, '8px', 'important');
+    for (const side of SIDES) style.setProperty(`${name}-${side}`, '7px', 'important');
+  },
+  'shorthand by its accessor, then !important, then its longhands !important': (style, name) => {
+    style[name] = '8px';
+    style.setProperty(name, '8px', 'important');
+    for (const side of SIDES) style.setProperty(`${name}-${side}`, '7px', 'important');
+  },
+  'shorthand and a longhand !important, then its longhands !important': (style, name) => {
+    style.setProperty(name, '8px', 'important');
+    style.setProperty(`${name}-top`, '6px', 'important');
+    for (const side of SIDES) style.setProperty(`${name}-${side}`, '7px', 'important');
+  },
+  'longhands !important, then the shorthand !important': (style, name) => {
+    for (const side of SIDES) style.setProperty(`${name}-${side}`, '7px', 'important');
+    style.setProperty(name, '8px', 'important');
+  },
+  'shorthand !important, then its longhands': (style, name) => {
+    style.setProperty(name, '8px', 'important');
+    for (const side of SIDES) style.setProperty(`${name}-${side}`, '7px');
+  },
+};
+const SIDES = ['top', 'right', 'bottom', 'left'];
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30]) {
+  parity(
+    `style writes that leave a box shorthand twice in the attribute (jsdom ${jsdom})`,
+    (w) =>
+      Object.entries(BOX_WRITES).flatMap(([label, write]) =>
+        ['margin', 'padding'].map((name) => {
+          w.document.body.innerHTML = '<p></p>';
+          const el = w.document.body.firstChild;
+          write(el.style, name);
+          const computed = w.getComputedStyle(el);
+          const sides = SIDES.map((side) => computed.getPropertyValue(`${name}-${side}`));
+          if (label.startsWith('longhands')) return [label, name, ...sides];
+          return [label, name, el.style.getPropertyValue(`${name}-top`), ...sides];
+        }),
+      ),
+    { jsdom },
+  );
+}
+
+// A repeated !important descriptor in an @page rule (#266 review): as in
+// a style rule, the first one wins in its cssText from jsdom 27 and the
+// last one in its style sheet; jsdom 26 and earlier let the last one win
+// in both. jsdom 27 and later drop page-orientation and size, which
+// warpdom keeps; not read: margin, whose margin-top jsdom leaves empty.
+const REPEATED_DESCRIPTORS = [
+  'margin-top: 1px !important; margin-top: 2px !important',
+  'margin-top: 1px !important; margin-top: 2px',
+  'margin-top: 1px; margin-top: 2px !important',
+];
+const REPEATED_DESCRIPTORS_TO_26 = [
+  'page-orientation: upright !important; page-orientation: rotate-left !important',
+  'page-orientation: upright !important; page-orientation: rotate-left',
+  'size: a4 !important; size: a5 !important',
+  'size: a4 !important; size: a5',
+];
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30]) {
+  parity(
+    `a repeated !important descriptor in an @page rule (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const read = (style) => [
+        style.cssText,
+        ...['margin-top', 'page-orientation', 'size'].flatMap((name) => [
+          style.getPropertyValue(name),
+          style.getPropertyPriority(name),
+        ]),
+      ];
+      const texts = jsdom > 26 ? REPEATED_DESCRIPTORS : [...REPEATED_DESCRIPTORS, ...REPEATED_DESCRIPTORS_TO_26];
+      return texts.map((text) => {
+        d.head.innerHTML = `<style>@page { ${text} }</style>`;
+        const style = d.styleSheets[0].cssRules[0].style;
+        const sheet = read(style);
+        style.cssText = text;
+        return [text, sheet, read(style)];
+      });
+    },
+    { jsdom },
+  );
+}
+
 // The 27.0/27.1 boundary for a style sheet's rules and a rule's cssText
 // (black box, jsdom 27.0.1 and 27.1.0): the computed margin-top, the
 // rule's margin priority (cssText only) and margin-top against an inline

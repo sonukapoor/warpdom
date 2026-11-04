@@ -1674,9 +1674,16 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   // which jsdom keeps (its longhands model, #104). jsdom 26 lets the last
   // one win, and so do a style sheet's rules, but for a normal shorthand
   // after an !important one (margin: 1px !important; margin: 2px is 1px
-  // from 27.1.0).
-  const firstImportantWins = !isLegacyMode(mode) && !sheet;
-  const sheetShorthands = !isLegacyMode(mode) && sheet && !replay;
+  // from 27.1.0). Text a style write serialized ('written') holds the
+  // style's own declarations: a shorthand in it twice (padding: 8px
+  // !important, then its four longhands set to 7px !important, written
+  // padding: 8px !important; padding: 7px !important) is the last one, as
+  // the style holds it (#266 review). An @page rule's descriptors follow
+  // the window's jsdom (decls.legacyPage: jsdom 26 and earlier let the
+  // last one win there too; #266 review).
+  const lastWins = isLegacyMode(mode) || decls.legacyPage === true;
+  const firstImportantWins = !lastWins && !sheet && context !== 'written';
+  const sheetShorthands = !lastWins && sheet && !replay;
   const writtenKeys = surface?.importantByWrittenName === true;
   let covered = null;
   let firsts = null;
@@ -2650,12 +2657,16 @@ export const CSS_INTERFACES = [
 ];
 
 // A declaration block owned by a CSS rule (CSSStyleRule.style, ...).
-// mode: 'page' for an @page rule's descriptors.
-export function declarationBlock(proto, text, parentRule, mode = modeOf(proto), context = 'sheet') {
+// mode: 'page' for an @page rule's descriptors; styleProto: the window's
+// CSSStyleProperties prototype, whose mode they follow for a repeated
+// !important one (parseInto).
+export function declarationBlock(proto, text, parentRule, mode = modeOf(proto), context = 'sheet', styleProto = null) {
   const style = Object.create(proto);
+  const decls = new Map();
+  if (mode === 'page' && styleProto !== null && isLegacyMode(modeOf(styleProto))) decls.legacyPage = true;
   initStyleState(style, {
     element: null,
-    decls: new Map(),
+    decls,
     parentRule,
     mode,
     indexed: 0,
