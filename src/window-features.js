@@ -304,20 +304,32 @@ function stopBeat(frames) {
   frames.timer = null;
 }
 
-// Closing or discarding the window stops its frames, and those of the
-// frames nested in it (jsdom's stopAllTimers, on close and on removing an
-// iframe): pending callbacks never run. Ids go on from where they were.
+// Discarding or closing a window stops its frames (jsdom's stopAllTimers,
+// on removing an iframe and on close): pending callbacks never run, and
+// ids go on from where they were. stopFrames is for one window: the
+// discard visits each nested window itself, and the reset discards the
+// frames it drops.
 export function stopFrames(window) {
+  const frames = window[S].frames;
+  if (frames === undefined) return;
+  frames.pending.clear();
+  if (frames.timer !== null) frames.clear.call(globalThis, frames.timer);
+  frames.timer = null;
+}
+
+// Test environment teardown closes the window and those nested in it, for
+// good: a requestAnimationFrame saved before (a promise or loop left over
+// from the test) schedules nothing. jsdom 30 returns 0 on a closed window;
+// 20 to 29 an id that never runs (when one was pending at the close; with
+// none, jsdom 20 to 29 start a new interval, a leak warpdom does not copy).
+// The per-file reset does not close the window.
+export function closeFrames(window) {
   const ws = window[S];
-  const frames = ws.frames;
-  if (frames) {
-    frames.pending.clear();
-    if (frames.timer !== null) frames.clear.call(globalThis, frames.timer);
-    frames.timer = null;
-  }
+  ws.framesClosed = true;
+  stopFrames(window);
   const { childFrames, shadowFrames } = ws;
-  if (childFrames) for (const child of childFrames) stopFrames(child);
-  if (shadowFrames) for (const child of shadowFrames) stopFrames(child);
+  if (childFrames) for (const child of childFrames) closeFrames(child);
+  if (shadowFrames) for (const child of shadowFrames) closeFrames(child);
 }
 
 const animationFrames = {
@@ -326,10 +338,9 @@ const animationFrames = {
     if (typeof callback !== 'function') throw new TypeError('The provided value is not a function');
     const frames =
       s.frames ?? (s.frames = { next: 1, pending: new Map(), timer: null, clear: null, fast: s.fastFrames });
-    // A discarded window's frames never run; jsdom 30 returns 0 there.
-    if (s.discarded && s.compat.jsdom >= 30) return 0;
+    // A discarded or closed window's frames never run; jsdom 30 returns 0.
+    if (s.discarded || s.framesClosed === true) return s.compat.jsdom >= 30 ? 0 : frames.next++;
     const id = frames.next++;
-    if (s.discarded) return id;
     frames.pending.set(id, callback);
     if (frames.timer === null) startBeat(this, frames);
     return id;

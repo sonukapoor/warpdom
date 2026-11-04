@@ -85,13 +85,8 @@ const FRAME_SCENARIOS = {
     w.requestAnimationFrame(() => at('b'));
     w.cancelAnimationFrame(99);
   },
-  'handles: per window from 1; cancelAnimationFrame converts to unsigned long': (w, at, tick) => {
-    for (const handle of [-1, 2 ** 32 + 1, 1.9, NaN, ' 3 ', null, true, undefined]) {
-      const ids = [1, 2, 3, 4].map((i) => w.requestAnimationFrame(() => at(`${handle}:${i}`)));
-      at(ids.join());
-      w.cancelAnimationFrame(handle - (ids[0] - 1));
-      tick(17);
-    }
+  'handles from 1; a callback that is not a function, a BigInt handle': (w, at) => {
+    at([1, 2, 3].map(() => w.requestAnimationFrame(() => {})).join());
     for (const value of [null, {}, 'x', undefined]) {
       try {
         w.requestAnimationFrame(value);
@@ -137,6 +132,29 @@ const FRAME_SCENARIOS = {
     at(`after removal ${inner.requestAnimationFrame(() => at('after removal'))}`);
   },
 };
+// cancelAnimationFrame converts its argument to unsigned long (WebIDL), on
+// a fresh window with handles 1 to 4 pending: the argument as given.
+const CANCEL_ARGUMENTS = {
+  "'3'": '3',
+  "' 3 '": ' 3 ',
+  null: null,
+  true: true,
+  3.7: 3.7,
+  '-1': -1,
+  '2 ** 32 + 3': 2 ** 32 + 3,
+};
+for (const jsdom of [20, 30]) {
+  for (const [label, argument] of Object.entries(CANCEL_ARGUMENTS)) {
+    parity(
+      `animation frames: cancelAnimationFrame(${label}) (jsdom ${jsdom})`,
+      onFakeTimers((w, at) => {
+        at([1, 2, 3, 4].map((i) => w.requestAnimationFrame(() => at(`ran ${i}`))).join());
+        w.cancelAnimationFrame(argument);
+      }),
+      { jsdom },
+    );
+  }
+}
 for (const jsdom of [20, 25, 30]) {
   for (const [name, scenario] of Object.entries(FRAME_SCENARIOS)) {
     parity(`animation frames: ${name} (jsdom ${jsdom})`, onFakeTimers(scenario), { jsdom });

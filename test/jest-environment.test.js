@@ -217,21 +217,33 @@ test('Jest environment: animation frames under fake timers, as with jest-environ
   }
 });
 
-// Teardown stops the window's frames, as jest-environment-jsdom's closes
-// jsdom's window: a callback still pending never runs.
-test('Jest environment: teardown stops animation frames', async () => {
+// Teardown closes the window's frames for good, as jest-environment-jsdom's
+// closes jsdom's window: a pending callback never runs, and a
+// requestAnimationFrame saved by the test schedules nothing (jsdom 30
+// returns 0; 20 to 29 an id).
+test('Jest environment: teardown stops animation frames for good', async () => {
   const rootDir = fakeJestProject();
   try {
-    const env = new WarpdomEnvironment(
-      { globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: {} } },
-      { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') },
-    );
-    await env.setup();
-    let ran = 0;
-    env.global.requestAnimationFrame(() => ran++);
-    await env.teardown();
-    await new Promise((resolve) => setTimeout(resolve, 40));
-    assert.equal(ran, 0);
+    for (const [jsdom, id] of [
+      [30, 0],
+      [26, 2],
+    ]) {
+      const env = new WarpdomEnvironment(
+        { globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: { jsdom } } },
+        { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') },
+      );
+      await env.setup();
+      const raf = env.global.requestAnimationFrame;
+      let ran = 0;
+      raf(() => ran++);
+      await env.teardown();
+      assert.equal(
+        raf(() => ran++),
+        id,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      assert.equal(ran, 0, `jsdom ${jsdom}`);
+    }
   } finally {
     rmSync(rootDir, { recursive: true, force: true });
   }
