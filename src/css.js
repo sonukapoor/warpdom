@@ -28,6 +28,18 @@ import {
   LEGACY_FONT_LONGHANDS,
 } from './shorthands.js';
 import { resolveColor, systemColorKind } from './colors.js';
+import {
+  BOX_LONGHANDS,
+  boxAccessorValue,
+  boxPriority,
+  boxValue,
+  boxVariant,
+  boxCover,
+  coveredBy,
+  isBoxName,
+  replayBox,
+  writeBox,
+} from './box-declarations.js';
 
 // backgroundColor -> background-color, webkitAnimation/WebkitAnimation ->
 // -webkit-animation, cssFloat -> float; dashed names map to themselves.
@@ -1854,6 +1866,7 @@ function reindex(style) {
 }
 export function clearDeclarations(style) {
   styleState(style).decls.clear();
+  styleState(style).decls.hidden = undefined;
   reindex(style);
 }
 
@@ -1899,8 +1912,14 @@ MERGED.jsdom27 = MERGED.spec;
 const MERGEABLE = new Set(MERGED.spec.flatMap(([, longhands]) => longhands));
 function serialize(decls, mode = 'spec') {
   let merged = null; // longhand -> shorthand to write in its place ('' to skip)
+  // An inline style's margin and padding are kept as jsdom keeps them
+  // (box-declarations.js): not merged here; from jsdom 27 a shorthand
+  // leaves out the longhands before it.
+  const box = decls.box;
+  const cover = decls.boxed === true && (box === 'C' || box === 'D') ? boxCover(decls) : null;
   if (decls.mergeable === true && decls.size >= 2)
     for (const [shorthand, longhands] of MERGED[mode]) {
+      if (box !== undefined && BOX_LONGHANDS[shorthand] !== undefined) continue;
       const first = decls.get(longhands[0]);
       if (first === undefined || !longhands.every((l) => decls.get(l)?.important === first.important)) continue;
       const values = longhands.map((l) => decls.get(l).value);
@@ -1916,15 +1935,18 @@ function serialize(decls, mode = 'spec') {
         merged.set(l, l === place ? { name: shorthand, value, important: first.important } : '');
     }
   let out = '';
-  if (merged === null) {
+  if (merged === null && cover === null) {
     for (const [name, { value, important }] of decls)
       out += `${out ? ' ' : ''}${name}: ${value}${important ? ' !important' : ''};`;
     return out;
   }
+  let i = -1;
   for (const [name, decl] of decls) {
+    i++;
+    if (cover !== null && coveredBy(cover, name, i, decl.important)) continue;
     let { value, important } = decl;
     let written = name;
-    const m = merged.get(name);
+    const m = merged?.get(name);
     if (m === '') continue;
     if (m) ({ name: written, value, important } = m);
     out += `${out ? ' ' : ''}${written}: ${value}${important ? ' !important' : ''};`;
@@ -1940,14 +1962,14 @@ export const computed = { value: null };
 // update style attribute, which sets the attribute: MutationObserver
 // records and attributeChangedCallback, as in jsdom); a
 // style rule's declarations changed the cascade.
-function sync(style) {
+function sync(style, text) {
   const s = styleState(style);
   const element = s.element;
   if (element) {
     const es = element[S];
     const observing = es.doc[S].observerCount > 0;
     const old = observing || hooks.ce !== null ? es.attrs.get('style') : undefined;
-    const value = serialize(s.decls, s.mode);
+    const value = text ?? serialize(s.decls, s.mode);
     es.inlineCascade = null;
     es.styleWritten = value;
     es.attrs.set('style', value);
@@ -2147,6 +2169,7 @@ const valueOf = (style, name) => {
   if (s.computed) return computedOverride(s, name) ?? computed.value(s.element, name);
   const decl = s.decls.get(name);
   if (decl) return decl.value;
+  if (s.decls.box !== undefined && isBoxName(name)) return boxValue(s.decls, name);
   if (LONGHANDS[name] || (s.decls.legacyFont !== undefined && LEGACY_FONT_LONGHANDS.has(name)))
     return fromShorthand(s.decls, name);
   // jsdom 26 read background as the background-color set alone.
@@ -2274,7 +2297,9 @@ for (const side of BORDER_SIDES)
 const resets = (surface, name, text) =>
   !text.includes('var(') || (name === 'flex' && surface?.legacyFont === undefined);
 
-function setDeclaration(style, name, value, priority = '') {
+// via: 'accessor' (style.marginTop = v), 'set' (setProperty) or 'remove'
+// (removeProperty), for an inline style's margin and padding.
+function setDeclaration(style, name, value, priority = '', via = 'accessor') {
   const s = styleState(style);
   if (s.computed) {
     if (!mutableComputed(s)) readOnly();
@@ -2284,6 +2309,10 @@ function setDeclaration(style, name, value, priority = '') {
   // [LegacyNullToEmptyString]: null removes the declaration; undefined is
   // the string "undefined", an invalid value (as in jsdom).
   let raw = value === null ? '' : String(value).trim();
+  if (s.decls.box !== undefined && isBoxName(name)) {
+    setBox(style, s, name, raw, priority, via);
+    return;
+  }
   if (isLegacyFont(s.surface, name) && /^inherit$/i.test(raw)) raw = '';
   // The style attribute is updated only when a declaration changed (CSSOM).
   if (raw === '') {
@@ -2327,6 +2356,32 @@ function setDeclaration(style, name, value, priority = '') {
   s.decls.set(name, { value: text, important });
   if (old === undefined) defineIndex(style, s.indexed++, name);
   sync(style);
+}
+
+// A write of margin, padding or one of their longhands to an inline style
+// (box-declarations.js); the style attribute is updated when the
+// declarations' text changed, as jsdom's.
+function setBox(style, s, name, raw, priority, via) {
+  let text = '';
+  if (via !== 'remove' && raw !== '') {
+    text = declaredValue(name, raw, s.mode, s.surface);
+    if (text === INVALID || text === '') return;
+  }
+  const important = String(priority).toLowerCase() === 'important' && !dropsImportant(s.surface, name, text, false);
+  const decls = s.decls;
+  const rev = decls.rev;
+  const order = decls.order;
+  const es = s.element[S];
+  // The text before: the one last written, while the attribute holds it.
+  const before =
+    es.styleWritten !== undefined && es.attrs.get('style') === es.styleWritten
+      ? es.styleWritten
+      : serialize(decls, s.mode);
+  writeBox(decls, decls.box, name, text, important, via);
+  if (decls.rev === rev) return;
+  if (decls.order !== order) reindex(style);
+  const after = serialize(decls, s.mode);
+  if (after !== before) sync(style, after);
 }
 
 // CSSStyleProperties' accessors, one per name in STYLE_ACCESSORS. The
@@ -2375,6 +2430,10 @@ function composedValue(style, name) {
     const value = computedOverride(s, name) ?? computed.accessor(s.element, name);
     if (value !== null) return value;
   }
+  if (s.decls.box !== undefined && (name === 'margin' || name === 'padding'))
+    return isLegacyMode(s.mode) && s.surface?.colors !== 'css2'
+      ? boxAccessorValue(s.decls, name)
+      : boxValue(s.decls, name);
   const value = valueOf(style, name);
   // cssstyle 4.4 and later (jsdom 26): the margin and padding accessors
   // read the shortest form, getPropertyValue() and cssText as written.
@@ -2451,11 +2510,16 @@ function pageDescriptors() {
 
 // CSSStyleDeclaration's operations, shared by the interface's variants.
 const itemOf = (style, index) => [...styleState(style).decls.keys()][index >>> 0] ?? '';
-const priorityOf = (style, name) => (styleState(style).decls.get(propertyName(name))?.important ? 'important' : '');
+function priorityOf(style, name) {
+  const decls = styleState(style).decls;
+  const key = propertyName(name);
+  const important = decls.box !== undefined && isBoxName(key) ? boxPriority(decls, key) : decls.get(key)?.important;
+  return important ? 'important' : '';
+}
 function setPropertyOf(style, name, value, priority) {
   const key = propertyName(name);
   if (dropped(styleState(style).surface, key)) return;
-  setDeclaration(style, key, value, priority == null ? '' : priority);
+  setDeclaration(style, key, value, priority == null ? '' : priority, 'set');
 }
 function removePropertyOf(style, name) {
   const key = propertyName(name);
@@ -2464,8 +2528,10 @@ function removePropertyOf(style, name) {
     ? mutableComputed(s)
       ? valueOf(style, key)
       : readOnly()
-    : (s.decls.get(key)?.value ?? '');
-  setDeclaration(style, key, '');
+    : s.decls.box !== undefined && isBoxName(key)
+      ? boxValue(s.decls, key)
+      : (s.decls.get(key)?.value ?? '');
+  setDeclaration(style, key, '', '', 'remove');
   return previous;
 }
 
@@ -2577,6 +2643,7 @@ export const CSS_INTERFACES = [
           return;
         }
         parseInto(s.decls, text, s.mode, s.surface, s.parentRule ? 'rule' : null, !s.parentRule);
+        if (s.decls.box !== undefined) replayBox(s.decls, s.decls.box);
         reindex(this);
         sync(this);
       },
@@ -2714,15 +2781,17 @@ export function styleOf(element, proto) {
   const es = state(element);
   if (!es.style) {
     const style = Object.create(proto);
-    initStyleState(style, { element, decls: new Map(), mode: modeOf(proto), indexed: 0, surface: surfaceOf(proto) });
-    parseInto(
-      styleState(style).decls,
-      es.attrs.get('style'),
-      styleState(style).mode,
-      styleState(style).surface,
-      null,
-      true,
-    );
+    const decls = new Map();
+    // (An inline style's margin and padding, box-declarations.js; its
+    // fields set here in one order, so all such maps have one shape.)
+    decls.box = boxVariant(modeOf(proto));
+    decls.boxed = false;
+    decls.hidden = undefined;
+    decls.rev = 0;
+    decls.order = 0;
+    initStyleState(style, { element, decls, mode: modeOf(proto), indexed: 0, surface: surfaceOf(proto) });
+    parseInto(decls, es.attrs.get('style'), styleState(style).mode, styleState(style).surface, null, true);
+    if (decls.box !== undefined) replayBox(decls, decls.box);
     reindex(style);
     es.style = style;
   }
@@ -2755,6 +2824,7 @@ export function styleAttributeChanged(element, old) {
   else if (es.style) {
     const s = styleState(es.style);
     parseInto(s.decls, text, s.mode, s.surface, null, true);
+    if (s.decls.box !== undefined) replayBox(s.decls, s.decls.box);
     reindex(es.style);
     es.inlineCascade = null;
   }
