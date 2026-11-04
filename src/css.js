@@ -1807,24 +1807,25 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   const source = String(text ?? '');
   const lineBreaks = !runsOn && cssSplitNeeded(source);
   const parts = lineBreaks ? splitDeclarations(source) : splitOutside(source, ';');
-  // (clears: the names read, until one comes again or there are many; the
-  // block is then read again as coalescedLegacy gives it)
-  let seen = clears ? [] : null;
-  let list = parts;
-  for (let k = 0; k < list.length; k++) {
-    let part = list[k];
+  // (clears: a name given again is found before anything is set, as
+  // setting one has effects beyond the block, a url() met: the block is
+  // then read as coalescedLegacy gives it)
+  const list = clears && coalesces(parts) ? coalescedLegacy(parts) : parts;
+  for (let index = 0; index < list.length; index++) {
+    let part = list[index];
+    const scanned = scanOf === list;
     if (carried !== null) {
       part = `${carried};${part}`;
       carried = null;
     }
-    const colon = part.indexOf(':');
+    const colon = scanned ? scanColons[index] : part.indexOf(':');
     if (colon < 0) {
       if (counting && part.trim() !== '') unnamed = true;
       if (runsOn) carried = part;
       continue;
     }
     named++;
-    const rawName = part.slice(0, colon).trim();
+    const rawName = scanned ? part.slice(scanStarts[index], scanEnds[index]) : part.slice(0, colon).trim();
     const name = propertyName(rawName);
     let value = part.slice(colon + 1).trim();
     if (counting) {
@@ -1839,17 +1840,6 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     if (runsOn && (value === '' || (value[0] === ';' && /^[\s;]*$/.test(value)))) {
       carried = part;
       continue;
-    }
-    if (seen !== null) {
-      if (seen.length === 16 || seen.includes(rawName)) {
-        seen = null;
-        list = coalescedLegacy(parts);
-        k = -1;
-        carried = null;
-        decls.clear();
-        continue;
-      }
-      seen.push(rawName);
     }
     let important = false;
     const bang = priorityStart(value);
@@ -1928,6 +1918,53 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   }
   if (clears && carried !== null && carried.includes(':')) decls.clear();
   if (counting) decls.plain = !unnamed && (named === decls.size || (!prioritized && plainNames(names)));
+}
+
+// Whether a legacy style attribute's or cssText's parts (parseInto's
+// clears) are to be read as coalescedLegacy gives them, found before
+// anything is set: a name given twice (trimmed, as written), a part
+// without a value (carried on into the next) or more than 16 parts
+// (coalescedLegacy gives parts with no name twice as they are). Without
+// slicing: the colons and the names' bounds are kept for parseInto
+// (scanOf: the parts they are for).
+let scanOf = null;
+const scanColons = new Int32Array(16);
+const scanStarts = new Int32Array(16);
+const scanEnds = new Int32Array(16);
+const isSpaceCode = (c) => c === 32 || (c >= 9 && c <= 13) || (c > 127 && /\s/.test(String.fromCharCode(c)));
+function coalesces(parts) {
+  const count = parts.length;
+  scanOf = null;
+  if (count > 16) return true;
+  for (let i = 0; i < count; i++) {
+    const part = parts[i];
+    const colon = part.indexOf(':');
+    scanColons[i] = colon;
+    if (colon < 0) {
+      // (a last part with nothing in it: after a closing semicolon)
+      if (i !== count - 1 || part.trim() !== '') return true;
+      break;
+    }
+    let v = colon + 1;
+    while (v < part.length && (part.charCodeAt(v) === 59 || isSpaceCode(part.charCodeAt(v)))) v++;
+    if (v === part.length) return true;
+    let start = 0;
+    let end = colon;
+    while (start < end && isSpaceCode(part.charCodeAt(start))) start++;
+    while (end > start && isSpaceCode(part.charCodeAt(end - 1))) end--;
+    for (let j = 0; j < i; j++) {
+      const at = scanStarts[j];
+      if (scanEnds[j] - at !== end - start) continue;
+      const other = parts[j];
+      let k = 0;
+      while (k < end - start && other.charCodeAt(at + k) === part.charCodeAt(start + k)) k++;
+      if (k === end - start) return true;
+    }
+    scanStarts[i] = start;
+    scanEnds[i] = end;
+  }
+  scanOf = parts;
+  return false;
 }
 
 // A legacy style attribute's or cssText's declarations as cssom keeps them

@@ -357,6 +357,42 @@ for (const jsdom of [20, 22, 25, 26]) {
   );
 }
 
+// A repeated name read before anything is set (#261 review): a url()
+// cssstyle meets the first time (an escaped space in background-image,
+// an escaped quote in background, jsdom 26) is met once, and a declaration
+// replaced by a later one of its name is never met.
+for (const jsdom of [20, 22, 25, 26]) {
+  parity(
+    `jsdom ${jsdom}: an escaped url() with a name declared again (#261 review)`,
+    (w) => {
+      const p = `r${jsdom}-`;
+      const many = Array.from({ length: 17 }, (_, i) => `--v${i}: ${i}`).join('; ');
+      const attribute = (text) => {
+        const e = w.document.createElement('div');
+        e.setAttribute('style', text);
+        return e.style.cssText;
+      };
+      const cssText = (text) => {
+        const e = w.document.createElement('div');
+        e.style.cssText = text;
+        return e.style.cssText;
+      };
+      return [
+        attribute(`background-image: url("${p}a\\ b.png"); color: red; color: blue`),
+        attribute(`background-image: url("${p}a\\ b.png"); color: red`),
+        cssText(`background-image: url("${p}b\\ b.png"); color: red; color: blue`),
+        attribute(`background: red url("${p}c\\'b.png"); color: red; color: blue`),
+        cssText(`width: 1px; background: red url("${p}d\\(b.png"); width: 2px`),
+        attribute(`background-image: url("${p}e\\ b.png"); ${many}`),
+        cssText(`background-image: url("${p}f\\ b.png"); color: red; background-image: url("${p}g\\ b.png")`),
+        cssText(`background-image: url("${p}f\\ b.png")`),
+        cssText(`background-image: url("${p}g\\ b.png")`),
+      ];
+    },
+    { jsdom },
+  );
+}
+
 // The lengths and sizing keywords cssstyle reads before 4.4 (#239):
 // before 4.2 px, cm, mm, in, pt, pc, em, ex, ch, rem, vh and vw only.
 const LENGTH_NAMES = ['width', 'height', 'flex-basis', 'top', 'font-size', 'margin', 'margin-top', 'padding'];
