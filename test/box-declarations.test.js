@@ -301,6 +301,43 @@ for (const jsdom of VERSIONS) {
     },
     opts,
   );
+  // The same with the four longhands set as the style attribute or parsed
+  // (#260 review): a removal writes the declarations' text (margin:
+  // inherit 1px 1px), and the cascade reads the declarations; jsdom 30
+  // keeps the attribute for a setter that leaves cssText as it is.
+  // (jsdom 29 computes the parsed inherit as 0px, warpdom 0, and jsdom 20
+  // to 22 write the attribute for a setter that changes nothing: #265.)
+  parity(
+    `a removal from a set or parsed style attribute, computed (jsdom ${jsdom})`,
+    (w) => {
+      const out = [];
+      for (const family of ['margin', 'padding'])
+        for (const parsed of [false, true])
+          for (const remove of jsdom <= 22 ? [true] : [true, false]) {
+            const text = ['top', 'right', 'bottom', 'left']
+              .map((side) => `${family}-${side}: ${side === 'top' ? 'inherit' : '1px'}`)
+              .join('; ');
+            let e;
+            if (parsed) {
+              w.document.body.innerHTML = `<div style="${text}"></div>`;
+              e = w.document.body.firstChild;
+            } else {
+              e = div(w);
+              w.document.body.append(e);
+              e.setAttribute('style', text);
+            }
+            const right = () => (jsdom === 29 ? '' : w.getComputedStyle(e)[`${family}Right`]);
+            out.push(right());
+            if (remove) e.style.removeProperty(`${family}-right`);
+            else e.style[`${family}Right`] = '1px';
+            out.push(e.style.cssText, e.getAttribute('style'), right());
+            w.document.body.append(div(w));
+            out.push(right());
+          }
+      return out;
+    },
+    opts,
+  );
   // Repeated names in a parsed list (#260 review): jsdom 20 to 26 keep
   // each name once at its first place with its last value (cssom), so
   // margin: 1px; margin-top: 4px; margin: 2px is margin: 4px 2px 2px 2px;

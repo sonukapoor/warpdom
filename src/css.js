@@ -2374,20 +2374,29 @@ function setBox(style, s, name, raw, priority, via) {
   const rev = decls.rev;
   const order = decls.order;
   const es = s.element[S];
-  // The text before: the one last written, while the attribute holds it.
-  const before =
-    es.styleWritten !== undefined && es.attrs.get('style') === es.styleWritten
-      ? es.styleWritten
-      : serialize(decls, s.mode);
+  const held = es.attrs.get('style');
+  // jsdom 30 writes the attribute for a setter only when cssText changes
+  // (style.marginTop = '1px' after margin:1px keeps the attribute's text);
+  // removeProperty, and every write before jsdom 30, writes it when the
+  // declarations change.
+  const textOnly = decls.box === 'D' && via !== 'remove';
+  let before = null;
+  if (textOnly) before = es.styleWritten !== undefined && held === es.styleWritten ? held : serialize(decls, s.mode);
   writeBox(decls, decls.box, name, text, important, via);
   if (decls.rev === rev) return;
   if (decls.order !== order) reindex(style);
   const after = serialize(decls, s.mode);
-  if (after !== before) sync(style, after);
+  if (textOnly && after === before && after !== held) return;
+  // The attribute is written when its text is not the declarations' (set
+  // or parsed as margin-top: inherit; margin-right: 1px; ..., then
+  // style.removeProperty('margin-right'): margin: inherit 1px 1px).
+  if (after !== held) sync(style, after);
   else {
     // The same text, other declarations (style.removeProperty('margin-right')
     // after margin: inherit 1px 1px): the attribute stays, but the cascade
-    // (cascadeText) reads the declarations, as jsdom computes from them.
+    // (cascadeText) reads the declarations, as jsdom computes from them,
+    // though the text was set or parsed rather than written.
+    es.styleWritten = after;
     es.inlineCascade = null;
     attributesChanged(s.element);
   }
