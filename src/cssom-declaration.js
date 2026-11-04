@@ -58,7 +58,7 @@ function put(style, name, value, priority) {
 // '!', backslashes and empty declarations (a ';' with no declaration
 // before it starts the next name in cssom: width: 1px;; color: red
 // declares ;color), where every declaration has a name without
-// parentheses, a colon and a value not starting with '/', and every
+// parentheses, a colon and a value not starting with ( ) : / ;, and every
 // parenthesis closes: what parseBlock gives, by slices (the sheets of
 // most suites), each name with the spaces in it dropped (spaced: there
 // were some). null for other text.
@@ -91,7 +91,7 @@ function simpleBlock(text) {
         break;
       }
       const value = text.slice(colon + 1, i).trim();
-      if (value === '' || name === '' || value[0] === '/') return null;
+      if (value === '' || name === '' || '():/;'.includes(value[0])) return null;
       // (no '!': no priority, as cascadeEntry gives it)
       out.push([name, value, false]);
       start = i + 1;
@@ -103,8 +103,8 @@ function simpleBlock(text) {
 
 // Text without comments whose parse as a sheet's (css.js parseInto,
 // context 'cssom') may give cssom's declarations, which parsedPlain then
-// tells: as for simpleBlock, but with !important (cssom's priority too).
-const SHEET_SIMPLE = /["'{}@\\]|\/\*|!(?!important)|^\s*;|;\s*;/;
+// tells: as for simpleBlock, but with !important at the end of a value (cssom's priority too).
+const SHEET_SIMPLE = /["'{}@\\]|\/\*|!(?!important\s*(?:;|$))|^\s*;|;\s*;/;
 export const simpleText = (text) => !SHEET_SIMPLE.test(text);
 
 // A block's text as cssom reads it, without its comments (also those in
@@ -350,11 +350,21 @@ function cascadeEntry(name, value, priority) {
 }
 
 // The declarations the cascade reads from a cssom style, in index order.
-export function cssomEntries(style) {
+// A value that is an object is turned into a string once per change
+// (coerced: object -> string), as its toString may write the style
+// again; with cssstyle before 4.4 (objects false: jsdom 20 to 25, black
+// box) one sets nothing, as cssstyle's setProperty drops it.
+export function cssomEntries(style, coerced = new Map(), objects = true) {
   const out = [];
   for (let i = 0; i < style.length; i++) {
     const name = style[i];
-    const entry = cascadeEntry(name, style.getPropertyValue(name), style.getPropertyPriority(name));
+    let value = style.getPropertyValue(name);
+    if ((typeof value === 'object' && value !== null) || typeof value === 'function') {
+      if (!objects) continue;
+      if (!coerced.has(value)) coerced.set(value, String(value));
+      value = coerced.get(value);
+    }
+    const entry = cascadeEntry(name, value, style.getPropertyPriority(name));
     if (entry !== null) out.push(entry);
   }
   return out;

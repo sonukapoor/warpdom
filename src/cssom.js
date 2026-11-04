@@ -441,6 +441,10 @@ const COUNTER_DESCRIPTORS = [
 // rule interfaces' prototypes and each rule has its own, as in jsdom.
 const LEGACY_RULES = new WeakSet();
 const legacyRules = (protos) => LEGACY_RULES.has(protos.CSSRule);
+// The CSSRule prototypes of windows whose cssstyle drops a value that is
+// an object (before 4.4: compat.cssomObjectValues false).
+const OBJECTS_DROPPED = new WeakSet();
+const objectValues = (protos) => !OBJECTS_DROPPED.has(protos.CSSRule);
 // The CSSRule prototypes of windows whose profile has jsdom's own CSSOM
 // (from jsdom 29; cssomShape null).
 const OWN_CSSOM = new WeakSet();
@@ -632,14 +636,32 @@ function cssomStyle(rule) {
   if (s.cssom === undefined)
     s.cssom = cssomDeclaration(s.body ?? '', rule, (style) => {
       if (s.cssom !== style) return;
-      replayDeclarations(s.style, cssomEntries(style));
+      // A write while its declarations are read (a value's toString
+      // writing the style) reads them again once that is done, with the
+      // values turned into strings so far (cssomEntries), so it ends.
+      if (s.syncing) {
+        s.syncAgain = true;
+        return;
+      }
+      s.syncing = true;
+      const coerced = new Map();
+      try {
+        for (let pass = 0; pass < 8; pass++) {
+          s.syncAgain = false;
+          replayDeclarations(s.style, cssomEntries(style, coerced, objectValues(s.protos)));
+          if (!s.syncAgain) break;
+        }
+      } finally {
+        s.syncing = false;
+      }
       cssomChanges.rev++;
     });
   return s.cssom;
 }
 // The parsed declarations from the cssom style (from new text).
 function cascadeFromCssom(rule) {
-  replayDeclarations(rule[S].style, cssomEntries(cssomStyle(rule)));
+  const s = rule[S];
+  replayDeclarations(s.style, cssomEntries(cssomStyle(rule), new Map(), objectValues(s.protos)));
 }
 
 // An @page rule's body: descriptors, and margin rules (@top-left { ... }).
@@ -1544,6 +1566,7 @@ export const CSSOM_INTERFACES = [
     statics: (compat) => RULE_STATICS[compat.cssomShape] ?? RULE_TYPES,
     compat(proto, compat) {
       if (ruleVariant(compat) === 'cssom') LEGACY_RULES.add(proto);
+      if (compat.cssomObjectValues === false) OBJECTS_DROPPED.add(proto);
       else if (compat.cssomShape === null) OWN_CSSOM.add(proto);
       else ACEMIR_RULES.add(proto);
     },

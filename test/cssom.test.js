@@ -1945,3 +1945,70 @@ test('CSSStyleRule style: replayed in order within a rule (jsdom 27.0.0, 27.0.1)
   for (const jsdom of ['27.0.0', '27.0.1'])
     assert.deepEqual(ruleReplayOrderScenario(createWindow({ jsdom })), expected);
 });
+
+// Forms cssom reads otherwise than a sheet parse (#251 review, black box
+// 20.0.3 to 27.0.1): a value starting with '(' or '/' (--x: (a;b) is (a
+// and then b);color; --x: / 2px is /2px), a custom property's name with
+// spaces (--my Var is --myVar), !important inside a value (a!importantb is
+// ab, important). And a value whose toString writes the style: no
+// endless loop, the value read once per change (with cssstyle before 4.4,
+// jsdom 20 to 25, an object value sets nothing).
+const cssomOddFormsScenario = (w) => {
+  const d = w.document;
+  const blocks = [
+    '--x: (a;b); color: red',
+    '--my Var: 1; color: red',
+    '--x: / 2px; color: red',
+    '--x: (); color: red',
+    '--x: a!importantb; color: red',
+    'width: 1px',
+  ];
+  d.body.innerHTML = blocks.map((_, i) => `<div class="k${i}"></div>`).join('');
+  const st = d.createElement('style');
+  st.textContent = blocks.map((b, i) => `.k${i} { ${b} }`).join('\n');
+  d.head.appendChild(st);
+  const rules = st.sheet.cssRules;
+  const out = [
+    blocks.map((_, i) => {
+      const s = w.getComputedStyle(d.querySelector(`.k${i}`));
+      return [rules[i].style.cssText, s.color, s.getPropertyValue('--x'), s.getPropertyValue('--myVar')];
+    }),
+  ];
+  const style = rules[5].style;
+  style.width = {
+    toString() {
+      style.color = 'blue';
+      return '7px';
+    },
+  };
+  d.body.setAttribute('data-t', '1');
+  let s = w.getComputedStyle(d.querySelector('.k5'));
+  out.push([style.cssText, s.width, s.color]);
+  style.setProperty('width', {
+    toString() {
+      style.setProperty('height', '3px');
+      return '9px';
+    },
+  });
+  d.body.setAttribute('data-t', '2');
+  s = w.getComputedStyle(d.querySelector('.k5'));
+  out.push([style.cssText, s.width, s.height]);
+  return out;
+};
+for (const jsdom of [20, 22, 25, 26])
+  parity(`CSSStyleRule style: forms cssom reads otherwise (jsdom ${jsdom})`, cssomOddFormsScenario, { jsdom });
+test('CSSStyleRule style: forms cssom reads otherwise (jsdom 27.0.0, 27.0.1)', () => {
+  const expected = [
+    [
+      ['--x: (a; b);color: red;', 'rgb(0, 0, 0)', '(a', ''],
+      ['--myVar: 1; color: red;', 'rgb(255, 0, 0)', '', '1'],
+      ['--x: /2px; color: red;', 'rgb(255, 0, 0)', '/2px', ''],
+      ['--x: ();color: red;', 'rgb(0, 0, 0)', '();color: red', ''],
+      ['--x: ab !important; color: red;', 'rgb(255, 0, 0)', 'ab', ''],
+      ['width: 1px;', 'rgb(0, 0, 0)', '', ''],
+    ],
+    ['width: 7px;', '7px', 'rgb(0, 0, 0)'],
+    ['width: 9px; height: 3px;', '9px', '3px'],
+  ];
+  for (const jsdom of ['27.0.0', '27.0.1']) assert.deepEqual(cssomOddFormsScenario(createWindow({ jsdom })), expected);
+});

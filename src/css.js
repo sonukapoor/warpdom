@@ -1693,7 +1693,12 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     let value = part.slice(colon + 1).trim();
     if (counting) {
       names.push(rawName);
-      if (value === '') unnamed = true;
+      // Read otherwise by cssom (cssom-declaration.js parseBlock): no
+      // value, one starting with a character that does not start it
+      // there (--x: (a;b) is (a, then b);color; --x: / 2px is /2px), or
+      // a custom property's name with spaces (--my Var is --myVar).
+      if (value === '' || ODD_START.has(value.charCodeAt(0))) unnamed = true;
+      else if (rawName.charCodeAt(0) === 45 && /\s/.test(rawName)) unnamed = true;
     }
     if (runsOn && (value === '' || (value[0] === ';' && /^[\s;]*$/.test(value)))) {
       carried = part;
@@ -2655,6 +2660,9 @@ export function declarationBlock(proto, text, parentRule, mode = modeOf(proto), 
 // which warpdom's per-rule cascade does not model. The caller reports the
 // change.
 const PLAIN_NAME = /^-?[A-Za-z][-A-Za-z0-9]*$/;
+// ( ) / : ; ! @ { }: characters cssom's parser handles before a value
+// without starting it.
+const ODD_START = new Set([40, 41, 47, 58, 59, 33, 64, 123, 125]);
 // Whether a rule's declarations parsed in context 'cssom' kept every one
 // it read, each part of the text a declaration.
 export const parsedPlain = (style) => styleState(style).decls.plain === true;

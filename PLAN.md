@@ -4791,3 +4791,20 @@ in every rule (26.1.0) 19.35 / 20.65 / 21.31; 30.1.3 15.90 / 15.83 / 16.10.
 getComputedStyle unchanged within noise. Tests: cssom.test.js "the
 cascade from cssom's declarations" and "replayed in order within a rule"
 (parity 20 to 26; 27.0.0 and 27.0.1 against measured values).
+
+Review round 3 (#251), black box 20.0.3 to 27.0.1: a value whose
+toString wrote the rule's style re-entered the change hook through
+cssomEntries and overflowed the stack (jsdom does not). The hook now
+guards per rule: a write during a sync marks it, and the sync reads the
+declarations again with each object value turned into a string once
+(cssomEntries' coerced map), at most 8 passes. With cssstyle before 4.4
+(cssstyle 2.3.0 to 4.3.1 measured; jsdom 20 to 25) an object value sets
+nothing in the cascade (compat.cssomObjectValues). The sheet shortcut and
+simpleBlock now leave to cssom's parser a value starting with ( ) / : ; !
+@ { } (--x: (a;b) is (a and b);color there, --x: / 2px is /2px), a custom
+property's name with spaces (--my Var is --myVar), and an !important that
+does not end the value (a!importantb is ab, important). Sheet parse
+(d9dc934 -> this, 7 alternating runs, medians): 26.1.0 17.09 -> 17.16 ms,
+20.0.3 18.63 -> 18.98, comments 18.75 -> 18.93, 27.0.1 17.39 -> 17.96,
+!important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
+"forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
