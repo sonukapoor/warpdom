@@ -799,6 +799,11 @@ const isKnownProperty = (name) =>
 // same few values, so each is validated and serialized once. INVALID marks
 // a value the property's grammar rejects.
 const INVALID = null;
+// A background that sets each longhand to its initial value instead
+// (jsdom 27 and later: backgroundValue, setInitials); IMAGE_DROPPED, a
+// layer of it (backgroundLayer).
+const INITIALS = '\u0000initials';
+const IMAGE_DROPPED = '\u0000dropped';
 const declaredCaches = {
   spec: new Map(),
   jsdom27: new Map(),
@@ -971,6 +976,16 @@ function versionedValue(name, value, mode, surface) {
     /calc\(/i.test(value)
   )
     return INVALID;
+  // jsdom 27 and later: background-image takes no gradient whose name is
+  // not in lowercase (background reads it as none: droppedImage).
+  if (
+    name === 'background-image' &&
+    !isLegacyMode(mode) &&
+    value.includes('(') &&
+    !value.includes('var(') &&
+    unreadGradient(value, false)
+  )
+    return INVALID;
   if (name === 'background') {
     const background = backgroundValue(value, mode, surface);
     if (background !== undefined) return background;
@@ -1061,7 +1076,10 @@ const FLEX_TOKEN_4_2 = new RegExp(`^(?:${OTHER_TOKEN}|${FLEX_NUMBER_4_2})$`);
 const LEGACY_GRADIENT = /(?:^|[\s,])(?:-webkit-)?(?:repeating-)?(?:linear|radial|conic)-gradient\(/i;
 function legacyMeasureRejects(name, value, surface) {
   const era = surface?.legacyFont; // 'cssstyle4.1' before 4.2, 'cssstyle4.2' before 4.4
-  if (name === 'background' || name === 'background-image') return era === 'cssstyle4.1' && LEGACY_GRADIENT.test(value);
+  if (name === 'background' || name === 'background-image')
+    return era === 'cssstyle4.1'
+      ? LEGACY_GRADIENT.test(value)
+      : value.includes('(') && unreadGradient(value, name === 'background');
   if (!LEGACY_MEASURED.has(name)) return false;
   const sized = SIZED.has(name) && /content/i.test(value);
   if (era === undefined && !sized) return false;
@@ -1082,6 +1100,22 @@ function legacyMeasureRejects(name, value, surface) {
     }
     if (era !== undefined && !single.test(token)) return true;
   }
+  return false;
+}
+
+// A gradient cssstyle 4.2 to 4.6 and jsdom 27 and later do not read in
+// background and background-image (black box: cssstyle 4.2.1 to 4.6.0 on
+// their own, jsdom 23.2.0 to 30.1.3, #264): one whose name is not in
+// lowercase (LINEAR-GRADIENT(), Linear-Gradient()), with prefixed also a
+// -webkit- one (cssstyle's background takes neither; background-image
+// rejects a -webkit- one by its grammar).
+const UPPERCASE = /[A-Z]/;
+const GRADIENT_NAMES = /(?<![\w-])(-webkit-)?(?:repeating-)?(?:linear|radial|conic)-gradient\(/gi;
+function unreadGradient(value, prefixed) {
+  // (a value in lowercase without -webkit-, the usual one, is not scanned)
+  if (!UPPERCASE.test(value) && !(prefixed && value.includes('-webkit-'))) return false;
+  for (const [name, webkit] of value.matchAll(GRADIENT_NAMES))
+    if ((prefixed && webkit !== undefined) || name !== name.toLowerCase()) return true;
   return false;
 }
 
@@ -1320,10 +1354,36 @@ function backgroundValue(value, mode, surface) {
   // jsdom 27 and later: math functions (calc(10px + 5%) is calc(5% + 10px)
   // in jsdom 30, rejected before) are left to the general rules.
   if (!legacy && /(calc|min|max|clamp)\(/i.test(value.replace(URL_FUNCTION, 'url()'))) return undefined;
-  // The grammar first, as for other properties in these modes.
-  if (!legacy && !isValidValue('background', value)) return INVALID;
+  // The grammar first, as for other properties in these modes (a legacy
+  // gradient read as none: legacyGradientsValid).
+  if (!legacy && !isValidValue('background', LEGACY_PREFIX.test(value) ? legacyGradientsValid(value) : value))
+    return INVALID;
+  const layers = splitOutside(value, ',');
+  if (layers.length === 1) {
+    const out = backgroundLayer(value, mode, surface, legacy);
+    // jsdom 27 and later: nothing left once a dropped image is (INITIALS).
+    if (out === IMAGE_DROPPED) return INITIALS;
+    return out === '' ? undefined : out;
+  }
+  if (legacy) return INVALID;
+  // jsdom 27 and later: each layer as it would be alone, a layer of
+  // initial values empty (url(a.png), none is url("a.png"), ), the color
+  // in the last (the grammar allows it only there). Other syntax in a
+  // layer leaves the value to the general rules.
+  let out = '';
+  for (let i = 0; i < layers.length; i++) {
+    const layer = backgroundLayer(layers[i], mode, surface, false);
+    if (layer === undefined || layer === INVALID) return layer;
+    out += `${i ? ', ' : ''}${layer === IMAGE_DROPPED ? '' : layer}`;
+  }
+  return out;
+}
+// One layer of the background shorthand (backgroundValue): its
+// serialization, undefined for the general rules. In jsdom 27 and later
+// '' when it has initial values only (none, repeat), IMAGE_DROPPED when
+// it also has a dropped image (droppedImage).
+function backgroundLayer(value, mode, surface, legacy) {
   const old = legacy && colorKeywords === 'css2'; // cssstyle before 4.4
-  if (splitOutside(value, ',').length > 1) return legacy ? INVALID : undefined;
   const tokens = [];
   const components = segments(value, legacy ? BG_SEPARATOR_LEGACY : BG_SEPARATOR, true).filter(
     (t, i) => i % 2 === 0 && t !== '',
@@ -1346,14 +1406,19 @@ function backgroundValue(value, mode, surface) {
     found[key] = token;
     return true;
   };
+  let dropped = false;
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
     const lower = token.toLowerCase();
-    const gradient = BG_GRADIENT.test(token);
+    const gradient = BG_GRADIENT.test(token) || (!legacy && LEGACY_PREFIX.test(token));
     if (lower === 'none' || token.startsWith('url(') || (!legacy && /^url\(/i.test(token)) || gradient) {
       // Gradients from cssstyle 4.3 (legacyMeasureRejects for 4.0 and 4.1).
       if (gradient && (mode === 'jsdom20' || mode === 'jsdom22')) return INVALID;
-      if (lower === 'none' && token !== 'none' && !legacy) return undefined;
+      if (!legacy && droppedImage(token, lower)) {
+        if (!put('image', 'none')) return INVALID;
+        dropped = true;
+        continue;
+      }
       // cssstyle rejects a malformed url() (url("a.png), url(a.png)junk) and
       // one with a parenthesis inside (url("a(b).png")).
       if (legacy && token.startsWith('url(') && !(old ? BG_URL_OLD : BG_URL_4_4).test(token)) return INVALID;
@@ -1465,7 +1530,44 @@ function backgroundValue(value, mode, surface) {
     parts.push(...found.boxes);
   }
   if (color !== null && color !== 'transparent') parts.push(color);
-  return parts.length ? parts.join(' ') : undefined;
+  if (parts.length) return parts.join(' ');
+  return dropped ? IMAGE_DROPPED : '';
+}
+
+// Images jsdom 27 and later read in background (its grammar takes them,
+// case-insensitively) and then leave out, as none (black box, 27.4.0 to
+// 30.1.3, #264): a gradient whose name is not in lowercase
+// (LINEAR-GRADIENT(), Linear-Gradient()), a legacy one (-webkit-, -moz- and
+// -o- linear and radial gradients, -webkit-gradient()) and none not in
+// lowercase. background-image rejects them (versionedValue).
+const LEGACY_PREFIX = /-(?:webkit|moz|o)-(?:(?:repeating-)?(?:linear|radial)-)?gradient\(/i;
+const GRADIENT_FUNCTION = /^(?:-(?:webkit|moz|o)-)?(?:(?:repeating-)?(?:linear|radial|conic)-)?gradient\(/i;
+function droppedImage(token, lower) {
+  if (lower === 'none') return token !== 'none';
+  if (!GRADIENT_FUNCTION.test(token)) return false;
+  const name = token.slice(0, token.indexOf('('));
+  return name.charCodeAt(0) === 45 || name !== name.toLowerCase();
+}
+// The value with each legacy gradient as none, for the grammar, which has
+// no legacy gradients: a linear one's arguments are checked as
+// linear-gradient()'s, a side or corner taken without to (top is to top);
+// radial ones and -webkit-gradient() are not checked. 'bogus', which the
+// grammar rejects, when one is not valid.
+const LEGACY_LINEAR = /^-(?:webkit|moz|o)-(?:repeating-)?linear-gradient\(([^]*)\)$/i;
+const LEGACY_SIDE = /^\s*((?:top|bottom|left|right)(?:\s+(?:top|bottom|left|right))?)\s*,/i;
+function legacyGradientsValid(value) {
+  const parts = segments(value, BG_SEPARATOR, true);
+  for (let i = 0; i < parts.length; i += 2) {
+    const token = parts[i];
+    if (!LEGACY_PREFIX.test(token) || !GRADIENT_FUNCTION.test(token) || token.charCodeAt(0) !== 45) continue;
+    const linear = LEGACY_LINEAR.exec(token);
+    if (linear && !isValidValue('background-image', `linear-gradient(${linear[1].replace(LEGACY_SIDE, 'to $1,')})`))
+      return 'bogus';
+    if (!linear && !/^-(?:webkit|moz|o)-(?:repeating-)?radial-gradient\(|^-webkit-gradient\(/i.test(token))
+      return 'bogus';
+    parts[i] = 'none';
+  }
+  return parts.join('');
 }
 
 // clip: auto, or rect() with comma-separated lengths (0 is 0px). jsdom 30
@@ -1800,6 +1902,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   // color:).
   const clears = runsOn && !inRule && context !== 'written';
   let carried = null;
+  let initials = null; // the longhands a background of initial values set
   let named = 0;
   let unnamed = false;
   let prioritized = false;
@@ -1873,6 +1976,15 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       continue;
     }
     let declared = declaredValue(name, value, mode, surface);
+    // A style attribute a style write serialized ('written'): a background
+    // with an empty layer (url("a.png"), , backgroundValue) is read as the
+    // declaration it came from, which jsdom 27 and later compute from.
+    if (declared === INVALID && context === 'written' && name === 'background' && !runsOn && value.includes(',')) {
+      const filled = splitOutside(value, ',')
+        .map((layer) => (layer.trim() === '' ? 'none' : layer))
+        .join(',');
+      if (filled !== value) declared = declaredValue(name, filled, mode, surface);
+    }
     // background-image layers with var() (imageVarLayers): not here.
     if (
       !sheet &&
@@ -1907,6 +2019,14 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     // Applied last (cssstyle's setProperty): a shorthand given again
     // resets the longhands declared before it.
     if (replay) decls.delete(name);
+    if (initials !== null) {
+      if (name === 'background') for (const [n] of BG_INITIALS) decls.delete(n);
+      else if (!name.startsWith('background-')) initials.followed = true;
+    }
+    if (declared === INITIALS) {
+      initials = setInitials(decls, kept, sheet && mode === 'spec');
+      continue;
+    }
     if (MERGEABLE.has(name)) decls.mergeable = true;
     if (isLegacyFont(surface, name)) removeLegacyFont(decls, surface, false);
     decls.set(
@@ -1915,6 +2035,14 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
         ? { value: declared, important: kept }
         : { value: declared, important: false, masked: true },
     );
+  }
+  // A background of initial values (setInitials) and a declaration of
+  // another property after it, in a style attribute or cssText (black box,
+  // 27.4.0 to 30.1.3, #264): jsdom 27 and 28 then declare nothing, 29 and
+  // later leave the longhands out.
+  if (initials?.followed && !sheet) {
+    if (mode !== 'spec' && !surface?.key?.startsWith('jsdom29')) decls.clear();
+    else for (const [n, decl] of initials.set) if (decls.get(n) === decl) decls.delete(n);
   }
   if (clears && carried !== null && carried.includes(':')) decls.clear();
   if (counting) decls.plain = !unnamed && (named === decls.size || (!prioritized && plainNames(names)));
@@ -2118,6 +2246,8 @@ function serialize(decls, mode = 'spec') {
     for (const [shorthand, longhands] of MERGED[mode]) {
       const first = decls.get(longhands[0]);
       if (first === undefined || !longhands.every((l) => decls.get(l)?.important === first.important)) continue;
+      // (background-position with its longhands: setInitials)
+      if (decls.has(shorthand)) continue;
       const values = longhands.map((l) => decls.get(l).value);
       const value = isLegacyMode(mode) ? values.join(' ') : COMPOSED[shorthand](values);
       merged ??= new Map();
@@ -2343,13 +2473,13 @@ function writeComputed(s, name, value) {
     // As on el.style (black box, jsdom 20 to 28.0.0): an empty value removes
     // the property, an invalid one is ignored, others are serialized.
     const text = raw === '' ? '' : declaredValue(name, raw, s.mode, s.surface);
-    if (text !== INVALID) (s.overrides ??= new Map()).set(name, text);
+    if (text !== INVALID && text !== INITIALS) (s.overrides ??= new Map()).set(name, text);
     return;
   }
   // Removing a declaration from a computed style throws, as from jsdom 28.1.0.
   if (raw === '') readOnly();
   const text = declaredValue(name, raw, s.mode, s.surface);
-  if (text === INVALID) return;
+  if (text === INVALID || text === INITIALS) return;
   (s.overrides ??= new Map()).set(name, text);
   const es = s.element[S];
   const rev = es.doc[S].treeRev ?? 0;
@@ -2460,6 +2590,37 @@ function composeShorthand(decls, name, legacyBox = false) {
 // except flex's from cssstyle 4.4. A style attribute (cssText) does not
 // move them.
 const BORDER_SIDES = ['top', 'right', 'bottom', 'left'];
+// A background of initial values once the image jsdom 27 and later drop
+// is left out (backgroundValue: background: LINEAR-GRADIENT(red, blue),
+// NONE, -webkit-linear-gradient(top, red, blue)) sets each longhand to its
+// initial value, in place, and is not declared itself (black box, 27.4.0
+// to 30.1.3, #264). axes: background-position-x and -y too, as jsdom 30
+// lists them from setProperty and in style sheets (not from cssText or a
+// style attribute). The longhands set, by name.
+const BG_INITIALS = [
+  ['background-image', 'none'],
+  ['background-position', '0% 0%'],
+  ['background-position-x', '0%'],
+  ['background-position-y', '0%'],
+  ['background-size', 'auto'],
+  ['background-repeat', 'repeat'],
+  ['background-origin', 'padding-box'],
+  ['background-clip', 'border-box'],
+  ['background-attachment', 'scroll'],
+  ['background-color', 'transparent'],
+];
+function setInitials(decls, important, axes) {
+  const set = new Map();
+  decls.delete('background');
+  for (const [name, value] of BG_INITIALS) {
+    if (!axes && (name === 'background-position-x' || name === 'background-position-y')) continue;
+    const decl = { value, important };
+    decls.set(name, decl);
+    set.set(name, decl);
+  }
+  return { set, followed: false };
+}
+
 const RESETS = {
   flex: ['flex', 'flex-grow', 'flex-shrink', 'flex-basis'],
   background: [
@@ -2525,6 +2686,12 @@ function setDeclaration(style, name, value, priority = '') {
   }
   const important =
     String(priority).toLowerCase() === 'important' && !dropsImportant(s.surface, name, text, s.parentRule != null);
+  if (text === INITIALS) {
+    setInitials(s.decls, important, s.mode === 'spec');
+    reindex(style);
+    sync(style);
+    return;
+  }
   if (isLegacyFont(s.surface, name) && removeLegacyFont(s.decls, s.surface)) reindex(style);
   if (RESETS[name] !== undefined && isLegacyMode(s.mode) && resets(s.surface, name, text)) {
     let removed = false;

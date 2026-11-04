@@ -117,7 +117,20 @@ Not modeled:
 - with cssstyle 2.3 to 4.6 (jsdom 20 to 26), `cssText` ending in a
   name without a value (`color: blue; color:`) setting no `style`
   attribute; and gradients in `background` with cssstyle 4.2 (jsdom
-  rejects them before 4.3, warpdom before 4.2)
+  rejects them before 4.3, warpdom before 4.2), and in `background-image`
+  before a `url()` with cssstyle 4.2 and 4.3 (`linear-gradient(red, blue),
+  url(a.png)` is invalid there)
+- in jsdom 27 and later, a `background` of initial values once its image is
+  left out (`background: LINEAR-GRADIENT(...)`, see jsdom-versions.md):
+  the entries jsdom keeps without writing them (`length` counts
+  `background-position-x` and `-y` set from `cssText` in jsdom 30, and the
+  longhands when `background: red` follows it), a longhand declared after it in the same block
+  (jsdom writes the shorthand again: `background: LINEAR-GRADIENT(...);
+  background-image: url(a.png)` is `background: url("a.png")`), jsdom 27
+  and 28's computed style when a style sheet rule declares it (the
+  earlier rules' longhands partly stay), and the arguments of a legacy
+  radial gradient or `-webkit-gradient()` (warpdom does not check them;
+  a legacy linear one is checked as `linear-gradient()`)
 - `getComputedStyle().azimuth` with cssstyle 4.2 and 4.3 (`NaNdeg` for an
   angle, jsdom's is empty)
 

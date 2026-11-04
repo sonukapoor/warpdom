@@ -501,6 +501,199 @@ test('lengths and sizing keywords with cssstyle 4.2 and 4.3 (#239)', () => {
   assert.equal(css('4.4.0', 'flex-basis', 'fit-content'), '');
 });
 
+// Gradient names not in lowercase (#264 item 4, black box: jsdom 20.0.3 to
+// 30.1.3, cssstyle 2.3.0 to 4.6.0 on their own). cssstyle drops
+// LINEAR-GRADIENT() and Linear-Gradient() in background and
+// background-image, and from 4.2 a -webkit- gradient in background; jsdom
+// 27 and later drop them in background-image, and read them in background
+// as none, as they do NONE and -webkit-, -moz- and -o- gradients: a layer
+// with nothing else left is empty (url(a.png), LINEAR-GRADIENT(red, blue)
+// is url("a.png"), ), and a value with nothing else left sets each
+// longhand to its initial value.
+const GRADIENTS = [
+  'linear-gradient(red, blue)',
+  'LINEAR-GRADIENT(red, blue)',
+  'Linear-Gradient(to right, red 10%, blue)',
+  'linear-Gradient(red, blue)',
+  'RADIAL-GRADIENT(red, blue)',
+  'Conic-Gradient(red, blue)',
+  'Repeating-Linear-Gradient(red, blue)',
+  '-webkit-linear-gradient(red, blue)',
+  '-WEBKIT-LINEAR-GRADIENT(top, red, blue)',
+  'url(a.png), LINEAR-GRADIENT(red, blue)',
+  'LINEAR-GRADIENT(red, blue), url(a.png)',
+  'linear-gradient(red, blue), Linear-Gradient(red, blue)',
+  'none, LINEAR-GRADIENT(red, blue)',
+  'red LINEAR-GRADIENT(red, blue)',
+  'LINEAR-GRADIENT(red, blue) no-repeat',
+  'LINEAR-GRADIENT(red, blue) red fixed',
+  'linear-gradient(red, blue) no-repeat',
+];
+function gradientReads(w) {
+  const d = w.document;
+  const out = [];
+  for (const name of ['background', 'background-image'])
+    for (const value of GRADIENTS) {
+      const a = d.createElement('div');
+      a.style.setProperty(name, value);
+      const b = d.createElement('div');
+      b.style.cssText = `${name}: ${value}`;
+      d.head.innerHTML = `<style>#x { ${name}: ${value} }</style>`;
+      const e = d.createElement('div');
+      e.id = 'x';
+      d.body.replaceChildren(e);
+      const rule = d.styleSheets[0].cssRules[0];
+      const computed = w.getComputedStyle(e);
+      out.push(
+        [
+          `${name}: ${value}`,
+          a.style.cssText,
+          a.style.getPropertyValue(name),
+          b.style.cssText,
+          rule.cssText,
+          rule.style.getPropertyValue(name),
+          computed.backgroundImage,
+          computed.getPropertyValue('background'),
+        ].join(' | '),
+      );
+    }
+  return out;
+}
+for (const jsdom of [20, 22, 23, 24, 25, 26, 27, 28, 29, 30, '30.1.3'])
+  parity(`jsdom ${jsdom}: gradient names not in lowercase in background and background-image (#264)`, gradientReads, {
+    jsdom,
+  });
+
+// jsdom 27 and later: a background of initial values once the image is
+// left out, in each place it is declared (black box, 27.4.0 to 30.1.3):
+// the longhands, in place (jsdom 30 also lists background-position-x and
+// -y from setProperty and in style sheets); in a style attribute or
+// cssText followed by another declaration, nothing (27 and 28) or
+// nothing of it (29 and later).
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `jsdom ${jsdom}: a background whose image is left out sets the initial values (#264)`,
+    (w) => {
+      const d = w.document;
+      const X = 'LINEAR-GRADIENT(red, blue)';
+      const style = () => d.createElement('div').style;
+      const out = [];
+      for (const value of [X, 'NONE', '-webkit-linear-gradient(top, red, blue)', `${X} transparent`]) {
+        const s = style();
+        s.setProperty('background', value);
+        out.push(s.cssText);
+      }
+      let s = style();
+      s.setProperty('background', X, 'important');
+      out.push(s.cssText, s.getPropertyPriority('background-image'));
+      s = style();
+      s.cssText = 'background-color: red; color: blue; background-repeat: no-repeat';
+      s.background = X;
+      out.push(s.cssText, s.background, s.backgroundImage, s.backgroundColor);
+      for (const text of [
+        `background: ${X}`,
+        `background: ${X} !important`,
+        `color: red; background: ${X}`,
+        `background: ${X}; color: red`,
+        `background: ${X}; width: 1px; color: red !important`,
+        `background: ${X}; --a: 1`,
+        `background: ${X}; foo: bar`,
+        `background: ${X}; color: bogus`,
+        `background: ${X}; background: ${X}`,
+        `background: ${X}; background: red`,
+        `background-image: url(a.png); background: ${X}`,
+      ]) {
+        const c = style();
+        c.cssText = text;
+        const e = d.createElement('div');
+        e.setAttribute('style', text);
+        d.body.replaceChildren(e);
+        const computed = w.getComputedStyle(e);
+        out.push(
+          `${text} -> ${c.cssText} | ${e.style.cssText} | ${computed.backgroundImage} ${computed.backgroundColor}`,
+        );
+      }
+      d.head.innerHTML = `<style>.a { color: red; background: ${X}; width: 1px } .b { background: ${X} !important }</style>`;
+      const [a, b] = d.styleSheets[0].cssRules;
+      out.push(a.cssText, b.cssText, a.style.getPropertyValue('background-image'));
+      a.style.cssText = `background: ${X}`;
+      out.push(a.cssText);
+      b.style.setProperty('background', X);
+      out.push(b.cssText);
+      d.styleSheets[0].insertRule(`.c { background: ${X} }`, 0);
+      out.push(d.styleSheets[0].cssRules[0].cssText);
+      const e = d.createElement('div');
+      e.style.cssText = `background: url(b.png) no-repeat red; background: ${X}`;
+      d.body.replaceChildren(e);
+      const computed = w.getComputedStyle(e);
+      out.push(`${computed.backgroundImage} ${computed.backgroundRepeat} ${computed.backgroundColor}`);
+      return out;
+    },
+    { jsdom },
+  );
+
+// jsdom 27 and later: background layers, each as it would be alone, a
+// layer of initial values empty (url(a.png), none is url("a.png"), ).
+for (const jsdom of [27, 29, 30])
+  parity(
+    `jsdom ${jsdom}: background layers (#264)`,
+    (w) => {
+      const layers = [
+        'url(a.png)',
+        'url(a.png) repeat scroll',
+        'none',
+        'LINEAR-GRADIENT(red, blue)',
+        'linear-gradient(red, blue)',
+        'url(b.png) no-repeat',
+        'url(b.png) 0 0',
+        'url(b.png) center',
+        'linear-gradient(red, blue) padding-box',
+        'repeat',
+        '-webkit-linear-gradient(top, red, blue)',
+      ];
+      const out = [];
+      for (const first of layers)
+        for (const last of [...layers, 'url(c.png) red']) {
+          const value = `${first}, ${last}`;
+          const s = w.document.createElement('div').style;
+          s.setProperty('background', value);
+          const e = w.document.createElement('div');
+          e.style.cssText = `background: ${value}`;
+          w.document.body.replaceChildren(e);
+          const computed = w.getComputedStyle(e);
+          out.push(`${value} -> ${s.cssText} | ${computed.backgroundImage} | ${computed.backgroundRepeat}`);
+        }
+      return out;
+    },
+    { jsdom },
+  );
+
+// cssstyle 4.2 to 4.5, measured on their own (black box, #264): a gradient
+// name not in lowercase is invalid in background and background-image, a
+// -webkit- gradient in background. (4.2 rejects every gradient, read as
+// 4.3 here: docs/differences.md.)
+test('gradient names not in lowercase with cssstyle 4.2 to 4.5 (#264)', () => {
+  for (const cssstyle of ['4.2.0', '4.3.0', '4.3.1', '4.4.0', '4.5.0']) {
+    const css = (name, value) => {
+      const s = createWindow({ jsdom: '26.1.0', cssstyle }).document.createElement('div').style;
+      s.setProperty(name, value);
+      return s.cssText;
+    };
+    for (const name of ['background', 'background-image']) {
+      assert.equal(css(name, 'LINEAR-GRADIENT(red, blue)'), '', `${cssstyle} ${name}`);
+      assert.equal(css(name, 'Radial-Gradient(red, blue)'), '');
+      assert.equal(css(name, 'url(a.png), Linear-Gradient(red, blue)'), '');
+    }
+    assert.equal(css('background', '-webkit-linear-gradient(red, blue)'), '');
+    assert.equal(css('background', 'red -webkit-linear-gradient(red, blue)'), '');
+    if (cssstyle !== '4.2.0')
+      assert.equal(
+        css('background', 'linear-gradient(red, blue) no-repeat'),
+        'background: linear-gradient(red, blue) no-repeat;',
+      );
+  }
+});
+
 // A long whitespace run in a declaration's value is read in linear time
 // (#224: the !important check took 191 ms on 20,000 spaces, about 1.2 s
 // on 50,000).
