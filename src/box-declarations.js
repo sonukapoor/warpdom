@@ -311,6 +311,13 @@ function replay(decls, variant, name, record) {
 }
 
 function prepare(entries) {
+  // A box declaration's priority as written: one parseInto kept normal
+  // (masked: an !important var() value, jsdom 27 to 29) is !important
+  // here, as cssstyle prepares it, and its var() setter drops it later.
+  for (let i = 0; i < entries.length; i++) {
+    const [name, record] = entries[i];
+    if (record.masked === true && isBoxName(name)) entries[i] = [name, { value: record.value, important: true }];
+  }
   const given = new Map(entries);
   const out = new Map();
   const groups = new Map();

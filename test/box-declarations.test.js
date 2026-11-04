@@ -246,6 +246,34 @@ for (const jsdom of VERSIONS) {
     },
     opts,
   );
+  // An !important var() longhand before its shorthand, parsed (#260
+  // review): jsdom 27 to 29 prepare it as !important (the shorthand is
+  // left out) and its setter drops the priority (margin: var(--m) 1px
+  // 1px); jsdom 26 and 30 keep it. jsdom 20 to 25 reject the var() but
+  // keep its priority on the longhand (not modeled: differences.md), so
+  // priorities are compared from 26.
+  parity(
+    `an !important var() longhand before its shorthand, parsed (jsdom ${jsdom})`,
+    (w) => {
+      const out = [];
+      for (const family of ['margin', 'padding'])
+        for (const via of ['cssText', 'attribute']) {
+          const text = `${family}-top: var(--m) !important; ${family}: 1px`;
+          const e = div(w);
+          if (via === 'cssText') e.style.cssText = text;
+          else e.setAttribute('style', text);
+          out.push(
+            e.style.cssText,
+            Array.from(e.style).join(),
+            ...box(family).map((name) => e.style.getPropertyValue(name)),
+            e.getAttribute('style'),
+          );
+          if (jsdom >= 26) out.push(...box(family).map((name) => e.style.getPropertyPriority(name)));
+        }
+      return out;
+    },
+    opts,
+  );
 }
 
 // Sequences of writes, from a seeded generator (the differential fuzz that
