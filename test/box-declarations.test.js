@@ -306,6 +306,80 @@ for (const jsdom of VERSIONS) {
     },
     opts,
   );
+  // A shorthand and then all four of its longhands, parsed (#260 review):
+  // from jsdom 27 the prepared list joins the four into the shorthand
+  // (margin: 1px 2px 3px 4px), so the style attribute computes them too.
+  parity(
+    `a shorthand and all four longhands after it, computed (jsdom ${jsdom})`,
+    (w) => {
+      const out = [];
+      for (const family of ['margin', 'padding'])
+        for (const via of ['cssText', 'attribute']) {
+          const text = `${family}: 0; ${family}-top: 1px; ${family}-right: 2px; ${family}-bottom: 3px; ${family}-left: 4px`;
+          const e = div(w);
+          w.document.body.append(e);
+          if (via === 'cssText') e.style.cssText = text;
+          else e.setAttribute('style', text);
+          const cs = w.getComputedStyle(e);
+          out.push(...shown(e.style, family), ...['Top', 'Right', 'Bottom', 'Left'].map((side) => cs[family + side]));
+        }
+      return out;
+    },
+    opts,
+  );
+  // A CSS-wide keyword longhand after a shorthand with a function value
+  // (#260 review): margin: inherit calc(100% - 2px) 1px is mixed too, so
+  // the cascade computes the declarations held. jsdom 27 to 29 reject a
+  // box shorthand with calc() and more components (not modeled).
+  if (jsdom < 27 || jsdom > 29)
+    parity(
+      `a keyword longhand after a shorthand with calc(), computed (jsdom ${jsdom})`,
+      (w) => {
+        const out = [];
+        for (const family of ['margin', 'padding'])
+          for (const [side, value] of [
+            ['Top', 'inherit'],
+            ['Left', 'initial'],
+          ]) {
+            const e = div(w);
+            w.document.body.append(e);
+            e.style[family] = '1px calc(100% - 2px)';
+            e.style[family + side] = value;
+            const cs = w.getComputedStyle(e);
+            out.push(...shown(e.style, family), ...['Top', 'Right', 'Bottom', 'Left'].map((s) => cs[family + s]));
+          }
+        return out;
+      },
+      opts,
+    );
+  // Repeated names with !important in a parsed list (#260 review), from
+  // jsdom 27 (replayed for the cascade). jsdom 20 to 26 compute these
+  // differently (before this too).
+  if (jsdom >= 27)
+    parity(
+      `repeated names with !important, computed (jsdom ${jsdom})`,
+      (w) => {
+        const out = [];
+        for (const family of ['margin', 'padding'])
+          for (const text of [
+            `${family}: 1px !important; ${family}-top: 4px`,
+            `${family}-top: 5px !important; ${family}: 1px 2px`,
+          ])
+            for (const via of ['cssText', 'attribute']) {
+              const e = div(w);
+              w.document.body.append(e);
+              if (via === 'cssText') e.style.cssText = text;
+              else e.setAttribute('style', text);
+              const cs = w.getComputedStyle(e);
+              out.push(
+                ...shown(e.style, family),
+                ...['Top', 'Right', 'Bottom', 'Left'].map((side) => cs[family + side]),
+              );
+            }
+        return out;
+      },
+      opts,
+    );
   // An !important var() longhand before its shorthand, parsed (#260
   // review): jsdom 27 to 29 prepare it as !important (the shorthand is
   // left out) and its setter drops the priority (margin: var(--m) 1px

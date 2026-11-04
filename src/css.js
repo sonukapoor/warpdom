@@ -38,6 +38,7 @@ import {
   boxCover,
   coveredBy,
   isBoxName,
+  parts,
   replayBox,
   writeBox,
 } from './box-declarations.js';
@@ -2882,7 +2883,7 @@ export function cascadeText(decls, text, join = false) {
       if (name === group.first) add(group.name, group.value, group.important);
     } else if (mixed?.includes(name)) {
       if (box === 'B6') {
-        const [a, b = a, c = a, d = b] = value.split(' ');
+        const [a, b = a, c = a, d = b] = parts(value);
         const sides = [a, b, c, d];
         BOX_LONGHANDS[name].forEach((longhand, k) => add(longhand, sides[k], important));
       }
@@ -2891,7 +2892,13 @@ export function cascadeText(decls, text, join = false) {
   return out;
 }
 const MIXED_KEYWORD = /(?:^| )(?:inherit|initial|unset|revert|revert-layer)(?: |$)/i;
-const isMixedKeyword = (value) => value.includes(' ') && !value.includes('(') && MIXED_KEYWORD.test(value);
+const CSS_WIDE = /^(?:inherit|initial|unset|revert|revert-layer)$/i;
+// (A keyword among the top-level components: margin: inherit
+// calc(100% - 2px) 1px too, #260 review.)
+const isMixedKeyword = (value) =>
+  value.includes(' ') &&
+  MIXED_KEYWORD.test(value) &&
+  (!value.includes('(') || parts(value).some((part) => CSS_WIDE.test(part)));
 // The box shorthands listed with such a value, or null.
 function mixedBoxKeyword(decls) {
   const margin = decls.get('margin');
@@ -2952,8 +2959,11 @@ export function parsedBox(decls, mode) {
   }
   if (!longhand) return;
   // Without !important the shorthand comes last in the prepared list and
-  // sets every side: its longhands are left out (as replayBox ends).
-  if (!important) {
+  // sets every side: its longhands are left out (as replayBox ends), but
+  // for all four listed, which the prepared list joins into the shorthand
+  // (margin: 0; margin-top: 1px; ... margin-left: 4px computes 1px 2px
+  // 3px 4px, #260 review).
+  if (!important && !allSides(decls, margin, 'margin') && !allSides(decls, padding, 'padding')) {
     for (const name of [...decls.keys()]) {
       const shorthand = BOX_SHORTHAND[name];
       if (shorthand !== undefined && (shorthand === 'margin' ? margin : padding)) decls.delete(name);
@@ -2962,3 +2972,4 @@ export function parsedBox(decls, mode) {
   }
   replayBox(decls, boxVariant(mode));
 }
+const allSides = (decls, listed, shorthand) => listed && BOX_LONGHANDS[shorthand].every((name) => decls.has(name));

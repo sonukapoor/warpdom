@@ -47,7 +47,7 @@ const isLegacy = (variant) => variant === 'A' || variant === 'B' || variant === 
 const hasVar = (value) => value.includes('(') && hasVarFunction(value);
 
 // A value's space-separated components (calc(1px + 2px) is one).
-function parts(value) {
+export function parts(value) {
   if (!value.includes('(')) return value.split(' ');
   const list = segments(value);
   return list.filter((_, i) => i % 2 === 0);
