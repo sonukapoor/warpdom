@@ -278,6 +278,29 @@ for (const jsdom of VERSIONS) {
     },
     opts,
   );
+  // A removal that leaves the style attribute as it was (#260 review):
+  // margin: inherit 1px 1px without margin-right serializes the same, but
+  // jsdom computes from the declarations it holds, at once and after an
+  // unrelated tree change.
+  parity(
+    `a removal that keeps the text, computed (jsdom ${jsdom})`,
+    (w) => {
+      const out = [];
+      for (const family of ['margin', 'padding']) {
+        const e = div(w);
+        w.document.body.append(e);
+        e.style[family] = '1px';
+        e.style[`${family}Top`] = 'inherit';
+        out.push(w.getComputedStyle(e)[`${family}Right`]);
+        e.style.removeProperty(`${family}-right`);
+        out.push(e.style.cssText, e.getAttribute('style'), w.getComputedStyle(e)[`${family}Right`]);
+        w.document.body.append(div(w));
+        out.push(w.getComputedStyle(e)[`${family}Right`]);
+      }
+      return out;
+    },
+    opts,
+  );
   // Repeated names in a parsed list (#260 review): jsdom 20 to 26 keep
   // each name once at its first place with its last value (cssom), so
   // margin: 1px; margin-top: 4px; margin: 2px is margin: 4px 2px 2px 2px;

@@ -2384,6 +2384,13 @@ function setBox(style, s, name, raw, priority, via) {
   if (decls.order !== order) reindex(style);
   const after = serialize(decls, s.mode);
   if (after !== before) sync(style, after);
+  else {
+    // The same text, other declarations (style.removeProperty('margin-right')
+    // after margin: inherit 1px 1px): the attribute stays, but the cascade
+    // (cascadeText) reads the declarations, as jsdom computes from them.
+    es.inlineCascade = null;
+    attributesChanged(s.element);
+  }
 }
 
 // CSSStyleProperties' accessors, one per name in STYLE_ACCESSORS. The
