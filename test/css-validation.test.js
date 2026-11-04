@@ -668,6 +668,142 @@ for (const jsdom of [27, 29, 30])
     { jsdom },
   );
 
+// Gradient names in strings and url()s are not gradients, and url("var(
+// is no var() (black box, jsdom 20.0.3 to 30.1.3; Copilot review on
+// #267): jsdom 27 and later keep url("LINEAR-GRADIENT(red, blue).png") in
+// background-image and drop LINEAR-GRADIENT(red, blue), url("var(--a).png").
+for (const jsdom of [20, 22, 23, 24, 25, 26, 27, 28, 29, 30])
+  parity(
+    `jsdom ${jsdom}: gradient names in url()s and strings (#264)`,
+    (w) => {
+      const out = [];
+      for (const name of ['background-image', 'background'])
+        for (const value of [
+          'url("LINEAR-GRADIENT(red, blue).png")',
+          "url('Linear-Gradient(x).png'), linear-gradient(red, blue)",
+          'url("a.png"), url("-WEBKIT-LINEAR-GRADIENT(red).png")',
+          'LINEAR-GRADIENT(red, blue), url("var(--a).png")',
+          'url("var(--a).png"), Linear-Gradient(red, blue)',
+          'LINEAR-GRADIENT(red, blue), url(var(--a))',
+        ]) {
+          const a = w.document.createElement('div');
+          a.style.setProperty(name, value);
+          const b = w.document.createElement('div');
+          b.style.cssText = `${name}: ${value}`;
+          const c = w.document.createElement('div');
+          c.setAttribute('style', `${name}: ${value}`);
+          const d = w.document.createElement('div');
+          d.style[name === 'background' ? 'background' : 'backgroundImage'] = value;
+          out.push(
+            `${name}: ${value} -> ${[a, b, c, d].map((e) => `${e.style.cssText} ${e.style.getPropertyValue(name)}`).join(' | ')}`,
+          );
+        }
+      return out;
+    },
+    { jsdom },
+  );
+
+// jsdom 27 and later: a background write replaces the background
+// longhands, those a background of initial values set among them (black
+// box, 27.4.0 to 30.1.3; Copilot review on #267).
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `jsdom ${jsdom}: a background write after one of initial values (#264)`,
+    (w) => {
+      const X = 'LINEAR-GRADIENT(red, blue)';
+      const out = [];
+      for (const steps of [
+        [
+          ['background', X],
+          ['background', 'url(a.png) no-repeat red'],
+        ],
+        [
+          ['background', X],
+          ['background', 'blue'],
+        ],
+        [
+          ['background', 'NONE'],
+          ['background', 'url(a.png)'],
+        ],
+        [
+          ['background', X, 'important'],
+          ['background', 'url(a.png)'],
+        ],
+        [
+          ['background', X],
+          ['background', 'url(a.png)', 'important'],
+        ],
+        [
+          ['background', X],
+          ['background', 'url(a.png), linear-gradient(red, blue) green'],
+        ],
+        [
+          ['background', X],
+          ['background', 'var(--a)'],
+        ],
+        [
+          ['background', X],
+          ['background', 'none'],
+        ],
+        [
+          ['background', X],
+          ['background', ''],
+        ],
+        [
+          ['background', X],
+          ['background', 'bogus'],
+        ],
+        [
+          ['background', X],
+          ['color', 'red'],
+          ['background', 'url(a.png)'],
+        ],
+        [
+          ['background', X],
+          ['background-image', 'url(c.png)'],
+          ['background', 'red'],
+        ],
+        [
+          ['background-image', 'url(c.png)'],
+          ['background', 'red'],
+        ],
+        [
+          ['background-color', 'red', 'important'],
+          ['background', 'url(a.png)'],
+        ],
+        [
+          ['background-image', 'url(c.png)'],
+          ['background', ''],
+        ],
+      ]) {
+        const e = w.document.createElement('div');
+        w.document.body.replaceChildren(e);
+        const f = w.document.createElement('div');
+        for (const [name, value, priority] of steps) {
+          e.style.setProperty(name, value, priority);
+          f.style[name === 'background' ? 'background' : name.replace(/-(\w)/g, (_, c) => c.toUpperCase())] = value;
+        }
+        const s = e.style;
+        const computed = w.getComputedStyle(e);
+        out.push(
+          [
+            steps.map((step) => step.join(' ')).join(' / '),
+            s.cssText,
+            f.style.cssText,
+            s.backgroundImage,
+            s.backgroundColor,
+            s.backgroundRepeat,
+            computed.backgroundImage,
+            computed.backgroundColor,
+            computed.backgroundRepeat,
+          ].join(' | '),
+        );
+      }
+      return out;
+    },
+    { jsdom },
+  );
+
 // cssstyle 4.2 to 4.5, measured on their own (black box, #264): a gradient
 // name not in lowercase is invalid in background and background-image, a
 // -webkit- gradient in background. (4.2 rejects every gradient, read as

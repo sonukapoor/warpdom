@@ -982,8 +982,8 @@ function versionedValue(name, value, mode, surface) {
     name === 'background-image' &&
     !isLegacyMode(mode) &&
     value.includes('(') &&
-    !value.includes('var(') &&
-    unreadGradient(value, false)
+    !hasVarFunction(value) &&
+    unreadGradientFunction(value)
   )
     return INVALID;
   if (name === 'background') {
@@ -1116,6 +1116,41 @@ function unreadGradient(value, prefixed) {
   if (!UPPERCASE.test(value) && !(prefixed && value.includes('-webkit-'))) return false;
   for (const [name, webkit] of value.matchAll(GRADIENT_NAMES))
     if ((prefixed && webkit !== undefined) || name !== name.toLowerCase()) return true;
+  return false;
+}
+// The same for jsdom 27 and later's background-image, by the functions'
+// names only: not in strings and url() tokens (url("LINEAR-GRADIENT(red,
+// blue).png") has none; black box, 27.4.0 to 30.1.3). One pass, no copies.
+const GRADIENT_AT = /(?:-webkit-)?(?:repeating-)?(?:linear|radial|conic)-gradient\(/iy;
+function unreadGradientFunction(value) {
+  if (!UPPERCASE.test(value)) return false;
+  const n = value.length;
+  for (let i = 0; i < n; i++) {
+    const c = value.charCodeAt(i);
+    if (c === 34 || c === 39) {
+      // a string, to its closing quote (past escapes)
+      for (i++; i < n; i++) {
+        const q = value.charCodeAt(i);
+        if (q === 92) i++;
+        else if (q === c) break;
+      }
+    } else if (c === 40) {
+      const end = urlTokenEnd(value, i);
+      if (end !== -1) i = end - 1;
+    } else if (
+      (c === 45 || (c | 32) === 108 || (c | 32) === 114 || (c | 32) === 99) &&
+      !(i > 0 && isNameCode(value.charCodeAt(i - 1)))
+    ) {
+      GRADIENT_AT.lastIndex = i;
+      if (!GRADIENT_AT.test(value)) continue;
+      const end = GRADIENT_AT.lastIndex;
+      for (let j = i; j < end; j++) {
+        const u = value.charCodeAt(j);
+        if (u >= 65 && u <= 90) return true;
+      }
+      i = end - 1;
+    }
+  }
   return false;
 }
 
@@ -2609,6 +2644,13 @@ const BG_INITIALS = [
   ['background-attachment', 'scroll'],
   ['background-color', 'transparent'],
 ];
+// Removes the background longhands (setDeclaration): were there any?
+function clearBackground(decls) {
+  if (decls.size === 0 || (decls.size === 1 && decls.has('background'))) return false;
+  let removed = false;
+  for (const [name] of BG_INITIALS) removed = decls.delete(name) || removed;
+  return removed;
+}
 function setInitials(decls, important, axes) {
   const set = new Map();
   decls.delete('background');
@@ -2661,9 +2703,15 @@ function setDeclaration(style, name, value, priority = '') {
   // the string "undefined", an invalid value (as in jsdom).
   let raw = value === null ? '' : String(value).trim();
   if (isLegacyFont(s.surface, name) && /^inherit$/i.test(raw)) raw = '';
+  // jsdom 27 and later: a background write, a removal too, replaces the
+  // background longhands, those setInitials set among them (black box,
+  // 27.4.0 to 30.1.3, #264), except one of initial values, which sets
+  // them in place.
+  const replaces = name === 'background' && !isLegacyMode(s.mode);
   // The style attribute is updated only when a declaration changed (CSSOM).
   if (raw === '') {
-    if (isLegacyFont(s.surface, name) ? removeLegacyFont(s.decls, s.surface) : s.decls.delete(name)) {
+    const cleared = replaces && clearBackground(s.decls);
+    if (isLegacyFont(s.surface, name) ? removeLegacyFont(s.decls, s.surface) : s.decls.delete(name) || cleared) {
       reindex(style);
       sync(style);
     }
@@ -2676,7 +2724,7 @@ function setDeclaration(style, name, value, priority = '') {
   if (!s.parentRule && meetImage(name, raw, s.mode)) text = INVALID;
   if (text === INVALID) return;
   if (text === '') {
-    let removed = false;
+    let removed = replaces && clearBackground(s.decls);
     for (const n of RESETS.background) removed = s.decls.delete(n) || removed;
     if (removed) {
       reindex(style);
@@ -2692,6 +2740,7 @@ function setDeclaration(style, name, value, priority = '') {
     sync(style);
     return;
   }
+  const cleared = replaces && clearBackground(s.decls);
   if (isLegacyFont(s.surface, name) && removeLegacyFont(s.decls, s.surface)) reindex(style);
   if (RESETS[name] !== undefined && isLegacyMode(s.mode) && resets(s.surface, name, text)) {
     let removed = false;
@@ -2702,6 +2751,12 @@ function setDeclaration(style, name, value, priority = '') {
       sync(style);
       return;
     }
+  }
+  if (cleared) {
+    s.decls.set(name, { value: text, important });
+    reindex(style);
+    sync(style);
+    return;
   }
   const old = s.decls.get(name);
   if (old && old.value === text && old.important === important) return;
