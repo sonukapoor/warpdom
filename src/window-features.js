@@ -1696,6 +1696,15 @@ function laterGlobalsOf(version) {
 }
 const NO_GLOBALS = [];
 
+// compat.legacyInherited: one set per release range before 22.1.0, null
+// (all of them) from it.
+const INHERITED_20 = new Set(['visibility']);
+const INHERITED_21 = new Set(['visibility', 'pointer-events']);
+function legacyInherited(version) {
+  if (before(version, [21, 1, 0])) return INHERITED_20;
+  return before(version, [22, 1, 0]) ? INHERITED_21 : null;
+}
+
 export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle, beyondJsdom = false } = {}) {
   // Behaviors that changed between versions in ways tests observe. jsdom
   // before 29 left most computed style values empty, and before 28 let
@@ -1876,6 +1885,13 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle, beyondJsdom = fa
     // too with cssstyle before 4.4); from 27 all resolved, system colors to
     // jsdom's values ('resolved').
     computedColors: before(version, [22, 1, 0]) ? 'declared' : version[0] < 27 ? 'keywords' : 'resolved',
+    // The properties an element inherits where nothing declares them, before
+    // 29.0.2 (cascade.js legacyDefault; black box 20.0.3, 21.1.2 and
+    // 22.1.0, and jsdom's propertiesWithResolvedValueImplemented in 21.0.0,
+    // 21.1.0 and 22.0.0): visibility alone before 21.1.0, pointer-events too
+    // before 22.1.0, from 22.1.0 color and caret-color too. Elsewhere such
+    // a property computes to ''.
+    legacyInherited: legacyInherited(version),
     // A declared 0 length computes to 0px from 28.1.0; before as declared
     // (text-indent: 0, min-width: 0), black box 20.0.0 to 28.0.0.
     zeroLengths: !before(version, [28, 1, 0]),

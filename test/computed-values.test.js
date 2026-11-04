@@ -2166,3 +2166,42 @@ for (const jsdom of [30, 29, 28])
     },
     { jsdom },
   );
+
+// --- inherited properties before jsdom 22.1.0 (#259) ---------------------------------
+
+// Where nothing declares them, jsdom before 29.0.2 inherits visibility
+// alone before 21.1.0, pointer-events too from 21.1.0, and color and
+// caret-color from 22.1.0 (compat.legacyInherited; black box 20.0.3,
+// 21.1.2 and 22.1.0, and the property list in jsdom's own 21.0.0, 21.1.0
+// and 22.0.0): a span under <div style="color: red"> computes color ''
+// in jsdom 20 and 21. Other properties compute to '' everywhere.
+const INHERITED = ['color', 'visibility', 'pointer-events', 'caret-color', 'font-size', 'cursor'];
+function inheritedProperties(w) {
+  const d = w.document;
+  d.head.innerHTML =
+    '<style>.s { color: blue; pointer-events: none } .u { color: unset; pointer-events: unset }</style>';
+  d.body.innerHTML =
+    '<div id="a" style="color: red; visibility: hidden; pointer-events: none; caret-color: red; font-size: 3px; cursor: pointer">' +
+    '<p><span></span></p><i class="u"></i></div><div class="s"><b></b></div>';
+  const out = {};
+  for (const sel of ['html', 'body', '#a', 'p', 'span', '.u', '.s', 'b'])
+    out[sel] = read(w, d.querySelector(sel), [...INHERITED, 'border-top-color']);
+  const detached = d.createElement('div');
+  detached.style.color = 'red';
+  out.detached = read(w, detached.appendChild(d.createElement('span')), INHERITED);
+  return out;
+}
+for (const jsdom of [20, 21, 22, 26, 28, 30])
+  parity(`computed values: the properties that inherit (jsdom ${jsdom}, #259)`, inheritedProperties, { jsdom });
+
+test('computed values: color inherits from jsdom 22.1.0, pointer-events from 21.1.0 (#259)', () => {
+  const inherited = (jsdom) => {
+    const w = createWindow({ jsdom });
+    w.document.body.innerHTML = '<div style="color: red; pointer-events: none; visibility: hidden"><span></span></div>';
+    return read(w, w.document.querySelector('span'), ['color', 'pointer-events', 'visibility']);
+  };
+  assert.deepEqual(inherited('21.0.0'), ['', '', 'hidden']);
+  assert.deepEqual(inherited('21.1.0'), ['', 'none', 'hidden']);
+  assert.deepEqual(inherited('22.0.0'), ['', 'none', 'hidden']);
+  assert.deepEqual(inherited('22.1.0'), ['rgb(255, 0, 0)', 'none', 'hidden']);
+});
