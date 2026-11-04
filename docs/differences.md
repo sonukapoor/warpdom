@@ -135,7 +135,12 @@ Computed values not modeled:
   `getComputedStyle().font` and `el.style.font`)
 - a shorthand followed by one of its longhands in a declaration block
   (jsdom stores the longhands: `margin: 1px 2px; margin-top: 3px` reads
-  `3px 2px 1px`)
+  `3px 2px 1px`). In a style sheet from jsdom 27.1, `background: red;
+  background-color: blue` serializes as `background: red` and computes
+  `rgb(255, 0, 0)` to 30.1.2 and blue from 30.1.3, where a value read
+  before the rule's `background-color` is edited or removed stays until
+  the document's tree changes. warpdom keeps both declarations: it
+  computes blue, and red once `background-color` is removed
 - `!important` in style sheets before jsdom 29 (jsdom ignores it there)
 - jsdom 30's `calc()` mixing percentages and em (`calc(100% - 0px)`)
 - the uppercase units and `calc()` simplification of declared values in

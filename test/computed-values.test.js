@@ -2205,3 +2205,22 @@ test('computed values: color inherits from jsdom 22.1.0, pointer-events from 21.
   assert.deepEqual(inherited('22.0.0'), ['', 'none', 'hidden']);
   assert.deepEqual(inherited('22.1.0'), ['rgb(255, 0, 0)', 'none', 'hidden']);
 });
+
+// A shorthand followed by one of its longhands in a style sheet rule
+// (background: red; background-color: blue): warpdom keeps both, so the
+// longhand wins, and removing it gives the shorthand's color; jsdom 27.1
+// and later serialize the rule as background: red and compute red to
+// 30.1.2 (docs/differences.md, not modeled; #259).
+test('computed values: a style rule with a shorthand then its longhand (#259)', () => {
+  for (const jsdom of ['27.4.0', '29.1.1', '30.1.3']) {
+    const w = createWindow({ jsdom });
+    w.document.head.innerHTML = '<style>.p { background: red; background-color: blue }</style>';
+    w.document.body.innerHTML = '<div class="p"></div>';
+    const rule = w.document.styleSheets[0].cssRules[0];
+    const div = w.document.querySelector('.p');
+    assert.equal(w.getComputedStyle(div).backgroundColor, 'rgb(0, 0, 255)', jsdom);
+    rule.style.backgroundColor = '';
+    w.document.body.append(w.document.createElement('i'));
+    assert.equal(w.getComputedStyle(div).backgroundColor, 'rgb(255, 0, 0)', jsdom);
+  }
+});
