@@ -54,7 +54,10 @@ call (`warpdom: no XPath engine available. Import warpdom from Node, or
 call setXPathLoader().`). Until then, the XPath interfaces exist and cost
 a few small functions; the engine loads the first time an expression is
 compiled. `src/xpath.cjs` is not one of the package's `exports`, so a
-bundler imports it by its file path:
+bundler imports it by its file path. The example imports parse5 and
+`@rgrove/parse-xml` itself, so with a package manager that keeps
+dependencies strict (pnpm), add them to the project too, in the ranges
+warpdom's package.json names (`pnpm add parse5@^8.0.1 @rgrove/parse-xml@^5.0.0`):
 
 ```js
 import * as parse5 from 'parse5';
