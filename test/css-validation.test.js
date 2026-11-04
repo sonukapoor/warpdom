@@ -3,6 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { hasVarFunction, isValidValue } from '../src/css-values.js';
+import { createWindow } from '../src/node.js';
 import { parity } from './parity.js';
 
 const writes = (w) => {
@@ -254,3 +255,127 @@ parity('CSS.supports validates values', (w) => {
   ];
 });
 parity('no CSS namespace before jsdom 30', (w) => [typeof w.CSS, 'CSS' in w], { jsdom: 26 });
+
+// #239: in jsdom 20 to 26 a declaration whose value cssstyle rejects, or
+// that has none, removes the one before it for the same name in a style
+// attribute and an element's cssText (not setProperty or a style sheet's
+// rule). Fallbacks too: cssstyle before 4.2 rejects 100dvh and before 4.4
+// fit-content, so jsdom 20 to 25 drop both declarations, and a style sheet
+// computes them to nothing.
+const FALLBACKS = [
+  'height: 100vh; height: 100dvh',
+  'width: 100px; width: fit-content',
+  'background: red; background: linear-gradient(red, blue)',
+  'color: blue; color: foo',
+  'color: blue; color: 1px',
+  'width: 100px; width: bogus',
+  'margin: 1px; margin: foo',
+  'margin-top: 1px; margin-top: foo',
+  'margin-top: 1px; margin: foo',
+  'margin: 1px; margin-top: foo',
+  'color: blue !important; color: foo',
+  'color: blue; color: foo !important',
+  'color: blue; color: inherit',
+  'color: blue; color: var(--x)',
+  'color: blue; color: foo; color: red',
+  'color:blue;color:foo;width:1px',
+  'color: blue; Color: foo',
+  'color: blue; color: ;width: 1px',
+  'font: 12px Arial; font: foo',
+  'flex: 1; flex: foo',
+  'display: block; display: foo',
+  'color: blue; foo: bar',
+];
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30]) {
+  parity(
+    `jsdom ${jsdom}: an invalid later declaration and the earlier one (#239)`,
+    (w) => {
+      const out = [];
+      for (const text of FALLBACKS) {
+        const a = w.document.createElement('div');
+        a.setAttribute('style', text);
+        const b = w.document.createElement('div');
+        b.style.cssText = text;
+        // (A style sheet with an empty declaration is read otherwise: not here.)
+        w.document.head.innerHTML = text.includes(': ;') ? '' : `<style>.a{${text}}</style>`;
+        w.document.body.innerHTML = '<div class="a"></div>';
+        const name = text.slice(0, text.indexOf(':'));
+        const computed = w.getComputedStyle(w.document.body.firstChild).getPropertyValue(name);
+        out.push(`${text} -> ${a.style.cssText} | ${b.style.cssText} | ${b.getAttribute('style')} | ${computed}`);
+      }
+      // A name without a value at the end, in a style attribute (cssText
+      // and a style sheet read it otherwise, not modeled).
+      for (const text of ['color: blue; color:', 'color: blue; Color:']) {
+        const a = w.document.createElement('div');
+        a.setAttribute('style', text);
+        out.push(`${text} -> ${a.style.cssText}`);
+      }
+      const s = w.document.createElement('div').style;
+      s.setProperty('height', '10px');
+      s.setProperty('height', '100dvh');
+      out.push(`setProperty: ${s.cssText}`);
+      return out;
+    },
+    { jsdom },
+  );
+}
+
+// The lengths and sizing keywords cssstyle reads before 4.4 (#239):
+// before 4.2 px, cm, mm, in, pt, pc, em, ex, ch, rem, vh and vw only.
+const LENGTH_NAMES = ['width', 'height', 'flex-basis', 'top', 'font-size', 'margin', 'margin-top', 'padding'];
+const LENGTH_VALUES = ['10px', '10vh', '10dvh', '10vmin', '10svw', '1lh', '1rlh', '10vmax', '.5vh', '1e1px'];
+const LENGTH_VALUES_ALL = [...LENGTH_VALUES, 'fit-content', 'max-content', 'min-content', 'auto', 'calc(10dvh)'];
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30]) {
+  parity(
+    `jsdom ${jsdom}: lengths and sizing keywords by cssstyle version (#239)`,
+    (w) => {
+      const out = [];
+      for (const name of LENGTH_NAMES)
+        for (const value of LENGTH_VALUES_ALL) {
+          const a = w.document.createElement('div').style;
+          a.setProperty(name, value);
+          const b = w.document.createElement('div').style;
+          b.cssText = `${name}: 1px ${name === 'margin' || name === 'padding' ? '2px' : ''}; ${name}: ${value}`;
+          out.push(`${name}: ${value} -> ${a.cssText} | ${b.cssText}`);
+        }
+      for (const value of ['10dvh', '1px 10dvh', 'center 10vmin'])
+        out.push(`background-position ${value}: ${attempt(w, 'background-position', value)}`);
+      for (const value of ['linear-gradient(red, blue)', 'red radial-gradient(red, blue)'])
+        out.push(`background ${value}: ${attempt(w, 'background', value)}`);
+      out.push(`background-image: ${attempt(w, 'background-image', 'linear-gradient(red, blue)')}`);
+      out.push(`flex: ${attempt(w, 'flex', '1 1 10dvh')} ${attempt(w, 'flex', 'max-content')}`);
+      out.push(`border: ${attempt(w, 'border', '10dvh solid red')}`);
+      // Not read with cssstyle's length parser: kept as written.
+      out.push(`min-width: ${attempt(w, 'min-width', '10dvh')} ${attempt(w, 'max-height', 'fit-content')}`);
+      return out;
+    },
+    { jsdom },
+  );
+}
+function attempt(w, name, value) {
+  const s = w.document.createElement('div').style;
+  s.setProperty(name, value);
+  return s.cssText;
+}
+
+// cssstyle 4.2 and 4.3, not installed with a jsdom alias here: measured on
+// their own (black box, #239). 4.2 reads the newer units in lowercase
+// only; fit-content waits for 4.4, gradients for 4.3.
+test('lengths and sizing keywords with cssstyle 4.2 and 4.3 (#239)', () => {
+  const css = (cssstyle, name, value) => {
+    const s = createWindow({ jsdom: '26.1.0', cssstyle }).document.createElement('div').style;
+    s.cssText = `${name}: 1px; ${name}: ${value}`;
+    return s.cssText;
+  };
+  for (const cssstyle of ['4.2.0', '4.3.0']) {
+    assert.equal(css(cssstyle, 'height', '100dvh'), 'height: 100dvh;');
+    assert.equal(css(cssstyle, 'width', '1cap'), 'width: 1cap;');
+    assert.equal(css(cssstyle, 'width', '10DVH'), '');
+    assert.equal(css(cssstyle, 'width', '10cqw'), '');
+    assert.equal(css(cssstyle, 'width', 'fit-content'), '');
+    assert.equal(css(cssstyle, 'margin', '1px 10dvh'), 'margin: 1px 10dvh;');
+  }
+  assert.equal(css('4.3.0', 'background', 'linear-gradient(red, blue)'), 'background: linear-gradient(red, blue);');
+  assert.equal(css('4.4.0', 'width', 'fit-content'), 'width: fit-content;');
+  assert.equal(css('4.4.0', 'flex-basis', 'fit-content'), '');
+});

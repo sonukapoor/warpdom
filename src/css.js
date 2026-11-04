@@ -942,6 +942,7 @@ function versionedValue(name, value, mode, surface) {
     const withVar = mode === 'jsdom26' ? hasVarFunction(value) : value.includes('var(');
     const kind = CSS_WIDE_KEYWORD.test(value) ? lower : lower === 'auto' ? 'auto' : withVar ? 'var' : null;
     if (kind !== null && droppedBy(mode, kind, name)) return INVALID;
+    if (kind === null && legacyMeasureRejects(name, value, surface)) return INVALID;
     // background-image's url()s as cssstyle reads them, the rest by its
     // grammar; with var() the value is kept as written (jsdom 26), but
     // not with var( in a string or another name (url("notvar(x).png"),
@@ -986,6 +987,89 @@ function versionedValue(name, value, mode, surface) {
           ? '0px'
           : value;
   return undefined;
+}
+
+// Lengths, sizing keywords and gradients cssstyle rejects before 4.4
+// (black box: cssstyle 2.3.0 to 4.6.0 measured on their own, #239; jsdom
+// 20.0.3, 21.1.2, 22.1.0 and 25.0.1 with the cssstyle each installs). The
+// properties it reads with its length parser take, at the top level, before
+// 4.2 the units BG_LENGTH_3 reads (10dvh, 10vmin, 1lh, 10PX are invalid),
+// in 4.2 and 4.3 those of BG_LENGTH_4 in lowercase; min-content,
+// max-content and fit-content only from 4.4, and in flex-basis and flex
+// never fit-content. Gradients in background and background-image from
+// 4.3 (4.2 also rejects them, not modeled: it is read as 4.3 there).
+// Other properties (min-width, line-height, border-spacing, font) keep
+// such values as written.
+const LEGACY_MEASURED = new Set([
+  'width',
+  'height',
+  'flex-basis',
+  'flex',
+  'top',
+  'right',
+  'bottom',
+  'left',
+  'font-size',
+  'margin',
+  'margin-top',
+  'margin-right',
+  'margin-bottom',
+  'margin-left',
+  'padding',
+  'padding-top',
+  'padding-right',
+  'padding-bottom',
+  'padding-left',
+  'border-width',
+  'border-top-width',
+  'border-right-width',
+  'border-bottom-width',
+  'border-left-width',
+  'border',
+  'border-top',
+  'border-right',
+  'border-bottom',
+  'border-left',
+  'background-position',
+]);
+const SIZING_KEYWORDS = new Set(['min-content', 'max-content', 'fit-content']);
+const SIZED = new Set(['width', 'height', 'flex-basis', 'flex']);
+// A top-level token that is not a number, length or percentage (it does
+// not start with a digit, or a . or sign before one), or one cssstyle
+// reads: before 4.2 px, cm, mm, in, pt, pc, em, ex, ch, rem, vh and vw
+// (BG_LENGTH_3) and %, in 4.2 and 4.3 its lengthRegEx's lowercase units,
+// an exponent and no leading zero. A value of such tokens, read in one
+// linear pass (each token's first character picks one branch).
+const OTHER_TOKEN = String.raw`(?:[^\s\d.+-]|[+-](?![.\d])|\.(?!\d))\S*`;
+const NUMBER_4_1 = String.raw`[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:px|cm|mm|in|pt|pc|em|ex|ch|rem|vh|vw|%)?`;
+const NUMBER_4_2 = String.raw`[+-]?(?:(?:\d+(?:\.\d*)?|\.\d+)|(?:(?:0|[1-9]\d*)(?:\.\d*)?|\.\d+)(?:e-?(?:0|[1-9]\d*))?(?:%|[cm]m|[dls]?v(?:[bhiw]|max|min)|in|p[ctx]|q|r?(?:[cl]h|cap|e[mx]|ic)))`;
+const tokensOf = (token) => new RegExp(String.raw`^\s*(?:${token})(?:\s+(?:${token}))*\s*$`);
+const VALUE_4_1 = tokensOf(`${OTHER_TOKEN}|${NUMBER_4_1}(?!\\S)`);
+const VALUE_4_2 = tokensOf(`${OTHER_TOKEN}|${NUMBER_4_2}(?!\\S)`);
+const TOKEN_4_1 = new RegExp(`^(?:${OTHER_TOKEN}|${NUMBER_4_1})$`);
+const TOKEN_4_2 = new RegExp(`^(?:${OTHER_TOKEN}|${NUMBER_4_2})$`);
+const LEGACY_GRADIENT = /(?:^|[\s,])(?:-webkit-)?(?:repeating-)?(?:linear|radial|conic)-gradient\(/i;
+function legacyMeasureRejects(name, value, surface) {
+  const era = surface?.legacyFont; // 'cssstyle4.1' before 4.2, 'cssstyle4.2' before 4.4
+  if (name === 'background' || name === 'background-image')
+    return era === 'cssstyle4.1' && value.includes('gradient(') && LEGACY_GRADIENT.test(value);
+  if (!LEGACY_MEASURED.has(name)) return false;
+  const sized = SIZED.has(name) && /content/i.test(value);
+  if (era === undefined && !sized) return false;
+  const functions = value.includes('(');
+  if (!sized && !functions) return !(era === 'cssstyle4.1' ? VALUE_4_1 : VALUE_4_2).test(value);
+  // Top-level tokens (functions are left to the grammar).
+  const tokens = functions ? segments(value, /\s/).filter((t, i) => i % 2 === 0) : value.split(/\s+/);
+  for (const token of tokens) {
+    if (token === '' || token.includes('(')) continue;
+    if (sized && token.length === 11) {
+      const lower = token.toLowerCase();
+      if (SIZING_KEYWORDS.has(lower) && (era !== undefined || (lower === 'fit-content' && name.startsWith('flex'))))
+        return true;
+    }
+    if (era !== undefined && !(era === 'cssstyle4.1' ? TOKEN_4_1 : TOKEN_4_2).test(token)) return true;
+  }
+  return false;
 }
 
 // Values cssstyle drops for some properties it knows (black box): CSS-wide
@@ -1254,7 +1338,7 @@ function backgroundValue(value, mode, surface) {
     const lower = token.toLowerCase();
     const gradient = BG_GRADIENT.test(token);
     if (lower === 'none' || token.startsWith('url(') || (!legacy && /^url\(/i.test(token)) || gradient) {
-      // Gradients from cssstyle 4 (jsdom 23.1 and later; measured: 4.3.0).
+      // Gradients from cssstyle 4.3 (legacyMeasureRejects for 4.0 and 4.1).
       if (gradient && (mode === 'jsdom20' || mode === 'jsdom22')) return INVALID;
       if (lower === 'none' && token !== 'none' && !legacy) return undefined;
       // cssstyle rejects a malformed url() (url("a.png), url(a.png)junk) and
@@ -1669,6 +1753,13 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   // with the value ;color: red).
   const runsOn = isLegacyMode(mode);
   if (runsOn && !inRule && context !== 'written' && unclosedLegacy(String(text ?? ''))) return;
+  // jsdom 20 to 26 (cssstyle 2.3 to 4.6, black box, #239): in a style
+  // attribute or an element's cssText a declaration whose value cssstyle
+  // rejects, or that has none, removes the one declared before it for the
+  // same name (height: 100vh; height: 100dvh declares nothing with cssstyle
+  // before 4.2), as setProperty with an empty value. Not a shorthand's
+  // longhands or a longhand's shorthand.
+  const clears = runsOn && !inRule && context !== 'written';
   let carried = null;
   let named = 0;
   let unnamed = false;
@@ -1713,7 +1804,10 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       // in cssom's cascade: margin: 1px !important; margin-left: 2px)
       if (counting) prioritized = true;
     }
-    if (!name || !value || dropped(surface, name)) continue;
+    if (!name || !value || dropped(surface, name)) {
+      if (clears && name) decls.delete(name);
+      continue;
+    }
     // A url() with a line break in its string (a bad string) is invalid
     // here, though background-image takes it through the style object
     // (jsdom 27 and later, #144).
@@ -1754,7 +1848,12 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       }
       if (meetImage(name, value, mode)) declared = INVALID;
     }
-    if (declared === INVALID || declared === '') continue;
+    if (declared === INVALID || declared === '') {
+      // (an invalid value given in another case keeps it: color: blue;
+      // Color: foo is color: blue; an empty one does not: Color:)
+      if (clears && rawName === name) decls.delete(name);
+      continue;
+    }
     // One that loses its !important is written without it; in a style
     // sheet it is a normal declaration, elsewhere it is still !important
     // to the block's other declarations (masked: black box, jsdom 27 to
@@ -1779,6 +1878,9 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
         : { value: declared, important: false, masked: true },
     );
   }
+  // A name left without a value at the end (color: blue; color:).
+  if (clears && carried !== null && carried.includes(':'))
+    decls.delete(propertyName(carried.slice(0, carried.indexOf(':')).trim()));
   if (counting) decls.plain = !unnamed && (named === decls.size || (!prioritized && plainNames(names)));
 }
 

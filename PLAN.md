@@ -4808,3 +4808,29 @@ does not end the value (a!importantb is ab, important). Sheet parse
 20.0.3 18.63 -> 18.98, comments 18.75 -> 18.93, 27.0.1 17.39 -> 17.96,
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
+
+## 2026-11-04: declaration parsing for 1.0 (branch fix/declaration-parsing-1-0, #239, #224 item 4, #257)
+
+#239, black box (jsdom 20.0.3 to 30.1.3; cssstyle 2.3.0 to 4.6.0 on
+their own): in a style attribute or an element's cssText, jsdom 20 to 26
+remove a property's earlier declaration when a later one for the same
+name has a value cssstyle rejects or none (parseInto `clears`); an
+invalid value under another case (`Color: foo`) keeps it. Fallbacks
+(`height: 100vh; height: 100dvh`, `width: 100px; width: fit-content`)
+lost the first one on 20 to 22 and 25 because cssstyle before 4.2 reads
+only px, cm, mm, in, pt, pc, em, ex, ch, rem, vh and vw in its length
+properties, before 4.4 no min-content, max-content or fit-content in
+width, height, flex-basis and flex, and before 4.3 no gradients in
+background (legacyMeasureRejects). A grid of 30 properties x 33 values x
+3 forms x 11 versions: 6265 differences on main, 2385 after, none new.
+Left: cssstyle 4.4 to 4.6 rejecting cqw and lowercasing Q, uppercase
+units lowercased by jsdom 23 to 30, cssstyle before 4.4 keeping any
+line-height, cssText ending in a bare name (`color: blue; color:`) not
+setting the attribute, gradients with cssstyle 4.2.
+
+Cost: legacyMeasureRejects runs on declared-value cache misses in the
+jsdom 20 to 26 profiles only; one whole-value regular expression when the
+value has no function. setProperty with a unique value each time
+(Node 22.17.1, 5 alternating runs, medians): jsdom 20 profile 516 -> 575
+ns per width + margin pair; repeated values (style-bench) and the other
+benches within noise. Kept: the alternative is the wrong value.
