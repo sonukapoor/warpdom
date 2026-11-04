@@ -136,22 +136,23 @@ Not modeled:
   `4px`)
 - writes to the `getComputedStyle()` object
   ([#97](https://github.com/sonukapoor/warpdom/issues/97)): before jsdom
-  28 it takes them like `el.style`, and in jsdom 26 and 27 a shorthand
-  written there also sets its longhands (`cs.font = '20px Arial'` sets
-  `cs.fontSize`); warpdom stores the shorthand only. From 28, jsdom throws
-  a `NoModificationAllowedError` for a write such as
-  `cs.marginTop = '3px'`; warpdom stores it. The object's `cssText` and
-  `length` are `''` and 0 in warpdom; jsdom lists the resolved values
-  (`cssText` only before 28)
+  28.1.0 it takes them like `el.style`, as warpdom does; from 28.1.0,
+  jsdom throws a `NoModificationAllowedError` for a longhand write such as
+  `cs.marginTop = '3px'`, where warpdom stores it. In jsdom 20 to 30 a
+  shorthand written there (`cs.font = '20px Arial'`, `cs.margin`) is
+  taken and sets its longhands (`cs.fontSize`); warpdom stores the
+  shorthand only. The object's `cssText` and `length` are `''` and 0 in
+  warpdom; jsdom lists the resolved values (`cssText` only before 28.1.0)
 - uppercase units ([#97](https://github.com/sonukapoor/warpdom/issues/97)):
   jsdom 20 to 25 (cssstyle 4.1 and earlier) drop `width: 5PX`, and from 26
   jsdom lowercases it to `5px`; warpdom keeps `5PX`
 - the case of keywords
   ([#187](https://github.com/sonukapoor/warpdom/issues/187)): jsdom 27
-  lowercases keyword values such as `display: BLOCK` (`block`),
-  `position`, `visibility` and `color-scheme`, and from 28 the same except
-  `color-scheme`, in `el.style` and computed values; warpdom keeps the
-  case as written
+  to 30 lowercase keyword values such as `display: BLOCK` (`block`),
+  `position` and `visibility`, and jsdom 27 to 28.0.0 `color-scheme`
+  too, in `el.style` and computed values; warpdom keeps the case as
+  written, as jsdom 20 to 26 do, and jsdom 28.1.0 and later for
+  `color-scheme`
 - functions in box shorthands
   ([#112](https://github.com/sonukapoor/warpdom/issues/112)): from jsdom
   27, jsdom writes repeated sides once
@@ -161,13 +162,15 @@ Not modeled:
   jsdom 30 shortens to `min(10%, 2px)`; and jsdom 26 with cssstyle 4.3.1
   drops `padding: calc(10% + var(--a)) calc(10% + var(--a))`. warpdom
   keeps them as written
-- the order of declarations within one style rule, jsdom 27 and later
+- the order of declarations within one style rule, jsdom 27.1.0 and
+  later
   ([#113](https://github.com/sonukapoor/warpdom/issues/113),
   [#147](https://github.com/sonukapoor/warpdom/issues/147)): jsdom applies
   them in order, as in the `style` attribute, so
   `color: red !important; color: blue` computes to blue, and in
   `padding-top: 1px; padding: var(--p); padding-top: 4px` the last
-  `padding-top` gives `4px`. warpdom gives red, and not `4px`
+  `padding-top` gives `4px`. warpdom gives red, and not `4px` (its 27.0
+  profile matches jsdom 27.0.1: blue, and `''`)
 - from jsdom 27, a shorthand counts all its longhands in a declaration's
   `length` (`padding: 2px` gives 5, warpdom's 1;
   [#147](https://github.com/sonukapoor/warpdom/issues/147))
@@ -181,11 +184,12 @@ Not modeled:
   `color: var(--c)` (with `!important` only in the jsdom 30 profile);
   jsdom 20 to 25 drop both, where warpdom keeps the first
 - an `!important` `border-color` rule against an inline
-  `border-top-color`, jsdom 28 to 30.0
+  `border-top-color`, jsdom 28.1.0 to 30.1.0
   ([#147](https://github.com/sonukapoor/warpdom/issues/147)):
   `div { border-color: blue !important }` with
   `style="border-top-color: red"` computes red in jsdom and blue in
-  warpdom (as in jsdom 30.1.2 and 30.1.3)
+  warpdom (as in jsdom 30.1.1 and later). jsdom 28.0.0 and earlier give
+  red, as warpdom does
 - color functions, from jsdom 26
   ([#224](https://github.com/sonukapoor/warpdom/issues/224)): jsdom
   rejects `rgb(foo)` and a `color-mix()` with an invalid or system color
@@ -276,14 +280,18 @@ Computed values not modeled:
 - jsdom 29.1.1: a `<dialog>`'s top, right and bottom border colors are
   `rgb(0, 0, 0)` whatever its `color`
   ([#187](https://github.com/sonukapoor/warpdom/issues/187))
-- jsdom 29.1.1: a `border` or `border-color` shorthand in a style sheet
-  that gives the color as `currentcolor`, by omitting it or through
-  `initial`, computes to the parent's color instead of the element's own,
-  and children that inherit the border color get that color
-  ([#199](https://github.com/sonukapoor/warpdom/issues/199)). With
-  `<div style="color: blue"><p style="color: red">` and
+- jsdom 29.0.2 to 29.1.1: a `border` or `border-color` shorthand in a
+  style sheet that gives the color as `currentcolor`, by omitting it or
+  through `initial`, computes to the parent's color instead of the
+  element's own when the element's own `color` comes from its `style`
+  attribute (or `el.style`), and children that inherit the border color
+  get that color ([#199](https://github.com/sonukapoor/warpdom/issues/199)).
+  With `<div style="color: blue"><p style="color: red">` and
   `p { border: 1px solid }`, the `p`'s `border-top-color` is
   `rgb(0, 0, 255)`; warpdom gives the element's own color, as jsdom 30
+  does. When the element's `color` comes from a style sheet
+  (`p { color: red; border: 1px solid }`), or the shorthand is in the
+  `style` attribute too, jsdom gives the element's own color, as warpdom
   does
 
 jsdom 27.1 and later parse style sheets with the cssstyle that
