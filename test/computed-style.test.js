@@ -1039,3 +1039,31 @@ parity('getComputedStyle: the style attribute of an element without an inline st
   detached.setAttribute('style', 'color: red');
   return [none, span, other, d.querySelector('math'), d.querySelector('svg'), inXml, detached].map(read);
 });
+
+// An element whose document has no document element (a template's
+// content, new Document(), a document whose root was removed): computed in
+// every profile. jsdom 30.0.0 to 30.1.2 throw a TypeError from inside
+// getComputedStyle() there (black box; 29.1.1 and 30.1.3 compute it;
+// docs/differences.md, #259).
+test('getComputedStyle: an element of a document without a document element (#259)', () => {
+  for (const jsdom of ['29.1.1', '30.0.0', '30.1.2', '30.1.3']) {
+    const w = createWindow({ jsdom });
+    const t = w.document.createElement('template');
+    t.innerHTML = '<div style="color: red"><span></span></div>';
+    const doc = new w.Document();
+    const html = w.document.implementation.createHTMLDocument('');
+    html.documentElement.remove();
+    const read = (el) => {
+      const cs = w.getComputedStyle(el);
+      return [cs.color, cs.display];
+    };
+    assert.deepEqual(read(t.content.firstChild), ['rgb(255, 0, 0)', 'block'], jsdom);
+    assert.deepEqual(read(t.content.querySelector('span')), ['rgb(255, 0, 0)', 'inline'], jsdom);
+    assert.deepEqual(
+      read(doc.createElementNS('http://www.w3.org/1999/xhtml', 'div')),
+      ['rgb(0, 0, 0)', 'block'],
+      jsdom,
+    );
+    assert.deepEqual(read(html.createElement('div')), ['rgb(0, 0, 0)', 'block'], jsdom);
+  }
+});

@@ -65,6 +65,10 @@ warpdom follows the standard for:
   namespace, MathML's, another namespace's), and of its descendants:
   computed, its style attribute declaring nothing, as in jsdom 30.1.2 and
   later (jsdom 20.0 to 30.1.1 throw a TypeError from inside jsdom)
+- `getComputedStyle()` of an element whose document has no document
+  element (a template's content, `new Document()`, a document whose root
+  was removed): computed (jsdom 30.0.0 to 30.1.2 throw a TypeError from
+  inside jsdom; 30.1.3 computes it)
 
 ### Additions jsdom lacks
 
