@@ -21,7 +21,7 @@ What `warpdom` resolves to:
 | Node, `import` or `require()` | `src/node.js` (ES modules) | Node 22.12 and later can `require()` ES modules (the `module-sync` condition): one copy of warpdom for both |
 | Jest's module system (test files, setup files), before Node 24.9 | `dist/warpdom.cjs` | Jest runs test files' `require()` itself and cannot load ES modules synchronously there; this CommonJS build bundles the core with its parsers |
 | Jest 27 (ignores `exports`) | `dist/warpdom.cjs` (`main`) | |
-| Other runtimes, browser bundlers | `src/index.js` | No parser is loaded for them: call `setParserLoader(() => parse5)` (and `setXmlParserLoader` for XML) before parsing |
+| Other runtimes, browser bundlers | `src/index.js` | No parser is loaded for them: call `setParserLoader(() => parse5)` (and `setXmlParserLoader` for XML, `setXPathLoader` for XPath) before parsing; see "Loaders for other runtimes" below |
 
 Inside Jest test files the CommonJS build is a second copy of warpdom, next
 to the one the test environment (`warpdom/jest`) runs on. Windows of the two
@@ -32,6 +32,42 @@ platform objects (`TextEncoder`, `crypto`, `performance`) from Node, as the
 ES modules do, not from the test environment's global object; timers and
 `console` are the test file's, so Jest's fake timers and console capture
 apply to them.
+
+### Loaders for other runtimes
+
+warpdom loads its HTML parser, XML parser and XPath engine the first time
+each is needed, through a loader function. The Node entry point
+(`src/node.js`) registers all three with `require()`; on other runtimes
+(`src/index.js`), register the ones the code uses before it needs them.
+Each takes a function that returns the module synchronously. warpdom
+calls it once, at the first use, and keeps what it returns; setting a new
+loader drops that module, and the next use calls the new one:
+
+| Function | The loader returns | Needed for |
+|---|---|---|
+| `setParserLoader(loader: () => unknown): void` | parse5's API (`parse`, `parseFragment`, ...) | Parsing HTML: `innerHTML`, `DOMParser` with `text/html`, `document.write`, ... |
+| `setXmlParserLoader(loader: () => unknown): void` | `@rgrove/parse-xml`'s API | Parsing XML: `DOMParser` with an XML type, `innerHTML` in XML documents |
+| `setXPathLoader(loader: () => unknown): void` | warpdom's XPath 1.0 engine, `src/xpath.cjs` in the package (its `createXPath` export) | XPath: `document.evaluate`, `createExpression`, `XPathEvaluator` |
+
+Without a loader, the first use throws an `Error` naming the function to
+call (`warpdom: no XPath engine available. Import warpdom from Node, or
+call setXPathLoader().`). Until then, the XPath interfaces exist and cost
+a few small functions; the engine loads the first time an expression is
+compiled. `src/xpath.cjs` is not one of the package's `exports`, so a
+bundler imports it by its file path:
+
+```js
+import * as parse5 from 'parse5';
+import * as parseXml from '@rgrove/parse-xml';
+import * as xpath from './node_modules/warpdom/src/xpath.cjs';
+import { createWindow, setParserLoader, setXmlParserLoader, setXPathLoader } from 'warpdom';
+
+setParserLoader(() => parse5);
+setXmlParserLoader(() => parseXml);
+setXPathLoader(() => xpath);
+
+const window = createWindow();
+```
 
 ## `createWindow(options?)`
 
@@ -53,8 +89,10 @@ Scripts in parsed HTML do not run, as with jsdom's default (`runScripts`
 not set). The test environments set `url` (`http://localhost/` for Jest,
 `http://localhost:3000` for Vitest) and `jsdom` (the installed jsdom) for
 their windows; `createWindow` uses neither unless given. The environments
-take `beyondJsdom` as `environmentOptions.warpdom.beyondJsdom` (Vitest) and
-`testEnvironmentOptions.beyondJsdom` (Jest), as they take `xhr`.
+take `url` as `environmentOptions.warpdom.url` (Vitest) and
+`testEnvironmentOptions.url` (Jest), and `beyondJsdom` as
+`environmentOptions.warpdom.beyondJsdom` and
+`testEnvironmentOptions.beyondJsdom`, as they take `xhr`.
 
 ## From jsdom
 
