@@ -1530,7 +1530,9 @@ const SHORT = {
 };
 function displayShortForm(value) {
   const keywords = value.toLowerCase().split(/\s+/);
-  if (keywords.length < 2) return value;
+  // A legacy keyword (-webkit-box) in lowercase (jsdom 27 and later, #257);
+  // the standard ones keep their case.
+  if (keywords.length < 2) return value.charCodeAt(0) === 45 ? keywords[0] : value;
   let outer = null,
     inner = null,
     listItem = false;

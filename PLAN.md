@@ -4841,3 +4841,12 @@ spaces: 15 / 51 / 200 / 790 ms in cssText, the attribute and a sheet).
 priorityStart reads from the end instead (same index as the regular
 expression on 500,000 random values): under 2 ms for all of them. Test:
 css-validation.test.js, 50,000 characters under 200 ms.
+
+#257 (found in the 1.0 triage), black box 20.0.3 to 30.1.3: jsdom 27 and
+later keep css-tree's non-standard display keywords (-webkit-box,
+-webkit-inline-box, -webkit-flex, -webkit-inline-flex, -moz-box,
+-moz-inline-box, -moz-inline-stack, -ms-inline-flexbox, -ms-grid,
+-ms-inline-grid), lowercased, inline and computed, and drop -ms-flexbox,
+-webkit-grid, -webkit-inline-grid and -moz-flex; 20 to 26 keep any value.
+The generator appends them to display's grammar. innerText lays them out
+as their standard counterparts.

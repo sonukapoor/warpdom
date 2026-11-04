@@ -405,3 +405,49 @@ test('declarations: a long whitespace run before the end is read quickly', () =>
     }
   }
 });
+
+// Legacy display keywords (#257, found in the 1.0 triage): jsdom 27 and
+// later keep css-tree's non-standard ones (-webkit-box, the line-clamp
+// idiom), lowercased, and drop others (-ms-flexbox, -webkit-grid); jsdom
+// 20 to 26 keep any display value as written. Inline, in a style sheet
+// and computed.
+const LEGACY_DISPLAYS = [
+  '-webkit-box',
+  '-webkit-inline-box',
+  '-webkit-flex',
+  '-webkit-inline-flex',
+  '-moz-box',
+  '-moz-inline-box',
+  '-moz-inline-stack',
+  '-ms-flexbox',
+  '-ms-inline-flexbox',
+  '-ms-grid',
+  '-ms-inline-grid',
+  '-webkit-grid',
+  '-webkit-inline-grid',
+  '-moz-flex',
+  '-webkit-flexbox',
+  '-WEBKIT-BOX',
+  '-Webkit-Flex',
+];
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30]) {
+  parity(
+    `jsdom ${jsdom}: legacy display keywords (#257)`,
+    (w) => {
+      const d = w.document;
+      return LEGACY_DISPLAYS.map((value) => {
+        const a = d.createElement('div');
+        a.style.display = value;
+        const b = d.createElement('div');
+        b.style.cssText = `display: flex; display: ${value}`;
+        const c = d.createElement('div');
+        c.setAttribute('style', `display: ${value} !important`);
+        d.head.innerHTML = `<style>.a{display: ${value}; -webkit-line-clamp: 2}</style>`;
+        d.body.innerHTML = '<div class="a"></div>';
+        const rule = d.styleSheets[0].cssRules[0].style.display;
+        return `${value} -> ${a.style.display} | ${b.style.display} | ${c.style.cssText} | ${rule} | ${w.getComputedStyle(d.body.firstChild).display}`;
+      });
+    },
+    { jsdom },
+  );
+}
