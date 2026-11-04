@@ -494,6 +494,92 @@ for (const jsdom of [30, 26]) {
   );
 }
 
+// A repeated !important declaration (#265): from jsdom 27 the first one
+// wins in a style attribute and cssText, and from 27.1.0 in a rule's
+// cssText; a style sheet's rule lets the last one win.
+const REPEATED_IMPORTANT = [
+  'color: red !important; color: blue !important',
+  'color: red !important; color: blue',
+  'color: red; color: blue !important',
+  'color: red !important; color: green !important; color: blue !important',
+  'color: red !important; color: blue !important; color: green',
+  'color: green; color: red !important; color: blue !important',
+  'color: red !important; color: green; color: blue !important',
+  'color: red !important; margin-top: 3px !important; color: blue !important; margin-top: 4px !important',
+  'display: none !important; display: block !important',
+  '--x: a !important; --x: b !important',
+  'color: red !important; COLOR: blue !important',
+  'color: red !important; COLOR: blue',
+  'COLOR: red !important; color: blue !important',
+  'color: var(--c) !important; color: blue !important',
+];
+// jsdom 20 to 25 drop the property for these (cssstyle 2.3 to 4.1).
+const REPEATED_IMPORTANT_FROM_26 = [
+  'margin-top: 0 !important; margin-top: inherit !important',
+  'padding-top: 1px !important; padding-top: inherit !important',
+  'color: red !important; color: var(--c) !important',
+];
+function repeatedImportant(w, texts) {
+  const d = w.document;
+  d.body.innerHTML = '<p id="t"></p>';
+  const el = d.getElementById('t');
+  const read = (style) => {
+    const out = [style.cssText, Array.from({ length: style.length }, (_, i) => style[i]).join()];
+    for (const name of ['color', 'margin-top', 'padding-top', 'display', '--x'])
+      out.push(style.getPropertyValue(name), style.getPropertyPriority(name));
+    const computed = w.getComputedStyle(el);
+    out.push(computed.color, computed.marginTop, computed.display);
+    return out;
+  };
+  return texts.map((text) => {
+    d.head.innerHTML = '<style>#t {}</style>';
+    el.setAttribute('style', text);
+    const attribute = read(el.style);
+    el.removeAttribute('style');
+    el.style.cssText = text;
+    const cssText = read(el.style);
+    el.removeAttribute('style');
+    const rule = d.styleSheets[0].cssRules[0];
+    rule.style.cssText = text;
+    const ruleCssText = read(rule.style);
+    d.head.innerHTML = `<style>#t { ${text} }</style>`;
+    return [text, attribute, cssText, ruleCssText, read(d.styleSheets[0].cssRules[0].style)];
+  });
+}
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30]) {
+  parity(
+    `a repeated !important declaration (jsdom ${jsdom})`,
+    (w) =>
+      repeatedImportant(w, jsdom < 26 ? REPEATED_IMPORTANT : [...REPEATED_IMPORTANT, ...REPEATED_IMPORTANT_FROM_26]),
+    { jsdom },
+  );
+}
+
+// Release boundaries jsdom's installs here do not cover (black box, jsdom
+// 27.0.1, 27.1.0, 28.0.0 and 28.1.0): a rule's cssText keeps the first
+// !important one from 27.1.0; before 28.1.0 a later one is looked up by
+// its name as written.
+test('a repeated !important declaration at jsdom 27.0.1, 27.1.0, 28.0.0 and 28.1.0', () => {
+  for (const [jsdom, text, attribute, ruleCssText] of [
+    ['27.0.1', 'color: red !important; color: blue !important', 'red', 'blue'],
+    ['27.1.0', 'color: red !important; color: blue !important', 'red', 'red'],
+    ['27.1.0', 'color: red !important; COLOR: blue !important', 'blue', 'blue'],
+    ['28.0.0', 'color: red !important; COLOR: blue', 'blue', 'blue'],
+    ['28.1.0', 'color: red !important; COLOR: blue !important', 'red', 'red'],
+    ['28.1.0', 'color: red !important; COLOR: blue', 'red', 'red'],
+    ['28.1.0', 'COLOR: red !important; color: blue', 'blue', 'blue'],
+  ]) {
+    const w = createWindow({ jsdom });
+    const el = w.document.createElement('p');
+    el.setAttribute('style', text);
+    assert.equal(el.style.color, attribute, `${text} in a style attribute, jsdom ${jsdom}`);
+    w.document.head.innerHTML = '<style>p {}</style>';
+    const rule = w.document.styleSheets[0].cssRules[0];
+    rule.style.cssText = text;
+    assert.equal(rule.style.color, ruleCssText, `${text} in a rule's cssText, jsdom ${jsdom}`);
+  }
+});
+
 parity('CSS-wide keywords serialize lowercased', (w) => {
   const style = w.document.createElement('div').style;
   return [
