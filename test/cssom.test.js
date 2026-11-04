@@ -2012,3 +2012,22 @@ test('CSSStyleRule style: forms cssom reads otherwise (jsdom 27.0.0, 27.0.1)', (
   ];
   for (const jsdom of ['27.0.0', '27.0.1']) assert.deepEqual(cssomOddFormsScenario(createWindow({ jsdom })), expected);
 });
+
+test('CSSKeyframesRule: the profiles that drop object values keep the cssom shape (#251 review)', () => {
+  // cssomObjectValues and the rule shape are separate: the 26.x and
+  // 27.0.x profiles take object values and still have cssom's rules, whose
+  // keyframes are enumerable data indices, not jsdom 27.1's accessors.
+  for (const [jsdom, shape] of [
+    ['20.0.3', 'data'],
+    ['26.1.0', 'data'],
+    ['27.0.1', 'data'],
+    ['28.1.0', 'accessor'],
+  ]) {
+    const w = createWindow({ jsdom });
+    const style = w.document.createElement('style');
+    style.textContent = '@keyframes k { from { top: 0 } to { top: 1px } }';
+    w.document.head.append(style);
+    const d = Object.getOwnPropertyDescriptor(style.sheet.cssRules[0], '0');
+    assert.equal(d && ('value' in d ? 'data' : 'accessor'), shape, jsdom);
+  }
+});

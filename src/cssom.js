@@ -1565,8 +1565,8 @@ export const CSSOM_INTERFACES = [
     name: 'CSSRule',
     statics: (compat) => RULE_STATICS[compat.cssomShape] ?? RULE_TYPES,
     compat(proto, compat) {
-      if (ruleVariant(compat) === 'cssom') LEGACY_RULES.add(proto);
       if (compat.cssomObjectValues === false) OBJECTS_DROPPED.add(proto);
+      if (ruleVariant(compat) === 'cssom') LEGACY_RULES.add(proto);
       else if (compat.cssomShape === null) OWN_CSSOM.add(proto);
       else ACEMIR_RULES.add(proto);
     },
