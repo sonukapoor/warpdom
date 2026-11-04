@@ -212,7 +212,8 @@ Not modeled:
   `background-image` with `var()`. warpdom keeps all three
 - backslash escapes outside strings in style sheets
   ([#148](https://github.com/sonukapoor/warpdom/issues/148)): after
-  `.a\{`, `.a\(b` or `content: \}`, warpdom drops the rest of the sheet.
+  `.a\{`, `.a\(b` or `content: \}`, warpdom misparses the sheet: a
+  rule can end early or swallow the rules that follow.
   jsdom 27 and later keep the rules that follow; jsdom 20 to 26 keep them
   or leave out the whole sheet ("Could not parse CSS stylesheet")
 - an unclosed parenthesis in a custom property value in a style sheet
