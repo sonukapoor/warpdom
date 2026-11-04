@@ -166,7 +166,8 @@ for (const jsdom of [20, 25, 30]) {
 // as orders against timers with a few ms to spare: a request after
 // canceling the last pending callback (at 10 ms) runs after a 20 ms timer;
 // one made 12 ms into a frame (16.7 ms) with a sibling pending runs on the
-// same interval's next beat (33.3 ms), before a 39 ms timer.
+// same interval's next beat (33.3 ms), before a 10 ms timer started at
+// the end of that frame's work.
 parity('animation frames: real time, a new interval after a cancel, the same one in a frame', async (w) => {
   const log = [];
   await new Promise((resolve) => {
@@ -185,12 +186,15 @@ parity('animation frames: real time, a new interval after a cancel, the same one
       const end = performance.now() + 12;
       while (performance.now() < end);
       w.requestAnimationFrame(() => log.push('in frame'));
+      // Started after the frame's work, so a late first frame cannot
+      // make it fire first: the same interval's next beat is about 4.6 ms
+      // away, a fresh interval 16.7 ms (#255 review).
+      setTimeout(() => {
+        log.push('timer 10');
+        resolve();
+      }, 10);
     });
     w.requestAnimationFrame(() => {});
-    setTimeout(() => {
-      log.push('timer 39');
-      resolve();
-    }, 39);
   });
   return log;
 });
