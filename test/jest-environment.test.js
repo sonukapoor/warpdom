@@ -141,6 +141,102 @@ test('Jest environment: testEnvironmentOptions.beyondJsdom', async () => {
   rmSync(rootDir, { recursive: true, force: true });
 });
 
+// Animation frames under Jest's fake timers (#249), black box against
+// jest-environment-jsdom's setup (the jsdom window as the global, Jest's
+// fake timers installed on it; jsdom 20.0.3 and 30.1.3): modern and
+// legacy fake timers replace requestAnimationFrame, so advancing runs the
+// frame; with requestAnimationFrame left alone (doNotFake), jsdom's
+// frames run on its realm's real setInterval: advancing does not run
+// them, waiting does. warpdom's run on its realm's timers too.
+test('Jest environment: animation frames under fake timers, as with jest-environment-jsdom', async () => {
+  const require = createRequire(import.meta.url);
+  const { ModernFakeTimers, LegacyFakeTimers } = require('@jest/fake-timers');
+  const { ModuleMocker } = require('jest-mock');
+  const MODES = ['modern', 'modern, doNotFake requestAnimationFrame', 'legacy'];
+  const fakeTimers = (global, mode) => {
+    if (mode === 'legacy') {
+      const timers = new LegacyFakeTimers({
+        config: { rootDir: '/' },
+        global,
+        moduleMocker: new ModuleMocker(global),
+        timerConfig: { idToRef: (id) => id, refToId: (ref) => ref },
+      });
+      timers.useFakeTimers();
+      return timers;
+    }
+    const timers = new ModernFakeTimers({ config: { fakeTimers: {} }, global });
+    timers.useFakeTimers(mode === 'modern' ? {} : { doNotFake: ['requestAnimationFrame', 'cancelAnimationFrame'] });
+    return timers;
+  };
+  // Frames run on advancing 17 ms, then after a real 40 ms wait.
+  const scenario = async (global, timers, evaluate) => {
+    evaluate('globalThis.ran = 0; requestAnimationFrame(() => ran++);');
+    timers.advanceTimersByTime(17);
+    const advanced = evaluate('ran');
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    return [advanced, evaluate('ran')];
+  };
+  const results = async (run) => {
+    const out = [];
+    for (const mode of MODES) out.push([mode, ...(await run(mode))]);
+    return out;
+  };
+  const { JSDOM } = await import('jsdom20');
+  for (const Dom of [JSDOM, (await import('jsdom30')).JSDOM]) {
+    const expected = await results(async (mode) => {
+      const window = new Dom('<!doctype html>', { pretendToBeVisual: true, runScripts: 'dangerously' }).window;
+      window.process = Object.create(process);
+      const timers = fakeTimers(window, mode);
+      try {
+        return await scenario(window, timers, (code) => window.eval(code));
+      } finally {
+        timers.useRealTimers();
+        window.close();
+      }
+    });
+    assert.deepEqual(expected, [
+      ['modern', 1, 1],
+      ['modern, doNotFake requestAnimationFrame', 0, 1],
+      ['legacy', 1, 1],
+    ]);
+    const actual = await results(async (mode) => {
+      const env = new WarpdomEnvironment(
+        { globalConfig: {}, projectConfig: { rootDir: process.cwd(), testEnvironmentOptions: {} } },
+        { console, docblockPragmas: {}, testPath: join(process.cwd(), 'a.test.js') },
+      );
+      await env.setup();
+      const timers = fakeTimers(env.global, mode);
+      try {
+        return await scenario(env.global, timers, (code) => vm.runInContext(code, env.getVmContext()));
+      } finally {
+        timers.useRealTimers();
+        await env.teardown();
+      }
+    });
+    assert.deepEqual(actual, expected);
+  }
+});
+
+// Teardown stops the window's frames, as jest-environment-jsdom's closes
+// jsdom's window: a callback still pending never runs.
+test('Jest environment: teardown stops animation frames', async () => {
+  const rootDir = fakeJestProject();
+  try {
+    const env = new WarpdomEnvironment(
+      { globalConfig: {}, projectConfig: { rootDir, testEnvironmentOptions: {} } },
+      { console, docblockPragmas: {}, testPath: join(rootDir, 'a.test.js') },
+    );
+    await env.setup();
+    let ran = 0;
+    env.global.requestAnimationFrame(() => ran++);
+    await env.teardown();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.equal(ran, 0);
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
 test('Jest environment: testEnvironmentOptions.fastFrames', async () => {
   const rootDir = fakeJestProject();
   for (const [options, fast] of [

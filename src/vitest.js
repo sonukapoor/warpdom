@@ -15,7 +15,7 @@ import { S, THISLESS } from './internal.js';
 import { ablated, materializeAll } from './ablate.js';
 import { setQueryCache } from './selectors.js';
 import { resetWindow, snapshotWindow } from './reset.js';
-import { HOST_TIMER_KEYS, warnNewerJsdom } from './window-features.js';
+import { HOST_TIMER_KEYS, stopFrames, warnNewerJsdom } from './window-features.js';
 import { blobData } from './file-reader.js';
 import { abortWindowRequests } from './xhr.js';
 import { forgetLastList } from './collections.js';
@@ -588,6 +588,8 @@ export default {
       },
       teardown() {
         abortWindowRequests(window);
+        // Frames stop, as closing jsdom's window stops them.
+        stopFrames(window);
         forgetLastList();
         restore();
       },
@@ -621,6 +623,7 @@ export default {
           state.mark = null;
           state.mocked.clear();
           restore();
+          stopFrames(window);
           window = createTestWindow(options);
           restore = installWindow(global, window, {
             hostKeys: VITEST_GLOBAL_HOST_KEYS,
@@ -652,6 +655,8 @@ export default {
         delete global[MOCKING];
         // Requests still running stop without events, as closing jsdom's window stops them.
         abortWindowRequests(window);
+        // Frames stop, as closing jsdom's window stops them.
+        stopFrames(window);
         forgetLastList();
         restore();
         url.restore();

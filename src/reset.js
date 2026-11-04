@@ -23,7 +23,7 @@
 import { S, insert, hooks, PlatformURL as URL } from './internal.js';
 import { clearStorage } from './storage.js';
 import { clearCookies } from './cookies.js';
-import { clearWindowTimers } from './window-features.js';
+import { clearWindowTimers, stopFrames } from './window-features.js';
 import { abortWindowRequests } from './xhr.js';
 import { clearDeclarations } from './css.js';
 import { forgetLastList } from './collections.js';
@@ -162,12 +162,10 @@ export function resetWindow(window) {
   ws.listeners = undefined;
   ws.handlers = undefined;
   ws.status = undefined;
-  // A frame scheduled on timers the test has since cleared or replaced
-  // would never run: the next file starts without frames.
-  if (ws.frames) {
-    ws.frames.queue.clear();
-    ws.frames = undefined;
-  }
+  // The next file starts without frames (pending callbacks dropped, the
+  // beat's interval cleared).
+  stopFrames(window);
+  ws.frames = undefined;
   clearWindowTimers(window);
   abortWindowRequests(window);
   forgetLastList();
