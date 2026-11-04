@@ -1011,3 +1011,31 @@ for (const jsdom of [30, 26, 20]) {
     { jsdom },
   );
 }
+
+// Only HTML and SVG elements have an inline style: the style attribute of
+// an element in no namespace, MathML's or another namespace's declares
+// nothing, as in jsdom 30.1.2 and later (black box, to 30.1.3; jsdom
+// 20.0.0 to 30.1.1 throw a TypeError from inside getComputedStyle() for
+// such an element, docs/differences.md), its style sheets' rules still
+// apply, and its children inherit nothing from the attribute (#259).
+parity('getComputedStyle: the style attribute of an element without an inline style (#259)', (w) => {
+  const d = w.document;
+  d.head.innerHTML = '<style>foo { visibility: hidden }</style>';
+  const read = (el) => {
+    const cs = w.getComputedStyle(el);
+    return [cs.color, cs.display, cs.visibility, el.style === undefined];
+  };
+  const none = d.createElementNS(null, 'foo');
+  none.setAttribute('style', 'color: red; display: block');
+  const span = none.appendChild(d.createElement('span'));
+  const other = d.createElementNS('urn:x', 'foo');
+  other.setAttribute('style', 'color: red');
+  d.body.innerHTML = '<math style="color: red"></math><svg style="color: red"></svg>';
+  d.body.append(none, other);
+  const xml = d.implementation.createDocument(null, 'root', null);
+  const inXml = xml.documentElement.appendChild(xml.createElement('div'));
+  inXml.setAttribute('style', 'color: red');
+  const detached = d.createElementNS(null, 'bar');
+  detached.setAttribute('style', 'color: red');
+  return [none, span, other, d.querySelector('math'), d.querySelector('svg'), inXml, detached].map(read);
+});

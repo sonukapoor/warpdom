@@ -61,6 +61,10 @@ warpdom follows the standard for:
 - a removed iframe's `contentWindow` (null)
 - an iframe's `getSVGDocument()` (null; jsdom's throws a TypeError from
   inside jsdom)
+- `getComputedStyle()` of an element that is neither HTML nor SVG (in no
+  namespace, MathML's, another namespace's), and of its descendants:
+  computed, its style attribute declaring nothing, as in jsdom 30.1.2 and
+  later (jsdom 20.0 to 30.1.1 throw a TypeError from inside jsdom)
 
 ### Additions jsdom lacks
 

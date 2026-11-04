@@ -21,6 +21,7 @@ import {
   ELEMENT_NODE,
   DOCUMENT_NODE,
   HTML_NS,
+  SVG_NS,
   rootOf,
   cssomChanges,
   ruleListRev,
@@ -235,10 +236,15 @@ function ruleIndex(element) {
 
 // The style attribute's declarations, expanded, cached per attribute value
 // (css.js clears the cache when the element's style object changes).
+// Only HTML and SVG elements have an inline style (interfaces.js
+// inlineStyle): as in jsdom 30.1.2 and later (black box, to 30.1.3), the
+// style attribute of another element (in no namespace, MathML's, another
+// namespace's) declares nothing. jsdom 20.0.0 to 30.1.1 throw a TypeError
+// from inside getComputedStyle() for such an element (#259).
 function inlineDeclarations(element) {
   const es = element[S];
   const text = es.attrs.get('style');
-  if (text === undefined) return null;
+  if (text === undefined || (es.ns !== HTML_NS && es.ns !== SVG_NS)) return null;
   if (es.inlineCascade?.text === text) return es.inlineCascade.map;
   const map = new Map();
   const mode = validationModeOf(es.doc[S].window);
