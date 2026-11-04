@@ -128,6 +128,14 @@ Not modeled:
   `CSSNestedDeclarations`
 - `getComputedStyle().azimuth` with cssstyle 4.2 and 4.3 (`NaNdeg` for an
   angle, jsdom's is empty)
+- comments in declared values that some properties read otherwise:
+  from jsdom 27, `font-family: a/*x*/b` is `ab` (warpdom `a b`), the
+  style attribute keeps `transition: opacity/*x*/1s` as written (warpdom
+  `opacity 1s`), and in jsdom 27 `content: "a" /*x*/` too (warpdom
+  `"a"`). Comments are otherwise read as jsdom reads them: removed before
+  27 and in 27 and 28's style sheets, a space elsewhere, and kept as
+  written in a custom property's value outside style sheets and in a
+  value with `var()` from 27 (29 in style sheets)
 
 Computed values not modeled:
 

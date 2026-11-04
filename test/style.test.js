@@ -988,6 +988,45 @@ const SPACED_NAMES = [
   // A backslash before a tab escapes it, before a line break nothing.
   '--a\\\tb: 1',
   '--a\\\nb: 1',
+  '--f\\6f o: 1',
+];
+// Comments in declarations (black box, 20.0.3 to 30.1.3, #259): a colon
+// or a semicolon in one separates nothing. jsdom 20 to 26 remove them from
+// a style attribute and cssText, jsdom 27 and 28's style sheets too (and
+// drop a declaration whose comment is not closed); jsdom 29 and later's
+// style sheets read each as a space, and jsdom 27 and later's style
+// attribute and cssText too, except in a custom property's value, which
+// keeps them. One before or after a name is ignored, one inside it makes
+// the declaration invalid from 27 (outside 27 and 28's sheets).
+const COMMENTED = [
+  '--a/*:*/b: 1',
+  'col/*:*/or: red',
+  '--a/*;*/b: 1',
+  'col/*;*/or: red',
+  '--a/*;x:*/b: 1',
+  'color: red/*;*/; --q: 1',
+  '--x: a/*;*/b',
+  '--x: a/*:*/b',
+  '--x: [a/*;*/b]',
+  '--x:/*x*/a',
+  '--x: a/*x*/',
+  '--x: a/*x*/b !important',
+  '--x: "a/*b*/c"',
+  'content: "/*"; color: red',
+  'color: /*x*/ red',
+  'color: red /*!important*/',
+  'color: r/*x*/ed',
+  '/*x*/color: red',
+  'color/*x*/: red',
+  '--y/*x*/: 1',
+  '--x /*c*/ : 1',
+  'color: red; /* a; b: c */ width: 2px',
+  // A value with var() keeps them after its leading ones from 27 (29 in
+  // style sheets), var( in a comment counting.
+  'color: var(--c) /*x*/',
+  'color: /*a*/ /*b*/ var(--c)/*;*/',
+  'color: red /*var(*/',
+  '--x: /*x*/var(--a)',
 ];
 for (const jsdom of [20, 22, 26, 27, 28, 29, 30])
   parity(
@@ -997,7 +1036,7 @@ for (const jsdom of [20, 22, 26, 27, 28, 29, 30])
       d.head.innerHTML = '<style>div {}</style>';
       const sheet = d.styleSheets[0];
       const el = d.body.appendChild(d.createElement('div'));
-      return SPACED_NAMES.map((name) => {
+      return [...SPACED_NAMES, ...COMMENTED].map((name) => {
         const text = `${name}; width: 1px`;
         el.setAttribute('style', text);
         const attribute = [el.style.cssText, el.style.length, w.getComputedStyle(el).getPropertyValue('--foo')];
@@ -1009,6 +1048,50 @@ for (const jsdom of [20, 22, 26, 27, 28, 29, 30])
         const inserted = sheet.cssRules[1].cssText;
         sheet.deleteRule(1);
         return [attribute, cssText, rule, inserted];
+      });
+    },
+    { jsdom },
+  );
+
+// A comment between two values of a shorthand, as cssText reads it (the
+// longhands jsdom 30 lists in its length are another difference).
+for (const jsdom of [20, 26, 27, 28, 29, 30])
+  parity(
+    `style: a comment between a shorthand's values (jsdom ${jsdom}, #259)`,
+    (w) => {
+      const d = w.document;
+      d.head.innerHTML = '<style>div {}</style>';
+      const sheet = d.styleSheets[0];
+      const el = d.body.appendChild(d.createElement('div'));
+      return ['margin: 1px /*;*/ 2px', 'margin: 1px/*x*/2px'].map((text) => {
+        el.setAttribute('style', text);
+        const attribute = el.style.cssText;
+        sheet.insertRule(`p { ${text} }`, 1);
+        const inserted = sheet.cssRules[1].cssText;
+        sheet.deleteRule(1);
+        return [attribute, inserted];
+      });
+    },
+    { jsdom },
+  );
+
+// A comment left open: to the end of the text, except that jsdom 27 and
+// 28's style sheets drop its declaration (jsdom 20 to 26's throw).
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `style: a comment left open (jsdom ${jsdom}, #259)`,
+    (w) => {
+      const d = w.document;
+      d.head.innerHTML = '<style>div {}</style>';
+      const sheet = d.styleSheets[0];
+      const el = d.body.appendChild(d.createElement('div'));
+      return ['color: red; --x: a/*u; width: 1px', 'color: red; margin: 1px /*u; width: 1px'].map((text) => {
+        el.setAttribute('style', text);
+        const attribute = el.style.cssText;
+        sheet.insertRule(`p { ${text} }`, 1);
+        const inserted = sheet.cssRules[1].cssText;
+        sheet.deleteRule(1);
+        return [attribute, inserted];
       });
     },
     { jsdom },

@@ -1694,6 +1694,87 @@ function isHexDigit(c) {
   return (c >= 48 && c <= 57) || ((c | 32) >= 97 && (c | 32) <= 102);
 }
 
+// The declarations of a text with a comment in it (/*, #259): a colon or
+// a semicolon in a comment separates nothing. policy, black box 20.0.3 to
+// 30.1.3: 'remove' drops every comment outside strings (jsdom 20 to 26's
+// style attribute and cssText; jsdom 27 and 28's style sheets, which also
+// drop a declaration whose comment is not closed), 'space' makes each one
+// a space outside unquoted url()s (jsdom 29 and later's style sheets),
+// 'inline' too but keeps a custom property's value as written (jsdom 27
+// and later's style attribute and cssText). With either, a value with
+// var() is kept as written after its leading comments (var( inside a
+// comment counts, inside a string as surface.varInStrings says). A comment
+// inside a name leaves a space there, which makes the declaration invalid
+// from 27 (spacedDeclarationName); one before or after it does not.
+function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface) {
+  const parts = [];
+  let spaced = '';
+  let from = 0;
+  let depth = 0;
+  let quote = null;
+  let colon = -1;
+  let head = 0;
+  let custom = false;
+  const end = (i) => {
+    let part = spaced + text.slice(from, i);
+    if (policy !== 'remove' && colon !== -1) {
+      const raw = text.slice(colon + 1, i);
+      if (custom ? policy === 'inline' : keepsComments(raw, surface)) {
+        part = part.slice(0, head) + (custom ? raw : raw.replace(LEADING_COMMENTS, ''));
+      }
+    }
+    parts.push(part);
+    spaced = '';
+    from = i + 1;
+    colon = -1;
+  };
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === '\\') i++;
+      else if (c === quote || (lineBreaks && (c === '\n' || c === '\r' || c === '\f'))) quote = null;
+      continue;
+    }
+    if (c === '/' && text[i + 1] === '*') {
+      const close = text.indexOf('*/', i + 2);
+      if (close < 0 && unclosedDrops) return parts;
+      const stop = close < 0 ? text.length : close + 2;
+      spaced += text.slice(from, i) + (policy === 'remove' ? '' : ' ');
+      from = stop;
+      i = stop - 1;
+    } else if (c === '"' || c === "'") quote = c;
+    else if (c === '(') {
+      const close = policy === 'remove' ? -1 : urlTokenEnd(text, i);
+      if (close === -1) depth++;
+      else i = close - 1;
+    } else if (c === ')') depth = Math.max(0, depth - 1);
+    else if (c === ':' && colon === -1) {
+      colon = i;
+      const name = spaced + text.slice(from, i + 1);
+      head = name.length;
+      custom = name.trimStart().startsWith('--');
+    } else if (c === ';' && depth === 0) end(i);
+  }
+  end(text.length);
+  return parts;
+}
+function keepsComments(value, surface) {
+  return surface?.varInStrings ? value.includes('var(') : hasVar(value);
+}
+const LEADING_COMMENTS = /^(\s|\/\*[\s\S]*?(\*\/|$))*/;
+// parseInto's declarations of a text with a comment in it. Style sheets
+// before jsdom 27.1 (cssom, replay) and rules before 27 read comments in
+// cssom.
+function commentedParts(source, runsOn, lineBreaks, context, surface) {
+  const sheet = context === 'sheet';
+  if (context === 'cssom' || context === 'replay' || (runsOn && (sheet || context === 'rule')))
+    return lineBreaks ? splitDeclarations(source) : splitOutside(source, ';');
+  if (runsOn) return commentedDeclarations(source, 'remove', lineBreaks, false, surface);
+  if (sheet && surface?.key?.startsWith('cssstyle'))
+    return commentedDeclarations(source, 'remove', lineBreaks, true, surface);
+  return commentedDeclarations(source, sheet ? 'space' : 'inline', lineBreaks, false, surface);
+}
+
 function parseInto(decls, text, mode, surface = null, context = null, element = false) {
   // 'replay': declarations given to a rule's (replayDeclarations).
   // 'cssom': a style rule's in a sheet before jsdom 27.1.0, which tells
@@ -1723,7 +1804,10 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   const names = counting ? [] : null;
   const source = String(text ?? '');
   const lineBreaks = !runsOn && cssSplitNeeded(source);
-  for (let part of lineBreaks ? splitDeclarations(source) : splitOutside(source, ';')) {
+  let parts;
+  if (source.indexOf('/*') !== -1) parts = commentedParts(source, runsOn, lineBreaks, context, surface);
+  else parts = lineBreaks ? splitDeclarations(source) : splitOutside(source, ';');
+  for (let part of parts) {
     if (carried !== null) {
       part = `${carried};${part}`;
       carried = null;
