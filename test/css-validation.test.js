@@ -320,6 +320,43 @@ for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30]) {
   );
 }
 
+// jsdom 20 to 26 read a style attribute or an element's cssText as cssom
+// reads the block first, a name given again as written taking the earlier
+// one's place, and then set it declaration by declaration (#261 review):
+// an invalid later value under another case keeps the one before it, and
+// a property keeps the place of its first declaration. A name left without
+// a value at the end leaves the block empty.
+const REPEATED = [
+  'color: blue; Color: red; color: foo',
+  'color: blue; COLOR: red; width: 1px; color: foo',
+  'Color: blue; color: foo',
+  'Color: blue; color: inherit',
+  'color: blue; Color: red; color: green',
+  'color: foo; width: 1px; color: blue',
+  'color: foo; width: 1px; color: blue !important',
+  'width: 1px; color: blue; height: 2px; Color: red; top: 1px; color: foo',
+  'color: red !important; Color: blue; color: foo',
+  'color : blue; color: foo',
+  'color: blue; Color:; width: 1px',
+  'width: 1px; color:',
+  'color: blue; width: 1px; Color:',
+];
+for (const jsdom of [20, 22, 25, 26]) {
+  parity(
+    `jsdom ${jsdom}: a name declared again in a style attribute and cssText (#261 review)`,
+    (w) =>
+      REPEATED.map((text) => {
+        const a = w.document.createElement('div');
+        a.setAttribute('style', text);
+        const b = w.document.createElement('div');
+        b.style.cssText = text;
+        const names = Array.from({ length: b.style.length }, (_, i) => b.style.item(i));
+        return `${text} -> ${a.style.cssText} | ${b.style.cssText} | ${names.join(',')} | ${b.style.color}`;
+      }),
+    { jsdom },
+  );
+}
+
 // The lengths and sizing keywords cssstyle reads before 4.4 (#239):
 // before 4.2 px, cm, mm, in, pt, pc, em, ex, ch, rem, vh and vw only.
 const LENGTH_NAMES = ['width', 'height', 'flex-basis', 'top', 'font-size', 'margin', 'margin-top', 'padding'];
@@ -405,6 +442,23 @@ test('lengths and sizing keywords with cssstyle 4.2 and 4.3 (#239)', () => {
     assert.equal(css(cssstyle, 'font', '1e01px serif'), 'font: serif;');
     assert.equal(css(cssstyle, 'font', 'bold 1e-01px serif'), 'font: serif bold;');
     assert.equal(css(cssstyle, 'font', '1e1px serif'), 'font: serif 1e1px 1e1px;');
+    // A number without a unit: an exponent in flex only, and no leading
+    // zero (#261 review).
+    assert.equal(css(cssstyle, 'flex', '1 1e-1 10px'), 'flex: 1 0.1 10px;');
+    const flex = (value) => {
+      const s = createWindow({ jsdom: '26.1.0', cssstyle }).document.createElement('div').style;
+      s.cssText = `flex: 1; flex: ${value}`;
+      return s.flexGrow;
+    };
+    assert.equal(flex('1e1'), '10');
+    assert.equal(flex('1.5e1 2'), '15');
+    assert.equal(flex('0e1 1 0'), '0');
+    assert.equal(flex('1e01'), '');
+    assert.equal(flex('01'), '');
+    assert.equal(flex('1 01'), '');
+    assert.equal(css(cssstyle, 'width', '00'), '');
+    assert.equal(css(cssstyle, 'width', '0e1'), '');
+    assert.equal(css(cssstyle, 'margin', '0 00'), '');
   }
   assert.equal(css('4.3.0', 'background', 'linear-gradient(red, blue)'), 'background: linear-gradient(red, blue);');
   assert.equal(css('4.4.0', 'width', 'fit-content'), 'width: fit-content;');

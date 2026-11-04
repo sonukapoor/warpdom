@@ -4835,6 +4835,28 @@ value has no function. setProperty with a unique value each time
 ns per width + margin pair; repeated values (style-bench) and the other
 benches within noise. Kept: the alternative is the wrong value.
 
+#261 review, black box (jsdom 20.0.3 to 26.1.0, cssstyle 4.2.0, 4.2.1,
+4.3.0 forced on jsdom 25.0.1 and 26.1.0): the removal above is cssom's
+block read first, a name given again as written (trimmed) replacing the
+earlier value in its place, then set declaration by declaration
+(`color: blue; Color: red; color: foo` is `color: red`, `color: foo;
+width: 1px; color: blue` keeps color first; a bare name at the end
+empties the block). parseInto reads the parts in order and, at the first
+repeated name or the 17th name, again from coalescedLegacy. 1,500 random
+blocks of up to five declarations (and 400 of 10 to 40): mismatches with
+jsdom 20, 22, 25 and 26 259/259/259/257 -> 172/172/172/167, none new;
+27 and 30 unchanged. Cost, element cssText with five unique declarations
+(100,000 per run, 5 alternating runs, medians): jsdom 20 profile 1720 ->
+1779 ns, 26 profile 2258 -> 2304 ns, latest unchanged. cssstyle 4.2 and
+4.3 take a number without a unit with an exponent in flex (`flex: 1e1`,
+`flex: 1 1e-1 10px`), with no leading zero anywhere (`flex: 01`, `width:
+00` invalid). Left: shorthand and longhand merging in that sequence
+(`margin: 3px; margin-left: 2px` is `margin: 3px 3px 3px 2px` there), an
+invalid value's priority replacing the property's (`color: red
+!important; Color: foo` is `color: red`), cssstyle 4.2 and 4.3's flex
+serialization (`flex: 10`, not `10 1 0%`) and unitless zeros other than 0
+(`0.0`, `-0`, `0e1` in lengths, `background-position: 0`).
+
 #224 item 4: the !important check (/\s*!\s*important\s*$/i) took
 quadratic time on a whitespace run (5,000 / 10,000 / 20,000 / 40,000
 spaces: 15 / 51 / 200 / 790 ms in cssText, the attribute and a sheet).

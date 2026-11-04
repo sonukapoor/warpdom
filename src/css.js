@@ -1040,16 +1040,24 @@ const SIZED = new Set(['width', 'height', 'flex-basis', 'flex']);
 // reads: before 4.2 px, cm, mm, in, pt, pc, em, ex, ch, rem, vh and vw
 // (BG_LENGTH_3) and %, in 4.2 and 4.3 its lengthRegEx's lowercase units,
 // an exponent and no leading zero (in the exponent neither: 1e01px is
-// invalid there, 1e1px valid). A value of such tokens, read in one
-// linear pass (each token's first character picks one branch).
+// invalid there, 1e1px valid); without a unit, an exponent only in flex
+// (its grow and shrink: flex: 1e1 and flex: 1 1e-1 10px are valid there,
+// flex: 01, flex: 1e01 and width: 0e1 not). A value of such tokens, read
+// in one linear pass (each token's first character picks one branch).
 const OTHER_TOKEN = String.raw`(?:[^\s\d.+-]|[+-](?![.\d])|\.(?!\d))\S*`;
 const NUMBER_4_1 = String.raw`[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:px|cm|mm|in|pt|pc|em|ex|ch|rem|vh|vw|%)?`;
-const NUMBER_4_2 = String.raw`[+-]?(?:(?:\d+(?:\.\d*)?|\.\d+)|(?:(?:0|[1-9]\d*)(?:\.\d*)?|\.\d+)(?:e-?(?:0|[1-9]\d*))?(?:%|[cm]m|[dls]?v(?:[bhiw]|max|min)|in|p[ctx]|q|r?(?:[cl]h|cap|e[mx]|ic)))`;
+const MANTISSA_4_2 = String.raw`[+-]?(?:(?:0|[1-9]\d*)(?:\.\d*)?|\.\d+)`;
+const EXPONENT_4_2 = String.raw`e-?(?:0|[1-9]\d*)`;
+const UNIT_4_2 = String.raw`(?:%|[cm]m|[dls]?v(?:[bhiw]|max|min)|in|p[ctx]|q|r?(?:[cl]h|cap|e[mx]|ic))`;
+const NUMBER_4_2 = `${MANTISSA_4_2}(?:(?:${EXPONENT_4_2})?${UNIT_4_2})?`;
+const FLEX_NUMBER_4_2 = `${MANTISSA_4_2}(?:${EXPONENT_4_2})?${UNIT_4_2}?`;
 const tokensOf = (token) => new RegExp(String.raw`^\s*(?:${token})(?:\s+(?:${token}))*\s*$`);
 const VALUE_4_1 = tokensOf(`${OTHER_TOKEN}|${NUMBER_4_1}(?!\\S)`);
 const VALUE_4_2 = tokensOf(`${OTHER_TOKEN}|${NUMBER_4_2}(?!\\S)`);
+const FLEX_VALUE_4_2 = tokensOf(`${OTHER_TOKEN}|${FLEX_NUMBER_4_2}(?!\\S)`);
 const TOKEN_4_1 = new RegExp(`^(?:${OTHER_TOKEN}|${NUMBER_4_1})$`);
 const TOKEN_4_2 = new RegExp(`^(?:${OTHER_TOKEN}|${NUMBER_4_2})$`);
+const FLEX_TOKEN_4_2 = new RegExp(`^(?:${OTHER_TOKEN}|${FLEX_NUMBER_4_2})$`);
 const LEGACY_GRADIENT = /(?:^|[\s,])(?:-webkit-)?(?:repeating-)?(?:linear|radial|conic)-gradient\(/i;
 function legacyMeasureRejects(name, value, surface) {
   const era = surface?.legacyFont; // 'cssstyle4.1' before 4.2, 'cssstyle4.2' before 4.4
@@ -1058,7 +1066,11 @@ function legacyMeasureRejects(name, value, surface) {
   const sized = SIZED.has(name) && /content/i.test(value);
   if (era === undefined && !sized) return false;
   const functions = value.includes('(');
-  if (!sized && !functions) return !(era === 'cssstyle4.1' ? VALUE_4_1 : VALUE_4_2).test(value);
+  let whole = VALUE_4_2;
+  let single = TOKEN_4_2;
+  if (era === 'cssstyle4.1') [whole, single] = [VALUE_4_1, TOKEN_4_1];
+  else if (name === 'flex') [whole, single] = [FLEX_VALUE_4_2, FLEX_TOKEN_4_2];
+  if (!sized && !functions) return !whole.test(value);
   // Top-level tokens (functions are left to the grammar).
   const tokens = functions ? segments(value, /\s/).filter((t, i) => i % 2 === 0) : value.split(/\s+/);
   for (const token of tokens) {
@@ -1068,7 +1080,7 @@ function legacyMeasureRejects(name, value, surface) {
       if (SIZING_KEYWORDS.has(lower) && (era !== undefined || (lower === 'fit-content' && name.startsWith('flex'))))
         return true;
     }
-    if (era !== undefined && !(era === 'cssstyle4.1' ? TOKEN_4_1 : TOKEN_4_2).test(token)) return true;
+    if (era !== undefined && !single.test(token)) return true;
   }
   return false;
 }
@@ -1775,12 +1787,17 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   // with the value ;color: red).
   const runsOn = isLegacyMode(mode);
   if (runsOn && !inRule && context !== 'written' && unclosedLegacy(String(text ?? ''))) return;
-  // jsdom 20 to 26 (cssstyle 2.3 to 4.6, black box, #239): in a style
-  // attribute or an element's cssText a declaration whose value cssstyle
-  // rejects, or that has none, removes the one declared before it for the
-  // same name (height: 100vh; height: 100dvh declares nothing with cssstyle
-  // before 4.2), as setProperty with an empty value. Not a shorthand's
-  // longhands or a longhand's shorthand.
+  // jsdom 20 to 26 (cssstyle 2.3 to 4.6, black box, #239 and the #261
+  // review): a style attribute or an element's cssText is read as cssom
+  // reads a block first, a name given again as written (after trimming)
+  // replacing the earlier value in its place, and then set declaration by
+  // declaration, one cssstyle rejects setting nothing. So a later invalid
+  // value takes the earlier one's place (height: 100vh; height: 100dvh
+  // declares nothing with cssstyle before 4.2), one in another case does
+  // not (color: blue; Color: red; color: foo is color: red), and color:
+  // foo; width: 1px; color: blue is in that order. A name left without a
+  // value at the end leaves the block empty (color: blue; width: 1px;
+  // color:).
   const clears = runsOn && !inRule && context !== 'written';
   let carried = null;
   let named = 0;
@@ -1789,7 +1806,13 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   const names = counting ? [] : null;
   const source = String(text ?? '');
   const lineBreaks = !runsOn && cssSplitNeeded(source);
-  for (let part of lineBreaks ? splitDeclarations(source) : splitOutside(source, ';')) {
+  const parts = lineBreaks ? splitDeclarations(source) : splitOutside(source, ';');
+  // (clears: the names read, until one comes again or there are many; the
+  // block is then read again as coalescedLegacy gives it)
+  let seen = clears ? [] : null;
+  let list = parts;
+  for (let k = 0; k < list.length; k++) {
+    let part = list[k];
     if (carried !== null) {
       part = `${carried};${part}`;
       carried = null;
@@ -1817,6 +1840,17 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       carried = part;
       continue;
     }
+    if (seen !== null) {
+      if (seen.length === 16 || seen.includes(rawName)) {
+        seen = null;
+        list = coalescedLegacy(parts);
+        k = -1;
+        carried = null;
+        decls.clear();
+        continue;
+      }
+      seen.push(rawName);
+    }
     let important = false;
     const bang = priorityStart(value);
     if (bang !== -1) {
@@ -1826,10 +1860,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       // in cssom's cascade: margin: 1px !important; margin-left: 2px)
       if (counting) prioritized = true;
     }
-    if (!name || !value || dropped(surface, name)) {
-      if (clears && name) decls.delete(name);
-      continue;
-    }
+    if (!name || !value || dropped(surface, name)) continue;
     // A url() with a line break in its string (a bad string) is invalid
     // here, though background-image takes it through the style object
     // (jsdom 27 and later, #144).
@@ -1870,12 +1901,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       }
       if (meetImage(name, value, mode)) declared = INVALID;
     }
-    if (declared === INVALID || declared === '') {
-      // (an invalid value given in another case keeps it: color: blue;
-      // Color: foo is color: blue; an empty one does not: Color:)
-      if (clears && rawName === name) decls.delete(name);
-      continue;
-    }
+    if (declared === INVALID || declared === '') continue;
     // One that loses its !important is written without it; in a style
     // sheet it is a normal declaration, elsewhere it is still !important
     // to the block's other declarations (masked: black box, jsdom 27 to
@@ -1900,10 +1926,38 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
         : { value: declared, important: false, masked: true },
     );
   }
-  // A name left without a value at the end (color: blue; color:).
-  if (clears && carried !== null && carried.includes(':'))
-    decls.delete(propertyName(carried.slice(0, carried.indexOf(':')).trim()));
+  if (clears && carried !== null && carried.includes(':')) decls.clear();
   if (counting) decls.plain = !unnamed && (named === decls.size || (!prioritized && plainNames(names)));
+}
+
+// A legacy style attribute's or cssText's declarations as cssom keeps them
+// (parseInto's clears): an empty declaration runs on into the next one
+// (as parseInto reads it), and a name given again as written replaces the
+// earlier one's value in its place.
+function coalescedLegacy(parts) {
+  const out = [];
+  const at = new Map();
+  let carried = null;
+  for (let part of parts) {
+    if (carried !== null) {
+      part = `${carried};${part}`;
+      carried = null;
+    }
+    const colon = part.indexOf(':');
+    const value = colon < 0 ? '' : part.slice(colon + 1).trim();
+    if (value === '' || (value[0] === ';' && /^[\s;]*$/.test(value))) {
+      carried = part;
+      continue;
+    }
+    const rawName = part.slice(0, colon).trim();
+    const i = at.get(rawName);
+    if (i === undefined) {
+      at.set(rawName, out.length);
+      out.push(part);
+    } else out[i] = part;
+  }
+  if (carried !== null) out.push(carried);
+  return out;
 }
 
 // Whether the names of a rule's declarations, some of them dropped, are
