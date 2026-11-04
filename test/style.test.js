@@ -580,6 +580,107 @@ test('a repeated !important declaration at jsdom 27.0.1, 27.1.0, 28.0.0 and 28.1
   }
 });
 
+// A box shorthand given again after an !important one (#265): a style
+// sheet lets the last one win, but not a normal one over an !important
+// one from 27.1.0 (margin: 1px !important; margin: 2px is 1px there).
+// Read: the longhand's value, the shorthand's value and priority outside
+// a style sheet's rules, the computed value and the computed value
+// against a competing margin-top, which shows the winner's priority in
+// the cascade. Not read: a longhand's priority under an !important
+// shorthand (jsdom 27 and later give important, warpdom ''), a style
+// sheet's shorthand value from 27.1.0, items and cssText (#104, #113).
+const REPEATED_SHORTHANDS = ['margin', 'padding'].flatMap((name) => [
+  `${name}: 1px !important; ${name}: 2px`,
+  `${name}: 1px !important; ${name}: 2px !important`,
+  `${name}: 1px; ${name}: 2px !important`,
+  `${name}: 1px !important; ${name}: 2px; ${name}: 3px !important`,
+]);
+function repeatedShorthands(w, texts = REPEATED_SHORTHANDS) {
+  const d = w.document;
+  d.body.innerHTML = '<p id="t"></p>';
+  const el = d.getElementById('t');
+  const read = (style, name, inSheet) => {
+    const top = `${name}-top`;
+    const computed = () => w.getComputedStyle(el).getPropertyValue(top);
+    const out = [style.getPropertyValue(top)];
+    if (!inSheet) out.push(style.getPropertyValue(name), style.getPropertyPriority(name));
+    out.push(computed());
+    // A competing declaration: an !important rule for an inline style, a
+    // normal inline one for a rule.
+    const extra = d.createElement('style');
+    const inline = el.getAttribute('style');
+    if (inline === null) el.setAttribute('style', `${top}: 5px`);
+    else {
+      extra.textContent = `#t { ${top}: 5px !important }`;
+      d.head.append(extra);
+    }
+    out.push(computed());
+    extra.remove();
+    if (inline === null) el.removeAttribute('style');
+    return out;
+  };
+  return texts.map((text) => {
+    const name = text.slice(0, text.indexOf(':'));
+    d.head.innerHTML = '';
+    el.setAttribute('style', text);
+    const attribute = read(el.style, name, false);
+    el.removeAttribute('style');
+    el.style.cssText = text;
+    const cssText = read(el.style, name, false);
+    el.removeAttribute('style');
+    d.head.innerHTML = '<style>#t {}</style>';
+    const sheet = d.styleSheets[0];
+    sheet.cssRules[0].style.cssText = text;
+    const ruleCssText = read(sheet.cssRules[0].style, name, false);
+    sheet.deleteRule(0);
+    sheet.insertRule(`#t { ${text} }`, 0);
+    const insertRule = read(sheet.cssRules[0].style, name, true);
+    d.head.innerHTML = `<style>#t { ${text} }</style>`;
+    return [text, attribute, cssText, ruleCssText, insertRule, read(d.styleSheets[0].cssRules[0].style, name, true)];
+  });
+}
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30]) {
+  parity(`a box shorthand repeated after an !important one (jsdom ${jsdom})`, (w) => repeatedShorthands(w), {
+    jsdom,
+  });
+}
+
+// The 27.0/27.1 boundary for a style sheet's rules and a rule's cssText
+// (black box, jsdom 27.0.1 and 27.1.0): the computed margin-top, the
+// rule's margin priority (cssText only) and margin-top against an inline
+// margin-top: 5px, which wins before 28.1.0 (jsdom's cascade then ignores
+// a style sheet's !important).
+test('a box shorthand repeated after an !important one at jsdom 27.0.1 and 27.1.0', () => {
+  for (const [jsdom, text, sheet, ruleCssText] of [
+    ['27.0.1', 'margin: 1px !important; margin: 2px', '2px', ['', '2px', '5px']],
+    ['27.1.0', 'margin: 1px !important; margin: 2px', '1px', ['important', '1px', '5px']],
+    ['27.0.1', 'margin: 1px !important; margin: 2px !important', '2px', ['important', '2px', '5px']],
+    ['27.1.0', 'margin: 1px !important; margin: 2px !important', '2px', ['important', '1px', '5px']],
+    ['27.0.1', 'padding: 1px !important; padding: 2px', '2px', ['', '2px', '5px']],
+    ['27.1.0', 'padding: 1px !important; padding: 2px', '1px', ['important', '1px', '5px']],
+  ]) {
+    const w = createWindow({ jsdom });
+    const d = w.document;
+    const name = text.slice(0, text.indexOf(':'));
+    d.body.innerHTML = '<p id="t"></p>';
+    const el = d.getElementById('t');
+    const top = () => w.getComputedStyle(el).getPropertyValue(`${name}-top`);
+    d.head.innerHTML = `<style>#t { ${text} }</style>`;
+    assert.equal(top(), sheet, `${text} in a style sheet, jsdom ${jsdom}`);
+    d.head.innerHTML = '<style>#t {}</style>';
+    const rule = d.styleSheets[0].cssRules[0];
+    rule.style.cssText = text;
+    el.setAttribute('style', `${name}-top: 5px`);
+    const contested = top();
+    el.removeAttribute('style');
+    assert.deepEqual(
+      [rule.style.getPropertyPriority(name), top(), contested],
+      ruleCssText,
+      `${text} in a rule's cssText, jsdom ${jsdom}`,
+    );
+  }
+});
+
 parity('CSS-wide keywords serialize lowercased', (w) => {
   const style = w.document.createElement('div').style;
   return [
