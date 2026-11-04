@@ -278,6 +278,34 @@ for (const jsdom of VERSIONS) {
     },
     opts,
   );
+  // Repeated names in a parsed list (#260 review): jsdom 20 to 26 keep
+  // each name once at its first place with its last value (cssom), so
+  // margin: 1px; margin-top: 4px; margin: 2px is margin: 4px 2px 2px 2px;
+  // from 27 the prepared list puts the shorthand last (margin: 2px), and
+  // a parsed style attribute computes that way too.
+  parity(
+    `repeated names in cssText and the style attribute, computed (jsdom ${jsdom})`,
+    (w) => {
+      const out = [];
+      for (const family of ['margin', 'padding'])
+        for (const text of [
+          `${family}: 1px; ${family}-top: 4px; ${family}: 2px`,
+          `${family}-top: 4px; ${family}: 2px; ${family}-top: 5px`,
+          `${family}: 2px; ${family}-top: 4px`,
+          `${family}: 1px; color: red; ${family}-top: 4px; ${family}-top: 6px; ${family}: 2px 3px`,
+        ])
+          for (const via of ['cssText', 'attribute']) {
+            const e = div(w);
+            w.document.body.append(e);
+            if (via === 'cssText') e.style.cssText = text;
+            else e.setAttribute('style', text);
+            const cs = w.getComputedStyle(e);
+            out.push(...shown(e.style, family), ...['Top', 'Right', 'Bottom', 'Left'].map((side) => cs[family + side]));
+          }
+      return out;
+    },
+    opts,
+  );
   // An !important var() longhand before its shorthand, parsed (#260
   // review): jsdom 27 to 29 prepare it as !important (the shorthand is
   // left out) and its setter drops the priority (margin: var(--m) 1px

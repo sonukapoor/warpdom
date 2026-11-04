@@ -30,6 +30,7 @@ import {
 import { resolveColor, systemColorKind } from './colors.js';
 import {
   BOX_LONGHANDS,
+  BOX_SHORTHAND,
   boxAccessorValue,
   boxPriority,
   boxValue,
@@ -2928,4 +2929,36 @@ function varGroup(decls, shorthand) {
     }
   if (decls.get(last).value.includes('var(')) return null;
   return { name: shorthand, value: serializeBox(values), important, first };
+}
+
+// A style attribute's declarations as parsed for the cascade (cascade.js),
+// from jsdom 27: a margin or padding with one of its longhands is replayed
+// as the style object holds them (replayBox), so a longhand before the
+// shorthand in the prepared list is lost there too (margin: 2px;
+// margin-top: 4px computes 2px; black box 27.4.0 to 30.1.3, #260
+// review). Before 27 the attribute is read in order, as parsed.
+export function parsedBox(decls, mode) {
+  if (mode !== 'jsdom27' && mode !== 'spec') return;
+  const margin = decls.has('margin');
+  const padding = decls.has('padding');
+  if (!margin && !padding) return;
+  let longhand = false;
+  let important = false;
+  for (const [name, decl] of decls) {
+    const shorthand = BOX_SHORTHAND[name];
+    if (shorthand !== undefined && (shorthand === 'margin' ? margin : padding)) longhand = true;
+    if (decl.important || decl.masked === true)
+      important ||= shorthand !== undefined || BOX_LONGHANDS[name] !== undefined;
+  }
+  if (!longhand) return;
+  // Without !important the shorthand comes last in the prepared list and
+  // sets every side: its longhands are left out (as replayBox ends).
+  if (!important) {
+    for (const name of [...decls.keys()]) {
+      const shorthand = BOX_SHORTHAND[name];
+      if (shorthand !== undefined && (shorthand === 'margin' ? margin : padding)) decls.delete(name);
+    }
+    return;
+  }
+  replayBox(decls, boxVariant(mode));
 }

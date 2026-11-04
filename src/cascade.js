@@ -39,6 +39,7 @@ import {
   parseDeclarations,
   writtenDeclarations,
   cascadeText,
+  parsedBox,
   computed,
   validationModeOf,
   styleSurfaceOf,
@@ -251,6 +252,9 @@ function inlineDeclarations(element) {
     styleSurfaceOf(es.doc[S].window),
     written !== null,
   );
+  // A style attribute as parsed (not one a style write serialized), from
+  // jsdom 27: margin and padding as its style object holds them.
+  if (written === null) parsedBox(decls, mode);
   for (const [property, { value, important, masked }] of decls) {
     // A declaration with var() and !important that lost it (masked,
     // compat.varDropsImportant) is still !important to the attribute's
