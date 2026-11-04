@@ -707,6 +707,14 @@ const REPEATED_DESCRIPTORS = [
   'margin-top: 1px !important; margin-top: 2px',
   'margin-top: 1px; margin-top: 2px !important',
 ];
+// A later one written in another case: jsdom 27.0 and earlier keep a
+// descriptor's name as written in an @page rule (MARGIN-TOP is not
+// margin-top there), which warpdom does not (#265).
+const REPEATED_DESCRIPTORS_FROM_27 = [
+  'margin-top: 1px !important; MARGIN-TOP: 2px !important',
+  'margin-top: 1px !important; MARGIN-TOP: 2px',
+  'MARGIN-TOP: 1px !important; margin-top: 2px !important',
+];
 const REPEATED_DESCRIPTORS_TO_26 = [
   'page-orientation: upright !important; page-orientation: rotate-left !important',
   'page-orientation: upright !important; page-orientation: rotate-left',
@@ -725,7 +733,10 @@ for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30]) {
           style.getPropertyPriority(name),
         ]),
       ];
-      const texts = jsdom > 26 ? REPEATED_DESCRIPTORS : [...REPEATED_DESCRIPTORS, ...REPEATED_DESCRIPTORS_TO_26];
+      const texts =
+        jsdom > 26
+          ? [...REPEATED_DESCRIPTORS, ...REPEATED_DESCRIPTORS_FROM_27]
+          : [...REPEATED_DESCRIPTORS, ...REPEATED_DESCRIPTORS_TO_26];
       return texts.map((text) => {
         d.head.innerHTML = `<style>@page { ${text} }</style>`;
         const style = d.styleSheets[0].cssRules[0].style;
@@ -737,6 +748,39 @@ for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30]) {
     { jsdom },
   );
 }
+
+// Release boundaries for a repeated !important descriptor in an @page
+// rule's cssText that jsdom's installs here do not cover (black box, jsdom
+// 27.0.1, 27.1.0, 28.0.0 and 28.1.0): the last one wins before 27.1.0,
+// then the first !important one, and before 28.1.0 a later one is looked
+// up by its name as written (#266 review). Its style sheet lets the last
+// one win in all four.
+test('a repeated !important descriptor in an @page rule at jsdom 27.0.1, 27.1.0, 28.0.0 and 28.1.0', () => {
+  for (const [jsdom, text, ruleCssText] of [
+    ['27.0.1', 'margin-top: 1px !important; margin-top: 2px !important', '2px !important'],
+    ['27.0.1', 'margin-top: 1px !important; margin-top: 2px', '2px'],
+    ['27.1.0', 'margin-top: 1px !important; margin-top: 2px !important', '1px !important'],
+    ['27.1.0', 'margin-top: 1px !important; MARGIN-TOP: 2px !important', '2px !important'],
+    ['27.1.0', 'margin-top: 1px !important; MARGIN-TOP: 2px', '2px'],
+    ['28.0.0', 'margin-top: 1px !important; MARGIN-TOP: 2px !important', '2px !important'],
+    ['28.0.0', 'margin-top: 1px !important; MARGIN-TOP: 2px', '2px'],
+    ['28.1.0', 'margin-top: 1px !important; MARGIN-TOP: 2px !important', '1px !important'],
+    ['28.1.0', 'margin-top: 1px !important; MARGIN-TOP: 2px', '1px !important'],
+    ['28.1.0', 'MARGIN-TOP: 1px !important; margin-top: 2px !important', '2px !important'],
+  ]) {
+    const d = createWindow({ jsdom }).document;
+    const read = (style) =>
+      [style.getPropertyValue('margin-top'), style.getPropertyPriority('margin-top') && '!important']
+        .filter(Boolean)
+        .join(' ');
+    d.head.innerHTML = `<style>@page { ${text} }</style>`;
+    const style = d.styleSheets[0].cssRules[0].style;
+    const last = text.slice(text.lastIndexOf(':') + 2);
+    assert.equal(read(style), last, `${text} in a style sheet, jsdom ${jsdom}`);
+    style.cssText = text;
+    assert.equal(read(style), ruleCssText, `${text} in an @page rule's cssText, jsdom ${jsdom}`);
+  }
+});
 
 // The 27.0/27.1 boundary for a style sheet's rules and a rule's cssText
 // (black box, jsdom 27.0.1 and 27.1.0): the computed margin-top, the

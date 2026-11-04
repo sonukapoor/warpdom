@@ -693,14 +693,10 @@ function pageRule(protos, selector, body, sheet, parentRule) {
     }
     i = close + 1;
   }
-  rule[S].style = declarationBlock(
-    protos.CSSPageDescriptors,
-    declarations,
-    rule,
-    'page',
-    'sheet',
-    protos.CSSStyleProperties,
-  );
+  rule[S].style = declarationBlock(protos.CSSPageDescriptors, declarations, rule, 'page', 'sheet', {
+    lastWins: legacyRules(protos),
+    styleProto: protos.CSSStyleProperties,
+  });
   return rule;
 }
 

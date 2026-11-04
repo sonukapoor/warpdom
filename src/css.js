@@ -1679,12 +1679,13 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   // !important, then its four longhands set to 7px !important, written
   // padding: 8px !important; padding: 7px !important) is the last one, as
   // the style holds it (#266 review). An @page rule's descriptors follow
-  // the window's jsdom (decls.legacyPage: jsdom 26 and earlier let the
-  // last one win there too; #266 review).
-  const lastWins = isLegacyMode(mode) || decls.legacyPage === true;
+  // the window's jsdom (#266 review): decls.pageLastWins before 27.1.0,
+  // where the last one wins there too, and decls.pageWrittenKeys for the
+  // lookup by the name as written.
+  const lastWins = isLegacyMode(mode) || decls.pageLastWins === true;
   const firstImportantWins = !lastWins && !sheet && context !== 'written';
   const sheetShorthands = !lastWins && sheet && !replay;
-  const writtenKeys = surface?.importantByWrittenName === true;
+  const writtenKeys = surface?.importantByWrittenName === true || decls.pageWrittenKeys === true;
   let covered = null;
   let firsts = null;
   const borderVarDrops = !sheet && context !== 'written' && surface?.borderVarDrops === true;
@@ -2657,13 +2658,17 @@ export const CSS_INTERFACES = [
 ];
 
 // A declaration block owned by a CSS rule (CSSStyleRule.style, ...).
-// mode: 'page' for an @page rule's descriptors; styleProto: the window's
-// CSSStyleProperties prototype, whose mode they follow for a repeated
-// !important one (parseInto).
-export function declarationBlock(proto, text, parentRule, mode = modeOf(proto), context = 'sheet', styleProto = null) {
+// mode: 'page' for an @page rule's descriptors; page: how they take a
+// repeated !important one (parseInto), as the window's style rules do:
+// lastWins (its rules before jsdom 27.1.0) and styleProto, the window's
+// CSSStyleProperties prototype, whose style surface tells the lookup.
+export function declarationBlock(proto, text, parentRule, mode = modeOf(proto), context = 'sheet', page = null) {
   const style = Object.create(proto);
   const decls = new Map();
-  if (mode === 'page' && styleProto !== null && isLegacyMode(modeOf(styleProto))) decls.legacyPage = true;
+  if (page !== null) {
+    if (page.lastWins) decls.pageLastWins = true;
+    else if (surfaceOf(page.styleProto)?.importantByWrittenName === true) decls.pageWrittenKeys = true;
+  }
   initStyleState(style, {
     element: null,
     decls,
