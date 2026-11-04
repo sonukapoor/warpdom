@@ -97,7 +97,18 @@ Not modeled:
 - the accessor functions' names (`get width` from jsdom 29, `get` in
   warpdom)
 - jsdom 29.0.0's internal classes behind `getComputedStyle()`
-- a `CSSStyleRule`'s `style` without accessors before 27.1.0
+- before 27.1.0, of a `CSSStyleRule`'s cssom `style` object (modeled
+  otherwise, see jsdom-versions.md): `style` and `selectorText` are
+  prototype accessors (jsdom: the rule's own data properties, so
+  `rule.style = 'x'` there replaces the object with the string), its
+  `__starts` member, `expression()` values, and the rules cssom parses from
+  text after a `}` in its `cssText` setter (only the `Unexpected }` error
+  is), and an empty value (`setProperty('color', '')`) removing the
+  property as earlier matching rules declare it too (jsdom's cascade
+  keeps one cssstyle declaration for all of them; warpdom's rule only
+  stops declaring it). Grouping rules, `@font-face` and keyframe rules keep warpdom's
+  serialization and style objects (cssom: `@media screen {.a {color:
+  red;}}`)
 - CSS Nesting: warpdom's style sheets keep only the declarations before a
   nested rule and drop the rule (`.a { color: red; & .b {} margin: 0 }`),
   so no `CSSNestedDeclarations` is made. jsdom 27.2 and 28 keep the nested

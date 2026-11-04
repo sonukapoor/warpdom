@@ -92,6 +92,7 @@ takes the window's Blobs), as with jsdom.
 | `el.style` and `getComputedStyle()` give `CSSStyleDeclaration` objects whose prototype has the property accessors (`width`, ...) and the methods, and there is no `CSSStyleProperties`, so `vi.spyOn(CSSStyleDeclaration.prototype, 'width', 'get')` (or `jest.spyOn`) sees `el.style.width` and computed reads as with jsdom | Before 29.0.0. From 29.0.0 the accessors are `CSSStyleProperties.prototype`'s |
 | cssstyle's `getPropertyCSSValue()`, `getPropertyShorthand()` and `isPropertyImplicit()` (returning `undefined`) exist, as they do in jsdom | With cssstyle 4.3 and earlier |
 | `azimuth` exists, as it does in jsdom: as an angle until cssstyle 4.3, CSS-wide keywords only in 5.3 | With cssstyle 5.3 and earlier |
+| A style rule's `style` (`sheet.cssRules[i].style`) is cssom's own declaration object, not a `CSSStyleDeclaration`: values stay as written (`#34363a`, `var(--x)`, invalid values), names keep their case, shorthands are not expanded, there is no `item()` and no camelCase accessors, and the rule serializes as `.a {color: red;}`. `getComputedStyle()` still parses the values, as jsdom's cascade does | Before 27.1.0 (27.0.1 is the last). From 27.1.0 the window's `CSSStyleDeclaration`, values parsed as in inline style |
 
 ## Computed values
 

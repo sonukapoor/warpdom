@@ -1648,9 +1648,14 @@ const BORDER_AND_SIDES = new Set(['border', 'border-top', 'border-right', 'borde
 // element: an element's style object parses it (escapedUrlBackground meets
 // its url()s).
 function parseInto(decls, text, mode, surface = null, context = null, element = false) {
-  const sheet = context === 'sheet';
+  // 'replay': declarations given to a rule's (replayDeclarations).
+  // 'cssom': a style rule's in a sheet before jsdom 27.1.0, which tells
+  // whether it kept every declaration it read (parsedPlain).
+  const replay = context === 'replay';
+  const counting = context === 'cssom';
+  const sheet = replay || counting || context === 'sheet';
   const inRule = sheet || context === 'rule';
-  decls.clear();
+  if (!replay) decls.clear();
   // A normal declaration does not override an important one for the same
   // property, or a longhand of an important shorthand (CSS Cascade), as in
   // jsdom 27 and later; jsdom 26 let the last one win.
@@ -1665,6 +1670,10 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   const runsOn = isLegacyMode(mode);
   if (runsOn && !inRule && context !== 'written' && unclosedLegacy(String(text ?? ''))) return;
   let carried = null;
+  let named = 0;
+  let unnamed = false;
+  let prioritized = false;
+  const names = counting ? [] : null;
   const source = String(text ?? '');
   const lineBreaks = !runsOn && cssSplitNeeded(source);
   for (let part of lineBreaks ? splitDeclarations(source) : splitOutside(source, ';')) {
@@ -1674,11 +1683,23 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     }
     const colon = part.indexOf(':');
     if (colon < 0) {
+      if (counting && part.trim() !== '') unnamed = true;
       if (runsOn) carried = part;
       continue;
     }
-    const name = propertyName(part.slice(0, colon).trim());
+    named++;
+    const rawName = part.slice(0, colon).trim();
+    const name = propertyName(rawName);
     let value = part.slice(colon + 1).trim();
+    if (counting) {
+      names.push(rawName);
+      // Read otherwise by cssom (cssom-declaration.js parseBlock): no
+      // value, one starting with a character that does not start it
+      // there (--x: (a;b) is (a, then b);color; --x: / 2px is /2px), or
+      // a custom property's name with spaces (--my Var is --myVar).
+      if (value === '' || ODD_START.has(value.charCodeAt(0))) unnamed = true;
+      else if (rawName.charCodeAt(0) === 45 && /\s/.test(rawName)) unnamed = true;
+    }
     if (runsOn && (value === '' || (value[0] === ';' && /^[\s;]*$/.test(value)))) {
       carried = part;
       continue;
@@ -1688,6 +1709,9 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     if (bang) {
       important = true;
       value = value.slice(0, bang.index).trim();
+      // (from jsdom 27, an !important one keeps later ones out here, not
+      // in cssom's cascade: margin: 1px !important; margin-left: 2px)
+      if (counting) prioritized = true;
     }
     if (!name || !value || dropped(surface, name)) continue;
     // A url() with a line break in its string (a bad string) is invalid
@@ -1736,13 +1760,16 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     // to the block's other declarations (masked: black box, jsdom 27 to
     // 29), not to the cascade (cascade.js).
     const kept = important && !dropsImportant(surface, name, value, inRule);
-    if (!isLegacyMode(mode)) {
+    if (!isLegacyMode(mode) && !replay) {
       if (!important && (covered?.has(name) || decls.get(name)?.important)) continue;
       if (kept || (important && !sheet)) {
         if (SHORTHANDS[name]) for (const longhand of SHORTHANDS[name]) (covered ??= new Set()).add(longhand);
         if (!kept) (covered ??= new Set()).add(name);
       }
     }
+    // Applied last (cssstyle's setProperty): a shorthand given again
+    // resets the longhands declared before it.
+    if (replay) decls.delete(name);
     if (MERGEABLE.has(name)) decls.mergeable = true;
     if (isLegacyFont(surface, name)) removeLegacyFont(decls, surface, false);
     decls.set(
@@ -1752,6 +1779,21 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
         : { value: declared, important: false, masked: true },
     );
   }
+  if (counting) decls.plain = !unnamed && (named === decls.size || (!prioritized && plainNames(names)));
+}
+
+// Whether the names of a rule's declarations, some of them dropped, are
+// those cssom reads, each once (context 'cssom'): no spaces (w i d t h is
+// width there) or parentheses in them, and no name twice whatever its
+// case (BORDER after border is applied after what came between, and
+// color: red; color: bogus is bogus there).
+function plainNames(names) {
+  for (let i = 0; i < names.length; i++) {
+    if (!PLAIN_NAME.test(names[i]) && !names[i].startsWith('--')) return false;
+    const lower = names[i].toLowerCase();
+    for (let j = 0; j < i; j++) if (names[j].toLowerCase() === lower) return false;
+  }
+  return true;
 }
 
 // jsdom 20 to 26 (black box, #144): a style attribute or cssText with an
@@ -2589,7 +2631,7 @@ export const CSS_INTERFACES = [
 
 // A declaration block owned by a CSS rule (CSSStyleRule.style, ...).
 // mode: 'page' for an @page rule's descriptors.
-export function declarationBlock(proto, text, parentRule, mode = modeOf(proto)) {
+export function declarationBlock(proto, text, parentRule, mode = modeOf(proto), context = 'sheet') {
   const style = Object.create(proto);
   initStyleState(style, {
     element: null,
@@ -2599,9 +2641,70 @@ export function declarationBlock(proto, text, parentRule, mode = modeOf(proto)) 
     indexed: 0,
     surface: mode === 'page' ? null : surfaceOf(proto),
   });
-  parseInto(styleState(style).decls, text, styleState(style).mode, styleState(style).surface, 'sheet');
+  parseInto(styleState(style).decls, text, styleState(style).mode, styleState(style).surface, context);
   reindex(style);
   return style;
+}
+
+// A style rule's declarations from its cssom style object's (cssom.js
+// cssomStyle: before jsdom 27.1.0), as jsdom's cascade makes them: each
+// [name, value, important] given on its own to cssstyle's setProperty, in
+// order, so a later one replaces an earlier one whatever their priority
+// and is applied after the others (black box 20.0.3 to 27.0.1: color: red
+// !important; COLOR: blue gives blue; border: 1px solid red;
+// border-left-width: 2px; BORDER: 3px solid blue a 3px left border), and a
+// value that is not one declaration is invalid (color: red; display: none
+// sets neither). A custom property's value is kept as written (--x: a;b).
+// An empty value is left out: in jsdom it removes the property, also as
+// earlier rules declare it (one cssstyle declaration for all of them),
+// which warpdom's per-rule cascade does not model. The caller reports the
+// change.
+const PLAIN_NAME = /^-?[A-Za-z][-A-Za-z0-9]*$/;
+// ( ) / : ; ! @ { }: characters cssom's parser handles before a value
+// without starting it.
+const ODD_START = new Set([40, 41, 47, 58, 59, 33, 64, 123, 125]);
+// Whether a rule's declarations parsed in context 'cssom' kept every one
+// it read, each part of the text a declaration.
+export const parsedPlain = (style) => styleState(style).decls.plain === true;
+
+export function replayDeclarations(style, entries) {
+  const s = styleState(style);
+  const decls = s.decls;
+  decls.clear();
+  // Those that are one declaration each, parsed at once: as text, each is
+  // one part (replay: applied in order, the last one last). Not one: a
+  // ';' outside strings and parentheses, an unclosed string, parenthesis
+  // or comment, or a name no property has.
+  // An empty value removes what this rule declared of that name (its
+  // longhands stay, as in cssstyle: margin-left: 2px; MARGIN: '' keeps
+  // 2px); custom properties are kept as written. Both in order, after the
+  // text so far.
+  let text = '';
+  const flush = () => {
+    if (text !== '') parseInto(decls, text, s.mode, s.surface, 'replay');
+    text = '';
+  };
+  for (const [name, value, important] of entries) {
+    if (name.startsWith('--')) {
+      flush();
+      decls.delete(name);
+      if (value !== '') decls.set(name, { value, important });
+      continue;
+    }
+    if (value === '') {
+      flush();
+      decls.delete(propertyName(name));
+      continue;
+    }
+    // A name no property has (a(b, ;color: cssstyle drops it) may not
+    // join the text.
+    if (!PLAIN_NAME.test(name)) continue;
+    if (/["'(/]/.test(value) && unclosedLegacy(value)) continue;
+    if (value.includes(';') && splitOutside(value, ';').length !== 1) continue;
+    text += `${name}: ${value}${important ? ' !important' : ''};`;
+  }
+  flush();
+  reindex(style);
 }
 
 export const serializeDeclarations = (style) => serialize(styleState(style).decls, styleState(style).mode);

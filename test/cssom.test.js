@@ -1521,3 +1521,513 @@ for (const jsdom of [27, 28]) {
     { jsdom },
   );
 }
+
+// A style rule's style before jsdom 27.1.0 is cssom's declaration object
+// (#244, black box 20.0.3 to 27.0.1): values as written (hex, var(),
+// invalid values), the names' case kept, no shorthand expansion, cssom's
+// serialization; the cascade still parses them. From 27.1.0 the window's
+// CSSStyleDeclaration, with parsed values.
+const ruleStyleScenario = (w) => {
+  const d = w.document;
+  d.body.innerHTML = '<div class="a" id="d"></div><div class="b" id="e"></div>';
+  const st = d.createElement('style');
+  st.textContent = `.a { background-color: #34363a; COLOR: RGB(1, 2, 3); width: var(--x); height: bogus;
+      margin: 1px 2px; border-color: red !important; --my-Var: 5px; content: "a;b}"; /* c */ x-unknown: 1 }
+    .b { color: red; color: bogus; width: 10px; width: 20; COLOR: blue; Color: green }
+    .x:hover { background-color: var(--rdg-row-hover-background-color) }`;
+  d.head.appendChild(st);
+  const [rule, r2, hover] = st.sheet.cssRules;
+  const s = rule.style;
+  const cs = (id) => w.getComputedStyle(d.getElementById(id));
+  const read = (style) => [
+    style.cssText,
+    style.length,
+    Array.from({ length: style.length }, (_, i) => style[i]),
+    typeof style.item,
+    'backgroundColor' in style,
+    style instanceof w.CSSStyleDeclaration,
+    style.parentRule === rule || style.parentRule === r2,
+  ];
+  const out = [read(s), read(r2.style), rule.cssText, r2.cssText];
+  for (const p of [
+    'background-color',
+    'color',
+    'COLOR',
+    'width',
+    'height',
+    'margin',
+    'margin-top',
+    'border-color',
+    '--my-Var',
+  ])
+    out.push([p, s.getPropertyValue(p), s.getPropertyPriority(p)]);
+  // Grafana's TableNG test: a rule found by a var() value.
+  const found = [...st.sheet.cssRules].find((r) =>
+    r.style.getPropertyValue('background-color').includes('--rdg-row-hover-background-color'),
+  );
+  out.push(found?.selectorText ?? null, hover.style.getPropertyValue('background-color'));
+  // The cascade gets parsed values, and drops what the profile rejects.
+  const cascade = () =>
+    ['d', 'e'].map((id) => ['backgroundColor', 'color', 'width', 'height', 'marginLeft'].map((p) => cs(id)[p]));
+  out.push(cascade());
+  const touch = () => d.body.setAttribute('data-t', String(Math.random()).slice(0, 3));
+  const step = (f) => {
+    let r;
+    try {
+      r = f();
+    } catch (e) {
+      r = `${e.constructor === Error} ${e.message}`;
+    }
+    touch();
+    out.push([r, s.cssText, s.length, cascade()]);
+  };
+  step(() => s.setProperty('background-color', 'BLUE'));
+  step(() => s.setProperty('background-color', '#fff'));
+  step(() => s.setProperty('background-color', 'notacolor'));
+  step(() => s.setProperty('Font-Size', '12px'));
+  step(() => s.setProperty('padding', '7px 8px'));
+  step(() => s.setProperty('display', 'none', 'important'));
+  step(() => s.setProperty('top', '1px', 'IMPORTANT'));
+  step(() => s.setProperty('left', ''));
+  step(() => s.setProperty('right', null));
+  step(() => s.setProperty('z-index', 5));
+  step(() => s.setProperty('color', 'x'));
+  step(() => s.removeProperty('COLOR'));
+  step(() => s.removeProperty('color'));
+  step(() => s.removeProperty('nope'));
+  step(() => s.removeProperty('margin'));
+  step(() => {
+    s.width = '50px';
+    return s.getPropertyValue('width');
+  });
+  step(() => {
+    s.backgroundColor = 'red';
+    return s.getPropertyValue('background-color');
+  });
+  step(() => (s.cssText = 'color: GREEN; width: bogus; margin: 1px; --a: B '));
+  step(() => (s.cssText = 'color: red ! important;top:1px!important; e: f!IMPORTANT'));
+  step(() => (s.cssText = 'color: red /* x */; /* y */ width: 1px; font  size : 2px;; left: ; top: 1px'));
+  step(() => (s.cssText = 'color: red } .x { width: 1px'));
+  step(() => (s.cssText = 'content: "abc'));
+  step(() => (s.cssText = 'color: red; ; width: 3px; {x}; height:4px'));
+  step(() => (s.cssText = 'width: 3px /* x'));
+  step(() => {
+    st.sheet.insertRule('#e { color: #ABC; width: calc(1px + 2px); height: Var(--q, 3px) }', 0);
+    return [st.sheet.cssRules[0].style.cssText, st.sheet.cssRules[0].cssText];
+  });
+  step(() => {
+    rule.cssText = '.y { Color: Blue; width: 1px }';
+    return [rule.selectorText, rule.style.cssText, rule.style === s, rule.cssText];
+  });
+  return out;
+};
+for (const jsdom of [20, 22, 25, 26])
+  parity(`CSSStyleRule style: values as written before 27.1.0 (jsdom ${jsdom})`, ruleStyleScenario, { jsdom });
+
+// The switch is 27.1.0 (black box 27.0.0, 27.0.1, 27.1.0: cssom up to
+// 27.0.1, @acemir/cssom from 27.1.0).
+test('CSSStyleRule style: cssom object up to 27.0.1, parsed from 27.1.0', () => {
+  const read = (jsdom) => {
+    const w = createWindow({ jsdom });
+    const st = w.document.createElement('style');
+    st.textContent = '.a { background-color: #34363a; width: var(--x); height: bogus; color: red; color: bogus }';
+    w.document.head.appendChild(st);
+    w.document.body.innerHTML = '<div class="a"></div>';
+    const rule = st.sheet.cssRules[0];
+    return [
+      rule.style.cssText,
+      rule.cssText,
+      rule.style instanceof w.CSSStyleDeclaration,
+      w.getComputedStyle(w.document.body.firstChild).color,
+    ];
+  };
+  const legacy = [
+    'background-color: #34363a; width: var(--x); height: bogus; color: bogus;',
+    '.a {background-color: #34363a; width: var(--x); height: bogus; color: bogus;}',
+    false,
+    'rgb(0, 0, 0)',
+  ];
+  assert.deepEqual(read('27.0.0'), legacy);
+  assert.deepEqual(read('27.0.1'), legacy);
+  assert.deepEqual(read('27.1.0'), [
+    'background-color: rgb(52, 54, 58); width: var(--x); color: red;',
+    '.a { background-color: rgb(52, 54, 58); width: var(--x); color: red; }',
+    true,
+    'rgb(255, 0, 0)',
+  ]);
+});
+
+// The cascade of a cssom style before jsdom 27.1.0 (#251 review, black box
+// 20.0.3 to 27.0.1): jsdom gives each declaration on its own to cssstyle's
+// setProperty, in order. A later one replaces an earlier one whatever its
+// priority, a value holding a ';' sets nothing (no injected declaration),
+// and the sheet's own parse agrees with cssom's: comments (also before a
+// name), priorities cssom leaves in the value (red ! important), and a
+// name declared again after a comment. A value's toString that changes
+// another rule's style is seen too.
+const cssomCascadeScenario = (w) => {
+  const d = w.document;
+  d.body.innerHTML = ['a', 'b', 'c', 'e', 'f', 'g'].map((c) => `<div class="${c}" id="${c}"></div>`).join('');
+  const st = d.createElement('style');
+  st.textContent = `.a { color: red ! important } .b { color: red; /* note */ color: bogus }
+    .c { width: 5px } .e { width: 1px; /* x */ width: 2px } .f { color: green } .g { color: red !IMPORTANT }`;
+  d.head.appendChild(st);
+  const [a, b, c, e, f] = st.sheet.cssRules;
+  const cs = (id, p) => w.getComputedStyle(d.getElementById(id))[p];
+  const touch = () => d.body.setAttribute('data-t', String(Math.random()));
+  const out = [];
+  out.push([a.style.cssText, cs('a', 'color'), b.style.cssText, cs('b', 'color'), cs('e', 'width'), cs('g', 'color')]);
+  a.style.cssText = 'color: red!important; COLOR: blue';
+  touch();
+  out.push([a.style.cssText, cs('a', 'color')]);
+  a.style.cssText = '';
+  a.style.setProperty('color', 'red', 'important');
+  a.style.setProperty('display', 'block');
+  a.style.setProperty('COLOR', 'blue');
+  touch();
+  out.push([a.style.cssText, cs('a', 'color')]);
+  c.style.setProperty('color', 'red; display: none');
+  touch();
+  out.push([c.style.cssText, cs('c', 'color'), cs('c', 'display'), cs('c', 'width')]);
+  c.style.cssText = '';
+  c.style.setProperty('width', '3px; height: 9px');
+  touch();
+  out.push([c.style.cssText, cs('c', 'width'), cs('c', 'height')]);
+  let n = 0;
+  const value = {
+    toString() {
+      if (!n++) f.style.setProperty('color', 'blue');
+      return '7px';
+    },
+  };
+  c.style.cssText = '';
+  c.style.setProperty('width', value);
+  touch();
+  out.push([c.style.cssText, f.style.cssText, cs('c', 'width'), cs('f', 'color')]);
+  f.style.cssText = 'color: blue; COLOR: red !important';
+  touch();
+  out.push(cs('f', 'color'));
+  return out;
+};
+for (const jsdom of [20, 22, 25, 26])
+  parity(`CSSStyleRule style: the cascade replays cssom's declarations (jsdom ${jsdom})`, cssomCascadeScenario, {
+    jsdom,
+  });
+
+// 27.0.0 and 27.0.1 (cssstyle 5, black box): as in 26, with the root's
+// color rgb(0, 0, 0); an !important value does not keep a later one out.
+test("CSSStyleRule style: the cascade replays cssom's declarations (jsdom 27.0.0, 27.0.1)", () => {
+  for (const jsdom of ['27.0.0', '27.0.1'])
+    assert.deepEqual(cssomCascadeScenario(createWindow({ jsdom })), [
+      ['color: red ! important;', 'rgb(0, 0, 0)', 'color: bogus;', 'rgb(0, 0, 0)', '2px', 'rgb(0, 0, 0)'],
+      ['color: red !important; COLOR: blue;', 'rgb(0, 0, 255)'],
+      ['color: red !important; display: block; COLOR: blue;', 'rgb(0, 0, 255)'],
+      ['width: 5px; color: red; display: none;', 'rgb(0, 0, 0)', 'block', '5px'],
+      ['width: 3px; height: 9px;', '', ''],
+      ['width: 7px;', 'color: blue;', '7px', 'rgb(0, 0, 255)'],
+      'rgb(255, 0, 0)',
+    ]);
+});
+
+// Comments in a style rule before jsdom 27.1.0: cssom drops them wherever
+// they are, so the cascade does too (black box 20.0.3 to 27.0.1; jsdom 27.0.x
+// as 26 with its root color).
+const ruleCommentScenario = (w) => {
+  const cases = [
+    'color: red /* c */; width: 1px',
+    '/* c */ color: red; width: 1px',
+    'color /* c */: red; width: 1px',
+    'margin: 1px /* c */ 2px; width: 1px',
+    'color: red; /* c */',
+    'color:/* c */red; width: 1px',
+    'width: 1px; /* x */ width: 2px',
+    'content: "/* not a comment */"; width: 3px',
+  ];
+  const d = w.document;
+  d.body.innerHTML = cases.map((_, i) => `<div class="k${i}"></div>`).join('');
+  const st = d.createElement('style');
+  st.textContent = cases.map((c, i) => `.k${i} { ${c} }`).join('\n');
+  d.head.appendChild(st);
+  return cases.map((c, i) => {
+    const s = w.getComputedStyle(d.querySelector(`.k${i}`));
+    return [st.sheet.cssRules[i].style.cssText, s.color, s.width, s.marginLeft, s.content];
+  });
+};
+for (const jsdom of [20, 22, 25, 26])
+  parity(`CSSStyleRule style: comments in the cascade before 27.1.0 (jsdom ${jsdom})`, ruleCommentScenario, { jsdom });
+
+// The cascade of a style rule before jsdom 27.1.0 is built from cssom's
+// declarations, as jsdom's is (#251 review, black box 20.0.3 to 27.0.1):
+// comments dropped wherever they are (in url() too), spaces dropped from
+// names, a ';' with no declaration before it starting the next name,
+// names matched by exact case and applied in order (BORDER after border
+// resets what came between), !important not keeping a later declaration
+// out, custom properties kept as written, and values coerced to strings.
+const cssomBlockScenario = (w) => {
+  const blocks = [
+    'color: red /* c */; width: 1px',
+    '/* c */ color: red; width: 1px',
+    'color /* c */: red; width: 1px',
+    'margin: 1px /* c */ 2px; width: 1px',
+    'width: 1px; /* x */ width: 2px',
+    'background-image: url(foo/* note */bar.png)',
+    'w i d t h: 1px',
+    'a(b: c; width: 1px',
+    'width: 1px;; color: red',
+    'width: 1px; color red',
+    'color: ; width: 1px',
+    'margin: 1px; MARGIN-left: 2px; margin: 3px',
+    'margin-left: 4px; margin: 1px',
+    'margin: 1px !important; margin-left: 2px',
+    'border: 1px solid red; border-left-width: 2px; BORDER: 3px solid blue',
+    'width: 1px; Width: bogus',
+    'color: red; color: bogus',
+    'font: 12px/1.5 serif; width: 1px',
+    'width: / 2px; color: red',
+    'color: red !important; COLOR: blue',
+    'width: 1px !important foo',
+    'font: inherit; color: red',
+    'width: calc(100% - var(--q, 3px))',
+    '--x: 1',
+    'opacity: 1',
+  ];
+  const d = w.document;
+  d.body.innerHTML = blocks.map((_, i) => `<div class="k${i}"></div>`).join('');
+  const st = d.createElement('style');
+  st.textContent = blocks.map((b, i) => `.k${i} { ${b} }`).join('\n');
+  d.head.appendChild(st);
+  const read = () =>
+    blocks.map((_, i) => {
+      const s = w.getComputedStyle(d.querySelector(`.k${i}`));
+      return [
+        s.color,
+        s.width,
+        s.marginLeft,
+        s.backgroundImage,
+        s.borderLeftWidth,
+        s.font,
+        s.getPropertyValue('--x'),
+        s.opacity,
+      ];
+    });
+  const out = [read()];
+  const rules = st.sheet.cssRules;
+  const x = rules[blocks.indexOf('--x: 1')].style;
+  const touch = () => d.body.setAttribute('data-t', String(out.length));
+  for (const value of ['red !IMPORTANT', 'a;b', 'a ! important', '"open']) {
+    x.setProperty('--x', value);
+    touch();
+    out.push([x.cssText, read()[blocks.indexOf('--x: 1')][6]]);
+  }
+  const opacity = rules[blocks.indexOf('opacity: 1')].style;
+  opacity.opacity = 0.5;
+  touch();
+  out.push([opacity.cssText, read()[blocks.indexOf('opacity: 1')][7]]);
+  // A change elsewhere in a rule leaves its other declarations as they were.
+  rules[blocks.indexOf('margin: 1px !important; margin-left: 2px')].style.setProperty('padding', '1px');
+  rules[blocks.indexOf('w i d t h: 1px')].style.setProperty('padding', '1px');
+  touch();
+  out.push(read());
+  return out;
+};
+for (const jsdom of [20, 22, 25, 26])
+  parity(`CSSStyleRule style: the cascade from cssom's declarations (jsdom ${jsdom})`, cssomBlockScenario, { jsdom });
+
+// 27.0.0 and 27.0.1 (black box: the same for both).
+test("CSSStyleRule style: the cascade from cssom's declarations (jsdom 27.0.0, 27.0.1)", () => {
+  const expected = [
+    [
+      ['rgb(255, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(255, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(255, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '2px', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '2px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '', 'url("foobar.png")', '', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '2px', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '1px', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '2px', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '', '', '3px', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '', '', '', '12px / 1.5 serif', '', ''],
+      ['rgb(255, 0, 0)', '', '', '', '', '', '', ''],
+      ['rgb(0, 0, 255)', '', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '', '', '', '', '', ''],
+      ['rgb(255, 0, 0)', '', '', '', '', 'inherit', '', ''],
+      ['rgb(0, 0, 0)', 'calc(100% - var(--q, 3px))', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '', '', '', '', '1', ''],
+      ['rgb(0, 0, 0)', '', '', '', '', '', '', '1'],
+    ],
+    ['--x: red !IMPORTANT;', 'red !IMPORTANT'],
+    ['--x: a;b;', 'a;b'],
+    ['--x: a ! important;', 'a ! important'],
+    ['--x: "open;', '"open'],
+    ['opacity: 0.5;', '0.5'],
+    [
+      ['rgb(255, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(255, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(255, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '2px', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '2px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '', 'url("foobar.png")', '', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '2px', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '1px', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '2px', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '', '', '3px', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '1px', '', '', '', '12px / 1.5 serif', '', ''],
+      ['rgb(255, 0, 0)', '', '', '', '', '', '', ''],
+      ['rgb(0, 0, 255)', '', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '', '', '', '', '', ''],
+      ['rgb(255, 0, 0)', '', '', '', '', 'inherit', '', ''],
+      ['rgb(0, 0, 0)', 'calc(100% - var(--q, 3px))', '', '', '', '', '', ''],
+      ['rgb(0, 0, 0)', '', '', '', '', '', '"open', ''],
+      ['rgb(0, 0, 0)', '', '', '', '', '', '', '0.5'],
+    ],
+  ];
+  for (const jsdom of ['27.0.0', '27.0.1']) assert.deepEqual(cssomBlockScenario(createWindow({ jsdom })), expected);
+});
+
+// Replayed in order within a rule (#251 review, black box 20.0.3 to
+// 27.0.1): a shorthand given again resets the longhand declared between
+// (BACKGROUND after background-color), an empty value removes what the
+// rule declared of that name (COLOR: red; color: '' is no color; MARGIN:
+// '' keeps an earlier margin-left), and a change elsewhere in the rule
+// keeps the rest (27.0.x: margin: 1px!important; margin-left: 2px is 2px).
+const ruleReplayOrderScenario = (w) => {
+  const d = w.document;
+  d.body.innerHTML = '<div class="a"></div><div class="b"></div><div class="c"></div><div class="e"></div>';
+  const st = d.createElement('style');
+  st.textContent =
+    '.a { background: red; background-color: blue } .b { COLOR: red; color: blue } ' +
+    '.c { margin-left: 2px; MARGIN: 1px } .e { margin: 1px!important; margin-left: 2px }';
+  d.head.appendChild(st);
+  const [a, b, c, e] = st.sheet.cssRules;
+  const cs = (k) => w.getComputedStyle(d.querySelector(k));
+  let n = 0;
+  const touch = () => d.body.setAttribute('data-t', String(n++));
+  const out = [[cs('.a').backgroundColor, cs('.b').color, cs('.c').marginLeft, cs('.e').marginLeft]];
+  a.style.setProperty('BACKGROUND', 'green');
+  touch();
+  out.push([a.style.cssText, cs('.a').backgroundColor]);
+  b.style.color = '';
+  touch();
+  out.push([b.style.cssText, cs('.b').color]);
+  c.style.MARGIN = '';
+  touch();
+  out.push([c.style.cssText, cs('.c').marginLeft]);
+  e.style.setProperty('padding', '1px');
+  touch();
+  out.push([cs('.e').marginLeft]);
+  return out;
+};
+for (const jsdom of [20, 22, 25, 26])
+  parity(`CSSStyleRule style: replayed in order within a rule (jsdom ${jsdom})`, ruleReplayOrderScenario, { jsdom });
+test('CSSStyleRule style: replayed in order within a rule (jsdom 27.0.0, 27.0.1)', () => {
+  const expected = [
+    ['rgb(0, 0, 255)', 'rgb(0, 0, 255)', '1px', '2px'],
+    ['background: red; background-color: blue; BACKGROUND: green;', 'rgb(0, 128, 0)'],
+    ['COLOR: red; color: ;', 'rgb(0, 0, 0)'],
+    ['margin-left: 2px; MARGIN: ;', '2px'],
+    ['2px'],
+  ];
+  for (const jsdom of ['27.0.0', '27.0.1'])
+    assert.deepEqual(ruleReplayOrderScenario(createWindow({ jsdom })), expected);
+});
+
+// Forms cssom reads otherwise than a sheet parse (#251 review, black box
+// 20.0.3 to 27.0.1): a value starting with '(' or '/' (--x: (a;b) is (a
+// and then b);color; --x: / 2px is /2px), a custom property's name with
+// spaces (--my Var is --myVar), !important inside a value (a!importantb is
+// ab, important). And a value whose toString writes the style: no
+// endless loop, the value read once per change (with cssstyle before 4.4,
+// jsdom 20 to 25, an object value sets nothing).
+const cssomOddFormsScenario = (w) => {
+  const d = w.document;
+  const blocks = [
+    '--x: (a;b); color: red',
+    '--my Var: 1; color: red',
+    '--x: / 2px; color: red',
+    '--x: (); color: red',
+    '--x: a!importantb; color: red',
+    'width: 1px',
+  ];
+  d.body.innerHTML = blocks.map((_, i) => `<div class="k${i}"></div>`).join('');
+  const st = d.createElement('style');
+  st.textContent = blocks.map((b, i) => `.k${i} { ${b} }`).join('\n');
+  d.head.appendChild(st);
+  const rules = st.sheet.cssRules;
+  const out = [
+    blocks.map((_, i) => {
+      const s = w.getComputedStyle(d.querySelector(`.k${i}`));
+      return [rules[i].style.cssText, s.color, s.getPropertyValue('--x'), s.getPropertyValue('--myVar')];
+    }),
+  ];
+  const style = rules[5].style;
+  style.width = {
+    toString() {
+      style.color = 'blue';
+      return '7px';
+    },
+  };
+  d.body.setAttribute('data-t', '1');
+  let s = w.getComputedStyle(d.querySelector('.k5'));
+  out.push([style.cssText, s.width, s.color]);
+  style.setProperty('width', {
+    toString() {
+      style.setProperty('height', '3px');
+      return '9px';
+    },
+  });
+  d.body.setAttribute('data-t', '2');
+  s = w.getComputedStyle(d.querySelector('.k5'));
+  out.push([style.cssText, s.width, s.height]);
+  return out;
+};
+for (const jsdom of [20, 22, 25, 26])
+  parity(`CSSStyleRule style: forms cssom reads otherwise (jsdom ${jsdom})`, cssomOddFormsScenario, { jsdom });
+test('CSSStyleRule style: forms cssom reads otherwise (jsdom 27.0.0, 27.0.1)', () => {
+  const expected = [
+    [
+      ['--x: (a; b);color: red;', 'rgb(0, 0, 0)', '(a', ''],
+      ['--myVar: 1; color: red;', 'rgb(255, 0, 0)', '', '1'],
+      ['--x: /2px; color: red;', 'rgb(255, 0, 0)', '/2px', ''],
+      ['--x: ();color: red;', 'rgb(0, 0, 0)', '();color: red', ''],
+      ['--x: ab !important; color: red;', 'rgb(255, 0, 0)', 'ab', ''],
+      ['width: 1px;', 'rgb(0, 0, 0)', '', ''],
+    ],
+    ['width: 7px;', '7px', 'rgb(0, 0, 0)'],
+    ['width: 9px; height: 3px;', '9px', '3px'],
+  ];
+  for (const jsdom of ['27.0.0', '27.0.1']) assert.deepEqual(cssomOddFormsScenario(createWindow({ jsdom })), expected);
+});
+
+test('CSSKeyframesRule: the profiles that drop object values keep the cssom shape (#251 review)', () => {
+  // cssomObjectValues and the rule shape are separate: the 26.x and
+  // 27.0.x profiles take object values and still have cssom's rules, whose
+  // keyframes are enumerable data indices, not jsdom 27.1's accessors.
+  for (const [jsdom, shape] of [
+    ['20.0.3', 'data'],
+    ['26.1.0', 'data'],
+    ['27.0.1', 'data'],
+    ['28.1.0', 'accessor'],
+  ]) {
+    const w = createWindow({ jsdom });
+    const style = w.document.createElement('style');
+    style.textContent = '@keyframes k { from { top: 0 } to { top: 1px } }';
+    w.document.head.append(style);
+    const d = Object.getOwnPropertyDescriptor(style.sheet.cssRules[0], '0');
+    assert.equal(d && ('value' in d ? 'data' : 'accessor'), shape, jsdom);
+  }
+});

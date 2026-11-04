@@ -26,7 +26,10 @@ import {
   protosMode,
   isLegacyMode,
   supportsRuleMatches,
+  replayDeclarations,
+  parsedPlain,
 } from './css.js';
+import { cssomDeclaration, cssomEntries, blockEntries, simpleText, withoutComments } from './cssom-declaration.js';
 import { liveList, iterate } from './collections.js';
 import { fallbackBaseURL } from './base-url.js';
 import { urlTokenEnd } from './css-values.js';
@@ -100,16 +103,26 @@ function blockEnd(text, open) {
 // Text without its comments; comment markers in strings are kept.
 function stripComments(text) {
   if (!text.includes('/*')) return text;
+  // Text up to each comment is copied at once (from: where it starts).
   let out = '';
+  let from = 0;
   for (let i = 0; i < text.length;) {
+    const c = text[i];
+    if (c !== '/' && c !== '(' && c !== '"' && c !== "'") {
+      i++;
+      continue;
+    }
     const next = skipToken(text, i);
-    if (next === i) out += text[i++];
+    if (next === i) i++;
     else {
-      if (text[i] !== '/') out += text.slice(i, next);
+      if (c === '/') {
+        out += text.slice(from, i);
+        from = next;
+      }
       i = next;
     }
   }
-  return out;
+  return out + text.slice(from);
 }
 
 // Splits a list of rules into records: { selector, body } for style rules,
@@ -428,6 +441,10 @@ const COUNTER_DESCRIPTORS = [
 // rule interfaces' prototypes and each rule has its own, as in jsdom.
 const LEGACY_RULES = new WeakSet();
 const legacyRules = (protos) => LEGACY_RULES.has(protos.CSSRule);
+// The CSSRule prototypes of windows whose cssstyle drops a value that is
+// an object (before 4.4: compat.cssomObjectValues false).
+const OBJECTS_DROPPED = new WeakSet();
+const objectValues = (protos) => !OBJECTS_DROPPED.has(protos.CSSRule);
 // The CSSRule prototypes of windows whose profile has jsdom's own CSSOM
 // (from jsdom 29; cssomShape null).
 const OWN_CSSOM = new WeakSet();
@@ -601,8 +618,50 @@ function setStyleRuleText(rule, text) {
   }
   const s = rule[S];
   s.selectorText = selector;
-  s.style.cssText = declarations;
+  // cssom makes the rule a new style object too (cssomStyle).
+  s.body = declarations;
+  s.cssom = undefined;
+  cascadeFromCssom(rule);
   cssomChanges.rev++;
+}
+
+// A style rule's style in the cssom shape (jsdom before 27.1.0, #244):
+// cssom's declaration object, values as written (cssom-declaration.js),
+// made from the rule's text when first read. The rule's parsed
+// declarations (s.style) stay what the cascade reads: a change of the
+// object (its methods, or a write of its properties) parses them again
+// from its declarations, as jsdom's cascade gives those to cssstyle.
+function cssomStyle(rule) {
+  const s = rule[S];
+  if (s.cssom === undefined)
+    s.cssom = cssomDeclaration(s.body ?? '', rule, (style) => {
+      if (s.cssom !== style) return;
+      // A write while its declarations are read (a value's toString
+      // writing the style) reads them again once that is done, with the
+      // values turned into strings so far (cssomEntries), so it ends.
+      if (s.syncing) {
+        s.syncAgain = true;
+        return;
+      }
+      s.syncing = true;
+      const coerced = new Map();
+      try {
+        for (let pass = 0; pass < 8; pass++) {
+          s.syncAgain = false;
+          replayDeclarations(s.style, cssomEntries(style, coerced, objectValues(s.protos)));
+          if (!s.syncAgain) break;
+        }
+      } finally {
+        s.syncing = false;
+      }
+      cssomChanges.rev++;
+    });
+  return s.cssom;
+}
+// The parsed declarations from the cssom style (from new text).
+function cascadeFromCssom(rule) {
+  const s = rule[S];
+  replayDeclarations(s.style, cssomEntries(cssomStyle(rule), new Map(), objectValues(s.protos)));
 }
 
 // An @page rule's body: descriptors, and margin rules (@top-left { ... }).
@@ -649,8 +708,31 @@ function containerParts(prelude) {
 function createRule(protos, record, sheet, parentRule) {
   if (record.selector !== undefined) {
     // A grouping rule (CSS nesting), with no nested rules parsed yet, as in jsdom.
-    const rule = makeRule(protos, 'CSSStyleRule', sheet, parentRule, { selectorText: record.selector, rules: [] });
-    rule[S].style = declarationBlock(protos.CSSStyleProperties, record.body, rule);
+    // body: the text its cssom style is made from (cssomStyle).
+    const legacy = legacyRules(protos);
+    const rule = makeRule(protos, 'CSSStyleRule', sheet, parentRule, {
+      selectorText: record.selector,
+      rules: [],
+      style: null,
+      body: legacy ? record.body : undefined,
+    });
+    if (legacy) {
+      // The declarations cssom reads from the text, given to the cascade
+      // as jsdom's gives them to cssstyle (black box 20.0.3 to 27.0.1):
+      // comments dropped wherever they are (url(a/* x */b.png) too), the
+      // name's spaces too (w i d t h), each name once with its last value
+      // (color: red; color: bogus is no color), priorities other than
+      // !important left in the value (red ! important is no color).
+      // Most blocks are parsed as text, which gives the same (parsedPlain,
+      // css.js parseInto, context 'cssom'): those with none of cssom's
+      // special characters once their comments are gone (simpleText).
+      const body = record.body;
+      const text = withoutComments(body);
+      let plain = text !== null && simpleText(text);
+      rule[S].style = declarationBlock(protos.CSSStyleProperties, plain ? text : '', rule, undefined, 'cssom');
+      if (plain) plain = parsedPlain(rule[S].style);
+      if (!plain) replayDeclarations(rule[S].style, blockEntries(body));
+    } else rule[S].style = declarationBlock(protos.CSSStyleProperties, record.body, rule);
     return rule;
   }
   const { at, prelude, body } = record;
@@ -851,7 +933,10 @@ function ruleText(rule) {
   switch (Object.getPrototypeOf(rule)) {
     // Empty only from CSSStyleRule.parse() and the cssText setter before jsdom 27.1.0.
     case s.protos.CSSStyleRule:
-      return s.selectorText === '' ? '' : `${s.selectorText} ${styleText(s.style)}`;
+      if (s.selectorText === '') return '';
+      // cssom's (jsdom before 27.1.0): .a {color: red;}
+      if (legacyRules(s.protos)) return `${s.selectorText} {${cssomStyle(rule).cssText}}`;
+      return `${s.selectorText} ${styleText(s.style)}`;
     case s.protos.CSSMediaRule:
       return `@media ${s.media[S].list.join(', ')} ${nested(ruleArray(rule))}`;
     // (before jsdom 27.1.0 its own conditionText, which can be assigned)
@@ -1480,6 +1565,7 @@ export const CSSOM_INTERFACES = [
     name: 'CSSRule',
     statics: (compat) => RULE_STATICS[compat.cssomShape] ?? RULE_TYPES,
     compat(proto, compat) {
+      if (compat.cssomObjectValues === false) OBJECTS_DROPPED.add(proto);
       if (ruleVariant(compat) === 'cssom') LEGACY_RULES.add(proto);
       else if (compat.cssomShape === null) OWN_CSSOM.add(proto);
       else ACEMIR_RULES.add(proto);
@@ -1681,10 +1767,12 @@ export const CSSOM_INTERFACES = [
         }
       },
       get style() {
-        return state(this).style;
+        const s = state(this);
+        return legacyRules(s.protos) ? cssomStyle(this) : s.style;
       },
       set style(v) {
-        state(this).style.cssText = v;
+        const s = state(this);
+        (legacyRules(s.protos) ? cssomStyle(this) : s.style).cssText = v;
       },
     },
   },

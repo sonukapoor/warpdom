@@ -4683,3 +4683,128 @@ the interface getters' lookup: after a per-file reset the constructors are
 cached, so the getter did not look and still returned the constructor.
 Tests: "assigned through a proxy, honors its defineProperty trap" (jsdom 20,
 26, 30) and "locked after a reset and assigned through a proxy".
+
+## 2026-11-03: a style rule's style as cssom's before jsdom 27.1.0 (branch fix/244-cssom-rule-style, #244)
+
+Grafana's TableNG styles.test.tsx (jsdom 20.0.2) reads
+`rule.style.getPropertyValue('background-color')` and expects the hex value
+as written, and finds a rule by its `var()` value, which warpdom's 20.0.3
+profile dropped: 7 tests failed.
+
+Black box (20.0.3, 22.1.0, 25.0.1, 26.1.0, 27.0.0, 27.0.1, 27.1.0, 27.4.0,
+30.1.3): the switch is 27.1.0, as for the rule shapes (cssomShape): up to
+27.0.1 a style rule's style is cssom's CSSStyleDeclaration
+(CSSStyleDeclaration.js and the declaration states of parse.js are the same
+in cssom 0.5 and rrweb-cssom 0.6 to 0.8). A plain object: own `length`,
+`parentRule`, `_importants`, indices and one property per name; values as
+written, names matched by exact case, last value at the first position for
+a repeated name, no shorthand expansion, no `item()` or camelCase
+accessors; `setProperty` stores `String(value)` and the priority as given;
+`cssText` set parses `#bogus{text}` and throws cssom's Error (`Unmatched "`,
+`Unexpected }`) after clearing; the rule serializes as `.a {color: red;}`.
+jsdom's cascade (style-rules.js) gives each declaration to cssstyle's
+setProperty in index order, so the computed style has parsed values,
+values the cssstyle version rejects drop out, and `color: red; color: bogus`
+in one rule computes no color (cssom kept only `bogus`).
+
+Now (cssom-declaration.js) the rule's `style` in the cssom shape is a port
+of that object, made on the first read of `style` or `cssText` from the
+rule's declaration text (kept as `body`); it is a Proxy that reports any
+write (its methods, or `rule.style.color = 'green'` as the #137 tests do).
+The rule's parsed declarations stay what the cascade reads; a change
+re-parses them from the cssom object's declarations in sheet context and
+bumps cssomChanges.rev, so the kept-style rules (#137) are unchanged. At
+sheet parse the cssom object is made at once only for a rule that dropped
+a declaration and repeats a name (parseInto counts the declarations in
+context 'cssom'). The rule's `cssText` setter and `CSSStyleRule.parse()`
+re-parse from the cssom object too.
+
+Benchmarks (Node 22.17.1, 5 to 7 alternating runs, medians, base -> this
+change): sheet parse in the 26.1.0 profile (20 sheets of 400 rules) 16.85
+-> 17.33 ms; 30.1.3 17.87 -> 17.99 ms; getComputedStyle 300 elements
+(26.1.0) unchanged within noise; box-cascade-bench 26.1.0 all 3.1 -> 3.0,
+miss 40.6 -> 41.2 µs/element; 20.0.3 all 4.2 -> 4.1 µs/element;
+cascade-bench read pass 0.48 -> 0.46 ms, mutate+read 1.72 -> 1.70 ms. The
+first read of a rule's style costs about 2 µs per rule (400 rules read
+twice: 1.25 -> 2.03 ms).
+
+Tests: cssom.test.js "CSSStyleRule style: values as written before 27.1.0"
+(parity, jsdom 20, 22, 25, 26: getPropertyValue, priorities, setProperty,
+removeProperty, cssText get and set with errors, direct writes,
+insertRule, the rule's cssText setter, and getComputedStyle after each) and
+"cssom object up to 27.0.1, parsed from 27.1.0". Not modeled (in
+differences.md): `style` and `selectorText` as own data properties of the
+rule, `__starts`, cssom's format for grouping, font-face and keyframe
+rules. Side findings, not changed: a value with an upper-case unit (`3PX`)
+computes as written in warpdom (jsdom 20 to 25: '', from 26: `3px`); jsdom
+27 and 28 rewrite single quotes in selectorText to double quotes.
+
+Review round 1 (#251), black box 20.0.3 to 27.0.1: the cascade now replays
+the cssom object's declarations one by one (css.js replayDeclarations,
+context 'replay'), as jsdom gives each to cssstyle's setProperty: a later
+declaration replaces an earlier one whatever their priority (27.0.x:
+`color: red!important; COLOR: blue` is blue), and a value holding a ';'
+sets nothing (`setProperty('color', 'red; display: none')`: no color, display
+block). A rule's text is parsed without its comments, which cssom drops
+wherever they are (`width: 1px; /* x */ width: 2px` is 2px, `color: red /* c
+*/` is red; warpdom dropped the declaration before); a priority cssom
+leaves in the value (`red ! important`, `red !IMPORTANT`: no color) sends
+the rule through the replay. Batching of change reports is per object, so
+a value's toString changing another rule's style is seen. stripComments
+copies the text between comments at once. Sheet parse (26.1.0, 7
+alternating runs, medians, PR head -> this): 16.50 -> 16.55 ms; with a
+comment in every rule 21.14 -> 20.45 ms (getComputedStyle there 12.5 ->
+18.4 ms, as the declarations with comments now apply). Tests: cssom.test.js
+"the cascade replays cssom's declarations" (parity 20, 22, 25, 26; 27.0.0
+and 27.0.1) and "comments in the cascade before 27.1.0" (parity 20 to 26).
+
+Review round 2 (#251), black box 20.0.3 to 27.0.1: the first cascade of a
+rule disagreed with cssom's declarations in cases the fast-path checks did
+not catch (27.0.x `margin: 1px !important; margin-left: 2px` lost
+margin-left until any change replayed it; `w i d t h: 1px` is width in
+cssom; `url(foo/* note */bar.png)` is url(foobar.png); `width: 1px;;
+color: red` declares `;color`; `border: ...; border-left-width: 2px;
+BORDER: 3px solid blue` gives a 3px left border). Building every rule's
+cascade from cssom's entries (blockEntries + replayDeclarations) cost +50
+to +90% on sheet parse (16.85 -> 31.86 ms in the 26.1.0 profile), so the
+sheet parse is kept where it gives the same by construction: the text
+without its comments (withoutComments; cssom drops them, in url() too)
+has none of cssom's special characters (simpleText: strings, braces,
+at-signs, backslashes, priorities other than !important, empty
+declarations), and parseInto in context 'cssom' kept every declaration it
+read, or dropped some only for invalid values (no !important, every name
+plain and declared once whatever its case: plainNames). Other rules are
+replayed from cssom's entries in order: a name given again is applied
+last (decls.delete before set), an empty value removes what the rule
+declared of that name (`COLOR: red; color: ''` is no color; `MARGIN: ''`
+keeps an earlier margin-left, as cssstyle does), custom properties are
+kept as written (`--x: a;b`, `red !IMPORTANT`), values are coerced to
+strings (`style.opacity = 0.5`). Left: an empty value removing the
+property as earlier rules declare it (jsdom's one cssstyle declaration
+over all matching rules; differences.md).
+
+Sheet parse (Node 22.17.1, 7 alternating runs, medians, 20 sheets x 400
+rules; origin/main / 45f4ea4 / this): 26.1.0 16.02 / 16.73 / 17.88 ms;
+20.0.3 15.58 / 20.07 / 19.28; a comment in every rule (26.1.0) 17.13 /
+20.57 / 19.51; 27.0.1 16.85 / 17.13 / 18.14; !important and font: 12px/1.5
+in every rule (26.1.0) 19.35 / 20.65 / 21.31; 30.1.3 15.90 / 15.83 / 16.10.
+getComputedStyle unchanged within noise. Tests: cssom.test.js "the
+cascade from cssom's declarations" and "replayed in order within a rule"
+(parity 20 to 26; 27.0.0 and 27.0.1 against measured values).
+
+Review round 3 (#251), black box 20.0.3 to 27.0.1: a value whose
+toString wrote the rule's style re-entered the change hook through
+cssomEntries and overflowed the stack (jsdom does not). The hook now
+guards per rule: a write during a sync marks it, and the sync reads the
+declarations again with each object value turned into a string once
+(cssomEntries' coerced map), at most 8 passes. With cssstyle before 4.4
+(cssstyle 2.3.0 to 4.3.1 measured; jsdom 20 to 25) an object value sets
+nothing in the cascade (compat.cssomObjectValues). The sheet shortcut and
+simpleBlock now leave to cssom's parser a value starting with ( ) / : ; !
+@ { } (--x: (a;b) is (a and b);color there, --x: / 2px is /2px), a custom
+property's name with spaces (--my Var is --myVar), and an !important that
+does not end the value (a!importantb is ab, important). Sheet parse
+(d9dc934 -> this, 7 alternating runs, medians): 26.1.0 17.09 -> 17.16 ms,
+20.0.3 18.63 -> 18.98, comments 18.75 -> 18.93, 27.0.1 17.39 -> 17.96,
+!important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
+"forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).

@@ -1938,6 +1938,11 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle, beyondJsdom = fa
     // to 28 @acemir/cssom ('acemir': type data and cssText on each rule
     // interface, constants on CSSRule.prototype); from 29 jsdom's own (null).
     cssomShape: cssomShape(version),
+    // cssstyle before 4.4 (jsdom 20 to 25 by default) drops a value that
+    // is an object in setProperty (style.width = { toString() {...} }),
+    // so jsdom's cascade of a rule's cssom style does too (black box
+    // cssstyle 2.3.0 to 4.3.1 drop it, 4.4.0 to 5.3.7 take its string).
+    cssomObjectValues: !(css !== null && before(css, [4, 4, 0])),
     // ElementInternals and attachInternals() from 23.1.0, its labels and
     // form-associated custom elements from 26.0.0; its role and ARIA
     // accessors throw before 27.0.0.
