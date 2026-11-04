@@ -1067,3 +1067,19 @@ test('getComputedStyle: an element of a document without a document element (#25
     assert.deepEqual(read(html.createElement('div')), ['rgb(0, 0, 0)', 'block'], jsdom);
   }
 });
+
+// border: initial or inherit in a style sheet rule (and unset from 28.1):
+// computed, as declared there (jsdom 27.0.1 to 29.0.0 throw a TypeError
+// from inside getComputedStyle(); with the declaration in the style
+// attribute they compute it; docs/differences.md, #259).
+test('getComputedStyle: border with a CSS-wide keyword in a style sheet (jsdom 27.0.1 to 29.0.0, #259)', () => {
+  for (const jsdom of ['27.4.0', '28.1.0', '29.0.0'])
+    for (const keyword of ['initial', 'inherit', 'unset']) {
+      const w = createWindow({ jsdom });
+      w.document.head.innerHTML = `<style>p { border: ${keyword} }</style>`;
+      w.document.body.innerHTML = '<p></p>';
+      const cs = w.getComputedStyle(w.document.querySelector('p'));
+      const expected = keyword === 'unset' && jsdom === '27.4.0' ? '' : keyword;
+      assert.deepEqual([cs.borderTopWidth, cs.borderTopStyle], [expected, expected], `${jsdom} ${keyword}`);
+    }
+});

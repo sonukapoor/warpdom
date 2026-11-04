@@ -69,6 +69,10 @@ warpdom follows the standard for:
   element (a template's content, `new Document()`, a document whose root
   was removed): computed (jsdom 30.0.0 to 30.1.2 throw a TypeError from
   inside jsdom; 30.1.3 computes it)
+- `getComputedStyle()` of an element that a style sheet rule gives
+  `border: initial` or `border: inherit` (from jsdom 28.1 `border: unset`
+  too): computed (jsdom 27.0.1 to 29.0.0 throw a TypeError from inside
+  jsdom; with the same declaration in the style attribute they compute it)
 
 ### Additions jsdom lacks
 
