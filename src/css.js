@@ -1647,6 +1647,25 @@ const BORDER_AND_SIDES = new Set(['border', 'border-top', 'border-right', 'borde
 // element's cssText).
 // element: an element's style object parses it (escapedUrlBackground meets
 // its url()s).
+// parseInto: a declaration name with whitespace or a comment inside it
+// (--f o o, --a/**/b).
+const SPACED_NAME = /[ \t\n\r\f]|\/\*/;
+// The name such a declaration declares, or null when it is invalid (black
+// box 20.0.3 to 30.1.3, #259): jsdom 20 to 26 (cssom's parser) remove the
+// whitespace and the comments (col or is color, --a\ b is --a\b); from
+// 27 the declaration is invalid, as CSS Syntax makes it (an escaped space,
+// --a\ b, is part of the name), except in a style sheet in jsdom 27 and
+// 28 (@acemir/cssom), which removes the comments and keeps the whitespace
+// (--f o o; col or is no property).
+const UNESCAPED_SPACE = /(?<!\\)[ \t\n\r\f]|\/\*/;
+const COMMENTS = /\/\*[\s\S]*?(\*\/|$)/g;
+const CSS_SPACES = /[ \t\n\r\f]+/g;
+function spacedDeclarationName(rawName, runsOn, sheet, surface) {
+  if (runsOn) return propertyName(rawName.replace(COMMENTS, '').replace(CSS_SPACES, ''));
+  if (sheet && surface?.key?.startsWith('cssstyle')) return propertyName(rawName.replace(COMMENTS, ''));
+  return UNESCAPED_SPACE.test(rawName) ? null : propertyName(rawName);
+}
+
 function parseInto(decls, text, mode, surface = null, context = null, element = false) {
   // 'replay': declarations given to a rule's (replayDeclarations).
   // 'cssom': a style rule's in a sheet before jsdom 27.1.0, which tells
@@ -1689,7 +1708,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     }
     named++;
     const rawName = part.slice(0, colon).trim();
-    const name = propertyName(rawName);
+    let name = propertyName(rawName);
     let value = part.slice(colon + 1).trim();
     if (counting) {
       names.push(rawName);
@@ -1699,6 +1718,15 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       // a custom property's name with spaces (--my Var is --myVar).
       if (value === '' || ODD_START.has(value.charCodeAt(0))) unnamed = true;
       else if (rawName.charCodeAt(0) === 45 && /\s/.test(rawName)) unnamed = true;
+    }
+    // A name with whitespace or a comment inside it (SPACED_NAME,
+    // spacedDeclarationName). Sheets read by cssom (counting) are left to
+    // it. From jsdom 27 such a name that is not a custom property's is no
+    // property outside style sheets (col or), so only custom properties'
+    // are looked at there.
+    else if ((runsOn || sheet || rawName.charCodeAt(1) === 45) && SPACED_NAME.test(rawName)) {
+      name = spacedDeclarationName(rawName, runsOn, sheet, surface);
+      if (name === null) continue;
     }
     if (runsOn && (value === '' || (value[0] === ';' && /^[\s;]*$/.test(value)))) {
       carried = part;

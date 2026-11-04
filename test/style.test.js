@@ -958,3 +958,59 @@ const numbersAsWritten = (w) => {
 };
 for (const jsdom of [20, 22, 25, 26])
   parity(`style: numbers as written before cssstyle 4.3.1 (jsdom ${jsdom})`, numbersAsWritten, { jsdom });
+
+// A declaration name with whitespace or a comment inside it (black box,
+// 20.0.3 to 30.1.3, #259): jsdom 20 to 26 remove both (--f o o is --foo,
+// col or is color); from 27 the declaration is invalid in a style
+// attribute, cssText and a rule's cssText, and in style sheets from 29;
+// jsdom 27 and 28's sheets remove the comments and keep the whitespace.
+// An escaped space (--a\ b) is part of the name from 27.
+const SPACED_NAMES = [
+  '--f o o: 1',
+  '--a/**/b: 1',
+  'col or: red',
+  'col/**/or: red',
+  '--a\\ b: 1',
+  '--x : 1',
+  '--a\nb: 1',
+];
+for (const jsdom of [20, 22, 26, 27, 28, 29, 30])
+  parity(
+    `style: a declaration name with spaces or a comment (jsdom ${jsdom}, #259)`,
+    (w) => {
+      const d = w.document;
+      d.head.innerHTML = '<style>div {}</style>';
+      const sheet = d.styleSheets[0];
+      const el = d.body.appendChild(d.createElement('div'));
+      return SPACED_NAMES.map((name) => {
+        const text = `${name}; width: 1px`;
+        el.setAttribute('style', text);
+        const attribute = [el.style.cssText, el.style.length, w.getComputedStyle(el).getPropertyValue('--foo')];
+        el.style.cssText = text;
+        const cssText = el.style.cssText;
+        sheet.cssRules[0].style.cssText = text;
+        const rule = sheet.cssRules[0].style.cssText;
+        sheet.insertRule(`p { ${text} }`, 1);
+        const inserted = sheet.cssRules[1].cssText;
+        sheet.deleteRule(1);
+        return [attribute, cssText, rule, inserted];
+      });
+    },
+    { jsdom },
+  );
+
+// The same names in a <style> element's text (jsdom 29 and later also
+// report "Could not parse CSS stylesheet" on the console, which warpdom
+// does not; docs/differences.md).
+test('style: a declaration name with spaces in a style element (#259)', () => {
+  const read = (jsdom) => {
+    const w = createWindow({ jsdom });
+    w.document.head.innerHTML = '<style>div { --f o o: 1; --a/**/b: 2; color: red }</style>';
+    return w.document.styleSheets[0].cssRules[0].cssText;
+  };
+  assert.equal(read('26.1.0'), 'div {--foo: 1; --ab: 2; color: red;}');
+  assert.equal(read('27.4.0'), 'div { --f o o: 1; --ab: 2; color: red; }');
+  assert.equal(read('28.1.0'), 'div { --f o o: 1; --ab: 2; color: red; }');
+  assert.equal(read('29.1.1'), 'div { color: red; }');
+  assert.equal(read('30.1.3'), 'div { color: red; }');
+});
