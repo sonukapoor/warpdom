@@ -182,15 +182,21 @@ test('resetWindow: prototypes of the kept objects are restored, also those creat
 test('resetWindow: own properties on location, history, screen, customElements, external and the bars are gone', () => {
   const w = createWindow({ url: 'http://localhost:3000/' });
   snapshotWindow(w);
+  // Location's members are its own (unforgeable) properties, which stay.
+  const unforgeable = Reflect.ownKeys(w.location);
   const objects = [w.location, w.history, w.screen, w.customElements, w.external, w.menubar, w.toolbar];
   for (const object of objects) {
     object.added = 1;
     Object.defineProperty(object, 'accessor', { get: () => 2, configurable: true });
   }
-  Object.defineProperty(w.location, 'href', { value: 'http://mocked/', configurable: true });
   Object.defineProperty(w.screen, 'width', { value: 1920, configurable: true });
   resetWindow(w);
-  for (const object of objects) assert.deepEqual(Reflect.ownKeys(object), [], Object.prototype.toString.call(object));
+  for (const object of objects)
+    assert.deepEqual(
+      Reflect.ownKeys(object),
+      object === w.location ? unforgeable : [],
+      Object.prototype.toString.call(object),
+    );
   assert.equal(w.location.href, 'http://localhost:3000/');
   assert.equal(w.screen.width, 0);
   assert.equal(w.location, objects[0], 'the same objects');
