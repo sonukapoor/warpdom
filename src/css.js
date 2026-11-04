@@ -1711,6 +1711,25 @@ function hasVar(value) {
   }
   return false;
 }
+// Where a value's trailing !important starts, with the whitespace before
+// it (as /\s*!\s*important\s*$/i finds it), or -1. Read from the end, in
+// linear time: the regular expression took quadratic time on a long run of
+// whitespace (5,000 spaces 15 ms, 20,000 spaces 191 ms; #224).
+const IMPORTANT = /^important$/i;
+const SPACE = /\s/;
+const isSpace = (c) => c === 32 || (c >= 9 && c <= 13) || (c > 127 && SPACE.test(String.fromCharCode(c)));
+function priorityStart(value) {
+  let i = value.length;
+  while (i > 0 && isSpace(value.charCodeAt(i - 1))) i--;
+  // (most values end in another letter than t)
+  if (i < 10 || (value.charCodeAt(i - 1) | 32) !== 116 || !IMPORTANT.test(value.slice(i - 9, i))) return -1;
+  i -= 9;
+  while (i > 0 && isSpace(value.charCodeAt(i - 1))) i--;
+  if (value.charCodeAt(i - 1) !== 33) return -1;
+  i--;
+  while (i > 0 && isSpace(value.charCodeAt(i - 1))) i--;
+  return i;
+}
 // A priority token left over outside quotes, functions and [] {} blocks,
 // not escaped (color: var(--c)
 // !important !important, var(--c) !, var(--c) !important !foo): jsdom 27
@@ -1796,10 +1815,10 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       continue;
     }
     let important = false;
-    const bang = value.match(/\s*!\s*important\s*$/i);
-    if (bang) {
+    const bang = priorityStart(value);
+    if (bang !== -1) {
       important = true;
-      value = value.slice(0, bang.index).trim();
+      value = value.slice(0, bang).trim();
       // (from jsdom 27, an !important one keeps later ones out here, not
       // in cssom's cascade: margin: 1px !important; margin-left: 2px)
       if (counting) prioritized = true;

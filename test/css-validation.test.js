@@ -379,3 +379,29 @@ test('lengths and sizing keywords with cssstyle 4.2 and 4.3 (#239)', () => {
   assert.equal(css('4.4.0', 'width', 'fit-content'), 'width: fit-content;');
   assert.equal(css('4.4.0', 'flex-basis', 'fit-content'), '');
 });
+
+// A long whitespace run in a declaration's value is read in linear time
+// (#224: the !important check took 191 ms on 20,000 spaces, about 1.2 s
+// on 50,000).
+test('declarations: a long whitespace run before the end is read quickly', () => {
+  const spaces = ' \t'.repeat(25000);
+  for (const jsdom of ['20.0.3', '26.1.0', undefined]) {
+    const w = createWindow(jsdom ? { jsdom } : {});
+    const cases = [
+      [`color: red${spaces}x`, ''],
+      [`color: red${spaces}!${spaces}important`, 'color: red !important;'],
+      [`color: red${spaces}!${spaces}importantx`, ''],
+    ];
+    for (const [text, expected] of cases) {
+      const e = w.document.createElement('div');
+      const start = performance.now();
+      e.style.cssText = text;
+      e.setAttribute('style', text);
+      w.document.head.innerHTML = `<style>.a{${text}}</style>`;
+      w.getComputedStyle(w.document.body).color;
+      const elapsed = performance.now() - start;
+      assert.equal(e.style.cssText, expected);
+      assert.ok(elapsed < 200, `${jsdom ?? 'latest'} ${JSON.stringify(text.slice(-12))}: ${elapsed} ms`);
+    }
+  }
+});

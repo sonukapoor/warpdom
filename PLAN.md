@@ -4834,3 +4834,10 @@ value has no function. setProperty with a unique value each time
 (Node 22.17.1, 5 alternating runs, medians): jsdom 20 profile 516 -> 575
 ns per width + margin pair; repeated values (style-bench) and the other
 benches within noise. Kept: the alternative is the wrong value.
+
+#224 item 4: the !important check (/\s*!\s*important\s*$/i) took
+quadratic time on a whitespace run (5,000 / 10,000 / 20,000 / 40,000
+spaces: 15 / 51 / 200 / 790 ms in cssText, the attribute and a sheet).
+priorityStart reads from the end instead (same index as the regular
+expression on 500,000 random values): under 2 ms for all of them. Test:
+css-validation.test.js, 50,000 characters under 200 ms.
