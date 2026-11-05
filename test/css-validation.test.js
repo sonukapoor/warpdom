@@ -690,6 +690,131 @@ for (const jsdom of [27, 28, 29, 30])
     { jsdom },
   );
 
+// The prefixed-gradient fallback (background: -webkit-linear-gradient(...);
+// background: linear-gradient(...)), then another declaration: jsdom 27 and
+// 28 declare nothing, a later background of other values too; 29 and later
+// keep the later background (black box, 27.4.0 to 30.1.3; the #267 review).
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `jsdom ${jsdom}: a prefixed gradient fallback and a later declaration (#264)`,
+    (w) => {
+      const d = w.document;
+      const W = '-webkit-linear-gradient(top, red, blue)';
+      const out = [];
+      for (const text of [
+        `background: ${W}; background: linear-gradient(red, blue); color: blue`,
+        `background-color: red; background: ${W}; background: linear-gradient(red, blue); color: blue`,
+        `background: -moz-linear-gradient(top, red, blue); background: linear-gradient(red, blue); width: 1px`,
+        `background: ${W}; background: linear-gradient(red, blue)`,
+        `background: LINEAR-GRADIENT(red, blue); background: red; color: blue`,
+        `background: ${W}; background: url(a.png) no-repeat; color: blue`,
+      ]) {
+        const e = d.createElement('div');
+        e.setAttribute('style', text);
+        d.body.replaceChildren(e);
+        const c = d.createElement('div');
+        c.style.cssText = text;
+        const computed = w.getComputedStyle(e);
+        out.push(
+          `${text} -> ${e.style.cssText} | ${c.style.cssText} | ${e.style.backgroundImage} | ${computed.backgroundImage} ${computed.color}`,
+        );
+      }
+      const s = d.createElement('div').style;
+      s.backgroundColor = 'red';
+      s.background = W;
+      s.setProperty('background', 'linear-gradient(red, blue)');
+      s.color = 'blue';
+      out.push(s.cssText);
+      return out;
+    },
+    { jsdom },
+  );
+
+// jsdom 27 and later: an !important background of initial values stays
+// when another declaration follows it in a style attribute or cssText,
+// that one too (black box, 27.4.0 to 30.1.3; the #267 review).
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `jsdom ${jsdom}: an important background of initial values and a later declaration (#264)`,
+    (w) => {
+      const d = w.document;
+      const X = 'LINEAR-GRADIENT(red, blue)';
+      const W = '-webkit-linear-gradient(top, red, blue)';
+      const out = [];
+      for (const text of [
+        `background: ${X} !important; color: blue`,
+        `background: ${W} !important; color: blue`,
+        `background: ${X} !important; background: red; color: blue`,
+        `background: ${X} !important; background-color: red; color: blue`,
+        `background: ${X} !important; width: 1px; background: ${X}; color: blue`,
+      ]) {
+        const e = d.createElement('div');
+        e.setAttribute('style', text);
+        d.body.replaceChildren(e);
+        const c = d.createElement('div');
+        c.style.cssText = text;
+        const computed = w.getComputedStyle(e);
+        out.push(
+          `${text} -> ${e.style.cssText} | ${c.style.cssText} | ${e.style.color} ${computed.color} ${computed.backgroundImage}`,
+        );
+      }
+      return out;
+    },
+    { jsdom },
+  );
+
+// jsdom 30: a background of initial values in a style attribute or cssText
+// removes the background-position-x and -y declared before it (the two
+// together give background-position the later one's place); jsdom 27 to 29
+// keep them (black box, 27.4.0 to 30.1.3; the #267 review).
+for (const jsdom of [27, 28, 29, 30, '30.1.3'])
+  parity(
+    `jsdom ${jsdom}: background-position-x and -y before a background of initial values (#264)`,
+    (w) => {
+      const d = w.document;
+      const X = 'LINEAR-GRADIENT(red, blue)';
+      const spec = String(jsdom).startsWith('30');
+      const out = [];
+      const texts = [
+        `background-position-x: 25%; background-position-y: 75%; background: ${X}`,
+        `background-position-x: 25%; color: red; background: ${X}`,
+        `background-position-x: 25%; background-position-y: 75%; background: ${X} !important`,
+      ];
+      // (jsdom 27 to 29 differ here in other ways: an !important axis and
+      // the axes written as background-position)
+      if (spec)
+        texts.push(
+          `background-position-y: 75% !important; background: ${X}`,
+          `background-position-x: 25%; background-position-y: 75%; background: ${X}; color: red`,
+          `background-position-y: 75%; color: red; background-position-x: 25%; width: 1px; background: ${X}`,
+          `background-position: 1px 2px; background-position-x: 3px; background: ${X}`,
+        );
+      for (const text of texts) {
+        const e = d.createElement('div');
+        e.setAttribute('style', text);
+        d.body.replaceChildren(e);
+        const c = d.createElement('div');
+        c.style.cssText = text;
+        const parts = [text, e.style.cssText, c.style.cssText];
+        // (jsdom 27 to 29 compute the axes from what is declared; warpdom
+        // does not yet)
+        if (spec) {
+          const computed = w.getComputedStyle(e);
+          parts.push(
+            e.style.backgroundPositionX,
+            e.style.getPropertyValue('background-position-y'),
+            c.style.backgroundPosition,
+            computed.backgroundPositionX,
+            computed.backgroundPositionY,
+          );
+        }
+        out.push(parts.join(' | '));
+      }
+      return out;
+    },
+    { jsdom },
+  );
+
 // jsdom 27 and later: background layers, each as it would be alone, a
 // layer of initial values empty (url(a.png), none is url("a.png"), ).
 for (const jsdom of [27, 29, 30])

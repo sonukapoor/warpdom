@@ -2090,7 +2090,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       else if (!name.startsWith('background-')) initials.followed = true;
     }
     if (declared === INITIALS) {
-      initials = setInitials(decls, kept, sheet && mode === 'spec');
+      initials = setInitials(decls, kept, sheet && mode === 'spec', !sheet && mode === 'spec');
       continue;
     }
     if (MERGEABLE.has(name)) decls.mergeable = true;
@@ -2105,8 +2105,9 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   // A background of initial values (setInitials) and a declaration of
   // another property after it, in a style attribute or cssText (black box,
   // 27.4.0 to 30.1.3, #264): jsdom 27 and 28 then declare nothing, 29 and
-  // later leave the longhands out.
-  if (initials?.followed && !sheet) {
+  // later leave the longhands out. An !important one stays, as does what
+  // follows it (the #267 review).
+  if (initials?.followed && !initials.important && !sheet) {
     if (mode !== 'spec' && !surface?.key?.startsWith('jsdom29')) decls.clear();
     else for (const [n, decl] of initials.set) if (decls.get(n) === decl) decls.delete(n);
   }
@@ -2669,7 +2670,9 @@ const BORDER_SIDES = ['top', 'right', 'bottom', 'left'];
 // initial value, in place, and is not declared itself (black box, 27.4.0
 // to 30.1.3, #264). axes: background-position-x and -y too, as jsdom 30
 // lists them from setProperty and in style sheets (not from cssText or a
-// style attribute). The longhands set, by name.
+// style attribute, where jsdom 30 removes those declared before instead:
+// dropAxes, the #267 review). The longhands set, by name, and whether they
+// are !important.
 const BG_INITIALS = [
   ['background-image', 'none'],
   ['background-position', '0% 0%'],
@@ -2689,16 +2692,33 @@ function clearBackground(decls) {
   for (const [name] of BG_INITIALS) removed = decls.delete(name) || removed;
   return removed;
 }
-function setInitials(decls, important, axes) {
+const BG_X = 'background-position-x';
+const BG_Y = 'background-position-y';
+function setInitials(decls, important, axes, dropAxes = false) {
   const set = new Map();
   decls.delete('background');
+  // (the two together give background-position the later one's place:
+  // black box, 30.1.2 and 30.1.3)
+  if (dropAxes && decls.has(BG_X) && decls.has(BG_Y) && !decls.has('background-position')) {
+    const entries = [...decls];
+    decls.clear();
+    let seen = false;
+    for (const [name, decl] of entries) {
+      if (name !== BG_X && name !== BG_Y) decls.set(name, decl);
+      else if (seen) decls.set('background-position', decl);
+      else seen = true;
+    }
+  } else if (dropAxes) {
+    decls.delete(BG_X);
+    decls.delete(BG_Y);
+  }
   for (const [name, value] of BG_INITIALS) {
-    if (!axes && (name === 'background-position-x' || name === 'background-position-y')) continue;
+    if (!axes && (name === BG_X || name === BG_Y)) continue;
     const decl = { value, important };
     decls.set(name, decl);
     set.set(name, decl);
   }
-  return { set, followed: false };
+  return { set, followed: false, important };
 }
 
 const RESETS = {
