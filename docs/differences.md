@@ -134,17 +134,6 @@ Not modeled:
   `CSSNestedDeclarations`
 - `getComputedStyle().azimuth` with cssstyle 4.2 and 4.3 (`NaNdeg` for an
   angle, jsdom's is empty)
-- a shorthand followed by one of its longhands in a declaration
-  ([#104](https://github.com/sonukapoor/warpdom/issues/104)): jsdom
-  merges the longhand into the shorthand, and warpdom keeps both
-  declarations. After `style.margin = '0'; style.marginTop = '4px'`,
-  jsdom's `cssText` is `margin: 4px 0px 0px 0px;` before 27 and
-  `margin: 4px 0px 0px;` from 27, and warpdom's is
-  `margin: 0px; margin-top: 4px;`; computed values match. In the `style`
-  attribute and `cssText`, jsdom 20 to 26 merge the same way, and jsdom 27
-  and later drop the longhand (`margin: 0; margin-top: 4px` gives
-  `margin: 0px;`, and `margin-top` computes to `0px`, where warpdom's is
-  `4px`)
 - writes to the `getComputedStyle()` object
   ([#97](https://github.com/sonukapoor/warpdom/issues/97)): before jsdom
   28.1.0 it takes them like `el.style`, as warpdom does; from 28.1.0,
@@ -177,20 +166,19 @@ Not modeled:
   later
   ([#113](https://github.com/sonukapoor/warpdom/issues/113),
   [#147](https://github.com/sonukapoor/warpdom/issues/147)): jsdom applies
-  them in order, as in the `style` attribute, so
-  `color: red !important; color: blue` computes to blue, and in
+  them in order, so in
   `padding-top: 1px; padding: var(--p); padding-top: 4px` the last
-  `padding-top` gives `4px`. warpdom gives red, and not `4px` (its 27.0
-  profile matches jsdom 27.0.1: blue, and `''`)
+  `padding-top` gives `4px`. warpdom gives `''` (`0` in the jsdom 30
+  profile), as jsdom 27.0.1 does
 - `!important !important`
   ([#147](https://github.com/sonukapoor/warpdom/issues/147)): jsdom 20 to
   26 keep the declaration as `!important`; warpdom drops it, as jsdom 27
   and later do
 - `color: red !important; color: var(--c) !important` in the `style`
-  attribute ([#147](https://github.com/sonukapoor/warpdom/issues/147)):
-  jsdom 27 and later keep `color: red !important`, where warpdom keeps
-  `color: var(--c)` (with `!important` only in the jsdom 30 profile);
-  jsdom 20 to 25 drop both, where warpdom keeps the first
+  attribute, jsdom 20 to 25
+  ([#147](https://github.com/sonukapoor/warpdom/issues/147)): jsdom drops
+  both, where warpdom keeps one of them (jsdom 27 and later keep
+  `color: red !important`, as warpdom does)
 - an `!important` `border-color` rule against an inline
   `border-top-color`, jsdom 28.1.0 to 30.1.0
   ([#147](https://github.com/sonukapoor/warpdom/issues/147)):
