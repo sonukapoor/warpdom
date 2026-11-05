@@ -9,7 +9,7 @@
 // internal.js).
 import { S, HTML_NS, ELEMENT_NODE, hooks, nextInTree, connected, PlatformURL as URL } from './internal.js';
 import { dispatch, exposed } from './events.js';
-import { clearWindowTimers } from './window-features.js';
+import { clearWindowTimers, stopFrames } from './window-features.js';
 import { abortWindowRequests } from './xhr.js';
 import { forgetLastList } from './collections.js';
 import { windowOrigin } from './window-features.js';
@@ -133,6 +133,7 @@ function discardWindow(window) {
   window[S].discarded = true;
   hooks.discardedWindows++;
   clearWindowTimers(window);
+  stopFrames(window);
   const { childFrames, shadowFrames } = window[S];
   if (childFrames) for (const child of childFrames) discardWindow(child);
   if (shadowFrames) for (const child of shadowFrames) discardWindow(child);

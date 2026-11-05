@@ -213,20 +213,32 @@ parity('window.location = url navigates ([PutForwards=href])', async (w) => {
   return [w.location.href, w.history.length];
 });
 
-test('animation frames are scheduled on the timers of the global the window is installed on', () => {
+// As jsdom's free setInterval: the realm global's, looked up at the
+// request, not the timers of the global the window is installed on (Jest's
+// fake timers on the test's global leave jsdom's frames alone).
+test("animation frames run on an interval of the realm global's timers, looked up at the request", () => {
   const w = createWindow();
-  const queued = [];
   Object.defineProperty(w.document, 'defaultView', {
-    value: { setTimeout: (fn, ms) => queued.push([fn, ms]) },
+    value: { setTimeout: () => assert.fail('the installed global'), setInterval: () => assert.fail('installed') },
     configurable: true,
   });
+  const queued = [];
+  const cleared = [];
+  const { setInterval, clearInterval } = globalThis;
+  globalThis.setInterval = (fn, ms) => queued.push([fn, ms]);
+  globalThis.clearInterval = (id) => cleared.push(id);
   let ran = 0;
-  w.requestAnimationFrame(() => ran++);
-  w.requestAnimationFrame(() => ran++);
-  assert.equal(queued.length, 1);
-  assert.ok(Math.abs(queued[0][1] - 1000 / 60) < 0.01);
-  queued[0][0]();
+  try {
+    w.requestAnimationFrame(() => ran++);
+    w.requestAnimationFrame(() => ran++);
+    assert.equal(queued.length, 1);
+    assert.equal(queued[0][1], 1000 / 60);
+    queued[0][0]();
+  } finally {
+    Object.assign(globalThis, { setInterval, clearInterval });
+  }
   assert.equal(ran, 2);
+  assert.deepEqual(cleared, [1]);
 });
 
 // Location's members are [LegacyUnforgeable]: own properties of the

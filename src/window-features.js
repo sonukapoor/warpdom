@@ -25,7 +25,7 @@ import { computedStyle, cssNamespace } from './css.js';
 import './cascade.js';
 import { compile } from './selectors.js';
 import { QuotaExceededError } from './storage.js';
-import { navigate, traverse, hostTimeout } from './navigation.js';
+import { navigate, traverse } from './navigation.js';
 import { VERSION } from './version.js';
 import { typedArrayName, realmOf, webidlString } from './encoding.js';
 import { staticList, forgetLastList } from './collections.js';
@@ -164,8 +164,6 @@ export function setupWindowData(window) {
   define('status', '');
 }
 
-// One frame about every 16 ms; callbacks queued before a frame run in it
-// with the same timestamp, as in jsdom with pretendToBeVisual.
 // Timers (HTML standard, 8.6) with numeric ids, run by the platform's
 // timers; the environments install the host's on their global instead (a
 // frame's window, or a window outside a test environment, uses these).
@@ -244,56 +242,114 @@ const timerMembers = {
 // The window members test environments leave to the host (Node's timers).
 export const HOST_TIMER_KEYS = Object.keys(timerMembers);
 
-// Animation frames: callbacks requested before a frame run together in it,
-// with the frame's time (the window's performance.now() when it starts, as
-// in jsdom); those requested
-// during a frame run in the next one. jsdom (with pretendToBeVisual) and
-// warpdom start a frame every 16.7 ms of real time, so a test that awaits a
-// frame waits that long. With the fastFrames option a frame starts as soon
-// as the event loop gets to it (a zero-delay timer task): tests that await
+// Animation frames, as jsdom 20 to 30 run them with pretendToBeVisual
+// (source and black box, #249): the first request while none is pending
+// starts an interval of 1000/60 ms (the beat); each beat runs the callbacks
+// pending when it starts, in request order, with the beat's time (the
+// window's performance.now()). A callback leaves the list just before it
+// runs, and when the list is empty (the last callback is about to run, or
+// the last pending one was canceled) the interval stops; the next request
+// starts a new one. So a request made in a frame runs on the same
+// interval's next beat while other callbacks are pending, and a request
+// after a cancel of the last one waits a whole beat from that request.
+// The interval is the setInterval of warpdom's realm global, looked up at
+// the request, as jsdom's free setInterval is: Vitest's fake timers (on
+// Node's global) drive frames when they leave requestAnimationFrame alone,
+// and Jest's (on the test's global) do not, as with jsdom. A test that
+// awaits a frame waits about 16.7 ms of real time. With the fastFrames
+// option a frame starts as soon as the event loop gets to it (a zero-delay
+// timer task, set when a request finds none queued): tests that await
 // frames run much faster (ariakit 1.61x), but a frame can now run before a
 // short timer that would have fired first, which changes the result of a
 // few tests (docs/fast-frames.md). Timestamps stay real times.
-// The frame's timer is the global's setTimeout, looked up when the frame
-// is scheduled, as jsdom's is: fake timers that leave requestAnimationFrame
-// alone (Vitest 2's default) still run frames when the test advances them.
+const FRAME_MS = 1000 / 60;
+
+function runFrame(window, frames) {
+  // The callbacks pending now: ids grow in request order, so those
+  // requested by this frame's callbacks (later ids) wait for the next.
+  const last = frames.next - 1;
+  const pending = frames.pending;
+  const t = windowNow(window);
+  for (const [id, callback] of pending) {
+    if (id > last) break;
+    pending.delete(id);
+    if (pending.size === 0) stopBeat(frames);
+    try {
+      callback(t);
+    } catch (error) {
+      reportError(window, error);
+    }
+  }
+}
+
+function startBeat(window, frames) {
+  const host = globalThis;
+  if (frames.fast) {
+    frames.timer = host.setTimeout(() => {
+      frames.timer = null;
+      runFrame(window, frames);
+    }, 0);
+    frames.clear = host.clearTimeout;
+  } else {
+    frames.timer = host.setInterval(() => runFrame(window, frames), FRAME_MS);
+    frames.clear = host.clearInterval;
+  }
+}
+
+// The timer is cleared with the clear function of the timers that set it
+// (fake timers installed or removed since then).
+function stopBeat(frames) {
+  if (frames.fast || frames.timer === null) return;
+  frames.clear.call(globalThis, frames.timer);
+  frames.timer = null;
+}
+
+// Discarding or closing a window stops its frames (jsdom's stopAllTimers,
+// on removing an iframe and on close): pending callbacks never run, and
+// ids go on from where they were. stopFrames is for one window: the
+// discard visits each nested window itself, and the reset discards the
+// frames it drops.
+export function stopFrames(window) {
+  const frames = window[S].frames;
+  if (frames === undefined) return;
+  frames.pending.clear();
+  if (frames.timer !== null) frames.clear.call(globalThis, frames.timer);
+  frames.timer = null;
+}
+
+// Test environment teardown closes the window and those nested in it, for
+// good: a requestAnimationFrame saved before (a promise or loop left over
+// from the test) schedules nothing. jsdom 30 returns 0 on a closed window;
+// 20 to 29 an id that never runs (when one was pending at the close; with
+// none, jsdom 20 to 29 start a new interval, a leak warpdom does not copy).
+// The per-file reset does not close the window.
+export function closeFrames(window) {
+  const ws = window[S];
+  ws.framesClosed = true;
+  stopFrames(window);
+  const { childFrames, shadowFrames } = ws;
+  if (childFrames) for (const child of childFrames) closeFrames(child);
+  if (shadowFrames) for (const child of shadowFrames) closeFrames(child);
+}
+
 const animationFrames = {
   requestAnimationFrame(callback) {
     const s = state(this);
-    const frames = s.frames ?? (s.frames = { next: 1, queue: new Map(), scheduled: false });
+    if (typeof callback !== 'function') throw new TypeError('The provided value is not a function');
+    const frames =
+      s.frames ?? (s.frames = { next: 1, pending: new Map(), timer: null, clear: null, fast: s.fastFrames });
+    // A discarded or closed window's frames never run; jsdom 30 returns 0.
+    if (s.discarded || s.framesClosed === true) return s.compat.jsdom >= 30 ? 0 : frames.next++;
     const id = frames.next++;
-    frames.queue.set(id, callback);
-    if (!frames.scheduled) {
-      frames.scheduled = true;
-      hostTimeout(
-        this,
-        () => {
-          frames.scheduled = false;
-          // This frame's callbacks; one canceled by an earlier callback in the
-          // same frame does not run.
-          const current = (frames.current = frames.queue);
-          frames.queue = new Map();
-          const t = windowNow(this);
-          for (const [id, cb] of current) {
-            if (!current.has(id)) continue;
-            current.delete(id);
-            try {
-              cb(t);
-            } catch (error) {
-              s.onUnhandledError(error);
-            }
-          }
-          frames.current = null;
-        },
-        s.fastFrames ? 0 : 1000 / 60,
-      );
-    }
+    frames.pending.set(id, callback);
+    if (frames.timer === null) startBeat(this, frames);
     return id;
   },
   cancelAnimationFrame(id) {
+    // WebIDL unsigned long: cancelAnimationFrame('2') cancels 2.
+    const handle = id >>> 0;
     const frames = state(this).frames;
-    frames?.queue.delete(id);
-    frames?.current?.delete(id);
+    if (frames !== undefined && frames.pending.delete(handle) && frames.pending.size === 0) stopBeat(frames);
   },
 };
 

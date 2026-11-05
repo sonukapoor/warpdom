@@ -679,6 +679,36 @@ test('Vitest: viewport members, name, status and self as with jsdom, per pool an
   }
 });
 
+// Animation frames under vi.useFakeTimers() (#249), black box with Vitest
+// 5's jsdom environment (jsdom 30): frames run on the realm's setInterval,
+// faked in the forks and threads pools when requestAnimationFrame itself is
+// left alone, real in the VM pools; the beat restarts after a cancel of the
+// last pending callback. The installed jsdom checks the expectations.
+test('Vitest: animation frames under fake timers as with jsdom, per pool', () => {
+  const cases = [
+    ['forks', [], 'faked'],
+    ['threads', [], 'faked'],
+    ['vmThreads', [], 'real'],
+    ['vmThreads', [], 'real', '20.0.3'],
+    ['forks', ['--environment', 'jsdom'], 'faked'],
+    ['vmThreads', ['--environment', 'jsdom'], 'real'],
+  ];
+  for (const [pool, environment, expect, jsdom] of cases) {
+    const result = spawnSync(
+      'node_modules/.bin/vitest',
+      ['run', '--root', 'fixtures/vitest-frames', '--pool', pool, ...environment],
+      {
+        cwd: root,
+        encoding: 'utf8',
+        env: { ...process.env, FRAMES_EXPECT: expect, ...(jsdom ? { FRAMES_JSDOM: jsdom } : {}) },
+      },
+    );
+    const out = (result.stdout + result.stderr).replace(/\x1b\[[0-9;]*m/g, '');
+    assert.equal(result.status, 0, `${pool} ${environment.join(' ') || 'warpdom'} ${jsdom ?? ''}: ${out}`);
+    assert.match(out, /2 passed/);
+  }
+});
+
 // vi.spyOn on the style accessors (#72): CSSStyleDeclaration's before
 // jsdom 29, CSSStyleProperties' later (black box, jsdom 20.0.3 to 30.1.3;
 // the installed jsdom checks the fixture's expectations).
