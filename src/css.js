@@ -2025,11 +2025,13 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       // A CSS-wide keyword on border or a side leaves the block empty.
       if (CSS_WIDE_KEYWORD.test(value)) {
         decls.clear();
+        releaseScan(list);
         return;
       }
       if (hasVar(value)) {
         if (name !== 'border') continue;
         decls.clear();
+        releaseScan(list);
         return;
       }
     }
@@ -2108,6 +2110,8 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     if (mode !== 'spec' && !surface?.key?.startsWith('jsdom29')) decls.clear();
     else for (const [n, decl] of initials.set) if (decls.get(n) === decl) decls.delete(n);
   }
+
+  releaseScan(list);
   if (clears && carried !== null && carried.includes(':')) decls.clear();
   if (counting) decls.plain = !unnamed && (named === decls.size || (!prioritized && plainNames(names)));
 }
@@ -2120,6 +2124,11 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
 // slicing: the colons and the names' bounds are kept for parseInto
 // (scanOf: the parts they are for).
 let scanOf = null;
+// (dropped once parseInto is done, so that a long text is not kept: #261
+// review)
+const releaseScan = (parts) => {
+  if (scanOf === parts) scanOf = null;
+};
 const scanColons = new Int32Array(16);
 const scanStarts = new Int32Array(16);
 const scanEnds = new Int32Array(16);

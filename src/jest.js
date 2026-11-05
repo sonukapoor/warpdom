@@ -23,7 +23,7 @@ import { S } from './internal.js';
 import { installWindow, defineSelfKey } from './vitest.js';
 import { ablated, materializeAll } from './ablate.js';
 import { setQueryCache } from './selectors.js';
-import { warnNewerJsdom } from './window-features.js';
+import { closeFrames, warnNewerJsdom } from './window-features.js';
 import { abortWindowRequests } from './xhr.js';
 import { forgetLastList } from './collections.js';
 
@@ -250,7 +250,11 @@ export default class WarpdomEnvironment {
     this.fakeTimersModern?.dispose();
     this.clearTimers?.();
     // Requests still running stop without events, as closing jsdom's window stops them.
-    if (this.window) abortWindowRequests(this.window);
+    if (this.window) {
+      abortWindowRequests(this.window);
+      // Frames stop for good, as closing jsdom's window stops them.
+      closeFrames(this.window);
+    }
     forgetLastList();
     if (this.context) {
       for (const key of CLOSED_WINDOW_UNDEFINED) {
