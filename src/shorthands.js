@@ -44,7 +44,7 @@ export function segments(value, separator = null, escapes = false) {
 }
 
 // Splits at commas outside parentheses and quotes (background layers).
-function topLevelCommaSplit(value) {
+export function topLevelCommaSplit(value) {
   const parts = [];
   let depth = 0,
     quote = null,

@@ -4965,6 +4965,52 @@ later keep css-tree's non-standard display keywords (-webkit-box,
 The generator appends them to display's grammar. innerText lays them out
 as their standard counterparts.
 
+#264 item 4 (mixed-case gradient names), black box 20.0.3 to 30.1.3 and
+cssstyle 2.3.0 to 4.6.0 on their own: cssstyle 4.2 to 4.6 (jsdom 23, 24,
+26) reject LINEAR-GRADIENT(), Linear-Gradient() and the other gradient
+names not in lowercase in background and background-image, and a
+-webkit- gradient in background (20 to 22 and 25 were fixed in #261).
+jsdom 27 and later reject them in background-image and read them in
+background as none, as NONE and the -webkit-, -moz- and -o- gradients:
+red LINEAR-GRADIENT(...) is background: red, a layer with nothing else
+is empty (url(a.png), LINEAR-GRADIENT(...) is url("a.png"), , computed
+url("a.png"), none), and a value with nothing else sets the longhands to
+their initial values (setInitials; jsdom 30 also lists
+background-position-x and -y from setProperty and sheets; in a style
+attribute or cssText a later declaration of another property empties
+the block in 27 and 28 and drops it from 29). Several background layers
+in 27 and later are now each written as one alone (backgroundLayer):
+210 pairs of 15 layers differed in 180 to 190 cases per version, now 26
+to 28 (all also single-layer differences: position lost before 29 when
+recomputed, box order in 30). jsdom 30.1.3's composed computed
+background split gradients at their commas (topLevelCommaSplit now).
+Probes: 250 differences (17 values x 2 properties x 10 reads x 11
+versions) -> 0; standalone cssstyle 126 -> 11 (cssstyle 4.2 rejecting
+every gradient, and 4.3's linear-gradient(...), url(...) in
+background-image, both documented).
+
+Cost (Node 22.17.1, 5 alternating runs, medians; bg-bench: 4 background
+values with unique numbers per element): background 30.0 -> 22.1 us per
+write in the jsdom 27 profile and 29.7 -> 22.0 in 30 (two-layer values
+no longer go through the general rules), 1.24 us unchanged in 26 and
+0.87 in 20; background-image +0.4% (26) to +1.3% (27); decl-bench,
+style-bench and style-miss-bench within noise.
+
+Copilot review on #267, round 2: the internal marker of a background of
+initial values was a string ('\0initials'), so a custom property with
+that value (setProperty, cssText, a style attribute, a computed style's
+setProperty before jsdom 28.1) removed the background and set the
+initial longhands instead of being stored. INITIALS and IMAGE_DROPPED are
+Symbols now (setProperty keeps !important for them). Math functions in
+the arguments of a dropped gradient (LINEAR-GRADIENT(red 0%, blue
+calc(100% - 1px)), -webkit-linear-gradient(top, red, blue calc(...)))
+no longer send the value to the general rules (mathFunctions): it is
+dropped, its arguments checked by the grammar, and jsdom 27 to 29 reject
+it beside a url(). Probes (15 values x 4 writes x 4 versions, 27.4.0 to
+30.1.3): 40 -> 216 of 240 the same; the rest are math functions outside
+dropped images and lowercase gradients with them in 27 to 29, unchanged
+(docs/differences.md).
+
 ## 2026-11-04: margin and padding declarations as jsdom keeps them (branch fix/104-shorthand-longhand, #104, #147 item 2)
 
 React's `style={{ margin: 0, marginTop: 4 }}` serialized `margin: 0px;
