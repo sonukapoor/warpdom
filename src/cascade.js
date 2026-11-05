@@ -29,7 +29,16 @@ import {
 } from './internal.js';
 import { LONGHANDS, SHORTHANDS, ALIASES } from './css-data.js';
 import { DARK_SYSTEM_COLORS, mixColor, resolveColor, systemColorKind } from './colors.js';
-import { segments, expand, serializeBox, BOX, PAIRS, CSS_WIDE, backgroundComponents } from './shorthands.js';
+import {
+  segments,
+  expand,
+  serializeBox,
+  BOX,
+  PAIRS,
+  CSS_WIDE,
+  backgroundComponents,
+  topLevelCommaSplit,
+} from './shorthands.js';
 import { compileRuleSelector } from './selectors.js';
 import { directionality } from './directionality.js';
 import { absoluteLength, mayResolve, sixDigits, FONT_SIZE_KEYWORDS, relativeWeight } from './lengths.js';
@@ -1393,7 +1402,7 @@ function shorthandValue(element, name) {
     )
       return '';
     if (own !== undefined && (CSS_WIDE.has(own) || own.includes('var('))) return legacyUnset(element, own) ? '' : own;
-    if (SHORTHANDS[name] !== undefined && !EXPANDED_SHORTHANDS.has(name)) return own ?? '';
+    if (SHORTHANDS[name] !== undefined && !EXPANDED_SHORTHANDS.has(name)) return asDeclared(name, own);
     if (LEGACY_BORDER.has(name)) return legacyBorderValue(element, name);
   }
   const longhands = SHORTHANDS[name];
@@ -1433,9 +1442,9 @@ function shorthandValue(element, name) {
   }
   // Other shorthands as declared, as jsdom gives them (so jest-dom's
   // toHaveStyle({ background: 'red' }) compares like with like).
-  let value = cascaded(element, name);
+  const value = cascaded(element, name);
   if (value === undefined || CSS_WIDE.has(value.toLowerCase())) return '';
-  return value;
+  return asDeclared(name, value);
 }
 
 const BORDER_SIDE = /^border-(top|right|bottom|left)$/;
@@ -1876,7 +1885,8 @@ function composedLate(element, name) {
     return parts.every((p) => p === parts[0]) && CSS_WIDE.has(parts[0]) ? parts[0] : parts.join(' ');
   }
   if (name === 'background-position') return positionValue(element, true);
-  const split = (v) => v.split(/\s*,\s*/);
+  // Layers at top-level commas (not those in linear-gradient(red, blue)).
+  const split = (v) => topLevelCommaSplit(v).map((layer) => layer.trim());
   const layers = split(computedValue(element, 'background-image'));
   const lists = [...BACKGROUND_LAYER, ...BACKGROUND_BOX].map((l) => split(computedValue(element, l)));
   const positions = split(positionValue(element, true));
@@ -1902,6 +1912,16 @@ function composedLate(element, name) {
 // font 'see individual properties') until 30.1.3, from which flex and
 // background compose their longhands.
 const LATE_COMPOSED = new Set(['flex', 'background', 'background-position']);
+// A shorthand computed as declared ('' when not), a background with an
+// empty layer ('': url("a.png"), , from url(a.png), LINEAR-GRADIENT(red,
+// blue) in css.js backgroundValue) too, as jsdom 27 to 30.1.2 read it
+// again (black box, #264).
+function asDeclared(name, own) {
+  if (own === undefined) return '';
+  if (name === 'background' && own.includes(',') && topLevelCommaSplit(own).some((layer) => layer.trim() === ''))
+    return '';
+  return own;
+}
 function observedShorthand(element, name) {
   const compat = element[S].doc[S].window[S].compat;
   if (compat.shorthandInitials && LATE_COMPOSED.has(name)) return composedLate(element, name);
@@ -1919,7 +1939,7 @@ function observedShorthand(element, name) {
   }
   if (!expanded && compat.blankBorderShorthands && name.startsWith('border-')) return '';
   const own = cascaded(element, name);
-  if (own !== undefined && !RESOLVED_KEYWORDS.has(own.toLowerCase())) return own;
+  if (own !== undefined && !RESOLVED_KEYWORDS.has(own.toLowerCase())) return asDeclared(name, own);
   // inherit gives the parent's value (black box, 29.1.1 to 30.1.3:
   // box-shadow, text-decoration, outline, column-rule, caret; vertical-align,
   // a shorthand in CSS Inline 3, for the user agent sheet's td and tr), its

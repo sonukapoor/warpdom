@@ -19,7 +19,18 @@ const URL_ = 'http://localhost:3000/page';
 // console.error (after the load, so outside the scenario's capture).
 // 27 to 29 too, as only a few tests use them.
 const DOMS = { 25: JSDOM25, 26: JSDOM26, 30: JSDOM };
-const LAZY = { 20: 'jsdom20', 22: 'jsdom22', 27: 'jsdom27', 28: 'jsdom28', 29: 'jsdom29' };
+// 23 and 24 (23.2.0 and 24.1.3, cssstyle 4.6.0) and '30.1.3' (the jsdom30
+// alias) too.
+const LAZY = {
+  20: 'jsdom20',
+  22: 'jsdom22',
+  23: 'jsdom23',
+  24: 'jsdom24',
+  27: 'jsdom27',
+  28: 'jsdom28',
+  29: 'jsdom29',
+  '30.1.3': 'jsdom30',
+};
 async function domFor(jsdom) {
   if (!DOMS[jsdom] && LAZY[jsdom]) {
     DOMS[jsdom] = (await import(LAZY[jsdom])).JSDOM;
@@ -33,11 +44,14 @@ const JSDOM30 = createRequire(import.meta.url)('jsdom/package.json').version;
 const PROFILES = {
   20: { jsdom: '20.0.3', cssstyle: '2.3.0' },
   22: { jsdom: '22.1.0', cssstyle: '3.0.0' },
+  23: { jsdom: '23.2.0', cssstyle: '4.6.0' },
+  24: { jsdom: '24.1.3', cssstyle: '4.6.0' },
   25: { jsdom: '25.0.1', cssstyle: '4.1.0' },
   27: { jsdom: '27.4.0' },
   28: { jsdom: '28.1.0' },
   29: { jsdom: '29.1.1' },
   30: { jsdom: JSDOM30 },
+  '30.1.3': { jsdom: '30.1.3' },
 };
 // runScripts: as Vitest's jsdom environment (false: a window made without).
 export function parity(name, scenario, { jsdom = 30, url = URL_, runScripts = 'dangerously' } = {}) {
