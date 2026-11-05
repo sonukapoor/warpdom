@@ -52,6 +52,19 @@ if [ "$(field .state)" = OPEN ]; then
   [ "$(field .mergeable)" = CONFLICTING ] && no "conflicts with its base branch"
   case "$(field .mergeStateStatus)" in
     BLOCKED) no "GitHub reports the merge blocked (branch protection)" ;;
+    # Behind its base: blocks only where required checks must be run on an
+    # up-to-date branch (a ruleset's strict policy or classic protection's
+    # strict); elsewhere it is information.
+    BEHIND)
+      strict=$(gh api "repos/$repo/rules/branches/$base" --paginate \
+        --jq '.[]|select(.type=="required_status_checks")|.parameters.strict_required_status_checks_policy' 2>/dev/null)
+      classic=$(gh api "repos/$repo/branches/$base/protection/required_status_checks" --jq .strict 2>/dev/null)
+      if printf '%s\n%s\n' "$strict" "$classic" | grep -qx true; then
+        no "behind $base, which requires an up-to-date branch; update it (gh pr update-branch $n -R $repo)"
+      else
+        echo "CHECK: behind $base (no up-to-date requirement there)"
+      fi
+      ;;
     UNKNOWN) echo "CHECK: GitHub has not computed the merge state yet; run again" ;;
   esac
 fi
@@ -75,12 +88,14 @@ for bot in "$COPILOT" "$CODERABBIT"; do
   # anything else blocks.
   # (each response read whole and checked before its first row is taken:
   # in a pipeline into head, a failed gh api goes unnoticed)
+  # Only CodeRabbit's own app (slug coderabbitai) and account count: any
+  # integration can name a check run or a status CodeRabbit.
   runs=$(gh api "repos/$repo/commits/$head/check-runs" --paginate \
-    --jq '.check_runs[]|select(.name=="CodeRabbit")|[.status, (.conclusion // ""), (.output.title // "")]|@tsv') \
+    --jq '.check_runs[]|select(.name=="CodeRabbit" and .app.slug=="coderabbitai")|[.status, (.conclusion // ""), (.output.title // "")]|@tsv') \
     || die "CodeRabbit's check run"
   if [ -z "$runs" ]; then
-    runs=$(gh api "repos/$repo/commits/$head/status" \
-      --jq '.statuses[]|select(.context|test("CodeRabbit"))|["completed", .state, (.description // "")]|@tsv') \
+    runs=$(gh api "repos/$repo/commits/$head/statuses" --paginate \
+      --jq '.[]|select((.context|test("CodeRabbit")) and .creator.login=="coderabbitai[bot]")|["completed", .state, (.description // "")]|@tsv') \
       || die "CodeRabbit's commit status"
   fi
   IFS=$'\t' read -r status conclusion title <<<"${runs%%$'\n'*}"
