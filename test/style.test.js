@@ -1385,6 +1385,40 @@ for (const jsdom of [20, 22, 26, 27, 28, 29, 30])
     { jsdom },
   );
 
+// A bad string (a line break in a quoted url()) drops a declaration from a
+// style attribute and from cssText (jsdom 27 and later, #144), but not a
+// custom property's: jsdom keeps its value as written, whether a comment
+// or an unquoted url() with /* or a quote in it comes first (#262 review).
+// Style sheets are not looked at here: jsdom 20 to 28 throw on these, and
+// 29 and 30's insertRule reads them otherwise.
+for (const jsdom of [26, 27, 28, 29, 30])
+  parity(
+    `style: a bad string in a url() of a custom property and of a property (jsdom ${jsdom})`,
+    (w) => {
+      const el = w.document.body.appendChild(w.document.createElement('div'));
+      return [
+        '--x: url("c\nx.png")',
+        '--x: url(a/*b.png) url("c\nx.png")',
+        '--x: /*a*/ url("c\nx.png")',
+        '--x: url(a/*b.png) url("c.png")',
+        'background-image: url("c\nx.png")',
+        'background-image: url(a/*b.png), url("c\nx.png")',
+        'background-image: url(a"b.png), url("c\nx.png")',
+      ].map((declaration) => {
+        const text = `${declaration}; width: 1px`;
+        el.setAttribute('style', text);
+        const attribute = el.style.cssText;
+        el.style.cssText = text;
+        const cssText = el.style.cssText;
+        el.style.cssText = '';
+        const colon = declaration.indexOf(':');
+        el.style.setProperty(declaration.slice(0, colon), declaration.slice(colon + 1).trim());
+        return [attribute, cssText, el.style.cssText];
+      });
+    },
+    { jsdom },
+  );
+
 // A comment between two values of a shorthand, as cssText reads it (the
 // longhands jsdom 30 lists in its length are another difference).
 for (const jsdom of [20, 26, 27, 28, 29, 30])

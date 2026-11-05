@@ -4871,6 +4871,26 @@ attribute of four declarations parsed 1246 -> 1233 ns, cssText 1109 ->
 legacy profiles and style sheets, where a regular expression test on
 every name cost 3 to 5% of a style attribute's parse.
 
+2026-11-05, review and merge of main (#261): parseInto picks the parts
+(commentedParts when the text has /*, else as before), then main's
+coalesces scan reads them; in the legacy profiles commentedParts has
+removed the comments by then, so its colon and name bounds hold.
+Copilot's review of css.js:2046 (a /* in an unquoted url() hiding a bad
+string after it) led to a real difference, not the one it named: from
+#144 (#220) warpdom dropped a custom property with a bad string in a
+url() (--x: url("a\nb.png")), which jsdom 27.4.0 to 30.1.3 keep as
+written, with or without a comment or an unquoted url() before it (black
+box). The bad-string check now skips custom properties; properties still
+drop (background-image: url("a\nb.png") empties the block, as in jsdom).
+The differences.md bullet "!important in style sheets before jsdom 29" was
+wrong and is removed: jsdom 26 and 27 ignore it (document order), 28.1.0
+and later honor it, and warpdom matches all five (black box).
+Benchmarks (Node 22.17.1, 7 alternating runs against origin/main ba76841,
+medians): style-bench 109.1 -> 106.4 ns; style-miss repeated 152.0 ->
+146.3, unique 594.1 -> 598.3 ns; style attribute writes (ad hoc, 100k):
+four declarations 58 -> 60 ns, with a comment 67 -> 68 ns, legacy 26.1.0
+107 -> 107 ns. All within noise.
+
 ## 2026-11-04: declaration parsing for 1.0 (branch fix/declaration-parsing-1-0, #239, #224 item 4, #257)
 
 #239, black box (jsdom 20.0.3 to 30.1.3; cssstyle 2.3.0 to 4.6.0 on

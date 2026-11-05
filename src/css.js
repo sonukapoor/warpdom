@@ -2010,12 +2010,9 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   const names = counting ? [] : null;
   const source = String(text ?? '');
   const lineBreaks = !runsOn && cssSplitNeeded(source);
-  const parts =
-    source.indexOf('/*') !== -1
-      ? commentedParts(source, runsOn, lineBreaks, context, surface)
-      : lineBreaks
-        ? splitDeclarations(source)
-        : splitOutside(source, ';');
+  let parts;
+  if (source.indexOf('/*') !== -1) parts = commentedParts(source, runsOn, lineBreaks, context, surface);
+  else parts = lineBreaks ? splitDeclarations(source) : splitOutside(source, ';');
   // (clears: a name given again is found before anything is set, as
   // setting one has effects beyond the block, a url() met: the block is
   // then read as coalescedLegacy gives it)
@@ -2071,8 +2068,10 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     if (!name || !value || dropped(surface, name)) continue;
     // A url() with a line break in its string (a bad string) is invalid
     // here, though background-image takes it through the style object
-    // (jsdom 27 and later, #144).
-    if (lineBreaks && /url\(/i.test(value) && hasBadString(value)) continue;
+    // (jsdom 27 and later, #144). A custom property keeps it, its value
+    // as written (--x: url("a\nb.png"), black box 27.4.0 to 30.1.3; #262
+    // review).
+    if (lineBreaks && name.charCodeAt(1) !== 45 && /url\(/i.test(value) && hasBadString(value)) continue;
     if (!sheet && !runsOn && value.includes('!') && strayPriority(value, important)) continue;
     if (borderVarDrops && BORDER_AND_SIDES.has(name)) {
       // A CSS-wide keyword on border or a side leaves the block empty.

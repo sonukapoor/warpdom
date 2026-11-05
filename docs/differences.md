@@ -292,7 +292,6 @@ Computed values not modeled:
   every other declaration before 28.1, so 10px. `margin`, `border`,
   `background`, `flex` and `list-style` do not do this, nor does `font`
   with cssstyle 2.3, 3.0 and 4.1 (4.2 to 4.5 not measured)
-- `!important` in style sheets before jsdom 29 (jsdom ignores it there)
 - jsdom 30's `calc()` mixing percentages and em (`calc(100% - 0px)`)
 - the uppercase units and `calc()` simplification of declared values in
   jsdom 29 and 30
