@@ -632,6 +632,64 @@ for (const jsdom of [27, 28, 29, 30])
     { jsdom },
   );
 
+// jsdom 27 and later: an !important background of initial values keeps a
+// later normal background or background longhand out of a style
+// attribute, cssText or a rule's cssText, as any other !important
+// background does (black box, 27.4.0 to 30.1.3; the #267 review). A style
+// sheet takes the later one (background: red), as it does after any
+// !important declaration; warpdom does not yet (the sheet rows here are
+// those that agree).
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `jsdom ${jsdom}: an important background of initial values and a later normal one (#264)`,
+    (w) => {
+      const d = w.document;
+      const X = 'LINEAR-GRADIENT(red, blue)';
+      const out = [];
+      const read = (label, s, e) => {
+        const parts = [label, s.cssText];
+        for (const n of ['background-color', 'background-image', 'background-repeat', 'background-position'])
+          parts.push(`${n}=${s.getPropertyValue(n)}`);
+        if (e) {
+          const computed = w.getComputedStyle(e);
+          parts.push(computed.backgroundColor, computed.backgroundImage);
+        }
+        out.push(parts.join(' | '));
+      };
+      for (const [text, inSheet] of [
+        [`background: ${X} !important; background: red`, true],
+        [`background: red; background: ${X} !important`, true],
+        [`background: ${X} !important; background-color: red`, false],
+        [`background-color: red; background: ${X} !important`, true],
+        [`background: ${X} !important; background-image: url(a.png)`, false],
+        [`background: red !important; background: ${X}`, false],
+        [`background: url(a.png) !important; background: red`, false],
+      ]) {
+        const e = d.createElement('div');
+        e.setAttribute('style', text);
+        d.body.replaceChildren(e);
+        read(`attribute ${text}`, e.style, e);
+        const c = d.createElement('div');
+        c.style.cssText = text;
+        d.body.replaceChildren(c);
+        read(`cssText ${text}`, c.style, c);
+        d.head.innerHTML = '<style>div { color: blue }</style>';
+        const rule = d.styleSheets[0].cssRules[0];
+        rule.style.cssText = text;
+        read(`rule cssText ${text}`, rule.style);
+        d.head.innerHTML = '';
+        if (!inSheet) continue;
+        d.head.innerHTML = `<style>div { ${text} }</style>`;
+        const p = d.createElement('div');
+        d.body.replaceChildren(p);
+        read(`sheet ${text}`, d.styleSheets[0].cssRules[0].style, p);
+        d.head.innerHTML = '';
+      }
+      return out;
+    },
+    { jsdom },
+  );
+
 // jsdom 27 and later: background layers, each as it would be alone, a
 // layer of initial values empty (url(a.png), none is url("a.png"), ).
 for (const jsdom of [27, 29, 30])

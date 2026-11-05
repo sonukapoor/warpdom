@@ -2075,7 +2075,9 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       if (!important && (covered?.has(name) || decls.get(name)?.important)) continue;
       if (kept || (important && !sheet)) {
         if (SHORTHANDS[name]) for (const longhand of SHORTHANDS[name]) (covered ??= new Set()).add(longhand);
-        if (!kept) (covered ??= new Set()).add(name);
+        // (and an !important background of initial values, set as its
+        // longhands only, outside a style sheet: black box, 27.4.0 to 30.1.3)
+        if (!kept || (declared === INITIALS && !sheet)) (covered ??= new Set()).add(name);
       }
     }
     // Applied last (cssstyle's setProperty): a shorthand given again
