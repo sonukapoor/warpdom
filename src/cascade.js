@@ -47,6 +47,8 @@ import { documentStyleSheets, ruleArray, ruleListSnapshot, ruleListChanged } fro
 import {
   parseDeclarations,
   writtenDeclarations,
+  cascadeText,
+  parsedBox,
   computed,
   validationModeOf,
   styleSurfaceOf,
@@ -252,8 +254,16 @@ function inlineDeclarations(element) {
   const map = new Map();
   const mode = validationModeOf(es.doc[S].window);
   const written = writtenDeclarations(element, text);
-  const decls = parseDeclarations(text, mode, styleSurfaceOf(es.doc[S].window), written !== null);
   const compat = es.doc[S].window[S].compat;
+  const decls = parseDeclarations(
+    written === null ? text : cascadeText(written, text, compat.jsdom === 27),
+    mode,
+    styleSurfaceOf(es.doc[S].window),
+    written !== null,
+  );
+  // A style attribute as parsed (not one a style write serialized), from
+  // jsdom 27: margin and padding as its style object holds them.
+  if (written === null) parsedBox(decls, mode);
   for (const [property, { value, important, masked }] of decls) {
     // A declaration with var() and !important that lost it (masked,
     // compat.varDropsImportant) is still !important to the attribute's
