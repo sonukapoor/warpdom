@@ -1915,6 +1915,10 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle, beyondJsdom = fa
     // them, and so do style sheets (css.js parseInto; black box, 27.4.0 and
     // 28.1.0).
     borderVarDrops: version[0] === 27 || version[0] === 28,
+    // Before 28.1.0 a declaration after an !important one of its property
+    // is looked up by its name as written (css.js parseInto; black box,
+    // 27.0.0 to 28.1.0).
+    importantByWrittenName: version[0] === 27 || (version[0] === 28 && before(version, [28, 1, 0])),
     // cssstyle's font shorthand before 4.4 (shorthands.js legacyFont).
     legacyFont: css === null || !before(css, [4, 4, 0]) ? null : before(css, [4, 2, 0]) ? 'cssstyle4.1' : 'cssstyle4.2',
     // cssstyle 4.4 and later: the computed style's background and border

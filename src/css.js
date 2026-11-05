@@ -705,7 +705,8 @@ const surfaces = new WeakMap(); // CSSStyleProperties prototype -> styleSurface 
 // keywords ('css2', 'written' or null). varDropsImportant,
 // varInStrings, customDropsImportant and borderVarDrops: declarations
 // that lose their !important, and border ones with var() that are
-// dropped (parseInto, dropsImportant).
+// dropped (parseInto, dropsImportant). importantByWrittenName: how a
+// declaration after an !important one is looked up (parseInto).
 export function setValidationMode(proto, mode, compat = {}) {
   modes.set(proto, mode);
   const key = compat.styleSurface ?? null;
@@ -716,18 +717,20 @@ export function setValidationMode(proto, mode, compat = {}) {
   const varInStrings = compat.varInStrings === true;
   const customDropsImportant = compat.customDropsImportant === true;
   const borderVarDrops = compat.borderVarDrops === true;
+  const importantByWrittenName = compat.importantByWrittenName === true;
   if (
     legacyFont === null &&
     colors === null &&
     varDropsImportant === null &&
     !customDropsImportant &&
-    !borderVarDrops
+    !borderVarDrops &&
+    !importantByWrittenName
   ) {
     surfaces.set(proto, styleSurface(key));
     return;
   }
   // Built once per variant: window creation only looks it up.
-  const id = `${key} ${legacyFont} ${colors} ${varDropsImportant} ${varInStrings} ${customDropsImportant} ${borderVarDrops}`;
+  const id = `${key} ${legacyFont} ${colors} ${varDropsImportant} ${varInStrings} ${customDropsImportant} ${borderVarDrops} ${importantByWrittenName}`;
   let surface = variantSurfaces.get(id);
   if (surface === undefined) {
     surface = {
@@ -738,6 +741,7 @@ export function setValidationMode(proto, mode, compat = {}) {
       varInStrings,
       customDropsImportant,
       borderVarDrops,
+      importantByWrittenName,
     };
     if (legacyFont !== null) surface.legacyFont = legacyFont;
     variantSurfaces.set(id, surface);
@@ -1670,10 +1674,34 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   const sheet = replay || counting || context === 'sheet';
   const inRule = sheet || context === 'rule';
   if (!replay) decls.clear();
-  // A normal declaration does not override an important one for the same
-  // property, or a longhand of an important shorthand (CSS Cascade), as in
-  // jsdom 27 and later; jsdom 26 let the last one win.
+  // From jsdom 27 (a rule's cssText from 27.1.0) the first !important
+  // declaration of a property wins: a later one, !important or not, is
+  // dropped (color: red !important; color: blue !important is red; black
+  // box 27.0.0 to 30.1.3; firsts), and so is a normal one of a longhand of
+  // an !important shorthand (covered). jsdom keys it by the name as first
+  // written and, before 28.1.0, looks a later one up as written too
+  // (compat.importantByWrittenName): color: red !important; COLOR: blue is
+  // blue there, red from 28.1.0; COLOR: red !important; color: blue is
+  // blue in both. An !important longhand after an !important shorthand is
+  // kept: it is how warpdom writes setProperty('padding', '8px',
+  // 'important') then setProperty('padding-bottom', '7px', 'important'),
+  // which jsdom keeps (its longhands model, #104). jsdom 26 lets the last
+  // one win, and so do a style sheet's rules, but for a normal shorthand
+  // after an !important one (margin: 1px !important; margin: 2px is 1px
+  // from 27.1.0). Text a style write serialized ('written') holds the
+  // style's own declarations: a shorthand in it twice (padding: 8px
+  // !important, then its four longhands set to 7px !important, written
+  // padding: 8px !important; padding: 7px !important) is the last one, as
+  // the style holds it (#266 review). An @page rule's descriptors follow
+  // the window's jsdom (#266 review): decls.pageLastWins before 27.1.0,
+  // where the last one wins there too, and decls.pageWrittenKeys for the
+  // lookup by the name as written.
+  const lastWins = isLegacyMode(mode) || decls.pageLastWins === true;
+  const firstImportantWins = !lastWins && !sheet && context !== 'written';
+  const sheetShorthands = !lastWins && sheet && !replay;
+  const writtenKeys = surface?.importantByWrittenName === true || decls.pageWrittenKeys === true;
   let covered = null;
+  let firsts = null;
   const borderVarDrops = !sheet && context !== 'written' && surface?.borderVarDrops === true;
   // jsdom 20 to 26 (cssstyle 2.3.0 to 4.6.0, black box; #129) read a name
   // up to the next colon and a value from the first character after the
@@ -1774,13 +1802,13 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     // to the block's other declarations (masked: black box, jsdom 27 to
     // 29), not to the cascade (cascade.js).
     const kept = important && !dropsImportant(surface, name, value, inRule);
-    if (!isLegacyMode(mode) && !replay) {
-      if (!important && (covered?.has(name) || decls.get(name)?.important)) continue;
-      if (kept || (important && !sheet)) {
+    if (firstImportantWins) {
+      if (firsts?.has(writtenKeys ? rawName : name) || (!important && covered?.has(name))) continue;
+      if (important) {
         if (SHORTHANDS[name]) for (const longhand of SHORTHANDS[name]) (covered ??= new Set()).add(longhand);
-        if (!kept) (covered ??= new Set()).add(name);
+        (firsts ??= new Set()).add(rawName);
       }
-    }
+    } else if (sheetShorthands && !important && SHORTHANDS[name] && decls.get(name)?.important) continue;
     // Applied last (cssstyle's setProperty): a shorthand given again
     // resets the longhands declared before it.
     if (replay) decls.delete(name);
@@ -2715,12 +2743,20 @@ export const CSS_INTERFACES = [
 ];
 
 // A declaration block owned by a CSS rule (CSSStyleRule.style, ...).
-// mode: 'page' for an @page rule's descriptors.
-export function declarationBlock(proto, text, parentRule, mode = modeOf(proto), context = 'sheet') {
+// mode: 'page' for an @page rule's descriptors; page: how they take a
+// repeated !important one (parseInto), as the window's style rules do:
+// lastWins (its rules before jsdom 27.1.0) and styleProto, the window's
+// CSSStyleProperties prototype, whose style surface tells the lookup.
+export function declarationBlock(proto, text, parentRule, mode = modeOf(proto), context = 'sheet', page = null) {
   const style = Object.create(proto);
+  const decls = new Map();
+  if (page !== null) {
+    if (page.lastWins) decls.pageLastWins = true;
+    else if (surfaceOf(page.styleProto)?.importantByWrittenName === true) decls.pageWrittenKeys = true;
+  }
   initStyleState(style, {
     element: null,
-    decls: new Map(),
+    decls,
     parentRule,
     mode,
     indexed: 0,
