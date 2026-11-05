@@ -4809,6 +4809,88 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-04: seven differences found preparing 1.0 (branch fix/259-new-differences, #259)
+
+Measured again black box on every installed jsdom (20.0.3, 21.1.2, 22.1.0,
+23.2.0, 24.1.3, 25.0.1, 26.1.0, 27.4.0, 28.1.0, 29.1.1, 30.1.2, 30.1.3) and
+on 23.1.0, 25.0.1 and 26.0.0 with cssstyle 4.6.0, 27.0.1, 27.1.0, 27.2.0,
+27.3.0, 28.0.0, 29.0.0, 29.0.1, 29.0.2, 30.0.0, 30.0.1, 30.1.0 and 30.1.1
+installed apart.
+
+Fixed:
+
+1. Inheritance before 22.1.0. jsdom's getComputedStyle() resolves only the
+   properties of its propertiesWithResolvedValueImplemented list: visibility
+   before 21.1.0, pointer-events too from 21.1.0, color, caret-color and the
+   colors it computes from 22.1.0 (the list read in 21.0.0, 21.1.0, 22.0.0).
+   A span in `<div style="color: red">` computes color '' in 20.0.3 and
+   21.1.2, and pointer-events '' in 20.0.3 (compat.legacyInherited;
+   legacyDefault now takes the caller's compat). The parity harness has a
+   jsdom 21 profile (21.1.2, cssstyle 3.0.0).
+2. The style attribute of an element that is neither HTML nor SVG declares
+   nothing (cascade.js inlineDeclarations), as in 30.1.2 and later; 20.0.3
+   to 30.1.1 throw a TypeError from inside jsdom for such an element or a
+   descendant (differences.md).
+5. A declaration name with whitespace or a comment inside it (css.js
+   parseInto): removed by jsdom 20 to 26, invalid from 27 outside style
+   sheets and in sheets from 29, comments removed and whitespace kept in 27
+   and 28's sheets.
+
+Listed in differences.md, with tests of warpdom's values: 3 (30.0.0 to
+30.1.2 throw for an element of a document without a document element), 4
+(not the computed-style cache: jsdom 27.1 and later store `background:
+red; background-color: blue` in a sheet as `background: red`; part of the
+shorthand-then-longhand entry), 6 (27.0.1 to 29.0.0 throw for `border:
+initial` or `inherit` in a sheet, `unset` from 28.1.0), 7 (an !important
+`font` in a sheet keeps its longhands against later normal ones with
+cssstyle 4.6 and in 27.0 to 28.0: a font-only exception to the document
+order, its semantics different per cssstyle, 4.2 to 4.5 unmeasured).
+
+Side findings, not changed: with cssstyle before 4.4, an explicit
+lowercase `border-top-color: currentcolor` computes `currentcolor` in
+jsdom 20 to 22 (warpdom '': its border expansion uses the same keyword
+for an omitted color), and `background: url(a.png)` leaves
+background-color '' in 20 and 21 (warpdom `transparent`); 30.1.3 inherits
+text-align (warpdom `start`); 29.0.0 computes `border: initial` in the
+style attribute to '' (warpdom `initial`); in 26.x with cssstyle 4.6 the
+computed border-top accessor gives `canvastext` for `border-width: unset`
+(warpdom `unset canvastext`).
+
+Benchmarks (Node 22.17.1, alternating runs against origin/main 66f228b,
+medians): style-bench 105.1 -> 106.0 ns; style-miss repeated 139.9 ->
+137.2, unique 585.5 -> 586.0 ns; cascade-bench (11 runs) read pass 0.47 ->
+0.46 ms, mutate+read 1.68 -> 1.66 ms; box-cascade-bench all/miss
+µs/element: 28.1.0 9.8/62.1 -> 9.7/64.6, 26.1.0 2.9/40.9 -> 2.9/41.7,
+30.1.3 5.2/119.3 -> 5.1/122.8, 20.0.3 3.9/41.5 -> 3.1/41.1 (color and
+caret-color no longer walk up the tree there). Ad hoc (9 runs): computed
+color, visibility, pointer-events and caret-color of 500 nested elements
+1.02 -> 0.89 µs/element (20.0.3), 1.53 -> 1.50 (26.1.0); a style
+attribute of four declarations parsed 1246 -> 1233 ns, cssText 1109 ->
+1098 ns; six declarations 1574 -> 1589 ns (30.1.3), 2097 -> 2102 ns
+(26.1.0). The name check runs only for custom properties outside the
+legacy profiles and style sheets, where a regular expression test on
+every name cost 3 to 5% of a style attribute's parse.
+
+2026-11-05, review and merge of main (#261): parseInto picks the parts
+(commentedParts when the text has /*, else as before), then main's
+coalesces scan reads them; in the legacy profiles commentedParts has
+removed the comments by then, so its colon and name bounds hold.
+Copilot's review of css.js:2046 (a /* in an unquoted url() hiding a bad
+string after it) led to a real difference, not the one it named: from
+#144 (#220) warpdom dropped a custom property with a bad string in a
+url() (--x: url("a\nb.png")), which jsdom 27.4.0 to 30.1.3 keep as
+written, with or without a comment or an unquoted url() before it (black
+box). The bad-string check now skips custom properties; properties still
+drop (background-image: url("a\nb.png") empties the block, as in jsdom).
+The differences.md bullet "!important in style sheets before jsdom 29" was
+wrong and is removed: jsdom 26 and 27 ignore it (document order), 28.1.0
+and later honor it, and warpdom matches all five (black box).
+Benchmarks (Node 22.17.1, 7 alternating runs against origin/main ba76841,
+medians): style-bench 109.1 -> 106.4 ns; style-miss repeated 152.0 ->
+146.3, unique 594.1 -> 598.3 ns; style attribute writes (ad hoc, 100k):
+four declarations 58 -> 60 ns, with a comment 67 -> 68 ns, legacy 26.1.0
+107 -> 107 ns. All within noise.
+
 ## 2026-11-04: declaration parsing for 1.0 (branch fix/declaration-parsing-1-0, #239, #224 item 4, #257)
 
 #239, black box (jsdom 20.0.3 to 30.1.3; cssstyle 2.3.0 to 4.6.0 on

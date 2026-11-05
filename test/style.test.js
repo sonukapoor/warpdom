@@ -1282,3 +1282,199 @@ const numbersAsWritten = (w) => {
 };
 for (const jsdom of [20, 22, 25, 26])
   parity(`style: numbers as written before cssstyle 4.3.1 (jsdom ${jsdom})`, numbersAsWritten, { jsdom });
+
+// A declaration name with whitespace or a comment inside it (black box,
+// 20.0.3 to 30.1.3, #259): jsdom 20 to 26 remove both (--f o o is --foo,
+// col or is color); from 27 the declaration is invalid in a style
+// attribute, cssText and a rule's cssText, and in style sheets from 29;
+// jsdom 27 and 28's sheets remove the comments and keep the whitespace.
+// An escaped space (--a\ b) is part of the name from 27. (jsdom 30 also
+// reads CR LF and form feeds in a style attribute and cssText as line
+// feeds, in names and values, which warpdom does not.)
+const SPACED_NAMES = [
+  '--f o o: 1',
+  '--a/**/b: 1',
+  'col or: red',
+  'col/**/or: red',
+  '--a\\ b: 1',
+  '--x : 1',
+  '--a\nb: 1',
+  // A whitespace character after a hexadecimal escape ends it (--\61 b
+  // is valid from 27, its name kept as written); two backslashes escape
+  // each other, so the space after them separates the name (--a\\ b).
+  '--\\61 b: 1',
+  '--\\61\tb: 1',
+  '--\\61\nb: 1',
+  '--\\000061 b: 1',
+  '--\\61  b: 1',
+  '--a\\\\ b: 1',
+  '--a\\\\\\ b: 1',
+  // A backslash before a tab escapes it, before a line break nothing.
+  '--a\\\tb: 1',
+  '--a\\\nb: 1',
+  '--f\\6f o: 1',
+];
+// Comments in declarations (black box, 20.0.3 to 30.1.3, #259): a colon
+// or a semicolon in one separates nothing. jsdom 20 to 26 remove them from
+// a style attribute and cssText, jsdom 27 and 28's style sheets too (and
+// drop a declaration whose comment is not closed); jsdom 29 and later's
+// style sheets read each as a space, and jsdom 27 and later's style
+// attribute and cssText too, except in a custom property's value, which
+// keeps them. One before or after a name is ignored, one inside it makes
+// the declaration invalid from 27 (outside 27 and 28's sheets).
+const COMMENTED = [
+  '--a/*:*/b: 1',
+  'col/*:*/or: red',
+  '--a/*;*/b: 1',
+  'col/*;*/or: red',
+  '--a/*;x:*/b: 1',
+  'color: red/*;*/; --q: 1',
+  '--x: a/*;*/b',
+  '--x: a/*:*/b',
+  '--x: [a/*;*/b]',
+  '--x:/*x*/a',
+  '--x: a/*x*/',
+  '--x: a/*x*/b !important',
+  '--x: "a/*b*/c"',
+  'content: "/*"; color: red',
+  'color: /*x*/ red',
+  'color: red /*!important*/',
+  'color: r/*x*/ed',
+  '/*x*/color: red',
+  'color/*x*/: red',
+  '--y/*x*/: 1',
+  '--x /*c*/ : 1',
+  'color: red; /* a; b: c */ width: 2px',
+  // A value with var() keeps them after its leading ones from 27 (29 in
+  // style sheets), var( in a comment counting.
+  'color: var(--c) /*x*/',
+  'color: /*a*/ /*b*/ var(--c)/*;*/',
+  'color: red /*var(*/',
+  '--x: /*x*/var(--a)',
+  // A quote in a comment opens no string (for var() and for a bad string
+  // in a url() value), and an escaped / starts no comment from 27.
+  'background-image: var(--image, url("a.png")) /* user\'s\n image */',
+  'background-image: var(--i, url("a.png")) /* a"\n */',
+  'color: /* " */ var(--c) /*keep*/',
+  "color: /* ' */ red",
+  '--x: \\/*literal*/; color: red',
+  'color: red \\/*x*/',
+];
+for (const jsdom of [20, 22, 26, 27, 28, 29, 30])
+  parity(
+    `style: a declaration name with spaces or a comment (jsdom ${jsdom}, #259)`,
+    (w) => {
+      const d = w.document;
+      d.head.innerHTML = '<style>div {}</style>';
+      const sheet = d.styleSheets[0];
+      const el = d.body.appendChild(d.createElement('div'));
+      return [...SPACED_NAMES, ...COMMENTED].map((name) => {
+        const text = `${name}; width: 1px`;
+        el.setAttribute('style', text);
+        const attribute = [el.style.cssText, el.style.length, w.getComputedStyle(el).getPropertyValue('--foo')];
+        el.style.cssText = text;
+        const cssText = el.style.cssText;
+        sheet.cssRules[0].style.cssText = text;
+        const rule = sheet.cssRules[0].style.cssText;
+        sheet.insertRule(`p { ${text} }`, 1);
+        const inserted = sheet.cssRules[1].cssText;
+        sheet.deleteRule(1);
+        return [attribute, cssText, rule, inserted];
+      });
+    },
+    { jsdom },
+  );
+
+// A bad string (a line break in a quoted url()) drops a declaration from a
+// style attribute and from cssText (jsdom 27 and later, #144), but not a
+// custom property's: jsdom keeps its value as written, whether a comment
+// or an unquoted url() with /* or a quote in it comes first (#262 review).
+// Style sheets are not looked at here: jsdom 20 to 28 throw on these, and
+// 29 and 30's insertRule reads them otherwise.
+for (const jsdom of [26, 27, 28, 29, 30])
+  parity(
+    `style: a bad string in a url() of a custom property and of a property (jsdom ${jsdom})`,
+    (w) => {
+      const el = w.document.body.appendChild(w.document.createElement('div'));
+      return [
+        '--x: url("c\nx.png")',
+        '--x: url(a/*b.png) url("c\nx.png")',
+        '--x: /*a*/ url("c\nx.png")',
+        '--x: url(a/*b.png) url("c.png")',
+        'background-image: url("c\nx.png")',
+        'background-image: url(a/*b.png), url("c\nx.png")',
+        'background-image: url(a"b.png), url("c\nx.png")',
+      ].map((declaration) => {
+        const text = `${declaration}; width: 1px`;
+        el.setAttribute('style', text);
+        const attribute = el.style.cssText;
+        el.style.cssText = text;
+        const cssText = el.style.cssText;
+        el.style.cssText = '';
+        const colon = declaration.indexOf(':');
+        el.style.setProperty(declaration.slice(0, colon), declaration.slice(colon + 1).trim());
+        return [attribute, cssText, el.style.cssText];
+      });
+    },
+    { jsdom },
+  );
+
+// A comment between two values of a shorthand, as cssText reads it (the
+// longhands jsdom 30 lists in its length are another difference).
+for (const jsdom of [20, 26, 27, 28, 29, 30])
+  parity(
+    `style: a comment between a shorthand's values (jsdom ${jsdom}, #259)`,
+    (w) => {
+      const d = w.document;
+      d.head.innerHTML = '<style>div {}</style>';
+      const sheet = d.styleSheets[0];
+      const el = d.body.appendChild(d.createElement('div'));
+      return ['margin: 1px /*;*/ 2px', 'margin: 1px/*x*/2px'].map((text) => {
+        el.setAttribute('style', text);
+        const attribute = el.style.cssText;
+        sheet.insertRule(`p { ${text} }`, 1);
+        const inserted = sheet.cssRules[1].cssText;
+        sheet.deleteRule(1);
+        return [attribute, inserted];
+      });
+    },
+    { jsdom },
+  );
+
+// A comment left open: to the end of the text, except that jsdom 27 and
+// 28's style sheets drop its declaration (jsdom 20 to 26's throw).
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `style: a comment left open (jsdom ${jsdom}, #259)`,
+    (w) => {
+      const d = w.document;
+      d.head.innerHTML = '<style>div {}</style>';
+      const sheet = d.styleSheets[0];
+      const el = d.body.appendChild(d.createElement('div'));
+      return ['color: red; --x: a/*u; width: 1px', 'color: red; margin: 1px /*u; width: 1px'].map((text) => {
+        el.setAttribute('style', text);
+        const attribute = el.style.cssText;
+        sheet.insertRule(`p { ${text} }`, 1);
+        const inserted = sheet.cssRules[1].cssText;
+        sheet.deleteRule(1);
+        return [attribute, inserted];
+      });
+    },
+    { jsdom },
+  );
+
+// The same names in a <style> element's text (jsdom 29 and later also
+// report "Could not parse CSS stylesheet" on the console, which warpdom
+// does not; docs/differences.md).
+test('style: a declaration name with spaces in a style element (#259)', () => {
+  const read = (jsdom) => {
+    const w = createWindow({ jsdom });
+    w.document.head.innerHTML = String.raw`<style>div { --f o o: 1; --a/**/b: 2; --\61 b: 3; --a\\ b: 4; color: red }</style>`;
+    return w.document.styleSheets[0].cssRules[0].cssText;
+  };
+  assert.equal(read('26.1.0'), String.raw`div {--foo: 1; --ab: 2; --\61b: 3; --a\\b: 4; color: red;}`);
+  assert.equal(read('27.4.0'), String.raw`div { --f o o: 1; --ab: 2; --\61 b: 3; --a\\ b: 4; color: red; }`);
+  assert.equal(read('28.1.0'), String.raw`div { --f o o: 1; --ab: 2; --\61 b: 3; --a\\ b: 4; color: red; }`);
+  assert.equal(read('29.1.1'), String.raw`div { --\61 b: 3; color: red; }`);
+  assert.equal(read('30.1.3'), String.raw`div { --\61 b: 3; color: red; }`);
+});

@@ -1893,20 +1893,58 @@ function dropsImportant(surface, name, value, inRule) {
     (surface.varInStrings ? value.includes('var(') : hasVar(value))
   );
 }
-// var( outside quoted strings.
+// var( outside quoted strings; inside a comment it counts (jsdom 27 and
+// later keep color: red /*var(*/ as written), and a quote there opens no
+// string (#259).
 function hasVar(value) {
   if (!value.includes('var(')) return false;
   if (!value.includes('"') && !value.includes("'")) return true;
-  let quote = null;
   for (let i = 0; i < value.length; i++) {
     const c = value[i];
-    if (quote) {
-      if (c === '\\') i++;
-      else if (c === quote) quote = null;
-    } else if (c === '"' || c === "'") quote = c;
+    if (c === '\\') i++;
+    else if (c === '/' && value[i + 1] === '*') {
+      const end = commentEnd(value, i);
+      const at = value.indexOf('var(', i);
+      if (at !== -1 && at < end) return true;
+      i = end - 1;
+    } else if (c === '"' || c === "'") i = stringEnd(value, i, false) - 1;
     else if (c === 'v' && value.startsWith('var(', i)) return true;
   }
   return false;
+}
+// Scanners of declaration text, as CSS Syntax tokenizes it (#259): the end
+// of the comment that opens at text[i], after its */ (the text's end when
+// it is not closed), and of the string that opens there, after its
+// closing quote, or ~ the index of a line break that ends it first, a bad
+// string (lineBreaks: jsdom 27 and later's reading).
+function commentEnd(text, i) {
+  const close = text.indexOf('*/', i + 2);
+  return close < 0 ? text.length : close + 2;
+}
+function stringEnd(text, i, lineBreaks) {
+  const quote = text[i];
+  for (let j = i + 1; j < text.length; j++) {
+    const c = text[j];
+    if (c === '\\') j++;
+    else if (c === quote) return j + 1;
+    else if (lineBreaks && (c === '\n' || c === '\r' || c === '\f')) return ~j;
+  }
+  return text.length;
+}
+// The comments of a name (jsdom 27 and 28's style sheets remove them),
+// not an escaped /* (--a\/*x*/b).
+function withoutNameComments(name) {
+  let out = '';
+  let from = 0;
+  for (let i = 0; i < name.length; i++) {
+    if (name[i] === '\\') i++;
+    else if (name[i] === '/' && name[i + 1] === '*') {
+      out += name.slice(from, i);
+      from = commentEnd(name, i);
+      i = from - 1;
+    }
+  }
+  return out + name.slice(from);
 }
 // Where a value's trailing !important starts, with the whitespace before
 // it (as /\s*!\s*important\s*$/i finds it), or -1. Read from the end, in
@@ -1947,6 +1985,130 @@ const BORDER_AND_SIDES = new Set(['border', 'border-top', 'border-right', 'borde
 // element's cssText).
 // element: an element's style object parses it (escapedUrlBackground meets
 // its url()s).
+// parseInto: a declaration name with whitespace or a comment inside it
+// (--f o o, --a/**/b).
+const SPACED_NAME = /[ \t\n\r\f]|\/\*/;
+// The name such a declaration declares, or null when it is invalid (black
+// box 20.0.3 to 30.1.3, #259): jsdom 20 to 26 (cssom's parser) remove the
+// whitespace and the comments (col or is color, --a\ b is --a\b); from
+// 27 the declaration is invalid, as CSS Syntax makes it (an escaped space,
+// --a\ b, is part of the name), except in a style sheet in jsdom 27 and
+// 28 (@acemir/cssom), which removes the comments and keeps the whitespace
+// (--f o o; col or is no property). Escapes are read whole: a whitespace
+// character after a hexadecimal one ends it (--\61 b is valid, its name
+// kept as written), and two backslashes escape each other (--a\\ b is
+// not).
+const COMMENTS = /\/\*[\s\S]*?(\*\/|$)/g;
+const CSS_SPACES = /[ \t\n\r\f]+/g;
+function spacedDeclarationName(rawName, runsOn, sheet, surface) {
+  if (runsOn) return propertyName(rawName.replace(COMMENTS, '').replace(CSS_SPACES, ''));
+  if (sheet && surface?.key?.startsWith('cssstyle')) return propertyName(withoutNameComments(rawName));
+  return separatedName(rawName) ? null : propertyName(rawName);
+}
+// Whitespace or a comment in a name outside its escapes (CSS Syntax 4.3.7;
+// a backslash before a line break escapes nothing).
+function separatedName(name) {
+  for (let i = 0; i < name.length; i++) {
+    const c = name.charCodeAt(i);
+    if (c === 92) {
+      const escaped = name.charCodeAt(i + 1);
+      if (escaped === 10 || escaped === 13 || escaped === 12) return true;
+      if (!isHexDigit(escaped)) {
+        i++;
+        continue;
+      }
+      let end = i + 2;
+      while (end < i + 7 && isHexDigit(name.charCodeAt(end))) end++;
+      const next = name.charCodeAt(end);
+      if (next === 13 && name.charCodeAt(end + 1) === 10) end++;
+      else if (next !== 32 && next !== 9 && next !== 10 && next !== 13 && next !== 12) end--;
+      i = end;
+    } else if (c === 32 || c === 9 || c === 10 || c === 13 || c === 12) return true;
+    else if (c === 47 && name.charCodeAt(i + 1) === 42) return true;
+  }
+  return false;
+}
+function isHexDigit(c) {
+  return (c >= 48 && c <= 57) || ((c | 32) >= 97 && (c | 32) <= 102);
+}
+
+// The declarations of a text with a comment in it (/*, #259): a colon or
+// a semicolon in a comment separates nothing. policy, black box 20.0.3 to
+// 30.1.3: 'remove' drops every comment outside strings (jsdom 20 to 26's
+// style attribute and cssText; jsdom 27 and 28's style sheets, which also
+// drop a declaration whose comment is not closed), 'space' makes each one
+// a space outside unquoted url()s (jsdom 29 and later's style sheets),
+// 'inline' too but keeps a custom property's value as written (jsdom 27
+// and later's style attribute and cssText). With either, a value with
+// var() is kept as written after its leading comments (var( inside a
+// comment counts, inside a string as surface.varInStrings says). A comment
+// inside a name leaves a space there, which makes the declaration invalid
+// from 27 (spacedDeclarationName); one before or after it does not.
+function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface, escapes) {
+  const parts = [];
+  let spaced = '';
+  let from = 0;
+  let depth = 0;
+  let colon = -1;
+  let head = 0;
+  let custom = false;
+  const end = (i) => {
+    let part = spaced + text.slice(from, i);
+    if (policy !== 'remove' && colon !== -1) {
+      const raw = text.slice(colon + 1, i);
+      if (custom ? policy === 'inline' : keepsComments(raw, surface)) {
+        part = part.slice(0, head) + (custom ? raw : raw.replace(LEADING_COMMENTS, ''));
+      }
+    }
+    parts.push(part);
+    spaced = '';
+    from = i + 1;
+    colon = -1;
+  };
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '\\' && escapes) i++;
+    else if (c === '/' && text[i + 1] === '*') {
+      if (unclosedDrops && text.indexOf('*/', i + 2) < 0) return parts;
+      const stop = commentEnd(text, i);
+      spaced += text.slice(from, i) + (policy === 'remove' ? '' : ' ');
+      from = stop;
+      i = stop - 1;
+    } else if (c === '"' || c === "'") {
+      const end = stringEnd(text, i, lineBreaks);
+      i = (end < 0 ? ~end : end) - 1;
+    } else if (c === '(') {
+      const close = policy === 'remove' ? -1 : urlTokenEnd(text, i);
+      if (close === -1) depth++;
+      else i = close - 1;
+    } else if (c === ')') depth = Math.max(0, depth - 1);
+    else if (c === ':' && colon === -1) {
+      colon = i;
+      const name = spaced + text.slice(from, i + 1);
+      head = name.length;
+      custom = name.trimStart().startsWith('--');
+    } else if (c === ';' && depth === 0) end(i);
+  }
+  end(text.length);
+  return parts;
+}
+function keepsComments(value, surface) {
+  return surface?.varInStrings ? value.includes('var(') : hasVar(value);
+}
+const LEADING_COMMENTS = /^(\s|\/\*[\s\S]*?(\*\/|$))*/;
+// parseInto's declarations of a text with a comment in it. Style sheets
+// before jsdom 27.1 (cssom, replay) and rules before 27 read comments in
+// cssom.
+function commentedParts(source, runsOn, lineBreaks, context, surface) {
+  const sheet = context === 'sheet';
+  if (context === 'cssom' || context === 'replay' || (runsOn && (sheet || context === 'rule')))
+    return lineBreaks ? splitDeclarations(source) : splitOutside(source, ';');
+  if (runsOn) return commentedDeclarations(source, 'remove', lineBreaks, false, surface, false);
+  if (sheet && surface?.key?.startsWith('cssstyle'))
+    return commentedDeclarations(source, 'remove', lineBreaks, true, surface, true);
+  return commentedDeclarations(source, sheet ? 'space' : 'inline', lineBreaks, false, surface, true);
+}
+
 function parseInto(decls, text, mode, surface = null, context = null, element = false) {
   // 'replay': declarations given to a rule's (replayDeclarations).
   // 'cssom': a style rule's in a sheet before jsdom 27.1.0, which tells
@@ -2013,7 +2175,9 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   const names = counting ? [] : null;
   const source = String(text ?? '');
   const lineBreaks = !runsOn && cssSplitNeeded(source);
-  const parts = lineBreaks ? splitDeclarations(source) : splitOutside(source, ';');
+  let parts;
+  if (source.indexOf('/*') !== -1) parts = commentedParts(source, runsOn, lineBreaks, context, surface);
+  else parts = lineBreaks ? splitDeclarations(source) : splitOutside(source, ';');
   // (clears: a name given again is found before anything is set, as
   // setting one has effects beyond the block, a url() met: the block is
   // then read as coalescedLegacy gives it)
@@ -2033,7 +2197,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     }
     named++;
     const rawName = scanned ? part.slice(scanStarts[index], scanEnds[index]) : part.slice(0, colon).trim();
-    const name = propertyName(rawName);
+    let name = propertyName(rawName);
     let value = part.slice(colon + 1).trim();
     if (counting) {
       names.push(rawName);
@@ -2043,6 +2207,15 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       // a custom property's name with spaces (--my Var is --myVar).
       if (value === '' || ODD_START.has(value.charCodeAt(0))) unnamed = true;
       else if (rawName.charCodeAt(0) === 45 && /\s/.test(rawName)) unnamed = true;
+    }
+    // A name with whitespace or a comment inside it (SPACED_NAME,
+    // spacedDeclarationName). Sheets read by cssom (counting) are left to
+    // it. From jsdom 27 such a name that is not a custom property's is no
+    // property outside style sheets (col or), so only custom properties'
+    // are looked at there.
+    else if ((runsOn || sheet || rawName.charCodeAt(1) === 45) && SPACED_NAME.test(rawName)) {
+      name = spacedDeclarationName(rawName, runsOn, sheet, surface);
+      if (name === null) continue;
     }
     if (runsOn && (value === '' || (value[0] === ';' && /^[\s;]*$/.test(value)))) {
       carried = part;
@@ -2060,8 +2233,10 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     if (!name || !value || dropped(surface, name)) continue;
     // A url() with a line break in its string (a bad string) is invalid
     // here, though background-image takes it through the style object
-    // (jsdom 27 and later, #144).
-    if (lineBreaks && /url\(/i.test(value) && hasBadString(value)) continue;
+    // (jsdom 27 and later, #144). A custom property keeps it, its value
+    // as written (--x: url("a\nb.png"), black box 27.4.0 to 30.1.3; #262
+    // review).
+    if (lineBreaks && name.charCodeAt(1) !== 45 && /url\(/i.test(value) && hasBadString(value)) continue;
     if (!sheet && !runsOn && value.includes('!') && strayPriority(value, important)) continue;
     if (borderVarDrops && BORDER_AND_SIDES.has(name)) {
       // A CSS-wide keyword on border or a side leaves the block empty.
@@ -2281,15 +2456,15 @@ function unclosedLegacy(text) {
 // a value with a comment and a url() is dropped before this anyway, as
 // comments in values are not modeled (#162).
 function hasBadString(value) {
-  let quote = null;
   for (let i = 0; i < value.length; i++) {
     const c = value[i];
-    if (quote === null) {
-      if (c === '"' || c === "'") quote = c;
-      else if (c === '\\') i++;
-    } else if (c === '\\') i++;
-    else if (c === quote) quote = null;
-    else if (c === '\n' || c === '\r' || c === '\f') return true;
+    if (c === '\\') i++;
+    else if (c === '/' && value[i + 1] === '*') i = commentEnd(value, i) - 1;
+    else if (c === '"' || c === "'") {
+      const end = stringEnd(value, i, true);
+      if (end < 0) return true;
+      i = end - 1;
+    }
   }
   return false;
 }

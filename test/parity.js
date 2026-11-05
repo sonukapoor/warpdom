@@ -12,9 +12,10 @@ const URL_ = 'http://localhost:3000/page';
 
 // jsdom: 30, 26, 25 (jsdom 25.0.1 with cssstyle 4.1.0, as installed in
 // its day; package.json pins that cssstyle for the jsdom25 alias), 22
-// (22.1.0, cssstyle 3.0.0) or 20 (20.0.3, cssstyle 2.3.0: Jest 29's
-// jest-environment-jsdom); 27, 28 and 29 (27.4.0, 28.1.0, 29.1.1).
-// jsdom 20 and 22 are loaded when a test asks for them: their URL parser
+// (22.1.0, cssstyle 3.0.0), 21 (21.1.2, cssstyle 3.0.0) or 20 (20.0.3,
+// cssstyle 2.3.0: Jest 29's jest-environment-jsdom); 27, 28 and 29
+// (27.4.0, 28.1.0, 29.1.1).
+// jsdom 20 to 22 are loaded when a test asks for them: their URL parser
 // requires punycode, which Node 22.12 reports as deprecated on
 // console.error (after the load, so outside the scenario's capture).
 // 27 to 29 too, as only a few tests use them.
@@ -23,6 +24,7 @@ const DOMS = { 25: JSDOM25, 26: JSDOM26, 30: JSDOM };
 // alias) too.
 const LAZY = {
   20: 'jsdom20',
+  21: 'jsdom21',
   22: 'jsdom22',
   23: 'jsdom23',
   24: 'jsdom24',
@@ -43,6 +45,7 @@ async function domFor(jsdom) {
 const JSDOM30 = createRequire(import.meta.url)('jsdom/package.json').version;
 const PROFILES = {
   20: { jsdom: '20.0.3', cssstyle: '2.3.0' },
+  21: { jsdom: '21.1.2', cssstyle: '3.0.0' },
   22: { jsdom: '22.1.0', cssstyle: '3.0.0' },
   23: { jsdom: '23.2.0', cssstyle: '4.6.0' },
   24: { jsdom: '24.1.3', cssstyle: '4.6.0' },
