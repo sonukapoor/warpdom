@@ -557,3 +557,30 @@ test('resetWindow leaves the VM global without the index an iframe inserted and 
   insert = false;
   assert.deepEqual([w[0], Object.hasOwn(global, 0)], ['saved', false]);
 });
+
+// The reset drops pending animation frames and stops their interval (#249):
+// the next file starts with none, and handles from 1.
+test('resetWindow stops animation frames', async () => {
+  const w = createWindow();
+  snapshotWindow(w);
+  const cleared = [];
+  const { clearInterval } = globalThis;
+  globalThis.clearInterval = (id) => {
+    cleared.push(id);
+    clearInterval(id);
+  };
+  let ran = 0;
+  try {
+    w.requestAnimationFrame(() => ran++);
+    resetWindow(w);
+  } finally {
+    globalThis.clearInterval = clearInterval;
+  }
+  assert.equal(cleared.length, 1);
+  assert.equal(
+    w.requestAnimationFrame(() => ran++),
+    1,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.equal(ran, 1);
+});

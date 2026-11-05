@@ -7,6 +7,11 @@ import type { JsdomVersion } from './index.js';
 /** `test.environmentOptions.warpdom` in a Vitest config. */
 export interface WarpdomVitestOptions {
   /**
+   * The document's URL. Default `'http://localhost:3000'`, as Vitest's jsdom
+   * environment's (`environmentOptions.jsdom.url`).
+   */
+  url?: string;
+  /**
    * The jsdom version to behave like. Default: the jsdom the project
    * installs (or Vitest resolves), else the newest warpdom models.
    */

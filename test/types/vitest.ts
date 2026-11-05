@@ -6,7 +6,13 @@ import warpdomEnvironment, { jsdomProfile, type WarpdomVitestOptions } from 'war
 import type { Environment } from 'vitest/runtime';
 import 'warpdom/vitest/reset';
 
-const warpdom: WarpdomVitestOptions = { jsdom: '26.1.0', fastFrames: true, xhr: false, beyondJsdom: true };
+const warpdom: WarpdomVitestOptions = {
+  url: 'https://example.com/',
+  jsdom: '26.1.0',
+  fastFrames: true,
+  xhr: false,
+  beyondJsdom: true,
+};
 export default defineConfig(
   withFastMode(
     {
@@ -15,6 +21,14 @@ export default defineConfig(
     { project: 'unit' },
   ),
 );
+
+defineConfig({
+  test: {
+    environment: 'warpdom',
+    // @ts-expect-error: environmentOptions.warpdom.url is a string
+    environmentOptions: { warpdom: { url: 3000 } },
+  },
+});
 
 defineConfig({
   test: {

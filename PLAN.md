@@ -4867,3 +4867,33 @@ border, background, font and flex families from 27 (each its own cssstyle
 algorithm: `border` then `borderTopColor` is 19 items in jsdom 27, `flex`
 then `flexGrow` merges to `flex: 2 1 0px`); 20 to 26 already match for
 those. Tests: box-declarations.test.js (parity 20 to 30).
+
+## 2026-11-04: no style sheets in a document without a window (branch fix/203-windowless-styles, #203)
+
+Black box, jsdom 20.0.3, 21.1.2, 22.1.0, 23.2.0, 24.1.3, 25.0.1, 26.1.0,
+27.4.0, 28.1.0, 29.1.1, 30.1.2 and 30.1.3, each in a fresh process: a
+`<style>` in a document without a browsing context (createHTMLDocument,
+DOMParser text/html and application/xhtml+xml, createDocument with the
+XHTML namespace) has no sheet (`sheet` null, `styleSheets.length` 0), so
+the main window's getComputedStyle() gives that document's elements the
+user agent sheet and their style attribute only (`div { display: inline }`
+there computes `block`). The window's own sheets don't apply to them
+either, also for an element moved there from the window's document; moved
+into the window's document, an element gets its rules, and a `<style>` a
+sheet (moved out, it loses it). warpdom made a sheet in every document.
+cssom.js styleElementSheet now makes none in a document with noView, so
+the cascade sees no sheets there; getComputedStyle itself is unchanged.
+
+Not windowless-specific, seen while measuring, not changed here: jsdom 20
+and 21 don't inherit `color` (a span in `<div style="color: red">`
+computes `''`; warpdom `red`), in every document; an element in no
+namespace (`createElementNS(null, 'div')`) with a style attribute throws
+a TypeError in jsdom 20 to 29 and ignores the attribute in 30 (warpdom
+applies it); a template's content element throws in jsdom 30.1.x.
+
+getComputedStyle (Node 22.17.1, 5 alternating runs, medians, origin/main ->
+this): cascade-bench read pass 0.49 -> 0.46 ms, mutate+read 1.72 -> 1.73;
+box-cascade-bench (28.1.0) all 9.8 -> 10.1, distinct 44.6 -> 46.0, miss
+63.3 -> 62.5, small 6.1 -> 6.0 µs/element: within noise. Test:
+computed-style.test.js "a document without a window has no style sheets"
+(parity 20, 22, 25 to 30).
