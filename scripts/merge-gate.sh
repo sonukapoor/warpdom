@@ -73,15 +73,17 @@ for bot in "$COPILOT" "$CODERABBIT"; do
   # No CodeRabbit review on the head: its check run says why. Success with
   # nothing to say passes (its summary covers it); a skip, a rate limit or
   # anything else blocks.
-  run=$(gh api "repos/$repo/commits/$head/check-runs" --paginate \
-    --jq '.check_runs[]|select(.name=="CodeRabbit")|[.status, (.conclusion // ""), (.output.title // "")]|@tsv' | head -1) \
+  # (each response read whole and checked before its first row is taken:
+  # in a pipeline into head, a failed gh api goes unnoticed)
+  runs=$(gh api "repos/$repo/commits/$head/check-runs" --paginate \
+    --jq '.check_runs[]|select(.name=="CodeRabbit")|[.status, (.conclusion // ""), (.output.title // "")]|@tsv') \
     || die "CodeRabbit's check run"
-  if [ -z "$run" ]; then
-    run=$(gh api "repos/$repo/commits/$head/status" \
-      --jq '.statuses[]|select(.context|test("CodeRabbit"))|["completed", .state, (.description // "")]|@tsv' | head -1) \
+  if [ -z "$runs" ]; then
+    runs=$(gh api "repos/$repo/commits/$head/status" \
+      --jq '.statuses[]|select(.context|test("CodeRabbit"))|["completed", .state, (.description // "")]|@tsv') \
       || die "CodeRabbit's commit status"
   fi
-  IFS=$'\t' read -r status conclusion title <<<"$run"
+  IFS=$'\t' read -r status conclusion title <<<"${runs%%$'\n'*}"
   if [ "$status" = completed ] && [ "$conclusion" = success ] && ! printf '%s' "$title" | grep -qiE 'skip|limit'; then
     echo "CHECK: no CodeRabbit review on $short but its check is success (${title:-no title}); its summary covers it"
   else
