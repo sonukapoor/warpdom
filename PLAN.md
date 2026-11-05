@@ -4871,6 +4871,80 @@ attribute of four declarations parsed 1246 -> 1233 ns, cssText 1109 ->
 legacy profiles and style sheets, where a regular expression test on
 every name cost 3 to 5% of a style attribute's parse.
 
+## 2026-11-04: declaration parsing for 1.0 (branch fix/declaration-parsing-1-0, #239, #224 item 4, #257)
+
+#239, black box (jsdom 20.0.3 to 30.1.3; cssstyle 2.3.0 to 4.6.0 on
+their own): in a style attribute or an element's cssText, jsdom 20 to 26
+remove a property's earlier declaration when a later one for the same
+name has a value cssstyle rejects or none (parseInto `clears`); an
+invalid value under another case (`Color: foo`) keeps it. Fallbacks
+(`height: 100vh; height: 100dvh`, `width: 100px; width: fit-content`)
+lost the first one on 20 to 22 and 25 because cssstyle before 4.2 reads
+only px, cm, mm, in, pt, pc, em, ex, ch, rem, vh and vw in its length
+properties, before 4.4 no min-content, max-content or fit-content in
+width, height, flex-basis and flex, and before 4.3 no gradients in
+background (legacyMeasureRejects). A grid of 30 properties x 33 values x
+3 forms x 11 versions: 6265 differences on main, 2385 after, none new.
+Left: cssstyle 4.4 to 4.6 rejecting cqw and lowercasing Q, uppercase
+units lowercased by jsdom 23 to 30, cssstyle before 4.4 keeping any
+line-height, cssText ending in a bare name (`color: blue; color:`) not
+setting the attribute, gradients with cssstyle 4.2.
+
+Cost: legacyMeasureRejects runs on declared-value cache misses in the
+jsdom 20 to 26 profiles only; one whole-value regular expression when the
+value has no function. setProperty with a unique value each time
+(Node 22.17.1, 5 alternating runs, medians): jsdom 20 profile 516 -> 575
+ns per width + margin pair; repeated values (style-bench) and the other
+benches within noise. Kept: the alternative is the wrong value.
+
+#261 review, black box (jsdom 20.0.3 to 26.1.0, cssstyle 4.2.0, 4.2.1,
+4.3.0 forced on jsdom 25.0.1 and 26.1.0): the removal above is cssom's
+block read first, a name given again as written (trimmed) replacing the
+earlier value in its place, then set declaration by declaration
+(`color: blue; Color: red; color: foo` is `color: red`, `color: foo;
+width: 1px; color: blue` keeps color first; a bare name at the end
+empties the block). A scan of the names before anything is set
+(coalesces, no slicing) sends a block with a name twice, a part without
+a value or more than 16 parts through coalescedLegacy (a first version
+read the block again from there at the first repeated name, meeting an
+escaped url() before it twice with jsdom 26: `background-image:
+url("a\ b.png"); color: red; color: blue` lost its image). 1,500 random
+blocks of up to five declarations (and 400 of 10 to 40): mismatches with
+jsdom 20, 22, 25 and 26 259/259/259/257 -> 172/172/172/167, none new;
+27 and 30 unchanged. Cost, element cssText with five unique declarations
+(100,000 per run, 5 alternating runs, medians): jsdom 20 profile 1720 ->
+1779 ns, 26 profile 2258 -> 2304 ns, latest unchanged. cssstyle 4.2 and
+4.3 take a number without a unit with an exponent in flex (`flex: 1e1`,
+`flex: 1 1e-1 10px`), with no leading zero anywhere (`flex: 01`, `width:
+00` invalid). The scan, same benchmark against the first version: jsdom
+20 profile 1036 -> 1046 ns, 26 1026 -> 1035, latest 867 -> 882 / 874 ->
+884 (noise; a scan slicing the names cost 45 to 60 ns more). Left:
+shorthand and longhand merging in that sequence
+(`margin: 3px; margin-left: 2px` is `margin: 3px 3px 3px 2px` there), an
+invalid value's priority replacing the property's (`color: red
+!important; Color: foo` is `color: red`), cssstyle 4.2 and 4.3's flex
+serialization (`flex: 10`, not `10 1 0%`) and unitless zeros other than 0
+(`0.0`, `-0`, `0e1` in lengths, `background-position: 0`), and, in
+jsdom 27.4 (also on main), a style attribute or cssText with an escaped
+url() in background and another declaration
+(`background: red url("q\'b.png"); color: blue` declares nothing there).
+
+#224 item 4: the !important check (/\s*!\s*important\s*$/i) took
+quadratic time on a whitespace run (5,000 / 10,000 / 20,000 / 40,000
+spaces: 15 / 51 / 200 / 790 ms in cssText, the attribute and a sheet).
+priorityStart reads from the end instead (same index as the regular
+expression on 500,000 random values): under 2 ms for all of them. Test:
+css-validation.test.js, 50,000 characters under 200 ms.
+
+#257 (found in the 1.0 triage), black box 20.0.3 to 30.1.3: jsdom 27 and
+later keep css-tree's non-standard display keywords (-webkit-box,
+-webkit-inline-box, -webkit-flex, -webkit-inline-flex, -moz-box,
+-moz-inline-box, -moz-inline-stack, -ms-inline-flexbox, -ms-grid,
+-ms-inline-grid), lowercased, inline and computed, and drop -ms-flexbox,
+-webkit-grid, -webkit-inline-grid and -moz-flex; 20 to 26 keep any value.
+The generator appends them to display's grammar. innerText lays them out
+as their standard counterparts.
+
 ## 2026-11-04: margin and padding declarations as jsdom keeps them (branch fix/104-shorthand-longhand, #104, #147 item 2)
 
 React's `style={{ margin: 0, marginTop: 4 }}` serialized `margin: 0px;

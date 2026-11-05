@@ -129,6 +129,12 @@ const EXTRA_KEYWORDS = {
 };
 for (const [name, keyword] of Object.entries(EXTRA_KEYWORDS))
   propertySyntax[name] = `${keyword} | ${propertySyntax[name]}`;
+// display's legacy keywords that jsdom 27 and later keep (black box,
+// 27.4.0 to 30.1.3, #257; css-tree's <-non-standard-display>):
+// display: -webkit-box (the line-clamp idiom) is kept and computed, while
+// -ms-flexbox, -webkit-grid and -moz-flex are dropped.
+propertySyntax.display +=
+  ' | -ms-inline-flexbox | -ms-grid | -ms-inline-grid | -webkit-flex | -webkit-inline-flex | -webkit-box | -webkit-inline-box | -moz-inline-stack | -moz-box | -moz-inline-box';
 const typesOut = {};
 const pending = Object.values(propertySyntax);
 const seenRefs = new Set();
