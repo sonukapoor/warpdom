@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createWindow } from '../src/index.js';
 import { parity } from './parity.js';
 import { S } from '../src/internal.js';
+import FakeTimers from '@sinonjs/fake-timers';
 
 test('requestAnimationFrame runs callbacks with a timestamp; cancelAnimationFrame stops them', async () => {
   const w = createWindow();
@@ -13,6 +14,189 @@ test('requestAnimationFrame runs callbacks with a timestamp; cancelAnimationFram
   await new Promise((r) => setTimeout(r, 40));
   assert.equal(stamps.length, 1);
   assert.equal(typeof stamps[0], 'number');
+});
+
+// Animation frames (#249), as jsdom 20 to 30 run them with
+// pretendToBeVisual (same source in each): an interval of 1000/60 ms that
+// starts on the first request while none is pending and stops when none
+// is. Measured on fake timers (the realm's setInterval, which both look up
+// at the request), which run it every 16 ms; each entry is name@ms.
+function onFakeTimers(scenario) {
+  return (w) => {
+    const clock = FakeTimers.install({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+    const start = clock.now;
+    const log = [];
+    const at = (name) => log.push(`${name}@${clock.now - start}`);
+    try {
+      scenario(w, at, (ms) => clock.tick(ms));
+      clock.tick(200);
+      return { log, timersLeft: clock.countTimers() };
+    } finally {
+      clock.uninstall();
+    }
+  };
+}
+const FRAME_SCENARIOS = {
+  'requests before a beat run in it, in request order': (w, at, tick) => {
+    w.requestAnimationFrame(() => at('a'));
+    w.requestAnimationFrame(() => at('b'));
+    tick(10);
+    w.requestAnimationFrame(() => at('c'));
+    tick(15);
+    w.requestAnimationFrame(() => at('d'));
+  },
+  'a request made in a frame runs on the next beat': (w, at) => {
+    w.requestAnimationFrame(() => {
+      at('a');
+      w.requestAnimationFrame(() => {
+        at('a1');
+        w.requestAnimationFrame(() => at('a2'));
+      });
+    });
+    w.requestAnimationFrame(() => {
+      at('b');
+      setTimeout(() => w.requestAnimationFrame(() => at('from a timer')), 5);
+    });
+  },
+  'a cancel in a frame: later callbacks of the frame and new requests': (w, at) => {
+    let b = 0;
+    w.requestAnimationFrame(() => {
+      at('a');
+      w.cancelAnimationFrame(b);
+      const x = w.requestAnimationFrame(() => at('x'));
+      w.cancelAnimationFrame(x);
+      w.requestAnimationFrame(() => at('y'));
+    });
+    b = w.requestAnimationFrame(() => at('b'));
+    w.requestAnimationFrame(() => at('c'));
+  },
+  'cancel the last pending callback, then request: a new interval': (w, at, tick) => {
+    const a = w.requestAnimationFrame(() => at('a'));
+    tick(10);
+    w.cancelAnimationFrame(a);
+    tick(3);
+    w.requestAnimationFrame(() => at('b'));
+  },
+  'cancel one of two, then request: the same interval': (w, at, tick) => {
+    const a = w.requestAnimationFrame(() => at('a'));
+    w.requestAnimationFrame(() => at('z'));
+    tick(10);
+    w.cancelAnimationFrame(a);
+    w.requestAnimationFrame(() => at('b'));
+    w.cancelAnimationFrame(99);
+  },
+  'handles from 1; a callback that is not a function, a BigInt handle': (w, at) => {
+    at([1, 2, 3].map(() => w.requestAnimationFrame(() => {})).join());
+    for (const value of [null, {}, 'x', undefined]) {
+      try {
+        w.requestAnimationFrame(value);
+      } catch (e) {
+        at(`${e.name}: ${e.message}`);
+      }
+    }
+    try {
+      w.cancelAnimationFrame(1n);
+    } catch (e) {
+      at(e.name);
+    }
+  },
+  'a callback that throws: an error event, the frame goes on': (w, at) => {
+    w.addEventListener('error', (e) => {
+      at(`error ${e.error.message}`);
+      e.preventDefault();
+    });
+    w.requestAnimationFrame(() => {
+      at('a');
+      throw new Error('boom');
+    });
+    w.requestAnimationFrame(() => at('b'));
+  },
+  "timestamps: the beat's performance.now(), one per frame": (w, at) => {
+    const seen = [];
+    w.requestAnimationFrame((t) => {
+      seen.push(t, w.performance.now());
+      w.requestAnimationFrame((t2) => {
+        at(`${typeof t2} same:${seen[0] === seen[2]} first<=now:${seen[0] <= seen[1]} next>=:${t2 >= seen[0]}`);
+      });
+    });
+    w.requestAnimationFrame((t) => seen.push(t));
+  },
+  "a removed iframe's frames do not run": (w, at, tick) => {
+    const iframe = w.document.body.appendChild(w.document.createElement('iframe'));
+    tick(5);
+    const inner = iframe.contentWindow;
+    inner.requestAnimationFrame(() => at('a'));
+    tick(17);
+    inner.requestAnimationFrame(() => at('pending at removal'));
+    iframe.remove();
+    at(`after removal ${inner.requestAnimationFrame(() => at('after removal'))}`);
+  },
+};
+// cancelAnimationFrame converts its argument to unsigned long (WebIDL), on
+// a fresh window with handles 1 to 4 pending: the argument as given.
+const CANCEL_ARGUMENTS = {
+  "'3'": '3',
+  "' 3 '": ' 3 ',
+  null: null,
+  true: true,
+  3.7: 3.7,
+  '-1': -1,
+  '2 ** 32 + 3': 2 ** 32 + 3,
+};
+for (const jsdom of [20, 30]) {
+  for (const [label, argument] of Object.entries(CANCEL_ARGUMENTS)) {
+    parity(
+      `animation frames: cancelAnimationFrame(${label}) (jsdom ${jsdom})`,
+      onFakeTimers((w, at) => {
+        at([1, 2, 3, 4].map((i) => w.requestAnimationFrame(() => at(`ran ${i}`))).join());
+        w.cancelAnimationFrame(argument);
+      }),
+      { jsdom },
+    );
+  }
+}
+for (const jsdom of [20, 25, 30]) {
+  for (const [name, scenario] of Object.entries(FRAME_SCENARIOS)) {
+    parity(`animation frames: ${name} (jsdom ${jsdom})`, onFakeTimers(scenario), { jsdom });
+  }
+}
+
+// The issue's measurements in real time (jsdom 20.0.3 and 30.1.3, medians
+// of 15: about 28 ms and 34 ms; warpdom before #249 about 17 ms and 39 ms),
+// as orders against timers with a few ms to spare: a request after
+// canceling the last pending callback (at 10 ms) runs after a 20 ms timer;
+// one made 12 ms into a frame (16.7 ms) with a sibling pending runs on the
+// same interval's next beat (33.3 ms), before a 10 ms timer started at
+// the end of that frame's work.
+parity('animation frames: real time, a new interval after a cancel, the same one in a frame', async (w) => {
+  const log = [];
+  await new Promise((resolve) => {
+    const a = w.requestAnimationFrame(() => log.push('a'));
+    setTimeout(() => {
+      w.cancelAnimationFrame(a);
+      w.requestAnimationFrame(() => {
+        log.push('after cancel');
+        resolve();
+      });
+    }, 10);
+    setTimeout(() => log.push('timer 20'), 20);
+  });
+  await new Promise((resolve) => {
+    w.requestAnimationFrame(() => {
+      const end = performance.now() + 12;
+      while (performance.now() < end);
+      w.requestAnimationFrame(() => log.push('in frame'));
+      // Started after the frame's work, so a late first frame cannot
+      // make it fire first: the same interval's next beat is about 4.6 ms
+      // away, a fresh interval 16.7 ms (#255 review).
+      setTimeout(() => {
+        log.push('timer 10');
+        resolve();
+      }, 10);
+    });
+    w.requestAnimationFrame(() => {});
+  });
+  return log;
 });
 
 test('viewport and scrolling, as in jsdom', () => {

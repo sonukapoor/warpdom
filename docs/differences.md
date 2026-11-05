@@ -96,6 +96,17 @@ sees them; warpdom's call it for assignments only (`style.width = ...`).
 Not modeled:
 
 - cssstyle's `length` setter and underscore members
+- in a style rule's `style` (jsdom 27.1 and later), margin and padding as
+  jsdom keeps them: a longhand after its shorthand stays beside it
+  (`margin: 1px 2px; margin-top: 3px`, jsdom `margin: 3px 2px 1px`), and
+  `padding: 2px` has `length` 1 (jsdom 5). Inline styles have jsdom's
+  model in every profile
+- `setProperty()` with a value the property rejects: jsdom 20 to 29 still
+  set the priority given (`setProperty('color', 'bogus', 'important')`
+  after `color: red` gives `color: red !important`; without a priority it
+  drops the `!important`). jsdom 20 to 26 also write the style attribute
+  before `setProperty()` sets the priority, so the attribute shows
+  `color: red;` where `cssText` has `color: red !important;`
 - the accessor functions' names (`get width` from jsdom 29, `get` in
   warpdom)
 - jsdom 29.0.0's internal classes behind `getComputedStyle()`
@@ -171,9 +182,6 @@ Not modeled:
   `padding-top: 1px; padding: var(--p); padding-top: 4px` the last
   `padding-top` gives `4px`. warpdom gives red, and not `4px` (its 27.0
   profile matches jsdom 27.0.1: blue, and `''`)
-- from jsdom 27, a shorthand counts all its longhands in a declaration's
-  `length` (`padding: 2px` gives 5, warpdom's 1;
-  [#147](https://github.com/sonukapoor/warpdom/issues/147))
 - `!important !important`
   ([#147](https://github.com/sonukapoor/warpdom/issues/147)): jsdom 20 to
   26 keep the declaration as `!important`; warpdom drops it, as jsdom 27

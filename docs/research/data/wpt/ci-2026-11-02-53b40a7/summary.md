@@ -1,0 +1,166 @@
+## warpdom
+
+| Directory | Files | Harness OK | All pass | Subtests | Passed | Pass rate | Score | Skipped |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| FileAPI/ | 6 | 5 | 2 | 204 | 176 | 86.3% | 88.4% | 0 |
+| FileAPI/BlobURL/ | 5 | 5 | 0 | 18 | 0 | 0.0% | 0.0% | 0 |
+| FileAPI/FileReader/ | 2 | 2 | 1 | 2 | 1 | 50.0% | 50.0% | 0 |
+| FileAPI/blob/ | 14 | 14 | 9 | 329 | 309 | 93.9% | 76.7% | 0 |
+| FileAPI/file/ | 15 | 15 | 4 | 207 | 97 | 46.9% | 26.7% | 0 |
+| FileAPI/filelist-section/ | 1 | 1 | 1 | 7 | 7 | 100.0% | 100.0% | 0 |
+| FileAPI/reading-data-section/ | 14 | 14 | 12 | 52 | 49 | 94.2% | 90.5% | 0 |
+| FileAPI/url/ | 12 | 7 | 0 | 41 | 0 | 0.0% | 0.0% | 0 |
+| WebCryptoAPI/ | 9 | 8 | 1 | 160 | 95 | 59.4% | 32.8% | 0 |
+| WebCryptoAPI/derive_bits_keys/ | 19 | 18 | 0 | 76 | 2 | 2.6% | 5.4% | 0 |
+| WebCryptoAPI/digest/ | 1 | 1 | 0 | 116 | 0 | 0.0% | 0.0% | 0 |
+| WebCryptoAPI/encrypt_decrypt/ | 5 | 0 | 0 | 5 | 0 | 0.0% | 0.0% | 0 |
+| WebCryptoAPI/generateKey/ | 46 | 46 | 0 | 5781 | 0 | 0.0% | 0.0% | 0 |
+| WebCryptoAPI/import_export/ | 11 | 11 | 0 | 5318 | 34 | 0.6% | 0.4% | 0 |
+| WebCryptoAPI/modern-algos/ | 41 | 39 | 0 | 6799 | 7 | 0.1% | 0.6% | 0 |
+| WebCryptoAPI/secure-curves/ | 14 | 14 | 1 | 1852 | 20 | 1.1% | 7.3% | 0 |
+| WebCryptoAPI/secure_context/ | 1 | 1 | 0 | 2 | 0 | 0.0% | 0.0% | 0 |
+| WebCryptoAPI/serialization/ | 12 | 12 | 0 | 36 | 0 | 0.0% | 0.0% | 0 |
+| WebCryptoAPI/sign_verify/ | 6 | 5 | 0 | 570 | 0 | 0.0% | 0.0% | 0 |
+| WebCryptoAPI/wrapKey_unwrapKey/ | 2 | 2 | 0 | 4 | 0 | 0.0% | 0.0% | 0 |
+| css/cssom-view/ | 223 | 198 | 32 | 2447 | 606 | 24.8% | 17.9% | 10 |
+| css/cssom/ | 258 | 244 | 133 | 4368 | 3158 | 72.3% | 64.4% | 11 |
+| dom/ | 11 | 11 | 8 | 2119 | 2004 | 94.6% | 91.5% | 0 |
+| dom/abort/ | 6 | 6 | 6 | 37 | 37 | 100.0% | 100.0% | 0 |
+| dom/collections/ | 12 | 12 | 12 | 60 | 60 | 100.0% | 100.0% | 0 |
+| dom/events/ | 91 | 84 | 69 | 715 | 606 | 84.8% | 80.3% | 114 |
+| dom/lists/ | 5 | 5 | 4 | 189 | 187 | 98.9% | 99.8% | 0 |
+| dom/nodes/ | 356 | 338 | 254 | 9957 | 7222 | 72.5% | 73.3% | 6 |
+| dom/observable/ | 0 | 0 | 0 | 0 | 0 | - | - | 27 |
+| dom/ranges/ | 46 | 43 | 41 | 44494 | 40318 | 90.6% | 89.2% | 23 |
+| dom/traversal/ | 17 | 17 | 15 | 1607 | 1595 | 99.3% | 92.5% | 1 |
+| domparsing/ | 48 | 44 | 24 | 1144 | 449 | 39.2% | 70.6% | 2 |
+| domparsing/tentative/ | 0 | 0 | 0 | 0 | 0 | - | - | 35 |
+| encoding/ | 46 | 45 | 34 | 12062 | 11815 | 98.0% | 80.8% | 0 |
+| encoding/legacy-mb-japanese/ | 482 | 1 | 0 | 482 | 0 | 0.0% | 0.0% | 0 |
+| encoding/legacy-mb-korean/ | 435 | 0 | 0 | 435 | 0 | 0.0% | 0.0% | 0 |
+| encoding/legacy-mb-schinese/ | 4 | 4 | 2 | 660 | 359 | 54.4% | 50.6% | 0 |
+| encoding/legacy-mb-tchinese/ | 283 | 1 | 1 | 405 | 123 | 30.4% | 0.4% | 0 |
+| encoding/streams/ | 13 | 12 | 11 | 119 | 114 | 95.8% | 84.6% | 0 |
+| hr-time/ | 13 | 10 | 2 | 48 | 36 | 75.0% | 25.4% | 0 |
+| html/dom/ | 145 | 138 | 105 | 69408 | 61306 | 88.3% | 84.7% | 108 |
+| html/semantics/ | 433 | 359 | 250 | 5026 | 3972 | 79.0% | 64.6% | 207 |
+| intersection-observer/ | 115 | 81 | 0 | 215 | 5 | 2.3% | 0.1% | 0 |
+| intersection-observer/v2/ | 38 | 32 | 0 | 40 | 0 | 0.0% | 0.0% | 0 |
+| resize-observer/ | 34 | 11 | 0 | 82 | 5 | 6.1% | 0.3% | 0 |
+| url/ | 44 | 43 | 28 | 8784 | 7326 | 83.4% | 92.1% | 0 |
+| user-timing/ | 36 | 25 | 2 | 177 | 39 | 22.0% | 15.9% | 0 |
+| web-animations/interfaces/ | 43 | 36 | 0 | 371 | 5 | 1.3% | 1.3% | 2 |
+| xhr/ | 335 | 263 | 77 | 1370 | 456 | 33.3% | 25.7% | 2 |
+| xhr/formdata/ | 17 | 17 | 16 | 80 | 79 | 98.8% | 94.1% | 1 |
+| **Total** | 3825 | 2300 | 1157 | 188480 | 142679 | 75.7% | 34.3% | 549 |
+
+## jsdom
+
+| Directory | Files | Harness OK | All pass | Subtests | Passed | Pass rate | Score | Skipped |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| FileAPI/ | 6 | 4 | 2 | 201 | 129 | 64.2% | 70.3% | 0 |
+| FileAPI/BlobURL/ | 5 | 5 | 0 | 18 | 0 | 0.0% | 0.0% | 0 |
+| FileAPI/FileReader/ | 2 | 2 | 1 | 2 | 1 | 50.0% | 50.0% | 0 |
+| FileAPI/blob/ | 14 | 14 | 8 | 329 | 304 | 92.4% | 74.5% | 0 |
+| FileAPI/file/ | 15 | 15 | 4 | 207 | 97 | 46.9% | 26.7% | 0 |
+| FileAPI/filelist-section/ | 1 | 1 | 0 | 7 | 6 | 85.7% | 85.7% | 0 |
+| FileAPI/reading-data-section/ | 14 | 14 | 11 | 52 | 45 | 86.5% | 87.3% | 0 |
+| FileAPI/url/ | 12 | 7 | 0 | 41 | 0 | 0.0% | 0.0% | 0 |
+| WebCryptoAPI/ | 9 | 8 | 2 | 159 | 63 | 39.6% | 35.7% | 0 |
+| WebCryptoAPI/derive_bits_keys/ | 19 | 18 | 0 | 76 | 2 | 2.6% | 5.4% | 0 |
+| WebCryptoAPI/digest/ | 1 | 1 | 0 | 116 | 0 | 0.0% | 0.0% | 0 |
+| WebCryptoAPI/encrypt_decrypt/ | 5 | 0 | 0 | 5 | 0 | 0.0% | 0.0% | 0 |
+| WebCryptoAPI/generateKey/ | 46 | 1 | 0 | 405 | 0 | 0.0% | 0.0% | 0 |
+| WebCryptoAPI/import_export/ | 11 | 11 | 0 | 5318 | 34 | 0.6% | 0.4% | 0 |
+| WebCryptoAPI/modern-algos/ | 41 | 27 | 0 | 2249 | 7 | 0.3% | 0.6% | 0 |
+| WebCryptoAPI/secure-curves/ | 14 | 10 | 1 | 1600 | 20 | 1.3% | 7.3% | 0 |
+| WebCryptoAPI/secure_context/ | 1 | 1 | 0 | 2 | 0 | 0.0% | 0.0% | 0 |
+| WebCryptoAPI/serialization/ | 12 | 12 | 0 | 36 | 0 | 0.0% | 0.0% | 0 |
+| WebCryptoAPI/sign_verify/ | 6 | 4 | 0 | 247 | 0 | 0.0% | 0.0% | 0 |
+| WebCryptoAPI/wrapKey_unwrapKey/ | 2 | 2 | 0 | 4 | 0 | 0.0% | 0.0% | 0 |
+| css/cssom-view/ | 223 | 190 | 32 | 2362 | 573 | 24.3% | 17.6% | 10 |
+| css/cssom/ | 258 | 246 | 136 | 4355 | 2896 | 66.5% | 63.0% | 11 |
+| dom/ | 11 | 10 | 8 | 2058 | 1354 | 65.8% | 94.1% | 0 |
+| dom/abort/ | 6 | 6 | 6 | 37 | 37 | 100.0% | 100.0% | 0 |
+| dom/collections/ | 12 | 12 | 12 | 60 | 60 | 100.0% | 100.0% | 0 |
+| dom/events/ | 91 | 80 | 67 | 715 | 481 | 67.3% | 80.0% | 114 |
+| dom/lists/ | 5 | 5 | 4 | 189 | 185 | 97.9% | 99.5% | 0 |
+| dom/nodes/ | 356 | 317 | 233 | 9957 | 7144 | 71.7% | 67.9% | 6 |
+| dom/observable/ | 0 | 0 | 0 | 0 | 0 | - | - | 27 |
+| dom/ranges/ | 46 | 41 | 40 | 44494 | 40317 | 90.6% | 88.6% | 23 |
+| dom/traversal/ | 17 | 17 | 15 | 1607 | 1583 | 98.5% | 89.6% | 1 |
+| domparsing/ | 48 | 39 | 25 | 1144 | 342 | 29.9% | 64.7% | 2 |
+| domparsing/tentative/ | 0 | 0 | 0 | 0 | 0 | - | - | 35 |
+| encoding/ | 46 | 39 | 18 | 12060 | 7839 | 65.0% | 59.7% | 0 |
+| encoding/legacy-mb-japanese/ | 482 | 1 | 0 | 482 | 0 | 0.0% | 0.0% | 0 |
+| encoding/legacy-mb-korean/ | 435 | 0 | 0 | 435 | 0 | 0.0% | 0.0% | 0 |
+| encoding/legacy-mb-schinese/ | 4 | 4 | 2 | 660 | 359 | 54.4% | 50.6% | 0 |
+| encoding/legacy-mb-tchinese/ | 283 | 1 | 1 | 405 | 123 | 30.4% | 0.4% | 0 |
+| encoding/streams/ | 13 | 12 | 0 | 119 | 0 | 0.0% | 0.0% | 0 |
+| hr-time/ | 13 | 10 | 2 | 48 | 32 | 66.7% | 24.3% | 0 |
+| html/dom/ | 145 | 138 | 79 | 69392 | 52859 | 76.2% | 68.5% | 108 |
+| html/semantics/ | 433 | 354 | 231 | 5026 | 3838 | 76.4% | 60.7% | 207 |
+| intersection-observer/ | 115 | 64 | 0 | 215 | 5 | 2.3% | 0.1% | 0 |
+| intersection-observer/v2/ | 38 | 32 | 0 | 40 | 0 | 0.0% | 0.0% | 0 |
+| resize-observer/ | 34 | 11 | 0 | 82 | 5 | 6.1% | 0.3% | 0 |
+| url/ | 44 | 41 | 28 | 8782 | 6394 | 72.8% | 82.5% | 0 |
+| user-timing/ | 36 | 24 | 1 | 175 | 14 | 8.0% | 10.2% | 0 |
+| web-animations/interfaces/ | 43 | 34 | 0 | 371 | 5 | 1.3% | 1.3% | 2 |
+| xhr/ | 335 | 258 | 82 | 1356 | 410 | 30.2% | 27.2% | 2 |
+| xhr/formdata/ | 17 | 17 | 15 | 80 | 78 | 97.5% | 93.5% | 1 |
+| **Total** | 3825 | 2160 | 1066 | 177780 | 127641 | 71.8% | 31.9% | 549 |
+
+## Side by side
+
+| Directory | Files | Subtests | warpdom passed | warpdom rate | warpdom score | jsdom passed | jsdom rate | jsdom score |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| FileAPI/ | 6 | 204 | 176 | 86.3% | 88.4% | 129 | 63.2% | 70.0% |
+| FileAPI/BlobURL/ | 5 | 18 | 0 | 0.0% | 0.0% | 0 | 0.0% | 0.0% |
+| FileAPI/FileReader/ | 2 | 2 | 1 | 50.0% | 50.0% | 1 | 50.0% | 50.0% |
+| FileAPI/blob/ | 14 | 329 | 309 | 93.9% | 76.7% | 304 | 92.4% | 74.5% |
+| FileAPI/file/ | 15 | 207 | 97 | 46.9% | 26.7% | 97 | 46.9% | 26.7% |
+| FileAPI/filelist-section/ | 1 | 7 | 7 | 100.0% | 100.0% | 6 | 85.7% | 85.7% |
+| FileAPI/reading-data-section/ | 14 | 52 | 49 | 94.2% | 90.5% | 45 | 86.5% | 87.3% |
+| FileAPI/url/ | 12 | 41 | 0 | 0.0% | 0.0% | 0 | 0.0% | 0.0% |
+| WebCryptoAPI/ | 9 | 160 | 95 | 59.4% | 32.8% | 63 | 39.4% | 35.6% |
+| WebCryptoAPI/derive_bits_keys/ | 19 | 76 | 2 | 2.6% | 5.4% | 2 | 2.6% | 5.4% |
+| WebCryptoAPI/digest/ | 1 | 116 | 0 | 0.0% | 0.0% | 0 | 0.0% | 0.0% |
+| WebCryptoAPI/encrypt_decrypt/ | 5 | 5 | 0 | 0.0% | 0.0% | 0 | 0.0% | 0.0% |
+| WebCryptoAPI/generateKey/ | 46 | 5781 | 0 | 0.0% | 0.0% | 0 | 0.0% | 0.0% |
+| WebCryptoAPI/import_export/ | 11 | 5318 | 34 | 0.6% | 0.4% | 34 | 0.6% | 0.4% |
+| WebCryptoAPI/modern-algos/ | 41 | 6799 | 7 | 0.1% | 0.6% | 7 | 0.1% | 0.6% |
+| WebCryptoAPI/secure-curves/ | 14 | 1852 | 20 | 1.1% | 7.3% | 20 | 1.1% | 7.3% |
+| WebCryptoAPI/secure_context/ | 1 | 2 | 0 | 0.0% | 0.0% | 0 | 0.0% | 0.0% |
+| WebCryptoAPI/serialization/ | 12 | 36 | 0 | 0.0% | 0.0% | 0 | 0.0% | 0.0% |
+| WebCryptoAPI/sign_verify/ | 6 | 570 | 0 | 0.0% | 0.0% | 0 | 0.0% | 0.0% |
+| WebCryptoAPI/wrapKey_unwrapKey/ | 2 | 4 | 0 | 0.0% | 0.0% | 0 | 0.0% | 0.0% |
+| css/cssom-view/ | 223 | 2451 | 606 | 24.7% | 17.9% | 569 | 23.2% | 17.4% |
+| css/cssom/ | 258 | 4368 | 3158 | 72.3% | 64.4% | 2896 | 66.3% | 63.0% |
+| dom/ | 11 | 2119 | 2004 | 94.6% | 91.5% | 1354 | 63.9% | 93.8% |
+| dom/abort/ | 6 | 37 | 37 | 100.0% | 100.0% | 37 | 100.0% | 100.0% |
+| dom/collections/ | 12 | 60 | 60 | 100.0% | 100.0% | 60 | 100.0% | 100.0% |
+| dom/events/ | 91 | 735 | 606 | 82.4% | 80.1% | 481 | 65.4% | 79.8% |
+| dom/lists/ | 5 | 189 | 187 | 98.9% | 99.8% | 185 | 97.9% | 99.5% |
+| dom/nodes/ | 356 | 9957 | 7222 | 72.5% | 73.3% | 7144 | 71.7% | 67.9% |
+| dom/ranges/ | 46 | 44494 | 40318 | 90.6% | 89.2% | 40317 | 90.6% | 88.6% |
+| dom/traversal/ | 17 | 1607 | 1595 | 99.3% | 92.5% | 1583 | 98.5% | 89.6% |
+| domparsing/ | 48 | 1144 | 449 | 39.2% | 70.6% | 342 | 29.9% | 64.7% |
+| encoding/ | 46 | 12062 | 11815 | 98.0% | 80.8% | 7839 | 65.0% | 59.7% |
+| encoding/legacy-mb-japanese/ | 482 | 482 | 0 | 0.0% | 0.0% | 0 | 0.0% | 0.0% |
+| encoding/legacy-mb-korean/ | 435 | 435 | 0 | 0.0% | 0.0% | 0 | 0.0% | 0.0% |
+| encoding/legacy-mb-schinese/ | 4 | 660 | 359 | 54.4% | 50.6% | 359 | 54.4% | 50.6% |
+| encoding/legacy-mb-tchinese/ | 283 | 405 | 123 | 30.4% | 0.4% | 123 | 30.4% | 0.4% |
+| encoding/streams/ | 13 | 119 | 114 | 95.8% | 84.6% | 0 | 0.0% | 0.0% |
+| hr-time/ | 13 | 48 | 36 | 75.0% | 25.4% | 32 | 66.7% | 24.3% |
+| html/dom/ | 145 | 69409 | 61306 | 88.3% | 84.7% | 52859 | 76.2% | 68.5% |
+| html/semantics/ | 433 | 5026 | 3972 | 79.0% | 64.6% | 3838 | 76.4% | 60.7% |
+| intersection-observer/ | 115 | 207 | 5 | 2.4% | 0.1% | 5 | 2.4% | 0.1% |
+| intersection-observer/v2/ | 38 | 40 | 0 | 0.0% | 0.0% | 0 | 0.0% | 0.0% |
+| resize-observer/ | 34 | 82 | 5 | 6.1% | 0.3% | 5 | 6.1% | 0.3% |
+| url/ | 44 | 8784 | 7326 | 83.4% | 92.1% | 6394 | 72.8% | 82.5% |
+| user-timing/ | 36 | 177 | 39 | 22.0% | 15.9% | 14 | 7.9% | 10.2% |
+| web-animations/interfaces/ | 43 | 371 | 5 | 1.3% | 1.3% | 5 | 1.3% | 1.3% |
+| xhr/ | 335 | 1370 | 456 | 33.3% | 25.7% | 410 | 29.9% | 27.2% |
+| xhr/formdata/ | 17 | 80 | 79 | 98.8% | 94.1% | 78 | 97.5% | 93.5% |
+| **Total** | 3825 | 188497 | 142679 | 75.7% | 34.2% | 127637 | 67.7% | 31.8% |
+

@@ -693,7 +693,10 @@ function pageRule(protos, selector, body, sheet, parentRule) {
     }
     i = close + 1;
   }
-  rule[S].style = declarationBlock(protos.CSSPageDescriptors, declarations, rule, 'page');
+  rule[S].style = declarationBlock(protos.CSSPageDescriptors, declarations, rule, 'page', 'sheet', {
+    lastWins: legacyRules(protos),
+    styleProto: protos.CSSStyleProperties,
+  });
   return rule;
 }
 
@@ -1173,10 +1176,16 @@ const isConnected = connected;
 // null when it is not in a document, or before jsdom 30.1.2 in a shadow
 // tree (compat.shadowSheets) unless its text changed there (internal.js
 // styleTextChanged). A replaced sheet loses its owner node.
+// Also null in a document without a browsing context (createHTMLDocument,
+// DOMParser, createDocument, new Document()), as in jsdom (black box,
+// 20.0.3 to 30.1.3: no sheet and an empty document.styleSheets), so
+// getComputedStyle() applies no sheet rules to that document's elements
+// (#203). Moved into a document with a window, it gets a sheet.
 export function styleElementSheet(el) {
   const s = el[S];
   if (
     !isConnected(el) ||
+    s.doc[S].noView === true ||
     (s.textSheet !== true && rootOf(el)[S].shadow === true && !s.doc[S].window[S].compat.shadowSheets)
   ) {
     if (s.sheet) {
