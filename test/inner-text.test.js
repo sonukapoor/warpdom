@@ -141,5 +141,7 @@ test('innerText: legacy display keywords', () => {
     as(d, 'inline-flex');
   as('-ms-grid', 'grid');
   as('-moz-inline-stack', 'inline-block');
+  // Spaces at the box's edges: kept inline (x a y), not in an inline-block.
+  assert.equal(text('<div>x<span style="display: -moz-inline-stack"> a </span>y</div>'), 'xay');
   assert.equal(text('<div style="display: -webkit-box"><span>a</span><span>b</span></div>'), 'a\nb');
 });
