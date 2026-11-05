@@ -494,6 +494,330 @@ for (const jsdom of [30, 26]) {
   );
 }
 
+// A repeated !important declaration (#265): from jsdom 27 the first one
+// wins in a style attribute and cssText, and from 27.1.0 in a rule's
+// cssText; a style sheet's rule lets the last one win.
+const REPEATED_IMPORTANT = [
+  'color: red !important; color: blue !important',
+  'color: red !important; color: blue',
+  'color: red; color: blue !important',
+  'color: red !important; color: green !important; color: blue !important',
+  'color: red !important; color: blue !important; color: green',
+  'color: green; color: red !important; color: blue !important',
+  'color: red !important; color: green; color: blue !important',
+  'color: red !important; margin-top: 3px !important; color: blue !important; margin-top: 4px !important',
+  'display: none !important; display: block !important',
+  '--x: a !important; --x: b !important',
+  'color: red !important; COLOR: blue !important',
+  'color: red !important; COLOR: blue',
+  'COLOR: red !important; color: blue !important',
+  'color: var(--c) !important; color: blue !important',
+];
+// jsdom 20 to 25 drop the property for these (cssstyle 2.3 to 4.1).
+const REPEATED_IMPORTANT_FROM_26 = [
+  'margin-top: 0 !important; margin-top: inherit !important',
+  'padding-top: 1px !important; padding-top: inherit !important',
+  'color: red !important; color: var(--c) !important',
+];
+function repeatedImportant(w, texts) {
+  const d = w.document;
+  d.body.innerHTML = '<p id="t"></p>';
+  const el = d.getElementById('t');
+  const read = (style) => {
+    const out = [style.cssText, Array.from({ length: style.length }, (_, i) => style[i]).join()];
+    for (const name of ['color', 'margin-top', 'padding-top', 'display', '--x'])
+      out.push(style.getPropertyValue(name), style.getPropertyPriority(name));
+    const computed = w.getComputedStyle(el);
+    out.push(computed.color, computed.marginTop, computed.display);
+    return out;
+  };
+  return texts.map((text) => {
+    d.head.innerHTML = '<style>#t {}</style>';
+    el.setAttribute('style', text);
+    const attribute = read(el.style);
+    el.removeAttribute('style');
+    el.style.cssText = text;
+    const cssText = read(el.style);
+    el.removeAttribute('style');
+    const rule = d.styleSheets[0].cssRules[0];
+    rule.style.cssText = text;
+    const ruleCssText = read(rule.style);
+    d.head.innerHTML = `<style>#t { ${text} }</style>`;
+    return [text, attribute, cssText, ruleCssText, read(d.styleSheets[0].cssRules[0].style)];
+  });
+}
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30]) {
+  parity(
+    `a repeated !important declaration (jsdom ${jsdom})`,
+    (w) =>
+      repeatedImportant(w, jsdom < 26 ? REPEATED_IMPORTANT : [...REPEATED_IMPORTANT, ...REPEATED_IMPORTANT_FROM_26]),
+    { jsdom },
+  );
+}
+
+// Release boundaries jsdom's installs here do not cover (black box, jsdom
+// 27.0.1, 27.1.0, 28.0.0 and 28.1.0): a rule's cssText keeps the first
+// !important one from 27.1.0; before 28.1.0 a later one is looked up by
+// its name as written.
+test('a repeated !important declaration at jsdom 27.0.1, 27.1.0, 28.0.0 and 28.1.0', () => {
+  for (const [jsdom, text, attribute, ruleCssText] of [
+    ['27.0.1', 'color: red !important; color: blue !important', 'red', 'blue'],
+    ['27.1.0', 'color: red !important; color: blue !important', 'red', 'red'],
+    ['27.1.0', 'color: red !important; COLOR: blue !important', 'blue', 'blue'],
+    ['28.0.0', 'color: red !important; COLOR: blue', 'blue', 'blue'],
+    ['28.1.0', 'color: red !important; COLOR: blue !important', 'red', 'red'],
+    ['28.1.0', 'color: red !important; COLOR: blue', 'red', 'red'],
+    ['28.1.0', 'COLOR: red !important; color: blue', 'blue', 'blue'],
+  ]) {
+    const w = createWindow({ jsdom });
+    const el = w.document.createElement('p');
+    el.setAttribute('style', text);
+    assert.equal(el.style.color, attribute, `${text} in a style attribute, jsdom ${jsdom}`);
+    w.document.head.innerHTML = '<style>p {}</style>';
+    const rule = w.document.styleSheets[0].cssRules[0];
+    rule.style.cssText = text;
+    assert.equal(rule.style.color, ruleCssText, `${text} in a rule's cssText, jsdom ${jsdom}`);
+  }
+});
+
+// A box shorthand given again after an !important one (#265): a style
+// sheet lets the last one win, but not a normal one over an !important
+// one from 27.1.0 (margin: 1px !important; margin: 2px is 1px there).
+// Read: the longhand's value, the shorthand's value and priority outside
+// a style sheet's rules, the computed value and the computed value
+// against a competing margin-top, which shows the winner's priority in
+// the cascade. Not read: a longhand's priority under an !important
+// shorthand (jsdom 27 and later give important, warpdom ''), a style
+// sheet's shorthand value from 27.1.0, items and cssText (#104, #113).
+const REPEATED_SHORTHANDS = ['margin', 'padding'].flatMap((name) => [
+  `${name}: 1px !important; ${name}: 2px`,
+  `${name}: 1px !important; ${name}: 2px !important`,
+  `${name}: 1px; ${name}: 2px !important`,
+  `${name}: 1px !important; ${name}: 2px; ${name}: 3px !important`,
+]);
+function repeatedShorthands(w, texts = REPEATED_SHORTHANDS) {
+  const d = w.document;
+  d.body.innerHTML = '<p id="t"></p>';
+  const el = d.getElementById('t');
+  const read = (style, name, inSheet) => {
+    const top = `${name}-top`;
+    const computed = () => w.getComputedStyle(el).getPropertyValue(top);
+    const out = [style.getPropertyValue(top)];
+    if (!inSheet) out.push(style.getPropertyValue(name), style.getPropertyPriority(name));
+    out.push(computed());
+    // A competing declaration: an !important rule for an inline style, a
+    // normal inline one for a rule.
+    const extra = d.createElement('style');
+    const inline = el.getAttribute('style');
+    if (inline === null) el.setAttribute('style', `${top}: 5px`);
+    else {
+      extra.textContent = `#t { ${top}: 5px !important }`;
+      d.head.append(extra);
+    }
+    out.push(computed());
+    extra.remove();
+    if (inline === null) el.removeAttribute('style');
+    return out;
+  };
+  return texts.map((text) => {
+    const name = text.slice(0, text.indexOf(':'));
+    d.head.innerHTML = '';
+    el.setAttribute('style', text);
+    const attribute = read(el.style, name, false);
+    el.removeAttribute('style');
+    el.style.cssText = text;
+    const cssText = read(el.style, name, false);
+    el.removeAttribute('style');
+    d.head.innerHTML = '<style>#t {}</style>';
+    const sheet = d.styleSheets[0];
+    sheet.cssRules[0].style.cssText = text;
+    const ruleCssText = read(sheet.cssRules[0].style, name, false);
+    sheet.deleteRule(0);
+    sheet.insertRule(`#t { ${text} }`, 0);
+    const insertRule = read(sheet.cssRules[0].style, name, true);
+    d.head.innerHTML = `<style>#t { ${text} }</style>`;
+    return [text, attribute, cssText, ruleCssText, insertRule, read(d.styleSheets[0].cssRules[0].style, name, true)];
+  });
+}
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30]) {
+  parity(`a box shorthand repeated after an !important one (jsdom ${jsdom})`, (w) => repeatedShorthands(w), {
+    jsdom,
+  });
+}
+
+// Style writes that leave a box shorthand twice in the style attribute
+// (padding: 8px !important; padding: 7px !important, the longhands set
+// after the shorthand): the computed style follows the style object, the
+// last one, not the first !important one (#266 review). Read: the
+// computed sides and the longhand's value, but after the shorthand set
+// over its longhands, where warpdom keeps the longhand's own (7px, jsdom
+// 8px: its longhands model, #104); not the attribute or cssText, which
+// jsdom 27 to 29 write as longhands (#104).
+const BOX_WRITES = {
+  'shorthand !important, then its longhands !important': (style, name) => {
+    style.setProperty(name, '8px', 'important');
+    for (const side of SIDES) style.setProperty(`${name}-${side}`, '7px', 'important');
+  },
+  'shorthand by its accessor, then !important, then its longhands !important': (style, name) => {
+    style[name] = '8px';
+    style.setProperty(name, '8px', 'important');
+    for (const side of SIDES) style.setProperty(`${name}-${side}`, '7px', 'important');
+  },
+  'shorthand and a longhand !important, then its longhands !important': (style, name) => {
+    style.setProperty(name, '8px', 'important');
+    style.setProperty(`${name}-top`, '6px', 'important');
+    for (const side of SIDES) style.setProperty(`${name}-${side}`, '7px', 'important');
+  },
+  'longhands !important, then the shorthand !important': (style, name) => {
+    for (const side of SIDES) style.setProperty(`${name}-${side}`, '7px', 'important');
+    style.setProperty(name, '8px', 'important');
+  },
+  'shorthand !important, then its longhands': (style, name) => {
+    style.setProperty(name, '8px', 'important');
+    for (const side of SIDES) style.setProperty(`${name}-${side}`, '7px');
+  },
+};
+const SIDES = ['top', 'right', 'bottom', 'left'];
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30]) {
+  parity(
+    `style writes that leave a box shorthand twice in the attribute (jsdom ${jsdom})`,
+    (w) =>
+      Object.entries(BOX_WRITES).flatMap(([label, write]) =>
+        ['margin', 'padding'].map((name) => {
+          w.document.body.innerHTML = '<p></p>';
+          const el = w.document.body.firstChild;
+          write(el.style, name);
+          const computed = w.getComputedStyle(el);
+          const sides = SIDES.map((side) => computed.getPropertyValue(`${name}-${side}`));
+          if (label.startsWith('longhands')) return [label, name, ...sides];
+          return [label, name, el.style.getPropertyValue(`${name}-top`), ...sides];
+        }),
+      ),
+    { jsdom },
+  );
+}
+
+// A repeated !important descriptor in an @page rule (#266 review): as in
+// a style rule, the first one wins in its cssText from jsdom 27 and the
+// last one in its style sheet; jsdom 26 and earlier let the last one win
+// in both. jsdom 27 and later drop page-orientation and size, which
+// warpdom keeps; not read: margin, whose margin-top jsdom leaves empty.
+const REPEATED_DESCRIPTORS = [
+  'margin-top: 1px !important; margin-top: 2px !important',
+  'margin-top: 1px !important; margin-top: 2px',
+  'margin-top: 1px; margin-top: 2px !important',
+];
+// A later one written in another case: jsdom 27.0 and earlier keep a
+// descriptor's name as written in an @page rule (MARGIN-TOP is not
+// margin-top there), which warpdom does not (#265).
+const REPEATED_DESCRIPTORS_FROM_27 = [
+  'margin-top: 1px !important; MARGIN-TOP: 2px !important',
+  'margin-top: 1px !important; MARGIN-TOP: 2px',
+  'MARGIN-TOP: 1px !important; margin-top: 2px !important',
+];
+const REPEATED_DESCRIPTORS_TO_26 = [
+  'page-orientation: upright !important; page-orientation: rotate-left !important',
+  'page-orientation: upright !important; page-orientation: rotate-left',
+  'size: a4 !important; size: a5 !important',
+  'size: a4 !important; size: a5',
+];
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30]) {
+  parity(
+    `a repeated !important descriptor in an @page rule (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const read = (style) => [
+        style.cssText,
+        ...['margin-top', 'page-orientation', 'size'].flatMap((name) => [
+          style.getPropertyValue(name),
+          style.getPropertyPriority(name),
+        ]),
+      ];
+      const texts =
+        jsdom > 26
+          ? [...REPEATED_DESCRIPTORS, ...REPEATED_DESCRIPTORS_FROM_27]
+          : [...REPEATED_DESCRIPTORS, ...REPEATED_DESCRIPTORS_TO_26];
+      return texts.map((text) => {
+        d.head.innerHTML = `<style>@page { ${text} }</style>`;
+        const style = d.styleSheets[0].cssRules[0].style;
+        const sheet = read(style);
+        style.cssText = text;
+        return [text, sheet, read(style)];
+      });
+    },
+    { jsdom },
+  );
+}
+
+// Release boundaries for a repeated !important descriptor in an @page
+// rule's cssText that jsdom's installs here do not cover (black box, jsdom
+// 27.0.1, 27.1.0, 28.0.0 and 28.1.0): the last one wins before 27.1.0,
+// then the first !important one, and before 28.1.0 a later one is looked
+// up by its name as written (#266 review). Its style sheet lets the last
+// one win in all four.
+test('a repeated !important descriptor in an @page rule at jsdom 27.0.1, 27.1.0, 28.0.0 and 28.1.0', () => {
+  for (const [jsdom, text, ruleCssText] of [
+    ['27.0.1', 'margin-top: 1px !important; margin-top: 2px !important', '2px !important'],
+    ['27.0.1', 'margin-top: 1px !important; margin-top: 2px', '2px'],
+    ['27.1.0', 'margin-top: 1px !important; margin-top: 2px !important', '1px !important'],
+    ['27.1.0', 'margin-top: 1px !important; MARGIN-TOP: 2px !important', '2px !important'],
+    ['27.1.0', 'margin-top: 1px !important; MARGIN-TOP: 2px', '2px'],
+    ['28.0.0', 'margin-top: 1px !important; MARGIN-TOP: 2px !important', '2px !important'],
+    ['28.0.0', 'margin-top: 1px !important; MARGIN-TOP: 2px', '2px'],
+    ['28.1.0', 'margin-top: 1px !important; MARGIN-TOP: 2px !important', '1px !important'],
+    ['28.1.0', 'margin-top: 1px !important; MARGIN-TOP: 2px', '1px !important'],
+    ['28.1.0', 'MARGIN-TOP: 1px !important; margin-top: 2px !important', '2px !important'],
+  ]) {
+    const d = createWindow({ jsdom }).document;
+    const read = (style) =>
+      [style.getPropertyValue('margin-top'), style.getPropertyPriority('margin-top') && '!important']
+        .filter(Boolean)
+        .join(' ');
+    d.head.innerHTML = `<style>@page { ${text} }</style>`;
+    const style = d.styleSheets[0].cssRules[0].style;
+    const last = text.slice(text.lastIndexOf(':') + 2);
+    assert.equal(read(style), last, `${text} in a style sheet, jsdom ${jsdom}`);
+    style.cssText = text;
+    assert.equal(read(style), ruleCssText, `${text} in an @page rule's cssText, jsdom ${jsdom}`);
+  }
+});
+
+// The 27.0/27.1 boundary for a style sheet's rules and a rule's cssText
+// (black box, jsdom 27.0.1 and 27.1.0): the computed margin-top, the
+// rule's margin priority (cssText only) and margin-top against an inline
+// margin-top: 5px, which wins before 28.1.0 (jsdom's cascade then ignores
+// a style sheet's !important).
+test('a box shorthand repeated after an !important one at jsdom 27.0.1 and 27.1.0', () => {
+  for (const [jsdom, text, sheet, ruleCssText] of [
+    ['27.0.1', 'margin: 1px !important; margin: 2px', '2px', ['', '2px', '5px']],
+    ['27.1.0', 'margin: 1px !important; margin: 2px', '1px', ['important', '1px', '5px']],
+    ['27.0.1', 'margin: 1px !important; margin: 2px !important', '2px', ['important', '2px', '5px']],
+    ['27.1.0', 'margin: 1px !important; margin: 2px !important', '2px', ['important', '1px', '5px']],
+    ['27.0.1', 'padding: 1px !important; padding: 2px', '2px', ['', '2px', '5px']],
+    ['27.1.0', 'padding: 1px !important; padding: 2px', '1px', ['important', '1px', '5px']],
+  ]) {
+    const w = createWindow({ jsdom });
+    const d = w.document;
+    const name = text.slice(0, text.indexOf(':'));
+    d.body.innerHTML = '<p id="t"></p>';
+    const el = d.getElementById('t');
+    const top = () => w.getComputedStyle(el).getPropertyValue(`${name}-top`);
+    d.head.innerHTML = `<style>#t { ${text} }</style>`;
+    assert.equal(top(), sheet, `${text} in a style sheet, jsdom ${jsdom}`);
+    d.head.innerHTML = '<style>#t {}</style>';
+    const rule = d.styleSheets[0].cssRules[0];
+    rule.style.cssText = text;
+    el.setAttribute('style', `${name}-top: 5px`);
+    const contested = top();
+    el.removeAttribute('style');
+    assert.deepEqual(
+      [rule.style.getPropertyPriority(name), top(), contested],
+      ruleCssText,
+      `${text} in a rule's cssText, jsdom ${jsdom}`,
+    );
+  }
+});
+
 parity('CSS-wide keywords serialize lowercased', (w) => {
   const style = w.document.createElement('div').style;
   return [

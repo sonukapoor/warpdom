@@ -106,6 +106,17 @@ sees them; warpdom's call it for assignments only (`style.width = ...`).
 Not modeled:
 
 - cssstyle's `length` setter and underscore members
+- in a style rule's `style` (jsdom 27.1 and later), margin and padding as
+  jsdom keeps them: a longhand after its shorthand stays beside it
+  (`margin: 1px 2px; margin-top: 3px`, jsdom `margin: 3px 2px 1px`), and
+  `padding: 2px` has `length` 1 (jsdom 5). Inline styles have jsdom's
+  model in every profile
+- `setProperty()` with a value the property rejects: jsdom 20 to 29 still
+  set the priority given (`setProperty('color', 'bogus', 'important')`
+  after `color: red` gives `color: red !important`; without a priority it
+  drops the `!important`). jsdom 20 to 26 also write the style attribute
+  before `setProperty()` sets the priority, so the attribute shows
+  `color: red;` where `cssText` has `color: red !important;`
 - the accessor functions' names (`get width` from jsdom 29, `get` in
   warpdom)
 - jsdom 29.0.0's internal classes behind `getComputedStyle()`
@@ -141,11 +152,9 @@ Computed values not modeled:
 
 - the `font` shorthand composed from its longhands (jsdom's
   `getComputedStyle().font` and `el.style.font`)
-- a shorthand followed by one of its longhands in a declaration block
-  (jsdom stores the longhands: `margin: 1px 2px; margin-top: 3px` reads
-  `3px 2px 1px`). In a style sheet from jsdom 27.1, `background: red;
-  background-color: blue` serializes as `background: red` and computes
-  `rgb(255, 0, 0)` to 30.1.2 and blue from 30.1.3, where a value read
+- a shorthand followed by one of its longhands in a style sheet: from
+  jsdom 27.1, `background: red; background-color: blue` serializes as
+  `background: red` and computes `rgb(255, 0, 0)` to 30.1.2 and blue from 30.1.3, where a value read
   before the rule's `background-color` is edited or removed stays until
   the document's tree changes. warpdom keeps both declarations: it
   computes blue, and red once `background-color` is removed
