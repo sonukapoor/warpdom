@@ -340,6 +340,15 @@ const REPEATED = [
   'color: blue; Color:; width: 1px',
   'width: 1px; color:',
   'color: blue; width: 1px; Color:',
+  // Names compared without their whitespace and comments, case kept (#262
+  // review).
+  'col or: red; color: foo',
+  'color: red; col or: foo',
+  'col or: red; color: blue',
+  'COL OR: red; color: foo',
+  'c/**/olor: red; color: foo',
+  '--f o o: red; --foo: blue; --f o o: green',
+  '--f o o: red; --foo: blue',
 ];
 for (const jsdom of [20, 22, 25, 26]) {
   parity(

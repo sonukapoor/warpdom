@@ -2369,6 +2369,13 @@ function coalesces(parts) {
     let end = colon;
     while (start < end && isSpaceCode(part.charCodeAt(start))) start++;
     while (end > start && isSpaceCode(part.charCodeAt(end - 1))) end--;
+    // (a name with whitespace or a comment inside: coalescedLegacy's
+    // legacyNameKey)
+    for (let k = start; k < end; k++) {
+      const c = part.charCodeAt(k);
+      if (c === 32 || c === 9 || c === 10 || c === 13 || c === 12) return true;
+      if (c === 47 && part.charCodeAt(k + 1) === 42) return true;
+    }
     for (let j = 0; j < i; j++) {
       const at = scanStarts[j];
       if (scanEnds[j] - at !== end - start) continue;
@@ -2386,8 +2393,14 @@ function coalesces(parts) {
 
 // A legacy style attribute's or cssText's declarations as cssom keeps them
 // (parseInto's clears): an empty declaration runs on into the next one
-// (as parseInto reads it), and a name given again as written replaces the
-// earlier one's value in its place.
+// (as parseInto reads it), and a name given again replaces the earlier
+// one's value in its place. Names are compared as cssom reads them, its
+// whitespace and comments removed but its case kept (black box 20.0.3 to
+// 26.1.0, #262 review): col or: red; color: foo and color: red; col or:
+// foo declare nothing, --f o o: red; --foo: blue; --f o o: green is --foo:
+// green, and COL OR: red; color: foo is color: red.
+const legacyNameKey = (rawName) =>
+  SPACED_NAME.test(rawName) ? rawName.replace(COMMENTS, '').replace(CSS_SPACES, '') : rawName;
 function coalescedLegacy(parts) {
   const out = [];
   const at = new Map();
@@ -2403,10 +2416,10 @@ function coalescedLegacy(parts) {
       carried = part;
       continue;
     }
-    const rawName = part.slice(0, colon).trim();
-    const i = at.get(rawName);
+    const key = legacyNameKey(part.slice(0, colon).trim());
+    const i = at.get(key);
     if (i === undefined) {
-      at.set(rawName, out.length);
+      at.set(key, out.length);
       out.push(part);
     } else out[i] = part;
   }
