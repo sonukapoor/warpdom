@@ -4809,6 +4809,26 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-05: legacy names compared without whitespace and comments (branch fix/legacy-spaced-names, #262 review)
+
+A Copilot comment on #262 posted seconds before it merged, confirmed
+black box on 20.0.3, 22.1.0, 25.0.1 and 26.1.0: jsdom 20 to 26 remove a
+name's whitespace and comments before a name given again replaces the
+earlier one, keeping its case. col or: red; color: foo and color: red; col
+or: foo declare nothing (warpdom kept color: red), --f o o: red; --foo:
+blue; --f o o: green is --foo: green (warpdom: blue); COL OR: red; color:
+foo stays color: red. coalescedLegacy keys names by legacyNameKey (the
+regular expressions only for a name with whitespace or /*), and coalesces
+leaves such a name to it. Test: css-validation.test.js REPEATED (parity
+20, 22, 25, 26).
+
+Slower on a hot path, kept for correctness (legacy profiles only; cssText
+on 26.1.0, 50k writes, 7 alternating runs against origin/main 86c0dba,
+medians, Node 22.17.1): four declarations 1289 -> 1313 ns (+1.9%, the
+name scan in coalesces), a repeated name 1118 -> 1168 ns (+4.5%, the
+SPACED_NAME test per name), a spaced name 686 -> 862 ns (wrong before).
+Profiles from 27 do not reach this code.
+
 ## 2026-11-04: seven differences found preparing 1.0 (branch fix/259-new-differences, #259)
 
 Measured again black box on every installed jsdom (20.0.3, 21.1.2, 22.1.0,
