@@ -63,6 +63,18 @@ warpdom follows the standard for:
 - a removed iframe's `contentWindow` (null)
 - an iframe's `getSVGDocument()` (null; jsdom's throws a TypeError from
   inside jsdom)
+- `getComputedStyle()` of an element that is neither HTML nor SVG (in no
+  namespace, MathML's, another namespace's), and of its descendants:
+  computed, its style attribute declaring nothing, as in jsdom 30.1.2 and
+  later (jsdom 20.0 to 30.1.1 throw a TypeError from inside jsdom)
+- `getComputedStyle()` of an element whose document has no document
+  element (a template's content, `new Document()`, a document whose root
+  was removed): computed (jsdom 30.0.0 to 30.1.2 throw a TypeError from
+  inside jsdom; 30.1.3 computes it)
+- `getComputedStyle()` of an element that a style sheet rule gives
+  `border: initial` or `border: inherit` (from jsdom 28.1 `border: unset`
+  too): computed (jsdom 27.0.1 to 29.0.0 throw a TypeError from inside
+  jsdom; with the same declaration in the style attribute they compute it)
 
 ### Additions jsdom lacks
 
@@ -138,6 +150,15 @@ Not modeled:
   rejects them before 4.3, warpdom before 4.2)
 - `getComputedStyle().azimuth` with cssstyle 4.2 and 4.3 (`NaNdeg` for an
   angle, jsdom's is empty)
+- comments in declared values that some properties read otherwise:
+  from jsdom 27, `font-family: a/*x*/b` is `ab` (warpdom `a b`), the
+  style attribute keeps `transition: opacity/*x*/1s` as written (warpdom
+  `opacity 1s`), and in jsdom 27 `content: "a" /*x*/` too (warpdom
+  `"a"`). Comments are otherwise read as jsdom reads them: removed before
+  27 and in 27 and 28's style sheets, a space elsewhere, and kept as
+  written in a custom property's value outside style sheets and in a
+  value with `var()` from 27 (29 in style sheets)
+
 - writes to the `getComputedStyle()` object
   ([#97](https://github.com/sonukapoor/warpdom/issues/97)): before jsdom
   28.1.0 it takes them like `el.style`, as warpdom does; from 28.1.0,
@@ -256,6 +277,25 @@ Computed values not modeled:
 
 - the `font` shorthand composed from its longhands (jsdom's
   `getComputedStyle().font` and `el.style.font`)
+- a shorthand followed by one of its longhands in a style sheet: from
+  jsdom 27.1, `background: red; background-color: blue` serializes as
+  `background: red` and computes `rgb(255, 0, 0)` to 30.1.2 and blue from 30.1.3, where a value read
+  before the rule's `background-color` is edited or removed stays until
+  the document's tree changes. warpdom keeps both declarations: it
+  computes blue, and red once `background-color` is removed
+- a `font` shorthand declared `!important` in a style sheet, with
+  cssstyle 4.6 (jsdom 23.1 to 26) and in jsdom 27.0 to 28.0: jsdom keeps
+  its longhands against later normal declarations of them, in later rules
+  or the style attribute (`div { font: 20px serif !important }` with
+  `style="font-size: 10px"` computes 20px), and with cssstyle 4.6 against
+  a later normal `font` too. warpdom applies them in document order, as
+  every other declaration before 28.1, so 10px. `margin`, `border`,
+  `background`, `flex` and `list-style` do not do this, nor does `font`
+  with cssstyle 2.3, 3.0 and 4.1 (4.2 to 4.5 not measured)
+- jsdom 30's `calc()` mixing percentages and em (`calc(100% - 0px)`)
+- the uppercase units and `calc()` simplification of declared values in
+  jsdom 29 and 30
+
 - jsdom 30.1's `calc()` mixing percentages and em
   (`calc(100% - 1em)` computes to `calc(100% - 16px)`; warpdom keeps
   `1em`)

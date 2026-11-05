@@ -2166,3 +2166,76 @@ for (const jsdom of [30, 29, 28])
     },
     { jsdom },
   );
+
+// --- inherited properties before jsdom 22.1.0 (#259) ---------------------------------
+
+// Where nothing declares them, jsdom before 29.0.2 inherits visibility
+// alone before 21.1.0, pointer-events too from 21.1.0, and color and
+// caret-color from 22.1.0 (compat.legacyInherited; black box 20.0.3,
+// 21.1.2 and 22.1.0, and the property list in jsdom's own 21.0.0, 21.1.0
+// and 22.0.0): a span under <div style="color: red"> computes color ''
+// in jsdom 20 and 21. Other properties compute to '' everywhere.
+const INHERITED = ['color', 'visibility', 'pointer-events', 'caret-color', 'font-size', 'cursor'];
+function inheritedProperties(w) {
+  const d = w.document;
+  d.head.innerHTML =
+    '<style>.s { color: blue; pointer-events: none } .u { color: unset; pointer-events: unset }</style>';
+  d.body.innerHTML =
+    '<div id="a" style="color: red; visibility: hidden; pointer-events: none; caret-color: red; font-size: 3px; cursor: pointer">' +
+    '<p><span></span></p><i class="u"></i></div><div class="s"><b></b></div>';
+  const out = {};
+  for (const sel of ['html', 'body', '#a', 'p', 'span', '.u', '.s', 'b'])
+    out[sel] = read(w, d.querySelector(sel), [...INHERITED, 'border-top-color']);
+  const detached = d.createElement('div');
+  detached.style.color = 'red';
+  out.detached = read(w, detached.appendChild(d.createElement('span')), INHERITED);
+  return out;
+}
+for (const jsdom of [20, 21, 22, 26, 28, 30])
+  parity(`computed values: the properties that inherit (jsdom ${jsdom}, #259)`, inheritedProperties, { jsdom });
+
+test('computed values: color inherits from jsdom 22.1.0, pointer-events from 21.1.0 (#259)', () => {
+  const inherited = (jsdom) => {
+    const w = createWindow({ jsdom });
+    w.document.body.innerHTML = '<div style="color: red; pointer-events: none; visibility: hidden"><span></span></div>';
+    return read(w, w.document.querySelector('span'), ['color', 'pointer-events', 'visibility']);
+  };
+  assert.deepEqual(inherited('21.0.0'), ['', '', 'hidden']);
+  assert.deepEqual(inherited('21.1.0'), ['', 'none', 'hidden']);
+  assert.deepEqual(inherited('22.0.0'), ['', 'none', 'hidden']);
+  assert.deepEqual(inherited('22.1.0'), ['rgb(255, 0, 0)', 'none', 'hidden']);
+});
+
+// A shorthand followed by one of its longhands in a style sheet rule
+// (background: red; background-color: blue): warpdom keeps both, so the
+// longhand wins, and removing it gives the shorthand's color; jsdom 27.1
+// and later serialize the rule as background: red and compute red to
+// 30.1.2 (docs/differences.md, not modeled; #259).
+test('computed values: a style rule with a shorthand then its longhand (#259)', () => {
+  for (const jsdom of ['27.4.0', '29.1.1', '30.1.3']) {
+    const w = createWindow({ jsdom });
+    w.document.head.innerHTML = '<style>.p { background: red; background-color: blue }</style>';
+    w.document.body.innerHTML = '<div class="p"></div>';
+    const rule = w.document.styleSheets[0].cssRules[0];
+    const div = w.document.querySelector('.p');
+    assert.equal(w.getComputedStyle(div).backgroundColor, 'rgb(0, 0, 255)', jsdom);
+    rule.style.backgroundColor = '';
+    w.document.body.append(w.document.createElement('i'));
+    assert.equal(w.getComputedStyle(div).backgroundColor, 'rgb(255, 0, 0)', jsdom);
+  }
+});
+
+// font declared !important in a style sheet, before jsdom 28.1: its
+// longhands apply in document order, as every other declaration's, so the
+// style attribute's font-size wins (jsdom with cssstyle 4.6, 23.1 to 26,
+// and 27.0 to 28.0 keep the !important font's; docs/differences.md, not
+// modeled; #259).
+test('computed values: an !important font in a style sheet before jsdom 28.1 (#259)', () => {
+  for (const [jsdom, cssstyle] of [['26.1.0', '4.6.0'], ['27.4.0'], ['28.1.0']]) {
+    const w = createWindow({ jsdom, cssstyle });
+    w.document.head.innerHTML = '<style>div { font: 20px serif !important }</style>';
+    w.document.body.innerHTML = '<div style="font-size: 10px"></div>';
+    const expected = jsdom === '28.1.0' ? '20px' : '10px';
+    assert.equal(w.getComputedStyle(w.document.querySelector('div')).fontSize, expected, jsdom);
+  }
+});

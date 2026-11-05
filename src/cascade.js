@@ -21,6 +21,7 @@ import {
   ELEMENT_NODE,
   DOCUMENT_NODE,
   HTML_NS,
+  SVG_NS,
   rootOf,
   cssomChanges,
   ruleListRev,
@@ -237,10 +238,15 @@ function ruleIndex(element) {
 
 // The style attribute's declarations, expanded, cached per attribute value
 // (css.js clears the cache when the element's style object changes).
+// Only HTML and SVG elements have an inline style (interfaces.js
+// inlineStyle): as in jsdom 30.1.2 and later (black box, to 30.1.3), the
+// style attribute of another element (in no namespace, MathML's, another
+// namespace's) declares nothing. jsdom 20.0.0 to 30.1.1 throw a TypeError
+// from inside getComputedStyle() for such an element (#259).
 function inlineDeclarations(element) {
   const es = element[S];
   const text = es.attrs.get('style');
-  if (text === undefined) return null;
+  if (text === undefined || (es.ns !== HTML_NS && es.ns !== SVG_NS)) return null;
   if (es.inlineCascade?.text === text) return es.inlineCascade.map;
   const map = new Map();
   const mode = validationModeOf(es.doc[S].window);
@@ -1604,19 +1610,22 @@ export function legacyAccessorValue(element, name) {
 // jsdom before 29.0.2 (the jsdom bundled with jest-environment-jsdom up
 // to Jest 30): a property neither the page nor the user agent sheet
 // declares computes to '', except display (inline from jsdom 27),
-// visibility, pointer-events and color (inherited), background-color and
-// the border colors; from 22.1.0 caret-color (inherited, else auto, under
-// any color-scheme; black box, 22.1.0, 23.2.0, 24.1.3, 25.0.1, 26.1.0,
-// 27.4.0 and 28.1.0; '' in 20.0.3 and 21.1.2).
-const LEGACY_INHERITED = { visibility: 'visible', 'pointer-events': 'auto', 'caret-color': 'auto' };
+// the inherited properties of compat.legacyInherited (visibility; from
+// 21.1.0 pointer-events; from 22.1.0 color, and caret-color, which is
+// auto at the root under any color-scheme; black box 20.0.3 to 28.1.0),
+// background-color and the border colors.
+const LEGACY_INHERITED = { visibility: 'visible', 'pointer-events': 'auto', 'caret-color': 'auto', color: null };
 const BORDER_COLOR = /^border-(top|right|bottom|left)-color$/;
 // The logical ones too (black box, 22.1.0 to 28.1.0).
 const LOGICAL_BORDER_COLOR = /^border-(block|inline)-(start|end)-color$/;
 
-function legacyDefault(element, name) {
-  if (name === 'display') return element[S].doc[S].window[S].compat.jsdom >= 27 ? 'inline' : '';
-  if (name === 'color' || name in LEGACY_INHERITED) {
-    if (name === 'caret-color' && element[S].doc[S].window[S].compat.computedColors === 'declared') return '';
+// compat: the window's (the caller has it), so that the walk up an
+// inheritance chain reads no more than before.
+function legacyDefault(element, name, compat) {
+  if (name === 'display') return compat.jsdom >= 27 ? 'inline' : '';
+  if (name in LEGACY_INHERITED) {
+    const only = compat.legacyInherited;
+    if (only !== null && !only.has(name)) return '';
     const parent = inheritParent(element);
     if (parent) return computedValue(parent, name);
     if (name !== 'color') return LEGACY_INHERITED[name];
@@ -1624,7 +1633,6 @@ function legacyDefault(element, name) {
     // under dark; black box, 27.0.0 to 29.0.1). A root's color-scheme is
     // its own cascaded value's, so it is kept with them (the caller
     // cascaded the element).
-    const compat = element[S].doc[S].window[S].compat;
     if (compat.jsdom < 27) return compat.rootColor;
     const cache = element[S].cascaded;
     let dark = cache.rootDark;
@@ -1632,10 +1640,9 @@ function legacyDefault(element, name) {
     return dark ? DARK_SYSTEM_COLORS.canvastext : compat.rootColor;
   }
   // jsdom before 22.1.0: '' (compat.computedColors).
-  if (name === 'background-color')
-    return element[S].doc[S].window[S].compat.computedColors === 'declared' ? '' : 'rgba(0, 0, 0, 0)';
+  if (name === 'background-color') return compat.computedColors === 'declared' ? '' : 'rgba(0, 0, 0, 0)';
   if (BORDER_COLOR.test(name) || LOGICAL_BORDER_COLOR.test(name))
-    return element[S].doc[S].window[S].compat.computedColors === 'declared' ? '' : computedValue(element, 'color');
+    return compat.computedColors === 'declared' ? '' : computedValue(element, 'color');
   return '';
 }
 
@@ -1722,13 +1729,13 @@ function longhandValue(element, name, data, custom, compat, value) {
     // input[type=tel] is their directionality.
     if (value === undefined) {
       if (name === 'direction' && compat.jsdom >= 27 && uaDirection(element)) return directionality(element);
-      return custom ? '' : legacyDefault(element, name);
+      return custom ? '' : legacyDefault(element, name, compat);
     }
     if (name === 'display' && compat.jsdom >= 27 && (value === 'initial' || value === 'unset')) return 'inline';
     // From jsdom 27 the properties it computes resolve inherit, initial
     // and unset (keywordResolved), outline-color inherit.
     if (legacyUnset(element, value) && !keywordResolved(compat, name, value))
-      return custom || name === 'display' ? '' : legacyDefault(element, name);
+      return custom || name === 'display' ? '' : legacyDefault(element, name, compat);
     if (!custom && CSS_WIDE.has(value) && !keywordResolved(compat, name, value)) {
       return name === 'outline-color' && compat.jsdom >= 27 && value === 'inherit'
         ? legacyOutlineInherit(element, value)
