@@ -703,6 +703,83 @@ for (const jsdom of [20, 22, 23, 24, 25, 26, 27, 28, 29, 30])
     { jsdom },
   );
 
+// Math functions in the arguments of a gradient jsdom 27 and later drop
+// leave it dropped, its arguments checked (black box, jsdom 20.0.3 to
+// 30.1.3; Copilot review on #267); jsdom 27 to 29 reject such a value
+// with a url().
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30])
+  parity(
+    `jsdom ${jsdom}: math functions in a gradient name not in lowercase (#264)`,
+    (w) => {
+      const out = [];
+      for (const value of [
+        'LINEAR-GRADIENT(red 0%, blue calc(100% - 1px))',
+        'LINEAR-GRADIENT(red calc(10% + 5%), blue) red',
+        'LINEAR-GRADIENT(red, blue calc(1px + 1%)) no-repeat',
+        'LINEAR-GRADIENT(calc(10deg + 5deg), red, blue)',
+        'Linear-Gradient(red, blue min(1%, 2%))',
+        '-webkit-linear-gradient(top, red, blue calc(100% - 1px))',
+        'LINEAR-GRADIENT(foo bar, calc(1px))',
+        'url(a.png), LINEAR-GRADIENT(red, blue calc(100% - 1px))',
+        'LINEAR-GRADIENT(red, blue calc(1px + 1%)), red',
+      ]) {
+        const a = w.document.createElement('div');
+        a.style.setProperty('background', value);
+        const b = w.document.createElement('div');
+        b.style.cssText = `background: ${value}`;
+        const c = w.document.createElement('div');
+        c.setAttribute('style', `background: ${value}`);
+        const d = w.document.createElement('div');
+        d.style.background = value;
+        w.document.body.replaceChildren(a, b, c, d);
+        out.push(
+          `${value} -> ${[a, b, c, d].map((e) => `${e.style.cssText} ${w.getComputedStyle(e).backgroundImage}`).join(' | ')}`,
+        );
+      }
+      return out;
+    },
+    { jsdom },
+  );
+
+// A custom property's value is kept as written, whatever its text (a
+// background of initial values is marked internally; Copilot review on
+// #267). jsdom 27 and 28 drop a style attribute with U+0000 in it, and
+// 30 writes it as U+FFFD, so those read it from setProperty only.
+const NUL_TEXT = '\u0000initials';
+for (const jsdom of [20, 26, 27, 28, 29])
+  parity(
+    `jsdom ${jsdom}: a custom property with U+0000 in it beside background (#264)`,
+    (w) => {
+      const out = [];
+      // A computed style's, first (writable before jsdom 28.1; 28.1 takes
+      // it once a computed custom property has been read).
+      const e = w.document.createElement('div');
+      w.document.body.replaceChildren(e);
+      const computed = w.getComputedStyle(e);
+      try {
+        computed.setProperty('--y', NUL_TEXT);
+      } catch (error) {
+        out.push(error.name);
+      }
+      out.push(computed.getPropertyValue('--y'));
+      e.style.background = 'red';
+      e.style.setProperty('--x', NUL_TEXT);
+      out.push(e.style.cssText, e.style.getPropertyValue('--x'), e.style.backgroundColor);
+      if (jsdom !== 27 && jsdom !== 28) {
+        const f = w.document.createElement('div');
+        f.setAttribute('style', `background: red; --x: ${NUL_TEXT}`);
+        const g = w.document.createElement('div');
+        g.style.cssText = `background: red !important; --x: ${NUL_TEXT}`;
+        out.push(f.style.cssText, g.style.cssText, g.style.getPropertyPriority('background'));
+      }
+      // (jsdom 28 reads a computed color as written after a computed custom
+      // property is read, whatever its value.)
+      out.push(w.getComputedStyle(e).backgroundColor, w.getComputedStyle(e).getPropertyValue('--x'));
+      return out;
+    },
+    { jsdom },
+  );
+
 // jsdom 27 and later: a background write replaces the background
 // longhands, those a background of initial values set among them (black
 // box, 27.4.0 to 30.1.3; Copilot review on #267).

@@ -801,9 +801,10 @@ const isKnownProperty = (name) =>
 const INVALID = null;
 // A background that sets each longhand to its initial value instead
 // (jsdom 27 and later: backgroundValue, setInitials); IMAGE_DROPPED, a
-// layer of it (backgroundLayer).
-const INITIALS = '\u0000initials';
-const IMAGE_DROPPED = '\u0000dropped';
+// layer of it (backgroundLayer). Symbols, so that no value (a custom
+// property's, kept as written) is taken for one.
+const INITIALS = Symbol('initials');
+const IMAGE_DROPPED = Symbol('dropped');
 const declaredCaches = {
   spec: new Map(),
   jsdom27: new Map(),
@@ -1381,14 +1382,40 @@ const legacyLength = (token, surface, old) => {
   if (!old) return BG_LENGTH_4.test(token.toLowerCase());
   return surface?.legacyFont === 'cssstyle4.1' ? BG_LENGTH_3.test(token) : BG_LENGTH_4.test(token);
 };
+// Math functions in a background (backgroundValue), not counting those in
+// url()s: MATH_OUTSIDE when one is outside the images jsdom 27 and later
+// drop (droppedImage), MATH_IN_DROPPED when all are in their arguments
+// (LINEAR-GRADIENT(red, blue calc(100% - 1px)) is dropped, its arguments
+// checked by the grammar; black box, 27.4.0 to 30.1.3, #264), and
+// MATH_IN_DROPPED_URL when the value also has a url(). 0 when none.
+const MATH_FUNCTION = /(calc|min|max|clamp)\(/i;
+const MATH_OUTSIDE = 1;
+const MATH_IN_DROPPED = 2;
+const MATH_IN_DROPPED_URL = 3;
+function mathFunctions(value) {
+  const text = value.replace(URL_FUNCTION, 'url()');
+  if (!MATH_FUNCTION.test(text)) return 0;
+  if (!UPPERCASE.test(text) && !LEGACY_PREFIX.test(text)) return MATH_OUTSIDE;
+  const parts = segments(text, BG_SEPARATOR, true);
+  for (let i = 0; i < parts.length; i += 2) {
+    const token = parts[i];
+    if (MATH_FUNCTION.test(token) && !droppedImage(token, token.toLowerCase())) return MATH_OUTSIDE;
+  }
+  return /url\(/i.test(text) ? MATH_IN_DROPPED_URL : MATH_IN_DROPPED;
+}
 function backgroundValue(value, mode, surface) {
   // var(), env() or attr() (a scan only when the text has var(), env( or
   // attr( in it), or a CSS-wide keyword.
   if (hasVarFunction(value) || ENV_ATTR.test(value) || CSS_WIDE_KEYWORD.test(value)) return undefined;
   const legacy = isLegacyMode(mode);
   // jsdom 27 and later: math functions (calc(10px + 5%) is calc(5% + 10px)
-  // in jsdom 30, rejected before) are left to the general rules.
-  if (!legacy && /(calc|min|max|clamp)\(/i.test(value.replace(URL_FUNCTION, 'url()'))) return undefined;
+  // in jsdom 30, rejected before) are left to the general rules, except
+  // in the arguments of an image dropped (mathFunctions), which jsdom 27 to
+  // 29 reject beside a url() (url(a.png), LINEAR-GRADIENT(red, blue
+  // calc(100% - 1px)); black box, 27.4.0 to 29.1.1).
+  const math = legacy ? 0 : mathFunctions(value);
+  if (math === MATH_OUTSIDE) return undefined;
+  if (math === MATH_IN_DROPPED_URL && mode === 'jsdom27') return INVALID;
   // The grammar first, as for other properties in these modes (a legacy
   // gradient read as none: legacyGradientsValid).
   if (!legacy && !isValidValue('background', LEGACY_PREFIX.test(value) ? legacyGradientsValid(value) : value))
@@ -2732,8 +2759,10 @@ function setDeclaration(style, name, value, priority = '') {
     }
     return;
   }
+  // (A background of initial values has no var(): its !important is kept.)
   const important =
-    String(priority).toLowerCase() === 'important' && !dropsImportant(s.surface, name, text, s.parentRule != null);
+    String(priority).toLowerCase() === 'important' &&
+    (text === INITIALS || !dropsImportant(s.surface, name, text, s.parentRule != null));
   if (text === INITIALS) {
     setInitials(s.decls, important, s.mode === 'spec');
     reindex(style);

@@ -4913,3 +4913,18 @@ write in the jsdom 27 profile and 29.7 -> 22.0 in 30 (two-layer values
 no longer go through the general rules), 1.24 us unchanged in 26 and
 0.87 in 20; background-image +0.4% (26) to +1.3% (27); decl-bench,
 style-bench and style-miss-bench within noise.
+
+Copilot review on #267, round 2: the internal marker of a background of
+initial values was a string ('\0initials'), so a custom property with
+that value (setProperty, cssText, a style attribute, a computed style's
+setProperty before jsdom 28.1) removed the background and set the
+initial longhands instead of being stored. INITIALS and IMAGE_DROPPED are
+Symbols now (setProperty keeps !important for them). Math functions in
+the arguments of a dropped gradient (LINEAR-GRADIENT(red 0%, blue
+calc(100% - 1px)), -webkit-linear-gradient(top, red, blue calc(...)))
+no longer send the value to the general rules (mathFunctions): it is
+dropped, its arguments checked by the grammar, and jsdom 27 to 29 reject
+it beside a url(). Probes (15 values x 4 writes x 4 versions, 27.4.0 to
+30.1.3): 40 -> 216 of 240 the same; the rest are math functions outside
+dropped images and lowercase gradients with them in 27 to 29, unchanged
+(docs/differences.md).

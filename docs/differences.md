@@ -131,6 +131,13 @@ Not modeled:
   earlier rules' longhands partly stay), and the arguments of a legacy
   radial gradient or `-webkit-gradient()` (warpdom does not check them;
   a legacy linear one is checked as `linear-gradient()`)
+- in jsdom 27 and later, math functions in `background` outside the
+  arguments of an image left out (jsdom 27 to 29 set the initial values
+  for `LINEAR-GRADIENT(red, blue) calc(10px + 5%) 0` and reject a `url()`
+  beside a math function, even in its string, and jsdom 30 writes
+  `calc(5% + 10px) 0px`), and in jsdom 27 to 29 a lowercase gradient
+  with one (`linear-gradient(red, blue calc(100% - 1px))` is read as
+  none there)
 - `getComputedStyle().azimuth` with cssstyle 4.2 and 4.3 (`NaNdeg` for an
   angle, jsdom's is empty)
 
