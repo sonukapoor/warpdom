@@ -132,6 +132,10 @@ Not modeled:
   so no `CSSNestedDeclarations` is made. jsdom 27.2 and 28 keep the nested
   rule and drop the later declarations; from 29 they also become a
   `CSSNestedDeclarations`
+- with cssstyle 2.3 to 4.6 (jsdom 20 to 26), `cssText` ending in a
+  name without a value (`color: blue; color:`) setting no `style`
+  attribute; and gradients in `background` with cssstyle 4.2 (jsdom
+  rejects them before 4.3, warpdom before 4.2)
 - `getComputedStyle().azimuth` with cssstyle 4.2 and 4.3 (`NaNdeg` for an
   angle, jsdom's is empty)
 - writes to the `getComputedStyle()` object

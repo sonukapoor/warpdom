@@ -3,6 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { hasVarFunction, isValidValue } from '../src/css-values.js';
+import { createWindow } from '../src/node.js';
 import { parity } from './parity.js';
 
 const writes = (w) => {
@@ -254,3 +255,320 @@ parity('CSS.supports validates values', (w) => {
   ];
 });
 parity('no CSS namespace before jsdom 30', (w) => [typeof w.CSS, 'CSS' in w], { jsdom: 26 });
+
+// #239: in jsdom 20 to 26 a declaration whose value cssstyle rejects, or
+// that has none, removes the one before it for the same name in a style
+// attribute and an element's cssText (not setProperty or a style sheet's
+// rule). Fallbacks too: cssstyle before 4.2 rejects 100dvh and before 4.4
+// fit-content, so jsdom 20 to 25 drop both declarations, and a style sheet
+// computes them to nothing.
+const FALLBACKS = [
+  'height: 100vh; height: 100dvh',
+  'width: 100px; width: fit-content',
+  'background: red; background: linear-gradient(red, blue)',
+  'color: blue; color: foo',
+  'color: blue; color: 1px',
+  'width: 100px; width: bogus',
+  'margin: 1px; margin: foo',
+  'margin-top: 1px; margin-top: foo',
+  'margin-top: 1px; margin: foo',
+  'margin: 1px; margin-top: foo',
+  'color: blue !important; color: foo',
+  'color: blue; color: foo !important',
+  'color: blue; color: inherit',
+  'color: blue; color: var(--x)',
+  'color: blue; color: foo; color: red',
+  'color:blue;color:foo;width:1px',
+  'color: blue; Color: foo',
+  'color: blue; color: ;width: 1px',
+  'font: 12px Arial; font: foo',
+  'flex: 1; flex: foo',
+  'display: block; display: foo',
+  'color: blue; foo: bar',
+];
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30]) {
+  parity(
+    `jsdom ${jsdom}: an invalid later declaration and the earlier one (#239)`,
+    (w) => {
+      const out = [];
+      for (const text of FALLBACKS) {
+        const a = w.document.createElement('div');
+        a.setAttribute('style', text);
+        const b = w.document.createElement('div');
+        b.style.cssText = text;
+        // (A style sheet with an empty declaration is read otherwise: not here.)
+        w.document.head.innerHTML = text.includes(': ;') ? '' : `<style>.a{${text}}</style>`;
+        w.document.body.innerHTML = '<div class="a"></div>';
+        const name = text.slice(0, text.indexOf(':'));
+        const computed = w.getComputedStyle(w.document.body.firstChild).getPropertyValue(name);
+        out.push(`${text} -> ${a.style.cssText} | ${b.style.cssText} | ${b.getAttribute('style')} | ${computed}`);
+      }
+      // A name without a value at the end, in a style attribute (cssText
+      // and a style sheet read it otherwise, not modeled).
+      for (const text of ['color: blue; color:', 'color: blue; Color:']) {
+        const a = w.document.createElement('div');
+        a.setAttribute('style', text);
+        out.push(`${text} -> ${a.style.cssText}`);
+      }
+      const s = w.document.createElement('div').style;
+      s.setProperty('height', '10px');
+      s.setProperty('height', '100dvh');
+      out.push(`setProperty: ${s.cssText}`);
+      return out;
+    },
+    { jsdom },
+  );
+}
+
+// jsdom 20 to 26 read a style attribute or an element's cssText as cssom
+// reads the block first, a name given again as written taking the earlier
+// one's place, and then set it declaration by declaration (#261 review):
+// an invalid later value under another case keeps the one before it, and
+// a property keeps the place of its first declaration. A name left without
+// a value at the end leaves the block empty.
+const REPEATED = [
+  'color: blue; Color: red; color: foo',
+  'color: blue; COLOR: red; width: 1px; color: foo',
+  'Color: blue; color: foo',
+  'Color: blue; color: inherit',
+  'color: blue; Color: red; color: green',
+  'color: foo; width: 1px; color: blue',
+  'color: foo; width: 1px; color: blue !important',
+  'width: 1px; color: blue; height: 2px; Color: red; top: 1px; color: foo',
+  'color: red !important; Color: blue; color: foo',
+  'color : blue; color: foo',
+  'color: blue; Color:; width: 1px',
+  'width: 1px; color:',
+  'color: blue; width: 1px; Color:',
+];
+for (const jsdom of [20, 22, 25, 26]) {
+  parity(
+    `jsdom ${jsdom}: a name declared again in a style attribute and cssText (#261 review)`,
+    (w) =>
+      REPEATED.map((text) => {
+        const a = w.document.createElement('div');
+        a.setAttribute('style', text);
+        const b = w.document.createElement('div');
+        b.style.cssText = text;
+        const names = Array.from({ length: b.style.length }, (_, i) => b.style.item(i));
+        return `${text} -> ${a.style.cssText} | ${b.style.cssText} | ${names.join(',')} | ${b.style.color}`;
+      }),
+    { jsdom },
+  );
+}
+
+// A repeated name read before anything is set (#261 review): a url()
+// cssstyle meets the first time (an escaped space in background-image,
+// an escaped quote in background, jsdom 26) is met once, and a declaration
+// replaced by a later one of its name is never met.
+for (const jsdom of [20, 22, 25, 26]) {
+  parity(
+    `jsdom ${jsdom}: an escaped url() with a name declared again (#261 review)`,
+    (w) => {
+      const p = `r${jsdom}-`;
+      const many = Array.from({ length: 17 }, (_, i) => `--v${i}: ${i}`).join('; ');
+      const attribute = (text) => {
+        const e = w.document.createElement('div');
+        e.setAttribute('style', text);
+        return e.style.cssText;
+      };
+      const cssText = (text) => {
+        const e = w.document.createElement('div');
+        e.style.cssText = text;
+        return e.style.cssText;
+      };
+      return [
+        attribute(`background-image: url("${p}a\\ b.png"); color: red; color: blue`),
+        attribute(`background-image: url("${p}a\\ b.png"); color: red`),
+        cssText(`background-image: url("${p}b\\ b.png"); color: red; color: blue`),
+        attribute(`background: red url("${p}c\\'b.png"); color: red; color: blue`),
+        cssText(`width: 1px; background: red url("${p}d\\(b.png"); width: 2px`),
+        attribute(`background-image: url("${p}e\\ b.png"); ${many}`),
+        cssText(`background-image: url("${p}f\\ b.png"); color: red; background-image: url("${p}g\\ b.png")`),
+        cssText(`background-image: url("${p}f\\ b.png")`),
+        cssText(`background-image: url("${p}g\\ b.png")`),
+      ];
+    },
+    { jsdom },
+  );
+}
+
+// The lengths and sizing keywords cssstyle reads before 4.4 (#239):
+// before 4.2 px, cm, mm, in, pt, pc, em, ex, ch, rem, vh and vw only.
+const LENGTH_NAMES = ['width', 'height', 'flex-basis', 'top', 'font-size', 'margin', 'margin-top', 'padding'];
+const LENGTH_VALUES = ['10px', '10vh', '10dvh', '10vmin', '10svw', '1lh', '1rlh', '10vmax', '.5vh', '1e1px'];
+const LENGTH_VALUES_ALL = [...LENGTH_VALUES, 'fit-content', 'max-content', 'min-content', 'auto', 'calc(10dvh)'];
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30]) {
+  parity(
+    `jsdom ${jsdom}: lengths and sizing keywords by cssstyle version (#239)`,
+    (w) => {
+      const out = [];
+      for (const name of LENGTH_NAMES)
+        for (const value of LENGTH_VALUES_ALL) {
+          const a = w.document.createElement('div').style;
+          a.setProperty(name, value);
+          const b = w.document.createElement('div').style;
+          b.cssText = `${name}: 1px ${name === 'margin' || name === 'padding' ? '2px' : ''}; ${name}: ${value}`;
+          out.push(`${name}: ${value} -> ${a.cssText} | ${b.cssText}`);
+        }
+      for (const value of ['10dvh', '1px 10dvh', 'center 10vmin'])
+        out.push(`background-position ${value}: ${attempt(w, 'background-position', value)}`);
+      for (const value of ['linear-gradient(red, blue)', 'red radial-gradient(red, blue)'])
+        out.push(`background ${value}: ${attempt(w, 'background', value)}`);
+      out.push(`background-image: ${attempt(w, 'background-image', 'linear-gradient(red, blue)')}`);
+      out.push(`flex: ${attempt(w, 'flex', '1 1 10dvh')} ${attempt(w, 'flex', 'max-content')}`);
+      out.push(`border: ${attempt(w, 'border', '10dvh solid red')}`);
+      // Not read with cssstyle's length parser: kept as written.
+      out.push(`min-width: ${attempt(w, 'min-width', '10dvh')} ${attempt(w, 'max-height', 'fit-content')}`);
+      return out;
+    },
+    { jsdom },
+  );
+}
+// jsdom 25 (cssstyle 4.1) rejects a gradient in any case (#261 review).
+parity(
+  'jsdom 25: gradients in mixed case',
+  (w) =>
+    ['background', 'background-image'].flatMap((name) =>
+      [
+        'LINEAR-GRADIENT(red, blue)',
+        'Linear-Gradient(red, blue)',
+        'RADIAL-GRADIENT(red, blue)',
+        'Repeating-Linear-Gradient(red, blue)',
+        'CONIC-GRADIENT(red, blue)',
+        '-WEBKIT-LINEAR-GRADIENT(red, blue)',
+        'url(a.png), LINEAR-GRADIENT(red, blue)',
+        'red LINEAR-GRADIENT(red, blue)',
+        'url(a.png)',
+      ].map((value) => {
+        const b = w.document.createElement('div');
+        b.style.cssText = `${name}: red; ${name}: ${value}`;
+        return `${name}: ${value} -> ${attempt(w, name, value)} | ${b.style.cssText}`;
+      }),
+    ),
+  { jsdom: 25 },
+);
+function attempt(w, name, value) {
+  const s = w.document.createElement('div').style;
+  s.setProperty(name, value);
+  return s.cssText;
+}
+
+// cssstyle 4.2 and 4.3, not installed with a jsdom alias here: measured on
+// their own (black box, #239). 4.2 reads the newer units in lowercase
+// only; fit-content waits for 4.4, gradients for 4.3.
+test('lengths and sizing keywords with cssstyle 4.2 and 4.3 (#239)', () => {
+  const css = (cssstyle, name, value) => {
+    const s = createWindow({ jsdom: '26.1.0', cssstyle }).document.createElement('div').style;
+    s.cssText = `${name}: 1px; ${name}: ${value}`;
+    return s.cssText;
+  };
+  for (const cssstyle of ['4.2.0', '4.3.0']) {
+    assert.equal(css(cssstyle, 'height', '100dvh'), 'height: 100dvh;');
+    assert.equal(css(cssstyle, 'width', '1cap'), 'width: 1cap;');
+    assert.equal(css(cssstyle, 'width', '10DVH'), '');
+    assert.equal(css(cssstyle, 'width', '10cqw'), '');
+    assert.equal(css(cssstyle, 'width', 'fit-content'), '');
+    assert.equal(css(cssstyle, 'margin', '1px 10dvh'), 'margin: 1px 10dvh;');
+    // An exponent with a leading zero is not a number there (#261 review).
+    assert.equal(css(cssstyle, 'width', '1e01px'), '');
+    assert.equal(css(cssstyle, 'width', '1e-01px'), '');
+    assert.equal(css(cssstyle, 'margin', '1px 1e01px'), '');
+    assert.equal(css(cssstyle, 'width', '1e1px'), 'width: 1e1px;');
+    assert.equal(css(cssstyle, 'font', '1e01px serif'), 'font: serif;');
+    assert.equal(css(cssstyle, 'font', 'bold 1e-01px serif'), 'font: serif bold;');
+    assert.equal(css(cssstyle, 'font', '1e1px serif'), 'font: serif 1e1px 1e1px;');
+    // A number without a unit: an exponent in flex only, and no leading
+    // zero (#261 review).
+    assert.equal(css(cssstyle, 'flex', '1 1e-1 10px'), 'flex: 1 0.1 10px;');
+    const flex = (value) => {
+      const s = createWindow({ jsdom: '26.1.0', cssstyle }).document.createElement('div').style;
+      s.cssText = `flex: 1; flex: ${value}`;
+      return s.flexGrow;
+    };
+    assert.equal(flex('1e1'), '10');
+    assert.equal(flex('1.5e1 2'), '15');
+    assert.equal(flex('0e1 1 0'), '0');
+    assert.equal(flex('1e01'), '');
+    assert.equal(flex('01'), '');
+    assert.equal(flex('1 01'), '');
+    assert.equal(css(cssstyle, 'width', '00'), '');
+    assert.equal(css(cssstyle, 'width', '0e1'), '');
+    assert.equal(css(cssstyle, 'margin', '0 00'), '');
+  }
+  assert.equal(css('4.3.0', 'background', 'linear-gradient(red, blue)'), 'background: linear-gradient(red, blue);');
+  assert.equal(css('4.4.0', 'width', 'fit-content'), 'width: fit-content;');
+  assert.equal(css('4.4.0', 'flex-basis', 'fit-content'), '');
+});
+
+// A long whitespace run in a declaration's value is read in linear time
+// (#224: the !important check took 191 ms on 20,000 spaces, about 1.2 s
+// on 50,000).
+test('declarations: a long whitespace run before the end is read quickly', () => {
+  const spaces = ' \t'.repeat(25000);
+  for (const jsdom of ['20.0.3', '26.1.0', undefined]) {
+    const w = createWindow(jsdom ? { jsdom } : {});
+    const cases = [
+      [`color: red${spaces}x`, ''],
+      [`color: red${spaces}!${spaces}important`, 'color: red !important;'],
+      [`color: red${spaces}!${spaces}importantx`, ''],
+    ];
+    for (const [text, expected] of cases) {
+      const e = w.document.createElement('div');
+      const start = performance.now();
+      e.style.cssText = text;
+      e.setAttribute('style', text);
+      w.document.head.innerHTML = `<style>.a{${text}}</style>`;
+      w.getComputedStyle(w.document.body).color;
+      const elapsed = performance.now() - start;
+      assert.equal(e.style.cssText, expected);
+      assert.ok(elapsed < 200, `${jsdom ?? 'latest'} ${JSON.stringify(text.slice(-12))}: ${elapsed} ms`);
+    }
+  }
+});
+
+// Legacy display keywords (#257, found in the 1.0 triage): jsdom 27 and
+// later keep css-tree's non-standard ones (-webkit-box, the line-clamp
+// idiom), lowercased, and drop others (-ms-flexbox, -webkit-grid); jsdom
+// 20 to 26 keep any display value as written. Inline, in a style sheet
+// and computed.
+const LEGACY_DISPLAYS = [
+  '-webkit-box',
+  '-webkit-inline-box',
+  '-webkit-flex',
+  '-webkit-inline-flex',
+  '-moz-box',
+  '-moz-inline-box',
+  '-moz-inline-stack',
+  '-ms-flexbox',
+  '-ms-inline-flexbox',
+  '-ms-grid',
+  '-ms-inline-grid',
+  '-webkit-grid',
+  '-webkit-inline-grid',
+  '-moz-flex',
+  '-webkit-flexbox',
+  '-WEBKIT-BOX',
+  '-Webkit-Flex',
+];
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30]) {
+  parity(
+    `jsdom ${jsdom}: legacy display keywords (#257)`,
+    (w) => {
+      const d = w.document;
+      return LEGACY_DISPLAYS.map((value) => {
+        const a = d.createElement('div');
+        a.style.display = value;
+        const b = d.createElement('div');
+        b.style.cssText = `display: flex; display: ${value}`;
+        const c = d.createElement('div');
+        c.setAttribute('style', `display: ${value} !important`);
+        d.head.innerHTML = `<style>.a{display: ${value}; -webkit-line-clamp: 2}</style>`;
+        d.body.innerHTML = '<div class="a"></div>';
+        const rule = d.styleSheets[0].cssRules[0].style.display;
+        return `${value} -> ${a.style.display} | ${b.style.display} | ${c.style.cssText} | ${rule} | ${w.getComputedStyle(d.body.firstChild).display}`;
+      });
+    },
+    { jsdom },
+  );
+}

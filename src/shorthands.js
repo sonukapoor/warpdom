@@ -200,8 +200,9 @@ export function serializeFont(value) {
 // font-variant, font-weight, line-height: 20px Arial is "Arial 20px 20px"
 // (20px is a size and a line height), and a family list keeps its last
 // word (Segoe UI Emoji gives "Emoji"). Variant 'cssstyle4.2' (4.2.0 to
-// 4.3.1) reads numbers with exponents, more length units and turn, and
-// does not take var() as a family.
+// 4.3.1) reads numbers with exponents (no leading zero there either:
+// 1e01px is not a length), more length units and turn, and does not take
+// var() as a family.
 const LEGACY_FONT_ORDER = ['font-family', 'font-size', 'font-style', 'font-variant', 'font-weight', 'line-height'];
 export const LEGACY_FONT_LONGHANDS = new Set(LEGACY_FONT_ORDER);
 const LEGACY_FONT_SIZES = new Set([
@@ -258,8 +259,8 @@ const LEGACY_NUMBERS = {
   },
   'cssstyle4.2': {
     integer: /^[-+]?(0|[1-9]\d*)$/,
-    number: /^[-+]?((0|[1-9]\d*)(\.\d*)?|\.\d+)(e-?\d+)?$/,
-    body: '[-+]?((0|[1-9]\\d*)(\\.\\d*)?|\\.\\d+)(e-?\\d+)?',
+    number: /^[-+]?((0|[1-9]\d*)(\.\d*)?|\.\d+)(e-?(0|[1-9]\d*))?$/,
+    body: '[-+]?((0|[1-9]\\d*)(\\.\\d*)?|\\.\\d+)(e-?(0|[1-9]\\d*))?',
     units: 'px|em|rem|ch|ex|pt|pc|in|cm|mm|q|[sld]?(vw|vh|vi|vb|vmin|vmax)|lh|rlh|cap|rcap|ic|ric|rex|rch',
     angles: 'deg|grad|rad|turn',
   },

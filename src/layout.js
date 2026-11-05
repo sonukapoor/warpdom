@@ -259,10 +259,26 @@ const UA_WHITE_SPACE = new Map([
 const isHTML = (el) => el[S].ns === HTML_NS;
 const isElement = (n) => n[S].type === ELEMENT_NODE;
 
+// Legacy display keywords laid out as browsers do (#257): the old
+// flexbox ones as flex, -ms-grid as grid, -moz-inline-stack as inline-block.
+const LEGACY_DISPLAY = new Map([
+  ['-webkit-box', 'flex'],
+  ['-webkit-flex', 'flex'],
+  ['-moz-box', 'flex'],
+  ['-ms-flexbox', 'flex'],
+  ['-webkit-inline-box', 'inline-flex'],
+  ['-webkit-inline-flex', 'inline-flex'],
+  ['-moz-inline-box', 'inline-flex'],
+  ['-ms-inline-flexbox', 'inline-flex'],
+  ['-ms-grid', 'grid'],
+  ['-ms-inline-grid', 'inline-grid'],
+  ['-moz-inline-stack', 'inline-block'],
+]);
+
 function display(el) {
   const d = computedValue(el, 'display');
   if (d === '' || d === undefined) return 'inline';
-  return d;
+  return d.charCodeAt(0) === 45 ? (LEGACY_DISPLAY.get(d.toLowerCase()) ?? d) : d;
 }
 
 // The flat-tree parent: through a shadow root to its host.

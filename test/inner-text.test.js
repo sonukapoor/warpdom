@@ -124,3 +124,24 @@ test('the outerText setter replaces the element and merges adjacent text', () =>
     { name: 'NoModificationAllowedError' },
   );
 });
+
+// Legacy display keywords are laid out as browsers do (#257): the old
+// flexbox ones as flex (their children blockified), -moz-inline-stack as
+// inline-block.
+test('innerText: legacy display keywords', () => {
+  const as = (legacy, modern) => {
+    for (const markup of [
+      '<div style="display: D"><span>a</span><span>b</span></div>',
+      '<div>x<span style="display: D"><span>a</span><span>b</span></span>y</div>',
+    ])
+      assert.equal(text(markup.replace('D', legacy)), text(markup.replace('D', modern)), legacy);
+  };
+  for (const d of ['-webkit-box', '-webkit-flex', '-moz-box', '-WEBKIT-BOX']) as(d, 'flex');
+  for (const d of ['-webkit-inline-box', '-webkit-inline-flex', '-moz-inline-box', '-ms-inline-flexbox'])
+    as(d, 'inline-flex');
+  as('-ms-grid', 'grid');
+  as('-moz-inline-stack', 'inline-block');
+  // Spaces at the box's edges: kept inline (x a y), not in an inline-block.
+  assert.equal(text('<div>x<span style="display: -moz-inline-stack"> a </span>y</div>'), 'xay');
+  assert.equal(text('<div style="display: -webkit-box"><span>a</span><span>b</span></div>'), 'a\nb');
+});

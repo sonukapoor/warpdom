@@ -960,6 +960,7 @@ function versionedValue(name, value, mode, surface) {
     const withVar = mode === 'jsdom26' ? hasVarFunction(value) : value.includes('var(');
     const kind = CSS_WIDE_KEYWORD.test(value) ? lower : lower === 'auto' ? 'auto' : withVar ? 'var' : null;
     if (kind !== null && droppedBy(mode, kind, name)) return INVALID;
+    if (kind === null && legacyMeasureRejects(name, value, surface)) return INVALID;
     // background-image's url()s as cssstyle reads them, the rest by its
     // grammar; with var() the value is kept as written (jsdom 26), but
     // not with var( in a string or another name (url("notvar(x).png"),
@@ -1004,6 +1005,102 @@ function versionedValue(name, value, mode, surface) {
           ? '0px'
           : value;
   return undefined;
+}
+
+// Lengths, sizing keywords and gradients cssstyle rejects before 4.4
+// (black box: cssstyle 2.3.0 to 4.6.0 measured on their own, #239; jsdom
+// 20.0.3, 21.1.2, 22.1.0 and 25.0.1 with the cssstyle each installs). The
+// properties it reads with its length parser take, at the top level, before
+// 4.2 the units BG_LENGTH_3 reads (10dvh, 10vmin, 1lh, 10PX are invalid),
+// in 4.2 and 4.3 those of BG_LENGTH_4 in lowercase; min-content,
+// max-content and fit-content only from 4.4, and in flex-basis and flex
+// never fit-content. Gradients in background and background-image from
+// 4.3 (4.2 also rejects them, not modeled: it is read as 4.3 there);
+// before 4.2 a gradient in any case (LINEAR-GRADIENT too).
+// Other properties (min-width, line-height, border-spacing, font) keep
+// such values as written.
+const LEGACY_MEASURED = new Set([
+  'width',
+  'height',
+  'flex-basis',
+  'flex',
+  'top',
+  'right',
+  'bottom',
+  'left',
+  'font-size',
+  'margin',
+  'margin-top',
+  'margin-right',
+  'margin-bottom',
+  'margin-left',
+  'padding',
+  'padding-top',
+  'padding-right',
+  'padding-bottom',
+  'padding-left',
+  'border-width',
+  'border-top-width',
+  'border-right-width',
+  'border-bottom-width',
+  'border-left-width',
+  'border',
+  'border-top',
+  'border-right',
+  'border-bottom',
+  'border-left',
+  'background-position',
+]);
+const SIZING_KEYWORDS = new Set(['min-content', 'max-content', 'fit-content']);
+const SIZED = new Set(['width', 'height', 'flex-basis', 'flex']);
+// A top-level token that is not a number, length or percentage (it does
+// not start with a digit, or a . or sign before one), or one cssstyle
+// reads: before 4.2 px, cm, mm, in, pt, pc, em, ex, ch, rem, vh and vw
+// (BG_LENGTH_3) and %, in 4.2 and 4.3 its lengthRegEx's lowercase units,
+// an exponent and no leading zero (in the exponent neither: 1e01px is
+// invalid there, 1e1px valid); without a unit, an exponent only in flex
+// (its grow and shrink: flex: 1e1 and flex: 1 1e-1 10px are valid there,
+// flex: 01, flex: 1e01 and width: 0e1 not). A value of such tokens, read
+// in one linear pass (each token's first character picks one branch).
+const OTHER_TOKEN = String.raw`(?:[^\s\d.+-]|[+-](?![.\d])|\.(?!\d))\S*`;
+const NUMBER_4_1 = String.raw`[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:px|cm|mm|in|pt|pc|em|ex|ch|rem|vh|vw|%)?`;
+const MANTISSA_4_2 = String.raw`[+-]?(?:(?:0|[1-9]\d*)(?:\.\d*)?|\.\d+)`;
+const EXPONENT_4_2 = String.raw`e-?(?:0|[1-9]\d*)`;
+const UNIT_4_2 = String.raw`(?:%|[cm]m|[dls]?v(?:[bhiw]|max|min)|in|p[ctx]|q|r?(?:[cl]h|cap|e[mx]|ic))`;
+const NUMBER_4_2 = `${MANTISSA_4_2}(?:(?:${EXPONENT_4_2})?${UNIT_4_2})?`;
+const FLEX_NUMBER_4_2 = `${MANTISSA_4_2}(?:${EXPONENT_4_2})?${UNIT_4_2}?`;
+const tokensOf = (token) => new RegExp(String.raw`^\s*(?:${token})(?:\s+(?:${token}))*\s*$`);
+const VALUE_4_1 = tokensOf(`${OTHER_TOKEN}|${NUMBER_4_1}(?!\\S)`);
+const VALUE_4_2 = tokensOf(`${OTHER_TOKEN}|${NUMBER_4_2}(?!\\S)`);
+const FLEX_VALUE_4_2 = tokensOf(`${OTHER_TOKEN}|${FLEX_NUMBER_4_2}(?!\\S)`);
+const TOKEN_4_1 = new RegExp(`^(?:${OTHER_TOKEN}|${NUMBER_4_1})$`);
+const TOKEN_4_2 = new RegExp(`^(?:${OTHER_TOKEN}|${NUMBER_4_2})$`);
+const FLEX_TOKEN_4_2 = new RegExp(`^(?:${OTHER_TOKEN}|${FLEX_NUMBER_4_2})$`);
+const LEGACY_GRADIENT = /(?:^|[\s,])(?:-webkit-)?(?:repeating-)?(?:linear|radial|conic)-gradient\(/i;
+function legacyMeasureRejects(name, value, surface) {
+  const era = surface?.legacyFont; // 'cssstyle4.1' before 4.2, 'cssstyle4.2' before 4.4
+  if (name === 'background' || name === 'background-image') return era === 'cssstyle4.1' && LEGACY_GRADIENT.test(value);
+  if (!LEGACY_MEASURED.has(name)) return false;
+  const sized = SIZED.has(name) && /content/i.test(value);
+  if (era === undefined && !sized) return false;
+  const functions = value.includes('(');
+  let whole = VALUE_4_2;
+  let single = TOKEN_4_2;
+  if (era === 'cssstyle4.1') [whole, single] = [VALUE_4_1, TOKEN_4_1];
+  else if (name === 'flex') [whole, single] = [FLEX_VALUE_4_2, FLEX_TOKEN_4_2];
+  if (!sized && !functions) return !whole.test(value);
+  // Top-level tokens (functions are left to the grammar).
+  const tokens = functions ? segments(value, /\s/).filter((t, i) => i % 2 === 0) : value.split(/\s+/);
+  for (const token of tokens) {
+    if (token === '' || token.includes('(')) continue;
+    if (sized && token.length === 11) {
+      const lower = token.toLowerCase();
+      if (SIZING_KEYWORDS.has(lower) && (era !== undefined || (lower === 'fit-content' && name.startsWith('flex'))))
+        return true;
+    }
+    if (era !== undefined && !single.test(token)) return true;
+  }
+  return false;
 }
 
 // Values cssstyle drops for some properties it knows (black box): CSS-wide
@@ -1272,7 +1369,7 @@ function backgroundValue(value, mode, surface) {
     const lower = token.toLowerCase();
     const gradient = BG_GRADIENT.test(token);
     if (lower === 'none' || token.startsWith('url(') || (!legacy && /^url\(/i.test(token)) || gradient) {
-      // Gradients from cssstyle 4 (jsdom 23.1 and later; measured: 4.3.0).
+      // Gradients from cssstyle 4.3 (legacyMeasureRejects for 4.0 and 4.1).
       if (gradient && (mode === 'jsdom20' || mode === 'jsdom22')) return INVALID;
       if (lower === 'none' && token !== 'none' && !legacy) return undefined;
       // cssstyle rejects a malformed url() (url("a.png), url(a.png)junk) and
@@ -1464,7 +1561,9 @@ const SHORT = {
 };
 function displayShortForm(value) {
   const keywords = value.toLowerCase().split(/\s+/);
-  if (keywords.length < 2) return value;
+  // A legacy keyword (-webkit-box) in lowercase (jsdom 27 and later, #257);
+  // the standard ones keep their case.
+  if (keywords.length < 2) return value.charCodeAt(0) === 45 ? keywords[0] : value;
   let outer = null,
     inner = null,
     listItem = false;
@@ -1645,6 +1744,25 @@ function hasVar(value) {
   }
   return false;
 }
+// Where a value's trailing !important starts, with the whitespace before
+// it (as /\s*!\s*important\s*$/i finds it), or -1. Read from the end, in
+// linear time: the regular expression took quadratic time on a long run of
+// whitespace (5,000 spaces 15 ms, 20,000 spaces 191 ms; #224).
+const IMPORTANT = /^important$/i;
+const SPACE = /\s/;
+const isSpace = (c) => c === 32 || (c >= 9 && c <= 13) || (c > 127 && SPACE.test(String.fromCharCode(c)));
+function priorityStart(value) {
+  let i = value.length;
+  while (i > 0 && isSpace(value.charCodeAt(i - 1))) i--;
+  // (most values end in another letter than t)
+  if (i < 10 || (value.charCodeAt(i - 1) | 32) !== 116 || !IMPORTANT.test(value.slice(i - 9, i))) return -1;
+  i -= 9;
+  while (i > 0 && isSpace(value.charCodeAt(i - 1))) i--;
+  if (value.charCodeAt(i - 1) !== 33) return -1;
+  i--;
+  while (i > 0 && isSpace(value.charCodeAt(i - 1))) i--;
+  return i;
+}
 // A priority token left over outside quotes, functions and [] {} blocks,
 // not escaped (color: var(--c)
 // !important !important, var(--c) !, var(--c) !important !foo): jsdom 27
@@ -1711,6 +1829,18 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   // with the value ;color: red).
   const runsOn = isLegacyMode(mode);
   if (runsOn && !inRule && context !== 'written' && unclosedLegacy(String(text ?? ''))) return;
+  // jsdom 20 to 26 (cssstyle 2.3 to 4.6, black box, #239 and the #261
+  // review): a style attribute or an element's cssText is read as cssom
+  // reads a block first, a name given again as written (after trimming)
+  // replacing the earlier value in its place, and then set declaration by
+  // declaration, one cssstyle rejects setting nothing. So a later invalid
+  // value takes the earlier one's place (height: 100vh; height: 100dvh
+  // declares nothing with cssstyle before 4.2), one in another case does
+  // not (color: blue; Color: red; color: foo is color: red), and color:
+  // foo; width: 1px; color: blue is in that order. A name left without a
+  // value at the end leaves the block empty (color: blue; width: 1px;
+  // color:).
+  const clears = runsOn && !inRule && context !== 'written';
   let carried = null;
   let named = 0;
   let unnamed = false;
@@ -1718,19 +1848,26 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   const names = counting ? [] : null;
   const source = String(text ?? '');
   const lineBreaks = !runsOn && cssSplitNeeded(source);
-  for (let part of lineBreaks ? splitDeclarations(source) : splitOutside(source, ';')) {
+  const parts = lineBreaks ? splitDeclarations(source) : splitOutside(source, ';');
+  // (clears: a name given again is found before anything is set, as
+  // setting one has effects beyond the block, a url() met: the block is
+  // then read as coalescedLegacy gives it)
+  const list = clears && coalesces(parts) ? coalescedLegacy(parts) : parts;
+  for (let index = 0; index < list.length; index++) {
+    let part = list[index];
+    const scanned = scanOf === list;
     if (carried !== null) {
       part = `${carried};${part}`;
       carried = null;
     }
-    const colon = part.indexOf(':');
+    const colon = scanned ? scanColons[index] : part.indexOf(':');
     if (colon < 0) {
       if (counting && part.trim() !== '') unnamed = true;
       if (runsOn) carried = part;
       continue;
     }
     named++;
-    const rawName = part.slice(0, colon).trim();
+    const rawName = scanned ? part.slice(scanStarts[index], scanEnds[index]) : part.slice(0, colon).trim();
     const name = propertyName(rawName);
     let value = part.slice(colon + 1).trim();
     if (counting) {
@@ -1747,10 +1884,10 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       continue;
     }
     let important = false;
-    const bang = value.match(/\s*!\s*important\s*$/i);
-    if (bang) {
+    const bang = priorityStart(value);
+    if (bang !== -1) {
       important = true;
-      value = value.slice(0, bang.index).trim();
+      value = value.slice(0, bang).trim();
       // (from jsdom 27, an !important one keeps later ones out here, not
       // in cssom's cascade: margin: 1px !important; margin-left: 2px)
       if (counting) prioritized = true;
@@ -1765,11 +1902,13 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       // A CSS-wide keyword on border or a side leaves the block empty.
       if (CSS_WIDE_KEYWORD.test(value)) {
         decls.clear();
+        releaseScan(list);
         return;
       }
       if (hasVar(value)) {
         if (name !== 'border') continue;
         decls.clear();
+        releaseScan(list);
         return;
       }
     }
@@ -1821,7 +1960,91 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
         : { value: declared, important: false, masked: true },
     );
   }
+  releaseScan(list);
+  if (clears && carried !== null && carried.includes(':')) decls.clear();
   if (counting) decls.plain = !unnamed && (named === decls.size || (!prioritized && plainNames(names)));
+}
+
+// Whether a legacy style attribute's or cssText's parts (parseInto's
+// clears) are to be read as coalescedLegacy gives them, found before
+// anything is set: a name given twice (trimmed, as written), a part
+// without a value (carried on into the next) or more than 16 parts
+// (coalescedLegacy gives parts with no name twice as they are). Without
+// slicing: the colons and the names' bounds are kept for parseInto
+// (scanOf: the parts they are for).
+let scanOf = null;
+// (dropped once parseInto is done, so that a long text is not kept: #261
+// review)
+const releaseScan = (parts) => {
+  if (scanOf === parts) scanOf = null;
+};
+const scanColons = new Int32Array(16);
+const scanStarts = new Int32Array(16);
+const scanEnds = new Int32Array(16);
+const isSpaceCode = (c) => c === 32 || (c >= 9 && c <= 13) || (c > 127 && /\s/.test(String.fromCharCode(c)));
+function coalesces(parts) {
+  const count = parts.length;
+  scanOf = null;
+  if (count > 16) return true;
+  for (let i = 0; i < count; i++) {
+    const part = parts[i];
+    const colon = part.indexOf(':');
+    scanColons[i] = colon;
+    if (colon < 0) {
+      // (a last part with nothing in it: after a closing semicolon)
+      if (i !== count - 1 || part.trim() !== '') return true;
+      break;
+    }
+    let v = colon + 1;
+    while (v < part.length && (part.charCodeAt(v) === 59 || isSpaceCode(part.charCodeAt(v)))) v++;
+    if (v === part.length) return true;
+    let start = 0;
+    let end = colon;
+    while (start < end && isSpaceCode(part.charCodeAt(start))) start++;
+    while (end > start && isSpaceCode(part.charCodeAt(end - 1))) end--;
+    for (let j = 0; j < i; j++) {
+      const at = scanStarts[j];
+      if (scanEnds[j] - at !== end - start) continue;
+      const other = parts[j];
+      let k = 0;
+      while (k < end - start && other.charCodeAt(at + k) === part.charCodeAt(start + k)) k++;
+      if (k === end - start) return true;
+    }
+    scanStarts[i] = start;
+    scanEnds[i] = end;
+  }
+  scanOf = parts;
+  return false;
+}
+
+// A legacy style attribute's or cssText's declarations as cssom keeps them
+// (parseInto's clears): an empty declaration runs on into the next one
+// (as parseInto reads it), and a name given again as written replaces the
+// earlier one's value in its place.
+function coalescedLegacy(parts) {
+  const out = [];
+  const at = new Map();
+  let carried = null;
+  for (let part of parts) {
+    if (carried !== null) {
+      part = `${carried};${part}`;
+      carried = null;
+    }
+    const colon = part.indexOf(':');
+    const value = colon < 0 ? '' : part.slice(colon + 1).trim();
+    if (value === '' || (value[0] === ';' && /^[\s;]*$/.test(value))) {
+      carried = part;
+      continue;
+    }
+    const rawName = part.slice(0, colon).trim();
+    const i = at.get(rawName);
+    if (i === undefined) {
+      at.set(rawName, out.length);
+      out.push(part);
+    } else out[i] = part;
+  }
+  if (carried !== null) out.push(carried);
+  return out;
 }
 
 // Whether the names of a rule's declarations, some of them dropped, are
