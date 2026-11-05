@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 # merge-gate.sh <owner/repo> <PR number>
 # Prints NO: lines for anything that blocks a merge, CHECK: lines for things
-# to read by hand, and one OK: line when nothing blocks.
-# Gate: the pull request targets the default branch, Copilot and CodeRabbit
-# have reviewed the head, no unresolved review threads, every bot thread
-# has a reply from us, all checks pass.
+# to read by hand, and one OK: line when nothing blocks. Exits 0 when it
+# could read everything (OK or NO), 1 when a GitHub read failed (nothing
+# is known then: treat it as NO), 2 on wrong arguments.
+# Gate: the pull request is open, not a draft, targets the default branch
+# and GitHub does not report it blocked or conflicting; Copilot and
+# CodeRabbit have reviewed the head; no review thread is unresolved; every
+# bot thread has a reply from us; every check passes or is skipped; the
+# head did not change while the gate ran.
 set -u
 if [ $# -ne 2 ]; then
   echo "usage: $0 <owner/repo> <PR number>" >&2
@@ -12,56 +16,115 @@ if [ $# -ne 2 ]; then
 fi
 repo=$1 n=$2
 owner=${repo%%/*} name=${repo##*/}
-me=$(gh api user --jq .login)
-head=$(gh pr view "$n" -R "$repo" --json headRefOid --jq .headRefOid)
-short=${head:0:7}
+# Review authors as the REST API names them (exact match, bots only).
+COPILOT='copilot-pull-request-reviewer[bot]'
+CODERABBIT='coderabbitai[bot]'
 fail=0
 no() { echo "NO: $*"; fail=1; }
+# A mandatory read that fails leaves nothing to judge: stop, never OK.
+die() {
+  echo "ERROR: $* (could not read it from GitHub; not mergeable as far as this gate knows)" >&2
+  exit 1
+}
+
+me=$(gh api user --jq .login) || die "the signed-in user"
+pr=$(gh pr view "$n" -R "$repo" --json headRefOid,baseRefName,state,isDraft,mergeable,mergeStateStatus) || die "pull request $n"
+field() { printf '%s' "$pr" | jq -r "$1"; }
+head=$(field .headRefOid)
+short=${head:0:7}
+
+[ "$(field .state)" = OPEN ] || no "the pull request is $(field .state)"
+[ "$(field .isDraft)" = true ] && no "the pull request is a draft"
 
 # A pull request stacked on another one's branch merges into that branch,
 # not the default branch; once that one has merged, nothing reaches main
-# (#267 went into fix/declaration-parsing-1-0 after #261 had merged). Retarget
-# it first: gh pr edit N --base <default branch>.
-base=$(gh pr view "$n" -R "$repo" --json baseRefName --jq .baseRefName)
-default=$(gh repo view "$repo" --json defaultBranchRef --jq .defaultBranchRef.name)
+# (#267 went into fix/declaration-parsing-1-0 after #261 had merged).
+base=$(field .baseRefName)
+default=$(gh repo view "$repo" --json defaultBranchRef --jq .defaultBranchRef.name) || die "the default branch"
 if [ "$base" != "$default" ]; then
   parent=$(gh pr list -R "$repo" --state all --head "$base" --json number,state --jq '.[0]|"#\(.number) \(.state)"' 2>/dev/null)
   no "targets $base, not $default${parent:+ (the branch of $parent)}; retarget with gh pr edit $n -R $repo --base $default"
 fi
 
-# A conflict with the base blocks too (GitHub computes it lazily: UNKNOWN
-# right after a push is not a conflict).
-mergeable=$(gh pr view "$n" -R "$repo" --json mergeable --jq .mergeable)
-[ "$mergeable" = CONFLICTING ] && no "conflicts with its base branch"
+# GitHub computes these lazily: UNKNOWN right after a push is not a
+# conflict. BLOCKED: branch protection (required reviews or checks).
+if [ "$(field .state)" = OPEN ]; then
+  [ "$(field .mergeable)" = CONFLICTING ] && no "conflicts with its base branch"
+  case "$(field .mergeStateStatus)" in
+    BLOCKED) no "GitHub reports the merge blocked (branch protection)" ;;
+    UNKNOWN) echo "CHECK: GitHub has not computed the merge state yet; run again" ;;
+  esac
+fi
 
-reviews=$(gh api "repos/$repo/pulls/$n/reviews" --paginate --jq '.[]|"\(.user.login)\t\(.commit_id)\t\(.body|length)\t\(.body|test("previously missed|Outside diff range|Nitpick";"i"))"')
-for bot in copilot-pull-request-reviewer coderabbitai; do
-  line=$(printf '%s\n' "$reviews" | awk -F'\t' -v b="$bot" -v h="$head" 'index($1,b)==1 && $2==h' | tail -1)
-  if [ -z "$line" ]; then
-    if [ "$bot" = coderabbitai ]; then
-      st=$(gh api "repos/$repo/commits/$head/status" --jq '.statuses[]|select(.context|test("CodeRabbit"))|.state' 2>/dev/null | head -1)
-      # CodeRabbit may report as a check run instead of a commit status.
-      [ -z "$st" ] && st=$(gh pr checks "$n" -R "$repo" --json name,bucket --jq '.[]|select(.name=="CodeRabbit")|if .bucket=="pass" then "success" else .bucket end' 2>/dev/null | head -1)
-      if [ "$st" = success ]; then echo "CHECK: no CodeRabbit review on $short but its status is success (summary covers it)"
-      else no "CodeRabbit status on $short is ${st:-none}"; fi
-    else
-      no "no Copilot review on $short"
-    fi
+# Reviews on the head: every body of each bot's, not only its last one.
+reviews=$(gh api "repos/$repo/pulls/$n/reviews" --paginate \
+  --jq '.[]|[.user.login, .commit_id, (.body|test("previously missed|Outside diff range|Nitpick";"i")|tostring)]|@tsv') || die "the reviews"
+for bot in "$COPILOT" "$CODERABBIT"; do
+  on_head=$(printf '%s\n' "$reviews" | awk -F'\t' -v b="$bot" -v h="$head" '$1==b && $2==h')
+  if [ -n "$on_head" ]; then
+    printf '%s\n' "$on_head" | awk -F'\t' '$3=="true"' | grep -q . \
+      && echo "CHECK: read ${bot}'s review bodies on $short (nitpicks / outside diff / previously missed)"
+    continue
+  fi
+  if [ "$bot" = "$COPILOT" ]; then
+    no "no Copilot review on $short"
+    continue
+  fi
+  # No CodeRabbit review on the head: its check run says why. Success with
+  # nothing to say passes (its summary covers it); a skip, a rate limit or
+  # anything else blocks.
+  run=$(gh api "repos/$repo/commits/$head/check-runs" --paginate \
+    --jq '.check_runs[]|select(.name=="CodeRabbit")|[.status, (.conclusion // ""), (.output.title // "")]|@tsv' | head -1) \
+    || die "CodeRabbit's check run"
+  if [ -z "$run" ]; then
+    run=$(gh api "repos/$repo/commits/$head/status" \
+      --jq '.statuses[]|select(.context|test("CodeRabbit"))|["completed", .state, (.description // "")]|@tsv' | head -1) \
+      || die "CodeRabbit's commit status"
+  fi
+  IFS=$'\t' read -r status conclusion title <<<"$run"
+  if [ "$status" = completed ] && [ "$conclusion" = success ] && ! printf '%s' "$title" | grep -qiE 'skip|limit'; then
+    echo "CHECK: no CodeRabbit review on $short but its check is success (${title:-no title}); its summary covers it"
   else
-    flag=$(printf '%s' "$line" | cut -f4)
-    [ "$flag" = true ] && echo "CHECK: read ${bot}'s review body on $short (nitpicks / outside diff / previously missed)"
+    no "no CodeRabbit review on $short (check: ${status:-none} ${conclusion:-} ${title:-}); ask with a '@coderabbitai review' comment"
   fi
 done
 
-threads=$(gh api graphql -f query="query{repository(owner:\"$owner\",name:\"$name\"){pullRequest(number:$n){reviewThreads(first:100){nodes{isResolved comments(first:50){nodes{databaseId author{login}}}}}}}}" \
-  --jq '.data.repository.pullRequest.reviewThreads.nodes[]|"\(.isResolved)\t\(.comments.nodes[0].databaseId)\t\(.comments.nodes[0].author.login)\t\([.comments.nodes[].author.login]|join(","))"')
+# Every review thread and every comment in it, all pages (a thread with
+# more than 100 comments blocks: its replies cannot all be read here).
+threads=$(gh api graphql --paginate -F owner="$owner" -F name="$name" -F n="$n" -f query='
+  query($owner: String!, $name: String!, $n: Int!, $endCursor: String) {
+    repository(owner: $owner, name: $name) {
+      pullRequest(number: $n) {
+        reviewThreads(first: 100, after: $endCursor) {
+          pageInfo { hasNextPage endCursor }
+          nodes { isResolved comments(first: 100) { pageInfo { hasNextPage } nodes { databaseId author { login } } } }
+        }
+      }
+    }
+  }' --jq '.data.repository.pullRequest.reviewThreads.nodes[]
+    | [(.isResolved|tostring), (.comments.nodes[0].databaseId|tostring), (.comments.nodes[0].author.login // ""),
+       ([.comments.nodes[].author.login // ""]|join(",")), (.comments.pageInfo.hasNextPage|tostring)] | @tsv') \
+  || die "the review threads"
 unres=$(printf '%s\n' "$threads" | awk -F'\t' '$1=="false"' | grep -c . || true)
 [ "$unres" -gt 0 ] && no "$unres unresolved review threads"
-noreply=$(printf '%s\n' "$threads" | awk -F'\t' -v me="$me" '$3!="" && $3!=me && index(","$4",", ","me",")==0 {printf "%s ", $2}')
-[ -n "$noreply" ] && no "review threads without a reply from us: $noreply"
+long=$(printf '%s\n' "$threads" | awk -F'\t' '$5=="true" {printf "%s ", $2}')
+[ -n "$long" ] && no "threads with more than 100 comments, read them by hand: $long"
+# GraphQL names the bots without [bot]; a thread a bot opened needs a reply
+# from us.
+noreply=$(printf '%s\n' "$threads" | awk -F'\t' -v me="$me" \
+  '($3=="copilot-pull-request-reviewer" || $3=="coderabbitai") && index(","$4",", ","me",")==0 {printf "%s ", $2}')
+[ -n "$noreply" ] && no "bot review threads without a reply from us: $noreply"
 
-bad=$(gh pr checks "$n" -R "$repo" --json name,bucket --jq '.[]|select(.bucket!="pass" and .bucket!="skipping")|.name' 2>/dev/null)
+# gh pr checks exits nonzero for failing or pending checks too, so judge
+# by its output: none at all means the read failed.
+checks=$(gh pr checks "$n" -R "$repo" --json name,bucket --jq '.[]|[.name, .bucket]|@tsv' 2>/dev/null)
+[ -z "$checks" ] && die "the checks"
+bad=$(printf '%s\n' "$checks" | awk -F'\t' '$2!="pass" && $2!="skipping" {print $1}')
 [ -n "$bad" ] && no "$(printf '%s\n' "$bad" | grep -c .) checks not passing: $(printf '%s' "$bad" | tr '\n' ' ')"
+
+# A push while the gate ran: what it read may be about two heads.
+now=$(gh pr view "$n" -R "$repo" --json headRefOid --jq .headRefOid) || die "the head again"
+[ "$now" != "$head" ] && no "the head moved from $short to ${now:0:7} while the gate ran; run it again"
 
 [ $fail -eq 0 ] && echo "OK: $repo#$n $short may be merged (after reading any CHECK lines)"
 exit 0
