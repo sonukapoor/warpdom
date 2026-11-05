@@ -85,3 +85,42 @@ test('fastFrames: Vitest environmentOptions.warpdom.fastFrames', async () => {
     }
   }
 });
+
+// Teardown closes the window's frames for good, as Vitest's jsdom
+// environment closes jsdom's window (#249): a pending callback never runs
+// and a saved requestAnimationFrame schedules nothing (jsdom 30 returns 0,
+// 20 to 29 an id). The per-file reset in between does not close them.
+test('Vitest: teardown stops animation frames for good; the reset does not', async () => {
+  const { default: environment } = await import('../src/vitest.js');
+  const RESET = Symbol.for('warpdom.vitest.reset');
+  for (const [jsdom, id] of [
+    ['30.1.3', 0],
+    ['20.0.3', 3],
+  ]) {
+    for (const vm of [false, true]) {
+      const options = { warpdom: { jsdom } };
+      let global = {};
+      let result;
+      if (vm) {
+        result = await environment.setupVM(options);
+        global = result.getVmContext();
+      } else result = environment.setup(global, options);
+      const raf = global.requestAnimationFrame;
+      let ran = 0;
+      raf(() => ran++);
+      if (!vm) {
+        global[RESET]();
+        assert.equal(
+          await new Promise((resolve) => raf(() => resolve(++ran))),
+          1,
+          'the reset dropped the pending frame',
+        );
+      }
+      raf(() => ran++);
+      result.teardown();
+      const after = raf(() => ran++);
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      assert.deepEqual([after, ran], [id, vm ? 0 : 1], `jsdom ${jsdom}${vm ? ' VM' : ''}`);
+    }
+  }
+});

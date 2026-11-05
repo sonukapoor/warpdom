@@ -400,8 +400,8 @@ derived number: [docs/research/](docs/research/README.md)
 | happy-dom, for comparison | median 1.25-1.28x faster than jsdom, but changes results in 12 of 13 suites |
 | Fast mode, 16 Vitest suites | up to **9.6x** over jsdom (VueUse); median 1.54x over jsdom, 1.01x over the drop-in |
 | Version dependence (jsdom alone) | another jsdom version changes results in **13 of 23** projects |
-| Web Platform Tests | **75.4%** of subtests in 17 test-DOM areas (jsdom: 72.2%) |
-<!-- source: docs/research/data/ci-2026-10-13-208ad49-computed.md "Cross-suite medians of the drop-in speedup", "Tuning: warpdom speedup per run and between runs", "handsontable per package", threeway-heldout and threeway-apps reports; ci-2026-10-13-208ad49-RESULTS.md 7 (correctness inventory: 17 of 25 suites, 45 tests), 5 (versions: 13 of 23); ci-2026-10-14-5942dc9-RESULTS.md 2-3 (fast mode); wpt/ci-2026-10-13-208ad49/summary.md -->
+| Web Platform Tests | **75.7%** of subtests in 18 test-DOM areas (jsdom: 67.7%) |
+<!-- source: docs/research/data/ci-2026-10-13-208ad49-computed.md "Cross-suite medians of the drop-in speedup", "Tuning: warpdom speedup per run and between runs", "handsontable per package", threeway-heldout and threeway-apps reports; ci-2026-10-13-208ad49-RESULTS.md 7 (correctness inventory: 17 of 25 suites, 45 tests), 5 (versions: 13 of 23); ci-2026-10-14-5942dc9-RESULTS.md 2-3 (fast mode); wpt/ci-2026-11-02-53b40a7/summary.md (WPT row, run 41482079705) -->
 
 ### Drop-in speed and results
 
@@ -519,21 +519,20 @@ dom-testing-library 0 → 1.
 
 ### Web Platform Tests
 
-On the 17 WPT areas a test DOM is expected to cover (3,447 files; `dom`,
+On the 18 WPT areas a test DOM is expected to cover (3,825 files; `dom`,
 `domparsing`, `html/dom`, `html/semantics/forms` and `interactive-elements`,
 `css/cssom`, `css/cssom-view`, `url`, `encoding`, `encoding/streams`, `FileAPI`, `WebCryptoAPI`,
-`hr-time`, `user-timing`, the resize and intersection observers and
-`web-animations/interfaces`), warpdom passes 75.4% of subtests (jsdom 30.1.2:
-72.2%). It is ahead or level in every area but `html/semantics` (forms:
-70.6% vs 77.1%; issues #40-#51) and `domparsing` (341 vs 342 subtests,
-both 30.3%). Neither implements WebCrypto's `subtle`,
+`hr-time`, `user-timing`, the resize and intersection observers,
+`web-animations/interfaces` and `xhr`), warpdom passes 75.7% of 188,497
+subtests (jsdom 30.1.2: 67.7%). It is ahead or level in every area:
+`html/semantics` 3,972 vs 3,838 subtests, `domparsing` 449 vs 342.
+Neither implements WebCrypto's `subtle`,
 the observers or Web Animations (opt-in work, #5-#12), which keeps both totals
-low. warpdom was worked on against the first four areas (87.4% vs 80.5% there
+low; most `xhr` tests need WPT's server, which the runner does not have.
+warpdom was worked on against the first four areas (87.4% vs 80.5% there
 on 2026-10-13), so those are not an independent check. The runner is in
-[wpt/](wpt/); the workflow runs all 17 areas monthly at the newest WPT,
-and `xhr` (most of its tests need WPT's server, which the runner does not
-have).
-<!-- source: docs/research/data/wpt/ci-2026-10-19-9d1498b/summary.md (run 39189276229 at WPT HEAD, warpdom main 9d1498b: warpdom 140,797 of 186,857, 75.4%, score 34.1%; jsdom 127,119 of 176,171, 72.2%, score 32.0%). Earlier 4-area run: docs/research/data/wpt/ci-2026-10-13-208ad49/summary.md (run 38427179332: 87.4% vs 80.5%) -->
+[wpt/](wpt/); the workflow runs all 18 areas monthly at the newest WPT.
+<!-- source: docs/research/data/wpt/ci-2026-11-02-53b40a7/summary.md (run 41482079705 at WPT 6ca6374, warpdom main 53b40a7: side by side over 188,497 subtests, warpdom 142,679 (75.7%), jsdom 127,637 (67.7%)). Earlier: docs/research/data/wpt/ci-2026-10-19-9d1498b/summary.md (run 39189276229, 17 areas without xhr: 75.4% vs 72.2%); 4-area run docs/research/data/wpt/ci-2026-10-13-208ad49/summary.md (run 38427179332: 87.4% vs 80.5%) -->
 
 Full tables, method, profiles and caveats:
 [docs/research/README.md](docs/research/README.md).

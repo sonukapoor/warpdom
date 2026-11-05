@@ -1083,3 +1083,76 @@ test('getComputedStyle: border with a CSS-wide keyword in a style sheet (jsdom 2
       assert.deepEqual([cs.borderTopWidth, cs.borderTopStyle], [expected, expected], `${jsdom} ${keyword}`);
     }
 });
+
+// A document without a browsing context (createHTMLDocument, DOMParser,
+// createDocument, new Document()) makes no style sheets: its <style>
+// elements' sheet is null and its styleSheets empty, so getComputedStyle()
+// gives its elements the user agent sheet and their style attribute only,
+// also once moved there from the window's document (black box, 20.0.3 to
+// 30.1.3; #203). Moved into the window's document, an element gets that
+// document's rules, and a <style> element a sheet.
+const windowlessScenario = (w) => {
+  const SHEET = 'div { color: green; display: inline; margin-top: 3px; visibility: hidden }';
+  const NS = 'http://www.w3.org/1999/xhtml';
+  const read = (el) => {
+    const cs = w.getComputedStyle(el);
+    return ['color', 'display', 'margin-top', 'visibility'].map((p) => cs.getPropertyValue(p));
+  };
+  const out = [];
+  const html = () => {
+    const d = w.document.implementation.createHTMLDocument('t');
+    d.head.innerHTML = `<style>${SHEET}</style>`;
+    return d;
+  };
+  // createHTMLDocument: connected, disconnected, with a style attribute.
+  let d = html();
+  d.body.innerHTML = '<div></div><div style="color: red; margin-top: 2px"></div>';
+  out.push(d.styleSheets.length, d.querySelector('style').sheet);
+  for (const div of d.querySelectorAll('div')) out.push(read(div));
+  out.push(read(d.createElement('div')));
+  // DOMParser (HTML and XHTML) and createDocument.
+  const parser = new w.DOMParser();
+  d = parser.parseFromString(`<style>${SHEET}</style><div style="margin-top: 7px"></div>`, 'text/html');
+  out.push(d.styleSheets.length, read(d.querySelector('div')));
+  d = parser.parseFromString(
+    `<html xmlns="${NS}"><head><style>${SHEET}</style></head><body><div></div><p style="color: red"></p></body></html>`,
+    'application/xhtml+xml',
+  );
+  out.push(d.styleSheets.length, read(d.querySelector('div')), read(d.querySelector('p')));
+  d = w.document.implementation.createDocument(NS, 'html', null);
+  const style = d.documentElement.appendChild(d.createElementNS(NS, 'style'));
+  style.textContent = SHEET;
+  const div = d.documentElement.appendChild(d.createElementNS(NS, 'div'));
+  out.push(d.styleSheets.length, style.sheet, read(div));
+  // The window's sheets apply to the window's document's elements only.
+  w.document.head.innerHTML = '<style>div { color: blue }</style>';
+  d = html();
+  const moving = d.body.appendChild(d.createElement('div'));
+  out.push(read(moving));
+  w.document.body.append(moving);
+  out.push(read(moving));
+  html().body.append(moving);
+  out.push(read(moving));
+  // A <style> element moved between the two documents.
+  const own = w.document.querySelector('style');
+  d = html();
+  d.head.append(own);
+  out.push(
+    own.sheet,
+    d.styleSheets.length,
+    w.document.styleSheets.length,
+    read(d.body.appendChild(d.createElement('div'))),
+  );
+  const theirs = d.querySelector('style');
+  w.document.head.append(theirs);
+  out.push(
+    theirs.sheet === null,
+    w.document.styleSheets.length,
+    read(w.document.body.appendChild(w.document.createElement('div'))),
+  );
+  return out;
+};
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30])
+  parity(`getComputedStyle: a document without a window has no style sheets (jsdom ${jsdom})`, windowlessScenario, {
+    jsdom,
+  });
