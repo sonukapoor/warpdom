@@ -4883,6 +4883,65 @@ later keep css-tree's non-standard display keywords (-webkit-box,
 The generator appends them to display's grammar. innerText lays them out
 as their standard counterparts.
 
+## 2026-11-04: margin and padding declarations as jsdom keeps them (branch fix/104-shorthand-longhand, #104, #147 item 2)
+
+React's `style={{ margin: 0, marginTop: 4 }}` serialized `margin: 0px;
+margin-top: 4px;` in every profile; jsdom merges the longhand into the
+shorthand (`margin: 4px 0px 0px 0px;` before 27, `margin: 4px 0px 0px;`
+from 27), which shows in `outerHTML`, `getAttribute('style')` and
+snapshots. From jsdom 27 `padding: 2px` also has `length` 5 (#147 item 2).
+
+Black box (inline styles, 20.0.3, 22.1.0, 25.0.1, 26.1.0, 27.4.0, 28.1.0,
+29.1.1, 30.1.2, 30.1.3) and cssstyle's sources give five models:
+cssstyle 2 and 3 (one item; the longhands' values kept unlisted; a
+longhand listed until all four are set, then merged as written), 4.1 and
+4.6 (the same, merged only when the four and the shorthand have one
+priority, else the four listed with the shorthand's priority; 4.6 also
+takes var() and gives '' to the accessor on setProperty), jsdom 27 to 29
+and 30 (every longhand an item and the shorthand after them; a longhand
+set moves to the end; cssText leaves out the longhands a later shorthand
+covers; 30 keeps the given priority, 27 to 29 drop it under an !important
+shorthand and their accessors keep the existing one). A parsed list
+(cssText, the attribute) is setProperty in order; from 27 it is prepared
+first (normalize.js prepareProperties, with its bugs: a shorthand gives
+each longhand its first component, four longhands merge in the order
+written, a longhand after the shorthand is lost in cssText but not in a
+sheet).
+
+Now (box-declarations.js) an inline style's declarations for these ten
+names follow the profile's model: writeBox for writes (accessor,
+setProperty, removeProperty), replayBox after a parse of the attribute or
+cssText, boxValue/boxAccessorValue for reads, and serialize leaves out the
+covered longhands and no longer merges margin and padding for inline
+styles. The cascade still parses the attribute text, so computed values
+are unchanged (they already matched). Checked with a differential fuzz
+against each jsdom (random sequences of accessor writes, setProperty with
+priorities, removeProperty, cssText and setAttribute; several thousand
+sequences, margin and padding, var() from 26): no differences but the two
+listed in differences.md (a rejected value's priority, 20 to 29; the
+attribute written before the priority, 20 to 26).
+
+Performance (hot path, recorded per the rules; Node 22.17.1, medians of 7
+alternating runs against origin/main): style-bench 103.3 -> 107.4 ns
+(within noise; 5 earlier runs 107.5 -> 107.4), style-miss-bench repeated
+140.3 -> 140.7 and unique 576.9 -> 576.7, cascade-bench 0.46 -> 0.45 and
+1.68 -> 1.69 ms, box-cascade-bench unchanged (9.7, 44.1 -> 45.3, 62.8 ->
+63.7, 5.8 -> 5.9 µs). Writes of these names cost more, as there are more
+items (jsdom 30, per element per pass with changed values): margin then
+marginTop 430 -> 732 ns, padding 241 -> 454, a style attribute with
+padding parsed 428 -> 850; jsdom 26 925, 402, 825; jsdom 20 905, 388,
+793. Reason: the declaration model jsdom has (five items, unlisted values)
+is what the serialization needs; records and side lists are cached, the
+indices are rebuilt only when the names change, and the old text is the
+one last written.
+
+Left: style rules' `style` from jsdom 27.1 (the same model there; a sheet
+applies declarations in order, which meets #113 in the cascade), and the
+border, background, font and flex families from 27 (each its own cssstyle
+algorithm: `border` then `borderTopColor` is 19 items in jsdom 27, `flex`
+then `flexGrow` merges to `flex: 2 1 0px`); 20 to 26 already match for
+those. Tests: box-declarations.test.js (parity 20 to 30).
+
 ## 2026-11-04: no style sheets in a document without a window (branch fix/203-windowless-styles, #203)
 
 Black box, jsdom 20.0.3, 21.1.2, 22.1.0, 23.2.0, 24.1.3, 25.0.1, 26.1.0,
