@@ -1474,3 +1474,111 @@ test('style: a value of one identifier in uppercase (jsdom 28.0.0, #187)', () =>
     ['block', 'foo', 'center', 'SERIF'],
   );
 });
+
+// !important on most properties, jsdom 27.0.0 to 28.0.0 (black box,
+// 27.0.1, 27.4.0 and 28.0.0, every property: #264 item 44). Only about 77
+// properties keep it (color, display, width, margin, padding, font, flex,
+// background, border and the like); every other one, custom properties
+// aside, is written without it in a style attribute, cssText and
+// setProperty, and from 27.1.0 in style sheets too (as var() drops it).
+// In the attribute it still keeps a later normal declaration of the
+// property out. jsdom 28.1.0 and later keep it everywhere.
+const IMPORTANT_KEPT = [
+  ['color', 'red'],
+  ['display', 'block'],
+  ['width', '1px'],
+  ['flex', '1'],
+  ['-webkit-text-fill-color', 'red'],
+  ['-webkit-tap-highlight-color', 'red'],
+  ['--x', '"a"'],
+];
+const IMPORTANT_DROPPED = [
+  ['position', 'absolute'],
+  ['z-index', '1'],
+  ['visibility', 'hidden'],
+  ['overflow', 'hidden'],
+  ['transform', 'rotate(1deg)'],
+  ['content', '"a b"'],
+  ['quotes', '"a" "b"'],
+  ['outline', '1px solid red'],
+  ['transition', 'opacity 1s'],
+  ['-webkit-transform', 'rotate(1deg)'],
+  ['word-wrap', 'break-word'],
+];
+const importantKept = (w) => {
+  const d = w.document;
+  const all = [...IMPORTANT_KEPT, ...IMPORTANT_DROPPED];
+  const read = (style) =>
+    `${style.cssText} | ${all
+      .filter(([name]) => style.getPropertyPriority(name))
+      .map(([name]) => name)
+      .join(' ')}`;
+  const text = all.map(([name, value]) => `${name}: ${value} !important`).join('; ');
+  const attribute = d.createElement('div');
+  attribute.setAttribute('style', text);
+  const css = d.createElement('div');
+  css.style.cssText = text;
+  const set = d.createElement('div');
+  const sheet = d.head.appendChild(d.createElement('style'));
+  sheet.textContent = `.a { ${text} } .b { position: absolute !important; position: static } .c { position: absolute !important; position: static !important } .d {}`;
+  const [, b, c, rule] = sheet.sheet.cssRules;
+  for (const [name, value] of all) {
+    set.style.setProperty(name, value, 'important');
+    rule.style.setProperty(name, value, 'important');
+  }
+  const later = d.createElement('div');
+  later.setAttribute('style', 'position: absolute !important; position: static; z-index: 1 !important; z-index: 2');
+  return [attribute, css, set, sheet.sheet.cssRules[0], b, c, rule, later].map((x) => read(x.style));
+};
+for (const jsdom of [27, 28, 29, 30])
+  parity(`style: !important on most properties (jsdom ${jsdom}, #264)`, importantKept, { jsdom });
+// Where it starts and ends, on every path (black box, single-jsdom installs
+// of 27.0.1 and 28.0.0; #276 review): 27.0.1's style sheets and rule
+// styles (cssText, setProperty, insertRule) keep it, 28.0.0 drops it there
+// as 27.4.0 does, and 28.1.0 keeps it everywhere.
+test('style: !important on most properties by jsdom version', () => {
+  const text = 'position: absolute !important; color: red !important; z-index: 1 !important; --x: 1 !important';
+  const read = (jsdom) => {
+    const d = createWindow({ jsdom }).document;
+    const out = [];
+    const attribute = d.createElement('div');
+    attribute.setAttribute('style', text);
+    const css = d.createElement('div');
+    css.style.cssText = text;
+    const later = d.createElement('div');
+    later.setAttribute('style', 'position: absolute !important; position: static; color: red !important; color: blue');
+    const set = d.createElement('div');
+    const sheet = d.head.appendChild(d.createElement('style'));
+    sheet.textContent = `.a { ${text} } .b {} .c {}`;
+    const [ruled, ruleSet, ruleCss] = sheet.sheet.cssRules;
+    for (const [name, value] of [
+      ['position', 'absolute'],
+      ['color', 'red'],
+    ]) {
+      set.style.setProperty(name, value, 'important');
+      ruleSet.style.setProperty(name, value, 'important');
+    }
+    ruleCss.style.cssText = text;
+    sheet.sheet.insertRule(`.d { ${text} }`, 3);
+    for (const x of [attribute, css, later, set, ruled, ruleSet, ruleCss, sheet.sheet.cssRules[3]])
+      out.push(x.style.cssText);
+    return out;
+  };
+  const all = 'position: absolute !important; color: red !important; z-index: 1 !important; --x: 1 !important;';
+  const most = 'position: absolute; color: red !important; z-index: 1; --x: 1 !important;';
+  const later = 'position: absolute; color: red !important;';
+  const pair = 'position: absolute; color: red !important;';
+  const pairAll = 'position: absolute !important; color: red !important;';
+  assert.deepEqual(read('27.0.1'), [most, most, later, pair, all, pairAll, all, all]);
+  assert.deepEqual(read('28.0.0'), [most, most, later, pair, most, pair, most, most]);
+  assert.deepEqual(read('28.1.0'), [
+    all,
+    all,
+    'position: absolute !important; color: red !important;',
+    pairAll,
+    all,
+    pairAll,
+    all,
+    all,
+  ]);
+});

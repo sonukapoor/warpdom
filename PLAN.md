@@ -4809,6 +4809,57 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-06: !important dropped from most properties, jsdom 27.0.0 to 28.0.0 (branch fix/264-important-dropped, #264 items 43 and 44)
+
+Item 44 said jsdom 27 drops !important from content written through
+setProperty. Measured black box on 27.0.1, 27.4.0, 28.0.0 and 28.1.0, with
+every property in the grammar and its keywords plus a dozen sample values
+(about 12,500 pairs per version and path), it is far wider. jsdom 27.0.0
+to 28.0.0 keep !important for 77 properties only (color, display, width,
+height, top/right/bottom/left, margin, padding, font and its longhands,
+flex and its longhands, float, clear, clip, opacity, background and the
+longhands its shorthand sets, border and its sides, colors, widths and
+styles, border-spacing, border-collapse, outline-color, flood-color,
+lighting-color, stop-color and the -webkit- color aliases), and drop it
+from every other property, custom properties aside: position, z-index,
+visibility, overflow, transform, transition, content, outline, ... It
+drops in a style attribute, cssText and setProperty, and from 27.1.0 in
+style sheets too (27.0.1's sheets keep it), the same split as var()
+(compat.varDropsImportant). In the attribute the dropped one still keeps
+a later normal declaration of the property out (position: absolute
+!important; position: static is absolute); in a sheet the last one wins.
+28.1.0 keeps it everywhere. compat.mostDropImportant ('declarations' for
+27.0.x, 'all' for 27.1.0 to 28.0.x) and css.js KEEPS_IMPORTANT, read by
+dropsImportant. The cascade is unchanged: !important counts there only
+from 28.1.0. After the change every pair matches on all three paths in
+the three versions. Tests: css-profiles.test.js, parity 27 to 30 and the
+version boundaries (27.0.1, 28.0.0, 28.1.0).
+
+Item 43 (a comment after a color function declares nothing, jsdom 27 and
+later) is left and listed in docs/differences.md: measured, it is not a
+rule about color functions but depends on the property and on where the
+comment is (border-top: 1px solid red /**/ declares nothing, 1px /**/
+solid rgb(1, 2, 3) does; outline and column-rule keep the comment as
+written; border-top: calc(1px) solid red /**/ is calc(1px solid red in
+30.1.3). Matching it would take a table per property, version and comment
+position for a jsdom bug that test code is unlikely to meet.
+
+Performance (27.4.0 profile, 200k operations, 5 alternating runs against
+main 7bfadbb, medians, Node 22.17.1): setProperty('width', ...) 91.6 ->
+89.0 ns, setProperty('width', ..., 'important') 103.5 -> 107.5 ns (+3.9%:
+the set lookup, only for an !important declaration in the 27.0 to 28.0
+profiles; other profiles skip it), setProperty('position', ...,
+'important') 133.9 -> 131.3 ns, setAttribute('style', ...) with two
+!important declarations 46.2 -> 45.4 ns. Cold load 25.70 -> 25.74 ms
+(the same directory before and after; the main clone against the
+worktree reads 0.7 ms apart either way).
+
+Found on the way, added to #264: in jsdom 27 to 29 a style accessor
+(style.color = 'blue') after setProperty(..., 'important') keeps the
+!important (warpdom drops it but for shorthands); in 28.1.0 and later the
+style attribute reads border-image: stretch !important as none and
+border-image: none !important as nothing.
+
 ## 2026-11-06: a value of one identifier in lowercase (branch fix/264-none-comment, #187, #264 item 42)
 
 #264 item 42 (`background-image: NONE /**/` is `none` in jsdom 27 and
