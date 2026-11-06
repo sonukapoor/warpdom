@@ -1224,6 +1224,17 @@ const CLIP_VALUES = [
   'rect(calc(1px), 1px, 1px, 1px)',
   'rect(calc(1px) 1px 1px 1px)',
   'rect(1px 1px 1px calc(1px))',
+  // a math function after the first component with spaces: its insides
+  // unchecked but for a var( not in lowercase and (jsdom 30) a percentage
+  // (#274 review)
+  'rect(0 calc(VAR(--a) + 1px) 0 0)',
+  'rect(0 calc(1px + Var(--a)) 0 0)',
+  'rect(0 calc(1px + 2%) 0 0)',
+  'rect(0 calc(foo) 0 0)',
+  'rect(0 min(1px, 2px) 0 0)',
+  'rect(0 CLAMP(1px, 2px, 3px) 0 0)',
+  'rect(0 abs(1px) 0 0)',
+  'rect(0 foo(1px) 0 0)',
   'rect(1, 1px, 1px, 1px)',
   'rect(1px 1px 1px 1)',
   'rect(1foo, 1px, 1px, 1px)',
@@ -1266,6 +1277,20 @@ for (const jsdom of [27, 28, 29])
       Object.assign(d.style, { border: '0', clip: 'rect(0 0 0 0)', height: '1px', overflow: 'hidden' });
       w.document.body.append(d);
       return [d.getAttribute('style'), d.style.clip, w.getComputedStyle(d).clip];
+    },
+    { jsdom },
+  );
+// An invalid clip leaves the one set before (#274 review).
+for (const jsdom of [27, 29, 30, '30.1.3'])
+  parity(
+    `style: an invalid clip keeps the previous value (jsdom ${jsdom}, #264)`,
+    (w) => {
+      const s = w.document.createElement('div').style;
+      s.setProperty('clip', 'rect(1px, 2px, 3px, 4px)');
+      s.setProperty('clip', 'rect(0 calc(VAR(--a) + 1px) 0 0)');
+      const first = s.clip;
+      s.clip = 'rect(0 calc(1px + 2%) 0 0)';
+      return [first, s.clip];
     },
     { jsdom },
   );

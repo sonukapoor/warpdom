@@ -20,6 +20,7 @@ import { LONGHANDS, SHORTHANDS, COLOR_SHORTHANDS, ALIASES } from './css-data.js'
 import {
   hasVarFunction,
   isLengthUnit,
+  isMathFunction,
   isNameCode,
   isValidValue,
   readUrl,
@@ -1740,13 +1741,15 @@ function clipValue(value, mode) {
   if (!/^rect\(/i.test(value)) return undefined;
   const legacy = isLegacyMode(mode);
   const inner = value.slice(5, -1);
-  const commas = inner.includes(',');
+  // (commas outside parentheses: rect(0 min(1px, 2px) 0 0) has spaces)
+  const parts = splitOutside(inner, ',');
+  const commas = parts.length > 1;
   if (hasVarFunction(value)) {
     if (!legacy) return undefined;
     return mode === 'jsdom26' && commas && oneFunction(value) ? value : INVALID;
   }
   if (!oneFunction(value)) return INVALID;
-  const args = commas ? splitOutside(inner, ',').map((a) => a.trim()) : topLevelWords(inner);
+  const args = commas ? parts.map((a) => a.trim()) : topLevelWords(inner);
   if (args.length !== 4) return INVALID;
   if (legacy && !commas) return INVALID;
   const out = [];
@@ -1758,7 +1761,7 @@ function clipValue(value, mode) {
       out.push('');
       continue;
     }
-    const written = !commas && i > 0 ? clipGrammar(arg) && arg : clipComponent(arg, mode);
+    const written = !commas && i > 0 ? clipGrammar(arg, mode) && arg : clipComponent(arg, mode);
     if (written === INVALID || written === false) return INVALID;
     out.push(written);
   }
@@ -1767,9 +1770,20 @@ function clipValue(value, mode) {
   return commas ? `${name}(${out.join(', ')})` : `${name}(${out[0]})`;
 }
 // A component as the grammar reads it (jsdom 27 and later): a length, any
-// unitless zero, a calc(), or auto.
-function clipGrammar(arg) {
-  if (/^auto$/i.test(arg) || ZERO.test(arg) || /^calc\(.*\)$/i.test(arg)) return true;
+// unitless zero, auto, or a math function in any case (calc, min, abs,
+// ...), whose insides it leaves unchecked but for a var( not in lowercase
+// (calc(VAR(--a) + 1px), as css-values.js reads math) and, from jsdom 30,
+// a percentage (calc(1px + 2%); black box, 27.4.0 to 30.1.3, #274 review).
+const CLIP_FUNCTION_NAMES = /([\w-]+)\(/g;
+function clipGrammar(arg, mode) {
+  if (/^auto$/i.test(arg) || ZERO.test(arg)) return true;
+  const open = arg.indexOf('(');
+  if (open > 0) {
+    if (!isMathFunction(arg.slice(0, open).toLowerCase()) || (mode === 'spec' && arg.includes('%'))) return false;
+    for (const [, name] of arg.matchAll(CLIP_FUNCTION_NAMES))
+      if (name !== 'var' && name.toLowerCase() === 'var') return false;
+    return true;
+  }
   const m = CLIP_NUMBER.exec(arg);
   return m !== null && isLengthUnit(m[3].toLowerCase());
 }

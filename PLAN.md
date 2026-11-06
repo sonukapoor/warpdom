@@ -4833,7 +4833,11 @@ auto (29, 30.1.2) (compat.clipReparsed, cascade.js cascadeExpand). 30.1.3
 computes it, after setProperty too (inlineDeclarations keeps the written
 value that reading the serialized attribute again rejects; #274 review).
 Sheet and computed style with clip in 200 rules (jsdom 29 profile, 5
-interleaved runs, medians): 831.4 -> 831.3 us.
+interleaved runs, medians): 831.4 -> 831.3 us. With spaces, a component
+after the first may be a math function in any case (calc, min, clamp,
+abs, ...) whose insides jsdom leaves unchecked but for a var( not in
+lowercase and, from jsdom 30, a percentage; other functions are invalid
+(#274 review).
 Left (docs/differences.md): the SyntaxError jsdom throws for a comment
 after a space-separated rect(), clip: initial with cssstyle 4.1.
 
