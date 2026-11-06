@@ -1485,6 +1485,12 @@ const COMMENTED_VALUES = [
   ['color', 'red/**/; color: blue'],
   ['color', 'red /**/; width: 1px'],
   ['color', 'red /* ; */'],
+  // An unquoted url() is one token: its quote or /* opens no string or
+  // comment (#273 review).
+  ['color', 'url(a"b.png)/**/; color: blue'],
+  ['color', 'url(a/*b.png); color: blue'],
+  ['background-image', 'url(a/*b.png) /**/'],
+  ['background-image', 'url(a;b.png) /**/'],
   // What the attribute declares, kept as it serializes it: the initial
   // values for a background whose image is left out, an empty layer.
   ['background', 'NONE /**/'],

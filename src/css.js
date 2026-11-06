@@ -3012,7 +3012,7 @@ function writtenValue(name, raw, s) {
   // (parseInto sets a background of initial values as its longhands.)
   return name === 'background' && decls.size > 0 ? INITIALS : INVALID;
 }
-// A semicolon outside strings, comments and parentheses.
+// A semicolon outside strings, comments, parentheses and unquoted url()s.
 function separated(raw) {
   for (let i = 0, depth = 0; i < raw.length; i++) {
     const c = raw.charCodeAt(i);
@@ -3024,8 +3024,12 @@ function separated(raw) {
       if (end === -1) return false;
       i = end + 1;
     } else if (c === 92) i++;
-    else if (c === 40) depth++;
-    else if (c === 41 && depth > 0) depth--;
+    else if (c === 40) {
+      // An unquoted url() is one token (its quote or /* opens nothing).
+      const end = urlTokenEnd(raw, i);
+      if (end === -1) depth++;
+      else i = end - 1;
+    } else if (c === 41 && depth > 0) depth--;
     else if (c === 59 && depth === 0) return true;
   }
   return false;
