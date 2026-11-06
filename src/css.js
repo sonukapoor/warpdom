@@ -268,12 +268,13 @@ let urlStyle = 'spec';
 // property whose grammar takes no name or string of its own (display:
 // BLOCK is block; animation-name: FOO, text-align: CENTER as written).
 // background reads the case itself (NONE sets the initial values:
-// backgroundValue).
+// backgroundValue); a custom property keeps its value as written.
 let identsInLowercase = false;
-const ONE_IDENT = /^-{0,2}(?:[a-zA-Z_\u0080-\uffff]|\\[^])(?:[\w\u0080-\uffff-]|\\[^])*$/;
+const ONE_IDENT = /^(?:--|-?(?:[a-zA-Z_\u0080-\uffff]|\\[^]))(?:[\w\u0080-\uffff-]|\\[^])*$/;
 const asciiLower = (value) => value.replace(/[A-Z]+/g, (s) => s.toLowerCase());
 function identValue(name, value) {
-  if (name === 'font-family' || name === 'background' || !/[A-Z]/.test(value) || !ONE_IDENT.test(value)) return value;
+  if (name.startsWith('--') || name === 'font-family' || name === 'background') return value;
+  if (!/[A-Z]/.test(value) || !ONE_IDENT.test(value)) return value;
   return identsInLowercase || !takesNamesOrStrings(name) ? asciiLower(value) : value;
 }
 const colorCaches = new Map();

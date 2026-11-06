@@ -1422,6 +1422,10 @@ const ONE_IDENT = [
   ['quotes', 'NONE'],
   ['color-scheme', 'DARK'],
   ['anchor-name', '--FOO'],
+  ['anchor-name', '---FOO'],
+  ['animation-name', '--1FOO'],
+  ['--theme', 'MyName'],
+  ['--theme', 'FOO'],
   ['font-family', 'SERIF'],
   ['font', '12px SERIF'],
 ];
