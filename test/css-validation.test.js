@@ -1336,5 +1336,30 @@ test('a hex escape and the whitespace after it, jsdom 27.0.1 and 28.0.0 (#264)',
     el.style.setProperty('animation-name', String.raw`-\31 FOO`);
     el.style.setProperty('grid-area', String.raw`\41 \42 `);
     assert.equal(el.style.cssText, String.raw`animation-name: -\31 foo; grid-area: \41 \42;`, jsdom);
+    // A CR LF after the escape is one whitespace (#278 review).
+    el.style.setProperty('animation-name', '-\\31\r\nFOO');
+    assert.equal(el.style.animationName, '-\\31\r\nfoo', jsdom);
   }
+});
+// An escape and the number after its space: a\31 2e1 is one identifier,
+// a\31 2.1 an identifier and a number. The result doesn't depend on which
+// is checked first (values with a number share a cache entry by shape;
+// #278 review). Black box: jsdom 29 keeps the first, drops the second.
+test('a hex escape before a number: validity in either order (#264)', () => {
+  assert.equal(isValidValue('container-name', String.raw`b\31 2e1`), true);
+  assert.equal(isValidValue('container-name', String.raw`b\31 2.1`), false);
+  assert.equal(isValidValue('container-name', String.raw`c\31 2.1`), false);
+  assert.equal(isValidValue('container-name', String.raw`c\31 2e1`), true);
+});
+// Hex digits after a backslash are read one way only: a value of many
+// escapes and then a character no identifier has is rejected in linear
+// time (#278 review: 8 escapes took 52 ms, each one more ~6x).
+test('many hex escapes and an invalid character: rejected without backtracking (#264)', () => {
+  const d = createWindow({ jsdom: '27.4.0' }).document;
+  const el = d.createElement('div');
+  const start = performance.now();
+  el.style.setProperty('animation-name', `a${'\\AAAAAA'.repeat(12)}!`);
+  el.style.setProperty('font-family', `a${'\\AAAAAA'.repeat(12)}!`);
+  assert.ok(performance.now() - start < 500);
+  assert.equal(el.style.cssText, '');
 });

@@ -1005,7 +1005,9 @@ export function isValidValue(name, value) {
   newlineSpaces = name === 'background-image';
   const { node, shapes } = entryOf(name);
   if (!node) return true;
-  if (shapes === null) return checkValue(node, value);
+  // A value with an escape is checked itself: a\31 2e1 is one identifier
+  // but has the shape of an identifier and a number (#278 review).
+  if (shapes === null || value.includes('\\')) return checkValue(node, value);
   const shape = shapeOf(value);
   if (shape === null) return checkValue(node, value);
   let valid = shapes.get(shape);

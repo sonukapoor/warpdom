@@ -4900,6 +4900,17 @@ solid red !important gives border: 1px blue !important); scrollbar-color:
 accentcolortext is valid in jsdom 27 only; aspect-ratio: 2 is rejected in
 28.1 and written 2 / 1 in 29.
 
+Review (Copilot, three findings, all reproduced): ONE_IDENT could split
+a run of hex digits between the escape and the name characters, so
+`a` and nine `\AAAAAA` escapes and `!` backtracked exponentially (8
+escapes 52 ms, each one more ~6x); its hex digits are now matched once
+(a lookahead capture taken whole) and a CR LF after them is one
+whitespace (27.0.1 and 28.0.0 lowercase `-\31` CR LF `FOO`). A value with
+a backslash skips isValidValue's shape cache: `a\31 2e1` (one
+identifier) and `a\31 2.1` (an identifier and a number) have one shape,
+so the first checked decided both. Validation benchmark after: 2,933.9
+-> 2,941.4 ns per value (noise).
+
 ## 2026-11-06: !important dropped from most properties, jsdom 27.0.0 to 28.0.0 (branch fix/264-important-dropped, #264 items 43 and 44)
 
 Item 44 said jsdom 27 drops !important from content written through
