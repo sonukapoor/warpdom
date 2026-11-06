@@ -4839,7 +4839,8 @@ abs, ...) whose insides jsdom leaves unchecked but for a var( not in
 lowercase and, from jsdom 30, a percentage; other functions are invalid
 (#274 review). The function must be the whole component (calc(1px)junk is
 invalid), and a parenthesis in a string inside it does not count
-(calc(")") is valid); setProperty('clip') after that change, 30.1.2
+(calc(")") is valid), nor does a var( or % in a string (calc("VAR(")
+is valid); setProperty('clip') after that change, 30.1.2
 profile, 5 interleaved runs, medians: commas 72.2 -> 73.9 ns, spaces
 73.4 -> 75.2 ns (noise).
 Left (docs/differences.md): the SyntaxError jsdom throws for a comment
