@@ -1702,6 +1702,11 @@ function mostDropImportantMode(version) {
   return before(version, [27, 1, 0]) ? 'declarations' : 'all';
 }
 
+function accessorKeepsImportantMode(version) {
+  if (version[0] === 29) return 'all';
+  return version[0] === 27 || version[0] === 28 ? 'named' : null;
+}
+
 function varDropsImportantMode(version) {
   if (version[0] < 27 || version[0] > 29) return null;
   return before(version, [27, 1, 0]) ? 'declarations' : 'all';
@@ -1921,6 +1926,14 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle, beyondJsdom = fa
     // #264 item 44). Where the !important counts in the cascade (28.1.0)
     // it is kept.
     mostDropImportant: mostDropImportantMode(version),
+    // jsdom 27 to 29: a style accessor's write keeps the !important of the
+    // declaration it replaces (style.color = 'blue' after
+    // setProperty('color', 'red', 'important') is color: blue !important),
+    // unless the value loses it (black box, 26.1.0 to 30.1.3, #264 item
+    // 49; css.js setDeclaration). setProperty without a priority drops it,
+    // and so does style.cssFloat before 29 ('named': style.float keeps
+    // it; 'all' in 29).
+    accessorKeepsImportant: accessorKeepsImportantMode(version),
     // jsdom 27 also finds the var() in a string (content: "var(--x)"
     // !important is content: "var(--x)"); 28 and 29 do not (black box,
     // 27.4.0 to 29.1.1; css.js dropsImportant).

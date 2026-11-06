@@ -4809,6 +4809,43 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-06: an accessor's write keeps !important, jsdom 27 to 29 (branch fix/264-accessor-important, #264 item 49)
+
+Measured black box on 26.1.0, 27.0.1, 27.4.0, 28.0.0, 28.1.0, 29.1.1,
+30.1.2 and 30.1.3. In jsdom 27 to 29 a style accessor's write keeps the
+!important of the declaration it replaces: style.color = 'blue' after
+setProperty('color', 'red', 'important') is color: blue !important, on an
+element's style (set through setProperty, the attribute or cssText) and a
+rule's. A value that loses its !important loses it here too (var(), and
+in 27.0.0 to 28.0.0 most properties, #276); an invalid value changes
+nothing; setProperty without a priority drops it. style.cssFloat drops it
+in 27 and 28 while style.float keeps it; in 29 both keep it. jsdom 26 and
+30 drop it, as warpdom did. warpdom kept it already for margin and
+padding (setBox). compat.accessorKeepsImportant ('named' in 27 and 28,
+'all' in 29), read by setDeclaration, which gets via 'cssFloat' from the
+cssFloat accessor. Tests: css-profiles.test.js, parity 26 to 30.1.3 and
+27.0.1 and 28.0.0. A survey through every property's accessor (camel
+case and dashed, a keyword or sample value replacing another) matches on
+27.4.0, 28.1.0, 29 and 30.1.3 but for two value differences without
+priority (below).
+
+Performance (200k writes, 5 alternating runs against main a59af9f,
+medians, Node 22.17.1): an accessor's write 126.7 -> 126.5 ns (27.4.0)
+and 128.4 -> 125.0 ns (30.1.3); an accessor's write over an !important
+declaration 127.9 -> 143.5 ns in 27.4.0 (+12%: it now keeps the
+!important, so the declaration is looked up and written with it; only
+in the 27 to 29 profiles, only over an !important declaration), 133.4 ->
+126.7 ns in 30.1.3; setProperty('width') 99.1 -> 101.9 ns (27.4.0,
+ranges overlap) and 92.9 -> 90.0 ns (30.1.3).
+
+Found on the way, added to #264: a longhand accessor's write under an
+!important background or border shorthand (jsdom 27 to 30.1.3:
+style.backgroundColor = 'blue' after background: red !important leaves
+background: red !important; style.borderColor = 'blue' after border: 1px
+solid red !important gives border: 1px blue !important); scrollbar-color:
+accentcolortext is valid in jsdom 27 only; aspect-ratio: 2 is rejected in
+28.1 and written 2 / 1 in 29.
+
 ## 2026-11-06: !important dropped from most properties, jsdom 27.0.0 to 28.0.0 (branch fix/264-important-dropped, #264 items 43 and 44)
 
 Item 44 said jsdom 27 drops !important from content written through

@@ -1582,3 +1582,83 @@ test('style: !important on most properties by jsdom version', () => {
     all,
   ]);
 });
+
+// A style accessor's write to a declaration that is !important, jsdom 27
+// to 29 (black box, 26.1.0, 27.0.1, 27.4.0, 28.0.0, 28.1.0, 29.1.1, 30.1.2
+// and 30.1.3; #264 item 49): it keeps the !important (style.color =
+// 'blue' after setProperty('color', 'red', 'important') is color: blue
+// !important), on an element's style and a rule's, but for a value that
+// loses it (var(), and from 27.0.0 to 28.0.0 most properties); an invalid
+// value changes nothing, and setProperty without a priority drops it.
+// jsdom 26 and 30 drop it.
+const accessorImportant = (w) => {
+  const d = w.document;
+  const out = [];
+  for (const [name, accessor, value, next] of [
+    ['color', 'color', 'red', 'blue'],
+    ['width', 'width', '1px', '2px'],
+    ['display', 'display', 'block', 'none'],
+    ['opacity', 'opacity', '1', '0.5'],
+    ['font-size', 'fontSize', '1px', '2px'],
+    ['font-size', 'font-size', '1px', '2px'],
+    ['position', 'position', 'absolute', 'static'],
+    ['z-index', 'zIndex', '1', '2'],
+    ['float', 'cssFloat', 'left', 'right'],
+    ['float', 'float', 'left', 'right'],
+    ['color', 'color', 'red', 'var(--c)'],
+    ['color', 'color', 'red', 'bogus'],
+    ['color', 'color', 'red', ''],
+    ['margin', 'margin', '1px', '2px'],
+  ]) {
+    const el = d.createElement('div');
+    el.style.setProperty(name, value, 'important');
+    el.style[accessor] = next;
+    out.push(el.style.cssText);
+  }
+  const attribute = d.createElement('div');
+  attribute.setAttribute('style', 'color: red !important; width: 1px');
+  attribute.style.color = 'blue';
+  attribute.style.width = '2px';
+  out.push(attribute.style.cssText);
+  const set = d.createElement('div');
+  set.style.setProperty('color', 'red', 'important');
+  set.style.setProperty('color', 'blue');
+  out.push(set.style.cssText);
+  const sheet = d.head.appendChild(d.createElement('style'));
+  sheet.textContent =
+    '.a { color: red !important; width: 1px !important } .b { float: left !important } .c { float: left !important }';
+  const rule = sheet.sheet.cssRules[0].style;
+  rule.color = 'blue';
+  rule.width = 'var(--w)';
+  out.push(rule.cssText);
+  sheet.sheet.cssRules[1].style.cssFloat = 'right';
+  out.push(sheet.sheet.cssRules[1].style.cssText);
+  sheet.sheet.cssRules[2].style.float = 'right';
+  out.push(sheet.sheet.cssRules[2].style.cssText);
+  return out;
+};
+for (const jsdom of [26, 27, 28, 29, 30, '30.1.3'])
+  parity(`style: an accessor's write to an !important declaration (jsdom ${jsdom}, #264)`, accessorImportant, {
+    jsdom,
+  });
+// 27.0.1 and 28.0.0 as 27.4.0 (single-jsdom installs of each).
+test("style: an accessor's write to an !important declaration (jsdom 27.0.1, 28.0.0)", () => {
+  for (const jsdom of ['27.0.1', '28.0.0']) {
+    const d = createWindow({ jsdom }).document;
+    const el = d.createElement('div');
+    el.style.setProperty('color', 'red', 'important');
+    el.style.setProperty('position', 'absolute', 'important');
+    el.style.color = 'blue';
+    el.style.position = 'static';
+    assert.equal(el.style.cssText, 'color: blue !important; position: static;', jsdom);
+    // A rule's cssFloat: 27.0.1 ignores the write, 28.0.0 drops the priority.
+    const sheet = d.head.appendChild(d.createElement('style'));
+    sheet.textContent = '.b { float: left !important }';
+    sheet.sheet.cssRules[0].style.cssFloat = 'right';
+    assert.equal(
+      sheet.sheet.cssRules[0].style.cssText,
+      jsdom === '27.0.1' ? 'float: left !important;' : 'float: right;',
+      jsdom,
+    );
+  }
+});

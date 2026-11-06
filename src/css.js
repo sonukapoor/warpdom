@@ -782,7 +782,9 @@ const surfaces = new WeakMap(); // CSSStyleProperties prototype -> styleSurface 
 // 2 to 4.3 write it as webkit-user-select. legacyFont: cssstyle's font
 // shorthand before 4.4 ('cssstyle4.1' or 'cssstyle4.2', see legacyFont in
 // shorthands.js), or null. colorKeywords: how its cssstyle writes color
-// keywords ('css2', 'written' or null). varDropsImportant,
+// keywords ('css2', 'written' or null). accessorKeepsImportant: a style
+// accessor's write keeps the !important it replaces ('named': but
+// cssFloat's, 'all', or null). varDropsImportant,
 // mostDropImportant, varInStrings, customDropsImportant and
 // borderVarDrops: declarations
 // that lose their !important, and border ones with var() that are
@@ -796,6 +798,7 @@ export function setValidationMode(proto, mode, compat = {}) {
   const colors = compat.colorKeywords ?? null;
   const varDropsImportant = compat.varDropsImportant ?? null;
   const mostDropImportant = compat.mostDropImportant ?? null;
+  const accessorKeepsImportant = compat.accessorKeepsImportant ?? null;
   const varInStrings = compat.varInStrings === true;
   const customDropsImportant = compat.customDropsImportant === true;
   const borderVarDrops = compat.borderVarDrops === true;
@@ -805,6 +808,7 @@ export function setValidationMode(proto, mode, compat = {}) {
     colors === null &&
     varDropsImportant === null &&
     mostDropImportant === null &&
+    accessorKeepsImportant === null &&
     !customDropsImportant &&
     !borderVarDrops &&
     !importantByWrittenName
@@ -813,7 +817,7 @@ export function setValidationMode(proto, mode, compat = {}) {
     return;
   }
   // Built once per variant: window creation only looks it up.
-  const id = `${key} ${legacyFont} ${colors} ${varDropsImportant} ${mostDropImportant} ${varInStrings} ${customDropsImportant} ${borderVarDrops} ${importantByWrittenName}`;
+  const id = `${key} ${legacyFont} ${colors} ${varDropsImportant} ${mostDropImportant} ${accessorKeepsImportant} ${varInStrings} ${customDropsImportant} ${borderVarDrops} ${importantByWrittenName}`;
   let surface = variantSurfaces.get(id);
   if (surface === undefined) {
     surface = {
@@ -822,6 +826,7 @@ export function setValidationMode(proto, mode, compat = {}) {
       colors,
       varDropsImportant,
       mostDropImportant,
+      accessorKeepsImportant,
       varInStrings,
       customDropsImportant,
       borderVarDrops,
@@ -3289,7 +3294,8 @@ for (const side of BORDER_SIDES)
 const resets = (surface, name, text) =>
   !text.includes('var(') || (name === 'flex' && surface?.legacyFont === undefined);
 
-// via: 'accessor' (style.marginTop = v), 'set' (setProperty) or 'remove'
+// via: 'accessor' (style.marginTop = v; 'cssFloat' for style.cssFloat),
+// 'set' (setProperty) or 'remove'
 // (removeProperty), for an inline style's margin and padding.
 // A value written through setProperty() or an accessor, serialized, or
 // INVALID. jsdom 27 and later read one with a comment as the style
@@ -3382,8 +3388,14 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
     return;
   }
   // (A background of initial values has no var(): its !important is kept.)
+  // An accessor's write keeps the !important it replaces in jsdom 27 to 29
+  // (compat.accessorKeepsImportant; via 'cssFloat': style.cssFloat's).
+  const keeps = s.surface?.accessorKeepsImportant ?? null;
   const important =
-    String(priority).toLowerCase() === 'important' &&
+    (String(priority).toLowerCase() === 'important' ||
+      (keeps !== null &&
+        (via === 'accessor' || (via === 'cssFloat' && keeps === 'all')) &&
+        s.decls.get(name)?.important === true)) &&
     (text === INITIALS || !dropsImportant(s.surface, name, text, s.parentRule != null));
   if (text === INITIALS) {
     setInitials(s.decls, important, s.mode === 'spec');
@@ -3468,9 +3480,10 @@ function styleDescriptors(surfaceKey = null) {
   const surface = surfaceKey === null ? null : styleSurface(surfaceKey);
   for (const accessor of STYLE_ACCESSORS) {
     const name = cssName(accessor);
-    if (surface === null) descriptors[accessor] = styleAccessor(name);
+    const via = accessor === 'cssFloat' ? 'cssFloat' : 'accessor';
+    if (surface === null) descriptors[accessor] = styleAccessor(name, via);
     else if (!missing(surface, accessor, name))
-      descriptors[accessor] = styleAccessor(surface.writes.get(accessor) ?? name);
+      descriptors[accessor] = styleAccessor(surface.writes.get(accessor) ?? name, via);
   }
   if (surface !== null) for (const [accessor, name] of surface.writes) descriptors[accessor] ??= styleAccessor(name);
   // cssstyle 2 to 4.3: style.azimuth = '' (or null) is ignored, as an
@@ -3516,7 +3529,7 @@ function composedValue(style, name) {
     ? shortestBox(value)
     : value;
 }
-function styleAccessor(name) {
+function styleAccessor(name, via = 'accessor') {
   if (COMPOSED_ACCESSORS.has(name)) {
     return {
       get() {
@@ -3538,7 +3551,7 @@ function styleAccessor(name) {
     set(value) {
       const s = styleState(this);
       if (s.computed) writeComputed(s, name, value);
-      else setDeclaration(this, name, value);
+      else setDeclaration(this, name, value, '', via);
     },
     enumerable: true,
     configurable: true,
