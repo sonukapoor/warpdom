@@ -4809,6 +4809,42 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-05: gradient defaults left out, jsdom 27 and later (branch fix/264-gradient-defaults, #264 item 32)
+
+Measured black box on 20.0.3, 22.1.0, 23.2.0, 24.1.3, 25.0.1, 26.1.0,
+27.4.0, 28.1.0, 29.1.1, 30.1.2 and 30.1.3. jsdom 27 and later write a
+gradient without its default direction, shape, size and position: to
+bottom (linear), ellipse and farthest-corner (radial), at center (radial
+and conic), as whole tokens wherever they are (to bottom right is right,
+in oklab to bottom is in oklab, at center top is top); a first argument
+left empty goes. The rest of the gradient is written in lowercase (TO
+RIGHT, 90DEG, 0PX), numbers as written. Where: background and
+background-image from 27; from 28.1 (cssstyle 6 and later) also any other
+property's value that is one gradient (list-style-image, mask-image,
+border-image-source, content, shape-outside, ...), while a list there
+(mask-image: url(a.png), linear-gradient(...)) and, in 27, every other
+property's gradient stays as written, commas too. A value with var() stays
+as written everywhere. css.js gradientArguments (with functionArguments'
+new gradients flag and oneFunction). Tests: css-validation.test.js, parity
+20 to 30.1.3.
+
+Not fixed, listed in differences.md: jsdom 27 to 30.1.2 compute none from
+a gradient whose defaults came out of the middle (linear-gradient(right,
+red, blue) is no gradient), 30.1.3 computes it. Found on the way and
+added to #264: setProperty rejects any value with a comment in warpdom
+from 27 (jsdom drops the comment), and with cssstyle 4 (jsdom 23 to 26)
+such values differ too; jsdom 26 drops a gradient with an uppercase direction
+(TO BOTTOM); border-image with a gradient is none in 27 and later;
+cursor takes no gradient from 27; jsdom 29 and 30.1.2 lowercase a
+background gradient with var() in the computed shorthand.
+
+Performance: declared values are cached per value, so style writes do the
+work once (cssText of a gradient, 40k writes, 5 alternating runs against
+main 98d758c, medians, Node 22.17.1): to bottom 600.6 -> 601.3 ns, radial
+598.7 -> 595.0 ns, nothing to leave out 585.8 -> 574.7 ns, no gradient
+511.4 -> 520.3 ns (noise: the code does not run there). Cold load 26 to
+27 ms before and after.
+
 ## 2026-11-05: legacy names compared without whitespace and comments (branch fix/legacy-spaced-names, #262 review)
 
 A Copilot comment on #262 posted seconds before it merged, confirmed
