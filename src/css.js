@@ -502,6 +502,29 @@ const familyCommas = (value) =>
         .join(', ')
     : value;
 
+// A family name of several identifiers is one string, the identifiers
+// joined by single spaces (CSS Fonts 4). jsdom 27 and later write it in
+// double quotes (Times New Roman is "Times New Roman") with every
+// backslash removed (a\62 c d is "a62 c d"); a name that is one
+// identifier once its whitespace is one space keeps its form (a\62 c,
+// \31  b is \31 b). Black box, 27.0.1 to 30.1.3 (#264).
+// An escape's hex digits are matched once (a lookahead capture taken
+// whole), so a run of escapes can't be split up again on failure.
+const ONE_FAMILY_IDENT = /^(?:[^\s\\]|\\(?:(?=([0-9a-fA-F]{1,6}))\1 ?|[^0-9a-fA-F]))+$/;
+function quoteFamily(family) {
+  if (!/\s/.test(family) || family[0] === '"' || family[0] === "'" || family.includes('(')) return family;
+  const name = family.replace(/\s+/g, ' ');
+  if (ONE_FAMILY_IDENT.test(name)) return name;
+  return `"${name.replace(/\\/g, '').replace(/"/g, '\\"')}"`;
+}
+// The family list with ", " between families, each one quoted as above.
+const quotedFamilies = (value) =>
+  value.includes(',')
+    ? splitOutside(value, ',')
+        .map((f) => quoteFamily(f.trim()))
+        .join(', ')
+    : quoteFamily(value.trim());
+
 // Numbers and dimensions at the top level serialize canonically (CSSOM):
 // .5 -> 0.5, 10.0px -> 10px, +1 -> 1. Not inside functions. Integers keep
 // all their digits (CSSOM: never in scientific notation).
@@ -2035,8 +2058,9 @@ function serializeDeclared(name, value, mode) {
     value = simplifyCalc(value);
   if (name === 'display' && isSpecMode(mode)) return displayShortForm(value);
   if (name === 'flex') return flexLonghands(canonicalNumbers(value));
-  if (name === 'font') return familyCommas(serializeFont(canonicalNumbers(value)));
-  if (name === 'font-family') return familyCommas(value);
+  if (name === 'font')
+    return familyCommas(serializeFont(canonicalNumbers(value), isSpecMode(mode) ? quotedFamilies : null));
+  if (name === 'font-family') return isSpecMode(mode) ? quotedFamilies(value) : familyCommas(value);
   // cssstyle before 4.3.1 (jsdom 20 to 25) keeps lengths, percentages and
   // line-height as written (.83em, 10.0px, 1.50); its number properties
   // (opacity, flex-grow, flex-shrink) it serializes canonically.

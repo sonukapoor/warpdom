@@ -759,6 +759,9 @@ function matchType(node, tokens, pos) {
   if (name === 'url')
     return tok.t === 'url' || (tok.t === 'function' && (tok.name === 'url' || tok.name === 'src')) ? [pos + 1] : [];
   if (name === 'declaration-value' || name === 'any-value') return anyRest(tokens, pos);
+  // A family name of several identifiers does not start with a generic
+  // family keyword (serif x; black box, jsdom 27.0.1 to 30.1.3, #264).
+  if (name === 'font-family-name' && tok.t === 'ident' && GENERIC_FIRST.has(tok.v)) return [];
   const fn = name.endsWith('()') ? name.slice(0, -2).toLowerCase() : null;
   if (fn && tok.t === 'function' && tok.name !== fn) return [];
   const sub = typeNode(name);
@@ -771,6 +774,21 @@ function matchType(node, tokens, pos) {
     tokens.slice(pos, end).every((t) => !('v' in t) || typeof t.v !== 'number' || inRange(t.v, range)),
   );
 }
+
+// <generic-font-complete> and <generic-font-incomplete> (CSS Fonts 4).
+const GENERIC_FIRST = new Set([
+  'serif',
+  'sans-serif',
+  'system-ui',
+  'cursive',
+  'fantasy',
+  'math',
+  'monospace',
+  'ui-serif',
+  'ui-sans-serif',
+  'ui-monospace',
+  'ui-rounded',
+]);
 
 // <declaration-value>, <any-value>: one or more of anything.
 function anyRest(tokens, pos) {

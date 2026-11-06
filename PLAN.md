@@ -4809,6 +4809,39 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-06: a family name of several words in quotes, jsdom 27 and later (branch fix/264-family-quotes, #264 item 53)
+
+CSS Fonts 4: a family name given as several identifiers is the string of
+them joined by single spaces. jsdom 27.0.1 to 30.1.3 write it so, in
+double quotes, on every path (accessor, attribute, `font` and its
+`font-family`, sheets, computed): `Times New Roman` is
+`"Times New Roman"`, `x, Open  Sans ,y` is `x, "Open Sans", y`. Every
+backslash is removed (`a\62 c d` is `"a62 c d"`, `foo\ bar baz` is
+`"foo bar baz"`) and a double quote escaped; a name that is one
+identifier once its whitespace is one space keeps its form (`a\62 c`,
+`\31  b` is `\31 b`). A name that starts with a generic family keyword
+(`serif x`, `UI-ROUNDED x`; `<generic-font-complete>` and
+`<generic-font-incomplete>`, not `emoji` or `fangsong`) is invalid there.
+warpdom kept all of them as written. css.js quotedFamilies (spec modes)
+does the quoting in the pass that puts ", " between families;
+css-values.js matchType rejects a `<font-family-name>` starting with a
+generic keyword. jsdom 26 has a rule of its own (each word a capital
+ASCII letter and one more character of `[A-Za-z0-9-]`: `Times New Roman`
+kept, `a b`, `Foo bar` dropped); not modeled, warpdom keeps them. jsdom
+20 to 25 keep every one as written, as warpdom does.
+
+Performance (Node 22.17.1, 5 alternating runs, medians, main -> this):
+`style.fontFamily` writes in the 29.1.1 profile, a new value each time
+(`FontN, Times New Roman, serif`) 3,491 -> 3,647 ns (+4.5%): the quoting
+itself (whitespace collapsed, a one-identifier check, the string
+written), only for a family list with whitespace and only on a cache
+miss; repeated values 116 -> 119 ns (noise). An earlier version split the
+list twice (+13.5%); quoting in familyCommas' pass removed that.
+isValidValue on 100,000 distinct values 2,886.8 -> 2,866.0 ns (noise);
+cold load 26.0 -> 26.2 ms (ranges overlap). Tests: css-profiles.test.js
+"a family name of several words" (parity 26 to 30 and 30.1.3, more
+values 27 to 30.1.3; 27.0.1 and 28.0.0; many escapes).
+
 ## 2026-11-06: a hex escape and its whitespace in an identifier (branch fix/264-escape-space, #264 item 48)
 
 CSS Syntax 3 (4.3.7) reads up to six hex digits after a backslash and then

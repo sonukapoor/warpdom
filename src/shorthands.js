@@ -177,7 +177,8 @@ export function parseFont(value) {
 
 // The font shorthand as jsdom serializes it: normal parts left out, a
 // spaced slash before the line height.
-export function serializeFont(value) {
+// families: a function that writes the family list (null: as written).
+export function serializeFont(value, families = null) {
   const f = parseFont(value);
   if (!f) return value;
   return [
@@ -185,7 +186,7 @@ export function serializeFont(value) {
     f.weight !== 'normal' ? f.weight : '',
     f.size,
     f.lineHeight !== 'normal' ? `/ ${f.lineHeight}` : '',
-    f.family,
+    families === null ? f.family : families(f.family),
   ]
     .filter(Boolean)
     .join(' ');

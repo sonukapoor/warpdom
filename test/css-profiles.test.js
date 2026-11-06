@@ -1738,3 +1738,92 @@ for (const jsdom of [20, 26, 27, 29, 30])
       }),
     { jsdom },
   );
+
+// A family name of several identifiers (CSS Fonts 4: <custom-ident>+) is
+// one string, its identifiers joined by single spaces: jsdom 27 and later
+// write it in double quotes (Times New Roman is "Times New Roman"), with
+// backslashes removed, on every path. A name that starts with a generic
+// family keyword (serif x, UI-ROUNDED x; not emoji or fangsong) is invalid
+// there. jsdom 26 has a rule of its own (Times New Roman kept, a b
+// dropped), not modeled; these values are the ones it keeps.
+const FAMILIES = ['Times New Roman', 'Open Sans', 'Segoe UI, Helvetica Neue, sans-serif', 'Noto Sans JP'];
+const MORE_FAMILIES = [
+  'a b',
+  'A  B',
+  'a\tb c',
+  'times new roman',
+  'x, Times New Roman ,y',
+  'a, b c, d',
+  'Ünï cödé',
+  'a-b c_d',
+  'x serif',
+  'x sans-serif y',
+  'emoji x',
+  'fangsong x',
+  'serif x',
+  'SERIF x',
+  'sans-serif x',
+  'monospace x',
+  'system-ui x',
+  'math x',
+  'ui-serif x',
+  'ui-rounded x',
+  'x default',
+  '"a b" c d',
+  String.raw`a\"b c`,
+  String.raw`a\62 c d`,
+  String.raw`foo\ bar baz`,
+];
+const familyNames = (values) => (w) => {
+  const d = w.document;
+  const out = [];
+  for (const v of values) {
+    const a = d.createElement('div');
+    a.style.fontFamily = v;
+    const b = d.createElement('div');
+    b.setAttribute('style', `font-family: ${v}`);
+    const c = d.createElement('div');
+    c.style.font = `12px ${v}`;
+    const inline = `${v} | ${a.style.fontFamily} | ${b.style.cssText} | ${c.style.font} / ${c.style.fontFamily}`;
+    // An escaped quote in a sheet is #264 item 2.
+    if (v.includes('\\"')) {
+      out.push(inline);
+      continue;
+    }
+    d.head.innerHTML = `<style>.x { font-family: ${v} }</style>`;
+    const rule = d.styleSheets[0].cssRules[0].style.fontFamily;
+    d.body.innerHTML = '<div class="x"></div>';
+    const computed = w.getComputedStyle(d.body.firstChild).fontFamily;
+    out.push(`${inline} | ${rule} | ${computed}`);
+  }
+  return out;
+};
+for (const jsdom of [26, 27, 28, 29, 30, '30.1.3'])
+  parity(`style: a family name of several words (jsdom ${jsdom}, #264)`, familyNames(FAMILIES), { jsdom });
+for (const jsdom of [27, 28, 29, 30, '30.1.3'])
+  parity(`style: a family name of several words, more values (jsdom ${jsdom}, #264)`, familyNames(MORE_FAMILIES), {
+    jsdom,
+  });
+// 27.0.1 and 28.0.0 (single-jsdom installs) as 27.4.0.
+test('style: a family name of several words (jsdom 27.0.1, 28.0.0, #264)', () => {
+  for (const jsdom of ['27.0.1', '28.0.0']) {
+    const d = createWindow({ jsdom }).document;
+    const el = d.createElement('div');
+    el.style.font = '12px Times New Roman';
+    assert.equal(el.style.font, '12px "Times New Roman"', jsdom);
+    el.style.fontFamily = 'x, Open  Sans ,y';
+    assert.equal(el.style.fontFamily, 'x, "Open Sans", y', jsdom);
+    el.style.fontFamily = 'serif x';
+    assert.equal(el.style.fontFamily, 'x, "Open Sans", y', jsdom);
+  }
+});
+// Many hex escapes in a name of several words: one reading of each escape,
+// so no exponential backtracking (8 escapes took 52 ms, each one more
+// ~6x). Black box: jsdom 29 removes the backslashes and quotes it.
+test('style: a family name of several words with many escapes (#264)', () => {
+  const el = createWindow({ jsdom: '29.1.1' }).document.createElement('div');
+  const start = performance.now();
+  el.style.fontFamily = `a${'\\AAAAAA'.repeat(12)} b c`;
+  assert.ok(performance.now() - start < 500);
+  assert.equal(el.style.fontFamily, `"a${'AAAAAA'.repeat(12)} b c"`);
+});
