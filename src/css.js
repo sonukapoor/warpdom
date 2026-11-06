@@ -25,6 +25,7 @@ import {
   isValidValue,
   readUrl,
   serializeUrls,
+  takesNamesOrStrings,
   urlTokenEnd,
 } from './css-values.js';
 import {
@@ -260,6 +261,21 @@ let zeroAsWritten = false;
 // a double quote escaped) or 'written' (cssstyle 5, jsdom 27: as 'quotes'
 // in background and background-image, as written elsewhere).
 let urlStyle = 'spec';
+// A value of one identifier, jsdom 27 and later (black box, 27.0.1 to
+// 30.1.3, #187): 27.0.1 to 28.0.0 (cssstyle 5, identsInLowercase) write it
+// in ASCII lowercase in every property but font-family (animation-name:
+// FOO is foo, FÖO is fÖo, F\4FO is f\4fo); from 28.1.0 only in a
+// property whose grammar takes no name or string of its own (display:
+// BLOCK is block; animation-name: FOO, text-align: CENTER as written).
+// background reads the case itself (NONE sets the initial values:
+// backgroundValue).
+let identsInLowercase = false;
+const ONE_IDENT = /^-{0,2}(?:[a-zA-Z_\u0080-\uffff]|\\[^])(?:[\w\u0080-\uffff-]|\\[^])*$/;
+const asciiLower = (value) => value.replace(/[A-Z]+/g, (s) => s.toLowerCase());
+function identValue(name, value) {
+  if (name === 'font-family' || name === 'background' || !/[A-Z]/.test(value) || !ONE_IDENT.test(value)) return value;
+  return identsInLowercase || !takesNamesOrStrings(name) ? asciiLower(value) : value;
+}
 const colorCaches = new Map();
 function declaredColors(value) {
   const key = `${legacyColors} ${colorKeywords}`;
@@ -912,6 +928,7 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
           : true;
     colorKeywords = surface !== null ? (surface.colors ?? null) : null;
     zeroAsWritten = surface !== null && (surface.key === 'cssstyle5' || surface.key === 'cssstyle5.0');
+    identsInLowercase = surface !== null && surface.key.startsWith('cssstyle5');
     if (surface === null || !surface.key.startsWith('cssstyle')) urlStyle = 'spec';
     else urlStyle = surface.key.startsWith('cssstyle6') ? 'quotes' : 'written';
     if (mode === 'page') out = pageDescriptorValue(name, value);
@@ -921,10 +938,11 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
     else if (isLegacyFont(surface, name))
       out = /^inherit$/i.test(value) ? INVALID : (legacyFont(value, surface.legacyFont) ?? INVALID);
     else {
-      out = versionedValue(name, value, mode, surface);
+      const written = isSpecMode(mode) ? identValue(name, value) : value;
+      out = versionedValue(name, written, mode, surface);
       if (out === undefined) {
         const checked = isSpecMode(mode) || JSDOM26_VALIDATED.has(name);
-        out = !checked || isValidValue(name, value) ? serializeDeclared(name, value, mode) : INVALID;
+        out = !checked || isValidValue(name, written) ? serializeDeclared(name, written, mode) : INVALID;
         if (out === INVALID && name === 'background-image' && isSpecMode(mode) && value.includes('var('))
           out = imageVarLayers(value, mode, surface);
       }

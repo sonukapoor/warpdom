@@ -1048,6 +1048,33 @@ export const isLengthUnit = (unit) => LENGTH_UNITS.has(unit);
 // Is the name (in lowercase) a math function's (calc, min, ...)?
 export const isMathFunction = (name) => MATH.has(name);
 
+// Does the property's grammar take a name or a string of its own
+// (<custom-ident>, <dashed-ident>, <string>), through any type it reaches?
+// jsdom 28.1 and later keep such a property's one-identifier value as
+// written (css.js, black box, #187). A property without a grammar does.
+const NAME_TYPES = new Set(['custom-ident', 'dashed-ident', 'string']);
+const TYPE_REFERENCE = /<('?)([a-z-]+)'?(?:\s*\[[^\]]*\])?>/g;
+const takesNames = new Map();
+function reachesNames(syntax, seen) {
+  for (const [, quoted, type] of syntax.matchAll(TYPE_REFERENCE)) {
+    if (NAME_TYPES.has(type)) return true;
+    if (seen.has(type)) continue;
+    seen.add(type);
+    const inner = quoted ? PROPERTY_SYNTAX[type] : TYPE_SYNTAX[type];
+    if (inner !== undefined && reachesNames(inner, seen)) return true;
+  }
+  return false;
+}
+export function takesNamesOrStrings(name) {
+  let out = takesNames.get(name);
+  if (out === undefined) {
+    const syntax = PROPERTY_SYNTAX[name] ?? PROPERTY_SYNTAX[ALIASES[name]];
+    out = syntax === undefined || reachesNames(syntax, new Set());
+    takesNames.set(name, out);
+  }
+  return out;
+}
+
 // Is the property one the grammars define (so setting it can be validated)?
 export const hasGrammar = (name) => Object.hasOwn(PROPERTY_SYNTAX, name);
 

@@ -4809,6 +4809,41 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-06: a value of one identifier in lowercase (branch fix/264-none-comment, #187, #264 item 42)
+
+#264 item 42 (`background-image: NONE /**/` is `none` in jsdom 27 and
+later) is one case of #187's keyword case. Measured black box: every
+keyword reachable through each property's grammar (@webref/css, about
+13,000 property and keyword pairs), written in uppercase, on jsdom 27.0.1,
+27.4.0, 28.0.0, 28.1.0, 29.1.1, 30.1.2 and 30.1.3:
+- jsdom lowercases a value only when it is one identifier
+  (`overflow: HIDDEN` is `hidden`, `overflow: HIDDEN AUTO` stays).
+- 27.0.1 to 28.0.0 (cssstyle 5): in every property but font-family, names
+  too (`animation-name: FOO` is `foo`), ASCII letters only (`FÖO` is
+  `fÖo`, `F\4FO` is `f\4fo`, `--FOO` is `--foo`).
+- From 28.1.0: only in a property whose grammar reaches no
+  `<custom-ident>`, `<dashed-ident>` or `<string>` (`display`, `width`,
+  `overflow`; not `animation-name`, `grid-area`, `text-align`, `content`).
+  This rule matches all 645 to 666 properties measured in each version.
+
+warpdom: `identValue` in css.js, before the property's own serializer
+(border and outline get it too; background reads the case itself, NONE
+being its initial values), with `takesNamesOrStrings` in css-values.js
+walking the grammar once per property. The style attribute, setProperty,
+style sheets and computed values all follow. Uppercase keyword
+differences per version went from 519 to 567 properties to none, except
+two older ones: text-emphasis system colors (28+) and `background` with
+one keyword.
+
+Left (docs/differences.md, #264): jsdom 26 lowercases some keywords in
+`el.style` but not in sheets; `background` with a single keyword.
+
+Performance (node 22.17.1, 5 interleaved runs, medians; jsdom 30
+profile): cold load 26.6 -> 26.4 ms; setProperty('width') with cached
+values 127.9 -> 129.9 ns (noise); a value not yet cached (a new
+animation-name each time) 1168 -> 1224 ns, the identifier test, once per
+distinct value.
+
 ## 2026-11-06: clip in every profile (branch fix/264-clip-rect, #264 item 41)
 
 Measured black box on 20.0.3 (cssstyle 2.3.0), 22.1.0 (3.0.0), 25.0.1

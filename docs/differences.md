@@ -210,12 +210,15 @@ Not modeled:
   jsdom 20 to 25 (cssstyle 4.1 and earlier) drop `width: 5PX`, and from 26
   jsdom lowercases it to `5px`; warpdom keeps `5PX`
 - the case of keywords
-  ([#187](https://github.com/sonukapoor/warpdom/issues/187)): jsdom 27
-  to 30 lowercase keyword values such as `display: BLOCK` (`block`),
-  `position` and `visibility`, and jsdom 27 to 28.0.0 `color-scheme`
-  too, in `el.style` and computed values; warpdom keeps the case as
-  written, as jsdom 20 to 26 do, and jsdom 28.1.0 and later for
-  `color-scheme`
+  ([#187](https://github.com/sonukapoor/warpdom/issues/187)): warpdom
+  writes a value of one identifier in lowercase as jsdom 27 and later do
+  (`display: BLOCK` is `block`; from 28.1.0 not in a property that takes
+  names or strings of its own, such as `animation-name` or `text-align`).
+  Left: jsdom 26 lowercases some keywords in `el.style` (`width: AUTO`,
+  `float`, `font-weight`, `margin`, `background-image: NONE`, generic
+  families in `font-family`) and keeps them in style sheets, and jsdom 27
+  and later read `background` with a single keyword (`REPEAT`,
+  `SCROLL`, `TEXT`) differently; warpdom keeps those as written
 - functions in box shorthands
   ([#112](https://github.com/sonukapoor/warpdom/issues/112)): from jsdom
   27, jsdom writes repeated sides once
