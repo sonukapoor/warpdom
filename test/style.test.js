@@ -1491,6 +1491,13 @@ const COMMENTED_VALUES = [
   ['color', 'url(a/*b.png); color: blue'],
   ['background-image', 'url(a/*b.png) /**/'],
   ['background-image', 'url(a;b.png) /**/'],
+  // A line break ends a string in a quoted url(): a bad string, and the
+  // separator after it counts (#273 review).
+  ['color', 'url("bad\n)/**/; color: blue'],
+  ['color', '"bad\n/**/; color: blue'],
+  // An !important inside the value, masked by var() (jsdom 27): nothing
+  // declared; the priority comes from setProperty's argument (#273 review).
+  ['font-family', '/**/"var(--face)" !important'],
   // What the attribute declares, kept as it serializes it: the initial
   // values for a background whose image is left out, an empty layer.
   ['background', 'NONE /**/'],

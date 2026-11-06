@@ -3006,7 +3006,7 @@ function writtenValue(name, raw, s) {
   if (text !== INVALID || isLegacyMode(s.mode) || !raw.includes('/*') || separated(raw)) return text;
   const decls = new Map();
   parseInto(decls, `${name}: ${raw}`, s.mode, s.surface, null, true);
-  for (const declared of decls.values()) if (declared.important) return INVALID;
+  for (const declared of decls.values()) if (declared.important || declared.masked === true) return INVALID;
   const declared = decls.get(name);
   if (declared !== undefined) return decls.size === 1 ? declared.value : INVALID;
   // (parseInto sets a background of initial values as its longhands.)
@@ -3014,11 +3014,13 @@ function writtenValue(name, raw, s) {
 }
 // A semicolon outside strings, comments, parentheses and unquoted url()s.
 function separated(raw) {
+  // A line break ends a string where the parser reads it so (a bad string).
+  const lineBreaks = cssSplitNeeded(raw);
   for (let i = 0, depth = 0; i < raw.length; i++) {
     const c = raw.charCodeAt(i);
     if (c === 34 || c === 39) {
-      i++;
-      while (i < raw.length && raw.charCodeAt(i) !== c) i += raw.charCodeAt(i) === 92 ? 2 : 1;
+      const end = stringEnd(raw, i, lineBreaks);
+      i = (end < 0 ? ~end : end) - 1;
     } else if (c === 47 && raw.charCodeAt(i + 1) === 42) {
       const end = raw.indexOf('*/', i + 2);
       if (end === -1) return false;
