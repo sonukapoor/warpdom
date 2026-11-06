@@ -1532,21 +1532,53 @@ const importantKept = (w) => {
 };
 for (const jsdom of [27, 28, 29, 30])
   parity(`style: !important on most properties (jsdom ${jsdom}, #264)`, importantKept, { jsdom });
-// Where it starts and ends: 27.0.1's style sheets keep it, 28.0.0 drops it
-// as 27 does (black box, single-jsdom installs of each release).
+// Where it starts and ends, on every path (black box, single-jsdom installs
+// of 27.0.1 and 28.0.0; #276 review): 27.0.1's style sheets and rule
+// styles (cssText, setProperty, insertRule) keep it, 28.0.0 drops it there
+// as 27.4.0 does, and 28.1.0 keeps it everywhere.
 test('style: !important on most properties by jsdom version', () => {
+  const text = 'position: absolute !important; color: red !important; z-index: 1 !important; --x: 1 !important';
   const read = (jsdom) => {
     const d = createWindow({ jsdom }).document;
-    const el = d.createElement('div');
-    el.style.setProperty('position', 'absolute', 'important');
+    const out = [];
+    const attribute = d.createElement('div');
+    attribute.setAttribute('style', text);
+    const css = d.createElement('div');
+    css.style.cssText = text;
+    const later = d.createElement('div');
+    later.setAttribute('style', 'position: absolute !important; position: static; color: red !important; color: blue');
+    const set = d.createElement('div');
     const sheet = d.head.appendChild(d.createElement('style'));
-    sheet.textContent = '.r { position: absolute !important; color: red !important }';
-    return [el.style.cssText, sheet.sheet.cssRules[0].style.cssText];
+    sheet.textContent = `.a { ${text} } .b {} .c {}`;
+    const [ruled, ruleSet, ruleCss] = sheet.sheet.cssRules;
+    for (const [name, value] of [
+      ['position', 'absolute'],
+      ['color', 'red'],
+    ]) {
+      set.style.setProperty(name, value, 'important');
+      ruleSet.style.setProperty(name, value, 'important');
+    }
+    ruleCss.style.cssText = text;
+    sheet.sheet.insertRule(`.d { ${text} }`, 3);
+    for (const x of [attribute, css, later, set, ruled, ruleSet, ruleCss, sheet.sheet.cssRules[3]])
+      out.push(x.style.cssText);
+    return out;
   };
-  assert.deepEqual(read('27.0.1'), ['position: absolute;', 'position: absolute !important; color: red !important;']);
-  assert.deepEqual(read('28.0.0'), ['position: absolute;', 'position: absolute; color: red !important;']);
+  const all = 'position: absolute !important; color: red !important; z-index: 1 !important; --x: 1 !important;';
+  const most = 'position: absolute; color: red !important; z-index: 1; --x: 1 !important;';
+  const later = 'position: absolute; color: red !important;';
+  const pair = 'position: absolute; color: red !important;';
+  const pairAll = 'position: absolute !important; color: red !important;';
+  assert.deepEqual(read('27.0.1'), [most, most, later, pair, all, pairAll, all, all]);
+  assert.deepEqual(read('28.0.0'), [most, most, later, pair, most, pair, most, most]);
   assert.deepEqual(read('28.1.0'), [
-    'position: absolute !important;',
+    all,
+    all,
     'position: absolute !important; color: red !important;',
+    pairAll,
+    all,
+    pairAll,
+    all,
+    all,
   ]);
 });
