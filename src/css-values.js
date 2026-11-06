@@ -27,8 +27,11 @@ import { ALIASES } from './css-data.js';
 //   { t: 'function', name, args: [...] }   { t: 'block', open, items: [...] }
 
 const NUMBER = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/i;
-const IDENT_START = /[a-zA-Z_\u0080-￿]|-[a-zA-Z_\u0080-￿-]|\\/;
-const IDENT_CHARS = /^(?:[a-zA-Z0-9_\u0080-￿-]|\\.)+/;
+// An escape (CSS Syntax 3, 4.3.7): up to six hex digits and the one
+// whitespace character after them (\31 FOO is one identifier), or any
+// other character.
+const IDENT_START = /[a-zA-Z_\u0080-￿]|-[a-zA-Z_\u0080-￿\\-]|\\/;
+const IDENT_CHARS = /^(?:[a-zA-Z0-9_\u0080-￿-]|\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\n\r\f])?|.))+/;
 
 function tokenize(text) {
   let i = 0;

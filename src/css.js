@@ -270,7 +270,8 @@ let urlStyle = 'spec';
 // background reads the case itself (NONE sets the initial values:
 // backgroundValue); a custom property keeps its value as written.
 let identsInLowercase = false;
-const ONE_IDENT = /^(?:--|-?(?:[a-zA-Z_\u0080-\uffff]|\\[^]))(?:[\w\u0080-\uffff-]|\\[^])*$/;
+const ONE_IDENT =
+  /^(?:--|-?(?:[a-zA-Z_\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^])))(?:[\w\u0080-\uffff-]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^]))*$/;
 const asciiLower = (value) => value.replace(/[A-Z]+/g, (s) => s.toLowerCase());
 function identValue(name, value) {
   if (name.startsWith('--') || name === 'font-family' || name === 'background') return value;

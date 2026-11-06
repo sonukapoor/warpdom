@@ -1285,3 +1285,56 @@ for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30]) {
     { jsdom },
   );
 }
+
+// A hex escape takes one whitespace character after it (CSS Syntax 3,
+// 4.3.7): -\31 FOO and \66 oo are one identifier each. jsdom 27 to 30.1.3
+// accept them where a single name is valid (#264 item 48); 27.0.1 to 28.0.0
+// write them in lowercase like any identifier. jsdom 26 rejects any escape
+// in font-family (not tested here).
+const ESCAPES = [
+  String.raw`-\31 FOO`,
+  String.raw`\31 FOO`,
+  String.raw`a\31 b`,
+  String.raw`a\31	b`,
+  String.raw`\66 oo`,
+  String.raw`a\000031 b`,
+  String.raw`a\0000311b`,
+  String.raw`\41 \42 `,
+  String.raw`a\31\9b`,
+  String.raw`foo\ bar`,
+  String.raw`\31 FOO bar`,
+];
+for (const jsdom of [26, 27, 28, 29, 30, '30.1.3']) {
+  parity(
+    `jsdom ${jsdom}: a hex escape and the whitespace after it in an identifier (#264)`,
+    (w) => {
+      const d = w.document;
+      const out = [];
+      const props = ['animation-name', 'list-style-type', 'grid-area', 'counter-reset', 'view-transition-name'];
+      if (jsdom !== 26) props.push('font-family');
+      for (const name of props)
+        for (const value of ESCAPES) {
+          // A family name of several words is quoted by jsdom 27 and later
+          // (#264 item 53), escapes or not.
+          if (name === 'font-family' && value.endsWith(' bar')) continue;
+          const el = d.createElement('div');
+          el.style.setProperty(name, value);
+          out.push(`${name}: ${value} -> ${el.style.getPropertyValue(name)}`);
+        }
+      d.head.innerHTML = String.raw`<style>.a { animation-name: -\31 FOO; list-style-type: \66 oo }</style>`;
+      out.push(d.styleSheets[0].cssRules[0].style.cssText);
+      return out;
+    },
+    { jsdom },
+  );
+}
+// 27.0.1 and 28.0.0 (single-jsdom installs): accepted, in lowercase.
+test('a hex escape and the whitespace after it, jsdom 27.0.1 and 28.0.0 (#264)', () => {
+  for (const jsdom of ['27.0.1', '28.0.0']) {
+    const d = createWindow({ jsdom }).document;
+    const el = d.createElement('div');
+    el.style.setProperty('animation-name', String.raw`-\31 FOO`);
+    el.style.setProperty('grid-area', String.raw`\41 \42 `);
+    assert.equal(el.style.cssText, String.raw`animation-name: -\31 foo; grid-area: \41 \42;`, jsdom);
+  }
+});

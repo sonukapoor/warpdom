@@ -4809,6 +4809,32 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-06: a hex escape and its whitespace in an identifier (branch fix/264-escape-space, #264 item 48)
+
+CSS Syntax 3 (4.3.7) reads up to six hex digits after a backslash and then
+one whitespace character, which belongs to the escape: `-\31 FOO` is one
+identifier. The value tokenizer (css-values.js IDENT_CHARS) read a
+backslash and one character, so the space ended the identifier and
+`animation-name`, `list-style-type`, `grid-area` and other one-name
+properties rejected `-\31 FOO`, `\66 oo` and `\41 \42 ` in every profile;
+IDENT_START also missed `-` followed by an escape. jsdom 27 to 30.1.3
+accept them (27.0.1 to 28.0.0 in lowercase, `-\31 foo`). Both regexes and
+css.js ONE_IDENT (the 27 to 28.0 lowercasing) now read the escape as the
+spec says. jsdom 26 drops any escape in `font-family`; not changed.
+
+Found while measuring, not changed here (#264 item 53): jsdom 27 and later
+write a `font-family` name of several unquoted words in quotes
+(`Times New Roman` is `"Times New Roman"`, backslashes dropped:
+`\31 a b` is `"31 a b"`); jsdom 26 drops `a b` but keeps
+`Times New Roman`. warpdom keeps them as written.
+
+Performance (Node 22.17.1, 5 alternating runs, medians, main -> this):
+isValidValue on 100,000 distinct values without escapes 2,939.9 ->
+2,952.5 ns per value, ranges overlapping (noise); cold load 26.0 ->
+26.0 ms. Tests: css-validation.test.js "a hex escape and the whitespace
+after it" (parity 26 to 30 and 30.1.3; 27.0.1 and 28.0.0 single
+installs).
+
 ## 2026-11-06: a single-number aspect-ratio and a lone system color in scrollbar-color (branch fix/264-survey-values, #264 item 52)
 
 Measured black box on 26.1.0, 27.0.1, 27.4.0, 28.0.0, 28.1.0, 29.1.1,
