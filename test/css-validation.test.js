@@ -663,6 +663,26 @@ for (const jsdom of [20, 22, 23, 25, 26, 27, 28, 29, 30, '30.1.3']) {
     jsdom,
   });
 }
+// After a style write, jsdom 27 to 30.1.2 compute such a gradient from
+// what is left, which is no gradient (30.1.3 computes it as written, and
+// all of them do for a style attribute or a rule: docs/differences.md).
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `jsdom ${jsdom}: the computed value of a gradient written without its defaults (#264)`,
+    (w) => {
+      const d = w.document;
+      const out = [];
+      for (const name of ['background', 'background-image'])
+        for (const value of GRADIENT_PARTS) {
+          const e = d.createElement('div');
+          d.body.replaceChildren(e);
+          e.style.setProperty(name, value);
+          out.push(`${name}: ${value} | ${w.getComputedStyle(e).getPropertyValue(name)}`);
+        }
+      return out;
+    },
+    { jsdom },
+  );
 for (const jsdom of [27, 28, 29, 30, '30.1.3'])
   parity(`jsdom ${jsdom}: a gradient's keywords and units not in lowercase (#264)`, gradientDefaults(GRADIENT_CASES), {
     jsdom,
