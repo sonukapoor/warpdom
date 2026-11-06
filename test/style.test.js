@@ -1463,6 +1463,70 @@ for (const jsdom of [27, 28, 29, 30])
     { jsdom },
   );
 
+// A comment in a value written through setProperty or an accessor (black
+// box, 27.4.0 to 30.1.3, #264 item 34): read as the style attribute reads
+// it (red /* c */ is red, 1px/**/2px is 1px 2px), on an element's style
+// and on a rule's.
+const COMMENTED_VALUES = [
+  ['color', 'red /* c */'],
+  ['color', '/* c */red'],
+  ['color', '/**/'],
+  ['color', 'red /* c */ !important'],
+  ['width', '10px/**/'],
+  ['line-height', '1/**/'],
+  ['margin', '1px /* c */ 2px'],
+  ['margin', '1px/**/2px'],
+  ['margin-top', '/* a */ 3px /* b */'],
+  ['background', 'url(a.png) /* c */ red'],
+  ['display', 'blo/**/ck'],
+  ['--x', 'a /* c */ b'],
+  ['color', 'red /* c'],
+  // A declaration separator ends the value: nothing declared (#273 review).
+  ['color', 'red/**/; color: blue'],
+  ['color', 'red /**/; width: 1px'],
+  ['color', 'red /* ; */'],
+  // An unquoted url() is one token: its quote or /* opens no string or
+  // comment (#273 review).
+  ['color', 'url(a"b.png)/**/; color: blue'],
+  ['color', 'url(a/*b.png); color: blue'],
+  ['background-image', 'url(a/*b.png) /**/'],
+  ['background-image', 'url(a;b.png) /**/'],
+  // A line break ends a string in a quoted url(): a bad string, and the
+  // separator after it counts (#273 review).
+  ['color', 'url("bad\n)/**/; color: blue'],
+  ['color', '"bad\n/**/; color: blue'],
+  // An !important inside the value, masked by var() (jsdom 27): nothing
+  // declared; the priority comes from setProperty's argument (#273 review).
+  ['font-family', '/**/"var(--face)" !important'],
+  // What the attribute declares, kept as it serializes it: the initial
+  // values for a background whose image is left out, an empty layer.
+  ['background', 'NONE /**/'],
+  ['background', 'LINEAR-GRADIENT(red, blue) /**/'],
+  ['background', 'url(a.png) /**/, none'],
+];
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `style: a comment in a value set through setProperty or an accessor (jsdom ${jsdom}, #264)`,
+    (w) => {
+      const d = w.document;
+      d.head.innerHTML = '<style>p {}</style>';
+      const rule = d.styleSheets[0].cssRules[0];
+      return COMMENTED_VALUES.map(([name, value]) => {
+        const set = d.createElement('div').style;
+        set.setProperty(name, value);
+        const important = d.createElement('div').style;
+        important.setProperty(name, value, 'important');
+        const accessor = d.createElement('div');
+        accessor.style.color = 'blue';
+        if (!name.startsWith('--')) accessor.style[name.replace(/-([a-z])/g, (m, c) => c.toUpperCase())] = value;
+        rule.style.cssText = '';
+        rule.style.setProperty(name, value);
+        return [name, value, set.cssText, important.cssText, accessor.getAttribute('style'), rule.cssText].join(' | ');
+      });
+    },
+    { jsdom },
+  );
+
 // The same names in a <style> element's text (jsdom 29 and later also
 // report "Could not parse CSS stylesheet" on the console, which warpdom
 // does not; docs/differences.md).

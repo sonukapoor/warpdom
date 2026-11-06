@@ -180,7 +180,8 @@ Not modeled:
   angle, jsdom's is empty)
 - comments in declared values that some properties read otherwise:
   from jsdom 27, `font-family: a/*x*/b` is `ab` (warpdom `a b`), the
-  style attribute keeps `transition: opacity/*x*/1s` as written (warpdom
+  style attribute and `setProperty()` keep `transition: opacity/*x*/1s` as
+  written (warpdom
   `opacity 1s`), and in jsdom 27 `content: "a" /*x*/` too (warpdom
   `"a"`). Comments are otherwise read as jsdom reads them: removed before
   27 and in 27 and 28's style sheets, a space elsewhere, and kept as

@@ -3052,6 +3052,52 @@ const resets = (surface, name, text) =>
 
 // via: 'accessor' (style.marginTop = v), 'set' (setProperty) or 'remove'
 // (removeProperty), for an inline style's margin and padding.
+// A value written through setProperty() or an accessor, serialized, or
+// INVALID. jsdom 27 and later read one with a comment as the style
+// attribute reads the declaration alone (black box, 27.4.0 to 30.1.3,
+// #264), keeping what it declares as it serializes it: red /* c */ is red,
+// 1px/**/2px is 1px 2px, NONE /**/ in background the initial values,
+// url(a.png) /**/, none is url("a.png"), ; a comment that leaves nothing
+// (/**/, blo/**/ck), an !important or a declaration separator in the
+// value declares nothing (red/**/; color: blue too). Such a value is
+// invalid to the grammar, so only invalid ones are looked at again (a
+// custom property's is kept as written: never invalid).
+function writtenValue(name, raw, s) {
+  const text = declaredValue(name, raw, s.mode, s.surface);
+  if (text !== INVALID || isLegacyMode(s.mode) || !raw.includes('/*') || separated(raw)) return text;
+  const decls = new Map();
+  parseInto(decls, `${name}: ${raw}`, s.mode, s.surface, null, true);
+  for (const declared of decls.values()) if (declared.important || declared.masked === true) return INVALID;
+  const declared = decls.get(name);
+  if (declared !== undefined) return decls.size === 1 ? declared.value : INVALID;
+  // (parseInto sets a background of initial values as its longhands.)
+  return name === 'background' && decls.size > 0 ? INITIALS : INVALID;
+}
+// A semicolon outside strings, comments, parentheses and unquoted url()s.
+function separated(raw) {
+  // A line break ends a string where the parser reads it so (a bad string).
+  const lineBreaks = cssSplitNeeded(raw);
+  for (let i = 0, depth = 0; i < raw.length; i++) {
+    const c = raw.charCodeAt(i);
+    if (c === 34 || c === 39) {
+      const end = stringEnd(raw, i, lineBreaks);
+      i = (end < 0 ? ~end : end) - 1;
+    } else if (c === 47 && raw.charCodeAt(i + 1) === 42) {
+      const end = raw.indexOf('*/', i + 2);
+      if (end === -1) return false;
+      i = end + 1;
+    } else if (c === 92) i++;
+    else if (c === 40) {
+      // An unquoted url() is one token (its quote or /* opens nothing).
+      const end = urlTokenEnd(raw, i);
+      if (end === -1) depth++;
+      else i = end - 1;
+    } else if (c === 41 && depth > 0) depth--;
+    else if (c === 59 && depth === 0) return true;
+  }
+  return false;
+}
+
 function setDeclaration(style, name, value, priority = '', via = 'accessor') {
   const s = styleState(style);
   if (s.computed) {
@@ -3082,7 +3128,7 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
     return;
   }
   // Unknown properties and invalid values are ignored (CSSOM).
-  let text = declaredValue(name, raw, s.mode, s.surface);
+  let text = writtenValue(name, raw, s);
   if (text === INVALID && name === 'background' && !s.parentRule)
     text = escapedUrlBackground(s.decls, raw, s.mode, s.surface);
   if (!s.parentRule && meetImage(name, raw, s.mode)) text = INVALID;
@@ -3138,7 +3184,7 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
 function setBox(style, s, name, raw, priority, via) {
   let text = '';
   if (via !== 'remove' && raw !== '') {
-    text = declaredValue(name, raw, s.mode, s.surface);
+    text = writtenValue(name, raw, s);
     if (text === INVALID || text === '') return;
   }
   const important = String(priority).toLowerCase() === 'important' && !dropsImportant(s.surface, name, text, false);
