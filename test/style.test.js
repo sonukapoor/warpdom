@@ -1481,6 +1481,15 @@ const COMMENTED_VALUES = [
   ['display', 'blo/**/ck'],
   ['--x', 'a /* c */ b'],
   ['color', 'red /* c'],
+  // A declaration separator ends the value: nothing declared (#273 review).
+  ['color', 'red/**/; color: blue'],
+  ['color', 'red /**/; width: 1px'],
+  ['color', 'red /* ; */'],
+  // What the attribute declares, kept as it serializes it: the initial
+  // values for a background whose image is left out, an empty layer.
+  ['background', 'NONE /**/'],
+  ['background', 'LINEAR-GRADIENT(red, blue) /**/'],
+  ['background', 'url(a.png) /**/, none'],
 ];
 for (const jsdom of [27, 28, 29, 30])
   parity(

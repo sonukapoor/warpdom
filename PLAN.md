@@ -4820,8 +4820,12 @@ url("a.png") red; a comment that leaves nothing (/**/), one inside a
 keyword (blo/**/ck) and an !important in the value declare nothing.
 css.js writtenValue (setDeclaration and setBox) reads such a value again
 when the grammar rejects it: parseInto on name: value, as an element's
-style attribute; a custom property's value stays as written, and jsdom
-26 and earlier are left as they were (cssstyle differs there, see #264).
+style attribute, keeping what that declares as it serializes it (NONE /**/
+in background sets the initial values, url(a.png) /**/, none is
+url("a.png"), as in jsdom); a semicolon outside strings, comments and
+parentheses declares nothing (red/**/; color: blue; #273 review). A custom
+property's value stays as written, and jsdom 26 and earlier are left as
+they were (cssstyle differs there, see #264).
 The attribute's own differences (font-family: a/*x*/b, transition:
 opacity/*x*/1s) now apply to setProperty too (differences.md). Test:
 style.test.js, parity 27 to 30, on an element's style and a rule's, with
