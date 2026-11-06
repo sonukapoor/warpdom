@@ -1625,11 +1625,16 @@ const accessorImportant = (w) => {
   set.style.setProperty('color', 'blue');
   out.push(set.style.cssText);
   const sheet = d.head.appendChild(d.createElement('style'));
-  sheet.textContent = '.a { color: red !important; width: 1px !important }';
+  sheet.textContent =
+    '.a { color: red !important; width: 1px !important } .b { float: left !important } .c { float: left !important }';
   const rule = sheet.sheet.cssRules[0].style;
   rule.color = 'blue';
   rule.width = 'var(--w)';
   out.push(rule.cssText);
+  sheet.sheet.cssRules[1].style.cssFloat = 'right';
+  out.push(sheet.sheet.cssRules[1].style.cssText);
+  sheet.sheet.cssRules[2].style.float = 'right';
+  out.push(sheet.sheet.cssRules[2].style.cssText);
   return out;
 };
 for (const jsdom of [26, 27, 28, 29, 30, '30.1.3'])
@@ -1646,5 +1651,14 @@ test("style: an accessor's write to an !important declaration (jsdom 27.0.1, 28.
     el.style.color = 'blue';
     el.style.position = 'static';
     assert.equal(el.style.cssText, 'color: blue !important; position: static;', jsdom);
+    // A rule's cssFloat: 27.0.1 ignores the write, 28.0.0 drops the priority.
+    const sheet = d.head.appendChild(d.createElement('style'));
+    sheet.textContent = '.b { float: left !important }';
+    sheet.sheet.cssRules[0].style.cssFloat = 'right';
+    assert.equal(
+      sheet.sheet.cssRules[0].style.cssText,
+      jsdom === '27.0.1' ? 'float: left !important;' : 'float: right;',
+      jsdom,
+    );
   }
 });
