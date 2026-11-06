@@ -17,7 +17,16 @@ import {
 import { STYLE_ACCESSORS } from './css-properties.js';
 import { SURFACES } from './style-surface.js';
 import { LONGHANDS, SHORTHANDS, COLOR_SHORTHANDS, ALIASES } from './css-data.js';
-import { hasVarFunction, isNameCode, isValidValue, readUrl, serializeUrls, urlTokenEnd } from './css-values.js';
+import {
+  hasVarFunction,
+  isLengthUnit,
+  isMathFunction,
+  isNameCode,
+  isValidValue,
+  readUrl,
+  serializeUrls,
+  urlTokenEnd,
+} from './css-values.js';
 import {
   expand,
   segments,
@@ -739,8 +748,9 @@ const JSDOM26_PARSED = new Set([
 // 'jsdom25' is 'jsdom26' with unquoted url()s (cssstyle before 4.3.1);
 // 'jsdom22' (cssstyle 3: jsdom 21 to 23) is 'jsdom25' without calc() in
 // margins and paddings; 'jsdom20' (cssstyle 2) the same. 'jsdom27' (jsdom
-// 27 to 29) is 'spec' with jsdom 26's clip (clipValue). The properties
-// each profile knows are its style surface (styleSurface), not its mode.
+// 27 to 29) is 'spec' but where jsdom 30 changed (a background's math,
+// zeros and positions, clip's unitless zeros). The properties each
+// profile knows are its style surface (styleSurface), not its mode.
 export const isLegacyMode = (mode) =>
   mode === 'jsdom26' || mode === 'jsdom25' || mode === 'jsdom22' || mode === 'jsdom20';
 const isSpecMode = (mode) => mode === 'spec' || mode === 'jsdom27';
@@ -1703,19 +1713,142 @@ function legacyGradientsValid(value) {
   return parts.join('');
 }
 
-// clip: auto, or rect() with comma-separated lengths (0 is 0px). jsdom 30
-// keeps only the first of space-separated lengths (rect(0 0 0 0) is
-// rect(0px)); jsdom 20 to 29 drop them, and auto inside rect().
+// clip as jsdom's versions read it (black box, 20.0.3 to 30.1.3, #264):
+// auto in any case (written auto), or rect() of four components, each a
+// length or auto:
+// - jsdom 20 to 25: separated by commas (one may be empty, kept so); a
+//   length is 0 (0px), or a number (no exponent) and one of the units
+//   cssstyle 2 to 4.1 know, kept as written but for the unit in lowercase;
+//   a percentage or a calc() is kept as written; auto and var() are
+//   invalid;
+// - jsdom 26: the same with every length unit, numbers in their shortest
+//   form (1.50px is 1.5px, 1e1px 10px, .5px 0.5px), a unitless zero 0px (but
+//   00); var() is kept as written with commas;
+// - jsdom 27 and later: separated by commas or spaces, a component a length
+//   (any zero, a calc()) or auto by the grammar, then those written read
+//   again: all four with commas, only the first with spaces (rect(1px 2px
+//   3px 4px) is rect(1px)): auto, a length with its number in its shortest
+//   form and its unit in lowercase, 0 is 0px, another unitless zero (00,
+//   0.0, -0) is invalid until jsdom 30 (0px), a calc() is invalid; rect is
+//   written as given (RECT(0 0 0 0) is RECT(0px)). var() is kept as
+//   written (the grammar's reading).
+// cascade.js computes a rect() of one component (jsdom 27 to 30.1.2).
+const CLIP_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?([a-z]+|%)$/i;
+const CLIP_LEGACY_LENGTH = /^[+-]?(\d+\.?\d*|\.\d+)(px|em|ex|ch|rem|vh|vw|cm|mm|in|pt|pc)$/i;
+const CLIP_26_ZERO = /^[+-]?(0(\.0*)?|\.0+)$/;
+// A unitless zero, with an exponent or not (0e0 is a zero in jsdom 26 and
+// later; black box, #274 review).
+const CLIP_EXPONENT = /^([+-]?(?:\d+\.?\d*|\.\d+))e[+-]?\d+$/i;
+const clipZero = (arg, zero) => zero.test(CLIP_EXPONENT.exec(arg)?.[1] ?? arg);
 function clipValue(value, mode) {
-  const m = /^rect\(\s*(.*?)\s*\)$/i.exec(value);
-  if (!m) return undefined;
-  const commas = m[1].includes(',');
-  const args = (commas ? m[1].split(',') : m[1].split(/\s+/)).map((a) => a.trim());
-  if (args.some((a) => !/^(auto|0|[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?[a-z]+)$/i.test(a))) return undefined;
+  if (/^auto$/i.test(value)) return 'auto';
+  if (!/^rect\(/i.test(value)) return undefined;
+  const legacy = isLegacyMode(mode);
+  const inner = value.slice(5, -1);
+  // (commas outside parentheses: rect(0 min(1px, 2px) 0 0) has spaces)
+  const parts = inner.includes(',') ? splitOutside(inner, ',') : null;
+  const commas = parts !== null && parts.length > 1;
+  if (hasVarFunction(value)) {
+    if (!legacy) return undefined;
+    return mode === 'jsdom26' && commas && oneFunction(value) ? value : INVALID;
+  }
+  if (!oneFunction(value)) return INVALID;
+  const args = commas ? parts.map((a) => a.trim()) : topLevelWords(inner);
   if (args.length !== 4) return INVALID;
-  if (mode !== 'spec' && (!commas || args.some((a) => a.toLowerCase() === 'auto'))) return INVALID;
-  const zero = (a) => (ZERO.test(a) ? '0px' : a);
-  return commas ? `rect(${args.map(zero).join(', ')})` : `rect(${zero(args[0])})`;
+  if (legacy && !commas) return INVALID;
+  const out = [];
+  for (let i = 0; i < 4; i++) {
+    const arg = args[i];
+    // (jsdom 20 to 26 keep an empty component: rect(1px, 2px, 3px, ).)
+    if (arg === '' ? !legacy : commas && topLevelWords(arg).length !== 1) return INVALID;
+    if (arg === '') {
+      out.push('');
+      continue;
+    }
+    const written = !commas && i > 0 ? clipGrammar(arg, mode) && arg : clipComponent(arg, mode);
+    if (written === INVALID || written === false) return INVALID;
+    out.push(written);
+  }
+  if (legacy) return `rect(${out.join(', ')})`;
+  const name = value.slice(0, 4);
+  return commas ? `${name}(${out.join(', ')})` : `${name}(${out[0]})`;
+}
+// A component as the grammar reads it (jsdom 27 and later): a length, any
+// unitless zero, auto, or a math function in any case (calc, min, abs,
+// ...), whose insides it leaves unchecked but for a var( not in lowercase
+// (calc(VAR(--a) + 1px), as css-values.js reads math) and, from jsdom 30,
+// a percentage (calc(1px + 2%); black box, 27.4.0 to 30.1.3, #274 review).
+// The function is the whole component (calc(1px)junk is invalid); strings
+// in it are not read (calc("VAR(") and calc("%") are valid), and its
+// brackets outside them must pair up (calc([) is invalid), with no curly
+// brace (calc({1px}) is invalid; jsdom 27 to 30.1.2 throw for both).
+const CLIP_FUNCTION_NAMES = /([\w-]+)\(/g;
+const CLIP_STRINGS = /"(?:[^"\\]|\\[^])*"|'(?:[^'\\]|\\[^])*'/g;
+function clipGrammar(arg, mode) {
+  if (/^auto$/i.test(arg) || clipZero(arg, ZERO)) return true;
+  const open = arg.indexOf('(');
+  if (open > 0) {
+    if (!oneFunction(arg) || !isMathFunction(arg.slice(0, open).toLowerCase())) return false;
+    const code = arg.includes('"') || arg.includes("'") ? arg.replace(CLIP_STRINGS, '""') : arg;
+    if (!balancedBrackets(code) || (mode === 'spec' && code.includes('%'))) return false;
+    for (const [, name] of code.matchAll(CLIP_FUNCTION_NAMES))
+      if (name !== 'var' && name.toLowerCase() === 'var') return false;
+    return true;
+  }
+  const m = CLIP_NUMBER.exec(arg);
+  return m !== null && isLengthUnit(m[3].toLowerCase());
+}
+function balancedBrackets(text) {
+  const open = [];
+  for (const c of text)
+    if (c === '(') open.push(')');
+    else if (c === '[') open.push(']');
+    else if (c === '{' || c === '}' || ((c === ')' || c === ']') && open.pop() !== c)) return false;
+  return open.length === 0;
+}
+// A component as written in the declared value, or INVALID.
+function clipComponent(arg, mode) {
+  if (mode === 'jsdom20' || mode === 'jsdom22' || mode === 'jsdom25') {
+    if (arg === '0') return '0px';
+    if (/^calc\(.*\)$/i.test(arg) || /^[+-]?(\d+\.?\d*|\.\d+)%$/.test(arg)) return arg;
+    return CLIP_LEGACY_LENGTH.test(arg) ? arg.replace(/[a-z]+$/i, (u) => u.toLowerCase()) : INVALID;
+  }
+  if (mode === 'jsdom26') {
+    if (clipZero(arg, CLIP_26_ZERO)) return '0px';
+    if (/^calc\(.*\)$/i.test(arg)) return arg;
+    const m = CLIP_NUMBER.exec(arg);
+    if (m === null || (m[3] !== '%' && !isLengthUnit(m[3].toLowerCase()))) return INVALID;
+    return canonicalNumbers(arg.toLowerCase());
+  }
+  if (/^auto$/i.test(arg)) return 'auto';
+  if (arg === '0') return '0px';
+  if (clipZero(arg, ZERO)) return mode === 'spec' ? '0px' : INVALID;
+  const m = CLIP_NUMBER.exec(arg);
+  if (m === null || !isLengthUnit(m[3].toLowerCase())) return INVALID;
+  return canonicalNumbers(arg.toLowerCase());
+}
+// Whitespace-separated words outside parentheses and strings.
+function topLevelWords(text) {
+  const words = [];
+  let depth = 0,
+    start = -1;
+  for (let i = 0; i <= text.length; i++) {
+    const c = i < text.length ? text.charCodeAt(i) : 32;
+    if (c === 34 || c === 39) {
+      if (start === -1) start = i;
+      i++;
+      while (i < text.length && text.charCodeAt(i) !== c) i += text.charCodeAt(i) === 92 ? 2 : 1;
+      continue;
+    }
+    if (c === 40) depth++;
+    else if (c === 41) depth--;
+    const space = depth === 0 && (c === 32 || c === 9 || c === 10 || c === 13 || c === 12);
+    if (space) {
+      if (start !== -1) words.push(text.slice(start, i));
+      start = -1;
+    } else if (start === -1) start = i;
+  }
+  return words;
 }
 
 // @page descriptors (CSS Paged Media 3, CSSOM's CSSPageDescriptors): the

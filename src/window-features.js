@@ -1800,6 +1800,8 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle, beyondJsdom = fa
     unsetUndeclared: version[0] >= 21 && before(version, [28, 1, 0]),
     blankBorderShorthands: !before(version, [29, 0, 2]) && before(version, [29, 1, 1]),
     shorthandInitials: !before(version, [30, 1, 3]),
+    // clip computed from its declared value read again (cascade.js).
+    clipReparsed: version[0] >= 27 && before(version, [30, 1, 3]),
     initialAnimationDelay: before(version, [30, 0, 1]),
     rawComputedValues:
       before(version, [29, 0, 2]) || !before(version, [30, 1, 0]) ? null : version[0] === 29 ? '29' : '30.0',

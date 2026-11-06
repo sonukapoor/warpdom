@@ -1178,3 +1178,201 @@ for (const jsdom of [30, 29, 28, 27])
     },
     { jsdom },
   );
+
+// clip as each jsdom serializes and computes it (black box, 20.0.3 to
+// 30.1.3, #264): a rect() of four lengths or auto, with commas or (from
+// jsdom 27) spaces; its components' numbers and units in each version's
+// reading. Through setProperty, the style attribute and getComputedStyle.
+const CLIP_VALUES = [
+  'rect(0 0 0 0)',
+  'rect(0, 0, 0, 0)',
+  'rect(0px 0px 0px 0px)',
+  'rect(1px 2px 3px 4px)',
+  'rect(1px, 2px, 3px, 4px)',
+  'rect(1px,2px,3px,4px)',
+  'rect( 0 0 0 0 )',
+  'rect(1px ,2px , 3px,4px)',
+  'RECT(1px, 2px, 3px, 4px)',
+  'Rect(0 0 0 0)',
+  'rect(auto, auto, auto, auto)',
+  'rect(auto 2px 3px 4px)',
+  'rect(1px, 2px, 3px, AUTO)',
+  'rect(1px 2px 3px AUTO)',
+  'AUTO',
+  // numbers and units in a component
+  'rect(00, 1px, 1px, 1px)',
+  'rect(0.0, 1px, 1px, 1px)',
+  'rect(-0, 1px, 1px, 1px)',
+  'rect(0.0px, 1px, 1px, 1px)',
+  'rect(0em, 1px, 1px, 1px)',
+  'rect(1PX, 1px, 1px, 1px)',
+  'rect(1.50px, +2px, .5px, -1px)',
+  'rect(1e1px, 1E1px, 1e-1px, 1.5e1px)',
+  'rect(1q, 1vmin, 1dvh, 1cap)',
+  'rect(1ex, 1ch, 1rem, 1vw)',
+  'rect(1pt, 1pc, 1in, 1mm)',
+  'rect(00 1px 1px 1px)',
+  'rect(0.0 1px 1px 1px)',
+  'rect(1.50px 2px 3px 4px)',
+  'rect(.5PX 2px 3px 4px)',
+  'rect(1E1px 2px 3px 4px)',
+  'rect(1px 1px 1px 00)',
+  'rect(1px 1px 1px -0)',
+  'rect(0e0 0 0 0)',
+  'rect(0 0e0 0 0)',
+  'rect(0e0, 1px, 1px, 1px)',
+  'rect(1px 1px 1px 0E1)',
+  'rect(0 0e-1 0 0)',
+  'rect(+0e0, 1px, 1px, 1px)',
+  'rect(.0e0 1px 1px 1px)',
+  'rect(0 1e0 0 0)',
+  // not lengths
+  'rect(0%, 1px, 1px, 1px)',
+  'rect(1px 2px 3px 1%)',
+  'rect(calc(1px), 1px, 1px, 1px)',
+  'rect(calc(1px) 1px 1px 1px)',
+  'rect(1px 1px 1px calc(1px))',
+  // a math function after the first component with spaces: its insides
+  // unchecked but for a var( not in lowercase and (jsdom 30) a percentage
+  // (#274 review)
+  'rect(0 calc(VAR(--a) + 1px) 0 0)',
+  'rect(0 calc(1px + Var(--a)) 0 0)',
+  'rect(0 calc(1px + 2%) 0 0)',
+  'rect(0 calc(foo) 0 0)',
+  'rect(0 min(1px, 2px) 0 0)',
+  'rect(0 CLAMP(1px, 2px, 3px) 0 0)',
+  'rect(0 abs(1px) 0 0)',
+  'rect(0 foo(1px) 0 0)',
+  'rect(0 calc(1px)junk 0 0)',
+  'rect(0 calc(1px)calc(2px) 0 0)',
+  'rect(0 junk calc(1px) 0)',
+  'rect(0 calc(")") 0 0)',
+  "rect(0 calc('(') 0 0)",
+  'rect(0 calc("\\"(") 0 0)',
+  'rect(0 calc(1px) 0 0)junk',
+  'rect(0 calc("VAR(") 0 0)',
+  "rect(0 calc('a%b') 0 0)",
+  'rect(0 calc("x) VAR(") 0 0)',
+  'rect(1, 1px, 1px, 1px)',
+  'rect(1px 1px 1px 1)',
+  'rect(1foo, 1px, 1px, 1px)',
+  'rect(1px 1px 1px 1foo)',
+  // malformed
+  'rect(1px, 2px 3px, 4px)',
+  'rect(1px, 2px, 3px, )',
+  'rect(,1px, 2px, 3px, 4px)',
+  'rect(1px, 2px, 3px)',
+  'rect(1px 2px)',
+  'rect(1px 2px 3px 4px 5px)',
+  'rect(1px,2px,3px,4px)junk',
+  'rect (1px, 2px, 3px, 4px)',
+  'rect(1px 2px 3px 4px) !important',
+  // var()
+  'rect(var(--a), 1px, 1px, 1px)',
+  'rect(1px 2px 3px var(--a))',
+];
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30, '30.1.3'])
+  parity(
+    `style: clip through setProperty, the attribute and getComputedStyle (jsdom ${jsdom}, #264)`,
+    (w) => {
+      const d = w.document;
+      return CLIP_VALUES.map((value) => {
+        const a = d.createElement('div');
+        a.style.setProperty('clip', value);
+        const b = d.createElement('div');
+        b.setAttribute('style', `clip: ${value}`);
+        d.body.replaceChildren(b);
+        return `${value} | ${a.style.clip} | ${b.style.clip} | ${w.getComputedStyle(b).clip}`;
+      });
+    },
+    { jsdom },
+  );
+for (const jsdom of [27, 28, 29])
+  parity(
+    `style: visually hidden (jsdom ${jsdom}, #264)`,
+    (w) => {
+      const d = w.document.createElement('div');
+      Object.assign(d.style, { border: '0', clip: 'rect(0 0 0 0)', height: '1px', overflow: 'hidden' });
+      w.document.body.append(d);
+      return [d.getAttribute('style'), d.style.clip, w.getComputedStyle(d).clip];
+    },
+    { jsdom },
+  );
+// An invalid clip leaves the one set before (#274 review).
+for (const jsdom of [27, 29, 30, '30.1.3'])
+  parity(
+    `style: an invalid clip keeps the previous value (jsdom ${jsdom}, #264)`,
+    (w) => {
+      const s = w.document.createElement('div').style;
+      s.setProperty('clip', 'rect(1px, 2px, 3px, 4px)');
+      s.setProperty('clip', 'rect(0 calc(VAR(--a) + 1px) 0 0)');
+      const first = s.clip;
+      s.clip = 'rect(0 calc(1px + 2%) 0 0)';
+      return [first, s.clip];
+    },
+    { jsdom },
+  );
+// A math function with an unbalanced bracket in it (calc([)) is invalid
+// (#274 review), and so is a curly brace outside a string (calc({1px})):
+// jsdom 30.1.3 leaves the clip set before, 27 to 30.1.2
+// throw a SyntaxError (docs/differences.md), warpdom leaves it too.
+const CLIP_BRACKETS = [
+  'rect(0 calc(1px]) 0 0)',
+  'rect(0 calc([) 0 0)',
+  'rect(0 calc({) 0 0)',
+  'rect(0 calc(}) 0 0)',
+  'rect(0 calc(1px)) 0 0)',
+  'rect(0 calc("[") 0 0)',
+  'rect(0 calc([1px]) 0 0)',
+  'rect(0 calc({1px}) 0 0)',
+  'rect(0 calc("{") 0 0)',
+  'rect(0 calc([{}]) 0 0)',
+  'rect(0 min([1px], 2px) 0 0)',
+];
+const clipBrackets = (w) => {
+  const s = w.document.createElement('div').style;
+  return CLIP_BRACKETS.map((value) => {
+    s.setProperty('clip', 'rect(1px, 2px, 3px, 4px)');
+    s.setProperty('clip', value);
+    return s.clip;
+  });
+};
+parity('style: an unbalanced bracket in a clip math function (jsdom 30.1.3, #264)', clipBrackets, {
+  jsdom: '30.1.3',
+});
+test('style: an unbalanced bracket in a clip math function leaves the previous clip (jsdom 27 to 30, #264)', () => {
+  for (const jsdom of [27, 28, 29, 30])
+    assert.deepEqual(
+      clipBrackets(createWindow({ jsdom })),
+      clipBrackets(createWindow({ jsdom: '30.1.3' })),
+      `jsdom ${jsdom}`,
+    );
+});
+// A rect() written with one component (rect(0 0 0 0) is rect(0px)) in the
+// cascade (#274 review): jsdom 27 to 30.1.2 read it again, find it invalid
+// and let a rule's clip win, from a style attribute, setProperty or a rule;
+// 30.1.3 computes it as declared, after setProperty too.
+for (const jsdom of [27, 28, 29, 30, '30.1.3'])
+  parity(
+    `style: a one-component clip against other declarations (jsdom ${jsdom}, #264)`,
+    (w) => {
+      const d = w.document;
+      d.head.innerHTML = '<style>.r { clip: rect(1px, 2px, 3px, 4px) } .s { clip: rect(0 0 0 0) }</style>';
+      const attribute = d.createElement('div');
+      attribute.className = 'r';
+      attribute.setAttribute('style', 'clip: rect(0 0 0 0)');
+      const written = d.createElement('div');
+      written.style.setProperty('clip', 'rect(0 0 0 0)');
+      const writtenOverRule = d.createElement('div');
+      writtenOverRule.className = 'r';
+      writtenOverRule.style.setProperty('clip', 'rect(0 0 0 0)');
+      const rule = d.createElement('div');
+      rule.className = 's';
+      const laterRule = d.createElement('div');
+      laterRule.className = 'r s';
+      const all = [attribute, written, writtenOverRule, rule, laterRule];
+      d.body.replaceChildren(...all);
+      return all.map((e) => w.getComputedStyle(e).clip);
+    },
+    { jsdom },
+  );

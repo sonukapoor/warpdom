@@ -1043,6 +1043,11 @@ function checkTokens(node, value) {
   }
 }
 
+// Is the unit (in lowercase) a length unit?
+export const isLengthUnit = (unit) => LENGTH_UNITS.has(unit);
+// Is the name (in lowercase) a math function's (calc, min, ...)?
+export const isMathFunction = (name) => MATH.has(name);
+
 // Is the property one the grammars define (so setting it can be validated)?
 export const hasGrammar = (name) => Object.hasOwn(PROPERTY_SYNTAX, name);
 
