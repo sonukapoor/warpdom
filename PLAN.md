@@ -4826,8 +4826,14 @@ length unit, numbers in their shortest form), zeros (0 is 0px; 00, 0.0
 and -0 by version), auto (27 and later), percentages and calc() (kept in
 20 to 26, invalid later), auto in any case written auto, and from 27 the
 function name as written (RECT(0 0 0 0) is RECT(0px)). jsdom 27 to 30.1.2
-compute a rect() of one component as not declared ('' in 27 and 28, auto
-in 29 and 30.1.2; compat.clipReparsed, cascade.js); 30.1.3 computes it.
+read a rect() of one component again and find it invalid: the
+declaration takes no part in the cascade, from a style attribute,
+setProperty or a rule, so a rule's clip wins over it, else '' (27, 28) or
+auto (29, 30.1.2) (compat.clipReparsed, cascade.js cascadeExpand). 30.1.3
+computes it, after setProperty too (inlineDeclarations keeps the written
+value that reading the serialized attribute again rejects; #274 review).
+Sheet and computed style with clip in 200 rules (jsdom 29 profile, 5
+interleaved runs, medians): 831.4 -> 831.3 us.
 Left (docs/differences.md): the SyntaxError jsdom throws for a comment
 after a space-separated rect(), clip: initial with cssstyle 4.1.
 

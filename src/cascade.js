@@ -99,8 +99,16 @@ const UA_BORDER = [
   'border-color',
   ...['top', 'right', 'bottom', 'left'].flatMap((side) => [`border-${side}-width`, `border-${side}-style`]),
 ];
+// jsdom 27 to 30.1.2 cascade clip as its declared value reads again: a
+// rect() of one component (what rect(0 0 0 0) is written as) is invalid
+// there, so the declaration takes no part (a style attribute's leaves a
+// rule's to win; black box, 27.4.0 to 30.1.3, #264). 30.1.3 keeps it.
+const ONE_COMPONENT_RECT = /^rect\([^,]*\)$/i;
+
 function cascadeExpand(property, value, legacyFont, compat = null) {
   const name = ALIASES[property] ?? property;
+  if (name === 'clip' && compat?.clipReparsed === true && ONE_COMPONENT_RECT.test(value) && !value.includes('var('))
+    return [];
   const longhands = SHORTHANDS[name];
   if (longhands !== undefined && !EXPANDED_SHORTHANDS.has(name)) return [[name, value]];
   if (compat?.pendingLonghands && longhands !== undefined && value.includes('var(')) {
@@ -270,6 +278,11 @@ function inlineDeclarations(element) {
   // A style attribute as parsed (not one a style write serialized), from
   // jsdom 27: margin and padding as its style object holds them.
   if (written === null) parsedBox(decls, mode);
+  // A clip a style write serialized as a rect() of one component (rect(0 0
+  // 0 0) is rect(0px)), which the text read again rejects: jsdom 30.1.3
+  // computes it as declared (see cascadeExpand for 27 to 30.1.2).
+  else if (compat.jsdom >= 27 && !compat.clipReparsed && !decls.has('clip') && written.has('clip'))
+    decls.set('clip', written.get('clip'));
   for (const [property, { value, important, masked }] of decls) {
     // A declaration with var() and !important that lost it (masked,
     // compat.varDropsImportant) is still !important to the attribute's
@@ -1731,20 +1744,7 @@ export function computedValue(element, property) {
 const hiddenHides = (element, compat) =>
   element[S].ns === HTML_NS && element[S].attrs.has('hidden') && (compat.jsdom < 27 || element[S].tag !== 'embed');
 
-// jsdom 27 to 30.1.2 compute clip from its declared value read again: a
-// rect() of one component (what rect(0 0 0 0) is written as) is invalid
-// there, so not declared (black box, 27.4.0 to 30.1.3, #264).
-const ONE_COMPONENT_RECT = /^rect\([^,]*\)$/i;
-
 function longhandValue(element, name, data, custom, compat, value) {
-  if (
-    name === 'clip' &&
-    value !== undefined &&
-    compat.clipReparsed &&
-    ONE_COMPONENT_RECT.test(value) &&
-    !value.includes('var(')
-  )
-    value = undefined;
   if (compat.legacyComputedStyle) {
     // jsdom before 29.0.2: custom properties are not inherited either;
     // from jsdom 27 the direction of elements with dir, bdi and

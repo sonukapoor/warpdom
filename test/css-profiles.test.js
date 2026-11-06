@@ -1269,3 +1269,31 @@ for (const jsdom of [27, 28, 29])
     },
     { jsdom },
   );
+// A rect() written with one component (rect(0 0 0 0) is rect(0px)) in the
+// cascade (#274 review): jsdom 27 to 30.1.2 read it again, find it invalid
+// and let a rule's clip win, from a style attribute, setProperty or a rule;
+// 30.1.3 computes it as declared, after setProperty too.
+for (const jsdom of [27, 28, 29, 30, '30.1.3'])
+  parity(
+    `style: a one-component clip against other declarations (jsdom ${jsdom}, #264)`,
+    (w) => {
+      const d = w.document;
+      d.head.innerHTML = '<style>.r { clip: rect(1px, 2px, 3px, 4px) } .s { clip: rect(0 0 0 0) }</style>';
+      const attribute = d.createElement('div');
+      attribute.className = 'r';
+      attribute.setAttribute('style', 'clip: rect(0 0 0 0)');
+      const written = d.createElement('div');
+      written.style.setProperty('clip', 'rect(0 0 0 0)');
+      const writtenOverRule = d.createElement('div');
+      writtenOverRule.className = 'r';
+      writtenOverRule.style.setProperty('clip', 'rect(0 0 0 0)');
+      const rule = d.createElement('div');
+      rule.className = 's';
+      const laterRule = d.createElement('div');
+      laterRule.className = 'r s';
+      const all = [attribute, written, writtenOverRule, rule, laterRule];
+      d.body.replaceChildren(...all);
+      return all.map((e) => w.getComputedStyle(e).clip);
+    },
+    { jsdom },
+  );
