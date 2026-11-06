@@ -1736,6 +1736,10 @@ function legacyGradientsValid(value) {
 const CLIP_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?([a-z]+|%)$/i;
 const CLIP_LEGACY_LENGTH = /^[+-]?(\d+\.?\d*|\.\d+)(px|em|ex|ch|rem|vh|vw|cm|mm|in|pt|pc)$/i;
 const CLIP_26_ZERO = /^[+-]?(0(\.0*)?|\.0+)$/;
+// A unitless zero, with an exponent or not (0e0 is a zero in jsdom 26 and
+// later; black box, #274 review).
+const CLIP_EXPONENT = /^([+-]?(?:\d+\.?\d*|\.\d+))e[+-]?\d+$/i;
+const clipZero = (arg, zero) => zero.test(CLIP_EXPONENT.exec(arg)?.[1] ?? arg);
 function clipValue(value, mode) {
   if (/^auto$/i.test(value)) return 'auto';
   if (!/^rect\(/i.test(value)) return undefined;
@@ -1779,7 +1783,7 @@ function clipValue(value, mode) {
 const CLIP_FUNCTION_NAMES = /([\w-]+)\(/g;
 const CLIP_STRINGS = /"(?:[^"\\]|\\[^])*"|'(?:[^'\\]|\\[^])*'/g;
 function clipGrammar(arg, mode) {
-  if (/^auto$/i.test(arg) || ZERO.test(arg)) return true;
+  if (/^auto$/i.test(arg) || clipZero(arg, ZERO)) return true;
   const open = arg.indexOf('(');
   if (open > 0) {
     if (!oneFunction(arg) || !isMathFunction(arg.slice(0, open).toLowerCase())) return false;
@@ -1800,7 +1804,7 @@ function clipComponent(arg, mode) {
     return CLIP_LEGACY_LENGTH.test(arg) ? arg.replace(/[a-z]+$/i, (u) => u.toLowerCase()) : INVALID;
   }
   if (mode === 'jsdom26') {
-    if (CLIP_26_ZERO.test(arg)) return '0px';
+    if (clipZero(arg, CLIP_26_ZERO)) return '0px';
     if (/^calc\(.*\)$/i.test(arg)) return arg;
     const m = CLIP_NUMBER.exec(arg);
     if (m === null || (m[3] !== '%' && !isLengthUnit(m[3].toLowerCase()))) return INVALID;
@@ -1808,7 +1812,7 @@ function clipComponent(arg, mode) {
   }
   if (/^auto$/i.test(arg)) return 'auto';
   if (arg === '0') return '0px';
-  if (ZERO.test(arg)) return mode === 'spec' ? '0px' : INVALID;
+  if (clipZero(arg, ZERO)) return mode === 'spec' ? '0px' : INVALID;
   const m = CLIP_NUMBER.exec(arg);
   if (m === null || !isLengthUnit(m[3].toLowerCase())) return INVALID;
   return canonicalNumbers(arg.toLowerCase());
