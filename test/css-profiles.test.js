@@ -1178,3 +1178,94 @@ for (const jsdom of [30, 29, 28, 27])
     },
     { jsdom },
   );
+
+// clip as each jsdom serializes and computes it (black box, 20.0.3 to
+// 30.1.3, #264): a rect() of four lengths or auto, with commas or (from
+// jsdom 27) spaces; its components' numbers and units in each version's
+// reading. Through setProperty, the style attribute and getComputedStyle.
+const CLIP_VALUES = [
+  'rect(0 0 0 0)',
+  'rect(0, 0, 0, 0)',
+  'rect(0px 0px 0px 0px)',
+  'rect(1px 2px 3px 4px)',
+  'rect(1px, 2px, 3px, 4px)',
+  'rect(1px,2px,3px,4px)',
+  'rect( 0 0 0 0 )',
+  'rect(1px ,2px , 3px,4px)',
+  'RECT(1px, 2px, 3px, 4px)',
+  'Rect(0 0 0 0)',
+  'rect(auto, auto, auto, auto)',
+  'rect(auto 2px 3px 4px)',
+  'rect(1px, 2px, 3px, AUTO)',
+  'rect(1px 2px 3px AUTO)',
+  'AUTO',
+  // numbers and units in a component
+  'rect(00, 1px, 1px, 1px)',
+  'rect(0.0, 1px, 1px, 1px)',
+  'rect(-0, 1px, 1px, 1px)',
+  'rect(0.0px, 1px, 1px, 1px)',
+  'rect(0em, 1px, 1px, 1px)',
+  'rect(1PX, 1px, 1px, 1px)',
+  'rect(1.50px, +2px, .5px, -1px)',
+  'rect(1e1px, 1E1px, 1e-1px, 1.5e1px)',
+  'rect(1q, 1vmin, 1dvh, 1cap)',
+  'rect(1ex, 1ch, 1rem, 1vw)',
+  'rect(1pt, 1pc, 1in, 1mm)',
+  'rect(00 1px 1px 1px)',
+  'rect(0.0 1px 1px 1px)',
+  'rect(1.50px 2px 3px 4px)',
+  'rect(.5PX 2px 3px 4px)',
+  'rect(1E1px 2px 3px 4px)',
+  'rect(1px 1px 1px 00)',
+  'rect(1px 1px 1px -0)',
+  // not lengths
+  'rect(0%, 1px, 1px, 1px)',
+  'rect(1px 2px 3px 1%)',
+  'rect(calc(1px), 1px, 1px, 1px)',
+  'rect(calc(1px) 1px 1px 1px)',
+  'rect(1px 1px 1px calc(1px))',
+  'rect(1, 1px, 1px, 1px)',
+  'rect(1px 1px 1px 1)',
+  'rect(1foo, 1px, 1px, 1px)',
+  'rect(1px 1px 1px 1foo)',
+  // malformed
+  'rect(1px, 2px 3px, 4px)',
+  'rect(1px, 2px, 3px, )',
+  'rect(,1px, 2px, 3px, 4px)',
+  'rect(1px, 2px, 3px)',
+  'rect(1px 2px)',
+  'rect(1px 2px 3px 4px 5px)',
+  'rect(1px,2px,3px,4px)junk',
+  'rect (1px, 2px, 3px, 4px)',
+  'rect(1px 2px 3px 4px) !important',
+  // var()
+  'rect(var(--a), 1px, 1px, 1px)',
+  'rect(1px 2px 3px var(--a))',
+];
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30, '30.1.3'])
+  parity(
+    `style: clip through setProperty, the attribute and getComputedStyle (jsdom ${jsdom}, #264)`,
+    (w) => {
+      const d = w.document;
+      return CLIP_VALUES.map((value) => {
+        const a = d.createElement('div');
+        a.style.setProperty('clip', value);
+        const b = d.createElement('div');
+        b.setAttribute('style', `clip: ${value}`);
+        d.body.replaceChildren(b);
+        return `${value} | ${a.style.clip} | ${b.style.clip} | ${w.getComputedStyle(b).clip}`;
+      });
+    },
+    { jsdom },
+  );
+for (const jsdom of [27, 28, 29])
+  parity(
+    `style: visually hidden (jsdom ${jsdom}, #264)`,
+    (w) => {
+      const d = w.document.createElement('div');
+      Object.assign(d.style, { border: '0', clip: 'rect(0 0 0 0)', height: '1px', overflow: 'hidden' });
+      w.document.body.append(d);
+      return [d.getAttribute('style'), d.style.clip, w.getComputedStyle(d).clip];
+    },
+    { jsdom },
+  );

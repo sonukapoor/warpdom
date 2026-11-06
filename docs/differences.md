@@ -176,6 +176,12 @@ Not modeled:
   jsdom 30.1.3 computes the gradient as written. warpdom computes it from
   what is left after a style write (`setProperty()`, `style.background`),
   and as written for a style attribute or a rule
+- `clip` with a comment after a space-separated `rect()` (`rect(0 0 0 0)
+  /*c*/`): jsdom 27 and later throw a SyntaxError from `setProperty()`,
+  and jsdom 29 and later from the style attribute and a style sheet too
+  (jsdom 27 and 28 declare nothing for the attribute); warpdom declares
+  `rect(0px)`. And `clip: initial` with cssstyle 4.1 (jsdom 25), which
+  jsdom drops and warpdom keeps
 - `getComputedStyle().azimuth` with cssstyle 4.2 and 4.3 (`NaNdeg` for an
   angle, jsdom's is empty)
 - comments in declared values that some properties read otherwise:

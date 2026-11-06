@@ -1731,7 +1731,20 @@ export function computedValue(element, property) {
 const hiddenHides = (element, compat) =>
   element[S].ns === HTML_NS && element[S].attrs.has('hidden') && (compat.jsdom < 27 || element[S].tag !== 'embed');
 
+// jsdom 27 to 30.1.2 compute clip from its declared value read again: a
+// rect() of one component (what rect(0 0 0 0) is written as) is invalid
+// there, so not declared (black box, 27.4.0 to 30.1.3, #264).
+const ONE_COMPONENT_RECT = /^rect\([^,]*\)$/i;
+
 function longhandValue(element, name, data, custom, compat, value) {
+  if (
+    name === 'clip' &&
+    value !== undefined &&
+    compat.clipReparsed &&
+    ONE_COMPONENT_RECT.test(value) &&
+    !value.includes('var(')
+  )
+    value = undefined;
   if (compat.legacyComputedStyle) {
     // jsdom before 29.0.2: custom properties are not inherited either;
     // from jsdom 27 the direction of elements with dir, bdi and

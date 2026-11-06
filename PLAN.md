@@ -4809,6 +4809,38 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-06: clip in every profile (branch fix/264-clip-rect, #264 item 41)
+
+Measured black box on 20.0.3 (cssstyle 2.3.0), 22.1.0 (3.0.0), 25.0.1
+(4.1.0), 26.1.0 (4.6.0), 27.4.0, 28.1.0, 29.1.1, 30.1.2 and 30.1.3.
+Before this change warpdom rejected the space-separated rect() in jsdom 27
+to 29 (jsdom 27 to 30 keep its first component: rect(0 0 0 0) is
+rect(0px), the visually hidden style in snapshots), and a value clipValue
+did not take went to the generic grammar, which accepted anything
+(rect(1px,2px,3px,4px)junk, rect(1, ...), percentages from jsdom 27, a
+value with !important through setProperty). clipValue now reads every
+rect(): four components with commas (20 to 26 keep an empty one) or, from
+jsdom 27, spaces; per version the units (20 to 25: cssstyle 2's list, no
+exponent, kept as written but the unit in lowercase; 26 and later: every
+length unit, numbers in their shortest form), zeros (0 is 0px; 00, 0.0
+and -0 by version), auto (27 and later), percentages and calc() (kept in
+20 to 26, invalid later), auto in any case written auto, and from 27 the
+function name as written (RECT(0 0 0 0) is RECT(0px)). jsdom 27 to 30.1.2
+compute a rect() of one component as not declared ('' in 27 and 28, auto
+in 29 and 30.1.2; compat.clipReparsed, cascade.js); 30.1.3 computes it.
+Left (docs/differences.md): the SyntaxError jsdom throws for a comment
+after a space-separated rect(), clip: initial with cssstyle 4.1.
+
+Performance (node 22.17.1, 5 interleaved runs, medians; jsdom 29 and
+30.1.2 profiles): setProperty('clip') with values both accept 82.2 -> 82.6
+ns (29, commas), 74.0 -> 74.1 ns (30.1.2, commas), 74.7 -> 76.2 ns (30.1.2,
+spaces), within noise; setProperty('width') and a computed width
+unchanged. A space-separated rect() in the 29 profile is now stored
+(rejected before), 40 -> 81 ns, the cost of any accepted write. Cold load
+25.2 -> 25.8 ms (noise). Tests: css-profiles.test.js "clip through
+setProperty, the attribute and getComputedStyle" (parity 20 to 30.1.3) and
+"visually hidden" for 27 to 29.
+
 ## 2026-11-05: comments in values set through setProperty, jsdom 27 and later (branch fix/264-setproperty-comments, #264 item 34)
 
 warpdom rejected any value with a comment written through setProperty() or
