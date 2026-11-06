@@ -573,6 +573,100 @@ for (const jsdom of [20, 22, 23, 24, 25, 26, 27, 28, 29, 30, '30.1.3'])
     jsdom,
   });
 
+// A gradient's default direction, shape, size and position (black box,
+// #264 item 32): jsdom 27 and later leave them out and write the rest of
+// the gradient in lowercase with ", " between its arguments, in
+// background and background-image, and from 28.1 in a value of another
+// property that is one gradient; jsdom 27 keeps other properties'
+// gradients as written, and every jsdom a value with var().
+const GRADIENT_DEFAULTS = [
+  'linear-gradient(to bottom, red, blue)',
+  'linear-gradient(to right bottom, red, blue)',
+  'linear-gradient(to  bottom ,red,blue)',
+  'linear-gradient(in oklab to bottom, red, blue)',
+  'linear-gradient(180deg, red, blue)',
+  'repeating-linear-gradient(to bottom, red, blue 10px)',
+  'radial-gradient(circle at center, red, blue)',
+  'radial-gradient(ellipse farthest-corner at center, red, blue)',
+  'radial-gradient(closest-side circle at center, red, blue)',
+  'radial-gradient(ellipse at top, red, blue)',
+  'radial-gradient(at top center, red, blue)',
+  'radial-gradient(10px 20px at center, red, blue)',
+  'radial-gradient(at 50% 50%, red, blue)',
+  'repeating-radial-gradient(circle at center, red, blue 10px)',
+  'conic-gradient(from 0deg at center, red, blue)',
+  'conic-gradient(at center, red 10%, blue)',
+  'url(a.png), linear-gradient(to bottom, red, blue)',
+  'linear-gradient(to bottom, red, blue), radial-gradient(circle at center, red, blue)',
+  'linear-gradient(to bottom, red, var(--a))',
+  'linear-gradient(to bottom,red,blue), var(--a)',
+];
+// Defaults go as whole tokens, wherever they are: to bottom right is
+// right, at center top is top. What is left is no gradient: jsdom 27 to
+// 30.1.2 compute none from it, a separate difference (declared values
+// only here).
+const GRADIENT_PARTS = [
+  'linear-gradient(to bottom right, red, blue)',
+  'radial-gradient(farthest-corner ellipse at center center, red, blue)',
+  'radial-gradient(at center top, red, blue)',
+  'conic-gradient(from 0deg at center center, red, blue)',
+];
+// Keywords and units not in lowercase (jsdom 26 and earlier drop some of
+// these gradients: a separate difference).
+const GRADIENT_CASES = [
+  'linear-gradient(TO BOTTOM, RED, Blue)',
+  'linear-gradient(TO RIGHT,RED,blue)',
+  'linear-gradient(90DEG, red, blue)',
+  'radial-gradient(10PX at LEFT, red, blue)',
+  'radial-gradient(CIRCLE AT LEFT TOP, red, blue)',
+  'conic-gradient(FROM 0DEG AT CENTER, red, blue)',
+  'linear-gradient(red 0PX, blue 1E1%)',
+];
+const GRADIENT_PROPERTIES = ['background', 'background-image', 'list-style-image', 'border-image-source', 'mask-image'];
+const gradientDefaults =
+  (values, computed = true) =>
+  (w) => {
+    const d = w.document;
+    const out = [];
+    for (const name of GRADIENT_PROPERTIES)
+      for (const value of values) {
+        const a = d.createElement('div');
+        a.style.setProperty(name, value);
+        const b = d.createElement('div');
+        b.setAttribute('style', `${name}: ${value}`);
+        d.head.innerHTML = `<style>#x { ${name}: ${value} }</style>`;
+        const e = d.createElement('div');
+        e.id = 'x';
+        d.body.replaceChildren(e);
+        out.push(
+          [
+            `${name}: ${value}`,
+            a.style.getPropertyValue(name),
+            b.style.cssText,
+            d.styleSheets[0].cssRules[0].cssText,
+            computed ? w.getComputedStyle(e).getPropertyValue(name) : '',
+          ].join(' | '),
+        );
+      }
+    return out;
+  };
+for (const jsdom of [20, 22, 23, 25, 26, 27, 28, 29, 30, '30.1.3']) {
+  parity(
+    `jsdom ${jsdom}: a gradient's default direction, shape and position (#264)`,
+    gradientDefaults(GRADIENT_DEFAULTS),
+    {
+      jsdom,
+    },
+  );
+  parity(`jsdom ${jsdom}: defaults among other tokens of a gradient (#264)`, gradientDefaults(GRADIENT_PARTS, false), {
+    jsdom,
+  });
+}
+for (const jsdom of [27, 28, 29, 30, '30.1.3'])
+  parity(`jsdom ${jsdom}: a gradient's keywords and units not in lowercase (#264)`, gradientDefaults(GRADIENT_CASES), {
+    jsdom,
+  });
+
 // jsdom 27 and later: a background of initial values once the image is
 // left out, in each place it is declared (black box, 27.4.0 to 30.1.3):
 // the longhands, in place (jsdom 30 also lists background-position-x and

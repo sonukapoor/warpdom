@@ -168,6 +168,12 @@ Not modeled:
   `calc(5% + 10px) 0px`), and in jsdom 27 to 29 a lowercase gradient
   with one (`linear-gradient(red, blue calc(100% - 1px))` is read as
   none there)
+- in jsdom 27 to 30.1.2, the computed value of a gradient whose default
+  direction or position was left out from among other tokens (`to bottom
+  right` is written `right`, `at center top` is written `top`): jsdom
+  computes `none` (`''` for the `background` shorthand) from what is left,
+  which is no gradient; warpdom computes the gradient as written there,
+  as jsdom 30.1.3 does
 - `getComputedStyle().azimuth` with cssstyle 4.2 and 4.3 (`NaNdeg` for an
   angle, jsdom's is empty)
 - comments in declared values that some properties read otherwise:

@@ -325,9 +325,11 @@ function rejectsColor(name, value, surface) {
 // properties. Only at the top level of a value (and inside such
 // functions): other functions keep their arguments as written, as in
 // jsdom (translate(1px,2px), translate(min(1px,5%))), and so does the
-// border-image shorthand.
+// border-image shorthand. With gradients false, gradients are kept as
+// written (jsdom 27 outside background, and values with var()).
 const COMMA_FUNCTIONS = /^(min|max|clamp|(-webkit-)?(repeating-)?(linear|radial|conic)-gradient)$/i;
-function functionArguments(value) {
+const GRADIENT_NAME = /gradient$/i;
+function functionArguments(value, gradients) {
   let out = '';
   for (let i = 0; i < value.length; i++) {
     const c = value[i];
@@ -357,14 +359,64 @@ function functionArguments(value) {
     }
     const name = /[\w-]*$/.exec(out)[0];
     let inner = value.slice(i + 1, close);
-    if (COMMA_FUNCTIONS.test(name)) {
-      const args = splitOutside(functionArguments(inner), ',').map((a) => a.trim());
-      inner = (/gradient$/i.test(name) ? args.map(serializeColors) : args).join(', ');
+    if (COMMA_FUNCTIONS.test(name) && (gradients || !GRADIENT_NAME.test(name))) {
+      const args = splitOutside(functionArguments(inner, gradients), ',').map((a) => a.trim());
+      inner = (GRADIENT_NAME.test(name) ? gradientArguments(name, args) : args).join(', ');
     }
     out += `(${inner}${close < value.length ? ')' : ''}`;
     i = close;
   }
   return out;
+}
+
+// The value is one function call: its first parenthesis closes at its end
+// (strings in it skipped).
+function oneFunction(value) {
+  const open = value.indexOf('(');
+  if (open < 1 || value.charCodeAt(value.length - 1) !== 41) return false;
+  let depth = 0;
+  for (let i = open; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    if (c === 34 || c === 39) {
+      i++;
+      while (i < value.length && value.charCodeAt(i) !== c) i += value.charCodeAt(i) === 92 ? 2 : 1;
+    } else if (c === 40) depth++;
+    else if (c === 41 && --depth === 0) return i === value.length - 1;
+  }
+  return false;
+}
+
+// A gradient's arguments as jsdom 27 and later write them (black box,
+// #264): colors as in color properties, the rest in lowercase, and the
+// first argument (direction, shape, size, position, color space) without
+// its defaults, as whole tokens wherever they are: to bottom (linear;
+// to bottom right is right), ellipse and farthest-corner (radial), at
+// center (radial and conic; at center top is top). An argument left empty
+// goes. Prefixed gradients keep their first argument (-webkit- ones are
+// invalid there).
+const GRADIENT_PRELUDE =
+  /^(?:(?:to|in|at|from|circle|ellipse|closest-side|closest-corner|farthest-side|farthest-corner)(?![\w-])|[+-]?[\d.])/i;
+function gradientArguments(name, args) {
+  for (let k = 0; k < args.length; k++) args[k] = serializeColors(args[k]).toLowerCase();
+  const first = args[0];
+  if (first === undefined || name.charCodeAt(0) === 45 || !GRADIENT_PRELUDE.test(first)) return args;
+  const tokens = first
+    .replace(/\/\*[^]*?\*\//g, ' ')
+    .trim()
+    .split(/\s+/);
+  const kind = name.charCodeAt(name.length - 10); // linear-gradient: r, radial: l, conic: c
+  const kept = [];
+  for (let k = 0; k < tokens.length; k++) {
+    const token = tokens[k];
+    const next = tokens[k + 1];
+    if (kind === 114 && token === 'to' && next === 'bottom') k++;
+    else if (kind !== 114 && token === 'at' && next === 'center') k++;
+    else if (kind === 108 && (token === 'ellipse' || token === 'farthest-corner')) continue;
+    else kept.push(token);
+  }
+  if (kept.length) args[0] = kept.join(' ');
+  else args.shift();
+  return args;
 }
 
 // A url() component as cssstyle 2.3 to 4.6 read it in background-image
@@ -1827,8 +1879,16 @@ function serializeDeclared(name, value, mode) {
   )
     value = collapseSpaces(value);
   if (value.includes('(')) {
+    // Gradients: in background and background-image from jsdom 27, and
+    // from 28.1 (urlStyle not 'written') a value that is one gradient
+    // (mask-image: url(a.png), linear-gradient(to bottom, red, blue) is
+    // kept as written); never in a value with var() (black box, #264).
     if (isSpecMode(mode) && name !== 'border-image' && /(min|max|clamp|gradient)\(/i.test(value))
-      value = functionArguments(value);
+      value = functionArguments(
+        value,
+        (name === 'background' || name === 'background-image' || (urlStyle !== 'written' && oneFunction(value))) &&
+          !hasVarFunction(value),
+      );
     // jsdom 27 and later serialize the url()s in background and
     // background-image, and from 28 a value that is one url() (fill:
     // url(#a)) but in cursor; others keep them as written (fill: url(#a)
