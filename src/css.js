@@ -1779,7 +1779,9 @@ function clipValue(value, mode) {
 // (calc(VAR(--a) + 1px), as css-values.js reads math) and, from jsdom 30,
 // a percentage (calc(1px + 2%); black box, 27.4.0 to 30.1.3, #274 review).
 // The function is the whole component (calc(1px)junk is invalid); strings
-// in it are not read (calc("VAR(") and calc("%") are valid).
+// in it are not read (calc("VAR(") and calc("%") are valid), and its
+// brackets outside them must pair up (calc([) is invalid), with no curly
+// brace (calc({1px}) is invalid; jsdom 27 to 30.1.2 throw for both).
 const CLIP_FUNCTION_NAMES = /([\w-]+)\(/g;
 const CLIP_STRINGS = /"(?:[^"\\]|\\[^])*"|'(?:[^'\\]|\\[^])*'/g;
 function clipGrammar(arg, mode) {
@@ -1788,13 +1790,21 @@ function clipGrammar(arg, mode) {
   if (open > 0) {
     if (!oneFunction(arg) || !isMathFunction(arg.slice(0, open).toLowerCase())) return false;
     const code = arg.includes('"') || arg.includes("'") ? arg.replace(CLIP_STRINGS, '""') : arg;
-    if (mode === 'spec' && code.includes('%')) return false;
+    if (!balancedBrackets(code) || (mode === 'spec' && code.includes('%'))) return false;
     for (const [, name] of code.matchAll(CLIP_FUNCTION_NAMES))
       if (name !== 'var' && name.toLowerCase() === 'var') return false;
     return true;
   }
   const m = CLIP_NUMBER.exec(arg);
   return m !== null && isLengthUnit(m[3].toLowerCase());
+}
+function balancedBrackets(text) {
+  const open = [];
+  for (const c of text)
+    if (c === '(') open.push(')');
+    else if (c === '[') open.push(']');
+    else if (c === '{' || c === '}' || ((c === ')' || c === ']') && open.pop() !== c)) return false;
+  return open.length === 0;
 }
 // A component as written in the declared value, or INVALID.
 function clipComponent(arg, mode) {

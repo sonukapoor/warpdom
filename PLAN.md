@@ -4841,7 +4841,11 @@ lowercase and, from jsdom 30, a percentage; other functions are invalid
 invalid), and a parenthesis in a string inside it does not count
 (calc(")") is valid), nor does a var( or % in a string (calc("VAR(")
 is valid). A unitless zero may have an exponent (0e0, 0E1, 0e-1: jsdom 26
-and later read it as other unitless zeros); setProperty('clip') after that change, 30.1.2
+and later read it as other unitless zeros). A math function with an
+unbalanced bracket or any curly brace outside a string is invalid (jsdom
+30.1.3; 27 to 30.1.2 throw, docs/differences.md); the check runs only for
+a component that is a function, so the measured paths are unchanged.
+setProperty('clip') after that change, 30.1.2
 profile, 5 interleaved runs, medians: commas 72.2 -> 73.9 ns, spaces
 73.4 -> 75.2 ns (noise).
 Left (docs/differences.md): the SyntaxError jsdom throws for a comment

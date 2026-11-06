@@ -180,7 +180,10 @@ Not modeled:
   /*c*/`): jsdom 27 and later throw a SyntaxError from `setProperty()`,
   and jsdom 29 and later from the style attribute and a style sheet too
   (jsdom 27 and 28 declare nothing for the attribute); warpdom declares
-  `rect(0px)`. And `clip: initial` with cssstyle 4.1 (jsdom 25), which
+  `rect(0px)`. The same for a math function in a space-separated
+  `rect()` with an unbalanced bracket or a curly brace (`rect(0 calc([) 0
+  0)`): jsdom 27 to 30.1.2 throw a SyntaxError from `setProperty()`;
+  warpdom, like jsdom 30.1.3, leaves the value set before. And `clip: initial` with cssstyle 4.1 (jsdom 25), which
   jsdom drops and warpdom keeps
 - `getComputedStyle().azimuth` with cssstyle 4.2 and 4.3 (`NaNdeg` for an
   angle, jsdom's is empty)

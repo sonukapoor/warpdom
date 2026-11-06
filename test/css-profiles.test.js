@@ -1312,6 +1312,42 @@ for (const jsdom of [27, 29, 30, '30.1.3'])
     },
     { jsdom },
   );
+// A math function with an unbalanced bracket in it (calc([)) is invalid
+// (#274 review), and so is a curly brace outside a string (calc({1px})):
+// jsdom 30.1.3 leaves the clip set before, 27 to 30.1.2
+// throw a SyntaxError (docs/differences.md), warpdom leaves it too.
+const CLIP_BRACKETS = [
+  'rect(0 calc(1px]) 0 0)',
+  'rect(0 calc([) 0 0)',
+  'rect(0 calc({) 0 0)',
+  'rect(0 calc(}) 0 0)',
+  'rect(0 calc(1px)) 0 0)',
+  'rect(0 calc("[") 0 0)',
+  'rect(0 calc([1px]) 0 0)',
+  'rect(0 calc({1px}) 0 0)',
+  'rect(0 calc("{") 0 0)',
+  'rect(0 calc([{}]) 0 0)',
+  'rect(0 min([1px], 2px) 0 0)',
+];
+const clipBrackets = (w) => {
+  const s = w.document.createElement('div').style;
+  return CLIP_BRACKETS.map((value) => {
+    s.setProperty('clip', 'rect(1px, 2px, 3px, 4px)');
+    s.setProperty('clip', value);
+    return s.clip;
+  });
+};
+parity('style: an unbalanced bracket in a clip math function (jsdom 30.1.3, #264)', clipBrackets, {
+  jsdom: '30.1.3',
+});
+test('style: an unbalanced bracket in a clip math function leaves the previous clip (jsdom 27 to 30, #264)', () => {
+  for (const jsdom of [27, 28, 29, 30])
+    assert.deepEqual(
+      clipBrackets(createWindow({ jsdom })),
+      clipBrackets(createWindow({ jsdom: '30.1.3' })),
+      `jsdom ${jsdom}`,
+    );
+});
 // A rect() written with one component (rect(0 0 0 0) is rect(0px)) in the
 // cascade (#274 review): jsdom 27 to 30.1.2 read it again, find it invalid
 // and let a rule's clip win, from a style attribute, setProperty or a rule;
