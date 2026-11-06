@@ -1376,3 +1376,101 @@ for (const jsdom of [27, 28, 29, 30, '30.1.3'])
     },
     { jsdom },
   );
+
+// A value that is one identifier, jsdom 27 and later (black box, 27.0.1 to
+// 30.1.3, #187, #264 item 42): jsdom 27.0.1 to 28.0.0 write it in ASCII
+// lowercase in every property but font-family (animation-name: FOO is foo,
+// FÖO is fÖo); from 28.1.0 only in a property whose grammar takes no name
+// or string of its own (display: BLOCK is block, animation-name: FOO and
+// text-align: CENTER stay as written). A value of more than one token
+// keeps its case (overflow: HIDDEN AUTO).
+const ONE_IDENT = [
+  ['display', 'BLOCK'],
+  ['display', 'Inline-Block'],
+  ['position', 'ABSOLUTE'],
+  ['visibility', 'HIDDEN'],
+  ['overflow', 'HIDDEN'],
+  ['overflow', 'HIDDEN AUTO'],
+  ['width', 'AUTO'],
+  ['float', 'LEFT'],
+  ['cursor', 'POINTER'],
+  ['font-weight', 'BOLD'],
+  ['line-height', 'NORMAL'],
+  ['vertical-align', 'MIDDLE'],
+  ['white-space', 'NOWRAP'],
+  ['pointer-events', 'NONE'],
+  ['box-sizing', 'BORDER-BOX'],
+  ['flex-direction', 'COLUMN'],
+  ['transform', 'NONE'],
+  ['background-image', 'NONE'],
+  ['background-image', 'NONE /**/'],
+  ['list-style-image', 'NONE'],
+  ['margin', 'AUTO'],
+  ['border', 'NONE'],
+  ['border-top', 'NONE'],
+  ['outline', 'NONE'],
+  ['text-align', 'CENTER'],
+  ['text-overflow', 'ELLIPSIS'],
+  ['animation-name', 'FOO'],
+  ['animation-name', 'NONE'],
+  ['animation-name', 'FÖO'],
+  ['animation-name', 'F\\4FO'],
+  ['grid-area', 'AUTO'],
+  ['will-change', 'TRANSFORM'],
+  ['list-style-type', 'DISC'],
+  ['content', 'NONE'],
+  ['quotes', 'NONE'],
+  ['color-scheme', 'DARK'],
+  ['anchor-name', '--FOO'],
+  ['anchor-name', '---FOO'],
+  ['animation-name', '--1FOO'],
+  ['--theme', 'MyName'],
+  ['--theme', 'FOO'],
+  ['font-family', 'SERIF'],
+  ['font', '12px SERIF'],
+];
+const oneIdent = (w) => {
+  const d = w.document;
+  d.head.innerHTML = `<style>${ONE_IDENT.map(([p, v], i) => `.k${i} { ${p}: ${v} }`).join('\n')}</style>`;
+  return ONE_IDENT.map(([p, v], i) => {
+    const attribute = d.createElement('div');
+    attribute.setAttribute('style', `${p}: ${v}`);
+    const written = d.createElement('div').style;
+    written.setProperty(p, v);
+    const ruled = d.createElement('div');
+    ruled.className = `k${i}`;
+    d.body.replaceChildren(attribute, ruled);
+    const rule = d.styleSheets[0].cssRules[i].style.getPropertyValue(p);
+    const computed =
+      {
+        margin: 'margin-left',
+        border: 'border-left-style',
+        'border-top': 'border-top-style',
+        outline: 'outline-style',
+      }[p] ?? p;
+    return [
+      `${p}: ${v}`,
+      attribute.style.getPropertyValue(p),
+      written.getPropertyValue(p),
+      rule,
+      w.getComputedStyle(attribute).getPropertyValue(computed),
+      w.getComputedStyle(ruled).getPropertyValue(computed),
+    ].join(' | ');
+  });
+};
+for (const jsdom of [27, 28, 29, 30, '30.1.3'])
+  parity(`style: a value of one identifier in uppercase (jsdom ${jsdom}, #187)`, oneIdent, { jsdom });
+// jsdom 28.0.0 (cssstyle 5.3) as jsdom 27: every property but font-family.
+test('style: a value of one identifier in uppercase (jsdom 28.0.0, #187)', () => {
+  const s = createWindow({ jsdom: '28.0.0' }).document.createElement('div').style;
+  const read = (p, v) => (s.setProperty(p, v), s.getPropertyValue(p));
+  assert.deepEqual(
+    [
+      read('display', 'BLOCK'),
+      read('animation-name', 'FOO'),
+      read('text-align', 'CENTER'),
+      read('font-family', 'SERIF'),
+    ],
+    ['block', 'foo', 'center', 'SERIF'],
+  );
+});
