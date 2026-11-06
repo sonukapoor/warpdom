@@ -783,7 +783,8 @@ const surfaces = new WeakMap(); // CSSStyleProperties prototype -> styleSurface 
 // shorthand before 4.4 ('cssstyle4.1' or 'cssstyle4.2', see legacyFont in
 // shorthands.js), or null. colorKeywords: how its cssstyle writes color
 // keywords ('css2', 'written' or null). varDropsImportant,
-// varInStrings, customDropsImportant and borderVarDrops: declarations
+// mostDropImportant, varInStrings, customDropsImportant and
+// borderVarDrops: declarations
 // that lose their !important, and border ones with var() that are
 // dropped (parseInto, dropsImportant). importantByWrittenName: how a
 // declaration after an !important one is looked up (parseInto).
@@ -794,6 +795,7 @@ export function setValidationMode(proto, mode, compat = {}) {
   const legacyFont = compat.legacyFont ?? null;
   const colors = compat.colorKeywords ?? null;
   const varDropsImportant = compat.varDropsImportant ?? null;
+  const mostDropImportant = compat.mostDropImportant ?? null;
   const varInStrings = compat.varInStrings === true;
   const customDropsImportant = compat.customDropsImportant === true;
   const borderVarDrops = compat.borderVarDrops === true;
@@ -802,6 +804,7 @@ export function setValidationMode(proto, mode, compat = {}) {
     legacyFont === null &&
     colors === null &&
     varDropsImportant === null &&
+    mostDropImportant === null &&
     !customDropsImportant &&
     !borderVarDrops &&
     !importantByWrittenName
@@ -810,7 +813,7 @@ export function setValidationMode(proto, mode, compat = {}) {
     return;
   }
   // Built once per variant: window creation only looks it up.
-  const id = `${key} ${legacyFont} ${colors} ${varDropsImportant} ${varInStrings} ${customDropsImportant} ${borderVarDrops} ${importantByWrittenName}`;
+  const id = `${key} ${legacyFont} ${colors} ${varDropsImportant} ${mostDropImportant} ${varInStrings} ${customDropsImportant} ${borderVarDrops} ${importantByWrittenName}`;
   let surface = variantSurfaces.get(id);
   if (surface === undefined) {
     surface = {
@@ -818,6 +821,7 @@ export function setValidationMode(proto, mode, compat = {}) {
       caches: Object.create(null),
       colors,
       varDropsImportant,
+      mostDropImportant,
       varInStrings,
       customDropsImportant,
       borderVarDrops,
@@ -2100,12 +2104,95 @@ function serializeDeclared(name, value, mode) {
 function dropsImportant(surface, name, value, inRule) {
   if (surface === null) return false;
   if (name.startsWith('--')) return !inRule && surface.customDropsImportant === true;
+  const most = surface.mostDropImportant;
+  if ((most === 'all' || (most === 'declarations' && !inRule)) && !KEEPS_IMPORTANT.has(name)) return true;
   const drops = surface.varDropsImportant;
   return (
     (drops === 'all' || (drops === 'declarations' && !inRule)) &&
     (surface.varInStrings ? value.includes('var(') : hasVar(value))
   );
 }
+// The properties that keep their !important in jsdom 27.0.0 to 28.0.0
+// (compat.mostDropImportant; black box, every property).
+const KEEPS_IMPORTANT = new Set([
+  'background',
+  'background-attachment',
+  'background-clip',
+  'background-color',
+  'background-image',
+  'background-origin',
+  'background-position',
+  'background-repeat',
+  'background-size',
+  'border',
+  'border-bottom',
+  'border-bottom-color',
+  'border-bottom-style',
+  'border-bottom-width',
+  'border-collapse',
+  'border-color',
+  'border-left',
+  'border-left-color',
+  'border-left-style',
+  'border-left-width',
+  'border-right',
+  'border-right-color',
+  'border-right-style',
+  'border-right-width',
+  'border-spacing',
+  'border-style',
+  'border-top',
+  'border-top-color',
+  'border-top-style',
+  'border-top-width',
+  'border-width',
+  'bottom',
+  'clear',
+  'clip',
+  'color',
+  'display',
+  'flex',
+  'flex-basis',
+  'flex-grow',
+  'flex-shrink',
+  'float',
+  'flood-color',
+  'font',
+  'font-family',
+  'font-size',
+  'font-style',
+  'font-variant',
+  'font-weight',
+  'height',
+  'left',
+  'lighting-color',
+  'line-height',
+  'margin',
+  'margin-bottom',
+  'margin-left',
+  'margin-right',
+  'margin-top',
+  'opacity',
+  'outline-color',
+  'padding',
+  'padding-bottom',
+  'padding-left',
+  'padding-right',
+  'padding-top',
+  'right',
+  'stop-color',
+  'top',
+  'width',
+  '-webkit-border-after-color',
+  '-webkit-border-before-color',
+  '-webkit-border-end-color',
+  '-webkit-border-start-color',
+  '-webkit-column-rule-color',
+  '-webkit-tap-highlight-color',
+  '-webkit-text-emphasis-color',
+  '-webkit-text-fill-color',
+  '-webkit-text-stroke-color',
+]);
 // var( outside quoted strings; inside a comment it counts (jsdom 27 and
 // later keep color: red /*var(*/ as written), and a quote there opens no
 // string (#259).

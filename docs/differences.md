@@ -192,7 +192,16 @@ Not modeled:
   style attribute and `setProperty()` keep `transition: opacity/*x*/1s` as
   written (warpdom
   `opacity 1s`), and in jsdom 27 `content: "a" /*x*/` too (warpdom
-  `"a"`). Comments are otherwise read as jsdom reads them: removed before
+  `"a"`). From jsdom 27, in the style attribute and `setProperty()`, a
+  comment in a value of many properties with a color or a border in it
+  depends on the property and on where the comment is: `color: rgb(1, 2,
+  3) /**/`, `color: rgb(1, /**/ 2, 3)` and `border-top: 1px solid red
+  /**/` declare nothing (`border-top: 1px /**/ solid red` does, and so
+  does `background: rgb(1, 2, 3) /**/`), `outline`, `column-rule` and
+  `box-shadow` keep the comment as written, and jsdom 30.1.3 reads
+  `border-top: calc(1px) solid red /**/` as `calc(1px solid red`;
+  warpdom reads all of them without the comment. Comments are otherwise
+  read as jsdom reads them: removed before
   27 and in 27 and 28's style sheets, a space elsewhere, and kept as
   written in a custom property's value outside style sheets and in a
   value with `var()` from 27 (29 in style sheets)

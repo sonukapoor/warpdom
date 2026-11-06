@@ -1697,6 +1697,11 @@ function pendingByOrderMode(version) {
   return before(version, [30, 1, 3]) ? 'all' : 'important';
 }
 
+function mostDropImportantMode(version) {
+  if (version[0] !== 27 && !(version[0] === 28 && before(version, [28, 1, 0]))) return null;
+  return before(version, [27, 1, 0]) ? 'declarations' : 'all';
+}
+
 function varDropsImportantMode(version) {
   if (version[0] < 27 || version[0] > 29) return null;
   return before(version, [27, 1, 0]) ? 'declarations' : 'all';
@@ -1909,6 +1914,13 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle, beyondJsdom = fa
     // !important; color: red is color: var(--c)); in a style sheet it does
     // not (css.js parseInto).
     varDropsImportant: varDropsImportantMode(version),
+    // jsdom 27.0.0 to 28.0.0 drop !important from every property but
+    // about 77 (css.js KEEPS_IMPORTANT), custom properties aside: in a
+    // style attribute, cssText and setProperty, and from 27.1.0 in style
+    // sheets too (black box, every property on 27.0.1, 27.4.0 and 28.0.0;
+    // #264 item 44). Where the !important counts in the cascade (28.1.0)
+    // it is kept.
+    mostDropImportant: mostDropImportantMode(version),
     // jsdom 27 also finds the var() in a string (content: "var(--x)"
     // !important is content: "var(--x)"); 28 and 29 do not (black box,
     // 27.4.0 to 29.1.1; css.js dropsImportant).
