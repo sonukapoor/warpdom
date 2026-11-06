@@ -2991,6 +2991,24 @@ const resets = (surface, name, text) =>
 
 // via: 'accessor' (style.marginTop = v), 'set' (setProperty) or 'remove'
 // (removeProperty), for an inline style's margin and padding.
+// A value written through setProperty() or an accessor, serialized, or
+// INVALID. jsdom 27 and later read one with a comment as the style
+// attribute reads the declaration (black box, 27.4.0 to 30.1.3, #264): red
+// /* c */ is red, 1px/**/2px is 1px 2px; a comment that leaves nothing
+// (/**/, blo/**/ck) or an !important in the value declares nothing. Such
+// a value is invalid to the grammar, so only invalid ones are looked at
+// again (a custom property's is kept as written: never invalid).
+function writtenValue(name, raw, s) {
+  const text = declaredValue(name, raw, s.mode, s.surface);
+  if (text !== INVALID || isLegacyMode(s.mode) || !raw.includes('/*')) return text;
+  const decls = new Map();
+  parseInto(decls, `${name}: ${raw}`, s.mode, s.surface, null, true);
+  const declared = decls.get(name);
+  return declared === undefined || decls.size !== 1 || declared.important
+    ? INVALID
+    : declaredValue(name, declared.value, s.mode, s.surface);
+}
+
 function setDeclaration(style, name, value, priority = '', via = 'accessor') {
   const s = styleState(style);
   if (s.computed) {
@@ -3021,7 +3039,7 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
     return;
   }
   // Unknown properties and invalid values are ignored (CSSOM).
-  let text = declaredValue(name, raw, s.mode, s.surface);
+  let text = writtenValue(name, raw, s);
   if (text === INVALID && name === 'background' && !s.parentRule)
     text = escapedUrlBackground(s.decls, raw, s.mode, s.surface);
   if (!s.parentRule && meetImage(name, raw, s.mode)) text = INVALID;
@@ -3077,7 +3095,7 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
 function setBox(style, s, name, raw, priority, via) {
   let text = '';
   if (via !== 'remove' && raw !== '') {
-    text = declaredValue(name, raw, s.mode, s.surface);
+    text = writtenValue(name, raw, s);
     if (text === INVALID || text === '') return;
   }
   const important = String(priority).toLowerCase() === 'important' && !dropsImportant(s.surface, name, text, false);

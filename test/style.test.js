@@ -1463,6 +1463,48 @@ for (const jsdom of [27, 28, 29, 30])
     { jsdom },
   );
 
+// A comment in a value written through setProperty or an accessor (black
+// box, 27.4.0 to 30.1.3, #264 item 34): read as the style attribute reads
+// it (red /* c */ is red, 1px/**/2px is 1px 2px), on an element's style
+// and on a rule's.
+const COMMENTED_VALUES = [
+  ['color', 'red /* c */'],
+  ['color', '/* c */red'],
+  ['color', '/**/'],
+  ['color', 'red /* c */ !important'],
+  ['width', '10px/**/'],
+  ['line-height', '1/**/'],
+  ['margin', '1px /* c */ 2px'],
+  ['margin', '1px/**/2px'],
+  ['margin-top', '/* a */ 3px /* b */'],
+  ['background', 'url(a.png) /* c */ red'],
+  ['display', 'blo/**/ck'],
+  ['--x', 'a /* c */ b'],
+  ['color', 'red /* c'],
+];
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `style: a comment in a value set through setProperty or an accessor (jsdom ${jsdom}, #264)`,
+    (w) => {
+      const d = w.document;
+      d.head.innerHTML = '<style>p {}</style>';
+      const rule = d.styleSheets[0].cssRules[0];
+      return COMMENTED_VALUES.map(([name, value]) => {
+        const set = d.createElement('div').style;
+        set.setProperty(name, value);
+        const important = d.createElement('div').style;
+        important.setProperty(name, value, 'important');
+        const accessor = d.createElement('div');
+        accessor.style.color = 'blue';
+        if (!name.startsWith('--')) accessor.style[name.replace(/-([a-z])/g, (m, c) => c.toUpperCase())] = value;
+        rule.style.cssText = '';
+        rule.style.setProperty(name, value);
+        return [name, value, set.cssText, important.cssText, accessor.getAttribute('style'), rule.cssText].join(' | ');
+      });
+    },
+    { jsdom },
+  );
+
 // The same names in a <style> element's text (jsdom 29 and later also
 // report "Could not parse CSS stylesheet" on the console, which warpdom
 // does not; docs/differences.md).

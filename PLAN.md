@@ -4809,6 +4809,31 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-05: comments in values set through setProperty, jsdom 27 and later (branch fix/264-setproperty-comments, #264 item 34)
+
+warpdom rejected any value with a comment written through setProperty() or
+a style accessor (style.color = 'red /* c */'), for every property. jsdom
+27.4.0 to 30.1.3 read such a value exactly as the style attribute reads the
+declaration (black box: every case measured gave the attribute's value):
+red /* c */ is red, 1px/**/2px is 1px 2px, url(a.png) /* c */ red is
+url("a.png") red; a comment that leaves nothing (/**/), one inside a
+keyword (blo/**/ck) and an !important in the value declare nothing.
+css.js writtenValue (setDeclaration and setBox) reads such a value again
+when the grammar rejects it: parseInto on name: value, as an element's
+style attribute; a custom property's value stays as written, and jsdom
+26 and earlier are left as they were (cssstyle differs there, see #264).
+The attribute's own differences (font-family: a/*x*/b, transition:
+opacity/*x*/1s) now apply to setProperty too (differences.md). Test:
+style.test.js, parity 27 to 30, on an element's style and a rule's, with
+and without important, and through an accessor.
+
+Performance: only a value the grammar rejects is looked at again. A first
+version checked every write for /* before validating it: setProperty
+80.7 -> 85.3 ns (+5.7%), confirmed by disabling the line. Now (200k
+writes, 7 alternating runs against main 98d758c, medians, Node 22.17.1):
+setProperty('width') 81.8 -> 80.3 ns, style.color = ... 148.4 -> 151.2 ns,
+within noise (overlapping ranges).
+
 ## 2026-11-05: legacy names compared without whitespace and comments (branch fix/legacy-spaced-names, #262 review)
 
 A Copilot comment on #262 posted seconds before it merged, confirmed
