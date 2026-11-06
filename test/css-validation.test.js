@@ -597,6 +597,7 @@ const GRADIENT_DEFAULTS = [
   'conic-gradient(from 0deg at center, red, blue)',
   'conic-gradient(at center, red 10%, blue)',
   'url(a.png), linear-gradient(to bottom, red, blue)',
+  'none, linear-gradient(to bottom,red,blue)',
   'linear-gradient(to bottom, red, blue), radial-gradient(circle at center, red, blue)',
   'linear-gradient(to bottom, red, var(--a))',
   'linear-gradient(to bottom,red,blue), var(--a)',

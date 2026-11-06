@@ -369,11 +369,12 @@ function functionArguments(value, gradients) {
   return out;
 }
 
-// The value is one function call: its first parenthesis closes at its end
-// (strings in it skipped).
+// The value is one function call: a name, then a parenthesis that closes
+// at its end (strings in it skipped). Not none, linear-gradient(...).
+const FUNCTION_NAME = /^-?[a-z][\w-]*$/i;
 function oneFunction(value) {
   const open = value.indexOf('(');
-  if (open < 1 || value.charCodeAt(value.length - 1) !== 41) return false;
+  if (open < 1 || value.charCodeAt(value.length - 1) !== 41 || !FUNCTION_NAME.test(value.slice(0, open))) return false;
   let depth = 0;
   for (let i = open; i < value.length; i++) {
     const c = value.charCodeAt(i);
