@@ -1742,8 +1742,8 @@ function clipValue(value, mode) {
   const legacy = isLegacyMode(mode);
   const inner = value.slice(5, -1);
   // (commas outside parentheses: rect(0 min(1px, 2px) 0 0) has spaces)
-  const parts = splitOutside(inner, ',');
-  const commas = parts.length > 1;
+  const parts = inner.includes(',') ? splitOutside(inner, ',') : null;
+  const commas = parts !== null && parts.length > 1;
   if (hasVarFunction(value)) {
     if (!legacy) return undefined;
     return mode === 'jsdom26' && commas && oneFunction(value) ? value : INVALID;
@@ -1774,12 +1774,14 @@ function clipValue(value, mode) {
 // ...), whose insides it leaves unchecked but for a var( not in lowercase
 // (calc(VAR(--a) + 1px), as css-values.js reads math) and, from jsdom 30,
 // a percentage (calc(1px + 2%); black box, 27.4.0 to 30.1.3, #274 review).
+// The function is the whole component (calc(1px)junk is invalid).
 const CLIP_FUNCTION_NAMES = /([\w-]+)\(/g;
 function clipGrammar(arg, mode) {
   if (/^auto$/i.test(arg) || ZERO.test(arg)) return true;
   const open = arg.indexOf('(');
   if (open > 0) {
-    if (!isMathFunction(arg.slice(0, open).toLowerCase()) || (mode === 'spec' && arg.includes('%'))) return false;
+    if (!oneFunction(arg) || !isMathFunction(arg.slice(0, open).toLowerCase())) return false;
+    if (mode === 'spec' && arg.includes('%')) return false;
     for (const [, name] of arg.matchAll(CLIP_FUNCTION_NAMES))
       if (name !== 'var' && name.toLowerCase() === 'var') return false;
     return true;
@@ -1808,13 +1810,19 @@ function clipComponent(arg, mode) {
   if (m === null || !isLengthUnit(m[3].toLowerCase())) return INVALID;
   return canonicalNumbers(arg.toLowerCase());
 }
-// Whitespace-separated words outside parentheses.
+// Whitespace-separated words outside parentheses and strings.
 function topLevelWords(text) {
   const words = [];
   let depth = 0,
     start = -1;
   for (let i = 0; i <= text.length; i++) {
     const c = i < text.length ? text.charCodeAt(i) : 32;
+    if (c === 34 || c === 39) {
+      if (start === -1) start = i;
+      i++;
+      while (i < text.length && text.charCodeAt(i) !== c) i += text.charCodeAt(i) === 92 ? 2 : 1;
+      continue;
+    }
     if (c === 40) depth++;
     else if (c === 41) depth--;
     const space = depth === 0 && (c === 32 || c === 9 || c === 10 || c === 13 || c === 12);
