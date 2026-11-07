@@ -27,8 +27,11 @@ import { ALIASES } from './css-data.js';
 //   { t: 'function', name, args: [...] }   { t: 'block', open, items: [...] }
 
 const NUMBER = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/i;
-const IDENT_START = /[a-zA-Z_\u0080-￿]|-[a-zA-Z_\u0080-￿-]|\\/;
-const IDENT_CHARS = /^(?:[a-zA-Z0-9_\u0080-￿-]|\\.)+/;
+// An escape (CSS Syntax 3, 4.3.7): up to six hex digits and the one
+// whitespace character after them (\31 FOO is one identifier), or any
+// other character.
+const IDENT_START = /[a-zA-Z_\u0080-￿]|-[a-zA-Z_\u0080-￿\\-]|\\/;
+const IDENT_CHARS = /^(?:[a-zA-Z0-9_\u0080-￿-]|\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\n\r\f])?|.))+/;
 
 function tokenize(text) {
   let i = 0;
@@ -1002,7 +1005,9 @@ export function isValidValue(name, value) {
   newlineSpaces = name === 'background-image';
   const { node, shapes } = entryOf(name);
   if (!node) return true;
-  if (shapes === null) return checkValue(node, value);
+  // A value with an escape is checked itself: a\31 2e1 is one identifier
+  // but has the shape of an identifier and a number (#278 review).
+  if (shapes === null || value.includes('\\')) return checkValue(node, value);
   const shape = shapeOf(value);
   if (shape === null) return checkValue(node, value);
   let valid = shapes.get(shape);

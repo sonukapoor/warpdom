@@ -270,7 +270,12 @@ let urlStyle = 'spec';
 // background reads the case itself (NONE sets the initial values:
 // backgroundValue); a custom property keeps its value as written.
 let identsInLowercase = false;
-const ONE_IDENT = /^(?:--|-?(?:[a-zA-Z_\u0080-\uffff]|\\[^]))(?:[\w\u0080-\uffff-]|\\[^])*$/;
+// An escape's hex digits are matched once (captured in a lookahead, then
+// taken whole), so a run of escapes can't be split up again on failure
+// (exponential backtracking; #278 review); a CR LF after them is one
+// whitespace.
+const ONE_IDENT =
+  /^(?:--|-?(?:[a-zA-Z_\u0080-￿]|\\(?:(?=([0-9a-fA-F]{1,6}))\1(?:\r\n|[ \t\n\r\f])?|[^0-9a-fA-F])))(?:[\w\u0080-￿-]|\\(?:(?=([0-9a-fA-F]{1,6}))\2(?:\r\n|[ \t\n\r\f])?|[^0-9a-fA-F]))*$/;
 const asciiLower = (value) => value.replace(/[A-Z]+/g, (s) => s.toLowerCase());
 function identValue(name, value) {
   if (name.startsWith('--') || name === 'font-family' || name === 'background') return value;
@@ -507,10 +512,16 @@ const integerText = (text) =>
     .replace(/^(-?)0+(?=\d)/, '$1')
     .replace(/^-0$/, '0');
 const NUMBER_TOKEN = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)([a-z%]*)$/i;
+// A part that ends in a hex escape: the whitespace after it belongs to the
+// escape, so the next part is the rest of the name (b\31 001), not a number.
+// segments() does not split at CR, so CR LF leaves the CR on this part.
+const ENDS_IN_HEX_ESCAPE = /(?:^|[^\\])(?:\\\\)*\\[0-9a-fA-F]{1,6}\r?$/;
 function canonicalNumbers(value) {
   if (!/\d/.test(value)) return value;
   const parts = segments(value);
+  const escapes = value.includes('\\');
   for (let i = 0; i < parts.length; i += 2) {
+    if (escapes && i > 0 && parts[i - 1].length === 1 && ENDS_IN_HEX_ESCAPE.test(parts[i - 2])) continue;
     const m = NUMBER_TOKEN.exec(parts[i]);
     if (m) parts[i] = `${INTEGER.test(m[1]) ? integerText(m[1]) : Number(m[1])}${m[2]}`;
   }

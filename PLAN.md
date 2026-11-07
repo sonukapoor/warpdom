@@ -4809,6 +4809,32 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-06: a hex escape and its whitespace in an identifier (branch fix/264-escape-space, #264 item 48)
+
+CSS Syntax 3 (4.3.7) reads up to six hex digits after a backslash and then
+one whitespace character, which belongs to the escape: `-\31 FOO` is one
+identifier. The value tokenizer (css-values.js IDENT_CHARS) read a
+backslash and one character, so the space ended the identifier and
+`animation-name`, `list-style-type`, `grid-area` and other one-name
+properties rejected `-\31 FOO`, `\66 oo` and `\41 \42 ` in every profile;
+IDENT_START also missed `-` followed by an escape. jsdom 27 to 30.1.3
+accept them (27.0.1 to 28.0.0 in lowercase, `-\31 foo`). Both regexes and
+css.js ONE_IDENT (the 27 to 28.0 lowercasing) now read the escape as the
+spec says. jsdom 26 drops any escape in `font-family`; not changed.
+
+Found while measuring, not changed here (#264 item 53): jsdom 27 and later
+write a `font-family` name of several unquoted words in quotes
+(`Times New Roman` is `"Times New Roman"`, backslashes dropped:
+`\31 a b` is `"31 a b"`); jsdom 26 drops `a b` but keeps
+`Times New Roman`. warpdom keeps them as written.
+
+Performance (Node 22.17.1, 5 alternating runs, medians, main -> this):
+isValidValue on 100,000 distinct values without escapes 2,939.9 ->
+2,952.5 ns per value, ranges overlapping (noise); cold load 26.0 ->
+26.0 ms. Tests: css-validation.test.js "a hex escape and the whitespace
+after it" (parity 26 to 30 and 30.1.3; 27.0.1 and 28.0.0 single
+installs).
+
 ## 2026-11-06: a single-number aspect-ratio and a lone system color in scrollbar-color (branch fix/264-survey-values, #264 item 52)
 
 Measured black box on 26.1.0, 27.0.1, 27.4.0, 28.0.0, 28.1.0, 29.1.1,
@@ -4873,6 +4899,45 @@ background: red !important; style.borderColor = 'blue' after border: 1px
 solid red !important gives border: 1px blue !important); scrollbar-color:
 accentcolortext is valid in jsdom 27 only; aspect-ratio: 2 is rejected in
 28.1 and written 2 / 1 in 29.
+
+Review (Copilot, three findings, all reproduced): ONE_IDENT could split
+a run of hex digits between the escape and the name characters, so
+`a` and nine `\AAAAAA` escapes and `!` backtracked exponentially (8
+escapes 52 ms, each one more ~6x); its hex digits are now matched once
+(a lookahead capture taken whole) and a CR LF after them is one
+whitespace (27.0.1 and 28.0.0 lowercase `-\31` CR LF `FOO`). A value with
+a backslash skips isValidValue's shape cache: `a\31 2e1` (one
+identifier) and `a\31 2.1` (an identifier and a number) have one shape,
+so the first checked decided both. Validation benchmark, main (2728062)
+-> this fix: 2,933.9 -> 2,941.4 ns per value (noise).
+
+Second Copilot review: canonicalNumbers wrote the digits after an
+escape's whitespace as a number (`container-name: b\31 2e1` became
+`b\31 20`, and `b\31 001` became `b\31 1`); jsdom 27 to 30.1.3 keep them. A part
+after one whitespace character (or CR LF) that follows a hex escape is
+now left as written; the check runs only for a value with a backslash
+(margin and transition writes 3,238 -> 3,222 ns, noise; checking every
+part cost +1.1%).
+
+Third review (CodeRabbit): the validation benchmark had no escapes, so
+it did not run the new escape branches. On values with hex escapes
+(`\31 slide-N`, `a\41 \42 \43 xN`, `c\31 2e1 dN`, `\66 ooN, Arial`;
+Node 22.17.1, 5 alternating runs, medians), main (867a45a) -> this:
+1,000.5 -> 791.0 ns per value. A value with a backslash skips the
+shape cache, and main rejected some of these. The test with many
+escapes allows 2 s instead of 500 ms: it takes a few milliseconds now,
+and with backtracking 12 escapes would take minutes.
+
+Third Copilot review: segments() does not split at CR, so after CR LF
+the CR stayed on the escape's part and `b\31` CR LF `001` became `1`; the
+check now accepts a trailing CR. Copilot also asked to rewrite separate
+numbers after an escape (`animation: a\31,01s`, `counter-reset: a\31
++001`); jsdom 26 to 30.1.3 keep both as written, so they stay (tests
+added). Found while checking: jsdom 27+ keeps numbers as written in
+animation, counter-reset and grid-area with no escape at all
+(`animation: 01s b`, `counter-reset: a 001`, `grid-area: a / 01`), where
+warpdom writes `1s`, `1`; and jsdom 30 turns CR LF, CR and FF into LF in
+any value. Both predate this branch; new #264 items.
 
 ## 2026-11-06: !important dropped from most properties, jsdom 27.0.0 to 28.0.0 (branch fix/264-important-dropped, #264 items 43 and 44)
 

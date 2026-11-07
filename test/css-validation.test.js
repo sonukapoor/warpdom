@@ -1285,3 +1285,109 @@ for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30]) {
     { jsdom },
   );
 }
+
+// A hex escape takes one whitespace character after it (CSS Syntax 3,
+// 4.3.7): -\31 FOO and \66 oo are one identifier each. jsdom 27 to 30.1.3
+// accept them where a single name is valid (#264 item 48); 27.0.1 to 28.0.0
+// write them in lowercase like any identifier. jsdom 26 rejects any escape
+// in font-family (not tested here).
+const ESCAPES = [
+  String.raw`-\31 FOO`,
+  String.raw`\31 FOO`,
+  String.raw`a\31 b`,
+  String.raw`a\31	b`,
+  String.raw`\66 oo`,
+  String.raw`a\000031 b`,
+  String.raw`a\0000311b`,
+  String.raw`\41 \42 `,
+  String.raw`a\31\9b`,
+  String.raw`foo\ bar`,
+  String.raw`\31 FOO bar`,
+  // Digits after the escape's whitespace are part of the name, not a
+  // number to write canonically (#278 review).
+  String.raw`b\31 2e1`,
+  String.raw`b\31 001`,
+  String.raw`a\31 05 3`,
+  String.raw`x\66 010`,
+  String.raw`\31 0.50`,
+];
+// CR LF after an escape is one whitespace (#278 review). jsdom 30 turns
+// CR LF into LF in any value (not modelled), so these run up to 29.
+const CRLF_ESCAPES = ['b\\31\r\n001', 'a\\31\r\n05 3'];
+for (const jsdom of [26, 27, 28, 29, 30, '30.1.3']) {
+  parity(
+    `jsdom ${jsdom}: a hex escape and the whitespace after it in an identifier (#264)`,
+    (w) => {
+      const d = w.document;
+      const out = [];
+      const props = [
+        'animation-name',
+        'list-style-type',
+        'grid-area',
+        'counter-reset',
+        'view-transition-name',
+        'container-name',
+      ];
+      if (jsdom !== 26) props.push('font-family');
+      for (const name of props)
+        for (const value of typeof jsdom === 'number' && jsdom < 30 ? [...ESCAPES, ...CRLF_ESCAPES] : ESCAPES) {
+          // A family name of several words is quoted by jsdom 27 and later
+          // (#264 item 53), escapes or not.
+          if (name === 'font-family' && value.endsWith(' bar')) continue;
+          const el = d.createElement('div');
+          el.style.setProperty(name, value);
+          out.push(`${name}: ${value} -> ${el.style.getPropertyValue(name)}`);
+        }
+      d.head.innerHTML = String.raw`<style>.a { animation-name: -\31 FOO; list-style-type: \66 oo }</style>`;
+      out.push(d.styleSheets[0].cssRules[0].style.cssText);
+      // A separate number after an escape: jsdom keeps these as written too
+      // (#278 review).
+      for (const [name, value] of [
+        ['animation', String.raw`a\31,01s`],
+        ['counter-reset', String.raw`a\31 +001`],
+      ]) {
+        const el = d.createElement('div');
+        el.style.setProperty(name, value);
+        out.push(`${name}: ${value} -> ${el.style.getPropertyValue(name)}`);
+      }
+      return out;
+    },
+    { jsdom },
+  );
+}
+// 27.0.1 and 28.0.0 (single-jsdom installs): accepted, in lowercase.
+test('a hex escape and the whitespace after it, jsdom 27.0.1 and 28.0.0 (#264)', () => {
+  for (const jsdom of ['27.0.1', '28.0.0']) {
+    const d = createWindow({ jsdom }).document;
+    const el = d.createElement('div');
+    el.style.setProperty('animation-name', String.raw`-\31 FOO`);
+    el.style.setProperty('grid-area', String.raw`\41 \42 `);
+    assert.equal(el.style.cssText, String.raw`animation-name: -\31 foo; grid-area: \41 \42;`, jsdom);
+    // A CR LF after the escape is one whitespace (#278 review).
+    el.style.setProperty('animation-name', '-\\31\r\nFOO');
+    assert.equal(el.style.animationName, '-\\31\r\nfoo', jsdom);
+  }
+});
+// An escape and the number after its space: a\31 2e1 is one identifier,
+// a\31 2.1 an identifier and a number. The result doesn't depend on which
+// is checked first (values with a number share a cache entry by shape;
+// #278 review). Black box: jsdom 29 keeps the first, drops the second.
+test('a hex escape before a number: validity in either order (#264)', () => {
+  assert.equal(isValidValue('container-name', String.raw`b\31 2e1`), true);
+  assert.equal(isValidValue('container-name', String.raw`b\31 2.1`), false);
+  assert.equal(isValidValue('container-name', String.raw`c\31 2.1`), false);
+  assert.equal(isValidValue('container-name', String.raw`c\31 2e1`), true);
+});
+// Hex digits after a backslash are read one way only: a value of many
+// escapes and then a character no identifier has is rejected in linear
+// time (#278 review: 8 escapes took 52 ms, each one more ~6x).
+test('many hex escapes and an invalid character: rejected without backtracking (#264)', () => {
+  const d = createWindow({ jsdom: '27.4.0' }).document;
+  const el = d.createElement('div');
+  const start = performance.now();
+  el.style.setProperty('animation-name', `a${'\\AAAAAA'.repeat(12)}!`);
+  el.style.setProperty('font-family', `a${'\\AAAAAA'.repeat(12)}!`);
+  // A few ms now; with backtracking, minutes. The bound leaves room for slow CI.
+  assert.ok(performance.now() - start < 2000);
+  assert.equal(el.style.cssText, '');
+});
