@@ -4817,8 +4817,7 @@ PROPERTY_SYNTAX; css.js COMPOSED, RESETS, BORDER_READS) were plain
 objects, so `constructor` and `__proto__` were properties.
 `style.setProperty('constructor', '1')` threw (`RESETS[name] is not
 iterable`) in jsdom 20 to 26 and declared `constructor: 1` in 27 and
-later, the style attribute declared it in every profile,
-`getPropertyValue('constructor')` threw after a write in 20 to 26, and
+later, the style attribute declared it in every profile, and
 `getComputedStyle(el).getPropertyValue('constructor')` threw (`name.startsWith
 is not a function`) in every profile. jsdom drops them (20 to 26 keep
 them in a sheet, as any name; 27 and later drop them there too). The
