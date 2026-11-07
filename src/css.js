@@ -3292,7 +3292,7 @@ const valueOf = (style, name) => {
 // border too (border: 1px solid red gives border-width 1px and border-top
 // 1px solid red), a side in its shortest form (border: red gives
 // border-top red, border: none medium).
-const BORDER_READS = {};
+const BORDER_READS = { __proto__: null };
 const BOX_SIDES = ['top', 'right', 'bottom', 'left'],
   BORDER_PARTS = ['width', 'style', 'color'];
 for (const part of BORDER_PARTS) BORDER_READS[`border-${part}`] = BOX_SIDES.map((side) => `border-${side}-${part}`);
@@ -3344,7 +3344,10 @@ function fromShorthand(decls, longhand) {
 
 // A shorthand read from its longhands when every one is declared, as jsdom
 // composes them (margin from margin-top, -right, -bottom and -left).
+// (These tables are looked up by a name a page gives: no prototype, so
+// that constructor or __proto__ is no entry.)
 const COMPOSED = {
+  __proto__: null,
   margin: (v) => serializeBox(v),
   padding: (v) => serializeBox(v),
   flex: ([grow, shrink, basis]) => `${grow} ${shrink} ${basis}`,
@@ -3435,6 +3438,7 @@ function setInitials(decls, important, axes, dropAxes = false) {
 }
 
 const RESETS = {
+  __proto__: null,
   flex: ['flex', 'flex-grow', 'flex-shrink', 'flex-basis'],
   background: [
     'background',
