@@ -1196,8 +1196,29 @@ function versionedValue(name, value, mode, surface) {
         : ZERO.test(value)
           ? '0px'
           : value;
+  if (name === 'font-family' && isSpecMode(mode) && isFamilyVarList(value))
+    return isValidValue(name, familyVarPlaceholders(value)) ? serializeDeclared(name, value, mode) : INVALID;
   return undefined;
 }
+
+// A family list with a comma right before var() (x,var(--f), not x,
+// var(--f)): jsdom 27 and later read a var() that starts a family as a
+// family of its own and write the list as one without var() (", "
+// between families, names of several words quoted, a generic keyword
+// first invalid); a declaration block drops it (parseInto). Black box,
+// 27.4.0 to 30.1.3 (#264 item 57). A value with var() after whitespace,
+// "(" or at the start is kept as written instead (serializeDeclared).
+function isFamilyVarList(value) {
+  if (!value.includes(',var(') || hasVarFunction(value)) return false;
+  for (const family of splitOutside(value, ',', value.includes('\\')))
+    if (trimSpaces(family).startsWith('var(')) return true;
+  return false;
+}
+// The list with each such var() family as a name, for the grammar.
+const familyVarPlaceholders = (value) =>
+  splitOutside(value, ',', value.includes('\\'))
+    .map((family) => (trimSpaces(family).startsWith('var(') ? 'x' : family))
+    .join(',');
 
 // Lengths, sizing keywords and gradients cssstyle rejects before 4.4
 // (black box: cssstyle 2.3.0 to 4.6.0 measured on their own, #239; jsdom
@@ -2441,7 +2462,9 @@ function isHexDigit(c) {
 // var() is kept as written after its leading comments (var( inside a
 // comment counts, inside a string as surface.varInStrings says). A comment
 // inside a name leaves a space there, which makes the declaration invalid
-// from 27 (spacedDeclarationName); one before or after it does not.
+// from 27 (spacedDeclarationName); one before or after it does not. A
+// family list with a comma before var() is not one with var() there
+// (isFamilyVarList: x/**/,var(--f) is x, var(--f); #264 item 57).
 function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface, escapes) {
   const parts = [];
   let spaced = '';
@@ -2450,11 +2473,12 @@ function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface,
   let colon = -1;
   let head = 0;
   let custom = false;
+  let family = false;
   const end = (i) => {
     let part = spaced + text.slice(from, i);
     if (policy !== 'remove' && colon !== -1) {
       const raw = text.slice(colon + 1, i);
-      if (custom ? policy === 'inline' : keepsComments(raw, surface)) {
+      if (custom ? policy === 'inline' : keepsComments(raw, surface) && !(family && isFamilyVarList(raw))) {
         part = part.slice(0, head) + (custom ? raw : raw.replace(LEADING_COMMENTS, ''));
       }
     }
@@ -2485,6 +2509,7 @@ function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface,
       const name = spaced + text.slice(from, i + 1);
       head = name.length;
       custom = name.trimStart().startsWith('--');
+      family = /^\s*font-family\s*:$/i.test(name);
     } else if (c === ';' && depth === 0) end(i);
   }
   end(text.length);
@@ -2507,7 +2532,7 @@ function commentedParts(source, runsOn, lineBreaks, context, surface) {
   return commentedDeclarations(source, sheet ? 'space' : 'inline', lineBreaks, false, surface, true);
 }
 
-function parseInto(decls, text, mode, surface = null, context = null, element = false) {
+function parseInto(decls, text, mode, surface = null, context = null, element = false, asWritten = false) {
   // 'replay': declarations given to a rule's (replayDeclarations).
   // 'cssom': a style rule's in a sheet before jsdom 27.1.0, which tells
   // whether it kept every declaration it read (parsedPlain).
@@ -2664,7 +2689,18 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
         .join(',');
       if (filled !== value) declared = declaredValue(name, filled, mode, surface);
     }
-    // background-image layers with var() (imageVarLayers): not here.
+    // background-image layers with var() (imageVarLayers) and a family list
+    // with a comma before var() (isFamilyVarList; but setProperty's and an
+    // accessor's value with a comment, asWritten): not here.
+    if (
+      !sheet &&
+      !asWritten &&
+      declared !== INVALID &&
+      name === 'font-family' &&
+      isSpecMode(mode) &&
+      isFamilyVarList(value)
+    )
+      continue;
     if (
       !sheet &&
       declared !== INVALID &&
@@ -3404,7 +3440,7 @@ function writtenValue(name, raw, s) {
   const text = declaredValue(name, raw, s.mode, s.surface);
   if (text !== INVALID || isLegacyMode(s.mode) || !raw.includes('/*') || separated(raw)) return text;
   const decls = new Map();
-  parseInto(decls, `${name}: ${raw}`, s.mode, s.surface, null, true);
+  parseInto(decls, `${name}: ${raw}`, s.mode, s.surface, null, true, true);
   for (const declared of decls.values()) if (declared.important || declared.masked === true) return INVALID;
   const declared = decls.get(name);
   if (declared !== undefined) return decls.size === 1 ? declared.value : INVALID;

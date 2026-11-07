@@ -4809,6 +4809,31 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-07: a family list with a comma before var(), jsdom 27 and later (branch fix/264-family-var-comma, #264 item 57)
+
+jsdom 27.0.1 to 30.1.3 read a `var()` right after a comma
+(`x,var(--f)`, `x ,var(--f)`; not `x, var(--f)`, `x,(var(--f))` or a
+list that starts with `var()`) as a family of its own: the list is
+written as one without var(), with ", " between families, names of
+several words quoted and a generic keyword first invalid
+(`x,var(--f),Times  New Roman` is `x, var(--f), "Times New Roman"`,
+`serif x,var(--f)` invalid, `x,var(--f) y` is `x, var(--f) y`), through
+setProperty, the accessors and sheets. The style attribute, cssText and
+`font` drop it. A comment in such a list is removed (`x/**/,var(--f)` is
+`x, var(--f)`), as in a list without var(). warpdom dropped them all
+(`var(--f)` is no family name). css.js isFamilyVarList: versionedValue
+checks the list with each such var() as a name and serializes it as
+quotedFamilies does; parseInto skips it outside sheets, except for a
+setProperty or accessor value with a comment (asWritten, as in #282);
+commentedDeclarations removes its comments. jsdom 26 has rules of its
+own here (#264 item 62).
+
+Performance (Node 22.17.1, 5 alternating runs, medians, main 7e59578 ->
+this, 30.1.2 profile): style attribute writes 933 -> 944 ns (runs 913 to
+986: noise); setProperty of width and color 307 -> 302 ns (noise). Test:
+css-profiles.test.js "a family list with a comma before var()" (parity
+27 to 30.1.3: setProperty, accessor, attribute, cssText, font, a sheet).
+
 ## 2026-11-06: a family name of several words in quotes, jsdom 27 and later (branch fix/264-family-quotes, #264 item 53)
 
 CSS Fonts 4: a family name given as several identifiers is the string of
