@@ -1311,6 +1311,9 @@ const ESCAPES = [
   String.raw`x\66 010`,
   String.raw`\31 0.50`,
 ];
+// CR LF after an escape is one whitespace (#278 review). jsdom 30 turns
+// CR LF into LF in any value (not modelled), so these run up to 29.
+const CRLF_ESCAPES = ['b\\31\r\n001', 'a\\31\r\n05 3'];
 for (const jsdom of [26, 27, 28, 29, 30, '30.1.3']) {
   parity(
     `jsdom ${jsdom}: a hex escape and the whitespace after it in an identifier (#264)`,
@@ -1327,7 +1330,7 @@ for (const jsdom of [26, 27, 28, 29, 30, '30.1.3']) {
       ];
       if (jsdom !== 26) props.push('font-family');
       for (const name of props)
-        for (const value of ESCAPES) {
+        for (const value of typeof jsdom === 'number' && jsdom < 30 ? [...ESCAPES, ...CRLF_ESCAPES] : ESCAPES) {
           // A family name of several words is quoted by jsdom 27 and later
           // (#264 item 53), escapes or not.
           if (name === 'font-family' && value.endsWith(' bar')) continue;
@@ -1337,6 +1340,16 @@ for (const jsdom of [26, 27, 28, 29, 30, '30.1.3']) {
         }
       d.head.innerHTML = String.raw`<style>.a { animation-name: -\31 FOO; list-style-type: \66 oo }</style>`;
       out.push(d.styleSheets[0].cssRules[0].style.cssText);
+      // A separate number after an escape: jsdom keeps these as written too
+      // (#278 review).
+      for (const [name, value] of [
+        ['animation', String.raw`a\31,01s`],
+        ['counter-reset', String.raw`a\31 +001`],
+      ]) {
+        const el = d.createElement('div');
+        el.style.setProperty(name, value);
+        out.push(`${name}: ${value} -> ${el.style.getPropertyValue(name)}`);
+      }
       return out;
     },
     { jsdom },

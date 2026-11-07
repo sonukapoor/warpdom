@@ -4919,6 +4919,17 @@ now left as written; the check runs only for a value with a backslash
 (margin and transition writes 3,238 -> 3,222 ns, noise; checking every
 part cost +1.1%).
 
+Third Copilot review: segments() does not split at CR, so after CR LF
+the CR stayed on the escape's part and `b\31` CR LF `001` became `1`; the
+check now accepts a trailing CR. Copilot also asked to rewrite separate
+numbers after an escape (`animation: a\31,01s`, `counter-reset: a\31
++001`); jsdom 26 to 30.1.3 keep both as written, so they stay (tests
+added). Found while checking: jsdom 27+ keeps numbers as written in
+animation, counter-reset and grid-area with no escape at all
+(`animation: 01s b`, `counter-reset: a 001`, `grid-area: a / 01`), where
+warpdom writes `1s`, `1`; and jsdom 30 turns CR LF, CR and FF into LF in
+any value. Both predate this branch; new #264 items.
+
 ## 2026-11-06: !important dropped from most properties, jsdom 27.0.0 to 28.0.0 (branch fix/264-important-dropped, #264 items 43 and 44)
 
 Item 44 said jsdom 27 drops !important from content written through
