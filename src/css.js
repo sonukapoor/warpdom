@@ -1260,8 +1260,60 @@ function versionedValue(name, value, mode, surface) {
     if (ZERO.test(value)) return '0px';
     return SEVERAL_PARTS.test(value) ? value : canonicalNumbers(value);
   }
+  const families = name === 'font-family' && isSpecMode(mode) ? isFamilyVarList(value) : null;
+  if (families !== null) {
+    return isValidValue(name, familyVarPlaceholders(families)) ? serializeDeclared(name, families, mode) : INVALID;
+  }
   return undefined;
 }
+
+// A family list with a comma right before var() (x,var(--f), not x,
+// var(--f)): jsdom 27 and later read a var() that starts a family as a
+// family of its own and write the list as one without var() (", "
+// between families, names of several words quoted, a generic keyword
+// first invalid); a declaration block drops it (parseInto). Black box,
+// 27.4.0 to 30.1.3 (#264 item 57). A value with var() after whitespace,
+// "(" or at the start is kept as written instead (serializeDeclared).
+// Its comments are removed first (x/**/,var(--f), x/*(*/,var(--f), x,
+// var(--f)/**/ are x, var(--f); #283 review), but a var() after one
+// (x,/**/var(--f)) is one with var() there (hasVarFunction). Returns the
+// list without its comments, or null for a value that is no such list.
+function isFamilyVarList(value) {
+  if (!value.includes('var(') || hasVarFunction(value)) return null;
+  const families = withoutComments(value);
+  if (!families.includes(',var(')) return null;
+  for (const family of splitOutside(families, ',', families.includes('\\')))
+    if (trimSpaces(family).startsWith('var(')) return families;
+  return null;
+}
+// The text without its comments (outside strings; an escape outside a
+// string is copied as is: a\/* or a\" starts no comment or string).
+function withoutComments(value) {
+  if (!value.includes('/*')) return value;
+  let out = '';
+  for (let i = 0; i < value.length; i++) {
+    const c = value[i];
+    if (c === '\\') {
+      out += value.slice(i, i + 2);
+      i++;
+    } else if (c === '"' || c === "'") {
+      let end = i + 1;
+      while (end < value.length && value[end] !== c) end += value[end] === '\\' ? 2 : 1;
+      out += value.slice(i, end + 1);
+      i = end;
+    } else if (c === '/' && value[i + 1] === '*') {
+      const end = value.indexOf('*/', i + 2);
+      if (end === -1) break;
+      i = end + 1;
+    } else out += c;
+  }
+  return out;
+}
+// The list with each such var() family as a name, for the grammar.
+const familyVarPlaceholders = (value) =>
+  splitOutside(value, ',', value.includes('\\'))
+    .map((family) => (trimSpaces(family).startsWith('var(') ? 'x' : family))
+    .join(',');
 
 // Lengths, sizing keywords and gradients cssstyle rejects before 4.4
 // (black box: cssstyle 2.3.0 to 4.6.0 measured on their own, #239; jsdom
@@ -2518,7 +2570,9 @@ function isHexDigit(c) {
 // var() is kept as written after its leading comments (var( inside a
 // comment counts, inside a string as surface.varInStrings says). A comment
 // inside a name leaves a space there, which makes the declaration invalid
-// from 27 (spacedDeclarationName); one before or after it does not.
+// from 27 (spacedDeclarationName); one before or after it does not. A
+// family list with a comma before var() is not one with var() there
+// (isFamilyVarList: x/**/,var(--f) is x, var(--f); #264 item 57).
 function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface, escapes) {
   const parts = [];
   let spaced = '';
@@ -2527,11 +2581,12 @@ function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface,
   let colon = -1;
   let head = 0;
   let custom = false;
+  let family = false;
   const end = (i) => {
     let part = spaced + text.slice(from, i);
     if (policy !== 'remove' && colon !== -1) {
       const raw = text.slice(colon + 1, i);
-      if (custom ? policy === 'inline' : keepsComments(raw, surface)) {
+      if (custom ? policy === 'inline' : keepsComments(raw, surface) && !(family && isFamilyVarList(raw) !== null)) {
         part = part.slice(0, head) + (custom ? raw : raw.replace(LEADING_COMMENTS, ''));
       }
     }
@@ -2562,6 +2617,7 @@ function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface,
       const name = spaced + text.slice(from, i + 1);
       head = name.length;
       custom = name.trimStart().startsWith('--');
+      family = /^\s*font-family\s*:$/i.test(name);
     } else if (c === ';' && depth === 0) end(i);
   }
   end(text.length);
@@ -2745,7 +2801,18 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
         .join(',');
       if (filled !== value) declared = declaredValue(name, filled, mode, surface);
     }
-    // background-image layers with var() (imageVarLayers): not here.
+    // background-image layers with var() (imageVarLayers) and a family list
+    // with a comma before var() (isFamilyVarList; but setProperty's and an
+    // accessor's value with a comment, asWritten): not here.
+    if (
+      !sheet &&
+      !asWritten &&
+      declared !== INVALID &&
+      name === 'font-family' &&
+      isSpecMode(mode) &&
+      isFamilyVarList(value) !== null
+    )
+      continue;
     if (
       !sheet &&
       declared !== INVALID &&
