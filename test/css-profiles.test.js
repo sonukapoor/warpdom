@@ -1998,3 +1998,81 @@ test('style: a family name of several words with many escapes (#264)', () => {
   assert.ok(performance.now() - start < 500);
   assert.equal(el.style.fontFamily, `"a${'AAAAAA'.repeat(12)} b c"`);
 });
+
+// Numbers as written (black box, #264 item 54): jsdom 27.0.1 to 28.0.0
+// (cssstyle 5) keep a number as written (01s, 1.50, +1px, 1e1) except in
+// the properties cssstyle 5 parses (width, margin, border widths, flex,
+// font-size, line-height, opacity and the like), which write it
+// canonically; 28.1.0 and later write it canonically.
+const NUMBERS = [
+  ['animation-duration', '01s'],
+  ['animation-iteration-count', '1.50'],
+  ['border-radius', '01px 1.50%'],
+  ['transition', 'opacity 1.50s ease 01s'],
+  ['grid-template-columns', '01fr 1.50fr'],
+  ['z-index', '+1'],
+  ['transform-origin', '01px 1.50px'],
+  ['letter-spacing', '1.50px'],
+  ['column-count', '01'],
+  ['outline-width', '1.50px'],
+  ['min-width', '01px'],
+  ['max-height', '1.50em'],
+  ['text-indent', '+1px'],
+  ['order', '1e1'],
+  ['width', '1.50px'],
+  ['margin', '01px +1px'],
+  ['opacity', '.50'],
+  ['line-height', '1.50'],
+  ['flex-grow', '01'],
+  ['font-size', '1E1px'],
+  ['flex', '01'],
+  ['flex', '1.50 +1 01px'],
+  ['background-size', '01px, 1.50px'],
+  ['background-size', '01px 1.50px'],
+  ['outline', '1.50px'],
+  ['outline', '01px solid'],
+];
+const numbersAsWritten = (w) => {
+  const d = w.document;
+  return NUMBERS.map(([name, v]) => {
+    const a = d.createElement('div');
+    a.style.setProperty(name, v);
+    const b = d.createElement('div');
+    b.setAttribute('style', `${name}: ${v}`);
+    d.head.innerHTML = `<style>.n { ${name}: ${v} }</style>`;
+    const rule = d.styleSheets[0].cssRules[0].style.getPropertyValue(name);
+    return `${name}: ${v} | ${a.style.getPropertyValue(name)} | ${b.style.cssText} | ${rule}`;
+  });
+};
+for (const jsdom of [27, 28, 29, 30, '30.1.3'])
+  parity(`style: numbers as written or canonical (jsdom ${jsdom}, #264)`, numbersAsWritten, { jsdom });
+// jsdom 26 drops a number with a leading zero in the properties it parses
+// (flex-grow: 01, flex: 01, margin: 01px; #264 item 58); the others as above.
+parity(
+  'style: numbers as written or canonical (jsdom 26, #264)',
+  (w) => numbersAsWritten(w).filter((row) => !/^(?:margin|flex-grow|flex):/.test(row)),
+  { jsdom: 26 },
+);
+// flex keeps exponent numbers as written and still sets its longhands
+// (#281 review): flex: 1e1 is flex-grow 1e1, flex-shrink 1, flex-basis 0%.
+const flexExponents = (w) => {
+  const d = w.document;
+  return ['1e1', '1 1e-1 10px', '1E1 2', '.5e1 0 auto', '1e1 1e1 1e1px'].map((v) => {
+    const a = d.createElement('div');
+    d.body.append(a);
+    a.style.setProperty('flex', v);
+    const { flexGrow, flexShrink, flexBasis } = a.style;
+    const c = w.getComputedStyle(a);
+    a.remove();
+    return `flex: ${v} | ${a.style.flex} | ${flexGrow} ${flexShrink} ${flexBasis} | ${c.flexGrow} ${c.flexShrink} ${c.flexBasis}`;
+  });
+};
+for (const jsdom of [26, 27, 28, 29, 30, '30.1.3'])
+  parity(`style: flex with exponent numbers sets its longhands (jsdom ${jsdom}, #264)`, flexExponents, { jsdom });
+// 27.0.1 and 28.0.0 (single-jsdom installs) as 27.4.0 inline (27.0.1's
+// style sheets keep every value as written).
+test('style: numbers as written or canonical (jsdom 27.0.1, 28.0.0, #264)', () => {
+  const inline = (w) => numbersAsWritten(w).map((row) => row.split(' | ').slice(0, 3).join(' | '));
+  const expected = inline(createWindow({ jsdom: '27.4.0' }));
+  for (const jsdom of ['27.0.1', '28.0.0']) assert.deepEqual(inline(createWindow({ jsdom })), expected, jsdom);
+});

@@ -212,6 +212,66 @@ const ZERO_PARSED_5 = new Set([
   'padding',
   'border-width',
 ]);
+// Numbers as written or canonical, jsdom 27 and later (black box,
+// 27.0.1 to 30.1.3, #264 item 54). A value of several parts (01px 1.50px,
+// 01s, 1.50s, a 01) keeps its numbers as written, except in the
+// properties jsdom parses whole (NUMBERS_PARSED; 30 also
+// background-position-x and -y). A single one is canonical (01px is 1px),
+// in cssstyle 5 (27.0.1 to 28.0.0) only in the properties it parses.
+const NUMBERS_PARSED = new Set([
+  'background',
+  'background-position',
+  'border',
+  'border-top',
+  'border-right',
+  'border-bottom',
+  'border-left',
+  'border-spacing',
+  'border-width',
+  'flex',
+  'font',
+  'margin',
+  'padding',
+]);
+const NUMBERS_PARSED_5 = new Set([
+  ...NUMBERS_PARSED,
+  'background-size',
+  'border-top-width',
+  'border-right-width',
+  'border-bottom-width',
+  'border-left-width',
+  'top',
+  'right',
+  'bottom',
+  'left',
+  'width',
+  'height',
+  'margin-top',
+  'margin-right',
+  'margin-bottom',
+  'margin-left',
+  'padding-top',
+  'padding-right',
+  'padding-bottom',
+  'padding-left',
+  'flex-basis',
+  'flex-grow',
+  'flex-shrink',
+  'font-size',
+  'font-weight',
+  'line-height',
+  'opacity',
+]);
+const SEVERAL_PARTS = /[\s,]/;
+function numbersCanonical(name, value, mode) {
+  if (!isSpecMode(mode)) return true;
+  if (SEVERAL_PARTS.test(value))
+    return (
+      NUMBERS_PARSED.has(name) ||
+      (mode === 'spec' && (name === 'background-position-x' || name === 'background-position-y'))
+    );
+  return !numbersAsWritten || NUMBERS_PARSED_5.has(name);
+}
 const ZERO_LISTS = new Set(['margin', 'padding', 'border-width', 'border-spacing', 'background-position']);
 const zeroIsLength = new Map();
 function isLengthProperty(name) {
@@ -256,6 +316,9 @@ let colorKeywords = null;
 // cssstyle 5 (jsdom 27.0 to 28.0, set by declaredValue): a 0 stays 0 except
 // in the properties it parses (ZERO_PARSED_5).
 let zeroAsWritten = false;
+// cssstyle 5 (jsdom 27.0.1 to 28.0.0, set by declaredValue): a single
+// number as written outside the properties it parses (NUMBERS_PARSED_5).
+let numbersAsWritten = false;
 // How jsdom 27 and later serialize url() (set by declaredValue; black box,
 // #144): 'spec' (jsdom 29 and later), 'quotes' (cssstyle 6, jsdom 28: only
 // a double quote escaped) or 'written' (cssstyle 5, jsdom 27: as 'quotes'
@@ -1012,6 +1075,7 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
           : true;
     colorKeywords = surface !== null ? (surface.colors ?? null) : null;
     zeroAsWritten = surface !== null && (surface.key === 'cssstyle5' || surface.key === 'cssstyle5.0');
+    numbersAsWritten = surface !== null && surface.key === 'cssstyle5';
     identsInLowercase = surface !== null && surface.key.startsWith('cssstyle5');
     if (surface === null || !surface.key.startsWith('cssstyle')) urlStyle = 'spec';
     else urlStyle = surface.key.startsWith('cssstyle6') ? 'quotes' : 'written';
@@ -1187,15 +1251,14 @@ function versionedValue(name, value, mode, surface) {
   }
   if (BORDER_SHORTHAND.has(name)) return borderValue(name, value, mode);
   if (name === 'clip') return clipValue(value, mode);
-  // jsdom 30 keeps outline as written (colors, numbers, order), a 0 as 0px.
-  if (name === 'outline' && mode === 'spec')
-    return !isValidValue(name, value)
-      ? INVALID
-      : CSS_WIDE_KEYWORD.test(value)
-        ? value.toLowerCase()
-        : ZERO.test(value)
-          ? '0px'
-          : value;
+  // jsdom 30 keeps outline as written (colors, numbers, order), a 0 as 0px
+  // and a single number canonical (01px is 1px).
+  if (name === 'outline' && mode === 'spec') {
+    if (!isValidValue(name, value)) return INVALID;
+    if (CSS_WIDE_KEYWORD.test(value)) return value.toLowerCase();
+    if (ZERO.test(value)) return '0px';
+    return SEVERAL_PARTS.test(value) ? value : canonicalNumbers(value);
+  }
   if (name === 'font-family' && isSpecMode(mode) && isFamilyVarList(value))
     return isValidValue(name, familyVarPlaceholders(value)) ? serializeDeclared(name, value, mode) : INVALID;
   return undefined;
@@ -2065,8 +2128,10 @@ function displayShortForm(value) {
 }
 
 // flex serializes as its three longhands (flex: 1 is 1 1 0%, auto is
-// 1 1 auto): omitted grow and shrink are 1, an omitted basis 0%.
-function flexLonghands(value) {
+// 1 1 auto): omitted grow and shrink are 1, an omitted basis 0%. With
+// asWritten (jsdom 27 and later) the numbers keep their text (01 is
+// 01 1 0%).
+function flexLonghands(value, asWritten = false) {
   const lower = value.toLowerCase();
   if (lower === 'none') return '0 0 auto';
   if (lower === 'auto') return '1 1 auto';
@@ -2081,7 +2146,7 @@ function flexLonghands(value) {
       numbers.length < 2 &&
       (basis === null || numbers.length > 0)
     )
-      numbers.push(String(Number(part)));
+      numbers.push(asWritten ? part : String(Number(part)));
     else basis = ZERO.test(part) ? '0px' : part;
   }
   return `${numbers[0] ?? '1'} ${numbers[1] ?? '1'} ${basis ?? '0%'}`;
@@ -2118,7 +2183,8 @@ function serializeDeclared(name, value, mode) {
   if (mode === 'jsdom26' && value.startsWith('calc(') && isLengthProperty(name) && !BORDER_WIDTHS.has(name))
     value = simplifyCalc(value);
   if (name === 'display' && isSpecMode(mode)) return displayShortForm(value);
-  if (name === 'flex') return flexLonghands(canonicalNumbers(value));
+  // jsdom 27 and later keep flex's numbers as written (01 is 01 1 0%).
+  if (name === 'flex') return isSpecMode(mode) ? flexLonghands(value, true) : flexLonghands(canonicalNumbers(value));
   if (name === 'font' || name === 'font-family') {
     const font = name === 'font';
     if (!isSpecMode(mode)) return familyCommas(font ? serializeFont(canonicalNumbers(value)) : value);
@@ -2132,7 +2198,17 @@ function serializeDeclared(name, value, mode) {
   // cssstyle before 4.3.1 (jsdom 20 to 25) keeps lengths, percentages and
   // line-height as written (.83em, 10.0px, 1.50); its number properties
   // (opacity, flex-grow, flex-shrink) it serializes canonically.
-  if (!KEEPS_NUMBERS_AS_WRITTEN[mode] || CANONICAL_NUMBERS_PRE_431.has(name)) value = canonicalNumbers(value);
+  // background-size per layer (jsdom 27 and later): 01px, 1.50px is
+  // 1px, 1.5px; 01px 1.50px stays.
+  if (name === 'background-size' && isSpecMode(mode) && value.includes(','))
+    value = splitOutside(value, ',')
+      .map((layer) => (SEVERAL_PARTS.test(layer.trim()) ? layer : canonicalNumbers(layer)))
+      .join(',');
+  else if (
+    (!KEEPS_NUMBERS_AS_WRITTEN[mode] || CANONICAL_NUMBERS_PRE_431.has(name)) &&
+    numbersCanonical(name, value, mode)
+  )
+    value = canonicalNumbers(value);
   // background-position as its x and y parts per layer (jsdom 27 and
   // later): center is center center, top is center top.
   if (name === 'background-position' && isSpecMode(mode)) {
