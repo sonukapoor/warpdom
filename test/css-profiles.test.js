@@ -1717,5 +1717,24 @@ test('style: a single-number aspect-ratio, a system color in scrollbar-color (js
     assert.equal(el.style.scrollbarColor, 'accentcolortext', jsdom);
     el.style.scrollbarColor = 'red';
     assert.equal(el.style.scrollbarColor, 'accentcolortext', jsdom);
+    // Object.prototype's names are not colors (#280 review).
+    for (const name of ['constructor', '__proto__', 'hasOwnProperty']) {
+      el.style.scrollbarColor = name;
+      assert.equal(el.style.scrollbarColor, 'accentcolortext', `${jsdom} ${name}`);
+    }
   }
 });
+// Object.prototype's names are not color keywords (#280 review): every
+// jsdom rejects color: constructor; warpdom's color tables had them.
+for (const jsdom of [20, 26, 27, 29, 30])
+  parity(
+    `style: Object.prototype names are not colors (jsdom ${jsdom}, #280)`,
+    (w) =>
+      ['constructor', '__proto__', 'hasOwnProperty', 'valueOf', 'toString'].map((v) => {
+        const el = w.document.createElement('div');
+        for (const name of ['color', 'background-color', 'border-color', 'scrollbar-color'])
+          el.style.setProperty(name, v);
+        return `${v}: ${el.style.cssText}`;
+      }),
+    { jsdom },
+  );

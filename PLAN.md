@@ -4826,6 +4826,17 @@ versionedValue, keyed by the style surface (cssstyle5 is 27.0.1 to
 28.0.0, cssstyle6.1 is 28.1.0). Writes (width, margin, color; 29.1.1)
 779 -> 778 ns, noise.
 
+Review: Copilot found `scrollbar-color: constructor` accepted in 27.0.1 to
+28.0.0 (the system color table is a plain object). Wider than that: on
+main `color: constructor` and `background-color: __proto__` were kept in
+every profile from 26 on, and every jsdom drops them. The named, system
+and dark system color tables now have no prototype. Color writes and
+computed reads (29.1.1) 1,893 -> 1,874 ns, noise. CodeRabbit asked about
+`1e400`: jsdom 29 and later write it as `Infinity / 1` too, so it stays
+(warpdom matches). Found while checking: `aspect-ratio: 1e400 / 1` is kept
+as written by every jsdom; warpdom 27+ writes `Infinity / 1` (main too,
+canonicalNumbers; #264 item 56).
+
 ## 2026-11-06: an accessor's write keeps !important, jsdom 27 to 29 (branch fix/264-accessor-important, #264 item 49)
 
 Measured black box on 26.1.0, 27.0.1, 27.4.0, 28.0.0, 28.1.0, 29.1.1,
