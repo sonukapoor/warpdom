@@ -1260,8 +1260,8 @@ function versionedValue(name, value, mode, surface) {
     if (ZERO.test(value)) return '0px';
     return SEVERAL_PARTS.test(value) ? value : canonicalNumbers(value);
   }
-  if (name === 'font-family' && isSpecMode(mode) && isFamilyVarList(value)) {
-    const families = withoutComments(value);
+  const families = name === 'font-family' && isSpecMode(mode) ? isFamilyVarList(value) : null;
+  if (families !== null) {
     return isValidValue(name, familyVarPlaceholders(families)) ? serializeDeclared(name, families, mode) : INVALID;
   }
   return undefined;
@@ -1276,22 +1276,27 @@ function versionedValue(name, value, mode, surface) {
 // "(" or at the start is kept as written instead (serializeDeclared).
 // Its comments are removed first (x/**/,var(--f), x/*(*/,var(--f), x,
 // var(--f)/**/ are x, var(--f); #283 review), but a var() after one
-// (x,/**/var(--f)) is one with var() there (hasVarFunction).
+// (x,/**/var(--f)) is one with var() there (hasVarFunction). Returns the
+// list without its comments, or null for a value that is no such list.
 function isFamilyVarList(value) {
-  if (!value.includes('var(') || hasVarFunction(value)) return false;
+  if (!value.includes('var(') || hasVarFunction(value)) return null;
   const families = withoutComments(value);
-  if (!families.includes(',var(')) return false;
+  if (!families.includes(',var(')) return null;
   for (const family of splitOutside(families, ',', families.includes('\\')))
-    if (trimSpaces(family).startsWith('var(')) return true;
-  return false;
+    if (trimSpaces(family).startsWith('var(')) return families;
+  return null;
 }
-// The text without its comments (outside strings).
+// The text without its comments (outside strings; an escape outside a
+// string is copied as is: a\/* or a\" starts no comment or string).
 function withoutComments(value) {
   if (!value.includes('/*')) return value;
   let out = '';
   for (let i = 0; i < value.length; i++) {
     const c = value[i];
-    if (c === '"' || c === "'") {
+    if (c === '\\') {
+      out += value.slice(i, i + 2);
+      i++;
+    } else if (c === '"' || c === "'") {
       let end = i + 1;
       while (end < value.length && value[end] !== c) end += value[end] === '\\' ? 2 : 1;
       out += value.slice(i, end + 1);
@@ -2581,7 +2586,7 @@ function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface,
     let part = spaced + text.slice(from, i);
     if (policy !== 'remove' && colon !== -1) {
       const raw = text.slice(colon + 1, i);
-      if (custom ? policy === 'inline' : keepsComments(raw, surface) && !(family && isFamilyVarList(raw))) {
+      if (custom ? policy === 'inline' : keepsComments(raw, surface) && !(family && isFamilyVarList(raw) !== null)) {
         part = part.slice(0, head) + (custom ? raw : raw.replace(LEADING_COMMENTS, ''));
       }
     }
@@ -2805,7 +2810,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       declared !== INVALID &&
       name === 'font-family' &&
       isSpecMode(mode) &&
-      isFamilyVarList(value)
+      isFamilyVarList(value) !== null
     )
       continue;
     if (

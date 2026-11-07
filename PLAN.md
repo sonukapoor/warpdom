@@ -4840,6 +4840,11 @@ x,var(--f)/**/, x,var(--f)/*a*/,y) is removed before the list is read
 (x,/**/var(--f)) still counts as var() there, kept as written.
 `x,var(--f);color:red` keeps `;color:red` in the value, as jsdom 27 and
 30 do (answered, no change). Four rows added to the test.
+Second review: an escape outside a string (a\/*x*/b, a\"/**/b) starts
+no comment or string in withoutComments, as in jsdom 27 to 30.1.3;
+isFamilyVarList returns the list without comments, so it is scanned once
+(CodeRabbit). Not covered in a sheet: warpdom's sheet parser reads a\"
+as a string's start and loses the rest of the sheet (#264 item 70).
 
 ## 2026-11-07: CR, FF and NUL in a declaration, jsdom 30 (branch fix/264-newlines, #264 item 55)
 
