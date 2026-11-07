@@ -1987,15 +1987,8 @@ const numbersAsWritten = (w) => {
     return `${name}: ${v} | ${a.style.getPropertyValue(name)} | ${b.style.cssText} | ${rule}`;
   });
 };
-for (const jsdom of [27, 28, 29, 30, '30.1.3'])
+for (const jsdom of [26, 27, 28, 29, 30, '30.1.3'])
   parity(`style: numbers as written or canonical (jsdom ${jsdom}, #264)`, numbersAsWritten, { jsdom });
-// jsdom 26 drops a number with a leading zero in the properties it parses
-// (flex-grow: 01, flex: 01, margin: 01px; #264 item 58); the others as above.
-parity(
-  'style: numbers as written or canonical (jsdom 26, #264)',
-  (w) => numbersAsWritten(w).filter((row) => !/^(?:margin|flex-grow|flex):/.test(row)),
-  { jsdom: 26 },
-);
 // flex keeps exponent numbers as written and still sets its longhands
 // (#281 review): flex: 1e1 is flex-grow 1e1, flex-shrink 1, flex-basis 0%.
 const flexExponents = (w) => {
@@ -2019,3 +2012,110 @@ test('style: numbers as written or canonical (jsdom 27.0.1, 28.0.0, #264)', () =
   const expected = inline(createWindow({ jsdom: '27.4.0' }));
   for (const jsdom of ['27.0.1', '28.0.0']) assert.deepEqual(inline(createWindow({ jsdom })), expected, jsdom);
 });
+
+// jsdom 26's own value rules (black box, 26.1.0; #264 items 46, 56, 58):
+// flex-grow, flex-shrink, flex-basis, font-weight, font-variant and
+// border-spacing are checked (font-weight 0 to 1000, no calc(); a negative
+// flex-basis or border-spacing; font-variant normal, small-caps or none,
+// keywords in lowercase); a number with a leading zero (01, 00.5) or an
+// exponent with a plus (1e+1) outside calc() is invalid in the properties
+// it parses; opacity is clamped to 0 to 1 (0% to 100%); a length past
+// 1e21 in border, background and flex is invalid.
+const JSDOM26_VALUES = {
+  'font-weight': [
+    '1001',
+    '0',
+    '1000',
+    'bolder',
+    'BOLD',
+    '1.5',
+    'calc(100)',
+    'var(--a)',
+    'inherit',
+    '-0',
+    '+100',
+    '1e3',
+    '01',
+    '-1',
+    '1px',
+    'x',
+    'normal 1',
+  ],
+  'flex-basis': [
+    '-1px',
+    '0',
+    '10%',
+    'content',
+    'fit-content',
+    'max-content',
+    'calc(1px + 2px)',
+    '1',
+    'AUTO',
+    '01px',
+    '00',
+    'x',
+    '1px 2px',
+  ],
+  'flex-grow': [
+    '0',
+    '1.5',
+    '-0',
+    '+2',
+    '.5',
+    'calc(1)',
+    '1e2',
+    'inherit',
+    '-1',
+    '1px',
+    '01',
+    'x',
+    '1 2',
+    '1.',
+    '1e+1',
+    '1e-1',
+  ],
+  'flex-shrink': ['1', '-0.5', 'calc(2)', '01'],
+  'border-spacing': ['-1px', '1px 2px', '1px -2px', '0', '1px 2px 3px', '1%', 'calc(1px)', '2', '01px', 'x'],
+  'font-variant': [
+    'normal',
+    'small-caps',
+    'none',
+    'SMALL-CAPS',
+    'all-small-caps',
+    'common-ligatures',
+    'small-caps slashed-zero',
+    'x',
+    '1',
+  ],
+  width: ['00px', '01px', '0.5px', '00.5px', '1.px', '0.px', '1e+1px', '1e-1px', '010px', 'calc(01px + 1px)', '1e39px'],
+  margin: ['1px 01px', '-.5px', '01px', '1e400px'],
+  'line-height': ['01', '1.', '001.5'],
+  'font-size': ['01px'],
+  color: ['rgb(01, 2, 3)', 'rgb(1, 2, 3)'],
+  'background-position': ['01px 2px'],
+  'border-width': ['1e+1px'],
+  'z-index': ['01', '1e+1'],
+  transform: ['scale(01)'],
+  opacity: ['2', '-1', '150%', '-1%', '1e39', '1e400', '-1e400', '0.5', '01', '.5', '1e1', '50%'],
+  border: ['1e39px', '1e400px', '1e20px solid'],
+  'border-top': ['1e39px'],
+  background: ['1e39px'],
+  flex: ['1e39', '1e400', '1e400 1', '1 1e400', '1e21', '1e20', '1 1 1e39px', '01', '01 1'],
+};
+parity(
+  "style: jsdom 26's own value rules (jsdom 26, #264)",
+  (w) => {
+    const d = w.document;
+    const out = [];
+    for (const [name, values] of Object.entries(JSDOM26_VALUES))
+      for (const v of values) {
+        const a = d.createElement('div');
+        a.style.setProperty(name, v);
+        const b = d.createElement('div');
+        b.setAttribute('style', `${name}: ${v}`);
+        out.push(JSON.stringify([name, v, a.style.getPropertyValue(name), b.style.cssText]));
+      }
+    return out;
+  },
+  { jsdom: 26 },
+);

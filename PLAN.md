@@ -4809,6 +4809,42 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-07: jsdom 26's own value rules (branch fix/264-jsdom26-numbers, #264 items 56, 58, part of 46)
+
+Surveyed black box on jsdom 26.1.0: every style property warpdom knows,
+setProperty, with numbers (01, 00, 001.5, 01px, 1e39, 1e400, 1e400px,
+-1, 2, 150%, 1e20, 1e21, 0.5e1, 01 1px) and ordinary values (1px, 2,
+-1, bold, x, 10%, 1 2, auto, normal, AUTO, 0, 1.5em). Found:
+- A number with a leading zero before a digit (01, 00, 00.5, 010) or an
+  exponent with a plus (1e+1) is invalid in the properties jsdom 26
+  parses, inside rgb() too, not inside calc(); a trailing dot is valid
+  (1. is 1). The others keep it as written (z-index: 01).
+- flex-grow, flex-shrink, flex-basis, font-weight, font-variant and
+  border-spacing are checked with rules of their own: font-weight 0 to
+  1000 and normal, bold, bolder, lighter (no calc()); font-variant
+  normal, small-caps, none and font-weight's numbers; flex-grow and
+  flex-shrink a number not negative, or calc(); flex-basis and
+  border-spacing a length, negative too (flex-basis also auto, content,
+  max-content, min-content, not fit-content); keywords in lowercase.
+  warpdom checked none of them (an earlier decision left them out because
+  jsdom 26 took values outside their ranges; the rules above model that).
+- opacity is clamped to 0 to 1, a percentage to 0% to 100% (2 is 1,
+  1e400 is 1, -1% is 0%).
+- border, its sides, background and flex reject a number that serializes
+  with e+ or as Infinity (1e39px, 1e400, 1e21); width keeps 1e+39px.
+css.js jsdom26Value (from versionedValue, jsdom 26 profile only). Survey
+differences, before -> after: numbers 173 -> 4, ordinary values 61 ->
+16. Left: keywords in lowercase in the other properties (width: AUTO;
+#264 item 46), a font of a size alone (font: 1px is valid in jsdom 26;
+item 63), font-family: x (item 62).
+
+Performance (Node 22.17.1, 5 alternating runs, medians, main 6f4a677 ->
+this, 26.1.0 profile): writes of new width, opacity, flex-grow and margin
+values (each a cache miss) 1,010 -> 989 ns (noise). Tests:
+css-profiles.test.js "jsdom 26's own value rules" (121 values,
+setProperty and the attribute); "numbers as written or canonical" runs
+on jsdom 26 unfiltered.
+
 ## 2026-11-07: numbers as written or canonical, jsdom 27 and later (branch fix/264-numbers-as-written, #264 item 54)
 
 Surveyed black box on 27.0.1, 27.4.0, 28.0.0, 28.1.0, 29.1.1 and 30.1.2:

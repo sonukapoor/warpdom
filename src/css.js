@@ -1188,6 +1188,96 @@ function azimuthValue(value, surface) {
 // modes' general rules (black box, jsdom 20 to 30); undefined for the
 // others. Runs once per property and raw value (declaredValue caches it).
 const ONE_NUMBER = /^\+?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
+
+// jsdom 26's own value rules (black box, 26.1.0; #264 items 46, 56, 58).
+// A number: no leading zero before a digit (01, 00.5), an exponent without
+// a plus (1e+1), a trailing dot allowed (1.).
+const JSDOM26_NUMBER = /^[+-]?(?:0|[1-9]\d*|(?=\.\d))(?:\.\d*)?(?:e-?\d+)?$/i;
+// The properties it checks with grammars of their own: font-weight 0 to
+// 1000 (font-variant too, besides normal, small-caps and none), flex-grow
+// and flex-shrink not negative, flex-basis and border-spacing negative or
+// not; keywords in lowercase.
+const JSDOM26_OWN = new Set([
+  'font-weight',
+  'font-variant',
+  'flex-grow',
+  'flex-shrink',
+  'flex-basis',
+  'border-spacing',
+]);
+const JSDOM26_KEYWORDS = {
+  __proto__: null,
+  'font-weight': new Set(['normal', 'bold', 'bolder', 'lighter']),
+  'font-variant': new Set(['normal', 'small-caps', 'none']),
+  'flex-basis': new Set(['auto', 'content', 'max-content', 'min-content']),
+};
+// Shorthands it reads again from their serialization, where 1e39px is
+// 1e+39px and 1e400px Infinitypx, both invalid.
+const JSDOM26_REREAD = new Set([
+  'border',
+  'border-top',
+  'border-right',
+  'border-bottom',
+  'border-left',
+  'background',
+  'flex',
+]);
+function jsdom26Value(name, value, lower) {
+  const parsed = JSDOM26_PARSED.has(name) || JSDOM26_OWN.has(name);
+  if (parsed && jsdom26BadNumber(value)) return INVALID;
+  if (JSDOM26_REREAD.has(name)) return /e\+|Infinity/.test(canonicalNumbers(value)) ? INVALID : undefined;
+  if (name === 'opacity') {
+    // Clamped to 0 to 1, a percentage to 0% to 100%.
+    const percent = value.endsWith('%');
+    const text = percent ? value.slice(0, -1) : value;
+    if (!JSDOM26_NUMBER.test(text)) return undefined;
+    const n = Math.min(Math.max(Number(text), 0), percent ? 100 : 1);
+    return percent ? `${n}%` : String(n);
+  }
+  if (!JSDOM26_OWN.has(name)) return undefined;
+  if (JSDOM26_KEYWORDS[name]?.has(lower)) return lower;
+  if (name === 'font-weight' || name === 'font-variant') {
+    const n = JSDOM26_NUMBER.test(value) ? Number(value) : NaN;
+    return n >= 0 && n <= 1000 ? String(n) : INVALID;
+  }
+  if (name === 'flex-grow' || name === 'flex-shrink') {
+    if (/^calc\(/i.test(value)) return undefined;
+    return JSDOM26_NUMBER.test(value) && Number(value) >= 0 ? String(Number(value)) : INVALID;
+  }
+  // flex-basis and border-spacing: a negative length is valid.
+  return isValidValue(name, value.replace(/(^|\s)-(?=[\d.])/g, '$1'))
+    ? serializeDeclared(name, value, 'jsdom26')
+    : INVALID;
+}
+// A number outside calc(), strings and url() that jsdom 26 does not read.
+function jsdom26BadNumber(value) {
+  if (!/\d/.test(value)) return false;
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    if (c === 34 || c === 39) {
+      const end = value.indexOf(value[i], i + 1);
+      if (end === -1) return false;
+      i = end;
+    } else if ((c === 99 || c === 67 || c === 117 || c === 85) && /^(?:calc|url)\(/i.test(value.slice(i, i + 5))) {
+      let depth = 0;
+      for (; i < value.length; i++) {
+        if (value[i] === '(') depth++;
+        else if (value[i] === ')' && --depth === 0) break;
+      }
+    } else if ((c >= 48 && c <= 57) || c === 46) {
+      const before = i > 0 ? value[i - 1] : ' ';
+      if (/[\w#.-]/.test(before) && !/[+-]/.test(before)) {
+        while (i + 1 < value.length && /[\w.]/.test(value[i + 1])) i++;
+        continue;
+      }
+      const m = /^(?:[0-9]*\.?[0-9]*)(?:e[+-]?\d+)?/i.exec(value.slice(i));
+      const text = m[0];
+      if (text !== '.' && !JSDOM26_NUMBER.test(text)) return true;
+      i += Math.max(text.length - 1, 0);
+    }
+  }
+  return false;
+}
 function versionedValue(name, value, mode, surface) {
   if (isLegacyMode(mode)) {
     const lower = value.toLowerCase();
@@ -1197,6 +1287,10 @@ function versionedValue(name, value, mode, surface) {
     const kind = CSS_WIDE_KEYWORD.test(value) ? lower : lower === 'auto' ? 'auto' : withVar ? 'var' : null;
     if (kind !== null && droppedBy(mode, kind, name)) return INVALID;
     if (kind === null && legacyMeasureRejects(name, value, surface)) return INVALID;
+    if (mode === 'jsdom26' && (kind === null || kind === 'auto')) {
+      const own = jsdom26Value(name, value, lower);
+      if (own !== undefined) return own;
+    }
     // background-image's url()s as cssstyle reads them, the rest by its
     // grammar; with var() the value is kept as written (jsdom 26), but
     // not with var( in a string or another name (url("notvar(x).png"),
