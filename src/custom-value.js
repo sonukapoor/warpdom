@@ -95,7 +95,13 @@ function escape(text, i) {
   return [cp === 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff) ? 0xfffd : cp, j];
 }
 
-const validEscape = (text, i) => text[i] === '\\' && i + 1 < text.length && text[i + 1] !== '\n';
+// A backslash followed by a newline (LF, CR or form feed) is no escape
+// outside strings.
+const validEscape = (text, i) => {
+  if (text[i] !== '\\' || i + 1 >= text.length) return false;
+  const next = text[i + 1];
+  return next !== '\n' && next !== '\r' && next !== '\f';
+};
 
 function startsIdent(text, i) {
   const c = text[i];
@@ -157,8 +163,14 @@ function readString(text, i) {
         j++;
         continue;
       }
-      if (text[j + 1] === '\n') {
+      // An escaped newline (LF, CR, CRLF or form feed) continues the string.
+      const after = text[j + 1];
+      if (after === '\n' || after === '\f') {
         j += 2;
+        continue;
+      }
+      if (after === '\r') {
+        j += text[j + 2] === '\n' ? 3 : 2;
         continue;
       }
       const [cp, next] = escape(text, j);
@@ -202,8 +214,12 @@ function readUrl(text, i) {
 
 // Reads tokens from i up to the closing character (or the end): an array
 // of { kind, text, space } where space tells whether whitespace or a
-// comment came before it, and the index after the closer.
-function readList(text, i, closer) {
+// comment came before it, and the index after the closer. Nesting deeper
+// than MAX_DEPTH keeps the value as written instead of exhausting the stack.
+const MAX_DEPTH = 1000;
+
+function readList(text, i, closer, depth = 0) {
+  if (depth > MAX_DEPTH) throw new Bad();
   const tokens = [];
   let space = false;
   let j = i;
@@ -233,7 +249,7 @@ function readList(text, i, closer) {
       continue;
     }
     if (c === '(' || c === '[') {
-      const [inner, end] = readList(text, j + 1, c === '(' ? ')' : ']');
+      const [inner, end] = readList(text, j + 1, c === '(' ? ')' : ']', depth + 1);
       push(c === '(' ? 'paren' : 'bracket', c + serializeList(inner) + (c === '(' ? ')' : ']'));
       j = end;
       continue;
@@ -279,7 +295,7 @@ function readList(text, i, closer) {
           continue;
         }
       }
-      const [inner, end] = readList(text, j, ')');
+      const [inner, end] = readList(text, j, ')', depth + 1);
       push('function', `${name}(${serializeList(inner)})`);
       j = end;
       continue;
@@ -290,12 +306,9 @@ function readList(text, i, closer) {
       push('hash', text.slice(start, j));
       continue;
     }
-    if (c === '@' && startsIdent(text, j + 1)) {
-      const start = j;
-      j = nameEnd(text, j + 1);
-      push('at', text.slice(start, j)); // (no left kind: whitespace after it is kept)
-      continue;
-    }
+    // jsdom reports a colon or an at-keyword anywhere in the value as a
+    // parse error and keeps the value as written.
+    if (c === ':' || (c === '@' && startsIdent(text, j + 1))) throw new Bad();
     if (c === '\\') throw new Bad(); // a backslash that is no escape
     const delim = String.fromCodePoint(text.codePointAt(j));
     push(DELIMS[c] ?? 'delim', delim);
@@ -308,6 +321,7 @@ function readList(text, i, closer) {
 // The right kind a token is looked up by in DROPS.
 const SIGNED = { __proto__: null, '+': 'plus', '-': 'minus' };
 const rightKind = (token) => SIGNED[token.sign] ?? token.kind;
+const plusMinus = (t) => t.kind === 'delim' && (t.text === '+' || t.text === '-');
 
 function serializeList(tokens) {
   let out = '';
@@ -315,7 +329,6 @@ function serializeList(tokens) {
     const token = tokens[i];
     if (i > 0 && token.space) {
       const before = tokens[i - 1];
-      const plusMinus = (t) => t.kind === 'delim' && (t.text === '+' || t.text === '-');
       if (plusMinus(before) && plusMinus(token)) out += '  ';
       else {
         const left = LEFT[before.kind];
@@ -383,7 +396,8 @@ export function reserializeCustom(value) {
   try {
     out = serializeList(readList(value, 0, null)[0]);
   } catch (error) {
-    if (!(error instanceof Bad)) throw error;
+    // A stack smaller than MAX_DEPTH needs (an edge runtime) also keeps it.
+    if (!(error instanceof Bad || error instanceof RangeError)) throw error;
     out = value;
   }
   if (cache.size >= CACHE_SIZE) cache.clear();

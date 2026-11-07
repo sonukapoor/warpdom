@@ -4824,7 +4824,12 @@ strings are double-quoted with escapes decoded ('a' is "a", "\41" is
 "A", a control character as \hex, a space after it only before a hex
 digit or a space); urls unquoted (url( "a b" ) is url(a\ b)); idents,
 numbers and hashes keep their spelling (\61 b, 1E3px); a {} block, a
-bad url or string, or an unclosed block keeps the value as written. The
+bad url or string, an unclosed block, a colon or an at-keyword anywhere
+(f(@k x), (a : b)) keeps the value as written. An escaped CR, CR LF or
+form feed continues a string like LF; a backslash before CR or form feed
+is no escape outside strings (a bad url). Nesting deeper than 1,000
+blocks, or a stack too small for it, keeps the value as written (PR
+review). The
 DROPS table is the measured grid (30 token kinds each side, the same on
 29 and 30), reduced to token kinds. css.js parseInto runs it for a
 custom property read with its sheet (not a replay) in spec mode or under
@@ -4837,7 +4842,10 @@ another ! (a !, a !b c), in sheets and inline; jsdom 26 to 28 read / *
 in a sheet as a comment's start (/*), drop a custom property with a {}
 block, and collapse \61  b to one space; jsdom 29 reports a sheet with
 a bad url, a colon or an at-keyword in a custom property as not parsed
-(a console error).
+(a console error). Also logged: an unclosed block in a custom property
+takes the rule's closing } into the value in jsdom ((a b } is the value
+of .x { --v: (a b }), and on 27 to 29 warpdom's declaration splitter
+takes the ; into url('a\ CR LF b').
 
 Performance (Node 22.17.1, 5 alternating runs, medians, main e85cf4f ->
 this, 30.1.2 profile): a <style> of 200 rules with three custom

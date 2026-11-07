@@ -4,6 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createWindow } from '../src/node.js';
+import { reserializeCustom } from '../src/custom-value.js';
 import { parity } from './parity.js';
 
 const read = (w, cases) =>
@@ -2124,6 +2125,8 @@ const SHEET_CUSTOM = [
   '"Inter" , sans-serif',
   'var( --y , 1px )',
   'A  B',
+  // Deep nesting (#286 review).
+  `${'('.repeat(40)}a  b${')'.repeat(40)}`,
 ];
 // Read otherwise by jsdom 26 to 28 (#264): / * as a comment's start, a
 // {} block, the escaped backslash in a url and \61  b (one space).
@@ -2186,7 +2189,21 @@ const sheetCustom = (w, values, constructed = true) => {
 };
 // jsdom 29 and later also report these sheets as not parsed (a console
 // error warpdom does not give), so they are checked on their own below.
-const SHEET_CUSTOM_ERRORS = new Set(['url(a b)', 'x  url(a b)', 'a : b', '@k ,', '{ a }', 'a  {b}  c']);
+// A colon or an at-keyword anywhere keeps the value as written, spacing
+// included (#286 review).
+const SHEET_CUSTOM_ERRORS = new Set([
+  'url(a b)',
+  'x  url(a b)',
+  'a : b',
+  'a  :  b',
+  'x  a:b',
+  '(a  :  b)',
+  '@k ,',
+  '@k  ,',
+  'f(@k  x)',
+  '{ a }',
+  'a  {b}  c',
+]);
 for (const jsdom of [26, 27, 28, 29, 30, '30.1.3']) {
   const later = jsdom >= 29 || jsdom === '30.1.3';
   const values = SHEET_CUSTOM.filter((v) => (later ? !SHEET_CUSTOM_ERRORS.has(v) : !SHEET_CUSTOM_LATER.has(v)));
@@ -2198,6 +2215,15 @@ for (const jsdom of [26, 27, 28, 29, 30, '30.1.3']) {
     },
   );
 }
+// An escaped CR LF, CR or form feed continues a string (#286 review).
+// jsdom 30 turns CR and FF into LF first (#282), so these run on 26 to 29.
+const SHEET_CUSTOM_CONTINUED = ['"a\\\r\nb"  "a\\\rb"  "a\\\fb"', "url('a\\\rb')  url('a\\\fb')"];
+for (const jsdom of [26, 27, 28, 29])
+  parity(
+    `style: a string continued over a newline in a custom property (jsdom ${jsdom}, #286 review)`,
+    (w) => sheetCustom(w, SHEET_CUSTOM_CONTINUED, jsdom !== 26),
+    { jsdom },
+  );
 // Kept as written by jsdom 29.1.1 to 30.1.3 (black box): a bad url, a
 // colon, an at-keyword's comma and a {} block.
 test('style: a custom property in a style sheet kept as written (jsdom 29 and later, #264)', () => {
@@ -2208,4 +2234,20 @@ test('style: a custom property in a style sheet kept as written (jsdom 29 and la
       assert.equal(d.styleSheets[0].cssRules[0].style.getPropertyValue('--x'), v, `${jsdom} ${v}`);
     }
   }
+  // A backslash before CR or form feed is no escape in a url (#286
+  // review). (jsdom 30 turns CR and FF into LF first: #282.)
+  // (textContent: the HTML parser would turn CR into LF.)
+  const d = createWindow({ jsdom: 29 }).document;
+  for (const v of ['url(a\\\rb)', 'url(a\\\fb)']) {
+    d.head.textContent = '';
+    const style = d.createElement('style');
+    style.textContent = `.n { --x: ${v}; }`;
+    d.head.append(style);
+    assert.equal(d.styleSheets[0].cssRules[0].style.getPropertyValue('--x'), v, `29 ${JSON.stringify(v)}`);
+  }
+});
+
+test('style: a custom property nested past the stack is kept as written (#286 review)', () => {
+  const v = `${'('.repeat(20000)}a`;
+  assert.equal(reserializeCustom(v), v);
 });
