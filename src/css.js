@@ -13,6 +13,7 @@ import {
   cssomChanges,
   attributesChanged,
   hooks,
+  preprocessCss,
 } from './internal.js';
 import { STYLE_ACCESSORS } from './css-properties.js';
 import { SURFACES } from './style-surface.js';
@@ -2698,7 +2699,11 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   let unnamed = false;
   let prioritized = false;
   const names = counting ? [] : null;
-  const source = String(text ?? '');
+  // jsdom 30 reads a declaration list as CSS input (CR LF, CR and FF are
+  // LF, NUL is U+FFFD): the style attribute, cssText, sheets (black box,
+  // #264 item 55); 26 to 29 keep them. Not an accessor's value (asWritten)
+  // nor a replay (setDeclaration's values, done in setPropertyOf).
+  const source = mode === 'spec' && !asWritten && !replay ? preprocessCss(String(text ?? '')) : String(text ?? '');
   const lineBreaks = !runsOn && cssSplitNeeded(source);
   let parts;
   if (source.indexOf('/*') !== -1) parts = commentedParts(source, runsOn, lineBreaks, context, surface);
@@ -3841,7 +3846,11 @@ function priorityOf(style, name) {
 }
 function setPropertyOf(style, name, value, priority) {
   const key = propertyName(name);
-  if (dropped(styleState(style).surface, key)) return;
+  const s = styleState(style);
+  if (dropped(s.surface, key)) return;
+  // jsdom 30: setProperty preprocesses its value as CSS input (parseInto),
+  // the accessors do not (black box, #264 item 55).
+  if (s.mode === 'spec' && value != null) value = preprocessCss(String(value));
   setDeclaration(style, key, value, priority == null ? '' : priority, 'set');
 }
 function removePropertyOf(style, name) {

@@ -4841,6 +4841,44 @@ x,var(--f)/**/, x,var(--f)/*a*/,y) is removed before the list is read
 `x,var(--f);color:red` keeps `;color:red` in the value, as jsdom 27 and
 30 do (answered, no change). Four rows added to the test.
 
+## 2026-11-07: CR, FF and NUL in a declaration, jsdom 30 (branch fix/264-newlines, #264 item 55)
+
+CSS Syntax 3 input preprocessing: jsdom 30.1.2 and 30.1.3 read CR LF,
+CR and FF in a value as LF, and NUL as U+FFFD, through setProperty, the
+style attribute, cssText, insertRule and getComputedStyle, custom
+properties too (`container-name: a` CR LF `b` is `a` LF `b`; `a\0b` is
+`a\uFFFDb`, valid, where 26 to 29 drop it). The accessors
+(`style.containerName = ...`, `style['container-name']`) keep the
+characters as written. jsdom 26 to 29 keep them on every path (a
+`<style>` element's CR is LF already: the HTML parser). warpdom kept
+them everywhere. The preprocessing selectors.js did for selector text
+moved to internal.js (preprocessCss); css.js runs it in spec mode in
+parseInto (the declaration list, unless an accessor's value or a
+replay) and in setPropertyOf. Found and logged in #264: a custom
+property in a sheet has its whitespace collapsed and strings
+re-serialized in 29 and later (`--x: a  b` is `a b`); NUL in a
+`content` string is U+FFFD in 29; an accessor keeps a comment in the
+properties jsdom 27 and later keep as written (`containerName =
+'a/**/b'`), where warpdom writes a space.
+
+Performance (Node 22.17.1, 5 or 7 alternating runs, medians, the branch
+with and without this change, 30.1.2 profile): style attribute writes
+(`width: Npx; color: red; margin: 0 auto`, then a read) 905 -> 897 ns
+(noise); setProperty of width and color 286 -> 296 ns (+3.3%, about
+5 ns a call): three `includes` checks of the value. A regular
+expression test cost 7% on the attribute path, so preprocessCss checks
+with `includes`. Tests: css-profiles.test.js "CR, FF and NUL in a value"
+(parity 26 to 30.1.3: setProperty, attribute, cssText, accessor,
+insertRule, computed); "a family name with whitespace after an escape"
+no longer skips the attribute column on 30.
+
+Review (Copilot): a rule's value an accessor wrote (rule.style.containerName
+= 'a' CR 'b') stays as written in jsdom 30 but is LF in getComputedStyle
+in 30.1.2, not in 30.1.3. cascade.js addDeclarations preprocesses a
+rule's values under compat.rulesPreprocessed (30.x before 30.1.3); it
+runs when the cascade index is built, not per read. Test: "CR in a
+rule's value and the computed style" (parity 26, 29, 30, 30.1.3).
+
 ## 2026-11-07: a property named like an Object.prototype member (branch fix/css-prototype-names)
 
 Found while surveying jsdom 26's numbers: warpdom's property tables
