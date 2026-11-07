@@ -4876,6 +4876,17 @@ spec mode no longer runs it, and familyCommas skips escaped commas
 a new value each time, before -> after 3,594 -> 3,598 ns (noise);
 validation 2,781 -> 2,799 ns.
 
+Third review (Copilot): a value with var() went through the quoting and
+the generic-keyword check, so `serif x, var(--face)` was dropped and
+`Times New Roman, var(--f)` quoted. jsdom 27 to 30.1.3 keep `font-family`
+and `font` with var() as written (no quotes, `A  B,  var(--f)` and
+`1.50em Foo, var(--f)` unchanged; main wrote `1.5em`), and now so does
+warpdom. `fontFamily` writes (29.1.1), before -> after: a new value each
+time 3,588 -> 3,574 ns, repeated 112 -> 115 ns (noise). Not changed
+(main too, #264 item 57): jsdom writes `x,var(--f)` as `x, var(--f)`
+and keeps `var(--f),serif x`; warpdom drops the first and writes
+`var(--f), serif x`.
+
 ## 2026-11-06: a hex escape and its whitespace in an identifier (branch fix/264-escape-space, #264 item 48)
 
 CSS Syntax 3 (4.3.7) reads up to six hex digits after a backslash and then

@@ -2093,6 +2093,9 @@ function serializeDeclared(name, value, mode) {
   if (name === 'font' || name === 'font-family') {
     const font = name === 'font';
     if (!isSpecMode(mode)) return familyCommas(font ? serializeFont(canonicalNumbers(value)) : value);
+    // jsdom 27 and later keep a value with var() as written: no quotes,
+    // no generic-keyword check (#279 review).
+    if (hasVarFunction(value)) return value;
     genericFirst = false;
     const out = font ? serializeFont(canonicalNumbers(value), quotedFamilies) : quotedFamilies(value);
     return genericFirst ? INVALID : out;
