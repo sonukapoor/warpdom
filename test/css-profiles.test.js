@@ -1866,6 +1866,92 @@ for (const jsdom of [27, 28, 29, 30, '30.1.3'])
       }),
     { jsdom },
   );
+// A family list with a comma right before var() (x,var(--f)): jsdom 27
+// and later read var() there as a family of its own, so the list is
+// written as one without var() (", " between families, names of several
+// words quoted, a generic keyword first invalid), through setProperty,
+// the accessor and a sheet; the style attribute, cssText and font drop
+// it (black box, #264 item 57). jsdom 26 has rules of its own (#264).
+const FAMILY_VAR_COMMAS = [
+  'x,var(--f)',
+  'x ,var(--f)',
+  'x,var(--f),y',
+  'x,  y,var(--f)',
+  'x,var(--a),var(--b)',
+  'x,var(--f) y',
+  '"a b",var(--f)',
+  'Times New Roman,var(--f)',
+  'x,var(--f),Times  New Roman',
+  'serif x,var(--f)',
+  'SERIF,var(--f)',
+  'x,var(--f, a,b)',
+  'x,var(--f)var(--g)',
+  'x,var(--f)  ,  y',
+  'x,VAR(--f)',
+  'x,(var(--f))',
+  'var(--f),x,var(--g)',
+  'x/**/,var(--f)',
+  // (#283 review)
+  'x/*(*/,var(--f)',
+  'x,var(--f)/**/',
+  'x,var(--f)/*a*/,y',
+  'x,var(--f);color:red',
+];
+for (const jsdom of [27, 28, 29, 30, '30.1.3'])
+  parity(
+    `style: a family list with a comma before var() (jsdom ${jsdom}, #264)`,
+    (w) => {
+      const d = w.document;
+      return FAMILY_VAR_COMMAS.map((v) => {
+        const a = d.createElement('div');
+        a.style.setProperty('font-family', v);
+        const b = d.createElement('div');
+        b.style.fontFamily = v;
+        const c = d.createElement('div');
+        c.setAttribute('style', `font-family: ${v}`);
+        const e = d.createElement('div');
+        e.style.cssText = `font-family: ${v}`;
+        const f = d.createElement('div');
+        f.style.font = `12px ${v}`;
+        d.head.innerHTML = `<style>.n { font-family: ${v} }</style>`;
+        const rule = d.styleSheets[0].cssRules[0].style.fontFamily;
+        return JSON.stringify([
+          v,
+          a.style.fontFamily,
+          b.style.fontFamily,
+          c.style.cssText,
+          e.style.cssText,
+          f.style.font,
+          rule,
+        ]);
+      });
+    },
+    { jsdom },
+  );
+// An escape outside a string is no comment's or string's start (#283
+// review). Not in a sheet: warpdom's sheet parser reads a\" as a
+// string's start (#264 item 70).
+const FAMILY_VAR_ESCAPES = [
+  String.raw`a\/*literal*/b,var(--f)`,
+  String.raw`a\"/**/b,var(--f)`,
+  String.raw`"a\"/**/",var(--f)`,
+  String.raw`a\'x/**/,var(--f)`,
+];
+for (const jsdom of [27, 28, 29, 30, '30.1.3'])
+  parity(
+    `style: a family list with a comma before var() and an escape (jsdom ${jsdom}, #283 review)`,
+    (w) =>
+      FAMILY_VAR_ESCAPES.map((v) => {
+        const a = w.document.createElement('div');
+        a.style.setProperty('font-family', v);
+        const b = w.document.createElement('div');
+        b.style.fontFamily = v;
+        const c = w.document.createElement('div');
+        c.setAttribute('style', `font-family: ${v}`);
+        return JSON.stringify([v, a.style.fontFamily, b.style.fontFamily, c.style.cssText]);
+      }),
+    { jsdom },
+  );
 // With var() jsdom 27 and later keep the family list as written: no
 // quotes, and a name that starts with a generic keyword stays (#279
 // review).
