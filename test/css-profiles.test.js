@@ -2201,6 +2201,9 @@ const SHEET_CUSTOM_ERRORS = new Set([
   '@k ,',
   '@k  ,',
   'f(@k  x)',
+  // A quoted url with more than its string (#286 review).
+  'a  url( "a" b )  c',
+  "x  URL( 'a' 1px )",
   '{ a }',
   'a  {b}  c',
 ]);

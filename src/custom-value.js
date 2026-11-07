@@ -289,11 +289,12 @@ function readList(text, i, closer, depth = 0) {
         const [value, afterString] = readString(text, k);
         let m = afterString;
         while (isSpace(text[m] ?? '')) m++;
-        if (text[m] === ')') {
-          push('url', `url(${serializeUrl(value)})`);
-          j = m + 1;
-          continue;
-        }
+        // Anything else after the string is a bad url: jsdom keeps the
+        // value as written.
+        if (text[m] !== ')') throw new Bad();
+        push('url', `url(${serializeUrl(value)})`);
+        j = m + 1;
+        continue;
       }
       const [inner, end] = readList(text, j, ')', depth + 1);
       push('function', `${name}(${serializeList(inner)})`);

@@ -4824,7 +4824,8 @@ strings are double-quoted with escapes decoded ('a' is "a", "\41" is
 "A", a control character as \hex, a space after it only before a hex
 digit or a space); urls unquoted (url( "a b" ) is url(a\ b)); idents,
 numbers and hashes keep their spelling (\61 b, 1E3px); a {} block, a
-bad url or string, an unclosed block, a colon or an at-keyword anywhere
+bad url (a quoted url with more than its string too) or string, an
+unclosed block, a colon or an at-keyword anywhere
 (f(@k x), (a : b)) keeps the value as written. An escaped CR, CR LF or
 form feed continues a string like LF; a backslash before CR or form feed
 is no escape outside strings (a bad url). Nesting deeper than 1,000
