@@ -1662,3 +1662,60 @@ test("style: an accessor's write to an !important declaration (jsdom 27.0.1, 28.
     );
   }
 });
+// aspect-ratio with a single number and scrollbar-color with a single
+// system color (black box, 26.1.0 to 30.1.3, #264 item 52). One number:
+// jsdom 26 to 28.0.0 keep it as written (02, 1e1), 28.1.0 rejects it,
+// 29 and later write it as a ratio (02 is 2 / 1). A system color alone
+// is valid in scrollbar-color in 27.0.1 to 28.0.0 only, in lowercase.
+const ASPECT_RATIOS = ['2', '02', '2.50', '1e1', '0', '.5', '+2', '-1', '2 / 1', '4/2', 'auto 2', '2 auto'];
+const SCROLLBAR_COLORS = [
+  'canvas',
+  'AccentColorText',
+  'buttonface',
+  'ActiveBorder',
+  'red',
+  'transparent',
+  'canvas red',
+];
+const surveyValues = (w) => {
+  const d = w.document;
+  const out = [];
+  for (const [name, values] of [
+    ['aspect-ratio', ASPECT_RATIOS],
+    ['scrollbar-color', SCROLLBAR_COLORS],
+  ])
+    for (const v of values) {
+      const a = d.createElement('div');
+      a.style.setProperty(name, v);
+      const b = d.createElement('div');
+      b.setAttribute('style', `${name}: ${v}`);
+      d.head.innerHTML = `<style>.x { ${name}: ${v} }</style>`;
+      const rule = d.styleSheets[0].cssRules[0].style.getPropertyValue(name);
+      d.body.innerHTML = '<div class="x"></div>';
+      const computed = w.getComputedStyle(d.body.firstChild).getPropertyValue(name);
+      out.push(`${name}: ${v} | ${a.style.getPropertyValue(name)} | ${b.style.cssText} | ${rule} | ${computed}`);
+    }
+  return out;
+};
+for (const jsdom of [26, 27, 28, 29, 30, '30.1.3'])
+  parity(
+    `style: a single-number aspect-ratio, a system color in scrollbar-color (jsdom ${jsdom}, #264)`,
+    surveyValues,
+    {
+      jsdom,
+    },
+  );
+// 27.0.1 and 28.0.0 (single-jsdom installs) as 27.4.0.
+test('style: a single-number aspect-ratio, a system color in scrollbar-color (jsdom 27.0.1, 28.0.0, #264)', () => {
+  for (const jsdom of ['27.0.1', '28.0.0']) {
+    const el = createWindow({ jsdom }).document.createElement('div');
+    el.style.aspectRatio = '02';
+    assert.equal(el.style.aspectRatio, '02', jsdom);
+    el.style.aspectRatio = '1e1';
+    assert.equal(el.style.aspectRatio, '1e1', jsdom);
+    el.style.scrollbarColor = 'AccentColorText';
+    assert.equal(el.style.scrollbarColor, 'accentcolortext', jsdom);
+    el.style.scrollbarColor = 'red';
+    assert.equal(el.style.scrollbarColor, 'accentcolortext', jsdom);
+  }
+});

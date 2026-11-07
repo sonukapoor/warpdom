@@ -4809,6 +4809,23 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-06: a single-number aspect-ratio and a lone system color in scrollbar-color (branch fix/264-survey-values, #264 item 52)
+
+Measured black box on 26.1.0, 27.0.1, 27.4.0, 28.0.0, 28.1.0, 29.1.1,
+30.1.2 and 30.1.3, through setProperty, the style attribute, a sheet rule
+and getComputedStyle (all four agree in each version). `aspect-ratio`
+with one number: 26 to 28.0.0 keep it as written (`02`, `2.50`, `1e1`,
+`+2`), 28.1.0 rejects it, 29 and later write it as a ratio with the
+number canonical (`02` is `2 / 1`, `1e1` is `10 / 1`). warpdom wrote
+the number canonically in 27 to 29 and missed the exponent in 30.
+`scrollbar-color` with a system color alone (`Canvas`, `AccentColorText`,
+the deprecated `ActiveBorder`; all 44 of colors.js's list) is valid in
+27.0.1 to 28.0.0, in lowercase; `red`, `transparent` and `currentcolor`
+are not, and 28.1.0 and later reject them all. Both live in
+versionedValue, keyed by the style surface (cssstyle5 is 27.0.1 to
+28.0.0, cssstyle6.1 is 28.1.0). Writes (width, margin, color; 29.1.1)
+779 -> 778 ns, noise.
+
 ## 2026-11-06: an accessor's write keeps !important, jsdom 27 to 29 (branch fix/264-accessor-important, #264 item 49)
 
 Measured black box on 26.1.0, 27.0.1, 27.4.0, 28.0.0, 28.1.0, 29.1.1,

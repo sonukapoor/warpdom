@@ -1049,6 +1049,7 @@ function azimuthValue(value, surface) {
 // Values whose serialization depends on the jsdom version beyond the
 // modes' general rules (black box, jsdom 20 to 30); undefined for the
 // others. Runs once per property and raw value (declaredValue caches it).
+const ONE_NUMBER = /^\+?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
 function versionedValue(name, value, mode, surface) {
   if (isLegacyMode(mode)) {
     const lower = value.toLowerCase();
@@ -1078,8 +1079,18 @@ function versionedValue(name, value, mode, surface) {
   // jsdom 26 (cssstyle 4.3.1 and later) drops border-style: none; jsdom
   // 27 and later keep it (black box, 27.4.0 to 30.1.3, #179).
   if (mode === 'jsdom26' && name === 'border-style' && value.toLowerCase() === 'none') return INVALID;
-  // jsdom 30 writes a single-number aspect-ratio as a ratio.
-  if (mode === 'spec' && name === 'aspect-ratio' && /^\+?(\d+\.?\d*|\.\d+)$/.test(value)) return `${Number(value)} / 1`;
+  // aspect-ratio with one number (black box, 26.1.0 to 30.1.3, #264 item
+  // 52): 27.0.1 to 28.0.0 keep it as written (02, 1e1), 28.1.0 rejects
+  // it, 29 and later write it as a ratio (02 is 2 / 1).
+  if (name === 'aspect-ratio' && !isLegacyMode(mode) && ONE_NUMBER.test(value)) {
+    const key = surface?.key;
+    if (key === 'cssstyle5') return value;
+    return key === 'cssstyle6.1' ? INVALID : `${Number(value)} / 1`;
+  }
+  // scrollbar-color takes a system color alone in 27.0.1 to 28.0.0, in
+  // lowercase (scrollbar-color: Canvas; not red; same source).
+  if (name === 'scrollbar-color' && surface?.key === 'cssstyle5' && systemColorKind(value.toLowerCase()) !== 0)
+    return value.toLowerCase();
   if (
     (mode === 'jsdom20' || mode === 'jsdom22') &&
     (name.startsWith('margin') || name.startsWith('padding')) &&
