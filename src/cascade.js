@@ -1641,7 +1641,14 @@ export function legacyAccessorValue(element, name) {
 // 21.1.0 pointer-events; from 22.1.0 color, and caret-color, which is
 // auto at the root under any color-scheme; black box 20.0.3 to 28.1.0),
 // background-color and the border colors.
-const LEGACY_INHERITED = { visibility: 'visible', 'pointer-events': 'auto', 'caret-color': 'auto', color: null };
+// (Null-prototype tables, as css-data.js: looked up by a page's name.)
+const LEGACY_INHERITED = {
+  __proto__: null,
+  visibility: 'visible',
+  'pointer-events': 'auto',
+  'caret-color': 'auto',
+  color: null,
+};
 const BORDER_COLOR = /^border-(top|right|bottom|left)-color$/;
 // The logical ones too (black box, 22.1.0 to 28.1.0).
 const LOGICAL_BORDER_COLOR = /^border-(block|inline)-(start|end)-color$/;
@@ -1809,6 +1816,7 @@ function longhandValue(element, name, data, custom, compat, value) {
 // or ''. The border ones (border-top-radius, border-image) from 29.1.1 (see
 // blankBorderShorthands).
 const SHORTHAND_INITIALS = {
+  __proto__: null,
   '-webkit-line-clamp': 'none',
   'box-shadow': 'none',
   caret: 'auto',
