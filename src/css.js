@@ -1259,8 +1259,10 @@ function versionedValue(name, value, mode, surface) {
     if (ZERO.test(value)) return '0px';
     return SEVERAL_PARTS.test(value) ? value : canonicalNumbers(value);
   }
-  if (name === 'font-family' && isSpecMode(mode) && isFamilyVarList(value))
-    return isValidValue(name, familyVarPlaceholders(value)) ? serializeDeclared(name, value, mode) : INVALID;
+  if (name === 'font-family' && isSpecMode(mode) && isFamilyVarList(value)) {
+    const families = withoutComments(value);
+    return isValidValue(name, familyVarPlaceholders(families)) ? serializeDeclared(name, families, mode) : INVALID;
+  }
   return undefined;
 }
 
@@ -1271,11 +1273,35 @@ function versionedValue(name, value, mode, surface) {
 // first invalid); a declaration block drops it (parseInto). Black box,
 // 27.4.0 to 30.1.3 (#264 item 57). A value with var() after whitespace,
 // "(" or at the start is kept as written instead (serializeDeclared).
+// Its comments are removed first (x/**/,var(--f), x/*(*/,var(--f), x,
+// var(--f)/**/ are x, var(--f); #283 review), but a var() after one
+// (x,/**/var(--f)) is one with var() there (hasVarFunction).
 function isFamilyVarList(value) {
-  if (!value.includes(',var(') || hasVarFunction(value)) return false;
-  for (const family of splitOutside(value, ',', value.includes('\\')))
+  if (!value.includes('var(') || hasVarFunction(value)) return false;
+  const families = withoutComments(value);
+  if (!families.includes(',var(')) return false;
+  for (const family of splitOutside(families, ',', families.includes('\\')))
     if (trimSpaces(family).startsWith('var(')) return true;
   return false;
+}
+// The text without its comments (outside strings).
+function withoutComments(value) {
+  if (!value.includes('/*')) return value;
+  let out = '';
+  for (let i = 0; i < value.length; i++) {
+    const c = value[i];
+    if (c === '"' || c === "'") {
+      let end = i + 1;
+      while (end < value.length && value[end] !== c) end += value[end] === '\\' ? 2 : 1;
+      out += value.slice(i, end + 1);
+      i = end;
+    } else if (c === '/' && value[i + 1] === '*') {
+      const end = value.indexOf('*/', i + 2);
+      if (end === -1) break;
+      i = end + 1;
+    } else out += c;
+  }
+  return out;
 }
 // The list with each such var() family as a name, for the grammar.
 const familyVarPlaceholders = (value) =>

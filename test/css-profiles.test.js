@@ -1892,6 +1892,11 @@ const FAMILY_VAR_COMMAS = [
   'x,(var(--f))',
   'var(--f),x,var(--g)',
   'x/**/,var(--f)',
+  // (#283 review)
+  'x/*(*/,var(--f)',
+  'x,var(--f)/**/',
+  'x,var(--f)/*a*/,y',
+  'x,var(--f);color:red',
 ];
 for (const jsdom of [27, 28, 29, 30, '30.1.3'])
   parity(

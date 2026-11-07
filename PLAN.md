@@ -4834,6 +4834,13 @@ this, 30.1.2 profile): style attribute writes 933 -> 944 ns (runs 913 to
 css-profiles.test.js "a family list with a comma before var()" (parity
 27 to 30.1.3: setProperty, accessor, attribute, cssText, font, a sheet).
 
+Review (Copilot): a comment in such a list (x/*(*/,var(--f),
+x,var(--f)/**/, x,var(--f)/*a*/,y) is removed before the list is read
+(withoutComments), as in jsdom; a var() right after a comment
+(x,/**/var(--f)) still counts as var() there, kept as written.
+`x,var(--f);color:red` keeps `;color:red` in the value, as jsdom 27 and
+30 do (answered, no change). Four rows added to the test.
+
 ## 2026-11-07: numbers as written or canonical, jsdom 27 and later (branch fix/264-numbers-as-written, #264 item 54)
 
 Surveyed black box on 27.0.1, 27.4.0, 28.0.0, 28.1.0, 29.1.1 and 30.1.2:
