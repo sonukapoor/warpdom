@@ -1862,9 +1862,7 @@ for (const jsdom of [27, 28, 29, 30, '30.1.3'])
         a.style.fontFamily = v;
         const b = w.document.createElement('div');
         b.setAttribute('style', `font-family: ${v}`);
-        // jsdom 30 reads CR, CR LF and FF in an attribute as LF (#264 item 55).
-        const attr = String(jsdom).startsWith('30') && /[\r\f]/.test(v) ? '-' : b.style.cssText;
-        return JSON.stringify([v, a.style.fontFamily, attr]);
+        return JSON.stringify([v, a.style.fontFamily, b.style.cssText]);
       }),
     { jsdom },
   );
@@ -2058,6 +2056,85 @@ for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30, '30.1.3'])
     { jsdom },
   );
 
+// CSS Syntax 3 input preprocessing (black box, #264 item 55): jsdom 30
+// reads CR LF, CR and FF in a declaration's value as LF, and NUL as
+// U+FFFD, on setProperty, the style attribute, cssText, insertRule and
+// computed values; the accessors (style.containerName) keep them, as
+// jsdom 26 to 29 do everywhere. A custom property in a sheet (29 and
+// later collapse its whitespace) is left out.
+const PREPROCESSED = [
+  ['container-name', 'a\r\nb'],
+  ['container-name', 'a\rb'],
+  ['container-name', 'a\fb'],
+  ['container-name', 'b\\31\r\n001'],
+  ['container-name', 'a\0b'],
+  ['grid-template-areas', '"a"\r\n"b"'],
+  ['transition', 'opacity\r1s'],
+  ['will-change', 'a,\rb'],
+  ['content', '"a"\r"b"'],
+  ['mask', 'url(a)\rno-repeat'],
+  ['--x', 'a\r\nb\fc\rd'],
+  ['--x', 'a\0b'],
+];
+const preprocessed = (w) => {
+  const d = w.document;
+  d.head.innerHTML = '<style></style>';
+  const sheet = d.styleSheets[0];
+  return PREPROCESSED.map(([name, v]) => {
+    const a = d.createElement('div');
+    d.body.append(a);
+    a.style.setProperty(name, v);
+    const computed = w.getComputedStyle(a).getPropertyValue(name);
+    a.remove();
+    const b = d.createElement('div');
+    b.setAttribute('style', `${name}: ${v}`);
+    const c = d.createElement('div');
+    c.style.cssText = `${name}: ${v}`;
+    let accessor = '-';
+    let rule = '-';
+    if (!name.startsWith('--')) {
+      const e = d.createElement('div');
+      e.style[name.replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = v;
+      accessor = e.style.cssText;
+      sheet.insertRule(`.n { ${name}: ${v} }`, 0);
+      rule = sheet.cssRules[0].style.getPropertyValue(name);
+      sheet.deleteRule(0);
+    }
+    return JSON.stringify([
+      name,
+      v,
+      a.style.getPropertyValue(name),
+      b.style.cssText,
+      c.style.cssText,
+      accessor,
+      rule,
+      computed,
+    ]);
+  });
+};
+for (const jsdom of [26, 27, 28, 29, 30, '30.1.3'])
+  parity(`style: CR, FF and NUL in a value (jsdom ${jsdom}, #264)`, preprocessed, { jsdom });
+// A rule's accessor keeps CR as written in jsdom 30 too, but the cascade
+// reads the value as CSS input (#282 review).
+for (const jsdom of [26, 29, 30, '30.1.3'])
+  parity(
+    `style: CR in a rule's value and the computed style (jsdom ${jsdom}, #264)`,
+    (w) => {
+      const d = w.document;
+      d.head.innerHTML = '<style>.n { color: red }</style>';
+      const e = d.createElement('div');
+      e.className = 'n';
+      d.body.append(e);
+      const rule = d.styleSheets[0].cssRules[0];
+      rule.style.containerName = 'a\rb';
+      const out = [rule.style.containerName, w.getComputedStyle(e).containerName];
+      rule.style.transition = 'opacity\f1s';
+      out.push(rule.style.transition, w.getComputedStyle(e).transition);
+      return out;
+    },
+    { jsdom },
+  );
+
 // A custom property read from a style sheet (black box, #264 item 59):
 // jsdom 29 and later re-serialize its value token by token (whitespace
 // collapsed or dropped by the tokens around it, strings in double
@@ -2238,15 +2315,22 @@ test('style: a custom property in a style sheet kept as written (jsdom 29 and la
     }
   }
   // A backslash before CR or form feed is no escape in a url (#286
-  // review). (jsdom 30 turns CR and FF into LF first: #282.)
+  // review); jsdom 30.1.2 and later turn CR and FF into LF first (#282).
   // (textContent: the HTML parser would turn CR into LF.)
-  const d = createWindow({ jsdom: 29 }).document;
-  for (const v of ['url(a\\\rb)', 'url(a\\\fb)']) {
-    d.head.textContent = '';
-    const style = d.createElement('style');
-    style.textContent = `.n { --x: ${v}; }`;
-    d.head.append(style);
-    assert.equal(d.styleSheets[0].cssRules[0].style.getPropertyValue('--x'), v, `29 ${JSON.stringify(v)}`);
+  for (const jsdom of [29, '30.1.3']) {
+    const d = createWindow({ jsdom }).document;
+    for (const v of ['url(a\\\rb)', 'url(a\\\fb)']) {
+      d.head.textContent = '';
+      const style = d.createElement('style');
+      style.textContent = `.n { --x: ${v}; }`;
+      d.head.append(style);
+      const expected = jsdom === 29 ? v : v.replace(/[\r\f]/, '\n');
+      assert.equal(
+        d.styleSheets[0].cssRules[0].style.getPropertyValue('--x'),
+        expected,
+        `${jsdom} ${JSON.stringify(v)}`,
+      );
+    }
   }
 });
 

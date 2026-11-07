@@ -1191,3 +1191,11 @@ export function textOf(node) {
   }
   return out;
 }
+
+// CSS input preprocessing (CSS Syntax 3.3): CR LF, CR and FF become LF,
+// NUL becomes U+FFFD.
+// (includes, not a regular expression: this runs on every style write.)
+export const preprocessCss = (text) =>
+  text.includes('\r') || text.includes('\f') || text.includes('\0')
+    ? text.replace(/\r\n?|\f/g, '\n').replace(/\0/g, '\uFFFD')
+    : text;
