@@ -4908,16 +4908,25 @@ escapes 52 ms, each one more ~6x); its hex digits are now matched once
 whitespace (27.0.1 and 28.0.0 lowercase `-\31` CR LF `FOO`). A value with
 a backslash skips isValidValue's shape cache: `a\31 2e1` (one
 identifier) and `a\31 2.1` (an identifier and a number) have one shape,
-so the first checked decided both. Validation benchmark after: 2,933.9
--> 2,941.4 ns per value (noise).
+so the first checked decided both. Validation benchmark, main (2728062)
+-> this fix: 2,933.9 -> 2,941.4 ns per value (noise).
 
 Second Copilot review: canonicalNumbers wrote the digits after an
 escape's whitespace as a number (`container-name: b\31 2e1` became
-`b\31 20`, `b\31 001` `b\31 1`); jsdom 27 to 30.1.3 keep them. A part
+`b\31 20`, and `b\31 001` became `b\31 1`); jsdom 27 to 30.1.3 keep them. A part
 after one whitespace character (or CR LF) that follows a hex escape is
 now left as written; the check runs only for a value with a backslash
 (margin and transition writes 3,238 -> 3,222 ns, noise; checking every
 part cost +1.1%).
+
+Third review (CodeRabbit): the validation benchmark had no escapes, so
+it did not run the new escape branches. On values with hex escapes
+(`\31 slide-N`, `a\41 \42 \43 xN`, `c\31 2e1 dN`, `\66 ooN, Arial`;
+Node 22.17.1, 5 alternating runs, medians), main (867a45a) -> this:
+1,000.5 -> 791.0 ns per value. A value with a backslash skips the
+shape cache, and main rejected some of these. The test with many
+escapes allows 2 s instead of 500 ms: it takes a few milliseconds now,
+and with backtracking 12 escapes would take minutes.
 
 Third Copilot review: segments() does not split at CR, so after CR LF
 the CR stayed on the escape's part and `b\31` CR LF `001` became `1`; the

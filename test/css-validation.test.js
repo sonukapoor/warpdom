@@ -1387,6 +1387,7 @@ test('many hex escapes and an invalid character: rejected without backtracking (
   const start = performance.now();
   el.style.setProperty('animation-name', `a${'\\AAAAAA'.repeat(12)}!`);
   el.style.setProperty('font-family', `a${'\\AAAAAA'.repeat(12)}!`);
-  assert.ok(performance.now() - start < 500);
+  // A few ms now; with backtracking, minutes. The bound leaves room for slow CI.
+  assert.ok(performance.now() - start < 2000);
   assert.equal(el.style.cssText, '');
 });
