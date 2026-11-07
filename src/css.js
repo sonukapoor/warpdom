@@ -510,20 +510,39 @@ const familyCommas = (value) =>
 // \31  b is \31 b). Black box, 27.0.1 to 30.1.3 (#264).
 // An escape's hex digits are matched once (a lookahead capture taken
 // whole), so a run of escapes can't be split up again on failure.
-const ONE_FAMILY_IDENT = /^(?:[^\s\\]|\\(?:(?=([0-9a-fA-F]{1,6}))\1 ?|[^0-9a-fA-F]))+$/;
+// Whitespace here is CSS whitespace (U+00A0 is a name character), and
+// an escaped parenthesis or comma is part of the name (#279 review).
+const ONE_FAMILY_IDENT = /^(?:[^ \t\n\r\f\\]|\\(?:(?=([0-9a-fA-F]{1,6}))\1 ?|[^0-9a-fA-F]))+$/;
+const CSS_SPACE = /[ \t\n\r\f]/;
+const UNESCAPED_PAREN = /(?:^|[^\\])(?:\\\\)*\(/;
+const isCssSpace = (c) => c === 32 || c === 9 || c === 10 || c === 13 || c === 12;
+function trimSpaces(text) {
+  let start = 0;
+  let end = text.length;
+  while (start < end && isCssSpace(text.charCodeAt(start))) start++;
+  while (end > start && isCssSpace(text.charCodeAt(end - 1))) end--;
+  return start === 0 && end === text.length ? text : text.slice(start, end);
+}
 function quoteFamily(family) {
-  if (!/\s/.test(family) || family[0] === '"' || family[0] === "'" || family.includes('(')) return family;
-  const name = family.replace(/\s+/g, ' ');
+  if (
+    !CSS_SPACE.test(family) ||
+    family[0] === '"' ||
+    family[0] === "'" ||
+    (family.includes('(') && UNESCAPED_PAREN.test(family))
+  )
+    return family;
+  const name = family.replace(/[ \t\n\r\f]+/g, ' ');
   if (ONE_FAMILY_IDENT.test(name)) return name;
   return `"${name.replace(/\\/g, '').replace(/"/g, '\\"')}"`;
 }
-// The family list with ", " between families, each one quoted as above.
+// The family list with ", " between families (an escaped comma is in a
+// name), each one quoted as above.
 const quotedFamilies = (value) =>
   value.includes(',')
-    ? splitOutside(value, ',')
-        .map((f) => quoteFamily(f.trim()))
+    ? splitOutside(value, ',', value.includes('\\'))
+        .map((f) => quoteFamily(trimSpaces(f)))
         .join(', ')
-    : quoteFamily(value.trim());
+    : quoteFamily(trimSpaces(value));
 
 // Numbers and dimensions at the top level serialize canonically (CSSOM):
 // .5 -> 0.5, 10.0px -> 10px, +1 -> 1. Not inside functions. Integers keep

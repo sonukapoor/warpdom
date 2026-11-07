@@ -51,8 +51,10 @@ function tokenize(text) {
       }
       if (c === ')' || c === ']' || c === '}') return null; // unbalanced
       if (c === '"' || c === "'") {
-        const end = text.indexOf(c, i + 1);
-        if (end === -1) return null;
+        // An escaped quote doesn't end the string ("a\\"b"; #279 review).
+        let end = i + 1;
+        while (end < n && text[end] !== c) end += text[end] === '\\' ? 2 : 1;
+        if (end >= n) return null;
         out.push({ t: 'string' });
         i = end + 1;
         continue;

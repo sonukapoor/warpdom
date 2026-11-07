@@ -1773,6 +1773,14 @@ const MORE_FAMILIES = [
   String.raw`a\"b c`,
   String.raw`a\62 c d`,
   String.raw`foo\ bar baz`,
+  // Escapes and non-breaking spaces (#279 review): an escaped ( or , is
+  // part of the name, U+00A0 is a name character, not whitespace.
+  String.raw`a\(b c`,
+  String.raw`Foo\, Bar Baz`,
+  String.raw`a\"b c, Arial`,
+  String.raw`"a\"b", c d`,
+  'Foo\u00a0Bar',
+  'Foo\u00a0Bar Baz',
 ];
 const familyNames = (values) => (w) => {
   const d = w.document;
@@ -1784,7 +1792,13 @@ const familyNames = (values) => (w) => {
     b.setAttribute('style', `font-family: ${v}`);
     const c = d.createElement('div');
     c.style.font = `12px ${v}`;
-    const inline = `${v} | ${a.style.fontFamily} | ${b.style.cssText} | ${c.style.font} / ${c.style.fontFamily}`;
+    // Written again: the serialized value reads back the same (#279 review).
+    const again = d.createElement('div');
+    again.style.fontFamily = a.style.fontFamily;
+    // jsdom's font shorthand reads U+00A0 in its first family as a space
+    // and quotes the name (12px "Foo Bar"); not modeled.
+    const font = v.includes('\u00a0') ? '-' : `${c.style.font} / ${c.style.fontFamily}`;
+    const inline = `${v} | ${a.style.fontFamily} | ${again.style.fontFamily} | ${b.style.cssText} | ${font}`;
     // An escaped quote in a sheet is #264 item 2.
     if (v.includes('\\"')) {
       out.push(inline);

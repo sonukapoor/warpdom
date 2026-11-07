@@ -4842,6 +4842,24 @@ cold load 26.0 -> 26.2 ms (ranges overlap). Tests: css-profiles.test.js
 "a family name of several words" (parity 26 to 30 and 30.1.3, more
 values 27 to 30.1.3; 27.0.1 and 28.0.0; many escapes).
 
+Review (Copilot, four findings, all reproduced on jsdom 27, 29, 30): an
+escaped `(` stopped the quoting (`a\(b c` is `"a(b c"`); U+00A0 counted
+as whitespace (`Foo<NBSP>Bar` stays as written; whitespace here is now
+CSS whitespace only); the list was split at an escaped comma
+(`Foo\, Bar Baz` is one name, `"Foo, Bar Baz"`); and the value
+tokenizer ended a string at an escaped quote, so the serialized
+`"a\"b c"` and `"a\"b", c d` were dropped when written again (strings
+in every property now skip escaped characters; jsdom keeps `content:
+"a\"b"` too). The parity values check each, and a write of each
+serialized value reads back the same. Not modeled: jsdom's `font`
+shorthand reads U+00A0 in its first family as a space and quotes it
+(`12px "Foo Bar"`). The escape-aware split, the edge trim and the
+parenthesis check run only when needed: `fontFamily` writes, a new
+value each time, main 3,522 -> 3,684 ns (+4.6%, as above), repeated
+119 -> 121 ns; cold load 25.8 -> 25.8 ms. Noticed, not changed: jsdom 20
+to 25 keep a family list's commas as written (`x,y`); warpdom writes
+`x, y` there.
+
 ## 2026-11-06: a hex escape and its whitespace in an identifier (branch fix/264-escape-space, #264 item 48)
 
 CSS Syntax 3 (4.3.7) reads up to six hex digits after a backslash and then
