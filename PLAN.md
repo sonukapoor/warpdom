@@ -4829,10 +4829,11 @@ animation-duration: 01s). flex keeps its numbers as written (01 is
 is `1px, 1.5px`, `01px 1.50px` stays), and jsdom 30's outline writes a
 single number canonically. warpdom wrote every number canonically in 27
 to 30. Formatting differences in the survey (both accept, different
-text), before -> after: 27.4.0 1,012 -> 0 single and 388 -> 0 several
-(28.1.0); 30.1.2 40 -> 0 and 381 -> 0. Left: 28.1.0 keeps nothing as
-written in the timeline-trigger-* properties (warpdom keeps them;
-experimental, 28.1 only). Style sheets and computed values follow the
+text), single values and several parts, before -> after: 27.4.0 1,012
+-> 0 and 0 after; 28.1.0 66 -> 30 and 388 -> 6; 29.1.1 36 -> 0 and 0
+after; 30.1.2 40 -> 0 and 381 -> 0. Left: 28.1.0 writes the
+timeline-trigger-* properties canonically (warpdom keeps them as
+written; experimental, 28.1 only). Style sheets and computed values follow the
 declared value (checked on 27.4.0, 29.1.1, 30.1.2). Found: jsdom 26
 drops a number with a leading zero in the properties it parses
 (flex-grow: 01, margin: 01px; #264 item 58).
