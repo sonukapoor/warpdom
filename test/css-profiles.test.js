@@ -2099,7 +2099,8 @@ const JSDOM26_VALUES = {
   opacity: ['2', '-1', '150%', '-1%', '1e39', '1e400', '-1e400', '0.5', '01', '.5', '1e1', '50%'],
   border: ['1e39px', '1e400px', '1e20px solid'],
   'border-top': ['1e39px'],
-  background: ['1e39px'],
+  background: ['1e39px', 'url(sprite+hover.png)', 'url("e+1.png")', 'url("Infinity.png")'],
+  'font-family': ['Font-01 Sans', 'Font-1 Sans'],
   flex: ['1e39', '1e400', '1e400 1', '1 1e400', '1e21', '1e20', '1 1 1e39px', '01', '01 1'],
 };
 parity(
@@ -2119,3 +2120,25 @@ parity(
   },
   { jsdom: 26 },
 );
+// cssstyle 4.3.1 (jsdom 26 with an older cssstyle) has none of these
+// rules: border-spacing: 0 stays 0, font-weight: x and opacity: 2 are kept
+// (black box, cssstyle 4.3.1 on its own; #285 review).
+test("style: jsdom 26's own value rules leave cssstyle 4.3.1 alone", () => {
+  const d = createWindow({ jsdom: '26.1.0', cssstyle: '4.3.1' }).document;
+  const set = (name, v) => {
+    const e = d.createElement('div');
+    e.style.setProperty(name, v);
+    return e.style.getPropertyValue(name);
+  };
+  assert.deepEqual(
+    [
+      ['border-spacing', '0'],
+      ['border-spacing', '0.0'],
+      ['border-spacing', '00'],
+      ['font-weight', 'x'],
+      ['opacity', '2'],
+      ['flex-grow', '-1'],
+    ].map(([name, v]) => set(name, v)),
+    ['0', '0.0', '00', 'x', '2', '-1'],
+  );
+});

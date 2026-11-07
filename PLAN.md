@@ -4845,6 +4845,18 @@ css-profiles.test.js "jsdom 26's own value rules" (121 values,
 setProperty and the attribute); "numbers as written or canonical" runs
 on jsdom 26 unfiltered.
 
+Review (Copilot, CodeRabbit): the rules are cssstyle 4.4's and 4.6's
+(jsdom 26 installs 4.6.0); cssstyle 4.3.1, measured on its own, has none
+of them (border-spacing: 0 stays 0, font-weight: x is kept), so they apply
+only when the profile's cssstyle is 4.4 or later (colorKeywords is not
+'css2'). The reread check looks at numbers only, not strings or url()s
+(url(sprite+hover.png) was invalid). The number scan skips an escaped
+quote in a string and reads a number after a hyphen in a name as part of
+the name (Font-01 Sans). Found: cssstyle 4.3.1 keeps numbers as written
+where warpdom's 4.3.1 profile writes them canonically (font-weight: 01,
+width: 1.px; #264 item 64); jsdom 26 rejects a family string with an
+escaped quote ("A\\"1"; item 62).
+
 ## 2026-11-07: numbers as written or canonical, jsdom 27 and later (branch fix/264-numbers-as-written, #264 item 54)
 
 Surveyed black box on 27.0.1, 27.4.0, 28.0.0, 28.1.0, 29.1.1 and 30.1.2:

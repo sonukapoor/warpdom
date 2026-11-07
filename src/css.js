@@ -1225,7 +1225,8 @@ const JSDOM26_REREAD = new Set([
 function jsdom26Value(name, value, lower) {
   const parsed = JSDOM26_PARSED.has(name) || JSDOM26_OWN.has(name);
   if (parsed && jsdom26BadNumber(value)) return INVALID;
-  if (JSDOM26_REREAD.has(name)) return /e\+|Infinity/.test(canonicalNumbers(value)) ? INVALID : undefined;
+  if (JSDOM26_REREAD.has(name))
+    return /\de\+|Infinity/.test(canonicalNumbers(value).replace(STRINGS_AND_URLS, '')) ? INVALID : undefined;
   if (name === 'opacity') {
     // Clamped to 0 to 1, a percentage to 0% to 100%.
     const percent = value.endsWith('%');
@@ -1249,14 +1250,19 @@ function jsdom26Value(name, value, lower) {
     ? serializeDeclared(name, value, 'jsdom26')
     : INVALID;
 }
+// Strings and url()s, whose text is no number (url(sprite+hover.png); #285
+// review).
+const STRINGS_AND_URLS = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|url\([^)]*\)/gi;
 // A number outside calc(), strings and url() that jsdom 26 does not read.
 function jsdom26BadNumber(value) {
   if (!/\d/.test(value)) return false;
   for (let i = 0; i < value.length; i++) {
     const c = value.charCodeAt(i);
     if (c === 34 || c === 39) {
-      const end = value.indexOf(value[i], i + 1);
-      if (end === -1) return false;
+      // (an escaped quote does not end the string: "a\"01")
+      let end = i + 1;
+      while (end < value.length && value[end] !== value[i]) end += value[end] === '\\' ? 2 : 1;
+      if (end >= value.length) return false;
       i = end;
     } else if ((c === 99 || c === 67 || c === 117 || c === 85) && /^(?:calc|url)\(/i.test(value.slice(i, i + 5))) {
       let depth = 0;
@@ -1266,7 +1272,12 @@ function jsdom26BadNumber(value) {
       }
     } else if ((c >= 48 && c <= 57) || c === 46) {
       const before = i > 0 ? value[i - 1] : ' ';
-      if (/[\w#.-]/.test(before) && !/[+-]/.test(before)) {
+      // In a name (a01, #01f, Font-01: a hyphen after a name character
+      // continues it), not a number.
+      const inName = /[+-]/.test(before)
+        ? before === '-' && i > 1 && /[\w-]/.test(value[i - 2])
+        : /[\w#.]/.test(before);
+      if (inName) {
         while (i + 1 < value.length && /[\w.]/.test(value[i + 1])) i++;
         continue;
       }
@@ -1287,7 +1298,10 @@ function versionedValue(name, value, mode, surface) {
     const kind = CSS_WIDE_KEYWORD.test(value) ? lower : lower === 'auto' ? 'auto' : withVar ? 'var' : null;
     if (kind !== null && droppedBy(mode, kind, name)) return INVALID;
     if (kind === null && legacyMeasureRejects(name, value, surface)) return INVALID;
-    if (mode === 'jsdom26' && (kind === null || kind === 'auto')) {
+    // (cssstyle 4.4 and later, which jsdom 26 installs; 4.3.1 keeps these
+    // values: colorKeywords 'css2'. Black box, cssstyle 4.3.1, 4.4.0, 4.6.0
+    // on their own; #285 review.)
+    if (mode === 'jsdom26' && colorKeywords !== 'css2' && (kind === null || kind === 'auto')) {
       const own = jsdom26Value(name, value, lower);
       if (own !== undefined) return own;
     }
