@@ -27,6 +27,7 @@ import {
   ruleListRev,
   connected,
   trackDetachedStyles,
+  preprocessCss,
 } from './internal.js';
 import { LONGHANDS, SHORTHANDS, ALIASES } from './css-data.js';
 import { DARK_SYSTEM_COLORS, mixColor, resolveColor, systemColorKind } from './colors.js';
@@ -128,8 +129,12 @@ function addDeclarations(index, decls, entries, counter, compat) {
   // (documentOrder); to 29.1.1 a declaration with var() is parsed without
   // it (compat.varDropsImportant, css.js parseInto).
   const ordered = compat?.documentOrder === true;
+  // jsdom 30.1.2 reads a rule's value as CSS input here, one an accessor
+  // wrote too (CR LF, CR and FF are LF, NUL U+FFFD; css.js preprocessCss);
+  // 30.1.3 does not (#282 review).
+  const preprocess = compat?.rulesPreprocessed === true;
   for (const [property, decl] of decls) {
-    const value = decl.value;
+    const value = preprocess ? preprocessCss(decl.value) : decl.value;
     const important = decl.important && !ordered;
     // A longhand declared as itself (padding-bottom: 7px), not through a
     // shorthand: it meets a pending longhand by order (cascadeByOrder).

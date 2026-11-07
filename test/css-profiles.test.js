@@ -2076,3 +2076,23 @@ const preprocessed = (w) => {
 };
 for (const jsdom of [26, 27, 28, 29, 30, '30.1.3'])
   parity(`style: CR, FF and NUL in a value (jsdom ${jsdom}, #264)`, preprocessed, { jsdom });
+// A rule's accessor keeps CR as written in jsdom 30 too, but the cascade
+// reads the value as CSS input (#282 review).
+for (const jsdom of [26, 29, 30, '30.1.3'])
+  parity(
+    `style: CR in a rule's value and the computed style (jsdom ${jsdom}, #264)`,
+    (w) => {
+      const d = w.document;
+      d.head.innerHTML = '<style>.n { color: red }</style>';
+      const e = d.createElement('div');
+      e.className = 'n';
+      d.body.append(e);
+      const rule = d.styleSheets[0].cssRules[0];
+      rule.style.containerName = 'a\rb';
+      const out = [rule.style.containerName, w.getComputedStyle(e).containerName];
+      rule.style.transition = 'opacity\f1s';
+      out.push(rule.style.transition, w.getComputedStyle(e).transition);
+      return out;
+    },
+    { jsdom },
+  );

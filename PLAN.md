@@ -4840,6 +4840,13 @@ with `includes`. Tests: css-profiles.test.js "CR, FF and NUL in a value"
 insertRule, computed); "a family name with whitespace after an escape"
 no longer skips the attribute column on 30.
 
+Review (Copilot): a rule's value an accessor wrote (rule.style.containerName
+= 'a' CR 'b') stays as written in jsdom 30 but is LF in getComputedStyle
+in 30.1.2, not in 30.1.3. cascade.js addDeclarations preprocesses a
+rule's values under compat.rulesPreprocessed (30.x before 30.1.3); it
+runs when the cascade index is built, not per read. Test: "CR in a
+rule's value and the computed style" (parity 26, 29, 30, 30.1.3).
+
 ## 2026-11-07: numbers as written or canonical, jsdom 27 and later (branch fix/264-numbers-as-written, #264 item 54)
 
 Surveyed black box on 27.0.1, 27.4.0, 28.0.0, 28.1.0, 29.1.1 and 30.1.2:
