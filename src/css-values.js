@@ -761,9 +761,13 @@ function matchType(node, tokens, pos) {
   if (name === 'url')
     return tok.t === 'url' || (tok.t === 'function' && (tok.name === 'url' || tok.name === 'src')) ? [pos + 1] : [];
   if (name === 'declaration-value' || name === 'any-value') return anyRest(tokens, pos);
-  // A family name of several identifiers does not start with a generic
-  // family keyword (serif x; black box, jsdom 27.0.1 to 30.1.3, #264).
-  if (name === 'font-family-name' && tok.t === 'ident' && GENERIC_FIRST.has(tok.v)) return [];
+  // A generic family keyword alone (serif) is <generic-family>; the same
+  // word as a one-identifier <family-name> would be a second reading of
+  // it, so it is not one. A name of several words that starts with one
+  // (Serif Extra) is: jsdom 20 to 26 keep it, 27+ reject it in css.js
+  // (#279 review).
+  if (name === 'font-family-name' && tok.t === 'ident' && GENERIC_KEYWORDS.has(tok.v) && tokens[pos + 1]?.t !== 'ident')
+    return [];
   const fn = name.endsWith('()') ? name.slice(0, -2).toLowerCase() : null;
   if (fn && tok.t === 'function' && tok.name !== fn) return [];
   const sub = typeNode(name);
@@ -777,8 +781,8 @@ function matchType(node, tokens, pos) {
   );
 }
 
-// <generic-font-complete> and <generic-font-incomplete> (CSS Fonts 4).
-const GENERIC_FIRST = new Set([
+// <generic-complete> and <generic-incomplete> (CSS Fonts 4).
+const GENERIC_KEYWORDS = new Set([
   'serif',
   'sans-serif',
   'system-ui',

@@ -494,10 +494,10 @@ function legacyUrls(name, value, mode) {
 }
 
 // A list (font families, background layers): ", " between its items
-// (jsdom 26 and later).
+// (jsdom 26 and later). An escaped comma is part of a name (#279 review).
 const familyCommas = (value) =>
   value.includes(',')
-    ? splitOutside(value, ',')
+    ? splitOutside(value, ',', value.includes('\\'))
         .map((f) => f.trim())
         .join(', ')
     : value;
@@ -531,10 +531,23 @@ function quoteFamily(family) {
     (family.includes('(') && UNESCAPED_PAREN.test(family))
   )
     return family;
+  if (GENERIC_FIRST.test(family)) genericFirst = true;
   const name = family.replace(/[ \t\n\r\f]+/g, ' ');
   if (ONE_FAMILY_IDENT.test(name)) return name;
   return `"${name.replace(/\\/g, '').replace(/"/g, '\\"')}"`;
 }
+// jsdom 27 and later: a family name of several identifiers does not start
+// with a generic family keyword (<generic-font-complete> or
+// <generic-font-incomplete>, CSS Fonts 4): serif x and UI-ROUNDED x are
+// invalid, emoji x and fangsong x are not. jsdom 20 to 26 keep them (black
+// box, #264, #279 review).
+const GENERIC_FIRST =
+  /^(?:serif|sans-serif|system-ui|cursive|fantasy|math|monospace|ui-serif|ui-sans-serif|ui-monospace|ui-rounded)[ \t\n\r\f]/i;
+// Set by quoteFamily when a name starts with one; serializeDeclared resets
+// it and reads it (checked only for a name of several words, so a list
+// without one costs nothing).
+let genericFirst = false;
+
 // The family list with ", " between families (an escaped comma is in a
 // name), each one quoted as above.
 const quotedFamilies = (value) =>
@@ -2077,9 +2090,13 @@ function serializeDeclared(name, value, mode) {
     value = simplifyCalc(value);
   if (name === 'display' && isSpecMode(mode)) return displayShortForm(value);
   if (name === 'flex') return flexLonghands(canonicalNumbers(value));
-  if (name === 'font')
-    return familyCommas(serializeFont(canonicalNumbers(value), isSpecMode(mode) ? quotedFamilies : null));
-  if (name === 'font-family') return isSpecMode(mode) ? quotedFamilies(value) : familyCommas(value);
+  if (name === 'font' || name === 'font-family') {
+    const font = name === 'font';
+    if (!isSpecMode(mode)) return familyCommas(font ? serializeFont(canonicalNumbers(value)) : value);
+    genericFirst = false;
+    const out = font ? serializeFont(canonicalNumbers(value), quotedFamilies) : quotedFamilies(value);
+    return genericFirst ? INVALID : out;
+  }
   // cssstyle before 4.3.1 (jsdom 20 to 25) keeps lengths, percentages and
   // line-height as written (.83em, 10.0px, 1.50); its number properties
   // (opacity, flex-grow, flex-shrink) it serializes canonically.

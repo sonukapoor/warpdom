@@ -4860,6 +4860,22 @@ value each time, main 3,522 -> 3,684 ns (+4.6%, as above), repeated
 to 25 keep a family list's commas as written (`x,y`); warpdom writes
 `x, y` there.
 
+Second review. Copilot: the generic-keyword rule sat in the shared
+grammar, so jsdom 20 to 26 lost `Serif Extra`, `Fantasy Display` and
+`Monospace Foo, Arial`, which they keep (26 needs capitals). The rule
+moved to css.js and runs only for 27+: quoteFamily notes a name of
+several words that starts with a generic keyword and serializeDeclared
+turns the value invalid (only names of several words are checked, so
+other lists cost nothing; a prefilter on every value cost +4.5%). The
+grammar still drops a lone generic word as a one-word name, a redundant
+second reading of `serif` (without that, validation was 2,780 -> 2,980
+ns). CodeRabbit: the font shorthand's outer comma pass split
+`12px Foo\,Bar` at the escaped comma (`Foo\, Bar`; jsdom 27+ keep it);
+spec mode no longer runs it, and familyCommas skips escaped commas
+(jsdom 20 to 25 keep `font-family: Foo\,Bar` too). `fontFamily` writes,
+a new value each time, before -> after 3,594 -> 3,598 ns (noise);
+validation 2,781 -> 2,799 ns.
+
 ## 2026-11-06: a hex escape and its whitespace in an identifier (branch fix/264-escape-space, #264 item 48)
 
 CSS Syntax 3 (4.3.7) reads up to six hex digits after a backslash and then

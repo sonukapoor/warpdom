@@ -1818,6 +1818,43 @@ for (const jsdom of [27, 28, 29, 30, '30.1.3'])
   parity(`style: a family name of several words, more values (jsdom ${jsdom}, #264)`, familyNames(MORE_FAMILIES), {
     jsdom,
   });
+// An escaped comma is part of a name in the font shorthand too, not a
+// separator (#279 review).
+for (const jsdom of [27, 28, 29, 30, '30.1.3'])
+  parity(
+    `style: an escaped comma in the font shorthand's family (jsdom ${jsdom}, #264)`,
+    (w) =>
+      [String.raw`12px Foo\,Bar`, String.raw`12px a\,b, c`, String.raw`12px Foo\, Bar Baz`].map((v) => {
+        const el = w.document.createElement('div');
+        el.style.font = v;
+        return `${v} -> ${el.style.font} / ${el.style.fontFamily}`;
+      }),
+    { jsdom },
+  );
+// jsdom 20 to 26 keep a name that starts with a generic family keyword
+// (Serif Extra; 26 needs capitals); only 27 and later reject it (#279
+// review). An escaped comma stays as written there too.
+for (const jsdom of [20, 22, 25, 26])
+  parity(
+    `style: a family name that starts with a generic keyword (jsdom ${jsdom}, #264)`,
+    (w) => {
+      const values = ['Serif Extra', 'Fantasy Display', 'Monospace Foo, Arial', 'System-ui Bar'];
+      if (jsdom !== 26) values.push('serif extra', String.raw`Foo\,Bar`);
+      return values.map((v) => {
+        const a = w.document.createElement('div');
+        a.style.fontFamily = v;
+        const b = w.document.createElement('div');
+        b.setAttribute('style', `font-family: ${v}`);
+        const c = w.document.createElement('div');
+        c.style.font = `12px ${v}`;
+        // cssstyle's own font shorthand writes Foo\\,Bar as Foo,Bar 12px
+        // 12px (jsdom 20 to 25); not modeled.
+        const font = v.includes('\\') ? '-' : c.style.font;
+        return `${v} | ${a.style.fontFamily} | ${b.style.cssText} | ${font}`;
+      });
+    },
+    { jsdom },
+  );
 // 27.0.1 and 28.0.0 (single-jsdom installs) as 27.4.0.
 test('style: a family name of several words (jsdom 27.0.1, 28.0.0, #264)', () => {
   for (const jsdom of ['27.0.1', '28.0.0']) {
