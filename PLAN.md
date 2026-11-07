@@ -4887,6 +4887,17 @@ time 3,588 -> 3,574 ns, repeated 112 -> 115 ns (noise). Not changed
 and keeps `var(--f),serif x`; warpdom drops the first and writes
 `var(--f), serif x`.
 
+Rebased on #278 (an escape's whitespace is part of its identifier): the
+quoting turned every whitespace run into one space, so `a\31<TAB>b`
+became `a\31 b`, which #278's parity test caught. jsdom 27.4.0 to
+30.1.3 keep the whitespace that ends an escape or is escaped
+(`a\31<TAB>b`, `a\31` CR LF `b`, `foo\<TAB>bar`) unless it is a space,
+which joins the whitespace after it (`a\31  b` is `a\31 b`);
+`a\31<TAB><TAB>b` is two identifiers, `"a31<TAB> b"`. quoteFamily now
+collapses whitespace that way for a name with a backslash. `fontFamily`
+writes (29.1.1), before -> after: a new value each time 3,557 -> 3,567
+ns, repeated 116 -> 116 ns (noise); 40 escapes take under 3 ms.
+
 ## 2026-11-06: a hex escape and its whitespace in an identifier (branch fix/264-escape-space, #264 item 48)
 
 CSS Syntax 3 (4.3.7) reads up to six hex digits after a backslash and then

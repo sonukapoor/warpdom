@@ -1831,6 +1831,42 @@ for (const jsdom of [27, 28, 29, 30, '30.1.3'])
       }),
     { jsdom },
   );
+// The whitespace that ends an escape (a\31<TAB>b, foo\<TAB>bar) is part
+// of the name and stays, unless it is a space: then it joins the
+// whitespace after it, which becomes one space. a\31<TAB>b is one
+// identifier, kept; a\31<TAB><TAB>b is two, "a31<TAB> b" (#279 rebased
+// on #278).
+for (const jsdom of [27, 28, 29, 30, '30.1.3'])
+  parity(
+    `style: a family name with whitespace after an escape (jsdom ${jsdom}, #264)`,
+    (w) =>
+      [
+        'a\\31\tb',
+        'a\\31\r\nb',
+        'a\\31\rb',
+        'a\\31\fb c',
+        'a\\31\t\tb',
+        'a\\31\n b',
+        'a\\31\r\n\r\nb',
+        'a\\31  b',
+        'a\\31 \tb',
+        '\\31\tb c',
+        'foo\\\tbar',
+        'foo\\\t bar',
+        'foo\\ \tbar',
+        'a\\\\\tb',
+        'x, a\\31\tb',
+      ].map((v) => {
+        const a = w.document.createElement('div');
+        a.style.fontFamily = v;
+        const b = w.document.createElement('div');
+        b.setAttribute('style', `font-family: ${v}`);
+        // jsdom 30 reads CR, CR LF and FF in an attribute as LF (#264 item 55).
+        const attr = String(jsdom).startsWith('30') && /[\r\f]/.test(v) ? '-' : b.style.cssText;
+        return JSON.stringify([v, a.style.fontFamily, attr]);
+      }),
+    { jsdom },
+  );
 // With var() jsdom 27 and later keep the family list as written: no
 // quotes, and a name that starts with a generic keyword stays (#279
 // review).

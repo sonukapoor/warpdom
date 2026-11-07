@@ -512,7 +512,13 @@ const familyCommas = (value) =>
 // whole), so a run of escapes can't be split up again on failure.
 // Whitespace here is CSS whitespace (U+00A0 is a name character), and
 // an escaped parenthesis or comma is part of the name (#279 review).
-const ONE_FAMILY_IDENT = /^(?:[^ \t\n\r\f\\]|\\(?:(?=([0-9a-fA-F]{1,6}))\1 ?|[^0-9a-fA-F]))+$/;
+const ONE_FAMILY_IDENT = /^(?:[^ \t\n\r\f\\]|\\(?:(?=([0-9a-fA-F]{1,6}))\1(?:\r\n|[ \t\n\r\f])?|[^0-9a-fA-F]))+$/;
+// The whitespace that ends an escape (a\31<TAB>b; CR LF is one) or is
+// escaped (foo\<TAB>bar) is part of the name and stays, unless it is a
+// space: then it joins the whitespace after it. Every other run of
+// whitespace is one space (black box, 27.4.0 to 30.1.3).
+const ESCAPE_OR_SPACES = /\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[\t\n\r\f])?|[^ ])|[ \t\n\r\f]+/g;
+const keepEscape = (m) => (m.charCodeAt(0) === 92 ? m : ' ');
 const CSS_SPACE = /[ \t\n\r\f]/;
 const UNESCAPED_PAREN = /(?:^|[^\\])(?:\\\\)*\(/;
 const isCssSpace = (c) => c === 32 || c === 9 || c === 10 || c === 13 || c === 12;
@@ -532,7 +538,9 @@ function quoteFamily(family) {
   )
     return family;
   if (GENERIC_FIRST.test(family)) genericFirst = true;
-  const name = family.replace(/[ \t\n\r\f]+/g, ' ');
+  const name = family.includes('\\')
+    ? family.replace(ESCAPE_OR_SPACES, keepEscape)
+    : family.replace(/[ \t\n\r\f]+/g, ' ');
   if (ONE_FAMILY_IDENT.test(name)) return name;
   return `"${name.replace(/\\/g, '').replace(/"/g, '\\"')}"`;
 }
