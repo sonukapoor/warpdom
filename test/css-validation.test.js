@@ -1303,6 +1303,13 @@ const ESCAPES = [
   String.raw`a\31\9b`,
   String.raw`foo\ bar`,
   String.raw`\31 FOO bar`,
+  // Digits after the escape's whitespace are part of the name, not a
+  // number to write canonically (#278 review).
+  String.raw`b\31 2e1`,
+  String.raw`b\31 001`,
+  String.raw`a\31 05 3`,
+  String.raw`x\66 010`,
+  String.raw`\31 0.50`,
 ];
 for (const jsdom of [26, 27, 28, 29, 30, '30.1.3']) {
   parity(
@@ -1310,7 +1317,14 @@ for (const jsdom of [26, 27, 28, 29, 30, '30.1.3']) {
     (w) => {
       const d = w.document;
       const out = [];
-      const props = ['animation-name', 'list-style-type', 'grid-area', 'counter-reset', 'view-transition-name'];
+      const props = [
+        'animation-name',
+        'list-style-type',
+        'grid-area',
+        'counter-reset',
+        'view-transition-name',
+        'container-name',
+      ];
       if (jsdom !== 26) props.push('font-family');
       for (const name of props)
         for (const value of ESCAPES) {

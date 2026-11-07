@@ -4911,6 +4911,14 @@ identifier) and `a\31 2.1` (an identifier and a number) have one shape,
 so the first checked decided both. Validation benchmark after: 2,933.9
 -> 2,941.4 ns per value (noise).
 
+Second Copilot review: canonicalNumbers wrote the digits after an
+escape's whitespace as a number (`container-name: b\31 2e1` became
+`b\31 20`, `b\31 001` `b\31 1`); jsdom 27 to 30.1.3 keep them. A part
+after one whitespace character (or CR LF) that follows a hex escape is
+now left as written; the check runs only for a value with a backslash
+(margin and transition writes 3,238 -> 3,222 ns, noise; checking every
+part cost +1.1%).
+
 ## 2026-11-06: !important dropped from most properties, jsdom 27.0.0 to 28.0.0 (branch fix/264-important-dropped, #264 items 43 and 44)
 
 Item 44 said jsdom 27 drops !important from content written through

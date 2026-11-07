@@ -512,10 +512,21 @@ const integerText = (text) =>
     .replace(/^(-?)0+(?=\d)/, '$1')
     .replace(/^-0$/, '0');
 const NUMBER_TOKEN = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)([a-z%]*)$/i;
+// A part that ends in a hex escape: the whitespace after it belongs to the
+// escape, so the next part is the rest of the name (b\31 001), not a number.
+const ENDS_IN_HEX_ESCAPE = /(?:^|[^\\])(?:\\\\)*\\[0-9a-fA-F]{1,6}$/;
 function canonicalNumbers(value) {
   if (!/\d/.test(value)) return value;
   const parts = segments(value);
+  const escapes = value.includes('\\');
   for (let i = 0; i < parts.length; i += 2) {
+    if (
+      escapes &&
+      i > 0 &&
+      (parts[i - 1].length === 1 || parts[i - 1] === '\r\n') &&
+      ENDS_IN_HEX_ESCAPE.test(parts[i - 2])
+    )
+      continue;
     const m = NUMBER_TOKEN.exec(parts[i]);
     if (m) parts[i] = `${INTEGER.test(m[1]) ? integerText(m[1]) : Number(m[1])}${m[2]}`;
   }
