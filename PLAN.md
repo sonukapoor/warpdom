@@ -4809,6 +4809,50 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-07: numbers as written or canonical, jsdom 27 and later (branch fix/264-numbers-as-written, #264 item 54)
+
+Surveyed black box on 27.0.1, 27.4.0, 28.0.0, 28.1.0, 29.1.1 and 30.1.2:
+every style property warpdom knows (743), setProperty, with single
+values (01, 1.50, +1, .50, 01px, 01s, 1e1, 1E1px ...) and values of
+several parts (01px 1.50px, 01s, 1.50s, a 01s, 01px solid ...). jsdom 27
+and later keep the numbers of a value with several parts (space or
+comma) as written, except in the properties they parse whole: margin,
+padding, border and its sides, border-width, border-spacing, background,
+background-position, flex, font (30 also background-position-x and -y).
+A single value is canonical (01px is 1px) in 28.1.0 and later; cssstyle
+5 (27.0.1 to 28.0.0) writes it canonically only in the 38 properties it
+parses (width, height, the box sides, border widths, flex-grow,
+flex-shrink, flex-basis, font-size, font-weight, line-height, opacity,
+background-size ...) and keeps it elsewhere (z-index: +1,
+animation-duration: 01s). flex keeps its numbers as written (01 is
+`01 1 0%`), background-size reads each layer on its own (`01px, 1.50px`
+is `1px, 1.5px`, `01px 1.50px` stays), and jsdom 30's outline writes a
+single number canonically. warpdom wrote every number canonically in 27
+to 30. Formatting differences in the survey (both accept, different
+text), single values and several parts, before -> after: 27.4.0 1,012
+-> 0 and 0 after; 28.1.0 66 -> 30 and 388 -> 6; 29.1.1 36 -> 0 and 0
+after; 30.1.2 40 -> 0 and 381 -> 0. Left: 28.1.0 writes the
+timeline-trigger-* properties canonically (warpdom keeps them as
+written; experimental, 28.1 only). Style sheets and computed values follow the
+declared value (checked on 27.4.0, 29.1.1, 30.1.2). Found: jsdom 26
+drops a number with a leading zero in the properties it parses
+(flex-grow: 01, margin: 01px; #264 item 58).
+
+Performance (Node 22.17.1, 5 alternating runs, medians, main 7e59578 ->
+this): writes of new transition, border-radius, z-index, flex and width
+values 1,498 -> 1,177 ns (27.4.0) and 1,427 -> 1,164 ns (30.1.2): values
+of several parts no longer run canonicalNumbers; width, margin and color
+writes (29.1.1) 781 -> 774 ns (noise). Tests: css-profiles.test.js
+"numbers as written or canonical" (parity 26 to 30 and 30.1.3, the
+accessor, the attribute and a sheet rule; 27.0.1 and 28.0.0 inline).
+
+Review (Copilot): with flex numbers kept as written, `flex: 1e1` left
+flex-grow, flex-shrink and flex-basis empty, because the flex expander in
+shorthands.js took only plain numbers; jsdom 27 to 30 give `1e1`, `1`,
+`0%`. The expander now accepts an exponent and keeps its spelling. Test:
+"flex with exponent numbers sets its longhands" (parity 26 to 30.1.3,
+inline longhands and getComputedStyle).
+
 ## 2026-11-06: a family name of several words in quotes, jsdom 27 and later (branch fix/264-family-quotes, #264 item 53)
 
 CSS Fonts 4: a family name given as several identifiers is the string of
