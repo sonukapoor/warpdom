@@ -4,7 +4,17 @@
 // re-parse. Walks use the linked tree directly.
 import { matchesChecked, matchesValidity } from './forms.js';
 import { directionality } from './directionality.js';
-import { S, domError, ELEMENT_NODE, DOCUMENT_NODE, HTML_NS, SVG_NS, nextInTree, rootOf } from './internal.js';
+import {
+  S,
+  domError,
+  ELEMENT_NODE,
+  DOCUMENT_NODE,
+  HTML_NS,
+  SVG_NS,
+  nextInTree,
+  rootOf,
+  preprocessCss as preprocess,
+} from './internal.js';
 import { XML_NS, valueByName } from './attributes.js';
 
 // --- tokens and parsing --------------------------------------------------------
@@ -16,10 +26,6 @@ const isName = (c) => /[A-Za-z0-9_\-\u0080-￿]/.test(c);
 function invalid(selector) {
   return domError(`'${selector}' is not a valid selector.`, 'SyntaxError');
 }
-
-// CSS input preprocessing (CSS Syntax 3.3): CR LF, CR and FF become LF,
-// NUL becomes U+FFFD.
-const preprocess = (text) => (/[\r\f\0]/.test(text) ? text.replace(/\r\n?|\f/g, '\n').replace(/\0/g, '\uFFFD') : text);
 
 class Parser {
   constructor(text) {
