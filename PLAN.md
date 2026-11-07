@@ -4841,6 +4841,36 @@ x,var(--f)/**/, x,var(--f)/*a*/,y) is removed before the list is read
 `x,var(--f);color:red` keeps `;color:red` in the value, as jsdom 27 and
 30 do (answered, no change). Four rows added to the test.
 
+## 2026-11-07: a property named like an Object.prototype member (branch fix/css-prototype-names)
+
+Found while surveying jsdom 26's numbers: warpdom's property tables
+(css-data.js LONGHANDS, SHORTHANDS, ALIASES; css-grammar.js
+PROPERTY_SYNTAX; css.js COMPOSED, RESETS, BORDER_READS) were plain
+objects, so `constructor` and `__proto__` were properties.
+`style.setProperty('constructor', '1')` threw (`RESETS[name] is not
+iterable`) in jsdom 20 to 26 and declared `constructor: 1` in 27 and
+later, the style attribute declared it in every profile, and
+`getComputedStyle(el).getPropertyValue('constructor')` threw (`name.startsWith
+is not a function`) in every profile. jsdom drops them (20 to 26 keep
+them in a sheet, as any name; 27 and later drop them there too). The
+tables now have no prototype (`__proto__: null` in the literal;
+generate-css-data.mjs writes it), as do cascade.js LEGACY_INHERITED and
+SHORTHAND_INITIALS. Not modeled: jsdom 20 to 25 give
+getPropertyPriority null for these names (an artifact of their own
+tables).
+
+Performance (Node 22.17.1): style writes, reads, a style attribute and
+a computed read per iteration, 5 alternating runs, medians, main 6f4a677
+-> this: 3,767 -> 3,724 ns (26.1.0), 4,220 -> 4,158 ns (30.1.2), noise.
+Importing css-data.js 0.68 -> 0.62 ms, css-grammar.js 0.97 -> 0.88 ms
+(7 fresh processes each). Cold load: main against this worktree read
+26.0 -> 26.8 ms, but an A/A run (the same source in both checkouts) was
+as far apart, and this worktree with and without the change, 7
+alternating runs, 27.7 -> 27.9 ms (noise). Test: css-profiles.test.js
+"a property named like an Object.prototype member" (parity 20 to
+30.1.3: setProperty, removeProperty, getPropertyPriority, the attribute,
+cssText, a sheet, computed).
+
 ## 2026-11-07: numbers as written or canonical, jsdom 27 and later (branch fix/264-numbers-as-written, #264 item 54)
 
 Surveyed black box on 27.0.1, 27.4.0, 28.0.0, 28.1.0, 29.1.1 and 30.1.2:

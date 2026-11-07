@@ -2081,3 +2081,40 @@ test('style: numbers as written or canonical (jsdom 27.0.1, 28.0.0, #264)', () =
   const expected = inline(createWindow({ jsdom: '27.4.0' }));
   for (const jsdom of ['27.0.1', '28.0.0']) assert.deepEqual(inline(createWindow({ jsdom })), expected, jsdom);
 });
+
+// A property name that is an Object.prototype member (constructor,
+// __proto__, toString) is no property: setProperty and the style
+// attribute drop it, getComputedStyle reads '' (warpdom threw or declared
+// it: its tables were plain objects). jsdom 20 to 26 keep it in a sheet
+// (their CSSOM keeps any name), 27 and later drop it. jsdom 20 to 25
+// give getPropertyPriority null for these names (left out).
+const PROTOTYPE_NAMES = ['constructor', '__proto__', 'toString', 'hasOwnProperty', 'valueOf', '__defineGetter__'];
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30, '30.1.3'])
+  parity(
+    `style: a property named like an Object.prototype member (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      return PROTOTYPE_NAMES.map((name) => {
+        const out = [name];
+        const a = d.createElement('div');
+        a.style.setProperty(name, '1');
+        a.style.setProperty(name, '1', 'important');
+        out.push(a.style.cssText, a.style.getPropertyValue(name), a.style.removeProperty(name));
+        if (jsdom >= 26 || typeof jsdom === 'string') out.push(a.style.getPropertyPriority(name));
+        const b = d.createElement('div');
+        b.setAttribute('style', `${name}: 1; color: red`);
+        out.push(b.style.cssText);
+        const c = d.createElement('div');
+        c.style.cssText = `${name}: 1; margin: 0`;
+        out.push(c.style.cssText);
+        d.head.innerHTML = `<style>.n { ${name}: 1; color: red }</style>`;
+        out.push(d.styleSheets[0].cssRules[0].style.cssText);
+        const e = d.createElement('div');
+        d.body.append(e);
+        out.push(w.getComputedStyle(e).getPropertyValue(name));
+        e.remove();
+        return JSON.stringify(out);
+      });
+    },
+    { jsdom },
+  );
