@@ -4846,6 +4846,13 @@ writes (29.1.1) 781 -> 774 ns (noise). Tests: css-profiles.test.js
 "numbers as written or canonical" (parity 26 to 30 and 30.1.3, the
 accessor, the attribute and a sheet rule; 27.0.1 and 28.0.0 inline).
 
+Review (Copilot): with flex numbers kept as written, `flex: 1e1` left
+flex-grow, flex-shrink and flex-basis empty, because the flex expander in
+shorthands.js took only plain numbers; jsdom 27 to 30 give `1e1`, `1`,
+`0%`. The expander now accepts an exponent and keeps its spelling. Test:
+"flex with exponent numbers sets its longhands" (parity 26 to 30.1.3,
+inline longhands and getComputedStyle).
+
 ## 2026-11-06: a family name of several words in quotes, jsdom 27 and later (branch fix/264-family-quotes, #264 item 53)
 
 CSS Fonts 4: a family name given as several identifiers is the string of
