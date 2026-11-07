@@ -1838,22 +1838,24 @@ for (const jsdom of [27, 28, 29, 30, '30.1.3'])
   parity(
     `style: a family list with var() (jsdom ${jsdom}, #264)`,
     (w) =>
-      ['serif x, var(--face)', 'Times New Roman, var(--f)', 'A  B,  var(--f)', 'var(--a) serif x'].map((v) => {
-        const a = w.document.createElement('div');
-        a.style.fontFamily = v;
-        const b = w.document.createElement('div');
-        b.setAttribute('style', `font-family: ${v}`);
-        const c = w.document.createElement('div');
-        c.style.font = `12px ${v}`;
-        return `${v} | ${a.style.fontFamily} | ${b.style.cssText} | ${c.style.font}`;
-      }).concat(
-        // Numbers in the shorthand stay as written too.
-        ['1.50em Foo, var(--f)', '12px/1.50 Foo, var(--f)'].map((v) => {
-          const el = w.document.createElement('div');
-          el.style.font = v;
-          return `${v} -> ${el.style.font}`;
-        }),
-      ),
+      ['serif x, var(--face)', 'Times New Roman, var(--f)', 'A  B,  var(--f)', 'var(--a) serif x']
+        .map((v) => {
+          const a = w.document.createElement('div');
+          a.style.fontFamily = v;
+          const b = w.document.createElement('div');
+          b.setAttribute('style', `font-family: ${v}`);
+          const c = w.document.createElement('div');
+          c.style.font = `12px ${v}`;
+          return `${v} | ${a.style.fontFamily} | ${b.style.cssText} | ${c.style.font}`;
+        })
+        .concat(
+          // Numbers in the shorthand stay as written too.
+          ['1.50em Foo, var(--f)', '12px/1.50 Foo, var(--f)'].map((v) => {
+            const el = w.document.createElement('div');
+            el.style.font = v;
+            return `${v} -> ${el.style.font}`;
+          }),
+        ),
     { jsdom },
   );
 // jsdom 20 to 26 keep a name that starts with a generic family keyword
