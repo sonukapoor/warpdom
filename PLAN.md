@@ -4857,6 +4857,17 @@ where warpdom's 4.3.1 profile writes them canonically (font-weight: 01,
 width: 1.px; #264 item 64); jsdom 26 rejects a family string with an
 escaped quote ("A\\"1"; item 62).
 
+Second review (Copilot): jsdom 26 writes a number as Number() does, so
+an integer of 22 digits or more has an exponent (width:
+1000000000000000000000px is 1e+21px; flex with one is invalid, as with
+1e21); jsdom26Numbers writes it so before the rules. border and its
+sides drop a width that overflows and keep the rest (1e21px solid red is
+solid red; was invalid), invalid when nothing is left. The number scan
+skips escapes and strings in url() and calc() (url("icon\\)01.png") was
+invalid). Performance: 5 alternating runs, medians, 26.1.0, a write of a
+new value each time: 930 -> 942 ns (about 1%, noise level); values
+shorter than 22 characters skip the new step unless they are a border.
+
 ## 2026-11-07: CR, FF and NUL in a declaration, jsdom 30 (branch fix/264-newlines, #264 item 55)
 
 CSS Syntax 3 input preprocessing: jsdom 30.1.2 and 30.1.3 read CR LF,

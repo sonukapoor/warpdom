@@ -1087,8 +1087,11 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
     else if (isLegacyFont(surface, name))
       out = /^inherit$/i.test(value) ? INVALID : (legacyFont(value, surface.legacyFont) ?? INVALID);
     else {
-      const written = isSpecMode(mode) ? identValue(name, value) : value;
-      out = versionedValue(name, written, mode, surface);
+      let written = isSpecMode(mode) ? identValue(name, value) : value;
+      // (a big integer needs 22 characters: most values skip this)
+      if (mode === 'jsdom26' && colorKeywords !== 'css2' && (written.length >= 22 || JSDOM26_BORDERS.has(name)))
+        written = jsdom26Numbers(name, written);
+      out = written === null ? INVALID : versionedValue(name, written, mode, surface);
       if (out === undefined) {
         const checked = isSpecMode(mode) || JSDOM26_VALIDATED.has(name);
         out = !checked || isValidValue(name, written) ? serializeDeclared(name, written, mode) : INVALID;
@@ -1223,6 +1226,25 @@ const JSDOM26_REREAD = new Set([
   'background',
   'flex',
 ]);
+// jsdom 26 writes a number as Number() does, so an integer of 22 digits or
+// more has an exponent (1000000000000000000000px is 1e+21px; written here
+// as 1e21px, which serializes so). Its border shorthands drop a width that
+// serializes with e+ or as Infinity and keep the rest (1e21px solid red is
+// solid red), invalid (null) when nothing is left. Black box, 26.1.0;
+// #285 review.
+const BIG_INTEGER = /(^|[\s(,/])([+-]?\d{22,})(?=[a-z%]*(?:$|[\s),/]))/gi;
+const JSDOM26_BORDERS = new Set(['border', 'border-top', 'border-right', 'border-bottom', 'border-left']);
+const OVERFLOWS = /\de\+|Infinity/;
+function jsdom26Numbers(name, value) {
+  let out = value;
+  if (out.length >= 22 && /\d{22}/.test(out))
+    out = out.replace(BIG_INTEGER, (m, before, digits) => before + String(Number(digits)).replace('e+', 'e'));
+  if (!JSDOM26_BORDERS.has(name)) return out;
+  const parts = splitOutside(out.trim(), ' ').filter((part) => part !== '');
+  const kept = parts.filter((part) => !OVERFLOWS.test(canonicalNumbers(part)));
+  if (kept.length === parts.length) return out;
+  return kept.length === 0 ? null : kept.join(' ');
+}
 function jsdom26Value(name, value, lower) {
   const parsed = JSDOM26_PARSED.has(name) || JSDOM26_OWN.has(name);
   if (parsed && jsdom26BadNumber(value)) return INVALID;
@@ -1266,10 +1288,17 @@ function jsdom26BadNumber(value) {
       if (end >= value.length) return false;
       i = end;
     } else if ((c === 99 || c === 67 || c === 117 || c === 85) && /^(?:calc|url)\(/i.test(value.slice(i, i + 5))) {
+      // (escapes and strings inside do not open or close it:
+      // url("icon\\)01.png"); #285 review)
       let depth = 0;
       for (; i < value.length; i++) {
-        if (value[i] === '(') depth++;
-        else if (value[i] === ')' && --depth === 0) break;
+        const d = value[i];
+        if (d === '\\') i++;
+        else if (d === '"' || d === "'") {
+          i++;
+          while (i < value.length && value[i] !== d) i += value[i] === '\\' ? 2 : 1;
+        } else if (d === '(') depth++;
+        else if (d === ')' && --depth === 0) break;
       }
     } else if ((c >= 48 && c <= 57) || c === 46) {
       const before = i > 0 ? value[i - 1] : ' ';
