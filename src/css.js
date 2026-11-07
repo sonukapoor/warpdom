@@ -38,6 +38,7 @@ import {
   LEGACY_FONT_LONGHANDS,
 } from './shorthands.js';
 import { resolveColor, systemColorKind } from './colors.js';
+import { reserializeCustom } from './custom-value.js';
 import {
   BOX_LONGHANDS,
   BOX_SHORTHAND,
@@ -927,6 +928,8 @@ const surfaces = new WeakMap(); // CSSStyleProperties prototype -> styleSurface 
 // that lose their !important, and border ones with var() that are
 // dropped (parseInto, dropsImportant). importantByWrittenName: how a
 // declaration after an !important one is looked up (parseInto).
+// customReserialized: a custom property's value read from a style sheet
+// is re-serialized (parseInto, custom-value.js).
 export function setValidationMode(proto, mode, compat = {}) {
   modes.set(proto, mode);
   const key = compat.styleSurface ?? null;
@@ -940,6 +943,7 @@ export function setValidationMode(proto, mode, compat = {}) {
   const customDropsImportant = compat.customDropsImportant === true;
   const borderVarDrops = compat.borderVarDrops === true;
   const importantByWrittenName = compat.importantByWrittenName === true;
+  const customReserialized = compat.customReserialized === true;
   if (
     legacyFont === null &&
     colors === null &&
@@ -948,13 +952,14 @@ export function setValidationMode(proto, mode, compat = {}) {
     accessorKeepsImportant === null &&
     !customDropsImportant &&
     !borderVarDrops &&
-    !importantByWrittenName
+    !importantByWrittenName &&
+    !customReserialized
   ) {
     surfaces.set(proto, styleSurface(key));
     return;
   }
   // Built once per variant: window creation only looks it up.
-  const id = `${key} ${legacyFont} ${colors} ${varDropsImportant} ${mostDropImportant} ${accessorKeepsImportant} ${varInStrings} ${customDropsImportant} ${borderVarDrops} ${importantByWrittenName}`;
+  const id = `${key} ${legacyFont} ${colors} ${varDropsImportant} ${mostDropImportant} ${accessorKeepsImportant} ${varInStrings} ${customDropsImportant} ${borderVarDrops} ${importantByWrittenName} ${customReserialized}`;
   let surface = variantSurfaces.get(id);
   if (surface === undefined) {
     surface = {
@@ -968,6 +973,7 @@ export function setValidationMode(proto, mode, compat = {}) {
       customDropsImportant,
       borderVarDrops,
       importantByWrittenName,
+      customReserialized,
     };
     if (legacyFont !== null) surface.legacyFont = legacyFont;
     variantSurfaces.set(id, surface);
@@ -2705,6 +2711,17 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       if (counting) prioritized = true;
     }
     if (!name || !value || dropped(surface, name)) continue;
+    // jsdom 29 and later: a custom property's value read with its sheet is
+    // re-serialized token by token (custom-value.js; #264 item 59). Spec
+    // mode is jsdom 30; 29 has it on its style surface.
+    if (
+      sheet &&
+      !replay &&
+      (mode === 'spec' || surface?.customReserialized === true) &&
+      name.charCodeAt(1) === 45 &&
+      name.charCodeAt(0) === 45
+    )
+      value = reserializeCustom(value);
     // A url() with a line break in its string (a bad string) is invalid
     // here, though background-image takes it through the style object
     // (jsdom 27 and later, #144). A custom property keeps it, its value
