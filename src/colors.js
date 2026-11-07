@@ -15,8 +15,10 @@
 // opaque), a hex alpha to 3 decimals (#ff000080 is 0.502, #ff0000ff
 // rgba(255, 0, 0, 1)), channels rounded once, and no hwb().
 
-// The named colors (CSS Color 4, 6.1), as 0xRRGGBB.
+// The named colors (CSS Color 4, 6.1), as 0xRRGGBB. The tables have no
+// prototype, so constructor or __proto__ is not a color (#280 review).
 const NAMED = {
+  __proto__: null,
   aliceblue: 0xf0f8ff,
   antiquewhite: 0xfaebd7,
   aqua: 0x00ffff,
@@ -170,6 +172,7 @@ const NAMED = {
 // The system colors (CSS Color 4, 6.2, and the deprecated ones of 6.2.1)
 // as jsdom 27 and later compute them (black box, 27.0.0 to 30.1.3).
 const SYSTEM = {
+  __proto__: null,
   accentcolor: 0x0099ff,
   accentcolortext: 0x000000,
   activetext: 0xff0000,
@@ -216,6 +219,7 @@ const SYSTEM = {
 // The same under a computed color-scheme of 'dark' (black box, 27.4.0 to
 // 30.1.3; ButtonText's rgb(255, 255, 155) as jsdom gives it).
 const DARK_SYSTEM = {
+  __proto__: null,
   accentcolor: 0x0033ff,
   accentcolortext: 0xffffff,
   activetext: 0xff6666,
