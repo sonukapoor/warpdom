@@ -4809,6 +4809,95 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-06: a family name of several words in quotes, jsdom 27 and later (branch fix/264-family-quotes, #264 item 53)
+
+CSS Fonts 4: a family name given as several identifiers is the string of
+them joined by single spaces. jsdom 27.0.1 to 30.1.3 write it so, in
+double quotes, on every path (accessor, attribute, `font` and its
+`font-family`, sheets, computed): `Times New Roman` is
+`"Times New Roman"`, `x, Open  Sans ,y` is `x, "Open Sans", y`. Every
+backslash is removed (`a\62 c d` is `"a62 c d"`, `foo\ bar baz` is
+`"foo bar baz"`) and a double quote escaped; a name that is one
+identifier once its whitespace is one space keeps its form (`a\62 c`,
+`\31  b` is `\31 b`). A name that starts with a generic family keyword
+(`serif x`, `UI-ROUNDED x`; `<generic-font-complete>` and
+`<generic-font-incomplete>`, not `emoji` or `fangsong`) is invalid there.
+warpdom kept all of them as written. css.js quotedFamilies (spec modes)
+does the quoting in the pass that puts ", " between families;
+css-values.js matchType rejects a `<font-family-name>` starting with a
+generic keyword. jsdom 26 has a rule of its own (each word a capital
+ASCII letter and one more character of `[A-Za-z0-9-]`: `Times New Roman`
+kept, `a b`, `Foo bar` dropped); not modeled, warpdom keeps them. jsdom
+20 to 25 keep every one as written, as warpdom does.
+
+Performance (Node 22.17.1, 5 alternating runs, medians, main -> this):
+`style.fontFamily` writes in the 29.1.1 profile, a new value each time
+(`FontN, Times New Roman, serif`) 3,491 -> 3,647 ns (+4.5%): the quoting
+itself (whitespace collapsed, a one-identifier check, the string
+written), only for a family list with whitespace and only on a cache
+miss; repeated values 116 -> 119 ns (noise). An earlier version split the
+list twice (+13.5%); quoting in familyCommas' pass removed that.
+isValidValue on 100,000 distinct values 2,886.8 -> 2,866.0 ns (noise);
+cold load 26.0 -> 26.2 ms (ranges overlap). Tests: css-profiles.test.js
+"a family name of several words" (parity 26 to 30 and 30.1.3, more
+values 27 to 30.1.3; 27.0.1 and 28.0.0; many escapes).
+
+Review (Copilot, four findings, all reproduced on jsdom 27, 29, 30): an
+escaped `(` stopped the quoting (`a\(b c` is `"a(b c"`); U+00A0 counted
+as whitespace (`Foo<NBSP>Bar` stays as written; whitespace here is now
+CSS whitespace only); the list was split at an escaped comma
+(`Foo\, Bar Baz` is one name, `"Foo, Bar Baz"`); and the value
+tokenizer ended a string at an escaped quote, so the serialized
+`"a\"b c"` and `"a\"b", c d` were dropped when written again (strings
+in every property now skip escaped characters; jsdom keeps `content:
+"a\"b"` too). The parity values check each, and a write of each
+serialized value reads back the same. Not modeled: jsdom's `font`
+shorthand reads U+00A0 in its first family as a space and quotes it
+(`12px "Foo Bar"`). The escape-aware split, the edge trim and the
+parenthesis check run only when needed: `fontFamily` writes, a new
+value each time, main 3,522 -> 3,684 ns (+4.6%, as above), repeated
+119 -> 121 ns; cold load 25.8 -> 25.8 ms. Noticed, not changed: jsdom 20
+to 25 keep a family list's commas as written (`x,y`); warpdom writes
+`x, y` there.
+
+Second review. Copilot: the generic-keyword rule sat in the shared
+grammar, so jsdom 20 to 26 lost `Serif Extra`, `Fantasy Display` and
+`Monospace Foo, Arial`, which they keep (26 needs capitals). The rule
+moved to css.js and runs only for 27+: quoteFamily notes a name of
+several words that starts with a generic keyword and serializeDeclared
+turns the value invalid (only names of several words are checked, so
+other lists cost nothing; a prefilter on every value cost +4.5%). The
+grammar still drops a lone generic word as a one-word name, a redundant
+second reading of `serif` (without that, validation was 2,780 -> 2,980
+ns). CodeRabbit: the font shorthand's outer comma pass split
+`12px Foo\,Bar` at the escaped comma (`Foo\, Bar`; jsdom 27+ keep it);
+spec mode no longer runs it, and familyCommas skips escaped commas
+(jsdom 20 to 25 keep `font-family: Foo\,Bar` too). `fontFamily` writes,
+a new value each time, before -> after 3,594 -> 3,598 ns (noise);
+validation 2,781 -> 2,799 ns.
+
+Third review (Copilot): a value with var() went through the quoting and
+the generic-keyword check, so `serif x, var(--face)` was dropped and
+`Times New Roman, var(--f)` quoted. jsdom 27 to 30.1.3 keep `font-family`
+and `font` with var() as written (no quotes, `A  B,  var(--f)` and
+`1.50em Foo, var(--f)` unchanged; main wrote `1.5em`), and now so does
+warpdom. `fontFamily` writes (29.1.1), before -> after: a new value each
+time 3,588 -> 3,574 ns, repeated 112 -> 115 ns (noise). Not changed
+(main too, #264 item 57): jsdom writes `x,var(--f)` as `x, var(--f)`
+and keeps `var(--f),serif x`; warpdom drops the first and writes
+`var(--f), serif x`.
+
+Rebased on #278 (an escape's whitespace is part of its identifier): the
+quoting turned every whitespace run into one space, so `a\31<TAB>b`
+became `a\31 b`, which #278's parity test caught. jsdom 27.4.0 to
+30.1.3 keep the whitespace that ends an escape or is escaped
+(`a\31<TAB>b`, `a\31` CR LF `b`, `foo\<TAB>bar`) unless it is a space,
+which joins the whitespace after it (`a\31  b` is `a\31 b`);
+`a\31<TAB><TAB>b` is two identifiers, `"a31<TAB> b"`. quoteFamily now
+collapses whitespace that way for a name with a backslash. `fontFamily`
+writes (29.1.1), before -> after: a new value each time 3,557 -> 3,567
+ns, repeated 116 -> 116 ns (noise); 40 escapes take under 3 ms.
+
 ## 2026-11-06: a hex escape and its whitespace in an identifier (branch fix/264-escape-space, #264 item 48)
 
 CSS Syntax 3 (4.3.7) reads up to six hex digits after a backslash and then

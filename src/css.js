@@ -494,13 +494,76 @@ function legacyUrls(name, value, mode) {
 }
 
 // A list (font families, background layers): ", " between its items
-// (jsdom 26 and later).
+// (jsdom 26 and later). An escaped comma is part of a name (#279 review).
 const familyCommas = (value) =>
   value.includes(',')
-    ? splitOutside(value, ',')
+    ? splitOutside(value, ',', value.includes('\\'))
         .map((f) => f.trim())
         .join(', ')
     : value;
+
+// A family name of several identifiers is one string, the identifiers
+// joined by single spaces (CSS Fonts 4). jsdom 27 and later write it in
+// double quotes (Times New Roman is "Times New Roman") with every
+// backslash removed (a\62 c d is "a62 c d"); a name that is one
+// identifier once its whitespace is one space keeps its form (a\62 c,
+// \31  b is \31 b). Black box, 27.0.1 to 30.1.3 (#264).
+// An escape's hex digits are matched once (a lookahead capture taken
+// whole), so a run of escapes can't be split up again on failure.
+// Whitespace here is CSS whitespace (U+00A0 is a name character), and
+// an escaped parenthesis or comma is part of the name (#279 review).
+const ONE_FAMILY_IDENT = /^(?:[^ \t\n\r\f\\]|\\(?:(?=([0-9a-fA-F]{1,6}))\1(?:\r\n|[ \t\n\r\f])?|[^0-9a-fA-F]))+$/;
+// The whitespace that ends an escape (a\31<TAB>b; CR LF is one) or is
+// escaped (foo\<TAB>bar) is part of the name and stays, unless it is a
+// space: then it joins the whitespace after it. Every other run of
+// whitespace is one space (black box, 27.4.0 to 30.1.3).
+const ESCAPE_OR_SPACES = /\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[\t\n\r\f])?|[^ ])|[ \t\n\r\f]+/g;
+const keepEscape = (m) => (m.charCodeAt(0) === 92 ? m : ' ');
+const CSS_SPACE = /[ \t\n\r\f]/;
+const UNESCAPED_PAREN = /(?:^|[^\\])(?:\\\\)*\(/;
+const isCssSpace = (c) => c === 32 || c === 9 || c === 10 || c === 13 || c === 12;
+function trimSpaces(text) {
+  let start = 0;
+  let end = text.length;
+  while (start < end && isCssSpace(text.charCodeAt(start))) start++;
+  while (end > start && isCssSpace(text.charCodeAt(end - 1))) end--;
+  return start === 0 && end === text.length ? text : text.slice(start, end);
+}
+function quoteFamily(family) {
+  if (
+    !CSS_SPACE.test(family) ||
+    family[0] === '"' ||
+    family[0] === "'" ||
+    (family.includes('(') && UNESCAPED_PAREN.test(family))
+  )
+    return family;
+  if (GENERIC_FIRST.test(family)) genericFirst = true;
+  const name = family.includes('\\')
+    ? family.replace(ESCAPE_OR_SPACES, keepEscape)
+    : family.replace(/[ \t\n\r\f]+/g, ' ');
+  if (ONE_FAMILY_IDENT.test(name)) return name;
+  return `"${name.replace(/\\/g, '').replace(/"/g, '\\"')}"`;
+}
+// jsdom 27 and later: a family name of several identifiers does not start
+// with a generic family keyword (<generic-font-complete> or
+// <generic-font-incomplete>, CSS Fonts 4): serif x and UI-ROUNDED x are
+// invalid, emoji x and fangsong x are not. jsdom 20 to 26 keep them (black
+// box, #264, #279 review).
+const GENERIC_FIRST =
+  /^(?:serif|sans-serif|system-ui|cursive|fantasy|math|monospace|ui-serif|ui-sans-serif|ui-monospace|ui-rounded)[ \t\n\r\f]/i;
+// Set by quoteFamily when a name starts with one; serializeDeclared resets
+// it and reads it (checked only for a name of several words, so a list
+// without one costs nothing).
+let genericFirst = false;
+
+// The family list with ", " between families (an escaped comma is in a
+// name), each one quoted as above.
+const quotedFamilies = (value) =>
+  value.includes(',')
+    ? splitOutside(value, ',', value.includes('\\'))
+        .map((f) => quoteFamily(trimSpaces(f)))
+        .join(', ')
+    : quoteFamily(trimSpaces(value));
 
 // Numbers and dimensions at the top level serialize canonically (CSSOM):
 // .5 -> 0.5, 10.0px -> 10px, +1 -> 1. Not inside functions. Integers keep
@@ -2035,8 +2098,16 @@ function serializeDeclared(name, value, mode) {
     value = simplifyCalc(value);
   if (name === 'display' && isSpecMode(mode)) return displayShortForm(value);
   if (name === 'flex') return flexLonghands(canonicalNumbers(value));
-  if (name === 'font') return familyCommas(serializeFont(canonicalNumbers(value)));
-  if (name === 'font-family') return familyCommas(value);
+  if (name === 'font' || name === 'font-family') {
+    const font = name === 'font';
+    if (!isSpecMode(mode)) return familyCommas(font ? serializeFont(canonicalNumbers(value)) : value);
+    // jsdom 27 and later keep a value with var() as written: no quotes,
+    // no generic-keyword check (#279 review).
+    if (hasVarFunction(value)) return value;
+    genericFirst = false;
+    const out = font ? serializeFont(canonicalNumbers(value), quotedFamilies) : quotedFamilies(value);
+    return genericFirst ? INVALID : out;
+  }
   // cssstyle before 4.3.1 (jsdom 20 to 25) keeps lengths, percentages and
   // line-height as written (.83em, 10.0px, 1.50); its number properties
   // (opacity, flex-grow, flex-shrink) it serializes canonically.

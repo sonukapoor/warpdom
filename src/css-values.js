@@ -51,8 +51,10 @@ function tokenize(text) {
       }
       if (c === ')' || c === ']' || c === '}') return null; // unbalanced
       if (c === '"' || c === "'") {
-        const end = text.indexOf(c, i + 1);
-        if (end === -1) return null;
+        // An escaped quote doesn't end the string ("a\\"b"; #279 review).
+        let end = i + 1;
+        while (end < n && text[end] !== c) end += text[end] === '\\' ? 2 : 1;
+        if (end >= n) return null;
         out.push({ t: 'string' });
         i = end + 1;
         continue;
@@ -759,6 +761,13 @@ function matchType(node, tokens, pos) {
   if (name === 'url')
     return tok.t === 'url' || (tok.t === 'function' && (tok.name === 'url' || tok.name === 'src')) ? [pos + 1] : [];
   if (name === 'declaration-value' || name === 'any-value') return anyRest(tokens, pos);
+  // A generic family keyword alone (serif) is <generic-family>; the same
+  // word as a one-identifier <family-name> would be a second reading of
+  // it, so it is not one. A name of several words that starts with one
+  // (Serif Extra) is: jsdom 20 to 26 keep it, 27+ reject it in css.js
+  // (#279 review).
+  if (name === 'font-family-name' && tok.t === 'ident' && GENERIC_KEYWORDS.has(tok.v) && tokens[pos + 1]?.t !== 'ident')
+    return [];
   const fn = name.endsWith('()') ? name.slice(0, -2).toLowerCase() : null;
   if (fn && tok.t === 'function' && tok.name !== fn) return [];
   const sub = typeNode(name);
@@ -771,6 +780,21 @@ function matchType(node, tokens, pos) {
     tokens.slice(pos, end).every((t) => !('v' in t) || typeof t.v !== 'number' || inRange(t.v, range)),
   );
 }
+
+// <generic-complete> and <generic-incomplete> (CSS Fonts 4).
+const GENERIC_KEYWORDS = new Set([
+  'serif',
+  'sans-serif',
+  'system-ui',
+  'cursive',
+  'fantasy',
+  'math',
+  'monospace',
+  'ui-serif',
+  'ui-sans-serif',
+  'ui-monospace',
+  'ui-rounded',
+]);
 
 // <declaration-value>, <any-value>: one or more of anything.
 function anyRest(tokens, pos) {

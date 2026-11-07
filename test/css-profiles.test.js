@@ -1738,3 +1738,206 @@ for (const jsdom of [20, 26, 27, 29, 30])
       }),
     { jsdom },
   );
+
+// A family name of several identifiers (CSS Fonts 4: <custom-ident>+) is
+// one string, its identifiers joined by single spaces: jsdom 27 and later
+// write it in double quotes (Times New Roman is "Times New Roman"), with
+// backslashes removed, on every path. A name that starts with a generic
+// family keyword (serif x, UI-ROUNDED x; not emoji or fangsong) is invalid
+// there. jsdom 26 has a rule of its own (Times New Roman kept, a b
+// dropped), not modeled; these values are the ones it keeps.
+const FAMILIES = ['Times New Roman', 'Open Sans', 'Segoe UI, Helvetica Neue, sans-serif', 'Noto Sans JP'];
+const MORE_FAMILIES = [
+  'a b',
+  'A  B',
+  'a\tb c',
+  'times new roman',
+  'x, Times New Roman ,y',
+  'a, b c, d',
+  'Ünï cödé',
+  'a-b c_d',
+  'x serif',
+  'x sans-serif y',
+  'emoji x',
+  'fangsong x',
+  'serif x',
+  'SERIF x',
+  'sans-serif x',
+  'monospace x',
+  'system-ui x',
+  'math x',
+  'ui-serif x',
+  'ui-rounded x',
+  'x default',
+  '"a b" c d',
+  String.raw`a\"b c`,
+  String.raw`a\62 c d`,
+  String.raw`foo\ bar baz`,
+  // Escapes and non-breaking spaces (#279 review): an escaped ( or , is
+  // part of the name, U+00A0 is a name character, not whitespace.
+  String.raw`a\(b c`,
+  String.raw`Foo\, Bar Baz`,
+  String.raw`a\"b c, Arial`,
+  String.raw`"a\"b", c d`,
+  'Foo\u00a0Bar',
+  'Foo\u00a0Bar Baz',
+];
+const familyNames = (values) => (w) => {
+  const d = w.document;
+  const out = [];
+  for (const v of values) {
+    const a = d.createElement('div');
+    a.style.fontFamily = v;
+    const b = d.createElement('div');
+    b.setAttribute('style', `font-family: ${v}`);
+    const c = d.createElement('div');
+    c.style.font = `12px ${v}`;
+    // Written again: the serialized value reads back the same (#279 review).
+    const again = d.createElement('div');
+    again.style.fontFamily = a.style.fontFamily;
+    // jsdom's font shorthand reads U+00A0 in its first family as a space
+    // and quotes the name (12px "Foo Bar"); not modeled.
+    const font = v.includes('\u00a0') ? '-' : `${c.style.font} / ${c.style.fontFamily}`;
+    const inline = `${v} | ${a.style.fontFamily} | ${again.style.fontFamily} | ${b.style.cssText} | ${font}`;
+    // An escaped quote in a sheet is #264 item 2.
+    if (v.includes('\\"')) {
+      out.push(inline);
+      continue;
+    }
+    d.head.innerHTML = `<style>.x { font-family: ${v} }</style>`;
+    const rule = d.styleSheets[0].cssRules[0].style.fontFamily;
+    d.body.innerHTML = '<div class="x"></div>';
+    const computed = w.getComputedStyle(d.body.firstChild).fontFamily;
+    out.push(`${inline} | ${rule} | ${computed}`);
+  }
+  return out;
+};
+for (const jsdom of [26, 27, 28, 29, 30, '30.1.3'])
+  parity(`style: a family name of several words (jsdom ${jsdom}, #264)`, familyNames(FAMILIES), { jsdom });
+for (const jsdom of [27, 28, 29, 30, '30.1.3'])
+  parity(`style: a family name of several words, more values (jsdom ${jsdom}, #264)`, familyNames(MORE_FAMILIES), {
+    jsdom,
+  });
+// An escaped comma is part of a name in the font shorthand too, not a
+// separator (#279 review).
+for (const jsdom of [27, 28, 29, 30, '30.1.3'])
+  parity(
+    `style: an escaped comma in the font shorthand's family (jsdom ${jsdom}, #264)`,
+    (w) =>
+      [String.raw`12px Foo\,Bar`, String.raw`12px a\,b, c`, String.raw`12px Foo\, Bar Baz`].map((v) => {
+        const el = w.document.createElement('div');
+        el.style.font = v;
+        return `${v} -> ${el.style.font} / ${el.style.fontFamily}`;
+      }),
+    { jsdom },
+  );
+// The whitespace that ends an escape (a\31<TAB>b, foo\<TAB>bar) is part
+// of the name and stays, unless it is a space: then it joins the
+// whitespace after it, which becomes one space. a\31<TAB>b is one
+// identifier, kept; a\31<TAB><TAB>b is two, "a31<TAB> b" (#279 rebased
+// on #278).
+for (const jsdom of [27, 28, 29, 30, '30.1.3'])
+  parity(
+    `style: a family name with whitespace after an escape (jsdom ${jsdom}, #264)`,
+    (w) =>
+      [
+        'a\\31\tb',
+        'a\\31\r\nb',
+        'a\\31\rb',
+        'a\\31\fb c',
+        'a\\31\t\tb',
+        'a\\31\n b',
+        'a\\31\r\n\r\nb',
+        'a\\31  b',
+        'a\\31 \tb',
+        '\\31\tb c',
+        'foo\\\tbar',
+        'foo\\\t bar',
+        'foo\\ \tbar',
+        'a\\\\\tb',
+        'x, a\\31\tb',
+      ].map((v) => {
+        const a = w.document.createElement('div');
+        a.style.fontFamily = v;
+        const b = w.document.createElement('div');
+        b.setAttribute('style', `font-family: ${v}`);
+        // jsdom 30 reads CR, CR LF and FF in an attribute as LF (#264 item 55).
+        const attr = String(jsdom).startsWith('30') && /[\r\f]/.test(v) ? '-' : b.style.cssText;
+        return JSON.stringify([v, a.style.fontFamily, attr]);
+      }),
+    { jsdom },
+  );
+// With var() jsdom 27 and later keep the family list as written: no
+// quotes, and a name that starts with a generic keyword stays (#279
+// review).
+for (const jsdom of [27, 28, 29, 30, '30.1.3'])
+  parity(
+    `style: a family list with var() (jsdom ${jsdom}, #264)`,
+    (w) =>
+      ['serif x, var(--face)', 'Times New Roman, var(--f)', 'A  B,  var(--f)', 'var(--a) serif x']
+        .map((v) => {
+          const a = w.document.createElement('div');
+          a.style.fontFamily = v;
+          const b = w.document.createElement('div');
+          b.setAttribute('style', `font-family: ${v}`);
+          const c = w.document.createElement('div');
+          c.style.font = `12px ${v}`;
+          return `${v} | ${a.style.fontFamily} | ${b.style.cssText} | ${c.style.font}`;
+        })
+        .concat(
+          // Numbers in the shorthand stay as written too.
+          ['1.50em Foo, var(--f)', '12px/1.50 Foo, var(--f)'].map((v) => {
+            const el = w.document.createElement('div');
+            el.style.font = v;
+            return `${v} -> ${el.style.font}`;
+          }),
+        ),
+    { jsdom },
+  );
+// jsdom 20 to 26 keep a name that starts with a generic family keyword
+// (Serif Extra; 26 needs capitals); only 27 and later reject it (#279
+// review). An escaped comma stays as written there too.
+for (const jsdom of [20, 22, 25, 26])
+  parity(
+    `style: a family name that starts with a generic keyword (jsdom ${jsdom}, #264)`,
+    (w) => {
+      const values = ['Serif Extra', 'Fantasy Display', 'Monospace Foo, Arial', 'System-ui Bar'];
+      if (jsdom !== 26) values.push('serif extra', String.raw`Foo\,Bar`);
+      return values.map((v) => {
+        const a = w.document.createElement('div');
+        a.style.fontFamily = v;
+        const b = w.document.createElement('div');
+        b.setAttribute('style', `font-family: ${v}`);
+        const c = w.document.createElement('div');
+        c.style.font = `12px ${v}`;
+        // cssstyle's own font shorthand writes Foo\\,Bar as Foo,Bar 12px
+        // 12px (jsdom 20 to 25); not modeled.
+        const font = v.includes('\\') ? '-' : c.style.font;
+        return `${v} | ${a.style.fontFamily} | ${b.style.cssText} | ${font}`;
+      });
+    },
+    { jsdom },
+  );
+// 27.0.1 and 28.0.0 (single-jsdom installs) as 27.4.0.
+test('style: a family name of several words (jsdom 27.0.1, 28.0.0, #264)', () => {
+  for (const jsdom of ['27.0.1', '28.0.0']) {
+    const d = createWindow({ jsdom }).document;
+    const el = d.createElement('div');
+    el.style.font = '12px Times New Roman';
+    assert.equal(el.style.font, '12px "Times New Roman"', jsdom);
+    el.style.fontFamily = 'x, Open  Sans ,y';
+    assert.equal(el.style.fontFamily, 'x, "Open Sans", y', jsdom);
+    el.style.fontFamily = 'serif x';
+    assert.equal(el.style.fontFamily, 'x, "Open Sans", y', jsdom);
+  }
+});
+// Many hex escapes in a name of several words: one reading of each escape,
+// so no exponential backtracking (8 escapes took 52 ms, each one more
+// ~6x). Black box: jsdom 29 removes the backslashes and quotes it.
+test('style: a family name of several words with many escapes (#264)', () => {
+  const el = createWindow({ jsdom: '29.1.1' }).document.createElement('div');
+  const start = performance.now();
+  el.style.fontFamily = `a${'\\AAAAAA'.repeat(12)} b c`;
+  assert.ok(performance.now() - start < 500);
+  assert.equal(el.style.fontFamily, `"a${'AAAAAA'.repeat(12)} b c"`);
+});
