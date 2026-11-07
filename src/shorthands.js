@@ -634,7 +634,8 @@ function expandShorthand(name, value) {
     const numbers = [];
     let basis;
     for (const token of t) {
-      if (/^[+-]?(\d+\.?\d*|\.\d+)$/.test(token) && numbers.length < 2 && basis === undefined) numbers.push(token);
+      if (/^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(token) && numbers.length < 2 && basis === undefined)
+        numbers.push(token);
       else if (basis === undefined) basis = token;
       else return null;
     }

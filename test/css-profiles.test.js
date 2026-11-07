@@ -1996,6 +1996,22 @@ parity(
   (w) => numbersAsWritten(w).filter((row) => !/^(?:margin|flex-grow|flex):/.test(row)),
   { jsdom: 26 },
 );
+// flex keeps exponent numbers as written and still sets its longhands
+// (#281 review): flex: 1e1 is flex-grow 1e1, flex-shrink 1, flex-basis 0%.
+const flexExponents = (w) => {
+  const d = w.document;
+  return ['1e1', '1 1e-1 10px', '1E1 2', '.5e1 0 auto', '1e1 1e1 1e1px'].map((v) => {
+    const a = d.createElement('div');
+    d.body.append(a);
+    a.style.setProperty('flex', v);
+    const { flexGrow, flexShrink, flexBasis } = a.style;
+    const c = w.getComputedStyle(a);
+    a.remove();
+    return `flex: ${v} | ${a.style.flex} | ${flexGrow} ${flexShrink} ${flexBasis} | ${c.flexGrow} ${c.flexShrink} ${c.flexBasis}`;
+  });
+};
+for (const jsdom of [26, 27, 28, 29, 30, '30.1.3'])
+  parity(`style: flex with exponent numbers sets its longhands (jsdom ${jsdom}, #264)`, flexExponents, { jsdom });
 // 27.0.1 and 28.0.0 (single-jsdom installs) as 27.4.0 inline (27.0.1's
 // style sheets keep every value as written).
 test('style: numbers as written or canonical (jsdom 27.0.1, 28.0.0, #264)', () => {
