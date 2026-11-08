@@ -1247,18 +1247,24 @@ const JSDOM26_REREAD = new Set([
 const BIG_INTEGER =
   /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|url\((?:[^)\\]|\\[\s\S])*\)|(^|[\s(,/])([+-]?[1-9]\d{15,})(?=[a-z%]*(?:$|[\s),/]))/gi;
 const JSDOM26_BORDERS = new Set(['border', 'border-top', 'border-right', 'border-bottom', 'border-left']);
-// A dropped border width is a length (LENGTH: not negative, not 1e21,
-// 1e21deg or notInfinity, which are left to the grammar: invalid). It
-// still takes the width's place, so a second width is invalid (1e21px 1px
-// solid red, 1e21px thin solid). Any whitespace separates. #285 review.
-const OVERFLOWS = /\de\+|Infinity/;
+// A dropped border width is a length (not negative, not 1e21, 1e21deg or
+// notInfinity, which are left to the grammar: invalid; any length unit,
+// 1e21dvh too). It still takes the width's place, so a second width is
+// invalid (1e21px 1px solid red, 1e21px thin solid, 1e21px solid
+// calc(1px)). Any whitespace separates. #285 review.
 const BORDER_WIDTH_KEYWORD = /^(?:thin|medium|thick)$/i;
+const LENGTH_UNIT = /^(?:px|cm|mm|q|in|pt|pc|em|rem|ex|rex|cap|rcap|ch|rch|ic|ric|lh|rlh|vmin|vmax|[sld]?v[hwbi])$/i;
 // (1.e21px is one; 01e21px or 1e+21px is a number jsdom 26 does not read,
 // invalid)
 const WIDTH_SPELLING = /^\+?((?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)([a-z]+)$/i;
 function overflowingWidth(part) {
   const m = WIDTH_SPELLING.exec(part);
-  return m !== null && !(Number(m[1]) < 1e21) && LENGTH.test(`1${m[2]}`);
+  return m !== null && !(Number(m[1]) < 1e21) && LENGTH_UNIT.test(m[2]);
+}
+function isBorderWidth(part) {
+  if (part === '0' || BORDER_WIDTH_KEYWORD.test(part) || /^calc\(/i.test(part)) return true;
+  const m = WIDTH_SPELLING.exec(part);
+  return m !== null && LENGTH_UNIT.test(m[2]);
 }
 // 1e+21 as 1e21; past Number as an exponent that still reads as a number
 // (1 and 400 zeros is 1e400, Infinity as 1e400 is; #285 review).
@@ -1283,7 +1289,7 @@ function jsdom26Numbers(name, value) {
   if (kept.length === parts.length) return out;
   if (kept.length === 0 || parts.length - kept.length > 1) return null;
   if (parts.some((part) => overflowingWidth(part) && jsdom26BadNumber(part))) return null;
-  return kept.some((part) => LENGTH.test(part) || BORDER_WIDTH_KEYWORD.test(part)) ? null : kept.join(' ');
+  return kept.some(isBorderWidth) ? null : kept.join(' ');
 }
 function jsdom26Value(name, value, lower) {
   const parsed = JSDOM26_PARSED.has(name) || JSDOM26_OWN.has(name);

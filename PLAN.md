@@ -4931,6 +4931,16 @@ JSDOM26_NUMBER. The changes are a regex and a check on a dropped width
 only; no benchmark. jsdom 26 keeps `calc(1e01px)` as written where
 warpdom writes `calc(10px)`: #264 item 72.
 
+Copilot summary on the ninth round: the dropped width took only the
+units LENGTH reads, not 1e21dvh, 1e21svw or 1e21lvh (`solid` in jsdom
+26), and calc() did not count as the second width (`1e21px solid
+calc(1px)` invalid in jsdom 26). Fixed. To end the rounds of single
+cases, two probes compared every combination with jsdom 26.1.0: 13,454
+border and border-left values (three parts from 31 widths, styles and
+colors) and 5,040 number spellings (sign, mantissa, exponent) in 14
+properties. Both show no difference. A smaller copy is a parity test
+("number spellings and border parts in combination", 62 ms).
+
 ## 2026-11-07: a custom property in a style sheet, jsdom 29 and later (branch fix/264-custom-sheet, #264 item 59)
 
 jsdom 29.1.1 to 30.1.3 re-serialize a custom property's value when they

@@ -2610,6 +2610,16 @@ const JSDOM26_VALUES = {
     '1.e21px solid red',
     '1e01px solid red',
     '1e00px solid',
+    // (every length unit, and calc() as the second width; #285 review)
+    '1e21dvh solid',
+    '1e21svw solid',
+    '1e21lvh solid',
+    '1e21cap solid',
+    '1e21px solid calc(1px)',
+    '1e21px 1dvh solid',
+    '1e21px solid 1Q',
+    '1e21px solid 0',
+    '1e21px solid MEDIUM',
   ],
   'border-top': [
     '1e39px',
@@ -2712,6 +2722,48 @@ parity(
       b.setAttribute('style', `${name}: ${v}`);
       out.push(JSON.stringify([name, v.length, a.style.getPropertyValue(name), b.style.cssText]));
     }
+    return out;
+  },
+  { jsdom: 26 },
+);
+// Every combination of a few number spellings, and of border parts (a
+// smaller copy of the probes that found the #285 review cases).
+parity(
+  'style: number spellings and border parts in combination, jsdom 26 (#264)',
+  (w) => {
+    const d = w.document;
+    const out = [];
+    const read = (name, v) => {
+      const a = d.createElement('div');
+      a.style.setProperty(name, v);
+      const b = d.createElement('div');
+      b.setAttribute('style', `${name}: ${v}`);
+      out.push(JSON.stringify([name, v.length > 40 ? v.length : v, a.style.getPropertyValue(name), b.style.cssText]));
+    };
+    const numbers = ['1', '01', '1.', '.5', '9007199254740993', '999999999999999999999', '0000000000000000000001'];
+    for (const [name, unit] of [
+      ['width', 'px'],
+      ['flex-grow', ''],
+      ['opacity', '%'],
+      ['border-spacing', 'px'],
+    ])
+      for (const sign of ['', '-'])
+        for (const n of numbers)
+          for (const e of ['', 'e0', 'e01', 'e-1', 'e+1', 'e21']) read(name, `${sign}${n}${e}${unit}`);
+    const parts = [
+      '1e21px',
+      '1.e21px',
+      '01e21px',
+      '-1e21px',
+      '1e21dvh',
+      '1e21',
+      '1px',
+      'thin',
+      'calc(1px)',
+      'solid',
+      'red',
+    ];
+    for (const a of parts) for (const b of parts) read('border', `${a} ${b}`);
     return out;
   },
   { jsdom: 26 },
