@@ -4876,9 +4876,65 @@ flex-basis key in the test table had hidden 13 cases; merged (they pass).
 Performance unchanged (934 -> 929 ns, noise).
 
 Fourth review (CodeRabbit): the url() skip stopped at an escaped `)`, so
-the digits after it were rewritten (`url(a\\)/1000000000000000000000)`
+the digits after it were rewritten (`url(a\)/1000000000000000000000)`
 became `url("a)/1e21")`); it now skips escapes, as jsdom 26 keeps them.
 Only values of 22 characters with 22 digits reach it, so no benchmark.
+
+## 2026-11-07: a custom property in a style sheet, jsdom 29 and later (branch fix/264-custom-sheet, #264 item 59)
+
+jsdom 29.1.1 to 30.1.3 re-serialize a custom property's value when they
+read it with its sheet (a <style> element, insertRule, an @media rule's,
+replaceSync), so computed values too, and reading that rule's
+style.cssText shows it so; assigning style.cssText, setProperty and
+inline styles keep it as written, as jsdom 26 to 28 do everywhere and
+warpdom did. Measured black box, token by token:
+whitespace and comments between two tokens are one space, or none for
+the pairs in custom-value.js DROPS (a , b is a,b; 1px +2px is 1px+2px;
+1% a is 1%a; a "s" is a"s"; a #h keeps its space), none at a block's
+start or end (f( a ) is f(a), [ a ] is [a]; between tokens inside it the
+same pairs apply: f( a b ) is f(a b)); + or - then + or - keeps two spaces;
+strings are double-quoted with escapes decoded ('a' is "a", "\41" is
+"A", a control character as \hex, a space after it only before a hex
+digit or a space); urls unquoted (url( "a b" ) is url(a\ b)); idents,
+numbers and hashes keep their spelling (\61 b, 1E3px); a {} block, a
+bad url (a quoted url with more than its string too) or string, an
+unclosed block, a colon or an at-keyword anywhere
+(f(@k x), (a : b)) keeps the value as written. An escaped CR, CR LF or
+form feed continues a string like LF; a backslash before CR or form feed
+is no escape outside strings (a bad url). Nesting deeper than 1,000
+blocks, or a stack too small for it, keeps the value as written (PR
+review). The
+DROPS table is the measured grid (30 token kinds each side, the same on
+29 and 30), reduced to token kinds. css.js parseInto runs it for a
+custom property read with its sheet (not a replay) in spec mode or under
+compat.customReserialized (29; 30.1 and later have no style surface, so
+spec mode stands for them). 29.0.x is not measured.
+
+Not done, logged in #264: jsdom 29 and later read a ! then an ident as
+!important (--x: a !b is a !important) and drop a declaration with
+another ! (a !, a !b c), in sheets and inline; jsdom 26 to 28 read / *
+in a sheet as a comment's start (/*), drop a custom property with a {}
+block, and collapse \61  b to one space; jsdom 29 reports a sheet with
+a bad url, a colon or an at-keyword in a custom property as not parsed
+(a console error). Also logged: an unclosed block in a custom property
+takes the rule's closing } into the value in jsdom ((a b } is the value
+of .x { --v: (a b }), and on 27 to 29 warpdom's declaration splitter
+takes the ; into url('a\ CR LF b').
+
+Performance (Node 22.17.1, 5 alternating runs, medians, main e85cf4f ->
+this, 30.1.2 profile): a <style> of 200 rules with three custom
+properties each (a shadow with rgba(), a font list, 4px), parsed and
+read in a new window, the same sheet every run (as a suite reads it)
+1,392 -> 1,407 us (noise; results are cached by value, 2,000 entries);
+every value new 1,521 -> 1,801 us (+18%, about 0.7 us a custom property
+that is not plain): the price of tokenizing it, paid only for custom
+properties in sheets on 29 and later. Plain values (4px, 0 auto, #fff)
+skip the tokenizer (a regular expression). Cold load, this worktree with
+and without the change: 25.97 -> 26.54 ms (the runs without it ranged
+25.8 to 31.0). Tests: css-profiles.test.js "a custom property in a style
+sheet" (parity 26 to 30.1.3: the sheet, its cssText, @media, computed,
+insertRule, replaceSync but on 26, a rule's cssText, setProperty,
+inline) and "kept as written (jsdom 29 and later)".
 
 ## 2026-11-07: a family list with a comma before var(), jsdom 27 and later (branch fix/264-family-var-comma, #264 item 57)
 

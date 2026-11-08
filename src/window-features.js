@@ -1946,6 +1946,12 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle, beyondJsdom = fa
     // setProperty (--x: 1px !important is --x: 1px); 4.1 keeps it, 4.2 to
     // 4.5 are not measured.
     customDropsImportant: version[0] < 27 && (css === null || (css[0] === 4 && !before(css, [4, 6, 0]))),
+    // jsdom 29 and later re-serialize a custom property's value read from
+    // a style sheet (--x: a  , b is a,b; black box 29.1.1 to 30.1.3,
+    // custom-value.js; #264 item 59). Read from the style surface (css.js
+    // setValidationMode), which 30.1 and later have none of: spec mode
+    // stands for them there.
+    customReserialized: version[0] >= 29,
     // jsdom 27.0.0 to 28.1.0 (cssstyle 5 and 6): in a style attribute or
     // cssText (an element's or a rule's), border declared with var()
     // (border: var(--b)) or border or a side with a CSS-wide keyword
