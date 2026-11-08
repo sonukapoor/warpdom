@@ -1201,8 +1201,9 @@ const ONE_NUMBER = /^\+?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
 
 // jsdom 26's own value rules (black box, 26.1.0; #264 items 46, 56, 58).
 // A number: no leading zero before a digit (01, 00.5), an exponent without
-// a plus (1e+1), a trailing dot allowed (1.).
-const JSDOM26_NUMBER = /^[+-]?(?:0|[1-9]\d*|(?=\.\d))(?:\.\d*)?(?:e-?\d+)?$/i;
+// a plus (1e+1) or a leading zero (1e01; 1e0 is read), a trailing dot
+// allowed (1.).
+const JSDOM26_NUMBER = /^[+-]?(?:0|[1-9]\d*|(?=\.\d))(?:\.\d*)?(?:e-?(?:0|[1-9]\d*))?$/i;
 // The properties it checks with grammars of their own: font-weight 0 to
 // 1000 (font-variant too, besides normal, small-caps and none), flex-grow
 // and flex-shrink not negative, flex-basis and border-spacing negative or
@@ -1252,7 +1253,13 @@ const JSDOM26_BORDERS = new Set(['border', 'border-top', 'border-right', 'border
 // solid red, 1e21px thin solid). Any whitespace separates. #285 review.
 const OVERFLOWS = /\de\+|Infinity/;
 const BORDER_WIDTH_KEYWORD = /^(?:thin|medium|thick)$/i;
-const overflowingWidth = (part) => LENGTH.test(part) && OVERFLOWS.test(canonicalNumbers(part));
+// (1.e21px is one; 01e21px or 1e+21px is a number jsdom 26 does not read,
+// invalid)
+const WIDTH_SPELLING = /^\+?((?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)([a-z]+)$/i;
+function overflowingWidth(part) {
+  const m = WIDTH_SPELLING.exec(part);
+  return m !== null && !(Number(m[1]) < 1e21) && LENGTH.test(`1${m[2]}`);
+}
 // 1e+21 as 1e21; past Number as an exponent that still reads as a number
 // (1 and 400 zeros is 1e400, Infinity as 1e400 is; #285 review).
 function bigInteger(digits) {
@@ -1269,12 +1276,13 @@ function jsdom26Numbers(name, value) {
   let out = value;
   if (out.length >= 16 && /\d{16}/.test(out))
     out = out.replace(BIG_INTEGER, (m, before, digits) => (digits === undefined ? m : before + bigInteger(digits)));
-  // (an overflowing width has a digit before an e, or is past Number)
-  if (!JSDOM26_BORDERS.has(name) || !/\de/i.test(out)) return out;
+  // (an overflowing width has a digit or a dot before an e: 1e21, 1.e21)
+  if (!JSDOM26_BORDERS.has(name) || !/[\d.]e/i.test(out)) return out;
   const parts = splitOutside(out.trim().replace(/\s+/g, ' '), ' ').filter((part) => part !== '');
   const kept = parts.filter((part) => !overflowingWidth(part));
   if (kept.length === parts.length) return out;
   if (kept.length === 0 || parts.length - kept.length > 1) return null;
+  if (parts.some((part) => overflowingWidth(part) && jsdom26BadNumber(part))) return null;
   return kept.some((part) => LENGTH.test(part) || BORDER_WIDTH_KEYWORD.test(part)) ? null : kept.join(' ');
 }
 function jsdom26Value(name, value, lower) {

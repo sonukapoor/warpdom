@@ -4921,6 +4921,16 @@ characters or more reach it; median ns per write, 5 runs interleaved:
 border writes 422 before, 422 after; long values (background, font-family,
 flex-grow, margin) 581 before, 553 after (noise).
 
+Copilot summary on the eighth round (dropping a width skipped the number
+checks): a dropped border width must be a number jsdom 26 reads
+(`01e21px solid red`, `1e+21px solid red` invalid; `1.e21px solid red` is
+`solid red`, which warpdom had made invalid). jsdom 26 also rejects a
+leading zero in an exponent everywhere (`width: 1e01px`, `1e-021px`,
+`flex-grow: 1e01`; `1e0` is read), which warpdom read as 10px: added to
+JSDOM26_NUMBER. The changes are a regex and a check on a dropped width
+only; no benchmark. jsdom 26 keeps `calc(1e01px)` as written where
+warpdom writes `calc(10px)`: #264 item 72.
+
 ## 2026-11-07: a custom property in a style sheet, jsdom 29 and later (branch fix/264-custom-sheet, #264 item 59)
 
 jsdom 29.1.1 to 30.1.3 re-serialize a custom property's value when they
