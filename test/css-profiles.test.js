@@ -2566,6 +2566,7 @@ const JSDOM26_VALUES = {
     'Infinitypx solid red',
     '1e21 solid red',
     'solid red 1e21em',
+    '-1e21px solid red',
   ],
   'border-top': ['1e39px', '1e39px solid red', '1px solid var(--Infinity)', 'solid Infinity'],
   background: [
@@ -2620,6 +2621,38 @@ parity(
         b.setAttribute('style', `${name}: ${v}`);
         out.push(JSON.stringify([name, v, a.style.getPropertyValue(name), b.style.cssText]));
       }
+    return out;
+  },
+  { jsdom: 26 },
+);
+// An integer past Number reads as a number, as 1e400 does: Infinity,
+// Infinitypx, a border width dropped (black box, 26.1.0; #285 review).
+const HUGE = '1'.padEnd(401, '0');
+parity(
+  'style: an integer past Number is a number, jsdom 26 (#264)',
+  (w) => {
+    const d = w.document;
+    const out = [];
+    for (const [name, v] of [
+      ['flex-grow', HUGE],
+      ['flex-shrink', HUGE],
+      ['line-height', HUGE],
+      ['margin', `${HUGE}px`],
+      ['width', `${HUGE}px`],
+      ['flex-basis', `${HUGE}px`],
+      ['border-spacing', `${HUGE}px`],
+      ['border', `${HUGE}px solid red`],
+      ['border-top', `${HUGE}px solid red`],
+      ['border', `-${HUGE}px solid red`],
+      ['flex', HUGE],
+      ['font-weight', HUGE],
+    ]) {
+      const a = d.createElement('div');
+      a.style.setProperty(name, v);
+      const b = d.createElement('div');
+      b.setAttribute('style', `${name}: ${v}`);
+      out.push(JSON.stringify([name, v.length, a.style.getPropertyValue(name), b.style.cssText]));
+    }
     return out;
   },
   { jsdom: 26 },

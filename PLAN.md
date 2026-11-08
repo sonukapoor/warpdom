@@ -4892,6 +4892,13 @@ flex-shrink (`calc(2 * 3)` is `calc(6)`, `calc(1) bold` is `calc(1 bold)`);
 warpdom keeps them as written, as before this branch: #264 item 71. Both
 changes are on paths only long values and borders reach; no benchmark.
 
+Sixth review (Copilot): an integer past Number (1 and 400 zeros) had
+become the word Infinity, which nothing reads as a number; it is written
+1e400 now, so it reads as 1e400 does in jsdom 26 (flex-grow Infinity,
+width Infinitypx, a border width dropped). A negative overflowing border
+width is invalid in jsdom 26, as a negative width is (`-1e21px solid red`);
+warpdom had dropped it.
+
 ## 2026-11-07: a custom property in a style sheet, jsdom 29 and later (branch fix/264-custom-sheet, #264 item 59)
 
 jsdom 29.1.1 to 30.1.3 re-serialize a custom property's value when they

@@ -1245,19 +1245,26 @@ const JSDOM26_REREAD = new Set([
 const BIG_INTEGER =
   /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|url\((?:[^)\\]|\\[\s\S])*\)|(^|[\s(,/])([+-]?[1-9]\d{21,})(?=[a-z%]*(?:$|[\s),/]))/gi;
 const JSDOM26_BORDERS = new Set(['border', 'border-top', 'border-right', 'border-bottom', 'border-left']);
-// A border width: a number with a unit (1e21 or notInfinity is no width
-// and leaves the value to the grammar, invalid; #285 review).
-const NUMBER_WITH_UNIT = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?[a-z]+$/i;
+// A border width: a number with a unit, not negative (1e21, -1e21px or
+// notInfinity is none and leaves the value to the grammar: invalid;
+// #285 review).
+const NUMBER_WITH_UNIT = /^\+?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?[a-z]+$/i;
 const OVERFLOWS = /\de\+|Infinity/;
+// 1e+21 as 1e21; past Number as an exponent that still reads as a number
+// (1 and 400 zeros is 1e400, Infinity as 1e400 is; #285 review).
+function bigInteger(digits) {
+  const n = Number(digits);
+  if (Number.isFinite(n)) return String(n).replace('e+', 'e');
+  const sign = digits[0] === '-' || digits[0] === '+' ? digits[0] : '';
+  return `${sign}1e${digits.length - sign.length - 1}`;
+}
 function jsdom26Numbers(name, value) {
   // (opacity clamps such an integer itself: 1 followed by 400 zeros is 1)
   if ((!JSDOM26_PARSED.has(name) && !JSDOM26_OWN.has(name)) || name === 'opacity' || value.includes('var('))
     return value;
   let out = value;
   if (out.length >= 22 && /\d{22}/.test(out))
-    out = out.replace(BIG_INTEGER, (m, before, digits) =>
-      digits === undefined ? m : before + String(Number(digits)).replace('e+', 'e'),
-    );
+    out = out.replace(BIG_INTEGER, (m, before, digits) => (digits === undefined ? m : before + bigInteger(digits)));
   if (!JSDOM26_BORDERS.has(name)) return out;
   const parts = splitOutside(out.trim(), ' ').filter((part) => part !== '');
   const kept = parts.filter((part) => !NUMBER_WITH_UNIT.test(part) || !OVERFLOWS.test(canonicalNumbers(part)));
