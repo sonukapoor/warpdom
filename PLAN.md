@@ -4865,6 +4865,13 @@ one word), and only a slash outside parentheses starts a line height
 (`calc(1PX + 1EM * calc(1VW / 1VH)) / 1EM SERIF`). Font writes 10,632
 -> 10,205 ns (noise).
 
+Third review: a unitless zero size (`0 Arial`, `BOLD 0 SERIF`, `0/1EM
+Arial`) marks where the families start when no size has a unit; in a run
+of zeros the last is the size (`0 0 Arial`). Only the family's case is
+compared: jsdom 26 also reads the zero as `0px` and takes a leading `0` as
+a weight, as on main (#264 item 83). The extra check runs only when no size
+word is found.
+
 ## 2026-11-08: keywords, boxes and sizes in the background shorthand, jsdom 27 and later (branch fix/264-background-keywords, #264 item 47)
 
 Black box, 27.4.0, 28.1.0, 29.1.1, 30.1.2 and 30.1.3 (style.background,

@@ -1335,6 +1335,9 @@ const CASED_FUNCTION = /(calc|url|(?:repeating-)?(?:linear|radial|conic)-gradien
 // families come.
 const FONT_SIZE_WORD =
   /^([+-]?[\d.]+(e[+-]?\d+)?([a-z]+|%)|[\w-]+\(.*|[^\s/]*\/.*|(xx?-|xxx-)?(small|large)|medium|smaller|larger)$/i;
+// A unitless zero size (0, .0, -0.0, 0/1.5); 0 before another size is a
+// weight (0 12px Arial).
+const FONT_ZERO_WORD = /^[+-]?(0+\.?0*|\.0+)(\/.*)?$/;
 const QUOTED_STRINGS = /"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?/g;
 // font's words, split at whitespace outside strings and parentheses (a
 // function is one word, nested too: calc(1em + calc(2em)), 12px/calc(1em
@@ -1391,7 +1394,11 @@ function jsdom26Case(name, value) {
     // Words split at any whitespace; the families start after the size and
     // a line height (12px/1.5, 12px / 1.5, 12px /1.5, 12px/ 1.5).
     const words = fontWords(value);
-    const size = words.findIndex((w) => FONT_SIZE_WORD.test(w[0]));
+    let size = words.findIndex((w) => FONT_SIZE_WORD.test(w[0]));
+    if (size < 0) {
+      size = words.findIndex((w) => FONT_ZERO_WORD.test(w[0]));
+      while (size >= 0 && words[size + 1] && FONT_ZERO_WORD.test(words[size + 1][0])) size++;
+    }
     if (size < 0) return lowerOutsideStrings(value);
     const word = words[size][0];
     const slash = topLevelSlash(word);

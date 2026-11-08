@@ -3013,6 +3013,29 @@ parity(
   },
   { jsdom: 26 },
 );
+// A unitless zero size keeps a named family's case (jsdom 26 reads 0 as 0px,
+// #264 item 83, so only the family is compared; #289 review).
+parity(
+  'style: a family after a unitless zero font size keeps its case (jsdom 26, #264 item 46)',
+  (w) =>
+    [
+      '0 Arial',
+      '.0 Arial',
+      '+0 Arial',
+      '-0 Arial',
+      '0.0 Arial',
+      'BOLD 0 Arial',
+      'ITALIC 0 SERIF, Arial',
+      '0 / 1EM Arial',
+      '0/1EM Arial',
+    ].map((v) => {
+      const e = w.document.createElement('div');
+      e.style.setProperty('font', v);
+      const read = e.style.getPropertyValue('font');
+      return [v, read !== '', read.slice(read.lastIndexOf(' ') + 1)];
+    }),
+  { jsdom: 26 },
+);
 // cssstyle 4.3.1 (jsdom 26 with an older cssstyle) has none of these
 // rules: border-spacing: 0 stays 0, font-weight: x and opacity: 2 are kept
 // (black box, cssstyle 4.3.1 on its own; #285 review).
