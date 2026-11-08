@@ -1100,7 +1100,7 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
       // (a quote is rare: most values skip this)
       if (isSpecMode(mode) && (written.includes('"') || written.includes("'"))) {
         const strings = stringsWritten(name, written, surface);
-        if (strings === KEPT_AS_WRITTEN) out = written;
+        if (strings === STRING_FINAL) out = finalString;
         else written = strings;
       }
       // (an integer Number() changes has 16 digits: most values skip this)
@@ -1414,7 +1414,10 @@ const STRING_VALUED = new Set([
   'text-overflow',
   'voice-family',
 ]);
-const KEPT_AS_WRITTEN = Symbol('kept as written');
+// stringsWritten's value that is not checked against the grammar again:
+// finalString (27's unclosed string, 28's, which may end in a backslash).
+const STRING_FINAL = Symbol('final string');
+let finalString = '';
 function stringsWritten(name, value, surface) {
   const key = surface?.key ?? 'jsdom30';
   const nulAsReplacement = key.startsWith('jsdom30');
@@ -1444,9 +1447,16 @@ function stringsWritten(name, value, surface) {
   const read = readCssString(value, 0, nulAsReplacement);
   if (read === null) return INVALID;
   if (read.end !== value.length) return value;
-  // (27 keeps it as written, unclosed too)
-  if (key.startsWith('cssstyle5')) return read.closed ? value : KEPT_AS_WRITTEN;
-  return key.startsWith('cssstyle6') ? `"${read.text.replace(/"/g, '\\"')}"` : cssString(read.text);
+  // (27 keeps it as written, unclosed too; 28 escapes only the quote, so
+  // "a\5c" is "a\", which is final: #291 review)
+  if (key.startsWith('cssstyle5')) {
+    if (read.closed) return value;
+    finalString = value;
+    return STRING_FINAL;
+  }
+  if (!key.startsWith('cssstyle6')) return cssString(read.text);
+  finalString = `"${read.text.replace(/"/g, '\\"')}"`;
+  return STRING_FINAL;
 }
 // The string at value[start] (a quote) as CSS Syntax reads it: its text
 // and where it ends (after the closing quote, or the end of the value);
@@ -1497,18 +1507,16 @@ function readCssString(value, start, nulAsReplacement) {
 }
 const PLAIN_STRING_BREAK = /[\\\n\r\f\0]/;
 // Whether each string in the value has its closing quote.
+// (one pass: each quote jumps to its closing one; #291 review)
 function stringsClosed(value) {
-  let i = 0;
-  for (;;) {
-    const double = value.indexOf('"', i);
-    const single = value.indexOf("'", i);
-    if (double === -1 && single === -1) return true;
-    let start = double;
-    if (start === -1 || (single !== -1 && single < start)) start = single;
-    const end = value.indexOf(value[start], start + 1);
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    if (c !== 34 && c !== 39) continue;
+    const end = value.indexOf(value[i], i + 1);
     if (end === -1) return false;
-    i = end + 1;
+    i = end;
   }
+  return true;
 }
 const STRING_ESCAPED = /["\\\0-\x1f\x7f]/;
 // CSSOM's serialize a string.

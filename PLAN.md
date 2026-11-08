@@ -4857,6 +4857,12 @@ unchanged, bench:hot within noise (no style member there). A value with
 a string is read once per value (the cache), so this is the first write
 of each family list; jsdom compatibility needs the rewritten form.
 
+Review (#291): 28's form of a string whose text ends in a backslash is
+not a closed string (`content: "a\5c"` is `"a\"` in jsdom 28.1.0), so
+it is final, not checked against the grammar again (STRING_FINAL);
+stringsClosed scans once (a list of 200 single-quoted names: 534 -> 525
+us, noise: the rest of the family code dominates).
+
 ## 2026-11-08: keywords, boxes and sizes in the background shorthand, jsdom 27 and later (branch fix/264-background-keywords, #264 item 47)
 
 Black box, 27.4.0, 28.1.0, 29.1.1, 30.1.2 and 30.1.3 (style.background,

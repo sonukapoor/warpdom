@@ -2101,6 +2101,9 @@ const ONE_STRING = [
   '"ab\\"',
   '"a\r\nb"',
   '"x" "y"',
+  // A backslash at the end of the text, or before a quote (#291 review).
+  '"a\\5c"',
+  '"a\\5c\\"b"',
 ];
 // NUL and a backslash at the end, through setProperty (jsdom 30's
 // accessors read them as 29 does, #264 item 81).
