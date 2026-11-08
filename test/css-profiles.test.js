@@ -2668,7 +2668,16 @@ const JSDOM26_VALUES = {
     'url(a\\)/1000000000000000000000.png)',
   ],
   // (a quoted number; a string with an escaped quote is #264 item 62)
-  'font-family': ['Font-01 Sans', 'Font-1 Sans', '"01", serif', '"Build 1000000000000000000000 Sans"'],
+  'font-family': [
+    'Font-01 Sans',
+    'Font-1 Sans',
+    '"01", serif',
+    '"Build 1000000000000000000000 Sans"',
+    // (jsdom 26 rejects these too; #285 review)
+    'Café01 Sans',
+    'Café-01 Sans',
+    'A\\30 01 Sans',
+  ],
   flex: [
     '1e39',
     '1e400',
