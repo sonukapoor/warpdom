@@ -4941,6 +4941,14 @@ colors) and 5,040 number spellings (sign, mantissa, exponent) in 14
 properties. Both show no difference. A smaller copy is a parity test
 ("number spellings and border parts in combination", 62 ms).
 
+Copilot summary on the tenth round: the unit list lacked the viewport min
+and max units (`1e21dvmin solid` is `solid` in jsdom 26), and a zero
+spelled `0.0`, `.0`, `-0` or `0.` did not count as a second width
+(`1e21px solid 0.0` invalid). Fixed; the border probe, with these added
+(41 parts, 23,534 values), shows no difference. `border: 0e0 solid` is
+`0px solid` in jsdom 26 and `0 solid` in warpdom, on main too: #264 item
+73.
+
 ## 2026-11-07: a custom property in a style sheet, jsdom 29 and later (branch fix/264-custom-sheet, #264 item 59)
 
 jsdom 29.1.1 to 30.1.3 re-serialize a custom property's value when they

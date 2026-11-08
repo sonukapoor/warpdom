@@ -2620,6 +2620,16 @@ const JSDOM26_VALUES = {
     '1e21px solid 1Q',
     '1e21px solid 0',
     '1e21px solid MEDIUM',
+    // (min and max viewport units, a zero spelled otherwise; #285 review)
+    '1e21dvmin solid',
+    '1e21svmax solid',
+    '1e21px solid 1dvmin',
+    '1e21px solid 0.0',
+    '1e21px solid .0',
+    '1e21px solid +0',
+    '1e21px solid -0',
+    '1e21px solid 0.',
+    '1e21px solid 00',
   ],
   'border-top': [
     '1e39px',
@@ -2752,6 +2762,8 @@ parity(
           for (const e of ['', 'e0', 'e01', 'e-1', 'e+1', 'e21']) read(name, `${sign}${n}${e}${unit}`);
     const parts = [
       '1e21px',
+      '1e21lvmax',
+      '0.0',
       '1.e21px',
       '01e21px',
       '-1e21px',

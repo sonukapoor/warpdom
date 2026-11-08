@@ -1253,7 +1253,9 @@ const JSDOM26_BORDERS = new Set(['border', 'border-top', 'border-right', 'border
 // invalid (1e21px 1px solid red, 1e21px thin solid, 1e21px solid
 // calc(1px)). Any whitespace separates. #285 review.
 const BORDER_WIDTH_KEYWORD = /^(?:thin|medium|thick)$/i;
-const LENGTH_UNIT = /^(?:px|cm|mm|q|in|pt|pc|em|rem|ex|rex|cap|rcap|ch|rch|ic|ric|lh|rlh|vmin|vmax|[sld]?v[hwbi])$/i;
+const LENGTH_UNIT = /^(?:px|cm|mm|q|in|pt|pc|em|rem|ex|rex|cap|rcap|ch|rch|ic|ric|lh|rlh|[sld]?v(?:min|max|[hwbi]))$/i;
+// (a zero without a unit is a width however spelled: 0.0, .0, -0, 0.)
+const ZERO_SPELLING = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
 // (1.e21px is one; 01e21px or 1e+21px is a number jsdom 26 does not read,
 // invalid)
 const WIDTH_SPELLING = /^\+?((?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)([a-z]+)$/i;
@@ -1262,7 +1264,8 @@ function overflowingWidth(part) {
   return m !== null && !(Number(m[1]) < 1e21) && LENGTH_UNIT.test(m[2]);
 }
 function isBorderWidth(part) {
-  if (part === '0' || BORDER_WIDTH_KEYWORD.test(part) || /^calc\(/i.test(part)) return true;
+  if ((ZERO_SPELLING.test(part) && Number(part) === 0) || BORDER_WIDTH_KEYWORD.test(part) || /^calc\(/i.test(part))
+    return true;
   const m = WIDTH_SPELLING.exec(part);
   return m !== null && LENGTH_UNIT.test(m[2]);
 }
