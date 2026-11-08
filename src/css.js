@@ -1245,9 +1245,14 @@ const JSDOM26_REREAD = new Set([
 const BIG_INTEGER =
   /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|url\((?:[^)\\]|\\[\s\S])*\)|(^|[\s(,/])([+-]?[1-9]\d{21,})(?=[a-z%]*(?:$|[\s),/]))/gi;
 const JSDOM26_BORDERS = new Set(['border', 'border-top', 'border-right', 'border-bottom', 'border-left']);
+// A border width: a number with a unit (1e21 or notInfinity is no width
+// and leaves the value to the grammar, invalid; #285 review).
+const NUMBER_WITH_UNIT = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?[a-z]+$/i;
 const OVERFLOWS = /\de\+|Infinity/;
 function jsdom26Numbers(name, value) {
-  if ((!JSDOM26_PARSED.has(name) && !JSDOM26_OWN.has(name)) || value.includes('var(')) return value;
+  // (opacity clamps such an integer itself: 1 followed by 400 zeros is 1)
+  if ((!JSDOM26_PARSED.has(name) && !JSDOM26_OWN.has(name)) || name === 'opacity' || value.includes('var('))
+    return value;
   let out = value;
   if (out.length >= 22 && /\d{22}/.test(out))
     out = out.replace(BIG_INTEGER, (m, before, digits) =>
@@ -1255,7 +1260,7 @@ function jsdom26Numbers(name, value) {
     );
   if (!JSDOM26_BORDERS.has(name)) return out;
   const parts = splitOutside(out.trim(), ' ').filter((part) => part !== '');
-  const kept = parts.filter((part) => !OVERFLOWS.test(canonicalNumbers(part)));
+  const kept = parts.filter((part) => !NUMBER_WITH_UNIT.test(part) || !OVERFLOWS.test(canonicalNumbers(part)));
   if (kept.length === parts.length) return out;
   return kept.length === 0 ? null : kept.join(' ');
 }

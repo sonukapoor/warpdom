@@ -4880,6 +4880,18 @@ the digits after it were rewritten (`url(a\)/1000000000000000000000)`
 became `url("a)/1e21")`); it now skips escapes, as jsdom 26 keeps them.
 Only values of 22 characters with 22 digits reach it, so no benchmark.
 
+Fifth review (Copilot, CodeRabbit): opacity is left to its own clamp (1
+followed by 400 zeros is 1, as jsdom 26 has it; the step had made it
+Infinity, invalid), and a border drops only a number with a unit that
+overflows (`solid notInfinity`, `Infinitypx solid red` and `1e21 solid red`
+are invalid, as in jsdom 26; they had become `solid`). Not changed: a
+quoted url with a parenthesis in `background` (`url("a)1e+1.png")`,
+`url(a\)Infinity.png)`) is invalid in jsdom 26 too, with or without a
+number (rows added). jsdom 26 evaluates calc() in flex-grow and
+flex-shrink (`calc(2 * 3)` is `calc(6)`, `calc(1) bold` is `calc(1 bold)`);
+warpdom keeps them as written, as before this branch: #264 item 71. Both
+changes are on paths only long values and borders reach; no benchmark.
+
 ## 2026-11-07: a custom property in a style sheet, jsdom 29 and later (branch fix/264-custom-sheet, #264 item 59)
 
 jsdom 29.1.1 to 30.1.3 re-serialize a custom property's value when they

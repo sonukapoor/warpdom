@@ -2531,7 +2531,24 @@ const JSDOM26_VALUES = {
   transform: ['scale(01)', 'scale(1000000000000000000000)'],
   '--id': ['1234567890123456789012'],
   content: ['"id 1000000000000000000000 end"'],
-  opacity: ['2', '-1', '150%', '-1%', '1e39', '1e400', '-1e400', '0.5', '01', '.5', '1e1', '50%'],
+  opacity: [
+    '2',
+    '-1',
+    '150%',
+    '-1%',
+    '1e39',
+    '1e400',
+    '-1e400',
+    '0.5',
+    '01',
+    '.5',
+    '1e1',
+    '50%',
+    // (an integer past Number is clamped too; #285 review)
+    '1'.padEnd(401, '0'),
+    `-${'1'.padEnd(401, '0')}`,
+    `${'1'.padEnd(401, '0')}%`,
+  ],
   // (a width that overflows is dropped, the rest kept; #285 review)
   border: [
     '1e39px',
@@ -2542,8 +2559,15 @@ const JSDOM26_VALUES = {
     '1e400px solid',
     'var(--Infinity)',
     '1000000000000000000000px solid var(--c)',
+    // (only a width is dropped, not another word or a number without a
+    // unit; #285 review)
+    'solid notInfinity',
+    'solid Infinityx red',
+    'Infinitypx solid red',
+    '1e21 solid red',
+    'solid red 1e21em',
   ],
-  'border-top': ['1e39px', '1e39px solid red', '1px solid var(--Infinity)'],
+  'border-top': ['1e39px', '1e39px solid red', '1px solid var(--Infinity)', 'solid Infinity'],
   background: [
     '1e39px',
     'url(sprite+hover.png)',
@@ -2551,6 +2575,11 @@ const JSDOM26_VALUES = {
     'url("Infinity.png")',
     // (an escaped parenthesis in a url; #285 review)
     'url("a\\)01.png") red',
+    // (jsdom 26 rejects a quoted url with a parenthesis in it, with or
+    // without a number; #285 review)
+    'url("a)1e+1.png")',
+    'url("a)b.png")',
+    'url(a\\)Infinity.png)',
   ],
   'background-image': [
     'url("icon\\)01.png")',
