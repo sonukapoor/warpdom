@@ -1331,17 +1331,21 @@ const GENERIC_FAMILIES = new Set([
   'ui-serif',
 ]);
 const CASED_FUNCTION = /(calc|url|(?:repeating-)?(?:linear|radial|conic)-gradient)\(/gi;
-// The size in font (12px, 1px/1.5, larger), after which the families come.
+// The size in font (12px, 1px/1.5, calc(12px), larger), after which the
+// families come.
 const FONT_SIZE_WORD =
-  /^([+-]?[\d.]+(e[+-]?\d+)?([a-z]+|%)|[\w.%-]*\/.*|(xx?-|xxx-)?(small|large)|medium|smaller|larger)$/i;
+  /^([+-]?[\d.]+(e[+-]?\d+)?([a-z]+|%)|[\w-]+\(.*|[^\s/]*\/.*|(xx?-|xxx-)?(small|large)|medium|smaller|larger)$/i;
 const QUOTED_STRINGS = /"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?/g;
-const FONT_WORDS = /"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|[^\s"']+/g;
+// (a function is one word: calc(1em + 2em), 12px/calc(1em + 2em))
+const FONT_WORDS = /"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|[^\s"'(]*\((?:[^()]|\([^()]*\))*\)?[^\s"']*|[^\s"']+/g;
 function jsdom26Case(name, value) {
   const keywordsOnly = JSDOM26_KEYWORDS_ONLY.has(name);
   if (!keywordsOnly && !JSDOM26_PARSED.has(name) && !JSDOM26_OWN.has(name)) return value;
   // (function-like text in a string is no function: "URL(Font)", "var(--a)")
   const bare = /["']/.test(value) ? value.replace(QUOTED_STRINGS, '""') : value;
+  // (var( after whitespace in a string is a var() too: "a var(--face)")
   if (name === 'background' || name.endsWith('color') || /var\(/i.test(bare)) return value;
+  if (bare !== value && value.includes('var(') && hasVarFunction(value)) return value;
   if (bare.includes('(')) for (const [, fn] of bare.matchAll(CASED_FUNCTION)) if (fn !== fn.toLowerCase()) return null;
   // background-image: none alone (NONE, NONE and url()s as written).
   if (name === 'background-image') return ONE_IDENT.test(value) ? asciiLower(value) : value;

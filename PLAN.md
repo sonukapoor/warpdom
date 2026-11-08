@@ -4848,6 +4848,18 @@ valid lowercase one, as lowercase misses are), cache hits 194 -> 197 ns
 function scan for every value (3,427 ns); ASCII text without quotes or
 parentheses now takes toLowerCase().
 
+Review (#289): function-like text in a string is no function
+(`"URL(Font)", SERIF` is `"URL(Font)", serif`), but var( after
+whitespace in a string is a var() to jsdom, so the value keeps its case
+(`"a var(--face)", SERIF`; hasVarFunction). font splits words at any
+whitespace with a function as one word, and a function can be the size
+or the line height (`calc(12px) Arial`, `12px/calc(1EM) SERIF` is
+`12px / calc(1em) serif`); escaped commas stay in a family name. Font
+writes 10,831 -> 11,018 ns (noise). Left for item 77: jsdom 26 simplifies
+calc() in font (`calc(12px + 1px)` is `calc(13px)`) and rejects a line
+height calc() with spaces (`12px / calc(1em + 2em)`); an escaped comma
+in a family name is invalid there.
+
 ## 2026-11-07: jsdom 26's own value rules (branch fix/264-jsdom26-numbers, #264 items 56, 58, part of 46)
 
 Surveyed black box on jsdom 26.1.0: every style property warpdom knows,

@@ -2842,6 +2842,9 @@ const JSDOM26_CASE = {
     // Function-like text and var( in a string is a name (#289 review).
     '"var(--face)", SERIF',
     '"URL(Font)", SERIF',
+    // var( after whitespace in a string is a var() to jsdom (#289 review).
+    '"a var(--face)", SERIF',
+    '"x  var(--a)", SERIF',
   ],
   font: [
     'BOLD 12px Arial',
@@ -2860,6 +2863,14 @@ const JSDOM26_CASE = {
     '12px / 1EM SERIF',
     '12px /1EM SERIF',
     '12px/ 1EM SERIF',
+    // A function as the size or line height (#289 review).
+    'calc(12px) Arial',
+    'BOLD calc(12PX) Arial',
+    'calc(12px)/1.5 Arial, SERIF',
+    'calc(12px) / 1.5 Arial',
+    '12px/calc(1EM) SERIF',
+    '12px/calc(1EM+2EM) ARIAL',
+    '12px "a var(--x)", SERIF',
   ],
   'background-image': ['NONE', 'URL(a.png)', 'url(A.PNG)', 'LINEAR-GRADIENT(red, blue)'],
   'background-position': ['LEFT TOP', 'CENTER 10PX'],
