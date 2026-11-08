@@ -2288,6 +2288,11 @@ const SHEET_CUSTOM = [
   '"Inter" , sans-serif',
   'var( --y , 1px )',
   'A  B',
+  // An escaped url name is an ordinary function, as in jsdom (#286
+  // review).
+  String.raw`u\72l( a\20 b )`,
+  String.raw`a  u\72l(a b)  c`,
+  String.raw`\75rl( "a" )`,
   // Deep nesting (#286 review).
   `${'('.repeat(40)}a  b${')'.repeat(40)}`,
 ];

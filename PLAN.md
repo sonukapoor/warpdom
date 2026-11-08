@@ -4813,13 +4813,15 @@ does not end the value (a!importantb is ab, important). Sheet parse
 
 jsdom 29.1.1 to 30.1.3 re-serialize a custom property's value when they
 read it with its sheet (a <style> element, insertRule, an @media rule's,
-replaceSync), so computed values too; a rule's style.cssText and
-setProperty and inline styles keep it as written, as jsdom 26 to 28 do
-everywhere and warpdom did. Measured black box, token by token:
+replaceSync), so computed values too, and reading that rule's
+style.cssText shows it so; assigning style.cssText, setProperty and
+inline styles keep it as written, as jsdom 26 to 28 do everywhere and
+warpdom did. Measured black box, token by token:
 whitespace and comments between two tokens are one space, or none for
 the pairs in custom-value.js DROPS (a , b is a,b; 1px +2px is 1px+2px;
-1% a is 1%a; a "s" is a"s"; a #h keeps its space), none inside a block
-(f( a ) is f(a), [ a ] is [a]); + or - then + or - keeps two spaces;
+1% a is 1%a; a "s" is a"s"; a #h keeps its space), none at a block's
+start or end (f( a ) is f(a), [ a ] is [a]; between tokens inside it the
+same pairs apply: f( a b ) is f(a b)); + or - then + or - keeps two spaces;
 strings are double-quoted with escapes decoded ('a' is "a", "\41" is
 "A", a control character as \hex, a space after it only before a hex
 digit or a space); urls unquoted (url( "a b" ) is url(a\ b)); idents,
