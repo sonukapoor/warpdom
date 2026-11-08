@@ -22,7 +22,7 @@ export function navigate(window, url, replace = false) {
   // A javascript: URL runs in a later task, the URL unchanged (black box,
   // jsdom 20.0.3 to 30.1.3, #264 item 75), as a hyperlink's does.
   if (url.protocol === 'javascript:') {
-    ws.setTimeout(() => runJavascriptURL(window, url), 0);
+    queueJavascriptURL(window, url, true);
     return;
   }
   // As in jsdom: navigating to the current URL does nothing.
@@ -64,6 +64,23 @@ export function hostTimeout(window, callback, ms) {
   const host = window.document.defaultView ?? window;
   if (typeof host.setTimeout === 'function') host.setTimeout(callback, ms);
   else window[S].setTimeout(callback, ms);
+}
+
+// A javascript: URL's script runs in a task on the top window's host timers
+// (jsdom: Node's, looked up when queued; fake timers hold it back). In a
+// window discarded meanwhile (a removed iframe) a link's never runs; one
+// given to location still does in jsdom 25 to 29, not in 30 (black box,
+// 25.0.1 to 30.1.3; #290 review).
+function queueJavascriptURL(window, url, fromLocation) {
+  const ws = window[S];
+  hostTimeout(
+    window.top ?? window,
+    () => {
+      if (ws.discarded && (!fromLocation || ws.compat.jsdom >= 30)) return;
+      runJavascriptURL(window, url);
+    },
+    0,
+  );
 }
 
 const fragmentOf = (url) => {
@@ -125,6 +142,6 @@ export function followHyperlink(element, url) {
   const doc = element[S].doc;
   if (doc[S].noView) return;
   const window = doc[S].window;
-  if (url.protocol === 'javascript:') window[S].setTimeout(() => runJavascriptURL(window, url), 0);
+  if (url.protocol === 'javascript:') queueJavascriptURL(window, url, false);
   else hostTimeout(window, () => navigate(window, url), 0);
 }

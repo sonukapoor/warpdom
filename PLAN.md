@@ -4841,6 +4841,16 @@ window 2.49 -> 2.50 ms, next windows 0.227 -> 0.227 ms: noise. Tests:
 history.test.js "a javascript: URL given to location runs" (25, 26, 27,
 29, 30) and "document.location = url navigates" (25, 26, 30).
 
+Review (Copilot, CodeRabbit): jsdom queues the script on the host's timer
+looked up when queued (setTimeout to 29, setImmediate in 30), so fake
+timers installed after the window hold it back; warpdom used the window's
+own timer, for links too. Both now go through hostTimeout on the top
+window (queueJavascriptURL). In a removed iframe a link's script never runs
+(every version), and one given to location runs in 25 to 29 but not in 30
+(black box, 25.0.1, 26.1.0, 27.4.0, 29.1.1, 30.1.2, 30.1.3). Tests: "a
+javascript: URL of a removed iframe" (25, 26, 29, 30), "a javascript: URL
+waits for the timers installed after the window".
+
 ## 2026-11-07: jsdom 26's own value rules (branch fix/264-jsdom26-numbers, #264 items 56, 58, part of 46)
 
 Surveyed black box on jsdom 26.1.0: every style property warpdom knows,

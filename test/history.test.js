@@ -260,6 +260,53 @@ for (const jsdom of [30, 29, 27, 26, 25])
     { jsdom },
   );
 
+// A removed iframe: its link's javascript: URL never runs; one given to its
+// location still runs in jsdom 25 to 29, not in 30 (black box, 25.0.1,
+// 26.1.0, 27.4.0, 29.1.1, 30.1.2, 30.1.3; #290 review).
+for (const jsdom of [30, 29, 26, 25])
+  parity(
+    `a javascript: URL of a removed iframe (jsdom ${jsdom})`,
+    async (w) => {
+      const out = [];
+      for (const how of ['link', 'location']) {
+        const frame = w.document.body.appendChild(w.document.createElement('iframe'));
+        const fw = frame.contentWindow;
+        if (how === 'link') {
+          const a = fw.document.body.appendChild(fw.document.createElement('a'));
+          a.href = 'javascript:window.ran=1';
+          a.click();
+        } else fw.location.href = 'javascript:window.ran=1';
+        frame.remove();
+        await new Promise((r) => setTimeout(r, 30));
+        out.push(how, fw.ran);
+      }
+      return out;
+    },
+    { jsdom },
+  );
+
+// The script's task is queued on the timers of the global the window is
+// installed on, looked up when queued, so a test's fake timers hold it back
+// (jsdom: the host's setTimeout, setImmediate in 30; #290 review).
+test('a javascript: URL waits for the timers installed after the window', () => {
+  const w = createWindow({ url: 'https://a.test/' });
+  const queued = [];
+  const real = w.setTimeout;
+  w.setTimeout = (callback, ms) => queued.push(callback);
+  try {
+    w.location.href = 'javascript:window.ran=(window.ran||0)+1';
+    const a = w.document.body.appendChild(w.document.createElement('a'));
+    a.href = 'javascript:window.ran=(window.ran||0)+10';
+    a.click();
+  } finally {
+    w.setTimeout = real;
+  }
+  assert.equal(w.ran, undefined);
+  assert.equal(queued.length, 2);
+  for (const callback of queued) callback();
+  assert.equal(w.ran, 11);
+});
+
 // document.location = url navigates too ([PutForwards=href]); a document
 // without a window has no location to forward to (#264 item 75).
 for (const jsdom of [30, 26, 25])
