@@ -4875,6 +4875,11 @@ border kept as written; 0000000000000000000001px invalid). A duplicate
 flex-basis key in the test table had hidden 13 cases; merged (they pass).
 Performance unchanged (934 -> 929 ns, noise).
 
+Fourth review (CodeRabbit): the url() skip stopped at an escaped `)`, so
+the digits after it were rewritten (`url(a\\)/1000000000000000000000)`
+became `url("a)/1e21")`); it now skips escapes, as jsdom 26 keeps them.
+Only values of 22 characters with 22 digits reach it, so no benchmark.
+
 ## 2026-11-07: a family list with a comma before var(), jsdom 27 and later (branch fix/264-family-var-comma, #264 item 57)
 
 jsdom 27.0.1 to 30.1.3 read a `var()` right after a comma

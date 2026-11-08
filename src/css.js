@@ -1237,7 +1237,7 @@ const JSDOM26_REREAD = new Set([
 // zero (invalid: 0000000000000000000001px).
 // (strings and url()s match first and are kept)
 const BIG_INTEGER =
-  /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|url\([^)]*\)|(^|[\s(,/])([+-]?[1-9]\d{21,})(?=[a-z%]*(?:$|[\s),/]))/gi;
+  /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|url\((?:[^)\\]|\\[\s\S])*\)|(^|[\s(,/])([+-]?[1-9]\d{21,})(?=[a-z%]*(?:$|[\s),/]))/gi;
 const JSDOM26_BORDERS = new Set(['border', 'border-top', 'border-right', 'border-bottom', 'border-left']);
 const OVERFLOWS = /\de\+|Infinity/;
 function jsdom26Numbers(name, value) {

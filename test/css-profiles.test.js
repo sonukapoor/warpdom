@@ -2348,6 +2348,8 @@ const JSDOM26_VALUES = {
     'url("a\\(01.png")',
     'url("icons/1000000000000000000000/a.png")',
     'url(a/1000000000000000000000)',
+    'url(a\\)/1000000000000000000000)',
+    'url(a\\)/1000000000000000000000.png)',
   ],
   // (a quoted number; a string with an escaped quote is #264 item 62)
   'font-family': ['Font-01 Sans', 'Font-1 Sans', '"01", serif', '"Build 1000000000000000000000 Sans"'],
