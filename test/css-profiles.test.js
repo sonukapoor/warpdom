@@ -4,6 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createWindow } from '../src/node.js';
+import { reserializeCustom } from '../src/custom-value.js';
 import { parity } from './parity.js';
 
 const read = (w, cases) =>
@@ -2219,3 +2220,212 @@ for (const jsdom of [26, 29, 30, '30.1.3'])
     },
     { jsdom },
   );
+
+// A custom property read from a style sheet (black box, #264 item 59):
+// jsdom 29 and later re-serialize its value token by token (whitespace
+// collapsed or dropped by the tokens around it, strings in double
+// quotes, urls unquoted; custom-value.js), on a <style> element,
+// insertRule, an @media rule's and replaceSync, and so in computed
+// values; a rule's cssText and setProperty and inline styles keep it as
+// written. jsdom 26 to 28 keep it as written everywhere.
+const SHEET_CUSTOM = [
+  'a  b',
+  'a\tb',
+  'a\nb',
+  'f(a\n b)',
+  '"a  b"',
+  '"a\\\nb"',
+  "'a'",
+  'a /* c */ b',
+  'a/**/(b)',
+  'a , b',
+  '[ a ]',
+  'url( a.png )',
+  'url("a b")',
+  "url('a)')",
+  'URL( a )',
+  'F( a )',
+  'url(a b)',
+  'x  url(a b)',
+  '1px  solid',
+  'a ( b )',
+  'f( a , b )',
+  'a / b',
+  'a + b',
+  '1px +2px',
+  '1px -2px',
+  '1 -2',
+  '1% a',
+  '1% -1',
+  'a "s" b',
+  '"s" a',
+  'f(x) 1',
+  'f(x) a',
+  '(p) 1',
+  '#h 1',
+  '1 #h',
+  '1% #h',
+  'a #h',
+  '/ *',
+  '* /',
+  '+ +',
+  '- +',
+  'a : b',
+  '@k ,',
+  'U+26 #h',
+  '{ a }',
+  'a  {b}  c',
+  '"{"  a',
+  "\"\\41\" 'a\\'b'",
+  String.raw`"a\9 b" "a\9 g" "\7f" "\0"`,
+  String.raw`url("a\9 g") url("a\9 1") url("a b") url("\\")`,
+  String.raw`\61  b`,
+  String.raw`a\  b`,
+  '1.0  01  1E3px  +.5',
+  'calc( 1px  +  2px )',
+  'rgba( 0 , 0 , 0 , .1 )',
+  '0 1px 2px rgba(0,0,0,.1) ,\n  0 2px 4px red',
+  '"Inter" , sans-serif',
+  'var( --y , 1px )',
+  'A  B',
+  // An escaped url name is an ordinary function, as in jsdom (#286
+  // review).
+  String.raw`u\72l( a\20 b )`,
+  String.raw`a  u\72l(a b)  c`,
+  String.raw`\75rl( "a" )`,
+  // Deep nesting (#286 review).
+  `${'('.repeat(40)}a  b${')'.repeat(40)}`,
+];
+// Read otherwise by jsdom 26 to 28 (#264): / * as a comment's start, a
+// {} block, the escaped backslash in a url and \61  b (one space).
+// jsdom 26 has no replaceSync (warpdom's 26 has: left out there).
+const SHEET_CUSTOM_LATER = new Set([
+  '/ *',
+  '{ a }',
+  'a  {b}  c',
+  '"{"  a',
+  String.raw`url("a\9 g") url("a\9 1") url("a b") url("\\")`,
+  String.raw`\61  b`,
+]);
+const sheetCustom = (w, values, constructed = true) => {
+  const d = w.document;
+  const e = d.createElement('div');
+  e.className = 'n';
+  d.body.append(e);
+  // (a value with a {} block can end the rule early: a read that throws
+  // is written as such)
+  const read = (f) => {
+    try {
+      return f();
+    } catch {
+      return 'throws';
+    }
+  };
+  return values.map((v) => {
+    d.head.innerHTML = '';
+    const style = d.createElement('style');
+    style.textContent = `.n { --x: ${v}; } @media all { .m { --x: ${v} } }`;
+    d.head.append(style);
+    const sheet = d.styleSheets[0];
+    const rule = sheet.cssRules[0];
+    const out = [v, rule.style.getPropertyValue('--x'), rule.style.cssText];
+    out.push(read(() => sheet.cssRules[1].cssRules[0].style.getPropertyValue('--x')));
+    out.push(w.getComputedStyle(e).getPropertyValue('--x'));
+    out.push(
+      read(() => {
+        sheet.insertRule(`.k { --x: ${v} }`, 0);
+        return sheet.cssRules[0].style.getPropertyValue('--x');
+      }),
+    );
+    if (constructed)
+      out.push(
+        read(() => {
+          const other = new w.CSSStyleSheet();
+          other.replaceSync(`.n { --x: ${v} }`);
+          return other.cssRules[0].style.getPropertyValue('--x');
+        }),
+      );
+    rule.style.cssText = `--x: ${v}`;
+    out.push(rule.style.getPropertyValue('--x'));
+    rule.style.setProperty('--y', v);
+    out.push(rule.style.getPropertyValue('--y'));
+    const inline = d.createElement('div');
+    inline.setAttribute('style', `--x: ${v}`);
+    out.push(inline.style.getPropertyValue('--x'));
+    return JSON.stringify(out);
+  });
+};
+// jsdom 29 and later also report these sheets as not parsed (a console
+// error warpdom does not give), so they are checked on their own below.
+// A colon or an at-keyword anywhere keeps the value as written, spacing
+// included (#286 review).
+const SHEET_CUSTOM_ERRORS = new Set([
+  'url(a b)',
+  'x  url(a b)',
+  'a : b',
+  'a  :  b',
+  'x  a:b',
+  '(a  :  b)',
+  '@k ,',
+  '@k  ,',
+  'f(@k  x)',
+  // A quoted url with more than its string (#286 review).
+  'a  url( "a" b )  c',
+  "x  URL( 'a' 1px )",
+  '{ a }',
+  'a  {b}  c',
+]);
+for (const jsdom of [26, 27, 28, 29, 30, '30.1.3']) {
+  const later = jsdom >= 29 || jsdom === '30.1.3';
+  const values = SHEET_CUSTOM.filter((v) => (later ? !SHEET_CUSTOM_ERRORS.has(v) : !SHEET_CUSTOM_LATER.has(v)));
+  parity(
+    `style: a custom property in a style sheet (jsdom ${jsdom}, #264)`,
+    (w) => sheetCustom(w, values, jsdom !== 26),
+    {
+      jsdom,
+    },
+  );
+}
+// An escaped CR LF, CR or form feed continues a string (#286 review).
+// jsdom 30 turns CR and FF into LF first (#282), so these run on 26 to 29.
+const SHEET_CUSTOM_CONTINUED = ['"a\\\r\nb"  "a\\\rb"  "a\\\fb"', "url('a\\\rb')  url('a\\\fb')"];
+for (const jsdom of [26, 27, 28, 29])
+  parity(
+    `style: a string continued over a newline in a custom property (jsdom ${jsdom}, #286 review)`,
+    (w) => sheetCustom(w, SHEET_CUSTOM_CONTINUED, jsdom !== 26),
+    { jsdom },
+  );
+// Kept as written by jsdom 29.1.1 to 30.1.3 (black box): a bad url, a
+// colon, an at-keyword's comma and a {} block.
+test('style: a custom property in a style sheet kept as written (jsdom 29 and later, #264)', () => {
+  for (const jsdom of [29, 30, '30.1.3']) {
+    const d = createWindow({ jsdom }).document;
+    for (const v of SHEET_CUSTOM_ERRORS) {
+      d.head.innerHTML = `<style>.n { --x: ${v}; }</style>`;
+      assert.equal(d.styleSheets[0].cssRules[0].style.getPropertyValue('--x'), v, `${jsdom} ${v}`);
+    }
+  }
+  // A backslash before CR or form feed is no escape in a url (#286
+  // review); jsdom 30.1.2 and later turn CR and FF into LF first (#282).
+  // (textContent: the HTML parser would turn CR into LF.)
+  for (const jsdom of [29, '30.1.3']) {
+    const d = createWindow({ jsdom }).document;
+    for (const v of ['url(a\\\rb)', 'url(a\\\fb)']) {
+      d.head.textContent = '';
+      const style = d.createElement('style');
+      style.textContent = `.n { --x: ${v}; }`;
+      d.head.append(style);
+      const expected = jsdom === 29 ? v : v.replace(/[\r\f]/, '\n');
+      assert.equal(
+        d.styleSheets[0].cssRules[0].style.getPropertyValue('--x'),
+        expected,
+        `${jsdom} ${JSON.stringify(v)}`,
+      );
+    }
+  }
+});
+
+test('style: a custom property nested past the stack is kept as written (#286 review)', () => {
+  const v = `${'('.repeat(20000)}a`;
+  assert.equal(reserializeCustom(v), v);
+});
