@@ -4949,6 +4949,14 @@ spelled `0.0`, `.0`, `-0` or `0.` did not count as a second width
 `0px solid` in jsdom 26 and `0 solid` in warpdom, on main too: #264 item
 73.
 
+Copilot summary on the eleventh round: a decimal written out
+(`1000000000000000000000.5px solid red`, `999999999999999999999.9px
+solid`) missed the border step, whose fast check looked for an exponent
+only; jsdom 26 drops it (`solid red`), warpdom had made it invalid. The
+check takes 21 digits too (one more regex test on a border write; no
+benchmark). Probes with written-out decimals added: 28,350 border values,
+6,720 number spellings, no difference.
+
 ## 2026-11-07: a custom property in a style sheet, jsdom 29 and later (branch fix/264-custom-sheet, #264 item 59)
 
 jsdom 29.1.1 to 30.1.3 re-serialize a custom property's value when they

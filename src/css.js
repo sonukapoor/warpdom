@@ -1285,8 +1285,9 @@ function jsdom26Numbers(name, value) {
   let out = value;
   if (out.length >= 16 && /\d{16}/.test(out))
     out = out.replace(BIG_INTEGER, (m, before, digits) => (digits === undefined ? m : before + bigInteger(digits)));
-  // (an overflowing width has a digit or a dot before an e: 1e21, 1.e21)
-  if (!JSDOM26_BORDERS.has(name) || !/[\d.]e/i.test(out)) return out;
+  // (an overflowing width has a digit or a dot before an e, 1e21 and 1.e21,
+  // or 21 digits: 1000000000000000000000.5px)
+  if (!JSDOM26_BORDERS.has(name) || !/[\d.]e|\d{21}/i.test(out)) return out;
   const parts = splitOutside(out.trim().replace(/\s+/g, ' '), ' ').filter((part) => part !== '');
   const kept = parts.filter((part) => !overflowingWidth(part));
   if (kept.length === parts.length) return out;

@@ -2630,6 +2630,11 @@ const JSDOM26_VALUES = {
     '1e21px solid -0',
     '1e21px solid 0.',
     '1e21px solid 00',
+    // (a decimal written out; #285 review)
+    '1000000000000000000000.5px solid red',
+    '1000000000000000000000.px solid red',
+    '999999999999999999999.9px solid',
+    '100000000000000000000.5px solid',
   ],
   'border-top': [
     '1e39px',
@@ -2762,6 +2767,7 @@ parity(
           for (const e of ['', 'e0', 'e01', 'e-1', 'e+1', 'e21']) read(name, `${sign}${n}${e}${unit}`);
     const parts = [
       '1e21px',
+      '1000000000000000000000.5px',
       '1e21lvmax',
       '0.0',
       '1.e21px',
