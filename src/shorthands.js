@@ -482,6 +482,14 @@ function backgroundLayers(value) {
         i++;
         continue;
       }
+      // text and border-area: background-clip only (padding-box text); given
+      // again, the origin too (text text: jsdom 27 and 28 write one text so).
+      if ((lower === 'text' || lower === 'border-area') && (clip === null || origin === null)) {
+        if (clip === null) clip = token;
+        else origin = token;
+        i++;
+        continue;
+      }
       if (position === null && (POSITION_KEYWORDS.has(lower) || isLength(token))) {
         let j = i;
         while (
