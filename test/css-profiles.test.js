@@ -2072,15 +2072,8 @@ const numbersAsWritten = (w) => {
     return `${name}: ${v} | ${a.style.getPropertyValue(name)} | ${b.style.cssText} | ${rule}`;
   });
 };
-for (const jsdom of [27, 28, 29, 30, '30.1.3'])
+for (const jsdom of [26, 27, 28, 29, 30, '30.1.3'])
   parity(`style: numbers as written or canonical (jsdom ${jsdom}, #264)`, numbersAsWritten, { jsdom });
-// jsdom 26 drops a number with a leading zero in the properties it parses
-// (flex-grow: 01, flex: 01, margin: 01px; #264 item 58); the others as above.
-parity(
-  'style: numbers as written or canonical (jsdom 26, #264)',
-  (w) => numbersAsWritten(w).filter((row) => !/^(?:margin|flex-grow|flex):/.test(row)),
-  { jsdom: 26 },
-);
 // flex keeps exponent numbers as written and still sets its longhands
 // (#281 review): flex: 1e1 is flex-grow 1e1, flex-shrink 1, flex-basis 0%.
 const flexExponents = (w) => {
@@ -2428,4 +2421,399 @@ test('style: a custom property in a style sheet kept as written (jsdom 29 and la
 test('style: a custom property nested past the stack is kept as written (#286 review)', () => {
   const v = `${'('.repeat(20000)}a`;
   assert.equal(reserializeCustom(v), v);
+});
+
+// jsdom 26's own value rules (black box, 26.1.0; #264 items 46, 56, 58):
+// flex-grow, flex-shrink, flex-basis, font-weight, font-variant and
+// border-spacing are checked (font-weight 0 to 1000, no calc(); a negative
+// flex-basis or border-spacing; font-variant normal, small-caps or none,
+// keywords in lowercase); a number with a leading zero (01, 00.5) or an
+// exponent with a plus (1e+1) outside calc() is invalid in the properties
+// it parses; opacity is clamped to 0 to 1 (0% to 100%); a length past
+// 1e21 in border, background and flex is invalid.
+const JSDOM26_VALUES = {
+  'font-weight': [
+    '1001',
+    '0',
+    '1000',
+    'bolder',
+    'BOLD',
+    '1.5',
+    'calc(100)',
+    'var(--a)',
+    'inherit',
+    '-0',
+    '+100',
+    '1e3',
+    '01',
+    '-1',
+    '1px',
+    'x',
+    'normal 1',
+  ],
+  'flex-basis': [
+    '-1px',
+    '0',
+    '10%',
+    'content',
+    'fit-content',
+    'max-content',
+    'calc(1px + 2px)',
+    '1',
+    'AUTO',
+    '01px',
+    '00',
+    'x',
+    '1px 2px',
+    '1000000000000000000000px',
+  ],
+  'flex-grow': [
+    '0',
+    '1.5',
+    '-0',
+    '+2',
+    '.5',
+    'calc(1)',
+    '1e2',
+    'inherit',
+    '-1',
+    '1px',
+    '01',
+    'x',
+    '1 2',
+    '1.',
+    '1e+1',
+    '1e-1',
+  ],
+  'flex-shrink': ['1', '-0.5', 'calc(2)', '01'],
+  'border-spacing': ['-1px', '1px 2px', '1px -2px', '0', '1px 2px 3px', '1%', 'calc(1px)', '2', '01px', 'x'],
+  'font-variant': [
+    'normal',
+    'small-caps',
+    'none',
+    'SMALL-CAPS',
+    'all-small-caps',
+    'common-ligatures',
+    'small-caps slashed-zero',
+    'x',
+    '1',
+  ],
+  // (an integer of 22 digits or more is written with an exponent; #285
+  // review)
+  width: [
+    '00px',
+    '01px',
+    '0.5px',
+    '00.5px',
+    '1.px',
+    '0.px',
+    '1e+1px',
+    '1e-1px',
+    '010px',
+    'calc(01px + 1px)',
+    '1e39px',
+    '1000000000000000000000px',
+    '1234567890123456789012px',
+    '100000000000000000000px',
+    '0000000000000000000001px',
+    '01000000000000000000000px',
+    // (Number() rounds an integer past 2 ** 53, and 21 nines to 1e+21;
+    // #285 review)
+    '999999999999999999999px',
+    '999999999999999999949px',
+    '123456789012345678901px',
+    '99999999999999999999px',
+    '1234567890123456789px',
+    '9007199254740993px',
+    '9007199254740992px',
+    '-9007199254740993px',
+    // (no leading zero in an exponent either; #285 review)
+    '1e01px',
+    '1E01px',
+    '1e-021px',
+    '1e0px',
+    '1e-0px',
+  ],
+  margin: ['1px 01px', '-.5px', '01px', '1e400px', '9007199254740993px 1px'],
+  'line-height': ['01', '1.', '001.5', '9007199254740993', '1e01'],
+  'font-size': ['01px'],
+  color: ['rgb(01, 2, 3)', 'rgb(1, 2, 3)'],
+  'background-position': ['01px 2px'],
+  'border-width': ['1e+1px', '1000000000000000000000px'],
+  // (a big integer stays as written where jsdom 26 does not parse, in
+  // strings, url()s and with var(); one with a leading zero is invalid;
+  // #285 review)
+  'z-index': ['01', '1e+1', '1000000000000000000000'],
+  transform: ['scale(01)', 'scale(1000000000000000000000)'],
+  '--id': ['1234567890123456789012'],
+  content: ['"id 1000000000000000000000 end"'],
+  opacity: [
+    '2',
+    '-1',
+    '150%',
+    '-1%',
+    '1e39',
+    '1e400',
+    '-1e400',
+    '0.5',
+    '01',
+    '.5',
+    '1e1',
+    '50%',
+    '1e-01',
+    // (an integer past Number is clamped too; #285 review)
+    '1'.padEnd(401, '0'),
+    `-${'1'.padEnd(401, '0')}`,
+    `${'1'.padEnd(401, '0')}%`,
+  ],
+  // (a width that overflows is dropped, the rest kept; #285 review)
+  border: [
+    '1e39px',
+    '1e400px',
+    '1e20px solid',
+    '1e21px solid red',
+    '1000000000000000000000px solid red',
+    '1e400px solid',
+    'var(--Infinity)',
+    '1000000000000000000000px solid var(--c)',
+    // (only a width is dropped, not another word or a number without a
+    // unit; #285 review)
+    'solid notInfinity',
+    'solid Infinityx red',
+    'Infinitypx solid red',
+    '1e21 solid red',
+    'solid red 1e21em',
+    '-1e21px solid red',
+    // (any whitespace separates; only a length is a width, and it still
+    // takes the width's place, so a second width is invalid; #285 review)
+    '1e21px\tsolid red',
+    '1e21px\nsolid red',
+    'solid\t1e21px red',
+    '1e21px  solid  red',
+    '1e21zz solid red',
+    '1e21deg solid',
+    '1e21% solid',
+    '1e21vmin solid',
+    '1e21q solid',
+    '1e21PX solid red',
+    '+1e21px solid red',
+    '1e21px 1e21px solid red',
+    '1e21px 1px solid red',
+    '1px 1e21px solid red',
+    '1e21px thin solid',
+    '999999999999999999999px solid red',
+    '9007199254740993px solid red',
+    // (a dropped width is spelled as a number jsdom 26 reads; #285 review)
+    '01e21px solid red',
+    '1e+21px solid red',
+    '1e021px solid red',
+    '1.e21px solid red',
+    '1e01px solid red',
+    '1e00px solid',
+    // (every length unit, and calc() as the second width; #285 review)
+    '1e21dvh solid',
+    '1e21svw solid',
+    '1e21lvh solid',
+    '1e21cap solid',
+    '1e21px solid calc(1px)',
+    '1e21px 1dvh solid',
+    '1e21px solid 1Q',
+    '1e21px solid 0',
+    '1e21px solid MEDIUM',
+    // (min and max viewport units, a zero spelled otherwise; #285 review)
+    '1e21dvmin solid',
+    '1e21svmax solid',
+    '1e21px solid 1dvmin',
+    '1e21px solid 0.0',
+    '1e21px solid .0',
+    '1e21px solid +0',
+    '1e21px solid -0',
+    '1e21px solid 0.',
+    '1e21px solid 00',
+    // (a decimal written out; #285 review)
+    '1000000000000000000000.5px solid red',
+    '1000000000000000000000.px solid red',
+    '999999999999999999999.9px solid',
+    '100000000000000000000.5px solid',
+  ],
+  'border-top': [
+    '1e39px',
+    '1e39px solid red',
+    '1px solid var(--Infinity)',
+    'solid Infinity',
+    '1e21em\tsolid',
+    '01e21px solid',
+  ],
+  'border-bottom': ['1.e400px solid', '01e400px solid'],
+  background: [
+    '1e39px',
+    'url(sprite+hover.png)',
+    'url("e+1.png")',
+    'url("Infinity.png")',
+    // (an escaped parenthesis in a url; #285 review)
+    'url("a\\)01.png") red',
+    // (jsdom 26 rejects a quoted url with a parenthesis in it, with or
+    // without a number; #285 review)
+    'url("a)1e+1.png")',
+    'url("a)b.png")',
+    'url(a\\)Infinity.png)',
+  ],
+  'background-image': [
+    'url("icon\\)01.png")',
+    'url(icon\\)01.png)',
+    'url("a\\(01.png")',
+    'url("icons/1000000000000000000000/a.png")',
+    'url(a/1000000000000000000000)',
+    'url(a\\)/1000000000000000000000)',
+    'url(a\\)/1000000000000000000000.png)',
+  ],
+  // (a quoted number; a string with an escaped quote is #264 item 62)
+  'font-family': [
+    'Font-01 Sans',
+    'Font-1 Sans',
+    '"01", serif',
+    '"Build 1000000000000000000000 Sans"',
+    // (jsdom 26 rejects these too; #285 review)
+    'Café01 Sans',
+    'Café-01 Sans',
+    'A\\30 01 Sans',
+  ],
+  flex: [
+    '1e39',
+    '1e400',
+    '1e400 1',
+    '1 1e400',
+    '1e21',
+    '1e20',
+    '1 1 1e39px',
+    '01',
+    '01 1',
+    '1000000000000000000000',
+    '1 1000000000000000000000',
+    '1 1 1000000000000000000000px',
+    '999999999999999999999',
+    '1 9007199254740993',
+  ],
+};
+parity(
+  "style: jsdom 26's own value rules (jsdom 26, #264)",
+  (w) => {
+    const d = w.document;
+    const out = [];
+    for (const [name, values] of Object.entries(JSDOM26_VALUES))
+      for (const v of values) {
+        const a = d.createElement('div');
+        a.style.setProperty(name, v);
+        const b = d.createElement('div');
+        b.setAttribute('style', `${name}: ${v}`);
+        out.push(JSON.stringify([name, v, a.style.getPropertyValue(name), b.style.cssText]));
+      }
+    return out;
+  },
+  { jsdom: 26 },
+);
+// An integer past Number reads as a number, as 1e400 does: Infinity,
+// Infinitypx, a border width dropped (black box, 26.1.0; #285 review).
+const HUGE = '1'.padEnd(401, '0');
+// (2 and 308 zeros is past Number too, though 1e308 is not)
+const JUST_PAST = '2'.padEnd(309, '0');
+parity(
+  'style: an integer past Number is a number, jsdom 26 (#264)',
+  (w) => {
+    const d = w.document;
+    const out = [];
+    for (const [name, v] of [
+      ['flex-grow', HUGE],
+      ['flex-shrink', HUGE],
+      ['line-height', HUGE],
+      ['margin', `${HUGE}px`],
+      ['width', `${HUGE}px`],
+      ['flex-basis', `${HUGE}px`],
+      ['border-spacing', `${HUGE}px`],
+      ['border', `${HUGE}px solid red`],
+      ['border-top', `${HUGE}px solid red`],
+      ['border', `-${HUGE}px solid red`],
+      ['flex', HUGE],
+      ['font-weight', HUGE],
+      ['flex-grow', JUST_PAST],
+      ['width', `${JUST_PAST}px`],
+      ['margin', `-${JUST_PAST}px`],
+      ['border', `${JUST_PAST}px solid red`],
+    ]) {
+      const a = d.createElement('div');
+      a.style.setProperty(name, v);
+      const b = d.createElement('div');
+      b.setAttribute('style', `${name}: ${v}`);
+      out.push(JSON.stringify([name, v.length, a.style.getPropertyValue(name), b.style.cssText]));
+    }
+    return out;
+  },
+  { jsdom: 26 },
+);
+// Every combination of a few number spellings, and of border parts (a
+// smaller copy of the probes that found the #285 review cases).
+parity(
+  'style: number spellings and border parts in combination, jsdom 26 (#264)',
+  (w) => {
+    const d = w.document;
+    const out = [];
+    const read = (name, v) => {
+      const a = d.createElement('div');
+      a.style.setProperty(name, v);
+      const b = d.createElement('div');
+      b.setAttribute('style', `${name}: ${v}`);
+      out.push(JSON.stringify([name, v.length > 40 ? v.length : v, a.style.getPropertyValue(name), b.style.cssText]));
+    };
+    const numbers = ['1', '01', '1.', '.5', '9007199254740993', '999999999999999999999', '0000000000000000000001'];
+    for (const [name, unit] of [
+      ['width', 'px'],
+      ['flex-grow', ''],
+      ['opacity', '%'],
+      ['border-spacing', 'px'],
+    ])
+      for (const sign of ['', '-'])
+        for (const n of numbers)
+          for (const e of ['', 'e0', 'e01', 'e-1', 'e+1', 'e21']) read(name, `${sign}${n}${e}${unit}`);
+    const parts = [
+      '1e21px',
+      '1000000000000000000000.5px',
+      '1e21lvmax',
+      '0.0',
+      '1.e21px',
+      '01e21px',
+      '-1e21px',
+      '1e21dvh',
+      '1e21',
+      '1px',
+      'thin',
+      'calc(1px)',
+      'solid',
+      'red',
+    ];
+    for (const a of parts) for (const b of parts) read('border', `${a} ${b}`);
+    return out;
+  },
+  { jsdom: 26 },
+);
+// cssstyle 4.3.1 (jsdom 26 with an older cssstyle) has none of these
+// rules: border-spacing: 0 stays 0, font-weight: x and opacity: 2 are kept
+// (black box, cssstyle 4.3.1 on its own; #285 review).
+test("style: jsdom 26's own value rules leave cssstyle 4.3.1 alone", () => {
+  const d = createWindow({ jsdom: '26.1.0', cssstyle: '4.3.1' }).document;
+  const set = (name, v) => {
+    const e = d.createElement('div');
+    e.style.setProperty(name, v);
+    return e.style.getPropertyValue(name);
+  };
+  assert.deepEqual(
+    [
+      ['border-spacing', '0'],
+      ['border-spacing', '0.0'],
+      ['border-spacing', '00'],
+      ['font-weight', 'x'],
+      ['opacity', '2'],
+      ['flex-grow', '-1'],
+    ].map(([name, v]) => set(name, v)),
+    ['0', '0.0', '00', 'x', '2', '-1'],
+  );
 });

@@ -4809,6 +4809,154 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-07: jsdom 26's own value rules (branch fix/264-jsdom26-numbers, #264 items 56, 58, part of 46)
+
+Surveyed black box on jsdom 26.1.0: every style property warpdom knows,
+setProperty, with numbers (01, 00, 001.5, 01px, 1e39, 1e400, 1e400px,
+-1, 2, 150%, 1e20, 1e21, 0.5e1, 01 1px) and ordinary values (1px, 2,
+-1, bold, x, 10%, 1 2, auto, normal, AUTO, 0, 1.5em). Found:
+- A number with a leading zero before a digit (01, 00, 00.5, 010) or an
+  exponent with a plus (1e+1) is invalid in the properties jsdom 26
+  parses, inside rgb() too, not inside calc(); a trailing dot is valid
+  (1. is 1). The others keep it as written (z-index: 01).
+- flex-grow, flex-shrink, flex-basis, font-weight, font-variant and
+  border-spacing are checked with rules of their own: font-weight 0 to
+  1000 and normal, bold, bolder, lighter (no calc()); font-variant
+  normal, small-caps, none and font-weight's numbers; flex-grow and
+  flex-shrink a number not negative, or calc(); flex-basis and
+  border-spacing a length, negative too (flex-basis also auto, content,
+  max-content, min-content, not fit-content); keywords in lowercase.
+  warpdom checked none of them (an earlier decision left them out because
+  jsdom 26 took values outside their ranges; the rules above model that).
+- opacity is clamped to 0 to 1, a percentage to 0% to 100% (2 is 1,
+  1e400 is 1, -1% is 0%).
+- border, its sides, background and flex reject a number that serializes
+  with e+ or as Infinity (1e39px, 1e400, 1e21); width keeps 1e+39px.
+css.js jsdom26Value (from versionedValue, jsdom 26 profile only). Survey
+differences, before -> after: numbers 173 -> 4, ordinary values 61 ->
+16. Left: keywords in lowercase in the other properties (width: AUTO;
+#264 item 46), a font of a size alone (font: 1px is valid in jsdom 26;
+item 63), font-family: x (item 62).
+
+Performance (Node 22.17.1, 5 alternating runs, medians, main 6f4a677 ->
+this, 26.1.0 profile): writes of new width, opacity, flex-grow and margin
+values (each a cache miss) 1,010 -> 989 ns (noise). Tests:
+css-profiles.test.js "jsdom 26's own value rules" (121 values,
+setProperty and the attribute); "numbers as written or canonical" runs
+on jsdom 26 unfiltered.
+
+Review (Copilot, CodeRabbit): the rules are cssstyle 4.4's and 4.6's
+(jsdom 26 installs 4.6.0); cssstyle 4.3.1, measured on its own, has none
+of them (border-spacing: 0 stays 0, font-weight: x is kept), so they apply
+only when the profile's cssstyle is 4.4 or later (colorKeywords is not
+'css2'). The reread check looks at numbers only, not strings or url()s
+(url(sprite+hover.png) was invalid). The number scan skips an escaped
+quote in a string and reads a number after a hyphen in a name as part of
+the name (Font-01 Sans). Found: cssstyle 4.3.1 keeps numbers as written
+where warpdom's 4.3.1 profile writes them canonically (font-weight: 01,
+width: 1.px; #264 item 64); jsdom 26 rejects a family string with an
+escaped quote ("A\\"1"; item 62).
+
+Second review (Copilot): jsdom 26 writes a number as Number() does, so
+an integer of 22 digits or more has an exponent (width:
+1000000000000000000000px is 1e+21px; flex with one is invalid, as with
+1e21); jsdom26Numbers writes it so before the rules. border and its
+sides drop a width that overflows and keep the rest (1e21px solid red is
+solid red; was invalid), invalid when nothing is left. The number scan
+skips escapes and strings in url() and calc() (url("icon\\)01.png") was
+invalid). Performance: 5 alternating runs, medians, 26.1.0, a write of a
+new value each time: 930 -> 942 ns (about 1%, noise level); values
+shorter than 22 characters skip the new step unless they are a border.
+Third review (Copilot, CodeRabbit): the big-integer step runs only for
+properties jsdom 26 parses, not with var(), and leaves strings, url()s
+and numbers with a leading zero alone, as jsdom 26 does (z-index, --id,
+content strings, url(a/1000000000000000000000), var(--Infinity) in a
+border kept as written; 0000000000000000000001px invalid). A duplicate
+flex-basis key in the test table had hidden 13 cases; merged (they pass).
+Performance unchanged (934 -> 929 ns, noise).
+
+Fourth review (CodeRabbit): the url() skip stopped at an escaped `)`, so
+the digits after it were rewritten (`url(a\)/1000000000000000000000)`
+became `url("a)/1e21")`); it now skips escapes, as jsdom 26 keeps them.
+Only values of 22 characters with 22 digits reach it, so no benchmark.
+
+Fifth review (Copilot, CodeRabbit): opacity is left to its own clamp (1
+followed by 400 zeros is 1, as jsdom 26 has it; the step had made it
+Infinity, invalid), and a border drops only a number with a unit that
+overflows (`solid notInfinity`, `Infinitypx solid red` and `1e21 solid red`
+are invalid, as in jsdom 26; they had become `solid`). Not changed: a
+quoted url with a parenthesis in `background` (`url("a)1e+1.png")`,
+`url(a\)Infinity.png)`) is invalid in jsdom 26 too, with or without a
+number (rows added). jsdom 26 evaluates calc() in flex-grow and
+flex-shrink (`calc(2 * 3)` is `calc(6)`, `calc(1) bold` is `calc(1 bold)`);
+warpdom keeps them as written, as before this branch: #264 item 71. Both
+changes are on paths only long values and borders reach; no benchmark.
+
+Sixth review (Copilot): an integer past Number (1 and 400 zeros) had
+become the word Infinity, which nothing reads as a number; it is written
+1e400 now, so it reads as 1e400 does in jsdom 26 (flex-grow Infinity,
+width Infinitypx, a border width dropped). A negative overflowing border
+width is invalid in jsdom 26, as a negative width is (`-1e21px solid red`);
+warpdom had dropped it.
+
+Seventh review (Copilot): the exponent is at least 309, as 2 and 308
+zeros is past Number while 1e308 is not (it had been 1e+308).
+
+Copilot summary on the seventh round: the border filter split on spaces
+only and dropped any overflowing number with letters. In jsdom 26 any
+whitespace separates (`1e21px\tsolid red` is `solid red`), only a length
+is dropped (`1e21deg solid`, `1e21zz solid red` invalid), and the dropped
+width still takes the width's place (`1e21px 1px solid red`,
+`1e21px thin solid`, `1e21px 1e21px solid red` invalid). Border writes
+without a digit before an e skip the split now. Border writes, jsdom 26
+profile, 5 runs interleaved, median ns per write: 429 before, 424 after
+(noise).
+
+Eighth review (Copilot): 21 nines is 1e+21 through Number(), and jsdom 26
+rounds every integer past 2 ** 53 so (9007199254740993px is
+9007199254740992px, 123456789012345678901px is 123456789012345680000px);
+warpdom had kept integers below 22 digits as written. The step now takes
+integers from 16 digits (decimals were already rounded). Values of 16
+characters or more reach it; median ns per write, 5 runs interleaved:
+border writes 422 before, 422 after; long values (background, font-family,
+flex-grow, margin) 581 before, 553 after (noise).
+
+Copilot summary on the eighth round (dropping a width skipped the number
+checks): a dropped border width must be a number jsdom 26 reads
+(`01e21px solid red`, `1e+21px solid red` invalid; `1.e21px solid red` is
+`solid red`, which warpdom had made invalid). jsdom 26 also rejects a
+leading zero in an exponent everywhere (`width: 1e01px`, `1e-021px`,
+`flex-grow: 1e01`; `1e0` is read), which warpdom read as 10px: added to
+JSDOM26_NUMBER. The changes are a regex and a check on a dropped width
+only; no benchmark. jsdom 26 keeps `calc(1e01px)` as written where
+warpdom writes `calc(10px)`: #264 item 72.
+
+Copilot summary on the ninth round: the dropped width took only the
+units LENGTH reads, not 1e21dvh, 1e21svw or 1e21lvh (`solid` in jsdom
+26), and calc() did not count as the second width (`1e21px solid
+calc(1px)` invalid in jsdom 26). Fixed. To end the rounds of single
+cases, two probes compared every combination with jsdom 26.1.0: 13,454
+border and border-left values (three parts from 31 widths, styles and
+colors) and 5,040 number spellings (sign, mantissa, exponent) in 14
+properties. Both show no difference. A smaller copy is a parity test
+("number spellings and border parts in combination", 62 ms).
+
+Copilot summary on the tenth round: the unit list lacked the viewport min
+and max units (`1e21dvmin solid` is `solid` in jsdom 26), and a zero
+spelled `0.0`, `.0`, `-0` or `0.` did not count as a second width
+(`1e21px solid 0.0` invalid). Fixed; the border probe, with these added
+(41 parts, 23,534 values), shows no difference. `border: 0e0 solid` is
+`0px solid` in jsdom 26 and `0 solid` in warpdom, on main too: #264 item
+73.
+
+Copilot summary on the eleventh round: a decimal written out
+(`1000000000000000000000.5px solid red`, `999999999999999999999.9px
+solid`) missed the border step, whose fast check looked for an exponent
+only; jsdom 26 drops it (`solid red`), warpdom had made it invalid. The
+check takes 21 digits too (one more regex test on a border write; no
+benchmark). Probes with written-out decimals added: 28,350 border values,
+6,720 number spellings, no difference.
+
 ## 2026-11-07: a custom property in a style sheet, jsdom 29 and later (branch fix/264-custom-sheet, #264 item 59)
 
 jsdom 29.1.1 to 30.1.3 re-serialize a custom property's value when they

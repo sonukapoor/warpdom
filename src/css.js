@@ -1093,8 +1093,11 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
     else if (isLegacyFont(surface, name))
       out = /^inherit$/i.test(value) ? INVALID : (legacyFont(value, surface.legacyFont) ?? INVALID);
     else {
-      const written = isSpecMode(mode) ? identValue(name, value) : value;
-      out = versionedValue(name, written, mode, surface);
+      let written = isSpecMode(mode) ? identValue(name, value) : value;
+      // (an integer Number() changes has 16 digits: most values skip this)
+      if (mode === 'jsdom26' && colorKeywords !== 'css2' && (written.length >= 16 || JSDOM26_BORDERS.has(name)))
+        written = jsdom26Numbers(name, written);
+      out = written === null ? INVALID : versionedValue(name, written, mode, surface);
       if (out === undefined) {
         const checked = isSpecMode(mode) || JSDOM26_VALIDATED.has(name);
         out = !checked || isValidValue(name, written) ? serializeDeclared(name, written, mode) : INVALID;
@@ -1195,6 +1198,177 @@ function azimuthValue(value, surface) {
 // modes' general rules (black box, jsdom 20 to 30); undefined for the
 // others. Runs once per property and raw value (declaredValue caches it).
 const ONE_NUMBER = /^\+?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
+
+// jsdom 26's own value rules (black box, 26.1.0; #264 items 46, 56, 58).
+// A number: no leading zero before a digit (01, 00.5), an exponent without
+// a plus (1e+1) or a leading zero (1e01; 1e0 is read), a trailing dot
+// allowed (1.).
+const JSDOM26_NUMBER = /^[+-]?(?:0|[1-9]\d*|(?=\.\d))(?:\.\d*)?(?:e-?(?:0|[1-9]\d*))?$/i;
+// The properties it checks with grammars of their own: font-weight 0 to
+// 1000 (font-variant too, besides normal, small-caps and none), flex-grow
+// and flex-shrink not negative, flex-basis and border-spacing negative or
+// not; keywords in lowercase.
+const JSDOM26_OWN = new Set([
+  'font-weight',
+  'font-variant',
+  'flex-grow',
+  'flex-shrink',
+  'flex-basis',
+  'border-spacing',
+]);
+const JSDOM26_KEYWORDS = {
+  __proto__: null,
+  'font-weight': new Set(['normal', 'bold', 'bolder', 'lighter']),
+  'font-variant': new Set(['normal', 'small-caps', 'none']),
+  'flex-basis': new Set(['auto', 'content', 'max-content', 'min-content']),
+};
+// Shorthands it reads again from their serialization, where 1e39px is
+// 1e+39px and 1e400px Infinitypx, both invalid.
+const JSDOM26_REREAD = new Set([
+  'border',
+  'border-top',
+  'border-right',
+  'border-bottom',
+  'border-left',
+  'background',
+  'flex',
+]);
+// jsdom 26 writes a number as Number() does, so an integer of 16 digits or
+// more is rounded past 2 ** 53 (9007199254740993px is 9007199254740992px)
+// and has an exponent from 1e21 (1000000000000000000000px and 21 nines are
+// 1e+21px; written here as 1e21px, which serializes so). Its border shorthands drop a width that
+// serializes with e+ or as Infinity and keep the rest (1e21px solid red is
+// solid red), invalid (null) when nothing is left. Black box, 26.1.0;
+// #285 review. Only in the properties jsdom 26 parses, outside strings
+// and url()s, not with var() (kept as written: z-index, --id,
+// url(a/1000000000000000000000), var(--Infinity)), and not with a leading
+// zero (invalid: 0000000000000000000001px).
+// (strings and url()s match first and are kept)
+const BIG_INTEGER =
+  /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|url\((?:[^)\\]|\\[\s\S])*\)|(^|[\s(,/])([+-]?[1-9]\d{15,})(?=[a-z%]*(?:$|[\s),/]))/gi;
+const JSDOM26_BORDERS = new Set(['border', 'border-top', 'border-right', 'border-bottom', 'border-left']);
+// A dropped border width is a length (not negative, not 1e21, 1e21deg or
+// notInfinity, which are left to the grammar: invalid; any length unit,
+// 1e21dvh too). It still takes the width's place, so a second width is
+// invalid (1e21px 1px solid red, 1e21px thin solid, 1e21px solid
+// calc(1px)). Any whitespace separates. #285 review.
+const BORDER_WIDTH_KEYWORD = /^(?:thin|medium|thick)$/i;
+const LENGTH_UNIT = /^(?:px|cm|mm|q|in|pt|pc|em|rem|ex|rex|cap|rcap|ch|rch|ic|ric|lh|rlh|[sld]?v(?:min|max|[hwbi]))$/i;
+// (a zero without a unit is a width however spelled: 0.0, .0, -0, 0.)
+const ZERO_SPELLING = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
+// (1.e21px is one; 01e21px or 1e+21px is a number jsdom 26 does not read,
+// invalid)
+const WIDTH_SPELLING = /^\+?((?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)([a-z]+)$/i;
+function overflowingWidth(part) {
+  const m = WIDTH_SPELLING.exec(part);
+  return m !== null && !(Number(m[1]) < 1e21) && LENGTH_UNIT.test(m[2]);
+}
+function isBorderWidth(part) {
+  if ((ZERO_SPELLING.test(part) && Number(part) === 0) || BORDER_WIDTH_KEYWORD.test(part) || /^calc\(/i.test(part))
+    return true;
+  const m = WIDTH_SPELLING.exec(part);
+  return m !== null && LENGTH_UNIT.test(m[2]);
+}
+// 1e+21 as 1e21; past Number as an exponent that still reads as a number
+// (1 and 400 zeros is 1e400, Infinity as 1e400 is; #285 review).
+function bigInteger(digits) {
+  const n = Number(digits);
+  if (Number.isFinite(n)) return String(n).replace('e+', 'e');
+  const sign = digits[0] === '-' || digits[0] === '+' ? digits[0] : '';
+  // (at least 1e309: 2 and 308 zeros is past Number, 1e308 is not)
+  return `${sign}1e${Math.max(309, digits.length - sign.length - 1)}`;
+}
+function jsdom26Numbers(name, value) {
+  // (opacity clamps such an integer itself: 1 followed by 400 zeros is 1)
+  if ((!JSDOM26_PARSED.has(name) && !JSDOM26_OWN.has(name)) || name === 'opacity' || value.includes('var('))
+    return value;
+  let out = value;
+  if (out.length >= 16 && /\d{16}/.test(out))
+    out = out.replace(BIG_INTEGER, (m, before, digits) => (digits === undefined ? m : before + bigInteger(digits)));
+  // (an overflowing width has a digit or a dot before an e, 1e21 and 1.e21,
+  // or 21 digits: 1000000000000000000000.5px)
+  if (!JSDOM26_BORDERS.has(name) || !/[\d.]e|\d{21}/i.test(out)) return out;
+  const parts = splitOutside(out.trim().replace(/\s+/g, ' '), ' ').filter((part) => part !== '');
+  const kept = parts.filter((part) => !overflowingWidth(part));
+  if (kept.length === parts.length) return out;
+  if (kept.length === 0 || parts.length - kept.length > 1) return null;
+  if (parts.some((part) => overflowingWidth(part) && jsdom26BadNumber(part))) return null;
+  return kept.some(isBorderWidth) ? null : kept.join(' ');
+}
+function jsdom26Value(name, value, lower) {
+  const parsed = JSDOM26_PARSED.has(name) || JSDOM26_OWN.has(name);
+  if (parsed && jsdom26BadNumber(value)) return INVALID;
+  if (JSDOM26_REREAD.has(name))
+    return /\de\+|Infinity/.test(canonicalNumbers(value).replace(STRINGS_AND_URLS, '')) ? INVALID : undefined;
+  if (name === 'opacity') {
+    // Clamped to 0 to 1, a percentage to 0% to 100%.
+    const percent = value.endsWith('%');
+    const text = percent ? value.slice(0, -1) : value;
+    if (!JSDOM26_NUMBER.test(text)) return undefined;
+    const n = Math.min(Math.max(Number(text), 0), percent ? 100 : 1);
+    return percent ? `${n}%` : String(n);
+  }
+  if (!JSDOM26_OWN.has(name)) return undefined;
+  if (JSDOM26_KEYWORDS[name]?.has(lower)) return lower;
+  if (name === 'font-weight' || name === 'font-variant') {
+    const n = JSDOM26_NUMBER.test(value) ? Number(value) : NaN;
+    return n >= 0 && n <= 1000 ? String(n) : INVALID;
+  }
+  if (name === 'flex-grow' || name === 'flex-shrink') {
+    if (/^calc\(/i.test(value)) return undefined;
+    return JSDOM26_NUMBER.test(value) && Number(value) >= 0 ? String(Number(value)) : INVALID;
+  }
+  // flex-basis and border-spacing: a negative length is valid.
+  return isValidValue(name, value.replace(/(^|\s)-(?=[\d.])/g, '$1'))
+    ? serializeDeclared(name, value, 'jsdom26')
+    : INVALID;
+}
+// Strings and url()s, whose text is no number (url(sprite+hover.png); #285
+// review).
+const STRINGS_AND_URLS = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|url\([^)]*\)/gi;
+// A number outside calc(), strings and url() that jsdom 26 does not read.
+function jsdom26BadNumber(value) {
+  if (!/\d/.test(value)) return false;
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    if (c === 34 || c === 39) {
+      // (an escaped quote does not end the string: "a\"01")
+      let end = i + 1;
+      while (end < value.length && value[end] !== value[i]) end += value[end] === '\\' ? 2 : 1;
+      if (end >= value.length) return false;
+      i = end;
+    } else if ((c === 99 || c === 67 || c === 117 || c === 85) && /^(?:calc|url)\(/i.test(value.slice(i, i + 5))) {
+      // (escapes and strings inside do not open or close it:
+      // url("icon\\)01.png"); #285 review)
+      let depth = 0;
+      for (; i < value.length; i++) {
+        const d = value[i];
+        if (d === '\\') i++;
+        else if (d === '"' || d === "'") {
+          i++;
+          while (i < value.length && value[i] !== d) i += value[i] === '\\' ? 2 : 1;
+        } else if (d === '(') depth++;
+        else if (d === ')' && --depth === 0) break;
+      }
+    } else if ((c >= 48 && c <= 57) || c === 46) {
+      const before = i > 0 ? value[i - 1] : ' ';
+      // In a name (a01, #01f, Font-01: a hyphen after a name character
+      // continues it), not a number.
+      const inName = /[+-]/.test(before)
+        ? before === '-' && i > 1 && /[\w-]/.test(value[i - 2])
+        : /[\w#.]/.test(before);
+      if (inName) {
+        while (i + 1 < value.length && /[\w.]/.test(value[i + 1])) i++;
+        continue;
+      }
+      const m = /^(?:[0-9]*\.?[0-9]*)(?:e[+-]?\d+)?/i.exec(value.slice(i));
+      const text = m[0];
+      if (text !== '.' && !JSDOM26_NUMBER.test(text)) return true;
+      i += Math.max(text.length - 1, 0);
+    }
+  }
+  return false;
+}
 function versionedValue(name, value, mode, surface) {
   if (isLegacyMode(mode)) {
     const lower = value.toLowerCase();
@@ -1204,6 +1378,13 @@ function versionedValue(name, value, mode, surface) {
     const kind = CSS_WIDE_KEYWORD.test(value) ? lower : lower === 'auto' ? 'auto' : withVar ? 'var' : null;
     if (kind !== null && droppedBy(mode, kind, name)) return INVALID;
     if (kind === null && legacyMeasureRejects(name, value, surface)) return INVALID;
+    // (cssstyle 4.4 and later, which jsdom 26 installs; 4.3.1 keeps these
+    // values: colorKeywords 'css2'. Black box, cssstyle 4.3.1, 4.4.0, 4.6.0
+    // on their own; #285 review.)
+    if (mode === 'jsdom26' && colorKeywords !== 'css2' && (kind === null || kind === 'auto')) {
+      const own = jsdom26Value(name, value, lower);
+      if (own !== undefined) return own;
+    }
     // background-image's url()s as cssstyle reads them, the rest by its
     // grammar; with var() the value is kept as written (jsdom 26), but
     // not with var( in a string or another name (url("notvar(x).png"),
