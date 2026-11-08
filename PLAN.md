@@ -4851,6 +4851,57 @@ window (queueJavascriptURL). In a removed iframe a link's script never runs
 javascript: URL of a removed iframe" (25, 26, 29, 30), "a javascript: URL
 waits for the timers installed after the window".
 
+## 2026-11-08: keywords, boxes and sizes in the background shorthand, jsdom 27 and later (branch fix/264-background-keywords, #264 item 47)
+
+Black box, 27.4.0, 28.1.0, 29.1.1, 30.1.2 and 30.1.3 (style.background,
+setProperty and cssText; the accessor, getPropertyValue, the longhands and
+cssText):
+- A value of initial values only (`REPEAT`, `SCROLL`, `0% 0%`, `top left`,
+  `10px 20px` in 27 to 29) sets them as the eight longhands; `none` and
+  `transparent` stay as written.
+- `text` and `border-area` are clip boxes only: alone, `padding-box text`;
+  after another box, that box is the origin. One box is both; two equal
+  boxes are written once; `padding-box border-box` is left out. 27 and 28
+  write one box twice (`content-box content-box`) and reject two different
+  ones.
+- The boxes come before the attachment (`content-box fixed`).
+- A size of `auto` is left out, and so is a second `auto` (`10px auto` is
+  `10px`, in the longhand too).
+- 27 and 28: the `background` accessor (not getPropertyValue or cssText)
+  reads a layer without an image as its color alone (`red repeat-x` is
+  `red`, `fixed` is `''`).
+
+Fuzzed (1,500 values from keywords, boxes, positions, sizes, images and
+colors, set and attribute, five profiles): 4,868 differences from jsdom on
+main, 120 here, none new. Left (also on main), logged as #264 item 76:
+jsdom 30's accessor writes `transparent` for the last layer's color in a
+list; two clip-only boxes in one layer; 27 and 28 longhands after a lost
+two-value position; `-0` and `00`; CSS-wide keywords (27 and 28 write
+`initial initial ...`, 29 and later keep `INITIAL`).
+
+Performance (Node 22.17.1, 5 alternating runs, medians, 200,000 set and
+get pairs over six values): jsdom 30 28 -> 61 ms, 27.4.0 31 -> 70 ms.
+Per value (50,000 pairs): unchanged on 30 except a value of initial values
+only (7 -> 43 ms); on 27 other values 8-9 -> 10-13 ms. Reason: a value of
+initial values is eight declarations instead of one, as jsdom stores it
+(rare in tests); the 27 and 28 accessor reads the color from the written
+value (the image is first and the color last), falling back to the
+longhands only for parentheses that are not a url() or gradient first
+and for CSS-wide keywords (checked against the longhand reading on 22,000
+values: the 4 differences were a bug of the longhand reading, the fast
+path matches jsdom).
+
+Review (#288): the jsdom 27 and 28 accessor reads one layer with a
+comma in a color function as its color too (`fixed #ff0000` is
+`rgb(255, 0, 0)`; hasLayerComma, a scan without allocation: a read of
+two layers 18 -> 42 ns, `fixed rgb(1, 2, 3)` 17 -> 325 ns, now through
+the longhands, where it returned the wrong value before). A computed
+style's background of initial values alone (`repeat`, `scroll`, `0% 0%`)
+reads '' in the writable profiles (jsdom 27 and 28.0.0, as on el.style)
+and throws NoModificationAllowedError from 28.1.0; the branch had dropped
+the write. Still different there, on main too: the error's message, and
+a computed style's longhands after a background write.
+
 ## 2026-11-07: jsdom 26's own value rules (branch fix/264-jsdom26-numbers, #264 items 56, 58, part of 46)
 
 Surveyed black box on jsdom 26.1.0: every style property warpdom knows,
