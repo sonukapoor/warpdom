@@ -2966,6 +2966,9 @@ const JSDOM26_CASE = {
     '12px/calc(1EM) SERIF',
     '12px/calc(1EM+2EM) ARIAL',
     '12px "a var(--x)", SERIF',
+    // Nested functions, and a slash inside the size (#289 review).
+    'BOLD calc(1PX + calc(1EM + calc(1VW + 1VH))) Arial',
+    'calc(1PX + 1EM * calc(1VW / 1VH)) / 1EM SERIF',
   ],
   'background-image': ['NONE', 'URL(a.png)', 'url(A.PNG)', 'LINEAR-GRADIENT(red, blue)'],
   'background-position': ['LEFT TOP', 'CENTER 10PX'],

@@ -1336,8 +1336,45 @@ const CASED_FUNCTION = /(calc|url|(?:repeating-)?(?:linear|radial|conic)-gradien
 const FONT_SIZE_WORD =
   /^([+-]?[\d.]+(e[+-]?\d+)?([a-z]+|%)|[\w-]+\(.*|[^\s/]*\/.*|(xx?-|xxx-)?(small|large)|medium|smaller|larger)$/i;
 const QUOTED_STRINGS = /"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?/g;
-// (a function is one word: calc(1em + 2em), 12px/calc(1em + 2em))
-const FONT_WORDS = /"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|[^\s"'(]*\((?:[^()]|\([^()]*\))*\)?[^\s"']*|[^\s"']+/g;
+// font's words, split at whitespace outside strings and parentheses (a
+// function is one word, nested too: calc(1em + calc(2em)), 12px/calc(1em
+// + 2em)), as [text, index].
+function fontWords(value) {
+  const words = [];
+  let start = -1;
+  let depth = 0;
+  for (let i = 0; i <= value.length; i++) {
+    const c = value.charCodeAt(i);
+    if (i === value.length || (depth === 0 && (c === 32 || c === 9 || c === 10 || c === 13 || c === 12))) {
+      if (start !== -1) words.push([value.slice(start, i), start]);
+      start = -1;
+      continue;
+    }
+    if (start === -1) start = i;
+    if (c === 40) depth++;
+    else if (c === 41 && depth > 0) depth--;
+    else if (c === 92) i++;
+    else if (c === 34 || c === 39) {
+      // (a string runs to its closing quote, or the end)
+      let j = i + 1;
+      while (j < value.length && value.charCodeAt(j) !== c) j += value.charCodeAt(j) === 92 ? 2 : 1;
+      i = Math.min(j, value.length - 1);
+    }
+  }
+  return words;
+}
+// Whether a font word has a slash outside parentheses (12px/1.5, not
+// calc(12px / 2)).
+function topLevelSlash(word) {
+  let depth = 0;
+  for (let i = 0; i < word.length; i++) {
+    const c = word.charCodeAt(i);
+    if (c === 40) depth++;
+    else if (c === 41) depth--;
+    else if (c === 47 && depth === 0) return true;
+  }
+  return false;
+}
 function jsdom26Case(name, value) {
   const keywordsOnly = JSDOM26_KEYWORDS_ONLY.has(name);
   if (!keywordsOnly && !JSDOM26_PARSED.has(name) && !JSDOM26_OWN.has(name)) return value;
@@ -1353,16 +1390,17 @@ function jsdom26Case(name, value) {
   if (name === 'font') {
     // Words split at any whitespace; the families start after the size and
     // a line height (12px/1.5, 12px / 1.5, 12px /1.5, 12px/ 1.5).
-    const words = [...value.matchAll(FONT_WORDS)];
-    const size = words.findIndex((m) => FONT_SIZE_WORD.test(m[0]));
+    const words = fontWords(value);
+    const size = words.findIndex((w) => FONT_SIZE_WORD.test(w[0]));
     if (size < 0) return lowerOutsideStrings(value);
     const word = words[size][0];
+    const slash = topLevelSlash(word);
     const next = words[size + 1]?.[0];
     let last = size;
     if (word.endsWith('/')) last = size + 1;
-    else if (!word.includes('/') && next === '/') last = size + 2;
-    else if (!word.includes('/') && next?.startsWith('/')) last = size + 1;
-    const end = words[last] ? words[last].index + words[last][0].length : value.length;
+    else if (!slash && next === '/') last = size + 2;
+    else if (!slash && next?.startsWith('/')) last = size + 1;
+    const end = words[last] ? words[last][1] + words[last][0].length : value.length;
     return lowerOutsideStrings(value.slice(0, end)) + familiesInCase(value.slice(end));
   }
   return lowerOutsideStrings(value);

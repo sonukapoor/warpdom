@@ -4859,6 +4859,11 @@ writes 10,831 -> 11,018 ns (noise). Left for item 77: jsdom 26 simplifies
 calc() in font (`calc(12px + 1px)` is `calc(13px)`) and rejects a line
 height calc() with spaces (`12px / calc(1em + 2em)`); an escaped comma
 in a family name is invalid there.
+Second review: font's words are split by a scan that tracks
+parentheses and strings (fontWords; a function nested at any depth is
+one word), and only a slash outside parentheses starts a line height
+(`calc(1PX + 1EM * calc(1VW / 1VH)) / 1EM SERIF`). Font writes 10,632
+-> 10,205 ns (noise).
 
 ## 2026-11-08: keywords, boxes and sizes in the background shorthand, jsdom 27 and later (branch fix/264-background-keywords, #264 item 47)
 
