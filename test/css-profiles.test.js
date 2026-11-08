@@ -2795,6 +2795,106 @@ parity(
   },
   { jsdom: 26 },
 );
+// Case in jsdom 26 (black box, 26.1.0; #264 item 46): an element's style
+// (setProperty, the attribute) writes keywords and units in the properties
+// jsdom 26 parses in lowercase (width: AUTO is auto, 10PX 10px), generic
+// families too (Arial, SANS-SERIF is Arial, sans-serif; other names, and
+// strings, as written); calc(), url() or a gradient not in lowercase is
+// invalid. A style sheet rule keeps the case. (Read with getPropertyValue:
+// jsdom 26 lists font's longhands in an element's cssText, #264 item 77.)
+const JSDOM26_CASE = {
+  width: [
+    'AUTO',
+    'Auto',
+    '10PX',
+    '1Em',
+    'CALC(1px + 2px)',
+    'Calc(1px)',
+    'calc(1PX + 2PX)',
+    'Initial',
+    'VAR(--x)',
+    'var(--X)',
+  ],
+  height: ['AUTO', '2VMIN'],
+  top: ['AUTO'],
+  left: ['Auto'],
+  margin: ['AUTO', 'AUTO 1px AUTO', '1PX 2Px'],
+  'margin-top': ['AUTO'],
+  padding: ['10PX'],
+  'padding-left': ['1EM'],
+  float: ['LEFT', 'NONE', 'INLINE-START'],
+  clear: ['BOTH', 'NONE'],
+  'font-weight': ['BOLD', 'BOLDER'],
+  'font-style': ['ITALIC', 'OBLIQUE', 'NORMAL'],
+  'font-size': ['MEDIUM', 'X-LARGE', 'SMALLER', '12PX'],
+  'line-height': ['NORMAL', '1.5EM'],
+  'font-family': [
+    'SERIF',
+    'Arial, SANS-SERIF',
+    'FOO',
+    '"SERIF"',
+    'SERIF, MONOSPACE',
+    'Foo, Serif',
+    'EMOJI',
+    'MATH',
+    'UI-ROUNDED',
+    'Foo SERIF',
+  ],
+  font: [
+    'BOLD 12px Arial',
+    '12px SERIF',
+    '12px Arial, SANS-SERIF',
+    'ITALIC 1PX/1.5 ARIAL',
+    'LARGER SERIF',
+    '12px FOO',
+    '12px "SERIF"',
+    '1px "A b", Arial, SERIF',
+    'Bold Italic 1px Bold',
+    '1px Url(x)',
+  ],
+  'background-image': ['NONE', 'URL(a.png)', 'url(A.PNG)', 'LINEAR-GRADIENT(red, blue)'],
+  'background-position': ['LEFT TOP', 'CENTER 10PX'],
+  'background-repeat': ['REPEAT-X', 'NO-REPEAT'],
+  'background-attachment': ['FIXED', 'SCROLL'],
+  border: ['1px SOLID RED', 'THIN DASHED', '1PX solid RGB(1, 2, 3)'],
+  'border-top': ['MEDIUM SOLID CurrentColor'],
+  'border-width': ['THIN MEDIUM', '1PX'],
+  'border-left-width': ['THICK'],
+  'border-style': ['SOLID', 'SOLID DOTTED'],
+  'border-right-style': ['DASHED'],
+  'border-collapse': ['COLLAPSE'],
+  'border-spacing': ['1PX', '1PX 2PX'],
+  'flex-basis': ['AUTO', '10PX'],
+  flex: ['1 1 AUTO', '1 1 10PX'],
+  'flex-grow': ['CALC(1 + 1)'],
+  opacity: ['CALC(1)'],
+  color: ['RED', 'RGB(1, 2, 3)'],
+  display: ['BLOCK'],
+  'text-align': ['CENTER'],
+  cursor: ['POINTER'],
+};
+parity(
+  "style: keywords and units in jsdom 26's parsed properties in lowercase (jsdom 26, #264 item 46)",
+  (w) => {
+    const sheet = w.document.head.appendChild(w.document.createElement('style')).sheet;
+    return Object.entries(JSDOM26_CASE).flatMap(([name, values]) =>
+      values.flatMap((v) => {
+        const set = w.document.createElement('div');
+        set.style.setProperty(name, v);
+        const attr = w.document.createElement('div');
+        attr.setAttribute('style', `${name}: ${v}`);
+        sheet.insertRule(`div { ${name}: ${v} }`, 0);
+        return [
+          `${name}: ${v}`,
+          set.style.getPropertyValue(name),
+          attr.style.getPropertyValue(name),
+          sheet.cssRules[0].style.getPropertyValue(name),
+        ];
+      }),
+    );
+  },
+  { jsdom: 26 },
+);
 // cssstyle 4.3.1 (jsdom 26 with an older cssstyle) has none of these
 // rules: border-spacing: 0 stays 0, font-weight: x and opacity: 2 are kept
 // (black box, cssstyle 4.3.1 on its own; #285 review).

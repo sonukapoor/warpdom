@@ -4809,6 +4809,45 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-08: keywords and units in lowercase, jsdom 26 (branch fix/264-jsdom26-keyword-case, #264 item 46)
+
+Surveyed black box on jsdom 26.1.0: every style property, 49 upper-case
+keywords and 17 values with units, functions and colors, through
+setProperty, the style attribute and a style sheet rule. In an element's
+style (setProperty, the attribute), the properties jsdom 26 parses
+(JSDOM26_PARSED, JSDOM26_OWN, and the keyword properties
+background-attachment, background-repeat, border-style and its sides,
+border-collapse, clear, float, font-style) write keywords and units in
+lowercase: `width: AUTO` is `auto`, `10PX` is `10px`, `border: 1px SOLID
+RED` is `1px solid red`. Generic families are lowercased too (serif,
+sans-serif, monospace, cursive, fantasy, system-ui, ui-serif,
+ui-sans-serif, ui-monospace, ui-rounded, math; not emoji or fangsong), but
+other family names and strings stay as written (`Arial, SANS-SERIF` is
+`Arial, sans-serif`). In font, the words up to the size are keywords.
+`calc()`, `url()` or a gradient not in lowercase is invalid (`CALC(1px)`,
+`URL(a.png)` read `''`); color functions are not (`RGB(` is fine).
+background-image lowercases `NONE` alone (`NONE, NONE` stays). Rules keep
+the case. cssstyle 4.3.1 on its own differs (`width: 10PX` is invalid,
+`float: LEFT` kept), so this applies with cssstyle 4.4 and later, as the
+other jsdom 26 rules do. css.js jsdom26Case, before jsdom26Numbers in
+declaredValue.
+
+Survey differences, before -> after: keywords 128 -> 19, units and
+functions 193 -> 22. What is left also differs with lowercase input
+(#264 item 77): border-*-style none and hidden, contain in width and
+height, float: top and font-style: left are invalid in jsdom 26; font of
+a size alone (item 63); calc() simplified in border widths, line-height,
+flex-grow and background; font's longhands listed in an element's
+cssText.
+
+Performance (Node 22.17.1, 5 alternating runs, medians, 26.1.0 profile,
+two setProperty writes each): cache misses in lowercase 2,661 -> 2,711 ns
+(noise), in upper case 2,600 -> 2,742 ns (the value is now read as a
+valid lowercase one, as lowercase misses are), cache hits 194 -> 197 ns
+(noise). A first version used a regular expression replace and a
+function scan for every value (3,427 ns); ASCII text without quotes or
+parentheses now takes toLowerCase().
+
 ## 2026-11-07: jsdom 26's own value rules (branch fix/264-jsdom26-numbers, #264 items 56, 58, part of 46)
 
 Surveyed black box on jsdom 26.1.0: every style property warpdom knows,

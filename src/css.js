@@ -1094,9 +1094,12 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
       out = /^inherit$/i.test(value) ? INVALID : (legacyFont(value, surface.legacyFont) ?? INVALID);
     else {
       let written = isSpecMode(mode) ? identValue(name, value) : value;
-      // (an integer Number() changes has 16 digits: most values skip this)
-      if (mode === 'jsdom26' && colorKeywords !== 'css2' && (written.length >= 16 || JSDOM26_BORDERS.has(name)))
-        written = jsdom26Numbers(name, written);
+      if (mode === 'jsdom26' && colorKeywords !== 'css2') {
+        if (/[A-Z]/.test(written)) written = jsdom26Case(name, written);
+        // (an integer Number() changes has 16 digits: most values skip this)
+        if (written !== null && (written.length >= 16 || JSDOM26_BORDERS.has(name)))
+          written = jsdom26Numbers(name, written);
+      }
       out = written === null ? INVALID : versionedValue(name, written, mode, surface);
       if (out === undefined) {
         const checked = isSpecMode(mode) || JSDOM26_VALIDATED.has(name);
@@ -1294,6 +1297,77 @@ function jsdom26Numbers(name, value) {
   if (kept.length === 0 || parts.length - kept.length > 1) return null;
   if (parts.some((part) => overflowingWidth(part) && jsdom26BadNumber(part))) return null;
   return kept.some(isBorderWidth) ? null : kept.join(' ');
+}
+// Case in the properties jsdom 26 parses (black box, 26.1.0; #264 item
+// 46): keywords and units in lowercase (width: AUTO is auto, 10PX 10px),
+// generic families too (Arial, SANS-SERIF is Arial, sans-serif; other
+// names and strings as written); calc(), url() or a gradient not in
+// lowercase is invalid (null). Colors, background and var() read case
+// themselves. Style sheet rules keep the case (parsed elsewhere).
+const JSDOM26_KEYWORDS_ONLY = new Set([
+  'background-attachment',
+  'background-repeat',
+  'border-bottom-style',
+  'border-collapse',
+  'border-left-style',
+  'border-right-style',
+  'border-style',
+  'border-top-style',
+  'clear',
+  'float',
+  'font-style',
+]);
+const GENERIC_FAMILIES = new Set([
+  'cursive',
+  'fantasy',
+  'math',
+  'monospace',
+  'sans-serif',
+  'serif',
+  'system-ui',
+  'ui-monospace',
+  'ui-rounded',
+  'ui-sans-serif',
+  'ui-serif',
+]);
+const CASED_FUNCTION = /(calc|url|(?:repeating-)?(?:linear|radial|conic)-gradient)\(/gi;
+// The size in font (12px, 1px/1.5, larger), after which the families come.
+const FONT_SIZE_WORD =
+  /^([+-]?[\d.]+(e[+-]?\d+)?([a-z]+|%)|[\w.%-]*\/.*|(xx?-|xxx-)?(small|large)|medium|smaller|larger)$/i;
+function jsdom26Case(name, value) {
+  const keywordsOnly = JSDOM26_KEYWORDS_ONLY.has(name);
+  if (!keywordsOnly && !JSDOM26_PARSED.has(name) && !JSDOM26_OWN.has(name)) return value;
+  if (name === 'background' || name.endsWith('color') || /var\(/i.test(value)) return value;
+  if (value.includes('('))
+    for (const [, fn] of value.matchAll(CASED_FUNCTION)) if (fn !== fn.toLowerCase()) return null;
+  // background-image: none alone (NONE, NONE and url()s as written).
+  if (name === 'background-image') return ONE_IDENT.test(value) ? asciiLower(value) : value;
+  if (name === 'font-family') return familiesInCase(value);
+  if (name === 'font') {
+    const words = splitOutside(value.trim(), ' ');
+    const size = words.findIndex((w) => FONT_SIZE_WORD.test(w));
+    if (size < 0) return lowerOutsideStrings(value);
+    const head = words.slice(0, size + 1).join(' ');
+    return `${lowerOutsideStrings(head)} ${familiesInCase(words.slice(size + 1).join(' '))}`.trim();
+  }
+  return lowerOutsideStrings(value);
+}
+// A family list: an unquoted generic family in lowercase, the rest as written.
+function familiesInCase(value) {
+  return splitOutside(value, ',')
+    .map((item) => {
+      const lower = asciiLower(item.trim());
+      return GENERIC_FAMILIES.has(lower) ? item.replace(item.trim(), lower) : item;
+    })
+    .join(',');
+}
+// ASCII lowercase outside strings and url() text.
+function lowerOutsideStrings(value) {
+  // (toLowerCase() changes ASCII letters only in ASCII text)
+  if (!/["'(\u0080-\uffff]/.test(value)) return value.toLowerCase();
+  return value.replace(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|url\([^)]*\))|[^"'u]+|./g, (m, kept) =>
+    kept === undefined ? asciiLower(m) : m,
+  );
 }
 function jsdom26Value(name, value, lower) {
   const parsed = JSDOM26_PARSED.has(name) || JSDOM26_OWN.has(name);
