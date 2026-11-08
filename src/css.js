@@ -1245,11 +1245,13 @@ const JSDOM26_REREAD = new Set([
 const BIG_INTEGER =
   /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|url\((?:[^)\\]|\\[\s\S])*\)|(^|[\s(,/])([+-]?[1-9]\d{21,})(?=[a-z%]*(?:$|[\s),/]))/gi;
 const JSDOM26_BORDERS = new Set(['border', 'border-top', 'border-right', 'border-bottom', 'border-left']);
-// A border width: a number with a unit, not negative (1e21, -1e21px or
-// notInfinity is none and leaves the value to the grammar: invalid;
-// #285 review).
-const NUMBER_WITH_UNIT = /^\+?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?[a-z]+$/i;
+// A dropped border width is a length (LENGTH: not negative, not 1e21,
+// 1e21deg or notInfinity, which are left to the grammar: invalid). It
+// still takes the width's place, so a second width is invalid (1e21px 1px
+// solid red, 1e21px thin solid). Any whitespace separates. #285 review.
 const OVERFLOWS = /\de\+|Infinity/;
+const BORDER_WIDTH_KEYWORD = /^(?:thin|medium|thick)$/i;
+const overflowingWidth = (part) => LENGTH.test(part) && OVERFLOWS.test(canonicalNumbers(part));
 // 1e+21 as 1e21; past Number as an exponent that still reads as a number
 // (1 and 400 zeros is 1e400, Infinity as 1e400 is; #285 review).
 function bigInteger(digits) {
@@ -1266,11 +1268,13 @@ function jsdom26Numbers(name, value) {
   let out = value;
   if (out.length >= 22 && /\d{22}/.test(out))
     out = out.replace(BIG_INTEGER, (m, before, digits) => (digits === undefined ? m : before + bigInteger(digits)));
-  if (!JSDOM26_BORDERS.has(name)) return out;
-  const parts = splitOutside(out.trim(), ' ').filter((part) => part !== '');
-  const kept = parts.filter((part) => !NUMBER_WITH_UNIT.test(part) || !OVERFLOWS.test(canonicalNumbers(part)));
+  // (an overflowing width has a digit before an e, or is past Number)
+  if (!JSDOM26_BORDERS.has(name) || !/\de/i.test(out)) return out;
+  const parts = splitOutside(out.trim().replace(/\s+/g, ' '), ' ').filter((part) => part !== '');
+  const kept = parts.filter((part) => !overflowingWidth(part));
   if (kept.length === parts.length) return out;
-  return kept.length === 0 ? null : kept.join(' ');
+  if (kept.length === 0 || parts.length - kept.length > 1) return null;
+  return kept.some((part) => LENGTH.test(part) || BORDER_WIDTH_KEYWORD.test(part)) ? null : kept.join(' ');
 }
 function jsdom26Value(name, value, lower) {
   const parsed = JSDOM26_PARSED.has(name) || JSDOM26_OWN.has(name);

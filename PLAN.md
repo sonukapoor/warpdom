@@ -4902,6 +4902,16 @@ warpdom had dropped it.
 Seventh review (Copilot): the exponent is at least 309, as 2 and 308
 zeros is past Number while 1e308 is not (it had been 1e+308).
 
+Copilot summary on the seventh round: the border filter split on spaces
+only and dropped any overflowing number with letters. In jsdom 26 any
+whitespace separates (`1e21px\tsolid red` is `solid red`), only a length
+is dropped (`1e21deg solid`, `1e21zz solid red` invalid), and the dropped
+width still takes the width's place (`1e21px 1px solid red`,
+`1e21px thin solid`, `1e21px 1e21px solid red` invalid). Border writes
+without a digit before an e skip the split now. Border writes, jsdom 26
+profile, 5 runs interleaved, median ns per write: 429 before, 424 after
+(noise).
+
 ## 2026-11-07: a custom property in a style sheet, jsdom 29 and later (branch fix/264-custom-sheet, #264 item 59)
 
 jsdom 29.1.1 to 30.1.3 re-serialize a custom property's value when they
