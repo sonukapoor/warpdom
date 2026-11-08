@@ -4867,6 +4867,13 @@ skips escapes and strings in url() and calc() (url("icon\\)01.png") was
 invalid). Performance: 5 alternating runs, medians, 26.1.0, a write of a
 new value each time: 930 -> 942 ns (about 1%, noise level); values
 shorter than 22 characters skip the new step unless they are a border.
+Third review (Copilot, CodeRabbit): the big-integer step runs only for
+properties jsdom 26 parses, not with var(), and leaves strings, url()s
+and numbers with a leading zero alone, as jsdom 26 does (z-index, --id,
+content strings, url(a/1000000000000000000000), var(--Infinity) in a
+border kept as written; 0000000000000000000001px invalid). A duplicate
+flex-basis key in the test table had hidden 13 cases; merged (they pass).
+Performance unchanged (934 -> 929 ns, noise).
 
 ## 2026-11-07: a family list with a comma before var(), jsdom 27 and later (branch fix/264-family-var-comma, #264 item 57)
 

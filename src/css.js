@@ -1231,14 +1231,22 @@ const JSDOM26_REREAD = new Set([
 // as 1e21px, which serializes so). Its border shorthands drop a width that
 // serializes with e+ or as Infinity and keep the rest (1e21px solid red is
 // solid red), invalid (null) when nothing is left. Black box, 26.1.0;
-// #285 review.
-const BIG_INTEGER = /(^|[\s(,/])([+-]?\d{22,})(?=[a-z%]*(?:$|[\s),/]))/gi;
+// #285 review. Only in the properties jsdom 26 parses, outside strings
+// and url()s, not with var() (kept as written: z-index, --id,
+// url(a/1000000000000000000000), var(--Infinity)), and not with a leading
+// zero (invalid: 0000000000000000000001px).
+// (strings and url()s match first and are kept)
+const BIG_INTEGER =
+  /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|url\([^)]*\)|(^|[\s(,/])([+-]?[1-9]\d{21,})(?=[a-z%]*(?:$|[\s),/]))/gi;
 const JSDOM26_BORDERS = new Set(['border', 'border-top', 'border-right', 'border-bottom', 'border-left']);
 const OVERFLOWS = /\de\+|Infinity/;
 function jsdom26Numbers(name, value) {
+  if ((!JSDOM26_PARSED.has(name) && !JSDOM26_OWN.has(name)) || value.includes('var(')) return value;
   let out = value;
   if (out.length >= 22 && /\d{22}/.test(out))
-    out = out.replace(BIG_INTEGER, (m, before, digits) => before + String(Number(digits)).replace('e+', 'e'));
+    out = out.replace(BIG_INTEGER, (m, before, digits) =>
+      digits === undefined ? m : before + String(Number(digits)).replace('e+', 'e'),
+    );
   if (!JSDOM26_BORDERS.has(name)) return out;
   const parts = splitOutside(out.trim(), ' ').filter((part) => part !== '');
   const kept = parts.filter((part) => !OVERFLOWS.test(canonicalNumbers(part)));

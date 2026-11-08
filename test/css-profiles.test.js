@@ -2255,6 +2255,7 @@ const JSDOM26_VALUES = {
     '00',
     'x',
     '1px 2px',
+    '1000000000000000000000px',
   ],
   'flex-grow': [
     '0',
@@ -2304,6 +2305,8 @@ const JSDOM26_VALUES = {
     '1000000000000000000000px',
     '1234567890123456789012px',
     '100000000000000000000px',
+    '0000000000000000000001px',
+    '01000000000000000000000px',
   ],
   margin: ['1px 01px', '-.5px', '01px', '1e400px'],
   'line-height': ['01', '1.', '001.5'],
@@ -2311,9 +2314,13 @@ const JSDOM26_VALUES = {
   color: ['rgb(01, 2, 3)', 'rgb(1, 2, 3)'],
   'background-position': ['01px 2px'],
   'border-width': ['1e+1px', '1000000000000000000000px'],
-  'flex-basis': ['1000000000000000000000px'],
-  'z-index': ['01', '1e+1'],
-  transform: ['scale(01)'],
+  // (a big integer stays as written where jsdom 26 does not parse, in
+  // strings, url()s and with var(); one with a leading zero is invalid;
+  // #285 review)
+  'z-index': ['01', '1e+1', '1000000000000000000000'],
+  transform: ['scale(01)', 'scale(1000000000000000000000)'],
+  '--id': ['1234567890123456789012'],
+  content: ['"id 1000000000000000000000 end"'],
   opacity: ['2', '-1', '150%', '-1%', '1e39', '1e400', '-1e400', '0.5', '01', '.5', '1e1', '50%'],
   // (a width that overflows is dropped, the rest kept; #285 review)
   border: [
@@ -2323,8 +2330,10 @@ const JSDOM26_VALUES = {
     '1e21px solid red',
     '1000000000000000000000px solid red',
     '1e400px solid',
+    'var(--Infinity)',
+    '1000000000000000000000px solid var(--c)',
   ],
-  'border-top': ['1e39px', '1e39px solid red'],
+  'border-top': ['1e39px', '1e39px solid red', '1px solid var(--Infinity)'],
   background: [
     '1e39px',
     'url(sprite+hover.png)',
@@ -2333,9 +2342,15 @@ const JSDOM26_VALUES = {
     // (an escaped parenthesis in a url; #285 review)
     'url("a\\)01.png") red',
   ],
-  'background-image': ['url("icon\\)01.png")', 'url(icon\\)01.png)', 'url("a\\(01.png")'],
+  'background-image': [
+    'url("icon\\)01.png")',
+    'url(icon\\)01.png)',
+    'url("a\\(01.png")',
+    'url("icons/1000000000000000000000/a.png")',
+    'url(a/1000000000000000000000)',
+  ],
   // (a quoted number; a string with an escaped quote is #264 item 62)
-  'font-family': ['Font-01 Sans', 'Font-1 Sans', '"01", serif'],
+  'font-family': ['Font-01 Sans', 'Font-1 Sans', '"01", serif', '"Build 1000000000000000000000 Sans"'],
   flex: [
     '1e39',
     '1e400',
