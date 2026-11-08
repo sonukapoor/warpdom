@@ -1938,6 +1938,27 @@ const BG_REPEATS_4_4 = new Set([...BG_REPEATS, 'space', 'round']);
 const BG_ATTACHMENTS = new Set(['scroll', 'fixed']);
 const BG_ATTACHMENTS_4_4 = new Set([...BG_ATTACHMENTS, 'local']);
 const BG_BOXES = new Set(['border-box', 'padding-box', 'content-box']);
+// Boxes only background-clip takes (jsdom 27 and later read them in
+// background; black box, 27.4.0 to 30.1.3, #264 item 47).
+const BG_CLIP_ONLY = new Set(['text', 'border-area']);
+// The origin and clip boxes of a background layer (backgroundLayer), as
+// jsdom 27 and later write them (black box, 27.4.0 to 30.1.3, #264 item
+// 47). jsdom 27 and 28: one box, content-box, text and border-area given
+// twice. jsdom 29 and later: one box sets both, a clip-only one the clip
+// beside padding-box; of two, a clip-only first one is left out; the two
+// once when the same, nothing for the initial padding-box border-box.
+function backgroundBoxes(boxes, pre29) {
+  if (pre29) return boxes[0] === 'border-box' || boxes[0] === 'padding-box' ? boxes : [boxes[0], boxes[0]];
+  const own = boxes.length === 2 && BG_CLIP_ONLY.has(boxes[0]) ? boxes.slice(1) : boxes;
+  let [origin, clip] = own;
+  // One box is both, except a clip-only box (text is padding-box text).
+  if (own.length === 1) {
+    clip = origin;
+    if (BG_CLIP_ONLY.has(clip)) origin = 'padding-box';
+  }
+  if (origin === clip) return [origin];
+  return origin === 'padding-box' && clip === 'border-box' ? [] : [origin, clip];
+}
 const BG_POSITIONS = new Set(['left', 'right', 'top', 'bottom', 'center']);
 const BG_SIZES = /^(auto|cover|contain)$/i;
 const BG_DIMENSION = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?([a-z]+|%)$/i;
@@ -2150,7 +2171,7 @@ function backgroundLayer(value, mode, surface, legacy) {
       else if (!put('repeat', token)) return INVALID;
     } else if (attachments.has(lower)) {
       if (!put('attachment', token)) return INVALID;
-    } else if (BG_BOXES.has(lower) && !legacy) {
+    } else if ((BG_BOXES.has(lower) || BG_CLIP_ONLY.has(lower)) && !legacy) {
       if (found.boxes !== null && found.boxes.length === 2) return INVALID;
       (found.boxes ??= []).push(lower);
     } else if (BG_POSITIONS.has(lower) || BG_DIMENSION.test(token) || ZERO.test(token) || /^calc\(/i.test(token)) {
@@ -2188,10 +2209,10 @@ function backgroundLayer(value, mode, surface, legacy) {
           // One or two lengths or autos, or cover or contain alone.
           if (k === j + 1 || (k === j + 3 && tokens.slice(j + 1, k).some((t) => /^(cover|contain)$/i.test(t))))
             return INVALID;
-          found.size = tokens
-            .slice(j + 1, k)
-            .map(sizeToken)
-            .join(' ');
+          const size = tokens.slice(j + 1, k).map(sizeToken);
+          // A second auto is left out: 10px auto is 10px (black box, 27.4.0 to 30.1.3).
+          if (size.length === 2 && size[1] === 'auto') size.pop();
+          found.size = size.join(' ');
           i = k - 1;
         }
       }
@@ -2234,18 +2255,30 @@ function backgroundLayer(value, mode, surface, legacy) {
       position = layers[0].map((t) => (ZERO.test(t) ? '0px' : t.replace(/ ([+-]?0+\.?0*|\.0+)$/, ' 0px'))).join(' ');
     }
   }
-  if (position !== null) parts.push(found.size !== null ? `${position} / ${found.size}`.trim() : position);
+  // (The initial position and size: nothing, as jsdom 30 writes 0% 0% and
+  // 0% 0% / auto; black box, 30.1.2 and 30.1.3, #264 item 47.)
+  // The initial size is left out too: left / auto is left center.
+  const size = found.size === 'auto' ? null : found.size;
+  if (position === '0% 0%' && size === null) position = null;
+  if (position !== null && (position !== '' || size !== null))
+    parts.push(size !== null ? `${position} / ${size}`.trim() : position);
   const repeat = found.repeat === null ? null : shortRepeat(found.repeat.toLowerCase());
   if (repeat !== null && repeat !== 'repeat') parts.push(repeat);
+  // The boxes before the attachment: fixed content-box is content-box fixed.
+  if (found.boxes !== null) {
+    const pre29 = mode === 'jsdom27' && !surface?.key?.startsWith('jsdom29');
+    if (found.boxes.length === 2 && pre29) return INVALID;
+    parts.push(...backgroundBoxes(found.boxes, pre29));
+  }
   if (found.attachment !== null && found.attachment.toLowerCase() !== 'scroll')
     parts.push(found.attachment.toLowerCase());
-  if (found.boxes !== null) {
-    if (found.boxes.length === 2 && mode === 'jsdom27' && !surface?.key?.startsWith('jsdom29')) return INVALID;
-    parts.push(...found.boxes);
-  }
   if (color !== null && color !== 'transparent') parts.push(color);
   if (parts.length) return parts.join(' ');
-  return dropped ? IMAGE_DROPPED : '';
+  // Initial values only: jsdom 27 and later set them as the longhands
+  // (REPEAT, scroll, 0% 0%, none repeat, TRANSPARENT), except none and
+  // transparent as written (black box, 27.4.0 to 30.1.3, #264 item 47).
+  const trimmed = value.trim();
+  return dropped || (trimmed !== 'none' && trimmed !== 'transparent') ? IMAGE_DROPPED : '';
 }
 
 // Images jsdom 27 and later read in background (its grammar takes them,
@@ -3684,18 +3717,60 @@ function writeComputed(s, name, value) {
     // As on el.style (black box, jsdom 20 to 28.0.0): an empty value removes
     // the property, an invalid one is ignored, others are serialized.
     const text = raw === '' ? '' : declaredValue(name, raw, s.mode, s.surface);
-    if (text !== INVALID && text !== INITIALS) (s.overrides ??= new Map()).set(name, text);
+    // (a background of initial values alone reads '', as on el.style:
+    // jsdom 27.4.0 after background = 'repeat'; #288 review)
+    if (text !== INVALID) (s.overrides ??= new Map()).set(name, text === INITIALS ? '' : text);
     return;
   }
   // Removing a declaration from a computed style throws, as from jsdom 28.1.0.
   if (raw === '') readOnly();
   const text = declaredValue(name, raw, s.mode, s.surface);
-  if (text === INVALID || text === INITIALS) return;
+  // (one of initial values alone throws too: background = 'repeat',
+  // black box 28.1.0 to 30.1.3; #288 review)
+  if (text === INITIALS) readOnly();
+  if (text === INVALID) return;
   (s.overrides ??= new Map()).set(name, text);
   const es = s.element[S];
   const rev = es.doc[S].treeRev ?? 0;
   if (es.computedOverrides?.rev !== rev) es.computedOverrides = { rev, values: new Map() };
   es.computedOverrides.values.set(name, text);
+}
+
+// Whether a comma separates layers: one outside parentheses and strings.
+function hasLayerComma(value) {
+  const comma = value.indexOf(',');
+  if (comma === -1) return false;
+  if (!value.includes('(') && !value.includes('"') && !value.includes("'")) return true;
+  let depth = 0;
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    if (c === 40) depth++;
+    else if (c === 41) depth--;
+    else if (c === 34 || c === 39) {
+      const close = value.indexOf(value[i], i + 1);
+      if (close === -1) return false;
+      i = close;
+    } else if (c === 44 && depth === 0) return true;
+  }
+  return false;
+}
+
+// The background accessor of jsdom 27 and 28 (composedValue). A layer is
+// written image first and color last, so without a parenthesis there is no
+// image and the color, if any, is the last word; a url() or gradient first
+// is an image. Other values (calc(), rgb(), CSS-wide keywords) read the
+// longhands, which expands the shorthand again.
+const BG_IMAGE_FIRST = /^(url|(-webkit-)?(repeating-)?(linear|radial|conic)-gradient)\(/i;
+const BG_CSS_WIDE = /(^|\s)(initial|inherit|unset|revert|revert-layer)(\s|$)/i;
+function backgroundColorOnly(style, value) {
+  if (!value.includes('(') && !BG_CSS_WIDE.test(value)) {
+    const last = value.slice(value.lastIndexOf(' ') + 1);
+    const lower = last.toLowerCase();
+    return lower !== 'transparent' && (lower === 'currentcolor' || resolveColor(lower) !== null) ? last : '';
+  }
+  if (BG_IMAGE_FIRST.test(value) || valueOf(style, 'background-image') !== 'none') return value;
+  const color = valueOf(style, 'background-color');
+  return color === 'transparent' ? '' : color;
 }
 
 const valueOf = (style, name) => {
@@ -4121,6 +4196,21 @@ function composedValue(style, name) {
       ? boxAccessorValue(s.decls, name)
       : boxValue(s.decls, name);
   const value = valueOf(style, name);
+  // jsdom 27 and 28: the background accessor reads a layer without an
+  // image as its color alone (background: red repeat-x is red; fixed is
+  // ''), getPropertyValue() and cssText as written (black box, 27.4.0 and
+  // 28.1.0, #264 item 47).
+  if (
+    name === 'background' &&
+    s.mode === 'jsdom27' &&
+    !s.surface?.key?.startsWith('jsdom29') &&
+    value !== '' &&
+    value !== 'none' &&
+    value !== 'transparent' &&
+    // (one layer: a comma in rgb() is not a separator; #288 review)
+    !hasLayerComma(value)
+  )
+    return backgroundColorOnly(style, value);
   // cssstyle 4.4 and later (jsdom 26): the margin and padding accessors
   // read the shortest form, getPropertyValue() and cssText as written.
   return (name === 'margin' || name === 'padding') && isLegacyMode(s.mode) && s.surface?.colors !== 'css2'

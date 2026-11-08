@@ -530,9 +530,10 @@ const BACKGROUNDS = [
   'url("")',
   'URL(a.png)',
 ];
-// Where jsdom 27 and later set every longhand to its initial value (cssText
-// lists them; not modeled).
-const ALL_INITIAL = new Set(['0 0', '-0', '00', 'top left', '10px 20px', '1px 2px']);
+// A zero written otherwise, where jsdom 27 to 29 set every longhand to its
+// initial value (cssText lists them; not modeled; 0 0, top left and the
+// other lost positions are, #264 item 47).
+const ALL_INITIAL = new Set(['-0', '00']);
 for (const jsdom of [30, 29, 28, 27, 26, 25, 22, 20])
   parity(
     `style: the background shorthand (jsdom ${jsdom})`,
@@ -543,6 +544,100 @@ for (const jsdom of [30, 29, 28, 27, 26, 25, 22, 20])
         const text = w.document.createElement('div').style;
         text.cssText = `background: ${value}`;
         return [`${value} -> ${set.cssText}`, text.cssText];
+      }),
+    { jsdom },
+  );
+
+// Keywords, boxes and sizes in the background shorthand, jsdom 27 and later
+// (black box, 27.4.0 to 30.1.3, #264 item 47): a value of initial values only
+// sets them as the longhands (none and transparent as written); text and
+// border-area are clip boxes only (padding-box text); one box is both, two
+// equal boxes one; the boxes come before the attachment; a size of auto, and
+// a second auto, are left out; jsdom 27 and 28 read background as the color
+// when there is no image, and reject two boxes.
+const BACKGROUND_KEYWORDS = [
+  'REPEAT',
+  'repeat',
+  'SCROLL',
+  'TEXT',
+  'BORDER-AREA',
+  'REPEAT-X',
+  'FIXED',
+  'LEFT',
+  'None',
+  'TRANSPARENT',
+  '0% 0%',
+  'content-box',
+  'border-box',
+  'padding-box border-box',
+  'border-box border-box',
+  'content-box padding-box',
+  'text border-box',
+  'content-box text',
+  'border-area',
+  'fixed content-box',
+  'local text',
+  'fixed border-box padding-box',
+  'left / auto',
+  'left / AUTO',
+  'left / auto auto',
+  'left / 10px auto',
+  'left / auto 10px',
+  'left / auto fixed',
+  'left top / auto',
+  'red left top / auto',
+  '0% 0% / auto',
+  'red',
+  'red fixed',
+  'url(a.png) red',
+  'repeat-x red',
+  'red, blue',
+  // A comma in a color function is no layer separator (#288 review).
+  'fixed #ff0000',
+  'fixed hsl(0, 100%, 50%)',
+  'repeat rgb(1,2,3)',
+  'fixed rgb(1, 2, 3), blue',
+];
+for (const jsdom of [27, 28, 29, 30, '30.1.3'])
+  parity(
+    `style: keywords, boxes and sizes in the background shorthand (jsdom ${jsdom})`,
+    (w) =>
+      BACKGROUND_KEYWORDS.flatMap((value) => {
+        const set = w.document.createElement('div').style;
+        set.background = value;
+        const text = w.document.createElement('div').style;
+        text.cssText = `background: ${value}`;
+        return [
+          value,
+          set.background,
+          set.backgroundOrigin,
+          set.backgroundClip,
+          set.backgroundSize,
+          set.cssText,
+          text.cssText,
+        ];
+      }),
+    { jsdom },
+  );
+
+// A computed style's background of initial values alone (repeat, scroll,
+// 0% 0%) after another: jsdom 27 and 28.0.0 leave what a fresh computed
+// style reads, 28.1.0 and later throw (#288 review).
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `style: a computed background of initial values alone (jsdom ${jsdom})`,
+    (w) =>
+      ['repeat', 'scroll', '0% 0%'].map((value) => {
+        const el = w.document.body.appendChild(w.document.createElement('div'));
+        const fresh = w.getComputedStyle(w.document.body.appendChild(w.document.createElement('div'))).background;
+        const cs = w.getComputedStyle(el);
+        cs.background = 'red';
+        try {
+          cs.background = value;
+        } catch (error) {
+          return `${value}: ${error.name}`;
+        }
+        return `${value}: ${cs.background === fresh ? 'as a fresh one' : cs.background}`;
       }),
     { jsdom },
   );
