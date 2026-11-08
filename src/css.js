@@ -1094,8 +1094,8 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
       out = /^inherit$/i.test(value) ? INVALID : (legacyFont(value, surface.legacyFont) ?? INVALID);
     else {
       let written = isSpecMode(mode) ? identValue(name, value) : value;
-      // (a big integer needs 22 characters: most values skip this)
-      if (mode === 'jsdom26' && colorKeywords !== 'css2' && (written.length >= 22 || JSDOM26_BORDERS.has(name)))
+      // (an integer Number() changes has 16 digits: most values skip this)
+      if (mode === 'jsdom26' && colorKeywords !== 'css2' && (written.length >= 16 || JSDOM26_BORDERS.has(name)))
         written = jsdom26Numbers(name, written);
       out = written === null ? INVALID : versionedValue(name, written, mode, surface);
       if (out === undefined) {
@@ -1232,9 +1232,10 @@ const JSDOM26_REREAD = new Set([
   'background',
   'flex',
 ]);
-// jsdom 26 writes a number as Number() does, so an integer of 22 digits or
-// more has an exponent (1000000000000000000000px is 1e+21px; written here
-// as 1e21px, which serializes so). Its border shorthands drop a width that
+// jsdom 26 writes a number as Number() does, so an integer of 16 digits or
+// more is rounded past 2 ** 53 (9007199254740993px is 9007199254740992px)
+// and has an exponent from 1e21 (1000000000000000000000px and 21 nines are
+// 1e+21px; written here as 1e21px, which serializes so). Its border shorthands drop a width that
 // serializes with e+ or as Infinity and keep the rest (1e21px solid red is
 // solid red), invalid (null) when nothing is left. Black box, 26.1.0;
 // #285 review. Only in the properties jsdom 26 parses, outside strings
@@ -1243,7 +1244,7 @@ const JSDOM26_REREAD = new Set([
 // zero (invalid: 0000000000000000000001px).
 // (strings and url()s match first and are kept)
 const BIG_INTEGER =
-  /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|url\((?:[^)\\]|\\[\s\S])*\)|(^|[\s(,/])([+-]?[1-9]\d{21,})(?=[a-z%]*(?:$|[\s),/]))/gi;
+  /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|url\((?:[^)\\]|\\[\s\S])*\)|(^|[\s(,/])([+-]?[1-9]\d{15,})(?=[a-z%]*(?:$|[\s),/]))/gi;
 const JSDOM26_BORDERS = new Set(['border', 'border-top', 'border-right', 'border-bottom', 'border-left']);
 // A dropped border width is a length (LENGTH: not negative, not 1e21,
 // 1e21deg or notInfinity, which are left to the grammar: invalid). It
@@ -1266,7 +1267,7 @@ function jsdom26Numbers(name, value) {
   if ((!JSDOM26_PARSED.has(name) && !JSDOM26_OWN.has(name)) || name === 'opacity' || value.includes('var('))
     return value;
   let out = value;
-  if (out.length >= 22 && /\d{22}/.test(out))
+  if (out.length >= 16 && /\d{16}/.test(out))
     out = out.replace(BIG_INTEGER, (m, before, digits) => (digits === undefined ? m : before + bigInteger(digits)));
   // (an overflowing width has a digit before an e, or is past Number)
   if (!JSDOM26_BORDERS.has(name) || !/\de/i.test(out)) return out;

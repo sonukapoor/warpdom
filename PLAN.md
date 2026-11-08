@@ -4912,6 +4912,15 @@ without a digit before an e skip the split now. Border writes, jsdom 26
 profile, 5 runs interleaved, median ns per write: 429 before, 424 after
 (noise).
 
+Eighth review (Copilot): 21 nines is 1e+21 through Number(), and jsdom 26
+rounds every integer past 2 ** 53 so (9007199254740993px is
+9007199254740992px, 123456789012345678901px is 123456789012345680000px);
+warpdom had kept integers below 22 digits as written. The step now takes
+integers from 16 digits (decimals were already rounded). Values of 16
+characters or more reach it; median ns per write, 5 runs interleaved:
+border writes 422 before, 422 after; long values (background, font-family,
+flex-grow, margin) 581 before, 553 after (noise).
+
 ## 2026-11-07: a custom property in a style sheet, jsdom 29 and later (branch fix/264-custom-sheet, #264 item 59)
 
 jsdom 29.1.1 to 30.1.3 re-serialize a custom property's value when they

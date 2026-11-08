@@ -2517,9 +2517,19 @@ const JSDOM26_VALUES = {
     '100000000000000000000px',
     '0000000000000000000001px',
     '01000000000000000000000px',
+    // (Number() rounds an integer past 2 ** 53, and 21 nines to 1e+21;
+    // #285 review)
+    '999999999999999999999px',
+    '999999999999999999949px',
+    '123456789012345678901px',
+    '99999999999999999999px',
+    '1234567890123456789px',
+    '9007199254740993px',
+    '9007199254740992px',
+    '-9007199254740993px',
   ],
-  margin: ['1px 01px', '-.5px', '01px', '1e400px'],
-  'line-height': ['01', '1.', '001.5'],
+  margin: ['1px 01px', '-.5px', '01px', '1e400px', '9007199254740993px 1px'],
+  'line-height': ['01', '1.', '001.5', '9007199254740993'],
   'font-size': ['01px'],
   color: ['rgb(01, 2, 3)', 'rgb(1, 2, 3)'],
   'background-position': ['01px 2px'],
@@ -2584,6 +2594,8 @@ const JSDOM26_VALUES = {
     '1e21px 1px solid red',
     '1px 1e21px solid red',
     '1e21px thin solid',
+    '999999999999999999999px solid red',
+    '9007199254740993px solid red',
   ],
   'border-top': ['1e39px', '1e39px solid red', '1px solid var(--Infinity)', 'solid Infinity', '1e21em\tsolid'],
   background: [
@@ -2623,6 +2635,8 @@ const JSDOM26_VALUES = {
     '1000000000000000000000',
     '1 1000000000000000000000',
     '1 1 1000000000000000000000px',
+    '999999999999999999999',
+    '1 9007199254740993',
   ],
 };
 parity(
