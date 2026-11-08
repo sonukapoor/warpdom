@@ -4809,6 +4809,38 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-08: a javascript: URL given to location runs, document.location = url (branch fix/264-location-javascript-url, #264 item 75)
+
+Black box, jsdom 20.0.3, 22.1.0, 25.0.1, 26.1.0, 27.4.0, 28.1.0, 29.1.1 and
+30.1.2 with runScripts 'dangerously': a javascript: URL given to location
+(location.href, assign(), replace(), window.location =, document.location
+=) runs as a script in a later task, as a link's does; the scheme in any
+case, the source percent-decoded, location.href and history unchanged. A
+string result (`javascript:'x'`, `""`, a template) reports "Not
+implemented: string results from 'javascript:' URLs" (every version; 25
+and 26 print its stack), for a link too; numbers, objects, `new
+String()` and undefined report nothing. An exception is reported as a
+link's is. Without runScripts or with 'outside-only' nothing runs
+(warpdom always runs scripts, as Vitest's jsdom environment). warpdom
+ignored the URL (navigation.js said jsdom did too; it doesn't, in any
+version measured) and ignored a string result. navigate() now queues
+runJavascriptURL, which reports a string result; runInWindow returns the
+script's result.
+
+Found on the way: document.location had no setter in warpdom, so
+`document.location = url` threw in strict code. jsdom forwards it to
+location.href ([PutForwards=href]) and throws a TypeError ("Property
+'location' is not an object") on a document without a window. Added on
+Document.prototype; jsdom has it as an own, non-configurable property of
+each document ([LegacyUnforgeable]), which warpdom does not model (a
+per-document property costs every document; nothing seen depends on it).
+
+Performance (Node 22.17.1, bench:load, 5 alternating runs in the same
+worktree, medians, origin/main -> this): cold load 28.8 -> 28.5 ms, first
+window 2.49 -> 2.50 ms, next windows 0.227 -> 0.227 ms: noise. Tests:
+history.test.js "a javascript: URL given to location runs" (25, 26, 27,
+29, 30) and "document.location = url navigates" (25, 26, 30).
+
 ## 2026-11-07: jsdom 26's own value rules (branch fix/264-jsdom26-numbers, #264 items 56, 58, part of 46)
 
 Surveyed black box on jsdom 26.1.0: every style property warpdom knows,

@@ -19,9 +19,14 @@ const withoutFragment = (url) => {
 export function navigate(window, url, replace = false) {
   const ws = window[S];
   const current = ws.url;
-  // As in jsdom: navigating to the current URL does nothing, and neither
-  // does a javascript: URL given to location (hyperlinks run them).
-  if (url.href === current.href || url.protocol === 'javascript:') return;
+  // A javascript: URL runs in a later task, the URL unchanged (black box,
+  // jsdom 20.0.3 to 30.1.3, #264 item 75), as a hyperlink's does.
+  if (url.protocol === 'javascript:') {
+    ws.setTimeout(() => runJavascriptURL(window, url), 0);
+    return;
+  }
+  // As in jsdom: navigating to the current URL does nothing.
+  if (url.href === current.href) return;
   if (withoutFragment(url) !== withoutFragment(current)) {
     notImplemented(ws);
     return;

@@ -204,6 +204,82 @@ test("history: go(0) reports a reload with the profile's message", () => {
   ]);
 });
 
+// A javascript: URL given to location runs as a script in a later task, as
+// a link's does; the URL stays (black box, jsdom 20.0.3 to 30.1.3, #264
+// item 75). A string result reports that it is not implemented (it would
+// replace the document), for a link too.
+const JS_URL_WAYS = {
+  href: (w, url) => {
+    w.location.href = url;
+  },
+  assign: (w, url) => w.location.assign(url),
+  replace: (w, url) => w.location.replace(url),
+  location: (w, url) => {
+    w.location = url;
+  },
+  'document.location': (w, url) => {
+    w.document.location = url;
+  },
+};
+for (const jsdom of [30, 29, 27, 26, 25])
+  parity(
+    `a javascript: URL given to location runs (jsdom ${jsdom})`,
+    async (w) => {
+      const out = [];
+      const until = async (done) => {
+        for (let t = Date.now(); !done() && Date.now() - t < 2000;) await new Promise((r) => setTimeout(r, 5));
+        await new Promise((r) => setTimeout(r, 20));
+      };
+      for (const [way, go] of Object.entries(JS_URL_WAYS)) {
+        w.ran = 0;
+        go(w, 'javascript:window.ran+=1');
+        go(w, 'JavaScript:%77indow.ran+=10');
+        const sync = w.ran;
+        await until(() => w.ran === 11);
+        out.push(way, sync, w.ran, w.location.href, w.history.length);
+      }
+      // A string result, a link's too (printed as not implemented; jsdom 25
+      // and 26 print their stack too); a thrown error (reported; its printed
+      // stack is jsdom's own, so not printed).
+      if (jsdom >= 27) {
+        w.location.href = "javascript:'<p>replaced</p>'";
+        const a = w.document.body.appendChild(w.document.createElement('a'));
+        a.href = 'javascript:%22x%22';
+        a.click();
+      }
+      const errors = [];
+      w.addEventListener('error', (e) => {
+        errors.push(e.message);
+        e.preventDefault();
+      });
+      w.location.href = 'javascript:throw new TypeError(%22boom%22)';
+      await until(() => errors.length > 0);
+      out.push(w.document.body.innerHTML, errors);
+      return out;
+    },
+    { jsdom },
+  );
+
+// document.location = url navigates too ([PutForwards=href]); a document
+// without a window has no location to forward to (#264 item 75).
+for (const jsdom of [30, 26, 25])
+  parity(
+    `document.location = url navigates ([PutForwards=href]) (jsdom ${jsdom})`,
+    async (w) => {
+      w.document.location = '#doc';
+      await tick();
+      const d = w.document.implementation.createHTMLDocument('');
+      let error = null;
+      try {
+        d.location = '#x';
+      } catch (e) {
+        error = [e.name, e.message];
+      }
+      return [w.location.href, w.history.length, error, d.location];
+    },
+    { jsdom },
+  );
+
 parity('window.location = url navigates ([PutForwards=href])', async (w) => {
   (function () {
     'use strict';
