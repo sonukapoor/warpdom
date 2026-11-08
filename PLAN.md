@@ -4899,6 +4899,9 @@ width Infinitypx, a border width dropped). A negative overflowing border
 width is invalid in jsdom 26, as a negative width is (`-1e21px solid red`);
 warpdom had dropped it.
 
+Seventh review (Copilot): the exponent is at least 309, as 2 and 308
+zeros is past Number while 1e308 is not (it had been 1e+308).
+
 ## 2026-11-07: a custom property in a style sheet, jsdom 29 and later (branch fix/264-custom-sheet, #264 item 59)
 
 jsdom 29.1.1 to 30.1.3 re-serialize a custom property's value when they

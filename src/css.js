@@ -1256,7 +1256,8 @@ function bigInteger(digits) {
   const n = Number(digits);
   if (Number.isFinite(n)) return String(n).replace('e+', 'e');
   const sign = digits[0] === '-' || digits[0] === '+' ? digits[0] : '';
-  return `${sign}1e${digits.length - sign.length - 1}`;
+  // (at least 1e309: 2 and 308 zeros is past Number, 1e308 is not)
+  return `${sign}1e${Math.max(309, digits.length - sign.length - 1)}`;
 }
 function jsdom26Numbers(name, value) {
   // (opacity clamps such an integer itself: 1 followed by 400 zeros is 1)

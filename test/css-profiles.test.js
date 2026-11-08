@@ -2628,6 +2628,8 @@ parity(
 // An integer past Number reads as a number, as 1e400 does: Infinity,
 // Infinitypx, a border width dropped (black box, 26.1.0; #285 review).
 const HUGE = '1'.padEnd(401, '0');
+// (2 and 308 zeros is past Number too, though 1e308 is not)
+const JUST_PAST = '2'.padEnd(309, '0');
 parity(
   'style: an integer past Number is a number, jsdom 26 (#264)',
   (w) => {
@@ -2646,6 +2648,10 @@ parity(
       ['border', `-${HUGE}px solid red`],
       ['flex', HUGE],
       ['font-weight', HUGE],
+      ['flex-grow', JUST_PAST],
+      ['width', `${JUST_PAST}px`],
+      ['margin', `-${JUST_PAST}px`],
+      ['border', `${JUST_PAST}px solid red`],
     ]) {
       const a = d.createElement('div');
       a.style.setProperty(name, v);
