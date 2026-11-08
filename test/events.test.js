@@ -630,10 +630,11 @@ parity('UIEventInit view: primitives are rejected, null and the window accepted'
 
 // javascript: URLs: following a link runs the script in a later task (this
 // is the window; exceptions are reported), as jsdom does with runScripts
-// 'dangerously' (Vitest's and Jest's setting); location ignores them.
+// 'dangerously' (Vitest's and Jest's setting). (jsdom also runs one set
+// through location.href, which warpdom ignores: #264 item 75.)
 for (const jsdom of [30, 26, 25]) {
   parity(
-    `javascript: URLs of links run as scripts; location ignores them (jsdom ${jsdom})`,
+    `javascript: URLs of links run as scripts (jsdom ${jsdom})`,
     async (w) => {
       const d = w.document;
       d.body.innerHTML =
@@ -649,12 +650,19 @@ for (const jsdom of [30, 26, 25]) {
       d.getElementById('a').click();
       w.order.push('after click');
       Promise.resolve().then(() => w.order.push('microtask'));
-      w.location.href = 'javascript:window.n+=1000';
       d.getElementById('t').click();
       d.getElementById('v').click();
+      // Until the first link's script ran (or 2 s), then 20 ms for any that
+      // should not run.
+      for (let t = Date.now(); !(w.n >= 1) && Date.now() - t < 2000;)
+        await new Promise((resolve) => setTimeout(resolve, 5));
       await new Promise((resolve) => setTimeout(resolve, 20));
       d.getElementById('r').click();
       d.getElementById('e').click();
+      // Until both scripts ran (or 2 s): jsdom runs them as tasks, which a
+      // fixed 20 ms missed on a slow CI runner (#285 CI).
+      for (let t = Date.now(); (w.n < 11 || errors.length < 1) && Date.now() - t < 2000;)
+        await new Promise((resolve) => setTimeout(resolve, 5));
       await new Promise((resolve) => setTimeout(resolve, 20));
       return [w.n, w.order, errors.length, w.location.href];
     },
