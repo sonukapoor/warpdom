@@ -4809,6 +4809,54 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-08: strings in a value, jsdom 27 and later (branch fix/264-canonical-string, #264 item 60)
+
+Surveyed black box with every style property (27.4.0, 28.1.0, 29.1.1,
+30.1.2, 30.1.3; cssstyle 5.0.0, 5.3.7, 6.0.0 and 6.2.0 on their own),
+through setProperty, the style attribute, a rule and the accessors:
+- From 28, a value that is one string is written as a CSS string in the
+  properties that take one (content, animation-name, list-style-type,
+  text-overflow, grid-template-areas, font-feature-settings,
+  hyphenate-character, text-emphasis-style and others; css.js
+  STRING_VALUED): double quotes, escapes read, an escaped line break
+  removed, an unclosed string closed (`'x'` and `"\78"` are `"x"`). 28
+  escapes only the quote (`"a\\b"` is `"a\b"`, a control character
+  stays); 29 and later serialize as CSSOM does (`\\`, `\a `, `\1 `,
+  NUL as U+FFFD). quotes, two strings and values with more than a string
+  (`"x" counter(a)`, `inside "x"`) stay as written.
+- From 27, the strings in font-family and font are written so (`'Open
+  Sans', serif` is `"Open Sans", serif`), with the quote escaped and
+  backslashes dropped (`"a\\b"` is `"ab"`), as quoteFamily already wrote
+  names of several words; a list with var() stays as written.
+- An escaped NUL or a backslash at the end is removed before 30 and is
+  U+FFFD from 30 (setProperty, the style attribute, rules; the accessors
+  differ, below). An unclosed string that ends in an escaped quote is
+  that quote alone (`"ab\"` is `"\""`), in every version.
+- A raw line break in a string makes it invalid (27 to 30); 27 keeps an
+  unclosed one string as written (`content: "abc`).
+css.js stringsWritten (before the grammar, from declaredValue in jsdom
+27 and later) with readCssString and cssString; quoteFamily writes a
+single-quoted name without escapes. Survey differences, main -> branch,
+setProperty: 27 1,657 -> 1,611, 28 527 -> 367, 29 543 -> 361, 30 and
+30.1.3 381 -> 221 (the style attribute and rules alike). Left (logged on
+#264): about 25 properties that reject any string (cursor, d, nav-*,
+animation-range, voice-pitch; warpdom does not check them), two strings
+in voice-family (invalid), a raw CR LF in a font-family string (`"a b"`),
+jsdom 30's accessors (NUL, an escaped NUL and a backslash at the end as
+in 29), and the sheet parser (an escaped
+quote outside a string drops the declaration; 27 and 28 throw for an
+unclosed string in insertRule).
+
+Performance (Node 22.17.1, 5 alternating runs, medians, default
+profile): a font-family cache miss with a string 536 -> 600 ns
+(double quotes) and 537 -> 640 ns (single quotes), the check for
+unclosed strings and escapes (stringsWritten) and the quote change; a
+first version that read every string with a loop cost 200 ns more.
+content misses 6,374 -> 6,473 ns (noise), other misses and cache hits
+unchanged, bench:hot within noise (no style member there). A value with
+a string is read once per value (the cache), so this is the first write
+of each family list; jsdom compatibility needs the rewritten form.
+
 ## 2026-11-07: jsdom 26's own value rules (branch fix/264-jsdom26-numbers, #264 items 56, 58, part of 46)
 
 Surveyed black box on jsdom 26.1.0: every style property warpdom knows,

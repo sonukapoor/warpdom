@@ -1979,6 +1979,99 @@ for (const jsdom of [27, 28, 29, 30, '30.1.3'])
         ),
     { jsdom },
   );
+// Strings in a value (black box, 27.4.0 to 30.1.3, #264 item 60): a value
+// that is one string is written as a CSS string from jsdom 28 (in double
+// quotes, escapes read; 28 escapes only the quote, 29 and later as CSSOM
+// does), and font-family's and font's names from 27 (quotes escaped,
+// backslashes dropped). An escaped NUL or a backslash at the end is
+// removed before 30 and U+FFFD from 30. Two strings, quotes and var()
+// stay as written.
+const ONE_STRING = [
+  "'x'",
+  "''",
+  '"a\\62 c"',
+  '"abc',
+  "'a\"b'",
+  '"a\\\\b"',
+  '"a\\5c b"',
+  '"a\\A b"',
+  '"a\\0 b"',
+  '"\\41"',
+  '"a\\E9b"',
+  '"a\\-b"',
+  '"a\\ b"',
+  '"a\\\nb"',
+  '"a\u0001b"',
+  '"a\u007fb"',
+  '"ab\\"',
+  '"a\r\nb"',
+  '"x" "y"',
+];
+// NUL and a backslash at the end, through setProperty (jsdom 30's
+// accessors read them as 29 does, #264 item 81).
+const STRING_EDGES = ['"a\0b"', '"a\\\0b"', '"a\\'];
+const STRING_PROPERTIES = [
+  'content',
+  'animation-name',
+  'list-style',
+  'list-style-type',
+  'text-overflow',
+  'grid-template-areas',
+  'font-feature-settings',
+  'hyphenate-character',
+  'text-emphasis-style',
+  'quotes',
+];
+const FAMILY_STRINGS = [
+  "'x', serif",
+  "serif, 'a\\62 c'",
+  "'x' , serif",
+  '"a\\\\b", serif',
+  "'a\"b'",
+  '"a\\A b"',
+  '"ab\\"',
+  "'x', var(--a)",
+  "''",
+  // (an escaped quote is part of a name)
+  "a\\\"b, 'x'",
+];
+for (const jsdom of [27, 28, 29, 30, '30.1.3'])
+  parity(
+    `style: a value of one string, and strings in a family list (jsdom ${jsdom}, #264 item 60)`,
+    (w) => {
+      const sheet = w.document.head.appendChild(w.document.createElement('style')).sheet;
+      const read = (name, value) => {
+        const set = w.document.createElement('div').style;
+        set.setProperty(name, value);
+        const attr = w.document.createElement('div');
+        attr.setAttribute('style', `${name}: ${value}`);
+        const accessor = w.document.createElement('div').style;
+        accessor[name.replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = value;
+        const row = [name, value, set.getPropertyValue(name), attr.style.cssText, accessor.cssText];
+        // (an unclosed string in a rule takes the rule's end; the sheet
+        // parser drops an escaped quote outside a string, #264 item 80)
+        if (/["']$/.test(value) && !/\\["']$/.test(value) && !value.includes('a\\"')) {
+          sheet.insertRule(`div { ${name}: ${value} }`, 0);
+          row.push(sheet.cssRules[0].style.getPropertyValue(name));
+        }
+        return JSON.stringify(row);
+      };
+      return [
+        ...STRING_PROPERTIES.flatMap((name) => ONE_STRING.map((value) => read(name, value))),
+        ...FAMILY_STRINGS.flatMap((value) => [read('font-family', value), read('font', `12px ${value}`)]),
+        read('content', "'x' counter(a)"),
+        read('animation', "'x' 1s"),
+        ...['content', 'animation-name', 'font-family'].flatMap((name) =>
+          STRING_EDGES.map((value) => {
+            const set = w.document.createElement('div').style;
+            set.setProperty(name, value);
+            return JSON.stringify([name, value, set.getPropertyValue(name), set.cssText]);
+          }),
+        ),
+      ];
+    },
+    { jsdom },
+  );
 // jsdom 20 to 26 keep a name that starts with a generic family keyword
 // (Serif Extra; 26 needs capitals); only 27 and later reject it (#279
 // review). An escaped comma stays as written there too.

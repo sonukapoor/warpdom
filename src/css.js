@@ -595,6 +595,9 @@ function trimSpaces(text) {
   return start === 0 && end === text.length ? text : text.slice(start, end);
 }
 function quoteFamily(family) {
+  // A string in double quotes (jsdom 27 and later; one with escapes is
+  // written so already: stringsWritten).
+  if (family[0] === "'" && !family.includes('\\')) return `"${family.slice(1, -1).replace(/"/g, '\\"')}"`;
   if (
     !CSS_SPACE.test(family) ||
     family[0] === '"' ||
@@ -1094,10 +1097,16 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
       out = /^inherit$/i.test(value) ? INVALID : (legacyFont(value, surface.legacyFont) ?? INVALID);
     else {
       let written = isSpecMode(mode) ? identValue(name, value) : value;
+      // (a quote is rare: most values skip this)
+      if (isSpecMode(mode) && (written.includes('"') || written.includes("'"))) {
+        const strings = stringsWritten(name, written, surface);
+        if (strings === KEPT_AS_WRITTEN) out = written;
+        else written = strings;
+      }
       // (an integer Number() changes has 16 digits: most values skip this)
       if (mode === 'jsdom26' && colorKeywords !== 'css2' && (written.length >= 16 || JSDOM26_BORDERS.has(name)))
         written = jsdom26Numbers(name, written);
-      out = written === null ? INVALID : versionedValue(name, written, mode, surface);
+      if (out === undefined) out = written === null ? INVALID : versionedValue(name, written, mode, surface);
       if (out === undefined) {
         const checked = isSpecMode(mode) || JSDOM26_VALIDATED.has(name);
         out = !checked || isValidValue(name, written) ? serializeDeclared(name, written, mode) : INVALID;
@@ -1368,6 +1377,152 @@ function jsdom26BadNumber(value) {
     }
   }
   return false;
+}
+// Strings in a value as jsdom 27 and later write them (black box, 27.4.0
+// to 30.1.3, cssstyle 5.0.0, 5.3.7, 6.0.0 and 6.2.0 on their own; #264
+// item 60). From 28 a value that is one string is a CSS string in double
+// quotes with its escapes read ('x' and "\78" are "x"); 28 escapes only
+// the quote, 29 and later write it as CSSOM does (\\, \a , NUL as
+// U+FFFD). From 27 the names in font-family and font are written that way
+// with backslashes dropped ("a\\b" is "ab"). Before 30 an escaped NUL or a
+// backslash at the end is removed, from 30 it is U+FFFD, as is a NUL
+// (CSS input). An unclosed string that ends in an escaped quote is that
+// quote alone ("ab\" is "\""). Two strings, other values with a string
+// (content: "x" counter(a)), quotes and lists with var() stay as written;
+// a raw line break in one string makes it invalid.
+const STRING_VALUED = new Set([
+  '-webkit-animation',
+  '-webkit-animation-name',
+  'animation',
+  'animation-name',
+  'block-ellipsis',
+  'bookmark-label',
+  'content',
+  'font-feature-settings',
+  'font-language-override',
+  'grid',
+  'grid-template',
+  'grid-template-areas',
+  'hyphenate-character',
+  'line-clamp',
+  'list-style',
+  'list-style-type',
+  'text-align',
+  'text-align-all',
+  'text-emphasis',
+  'text-emphasis-style',
+  'text-overflow',
+  'voice-family',
+]);
+const KEPT_AS_WRITTEN = Symbol('kept as written');
+function stringsWritten(name, value, surface) {
+  const key = surface?.key ?? 'jsdom30';
+  const nulAsReplacement = key.startsWith('jsdom30');
+  if (name === 'font-family' || name === 'font') {
+    if (value.includes('var(')) return value;
+    // (closed strings without escapes or line breaks: quoteFamily)
+    if (!PLAIN_STRING_BREAK.test(value) && stringsClosed(value)) return value;
+    let out = '';
+    let from = 0;
+    for (let i = 0; i < value.length; i++) {
+      const c = value[i];
+      // (an escaped quote is part of a name: a\"b)
+      if (c === '\\') i++;
+      if (c !== '"' && c !== "'") continue;
+      const read = readCssString(value, i, nulAsReplacement);
+      if (read === null) return value;
+      const text = name === 'font' ? read.text.replace(/\n/g, ' ') : read.text;
+      out += value.slice(from, i) + `"${text.replace(/\\/g, '').replace(/"/g, '\\"')}"`;
+      from = i = read.end;
+      i--;
+    }
+    return out + value.slice(from);
+  }
+  if (!STRING_VALUED.has(name)) return value;
+  const start = value.charCodeAt(0);
+  if (start !== 34 && start !== 39) return value;
+  const read = readCssString(value, 0, nulAsReplacement);
+  if (read === null) return INVALID;
+  if (read.end !== value.length) return value;
+  // (27 keeps it as written, unclosed too)
+  if (key.startsWith('cssstyle5')) return read.closed ? value : KEPT_AS_WRITTEN;
+  return key.startsWith('cssstyle6') ? `"${read.text.replace(/"/g, '\\"')}"` : cssString(read.text);
+}
+// The string at value[start] (a quote) as CSS Syntax reads it: its text
+// and where it ends (after the closing quote, or the end of the value);
+// null with a raw line break. nulAsReplacement: NUL is U+FFFD (CSS input).
+function readCssString(value, start, nulAsReplacement) {
+  const quote = value[start];
+  // (most strings have no escape or line break: their text as written)
+  const close = value.indexOf(quote, start + 1);
+  if (close !== -1 && !PLAIN_STRING_BREAK.test(value.slice(start + 1, close)))
+    return { text: value.slice(start + 1, close), end: close + 1, closed: true };
+  let text = '';
+  let i = start + 1;
+  while (i < value.length) {
+    const c = value[i];
+    if (c === quote) return { text, end: i + 1, closed: true };
+    if (c === '\n' || c === '\r' || c === '\f') return null;
+    if (c === '\0' && nulAsReplacement) {
+      text += '�';
+      i++;
+    } else if (c !== '\\') {
+      text += c;
+      i++;
+    } else if (i + 1 === value.length || value[i + 1] === '\0') {
+      if (nulAsReplacement) text += '�';
+      i += 2;
+    } else if (value[i + 1] === '\n' || value[i + 1] === '\f') i += 2;
+    else if (value[i + 1] === '\r') i += value[i + 2] === '\n' ? 3 : 2;
+    else {
+      const hex = /^[\da-f]{1,6}/i.exec(value.slice(i + 1, i + 7));
+      if (hex === null) {
+        const cp = value.codePointAt(i + 1);
+        text += String.fromCodePoint(cp);
+        i += cp > 0xffff ? 3 : 2;
+      } else {
+        const cp = parseInt(hex[0], 16);
+        text += String.fromCodePoint(cp === 0 || (cp >= 0xd800 && cp <= 0xdfff) || cp > 0x10ffff ? 0xfffd : cp);
+        i += 1 + hex[0].length;
+        if (value[i] === '\r' && value[i + 1] === '\n') i += 2;
+        else if (value[i] === ' ' || value[i] === '\t' || value[i] === '\n' || value[i] === '\r' || value[i] === '\f')
+          i++;
+      }
+    }
+  }
+  // (unclosed; one that ends in an escaped quote is that quote alone)
+  const end = value.length;
+  if (value[end - 1] === quote && value[end - 2] === '\\') return { text: quote, end, closed: false };
+  return { text, end, closed: false };
+}
+const PLAIN_STRING_BREAK = /[\\\n\r\f\0]/;
+// Whether each string in the value has its closing quote.
+function stringsClosed(value) {
+  let i = 0;
+  for (;;) {
+    const double = value.indexOf('"', i);
+    const single = value.indexOf("'", i);
+    if (double === -1 && single === -1) return true;
+    let start = double;
+    if (start === -1 || (single !== -1 && single < start)) start = single;
+    const end = value.indexOf(value[start], start + 1);
+    if (end === -1) return false;
+    i = end + 1;
+  }
+}
+const STRING_ESCAPED = /["\\\0-\x1f\x7f]/;
+// CSSOM's serialize a string.
+function cssString(text) {
+  if (!STRING_ESCAPED.test(text)) return `"${text}"`;
+  let out = '"';
+  for (const c of text) {
+    const code = c.charCodeAt(0);
+    if (code === 0) out += '�';
+    else if (code < 0x20 || code === 0x7f) out += `\\${code.toString(16)} `;
+    else if (c === '"' || c === '\\') out += `\\${c}`;
+    else out += c;
+  }
+  return out + '"';
 }
 function versionedValue(name, value, mode, surface) {
   if (isLegacyMode(mode)) {
