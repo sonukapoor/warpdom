@@ -1527,6 +1527,65 @@ for (const jsdom of [27, 28, 29, 30])
     { jsdom },
   );
 
+// A comment between the tokens of a value jsdom keeps as written stays in
+// it (border-radius: 1px/**/2px), on every path from jsdom 27 and in
+// style sheets from 29 (27 and 28's sheets drop it); a property jsdom
+// serializes reads it as a space (margin: 1px/**/2px is 1px 2px), and
+// border-spacing and background-size collapse spaces (black box, 27.4.0
+// to 30.1.3, #264 item 61).
+const INNER_COMMENTS = [
+  ['border-radius', '1px/**/2px'],
+  ['border-radius', '1px /**/ 2px'],
+  ['border-radius', '1px/* a */2px/* b */3px'],
+  ['container-name', 'a/**/b'],
+  ['container-name', 'a /* x */ b'],
+  ['counter-reset', 'a/**/b 1'],
+  ['will-change', 'a/**/,b'],
+  ['content', '"a"/**/"b"'],
+  ['content', '"a/**/b"'],
+  ['box-shadow', '1px/**/2px red'],
+  ['margin', '1px/**/2px'],
+  ['margin', '1px /**/ 2px'],
+  ['border-spacing', '1px /**/ 2px'],
+  ['border-spacing', '1px  2px'],
+  ['background-size', '1px /**/ 2px'],
+  ['background-size', '1px  2px'],
+  ['background-size', '1px  2px,  3px'],
+];
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `style: a comment inside a value kept as written (jsdom ${jsdom}, #264 item 61)`,
+    (w) => {
+      const d = w.document;
+      const camel = (name) => name.replace(/-([a-z])/g, (m, c) => c.toUpperCase());
+      return INNER_COMMENTS.flatMap(([name, value]) => {
+        const set = d.createElement('div');
+        set.style.setProperty(name, value);
+        const accessor = d.createElement('div');
+        accessor.style[camel(name)] = value;
+        const text = d.createElement('div');
+        text.style.cssText = `${name}: ${value}; color: red`;
+        const important = d.createElement('div');
+        important.setAttribute('style', `${name}: ${value} !important`);
+        const sheet = d.createElement('style');
+        sheet.textContent = `p { ${name}: ${value} }`;
+        d.head.appendChild(sheet);
+        const rule = sheet.sheet.cssRules[0].style.cssText;
+        sheet.remove();
+        return [
+          name,
+          value,
+          set.style.cssText,
+          accessor.style.cssText,
+          text.style.cssText,
+          important.style.cssText,
+          rule,
+        ];
+      });
+    },
+    { jsdom },
+  );
+
 // The same names in a <style> element's text (jsdom 29 and later also
 // report "Could not parse CSS stylesheet" on the console, which warpdom
 // does not; docs/differences.md).

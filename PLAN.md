@@ -4809,6 +4809,50 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-08: a comment inside a value, jsdom 27 and later (branch fix/264-inner-comments, #264 item 61)
+
+Black box, 27.4.0, 28.1.0, 29.1.1, 30.1.2 and 30.1.3 (every style
+property; setProperty, the accessor, cssText, the style attribute and a
+style element):
+- A property whose value jsdom keeps as written keeps a comment between
+  its tokens as written: `border-radius: 1px/**/2px`, `container-name:
+  a /* x */ b`, `will-change: a/**/,b`, `content: "a"/**/"b"`. This holds
+  on every declaration path from 27, and in style sheets from 29 (27 and
+  28's sheets drop the comment, as warpdom already did). warpdom wrote a
+  space for each comment (`1px 2px`, or `1px   2px` with spaces around it).
+- A property jsdom serializes reads the comment as a space, as before
+  (`margin: 1px/**/2px` is `1px 2px`).
+- `border-spacing` and `background-size` write each run of whitespace as
+  one space and a comma as `, ` (`1px  2px ,  3px` is `1px 2px, 3px`), but
+  not in a value with var(). warpdom kept them as written.
+
+Design: innerComments(name, value) finds the comments outside strings,
+escapes and unquoted url()s. With none between tokens it returns null.
+Otherwise it reads the value with each comment as two spaces and asks
+declaredValue: a property that keeps text as written returns that text
+unchanged (two spaces stay two), and one that serializes it does not. The
+value is then kept with only its leading and trailing comments removed.
+writtenValue (setProperty, the accessor) and commentedDeclarations (the
+style attribute, cssText, sheets from 29) use it, and parseInto accepts
+the kept value. The doubled-space probe needs warpdom to collapse spaces
+wherever jsdom does; a survey of every property with `1px  2px`, `a  b`,
+`1px  2px red` and `a  ,  b` found only border-spacing and
+background-size, fixed here.
+
+Left (#264 item 84): jsdom 27 keeps leading and trailing comments in
+setProperty and the accessor (`/**/1px`); background, background-position
+and background-size reject `1px/**/2px`; `font-family: a/**/b` is `ab`;
+voice-family and animation-range-center drop a leading or trailing
+comment; calc() with comments or spaces in border-spacing and
+background-size (`calc(1px  +  2px)` is `calc(3px)` in 30, invalid before).
+
+Bench (node 22.17.1, 5 interleaved runs, medians, ns per write): setProperty
+border-spacing 670 -> 684, setProperty width 526 -> 541, cssText 1,592 ->
+1,597 (noise); a cssText with `border-radius: 1px/**/2px` 1,382 -> 1,784
+(+29%). That path now probes the value through declaredValue instead of
+writing spaces for its comments, and only a value with a comment between
+tokens takes it.
+
 ## 2026-11-08: keywords, boxes and sizes in the background shorthand, jsdom 27 and later (branch fix/264-background-keywords, #264 item 47)
 
 Black box, 27.4.0, 28.1.0, 29.1.1, 30.1.2 and 30.1.3 (style.background,
