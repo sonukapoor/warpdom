@@ -4809,6 +4809,40 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-08: a ! and an ident at the end of a value, jsdom 27 and later (branch fix/264-custom-bang, #264 item 65)
+
+Black box, 27.4.0, 28.1.0, 29.1.1, 30.1.2 and 30.1.3 (the style
+attribute, an element's and a rule's cssText, setProperty, a style
+element; color and a custom property):
+- A top-level `!` with one ident after it, to the end of the value, is
+  `!important`: `red !b`, `a ! b`, `a!b`, `a !-b`, `a !--b`, `a !é`,
+  `a !\62`, `a ! /**/ b`. Whitespace and comments may come around the ident.
+- Any other top-level `!` drops the declaration: `a !`, `a !b c`,
+  `a !b!c`, `a !1`, `a !-`, `a !b(c)`, `a !"s"`, `a !b !important`, and
+  `!b` with nothing before it. A `!` in a string or a block is part of
+  the value, as before.
+- This holds in declaration blocks from 27 and in style sheets from 29.
+  27 and 28's sheets drop such a normal property and keep a custom one as
+  written, as warpdom did. setProperty keeps the value as written (and
+  rejects it for a normal property), as before.
+- `var()` in a normal property loses the priority in 27 to 29, as it
+  does with `!important` (varDropsImportant): `color: var(--c) !foo` is
+  `var(--c)` there and `var(--c) !important` in 30.
+
+warpdom kept `--x: a !b` as written and dropped `color: red !b`. strayBang
+scans the value once (strings, comments, escapes and blocks skipped); its
+result replaces the stray-priority check for these paths. That check
+dropped only a leftover `!important` or a lone `!`, and in blocks only.
+Not measured: jsdom 30.0 (treated as 30).
+
+Left (#264 item 85): in 27 and 28's sheets, a custom property keeps
+`!IMPORTANT` as written (warpdom lowercases it), and `--x: a !important b`
+is `a  b !important`.
+
+Bench (node 22.17.1, 5 interleaved runs, medians, ns per write): cssText
+1,446 -> 1,463, cssText with !important 1,026 -> 1,030, setAttribute 800
+-> 812 (noise).
+
 ## 2026-11-08: keywords, boxes and sizes in the background shorthand, jsdom 27 and later (branch fix/264-background-keywords, #264 item 47)
 
 Black box, 27.4.0, 28.1.0, 29.1.1, 30.1.2 and 30.1.3 (style.background,

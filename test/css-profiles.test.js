@@ -1125,6 +1125,75 @@ for (const jsdom of [30, 29, 28, 27])
     },
     { jsdom },
   );
+// A ! and one ident at the end of a value is !important, any other ! left
+// at the top level drops the declaration (black box, jsdom 27.4.0 to
+// 30.1.3, #264 item 65): in the style attribute, cssText and a rule's
+// cssText from 27, in a style sheet from 29 (27 and 28's sheets keep a
+// custom property's as written and drop another's). setProperty keeps it
+// as written; var() loses the priority in 27 to 29, as with !important.
+const IDENT_BANGS = [
+  'a !b',
+  'a ! b',
+  'a!b',
+  'a !-b',
+  'a !--b',
+  'a !_b',
+  'a !é',
+  'a !\\62',
+  'a ! /**/ b',
+  'a !b/**/',
+  'a !b ',
+  'a !B',
+  'var(--c) !foo',
+  'a !',
+  'a !b c',
+  'a !b!c',
+  'a !b !important',
+  'a !1',
+  'a !-',
+  'a !b(c)',
+  'a !"s"',
+  '!b',
+  '(a !b)',
+  '"!b"',
+];
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `style: a ! and an ident at the end of a value (jsdom ${jsdom}, #264 item 65)`,
+    (w) => {
+      const d = w.document;
+      const out = [];
+      d.head.innerHTML = '<style>.r { top: 0 }</style>';
+      const rule = d.styleSheets[0].cssRules[0].style;
+      for (const name of ['color', '--x'])
+        for (const raw of IDENT_BANGS) {
+          const value = name === 'color' ? raw.replace(/^a\b/, 'red') : raw;
+          const text = `${name}: ${value}; left: 1px`;
+          const el = d.createElement('div');
+          el.setAttribute('style', text);
+          const set = d.createElement('div');
+          set.style.cssText = text;
+          const prop = d.createElement('div');
+          prop.style.setProperty(name, value);
+          rule.cssText = text;
+          // (jsdom 29 and later log "Could not parse CSS stylesheet" for
+          // some of these sheets, which warpdom does not: #264 item 67)
+          const log = console.error;
+          console.error = () => {};
+          const sheet = d.createElement('style');
+          sheet.textContent = `p { ${text} } q { color: red }`;
+          d.head.appendChild(sheet);
+          console.error = log;
+          const rules = [...sheet.sheet.cssRules].map((r) => r.cssText).join(' ');
+          sheet.remove();
+          out.push(
+            `${text} | ${el.style.cssText} | ${set.style.cssText} | ${prop.style.cssText} | ${rule.cssText} | ${rules}`,
+          );
+        }
+      return out;
+    },
+    { jsdom },
+  );
 // The default profile (the latest jsdom) keeps a ! that is in a block or
 // escaped (#154, #155 review; jsdom 30.1.3 black box).
 test('style: a ! in a block or escaped is part of the value (default profile)', () => {

@@ -2724,6 +2724,33 @@ function strayPriority(value, important) {
   for (let i = 1; i < parts.length; i++) if (/^\s*(important\b|$)/i.test(parts[i])) return true;
   return false;
 }
+// A ! left at the top level of a value after its !important (outside
+// strings, comments, escapes and () [] {} blocks), as jsdom 27 and later
+// read it in a declaration block (black box, 27.4.0 to 30.1.3, #264 item
+// 65): one ! with one ident after it to the end (whitespace and comments
+// around it) is !important (red !b, a ! /**/ -b, a !\62, a !é); any
+// other drops the declaration (a !, a !b c, a !b!c, a !1, a !-, a !b(c),
+// a !"s"). The ! as an index, -1 with none, -2 to drop.
+const IDENT_AFTER_BANG =
+  /^(?:\s|\/\*[\s\S]*?(?:\*\/|$))*(?:--|-?(?:[a-zA-Z_\u0080-\uffff]|\\[^\n\r\f]))(?:[\w\-\u0080-\uffff]|\\[^\n\r\f])*(?:\s|\/\*[\s\S]*?(?:\*\/|$))*$/;
+function strayBang(value) {
+  let bang = -1;
+  let depth = 0;
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    if (c === 92) i++;
+    else if (c === 34 || c === 39) i = stringEnd(value, i, false) - 1;
+    else if (c === 47 && value.charCodeAt(i + 1) === 42) i = commentEnd(value, i) - 1;
+    else if (c === 40 || c === 91 || c === 123) depth++;
+    else if ((c === 41 || c === 93 || c === 125) && depth > 0) depth--;
+    else if (c === 33 && depth === 0) {
+      if (bang !== -1) return -2;
+      bang = i;
+    }
+  }
+  if (bang === -1) return -1;
+  return IDENT_AFTER_BANG.test(value.slice(bang + 1)) ? bang : -2;
+}
 const BORDER_AND_SIDES = new Set(['border', 'border-top', 'border-right', 'border-bottom', 'border-left']);
 
 // context: 'sheet' for a rule's declarations parsed with its style sheet,
@@ -2984,6 +3011,22 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       // (from jsdom 27, an !important one keeps later ones out here, not
       // in cssom's cascade: margin: 1px !important; margin-left: 2px)
       if (counting) prioritized = true;
+    }
+    // (not a block warpdom wrote itself, nor a sheet before jsdom 29)
+    if (
+      !runsOn &&
+      !replay &&
+      context !== 'written' &&
+      !(sheet && surface?.key?.startsWith('cssstyle')) &&
+      value.includes('!')
+    ) {
+      const at = strayBang(value);
+      if (at === -2 || (at !== -1 && important)) continue;
+      if (at !== -1) {
+        important = true;
+        value = value.slice(0, at).trim();
+        if (counting) prioritized = true;
+      }
     }
     if (!name || !value || dropped(surface, name)) continue;
     // jsdom 29 and later: a custom property's value read with its sheet is
