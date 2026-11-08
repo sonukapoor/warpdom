@@ -652,9 +652,17 @@ for (const jsdom of [30, 26, 25]) {
       w.location.href = 'javascript:window.n+=1000';
       d.getElementById('t').click();
       d.getElementById('v').click();
+      // Until the first link's script ran (or 2 s), then 20 ms for any that
+      // should not run.
+      for (let t = Date.now(); !(w.n >= 1) && Date.now() - t < 2000;)
+        await new Promise((resolve) => setTimeout(resolve, 5));
       await new Promise((resolve) => setTimeout(resolve, 20));
       d.getElementById('r').click();
       d.getElementById('e').click();
+      // Until both scripts ran (or 2 s): jsdom runs them as tasks, which a
+      // fixed 20 ms missed on a slow CI runner (#285 CI).
+      for (let t = Date.now(); (w.n < 11 || errors.length < 1) && Date.now() - t < 2000;)
+        await new Promise((resolve) => setTimeout(resolve, 5));
       await new Promise((resolve) => setTimeout(resolve, 20));
       return [w.n, w.order, errors.length, w.location.href];
     },
