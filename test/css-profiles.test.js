@@ -592,6 +592,11 @@ const BACKGROUND_KEYWORDS = [
   'url(a.png) red',
   'repeat-x red',
   'red, blue',
+  // A comma in a color function is no layer separator (#288 review).
+  'fixed #ff0000',
+  'fixed hsl(0, 100%, 50%)',
+  'repeat rgb(1,2,3)',
+  'fixed rgb(1, 2, 3), blue',
 ];
 for (const jsdom of [27, 28, 29, 30, '30.1.3'])
   parity(
@@ -611,6 +616,28 @@ for (const jsdom of [27, 28, 29, 30, '30.1.3'])
           set.cssText,
           text.cssText,
         ];
+      }),
+    { jsdom },
+  );
+
+// A computed style's background of initial values alone (repeat, scroll,
+// 0% 0%) after another: jsdom 27 and 28.0.0 leave what a fresh computed
+// style reads, 28.1.0 and later throw (#288 review).
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `style: a computed background of initial values alone (jsdom ${jsdom})`,
+    (w) =>
+      ['repeat', 'scroll', '0% 0%'].map((value) => {
+        const el = w.document.body.appendChild(w.document.createElement('div'));
+        const fresh = w.getComputedStyle(w.document.body.appendChild(w.document.createElement('div'))).background;
+        const cs = w.getComputedStyle(el);
+        cs.background = 'red';
+        try {
+          cs.background = value;
+        } catch (error) {
+          return `${value}: ${error.name}`;
+        }
+        return `${value}: ${cs.background === fresh ? 'as a fresh one' : cs.background}`;
       }),
     { jsdom },
   );

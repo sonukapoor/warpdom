@@ -3562,18 +3562,42 @@ function writeComputed(s, name, value) {
     // As on el.style (black box, jsdom 20 to 28.0.0): an empty value removes
     // the property, an invalid one is ignored, others are serialized.
     const text = raw === '' ? '' : declaredValue(name, raw, s.mode, s.surface);
-    if (text !== INVALID && text !== INITIALS) (s.overrides ??= new Map()).set(name, text);
+    // (a background of initial values alone reads '', as on el.style:
+    // jsdom 27.4.0 after background = 'repeat'; #288 review)
+    if (text !== INVALID) (s.overrides ??= new Map()).set(name, text === INITIALS ? '' : text);
     return;
   }
   // Removing a declaration from a computed style throws, as from jsdom 28.1.0.
   if (raw === '') readOnly();
   const text = declaredValue(name, raw, s.mode, s.surface);
-  if (text === INVALID || text === INITIALS) return;
+  // (one of initial values alone throws too: background = 'repeat',
+  // black box 28.1.0 to 30.1.3; #288 review)
+  if (text === INITIALS) readOnly();
+  if (text === INVALID) return;
   (s.overrides ??= new Map()).set(name, text);
   const es = s.element[S];
   const rev = es.doc[S].treeRev ?? 0;
   if (es.computedOverrides?.rev !== rev) es.computedOverrides = { rev, values: new Map() };
   es.computedOverrides.values.set(name, text);
+}
+
+// Whether a comma separates layers: one outside parentheses and strings.
+function hasLayerComma(value) {
+  const comma = value.indexOf(',');
+  if (comma === -1) return false;
+  if (!value.includes('(') && !value.includes('"') && !value.includes("'")) return true;
+  let depth = 0;
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    if (c === 40) depth++;
+    else if (c === 41) depth--;
+    else if (c === 34 || c === 39) {
+      const close = value.indexOf(value[i], i + 1);
+      if (close === -1) return false;
+      i = close;
+    } else if (c === 44 && depth === 0) return true;
+  }
+  return false;
 }
 
 // The background accessor of jsdom 27 and 28 (composedValue). A layer is
@@ -4028,7 +4052,8 @@ function composedValue(style, name) {
     value !== '' &&
     value !== 'none' &&
     value !== 'transparent' &&
-    !value.includes(',')
+    // (one layer: a comma in rgb() is not a separator; #288 review)
+    !hasLayerComma(value)
   )
     return backgroundColorOnly(style, value);
   // cssstyle 4.4 and later (jsdom 26): the margin and padding accessors

@@ -4849,6 +4849,17 @@ and for CSS-wide keywords (checked against the longhand reading on 22,000
 values: the 4 differences were a bug of the longhand reading, the fast
 path matches jsdom).
 
+Review (#288): the jsdom 27 and 28 accessor reads one layer with a
+comma in a color function as its color too (`fixed #ff0000` is
+`rgb(255, 0, 0)`; hasLayerComma, a scan without allocation: a read of
+two layers 18 -> 42 ns, `fixed rgb(1, 2, 3)` 17 -> 325 ns, now through
+the longhands, where it returned the wrong value before). A computed
+style's background of initial values alone (`repeat`, `scroll`, `0% 0%`)
+reads '' in the writable profiles (jsdom 27 and 28.0.0, as on el.style)
+and throws NoModificationAllowedError from 28.1.0; the branch had dropped
+the write. Still different there, on main too: the error's message, and
+a computed style's longhands after a background write.
+
 ## 2026-11-07: jsdom 26's own value rules (branch fix/264-jsdom26-numbers, #264 items 56, 58, part of 46)
 
 Surveyed black box on jsdom 26.1.0: every style property warpdom knows,
