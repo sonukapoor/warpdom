@@ -1334,27 +1334,39 @@ const CASED_FUNCTION = /(calc|url|(?:repeating-)?(?:linear|radial|conic)-gradien
 // The size in font (12px, 1px/1.5, larger), after which the families come.
 const FONT_SIZE_WORD =
   /^([+-]?[\d.]+(e[+-]?\d+)?([a-z]+|%)|[\w.%-]*\/.*|(xx?-|xxx-)?(small|large)|medium|smaller|larger)$/i;
+const QUOTED_STRINGS = /"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?/g;
+const FONT_WORDS = /"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|[^\s"']+/g;
 function jsdom26Case(name, value) {
   const keywordsOnly = JSDOM26_KEYWORDS_ONLY.has(name);
   if (!keywordsOnly && !JSDOM26_PARSED.has(name) && !JSDOM26_OWN.has(name)) return value;
-  if (name === 'background' || name.endsWith('color') || /var\(/i.test(value)) return value;
-  if (value.includes('('))
-    for (const [, fn] of value.matchAll(CASED_FUNCTION)) if (fn !== fn.toLowerCase()) return null;
+  // (function-like text in a string is no function: "URL(Font)", "var(--a)")
+  const bare = /["']/.test(value) ? value.replace(QUOTED_STRINGS, '""') : value;
+  if (name === 'background' || name.endsWith('color') || /var\(/i.test(bare)) return value;
+  if (bare.includes('(')) for (const [, fn] of bare.matchAll(CASED_FUNCTION)) if (fn !== fn.toLowerCase()) return null;
   // background-image: none alone (NONE, NONE and url()s as written).
   if (name === 'background-image') return ONE_IDENT.test(value) ? asciiLower(value) : value;
   if (name === 'font-family') return familiesInCase(value);
   if (name === 'font') {
-    const words = splitOutside(value.trim(), ' ');
-    const size = words.findIndex((w) => FONT_SIZE_WORD.test(w));
+    // Words split at any whitespace; the families start after the size and
+    // a line height (12px/1.5, 12px / 1.5, 12px /1.5, 12px/ 1.5).
+    const words = [...value.matchAll(FONT_WORDS)];
+    const size = words.findIndex((m) => FONT_SIZE_WORD.test(m[0]));
     if (size < 0) return lowerOutsideStrings(value);
-    const head = words.slice(0, size + 1).join(' ');
-    return `${lowerOutsideStrings(head)} ${familiesInCase(words.slice(size + 1).join(' '))}`.trim();
+    const word = words[size][0];
+    const next = words[size + 1]?.[0];
+    let last = size;
+    if (word.endsWith('/')) last = size + 1;
+    else if (!word.includes('/') && next === '/') last = size + 2;
+    else if (!word.includes('/') && next?.startsWith('/')) last = size + 1;
+    const end = words[last] ? words[last].index + words[last][0].length : value.length;
+    return lowerOutsideStrings(value.slice(0, end)) + familiesInCase(value.slice(end));
   }
   return lowerOutsideStrings(value);
 }
 // A family list: an unquoted generic family in lowercase, the rest as written.
 function familiesInCase(value) {
-  return splitOutside(value, ',')
+  // (an escaped comma is part of a name: Foo\,SERIF)
+  return splitOutside(value, ',', true)
     .map((item) => {
       const lower = asciiLower(item.trim());
       return GENERIC_FAMILIES.has(lower) ? item.replace(item.trim(), lower) : item;

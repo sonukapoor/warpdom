@@ -2839,6 +2839,9 @@ const JSDOM26_CASE = {
     'MATH',
     'UI-ROUNDED',
     'Foo SERIF',
+    // Function-like text and var( in a string is a name (#289 review).
+    '"var(--face)", SERIF',
+    '"URL(Font)", SERIF',
   ],
   font: [
     'BOLD 12px Arial',
@@ -2851,6 +2854,12 @@ const JSDOM26_CASE = {
     '1px "A b", Arial, SERIF',
     'Bold Italic 1px Bold',
     '1px Url(x)',
+    // Any whitespace, and a line height with spaces (#289 review).
+    'BOLD\t12px\tArial',
+    'BOLD\n12px Arial',
+    '12px / 1EM SERIF',
+    '12px /1EM SERIF',
+    '12px/ 1EM SERIF',
   ],
   'background-image': ['NONE', 'URL(a.png)', 'url(A.PNG)', 'LINEAR-GRADIENT(red, blue)'],
   'background-position': ['LEFT TOP', 'CENTER 10PX'],
