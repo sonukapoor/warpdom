@@ -1590,6 +1590,58 @@ for (const jsdom of [28, 29, 30])
       }),
     { jsdom },
   );
+// A value jsdom keeps as written keeps the comments after it when it has
+// more than one part (1px 2px/**/, "a" "b"/**/, 1px/**/2px/**/), and
+// setProperty keeps those before it too (/**/1px 2px); one part drops them
+// from 28 (1px/**/ is 1px), keeps them in 27. Sheets from 29 (27 and 28's
+// remove comments). Black box, 27.4.0 to 30.1.3 (#264 item 87).
+const TRAILING_COMMENTS = [
+  ['border-radius', '1px 2px/**/'],
+  ['border-radius', '1px 2px /**/ '],
+  ['border-radius', '1px 2px /* a */ /* b */'],
+  ['border-radius', '1px/**/2px/**/'],
+  ['border-radius', '/**/1px 2px'],
+  ['border-radius', '/**/1px 2px/**/'],
+  ['border-radius', '1px/**/'],
+  ['border-radius', '/**/1px'],
+  ['container-name', 'a b /**/'],
+  ['content', '"a" "b"/**/'],
+  ['content', '"a b"/**/'],
+  ['grid-template-areas', '"a" "b"/**/'],
+  ['transition', 'a 1s/**/'],
+  ['box-shadow', '1px 1px red/**/'],
+  ['margin', '1px 2px/**/'],
+  ['font-family', 'a, b/**/'],
+];
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `style: comments after a value of more than one part kept as written (jsdom ${jsdom}, #264 item 87)`,
+    (w) => {
+      const d = w.document;
+      return TRAILING_COMMENTS.map(([name, value]) => {
+        const attribute = d.createElement('div');
+        attribute.setAttribute('style', `${name}: ${value}`);
+        const set = d.createElement('div');
+        set.style.setProperty(name, value);
+        const text = d.createElement('div');
+        text.style.cssText = `${name}: ${value}; color: red`;
+        const sheet = d.createElement('style');
+        sheet.textContent = `p { ${name}: ${value} }`;
+        d.head.appendChild(sheet);
+        const rule = sheet.sheet.cssRules[0].style.getPropertyValue(name);
+        sheet.remove();
+        return [
+          name,
+          value,
+          attribute.style.getPropertyValue(name),
+          set.style.getPropertyValue(name),
+          text.style.getPropertyValue(name),
+          rule,
+        ];
+      });
+    },
+    { jsdom },
+  );
 for (const jsdom of [27, 28, 29, 30])
   parity(
     `style: a comment inside a value kept as written (jsdom ${jsdom}, #264 item 61)`,

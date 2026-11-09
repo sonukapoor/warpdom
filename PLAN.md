@@ -4620,6 +4620,34 @@ Vitest 3.2). Its release corpus check, on all four corpora, is clean.
 - After those: #199 (computed colors), #202 (`:empty`), #192 and #201
   (fast-mode stubs), #208 (CSSOM leftovers).
 
+## 2026-11-09: comments after a value of more than one part, jsdom 27 and later (branch fix/264-trailing-comment, #264 item 87)
+
+Black box, 27.4.0 to 30.1.3: a value jsdom keeps as written keeps the
+comments after it when it has more than one part (`border-radius: 1px
+2px/**/`, `1px/**/2px/**/`, `content: "a" "b"/**/`, `container-name: a b
+/**/`, `transition: a 1s/**/`), with the whitespace before them; trailing
+whitespace goes. setProperty keeps the comments before it too (`/**/1px
+2px`); the style attribute and cssText drop those. A value of one part
+drops them from 28 (`1px/**/` is `1px`); 27 keeps them there, setProperty
+the leading ones too (#264 item 84's first case, fixed with this). Sheets
+from 29 (27 and 28's remove comments). A property that serializes (margin,
+font-family) drops them. warpdom dropped them everywhere.
+
+innerComments decides it: its probe is now the tokens with two spaces in
+every gap, so a property that serializes changes it (margin: `1px  2px` is
+`1px 2px`) where the old probe, comments as two spaces and then trimmed,
+missed a value already in its serialized form. It keeps the comments after
+a value of more than one part (any part in cssstyle 5), and with setter
+(writtenValue) those before it. parseInto and writtenValue look at a valid
+value again only when a comment is at its end (EDGE_COMMENT; or start).
+
+Bench (node 22.17.1, 5 interleaved runs, medians, ns per cssText write):
+no comments 963 -> 968; comments that change nothing (`color: red /* c
+*/`, `margin: 1px /* c */ 2px`) 1,587 -> 1,634 (+3%); with `border-radius:
+1px 2px/**/`, which now keeps its comment, 1,797 -> 2,064 (+15%). The
+cost is the probe's second validation, for values with a comment at the
+end only, which is what decides whether jsdom keeps it.
+
 ## 2026-11-01: window members locked before their first read (branch fix/160-locked-lazy-members, #160)
 
 A member made on first read (interface objects, Image, Option, Audio,

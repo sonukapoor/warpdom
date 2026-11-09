@@ -3231,10 +3231,12 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       removeLegacyFont(decls, surface);
       continue;
     }
+    // (a comment inside a value kept as written, or after one of more than
+    // one part: commentedDeclarations; #264 item 87)
     let declared = declaredValue(name, value, mode, surface);
-    // (a comment inside a value kept as written: commentedDeclarations)
-    if (declared === INVALID && !runsOn && value.includes('/*'))
-      declared = innerComments(name, value, mode, surface, important) ?? INVALID;
+    // (a valid value is looked at again only with a comment at its end)
+    if (!runsOn && value.includes('/*') && (declared === INVALID || EDGE_COMMENT.test(value)))
+      declared = innerComments(name, value, mode, surface, important) ?? declared;
     // A style attribute a style write serialized ('written'): a background
     // with an empty layer (url("a.png"), , backgroundValue) is read as the
     // declaration it came from, which jsdom 27 and later compute from.
@@ -4037,11 +4039,19 @@ const resets = (surface, name, text) =>
 // value declares nothing (red/**/; color: blue too). Such a value is
 // invalid to the grammar, so only invalid ones are looked at again (a
 // custom property's is kept as written: never invalid).
+// A comment at the end of a value, or at its start (#264 item 87).
+const EDGE_COMMENT = /\*\/[ \t\n\r\f]*$/;
+const LEADING_COMMENT = /^[ \t\n\r\f]*\/\*/;
 function writtenValue(name, raw, s) {
+  // (a value kept as written keeps its comments, before it too: #264
+  // item 87)
   const text = declaredValue(name, raw, s.mode, s.surface);
-  if (text !== INVALID || isLegacyMode(s.mode) || !raw.includes('/*') || separated(raw)) return text;
-  const kept = innerComments(name, raw, s.mode, s.surface);
+  if (isLegacyMode(s.mode) || !raw.includes('/*') || separated(raw)) return text;
+  // (a valid value is looked at again only with a comment at an end)
+  if (text !== INVALID && !EDGE_COMMENT.test(raw) && !LEADING_COMMENT.test(raw)) return text;
+  const kept = innerComments(name, raw, s.mode, s.surface, false, true);
   if (kept !== null) return kept;
+  if (text !== INVALID) return text;
   const decls = new Map();
   parseInto(decls, `${name}: ${raw}`, s.mode, s.surface, null, true, true);
   for (const declared of decls.values()) if (declared.important || declared.masked === true) return INVALID;
@@ -4059,27 +4069,40 @@ function writtenValue(name, raw, s) {
 // to 30.1.3, #264 item 61). null when no comment is inside. trailing:
 // the value comes before a priority, which keeps the comments after it
 // too (1px/**/2px/**/ !important; jsdom 28 and later, #292 review).
-function innerComments(name, value, mode, surface, trailing = false) {
+function innerComments(name, value, mode, surface, trailing = false, setter = false) {
+  // The probe: the tokens with two spaces in each gap between them (a
+  // comment or whitespace), so a property that serializes its value
+  // changes it (margin: 1px  2px is 1px 2px) and one that keeps it as
+  // written does not (border-radius, content, container-name).
   let probe = '';
-  let from = 0;
   let first = -1; // the value's first and last character outside comments
   let last = -1;
-  let inner = false; // a comment after the first character
+  let inner = false; // a comment after the first token
   let pending = false;
+  let gap = false; // whitespace or a comment after a token
+  let parts = false; // a token after a gap: more than one part
+  let leading = false; // a comment before the first token
   for (let i = 0; i < value.length; i++) {
     const c = value.charCodeAt(i);
     if (c === 47 && value.charCodeAt(i + 1) === 42) {
       const end = commentEnd(value, i);
-      probe += value.slice(from, i) + '  ';
-      from = end;
-      if (first !== -1) pending = true;
+      if (first !== -1) pending = gap = true;
+      else leading = true;
       i = end - 1;
       continue;
     }
-    if (c === 32 || c === 9 || c === 10 || c === 13 || c === 12) continue;
+    if (c === 32 || c === 9 || c === 10 || c === 13 || c === 12) {
+      if (first !== -1) gap = true;
+      continue;
+    }
     if (first === -1) first = i;
     if (pending) inner = true;
-    pending = false;
+    if (gap) {
+      parts = true;
+      probe += '  ';
+    }
+    pending = gap = false;
+    const start = i;
     if (c === 92) i++;
     else if (c === 34 || c === 39) {
       const end = stringEnd(value, i, false);
@@ -4090,11 +4113,20 @@ function innerComments(name, value, mode, surface, trailing = false) {
       if (end !== -1) i = end - 1;
     }
     last = Math.min(i, value.length - 1);
+    probe += value.slice(start, last + 1);
   }
-  if (!inner) return null;
-  probe = trimSpaces(probe + value.slice(from));
+  // The comments around a value of more than one part stay too (#264 item
+  // 87): those after it (1px 2px/**/), and through setProperty those
+  // before it (/**/1px 2px). jsdom 27 (cssstyle 5) keeps them around one
+  // part as well (1px/**/); 28 and later drop them there.
+  const edges = first !== -1 && (parts || surface?.key?.startsWith('cssstyle5') === true);
+  const after = edges && pending;
+  const before = edges && setter && leading;
+  if (!inner && !after && !before) return null;
   if (declaredValue(name, probe, mode, surface) !== probe) return null;
-  return trailing ? trimSpaces(value.slice(first)) : value.slice(first, last + 1);
+  let start = first;
+  if (before) for (start = 0; isCssSpace(value.charCodeAt(start)); start++);
+  return trailing || after ? trimSpaces(value.slice(start)) : value.slice(start, last + 1);
 }
 // The text with each comment outside strings as spaces of its length, so
 // priorityStart finds a priority with comments around or inside it at the
