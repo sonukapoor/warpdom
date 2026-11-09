@@ -2579,6 +2579,19 @@ const UNCLOSED_SHEETS = [
   '.x { --v: (a; b]; c) } .y { color: red }',
   '.x { --v: {a; b}; color: red }',
   '.x { --v: [a /* ; */ b; c]; color: red }',
+  // A priority inside an unclosed block is part of the value, and one with
+  // comments after or inside it is the priority; a ! in a block keeps the
+  // value as written; an escaped ) closes nothing (#294 review).
+  '.x { --v: [a; !important',
+  '.x { --v: {a; !important',
+  '.x { --v: (a  !important',
+  '.x { --v: (a  b) !important',
+  '.x { --v: a !important /* c */; } .y { color: red }',
+  '.x { --v: a !/**/important; } .y { color: red }',
+  '.x { --v: a/**/!important; } .y { color: red }',
+  '.x { --v: (a \\); color: red',
+  '.x { --v: (a  !b) } .y { color: red }',
+  '.x { --v: (a  !b) (c  d',
 ];
 for (const jsdom of [29, 30, '30.1.3'])
   parity(
@@ -2593,11 +2606,14 @@ for (const jsdom of [29, 30, '30.1.3'])
           const style = d.createElement('style');
           style.textContent = text;
           d.head.appendChild(style);
-          const rules = [...style.sheet.cssRules].map((r) => r.cssText);
+          // (with each declaration's priority: cssText alone does not tell
+          // a priority from an !important kept in the value)
+          const read = (r) => [r.cssText, ...[...(r.style ?? [])].map((n) => r.style.getPropertyPriority(n))];
+          const rules = [...style.sheet.cssRules].map(read);
           style.remove();
           const sheet = new w.CSSStyleSheet();
           sheet.replaceSync(text);
-          return [text, rules, [...sheet.cssRules].map((r) => r.cssText)];
+          return [text, rules, [...sheet.cssRules].map(read)];
         });
       } finally {
         console.error = log;
@@ -2616,6 +2632,12 @@ const BLOCK_SEMICOLONS = [
   '--v: (a; b]; c); color: red',
   '--v: [a /* ; */ b; c]; color: red',
   '--v: [a; color: red',
+  // (#294 review: a priority in an unclosed block, comments around one)
+  '--v: [a; !important',
+  '--v: {a; !important',
+  '--v: (a  !important',
+  '--v: a !/**/important; color: red',
+  '--v: a !important /* c */; color: red',
 ];
 for (const jsdom of [27, 28, 29, 30])
   parity(
@@ -2627,7 +2649,17 @@ for (const jsdom of [27, 28, 29, 30])
         attribute.setAttribute('style', text);
         const set = d.createElement('div');
         set.style.cssText = text;
-        return [text, attribute.style.cssText, set.style.cssText, set.style.length];
+        // (27 and 28's declarations are not iterable)
+        const priorities = (style) =>
+          Array.from({ length: style.length }, (_, i) => style.getPropertyPriority(style[i]));
+        return [
+          text,
+          attribute.style.cssText,
+          set.style.cssText,
+          set.style.length,
+          priorities(attribute.style),
+          priorities(set.style),
+        ];
       }),
     { jsdom },
   );

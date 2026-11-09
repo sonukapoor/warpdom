@@ -313,6 +313,7 @@ function readList(text, i, closer, depth = 0) {
     // parse error and keeps the value as written.
     if (c === ':' || (c === '@' && startsIdent(text, j + 1))) throw new Bad();
     if (c === '\\') throw new Bad(); // a backslash that is no escape
+    if (c === '!' && closer !== null) throw new Bad(); // ((a  !b) as written; #294 review)
     const delim = String.fromCodePoint(text.codePointAt(j));
     push(DELIMS[c] ?? 'delim', delim);
     j += delim.length;

@@ -4855,6 +4855,27 @@ cannot read as written (`[a /* ; */ b; c]`). Bench (5 interleaved runs,
 medians): cssText 1,467 -> 1,484 ns, cssText with [] 2,157 -> 2,172 ns,
 the 200-rule sheet 741.6 -> 758.1 µs (noise).
 
+Second review (Copilot, three findings, all reproduced on 29.1.1 and
+30.1.3, the first also in 27 and 28's style attribute and cssText):
+- An `!important` inside an unclosed block was taken as the priority
+  (`--v: [a; !important`, `{a; !important`, `(a  !important`); jsdom keeps
+  it in the value, with no priority. parseInto now checks that the `!` is
+  at the top level (openAt) where blocks nest.
+- Keeping a custom property's comments for reserializeCustom hid a
+  priority with comments after or inside it (`a !important /* c */` lost
+  its priority, `a !/**/important` read `a ! important`). customPriority
+  finds it on the text with its comments blanked and writes `!important`
+  after the comments before it; in the style attribute and cssText too,
+  where `a !/**/important` was kept as written on main.
+- `(a \); color: red` at the end of a sheet went to the plain splitter,
+  which took the escaped `)` as the closer and split at the `;`. A source
+  with a backslash now takes the nested splitter too.
+Also found: in 29 and later's sheets a `!` inside a block keeps a custom
+property's value as written (`(a  !b)`, closed or not; warpdom collapsed
+the spaces, on main too); reserializeCustom now gives up there. The new
+work runs only for a value with a priority and a block, a custom property
+with a comment, or a source with a backslash.
+
 ## 2026-11-08: a javascript: URL given to location runs, document.location = url (branch fix/264-location-javascript-url, #264 item 75)
 
 Black box, jsdom 20.0.3, 22.1.0, 25.0.1, 26.1.0, 27.4.0, 28.1.0, 29.1.1 and

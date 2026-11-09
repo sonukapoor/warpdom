@@ -2849,7 +2849,7 @@ function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface,
       // which keeps a value it cannot read as written, comments and all:
       // [a /* ; */ b; c]; #294 review)
       if (custom || (keepsComments(raw, surface) && !(family && isFamilyVarList(raw) !== null))) {
-        part = part.slice(0, head) + (custom ? raw : raw.replace(LEADING_COMMENTS, ''));
+        part = part.slice(0, head) + (custom ? customPriority(raw) : raw.replace(LEADING_COMMENTS, ''));
       }
     }
     parts.push(part);
@@ -2893,6 +2893,68 @@ function keepsComments(value, surface) {
   return surface?.varInStrings ? value.includes('var(') : hasVar(value);
 }
 const LEADING_COMMENTS = /^(\s|\/\*[\s\S]*?(\*\/|$))*/;
+// A custom property's value with its comments, and a priority with
+// comments after or inside it (a !important /* c */, a !/**/important,
+// a/**/!important) written as !important after them, so parseInto finds it
+// (jsdom 27 and later; #294 review). Not one inside an unclosed block
+// ([a; !important: the value) or with its ! escaped.
+function customPriority(raw) {
+  if (!raw.includes('/*') || priorityStart(raw) !== -1) return raw;
+  const blanked = blankComments(raw);
+  const start = priorityStart(blanked);
+  if (start === -1) return raw;
+  const bang = blanked.indexOf('!', start);
+  if (escapedAt(raw, bang) || openAt(raw, bang)) return raw;
+  return `${raw.slice(0, start)} !important`;
+}
+// The text with each comment outside strings and unquoted url()s as spaces
+// of its length (indexes stay the same).
+function blankComments(text) {
+  if (!text.includes('/*')) return text;
+  let out = '';
+  let from = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (c === 92) i++;
+    else if (c === 34 || c === 39) i = stringEnd(text, i, false) - 1;
+    else if (c === 40) {
+      const end = urlTokenEnd(text, i);
+      if (end !== -1) i = end - 1;
+    } else if (c === 47 && text.charCodeAt(i + 1) === 42) {
+      const end = commentEnd(text, i);
+      out += text.slice(from, i) + ' '.repeat(end - i);
+      from = end;
+      i = end - 1;
+    }
+  }
+  return out + text.slice(from);
+}
+// Whether text[i] is escaped (an odd run of backslashes before it).
+function escapedAt(text, i) {
+  let j = i;
+  while (j > 0 && text.charCodeAt(j - 1) === 92) j--;
+  return (i - j) % 2 === 1;
+}
+// Whether a ( [ or { block is still open at text[at] (outside strings,
+// comments, escapes and unquoted url()s; a block closes at its own closer
+// only).
+function openAt(text, at) {
+  const closers = [];
+  for (let i = 0; i < at; i++) {
+    const c = text.charCodeAt(i);
+    if (c === 92) i++;
+    else if (c === 34 || c === 39) i = stringEnd(text, i, false) - 1;
+    else if (c === 47 && text.charCodeAt(i + 1) === 42) i = commentEnd(text, i) - 1;
+    else if (c === 40) {
+      const end = urlTokenEnd(text, i);
+      if (end === -1) closers.push(41);
+      else i = end - 1;
+    } else if (c === 91) closers.push(93);
+    else if (c === 123) closers.push(125);
+    else if (closers.length > 0 && c === closers[closers.length - 1]) closers.pop();
+  }
+  return closers.length > 0;
+}
 // parseInto's declarations of a text with a comment in it. Style sheets
 // before jsdom 27.1 (cssom, replay) and rules before 27 read comments in
 // cssom.
@@ -2981,7 +3043,9 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   // 29 and later's sheets; #294 review)
   const nested = !runsOn && (!sheet || !surface?.key?.startsWith('cssstyle'));
   if (source.indexOf('/*') !== -1) parts = commentedParts(source, runsOn, lineBreaks, context, surface, nested);
-  else if (nested && (source.includes('[') || source.includes('{'))) parts = splitDeclarations(source, true);
+  // (and an escape: (a \); b is one declaration)
+  else if (nested && (source.includes('[') || source.includes('{') || source.includes('\\')))
+    parts = splitDeclarations(source, true);
   else parts = lineBreaks ? splitDeclarations(source) : splitOutside(source, ';');
   // (clears: a name given again is found before anything is set, as
   // setting one has effects beyond the block, a url() met: the block is
@@ -3027,7 +3091,10 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       continue;
     }
     let important = false;
-    const bang = priorityStart(value);
+    let bang = priorityStart(value);
+    // (an !important inside an unclosed block is part of the value: --v: [a;
+    // !important; #294 review)
+    if (bang !== -1 && nested && /[[({]/.test(value) && openAt(value, value.indexOf('!', bang))) bang = -1;
     if (bang !== -1) {
       important = true;
       value = value.slice(0, bang).trim();
