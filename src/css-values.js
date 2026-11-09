@@ -255,14 +255,18 @@ export function urlTokenEnd(text, open) {
 function partOfToken(text, at) {
   const c = text.charCodeAt(at - 1);
   if (isNameCode(c) || c === 35 || c === 64) return true;
+  // (an escaped character, not a line break: a backslash before one is no
+  // escape, a\<LF>url( is a and a url(; #293 review)
+  const lineBreak = c === 10 || c === 13 || c === 12;
   let slashes = 0;
   while (at - 2 - slashes >= 0 && text.charCodeAt(at - 2 - slashes) === 92) slashes++;
-  if (slashes % 2 === 1) return true;
+  if (slashes % 2 === 1) return !lineBreak;
   if (!isSpace(c)) return false;
-  // (a whitespace that ends a hex escape)
-  let j = at - 2;
-  while (j >= 0 && at - 2 - j < 6 && isHexDigit(text.charCodeAt(j))) j--;
-  if (j === at - 2 || text.charCodeAt(j) !== 92) return false;
+  // (a whitespace that ends a hex escape, CR LF as one: \61<CR><LF>url()
+  let j = c === 10 && text.charCodeAt(at - 2) === 13 ? at - 3 : at - 2;
+  const end = j;
+  while (j >= 0 && end - j < 6 && isHexDigit(text.charCodeAt(j))) j--;
+  if (j === end || text.charCodeAt(j) !== 92) return false;
   slashes = 0;
   while (j - slashes >= 0 && text.charCodeAt(j - slashes) === 92) slashes++;
   return slashes % 2 === 1;

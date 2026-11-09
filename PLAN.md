@@ -4971,6 +4971,9 @@ token at a `)` inside a string and strayBang saw the `!b` in it (`--x:
 #url(a") !b")` was dropped; jsdom 27 to 30 keep it, as main did). The
 check before `url(` (partOfToken) now rules out a hash, an at-keyword and
 the end of an escape.
+Seventh review: a backslash before a line break escapes nothing (`a\`
+LF `url(a"b) !foo` has a url() and a top-level `!foo`), and CR LF ends a
+hex escape as one whitespace (`\61` CR LF `url(` is one name).
 
 ## 2026-11-08: keywords and units in lowercase, jsdom 26 (branch fix/264-jsdom26-keyword-case, #264 item 46)
 

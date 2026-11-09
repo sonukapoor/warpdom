@@ -1246,6 +1246,10 @@ for (const jsdom of [27, 28, 29, 30])
           '@url(a") !b")',
           'a\\ url(a")!b")',
           '\\61 url(a") !b")',
+          // (CR LF ends a hex escape as one; a backslash before a line break
+          // escapes nothing: #293 review)
+          '\\61\r\nurl(a") !b")',
+          'a\\\nurl(a"b) !foo',
         ].map((raw) => {
           const value = name === 'color' ? raw.replace(/^a\b/, 'red') : raw;
           const el = w.document.createElement('div');
