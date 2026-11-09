@@ -4809,6 +4809,33 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-08: a long comma list in the grammar matcher (branch fix/grammar-repeat-linear)
+
+Found while checking the #289 review (Copilot asked for a closer look at
+malformed values that rescan): `font: 12px` with a long family list,
+written to an element whose font-family was set first, took 78 ms for
+250 families, 3.6 s for 1,000 and 27 s for 2,000 (every profile, main
+too). Profile: matchRepeat's union, from checkValue.
+- The font grammar (webref) ends in `<'font-family'>#`, and font-family is
+  `[ <font-family-name> | <generic-font-family> ]#`: a comma list of comma
+  lists, which a long list can split in quadratically many ways.
+  matchRepeat reads such a list (X# of X = Y#, both unbounded) as Y#,
+  which accepts the same values.
+- matchRepeat collects the ends it finds in a set and sorts them once,
+  instead of a union (copy, set, sort) per repetition.
+2,000 families: 27 s -> 1.7 ms. Test: "declarations: a long family list
+is matched quickly" (26.1.0, 30.1.3 and the latest profile; 26.7 s
+before).
+
+Bench (node 22.17.1, 5 interleaved runs, medians, ns per uncached
+setProperty): font 9,059 -> 6,720, font-family 2,989 -> 2,680, box-shadow
+8,805 -> 8,485, transition 5,156 -> 5,032, grid-template-columns 5,662 ->
+5,566.
+
+Found at the same time (#264 item 86): jsdom 29 to 30.1.3 drop a repeated
+family name in font (`12px A,B,A` is `12px A, B`) but not in font-family;
+jsdom 26 rejects a family list with a repeated name in both.
+
 ## 2026-11-08: keywords, boxes and sizes in the background shorthand, jsdom 27 and later (branch fix/264-background-keywords, #264 item 47)
 
 Black box, 27.4.0, 28.1.0, 29.1.1, 30.1.2 and 30.1.3 (style.background,
