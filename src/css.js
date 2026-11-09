@@ -3105,7 +3105,9 @@ const LEADING_COMMENTS = /^(\s|\/\*[\s\S]*?(\*\/|$))*/;
 // (jsdom 27 and later; #294 review). Not one inside an unclosed block
 // ([a; !important: the value) or with its ! escaped.
 function customPriority(raw) {
-  if (!raw.includes('/*') || priorityStart(raw) !== -1) return raw;
+  // (on the blanked text always: a !important /* !important has one
+  // outside the comment; #294 review)
+  if (!raw.includes('/*')) return raw;
   const blanked = blankComments(raw);
   const start = priorityStart(blanked);
   if (start === -1) return raw;

@@ -2732,6 +2732,7 @@ const UNCLOSED_SHEETS = [
   '.x { --v: (a  !b) } .y { color: red }',
   '.x { --v: (a  !b) (c  d',
   '.x { --v: a /* !important',
+  '.x { --v: a !important /* !important',
 ];
 for (const jsdom of [29, 30, '30.1.3'])
   parity(
@@ -2784,6 +2785,8 @@ const BLOCK_SEMICOLONS = [
   '--v: a/**/!important /* tail */; color: red',
   '--v: a /**/ !important; color: red',
   '--v: a /* !important',
+  '--v: a !important /* !important',
+  '--v: a /* x */ !important /* !important',
 ];
 for (const jsdom of [27, 28, 29, 30])
   parity(

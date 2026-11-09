@@ -4886,6 +4886,12 @@ the style attribute) was the priority; jsdom keeps it in the value.
 parseInto now skips a priority whose `!` is inside a comment (insideComment,
 run only for a value with a comment).
 
+Fourth review (Copilot, reproduced on 27.4.0 to 30.1.3): customPriority
+returned early when the raw text ended in `!important`, so in `--v: a
+!important /* !important` the one inside the comment was found, rejected,
+and the real one before it lost (jsdom: `a`, important). It now looks on
+the comment-blanked text whenever the value has a comment.
+
 ## 2026-11-08: strings in a value, jsdom 27 and later (branch fix/264-canonical-string, #264 item 60)
 
 Surveyed black box with every style property (27.4.0, 28.1.0, 29.1.1,
