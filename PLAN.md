@@ -4882,6 +4882,174 @@ takes an exponent now. A size keyword after a family (`.0 Arial Large`)
 stays the size: jsdom 26 reads it so (`0 large`, font-size large, Arial
 dropped; that last part is #264 item 83).
 
+## 2026-11-08: strings in a value, jsdom 27 and later (branch fix/264-canonical-string, #264 item 60)
+
+Surveyed black box with every style property (27.4.0, 28.1.0, 29.1.1,
+30.1.2, 30.1.3; cssstyle 5.0.0, 5.3.7, 6.0.0 and 6.2.0 on their own),
+through setProperty, the style attribute, a rule and the accessors:
+- From 28, a value that is one string is written as a CSS string in the
+  properties that take one (content, animation-name, list-style-type,
+  text-overflow, grid-template-areas, font-feature-settings,
+  hyphenate-character, text-emphasis-style and others; css.js
+  STRING_VALUED): double quotes, escapes read, an escaped line break
+  removed, an unclosed string closed (`'x'` and `"\78"` are `"x"`). 28
+  escapes only the quote (`"a\\b"` is `"a\b"`, a control character
+  stays); 29 and later serialize as CSSOM does (`\\`, `\a `, `\1 `,
+  NUL as U+FFFD). quotes, two strings and values with more than a string
+  (`"x" counter(a)`, `inside "x"`) stay as written.
+- From 27, the strings in font-family and font are written so (`'Open
+  Sans', serif` is `"Open Sans", serif`), with the quote escaped and
+  backslashes dropped (`"a\\b"` is `"ab"`), as quoteFamily already wrote
+  names of several words; a list with var() stays as written.
+- An escaped NUL or a backslash at the end is removed before 30 and is
+  U+FFFD from 30 (setProperty, the style attribute, rules; the accessors
+  differ, below). An unclosed string that ends in an escaped quote is
+  that quote alone (`"ab\"` is `"\""`), in every version.
+- A raw line break in a string makes it invalid (27 to 30); 27 keeps an
+  unclosed one string as written (`content: "abc`).
+css.js stringsWritten (before the grammar, from declaredValue in jsdom
+27 and later) with readCssString and cssString; quoteFamily writes a
+single-quoted name without escapes. Survey differences, main -> branch,
+setProperty: 27 1,657 -> 1,611, 28 527 -> 367, 29 543 -> 361, 30 and
+30.1.3 381 -> 221 (the style attribute and rules alike). Left (logged on
+#264): about 25 properties that reject any string (cursor, d, nav-*,
+animation-range, voice-pitch; warpdom does not check them), two strings
+in voice-family (invalid), a raw CR LF in a font-family string (`"a b"`),
+jsdom 30's accessors (NUL, an escaped NUL and a backslash at the end as
+in 29), and the sheet parser (an escaped
+quote outside a string drops the declaration; 27 and 28 throw for an
+unclosed string in insertRule).
+
+Performance (Node 22.17.1, 5 alternating runs, medians, default
+profile): a font-family cache miss with a string 536 -> 600 ns
+(double quotes) and 537 -> 640 ns (single quotes), the check for
+unclosed strings and escapes (stringsWritten) and the quote change; a
+first version that read every string with a loop cost 200 ns more.
+content misses 6,374 -> 6,473 ns (noise), other misses and cache hits
+unchanged, bench:hot within noise (no style member there). A value with
+a string is read once per value (the cache), so this is the first write
+of each family list; jsdom compatibility needs the rewritten form.
+
+Review (#291): 28's form of a string whose text ends in a backslash is
+not a closed string (`content: "a\5c"` is `"a\"` in jsdom 28.1.0), so
+it is final, not checked against the grammar again (STRING_FINAL);
+stringsClosed scans once (a list of 200 single-quoted names: 534 -> 525
+us, noise: the rest of the family code dominates).
+
+Third review: a slash in a family string is no line height's.
+parseFont spaced the first slash anywhere (`12px "a/b"` was `12px "a /
+b"`, on main too; with this branch `'a\2f b'` became that as well). It
+now spaces only the first slash outside strings (spacedSlash). The same
+check showed that jsdom writes a newline in a font family as a space only
+without a line height: `12px/1.5 "a\A b"` and `12px/normal "a\A b"` keep
+it. The family test also runs each value after `12px/1.5`. Font writes
+10,021 -> 9,955 ns (noise).
+
+Fourth review (Copilot, three findings, all reproduced on 27.4.0 to
+30.1.3):
+- A family list with `notvar(` in a string (`'a\62 cnotvar(x)'`) was kept
+  as written, as if it had var(); jsdom writes `"abcnotvar(x)"`. And a
+  string-valued property with var() in its string (`content: 'a
+  var(--x)'`, with a raw newline before var( too) had its string rewritten
+  or was dropped; jsdom keeps it as written. Both now ask hasVarFunction.
+- A slash inside a function (`calc(12px / 2)`) counted as a line height's.
+  Only a top-level slash does now. Checking it showed more: jsdom turns a
+  newline, CR or form feed into a space only in the first family, when it
+  is a string (`12px Arial, "a\A b"` keeps the newline; `12px "a\D b"`
+  is `"a b"`), and with a function before the families such a string
+  drops font (`calc(12px) "a\A b"`, `12px/calc(2) "a\C b"`). A tab stays.
+Left (#264 item 90): jsdom evaluates calc() in font and font-size
+(`calc(12px + 2px)` is `calc(14px)`; warpdom keeps it), and in a style
+sheet a bad string with var() takes the rule's `}` into the value.
+
+## 2026-11-08: a comment inside a value, jsdom 27 and later (branch fix/264-inner-comments, #264 item 61)
+
+Black box, 27.4.0, 28.1.0, 29.1.1, 30.1.2 and 30.1.3 (every style
+property; setProperty, the accessor, cssText, the style attribute and a
+style element):
+- A property whose value jsdom keeps as written keeps a comment between
+  its tokens as written: `border-radius: 1px/**/2px`, `container-name:
+  a /* x */ b`, `will-change: a/**/,b`, `content: "a"/**/"b"`. This holds
+  on every declaration path from 27, and in style sheets from 29 (27 and
+  28's sheets drop the comment, as warpdom already did). warpdom wrote a
+  space for each comment (`1px 2px`, or `1px   2px` with spaces around it).
+- A property jsdom serializes reads the comment as a space, as before
+  (`margin: 1px/**/2px` is `1px 2px`).
+- `border-spacing` and `background-size` write each run of whitespace as
+  one space and a comma as `, ` (`1px  2px ,  3px` is `1px 2px, 3px`), but
+  not in a value with var(). warpdom kept them as written.
+
+Design: innerComments(name, value) finds the comments outside strings,
+escapes and unquoted url()s. With none between tokens it returns null.
+Otherwise it reads the value with each comment as two spaces and asks
+declaredValue: a property that keeps text as written returns that text
+unchanged (two spaces stay two), and one that serializes it does not. The
+value is then kept with only its leading and trailing comments removed.
+writtenValue (setProperty, the accessor) and commentedDeclarations (the
+style attribute, cssText, sheets from 29) use it, and parseInto accepts
+the kept value. The doubled-space probe needs warpdom to collapse spaces
+wherever jsdom does; a survey of every property with `1px  2px`, `a  b`,
+`1px  2px red` and `a  ,  b` found only border-spacing and
+background-size, fixed here.
+
+Left (#264 item 84): jsdom 27 keeps leading and trailing comments in
+setProperty and the accessor (`/**/1px`); background, background-position
+and background-size reject `1px/**/2px`; `font-family: a/**/b` is `ab`;
+voice-family and animation-range-center drop a leading or trailing
+comment; calc() with comments or spaces in border-spacing and
+background-size (`calc(1px  +  2px)` is `calc(3px)` in 30, invalid before).
+
+Bench (node 22.17.1, 5 interleaved runs, medians, ns per write): setProperty
+border-spacing 670 -> 684, setProperty width 526 -> 541, cssText 1,592 ->
+1,597 (noise); a cssText with `border-radius: 1px/**/2px` 1,382 -> 1,784
+(+29%). That path now probes the value through declaredValue instead of
+writing spaces for its comments, and only a value with a comment between
+tokens takes it.
+
+Review: a priority with comments around or inside it (`1px/**/2px
+!important/**/`, `!/**/important`) was not found, so the value lost its
+comment (`1px 2px`). commentedDeclarations finds the priority on the text
+with its comments blanked to spaces of the same length (blankComments),
+cuts the value at the `!`, and keeps the comments before it, as jsdom 28
+and later do (`1px/**/2px/**/ !important`, `1px/**/2px /* a */ /* b */
+!important`). parseInto keeps them too for a declaration with a priority.
+jsdom 27 drops the priority there instead (#264 item 84).
+
+Second review (Copilot): blankComments read the `/*` in an unquoted url()
+as a comment (`content: "a"/**/url(a/*b.png) !important`), blanked the
+priority with it, and lost the inner comment. It now skips an unquoted
+url() as one token, as innerComments does. Two older cases found on the
+way go to #264: a trailing comment after a value of more than one part
+stays in jsdom 27 and later (`"a" "b"/**/`, item 87), and jsdom 28's sheets
+lose every rule after a `/*` in a url() (item 88).
+
+## 2026-11-08: a long comma list in the grammar matcher (branch fix/grammar-repeat-linear)
+
+Found while checking the #289 review (Copilot asked for a closer look at
+malformed values that rescan): `font: 12px` with a long family list,
+written to an element whose font-family was set first, took 78 ms for
+250 families, 3.6 s for 1,000 and 27 s for 2,000 (every profile, main
+too). Profile: matchRepeat's union, from checkValue.
+- The font grammar (webref) ends in `<'font-family'>#`, and font-family is
+  `[ <font-family-name> | <generic-font-family> ]#`: a comma list of comma
+  lists, which a long list can split in quadratically many ways.
+  matchRepeat reads such a list (X# of X = Y#, both unbounded) as Y#,
+  which accepts the same values.
+- matchRepeat collects the ends it finds in a set and sorts them once,
+  instead of a union (copy, set, sort) per repetition.
+2,000 families: 27 s -> 1.7 ms. Test: "declarations: a long family list
+is matched quickly" (26.1.0, 30.1.3 and the latest profile; 26.7 s
+before).
+
+Bench (node 22.17.1, 5 interleaved runs, medians, ns per uncached
+setProperty): font 9,059 -> 6,720, font-family 2,989 -> 2,680, box-shadow
+8,805 -> 8,485, transition 5,156 -> 5,032, grid-template-columns 5,662 ->
+5,566.
+
+Found at the same time (#264 item 86): jsdom 29 to 30.1.3 drop a repeated
+family name in font (`12px A,B,A` is `12px A, B`) but not in font-family;
+jsdom 26 rejects a family list with a repeated name in both.
+
 ## 2026-11-08: a javascript: URL given to location runs, document.location = url (branch fix/264-location-javascript-url, #264 item 75)
 
 Black box, jsdom 20.0.3, 22.1.0, 25.0.1, 26.1.0, 27.4.0, 28.1.0, 29.1.1 and
@@ -4947,9 +5115,8 @@ declaration with the rest of the block in its value, and
 from there on. jsdom reads `url("ab")` there and keeps `color: red`.
 jsdom 30 turns CR LF into LF first (#282), so 30 already matched.
 
-To check after #291 (item 60) merges: `content: 'a\` CR LF `b'` is
-`"ab"` in 28 and 29, which is #291's string rule; its own test has an
-escaped LF only.
+`content: 'a\` CR LF `b'` is `"ab"` in 28 and 29, #291's string rule; that
+branch adds it to this test.
 
 Bench (node 22.17.1, 5 interleaved runs, medians, ns per cssText write on
 the jsdom 29 profile): plain 1,462 -> 1,455, with strings 3,650 -> 3,715
