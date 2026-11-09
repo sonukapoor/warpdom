@@ -4863,6 +4863,15 @@ it is final, not checked against the grammar again (STRING_FINAL);
 stringsClosed scans once (a list of 200 single-quoted names: 534 -> 525
 us, noise: the rest of the family code dominates).
 
+Third review: a slash in a family string is no line height's.
+parseFont spaced the first slash anywhere (`12px "a/b"` was `12px "a /
+b"`, on main too; with this branch `'a\2f b'` became that as well). It
+now spaces only the first slash outside strings (spacedSlash). The same
+check showed that jsdom writes a newline in a font family as a space only
+without a line height: `12px/1.5 "a\A b"` and `12px/normal "a\A b"` keep
+it. The family test also runs each value after `12px/1.5`. Font writes
+10,021 -> 9,955 ns (noise).
+
 ## 2026-11-08: keywords, boxes and sizes in the background shorthand, jsdom 27 and later (branch fix/264-background-keywords, #264 item 47)
 
 Black box, 27.4.0, 28.1.0, 29.1.1, 30.1.2 and 30.1.3 (style.background,

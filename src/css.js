@@ -1427,14 +1427,18 @@ function stringsWritten(name, value, surface) {
     if (!PLAIN_STRING_BREAK.test(value) && stringsClosed(value)) return value;
     let out = '';
     let from = 0;
+    // font writes a newline in a family string as a space, but not after
+    // a line height (12px/1.5 "a\A b" keeps it; #291 review)
+    let spaces = name === 'font';
     for (let i = 0; i < value.length; i++) {
       const c = value[i];
       // (an escaped quote is part of a name: a\"b)
       if (c === '\\') i++;
+      if (c === '/') spaces = false;
       if (c !== '"' && c !== "'") continue;
       const read = readCssString(value, i, nulAsReplacement);
       if (read === null) return value;
-      const text = name === 'font' ? read.text.replace(/\n/g, ' ') : read.text;
+      const text = spaces ? read.text.replace(/\n/g, ' ') : read.text;
       out += value.slice(from, i) + `"${text.replace(/\\/g, '').replace(/"/g, '\\"')}"`;
       from = i = read.end;
       i--;

@@ -2132,6 +2132,12 @@ const FAMILY_STRINGS = [
   "''",
   // (an escaped quote is part of a name)
   "a\\\"b, 'x'",
+  // A slash in a family string is no line height's (#291 review).
+  "'a\\2f b'",
+  '"a/b"',
+  "'a/b', serif",
+  "'a\\2f  b'",
+  '"a / b"',
 ];
 for (const jsdom of [27, 28, 29, 30, '30.1.3'])
   parity(
@@ -2156,7 +2162,11 @@ for (const jsdom of [27, 28, 29, 30, '30.1.3'])
       };
       return [
         ...STRING_PROPERTIES.flatMap((name) => ONE_STRING.map((value) => read(name, value))),
-        ...FAMILY_STRINGS.flatMap((value) => [read('font-family', value), read('font', `12px ${value}`)]),
+        ...FAMILY_STRINGS.flatMap((value) => [
+          read('font-family', value),
+          read('font', `12px ${value}`),
+          read('font', `12px/1.5 ${value}`),
+        ]),
         read('content', "'x' counter(a)"),
         read('animation', "'x' 1s"),
         ...['content', 'animation-name', 'font-family'].flatMap((name) =>
