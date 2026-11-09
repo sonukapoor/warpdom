@@ -1214,6 +1214,25 @@ test('gradient names not in lowercase with cssstyle 4.2 to 4.5 (#264)', () => {
   }
 });
 
+// A long comma list is matched against its grammar without re-sorting the
+// ends found so far at each repetition (a font with 1,000 families after a
+// font-family write took 3.6 s, 2,000 took 27 s; #289 review).
+test('declarations: a long family list is matched quickly', () => {
+  const families = `${'A,'.repeat(2000)}SERIF`;
+  for (const jsdom of ['26.1.0', '30.1.3', undefined]) {
+    const d = createWindow(jsdom ? { jsdom } : {}).document;
+    const e = d.createElement('div');
+    e.style.setProperty('font-family', families);
+    const start = performance.now();
+    e.setAttribute('style', `font: 12px ${families}`);
+    const elapsed = performance.now() - start;
+    assert.ok(elapsed < 500, `${jsdom ?? 'latest'}: ${elapsed} ms`);
+    // (and the list was matched, not given up on: both declarations kept)
+    assert.match(e.style.getPropertyValue('font-family'), /^A, ?A,.*, ?serif$/i, `${jsdom ?? 'latest'}: font-family`);
+    assert.match(e.style.getPropertyValue('font'), /^12px A, ?A,.*, ?serif$/i, `${jsdom ?? 'latest'}: font`);
+  }
+});
+
 // A long whitespace run in a declaration's value is read in linear time
 // (#224: the !important check took 191 ms on 20,000 spaces, about 1.2 s
 // on 50,000).
