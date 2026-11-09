@@ -4888,6 +4888,17 @@ QUOTED_STRINGS now takes `\[\s\S]`. And with no space after a comma
 (`0 Large,Arial`) the size keyword and the next family were one word, so
 `Large` kept its case; fontWords now ends a word at a top-level comma
 (jsdom 26 then drops the backslash before a line break: #264 item 92).
+Seventh review (Copilot, "needs a closer look": quadratic regular
+expression work on malformed values): lowerOutsideStrings's regular
+expression retried `url\([^)]*\)` from every `url(` without a `)`, and a
+string pattern from every quote that does not close; `width:
+Aurl(url(...` with 20,000 `url(` took 558 ms (1 ms on main). It is one
+pass now: a `url(` without a `)` after it means no later one has one, and
+a string that runs to the end means no later one of its quote closes, so
+each scan runs to the end at most once (a string broken by an escaped
+line break does not set that, as a later one may still close). 400,000
+random values give the same result as the regular expression; 1 ms on
+20,000 `url(`, and the other shapes scale linearly, as on main.
 
 ## 2026-11-08: strings in a value, jsdom 27 and later (branch fix/264-canonical-string, #264 item 60)
 

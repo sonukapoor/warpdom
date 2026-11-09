@@ -1465,12 +1465,56 @@ function familiesInCase(value) {
     .join(',');
 }
 // ASCII lowercase outside strings and url() text.
+// One pass: a url( without a ) after it means none after it has one, and
+// a string that does not close means none of its quote after it does, so
+// each runs to the end at most once (a regular expression retried from
+// every url( and quote: 558 ms on 20,000 url(; #289 review).
 function lowerOutsideStrings(value) {
   // (toLowerCase() changes ASCII letters only in ASCII text)
   if (!/["'(\u0080-\uffff]/.test(value)) return value.toLowerCase();
-  return value.replace(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|url\([^)]*\))|[^"'u]+|./g, (m, kept) =>
-    kept === undefined ? asciiLower(m) : m,
-  );
+  let out = '';
+  let from = 0;
+  let urlOpen = false; // a url( found without a ) after it
+  let doubleOpen = false; // a " string found that does not close
+  let singleOpen = false;
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    let end = -1;
+    if ((c === 34 && !doubleOpen) || (c === 39 && !singleOpen)) {
+      end = closedString(value, i);
+      // (-2: broken by an escaped line break, where a later one may open)
+      if (end === -1) {
+        if (c === 34) doubleOpen = true;
+        else singleOpen = true;
+      } else if (end === -2) end = -1;
+    } else if (c === 117 && !urlOpen && value.startsWith('url(', i)) {
+      const close = value.indexOf(')', i + 4);
+      if (close === -1) urlOpen = true;
+      else end = close + 1;
+    }
+    if (end === -1) continue;
+    out += asciiLower(value.slice(from, i)) + value.slice(i, end);
+    from = end;
+    i = end - 1;
+  }
+  return out + asciiLower(value.slice(from));
+}
+// The index after the string at value[i] when its quote closes it (an
+// escape takes the character after it); -2 at an escaped line break, which
+// ends it unclosed there; -1 when it runs to the end.
+function closedString(value, i) {
+  const quote = value.charCodeAt(i);
+  for (let j = i + 1; j < value.length; j++) {
+    const c = value.charCodeAt(j);
+    if (c === quote) return j + 1;
+    if (c === 92) {
+      if (j + 1 >= value.length) return -1;
+      const next = value.charCodeAt(j + 1);
+      if (next === 10 || next === 13 || next === 0x2028 || next === 0x2029) return -2;
+      j++;
+    }
+  }
+  return -1;
 }
 function jsdom26Value(name, value, lower) {
   const parsed = JSDOM26_PARSED.has(name) || JSDOM26_OWN.has(name);

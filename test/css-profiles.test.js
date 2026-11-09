@@ -3218,6 +3218,23 @@ parity(
     }),
   { jsdom: 26 },
 );
+// jsdom 26's lowercasing reads a long malformed value in one pass: a
+// regular expression retried from every url( without a ) and every quote
+// that does not close took 558 ms on 20,000 url( (#289 review).
+test('style: jsdom 26 lowercases a long malformed value quickly (#264 item 46)', () => {
+  const d = createWindow({ jsdom: '26.1.0' }).document;
+  for (const [name, value] of [
+    ['width', `A${'url('.repeat(20000)}`],
+    ['font', `12px A ${'"\\'.repeat(20000)}`],
+    ['font-family', `A, ${"'\\".repeat(20000)}`],
+  ]) {
+    const e = d.createElement('div');
+    const start = performance.now();
+    e.style.setProperty(name, value);
+    const elapsed = performance.now() - start;
+    assert.ok(elapsed < 100, `${name}: ${elapsed} ms`);
+  }
+});
 // A family named like a size keyword after a unitless zero size is a
 // family, not the size: the size comes before the first comma (#289 review).
 parity(
