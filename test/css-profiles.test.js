@@ -1261,6 +1261,58 @@ parity(
   { jsdom: 26 },
 );
 
+// Keywords jsdom 26 takes in some properties, fewer than the grammar
+// (black box, 26.1.0, #264 item 77): a side's border style is no none or
+// hidden; float, font-style, background-attachment and background-repeat
+// one keyword of an older list; width, height, flex-basis and flex not the
+// newer sizes (contain, stretch, fit-content()).
+const JSDOM26_KEYWORDS = {
+  'border-top-style': ['none', 'hidden', 'dotted', 'solid', 'outset', 'SOLID', 'inherit', 'solid dashed'],
+  'border-left-style': ['none', 'hidden', 'groove'],
+  'border-style': ['none', 'hidden', 'solid none'],
+  width: [
+    'contain',
+    'stretch',
+    'fit-content',
+    'min-content',
+    'max-content',
+    'fit-content(10px)',
+    'auto',
+    '10px',
+    '-webkit-fill-available',
+    'inherit',
+  ],
+  height: ['contain', 'stretch', 'fit-content', 'auto'],
+  'flex-basis': ['contain', 'content', 'auto', 'fit-content', 'min-content', '10px'],
+  flex: ['contain', 'content', 'auto', 'none', '1 1 contain', '1 1 content'],
+  float: ['top', 'bottom', 'left', 'right', 'none', 'inline-start', 'inline-end', 'snap-block', 'LEFT'],
+  'font-style': ['left', 'right', 'oblique 10deg', 'oblique', 'italic', 'normal', 'oblique -10deg', 'ITALIC'],
+  'background-attachment': ['fixed, scroll', 'fixed', 'scroll', 'local', 'fixed,scroll'],
+  'background-repeat': [
+    'no-repeat repeat',
+    'repeat no-repeat',
+    'repeat-x',
+    'space',
+    'round',
+    'repeat repeat',
+    'no-repeat, repeat',
+  ],
+};
+parity(
+  'style: keywords jsdom 26 takes in some properties (jsdom 26, #264 item 77)',
+  (w) =>
+    Object.entries(JSDOM26_KEYWORDS).flatMap(([name, values]) =>
+      values.map((value) => {
+        const set = w.document.createElement('div');
+        set.style.setProperty(name, value);
+        const attribute = w.document.createElement('div');
+        attribute.setAttribute('style', `${name}: ${value}`);
+        return [name, value, set.style.getPropertyValue(name), attribute.style.getPropertyValue(name)];
+      }),
+    ),
+  { jsdom: 26 },
+);
+
 // border: none and border-style: none (#179, black box, 27.4.0 to 30.1.3):
 // from jsdom 27 kept everywhere, a none style left out of border and its
 // sides (border: none is border: medium, border-top: 0 none is
