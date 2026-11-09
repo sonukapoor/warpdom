@@ -4872,6 +4872,27 @@ compared: jsdom 26 also reads the zero as `0px` and takes a leading `0` as
 a weight, as on main (#264 item 83). The extra check runs only when no size
 word is found.
 
+## 2026-11-08: an escaped CR LF in a string, jsdom 27 to 29 (branch fix/264-escaped-crlf-url, #264 item 69)
+
+Black box, 27.4.0, 28.1.0 and 29.1.1 (the style attribute, cssText, a
+style element): a backslash before CR LF in a string is one escaped
+newline, so the string goes on after it. warpdom's declaration splitter
+(splitDeclarations) and stringEnd skipped only the CR, so the LF ended
+the string as a bad string and the closing quote opened a new one that
+ran past the next `;`. `--x: url('a\` CR LF `b'); color: red` was one
+declaration with the rest of the block in its value, and
+`background-image: url('a\` CR LF `b'); color: red` dropped everything
+from there on. jsdom reads `url("ab")` there and keeps `color: red`.
+jsdom 30 turns CR LF into LF first (#282), so 30 already matched.
+
+To check after #291 (item 60) merges: `content: 'a\` CR LF `b'` is
+`"ab"` in 28 and 29, which is #291's string rule; its own test has an
+escaped LF only.
+
+Bench (node 22.17.1, 5 interleaved runs, medians, ns per cssText write on
+the jsdom 29 profile): plain 1,462 -> 1,455, with strings 3,650 -> 3,715
+(noise).
+
 ## 2026-11-08: keywords, boxes and sizes in the background shorthand, jsdom 27 and later (branch fix/264-background-keywords, #264 item 47)
 
 Black box, 27.4.0, 28.1.0, 29.1.1, 30.1.2 and 30.1.3 (style.background,
