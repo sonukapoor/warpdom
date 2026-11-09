@@ -1106,9 +1106,12 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
         if (strings === STRING_FINAL) out = finalString;
         else written = strings;
       }
-      // (an integer Number() changes has 16 digits: most values skip this)
-      if (mode === 'jsdom26' && colorKeywords !== 'css2' && (written.length >= 16 || JSDOM26_BORDERS.has(name)))
-        written = jsdom26Numbers(name, written);
+      if (mode === 'jsdom26' && colorKeywords !== 'css2') {
+        if (/[A-Z]/.test(written)) written = jsdom26Case(name, written);
+        // (an integer Number() changes has 16 digits: most values skip this)
+        if (written !== null && (written.length >= 16 || JSDOM26_BORDERS.has(name)))
+          written = jsdom26Numbers(name, written);
+      }
       if (out === undefined) out = written === null ? INVALID : versionedValue(name, written, mode, surface);
       if (out === undefined) {
         const checked = isSpecMode(mode) || JSDOM26_VALIDATED.has(name);
@@ -1306,6 +1309,214 @@ function jsdom26Numbers(name, value) {
   if (kept.length === 0 || parts.length - kept.length > 1) return null;
   if (parts.some((part) => overflowingWidth(part) && jsdom26BadNumber(part))) return null;
   return kept.some(isBorderWidth) ? null : kept.join(' ');
+}
+// Case in the properties jsdom 26 parses (black box, 26.1.0; #264 item
+// 46): keywords and units in lowercase (width: AUTO is auto, 10PX 10px),
+// generic families too (Arial, SANS-SERIF is Arial, sans-serif; other
+// names and strings as written); calc(), url() or a gradient not in
+// lowercase is invalid (null). Colors, background and var() read case
+// themselves. Style sheet rules keep the case (parsed elsewhere).
+const JSDOM26_KEYWORDS_ONLY = new Set([
+  'background-attachment',
+  'background-repeat',
+  'border-bottom-style',
+  'border-collapse',
+  'border-left-style',
+  'border-right-style',
+  'border-style',
+  'border-top-style',
+  'clear',
+  'float',
+  'font-style',
+]);
+const GENERIC_FAMILIES = new Set([
+  'cursive',
+  'fantasy',
+  'math',
+  'monospace',
+  'sans-serif',
+  'serif',
+  'system-ui',
+  'ui-monospace',
+  'ui-rounded',
+  'ui-sans-serif',
+  'ui-serif',
+]);
+const CASED_FUNCTION = /(calc|url|(?:repeating-)?(?:linear|radial|conic)-gradient)\(/gi;
+// The size in font (12px, 1px/1.5, calc(12px), larger), after which the
+// families come.
+const FONT_SIZE_WORD =
+  /^([+-]?[\d.]+(e[+-]?\d+)?([a-z]+|%)|[\w-]+\(.*|[^\s/]*\/.*|(xx?-|xxx-)?(small|large)|medium|smaller|larger)$/i;
+// A unitless zero size (0, .0, -0.0, 0e0, 0/1.5); 0 before another size
+// is a weight (0 12px Arial).
+const FONT_ZERO_WORD = /^[+-]?(0+\.?0*|\.0+)(e[+-]?\d+)?(\/.*)?$/i;
+// (an escape takes any character, a line break too: "A\<LF>b" is one
+// string; #289 review)
+const QUOTED_STRINGS = /"(?:[^"\\]|\\[\s\S])*"?|'(?:[^'\\]|\\[\s\S])*'?/g;
+// font's words, split at whitespace outside strings and parentheses (a
+// function is one word, nested too: calc(1em + calc(2em)), 12px/calc(1em
+// + 2em)), as [text, index].
+function fontWords(value) {
+  const words = [];
+  let start = -1;
+  let depth = 0;
+  for (let i = 0; i <= value.length; i++) {
+    const c = value.charCodeAt(i);
+    if (i === value.length || (depth === 0 && (c === 32 || c === 9 || c === 10 || c === 13 || c === 12))) {
+      if (start !== -1) words.push([value.slice(start, i), start]);
+      start = -1;
+      continue;
+    }
+    if (start === -1) start = i;
+    if (c === 40) depth++;
+    else if (c === 41 && depth > 0) depth--;
+    else if (c === 44 && depth === 0) {
+      // (a comma ends its word, as whitespace does: 0 Large,Arial; #289
+      // review)
+      words.push([value.slice(start, i + 1), start]);
+      start = -1;
+    } else if (c === 92) i++;
+    else if (c === 34 || c === 39) {
+      // (a string runs to its closing quote, or the end)
+      let j = i + 1;
+      while (j < value.length && value.charCodeAt(j) !== c) j += value.charCodeAt(j) === 92 ? 2 : 1;
+      i = Math.min(j, value.length - 1);
+    }
+  }
+  return words;
+}
+// Whether a font word has a slash outside parentheses (12px/1.5, not
+// calc(12px / 2)).
+function topLevelSlash(word) {
+  let depth = 0;
+  for (let i = 0; i < word.length; i++) {
+    const c = word.charCodeAt(i);
+    if (c === 40) depth++;
+    else if (c === 41) depth--;
+    else if (c === 47 && depth === 0) return true;
+  }
+  return false;
+}
+// Whether a font word has a comma outside strings and parentheses
+// (Arial, not "A, B" or calc(1px, 2px)).
+function topLevelComma(word) {
+  let depth = 0;
+  for (let i = 0; i < word.length; i++) {
+    const c = word.charCodeAt(i);
+    if (c === 40) depth++;
+    else if (c === 41) depth--;
+    else if (c === 92) i++;
+    else if (c === 34 || c === 39) {
+      let j = i + 1;
+      while (j < word.length && word.charCodeAt(j) !== c) j += word.charCodeAt(j) === 92 ? 2 : 1;
+      i = j;
+    } else if (c === 44 && depth === 0) return true;
+  }
+  return false;
+}
+// A font word without a comma at its end (Large, before the next family).
+function withoutComma(word) {
+  return word.endsWith(',') ? word.slice(0, -1) : word;
+}
+function jsdom26Case(name, value) {
+  const keywordsOnly = JSDOM26_KEYWORDS_ONLY.has(name);
+  if (!keywordsOnly && !JSDOM26_PARSED.has(name) && !JSDOM26_OWN.has(name)) return value;
+  // (function-like text in a string is no function: "URL(Font)", "var(--a)")
+  const bare = /["']/.test(value) ? value.replace(QUOTED_STRINGS, '""') : value;
+  // (var( after whitespace in a string is a var() too: "a var(--face)")
+  if (name === 'background' || name.endsWith('color') || /var\(/i.test(bare)) return value;
+  if (bare !== value && value.includes('var(') && hasVarFunction(value)) return value;
+  if (bare.includes('(')) for (const [, fn] of bare.matchAll(CASED_FUNCTION)) if (fn !== fn.toLowerCase()) return null;
+  // background-image: none alone (NONE, NONE and url()s as written).
+  if (name === 'background-image') return ONE_IDENT.test(value) ? asciiLower(value) : value;
+  if (name === 'font-family') return familiesInCase(value);
+  if (name === 'font') {
+    // Words split at any whitespace; the families start after the size and
+    // a line height (12px/1.5, 12px / 1.5, 12px /1.5, 12px/ 1.5).
+    // The size comes before the family list's first comma (.0 Arial,
+    // Large: Large is a family), or in the word that holds it (0 Large,
+    // Arial: Large is the size).
+    const words = fontWords(value);
+    let limit = words.findIndex((w) => topLevelComma(w[0]));
+    if (limit < 0) limit = words.length - 1;
+    let size = -1;
+    for (let i = 0; i <= limit && size < 0; i++) if (FONT_SIZE_WORD.test(withoutComma(words[i][0]))) size = i;
+    for (let i = 0; i <= limit && size < 0; i++) if (FONT_ZERO_WORD.test(withoutComma(words[i][0]))) size = i;
+    while (size >= 0 && size < limit && FONT_ZERO_WORD.test(withoutComma(words[size + 1][0]))) size++;
+    if (size < 0) return lowerOutsideStrings(value);
+    const word = words[size][0];
+    const slash = topLevelSlash(word);
+    const next = words[size + 1]?.[0];
+    let last = size;
+    if (word.endsWith('/')) last = size + 1;
+    else if (!slash && next === '/') last = size + 2;
+    else if (!slash && next?.startsWith('/')) last = size + 1;
+    const end = words[last] ? words[last][1] + words[last][0].length : value.length;
+    return lowerOutsideStrings(value.slice(0, end)) + familiesInCase(value.slice(end));
+  }
+  return lowerOutsideStrings(value);
+}
+// A family list: an unquoted generic family in lowercase, the rest as written.
+function familiesInCase(value) {
+  // (an escaped comma is part of a name: Foo\,SERIF)
+  return splitOutside(value, ',', true)
+    .map((item) => {
+      const lower = asciiLower(item.trim());
+      return GENERIC_FAMILIES.has(lower) ? item.replace(item.trim(), lower) : item;
+    })
+    .join(',');
+}
+// ASCII lowercase outside strings and url() text.
+// One pass: a url( without a ) after it means none after it has one, and
+// a string that does not close means none of its quote after it does, so
+// each runs to the end at most once (a regular expression retried from
+// every url( and quote: 558 ms on 20,000 url(; #289 review).
+function lowerOutsideStrings(value) {
+  // (toLowerCase() changes ASCII letters only in ASCII text)
+  if (!/["'(\u0080-\uffff]/.test(value)) return value.toLowerCase();
+  let out = '';
+  let from = 0;
+  let urlOpen = false; // a url( found without a ) after it
+  let doubleOpen = false; // a " string found that does not close
+  let singleOpen = false;
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    let end = -1;
+    if ((c === 34 && !doubleOpen) || (c === 39 && !singleOpen)) {
+      end = closedString(value, i);
+      // (-2: broken by an escaped line break, where a later one may open)
+      if (end === -1) {
+        if (c === 34) doubleOpen = true;
+        else singleOpen = true;
+      } else if (end === -2) end = -1;
+    } else if (c === 117 && !urlOpen && value.startsWith('url(', i)) {
+      const close = value.indexOf(')', i + 4);
+      if (close === -1) urlOpen = true;
+      else end = close + 1;
+    }
+    if (end === -1) continue;
+    out += asciiLower(value.slice(from, i)) + value.slice(i, end);
+    from = end;
+    i = end - 1;
+  }
+  return out + asciiLower(value.slice(from));
+}
+// The index after the string at value[i] when its quote closes it (an
+// escape takes the character after it); -2 at an escaped line break, which
+// ends it unclosed there; -1 when it runs to the end.
+function closedString(value, i) {
+  const quote = value.charCodeAt(i);
+  for (let j = i + 1; j < value.length; j++) {
+    const c = value.charCodeAt(j);
+    if (c === quote) return j + 1;
+    if (c === 92) {
+      if (j + 1 >= value.length) return -1;
+      const next = value.charCodeAt(j + 1);
+      if (next === 10 || next === 13 || next === 0x2028 || next === 0x2029) return -2;
+      j++;
+    }
+  }
+  return -1;
 }
 function jsdom26Value(name, value, lower) {
   const parsed = JSDOM26_PARSED.has(name) || JSDOM26_OWN.has(name);
