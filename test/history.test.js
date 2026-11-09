@@ -286,26 +286,37 @@ for (const jsdom of [30, 29, 26, 25])
   );
 
 // The script's task is queued on the timers of the global the window is
-// installed on, looked up when queued, so a test's fake timers hold it back
-// (jsdom: the host's setTimeout, setImmediate in 30; #290 review).
-test('a javascript: URL waits for the timers installed after the window', () => {
-  const w = createWindow({ url: 'https://a.test/' });
-  const queued = [];
-  const real = w.setTimeout;
-  w.setTimeout = (callback, ms) => queued.push(callback);
-  try {
-    w.location.href = 'javascript:window.ran=(window.ran||0)+1';
-    const a = w.document.body.appendChild(w.document.createElement('a'));
-    a.href = 'javascript:window.ran=(window.ran||0)+10';
-    a.click();
-  } finally {
-    w.setTimeout = real;
-  }
-  assert.equal(w.ran, undefined);
-  assert.equal(queued.length, 2);
-  for (const callback of queued) callback();
-  assert.equal(w.ran, 11);
-});
+// installed on, looked up when queued, so a test's fake timers hold it back:
+// setTimeout to jsdom 29, setImmediate in 30, for a link and for location
+// (black box, 25.0.1 to 30.1.3; #290 review). The other queue does not
+// hold it.
+for (const [jsdom, held, other] of [
+  ['29.1.1', 'setTimeout', 'setImmediate'],
+  ['30.1.3', 'setImmediate', 'setTimeout'],
+])
+  test(`a javascript: URL waits for the ${held} installed after the window (jsdom ${jsdom})`, async () => {
+    const run = async (fake) => {
+      const w = createWindow({ jsdom, url: 'https://a.test/' });
+      const host = fake === 'setTimeout' ? w : globalThis;
+      const queued = [];
+      const real = host[fake];
+      host[fake] = (callback) => queued.push(callback);
+      try {
+        w.location.href = 'javascript:window.ran=(window.ran||0)+1';
+        const a = w.document.body.appendChild(w.document.createElement('a'));
+        a.href = 'javascript:window.ran=(window.ran||0)+10';
+        a.click();
+      } finally {
+        host[fake] = real;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const before = w.ran;
+      for (const callback of queued) callback();
+      return [before, queued.length, w.ran];
+    };
+    assert.deepEqual(await run(held), [undefined, 2, 11]);
+    assert.deepEqual(await run(other), [11, 0, 11]);
+  });
 
 // document.location = url navigates too ([PutForwards=href]); a document
 // without a window has no location to forward to (#264 item 75).

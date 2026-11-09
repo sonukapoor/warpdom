@@ -67,20 +67,20 @@ export function hostTimeout(window, callback, ms) {
 }
 
 // A javascript: URL's script runs in a task on the top window's host timers
-// (jsdom: Node's, looked up when queued; fake timers hold it back). In a
-// window discarded meanwhile (a removed iframe) a link's never runs; one
-// given to location still does in jsdom 25 to 29, not in 30 (black box,
-// 25.0.1 to 30.1.3; #290 review).
+// (jsdom: Node's, looked up when queued; fake timers hold it back):
+// setTimeout to jsdom 29, the global's setImmediate in 30 (setTimeout where
+// there is none). In a window discarded meanwhile (a removed iframe) a
+// link's never runs; one given to location still does in jsdom 25 to 29,
+// not in 30 (black box, 25.0.1 to 30.1.3; #290 review).
 function queueJavascriptURL(window, url, fromLocation) {
   const ws = window[S];
-  hostTimeout(
-    window.top ?? window,
-    () => {
-      if (ws.discarded && (!fromLocation || ws.compat.jsdom >= 30)) return;
-      runJavascriptURL(window, url);
-    },
-    0,
-  );
+  const task = () => {
+    if (ws.discarded && (!fromLocation || ws.compat.jsdom >= 30)) return;
+    runJavascriptURL(window, url);
+  };
+  const immediate = ws.compat.jsdom >= 30 ? globalThis.setImmediate : undefined;
+  if (typeof immediate === 'function') immediate(task);
+  else hostTimeout(window.top ?? window, task, 0);
 }
 
 const fragmentOf = (url) => {

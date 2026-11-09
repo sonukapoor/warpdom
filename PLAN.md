@@ -4851,6 +4851,16 @@ window (queueJavascriptURL). In a removed iframe a link's script never runs
 javascript: URL of a removed iframe" (25, 26, 29, 30), "a javascript: URL
 waits for the timers installed after the window".
 
+Second review (Copilot): the jsdom 30 profile queued the script on
+setTimeout although jsdom 30 uses setImmediate. With only setTimeout faked
+after the window, jsdom 30.1.2 and 30.1.3 run the script at once, and with
+only setImmediate faked they hold it (links and location alike); 25.0.1,
+26.1.0 and 29.1.1 the other way round. queueJavascriptURL now uses the
+global's setImmediate, looked up when queued, on the jsdom 30 profile, and
+setTimeout where there is none (an edge runtime). Test: "a javascript: URL
+waits for the setTimeout / setImmediate installed after the window" (29.1.1
+and 30.1.3, each also checking that the other queue does not hold it).
+
 ## 2026-11-08: keywords, boxes and sizes in the background shorthand, jsdom 27 and later (branch fix/264-background-keywords, #264 item 47)
 
 Black box, 27.4.0, 28.1.0, 29.1.1, 30.1.2 and 30.1.3 (style.background,
