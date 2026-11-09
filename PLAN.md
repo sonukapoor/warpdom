@@ -4671,6 +4671,13 @@ calc(  1px)` as written where jsdom writes `calc(1px)`: #264 item 93). The
 one-part rule for jsdom 27 is out again: 27 keeps the comment around one
 part in border-radius and content but not in container-name, so item 84's
 first case stays open.
+Bench after the review rounds (node 22.17.1, 5 interleaved runs against
+the base, medians, ns per cssText write): no comments 1,018 -> 1,025;
+comments that change nothing 1,665 -> 1,747 (+5%); `border-radius: 1px
+2px/**/`, which now keeps its comment, 1,902 -> 2,208 (+16%). The cost is
+the part scan and the probe's validation, for declarations with a comment
+only. Building the probe in a second pass, only when needed, was slower
+(+12% and +30%, a closure and two passes) and was dropped.
 
 ## 2026-11-01: window members locked before their first read (branch fix/160-locked-lazy-members, #160)
 
