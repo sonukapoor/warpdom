@@ -4852,6 +4852,58 @@ Bench (node 22.17.1, 5 interleaved runs, medians, ns per write): cssText
 1,446 -> 1,463, cssText with !important 1,026 -> 1,030, setAttribute 800
 -> 812 (noise).
 
+## 2026-11-08: a javascript: URL given to location runs, document.location = url (branch fix/264-location-javascript-url, #264 item 75)
+
+Black box, jsdom 20.0.3, 22.1.0, 25.0.1, 26.1.0, 27.4.0, 28.1.0, 29.1.1 and
+30.1.2 with runScripts 'dangerously': a javascript: URL given to location
+(location.href, assign(), replace(), window.location =, document.location
+=) runs as a script in a later task, as a link's does; the scheme in any
+case, the source percent-decoded, location.href and history unchanged. A
+string result (`javascript:'x'`, `""`, a template) reports "Not
+implemented: string results from 'javascript:' URLs" (every version; 25
+and 26 print its stack), for a link too; numbers, objects, `new
+String()` and undefined report nothing. An exception is reported as a
+link's is. Without runScripts or with 'outside-only' nothing runs
+(warpdom always runs scripts, as Vitest's jsdom environment). warpdom
+ignored the URL (navigation.js said jsdom did too; it doesn't, in any
+version measured) and ignored a string result. navigate() now queues
+runJavascriptURL, which reports a string result; runInWindow returns the
+script's result.
+
+Found on the way: document.location had no setter in warpdom, so
+`document.location = url` threw in strict code. jsdom forwards it to
+location.href ([PutForwards=href]) and throws a TypeError ("Property
+'location' is not an object") on a document without a window. Added on
+Document.prototype; jsdom has it as an own, non-configurable property of
+each document ([LegacyUnforgeable]), which warpdom does not model (a
+per-document property costs every document; nothing seen depends on it).
+
+Performance (Node 22.17.1, bench:load, 5 alternating runs in the same
+worktree, medians, origin/main -> this): cold load 28.8 -> 28.5 ms, first
+window 2.49 -> 2.50 ms, next windows 0.227 -> 0.227 ms: noise. Tests:
+history.test.js "a javascript: URL given to location runs" (25, 26, 27,
+29, 30) and "document.location = url navigates" (25, 26, 30).
+
+Review (Copilot, CodeRabbit): jsdom queues the script on the host's timer
+looked up when queued (setTimeout to 29, setImmediate in 30), so fake
+timers installed after the window hold it back; warpdom used the window's
+own timer, for links too. Both now go through hostTimeout on the top
+window (queueJavascriptURL). In a removed iframe a link's script never runs
+(every version), and one given to location runs in 25 to 29 but not in 30
+(black box, 25.0.1, 26.1.0, 27.4.0, 29.1.1, 30.1.2, 30.1.3). Tests: "a
+javascript: URL of a removed iframe" (25, 26, 29, 30), "a javascript: URL
+waits for the timers installed after the window".
+
+Second review (Copilot): the jsdom 30 profile queued the script on
+setTimeout although jsdom 30 uses setImmediate. With only setTimeout faked
+after the window, jsdom 30.1.2 and 30.1.3 run the script at once, and with
+only setImmediate faked they hold it (links and location alike); 25.0.1,
+26.1.0 and 29.1.1 the other way round. queueJavascriptURL now uses the
+global's setImmediate, looked up when queued, on the jsdom 30 profile, and
+setTimeout where there is none (an edge runtime). Test: "a javascript: URL
+waits for the setTimeout / setImmediate installed after the window" (29.1.1
+and 30.1.3, each also checking that the other queue does not hold it).
+
 ## 2026-11-08: an escaped CR LF in a string, jsdom 27 to 29 (branch fix/264-escaped-crlf-url, #264 item 69)
 
 Black box, 27.4.0, 28.1.0 and 29.1.1 (the style attribute, cssText, a
