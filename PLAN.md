@@ -4866,6 +4866,13 @@ for a value with a `!`.
 Left (#264 item 89): in 27 and 28's sheets a `{}` block in a custom
 property makes a nested rule, and an unclosed `(` loses the rule.
 
+Third review (Copilot, reproduced on 27.4.0 to 30.1.3): an `!important`
+inside a comment that runs to the end (`--x: a !b /* !important`) was
+taken as the priority, so `!b` became a second one and the declaration
+was dropped; jsdom reads `a !important`. On these paths a priority whose
+`!` is inside a comment is no priority now (insideComment, run only for a
+value with a comment).
+
 ## 2026-11-08: a javascript: URL given to location runs, document.location = url (branch fix/264-location-javascript-url, #264 item 75)
 
 Black box, jsdom 20.0.3, 22.1.0, 25.0.1, 26.1.0, 27.4.0, 28.1.0, 29.1.1 and

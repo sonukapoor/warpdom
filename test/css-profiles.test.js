@@ -1218,6 +1218,25 @@ for (const jsdom of [27, 28, 29, 30])
     },
     { jsdom },
   );
+// An !important inside a comment that runs to the end of the text is no
+// priority: a !b before it is the stray one (black box, 27.4.0 to 30.1.3;
+// #293 review).
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `style: an !important inside an unclosed comment (jsdom ${jsdom}, #264 item 65)`,
+    (w) =>
+      ['--x', 'color'].flatMap((name) =>
+        ['a !b /* !important', 'a /* !important', 'a !b /* !important */', 'a !b /* x'].map((raw) => {
+          const value = name === 'color' ? raw.replace(/^a\b/, 'red') : raw;
+          const el = w.document.createElement('div');
+          el.setAttribute('style', `${name}: ${value}`);
+          const set = w.document.createElement('div');
+          set.style.cssText = `${name}: ${value}`;
+          return [name, value, el.style.cssText, set.style.cssText];
+        }),
+      ),
+    { jsdom },
+  );
 // Comments after a ! are read in linear time (#293 review: a regular
 // expression backtracked exponentially, 108 ms on 24 comments).
 test('style: many comments after a ! are read quickly', () => {

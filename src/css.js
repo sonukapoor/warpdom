@@ -2785,6 +2785,21 @@ function identToEnd(text, i) {
 }
 // A block closes at its own closer only (a [) !b] is one block), and an
 // unquoted url() is one token (url(a]!b), url(a[b) !foo; #293 review).
+// Whether text[at] is inside a comment (outside strings and escapes; a
+// comment ends at its first */, or the end).
+function insideComment(text, at) {
+  for (let i = 0; i < at; i++) {
+    const c = text.charCodeAt(i);
+    if (c === 92) i++;
+    else if (c === 34 || c === 39) i = stringEnd(text, i, false) - 1;
+    else if (c === 47 && text.charCodeAt(i + 1) === 42) {
+      const end = commentEnd(text, i);
+      if (end > at) return true;
+      i = end - 1;
+    }
+  }
+  return false;
+}
 // Whether text[i] is escaped (an odd run of backslashes before it).
 function escapedAt(text, i) {
   let j = i;
@@ -3073,8 +3088,11 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     // (an escaped ! is part of an ident, from jsdom 27: a !b\!important is
     // a and a stray !b\!important, kept as written in 27 and 28's sheets;
     // #293 review)
-    if (bang !== -1 && !runsOn && !replay && context !== 'written' && escapedAt(value, value.indexOf('!', bang)))
-      bang = -1;
+    // (nor is one inside a comment: a !b /* !important; #293 review)
+    if (bang !== -1 && !runsOn && !replay && context !== 'written') {
+      const at = value.indexOf('!', bang);
+      if (escapedAt(value, at) || (value.includes('/*') && insideComment(value, at))) bang = -1;
+    }
     if (bang !== -1) {
       important = true;
       value = value.slice(0, bang).trim();
