@@ -3065,6 +3065,30 @@ parity(
     }),
   { jsdom: 26 },
 );
+// A family named like a size keyword after a unitless zero size is a
+// family, not the size: the size comes before the first comma (#289 review).
+parity(
+  'style: a family named Large after a unitless zero font size keeps its case (jsdom 26, #264 item 46)',
+  (w) =>
+    [
+      '.0 Arial, Large',
+      '0 Arial, Medium',
+      '0 Arial, X-Large',
+      'BOLD 0 Arial, Larger',
+      '0/1EM Arial, Large',
+      '0 Arial, Large, SERIF',
+      '0 Large, Arial',
+      '0 Medium, Arial',
+      '0 Large',
+    ].map((v) => {
+      const e = w.document.createElement('div');
+      e.style.setProperty('font', v);
+      const read = e.style.getPropertyValue('font');
+      // (the capitals: which names kept their case)
+      return [v, read !== '', read.replace(/[^A-Z]/g, '')];
+    }),
+  { jsdom: 26 },
+);
 // cssstyle 4.3.1 (jsdom 26 with an older cssstyle) has none of these
 // rules: border-spacing: 0 stays 0, font-weight: x and opacity: 2 are kept
 // (black box, cssstyle 4.3.1 on its own; #285 review).

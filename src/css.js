@@ -1379,6 +1379,27 @@ function topLevelSlash(word) {
   }
   return false;
 }
+// Whether a font word has a comma outside strings and parentheses
+// (Arial, not "A, B" or calc(1px, 2px)).
+function topLevelComma(word) {
+  let depth = 0;
+  for (let i = 0; i < word.length; i++) {
+    const c = word.charCodeAt(i);
+    if (c === 40) depth++;
+    else if (c === 41) depth--;
+    else if (c === 92) i++;
+    else if (c === 34 || c === 39) {
+      let j = i + 1;
+      while (j < word.length && word.charCodeAt(j) !== c) j += word.charCodeAt(j) === 92 ? 2 : 1;
+      i = j;
+    } else if (c === 44 && depth === 0) return true;
+  }
+  return false;
+}
+// A font word without a comma at its end (Large, before the next family).
+function withoutComma(word) {
+  return word.endsWith(',') ? word.slice(0, -1) : word;
+}
 function jsdom26Case(name, value) {
   const keywordsOnly = JSDOM26_KEYWORDS_ONLY.has(name);
   if (!keywordsOnly && !JSDOM26_PARSED.has(name) && !JSDOM26_OWN.has(name)) return value;
@@ -1394,12 +1415,16 @@ function jsdom26Case(name, value) {
   if (name === 'font') {
     // Words split at any whitespace; the families start after the size and
     // a line height (12px/1.5, 12px / 1.5, 12px /1.5, 12px/ 1.5).
+    // The size comes before the family list's first comma (.0 Arial,
+    // Large: Large is a family), or in the word that holds it (0 Large,
+    // Arial: Large is the size).
     const words = fontWords(value);
-    let size = words.findIndex((w) => FONT_SIZE_WORD.test(w[0]));
-    if (size < 0) {
-      size = words.findIndex((w) => FONT_ZERO_WORD.test(w[0]));
-      while (size >= 0 && words[size + 1] && FONT_ZERO_WORD.test(words[size + 1][0])) size++;
-    }
+    let limit = words.findIndex((w) => topLevelComma(w[0]));
+    if (limit < 0) limit = words.length - 1;
+    let size = -1;
+    for (let i = 0; i <= limit && size < 0; i++) if (FONT_SIZE_WORD.test(withoutComma(words[i][0]))) size = i;
+    for (let i = 0; i <= limit && size < 0; i++) if (FONT_ZERO_WORD.test(withoutComma(words[i][0]))) size = i;
+    while (size >= 0 && size < limit && FONT_ZERO_WORD.test(withoutComma(words[size + 1][0]))) size++;
     if (size < 0) return lowerOutsideStrings(value);
     const word = words[size][0];
     const slash = topLevelSlash(word);

@@ -4871,6 +4871,11 @@ of zeros the last is the size (`0 0 Arial`). Only the family's case is
 compared: jsdom 26 also reads the zero as `0px` and takes a leading `0` as
 a weight, as on main (#264 item 83). The extra check runs only when no size
 word is found.
+Fourth review (Copilot): the size search ran into the family list, so
+`.0 Arial, Large` took `Large` as the size and lowercased both families.
+The size is now looked for only up to the first word with a comma outside
+strings and parentheses (`0 Large, Arial` still takes `Large` as the size,
+as jsdom 26 does).
 
 ## 2026-11-08: a javascript: URL given to location runs, document.location = url (branch fix/264-location-javascript-url, #264 item 75)
 
