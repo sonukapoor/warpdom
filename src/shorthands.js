@@ -110,8 +110,9 @@ const LINE_STYLES = new Set([
   'outset',
   'auto',
 ]);
+// (Infinitypx: how jsdom 26 writes 1e400px; #264 item 63)
 const isLength = (t) =>
-  /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?([a-z]+|%)?$/i.test(t) || /^(calc|min|max|clamp)\(/i.test(t);
+  /^[+-]?((\d+\.?\d*|\.\d+)(e[+-]?\d+)?|Infinity)([a-z]+|%)?$/i.test(t) || /^(calc|min|max|clamp)\(/i.test(t);
 const FLEX_DIRECTIONS = new Set(['row', 'row-reverse', 'column', 'column-reverse']);
 const FLEX_WRAPS = new Set(['nowrap', 'wrap', 'wrap-reverse']);
 
@@ -193,8 +194,9 @@ export function parseFont(value) {
     if (!lineHeight) return null;
     i += 4;
   }
+  // (no family: '', which only jsdom 26 takes, without a line height;
+  // the validation decides; #264 item 63)
   const family = parts.slice(i).join('').trim();
-  if (!family) return null;
   return { style, weight, size, lineHeight, family };
 }
 
@@ -692,13 +694,14 @@ function expandShorthand(name, value) {
   if (name === 'font') {
     const f = parseFont(value);
     if (!f) return null;
-    return [
+    const longhands = [
       ['font-style', f.style],
       ['font-weight', f.weight],
       ['font-size', f.size],
       ['line-height', f.lineHeight],
-      ['font-family', f.family],
     ];
+    if (f.family) longhands.push(['font-family', f.family]);
+    return longhands;
   }
   if (name === 'background-position') {
     const layers = positionLayers(value);
