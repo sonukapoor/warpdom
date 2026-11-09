@@ -4809,6 +4809,86 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-08: strings in a value, jsdom 27 and later (branch fix/264-canonical-string, #264 item 60)
+
+Surveyed black box with every style property (27.4.0, 28.1.0, 29.1.1,
+30.1.2, 30.1.3; cssstyle 5.0.0, 5.3.7, 6.0.0 and 6.2.0 on their own),
+through setProperty, the style attribute, a rule and the accessors:
+- From 28, a value that is one string is written as a CSS string in the
+  properties that take one (content, animation-name, list-style-type,
+  text-overflow, grid-template-areas, font-feature-settings,
+  hyphenate-character, text-emphasis-style and others; css.js
+  STRING_VALUED): double quotes, escapes read, an escaped line break
+  removed, an unclosed string closed (`'x'` and `"\78"` are `"x"`). 28
+  escapes only the quote (`"a\\b"` is `"a\b"`, a control character
+  stays); 29 and later serialize as CSSOM does (`\\`, `\a `, `\1 `,
+  NUL as U+FFFD). quotes, two strings and values with more than a string
+  (`"x" counter(a)`, `inside "x"`) stay as written.
+- From 27, the strings in font-family and font are written so (`'Open
+  Sans', serif` is `"Open Sans", serif`), with the quote escaped and
+  backslashes dropped (`"a\\b"` is `"ab"`), as quoteFamily already wrote
+  names of several words; a list with var() stays as written.
+- An escaped NUL or a backslash at the end is removed before 30 and is
+  U+FFFD from 30 (setProperty, the style attribute, rules; the accessors
+  differ, below). An unclosed string that ends in an escaped quote is
+  that quote alone (`"ab\"` is `"\""`), in every version.
+- A raw line break in a string makes it invalid (27 to 30); 27 keeps an
+  unclosed one string as written (`content: "abc`).
+css.js stringsWritten (before the grammar, from declaredValue in jsdom
+27 and later) with readCssString and cssString; quoteFamily writes a
+single-quoted name without escapes. Survey differences, main -> branch,
+setProperty: 27 1,657 -> 1,611, 28 527 -> 367, 29 543 -> 361, 30 and
+30.1.3 381 -> 221 (the style attribute and rules alike). Left (logged on
+#264): about 25 properties that reject any string (cursor, d, nav-*,
+animation-range, voice-pitch; warpdom does not check them), two strings
+in voice-family (invalid), a raw CR LF in a font-family string (`"a b"`),
+jsdom 30's accessors (NUL, an escaped NUL and a backslash at the end as
+in 29), and the sheet parser (an escaped
+quote outside a string drops the declaration; 27 and 28 throw for an
+unclosed string in insertRule).
+
+Performance (Node 22.17.1, 5 alternating runs, medians, default
+profile): a font-family cache miss with a string 536 -> 600 ns
+(double quotes) and 537 -> 640 ns (single quotes), the check for
+unclosed strings and escapes (stringsWritten) and the quote change; a
+first version that read every string with a loop cost 200 ns more.
+content misses 6,374 -> 6,473 ns (noise), other misses and cache hits
+unchanged, bench:hot within noise (no style member there). A value with
+a string is read once per value (the cache), so this is the first write
+of each family list; jsdom compatibility needs the rewritten form.
+
+Review (#291): 28's form of a string whose text ends in a backslash is
+not a closed string (`content: "a\5c"` is `"a\"` in jsdom 28.1.0), so
+it is final, not checked against the grammar again (STRING_FINAL);
+stringsClosed scans once (a list of 200 single-quoted names: 534 -> 525
+us, noise: the rest of the family code dominates).
+
+Third review: a slash in a family string is no line height's.
+parseFont spaced the first slash anywhere (`12px "a/b"` was `12px "a /
+b"`, on main too; with this branch `'a\2f b'` became that as well). It
+now spaces only the first slash outside strings (spacedSlash). The same
+check showed that jsdom writes a newline in a font family as a space only
+without a line height: `12px/1.5 "a\A b"` and `12px/normal "a\A b"` keep
+it. The family test also runs each value after `12px/1.5`. Font writes
+10,021 -> 9,955 ns (noise).
+
+Fourth review (Copilot, three findings, all reproduced on 27.4.0 to
+30.1.3):
+- A family list with `notvar(` in a string (`'a\62 cnotvar(x)'`) was kept
+  as written, as if it had var(); jsdom writes `"abcnotvar(x)"`. And a
+  string-valued property with var() in its string (`content: 'a
+  var(--x)'`, with a raw newline before var( too) had its string rewritten
+  or was dropped; jsdom keeps it as written. Both now ask hasVarFunction.
+- A slash inside a function (`calc(12px / 2)`) counted as a line height's.
+  Only a top-level slash does now. Checking it showed more: jsdom turns a
+  newline, CR or form feed into a space only in the first family, when it
+  is a string (`12px Arial, "a\A b"` keeps the newline; `12px "a\D b"`
+  is `"a b"`), and with a function before the families such a string
+  drops font (`calc(12px) "a\A b"`, `12px/calc(2) "a\C b"`). A tab stays.
+Left (#264 item 90): jsdom evaluates calc() in font and font-size
+(`calc(12px + 2px)` is `calc(14px)`; warpdom keeps it), and in a style
+sheet a bad string with var() takes the rule's `}` into the value.
+
 ## 2026-11-08: a comment inside a value, jsdom 27 and later (branch fix/264-inner-comments, #264 item 61)
 
 Black box, 27.4.0, 28.1.0, 29.1.1, 30.1.2 and 30.1.3 (every style
@@ -4962,9 +5042,8 @@ declaration with the rest of the block in its value, and
 from there on. jsdom reads `url("ab")` there and keeps `color: red`.
 jsdom 30 turns CR LF into LF first (#282), so 30 already matched.
 
-To check after #291 (item 60) merges: `content: 'a\` CR LF `b'` is
-`"ab"` in 28 and 29, which is #291's string rule; its own test has an
-escaped LF only.
+`content: 'a\` CR LF `b'` is `"ab"` in 28 and 29, #291's string rule; that
+branch adds it to this test.
 
 Bench (node 22.17.1, 5 interleaved runs, medians, ns per cssText write on
 the jsdom 29 profile): plain 1,462 -> 1,455, with strings 3,650 -> 3,715
