@@ -204,6 +204,140 @@ test("history: go(0) reports a reload with the profile's message", () => {
   ]);
 });
 
+// A javascript: URL given to location runs as a script in a later task, as
+// a link's does; the URL stays (black box, jsdom 20.0.3 to 30.1.3, #264
+// item 75). A string result reports that it is not implemented (it would
+// replace the document), for a link too.
+const JS_URL_WAYS = {
+  href: (w, url) => {
+    w.location.href = url;
+  },
+  assign: (w, url) => w.location.assign(url),
+  replace: (w, url) => w.location.replace(url),
+  location: (w, url) => {
+    w.location = url;
+  },
+  'document.location': (w, url) => {
+    w.document.location = url;
+  },
+};
+for (const jsdom of [30, 29, 27, 26, 25])
+  parity(
+    `a javascript: URL given to location runs (jsdom ${jsdom})`,
+    async (w) => {
+      const out = [];
+      const until = async (done) => {
+        for (let t = Date.now(); !done() && Date.now() - t < 2000;) await new Promise((r) => setTimeout(r, 5));
+        await new Promise((r) => setTimeout(r, 20));
+      };
+      for (const [way, go] of Object.entries(JS_URL_WAYS)) {
+        w.ran = 0;
+        go(w, 'javascript:window.ran+=1');
+        go(w, 'JavaScript:%77indow.ran+=10');
+        const sync = w.ran;
+        await until(() => w.ran === 11);
+        out.push(way, sync, w.ran, w.location.href, w.history.length);
+      }
+      // A string result, a link's too (printed as not implemented; jsdom 25
+      // and 26 print their stack too); a thrown error (reported; its printed
+      // stack is jsdom's own, so not printed).
+      if (jsdom >= 27) {
+        w.location.href = "javascript:'<p>replaced</p>'";
+        const a = w.document.body.appendChild(w.document.createElement('a'));
+        a.href = 'javascript:%22x%22';
+        a.click();
+      }
+      const errors = [];
+      w.addEventListener('error', (e) => {
+        errors.push(e.message);
+        e.preventDefault();
+      });
+      w.location.href = 'javascript:throw new TypeError(%22boom%22)';
+      await until(() => errors.length > 0);
+      out.push(w.document.body.innerHTML, errors);
+      return out;
+    },
+    { jsdom },
+  );
+
+// A removed iframe: its link's javascript: URL never runs; one given to its
+// location still runs in jsdom 25 to 29, not in 30 (black box, 25.0.1,
+// 26.1.0, 27.4.0, 29.1.1, 30.1.2, 30.1.3; #290 review).
+for (const jsdom of [30, 29, 26, 25])
+  parity(
+    `a javascript: URL of a removed iframe (jsdom ${jsdom})`,
+    async (w) => {
+      const out = [];
+      for (const how of ['link', 'location']) {
+        const frame = w.document.body.appendChild(w.document.createElement('iframe'));
+        const fw = frame.contentWindow;
+        if (how === 'link') {
+          const a = fw.document.body.appendChild(fw.document.createElement('a'));
+          a.href = 'javascript:window.ran=1';
+          a.click();
+        } else fw.location.href = 'javascript:window.ran=1';
+        frame.remove();
+        await new Promise((r) => setTimeout(r, 30));
+        out.push(how, fw.ran);
+      }
+      return out;
+    },
+    { jsdom },
+  );
+
+// The script's task is queued on the timers of the global the window is
+// installed on, looked up when queued, so a test's fake timers hold it back:
+// setTimeout to jsdom 29, setImmediate in 30, for a link and for location
+// (black box, 25.0.1 to 30.1.3; #290 review). The other queue does not
+// hold it.
+for (const [jsdom, held, other] of [
+  ['29.1.1', 'setTimeout', 'setImmediate'],
+  ['30.1.3', 'setImmediate', 'setTimeout'],
+])
+  test(`a javascript: URL waits for the ${held} installed after the window (jsdom ${jsdom})`, async () => {
+    const run = async (fake) => {
+      const w = createWindow({ jsdom, url: 'https://a.test/' });
+      const host = fake === 'setTimeout' ? w : globalThis;
+      const queued = [];
+      const real = host[fake];
+      host[fake] = (callback) => queued.push(callback);
+      try {
+        w.location.href = 'javascript:window.ran=(window.ran||0)+1';
+        const a = w.document.body.appendChild(w.document.createElement('a'));
+        a.href = 'javascript:window.ran=(window.ran||0)+10';
+        a.click();
+      } finally {
+        host[fake] = real;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const before = w.ran;
+      for (const callback of queued) callback();
+      return [before, queued.length, w.ran];
+    };
+    assert.deepEqual(await run(held), [undefined, 2, 11]);
+    assert.deepEqual(await run(other), [11, 0, 11]);
+  });
+
+// document.location = url navigates too ([PutForwards=href]); a document
+// without a window has no location to forward to (#264 item 75).
+for (const jsdom of [30, 26, 25])
+  parity(
+    `document.location = url navigates ([PutForwards=href]) (jsdom ${jsdom})`,
+    async (w) => {
+      w.document.location = '#doc';
+      await tick();
+      const d = w.document.implementation.createHTMLDocument('');
+      let error = null;
+      try {
+        d.location = '#x';
+      } catch (e) {
+        error = [e.name, e.message];
+      }
+      return [w.location.href, w.history.length, error, d.location];
+    },
+    { jsdom },
+  );
+
 parity('window.location = url navigates ([PutForwards=href])', async (w) => {
   (function () {
     'use strict';
