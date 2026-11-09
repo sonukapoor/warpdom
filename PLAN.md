@@ -4620,6 +4620,70 @@ Vitest 3.2). Its release corpus check, on all four corpora, is clean.
 - After those: #199 (computed colors), #202 (`:empty`), #192 and #201
   (fast-mode stubs), #208 (CSSOM leftovers).
 
+## 2026-11-09: comments after a value of more than one part, jsdom 27 and later (branch fix/264-trailing-comment, #264 item 87)
+
+Black box, 27.4.0 to 30.1.3: a value jsdom keeps as written keeps the
+comments after it when it has more than one part (`border-radius: 1px
+2px/**/`, `1px/**/2px/**/`, `content: "a" "b"/**/`, `container-name: a b
+/**/`, `transition: a 1s/**/`), with the whitespace before them; trailing
+whitespace goes. setProperty keeps the comments before it too (`/**/1px
+2px`); the style attribute and cssText drop those. A value of one part
+drops them from 28 (`1px/**/` is `1px`); 27 keeps them there, setProperty
+the leading ones too, in some properties (#264 item 84, still open). Sheets
+from 29 (27 and 28's remove comments). A property that serializes (margin,
+font-family) drops them. warpdom dropped them everywhere.
+
+innerComments decides it: its probe is now the tokens with two spaces in
+every gap, so a property that serializes changes it (margin: `1px  2px` is
+`1px 2px`) where the old probe, comments as two spaces and then trimmed,
+missed a value already in its serialized form; one part is given twice
+(`1px  1px`), as a single token is its own serialization (jsdom 27 keeps
+`border-radius: 1px/**/`, not `width: 10px/**/`). It keeps the comments after
+a value of more than one part (any part in cssstyle 5), and with setter
+(writtenValue) those before it. parseInto and writtenValue look at a valid
+value again only when a comment is at its end (EDGE_COMMENT; or start).
+
+Bench (node 22.17.1, 5 interleaved runs, medians, ns per cssText write):
+no comments 963 -> 968; comments that change nothing (`color: red /* c
+*/`, `margin: 1px /* c */ 2px`) 1,587 -> 1,634 (+3%); with `border-radius:
+1px 2px/**/`, which now keeps its comment, 1,797 -> 2,064 (+15%). The
+cost is the probe's second validation, for values with a comment at the
+end only, which is what decides whether jsdom keeps it.
+
+Review: the recheck took a valid custom property too, and dropped its
+leading comment (`--x: /*lead*/a b/**/`, kept whole by jsdom 27 to 30);
+custom properties are left out of it. A comment left open after a value
+of more than one part (`border-radius: 1px 2px /*u; color: red`, the rest
+in the value) already matched; it is a test row now.
+Second review: parts with no space between them count too (`content:
+"a""b"/**/`, `will-change: a,b/**/`, `border-radius: 1px/2px/**/` keep
+the comment in 28 to 30): a top-level `,` or `/`, and a string next to
+another token, part the value. One item of a list (`animation-name:
+foo/**/`) drops it in 27 as well, as warpdom does.
+Third review: parts are counted the way jsdom's parse tree has them, at
+every depth. A function is its name and arguments (`rotate(45deg)/**/`
+keeps the comment), adjacent functions are two parts, a `url("a.png")`
+is one (drops it), a hex escape ends at one whitespace (`\61 b` is one
+name, drops it). The probe now puts two spaces at every boundary
+(`1px  /  2px`, `rotate(  45deg)`), and when they are all inside a
+function it also checks the value given twice (warpdom keeps `width:
+calc(  1px)` as written where jsdom writes `calc(1px)`: #264 item 93). The
+one-part rule for jsdom 27 is out again: 27 keeps the comment around one
+part in border-radius and content but not in container-name, so item 84's
+first case stays open.
+Bench after the review rounds (node 22.17.1, 5 interleaved runs against
+the base, medians, ns per cssText write): no comments 1,018 -> 1,025;
+comments that change nothing 1,665 -> 1,747 (+5%); `border-radius: 1px
+2px/**/`, which now keeps its comment, 1,902 -> 2,208 (+16%). The cost is
+the part scan and the probe's validation, for declarations with a comment
+only. Building the probe in a second pass, only when needed, was slower
+(+12% and +30%, a closure and two passes) and was dropped.
+Fourth review: the value given twice is checked only with a math function
+(calc, min, max, clamp), the case it is for; other functions may not
+repeat (`steps(2)`, `circle(10px)`), so `animation-timing-function:
+steps(/**/2)` had lost its inner comment and `clip-path: circle(10px)/**/`
+its trailing one.
+
 ## 2026-11-09: a font of a size alone, jsdom 26 (branch fix/264-jsdom26-font-size-alone, #264 item 63)
 
 Black box, 26.1.0: jsdom 26 takes a `font` with a size and no family, as

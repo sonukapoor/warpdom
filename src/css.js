@@ -3460,10 +3460,18 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       removeLegacyFont(decls, surface);
       continue;
     }
+    // (a comment inside a value kept as written, or after one of more than
+    // one part: commentedDeclarations; #264 item 87)
     let declared = declaredValue(name, value, mode, surface);
-    // (a comment inside a value kept as written: commentedDeclarations)
-    if (declared === INVALID && !runsOn && value.includes('/*'))
-      declared = innerComments(name, value, mode, surface, important) ?? INVALID;
+    // (a valid value is looked at again only with a comment at its end)
+    // (not a custom property's, kept as written: --x: /*lead*/a b/**/;
+    // #299 review)
+    if (
+      !runsOn &&
+      value.includes('/*') &&
+      (declared === INVALID || (EDGE_COMMENT.test(value) && name.charCodeAt(1) !== 45))
+    )
+      declared = innerComments(name, value, mode, surface, important) ?? declared;
     // A style attribute a style write serialized ('written'): a background
     // with an empty layer (url("a.png"), , backgroundValue) is read as the
     // declaration it came from, which jsdom 27 and later compute from.
@@ -4266,11 +4274,19 @@ const resets = (surface, name, text) =>
 // value declares nothing (red/**/; color: blue too). Such a value is
 // invalid to the grammar, so only invalid ones are looked at again (a
 // custom property's is kept as written: never invalid).
+// A comment at the end of a value, or at its start (#264 item 87).
+const EDGE_COMMENT = /\*\/[ \t\n\r\f]*$/;
+const LEADING_COMMENT = /^[ \t\n\r\f]*\/\*/;
 function writtenValue(name, raw, s) {
+  // (a value kept as written keeps its comments, before it too: #264
+  // item 87)
   const text = declaredValue(name, raw, s.mode, s.surface);
-  if (text !== INVALID || isLegacyMode(s.mode) || !raw.includes('/*') || separated(raw)) return text;
-  const kept = innerComments(name, raw, s.mode, s.surface);
+  if (isLegacyMode(s.mode) || !raw.includes('/*') || separated(raw)) return text;
+  // (a valid value is looked at again only with a comment at an end)
+  if (text !== INVALID && !EDGE_COMMENT.test(raw) && !LEADING_COMMENT.test(raw)) return text;
+  const kept = innerComments(name, raw, s.mode, s.surface, false, true);
   if (kept !== null) return kept;
+  if (text !== INVALID) return text;
   const decls = new Map();
   parseInto(decls, `${name}: ${raw}`, s.mode, s.surface, null, true, true);
   for (const declared of decls.values()) if (declared.important || declared.masked === true) return INVALID;
@@ -4288,42 +4304,112 @@ function writtenValue(name, raw, s) {
 // to 30.1.3, #264 item 61). null when no comment is inside. trailing:
 // the value comes before a priority, which keeps the comments after it
 // too (1px/**/2px/**/ !important; jsdom 28 and later, #292 review).
-function innerComments(name, value, mode, surface, trailing = false) {
+function innerComments(name, value, mode, surface, trailing = false, setter = false) {
+  // The probe: the value's parts with two spaces at each boundary between
+  // them (whitespace, a comment, a , or /, a string or function next to
+  // another part, a function's arguments), so a property that serializes
+  // its value changes it (margin: 1px  2px is 1px 2px, width: calc(  1px)
+  // is calc(1px)) and one that keeps it as written does not (border-radius:
+  // 1px  /  2px, transform: rotate(  45deg), content: "a"  "b").
   let probe = '';
-  let from = 0;
   let first = -1; // the value's first and last character outside comments
   let last = -1;
-  let inner = false; // a comment after the first character
+  let inner = false; // a comment after the first token
   let pending = false;
+  let gap = false; // whitespace or a comment after a token
+  let joined = false; // the last part ended with , / ( ) or a string
+  let parts = false; // more than one part
+  let top = false; // a boundary outside functions
+  let depth = 0;
+  let leading = false; // a comment before the first token
   for (let i = 0; i < value.length; i++) {
     const c = value.charCodeAt(i);
     if (c === 47 && value.charCodeAt(i + 1) === 42) {
       const end = commentEnd(value, i);
-      probe += value.slice(from, i) + '  ';
-      from = end;
-      if (first !== -1) pending = true;
+      if (first !== -1) pending = gap = true;
+      else leading = true;
       i = end - 1;
       continue;
     }
-    if (c === 32 || c === 9 || c === 10 || c === 13 || c === 12) continue;
+    if (c === 32 || c === 9 || c === 10 || c === 13 || c === 12) {
+      if (first !== -1) gap = true;
+      continue;
+    }
+    // (a , or / and a string next to another part are boundaries too: a,b,
+    // 1px/2px, "a""b"; #299 review)
+    const boundary = first !== -1 && (gap || (joined && c !== 41) || c === 44 || c === 47 || c === 34 || c === 39);
     if (first === -1) first = i;
     if (pending) inner = true;
-    pending = false;
-    if (c === 92) i++;
-    else if (c === 34 || c === 39) {
+    if (boundary) {
+      parts = true;
+      if (depth === 0 && c !== 41) top = true;
+      probe += '  ';
+    }
+    pending = gap = joined = false;
+    const start = i;
+    if (c === 92) {
+      // (a hex escape takes one whitespace after it: \61 b is one name)
+      let j = i + 1;
+      while (j < i + 7 && isHexDigit(value.charCodeAt(j))) j++;
+      if (j === i + 1) i++;
+      else i = isCssSpace(value.charCodeAt(j)) ? j : j - 1;
+    } else if (c === 44 || c === 47) joined = true;
+    else if (c === 41) {
+      joined = true;
+      if (depth > 0) depth--;
+    } else if (c === 34 || c === 39) {
       const end = stringEnd(value, i, false);
       i = end - 1;
+      joined = true;
     } else if (c === 40) {
-      // (an unquoted url() is one token: url(a/*b.png) has no comment)
+      // (an unquoted url() is one part: url(a/*b.png) has no comment; a
+      // quoted one too, url("a.png"); another function is its name and
+      // arguments: rotate(45deg)/**/ keeps the comment; #299 review)
       const end = urlTokenEnd(value, i);
       if (end !== -1) i = end - 1;
+      else if (/url$/i.test(value.slice(Math.max(0, i - 3), i))) {
+        let j = i + 1;
+        while (isCssSpace(value.charCodeAt(j))) j++;
+        const q = value.charCodeAt(j);
+        if (q === 34 || q === 39) {
+          const close = value.indexOf(')', stringEnd(value, j, false));
+          i = (close === -1 ? value.length : close + 1) - 1;
+        } else {
+          joined = true;
+          depth++;
+        }
+      } else {
+        joined = true;
+        depth++;
+      }
     }
     last = Math.min(i, value.length - 1);
+    probe += value.slice(start, last + 1);
   }
-  if (!inner) return null;
-  probe = trimSpaces(probe + value.slice(from));
+  // The comments around a value of more than one part stay too (#264 item
+  // 87): those after it (1px 2px/**/), and through setProperty those
+  // before it (/**/1px 2px). One part drops them (jsdom 27 keeps them in
+  // some properties: #264 item 84).
+  const edges = parts;
+  const after = edges && pending;
+  const before = edges && setter && leading;
+  if (!inner && !after && !before) return null;
+  // (a value with var() is kept as written whatever its parts: its
+  // comments are commentedDeclarations' to handle; #299)
+  if (probe.includes('var(') && hasVarFunction(probe)) return null;
   if (declaredValue(name, probe, mode, surface) !== probe) return null;
-  return trailing ? trimSpaces(value.slice(first)) : value.slice(first, last + 1);
+  // (with boundaries inside a math function only, the value given twice
+  // too: warpdom keeps width: calc(  1px) as written where jsdom writes
+  // calc(1px), #264 item 93, but not calc(  1px)  calc(  1px); not for
+  // other functions, which may not repeat: steps(2), circle(10px); #299
+  // review)
+  if (!top && MATH_FUNCTION.test(probe)) {
+    const twice = `${probe}  ${probe}`;
+    if (declaredValue(name, twice, mode, surface) !== twice) return null;
+  }
+  let start = first;
+  if (before) for (start = 0; isCssSpace(value.charCodeAt(start)); start++);
+  return trailing || after ? trimSpaces(value.slice(start)) : value.slice(start, last + 1);
 }
 // The text with each comment outside strings as spaces of its length, so
 // priorityStart finds a priority with comments around or inside it at the
