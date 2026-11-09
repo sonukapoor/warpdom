@@ -4629,7 +4629,7 @@ comments after it when it has more than one part (`border-radius: 1px
 whitespace goes. setProperty keeps the comments before it too (`/**/1px
 2px`); the style attribute and cssText drop those. A value of one part
 drops them from 28 (`1px/**/` is `1px`); 27 keeps them there, setProperty
-the leading ones too (#264 item 84's first case, fixed with this). Sheets
+the leading ones too, in some properties (#264 item 84, still open). Sheets
 from 29 (27 and 28's remove comments). A property that serializes (margin,
 font-family) drops them. warpdom dropped them everywhere.
 
@@ -4660,6 +4660,17 @@ Second review: parts with no space between them count too (`content:
 the comment in 28 to 30): a top-level `,` or `/`, and a string next to
 another token, part the value. One item of a list (`animation-name:
 foo/**/`) drops it in 27 as well, as warpdom does.
+Third review: parts are counted the way jsdom's parse tree has them, at
+every depth. A function is its name and arguments (`rotate(45deg)/**/`
+keeps the comment), adjacent functions are two parts, a `url("a.png")`
+is one (drops it), a hex escape ends at one whitespace (`\61 b` is one
+name, drops it). The probe now puts two spaces at every boundary
+(`1px  /  2px`, `rotate(  45deg)`), and when they are all inside a
+function it also checks the value given twice (warpdom keeps `width:
+calc(  1px)` as written where jsdom writes `calc(1px)`: #264 item 93). The
+one-part rule for jsdom 27 is out again: 27 keeps the comment around one
+part in border-radius and content but not in container-name, so item 84's
+first case stays open.
 
 ## 2026-11-01: window members locked before their first read (branch fix/160-locked-lazy-members, #160)
 

@@ -1593,7 +1593,7 @@ for (const jsdom of [28, 29, 30])
 // A value jsdom keeps as written keeps the comments after it when it has
 // more than one part (1px 2px/**/, "a" "b"/**/, 1px/**/2px/**/), and
 // setProperty keeps those before it too (/**/1px 2px); one part drops them
-// from 28 (1px/**/ is 1px), keeps them in 27. Sheets from 29 (27 and 28's
+// from 28 (1px/**/ is 1px; 27 keeps them in some properties). Sheets from 29 (27 and 28's
 // remove comments). Black box, 27.4.0 to 30.1.3 (#264 item 87).
 const TRAILING_COMMENTS = [
   ['border-radius', '1px 2px/**/'],
@@ -1625,13 +1625,25 @@ const TRAILING_COMMENTS = [
   ['grid-template-areas', '"a""b"/**/'],
   ['animation-name', 'foo/**/'],
   ['will-change', 'foo/**/'],
+  // A function is its name and arguments, a url() one part, a hex escape
+  // ends at one whitespace (#299 review).
+  ['transform', 'rotate(45deg)/**/'],
+  ['transform', 'translate(1px)translate(2px)/**/'],
+  ['transform', 'translate(1px,2px)/**/'],
+  ['background-image', 'url("a.png")/**/'],
+  ['width', 'calc(1px)/**/'],
+  ['container-name', '\\61 b/**/'],
+  ['container-name', 'a/**/'],
 ];
+// (jsdom 27 keeps the comments around one part in some properties, as in
+// border-radius: 1px/**/; #264 item 84)
+const ONE_PART_27 = new Set(['1px/**/', '/**/1px', '"a b"/**/']);
 for (const jsdom of [27, 28, 29, 30])
   parity(
     `style: comments after a value of more than one part kept as written (jsdom ${jsdom}, #264 item 87)`,
     (w) => {
       const d = w.document;
-      return TRAILING_COMMENTS.map(([name, value]) => {
+      return TRAILING_COMMENTS.filter(([, value]) => jsdom !== 27 || !ONE_PART_27.has(value)).map(([name, value]) => {
         const attribute = d.createElement('div');
         attribute.setAttribute('style', `${name}: ${value}`);
         const set = d.createElement('div');

@@ -4085,19 +4085,23 @@ function writtenValue(name, raw, s) {
 // the value comes before a priority, which keeps the comments after it
 // too (1px/**/2px/**/ !important; jsdom 28 and later, #292 review).
 function innerComments(name, value, mode, surface, trailing = false, setter = false) {
-  // The probe: the tokens with two spaces in each gap between them (a
-  // comment or whitespace), so a property that serializes its value
-  // changes it (margin: 1px  2px is 1px 2px) and one that keeps it as
-  // written does not (border-radius, content, container-name).
+  // The probe: the value's parts with two spaces at each boundary between
+  // them (whitespace, a comment, a , or /, a string or function next to
+  // another part, a function's arguments), so a property that serializes
+  // its value changes it (margin: 1px  2px is 1px 2px, width: calc(  1px)
+  // is calc(1px)) and one that keeps it as written does not (border-radius:
+  // 1px  /  2px, transform: rotate(  45deg), content: "a"  "b").
   let probe = '';
   let first = -1; // the value's first and last character outside comments
   let last = -1;
   let inner = false; // a comment after the first token
   let pending = false;
   let gap = false; // whitespace or a comment after a token
-  let parts = false; // a token after a gap: more than one part
+  let joined = false; // the last part ended with , / ( ) or a string
+  let parts = false; // more than one part
+  let top = false; // a boundary outside functions
+  let depth = 0;
   let leading = false; // a comment before the first token
-  let joined = false; // the last token was a , / or string, next to the next
   for (let i = 0; i < value.length; i++) {
     const c = value.charCodeAt(i);
     if (c === 47 && value.charCodeAt(i + 1) === 42) {
@@ -4111,44 +4115,73 @@ function innerComments(name, value, mode, surface, trailing = false, setter = fa
       if (first !== -1) gap = true;
       continue;
     }
-    // (a , or / and a string next to another token part it too: a,b,
+    // (a , or / and a string next to another part are boundaries too: a,b,
     // 1px/2px, "a""b"; #299 review)
-    if (first !== -1 && (c === 44 || c === 47 || c === 34 || c === 39 || joined)) parts = true;
+    const boundary = first !== -1 && (gap || (joined && c !== 41) || c === 44 || c === 47 || c === 34 || c === 39);
     if (first === -1) first = i;
     if (pending) inner = true;
-    if (gap) {
+    if (boundary) {
       parts = true;
+      if (depth === 0 && c !== 41) top = true;
       probe += '  ';
     }
     pending = gap = joined = false;
     const start = i;
-    if (c === 92) i++;
-    else if (c === 44 || c === 47) joined = true;
-    else if (c === 34 || c === 39) {
+    if (c === 92) {
+      // (a hex escape takes one whitespace after it: \61 b is one name)
+      let j = i + 1;
+      while (j < i + 7 && isHexDigit(value.charCodeAt(j))) j++;
+      if (j === i + 1) i++;
+      else i = isCssSpace(value.charCodeAt(j)) ? j : j - 1;
+    } else if (c === 44 || c === 47) joined = true;
+    else if (c === 41) {
+      joined = true;
+      if (depth > 0) depth--;
+    } else if (c === 34 || c === 39) {
       const end = stringEnd(value, i, false);
       i = end - 1;
       joined = true;
     } else if (c === 40) {
-      // (an unquoted url() is one token: url(a/*b.png) has no comment)
+      // (an unquoted url() is one part: url(a/*b.png) has no comment; a
+      // quoted one too, url("a.png"); another function is its name and
+      // arguments: rotate(45deg)/**/ keeps the comment; #299 review)
       const end = urlTokenEnd(value, i);
       if (end !== -1) i = end - 1;
+      else if (/url$/i.test(value.slice(Math.max(0, i - 3), i))) {
+        let j = i + 1;
+        while (isCssSpace(value.charCodeAt(j))) j++;
+        const q = value.charCodeAt(j);
+        if (q === 34 || q === 39) {
+          const close = value.indexOf(')', stringEnd(value, j, false));
+          i = (close === -1 ? value.length : close + 1) - 1;
+        } else {
+          joined = true;
+          depth++;
+        }
+      } else {
+        joined = true;
+        depth++;
+      }
     }
     last = Math.min(i, value.length - 1);
     probe += value.slice(start, last + 1);
   }
   // The comments around a value of more than one part stay too (#264 item
   // 87): those after it (1px 2px/**/), and through setProperty those
-  // before it (/**/1px 2px). jsdom 27 (cssstyle 5) keeps them around one
-  // part as well (1px/**/); 28 and later drop them there.
-  const edges = first !== -1 && (parts || surface?.key?.startsWith('cssstyle5') === true);
+  // before it (/**/1px 2px). One part drops them (jsdom 27 keeps them in
+  // some properties: #264 item 84).
+  const edges = parts;
   const after = edges && pending;
   const before = edges && setter && leading;
   if (!inner && !after && !before) return null;
-  // (one part is its own serialization: the token given twice tells a
-  // property that keeps it as written, border-radius: 1px  1px, from one
-  // that parses it, width: 10px  10px)
-  if (!parts) probe = `${probe}  ${probe}`;
   if (declaredValue(name, probe, mode, surface) !== probe) return null;
+  // (with boundaries inside a function only, the value given twice too:
+  // width keeps calc(  1px) but not calc(  1px)  calc(  1px), transform
+  // keeps rotate(  45deg)  rotate(  45deg))
+  if (!top) {
+    const twice = `${probe}  ${probe}`;
+    if (declaredValue(name, twice, mode, surface) !== twice) return null;
+  }
   let start = first;
   if (before) for (start = 0; isCssSpace(value.charCodeAt(start)); start++);
   return trailing || after ? trimSpaces(value.slice(start)) : value.slice(start, last + 1);
