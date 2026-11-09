@@ -1156,6 +1156,17 @@ const IDENT_BANGS = [
   '!b',
   '(a !b)',
   '"!b"',
+  // A comment ends at its first */; a hex escape takes one whitespace
+  // after it (#293 review).
+  'a !b/**/ c',
+  'a !b /* x */ /* y */',
+  'a !\\62 c',
+  'a !\\62  c',
+  'a !b\\62 c',
+  'a !\\62\tc',
+  'a !\\000062c',
+  'a !\\0000062 c',
+  'a !\\,b',
 ];
 for (const jsdom of [27, 28, 29, 30])
   parity(
@@ -1194,6 +1205,19 @@ for (const jsdom of [27, 28, 29, 30])
     },
     { jsdom },
   );
+// Comments after a ! are read in linear time (#293 review: a regular
+// expression backtracked exponentially, 108 ms on 24 comments).
+test('style: many comments after a ! are read quickly', () => {
+  // (24: V8 leaves a long backtracking run to its linear engine, so a
+  // count in the thousands would not show it)
+  const d = createWindow().document;
+  const e = d.createElement('div');
+  const start = performance.now();
+  e.style.cssText = `--x: a !${'/**/'.repeat(24)}1; color: red`;
+  const elapsed = performance.now() - start;
+  assert.equal(e.style.cssText, 'color: red;');
+  assert.ok(elapsed < 50, `${elapsed} ms`);
+});
 // The default profile (the latest jsdom) keeps a ! that is in a block or
 // escaped (#154, #155 review; jsdom 30.1.3 black box).
 test('style: a ! in a block or escaped is part of the value (default profile)', () => {

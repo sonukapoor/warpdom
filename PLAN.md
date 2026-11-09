@@ -4835,6 +4835,13 @@ result replaces the stray-priority check for these paths. That check
 dropped only a leftover `!important` or a lone `!`, and in blocks only.
 Not measured: jsdom 30.0 (treated as 30).
 
+Review: the ident after the `!` was matched by a regular expression that
+backtracked exponentially on comments (`--x: a !` and 24 `/**/` took
+425 ms through cssText) and let a comment run past its `*/` (`a !b/**/ c`
+was important; jsdom drops it). A hex escape takes one whitespace after it
+(`a !\62 c` is one ident, important in jsdom), which it did not. identToEnd
+reads it in one pass per CSS Syntax 3.
+
 Left (#264 item 85): in 27 and 28's sheets, a custom property keeps
 `!IMPORTANT` as written (warpdom lowercases it), and `--x: a !important b`
 is `a  b !important`.

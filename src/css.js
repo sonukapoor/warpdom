@@ -2728,11 +2728,58 @@ function strayPriority(value, important) {
 // strings, comments, escapes and () [] {} blocks), as jsdom 27 and later
 // read it in a declaration block (black box, 27.4.0 to 30.1.3, #264 item
 // 65): one ! with one ident after it to the end (whitespace and comments
-// around it) is !important (red !b, a ! /**/ -b, a !\62, a !é); any
-// other drops the declaration (a !, a !b c, a !b!c, a !1, a !-, a !b(c),
-// a !"s"). The ! as an index, -1 with none, -2 to drop.
-const IDENT_AFTER_BANG =
-  /^(?:\s|\/\*[\s\S]*?(?:\*\/|$))*(?:--|-?(?:[a-zA-Z_\u0080-\uffff]|\\[^\n\r\f]))(?:[\w\-\u0080-\uffff]|\\[^\n\r\f])*(?:\s|\/\*[\s\S]*?(?:\*\/|$))*$/;
+// around it) is !important (red !b, a ! /**/ -b, a !\62, a !\62 c,
+// a !é); any other drops the declaration (a !, a !b c, a !b/**/ c, a
+// !b!c, a !1, a !-, a !b(c), a !"s"). The ! as an index, -1 with none, -2
+// to drop. Read in one pass (identToEnd): a regular expression backtracked
+// exponentially on many comments and let a comment run past its */ (#293
+// review).
+// The index after whitespace and comments from i (a comment ends at its
+// first */, or the end).
+function afterSpaces(text, i) {
+  while (i < text.length) {
+    const c = text.charCodeAt(i);
+    if (isCssSpace(c)) i++;
+    else if (c === 47 && text.charCodeAt(i + 1) === 42) i = commentEnd(text, i);
+    else break;
+  }
+  return i;
+}
+// The index after an escape at i (a backslash not before a newline): one
+// to six hex digits and one whitespace after them (CR LF counts as one),
+// or one character; -1 when none starts there.
+function escapeEnd(text, i) {
+  if (text.charCodeAt(i) !== 92 || i + 1 >= text.length) return -1;
+  const c = text.charCodeAt(i + 1);
+  if (c === 10 || c === 13 || c === 12) return -1;
+  if (!isHexDigit(c)) return i + 2 + (c > 0xffff ? 1 : 0);
+  let j = i + 2;
+  while (j < i + 7 && isHexDigit(text.charCodeAt(j))) j++;
+  if (text.charCodeAt(j) === 13 && text.charCodeAt(j + 1) === 10) return j + 2;
+  return isCssSpace(text.charCodeAt(j)) ? j + 1 : j;
+}
+const isNameStartCode = (c) => (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || c === 95 || c >= 0x80;
+// Whether text from i is whitespace and comments, one ident, and more
+// whitespace and comments to the end (CSS Syntax 3's ident).
+function identToEnd(text, i) {
+  i = afterSpaces(text, i);
+  let c = text.charCodeAt(i);
+  if (c === 45) {
+    c = text.charCodeAt(++i);
+    if (c === 45) i++;
+    else if (!isNameStartCode(c) && escapeEnd(text, i) === -1) return false;
+  } else if (!isNameStartCode(c) && escapeEnd(text, i) === -1) return false;
+  while (i < text.length) {
+    c = text.charCodeAt(i);
+    if (isNameStartCode(c) || c === 45 || (c >= 48 && c <= 57)) i++;
+    else if (c === 92) {
+      const end = escapeEnd(text, i);
+      if (end === -1) break;
+      i = end;
+    } else break;
+  }
+  return afterSpaces(text, i) === text.length;
+}
 function strayBang(value) {
   let bang = -1;
   let depth = 0;
@@ -2749,7 +2796,7 @@ function strayBang(value) {
     }
   }
   if (bang === -1) return -1;
-  return IDENT_AFTER_BANG.test(value.slice(bang + 1)) ? bang : -2;
+  return identToEnd(value, bang + 1) ? bang : -2;
 }
 const BORDER_AND_SIDES = new Set(['border', 'border-top', 'border-right', 'border-bottom', 'border-left']);
 
