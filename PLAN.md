@@ -4809,6 +4809,40 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-08: an unclosed block in a value runs to the end of the sheet, jsdom 29 and later (branch fix/264-custom-unclosed, #264 item 68)
+
+Black box, 29.1.1, 30.1.2 and 30.1.3 (a style element, insertRule,
+replaceSync):
+- An unclosed `(`, `[` or function in a declaration's value is a block
+  that only its closer or the end of the sheet ends, as in CSS Syntax 3.
+  The rule's `}` and every rule after it become part of the value, in an
+  `@media` block too: `.x { --v: (a  b } .y { color: red }` is one rule,
+  `.x { --v: (a  b } .y { color: red }; }`.
+- A custom property keeps that text as written: a `}`, `]` or `;` in it
+  keeps it so. Another property is dropped, and the rules after it go
+  with it (`.x { color: (a } .y { … }` is `.x { }` alone).
+- A custom value that reaches the end with a block or string still open
+  is re-serialized with them closed: `(a  b` is `(a b)`, `f(a,  b` is
+  `f(a,b)`, `(a  [b` is `(a[b])`, `"a  b` is `"a  b"`, `a  "b` is `a"b"`.
+  A bad `url(` stays as written. Item 59 had kept an unclosed block or
+  string as written; the measurement that led to that had a `}` after it.
+- jsdom 29.1.1 and 30.1.2 throw from appendChild for `.x { width:
+  calc(1px } .y {}` (a css-tree error); 30.1.3 gives `.x { }`, as warpdom
+  now does. warpdom does not throw.
+
+blockEnd (cssom.js) counts the ( and [ blocks open when nested
+(nestedBlocks: jsdom 29 and later, the same parser change as
+customReserialized), so a } inside one closes nothing. readString and
+readList (custom-value.js) close a string or block at the end instead of
+keeping the value as written.
+
+Bench (node 22.17.1, 5 interleaved runs, medians): a style element with
+200 rules and 200 @media rules 601.3 -> 610.1 µs, insertRule 4.9 -> 5.0
+µs (noise). A first version (a stack of closers, one string comparison
+each per character) cost +25%, and counters with string comparisons +3%;
+blockEnd now reads char codes and calls skipToken only where a comment,
+string or url() can start, in every mode.
+
 ## 2026-11-08: keywords, boxes and sizes in the background shorthand, jsdom 27 and later (branch fix/264-background-keywords, #264 item 47)
 
 Black box, 27.4.0, 28.1.0, 29.1.1, 30.1.2 and 30.1.3 (style.background,

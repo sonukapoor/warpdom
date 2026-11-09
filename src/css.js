@@ -1033,6 +1033,14 @@ export const missingAccessors = (surface) =>
 const modeOf = (proto) => modes.get(proto) ?? 'spec';
 export const validationModeOf = (window) => modeOf(window[S].protos.CSSStyleProperties);
 export const protosMode = (protos) => modeOf(protos.CSSStyleProperties);
+// Whether a style sheet's ( and [ blocks hold its } (CSS Syntax 3: an
+// unclosed one runs to the end of the sheet), as jsdom 29 and later read
+// sheets, with the parser that also re-serializes custom properties
+// (customReserialized; black box, #264 item 68).
+export const nestedBlocks = (protos) => {
+  const proto = protos.CSSStyleProperties;
+  return modeOf(proto) === 'spec' || surfaces.get(proto)?.customReserialized === true;
+};
 const surfaceOf = (proto) => surfaces.get(proto) ?? null;
 // A property the profile does not know: setProperty and parsing drop it.
 const dropped = (surface, name) => surface !== null && surface.drops.has(name);

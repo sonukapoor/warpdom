@@ -2513,6 +2513,61 @@ test('style: a custom property in a style sheet kept as written (jsdom 29 and la
   }
 });
 
+// An unclosed (, [ or function in a declaration's value is a block only
+// its closer or the end of the sheet ends (CSS Syntax 3): the rule's } and
+// the rules after it are part of the value. A custom property keeps that
+// text as written (a } in it keeps it so); one that reaches the end with a
+// block or string still open has them closed ((a  b is (a b)); another
+// property is dropped, with the rules after it. jsdom 29 and later, black
+// box 29.1.1 to 30.1.3 (#264 item 68).
+const UNCLOSED_SHEETS = [
+  '.x { --v: (a  b } .y { color: red }',
+  '.x { color: red; --v: (a } .y { color: red }',
+  '@media all { .x { --v: (a } } .y { color: red }',
+  '.x { --v: (a; } .y { color: blue }',
+  '.x { --v: [a } .y { color: red }',
+  '.x { --v: calc(1px } .y { color: red }',
+  '.x { color: (a } .y { color: red }',
+  '.x { --v: (a ) } .y { color: red }',
+  '.x { --v: (a  b  }  ',
+  '.x { --v: (a  b',
+  '.x { --v: [a  b',
+  '.x { --v: a(b  c',
+  '.x { --v: (a  [b',
+  '.x { --v: f(a,  b',
+  '.x { --v: "a  b',
+  '.x { --v: a  "b',
+  '.x { --v: (a  "b',
+  '.x { --v: "a }',
+  '.x { --v: url(a  b',
+  '.x { --v: (a  b ]',
+];
+for (const jsdom of [29, 30, '30.1.3'])
+  parity(
+    `style: an unclosed block in a value runs to the end of the sheet (jsdom ${jsdom}, #264 item 68)`,
+    (w) => {
+      // (jsdom logs "Could not parse CSS stylesheet" for some: #264 item 67)
+      const log = console.error;
+      console.error = () => {};
+      try {
+        return UNCLOSED_SHEETS.map((text) => {
+          const d = w.document;
+          const style = d.createElement('style');
+          style.textContent = text;
+          d.head.appendChild(style);
+          const rules = [...style.sheet.cssRules].map((r) => r.cssText);
+          style.remove();
+          const sheet = new w.CSSStyleSheet();
+          sheet.replaceSync(text);
+          return [text, rules, [...sheet.cssRules].map((r) => r.cssText)];
+        });
+      } finally {
+        console.error = log;
+      }
+    },
+    { jsdom },
+  );
+
 test('style: a custom property nested past the stack is kept as written (#286 review)', () => {
   const v = `${'('.repeat(20000)}a`;
   assert.equal(reserializeCustom(v), v);

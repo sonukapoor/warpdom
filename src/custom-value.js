@@ -15,8 +15,10 @@
 //   url(a\ b));
 // - idents, numbers, hashes and delimiters keep their spelling (\61 b,
 //   1E3px);
-// - a value with a {} block, a bad string or url, or an unclosed block
-//   is kept as written.
+// - a value with a {} block, or a bad string or url, is kept as written;
+//   a string or a block still open at the end of the value is closed
+//   there ("a  b is "a  b", (a  b is (a b), f(a,  b is f(a,b); the value
+//   then ends the sheet: #264 item 68).
 //
 // The token kinds below are the rows and columns of that measurement.
 
@@ -181,7 +183,7 @@ function readString(text, i) {
     value += c === '\0' ? '�' : c;
     j++;
   }
-  throw new Bad(); // unclosed
+  return [value, j]; // (closed at the end)
 }
 
 // An unquoted url's value from i (after url( and its whitespace): [value,
@@ -315,7 +317,7 @@ function readList(text, i, closer, depth = 0) {
     push(DELIMS[c] ?? 'delim', delim);
     j += delim.length;
   }
-  if (closer !== null) throw new Bad(); // unclosed block
+  // (a block still open is closed at the end)
   return [tokens, j];
 }
 
