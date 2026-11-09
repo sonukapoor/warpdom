@@ -4853,6 +4853,15 @@ border-spacing 670 -> 684, setProperty width 526 -> 541, cssText 1,592 ->
 writing spaces for its comments, and only a value with a comment between
 tokens takes it.
 
+Review: a priority with comments around or inside it (`1px/**/2px
+!important/**/`, `!/**/important`) was not found, so the value lost its
+comment (`1px 2px`). commentedDeclarations finds the priority on the text
+with its comments blanked to spaces of the same length (blankComments),
+cuts the value at the `!`, and keeps the comments before it, as jsdom 28
+and later do (`1px/**/2px/**/ !important`, `1px/**/2px /* a */ /* b */
+!important`). parseInto keeps them too for a declaration with a priority.
+jsdom 27 drops the priority there instead (#264 item 84).
+
 ## 2026-11-08: keywords, boxes and sizes in the background shorthand, jsdom 27 and later (branch fix/264-background-keywords, #264 item 47)
 
 Black box, 27.4.0, 28.1.0, 29.1.1, 30.1.2 and 30.1.3 (style.background,

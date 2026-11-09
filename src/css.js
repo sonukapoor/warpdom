@@ -2821,9 +2821,15 @@ function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface,
         part = part.slice(0, head) + (custom ? raw : raw.replace(LEADING_COMMENTS, ''));
       } else if (!custom && !SPACED_NAME.test(declared)) {
         // (a comment inside a value kept as written, before an !important)
-        const bang = priorityStart(raw);
-        const kept = innerComments(propertyName(declared), bang === -1 ? raw : raw.slice(0, bang), mode, surface);
-        if (kept !== null) part = part.slice(0, head) + kept + (bang === -1 ? '' : raw.slice(bang));
+        // (the value ends at the !, its comments before it kept)
+        const blanked = blankComments(raw);
+        const start = priorityStart(blanked);
+        const bang = start === -1 ? -1 : blanked.indexOf('!', start);
+        const kept =
+          bang === -1
+            ? innerComments(propertyName(declared), raw, mode, surface)
+            : innerComments(propertyName(declared), raw.slice(0, bang), mode, surface, true);
+        if (kept !== null) part = part.slice(0, head) + kept + (bang === -1 ? '' : ' !important');
       }
     }
     parts.push(part);
@@ -3042,7 +3048,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     let declared = declaredValue(name, value, mode, surface);
     // (a comment inside a value kept as written: commentedDeclarations)
     if (declared === INVALID && !runsOn && value.includes('/*'))
-      declared = innerComments(name, value, mode, surface) ?? INVALID;
+      declared = innerComments(name, value, mode, surface, important) ?? INVALID;
     // A style attribute a style write serialized ('written'): a background
     // with an empty layer (url("a.png"), , backgroundValue) is read as the
     // declaration it came from, which jsdom 27 and later compute from.
@@ -3864,8 +3870,10 @@ function writtenValue(name, raw, s) {
 // before and after it go. Such a property is one whose value, with each
 // comment read as two spaces, declaredValue keeps unchanged (margin: 1px
 // 2px with two spaces is 1px 2px: serialized, so null; black box, 27.4.0
-// to 30.1.3, #264 item 61). null when no comment is inside.
-function innerComments(name, value, mode, surface) {
+// to 30.1.3, #264 item 61). null when no comment is inside. trailing:
+// the value comes before a priority, which keeps the comments after it
+// too (1px/**/2px/**/ !important; jsdom 28 and later, #292 review).
+function innerComments(name, value, mode, surface, trailing = false) {
   let probe = '';
   let from = 0;
   let first = -1; // the value's first and last character outside comments
@@ -3899,7 +3907,28 @@ function innerComments(name, value, mode, surface) {
   }
   if (!inner) return null;
   probe = trimSpaces(probe + value.slice(from));
-  return declaredValue(name, probe, mode, surface) === probe ? value.slice(first, last + 1) : null;
+  if (declaredValue(name, probe, mode, surface) !== probe) return null;
+  return trailing ? trimSpaces(value.slice(first)) : value.slice(first, last + 1);
+}
+// The text with each comment outside strings as spaces of its length, so
+// priorityStart finds a priority with comments around or inside it at the
+// same index (1px !/**/important, 1px !important/**/; #292 review).
+function blankComments(text) {
+  if (!text.includes('/*')) return text;
+  let out = '';
+  let from = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (c === 92) i++;
+    else if (c === 34 || c === 39) i = stringEnd(text, i, false) - 1;
+    else if (c === 47 && text.charCodeAt(i + 1) === 42) {
+      const end = commentEnd(text, i);
+      out += text.slice(from, i) + ' '.repeat(end - i);
+      from = end;
+      i = end - 1;
+    }
+  }
+  return out + text.slice(from);
 }
 // A semicolon outside strings, comments, parentheses and unquoted url()s.
 function separated(raw) {

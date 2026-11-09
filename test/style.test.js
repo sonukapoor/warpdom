@@ -1552,6 +1552,38 @@ const INNER_COMMENTS = [
   ['background-size', '1px  2px'],
   ['background-size', '1px  2px,  3px'],
 ];
+// With comments around or inside a priority, which ends the value: the
+// comments before the ! stay (jsdom 28 and later; 27 drops the priority
+// there, #264 item 84; #292 review).
+const COMMENTED_PRIORITIES = [
+  'border-radius: 1px/**/2px !important/**/',
+  'border-radius: 1px/**/2px !/**/important',
+  'border-radius: 1px/**/2px/**/!important',
+  'border-radius: 1px/**/2px /**/ !important',
+  'border-radius: 1px/**/2px /* a */ /* b */!important',
+  'border-radius: 1px/**/2px ! important /**/ ',
+  'container-name: a/**/b !important /* x */',
+  'margin: 1px/**/2px !important/**/',
+];
+for (const jsdom of [28, 29, 30])
+  parity(
+    `style: comments around a priority after a value kept as written (jsdom ${jsdom}, #292 review)`,
+    (w) =>
+      COMMENTED_PRIORITIES.map((text) => {
+        const d = w.document;
+        const attribute = d.createElement('div');
+        attribute.setAttribute('style', text);
+        const set = d.createElement('div');
+        set.style.cssText = text;
+        const sheet = d.createElement('style');
+        sheet.textContent = `p { ${text} }`;
+        d.head.appendChild(sheet);
+        const rule = sheet.sheet.cssRules[0].cssText;
+        sheet.remove();
+        return [text, attribute.style.cssText, set.style.cssText, rule];
+      }),
+    { jsdom },
+  );
 for (const jsdom of [27, 28, 29, 30])
   parity(
     `style: a comment inside a value kept as written (jsdom ${jsdom}, #264 item 61)`,
