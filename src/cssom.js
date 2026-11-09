@@ -85,13 +85,15 @@ function preludeEnd(text, i) {
 }
 
 // The index of the `}` closing the block opened at `open` (or the end).
-// nested (jsdom 29 and later, nestedBlocks): a ( or [ block inside holds
-// a }, which then closes nothing (.x { --v: (a } .y {} is one rule); a )
-// or ] with none open is a token (counted, not matched by kind). Char
-// codes, and skipToken only where a comment, string or url() can start.
+// nested (jsdom 29 and later, nestedBlocks): blocks are matched by kind,
+// so a } inside a ( or [ block closes nothing (.x { --v: (a } .y {} is
+// one rule), and a closer of another kind is a token ((a ] stays open).
+// Char codes, and skipToken only where a comment, string or url() can
+// start.
 function blockEnd(text, open, nested = false) {
   let depth = 0;
-  let inner = 0; // ( and [ blocks open (nested)
+  const outer = nested ? [] : null; // (nested) the closers waited for
+  let closer = 0;
   for (let i = open; i < text.length; i++) {
     const c = text.charCodeAt(i);
     if (c === 47 || c === 40 || c === 34 || c === 39) {
@@ -101,14 +103,16 @@ function blockEnd(text, open, nested = false) {
         continue;
       }
     }
-    if (c === 123) depth++;
-    else if (c === 125) {
-      if (inner === 0 && --depth === 0) return i;
-    } else if (nested && c <= 93 && (c === 40 || c === 41 || c >= 91)) {
-      if (c === 40 || c === 91) inner++;
-      else if (c === 92) i++;
-      else if (inner > 0) inner--;
-    }
+    if (!nested) {
+      if (c === 123) depth++;
+      else if (c === 125 && --depth === 0) return i;
+    } else if (c === 123 || c === 40 || c === 91) {
+      outer.push(closer);
+      closer = c === 123 ? 125 : c === 40 ? 41 : 93;
+    } else if (c === closer) {
+      closer = outer.pop();
+      if (outer.length === 0) return i;
+    } else if (c === 92) i++;
   }
   return text.length;
 }

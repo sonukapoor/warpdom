@@ -2541,6 +2541,15 @@ const UNCLOSED_SHEETS = [
   '.x { --v: "a }',
   '.x { --v: url(a  b',
   '.x { --v: (a  b ]',
+  // Blocks matched by kind, and a ; inside any of them (#294 review).
+  '.x { --v: ({a}) } .y { color: red }',
+  '.x { --v: (a ] } .y { color: red }',
+  '.x { --v: [a } .y { color: red; width: 1px; }',
+  '.x { --v: [a; b] } .y { color: red }',
+  '.x { --v: [a; b]; color: red }',
+  '.x { --v: (a; b]; c) } .y { color: red }',
+  '.x { --v: {a; b}; color: red }',
+  '.x { --v: [a /* ; */ b; c]; color: red }',
 ];
 for (const jsdom of [29, 30, '30.1.3'])
   parity(
@@ -2565,6 +2574,32 @@ for (const jsdom of [29, 30, '30.1.3'])
         console.error = log;
       }
     },
+    { jsdom },
+  );
+
+// A ; inside a [] or {} block is part of the value in a declaration
+// block too (the style attribute, cssText; jsdom 27 and later, black box
+// 27.4.0 to 30.1.3; #294 review). 27 and 28's style sheets read these
+// otherwise (#264 items 66, 85).
+const BLOCK_SEMICOLONS = [
+  '--v: [a; b]; color: red',
+  '--v: {a; b}; color: red',
+  '--v: (a; b]; c); color: red',
+  '--v: [a /* ; */ b; c]; color: red',
+  '--v: [a; color: red',
+];
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `style: a ; inside a block in a declaration block (jsdom ${jsdom}, #294 review)`,
+    (w) =>
+      BLOCK_SEMICOLONS.map((text) => {
+        const d = w.document;
+        const attribute = d.createElement('div');
+        attribute.setAttribute('style', text);
+        const set = d.createElement('div');
+        set.style.cssText = text;
+        return [text, attribute.style.cssText, set.style.cssText, set.style.length];
+      }),
     { jsdom },
   );
 

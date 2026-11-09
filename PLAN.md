@@ -4843,6 +4843,18 @@ each per character) cost +25%, and counters with string comparisons +3%;
 blockEnd now reads char codes and calls skipToken only where a comment,
 string or url() can start, in every mode.
 
+Review: blocks are matched by kind (`({a})` closes, `(a ]` stays open),
+and a `;` inside a `(`, `[` or `{` block is part of the value: in 29 and
+later's sheets, and in the style attribute and cssText from 27 (`--v: [a;
+b]`, `{a; b}` and `(a; b]; c)` are one declaration in jsdom 27 to 30.1.3;
+warpdom split them on main too). splitDeclarations and
+commentedDeclarations keep a stack of closers there; 27 and 28's sheets
+are unchanged. A custom property's value in a sheet keeps its comments
+for reserializeCustom, which reads them itself and keeps a value it
+cannot read as written (`[a /* ; */ b; c]`). Bench (5 interleaved runs,
+medians): cssText 1,467 -> 1,484 ns, cssText with [] 2,157 -> 2,172 ns,
+the 200-rule sheet 741.6 -> 758.1 µs (noise).
+
 ## 2026-11-08: keywords, boxes and sizes in the background shorthand, jsdom 27 and later (branch fix/264-background-keywords, #264 item 47)
 
 Black box, 27.4.0, 28.1.0, 29.1.1, 30.1.2 and 30.1.3 (style.background,

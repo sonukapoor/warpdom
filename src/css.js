@@ -134,13 +134,38 @@ function cssSplitNeeded(text) {
   }
   return quoted && (text.indexOf('\n') !== -1 || text.indexOf('\r') !== -1 || text.indexOf('\f') !== -1);
 }
-function splitDeclarations(text) {
+// nested (jsdom 27 and later's declaration blocks, 29 and later's
+// sheets): a ; inside a ( [ or { block, matched by kind, is part of the
+// value (--v: [a; b], (a; b]; c); a closer of another kind is a token).
+function splitDeclarations(text, nested = false) {
   const parts = [];
+  const open = nested ? [] : null;
   let depth = 0,
     quote = null,
     start = 0;
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
+    if (nested && quote === null) {
+      if (c === '\\') {
+        i++;
+        continue;
+      }
+      if (c === '[' || c === '{') {
+        open.push(c === '[' ? ']' : '}');
+        continue;
+      }
+      if (c === ']' || c === '}' || c === ')') {
+        if (c === open[open.length - 1]) open.pop();
+        continue;
+      }
+      if (c === ';') {
+        if (open.length === 0) {
+          parts.push(text.slice(start, i));
+          start = i + 1;
+        }
+        continue;
+      }
+    }
     if (quote) {
       if (c === '\\') i++;
       else if (c === quote || c === '\n' || c === '\r' || c === '\f') quote = null;
@@ -149,8 +174,9 @@ function splitDeclarations(text) {
     if (c === '"' || c === "'") quote = c;
     else if (c === '(') {
       const end = urlTokenEnd(text, i);
-      if (end === -1) depth++;
-      else i = end - 1;
+      if (end !== -1) i = end - 1;
+      else if (nested) open.push(')');
+      else depth++;
     } else if (c === ')') depth = Math.max(0, depth - 1);
     else if (c === ';' && depth === 0) {
       parts.push(text.slice(start, i));
@@ -2793,15 +2819,17 @@ function isHexDigit(c) {
 // style attribute and cssText; jsdom 27 and 28's style sheets, which also
 // drop a declaration whose comment is not closed), 'space' makes each one
 // a space outside unquoted url()s (jsdom 29 and later's style sheets),
-// 'inline' too but keeps a custom property's value as written (jsdom 27
-// and later's style attribute and cssText). With either, a value with
+// 'inline' too (jsdom 27 and later's style attribute and cssText); with
+// either, a custom property's value is kept as written (a sheet's then goes
+// to reserializeCustom, which reads its comments). With either, a value with
 // var() is kept as written after its leading comments (var( inside a
 // comment counts, inside a string as surface.varInStrings says). A comment
 // inside a name leaves a space there, which makes the declaration invalid
 // from 27 (spacedDeclarationName); one before or after it does not. A
 // family list with a comma before var() is not one with var() there
 // (isFamilyVarList: x/**/,var(--f) is x, var(--f); #264 item 57).
-function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface, escapes) {
+function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface, escapes, nested = false) {
+  const open = nested ? [] : null;
   const parts = [];
   let spaced = '';
   let from = 0;
@@ -2814,7 +2842,10 @@ function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface,
     let part = spaced + text.slice(from, i);
     if (policy !== 'remove' && colon !== -1) {
       const raw = text.slice(colon + 1, i);
-      if (custom ? policy === 'inline' : keepsComments(raw, surface) && !(family && isFamilyVarList(raw) !== null)) {
+      // (a custom property's comments in a sheet go to reserializeCustom,
+      // which keeps a value it cannot read as written, comments and all:
+      // [a /* ; */ b; c]; #294 review)
+      if (custom || (keepsComments(raw, surface) && !(family && isFamilyVarList(raw) !== null))) {
         part = part.slice(0, head) + (custom ? raw : raw.replace(LEADING_COMMENTS, ''));
       }
     }
@@ -2837,8 +2868,12 @@ function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface,
       i = (end < 0 ? ~end : end) - 1;
     } else if (c === '(') {
       const close = policy === 'remove' ? -1 : urlTokenEnd(text, i);
-      if (close === -1) depth++;
-      else i = close - 1;
+      if (close !== -1) i = close - 1;
+      else if (nested) open.push(')');
+      else depth++;
+    } else if (nested && (c === '[' || c === '{')) open.push(c === '[' ? ']' : '}');
+    else if (nested && (c === ']' || c === '}' || c === ')')) {
+      if (c === open[open.length - 1]) open.pop();
     } else if (c === ')') depth = Math.max(0, depth - 1);
     else if (c === ':' && colon === -1) {
       colon = i;
@@ -2846,7 +2881,7 @@ function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface,
       head = name.length;
       custom = name.trimStart().startsWith('--');
       family = /^\s*font-family\s*:$/i.test(name);
-    } else if (c === ';' && depth === 0) end(i);
+    } else if (c === ';' && depth === 0 && (open === null || open.length === 0)) end(i);
   }
   end(text.length);
   return parts;
@@ -2858,14 +2893,14 @@ const LEADING_COMMENTS = /^(\s|\/\*[\s\S]*?(\*\/|$))*/;
 // parseInto's declarations of a text with a comment in it. Style sheets
 // before jsdom 27.1 (cssom, replay) and rules before 27 read comments in
 // cssom.
-function commentedParts(source, runsOn, lineBreaks, context, surface) {
+function commentedParts(source, runsOn, lineBreaks, context, surface, nested) {
   const sheet = context === 'sheet';
   if (context === 'cssom' || context === 'replay' || (runsOn && (sheet || context === 'rule')))
     return lineBreaks ? splitDeclarations(source) : splitOutside(source, ';');
   if (runsOn) return commentedDeclarations(source, 'remove', lineBreaks, false, surface, false);
   if (sheet && surface?.key?.startsWith('cssstyle'))
     return commentedDeclarations(source, 'remove', lineBreaks, true, surface, true);
-  return commentedDeclarations(source, sheet ? 'space' : 'inline', lineBreaks, false, surface, true);
+  return commentedDeclarations(source, sheet ? 'space' : 'inline', lineBreaks, false, surface, true, nested);
 }
 
 function parseInto(decls, text, mode, surface = null, context = null, element = false, asWritten = false) {
@@ -2939,7 +2974,11 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   const source = mode === 'spec' && !asWritten && !replay ? preprocessCss(String(text ?? '')) : String(text ?? '');
   const lineBreaks = !runsOn && cssSplitNeeded(source);
   let parts;
-  if (source.indexOf('/*') !== -1) parts = commentedParts(source, runsOn, lineBreaks, context, surface);
+  // (a ; in a [] or {} block too: jsdom 27 and later's declaration blocks,
+  // 29 and later's sheets; #294 review)
+  const nested = !runsOn && (!sheet || !surface?.key?.startsWith('cssstyle'));
+  if (source.indexOf('/*') !== -1) parts = commentedParts(source, runsOn, lineBreaks, context, surface, nested);
+  else if (nested && (source.includes('[') || source.includes('{'))) parts = splitDeclarations(source, true);
   else parts = lineBreaks ? splitDeclarations(source) : splitOutside(source, ';');
   // (clears: a name given again is found before anything is set, as
   // setting one has effects beyond the block, a url() met: the block is
