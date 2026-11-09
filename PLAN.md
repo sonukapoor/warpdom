@@ -4684,6 +4684,22 @@ repeat (`steps(2)`, `circle(10px)`), so `animation-timing-function:
 steps(/**/2)` had lost its inner comment and `clip-path: circle(10px)/**/`
 its trailing one.
 
+## 2026-11-09: a font of a size alone, jsdom 26 (branch fix/264-jsdom26-font-size-alone, #264 item 63)
+
+Black box, 26.1.0: jsdom 26 takes a `font` with a size and no family, as
+the size and what comes before it: `font: 1px`, `10%`, `1.5em`, `LARGE`
+(`large`), `BOLD 1px` (`bold 1px`), `italic 1px`, `calc(1px)`, `1e39px`
+(`1e+39px`), `1e400px` (`Infinitypx`); fontSize, fontWeight, fontStyle and
+lineHeight read from it, fontFamily is empty. Not with a line height
+(`1px/2`) or without a size (`bold`). warpdom dropped them: its grammar
+needs a family. jsdom26SizeAlone accepts such a value (no `/`, valid with
+a family after it), parseFont gives an empty family, and the longhands
+leave font-family out. Also `Infinitypx` is a length to parseFont now, so
+`1e400px Arial` has its font-size (it was empty, on main too).
+Left: `0` is `0px` and `01 1px` is `1px` there (#264 item 83), and jsdom
+26 lists font's longhands in cssText and length, with a family too (#264
+item 78). The check runs only for a jsdom 26 font that fails validation.
+
 ## 2026-11-01: window members locked before their first read (branch fix/160-locked-lazy-members, #160)
 
 A member made on first read (interface objects, Image, Option, Audio,
@@ -4872,6 +4888,97 @@ does not end the value (a!importantb is ab, important). Sheet parse
 20.0.3 18.63 -> 18.98, comments 18.75 -> 18.93, 27.0.1 17.39 -> 17.96,
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
+
+## 2026-11-08: keywords and units in lowercase, jsdom 26 (branch fix/264-jsdom26-keyword-case, #264 item 46)
+
+Surveyed black box on jsdom 26.1.0: every style property, 49 upper-case
+keywords and 17 values with units, functions and colors, through
+setProperty, the style attribute and a style sheet rule. In an element's
+style (setProperty, the attribute), the properties jsdom 26 parses
+(JSDOM26_PARSED, JSDOM26_OWN, and the keyword properties
+background-attachment, background-repeat, border-style and its sides,
+border-collapse, clear, float, font-style) write keywords and units in
+lowercase: `width: AUTO` is `auto`, `10PX` is `10px`, `border: 1px SOLID
+RED` is `1px solid red`. Generic families are lowercased too (serif,
+sans-serif, monospace, cursive, fantasy, system-ui, ui-serif,
+ui-sans-serif, ui-monospace, ui-rounded, math; not emoji or fangsong), but
+other family names and strings stay as written (`Arial, SANS-SERIF` is
+`Arial, sans-serif`). In font, the words up to the size are keywords.
+`calc()`, `url()` or a gradient not in lowercase is invalid (`CALC(1px)`,
+`URL(a.png)` read `''`); color functions are not (`RGB(` is fine).
+background-image lowercases `NONE` alone (`NONE, NONE` stays). Rules keep
+the case. cssstyle 4.3.1 on its own differs (`width: 10PX` is invalid,
+`float: LEFT` kept), so this applies with cssstyle 4.4 and later, as the
+other jsdom 26 rules do. css.js jsdom26Case, before jsdom26Numbers in
+declaredValue.
+
+Survey differences, before -> after: keywords 128 -> 19, units and
+functions 193 -> 22. What is left also differs with lowercase input
+(#264 item 77): border-*-style none and hidden, contain in width and
+height, float: top and font-style: left are invalid in jsdom 26; font of
+a size alone (item 63); calc() simplified in border widths, line-height,
+flex-grow and background; font's longhands listed in an element's
+cssText.
+
+Performance (Node 22.17.1, 5 alternating runs, medians, 26.1.0 profile,
+two setProperty writes each): cache misses in lowercase 2,661 -> 2,711 ns
+(noise), in upper case 2,600 -> 2,742 ns (the value is now read as a
+valid lowercase one, as lowercase misses are), cache hits 194 -> 197 ns
+(noise). A first version used a regular expression replace and a
+function scan for every value (3,427 ns); ASCII text without quotes or
+parentheses now takes toLowerCase().
+
+Review (#289): function-like text in a string is no function
+(`"URL(Font)", SERIF` is `"URL(Font)", serif`), but var( after
+whitespace in a string is a var() to jsdom, so the value keeps its case
+(`"a var(--face)", SERIF`; hasVarFunction). font splits words at any
+whitespace with a function as one word, and a function can be the size
+or the line height (`calc(12px) Arial`, `12px/calc(1EM) SERIF` is
+`12px / calc(1em) serif`); escaped commas stay in a family name. Font
+writes 10,831 -> 11,018 ns (noise). Left for item 77: jsdom 26 simplifies
+calc() in font (`calc(12px + 1px)` is `calc(13px)`) and rejects a line
+height calc() with spaces (`12px / calc(1em + 2em)`); an escaped comma
+in a family name is invalid there.
+Second review: font's words are split by a scan that tracks
+parentheses and strings (fontWords; a function nested at any depth is
+one word), and only a slash outside parentheses starts a line height
+(`calc(1PX + 1EM * calc(1VW / 1VH)) / 1EM SERIF`). Font writes 10,632
+-> 10,205 ns (noise).
+
+Third review: a unitless zero size (`0 Arial`, `BOLD 0 SERIF`, `0/1EM
+Arial`) marks where the families start when no size has a unit; in a run
+of zeros the last is the size (`0 0 Arial`). Only the family's case is
+compared: jsdom 26 also reads the zero as `0px` and takes a leading `0` as
+a weight, as on main (#264 item 83). The extra check runs only when no size
+word is found.
+Fourth review (Copilot): the size search ran into the family list, so
+`.0 Arial, Large` took `Large` as the size and lowercased both families.
+The size is now looked for only up to the first word with a comma outside
+strings and parentheses (`0 Large, Arial` still takes `Large` as the size,
+as jsdom 26 does).
+Fifth review (Copilot): a zero with an exponent (`0e0 Arial`, `BOLD 0e-1
+Arial`) was no zero size, so the family was lowercased; FONT_ZERO_WORD
+takes an exponent now. A size keyword after a family (`.0 Arial Large`)
+stays the size: jsdom 26 reads it so (`0 large`, font-size large, Arial
+dropped; that last part is #264 item 83).
+Sixth review (Copilot, both reproduced on 26.1.0): the mask that hides
+strings took an escape of any character but a line break, so `"A\`
+LF `URL(Font)", SERIF` showed `URL(` outside the string and was dropped;
+QUOTED_STRINGS now takes `\[\s\S]`. And with no space after a comma
+(`0 Large,Arial`) the size keyword and the next family were one word, so
+`Large` kept its case; fontWords now ends a word at a top-level comma
+(jsdom 26 then drops the backslash before a line break: #264 item 92).
+Seventh review (Copilot, "needs a closer look": quadratic regular
+expression work on malformed values): lowerOutsideStrings's regular
+expression retried `url\([^)]*\)` from every `url(` without a `)`, and a
+string pattern from every quote that does not close; `width:
+Aurl(url(...` with 20,000 `url(` took 558 ms (1 ms on main). It is one
+pass now: a `url(` without a `)` after it means no later one has one, and
+a string that runs to the end means no later one of its quote closes, so
+each scan runs to the end at most once (a string broken by an escaped
+line break does not set that, as a later one may still close). 400,000
+random values give the same result as the regular expression; 1 ms on
+20,000 `url(`, and the other shapes scale linearly, as on main.
 
 ## 2026-11-09: a zero with an exponent in the border shorthands, jsdom 26 and 30 (branch fix/264-jsdom26-zero-exponent, #264 item 73)
 
