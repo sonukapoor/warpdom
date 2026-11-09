@@ -4620,6 +4620,19 @@ Vitest 3.2). Its release corpus check, on all four corpora, is clean.
 - After those: #199 (computed colors), #202 (`:empty`), #192 and #201
   (fast-mode stubs), #208 (CSSOM leftovers).
 
+## 2026-11-09: a family list with var() kept as written, jsdom 26 (branch fix/264-jsdom26-family-var, #264 item 62)
+
+Black box, 26.1.0: a `font-family` or `font` value with var() (as jsdom
+finds it: at the start, or after whitespace or `(`) is kept as written,
+its spacing around commas too: `var(--f),x`, `x , var(--f)`, `x,
+var(--f)`, `x,<TAB>var(--f)`, `var(--f) ,x`, `x,(var(--f))`, `12px x ,
+var(--f)`, `var(--a) x,y`. warpdom wrote `, ` between the families.
+serializeDeclared returns such a value as written in jsdom 26 mode.
+Left (#264 item 95): `,var(` is no var() to jsdom, and the family parser
+it then uses drops one-letter families (`x,var(--f)`, `Arial,y` is
+`Arial`) and writes the rest with `, ` (`Arial,var(--f)`); warpdom drops
+those lists.
+
 ## 2026-11-09: comments after a value of more than one part, jsdom 27 and later (branch fix/264-trailing-comment, #264 item 87)
 
 Black box, 27.4.0 to 30.1.3: a value jsdom keeps as written keeps the
