@@ -108,7 +108,9 @@ function blockEnd(text, open, nested = false) {
       else if (c === 125 && --depth === 0) return i;
     } else if (c === 123 || c === 40 || c === 91) {
       outer.push(closer);
-      closer = c === 123 ? 125 : c === 40 ? 41 : 93;
+      // (the closer of { ( [: } ) ])
+      if (c === 40) closer = 41;
+      else closer = c + 2;
     } else if (c === closer) {
       closer = outer.pop();
       if (outer.length === 0) return i;
