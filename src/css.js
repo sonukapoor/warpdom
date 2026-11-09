@@ -33,7 +33,6 @@ import {
   expand,
   segments,
   serializeBox,
-  parseFont,
   serializeFont,
   positionLayers,
   legacyFont,
@@ -1441,25 +1440,31 @@ function jsdom26Case(name, value) {
     // The size comes before the family list's first comma (.0 Arial,
     // Large: Large is a family), or in the word that holds it (0 Large,
     // Arial: Large is the size).
-    const words = fontWords(value);
-    let limit = words.findIndex((w) => topLevelComma(w[0]));
-    if (limit < 0) limit = words.length - 1;
-    let size = -1;
-    for (let i = 0; i <= limit && size < 0; i++) if (FONT_SIZE_WORD.test(withoutComma(words[i][0]))) size = i;
-    for (let i = 0; i <= limit && size < 0; i++) if (FONT_ZERO_WORD.test(withoutComma(words[i][0]))) size = i;
-    while (size >= 0 && size < limit && FONT_ZERO_WORD.test(withoutComma(words[size + 1][0]))) size++;
-    if (size < 0) return lowerOutsideStrings(value);
-    const word = words[size][0];
-    const slash = topLevelSlash(word);
-    const next = words[size + 1]?.[0];
-    let last = size;
-    if (word.endsWith('/')) last = size + 1;
-    else if (!slash && next === '/') last = size + 2;
-    else if (!slash && next?.startsWith('/')) last = size + 1;
-    const end = words[last] ? words[last][1] + words[last][0].length : value.length;
+    const end = jsdom26FontEnd(value);
+    if (end < 0) return lowerOutsideStrings(value);
     return lowerOutsideStrings(value.slice(0, end)) + familiesInCase(value.slice(end));
   }
   return lowerOutsideStrings(value);
+}
+// Where font's families start as jsdom 26 reads it (after the size and a
+// line height), or -1 with no size.
+function jsdom26FontEnd(value) {
+  const words = fontWords(value);
+  let limit = words.findIndex((w) => topLevelComma(w[0]));
+  if (limit < 0) limit = words.length - 1;
+  let size = -1;
+  for (let i = 0; i <= limit && size < 0; i++) if (FONT_SIZE_WORD.test(withoutComma(words[i][0]))) size = i;
+  for (let i = 0; i <= limit && size < 0; i++) if (FONT_ZERO_WORD.test(withoutComma(words[i][0]))) size = i;
+  while (size >= 0 && size < limit && FONT_ZERO_WORD.test(withoutComma(words[size + 1][0]))) size++;
+  if (size < 0) return -1;
+  const word = words[size][0];
+  const slash = topLevelSlash(word);
+  const next = words[size + 1]?.[0];
+  let last = size;
+  if (word.endsWith('/')) last = size + 1;
+  else if (!slash && next === '/') last = size + 2;
+  else if (!slash && next?.startsWith('/')) last = size + 1;
+  return words[last] ? words[last][1] + words[last][0].length : value.length;
 }
 // A family list as jsdom 26 reads it (black box, 26.1.0, #264 items 74
 // and 95): an unquoted name of one word starts with two letters or hyphens
@@ -1478,14 +1483,13 @@ function jsdom26Families(name, value) {
   let prefix = '';
   let list = value;
   if (name === 'font') {
-    const f = parseFont(value);
-    if (!f || !f.family) return value;
-    const at = value.trimEnd().length - f.family.length;
+    // (the families after the size as jsdom 26 finds it: 0 x, bold 0 x,
+    // and .0 Arial Large, whose size is Large; #302 review)
+    let at = jsdom26FontEnd(value);
+    if (at < 0 || trimSpaces(value.slice(at)) === '') return value;
+    while (isCssSpace(value.charCodeAt(at))) at++;
     prefix = value.slice(0, at);
     list = value.slice(at);
-    // (a size keyword after a family is jsdom 26's size, the words before
-    // it dropped: .0 Arial Large is 0 large; #264 item 83)
-    if (/(^|\s)((xx?|xxx)-)?(small|large)(\s|,|$)|(^|\s)(medium|smaller|larger)(\s|,|$)/i.test(list)) return value;
   }
   const kept = [];
   const items = splitOutside(list, ',', true);

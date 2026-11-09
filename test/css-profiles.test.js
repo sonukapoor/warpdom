@@ -1306,6 +1306,23 @@ const JSDOM26_FAMILIES = [
   'ab, "x" y',
   '"ab cd", Ab Cd',
   'Arial,y',
+  // An escaped quote in a string: jsdom 26 rejects it (#302 review).
+  '"a\\"b"',
+  "'a\\'b'",
+  'ab, "a\\"b"',
+];
+// font's families start after the size as jsdom 26 finds it: a zero size
+// (0 x), a size keyword after a family as the size (.0 Arial Large); a
+// keyword in a string or a later family is a family (#302 review).
+const JSDOM26_FONT_FAMILIES = [
+  '0 x',
+  '0.0 x',
+  'bold 0 x',
+  '0 Ab',
+  '12px x, "A small Font"',
+  '12px Arial, x, Large',
+  '12px Arial, Large',
+  '.0 Arial Large',
 ];
 parity(
   'style: font family names as jsdom 26 reads them (jsdom 26, #264 items 74 and 95)',
@@ -1318,7 +1335,16 @@ parity(
       const font = w.document.createElement('div');
       font.style.setProperty('font', `12px ${v}`);
       return [v, family.style.fontFamily, font.style.font, font.style.fontFamily];
-    }),
+    }).concat(
+      JSDOM26_FONT_FAMILIES.map((v) => {
+        const font = w.document.createElement('div');
+        font.style.setProperty('font', v);
+        // (validity and capitals: 0 is 0px and .0 Arial is dropped in jsdom
+        // 26, #264 item 83)
+        const read = font.style.font;
+        return [v, read !== '', read.replace(/[^A-Z]/g, '')];
+      }),
+    ),
   { jsdom: 26 },
 );
 

@@ -4634,8 +4634,12 @@ drops the declaration and a later one, or an empty one, is left out
 fails drops it. warpdom kept them all. jsdom26Families does this after
 jsdom26Case, for a value without var().
 Left: an empty family in font (`12px ab,,cd` is `12px ab, , cd`; warpdom's
-grammar drops it), and a size keyword after a family in font (`.0 Arial
-Large`, jsdom's size: item 83), which jsdom26Families leaves alone. The
+grammar drops it). font's families start after the size as jsdom 26
+finds it (jsdom26FontEnd, shared with jsdom26Case): after a zero size (`0
+x` is invalid), and at a size keyword after a family (`.0 Arial Large`:
+`Large` is the size, item 83); a keyword in a string or a later family is
+a family (#302 review). An escaped quote in a string (`"a\"b"`) is
+invalid in jsdom 26, as in warpdom. The
 long-family-list timing test uses two-letter names now (jsdom 26 takes no
 `A`). Bench (5 interleaved runs, medians, ns per jsdom 26 font and
 font-family write): 166 -> 169 (noise).
