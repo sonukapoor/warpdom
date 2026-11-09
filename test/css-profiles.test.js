@@ -2581,6 +2581,35 @@ for (const jsdom of [26, 27, 28, 29])
     (w) => sheetCustom(w, SHEET_CUSTOM_CONTINUED, jsdom !== 26),
     { jsdom },
   );
+// An escaped CR LF in a string is one escaped newline: the string goes on
+// after it, and a ; later in the block ends the declaration (jsdom 27 to
+// 29 keep CR LF as written; 30 makes it LF first, #282). Black box,
+// 27.4.0 to 29.1.1 (#264 item 69).
+const ESCAPED_CRLF = [
+  "--x: url('a\\\r\nb'); color: red",
+  '--x: url("a\\\r\nb"); color: red',
+  "--x: 'a\\\r\nb'; color: red",
+  "color: blue; background-image: url('a\\\r\nb'); color: red",
+];
+for (const jsdom of [27, 28, 29])
+  parity(
+    `style: an escaped CR LF in a string, then more declarations (jsdom ${jsdom}, #264 item 69)`,
+    (w) =>
+      ESCAPED_CRLF.map((text) => {
+        const d = w.document;
+        const attribute = d.createElement('div');
+        attribute.setAttribute('style', text);
+        const set = d.createElement('div');
+        set.style.cssText = text;
+        const style = d.createElement('style');
+        style.textContent = `p { ${text} }`;
+        d.head.appendChild(style);
+        const rule = style.sheet.cssRules[0].cssText;
+        style.remove();
+        return [text, attribute.style.cssText, set.style.cssText, set.style.length, rule];
+      }),
+    { jsdom },
+  );
 // Kept as written by jsdom 29.1.1 to 30.1.3 (black box): a bad url, a
 // colon, an at-keyword's comma and a {} block.
 test('style: a custom property in a style sheet kept as written (jsdom 29 and later, #264)', () => {
