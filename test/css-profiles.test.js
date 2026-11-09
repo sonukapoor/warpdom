@@ -1261,6 +1261,67 @@ parity(
   { jsdom: 26 },
 );
 
+// jsdom 26 reads a family list with a parser of its own (black box,
+// 26.1.0, #264 items 74 and 95): an unquoted name of one word starts with
+// two letters or hyphens (ab, -ab, Font01; not x, a1, --x, ab_c, aé), one
+// of more words has each start with a capital and one more character
+// (Open Sans, Ab9 Cd; not ab cd, Ab C, x Sans), whitespace in it one
+// space. A first family that fails drops the declaration; a later one is
+// left out, an empty one too.
+const JSDOM26_FAMILIES = [
+  'ab cd',
+  'Ab Cd',
+  'Open Sans',
+  'Open  Sans',
+  'Open\tSans',
+  'helvetica neue',
+  'HELVETICA NEUE',
+  'Times New Roman',
+  'Open Sans1',
+  'Ab Cd-ef',
+  'A1 Cd',
+  'Ab C',
+  'x Sans',
+  'Ab_Cd Ef',
+  'Café Sans',
+  'Ab 12',
+  'x',
+  'ab',
+  '-ab',
+  'a1',
+  '--x',
+  'ab_c',
+  'aé',
+  'Font01',
+  'ab,x',
+  'ab,x,cd',
+  'x,ab',
+  'ab,,cd',
+  ',ab',
+  'ab,',
+  'ab, x y',
+  'Ab Cd, ab cd',
+  'serif,x',
+  'ab,SERIF',
+  'ab, "x" y',
+  '"ab cd", Ab Cd',
+  'Arial,y',
+];
+parity(
+  'style: font family names as jsdom 26 reads them (jsdom 26, #264 items 74 and 95)',
+  (w) =>
+    JSDOM26_FAMILIES.map((v) => {
+      const family = w.document.createElement('div');
+      family.style.setProperty('font-family', v);
+      // (an empty family in font: #264 item 95)
+      if (/(^|,)\s*(,|$)/.test(v)) return [v, family.style.fontFamily];
+      const font = w.document.createElement('div');
+      font.style.setProperty('font', `12px ${v}`);
+      return [v, family.style.fontFamily, font.style.font, font.style.fontFamily];
+    }),
+  { jsdom: 26 },
+);
+
 // border: none and border-style: none (#179, black box, 27.4.0 to 30.1.3):
 // from jsdom 27 kept everywhere, a none style left out of border and its
 // sides (border: none is border: medium, border-top: 0 none is

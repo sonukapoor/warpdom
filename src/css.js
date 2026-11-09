@@ -33,6 +33,7 @@ import {
   expand,
   segments,
   serializeBox,
+  parseFont,
   serializeFont,
   positionLayers,
   legacyFont,
@@ -1108,6 +1109,7 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
       }
       if (mode === 'jsdom26' && colorKeywords !== 'css2') {
         if (/[A-Z]/.test(written)) written = jsdom26Case(name, written);
+        if (written !== null && (name === 'font-family' || name === 'font')) written = jsdom26Families(name, written);
         // (an integer Number() changes has 16 digits: most values skip this)
         if (written !== null && (written.length >= 16 || JSDOM26_BORDERS.has(name)))
           written = jsdom26Numbers(name, written);
@@ -1458,6 +1460,58 @@ function jsdom26Case(name, value) {
     return lowerOutsideStrings(value.slice(0, end)) + familiesInCase(value.slice(end));
   }
   return lowerOutsideStrings(value);
+}
+// A family list as jsdom 26 reads it (black box, 26.1.0, #264 items 74
+// and 95): an unquoted name of one word starts with two letters or hyphens
+// (ab, -ab, Font01; not x, a1, --x, ab_c), a name of more words has each
+// start with a capital and one more character (Open Sans, Ab9 Cd; not ab
+// cd, Ab C), its whitespace one space; strings, generic families and var()
+// as they are. In font-family a first family that fails makes it null, a
+// later one, or an empty one, is left out; in font any family that fails
+// makes it null, and an empty one stays. font's families come after its
+// size. A value
+// with var() as jsdom finds it is left as it is.
+const JSDOM26_ONE_WORD = /^(?!--)[a-z-]{2}[a-z0-9-]*$/i;
+const JSDOM26_WORD = /^[A-Z][A-Za-z0-9-]+$/;
+function jsdom26Families(name, value) {
+  if (value.includes('var(') && hasVarFunction(value)) return value;
+  let prefix = '';
+  let list = value;
+  if (name === 'font') {
+    const f = parseFont(value);
+    if (!f || !f.family) return value;
+    const at = value.trimEnd().length - f.family.length;
+    prefix = value.slice(0, at);
+    list = value.slice(at);
+    // (a size keyword after a family is jsdom 26's size, the words before
+    // it dropped: .0 Arial Large is 0 large; #264 item 83)
+    if (/(^|\s)((xx?|xxx)-)?(small|large)(\s|,|$)|(^|\s)(medium|smaller|larger)(\s|,|$)/i.test(list)) return value;
+  }
+  const kept = [];
+  const items = splitOutside(list, ',', true);
+  for (let i = 0; i < items.length; i++) {
+    const item = trimSpaces(items[i]);
+    let ok;
+    // (font keeps an empty family: 12px ab, is 12px ab, )
+    if (item === '' && name === 'font') ok = true;
+    else if (item === '') ok = false;
+    else if (item[0] === '"' || item[0] === "'")
+      ok = stringsClosed(item) && /^("[^"]*"|'[^']*')$/.test(item.replace(/\\./g, ''));
+    else if (/^var\(/i.test(item) || GENERIC_FAMILIES.has(item.toLowerCase())) ok = true;
+    else {
+      const words = item.split(/[ \t\n\r\f]+/);
+      ok = words.length === 1 ? JSDOM26_ONE_WORD.test(item) : words.every((word) => JSDOM26_WORD.test(word));
+      if (ok) {
+        kept.push(words.join(' '));
+        continue;
+      }
+    }
+    if (ok) kept.push(item);
+    // (font drops itself for any family that fails, font-family only for
+    // its first)
+    else if (i === 0 || name === 'font') return null;
+  }
+  return prefix + kept.join(', ');
 }
 // A family list: an unquoted generic family in lowercase, the rest as written.
 function familiesInCase(value) {
