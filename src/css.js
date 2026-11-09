@@ -4178,10 +4178,12 @@ function innerComments(name, value, mode, surface, trailing = false, setter = fa
   // comments are commentedDeclarations' to handle; #299)
   if (probe.includes('var(') && hasVarFunction(probe)) return null;
   if (declaredValue(name, probe, mode, surface) !== probe) return null;
-  // (with boundaries inside a function only, the value given twice too:
-  // width keeps calc(  1px) but not calc(  1px)  calc(  1px), transform
-  // keeps rotate(  45deg)  rotate(  45deg))
-  if (!top) {
+  // (with boundaries inside a math function only, the value given twice
+  // too: warpdom keeps width: calc(  1px) as written where jsdom writes
+  // calc(1px), #264 item 93, but not calc(  1px)  calc(  1px); not for
+  // other functions, which may not repeat: steps(2), circle(10px); #299
+  // review)
+  if (!top && MATH_FUNCTION.test(probe)) {
     const twice = `${probe}  ${probe}`;
     if (declaredValue(name, twice, mode, surface) !== twice) return null;
   }

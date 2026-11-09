@@ -4678,6 +4678,11 @@ comments that change nothing 1,665 -> 1,747 (+5%); `border-radius: 1px
 the part scan and the probe's validation, for declarations with a comment
 only. Building the probe in a second pass, only when needed, was slower
 (+12% and +30%, a closure and two passes) and was dropped.
+Fourth review: the value given twice is checked only with a math function
+(calc, min, max, clamp), the case it is for; other functions may not
+repeat (`steps(2)`, `circle(10px)`), so `animation-timing-function:
+steps(/**/2)` had lost its inner comment and `clip-path: circle(10px)/**/`
+its trailing one.
 
 ## 2026-11-01: window members locked before their first read (branch fix/160-locked-lazy-members, #160)
 

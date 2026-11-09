@@ -1634,6 +1634,11 @@ const TRAILING_COMMENTS = [
   ['width', 'calc(1px)/**/'],
   ['container-name', '\\61 b/**/'],
   ['container-name', 'a/**/'],
+  // Functions that may not repeat (#299 review).
+  ['animation-timing-function', 'steps(/**/2)'],
+  ['animation-timing-function', 'steps(2)/**/'],
+  ['clip-path', 'circle(10px)/**/'],
+  ['filter', 'blur(1px)/**/'],
 ];
 // (jsdom 27 keeps the comments around one part in some properties, as in
 // border-radius: 1px/**/; #264 item 84)
