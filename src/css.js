@@ -2610,6 +2610,8 @@ const ENV_ATTR = /env\(|attr\(/i;
 const VAR_ENV_ATTR = /var\(|[eE][nN][vV]\(|[aA][tT][tT][rR]\(/;
 const KEEPS_NUMBERS_AS_WRITTEN = { jsdom25: true, jsdom22: true, jsdom20: true };
 const CANONICAL_NUMBERS_PRE_431 = new Set(['opacity', 'flex-grow', 'flex-shrink']);
+// Whitespace other than one space, or a comma (spaced or not).
+const SPACES_TO_COLLAPSE = /\s\s|[\t\n\r\f]|,/;
 function serializeDeclared(name, value, mode) {
   // Custom properties keep their value as written (CSS Variables 1), as in jsdom.
   if (name.startsWith('--')) return value;
@@ -2634,6 +2636,14 @@ function serializeDeclared(name, value, mode) {
   // cssstyle before 4.3.1 (jsdom 20 to 25) keeps lengths, percentages and
   // line-height as written (.83em, 10.0px, 1.50); its number properties
   // (opacity, flex-grow, flex-shrink) it serializes canonically.
+  // border-spacing and background-size with each run of whitespace as one
+  // space and a comma followed by one (jsdom 27 and later; a value with
+  // var() is kept as written; black box, 27.4.0 to 30.1.3, #264 item 61).
+  if ((name === 'border-spacing' || name === 'background-size') && isSpecMode(mode) && SPACES_TO_COLLAPSE.test(value))
+    if (!hasVarFunction(value))
+      value = splitOutside(collapseSpaces(value), ',')
+        .map((layer) => trimSpaces(layer))
+        .join(', ');
   // background-size per layer (jsdom 27 and later): 01px, 1.50px is
   // 1px, 1.5px; 01px 1.50px stays.
   if (name === 'background-size' && isSpecMode(mode) && value.includes(','))
@@ -2979,7 +2989,7 @@ function isHexDigit(c) {
 // from 27 (spacedDeclarationName); one before or after it does not. A
 // family list with a comma before var() is not one with var() there
 // (isFamilyVarList: x/**/,var(--f) is x, var(--f); #264 item 57).
-function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface, escapes) {
+function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface, escapes, mode) {
   const parts = [];
   let spaced = '';
   let from = 0;
@@ -2988,12 +2998,24 @@ function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface,
   let head = 0;
   let custom = false;
   let family = false;
+  let declared = '';
   const end = (i) => {
     let part = spaced + text.slice(from, i);
     if (policy !== 'remove' && colon !== -1) {
       const raw = text.slice(colon + 1, i);
       if (custom ? policy === 'inline' : keepsComments(raw, surface) && !(family && isFamilyVarList(raw) !== null)) {
         part = part.slice(0, head) + (custom ? raw : raw.replace(LEADING_COMMENTS, ''));
+      } else if (!custom && !SPACED_NAME.test(declared)) {
+        // (a comment inside a value kept as written, before an !important)
+        // (the value ends at the !, its comments before it kept)
+        const blanked = blankComments(raw);
+        const start = priorityStart(blanked);
+        const bang = start === -1 ? -1 : blanked.indexOf('!', start);
+        const kept =
+          bang === -1
+            ? innerComments(propertyName(declared), raw, mode, surface)
+            : innerComments(propertyName(declared), raw.slice(0, bang), mode, surface, true);
+        if (kept !== null) part = part.slice(0, head) + kept + (bang === -1 ? '' : ' !important');
       }
     }
     parts.push(part);
@@ -3022,6 +3044,7 @@ function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface,
       colon = i;
       const name = spaced + text.slice(from, i + 1);
       head = name.length;
+      declared = name.slice(0, -1).trim();
       custom = name.trimStart().startsWith('--');
       family = /^\s*font-family\s*:$/i.test(name);
     } else if (c === ';' && depth === 0) end(i);
@@ -3036,14 +3059,14 @@ const LEADING_COMMENTS = /^(\s|\/\*[\s\S]*?(\*\/|$))*/;
 // parseInto's declarations of a text with a comment in it. Style sheets
 // before jsdom 27.1 (cssom, replay) and rules before 27 read comments in
 // cssom.
-function commentedParts(source, runsOn, lineBreaks, context, surface) {
+function commentedParts(source, runsOn, lineBreaks, context, surface, mode) {
   const sheet = context === 'sheet';
   if (context === 'cssom' || context === 'replay' || (runsOn && (sheet || context === 'rule')))
     return lineBreaks ? splitDeclarations(source) : splitOutside(source, ';');
   if (runsOn) return commentedDeclarations(source, 'remove', lineBreaks, false, surface, false);
   if (sheet && surface?.key?.startsWith('cssstyle'))
     return commentedDeclarations(source, 'remove', lineBreaks, true, surface, true);
-  return commentedDeclarations(source, sheet ? 'space' : 'inline', lineBreaks, false, surface, true);
+  return commentedDeclarations(source, sheet ? 'space' : 'inline', lineBreaks, false, surface, true, mode);
 }
 
 function parseInto(decls, text, mode, surface = null, context = null, element = false, asWritten = false) {
@@ -3117,7 +3140,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   const source = mode === 'spec' && !asWritten && !replay ? preprocessCss(String(text ?? '')) : String(text ?? '');
   const lineBreaks = !runsOn && cssSplitNeeded(source);
   let parts;
-  if (source.indexOf('/*') !== -1) parts = commentedParts(source, runsOn, lineBreaks, context, surface);
+  if (source.indexOf('/*') !== -1) parts = commentedParts(source, runsOn, lineBreaks, context, surface, mode);
   else parts = lineBreaks ? splitDeclarations(source) : splitOutside(source, ';');
   // (clears: a name given again is found before anything is set, as
   // setting one has effects beyond the block, a url() met: the block is
@@ -3209,6 +3232,9 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       continue;
     }
     let declared = declaredValue(name, value, mode, surface);
+    // (a comment inside a value kept as written: commentedDeclarations)
+    if (declared === INVALID && !runsOn && value.includes('/*'))
+      declared = innerComments(name, value, mode, surface, important) ?? INVALID;
     // A style attribute a style write serialized ('written'): a background
     // with an empty layer (url("a.png"), , backgroundValue) is read as the
     // declaration it came from, which jsdom 27 and later compute from.
@@ -4014,6 +4040,8 @@ const resets = (surface, name, text) =>
 function writtenValue(name, raw, s) {
   const text = declaredValue(name, raw, s.mode, s.surface);
   if (text !== INVALID || isLegacyMode(s.mode) || !raw.includes('/*') || separated(raw)) return text;
+  const kept = innerComments(name, raw, s.mode, s.surface);
+  if (kept !== null) return kept;
   const decls = new Map();
   parseInto(decls, `${name}: ${raw}`, s.mode, s.surface, null, true, true);
   for (const declared of decls.values()) if (declared.important || declared.masked === true) return INVALID;
@@ -4021,6 +4049,77 @@ function writtenValue(name, raw, s) {
   if (declared !== undefined) return decls.size === 1 ? declared.value : INVALID;
   // (parseInto sets a background of initial values as its longhands.)
   return name === 'background' && decls.size > 0 ? INITIALS : INVALID;
+}
+// A value with a comment between its tokens, as jsdom 27 and later keep
+// it in a property whose text they keep as written: the comments inside
+// stay (border-radius: 1px/**/2px, container-name: a /* x */ b), those
+// before and after it go. Such a property is one whose value, with each
+// comment read as two spaces, declaredValue keeps unchanged (margin: 1px
+// 2px with two spaces is 1px 2px: serialized, so null; black box, 27.4.0
+// to 30.1.3, #264 item 61). null when no comment is inside. trailing:
+// the value comes before a priority, which keeps the comments after it
+// too (1px/**/2px/**/ !important; jsdom 28 and later, #292 review).
+function innerComments(name, value, mode, surface, trailing = false) {
+  let probe = '';
+  let from = 0;
+  let first = -1; // the value's first and last character outside comments
+  let last = -1;
+  let inner = false; // a comment after the first character
+  let pending = false;
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    if (c === 47 && value.charCodeAt(i + 1) === 42) {
+      const end = commentEnd(value, i);
+      probe += value.slice(from, i) + '  ';
+      from = end;
+      if (first !== -1) pending = true;
+      i = end - 1;
+      continue;
+    }
+    if (c === 32 || c === 9 || c === 10 || c === 13 || c === 12) continue;
+    if (first === -1) first = i;
+    if (pending) inner = true;
+    pending = false;
+    if (c === 92) i++;
+    else if (c === 34 || c === 39) {
+      const end = stringEnd(value, i, false);
+      i = end - 1;
+    } else if (c === 40) {
+      // (an unquoted url() is one token: url(a/*b.png) has no comment)
+      const end = urlTokenEnd(value, i);
+      if (end !== -1) i = end - 1;
+    }
+    last = Math.min(i, value.length - 1);
+  }
+  if (!inner) return null;
+  probe = trimSpaces(probe + value.slice(from));
+  if (declaredValue(name, probe, mode, surface) !== probe) return null;
+  return trailing ? trimSpaces(value.slice(first)) : value.slice(first, last + 1);
+}
+// The text with each comment outside strings as spaces of its length, so
+// priorityStart finds a priority with comments around or inside it at the
+// same index (1px !/**/important, 1px !important/**/; #292 review); not
+// in an unquoted url() (url(a/*b.png); #292 review).
+function blankComments(text) {
+  if (!text.includes('/*')) return text;
+  let out = '';
+  let from = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (c === 92) i++;
+    else if (c === 34 || c === 39) i = stringEnd(text, i, false) - 1;
+    else if (c === 40) {
+      // (an unquoted url() is one token: url(a/*b.png) has no comment)
+      const end = urlTokenEnd(text, i);
+      if (end !== -1) i = end - 1;
+    } else if (c === 47 && text.charCodeAt(i + 1) === 42) {
+      const end = commentEnd(text, i);
+      out += text.slice(from, i) + ' '.repeat(end - i);
+      from = end;
+      i = end - 1;
+    }
+  }
+  return out + text.slice(from);
 }
 // A semicolon outside strings, comments, parentheses and unquoted url()s.
 function separated(raw) {

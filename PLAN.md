@@ -4889,6 +4889,94 @@ Left (#264 item 90): jsdom evaluates calc() in font and font-size
 (`calc(12px + 2px)` is `calc(14px)`; warpdom keeps it), and in a style
 sheet a bad string with var() takes the rule's `}` into the value.
 
+## 2026-11-08: a comment inside a value, jsdom 27 and later (branch fix/264-inner-comments, #264 item 61)
+
+Black box, 27.4.0, 28.1.0, 29.1.1, 30.1.2 and 30.1.3 (every style
+property; setProperty, the accessor, cssText, the style attribute and a
+style element):
+- A property whose value jsdom keeps as written keeps a comment between
+  its tokens as written: `border-radius: 1px/**/2px`, `container-name:
+  a /* x */ b`, `will-change: a/**/,b`, `content: "a"/**/"b"`. This holds
+  on every declaration path from 27, and in style sheets from 29 (27 and
+  28's sheets drop the comment, as warpdom already did). warpdom wrote a
+  space for each comment (`1px 2px`, or `1px   2px` with spaces around it).
+- A property jsdom serializes reads the comment as a space, as before
+  (`margin: 1px/**/2px` is `1px 2px`).
+- `border-spacing` and `background-size` write each run of whitespace as
+  one space and a comma as `, ` (`1px  2px ,  3px` is `1px 2px, 3px`), but
+  not in a value with var(). warpdom kept them as written.
+
+Design: innerComments(name, value) finds the comments outside strings,
+escapes and unquoted url()s. With none between tokens it returns null.
+Otherwise it reads the value with each comment as two spaces and asks
+declaredValue: a property that keeps text as written returns that text
+unchanged (two spaces stay two), and one that serializes it does not. The
+value is then kept with only its leading and trailing comments removed.
+writtenValue (setProperty, the accessor) and commentedDeclarations (the
+style attribute, cssText, sheets from 29) use it, and parseInto accepts
+the kept value. The doubled-space probe needs warpdom to collapse spaces
+wherever jsdom does; a survey of every property with `1px  2px`, `a  b`,
+`1px  2px red` and `a  ,  b` found only border-spacing and
+background-size, fixed here.
+
+Left (#264 item 84): jsdom 27 keeps leading and trailing comments in
+setProperty and the accessor (`/**/1px`); background, background-position
+and background-size reject `1px/**/2px`; `font-family: a/**/b` is `ab`;
+voice-family and animation-range-center drop a leading or trailing
+comment; calc() with comments or spaces in border-spacing and
+background-size (`calc(1px  +  2px)` is `calc(3px)` in 30, invalid before).
+
+Bench (node 22.17.1, 5 interleaved runs, medians, ns per write): setProperty
+border-spacing 670 -> 684, setProperty width 526 -> 541, cssText 1,592 ->
+1,597 (noise); a cssText with `border-radius: 1px/**/2px` 1,382 -> 1,784
+(+29%). That path now probes the value through declaredValue instead of
+writing spaces for its comments, and only a value with a comment between
+tokens takes it.
+
+Review: a priority with comments around or inside it (`1px/**/2px
+!important/**/`, `!/**/important`) was not found, so the value lost its
+comment (`1px 2px`). commentedDeclarations finds the priority on the text
+with its comments blanked to spaces of the same length (blankComments),
+cuts the value at the `!`, and keeps the comments before it, as jsdom 28
+and later do (`1px/**/2px/**/ !important`, `1px/**/2px /* a */ /* b */
+!important`). parseInto keeps them too for a declaration with a priority.
+jsdom 27 drops the priority there instead (#264 item 84).
+
+Second review (Copilot): blankComments read the `/*` in an unquoted url()
+as a comment (`content: "a"/**/url(a/*b.png) !important`), blanked the
+priority with it, and lost the inner comment. It now skips an unquoted
+url() as one token, as innerComments does. Two older cases found on the
+way go to #264: a trailing comment after a value of more than one part
+stays in jsdom 27 and later (`"a" "b"/**/`, item 87), and jsdom 28's sheets
+lose every rule after a `/*` in a url() (item 88).
+
+## 2026-11-08: a long comma list in the grammar matcher (branch fix/grammar-repeat-linear)
+
+Found while checking the #289 review (Copilot asked for a closer look at
+malformed values that rescan): `font: 12px` with a long family list,
+written to an element whose font-family was set first, took 78 ms for
+250 families, 3.6 s for 1,000 and 27 s for 2,000 (every profile, main
+too). Profile: matchRepeat's union, from checkValue.
+- The font grammar (webref) ends in `<'font-family'>#`, and font-family is
+  `[ <font-family-name> | <generic-font-family> ]#`: a comma list of comma
+  lists, which a long list can split in quadratically many ways.
+  matchRepeat reads such a list (X# of X = Y#, both unbounded) as Y#,
+  which accepts the same values.
+- matchRepeat collects the ends it finds in a set and sorts them once,
+  instead of a union (copy, set, sort) per repetition.
+2,000 families: 27 s -> 1.7 ms. Test: "declarations: a long family list
+is matched quickly" (26.1.0, 30.1.3 and the latest profile; 26.7 s
+before).
+
+Bench (node 22.17.1, 5 interleaved runs, medians, ns per uncached
+setProperty): font 9,059 -> 6,720, font-family 2,989 -> 2,680, box-shadow
+8,805 -> 8,485, transition 5,156 -> 5,032, grid-template-columns 5,662 ->
+5,566.
+
+Found at the same time (#264 item 86): jsdom 29 to 30.1.3 drop a repeated
+family name in font (`12px A,B,A` is `12px A, B`) but not in font-family;
+jsdom 26 rejects a family list with a repeated name in both.
+
 ## 2026-11-08: a javascript: URL given to location runs, document.location = url (branch fix/264-location-javascript-url, #264 item 75)
 
 Black box, jsdom 20.0.3, 22.1.0, 25.0.1, 26.1.0, 27.4.0, 28.1.0, 29.1.1 and
