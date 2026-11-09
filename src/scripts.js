@@ -60,19 +60,17 @@ function childText(script) {
 let withWindow = null;
 function runInWindow(window, source) {
   const run = window[S].runScript;
-  if (run) {
-    run(source);
-    return;
-  }
+  if (run) return run(source);
   if (withWindow === null)
     withWindow = new Function('__window', '__source', 'with (__window) { return eval(__source); }');
-  withWindow.call(window, window, source);
+  return withWindow.call(window, window, source);
 }
 
-// A javascript: URL followed as a hyperlink (HTML 7.4.2.5): its source,
-// the URL's percent-decoded path, runs as a classic script of the window;
-// the result is ignored (it would replace the document; jsdom ignores it
-// too), and an exception is reported.
+// A javascript: URL followed as a hyperlink or given to location (HTML
+// 7.4.2.5): its source, the URL's percent-decoded path, runs as a classic
+// script of the window, and an exception is reported. A string result would
+// replace the document: reported as not implemented, as jsdom does (black
+// box, 20.0.3 to 30.1.3, #264 item 75); other results are ignored.
 export function runJavascriptURL(window, url) {
   const encoded = url.href.slice('javascript:'.length);
   let source;
@@ -81,11 +79,14 @@ export function runJavascriptURL(window, url) {
   } catch {
     source = encoded;
   }
+  let result;
   try {
-    runInWindow(window, source);
+    result = runInWindow(window, source);
   } catch (error) {
     reportError(window, error);
+    return;
   }
+  if (typeof result === 'string') window[S].notImplemented("string results from 'javascript:' URLs");
 }
 
 function prepare(script) {
