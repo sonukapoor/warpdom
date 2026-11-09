@@ -3080,6 +3080,14 @@ parity(
       '0 Large, Arial',
       '0 Medium, Arial',
       '0 Large',
+      // A zero with an exponent is a zero size; a size keyword after a
+      // family is the size, as jsdom 26 reads it (#289 review).
+      '0e0 Arial',
+      'BOLD 0e-1 Arial',
+      '0E0 Arial, SERIF',
+      '.0 Arial Large',
+      '.0 Arial Large, SERIF',
+      '0 Arial Medium',
     ].map((v) => {
       const e = w.document.createElement('div');
       e.style.setProperty('font', v);

@@ -4876,6 +4876,11 @@ Fourth review (Copilot): the size search ran into the family list, so
 The size is now looked for only up to the first word with a comma outside
 strings and parentheses (`0 Large, Arial` still takes `Large` as the size,
 as jsdom 26 does).
+Fifth review (Copilot): a zero with an exponent (`0e0 Arial`, `BOLD 0e-1
+Arial`) was no zero size, so the family was lowercased; FONT_ZERO_WORD
+takes an exponent now. A size keyword after a family (`.0 Arial Large`)
+stays the size: jsdom 26 reads it so (`0 large`, font-size large, Arial
+dropped; that last part is #264 item 83).
 
 ## 2026-11-08: a javascript: URL given to location runs, document.location = url (branch fix/264-location-javascript-url, #264 item 75)
 
