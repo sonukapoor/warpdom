@@ -144,8 +144,31 @@ const FONT_SIZES = new Set([
   'larger',
   'smaller',
 ]);
+// The value with its first slash outside strings spaced (12px/1.5 is
+// 12px / 1.5); one in a family string stays (12px "a/b"; #291 review).
+function spacedSlash(value) {
+  let slash = -1;
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    if (c === 92) i++;
+    else if (c === 34 || c === 39) {
+      let j = i + 1;
+      while (j < value.length && value.charCodeAt(j) !== c) j += value.charCodeAt(j) === 92 ? 2 : 1;
+      i = j;
+    } else if (c === 47) {
+      slash = i;
+      break;
+    }
+  }
+  if (slash === -1) return value;
+  let start = slash;
+  while (start > 0 && /\s/.test(value[start - 1])) start--;
+  let end = slash + 1;
+  while (end < value.length && /\s/.test(value[end])) end++;
+  return `${value.slice(0, start)} / ${value.slice(end)}`;
+}
 export function parseFont(value) {
-  const parts = segments(value.replace(/\s*\/\s*/, ' / '));
+  const parts = segments(value.includes('/') ? spacedSlash(value) : value);
   let style = 'normal',
     weight = 'normal',
     size = null,
