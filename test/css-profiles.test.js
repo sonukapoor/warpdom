@@ -1167,6 +1167,11 @@ const IDENT_BANGS = [
   'a !\\000062c',
   'a !\\0000062 c',
   'a !\\,b',
+  // A no-break space is a name character, but jsdom trims it before the !
+  // too (#293 review).
+  'a\u00a0 !b',
+  'a !\u00a0b',
+  'a !b\u00a0',
 ];
 for (const jsdom of [27, 28, 29, 30])
   parity(

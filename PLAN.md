@@ -4830,9 +4830,11 @@ element; color and a custom property):
   `var(--c)` there and `var(--c) !important` in 30.
 
 warpdom kept `--x: a !b` as written and dropped `color: red !b`. strayBang
-scans the value once (strings, comments, escapes and blocks skipped); its
-result replaces the stray-priority check for these paths. That check
-dropped only a leftover `!important` or a lone `!`, and in blocks only.
+scans the value once (strings, comments, escapes and blocks skipped) on
+these paths, before the stray-priority check (strayPriority), which
+dropped only a leftover `!important` or a lone `!`. strayPriority still
+runs after it, and is what checks a block warpdom wrote itself ('written')
+and a replay, which strayBang skips.
 Not measured: jsdom 30.0 (treated as 30).
 
 Review: the ident after the `!` was matched by a regular expression that
