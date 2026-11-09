@@ -1179,6 +1179,51 @@ for (const jsdom of [30, 29, 28, 27])
     { jsdom },
   );
 
+// A unitless zero with an exponent in the border shorthands is a 0px
+// width in jsdom 26 and 30, as 0 is (black box, 26.1.0 and 30.1.3, #264
+// item 73). 0e+1 and 00 stay invalid.
+const ZERO_EXPONENT_BORDERS = [
+  ['border', '0e0 solid'],
+  ['border', '0e1'],
+  ['border', '0e-1 solid red'],
+  ['border', '+0e0 solid'],
+  ['border', '-0e0 solid'],
+  ['border', '0.0e0 solid'],
+  ['border', 'solid 0E0'],
+  ['border-top', '0e0'],
+  ['border-left', '0E0 solid'],
+  ['border-bottom', '0e0 dashed blue'],
+  ['border', '0e0px solid'],
+  ['border', '1e0px solid'],
+  ['border', '0e+1 solid'],
+  ['border', '00 solid'],
+];
+for (const jsdom of [26, 30])
+  parity(
+    `style: a zero with an exponent in the border shorthands is 0px (jsdom ${jsdom}, #264 item 73)`,
+    (w) =>
+      ZERO_EXPONENT_BORDERS.map(([name, value]) => {
+        const d = w.document;
+        const attribute = d.createElement('div');
+        attribute.setAttribute('style', `${name}: ${value}`);
+        const set = d.createElement('div');
+        set.style.setProperty(name, value);
+        return [name, value, attribute.style.cssText, set.style.cssText];
+      }),
+    { jsdom },
+  );
+
+// jsdom 27 to 29 reject 0e0 as a length (#264 item 91): until that is
+// modeled, their profiles keep main's reading, not 26 and 30's 0px (#297
+// review).
+test('style: a zero with an exponent in border is left alone in jsdom 27 to 29 (#264 item 91)', () => {
+  for (const jsdom of ['27.4.0', '28.1.0', '29.1.1']) {
+    const e = createWindow({ jsdom }).document.createElement('div');
+    e.style.setProperty('border', '0e0 solid');
+    assert.equal(e.style.getPropertyValue('border'), '0 solid', jsdom);
+  }
+});
+
 // border: none and border-style: none (#179, black box, 27.4.0 to 30.1.3):
 // from jsdom 27 kept everywhere, a none style left out of border and its
 // sides (border: none is border: medium, border-top: 0 none is
