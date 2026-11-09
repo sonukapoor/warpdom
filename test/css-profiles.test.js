@@ -3204,6 +3204,20 @@ parity(
     }),
   { jsdom: 26 },
 );
+// An escaped line break continues a family string, so function-like text
+// after it is still in the string: the family is kept, its case too (jsdom
+// 26, #289 review). (jsdom 26 then drops the backslash: #264 item 92.)
+parity(
+  'style: function-like text after an escaped line break in a family string (jsdom 26, #264 item 46)',
+  (w) =>
+    ['"A\\\nURL(Font)", SERIF', '"A\\\r\nURL(Font)", SERIF', '"A\\\nb", Serif'].map((v) => {
+      const e = w.document.createElement('div');
+      e.style.setProperty('font-family', v);
+      const read = e.style.getPropertyValue('font-family');
+      return [v, read !== '', read.replace(/[^A-Z]/g, '')];
+    }),
+  { jsdom: 26 },
+);
 // A family named like a size keyword after a unitless zero size is a
 // family, not the size: the size comes before the first comma (#289 review).
 parity(
@@ -3227,6 +3241,10 @@ parity(
       '.0 Arial Large',
       '.0 Arial Large, SERIF',
       '0 Arial Medium',
+      // (no space after the comma: #289 review)
+      '0 Large,Arial',
+      '0 Arial,Large',
+      '12px Arial,SERIF',
     ].map((v) => {
       const e = w.document.createElement('div');
       e.style.setProperty('font', v);

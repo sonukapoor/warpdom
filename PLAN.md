@@ -4881,6 +4881,13 @@ Arial`) was no zero size, so the family was lowercased; FONT_ZERO_WORD
 takes an exponent now. A size keyword after a family (`.0 Arial Large`)
 stays the size: jsdom 26 reads it so (`0 large`, font-size large, Arial
 dropped; that last part is #264 item 83).
+Sixth review (Copilot, both reproduced on 26.1.0): the mask that hides
+strings took an escape of any character but a line break, so `"A\`
+LF `URL(Font)", SERIF` showed `URL(` outside the string and was dropped;
+QUOTED_STRINGS now takes `\[\s\S]`. And with no space after a comma
+(`0 Large,Arial`) the size keyword and the next family were one word, so
+`Large` kept its case; fontWords now ends a word at a top-level comma
+(jsdom 26 then drops the backslash before a line break: #264 item 92).
 
 ## 2026-11-08: strings in a value, jsdom 27 and later (branch fix/264-canonical-string, #264 item 60)
 

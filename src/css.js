@@ -1348,7 +1348,9 @@ const FONT_SIZE_WORD =
 // A unitless zero size (0, .0, -0.0, 0e0, 0/1.5); 0 before another size
 // is a weight (0 12px Arial).
 const FONT_ZERO_WORD = /^[+-]?(0+\.?0*|\.0+)(e[+-]?\d+)?(\/.*)?$/i;
-const QUOTED_STRINGS = /"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?/g;
+// (an escape takes any character, a line break too: "A\<LF>b" is one
+// string; #289 review)
+const QUOTED_STRINGS = /"(?:[^"\\]|\\[\s\S])*"?|'(?:[^'\\]|\\[\s\S])*'?/g;
 // font's words, split at whitespace outside strings and parentheses (a
 // function is one word, nested too: calc(1em + calc(2em)), 12px/calc(1em
 // + 2em)), as [text, index].
@@ -1366,7 +1368,12 @@ function fontWords(value) {
     if (start === -1) start = i;
     if (c === 40) depth++;
     else if (c === 41 && depth > 0) depth--;
-    else if (c === 92) i++;
+    else if (c === 44 && depth === 0) {
+      // (a comma ends its word, as whitespace does: 0 Large,Arial; #289
+      // review)
+      words.push([value.slice(start, i + 1), start]);
+      start = -1;
+    } else if (c === 92) i++;
     else if (c === 34 || c === 39) {
       // (a string runs to its closing quote, or the end)
       let j = i + 1;
