@@ -864,27 +864,48 @@ function matchUnordered(items, tokens, pos, all) {
   return [...results].sort((a, b) => a - b);
 }
 
+// (the ends found are collected in a set and sorted once: a union per
+// repetition made a long comma list cubic, 27 s for a font with 2,000
+// families; #289 review)
+// A comma list of what is itself a comma list (font's <'font-family'>#,
+// font-family being [ ... ]#) is that list: X# of X = Y# is Y#, both
+// without bounds. Read so, a long list has one way to split instead of
+// quadratically many (#289 review).
+function innerCommaList(node) {
+  let inner = node.node;
+  if (inner.k === 'prop') inner = propertyNode(inner.name);
+  return inner && inner.k === 'rep' && inner.comma && inner.min === 1 && inner.max === Infinity ? inner : null;
+}
 function matchRepeat(node, tokens, pos) {
+  if (node.comma && node.min === 1 && node.max === Infinity) {
+    const inner = innerCommaList(node);
+    if (inner !== null) return matchRepeat(inner, tokens, pos);
+  }
   const { min, max, comma } = node;
   let frontier = [pos];
-  let ends = min === 0 ? [pos] : [];
+  const ends = new Set();
+  if (min === 0) ends.add(pos);
   for (let count = 1; count <= max && frontier.length; count++) {
-    let next = [];
+    const next = new Set();
     for (const p of frontier) {
       let start = p;
       if (comma && count > 1) {
         if (tokens[p]?.t !== 'comma') continue;
         start = p + 1;
       }
-      for (const end of match(node.node, tokens, start)) if (end > start || count <= min) next.push(end);
+      for (const end of match(node.node, tokens, start)) if (end > start || count <= min) next.add(end);
     }
-    next = [...new Set(next)];
-    if (count >= min) ends = union(ends, next);
+    if (count >= min) for (const end of next) ends.add(end);
     // A repetition that consumed nothing cannot grow further.
-    frontier = next.filter((e) => !frontier.includes(e));
+    const previous = frontier;
+    frontier = [];
+    for (const end of next) if (!previous.includes(end)) frontier.push(end);
     if (count > tokens.length + 1) break;
   }
-  return ends;
+  if (ends.size === 0) return [];
+  const out = [...ends];
+  if (out.length > 1) out.sort((x, y) => x - y);
+  return out;
 }
 
 function matchesWhole(node, tokens) {
