@@ -4123,6 +4123,10 @@ function innerComments(name, value, mode, surface, trailing = false, setter = fa
   const after = edges && pending;
   const before = edges && setter && leading;
   if (!inner && !after && !before) return null;
+  // (one part is its own serialization: the token given twice tells a
+  // property that keeps it as written, border-radius: 1px  1px, from one
+  // that parses it, width: 10px  10px)
+  if (!parts) probe = `${probe}  ${probe}`;
   if (declaredValue(name, probe, mode, surface) !== probe) return null;
   let start = first;
   if (before) for (start = 0; isCssSpace(value.charCodeAt(start)); start++);

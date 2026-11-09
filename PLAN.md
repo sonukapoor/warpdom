@@ -4636,7 +4636,9 @@ font-family) drops them. warpdom dropped them everywhere.
 innerComments decides it: its probe is now the tokens with two spaces in
 every gap, so a property that serializes changes it (margin: `1px  2px` is
 `1px 2px`) where the old probe, comments as two spaces and then trimmed,
-missed a value already in its serialized form. It keeps the comments after
+missed a value already in its serialized form; one part is given twice
+(`1px  1px`), as a single token is its own serialization (jsdom 27 keeps
+`border-radius: 1px/**/`, not `width: 10px/**/`). It keeps the comments after
 a value of more than one part (any part in cssstyle 5), and with setter
 (writtenValue) those before it. parseInto and writtenValue look at a valid
 value again only when a comment is at its end (EDGE_COMMENT; or start).
