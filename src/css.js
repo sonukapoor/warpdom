@@ -1115,7 +1115,10 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
       if (out === undefined) out = written === null ? INVALID : versionedValue(name, written, mode, surface);
       if (out === undefined) {
         const checked = isSpecMode(mode) || JSDOM26_VALIDATED.has(name);
-        out = !checked || isValidValue(name, written) ? serializeDeclared(name, written, mode) : INVALID;
+        out =
+          !checked || isValidValue(name, written) || jsdom26SizeAlone(name, written, mode)
+            ? serializeDeclared(name, written, mode)
+            : INVALID;
         if (out === INVALID && name === 'background-image' && isSpecMode(mode) && value.includes('var('))
           out = imageVarLayers(value, mode, surface);
       }
@@ -1517,6 +1520,12 @@ function closedString(value, i) {
     }
   }
   return -1;
+}
+// jsdom 26 takes a font of a size and no family (font: 1px, bold 1px,
+// large), not one with a line height (1px/2) or without a size (bold);
+// black box, 26.1.0, #264 item 63.
+function jsdom26SizeAlone(name, value, mode) {
+  return name === 'font' && mode === 'jsdom26' && !value.includes('/') && isValidValue(name, `${value} a`);
 }
 function jsdom26Value(name, value, lower) {
   const parsed = JSDOM26_PARSED.has(name) || JSDOM26_OWN.has(name);

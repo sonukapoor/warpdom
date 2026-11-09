@@ -4620,6 +4620,22 @@ Vitest 3.2). Its release corpus check, on all four corpora, is clean.
 - After those: #199 (computed colors), #202 (`:empty`), #192 and #201
   (fast-mode stubs), #208 (CSSOM leftovers).
 
+## 2026-11-09: a font of a size alone, jsdom 26 (branch fix/264-jsdom26-font-size-alone, #264 item 63)
+
+Black box, 26.1.0: jsdom 26 takes a `font` with a size and no family, as
+the size and what comes before it: `font: 1px`, `10%`, `1.5em`, `LARGE`
+(`large`), `BOLD 1px` (`bold 1px`), `italic 1px`, `calc(1px)`, `1e39px`
+(`1e+39px`), `1e400px` (`Infinitypx`); fontSize, fontWeight, fontStyle and
+lineHeight read from it, fontFamily is empty. Not with a line height
+(`1px/2`) or without a size (`bold`). warpdom dropped them: its grammar
+needs a family. jsdom26SizeAlone accepts such a value (no `/`, valid with
+a family after it), parseFont gives an empty family, and the longhands
+leave font-family out. Also `Infinitypx` is a length to parseFont now, so
+`1e400px Arial` has its font-size (it was empty, on main too).
+Left: `0` is `0px` and `01 1px` is `1px` there (#264 item 83), and jsdom
+26 lists font's longhands in cssText and length, with a family too (#264
+item 78). The check runs only for a jsdom 26 font that fails validation.
+
 ## 2026-11-01: window members locked before their first read (branch fix/160-locked-lazy-members, #160)
 
 A member made on first read (interface objects, Image, Option, Audio,

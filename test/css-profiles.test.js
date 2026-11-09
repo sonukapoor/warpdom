@@ -1224,6 +1224,43 @@ test('style: a zero with an exponent in border is left alone in jsdom 27 to 29 (
   }
 });
 
+// jsdom 26 takes a font of a size and no family, as the size and what
+// comes before it (black box, 26.1.0, #264 item 63); not with a line
+// height or without a size. (0 is 0px there and 01 1px is 1px: #264 item
+// 83; its longhands in cssText and length: item 78.)
+parity(
+  'style: a font of a size alone (jsdom 26, #264 item 63)',
+  (w) =>
+    [
+      '1px',
+      '10%',
+      '1.5em',
+      '1e39px',
+      '1e400px',
+      'BOLD 1px',
+      'italic 1px',
+      'LARGE',
+      'calc(1px)',
+      '1px ',
+      '1px/2',
+      'bold',
+      '-1px',
+      '12px Arial',
+      '1e400px Arial',
+    ].map((v) => {
+      const out = [v];
+      for (const set of ['property', 'attribute']) {
+        const e = w.document.createElement('div');
+        if (set === 'property') e.style.setProperty('font', v);
+        else e.setAttribute('style', `font: ${v}`);
+        const s = e.style;
+        out.push([s.getPropertyValue('font'), s.fontStyle, s.fontWeight, s.fontSize, s.lineHeight, s.fontFamily]);
+      }
+      return out;
+    }),
+  { jsdom: 26 },
+);
+
 // border: none and border-style: none (#179, black box, 27.4.0 to 30.1.3):
 // from jsdom 27 kept everywhere, a none style left out of border and its
 // sides (border: none is border: medium, border-top: 0 none is
