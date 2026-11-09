@@ -2598,6 +2598,8 @@ const ESCAPED_CRLF = [
   '--x: url("a\\\r\nb"); color: red',
   "--x: 'a\\\r\nb'; color: red",
   "color: blue; background-image: url('a\\\r\nb'); color: red",
+  // (a string value written as a CSS string from 28: #264 item 60)
+  "content: 'a\\\r\nb'; color: red",
 ];
 for (const jsdom of [27, 28, 29])
   parity(

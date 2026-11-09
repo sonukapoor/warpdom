@@ -4885,9 +4885,8 @@ declaration with the rest of the block in its value, and
 from there on. jsdom reads `url("ab")` there and keeps `color: red`.
 jsdom 30 turns CR LF into LF first (#282), so 30 already matched.
 
-To check after #291 (item 60) merges: `content: 'a\` CR LF `b'` is
-`"ab"` in 28 and 29, which is #291's string rule; its own test has an
-escaped LF only.
+`content: 'a\` CR LF `b'` is `"ab"` in 28 and 29, #291's string rule; that
+branch adds it to this test.
 
 Bench (node 22.17.1, 5 interleaved runs, medians, ns per cssText write on
 the jsdom 29 profile): plain 1,462 -> 1,455, with strings 3,650 -> 3,715
