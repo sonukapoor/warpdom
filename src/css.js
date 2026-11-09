@@ -1466,7 +1466,7 @@ function jsdom26Case(name, value) {
 // newer size, in the value or one of its words (flex). CSS-wide keywords
 // and var() are left to the rest.
 const SIDE_STYLES = /^(dotted|dashed|solid|double|groove|ridge|inset|outset)$/i;
-const NEWER_SIZES = /^(contain|stretch|-webkit-fill-available|fit-content\(.*\))$/i;
+const NEWER_SIZES = /^(contain|stretch|-webkit-fill-available|fit-content\([\s\S]*\))$/i;
 const JSDOM26_KEYWORD_RULES = {
   __proto__: null,
   'border-top-style': { only: SIDE_STYLES },

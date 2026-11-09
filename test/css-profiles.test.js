@@ -1282,7 +1282,7 @@ const JSDOM26_KEYWORDS = {
     '-webkit-fill-available',
     'inherit',
   ],
-  height: ['contain', 'stretch', 'fit-content', 'auto'],
+  height: ['contain', 'stretch', 'fit-content', 'auto', 'fit-content(\n10px)'],
   'flex-basis': ['contain', 'content', 'auto', 'fit-content', 'min-content', '10px'],
   flex: ['contain', 'content', 'auto', 'none', '1 1 contain', '1 1 content'],
   float: ['top', 'bottom', 'left', 'right', 'none', 'inline-start', 'inline-end', 'snap-block', 'LEFT'],
