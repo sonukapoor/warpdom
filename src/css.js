@@ -3915,7 +3915,8 @@ function innerComments(name, value, mode, surface, trailing = false) {
 }
 // The text with each comment outside strings as spaces of its length, so
 // priorityStart finds a priority with comments around or inside it at the
-// same index (1px !/**/important, 1px !important/**/; #292 review).
+// same index (1px !/**/important, 1px !important/**/; #292 review); not
+// in an unquoted url() (url(a/*b.png); #292 review).
 function blankComments(text) {
   if (!text.includes('/*')) return text;
   let out = '';
@@ -3924,7 +3925,11 @@ function blankComments(text) {
     const c = text.charCodeAt(i);
     if (c === 92) i++;
     else if (c === 34 || c === 39) i = stringEnd(text, i, false) - 1;
-    else if (c === 47 && text.charCodeAt(i + 1) === 42) {
+    else if (c === 40) {
+      // (an unquoted url() is one token: url(a/*b.png) has no comment)
+      const end = urlTokenEnd(text, i);
+      if (end !== -1) i = end - 1;
+    } else if (c === 47 && text.charCodeAt(i + 1) === 42) {
       const end = commentEnd(text, i);
       out += text.slice(from, i) + ' '.repeat(end - i);
       from = end;

@@ -4862,6 +4862,14 @@ and later do (`1px/**/2px/**/ !important`, `1px/**/2px /* a */ /* b */
 !important`). parseInto keeps them too for a declaration with a priority.
 jsdom 27 drops the priority there instead (#264 item 84).
 
+Second review (Copilot): blankComments read the `/*` in an unquoted url()
+as a comment (`content: "a"/**/url(a/*b.png) !important`), blanked the
+priority with it, and lost the inner comment. It now skips an unquoted
+url() as one token, as innerComments does. Two older cases found on the
+way go to #264: a trailing comment after a value of more than one part
+stays in jsdom 27 and later (`"a" "b"/**/`, item 87), and jsdom 28's sheets
+lose every rule after a `/*` in a url() (item 88).
+
 ## 2026-11-08: a javascript: URL given to location runs, document.location = url (branch fix/264-location-javascript-url, #264 item 75)
 
 Black box, jsdom 20.0.3, 22.1.0, 25.0.1, 26.1.0, 27.4.0, 28.1.0, 29.1.1 and

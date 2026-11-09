@@ -1564,6 +1564,9 @@ const COMMENTED_PRIORITIES = [
   'border-radius: 1px/**/2px ! important /**/ ',
   'container-name: a/**/b !important /* x */',
   'margin: 1px/**/2px !important/**/',
+  // (an unquoted url() is one token: its /* opens no comment)
+  'content: "a"/**/url(a/*b.png) !important',
+  'content: "a"/**/URL( a/*b.png )/**/!important',
 ];
 for (const jsdom of [28, 29, 30])
   parity(
@@ -1575,6 +1578,9 @@ for (const jsdom of [28, 29, 30])
         attribute.setAttribute('style', text);
         const set = d.createElement('div');
         set.style.cssText = text;
+        // (jsdom 28's sheets read /* in an unquoted url() as a comment to
+        // the end, and keep no rule: #264 item 88)
+        if (jsdom === 28 && /url\(/i.test(text)) return [text, attribute.style.cssText, set.style.cssText];
         const sheet = d.createElement('style');
         sheet.textContent = `p { ${text} }`;
         d.head.appendChild(sheet);
