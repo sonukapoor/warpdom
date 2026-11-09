@@ -170,6 +170,8 @@ function splitDeclarations(text) {
 // other properties keep a list as written (inset: 0 auto, view-timeline-
 // inset: 0 100dvh). Numbers stay (opacity: 0, line-height: 0).
 const ZERO = /^[+-]?(0+\.?0*|\.0+)$/;
+// A number with an exponent and no unit (0e0, -0.0E-1).
+const EXPONENT_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)e[+-]?\d+$/i;
 const BOX_SHORTHANDS = new Set(['margin', 'padding', 'border-width']);
 // Functions as one side each (calc(100% - 2px) calc(100% - 2px) is
 // calc(100% - 2px)); a value with var() as written.
@@ -2137,8 +2139,15 @@ function borderValue(name, value, mode) {
     if (!legacy) style = null;
   }
   if (width === null && style === null && color === null) return INVALID;
-  if (width !== null)
-    width = legacy ? (ZERO.test(width) && !side ? '0px' : width) : ZERO.test(width) ? '0px' : canonicalNumbers(width);
+  if (width !== null) {
+    // (jsdom 26 and 30 read a zero with an exponent, 0e0, as 0 too; #264
+    // item 73)
+    const zero =
+      ZERO.test(width) ||
+      ((mode === 'jsdom26' || mode === 'spec') && Number(width) === 0 && EXPONENT_NUMBER.test(width));
+    if (legacy) width = zero && !side ? '0px' : width;
+    else width = zero ? '0px' : canonicalNumbers(width);
+  }
   // cssstyle before 4.4: as written on the sides; on border lowercased
   // before 4.3.1.
   if (color !== null)

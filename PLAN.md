@@ -4900,6 +4900,23 @@ line break does not set that, as a later one may still close). 400,000
 random values give the same result as the regular expression; 1 ms on
 20,000 `url(`, and the other shapes scale linearly, as on main.
 
+## 2026-11-09: a zero with an exponent in the border shorthands, jsdom 26 and 30 (branch fix/264-jsdom26-zero-exponent, #264 item 73)
+
+Black box, 26.1.0 and 30.1.3: in border and its sides a unitless zero with
+an exponent is a 0px width, as 0 is (`border: 0e0 solid` is `0px solid`;
+`0e1`, `0e-1`, `+0e0`, `-0e0`, `0.0e0`, `0E0`, in any position;
+`border-top: 0e0` is `0px`). `0e+1` and `00` stay invalid, and
+`border-width: 0e0` already read `0px`. warpdom wrote `0`. borderValue now
+reads such a width as a zero in those versions (Number first, so the
+regular expression runs only for a zero).
+Bench (node 22.17.1, 5 interleaved runs, medians, ns per border
+setProperty): spec 110 -> 107, jsdom 26 225 -> 227 (noise).
+
+Measuring it showed the other versions differ (#264 item 91): 27 to 29
+reject `0e0` as a length everywhere (29 throws a TypeError from
+setAttribute for the border shorthands), and 25 rejects exponents and
+`0.0` in border.
+
 ## 2026-11-08: strings in a value, jsdom 27 and later (branch fix/264-canonical-string, #264 item 60)
 
 Surveyed black box with every style property (27.4.0, 28.1.0, 29.1.1,
