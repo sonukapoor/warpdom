@@ -2104,6 +2104,12 @@ const ONE_STRING = [
   // A backslash at the end of the text, or before a quote (#291 review).
   '"a\\5c"',
   '"a\\5c\\"b"',
+  // var() in a string keeps the value as written, a raw newline too
+  // (#291 review).
+  "'a var(--x)'",
+  "'a\nvar(--x)'",
+  "'a\\A var(--x)'",
+  "'avar(--x)'",
 ];
 // NUL and a backslash at the end, through setProperty (jsdom 30's
 // accessors read them as 29 does, #264 item 81).
@@ -2138,6 +2144,28 @@ const FAMILY_STRINGS = [
   "'a/b', serif",
   "'a\\2f  b'",
   '"a / b"',
+  // Only the first family turns a newline, CR or form feed into a space;
+  // notvar( is no var() (#291 review).
+  "Arial, 'a\\A b'",
+  "'x', 'a\\A b'",
+  "'a\\A b', 'c\\A d'",
+  "'a\\D b'",
+  "'a\\C b'",
+  "'a\\9 b'",
+  "'a\\62 cnotvar(x)'",
+  "'a var(--x)'",
+  "'a\\62 c',var(--a)",
+];
+// A function before the families with a newline, CR or form feed in a
+// family string drops font (#291 review).
+const FONT_FUNCTIONS = [
+  'calc(12px) "a\\A b"',
+  'calc(12px / 2) "a\\A b"',
+  'bold calc(12px) Arial, "a\\D b"',
+  '12px/calc(2) "a\\C b"',
+  'calc(12px)/1.5 "a\\A b"',
+  'calc(12px) "a\\9 b"',
+  'calc(12px) "a b"',
 ];
 for (const jsdom of [27, 28, 29, 30, '30.1.3'])
   parity(
@@ -2154,7 +2182,9 @@ for (const jsdom of [27, 28, 29, 30, '30.1.3'])
         const row = [name, value, set.getPropertyValue(name), attr.style.cssText, accessor.cssText];
         // (an unclosed string in a rule takes the rule's end; the sheet
         // parser drops an escaped quote outside a string, #264 item 80)
-        if (/["']$/.test(value) && !/\\["']$/.test(value) && !value.includes('a\\"')) {
+        // (nor a raw newline, whose bad string takes the rule's } with
+        // var(): #264 item 90)
+        if (/["']$/.test(value) && !/\\["']$/.test(value) && !value.includes('a\\"') && !value.includes('\n')) {
           sheet.insertRule(`div { ${name}: ${value} }`, 0);
           row.push(sheet.cssRules[0].style.getPropertyValue(name));
         }
@@ -2167,6 +2197,7 @@ for (const jsdom of [27, 28, 29, 30, '30.1.3'])
           read('font', `12px ${value}`),
           read('font', `12px/1.5 ${value}`),
         ]),
+        ...FONT_FUNCTIONS.map((value) => read('font', value)),
         read('content', "'x' counter(a)"),
         read('animation', "'x' 1s"),
         ...['content', 'animation-name', 'font-family'].flatMap((name) =>

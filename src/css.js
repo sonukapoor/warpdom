@@ -1422,24 +1422,40 @@ let finalString = '';
 function stringsWritten(name, value, surface) {
   const key = surface?.key ?? 'jsdom30';
   const nulAsReplacement = key.startsWith('jsdom30');
+  // (a value with var(), as jsdom finds it, is kept as written: 'a
+  // var(--x)', not 'avar(--x)' or notvar(; #291 review)
+  if (value.includes('var(') && hasVarFunction(value)) return value;
   if (name === 'font-family' || name === 'font') {
-    if (value.includes('var(')) return value;
     // (closed strings without escapes or line breaks: quoteFamily)
     if (!PLAIN_STRING_BREAK.test(value) && stringsClosed(value)) return value;
     let out = '';
     let from = 0;
-    // font writes a newline in a family string as a space, but not after
-    // a line height (12px/1.5 "a\A b" keeps it; #291 review)
+    // font writes a newline, CR or form feed in its first family as a
+    // space when that family is a string right after the size, not after
+    // a line height (12px/1.5 "a\A b") or in a later family (12px Arial,
+    // "a\A b"); with a function before the families (calc(12px) "a\A b")
+    // such a string drops it (black box, 27.4.0 to 30.1.3; #291 review).
     let spaces = name === 'font';
+    let fn = false;
+    let depth = 0;
     for (let i = 0; i < value.length; i++) {
       const c = value[i];
       // (an escaped quote is part of a name: a\"b)
       if (c === '\\') i++;
-      if (c === '/') spaces = false;
+      else if (c === '(') {
+        depth++;
+        fn = true;
+      } else if (c === ')' && depth > 0) depth--;
+      else if (depth === 0 && (c === '/' || c === ',')) spaces = false;
       if (c !== '"' && c !== "'") continue;
       const read = readCssString(value, i, nulAsReplacement);
       if (read === null) return value;
-      const text = spaces ? read.text.replace(/\n/g, ' ') : read.text;
+      let text = read.text;
+      if (name === 'font' && /[\n\r\f]/.test(text)) {
+        if (fn) return INVALID;
+        if (spaces) text = text.replace(/[\n\r\f]/g, ' ');
+      }
+      spaces = false;
       out += value.slice(from, i) + `"${text.replace(/\\/g, '').replace(/"/g, '\\"')}"`;
       from = i = read.end;
       i--;

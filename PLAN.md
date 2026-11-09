@@ -4872,6 +4872,23 @@ without a line height: `12px/1.5 "a\A b"` and `12px/normal "a\A b"` keep
 it. The family test also runs each value after `12px/1.5`. Font writes
 10,021 -> 9,955 ns (noise).
 
+Fourth review (Copilot, three findings, all reproduced on 27.4.0 to
+30.1.3):
+- A family list with `notvar(` in a string (`'a\62 cnotvar(x)'`) was kept
+  as written, as if it had var(); jsdom writes `"abcnotvar(x)"`. And a
+  string-valued property with var() in its string (`content: 'a
+  var(--x)'`, with a raw newline before var( too) had its string rewritten
+  or was dropped; jsdom keeps it as written. Both now ask hasVarFunction.
+- A slash inside a function (`calc(12px / 2)`) counted as a line height's.
+  Only a top-level slash does now. Checking it showed more: jsdom turns a
+  newline, CR or form feed into a space only in the first family, when it
+  is a string (`12px Arial, "a\A b"` keeps the newline; `12px "a\D b"`
+  is `"a b"`), and with a function before the families such a string
+  drops font (`calc(12px) "a\A b"`, `12px/calc(2) "a\C b"`). A tab stays.
+Left (#264 item 90): jsdom evaluates calc() in font and font-size
+(`calc(12px + 2px)` is `calc(14px)`; warpdom keeps it), and in a style
+sheet a bad string with var() takes the rule's `}` into the value.
+
 ## 2026-11-08: a javascript: URL given to location runs, document.location = url (branch fix/264-location-javascript-url, #264 item 75)
 
 Black box, jsdom 20.0.3, 22.1.0, 25.0.1, 26.1.0, 27.4.0, 28.1.0, 29.1.1 and
