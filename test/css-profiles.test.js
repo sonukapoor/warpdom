@@ -1238,6 +1238,8 @@ for (const jsdom of [27, 28, 29, 30])
           'url("a\n) !foo',
           'url("a\n) !foo bar',
           'url(a"b) ")!x" !foo',
+          'url("a\n) !b /* !important',
+          '"a\n !b /* !important',
         ].map((raw) => {
           const value = name === 'color' ? raw.replace(/^a\b/, 'red') : raw;
           const el = w.document.createElement('div');

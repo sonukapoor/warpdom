@@ -2989,8 +2989,11 @@ function insideComment(text, at) {
   for (let i = 0; i < at; i++) {
     const c = text.charCodeAt(i);
     if (c === 92) i++;
-    else if (c === 34 || c === 39) i = stringEnd(text, i, false) - 1;
-    else if (c === 40) {
+    else if (c === 34 || c === 39) {
+      // (a line break ends a string, a bad one; #293 review)
+      const end = stringEnd(text, i, true);
+      i = (end < 0 ? ~end : end) - 1;
+    } else if (c === 40) {
       const end = urlTokenEnd(text, i);
       if (end !== -1) i = end - 1;
     } else if (c === 47 && text.charCodeAt(i + 1) === 42) {

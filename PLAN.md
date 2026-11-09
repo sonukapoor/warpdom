@@ -4881,6 +4881,10 @@ top-level `!foo` (important; `!foo bar` drops it); strayBang read through
 to the next quote. And the older strayPriority check ran after strayBang
 and read a quote inside an unquoted url() as a string's (`url(a"b)
 ")!x" !foo` was dropped); it now runs only on the paths strayBang skips.
+Fifth review: insideComment read a string through a raw line break, so
+in `--x: url("a` LF `) !b /* !important` it missed the open comment and
+took the `!important` in it (dropped; jsdom: important). It ends a string
+at a line break now, as strayBang does.
 
 ## 2026-11-08: strings in a value, jsdom 27 and later (branch fix/264-canonical-string, #264 item 60)
 
