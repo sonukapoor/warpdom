@@ -1932,7 +1932,8 @@ function borderValue(name, value, mode) {
     // (jsdom 26 and 30 read a zero with an exponent, 0e0, as 0 too; #264
     // item 73)
     const zero =
-      ZERO.test(width) || ((mode === 'jsdom26' || spec) && Number(width) === 0 && EXPONENT_NUMBER.test(width));
+      ZERO.test(width) ||
+      ((mode === 'jsdom26' || mode === 'spec') && Number(width) === 0 && EXPONENT_NUMBER.test(width));
     if (legacy) width = zero && !side ? '0px' : width;
     else width = zero ? '0px' : canonicalNumbers(width);
   }

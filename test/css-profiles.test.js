@@ -1213,6 +1213,17 @@ for (const jsdom of [26, 30])
     { jsdom },
   );
 
+// jsdom 27 to 29 reject 0e0 as a length (#264 item 91): until that is
+// modeled, their profiles keep main's reading, not 26 and 30's 0px (#297
+// review).
+test('style: a zero with an exponent in border is left alone in jsdom 27 to 29 (#264 item 91)', () => {
+  for (const jsdom of ['27.4.0', '28.1.0', '29.1.1']) {
+    const e = createWindow({ jsdom }).document.createElement('div');
+    e.style.setProperty('border', '0e0 solid');
+    assert.equal(e.style.getPropertyValue('border'), '0 solid', jsdom);
+  }
+});
+
 // border: none and border-style: none (#179, black box, 27.4.0 to 30.1.3):
 // from jsdom 27 kept everywhere, a none style left out of border and its
 // sides (border: none is border: medium, border-top: 0 none is
