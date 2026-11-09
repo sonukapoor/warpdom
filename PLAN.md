@@ -4885,6 +4885,12 @@ Fifth review: insideComment read a string through a raw line break, so
 in `--x: url("a` LF `) !b /* !important` it missed the open comment and
 took the `!important` in it (dropped; jsdom: important). It ends a string
 at a line break now, as strayBang does.
+Sixth review: urlTokenEnd took `#url(` and `@url(` for a url(, and
+`url(` after an escape (`a\ url(`, `\61 url(`, one name), so it ended the
+token at a `)` inside a string and strayBang saw the `!b` in it (`--x:
+#url(a") !b")` was dropped; jsdom 27 to 30 keep it, as main did). The
+check before `url(` (partOfToken) now rules out a hash, an at-keyword and
+the end of an escape.
 
 ## 2026-11-09: a zero with an exponent in the border shorthands, jsdom 26 and 30 (branch fix/264-jsdom26-zero-exponent, #264 item 73)
 

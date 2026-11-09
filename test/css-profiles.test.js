@@ -1240,6 +1240,12 @@ for (const jsdom of [27, 28, 29, 30])
           'url(a"b) ")!x" !foo',
           'url("a\n) !b /* !important',
           '"a\n !b /* !important',
+          // (#url(, @url( and an escape before url( start no url(: #293
+          // review)
+          '#url(a") !b")',
+          '@url(a") !b")',
+          'a\\ url(a")!b")',
+          '\\61 url(a") !b")',
         ].map((raw) => {
           const value = name === 'color' ? raw.replace(/^a\b/, 'red') : raw;
           const el = w.document.createElement('div');
