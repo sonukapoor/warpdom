@@ -4650,6 +4650,12 @@ no comments 963 -> 968; comments that change nothing (`color: red /* c
 cost is the probe's second validation, for values with a comment at the
 end only, which is what decides whether jsdom keeps it.
 
+Review: the recheck took a valid custom property too, and dropped its
+leading comment (`--x: /*lead*/a b/**/`, kept whole by jsdom 27 to 30);
+custom properties are left out of it. A comment left open after a value
+of more than one part (`border-radius: 1px 2px /*u; color: red`, the rest
+in the value) already matched; it is a test row now.
+
 ## 2026-11-01: window members locked before their first read (branch fix/160-locked-lazy-members, #160)
 
 A member made on first read (interface objects, Image, Option, Audio,

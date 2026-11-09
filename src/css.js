@@ -3235,7 +3235,13 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     // one part: commentedDeclarations; #264 item 87)
     let declared = declaredValue(name, value, mode, surface);
     // (a valid value is looked at again only with a comment at its end)
-    if (!runsOn && value.includes('/*') && (declared === INVALID || EDGE_COMMENT.test(value)))
+    // (not a custom property's, kept as written: --x: /*lead*/a b/**/;
+    // #299 review)
+    if (
+      !runsOn &&
+      value.includes('/*') &&
+      (declared === INVALID || (EDGE_COMMENT.test(value) && name.charCodeAt(1) !== 45))
+    )
       declared = innerComments(name, value, mode, surface, important) ?? declared;
     // A style attribute a style write serialized ('written'): a background
     // with an empty layer (url("a.png"), , backgroundValue) is read as the

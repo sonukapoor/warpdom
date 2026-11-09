@@ -1612,6 +1612,11 @@ const TRAILING_COMMENTS = [
   ['box-shadow', '1px 1px red/**/'],
   ['margin', '1px 2px/**/'],
   ['font-family', 'a, b/**/'],
+  // A custom property keeps all of it; a comment left open runs to the end
+  // (#299 review).
+  ['--x', '/*lead*/a b/**/'],
+  ['--x', 'a b/**/'],
+  ['border-radius', '1px 2px /*u'],
 ];
 for (const jsdom of [27, 28, 29, 30])
   parity(
@@ -1628,7 +1633,8 @@ for (const jsdom of [27, 28, 29, 30])
         const sheet = d.createElement('style');
         sheet.textContent = `p { ${name}: ${value} }`;
         d.head.appendChild(sheet);
-        const rule = sheet.sheet.cssRules[0].style.getPropertyValue(name);
+        // (a comment left open takes the rule's } too)
+        const rule = sheet.sheet.cssRules[0]?.style.getPropertyValue(name) ?? null;
         sheet.remove();
         return [
           name,
