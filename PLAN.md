@@ -4876,6 +4876,16 @@ the spaces, on main too); reserializeCustom now gives up there. The new
 work runs only for a value with a priority and a block, a custom property
 with a comment, or a source with a backslash.
 
+Third review (Copilot, both reproduced on 27.4.0 to 30.1.3):
+customPriority cut the value where the priority's whitespace started on
+the blanked text, which also crossed the comments before the `!`
+(`--v: a/**/!/**/important` read `a`; jsdom keeps `a/**/`). It now cuts at
+the `!` and trims only whitespace. And an `!important` inside a comment
+that runs to the end (`--v: a /* !important`, at the end of a sheet or in
+the style attribute) was the priority; jsdom keeps it in the value.
+parseInto now skips a priority whose `!` is inside a comment (insideComment,
+run only for a value with a comment).
+
 ## 2026-11-08: a javascript: URL given to location runs, document.location = url (branch fix/264-location-javascript-url, #264 item 75)
 
 Black box, jsdom 20.0.3, 22.1.0, 25.0.1, 26.1.0, 27.4.0, 28.1.0, 29.1.1 and

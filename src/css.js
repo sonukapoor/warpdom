@@ -2905,7 +2905,26 @@ function customPriority(raw) {
   if (start === -1) return raw;
   const bang = blanked.indexOf('!', start);
   if (escapedAt(raw, bang) || openAt(raw, bang)) return raw;
-  return `${raw.slice(0, start)} !important`;
+  // (cut at the ! itself: the comments before it stay, a/**/!important is
+  // a/**/; #294 review)
+  let end = bang;
+  while (end > 0 && isCssSpace(raw.charCodeAt(end - 1))) end--;
+  return `${raw.slice(0, end)} !important`;
+}
+// Whether text[at] is inside a comment (outside strings and escapes; a
+// comment ends at its first */, or the end).
+function insideComment(text, at) {
+  for (let i = 0; i < at; i++) {
+    const c = text.charCodeAt(i);
+    if (c === 92) i++;
+    else if (c === 34 || c === 39) i = stringEnd(text, i, false) - 1;
+    else if (c === 47 && text.charCodeAt(i + 1) === 42) {
+      const end = commentEnd(text, i);
+      if (end > at) return true;
+      i = end - 1;
+    }
+  }
+  return false;
 }
 // The text with each comment outside strings and unquoted url()s as spaces
 // of its length (indexes stay the same).
@@ -3095,6 +3114,8 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     // (an !important inside an unclosed block is part of the value: --v: [a;
     // !important; #294 review)
     if (bang !== -1 && nested && /[[({]/.test(value) && openAt(value, value.indexOf('!', bang))) bang = -1;
+    // (nor is one inside a comment: --v: a /* !important; #294 review)
+    if (bang !== -1 && nested && value.includes('/*') && insideComment(value, value.indexOf('!', bang))) bang = -1;
     if (bang !== -1) {
       important = true;
       value = value.slice(0, bang).trim();
