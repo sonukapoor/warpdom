@@ -4174,6 +4174,9 @@ function innerComments(name, value, mode, surface, trailing = false, setter = fa
   const after = edges && pending;
   const before = edges && setter && leading;
   if (!inner && !after && !before) return null;
+  // (a value with var() is kept as written whatever its parts: its
+  // comments are commentedDeclarations' to handle; #299)
+  if (probe.includes('var(') && hasVarFunction(probe)) return null;
   if (declaredValue(name, probe, mode, surface) !== probe) return null;
   // (with boundaries inside a function only, the value given twice too:
   // width keeps calc(  1px) but not calc(  1px)  calc(  1px), transform
