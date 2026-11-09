@@ -167,7 +167,8 @@ function splitDeclarations(text, nested = false) {
       }
     }
     if (quote) {
-      if (c === '\\') i++;
+      // (an escaped CR LF is one escaped newline, as in stringEnd)
+      if (c === '\\') i += text[i + 1] === '\r' && text[i + 2] === '\n' ? 2 : 1;
       else if (c === quote || c === '\n' || c === '\r' || c === '\f') quote = null;
       continue;
     }
@@ -2706,7 +2707,9 @@ function stringEnd(text, i, lineBreaks) {
   const quote = text[i];
   for (let j = i + 1; j < text.length; j++) {
     const c = text[j];
-    if (c === '\\') j++;
+    // (an escaped CR LF is one escaped newline: the string goes on, #264
+    // item 69)
+    if (c === '\\') j += text[j + 1] === '\r' && text[j + 2] === '\n' ? 2 : 1;
     else if (c === quote) return j + 1;
     else if (lineBreaks && (c === '\n' || c === '\r' || c === '\f')) return ~j;
   }
