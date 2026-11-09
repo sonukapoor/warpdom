@@ -1227,9 +1227,10 @@ test('declarations: a long family list is matched quickly', () => {
     e.setAttribute('style', `font: 12px ${families}`);
     const elapsed = performance.now() - start;
     assert.ok(elapsed < 500, `${jsdom ?? 'latest'}: ${elapsed} ms`);
-    // (and the list was matched, not given up on: both declarations kept)
-    assert.match(e.style.getPropertyValue('font-family'), /^A, ?A,.*, ?serif$/i, `${jsdom ?? 'latest'}: font-family`);
-    assert.match(e.style.getPropertyValue('font'), /^12px A, ?A,.*, ?serif$/i, `${jsdom ?? 'latest'}: font`);
+    // (and the list was matched, not given up on: both declarations kept;
+    // font keeps A once from jsdom 27, #264 item 86)
+    assert.match(e.style.getPropertyValue('font-family'), /^A, ?(A, ?)*serif$/i, `${jsdom ?? 'latest'}: font-family`);
+    assert.match(e.style.getPropertyValue('font'), /^12px A, ?(A, ?)*serif$/i, `${jsdom ?? 'latest'}: font`);
   }
 });
 

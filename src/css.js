@@ -1459,6 +1459,22 @@ function jsdom26Case(name, value) {
   }
   return lowerOutsideStrings(value);
 }
+// quotedFamilies with a family given twice left out after its first, as
+// font does in jsdom 27 and later (font: 12px A,B,A is 12px A, B; "A" and
+// A, a and A differ; black box, 27.4.0 to 30.1.3, #264 item 86).
+function onceFamilies(value) {
+  const list = quotedFamilies(value);
+  if (!list.includes(',')) return list;
+  const seen = new Set();
+  const kept = [];
+  for (const item of splitOutside(list, ',', true)) {
+    const family = trimSpaces(item);
+    if (seen.has(family)) continue;
+    seen.add(family);
+    kept.push(family);
+  }
+  return kept.join(', ');
+}
 // A family list: an unquoted generic family in lowercase, the rest as written.
 function familiesInCase(value) {
   // (an escaped comma is part of a name: Foo\,SERIF)
@@ -2859,7 +2875,9 @@ function serializeDeclared(name, value, mode) {
     // no generic-keyword check (#279 review).
     if (hasVarFunction(value)) return value;
     genericFirst = false;
-    const out = font ? serializeFont(canonicalNumbers(value), quotedFamilies) : quotedFamilies(value);
+    // (font leaves out a family given twice after its first, as written;
+    // #264 item 86)
+    const out = font ? serializeFont(canonicalNumbers(value), onceFamilies) : quotedFamilies(value);
     return genericFirst ? INVALID : out;
   }
   // cssstyle before 4.3.1 (jsdom 20 to 25) keeps lengths, percentages and

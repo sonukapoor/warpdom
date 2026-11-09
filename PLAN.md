@@ -4620,6 +4620,19 @@ Vitest 3.2). Its release corpus check, on all four corpora, is clean.
 - After those: #199 (computed colors), #202 (`:empty`), #192 and #201
   (fast-mode stubs), #208 (CSSOM leftovers).
 
+## 2026-11-09: a family given twice in font, jsdom 27 and later (branch fix/264-font-repeated-family, #264 item 86)
+
+Black box, 27.4.0 to 30.1.3 (27 and 28 measured now too): font leaves out
+a family given twice after its first, comparing them as written (`12px
+A,B,A` is `12px A, B`, its font-family `A, B`; `"A"` and `A`, `a` and
+`A`, `serif` and `SERIF` differ; `Open Sans` and `Open  Sans`, both
+`"Open Sans"`, do not). font-family keeps the repeat (`A, B, A`). warpdom
+kept it in font too. onceFamilies wraps quotedFamilies for font. Bench
+(5 interleaved runs, medians, ns per spec font and font-family write):
+185 -> 184. Left: jsdom 26 rejects a list with a repeated name in both
+properties (`font-family: A, A` is `""`; with #302's family parser).
+The long-family-list timing test matches the shorter font now.
+
 ## 2026-11-09: comments after a value of more than one part, jsdom 27 and later (branch fix/264-trailing-comment, #264 item 87)
 
 Black box, 27.4.0 to 30.1.3: a value jsdom keeps as written keeps the
