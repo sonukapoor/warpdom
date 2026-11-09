@@ -2783,17 +2783,30 @@ function identToEnd(text, i) {
   }
   return afterSpaces(text, i) === text.length;
 }
+// A block closes at its own closer only (a [) !b] is one block), and an
+// unquoted url() is one token (url(a]!b), url(a[b) !foo; #293 review).
+// Whether text[i] is escaped (an odd run of backslashes before it).
+function escapedAt(text, i) {
+  let j = i;
+  while (j > 0 && text.charCodeAt(j - 1) === 92) j--;
+  return (i - j) % 2 === 1;
+}
 function strayBang(value) {
   let bang = -1;
-  let depth = 0;
+  const closers = []; // the closer each open block waits for
   for (let i = 0; i < value.length; i++) {
     const c = value.charCodeAt(i);
     if (c === 92) i++;
     else if (c === 34 || c === 39) i = stringEnd(value, i, false) - 1;
     else if (c === 47 && value.charCodeAt(i + 1) === 42) i = commentEnd(value, i) - 1;
-    else if (c === 40 || c === 91 || c === 123) depth++;
-    else if ((c === 41 || c === 93 || c === 125) && depth > 0) depth--;
-    else if (c === 33 && depth === 0) {
+    else if (c === 40) {
+      const end = urlTokenEnd(value, i);
+      if (end === -1) closers.push(41);
+      else i = end - 1;
+    } else if (c === 91) closers.push(93);
+    else if (c === 123) closers.push(125);
+    else if (closers.length > 0 && c === closers[closers.length - 1]) closers.pop();
+    else if (c === 33 && closers.length === 0) {
       if (bang !== -1) return -2;
       bang = i;
     }
@@ -3054,7 +3067,14 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       continue;
     }
     let important = false;
-    const bang = priorityStart(value);
+    // (not a block warpdom wrote itself, nor a sheet before jsdom 29)
+    const strays = !runsOn && !replay && context !== 'written' && !(sheet && surface?.key?.startsWith('cssstyle'));
+    let bang = priorityStart(value);
+    // (an escaped ! is part of an ident, from jsdom 27: a !b\!important is
+    // a and a stray !b\!important, kept as written in 27 and 28's sheets;
+    // #293 review)
+    if (bang !== -1 && !runsOn && !replay && context !== 'written' && escapedAt(value, value.indexOf('!', bang)))
+      bang = -1;
     if (bang !== -1) {
       important = true;
       value = value.slice(0, bang).trim();
@@ -3062,14 +3082,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       // in cssom's cascade: margin: 1px !important; margin-left: 2px)
       if (counting) prioritized = true;
     }
-    // (not a block warpdom wrote itself, nor a sheet before jsdom 29)
-    if (
-      !runsOn &&
-      !replay &&
-      context !== 'written' &&
-      !(sheet && surface?.key?.startsWith('cssstyle')) &&
-      value.includes('!')
-    ) {
+    if (strays && value.includes('!')) {
       const at = strayBang(value);
       if (at === -2 || (at !== -1 && important)) continue;
       if (at !== -1) {

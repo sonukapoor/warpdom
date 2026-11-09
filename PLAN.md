@@ -4852,6 +4852,20 @@ Bench (node 22.17.1, 5 interleaved runs, medians, ns per write): cssText
 1,446 -> 1,463, cssText with !important 1,026 -> 1,030, setAttribute 800
 -> 812 (noise).
 
+Second review (Copilot, both reproduced on 27.4.0 to 30.1.3): strayBang
+counted any closer against any opener, so `--x: a [) !b]` and `a (] !b)`
+were dropped (jsdom keeps them: a block closes at its own closer only),
+and read into unquoted url()s (`url(a]!b)` dropped, `url(a[b) !foo` not
+made important). It now keeps a stack of the closers it waits for and
+skips an unquoted url() as one token (urlTokenEnd). And an escaped `!`
+before `important` was taken as the priority (`a !b\!important` lost its
+`!b\` ident and was dropped): on these paths an escaped `!` is part of an
+ident, so the value is `a` with a stray `!b\!important`, important, as in
+jsdom (kept as written in 27 and 28's sheets). The stack is allocated only
+for a value with a `!`.
+Left (#264 item 89): in 27 and 28's sheets a `{}` block in a custom
+property makes a nested rule, and an unclosed `(` loses the rule.
+
 ## 2026-11-08: a javascript: URL given to location runs, document.location = url (branch fix/264-location-javascript-url, #264 item 75)
 
 Black box, jsdom 20.0.3, 22.1.0, 25.0.1, 26.1.0, 27.4.0, 28.1.0, 29.1.1 and

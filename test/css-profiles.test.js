@@ -1172,6 +1172,14 @@ const IDENT_BANGS = [
   'a\u00a0 !b',
   'a !\u00a0b',
   'a !b\u00a0',
+  // A block closes at its own closer only, and an unquoted url() is one
+  // token; an escaped ! is part of an ident (#293 review).
+  'a [) !b]',
+  'a (] !b)',
+  'url(a]!b)',
+  'url(a[b) !foo',
+  'a !b\\!important',
+  'a !b\\\\!important',
 ];
 for (const jsdom of [27, 28, 29, 30])
   parity(
