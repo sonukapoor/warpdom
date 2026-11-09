@@ -904,6 +904,14 @@ export const INTERFACES = [
           const s = state(this);
           return s.noView ? null : s.window[S].location;
         },
+        // [PutForwards=href]: document.location = url navigates; without a
+        // window there is no location to forward to (black box, jsdom 25,
+        // 26 and 30; #264 item 75).
+        set location(v) {
+          const s = state(this);
+          if (s.noView) throw new TypeError("Property 'location' is not an object");
+          s.window[S].location.href = v;
+        },
         get documentElement() {
           return firstElement(state(this));
         },
