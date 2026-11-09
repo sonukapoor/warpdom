@@ -2978,14 +2978,18 @@ function identToEnd(text, i) {
 }
 // A block closes at its own closer only (a [) !b] is one block), and an
 // unquoted url() is one token (url(a]!b), url(a[b) !foo; #293 review).
-// Whether text[at] is inside a comment (outside strings and escapes; a
-// comment ends at its first */, or the end).
+// Whether text[at] is inside a comment (outside strings, escapes and
+// unquoted url()s, whose /* opens nothing; a comment ends at its first */,
+// or the end).
 function insideComment(text, at) {
   for (let i = 0; i < at; i++) {
     const c = text.charCodeAt(i);
     if (c === 92) i++;
     else if (c === 34 || c === 39) i = stringEnd(text, i, false) - 1;
-    else if (c === 47 && text.charCodeAt(i + 1) === 42) {
+    else if (c === 40) {
+      const end = urlTokenEnd(text, i);
+      if (end !== -1) i = end - 1;
+    } else if (c === 47 && text.charCodeAt(i + 1) === 42) {
       const end = commentEnd(text, i);
       if (end > at) return true;
       i = end - 1;
