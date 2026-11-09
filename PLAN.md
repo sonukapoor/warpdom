@@ -4655,6 +4655,11 @@ leading comment (`--x: /*lead*/a b/**/`, kept whole by jsdom 27 to 30);
 custom properties are left out of it. A comment left open after a value
 of more than one part (`border-radius: 1px 2px /*u; color: red`, the rest
 in the value) already matched; it is a test row now.
+Second review: parts with no space between them count too (`content:
+"a""b"/**/`, `will-change: a,b/**/`, `border-radius: 1px/2px/**/` keep
+the comment in 28 to 30): a top-level `,` or `/`, and a string next to
+another token, part the value. One item of a list (`animation-name:
+foo/**/`) drops it in 27 as well, as warpdom does.
 
 ## 2026-11-01: window members locked before their first read (branch fix/160-locked-lazy-members, #160)
 

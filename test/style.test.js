@@ -1617,6 +1617,14 @@ const TRAILING_COMMENTS = [
   ['--x', '/*lead*/a b/**/'],
   ['--x', 'a b/**/'],
   ['border-radius', '1px 2px /*u'],
+  // Parts with no space between them (#299 review); one item of a list
+  // drops it in 27 too.
+  ['content', '"a""b"/**/'],
+  ['will-change', 'a,b/**/'],
+  ['border-radius', '1px/2px/**/'],
+  ['grid-template-areas', '"a""b"/**/'],
+  ['animation-name', 'foo/**/'],
+  ['will-change', 'foo/**/'],
 ];
 for (const jsdom of [27, 28, 29, 30])
   parity(

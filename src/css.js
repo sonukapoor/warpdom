@@ -4097,6 +4097,7 @@ function innerComments(name, value, mode, surface, trailing = false, setter = fa
   let gap = false; // whitespace or a comment after a token
   let parts = false; // a token after a gap: more than one part
   let leading = false; // a comment before the first token
+  let joined = false; // the last token was a , / or string, next to the next
   for (let i = 0; i < value.length; i++) {
     const c = value.charCodeAt(i);
     if (c === 47 && value.charCodeAt(i + 1) === 42) {
@@ -4110,18 +4111,23 @@ function innerComments(name, value, mode, surface, trailing = false, setter = fa
       if (first !== -1) gap = true;
       continue;
     }
+    // (a , or / and a string next to another token part it too: a,b,
+    // 1px/2px, "a""b"; #299 review)
+    if (first !== -1 && (c === 44 || c === 47 || c === 34 || c === 39 || joined)) parts = true;
     if (first === -1) first = i;
     if (pending) inner = true;
     if (gap) {
       parts = true;
       probe += '  ';
     }
-    pending = gap = false;
+    pending = gap = joined = false;
     const start = i;
     if (c === 92) i++;
+    else if (c === 44 || c === 47) joined = true;
     else if (c === 34 || c === 39) {
       const end = stringEnd(value, i, false);
       i = end - 1;
+      joined = true;
     } else if (c === 40) {
       // (an unquoted url() is one token: url(a/*b.png) has no comment)
       const end = urlTokenEnd(value, i);
