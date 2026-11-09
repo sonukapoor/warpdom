@@ -2957,19 +2957,23 @@ function escapeEnd(text, i) {
 const isNameStartCode = (c) => (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || c === 95 || c >= 0x80;
 // Whether text from i is whitespace and comments, one ident, and more
 // whitespace and comments to the end (CSS Syntax 3's ident).
-function identToEnd(text, i) {
+// eofEscape: a backslash at the end is an escape (of U+FFFD, CSS Syntax 3;
+// a !b\ is one ident in jsdom 30, black box 30.1.3; 27 to 29 drop it; #293
+// review).
+function identToEnd(text, i, eofEscape = false) {
+  const escape = (j) => (eofEscape && j === text.length - 1 && text.charCodeAt(j) === 92 ? j + 1 : escapeEnd(text, j));
   i = afterSpaces(text, i);
   let c = text.charCodeAt(i);
   if (c === 45) {
     c = text.charCodeAt(++i);
     if (c === 45) i++;
-    else if (!isNameStartCode(c) && escapeEnd(text, i) === -1) return false;
-  } else if (!isNameStartCode(c) && escapeEnd(text, i) === -1) return false;
+    else if (!isNameStartCode(c) && escape(i) === -1) return false;
+  } else if (!isNameStartCode(c) && escape(i) === -1) return false;
   while (i < text.length) {
     c = text.charCodeAt(i);
     if (isNameStartCode(c) || c === 45 || (c >= 48 && c <= 57)) i++;
     else if (c === 92) {
-      const end = escapeEnd(text, i);
+      const end = escape(i);
       if (end === -1) break;
       i = end;
     } else break;
@@ -3003,14 +3007,18 @@ function escapedAt(text, i) {
   while (j > 0 && text.charCodeAt(j - 1) === 92) j--;
   return (i - j) % 2 === 1;
 }
-function strayBang(value) {
+function strayBang(value, eofEscape = false) {
   let bang = -1;
   const closers = []; // the closer each open block waits for
   for (let i = 0; i < value.length; i++) {
     const c = value.charCodeAt(i);
     if (c === 92) i++;
-    else if (c === 34 || c === 39) i = stringEnd(value, i, false) - 1;
-    else if (c === 47 && value.charCodeAt(i + 1) === 42) i = commentEnd(value, i) - 1;
+    else if (c === 34 || c === 39) {
+      // (a line break ends a string, a bad one: url("a<LF>) !foo; #293
+      // review)
+      const end = stringEnd(value, i, true);
+      i = (end < 0 ? ~end : end) - 1;
+    } else if (c === 47 && value.charCodeAt(i + 1) === 42) i = commentEnd(value, i) - 1;
     else if (c === 40) {
       const end = urlTokenEnd(value, i);
       if (end === -1) closers.push(41);
@@ -3024,7 +3032,7 @@ function strayBang(value) {
     }
   }
   if (bang === -1) return -1;
-  return identToEnd(value, bang + 1) ? bang : -2;
+  return identToEnd(value, bang + 1, eofEscape) ? bang : -2;
 }
 const BORDER_AND_SIDES = new Set(['border', 'border-top', 'border-right', 'border-bottom', 'border-left']);
 
@@ -3311,7 +3319,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       if (counting) prioritized = true;
     }
     if (strays && value.includes('!')) {
-      const at = strayBang(value);
+      const at = strayBang(value, mode === 'spec');
       if (at === -2 || (at !== -1 && important)) continue;
       if (at !== -1) {
         important = true;
@@ -3337,7 +3345,8 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     // as written (--x: url("a\nb.png"), black box 27.4.0 to 30.1.3; #262
     // review).
     if (lineBreaks && name.charCodeAt(1) !== 45 && /url\(/i.test(value) && hasBadString(value)) continue;
-    if (!sheet && !runsOn && value.includes('!') && strayPriority(value, important)) continue;
+    // (strayBang read these: the paths it skips only; #293 review)
+    if (!strays && !sheet && !runsOn && value.includes('!') && strayPriority(value, important)) continue;
     if (borderVarDrops && BORDER_AND_SIDES.has(name)) {
       // A CSS-wide keyword on border or a side leaves the block empty.
       if (CSS_WIDE_KEYWORD.test(value)) {

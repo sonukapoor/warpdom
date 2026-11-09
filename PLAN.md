@@ -4873,6 +4873,15 @@ was dropped; jsdom reads `a !important`. On these paths a priority whose
 `!` is inside a comment is no priority now (insideComment, run only for a
 value with a comment).
 
+Fourth review (Copilot, three findings, all reproduced): a backslash at
+the end of the value escapes U+FFFD, so `--x: a !b\` is `a !important` in
+jsdom 30 (27 to 29 drop it; identToEnd's eofEscape, spec mode only). A
+line break ends a string, a bad one, so `--x: url("a` LF `) !foo` has a
+top-level `!foo` (important; `!foo bar` drops it); strayBang read through
+to the next quote. And the older strayPriority check ran after strayBang
+and read a quote inside an unquoted url() as a string's (`url(a"b)
+")!x" !foo` was dropped); it now runs only on the paths strayBang skips.
+
 ## 2026-11-08: strings in a value, jsdom 27 and later (branch fix/264-canonical-string, #264 item 60)
 
 Surveyed black box with every style property (27.4.0, 28.1.0, 29.1.1,

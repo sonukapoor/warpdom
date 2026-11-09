@@ -1218,15 +1218,27 @@ for (const jsdom of [27, 28, 29, 30])
     },
     { jsdom },
   );
-// An !important inside a comment that runs to the end of the text is no
-// priority: a !b before it is the stray one (black box, 27.4.0 to 30.1.3;
-// #293 review).
+// At the end of the text (nothing after it to escape or close): an
+// !important inside a comment that runs to the end is no priority, a !b
+// before it is the stray one (black box, 27.4.0 to 30.1.3; #293 review).
 for (const jsdom of [27, 28, 29, 30])
   parity(
     `style: an !important inside an unclosed comment (jsdom ${jsdom}, #264 item 65)`,
     (w) =>
       ['--x', 'color'].flatMap((name) =>
-        ['a !b /* !important', 'a /* !important', 'a !b /* !important */', 'a !b /* x'].map((raw) => {
+        [
+          'a !b /* !important',
+          'a /* !important',
+          'a !b /* !important */',
+          'a !b /* x',
+          // A backslash at the end escapes U+FFFD (jsdom 30), a line break
+          // ends a string, a quote in an unquoted url() opens none (#293
+          // review).
+          'a !b\\',
+          'url("a\n) !foo',
+          'url("a\n) !foo bar',
+          'url(a"b) ")!x" !foo',
+        ].map((raw) => {
           const value = name === 'color' ? raw.replace(/^a\b/, 'red') : raw;
           const el = w.document.createElement('div');
           el.setAttribute('style', `${name}: ${value}`);
