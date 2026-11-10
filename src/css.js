@@ -3595,13 +3595,14 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     if (MERGEABLE.has(name)) decls.mergeable = true;
     if (isLegacyFont(surface, name)) removeLegacyFont(decls, surface, false);
     else if (!isLegacyMode(mode)) {
-      const covered = replacedBy(name, mode);
+      const replacing = replacedBy(name, mode);
       const pre29 = mode === 'jsdom27' && !surface?.key?.startsWith('jsdom29');
       // From jsdom 29 a border or a side with var() in a style attribute
       // declares nothing after one of its longhands (cascade.js), so it
-      // replaces nothing (#305 review).
-      if (covered !== undefined && (sheet || pre29 || !BORDER_SHORTHAND.has(name) || !hasVar(declared)))
-        replaceCovered(decls, covered, name, sheet || kept ? KEEP_NONE : keepAgainst(name, pre29));
+      // replaces nothing (#305 review). An !important border longhand stays
+      // against an !important border too (the second #305 review).
+      if (replacing !== undefined && (sheet || pre29 || !BORDER_SHORTHAND.has(name) || !hasVar(declared)))
+        replaceCovered(decls, replacing, name, sheet ? KEEP_NONE : keepAgainst(name, pre29));
     }
     decls.set(
       name,

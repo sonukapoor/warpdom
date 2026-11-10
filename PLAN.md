@@ -4654,6 +4654,15 @@ and in 27 and 28 a masked one), not flex, font or background-position;
 and a shorthand given again after another one sharing longhands is
 declared last, so that it wins.
 
+Second review (#305): in a style attribute and cssText an !important
+border longhand also stays against an !important border shorthand (flex
+and font still replace theirs); setProperty replaces it. Two gaps found
+there are older than this PR (main has them too) and go to phase 3: the
+longhands of an !important shorthand report priority `''` (jsdom:
+`important`), and the computed value takes the shorthand's, not the kept
+!important longhand's (`border-top-color: red !important; border: 1px
+solid blue !important` computes rgb(255, 0, 0) in jsdom).
+
 ### Design: shorthands stored as longhands (#264 items 78, 51, 94, 82, 50)
 
 Black box, `setProperty`, jsdom 26.1.0, 27.4.0, 28.1.0, 29.1.1 and 30.1.3

@@ -1532,3 +1532,46 @@ for (const jsdom of [27, 28, 29, 30])
     },
     { jsdom },
   );
+
+// An !important shorthand after an !important longhand (#305 review): a
+// style attribute and cssText keep a border longhand and replace flex's
+// and font's; setProperty replaces each. Values only: jsdom reports the
+// longhands of an !important shorthand as important, and computes the kept
+// border longhand, both left for a later phase (PLAN.md).
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `jsdom ${jsdom}: an !important shorthand after an !important longhand (#264)`,
+    (w) => {
+      const out = [];
+      for (const [text, read] of [
+        ['border-top-color: red !important; border: 1px solid blue !important', 'border-top-color'],
+        ['border-top-width: 3px !important; border-width: 1px !important', 'border-top-width'],
+        ['border-top-color: red !important; border-top: 1px solid blue !important', 'border-top-color'],
+        ['flex-basis: 10px !important; flex: 1 !important', 'flex-basis'],
+        ['font-family: Arial !important; font: 12px Times !important', 'font-family'],
+        ['flex-basis: 10px; flex: 1 !important', 'flex-basis'],
+      ]) {
+        const e = w.document.createElement('div');
+        e.setAttribute('style', text);
+        const f = w.document.createElement('div');
+        f.style.cssText = text;
+        const g = w.document.createElement('div');
+        for (const part of text.split('; ')) {
+          const [name, value] = part.split(': ');
+          const important = value.endsWith(' !important');
+          g.style.setProperty(
+            name,
+            important ? value.slice(0, -' !important'.length) : value,
+            important ? 'important' : '',
+          );
+        }
+        out.push(
+          [text, e.style.getPropertyValue(read), f.style.getPropertyValue(read), g.style.getPropertyValue(read)].join(
+            ' | ',
+          ),
+        );
+      }
+      return out;
+    },
+    { jsdom },
+  );
