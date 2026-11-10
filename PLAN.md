@@ -4620,6 +4620,22 @@ Vitest 3.2). Its release corpus check, on all four corpora, is clean.
 - After those: #199 (computed colors), #202 (`:empty`), #192 and #201
   (fast-mode stubs), #208 (CSSOM leftovers).
 
+## 2026-11-09: a lone number in calc() kept as written, jsdom 26 (branch fix/264-jsdom26-calc-exponent, #264 item 72)
+
+Black box, 26.1.0, lengths (width, margin, ...): jsdom 26 evaluates a
+calc() of one term (calc(1e1px) is calc(10px), calc(00.5px) calc(0.5px)),
+but keeps it as written when the number is an integer whose text has a
+digit run starting with 0, not after the point, or a + in its exponent:
+calc(1e01px), calc(0010px), calc(01px), calc(00px), calc(-01px),
+calc(1e+1px), calc(10e00px), calc(1e-00px), calc(1.5e01px). Not an
+integer, it is evaluated (calc(1e-01px) is calc(0.1px), calc(010.5px)
+calc(10.5px)); with an operator too (calc(01px + 1px) is calc(2px)). A
+lone + is dropped (calc(+1px) is calc(1px); warpdom kept it).
+simplifyCalc checks the lone term (LONE_KEPT), which only that path runs.
+The rule is a model fitted to the measured values (the 25 test rows and
+more probes), not jsdom's code; a value it misses would be a parity
+failure.
+
 ## 2026-11-09: a shorthand written after its longhand, jsdom 27 and later (branch fix/264-shorthand-replaces-longhands, #264 items 78 and 94, phase 1)
 
 Phase 1 of the design below: border, its sides, border-color, -style and

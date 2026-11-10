@@ -728,6 +728,7 @@ function collapseSpaces(value) {
 // written.
 const CALC_TERM = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)(%|[a-z]+)?$/i;
 const CALC_PRODUCT = /^(.+?)\s*([*/])\s*(.+)$/;
+const LONE_KEPT = /(^|[^\d.])0\d|e\+/i;
 const ABSOLUTE_UNITS = new Set(['in', 'cm', 'mm', 'q', 'pt', 'pc']);
 // Left out: border widths (cssstyle 4.3 drops calc() there) and
 // line-height (kept as written before 4.4).
@@ -769,8 +770,16 @@ function simplifyCalc(value) {
   const plus = parts.indexOf('+'),
     minus = parts.indexOf('-');
   const op = plus >= 0 ? plus : minus;
-  if (op < 0) terms = [calcTerm(inner)];
-  else {
+  if (op < 0) {
+    // A lone integer is kept as written with a digit run that starts with
+    // a 0 (not after the point) or a + in its exponent: calc(1e01px),
+    // calc(0010px), calc(1e+1px), calc(1e-00px); not calc(1e1px),
+    // calc(00.5px) or calc(1e-01px), which is no integer (black box,
+    // 26.1.0; #264 item 72).
+    const m = CALC_TERM.exec(inner);
+    if (m !== null && LONE_KEPT.test(m[1]) && Number.isInteger(Number(m[1]))) return value;
+    terms = [calcTerm(inner)];
+  } else {
     if ((plus >= 0 && minus >= 0) || parts.lastIndexOf(parts[op]) !== op) return value;
     const second = calcTerm(parts.slice(op + 1).join(' '));
     if (second !== null && parts[op] === '-') {
@@ -788,7 +797,8 @@ function simplifyCalc(value) {
   const number = (t) => `${t.text ?? sixDigits(t.n)}${t.unit}`;
   if (terms.length === 2 && terms[0].unit === terms[1].unit)
     return `calc(${sixDigits(terms[0].n + terms[1].n)}${terms[0].unit})`;
-  if (terms.length === 1) return `calc(${number(terms[0])})`;
+  // (a lone + is dropped: calc(+1px) is calc(1px))
+  if (terms.length === 1) return `calc(${number(terms[0]).replace(/^\+/, '')})`;
   // A dimension subtracted stays after the first term (calc(100vh - 64px)).
   if (
     parts[op] === '-' &&
