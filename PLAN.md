@@ -4620,6 +4620,24 @@ Vitest 3.2). Its release corpus check, on all four corpora, is clean.
 - After those: #199 (computed colors), #202 (`:empty`), #192 and #201
   (fast-mode stubs), #208 (CSSOM leftovers).
 
+## 2026-11-09: keywords jsdom 26 takes in some properties (branch fix/264-jsdom26-keyword-sets, #264 item 77, first part)
+
+Black box, 26.1.0, setProperty and the style attribute: jsdom 26 checks
+some properties with older lists than the grammar warpdom validates:
+a side's border style is one of dotted, dashed, solid, double, groove,
+ridge, inset, outset (no none or hidden; border-style takes them);
+float left, right, none, inline-start or inline-end (not top, bottom,
+snap-block); font-style normal, italic or oblique (not left, right,
+`oblique 10deg`); background-attachment and background-repeat one keyword
+(no lists, no two values); width and height no contain, stretch,
+-webkit-fill-available or fit-content() (fit-content, min-content,
+max-content are fine); flex-basis no contain or fit-content; flex no
+contain. warpdom kept them all. JSDOM26_KEYWORD_RULES holds the measured
+lists; jsdom26Rejects runs after jsdom26Case for those properties only
+(CSS-wide keywords and var() pass). The rest of item 77 (calc()
+simplified in more properties, font's longhands in cssText, the cssstyle
+4.3.1 profile, font with calc(), an escaped comma in a family) stays open.
+
 ## 2026-11-09: a lone number in calc() kept as written, jsdom 26 (branch fix/264-jsdom26-calc-exponent, #264 item 72)
 
 Black box, 26.1.0, lengths (width, margin, ...): jsdom 26 evaluates a

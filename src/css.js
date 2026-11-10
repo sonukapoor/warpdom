@@ -1152,6 +1152,8 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
       }
       if (mode === 'jsdom26' && colorKeywords !== 'css2') {
         if (/[A-Z]/.test(written)) written = jsdom26Case(name, written);
+        if (written !== null && JSDOM26_KEYWORD_RULES[name] !== undefined && jsdom26Rejects(name, written))
+          written = null;
         if (written !== null && (name === 'font-family' || name === 'font')) written = jsdom26Families(name, written);
         // (an integer Number() changes has 16 digits: most values skip this)
         if (written !== null && (written.length >= 16 || JSDOM26_BORDERS.has(name)))
@@ -1489,6 +1491,35 @@ function jsdom26Case(name, value) {
     return lowerOutsideStrings(value.slice(0, end)) + familiesInCase(value.slice(end));
   }
   return lowerOutsideStrings(value);
+}
+// Keywords jsdom 26 takes in some properties, fewer than the grammar
+// (black box, 26.1.0, #264 item 77): only: one of an older list; reject: a
+// newer size, in the value or one of its words (flex). CSS-wide keywords
+// and var() are left to the rest.
+const SIDE_STYLES = /^(dotted|dashed|solid|double|groove|ridge|inset|outset)$/i;
+const NEWER_SIZES = /^(contain|stretch|-webkit-fill-available|fit-content\([\s\S]*\))$/i;
+const JSDOM26_KEYWORD_RULES = {
+  __proto__: null,
+  'border-top-style': { only: SIDE_STYLES },
+  'border-right-style': { only: SIDE_STYLES },
+  'border-bottom-style': { only: SIDE_STYLES },
+  'border-left-style': { only: SIDE_STYLES },
+  float: { only: /^(left|right|none|inline-start|inline-end)$/i },
+  'font-style': { only: /^(normal|italic|oblique)$/i },
+  'background-attachment': { only: /^(fixed|scroll|local)$/i },
+  'background-repeat': { only: /^(repeat|repeat-x|repeat-y|no-repeat|space|round)$/i },
+  width: { reject: NEWER_SIZES },
+  height: { reject: NEWER_SIZES },
+  'flex-basis': { reject: /^(contain|fit-content)$/i },
+  flex: { reject: /^contain$/i, words: true },
+};
+function jsdom26Rejects(name, value) {
+  if (CSS_WIDE_KEYWORD.test(value) || value.includes('var(')) return false;
+  const rule = JSDOM26_KEYWORD_RULES[name];
+  const text = trimSpaces(value);
+  if (rule.only) return !rule.only.test(text);
+  if (rule.words) return text.split(/[ \t\n\r\f]+/).some((word) => rule.reject.test(word));
+  return rule.reject.test(text);
 }
 // Where font's families start as jsdom 26 reads it (after the size and a
 // line height), or -1 with no size.
