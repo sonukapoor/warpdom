@@ -1286,6 +1286,35 @@ for (const jsdom of [27, 28, 29, 30])
     { jsdom },
   );
 
+// jsdom 26 keeps a font or font-family value with var() as written, its
+// spacing around commas too (black box, 26.1.0, #264 item 62). (,var( is
+// no var() to jsdom; such a list it reads with a parser of its own: #264
+// item 95.)
+parity(
+  'style: a family list with var() kept as written (jsdom 26, #264 item 62)',
+  (w) =>
+    [
+      ['font-family', 'var(--f),x'],
+      ['font-family', 'x , var(--f)'],
+      ['font-family', 'x,  var(--f)'],
+      ['font-family', 'x,\tvar(--f)'],
+      ['font-family', 'var(--f) ,x'],
+      ['font-family', 'x,(var(--f))'],
+      ['font-family', 'Arial, var(--f) , serif'],
+      ['font-family', 'x, var(--f)'],
+      ['font', '12px x , var(--f)'],
+      ['font', '12px var(--f),x'],
+      ['font', 'var(--a) x,y'],
+    ].map(([name, value]) => {
+      const set = w.document.createElement('div');
+      set.style.setProperty(name, value);
+      const attribute = w.document.createElement('div');
+      attribute.setAttribute('style', `${name}: ${value}`);
+      return [name, value, set.style.getPropertyValue(name), attribute.style.cssText];
+    }),
+  { jsdom: 26 },
+);
+
 // jsdom 26 reads a family list with a parser of its own (black box,
 // 26.1.0, #264 items 74 and 95): an unquoted name of one word starts with
 // two letters or hyphens (ab, -ab, Font01; not x, a1, --x, ab_c, aé), one
