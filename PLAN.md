@@ -4650,6 +4650,25 @@ alone is "A B", and with another family after it the value is dropped. In
 font, it is "A B" (12px "A<LF>B", serif). warpdom keeps the line break in
 all of them, on main too.
 
+## 2026-11-10: number patterns and hasVar() in linear time (branch fix/linear-number-patterns, #224 item 4, #264 item 7)
+
+Found again in the 1.0 triage (untrusted HTML can reach both). The
+number pattern \d+\.?\d* can split a run of digits in many ways, so a
+long run that then fails to match backtracks quadratically: rgb() with
+20,000 digits and a bad unit took 1,330 ms to set in the jsdom 30
+profile (659 ms in 26), all in one regular expression. All 28 uses in
+src/ now read \d+(?:\.\d*)?, which matches the same text in one way
+(the capture groups are unchanged): 0.8 ms. hasVar() searched for var(
+again after every comment, so 20,000 comments before a quoted
+"var(--c)" took 75 ms; it now keeps the next var( until the scan passes
+it, and stops when there is none: 15 ms. BG_LENGTH_3 (#224's other
+pattern) is among the 28.
+
+Ordinary values are unchanged: 40,000 rounds of setProperty for width,
+color, margin and flex plus a computed width (node 22.17.1, 5
+interleaved runs, medians): 357.5 ms on main, 358.1 ms here. A test
+times the slow inputs (under 150 ms each).
+
 ## 2026-11-09: keywords jsdom 26 takes in some properties (branch fix/264-jsdom26-keyword-sets, #264 item 77, first part)
 
 Black box, 26.1.0, setProperty and the style attribute: jsdom 26 checks

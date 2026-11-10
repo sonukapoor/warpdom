@@ -26,7 +26,7 @@ import { ALIASES } from './css-data.js';
 //   { t: 'delim', v }      { t: 'comma' }   { t: 'url' }
 //   { t: 'function', name, args: [...] }   { t: 'block', open, items: [...] }
 
-const NUMBER = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/i;
+const NUMBER = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?/i;
 // An escape (CSS Syntax 3, 4.3.7): up to six hex digits and the one
 // whitespace character after them (\31 FOO is one identifier), or any
 // other character.

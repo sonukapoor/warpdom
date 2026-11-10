@@ -1500,7 +1500,7 @@ const BORDER_STYLES = new Set([
   'inset',
   'outset',
 ]);
-const LEGACY_WIDTH = /^(thin|medium|thick|[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?[a-z%]*)$/i;
+const LEGACY_WIDTH = /^(thin|medium|thick|[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?[a-z%]*)$/i;
 const ZERO_LENGTH = /^[+-]?(0+\.?0*|\.0+)$/;
 
 function legacyBorderValue(element, name) {

@@ -3928,3 +3928,29 @@ parity(
   },
   { jsdom: 26 },
 );
+
+// Long runs of digits and many comments are read in linear time: a number
+// pattern that could split a digit run in many ways (\d+\.?\d*) took
+// 1.3 s on rgb() with 20,000 digits, and hasVar() searched for var( again
+// after each comment (#224 item 4, #264 item 7).
+test('style: long digit runs and many comments are read quickly (#224, #264)', () => {
+  const digits = '1'.repeat(20000);
+  for (const [jsdom, name, value] of [
+    ['30.1.3', 'color', `rgb(${digits}x, 0, 0)`],
+    ['26.1.0', 'color', `rgb(${digits}x, 0, 0)`],
+    ['30.1.3', 'width', `${digits}.${digits}x`],
+    ['30.1.3', 'margin', `${digits}x ${digits}y`],
+    ['30.1.3', 'flex', `${digits}x`],
+    ['25.0.1', 'background', `${digits}x red`],
+    ['30.1.3', 'content', `${'/**/'.repeat(20000)}"var(--c)"`],
+  ]) {
+    const w = createWindow({ jsdom });
+    const e = w.document.createElement('div');
+    w.document.body.append(e);
+    const start = performance.now();
+    e.style.setProperty(name, value);
+    w.getComputedStyle(e).getPropertyValue(name);
+    const elapsed = performance.now() - start;
+    assert.ok(elapsed < 150, `${jsdom} ${name}: ${elapsed} ms`);
+  }
+});
