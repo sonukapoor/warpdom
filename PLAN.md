@@ -4633,6 +4633,30 @@ it then uses drops one-letter families (`x,var(--f)`, `Arial,y` is
 `Arial`) and writes the rest with `, ` (`Arial,var(--f)`); warpdom drops
 those lists.
 
+## 2026-11-09: font family names as jsdom 26 reads them (branch fix/264-jsdom26-multiword-family, #264 items 74 and 95)
+
+Black box, 26.1.0: jsdom 26 reads a family list with a parser of its own.
+An unquoted name of one word starts with two letters or hyphens (`ab`,
+`-ab`, `Font01`; not `x`, `a1`, `--x`, `ab_c`, `aé`); a name of more words
+has each word start with a capital and one more character (`Open Sans`,
+`Ab9 Cd`, `HELVETICA NEUE`; not `ab cd`, `helvetica neue`, `Ab C`, `x
+Sans`, `Café Sans`), its whitespace one space (`Open  Sans`). Strings,
+generic families and var() pass. In font-family a first family that fails
+drops the declaration and a later one, or an empty one, is left out
+(`Arial,y` is `Arial`, `ab,,cd` is `ab, cd`); in font any family that
+fails drops it. warpdom kept them all. jsdom26Families does this after
+jsdom26Case, for a value without var().
+Left: an empty family in font (`12px ab,,cd` is `12px ab, , cd`; warpdom's
+grammar drops it). font's families start after the size as jsdom 26
+finds it (jsdom26FontEnd, shared with jsdom26Case): after a zero size (`0
+x` is invalid), and at a size keyword after a family (`.0 Arial Large`:
+`Large` is the size, item 83); a keyword in a string or a later family is
+a family (#302 review). An escaped quote in a string (`"a\"b"`) is
+invalid in jsdom 26, as in warpdom. The
+long-family-list timing test uses two-letter names now (jsdom 26 takes no
+`A`). Bench (5 interleaved runs, medians, ns per jsdom 26 font and
+font-family write): 166 -> 169 (noise).
+
 ## 2026-11-09: comments after a value of more than one part, jsdom 27 and later (branch fix/264-trailing-comment, #264 item 87)
 
 Black box, 27.4.0 to 30.1.3: a value jsdom keeps as written keeps the
