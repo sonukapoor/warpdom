@@ -1434,6 +1434,56 @@ parity(
   { jsdom: 26 },
 );
 
+// jsdom 26 reads a unitless zero size after keywords alone as 0px, and
+// sets the longhands from it (black box, 26.1.0, #264 item 83). A number
+// before it, or a line height after it, is left (item 83); font-variant
+// and small-caps are item 97.
+parity(
+  'style: a unitless zero font size after keywords is 0px (jsdom 26, #264 item 83)',
+  (w) =>
+    [
+      '0 Arial',
+      '0',
+      'BOLD 0 SERIF',
+      'italic 0 Arial',
+      'normal 0 Arial',
+      'condensed 0 Arial',
+      'italic bold 0 Arial',
+      'bold 0',
+      '0 bold',
+      '0 serif',
+      '0 "A B", serif',
+      '0.0 Arial',
+      '-0 Arial',
+      '+0 Arial',
+      '0e0 Arial',
+      '.0 Arial',
+      '0. Arial',
+      '0e1 Arial',
+      // (an exponent with a + or a leading zero is invalid, and a value
+      // with var() is kept as written; #306 review)
+      '0e+1 Arial',
+      '0e01 Arial',
+      '0e-01 Arial',
+      '0 Arial, var(--f)',
+      // (leading zeros are invalid; a family named Large is no size)
+      '00 Arial',
+      '000 serif',
+      '0 Arial, Large',
+    ].map((v) => {
+      const out = [v];
+      for (const set of ['property', 'attribute']) {
+        const e = w.document.createElement('div');
+        if (set === 'property') e.style.setProperty('font', v);
+        else e.setAttribute('style', `font: ${v}`);
+        const s = e.style;
+        out.push([s.getPropertyValue('font'), s.fontStyle, s.fontWeight, s.fontSize, s.lineHeight, s.fontFamily]);
+      }
+      return out;
+    }),
+  { jsdom: 26 },
+);
+
 // A family given twice in font is left out after its first (as written:
 // "A" and A, a and A differ; Open Sans and Open  Sans do not); font-family
 // keeps it. Black box, 27.4.0 to 30.1.3 (#264 item 86).

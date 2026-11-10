@@ -4620,6 +4620,30 @@ Vitest 3.2). Its release corpus check, on all four corpora, is clean.
 - After those: #199 (computed colors), #202 (`:empty`), #192 and #201
   (fast-mode stubs), #208 (CSSOM leftovers).
 
+## 2026-11-10: a unitless zero font size after keywords is 0px, jsdom 26 (branch fix/264-jsdom26-zero-font-size, #264 item 83, first part)
+
+Black box, 26.1.0, setProperty and the style attribute: when font's size
+is a unitless zero (0, 0., .0, -0, +0, 0e0) with only keywords before it
+(normal, a style, a weight keyword, small-caps, a stretch) and no slash
+after it, jsdom 26 reads it as 0px and sets the longhands from it
+(`0 Arial` is `0px Arial`, font-size 0px; `BOLD 0 SERIF` is `bold 0px
+serif`; `0` alone is `0px`). warpdom kept `0` and set no longhands
+(parseFont read it as a weight and then failed at the family).
+jsdom26ZeroSize writes that zero as 0px before the family check. Left
+as they are: leading zeros (`00 Arial`, invalid there), and a size after
+the zero before the first comma (`0 larger`, `0 Arial Large`).
+
+Left in item 83: a number before the size. jsdom 26 gives it to
+font-variant, font-weight and line-height alike, and the first word a
+longhand takes wins (`0 12px Arial` is `0 12px Arial` with variant,
+weight and line height 0; `bold 0 12px` keeps bold and reads `0 bold
+12px`; `400 0 Arial` is `400 0px Arial`), a zero before a slash (`0/1.5
+Arial` is `0 0px / 1.5 Arial`), and the size-keyword cases (`0 Large,
+Arial`, `.0 Arial Large`). Measured while writing the test, filed as
+item 97: font sets font-variant to normal in jsdom 26 to 30.1.3 (warpdom
+leaves it ''), and 27 to 30.1.3 reject `small-caps` in font (warpdom
+drops the word and keeps the rest); 26 keeps it (item 77).
+
 ## 2026-11-09: a family given twice in font, jsdom 27 and later (branch fix/264-font-repeated-family, #264 item 86)
 
 Black box, 27.4.0 to 30.1.3 (27 and 28 measured now too): font leaves out
