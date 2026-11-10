@@ -1265,6 +1265,15 @@ for (const jsdom of [27, 28, 29, 30])
           'a !b\\  ',
           'a !b\\ ; left: 1px',
           'a !b\\ ;',
+          // (what JavaScript trims and CSS doesn't: an escaped or non-ASCII
+          // one is part of the ident, a vertical tab ends it; #293 review)
+          'a !b\\\u00a0',
+          'a !b\\\u2003; left: 1px',
+          'a !b\\\ufeff',
+          'a !b\\\v',
+          'a !b\v',
+          'a !b\v; left: 1px',
+          'a !b\u00a0',
         ].map((raw) => {
           const value = name === 'color' ? raw.replace(/^a\b/, 'red') : raw;
           const el = w.document.createElement('div');

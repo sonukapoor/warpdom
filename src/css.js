@@ -3248,6 +3248,14 @@ function escapesTrimmed(text) {
   const c = text.charCodeAt(k);
   return (c === 32 || c === 9) && escapedAt(text, k);
 }
+// part's value (value, trimmed by JavaScript) trimmed of CSS whitespace
+// only (space, tab, line breaks).
+function cssTrimmed(part, colon, value) {
+  const start = part.indexOf(value, colon + 1);
+  let end = part.length;
+  while (end > start + value.length && isCssSpace(part.charCodeAt(end - 1))) end--;
+  return end === start + value.length ? value : part.slice(start, end);
+}
 function strayBang(value, eofEscape = false) {
   let bang = -1;
   const closers = []; // the closer each open block waits for
@@ -3565,16 +3573,20 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       // space or tab the trim took escapes it: a !b\<space>, except at the
       // end of the text in jsdom 27 and 28, which trim the text first;
       // #293 review)
+      // (JavaScript's trim also takes what CSS reads as no whitespace: an
+      // escaped or non-ASCII one is part of the ident, a !b\<NBSP>, and a
+      // vertical tab ends it; #293 review)
       const pre29 = mode === 'jsdom27' && !surface?.key?.startsWith('jsdom29');
+      const whole = !pre29 || index < list.length - 1;
+      const scan = whole && !important ? cssTrimmed(part, colon, value) : value;
       const at = strayBang(
-        value,
-        (mode === 'spec' && part.charCodeAt(part.length - 1) === 92) ||
-          ((!pre29 || index < list.length - 1) && escapesTrimmed(part)),
+        scan,
+        (mode === 'spec' && part.charCodeAt(part.length - 1) === 92) || (whole && escapesTrimmed(part)),
       );
       if (at === -2 || (at !== -1 && important)) continue;
       if (at !== -1) {
         important = true;
-        value = value.slice(0, at).trim();
+        value = scan.slice(0, at).trim();
         if (counting) prioritized = true;
       }
     }

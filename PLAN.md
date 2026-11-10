@@ -4984,6 +4984,14 @@ or tab escapes it, so `--x: a !b\<space>` is the stray `!b\ ` and reads
 declaration was dropped (main kept `a !b\`). jsdom 27 and 28 trim the
 text first, so there the last declaration's escape is gone and it is
 dropped (`--x: a !b\ ; left: 1px` is important in all four).
+Tenth review (Copilot "needs a closer look", black box, 27.4.0 to
+30.1.3, 140 cases): JavaScript's trim also takes what CSS doesn't read as
+whitespace: NBSP, U+2003, U+FEFF, U+2028 and a vertical tab. An escaped
+one, or a non-ASCII one (a name code point), is part of the stray ident
+(`!b\<NBSP>` is important in jsdom; warpdom dropped it), and a bare
+vertical tab ends it (`!b<VT>` is dropped from 29). The stray scan now
+reads the value trimmed of CSS whitespace only (cssTrimmed), except the
+last declaration in 27 and 28.
 
 ## 2026-11-08: keywords and units in lowercase, jsdom 26 (branch fix/264-jsdom26-keyword-case, #264 item 46)
 
