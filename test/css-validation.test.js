@@ -1467,3 +1467,67 @@ for (const jsdom of [27, 28, 29, 30])
     },
     { jsdom },
   );
+
+// The same, in a style attribute and cssText, with what they keep (black
+// box, 27.4.0 to 30.1.3, #305 review): an !important longhand without
+// var() against a border shorthand (in 27 and 28 one whose !important was
+// dropped too), not against flex, font or background-position; from 29 a
+// border or a side with var() declares nothing after its longhand. A
+// shorthand given again after another one sharing longhands wins, and
+// border replaces border-image.
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `jsdom ${jsdom}: what a shorthand after its longhand keeps (#264)`,
+    (w) => {
+      const out = [];
+      for (const [text, read] of [
+        ['border-top-color: red !important; border: 1px solid blue', 'border-top-color'],
+        ['border-top-width: 3px !important; border-width: 1px', 'border-top-width'],
+        ['border-top-color: red !important; border-top: 1px solid blue', 'border-top-color'],
+        ['border-top-color: var(--c) !important; border: 1px solid blue', 'border-top-color'],
+        ['flex-basis: 10px !important; flex: 1', 'flex-basis'],
+        ['flex-basis: var(--b) !important; flex: 1', 'flex-basis'],
+        ['font-family: Arial !important; font: 12px Times', 'font-family'],
+        ['background-position-x: left !important; background-position: 1px 2px', 'background-position-x'],
+        ['border-top-width: 4px; border: var(--b)', 'border-top-width'],
+        ['border-top-width: 4px; border-top: var(--b)', 'border-top-width'],
+        ['border-top-width: 4px; border-width: var(--b)', 'border-top-width'],
+        [
+          'border-color: red; border-top: 1px solid green; border-top-color: blue; border-color: blue',
+          'border-top-color',
+        ],
+        ['border-image: url(a.png) 10; border: 1px solid blue', 'border-image'],
+      ]) {
+        const e = w.document.createElement('div');
+        w.document.body.replaceChildren(e);
+        e.setAttribute('style', text);
+        const f = w.document.createElement('div');
+        f.style.cssText = text;
+        const g = w.document.createElement('div');
+        for (const part of text.split('; ')) {
+          const [name, value] = part.split(': ');
+          const important = value.endsWith(' !important');
+          g.style.setProperty(
+            name,
+            important ? value.slice(0, -' !important'.length) : value,
+            important ? 'important' : '',
+          );
+        }
+        // (border-image reads none in jsdom, which declares it as border's
+        // longhand: left for later; its earlier value is gone from cssText.)
+        const reads = (s) =>
+          read === 'border-image' ? s.cssText : `${s.getPropertyValue(read)} ${s.getPropertyPriority(read)}`;
+        out.push(
+          [
+            text,
+            reads(e.style),
+            reads(f.style),
+            reads(g.style),
+            read === 'border-image' ? '' : w.getComputedStyle(e).getPropertyValue(read),
+          ].join(' | '),
+        );
+      }
+      return out;
+    },
+    { jsdom },
+  );

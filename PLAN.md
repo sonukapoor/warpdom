@@ -4634,15 +4634,25 @@ under font reads `normal` in jsdom, `''` here; border-image under
 border `none`).
 
 Cost (node 22.17.1, a fresh element per iteration, 5 runs interleaved,
-medians in ns per element; scratchpad bench78b.mjs): five writes of
-color, border, flex, width and font 1077 on main, 1159 here; a longhand
-then its shorthand (border-top-color, border, flex-grow, flex) 893 and
-858; a cssText of four declarations 1129 and 1163. Only a write of one of
-these shorthands walks the block (replaceCovered: Sets, the block's own
-names, nothing for an empty block), about 27 ns each; other properties
-look up nothing more. A per-block flag would skip the walk, but would
-have to be kept by every place that declares a name (12, and replays):
-not worth the risk for writes outside bench:hot.
+medians in ns per element; scratchpad bench78b.mjs), after the #305
+review: five writes of color, border, flex, width and font 1066 on main,
+1151 here; a longhand then its shorthand (border-top-color, border,
+flex-grow, flex) 890 and 847; a cssText of four declarations, one of
+them replaced, 1118 and 1203 (replaceCovered 3.7% of a profile of it,
+doing the replacing). Only a write of one of these shorthands walks the
+block (replaceCovered: Sets, the block's own names, nothing for an empty
+block); other properties look up nothing more. REPLACES is a Map: as an
+object of dashed names its lookup was 5.3% of that profile. A per-block
+flag would skip the walk, but would have to be kept by every place that
+declares a name (12, and replays): not worth the risk for writes outside
+bench:hot.
+
+Review (#305): a border or a side with var() in a style attribute
+replaces nothing from jsdom 29 (jsdom drops it, cascade.js); only the
+border shorthands keep an !important longhand there (one without var(),
+and in 27 and 28 a masked one), not flex, font or background-position;
+and a shorthand given again after another one sharing longhands is
+declared last, so that it wins.
 
 ### Design: shorthands stored as longhands (#264 items 78, 51, 94, 82, 50)
 
