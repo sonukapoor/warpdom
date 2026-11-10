@@ -347,7 +347,7 @@ Not modeled:
   `deleteRule()` removes plain objects assigned to `cssRules`
   (`[{ keyText: '10%' }]`), and the rule's internal members
   (`__parentRule`, `_vendorPrefix`) and its `cssText` after `cssRules` is
-  replaced are not modeled. From 27, `deleteRule()` removes the
+  replaced are not modeled. From 27.1, `deleteRule()` removes the
   first of duplicate keyframes; warpdom removes the last
 - jsdom 29 and 30 ([#148](https://github.com/sonukapoor/warpdom/issues/148)):
   a style rule's or `@import` rule's `cssText` has only a getter, so assigning it throws in
