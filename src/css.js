@@ -3963,6 +3963,15 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       }
       if (meetImage(name, value, mode)) declared = INVALID;
     }
+    // jsdom 20 to 26 set a style attribute's declarations one by one, so
+    // a shorthand resets what came before it there too (setDeclaration).
+    if (clears && RESETS[name] !== undefined) {
+      if (BORDER_AND_SIDES.has(name)) {
+        if (declared !== INVALID || RESETS_DECLARING_NOTHING.test(value) || (name === 'border' && hasVar(value)))
+          legacyBorderResets(decls, name, value, mode);
+      } else if (declared !== INVALID && declared !== '' && resets(surface, name, declared))
+        for (const n of RESETS[name]) if (n !== name) decls.delete(n);
+    }
     if (declared === INVALID || declared === '') continue;
     // One that loses its !important is written without it; in a style
     // sheet it is a normal declaration, elsewhere it is still !important
@@ -4783,9 +4792,88 @@ function sharesLonghands(name, other) {
   );
 }
 
+// (border or a side: none and a CSS-wide keyword declare nothing, or are
+// rejected, and still reset; legacyBorderResets)
+const RESETS_DECLARING_NOTHING = /^(none|initial|inherit|unset|revert|revert-layer)$/i;
 // (A surface has a legacyFont variant before cssstyle 4.4.)
 const resets = (surface, name, text) =>
   !text.includes('var(') || (name === 'flex' && surface?.legacyFont === undefined);
+// (the kinds of the names a border write may remove: the block's own
+// names are walked, usually a few, rather than every name looked up)
+const RESET_SUB = 1,
+  RESET_SIDE = 2,
+  RESET_WIDTH = 3,
+  RESET_STYLE = 4,
+  RESET_COLOR = 5;
+const RESET_KINDS = new Map([
+  ['border-width', RESET_SUB],
+  ['border-style', RESET_SUB],
+  ['border-color', RESET_SUB],
+]);
+const RESET_SIDE_LONGHANDS = { __proto__: null };
+for (const side of BORDER_SIDES) {
+  const name = `border-${side}`;
+  RESET_KINDS.set(name, RESET_SIDE);
+  RESET_KINDS.set(`${name}-width`, RESET_WIDTH);
+  RESET_KINDS.set(`${name}-style`, RESET_STYLE);
+  RESET_KINDS.set(`${name}-color`, RESET_COLOR);
+  RESET_SIDE_LONGHANDS[name] = BORDER_PARTS.map((part) => `${name}-${part}`);
+}
+// The parts a border value has, as bits (RESET_WIDTH and so on): none
+// alone all of them, a CSS-wide keyword or var() none.
+function borderPartBits(value, usesVar) {
+  if (usesVar || CSS_WIDE_KEYWORD.test(value)) return 0;
+  if (/^none$/i.test(value)) return (1 << RESET_WIDTH) | (1 << RESET_STYLE) | (1 << RESET_COLOR);
+  let bits = 0;
+  const words = segments(value);
+  for (let i = 0; i < words.length; i += 2) {
+    const word = words[i];
+    if (word === '') continue;
+    if (BORDER_STYLE.test(word)) bits |= 1 << RESET_STYLE;
+    else if (BORDER_WIDTH.test(word)) bits |= 1 << RESET_WIDTH;
+    else bits |= 1 << RESET_COLOR;
+  }
+  return bits;
+}
+// jsdom 20 to 26 (cssstyle's setters; black box, 20.0.3 to 26.1.0): a
+// border write removes border-width, -style and -color and the sides, and
+// of the sides' longhands those of the parts it has: border: 0 the
+// widths, red the colors, none alone all of them, inherit and var() none.
+// With var(), jsdom 26 keeps the sides and 20 to 25 (which reject the
+// value) keep border-width, -style and -color. A side removes its own
+// longhands, and itself when it declares nothing (none, inherit). Each
+// removes itself too, so that written again it moves to the end, but for
+// a var() value, which is set in place.
+// value: as written (border: none declares nothing, inherit is rejected:
+// both still remove). Was any removed?
+function legacyBorderResets(decls, name, value, mode) {
+  const usesVar = hasVar(value);
+  let removed = (!usesVar || RESETS_DECLARING_NOTHING.test(value)) && decls.delete(name);
+  if (name !== 'border') {
+    const longhands = RESET_SIDE_LONGHANDS[name];
+    for (let i = 0; i < longhands.length; i++) removed = decls.delete(longhands[i]) || removed;
+    return removed;
+  }
+  const subs = !usesVar || mode === 'jsdom26';
+  const sides = !usesVar || mode !== 'jsdom26';
+  let bits = -1; // (read from the value at the first side longhand)
+  for (const n of decls.keys()) {
+    const kind = RESET_KINDS.get(n);
+    if (kind === undefined) continue;
+    let drop;
+    if (kind === RESET_SUB) drop = subs;
+    else if (kind === RESET_SIDE) drop = sides;
+    else {
+      if (bits === -1) bits = borderPartBits(value, usesVar);
+      drop = (bits & (1 << kind)) !== 0;
+    }
+    if (drop) {
+      decls.delete(n);
+      removed = true;
+    }
+  }
+  return removed;
+}
 
 // via: 'accessor' (style.marginTop = v; 'cssFloat' for style.cssFloat),
 // 'set' (setProperty) or 'remove'
@@ -5021,9 +5109,21 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
   if (text === INVALID && name === 'background' && !s.parentRule)
     text = escapedUrlBackground(s.decls, raw, s.mode, s.surface);
   if (!s.parentRule && meetImage(name, raw, s.mode)) text = INVALID;
-  if (text === INVALID) return;
+  const legacyBorder = isLegacyMode(s.mode) && BORDER_AND_SIDES.has(name);
+  if (text === INVALID) {
+    if (
+      legacyBorder &&
+      (RESETS_DECLARING_NOTHING.test(raw) || (name === 'border' && hasVar(raw))) &&
+      legacyBorderResets(s.decls, name, raw, s.mode)
+    ) {
+      reindex(style);
+      sync(style);
+    }
+    return;
+  }
   if (text === '') {
-    let removed = replaces && clearBackground(s.decls);
+    let removed =
+      (replaces && clearBackground(s.decls)) || (legacyBorder && legacyBorderResets(s.decls, name, raw, s.mode));
     for (const n of RESETS.background) removed = s.decls.delete(n) || removed;
     if (removed) {
       reindex(style);
@@ -5051,9 +5151,10 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
   const cleared =
     (replaces && clearBackground(s.decls)) || (covered !== undefined && replaceCovered(s.decls, covered, name));
   if (isLegacyFont(s.surface, name) && removeLegacyFont(s.decls, s.surface)) reindex(style);
-  if (RESETS[name] !== undefined && isLegacyMode(s.mode) && resets(s.surface, name, text)) {
+  if (RESETS[name] !== undefined && isLegacyMode(s.mode) && (legacyBorder || resets(s.surface, name, text))) {
     let removed = false;
-    for (const n of RESETS[name]) removed = s.decls.delete(n) || removed;
+    if (legacyBorder) removed = legacyBorderResets(s.decls, name, raw, s.mode);
+    else for (const n of RESETS[name]) removed = s.decls.delete(n) || removed;
     if (removed) {
       s.decls.set(name, { value: text, important });
       reindex(style);

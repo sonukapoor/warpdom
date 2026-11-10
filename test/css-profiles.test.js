@@ -4026,3 +4026,50 @@ for (const jsdom of [26, 30])
     },
     { jsdom },
   );
+
+// jsdom 20 to 26 (cssstyle's setters; black box, 20.0.3 to 26.1.0): a
+// border write removes border-width, -style and -color and the sides
+// (jsdom 26 keeps the sides for var()), and of the sides' longhands those
+// of the parts it has: border: 0 the widths, red the colors, none alone
+// all of them, inherit and var() none. A side removes its own longhands.
+// border: none declares nothing but still removes them. The style
+// attribute does this too, and the flex and background resets.
+for (const jsdom of [20, 21, 22, 23, 24, 25, 26])
+  parity(
+    `style: a border, flex or background write removes earlier parts (jsdom ${jsdom})`,
+    (w) => {
+      const out = [];
+      const before = [
+        'border-width: 3px',
+        'border-style: dotted',
+        'border-color: blue',
+        'border-top-width: 3px',
+        'border-top-style: dotted',
+        'border-top-color: blue',
+        'border-left-color: blue !important',
+        'border-top: 3px dotted blue',
+        'border-image: none; color: red',
+        'flex-grow: 2',
+        'background-color: blue',
+      ];
+      const writes = [
+        ['border', ['none', 'NONE', '0', '2px', 'solid', 'red', '2px solid red', 'none red', '2px none', 'hidden']],
+        ['border', ['inherit', 'var(--a)', 'currentcolor', 'thin dotted']],
+        ['border-top', ['none', '0', '1px solid red', 'red', 'inherit', 'var(--a)']],
+        ['flex', ['none', '0 0 auto', '2 3 4px']],
+        ['background', ['red', 'none', 'url(a.png) blue']],
+      ];
+      for (const pre of before)
+        for (const [name, values] of writes)
+          for (const value of values) {
+            const a = w.document.createElement('div');
+            a.setAttribute('style', `${pre}; ${name}: ${value}`);
+            const b = w.document.createElement('div');
+            b.style.cssText = pre;
+            b.style.setProperty(name, value);
+            out.push([pre, name, value, a.style.cssText, b.style.cssText]);
+          }
+      return out;
+    },
+    { jsdom },
+  );

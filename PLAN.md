@@ -4694,6 +4694,37 @@ reject most such lists (1px calc(10%) 2px; #265 item 9). jsdom 23 to 25
 write the zero as 0px too, but jsdom 20 and 22 keep it, and 22 and 23
 share warpdom's mode.
 
+## 2026-11-10: a border, flex or background write removes earlier parts, jsdom 20 to 26 (branch fix/legacy-border-resets, 1.0 triage)
+
+Found while checking a #313 review finding. Black box, 20.0.3 to 26.1.0
+(each release's cssstyle), setProperty and the style attribute: a border
+write removes border-width, -style and -color and the four sides, and of
+the sides' longhands those of the parts its value has (border: 0 the
+widths, red the colors, none alone all of them; inherit and var() none).
+With var(), jsdom 26 keeps the sides and 20 to 25 (which reject the
+value) keep the sub-shorthands. A side removes its own longhands. border:
+none and a side's none or inherit declare nothing but still remove
+(border-color: blue; border: none was border-color: blue here; jsdom
+reads it empty). The style attribute is set declaration by declaration
+there, so a shorthand in it resets what came before it, as setProperty
+does: border, flex and background (border-color: blue; border: 0 kept the
+color here). Before, setProperty removed every border longhand whatever
+the value (border-top-color: blue; border: 0 kept it in jsdom), and the
+attribute removed none. jsdom 27 and later already matched.
+
+Test: css-profiles.test.js "a border, flex or background write removes
+earlier parts" (parity 20 to 26: 11 earlier declarations, 31 writes, both
+paths).
+
+Cost (node 22.17.1, 5 interleaved runs, medians; scratchpad
+bench-bn.mjs: 200 elements, 300 rounds of a style attribute with
+border-color then border, flex and margin, setProperty('border'),
+borderTopColor and width): jsdom 26 profile 178.8 ms on main, 173.2 here;
+default profile 188.6 and 187.4. A first version looked up all 19 names a
+border may remove on every write (+57%); the reset walks the block's own
+names instead and reads the value's parts only when a side longhand is
+there.
+
 ## 2026-11-09: keywords jsdom 26 takes in some properties (branch fix/264-jsdom26-keyword-sets, #264 item 77, first part)
 
 Black box, 26.1.0, setProperty and the style attribute: jsdom 26 checks
