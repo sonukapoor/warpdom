@@ -360,10 +360,18 @@ Not modeled:
   width shorthands, `flex` and `font` from jsdom 27 (`font` from 26).
   A longhand written after the shorthand changes the shorthand in the
   style attribute: after `border = '1px solid red'`, `borderColor = 'blue'`
-  gives `border: 1px blue;`, `flex = '1 1 0%'` then `flexGrow = '2'` gives
-  `flex: 2 1 0%;`, and `background = 'red'` then `backgroundColor =
-  'blue'` gives `background: red;` (jsdom 27 to 30); warpdom keeps the
-  shorthand and adds the longhand beside it. jsdom lists the longhands in
+  gives `border: 1px blue;`, and `flex = '1 1 0%'` then `flexGrow = '2'`
+  gives `flex: 2 1 0%;` (jsdom 27 to 30). `background` is different:
+  `background = 'red'` then `backgroundColor = 'blue'` leaves the
+  attribute and `cssText` at `background: red;`, while `style.background`
+  and `style.backgroundColor` read `blue`. warpdom keeps the shorthand and adds the
+  longhand beside it. In jsdom 26 the accessor recomposes the shorthand
+  while `getPropertyValue()` keeps it as written: after `flex = '1'` and
+  `flexGrow = '2'`, `style.flex` is `2 1 0%` and
+  `getPropertyValue('flex')` `1 1 0%`, and likewise `font` then
+  `fontSize` (`14px Arial`), `background` then `backgroundColor` (`blue`)
+  and `borderLeft` then `borderLeftColor` (`1px solid blue`); warpdom
+  reads the shorthand as written through both. jsdom lists the longhands in
   `style.length` and `item()` (`border` then `borderTopColor` has 19 in
   jsdom 27), and jsdom 26 lists `font`'s longhands in `cssText` too
   (`font: 12px serif` is `font-style: normal; …; font-family: serif; font:
@@ -460,8 +468,10 @@ Not modeled:
   there. jsdom 27 and later evaluate it in `font` and `font-size`
   (`calc(12px + 2px) Arial` is `calc(14px) Arial`) and read `width:
   calc(1px/**/+/**/2px)` as `calc(3px)`. jsdom 30 also simplifies in
-  `border-spacing` and `background-size`, and writes `min(1px, 2px)` as
-  `calc(1px)`; jsdom 27 to 29 reject `min()` in `width` and `margin`.
+  `border-spacing` and `background-size`. jsdom 26 and later write
+  `min(1px, 2px)` as `calc(1px)` in `width` and `margin`, and jsdom 27 to
+  29 reject a `min()` there that mixes a percentage and a length
+  (`min(10%, 2px)`; jsdom 26 and 30 keep it).
   warpdom models the sorting, adding and space removal in longhand
   lengths and `font-size` for jsdom 23 to 26 (`calc(1px + 2%)`,
   `calc(1px + 1px)`, `calc(  1px)` above) and the math of numbers alone
@@ -543,9 +553,12 @@ Not modeled:
   !important; MARGIN-TOP: 2px !important` leaves it empty (28.1.0,
   29.1.1, 30.1.3; 27.4.0 keeps 2px). warpdom keeps the descriptors,
   lowercases their names and gives 2px
-- `!important` on a `var()` declaration in jsdom 30.0.0 and 30.1.0
-  ([#265](https://github.com/sonukapoor/warpdom/issues/265)): those releases drop it, as 27 to 29 do; warpdom's 30.0
-  and 30.1 profiles keep it
+- `!important` on a `var()` value of a property other than a custom
+  property in jsdom 30.0.0 and 30.1.0
+  ([#265](https://github.com/sonukapoor/warpdom/issues/265)): through `setProperty()` or `cssText`, those releases drop
+  it (`color: var(--a) !important` reads `color: var(--a);`), as 27 to 29
+  do; warpdom's 30.0 and 30.1 profiles keep it. A custom property keeps
+  it in every version (`--x: var(--a) !important`)
 - before jsdom 27.1.0, more of a style rule's cssom object
   ([#253](https://github.com/sonukapoor/warpdom/issues/253)): after `background: red; background-color: blue`,
   setting `background-color` to `''` removes the color in jsdom (warpdom
