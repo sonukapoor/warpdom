@@ -247,7 +247,12 @@ Not modeled:
   `padding: calc(10%) 1px 2px 3px` (jsdom 30 computes `10% 1px 2px 3px`);
   a later longhand then stands alone, and in a style attribute with
   longhands after it jsdom keeps theirs (`margin-right: 2px` where warpdom
-  gives `calc(100% - 2px)`) ([#265](https://github.com/sonukapoor/warpdom/issues/265)). warpdom keeps them as written
+  gives `calc(100% - 2px)`) ([#265](https://github.com/sonukapoor/warpdom/issues/265)). warpdom keeps them as written.
+  jsdom 25 (cssstyle 4.1) writes a unitless zero beside a function as
+  `0px` (`margin: 0 calc(50% - 10px)` is `0px calc(50% - 10px)`);
+  warpdom keeps `0` there (jsdom 26 and 30 are matched since
+  [#310](https://github.com/sonukapoor/warpdom/pull/310), and jsdom 20 to
+  22 reject the value, as warpdom does)
 - the order of declarations within one style rule, jsdom 27.1.0 and
   later
   ([#113](https://github.com/sonukapoor/warpdom/issues/113),
@@ -334,9 +339,10 @@ Not modeled:
 - keyframes rules before jsdom 29
   ([#208](https://github.com/sonukapoor/warpdom/issues/208)): `keyText`
   keeps `from` and `to` as written (`FROM`; warpdom: `0%` and `100%`), and
-  `cssText` spans several lines. In jsdom 20 to 26, `@page` is a
+  `cssText` spans several lines. In jsdom 20 to 27.0.1, `@page` is a
   `CSSStyleRule`, and `CSSKeyframesRule` has no `length`, indices,
-  `findRule` or `appendRule`. In jsdom 27 and 28, `appendRule('bogus')`
+  `findRule`, `appendRule` or `deleteRule` (calling `appendRule()` throws
+  a `TypeError`). In jsdom 27.1 to 28, `appendRule('bogus')`
   throws a `SyntaxError` (warpdom ignores it), `findRule()` finds and
   `deleteRule()` removes plain objects assigned to `cssRules`
   (`[{ keyText: '10%' }]`), and the rule's internal members
@@ -371,7 +377,10 @@ Not modeled:
   `font-family`, and a `font` without a family clears it. A longhand
   accessor's write under an `!important` `background` or `border` is
   ignored or changes the shorthand in jsdom 27 to 30 (`border: 1px blue
-  !important`)
+  !important`). jsdom 30 does the same for `background-position`:
+  `backgroundPosition = '1px 2px'` then `backgroundPositionX = '3px'`
+  reads `3px 2px`, with the shorthand and both axes in `style.length`
+  and `item()` (warpdom: `1px 2px`, and the axis beside the shorthand)
 - the style attribute's box longhands, other orders and versions
   ([#265](https://github.com/sonukapoor/warpdom/issues/265)): jsdom 27 to 30 compute `margin-left: 4px;
   margin-bottom: 3px; margin-right: 2px; margin-top: 1px` as `4px 3px 2px
@@ -392,7 +401,7 @@ Not modeled:
   red; color: green` as red, and jsdom 30 reads `color: blue; Color: red`
   as blue; warpdom gives the last declaration
 - custom property names that are not one identifier ([#264](https://github.com/sonukapoor/warpdom/issues/264)):
-  from jsdom 27, `--a*b: 1` and `--a\/b: 1` are invalid in the style
+  from jsdom 27, `--a*b: 1` and `--a\\/b: 1` are invalid in the style
   attribute and `cssText`, and from 29 in style sheets (27 and 28 sheets
   keep them); warpdom keeps them everywhere, and reads `--\61/**/b: 1`
   (two tokens) as `--\61 b`
@@ -453,12 +462,17 @@ Not modeled:
   calc(1px/**/+/**/2px)` as `calc(3px)`. jsdom 30 also simplifies in
   `border-spacing` and `background-size`, and writes `min(1px, 2px)` as
   `calc(1px)`; jsdom 27 to 29 reject `min()` in `width` and `margin`.
-  warpdom keeps all of these as written, apart from a lone number in
-  jsdom 26's `flex-grow` and `flex-shrink`
+  warpdom models the sorting, adding and space removal in longhand
+  lengths and `font-size` for jsdom 23 to 26 (`calc(1px + 2%)`,
+  `calc(1px + 1px)`, `calc(  1px)` above) and the math of numbers alone
+  in jsdom 26's `flex-grow` and `flex-shrink`
+  ([#307](https://github.com/sonukapoor/warpdom/pull/307)); it keeps the
+  rest as written, including every simplification in jsdom 27 and later
+  and nested terms such as `calc(100% - (2 * 8px))`
 - `font` ([#264](https://github.com/sonukapoor/warpdom/issues/264)): jsdom 26 takes a number before the size as the
   weight, line height and variant (`0 12PX Arial` is `0 12px Arial`, `0
   / 1EM Arial` is `0 0px / 1em Arial`, `0/1.5 Arial` is `0 0px / 1.5
-  Arial`), a size keyword without a family (`font: Large` is `large`), a
+  Arial`), a
   size keyword after a zero and a family as the size (`.0 Arial Large` is
   `0 large`), writes `0 Large, Arial` as `0 large , Arial`, keeps an empty
   family (`12px ab,,cd` is `12px ab, , cd`), reads `12px Arial,` with the
@@ -503,8 +517,8 @@ Not modeled:
   `-webkit-radial-gradient(...)` in `list-style-image` as written (warpdom
   rejects them) and rejects every gradient in
   `-webkit-mask-box-image-source`. jsdom 29 and 30.1.2 lowercase a
-  gradient with `var()` in the computed `background`. warpdom keeps all
-  of these as written
+  gradient with `var()` in the computed `background`. Apart from the two
+  `-webkit-` gradients it rejects, warpdom keeps these values as written
 - `border-image`, jsdom 27.0.1 and later ([#264](https://github.com/sonukapoor/warpdom/issues/264)): in a `style`
   attribute or `cssText`, every valid value but `none` reads as
   `border-image: none` with no priority, after the other declarations
@@ -520,13 +534,15 @@ Not modeled:
   properties in 28 and 29); from 28 two strings in `voice-family`. jsdom
   28 and 30 reject a `content` of a lone `counter(a)`, `counters(a, ".")`
   or `attr(x)`. warpdom keeps all of these
-- `@page` ([#265](https://github.com/sonukapoor/warpdom/issues/265)): jsdom 27 and later drop `page-orientation` and
-  `size`, and leave `margin-top` empty under a `margin` shorthand. jsdom
-  26.1.0 to 27.0.1 keep each descriptor under its name as written
-  (`margin-top: 1px !important; MARGIN-TOP: 2px !important` serializes
-  both, and `margin-top` is 1px), and in jsdom 28.1.0, 29.0.0, 30.0.0 and
-  30.1.0 setting the rule's `style.cssText` to that text leaves it empty.
-  warpdom keeps the descriptors, lowercases their names and gives 2px
+- `@page` ([#265](https://github.com/sonukapoor/warpdom/issues/265)): jsdom 27.1 and later drop `page-orientation` and
+  `size`, and leave `margin-top` empty under a `margin` shorthand (27.0.1
+  keeps them, in a `CSSStyleRule`). jsdom 26.1.0 to 27.0.1 keep each
+  descriptor under its name as written (`margin-top: 1px !important;
+  MARGIN-TOP: 2px !important` serializes both, and `margin-top` is 1px),
+  and from 28.1.0 setting the rule's `style.cssText` to `Margin-Top: 1px
+  !important; MARGIN-TOP: 2px !important` leaves it empty (28.1.0,
+  29.1.1, 30.1.3; 27.4.0 keeps 2px). warpdom keeps the descriptors,
+  lowercases their names and gives 2px
 - `!important` on a `var()` declaration in jsdom 30.0.0 and 30.1.0
   ([#265](https://github.com/sonukapoor/warpdom/issues/265)): those releases drop it, as 27 to 29 do; warpdom's 30.0
   and 30.1 profiles keep it

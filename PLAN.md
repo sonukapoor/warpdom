@@ -4658,7 +4658,7 @@ suites are likely to hit, document the narrow quirks of one version.
 The 18 open issues (#97 to #265, about 150 items) were audited item by
 item against differences.md and jsdom-versions.md; about 80 items were
 neither fixed nor listed. Fixed in their own PRs: a zero next to a
-function in box shorthands (#310), the number patterns and hasVar() in
+function in box shorthands in jsdom 26 and 30 (#310; jsdom 25 is listed), the number patterns and hasVar() in
 linear time (#311), and #306, #307 and #309 (#264 items 83, 71 and 91,
 first parts). The rest is now in differences.md, grouped by area, and two
 stale lines were corrected (uppercase units: jsdom 27 to 30 write `5PX`
