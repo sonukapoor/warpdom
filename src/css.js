@@ -1105,7 +1105,7 @@ const isKnownProperty = (name) =>
 // differ. Values with a function or string are left out.
 // (text a zero not written 0 has: 00, 0., .0, 0e, -0, +0)
 const OTHER_ZERO_TEXT = /00|0\.|\.0|0e|[+-]0/i;
-const NUMBER_WORD = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
+const NUMBER_WORD = /^[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?$/i;
 const otherZero = (word) => word !== '0' && NUMBER_WORD.test(word) && Number(word) === 0;
 function zeroAsLength(name, value, surface) {
   if (/[("']/.test(value)) return false;
