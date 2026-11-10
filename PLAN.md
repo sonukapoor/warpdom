@@ -4926,6 +4926,101 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-08: an unclosed block in a value runs to the end of the sheet, jsdom 29 and later (branch fix/264-custom-unclosed, #264 item 68)
+
+Black box, 29.1.1, 30.1.2 and 30.1.3 (a style element, insertRule,
+replaceSync):
+- An unclosed `(`, `[` or function in a declaration's value is a block
+  that only its closer or the end of the sheet ends, as in CSS Syntax 3.
+  The rule's `}` and every rule after it become part of the value, in an
+  `@media` block too: `.x { --v: (a  b } .y { color: red }` is one rule,
+  `.x { --v: (a  b } .y { color: red }; }`.
+- A custom property keeps that text as written: a `}`, `]` or `;` in it
+  keeps it so. Another property is dropped, and the rules after it go
+  with it (`.x { color: (a } .y { … }` is `.x { }` alone).
+- A custom value that reaches the end with a block or string still open
+  is re-serialized with them closed: `(a  b` is `(a b)`, `f(a,  b` is
+  `f(a,b)`, `(a  [b` is `(a[b])`, `"a  b` is `"a  b"`, `a  "b` is `a"b"`.
+  A bad `url(` stays as written. Item 59 had kept an unclosed block or
+  string as written; the measurement that led to that had a `}` after it.
+- jsdom 29.1.1 and 30.1.2 throw from appendChild for `.x { width:
+  calc(1px } .y {}` (a css-tree error); 30.1.3 gives `.x { }`, as warpdom
+  now does. warpdom does not throw.
+
+blockEnd (cssom.js) counts the ( and [ blocks open when nested
+(nestedBlocks: jsdom 29 and later, the same parser change as
+customReserialized), so a } inside one closes nothing. readString and
+readList (custom-value.js) close a string or block at the end instead of
+keeping the value as written.
+
+Bench (node 22.17.1, 5 interleaved runs, medians): a style element with
+200 rules and 200 @media rules 601.3 -> 610.1 µs, insertRule 4.9 -> 5.0
+µs (noise). A first version (a stack of closers, one string comparison
+each per character) cost +25%, and counters with string comparisons +3%;
+blockEnd now reads char codes and calls skipToken only where a comment,
+string or url() can start, in every mode.
+
+Review: blocks are matched by kind (`({a})` closes, `(a ]` stays open),
+and a `;` inside a `(`, `[` or `{` block is part of the value: in 29 and
+later's sheets, and in the style attribute and cssText from 27 (`--v: [a;
+b]`, `{a; b}` and `(a; b]; c)` are one declaration in jsdom 27 to 30.1.3;
+warpdom split them on main too). splitDeclarations and
+commentedDeclarations keep a stack of closers there; 27 and 28's sheets
+are unchanged. A custom property's value in a sheet keeps its comments
+for reserializeCustom, which reads them itself and keeps a value it
+cannot read as written (`[a /* ; */ b; c]`). Bench (5 interleaved runs,
+medians): cssText 1,467 -> 1,484 ns, cssText with [] 2,157 -> 2,172 ns,
+the 200-rule sheet 741.6 -> 758.1 µs (noise).
+
+Second review (Copilot, three findings, all reproduced on 29.1.1 and
+30.1.3, the first also in 27 and 28's style attribute and cssText):
+- An `!important` inside an unclosed block was taken as the priority
+  (`--v: [a; !important`, `{a; !important`, `(a  !important`); jsdom keeps
+  it in the value, with no priority. parseInto now checks that the `!` is
+  at the top level (openAt) where blocks nest.
+- Keeping a custom property's comments for reserializeCustom hid a
+  priority with comments after or inside it (`a !important /* c */` lost
+  its priority, `a !/**/important` read `a ! important`). customPriority
+  finds it on the text with its comments blanked and writes `!important`
+  after the comments before it; in the style attribute and cssText too,
+  where `a !/**/important` was kept as written on main.
+- `(a \); color: red` at the end of a sheet went to the plain splitter,
+  which took the escaped `)` as the closer and split at the `;`. A source
+  with a backslash now takes the nested splitter too.
+Also found: in 29 and later's sheets a `!` inside a block keeps a custom
+property's value as written (`(a  !b)`, closed or not; warpdom collapsed
+the spaces, on main too); reserializeCustom now gives up there. The new
+work runs only for a value with a priority and a block, a custom property
+with a comment, or a source with a backslash.
+
+Third review (Copilot, both reproduced on 27.4.0 to 30.1.3):
+customPriority cut the value where the priority's whitespace started on
+the blanked text, which also crossed the comments before the `!`
+(`--v: a/**/!/**/important` read `a`; jsdom keeps `a/**/`). It now cuts at
+the `!` and trims only whitespace. And an `!important` inside a comment
+that runs to the end (`--v: a /* !important`, at the end of a sheet or in
+the style attribute) was the priority; jsdom keeps it in the value.
+parseInto now skips a priority whose `!` is inside a comment (insideComment,
+run only for a value with a comment).
+
+Fourth review (Copilot, reproduced on 27.4.0 to 30.1.3): customPriority
+returned early when the raw text ended in `!important`, so in `--v: a
+!important /* !important` the one inside the comment was found, rejected,
+and the real one before it lost (jsdom: `a`, important). It now looks on
+the comment-blanked text whenever the value has a comment.
+
+Fifth review (Copilot, reproduced on 27.4.0 to 30.1.3): openAt read a
+string to its closing quote, so in `--v: url("a\nb) !important` (a real
+line break) the `(` stayed open and the priority stayed in the value, a
+regression from main. A line break now ends the string there (a bad
+string), as the declaration splitters already read it. Found while
+measuring, older than this PR (main too), left for #264: a line break
+doesn't end a string in `--v: "a\nb !important; color: red` (style
+attribute, cssText and style sheets keep everything in --v; jsdom 27 and
+later: `"a\nb`, important, and color red), nor inside parentheses
+(`--v: (a 'b\nc) !important; color: red`), nor in a style sheet's
+`url("a\nb) !important` (the priority stays in the value).
+
 ## 2026-11-08: keywords and units in lowercase, jsdom 26 (branch fix/264-jsdom26-keyword-case, #264 item 46)
 
 Surveyed black box on jsdom 26.1.0: every style property, 49 upper-case
