@@ -2869,6 +2869,9 @@ const BLOCK_SEMICOLONS = [
   '--v: a /* !important',
   '--v: a !important /* !important',
   '--v: a /* x */ !important /* !important',
+  // (a line break ends a string: what follows is outside it; #294 review)
+  '--v: url("a\nb) !important; color: red',
+  '--v: [a "b\n] !important; color: red',
 ];
 for (const jsdom of [27, 28, 29, 30])
   parity(

@@ -4972,6 +4972,18 @@ returned early when the raw text ended in `!important`, so in `--v: a
 and the real one before it lost (jsdom: `a`, important). It now looks on
 the comment-blanked text whenever the value has a comment.
 
+Fifth review (Copilot, reproduced on 27.4.0 to 30.1.3): openAt read a
+string to its closing quote, so in `--v: url("a\nb) !important` (a real
+line break) the `(` stayed open and the priority stayed in the value, a
+regression from main. A line break now ends the string there (a bad
+string), as the declaration splitters already read it. Found while
+measuring, older than this PR (main too), left for #264: a line break
+doesn't end a string in `--v: "a\nb !important; color: red` (style
+attribute, cssText and style sheets keep everything in --v; jsdom 27 and
+later: `"a\nb`, important, and color red), nor inside parentheses
+(`--v: (a 'b\nc) !important; color: red`), nor in a style sheet's
+`url("a\nb) !important` (the priority stays in the value).
+
 ## 2026-11-08: keywords and units in lowercase, jsdom 26 (branch fix/264-jsdom26-keyword-case, #264 item 46)
 
 Surveyed black box on jsdom 26.1.0: every style property, 49 upper-case

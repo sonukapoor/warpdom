@@ -3374,15 +3374,19 @@ function escapedAt(text, i) {
   return (i - j) % 2 === 1;
 }
 // Whether a ( [ or { block is still open at text[at] (outside strings,
-// comments, escapes and unquoted url()s; a block closes at its own closer
-// only).
+// which a line break ends, comments, escapes and unquoted url()s; a block
+// closes at its own closer only).
 function openAt(text, at) {
   const closers = [];
   for (let i = 0; i < at; i++) {
     const c = text.charCodeAt(i);
     if (c === 92) i++;
-    else if (c === 34 || c === 39) i = stringEnd(text, i, false) - 1;
-    else if (c === 47 && text.charCodeAt(i + 1) === 42) i = commentEnd(text, i) - 1;
+    else if (c === 34 || c === 39) {
+      // (a line break ends a string first: a bad string, the rest is read
+      // as outside it; #294 review)
+      const end = stringEnd(text, i, true);
+      i = (end < 0 ? ~end : end) - 1;
+    } else if (c === 47 && text.charCodeAt(i + 1) === 42) i = commentEnd(text, i) - 1;
     else if (c === 40) {
       const end = urlTokenEnd(text, i);
       if (end === -1) closers.push(41);
