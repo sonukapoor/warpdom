@@ -1096,6 +1096,26 @@ const isKnownProperty = (name) =>
   SHORTHANDS[name] !== undefined ||
   ALIASES[name] !== undefined;
 
+// jsdom 27 to 29 take a unitless zero as a length only when it is written
+// 0: width: 00, .0, -0, 0.0 or 0e0 is invalid there (jsdom 30 reads 0px),
+// border: 0e0 solid too (black box, 27.4.0 to 29.1.1, #264 item 91). Such
+// a zero is read as a length where the value reads the same with it
+// written 0 and 0px (width, margin, border, flex's basis); where it is a
+// number or kept as written (line-height, flex-grow, translate) the two
+// differ. Values with a function or string are left out.
+// (text a zero not written 0 has: 00, 0., .0, 0e, -0, +0)
+const OTHER_ZERO_TEXT = /00|0\.|\.0|0e|[+-]0/i;
+const NUMBER_WORD = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
+const otherZero = (word) => word !== '0' && NUMBER_WORD.test(word) && Number(word) === 0;
+function zeroAsLength(name, value, surface) {
+  if (/[("']/.test(value)) return false;
+  const words = value.split(/([\s,/]+)/);
+  if (!words.some((w, k) => k % 2 === 0 && otherZero(w))) return false;
+  const as = (zero) => words.map((w, k) => (k % 2 === 0 && otherZero(w) ? zero : w)).join('');
+  const zero = declaredValue(name, as('0'), 'jsdom27', surface);
+  return zero !== INVALID && zero === declaredValue(name, as('0px'), 'jsdom27', surface);
+}
+
 // Declared values by mode, property and raw value: style writes repeat the
 // same few values, so each is validated and serialized once. INVALID marks
 // a value the property's grammar rejects.
@@ -1175,6 +1195,8 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
         (isSpecMode(mode) || JSDOM26_VALIDATED.has(name)) &&
         rejectsColor(name, value, surface)
       )
+        out = INVALID;
+      if (out !== INVALID && mode === 'jsdom27' && OTHER_ZERO_TEXT.test(value) && zeroAsLength(name, value, surface))
         out = INVALID;
     }
     if (byValue.size >= 500) byValue.clear();

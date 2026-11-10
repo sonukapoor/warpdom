@@ -4633,6 +4633,35 @@ kept it in font too. onceFamilies wraps quotedFamilies for font. Bench
 properties (`font-family: A, A` is `""`; with #302's family parser).
 The long-family-list timing test matches the shorter font now.
 
+## 2026-11-10: a unitless zero written other than 0 is no length, jsdom 27 to 29 (branch fix/264-jsdom27-zero-spelling, #264 item 91, first part)
+
+Black box, 27.4.0, 28.1.0 and 29.1.1, setProperty: a unitless zero is
+a length only when it is written 0. 00, .0, 0., -0, +0, 0.0, 0e0, 0e-1
+make width, height, margin, padding, top, font-size, flex-basis, the
+border widths, border and its sides, flex's basis (1 1 0.0) and
+background-position invalid. jsdom 30 reads them as 0px, and warpdom did
+the same in every profile (border: 0e0 solid was 0 solid in 27 to 29).
+Where the zero is a number (line-height, opacity, flex-grow: flex: 0.0)
+or the value is kept as written (translate, outline, the logical
+borders), it stays. zeroAsLength finds the first case without a list of
+properties: the value reads the same with the zero written 0 and 0px.
+Values with a function or a string are left out. This replaces the #297
+review's placeholder test (border: 0e0 solid read 0 solid in 27 to 29).
+
+Cost: declaredValue runs it on a cache miss in the jsdom 27 to 29
+profiles, for a value whose text has 00, 0., .0, 0e, -0 or +0.
+setProperty of 200,000 new width and margin values, many of them ending
+in 00px (node 22.17.1, 5 interleaved runs, medians): 240.3 ms on main,
+246.5 ms here (+2.6%, near noise; a check on every value with a 0 in
+it was +12%, 256.0 to 288.6 ms).
+
+Left in item 91: jsdom 25 rejects an exponent in these values (0e0px
+and 1e0px too) and border: 0.0 solid. In jsdom 29, the style attribute
+and cssText throw a TypeError for border: 0e0 solid (and 0.0 solid);
+warpdom drops it, as setProperty does. Also measured: rotate: 0.0 (and
+0e0, 00) is invalid in jsdom 27 (warpdom keeps it), and z-index: 00 is
+kept as 00 (warpdom drops it).
+
 ## 2026-11-09: keywords jsdom 26 takes in some properties (branch fix/264-jsdom26-keyword-sets, #264 item 77, first part)
 
 Black box, 26.1.0, setProperty and the style attribute: jsdom 26 checks

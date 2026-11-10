@@ -1386,17 +1386,6 @@ for (const jsdom of [26, 30])
     { jsdom },
   );
 
-// jsdom 27 to 29 reject 0e0 as a length (#264 item 91): until that is
-// modeled, their profiles keep main's reading, not 26 and 30's 0px (#297
-// review).
-test('style: a zero with an exponent in border is left alone in jsdom 27 to 29 (#264 item 91)', () => {
-  for (const jsdom of ['27.4.0', '28.1.0', '29.1.1']) {
-    const e = createWindow({ jsdom }).document.createElement('div');
-    e.style.setProperty('border', '0e0 solid');
-    assert.equal(e.style.getPropertyValue('border'), '0 solid', jsdom);
-  }
-});
-
 // jsdom 26 takes a font of a size and no family, as the size and what
 // comes before it (black box, 26.1.0, #264 item 63); not with a line
 // height or without a size. (0 is 0px there and 01 1px is 1px: #264 item
@@ -3881,3 +3870,44 @@ test("style: jsdom 26's own value rules leave cssstyle 4.3.1 alone", () => {
     ['0', '0.0', '00', 'x', '2', '-1'],
   );
 });
+
+// jsdom 27 to 29 take a unitless zero as a length only when it is written
+// 0: 00, .0, -0, 0.0 and 0e0 make width, margin, the border widths and
+// shorthands, flex's basis or background-position invalid (black box,
+// 27.4.0, 28.1.0 and 29.1.1, #264 item 91). jsdom 30 reads them as 0px;
+// where the zero is a number (line-height, opacity, flex-grow) or the
+// value is kept as written (translate, outline), they stay.
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `style: a unitless zero written other than 0 as a length (jsdom ${jsdom}, #264 item 91)`,
+    (w) => {
+      const out = [];
+      for (const [name, values] of [
+        ['width', ['0', '00', '.0', '-0', '+0', '0.0', '0e0', '0E0', '0e-1', '0e0px', '0.0px']],
+        ['margin', ['0e0', '0 0.0', '1px 0e0', '00 1px']],
+        ['margin-top', ['0.0']],
+        ['padding', ['0e0']],
+        ['top', ['0e0']],
+        ['height', ['-0.0']],
+        ['font-size', ['0e0']],
+        ['flex-basis', ['0e0']],
+        ['flex', ['1 1 0.0', '0.0', '0e0', '0.0 1px']],
+        ['border-width', ['0e0']],
+        ['border-top-width', ['0e0']],
+        ['border', ['0 solid', '0e0 solid', '0.0 solid', 'solid 00']],
+        ['border-top', ['0E0 solid']],
+        ['background-position', ['0.0', '0.0 1px']],
+        ['line-height', ['0.0', '0e0']],
+        ['opacity', ['0.0']],
+        ['translate', ['0.0']],
+        ['outline', ['0.0 solid']],
+      ])
+        for (const v of values) {
+          const a = w.document.createElement('div');
+          a.style.setProperty(name, v);
+          out.push([name, v, a.style.getPropertyValue(name)]);
+        }
+      return out;
+    },
+    { jsdom },
+  );
