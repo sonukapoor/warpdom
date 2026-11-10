@@ -466,7 +466,9 @@ Not modeled:
   jsdom 26 to 30 set `font-variant: normal` from `font`, and jsdom 26
   keeps `small-caps` while 27 and later reject a `font` with it. warpdom
   drops `small-caps` and keeps the rest as written or rejects it
-- `background` values ([#264](https://github.com/sonukapoor/warpdom/issues/264)): warpdom accepts `image-set()` in
+- `background` values ([#264](https://github.com/sonukapoor/warpdom/issues/264)): jsdom 26 rejects a
+  `background-position` of several layers (`1px 2px, 3px 4px`), which
+  warpdom keeps. warpdom accepts `image-set()` in
   `background` and `background-image`, which jsdom 20 to 30 reject. For
   `background: url("var(--a).png") red`, warpdom's longhands read `''`.
   jsdom 27 and later accept two or three boxes (`text border-area`).
