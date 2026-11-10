@@ -3254,6 +3254,140 @@ function strayPriority(value, important) {
   for (let i = 1; i < parts.length; i++) if (/^\s*(important\b|$)/i.test(parts[i])) return true;
   return false;
 }
+// A ! left at the top level of a value after its !important (outside
+// strings, comments, escapes and () [] {} blocks), as jsdom 27 and later
+// read it in a declaration block (black box, 27.4.0 to 30.1.3, #264 item
+// 65): one ! with one ident after it to the end (whitespace and comments
+// around it) is !important (red !b, a ! /**/ -b, a !\62, a !\62 c,
+// a !é); any other drops the declaration (a !, a !b c, a !b/**/ c, a
+// !b!c, a !1, a !-, a !b(c), a !"s"). The ! as an index, -1 with none, -2
+// to drop. Read in one pass (identToEnd): a regular expression backtracked
+// exponentially on many comments and let a comment run past its */ (#293
+// review).
+// The index after whitespace and comments from i (a comment ends at its
+// first */, or the end).
+function afterSpaces(text, i) {
+  while (i < text.length) {
+    const c = text.charCodeAt(i);
+    if (isCssSpace(c)) i++;
+    else if (c === 47 && text.charCodeAt(i + 1) === 42) i = commentEnd(text, i);
+    else break;
+  }
+  return i;
+}
+// The index after an escape at i (a backslash not before a newline): one
+// to six hex digits and one whitespace after them (CR LF counts as one),
+// or one character; -1 when none starts there.
+function escapeEnd(text, i) {
+  if (text.charCodeAt(i) !== 92 || i + 1 >= text.length) return -1;
+  const c = text.charCodeAt(i + 1);
+  if (c === 10 || c === 13 || c === 12) return -1;
+  if (!isHexDigit(c)) return i + 2 + (c > 0xffff ? 1 : 0);
+  let j = i + 2;
+  while (j < i + 7 && isHexDigit(text.charCodeAt(j))) j++;
+  if (text.charCodeAt(j) === 13 && text.charCodeAt(j + 1) === 10) return j + 2;
+  return isCssSpace(text.charCodeAt(j)) ? j + 1 : j;
+}
+const isNameStartCode = (c) => (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || c === 95 || c >= 0x80;
+// Whether text from i is whitespace and comments, one ident, and more
+// whitespace and comments to the end (CSS Syntax 3's ident).
+// eofEscape: a backslash at the end is an escape (of U+FFFD, CSS Syntax 3;
+// a !b\ is one ident in jsdom 30, black box 30.1.3; 27 to 29 drop it; #293
+// review).
+function identToEnd(text, i, eofEscape = false) {
+  const escape = (j) => (eofEscape && j === text.length - 1 && text.charCodeAt(j) === 92 ? j + 1 : escapeEnd(text, j));
+  i = afterSpaces(text, i);
+  let c = text.charCodeAt(i);
+  if (c === 45) {
+    c = text.charCodeAt(++i);
+    if (c === 45) i++;
+    else if (!isNameStartCode(c) && escape(i) === -1) return false;
+  } else if (!isNameStartCode(c) && escape(i) === -1) return false;
+  while (i < text.length) {
+    c = text.charCodeAt(i);
+    if (isNameStartCode(c) || c === 45 || (c >= 48 && c <= 57)) i++;
+    else if (c === 92) {
+      const end = escape(i);
+      if (end === -1) break;
+      i = end;
+    } else break;
+  }
+  return afterSpaces(text, i) === text.length;
+}
+// A block closes at its own closer only (a [) !b] is one block), and an
+// unquoted url() is one token (url(a]!b), url(a[b) !foo; #293 review).
+// Whether text[at] is inside a comment (outside strings, escapes and
+// unquoted url()s, whose /* opens nothing; a comment ends at its first */,
+// or the end).
+function insideComment(text, at) {
+  for (let i = 0; i < at; i++) {
+    const c = text.charCodeAt(i);
+    if (c === 92) i++;
+    else if (c === 34 || c === 39) {
+      // (a line break ends a string, a bad one; #293 review)
+      const end = stringEnd(text, i, true);
+      i = (end < 0 ? ~end : end) - 1;
+    } else if (c === 40) {
+      const end = urlTokenEnd(text, i);
+      if (end !== -1) i = end - 1;
+    } else if (c === 47 && text.charCodeAt(i + 1) === 42) {
+      const end = commentEnd(text, i);
+      if (end > at) return true;
+      i = end - 1;
+    }
+  }
+  return false;
+}
+// Whether text[i] is escaped (an odd run of backslashes before it).
+function escapedAt(text, i) {
+  let j = i;
+  while (j > 0 && text.charCodeAt(j - 1) === 92) j--;
+  return (i - j) % 2 === 1;
+}
+// Whether text's trailing whitespace starts with an escaped space or tab
+// (a\<space>: the trim leaves a backslash that escaped something).
+function escapesTrimmed(text) {
+  let k = text.length;
+  while (k > 0 && isCssSpace(text.charCodeAt(k - 1))) k--;
+  if (k === text.length) return false;
+  const c = text.charCodeAt(k);
+  return (c === 32 || c === 9) && escapedAt(text, k);
+}
+// part's value (value, trimmed by JavaScript) trimmed of CSS whitespace
+// only (space, tab, line breaks).
+function cssTrimmed(part, colon, value) {
+  const start = part.indexOf(value, colon + 1);
+  let end = part.length;
+  while (end > start + value.length && isCssSpace(part.charCodeAt(end - 1))) end--;
+  return end === start + value.length ? value : part.slice(start, end);
+}
+function strayBang(value, eofEscape = false) {
+  let bang = -1;
+  const closers = []; // the closer each open block waits for
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    if (c === 92) i++;
+    else if (c === 34 || c === 39) {
+      // (a line break ends a string, a bad one: url("a<LF>) !foo; #293
+      // review)
+      const end = stringEnd(value, i, true);
+      i = (end < 0 ? ~end : end) - 1;
+    } else if (c === 47 && value.charCodeAt(i + 1) === 42) i = commentEnd(value, i) - 1;
+    else if (c === 40) {
+      const end = urlTokenEnd(value, i);
+      if (end === -1) closers.push(41);
+      else i = end - 1;
+    } else if (c === 91) closers.push(93);
+    else if (c === 123) closers.push(125);
+    else if (closers.length > 0 && c === closers[closers.length - 1]) closers.pop();
+    else if (c === 33 && closers.length === 0) {
+      if (bang !== -1) return -2;
+      bang = i;
+    }
+  }
+  if (bang === -1) return -1;
+  return identToEnd(value, bang + 1, eofEscape) ? bang : -2;
+}
 const BORDER_AND_SIDES = new Set(['border', 'border-top', 'border-right', 'border-bottom', 'border-left']);
 
 // context: 'sheet' for a rule's declarations parsed with its style sheet,
@@ -3419,31 +3553,6 @@ function customPriority(raw) {
   while (end > 0 && isCssSpace(raw.charCodeAt(end - 1))) end--;
   return `${raw.slice(0, end)} !important`;
 }
-// Whether text[at] is inside a comment (outside strings, escapes and
-// unquoted url()s, whose /* opens nothing; a comment ends at its first */,
-// or the end).
-function insideComment(text, at) {
-  for (let i = 0; i < at; i++) {
-    const c = text.charCodeAt(i);
-    if (c === 92) i++;
-    else if (c === 34 || c === 39) i = stringEnd(text, i, false) - 1;
-    else if (c === 40) {
-      const end = urlTokenEnd(text, i);
-      if (end !== -1) i = end - 1;
-    } else if (c === 47 && text.charCodeAt(i + 1) === 42) {
-      const end = commentEnd(text, i);
-      if (end > at) return true;
-      i = end - 1;
-    }
-  }
-  return false;
-}
-// Whether text[i] is escaped (an odd run of backslashes before it).
-function escapedAt(text, i) {
-  let j = i;
-  while (j > 0 && text.charCodeAt(j - 1) === 92) j--;
-  return (i - j) % 2 === 1;
-}
 // Whether a ( [ or { block is still open at text[at] (outside strings,
 // which a line break ends, comments, escapes and unquoted url()s; a block
 // closes at its own closer only).
@@ -3604,7 +3713,17 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       continue;
     }
     let important = false;
+    // (not a block warpdom wrote itself, nor a sheet before jsdom 29)
+    const strays = !runsOn && !replay && context !== 'written' && !(sheet && surface?.key?.startsWith('cssstyle'));
     let bang = priorityStart(value);
+    // (an escaped ! is part of an ident, from jsdom 27: a !b\!important is
+    // a and a stray !b\!important, kept as written in 27 and 28's sheets;
+    // #293 review)
+    // (nor is one inside a comment: a !b /* !important; #293 review)
+    if (bang !== -1 && !runsOn && !replay && context !== 'written') {
+      const at = value.indexOf('!', bang);
+      if (escapedAt(value, at) || (value.includes('/*') && insideComment(value, at))) bang = -1;
+    }
     // (an !important inside an unclosed block is part of the value: --v: [a;
     // !important; #294 review)
     if (bang !== -1 && nested && /[[({]/.test(value) && openAt(value, value.indexOf('!', bang))) bang = -1;
@@ -3616,6 +3735,29 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       // (from jsdom 27, an !important one keeps later ones out here, not
       // in cssom's cascade: margin: 1px !important; margin-left: 2px)
       if (counting) prioritized = true;
+    }
+    if (strays && value.includes('!')) {
+      // (a backslash at the very end only: the value is trimmed, and one
+      // before a line break escapes nothing; #293 review. One before a
+      // space or tab the trim took escapes it: a !b\<space>, except at the
+      // end of the text in jsdom 27 and 28, which trim the text first;
+      // #293 review)
+      // (JavaScript's trim also takes what CSS reads as no whitespace: an
+      // escaped or non-ASCII one is part of the ident, a !b\<NBSP>, and a
+      // vertical tab ends it; #293 review)
+      const pre29 = mode === 'jsdom27' && !surface?.key?.startsWith('jsdom29');
+      const whole = !pre29 || index < list.length - 1;
+      const scan = whole && !important ? cssTrimmed(part, colon, value) : value;
+      const at = strayBang(
+        scan,
+        (mode === 'spec' && part.charCodeAt(part.length - 1) === 92) || (whole && escapesTrimmed(part)),
+      );
+      if (at === -2 || (at !== -1 && important)) continue;
+      if (at !== -1) {
+        important = true;
+        value = scan.slice(0, at).trim();
+        if (counting) prioritized = true;
+      }
     }
     if (!name || !value || dropped(surface, name)) continue;
     // jsdom 29 and later: a custom property's value read with its sheet is
@@ -3635,7 +3777,8 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     // as written (--x: url("a\nb.png"), black box 27.4.0 to 30.1.3; #262
     // review).
     if (lineBreaks && name.charCodeAt(1) !== 45 && /url\(/i.test(value) && hasBadString(value)) continue;
-    if (!sheet && !runsOn && value.includes('!') && strayPriority(value, important)) continue;
+    // (strayBang read these: the paths it skips only; #293 review)
+    if (!strays && !sheet && !runsOn && value.includes('!') && strayPriority(value, important)) continue;
     if (borderVarDrops && BORDER_AND_SIDES.has(name)) {
       // A CSS-wide keyword on border or a side leaves the block empty.
       if (CSS_WIDE_KEYWORD.test(value)) {

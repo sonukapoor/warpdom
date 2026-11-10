@@ -1244,7 +1244,8 @@ test('declarations: a long whitespace run before the end is read quickly', () =>
     const cases = [
       [`color: red${spaces}x`, ''],
       [`color: red${spaces}!${spaces}important`, 'color: red !important;'],
-      [`color: red${spaces}!${spaces}importantx`, ''],
+      // (from jsdom 27, a ! and an ident at the end is !important: #264 item 65)
+      [`color: red${spaces}!${spaces}importantx`, jsdom ? '' : 'color: red !important;'],
     ];
     for (const [text, expected] of cases) {
       const e = w.document.createElement('div');

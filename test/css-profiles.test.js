@@ -1125,6 +1125,179 @@ for (const jsdom of [30, 29, 28, 27])
     },
     { jsdom },
   );
+// A ! and one ident at the end of a value is !important, any other ! left
+// at the top level drops the declaration (black box, jsdom 27.4.0 to
+// 30.1.3, #264 item 65): in the style attribute, cssText and a rule's
+// cssText from 27, in a style sheet from 29 (27 and 28's sheets keep a
+// custom property's as written and drop another's). setProperty keeps it
+// as written; var() loses the priority in 27 to 29, as with !important.
+const IDENT_BANGS = [
+  'a !b',
+  'a ! b',
+  'a!b',
+  'a !-b',
+  'a !--b',
+  'a !_b',
+  'a !é',
+  'a !\\62',
+  'a ! /**/ b',
+  'a !b/**/',
+  'a !b ',
+  'a !B',
+  'var(--c) !foo',
+  'a !',
+  'a !b c',
+  'a !b!c',
+  'a !b !important',
+  'a !1',
+  'a !-',
+  'a !b(c)',
+  'a !"s"',
+  '!b',
+  '(a !b)',
+  '"!b"',
+  // A comment ends at its first */; a hex escape takes one whitespace
+  // after it (#293 review).
+  'a !b/**/ c',
+  'a !b /* x */ /* y */',
+  'a !\\62 c',
+  'a !\\62  c',
+  'a !b\\62 c',
+  'a !\\62\tc',
+  'a !\\000062c',
+  'a !\\0000062 c',
+  'a !\\,b',
+  // A no-break space is a name character, but jsdom trims it before the !
+  // too (#293 review).
+  'a\u00a0 !b',
+  'a !\u00a0b',
+  'a !b\u00a0',
+  // A block closes at its own closer only, and an unquoted url() is one
+  // token; an escaped ! is part of an ident (#293 review).
+  'a [) !b]',
+  'a (] !b)',
+  'url(a]!b)',
+  'url(a[b) !foo',
+  'a !b\\!important',
+  'a !b\\\\!important',
+];
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `style: a ! and an ident at the end of a value (jsdom ${jsdom}, #264 item 65)`,
+    (w) => {
+      const d = w.document;
+      const out = [];
+      d.head.innerHTML = '<style>.r { top: 0 }</style>';
+      const rule = d.styleSheets[0].cssRules[0].style;
+      for (const name of ['color', '--x'])
+        for (const raw of IDENT_BANGS) {
+          const value = name === 'color' ? raw.replace(/^a\b/, 'red') : raw;
+          const text = `${name}: ${value}; left: 1px`;
+          const el = d.createElement('div');
+          el.setAttribute('style', text);
+          const set = d.createElement('div');
+          set.style.cssText = text;
+          const prop = d.createElement('div');
+          prop.style.setProperty(name, value);
+          rule.cssText = text;
+          // (jsdom 29 and later log "Could not parse CSS stylesheet" for
+          // some of these sheets, which warpdom does not: #264 item 67)
+          const log = console.error;
+          console.error = () => {};
+          const sheet = d.createElement('style');
+          sheet.textContent = `p { ${text} } q { color: red }`;
+          d.head.appendChild(sheet);
+          console.error = log;
+          const rules = [...sheet.sheet.cssRules].map((r) => r.cssText).join(' ');
+          sheet.remove();
+          out.push(
+            `${text} | ${el.style.cssText} | ${set.style.cssText} | ${prop.style.cssText} | ${rule.cssText} | ${rules}`,
+          );
+        }
+      return out;
+    },
+    { jsdom },
+  );
+// At the end of the text (nothing after it to escape or close): an
+// !important inside a comment that runs to the end is no priority, a !b
+// before it is the stray one (black box, 27.4.0 to 30.1.3; #293 review).
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `style: an !important inside an unclosed comment (jsdom ${jsdom}, #264 item 65)`,
+    (w) =>
+      ['--x', 'color'].flatMap((name) =>
+        [
+          'a !b /* !important',
+          'a /* !important',
+          'a !b /* !important */',
+          'a !b /* x',
+          // A backslash at the end escapes U+FFFD (jsdom 30), a line break
+          // ends a string, a quote in an unquoted url() opens none (#293
+          // review).
+          'a !b\\',
+          'url("a\n) !foo',
+          'url("a\n) !foo bar',
+          'url(a"b) ")!x" !foo',
+          'url("a\n) !b /* !important',
+          '"a\n !b /* !important',
+          // (#url(, @url( and an escape before url( start no url(: #293
+          // review)
+          '#url(a") !b")',
+          '@url(a") !b")',
+          'a\\ url(a")!b")',
+          '\\61 url(a") !b")',
+          // (CR LF ends a hex escape as one; a backslash before a line break
+          // escapes nothing: #293 review)
+          '\\61\r\nurl(a") !b")',
+          'a\\\nurl(a"b) !foo',
+          // (only a backslash at the very end: one before a line break,
+          // trimmed or not, escapes nothing; #293 review)
+          'a !important\\\n',
+          'a !important\\\r\n',
+          'a !important\\\f',
+          'a\\\n!important\\\n',
+          'a !important\\',
+          // (an escaped space or tab the trim takes stays escaped, except at
+          // the end of the text in jsdom 27 and 28; #293 review)
+          'a !b\\ ',
+          'a !b\\\t',
+          'a !important\\ ',
+          'a !b\\  ',
+          'a !b\\ ; left: 1px',
+          'a !b\\ ;',
+          // (what JavaScript trims and CSS doesn't: an escaped or non-ASCII
+          // one is part of the ident, a vertical tab ends it; #293 review)
+          'a !b\\\u00a0',
+          'a !b\\\u2003; left: 1px',
+          'a !b\\\ufeff',
+          'a !b\\\v',
+          'a !b\v',
+          'a !b\v; left: 1px',
+          'a !b\u00a0',
+        ].map((raw) => {
+          const value = name === 'color' ? raw.replace(/^a\b/, 'red') : raw;
+          const el = w.document.createElement('div');
+          el.setAttribute('style', `${name}: ${value}`);
+          const set = w.document.createElement('div');
+          set.style.cssText = `${name}: ${value}`;
+          return [name, value, el.style.cssText, set.style.cssText];
+        }),
+      ),
+    { jsdom },
+  );
+// Comments after a ! are read in linear time (#293 review: a regular
+// expression backtracked exponentially, 108 ms on 24 comments).
+test('style: many comments after a ! are read quickly', () => {
+  // (24: V8 leaves a long backtracking run to its linear engine, so a
+  // count in the thousands would not show it)
+  const d = createWindow().document;
+  const e = d.createElement('div');
+  const start = performance.now();
+  e.style.cssText = `--x: a !${'/**/'.repeat(24)}1; color: red`;
+  const elapsed = performance.now() - start;
+  assert.equal(e.style.cssText, 'color: red;');
+  assert.ok(elapsed < 50, `${elapsed} ms`);
+});
 // The default profile (the latest jsdom) keeps a ! that is in a block or
 // escaped (#154, #155 review; jsdom 30.1.3 black box).
 test('style: a ! in a block or escaped is part of the value (default profile)', () => {

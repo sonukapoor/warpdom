@@ -5029,6 +5029,110 @@ does not end the value (a!importantb is ab, important). Sheet parse
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
 
+## 2026-11-08: a ! and an ident at the end of a value, jsdom 27 and later (branch fix/264-custom-bang, #264 item 65)
+
+Black box, 27.4.0, 28.1.0, 29.1.1, 30.1.2 and 30.1.3 (the style
+attribute, an element's and a rule's cssText, setProperty, a style
+element; color and a custom property):
+- A top-level `!` with one ident after it, to the end of the value, is
+  `!important`: `red !b`, `a ! b`, `a!b`, `a !-b`, `a !--b`, `a !é`,
+  `a !\62`, `a ! /**/ b`. Whitespace and comments may come around the ident.
+- Any other top-level `!` drops the declaration: `a !`, `a !b c`,
+  `a !b!c`, `a !1`, `a !-`, `a !b(c)`, `a !"s"`, `a !b !important`, and
+  `!b` with nothing before it. A `!` in a string or a block is part of
+  the value, as before.
+- This holds in declaration blocks from 27 and in style sheets from 29.
+  27 and 28's sheets drop such a normal property and keep a custom one as
+  written, as warpdom did. setProperty keeps the value as written (and
+  rejects it for a normal property), as before.
+- `var()` in a normal property loses the priority in 27 to 29, as it
+  does with `!important` (varDropsImportant): `color: var(--c) !foo` is
+  `var(--c)` there and `var(--c) !important` in 30.
+
+warpdom kept `--x: a !b` as written and dropped `color: red !b`. strayBang
+scans the value once (strings, comments, escapes and blocks skipped) on
+these paths, before the stray-priority check (strayPriority), which
+dropped only a leftover `!important` or a lone `!`. strayPriority still
+runs after it, and is what checks a block warpdom wrote itself ('written')
+and a replay, which strayBang skips.
+Not measured: jsdom 30.0 (treated as 30).
+
+Review: the ident after the `!` was matched by a regular expression that
+backtracked exponentially on comments (`--x: a !` and 24 `/**/` took
+425 ms through cssText) and let a comment run past its `*/` (`a !b/**/ c`
+was important; jsdom drops it). A hex escape takes one whitespace after it
+(`a !\62 c` is one ident, important in jsdom), which it did not. identToEnd
+reads it in one pass per CSS Syntax 3.
+
+Left (#264 item 85): in 27 and 28's sheets, a custom property keeps
+`!IMPORTANT` as written (warpdom lowercases it), and `--x: a !important b`
+is `a  b !important`.
+
+Bench (node 22.17.1, 5 interleaved runs, medians, ns per write): cssText
+1,446 -> 1,463, cssText with !important 1,026 -> 1,030, setAttribute 800
+-> 812 (noise).
+
+Second review (Copilot, both reproduced on 27.4.0 to 30.1.3): strayBang
+counted any closer against any opener, so `--x: a [) !b]` and `a (] !b)`
+were dropped (jsdom keeps them: a block closes at its own closer only),
+and read into unquoted url()s (`url(a]!b)` dropped, `url(a[b) !foo` not
+made important). It now keeps a stack of the closers it waits for and
+skips an unquoted url() as one token (urlTokenEnd). And an escaped `!`
+before `important` was taken as the priority (`a !b\!important` lost its
+`!b\` ident and was dropped): on these paths an escaped `!` is part of an
+ident, so the value is `a` with a stray `!b\!important`, important, as in
+jsdom (kept as written in 27 and 28's sheets). The stack is allocated only
+for a value with a `!`.
+Left (#264 item 89): in 27 and 28's sheets a `{}` block in a custom
+property makes a nested rule, and an unclosed `(` loses the rule.
+
+Third review (Copilot, reproduced on 27.4.0 to 30.1.3): an `!important`
+inside a comment that runs to the end (`--x: a !b /* !important`) was
+taken as the priority, so `!b` became a second one and the declaration
+was dropped; jsdom reads `a !important`. On these paths a priority whose
+`!` is inside a comment is no priority now (insideComment, run only for a
+value with a comment).
+
+Fourth review (Copilot, three findings, all reproduced): a backslash at
+the end of the value escapes U+FFFD, so `--x: a !b\` is `a !important` in
+jsdom 30 (27 to 29 drop it; identToEnd's eofEscape, spec mode only). A
+line break ends a string, a bad one, so `--x: url("a` LF `) !foo` has a
+top-level `!foo` (important; `!foo bar` drops it); strayBang read through
+to the next quote. And the older strayPriority check ran after strayBang
+and read a quote inside an unquoted url() as a string's (`url(a"b)
+")!x" !foo` was dropped); it now runs only on the paths strayBang skips.
+Fifth review: insideComment read a string through a raw line break, so
+in `--x: url("a` LF `) !b /* !important` it missed the open comment and
+took the `!important` in it (dropped; jsdom: important). It ends a string
+at a line break now, as strayBang does.
+Sixth review: urlTokenEnd took `#url(` and `@url(` for a url(, and
+`url(` after an escape (`a\ url(`, `\61 url(`, one name), so it ended the
+token at a `)` inside a string and strayBang saw the `!b` in it (`--x:
+#url(a") !b")` was dropped; jsdom 27 to 30 keep it, as main did). The
+check before `url(` (partOfToken) now rules out a hash, an at-keyword and
+the end of an escape.
+Seventh review: a backslash before a line break escapes nothing (`a\`
+LF `url(a"b) !foo` has a url() and a top-level `!foo`), and CR LF ends a
+hex escape as one whitespace (`\61` CR LF `url(` is one name).
+Eighth review: jsdom 30's end-of-text escape (`a !important\` at the very
+end escapes U+FFFD) was also taken for a backslash before a line break
+the trim removed (`a !important\` LF); only a backslash that ends the raw
+text counts now.
+Ninth review (black box, 27.4.0 to 30.1.3): a backslash before a space
+or tab escapes it, so `--x: a !b\<space>` is the stray `!b\ ` and reads
+`--x: a !important`; the trim had left a bare backslash and the
+declaration was dropped (main kept `a !b\`). jsdom 27 and 28 trim the
+text first, so there the last declaration's escape is gone and it is
+dropped (`--x: a !b\ ; left: 1px` is important in all four).
+Tenth review (Copilot "needs a closer look", black box, 27.4.0 to
+30.1.3, 140 cases): JavaScript's trim also takes what CSS doesn't read as
+whitespace: NBSP, U+2003, U+FEFF, U+2028 and a vertical tab. An escaped
+one, or a non-ASCII one (a name code point), is part of the stray ident
+(`!b\<NBSP>` is important in jsdom; warpdom dropped it), and a bare
+vertical tab ends it (`!b<VT>` is dropped from 29). The stray scan now
+reads the value trimmed of CSS whitespace only (cssTrimmed), except the
+last declaration in 27 and 28.
+
 ## 2026-11-08: an unclosed block in a value runs to the end of the sheet, jsdom 29 and later (branch fix/264-custom-unclosed, #264 item 68)
 
 Black box, 29.1.1, 30.1.2 and 30.1.3 (a style element, insertRule,
