@@ -4674,6 +4674,26 @@ alone is "A B", and with another family after it the value is dropped. In
 font, it is "A B" (12px "A<LF>B", serif). warpdom keeps the line break in
 all of them, on main too.
 
+## 2026-11-10: a unitless zero next to a function in a box shorthand, jsdom 26 and 30 (branch fix/zero-beside-function, 1.0 triage)
+
+Found in the 1.0 triage of the open parity issues (common in real CSS:
+margin: 0 calc(50% - 10px) centers a block). Black box, 26.1.0 and
+30.1.3, setProperty and the style attribute: in margin, padding,
+border-width, border-spacing and background-position, a unitless zero
+next to a function is 0px, as it is alone (0 calc(50% - 10px) is 0px
+calc(50% - 10px)); jsdom 30 also drops repeated sides of margin and
+padding then (0 calc(10%) 0 is 0px calc(10%)). warpdom kept both as
+written once the value had a function. zerosBesideFunctions does it in
+serializeDeclared, for values with a function and no var(); only those
+values pay for it.
+
+Left, to be listed in docs/differences.md: calc() simplification inside
+these values (calc(1px + 2%) is calc(2% + 1px), calc(1px + 2px)
+calc(3px) in jsdom 26 and later, in a longhand too). jsdom 27 to 29
+reject most such lists (1px calc(10%) 2px; #265 item 9). jsdom 23 to 25
+write the zero as 0px too, but jsdom 20 and 22 keep it, and 22 and 23
+share warpdom's mode.
+
 ## 2026-11-09: keywords jsdom 26 takes in some properties (branch fix/264-jsdom26-keyword-sets, #264 item 77, first part)
 
 Black box, 26.1.0, setProperty and the style attribute: jsdom 26 checks
