@@ -3002,6 +3002,29 @@ const KEEPS_NUMBERS_AS_WRITTEN = { jsdom25: true, jsdom22: true, jsdom20: true }
 const CANONICAL_NUMBERS_PRE_431 = new Set(['opacity', 'flex-grow', 'flex-shrink']);
 // Whitespace other than one space, or a comma (spaced or not).
 const SPACES_TO_COLLAPSE = /\s\s|[\t\n\r\f]|,/;
+// The unitless zeros in a list with a function (margin: 0 calc(50% -
+// 10px)), as jsdom 26 and 30 write them: 0px, as alone; in jsdom 30
+// margin and padding drop repeated sides then too (0 calc(10%) 0 is 0px
+// calc(10%)). A value with var() is left as written (black box, 26.1.0
+// and 30.1.3). jsdom 27 to 29 reject most such lists (#265 item 9).
+function zerosBesideFunctions(name, value, mode) {
+  if (hasVarFunction(value)) return value;
+  const words = fontWords(value).map(([word]) => word);
+  let zeros = false;
+  for (let i = 0; i < words.length; i++)
+    if (ZERO.test(words[i])) {
+      words[i] = '0px';
+      zeros = true;
+    }
+  if (!zeros) return value;
+  if (mode === 'spec' && (name === 'margin' || name === 'padding') && words.length <= 4) {
+    const [top, right = top, bottom = top, left = right] = words;
+    if (left !== right) return `${top} ${right} ${bottom} ${left}`;
+    if (bottom !== top) return `${top} ${right} ${bottom}`;
+    return right !== top ? `${top} ${right}` : top;
+  }
+  return words.join(' ');
+}
 function serializeDeclared(name, value, mode) {
   // Custom properties keep their value as written (CSS Variables 1), as in jsdom.
   if (name.startsWith('--')) return value;
@@ -3071,6 +3094,8 @@ function serializeDeclared(name, value, mode) {
     !value.includes('var(')
   )
     value = collapseSpaces(value);
+  if (ZERO_LISTS.has(name) && (mode === 'jsdom26' || mode === 'spec') && value.includes('('))
+    value = zerosBesideFunctions(name, value, mode);
   if (value.includes('(')) {
     // Gradients: in background and background-image from jsdom 27, and
     // from 28.1 (urlStyle not 'written') a value that is one gradient
