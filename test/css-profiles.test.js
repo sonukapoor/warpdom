@@ -3911,3 +3911,50 @@ for (const jsdom of [27, 28, 29, 30])
     },
     { jsdom },
   );
+
+// jsdom 26 writes a family string again in double quotes: each escape's
+// backslash dropped and the character after it kept (a line break too),
+// a quote or backslash in the name escaped (black box, 26.1.0, #264 item
+// 92): 'Open Sans' is "Open Sans", "A\<LF>B" is "A<LF>B", "A\41 B" is
+// "A41 B". (A line break that is not escaped: item 92.)
+parity(
+  'style: family strings in double quotes, escapes dropped (jsdom 26, #264 item 92)',
+  (w) => {
+    const out = [];
+    for (const [name, prefix] of [
+      ['font-family', ''],
+      ['font', '12px '],
+    ])
+      for (const v of [
+        "'Open Sans', serif",
+        "'Helvetica Neue', Arial, sans-serif",
+        "Arial, 'Segoe UI'",
+        "'A'",
+        '"A\\\nB", serif',
+        "'A\\\nB', serif",
+        '"A\\\r\nB", serif',
+        '"A\\\fB", serif',
+        '"A\\\n\\\nB", serif',
+        '"\\\nB"',
+        '"A\\41 B", serif',
+        '"A\\ B", serif',
+        '"A\\b\\c", serif',
+        '"A\\-B", serif',
+        '"A\\\\B", serif',
+        '"A\\\\\\\nB", serif',
+        "'A\"B', serif",
+        "'A\\\"B', serif",
+        '"A\\\nURL(Font)", SERIF',
+        // (still dropped: a quote that ends it)
+        '"A\\"B", serif',
+      ]) {
+        const a = w.document.createElement('div');
+        a.style.setProperty(name, prefix + v);
+        const b = w.document.createElement('div');
+        b.setAttribute('style', `${name}: ${prefix}${v}`);
+        out.push([name, v, a.style.getPropertyValue(name), a.style.fontFamily, b.style.getPropertyValue(name)]);
+      }
+    return out;
+  },
+  { jsdom: 26 },
+);
