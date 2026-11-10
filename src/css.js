@@ -134,13 +134,38 @@ function cssSplitNeeded(text) {
   }
   return quoted && (text.indexOf('\n') !== -1 || text.indexOf('\r') !== -1 || text.indexOf('\f') !== -1);
 }
-function splitDeclarations(text) {
+// nested (jsdom 27 and later's declaration blocks, 29 and later's
+// sheets): a ; inside a ( [ or { block, matched by kind, is part of the
+// value (--v: [a; b], (a; b]; c); a closer of another kind is a token).
+function splitDeclarations(text, nested = false) {
   const parts = [];
+  const open = nested ? [] : null;
   let depth = 0,
     quote = null,
     start = 0;
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
+    if (nested && quote === null) {
+      if (c === '\\') {
+        i++;
+        continue;
+      }
+      if (c === '[' || c === '{') {
+        open.push(c === '[' ? ']' : '}');
+        continue;
+      }
+      if (c === ']' || c === '}' || c === ')') {
+        if (c === open[open.length - 1]) open.pop();
+        continue;
+      }
+      if (c === ';') {
+        if (open.length === 0) {
+          parts.push(text.slice(start, i));
+          start = i + 1;
+        }
+        continue;
+      }
+    }
     if (quote) {
       // (an escaped CR LF is one escaped newline, as in stringEnd)
       if (c === '\\') i += text[i + 1] === '\r' && text[i + 2] === '\n' ? 2 : 1;
@@ -150,8 +175,9 @@ function splitDeclarations(text) {
     if (c === '"' || c === "'") quote = c;
     else if (c === '(') {
       const end = urlTokenEnd(text, i);
-      if (end === -1) depth++;
-      else i = end - 1;
+      if (end !== -1) i = end - 1;
+      else if (nested) open.push(')');
+      else depth++;
     } else if (c === ')') depth = Math.max(0, depth - 1);
     else if (c === ';' && depth === 0) {
       parts.push(text.slice(start, i));
@@ -1039,6 +1065,14 @@ export const missingAccessors = (surface) =>
 const modeOf = (proto) => modes.get(proto) ?? 'spec';
 export const validationModeOf = (window) => modeOf(window[S].protos.CSSStyleProperties);
 export const protosMode = (protos) => modeOf(protos.CSSStyleProperties);
+// Whether a style sheet's ( and [ blocks hold its } (CSS Syntax 3: an
+// unclosed one runs to the end of the sheet), as jsdom 29 and later read
+// sheets, with the parser that also re-serializes custom properties
+// (customReserialized; black box, #264 item 68).
+export const nestedBlocks = (protos) => {
+  const proto = protos.CSSStyleProperties;
+  return modeOf(proto) === 'spec' || surfaces.get(proto)?.customReserialized === true;
+};
 const surfaceOf = (proto) => surfaces.get(proto) ?? null;
 // A property the profile does not know: setProperty and parsing drop it.
 const dropped = (surface, name) => surface !== null && surface.drops.has(name);
@@ -1108,6 +1142,7 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
       }
       if (mode === 'jsdom26' && colorKeywords !== 'css2') {
         if (/[A-Z]/.test(written)) written = jsdom26Case(name, written);
+        if (written !== null && (name === 'font-family' || name === 'font')) written = jsdom26Families(name, written);
         // (an integer Number() changes has 16 digits: most values skip this)
         if (written !== null && (written.length >= 16 || JSDOM26_BORDERS.has(name)))
           written = jsdom26Numbers(name, written);
@@ -1439,25 +1474,82 @@ function jsdom26Case(name, value) {
     // The size comes before the family list's first comma (.0 Arial,
     // Large: Large is a family), or in the word that holds it (0 Large,
     // Arial: Large is the size).
-    const words = fontWords(value);
-    let limit = words.findIndex((w) => topLevelComma(w[0]));
-    if (limit < 0) limit = words.length - 1;
-    let size = -1;
-    for (let i = 0; i <= limit && size < 0; i++) if (FONT_SIZE_WORD.test(withoutComma(words[i][0]))) size = i;
-    for (let i = 0; i <= limit && size < 0; i++) if (FONT_ZERO_WORD.test(withoutComma(words[i][0]))) size = i;
-    while (size >= 0 && size < limit && FONT_ZERO_WORD.test(withoutComma(words[size + 1][0]))) size++;
-    if (size < 0) return lowerOutsideStrings(value);
-    const word = words[size][0];
-    const slash = topLevelSlash(word);
-    const next = words[size + 1]?.[0];
-    let last = size;
-    if (word.endsWith('/')) last = size + 1;
-    else if (!slash && next === '/') last = size + 2;
-    else if (!slash && next?.startsWith('/')) last = size + 1;
-    const end = words[last] ? words[last][1] + words[last][0].length : value.length;
+    const end = jsdom26FontEnd(value);
+    if (end < 0) return lowerOutsideStrings(value);
     return lowerOutsideStrings(value.slice(0, end)) + familiesInCase(value.slice(end));
   }
   return lowerOutsideStrings(value);
+}
+// Where font's families start as jsdom 26 reads it (after the size and a
+// line height), or -1 with no size.
+function jsdom26FontEnd(value) {
+  const words = fontWords(value);
+  let limit = words.findIndex((w) => topLevelComma(w[0]));
+  if (limit < 0) limit = words.length - 1;
+  let size = -1;
+  for (let i = 0; i <= limit && size < 0; i++) if (FONT_SIZE_WORD.test(withoutComma(words[i][0]))) size = i;
+  for (let i = 0; i <= limit && size < 0; i++) if (FONT_ZERO_WORD.test(withoutComma(words[i][0]))) size = i;
+  while (size >= 0 && size < limit && FONT_ZERO_WORD.test(withoutComma(words[size + 1][0]))) size++;
+  if (size < 0) return -1;
+  const word = words[size][0];
+  const slash = topLevelSlash(word);
+  const next = words[size + 1]?.[0];
+  let last = size;
+  if (word.endsWith('/')) last = size + 1;
+  else if (!slash && next === '/') last = size + 2;
+  else if (!slash && next?.startsWith('/')) last = size + 1;
+  return words[last] ? words[last][1] + words[last][0].length : value.length;
+}
+// A family list as jsdom 26 reads it (black box, 26.1.0, #264 items 74
+// and 95): an unquoted name of one word starts with two letters or hyphens
+// (ab, -ab, Font01; not x, a1, --x, ab_c), a name of more words has each
+// start with a capital and one more character (Open Sans, Ab9 Cd; not ab
+// cd, Ab C), its whitespace one space; strings, generic families and var()
+// as they are. In font-family a first family that fails makes it null, a
+// later one, or an empty one, is left out; in font any family that fails
+// makes it null, and an empty one stays. font's families come after its
+// size. A value
+// with var() as jsdom finds it is left as it is.
+const JSDOM26_ONE_WORD = /^(?!--)[a-z-]{2}[a-z0-9-]*$/i;
+const JSDOM26_WORD = /^[A-Z][A-Za-z0-9-]+$/;
+function jsdom26Families(name, value) {
+  if (value.includes('var(') && hasVarFunction(value)) return value;
+  let prefix = '';
+  let list = value;
+  if (name === 'font') {
+    // (the families after the size as jsdom 26 finds it: 0 x, bold 0 x,
+    // and .0 Arial Large, whose size is Large; #302 review)
+    let at = jsdom26FontEnd(value);
+    if (at < 0 || trimSpaces(value.slice(at)) === '') return value;
+    while (isCssSpace(value.charCodeAt(at))) at++;
+    prefix = value.slice(0, at);
+    list = value.slice(at);
+  }
+  const kept = [];
+  const items = splitOutside(list, ',', true);
+  for (let i = 0; i < items.length; i++) {
+    const item = trimSpaces(items[i]);
+    let ok;
+    // (font keeps an empty family: 12px ab, is 12px ab, )
+    if (item === '' && name === 'font') ok = true;
+    else if (item === '') ok = false;
+    else if (item[0] === '"' || item[0] === "'")
+      ok = stringsClosed(item) && /^("[^"]*"|'[^']*')$/.test(item.replace(/\\./g, ''));
+    else if (/^var\(/i.test(item) || GENERIC_FAMILIES.has(item.toLowerCase())) ok = true;
+    else {
+      const words = item.split(/[ \t\n\r\f]+/);
+      ok = words.length === 1 ? JSDOM26_ONE_WORD.test(item) : words.every((word) => JSDOM26_WORD.test(word));
+      if (ok) {
+        kept.push(words.join(' '));
+        continue;
+      }
+    }
+    if (ok) kept.push(item);
+    // (font drops itself for any family that fails, font-family only for
+    // its first)
+    else if (i === 0 || name === 'font') return null;
+  }
+  return prefix + kept.join(', ');
 }
 // A family list: an unquoted generic family in lowercase, the rest as written.
 function familiesInCase(value) {
@@ -2854,6 +2946,9 @@ function serializeDeclared(name, value, mode) {
   if (name === 'flex') return isSpecMode(mode) ? flexLonghands(value, true) : flexLonghands(canonicalNumbers(value));
   if (name === 'font' || name === 'font-family') {
     const font = name === 'font';
+    // jsdom 26 keeps a value with var() as written, its spacing too (x ,
+    // var(--f); #264 item 62)
+    if (mode === 'jsdom26' && hasVarFunction(value)) return value;
     if (!isSpecMode(mode)) return familyCommas(font ? serializeFont(canonicalNumbers(value)) : value);
     // jsdom 27 and later keep a value with var() as written: no quotes,
     // no generic-keyword check (#279 review).
@@ -3344,15 +3439,17 @@ function isHexDigit(c) {
 // style attribute and cssText; jsdom 27 and 28's style sheets, which also
 // drop a declaration whose comment is not closed), 'space' makes each one
 // a space outside unquoted url()s (jsdom 29 and later's style sheets),
-// 'inline' too but keeps a custom property's value as written (jsdom 27
-// and later's style attribute and cssText). With either, a value with
+// 'inline' too (jsdom 27 and later's style attribute and cssText); with
+// either, a custom property's value is kept as written (a sheet's then goes
+// to reserializeCustom, which reads its comments). With either, a value with
 // var() is kept as written after its leading comments (var( inside a
 // comment counts, inside a string as surface.varInStrings says). A comment
 // inside a name leaves a space there, which makes the declaration invalid
 // from 27 (spacedDeclarationName); one before or after it does not. A
 // family list with a comma before var() is not one with var() there
 // (isFamilyVarList: x/**/,var(--f) is x, var(--f); #264 item 57).
-function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface, escapes, mode) {
+function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface, escapes, mode, nested = false) {
+  const open = nested ? [] : null;
   const parts = [];
   let spaced = '';
   let from = 0;
@@ -3366,9 +3463,12 @@ function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface,
     let part = spaced + text.slice(from, i);
     if (policy !== 'remove' && colon !== -1) {
       const raw = text.slice(colon + 1, i);
-      if (custom ? policy === 'inline' : keepsComments(raw, surface) && !(family && isFamilyVarList(raw) !== null)) {
-        part = part.slice(0, head) + (custom ? raw : raw.replace(LEADING_COMMENTS, ''));
-      } else if (!custom && !SPACED_NAME.test(declared)) {
+      // (a custom property's comments in a sheet go to reserializeCustom,
+      // which keeps a value it cannot read as written, comments and all:
+      // [a /* ; */ b; c]; #294 review)
+      if (custom || (keepsComments(raw, surface) && !(family && isFamilyVarList(raw) !== null))) {
+        part = part.slice(0, head) + (custom ? customPriority(raw) : raw.replace(LEADING_COMMENTS, ''));
+      } else if (!SPACED_NAME.test(declared)) {
         // (a comment inside a value kept as written, before an !important)
         // (the value ends at the !, its comments before it kept)
         const blanked = blankComments(raw);
@@ -3400,8 +3500,12 @@ function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface,
       i = (end < 0 ? ~end : end) - 1;
     } else if (c === '(') {
       const close = policy === 'remove' ? -1 : urlTokenEnd(text, i);
-      if (close === -1) depth++;
-      else i = close - 1;
+      if (close !== -1) i = close - 1;
+      else if (nested) open.push(')');
+      else depth++;
+    } else if (nested && (c === '[' || c === '{')) open.push(c === '[' ? ']' : '}');
+    else if (nested && (c === ']' || c === '}' || c === ')')) {
+      if (c === open[open.length - 1]) open.pop();
     } else if (c === ')') depth = Math.max(0, depth - 1);
     else if (c === ':' && colon === -1) {
       colon = i;
@@ -3410,7 +3514,7 @@ function commentedDeclarations(text, policy, lineBreaks, unclosedDrops, surface,
       declared = name.slice(0, -1).trim();
       custom = name.trimStart().startsWith('--');
       family = /^\s*font-family\s*:$/i.test(name);
-    } else if (c === ';' && depth === 0) end(i);
+    } else if (c === ';' && depth === 0 && (open === null || open.length === 0)) end(i);
   }
   end(text.length);
   return parts;
@@ -3419,17 +3523,61 @@ function keepsComments(value, surface) {
   return surface?.varInStrings ? value.includes('var(') : hasVar(value);
 }
 const LEADING_COMMENTS = /^(\s|\/\*[\s\S]*?(\*\/|$))*/;
+// A custom property's value with its comments, and a priority with
+// comments after or inside it (a !important /* c */, a !/**/important,
+// a/**/!important) written as !important after them, so parseInto finds it
+// (jsdom 27 and later; #294 review). Not one inside an unclosed block
+// ([a; !important: the value) or with its ! escaped.
+function customPriority(raw) {
+  // (on the blanked text always: a !important /* !important has one
+  // outside the comment; #294 review)
+  if (!raw.includes('/*')) return raw;
+  const blanked = blankComments(raw);
+  const start = priorityStart(blanked);
+  if (start === -1) return raw;
+  const bang = blanked.indexOf('!', start);
+  if (escapedAt(raw, bang) || openAt(raw, bang)) return raw;
+  // (cut at the ! itself: the comments before it stay, a/**/!important is
+  // a/**/; #294 review)
+  let end = bang;
+  while (end > 0 && isCssSpace(raw.charCodeAt(end - 1))) end--;
+  return `${raw.slice(0, end)} !important`;
+}
+// Whether a ( [ or { block is still open at text[at] (outside strings,
+// which a line break ends, comments, escapes and unquoted url()s; a block
+// closes at its own closer only).
+function openAt(text, at) {
+  const closers = [];
+  for (let i = 0; i < at; i++) {
+    const c = text.charCodeAt(i);
+    if (c === 92) i++;
+    else if (c === 34 || c === 39) {
+      // (a line break ends a string first: a bad string, the rest is read
+      // as outside it; #294 review)
+      const end = stringEnd(text, i, true);
+      i = (end < 0 ? ~end : end) - 1;
+    } else if (c === 47 && text.charCodeAt(i + 1) === 42) i = commentEnd(text, i) - 1;
+    else if (c === 40) {
+      const end = urlTokenEnd(text, i);
+      if (end === -1) closers.push(41);
+      else i = end - 1;
+    } else if (c === 91) closers.push(93);
+    else if (c === 123) closers.push(125);
+    else if (closers.length > 0 && c === closers[closers.length - 1]) closers.pop();
+  }
+  return closers.length > 0;
+}
 // parseInto's declarations of a text with a comment in it. Style sheets
 // before jsdom 27.1 (cssom, replay) and rules before 27 read comments in
 // cssom.
-function commentedParts(source, runsOn, lineBreaks, context, surface, mode) {
+function commentedParts(source, runsOn, lineBreaks, context, surface, mode, nested) {
   const sheet = context === 'sheet';
   if (context === 'cssom' || context === 'replay' || (runsOn && (sheet || context === 'rule')))
     return lineBreaks ? splitDeclarations(source) : splitOutside(source, ';');
   if (runsOn) return commentedDeclarations(source, 'remove', lineBreaks, false, surface, false);
   if (sheet && surface?.key?.startsWith('cssstyle'))
     return commentedDeclarations(source, 'remove', lineBreaks, true, surface, true);
-  return commentedDeclarations(source, sheet ? 'space' : 'inline', lineBreaks, false, surface, true, mode);
+  return commentedDeclarations(source, sheet ? 'space' : 'inline', lineBreaks, false, surface, true, mode, nested);
 }
 
 function parseInto(decls, text, mode, surface = null, context = null, element = false, asWritten = false) {
@@ -3503,7 +3651,13 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   const source = mode === 'spec' && !asWritten && !replay ? preprocessCss(String(text ?? '')) : String(text ?? '');
   const lineBreaks = !runsOn && cssSplitNeeded(source);
   let parts;
-  if (source.indexOf('/*') !== -1) parts = commentedParts(source, runsOn, lineBreaks, context, surface, mode);
+  // (a ; in a [] or {} block too: jsdom 27 and later's declaration blocks,
+  // 29 and later's sheets; #294 review)
+  const nested = !runsOn && (!sheet || !surface?.key?.startsWith('cssstyle'));
+  if (source.indexOf('/*') !== -1) parts = commentedParts(source, runsOn, lineBreaks, context, surface, mode, nested);
+  // (and an escape: (a \); b is one declaration)
+  else if (nested && (source.includes('[') || source.includes('{') || source.includes('\\')))
+    parts = splitDeclarations(source, true);
   else parts = lineBreaks ? splitDeclarations(source) : splitOutside(source, ';');
   // (clears: a name given again is found before anything is set, as
   // setting one has effects beyond the block, a url() met: the block is
@@ -3560,6 +3714,11 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       const at = value.indexOf('!', bang);
       if (escapedAt(value, at) || (value.includes('/*') && insideComment(value, at))) bang = -1;
     }
+    // (an !important inside an unclosed block is part of the value: --v: [a;
+    // !important; #294 review)
+    if (bang !== -1 && nested && /[[({]/.test(value) && openAt(value, value.indexOf('!', bang))) bang = -1;
+    // (nor is one inside a comment: --v: a /* !important; #294 review)
+    if (bang !== -1 && nested && value.includes('/*') && insideComment(value, value.indexOf('!', bang))) bang = -1;
     if (bang !== -1) {
       important = true;
       value = value.slice(0, bang).trim();

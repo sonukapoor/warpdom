@@ -1434,6 +1434,127 @@ parity(
   { jsdom: 26 },
 );
 
+// jsdom 26 keeps a font or font-family value with var() as written, its
+// spacing around commas too (black box, 26.1.0, #264 item 62). (,var( is
+// no var() to jsdom; such a list it reads with a parser of its own: #264
+// item 95.)
+parity(
+  'style: a family list with var() kept as written (jsdom 26, #264 item 62)',
+  (w) =>
+    [
+      ['font-family', 'var(--f),x'],
+      ['font-family', 'x , var(--f)'],
+      ['font-family', 'x,  var(--f)'],
+      ['font-family', 'x,\tvar(--f)'],
+      ['font-family', 'var(--f) ,x'],
+      ['font-family', 'x,(var(--f))'],
+      ['font-family', 'Arial, var(--f) , serif'],
+      ['font-family', 'x, var(--f)'],
+      ['font', '12px x , var(--f)'],
+      ['font', '12px var(--f),x'],
+      ['font', 'var(--a) x,y'],
+    ].map(([name, value]) => {
+      const set = w.document.createElement('div');
+      set.style.setProperty(name, value);
+      const attribute = w.document.createElement('div');
+      attribute.setAttribute('style', `${name}: ${value}`);
+      return [name, value, set.style.getPropertyValue(name), attribute.style.cssText];
+    }),
+  { jsdom: 26 },
+);
+
+// jsdom 26 reads a family list with a parser of its own (black box,
+// 26.1.0, #264 items 74 and 95): an unquoted name of one word starts with
+// two letters or hyphens (ab, -ab, Font01; not x, a1, --x, ab_c, aé), one
+// of more words has each start with a capital and one more character
+// (Open Sans, Ab9 Cd; not ab cd, Ab C, x Sans), whitespace in it one
+// space. A first family that fails drops the declaration; a later one is
+// left out, an empty one too.
+const JSDOM26_FAMILIES = [
+  'ab cd',
+  'Ab Cd',
+  'Open Sans',
+  'Open  Sans',
+  'Open\tSans',
+  'helvetica neue',
+  'HELVETICA NEUE',
+  'Times New Roman',
+  'Open Sans1',
+  'Ab Cd-ef',
+  'A1 Cd',
+  'Ab C',
+  'x Sans',
+  'Ab_Cd Ef',
+  'Café Sans',
+  'Ab 12',
+  'x',
+  'ab',
+  '-ab',
+  'a1',
+  '--x',
+  'ab_c',
+  'aé',
+  'Font01',
+  'ab,x',
+  'ab,x,cd',
+  'x,ab',
+  'ab,,cd',
+  ',ab',
+  'ab,',
+  'ab, x y',
+  'Ab Cd, ab cd',
+  'serif,x',
+  'ab,SERIF',
+  'ab, "x" y',
+  '"ab cd", Ab Cd',
+  'Arial,y',
+  // An escaped quote in a string: jsdom 26 rejects it (#302 review).
+  '"a\\"b"',
+  "'a\\'b'",
+  'ab, "a\\"b"',
+  // var( in a string, with a family that fails (#302 review): measured,
+  // x, "var(a)" is dropped and x, "a var(b) c" kept as written.
+  'x, "var(a)"',
+  'Arial, "var(a)", x',
+  'x, "a var(b) c"',
+];
+// font's families start after the size as jsdom 26 finds it: a zero size
+// (0 x), a size keyword after a family as the size (.0 Arial Large); a
+// keyword in a string or a later family is a family (#302 review).
+const JSDOM26_FONT_FAMILIES = [
+  '0 x',
+  '0.0 x',
+  'bold 0 x',
+  '0 Ab',
+  '12px x, "A small Font"',
+  '12px Arial, x, Large',
+  '12px Arial, Large',
+  '.0 Arial Large',
+];
+parity(
+  'style: font family names as jsdom 26 reads them (jsdom 26, #264 items 74 and 95)',
+  (w) =>
+    JSDOM26_FAMILIES.map((v) => {
+      const family = w.document.createElement('div');
+      family.style.setProperty('font-family', v);
+      // (an empty family in font: #264 item 95)
+      if (/(^|,)\s*(,|$)/.test(v)) return [v, family.style.fontFamily];
+      const font = w.document.createElement('div');
+      font.style.setProperty('font', `12px ${v}`);
+      return [v, family.style.fontFamily, font.style.font, font.style.fontFamily];
+    }).concat(
+      JSDOM26_FONT_FAMILIES.map((v) => {
+        const font = w.document.createElement('div');
+        font.style.setProperty('font', v);
+        // (validity and capitals: 0 is 0px and .0 Arial is dropped in jsdom
+        // 26, #264 item 83)
+        const read = font.style.font;
+        return [v, read !== '', read.replace(/[^A-Z]/g, '')];
+      }),
+    ),
+  { jsdom: 26 },
+);
+
 // border: none and border-style: none (#179, black box, 27.4.0 to 30.1.3):
 // from jsdom 27 kept everywhere, a none style left out of border and its
 // sides (border: none is border: medium, border-top: 0 none is
@@ -2935,6 +3056,141 @@ test('style: a custom property in a style sheet kept as written (jsdom 29 and la
     }
   }
 });
+
+// An unclosed (, [ or function in a declaration's value is a block only
+// its closer or the end of the sheet ends (CSS Syntax 3): the rule's } and
+// the rules after it are part of the value. A custom property keeps that
+// text as written (a } in it keeps it so); one that reaches the end with a
+// block or string still open has them closed ((a  b is (a b)); another
+// property is dropped, with the rules after it. jsdom 29 and later, black
+// box 29.1.1 to 30.1.3 (#264 item 68).
+const UNCLOSED_SHEETS = [
+  '.x { --v: (a  b } .y { color: red }',
+  '.x { color: red; --v: (a } .y { color: red }',
+  '@media all { .x { --v: (a } } .y { color: red }',
+  '.x { --v: (a; } .y { color: blue }',
+  '.x { --v: [a } .y { color: red }',
+  '.x { --v: calc(1px } .y { color: red }',
+  '.x { color: (a } .y { color: red }',
+  '.x { --v: (a ) } .y { color: red }',
+  '.x { --v: (a  b  }  ',
+  '.x { --v: (a  b',
+  '.x { --v: [a  b',
+  '.x { --v: a(b  c',
+  '.x { --v: (a  [b',
+  '.x { --v: f(a,  b',
+  '.x { --v: "a  b',
+  '.x { --v: a  "b',
+  '.x { --v: (a  "b',
+  '.x { --v: "a }',
+  '.x { --v: url(a  b',
+  '.x { --v: (a  b ]',
+  // Blocks matched by kind, and a ; inside any of them (#294 review).
+  '.x { --v: ({a}) } .y { color: red }',
+  '.x { --v: (a ] } .y { color: red }',
+  '.x { --v: [a } .y { color: red; width: 1px; }',
+  '.x { --v: [a; b] } .y { color: red }',
+  '.x { --v: [a; b]; color: red }',
+  '.x { --v: (a; b]; c) } .y { color: red }',
+  '.x { --v: {a; b}; color: red }',
+  '.x { --v: [a /* ; */ b; c]; color: red }',
+  // A priority inside an unclosed block is part of the value, and one with
+  // comments after or inside it is the priority; a ! in a block keeps the
+  // value as written; an escaped ) closes nothing (#294 review).
+  '.x { --v: [a; !important',
+  '.x { --v: {a; !important',
+  '.x { --v: (a  !important',
+  '.x { --v: (a  b) !important',
+  '.x { --v: a !important /* c */; } .y { color: red }',
+  '.x { --v: a !/**/important; } .y { color: red }',
+  '.x { --v: a/**/!important; } .y { color: red }',
+  '.x { --v: (a \\); color: red',
+  '.x { --v: (a  !b) } .y { color: red }',
+  '.x { --v: (a  !b) (c  d',
+  '.x { --v: a /* !important',
+  '.x { --v: a !important /* !important',
+];
+for (const jsdom of [29, 30, '30.1.3'])
+  parity(
+    `style: an unclosed block in a value runs to the end of the sheet (jsdom ${jsdom}, #264 item 68)`,
+    (w) => {
+      // (jsdom logs "Could not parse CSS stylesheet" for some: #264 item 67)
+      const log = console.error;
+      console.error = () => {};
+      try {
+        return UNCLOSED_SHEETS.map((text) => {
+          const d = w.document;
+          const style = d.createElement('style');
+          style.textContent = text;
+          d.head.appendChild(style);
+          // (with each declaration's priority: cssText alone does not tell
+          // a priority from an !important kept in the value)
+          const read = (r) => [r.cssText, ...[...(r.style ?? [])].map((n) => r.style.getPropertyPriority(n))];
+          const rules = [...style.sheet.cssRules].map(read);
+          style.remove();
+          const sheet = new w.CSSStyleSheet();
+          sheet.replaceSync(text);
+          return [text, rules, [...sheet.cssRules].map(read)];
+        });
+      } finally {
+        console.error = log;
+      }
+    },
+    { jsdom },
+  );
+
+// A ; inside a [] or {} block is part of the value in a declaration
+// block too (the style attribute, cssText; jsdom 27 and later, black box
+// 27.4.0 to 30.1.3; #294 review). 27 and 28's style sheets read these
+// otherwise (#264 items 66, 85).
+const BLOCK_SEMICOLONS = [
+  '--v: [a; b]; color: red',
+  '--v: {a; b}; color: red',
+  '--v: (a; b]; c); color: red',
+  '--v: [a /* ; */ b; c]; color: red',
+  '--v: [a; color: red',
+  // (#294 review: a priority in an unclosed block, comments around one)
+  '--v: [a; !important',
+  '--v: {a; !important',
+  '--v: (a  !important',
+  '--v: a !/**/important; color: red',
+  '--v: a !important /* c */; color: red',
+  // (the comments before the ! stay in the value; one around the
+  // !important is no priority: #294 review)
+  '--v: a/**/!/**/important; color: red',
+  '--v: a/**/!important /* tail */; color: red',
+  '--v: a /**/ !important; color: red',
+  '--v: a /* !important',
+  '--v: a !important /* !important',
+  '--v: a /* x */ !important /* !important',
+  // (a line break ends a string: what follows is outside it; #294 review)
+  '--v: url("a\nb) !important; color: red',
+  '--v: [a "b\n] !important; color: red',
+];
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `style: a ; inside a block in a declaration block (jsdom ${jsdom}, #294 review)`,
+    (w) =>
+      BLOCK_SEMICOLONS.map((text) => {
+        const d = w.document;
+        const attribute = d.createElement('div');
+        attribute.setAttribute('style', text);
+        const set = d.createElement('div');
+        set.style.cssText = text;
+        // (27 and 28's declarations are not iterable)
+        const priorities = (style) =>
+          Array.from({ length: style.length }, (_, i) => style.getPropertyPriority(style[i]));
+        return [
+          text,
+          attribute.style.cssText,
+          set.style.cssText,
+          set.style.length,
+          priorities(attribute.style),
+          priorities(set.style),
+        ];
+      }),
+    { jsdom },
+  );
 
 test('style: a custom property nested past the stack is kept as written (#286 review)', () => {
   const v = `${'('.repeat(20000)}a`;
