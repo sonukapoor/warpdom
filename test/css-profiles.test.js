@@ -1179,6 +1179,88 @@ for (const jsdom of [30, 29, 28, 27])
     { jsdom },
   );
 
+// A unitless zero with an exponent in the border shorthands is a 0px
+// width in jsdom 26 and 30, as 0 is (black box, 26.1.0 and 30.1.3, #264
+// item 73). 0e+1 and 00 stay invalid.
+const ZERO_EXPONENT_BORDERS = [
+  ['border', '0e0 solid'],
+  ['border', '0e1'],
+  ['border', '0e-1 solid red'],
+  ['border', '+0e0 solid'],
+  ['border', '-0e0 solid'],
+  ['border', '0.0e0 solid'],
+  ['border', 'solid 0E0'],
+  ['border-top', '0e0'],
+  ['border-left', '0E0 solid'],
+  ['border-bottom', '0e0 dashed blue'],
+  ['border', '0e0px solid'],
+  ['border', '1e0px solid'],
+  ['border', '0e+1 solid'],
+  ['border', '00 solid'],
+];
+for (const jsdom of [26, 30])
+  parity(
+    `style: a zero with an exponent in the border shorthands is 0px (jsdom ${jsdom}, #264 item 73)`,
+    (w) =>
+      ZERO_EXPONENT_BORDERS.map(([name, value]) => {
+        const d = w.document;
+        const attribute = d.createElement('div');
+        attribute.setAttribute('style', `${name}: ${value}`);
+        const set = d.createElement('div');
+        set.style.setProperty(name, value);
+        return [name, value, attribute.style.cssText, set.style.cssText];
+      }),
+    { jsdom },
+  );
+
+// jsdom 27 to 29 reject 0e0 as a length (#264 item 91): until that is
+// modeled, their profiles keep main's reading, not 26 and 30's 0px (#297
+// review).
+test('style: a zero with an exponent in border is left alone in jsdom 27 to 29 (#264 item 91)', () => {
+  for (const jsdom of ['27.4.0', '28.1.0', '29.1.1']) {
+    const e = createWindow({ jsdom }).document.createElement('div');
+    e.style.setProperty('border', '0e0 solid');
+    assert.equal(e.style.getPropertyValue('border'), '0 solid', jsdom);
+  }
+});
+
+// jsdom 26 takes a font of a size and no family, as the size and what
+// comes before it (black box, 26.1.0, #264 item 63); not with a line
+// height or without a size. (0 is 0px there and 01 1px is 1px: #264 item
+// 83; its longhands in cssText and length: item 78.)
+parity(
+  'style: a font of a size alone (jsdom 26, #264 item 63)',
+  (w) =>
+    [
+      '1px',
+      '10%',
+      '1.5em',
+      '1e39px',
+      '1e400px',
+      'BOLD 1px',
+      'italic 1px',
+      'LARGE',
+      'calc(1px)',
+      '1px ',
+      '1px/2',
+      'bold',
+      '-1px',
+      '12px Arial',
+      '1e400px Arial',
+    ].map((v) => {
+      const out = [v];
+      for (const set of ['property', 'attribute']) {
+        const e = w.document.createElement('div');
+        if (set === 'property') e.style.setProperty('font', v);
+        else e.setAttribute('style', `font: ${v}`);
+        const s = e.style;
+        out.push([s.getPropertyValue('font'), s.fontStyle, s.fontWeight, s.fontSize, s.lineHeight, s.fontFamily]);
+      }
+      return out;
+    }),
+  { jsdom: 26 },
+);
+
 // border: none and border-style: none (#179, black box, 27.4.0 to 30.1.3):
 // from jsdom 27 kept everywhere, a none style left out of border and its
 // sides (border: none is border: medium, border-top: 0 none is
@@ -3056,6 +3138,219 @@ parity(
     for (const a of parts) for (const b of parts) read('border', `${a} ${b}`);
     return out;
   },
+  { jsdom: 26 },
+);
+// Case in jsdom 26 (black box, 26.1.0; #264 item 46): an element's style
+// (setProperty, the attribute) writes keywords and units in the properties
+// jsdom 26 parses in lowercase (width: AUTO is auto, 10PX 10px), generic
+// families too (Arial, SANS-SERIF is Arial, sans-serif; other names, and
+// strings, as written); calc(), url() or a gradient not in lowercase is
+// invalid. A style sheet rule keeps the case. (Read with getPropertyValue:
+// jsdom 26 lists font's longhands in an element's cssText, #264 item 77.)
+const JSDOM26_CASE = {
+  width: [
+    'AUTO',
+    'Auto',
+    '10PX',
+    '1Em',
+    'CALC(1px + 2px)',
+    'Calc(1px)',
+    'calc(1PX + 2PX)',
+    'Initial',
+    'VAR(--x)',
+    'var(--X)',
+  ],
+  height: ['AUTO', '2VMIN'],
+  top: ['AUTO'],
+  left: ['Auto'],
+  margin: ['AUTO', 'AUTO 1px AUTO', '1PX 2Px'],
+  'margin-top': ['AUTO'],
+  padding: ['10PX'],
+  'padding-left': ['1EM'],
+  float: ['LEFT', 'NONE', 'INLINE-START'],
+  clear: ['BOTH', 'NONE'],
+  'font-weight': ['BOLD', 'BOLDER'],
+  'font-style': ['ITALIC', 'OBLIQUE', 'NORMAL'],
+  'font-size': ['MEDIUM', 'X-LARGE', 'SMALLER', '12PX'],
+  'line-height': ['NORMAL', '1.5EM'],
+  'font-family': [
+    'SERIF',
+    'Arial, SANS-SERIF',
+    'FOO',
+    '"SERIF"',
+    'SERIF, MONOSPACE',
+    'Foo, Serif',
+    'EMOJI',
+    'MATH',
+    'UI-ROUNDED',
+    'Foo SERIF',
+    // Function-like text and var( in a string is a name (#289 review).
+    '"var(--face)", SERIF',
+    '"URL(Font)", SERIF',
+    // var( after whitespace in a string is a var() to jsdom (#289 review).
+    '"a var(--face)", SERIF',
+    '"x  var(--a)", SERIF',
+  ],
+  font: [
+    'BOLD 12px Arial',
+    '12px SERIF',
+    '12px Arial, SANS-SERIF',
+    'ITALIC 1PX/1.5 ARIAL',
+    'LARGER SERIF',
+    '12px FOO',
+    '12px "SERIF"',
+    '1px "A b", Arial, SERIF',
+    'Bold Italic 1px Bold',
+    '1px Url(x)',
+    // Any whitespace, and a line height with spaces (#289 review).
+    'BOLD\t12px\tArial',
+    'BOLD\n12px Arial',
+    '12px / 1EM SERIF',
+    '12px /1EM SERIF',
+    '12px/ 1EM SERIF',
+    // A function as the size or line height (#289 review).
+    'calc(12px) Arial',
+    'BOLD calc(12PX) Arial',
+    'calc(12px)/1.5 Arial, SERIF',
+    'calc(12px) / 1.5 Arial',
+    '12px/calc(1EM) SERIF',
+    '12px/calc(1EM+2EM) ARIAL',
+    '12px "a var(--x)", SERIF',
+    // Nested functions, and a slash inside the size (#289 review).
+    'BOLD calc(1PX + calc(1EM + calc(1VW + 1VH))) Arial',
+    'calc(1PX + 1EM * calc(1VW / 1VH)) / 1EM SERIF',
+  ],
+  'background-image': ['NONE', 'URL(a.png)', 'url(A.PNG)', 'LINEAR-GRADIENT(red, blue)'],
+  'background-position': ['LEFT TOP', 'CENTER 10PX'],
+  'background-repeat': ['REPEAT-X', 'NO-REPEAT'],
+  'background-attachment': ['FIXED', 'SCROLL'],
+  border: ['1px SOLID RED', 'THIN DASHED', '1PX solid RGB(1, 2, 3)'],
+  'border-top': ['MEDIUM SOLID CurrentColor'],
+  'border-width': ['THIN MEDIUM', '1PX'],
+  'border-left-width': ['THICK'],
+  'border-style': ['SOLID', 'SOLID DOTTED'],
+  'border-right-style': ['DASHED'],
+  'border-collapse': ['COLLAPSE'],
+  'border-spacing': ['1PX', '1PX 2PX'],
+  'flex-basis': ['AUTO', '10PX'],
+  flex: ['1 1 AUTO', '1 1 10PX'],
+  'flex-grow': ['CALC(1 + 1)'],
+  opacity: ['CALC(1)'],
+  color: ['RED', 'RGB(1, 2, 3)'],
+  display: ['BLOCK'],
+  'text-align': ['CENTER'],
+  cursor: ['POINTER'],
+};
+parity(
+  "style: keywords and units in jsdom 26's parsed properties in lowercase (jsdom 26, #264 item 46)",
+  (w) => {
+    const sheet = w.document.head.appendChild(w.document.createElement('style')).sheet;
+    return Object.entries(JSDOM26_CASE).flatMap(([name, values]) =>
+      values.flatMap((v) => {
+        const set = w.document.createElement('div');
+        set.style.setProperty(name, v);
+        const attr = w.document.createElement('div');
+        attr.setAttribute('style', `${name}: ${v}`);
+        sheet.insertRule(`div { ${name}: ${v} }`, 0);
+        return [
+          `${name}: ${v}`,
+          set.style.getPropertyValue(name),
+          attr.style.getPropertyValue(name),
+          sheet.cssRules[0].style.getPropertyValue(name),
+        ];
+      }),
+    );
+  },
+  { jsdom: 26 },
+);
+// A unitless zero size keeps a named family's case (jsdom 26 reads 0 as 0px,
+// #264 item 83, so only the family is compared; #289 review).
+parity(
+  'style: a family after a unitless zero font size keeps its case (jsdom 26, #264 item 46)',
+  (w) =>
+    [
+      '0 Arial',
+      '.0 Arial',
+      '+0 Arial',
+      '-0 Arial',
+      '0.0 Arial',
+      'BOLD 0 Arial',
+      'ITALIC 0 SERIF, Arial',
+      '0 / 1EM Arial',
+      '0/1EM Arial',
+    ].map((v) => {
+      const e = w.document.createElement('div');
+      e.style.setProperty('font', v);
+      const read = e.style.getPropertyValue('font');
+      return [v, read !== '', read.slice(read.lastIndexOf(' ') + 1)];
+    }),
+  { jsdom: 26 },
+);
+// An escaped line break continues a family string, so function-like text
+// after it is still in the string: the family is kept, its case too (jsdom
+// 26, #289 review). (jsdom 26 then drops the backslash: #264 item 92.)
+parity(
+  'style: function-like text after an escaped line break in a family string (jsdom 26, #264 item 46)',
+  (w) =>
+    ['"A\\\nURL(Font)", SERIF', '"A\\\r\nURL(Font)", SERIF', '"A\\\nb", Serif'].map((v) => {
+      const e = w.document.createElement('div');
+      e.style.setProperty('font-family', v);
+      const read = e.style.getPropertyValue('font-family');
+      return [v, read !== '', read.replace(/[^A-Z]/g, '')];
+    }),
+  { jsdom: 26 },
+);
+// jsdom 26's lowercasing reads a long malformed value in one pass: a
+// regular expression retried from every url( without a ) and every quote
+// that does not close took 558 ms on 20,000 url( (#289 review).
+test('style: jsdom 26 lowercases a long malformed value quickly (#264 item 46)', () => {
+  const d = createWindow({ jsdom: '26.1.0' }).document;
+  for (const [name, value] of [
+    ['width', `A${'url('.repeat(20000)}`],
+    ['font', `12px A ${'"\\'.repeat(20000)}`],
+    ['font-family', `A, ${"'\\".repeat(20000)}`],
+  ]) {
+    const e = d.createElement('div');
+    const start = performance.now();
+    e.style.setProperty(name, value);
+    const elapsed = performance.now() - start;
+    assert.ok(elapsed < 100, `${name}: ${elapsed} ms`);
+  }
+});
+// A family named like a size keyword after a unitless zero size is a
+// family, not the size: the size comes before the first comma (#289 review).
+parity(
+  'style: a family named Large after a unitless zero font size keeps its case (jsdom 26, #264 item 46)',
+  (w) =>
+    [
+      '.0 Arial, Large',
+      '0 Arial, Medium',
+      '0 Arial, X-Large',
+      'BOLD 0 Arial, Larger',
+      '0/1EM Arial, Large',
+      '0 Arial, Large, SERIF',
+      '0 Large, Arial',
+      '0 Medium, Arial',
+      '0 Large',
+      // A zero with an exponent is a zero size; a size keyword after a
+      // family is the size, as jsdom 26 reads it (#289 review).
+      '0e0 Arial',
+      'BOLD 0e-1 Arial',
+      '0E0 Arial, SERIF',
+      '.0 Arial Large',
+      '.0 Arial Large, SERIF',
+      '0 Arial Medium',
+      // (no space after the comma: #289 review)
+      '0 Large,Arial',
+      '0 Arial,Large',
+      '12px Arial,SERIF',
+    ].map((v) => {
+      const e = w.document.createElement('div');
+      e.style.setProperty('font', v);
+      const read = e.style.getPropertyValue('font');
+      // (the capitals: which names kept their case)
+      return [v, read !== '', read.replace(/[^A-Z]/g, '')];
+    }),
   { jsdom: 26 },
 );
 // cssstyle 4.3.1 (jsdom 26 with an older cssstyle) has none of these
