@@ -1478,6 +1478,31 @@ parity(
   { jsdom: 26 },
 );
 
+// A family given twice in font is left out after its first (as written:
+// "A" and A, a and A differ; Open Sans and Open  Sans do not); font-family
+// keeps it. Black box, 27.4.0 to 30.1.3 (#264 item 86).
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `style: a family given twice in font (jsdom ${jsdom}, #264 item 86)`,
+    (w) =>
+      [
+        ['font', '12px A,B,A'],
+        ['font', '12px A,A,SERIF'],
+        ['font', '12px a,A'],
+        ['font', '12px "A",A'],
+        ['font', '12px serif,SERIF'],
+        ['font', '12px Open Sans, Open  Sans'],
+        ['font', '12px A, B, a'],
+        ['font', '12px var(--a),A,A'],
+        ['font-family', 'A, B, A'],
+      ].map(([name, value]) => {
+        const e = w.document.createElement('div');
+        e.style.setProperty(name, value);
+        return [name, value, e.style.getPropertyValue(name), e.style.fontFamily, e.style.cssText];
+      }),
+    { jsdom },
+  );
+
 // Keywords jsdom 26 takes in some properties, fewer than the grammar
 // (black box, 26.1.0, #264 item 77): a side's border style is no none or
 // hidden; float, font-style, background-attachment and background-repeat
