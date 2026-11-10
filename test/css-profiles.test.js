@@ -1434,6 +1434,50 @@ parity(
   { jsdom: 26 },
 );
 
+// jsdom 26 reads a unitless zero size after keywords alone as 0px, and
+// sets the longhands from it (black box, 26.1.0, #264 item 83). A number
+// before it, or a line height after it, is left (item 83); font-variant
+// and small-caps are item 97.
+parity(
+  'style: a unitless zero font size after keywords is 0px (jsdom 26, #264 item 83)',
+  (w) =>
+    [
+      '0 Arial',
+      '0',
+      'BOLD 0 SERIF',
+      'italic 0 Arial',
+      'normal 0 Arial',
+      'condensed 0 Arial',
+      'italic bold 0 Arial',
+      'bold 0',
+      '0 bold',
+      '0 serif',
+      '0 "A B", serif',
+      '0.0 Arial',
+      '-0 Arial',
+      '+0 Arial',
+      '0e0 Arial',
+      '.0 Arial',
+      '0. Arial',
+      '0e1 Arial',
+      // (leading zeros are invalid; a family named Large is no size)
+      '00 Arial',
+      '000 serif',
+      '0 Arial, Large',
+    ].map((v) => {
+      const out = [v];
+      for (const set of ['property', 'attribute']) {
+        const e = w.document.createElement('div');
+        if (set === 'property') e.style.setProperty('font', v);
+        else e.setAttribute('style', `font: ${v}`);
+        const s = e.style;
+        out.push([s.getPropertyValue('font'), s.fontStyle, s.fontWeight, s.fontSize, s.lineHeight, s.fontFamily]);
+      }
+      return out;
+    }),
+  { jsdom: 26 },
+);
+
 // Keywords jsdom 26 takes in some properties, fewer than the grammar
 // (black box, 26.1.0, #264 item 77): a side's border style is no none or
 // hidden; float, font-style, background-attachment and background-repeat

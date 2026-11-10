@@ -1154,6 +1154,7 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
         if (/[A-Z]/.test(written)) written = jsdom26Case(name, written);
         if (written !== null && JSDOM26_KEYWORD_RULES[name] !== undefined && jsdom26Rejects(name, written))
           written = null;
+        if (written !== null && name === 'font' && written.includes('0')) written = jsdom26ZeroSize(written);
         if (written !== null && (name === 'font-family' || name === 'font')) written = jsdom26Families(name, written);
         // (an integer Number() changes has 16 digits: most values skip this)
         if (written !== null && (written.length >= 16 || JSDOM26_BORDERS.has(name)))
@@ -1520,6 +1521,30 @@ function jsdom26Rejects(name, value) {
   if (rule.only) return !rule.only.test(text);
   if (rule.words) return text.split(/[ \t\n\r\f]+/).some((word) => rule.reject.test(word));
   return rule.reject.test(text);
+}
+// A unitless zero font size after keywords alone, as jsdom 26 reads it:
+// 0px (font: 0 Arial, bold 0 serif; black box, 26.1.0, #264 item 83). A
+// number before it, a line height after it, a size after it before the
+// first comma (0 larger, 0 Arial Large: the zero is a weight there) and
+// leading zeros (00, which jsdom 26 rejects) are left as they are.
+const FONT_KEYWORD_WORD =
+  /^(normal|italic|oblique|bold|bolder|lighter|small-caps|(ultra-|extra-|semi-)?(condensed|expanded))$/i;
+const ONE_ZERO = /^[+-]?(0(\.0*)?|\.0+)(e[+-]?\d+)?$/i;
+function jsdom26ZeroSize(value) {
+  const words = fontWords(value);
+  for (let i = 0; i < words.length; i++) {
+    const [word, at] = words[i];
+    if (ONE_ZERO.test(word)) {
+      if (words[i + 1]?.[0].startsWith('/')) return value;
+      for (let j = i + 1; j < words.length; j++) {
+        if (FONT_SIZE_WORD.test(withoutComma(words[j][0]))) return value;
+        if (topLevelComma(words[j][0])) break;
+      }
+      return `${value.slice(0, at)}0px${value.slice(at + word.length)}`;
+    }
+    if (!FONT_KEYWORD_WORD.test(word)) return value;
+  }
+  return value;
 }
 // Where font's families start as jsdom 26 reads it (after the size and a
 // line height), or -1 with no size.
