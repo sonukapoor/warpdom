@@ -4633,6 +4633,127 @@ kept it in font too. onceFamilies wraps quotedFamilies for font. Bench
 properties (`font-family: A, A` is `""`; with #302's family parser).
 The long-family-list timing test matches the shorter font now.
 
+## 2026-11-09: keywords jsdom 26 takes in some properties (branch fix/264-jsdom26-keyword-sets, #264 item 77, first part)
+
+Black box, 26.1.0, setProperty and the style attribute: jsdom 26 checks
+some properties with older lists than the grammar warpdom validates:
+a side's border style is one of dotted, dashed, solid, double, groove,
+ridge, inset, outset (no none or hidden; border-style takes them);
+float left, right, none, inline-start or inline-end (not top, bottom,
+snap-block); font-style normal, italic or oblique (not left, right,
+`oblique 10deg`); background-attachment and background-repeat one keyword
+(no lists, no two values); width and height no contain, stretch,
+-webkit-fill-available or fit-content() (fit-content, min-content,
+max-content are fine); flex-basis no contain or fit-content; flex no
+contain. warpdom kept them all. JSDOM26_KEYWORD_RULES holds the measured
+lists; jsdom26Rejects runs after jsdom26Case for those properties only
+(CSS-wide keywords and var() pass). The rest of item 77 (calc()
+simplified in more properties, font's longhands in cssText, the cssstyle
+4.3.1 profile, font with calc(), an escaped comma in a family) stays open.
+
+## 2026-11-09: a lone number in calc() kept as written, jsdom 26 (branch fix/264-jsdom26-calc-exponent, #264 item 72)
+
+Black box, 26.1.0, lengths (width, margin, ...): jsdom 26 evaluates a
+calc() of one term (calc(1e1px) is calc(10px), calc(00.5px) calc(0.5px)),
+but keeps it as written when the number is an integer whose text has a
+digit run starting with 0, not after the point, or a + in its exponent:
+calc(1e01px), calc(0010px), calc(01px), calc(00px), calc(-01px),
+calc(1e+1px), calc(10e00px), calc(1e-00px), calc(1.5e01px). Not an
+integer, it is evaluated (calc(1e-01px) is calc(0.1px), calc(010.5px)
+calc(10.5px)); with an operator too (calc(01px + 1px) is calc(2px)). A
+lone + is dropped (calc(+1px) is calc(1px); warpdom kept it).
+simplifyCalc checks the lone term (LONE_KEPT), which only that path runs.
+The rule is a model fitted to the measured values (the 25 test rows and
+more probes), not jsdom's code; a value it misses would be a parity
+failure.
+
+## 2026-11-09: a shorthand written after its longhand, jsdom 27 and later (branch fix/264-shorthand-replaces-longhands, #264 items 78 and 94, phase 1)
+
+Phase 1 of the design below: border, its sides, border-color, -style and
+-width, flex, font and (jsdom 30) background-position replace the
+longhands and smaller shorthands declared before them (REPLACES), from
+setProperty, an accessor, a style attribute, cssText and a style sheet.
+An !important longhand stays in a style attribute and cssText (not in a
+sheet, and not against setProperty), as in jsdom. Left for phase 3:
+style.length, the listing jsdom gives once an !important longhand stays,
+and the longhands a shorthand sets without naming them (font-variant
+under font reads `normal` in jsdom, `''` here; border-image under
+border `none`).
+
+Cost (node 22.17.1, a fresh element per iteration, 5 runs interleaved,
+medians in ns per element; scratchpad bench78b.mjs), after the #305
+review: five writes of color, border, flex, width and font 1066 on main,
+1151 here; a longhand then its shorthand (border-top-color, border,
+flex-grow, flex) 890 and 847; a cssText of four declarations, one of
+them replaced, 1118 and 1203 (replaceCovered 3.7% of a profile of it,
+doing the replacing). Only a write of one of these shorthands walks the
+block (replaceCovered: Sets, the block's own names, nothing for an empty
+block); other properties look up nothing more. REPLACES is a Map: as an
+object of dashed names its lookup was 5.3% of that profile. A per-block
+flag would skip the walk, but would have to be kept by every place that
+declares a name (12, and replays): not worth the risk for writes outside
+bench:hot.
+
+Review (#305): a border or a side with var() in a style attribute
+replaces nothing from jsdom 29 (jsdom drops it, cascade.js); only the
+border shorthands keep an !important longhand there (one without var(),
+and in 27 and 28 a masked one), not flex, font or background-position;
+and a shorthand given again after another one sharing longhands is
+declared last, so that it wins.
+
+Second review (#305): in a style attribute and cssText an !important
+border longhand also stays against an !important border shorthand (flex
+and font still replace theirs); setProperty replaces it. Two gaps found
+there are older than this PR (main has them too) and go to phase 3: the
+longhands of an !important shorthand report priority `''` (jsdom:
+`important`), and the computed value takes the shorthand's, not the kept
+!important longhand's (`border-top-color: red !important; border: 1px
+solid blue !important` computes rgb(255, 0, 0) in jsdom).
+
+### Design: shorthands stored as longhands (#264 items 78, 51, 94, 82, 50)
+
+Black box, `setProperty`, jsdom 26.1.0, 27.4.0, 28.1.0, 29.1.1 and 30.1.3
+(probe78b.mjs). The 12 shorthands are background, background-position (30),
+border, border-top/-right/-bottom/-left, border-color, -style, -width, flex
+and font.
+
+jsdom 27 to 30, one model:
+- Setting a shorthand stores each longhand as an entry, then the shorthand
+  itself as an entry. `border` also stores its sub-shorthands
+  (border-width, border-top, ...), and an earlier longhand keeps its index.
+  (`border-top-color: red; border: 1px solid blue` gives length 21, with
+  border-top-color first.)
+- Setting a longhand updates that entry. Shorthand entries containing it
+  are then either recomposed (flex, border-width, border-color: `2px 1px 1px`)
+  or removed (border, border-top after border-top-color). font and background
+  keep their old entry: getPropertyValue('font') and cssText stay
+  `12px Times`, while the accessor `style.font` reads `12px Arial`.
+- cssText uses a shorthand only while its entry exists and all of its
+  longhands are present. Otherwise it lists the longhands, grouped by any
+  remaining sub-shorthand entries (`border-width: 1px; border-style: solid;
+  border-color: red blue blue; border-image: none;`).
+
+jsdom 26 (cssstyle 4) mostly matches warpdom already. One difference: the
+accessor recomposes from the longhands while getPropertyValue stays as
+written (`flex: 1; flex-grow: 2` reads style.flex `2 1 0%` and
+getPropertyValue `1 1 0%`). The same holds for font, background and
+border-left.
+
+Phases. Each is its own PR, and each is measured against the black box
+before the next one starts:
+1. A shorthand written after a longhand replaces it, for jsdom 27 and later.
+   This fixes the getters (borderTopColor `blue`, fontFamily `Times`) and
+   cssText for the longhand-then-shorthand order. background already does
+   this (clearBackground).
+2. The shorthand accessor reads from the current longhands (26 to 30).
+   getPropertyValue recomposes for flex, border-width/-style/-color, and
+   reads `''` for border and its sides once a longhand follows, on 27 and
+   later.
+3. Entries: length, item() and cssText list the longhands and the remaining
+   shorthand entries (27 and later). This is the storage change proper,
+   and the one with the most risk for snapshot tests. Its hot-path cost
+   (setDeclaration per write) needs bench:hot numbers.
+
 ## 2026-11-09: a family list with var() kept as written, jsdom 26 (branch fix/264-jsdom26-family-var, #264 item 62)
 
 Black box, 26.1.0: a `font-family` or `font` value with var() (as jsdom
@@ -4938,6 +5059,205 @@ does not end the value (a!importantb is ab, important). Sheet parse
 20.0.3 18.63 -> 18.98, comments 18.75 -> 18.93, 27.0.1 17.39 -> 17.96,
 !important and / 21.09 -> 21.21, 30.1.3 15.91 -> 16.17. Test: cssom.test.js
 "forms cssom reads otherwise" (parity 20 to 26; 27.0.0 and 27.0.1).
+
+## 2026-11-08: a ! and an ident at the end of a value, jsdom 27 and later (branch fix/264-custom-bang, #264 item 65)
+
+Black box, 27.4.0, 28.1.0, 29.1.1, 30.1.2 and 30.1.3 (the style
+attribute, an element's and a rule's cssText, setProperty, a style
+element; color and a custom property):
+- A top-level `!` with one ident after it, to the end of the value, is
+  `!important`: `red !b`, `a ! b`, `a!b`, `a !-b`, `a !--b`, `a !é`,
+  `a !\62`, `a ! /**/ b`. Whitespace and comments may come around the ident.
+- Any other top-level `!` drops the declaration: `a !`, `a !b c`,
+  `a !b!c`, `a !1`, `a !-`, `a !b(c)`, `a !"s"`, `a !b !important`, and
+  `!b` with nothing before it. A `!` in a string or a block is part of
+  the value, as before.
+- This holds in declaration blocks from 27 and in style sheets from 29.
+  27 and 28's sheets drop such a normal property and keep a custom one as
+  written, as warpdom did. setProperty keeps the value as written (and
+  rejects it for a normal property), as before.
+- `var()` in a normal property loses the priority in 27 to 29, as it
+  does with `!important` (varDropsImportant): `color: var(--c) !foo` is
+  `var(--c)` there and `var(--c) !important` in 30.
+
+warpdom kept `--x: a !b` as written and dropped `color: red !b`. strayBang
+scans the value once (strings, comments, escapes and blocks skipped) on
+these paths, before the stray-priority check (strayPriority), which
+dropped only a leftover `!important` or a lone `!`. strayPriority still
+runs after it, and is what checks a block warpdom wrote itself ('written')
+and a replay, which strayBang skips.
+Not measured: jsdom 30.0 (treated as 30).
+
+Review: the ident after the `!` was matched by a regular expression that
+backtracked exponentially on comments (`--x: a !` and 24 `/**/` took
+425 ms through cssText) and let a comment run past its `*/` (`a !b/**/ c`
+was important; jsdom drops it). A hex escape takes one whitespace after it
+(`a !\62 c` is one ident, important in jsdom), which it did not. identToEnd
+reads it in one pass per CSS Syntax 3.
+
+Left (#264 item 85): in 27 and 28's sheets, a custom property keeps
+`!IMPORTANT` as written (warpdom lowercases it), and `--x: a !important b`
+is `a  b !important`.
+
+Bench (node 22.17.1, 5 interleaved runs, medians, ns per write): cssText
+1,446 -> 1,463, cssText with !important 1,026 -> 1,030, setAttribute 800
+-> 812 (noise).
+
+Second review (Copilot, both reproduced on 27.4.0 to 30.1.3): strayBang
+counted any closer against any opener, so `--x: a [) !b]` and `a (] !b)`
+were dropped (jsdom keeps them: a block closes at its own closer only),
+and read into unquoted url()s (`url(a]!b)` dropped, `url(a[b) !foo` not
+made important). It now keeps a stack of the closers it waits for and
+skips an unquoted url() as one token (urlTokenEnd). And an escaped `!`
+before `important` was taken as the priority (`a !b\!important` lost its
+`!b\` ident and was dropped): on these paths an escaped `!` is part of an
+ident, so the value is `a` with a stray `!b\!important`, important, as in
+jsdom (kept as written in 27 and 28's sheets). The stack is allocated only
+for a value with a `!`.
+Left (#264 item 89): in 27 and 28's sheets a `{}` block in a custom
+property makes a nested rule, and an unclosed `(` loses the rule.
+
+Third review (Copilot, reproduced on 27.4.0 to 30.1.3): an `!important`
+inside a comment that runs to the end (`--x: a !b /* !important`) was
+taken as the priority, so `!b` became a second one and the declaration
+was dropped; jsdom reads `a !important`. On these paths a priority whose
+`!` is inside a comment is no priority now (insideComment, run only for a
+value with a comment).
+
+Fourth review (Copilot, three findings, all reproduced): a backslash at
+the end of the value escapes U+FFFD, so `--x: a !b\` is `a !important` in
+jsdom 30 (27 to 29 drop it; identToEnd's eofEscape, spec mode only). A
+line break ends a string, a bad one, so `--x: url("a` LF `) !foo` has a
+top-level `!foo` (important; `!foo bar` drops it); strayBang read through
+to the next quote. And the older strayPriority check ran after strayBang
+and read a quote inside an unquoted url() as a string's (`url(a"b)
+")!x" !foo` was dropped); it now runs only on the paths strayBang skips.
+Fifth review: insideComment read a string through a raw line break, so
+in `--x: url("a` LF `) !b /* !important` it missed the open comment and
+took the `!important` in it (dropped; jsdom: important). It ends a string
+at a line break now, as strayBang does.
+Sixth review: urlTokenEnd took `#url(` and `@url(` for a url(, and
+`url(` after an escape (`a\ url(`, `\61 url(`, one name), so it ended the
+token at a `)` inside a string and strayBang saw the `!b` in it (`--x:
+#url(a") !b")` was dropped; jsdom 27 to 30 keep it, as main did). The
+check before `url(` (partOfToken) now rules out a hash, an at-keyword and
+the end of an escape.
+Seventh review: a backslash before a line break escapes nothing (`a\`
+LF `url(a"b) !foo` has a url() and a top-level `!foo`), and CR LF ends a
+hex escape as one whitespace (`\61` CR LF `url(` is one name).
+Eighth review: jsdom 30's end-of-text escape (`a !important\` at the very
+end escapes U+FFFD) was also taken for a backslash before a line break
+the trim removed (`a !important\` LF); only a backslash that ends the raw
+text counts now.
+Ninth review (black box, 27.4.0 to 30.1.3): a backslash before a space
+or tab escapes it, so `--x: a !b\<space>` is the stray `!b\ ` and reads
+`--x: a !important`; the trim had left a bare backslash and the
+declaration was dropped (main kept `a !b\`). jsdom 27 and 28 trim the
+text first, so there the last declaration's escape is gone and it is
+dropped (`--x: a !b\ ; left: 1px` is important in all four).
+Tenth review (Copilot "needs a closer look", black box, 27.4.0 to
+30.1.3, 140 cases): JavaScript's trim also takes what CSS doesn't read as
+whitespace: NBSP, U+2003, U+FEFF, U+2028 and a vertical tab. An escaped
+one, or a non-ASCII one (a name code point), is part of the stray ident
+(`!b\<NBSP>` is important in jsdom; warpdom dropped it), and a bare
+vertical tab ends it (`!b<VT>` is dropped from 29). The stray scan now
+reads the value trimmed of CSS whitespace only (cssTrimmed), except the
+last declaration in 27 and 28.
+
+## 2026-11-08: an unclosed block in a value runs to the end of the sheet, jsdom 29 and later (branch fix/264-custom-unclosed, #264 item 68)
+
+Black box, 29.1.1, 30.1.2 and 30.1.3 (a style element, insertRule,
+replaceSync):
+- An unclosed `(`, `[` or function in a declaration's value is a block
+  that only its closer or the end of the sheet ends, as in CSS Syntax 3.
+  The rule's `}` and every rule after it become part of the value, in an
+  `@media` block too: `.x { --v: (a  b } .y { color: red }` is one rule,
+  `.x { --v: (a  b } .y { color: red }; }`.
+- A custom property keeps that text as written: a `}`, `]` or `;` in it
+  keeps it so. Another property is dropped, and the rules after it go
+  with it (`.x { color: (a } .y { … }` is `.x { }` alone).
+- A custom value that reaches the end with a block or string still open
+  is re-serialized with them closed: `(a  b` is `(a b)`, `f(a,  b` is
+  `f(a,b)`, `(a  [b` is `(a[b])`, `"a  b` is `"a  b"`, `a  "b` is `a"b"`.
+  A bad `url(` stays as written. Item 59 had kept an unclosed block or
+  string as written; the measurement that led to that had a `}` after it.
+- jsdom 29.1.1 and 30.1.2 throw from appendChild for `.x { width:
+  calc(1px } .y {}` (a css-tree error); 30.1.3 gives `.x { }`, as warpdom
+  now does. warpdom does not throw.
+
+blockEnd (cssom.js) counts the ( and [ blocks open when nested
+(nestedBlocks: jsdom 29 and later, the same parser change as
+customReserialized), so a } inside one closes nothing. readString and
+readList (custom-value.js) close a string or block at the end instead of
+keeping the value as written.
+
+Bench (node 22.17.1, 5 interleaved runs, medians): a style element with
+200 rules and 200 @media rules 601.3 -> 610.1 µs, insertRule 4.9 -> 5.0
+µs (noise). A first version (a stack of closers, one string comparison
+each per character) cost +25%, and counters with string comparisons +3%;
+blockEnd now reads char codes and calls skipToken only where a comment,
+string or url() can start, in every mode.
+
+Review: blocks are matched by kind (`({a})` closes, `(a ]` stays open),
+and a `;` inside a `(`, `[` or `{` block is part of the value: in 29 and
+later's sheets, and in the style attribute and cssText from 27 (`--v: [a;
+b]`, `{a; b}` and `(a; b]; c)` are one declaration in jsdom 27 to 30.1.3;
+warpdom split them on main too). splitDeclarations and
+commentedDeclarations keep a stack of closers there; 27 and 28's sheets
+are unchanged. A custom property's value in a sheet keeps its comments
+for reserializeCustom, which reads them itself and keeps a value it
+cannot read as written (`[a /* ; */ b; c]`). Bench (5 interleaved runs,
+medians): cssText 1,467 -> 1,484 ns, cssText with [] 2,157 -> 2,172 ns,
+the 200-rule sheet 741.6 -> 758.1 µs (noise).
+
+Second review (Copilot, three findings, all reproduced on 29.1.1 and
+30.1.3, the first also in 27 and 28's style attribute and cssText):
+- An `!important` inside an unclosed block was taken as the priority
+  (`--v: [a; !important`, `{a; !important`, `(a  !important`); jsdom keeps
+  it in the value, with no priority. parseInto now checks that the `!` is
+  at the top level (openAt) where blocks nest.
+- Keeping a custom property's comments for reserializeCustom hid a
+  priority with comments after or inside it (`a !important /* c */` lost
+  its priority, `a !/**/important` read `a ! important`). customPriority
+  finds it on the text with its comments blanked and writes `!important`
+  after the comments before it; in the style attribute and cssText too,
+  where `a !/**/important` was kept as written on main.
+- `(a \); color: red` at the end of a sheet went to the plain splitter,
+  which took the escaped `)` as the closer and split at the `;`. A source
+  with a backslash now takes the nested splitter too.
+Also found: in 29 and later's sheets a `!` inside a block keeps a custom
+property's value as written (`(a  !b)`, closed or not; warpdom collapsed
+the spaces, on main too); reserializeCustom now gives up there. The new
+work runs only for a value with a priority and a block, a custom property
+with a comment, or a source with a backslash.
+
+Third review (Copilot, both reproduced on 27.4.0 to 30.1.3):
+customPriority cut the value where the priority's whitespace started on
+the blanked text, which also crossed the comments before the `!`
+(`--v: a/**/!/**/important` read `a`; jsdom keeps `a/**/`). It now cuts at
+the `!` and trims only whitespace. And an `!important` inside a comment
+that runs to the end (`--v: a /* !important`, at the end of a sheet or in
+the style attribute) was the priority; jsdom keeps it in the value.
+parseInto now skips a priority whose `!` is inside a comment (insideComment,
+run only for a value with a comment).
+
+Fourth review (Copilot, reproduced on 27.4.0 to 30.1.3): customPriority
+returned early when the raw text ended in `!important`, so in `--v: a
+!important /* !important` the one inside the comment was found, rejected,
+and the real one before it lost (jsdom: `a`, important). It now looks on
+the comment-blanked text whenever the value has a comment.
+
+Fifth review (Copilot, reproduced on 27.4.0 to 30.1.3): openAt read a
+string to its closing quote, so in `--v: url("a\nb) !important` (a real
+line break) the `(` stayed open and the priority stayed in the value, a
+regression from main. A line break now ends the string there (a bad
+string), as the declaration splitters already read it. Found while
+measuring, older than this PR (main too), left for #264: a line break
+doesn't end a string in `--v: "a\nb !important; color: red` (style
+attribute, cssText and style sheets keep everything in --v; jsdom 27 and
+later: `"a\nb`, important, and color red), nor inside parentheses
+(`--v: (a 'b\nc) !important; color: red`), nor in a style sheet's
+`url("a\nb) !important` (the priority stays in the value).
 
 ## 2026-11-08: keywords and units in lowercase, jsdom 26 (branch fix/264-jsdom26-keyword-case, #264 item 46)
 

@@ -24,6 +24,7 @@ import {
   serializeDeclarations,
   escapeIdentifier,
   protosMode,
+  nestedBlocks,
   isLegacyMode,
   supportsRuleMatches,
   replayDeclarations,
@@ -84,18 +85,36 @@ function preludeEnd(text, i) {
 }
 
 // The index of the `}` closing the block opened at `open` (or the end).
-function blockEnd(text, open) {
+// nested (jsdom 29 and later, nestedBlocks): blocks are matched by kind,
+// so a } inside a ( or [ block closes nothing (.x { --v: (a } .y {} is
+// one rule), and a closer of another kind is a token ((a ] stays open).
+// Char codes, and skipToken only where a comment, string or url() can
+// start.
+function blockEnd(text, open, nested = false) {
   let depth = 0;
-  let i = open;
-  while (i < text.length) {
-    const next = skipToken(text, i);
-    if (next !== i) {
-      i = next;
-      continue;
+  const outer = nested ? [] : null; // (nested) the closers waited for
+  let closer = 0;
+  for (let i = open; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (c === 47 || c === 40 || c === 34 || c === 39) {
+      const next = skipToken(text, i);
+      if (next !== i) {
+        i = next - 1;
+        continue;
+      }
     }
-    if (text[i] === '{') depth++;
-    else if (text[i] === '}' && --depth === 0) return i;
-    i++;
+    if (!nested) {
+      if (c === 123) depth++;
+      else if (c === 125 && --depth === 0) return i;
+    } else if (c === 123 || c === 40 || c === 91) {
+      outer.push(closer);
+      // (the closer of { ( [: } ) ])
+      if (c === 40) closer = 41;
+      else closer = c + 2;
+    } else if (c === closer) {
+      closer = outer.pop();
+      if (outer.length === 0) return i;
+    } else if (c === 92) i++;
   }
   return text.length;
 }
@@ -129,7 +148,7 @@ function stripComments(text) {
 // { at, prelude, body } for at-rules (body null for statements). With
 // `strict`, anything else is reported as { invalid: true } (insertRule's
 // garbage after a rule).
-export function parseRules(text, strict = false) {
+export function parseRules(text, strict = false, nested = false) {
   const records = [];
   let i = 0;
   while (i < text.length) {
@@ -156,7 +175,7 @@ export function parseRules(text, strict = false) {
     const prelude = stripComments(text.slice(i, end)).trim();
     let body = null;
     if (text[end] === '{') {
-      const close = blockEnd(text, end);
+      const close = blockEnd(text, end, nested);
       body = text.slice(end + 1, close);
       i = close + 1;
     } else {
@@ -180,7 +199,7 @@ export function parseRules(text, strict = false) {
 // follows a rule (a{}; and a{} b{} inserted a), and so does its profile.
 function parseOneRule(text, protos) {
   if (isLegacyMode(protosMode(protos))) return parseRules(text)[0] ?? null;
-  const records = parseRules(text, true);
+  const records = parseRules(text, true, nestedBlocks(protos));
   return records.length === 1 && !records[0].invalid ? records[0] : null;
 }
 
@@ -488,7 +507,7 @@ function ruleList(protos, body, sheet, parent) {
   const rules = [];
   let prefixOnly = parent === null; // only @import and @namespace rules so far
   let namespaces = false;
-  for (const record of parseRules(body ?? '')) {
+  for (const record of parseRules(body ?? '', false, nestedBlocks(protos))) {
     const rule = createRule(protos, record, sheet, parent);
     if (!rule) continue;
     if (isImport(rule)) {
@@ -681,7 +700,7 @@ function pageRule(protos, selector, body, sheet, parentRule) {
       i = end + 1;
       continue;
     }
-    const close = blockEnd(body, end);
+    const close = blockEnd(body, end, nestedBlocks(protos));
     const name = body
       .slice(at + 1, end)
       .trim()
@@ -791,7 +810,7 @@ function createRule(protos, record, sheet, parentRule) {
     return selector === null ? null : pageRule(protos, selector, body, sheet, parentRule);
   } else if (KEYFRAMES.has(at) && body !== null) {
     rule = makeRule(protos, 'CSSKeyframesRule', sheet, parentRule, { name: prelude, indexed: 0 });
-    rule[S].rules = parseRules(body)
+    rule[S].rules = parseRules(body, false, nestedBlocks(protos))
       .map((r) => keyframe(protos, r, sheet, rule))
       .filter(Boolean);
     indexKeyframes(rule);

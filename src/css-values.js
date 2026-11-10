@@ -248,13 +248,37 @@ export function urlTokenEnd(text, open) {
 }
 // Does an unquoted url() open at text[open], a "("? url in any case, not
 // after a name character, before it; no quote after it (past spaces).
+// Whether the text before text[at] makes what starts there part of an
+// earlier token: a name character, the # of a hash or the @ of an
+// at-keyword (#url(, @url( are no url(), #293 review), or the end of an
+// escape (a\ url( and \61 url( are one name).
+function partOfToken(text, at) {
+  const c = text.charCodeAt(at - 1);
+  if (isNameCode(c) || c === 35 || c === 64) return true;
+  // (an escaped character, not a line break: a backslash before one is no
+  // escape, a\<LF>url( is a and a url(; #293 review)
+  const lineBreak = c === 10 || c === 13 || c === 12;
+  let slashes = 0;
+  while (at - 2 - slashes >= 0 && text.charCodeAt(at - 2 - slashes) === 92) slashes++;
+  if (slashes % 2 === 1) return !lineBreak;
+  if (!isSpace(c)) return false;
+  // (a whitespace that ends a hex escape, CR LF as one: \61<CR><LF>url()
+  let j = c === 10 && text.charCodeAt(at - 2) === 13 ? at - 3 : at - 2;
+  const end = j;
+  while (j >= 0 && end - j < 6 && isHexDigit(text.charCodeAt(j))) j--;
+  if (j === end || text.charCodeAt(j) !== 92) return false;
+  slashes = 0;
+  while (j - slashes >= 0 && text.charCodeAt(j - slashes) === 92) slashes++;
+  return slashes % 2 === 1;
+}
+const isHexDigit = (c) => (c >= 48 && c <= 57) || ((c | 32) >= 97 && (c | 32) <= 102);
 function urlOpens(text, open) {
   if (
     open < 3 ||
     (text.charCodeAt(open - 1) | 32) !== 108 ||
     (text.charCodeAt(open - 2) | 32) !== 114 ||
     (text.charCodeAt(open - 3) | 32) !== 117 ||
-    (open > 3 && isNameCode(text.charCodeAt(open - 4)))
+    (open > 3 && partOfToken(text, open - 3))
   )
     return false;
   let j = open + 1;
