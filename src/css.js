@@ -3970,7 +3970,9 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
         if (declared !== INVALID || RESETS_DECLARING_NOTHING.test(value) || (name === 'border' && hasVar(value)))
           legacyBorderResets(decls, name, value, mode);
       } else if (declared !== INVALID && declared !== '' && resets(surface, name, declared))
-        for (const n of RESETS[name]) if (n !== name) decls.delete(n);
+        // (itself too: given again in another case it moves to the end;
+        // #314 review)
+        for (const n of RESETS[name]) decls.delete(n);
     }
     if (declared === INVALID || declared === '') continue;
     // One that loses its !important is written without it; in a style

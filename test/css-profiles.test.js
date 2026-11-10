@@ -4069,6 +4069,17 @@ for (const jsdom of [20, 21, 22, 23, 24, 25, 26])
             b.style.setProperty(name, value);
             out.push([pre, name, value, a.style.cssText, b.style.cssText]);
           }
+      // (the shorthand given again in another case moves to the end; #314
+      // review)
+      for (const text of [
+        'flex: 1 1 0px; width: 1px; Flex: 2 2 0px',
+        'background: red; width: 1px; Background: blue',
+        'border: 1px solid red; width: 1px; Border: 2px solid blue',
+      ]) {
+        const a = w.document.createElement('div');
+        a.setAttribute('style', text);
+        out.push([text, a.style.cssText]);
+      }
       return out;
     },
     { jsdom },
