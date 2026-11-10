@@ -3978,6 +3978,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
         ? { value: declared, important: kept }
         : { value: declared, important: false, masked: true },
     );
+    if (RECOMPOSED_LONGHANDS.has(name)) decls.later = true;
   }
   // A background of initial values (setInitials) and a declaration of
   // another property after it, in a style attribute or cssText (black box,
@@ -4503,8 +4504,8 @@ function backgroundColorOnly(style, value) {
   return color === 'transparent' ? '' : color;
 }
 
-const valueOf = (style, name) => {
-  const s = styleState(style);
+const valueOf = (style, name) => stateValue(styleState(style), name);
+const stateValue = (s, name) => {
   if (s.computed) return computedOverride(s, name) ?? computed.value(s.element, name);
   const decl = s.decls.get(name);
   if (decl) return decl.value;
@@ -4539,6 +4540,114 @@ function composeBorder(decls, name) {
   if (values.every((v) => CSS_WIDE_KEYWORD.test(v))) return values.every((v) => v === values[0]) ? values[0] : '';
   const parts = values.filter((v, i) => v.toLowerCase() !== BORDER_INITIAL[i]);
   return parts.length ? parts.join(' ') : values[0];
+}
+
+// A shorthand read after one of its longhands is written (phase 2 of #264
+// item 78; black box, 26.1.0 to 30.1.3). jsdom 27 and later read flex and
+// border-width, -style and -color from the current longhands, in the
+// accessor and getPropertyValue (flex: 1 1 0% then flex-grow: 2 is 2 1 0%;
+// border-width: 1px then border-top-width: 2px is 2px 1px 1px), border and
+// a border side as '' once a side's longhand follows, and font from them
+// in the accessor only. jsdom 26 (cssstyle 4.4 and later) recomposes flex,
+// font, a border side and border (after border-width, -style or -color) in
+// the accessor only. Not modeled: border after border-color or
+// border-width in 27 and later (jsdom keeps parts of it: 1px blue), and
+// background. Only these shorthands look, and only when a declaration
+// follows them; cssText is unchanged (phase 3).
+const BORDER_SUBS = new Set(['border-width', 'border-style', 'border-color']);
+const RECOMPOSED_PARTS = new Map([
+  ['flex', new Set(SHORTHANDS.flex)],
+  ['font', new Set(SHORTHANDS.font)],
+  ['border', new Set([...SHORTHANDS.border, ...BORDER_SUBS])],
+]);
+for (const name of Object.keys(BORDER_READS)) RECOMPOSED_PARTS.set(name, new Set(BORDER_READS[name]));
+// The names whose write sets decls.later (parseInto, setDeclaration): a
+// block without one reads its shorthands as they are, without a scan.
+const RECOMPOSED_LONGHANDS = new Set();
+for (const parts of RECOMPOSED_PARTS.values()) for (const n of parts) RECOMPOSED_LONGHANDS.add(n);
+function readShorthand(style, name, accessor) {
+  const s = styleState(style);
+  const value = stateValue(s, name);
+  if (s.decls.later !== true || s.computed || value === '') return value;
+  const parts = RECOMPOSED_PARTS.get(name);
+  if (parts === undefined) return value;
+  const modern = s.mode === 'jsdom27' || s.mode === 'spec';
+  if (!modern && !(accessor && s.mode === 'jsdom26' && s.surface?.colors !== 'css2')) return value;
+  // First the names after the shorthand (no allocation): most blocks have
+  // no longhand there and read the value as it is.
+  let seen = false;
+  let longhand = false;
+  let sub = false;
+  for (const n of s.decls.keys()) {
+    if (n === name) seen = true;
+    else if (seen && parts.has(n)) {
+      if (BORDER_SUBS.has(n)) sub = true;
+      else longhand = true;
+    }
+  }
+  if (!longhand && !sub) return value;
+  // The declarations after the shorthand decide the result: a write
+  // stores a new declaration object, so the same objects give the same
+  // value (cached per accessor or getPropertyValue; #264 item 78).
+  const own = s.decls.get(name);
+  const reads = accessor ? accessorReads : propertyReads;
+  const cached = reads.get(own);
+  if (cached !== undefined) {
+    // (compared in place: a hit allocates nothing)
+    let k = 0;
+    let same = true;
+    seen = false;
+    for (const decl of s.decls.values())
+      if (decl === own) seen = true;
+      else if (seen && cached.after[k++] !== decl) {
+        same = false;
+        break;
+      }
+    if (same && k === cached.after.length) return cached.value;
+  }
+  const after = [];
+  seen = false;
+  for (const decl of s.decls.values())
+    if (decl === own) seen = true;
+    else if (seen) after.push(decl);
+  const out = recompose(s, name, value, accessor, modern, longhand, sub);
+  reads.set(own, { after, value: out });
+  return out;
+}
+const accessorReads = new WeakMap();
+const propertyReads = new WeakMap();
+function recompose(s, name, value, accessor, modern, longhand, sub) {
+  if (name === 'flex') return composeShorthand(s.decls, 'flex') || value;
+  if (name === 'font') return (accessor && composeFont(s.decls)) || value;
+  if (name === 'border') {
+    if (modern) return longhand ? '' : value;
+    return sub && !longhand ? composeBorder(s.decls, 'border-top') || value : value;
+  }
+  // border-width, -style, -color: 27 and later only; a border side
+  if (BORDER_SUBS.has(name)) return modern ? composeBorder(s.decls, name) || value : value;
+  return modern ? '' : composeBorder(s.decls, name) || value;
+}
+// font from its longhands, as jsdom's accessor writes it (normal parts
+// left out, a spaced slash before the line height).
+function composeFont(decls) {
+  const get = (longhand) => decls.get(longhand)?.value ?? fromShorthand(decls, longhand);
+  const size = get('font-size');
+  const family = get('font-family');
+  if (!size || !family) return '';
+  const style = get('font-style');
+  const caps = get('font-variant-caps');
+  const weight = get('font-weight');
+  const height = get('line-height');
+  return [
+    style && style !== 'normal' ? style : '',
+    caps === 'small-caps' ? caps : '',
+    weight && weight !== 'normal' ? weight : '',
+    size,
+    height && height !== 'normal' ? `/ ${height}` : '',
+    family,
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
 
 // Shorthands whose longhands a declaration block reads through them, as in
@@ -5029,6 +5138,7 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
     for (const n of RESETS[name]) removed = s.decls.delete(n) || removed;
     if (removed) {
       s.decls.set(name, { value: text, important });
+      if (RECOMPOSED_LONGHANDS.has(name)) s.decls.later = true;
       reindex(style);
       sync(style);
       return;
@@ -5036,6 +5146,7 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
   }
   if (cleared) {
     s.decls.set(name, { value: text, important });
+    if (RECOMPOSED_LONGHANDS.has(name)) s.decls.later = true;
     reindex(style);
     sync(style);
     return;
@@ -5044,6 +5155,7 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
   if (old && old.value === text && old.important === important) return;
   if (old === undefined && MERGEABLE.has(name)) s.decls.mergeable = true;
   s.decls.set(name, { value: text, important });
+  if (RECOMPOSED_LONGHANDS.has(name)) s.decls.later = true;
   if (old === undefined) defineIndex(style, s.indexed++, name);
   sync(style);
 }
@@ -5141,7 +5253,7 @@ function composedValue(style, name) {
     return isLegacyMode(s.mode) && s.surface?.colors !== 'css2'
       ? boxAccessorValue(s.decls, name)
       : boxValue(s.decls, name);
-  const value = valueOf(style, name);
+  const value = readShorthand(style, name, true);
   // jsdom 27 and 28: the background accessor reads a layer without an
   // image as its color alone (background: red repeat-x is red; fixed is
   // ''), getPropertyValue() and cssText as written (black box, 27.4.0 and
@@ -5178,6 +5290,19 @@ function styleAccessor(name, via = 'accessor') {
       configurable: true,
     };
   }
+  if (RECOMPOSED_PARTS.has(name))
+    return {
+      get() {
+        return readShorthand(this, name, true);
+      },
+      set(value) {
+        const s = styleState(this);
+        if (s.computed) writeComputed(s, name, value);
+        else setDeclaration(this, name, value, '', via);
+      },
+      enumerable: true,
+      configurable: true,
+    };
   return {
     get() {
       return valueOf(this, name);
@@ -5284,7 +5409,7 @@ const LEGACY_GROUPS = {
 };
 const LEGACY_SHARED = {
   getPropertyValue(name) {
-    return valueOf(this, propertyName(name));
+    return readShorthand(this, propertyName(name), false);
   },
   getPropertyPriority(name) {
     return priorityOf(this, name);
@@ -5387,7 +5512,7 @@ export const CSS_INTERFACES = [
       [Symbol.iterator]: Array.prototype.values,
       getPropertyValue(name) {
         if (name === undefined && arguments.length === 0) tooFew('getPropertyValue', 1, 0);
-        return valueOf(this, propertyName(name));
+        return readShorthand(this, propertyName(name), false);
       },
       getPropertyPriority(name) {
         if (name === undefined && arguments.length === 0) tooFew('getPropertyPriority', 1, 0);

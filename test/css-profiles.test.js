@@ -3978,3 +3978,61 @@ parity(
   },
   { jsdom: 26 },
 );
+
+// A shorthand read after one of its longhands is written (phase 2 of #264
+// item 78; black box, 26.1.0 to 30.1.3). jsdom 27 and later read flex and
+// border-width, -style and -color from the current longhands, in the
+// accessor and getPropertyValue (flex: 1 1 0% then flexGrow = 2 is 2 1 0%;
+// border-width: 1px then borderTopWidth = 2px is 2px 1px 1px), a border
+// or a border side as '' once a side's longhand follows, and font from
+// them in the accessor only (getPropertyValue stays as written). jsdom 26
+// recomposes flex, font, a border side and border (from border-width,
+// -style or -color) in the accessor only. border after border-color or
+// border-width in 27 and later, and background, are not modeled.
+for (const jsdom of [26, 27, 28, 29, 30])
+  parity(
+    `style: a shorthand read after one of its longhands is written (jsdom ${jsdom}, #264 item 78)`,
+    (w) => {
+      const camel = (n) => n.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+      const cases = [
+        ['flex', '1 1 0%', 'flex-grow', '2'],
+        ['flex', '1', 'flex-basis', '10px'],
+        ['flex', '1 1 0%', 'flex-shrink', '3'],
+        ['border-top', '1px solid red', 'border-top-color', 'blue'],
+        ['border-left', '1px solid red', 'border-left-width', '3px'],
+        ['border', '1px solid red', 'border-top-color', 'blue'],
+        ['border-width', '1px', 'border-top-width', '2px'],
+        ['border-width', '1px 2px', 'border-left-width', '3px'],
+        ['border-color', 'red', 'border-left-color', 'blue'],
+        ['border-style', 'solid', 'border-top-style', 'dashed'],
+        ['font', '12px Arial', 'font-size', '14px'],
+        ['font', '12px Arial', 'font-family', 'Times'],
+        ['font', 'bold 12px/1.5 Arial', 'font-style', 'italic'],
+        ['margin', '1px', 'margin-top', '2px'],
+        ['flex', '1 1 0%', 'width', '2px'],
+      ];
+      if (jsdom === 26)
+        cases.push(
+          ['border', '1px solid red', 'border-color', 'blue'],
+          ['border', '1px solid red', 'border-width', '2px'],
+        );
+      return cases.map(([shorthand, value, longhand, longValue]) => {
+        const e = w.document.createElement('div');
+        e.style[camel(shorthand)] = value;
+        e.style[camel(longhand)] = longValue;
+        const a = w.document.createElement('div');
+        a.style.setProperty(shorthand, value);
+        a.style.setProperty(longhand, longValue);
+        return [
+          shorthand,
+          value,
+          longhand,
+          e.style[camel(shorthand)],
+          e.style.getPropertyValue(shorthand),
+          a.style[camel(shorthand)],
+          a.style.getPropertyValue(shorthand),
+        ];
+      });
+    },
+    { jsdom },
+  );
