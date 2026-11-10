@@ -1734,7 +1734,7 @@ const MATH_CONSTANTS = {
   '-infinity': -Infinity,
   nan: NaN,
 };
-const MATH_NUMBER = /[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?(?![\w%.])/iy;
+const MATH_NUMBER = /[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?(?![\w%.])/iy;
 const MATH_NAME = /-?[a-z]+/iy;
 function jsdom26NumberMath(value) {
   let i = 0;
