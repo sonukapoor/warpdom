@@ -1460,6 +1460,12 @@ parity(
       '.0 Arial',
       '0. Arial',
       '0e1 Arial',
+      // (an exponent with a + or a leading zero is invalid, and a value
+      // with var() is kept as written; #306 review)
+      '0e+1 Arial',
+      '0e01 Arial',
+      '0e-01 Arial',
+      '0 Arial, var(--f)',
       // (leading zeros are invalid; a family named Large is no size)
       '00 Arial',
       '000 serif',

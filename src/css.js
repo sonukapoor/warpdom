@@ -1545,8 +1545,11 @@ function jsdom26Rejects(name, value) {
 // leading zeros (00, which jsdom 26 rejects) are left as they are.
 const FONT_KEYWORD_WORD =
   /^(normal|italic|oblique|bold|bolder|lighter|small-caps|(ultra-|extra-|semi-)?(condensed|expanded))$/i;
-const ONE_ZERO = /^[+-]?(0(\.0*)?|\.0+)(e[+-]?\d+)?$/i;
+// (an exponent as jsdom 26 reads one: no + and no leading zero; #306 review)
+const ONE_ZERO = /^[+-]?(0(\.0*)?|\.0+)(e-?(0|[1-9]\d*))?$/i;
 function jsdom26ZeroSize(value) {
+  // (a value with var() is kept as written; #306 review)
+  if (hasVarFunction(value)) return value;
   const words = fontWords(value);
   for (let i = 0; i < words.length; i++) {
     const [word, at] = words[i];
