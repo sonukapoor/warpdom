@@ -4974,6 +4974,16 @@ the end of an escape.
 Seventh review: a backslash before a line break escapes nothing (`a\`
 LF `url(a"b) !foo` has a url() and a top-level `!foo`), and CR LF ends a
 hex escape as one whitespace (`\61` CR LF `url(` is one name).
+Eighth review: jsdom 30's end-of-text escape (`a !important\` at the very
+end escapes U+FFFD) was also taken for a backslash before a line break
+the trim removed (`a !important\` LF); only a backslash that ends the raw
+text counts now.
+Ninth review (black box, 27.4.0 to 30.1.3): a backslash before a space
+or tab escapes it, so `--x: a !b\<space>` is the stray `!b\ ` and reads
+`--x: a !important`; the trim had left a bare backslash and the
+declaration was dropped (main kept `a !b\`). jsdom 27 and 28 trim the
+text first, so there the last declaration's escape is gone and it is
+dropped (`--x: a !b\ ; left: 1px` is important in all four).
 
 ## 2026-11-08: keywords and units in lowercase, jsdom 26 (branch fix/264-jsdom26-keyword-case, #264 item 46)
 

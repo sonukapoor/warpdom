@@ -3239,6 +3239,15 @@ function escapedAt(text, i) {
   while (j > 0 && text.charCodeAt(j - 1) === 92) j--;
   return (i - j) % 2 === 1;
 }
+// Whether text's trailing whitespace starts with an escaped space or tab
+// (a\<space>: the trim leaves a backslash that escaped something).
+function escapesTrimmed(text) {
+  let k = text.length;
+  while (k > 0 && isCssSpace(text.charCodeAt(k - 1))) k--;
+  if (k === text.length) return false;
+  const c = text.charCodeAt(k);
+  return (c === 32 || c === 9) && escapedAt(text, k);
+}
 function strayBang(value, eofEscape = false) {
   let bang = -1;
   const closers = []; // the closer each open block waits for
@@ -3552,8 +3561,16 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     }
     if (strays && value.includes('!')) {
       // (a backslash at the very end only: the value is trimmed, and one
-      // before a line break escapes nothing; #293 review)
-      const at = strayBang(value, mode === 'spec' && part.charCodeAt(part.length - 1) === 92);
+      // before a line break escapes nothing; #293 review. One before a
+      // space or tab the trim took escapes it: a !b\<space>, except at the
+      // end of the text in jsdom 27 and 28, which trim the text first;
+      // #293 review)
+      const pre29 = mode === 'jsdom27' && !surface?.key?.startsWith('jsdom29');
+      const at = strayBang(
+        value,
+        (mode === 'spec' && part.charCodeAt(part.length - 1) === 92) ||
+          ((!pre29 || index < list.length - 1) && escapesTrimmed(part)),
+      );
       if (at === -2 || (at !== -1 && important)) continue;
       if (at !== -1) {
         important = true;

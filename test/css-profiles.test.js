@@ -1257,6 +1257,14 @@ for (const jsdom of [27, 28, 29, 30])
           'a !important\\\f',
           'a\\\n!important\\\n',
           'a !important\\',
+          // (an escaped space or tab the trim takes stays escaped, except at
+          // the end of the text in jsdom 27 and 28; #293 review)
+          'a !b\\ ',
+          'a !b\\\t',
+          'a !important\\ ',
+          'a !b\\  ',
+          'a !b\\ ; left: 1px',
+          'a !b\\ ;',
         ].map((raw) => {
           const value = name === 'color' ? raw.replace(/^a\b/, 'red') : raw;
           const el = w.document.createElement('div');
