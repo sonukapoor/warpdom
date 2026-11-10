@@ -4636,6 +4636,19 @@ The rule is a model fitted to the measured values (the 25 test rows and
 more probes), not jsdom's code; a value it misses would be a parity
 failure.
 
+## 2026-11-09: a family list with var() kept as written, jsdom 26 (branch fix/264-jsdom26-family-var, #264 item 62)
+
+Black box, 26.1.0: a `font-family` or `font` value with var() (as jsdom
+finds it: at the start, or after whitespace or `(`) is kept as written,
+its spacing around commas too: `var(--f),x`, `x , var(--f)`, `x,
+var(--f)`, `x,<TAB>var(--f)`, `var(--f) ,x`, `x,(var(--f))`, `12px x ,
+var(--f)`, `var(--a) x,y`. warpdom wrote `, ` between the families.
+serializeDeclared returns such a value as written in jsdom 26 mode.
+Left (#264 item 95): `,var(` is no var() to jsdom, and the family parser
+it then uses drops one-letter families (`x,var(--f)`, `Arial,y` is
+`Arial`) and writes the rest with `, ` (`Arial,var(--f)`); warpdom drops
+those lists.
+
 ## 2026-11-09: font family names as jsdom 26 reads them (branch fix/264-jsdom26-multiword-family, #264 items 74 and 95)
 
 Black box, 26.1.0: jsdom 26 reads a family list with a parser of its own.
