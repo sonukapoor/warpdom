@@ -1590,9 +1590,13 @@ function jsdom26Families(name, value) {
     // (font keeps an empty family: 12px ab, is 12px ab, )
     if (item === '' && name === 'font') ok = true;
     else if (item === '') ok = false;
-    else if (item[0] === '"' || item[0] === "'")
-      ok = stringsClosed(item) && /^("[^"]*"|'[^']*')$/.test(item.replace(/\\./g, ''));
-    else if (/^var\(/i.test(item) || GENERIC_FAMILIES.has(item.toLowerCase())) ok = true;
+    else if (item[0] === '"' || item[0] === "'") {
+      if (stringsClosed(item) && /^("[^"]*"|'[^']*')$/.test(item.replace(/\\./g, ''))) {
+        kept.push(jsdom26String(item));
+        continue;
+      }
+      ok = false;
+    } else if (/^var\(/i.test(item) || GENERIC_FAMILIES.has(item.toLowerCase())) ok = true;
     else {
       const words = item.split(/[ \t\n\r\f]+/);
       ok = words.length === 1 ? JSDOM26_ONE_WORD.test(item) : words.every((word) => JSDOM26_WORD.test(word));
@@ -1607,6 +1611,14 @@ function jsdom26Families(name, value) {
     else if (i === 0 || name === 'font') return null;
   }
   return prefix + kept.join(', ');
+}
+// A family string as jsdom 26 writes it again: in double quotes, each
+// escape's backslash dropped and the character after it kept (a line break
+// and a hex digit too: "A\41 B" is "A41 B"), a quote or backslash in the
+// name escaped ('A"B' is "A\"B"); black box, 26.1.0, #264 item 92.
+function jsdom26String(item) {
+  const name = item.slice(1, -1).replace(/\\([\s\S])/g, '$1');
+  return `"${name.replace(/["\\]/g, '\\$&')}"`;
 }
 // A family list: an unquoted generic family in lowercase, the rest as written.
 function familiesInCase(value) {

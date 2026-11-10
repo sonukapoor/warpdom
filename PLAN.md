@@ -4633,6 +4633,23 @@ kept it in font too. onceFamilies wraps quotedFamilies for font. Bench
 properties (`font-family: A, A` is `""`; with #302's family parser).
 The long-family-list timing test matches the shorter font now.
 
+## 2026-11-10: family strings in double quotes, escapes dropped, jsdom 26 (branch fix/264-jsdom26-family-escaped-newline, #264 item 92)
+
+Black box, 26.1.0, font-family and font, setProperty and the style
+attribute: jsdom 26 writes a family string again in double quotes, each
+escape's backslash dropped and the character after it kept, a quote or
+backslash in the name escaped: 'Open Sans', serif is "Open Sans", serif;
+"A\<LF>B" is "A<LF>B"; "A\41 B" is "A41 B" (no hex escapes); 'A"B' is
+"A\"B"; "A\\B" stays "A\\B". warpdom kept every string as written,
+single quotes too (jsdom 25 and 27 to 30.1.3 already matched: 25 keeps
+single quotes, 27 and later write double quotes). jsdom26String does it
+in jsdom26Families, for a string that passes its checks.
+
+Left in item 92: a line break that is not escaped. In font-family, "A<LF>B"
+alone is "A B", and with another family after it the value is dropped. In
+font, it is "A B" (12px "A<LF>B", serif). warpdom keeps the line break in
+all of them, on main too.
+
 ## 2026-11-09: keywords jsdom 26 takes in some properties (branch fix/264-jsdom26-keyword-sets, #264 item 77, first part)
 
 Black box, 26.1.0, setProperty and the style attribute: jsdom 26 checks
