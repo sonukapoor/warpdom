@@ -4105,6 +4105,65 @@ for (const jsdom of [26, 27, 28, 29, 30])
           t.borderColor = 'currentcolor';
           return [s.border, t.border];
         };
+      // jsdom 26 reads border after border-width, -style or -color as the
+      // parts written, a none style left out (#313 review). (borderStyle =
+      // 'none' after another style is a listed difference: jsdom 26 clears
+      // the style there.)
+      if (jsdom === 26)
+        scenarios.borderWrittenParts = (s) => {
+          const subs = [
+            ['borderWidth', 'medium'],
+            ['borderWidth', 'thin'],
+            ['borderWidth', '1px 2px'],
+            ['borderStyle', 'solid'],
+            ['borderStyle', 'dotted solid'],
+            ['borderColor', 'currentcolor'],
+            ['borderColor', 'blue'],
+            ['borderColor', 'red blue'],
+          ];
+          const out = [];
+          for (const border of [
+            'red',
+            'solid',
+            '1px',
+            '1px solid red',
+            'medium none currentcolor',
+            'none blue',
+            'none',
+          ])
+            for (const [a, x] of subs)
+              for (const [b, y] of subs) {
+                const t = w.document.createElement('div').style;
+                t.border = border;
+                t[a] = x;
+                t[b] = y;
+                out.push(t.border);
+                // (a sub-shorthand before border: none, which jsdom 26
+                // removes, is not modeled yet)
+                if (border === 'none') continue;
+                const u = w.document.createElement('div').style;
+                u[b] = y;
+                u.border = border;
+                u[a] = x;
+                out.push(u.border);
+              }
+          // (no border declared: the accessor reads the sub-shorthands)
+          for (const seq of [
+            [['borderWidth', 'thin']],
+            [['borderColor', 'blue']],
+            [
+              ['borderWidth', 'thin'],
+              ['borderColor', 'blue'],
+            ],
+            [['borderWidth', '1px 2px']],
+            [['borderTopWidth', '1px']],
+          ]) {
+            const t = w.document.createElement('div').style;
+            for (const [k, v] of seq) t[k] = v;
+            out.push(t.border, t.getPropertyValue('border'));
+          }
+          return out;
+        };
       return Object.entries(scenarios).map(([name, f]) => [name, f(w.document.createElement('div').style)]);
     },
     { jsdom },

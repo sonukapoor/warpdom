@@ -4571,7 +4571,14 @@ for (const parts of RECOMPOSED_PARTS.values()) for (const n of parts) RECOMPOSED
 function readShorthand(style, name, accessor) {
   const s = styleState(style);
   const value = stateValue(s, name);
-  if (s.decls.later !== true || s.computed || value === '') return value;
+  if (s.decls.later !== true || s.computed) return value;
+  // (jsdom 26's border accessor with no border declared reads
+  // border-width, -style and -color: border-width: thin is thin; #313
+  // review)
+  if (value === '')
+    return name === 'border' && accessor && s.mode === 'jsdom26' && s.surface?.colors !== 'css2'
+      ? legacyBorder(s.decls, '')
+      : value;
   const parts = RECOMPOSED_PARTS.get(name);
   if (parts === undefined) return value;
   const modern = s.mode === 'jsdom27' || s.mode === 'spec';
@@ -4629,22 +4636,33 @@ const propertyReads = new WeakMap();
 // border as jsdom 26's accessor reads it after border-width, -style or
 // -color: each part from that shorthand, else border's own, initial parts
 // left out (1px solid red then border-color: blue is 1px solid blue).
+// jsdom 26 reads border, after border-width, -style or -color, as the
+// parts written: border's own words, each replaced by a sub-shorthand's
+// value, a none style left out (red, then border-width: medium and
+// border-color: currentcolor, is medium currentcolor; black box, 26.1.0,
+// #313 review). '' (nothing left) reads border as written.
 function legacyBorder(decls, value) {
-  const own = new Map(expand('border', value, decls.legacyFont));
-  const parts = [];
-  for (let i = 0; i < BORDER_PARTS.length; i++) {
-    const part = BORDER_PARTS[i];
-    const v = decls.get(`border-${part}`)?.value ?? own.get(`border-top-${part}`);
-    if (!v) return '';
-    if (v.toLowerCase() !== BORDER_INITIAL[i]) parts.push(v);
+  let width = '',
+    style = '',
+    color = '';
+  if (value !== '') {
+    const words = segments(value);
+    for (let i = 0; i < words.length; i += 2) {
+      const word = words[i];
+      if (word === '') continue;
+      if (BORDER_STYLE.test(word)) style = word;
+      else if (BORDER_WIDTH.test(word)) width = word;
+      else color = word;
+    }
   }
-  if (parts.length) return parts.join(' ');
-  // (every part initial: the last of border-width, -style and -color
-  // written, as jsdom 26 reads it: 1px then border-width: medium is medium,
-  // red then border-color: currentcolor is currentcolor; #313 review)
-  let last = '';
-  for (const [n, decl] of decls) if (BORDER_SUBS.has(n)) last = decl.value;
-  return last || own.get('border-top-width');
+  width = decls.get('border-width')?.value ?? width;
+  style = decls.get('border-style')?.value ?? style;
+  color = decls.get('border-color')?.value ?? color;
+  if (style.toLowerCase() === 'none') style = '';
+  let out = width;
+  if (style) out = out ? `${out} ${style}` : style;
+  if (color) out = out ? `${out} ${color}` : color;
+  return out;
 }
 function recompose(s, name, value, accessor, modern, longhand, sub) {
   if (name === 'flex') return composeShorthand(s.decls, 'flex') || value;
