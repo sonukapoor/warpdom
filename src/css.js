@@ -1736,8 +1736,12 @@ const MATH_CONSTANTS = {
 };
 const MATH_NUMBER = /[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?(?![\w%.])/iy;
 const MATH_NAME = /-?[a-z]+/iy;
+// (nesting deeper than MATH_DEPTH is left as written: the recursion would
+// overflow the stack on calc((((...; #307 review)
+const MATH_DEPTH = 100;
 function jsdom26NumberMath(value) {
   let i = 0;
+  let depth = 0;
   const skip = () => {
     while (i < value.length && isCssSpace(value.charCodeAt(i))) i++;
   };
@@ -1753,8 +1757,10 @@ function jsdom26NumberMath(value) {
     skip();
     const c = value[i];
     if (c === '(') {
+      if (++depth > MATH_DEPTH) return null;
       i++;
       const v = sum();
+      depth--;
       return v !== null && close() ? v : null;
     }
     MATH_NUMBER.lastIndex = i;
@@ -1776,6 +1782,7 @@ function jsdom26NumberMath(value) {
   }
   function call(fn) {
     if (fn !== 'calc' && fn !== 'min' && fn !== 'max' && fn !== 'clamp') return null;
+    if (++depth > MATH_DEPTH) return null;
     const args = [sum()];
     skip();
     while (args.at(-1) !== null && value[i] === ',') {
@@ -1783,6 +1790,7 @@ function jsdom26NumberMath(value) {
       args.push(sum());
       skip();
     }
+    depth--;
     if (args.includes(null) || !close()) return null;
     if (fn === 'calc') return args.length === 1 ? args[0] : null;
     if (fn === 'clamp') return args.length === 3 ? Math.max(args[0], Math.min(args[1], args[2])) : null;

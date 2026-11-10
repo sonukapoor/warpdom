@@ -3809,6 +3809,17 @@ parity(
 // jsdom 26's lowercasing reads a long malformed value in one pass: a
 // regular expression retried from every url( without a ) and every quote
 // that does not close took 558 ms on 20,000 url( (#289 review).
+// Deep nesting in jsdom 26's flex-grow calc() is kept as written, not a
+// stack overflow (jsdom 26 throws a RangeError there; #307 review).
+test('style: deeply nested calc() in flex-grow does not throw (jsdom 26, #264 item 71)', () => {
+  const e = createWindow({ jsdom: '26.1.0' }).document.createElement('div');
+  const deep = `calc(${'('.repeat(20000)}1${')'.repeat(20001)}`;
+  e.style.setProperty('flex-grow', deep);
+  assert.equal(e.style.flexGrow, deep);
+  e.style.setProperty('flex-grow', `calc(${'min('.repeat(20000)}1${')'.repeat(20001)}`);
+  e.style.setProperty('flex-shrink', `calc(${'('.repeat(50)}1${')'.repeat(51)}`);
+  assert.equal(e.style.flexShrink, 'calc(1)');
+});
 test('style: jsdom 26 lowercases a long malformed value quickly (#264 item 46)', () => {
   const d = createWindow({ jsdom: '26.1.0' }).document;
   for (const [name, value] of [
