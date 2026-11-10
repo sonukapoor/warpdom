@@ -4724,6 +4724,42 @@ on every read) and 3.5x (an entries scan allocating per read). Style
 reads are not in bench:hot; the slowdown buys jsdom's values for a
 shorthand that a later longhand changed. cold load 27.6 ms.
 
+Second review (#313, Copilot): jsdom 26's border accessor was wrong in
+456 of 630 write orders surveyed (border, then two or three of
+border-width, -style and -color). jsdom 26 reads the parts written:
+border's own words, each replaced by a sub-shorthand's value, a none
+style left out (red, then border-width: medium and border-color:
+currentcolor, is medium currentcolor); nothing left reads border as
+written. With no border declared, the accessor reads the sub-shorthands
+(border-width: thin is thin; on main too). Now 0 of 1,397 differ, apart
+from two write-side gaps on main, left for later: borderStyle = 'none'
+after another style clears the style in jsdom 26 (listed in
+differences.md), and border: none removes earlier border declarations in
+jsdom 26 (not listed yet; its own PR). Cost (b78j26.mjs: b78 in the
+jsdom 26 profile with border-color instead of border, so every border
+read now composes): 151.5 to 159.2 ms (+5%), the price of a value where
+'' was wrong; b78.mjs within noise (163.8 and 167.0 ms).
+
+## 2026-11-10: a unitless zero next to a function in a box shorthand, jsdom 26 and 30 (branch fix/zero-beside-function, 1.0 triage)
+
+Found in the 1.0 triage of the open parity issues (common in real CSS:
+margin: 0 calc(50% - 10px) centers a block). Black box, 26.1.0 and
+30.1.3, setProperty and the style attribute: in margin, padding,
+border-width, border-spacing and background-position, a unitless zero
+next to a function is 0px, as it is alone (0 calc(50% - 10px) is 0px
+calc(50% - 10px)); jsdom 30 also drops repeated sides of margin and
+padding then (0 calc(10%) 0 is 0px calc(10%)). warpdom kept both as
+written once the value had a function. zerosBesideFunctions does it in
+serializeDeclared, for values with a function and no var(); only those
+values pay for it.
+
+Left, to be listed in docs/differences.md: calc() simplification inside
+these values (calc(1px + 2%) is calc(2% + 1px), calc(1px + 2px)
+calc(3px) in jsdom 26 and later, in a longhand too). jsdom 27 to 29
+reject most such lists (1px calc(10%) 2px; #265 item 9). jsdom 23 to 25
+write the zero as 0px too, but jsdom 20 and 22 keep it, and 22 and 23
+share warpdom's mode.
+
 ## 2026-11-09: keywords jsdom 26 takes in some properties (branch fix/264-jsdom26-keyword-sets, #264 item 77, first part)
 
 Black box, 26.1.0, setProperty and the style attribute: jsdom 26 checks
