@@ -1310,6 +1310,11 @@ const JSDOM26_FAMILIES = [
   '"a\\"b"',
   "'a\\'b'",
   'ab, "a\\"b"',
+  // var( in a string, with a family that fails (#302 review): measured,
+  // x, "var(a)" is dropped and x, "a var(b) c" kept as written.
+  'x, "var(a)"',
+  'Arial, "var(a)", x',
+  'x, "a var(b) c"',
 ];
 // font's families start after the size as jsdom 26 finds it: a zero size
 // (0 x), a size keyword after a family as the size (.0 Arial Large); a
