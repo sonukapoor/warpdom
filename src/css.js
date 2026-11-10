@@ -4638,7 +4638,13 @@ function legacyBorder(decls, value) {
     if (!v) return '';
     if (v.toLowerCase() !== BORDER_INITIAL[i]) parts.push(v);
   }
-  return parts.length ? parts.join(' ') : own.get('border-top-width');
+  if (parts.length) return parts.join(' ');
+  // (every part initial: the last of border-width, -style and -color
+  // written, as jsdom 26 reads it: 1px then border-width: medium is medium,
+  // red then border-color: currentcolor is currentcolor; #313 review)
+  let last = '';
+  for (const [n, decl] of decls) if (BORDER_SUBS.has(n)) last = decl.value;
+  return last || own.get('border-top-width');
 }
 function recompose(s, name, value, accessor, modern, longhand, sub) {
   if (name === 'flex') return composeShorthand(s.decls, 'flex') || value;

@@ -4096,6 +4096,15 @@ for (const jsdom of [26, 27, 28, 29, 30])
           s.borderStyle = 'dashed';
           return [first, s.border];
         };
+      if (jsdom === 26)
+        scenarios.borderInitialParts = (s) => {
+          s.border = '1px';
+          s.borderWidth = 'medium';
+          const t = w.document.createElement('div').style;
+          t.border = 'red';
+          t.borderColor = 'currentcolor';
+          return [s.border, t.border];
+        };
       return Object.entries(scenarios).map(([name, f]) => [name, f(w.document.createElement('div').style)]);
     },
     { jsdom },
