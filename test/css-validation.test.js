@@ -1218,7 +1218,8 @@ test('gradient names not in lowercase with cssstyle 4.2 to 4.5 (#264)', () => {
 // ends found so far at each repetition (a font with 1,000 families after a
 // font-family write took 3.6 s, 2,000 took 27 s; #289 review).
 test('declarations: a long family list is matched quickly', () => {
-  const families = `${'A,'.repeat(2000)}SERIF`;
+  // (two letters: jsdom 26 takes no one-letter family, #264 item 74)
+  const families = `${'Ab,'.repeat(2000)}SERIF`;
   for (const jsdom of ['26.1.0', '30.1.3', undefined]) {
     const d = createWindow(jsdom ? { jsdom } : {}).document;
     const e = d.createElement('div');
@@ -1228,9 +1229,9 @@ test('declarations: a long family list is matched quickly', () => {
     const elapsed = performance.now() - start;
     assert.ok(elapsed < 500, `${jsdom ?? 'latest'}: ${elapsed} ms`);
     // (and the list was matched, not given up on: both declarations kept;
-    // font keeps A once from jsdom 27, #264 item 86)
-    assert.match(e.style.getPropertyValue('font-family'), /^A, ?(A, ?)*serif$/i, `${jsdom ?? 'latest'}: font-family`);
-    assert.match(e.style.getPropertyValue('font'), /^12px A, ?(A, ?)*serif$/i, `${jsdom ?? 'latest'}: font`);
+    // font keeps Ab once from jsdom 27, #264 item 86)
+    assert.match(e.style.getPropertyValue('font-family'), /^Ab, ?(Ab, ?)*serif$/i, `${jsdom ?? 'latest'}: font-family`);
+    assert.match(e.style.getPropertyValue('font'), /^12px Ab, ?(Ab, ?)*serif$/i, `${jsdom ?? 'latest'}: font`);
   }
 });
 
