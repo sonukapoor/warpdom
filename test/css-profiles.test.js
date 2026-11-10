@@ -1434,6 +1434,56 @@ parity(
   { jsdom: 26 },
 );
 
+// jsdom 26 reads a unitless zero size after keywords alone as 0px, and
+// sets the longhands from it (black box, 26.1.0, #264 item 83). A number
+// before it, or a line height after it, is left (item 83); font-variant
+// and small-caps are item 97.
+parity(
+  'style: a unitless zero font size after keywords is 0px (jsdom 26, #264 item 83)',
+  (w) =>
+    [
+      '0 Arial',
+      '0',
+      'BOLD 0 SERIF',
+      'italic 0 Arial',
+      'normal 0 Arial',
+      'condensed 0 Arial',
+      'italic bold 0 Arial',
+      'bold 0',
+      '0 bold',
+      '0 serif',
+      '0 "A B", serif',
+      '0.0 Arial',
+      '-0 Arial',
+      '+0 Arial',
+      '0e0 Arial',
+      '.0 Arial',
+      '0. Arial',
+      '0e1 Arial',
+      // (an exponent with a + or a leading zero is invalid, and a value
+      // with var() is kept as written; #306 review)
+      '0e+1 Arial',
+      '0e01 Arial',
+      '0e-01 Arial',
+      '0 Arial, var(--f)',
+      // (leading zeros are invalid; a family named Large is no size)
+      '00 Arial',
+      '000 serif',
+      '0 Arial, Large',
+    ].map((v) => {
+      const out = [v];
+      for (const set of ['property', 'attribute']) {
+        const e = w.document.createElement('div');
+        if (set === 'property') e.style.setProperty('font', v);
+        else e.setAttribute('style', `font: ${v}`);
+        const s = e.style;
+        out.push([s.getPropertyValue('font'), s.fontStyle, s.fontWeight, s.fontSize, s.lineHeight, s.fontFamily]);
+      }
+      return out;
+    }),
+  { jsdom: 26 },
+);
+
 // A family given twice in font is left out after its first (as written:
 // "A" and A, a and A differ; Open Sans and Open  Sans do not); font-family
 // keeps it. Black box, 27.4.0 to 30.1.3 (#264 item 86).
@@ -3956,3 +4006,51 @@ test('style: long digit runs and many comments are read quickly (#224, #264)', (
     assert.ok(elapsed < 150, `${jsdom} ${name}: ${elapsed} ms`);
   }
 });
+
+// A unitless zero next to a function in margin, padding, border-width,
+// border-spacing and background-position is 0px, as alone (jsdom 26 and
+// 30.1.3: margin: 0 calc(50% - 10px) is 0px calc(50% - 10px)); in jsdom
+// 30 margin and padding drop repeated sides then too (0 calc(10%) 0 is
+// 0px calc(10%)). calc() itself is compared only where jsdom keeps it as
+// written (calc(50% - 10px), calc(10%); its simplification is not
+// modeled). jsdom 27 to 29 reject most such lists (#265 item 9).
+for (const jsdom of [26, 30])
+  parity(
+    `style: a unitless zero next to a function in a box shorthand (jsdom ${jsdom})`,
+    (w) => {
+      const out = [];
+      for (const [name, v] of [
+        ['margin', '0 calc(50% - 10px)'],
+        ['margin', 'calc(50% - 10px) 0'],
+        ['margin', '0 auto calc(10%)'],
+        ['margin', '0  calc(10%)'],
+        ['padding', '0 calc(10%) 0'],
+        ['padding', '0 calc(10%) 0 calc(10%)'],
+        ['padding', 'calc(10%) 0 0 0'],
+        ['padding', '0 calc(10%)'],
+        ['margin', '0 calc(10%) 0 1px'],
+        ['border-width', '0 calc(10px)'],
+        ['border-spacing', '0 calc(10px)'],
+        ['background-position', '0 calc(10%)'],
+        ['margin', '0.0 calc(10%)'],
+        ['margin', '-0 calc(10%)'],
+        ['margin', '0 1px'],
+        // (several layers, jsdom 30: jsdom 26 rejects any list there;
+        // #310 review)
+        ...(jsdom === 30
+          ? [
+              ['background-position', 'calc(10%) 0, calc(10%) 0'],
+              ['background-position', 'calc(10%) 0,calc(10%) 0'],
+            ]
+          : []),
+      ]) {
+        const a = w.document.createElement('div');
+        a.style.setProperty(name, v);
+        const b = w.document.createElement('div');
+        b.setAttribute('style', `${name}: ${v}`);
+        out.push([name, v, a.style.getPropertyValue(name), a.style.cssText, b.style.getPropertyValue(name)]);
+      }
+      return out;
+    },
+    { jsdom },
+  );
