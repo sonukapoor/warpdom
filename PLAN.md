@@ -4692,6 +4692,16 @@ longhands (setProperty or the accessors):
   and background (style.background reads blue after background: red and
   background-color: blue).
 
+Review (#313): font-variant is part of font (font then font-variant:
+small-caps reads small-caps 12px Arial, 26 to 30); a border side read
+through border is '' once that side's longhand follows (27 and later;
+the other sides keep their value); jsdom 26's border accessor reads
+border-width, -style and -color over its own parts and ignores a side's
+longhand after them; and a part before the shorthand keeps the shorthand
+as written: a longhand written again in place keeps its position, so
+order can't be told (jsdom 26: fontSize, font, fontSize reads 14px Arial
+there; not modeled, as on main).
+
 readShorthand does it for getPropertyValue and the accessors of these
 shorthands only; cssText is unchanged (phase 3). A write of one of their
 longhands (parseInto, setDeclaration) sets decls.later, so a block
@@ -4707,7 +4717,9 @@ getPropertyValue('margin'), flex, getPropertyValue('flex'), border,
 font): no longhand after a shorthand 70.4 ms on main, 76.4 ms here
 (+8%: the extra function on getPropertyValue and the shorthands'
 accessors); flex-grow after flex on half of them 72.1 and 146.7 ms (those
-reads recompose, about 60 ns each). First tries were 10x (fromShorthand
+reads recompose, about 60 ns each). After the #313 review (the cache
+compares every declaration of the block, not only those after the
+shorthand): 67.9 and 74.2 ms, and 72.2 and 179.2 ms. First tries were 10x (fromShorthand
 on every read) and 3.5x (an entries scan allocating per read). Style
 reads are not in bench:hot; the slowdown buys jsdom's values for a
 shorthand that a later longhand changed. cold load 27.6 ms.

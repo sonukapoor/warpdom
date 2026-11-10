@@ -4036,3 +4036,67 @@ for (const jsdom of [26, 27, 28, 29, 30])
     },
     { jsdom },
   );
+
+// Shorthand reads after writes in other orders (#313 review): a border
+// side read through border is '' once its own longhand follows (jsdom 27
+// and later; the other sides keep their value), font-variant is part of
+// font, a cached read sees a later write, jsdom 26's border accessor reads
+// border-width, -style and -color over its own parts and not a side's
+// longhand, and a part before the shorthand that is written again keeps
+// the shorthand as written (jsdom 27 and later: the shorthand removed it).
+for (const jsdom of [26, 27, 28, 29, 30])
+  parity(
+    `style: shorthand reads after writes in other orders (jsdom ${jsdom}, #264 item 78)`,
+    (w) => {
+      const scenarios = {
+        fontVariant: (s) => {
+          s.font = '12px Arial';
+          s.fontVariant = 'small-caps';
+          const first = s.font;
+          s.fontSize = '14px';
+          return [first, s.font];
+        },
+        flexAgain: (s) => {
+          s.flexGrow = '3';
+          s.flex = '1 1 0%';
+          s.flexGrow = '2';
+          const first = s.flex;
+          s.flexShrink = '4';
+          return [first, s.flex, s.getPropertyValue('flex')];
+        },
+      };
+      if (jsdom > 26) {
+        scenarios.sideThroughBorder = (s) => {
+          s.border = '1px solid red';
+          s.borderTopColor = 'blue';
+          return [s.borderTop, s.getPropertyValue('border-top'), s.borderBottom, s.borderColor, s.border];
+        };
+        scenarios.fontStyleAgain = (s) => {
+          s.fontStyle = 'italic';
+          s.font = '12px Arial';
+          s.fontSize = '14px';
+          const first = s.font;
+          s.fontStyle = 'oblique';
+          return [first, s.font];
+        };
+        scenarios.widthAgain = (s) => {
+          s.borderWidth = '1px';
+          s.borderTopWidth = '2px';
+          const first = s.borderWidth;
+          s.borderTopWidth = '3px';
+          return [first, s.borderWidth];
+        };
+      } else
+        scenarios.borderParts = (s) => {
+          s.borderTopWidth = '2px';
+          s.border = '1px solid red';
+          s.borderColor = 'blue';
+          const first = s.border;
+          s.borderTopWidth = '3px';
+          s.borderStyle = 'dashed';
+          return [first, s.border];
+        };
+      return Object.entries(scenarios).map(([name, f]) => [name, f(w.document.createElement('div').style)]);
+    },
+    { jsdom },
+  );
