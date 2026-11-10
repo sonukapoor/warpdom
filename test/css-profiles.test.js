@@ -1250,6 +1250,13 @@ for (const jsdom of [27, 28, 29, 30])
           // escapes nothing: #293 review)
           '\\61\r\nurl(a") !b")',
           'a\\\nurl(a"b) !foo',
+          // (only a backslash at the very end: one before a line break,
+          // trimmed or not, escapes nothing; #293 review)
+          'a !important\\\n',
+          'a !important\\\r\n',
+          'a !important\\\f',
+          'a\\\n!important\\\n',
+          'a !important\\',
         ].map((raw) => {
           const value = name === 'color' ? raw.replace(/^a\b/, 'red') : raw;
           const el = w.document.createElement('div');

@@ -3551,7 +3551,9 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       if (counting) prioritized = true;
     }
     if (strays && value.includes('!')) {
-      const at = strayBang(value, mode === 'spec');
+      // (a backslash at the very end only: the value is trimmed, and one
+      // before a line break escapes nothing; #293 review)
+      const at = strayBang(value, mode === 'spec' && part.charCodeAt(part.length - 1) === 92);
       if (at === -2 || (at !== -1 && important)) continue;
       if (at !== -1) {
         important = true;
