@@ -3012,8 +3012,10 @@ function zerosBesideFunctions(name, value, mode) {
   const words = fontWords(value).map(([word]) => word);
   let zeros = false;
   for (let i = 0; i < words.length; i++)
-    if (ZERO.test(words[i])) {
-      words[i] = '0px';
+    // (a word keeps the comma that ends its layer: calc(10%) 0, ...; #310
+    // review)
+    if (ZERO.test(withoutComma(words[i]))) {
+      words[i] = words[i].endsWith(',') ? '0px,' : '0px';
       zeros = true;
     }
   if (!zeros) return value;

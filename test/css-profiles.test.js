@@ -3957,6 +3957,14 @@ for (const jsdom of [26, 30])
         ['margin', '0.0 calc(10%)'],
         ['margin', '-0 calc(10%)'],
         ['margin', '0 1px'],
+        // (several layers, jsdom 30: jsdom 26 rejects any list there;
+        // #310 review)
+        ...(jsdom === 30
+          ? [
+              ['background-position', 'calc(10%) 0, calc(10%) 0'],
+              ['background-position', 'calc(10%) 0,calc(10%) 0'],
+            ]
+          : []),
       ]) {
         const a = w.document.createElement('div');
         a.style.setProperty(name, v);
