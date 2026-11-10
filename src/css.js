@@ -2943,6 +2943,9 @@ function serializeDeclared(name, value, mode) {
   if (name === 'flex') return isSpecMode(mode) ? flexLonghands(value, true) : flexLonghands(canonicalNumbers(value));
   if (name === 'font' || name === 'font-family') {
     const font = name === 'font';
+    // jsdom 26 keeps a value with var() as written, its spacing too (x ,
+    // var(--f); #264 item 62)
+    if (mode === 'jsdom26' && hasVarFunction(value)) return value;
     if (!isSpecMode(mode)) return familyCommas(font ? serializeFont(canonicalNumbers(value)) : value);
     // jsdom 27 and later keep a value with var() as written: no quotes,
     // no generic-keyword check (#279 review).
