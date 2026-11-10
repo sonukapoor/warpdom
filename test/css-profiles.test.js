@@ -3942,7 +3942,9 @@ test('style: long digit runs and many comments are read quickly (#224, #264)', (
     ['30.1.3', 'margin', `${digits}x ${digits}y`],
     ['30.1.3', 'flex', `${digits}x`],
     ['25.0.1', 'background', `${digits}x red`],
-    ['30.1.3', 'content', `${'/**/'.repeat(20000)}"var(--c)"`],
+    // (100,000 comments: 358 ms with a search per comment, 41 ms
+    // without; #311 review)
+    ['30.1.3', 'content', `${'/**/'.repeat(100000)}"var(--c)"`],
   ]) {
     const w = createWindow({ jsdom });
     const e = w.document.createElement('div');
