@@ -1192,6 +1192,7 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
         if (/[A-Z]/.test(written)) written = jsdom26Case(name, written);
         if (written !== null && JSDOM26_KEYWORD_RULES[name] !== undefined && jsdom26Rejects(name, written))
           written = null;
+        if (written !== null && name === 'font' && written.includes('0')) written = jsdom26ZeroSize(written);
         if (written !== null && (name === 'font-family' || name === 'font')) written = jsdom26Families(name, written);
         // (an integer Number() changes has 16 digits: most values skip this)
         if (written !== null && (written.length >= 16 || JSDOM26_BORDERS.has(name)))
@@ -1580,6 +1581,33 @@ function jsdom26Rejects(name, value) {
   if (rule.only) return !rule.only.test(text);
   if (rule.words) return text.split(/[ \t\n\r\f]+/).some((word) => rule.reject.test(word));
   return rule.reject.test(text);
+}
+// A unitless zero font size after keywords alone, as jsdom 26 reads it:
+// 0px (font: 0 Arial, bold 0 serif; black box, 26.1.0, #264 item 83). A
+// number before it, a line height after it, a size after it before the
+// first comma (0 larger, 0 Arial Large: the zero is a weight there) and
+// leading zeros (00, which jsdom 26 rejects) are left as they are.
+const FONT_KEYWORD_WORD =
+  /^(normal|italic|oblique|bold|bolder|lighter|small-caps|(ultra-|extra-|semi-)?(condensed|expanded))$/i;
+// (an exponent as jsdom 26 reads one: no + and no leading zero; #306 review)
+const ONE_ZERO = /^[+-]?(0(\.0*)?|\.0+)(e-?(0|[1-9]\d*))?$/i;
+function jsdom26ZeroSize(value) {
+  // (a value with var() is kept as written; #306 review)
+  if (hasVarFunction(value)) return value;
+  const words = fontWords(value);
+  for (let i = 0; i < words.length; i++) {
+    const [word, at] = words[i];
+    if (ONE_ZERO.test(word)) {
+      if (words[i + 1]?.[0].startsWith('/')) return value;
+      for (let j = i + 1; j < words.length; j++) {
+        if (FONT_SIZE_WORD.test(withoutComma(words[j][0]))) return value;
+        if (topLevelComma(words[j][0])) break;
+      }
+      return `${value.slice(0, at)}0px${value.slice(at + word.length)}`;
+    }
+    if (!FONT_KEYWORD_WORD.test(word)) return value;
+  }
+  return value;
 }
 // Where font's families start as jsdom 26 reads it (after the size and a
 // line height), or -1 with no size.
@@ -3046,6 +3074,31 @@ const KEEPS_NUMBERS_AS_WRITTEN = { jsdom25: true, jsdom22: true, jsdom20: true }
 const CANONICAL_NUMBERS_PRE_431 = new Set(['opacity', 'flex-grow', 'flex-shrink']);
 // Whitespace other than one space, or a comma (spaced or not).
 const SPACES_TO_COLLAPSE = /\s\s|[\t\n\r\f]|,/;
+// The unitless zeros in a list with a function (margin: 0 calc(50% -
+// 10px)), as jsdom 26 and 30 write them: 0px, as alone; in jsdom 30
+// margin and padding drop repeated sides then too (0 calc(10%) 0 is 0px
+// calc(10%)). A value with var() is left as written (black box, 26.1.0
+// and 30.1.3). jsdom 27 to 29 reject most such lists (#265 item 9).
+function zerosBesideFunctions(name, value, mode) {
+  if (hasVarFunction(value)) return value;
+  const words = fontWords(value).map(([word]) => word);
+  let zeros = false;
+  for (let i = 0; i < words.length; i++)
+    // (a word keeps the comma that ends its layer: calc(10%) 0, ...; #310
+    // review)
+    if (ZERO.test(withoutComma(words[i]))) {
+      words[i] = words[i].endsWith(',') ? '0px,' : '0px';
+      zeros = true;
+    }
+  if (!zeros) return value;
+  if (mode === 'spec' && (name === 'margin' || name === 'padding') && words.length <= 4) {
+    const [top, right = top, bottom = top, left = right] = words;
+    if (left !== right) return `${top} ${right} ${bottom} ${left}`;
+    if (bottom !== top) return `${top} ${right} ${bottom}`;
+    return right !== top ? `${top} ${right}` : top;
+  }
+  return words.join(' ');
+}
 function serializeDeclared(name, value, mode) {
   // Custom properties keep their value as written (CSS Variables 1), as in jsdom.
   if (name.startsWith('--')) return value;
@@ -3115,6 +3168,8 @@ function serializeDeclared(name, value, mode) {
     !value.includes('var(')
   )
     value = collapseSpaces(value);
+  if (ZERO_LISTS.has(name) && (mode === 'jsdom26' || mode === 'spec') && value.includes('('))
+    value = zerosBesideFunctions(name, value, mode);
   if (value.includes('(')) {
     // Gradients: in background and background-image from jsdom 27, and
     // from 28.1 (urlStyle not 'written') a value that is one gradient
