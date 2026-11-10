@@ -3720,6 +3720,16 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     }
     if (MERGEABLE.has(name)) decls.mergeable = true;
     if (isLegacyFont(surface, name)) removeLegacyFont(decls, surface, false);
+    else if (!isLegacyMode(mode)) {
+      const replacing = replacedBy(name, mode);
+      const pre29 = mode === 'jsdom27' && !surface?.key?.startsWith('jsdom29');
+      // From jsdom 29 a border or a side with var() in a style attribute
+      // declares nothing after one of its longhands (cascade.js), so it
+      // replaces nothing (#305 review). An !important border longhand stays
+      // against an !important border too (the second #305 review).
+      if (replacing !== undefined && (sheet || pre29 || !BORDER_SHORTHAND.has(name) || !hasVar(declared)))
+        replaceCovered(decls, replacing, name, sheet ? KEEP_NONE : keepAgainst(name, pre29));
+    }
     decls.set(
       name,
       kept === important || sheet
@@ -4441,6 +4451,69 @@ const RESETS = {
 };
 for (const side of BORDER_SIDES)
   RESETS[`border-${side}`] = [`border-${side}`, `border-${side}-width`, `border-${side}-style`, `border-${side}-color`];
+// jsdom 27 and later store these shorthands as their longhands, so one
+// written after a longhand, or after a smaller shorthand it covers,
+// replaces it (black box, 27.4.0 to 30.1.3, #264 items 78 and 94):
+// border-top-color: red; border: 1px solid blue reads border-top-color
+// blue. background has its own (clearBackground), and background-position
+// is one only from jsdom 30 (mode 'spec').
+const REPLACES = new Map();
+for (const part of BORDER_PARTS) REPLACES.set(`border-${part}`, new Set(BORDER_READS[`border-${part}`]));
+for (const side of BOX_SIDES) REPLACES.set(`border-${side}`, new Set(BORDER_READS[`border-${side}`]));
+// (RESETS.border without border itself: its parts, sides and longhands)
+REPLACES.set('border', new Set([...RESETS.border.slice(1), 'border-image']));
+REPLACES.set('flex', new Set(SHORTHANDS.flex));
+REPLACES.set('font', new Set(['font-style', 'font-variant', 'font-weight', 'font-size', 'line-height', 'font-family']));
+const BG_AXES = new Set(SHORTHANDS['background-position']);
+function replacedBy(name, mode) {
+  if (name !== 'background-position') return REPLACES.get(name);
+  return mode === 'spec' ? BG_AXES : undefined;
+}
+// What a style attribute or cssText keeps against a border shorthand
+// after it (parseInto; black box, 27.4.0 to 30.1.3, #305 review): an
+// !important longhand without var(), and in jsdom 27 and 28 one whose
+// !important was dropped (masked). flex, font and background-position
+// replace them, as does any shorthand from setProperty or in a sheet.
+const KEEP_NONE = 0,
+  KEEP_IMPORTANT = 1,
+  KEEP_MASKED = 2;
+const keepAgainst = (name, pre29) => {
+  if (!name.startsWith('border')) return KEEP_NONE;
+  return pre29 ? KEEP_MASKED : KEEP_IMPORTANT;
+};
+const survives = (decl, keep) =>
+  keep !== KEEP_NONE && ((decl.important && !hasVar(decl.value)) || (keep === KEEP_MASKED && decl.masked === true));
+// Removes what the shorthand name written after it replaces (names). If
+// name is declared already, before another shorthand sharing longhands
+// with it, it is removed too, so that it is declared again last and its
+// value wins (border-color: red; border-top: 1px solid green;
+// border-color: blue reads border-top-color blue: #305 review). Was any
+// removed? (The block's declarations are walked, usually fewer than the
+// names: a write to an empty block does nothing here.)
+function replaceCovered(decls, names, name, keep = KEEP_NONE) {
+  if (decls.size === 0) return false;
+  let removed = false,
+    self = false;
+  for (const n of decls.keys())
+    if (names.has(n)) {
+      if (survives(decls.get(n), keep)) continue;
+      decls.delete(n);
+      removed = true;
+    } else if (n === name) self = true;
+    else if (self && sharesLonghands(name, n)) {
+      decls.delete(name);
+      self = false;
+      removed = true;
+    }
+  return removed;
+}
+function sharesLonghands(name, other) {
+  const longhands = SHORTHANDS[other];
+  return (
+    longhands !== undefined && EXPANDED_SHORTHANDS.has(other) && SHORTHANDS[name].some((l) => longhands.includes(l))
+  );
+}
+
 // (A surface has a legacyFont variant before cssstyle 4.4.)
 const resets = (surface, name, text) =>
   !text.includes('var(') || (name === 'flex' && surface?.legacyFont === undefined);
@@ -4705,7 +4778,9 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
     sync(style);
     return;
   }
-  const cleared = replaces && clearBackground(s.decls);
+  const covered = isLegacyMode(s.mode) ? undefined : replacedBy(name, s.mode);
+  const cleared =
+    (replaces && clearBackground(s.decls)) || (covered !== undefined && replaceCovered(s.decls, covered, name));
   if (isLegacyFont(s.surface, name) && removeLegacyFont(s.decls, s.surface)) reindex(style);
   if (RESETS[name] !== undefined && isLegacyMode(s.mode) && resets(s.surface, name, text)) {
     let removed = false;
