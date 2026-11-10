@@ -3536,6 +3536,10 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     }
     if (MERGEABLE.has(name)) decls.mergeable = true;
     if (isLegacyFont(surface, name)) removeLegacyFont(decls, surface, false);
+    else if (!isLegacyMode(mode)) {
+      const covered = replacedBy(name, mode);
+      if (covered !== undefined) replaceCovered(decls, covered, !sheet && !kept);
+    }
     decls.set(
       name,
       kept === important || sheet
@@ -4257,6 +4261,39 @@ const RESETS = {
 };
 for (const side of BORDER_SIDES)
   RESETS[`border-${side}`] = [`border-${side}`, `border-${side}-width`, `border-${side}-style`, `border-${side}-color`];
+// jsdom 27 and later store these shorthands as their longhands, so one
+// written after a longhand, or after a smaller shorthand it covers,
+// replaces it (black box, 27.4.0 to 30.1.3, #264 items 78 and 94):
+// border-top-color: red; border: 1px solid blue reads border-top-color
+// blue. background has its own (clearBackground), and background-position
+// is one only from jsdom 30 (mode 'spec').
+const REPLACES = { __proto__: null };
+for (const part of BORDER_PARTS) REPLACES[`border-${part}`] = new Set(BORDER_READS[`border-${part}`]);
+for (const side of BOX_SIDES) REPLACES[`border-${side}`] = new Set(BORDER_READS[`border-${side}`]);
+// (RESETS.border without border itself: its parts, sides and longhands)
+REPLACES.border = new Set([...RESETS.border.slice(1), 'border-image']);
+REPLACES.flex = new Set(SHORTHANDS.flex);
+REPLACES.font = new Set(['font-style', 'font-variant', 'font-weight', 'font-size', 'line-height', 'font-family']);
+const BG_AXES = new Set(SHORTHANDS['background-position']);
+function replacedBy(name, mode) {
+  if (name !== 'background-position') return REPLACES[name];
+  return mode === 'spec' ? BG_AXES : undefined;
+}
+// Removes what a shorthand written after it replaces; keep: an !important
+// one a style attribute or cssText keeps (parseInto). Was any removed?
+// (The block's declarations are walked, usually fewer than the names: a
+// write to an empty block does nothing here.)
+function replaceCovered(decls, names, keep = false) {
+  if (decls.size === 0) return false;
+  let removed = false;
+  for (const n of decls.keys())
+    if (names.has(n) && !(keep && decls.get(n).important)) {
+      decls.delete(n);
+      removed = true;
+    }
+  return removed;
+}
+
 // (A surface has a legacyFont variant before cssstyle 4.4.)
 const resets = (surface, name, text) =>
   !text.includes('var(') || (name === 'flex' && surface?.legacyFont === undefined);
@@ -4521,7 +4558,8 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
     sync(style);
     return;
   }
-  const cleared = replaces && clearBackground(s.decls);
+  const covered = isLegacyMode(s.mode) ? undefined : replacedBy(name, s.mode);
+  const cleared = (replaces && clearBackground(s.decls)) || (covered !== undefined && replaceCovered(s.decls, covered));
   if (isLegacyFont(s.surface, name) && removeLegacyFont(s.decls, s.surface)) reindex(style);
   if (RESETS[name] !== undefined && isLegacyMode(s.mode) && resets(s.surface, name, text)) {
     let removed = false;

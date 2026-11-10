@@ -4620,6 +4620,74 @@ Vitest 3.2). Its release corpus check, on all four corpora, is clean.
 - After those: #199 (computed colors), #202 (`:empty`), #192 and #201
   (fast-mode stubs), #208 (CSSOM leftovers).
 
+## 2026-11-09: a shorthand written after its longhand, jsdom 27 and later (branch fix/264-shorthand-replaces-longhands, #264 items 78 and 94, phase 1)
+
+Phase 1 of the design below: border, its sides, border-color, -style and
+-width, flex, font and (jsdom 30) background-position replace the
+longhands and smaller shorthands declared before them (REPLACES), from
+setProperty, an accessor, a style attribute, cssText and a style sheet.
+An !important longhand stays in a style attribute and cssText (not in a
+sheet, and not against setProperty), as in jsdom. Left for phase 3:
+style.length, the listing jsdom gives once an !important longhand stays,
+and the longhands a shorthand sets without naming them (font-variant
+under font reads `normal` in jsdom, `''` here; border-image under
+border `none`).
+
+Cost (node 22.17.1, a fresh element per iteration, 5 runs interleaved,
+medians in ns per element; scratchpad bench78b.mjs): five writes of
+color, border, flex, width and font 1077 on main, 1159 here; a longhand
+then its shorthand (border-top-color, border, flex-grow, flex) 893 and
+858; a cssText of four declarations 1129 and 1163. Only a write of one of
+these shorthands walks the block (replaceCovered: Sets, the block's own
+names, nothing for an empty block), about 27 ns each; other properties
+look up nothing more. A per-block flag would skip the walk, but would
+have to be kept by every place that declares a name (12, and replays):
+not worth the risk for writes outside bench:hot.
+
+### Design: shorthands stored as longhands (#264 items 78, 51, 94, 82, 50)
+
+Black box, `setProperty`, jsdom 26.1.0, 27.4.0, 28.1.0, 29.1.1 and 30.1.3
+(probe78b.mjs). The 12 shorthands are background, background-position (30),
+border, border-top/-right/-bottom/-left, border-color, -style, -width, flex
+and font.
+
+jsdom 27 to 30, one model:
+- Setting a shorthand stores each longhand as an entry, then the shorthand
+  itself as an entry. `border` also stores its sub-shorthands
+  (border-width, border-top, ...), and an earlier longhand keeps its index.
+  (`border-top-color: red; border: 1px solid blue` gives length 21, with
+  border-top-color first.)
+- Setting a longhand updates that entry. Shorthand entries containing it
+  are then either recomposed (flex, border-width, border-color: `2px 1px 1px`)
+  or removed (border, border-top after border-top-color). font and background
+  keep their old entry: getPropertyValue('font') and cssText stay
+  `12px Times`, while the accessor `style.font` reads `12px Arial`.
+- cssText uses a shorthand only while its entry exists and all of its
+  longhands are present. Otherwise it lists the longhands, grouped by any
+  remaining sub-shorthand entries (`border-width: 1px; border-style: solid;
+  border-color: red blue blue; border-image: none;`).
+
+jsdom 26 (cssstyle 4) mostly matches warpdom already. One difference: the
+accessor recomposes from the longhands while getPropertyValue stays as
+written (`flex: 1; flex-grow: 2` reads style.flex `2 1 0%` and
+getPropertyValue `1 1 0%`). The same holds for font, background and
+border-left.
+
+Phases. Each is its own PR, and each is measured against the black box
+before the next one starts:
+1. A shorthand written after a longhand replaces it, for jsdom 27 and later.
+   This fixes the getters (borderTopColor `blue`, fontFamily `Times`) and
+   cssText for the longhand-then-shorthand order. background already does
+   this (clearBackground).
+2. The shorthand accessor reads from the current longhands (26 to 30).
+   getPropertyValue recomposes for flex, border-width/-style/-color, and
+   reads `''` for border and its sides once a longhand follows, on 27 and
+   later.
+3. Entries: length, item() and cssText list the longhands and the remaining
+   shorthand entries (27 and later). This is the storage change proper,
+   and the one with the most risk for snapshot tests. Its hot-path cost
+   (setDeclaration per write) needs bench:hot numbers.
+
 ## 2026-11-09: comments after a value of more than one part, jsdom 27 and later (branch fix/264-trailing-comment, #264 item 87)
 
 Black box, 27.4.0 to 30.1.3: a value jsdom keeps as written keeps the

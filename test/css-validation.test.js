@@ -1410,3 +1410,60 @@ test('many hex escapes and an invalid character: rejected without backtracking (
   assert.ok(performance.now() - start < 2000);
   assert.equal(el.style.cssText, '');
 });
+
+// jsdom 27 and later store border, its sides, border-color, -style and
+// -width, flex, font and (30) background-position as their longhands: one
+// written after a longhand replaces it, in an inline style and a style
+// sheet (black box, 27.4.0 to 30.1.3, #264 items 78 and 94). An
+// !important longhand survives a style attribute (jsdom then lists the
+// rest as longhands: style.length and that listing are left for later).
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `jsdom ${jsdom}: a shorthand written after its longhand replaces it (#264)`,
+    (w) => {
+      const out = [];
+      for (const [longhand, before, shorthand, after, important] of [
+        ['border-top-color', 'red', 'border', '1px solid blue'],
+        ['border-top', '3px dotted green', 'border', '1px solid blue'],
+        ['border-color', 'green', 'border', '1px solid blue'],
+        ['border-top-width', '5px', 'border-top', '1px solid blue'],
+        ['border-top-color', 'green', 'border-color', 'blue'],
+        ['border-left-style', 'dotted', 'border-left', '1px solid red'],
+        ['border-top-width', '3px', 'border-width', '1px'],
+        ['border-bottom-style', 'dashed', 'border-style', 'solid'],
+        ['flex-basis', '10px', 'flex', '1'],
+        ['flex-grow', '2', 'flex', '1'],
+        ['font-family', 'Arial', 'font', '12px Times'],
+        ['line-height', '3', 'font', '12px/2 Times'],
+        ['font-weight', '300', 'font', 'bold 12px Times'],
+        ['background-position-x', 'left', 'background-position', '10px 20px'],
+        ['flex-basis', '10px', 'flex', '1', 'important'],
+        ['border-top-color', 'red', 'border', '1px solid blue', 'important'],
+      ]) {
+        const read = (s) =>
+          [
+            s.cssText,
+            s.getPropertyValue(longhand),
+            s.getPropertyPriority(longhand),
+            s.getPropertyValue(shorthand),
+          ].join(' | ');
+        const e = w.document.createElement('div');
+        e.style.setProperty(longhand, before, important);
+        e.style.setProperty(shorthand, after);
+        const text = `${longhand}: ${before}${important ? ' !important' : ''}; ${shorthand}: ${after}`;
+        const sheet = w.document.createElement('style');
+        sheet.textContent = `a { ${text} }`;
+        w.document.head.replaceChildren(sheet);
+        const lines = [`${longhand} ${before} ${important ?? ''}/ ${shorthand} ${after}`, read(e.style)];
+        lines.push(read(sheet.sheet.cssRules[0].style));
+        if (!important) {
+          const f = w.document.createElement('div');
+          f.setAttribute('style', text);
+          lines.push(read(f.style));
+        }
+        out.push(lines.join(' || '));
+      }
+      return out;
+    },
+    { jsdom },
+  );
