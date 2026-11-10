@@ -5452,15 +5452,16 @@ function setPropertyOf(style, name, value, priority) {
 function removePropertyOf(style, name) {
   const key = propertyName(name);
   const s = styleState(style);
-  const previous = s.computed
-    ? mutableComputed(s)
-      ? valueOf(style, key)
-      : readOnly()
-    : s.decls.box !== undefined && isBoxName(key)
-      ? boxValue(s.decls, key)
-      : (s.decls.get(key)?.value ?? '');
+  const previous = s.computed ? (mutableComputed(s) ? valueOf(style, key) : readOnly()) : removedValue(style, s, key);
   setDeclaration(style, key, '', '', 'remove');
   return previous;
+}
+// What removeProperty() returns from an inline style or a rule's: the
+// value getPropertyValue reads (a shorthand after a longhand of it is read
+// from the longhands; #313 review).
+function removedValue(style, s, key) {
+  if (s.decls.box !== undefined && isBoxName(key)) return boxValue(s.decls, key);
+  return s.decls.has(key) ? readShorthand(style, key, false) : '';
 }
 
 // jsdom 28 and earlier (cssstyle 2.3 to 6.2), black box: one

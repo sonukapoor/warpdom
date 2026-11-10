@@ -4065,6 +4065,24 @@ for (const jsdom of [26, 27, 28, 29, 30])
           return [first, s.flex, s.getPropertyValue('flex')];
         },
       };
+      // removeProperty() returns the value getPropertyValue() reads (#313
+      // review)
+      scenarios.removeReturns = (s) => {
+        const out = [];
+        for (const [name, writes] of [
+          ['flex', ['flex', '1 1 0%', 'flexGrow', '2', 'flexShrink', '3', 'flexBasis', '10px']],
+          // (border then border-color: 1px blue in jsdom 27 and later, a
+          // listed difference)
+          ['border', ['border', '1px solid red', 'borderTopColor', 'blue']],
+          ['border-width', ['borderWidth', '1px', 'borderTopWidth', '2px']],
+          ['font', ['font', '12px Arial', 'fontSize', '14px']],
+        ]) {
+          const t = w.document.createElement('div').style;
+          for (let i = 0; i < writes.length; i += 2) t[writes[i]] = writes[i + 1];
+          out.push(t.getPropertyValue(name), t.removeProperty(name));
+        }
+        return out;
+      };
       if (jsdom > 26) {
         scenarios.sideThroughBorder = (s) => {
           s.border = '1px solid red';
