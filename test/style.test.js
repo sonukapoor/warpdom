@@ -1211,6 +1211,34 @@ const calcs = (w) => {
     'calc(1px+1px)',
     'calc(var(--a) + 10px)',
     'calc(1234567px + 1px)',
+    // A lone integer with a leading zero in a digit run (not after the
+    // point) or a + in its exponent is kept as written; a lone + is
+    // dropped (#264 item 72).
+    'calc(1e01px)',
+    'calc(1e+1px)',
+    'calc(1e+01px)',
+    'calc(10e00px)',
+    'calc(1e-00px)',
+    'calc(1.5e01px)',
+    'calc(-1e01px)',
+    'calc(0010px)',
+    'calc(01px)',
+    'calc(00px)',
+    'calc(-01px)',
+    'calc(+01px)',
+    'calc(1e01%)',
+    'calc(1e01)',
+    'calc(1e-01px)',
+    'calc(1e1px)',
+    'calc(1e0px)',
+    'calc(00.5px)',
+    'calc(010.5px)',
+    'calc(1.25e+1px)',
+    'calc(0.05e2px)',
+    'calc(1.0e1px)',
+    'calc(+1px)',
+    'calc(01px + 1px)',
+    'calc(2 * 1e01px)',
   ];
   const props = ['width', 'margin-left', 'padding', 'top', 'font-size', 'flex-basis', 'min-width', 'gap'];
   const s = w.document.createElement('div').style;
