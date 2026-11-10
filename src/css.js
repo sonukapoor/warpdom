@@ -1115,15 +1115,19 @@ function flexZeroBasis(name, value) {
   const words = trimSpaces(value).split(/[ \t\n\r\f]+/);
   return words.length === 3 && words.every((w) => NUMBER_WORD.test(w)) && Number(words[2]) === 0;
 }
+// (probes: box shorthands have four sides; in a longer list the later
+// items are of the kinds already probed, so the work stays linear; #309
+// review)
+const ZERO_PROBES = 4;
 function zeroAsLength(name, value, surface) {
-  if (/[("']/.test(value)) return false;
+  if (name.startsWith('--') || /[("']/.test(value)) return false;
   const words = value.split(/([\s,/]+)/);
   const odd = [];
-  for (let k = 0; k < words.length; k += 2) if (otherZero(words[k])) odd.push(k);
+  for (let k = 0; k < words.length && odd.length < ZERO_PROBES; k += 2) if (otherZero(words[k])) odd.push(k);
   if (odd.length === 0) return false;
   // Each candidate on its own as 0px, the others as 0 (flex: 0.0 1 0.0
   // has a number and a length; #309 review).
-  const plain = words.map((w, k) => (odd.includes(k) ? '0' : w));
+  const plain = words.map((w) => (otherZero(w) ? '0' : w));
   const as = (at, zero) => plain.map((w, k) => (k === at ? zero : w)).join('');
   const base = declaredValue(name, as(-1, '0'), 'jsdom27', surface);
   if (base === INVALID) return false;

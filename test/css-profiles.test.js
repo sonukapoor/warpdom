@@ -3922,6 +3922,9 @@ for (const jsdom of [27, 28, 29, 30])
         ['opacity', ['0.0']],
         ['translate', ['0.0']],
         ['outline', ['0.0 solid']],
+        // (lists of zeros, and a custom property; #309 review)
+        ['stroke-dasharray', ['0.0 0.0 0.0 0.0 0.0 0.0', '0.0, 1px, 0e0, 0.0, 0.0, 2']],
+        ['--x', ['0.0 0e0', '0.0']],
       ])
         for (const v of values) {
           const a = w.document.createElement('div');
@@ -3932,6 +3935,21 @@ for (const jsdom of [27, 28, 29, 30])
     },
     { jsdom },
   );
+
+// A long list of zeros not written 0 is checked in linear time: only the
+// first few are probed (#309 review).
+test('style: a long list of zeros written otherwise is checked quickly (jsdom 27 to 29)', () => {
+  const w = createWindow({ jsdom: '27.4.0' });
+  for (const name of ['stroke-dasharray', '--x']) {
+    const value = Array(4000).fill('0.0').join(' ');
+    const d = w.document.createElement('div');
+    const start = performance.now();
+    d.style.setProperty(name, value);
+    const elapsed = performance.now() - start;
+    assert.equal(d.style.getPropertyValue(name), value);
+    assert.ok(elapsed < 150, `${name}: ${elapsed} ms`);
+  }
+});
 
 // jsdom 26 writes a family string again in double quotes: each escape's
 // backslash dropped and the character after it kept (a line break too),
