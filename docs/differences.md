@@ -26,7 +26,7 @@ Those that changed a test in the 25 measured suites:
 | --- | --- | --- | --- |
 | `DOMException` | An `Error` in the test's realm, as the standard says | In Vitest's default pools, not an `Error` in the test's realm | 1 svelte test |
 | `CSSStyleSheet.ownerNode` | The owning element in the jsdom 27 and 28 profiles, as in jsdom 29 and later; the jsdom 20 to 26 profiles have no `ownerNode`, as those versions | Measured on each release: 27.0 has no `ownerNode`, 27.1 and 27.2 give `null`, and 27.3 to 28.1 an internal object that is not a Node | 1 tanstack-query test (jsdom 27.4) |
-| Style-sheet parse errors | Not reported to the console | jsdom 16 cannot parse CSS nesting, drops such a sheet and reports "Could not parse CSS stylesheet" | 3 handsontable tests of its filter for that message (`jsdomThemeCssFilter.unit.js`) |
+| Style-sheet parse errors | Not reported to the console | jsdom 16 cannot parse CSS nesting, drops such a sheet and reports "Could not parse CSS stylesheet". jsdom 29 and later also report it for some sheets whose values they still read (`p { --x: url(a b) }`, `p { --x: {} }`, `p { : red }`, a stray `}`; [#264](https://github.com/sonukapoor/warpdom/issues/264)) | 3 handsontable tests of its filter for that message (`jsdomThemeCssFilter.unit.js`) |
 
 <!-- source: PLAN.md "Deliberate deviations from jsdom" (DOMException, svelte whitespace-at-block-start; ownerNode measured per release, tanstack-query PiPContext.test.tsx; handsontable jsdomThemeCssFilter.unit.js); docs/research/data/ci-2026-10-13-208ad49-RESULTS.md 7 (svelte 27 of 27 rounds, tanstack-query 17 of 17, handsontable 22 of 22) -->
 
@@ -118,7 +118,10 @@ Not modeled:
   after `color: red` gives `color: red !important`; without a priority it
   drops the `!important`). jsdom 20 to 26 also write the style attribute
   before `setProperty()` sets the priority, so the attribute shows
-  `color: red;` where `cssText` has `color: red !important;`
+  `color: red;` where `cssText` has `color: red !important;`. jsdom 20 to
+  26 do the same in a `style` attribute or `cssText`: `color: red; Color:
+  foo !important` gives `color: red !important`, and `color: red
+  !important; Color: foo` gives `color: red` ([#264](https://github.com/sonukapoor/warpdom/issues/264))
 - the accessor functions' names (`get width` from jsdom 29, `get` in
   warpdom)
 - jsdom 29.0.0's internal classes behind `getComputedStyle()`
@@ -146,7 +149,8 @@ Not modeled:
   `CSSNestedDeclarations`
 - with cssstyle 2.3 to 4.6 (jsdom 20 to 26), `cssText` ending in a
   name without a value (`color: blue; color:`) setting no `style`
-  attribute; and gradients in `background` with cssstyle 4.2 (jsdom
+  attribute, and a style rule ending that way (`.a{width: 1px; color:}`)
+  left out of the sheet ([#264](https://github.com/sonukapoor/warpdom/issues/264)); and gradients in `background` with cssstyle 4.2 (jsdom
   rejects them before 4.3, warpdom before 4.2), and in `background-image`
   before a `url()` with cssstyle 4.2 and 4.3 (`linear-gradient(red, blue),
   url(a.png)` is invalid there)
@@ -215,19 +219,20 @@ Not modeled:
   taken and sets its longhands (`cs.fontSize`); warpdom stores the
   shorthand only. The object's `cssText` and `length` are `''` and 0 in
   warpdom; jsdom lists the resolved values (`cssText` only before 28.1.0)
-- uppercase units ([#97](https://github.com/sonukapoor/warpdom/issues/97)):
-  jsdom 20 to 25 (cssstyle 4.1 and earlier) drop `width: 5PX`, and from 26
-  jsdom lowercases it to `5px`; warpdom keeps `5PX`
+- uppercase units and `AUTO` ([#97](https://github.com/sonukapoor/warpdom/issues/97)):
+  jsdom 27 to 30 write `width: 5PX` as `5px`; warpdom keeps `5PX` (the
+  jsdom 20 to 26 profiles follow jsdom: 20 to 25 drop it, 26 writes
+  `5px`). With cssstyle 4.1 and earlier (jsdom 20 to 25), jsdom lowercases
+  `width: AUTO` and `margin: AUTO`; warpdom keeps them
 - the case of keywords
   ([#187](https://github.com/sonukapoor/warpdom/issues/187)): warpdom
   writes a value of one identifier in lowercase as jsdom 27 and later do
   (`display: BLOCK` is `block`; from 28.1.0 not in a property that takes
-  names or strings of its own, such as `animation-name` or `text-align`).
-  Left: jsdom 26 lowercases some keywords in `el.style` (`width: AUTO`,
-  `float`, `font-weight`, `margin`, `background-image: NONE`, generic
-  families in `font-family`) and keeps them in style sheets, and jsdom 27
-  and later read `background` with a single keyword (`REPEAT`,
-  `SCROLL`, `TEXT`) differently; warpdom keeps those as written
+  names or strings of its own, such as `animation-name` or `text-align`),
+  and jsdom 26's lowercasing of some keywords in `el.style`. Left: with
+  cssstyle 4.3.1 (`{ jsdom: '26.1.0', cssstyle: '4.3.1' }`), jsdom
+  lowercases `width: AUTO` and `margin: AUTO` and rejects `CALC(1px)` and
+  `border: 1px SOLID RED`; warpdom keeps them as written ([#264](https://github.com/sonukapoor/warpdom/issues/264))
 - functions in box shorthands
   ([#112](https://github.com/sonukapoor/warpdom/issues/112)): from jsdom
   27, jsdom writes repeated sides once
@@ -235,8 +240,14 @@ Not modeled:
   `calc(100% - 2px)`); jsdom 20 to 25 (cssstyle 4.1 and earlier) and 27 to
   29 drop `padding: min(10%, 2px) min(10%, 2px) min(10%, 2px)`, which
   jsdom 30 shortens to `min(10%, 2px)`; and jsdom 26 with cssstyle 4.3.1
-  drops `padding: calc(10% + var(--a)) calc(10% + var(--a))`. warpdom
-  keeps them as written
+  drops `padding: calc(10% + var(--a)) calc(10% + var(--a))`. jsdom 27 to
+  29 also reject most such lists with different sides: `margin: 1px
+  calc(100% - 2px)`, `margin: calc(100% - 2px) 1px calc(100% - 2px) 1px`
+  (29.1.1 computes it to `0`; jsdom 30 writes `calc(100% - 2px) 1px`) and
+  `padding: calc(10%) 1px 2px 3px` (jsdom 30 computes `10% 1px 2px 3px`);
+  a later longhand then stands alone, and in a style attribute with
+  longhands after it jsdom keeps theirs (`margin-right: 2px` where warpdom
+  gives `calc(100% - 2px)`) ([#265](https://github.com/sonukapoor/warpdom/issues/265)). warpdom keeps them as written
 - the order of declarations within one style rule, jsdom 27.1.0 and
   later
   ([#113](https://github.com/sonukapoor/warpdom/issues/113),
@@ -264,11 +275,17 @@ Not modeled:
 - color functions, from jsdom 26
   ([#224](https://github.com/sonukapoor/warpdom/issues/224)): jsdom
   rejects `rgb(foo)` and a `color-mix()` with an invalid or system color
-  (`color-mix(in srgb, foo, red)`, `color-mix(in srgb, CanvasText, red)`);
-  warpdom keeps them. jsdom normalizes `color()` and `color-mix()` values
+  or with both weights 0% (`color-mix(in srgb, foo, red)`,
+  `color-mix(in srgb, CanvasText, red)`, `color-mix(in srgb, blue 0%, red
+  0%)`); warpdom keeps them. A system color in a nested mix
+  (`color-mix(in srgb, color-mix(in srgb, CanvasText, red), blue)`) is
+  rejected by jsdom 29, and jsdom 30 computes the inner mix as transparent
+  (`color(srgb 0 0 1 / 0.5)`); warpdom computes it with light-scheme
+  values. An invalid mix nested in another (weights both 0%, a wrong
+  argument count) leaves warpdom's whole value as declared. jsdom normalizes `color()` and `color-mix()` values
   when they are set: `color(srgb 1 0 0/0.5)` gives
   `color(srgb 1 0 0 / 0.5)`, percentages become numbers, an alpha above 1
-  is dropped, `xyz` becomes `xyz-d65`, `calc()` is evaluated, color names
+  is dropped, `xyz` becomes `xyz-d65`, `calc()` is evaluated (and `none` and `calc()` components inside `color-mix()` are computed), color names
   are lowercased, and a `50%` weight is dropped (jsdom 30.1.3 adds `50%`
   to the other color instead); warpdom keeps them as written. Setting a
   `color-mix()` nested 3 deep throws a TypeError in jsdom 26 to 30.0,
@@ -286,7 +303,11 @@ Not modeled:
   `.a\{`, `.a\(b` or `content: \}`, warpdom misparses the sheet: a
   rule can end early or swallow the rules that follow.
   jsdom 27 and later keep the rules that follow; jsdom 20 to 26 keep them
-  or leave out the whole sheet ("Could not parse CSS stylesheet")
+  or leave out the whole sheet ("Could not parse CSS stylesheet"). In the
+  jsdom 27 and 28 profiles, an escaped quote outside a string
+  (`font-family: a\"b`, `color: \" var(--c)`) also starts a string in
+  warpdom, which then loses the rest of the rule; jsdom keeps it
+  (warpdom matches from 29) ([#264](https://github.com/sonukapoor/warpdom/issues/264))
 - an unclosed parenthesis in a custom property value in a style sheet
   ([#253](https://github.com/sonukapoor/warpdom/issues/253)): with
   `.a { --x: foo( } .b { color: red }`, jsdom 20 to 28 keep no rules, and
@@ -307,21 +328,230 @@ Not modeled:
   28) and a `media` list of its own. jsdom 22 to 26 give `undefined` for
   the `ownerRule`, `media` and `disabled` of the sheet made for a rule
   inserted into a grouping rule (warpdom: `null`, `null` and `false`), and
-  jsdom 20 throws there
+  jsdom 20 throws there. In jsdom 27.1 to 28, a rule inserted into a
+  grouping rule already deleted from its sheet gets an extra, empty sheet
+  as its `parentStyleSheet` (warpdom: `null`)
 - keyframes rules before jsdom 29
   ([#208](https://github.com/sonukapoor/warpdom/issues/208)): `keyText`
   keeps `from` and `to` as written (`FROM`; warpdom: `0%` and `100%`), and
   `cssText` spans several lines. In jsdom 20 to 26, `@page` is a
   `CSSStyleRule`, and `CSSKeyframesRule` has no `length`, indices,
   `findRule` or `appendRule`. In jsdom 27 and 28, `appendRule('bogus')`
-  throws a `SyntaxError` (warpdom ignores it), and `findRule()` also finds
-  plain objects assigned to `cssRules`. From 27, `deleteRule()` removes the
+  throws a `SyntaxError` (warpdom ignores it), `findRule()` finds and
+  `deleteRule()` removes plain objects assigned to `cssRules`
+  (`[{ keyText: '10%' }]`), and the rule's internal members
+  (`__parentRule`, `_vendorPrefix`) and its `cssText` after `cssRules` is
+  replaced are not modeled. From 27, `deleteRule()` removes the
   first of duplicate keyframes; warpdom removes the last
 - jsdom 29 and 30 ([#148](https://github.com/sonukapoor/warpdom/issues/148)):
-  a style rule's `cssText` has only a getter, so assigning it throws in
+  a style rule's or `@import` rule's `cssText` has only a getter, so assigning it throws in
   strict mode; warpdom ignores the assignment. In jsdom 29.1.1, the rules
   in an `@media` rule inserted into another grouping rule get another
   `parentStyleSheet`
+
+- shorthands that jsdom keeps as their longhands ([#264](https://github.com/sonukapoor/warpdom/issues/264)),
+  ([#265](https://github.com/sonukapoor/warpdom/issues/265)): `background`, `border` and its side, color, style and
+  width shorthands, `flex` and `font` from jsdom 27 (`font` from 26).
+  A longhand written after the shorthand changes the shorthand in the
+  style attribute: after `border = '1px solid red'`, `borderColor = 'blue'`
+  gives `border: 1px blue;`, `flex = '1 1 0%'` then `flexGrow = '2'` gives
+  `flex: 2 1 0%;`, and `background = 'red'` then `backgroundColor =
+  'blue'` gives `background: red;` (jsdom 27 to 30); warpdom keeps the
+  shorthand and adds the longhand beside it. jsdom lists the longhands in
+  `style.length` and `item()` (`border` then `borderTopColor` has 19 in
+  jsdom 27), and jsdom 26 lists `font`'s longhands in `cssText` too
+  (`font: 12px serif` is `font-style: normal; …; font-family: serif; font:
+  12px serif;`). jsdom 27 and 28 compose `style.background` from the
+  longhands (`backgroundColor = 'blue'` then `backgroundRepeat =
+  'no-repeat'` reads `no-repeat blue`), and jsdom 27 and later rebuild
+  `background` once every longhand is set. An `!important` shorthand gives
+  its longhands the priority (`getPropertyPriority('background-color')`,
+  and `margin-top` under `margin: 1px !important` in a style rule; inline
+  `margin` matches). In jsdom 26, `font` replaces an earlier
+  `font-family`, and a `font` without a family clears it. A longhand
+  accessor's write under an `!important` `background` or `border` is
+  ignored or changes the shorthand in jsdom 27 to 30 (`border: 1px blue
+  !important`)
+- the style attribute's box longhands, other orders and versions
+  ([#265](https://github.com/sonukapoor/warpdom/issues/265)): jsdom 27 to 30 compute `margin-left: 4px;
+  margin-bottom: 3px; margin-right: 2px; margin-top: 1px` as `4px 3px 2px
+  1px` (warpdom `1px 2px 3px 4px`; through `cssText` they match; padding
+  the same). jsdom 20 to 26 compute `margin: 1px !important; margin-top:
+  4px` as `4px 1px 1px 1px` and `margin-top: 5px !important; margin: 1px
+  2px` as `1px 2px 1px 2px` (warpdom `1px 1px 1px 1px` and `5px 2px 1px
+  2px`). jsdom 20 to 22 rewrite the attribute when a box setter changes
+  nothing (`style.marginRight = '1px'` after `margin-top: inherit;
+  margin-right: 1px; …` drops `margin-top`); warpdom keeps the text.
+  jsdom 26 to 29 queue one MutationObserver attribute record per internal
+  setter call (`style.marginTop = '1px'` after `margin: 1px` queues 4 in
+  27 to 29, 2 to 3 in 26); warpdom queues one. jsdom 26 writes four
+  `!important` padding longhands set after an `!important` `padding` with
+  `padding-left` normal; warpdom keeps all four `!important`
+- a name repeated in another case in a `style` attribute or `cssText`,
+  jsdom 27 to 30 ([#264](https://github.com/sonukapoor/warpdom/issues/264)): jsdom 27.4 reads `color: blue; Color:
+  red; color: green` as red, and jsdom 30 reads `color: blue; Color: red`
+  as blue; warpdom gives the last declaration
+- custom property names that are not one identifier ([#264](https://github.com/sonukapoor/warpdom/issues/264)):
+  from jsdom 27, `--a*b: 1` and `--a\/b: 1` are invalid in the style
+  attribute and `cssText`, and from 29 in style sheets (27 and 28 sheets
+  keep them); warpdom keeps them everywhere, and reads `--\61/**/b: 1`
+  (two tokens) as `--\61 b`
+- custom properties in jsdom 26 to 28's style sheets ([#264](https://github.com/sonukapoor/warpdom/issues/264)):
+  jsdom 26 to 28 drop one with a `{}` block (`{ a }`). jsdom 27 and 28
+  read `--x: / *` as `/*` and `\61  b` with one space, keep `!IMPORTANT`
+  as written, write `a !important b` as `a  b !important`, give `a
+  !/**/important` no priority, make a nested rule from a block (`p { --x:
+  a {b} c }`), and lose the rule after an unclosed `(` and the rest of the
+  sheet after `url("\\")`. warpdom keeps the values as written and writes
+  `!important` in lowercase
+- strings, comments and escapes in style sheets ([#264](https://github.com/sonukapoor/warpdom/issues/264)): jsdom 27
+  and 28 throw from `insertRule()` for a rule with an unclosed string (`a
+  { content: "abc }`); warpdom takes the string to the rule's end, as 29
+  and later do. jsdom 28 reads `/*` in an unquoted `url(a/*b.png)` as a
+  comment that runs to the end of the sheet, and collapses the double
+  space after a hex escape (`container-name: \61  b` is `\61 b`). In a
+  rule added with `insertRule()`, jsdom 27 to 30 take the rule's `}` into
+  a string value with a raw line break before `var()` (`content:
+  'a⏎var(--x)'`). warpdom reads all of these as written
+- line breaks and NUL in strings ([#264](https://github.com/sonukapoor/warpdom/issues/264)): jsdom 27 to 30 write a
+  raw CR LF in a lone `font-family` string as a space (`"a b"`) and
+  reject it in a list; jsdom 26 does the same for a raw LF (`"A⏎B"` is
+  `"A B"`, also in `font`) and drops it when another family follows. In
+  a custom property's value a line break ends a string in jsdom 27 and
+  later, so `--v: "a⏎b !important; color: red` declares `color` and makes
+  `--v` important (also `(a 'b⏎c)` in the style attribute and `url("a⏎b)`
+  in a sheet). jsdom 30's accessors (`style.content = …`) read a NUL, an
+  escaped NUL and a trailing backslash as 29 does, where warpdom gives
+  U+FFFD on every path, and jsdom 27 and 28 declare nothing for a `style`
+  attribute that contains U+0000. warpdom keeps the text as written
+- numbers by version ([#264](https://github.com/sonukapoor/warpdom/issues/264)): with cssstyle 4.2 and 4.3, jsdom
+  keeps `flex: 1e1px` as written (warpdom `1 1 10px`), leaves out the
+  longhands `flex` omits (`flex: 10`; warpdom `10 1 0%`), rejects `0.0`,
+  `.0`, `0.`, `-0`, `+0` and `0e1` in lengths, `background-position: 0`, a
+  unitless `flex-basis` and `flex: 1 1 0e1`, and accepts `flex: -1e1`,
+  `border: 0 0` and `border-top: 0 0`, the other way round from warpdom.
+  cssstyle 4.3.1 keeps `width: 1e1px`, `1.px`, `1e-1px`, `font-weight: 01`
+  and `line-height: 01` as written; warpdom writes them canonically. jsdom
+  25 rejects exponents (`0e0px`, `1e0px`) and `border: 0.0 solid`. jsdom
+  27 rejects `rotate: 0.0` and keeps `z-index: 00`. jsdom 29's style
+  attribute and `cssText` throw a TypeError for `border: 0e0 solid`;
+  warpdom drops it, as `setProperty()` does
+- `calc()` simplified in declared values ([#264](https://github.com/sonukapoor/warpdom/issues/264)), ([#265](https://github.com/sonukapoor/warpdom/issues/265)):
+  jsdom 26 and later sort and add a `calc()`'s terms (`calc(1px + 2%)` is
+  `calc(2% + 1px)`, `calc(1px + 1px)` is `calc(2px)`, `calc(100% - (2 *
+  8px))` is `calc(100% - (16px))`) and remove the spaces inside
+  (`calc(  1px)` is `calc(1px)`), in longhands and box shorthands, and
+  jsdom 23 serializes them that way too. jsdom 26 also does it in the
+  border widths and shorthands, `line-height`, `flex`, `background` and
+  `font` (`opacity: calc(1px + 2px)` reads `NaN`), rejects a line height
+  `calc()` with spaces in `font`, and in `flex-grow` and `flex-shrink`
+  evaluates `abs()`, `round()` and the other math functions, reduces
+  units, and folds every function in the value into one (`calc(1) calc(2)`
+  is `calc(1 2)`); `setProperty('flex-shrink', 'calc(1 + 1px) x')` throws
+  there. jsdom 27 and later evaluate it in `font` and `font-size`
+  (`calc(12px + 2px) Arial` is `calc(14px) Arial`) and read `width:
+  calc(1px/**/+/**/2px)` as `calc(3px)`. jsdom 30 also simplifies in
+  `border-spacing` and `background-size`, and writes `min(1px, 2px)` as
+  `calc(1px)`; jsdom 27 to 29 reject `min()` in `width` and `margin`.
+  warpdom keeps all of these as written, apart from a lone number in
+  jsdom 26's `flex-grow` and `flex-shrink`
+- `font` ([#264](https://github.com/sonukapoor/warpdom/issues/264)): jsdom 26 takes a number before the size as the
+  weight, line height and variant (`0 12PX Arial` is `0 12px Arial`, `0
+  / 1EM Arial` is `0 0px / 1em Arial`, `0/1.5 Arial` is `0 0px / 1.5
+  Arial`), a size keyword without a family (`font: Large` is `large`), a
+  size keyword after a zero and a family as the size (`.0 Arial Large` is
+  `0 large`), writes `0 Large, Arial` as `0 large , Arial`, keeps an empty
+  family (`12px ab,,cd` is `12px ab, , cd`), reads `12px Arial,` with the
+  family `Arial, `, and lowercases `SERIF,var(--f)` to `serif, var(--f)`.
+  jsdom 26 to 30 set `font-variant: normal` from `font`, and jsdom 26
+  keeps `small-caps` while 27 and later reject a `font` with it. warpdom
+  drops `small-caps` and keeps the rest as written or rejects it
+- `background` values ([#264](https://github.com/sonukapoor/warpdom/issues/264)): warpdom accepts `image-set()` in
+  `background` and `background-image`, which jsdom 20 to 30 reject. For
+  `background: url("var(--a).png") red`, warpdom's longhands read `''`.
+  jsdom 27 and later accept two or three boxes (`text border-area`).
+  jsdom 27 and 28 write `background: inherit` as several keywords, keep
+  the size after a two-value position they drop (`url(a.png) center top
+  / 10px`), and read `lab()`, `oklch()` and `color()` (`fixed lab(50% 0
+  0)` is `lab(50 0 0)`, where warpdom's longhands read `''`). jsdom 27 to
+  29 read `-0` and `00` as the initial values. jsdom 29 and 30 report
+  another color for several layers (30: `padding-box, red` reads
+  `padding-box, transparent`). jsdom 27.4 declares nothing for a style
+  attribute with an escaped `url()` in `background` and another
+  declaration (`background: red url("q\'b.png"); color: blue`), and jsdom
+  27 throws a SyntaxError for `background` set through the accessor with
+  `!important` and a `calc()`. In a gradient jsdom leaves out, it accepts
+  `calc(1px + )`, which warpdom rejects. In style sheets from jsdom 27, a
+  later normal `background` declaration or background longhand replaces
+  an earlier `!important` one (`div { background: url(a.png) !important;
+  background: red }` is `background: red`); warpdom keeps the `!important`
+  one (inline styles match). After a `background` of initial values,
+  jsdom 30 leaves out a `background-position-x` or `-y` declared before
+  it, jsdom 27 and 28 keep the block for a later `background: var(--a)`,
+  jsdom 29 and 30 drop a later `background: none`, jsdom 30 drops a later
+  `background-color: var(--a)` (jsdom 29's `cssText` setter throws on
+  it), and jsdom 27 to 29's `background-position-x` and `-y` getters read
+  `''` for an axis not declared (warpdom `0%`)
+- gradients ([#264](https://github.com/sonukapoor/warpdom/issues/264)): jsdom 26 declares nothing for an uppercase
+  direction (`linear-gradient(TO BOTTOM, red, blue)`). jsdom 27 and later
+  read `border-image: linear-gradient(...) 30` as `none`, and reject
+  gradients in `cursor` and a number as the first argument
+  (`linear-gradient(0, red, blue)`). jsdom 27 keeps
+  `-webkit-linear-gradient(TOP, RED, blue)` in `mask-image` and
+  `-webkit-radial-gradient(...)` in `list-style-image` as written (warpdom
+  rejects them) and rejects every gradient in
+  `-webkit-mask-box-image-source`. jsdom 29 and 30.1.2 lowercase a
+  gradient with `var()` in the computed `background`. warpdom keeps all
+  of these as written
+- `border-image`, jsdom 27.0.1 and later ([#264](https://github.com/sonukapoor/warpdom/issues/264)): in a `style`
+  attribute or `cssText`, every valid value but `none` reads as
+  `border-image: none` with no priority, after the other declarations
+  (`var()` is kept from 29), `border-image: none` declares nothing and
+  removes an earlier one, and from 28.1.0 `stretch !important` reads
+  `none`. `border-image` has no longhands in `style`, and with `border`
+  declared, `cssText` folds it into `border`. warpdom keeps
+  `border-image` as written and separate
+- values jsdom rejects ([#264](https://github.com/sonukapoor/warpdom/issues/264)): jsdom 27 and later reject a string
+  in `cursor`, `d`, the `nav-*` properties, `animation-range` and its
+  longhands, `voice-pitch`, `voice-range`, `voice-volume` and a few others
+  (`path-length` in 30, `shape-subtract` and the `rule-*-inset`
+  properties in 28 and 29); from 28 two strings in `voice-family`. jsdom
+  28 and 30 reject a `content` of a lone `counter(a)`, `counters(a, ".")`
+  or `attr(x)`. warpdom keeps all of these
+- `@page` ([#265](https://github.com/sonukapoor/warpdom/issues/265)): jsdom 27 and later drop `page-orientation` and
+  `size`, and leave `margin-top` empty under a `margin` shorthand. jsdom
+  26.1.0 to 27.0.1 keep each descriptor under its name as written
+  (`margin-top: 1px !important; MARGIN-TOP: 2px !important` serializes
+  both, and `margin-top` is 1px), and in jsdom 28.1.0, 29.0.0, 30.0.0 and
+  30.1.0 setting the rule's `style.cssText` to that text leaves it empty.
+  warpdom keeps the descriptors, lowercases their names and gives 2px
+- `!important` on a `var()` declaration in jsdom 30.0.0 and 30.1.0
+  ([#265](https://github.com/sonukapoor/warpdom/issues/265)): those releases drop it, as 27 to 29 do; warpdom's 30.0
+  and 30.1 profiles keep it
+- before jsdom 27.1.0, more of a style rule's cssom object
+  ([#253](https://github.com/sonukapoor/warpdom/issues/253)): after `background: red; background-color: blue`,
+  setting `background-color` to `''` removes the color in jsdom (warpdom
+  computes the shorthand's red again); cssstyle's setter takes
+  `setProperty('width', 'var(--a) foo(')` (jsdom 26 and 27.0), which
+  warpdom's computed style drops; a name with a no-break space inside
+  (`w idth`) stays an unknown name in jsdom (warpdom reads `width`); with
+  several blocks in the `cssText` setter (`a{color:red;} b{top:1px;}`),
+  warpdom reads the second block's first name as `;top`; and an object
+  with a throwing `toString()` assigned to `style.width` throws when the
+  value is first read in jsdom 26 and 27.0, at the assignment in warpdom.
+  With cssstyle 2.3 to 4.1 (jsdom 20 to 25), style sheets keep some
+  `var()` declarations that warpdom drops ([#147](https://github.com/sonukapoor/warpdom/issues/147)), and in jsdom
+  27 and 28 some `var()` `border` shorthands in a rule compute otherwise or
+  throw a TypeError ([#113](https://github.com/sonukapoor/warpdom/issues/113))
+- comments, more ([#264](https://github.com/sonukapoor/warpdom/issues/264)): jsdom 27 keeps a leading or trailing
+  comment through `setProperty()` and the accessor (`border-radius:
+  /**/1px`) and drops the priority when a comment is next to or inside
+  `!important` in a value it keeps as written. `background`,
+  `background-position` and `background-size` reject `1px/**/2px`
+  (`background` from 30.1.2), which warpdom reads as `1px 2px`. From
+  jsdom 28, `voice-family` and `animation-range-center` drop a leading or
+  trailing comment, and jsdom 30 keeps a hex escape's space before a
+  comment (`container-name: \62 /**/` is `\62 `)
 
 Computed values not modeled:
 
@@ -364,6 +594,44 @@ Computed values not modeled:
   `var(--p) 0 0`, as jsdom 29.1.1, 30.0 and 30.1.2 do), and jsdom 26 with
   cssstyle 4.3.1 computes `padding: 1px var(--p)` to `''` (warpdom gives
   `1px var(--p)`, as with cssstyle 4.4.0 and 4.6.0)
+- jsdom 28.1.0 to 30.1.2 apply the matching rules' `border`, `font`,
+  `background` and `flex` declarations in document order, as they do
+  `margin` and `padding`; warpdom still orders these families by
+  specificity, so competing rules of different specificity can compute
+  differently there ([#147](https://github.com/sonukapoor/warpdom/issues/147)). From jsdom 29, a normal longhand left
+  pending by a shorthand in the `style` attribute meets `!important` rules
+  differently; cssstyle 4.2 to 4.5 were not measured for dropping
+  `!important` from custom properties (warpdom puts the change at 4.6)
+- jsdom 29.1.1: computed box values depend on what was read before
+  ([#106](https://github.com/sonukapoor/warpdom/issues/106)): with `padding-left: 2px`, a fresh window gives `0 0 0
+  2px` for `padding`, and after `getPropertyValue('border-width')` is read
+  on an element with `border-width: 1px 1px`, `0px 0px 0px 2px`
+  (`padding: var(--p)` changes from `0` to `0px`). warpdom always gives
+  the fresh-window values
+- a length and a number mixed in a math function ([#111](https://github.com/sonukapoor/warpdom/issues/111)): for
+  `width: calc(1em * min(2px, 3))`, jsdom 30.1.3 computes `calc(16px*min(2px,
+  3))`, jsdom 29.1.1 `calc(1em*min(2px,3))`, and jsdom 26 to 28 `calc(1em
+  * min(6px * ,))`; warpdom keeps the value as written
+- `<shorthand>: inherit` when the parent declares nothing ([#224](https://github.com/sonukapoor/warpdom/issues/224)):
+  jsdom 29.1.1 gives `''` for `border-radius`, `outline`,
+  `text-decoration`, `columns`, `list-style`, `gap`, `place-items` and
+  `background` (warpdom `see individual properties`) and `0px` for
+  `margin` (warpdom `0`), and jsdom 30.1.3 gives `16px depends on user
+  agent` for `font: inherit` (warpdom `''`)
+- jsdom 26 computes `unset` as written (`marginTop = 'unset'` after
+  `margin: 1px`; warpdom `''`), jsdom 20 to 25 compute `margin` as `''`
+  for `margin: inherit; margin-right: 0px` (warpdom `inherit`), jsdom 29
+  computes `margin-top: inherit` from a style attribute as `0px` (warpdom
+  `0`), and jsdom 30 computes `margin-right` as 0 after `style.margin =
+  '1px'; style.removeProperty('margin-right')` (jsdom 27 to 29 and warpdom
+  1px; padding the same) ([#265](https://github.com/sonukapoor/warpdom/issues/265))
+- jsdom 28, once a computed custom property has been read: computed
+  colors come back as written (`red`, not `rgb(255, 0, 0)`), and the
+  computed style's `setProperty()` stops throwing ([#264](https://github.com/sonukapoor/warpdom/issues/264))
+- writes to the computed style object in the jsdom 20 and 22 profiles
+  ([#97](https://github.com/sonukapoor/warpdom/issues/97)): after `cs.font = '20px Arial'; cs.font = 'inherit'`,
+  warpdom reads `font` as `Arial 20px 20px`; jsdom gives `''` for `font`,
+  `fontSize` and `fontFamily`
 - `calc()` in color channels, jsdom 26 and later
   ([#112](https://github.com/sonukapoor/warpdom/issues/112)):
   `hsl(calc(120 + 0), 100%, 50%)` computes to `rgb(0, 255, 0)`; warpdom
@@ -373,7 +641,7 @@ Computed values not modeled:
   ([#187](https://github.com/sonukapoor/warpdom/issues/187))
 - jsdom 29.0.2 to 29.1.1: a `border` or `border-color` shorthand in a
   style sheet that gives the color as `currentcolor`, by omitting it or
-  through `initial`, computes to the parent's color instead of the
+  through `initial` or `inherit`, computes to the parent's color instead of the
   element's own when the element's own `color` comes from its `style`
   attribute (or `el.style`), and children that inherit the border color
   get that color ([#199](https://github.com/sonukapoor/warpdom/issues/199)).
@@ -383,7 +651,13 @@ Computed values not modeled:
   does. When the element's `color` comes from a style sheet
   (`p { color: red; border: 1px solid }`), or the shorthand is in the
   `style` attribute too, jsdom gives the element's own color, as warpdom
-  does
+  does. In the `style` attribute, `border: inherit`, `border: initial` and
+  `border-color: inherit` resolve to the element's own color in jsdom
+  29.1.1, and children that inherit the border color get that fixed color;
+  warpdom keeps `currentcolor`, so each child gets its own. Some longer
+  `inherit` chains through style sheet rules differ as well (a rule that
+  matches both the parent and the child, or a parent whose `currentcolor`
+  comes from a style sheet)
 
 jsdom 27.1 and later parse style sheets with the cssstyle that
 `@acemir/cssom` finds, so with an older cssstyle installed beside it
@@ -399,7 +673,7 @@ warpdom follows the cssstyle jsdom itself installs.
 | `TextDecoder` encodings | Decodes Big5, EUC-JP, EUC-KR, GBK, gb18030, ISO-2022-JP and Shift_JIS with the platform's decoders | Differs from the platform's decoders for a few byte sequences |
 | `URL` | Parses with the platform's parser (Ada in Node), as `URL` does in Vitest's jsdom environment (WPT url/: warpdom 7,136 of 8,784 subtests) | whatwg-url; differs for some internationalized host names (IDNA) and opaque paths with trailing spaces (WPT url/: jsdom 6,394) |
 | An iframe's `WebAssembly` | Its parent's (warpdom's frames share one realm) | The iframe's own when scripts run in the window (`runScripts`, as in Jest's and Vitest's jsdom environments); without, both are Node's |
-| Window members made on first read, such as `Image` and `Option` ([#229](https://github.com/sonukapoor/warpdom/issues/229)) | Accessors, also after `Object.defineProperty(window, name, { configurable: false })` before the first read. `{ writable: false }` before the first read leaves the value undefined. On a frozen window, a sloppy-mode assignment throws | Data properties. From 27, `{ writable: false }` keeps the value. On a frozen window (27 and later), a sloppy-mode assignment fails silently |
+| Window members made on first read, such as `Image` and `Option` ([#229](https://github.com/sonukapoor/warpdom/issues/229)) | Accessors, also after `Object.defineProperty(window, name, { configurable: false })` before the first read. `{ writable: false }` before the first read leaves the value undefined. On a frozen window, a sloppy-mode assignment or `Reflect.set` throws. In fast mode, the per-file reset does not clear a value stored for such a member once locked | Data properties. From 27, `{ writable: false }` keeps the value. On a frozen window (27 and later), a sloppy-mode assignment fails silently and `Reflect.set` returns false |
 | Such a member once locked, written through a proxy or another object ([#229](https://github.com/sonukapoor/warpdom/issues/229)) | A copy of its accessor on another object writes the window's member, and a proxy whose `defineProperty` trap rejects `{ value }` but accepts the empty descriptor warpdom then defines doesn't stop the write (`Reflect.set` gives true); a trap that rejects both makes the write throw a TypeError | Neither changes the window's member; `Reflect.set` through that proxy gives false |
 | `Reflect.set(window, name, value, receiver)` for such a member, with a receiver that can't take the property (a primitive, a frozen object) ([#146](https://github.com/sonukapoor/warpdom/issues/146)) | Throws a TypeError | Returns false |
 | `Object.seal`, `Object.freeze` and `Object.preventExtensions` of the window, jsdom 20 to 26 ([#229](https://github.com/sonukapoor/warpdom/issues/229)) | Allowed | Throw a TypeError |

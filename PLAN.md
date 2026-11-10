@@ -4650,6 +4650,26 @@ alone is "A B", and with another family after it the value is dropped. In
 font, it is "A B" (12px "A<LF>B", serif). warpdom keeps the line break in
 all of them, on main too.
 
+## 2026-11-10: 1.0 triage of the open parity issues (branch docs/1-0-parity-triage)
+
+Decision (2026-11-10, Sonu): for 1.0 criterion 2, each open parity issue
+is fixed or listed in docs/differences.md item by item; fix what real
+suites are likely to hit, document the narrow quirks of one version.
+The 18 open issues (#97 to #265, about 150 items) were audited item by
+item against differences.md and jsdom-versions.md; about 80 items were
+neither fixed nor listed. Fixed in their own PRs: a zero next to a
+function in box shorthands (#310), the number patterns and hasVar() in
+linear time (#311), and #306, #307 and #309 (#264 items 83, 71 and 91,
+first parts). The rest is now in differences.md, grouped by area, and two
+stale lines were corrected (uppercase units: jsdom 27 to 30 write `5PX`
+as `5px`; jsdom 26's keyword lowercasing is matched since #289).
+
+The one item likely to show up in real suites stays open as work, listed
+in differences.md meanwhile: a longhand written after its shorthand
+(React style objects such as `{ border, borderColor }`). jsdom 27 to 30
+rewrite the shorthand (`border: 1px blue;`, `flex: 2 1 0%;`); warpdom
+keeps both declarations. That is #264 item 78's phase 2, designed above.
+
 ## 2026-11-09: keywords jsdom 26 takes in some properties (branch fix/264-jsdom26-keyword-sets, #264 item 77, first part)
 
 Black box, 26.1.0, setProperty and the style attribute: jsdom 26 checks
