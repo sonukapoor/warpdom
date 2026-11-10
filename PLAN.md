@@ -4655,6 +4655,12 @@ in 00px (node 22.17.1, 5 interleaved runs, medians): 240.3 ms on main,
 246.5 ms here (+2.6%, near noise; a check on every value with a 0 in
 it was +12%, 256.0 to 288.6 ms).
 
+Review of #309: each zero is probed on its own (flex: 0.0 1 0.0 has a
+number and a length), and jsdom 27 to 29 reject any flex of two numbers
+and a unitless zero basis, plain 0 included: flex: 1 1 0, 0 1 0 and 2 2 0
+are invalid there (26 and 30 read 1 1 0px; flex: 1 0 stays). flexZeroBasis
+checks that before the probe.
+
 Left in item 91: jsdom 25 rejects an exponent in these values (0e0px
 and 1e0px too) and border: 0.0 solid. In jsdom 29, the style attribute
 and cssText throw a TypeError for border: 0e0 solid (and 0.0 solid);

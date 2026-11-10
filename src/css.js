@@ -1107,13 +1107,27 @@ const isKnownProperty = (name) =>
 const OTHER_ZERO_TEXT = /00|0\.|\.0|0e|[+-]0/i;
 const NUMBER_WORD = /^[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?$/i;
 const otherZero = (word) => word !== '0' && NUMBER_WORD.test(word) && Number(word) === 0;
+// jsdom 27 to 29 reject a flex of two numbers and a unitless zero basis,
+// however the zero is written (flex: 1 1 0, 0 1 0.0; jsdom 26 and 30 read
+// 1 1 0px; black box, 27.4.0 to 29.1.1, #309 review).
+function flexZeroBasis(name, value) {
+  if (name !== 'flex' || !value.includes('0')) return false;
+  const words = trimSpaces(value).split(/[ \t\n\r\f]+/);
+  return words.length === 3 && words.every((w) => NUMBER_WORD.test(w)) && Number(words[2]) === 0;
+}
 function zeroAsLength(name, value, surface) {
   if (/[("']/.test(value)) return false;
   const words = value.split(/([\s,/]+)/);
-  if (!words.some((w, k) => k % 2 === 0 && otherZero(w))) return false;
-  const as = (zero) => words.map((w, k) => (k % 2 === 0 && otherZero(w) ? zero : w)).join('');
-  const zero = declaredValue(name, as('0'), 'jsdom27', surface);
-  return zero !== INVALID && zero === declaredValue(name, as('0px'), 'jsdom27', surface);
+  const odd = [];
+  for (let k = 0; k < words.length; k += 2) if (otherZero(words[k])) odd.push(k);
+  if (odd.length === 0) return false;
+  // Each candidate on its own as 0px, the others as 0 (flex: 0.0 1 0.0
+  // has a number and a length; #309 review).
+  const plain = words.map((w, k) => (odd.includes(k) ? '0' : w));
+  const as = (at, zero) => plain.map((w, k) => (k === at ? zero : w)).join('');
+  const base = declaredValue(name, as(-1, '0'), 'jsdom27', surface);
+  if (base === INVALID) return false;
+  return odd.some((at) => declaredValue(name, as(at, '0px'), 'jsdom27', surface) === base);
 }
 
 // Declared values by mode, property and raw value: style writes repeat the
@@ -1196,7 +1210,11 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
         rejectsColor(name, value, surface)
       )
         out = INVALID;
-      if (out !== INVALID && mode === 'jsdom27' && OTHER_ZERO_TEXT.test(value) && zeroAsLength(name, value, surface))
+      if (
+        out !== INVALID &&
+        mode === 'jsdom27' &&
+        (flexZeroBasis(name, value) || (OTHER_ZERO_TEXT.test(value) && zeroAsLength(name, value, surface)))
+      )
         out = INVALID;
     }
     if (byValue.size >= 500) byValue.clear();

@@ -3876,7 +3876,9 @@ test("style: jsdom 26's own value rules leave cssstyle 4.3.1 alone", () => {
 // shorthands, flex's basis or background-position invalid (black box,
 // 27.4.0, 28.1.0 and 29.1.1, #264 item 91). jsdom 30 reads them as 0px;
 // where the zero is a number (line-height, opacity, flex-grow) or the
-// value is kept as written (translate, outline), they stay.
+// value is kept as written (translate, outline), they stay. A flex of two
+// numbers and a unitless zero basis is invalid there however the zero is
+// written (flex: 1 1 0; #309 review).
 for (const jsdom of [27, 28, 29, 30])
   parity(
     `style: a unitless zero written other than 0 as a length (jsdom ${jsdom}, #264 item 91)`,
@@ -3891,7 +3893,26 @@ for (const jsdom of [27, 28, 29, 30])
         ['height', ['-0.0']],
         ['font-size', ['0e0']],
         ['flex-basis', ['0e0']],
-        ['flex', ['1 1 0.0', '0.0', '0e0', '0.0 1px']],
+        [
+          'flex',
+          [
+            '1 1 0.0',
+            '0.0',
+            '0e0',
+            '0.0 1px',
+            '0.0 1 0.0',
+            '0.0 1 0',
+            '1 0.0 0',
+            '0.0 0.0 0.0',
+            '0.0 1 0px',
+            '0e0 0e0',
+            // (a unitless zero basis after two numbers; #309 review)
+            '0 1 0',
+            '1 1 0',
+            '2 2 0',
+            '1 0',
+          ],
+        ],
         ['border-width', ['0e0']],
         ['border-top-width', ['0e0']],
         ['border', ['0 solid', '0e0 solid', '0.0 solid', 'solid 00']],
