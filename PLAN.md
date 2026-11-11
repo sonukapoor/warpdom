@@ -4676,6 +4676,12 @@ all of them, on main too.
 
 ## 2026-11-10: 1.0 triage of the open parity issues (branch docs/1-0-parity-triage)
 
+Decision (2026-11-11, Sonu): 1.0 does not wait for jsdom 31. It models
+jsdom 20.0.3 to 30.1.3; jsdom 31 (#269, 184 of 2,630 parity tests differ,
+mostly var() in computed styles) is modeled after the 1.0 fixes land and
+ships in 1.1, as the stability policy has a new jsdom version arrive in a
+minor release.
+
 Decision (2026-11-10, Sonu): for 1.0 criterion 2, each open parity issue
 is fixed or listed in docs/differences.md item by item; fix what real
 suites are likely to hit, document the narrow quirks of one version.
