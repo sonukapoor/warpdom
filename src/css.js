@@ -4005,7 +4005,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
         ? { value: declared, important: kept }
         : { value: declared, important: false, masked: true },
     );
-    if (RECOMPOSED_LONGHANDS.has(name)) decls.later = true;
+    if (RECOMPOSED_LONGHANDS.has(name)) markLater(decls, declared);
   }
   // A background of initial values (setInitials) and a declaration of
   // another property after it, in a style attribute or cssText (black box,
@@ -4609,7 +4609,13 @@ function readShorthand(style, name, accessor) {
   const parts = RECOMPOSED_PARTS.get(name);
   if (parts === undefined) return value;
   const modern = s.mode === 'jsdom27' || s.mode === 'spec';
-  if (!modern && !(accessor && s.mode === 'jsdom26' && s.surface?.colors !== 'css2')) return value;
+  // (jsdom 26's getPropertyValue reads flex and font as written, but ''
+  // after a var() longhand: blockedRead)
+  if (
+    !modern &&
+    !((accessor || name === 'flex' || name === 'font') && s.mode === 'jsdom26' && s.surface?.colors !== 'css2')
+  )
+    return value;
   // The declaration the longhands follow: the shorthand's, or for a border
   // side read through border, border's (jsdom 27 and later: border then
   // border-top-color reads border-top as ''; #313 review).
@@ -4627,14 +4633,23 @@ function readShorthand(style, name, accessor) {
   let before = false;
   let longhand = false;
   let sub = false;
+  // (jsdom 26's getPropertyValue of flex or font: only a later var()
+  // longhand matters, looked at in this scan; blockedRead)
+  const asWritten = !modern && !accessor;
+  if (asWritten && s.decls.laterVar !== true) return value;
+  let blocked = false;
   for (const n of s.decls.keys()) {
     if (n === anchor) seen = true;
     else if (parts.has(n)) {
       if (!seen) before = true;
       else if (BORDER_SUBS.has(n)) sub = true;
-      else longhand = true;
+      else {
+        longhand = true;
+        if (asWritten && hasVar(s.decls.get(n).value)) blocked = true;
+      }
     }
   }
+  if (asWritten) return blocked ? '' : value;
   if (before || (!longhand && !sub)) return value;
   if (anchor !== name) return longhand ? '' : value;
   // A recomposed value is cached on the identities of the block's
@@ -4691,7 +4706,31 @@ function legacyBorder(decls, value) {
   if (color) out = out ? `${out} ${color}` : color;
   return out;
 }
+// jsdom 26 to 30 read flex and font as '' once a longhand of theirs with
+// var() follows them (flex: 1 1 0% then flex-grow: var(--g)); 27 and later
+// flex once one of another priority does (flex: 1 1 0% !important then
+// flex-grow: 2; black box, 26.1.0 to 30.1.3, #313 review).
+// A longhand of a recomposed shorthand written (decls.later: a read looks
+// at the order; decls.laterVar: one with var(), blockedRead).
+function markLater(decls, value) {
+  decls.later = true;
+  if (value.includes('var(')) decls.laterVar = true;
+}
+function blockedRead(decls, name, modern) {
+  const parts = RECOMPOSED_PARTS.get(name);
+  const own = decls.get(name);
+  let seen = false;
+  for (const [n, decl] of decls) {
+    if (n === name) seen = true;
+    else if (seen && parts.has(n)) {
+      if (hasVar(decl.value)) return true;
+      if (modern && name === 'flex' && decl.important !== own.important) return true;
+    }
+  }
+  return false;
+}
 function recompose(s, name, value, accessor, modern, longhand, sub) {
+  if ((name === 'flex' || name === 'font') && blockedRead(s.decls, name, modern)) return '';
   if (name === 'flex') return composeShorthand(s.decls, 'flex') || value;
   if (name === 'font') return (accessor && composeFont(s.decls)) || value;
   if (name === 'border') {
@@ -5215,7 +5254,7 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
     for (const n of RESETS[name]) removed = s.decls.delete(n) || removed;
     if (removed) {
       s.decls.set(name, { value: text, important });
-      if (RECOMPOSED_LONGHANDS.has(name)) s.decls.later = true;
+      if (RECOMPOSED_LONGHANDS.has(name)) markLater(s.decls, text);
       reindex(style);
       sync(style);
       return;
@@ -5223,7 +5262,7 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
   }
   if (cleared) {
     s.decls.set(name, { value: text, important });
-    if (RECOMPOSED_LONGHANDS.has(name)) s.decls.later = true;
+    if (RECOMPOSED_LONGHANDS.has(name)) markLater(s.decls, text);
     reindex(style);
     sync(style);
     return;
@@ -5232,7 +5271,7 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
   if (old && old.value === text && old.important === important) return;
   if (old === undefined && MERGEABLE.has(name)) s.decls.mergeable = true;
   s.decls.set(name, { value: text, important });
-  if (RECOMPOSED_LONGHANDS.has(name)) s.decls.later = true;
+  if (RECOMPOSED_LONGHANDS.has(name)) markLater(s.decls, text);
   if (old === undefined) defineIndex(style, s.indexed++, name);
   sync(style);
 }

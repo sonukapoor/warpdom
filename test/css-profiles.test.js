@@ -4065,6 +4065,47 @@ for (const jsdom of [26, 27, 28, 29, 30])
           return [first, s.flex, s.getPropertyValue('flex')];
         },
       };
+      // flex and font read '' once a longhand of theirs with var() follows
+      // them (26 to 30), and flex once one of another priority does (27 and
+      // later; #313 review)
+      scenarios.blockedReads = (s) => {
+        const out = [];
+        for (const writes of [
+          [
+            ['flex', '1 1 0%'],
+            ['flexGrow', 'var(--g)'],
+          ],
+          [
+            ['flex', '1 1 0%'],
+            ['flex-shrink', 'var(--g)'],
+          ],
+          [
+            ['flex', '1 1 0%'],
+            ['flexGrow', '2'],
+            ['flexShrink', 'var(--g)'],
+          ],
+          [
+            ['font', '12px Arial'],
+            ['fontSize', 'var(--g)'],
+          ],
+          [
+            ['flex', '1 1 0%', 'important'],
+            ['flex-grow', '2'],
+          ],
+          [
+            ['flex', '1 1 0%'],
+            ['flex-grow', '2', 'important'],
+          ],
+        ]) {
+          const t = w.document.createElement('div').style;
+          for (const [name, value, priority] of writes)
+            if (name.includes('-') || priority) t.setProperty(name, value, priority ?? '');
+            else t[name] = value;
+          const shorthand = writes[0][0];
+          out.push(t[shorthand], t.getPropertyValue(shorthand), t.removeProperty(shorthand));
+        }
+        return out;
+      };
       // removeProperty() returns the value getPropertyValue() reads (#313
       // review)
       scenarios.removeReturns = (s) => {

@@ -4740,6 +4740,20 @@ jsdom 26 profile with border-color instead of border, so every border
 read now composes): 151.5 to 159.2 ms (+5%), the price of a value where
 '' was wrong; b78.mjs within noise (163.8 and 167.0 ms).
 
+Third review (#313, CodeRabbit): flex and font read '' once a longhand
+of theirs with var() follows them (jsdom 26 to 30, the accessor,
+getPropertyValue and removeProperty; jsdom 26 removes the shorthand
+there), and flex once a longhand of another priority follows (27 and
+later: flex: 1 1 0% !important then flex-grow: 2). blockedRead does it on
+a recomposed read; jsdom 26's getPropertyValue looks only when a var()
+longhand was written (decls.laterVar), so other reads skip it. Cost
+against the previous head (5 interleaved runs, medians): b78.mjs 179.7
+and 175.4 ms, b78j26.mjs 165.5 and 170.1 ms (noise; a first version,
+through the cache for every jsdom 26 getPropertyValue, was +16%). Not
+modeled: what cssText keeps after such a write (phase 3), and jsdom 27
+and later dropping a var() longhand after its shorthand in a style
+attribute.
+
 ## 2026-11-10: a unitless zero next to a function in a box shorthand, jsdom 26 and 30 (branch fix/zero-beside-function, 1.0 triage)
 
 Found in the 1.0 triage of the open parity issues (common in real CSS:
