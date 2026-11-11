@@ -392,6 +392,22 @@ export function legacyFont(value, variant) {
   if (!legacyFontParts.has(key)) legacyFontParts.set(key, parts);
   return text;
 }
+// cssstyle before 4.4's flex as stored (css.js legacyFlexValue: the parts
+// written, grow shrink basis): a number first is the grow, second the
+// shrink, anything else the basis; a part not written has no longhand
+// (flex: 1 reads flex-shrink ''). auto alone is the basis.
+const LEGACY_FLEX_NUMBER = /^[+-]?(\d+(?:\.\d*)?|\.\d+)$/;
+function legacyFlexLonghands(value) {
+  if (CSS_WIDE.has(value.toLowerCase())) return SHORTHANDS.flex.map((l) => [l, value.toLowerCase()]);
+  const out = [];
+  const t = words(value);
+  for (let i = 0; i < t.length; i++) {
+    const token = t[i];
+    if (i < 2 && LEGACY_FLEX_NUMBER.test(token)) out.push([i === 0 ? 'flex-grow' : 'flex-shrink', token]);
+    else out.push(['flex-basis', token]);
+  }
+  return out;
+}
 const legacyFontLonghands = (text, variant) =>
   legacyFontParts.get(`${variant} ${text}`) ??
   (legacyFont(text, variant) === null ? [] : legacyFontParts.get(`${variant} ${text}`));
@@ -744,10 +760,12 @@ export function expand(property, value, fontVariant = undefined) {
   const name = ALIASES[property] ?? property;
   if (!SHORTHANDS[name]) return [[name, value]];
   if (fontVariant !== undefined && name === 'font') return [[name, value], ...legacyFontLonghands(value, fontVariant)];
-  const key = `${name}:${value}`;
+  // (cssstyle before 4.4's flex: its own entries, keyed apart)
+  const legacyFlex = fontVariant !== undefined && name === 'flex';
+  const key = legacyFlex ? `legacy-flex:${value}` : `${name}:${value}`;
   let out = expansions.get(key);
   if (!out) {
-    out = [[name, value], ...(expandShorthand(name, value) ?? [])];
+    out = [[name, value], ...((legacyFlex ? legacyFlexLonghands(value) : expandShorthand(name, value)) ?? [])];
     if (expansions.size > 5000) expansions.clear();
     expansions.set(key, out);
   }

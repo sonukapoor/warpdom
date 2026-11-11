@@ -1028,6 +1028,57 @@ export function setValidationMode(proto, mode, compat = {}) {
 // keywords before 4.6, or declarations that lose their !important: the
 // same names, its own declared value caches.
 const variantSurfaces = new Map();
+// cssstyle before 4.4 (legacyFont set) stores flex as its parts written.
+const isLegacyFlex = (surface) => surface !== null && surface !== undefined && surface.legacyFont !== undefined;
+// flex in cssstyle before 4.4 (black box, cssstyle 2.3.0 to 4.3.1 on their
+// own and jsdom 20.0.3 to 25.0.1): a number first is the grow, second the
+// shrink, a length anywhere the basis (a later one replacing it; 0 written
+// so is both a number and 0px, 0.0 and -0 a number only), at most three
+// parts; written as the parts given,
+// grow shrink basis (flex: 1 is 1, 1 0 is 1 0 0px, 1 10px is 1 10px).
+// none is 0 0 auto, auto alone the basis only (setDeclaration and
+// parseInto declare flex-basis: auto), and other keywords and var()
+// declare nothing. Numbers as Number() writes them (+1 is 1, .5 is 0.5):
+// before 4.2 no exponent and no 1., from 4.2 an exponent and 1. but no
+// leading zero (01, 1e01; #239). (flex: 10px 1 reads 1 10px, its 1 the shrink: the parts'
+// places are not kept, a listed difference.)
+const LEGACY_FLEX_NUMBER_4_1 = /^[+-]?(\d+(?:\.\d+)?|\.\d+)$/;
+const LEGACY_FLEX_BASIS = /^(?:auto|calc\(.*\)|[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:%|[a-z]+))$/i;
+function legacyFlexValue(value, mode, surface) {
+  const lower = value.toLowerCase();
+  if (lower === 'none') return '0 0 auto';
+  if (lower === 'auto') return 'auto';
+  if (CSS_WIDE_KEYWORD.test(value) || VAR_ENV_ATTR.test(value)) return INVALID;
+  const parts = segments(value);
+  let grow = '';
+  let shrink = '';
+  let basis = '';
+  let count = 0;
+  for (let i = 0; i < parts.length; i += 2) {
+    const part = parts[i];
+    if (part === '') continue;
+    const at = count++;
+    if (at > 2) return INVALID;
+    const isNumber =
+      surface.legacyFont === 'cssstyle4.1' ? LEGACY_FLEX_NUMBER_4_1.test(part) : FLEX_NUMBER_ONLY_4_2.test(part);
+    if (isNumber || part === '0') {
+      if (at === 0) grow = String(Number(part));
+      else if (at === 1) shrink = String(Number(part));
+      if (part === '0') basis = '0px';
+      else if (at === 2) return INVALID;
+      continue;
+    }
+    // (a length, percentage, calc() or auto, by the era's units)
+    if (!LEGACY_FLEX_BASIS.test(part) || legacyMeasureRejects('flex-basis', part, surface)) return INVALID;
+    const length = declaredValue('flex-basis', part, mode, surface);
+    if (length === INVALID || length === '') return INVALID;
+    basis = length;
+  }
+  let out = grow;
+  if (shrink !== '') out = out === '' ? shrink : `${out} ${shrink}`;
+  if (basis !== '') out = out === '' ? basis : `${out} ${basis}`;
+  return out === '' ? INVALID : out;
+}
 const isLegacyFont = (surface, name) => name === 'font' && surface !== null && surface.legacyFont !== undefined;
 
 // Before 4.4 cssstyle's font removes the font longhands before it is set,
@@ -1142,6 +1193,8 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
     else if (!isKnownProperty(name)) out = INVALID;
     else if (isLegacyFont(surface, name))
       out = /^inherit$/i.test(value) ? INVALID : (legacyFont(value, surface.legacyFont) ?? INVALID);
+    else if (name === 'flex' && isLegacyMode(mode) && /^initial$/i.test(value)) out = '0 1 auto';
+    else if (name === 'flex' && isLegacyFlex(surface)) out = legacyFlexValue(value, mode, surface);
     else {
       let written = isSpecMode(mode) ? identValue(name, value) : value;
       // (a quote is rare: most values skip this)
@@ -2158,6 +2211,8 @@ const MANTISSA_4_2 = String.raw`[+-]?(?:(?:0|[1-9]\d*)(?:\.\d*)?|\.\d+)`;
 const EXPONENT_4_2 = String.raw`e-?(?:0|[1-9]\d*)`;
 const UNIT_4_2 = String.raw`(?:%|[cm]m|[dls]?v(?:[bhiw]|max|min)|in|p[ctx]|q|r?(?:[cl]h|cap|e[mx]|ic))`;
 const NUMBER_4_2 = `${MANTISSA_4_2}(?:(?:${EXPONENT_4_2})?${UNIT_4_2})?`;
+// (a number alone in cssstyle 4.2 and 4.3's flex: legacyFlexValue)
+const FLEX_NUMBER_ONLY_4_2 = new RegExp(`^${MANTISSA_4_2}(?:${EXPONENT_4_2})?$`);
 const FLEX_NUMBER_4_2 = `${MANTISSA_4_2}(?:${EXPONENT_4_2})?${UNIT_4_2}?`;
 const tokensOf = (token) => new RegExp(String.raw`^\s*(?:${token})(?:\s+(?:${token}))*\s*$`);
 const VALUE_4_1 = tokensOf(`${OTHER_TOKEN}|${NUMBER_4_1}(?!\\S)`);
@@ -3963,6 +4018,13 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       }
       if (meetImage(name, value, mode)) declared = INVALID;
     }
+    // (cssstyle before 4.4: flex: auto declares flex-basis: auto only;
+    // legacyFlexValue)
+    if (name === 'flex' && isLegacyFlex(surface)) decls.legacyFont = surface.legacyFont;
+    if (name === 'flex' && declared === 'auto' && !inRule && isLegacyFlex(surface)) {
+      for (const n of RESETS.flex) decls.delete(n);
+      name = 'flex-basis';
+    }
     if (declared === INVALID || declared === '') continue;
     // One that loses its !important is written without it; in a style
     // sheet it is a normal declaration, elsewhere it is still !important
@@ -4540,6 +4602,9 @@ const valueOf = (style, name) => {
     return fromShorthand(s.decls, name);
   // jsdom 26 read background as the background-color set alone.
   if (name === 'background' && isLegacyMode(s.mode)) return s.decls.get('background-color')?.value ?? '';
+  // cssstyle before 4.4 reads flex as the longhands declared, joined
+  // (flex-basis: auto alone is auto; legacyFlexValue)
+  if (name === 'flex' && isLegacyFlex(s.surface)) return legacyFlexJoined(s.decls);
   if (COMPOSED[name]) return composeShorthand(s.decls, name, s.surface?.colors === 'css2');
   return BORDER_READS[name] !== undefined && !isLegacyMode(s.mode) ? composeBorder(s.decls, name) : '';
 };
@@ -4617,6 +4682,14 @@ const COMPOSED = {
     return xs.map((part, i) => `${part} ${ys[i] ?? ys[ys.length - 1]}`).join(', ');
   },
 };
+function legacyFlexJoined(decls) {
+  let out = '';
+  for (const longhand of SHORTHANDS.flex) {
+    const value = decls.get(longhand)?.value;
+    if (value) out = out === '' ? value : `${out} ${value}`;
+  }
+  return out;
+}
 // legacyBox: cssstyle before 4.4, which writes all four values of margin
 // and padding (1px 2px 1px 2px).
 function composeShorthand(decls, name, legacyBox = false) {
@@ -5002,6 +5075,17 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
     return;
   }
   if (isLegacyFont(s.surface, name) && /^inherit$/i.test(raw)) raw = '';
+  // (cssstyle before 4.4: flex: auto declares flex-basis: auto only,
+  // after removing flex and its longhands; legacyFlexValue)
+  if (name === 'flex' && isLegacyFlex(s.surface)) s.decls.legacyFont = s.surface.legacyFont;
+  if (name === 'flex' && isLegacyFlex(s.surface) && /^auto$/i.test(raw)) {
+    let removed = false;
+    for (const n of RESETS.flex) if (n !== 'flex-basis') removed = s.decls.delete(n) || removed;
+    if (removed) reindex(style);
+    setDeclaration(style, 'flex-basis', 'auto', priority, via);
+    if (removed) sync(style);
+    return;
+  }
   // jsdom 27 and later: a background write, a removal too, replaces the
   // background longhands, those setInitials set among them (black box,
   // 27.4.0 to 30.1.3, #264), except one of initial values, which sets

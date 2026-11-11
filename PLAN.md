@@ -4694,6 +4694,41 @@ reject most such lists (1px calc(10%) 2px; #265 item 9). jsdom 23 to 25
 write the zero as 0px too, but jsdom 20 and 22 keep it, and 22 and 23
 share warpdom's mode.
 
+## 2026-11-11: flex keeps the parts written before cssstyle 4.4 (branch fix/legacy-flex-parts, 1.0 triage)
+
+Found while reviewing #314. Black box, jsdom 20.0.3 to 25.0.1 and
+cssstyle 2.3.0 to 4.6.0 on their own: before cssstyle 4.4 (jsdom 20 to 22,
+25 with cssstyle 4.1; Jest 29's jsdom 20) flex keeps the parts written. A
+number first is the grow, second the shrink, a length anywhere the basis
+(a later one replacing it; 0 written so is also 0px), at most three
+parts, written grow shrink basis: flex: 1 is 1 with flex-shrink and
+flex-basis '', 1 0 is 1 0 0px, 10px is 10px. none is 0 0 auto; auto alone
+declares flex-basis: auto only, and style.flex then reads the longhands
+declared, joined (auto); inherit and var() declare nothing; numbers
+before 4.2 without exponent or trailing dot, from 4.2 with them but no
+leading zero (#239). initial is 0 1 auto in jsdom 20 to 26. warpdom wrote
+every part (1 1 0%), took 10px 1 as 1 1 1 and accepted foo and content.
+Computed values follow (flex: 1 computes flex-shrink '').
+
+legacyFlexValue (css.js) parses it; expand() re-reads the stored value by
+the parts' places (shorthands.js legacyFlexLonghands, cached), so a part
+not written has no longhand. Not modeled (differences.md): the places of
+the parts after the first write (flex: 10px 1 reads 1 10px, its 1 the
+shrink in jsdom), later longhand writes and removeProperty('flex'), which
+leave jsdom's style.flex unchanged, and cssstyle 4.4 to 4.6 reading a
+calc() first as the grow.
+
+Test: css-profiles.test.js "flex keeps the parts written before cssstyle
+4.4" (parity 20, 21, 22, 23, 25, 26: 38 values through the accessor and
+the style attribute, longhands and computed values).
+
+Cost (node 22.17.1, 5 interleaved runs, medians; scratchpad bench-fx.mjs:
+200 elements, 300 rounds of a style attribute with flex and width, a flex
+write and three flex reads): jsdom 20 profile 74.9 ms on main, 79.9 here
+(+7%: flex: auto now declares flex-basis instead, which reindexes the
+block, and one write in six is auto there); default profile 73.8 and
+71.1 ms. A first version did not cache the expansion (+15%).
+
 ## 2026-11-09: keywords jsdom 26 takes in some properties (branch fix/264-jsdom26-keyword-sets, #264 item 77, first part)
 
 Black box, 26.1.0, setProperty and the style attribute: jsdom 26 checks

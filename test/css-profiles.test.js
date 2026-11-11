@@ -4026,3 +4026,85 @@ for (const jsdom of [26, 30])
     },
     { jsdom },
   );
+
+// cssstyle before 4.4 (jsdom 20 to 22, and 25 with cssstyle 4.1; black
+// box, cssstyle 2.3.0 to 4.3.1 on their own and jsdom 20.0.3 to 25.0.1)
+// keeps flex's parts as written: a number first is the grow, second the
+// shrink, a length anywhere the basis (0 is both a number and 0px); a part
+// not given reads '' (flex: 1 is 1, flex-shrink ''), auto alone declares
+// flex-basis only, initial is 0 1 auto, inherit and var() declare nothing.
+for (const jsdom of [20, 21, 22, 23, 25, 26])
+  parity(
+    `style: flex keeps the parts written before cssstyle 4.4 (jsdom ${jsdom})`,
+    (w) => {
+      const out = [];
+      for (const value of [
+        '1',
+        '2 3',
+        '1 0',
+        '0',
+        '0 0',
+        '1 1 10px',
+        '10px',
+        '1 10px',
+        'auto',
+        'AUTO',
+        'none',
+        'initial',
+        'inherit',
+        '1 1 0',
+        '1 1 auto',
+        '2 auto',
+        '0%',
+        '1 0%',
+        'var(--a)',
+        '-1',
+        '1.5',
+        '1 1 1 1',
+        'foo',
+        '1 2 3',
+        '0 1 auto',
+        'content',
+        '.5',
+        '+1',
+        '10px 20px',
+        '1 1 0%',
+        // (0 written so is also the basis 0px; numbers by era)
+        '01',
+        '0.0',
+        '-0',
+        '1.',
+        '1 1 0.0',
+        '1 01',
+        // (cssstyle 4.4 to 4.6 read a calc() first as the grow: calc(1px)
+        // is calc(1px) 1 0%, a listed difference)
+        ...(jsdom === 23 || jsdom === 26 ? [] : ['calc(1px)', '1 calc(10px)']),
+      ]) {
+        const a = w.document.createElement('div');
+        w.document.body.append(a);
+        a.style.flex = value;
+        const s = a.style;
+        const b = w.document.createElement('div');
+        b.setAttribute('style', `flex: ${value}`);
+        const c = w.getComputedStyle(a);
+        out.push([
+          value,
+          s.flex,
+          s.flexGrow,
+          s.flexShrink,
+          s.flexBasis,
+          s.getPropertyValue('flex-shrink'),
+          s.cssText,
+          s.length,
+          b.style.cssText,
+          c.flex,
+          c.flexGrow,
+          c.flexShrink,
+          c.flexBasis,
+        ]);
+        a.remove();
+      }
+      return out;
+    },
+    { jsdom },
+  );
