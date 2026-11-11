@@ -3972,7 +3972,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       } else if (declared !== INVALID && declared !== '' && resets(surface, name, declared))
         // (itself too: given again in another case it moves to the end;
         // #314 review)
-        for (const n of RESETS[name]) decls.delete(n);
+        for (const n of RESETS[name]) if (n !== name || !resetsInPlace(surface, name, declared)) decls.delete(n);
     }
     if (declared === INVALID || declared === '') continue;
     // One that loses its !important is written without it; in a style
@@ -4800,6 +4800,11 @@ const RESETS_DECLARING_NOTHING = /^(none|initial|inherit|unset|revert|revert-lay
 // (A surface has a legacyFont variant before cssstyle 4.4.)
 const resets = (surface, name, text) =>
   !text.includes('var(') || (name === 'flex' && surface?.legacyFont === undefined);
+// From cssstyle 4.4 (jsdom 23 to 26) background: none alone removes the
+// background longhands but stays in place itself (black box, 23.2.0 and
+// 26.1.0; #314 review).
+const resetsInPlace = (surface, name, text) =>
+  name === 'background' && surface?.legacyFont === undefined && /^none$/i.test(text);
 // (the kinds of the names a border write may remove: the block's own
 // names are walked, usually a few, rather than every name looked up)
 const RESET_SUB = 1,
@@ -5156,7 +5161,10 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
   if (RESETS[name] !== undefined && isLegacyMode(s.mode) && (legacyBorder || resets(s.surface, name, text))) {
     let removed = false;
     if (legacyBorder) removed = legacyBorderResets(s.decls, name, raw, s.mode);
-    else for (const n of RESETS[name]) removed = s.decls.delete(n) || removed;
+    else {
+      const inPlace = resetsInPlace(s.surface, name, text);
+      for (const n of RESETS[name]) if (!inPlace || n !== name) removed = s.decls.delete(n) || removed;
+    }
     if (removed) {
       s.decls.set(name, { value: text, important });
       reindex(style);

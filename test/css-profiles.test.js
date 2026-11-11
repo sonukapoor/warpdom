@@ -4075,10 +4075,18 @@ for (const jsdom of [20, 21, 22, 23, 24, 25, 26])
         'flex: 1 1 0px; width: 1px; Flex: 2 2 0px',
         'background: red; width: 1px; Background: blue',
         'border: 1px solid red; width: 1px; Border: 2px solid blue',
+        // (background: none alone is set in place with cssstyle 4.4 and
+        // later, jsdom 23 to 26; #314 review)
+        'background: red; width: 1px; Background: none',
+        'background: red; width: 1px; Background: NONE',
+        'flex: 1; width: 1px; Flex: none',
       ]) {
         const a = w.document.createElement('div');
         a.setAttribute('style', text);
-        out.push([text, a.style.cssText]);
+        const b = w.document.createElement('div');
+        b.style.cssText = 'background: red; width: 1px';
+        b.style.setProperty('background', 'none');
+        out.push([text, a.style.cssText, b.style.cssText]);
       }
       return out;
     },
