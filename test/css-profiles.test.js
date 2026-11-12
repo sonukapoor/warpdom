@@ -3996,14 +3996,20 @@ test('style: long digit runs and many comments are read quickly (#224, #264)', (
     // without; #311 review)
     ['30.1.3', 'content', `${'/**/'.repeat(100000)}"var(--c)"`],
   ]) {
-    const w = createWindow({ jsdom });
-    const e = w.document.createElement('div');
-    w.document.body.append(e);
-    const start = performance.now();
-    e.style.setProperty(name, value);
-    w.getComputedStyle(e).getPropertyValue(name);
-    const elapsed = performance.now() - start;
-    assert.ok(elapsed < 150, `${jsdom} ${name}: ${elapsed} ms`);
+    // The best of three runs, so a cold first run on a busy machine does
+    // not fail the test (231 ms once in CI; a quadratic read takes over
+    // 150 ms on every run).
+    let best = Infinity;
+    for (let run = 0; run < 3; run++) {
+      const w = createWindow({ jsdom });
+      const e = w.document.createElement('div');
+      w.document.body.append(e);
+      const start = performance.now();
+      e.style.setProperty(name, value);
+      w.getComputedStyle(e).getPropertyValue(name);
+      best = Math.min(best, performance.now() - start);
+    }
+    assert.ok(best < 150, `${jsdom} ${name}: ${best} ms`);
   }
 });
 
