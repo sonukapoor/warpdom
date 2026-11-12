@@ -2319,14 +2319,26 @@ function borderValue(name, value, mode) {
     if (i > 0 && parts[i - 1].includes(',')) return serializeDeclared(name, value, mode);
     if (BORDER_STYLE.test(token)) {
       const lower = token.toLowerCase();
+      // (jsdom 20 to 25 take a style in lowercase only, and on a side none
+      // clears the width only, not a color before it)
+      if (legacy && token !== lower) return INVALID;
       if (side && !spec && (lower === 'none' || (lower === 'hidden' && !legacy))) {
-        width = color = null;
+        width = null;
+        if (!legacy) color = null;
         style = '';
       } else style = token;
-    } else if (BORDER_WIDTH.test(token)) width = token;
-    else color = token;
+    } else if (BORDER_WIDTH.test(token)) {
+      // (and no calc() width)
+      if (legacy && token.charCodeAt(0) === 99 /* c */ && token.includes('(')) return INVALID;
+      width = token;
+    } else color = token;
   }
-  if (style === '') style = null;
+  // (a side whose none or hidden cleared every part is valid and declares
+  // nothing: border-top: 0 none removes the side's longhands; #314 review)
+  if (style === '') {
+    if (width === null && color === null) return '';
+    style = null;
+  }
   if (spec) {
     if (width !== null && width.toLowerCase() === 'medium') width = null;
     if (style !== null && style.toLowerCase() === 'none') style = null;
@@ -3967,8 +3979,8 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     // a shorthand resets what came before it there too (setDeclaration).
     if (clears && RESETS[name] !== undefined) {
       if (BORDER_AND_SIDES.has(name)) {
-        if (declared !== INVALID || RESETS_DECLARING_NOTHING.test(value) || (name === 'border' && hasVar(value)))
-          legacyBorderResets(decls, name, value, mode);
+        const how = declared !== INVALID ? AS_WRITTEN : rejectedReset(name, value, mode);
+        if (how !== NO_RESET) legacyBorderResets(decls, name, value, mode, how === SIDES_ONLY);
       } else if (declared !== INVALID && declared !== '' && resets(surface, name, declared))
         // (itself too: given again in another case it moves to the end;
         // #314 review)
@@ -4797,6 +4809,20 @@ function sharesLonghands(name, other) {
 // (border or a side: none and a CSS-wide keyword declare nothing, or are
 // rejected, and still reset; legacyBorderResets)
 const RESETS_DECLARING_NOTHING = /^(none|initial|inherit|unset|revert|revert-layer)$/i;
+// How a rejected border or side value resets (black box, jsdom 20 to 26):
+// NO_RESET, AS_WRITTEN (inherit in any case; on border none in any case and
+// var()) or SIDES_ONLY (jsdom 20 to 25's border on any other rejected value:
+// the sides' shorthands only, as with var()). (A side's none is not
+// rejected: borderValue gives ''.)
+const NO_RESET = 0;
+const AS_WRITTEN = 1;
+const SIDES_ONLY = 2;
+function rejectedReset(name, value, mode) {
+  if (/^inherit$/i.test(value)) return AS_WRITTEN;
+  if (name !== 'border') return NO_RESET;
+  if (/^none$/i.test(value) || hasVar(value)) return AS_WRITTEN;
+  return mode === 'jsdom26' ? NO_RESET : SIDES_ONLY;
+}
 // (A surface has a legacyFont variant before cssstyle 4.4.)
 const resets = (surface, name, text) =>
   !text.includes('var(') || (name === 'flex' && surface?.legacyFont === undefined);
@@ -4852,10 +4878,11 @@ function borderPartBits(value, usesVar) {
 // removes itself too, so that written again it moves to the end, but for
 // a var() value, which is set in place.
 // value: as written (border: none declares nothing, inherit is rejected:
-// both still remove). Was any removed?
-function legacyBorderResets(decls, name, value, mode) {
-  const usesVar = hasVar(value);
-  let removed = (!usesVar || RESETS_DECLARING_NOTHING.test(value)) && decls.delete(name);
+// both still remove); sidesOnly: a rejected border value that resets as
+// var() does (rejectedReset). Was any removed?
+function legacyBorderResets(decls, name, value, mode, sidesOnly = false) {
+  const usesVar = sidesOnly || hasVar(value);
+  let removed = !sidesOnly && (!usesVar || RESETS_DECLARING_NOTHING.test(value)) && decls.delete(name);
   if (name !== 'border') {
     const longhands = RESET_SIDE_LONGHANDS[name];
     for (let i = 0; i < longhands.length; i++) removed = decls.delete(longhands[i]) || removed;
@@ -5118,11 +5145,8 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
   if (!s.parentRule && meetImage(name, raw, s.mode)) text = INVALID;
   const legacyBorder = isLegacyMode(s.mode) && BORDER_AND_SIDES.has(name);
   if (text === INVALID) {
-    if (
-      legacyBorder &&
-      (RESETS_DECLARING_NOTHING.test(raw) || (name === 'border' && hasVar(raw))) &&
-      legacyBorderResets(s.decls, name, raw, s.mode)
-    ) {
+    const how = legacyBorder ? rejectedReset(name, raw, s.mode) : NO_RESET;
+    if (how !== NO_RESET && legacyBorderResets(s.decls, name, raw, s.mode, how === SIDES_ONLY)) {
       reindex(style);
       sync(style);
     }
@@ -5131,7 +5155,8 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
   if (text === '') {
     let removed =
       (replaces && clearBackground(s.decls)) || (legacyBorder && legacyBorderResets(s.decls, name, raw, s.mode));
-    for (const n of RESETS.background) removed = s.decls.delete(n) || removed;
+    // (a border side that declares nothing gives '' too: #314 review)
+    if (!legacyBorder) for (const n of RESETS.background) removed = s.decls.delete(n) || removed;
     if (removed) {
       reindex(style);
       sync(style);

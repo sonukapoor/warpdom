@@ -4056,6 +4056,13 @@ for (const jsdom of [20, 21, 22, 23, 24, 25, 26])
         ['border', ['none', 'NONE', '0', '2px', 'solid', 'red', '2px solid red', 'none red', '2px none', 'hidden']],
         ['border', ['inherit', 'var(--a)', 'currentcolor', 'thin dotted']],
         ['border-top', ['none', '0', '1px solid red', 'red', 'inherit', 'var(--a)']],
+        // (none and hidden clear what came before them, before 26 none
+        // the width only; a side left with nothing declares nothing and
+        // still resets; before 26 a style in lowercase only and no calc()
+        // width; initial and unset reset nothing; #314 review)
+        ['border-top', ['0 none', '1px none', 'medium none', 'red none', '0 red none', 'hidden', '0 hidden']],
+        ['border-top', ['red hidden', 'NONE', 'INHERIT', 'initial', 'unset', '1px SOLID', 'calc(1px) solid']],
+        ['border', ['Initial', 'unset', '1px SOLID', 'calc(1px) none', '0 NONE', 'None']],
         ['flex', ['none', '0 0 auto', '2 3 4px']],
         ['background', ['red', 'none', 'url(a.png) blue']],
       ];
