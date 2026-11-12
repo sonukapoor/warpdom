@@ -4096,12 +4096,39 @@ for (const jsdom of [26, 27, 28, 29, 30])
             ['flex', '1 1 0%'],
             ['flex-grow', '2', 'important'],
           ],
+          // (a longhand written before font: jsdom 26's font write resets
+          // it, so it neither blocks the read nor is read; #313 review)
+          [
+            ['fontStyle', 'italic'],
+            ['font', '12px Arial'],
+            ['fontSize', 'var(--g)'],
+          ],
+          [
+            ['fontStyle', 'italic'],
+            ['font', '12px Arial'],
+            ['fontSize', '20px'],
+          ],
+          [
+            ['fontWeight', 'bold'],
+            ['font', 'italic 12px Arial'],
+            ['fontSize', '20px'],
+          ],
+          [
+            ['lineHeight', '3'],
+            ['font', '12px Arial'],
+            ['fontStyle', 'italic'],
+          ],
+          [
+            ['flexShrink', '3'],
+            ['flex', '1 1 0%'],
+            ['flexGrow', '2'],
+          ],
         ]) {
           const t = w.document.createElement('div').style;
           for (const [name, value, priority] of writes)
             if (name.includes('-') || priority) t.setProperty(name, value, priority ?? '');
             else t[name] = value;
-          const shorthand = writes[0][0];
+          const shorthand = writes.find(([name]) => name === 'flex' || name === 'font')[0];
           out.push(t[shorthand], t.getPropertyValue(shorthand), t.removeProperty(shorthand));
         }
         return out;

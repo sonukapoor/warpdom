@@ -4638,10 +4638,14 @@ function readShorthand(style, name, accessor) {
   const asWritten = !modern && !accessor;
   if (asWritten && s.decls.laterVar !== true) return value;
   let blocked = false;
+  // (jsdom 26's font write resets the longhands written before it:
+  // fontStyle = 'italic', font = '12px Arial', fontSize = '20px' reads 20px
+  // Arial; composeFont skips them; #313 review)
+  const resetsEarlier = name === 'font' && s.mode === 'jsdom26';
   for (const n of s.decls.keys()) {
     if (n === anchor) seen = true;
     else if (parts.has(n)) {
-      if (!seen) before = true;
+      if (!seen) before = before || !resetsEarlier;
       else if (BORDER_SUBS.has(n)) sub = true;
       else {
         longhand = true;
@@ -4732,7 +4736,7 @@ function blockedRead(decls, name, modern) {
 function recompose(s, name, value, accessor, modern, longhand, sub) {
   if ((name === 'flex' || name === 'font') && blockedRead(s.decls, name, modern)) return '';
   if (name === 'flex') return composeShorthand(s.decls, 'flex') || value;
-  if (name === 'font') return (accessor && composeFont(s.decls)) || value;
+  if (name === 'font') return (accessor && composeFont(s.decls, !modern)) || value;
   if (name === 'border') {
     if (modern) return longhand ? '' : value;
     // jsdom 26: from border-width, -style and -color over border's own
@@ -4744,14 +4748,22 @@ function recompose(s, name, value, accessor, modern, longhand, sub) {
   return modern ? '' : composeBorder(s.decls, name) || value;
 }
 // font from its longhands, as jsdom's accessor writes it (normal parts
-// left out, a spaced slash before the line height).
-function composeFont(decls) {
-  const get = (longhand) => decls.get(longhand)?.value ?? fromShorthand(decls, longhand);
+// left out, a spaced slash before the line height). afterFont (jsdom 26):
+// a longhand written before font is read from font, which reset it.
+function composeFont(decls, afterFont = false) {
+  let early = null;
+  if (afterFont)
+    for (const n of decls.keys()) {
+      if (n === 'font') break;
+      (early ??= new Set()).add(n);
+    }
+  const own = (longhand) => (early?.has(longhand) ? undefined : decls.get(longhand)?.value);
+  const get = (longhand) => own(longhand) ?? fromShorthand(decls, longhand);
   const size = get('font-size');
   const family = get('font-family');
   if (!size || !family) return '';
   const style = get('font-style');
-  const caps = decls.get('font-variant')?.value ?? get('font-variant-caps');
+  const caps = own('font-variant') ?? get('font-variant-caps');
   const weight = get('font-weight');
   const height = get('line-height');
   return [

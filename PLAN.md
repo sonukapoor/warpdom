@@ -4754,6 +4754,21 @@ modeled: what cssText keeps after such a write (phase 3), and jsdom 27
 and later dropping a var() longhand after its shorthand in a style
 attribute.
 
+Review (#313, 2026-11-12; CodeRabbit outside the diff, Copilot's summary;
+black box, jsdom 26.1.0 to 30.1.3): in jsdom 26 a font longhand written
+before font is reset by the font write, so fontStyle = 'italic', font =
+'12px Arial', then fontSize = '20px' reads 20px Arial (warpdom: 12px Arial)
+and then fontSize = 'var(--g)' reads '' (warpdom: 12px Arial). readShorthand
+no longer stops at such a longhand for jsdom 26's font, and composeFont reads
+it from font. 27 to 30 and flex already matched. Test: four sequences added
+to blockedReads (and flex's, which matched). Cost (node 22.17.1, 5
+interleaved runs, medians, scratchpad bench313g.mjs, 100,000 elements):
+font alone 108 to 65 ms and font then fontSize 400 to 359 ms (noise); the
+fixed sequence 92 to 240 ms, as it now recomposes (it returned the stale
+value before). Not modeled, for docs/differences.md with #312: a system
+font (caption, icon, menu) then a longhand, and font read from longhands
+alone with no font declared (jsdom 20 to 26 compose them; warpdom reads '').
+
 ## 2026-11-10: a unitless zero next to a function in a box shorthand, jsdom 26 and 30 (branch fix/zero-beside-function, 1.0 triage)
 
 Found in the 1.0 triage of the open parity issues (common in real CSS:
