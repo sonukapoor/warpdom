@@ -3979,6 +3979,44 @@ parity(
   { jsdom: 26 },
 );
 
+// cssstyle 4.2 and 4.3 (jsdom 26 as first installed; black box, cssstyle
+// 4.2.1 and 4.3.1 on their own) keep an exponent basis as written (1e1px,
+// lowercase e, no + and no leading zero), split the parts at any
+// whitespace, reject a comma between them, and read 1e-7 (String(Number()))
+// as the grow (#315 review).
+test('style: flex parts in cssstyle 4.2 and 4.3 (#315 review)', () => {
+  const rows = [
+    ['1 1 1e1px', '1 1 1e1px | 1 | 1 | 1e1px'],
+    ['1 1e-1px', '1 1e-1px | 1 |  | 1e-1px'],
+    ['1 1 1.5e1%', '1 1 1.5e1% | 1 | 1 | 1.5e1%'],
+    ['1 1 1e+1px', '2 3 4px | 2 | 3 | 4px'],
+    ['1 1 1e01px', '2 3 4px | 2 | 3 | 4px'],
+    ['1 1 1E1PX', '2 3 4px | 2 | 3 | 4px'],
+    ['1 1 1PX', '2 3 4px | 2 | 3 | 4px'],
+    ['1,2', '2 3 4px | 2 | 3 | 4px'],
+    ['1 ,2', '2 3 4px | 2 | 3 | 4px'],
+    ['1\r2', '1 2 | 1 | 2 | '],
+    ['1\f2', '1 2 | 1 | 2 | '],
+    ['1\v2', '1 2 | 1 | 2 | '],
+    ['0.0000001', '1e-7 | 1e-7 |  | '],
+    ['1e21', '1e+21 | 1e+21 |  | '],
+    ['1e-7 2', '1e-7 2 | 1e-7 | 2 | '],
+  ];
+  for (const cssstyle of ['4.2.1', '4.3.1']) {
+    const d = createWindow({ jsdom: '26.1.0', cssstyle }).document;
+    for (const [value, expected] of rows) {
+      const s = d.createElement('div').style;
+      s.flex = '2 3 4px';
+      s.flex = value;
+      assert.equal(
+        [s.flex, s.flexGrow, s.flexShrink, s.flexBasis].join(' | '),
+        expected,
+        `${cssstyle} ${JSON.stringify(value)}`,
+      );
+    }
+  }
+});
+
 // A unitless zero next to a function in margin, padding, border-width,
 // border-spacing and background-position is 0px, as alone (jsdom 26 and
 // 30.1.3: margin: 0 calc(50% - 10px) is 0px calc(50% - 10px)); in jsdom
@@ -4076,6 +4114,20 @@ for (const jsdom of [20, 21, 22, 23, 25, 26])
         '1.',
         '1 1 0.0',
         '1 01',
+        // (any whitespace separates the parts and a comma is invalid;
+        // String(Number()) writes 1e-7 and 1e+21, still the grow; an
+        // exponent basis is invalid before 4.2; #315 review)
+        '1,2',
+        '1,',
+        '1 ,2',
+        'calc(1px) ,',
+        '1\t2',
+        '1\n2',
+        ' 1  2 ',
+        '0.0000001',
+        '1 1 1e1px',
+        // (and 4.4 to 4.6 write min() as calc(), a listed difference)
+        ...(jsdom === 23 || jsdom === 26 ? [] : ['1\r2', '1\f2', '1\v2', '1e-7 2', '1 1 min(1px, 2px)']),
         // (cssstyle 4.4 to 4.6 read a calc() first as the grow: calc(1px)
         // is calc(1px) 1 0%, a listed difference)
         ...(jsdom === 23 || jsdom === 26 ? [] : ['calc(1px)', '1 calc(10px)']),

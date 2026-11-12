@@ -1040,22 +1040,26 @@ const isLegacyFlex = (surface) => surface !== null && surface !== undefined && s
 // parseInto declare flex-basis: auto), and other keywords and var()
 // declare nothing. Numbers as Number() writes them (+1 is 1, .5 is 0.5):
 // before 4.2 no exponent and no 1., from 4.2 an exponent and 1. but no
-// leading zero (01, 1e01; #239). (flex: 10px 1 reads 1 10px, its 1 the shrink: the parts'
+// leading zero (01, 1e01; #239), a basis's exponent kept as written (1e1px).
+// Any whitespace separates the parts, a comma between them is invalid. (flex: 10px 1 reads 1 10px, its 1 the shrink: the parts'
 // places are not kept, a listed difference.)
 const LEGACY_FLEX_NUMBER_4_1 = /^[+-]?(\d+(?:\.\d+)?|\.\d+)$/;
-const LEGACY_FLEX_BASIS = /^(?:auto|calc\(.*\)|[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:%|[a-z]+))$/i;
+const LEGACY_FLEX_BASIS = /^(?:auto|calc\(.*\)|[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?(?:%|[a-z]+))$/i;
+const LEGACY_FLEX_EXPONENT = /^[+-]?[\d.]+e[+-]?\d/i;
 function legacyFlexValue(value, mode, surface) {
   const lower = value.toLowerCase();
   if (lower === 'none') return '0 0 auto';
   if (lower === 'auto') return 'auto';
   if (CSS_WIDE_KEYWORD.test(value) || VAR_ENV_ATTR.test(value)) return INVALID;
-  const parts = segments(value);
+  // (any whitespace separates the parts; a comma between them is invalid)
+  const parts = segments(value, /\s/);
   let grow = '';
   let shrink = '';
   let basis = '';
   let count = 0;
   for (let i = 0; i < parts.length; i += 2) {
     const part = parts[i];
+    if (i > 0 && parts[i - 1].includes(',')) return INVALID;
     if (part === '') continue;
     const at = count++;
     if (at > 2) return INVALID;
@@ -1070,6 +1074,12 @@ function legacyFlexValue(value, mode, surface) {
     }
     // (a length, percentage, calc() or auto, by the era's units)
     if (!LEGACY_FLEX_BASIS.test(part) || legacyMeasureRejects('flex-basis', part, surface)) return INVALID;
+    // (an exponent from 4.2, kept as written: 1e1px)
+    if (LEGACY_FLEX_EXPONENT.test(part)) {
+      if (surface.legacyFont === 'cssstyle4.1') return INVALID;
+      basis = part;
+      continue;
+    }
     const length = declaredValue('flex-basis', part, mode, surface);
     if (length === INVALID || length === '') return INVALID;
     basis = length;

@@ -4729,6 +4729,15 @@ write and three flex reads): jsdom 20 profile 74.9 ms on main, 79.9 here
 block, and one write in six is auto there); default profile 73.8 and
 71.1 ms. A first version did not cache the expansion (+15%).
 
+Review (#315, 2026-11-12; black box, jsdom 20.0.3, 22.1.0, 25.0.1 and
+cssstyle 4.2.1 and 4.3.1 on their own): any whitespace separates the parts
+(1\r2 and 1\f2 are 1 2) and a comma between them is invalid (1,2, 1 ,2);
+from 4.2 an exponent basis is kept as written (1 1 1e1px, lowercase e, no +
+and no leading zero; before 4.2 invalid); a grow written 0.0000001 is stored
+as 1e-7 and stays the grow (expand() took it as the basis). Test: "flex
+parts in cssstyle 4.2 and 4.3" and new values in the parity matrix. Cost
+level (bench-fx.mjs medians, jsdom 20 77.1 to 77.6 ms, 26 76.1 to 74.3 ms).
+
 ## 2026-11-09: keywords jsdom 26 takes in some properties (branch fix/264-jsdom26-keyword-sets, #264 item 77, first part)
 
 Black box, 26.1.0, setProperty and the style attribute: jsdom 26 checks

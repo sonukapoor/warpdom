@@ -396,7 +396,7 @@ export function legacyFont(value, variant) {
 // written, grow shrink basis): a number first is the grow, second the
 // shrink, anything else the basis; a part not written has no longhand
 // (flex: 1 reads flex-shrink ''). auto alone is the basis.
-const LEGACY_FLEX_NUMBER = /^[+-]?(\d+(?:\.\d*)?|\.\d+)$/;
+const LEGACY_FLEX_NUMBER = /^[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?$/;
 function legacyFlexLonghands(value) {
   if (CSS_WIDE.has(value.toLowerCase())) return SHORTHANDS.flex.map((l) => [l, value.toLowerCase()]);
   const out = [];
