@@ -4516,6 +4516,14 @@ for (const jsdom of [23, 24, 26, 27, 28, 29, 30])
         '1 1px',
         '10% 1',
         ' 10px  1  2 ',
+        // (an exponent makes no unit, and a comma no separator; #318 review)
+        '0 1 2e0',
+        '1 1 2E0',
+        '1 2e1px',
+        '10px, 1, 2',
+        '10px 1,2',
+        '10px,1 2',
+        '1 2, 10px',
         '10px\t1\n2',
       ]) {
         const a = w.document.createElement('div');

@@ -7058,3 +7058,12 @@ accept a negative basis in flex (`1 -1px` is `1 1 -1px`) and read a math
 function as the grow (`calc(1px)` is `calc(1px) 1 0%`). Before cssstyle
 4.4 (#315), `10px 1` stores the 1 as the shrink; warpdom reads it as the
 grow.
+
+#318 review (Copilot, black box, 26.1.0 and 30.1.3): the fast path took
+`0 1 2e0` for two numbers and a basis (`2` with the unit `e0`), which jsdom
+rejects; its basis part is now any word that is not a whole number. A
+comma made a separator in the reordering (`10px 1,2` read `1 2 10px`;
+jsdom 26 rejects it), so a value with one is left to the grammar. The
+cssstyle 4.3.1 profile (also the jsdom 26 mode) is left as on main
+(legacyFont; #315 models it). Cache misses after this: 78.5 to 80.0 ms
+in 26, 39.3 to 39.0 ms in 30.
