@@ -4638,8 +4638,12 @@ for (const jsdom of [20, 21, 22, 23, 25, 26])
         '10px auto',
         'auto auto',
         ' auto ',
-        // (and 4.4 to 4.6 write min() as calc(), a listed difference)
-        ...(jsdom === 23 || jsdom === 26 ? [] : ['1\r2', '1\f2', '1\v2', '1e-7 2', '1 1 min(1px, 2px)']),
+        // (and 4.4 to 4.6 write min() as calc() and sort a calc()'s terms,
+        // listed differences; a line break inside calc() is kept, as a tab
+        // is: #315 review)
+        ...(jsdom === 23 || jsdom === 26
+          ? []
+          : ['1\r2', '1\f2', '1\v2', '1e-7 2', '1 1 min(1px, 2px)', '1 1 calc(10px\n + 5%)', 'calc(10px\n+ 5%)']),
         // (cssstyle 4.4 to 4.6 read a calc() first as the grow: calc(1px)
         // is calc(1px) 1 0%, a listed difference)
         ...(jsdom === 23 || jsdom === 26 ? [] : ['calc(1px)', '1 calc(10px)']),
@@ -4682,6 +4686,71 @@ for (const jsdom of [20, 21, 22, 23, 25, 26])
           c.flexBasis,
         ]);
         a.remove();
+      }
+      return out;
+    },
+    { jsdom },
+  );
+
+// Before cssstyle 4.4 (black box, jsdom 20.0.3 and 25.0.1 with cssstyle
+// 4.1.0), flex: auto through the accessor or setProperty removes
+// flex-grow and flex-shrink, each a change of the style attribute of its
+// own, then sets flex-basis: auto; a flex declared before stays (flex: 1
+// then flex: auto is flex: 1; flex-basis: auto, and style.flex reads 1).
+// (#315 review)
+for (const jsdom of [20, 21, 22, 25])
+  parity(
+    `style: flex: auto removes the grow and shrink only before cssstyle 4.4 (jsdom ${jsdom})`,
+    (w) => {
+      const out = [];
+      for (const [before, write] of [
+        [(e) => (e.style.flex = '1'), (e) => (e.style.flex = 'auto')],
+        [(e) => (e.style.flex = '1 2 3px'), (e) => (e.style.flex = 'auto')],
+        [(e) => (e.style.flex = '1'), (e) => (e.style.flex = 'AUTO')],
+        [(e) => (e.style.flex = '1'), (e) => e.style.setProperty('flex', 'auto', 'important')],
+        [(e) => e.setAttribute('style', 'flex: 1'), (e) => (e.style.flex = 'auto')],
+        [
+          (e) => {
+            e.style.flex = '1';
+            e.style.flexBasis = '5px';
+          },
+          (e) => (e.style.flex = 'auto'),
+        ],
+        [
+          (e) => {
+            e.style.flex = '1';
+            e.style.flexGrow = '4';
+          },
+          (e) => (e.style.flex = 'auto'),
+        ],
+        [
+          (e) => {
+            e.style.flexGrow = '2';
+            e.style.flexShrink = '3';
+          },
+          (e) => (e.style.flex = 'auto'),
+        ],
+        [
+          (e) => {
+            e.style.flexGrow = '2';
+            e.style.color = 'red';
+          },
+          (e) => (e.style.flex = 'auto'),
+        ],
+        // (not auto twice: jsdom 20 to 22 write the attribute for any write
+        // that changes nothing, a listed difference)
+        [() => {}, (e) => (e.style.flex = 'auto')],
+      ]) {
+        const e = w.document.createElement('div');
+        w.document.body.append(e);
+        before(e);
+        const observer = new w.MutationObserver(() => {});
+        observer.observe(e, { attributes: true, attributeOldValue: true });
+        write(e);
+        const records = observer.takeRecords().map((r) => r.oldValue);
+        observer.disconnect();
+        out.push([records, e.getAttribute('style'), e.style.flex, e.style.flexBasis, e.style.length]);
+        e.remove();
       }
       return out;
     },

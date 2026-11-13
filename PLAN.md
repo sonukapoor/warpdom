@@ -4939,6 +4939,17 @@ reads 1 1 2 in every profile from jsdom 26 (jsdom 26 reads 1 2 10px, 27
 to 30 reject it); filed as #317. Third #315 review: only auto written
 alone is flex-basis: auto (10px auto and auto auto are flex: auto and
 keep !important, in every path; black box, same versions).
+Fourth #315 review (black box, jsdom 20.0.3, 22.1.0 and 25.0.1 with
+cssstyle 4.1.0, 4.2.1 and 4.3.1 on their own): a calc() basis may hold a
+line break (1 1 calc(10px<LF> + 5%) is kept; LEGACY_FLEX_BASIS was
+rejecting it), and flex: auto through a setter removes flex-grow and
+flex-shrink only, one attribute change each, and keeps a flex declared
+before (flex: 1 then flex: auto is flex: 1; flex-basis: auto with one
+MutationObserver record; warpdom removed flex and queued two). Not
+modeled, to list with #312: jsdom 20 to 22 write the style attribute for
+a write that changes nothing (color = red twice queues a record), and
+every jsdom queues 4 records for flex written again (warpdom 1). Cost
+level (bench-fx.mjs: jsdom 20 85.1 to 84.2 ms, 26 79.5 to 80.2 ms).
 
 ## 2026-11-10: a border, flex or background write removes earlier parts, jsdom 20 to 26 (branch fix/legacy-border-resets, 1.0 triage)
 

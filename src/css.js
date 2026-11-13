@@ -1045,7 +1045,10 @@ const isLegacyFlex = (surface) => surface !== null && surface !== undefined && s
 // Any whitespace separates the parts, a comma between them is invalid. (flex: 10px 1 reads 1 10px, its 1 the shrink: the parts'
 // places are not kept, a listed difference.)
 const LEGACY_FLEX_NUMBER_4_1 = /^[+-]?(\d+(?:\.\d+)?|\.\d+)$/;
-const LEGACY_FLEX_BASIS = /^(?:auto|calc\(.*\)|[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?(?:%|[a-z]+))$/i;
+// (what flex: auto removes through a setter before cssstyle 4.4, in order)
+const LEGACY_AUTO_REMOVES = ['flex-grow', 'flex-shrink'];
+// (a calc() basis may hold a line break: calc(10px<LF> + 5%); #315 review)
+const LEGACY_FLEX_BASIS = /^(?:auto|calc\([^]*\)|[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?(?:%|[a-z]+))$/i;
 const LEGACY_FLEX_EXPONENT = /^[+-]?[\d.]+e[+-]?\d/i;
 function legacyFlexValue(value, mode, surface) {
   const lower = value.toLowerCase();
@@ -5605,15 +5608,20 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
   }
   if (isLegacyFont(s.surface, name) && /^inherit$/i.test(raw)) raw = '';
   // (cssstyle before 4.4: flex: auto declares flex-basis: auto only,
-  // without !important, after removing flex and its other longhands;
+  // without !important, after removing flex-grow and flex-shrink;
   // legacyFlexValue; #315 review)
   if (name === 'flex' && isLegacyFlex(s.surface)) s.decls.legacyFont = s.surface.legacyFont;
   if (name === 'flex' && isLegacyFlex(s.surface) && /^auto$/i.test(raw)) {
-    let removed = false;
-    for (const n of RESETS.flex) if (n !== 'flex-basis') removed = s.decls.delete(n) || removed;
-    if (removed) reindex(style);
+    // (it removes flex-grow and flex-shrink, each a change of the style
+    // attribute of its own, and keeps a flex declared before: flex: 1 then
+    // flex: auto is flex: 1; flex-basis: auto, style.flex 1; black box,
+    // jsdom 20.0.3 and 25.0.1; #315 review)
+    for (const n of LEGACY_AUTO_REMOVES)
+      if (s.decls.delete(n)) {
+        reindex(style);
+        sync(style);
+      }
     setDeclaration(style, 'flex-basis', 'auto', '', via);
-    if (removed) sync(style);
     return;
   }
   // jsdom 27 and later: a background write, a removal too, replaces the
