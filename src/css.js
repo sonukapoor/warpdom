@@ -4179,8 +4179,10 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     }
     // (cssstyle before 4.4: flex: auto declares flex-basis: auto only,
     // without !important, and changes a basis declared before in place;
-    // legacyFlexValue; #315 review)
-    const legacyAuto = name === 'flex' && declared === 'auto' && !inRule && isLegacyFlex(surface);
+    // legacyFlexValue; #315 review). Only auto written alone: 10px auto is
+    // flex: auto, as in setDeclaration (the third #315 review).
+    const legacyAuto =
+      name === 'flex' && declared === 'auto' && !inRule && isLegacyFlex(surface) && /^auto$/i.test(trimSpaces(value));
     // jsdom 20 to 26 set a style attribute's declarations one by one, so
     // a shorthand resets what came before it there too (setDeclaration).
     if (clears && RESETS[name] !== undefined && !legacyAuto) {

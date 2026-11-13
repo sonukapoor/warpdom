@@ -4564,6 +4564,11 @@ for (const jsdom of [20, 21, 22, 23, 25, 26])
         '10px 1 1 0',
         '1 1 10px 2',
         '1 10px 20px 2',
+        // (only auto written alone declares flex-basis: auto; 10px auto
+        // is flex: auto; #315 review)
+        '10px auto',
+        'auto auto',
+        ' auto ',
         // (and 4.4 to 4.6 write min() as calc(), a listed difference)
         ...(jsdom === 23 || jsdom === 26 ? [] : ['1\r2', '1\f2', '1\v2', '1e-7 2', '1 1 min(1px, 2px)']),
         // (cssstyle 4.4 to 4.6 read a calc() first as the grow: calc(1px)
