@@ -3859,6 +3859,17 @@ parity(
 // jsdom 26's lowercasing reads a long malformed value in one pass: a
 // regular expression retried from every url( without a ) and every quote
 // that does not close took 558 ms on 20,000 url( (#289 review).
+// Deep nesting in jsdom 26's flex-grow calc() is kept as written, not a
+// stack overflow (jsdom 26 throws a RangeError there; #307 review).
+test('style: deeply nested calc() in flex-grow does not throw (jsdom 26, #264 item 71)', () => {
+  const e = createWindow({ jsdom: '26.1.0' }).document.createElement('div');
+  const deep = `calc(${'('.repeat(20000)}1${')'.repeat(20001)}`;
+  e.style.setProperty('flex-grow', deep);
+  assert.equal(e.style.flexGrow, deep);
+  e.style.setProperty('flex-grow', `calc(${'min('.repeat(20000)}1${')'.repeat(20001)}`);
+  e.style.setProperty('flex-shrink', `calc(${'('.repeat(50)}1${')'.repeat(51)}`);
+  assert.equal(e.style.flexShrink, 'calc(1)');
+});
 test('style: jsdom 26 lowercases a long malformed value quickly (#264 item 46)', () => {
   const d = createWindow({ jsdom: '26.1.0' }).document;
   for (const [name, value] of [
@@ -3931,6 +3942,93 @@ test("style: jsdom 26's own value rules leave cssstyle 4.3.1 alone", () => {
     ['0', '0.0', '00', 'x', '2', '-1'],
   );
 });
+
+// jsdom 26 evaluates calc(), min(), max() and clamp() of numbers in
+// flex-grow and flex-shrink: to 6 significant digits, inside calc(), with
+// the words after the function inside it too, and a function left open at
+// the end closed (black box, 26.1.0, #264 item 71). Units, other functions
+// and a + or - without whitespace around it are left as written.
+parity(
+  'style: calc() of numbers in flex-grow and flex-shrink (jsdom 26, #264 item 71)',
+  (w) => {
+    const out = [];
+    for (const name of ['flex-grow', 'flex-shrink'])
+      for (const v of [
+        'calc(2 * 3)',
+        'calc(2*3)',
+        'calc(1 + 2)',
+        'calc(1 - 3)',
+        'calc(1 + 2 + 3)',
+        'calc(2 + 3 * 4)',
+        'calc(12 / 2 / 3)',
+        'calc(10 / 3)',
+        'calc(0.1 + 0.2)',
+        'calc(1.5 * 2)',
+        'calc( 2 )',
+        'calc(1e2)',
+        'calc(+1)',
+        'calc(-0)',
+        'calc(1 - -2)',
+        'calc(1 * -2)',
+        'calc(2 * (1 + 2))',
+        'calc((1))',
+        'calc(calc(1 + 1) * 2)',
+        'calc(min(1, 2))',
+        'min(1, 2)',
+        'max(1, 2, 3)',
+        'clamp(1, 5, 3)',
+        'calc(1 / 0)',
+        'calc(-1 / 0)',
+        'calc(0 / 0)',
+        'calc(1e400)',
+        'calc(infinity)',
+        'calc(-infinity)',
+        'calc(nan)',
+        'calc(E)',
+        'calc(2 * pi)',
+        'calc(123456789)',
+        'calc(1e21)',
+        'calc(1e-6)',
+        'calc(0.0000001)',
+        // words after the function go inside it
+        'calc(1) bold',
+        'calc(2 * 3) x',
+        'calc(1)   bold',
+        'calc(1)x',
+        'calc(1)/2',
+        'calc(1),2',
+        'calc(1) (2)',
+        'calc(1) "a"',
+        'min(1, 2) bold',
+        // a function left open at the end (setProperty)
+        'calc(1',
+        'calc(1 + 1',
+        'calc(1 * (2 + 3',
+        'min(1, 2',
+        // left as written
+        'calc(1 +2)',
+        'calc(1px)',
+        'calc(1%)',
+        'calc(a)',
+        'calc(1 + a)',
+        'calc()',
+        'calc(1 2)',
+        'clamp(1, 2)',
+        'max(1px, 2)',
+        'calc(var(--a) + 1)',
+        'calc(a) 1',
+        'calc(1 +)',
+      ]) {
+        const a = w.document.createElement('div');
+        a.style.setProperty(name, v);
+        const b = w.document.createElement('div');
+        b.setAttribute('style', `${name}: ${v}`);
+        out.push([name, v, a.style.getPropertyValue(name), b.style.getPropertyValue(name)]);
+      }
+    return out;
+  },
+  { jsdom: 26 },
+);
 
 // jsdom 26 writes a family string again in double quotes: each escape's
 // backslash dropped and the character after it kept (a line break too),
