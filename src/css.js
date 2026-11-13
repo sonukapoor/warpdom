@@ -1096,6 +1096,45 @@ const isKnownProperty = (name) =>
   SHORTHANDS[name] !== undefined ||
   ALIASES[name] !== undefined;
 
+// jsdom 27 to 29 take a unitless zero as a length only when it is written
+// 0: width: 00, .0, -0, 0.0 or 0e0 is invalid there (jsdom 30 reads 0px),
+// border: 0e0 solid too (black box, 27.4.0 to 29.1.1, #264 item 91). Such
+// a zero is read as a length where the value reads the same with it
+// written 0 and 0px (width, margin, border, flex's basis); where it is a
+// number or kept as written (line-height, flex-grow, translate) the two
+// differ. Values with a function or string are left out.
+// (text a zero not written 0 has: 00, 0., .0, 0e, -0, +0)
+const OTHER_ZERO_TEXT = /00|0\.|\.0|0e|[+-]0/i;
+const NUMBER_WORD = /^[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?$/i;
+const otherZero = (word) => word !== '0' && NUMBER_WORD.test(word) && Number(word) === 0;
+// jsdom 27 to 29 reject a flex of two numbers and a unitless zero basis,
+// however the zero is written (flex: 1 1 0, 0 1 0.0; jsdom 26 and 30 read
+// 1 1 0px; black box, 27.4.0 to 29.1.1, #309 review).
+// (one pattern, no token array: the zero is digits 0 with any exponent;
+// each part splits its text one way only, so the match stays linear;
+// #309 review)
+const FLEX_ZERO_BASIS =
+  /^[ \t\n\r\f]*(?:[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?[ \t\n\r\f]+){2}[+-]?(?:0+(?:\.0*)?|\.0+)(?:e[+-]?\d+)?[ \t\n\r\f]*$/i;
+const flexZeroBasis = (name, value) => name === 'flex' && value.includes('0') && FLEX_ZERO_BASIS.test(value);
+// (probes: box shorthands have four sides; in a longer list the later
+// items are of the kinds already probed, so the work stays linear; #309
+// review)
+const ZERO_PROBES = 4;
+function zeroAsLength(name, value, surface) {
+  if (name.startsWith('--') || /[("']/.test(value)) return false;
+  const words = value.split(/([\s,/]+)/);
+  const odd = [];
+  for (let k = 0; k < words.length && odd.length < ZERO_PROBES; k += 2) if (otherZero(words[k])) odd.push(k);
+  if (odd.length === 0) return false;
+  // Each candidate on its own as 0px, the others as 0 (flex: 0.0 1 0.0
+  // has a number and a length; #309 review).
+  const plain = words.map((w) => (otherZero(w) ? '0' : w));
+  const as = (at, zero) => plain.map((w, k) => (k === at ? zero : w)).join('');
+  const base = declaredValue(name, as(-1, '0'), 'jsdom27', surface);
+  if (base === INVALID) return false;
+  return odd.some((at) => declaredValue(name, as(at, '0px'), 'jsdom27', surface) === base);
+}
+
 // Declared values by mode, property and raw value: style writes repeat the
 // same few values, so each is validated and serialized once. INVALID marks
 // a value the property's grammar rejects.
@@ -1175,6 +1214,12 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
         isColorProperty(name) &&
         (isSpecMode(mode) || JSDOM26_VALIDATED.has(name)) &&
         rejectsColor(name, value, surface)
+      )
+        out = INVALID;
+      if (
+        out !== INVALID &&
+        mode === 'jsdom27' &&
+        (flexZeroBasis(name, value) || (OTHER_ZERO_TEXT.test(value) && zeroAsLength(name, value, surface)))
       )
         out = INVALID;
     }
