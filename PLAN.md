@@ -4691,7 +4691,9 @@ pattern) is among the 28.
 Ordinary values are unchanged: 40,000 rounds of setProperty for width,
 color, margin and flex plus a computed width (node 22.17.1, 5
 interleaved runs, medians): 357.5 ms on main, 358.1 ms here. A test
-times the slow inputs (under 150 ms each).
+times the slow inputs: the digit runs under 150 ms each, and the comments
+before var() under 3 times the same comments before a plain string (a
+fixed limit failed in CI at 219 ms; on main the ratio is 10, here 1).
 
 ## 2026-11-10: a shorthand read after one of its longhands, phase 2 (branch fix/264-shorthand-reads-longhands, #264 item 78)
 
