@@ -4028,6 +4028,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
         ? { value: declared, important: kept }
         : { value: declared, important: false, masked: true },
     );
+    if (RECOMPOSED_LONGHANDS.has(name)) markLater(decls, declared);
   }
   // A background of initial values (setInitials) and a declaration of
   // another property after it, in a style attribute or cssText (black box,
@@ -4553,8 +4554,8 @@ function backgroundColorOnly(style, value) {
   return color === 'transparent' ? '' : color;
 }
 
-const valueOf = (style, name) => {
-  const s = styleState(style);
+const valueOf = (style, name) => stateValue(styleState(style), name);
+const stateValue = (s, name) => {
   if (s.computed) return computedOverride(s, name) ?? computed.value(s.element, name);
   const decl = s.decls.get(name);
   if (decl) return decl.value;
@@ -4589,6 +4590,215 @@ function composeBorder(decls, name) {
   if (values.every((v) => CSS_WIDE_KEYWORD.test(v))) return values.every((v) => v === values[0]) ? values[0] : '';
   const parts = values.filter((v, i) => v.toLowerCase() !== BORDER_INITIAL[i]);
   return parts.length ? parts.join(' ') : values[0];
+}
+
+// A shorthand read after one of its longhands is written (phase 2 of #264
+// item 78; black box, 26.1.0 to 30.1.3). jsdom 27 and later read flex and
+// border-width, -style and -color from the current longhands, in the
+// accessor and getPropertyValue (flex: 1 1 0% then flex-grow: 2 is 2 1 0%;
+// border-width: 1px then border-top-width: 2px is 2px 1px 1px), border and
+// a border side as '' once a side's longhand follows, and font from them
+// in the accessor only. jsdom 26 (cssstyle 4.4 and later) recomposes flex,
+// font, a border side and border (after border-width, -style or -color) in
+// the accessor only. Not modeled: border after border-color or
+// border-width in 27 and later (jsdom keeps parts of it: 1px blue), and
+// background. Only these shorthands look, and only when a declaration
+// follows them; cssText is unchanged (phase 3).
+const BORDER_SUBS = new Set(['border-width', 'border-style', 'border-color']);
+const RECOMPOSED_PARTS = new Map([
+  ['flex', new Set(SHORTHANDS.flex)],
+  // (font-variant too: font then font-variant: small-caps reads small-caps
+  // 12px Arial; #313 review)
+  ['font', new Set([...SHORTHANDS.font, 'font-variant'])],
+  ['border', new Set([...SHORTHANDS.border, ...BORDER_SUBS])],
+]);
+for (const name of Object.keys(BORDER_READS)) RECOMPOSED_PARTS.set(name, new Set(BORDER_READS[name]));
+const BORDER_SIDE_READS = new Set(BOX_SIDES.map((side) => `border-${side}`));
+// The names whose write sets decls.later (parseInto, setDeclaration): a
+// block without one reads its shorthands as they are, without a scan.
+const RECOMPOSED_LONGHANDS = new Set();
+for (const parts of RECOMPOSED_PARTS.values()) for (const n of parts) RECOMPOSED_LONGHANDS.add(n);
+function readShorthand(style, name, accessor) {
+  const s = styleState(style);
+  const value = stateValue(s, name);
+  if (s.decls.later !== true || s.computed) return value;
+  // (jsdom 26's border accessor with no border declared reads
+  // border-width, -style and -color: border-width: thin is thin; #313
+  // review)
+  if (value === '')
+    return name === 'border' && accessor && s.mode === 'jsdom26' && s.surface?.colors !== 'css2'
+      ? legacyBorder(s.decls, '')
+      : value;
+  const parts = RECOMPOSED_PARTS.get(name);
+  if (parts === undefined) return value;
+  const modern = s.mode === 'jsdom27' || s.mode === 'spec';
+  // (jsdom 26's getPropertyValue reads flex and font as written, but ''
+  // after a var() longhand: blockedRead)
+  if (
+    !modern &&
+    !((accessor || name === 'flex' || name === 'font') && s.mode === 'jsdom26' && s.surface?.colors !== 'css2')
+  )
+    return value;
+  // The declaration the longhands follow: the shorthand's, or for a border
+  // side read through border, border's (jsdom 27 and later: border then
+  // border-top-color reads border-top as ''; #313 review).
+  let anchor = name;
+  if (!s.decls.has(name)) {
+    if (!modern || !BORDER_SIDE_READS.has(name) || !s.decls.has('border')) return value;
+    anchor = 'border';
+  }
+  // The names around it (no allocation): most blocks have no longhand
+  // after it and read the value as it is. A part before it may have been
+  // written again in place, which keeps its position (jsdom 26, an
+  // !important border longhand kept): read as written, not modeled
+  // (#313 review).
+  let seen = false;
+  let before = false;
+  let longhand = false;
+  let sub = false;
+  // (jsdom 26's getPropertyValue of flex or font: only a later var()
+  // longhand matters, looked at in this scan; blockedRead)
+  const asWritten = !modern && !accessor;
+  if (asWritten && s.decls.laterVar !== true) return value;
+  let blocked = false;
+  // (jsdom 26's font write resets the longhands written before it:
+  // fontStyle = 'italic', font = '12px Arial', fontSize = '20px' reads 20px
+  // Arial; composeFont skips them; #313 review)
+  const resetsEarlier = name === 'font' && s.mode === 'jsdom26';
+  for (const n of s.decls.keys()) {
+    if (n === anchor) seen = true;
+    else if (parts.has(n)) {
+      if (!seen) before = before || !resetsEarlier;
+      else if (BORDER_SUBS.has(n)) sub = true;
+      else {
+        longhand = true;
+        if (asWritten && hasVar(s.decls.get(n).value)) blocked = true;
+      }
+    }
+  }
+  if (asWritten) return blocked ? '' : value;
+  if (before || (!longhand && !sub)) return value;
+  if (anchor !== name) return longhand ? '' : value;
+  // A recomposed value is cached on the identities of the block's
+  // declarations, all of them (the composers read those before the
+  // shorthand too; #313 review): a write stores a new declaration object.
+  const own = s.decls.get(name);
+  const reads = accessor ? accessorReads : propertyReads;
+  const cached = reads.get(own);
+  if (cached !== undefined && cached.all.length === s.decls.size) {
+    // (compared in place: a hit allocates nothing)
+    let k = 0;
+    let same = true;
+    for (const decl of s.decls.values())
+      if (cached.all[k++] !== decl) {
+        same = false;
+        break;
+      }
+    if (same) return cached.value;
+  }
+  const out = recompose(s, name, value, accessor, modern, longhand, sub);
+  reads.set(own, { all: [...s.decls.values()], value: out });
+  return out;
+}
+const accessorReads = new WeakMap();
+const propertyReads = new WeakMap();
+// border as jsdom 26's accessor reads it after border-width, -style or
+// -color: each part from that shorthand, else border's own, initial parts
+// left out (1px solid red then border-color: blue is 1px solid blue).
+// jsdom 26 reads border, after border-width, -style or -color, as the
+// parts written: border's own words, each replaced by a sub-shorthand's
+// value, a none style left out (red, then border-width: medium and
+// border-color: currentcolor, is medium currentcolor; black box, 26.1.0,
+// #313 review). '' (nothing left) reads border as written.
+function legacyBorder(decls, value) {
+  let width = '',
+    style = '',
+    color = '';
+  if (value !== '') {
+    const words = segments(value);
+    for (let i = 0; i < words.length; i += 2) {
+      const word = words[i];
+      if (word === '') continue;
+      if (BORDER_STYLE.test(word)) style = word;
+      else if (BORDER_WIDTH.test(word)) width = word;
+      else color = word;
+    }
+  }
+  width = decls.get('border-width')?.value ?? width;
+  style = decls.get('border-style')?.value ?? style;
+  color = decls.get('border-color')?.value ?? color;
+  if (style.toLowerCase() === 'none') style = '';
+  let out = width;
+  if (style) out = out ? `${out} ${style}` : style;
+  if (color) out = out ? `${out} ${color}` : color;
+  return out;
+}
+// jsdom 26 to 30 read flex and font as '' once a longhand of theirs with
+// var() follows them (flex: 1 1 0% then flex-grow: var(--g)); 27 and later
+// flex once one of another priority does (flex: 1 1 0% !important then
+// flex-grow: 2; black box, 26.1.0 to 30.1.3, #313 review).
+// A longhand of a recomposed shorthand written (decls.later: a read looks
+// at the order; decls.laterVar: one with var(), blockedRead).
+function markLater(decls, value) {
+  decls.later = true;
+  if (value.includes('var(')) decls.laterVar = true;
+}
+function blockedRead(decls, name, modern) {
+  const parts = RECOMPOSED_PARTS.get(name);
+  const own = decls.get(name);
+  let seen = false;
+  for (const [n, decl] of decls) {
+    if (n === name) seen = true;
+    else if (seen && parts.has(n)) {
+      if (hasVar(decl.value)) return true;
+      if (modern && name === 'flex' && decl.important !== own.important) return true;
+    }
+  }
+  return false;
+}
+function recompose(s, name, value, accessor, modern, longhand, sub) {
+  if ((name === 'flex' || name === 'font') && blockedRead(s.decls, name, modern)) return '';
+  if (name === 'flex') return composeShorthand(s.decls, 'flex') || value;
+  if (name === 'font') return (accessor && composeFont(s.decls, !modern)) || value;
+  if (name === 'border') {
+    if (modern) return longhand ? '' : value;
+    // jsdom 26: from border-width, -style and -color over border's own
+    // parts; a side's longhand after it changes nothing (#313 review)
+    return sub ? legacyBorder(s.decls, value) || value : value;
+  }
+  // border-width, -style, -color: 27 and later only; a border side
+  if (BORDER_SUBS.has(name)) return modern ? composeBorder(s.decls, name) || value : value;
+  return modern ? '' : composeBorder(s.decls, name) || value;
+}
+// font from its longhands, as jsdom's accessor writes it (normal parts
+// left out, a spaced slash before the line height). afterFont (jsdom 26):
+// a longhand written before font is read from font, which reset it.
+function composeFont(decls, afterFont = false) {
+  let early = null;
+  if (afterFont)
+    for (const n of decls.keys()) {
+      if (n === 'font') break;
+      (early ??= new Set()).add(n);
+    }
+  const own = (longhand) => (early?.has(longhand) ? undefined : decls.get(longhand)?.value);
+  const get = (longhand) => own(longhand) ?? fromShorthand(decls, longhand);
+  const size = get('font-size');
+  const family = get('font-family');
+  if (!size || !family) return '';
+  const style = get('font-style');
+  const caps = own('font-variant') ?? get('font-variant-caps');
+  const weight = get('font-weight');
+  const height = get('line-height');
+  return [
+    style && style !== 'normal' ? style : '',
+    caps && caps !== 'normal' ? caps : '',
+    weight && weight !== 'normal' ? weight : '',
+    size,
+    height && height !== 'normal' ? `/ ${height}` : '',
+    family,
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
 
 // Shorthands whose longhands a declaration block reads through them, as in
@@ -5192,6 +5402,7 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
     }
     if (removed) {
       s.decls.set(name, { value: text, important });
+      if (RECOMPOSED_LONGHANDS.has(name)) markLater(s.decls, text);
       reindex(style);
       sync(style);
       return;
@@ -5199,6 +5410,7 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
   }
   if (cleared) {
     s.decls.set(name, { value: text, important });
+    if (RECOMPOSED_LONGHANDS.has(name)) markLater(s.decls, text);
     reindex(style);
     sync(style);
     return;
@@ -5207,6 +5419,7 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
   if (old && old.value === text && old.important === important) return;
   if (old === undefined && MERGEABLE.has(name)) s.decls.mergeable = true;
   s.decls.set(name, { value: text, important });
+  if (RECOMPOSED_LONGHANDS.has(name)) markLater(s.decls, text);
   if (old === undefined) defineIndex(style, s.indexed++, name);
   sync(style);
 }
@@ -5304,7 +5517,7 @@ function composedValue(style, name) {
     return isLegacyMode(s.mode) && s.surface?.colors !== 'css2'
       ? boxAccessorValue(s.decls, name)
       : boxValue(s.decls, name);
-  const value = valueOf(style, name);
+  const value = readShorthand(style, name, true);
   // jsdom 27 and 28: the background accessor reads a layer without an
   // image as its color alone (background: red repeat-x is red; fixed is
   // ''), getPropertyValue() and cssText as written (black box, 27.4.0 and
@@ -5341,6 +5554,19 @@ function styleAccessor(name, via = 'accessor') {
       configurable: true,
     };
   }
+  if (RECOMPOSED_PARTS.has(name))
+    return {
+      get() {
+        return readShorthand(this, name, true);
+      },
+      set(value) {
+        const s = styleState(this);
+        if (s.computed) writeComputed(s, name, value);
+        else setDeclaration(this, name, value, '', via);
+      },
+      enumerable: true,
+      configurable: true,
+    };
   return {
     get() {
       return valueOf(this, name);
@@ -5413,15 +5639,16 @@ function setPropertyOf(style, name, value, priority) {
 function removePropertyOf(style, name) {
   const key = propertyName(name);
   const s = styleState(style);
-  const previous = s.computed
-    ? mutableComputed(s)
-      ? valueOf(style, key)
-      : readOnly()
-    : s.decls.box !== undefined && isBoxName(key)
-      ? boxValue(s.decls, key)
-      : (s.decls.get(key)?.value ?? '');
+  const previous = s.computed ? (mutableComputed(s) ? valueOf(style, key) : readOnly()) : removedValue(style, s, key);
   setDeclaration(style, key, '', '', 'remove');
   return previous;
+}
+// What removeProperty() returns from an inline style or a rule's: the
+// value getPropertyValue reads (a shorthand after a longhand of it is read
+// from the longhands; #313 review).
+function removedValue(style, s, key) {
+  if (s.decls.box !== undefined && isBoxName(key)) return boxValue(s.decls, key);
+  return s.decls.has(key) ? readShorthand(style, key, false) : '';
 }
 
 // jsdom 28 and earlier (cssstyle 2.3 to 6.2), black box: one
@@ -5447,7 +5674,7 @@ const LEGACY_GROUPS = {
 };
 const LEGACY_SHARED = {
   getPropertyValue(name) {
-    return valueOf(this, propertyName(name));
+    return readShorthand(this, propertyName(name), false);
   },
   getPropertyPriority(name) {
     return priorityOf(this, name);
@@ -5550,7 +5777,7 @@ export const CSS_INTERFACES = [
       [Symbol.iterator]: Array.prototype.values,
       getPropertyValue(name) {
         if (name === undefined && arguments.length === 0) tooFew('getPropertyValue', 1, 0);
-        return valueOf(this, propertyName(name));
+        return readShorthand(this, propertyName(name), false);
       },
       getPropertyPriority(name) {
         if (name === undefined && arguments.length === 0) tooFew('getPropertyPriority', 1, 0);
