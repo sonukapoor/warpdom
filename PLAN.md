@@ -4677,11 +4677,11 @@ all of them, on main too.
 ## 2026-11-10: number patterns and hasVar() in linear time (branch fix/linear-number-patterns, #224 item 4, #264 item 7)
 
 Found again in the 1.0 triage (untrusted HTML can reach both). The
-number pattern \d+\.?\d* can split a run of digits in many ways, so a
+number pattern `\d+\.?\d*` can split a run of digits in many ways, so a
 long run that then fails to match backtracks quadratically: rgb() with
 20,000 digits and a bad unit took 1,330 ms to set in the jsdom 30
 profile (659 ms in 26), all in one regular expression. All 28 uses in
-src/ now read \d+(?:\.\d*)?, which matches the same text in one way
+src/ now read `\d+(?:\.\d*)?`, which matches the same text in one way
 (the capture groups are unchanged): 0.8 ms. hasVar() searched for var(
 again after every comment, so 20,000 comments before a quoted
 "var(--c)" took 75 ms; it now keeps the next var( until the scan passes

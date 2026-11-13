@@ -3984,23 +3984,27 @@ parity(
 // 1.3 s on rgb() with 20,000 digits, and hasVar() searched for var( again
 // after each comment (#224 item 4, #264 item 7).
 test('style: long digit runs and many comments are read quickly (#224, #264)', () => {
-  const digits = '1'.repeat(20000);
-  for (const [jsdom, name, value] of [
-    ['30.1.3', 'color', `rgb(${digits}x, 0, 0)`],
-    ['26.1.0', 'color', `rgb(${digits}x, 0, 0)`],
-    ['30.1.3', 'width', `${digits}.${digits}x`],
-    ['30.1.3', 'margin', `${digits}x ${digits}y`],
-    ['30.1.3', 'flex', `${digits}x`],
-    ['25.0.1', 'background', `${digits}x red`],
+  // (each run its own value, built before the timer: declaredValue caches
+  // values across windows, so a repeated one would be a cache hit; #311
+  // review)
+  const digits = (run) => String(run + 1).repeat(20000);
+  for (const [jsdom, name, valueOf] of [
+    ['30.1.3', 'color', (d) => `rgb(${d}x, 0, 0)`],
+    ['26.1.0', 'color', (d) => `rgb(${d}x, 0, 0)`],
+    ['30.1.3', 'width', (d) => `${d}.${d}x`],
+    ['30.1.3', 'margin', (d) => `${d}x ${d}y`],
+    ['30.1.3', 'flex', (d) => `${d}x`],
+    ['25.0.1', 'background', (d) => `${d}x red`],
     // (100,000 comments: 358 ms with a search per comment, 41 ms
     // without; #311 review)
-    ['30.1.3', 'content', `${'/**/'.repeat(100000)}"var(--c)"`],
+    ['30.1.3', 'content', (d, run) => `${'/**/'.repeat(100000)}"var(--c${run})"`],
   ]) {
     // The best of three runs, so a cold first run on a busy machine does
     // not fail the test (231 ms once in CI; a quadratic read takes over
     // 150 ms on every run).
     let best = Infinity;
     for (let run = 0; run < 3; run++) {
+      const value = valueOf(digits(run), run);
       const w = createWindow({ jsdom });
       const e = w.document.createElement('div');
       w.document.body.append(e);
