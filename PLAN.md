@@ -4864,6 +4864,10 @@ inherit does (legacyFlexInherit). Test: a cssText column in "flex keeps
 the parts written before cssstyle 4.4". Cost against main with #314:
 bench-fx.mjs jsdom 20 75.5 to 81.3 ms (+7.7%, the part-keeping above), 26
 77.6 to 78.8 ms.
+A number too large (flex: 1e309) is stored as Infinity in cssstyle 4.2
+and 4.3 and stays the grow or shrink (black box, 4.2.1 and 4.3.1; both
+reject the word Infinity itself, and 4.1 rejects 1e309), so the stored
+parts' pattern accepts Infinity and -Infinity (#315 review).
 
 ## 2026-11-10: a border, flex or background write removes earlier parts, jsdom 20 to 26 (branch fix/legacy-border-resets, 1.0 triage)
 
