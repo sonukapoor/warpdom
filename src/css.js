@@ -1110,11 +1110,12 @@ const otherZero = (word) => word !== '0' && NUMBER_WORD.test(word) && Number(wor
 // jsdom 27 to 29 reject a flex of two numbers and a unitless zero basis,
 // however the zero is written (flex: 1 1 0, 0 1 0.0; jsdom 26 and 30 read
 // 1 1 0px; black box, 27.4.0 to 29.1.1, #309 review).
-function flexZeroBasis(name, value) {
-  if (name !== 'flex' || !value.includes('0')) return false;
-  const words = trimSpaces(value).split(/[ \t\n\r\f]+/);
-  return words.length === 3 && words.every((w) => NUMBER_WORD.test(w)) && Number(words[2]) === 0;
-}
+// (one pattern, no token array: the zero is digits 0 with any exponent;
+// each part splits its text one way only, so the match stays linear;
+// #309 review)
+const FLEX_ZERO_BASIS =
+  /^[ \t\n\r\f]*(?:[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?[ \t\n\r\f]+){2}[+-]?(?:0+(?:\.0*)?|\.0+)(?:e[+-]?\d+)?[ \t\n\r\f]*$/i;
+const flexZeroBasis = (name, value) => name === 'flex' && value.includes('0') && FLEX_ZERO_BASIS.test(value);
 // (probes: box shorthands have four sides; in a longer list the later
 // items are of the kinds already probed, so the work stays linear; #309
 // review)
