@@ -4017,6 +4017,282 @@ test('style: long digit runs and many comments are read quickly (#224, #264)', (
   }
 });
 
+// A shorthand read after one of its longhands is written (phase 2 of #264
+// item 78; black box, 26.1.0 to 30.1.3). jsdom 27 and later read flex and
+// border-width, -style and -color from the current longhands, in the
+// accessor and getPropertyValue (flex: 1 1 0% then flexGrow = 2 is 2 1 0%;
+// border-width: 1px then borderTopWidth = 2px is 2px 1px 1px), a border
+// or a border side as '' once a side's longhand follows, and font from
+// them in the accessor only (getPropertyValue stays as written). jsdom 26
+// recomposes flex, font, a border side and border (from border-width,
+// -style or -color) in the accessor only. border after border-color or
+// border-width in 27 and later, and background, are not modeled.
+for (const jsdom of [26, 27, 28, 29, 30])
+  parity(
+    `style: a shorthand read after one of its longhands is written (jsdom ${jsdom}, #264 item 78)`,
+    (w) => {
+      const camel = (n) => n.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+      const cases = [
+        ['flex', '1 1 0%', 'flex-grow', '2'],
+        ['flex', '1', 'flex-basis', '10px'],
+        ['flex', '1 1 0%', 'flex-shrink', '3'],
+        ['border-top', '1px solid red', 'border-top-color', 'blue'],
+        ['border-left', '1px solid red', 'border-left-width', '3px'],
+        ['border', '1px solid red', 'border-top-color', 'blue'],
+        ['border-width', '1px', 'border-top-width', '2px'],
+        ['border-width', '1px 2px', 'border-left-width', '3px'],
+        ['border-color', 'red', 'border-left-color', 'blue'],
+        ['border-style', 'solid', 'border-top-style', 'dashed'],
+        ['font', '12px Arial', 'font-size', '14px'],
+        ['font', '12px Arial', 'font-family', 'Times'],
+        ['font', 'bold 12px/1.5 Arial', 'font-style', 'italic'],
+        ['margin', '1px', 'margin-top', '2px'],
+        ['flex', '1 1 0%', 'width', '2px'],
+      ];
+      if (jsdom === 26)
+        cases.push(
+          ['border', '1px solid red', 'border-color', 'blue'],
+          ['border', '1px solid red', 'border-width', '2px'],
+        );
+      return cases.map(([shorthand, value, longhand, longValue]) => {
+        const e = w.document.createElement('div');
+        e.style[camel(shorthand)] = value;
+        e.style[camel(longhand)] = longValue;
+        const a = w.document.createElement('div');
+        a.style.setProperty(shorthand, value);
+        a.style.setProperty(longhand, longValue);
+        return [
+          shorthand,
+          value,
+          longhand,
+          e.style[camel(shorthand)],
+          e.style.getPropertyValue(shorthand),
+          a.style[camel(shorthand)],
+          a.style.getPropertyValue(shorthand),
+        ];
+      });
+    },
+    { jsdom },
+  );
+
+// Shorthand reads after writes in other orders (#313 review): a border
+// side read through border is '' once its own longhand follows (jsdom 27
+// and later; the other sides keep their value), font-variant is part of
+// font, a cached read sees a later write, jsdom 26's border accessor reads
+// border-width, -style and -color over its own parts and not a side's
+// longhand, and a part before the shorthand that is written again keeps
+// the shorthand as written (jsdom 27 and later: the shorthand removed it).
+for (const jsdom of [26, 27, 28, 29, 30])
+  parity(
+    `style: shorthand reads after writes in other orders (jsdom ${jsdom}, #264 item 78)`,
+    (w) => {
+      const scenarios = {
+        fontVariant: (s) => {
+          s.font = '12px Arial';
+          s.fontVariant = 'small-caps';
+          const first = s.font;
+          s.fontSize = '14px';
+          return [first, s.font];
+        },
+        flexAgain: (s) => {
+          s.flexGrow = '3';
+          s.flex = '1 1 0%';
+          s.flexGrow = '2';
+          const first = s.flex;
+          s.flexShrink = '4';
+          return [first, s.flex, s.getPropertyValue('flex')];
+        },
+      };
+      // flex and font read '' once a longhand of theirs with var() follows
+      // them (26 to 30), and flex once one of another priority does (27 and
+      // later; #313 review)
+      scenarios.blockedReads = (s) => {
+        const out = [];
+        for (const writes of [
+          [
+            ['flex', '1 1 0%'],
+            ['flexGrow', 'var(--g)'],
+          ],
+          [
+            ['flex', '1 1 0%'],
+            ['flex-shrink', 'var(--g)'],
+          ],
+          [
+            ['flex', '1 1 0%'],
+            ['flexGrow', '2'],
+            ['flexShrink', 'var(--g)'],
+          ],
+          [
+            ['font', '12px Arial'],
+            ['fontSize', 'var(--g)'],
+          ],
+          [
+            ['flex', '1 1 0%', 'important'],
+            ['flex-grow', '2'],
+          ],
+          [
+            ['flex', '1 1 0%'],
+            ['flex-grow', '2', 'important'],
+          ],
+          // (a longhand written before font: jsdom 26's font write resets
+          // it, so it neither blocks the read nor is read; #313 review)
+          [
+            ['fontStyle', 'italic'],
+            ['font', '12px Arial'],
+            ['fontSize', 'var(--g)'],
+          ],
+          [
+            ['fontStyle', 'italic'],
+            ['font', '12px Arial'],
+            ['fontSize', '20px'],
+          ],
+          [
+            ['fontWeight', 'bold'],
+            ['font', 'italic 12px Arial'],
+            ['fontSize', '20px'],
+          ],
+          [
+            ['lineHeight', '3'],
+            ['font', '12px Arial'],
+            ['fontStyle', 'italic'],
+          ],
+          [
+            ['flexShrink', '3'],
+            ['flex', '1 1 0%'],
+            ['flexGrow', '2'],
+          ],
+        ]) {
+          const t = w.document.createElement('div').style;
+          for (const [name, value, priority] of writes)
+            if (name.includes('-') || priority) t.setProperty(name, value, priority ?? '');
+            else t[name] = value;
+          const shorthand = writes.find(([name]) => name === 'flex' || name === 'font')[0];
+          out.push(t[shorthand], t.getPropertyValue(shorthand), t.removeProperty(shorthand));
+        }
+        return out;
+      };
+      // removeProperty() returns the value getPropertyValue() reads (#313
+      // review)
+      scenarios.removeReturns = (s) => {
+        const out = [];
+        for (const [name, writes] of [
+          ['flex', ['flex', '1 1 0%', 'flexGrow', '2', 'flexShrink', '3', 'flexBasis', '10px']],
+          // (border then border-color: 1px blue in jsdom 27 and later, a
+          // listed difference)
+          ['border', ['border', '1px solid red', 'borderTopColor', 'blue']],
+          ['border-width', ['borderWidth', '1px', 'borderTopWidth', '2px']],
+          ['font', ['font', '12px Arial', 'fontSize', '14px']],
+        ]) {
+          const t = w.document.createElement('div').style;
+          for (let i = 0; i < writes.length; i += 2) t[writes[i]] = writes[i + 1];
+          out.push(t.getPropertyValue(name), t.removeProperty(name));
+        }
+        return out;
+      };
+      if (jsdom > 26) {
+        scenarios.sideThroughBorder = (s) => {
+          s.border = '1px solid red';
+          s.borderTopColor = 'blue';
+          return [s.borderTop, s.getPropertyValue('border-top'), s.borderBottom, s.borderColor, s.border];
+        };
+        scenarios.fontStyleAgain = (s) => {
+          s.fontStyle = 'italic';
+          s.font = '12px Arial';
+          s.fontSize = '14px';
+          const first = s.font;
+          s.fontStyle = 'oblique';
+          return [first, s.font];
+        };
+        scenarios.widthAgain = (s) => {
+          s.borderWidth = '1px';
+          s.borderTopWidth = '2px';
+          const first = s.borderWidth;
+          s.borderTopWidth = '3px';
+          return [first, s.borderWidth];
+        };
+      } else
+        scenarios.borderParts = (s) => {
+          s.borderTopWidth = '2px';
+          s.border = '1px solid red';
+          s.borderColor = 'blue';
+          const first = s.border;
+          s.borderTopWidth = '3px';
+          s.borderStyle = 'dashed';
+          return [first, s.border];
+        };
+      if (jsdom === 26)
+        scenarios.borderInitialParts = (s) => {
+          s.border = '1px';
+          s.borderWidth = 'medium';
+          const t = w.document.createElement('div').style;
+          t.border = 'red';
+          t.borderColor = 'currentcolor';
+          return [s.border, t.border];
+        };
+      // jsdom 26 reads border after border-width, -style or -color as the
+      // parts written, a none style left out (#313 review). (borderStyle =
+      // 'none' after another style is a listed difference: jsdom 26 clears
+      // the style there.)
+      if (jsdom === 26)
+        scenarios.borderWrittenParts = (s) => {
+          const subs = [
+            ['borderWidth', 'medium'],
+            ['borderWidth', 'thin'],
+            ['borderWidth', '1px 2px'],
+            ['borderStyle', 'solid'],
+            ['borderStyle', 'dotted solid'],
+            ['borderColor', 'currentcolor'],
+            ['borderColor', 'blue'],
+            ['borderColor', 'red blue'],
+          ];
+          const out = [];
+          for (const border of [
+            'red',
+            'solid',
+            '1px',
+            '1px solid red',
+            'medium none currentcolor',
+            'none blue',
+            'none',
+          ])
+            for (const [a, x] of subs)
+              for (const [b, y] of subs) {
+                const t = w.document.createElement('div').style;
+                t.border = border;
+                t[a] = x;
+                t[b] = y;
+                out.push(t.border);
+                // (a sub-shorthand before border: none, which jsdom 26
+                // removes, is not modeled yet)
+                if (border === 'none') continue;
+                const u = w.document.createElement('div').style;
+                u[b] = y;
+                u.border = border;
+                u[a] = x;
+                out.push(u.border);
+              }
+          // (no border declared: the accessor reads the sub-shorthands)
+          for (const seq of [
+            [['borderWidth', 'thin']],
+            [['borderColor', 'blue']],
+            [
+              ['borderWidth', 'thin'],
+              ['borderColor', 'blue'],
+            ],
+            [['borderWidth', '1px 2px']],
+            [['borderTopWidth', '1px']],
+          ]) {
+            const t = w.document.createElement('div').style;
+            for (const [k, v] of seq) t[k] = v;
+            out.push(t.border, t.getPropertyValue('border'));
+          }
+          return out;
+        };
+      return Object.entries(scenarios).map(([name, f]) => [name, f(w.document.createElement('div').style)]);
+    },
+    { jsdom },
+  );
+
 // A unitless zero next to a function in margin, padding, border-width,
 // border-spacing and background-position is 0px, as alone (jsdom 26 and
 // 30.1.3: margin: 0 calc(50% - 10px) is 0px calc(50% - 10px)); in jsdom
@@ -4059,6 +4335,79 @@ for (const jsdom of [26, 30])
         const b = w.document.createElement('div');
         b.setAttribute('style', `${name}: ${v}`);
         out.push([name, v, a.style.getPropertyValue(name), a.style.cssText, b.style.getPropertyValue(name)]);
+      }
+      return out;
+    },
+    { jsdom },
+  );
+
+// jsdom 20 to 26 (cssstyle's setters; black box, 20.0.3 to 26.1.0): a
+// border write removes border-width, -style and -color and the sides
+// (jsdom 26 keeps the sides for var()), and of the sides' longhands those
+// of the parts it has: border: 0 the widths, red the colors, none alone
+// all of them, inherit and var() none. A side removes its own longhands.
+// border: none declares nothing but still removes them. The style
+// attribute does this too, and the flex and background resets.
+for (const jsdom of [20, 21, 22, 23, 24, 25, 26])
+  parity(
+    `style: a border, flex or background write removes earlier parts (jsdom ${jsdom})`,
+    (w) => {
+      const out = [];
+      const before = [
+        'border-width: 3px',
+        'border-style: dotted',
+        'border-color: blue',
+        'border-top-width: 3px',
+        'border-top-style: dotted',
+        'border-top-color: blue',
+        'border-left-color: blue !important',
+        'border-top: 3px dotted blue',
+        'border-image: none; color: red',
+        'flex-grow: 2',
+        'background-color: blue',
+      ];
+      const writes = [
+        ['border', ['none', 'NONE', '0', '2px', 'solid', 'red', '2px solid red', 'none red', '2px none', 'hidden']],
+        ['border', ['inherit', 'var(--a)', 'currentcolor', 'thin dotted']],
+        ['border-top', ['none', '0', '1px solid red', 'red', 'inherit', 'var(--a)']],
+        // (none and hidden clear what came before them, before 26 none
+        // the width only; a side left with nothing declares nothing and
+        // still resets; before 26 a style in lowercase only and no calc()
+        // width; initial and unset reset nothing; #314 review)
+        ['border-top', ['0 none', '1px none', 'medium none', 'red none', '0 red none', 'hidden', '0 hidden']],
+        ['border-top', ['red hidden', 'NONE', 'INHERIT', 'initial', 'unset', '1px SOLID', 'calc(1px) solid']],
+        ['border', ['Initial', 'unset', '1px SOLID', 'calc(1px) none', '0 NONE', 'None']],
+        ['flex', ['none', '0 0 auto', '2 3 4px']],
+        ['background', ['red', 'none', 'url(a.png) blue']],
+      ];
+      for (const pre of before)
+        for (const [name, values] of writes)
+          for (const value of values) {
+            const a = w.document.createElement('div');
+            a.setAttribute('style', `${pre}; ${name}: ${value}`);
+            const b = w.document.createElement('div');
+            b.style.cssText = pre;
+            b.style.setProperty(name, value);
+            out.push([pre, name, value, a.style.cssText, b.style.cssText]);
+          }
+      // (the shorthand given again in another case moves to the end; #314
+      // review)
+      for (const text of [
+        'flex: 1 1 0px; width: 1px; Flex: 2 2 0px',
+        'background: red; width: 1px; Background: blue',
+        'border: 1px solid red; width: 1px; Border: 2px solid blue',
+        // (background: none alone is set in place with cssstyle 4.4 and
+        // later, jsdom 23 to 26; #314 review)
+        'background: red; width: 1px; Background: none',
+        'background: red; width: 1px; Background: NONE',
+        'flex: 1; width: 1px; Flex: none',
+      ]) {
+        const a = w.document.createElement('div');
+        a.setAttribute('style', text);
+        const b = w.document.createElement('div');
+        b.style.cssText = 'background: red; width: 1px';
+        b.style.setProperty('background', 'none');
+        out.push([text, a.style.cssText, b.style.cssText]);
       }
       return out;
     },
