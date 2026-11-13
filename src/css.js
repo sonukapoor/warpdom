@@ -1116,6 +1116,46 @@ const otherZero = (word) => word !== '0' && NUMBER_WORD.test(word) && Number(wor
 const FLEX_ZERO_BASIS =
   /^[ \t\n\r\f]*(?:[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?[ \t\n\r\f]+){2}[+-]?(?:0+(?:\.0*)?|\.0+)(?:e[+-]?\d+)?[ \t\n\r\f]*$/i;
 const flexZeroBasis = (name, value) => name === 'flex' && value.includes('0') && FLEX_ZERO_BASIS.test(value);
+// flex with the basis before or between its numbers, from cssstyle 4.4
+// (black box, jsdom 23.2.0, 24.1.3, 26.1.0 and 27.4.0 to 30.1.3; #317).
+// The first two numbers are the grow and shrink and a third 0 the basis
+// 0px; another third number is invalid (0 1 2, 1 0 2). jsdom 23 to 26
+// take the numbers wherever the basis is (10px 1 2 and 1 10px 2 are
+// 1 2 10px), so the value is written with them first; jsdom 27 to 30
+// reject a number after the basis (10px 1). Values with var() are left
+// as written. null: invalid.
+// (the usual order, one or two numbers and maybe a basis that is no
+// number, needs no scan: 1 1 0%, 2 10px; each part matches one way)
+const FLEX_IN_ORDER =
+  /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?(?: [+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)?(?: (?:[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)?[a-z%][^\s]*)?$/i;
+function flexOrder(value, mode) {
+  if (FLEX_IN_ORDER.test(value) || VAR_ENV_ATTR.test(value)) return value;
+  const parts = segments(value);
+  let numbers = 0;
+  let basisAt = -1;
+  let moved = false;
+  for (let i = 0; i < parts.length; i += 2) {
+    const part = parts[i];
+    if (part === '') continue;
+    if (!NUMBER_WORD.test(part)) {
+      if (basisAt < 0) basisAt = i;
+    } else if (numbers < 2) {
+      numbers++;
+      if (basisAt >= 0) {
+        if (mode !== 'jsdom26') return null;
+        moved = true;
+      }
+    } else if (Number(part) !== 0) return null;
+    else if (basisAt < 0) basisAt = i;
+  }
+  if (!moved) return value;
+  const kept = [];
+  const after = [];
+  numbers = 0;
+  for (let i = 0; i < parts.length; i += 2)
+    if (parts[i] !== '') (NUMBER_WORD.test(parts[i]) && numbers++ < 2 ? kept : after).push(parts[i]);
+  return kept.concat(after).join(' ');
+}
 // (probes: box shorthands have four sides; in a longer list the later
 // items are of the kinds already probed, so the work stays linear; #309
 // review)
@@ -1199,6 +1239,9 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
         if (written !== null && (written.length >= 16 || JSDOM26_BORDERS.has(name)))
           written = jsdom26Numbers(name, written);
       }
+      // (a flex of one part has no order: most values skip this; #317)
+      if (written !== null && name === 'flex' && (mode === 'jsdom26' || isSpecMode(mode)) && /\s/.test(written))
+        written = flexOrder(written, mode);
       if (out === undefined) out = written === null ? INVALID : versionedValue(name, written, mode, surface);
       if (out === undefined) {
         const checked = isSpecMode(mode) || JSDOM26_VALIDATED.has(name);

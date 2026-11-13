@@ -7031,3 +7031,30 @@ box-cascade-bench (28.1.0) all 9.8 -> 10.1, distinct 44.6 -> 46.0, miss
 63.3 -> 62.5, small 6.1 -> 6.0 µs/element: within noise. Test:
 computed-style.test.js "a document without a window has no style sheets"
 (parity 20, 22, 25 to 30).
+
+## 2026-11-13: flex with the basis before its numbers, from cssstyle 4.4 (branch fix/317-flex-basis-first, #317)
+
+Found while checking a #315 review finding. Black box, jsdom 23.2.0,
+24.1.3, 26.1.0 and 27.4.0 to 30.1.3: in every profile from cssstyle 4.4,
+warpdom read `flex: 10px 1 2` as `1 1 2`, as its serializer took a
+number after the basis for the basis. jsdom 23 to 26 take the first two
+numbers as the grow and shrink wherever the basis is (`10px 1 2` and
+`1 10px 2` are `1 2 10px`); a third `0` is the basis `0px`, and another
+third number makes the value invalid (`0 1 2`, which warpdom kept, and
+`1 0 2`). jsdom 27 to 30 reject a number after the basis (`10px 1`,
+`content 1`). flexOrder() writes the numbers first for jsdom 23 to 26 and
+rejects the rest, on a cache miss only. The usual order (`1 1 0%`,
+`2 10px`) skips its scan through one pattern (FLEX_IN_ORDER).
+
+Test: "flex with the basis before its numbers" (jsdom 23, 24, 26 to 30;
+setProperty, the style attribute, cssText and computed values). Cost
+(node 22.17.1, 5 interleaved runs, medians): bench-fx.mjs level (jsdom 26
+81.9 to 79.3 ms, 30 70.6 to 70.4 ms); 20,000 distinct flex values, all
+cache misses (bench317.mjs), 73.8 to 75.8 ms in 26 and 39.4 to 40.2 ms in
+30 (+2 to 3%; +11% before the FLEX_IN_ORDER fast path).
+
+Not modeled, for docs/differences.md once #312 lands: jsdom 23 to 26
+accept a negative basis in flex (`1 -1px` is `1 1 -1px`) and read a math
+function as the grow (`calc(1px)` is `calc(1px) 1 0%`). Before cssstyle
+4.4 (#315), `10px 1` stores the 1 as the shrink; warpdom reads it as the
+grow.
