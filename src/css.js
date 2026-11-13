@@ -1781,6 +1781,7 @@ function jsdom26Value(name, value, lower) {
     return n >= 0 && n <= 1000 ? String(n) : INVALID;
   }
   if (name === 'flex-grow' || name === 'flex-shrink') {
+    if (/^(calc|min|max|clamp)\(/.test(value)) return jsdom26NumberMath(value);
     if (/^calc\(/i.test(value)) return undefined;
     return JSDOM26_NUMBER.test(value) && Number(value) >= 0 ? String(Number(value)) : INVALID;
   }
@@ -1788,6 +1789,128 @@ function jsdom26Value(name, value, lower) {
   return isValidValue(name, value.replace(/(^|\s)-(?=[\d.])/g, '$1'))
     ? serializeDeclared(name, value, 'jsdom26')
     : INVALID;
+}
+// calc(), min(), max() and clamp() of numbers at the start of flex-grow
+// and flex-shrink, as jsdom 26 evaluates them (black box, 26.1.0, #264
+// item 71): + and - with whitespace around them, * and /, parentheses,
+// the constants e, pi, infinity and NaN; the result to 6 significant
+// digits inside calc() (calc(10 / 3) is calc(3.33333), calc(1 / 0)
+// calc(infinity)), with what follows the function inside it as written
+// (calc(1) bold is calc(1 bold)), and functions and parentheses left open
+// at the end closed (calc(1 + 1 is calc(2)). Anything else (a unit, another
+// function, a function after it) is left as written: undefined.
+const MATH_CONSTANTS = {
+  __proto__: null,
+  e: Math.E,
+  pi: Math.PI,
+  infinity: Infinity,
+  '-infinity': -Infinity,
+  nan: NaN,
+};
+const MATH_NUMBER = /[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?(?![\w%.])/iy;
+const MATH_NAME = /-?[a-z]+/iy;
+// (nesting deeper than MATH_DEPTH is left as written: the recursion would
+// overflow the stack on calc((((...; #307 review)
+const MATH_DEPTH = 100;
+function jsdom26NumberMath(value) {
+  let i = 0;
+  let depth = 0;
+  const skip = () => {
+    while (i < value.length && isCssSpace(value.charCodeAt(i))) i++;
+  };
+  // A closing parenthesis, or the end of the value, which closes it.
+  const close = () => {
+    skip();
+    if (i >= value.length) return true;
+    if (value[i] !== ')') return false;
+    i++;
+    return true;
+  };
+  function primary() {
+    skip();
+    const c = value[i];
+    if (c === '(') {
+      if (++depth > MATH_DEPTH) return null;
+      i++;
+      const v = sum();
+      depth--;
+      return v !== null && close() ? v : null;
+    }
+    MATH_NUMBER.lastIndex = i;
+    const number = MATH_NUMBER.exec(value);
+    if (number !== null) {
+      i = MATH_NUMBER.lastIndex;
+      return Number(number[0]);
+    }
+    MATH_NAME.lastIndex = i;
+    const word = MATH_NAME.exec(value);
+    if (word === null) return null;
+    i = MATH_NAME.lastIndex;
+    if (value[i] === '(') {
+      i++;
+      return call(word[0]);
+    }
+    const constant = MATH_CONSTANTS[word[0].toLowerCase()];
+    return constant === undefined ? null : constant;
+  }
+  function call(fn) {
+    if (fn !== 'calc' && fn !== 'min' && fn !== 'max' && fn !== 'clamp') return null;
+    if (++depth > MATH_DEPTH) return null;
+    const args = [sum()];
+    skip();
+    while (args.at(-1) !== null && value[i] === ',') {
+      i++;
+      args.push(sum());
+      skip();
+    }
+    depth--;
+    if (args.includes(null) || !close()) return null;
+    if (fn === 'calc') return args.length === 1 ? args[0] : null;
+    if (fn === 'clamp') return args.length === 3 ? Math.max(args[0], Math.min(args[1], args[2])) : null;
+    return fn === 'min' ? Math.min(...args) : Math.max(...args);
+  }
+  function product() {
+    let left = primary();
+    for (;;) {
+      if (left === null) return null;
+      skip();
+      const op = value[i];
+      if (op !== '*' && op !== '/') return left;
+      i++;
+      const right = primary();
+      if (right === null) return null;
+      left = op === '*' ? left * right : left / right;
+    }
+  }
+  function sum() {
+    let left = product();
+    for (;;) {
+      if (left === null) return null;
+      skip();
+      const op = value[i];
+      if (op !== '+' && op !== '-') return left;
+      // (whitespace around the sign: calc(1 +2) is two numbers)
+      if (!isCssSpace(value.charCodeAt(i - 1)) || !isCssSpace(value.charCodeAt(i + 1))) return null;
+      i++;
+      const right = product();
+      if (right === null) return null;
+      left = op === '+' ? left + right : left - right;
+    }
+  }
+  const open = /^[a-z]+/.exec(value)[0];
+  i = open.length + 1;
+  const n = call(open);
+  if (n === null) return undefined;
+  const rest = value.slice(i);
+  // (another function after it is left as written)
+  if (/[\w-]\(/.test(rest)) return undefined;
+  return `calc(${mathNumberText(n)}${rest})`;
+}
+function mathNumberText(n) {
+  if (Number.isNaN(n)) return 'NaN';
+  if (n === Infinity) return 'infinity';
+  if (n === -Infinity) return '-infinity';
+  return String(Number(n.toPrecision(6)));
 }
 // Strings and url()s, whose text is no number (url(sprite+hover.png); #285
 // review).
@@ -2364,14 +2487,26 @@ function borderValue(name, value, mode) {
     if (i > 0 && parts[i - 1].includes(',')) return serializeDeclared(name, value, mode);
     if (BORDER_STYLE.test(token)) {
       const lower = token.toLowerCase();
+      // (jsdom 20 to 25 take a style in lowercase only, and on a side none
+      // clears the width only, not a color before it)
+      if (legacy && token !== lower) return INVALID;
       if (side && !spec && (lower === 'none' || (lower === 'hidden' && !legacy))) {
-        width = color = null;
+        width = null;
+        if (!legacy) color = null;
         style = '';
       } else style = token;
-    } else if (BORDER_WIDTH.test(token)) width = token;
-    else color = token;
+    } else if (BORDER_WIDTH.test(token)) {
+      // (and no calc() width)
+      if (legacy && token.charCodeAt(0) === 99 /* c */ && token.includes('(')) return INVALID;
+      width = token;
+    } else color = token;
   }
-  if (style === '') style = null;
+  // (a side whose none or hidden cleared every part is valid and declares
+  // nothing: border-top: 0 none removes the side's longhands; #314 review)
+  if (style === '') {
+    if (width === null && color === null) return '';
+    style = null;
+  }
   if (spec) {
     if (width !== null && width.toLowerCase() === 'medium') width = null;
     if (style !== null && style.toLowerCase() === 'none') style = null;
@@ -4008,6 +4143,17 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       }
       if (meetImage(name, value, mode)) declared = INVALID;
     }
+    // jsdom 20 to 26 set a style attribute's declarations one by one, so
+    // a shorthand resets what came before it there too (setDeclaration).
+    if (clears && RESETS[name] !== undefined) {
+      if (BORDER_AND_SIDES.has(name)) {
+        const how = declared !== INVALID ? AS_WRITTEN : rejectedReset(name, value, mode);
+        if (how !== NO_RESET) legacyBorderResets(decls, name, value, mode, how === SIDES_ONLY);
+      } else if (declared !== INVALID && declared !== '' && resets(surface, name, declared))
+        // (itself too: given again in another case it moves to the end;
+        // #314 review)
+        for (const n of RESETS[name]) if (n !== name || !resetsInPlace(surface, name, declared)) decls.delete(n);
+    }
     if (declared === INVALID || declared === '') continue;
     // One that loses its !important is written without it; in a style
     // sheet it is a normal declaration, elsewhere it is still !important
@@ -4050,6 +4196,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
         ? { value: declared, important: kept }
         : { value: declared, important: false, masked: true },
     );
+    if (RECOMPOSED_LONGHANDS.has(name)) markLater(decls, declared);
   }
   // A background of initial values (setInitials) and a declaration of
   // another property after it, in a style attribute or cssText (black box,
@@ -4575,8 +4722,8 @@ function backgroundColorOnly(style, value) {
   return color === 'transparent' ? '' : color;
 }
 
-const valueOf = (style, name) => {
-  const s = styleState(style);
+const valueOf = (style, name) => stateValue(styleState(style), name);
+const stateValue = (s, name) => {
   if (s.computed) return computedOverride(s, name) ?? computed.value(s.element, name);
   const decl = s.decls.get(name);
   if (decl) return decl.value;
@@ -4611,6 +4758,215 @@ function composeBorder(decls, name) {
   if (values.every((v) => CSS_WIDE_KEYWORD.test(v))) return values.every((v) => v === values[0]) ? values[0] : '';
   const parts = values.filter((v, i) => v.toLowerCase() !== BORDER_INITIAL[i]);
   return parts.length ? parts.join(' ') : values[0];
+}
+
+// A shorthand read after one of its longhands is written (phase 2 of #264
+// item 78; black box, 26.1.0 to 30.1.3). jsdom 27 and later read flex and
+// border-width, -style and -color from the current longhands, in the
+// accessor and getPropertyValue (flex: 1 1 0% then flex-grow: 2 is 2 1 0%;
+// border-width: 1px then border-top-width: 2px is 2px 1px 1px), border and
+// a border side as '' once a side's longhand follows, and font from them
+// in the accessor only. jsdom 26 (cssstyle 4.4 and later) recomposes flex,
+// font, a border side and border (after border-width, -style or -color) in
+// the accessor only. Not modeled: border after border-color or
+// border-width in 27 and later (jsdom keeps parts of it: 1px blue), and
+// background. Only these shorthands look, and only when a declaration
+// follows them; cssText is unchanged (phase 3).
+const BORDER_SUBS = new Set(['border-width', 'border-style', 'border-color']);
+const RECOMPOSED_PARTS = new Map([
+  ['flex', new Set(SHORTHANDS.flex)],
+  // (font-variant too: font then font-variant: small-caps reads small-caps
+  // 12px Arial; #313 review)
+  ['font', new Set([...SHORTHANDS.font, 'font-variant'])],
+  ['border', new Set([...SHORTHANDS.border, ...BORDER_SUBS])],
+]);
+for (const name of Object.keys(BORDER_READS)) RECOMPOSED_PARTS.set(name, new Set(BORDER_READS[name]));
+const BORDER_SIDE_READS = new Set(BOX_SIDES.map((side) => `border-${side}`));
+// The names whose write sets decls.later (parseInto, setDeclaration): a
+// block without one reads its shorthands as they are, without a scan.
+const RECOMPOSED_LONGHANDS = new Set();
+for (const parts of RECOMPOSED_PARTS.values()) for (const n of parts) RECOMPOSED_LONGHANDS.add(n);
+function readShorthand(style, name, accessor) {
+  const s = styleState(style);
+  const value = stateValue(s, name);
+  if (s.decls.later !== true || s.computed) return value;
+  // (jsdom 26's border accessor with no border declared reads
+  // border-width, -style and -color: border-width: thin is thin; #313
+  // review)
+  if (value === '')
+    return name === 'border' && accessor && s.mode === 'jsdom26' && s.surface?.colors !== 'css2'
+      ? legacyBorder(s.decls, '')
+      : value;
+  const parts = RECOMPOSED_PARTS.get(name);
+  if (parts === undefined) return value;
+  const modern = s.mode === 'jsdom27' || s.mode === 'spec';
+  // (jsdom 26's getPropertyValue reads flex and font as written, but ''
+  // after a var() longhand: blockedRead)
+  if (
+    !modern &&
+    !((accessor || name === 'flex' || name === 'font') && s.mode === 'jsdom26' && s.surface?.colors !== 'css2')
+  )
+    return value;
+  // The declaration the longhands follow: the shorthand's, or for a border
+  // side read through border, border's (jsdom 27 and later: border then
+  // border-top-color reads border-top as ''; #313 review).
+  let anchor = name;
+  if (!s.decls.has(name)) {
+    if (!modern || !BORDER_SIDE_READS.has(name) || !s.decls.has('border')) return value;
+    anchor = 'border';
+  }
+  // The names around it (no allocation): most blocks have no longhand
+  // after it and read the value as it is. A part before it may have been
+  // written again in place, which keeps its position (jsdom 26, an
+  // !important border longhand kept): read as written, not modeled
+  // (#313 review).
+  let seen = false;
+  let before = false;
+  let longhand = false;
+  let sub = false;
+  // (jsdom 26's getPropertyValue of flex or font: only a later var()
+  // longhand matters, looked at in this scan; blockedRead)
+  const asWritten = !modern && !accessor;
+  if (asWritten && s.decls.laterVar !== true) return value;
+  let blocked = false;
+  // (jsdom 26's font write resets the longhands written before it:
+  // fontStyle = 'italic', font = '12px Arial', fontSize = '20px' reads 20px
+  // Arial; composeFont skips them; #313 review)
+  const resetsEarlier = name === 'font' && s.mode === 'jsdom26';
+  for (const n of s.decls.keys()) {
+    if (n === anchor) seen = true;
+    else if (parts.has(n)) {
+      if (!seen) before = before || !resetsEarlier;
+      else if (BORDER_SUBS.has(n)) sub = true;
+      else {
+        longhand = true;
+        if (asWritten && hasVar(s.decls.get(n).value)) blocked = true;
+      }
+    }
+  }
+  if (asWritten) return blocked ? '' : value;
+  if (before || (!longhand && !sub)) return value;
+  if (anchor !== name) return longhand ? '' : value;
+  // A recomposed value is cached on the identities of the block's
+  // declarations, all of them (the composers read those before the
+  // shorthand too; #313 review): a write stores a new declaration object.
+  const own = s.decls.get(name);
+  const reads = accessor ? accessorReads : propertyReads;
+  const cached = reads.get(own);
+  if (cached !== undefined && cached.all.length === s.decls.size) {
+    // (compared in place: a hit allocates nothing)
+    let k = 0;
+    let same = true;
+    for (const decl of s.decls.values())
+      if (cached.all[k++] !== decl) {
+        same = false;
+        break;
+      }
+    if (same) return cached.value;
+  }
+  const out = recompose(s, name, value, accessor, modern, longhand, sub);
+  reads.set(own, { all: [...s.decls.values()], value: out });
+  return out;
+}
+const accessorReads = new WeakMap();
+const propertyReads = new WeakMap();
+// border as jsdom 26's accessor reads it after border-width, -style or
+// -color: each part from that shorthand, else border's own, initial parts
+// left out (1px solid red then border-color: blue is 1px solid blue).
+// jsdom 26 reads border, after border-width, -style or -color, as the
+// parts written: border's own words, each replaced by a sub-shorthand's
+// value, a none style left out (red, then border-width: medium and
+// border-color: currentcolor, is medium currentcolor; black box, 26.1.0,
+// #313 review). '' (nothing left) reads border as written.
+function legacyBorder(decls, value) {
+  let width = '',
+    style = '',
+    color = '';
+  if (value !== '') {
+    const words = segments(value);
+    for (let i = 0; i < words.length; i += 2) {
+      const word = words[i];
+      if (word === '') continue;
+      if (BORDER_STYLE.test(word)) style = word;
+      else if (BORDER_WIDTH.test(word)) width = word;
+      else color = word;
+    }
+  }
+  width = decls.get('border-width')?.value ?? width;
+  style = decls.get('border-style')?.value ?? style;
+  color = decls.get('border-color')?.value ?? color;
+  if (style.toLowerCase() === 'none') style = '';
+  let out = width;
+  if (style) out = out ? `${out} ${style}` : style;
+  if (color) out = out ? `${out} ${color}` : color;
+  return out;
+}
+// jsdom 26 to 30 read flex and font as '' once a longhand of theirs with
+// var() follows them (flex: 1 1 0% then flex-grow: var(--g)); 27 and later
+// flex once one of another priority does (flex: 1 1 0% !important then
+// flex-grow: 2; black box, 26.1.0 to 30.1.3, #313 review).
+// A longhand of a recomposed shorthand written (decls.later: a read looks
+// at the order; decls.laterVar: one with var(), blockedRead).
+function markLater(decls, value) {
+  decls.later = true;
+  if (value.includes('var(')) decls.laterVar = true;
+}
+function blockedRead(decls, name, modern) {
+  const parts = RECOMPOSED_PARTS.get(name);
+  const own = decls.get(name);
+  let seen = false;
+  for (const [n, decl] of decls) {
+    if (n === name) seen = true;
+    else if (seen && parts.has(n)) {
+      if (hasVar(decl.value)) return true;
+      if (modern && name === 'flex' && decl.important !== own.important) return true;
+    }
+  }
+  return false;
+}
+function recompose(s, name, value, accessor, modern, longhand, sub) {
+  if ((name === 'flex' || name === 'font') && blockedRead(s.decls, name, modern)) return '';
+  if (name === 'flex') return composeShorthand(s.decls, 'flex') || value;
+  if (name === 'font') return (accessor && composeFont(s.decls, !modern)) || value;
+  if (name === 'border') {
+    if (modern) return longhand ? '' : value;
+    // jsdom 26: from border-width, -style and -color over border's own
+    // parts; a side's longhand after it changes nothing (#313 review)
+    return sub ? legacyBorder(s.decls, value) || value : value;
+  }
+  // border-width, -style, -color: 27 and later only; a border side
+  if (BORDER_SUBS.has(name)) return modern ? composeBorder(s.decls, name) || value : value;
+  return modern ? '' : composeBorder(s.decls, name) || value;
+}
+// font from its longhands, as jsdom's accessor writes it (normal parts
+// left out, a spaced slash before the line height). afterFont (jsdom 26):
+// a longhand written before font is read from font, which reset it.
+function composeFont(decls, afterFont = false) {
+  let early = null;
+  if (afterFont)
+    for (const n of decls.keys()) {
+      if (n === 'font') break;
+      (early ??= new Set()).add(n);
+    }
+  const own = (longhand) => (early?.has(longhand) ? undefined : decls.get(longhand)?.value);
+  const get = (longhand) => own(longhand) ?? fromShorthand(decls, longhand);
+  const size = get('font-size');
+  const family = get('font-family');
+  if (!size || !family) return '';
+  const style = get('font-style');
+  const caps = own('font-variant') ?? get('font-variant-caps');
+  const weight = get('font-weight');
+  const height = get('line-height');
+  return [
+    style && style !== 'normal' ? style : '',
+    caps && caps !== 'normal' ? caps : '',
+    weight && weight !== 'normal' ? weight : '',
+    size,
+    height && height !== 'normal' ? `/ ${height}` : '',
+    family,
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
 
 // Shorthands whose longhands a declaration block reads through them, as in
@@ -4828,9 +5184,108 @@ function sharesLonghands(name, other) {
   );
 }
 
+// (border or a side: none and a CSS-wide keyword declare nothing, or are
+// rejected, and still reset; legacyBorderResets)
+const RESETS_DECLARING_NOTHING = /^(none|initial|inherit|unset|revert|revert-layer)$/i;
+// How a rejected border or side value resets (black box, jsdom 20 to 26):
+// NO_RESET, AS_WRITTEN (inherit in any case; on border none in any case and
+// var()) or SIDES_ONLY (jsdom 20 to 25's border on any other rejected value:
+// the sides' shorthands only, as with var()). (A side's none is not
+// rejected: borderValue gives ''.)
+const NO_RESET = 0;
+const AS_WRITTEN = 1;
+const SIDES_ONLY = 2;
+function rejectedReset(name, value, mode) {
+  if (/^inherit$/i.test(value)) return AS_WRITTEN;
+  if (name !== 'border') return NO_RESET;
+  if (/^none$/i.test(value) || hasVar(value)) return AS_WRITTEN;
+  return mode === 'jsdom26' ? NO_RESET : SIDES_ONLY;
+}
 // (A surface has a legacyFont variant before cssstyle 4.4.)
 const resets = (surface, name, text) =>
   !text.includes('var(') || (name === 'flex' && surface?.legacyFont === undefined);
+// From cssstyle 4.4 (jsdom 23 to 26) background: none alone removes the
+// background longhands but stays in place itself (black box, 23.2.0 and
+// 26.1.0; #314 review).
+const resetsInPlace = (surface, name, text) =>
+  name === 'background' && surface?.legacyFont === undefined && /^none$/i.test(text);
+// (the kinds of the names a border write may remove: the block's own
+// names are walked, usually a few, rather than every name looked up)
+const RESET_SUB = 1,
+  RESET_SIDE = 2,
+  RESET_WIDTH = 3,
+  RESET_STYLE = 4,
+  RESET_COLOR = 5;
+const RESET_KINDS = new Map([
+  ['border-width', RESET_SUB],
+  ['border-style', RESET_SUB],
+  ['border-color', RESET_SUB],
+]);
+const RESET_SIDE_LONGHANDS = { __proto__: null };
+for (const side of BORDER_SIDES) {
+  const name = `border-${side}`;
+  RESET_KINDS.set(name, RESET_SIDE);
+  RESET_KINDS.set(`${name}-width`, RESET_WIDTH);
+  RESET_KINDS.set(`${name}-style`, RESET_STYLE);
+  RESET_KINDS.set(`${name}-color`, RESET_COLOR);
+  RESET_SIDE_LONGHANDS[name] = BORDER_PARTS.map((part) => `${name}-${part}`);
+}
+// The parts a border value has, as bits (RESET_WIDTH and so on): none
+// alone all of them, a CSS-wide keyword or var() none.
+function borderPartBits(value, usesVar) {
+  if (usesVar || CSS_WIDE_KEYWORD.test(value)) return 0;
+  if (/^none$/i.test(value)) return (1 << RESET_WIDTH) | (1 << RESET_STYLE) | (1 << RESET_COLOR);
+  let bits = 0;
+  const words = segments(value);
+  for (let i = 0; i < words.length; i += 2) {
+    const word = words[i];
+    if (word === '') continue;
+    if (BORDER_STYLE.test(word)) bits |= 1 << RESET_STYLE;
+    else if (BORDER_WIDTH.test(word)) bits |= 1 << RESET_WIDTH;
+    else bits |= 1 << RESET_COLOR;
+  }
+  return bits;
+}
+// jsdom 20 to 26 (cssstyle's setters; black box, 20.0.3 to 26.1.0): a
+// border write removes border-width, -style and -color and the sides, and
+// of the sides' longhands those of the parts it has: border: 0 the
+// widths, red the colors, none alone all of them, inherit and var() none.
+// With var(), jsdom 26 keeps the sides and 20 to 25 (which reject the
+// value) keep border-width, -style and -color. A side removes its own
+// longhands, and itself when it declares nothing (none, inherit). Each
+// removes itself too, so that written again it moves to the end, but for
+// a var() value, which is set in place.
+// value: as written (border: none declares nothing, inherit is rejected:
+// both still remove); sidesOnly: a rejected border value that resets as
+// var() does (rejectedReset). Was any removed?
+function legacyBorderResets(decls, name, value, mode, sidesOnly = false) {
+  const usesVar = sidesOnly || hasVar(value);
+  let removed = !sidesOnly && (!usesVar || RESETS_DECLARING_NOTHING.test(value)) && decls.delete(name);
+  if (name !== 'border') {
+    const longhands = RESET_SIDE_LONGHANDS[name];
+    for (let i = 0; i < longhands.length; i++) removed = decls.delete(longhands[i]) || removed;
+    return removed;
+  }
+  const subs = !usesVar || mode === 'jsdom26';
+  const sides = !usesVar || mode !== 'jsdom26';
+  let bits = -1; // (read from the value at the first side longhand)
+  for (const n of decls.keys()) {
+    const kind = RESET_KINDS.get(n);
+    if (kind === undefined) continue;
+    let drop;
+    if (kind === RESET_SUB) drop = subs;
+    else if (kind === RESET_SIDE) drop = sides;
+    else {
+      if (bits === -1) bits = borderPartBits(value, usesVar);
+      drop = (bits & (1 << kind)) !== 0;
+    }
+    if (drop) {
+      decls.delete(n);
+      removed = true;
+    }
+  }
+  return removed;
+}
 
 // via: 'accessor' (style.marginTop = v; 'cssFloat' for style.cssFloat),
 // 'set' (setProperty) or 'remove'
@@ -5066,10 +5521,20 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
   if (text === INVALID && name === 'background' && !s.parentRule)
     text = escapedUrlBackground(s.decls, raw, s.mode, s.surface);
   if (!s.parentRule && meetImage(name, raw, s.mode)) text = INVALID;
-  if (text === INVALID) return;
+  const legacyBorder = isLegacyMode(s.mode) && BORDER_AND_SIDES.has(name);
+  if (text === INVALID) {
+    const how = legacyBorder ? rejectedReset(name, raw, s.mode) : NO_RESET;
+    if (how !== NO_RESET && legacyBorderResets(s.decls, name, raw, s.mode, how === SIDES_ONLY)) {
+      reindex(style);
+      sync(style);
+    }
+    return;
+  }
   if (text === '') {
-    let removed = replaces && clearBackground(s.decls);
-    for (const n of RESETS.background) removed = s.decls.delete(n) || removed;
+    let removed =
+      (replaces && clearBackground(s.decls)) || (legacyBorder && legacyBorderResets(s.decls, name, raw, s.mode));
+    // (a border side that declares nothing gives '' too: #314 review)
+    if (!legacyBorder) for (const n of RESETS.background) removed = s.decls.delete(n) || removed;
     if (removed) {
       reindex(style);
       sync(style);
@@ -5096,11 +5561,16 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
   const cleared =
     (replaces && clearBackground(s.decls)) || (covered !== undefined && replaceCovered(s.decls, covered, name));
   if (isLegacyFont(s.surface, name) && removeLegacyFont(s.decls, s.surface)) reindex(style);
-  if (RESETS[name] !== undefined && isLegacyMode(s.mode) && resets(s.surface, name, text)) {
+  if (RESETS[name] !== undefined && isLegacyMode(s.mode) && (legacyBorder || resets(s.surface, name, text))) {
     let removed = false;
-    for (const n of RESETS[name]) removed = s.decls.delete(n) || removed;
+    if (legacyBorder) removed = legacyBorderResets(s.decls, name, raw, s.mode);
+    else {
+      const inPlace = resetsInPlace(s.surface, name, text);
+      for (const n of RESETS[name]) if (!inPlace || n !== name) removed = s.decls.delete(n) || removed;
+    }
     if (removed) {
       s.decls.set(name, { value: text, important });
+      if (RECOMPOSED_LONGHANDS.has(name)) markLater(s.decls, text);
       reindex(style);
       sync(style);
       return;
@@ -5108,6 +5578,7 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
   }
   if (cleared) {
     s.decls.set(name, { value: text, important });
+    if (RECOMPOSED_LONGHANDS.has(name)) markLater(s.decls, text);
     reindex(style);
     sync(style);
     return;
@@ -5116,6 +5587,7 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
   if (old && old.value === text && old.important === important) return;
   if (old === undefined && MERGEABLE.has(name)) s.decls.mergeable = true;
   s.decls.set(name, { value: text, important });
+  if (RECOMPOSED_LONGHANDS.has(name)) markLater(s.decls, text);
   if (old === undefined) defineIndex(style, s.indexed++, name);
   sync(style);
 }
@@ -5213,7 +5685,7 @@ function composedValue(style, name) {
     return isLegacyMode(s.mode) && s.surface?.colors !== 'css2'
       ? boxAccessorValue(s.decls, name)
       : boxValue(s.decls, name);
-  const value = valueOf(style, name);
+  const value = readShorthand(style, name, true);
   // jsdom 27 and 28: the background accessor reads a layer without an
   // image as its color alone (background: red repeat-x is red; fixed is
   // ''), getPropertyValue() and cssText as written (black box, 27.4.0 and
@@ -5250,6 +5722,19 @@ function styleAccessor(name, via = 'accessor') {
       configurable: true,
     };
   }
+  if (RECOMPOSED_PARTS.has(name))
+    return {
+      get() {
+        return readShorthand(this, name, true);
+      },
+      set(value) {
+        const s = styleState(this);
+        if (s.computed) writeComputed(s, name, value);
+        else setDeclaration(this, name, value, '', via);
+      },
+      enumerable: true,
+      configurable: true,
+    };
   return {
     get() {
       return valueOf(this, name);
@@ -5322,15 +5807,16 @@ function setPropertyOf(style, name, value, priority) {
 function removePropertyOf(style, name) {
   const key = propertyName(name);
   const s = styleState(style);
-  const previous = s.computed
-    ? mutableComputed(s)
-      ? valueOf(style, key)
-      : readOnly()
-    : s.decls.box !== undefined && isBoxName(key)
-      ? boxValue(s.decls, key)
-      : (s.decls.get(key)?.value ?? '');
+  const previous = s.computed ? (mutableComputed(s) ? valueOf(style, key) : readOnly()) : removedValue(style, s, key);
   setDeclaration(style, key, '', '', 'remove');
   return previous;
+}
+// What removeProperty() returns from an inline style or a rule's: the
+// value getPropertyValue reads (a shorthand after a longhand of it is read
+// from the longhands; #313 review).
+function removedValue(style, s, key) {
+  if (s.decls.box !== undefined && isBoxName(key)) return boxValue(s.decls, key);
+  return s.decls.has(key) ? readShorthand(style, key, false) : '';
 }
 
 // jsdom 28 and earlier (cssstyle 2.3 to 6.2), black box: one
@@ -5356,7 +5842,7 @@ const LEGACY_GROUPS = {
 };
 const LEGACY_SHARED = {
   getPropertyValue(name) {
-    return valueOf(this, propertyName(name));
+    return readShorthand(this, propertyName(name), false);
   },
   getPropertyPriority(name) {
     return priorityOf(this, name);
@@ -5459,7 +5945,7 @@ export const CSS_INTERFACES = [
       [Symbol.iterator]: Array.prototype.values,
       getPropertyValue(name) {
         if (name === undefined && arguments.length === 0) tooFew('getPropertyValue', 1, 0);
-        return valueOf(this, propertyName(name));
+        return readShorthand(this, propertyName(name), false);
       },
       getPropertyPriority(name) {
         if (name === undefined && arguments.length === 0) tooFew('getPropertyPriority', 1, 0);
