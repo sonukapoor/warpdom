@@ -365,13 +365,17 @@ Not modeled:
   `background = 'red'` then `backgroundColor = 'blue'` leaves the
   attribute and `cssText` at `background: red;`, while `style.background`
   and `style.backgroundColor` read `blue`. warpdom keeps the shorthand and adds the
-  longhand beside it. In jsdom 26 the accessor recomposes the shorthand
-  while `getPropertyValue()` keeps it as written: after `flex = '1'` and
-  `flexGrow = '2'`, `style.flex` is `2 1 0%` and
-  `getPropertyValue('flex')` `1 1 0%`, and likewise `font` then
-  `fontSize` (`14px Arial`), `background` then `backgroundColor` (`blue`)
-  and `borderLeft` then `borderLeftColor` (`1px solid blue`); warpdom
-  reads the shorthand as written through both. jsdom lists the longhands in
+  longhand beside it. In jsdom 26 the accessor recomposes `background`
+  while `getPropertyValue()` keeps it as written: after `background =
+  'red'` and `backgroundColor = 'blue'`, `style.background` is `blue` and
+  `getPropertyValue('background')` `red`; warpdom reads `red` through
+  both (it models this for `flex`, `font` and the borders). jsdom 20 to 26
+  also compose `style.font` from its longhands when no `font` is declared
+  (`fontSize = '10px'`, `fontStyle = 'italic'`, `fontWeight = 'bold'`
+  reads `10px italic bold` in 20 to 25 and `italic bold 10px` in 26), and
+  after a system font (`font = 'menu'` then `fontWeight = 'bold'` reads
+  `bold`; in 26 `font = 'caption'` then `fontSize = '20px'` reads `20px`);
+  warpdom reads `''` and the system font. jsdom lists the longhands in
   `style.length` and `item()` (`border` then `borderTopColor` has 19 in
   jsdom 27), and jsdom 26 lists `font`'s longhands in `cssText` too
   (`font: 12px serif` is `font-style: normal; …; font-family: serif; font:
@@ -389,6 +393,10 @@ Not modeled:
   `backgroundPosition = '1px 2px'` then `backgroundPositionX = '3px'`
   reads `3px 2px`, with the shorthand and both axes in `style.length`
   and `item()` (warpdom: `1px 2px`, and the axis beside the shorthand)
+- a border part given twice, jsdom 20 to 25 ([#264](https://github.com/sonukapoor/warpdom/issues/264)): `border-top: 0 0`
+  is `border-top: 0`, `none none` clears the side, `blue none solid` is
+  `solid blue`, and `border: 0 0` is `border: 0px` (`none none`:
+  `border: none`); warpdom rejects these and keeps what was there
 - the style attribute's box longhands, other orders and versions
   ([#265](https://github.com/sonukapoor/warpdom/issues/265)): jsdom 27 to 30 compute `margin-left: 4px;
   margin-bottom: 3px; margin-right: 2px; margin-top: 1px` as `4px 3px 2px
