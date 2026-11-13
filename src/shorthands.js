@@ -395,8 +395,10 @@ export function legacyFont(value, variant) {
 // cssstyle before 4.4's flex as stored (css.js legacyFlexValue: the parts
 // written, grow shrink basis): a number first is the grow, second the
 // shrink, anything else the basis; a part not written has no longhand
-// (flex: 1 reads flex-shrink ''). auto alone is the basis.
-const LEGACY_FLEX_NUMBER = /^[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?$/;
+// (flex: 1 reads flex-shrink ''). auto alone is the basis. A number too
+// large is stored as Infinity or -Infinity (String(Number()); cssstyle
+// 4.2 and 4.3 reject the word itself; #315 review).
+const LEGACY_FLEX_NUMBER = /^(?:[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?|-?Infinity)$/;
 function legacyFlexLonghands(value) {
   if (CSS_WIDE.has(value.toLowerCase())) return SHORTHANDS.flex.map((l) => [l, value.toLowerCase()]);
   const out = [];

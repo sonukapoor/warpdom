@@ -3983,7 +3983,7 @@ parity(
 // 4.2.1 and 4.3.1 on their own) keep an exponent basis as written (1e1px,
 // lowercase e, no + and no leading zero), split the parts at any
 // whitespace, reject a comma between them, and read 1e-7 (String(Number()))
-// as the grow (#315 review).
+// as the grow, and a number too large (1e309) as Infinity (#315 review).
 test('style: flex parts in cssstyle 4.2 and 4.3 (#315 review)', () => {
   const rows = [
     ['1 1 1e1px', '1 1 1e1px | 1 | 1 | 1e1px'],
@@ -4001,6 +4001,12 @@ test('style: flex parts in cssstyle 4.2 and 4.3 (#315 review)', () => {
     ['0.0000001', '1e-7 | 1e-7 |  | '],
     ['1e21', '1e+21 | 1e+21 |  | '],
     ['1e-7 2', '1e-7 2 | 1e-7 | 2 | '],
+    // (a number too large is stored as Infinity and stays the grow or
+    // shrink; #315 review)
+    ['1e309', 'Infinity | Infinity |  | '],
+    ['-1e309', '-Infinity | -Infinity |  | '],
+    ['1 1e309', '1 Infinity | 1 | Infinity | '],
+    ['1e309 1 10px', 'Infinity 1 10px | Infinity | 1 | 10px'],
   ];
   for (const cssstyle of ['4.2.1', '4.3.1']) {
     const d = createWindow({ jsdom: '26.1.0', cssstyle }).document;
