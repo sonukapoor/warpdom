@@ -364,12 +364,19 @@ Not modeled:
   gives `flex: 2 1 0%;` (jsdom 27 to 30). `background` is different:
   `background = 'red'` then `backgroundColor = 'blue'` leaves the
   attribute and `cssText` at `background: red;`, while `style.background`
-  and `style.backgroundColor` read `blue`. warpdom keeps the shorthand and adds the
-  longhand beside it. In jsdom 26 the accessor recomposes `background`
+  and `style.backgroundColor` read `blue`. `font` is different too:
+  after `font = '12px Times'` and `fontFamily = 'Arial'`, the attribute
+  and `cssText` keep `font: 12px Times;` and drop the longhand (jsdom 27
+  to 30; jsdom 26 keeps `font: 12px Times;` after the longhands it lists,
+  as below), while `style.font` reads `12px Arial`. warpdom keeps the
+  shorthand and adds the longhand beside it. In jsdom 26 the accessor recomposes `background`
   while `getPropertyValue()` keeps it as written: after `background =
   'red'` and `backgroundColor = 'blue'`, `style.background` is `blue` and
   `getPropertyValue('background')` `red`; warpdom reads `red` through
-  both (it models this for `flex`, `font` and the borders). jsdom 20 to 26
+  both. It models this for `flex`, `font` and the borders, except a
+  `font` written after one of its longhands: after `fontSize = '10px'`,
+  `font = '12px Arial'` and `fontSize = '14px'`, jsdom 26's `style.font`
+  reads `14px Arial` and warpdom's `12px Arial`. jsdom 20 to 26
   also compose `style.font` from its longhands when no `font` is declared
   (`fontSize = '10px'`, `fontStyle = 'italic'`, `fontWeight = 'bold'`
   reads `10px italic bold` in 20 to 25 and `italic bold 10px` in 26), and
@@ -476,7 +483,9 @@ Not modeled:
   there. jsdom 27 and later evaluate it in `font` and `font-size`
   (`calc(12px + 2px) Arial` is `calc(14px) Arial`) and read `width:
   calc(1px/**/+/**/2px)` as `calc(3px)`. jsdom 30 also simplifies in
-  `border-spacing` and `background-size`. jsdom 26 and later write
+  `border-spacing` and `background-size`, and jsdom 26 in
+  `border-spacing` (`calc(1px  +  2px)  3px` is `calc(3px) 3px`); jsdom
+  27 to 29 reject that value in both. jsdom 26 and later write
   `min(1px, 2px)` as `calc(1px)` in `width` and `margin`, and jsdom 27 to
   29 reject a `min()` there that mixes a percentage and a length
   (`min(10%, 2px)`; jsdom 26 and 30 keep it).
@@ -504,7 +513,9 @@ Not modeled:
   `background` and `background-image`, which jsdom 20 to 30 reject. For
   `background: url("var(--a).png") red`, warpdom's longhands read `''`.
   jsdom 27 and later accept two or three boxes (`text border-area`).
-  jsdom 27 and 28 write `background: inherit` as several keywords, keep
+  jsdom 27 and 28 write `background: inherit` as several keywords (and
+  `INITIAL` as five or seven `initial`s), jsdom 29 and 30 keep
+  `background: INITIAL` in capitals (warpdom writes `initial`), and 27 and 28 keep
   the size after a two-value position they drop (`url(a.png) center top
   / 10px`), and read `lab()`, `oklch()` and `color()` (`fixed lab(50% 0
   0)` is `lab(50 0 0)`, where warpdom's longhands read `''`). jsdom 27 to

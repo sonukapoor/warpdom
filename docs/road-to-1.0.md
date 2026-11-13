@@ -73,8 +73,9 @@ Not required for 1.0: jsdom 31 (released 2026-11-05; decided 2026-11-11).
 1.0 models jsdom 20.0.3 to 30.1.3, and jsdom 31 arrives in 1.1, as
 [stability.md](stability.md#jsdom-versions) has each new jsdom version
 arrive in a minor release ([#269](https://github.com/sonukapoor/warpdom/issues/269):
-184 of the 2,630 parity tests differ there, most of them `var()` in
-computed styles).
+184 of the 2,630 parity tests differ there: about 70 in inline styles,
+50 in computed styles, where `var()` is now substituted, and the rest in
+backgrounds, CSSOM and areas outside CSS).
 
 Not required for 1.0: the opt-in web APIs jsdom lacks (#5 to #12, #35;
 milestone M2), and turning them on by default (M3). After 1.0, turning
