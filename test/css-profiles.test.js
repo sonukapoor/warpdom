@@ -4138,6 +4138,9 @@ for (const jsdom of [20, 21, 22, 23, 25, 26])
         const s = a.style;
         const b = w.document.createElement('div');
         b.setAttribute('style', `flex: ${value}`);
+        // (a longhand before flex is removed: #314; #315 review)
+        const e = w.document.createElement('div');
+        e.style.cssText = `flex-shrink: 3; flex: ${value}`;
         const c = w.getComputedStyle(a);
         out.push([
           value,
@@ -4149,12 +4152,86 @@ for (const jsdom of [20, 21, 22, 23, 25, 26])
           s.cssText,
           s.length,
           b.style.cssText,
+          e.style.cssText,
           c.flex,
           c.flexGrow,
           c.flexShrink,
           c.flexBasis,
         ]);
         a.remove();
+      }
+      return out;
+    },
+    { jsdom },
+  );
+
+// jsdom 20 to 26 (cssstyle's setters; black box, 20.0.3 to 26.1.0): a
+// border write removes border-width, -style and -color and the sides
+// (jsdom 26 keeps the sides for var()), and of the sides' longhands those
+// of the parts it has: border: 0 the widths, red the colors, none alone
+// all of them, inherit and var() none. A side removes its own longhands.
+// border: none declares nothing but still removes them. The style
+// attribute does this too, and the flex and background resets.
+for (const jsdom of [20, 21, 22, 23, 24, 25, 26])
+  parity(
+    `style: a border, flex or background write removes earlier parts (jsdom ${jsdom})`,
+    (w) => {
+      const out = [];
+      const before = [
+        'border-width: 3px',
+        'border-style: dotted',
+        'border-color: blue',
+        'border-top-width: 3px',
+        'border-top-style: dotted',
+        'border-top-color: blue',
+        'border-left-color: blue !important',
+        'border-top: 3px dotted blue',
+        'border-image: none; color: red',
+        'flex-grow: 2',
+        'background-color: blue',
+      ];
+      const writes = [
+        ['border', ['none', 'NONE', '0', '2px', 'solid', 'red', '2px solid red', 'none red', '2px none', 'hidden']],
+        ['border', ['inherit', 'var(--a)', 'currentcolor', 'thin dotted']],
+        ['border-top', ['none', '0', '1px solid red', 'red', 'inherit', 'var(--a)']],
+        // (none and hidden clear what came before them, before 26 none
+        // the width only; a side left with nothing declares nothing and
+        // still resets; before 26 a style in lowercase only and no calc()
+        // width; initial and unset reset nothing; #314 review)
+        ['border-top', ['0 none', '1px none', 'medium none', 'red none', '0 red none', 'hidden', '0 hidden']],
+        ['border-top', ['red hidden', 'NONE', 'INHERIT', 'initial', 'unset', '1px SOLID', 'calc(1px) solid']],
+        ['border', ['Initial', 'unset', '1px SOLID', 'calc(1px) none', '0 NONE', 'None']],
+        ['flex', ['none', '0 0 auto', '2 3 4px']],
+        ['background', ['red', 'none', 'url(a.png) blue']],
+      ];
+      for (const pre of before)
+        for (const [name, values] of writes)
+          for (const value of values) {
+            const a = w.document.createElement('div');
+            a.setAttribute('style', `${pre}; ${name}: ${value}`);
+            const b = w.document.createElement('div');
+            b.style.cssText = pre;
+            b.style.setProperty(name, value);
+            out.push([pre, name, value, a.style.cssText, b.style.cssText]);
+          }
+      // (the shorthand given again in another case moves to the end; #314
+      // review)
+      for (const text of [
+        'flex: 1 1 0px; width: 1px; Flex: 2 2 0px',
+        'background: red; width: 1px; Background: blue',
+        'border: 1px solid red; width: 1px; Border: 2px solid blue',
+        // (background: none alone is set in place with cssstyle 4.4 and
+        // later, jsdom 23 to 26; #314 review)
+        'background: red; width: 1px; Background: none',
+        'background: red; width: 1px; Background: NONE',
+        'flex: 1; width: 1px; Flex: none',
+      ]) {
+        const a = w.document.createElement('div');
+        a.setAttribute('style', text);
+        const b = w.document.createElement('div');
+        b.style.cssText = 'background: red; width: 1px';
+        b.style.setProperty('background', 'none');
+        out.push([text, a.style.cssText, b.style.cssText]);
       }
       return out;
     },
