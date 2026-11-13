@@ -1033,8 +1033,9 @@ const isLegacyFlex = (surface) => surface !== null && surface !== undefined && s
 // flex in cssstyle before 4.4 (black box, cssstyle 2.3.0 to 4.3.1 on their
 // own and jsdom 20.0.3 to 25.0.1): a number first is the grow, second the
 // shrink, a length anywhere the basis (a later one replacing it; 0 written
-// so is both a number and 0px, 0.0 and -0 a number only), at most three
-// parts; written as the parts given,
+// so is both a number and 0px, 0.0 and -0 a number only), any number of
+// parts but a number third or later invalid (1 1 10px 20px is 1 1 20px,
+// 1 1 10px 2 invalid; #315 review); written as the parts given,
 // grow shrink basis (flex: 1 is 1, 1 0 is 1 0 0px, 1 10px is 1 10px).
 // none is 0 0 auto, auto alone the basis only (setDeclaration and
 // parseInto declare flex-basis: auto), and other keywords and var()
@@ -1062,14 +1063,13 @@ function legacyFlexValue(value, mode, surface) {
     if (i > 0 && parts[i - 1].includes(',')) return INVALID;
     if (part === '') continue;
     const at = count++;
-    if (at > 2) return INVALID;
     const isNumber =
       surface.legacyFont === 'cssstyle4.1' ? LEGACY_FLEX_NUMBER_4_1.test(part) : FLEX_NUMBER_ONLY_4_2.test(part);
     if (isNumber || part === '0') {
       if (at === 0) grow = String(Number(part));
       else if (at === 1) shrink = String(Number(part));
       if (part === '0') basis = '0px';
-      else if (at === 2) return INVALID;
+      else if (at >= 2) return INVALID;
       continue;
     }
     // (a length, percentage, calc() or auto, by the era's units)
@@ -4177,9 +4177,13 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       }
       if (meetImage(name, value, mode)) declared = INVALID;
     }
+    // (cssstyle before 4.4: flex: auto declares flex-basis: auto only,
+    // without !important, and changes a basis declared before in place;
+    // legacyFlexValue; #315 review)
+    const legacyAuto = name === 'flex' && declared === 'auto' && !inRule && isLegacyFlex(surface);
     // jsdom 20 to 26 set a style attribute's declarations one by one, so
     // a shorthand resets what came before it there too (setDeclaration).
-    if (clears && RESETS[name] !== undefined) {
+    if (clears && RESETS[name] !== undefined && !legacyAuto) {
       if (BORDER_AND_SIDES.has(name)) {
         const how = declared !== INVALID ? AS_WRITTEN : rejectedReset(name, value, mode);
         if (how !== NO_RESET) legacyBorderResets(decls, name, value, mode, how === SIDES_ONLY);
@@ -4188,12 +4192,11 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
         // #314 review)
         for (const n of RESETS[name]) if (n !== name || !resetsInPlace(surface, name, declared)) decls.delete(n);
     }
-    // (cssstyle before 4.4: flex: auto declares flex-basis: auto only;
-    // legacyFlexValue)
     if (name === 'flex' && isLegacyFlex(surface)) decls.legacyFont = surface.legacyFont;
-    if (name === 'flex' && declared === 'auto' && !inRule && isLegacyFlex(surface)) {
-      for (const n of RESETS.flex) decls.delete(n);
+    if (legacyAuto) {
+      for (const n of RESETS.flex) if (n !== 'flex-basis') decls.delete(n);
       name = 'flex-basis';
+      important = false;
     }
     if (declared === INVALID || declared === '') continue;
     // One that loses its !important is written without it; in a style
@@ -5555,13 +5558,14 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
   }
   if (isLegacyFont(s.surface, name) && /^inherit$/i.test(raw)) raw = '';
   // (cssstyle before 4.4: flex: auto declares flex-basis: auto only,
-  // after removing flex and its longhands; legacyFlexValue)
+  // without !important, after removing flex and its other longhands;
+  // legacyFlexValue; #315 review)
   if (name === 'flex' && isLegacyFlex(s.surface)) s.decls.legacyFont = s.surface.legacyFont;
   if (name === 'flex' && isLegacyFlex(s.surface) && /^auto$/i.test(raw)) {
     let removed = false;
     for (const n of RESETS.flex) if (n !== 'flex-basis') removed = s.decls.delete(n) || removed;
     if (removed) reindex(style);
-    setDeclaration(style, 'flex-basis', 'auto', priority, via);
+    setDeclaration(style, 'flex-basis', 'auto', '', via);
     if (removed) sync(style);
     return;
   }

@@ -4889,6 +4889,19 @@ A number too large (flex: 1e309) is stored as Infinity in cssstyle 4.2
 and 4.3 and stays the grow or shrink (black box, 4.2.1 and 4.3.1; both
 reject the word Infinity itself, and 4.1 rejects 1e309), so the stored
 parts' pattern accepts Infinity and -Infinity (#315 review).
+Second #315 review (black box, jsdom 20.0.3 and cssstyle 4.1.0, 4.2.1
+and 4.3.1 on their own): flex takes any number of parts, a later basis
+replacing the earlier one (1 1 10px 20px is 1 1 20px, 10px 20px 30px
+40px is 40px, a 0 anywhere the basis 0px) and a number third or later
+invalid (1 1 10px 2), where warpdom rejected a fourth part; and flex:
+auto changes a basis declared before it in place and drops !important
+(flex-basis: 10px; color: red; flex: auto is flex-basis: auto; color:
+red; cssText, the style attribute and setProperty with 'important').
+Cost level (bench-fx.mjs, 5 interleaved runs, medians, node 22.17.1:
+jsdom 20 85.7 to 85.9 ms, 26 82.1 to 82.3 ms). Found while probing, on
+main and not from this branch: a flex with the basis first (10px 1 2)
+reads 1 1 2 in every profile from jsdom 26 (jsdom 26 reads 1 2 10px, 27
+to 30 reject it); filed separately.
 
 ## 2026-11-10: a border, flex or background write removes earlier parts, jsdom 20 to 26 (branch fix/legacy-border-resets, 1.0 triage)
 

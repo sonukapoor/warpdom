@@ -4553,6 +4553,17 @@ for (const jsdom of [20, 21, 22, 23, 25, 26])
         ' 1  2 ',
         '0.0000001',
         '1 1 1e1px',
+        // (no limit on the parts: a later basis replaces the earlier one,
+        // a 0 anywhere is the basis 0px, and a number third or later is
+        // invalid; #315 review)
+        '1 1 10px 20px',
+        '10px 20px 30px 40px',
+        '1 1 auto 10px',
+        '1 1 10px 0',
+        '1 1 0 0',
+        '10px 1 1 0',
+        '1 1 10px 2',
+        '1 10px 20px 2',
         // (and 4.4 to 4.6 write min() as calc(), a listed difference)
         ...(jsdom === 23 || jsdom === 26 ? [] : ['1\r2', '1\f2', '1\v2', '1e-7 2', '1 1 min(1px, 2px)']),
         // (cssstyle 4.4 to 4.6 read a calc() first as the grow: calc(1px)
@@ -4568,6 +4579,14 @@ for (const jsdom of [20, 21, 22, 23, 25, 26])
         // (a longhand before flex is removed: #314; #315 review)
         const e = w.document.createElement('div');
         e.style.cssText = `flex-shrink: 3; flex: ${value}`;
+        // (auto changes a basis declared before it in place; #315 review)
+        const g = w.document.createElement('div');
+        g.style.cssText = `flex-basis: 10px; color: red; flex: ${value}`;
+        // (and drops !important: flex-basis: auto; #315 review)
+        const h = w.document.createElement('div');
+        h.style.cssText = `color: red; flex: ${value} !important`;
+        const k = w.document.createElement('div');
+        k.style.setProperty('flex', value, 'important');
         const c = w.getComputedStyle(a);
         out.push([
           value,
@@ -4580,6 +4599,9 @@ for (const jsdom of [20, 21, 22, 23, 25, 26])
           s.length,
           b.style.cssText,
           e.style.cssText,
+          g.style.cssText,
+          h.style.cssText,
+          k.style.cssText,
           c.flex,
           c.flexGrow,
           c.flexShrink,
