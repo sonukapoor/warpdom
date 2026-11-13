@@ -4077,6 +4077,53 @@ parity(
   { jsdom: 26 },
 );
 
+// Long runs of digits and many comments are read in linear time: a number
+// pattern that could split a digit run in many ways (\d+\.?\d*) took
+// 1.3 s on rgb() with 20,000 digits, and hasVar() searched for var( again
+// after each comment (#224 item 4, #264 item 7).
+test('style: long digit runs and many comments are read quickly (#224, #264)', () => {
+  // The best of three runs, so a cold first run on a busy machine does
+  // not fail the test (231 ms once in CI; a quadratic read takes over
+  // 150 ms on every run). Each run its own value, built before the timer:
+  // declaredValue caches values across windows, so a repeated one would
+  // be a cache hit (#311 review).
+  const bestOf = (jsdom, name, valueOf) => {
+    let best = Infinity;
+    for (let run = 0; run < 3; run++) {
+      const value = valueOf(run);
+      const w = createWindow({ jsdom });
+      const e = w.document.createElement('div');
+      w.document.body.append(e);
+      const start = performance.now();
+      e.style.setProperty(name, value);
+      w.getComputedStyle(e).getPropertyValue(name);
+      best = Math.min(best, performance.now() - start);
+    }
+    return best;
+  };
+  const digits = (run) => String(run + 1).repeat(20000);
+  for (const [jsdom, name, valueOf] of [
+    ['30.1.3', 'color', (d) => `rgb(${d}x, 0, 0)`],
+    ['26.1.0', 'color', (d) => `rgb(${d}x, 0, 0)`],
+    ['30.1.3', 'width', (d) => `${d}.${d}x`],
+    ['30.1.3', 'margin', (d) => `${d}x ${d}y`],
+    ['30.1.3', 'flex', (d) => `${d}x`],
+    ['25.0.1', 'background', (d) => `${d}x red`],
+  ]) {
+    const best = bestOf(jsdom, name, (run) => valueOf(digits(run)));
+    assert.ok(best < 150, `${jsdom} ${name}: ${best} ms`);
+  }
+  // 100,000 comments before var(), against the same comments before a
+  // plain string (linear before the fix too), so a slow machine does not
+  // fail the test (219 ms in CI for 33 ms here). With a search per
+  // comment, var() took 10 times as long (333 ms against 32 ms); now
+  // about the same (#311 review, #311 CI).
+  const comments = '/**/'.repeat(100000);
+  const plain = bestOf('30.1.3', 'content', (run) => `${comments}"plain${run}"`);
+  const withVar = bestOf('30.1.3', 'content', (run) => `${comments}"var(--c${run})"`);
+  assert.ok(withVar < 3 * plain + 10, `content: ${withVar} ms with var(), ${plain} ms without`);
+});
+
 // A shorthand read after one of its longhands is written (phase 2 of #264
 // item 78; black box, 26.1.0 to 30.1.3). jsdom 27 and later read flex and
 // border-width, -style and -color from the current longhands, in the

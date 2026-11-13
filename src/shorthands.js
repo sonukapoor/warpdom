@@ -112,7 +112,7 @@ const LINE_STYLES = new Set([
 ]);
 // (Infinitypx: how jsdom 26 writes 1e400px; #264 item 63)
 const isLength = (t) =>
-  /^[+-]?((\d+\.?\d*|\.\d+)(e[+-]?\d+)?|Infinity)([a-z]+|%)?$/i.test(t) || /^(calc|min|max|clamp)\(/i.test(t);
+  /^[+-]?((\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?|Infinity)([a-z]+|%)?$/i.test(t) || /^(calc|min|max|clamp)\(/i.test(t);
 const FLEX_DIRECTIONS = new Set(['row', 'row-reverse', 'column', 'column-reverse']);
 const FLEX_WRAPS = new Set(['nowrap', 'wrap', 'wrap-reverse']);
 
@@ -667,7 +667,7 @@ function expandShorthand(name, value) {
     const numbers = [];
     let basis;
     for (const token of t) {
-      if (/^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(token) && numbers.length < 2 && basis === undefined)
+      if (/^[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?$/i.test(token) && numbers.length < 2 && basis === undefined)
         numbers.push(token);
       else if (basis === undefined) basis = token;
       else return null;
