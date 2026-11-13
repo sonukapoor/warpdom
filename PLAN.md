@@ -4674,6 +4674,101 @@ alone is "A B", and with another family after it the value is dropped. In
 font, it is "A B" (12px "A<LF>B", serif). warpdom keeps the line break in
 all of them, on main too.
 
+## 2026-11-10: a shorthand read after one of its longhands, phase 2 (branch fix/264-shorthand-reads-longhands, #264 item 78)
+
+Phase 2 of the design under the #305 entry. Black box, 26.1.0 to 30.1.3,
+the accessor and getPropertyValue after a shorthand then one of its
+longhands (setProperty or the accessors):
+- jsdom 27 and later read flex and border-width, -style and -color from
+  the current longhands in both (flex: 1 1 0% then flex-grow: 2 is 2 1 0%;
+  border-width: 1px then border-top-width: 2px is 2px 1px 1px), border
+  and a border side as '' once a side's longhand follows, and font from
+  its longhands in the accessor only (12px Arial then font-size: 14px:
+  style.font 14px Arial, getPropertyValue 12px Arial).
+- jsdom 26 (cssstyle 4.4 and later) recomposes flex, font, a border side
+  and border (after border-width, -style or -color) in the accessor only.
+- Not modeled (in docs/differences.md): border after border-color or
+  border-width in 27 and later (jsdom keeps parts of it: 1px blue, 2px),
+  and background (style.background reads blue after background: red and
+  background-color: blue).
+
+Review (#313): font-variant is part of font (font then font-variant:
+small-caps reads small-caps 12px Arial, 26 to 30); a border side read
+through border is '' once that side's longhand follows (27 and later;
+the other sides keep their value); jsdom 26's border accessor reads
+border-width, -style and -color over its own parts and ignores a side's
+longhand after them; and a part before the shorthand keeps the shorthand
+as written: a longhand written again in place keeps its position, so
+order can't be told (jsdom 26: fontSize, font, fontSize reads 14px Arial
+there; not modeled, as on main).
+
+readShorthand does it for getPropertyValue and the accessors of these
+shorthands only; cssText is unchanged (phase 3). A write of one of their
+longhands (parseInto, setDeclaration) sets decls.later, so a block
+without one reads as before without a scan. With the flag set, a read
+scans the names after the shorthand, and a recomposed value is cached on
+the identities of the declarations after it (a write stores a new
+declaration object).
+
+Cost (node 22.17.1, 5 interleaved runs, medians; scratchpad b78.mjs:
+200 elements with width, color, margin, flex, border and font in the
+style attribute, 3,000 rounds of 7 reads each: width, color,
+getPropertyValue('margin'), flex, getPropertyValue('flex'), border,
+font): no longhand after a shorthand 70.4 ms on main, 76.4 ms here
+(+8%: the extra function on getPropertyValue and the shorthands'
+accessors); flex-grow after flex on half of them 72.1 and 146.7 ms (those
+reads recompose, about 60 ns each). After the #313 review (the cache
+compares every declaration of the block, not only those after the
+shorthand): 67.9 and 74.2 ms, and 72.2 and 179.2 ms. First tries were 10x (fromShorthand
+on every read) and 3.5x (an entries scan allocating per read). Style
+reads are not in bench:hot; the slowdown buys jsdom's values for a
+shorthand that a later longhand changed. cold load 27.6 ms.
+
+Second review (#313, Copilot): jsdom 26's border accessor was wrong in
+456 of 630 write orders surveyed (border, then two or three of
+border-width, -style and -color). jsdom 26 reads the parts written:
+border's own words, each replaced by a sub-shorthand's value, a none
+style left out (red, then border-width: medium and border-color:
+currentcolor, is medium currentcolor); nothing left reads border as
+written. With no border declared, the accessor reads the sub-shorthands
+(border-width: thin is thin; on main too). Now 0 of 1,397 differ, apart
+from two write-side gaps on main, left for later: borderStyle = 'none'
+after another style clears the style in jsdom 26 (listed in
+differences.md), and border: none removes earlier border declarations in
+jsdom 26 (not listed yet; its own PR). Cost (b78j26.mjs: b78 in the
+jsdom 26 profile with border-color instead of border, so every border
+read now composes): 151.5 to 159.2 ms (+5%), the price of a value where
+'' was wrong; b78.mjs within noise (163.8 and 167.0 ms).
+
+Third review (#313, CodeRabbit): flex and font read '' once a longhand
+of theirs with var() follows them (jsdom 26 to 30, the accessor,
+getPropertyValue and removeProperty; jsdom 26 removes the shorthand
+there), and flex once a longhand of another priority follows (27 and
+later: flex: 1 1 0% !important then flex-grow: 2). blockedRead does it on
+a recomposed read; jsdom 26's getPropertyValue looks only when a var()
+longhand was written (decls.laterVar), so other reads skip it. Cost
+against the previous head (5 interleaved runs, medians): b78.mjs 179.7
+and 175.4 ms, b78j26.mjs 165.5 and 170.1 ms (noise; a first version,
+through the cache for every jsdom 26 getPropertyValue, was +16%). Not
+modeled: what cssText keeps after such a write (phase 3), and jsdom 27
+and later dropping a var() longhand after its shorthand in a style
+attribute.
+
+Review (#313, 2026-11-12; CodeRabbit outside the diff, Copilot's summary;
+black box, jsdom 26.1.0 to 30.1.3): in jsdom 26 a font longhand written
+before font is reset by the font write, so fontStyle = 'italic', font =
+'12px Arial', then fontSize = '20px' reads 20px Arial (warpdom: 12px Arial)
+and then fontSize = 'var(--g)' reads '' (warpdom: 12px Arial). readShorthand
+no longer stops at such a longhand for jsdom 26's font, and composeFont reads
+it from font. 27 to 30 and flex already matched. Test: four sequences added
+to blockedReads (and flex's, which matched). Cost (node 22.17.1, 5
+interleaved runs, medians, scratchpad bench313g.mjs, 100,000 elements):
+font alone 108 to 65 ms and font then fontSize 400 to 359 ms (noise); the
+fixed sequence 92 to 240 ms, as it now recomposes (it returned the stale
+value before). Not modeled, for docs/differences.md with #312: a system
+font (caption, icon, menu) then a longhand, and font read from longhands
+alone with no font declared (jsdom 20 to 26 compose them; warpdom reads '').
+
 ## 2026-11-10: a unitless zero next to a function in a box shorthand, jsdom 26 and 30 (branch fix/zero-beside-function, 1.0 triage)
 
 Found in the 1.0 triage of the open parity issues (common in real CSS:
