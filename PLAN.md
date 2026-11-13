@@ -4657,6 +4657,30 @@ kept it in font too. onceFamilies wraps quotedFamilies for font. Bench
 properties (`font-family: A, A` is `""`; with #302's family parser).
 The long-family-list timing test matches the shorter font now.
 
+## 2026-11-10: calc() of numbers in flex-grow and flex-shrink, jsdom 26 (branch fix/264-jsdom26-flex-calc, #264 item 71)
+
+Black box, 26.1.0, setProperty and the style attribute: jsdom 26
+evaluates a calc(), min(), max() or clamp() at the start of flex-grow
+and flex-shrink: calc(2 * 3) is calc(6), min(1, 2) calc(1), calc(10 / 3)
+calc(3.33333) (6 significant digits), calc(1 / 0) calc(infinity),
+calc(0 / 0) calc(NaN), calc(2 * pi) calc(6.28319). What follows the
+function goes inside the calc() as written (calc(1) bold is calc(1
+bold), calc(1)x calc(1x)), and a function left open at the end is closed
+through setProperty (calc(1 + 1 is calc(2); the style attribute drops
+it). warpdom kept all of them as written. jsdom26NumberMath evaluates
+numbers only (+ and - with whitespace around them, * and /, parentheses,
+e, pi, infinity, NaN) and leaves anything else as written.
+
+Left in item 71 (rare in tests, measured while writing the test): jsdom
+26 evaluates more than that, through a full math library. abs(),
+round(), sign(), sqrt(), pow(), sin() and mod() are evaluated. Units are
+reduced (calc(1px + 1px) is calc(2px), calc(1px + 1em) calc(1em + 1px)).
+Every function in the value is evaluated (calc(1) calc(2) is calc(1 2),
+calc(a) calc(1 + 1) is calc(a) 2), and some inputs read oddly: calc(1+ 2)
+is calc(3), calc(1 2 + 3) is calc(5), and calc(2) calc(1px + 2) is
+calc(2 * calc(1px + 2)). setProperty('flex-shrink', 'calc(1 + 1px) x')
+throws in jsdom 26.
+
 ## 2026-11-10: family strings in double quotes, escapes dropped, jsdom 26 (branch fix/264-jsdom26-family-escaped-newline, #264 item 92)
 
 Black box, 26.1.0, font-family and font, setProperty and the style
