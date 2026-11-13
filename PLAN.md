@@ -4936,7 +4936,9 @@ Cost level (bench-fx.mjs, 5 interleaved runs, medians, node 22.17.1:
 jsdom 20 85.7 to 85.9 ms, 26 82.1 to 82.3 ms). Found while probing, on
 main and not from this branch: a flex with the basis first (10px 1 2)
 reads 1 1 2 in every profile from jsdom 26 (jsdom 26 reads 1 2 10px, 27
-to 30 reject it); filed separately.
+to 30 reject it); filed as #317. Third #315 review: only auto written
+alone is flex-basis: auto (10px auto and auto auto are flex: auto and
+keep !important, in every path; black box, same versions).
 
 ## 2026-11-10: a border, flex or background write removes earlier parts, jsdom 20 to 26 (branch fix/legacy-border-resets, 1.0 triage)
 
