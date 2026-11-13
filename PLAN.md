@@ -4694,6 +4694,58 @@ reject most such lists (1px calc(10%) 2px; #265 item 9). jsdom 23 to 25
 write the zero as 0px too, but jsdom 20 and 22 keep it, and 22 and 23
 share warpdom's mode.
 
+## 2026-11-10: a border, flex or background write removes earlier parts, jsdom 20 to 26 (branch fix/legacy-border-resets, 1.0 triage)
+
+Found while checking a #313 review finding. Black box, 20.0.3 to 26.1.0
+(each release's cssstyle), setProperty and the style attribute: a border
+write removes border-width, -style and -color and the four sides, and of
+the sides' longhands those of the parts its value has (border: 0 the
+widths, red the colors, none alone all of them; inherit and var() none).
+With var(), jsdom 26 keeps the sides and 20 to 25 (which reject the
+value) keep the sub-shorthands. A side removes its own longhands. border:
+none and a side's none or inherit declare nothing but still remove
+(border-color: blue; border: none was border-color: blue here; jsdom
+reads it empty). The style attribute is set declaration by declaration
+there, so a shorthand in it resets what came before it, as setProperty
+does: border, flex and background (border-color: blue; border: 0 kept the
+color here). Before, setProperty removed every border longhand whatever
+the value (border-top-color: blue; border: 0 kept it in jsdom), and the
+attribute removed none. jsdom 27 and later already matched.
+
+Test: css-profiles.test.js "a border, flex or background write removes
+earlier parts" (parity 20 to 26: 11 earlier declarations, 31 writes, both
+paths).
+
+Cost (node 22.17.1, 5 interleaved runs, medians; scratchpad
+bench-bn.mjs: 200 elements, 300 rounds of a style attribute with
+border-color then border, flex and margin, setProperty('border'),
+borderTopColor and width): jsdom 26 profile 178.8 ms on main, 173.2 here;
+default profile 188.6 and 187.4. A first version looked up all 19 names a
+border may remove on every write (+57%); the reset walks the block's own
+names instead and reads the value's parts only when a side longhand is
+there.
+
+Review (#314, 2026-11-12, Copilot; black box, jsdom 20.0.3, 22.1.0,
+25.0.1 and 26.1.0): a side whose none (or in 26 hidden) clears every part
+declares nothing but still removes the side's longhands (border-top: 0
+none, 1px none, in 26 hidden and 0 hidden); warpdom rejected it and kept
+them. borderValue now gives '' for it. Before 26 a side's none clears the
+width only, not a color before it (red none is red); border and the sides
+take a style in lowercase only (1px SOLID, 0 NONE rejected) and no calc()
+width. A rejected value resets: inherit (any case) everywhere, border's none
+(any case) and var(), and in 20 to 25 any other rejected border value
+removes the sides' shorthands only (as var() does); initial, unset and
+revert reset nothing (the keyword list reset on them). setDeclaration's ''
+branch removed the background longhands for any name (now not for border
+and its sides). Not modeled, for docs/differences.md with #312: a part
+given twice (border-top: 0 0, none none, 0 none 0, blue none solid in 20 to
+25; border: 0 0 and none none). Test: new values in "a border, flex or
+background write removes earlier parts" (parity 20 to 26). Cost (node
+22.17.1, 5 interleaved runs, medians): bench-border.mjs jsdom 20 530 to
+544 ms (+2.6%: the case and calc() checks per word, kept for the rejected
+values above), 26 488 to 480 ms; bench-bn.mjs 20 172.8 to 176.6 ms, 26
+176.1 to 175.5 ms.
+
 ## 2026-11-09: keywords jsdom 26 takes in some properties (branch fix/264-jsdom26-keyword-sets, #264 item 77, first part)
 
 Black box, 26.1.0, setProperty and the style attribute: jsdom 26 checks
