@@ -55,7 +55,7 @@ function unitPx(n, unit, ctx) {
 
 // Tokens: numbers with their unit, operators, parentheses, commas and
 // function names (calc, min, max, clamp).
-const TOKEN = /\s*(?:([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)(%|[a-z]+)?|(calc|min|max|clamp)\(|([-+*/(),]))/iy;
+const TOKEN = /\s*(?:([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)(%|[a-z]+)?|(calc|min|max|clamp)\(|([-+*/(),]))/iy;
 function tokenize(text) {
   const tokens = [];
   TOKEN.lastIndex = 0;
@@ -142,7 +142,7 @@ function evaluate(tokens, ctx) {
   return i === tokens.length ? value : null;
 }
 
-const SINGLE = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?([a-z]+)$/i;
+const SINGLE = /^[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?([a-z]+)$/i;
 const MATH = /^(calc|min|max|clamp)\(/i;
 
 // The px a declared value computes to, or null to keep it as declared.

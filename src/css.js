@@ -197,7 +197,7 @@ function splitDeclarations(text, nested = false) {
 // inset: 0 100dvh). Numbers stay (opacity: 0, line-height: 0).
 const ZERO = /^[+-]?(0+\.?0*|\.0+)$/;
 // A number with an exponent and no unit (0e0, -0.0E-1).
-const EXPONENT_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)e[+-]?\d+$/i;
+const EXPONENT_NUMBER = /^[+-]?(\d+(?:\.\d*)?|\.\d+)e[+-]?\d+$/i;
 const BOX_SHORTHANDS = new Set(['margin', 'padding', 'border-width']);
 // Functions as one side each (calc(100% - 2px) calc(100% - 2px) is
 // calc(100% - 2px)); a value with var() as written.
@@ -671,7 +671,7 @@ const integerText = (text) =>
     .replace(/^\+/, '')
     .replace(/^(-?)0+(?=\d)/, '$1')
     .replace(/^-0$/, '0');
-const NUMBER_TOKEN = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)([a-z%]*)$/i;
+const NUMBER_TOKEN = /^([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)([a-z%]*)$/i;
 // A part that ends in a hex escape: the whitespace after it belongs to the
 // escape, so the next part is the rest of the name (b\31 001), not a number.
 // segments() does not split at CR, so CR LF leaves the CR on this part.
@@ -726,7 +726,7 @@ function collapseSpaces(value) {
 // is normalized. Other calc() values (three or more terms, parentheses,
 // var(), absolute units other than px, which jsdom converts) are kept as
 // written.
-const CALC_TERM = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)(%|[a-z]+)?$/i;
+const CALC_TERM = /^([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)(%|[a-z]+)?$/i;
 const CALC_PRODUCT = /^(.+?)\s*([*/])\s*(.+)$/;
 const LONE_KEPT = /(^|[^\d.])0\d|e\+/i;
 const ABSOLUTE_UNITS = new Set(['in', 'cm', 'mm', 'q', 'pt', 'pc']);
@@ -1294,7 +1294,7 @@ const AZIMUTH_POSITIONS = Object.assign(Object.create(null), {
   'right-side': 90,
 });
 const AZIMUTH_ANGLE = /^([+-]?(?:\d+(?:\.\d+)?|\.\d+))(deg|grad|rad)$/;
-const AZIMUTH_NAN_ANGLE = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?(?:deg|grad|rad|turn)$/;
+const AZIMUTH_NAN_ANGLE = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?(?:deg|grad|rad|turn)$/;
 export const hasAngleAzimuth = (surfaceKey) => AZIMUTH_KINDS[surfaceKey] === 'angle';
 function azimuthValue(value, surface) {
   const kind = AZIMUTH_KINDS[surface.key];
@@ -1331,7 +1331,7 @@ function azimuthValue(value, surface) {
 // Values whose serialization depends on the jsdom version beyond the
 // modes' general rules (black box, jsdom 20 to 30); undefined for the
 // others. Runs once per property and raw value (declaredValue caches it).
-const ONE_NUMBER = /^\+?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
+const ONE_NUMBER = /^\+?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i;
 
 // jsdom 26's own value rules (black box, 26.1.0; #264 items 46, 56, 58).
 // A number: no leading zero before a digit (01, 00.5), an exponent without
@@ -1389,10 +1389,10 @@ const JSDOM26_BORDERS = new Set(['border', 'border-top', 'border-right', 'border
 const BORDER_WIDTH_KEYWORD = /^(?:thin|medium|thick)$/i;
 const LENGTH_UNIT = /^(?:px|cm|mm|q|in|pt|pc|em|rem|ex|rex|cap|rcap|ch|rch|ic|ric|lh|rlh|[sld]?v(?:min|max|[hwbi]))$/i;
 // (a zero without a unit is a width however spelled: 0.0, .0, -0, 0.)
-const ZERO_SPELLING = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
+const ZERO_SPELLING = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i;
 // (1.e21px is one; 01e21px or 1e+21px is a number jsdom 26 does not read,
 // invalid)
-const WIDTH_SPELLING = /^\+?((?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)([a-z]+)$/i;
+const WIDTH_SPELLING = /^\+?((?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)([a-z]+)$/i;
 function overflowingWidth(part) {
   const m = WIDTH_SPELLING.exec(part);
   return m !== null && !(Number(m[1]) < 1e21) && LENGTH_UNIT.test(m[2]);
@@ -2494,7 +2494,7 @@ function droppedBy(mode, kind, name) {
 //   keep a 0 width as written and only none clears, and var() drops it.
 const BORDER_SHORTHAND = new Set(['border', 'border-top', 'border-right', 'border-bottom', 'border-left']);
 const BORDER_STYLE = /^(none|hidden|dotted|dashed|solid|double|groove|ridge|inset|outset)$/i;
-const BORDER_WIDTH = /^(thin|medium|thick|calc\(.*\)|[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?[a-z]*)$/i;
+const BORDER_WIDTH = /^(thin|medium|thick|calc\(.*\)|[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?[a-z]*)$/i;
 function borderValue(name, value, mode) {
   if (!isValidValue(name, value)) return INVALID;
   const spec = isSpecMode(mode);
@@ -2613,7 +2613,7 @@ function backgroundBoxes(boxes, pre29) {
 }
 const BG_POSITIONS = new Set(['left', 'right', 'top', 'bottom', 'center']);
 const BG_SIZES = /^(auto|cover|contain)$/i;
-const BG_DIMENSION = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?([a-z]+|%)$/i;
+const BG_DIMENSION = /^[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?([a-z]+|%)$/i;
 const BG_GRADIENT = /^(-webkit-)?(repeating-)?(linear|radial|conic)-gradient\(/i;
 const sizeToken = (t) => {
   if (ZERO.test(t)) return '0px';
@@ -2626,7 +2626,7 @@ const sizeToken = (t) => {
 // cqw), with an exponent but no leading zero (010px), in lowercase before
 // 4.4 and in any case from 4.4. Other units (5deg, 1s, 10bogus) are
 // invalid.
-const BG_LENGTH_3 = /^[+-]?(\d+\.?\d*|\.\d+)(px|cm|mm|in|pt|pc|em|ex|ch|rem|vh|vw|%)$/;
+const BG_LENGTH_3 = /^[+-]?(\d+(?:\.\d*)?|\.\d+)(px|cm|mm|in|pt|pc|em|ex|ch|rem|vh|vw|%)$/;
 const BG_LENGTH_4 =
   /^[+-]?((0|[1-9]\d*)(\.\d*)?|\.\d+)(e[+-]?\d+)?(px|cm|mm|q|in|pt|pc|em|ex|ch|rem|lh|rlh|vmin|vmax|[sld]?v[hwbi]|%)$/;
 // The characters between components (black box, #134): cssstyle 2.3 to 4.6
@@ -2989,12 +2989,12 @@ function legacyGradientsValid(value) {
 //   written as given (RECT(0 0 0 0) is RECT(0px)). var() is kept as
 //   written (the grammar's reading).
 // cascade.js computes a rect() of one component (jsdom 27 to 30.1.2).
-const CLIP_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?([a-z]+|%)$/i;
-const CLIP_LEGACY_LENGTH = /^[+-]?(\d+\.?\d*|\.\d+)(px|em|ex|ch|rem|vh|vw|cm|mm|in|pt|pc)$/i;
+const CLIP_NUMBER = /^[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?([a-z]+|%)$/i;
+const CLIP_LEGACY_LENGTH = /^[+-]?(\d+(?:\.\d*)?|\.\d+)(px|em|ex|ch|rem|vh|vw|cm|mm|in|pt|pc)$/i;
 const CLIP_26_ZERO = /^[+-]?(0(\.0*)?|\.0+)$/;
 // A unitless zero, with an exponent or not (0e0 is a zero in jsdom 26 and
 // later; black box, #274 review).
-const CLIP_EXPONENT = /^([+-]?(?:\d+\.?\d*|\.\d+))e[+-]?\d+$/i;
+const CLIP_EXPONENT = /^([+-]?(?:\d+(?:\.\d*)?|\.\d+))e[+-]?\d+$/i;
 const clipZero = (arg, zero) => zero.test(CLIP_EXPONENT.exec(arg)?.[1] ?? arg);
 function clipValue(value, mode) {
   if (/^auto$/i.test(value)) return 'auto';
@@ -3066,7 +3066,7 @@ function balancedBrackets(text) {
 function clipComponent(arg, mode) {
   if (mode === 'jsdom20' || mode === 'jsdom22' || mode === 'jsdom25') {
     if (arg === '0') return '0px';
-    if (/^calc\(.*\)$/i.test(arg) || /^[+-]?(\d+\.?\d*|\.\d+)%$/.test(arg)) return arg;
+    if (/^calc\(.*\)$/i.test(arg) || /^[+-]?(\d+(?:\.\d*)?|\.\d+)%$/.test(arg)) return arg;
     return CLIP_LEGACY_LENGTH.test(arg) ? arg.replace(/[a-z]+$/i, (u) => u.toLowerCase()) : INVALID;
   }
   if (mode === 'jsdom26') {
@@ -3122,7 +3122,7 @@ const PAGE_DESCRIPTORS = [
 ];
 const PAGE_SIZES = new Set(['a5', 'a4', 'a3', 'b5', 'b4', 'jis-b5', 'jis-b4', 'letter', 'legal', 'ledger']);
 const LENGTH =
-  /^(0|\+?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?(px|cm|mm|q|in|pt|pc|em|rem|ex|rex|cap|rcap|ch|rch|ic|ric|lh|rlh|vw|vh|vi|vb|vmin|vmax))$/i;
+  /^(0|\+?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?(px|cm|mm|q|in|pt|pc|em|rem|ex|rex|cap|rcap|ch|rch|ic|ric|lh|rlh|vw|vh|vi|vb|vmin|vmax))$/i;
 function pageDescriptorValue(name, value) {
   if (name.startsWith('margin')) return isValidValue(name, value) ? serializeDeclared(name, value, 'spec') : INVALID;
   const words = value.toLowerCase().split(/\s+/);
@@ -3201,7 +3201,7 @@ function flexLonghands(value, asWritten = false) {
   let basis = null;
   for (const part of parts) {
     if (
-      /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(part) &&
+      /^[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?$/i.test(part) &&
       numbers.length < 2 &&
       (basis === null || numbers.length > 0)
     )
@@ -3495,13 +3495,18 @@ const KEEPS_IMPORTANT = new Set([
 function hasVar(value) {
   if (!value.includes('var(')) return false;
   if (!value.includes('"') && !value.includes("'")) return true;
+  // (the next var( from i, searched again only once i passes it: one
+  // search per comment made many comments before a var( quadratic; #264
+  // item 7)
+  let next = -1;
   for (let i = 0; i < value.length; i++) {
     const c = value[i];
     if (c === '\\') i++;
     else if (c === '/' && value[i + 1] === '*') {
       const end = commentEnd(value, i);
-      const at = value.indexOf('var(', i);
-      if (at !== -1 && at < end) return true;
+      if (next < i) next = value.indexOf('var(', i);
+      if (next === -1) return false;
+      if (next < end) return true;
       i = end - 1;
     } else if (c === '"' || c === "'") i = stringEnd(value, i, false) - 1;
     else if (c === 'v' && value.startsWith('var(', i)) return true;
