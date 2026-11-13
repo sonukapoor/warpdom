@@ -1804,6 +1804,7 @@ function jsdom26Value(name, value, lower) {
     return n >= 0 && n <= 1000 ? String(n) : INVALID;
   }
   if (name === 'flex-grow' || name === 'flex-shrink') {
+    if (/^(calc|min|max|clamp)\(/.test(value)) return jsdom26NumberMath(value);
     if (/^calc\(/i.test(value)) return undefined;
     return JSDOM26_NUMBER.test(value) && Number(value) >= 0 ? String(Number(value)) : INVALID;
   }
@@ -1811,6 +1812,128 @@ function jsdom26Value(name, value, lower) {
   return isValidValue(name, value.replace(/(^|\s)-(?=[\d.])/g, '$1'))
     ? serializeDeclared(name, value, 'jsdom26')
     : INVALID;
+}
+// calc(), min(), max() and clamp() of numbers at the start of flex-grow
+// and flex-shrink, as jsdom 26 evaluates them (black box, 26.1.0, #264
+// item 71): + and - with whitespace around them, * and /, parentheses,
+// the constants e, pi, infinity and NaN; the result to 6 significant
+// digits inside calc() (calc(10 / 3) is calc(3.33333), calc(1 / 0)
+// calc(infinity)), with what follows the function inside it as written
+// (calc(1) bold is calc(1 bold)), and functions and parentheses left open
+// at the end closed (calc(1 + 1 is calc(2)). Anything else (a unit, another
+// function, a function after it) is left as written: undefined.
+const MATH_CONSTANTS = {
+  __proto__: null,
+  e: Math.E,
+  pi: Math.PI,
+  infinity: Infinity,
+  '-infinity': -Infinity,
+  nan: NaN,
+};
+const MATH_NUMBER = /[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?(?![\w%.])/iy;
+const MATH_NAME = /-?[a-z]+/iy;
+// (nesting deeper than MATH_DEPTH is left as written: the recursion would
+// overflow the stack on calc((((...; #307 review)
+const MATH_DEPTH = 100;
+function jsdom26NumberMath(value) {
+  let i = 0;
+  let depth = 0;
+  const skip = () => {
+    while (i < value.length && isCssSpace(value.charCodeAt(i))) i++;
+  };
+  // A closing parenthesis, or the end of the value, which closes it.
+  const close = () => {
+    skip();
+    if (i >= value.length) return true;
+    if (value[i] !== ')') return false;
+    i++;
+    return true;
+  };
+  function primary() {
+    skip();
+    const c = value[i];
+    if (c === '(') {
+      if (++depth > MATH_DEPTH) return null;
+      i++;
+      const v = sum();
+      depth--;
+      return v !== null && close() ? v : null;
+    }
+    MATH_NUMBER.lastIndex = i;
+    const number = MATH_NUMBER.exec(value);
+    if (number !== null) {
+      i = MATH_NUMBER.lastIndex;
+      return Number(number[0]);
+    }
+    MATH_NAME.lastIndex = i;
+    const word = MATH_NAME.exec(value);
+    if (word === null) return null;
+    i = MATH_NAME.lastIndex;
+    if (value[i] === '(') {
+      i++;
+      return call(word[0]);
+    }
+    const constant = MATH_CONSTANTS[word[0].toLowerCase()];
+    return constant === undefined ? null : constant;
+  }
+  function call(fn) {
+    if (fn !== 'calc' && fn !== 'min' && fn !== 'max' && fn !== 'clamp') return null;
+    if (++depth > MATH_DEPTH) return null;
+    const args = [sum()];
+    skip();
+    while (args.at(-1) !== null && value[i] === ',') {
+      i++;
+      args.push(sum());
+      skip();
+    }
+    depth--;
+    if (args.includes(null) || !close()) return null;
+    if (fn === 'calc') return args.length === 1 ? args[0] : null;
+    if (fn === 'clamp') return args.length === 3 ? Math.max(args[0], Math.min(args[1], args[2])) : null;
+    return fn === 'min' ? Math.min(...args) : Math.max(...args);
+  }
+  function product() {
+    let left = primary();
+    for (;;) {
+      if (left === null) return null;
+      skip();
+      const op = value[i];
+      if (op !== '*' && op !== '/') return left;
+      i++;
+      const right = primary();
+      if (right === null) return null;
+      left = op === '*' ? left * right : left / right;
+    }
+  }
+  function sum() {
+    let left = product();
+    for (;;) {
+      if (left === null) return null;
+      skip();
+      const op = value[i];
+      if (op !== '+' && op !== '-') return left;
+      // (whitespace around the sign: calc(1 +2) is two numbers)
+      if (!isCssSpace(value.charCodeAt(i - 1)) || !isCssSpace(value.charCodeAt(i + 1))) return null;
+      i++;
+      const right = product();
+      if (right === null) return null;
+      left = op === '+' ? left + right : left - right;
+    }
+  }
+  const open = /^[a-z]+/.exec(value)[0];
+  i = open.length + 1;
+  const n = call(open);
+  if (n === null) return undefined;
+  const rest = value.slice(i);
+  // (another function after it is left as written)
+  if (/[\w-]\(/.test(rest)) return undefined;
+  return `calc(${mathNumberText(n)}${rest})`;
+}
+function mathNumberText(n) {
+  if (Number.isNaN(n)) return 'NaN';
+  if (n === Infinity) return 'infinity';
+  if (n === -Infinity) return '-infinity';
+  return String(Number(n.toPrecision(6)));
 }
 // Strings and url()s, whose text is no number (url(sprite+hover.png); #285
 // review).
