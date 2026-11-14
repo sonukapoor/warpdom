@@ -4843,7 +4843,9 @@ written. With no border declared, the accessor reads the sub-shorthands
 from two write-side gaps on main, left for later: borderStyle = 'none'
 after another style clears the style in jsdom 26 (listed in
 differences.md), and border: none removes earlier border declarations in
-jsdom 26 (not listed yet; its own PR). Cost (b78j26.mjs: b78 in the
+jsdom 26 (matched on main by 2026-11-14: border-color, border-top,
+border-width or border-left-style before border: none give the same
+text as jsdom 26, setter and cssText; #312 review). Cost (b78j26.mjs: b78 in the
 jsdom 26 profile with border-color instead of border, so every border
 read now composes): 151.5 to 159.2 ms (+5%), the price of a value where
 '' was wrong; b78.mjs within noise (163.8 and 167.0 ms).

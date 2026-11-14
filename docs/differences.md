@@ -463,10 +463,8 @@ Not modeled:
   U+FFFD on every path, and jsdom 27 and 28 declare nothing for a `style`
   attribute that contains U+0000. warpdom keeps the text as written
 - numbers by version ([#264](https://github.com/sonukapoor/warpdom/issues/264)): with cssstyle 4.2 and 4.3, jsdom
-  keeps `flex: 1e1px` as written (warpdom `1 1 10px`), leaves out the
-  longhands `flex` omits (`flex: 10`; warpdom `10 1 0%`), rejects `0.0`,
-  `.0`, `0.`, `-0`, `+0` and `0e1` in lengths, `background-position: 0`, a
-  unitless `flex-basis` and `flex: 1 1 0e1`, and accepts `flex: -1e1`,
+  rejects `0.0`, `.0`, `0.`, `-0` and `+0` in lengths,
+  `background-position: 0` and a unitless `flex-basis`, and accepts
   `border: 0 0` and `border-top: 0 0`, the other way round from warpdom.
   cssstyle 4.3.1 keeps `width: 1e1px`, `1.px`, `1e-1px`, `font-weight: 01`
   and `line-height: 01` as written; warpdom writes them canonically. jsdom
