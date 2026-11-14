@@ -4733,6 +4733,34 @@ alone is "A B", and with another family after it the value is dropped. In
 font, it is "A B" (12px "A<LF>B", serif). warpdom keeps the line break in
 all of them, on main too.
 
+## 2026-11-10: 1.0 triage of the open parity issues (branch docs/1-0-parity-triage)
+
+Decision (2026-11-11, Sonu): 1.0 does not wait for jsdom 31. It models
+jsdom 20.0.3 to 30.1.3; jsdom 31 (#269, 184 of 2,630 parity tests differ,
+mostly var() in computed styles) is modeled after the 1.0 fixes land and
+ships in 1.1, as the stability policy has a new jsdom version arrive in a
+minor release.
+
+Decision (2026-11-10, Sonu): for 1.0 criterion 2, each open parity issue
+is fixed or listed in docs/differences.md item by item; fix what real
+suites are likely to hit, document the narrow quirks of one version.
+The 18 open issues (#97 to #265, about 150 items) were audited item by
+item against differences.md and jsdom-versions.md; about 80 items were
+neither fixed nor listed. Fixed in their own PRs: a zero next to a
+function in box shorthands in jsdom 26 and 30 (#310; jsdom 25 is listed), the number patterns and hasVar() in
+linear time (#311), and #306, #307 and #309 (#264 items 83, 71 and 91,
+first parts). The rest is now in differences.md, grouped by area, and two
+stale lines were corrected (uppercase units: jsdom 27 to 30 write `5PX`
+as `5px`; jsdom 26's keyword lowercasing is matched since #289).
+
+The one item likely to show up in real suites stays open as work, listed
+in differences.md meanwhile: a longhand written after its shorthand
+(React style objects such as `{ border, borderColor }`). jsdom 27 to 30
+rewrite the shorthand (`border: 1px blue;`, `flex: 2 1 0%;`); warpdom
+keeps both declarations. #313 (item 78's phase 2) models the reads
+(the accessor and getPropertyValue); the attribute and cssText rewrite
+stays listed.
+
 ## 2026-11-10: number patterns and hasVar() in linear time (branch fix/linear-number-patterns, #224 item 4, #264 item 7)
 
 Found again in the 1.0 triage (untrusted HTML can reach both). The
@@ -4815,7 +4843,9 @@ written. With no border declared, the accessor reads the sub-shorthands
 from two write-side gaps on main, left for later: borderStyle = 'none'
 after another style clears the style in jsdom 26 (listed in
 differences.md), and border: none removes earlier border declarations in
-jsdom 26 (not listed yet; its own PR). Cost (b78j26.mjs: b78 in the
+jsdom 26 (matched on main by 2026-11-14: border-color, border-top,
+border-width or border-left-style before border: none give the same
+text as jsdom 26, setter and cssText; #312 review). Cost (b78j26.mjs: b78 in the
 jsdom 26 profile with border-color instead of border, so every border
 read now composes): 151.5 to 159.2 ms (+5%), the price of a value where
 '' was wrong; b78.mjs within noise (163.8 and 167.0 ms).
