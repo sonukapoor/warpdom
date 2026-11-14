@@ -1185,6 +1185,63 @@ const otherZero = (word) => word !== '0' && NUMBER_WORD.test(word) && Number(wor
 const FLEX_ZERO_BASIS =
   /^[ \t\n\r\f]*(?:[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?[ \t\n\r\f]+){2}[+-]?(?:0+(?:\.0*)?|\.0+)(?:e[+-]?\d+)?[ \t\n\r\f]*$/i;
 const flexZeroBasis = (name, value) => name === 'flex' && value.includes('0') && FLEX_ZERO_BASIS.test(value);
+// flex with the basis before or between its numbers, from cssstyle 4.4
+// (black box, jsdom 23.2.0, 24.1.3, 26.1.0 and 27.4.0 to 30.1.3; #317).
+// The first two numbers are the grow and shrink and a third 0 the basis
+// 0px; another third number is invalid (0 1 2, 1 0 2). jsdom 23 to 26
+// take the numbers wherever the basis is (10px 1 2 and 1 10px 2 are
+// 1 2 10px), so the value is written with them first; jsdom 27 to 30
+// reject a number after the basis (10px 1). Values with var() or a comma
+// between their parts (10px 1,2: the grammar rejects it; segments() takes
+// a comma for a separator; #318 review) are left as written; a comma in a
+// function is no separator (min(1px, 2px) 1). null: invalid.
+// (the usual order, one or two numbers and maybe a basis that is no
+// number, needs no scan: 1 1 0%, 2 10px; each part matches one way, and
+// a number with an exponent is no basis: 0 1 2e0; #318 review)
+const FLEX_IN_ORDER =
+  /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?(?: [+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)?(?: (?![+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$)[^\s,]+)?$/i;
+// (a carriage return or a form feed is a line feed, as CSS's input
+// preprocessing makes it, so segments() and the expansion split there;
+// black box, 23.2.0 to 30.1.3: 10px\f1 2 is 1 2 10px in 23 to 26, invalid
+// in 27 to 30; #318 review)
+const CR_OR_FF = /\r\n?|\f/g;
+function flexOrder(value, mode) {
+  // (a value with var() keeps them, as written; #318 review)
+  if (VAR_ENV_ATTR.test(value)) return value;
+  if (value.includes('\r') || value.includes('\f')) value = value.replace(CR_OR_FF, '\n');
+  if (FLEX_IN_ORDER.test(value)) return value;
+  const parts = segments(value);
+  for (let i = 1; i < parts.length; i += 2) if (parts[i].includes(',')) return value;
+  let numbers = 0;
+  let basisAt = -1;
+  let moved = false;
+  for (let i = 0; i < parts.length; i += 2) {
+    const part = parts[i];
+    if (part === '') continue;
+    if (!NUMBER_WORD.test(part)) {
+      if (basisAt < 0) basisAt = i;
+    } else if (numbers < 2) {
+      numbers++;
+      if (basisAt >= 0) {
+        if (mode !== 'jsdom26') return null;
+        moved = true;
+      }
+    } else if (Number(part) !== 0) return null;
+    else if (basisAt < 0) basisAt = i;
+  }
+  if (!moved) return value;
+  // (two strings, no arrays: the numbers, then the rest; #318 review)
+  let kept = '';
+  let after = '';
+  numbers = 0;
+  for (let i = 0; i < parts.length; i += 2) {
+    const part = parts[i];
+    if (part === '') continue;
+    if (NUMBER_WORD.test(part) && numbers++ < 2) kept = kept === '' ? part : kept + ' ' + part;
+    else after += ' ' + part;
+  }
+  return kept + after;
+}
 // (probes: box shorthands have four sides; in a longer list the later
 // items are of the kinds already probed, so the work stays linear; #309
 // review)
@@ -1270,6 +1327,16 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
         if (written !== null && (written.length >= 16 || JSDOM26_BORDERS.has(name)))
           written = jsdom26Numbers(name, written);
       }
+      // (a flex of one part has no order: most values skip this; #317;
+      // cssstyle before 4.4 keeps its own order, legacyFont; #318 review)
+      if (
+        written !== null &&
+        name === 'flex' &&
+        (mode === 'jsdom26' || isSpecMode(mode)) &&
+        surface?.legacyFont === undefined &&
+        /\s/.test(written)
+      )
+        written = flexOrder(written, mode);
       if (out === undefined) out = written === null ? INVALID : versionedValue(name, written, mode, surface);
       if (out === undefined) {
         const checked = isSpecMode(mode) || JSDOM26_VALIDATED.has(name);

@@ -7143,3 +7143,60 @@ box-cascade-bench (28.1.0) all 9.8 -> 10.1, distinct 44.6 -> 46.0, miss
 63.3 -> 62.5, small 6.1 -> 6.0 µs/element: within noise. Test:
 computed-style.test.js "a document without a window has no style sheets"
 (parity 20, 22, 25 to 30).
+
+## 2026-11-13: flex with the basis before its numbers, from cssstyle 4.4 (branch fix/317-flex-basis-first, #317)
+
+Found while checking a #315 review finding. Black box, jsdom 23.2.0,
+24.1.3, 26.1.0 and 27.4.0 to 30.1.3: in every profile from cssstyle 4.4,
+warpdom read `flex: 10px 1 2` as `1 1 2`, as its serializer took a
+number after the basis for the basis. jsdom 23 to 26 take the first two
+numbers as the grow and shrink wherever the basis is (`10px 1 2` and
+`1 10px 2` are `1 2 10px`); a third `0` is the basis `0px`, and another
+third number makes the value invalid (`0 1 2`, which warpdom kept, and
+`1 0 2`). jsdom 27 to 30 reject a number after the basis (`10px 1`,
+`content 1`). flexOrder() writes the numbers first for jsdom 23 to 26 and
+rejects the rest, on a cache miss only. The usual order (`1 1 0%`,
+`2 10px`) skips its scan through one pattern (FLEX_IN_ORDER).
+
+Test: "flex with the basis before its numbers" (jsdom 23, 24, 26 to 30;
+setProperty, the style attribute, cssText and computed values). Cost
+(node 22.17.1, 5 interleaved runs, medians): bench-fx.mjs level (jsdom 26
+81.9 to 79.3 ms, 30 70.6 to 70.4 ms); 20,000 distinct flex values, all
+cache misses (bench317.mjs), 73.8 to 75.8 ms in 26 and 39.4 to 40.2 ms in
+30 (+2 to 3%; +11% before the FLEX_IN_ORDER fast path).
+
+Not modeled, for docs/differences.md once #312 lands: jsdom 23 to 26
+accept a negative basis in flex (`1 -1px` is `1 1 -1px`) and read a math
+function as the grow (`calc(1px)` is `calc(1px) 1 0%`). Before cssstyle
+4.4 (#315), `10px 1` stores the 1 as the shrink; warpdom reads it as the
+grow.
+
+#318 review (Copilot, black box, 26.1.0 and 30.1.3): the fast path took
+`0 1 2e0` for two numbers and a basis (`2` with the unit `e0`), which jsdom
+rejects; its basis part is now any word that is not a whole number. A
+comma made a separator in the reordering (`10px 1,2` read `1 2 10px`;
+jsdom 26 rejects it), so a value with one is left to the grammar. The
+cssstyle 4.3.1 profile (also the jsdom 26 mode) is left as on main
+(legacyFont; #315 models it). Cache misses after this: 78.5 to 80.0 ms
+in 26, 39.3 to 39.0 ms in 30.
+
+Found while writing the docs (2026-11-14, black box, 23.2.0 to 30.1.3):
+a comma inside a function skipped the reordering too, so `min(1px, 2px)
+1` read `1 1 1` in every profile (on main as well); jsdom 27 to 30 reject
+it. Only a comma between the parts is left to the grammar now. The docs
+list the negative basis jsdom 23 to 26 accept (`1 -1px`), and jsdom 23
+and later writing `min(1px, 2px)` in the flex basis as `calc(1px)`.
+
+#318 review, second round (2026-11-14; black box, 23.2.0 to 30.1.3):
+Copilot found that a carriage return and a form feed did not separate
+flex's parts (`10px\f1 2`, `1\f1\f10px`; on main too, where they read
+`1 1 2` and `1 1 1\f1\f10px`). jsdom 23 to 30 treat them as spaces on
+every path. flexOrder turns them into line feeds first, as CSS's input
+preprocessing does. CodeRabbit: the parity test has a setProperty()
+column now, and the reordering builds two strings instead of three
+arrays. Cache misses (bench317.mjs, jsdom 26, 5 interleaved runs,
+medians, node 22): 83.1 ms before, 83.3 ms after.
+CodeRabbit, third round: a value with var() kept its carriage returns
+and form feeds on main, and jsdom 23 to 30 keep them too (`1\fvar(--a)`;
+jsdom 30's setProperty() and attribute turn them into line feeds before,
+as warpdom does), so flexOrder checks for var() before it normalizes.

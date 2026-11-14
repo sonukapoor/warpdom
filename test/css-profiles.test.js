@@ -4513,6 +4513,108 @@ for (const jsdom of [26, 27, 28, 29, 30])
     { jsdom },
   );
 
+// flex with the basis before or between its numbers, from cssstyle 4.4
+// (black box, jsdom 23.2.0, 24.1.3, 26.1.0 and 27.4.0 to 30.1.3; #317):
+// jsdom 23 to 26 take the first two numbers as the grow and shrink
+// wherever the basis is (10px 1 2 is 1 2 10px, 1 auto 2 is 1 2 auto; a
+// third 0 is the basis 0px, another third number invalid: 0 1 2); jsdom
+// 27 to 30 reject a number after the basis (10px 1, content 1). (jsdom 23
+// to 26 also accept a negative basis, 1 -1px, and read a math function as
+// the grow, calc(1px) 1 0%: listed differences.)
+for (const jsdom of [23, 24, 26, 27, 28, 29, 30])
+  parity(
+    `style: flex with the basis before its numbers (jsdom ${jsdom}, #317)`,
+    (w) => {
+      const out = [];
+      for (const value of [
+        '10px 1 2',
+        '10px 1',
+        '10px 2 3',
+        'auto 1 2',
+        'auto 1',
+        '0% 1 2',
+        'content 1 2',
+        'content 1',
+        '1 content',
+        '10px 1 1',
+        '10px 0 0',
+        '10px 0',
+        '0 10px',
+        '0px 1 2',
+        '1e1px 1',
+        '1 10px 2',
+        '1 auto 2',
+        '1 0px 2',
+        '0 1 2',
+        '1 1 2',
+        '1 0 2',
+        '0 0',
+        '2 0',
+        '1 1 0',
+        '0 0 0',
+        '2 1 0',
+        '1 1 0 0',
+        '10px 1 auto',
+        '10px 1 2 3',
+        '1 2 10px',
+        '1 1px',
+        '10% 1',
+        ' 10px  1  2 ',
+        // (an exponent makes no unit, and a comma no separator; #318 review)
+        '0 1 2e0',
+        '1 1 2E0',
+        '1 2e1px',
+        '10px, 1, 2',
+        '10px 1,2',
+        '10px,1 2',
+        '1 2, 10px',
+        '10px\t1\n2',
+        // (a carriage return and a form feed are spaces too; #318 review)
+        '1\r\n1 10px',
+        '10px\f1 2',
+        '10px\r1 2',
+        '1\f1\f10px',
+        '10px 1\r2',
+        // (but a value with var() is kept as written; #318 review)
+        '1\fvar(--a)',
+        'var(--a)\r\n1',
+        '1\r1 var(--b)',
+        // (a comma inside a function is no separator; jsdom 23 to 26 read
+        // a math function first as the grow: listed)
+        ...(jsdom >= 27 ? ['min(1px, 2px) 1', 'max(1px,2px) 1 2', 'calc(1px) 2'] : []),
+      ]) {
+        const a = w.document.createElement('div');
+        w.document.body.append(a);
+        a.style.flex = value;
+        const b = w.document.createElement('div');
+        b.setAttribute('style', `color: red; flex: ${value}`);
+        const e = w.document.createElement('div');
+        e.style.cssText = `flex-grow: 3; flex: ${value}; color: red`;
+        const p = w.document.createElement('div');
+        p.style.setProperty('flex', value);
+        const c = w.getComputedStyle(a);
+        out.push([
+          value,
+          a.style.flex,
+          a.style.flexGrow,
+          a.style.flexShrink,
+          a.style.flexBasis,
+          a.style.cssText,
+          b.style.cssText,
+          e.style.cssText,
+          p.style.cssText,
+          p.style.flexBasis,
+          c.flexGrow,
+          c.flexShrink,
+          c.flexBasis,
+        ]);
+        a.remove();
+      }
+      return out;
+    },
+    { jsdom },
+  );
+
 // A unitless zero next to a function in margin, padding, border-width,
 // border-spacing and background-position is 0px, as alone (jsdom 26 and
 // 30.1.3: margin: 0 calc(50% - 10px) is 0px calc(50% - 10px)); in jsdom
