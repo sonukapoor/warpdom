@@ -467,7 +467,9 @@ Not modeled:
   `background-position: 0` and a unitless `flex-basis`, and accepts
   `border: 0 0` and `border-top: 0 0`, the other way round from warpdom.
   cssstyle 4.3.1 keeps `width: 1e1px`, `1.px`, `1e-1px`, `font-weight: 01`
-  and `line-height: 01` as written; warpdom writes them canonically. jsdom
+  and `line-height: 01` as written; warpdom writes them canonically.
+  jsdom 23 and 26 read `font: 01 1px` as `1px` (weight `normal`), and
+  warpdom drops it. jsdom
   25 rejects exponents (`0e0px`, `1e0px`) and `border: 0.0 solid`. jsdom
   27 rejects `rotate: 0.0` and keeps `z-index: 00`. jsdom 29's style
   attribute and `cssText` throw a TypeError for `border: 0e0 solid`;
@@ -490,7 +492,8 @@ Not modeled:
   `border-spacing` and `background-size`, and jsdom 26 in
   `border-spacing` (`calc(1px  +  2px)  3px` is `calc(3px) 3px`); jsdom
   27 to 29 reject that value in both. jsdom 26 and later write
-  `min(1px, 2px)` as `calc(1px)` in `width` and `margin`, and jsdom 27 to
+  `min(1px, 2px)` as `calc(1px)` in `width` and `margin`, and jsdom 23
+  and later in the `flex` basis (`flex: 1 2 min(1px, 2px)`), and jsdom 27 to
   29 reject a `min()` there that mixes a percentage and a length
   (`min(10%, 2px)`; jsdom 26 and 30 keep it).
   warpdom models the sorting, adding and space removal in longhand
@@ -635,7 +638,9 @@ Computed values not modeled:
   `removeProperty('flex')` leaves `style.flex` reading `1` in jsdom.
   cssstyle 4.4 to 4.6 (jsdom 23, 24 and 26) read a `calc()` first in
   `flex` as the grow (`flex: calc(1px)` is `calc(1px) 1 0%`); warpdom
-  reads it as the basis (`1 1 calc(1px)`)
+  reads it as the basis (`1 1 calc(1px)`). They also accept a negative
+  basis (`flex: 1 -1px` is `1 1 -1px`), which warpdom drops, as jsdom 27
+  to 30 do
 - jsdom 30's `calc()` mixing percentages and em (`calc(100% - 0px)`)
 - the uppercase units and `calc()` simplification of declared values in
   jsdom 29 and 30

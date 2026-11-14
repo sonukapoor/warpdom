@@ -7179,3 +7179,10 @@ jsdom 26 rejects it), so a value with one is left to the grammar. The
 cssstyle 4.3.1 profile (also the jsdom 26 mode) is left as on main
 (legacyFont; #315 models it). Cache misses after this: 78.5 to 80.0 ms
 in 26, 39.3 to 39.0 ms in 30.
+
+Found while writing the docs (2026-11-14, black box, 23.2.0 to 30.1.3):
+a comma inside a function skipped the reordering too, so `min(1px, 2px)
+1` read `1 1 1` in every profile (on main as well); jsdom 27 to 30 reject
+it. Only a comma between the parts is left to the grammar now. The docs
+list the negative basis jsdom 23 to 26 accept (`1 -1px`), and jsdom 23
+and later writing `min(1px, 2px)` in the flex basis as `calc(1px)`.

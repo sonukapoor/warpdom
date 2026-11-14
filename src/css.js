@@ -1192,16 +1192,18 @@ const flexZeroBasis = (name, value) => name === 'flex' && value.includes('0') &&
 // take the numbers wherever the basis is (10px 1 2 and 1 10px 2 are
 // 1 2 10px), so the value is written with them first; jsdom 27 to 30
 // reject a number after the basis (10px 1). Values with var() or a comma
-// (10px 1,2: the grammar rejects it; segments() takes a comma for a
-// separator; #318 review) are left as written. null: invalid.
+// between their parts (10px 1,2: the grammar rejects it; segments() takes
+// a comma for a separator; #318 review) are left as written; a comma in a
+// function is no separator (min(1px, 2px) 1). null: invalid.
 // (the usual order, one or two numbers and maybe a basis that is no
 // number, needs no scan: 1 1 0%, 2 10px; each part matches one way, and
 // a number with an exponent is no basis: 0 1 2e0; #318 review)
 const FLEX_IN_ORDER =
   /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?(?: [+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)?(?: (?![+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$)[^\s,]+)?$/i;
 function flexOrder(value, mode) {
-  if (FLEX_IN_ORDER.test(value) || value.includes(',') || VAR_ENV_ATTR.test(value)) return value;
+  if (FLEX_IN_ORDER.test(value) || VAR_ENV_ATTR.test(value)) return value;
   const parts = segments(value);
+  for (let i = 1; i < parts.length; i += 2) if (parts[i].includes(',')) return value;
   let numbers = 0;
   let basisAt = -1;
   let moved = false;

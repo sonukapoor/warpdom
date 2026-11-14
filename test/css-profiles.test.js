@@ -4569,6 +4569,9 @@ for (const jsdom of [23, 24, 26, 27, 28, 29, 30])
         '10px,1 2',
         '1 2, 10px',
         '10px\t1\n2',
+        // (a comma inside a function is no separator; jsdom 23 to 26 read
+        // a math function first as the grow: listed)
+        ...(jsdom >= 27 ? ['min(1px, 2px) 1', 'max(1px,2px) 1 2', 'calc(1px) 2'] : []),
       ]) {
         const a = w.document.createElement('div');
         w.document.body.append(a);
