@@ -1200,7 +1200,13 @@ const flexZeroBasis = (name, value) => name === 'flex' && value.includes('0') &&
 // a number with an exponent is no basis: 0 1 2e0; #318 review)
 const FLEX_IN_ORDER =
   /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?(?: [+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)?(?: (?![+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$)[^\s,]+)?$/i;
+// (a carriage return or a form feed is a line feed, as CSS's input
+// preprocessing makes it, so segments() and the expansion split there;
+// black box, 23.2.0 to 30.1.3: 10px\f1 2 is 1 2 10px in 23 to 26, invalid
+// in 27 to 30; #318 review)
+const CR_OR_FF = /\r\n?|\f/g;
 function flexOrder(value, mode) {
+  if (value.includes('\r') || value.includes('\f')) value = value.replace(CR_OR_FF, '\n');
   if (FLEX_IN_ORDER.test(value) || VAR_ENV_ATTR.test(value)) return value;
   const parts = segments(value);
   for (let i = 1; i < parts.length; i += 2) if (parts[i].includes(',')) return value;
@@ -1222,12 +1228,17 @@ function flexOrder(value, mode) {
     else if (basisAt < 0) basisAt = i;
   }
   if (!moved) return value;
-  const kept = [];
-  const after = [];
+  // (two strings, no arrays: the numbers, then the rest; #318 review)
+  let kept = '';
+  let after = '';
   numbers = 0;
-  for (let i = 0; i < parts.length; i += 2)
-    if (parts[i] !== '') (NUMBER_WORD.test(parts[i]) && numbers++ < 2 ? kept : after).push(parts[i]);
-  return kept.concat(after).join(' ');
+  for (let i = 0; i < parts.length; i += 2) {
+    const part = parts[i];
+    if (part === '') continue;
+    if (NUMBER_WORD.test(part) && numbers++ < 2) kept = kept === '' ? part : kept + ' ' + part;
+    else after += ' ' + part;
+  }
+  return kept + after;
 }
 // (probes: box shorthands have four sides; in a longer list the later
 // items are of the kinds already probed, so the work stays linear; #309

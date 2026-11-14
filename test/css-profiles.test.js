@@ -4569,6 +4569,12 @@ for (const jsdom of [23, 24, 26, 27, 28, 29, 30])
         '10px,1 2',
         '1 2, 10px',
         '10px\t1\n2',
+        // (a carriage return and a form feed are spaces too; #318 review)
+        '1\r\n1 10px',
+        '10px\f1 2',
+        '10px\r1 2',
+        '1\f1\f10px',
+        '10px 1\r2',
         // (a comma inside a function is no separator; jsdom 23 to 26 read
         // a math function first as the grow: listed)
         ...(jsdom >= 27 ? ['min(1px, 2px) 1', 'max(1px,2px) 1 2', 'calc(1px) 2'] : []),
@@ -4580,6 +4586,8 @@ for (const jsdom of [23, 24, 26, 27, 28, 29, 30])
         b.setAttribute('style', `color: red; flex: ${value}`);
         const e = w.document.createElement('div');
         e.style.cssText = `flex-grow: 3; flex: ${value}; color: red`;
+        const p = w.document.createElement('div');
+        p.style.setProperty('flex', value);
         const c = w.getComputedStyle(a);
         out.push([
           value,
@@ -4590,6 +4598,8 @@ for (const jsdom of [23, 24, 26, 27, 28, 29, 30])
           a.style.cssText,
           b.style.cssText,
           e.style.cssText,
+          p.style.cssText,
+          p.style.flexBasis,
           c.flexGrow,
           c.flexShrink,
           c.flexBasis,

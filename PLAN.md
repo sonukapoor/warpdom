@@ -7186,3 +7186,13 @@ a comma inside a function skipped the reordering too, so `min(1px, 2px)
 it. Only a comma between the parts is left to the grammar now. The docs
 list the negative basis jsdom 23 to 26 accept (`1 -1px`), and jsdom 23
 and later writing `min(1px, 2px)` in the flex basis as `calc(1px)`.
+
+#318 review, second round (2026-11-14; black box, 23.2.0 to 30.1.3):
+Copilot found that a carriage return and a form feed did not separate
+flex's parts (`10px\f1 2`, `1\f1\f10px`; on main too, where they read
+`1 1 2` and `1 1 1\f1\f10px`). jsdom 23 to 30 treat them as spaces on
+every path. flexOrder turns them into line feeds first, as CSS's input
+preprocessing does. CodeRabbit: the parity test has a setProperty()
+column now, and the reordering builds two strings instead of three
+arrays. Cache misses (bench317.mjs, jsdom 26, 5 interleaved runs,
+medians, node 22): 83.1 ms before, 83.3 ms after.
