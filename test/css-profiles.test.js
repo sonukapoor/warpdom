@@ -4146,6 +4146,50 @@ parity(
   { jsdom: 26 },
 );
 
+// cssstyle 4.2 and 4.3 (jsdom 26 as first installed; black box, cssstyle
+// 4.2.1 and 4.3.1 on their own) keep an exponent basis as written (1e1px,
+// lowercase e, no + and no leading zero), split the parts at any
+// whitespace, reject a comma between them, and read 1e-7 (String(Number()))
+// as the grow, and a number too large (1e309) as Infinity (#315 review).
+test('style: flex parts in cssstyle 4.2 and 4.3 (#315 review)', () => {
+  const rows = [
+    ['1 1 1e1px', '1 1 1e1px | 1 | 1 | 1e1px'],
+    ['1 1e-1px', '1 1e-1px | 1 |  | 1e-1px'],
+    ['1 1 1.5e1%', '1 1 1.5e1% | 1 | 1 | 1.5e1%'],
+    ['1 1 1e+1px', '2 3 4px | 2 | 3 | 4px'],
+    ['1 1 1e01px', '2 3 4px | 2 | 3 | 4px'],
+    ['1 1 1E1PX', '2 3 4px | 2 | 3 | 4px'],
+    ['1 1 1PX', '2 3 4px | 2 | 3 | 4px'],
+    ['1,2', '2 3 4px | 2 | 3 | 4px'],
+    ['1 ,2', '2 3 4px | 2 | 3 | 4px'],
+    ['1\r2', '1 2 | 1 | 2 | '],
+    ['1\f2', '1 2 | 1 | 2 | '],
+    ['1\v2', '1 2 | 1 | 2 | '],
+    ['0.0000001', '1e-7 | 1e-7 |  | '],
+    ['1e21', '1e+21 | 1e+21 |  | '],
+    ['1e-7 2', '1e-7 2 | 1e-7 | 2 | '],
+    // (a number too large is stored as Infinity and stays the grow or
+    // shrink; #315 review)
+    ['1e309', 'Infinity | Infinity |  | '],
+    ['-1e309', '-Infinity | -Infinity |  | '],
+    ['1 1e309', '1 Infinity | 1 | Infinity | '],
+    ['1e309 1 10px', 'Infinity 1 10px | Infinity | 1 | 10px'],
+  ];
+  for (const cssstyle of ['4.2.1', '4.3.1']) {
+    const d = createWindow({ jsdom: '26.1.0', cssstyle }).document;
+    for (const [value, expected] of rows) {
+      const s = d.createElement('div').style;
+      s.flex = '2 3 4px';
+      s.flex = value;
+      assert.equal(
+        [s.flex, s.flexGrow, s.flexShrink, s.flexBasis].join(' | '),
+        expected,
+        `${cssstyle} ${JSON.stringify(value)}`,
+      );
+    }
+  }
+});
+
 // Long runs of digits and many comments are read in linear time: a number
 // pattern that could split a digit run in many ways (\d+\.?\d*) took
 // 1.3 s on rgb() with 20,000 digits, and hasVar() searched for var( again
@@ -4596,6 +4640,202 @@ for (const jsdom of [26, 30])
         const b = w.document.createElement('div');
         b.setAttribute('style', `${name}: ${v}`);
         out.push([name, v, a.style.getPropertyValue(name), a.style.cssText, b.style.getPropertyValue(name)]);
+      }
+      return out;
+    },
+    { jsdom },
+  );
+
+// cssstyle before 4.4 (jsdom 20 to 22, and 25 with cssstyle 4.1; black
+// box, cssstyle 2.3.0 to 4.3.1 on their own and jsdom 20.0.3 to 25.0.1)
+// keeps flex's parts as written: a number first is the grow, second the
+// shrink, a length anywhere the basis (0 is both a number and 0px); a part
+// not given reads '' (flex: 1 is 1, flex-shrink ''), auto alone declares
+// flex-basis only, initial is 0 1 auto, inherit and var() declare nothing.
+for (const jsdom of [20, 21, 22, 23, 25, 26])
+  parity(
+    `style: flex keeps the parts written before cssstyle 4.4 (jsdom ${jsdom})`,
+    (w) => {
+      const out = [];
+      for (const value of [
+        '1',
+        '2 3',
+        '1 0',
+        '0',
+        '0 0',
+        '1 1 10px',
+        '10px',
+        '1 10px',
+        'auto',
+        'AUTO',
+        'none',
+        'initial',
+        'inherit',
+        '1 1 0',
+        '1 1 auto',
+        '2 auto',
+        '0%',
+        '1 0%',
+        'var(--a)',
+        '-1',
+        '1.5',
+        '1 1 1 1',
+        'foo',
+        '1 2 3',
+        '0 1 auto',
+        'content',
+        '.5',
+        '+1',
+        '10px 20px',
+        '1 1 0%',
+        // (0 written so is also the basis 0px; numbers by era)
+        '01',
+        '0.0',
+        '-0',
+        '1.',
+        '1 1 0.0',
+        '1 01',
+        // (any whitespace separates the parts and a comma is invalid;
+        // String(Number()) writes 1e-7 and 1e+21, still the grow; an
+        // exponent basis is invalid before 4.2; #315 review)
+        '1,2',
+        '1,',
+        '1 ,2',
+        'calc(1px) ,',
+        '1\t2',
+        '1\n2',
+        ' 1  2 ',
+        '0.0000001',
+        '1 1 1e1px',
+        // (no limit on the parts: a later basis replaces the earlier one,
+        // a 0 anywhere is the basis 0px, and a number third or later is
+        // invalid; #315 review)
+        '1 1 10px 20px',
+        '10px 20px 30px 40px',
+        '1 1 auto 10px',
+        '1 1 10px 0',
+        '1 1 0 0',
+        '10px 1 1 0',
+        '1 1 10px 2',
+        '1 10px 20px 2',
+        // (only auto written alone declares flex-basis: auto; 10px auto
+        // is flex: auto; #315 review)
+        '10px auto',
+        'auto auto',
+        ' auto ',
+        // (and 4.4 to 4.6 write min() as calc() and sort a calc()'s terms,
+        // listed differences; a line break inside calc() is kept, as a tab
+        // is: #315 review)
+        ...(jsdom === 23 || jsdom === 26
+          ? []
+          : ['1\r2', '1\f2', '1\v2', '1e-7 2', '1 1 min(1px, 2px)', '1 1 calc(10px\n + 5%)', 'calc(10px\n+ 5%)']),
+        // (cssstyle 4.4 to 4.6 read a calc() first as the grow: calc(1px)
+        // is calc(1px) 1 0%, a listed difference)
+        ...(jsdom === 23 || jsdom === 26 ? [] : ['calc(1px)', '1 calc(10px)']),
+      ]) {
+        const a = w.document.createElement('div');
+        w.document.body.append(a);
+        a.style.flex = value;
+        const s = a.style;
+        const b = w.document.createElement('div');
+        b.setAttribute('style', `flex: ${value}`);
+        // (a longhand before flex is removed: #314; #315 review)
+        const e = w.document.createElement('div');
+        e.style.cssText = `flex-shrink: 3; flex: ${value}`;
+        // (auto changes a basis declared before it in place; #315 review)
+        const g = w.document.createElement('div');
+        g.style.cssText = `flex-basis: 10px; color: red; flex: ${value}`;
+        // (and drops !important: flex-basis: auto; #315 review)
+        const h = w.document.createElement('div');
+        h.style.cssText = `color: red; flex: ${value} !important`;
+        const k = w.document.createElement('div');
+        k.style.setProperty('flex', value, 'important');
+        const c = w.getComputedStyle(a);
+        out.push([
+          value,
+          s.flex,
+          s.flexGrow,
+          s.flexShrink,
+          s.flexBasis,
+          s.getPropertyValue('flex-shrink'),
+          s.cssText,
+          s.length,
+          b.style.cssText,
+          e.style.cssText,
+          g.style.cssText,
+          h.style.cssText,
+          k.style.cssText,
+          c.flex,
+          c.flexGrow,
+          c.flexShrink,
+          c.flexBasis,
+        ]);
+        a.remove();
+      }
+      return out;
+    },
+    { jsdom },
+  );
+
+// Before cssstyle 4.4 (black box, jsdom 20.0.3 and 25.0.1 with cssstyle
+// 4.1.0), flex: auto through the accessor or setProperty removes
+// flex-grow and flex-shrink, each a change of the style attribute of its
+// own, then sets flex-basis: auto; a flex declared before stays (flex: 1
+// then flex: auto is flex: 1; flex-basis: auto, and style.flex reads 1).
+// (#315 review)
+for (const jsdom of [20, 21, 22, 25])
+  parity(
+    `style: flex: auto removes the grow and shrink only before cssstyle 4.4 (jsdom ${jsdom})`,
+    (w) => {
+      const out = [];
+      for (const [before, write] of [
+        [(e) => (e.style.flex = '1'), (e) => (e.style.flex = 'auto')],
+        [(e) => (e.style.flex = '1 2 3px'), (e) => (e.style.flex = 'auto')],
+        [(e) => (e.style.flex = '1'), (e) => (e.style.flex = 'AUTO')],
+        [(e) => (e.style.flex = '1'), (e) => e.style.setProperty('flex', 'auto', 'important')],
+        [(e) => e.setAttribute('style', 'flex: 1'), (e) => (e.style.flex = 'auto')],
+        [
+          (e) => {
+            e.style.flex = '1';
+            e.style.flexBasis = '5px';
+          },
+          (e) => (e.style.flex = 'auto'),
+        ],
+        [
+          (e) => {
+            e.style.flex = '1';
+            e.style.flexGrow = '4';
+          },
+          (e) => (e.style.flex = 'auto'),
+        ],
+        [
+          (e) => {
+            e.style.flexGrow = '2';
+            e.style.flexShrink = '3';
+          },
+          (e) => (e.style.flex = 'auto'),
+        ],
+        [
+          (e) => {
+            e.style.flexGrow = '2';
+            e.style.color = 'red';
+          },
+          (e) => (e.style.flex = 'auto'),
+        ],
+        // (not auto twice: jsdom 20 to 22 write the attribute for any write
+        // that changes nothing, a listed difference)
+        [() => {}, (e) => (e.style.flex = 'auto')],
+      ]) {
+        const e = w.document.createElement('div');
+        w.document.body.append(e);
+        before(e);
+        const observer = new w.MutationObserver(() => {});
+        observer.observe(e, { attributes: true, attributeOldValue: true });
+        write(e);
+        const records = observer.takeRecords().map((r) => r.oldValue);
+        observer.disconnect();
+        out.push([records, e.getAttribute('style'), e.style.flex, e.style.flexBasis, e.style.length]);
+        e.remove();
       }
       return out;
     },
