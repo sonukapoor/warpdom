@@ -530,7 +530,7 @@ function keyText(selector) {
     if (t === 'from') keys.push('0%');
     else if (t === 'to') keys.push('100%');
     else {
-      const m = /^\+?(\d+\.?\d*(?:e[+-]?\d+)?|\.\d+(?:e[+-]?\d+)?)%$/.exec(t);
+      const m = /^\+?(\d+(?:\.\d*)?(?:e[+-]?\d+)?|\.\d+(?:e[+-]?\d+)?)%$/.exec(t);
       const n = m ? Number(m[1]) : NaN;
       if (!(n >= 0 && n <= 100)) return null;
       keys.push(`${n}%`);

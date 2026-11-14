@@ -197,7 +197,7 @@ function splitDeclarations(text, nested = false) {
 // inset: 0 100dvh). Numbers stay (opacity: 0, line-height: 0).
 const ZERO = /^[+-]?(0+\.?0*|\.0+)$/;
 // A number with an exponent and no unit (0e0, -0.0E-1).
-const EXPONENT_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)e[+-]?\d+$/i;
+const EXPONENT_NUMBER = /^[+-]?(\d+(?:\.\d*)?|\.\d+)e[+-]?\d+$/i;
 const BOX_SHORTHANDS = new Set(['margin', 'padding', 'border-width']);
 // Functions as one side each (calc(100% - 2px) calc(100% - 2px) is
 // calc(100% - 2px)); a value with var() as written.
@@ -671,7 +671,7 @@ const integerText = (text) =>
     .replace(/^\+/, '')
     .replace(/^(-?)0+(?=\d)/, '$1')
     .replace(/^-0$/, '0');
-const NUMBER_TOKEN = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)([a-z%]*)$/i;
+const NUMBER_TOKEN = /^([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)([a-z%]*)$/i;
 // A part that ends in a hex escape: the whitespace after it belongs to the
 // escape, so the next part is the rest of the name (b\31 001), not a number.
 // segments() does not split at CR, so CR LF leaves the CR on this part.
@@ -726,7 +726,7 @@ function collapseSpaces(value) {
 // is normalized. Other calc() values (three or more terms, parentheses,
 // var(), absolute units other than px, which jsdom converts) are kept as
 // written.
-const CALC_TERM = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)(%|[a-z]+)?$/i;
+const CALC_TERM = /^([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)(%|[a-z]+)?$/i;
 const CALC_PRODUCT = /^(.+?)\s*([*/])\s*(.+)$/;
 const LONE_KEPT = /(^|[^\d.])0\d|e\+/i;
 const ABSOLUTE_UNITS = new Set(['in', 'cm', 'mm', 'q', 'pt', 'pc']);
@@ -1028,6 +1028,75 @@ export function setValidationMode(proto, mode, compat = {}) {
 // keywords before 4.6, or declarations that lose their !important: the
 // same names, its own declared value caches.
 const variantSurfaces = new Map();
+// cssstyle before 4.4 (legacyFont set) stores flex as its parts written.
+const isLegacyFlex = (surface) => surface !== null && surface !== undefined && surface.legacyFont !== undefined;
+// flex in cssstyle before 4.4 (black box, cssstyle 2.3.0 to 4.3.1 on their
+// own and jsdom 20.0.3 to 25.0.1): a number first is the grow, second the
+// shrink, a length anywhere the basis (a later one replacing it; 0 written
+// so is both a number and 0px, 0.0 and -0 a number only), any number of
+// parts but a number third or later invalid (1 1 10px 20px is 1 1 20px,
+// 1 1 10px 2 invalid; #315 review); written as the parts given,
+// grow shrink basis (flex: 1 is 1, 1 0 is 1 0 0px, 1 10px is 1 10px).
+// none is 0 0 auto, auto alone the basis only (setDeclaration and
+// parseInto declare flex-basis: auto), and other keywords and var()
+// declare nothing. Numbers as Number() writes them (+1 is 1, .5 is 0.5):
+// before 4.2 no exponent and no 1., from 4.2 an exponent and 1. but no
+// leading zero (01, 1e01; #239), a basis's exponent kept as written (1e1px).
+// Any whitespace separates the parts, a comma between them is invalid. (flex: 10px 1 reads 1 10px, its 1 the shrink: the parts'
+// places are not kept, a listed difference.)
+const LEGACY_FLEX_NUMBER_4_1 = /^[+-]?(\d+(?:\.\d+)?|\.\d+)$/;
+// (what flex: auto removes through a setter before cssstyle 4.4, in order)
+const LEGACY_AUTO_REMOVES = ['flex-grow', 'flex-shrink'];
+// (a calc() basis may hold a line break: calc(10px<LF> + 5%); #315 review)
+const LEGACY_FLEX_BASIS = /^(?:auto|calc\([^]*\)|[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?(?:%|[a-z]+))$/i;
+const LEGACY_FLEX_EXPONENT = /^[+-]?[\d.]+e[+-]?\d/i;
+function legacyFlexValue(value, mode, surface) {
+  const lower = value.toLowerCase();
+  if (lower === 'none') return '0 0 auto';
+  if (lower === 'auto') return 'auto';
+  if (CSS_WIDE_KEYWORD.test(value) || VAR_ENV_ATTR.test(value)) return INVALID;
+  // (any whitespace separates the parts; a comma between them is invalid)
+  const parts = segments(value, /\s/);
+  let grow = '';
+  let shrink = '';
+  let basis = '';
+  let count = 0;
+  for (let i = 0; i < parts.length; i += 2) {
+    const part = parts[i];
+    if (i > 0 && parts[i - 1].includes(',')) return INVALID;
+    if (part === '') continue;
+    const at = count++;
+    const isNumber =
+      surface.legacyFont === 'cssstyle4.1' ? LEGACY_FLEX_NUMBER_4_1.test(part) : FLEX_NUMBER_ONLY_4_2.test(part);
+    if (isNumber || part === '0') {
+      if (at === 0) grow = String(Number(part));
+      else if (at === 1) shrink = String(Number(part));
+      if (part === '0') basis = '0px';
+      else if (at >= 2) return INVALID;
+      continue;
+    }
+    // (a length, percentage, calc() or auto, by the era's units)
+    if (!LEGACY_FLEX_BASIS.test(part) || legacyMeasureRejects('flex-basis', part, surface)) return INVALID;
+    // (an exponent from 4.2, kept as written: 1e1px)
+    if (LEGACY_FLEX_EXPONENT.test(part)) {
+      if (surface.legacyFont === 'cssstyle4.1') return INVALID;
+      basis = part;
+      continue;
+    }
+    const length = declaredValue('flex-basis', part, mode, surface);
+    if (length === INVALID || length === '') return INVALID;
+    basis = length;
+  }
+  let out = grow;
+  if (shrink !== '') out = out === '' ? shrink : `${out} ${shrink}`;
+  if (basis !== '') out = out === '' ? basis : `${out} ${basis}`;
+  return out === '' ? INVALID : out;
+}
+// flex: inherit before cssstyle 4.4 declares nothing but removes flex and
+// its longhands, in any case (black box, jsdom 20.0.3 to 25.0.1; #315
+// review).
+const legacyFlexInherit = (name, value, surface) =>
+  name === 'flex' && isLegacyFlex(surface) && /^inherit$/i.test(value);
 const isLegacyFont = (surface, name) => name === 'font' && surface !== null && surface.legacyFont !== undefined;
 
 // Before 4.4 cssstyle's font removes the font longhands before it is set,
@@ -1096,6 +1165,45 @@ const isKnownProperty = (name) =>
   SHORTHANDS[name] !== undefined ||
   ALIASES[name] !== undefined;
 
+// jsdom 27 to 29 take a unitless zero as a length only when it is written
+// 0: width: 00, .0, -0, 0.0 or 0e0 is invalid there (jsdom 30 reads 0px),
+// border: 0e0 solid too (black box, 27.4.0 to 29.1.1, #264 item 91). Such
+// a zero is read as a length where the value reads the same with it
+// written 0 and 0px (width, margin, border, flex's basis); where it is a
+// number or kept as written (line-height, flex-grow, translate) the two
+// differ. Values with a function or string are left out.
+// (text a zero not written 0 has: 00, 0., .0, 0e, -0, +0)
+const OTHER_ZERO_TEXT = /00|0\.|\.0|0e|[+-]0/i;
+const NUMBER_WORD = /^[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?$/i;
+const otherZero = (word) => word !== '0' && NUMBER_WORD.test(word) && Number(word) === 0;
+// jsdom 27 to 29 reject a flex of two numbers and a unitless zero basis,
+// however the zero is written (flex: 1 1 0, 0 1 0.0; jsdom 26 and 30 read
+// 1 1 0px; black box, 27.4.0 to 29.1.1, #309 review).
+// (one pattern, no token array: the zero is digits 0 with any exponent;
+// each part splits its text one way only, so the match stays linear;
+// #309 review)
+const FLEX_ZERO_BASIS =
+  /^[ \t\n\r\f]*(?:[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?[ \t\n\r\f]+){2}[+-]?(?:0+(?:\.0*)?|\.0+)(?:e[+-]?\d+)?[ \t\n\r\f]*$/i;
+const flexZeroBasis = (name, value) => name === 'flex' && value.includes('0') && FLEX_ZERO_BASIS.test(value);
+// (probes: box shorthands have four sides; in a longer list the later
+// items are of the kinds already probed, so the work stays linear; #309
+// review)
+const ZERO_PROBES = 4;
+function zeroAsLength(name, value, surface) {
+  if (name.startsWith('--') || /[("']/.test(value)) return false;
+  const words = value.split(/([\s,/]+)/);
+  const odd = [];
+  for (let k = 0; k < words.length && odd.length < ZERO_PROBES; k += 2) if (otherZero(words[k])) odd.push(k);
+  if (odd.length === 0) return false;
+  // Each candidate on its own as 0px, the others as 0 (flex: 0.0 1 0.0
+  // has a number and a length; #309 review).
+  const plain = words.map((w) => (otherZero(w) ? '0' : w));
+  const as = (at, zero) => plain.map((w, k) => (k === at ? zero : w)).join('');
+  const base = declaredValue(name, as(-1, '0'), 'jsdom27', surface);
+  if (base === INVALID) return false;
+  return odd.some((at) => declaredValue(name, as(at, '0px'), 'jsdom27', surface) === base);
+}
+
 // Declared values by mode, property and raw value: style writes repeat the
 // same few values, so each is validated and serialized once. INVALID marks
 // a value the property's grammar rejects.
@@ -1142,6 +1250,8 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
     else if (!isKnownProperty(name)) out = INVALID;
     else if (isLegacyFont(surface, name))
       out = /^inherit$/i.test(value) ? INVALID : (legacyFont(value, surface.legacyFont) ?? INVALID);
+    else if (name === 'flex' && isLegacyMode(mode) && /^initial$/i.test(value)) out = '0 1 auto';
+    else if (name === 'flex' && isLegacyFlex(surface)) out = legacyFlexValue(value, mode, surface);
     else {
       let written = isSpecMode(mode) ? identValue(name, value) : value;
       // (a quote is rare: most values skip this)
@@ -1175,6 +1285,12 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
         isColorProperty(name) &&
         (isSpecMode(mode) || JSDOM26_VALIDATED.has(name)) &&
         rejectsColor(name, value, surface)
+      )
+        out = INVALID;
+      if (
+        out !== INVALID &&
+        mode === 'jsdom27' &&
+        (flexZeroBasis(name, value) || (OTHER_ZERO_TEXT.test(value) && zeroAsLength(name, value, surface)))
       )
         out = INVALID;
     }
@@ -1226,7 +1342,7 @@ const AZIMUTH_POSITIONS = Object.assign(Object.create(null), {
   'right-side': 90,
 });
 const AZIMUTH_ANGLE = /^([+-]?(?:\d+(?:\.\d+)?|\.\d+))(deg|grad|rad)$/;
-const AZIMUTH_NAN_ANGLE = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?(?:deg|grad|rad|turn)$/;
+const AZIMUTH_NAN_ANGLE = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?(?:deg|grad|rad|turn)$/;
 export const hasAngleAzimuth = (surfaceKey) => AZIMUTH_KINDS[surfaceKey] === 'angle';
 function azimuthValue(value, surface) {
   const kind = AZIMUTH_KINDS[surface.key];
@@ -1263,7 +1379,7 @@ function azimuthValue(value, surface) {
 // Values whose serialization depends on the jsdom version beyond the
 // modes' general rules (black box, jsdom 20 to 30); undefined for the
 // others. Runs once per property and raw value (declaredValue caches it).
-const ONE_NUMBER = /^\+?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
+const ONE_NUMBER = /^\+?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i;
 
 // jsdom 26's own value rules (black box, 26.1.0; #264 items 46, 56, 58).
 // A number: no leading zero before a digit (01, 00.5), an exponent without
@@ -1321,10 +1437,10 @@ const JSDOM26_BORDERS = new Set(['border', 'border-top', 'border-right', 'border
 const BORDER_WIDTH_KEYWORD = /^(?:thin|medium|thick)$/i;
 const LENGTH_UNIT = /^(?:px|cm|mm|q|in|pt|pc|em|rem|ex|rex|cap|rcap|ch|rch|ic|ric|lh|rlh|[sld]?v(?:min|max|[hwbi]))$/i;
 // (a zero without a unit is a width however spelled: 0.0, .0, -0, 0.)
-const ZERO_SPELLING = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
+const ZERO_SPELLING = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i;
 // (1.e21px is one; 01e21px or 1e+21px is a number jsdom 26 does not read,
 // invalid)
-const WIDTH_SPELLING = /^\+?((?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)([a-z]+)$/i;
+const WIDTH_SPELLING = /^\+?((?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)([a-z]+)$/i;
 function overflowingWidth(part) {
   const m = WIDTH_SPELLING.exec(part);
   return m !== null && !(Number(m[1]) < 1e21) && LENGTH_UNIT.test(m[2]);
@@ -1736,6 +1852,7 @@ function jsdom26Value(name, value, lower) {
     return n >= 0 && n <= 1000 ? String(n) : INVALID;
   }
   if (name === 'flex-grow' || name === 'flex-shrink') {
+    if (/^(calc|min|max|clamp)\(/.test(value)) return jsdom26NumberMath(value);
     if (/^calc\(/i.test(value)) return undefined;
     return JSDOM26_NUMBER.test(value) && Number(value) >= 0 ? String(Number(value)) : INVALID;
   }
@@ -1743,6 +1860,128 @@ function jsdom26Value(name, value, lower) {
   return isValidValue(name, value.replace(/(^|\s)-(?=[\d.])/g, '$1'))
     ? serializeDeclared(name, value, 'jsdom26')
     : INVALID;
+}
+// calc(), min(), max() and clamp() of numbers at the start of flex-grow
+// and flex-shrink, as jsdom 26 evaluates them (black box, 26.1.0, #264
+// item 71): + and - with whitespace around them, * and /, parentheses,
+// the constants e, pi, infinity and NaN; the result to 6 significant
+// digits inside calc() (calc(10 / 3) is calc(3.33333), calc(1 / 0)
+// calc(infinity)), with what follows the function inside it as written
+// (calc(1) bold is calc(1 bold)), and functions and parentheses left open
+// at the end closed (calc(1 + 1 is calc(2)). Anything else (a unit, another
+// function, a function after it) is left as written: undefined.
+const MATH_CONSTANTS = {
+  __proto__: null,
+  e: Math.E,
+  pi: Math.PI,
+  infinity: Infinity,
+  '-infinity': -Infinity,
+  nan: NaN,
+};
+const MATH_NUMBER = /[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?(?![\w%.])/iy;
+const MATH_NAME = /-?[a-z]+/iy;
+// (nesting deeper than MATH_DEPTH is left as written: the recursion would
+// overflow the stack on calc((((...; #307 review)
+const MATH_DEPTH = 100;
+function jsdom26NumberMath(value) {
+  let i = 0;
+  let depth = 0;
+  const skip = () => {
+    while (i < value.length && isCssSpace(value.charCodeAt(i))) i++;
+  };
+  // A closing parenthesis, or the end of the value, which closes it.
+  const close = () => {
+    skip();
+    if (i >= value.length) return true;
+    if (value[i] !== ')') return false;
+    i++;
+    return true;
+  };
+  function primary() {
+    skip();
+    const c = value[i];
+    if (c === '(') {
+      if (++depth > MATH_DEPTH) return null;
+      i++;
+      const v = sum();
+      depth--;
+      return v !== null && close() ? v : null;
+    }
+    MATH_NUMBER.lastIndex = i;
+    const number = MATH_NUMBER.exec(value);
+    if (number !== null) {
+      i = MATH_NUMBER.lastIndex;
+      return Number(number[0]);
+    }
+    MATH_NAME.lastIndex = i;
+    const word = MATH_NAME.exec(value);
+    if (word === null) return null;
+    i = MATH_NAME.lastIndex;
+    if (value[i] === '(') {
+      i++;
+      return call(word[0]);
+    }
+    const constant = MATH_CONSTANTS[word[0].toLowerCase()];
+    return constant === undefined ? null : constant;
+  }
+  function call(fn) {
+    if (fn !== 'calc' && fn !== 'min' && fn !== 'max' && fn !== 'clamp') return null;
+    if (++depth > MATH_DEPTH) return null;
+    const args = [sum()];
+    skip();
+    while (args.at(-1) !== null && value[i] === ',') {
+      i++;
+      args.push(sum());
+      skip();
+    }
+    depth--;
+    if (args.includes(null) || !close()) return null;
+    if (fn === 'calc') return args.length === 1 ? args[0] : null;
+    if (fn === 'clamp') return args.length === 3 ? Math.max(args[0], Math.min(args[1], args[2])) : null;
+    return fn === 'min' ? Math.min(...args) : Math.max(...args);
+  }
+  function product() {
+    let left = primary();
+    for (;;) {
+      if (left === null) return null;
+      skip();
+      const op = value[i];
+      if (op !== '*' && op !== '/') return left;
+      i++;
+      const right = primary();
+      if (right === null) return null;
+      left = op === '*' ? left * right : left / right;
+    }
+  }
+  function sum() {
+    let left = product();
+    for (;;) {
+      if (left === null) return null;
+      skip();
+      const op = value[i];
+      if (op !== '+' && op !== '-') return left;
+      // (whitespace around the sign: calc(1 +2) is two numbers)
+      if (!isCssSpace(value.charCodeAt(i - 1)) || !isCssSpace(value.charCodeAt(i + 1))) return null;
+      i++;
+      const right = product();
+      if (right === null) return null;
+      left = op === '+' ? left + right : left - right;
+    }
+  }
+  const open = /^[a-z]+/.exec(value)[0];
+  i = open.length + 1;
+  const n = call(open);
+  if (n === null) return undefined;
+  const rest = value.slice(i);
+  // (another function after it is left as written)
+  if (/[\w-]\(/.test(rest)) return undefined;
+  return `calc(${mathNumberText(n)}${rest})`;
+}
+function mathNumberText(n) {
+  if (Number.isNaN(n)) return 'NaN';
+  if (n === Infinity) return 'infinity';
+  if (n === -Infinity) return '-infinity';
+  return String(Number(n.toPrecision(6)));
 }
 // Strings and url()s, whose text is no number (url(sprite+hover.png); #285
 // review).
@@ -2158,6 +2397,8 @@ const MANTISSA_4_2 = String.raw`[+-]?(?:(?:0|[1-9]\d*)(?:\.\d*)?|\.\d+)`;
 const EXPONENT_4_2 = String.raw`e-?(?:0|[1-9]\d*)`;
 const UNIT_4_2 = String.raw`(?:%|[cm]m|[dls]?v(?:[bhiw]|max|min)|in|p[ctx]|q|r?(?:[cl]h|cap|e[mx]|ic))`;
 const NUMBER_4_2 = `${MANTISSA_4_2}(?:(?:${EXPONENT_4_2})?${UNIT_4_2})?`;
+// (a number alone in cssstyle 4.2 and 4.3's flex: legacyFlexValue)
+const FLEX_NUMBER_ONLY_4_2 = new RegExp(`^${MANTISSA_4_2}(?:${EXPONENT_4_2})?$`);
 const FLEX_NUMBER_4_2 = `${MANTISSA_4_2}(?:${EXPONENT_4_2})?${UNIT_4_2}?`;
 const tokensOf = (token) => new RegExp(String.raw`^\s*(?:${token})(?:\s+(?:${token}))*\s*$`);
 const VALUE_4_1 = tokensOf(`${OTHER_TOKEN}|${NUMBER_4_1}(?!\\S)`);
@@ -2301,7 +2542,7 @@ function droppedBy(mode, kind, name) {
 //   keep a 0 width as written and only none clears, and var() drops it.
 const BORDER_SHORTHAND = new Set(['border', 'border-top', 'border-right', 'border-bottom', 'border-left']);
 const BORDER_STYLE = /^(none|hidden|dotted|dashed|solid|double|groove|ridge|inset|outset)$/i;
-const BORDER_WIDTH = /^(thin|medium|thick|calc\(.*\)|[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?[a-z]*)$/i;
+const BORDER_WIDTH = /^(thin|medium|thick|calc\(.*\)|[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?[a-z]*)$/i;
 function borderValue(name, value, mode) {
   if (!isValidValue(name, value)) return INVALID;
   const spec = isSpecMode(mode);
@@ -2420,7 +2661,7 @@ function backgroundBoxes(boxes, pre29) {
 }
 const BG_POSITIONS = new Set(['left', 'right', 'top', 'bottom', 'center']);
 const BG_SIZES = /^(auto|cover|contain)$/i;
-const BG_DIMENSION = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?([a-z]+|%)$/i;
+const BG_DIMENSION = /^[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?([a-z]+|%)$/i;
 const BG_GRADIENT = /^(-webkit-)?(repeating-)?(linear|radial|conic)-gradient\(/i;
 const sizeToken = (t) => {
   if (ZERO.test(t)) return '0px';
@@ -2433,7 +2674,7 @@ const sizeToken = (t) => {
 // cqw), with an exponent but no leading zero (010px), in lowercase before
 // 4.4 and in any case from 4.4. Other units (5deg, 1s, 10bogus) are
 // invalid.
-const BG_LENGTH_3 = /^[+-]?(\d+\.?\d*|\.\d+)(px|cm|mm|in|pt|pc|em|ex|ch|rem|vh|vw|%)$/;
+const BG_LENGTH_3 = /^[+-]?(\d+(?:\.\d*)?|\.\d+)(px|cm|mm|in|pt|pc|em|ex|ch|rem|vh|vw|%)$/;
 const BG_LENGTH_4 =
   /^[+-]?((0|[1-9]\d*)(\.\d*)?|\.\d+)(e[+-]?\d+)?(px|cm|mm|q|in|pt|pc|em|ex|ch|rem|lh|rlh|vmin|vmax|[sld]?v[hwbi]|%)$/;
 // The characters between components (black box, #134): cssstyle 2.3 to 4.6
@@ -2796,12 +3037,12 @@ function legacyGradientsValid(value) {
 //   written as given (RECT(0 0 0 0) is RECT(0px)). var() is kept as
 //   written (the grammar's reading).
 // cascade.js computes a rect() of one component (jsdom 27 to 30.1.2).
-const CLIP_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?([a-z]+|%)$/i;
-const CLIP_LEGACY_LENGTH = /^[+-]?(\d+\.?\d*|\.\d+)(px|em|ex|ch|rem|vh|vw|cm|mm|in|pt|pc)$/i;
+const CLIP_NUMBER = /^[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?([a-z]+|%)$/i;
+const CLIP_LEGACY_LENGTH = /^[+-]?(\d+(?:\.\d*)?|\.\d+)(px|em|ex|ch|rem|vh|vw|cm|mm|in|pt|pc)$/i;
 const CLIP_26_ZERO = /^[+-]?(0(\.0*)?|\.0+)$/;
 // A unitless zero, with an exponent or not (0e0 is a zero in jsdom 26 and
 // later; black box, #274 review).
-const CLIP_EXPONENT = /^([+-]?(?:\d+\.?\d*|\.\d+))e[+-]?\d+$/i;
+const CLIP_EXPONENT = /^([+-]?(?:\d+(?:\.\d*)?|\.\d+))e[+-]?\d+$/i;
 const clipZero = (arg, zero) => zero.test(CLIP_EXPONENT.exec(arg)?.[1] ?? arg);
 function clipValue(value, mode) {
   if (/^auto$/i.test(value)) return 'auto';
@@ -2873,7 +3114,7 @@ function balancedBrackets(text) {
 function clipComponent(arg, mode) {
   if (mode === 'jsdom20' || mode === 'jsdom22' || mode === 'jsdom25') {
     if (arg === '0') return '0px';
-    if (/^calc\(.*\)$/i.test(arg) || /^[+-]?(\d+\.?\d*|\.\d+)%$/.test(arg)) return arg;
+    if (/^calc\(.*\)$/i.test(arg) || /^[+-]?(\d+(?:\.\d*)?|\.\d+)%$/.test(arg)) return arg;
     return CLIP_LEGACY_LENGTH.test(arg) ? arg.replace(/[a-z]+$/i, (u) => u.toLowerCase()) : INVALID;
   }
   if (mode === 'jsdom26') {
@@ -2929,7 +3170,7 @@ const PAGE_DESCRIPTORS = [
 ];
 const PAGE_SIZES = new Set(['a5', 'a4', 'a3', 'b5', 'b4', 'jis-b5', 'jis-b4', 'letter', 'legal', 'ledger']);
 const LENGTH =
-  /^(0|\+?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?(px|cm|mm|q|in|pt|pc|em|rem|ex|rex|cap|rcap|ch|rch|ic|ric|lh|rlh|vw|vh|vi|vb|vmin|vmax))$/i;
+  /^(0|\+?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?(px|cm|mm|q|in|pt|pc|em|rem|ex|rex|cap|rcap|ch|rch|ic|ric|lh|rlh|vw|vh|vi|vb|vmin|vmax))$/i;
 function pageDescriptorValue(name, value) {
   if (name.startsWith('margin')) return isValidValue(name, value) ? serializeDeclared(name, value, 'spec') : INVALID;
   const words = value.toLowerCase().split(/\s+/);
@@ -3008,7 +3249,7 @@ function flexLonghands(value, asWritten = false) {
   let basis = null;
   for (const part of parts) {
     if (
-      /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(part) &&
+      /^[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?$/i.test(part) &&
       numbers.length < 2 &&
       (basis === null || numbers.length > 0)
     )
@@ -3302,13 +3543,18 @@ const KEEPS_IMPORTANT = new Set([
 function hasVar(value) {
   if (!value.includes('var(')) return false;
   if (!value.includes('"') && !value.includes("'")) return true;
+  // (the next var( from i, searched again only once i passes it: one
+  // search per comment made many comments before a var( quadratic; #264
+  // item 7)
+  let next = -1;
   for (let i = 0; i < value.length; i++) {
     const c = value[i];
     if (c === '\\') i++;
     else if (c === '/' && value[i + 1] === '*') {
       const end = commentEnd(value, i);
-      const at = value.indexOf('var(', i);
-      if (at !== -1 && at < end) return true;
+      if (next < i) next = value.indexOf('var(', i);
+      if (next === -1) return false;
+      if (next < end) return true;
       i = end - 1;
     } else if (c === '"' || c === "'") i = stringEnd(value, i, false) - 1;
     else if (c === 'v' && value.startsWith('var(', i)) return true;
@@ -3925,6 +4171,10 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       removeLegacyFont(decls, surface);
       continue;
     }
+    if (legacyFlexInherit(name, value, surface)) {
+      for (const n of RESETS.flex) decls.delete(n);
+      continue;
+    }
     // (a comment inside a value kept as written, or after one of more than
     // one part: commentedDeclarations; #264 item 87)
     let declared = declaredValue(name, value, mode, surface);
@@ -3975,9 +4225,15 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       }
       if (meetImage(name, value, mode)) declared = INVALID;
     }
+    // (cssstyle before 4.4: flex: auto declares flex-basis: auto only,
+    // without !important, and changes a basis declared before in place;
+    // legacyFlexValue; #315 review). Only auto written alone: 10px auto is
+    // flex: auto, as in setDeclaration (the third #315 review).
+    const legacyAuto =
+      name === 'flex' && declared === 'auto' && !inRule && isLegacyFlex(surface) && /^auto$/i.test(trimSpaces(value));
     // jsdom 20 to 26 set a style attribute's declarations one by one, so
     // a shorthand resets what came before it there too (setDeclaration).
-    if (clears && RESETS[name] !== undefined) {
+    if (clears && RESETS[name] !== undefined && !legacyAuto) {
       if (BORDER_AND_SIDES.has(name)) {
         const how = declared !== INVALID ? AS_WRITTEN : rejectedReset(name, value, mode);
         if (how !== NO_RESET) legacyBorderResets(decls, name, value, mode, how === SIDES_ONLY);
@@ -3985,6 +4241,12 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
         // (itself too: given again in another case it moves to the end;
         // #314 review)
         for (const n of RESETS[name]) if (n !== name || !resetsInPlace(surface, name, declared)) decls.delete(n);
+    }
+    if (name === 'flex' && isLegacyFlex(surface)) decls.legacyFont = surface.legacyFont;
+    if (legacyAuto) {
+      for (const n of RESETS.flex) if (n !== 'flex-basis') decls.delete(n);
+      name = 'flex-basis';
+      important = false;
     }
     if (declared === INVALID || declared === '') continue;
     // One that loses its !important is written without it; in a style
@@ -4564,6 +4826,9 @@ const stateValue = (s, name) => {
     return fromShorthand(s.decls, name);
   // jsdom 26 read background as the background-color set alone.
   if (name === 'background' && isLegacyMode(s.mode)) return s.decls.get('background-color')?.value ?? '';
+  // cssstyle before 4.4 reads flex as the longhands declared, joined
+  // (flex-basis: auto alone is auto; legacyFlexValue)
+  if (name === 'flex' && isLegacyFlex(s.surface)) return legacyFlexJoined(s.decls);
   if (COMPOSED[name]) return composeShorthand(s.decls, name, s.surface?.colors === 'css2');
   return BORDER_READS[name] !== undefined && !isLegacyMode(s.mode) ? composeBorder(s.decls, name) : '';
 };
@@ -4850,6 +5115,14 @@ const COMPOSED = {
     return xs.map((part, i) => `${part} ${ys[i] ?? ys[ys.length - 1]}`).join(', ');
   },
 };
+function legacyFlexJoined(decls) {
+  let out = '';
+  for (const longhand of SHORTHANDS.flex) {
+    const value = decls.get(longhand)?.value;
+    if (value) out = out === '' ? value : `${out} ${value}`;
+  }
+  return out;
+}
 // legacyBox: cssstyle before 4.4, which writes all four values of margin
 // and padding (1px 2px 1px 2px).
 function composeShorthand(decls, name, legacyBox = false) {
@@ -5334,6 +5607,23 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
     return;
   }
   if (isLegacyFont(s.surface, name) && /^inherit$/i.test(raw)) raw = '';
+  // (cssstyle before 4.4: flex: auto declares flex-basis: auto only,
+  // without !important, after removing flex-grow and flex-shrink;
+  // legacyFlexValue; #315 review)
+  if (name === 'flex' && isLegacyFlex(s.surface)) s.decls.legacyFont = s.surface.legacyFont;
+  if (name === 'flex' && isLegacyFlex(s.surface) && /^auto$/i.test(raw)) {
+    // (it removes flex-grow and flex-shrink, each a change of the style
+    // attribute of its own, and keeps a flex declared before: flex: 1 then
+    // flex: auto is flex: 1; flex-basis: auto, style.flex 1; black box,
+    // jsdom 20.0.3 and 25.0.1; #315 review)
+    for (const n of LEGACY_AUTO_REMOVES)
+      if (s.decls.delete(n)) {
+        reindex(style);
+        sync(style);
+      }
+    setDeclaration(style, 'flex-basis', 'auto', '', via);
+    return;
+  }
   // jsdom 27 and later: a background write, a removal too, replaces the
   // background longhands, those setInitials set among them (black box,
   // 27.4.0 to 30.1.3, #264), except one of initial values, which sets
@@ -5356,7 +5646,9 @@ function setDeclaration(style, name, value, priority = '', via = 'accessor') {
   const legacyBorder = isLegacyMode(s.mode) && BORDER_AND_SIDES.has(name);
   if (text === INVALID) {
     const how = legacyBorder ? rejectedReset(name, raw, s.mode) : NO_RESET;
-    if (how !== NO_RESET && legacyBorderResets(s.decls, name, raw, s.mode, how === SIDES_ONLY)) {
+    let removed = how !== NO_RESET && legacyBorderResets(s.decls, name, raw, s.mode, how === SIDES_ONLY);
+    if (legacyFlexInherit(name, raw, s.surface)) for (const n of RESETS.flex) removed = s.decls.delete(n) || removed;
+    if (removed) {
       reindex(style);
       sync(style);
     }

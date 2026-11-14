@@ -419,6 +419,12 @@ Not modeled:
   27 to 29, 2 to 3 in 26); warpdom queues one. jsdom 26 writes four
   `!important` padding longhands set after an `!important` `padding` with
   `padding-left` normal; warpdom keeps all four `!important`
+- MutationObserver records for other style writes, jsdom 20 to 26: jsdom
+  20 to 22 queue a record for a write that changes nothing
+  (`style.color = 'red'` twice) and 3 for a `cssText` of two
+  declarations; jsdom 20 to 26 queue 4 (20 to 22, 25) or 8 (23, 26) for
+  one `style.flex` write. warpdom queues one record per change, and
+  none for a write that changes nothing, as jsdom 27 to 30 do
 - a name repeated in another case in a `style` attribute or `cssText`,
   jsdom 27 to 30 ([#264](https://github.com/sonukapoor/warpdom/issues/264)): jsdom 27.4 reads `color: blue; Color:
   red; color: green` as red, and jsdom 30 reads `color: blue; Color: red`
@@ -622,6 +628,16 @@ Computed values not modeled:
   every other declaration before 28.1, so 10px. `margin`, `border`,
   `background`, `flex` and `list-style` do not do this, nor does `font`
   with cssstyle 2.3, 3.0 and 4.1 (4.2 to 4.5 not measured)
+- `flex` with cssstyle before 4.4 (jsdom 20 to 22, and 25 with cssstyle
+  4.1), after its first write: warpdom keeps the parts as written (`flex:
+  1` is `1`, `flex-shrink` `''`), but not their places, so `flex: 10px 1`
+  reads `1 10px` with `1` as the grow (jsdom: the shrink); a longhand
+  written after `flex` changes `style.flex` in warpdom only (jsdom keeps
+  reading `1` after `flex: 1` and `flexShrink = '3'`), and
+  `removeProperty('flex')` leaves `style.flex` reading `1` in jsdom.
+  cssstyle 4.4 to 4.6 (jsdom 23, 24 and 26) read a `calc()` first in
+  `flex` as the grow (`flex: calc(1px)` is `calc(1px) 1 0%`); warpdom
+  reads it as the basis (`1 1 calc(1px)`)
 - jsdom 30's `calc()` mixing percentages and em (`calc(100% - 0px)`)
 - the uppercase units and `calc()` simplification of declared values in
   jsdom 29 and 30

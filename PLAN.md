@@ -4657,6 +4657,65 @@ kept it in font too. onceFamilies wraps quotedFamilies for font. Bench
 properties (`font-family: A, A` is `""`; with #302's family parser).
 The long-family-list timing test matches the shorter font now.
 
+## 2026-11-10: a unitless zero written other than 0 is no length, jsdom 27 to 29 (branch fix/264-jsdom27-zero-spelling, #264 item 91, first part)
+
+Black box, 27.4.0, 28.1.0 and 29.1.1, setProperty: a unitless zero is
+a length only when it is written 0. 00, .0, 0., -0, +0, 0.0, 0e0, 0e-1
+make width, height, margin, padding, top, font-size, flex-basis, the
+border widths, border and its sides, flex's basis (1 1 0.0) and
+background-position invalid. jsdom 30 reads them as 0px, and warpdom did
+the same in every profile (border: 0e0 solid was 0 solid in 27 to 29).
+Where the zero is a number (line-height, opacity, flex-grow: flex: 0.0)
+or the value is kept as written (translate, outline, the logical
+borders), it stays. zeroAsLength finds the first case without a list of
+properties: the value reads the same with the zero written 0 and 0px.
+Values with a function or a string are left out. This replaces the #297
+review's placeholder test (border: 0e0 solid read 0 solid in 27 to 29).
+
+Cost: declaredValue runs it on a cache miss in the jsdom 27 to 29
+profiles, for a value whose text has 00, 0., .0, 0e, -0 or +0.
+setProperty of 200,000 new width and margin values, many of them ending
+in 00px (node 22.17.1, 5 interleaved runs, medians): 240.3 ms on main,
+246.5 ms here (+2.6%, near noise; a check on every value with a 0 in
+it was +12%, 256.0 to 288.6 ms).
+
+Review of #309: each zero is probed on its own (flex: 0.0 1 0.0 has a
+number and a length), and jsdom 27 to 29 reject any flex of two numbers
+and a unitless zero basis, plain 0 included: flex: 1 1 0, 0 1 0 and 2 2 0
+are invalid there (26 and 30 read 1 1 0px; flex: 1 0 stays). flexZeroBasis
+checks that before the probe.
+
+Left in item 91: jsdom 25 rejects an exponent in these values (0e0px
+and 1e0px too) and border: 0.0 solid. In jsdom 29, the style attribute
+and cssText throw a TypeError for border: 0e0 solid (and 0.0 solid);
+warpdom drops it, as setProperty does. Also measured: rotate: 0.0 (and
+0e0, 00) is invalid in jsdom 27 (warpdom keeps it), and z-index: 00 is
+kept as 00 (warpdom drops it).
+
+## 2026-11-10: calc() of numbers in flex-grow and flex-shrink, jsdom 26 (branch fix/264-jsdom26-flex-calc, #264 item 71)
+
+Black box, 26.1.0, setProperty and the style attribute: jsdom 26
+evaluates a calc(), min(), max() or clamp() at the start of flex-grow
+and flex-shrink: calc(2 * 3) is calc(6), min(1, 2) calc(1), calc(10 / 3)
+calc(3.33333) (6 significant digits), calc(1 / 0) calc(infinity),
+calc(0 / 0) calc(NaN), calc(2 * pi) calc(6.28319). What follows the
+function goes inside the calc() as written (calc(1) bold is calc(1
+bold), calc(1)x calc(1x)), and a function left open at the end is closed
+through setProperty (calc(1 + 1 is calc(2); the style attribute drops
+it). warpdom kept all of them as written. jsdom26NumberMath evaluates
+numbers only (+ and - with whitespace around them, * and /, parentheses,
+e, pi, infinity, NaN) and leaves anything else as written.
+
+Left in item 71 (rare in tests, measured while writing the test): jsdom
+26 evaluates more than that, through a full math library. abs(),
+round(), sign(), sqrt(), pow(), sin() and mod() are evaluated. Units are
+reduced (calc(1px + 1px) is calc(2px), calc(1px + 1em) calc(1em + 1px)).
+Every function in the value is evaluated (calc(1) calc(2) is calc(1 2),
+calc(a) calc(1 + 1) is calc(a) 2), and some inputs read oddly: calc(1+ 2)
+is calc(3), calc(1 2 + 3) is calc(5), and calc(2) calc(1px + 2) is
+calc(2 * calc(1px + 2)). setProperty('flex-shrink', 'calc(1 + 1px) x')
+throws in jsdom 26.
+
 ## 2026-11-10: family strings in double quotes, escapes dropped, jsdom 26 (branch fix/264-jsdom26-family-escaped-newline, #264 item 92)
 
 Black box, 26.1.0, font-family and font, setProperty and the style
@@ -4701,6 +4760,27 @@ rewrite the shorthand (`border: 1px blue;`, `flex: 2 1 0%;`); warpdom
 keeps both declarations. #313 (item 78's phase 2) models the reads
 (the accessor and getPropertyValue); the attribute and cssText rewrite
 stays listed.
+
+## 2026-11-10: number patterns and hasVar() in linear time (branch fix/linear-number-patterns, #224 item 4, #264 item 7)
+
+Found again in the 1.0 triage (untrusted HTML can reach both). The
+number pattern `\d+\.?\d*` can split a run of digits in many ways, so a
+long run that then fails to match backtracks quadratically: rgb() with
+20,000 digits and a bad unit took 1,330 ms to set in the jsdom 30
+profile (659 ms in 26), all in one regular expression. All 28 uses in
+src/ now read `\d+(?:\.\d*)?`, which matches the same text in one way
+(the capture groups are unchanged): 0.8 ms. hasVar() searched for var(
+again after every comment, so 20,000 comments before a quoted
+"var(--c)" took 75 ms; it now keeps the next var( until the scan passes
+it, and stops when there is none: 15 ms. BG_LENGTH_3 (#224's other
+pattern) is among the 28.
+
+Ordinary values are unchanged: 40,000 rounds of setProperty for width,
+color, margin and flex plus a computed width (node 22.17.1, 5
+interleaved runs, medians): 357.5 ms on main, 358.1 ms here. A test
+times the slow inputs: the digit runs under 150 ms each, and the comments
+before var() under 3 times the same comments before a plain string (a
+fixed limit failed in CI at 219 ms; on main the ratio is 10, here 1).
 
 ## 2026-11-10: a shorthand read after one of its longhands, phase 2 (branch fix/264-shorthand-reads-longhands, #264 item 78)
 
@@ -4816,6 +4896,88 @@ calc(3px) in jsdom 26 and later, in a longhand too). jsdom 27 to 29
 reject most such lists (1px calc(10%) 2px; #265 item 9). jsdom 23 to 25
 write the zero as 0px too, but jsdom 20 and 22 keep it, and 22 and 23
 share warpdom's mode.
+
+## 2026-11-11: flex keeps the parts written before cssstyle 4.4 (branch fix/legacy-flex-parts, 1.0 triage)
+
+Found while reviewing #314. Black box, jsdom 20.0.3 to 25.0.1 and
+cssstyle 2.3.0 to 4.6.0 on their own: before cssstyle 4.4 (jsdom 20 to 22,
+25 with cssstyle 4.1; Jest 29's jsdom 20) flex keeps the parts written. A
+number first is the grow, second the shrink, a length anywhere the basis
+(a later one replacing it; 0 written so is also 0px), at most three
+parts, written grow shrink basis: flex: 1 is 1 with flex-shrink and
+flex-basis '', 1 0 is 1 0 0px, 10px is 10px. none is 0 0 auto; auto alone
+declares flex-basis: auto only, and style.flex then reads the longhands
+declared, joined (auto); inherit and var() declare nothing; numbers
+before 4.2 without exponent or trailing dot, from 4.2 with them but no
+leading zero (#239). initial is 0 1 auto in jsdom 20 to 26. warpdom wrote
+every part (1 1 0%), took 10px 1 as 1 1 1 and accepted foo and content.
+Computed values follow (flex: 1 computes flex-shrink '').
+
+legacyFlexValue (css.js) parses it; expand() re-reads the stored value by
+the parts' places (shorthands.js legacyFlexLonghands, cached), so a part
+not written has no longhand. Not modeled (differences.md): the places of
+the parts after the first write (flex: 10px 1 reads 1 10px, its 1 the
+shrink in jsdom), later longhand writes and removeProperty('flex'), which
+leave jsdom's style.flex unchanged, and cssstyle 4.4 to 4.6 reading a
+calc() first as the grow.
+
+Test: css-profiles.test.js "flex keeps the parts written before cssstyle
+4.4" (parity 20, 21, 22, 23, 25, 26: 38 values through the accessor and
+the style attribute, longhands and computed values).
+
+Cost (node 22.17.1, 5 interleaved runs, medians; scratchpad bench-fx.mjs:
+200 elements, 300 rounds of a style attribute with flex and width, a flex
+write and three flex reads): jsdom 20 profile 74.9 ms on main, 79.9 here
+(+7%: flex: auto now declares flex-basis instead, which reindexes the
+block, and one write in six is auto there); default profile 73.8 and
+71.1 ms. A first version did not cache the expansion (+15%).
+
+Review (#315, 2026-11-12; black box, jsdom 20.0.3, 22.1.0, 25.0.1 and
+cssstyle 4.2.1 and 4.3.1 on their own): any whitespace separates the parts
+(1\r2 and 1\f2 are 1 2) and a comma between them is invalid (1,2, 1 ,2);
+from 4.2 an exponent basis is kept as written (1 1 1e1px, lowercase e, no +
+and no leading zero; before 4.2 invalid); a grow written 0.0000001 is stored
+as 1e-7 and stays the grow (expand() took it as the basis). Test: "flex
+parts in cssstyle 4.2 and 4.3" and new values in the parity matrix. Cost
+level (bench-fx.mjs medians, jsdom 20 77.1 to 77.6 ms, 26 76.1 to 74.3 ms).
+After #314 merged (main merged in): a longhand before flex is removed
+(cssText = 'flex-shrink: 3; flex: 1' is flex: 1), and flex: inherit, in
+any case, declares nothing but removes flex and its longhands before 4.4
+(black box, jsdom 20.0.3 to 25.0.1; a sheet keeps it as written), as font:
+inherit does (legacyFlexInherit). Test: a cssText column in "flex keeps
+the parts written before cssstyle 4.4". Cost against main with #314:
+bench-fx.mjs jsdom 20 75.5 to 81.3 ms (+7.7%, the part-keeping above), 26
+77.6 to 78.8 ms.
+A number too large (flex: 1e309) is stored as Infinity in cssstyle 4.2
+and 4.3 and stays the grow or shrink (black box, 4.2.1 and 4.3.1; both
+reject the word Infinity itself, and 4.1 rejects 1e309), so the stored
+parts' pattern accepts Infinity and -Infinity (#315 review).
+Second #315 review (black box, jsdom 20.0.3 and cssstyle 4.1.0, 4.2.1
+and 4.3.1 on their own): flex takes any number of parts, a later basis
+replacing the earlier one (1 1 10px 20px is 1 1 20px, 10px 20px 30px
+40px is 40px, a 0 anywhere the basis 0px) and a number third or later
+invalid (1 1 10px 2), where warpdom rejected a fourth part; and flex:
+auto changes a basis declared before it in place and drops !important
+(flex-basis: 10px; color: red; flex: auto is flex-basis: auto; color:
+red; cssText, the style attribute and setProperty with 'important').
+Cost level (bench-fx.mjs, 5 interleaved runs, medians, node 22.17.1:
+jsdom 20 85.7 to 85.9 ms, 26 82.1 to 82.3 ms). Found while probing, on
+main and not from this branch: a flex with the basis first (10px 1 2)
+reads 1 1 2 in every profile from jsdom 26 (jsdom 26 reads 1 2 10px, 27
+to 30 reject it); filed as #317. Third #315 review: only auto written
+alone is flex-basis: auto (10px auto and auto auto are flex: auto and
+keep !important, in every path; black box, same versions).
+Fourth #315 review (black box, jsdom 20.0.3, 22.1.0 and 25.0.1 with
+cssstyle 4.1.0, 4.2.1 and 4.3.1 on their own): a calc() basis may hold a
+line break (1 1 calc(10px<LF> + 5%) is kept; LEGACY_FLEX_BASIS was
+rejecting it), and flex: auto through a setter removes flex-grow and
+flex-shrink only, one attribute change each, and keeps a flex declared
+before (flex: 1 then flex: auto is flex: 1; flex-basis: auto with one
+MutationObserver record; warpdom removed flex and queued two). Not
+modeled, to list with #312: jsdom 20 to 22 write the style attribute for
+a write that changes nothing (color = red twice queues a record), and
+every jsdom queues 4 records for flex written again (warpdom 1). Cost
+level (bench-fx.mjs: jsdom 20 85.1 to 84.2 ms, 26 79.5 to 80.2 ms).
 
 ## 2026-11-10: a border, flex or background write removes earlier parts, jsdom 20 to 26 (branch fix/legacy-border-resets, 1.0 triage)
 

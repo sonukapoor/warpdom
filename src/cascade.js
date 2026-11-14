@@ -1467,6 +1467,17 @@ function shorthandValue(element, name) {
   // Other shorthands as declared, as jsdom gives them (so jest-dom's
   // toHaveStyle({ background: 'red' }) compares like with like).
   const value = cascaded(element, name);
+  // cssstyle before 4.4: flex not declared is its longhands declared,
+  // joined (flex: auto declares flex-basis: auto alone; css.js
+  // legacyFlexValue).
+  if (value === undefined && name === 'flex' && element[S].doc[S].window[S].compat.legacyFont != null) {
+    let out = '';
+    for (const longhand of longhands) {
+      const part = cascaded(element, longhand);
+      if (part !== undefined && part !== '') out = out === '' ? part : `${out} ${part}`;
+    }
+    return out;
+  }
   if (value === undefined || CSS_WIDE.has(value.toLowerCase())) return '';
   return asDeclared(name, value);
 }
@@ -1500,7 +1511,7 @@ const BORDER_STYLES = new Set([
   'inset',
   'outset',
 ]);
-const LEGACY_WIDTH = /^(thin|medium|thick|[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?[a-z%]*)$/i;
+const LEGACY_WIDTH = /^(thin|medium|thick|[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?[a-z%]*)$/i;
 const ZERO_LENGTH = /^[+-]?(0+\.?0*|\.0+)$/;
 
 function legacyBorderValue(element, name) {

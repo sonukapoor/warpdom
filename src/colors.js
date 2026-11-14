@@ -368,7 +368,7 @@ function colorArgs(inner) {
   return parts.length === 3 && parts.every(Boolean) ? [parts, alpha] : null;
 }
 
-const number = (s) => (/^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(s) ? Number(s) : NaN);
+const number = (s) => (/^[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?$/i.test(s) ? Number(s) : NaN);
 
 function alphaValue(s, legacy) {
   if (s === null) return 1;
@@ -380,7 +380,7 @@ function alphaValue(s, legacy) {
 const fourDigits = (v) => Math.round(Number(v.toPrecision(4)));
 
 const LEGACY_INTEGER = /^[+-]?\d+$/;
-const LEGACY_PERCENT = /^[+-]?(\d+\.?\d*|\.\d+)%$/;
+const LEGACY_PERCENT = /^[+-]?(\d+(?:\.\d*)?|\.\d+)%$/;
 function rgbFunction(inner, round, legacy) {
   const args = colorArgs(inner);
   if (!args) return null;
