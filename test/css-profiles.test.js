@@ -4575,6 +4575,10 @@ for (const jsdom of [23, 24, 26, 27, 28, 29, 30])
         '10px\r1 2',
         '1\f1\f10px',
         '10px 1\r2',
+        // (but a value with var() is kept as written; #318 review)
+        '1\fvar(--a)',
+        'var(--a)\r\n1',
+        '1\r1 var(--b)',
         // (a comma inside a function is no separator; jsdom 23 to 26 read
         // a math function first as the grow: listed)
         ...(jsdom >= 27 ? ['min(1px, 2px) 1', 'max(1px,2px) 1 2', 'calc(1px) 2'] : []),

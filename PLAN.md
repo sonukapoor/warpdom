@@ -7196,3 +7196,7 @@ preprocessing does. CodeRabbit: the parity test has a setProperty()
 column now, and the reordering builds two strings instead of three
 arrays. Cache misses (bench317.mjs, jsdom 26, 5 interleaved runs,
 medians, node 22): 83.1 ms before, 83.3 ms after.
+CodeRabbit, third round: a value with var() kept its carriage returns
+and form feeds on main, and jsdom 23 to 30 keep them too (`1\fvar(--a)`;
+jsdom 30's setProperty() and attribute turn them into line feeds before,
+as warpdom does), so flexOrder checks for var() before it normalizes.

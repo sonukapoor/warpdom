@@ -1206,8 +1206,10 @@ const FLEX_IN_ORDER =
 // in 27 to 30; #318 review)
 const CR_OR_FF = /\r\n?|\f/g;
 function flexOrder(value, mode) {
+  // (a value with var() keeps them, as written; #318 review)
+  if (VAR_ENV_ATTR.test(value)) return value;
   if (value.includes('\r') || value.includes('\f')) value = value.replace(CR_OR_FF, '\n');
-  if (FLEX_IN_ORDER.test(value) || VAR_ENV_ATTR.test(value)) return value;
+  if (FLEX_IN_ORDER.test(value)) return value;
   const parts = segments(value);
   for (let i = 1; i < parts.length; i += 2) if (parts[i].includes(',')) return value;
   let numbers = 0;
