@@ -112,23 +112,28 @@ parity('createDocument, new Document, importNode, adoptNode', (w) => {
   return out;
 });
 
-parity('screen and canvas', (w) => {
-  const s = w.screen;
-  const out = [
-    s.width,
-    s.height,
-    s.availWidth,
-    s.availHeight,
-    s.colorDepth,
-    s.pixelDepth,
-    s.orientation,
-    s === w.screen,
-    s instanceof w.Screen,
-  ];
-  const canvas = w.document.createElement('canvas');
-  out.push(canvas.width, canvas.height, canvas.getContext('2d'), canvas.toDataURL());
-  return out;
-});
+for (const jsdom of [30, 31])
+  parity(
+    `screen and canvas (jsdom ${jsdom})`,
+    (w) => {
+      const s = w.screen;
+      const out = [
+        s.width,
+        s.height,
+        s.availWidth,
+        s.availHeight,
+        s.colorDepth,
+        s.pixelDepth,
+        s.orientation,
+        s === w.screen,
+        s instanceof w.Screen,
+      ];
+      const canvas = w.document.createElement('canvas');
+      out.push(canvas.width, canvas.height, canvas.getContext('2d'), canvas.toDataURL());
+      return out;
+    },
+    { jsdom },
+  );
 
 parity('document collections and currentScript', (w) => {
   const d = html(

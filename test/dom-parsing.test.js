@@ -33,37 +33,42 @@ parity('XMLSerializer: elements, namespaces, text and documents', (w) => {
   ];
 });
 
-parity('DOMParser: text/html documents', (w) => {
-  const doc = new w.DOMParser().parseFromString(
-    '<div class="root"><span>v</span><input class="f"><span hidden tabindex="0">h</span></div>',
-    'text/html',
+for (const jsdom of [30, 31])
+  parity(
+    `DOMParser: text/html documents (jsdom ${jsdom})`,
+    (w) => {
+      const doc = new w.DOMParser().parseFromString(
+        '<div class="root"><span>v</span><input class="f"><span hidden tabindex="0">h</span></div>',
+        'text/html',
+      );
+      let error = null;
+      try {
+        new w.DOMParser().parseFromString('x', 'text/plain');
+      } catch (e) {
+        error = [e.constructor.name, e.message];
+      }
+      return {
+        shape: [
+          doc.constructor.name,
+          doc.contentType,
+          doc.doctype,
+          doc.documentElement.outerHTML,
+          doc.children.length,
+          doc.body.children.length,
+        ],
+        query: [
+          doc.querySelector('.f').tagName,
+          doc.querySelector('[hidden]').tabIndex,
+          doc.body.firstChild.ownerDocument === doc,
+          doc === w.document,
+        ],
+        url: doc.URL,
+        defaultView: doc.defaultView,
+        error,
+      };
+    },
+    { jsdom },
   );
-  let error = null;
-  try {
-    new w.DOMParser().parseFromString('x', 'text/plain');
-  } catch (e) {
-    error = [e.constructor.name, e.message];
-  }
-  return {
-    shape: [
-      doc.constructor.name,
-      doc.contentType,
-      doc.doctype,
-      doc.documentElement.outerHTML,
-      doc.children.length,
-      doc.body.children.length,
-    ],
-    query: [
-      doc.querySelector('.f').tagName,
-      doc.querySelector('[hidden]').tabIndex,
-      doc.body.firstChild.ownerDocument === doc,
-      doc === w.document,
-    ],
-    url: doc.URL,
-    defaultView: doc.defaultView,
-    error,
-  };
-});
 
 parity('XMLSerializer: void elements with children, tabs and line breaks in attribute values', (w) => {
   const d = w.document;

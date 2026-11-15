@@ -30,6 +30,7 @@ import {
   tooFewArguments,
 } from './internal.js';
 import { parseFragment } from './html.js';
+import { readyScripts } from './scripts.js';
 import { dispatch } from './events.js';
 
 const isCharacterData = (node) => node[S].data !== undefined && node[S].type !== 2;
@@ -808,7 +809,12 @@ export const RANGE_INTERFACES = [
         const doc = docOf(node);
         if (!element || (element[S].ns === HTML_NS && element[S].tag === 'html' && !doc[S].xml))
           element = doc.createElement('body');
-        return parseFragment(doc, element, String(markup));
+        const fragment = parseFragment(doc, element, String(markup));
+        // From jsdom 31 its scripts run once inserted, as the DOM Parsing
+        // standard has it (compat.parsedScriptsStarted; black box, 30.1.3
+        // and 31.0.1); before, as other parsed scripts, never.
+        if (doc[S].window?.[S].compat.parsedScriptsStarted === true) readyScripts(doc, fragment);
+        return fragment;
       },
       // No layout: as for elements, empty.
       getBoundingClientRect() {

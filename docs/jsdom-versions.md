@@ -5,7 +5,10 @@ installs (and, for jsdom 26 and earlier, the cssstyle version it loads),
 or the one you set with the `jsdom` option; how it is chosen is in the
 README, [Which jsdom warpdom behaves like](../README.md#which-jsdom-warpdom-behaves-like).
 This page lists what differs between versions, as measured on jsdom's
-releases. warpdom models jsdom 20.0.3 to 30.1.3.
+releases. warpdom models jsdom 20.0.3 to 30.1.3. jsdom 31 is in progress
+([#269](https://github.com/sonukapoor/warpdom/issues/269)): the changes
+below marked 31.0.0 are modeled (measured on 31.0.1), while its styles
+and CSSOM still behave as in jsdom 30.
 
 Deliberate differences from jsdom are in
 [differences.md](differences.md).
@@ -30,6 +33,7 @@ on.
 | `TextEncoder` and `TextDecoder` | 27.4.0 |
 | Blob's `text()`, `arrayBuffer()` and `bytes()` | 28.1.0 |
 | `CSSMediaRule.matches` and `CSSSupportsRule.matches` | 29.0.0 |
+| `ariaBrailleLabel` and `ariaBrailleRoleDescription` on `Element` and `ElementInternals` | 31.0.0 |
 
 ## Globals that appear in a later jsdom
 
@@ -49,7 +53,8 @@ a details element's `toggle` event is still a `ToggleEvent`. The option
 | `CSSConditionRule`, `CSSContainerRule`, `CSSGroupingRule`, `CSSLayerBlockRule`, `CSSLayerStatementRule`, `CSSScopeRule`, `CSSSupportsRule` | 27.2.0 |
 | `CSSCounterStyleRule`, `CSSFontFaceRule`, `CSSKeyframeRule`, `CSSKeyframesRule`, `CSSNamespaceRule`, `CSSPageRule` | 29.0.0 |
 | `QuotaExceededError` | 30.1.0 |
-| `CSSMarginRule`, `CSSPageDescriptors`, `FormDataEvent`, `TimeRanges`, `ToggleEvent` | none yet (30.1.3) |
+| `CSSMarginRule`, `CSSPageDescriptors` | 31.0.0 |
+| `FormDataEvent`, `TimeRanges`, `ToggleEvent` | none yet (31.0.1) |
 
 ## APIs in every version
 
@@ -125,7 +130,33 @@ takes the window's Blobs), as with jsdom.
 
 - Before 30.1.1 a disabled button, input, select or textarea with a
   `tabindex` attribute (also one in a disabled fieldset) can be focused.
-- An SVG `a` with an `href` matches `:link`.
+- An SVG `a` with an `href` matches `:link`, and from 31.0.0 one with an
+  `xlink:href` too.
+- From 31.0.0 an attribute selector without a namespace (`[class]`)
+  matches only an attribute in no namespace, and `:empty` matches an
+  element whose text children are all empty, a CDATA section with data
+  counting as content.
+- WebIDL conversion errors: from 31.0.0 a dictionary member is named as
+  `parameter 2's 'data' member is not of type 'Blob'.` and an enumeration
+  lists its values (`parameter 2 must be one of: "text/html", ...
+  Received: "text/plain".`); before, `parameter 2 has member 'data' that
+  is not of type 'Blob'.` and `parameter 2 'text/plain' is not a valid
+  enumeration value for SupportedType`.
+- The canvas "Not implemented" reports name the `@napi-rs/canvas` package
+  from 31.0.0, `canvas` before.
+- From 31.0.0 `document.hasFocus()` is `true` for the top-level document
+  from the start; a frame's or a created document's only once something
+  in it is focused.
+- From 31.0.0 an iframe fires `load` for each insertion, also when it is
+  removed before the load: an iframe removed at once fires one, a moved
+  one two. Before, a removal cancels it.
+- From 31.0.0 scripts the HTML parser made are already started, so a
+  clone of one from `innerHTML` does not run (a template's contents' still
+  do), and `createContextualFragment()`'s scripts run once inserted.
+  Before, those clones run and those scripts never do.
+- Before 31.0.0 an event path goes through a slottable's last assigned
+  slot after it leaves its host, until it is assigned again; from 31.0.0
+  only through its assigned slot.
 - Before 24.0.0 `getComputedStyle(element, pseudoElt)` reports the
   pseudo-element as not implemented only when called on the window
   (`window.getComputedStyle(...)`): a bare `getComputedStyle(...)` in Jest,

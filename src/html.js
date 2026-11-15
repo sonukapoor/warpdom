@@ -160,13 +160,16 @@ export function parseFragment(doc, contextElement, html) {
 export function parseDocument(doc, html, scripting = true) {
   const ast = getParser().parse(String(html), scripting ? undefined : { scriptingEnabled: false });
   doc[S].mode = ast.mode;
-  appendAst(doc[S].window[S], doc, ast.childNodes, doc);
+  appendAst(doc[S].window[S], doc, ast.childNodes, doc, false, !scripting);
   return doc;
 }
 
 // Parsed elements are created plainly, get their attributes, then queue an
 // upgrade if they are defined custom elements (not inside templates).
-function appendAst(internals, parent, astNodes, doc, inTemplate = false) {
+// started: mark scripts "already started" (a document parsed without
+// scripting, DOMParser and XHR: their clones never run; black box, jsdom 20
+// to 31).
+function appendAst(internals, parent, astNodes, doc, inTemplate = false, started = false) {
   for (const n of astNodes) {
     let node;
     if (n.nodeName === '#text') node = internals.createText(n.value, doc);
@@ -217,11 +220,21 @@ function appendAst(internals, parent, astNodes, doc, inTemplate = false) {
       // A checked input may be a radio button: its group is updated on
       // insertion (forms.js).
       if (n.tagName === 'input' && attrs.has('checked')) doc[S].checkedRadios = true;
+      // From jsdom 31 the parser marks a script "already started", but for
+      // one in a template's contents (compat.parsedScriptsStarted): its
+      // clones do not run, wherever it moves (black box, 31.0.1).
+      if (
+        n.tagName === 'script' &&
+        !inTemplate &&
+        n.namespaceURI === HTML_NS &&
+        (started || internals.compat.parsedScriptsStarted === true)
+      )
+        node[S].script = 'started';
       if (!inTemplate && hooks.ce !== null) hooks.ce.created(node);
       if (n.content) {
         const content = templateContent(node);
         appendAst(internals, content, n.content.childNodes, content[S].doc, true);
-      } else appendAst(internals, node, n.childNodes, doc, inTemplate);
+      } else appendAst(internals, node, n.childNodes, doc, inTemplate, started);
     } else continue;
     insert(parent, node, null);
   }

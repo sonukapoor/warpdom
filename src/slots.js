@@ -150,13 +150,16 @@ function remember(node) {
 function rememberHost(host) {
   for (let c = host[S].first; c; c = c[S].next) if (isSlottable(c)) remember(c);
 }
+// From jsdom 31 the path goes through the assigned slot only, as the
+// standard has it (compat.lastSlotKept is false; black box, 31.0.1).
 function eventSlot(node) {
   if (!isSlottable(node)) return null;
   if (isHost(node[S].parent)) {
     const slot = remember(node);
     if (slot !== null) return slot;
   }
-  return node[S].lastSlot ?? null;
+  if (node[S].lastSlot === undefined || node[S].doc[S].window[S].compat.lastSlotKept !== true) return null;
+  return node[S].lastSlot;
 }
 
 hooks.slots = {

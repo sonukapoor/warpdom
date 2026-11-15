@@ -418,6 +418,16 @@ const isHTML = (el) => el[S].ns === HTML_NS;
 const FORM_DISABLE = new Set(['button', 'input', 'select', 'textarea', 'optgroup', 'option', 'fieldset']);
 const FORM_REQUIRED = new Set(['input', 'select', 'textarea']);
 
+// jsdom 31's selector engine follows the standard where jsdom 30's did
+// not (compat.specSelectors; black box, 30.1.3 and 31.0.1): an attribute
+// selector without a namespace takes only an attribute in no namespace, an
+// empty text child is not content to :empty, and an SVG a with an
+// xlink:href is a link. Read when matching: compiled selectors are shared
+// by every window.
+const specSelectors = (el) => el[S].doc[S].window[S].compat.specSelectors === true;
+// xlink:href's attribute key (attributes.js attrKey).
+const XLINK_HREF = '\0http://www.w3.org/1999/xlink\0href';
+
 // Form-associated custom elements take :disabled and :enabled from jsdom
 // 27.0.0 (custom-elements.js sets disableable from that version).
 const disableableCustom = (s) => s.ceState === 'custom' && s.ceDefinition?.disableable === true;
@@ -550,19 +560,21 @@ function compileAttribute({ name, op, value, insensitive, ns }) {
       return false;
     };
   }
-  // By qualified name, as jsdom matches (an element with namespaced
-  // attributes looks for the first attribute with the name).
+  // By qualified name, as jsdom matches before 31 (an element with
+  // namespaced attributes looks for the first attribute with the name);
+  // from 31 in no namespace, as [|name].
   return (el) => {
     const s = el[S];
     const key = isHTML(el) ? lower : name;
-    const a = s.attrNS == null ? s.attrs.get(key) : valueByName(s, key);
+    const a = s.attrNS == null || specSelectors(el) ? s.attrs.get(key) : valueByName(s, key);
     return a !== undefined && check(insensitive ? a.toLowerCase() : a);
   };
 }
 
 // Pseudo-classes whose result can change without a tree or attribute change
 // (form state, focus, text data): selectors using them are never result-cached.
-// :empty is not one: any text child counts (see compilePseudo).
+// :empty is one from jsdom 31, where an empty text child is not content;
+// compiled selectors are shared by every profile, so it is one in all.
 const DYNAMIC = new Set([
   'dir',
   'checked',
@@ -576,13 +588,15 @@ const DYNAMIC = new Set([
   'read-write',
   'valid',
   'invalid',
+  'empty',
 ]);
 let compilingDynamic = false;
 // Pseudo-classes whose result can change with text data alone (a dir=auto
 // element's text, a textarea's or an option's text as their value): rule
 // selectors using them make computed styles follow text changes
-// (cascade.js buildIndex, textDependent).
-const TEXT_DEPENDENT = new Set(['dir', 'valid', 'invalid', 'placeholder-shown']);
+// (cascade.js buildIndex, textDependent). :empty from jsdom 31, where an
+// empty text child is not content.
+const TEXT_DEPENDENT = new Set(['dir', 'valid', 'invalid', 'placeholder-shown', 'empty']);
 let compilingText = false;
 
 function compilePseudo({ name, arg }) {
@@ -639,12 +653,18 @@ function compilePseudo({ name, arg }) {
     }
     // As jsdom (black box, 20.0.3 to 30.1.3): a text child, even an empty
     // one, is content; comments, processing instructions and CDATA
-    // sections are not. So text data changes never change :empty.
+    // sections are not. From 31 (specSelectors) a text child or CDATA
+    // section is content when it has data, so text data changes can change
+    // :empty there.
     case 'empty':
       return (el) => {
+        let spec = null;
         for (let c = el[S].first; c; c = c[S].next) {
           const t = c[S].type;
-          if (t === ELEMENT_NODE || t === 3) return false;
+          if (t === ELEMENT_NODE) return false;
+          if (t === 3) {
+            if (c[S].data !== '' || !(spec ??= specSelectors(el))) return false;
+          } else if (t === 4 && c[S].data !== '' && (spec ??= specSelectors(el))) return false;
         }
         return true;
       };
@@ -690,12 +710,15 @@ function compilePseudo({ name, arg }) {
         return false;
       };
     // As in jsdom (black box, 20 to 30.1.3): an SVG a with an href too (not
-    // xlink:href).
+    // xlink:href); from 31 with an xlink:href too (specSelectors).
     case 'link':
     case 'any-link':
-      return (el) =>
-        el[S].attrs.has('href') &&
-        (isHTML(el) ? el[S].tag === 'a' || el[S].tag === 'area' : el[S].ns === SVG_NS && el[S].tag === 'a');
+      return (el) => {
+        const s = el[S];
+        if (isHTML(el)) return (s.tag === 'a' || s.tag === 'area') && s.attrs.has('href');
+        if (s.ns !== SVG_NS || s.tag !== 'a') return false;
+        return s.attrs.has('href') || (s.attrNS != null && s.attrs.has(XLINK_HREF) && specSelectors(el));
+      };
     // Defined: uncustomized (no state) or custom.
     case 'defined':
       return (el) => {

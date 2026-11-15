@@ -72,20 +72,71 @@ const laterAndShadow = (w) => {
 parity('text added to a connected script, scripts in shadow trees (jsdom 30)', laterAndShadow);
 parity('text added to a connected script, scripts in shadow trees (jsdom 26)', laterAndShadow, { jsdom: 26 });
 
-parity('parser-made scripts do not run, their clones do', (w) => {
-  w.log = [];
-  w.document.body.innerHTML = '<div><script>log.push("parsed")</script></div>';
-  const parsed = w.document.querySelector('script');
-  parsed.remove();
-  w.document.body.appendChild(parsed);
-  w.document.body.appendChild(parsed.cloneNode(true));
-  w.document.body.insertAdjacentHTML('beforeend', '<script>log.push("adjacent")</script>');
-  const t = w.document.createElement('template');
-  t.innerHTML = '<p><script>log.push("template")</script></p>';
-  w.document.body.appendChild(t.content.cloneNode(true));
-  w.document.body.appendChild(w.document.importNode(t.content, true));
-  return w.log;
-});
+// From jsdom 31 the parser marks its scripts already started, so their
+// clones do not run either, and createContextualFragment's scripts run once
+// inserted (black box, 30.1.3 and 31.0.1; #269).
+for (const jsdom of [30, 31])
+  parity(
+    `parser-made scripts do not run, their clones do (jsdom ${jsdom})`,
+    (w) => {
+      w.log = [];
+      w.document.body.innerHTML = '<div><script>log.push("parsed")</script></div>';
+      const parsed = w.document.querySelector('script');
+      parsed.remove();
+      w.document.body.appendChild(parsed);
+      w.document.body.appendChild(parsed.cloneNode(true));
+      w.document.body.insertAdjacentHTML('beforeend', '<script>log.push("adjacent")</script>');
+      const t = w.document.createElement('template');
+      t.innerHTML = '<p><script>log.push("template")</script></p>';
+      w.document.body.appendChild(t.content.cloneNode(true));
+      w.document.body.appendChild(w.document.importNode(t.content, true));
+      const fragment = w.document.createRange().createContextualFragment('<script>log.push("fragment")</script>');
+      const fromFragment = fragment.firstChild;
+      w.document.body.append(fragment);
+      w.document.body.append(fromFragment.cloneNode(true));
+      w.document.body.append(
+        w.document
+          .createRange()
+          .createContextualFragment('<script>log.push("fragment clone")</script>')
+          .cloneNode(true),
+      );
+      return w.log;
+    },
+    { jsdom },
+  );
+
+// Whether a parsed script's clones run is decided where it was parsed, not
+// by the document it is in when cloned: from jsdom 31 a script parsed into
+// a template's contents and adopted still has clones that run, one parsed
+// by innerHTML and moved into a template's contents does not. A script
+// DOMParser made never has clones that run (black box, jsdom 20.0.3 to
+// 31.0.1; #321 review).
+for (const jsdom of [20, 30, 31])
+  parity(
+    `a parsed script's clones follow where it was parsed (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const out = [];
+      const cloneRuns = (s) => {
+        w.ran = 0;
+        d.body.append(s.cloneNode(true));
+        out.push(w.ran);
+      };
+      const t = d.createElement('template');
+      t.innerHTML = '<script>window.ran = 1</script>';
+      cloneRuns(d.adoptNode(t.content.firstChild));
+      const div = d.createElement('div');
+      div.innerHTML = '<script>window.ran = 1</script>';
+      const moved = d.createElement('template');
+      moved.content.append(div.firstChild);
+      cloneRuns(moved.content.firstChild);
+      const parsed = new w.DOMParser().parseFromString('<script>window.ran = 1</script>', 'text/html');
+      cloneRuns(parsed.querySelector('script'));
+      cloneRuns(d.adoptNode(parsed.querySelector('script')));
+      return out;
+    },
+    { jsdom },
+  );
 
 parity('script types and language', (w) => {
   w.log = [];

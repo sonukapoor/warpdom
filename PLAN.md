@@ -7224,3 +7224,42 @@ difference, of a piece with the listed shorthand rewrite).
 Attribute parsing (bench157.mjs, 100,000 setAttribute calls, 5
 interleaved runs, medians, node 22.17.1): jsdom 30 profile 149.8 ms on
 main, 150.7 ms here; jsdom 27 160.3 to 151.4 ms (blocks emptied).
+
+## 2026-11-15: jsdom 31, part 1: the profile and what is not CSS (branch feat/269-jsdom31, #269)
+
+jsdom 31.0.1 against main's newest profile: 188 of the default (jsdom 30)
+parity tests differ. jsdom 31 drops cssstyle and has its own CSS engine,
+so most are style tests. This part models everything else; each is a
+compat flag (window-features.js), measured black box on 30.1.3 and
+31.0.1:
+- WebIDL conversion errors in 31's words (idl-messages.js), and the
+  canvas package `@napi-rs/canvas` in "Not implemented".
+- ariaBrailleLabel and ariaBrailleRoleDescription from 31 only (warpdom
+  had them on Element in every profile; jsdom 23 to 30 do not).
+- The selector engine: an attribute selector without a namespace takes
+  only an attribute in no namespace, :empty skips empty text, an SVG
+  link with xlink:href is :link. Compiled selectors are shared, so the
+  matchers read the profile when matching, only where the answer can
+  differ (namespaced attributes, text children, SVG a). :empty is now
+  text-dependent in every profile (computed styles with :empty rules
+  follow text changes; before 31 the answer cannot change, so it only
+  costs a recheck).
+- document.hasFocus() of the top-level document; an iframe's load kept
+  after its removal; parsed scripts already started (but a template's)
+  and createContextualFragment's scripts run; event paths without the
+  last assigned slot.
+- CSSMarginRule and CSSPageDescriptors become globals from 31.
+- jsdom 31 joins the parity table (`{ jsdom: 31 }`), and the jsdom31
+  alias is a dev dependency.
+Against jsdom 31.0.1: 169 of the default parity tests differ now, all CSS
+(computed values with var() substituted, the inline declaration model,
+backgrounds, CSSOM, media list serialization, inheritance through the
+flat tree: a slotted element inherits from its slot). Those are the next
+parts. One to keep in mind there: jsdom 31 lowercases a property name in
+a style attribute again (`COLOR: blue` is `color: blue`), where 28.1 to
+30 drop it (#319); the 31 profile drops it until css.js models 31. Found on the way and filed: focus inside iframes differs in every
+version (#320).
+Load (bench/load.js, 5 interleaved runs of its 7-process median, node
+22.17.1): cold load 28.7 ms on main, 29.1 ms here (idl-messages.js and
+the flags); first window 2.48 to 2.51 ms; later windows unchanged
+(0.23 ms).

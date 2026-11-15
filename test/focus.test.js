@@ -22,24 +22,29 @@ function logFocusEvents(w, log) {
   }
 }
 
-parity('focus and blur: activeElement, events, relatedTarget', (w) => {
-  const d = html(w, '<input id="a"><button id="b">b</button><div id="plain">p</div>');
-  const log = [id(d.activeElement), d.hasFocus()];
-  logFocusEvents(w, log);
-  d.getElementById('a').focus();
-  log.push(id(d.activeElement), d.hasFocus());
-  d.getElementById('a').focus();
-  log.push('focusing again fires nothing');
-  d.getElementById('b').focus();
-  log.push(id(d.activeElement));
-  d.getElementById('plain').focus();
-  log.push(`not focusable: ${id(d.activeElement)}`);
-  d.getElementById('a').blur();
-  log.push(`blur of an unfocused element: ${id(d.activeElement)}`);
-  d.getElementById('b').blur();
-  log.push(id(d.activeElement), d.hasFocus());
-  return log;
-});
+for (const jsdom of [30, 31])
+  parity(
+    `focus and blur: activeElement, events, relatedTarget (jsdom ${jsdom})`,
+    (w) => {
+      const d = html(w, '<input id="a"><button id="b">b</button><div id="plain">p</div>');
+      const log = [id(d.activeElement), d.hasFocus()];
+      logFocusEvents(w, log);
+      d.getElementById('a').focus();
+      log.push(id(d.activeElement), d.hasFocus());
+      d.getElementById('a').focus();
+      log.push('focusing again fires nothing');
+      d.getElementById('b').focus();
+      log.push(id(d.activeElement));
+      d.getElementById('plain').focus();
+      log.push(`not focusable: ${id(d.activeElement)}`);
+      d.getElementById('a').blur();
+      log.push(`blur of an unfocused element: ${id(d.activeElement)}`);
+      d.getElementById('b').blur();
+      log.push(id(d.activeElement), d.hasFocus());
+      return log;
+    },
+    { jsdom },
+  );
 
 parity('which elements are focusable', (w) => {
   const d = html(
@@ -288,3 +293,25 @@ test('the focus fixup sees through shadow roots and across a window reset', asyn
   other.remove();
   assert.equal(d.activeElement, d.body, 'the ancestors cached before the reset are not used');
 });
+
+// document.hasFocus(): from jsdom 31 the top-level document has focus from
+// the start; a frame's, a created and a parsed document only once something
+// in them is focused (black box, 30.1.3 and 31.0.1; #269).
+for (const jsdom of [30, 31])
+  parity(
+    `hasFocus() of the top-level, a frame's and created documents (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const out = [d.hasFocus()];
+      out.push(d.implementation.createHTMLDocument('').hasFocus());
+      out.push(new w.DOMParser().parseFromString('<p></p>', 'text/html').hasFocus());
+      const f = d.body.appendChild(d.createElement('iframe'));
+      out.push(f.contentDocument.hasFocus());
+      const input = f.contentDocument.body.appendChild(f.contentDocument.createElement('input'));
+      input.focus();
+      out.push(f.contentDocument.hasFocus(), d.hasFocus());
+      // (a blur inside the frame: frame focus is a difference of its own)
+      return out;
+    },
+    { jsdom },
+  );

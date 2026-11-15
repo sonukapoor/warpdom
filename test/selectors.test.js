@@ -221,6 +221,28 @@ parity('selectors: *| and | namespaces, forgiving :is, preprocessing, :host', (w
   ];
 });
 
+// From jsdom 31 an empty text child is not content: changing its data
+// alone changes :empty, in queries and computed styles (black box, 30.1.3
+// and 31.0.1; #321 review).
+for (const jsdom of [30, 31])
+  parity(
+    `:empty follows text data changes (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      d.head.innerHTML = '<style>div:empty { color: red }</style>';
+      const div = d.body.appendChild(d.createElement('div'));
+      const text = div.appendChild(d.createTextNode(''));
+      const read = () => [d.querySelectorAll('div:empty').length, w.getComputedStyle(div).color, div.matches(':empty')];
+      const out = [read()];
+      text.data = 'x';
+      out.push(read());
+      text.data = '';
+      out.push(read());
+      return out;
+    },
+    { jsdom },
+  );
+
 // :empty and text (#202, black box, jsdom 20.0.3 to 30.1.3, the same in
 // all): an element with a text child does not match, whatever its data
 // (empty, whitespace); comments, processing instructions and CDATA
@@ -299,5 +321,23 @@ const emptyTextScenario = (w) => {
   out.push(color(kept));
   return out;
 };
-for (const jsdom of [20, 22, 25, 27, 28, 29, 30])
+for (const jsdom of [20, 22, 25, 27, 28, 29, 30, 31])
   parity(`selectors: :empty with text children, text changes (jsdom ${jsdom})`, emptyTextScenario, { jsdom });
+
+// :link and :any-link on SVG links: an href, and from jsdom 31 an
+// xlink:href too (black box, 30.1.3 and 31.0.1; #269).
+for (const jsdom of [30, 31])
+  parity(
+    `selectors: :link on SVG links (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      d.body.innerHTML =
+        '<svg><a id="h" href="#x"></a><a id="x" xlink:href="#y"></a><a id="n"></a></svg><a id="a" href="#z"></a>';
+      return [
+        [...d.querySelectorAll(':link')].map((e) => e.id),
+        [...d.querySelectorAll(':any-link')].map((e) => e.id),
+        d.getElementById('x').matches('a:link'),
+      ];
+    },
+    { jsdom },
+  );

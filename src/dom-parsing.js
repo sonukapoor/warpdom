@@ -21,18 +21,20 @@ import {
   tooFewArguments,
 } from './internal.js';
 import { XML_NS, XMLNS_NS, attrNode } from './attributes.js';
+import { enumError } from './idl-messages.js';
 import { reportError } from './events.js';
 import { parseDocument, templateContent, serializeChildren, serializeOuter } from './html.js';
 import { parseXMLDocument, isXmlName } from './xml.js';
 
-const SUPPORTED_TYPES = new Set(['text/html', 'text/xml', 'application/xml', 'application/xhtml+xml', 'image/svg+xml']);
+const SUPPORTED_TYPE_LIST = ['text/html', 'text/xml', 'application/xml', 'application/xhtml+xml', 'image/svg+xml'];
+const SUPPORTED_TYPES = new Set(SUPPORTED_TYPE_LIST);
 
 function parseFromString(parser, string, type) {
   const window = state(parser).window;
   const t = String(type);
   if (!SUPPORTED_TYPES.has(t)) {
     throw new TypeError(
-      `Failed to execute 'parseFromString' on 'DOMParser': parameter 2 '${t}' is not a valid enumeration value for SupportedType`,
+      `Failed to execute 'parseFromString' on 'DOMParser': ${enumError(window[S].compat.idlMessages31, 2, [], t, SUPPORTED_TYPE_LIST, 'SupportedType')}`,
     );
   }
   const ws = window[S];

@@ -222,32 +222,37 @@ test('re-dispatching an event that is being dispatched throws', () => {
   inner.dispatchEvent(new w.Event('r'));
 });
 
-parity('TouchEvent: touch lists from the init dictionary', (w) => {
-  const touch = { identifier: 1, clientX: 5 };
-  const e = new w.TouchEvent('touchstart', { changedTouches: [touch], bubbles: true, altKey: true, detail: 2 });
-  let error = null;
-  try {
-    new w.TouchEvent('touchstart', { changedTouches: 5 });
-  } catch (err) {
-    error = [err.constructor.name, err.message];
-  }
-  const seen = [];
-  w.document.body.addEventListener('touchstart', (event) => seen.push(event.changedTouches[0].clientX));
-  w.document.body.dispatchEvent(e);
-  return {
-    lists: [
-      e.changedTouches.length,
-      e.changedTouches[0] === touch,
-      e.changedTouches === e.changedTouches,
-      [...e.changedTouches].length,
-      e.touches.length,
-      e.targetTouches.length,
-    ],
-    fields: [e.altKey, e.ctrlKey, e.detail, e.bubbles, e instanceof w.UIEvent, Object.prototype.toString.call(e)],
-    error,
-    seen,
-  };
-});
+for (const jsdom of [30, 31])
+  parity(
+    `TouchEvent: touch lists from the init dictionary (jsdom ${jsdom})`,
+    (w) => {
+      const touch = { identifier: 1, clientX: 5 };
+      const e = new w.TouchEvent('touchstart', { changedTouches: [touch], bubbles: true, altKey: true, detail: 2 });
+      let error = null;
+      try {
+        new w.TouchEvent('touchstart', { changedTouches: 5 });
+      } catch (err) {
+        error = [err.constructor.name, err.message];
+      }
+      const seen = [];
+      w.document.body.addEventListener('touchstart', (event) => seen.push(event.changedTouches[0].clientX));
+      w.document.body.dispatchEvent(e);
+      return {
+        lists: [
+          e.changedTouches.length,
+          e.changedTouches[0] === touch,
+          e.changedTouches === e.changedTouches,
+          [...e.changedTouches].length,
+          e.touches.length,
+          e.targetTouches.length,
+        ],
+        fields: [e.altKey, e.ctrlKey, e.detail, e.bubbles, e instanceof w.UIEvent, Object.prototype.toString.call(e)],
+        error,
+        seen,
+      };
+    },
+    { jsdom },
+  );
 
 // A TouchEvent's touch lists are arrays: a copy of the given iterable, the
 // same array at every read; there is no TouchList (#145).
@@ -808,102 +813,122 @@ for (const jsdom of [20, 26, 30]) {
   );
 }
 
-parity('PromiseRejectionEvent: the init dictionary and errors (jsdom 30)', (w) => {
-  const P = w.PromiseRejectionEvent;
-  const promise = Promise.resolve();
-  const e = new P('unhandledrejection', { promise, reason: 'r', cancelable: true });
-  const thenable = { then() {} };
-  return [
-    [e.promise === promise, e.reason, e.cancelable, e.bubbles, e.type, e instanceof w.Event],
-    'reason' in new P('x', { promise }),
-    new P('x', { promise }).reason,
-    new P('x', { promise: thenable }).promise === thenable,
-    new P(5, { promise }).type,
-    ...[
-      [],
-      ['x'],
-      ['x', {}],
-      ['x', null],
-      ['x', 5],
-      ['x', { promise: 5 }],
-      ['x', { promise: null }],
-      [Symbol('s'), { promise }],
-    ].map((args) => caught(() => new P(...args))),
-  ];
-});
+for (const jsdom of [30, 31])
+  parity(
+    `PromiseRejectionEvent: the init dictionary and errors (jsdom ${jsdom})`,
+    (w) => {
+      const P = w.PromiseRejectionEvent;
+      const promise = Promise.resolve();
+      const e = new P('unhandledrejection', { promise, reason: 'r', cancelable: true });
+      const thenable = { then() {} };
+      return [
+        [e.promise === promise, e.reason, e.cancelable, e.bubbles, e.type, e instanceof w.Event],
+        'reason' in new P('x', { promise }),
+        new P('x', { promise }).reason,
+        new P('x', { promise: thenable }).promise === thenable,
+        new P(5, { promise }).type,
+        ...[
+          [],
+          ['x'],
+          ['x', {}],
+          ['x', null],
+          ['x', 5],
+          ['x', { promise: 5 }],
+          ['x', { promise: null }],
+          [Symbol('s'), { promise }],
+        ].map((args) => caught(() => new P(...args))),
+      ];
+    },
+    { jsdom },
+  );
 
-parity('BlobEvent: data and timecode (jsdom 30)', (w) => {
-  const B = w.BlobEvent;
-  const blob = new w.Blob(['a']);
-  const file = new w.File(['a'], 'f.txt');
-  const e = new B('dataavailable', { data: blob, timecode: '5' });
-  return [
-    e.data === blob,
-    e.timecode,
-    String(new B('x', { data: blob }).timecode),
-    new B('x', { data: file }).data === file,
-    new B('x', { data: blob, timecode: null }).timecode,
-    ...[
-      ['x'],
-      ['x', {}],
-      ['x', 5],
-      ['x', { data: 'a' }],
-      ['x', { data: null }],
-      ['x', { data: new globalThis.Blob(['a']) }],
-      ['x', { data: blob, timecode: NaN }],
-      ['x', { data: blob, timecode: Infinity }],
-    ].map((args) => caught(() => new B(...args))),
-  ];
-});
+for (const jsdom of [30, 31])
+  parity(
+    `BlobEvent: data and timecode (jsdom ${jsdom})`,
+    (w) => {
+      const B = w.BlobEvent;
+      const blob = new w.Blob(['a']);
+      const file = new w.File(['a'], 'f.txt');
+      const e = new B('dataavailable', { data: blob, timecode: '5' });
+      return [
+        e.data === blob,
+        e.timecode,
+        String(new B('x', { data: blob }).timecode),
+        new B('x', { data: file }).data === file,
+        new B('x', { data: blob, timecode: null }).timecode,
+        ...[
+          ['x'],
+          ['x', {}],
+          ['x', 5],
+          ['x', { data: 'a' }],
+          ['x', { data: null }],
+          ['x', { data: new globalThis.Blob(['a']) }],
+          ['x', { data: blob, timecode: NaN }],
+          ['x', { data: blob, timecode: Infinity }],
+        ].map((args) => caught(() => new B(...args))),
+      ];
+    },
+    { jsdom },
+  );
 
-parity('DeviceMotionEvent: acceleration and rotation rate objects as jsdom gives them (jsdom 30)', (w) => {
-  const M = w.DeviceMotionEvent;
-  const describe = (a) =>
-    a === null
-      ? null
-      : [
-          a.constructor.name,
-          Object.getOwnPropertyDescriptors(a),
-          a instanceof w.DeviceMotionEventAcceleration,
-          JSON.stringify(a),
-        ];
-  const e = new M('devicemotion', {
-    acceleration: { x: 1, y: '2' },
-    accelerationIncludingGravity: {},
-    rotationRate: { alpha: 3 },
-    interval: '16',
-  });
-  const empty = new M('x');
-  return [
-    describe(e.acceleration),
-    describe(e.accelerationIncludingGravity),
-    describe(e.rotationRate),
-    e.acceleration === e.acceleration,
-    e.interval,
-    [empty.acceleration, empty.rotationRate, empty.accelerationIncludingGravity, empty.interval],
-    describe(new M('x', { acceleration: null }).acceleration),
-    new M('x', { interval: null }).interval,
-    ...[
-      { acceleration: { x: NaN } },
-      { acceleration: { y: 'a' } },
-      { acceleration: 5 },
-      { rotationRate: { gamma: Infinity } },
-      { interval: NaN },
-      5,
-    ].map((init) => caught(() => new M('x', init))),
-  ];
-});
+for (const jsdom of [30, 31])
+  parity(
+    `DeviceMotionEvent: acceleration and rotation rate objects as jsdom gives them (jsdom ${jsdom})`,
+    (w) => {
+      const M = w.DeviceMotionEvent;
+      const describe = (a) =>
+        a === null
+          ? null
+          : [
+              a.constructor.name,
+              Object.getOwnPropertyDescriptors(a),
+              a instanceof w.DeviceMotionEventAcceleration,
+              JSON.stringify(a),
+            ];
+      const e = new M('devicemotion', {
+        acceleration: { x: 1, y: '2' },
+        accelerationIncludingGravity: {},
+        rotationRate: { alpha: 3 },
+        interval: '16',
+      });
+      const empty = new M('x');
+      return [
+        describe(e.acceleration),
+        describe(e.accelerationIncludingGravity),
+        describe(e.rotationRate),
+        e.acceleration === e.acceleration,
+        e.interval,
+        [empty.acceleration, empty.rotationRate, empty.accelerationIncludingGravity, empty.interval],
+        describe(new M('x', { acceleration: null }).acceleration),
+        new M('x', { interval: null }).interval,
+        ...[
+          { acceleration: { x: NaN } },
+          { acceleration: { y: 'a' } },
+          { acceleration: 5 },
+          { rotationRate: { gamma: Infinity } },
+          { interval: NaN },
+          5,
+        ].map((init) => caught(() => new M('x', init))),
+      ];
+    },
+    { jsdom },
+  );
 
-parity('DeviceOrientationEvent: nullable doubles (jsdom 30)', (w) => {
-  const O = w.DeviceOrientationEvent;
-  const e = new O('deviceorientation', { alpha: '3', beta: null, absolute: 1 });
-  const d = new O('x');
-  return [
-    [e.alpha, e.beta, e.gamma, e.absolute],
-    [d.alpha, d.beta, d.gamma, d.absolute],
-    ...[{ alpha: NaN }, { beta: -Infinity }, { gamma: 'z' }, 5].map((init) => caught(() => new O('x', init))),
-  ];
-});
+for (const jsdom of [30, 31])
+  parity(
+    `DeviceOrientationEvent: nullable doubles (jsdom ${jsdom})`,
+    (w) => {
+      const O = w.DeviceOrientationEvent;
+      const e = new O('deviceorientation', { alpha: '3', beta: null, absolute: 1 });
+      const d = new O('x');
+      return [
+        [e.alpha, e.beta, e.gamma, e.absolute],
+        [d.alpha, d.beta, d.gamma, d.absolute],
+        ...[{ alpha: NaN }, { beta: -Infinity }, { gamma: 'z' }, 5].map((init) => caught(() => new O('x', init))),
+      ];
+    },
+    { jsdom },
+  );
 
 // Version boundaries (literals: the measured jsdom values).
 test('jsdom 27.0.0 adds PromiseRejectionEvent, BlobEvent and the device events; PageTransitionEvent is in every version', () => {

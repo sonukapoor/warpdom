@@ -378,6 +378,8 @@ const INTERNALS_ARIA = [
   'role',
   'ariaAtomic',
   'ariaAutoComplete',
+  'ariaBrailleLabel',
+  'ariaBrailleRoleDescription',
   'ariaBusy',
   'ariaChecked',
   'ariaColCount',
@@ -418,6 +420,9 @@ const INTERNALS_ARIA = [
   'ariaValueText',
   'ariaRelevant',
 ];
+
+// From jsdom 31 (compat.ariaBraille), as on Element.
+export const BRAILLE_MEMBERS = ['ariaBrailleLabel', 'ariaBrailleRoleDescription'];
 
 // jsdom 23.1 to 26 throw this TypeError from every role and ARIA accessor
 // of ElementInternals (black box; fixed in 27.0.0).
@@ -473,6 +478,7 @@ export const CUSTOM_ELEMENT_INTERFACES = [
     ],
     compat(proto, compat) {
       if (!compat.internalsLabels) delete proto.labels;
+      if (!compat.ariaBraille) for (const name of BRAILLE_MEMBERS) delete proto[name];
     },
   },
   {

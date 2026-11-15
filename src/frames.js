@@ -119,8 +119,12 @@ function createFrame(iframe, inShadow) {
     syncIndexes(parent, frames.length - 1);
   }
   // The iframe load event steps run once the (empty) document is ready.
+  // Before jsdom 31 a removal cancels them; from 31 each insertion fires
+  // its load, so an iframe removed at once fires one and a moved one two
+  // (compat.frameLoadKept; black box, 30.1.3 and 31.0.1).
+  const kept = parent[S].compat.frameLoadKept === true;
   parent[S].setTimeout(() => {
-    if (es.frameWindow === child) dispatch(iframe, new parent.Event('load'));
+    if (kept || es.frameWindow === child) dispatch(iframe, new parent.Event('load'));
   }, 0);
 }
 

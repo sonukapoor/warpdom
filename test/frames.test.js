@@ -324,7 +324,7 @@ const shadowFramesScenario = async (w) => {
   out.reloaded = log.slice(out.loaded.length);
   return out;
 };
-for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30])
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30, 31])
   parity(`iframes in shadow trees: windows and frames (jsdom ${jsdom})`, shadowFramesScenario, { jsdom });
 
 // A shadow-tree iframe's window is discarded with it (the deliberate
@@ -405,3 +405,30 @@ for (const jsdom of [20, 26, 29, 30])
   parity(`iframes in shadow trees: a host moved from another document (jsdom ${jsdom})`, adoptedShadowFramesScenario, {
     jsdom,
   });
+
+// An iframe's load after a removal: before jsdom 31 the removal cancels
+// it; from 31 each insertion fires its load, so an iframe removed at once
+// fires one, a moved one two (black box, 30.1.3 and 31.0.1; #269).
+for (const jsdom of [30, 31])
+  parity(
+    `iframes: load after a removal or a move (jsdom ${jsdom})`,
+    async (w) => {
+      const d = w.document;
+      const log = [];
+      const iframe = (name) => {
+        const f = d.createElement('iframe');
+        f.addEventListener('load', () => log.push(name));
+        return f;
+      };
+      d.body.appendChild(iframe('removed')).remove();
+      const host = d.body.appendChild(d.createElement('div'));
+      const shadow = host.attachShadow({ mode: 'open' });
+      shadow.appendChild(iframe('shadow removed')).remove();
+      shadow.append(d.body.appendChild(iframe('moved to shadow')));
+      d.body.prepend(d.body.appendChild(iframe('moved')));
+      d.body.appendChild(iframe('kept'));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return log;
+    },
+    { jsdom },
+  );

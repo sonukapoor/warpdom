@@ -208,7 +208,13 @@ export const DOCUMENT_FOCUS_MEMBERS = {
     }
     return this.body ?? this.documentElement;
   },
+  // From jsdom 31 the top-level window's document has focus from the
+  // start, a frame's or a created document's only once something in it is
+  // focused (compat.topDocumentFocused; black box, 30.1.3 and 31.0.1).
   hasFocus() {
-    return !!state(this).focused;
+    const s = state(this);
+    if (s.focused) return true;
+    const w = s.window;
+    return w != null && w[S].compat.topDocumentFocused === true && !w[S].frameElement && w.document === this;
   },
 };

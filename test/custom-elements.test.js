@@ -249,7 +249,7 @@ function defineInternals(w) {
   );
 }
 
-for (const jsdom of [20, 22, 25, 26, 30]) {
+for (const jsdom of [20, 22, 25, 26, 30, 31]) {
   parity(
     `ElementInternals: interface and attachInternals() errors (jsdom ${jsdom})`,
     (w) => {
@@ -485,3 +485,20 @@ for (const jsdom of [20, 30]) {
     { jsdom },
   );
 }
+
+// ariaBrailleLabel and ariaBrailleRoleDescription, on Element and
+// ElementInternals, from jsdom 31 (black box, 24.1.3, 30.1.3, 31.0.1; #269).
+for (const jsdom of [24, 30, 31])
+  parity(
+    `ARIA members of Element and ElementInternals (jsdom ${jsdom})`,
+    (w) => {
+      const aria = (proto) =>
+        Object.getOwnPropertyNames(proto)
+          .filter((n) => /^(?:role|aria[A-Z])/.test(n))
+          .sort(); // (jsdom lists ariaRelevant last on Element)
+      const e = w.document.createElement('div');
+      e.ariaBrailleLabel = 'dots';
+      return [aria(w.Element.prototype), aria(w.ElementInternals.prototype), e.getAttribute('aria-braillelabel')];
+    },
+    { jsdom },
+  );

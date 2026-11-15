@@ -1749,7 +1749,11 @@ const LATER_GLOBALS = [
     ],
   ],
   [[30, 1, 0], ['QuotaExceededError']],
-  [null, ['CSSMarginRule', 'CSSPageDescriptors', 'FormDataEvent', 'TimeRanges', 'ToggleEvent']],
+  [
+    [31, 0, 0],
+    ['CSSMarginRule', 'CSSPageDescriptors'],
+  ],
+  [null, ['FormDataEvent', 'TimeRanges', 'ToggleEvent']],
 ];
 
 // The globals a profile leaves out (above), one array per release range.
@@ -1796,6 +1800,11 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle, beyondJsdom = fa
     version: jsdom,
     jsdom: version[0],
     mutableComputedStyle: before(version, [28, 1, 0]),
+    // WebIDL conversion errors in jsdom 31's words (idl-messages.js).
+    idlMessages31: version[0] >= 31,
+    // The canvas package "Not implemented" names: @napi-rs/canvas from 31
+    // (black box, 31.0.1).
+    canvasPackage: version[0] >= 31 ? '@napi-rs/canvas' : 'canvas',
     // Computed style (cascade.js), black box per release: before 29.0.2
     // undeclared properties compute to '' and CSS-wide keywords to
     // themselves (jsdom 29.0.0 and 29.0.1 too; from 27 not those of color,
@@ -2062,6 +2071,22 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle, beyondJsdom = fa
     // Element's role and ARIA attribute accessors, also from 23.1.0
     // (black box: none in 16.4.0 to 23.0.1).
     ariaMixin: !before(version, [23, 1, 0]),
+    // ariaBrailleLabel and ariaBrailleRoleDescription (Element and
+    // ElementInternals) from 31.0.0.
+    ariaBraille: version[0] >= 31,
+    // jsdom 31's selector engine where it follows the standard
+    // (selectors.js specSelectors).
+    specSelectors: version[0] >= 31,
+    // document.hasFocus() of the top-level document (focus.js).
+    topDocumentFocused: version[0] >= 31,
+    // An iframe's load after its removal (frames.js).
+    frameLoadKept: version[0] >= 31,
+    // Scripts the parser made are already started (their clones never
+    // run), and createContextualFragment's run (interfaces.js, ranges.js).
+    parsedScriptsStarted: version[0] >= 31,
+    // An event path through a slottable's last assigned slot after it
+    // leaves its host (slots.js), before 31.
+    lastSlotKept: version[0] < 31,
     internalsLabels: !before(version, [26, 0, 0]),
     internalsAria: !before(version, [27, 0, 0]),
     rootColor:

@@ -88,8 +88,8 @@ warpdom follows the standard for:
   `HTMLUnknownElement`, as in jsdom)
 
 The globals of interfaces jsdom does not expose (`ToggleEvent`,
-`TimeRanges`, `FormDataEvent`, `CSSMarginRule`, `CSSPageDescriptors`, and
-in earlier profiles the CSS rule interfaces, `DOMRect`, `BeforeUnloadEvent`
+`TimeRanges`, `FormDataEvent`, and in earlier profiles `CSSMarginRule`,
+`CSSPageDescriptors`, the CSS rule interfaces, `DOMRect`, `BeforeUnloadEvent`
 and `QuotaExceededError`) are left out by default, so code that
 feature-detects them takes jsdom's path; their objects exist. The option
 `beyondJsdom: true` adds the globals
