@@ -174,3 +174,58 @@ parity(
   },
   { jsdom: 31 },
 );
+
+// #322 review: font keywords only before the size, font-variant and
+// border-image expanded, calc() corners whole, logical declarations
+// between longhands, names jsdom 31 drops, pending values changed.
+parity(
+  'jsdom 31: font-variant, border-image, radii and logical properties',
+  block(
+    [
+      'font: 700 small-caps 12px serif',
+      'font: 700 condensed 12px serif',
+      'font: medium condensed',
+      'font: 12px small-caps',
+      'font-variant: small-caps',
+      'font-variant: small-caps oldstyle-nums',
+      'font-variant: none',
+      'border-image: url(a.png) 30 / 10px',
+      'border-image: url(a.png) 30 / 10px / 2px round',
+      'border-image: url(a.png)',
+      (s) => {
+        s.borderImage = 'none';
+        s.borderImageWidth = '2';
+      },
+      (s) => {
+        s.borderImage = 'none';
+        s.borderImageOutset = '1px';
+      },
+      (s) => {
+        s.borderImage = 'none';
+        s.borderImageSlice = '30 fill';
+      },
+      'border-top-left-radius: calc(2% + 10px); border-top-right-radius: 1px; border-bottom-right-radius: 1px; border-bottom-left-radius: 1px',
+      'margin-top: 1px; margin-block-end: 2px; margin-right: 1px; margin-bottom: 1px; margin-left: 1px',
+      'margin-block-end: 2px; margin-top: 1px; margin-right: 1px; margin-bottom: 1px; margin-left: 1px',
+      (s) => {
+        s.cueBefore = 'initial';
+      },
+    ],
+    ['font', 'font-variant', 'border-image', 'border-radius', 'margin'],
+  ),
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: a shorthand with var() written again with another value',
+  (w) => {
+    const el = w.document.createElement('div');
+    const out = [];
+    for (const value of ['var(--a)', 'var(--b)', 'var(--b)']) {
+      el.style.margin = value;
+      out.push(el.getAttribute('style'), el.style.margin);
+    }
+    return out;
+  },
+  { jsdom: 31 },
+);

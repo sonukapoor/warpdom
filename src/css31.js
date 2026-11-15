@@ -29,8 +29,8 @@ function load() {
 const shorthandsTable = () => (data ?? load()).shorthands;
 export const dropped31 = () => (data ?? load()).dropped;
 import { LONGHANDS } from './css-data.js';
-import { expand, serializeBox, CSS_WIDE, topLevelCommaSplit } from './shorthands.js';
-import { hasVarFunction } from './css-values.js';
+import { expand, serializeBox, segments, CSS_WIDE, topLevelCommaSplit } from './shorthands.js';
+import { hasVarFunction, serializeUrls } from './css-values.js';
 
 export const shorthand31 = (name) => shorthandsTable()[name];
 export const alias31 = (name) => (data ?? load()).aliases[name] ?? name;
@@ -87,21 +87,71 @@ const FONT_WIDTHS = new Set([
   'extra-expanded',
   'ultra-expanded',
 ]);
+// (only before the size: a size keyword, a length or percentage, 0, a
+// function or a line height; a number alone is a weight)
+const FONT_SIZE =
+  /^(?:xx?-small|small|medium|large|xx?x?-large|larger|smaller|0|[-+]?[\d.]+(?:e[-+]?\d+)?[a-z%]+|[a-z-]+\(.*)$/i;
 function fontKeywords(value, found) {
-  for (const token of value.split(/\s+/)) {
+  for (const token of words(value)) {
     const lower = token.toLowerCase();
+    if (FONT_SIZE.test(token) || token.includes('/')) break;
     if (lower === 'small-caps') found.set('font-variant-caps', lower);
     else if (FONT_WIDTHS.has(lower)) found.set('font-width', lower);
-    else if (/^[\d.]|\//.test(token)) break;
   }
 }
+
+// A value's top-level components: split at whitespace (words) or at slashes
+// (slashed), functions and strings kept whole.
+const words = (value) => segments(value.trim(), /\s/).filter((part, i) => i % 2 === 0 && part !== '');
+const slashed = (value) =>
+  segments(value, /\//)
+    .filter((part, i) => i % 2 === 0)
+    .map((part) => part.trim());
 
 // One to four values as top, right, bottom and left.
 const sides = (p) => [p[0], p[1] ?? p[0], p[2] ?? p[0], p[3] ?? p[1] ?? p[0]];
 // border-radius as its corners (h, or h v).
 function radii(value) {
-  const [h, v = h] = value.split('/').map((part) => sides(part.trim().split(/\s+/)));
+  const [h, v = h] = slashed(value).map((part) => sides(words(part)));
   return h.map((x, i) => (x === v[i] ? x : `${x} ${v[i]}`));
+}
+
+// font-variant as its longhands (ligatures, caps, alternates, numeric,
+// east-asian, position, emoji), each keyword to the one it belongs to.
+const VARIANT_GROUPS = [
+  /^(?:(?:no-)?(?:common|discretionary|historical)-ligatures|(?:no-)?contextual)$/,
+  /^(?:small-caps|all-small-caps|petite-caps|all-petite-caps|unicase|titling-caps)$/,
+  /^(?:historical-forms|[a-z-]+\(.*\))$/,
+  /^(?:lining-nums|oldstyle-nums|proportional-nums|tabular-nums|diagonal-fractions|stacked-fractions|ordinal|slashed-zero)$/,
+  /^(?:jis78|jis83|jis90|jis04|simplified|traditional|full-width|proportional-width|ruby)$/,
+  /^(?:sub|super)$/,
+  /^(?:text|emoji|unicode)$/,
+];
+function fontVariant(value) {
+  const out = VARIANT_GROUPS.map(() => 'normal');
+  const lower = value.trim().toLowerCase();
+  if (lower === 'none') out[0] = 'none';
+  else if (lower !== 'normal')
+    for (const token of words(value)) {
+      const i = VARIANT_GROUPS.findIndex((group) => group.test(token.toLowerCase()));
+      if (i >= 0) out[i] = out[i] === 'normal' ? token.toLowerCase() : `${out[i]} ${token.toLowerCase()}`;
+    }
+  return out;
+}
+// border-image as its longhands (source, slice, width, outset, repeat):
+// the source and repeat keywords anywhere, then slice / width / outset.
+const IMAGE_REPEAT = /^(?:stretch|repeat|round|space)$/i;
+function borderImage(value) {
+  let source = 'none';
+  const repeats = [];
+  const rest = [];
+  for (const token of words(value)) {
+    if (IMAGE_REPEAT.test(token)) repeats.push(token.toLowerCase());
+    else if (/^(?:none|url\(|[a-z-]*gradient\()/i.test(token)) source = serializeUrls(token, 'spec');
+    else rest.push(token);
+  }
+  const [slice = '100%', width = '', outset = ''] = slashed(rest.join(' '));
+  return [source, slice || '100%', width || '1', outset || '0', repeats.join(' ') || 'stretch'];
 }
 
 // The longhands a shorthand's declared value sets, in jsdom 31's order:
@@ -114,6 +164,8 @@ export function expand31(name, value, raw = value) {
   // (a system font too: its longhands are what the system says)
   if (hasVarFunction(value) || (name === 'font' && SYSTEM_FONT.test(value))) return longhands.map((l) => [l, '', src]);
   if (name === 'border-radius') return radii(value).map((v, i) => [longhands[i], v, src]);
+  if (name === 'font-variant') return fontVariant(raw).map((v, i) => [longhands[i], v, src]);
+  if (name === 'border-image') return borderImage(value).map((v, i) => [longhands[i], v, src]);
   const pairs = expand(name, value);
   const found = new Map();
   for (let i = 1; i < pairs.length; i++) found.set(pairs[i][0], pairs[i][1]);
@@ -151,7 +203,11 @@ function put(decls, name, value, important, parsing, src) {
     decls.delete(name);
   }
   if (old !== undefined && !parsing) {
-    const changed = old.value !== value || old.important !== important;
+    // (pending ones: their shorthand's text, var(--a) then var(--b))
+    const changed =
+      old.value !== value ||
+      old.important !== important ||
+      (value === '' && (old.src?.name !== src?.name || old.src?.value !== src?.value));
     old.value = value;
     old.important = important;
     old.src = src;
@@ -249,7 +305,17 @@ COMPOSERS.border = (v) => {
   for (let i = 0; i < 5; i++) if (v[12 + i] !== IMAGE_INITIALS[i]) return '';
   return omitting(BORDER_INITIALS)([v[0], v[4], v[8]]);
 };
-COMPOSERS['border-image'] = omitting(IMAGE_INITIALS);
+// border-image: source, slice / width / outset, repeat; a width or an
+// outset keeps the slice and the slashes before it (100% / / 1px).
+COMPOSERS['border-image'] = ([source, slice, width, outset, repeat]) => {
+  const parts = [];
+  if (source !== 'none') parts.push(source);
+  if (outset !== '0') parts.push(`${slice} / ${width === '1' ? '' : `${width} `}/ ${outset}`);
+  else if (width !== '1') parts.push(`${slice} / ${width}`);
+  else if (slice !== '100%') parts.push(slice);
+  if (repeat !== 'stretch') parts.push(repeat);
+  return parts.length === 0 ? 'none' : parts.join(' ');
+};
 // background-repeat-x and -y as one value.
 function repeatOf(x, y) {
   if (x === y) return x;
@@ -309,7 +375,7 @@ COMPOSERS['border-radius'] = (v) => {
   const h = [],
     w = [];
   for (const corner of v) {
-    const [x, y = x] = corner.split(' ');
+    const [x, y = x] = words(corner);
     h.push(x);
     w.push(y);
   }
@@ -317,6 +383,40 @@ COMPOSERS['border-radius'] = (v) => {
     b = serializeBox(w);
   return a === b ? a : `${a} / ${b}`;
 };
+
+// CSSOM: a shorthand is not written where a declaration between its first
+// and last longhands is of the same logical property group with the other
+// mapping (margin-block-end between margin-top and margin-left): writing
+// it would reorder them.
+const LOGICAL = /-(?:block|inline)(?:-(?:start|end))?(?=-|$)/;
+const PHYSICAL = /-(?:top|right|bottom|left)(?=-|$)/;
+const groupOf = (name) => {
+  if (/^(?:top|right|bottom|left)$/.test(name)) return 'inset|physical';
+  if (/^inset-(?:block|inline)/.test(name)) return 'inset|logical';
+  if (LOGICAL.test(name)) return `${name.replace(LOGICAL, '')}|logical`;
+  if (PHYSICAL.test(name)) return `${name.replace(PHYSICAL, '')}|physical`;
+  return null;
+};
+function crossesLogical(decls, shorthand) {
+  const longhands = new Set(shorthandsTable()[shorthand]);
+  let inside = false,
+    seen = 0,
+    groups = null;
+  for (const name of decls.keys()) {
+    if (longhands.has(name)) {
+      if (!inside) {
+        inside = true;
+        groups = new Set();
+        for (const l of longhands) groups.add(groupOf(l)?.split('|')[0]);
+      }
+      if (++seen === longhands.size) return false;
+    } else if (inside) {
+      const group = groupOf(name);
+      if (group !== null && groups.has(group.split('|')[0])) return true;
+    }
+  }
+  return false;
+}
 
 // The block's text (cssText).
 export function serialize31(decls) {
@@ -338,6 +438,7 @@ export function serialize31(decls) {
           entries.push(e);
         }
         if (entries.length !== shorthandsTable()[shorthand].length) continue;
+        if (crossesLogical(decls, shorthand)) continue;
         const value = shorthandValue(shorthand, entries);
         if (value === '') continue;
         add(shorthand, value, decl.important);

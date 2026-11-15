@@ -5732,6 +5732,8 @@ function separated(raw) {
 // jsdom 31 (css31.js): '' removes; an invalid value or priority changes
 // nothing.
 function setDeclaration31(style, s, name, value, priority) {
+  // (a name jsdom 31 drops, though it has the accessor: style.cueBefore)
+  if (dropped(s.surface, name)) return;
   const raw = value === null ? '' : String(value).trim();
   if (raw === '') {
     const size = s.decls.size;
