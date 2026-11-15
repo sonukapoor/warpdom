@@ -54,8 +54,7 @@ import {
   replayBox,
   writeBox,
 } from './box-declarations.js';
-import { set31, remove31, value31, priority31, serialize31 } from './css31.js';
-import { DROPPED31 } from './css31-data.js';
+import { set31, remove31, value31, priority31, serialize31, dropped31 } from './css31.js';
 
 // backgroundColor -> background-color, webkitAnimation/WebkitAnimation ->
 // -webkit-animation, cssFloat -> float; dashed names map to themselves.
@@ -1128,7 +1127,7 @@ export function styleSurface(key) {
   if (key === 'jsdom31') {
     surface = {
       key,
-      drops: new Set(DROPPED31),
+      drops: new Set(dropped31()),
       writes: new Map(),
       extras: new Set(),
       caches: Object.create(null),

@@ -16,13 +16,24 @@
 // src: the shorthand write a longhand came from ({ name, value }, shared
 // by the longhands it set): a shorthand warpdom does not compose (yet)
 // reads as written while all its longhands still come from that write.
-import { SHORTHANDS31, ALIASES31 } from './css31-data.js';
+import { DATA31 } from './css31-data.js';
+
+// css31-data.js, parsed on first use (objects without a prototype).
+let data = null;
+function load() {
+  data = JSON.parse(DATA31);
+  Object.setPrototypeOf(data.shorthands, null);
+  Object.setPrototypeOf(data.aliases, null);
+  return data;
+}
+const shorthandsTable = () => (data ?? load()).shorthands;
+export const dropped31 = () => (data ?? load()).dropped;
 import { LONGHANDS } from './css-data.js';
 import { expand, serializeBox, CSS_WIDE, topLevelCommaSplit } from './shorthands.js';
 import { hasVarFunction } from './css-values.js';
 
-export const shorthand31 = (name) => SHORTHANDS31[name];
-export const alias31 = (name) => ALIASES31[name] ?? name;
+export const shorthand31 = (name) => shorthandsTable()[name];
+export const alias31 = (name) => (data ?? load()).aliases[name] ?? name;
 
 // The shorthands with a longhand, in preferred order: more longhands first,
 // then unprefixed before prefixed, then by name (CSSOM).
@@ -30,8 +41,8 @@ let containing = null;
 function shorthandsOf(longhand) {
   if (containing === null) {
     containing = new Map();
-    const names = Object.keys(SHORTHANDS31).sort((a, b) => {
-      const d = SHORTHANDS31[b].length - SHORTHANDS31[a].length;
+    const names = Object.keys(shorthandsTable()).sort((a, b) => {
+      const d = shorthandsTable()[b].length - shorthandsTable()[a].length;
       if (d !== 0) return d;
       const pa = a.startsWith('-'),
         pb = b.startsWith('-');
@@ -40,7 +51,7 @@ function shorthandsOf(longhand) {
       return a < b ? -1 : 1;
     });
     for (const name of names)
-      for (const l of SHORTHANDS31[name]) {
+      for (const l of shorthandsTable()[name]) {
         let list = containing.get(l);
         if (list === undefined) containing.set(l, (list = []));
         list.push(name);
@@ -96,7 +107,7 @@ function radii(value) {
 // The longhands a shorthand's declared value sets, in jsdom 31's order:
 // [[longhand, value], ...], with their src.
 export function expand31(name, value, raw = value) {
-  const longhands = SHORTHANDS31[name];
+  const longhands = shorthandsTable()[name];
   const src = { name, value };
   const lower = value.toLowerCase();
   if (CSS_WIDE.has(lower)) return longhands.map((l) => [l, lower, src]);
@@ -106,6 +117,7 @@ export function expand31(name, value, raw = value) {
   const pairs = expand(name, value);
   const found = new Map();
   for (let i = 1; i < pairs.length; i++) found.set(pairs[i][0], pairs[i][1]);
+  if (name === 'background-repeat') found.set(name, value);
   if (found.has('background-repeat')) {
     const xs = [],
       ys = [];
@@ -127,7 +139,7 @@ export function expand31(name, value, raw = value) {
 export function set31(decls, name, value, important, parsing, raw = value) {
   decls.cssom31 = true;
   name = alias31(name);
-  if (!SHORTHANDS31[name]) return put(decls, name, longhandValue(name, value), important, parsing, null);
+  if (!shorthandsTable()[name]) return put(decls, name, longhandValue(name, value), important, parsing, null);
   let changed = false;
   for (const [l, v, src] of expand31(name, value, raw)) changed = put(decls, l, v, important, parsing, src) || changed;
   return changed;
@@ -153,7 +165,7 @@ function put(decls, name, value, important, parsing, src) {
 export function remove31(decls, name) {
   name = alias31(name);
   const previous = value31(decls, name);
-  const longhands = SHORTHANDS31[name];
+  const longhands = shorthandsTable()[name];
   if (longhands) for (const l of longhands) decls.delete(l);
   else decls.delete(name);
   return previous;
@@ -161,7 +173,7 @@ export function remove31(decls, name) {
 
 export function priority31(decls, name) {
   name = alias31(name);
-  const longhands = SHORTHANDS31[name];
+  const longhands = shorthandsTable()[name];
   if (!longhands) return decls.get(name)?.important ? 'important' : '';
   for (const l of longhands) if (!decls.get(l)?.important) return '';
   return 'important';
@@ -170,7 +182,7 @@ export function priority31(decls, name) {
 // getPropertyValue(): a longhand's value; a shorthand's from its longhands.
 export function value31(decls, name) {
   name = alias31(name);
-  const longhands = SHORTHANDS31[name];
+  const longhands = shorthandsTable()[name];
   if (!longhands) return decls.get(name)?.value ?? '';
   const entries = [];
   for (const l of longhands) {
@@ -212,7 +224,7 @@ const omitting = (initials) => (values) => {
 };
 const SIDE = /-(?:top|right|bottom|left)(?:-|$)|-(?:top|bottom)-(?:left|right)-radius$/;
 function defaultComposer(name) {
-  const longhands = SHORTHANDS31[name];
+  const longhands = shorthandsTable()[name];
   return longhands.length === 4 && longhands.every((l) => SIDE.test(l)) ? serializeBox : null;
 }
 for (const name of ['margin', 'padding', 'inset', 'border-width', 'border-style', 'border-color'])
@@ -320,17 +332,17 @@ export function serialize31(decls) {
     if (shorthands !== undefined)
       for (const shorthand of shorthands) {
         const entries = [];
-        for (const l of SHORTHANDS31[shorthand]) {
+        for (const l of shorthandsTable()[shorthand]) {
           const e = decls.get(l);
           if (e === undefined || e.important !== decl.important || done?.has(l)) break;
           entries.push(e);
         }
-        if (entries.length !== SHORTHANDS31[shorthand].length) continue;
+        if (entries.length !== shorthandsTable()[shorthand].length) continue;
         const value = shorthandValue(shorthand, entries);
         if (value === '') continue;
         add(shorthand, value, decl.important);
         done ??= new Set();
-        for (const l of SHORTHANDS31[shorthand]) done.add(l);
+        for (const l of shorthandsTable()[shorthand]) done.add(l);
         written = true;
         break;
       }
