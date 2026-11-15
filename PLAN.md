@@ -7263,3 +7263,42 @@ Load (bench/load.js, 5 interleaved runs of its 7-process median, node
 22.17.1): cold load 28.7 ms on main, 29.1 ms here (idl-messages.js and
 the flags); first window 2.48 to 2.51 ms; later windows unchanged
 (0.23 ms).
+
+## 2026-11-15: jsdom 31, the CSS parts: plan (#269)
+
+After part 1 (#321), 170 of the default parity tests differ against jsdom
+31.0.1, all CSS; the 31 profile's styles still behave as jsdom 30. Grouped
+by cause (black box probes on 31.0.1; counts overlap):
+- A. The declaration block holds longhands only, as CSSOM has it: a
+  shorthand expands into its longhands, `length`/`item()` list longhands,
+  `cssText` writes a shorthand only when all its longhands are there with
+  one priority; longhands keep their first position; the last !important
+  wins. About 40 tests.
+- B. Declared values serialize canonically: numbers (`.5` is `0.5`), zeros
+  with units in lists, lowercase keywords, `, ` and quoted `url("")`,
+  canonical component order, defaults dropped, aliases under the standard
+  name, family names unquoted, normalized media and selector text. About
+  45.
+- C. Parse errors: a bad-url or bad-string token empties the whole block
+  and reports "Could not parse CSS stylesheet"; custom property edge
+  cases. About 19.
+- D. Computed values: lengths always with units (`0px`), var()
+  substituted (invalid at computed-value time: initial or inherited),
+  every color property as rgb() with channels rounded once and alpha
+  quantized to 8 bits, computed shorthands in short form, initial
+  font-family `monospace`. About 50.
+- E. Cascade context: the UA sheet is a lower origin again (no
+  specificity mixing as in 28.1 to 30), the default color resolved at the
+  root from its color-scheme, shadow trees' sheets scoped, media and
+  @supports evaluated (1024x768), computed styles live and empty for a
+  disconnected element, pseudo-elements, writes throw. About 25.
+- F. CSSOM: CSSPropertyRule, CSSStartingStyleRule,
+  CSSFontFeatureValuesRule; @counter-style descriptor order; webkit
+  aliases; small rule and sheet details. About 12.
+Decision (2026-11-15): model jsdom 31 as it is, quirks included where a
+test can observe them (initial font-family `monospace`, `outline: none`
+read as `medium`, a bad url() emptying its block), as for every earlier
+version; list the ones that differ from browsers in docs/differences.md.
+Order (one PR each, foundational first): A; D1/D2 (units, var()); D3 and
+the root color-scheme; B; C; E1/E4/E5/E6; D4/D5 and shadow scoping; F.
+`NEWEST_MODELED_JSDOM` moves to 31 only when all parts are in.
