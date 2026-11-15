@@ -13,7 +13,8 @@
 // tree calls this hook only when the document's scriptCount is non-zero
 // (counted at creation and adoption, in window.js and internal.js).
 // Element state: s.script is 'ready' (may run) or 'started' ("already
-// started"); undefined for parser-made scripts.
+// started"); undefined for parser-made scripts (from jsdom 31 'started',
+// but in template contents: html.js).
 import { S, HTML_NS, ELEMENT_NODE, TEXT_NODE, hooks, nextInTree, connected } from './internal.js';
 import { reportError } from './events.js';
 
@@ -91,12 +92,12 @@ export function runJavascriptURL(window, url) {
   if (typeof result === 'string') window[S].notImplemented("string results from 'javascript:' URLs");
 }
 
-// Marks the HTML script elements under root as made by script (they may
-// run when connected), counted as window.js counts created ones.
+// Marks the HTML script elements under root, just parsed, as made by script
+// (they may run when connected), counted as window.js counts created ones.
 export function readyScripts(doc, root) {
   for (let n = root[S].first; n !== null; n = nextInTree(n, root)) {
     const s = n[S];
-    if (s.type === ELEMENT_NODE && s.tag === 'script' && s.ns === HTML_NS && s.script === undefined) {
+    if (s.type === ELEMENT_NODE && s.tag === 'script' && s.ns === HTML_NS && s.script !== 'ready') {
       s.script = 'ready';
       doc[S].scriptCount = (doc[S].scriptCount ?? 0) + 1;
     }

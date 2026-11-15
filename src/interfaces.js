@@ -442,19 +442,9 @@ function cloneNode(node, deep, doc) {
       !!s.prefix,
     );
     copy[S].attrs = new Map(s.attrs);
-    // A clone of a script that already started is already started; from
-    // jsdom 31 one the parser made too, as the parser marks it already
-    // started, but for one in a template's contents, whose clones run
-    // (compat.parsedScriptsStarted; black box, 30.1.3 and 31.0.1).
-    if (
-      s.script === 'started' ||
-      (s.script === undefined &&
-        s.tag === 'script' &&
-        s.ns === HTML_NS &&
-        w.compat.parsedScriptsStarted === true &&
-        s.doc[S].inertTemplate !== true)
-    )
-      copy[S].script = 'started';
+    // A clone of a script that already started is already started (from
+    // jsdom 31 that includes parsed ones: html.js).
+    if (s.script === 'started') copy[S].script = 'started';
     if (s.attrNS) copy[S].attrNS = new Map(s.attrNS);
     if (s.handlers || hasOnAttribute(s.attrs)) eventHandlerAttributesAdded(copy);
     if (s.attrs.size !== 0) namedAttributesSet(copy[S], doc);

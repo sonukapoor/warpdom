@@ -820,20 +820,23 @@ function requireArguments(name, required, args) {
     );
 }
 
-// A double member (path: the members from parameter 2 in, idl-messages.js).
-function finiteDouble(w, name, path, value) {
+// A double member of parameter 2: key, inside outer when that is not null
+// (the error's member path is made only when the value is rejected).
+function finiteDouble(w, name, outer, key, value) {
   const n = Number(value);
-  if (!Number.isFinite(n))
+  if (!Number.isFinite(n)) {
+    const path = outer === null ? [key] : [outer, key];
     throw new TypeError(
       `Failed to construct '${name}': ${memberError(w[S].compat.idlMessages31, 2, path, 'is not a finite floating-point value.')}`,
     );
+  }
   return n;
 }
 
 // A nullable double member (DeviceOrientationEventInit, DeviceMotionEvent's
 // acceleration and rotation rate members): undefined and null are null.
-const nullableDouble = (w, name, path, value) =>
-  value === undefined || value === null ? null : finiteDouble(w, name, path, value);
+const nullableDouble = (w, name, outer, key, value) =>
+  value === undefined || value === null ? null : finiteDouble(w, name, outer, key, value);
 
 // PromiseRejectionEvent (HTML 8.1.7.3), from jsdom 27: promise is required
 // and any object (a thenable or function too), reason any value. jsdom
@@ -876,7 +879,7 @@ function constructBlobEvent(w, self, args) {
       ? w[S].compat.blobEventNaNTimecode
         ? NaN
         : 0
-      : finiteDouble(w, 'BlobEvent', ['timecode'], timecode);
+      : finiteDouble(w, 'BlobEvent', null, 'timecode', timecode);
   return self;
 }
 
@@ -912,7 +915,7 @@ function motionMember(w, member, value, Impl, keys) {
     );
   }
   const result = new Impl();
-  for (const key of keys) result[key] = nullableDouble(w, 'DeviceMotionEvent', [member, key], value?.[key]);
+  for (const key of keys) result[key] = nullableDouble(w, 'DeviceMotionEvent', member, key, value?.[key]);
   return result;
 }
 
@@ -939,7 +942,7 @@ function constructDeviceMotionEvent(w, self, args) {
     ACCELERATION_KEYS,
   );
   const interval = dict.interval;
-  es.interval = interval === undefined ? 0 : finiteDouble(w, 'DeviceMotionEvent', ['interval'], interval);
+  es.interval = interval === undefined ? 0 : finiteDouble(w, 'DeviceMotionEvent', null, 'interval', interval);
   es.rotationRate = motionMember(
     w,
     'rotationRate',
@@ -951,13 +954,14 @@ function constructDeviceMotionEvent(w, self, args) {
 }
 
 const deviceOrientationEventFields = eventConstruct('DeviceOrientationEvent');
+const ORIENTATION_KEYS = ['alpha', 'beta', 'gamma'];
 function constructDeviceOrientationEvent(w, self, args) {
   if (args.length > 0) initDictionary('DeviceOrientationEvent', args[1]);
   deviceOrientationEventFields(w, self, args);
   const dict = args[1] ?? {};
   const es = eventState(self);
   es.absolute = !!dict.absolute;
-  for (const key of ['alpha', 'beta', 'gamma']) es[key] = nullableDouble(w, 'DeviceOrientationEvent', [key], dict[key]);
+  for (const key of ORIENTATION_KEYS) es[key] = nullableDouble(w, 'DeviceOrientationEvent', null, key, dict[key]);
   return self;
 }
 

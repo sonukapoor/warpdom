@@ -573,7 +573,8 @@ function compileAttribute({ name, op, value, insensitive, ns }) {
 
 // Pseudo-classes whose result can change without a tree or attribute change
 // (form state, focus, text data): selectors using them are never result-cached.
-// :empty is not one: any text child counts (see compilePseudo).
+// :empty is one from jsdom 31, where an empty text child is not content;
+// compiled selectors are shared by every profile, so it is one in all.
 const DYNAMIC = new Set([
   'dir',
   'checked',
@@ -587,6 +588,7 @@ const DYNAMIC = new Set([
   'read-write',
   'valid',
   'invalid',
+  'empty',
 ]);
 let compilingDynamic = false;
 // Pseudo-classes whose result can change with text data alone (a dir=auto
