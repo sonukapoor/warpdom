@@ -1577,3 +1577,76 @@ for (const jsdom of [27, 28, 29, 30])
     },
     { jsdom },
   );
+
+// jsdom 28.1 and later declare nothing for a name not in lowercase in a
+// style attribute or cssText (COLOR: blue; black box, 28.1.0 to 30.1.3;
+// 27 and 26 lowercase it; #157 audit).
+// jsdom 27 and 28: a block whose normal background (written in lowercase,
+// without var()) is followed by a declaration of another property
+// declares nothing in a style attribute, cssText or a rule's cssText;
+// after its names given again are merged, and not when what follows is
+// a background, margin or padding property, flex, font or a border
+// width, style or color (black box, 27.4.0 and 28.1.0; jsdom 26, 29 and
+// 30 keep the block; #157 audit). A style sheet keeps it.
+for (const jsdom of [26, 27, 28, 29, 30])
+  parity(
+    `jsdom ${jsdom}: a background and a later declaration of another property (#157)`,
+    (w) => {
+      const d = w.document;
+      const out = [];
+      for (const text of [
+        'background: red; color: blue',
+        'color: blue; background: red',
+        'background: red; display: none',
+        'background: red; width: 1px',
+        'background: url(a.png); color: blue',
+        'background: inherit; color: blue',
+        'background: red; color: blue !important',
+        'background: red; --x: 1',
+        'background: red; margin: 0px; color: blue',
+        'background: red; background: blue; color: blue',
+        'color: red; background: red; color: blue',
+        'background: red; margin: 0px',
+        'background: red; margin-top: 1px',
+        'background: red; padding-inline-start: 1px',
+        'background: red; flex: 1',
+        'background: red; font: 12px a',
+        'background: red; border: 1px solid',
+        'background: red; border-top: 1px solid',
+        'background: red; border-left-color: red',
+        'background: red; border-block-start-width: 1px',
+        'background: red !important; color: blue',
+        'background: red !important; background: blue; color: blue',
+        'background: var(--b); color: blue',
+        'background: bogus; color: blue',
+        'background: red; colr: blue',
+        'background: red; color: bogus',
+        // (a name not in lowercase declares nothing from jsdom 28.1)
+        'background: red; COLOR: blue',
+        'BACKGROUND: red; color: blue',
+        'COLOR: blue',
+        'width: 1px; Color: blue',
+        'color: blue; Color: red',
+        'Color: red; color: blue',
+        '--X: 1; color: blue',
+      ]) {
+        const a = d.createElement('div');
+        a.setAttribute('style', text);
+        d.body.replaceChildren(a);
+        const b = d.createElement('div');
+        b.style.cssText = text;
+        out.push([text, a.style.cssText, b.style.cssText, w.getComputedStyle(a).display, w.getComputedStyle(a).color]);
+      }
+      d.head.innerHTML = '<style>.a { background: red; color: blue }</style>';
+      const rule = d.styleSheets[0].cssRules[0];
+      out.push(['sheet', rule.style.cssText]);
+      rule.style.cssText = 'background: red; color: green';
+      out.push(['rule cssText', rule.style.cssText]);
+      rule.style.cssText = 'COLOR: green; width: 1px';
+      out.push(['rule cssText', rule.style.cssText]);
+      d.head.innerHTML = '<style>.a { COLOR: blue }</style>';
+      out.push(['sheet', d.styleSheets[0].cssRules[0].style.cssText]);
+      return out;
+    },
+    { jsdom },
+  );

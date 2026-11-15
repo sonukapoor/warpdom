@@ -4091,6 +4091,15 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   const clears = runsOn && !inRule && context !== 'written';
   let carried = null;
   let initials = null; // the longhands a background of initial values set
+  let lowerBackground = false; // background last declared with that name as written
+  // From jsdom 28.1 a name not in lowercase declares nothing in a style
+  // attribute or cssText, a rule's too; a sheet lowercases it (COLOR: blue;
+  // black box, 28.1.0 to 30.1.3; 27 lowercases it: importantByWrittenName,
+  // which ends there; #157 audit).
+  const casedDropped =
+    !sheet &&
+    context !== 'written' &&
+    (mode === 'spec' || (mode === 'jsdom27' && surface?.importantByWrittenName !== true));
   let named = 0;
   let unnamed = false;
   let prioritized = false;
@@ -4201,6 +4210,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       }
     }
     if (!name || !value || dropped(surface, name)) continue;
+    if (casedDropped && rawName !== name && name.charCodeAt(0) !== 45 && /[A-Z]/.test(rawName)) continue;
     // jsdom 29 and later: a custom property's value read with its sheet is
     // re-serialized token by token (custom-value.js; #264 item 59). Spec
     // mode is jsdom 30; 29 has it on its style surface.
@@ -4357,6 +4367,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
         ? { value: declared, important: kept }
         : { value: declared, important: false, masked: true },
     );
+    if (name === 'background') lowerBackground = rawName === 'background';
     if (RECOMPOSED_LONGHANDS.has(name)) markLater(decls, declared);
   }
   // A background of initial values (setInitials) and a declaration of
@@ -4368,10 +4379,39 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     if (mode !== 'spec' && !surface?.key?.startsWith('jsdom29')) decls.clear();
     else for (const [n, decl] of initials.set) if (decls.get(n) === decl) decls.delete(n);
   }
+  if (
+    lowerBackground &&
+    !sheet &&
+    context !== 'written' &&
+    mode === 'jsdom27' &&
+    !surface?.key?.startsWith('jsdom29') &&
+    emptiedAfterBackground(decls)
+  )
+    decls.clear();
 
   releaseScan(list);
   if (clears && carried !== null && carried.includes(':')) decls.clear();
   if (counting) decls.plain = !unnamed && (named === decls.size || (!prioritized && plainNames(names)));
+}
+
+// jsdom 27 and 28 (black box, 27.4.0 and 28.1.0; #157 audit): in a style
+// attribute, cssText or a rule's cssText, a normal background (its name
+// written in lowercase, its value without var()) followed by a declaration
+// of another property leaves the block empty, its names given again
+// merged first (color: red; background: red; color: blue is kept). These
+// may follow it: background, margin and padding and their longhands,
+// border and its sides, widths, styles and colors (physical and logical),
+// border-image, flex and font. jsdom 26, 29 and 30 keep the block, and so
+// does a style sheet.
+const KEPT_AFTER_BACKGROUND =
+  /^(?:background(?:-[a-z-]+)?|(?:margin|padding)(?:-(?:top|right|bottom|left|(?:block|inline)-(?:start|end)))?|border(?:-(?:top|right|bottom|left))?|border-(?:width|style|color|image)|border-(?:top|right|bottom|left|(?:block|inline)-(?:start|end))-(?:width|style|color)|flex|font)$/;
+function emptiedAfterBackground(decls) {
+  let after = false;
+  for (const [name, decl] of decls) {
+    if (after && !KEPT_AFTER_BACKGROUND.test(name)) return true;
+    if (name === 'background' && !decl.important && !decl.masked && !hasVar(decl.value)) after = true;
+  }
+  return false;
 }
 
 // Whether a legacy style attribute's or cssText's parts (parseInto's
