@@ -1629,6 +1629,9 @@ for (const jsdom of [26, 27, 28, 29, 30])
         'color: blue; Color: red',
         'Color: red; color: blue',
         '--X: 1; color: blue',
+        // (a vendor prefix is no custom property; #319 review)
+        '-WEBKIT-animation: none; color: blue',
+        '-Webkit-line-clamp: 2; color: blue',
       ]) {
         const a = d.createElement('div');
         a.setAttribute('style', text);

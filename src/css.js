@@ -4210,7 +4210,9 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       }
     }
     if (!name || !value || dropped(surface, name)) continue;
-    if (casedDropped && rawName !== name && name.charCodeAt(0) !== 45 && /[A-Z]/.test(rawName)) continue;
+    // (a custom property's name keeps its case; a vendor prefix is no
+    // exception: -WEBKIT-animation; #319 review)
+    if (casedDropped && rawName !== name && !name.startsWith('--') && UPPERCASE.test(rawName)) continue;
     // jsdom 29 and later: a custom property's value read with its sheet is
     // re-serialized token by token (custom-value.js; #264 item 59). Spec
     // mode is jsdom 30; 29 has it on its style surface.
@@ -4407,9 +4409,12 @@ const KEPT_AFTER_BACKGROUND =
   /^(?:background(?:-[a-z-]+)?|(?:margin|padding)(?:-(?:top|right|bottom|left|(?:block|inline)-(?:start|end)))?|border(?:-(?:top|right|bottom|left))?|border-(?:width|style|color|image)|border-(?:top|right|bottom|left|(?:block|inline)-(?:start|end))-(?:width|style|color)|flex|font)$/;
 function emptiedAfterBackground(decls) {
   let after = false;
-  for (const [name, decl] of decls) {
+  for (const name of decls.keys()) {
     if (after && !KEPT_AFTER_BACKGROUND.test(name)) return true;
-    if (name === 'background' && !decl.important && !decl.masked && !hasVar(decl.value)) after = true;
+    if (name === 'background') {
+      const decl = decls.get(name);
+      if (!decl.important && !decl.masked && !hasVar(decl.value)) after = true;
+    }
   }
   return false;
 }
