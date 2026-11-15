@@ -210,8 +210,26 @@ parity(
       (s) => {
         s.cueBefore = 'initial';
       },
+      'vertical-align: 10px',
+      'vertical-align: middle',
+      'vertical-align: 0',
+      (s) => {
+        s.verticalAlign = 'top';
+        s.baselineShift = '2px';
+      },
+      'margin-inline: 1px 2px',
+      'padding-block: 0 4px',
     ],
-    ['font', 'font-variant', 'border-image', 'border-radius', 'margin'],
+    [
+      'font',
+      'font-variant',
+      'border-image',
+      'border-radius',
+      'margin',
+      'vertical-align',
+      'baseline-shift',
+      'margin-inline-end',
+    ],
   ),
   { jsdom: 31 },
 );

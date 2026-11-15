@@ -154,6 +154,15 @@ function borderImage(value) {
   return [source, slice || '100%', width || '1', outset || '0', repeats.join(' ') || 'stretch'];
 }
 
+const PAIR = /-(?:block|inline)$/;
+// vertical-align as baseline-source, alignment-baseline and baseline-shift:
+// a length or percentage is the shift, a keyword the alignment.
+function verticalAlign(value) {
+  const lower = value.trim().toLowerCase();
+  if (/^[-+]?[\d.]|^[a-z-]+\(/.test(lower)) return ['auto', 'baseline', longhandValue('baseline-shift', value.trim())];
+  return ['auto', lower, '0px'];
+}
+
 // The longhands a shorthand's declared value sets, in jsdom 31's order:
 // [[longhand, value], ...], with their src.
 export function expand31(name, value, raw = value) {
@@ -166,6 +175,7 @@ export function expand31(name, value, raw = value) {
   if (name === 'border-radius') return radii(value).map((v, i) => [longhands[i], v, src]);
   if (name === 'font-variant') return fontVariant(raw).map((v, i) => [longhands[i], v, src]);
   if (name === 'border-image') return borderImage(value).map((v, i) => [longhands[i], v, src]);
+  if (name === 'vertical-align') return verticalAlign(value).map((v, i) => [longhands[i], v, src]);
   const pairs = expand(name, value);
   const found = new Map();
   for (let i = 1; i < pairs.length; i++) found.set(pairs[i][0], pairs[i][1]);
@@ -181,6 +191,15 @@ export function expand31(name, value, raw = value) {
     found.set('background-repeat-x', xs.join(', ')).set('background-repeat-y', ys.join(', '));
   }
   if (name === 'font') fontKeywords(raw, found);
+  // A pair our expansion does not know (margin-inline: 1px 2px): the
+  // second value is the first one when left out.
+  if (found.size === 0 && longhands.length === 2 && PAIR.test(name)) {
+    const [first, second = first] = words(value);
+    return [
+      [longhands[0], longhandValue(longhands[0], first), src],
+      [longhands[1], longhandValue(longhands[1], second), src],
+    ];
+  }
   return longhands.map((l) => [l, found.has(l) ? longhandValue(l, found.get(l)) : initialOf(l), src]);
 }
 
@@ -281,6 +300,7 @@ const omitting = (initials) => (values) => {
 const SIDE = /-(?:top|right|bottom|left)(?:-|$)|-(?:top|bottom)-(?:left|right)-radius$/;
 function defaultComposer(name) {
   const longhands = shorthandsTable()[name];
+  if (longhands.length === 2 && PAIR.test(name)) return pair;
   return longhands.length === 4 && longhands.every((l) => SIDE.test(l)) ? serializeBox : null;
 }
 for (const name of ['margin', 'padding', 'inset', 'border-width', 'border-style', 'border-color'])
@@ -288,6 +308,13 @@ for (const name of ['margin', 'padding', 'inset', 'border-width', 'border-style'
 for (const name of ['overflow', 'gap', 'place-items', 'place-content', 'place-self', 'overscroll-behavior'])
   COMPOSERS[name] = pair;
 COMPOSERS.flex = (v) => v.join(' ');
+// vertical-align: the shift, or the alignment keyword when it is 0px (a
+// shift wins over another alignment: top then baseline-shift: 2px is 2px).
+// A baseline source other than auto comes first (first top).
+COMPOSERS['vertical-align'] = ([source, alignment, shift]) => {
+  const value = shift === '0px' ? alignment : shift;
+  return source === 'auto' ? value : `${source} ${value}`;
+};
 // (per layer: x and y are lists, layer by layer)
 const layersOf = (value) => topLevelCommaSplit(value).map((layer) => layer.trim());
 COMPOSERS['background-position'] = ([x, y]) => {
