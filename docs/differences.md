@@ -426,16 +426,48 @@ Not modeled:
   one `style.flex` write. warpdom queues one record per change, and
   none for a write that changes nothing, as jsdom 27 to 30 do
 - a name repeated in another case in a `style` attribute or `cssText`,
-  jsdom 27 to 30 ([#264](https://github.com/sonukapoor/warpdom/issues/264)): jsdom 27.4 reads `color: blue; Color:
-  red; color: green` as red, and jsdom 30 reads `color: blue; Color: red`
-  as blue; warpdom gives the last declaration
+  jsdom 27 ([#264](https://github.com/sonukapoor/warpdom/issues/264)): jsdom 27.4 reads `color: blue; Color:
+  red; color: green` as red; warpdom gives the last declaration (from
+  28.1 a name not in lowercase declares nothing there, which warpdom
+  models)
 - custom property names that are not one identifier ([#264](https://github.com/sonukapoor/warpdom/issues/264)):
   from jsdom 27, `--a*b: 1` and `--a\\/b: 1` are invalid in the style
   attribute and `cssText`, and from 29 in style sheets (27 and 28 sheets
   keep them); warpdom keeps them everywhere, and reads `--\61/**/b: 1`
   (two tokens) as `--\61 b`
+- the order of `border` declarations read from a `style` attribute or
+  `cssText`, jsdom 27 to 30 ([#157](https://github.com/sonukapoor/warpdom/issues/157)): jsdom writes the `border`
+  shorthand, its sides and its width, style and color longhands after
+  the other declarations, sides from top to left: `border: 1px solid red;
+  color: blue` is `color: blue; border: 1px solid red;`, and so is the
+  attribute once a style write rewrites it. Declarations set through the
+  accessors keep their order, as in warpdom; warpdom keeps the written
+  order
+- priority tokens in style sheets and custom properties ([#157](https://github.com/sonukapoor/warpdom/issues/157)): jsdom
+  27 and 28 sheets read `color: var(--c) !important !important` as
+  `color: var(--c);` and `var(--c) !important !foo` as `var(--c)  !foo`,
+  and write `[!important]` as `[] !important` and `( !important )` as
+  `(!important )`. jsdom 23 to 26 keep one `!important` of `color:
+  var(--c) !important !important`; jsdom 26 removes `!important` inside a
+  custom property's value and reads `--x: {a !important; b}` as nothing
+  (warpdom `--x: {a;`); jsdom 30.1.3 writes `a\\!important` as `a\` and
+  U+FFFD. warpdom keeps them as written
+- `!important` with `var(` inside a string, jsdom 27.4 ([#162](https://github.com/sonukapoor/warpdom/issues/162)): jsdom
+  keeps it for `font-family`, `font`, `background` and `background-image`
+  (`font-family: "var(--face)" !important`) and drops it for other
+  properties (`content: "var(--x)" !important`); warpdom's 27 profile
+  drops it for all
+- jsdom 20 to 26's style sheet objects ([#159](https://github.com/sonukapoor/warpdom/issues/159)): `replaceSync()` and
+  `replace()` are missing there (warpdom has them in every profile;
+  `adoptedStyleSheets` is missing in both, so a check for constructable
+  style sheets agrees). A grouping rule's `cssRules` replaced with an
+  array that has a hole makes `cssText` throw, and `deleteRule(0)` removes
+  the entry before it throws; warpdom serializes the other rules and keeps
+  the entry. With `[undefined]`, `getComputedStyle()` throws in jsdom;
+  warpdom skips the entry
 - custom properties in jsdom 26 to 28's style sheets ([#264](https://github.com/sonukapoor/warpdom/issues/264)):
-  jsdom 26 to 28 drop one with a `{}` block (`{ a }`). jsdom 27 and 28
+  jsdom 27 and 28 drop one with a `{}` block (`{ a }`), and jsdom 26
+  the whole sheet. jsdom 27 and 28
   read `--x: / *` as `/*` and `\61  b` with one space, keep `!IMPORTANT`
   as written, write `a !important b` as `a  b !important`, give `a
   !/**/important` no priority, make a nested rule from a block (`p { --x:
@@ -612,6 +644,12 @@ Not modeled:
 
 Computed values not modeled:
 
+- `background-position` from a `background` with a position ([#157](https://github.com/sonukapoor/warpdom/issues/157)):
+  after `background: url(a.png) center`, jsdom 27 to 29 compute `0% 0%`
+  and jsdom 26 `center`; warpdom computes `center center` and `''`
+- `padding` from a style rule's shorthand and an inline longhand before
+  jsdom 28.1 ([#157](https://github.com/sonukapoor/warpdom/issues/157)): `p { padding: 8px }` and `padding-bottom: 5px`
+  give `8px 8px 5px 8px` in jsdom 26 and `8px 8px 5px` in warpdom
 - the `font` shorthand composed from its longhands (jsdom's
   `getComputedStyle().font` and `el.style.font`)
 - a shorthand followed by one of its longhands in a style sheet: from
