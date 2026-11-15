@@ -247,3 +247,33 @@ parity(
   },
   { jsdom: 31 },
 );
+
+// #322 review, second round: font-variant's none alone, corners of both
+// mappings, two-corner shorthands, independent border sides, a shorthand
+// written with a comment between its tokens.
+parity(
+  'jsdom 31: corners, font-variant none and commented shorthand writes',
+  block(
+    [
+      (s) => {
+        s.fontVariant = 'none';
+        s.fontVariantCaps = 'small-caps';
+      },
+      'border-top-left-radius:1px;border-top-right-radius:1px;border-end-end-radius:2px;border-bottom-right-radius:1px;border-bottom-left-radius:1px',
+      'border-top-left-radius:1px;border-top-right-radius:2px',
+      'border-top-left-radius:1px 3px;border-top-right-radius:2px',
+      'border-start-start-radius:1px;border-start-end-radius:2px',
+      'corner-top-left-shape:round;corner-top-right-shape:round;corner-end-end-shape:bevel;corner-bottom-right-shape:round;corner-bottom-left-shape:round',
+      'border-top-width: 1px; border-right-width: 2px; border-top-style: solid; border-top-color: red',
+      (s) => {
+        s.setProperty('margin', '1px/**/2px');
+      },
+      (s) => {
+        s.margin = 'var(--m)';
+        s.marginLeft = '1px';
+      },
+    ],
+    ['font-variant', 'border-radius', 'border-top-radius', 'border-top', 'margin'],
+  ),
+  { jsdom: 31 },
+);

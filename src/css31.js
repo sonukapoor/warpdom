@@ -397,7 +397,10 @@ COMPOSERS.font = (v, entries) => {
   parts.push(v[11] === 'normal' ? v[10] : `${v[10]} / ${v[11]}`, v[12]);
   return parts.join(' ');
 };
-COMPOSERS['font-variant'] = omitting(['normal', 'normal', 'normal', 'normal', 'normal', 'normal', 'normal']);
+// (none, the ligatures, stands alone: none with small-caps is not written)
+const variantParts = omitting(['normal', 'normal', 'normal', 'normal', 'normal', 'normal', 'normal']);
+COMPOSERS['font-variant'] = (v) =>
+  v[0] === 'none' && v.some((x, i) => i > 0 && x !== 'normal') ? '' : variantParts(v);
 COMPOSERS['border-radius'] = (v) => {
   const h = [],
     w = [];
@@ -410,36 +413,71 @@ COMPOSERS['border-radius'] = (v) => {
     b = serializeBox(w);
   return a === b ? a : `${a} / ${b}`;
 };
+// The two-corner shorthands (border-top-radius, border-block-start-radius):
+// the horizontal radii as a pair, then / and the vertical ones if they differ.
+const cornerPair = (v) => {
+  const [x1, y1 = x1] = words(v[0]),
+    [x2, y2 = x2] = words(v[1]);
+  const a = pair([x1, x2]),
+    b = pair([y1, y2]);
+  return a === b ? a : `${a} / ${b}`;
+};
+for (const side of ['top', 'right', 'bottom', 'left', 'block-start', 'block-end', 'inline-start', 'inline-end'])
+  ((COMPOSERS[`border-${side}-radius`] = cornerPair), (COMPOSERS[`corner-${side}-shape`] = pair));
 
 // CSSOM: a shorthand is not written where a declaration between its first
 // and last longhands is of the same logical property group with the other
 // mapping (margin-block-end between margin-top and margin-left): writing
-// it would reorder them.
+// it would reorder them. One of the same mapping is independent
+// (border-right-width between border-top's longhands).
 const LOGICAL = /-(?:block|inline)(?:-(?:start|end))?(?=-|$)/;
 const PHYSICAL = /-(?:top|right|bottom|left)(?=-|$)/;
+// group|mapping, or null
 const groupOf = (name) => {
   if (/^(?:top|right|bottom|left)$/.test(name)) return 'inset|physical';
   if (/^inset-(?:block|inline)/.test(name)) return 'inset|logical';
+  // (corners: border-top-left-radius and border-end-end-radius, the
+  // corner shapes likewise)
+  const corner = /^(border|corner)-(?:(top|bottom)-(?:left|right)|(?:start|end)-(?:start|end))-(radius|shape)$/.exec(
+    name,
+  );
+  if (corner !== null) return `${corner[1]}-${corner[3]}|${corner[2] === undefined ? 'logical' : 'physical'}`;
   if (LOGICAL.test(name)) return `${name.replace(LOGICAL, '')}|logical`;
   if (PHYSICAL.test(name)) return `${name.replace(PHYSICAL, '')}|physical`;
   return null;
 };
+// Per shorthand, built once: its longhands, and the mapping of each
+// group they belong to.
+const LAYOUT = new Map();
+function layoutOf(shorthand) {
+  let layout = LAYOUT.get(shorthand);
+  if (layout === undefined) {
+    const longhands = new Set(shorthandsTable()[shorthand]);
+    const mappings = new Map();
+    for (const l of longhands) {
+      const group = groupOf(l);
+      if (group !== null) mappings.set(group.slice(0, group.indexOf('|')), group.slice(group.indexOf('|') + 1));
+    }
+    layout = { longhands, mappings };
+    LAYOUT.set(shorthand, layout);
+  }
+  return layout;
+}
 function crossesLogical(decls, shorthand) {
-  const longhands = new Set(shorthandsTable()[shorthand]);
+  const { longhands, mappings } = layoutOf(shorthand);
+  if (mappings.size === 0) return false;
   let inside = false,
-    seen = 0,
-    groups = null;
+    seen = 0;
   for (const name of decls.keys()) {
     if (longhands.has(name)) {
-      if (!inside) {
-        inside = true;
-        groups = new Set();
-        for (const l of longhands) groups.add(groupOf(l)?.split('|')[0]);
-      }
+      inside = true;
       if (++seen === longhands.size) return false;
     } else if (inside) {
       const group = groupOf(name);
-      if (group !== null && groups.has(group.split('|')[0])) return true;
+      if (group === null) continue;
+      const bar = group.indexOf('|');
+      const mapping = mappings.get(group.slice(0, bar));
+      if (mapping !== undefined && mapping !== group.slice(bar + 1)) return true;
     }
   }
   return false;

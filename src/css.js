@@ -54,7 +54,7 @@ import {
   replayBox,
   writeBox,
 } from './box-declarations.js';
-import { set31, remove31, value31, priority31, serialize31, dropped31 } from './css31.js';
+import { set31, remove31, value31, priority31, serialize31, dropped31, shorthand31 } from './css31.js';
 
 // backgroundColor -> background-color, webkitAnimation/WebkitAnimation ->
 // -webkit-animation, cssFloat -> float; dashed names map to themselves.
@@ -5558,6 +5558,11 @@ function writtenValue(name, raw, s) {
   const decls = new Map();
   parseInto(decls, `${name}: ${raw}`, s.mode, s.surface, null, true, true);
   for (const declared of decls.values()) if (declared.important || declared.masked === true) return INVALID;
+  // (jsdom 31: the block holds longhands; the shorthand is read from them)
+  if (s.surface?.cssom31 === true && decls.cssom31 === true) {
+    const value = value31(decls, name);
+    return value !== '' && decls.size === (shorthand31(name)?.length ?? 1) ? value : INVALID;
+  }
   const declared = decls.get(name);
   if (declared !== undefined) return decls.size === 1 ? declared.value : INVALID;
   // (parseInto sets a background of initial values as its longhands.)
