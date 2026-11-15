@@ -14,6 +14,7 @@ import {
   hooks,
   tooFewArguments,
 } from './internal.js';
+import { memberError } from './idl-messages.js';
 
 // Listener functions are called with Reflect.apply, captured at load: not
 // through their own call property, as jsdom calls them.
@@ -712,7 +713,7 @@ function constructTouchEvent(w, self, args) {
     const value = dict[key];
     if (value !== undefined && (value === null || typeof value[Symbol.iterator] !== 'function')) {
       throw new TypeError(
-        `Failed to construct 'TouchEvent': parameter 2 has member '${key}' that is not an iterable object.`,
+        `Failed to construct 'TouchEvent': ${memberError(w[S].compat.idlMessages31, 2, [key], 'is not an iterable object.')}`,
       );
     }
     es[key] = value === undefined ? [] : Array.from(value);
@@ -819,20 +820,20 @@ function requireArguments(name, required, args) {
     );
 }
 
-// A double member (path names it in the message, as "a' that has member 'x").
-function finiteDouble(name, path, value) {
+// A double member (path: the members from parameter 2 in, idl-messages.js).
+function finiteDouble(w, name, path, value) {
   const n = Number(value);
   if (!Number.isFinite(n))
     throw new TypeError(
-      `Failed to construct '${name}': parameter 2 has member '${path}' that is not a finite floating-point value.`,
+      `Failed to construct '${name}': ${memberError(w[S].compat.idlMessages31, 2, path, 'is not a finite floating-point value.')}`,
     );
   return n;
 }
 
 // A nullable double member (DeviceOrientationEventInit, DeviceMotionEvent's
 // acceleration and rotation rate members): undefined and null are null.
-const nullableDouble = (name, path, value) =>
-  value === undefined || value === null ? null : finiteDouble(name, path, value);
+const nullableDouble = (w, name, path, value) =>
+  value === undefined || value === null ? null : finiteDouble(w, name, path, value);
 
 // PromiseRejectionEvent (HTML 8.1.7.3), from jsdom 27: promise is required
 // and any object (a thenable or function too), reason any value. jsdom
@@ -845,7 +846,7 @@ function constructPromiseRejectionEvent(w, self, args) {
   if (promise === undefined) throw new TypeError("promise is required in 'PromiseRejectionEventInit'");
   if (promise === null || (typeof promise !== 'object' && typeof promise !== 'function')) {
     throw new TypeError(
-      "Failed to construct 'PromiseRejectionEvent': parameter 2 has member 'promise' that is not an object.",
+      `Failed to construct 'PromiseRejectionEvent': ${memberError(w[S].compat.idlMessages31, 2, ['promise'], 'is not an object.')}`,
     );
   }
   const es = eventState(self);
@@ -864,7 +865,9 @@ function constructBlobEvent(w, self, args) {
   const data = dict.data;
   if (data === undefined) throw new TypeError("data is required in 'BlobEventInit'");
   if (hooks.blobs?.blobData(data) === undefined)
-    throw new TypeError("Failed to construct 'BlobEvent': parameter 2 has member 'data' that is not of type 'Blob'.");
+    throw new TypeError(
+      `Failed to construct 'BlobEvent': ${memberError(w[S].compat.idlMessages31, 2, ['data'], "is not of type 'Blob'.")}`,
+    );
   const timecode = dict.timecode;
   const es = eventState(self);
   es.data = data;
@@ -873,7 +876,7 @@ function constructBlobEvent(w, self, args) {
       ? w[S].compat.blobEventNaNTimecode
         ? NaN
         : 0
-      : finiteDouble('BlobEvent', 'timecode', timecode);
+      : finiteDouble(w, 'BlobEvent', ['timecode'], timecode);
   return self;
 }
 
@@ -901,16 +904,15 @@ class DeviceMotionEventRotationRateImpl {}
 const ACCELERATION_KEYS = ['x', 'y', 'z'];
 const ROTATION_KEYS = ['alpha', 'beta', 'gamma'];
 
-function motionMember(member, value, Impl, keys) {
+function motionMember(w, member, value, Impl, keys) {
   if (value === undefined) return null;
   if (value !== null && typeof value !== 'object' && typeof value !== 'function') {
     throw new TypeError(
-      `Failed to construct 'DeviceMotionEvent': parameter 2 has member '${member}' that is not an object.`,
+      `Failed to construct 'DeviceMotionEvent': ${memberError(w[S].compat.idlMessages31, 2, [member], 'is not an object.')}`,
     );
   }
   const result = new Impl();
-  for (const key of keys)
-    result[key] = nullableDouble('DeviceMotionEvent', `${member}' that has member '${key}`, value?.[key]);
+  for (const key of keys) result[key] = nullableDouble(w, 'DeviceMotionEvent', [member, key], value?.[key]);
   return result;
 }
 
@@ -923,20 +925,28 @@ function constructDeviceMotionEvent(w, self, args) {
   const dict = args[1] ?? {};
   const es = eventState(self);
   es.acceleration = motionMember(
+    w,
     'acceleration',
     dict.acceleration,
     DeviceMotionEventAccelerationImpl,
     ACCELERATION_KEYS,
   );
   es.accelerationIncludingGravity = motionMember(
+    w,
     'accelerationIncludingGravity',
     dict.accelerationIncludingGravity,
     DeviceMotionEventAccelerationImpl,
     ACCELERATION_KEYS,
   );
   const interval = dict.interval;
-  es.interval = interval === undefined ? 0 : finiteDouble('DeviceMotionEvent', 'interval', interval);
-  es.rotationRate = motionMember('rotationRate', dict.rotationRate, DeviceMotionEventRotationRateImpl, ROTATION_KEYS);
+  es.interval = interval === undefined ? 0 : finiteDouble(w, 'DeviceMotionEvent', ['interval'], interval);
+  es.rotationRate = motionMember(
+    w,
+    'rotationRate',
+    dict.rotationRate,
+    DeviceMotionEventRotationRateImpl,
+    ROTATION_KEYS,
+  );
   return self;
 }
 
@@ -947,7 +957,7 @@ function constructDeviceOrientationEvent(w, self, args) {
   const dict = args[1] ?? {};
   const es = eventState(self);
   es.absolute = !!dict.absolute;
-  for (const key of ['alpha', 'beta', 'gamma']) es[key] = nullableDouble('DeviceOrientationEvent', key, dict[key]);
+  for (const key of ['alpha', 'beta', 'gamma']) es[key] = nullableDouble(w, 'DeviceOrientationEvent', [key], dict[key]);
   return self;
 }
 

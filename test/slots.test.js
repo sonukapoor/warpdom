@@ -125,7 +125,7 @@ for (const jsdom of [30, 26, 25]) {
 // jsdom (20 to 30) keeps the last assigned slot after the node leaves its
 // host: its path still goes through that slot, shadow root and host until
 // it is assigned again (tanstack-query's lit-query tests rely on it).
-for (const jsdom of [30, 26, 20]) {
+for (const jsdom of [31, 30, 26, 20]) {
   parity(
     `slots: event paths through assigned slots, and jsdom's last assigned slot (jsdom ${jsdom})`,
     (w) => {

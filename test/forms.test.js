@@ -549,46 +549,51 @@ test("setRangeText selection: the replaced text ends at the value's length befor
 // WebIDL arguments of setRangeText() and setSelectionRange(): too few
 // arguments, two for setRangeText (no overload takes two), an invalid
 // SelectionMode, and undefined for optional and present arguments.
-parity('setRangeText and setSelectionRange arguments', (w) => {
-  const d = w.document;
-  const out = [];
-  const attempt = (make, f) => {
-    const el = make();
-    try {
-      f(el);
-      out.push([el.value, el.selectionStart, el.selectionEnd]);
-    } catch (e) {
-      out.push([e.constructor.name, e.name, e.message]);
-    }
-  };
-  const input = (type = 'text') => {
-    const i = d.createElement('input');
-    i.type = type;
-    i.value = 'abc';
-    return i;
-  };
-  const textarea = () => {
-    const t = d.createElement('textarea');
-    t.value = 'abc';
-    return t;
-  };
-  for (const make of [input, textarea, () => input('checkbox'), () => input('email')]) {
-    attempt(make, (el) => el.setRangeText());
-    attempt(make, (el) => el.setRangeText('x', 1));
-    attempt(make, (el) => el.setRangeText('x', 1, 2, 'bogus'));
-    attempt(make, (el) => el.setSelectionRange());
-    attempt(make, (el) => el.setSelectionRange(1));
-  }
-  attempt(input, (el) => el.setRangeText(undefined));
-  attempt(input, (el) => el.setRangeText('x', undefined, undefined));
-  attempt(input, (el) => el.setRangeText('x', 1, undefined));
-  attempt(input, (el) => el.setRangeText('x', 1, 2, undefined));
-  attempt(input, (el) => el.setRangeText('x', 2, 1));
-  attempt(input, (el) => el.setRangeText('x', 0, 9, 'end'));
-  attempt(input, (el) => el.setSelectionRange(1, undefined));
-  attempt(input, (el) => el.setSelectionRange(undefined, 2, undefined));
-  return out;
-});
+for (const jsdom of [30, 31])
+  parity(
+    `setRangeText and setSelectionRange arguments (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      const out = [];
+      const attempt = (make, f) => {
+        const el = make();
+        try {
+          f(el);
+          out.push([el.value, el.selectionStart, el.selectionEnd]);
+        } catch (e) {
+          out.push([e.constructor.name, e.name, e.message]);
+        }
+      };
+      const input = (type = 'text') => {
+        const i = d.createElement('input');
+        i.type = type;
+        i.value = 'abc';
+        return i;
+      };
+      const textarea = () => {
+        const t = d.createElement('textarea');
+        t.value = 'abc';
+        return t;
+      };
+      for (const make of [input, textarea, () => input('checkbox'), () => input('email')]) {
+        attempt(make, (el) => el.setRangeText());
+        attempt(make, (el) => el.setRangeText('x', 1));
+        attempt(make, (el) => el.setRangeText('x', 1, 2, 'bogus'));
+        attempt(make, (el) => el.setSelectionRange());
+        attempt(make, (el) => el.setSelectionRange(1));
+      }
+      attempt(input, (el) => el.setRangeText(undefined));
+      attempt(input, (el) => el.setRangeText('x', undefined, undefined));
+      attempt(input, (el) => el.setRangeText('x', 1, undefined));
+      attempt(input, (el) => el.setRangeText('x', 1, 2, undefined));
+      attempt(input, (el) => el.setRangeText('x', 2, 1));
+      attempt(input, (el) => el.setRangeText('x', 0, 9, 'end'));
+      attempt(input, (el) => el.setSelectionRange(1, undefined));
+      attempt(input, (el) => el.setSelectionRange(undefined, 2, undefined));
+      return out;
+    },
+    { jsdom },
+  );
 
 parity('valueAsNumber, valueAsDate, stepUp', (w) => {
   const d = w.document;

@@ -14,6 +14,7 @@
 // progress (none for an empty blob), then load (or error) and loadend,
 // each in its own task.
 import { S, state, domError, hiddenSlot, hooks, PLATFORM_GLOBAL } from './internal.js';
+import { enumError } from './idl-messages.js';
 import { dispatch, eventConstruct, fieldGetters } from './events.js';
 import { handlerMembers } from './event-handlers.js';
 import { decodeText, bufferBytes, realmOf, webidlString, utf8Encode, PlatformTextDecoder } from './encoding.js';
@@ -83,7 +84,8 @@ function convertParts(parts, iface) {
   return out;
 }
 
-function blobOptions(options, iface) {
+const ENDINGS = ['transparent', 'native'];
+function blobOptions(window, options, iface) {
   if (options === undefined || options === null) return { endings: 'transparent', type: '' };
   if (typeof options !== 'object' && typeof options !== 'function')
     throw new TypeError(`Failed to construct '${iface}': parameter ${iface === 'File' ? 3 : 2} is not an object.`);
@@ -91,7 +93,7 @@ function blobOptions(options, iface) {
   const endings = e === undefined ? 'transparent' : String(e);
   if (endings !== 'transparent' && endings !== 'native') {
     throw new TypeError(
-      `Failed to construct '${iface}': parameter ${iface === 'File' ? 3 : 2} has member 'endings' that '${endings}' is not a valid enumeration value for EndingType`,
+      `Failed to construct '${iface}': ${enumError(window[S].compat.idlMessages31, iface === 'File' ? 3 : 2, ['endings'], endings, ENDINGS, 'EndingType')}`,
     );
   }
   const { type } = options;
@@ -151,7 +153,7 @@ export const BLOB_INTERFACES = [
     slot: [BLOB, BLOB_SLOT],
     construct: (window, self, [parts = undefined, options = undefined]) => {
       const converted = parts === undefined ? [] : convertParts(parts, 'Blob');
-      const { endings, type } = blobOptions(options, 'Blob');
+      const { endings, type } = blobOptions(window, options, 'Blob');
       self[BLOB] = { window, bytes: processParts(converted, endings), type, name: undefined, lastModified: 0 };
       return self;
     },
@@ -206,7 +208,7 @@ export const BLOB_INTERFACES = [
       const [parts, name, options] = args;
       const converted = convertParts(parts, 'File');
       const fileName = webidlString(name, 'parameter 2', "Failed to construct 'File'");
-      const { endings, type } = blobOptions(options, 'File');
+      const { endings, type } = blobOptions(window, options, 'File');
       const lastModified = options?.lastModified === undefined ? Date.now() : longLong(options.lastModified);
       self[BLOB] = {
         window,

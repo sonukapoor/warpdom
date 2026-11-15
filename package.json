@@ -142,6 +142,7 @@
     "jsdom28": "npm:jsdom@28.1.0",
     "jsdom29": "npm:jsdom@29.1.1",
     "jsdom30": "npm:jsdom@30.1.3",
+    "jsdom31": "npm:jsdom@31.0.1",
     "msw": "^3.0.3",
     "nock": "^14.0.17",
     "prettier": "^3.9.9",

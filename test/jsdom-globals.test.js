@@ -34,7 +34,7 @@ const LATER = [
 ];
 const present = (w) => LATER.filter((name) => Object.hasOwn(w, name) && typeof w[name] === 'function');
 
-for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30])
+for (const jsdom of [20, 22, 25, 26, 27, 28, 29, 30, 31])
   parity(`globals: the interfaces jsdom ${jsdom} exposes`, (w) => present(w), { jsdom });
 
 // The releases where the set changes (black box, jsdom 20.0.0 to 30.1.3;

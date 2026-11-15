@@ -56,7 +56,7 @@ import {
   handlerVariant,
   adjustHandlers,
 } from './event-handlers.js';
-import { CUSTOM_ELEMENT_INTERFACES, ATTACH_INTERNALS_MEMBERS, lookUp } from './custom-elements.js';
+import { CUSTOM_ELEMENT_INTERFACES, ATTACH_INTERNALS_MEMBERS, BRAILLE_MEMBERS, lookUp } from './custom-elements.js';
 import { RANGE_INTERFACES, newRange, getSelection, splitText, normalize } from './ranges.js';
 import { CSSOM_INTERFACES, STYLE_ELEMENT_MEMBERS, documentStyleSheets } from './cssom.js';
 import { FOCUS_MEMBERS, DOCUMENT_FOCUS_MEMBERS } from './focus.js';
@@ -442,8 +442,19 @@ function cloneNode(node, deep, doc) {
       !!s.prefix,
     );
     copy[S].attrs = new Map(s.attrs);
-    // A clone of a script that already started is already started.
-    if (s.script === 'started') copy[S].script = 'started';
+    // A clone of a script that already started is already started; from
+    // jsdom 31 one the parser made too, as the parser marks it already
+    // started, but for one in a template's contents, whose clones run
+    // (compat.parsedScriptsStarted; black box, 30.1.3 and 31.0.1).
+    if (
+      s.script === 'started' ||
+      (s.script === undefined &&
+        s.tag === 'script' &&
+        s.ns === HTML_NS &&
+        w.compat.parsedScriptsStarted === true &&
+        s.doc[S].inertTemplate !== true)
+    )
+      copy[S].script = 'started';
     if (s.attrNS) copy[S].attrNS = new Map(s.attrNS);
     if (s.handlers || hasOnAttribute(s.attrs)) eventHandlerAttributesAdded(copy);
     if (s.attrs.size !== 0) namedAttributesSet(copy[S], doc);
@@ -1514,10 +1525,16 @@ export const INTERFACES = [
     // role and the ARIA attributes (ARIAMixin) from jsdom 23.1.0. Before,
     // Vue sets ariaLabel as an attribute named arialabel, not as a property
     // (Element Plus's table-v2 tests read those attributes).
-    // Left out of the cached descriptors of a 'no-aria' variant.
-    variant: (compat) => (compat.ariaMixin ? null : 'no-aria'),
-    adjust(descriptors) {
-      for (const key of Object.keys(descriptors)) if (ARIA_MEMBER.test(key)) delete descriptors[key];
+    // Left out of the cached descriptors of a 'no-aria' variant; the
+    // braille ones before jsdom 31 ('no-braille', compat.ariaBraille;
+    // black box, 30.1.3 and 31.0.1).
+    variant(compat) {
+      if (!compat.ariaMixin) return 'no-aria';
+      return compat.ariaBraille ? null : 'no-braille';
+    },
+    adjust(descriptors, variant) {
+      if (variant === 'no-braille') for (const key of BRAILLE_MEMBERS) delete descriptors[key];
+      else for (const key of Object.keys(descriptors)) if (ARIA_MEMBER.test(key)) delete descriptors[key];
     },
     members: mix(parentNode, childNode, elementSiblings, ELEMENT_LAYOUT, {
       [Symbol.unscopables]: {
@@ -1954,9 +1971,13 @@ function byClassName(root, names) {
 // HTML element interfaces from the HTML standard; members are added per
 // interface as they are implemented.
 // No canvas: as jsdom without the canvas package, these report "Not
-// implemented" and return null.
-const canvasNotImplemented = (el, method) =>
-  win(el)[S].notImplemented(`HTMLCanvasElement's ${method}() method: without installing the canvas npm package`);
+// implemented" and return null (the package jsdom names: compat.canvasPackage).
+const canvasNotImplemented = (el, method) => {
+  const ws = win(el)[S];
+  ws.notImplemented(
+    `HTMLCanvasElement's ${method}() method: without installing the ${ws.compat.canvasPackage} npm package`,
+  );
+};
 // Window event handlers, forwarded to the window (event-handlers.js).
 INTERFACES.push({ name: 'HTMLBodyElement', parent: 'HTMLElement', members: WINDOW_HANDLER_MEMBERS });
 INTERFACES.push({ name: 'HTMLFrameSetElement', parent: 'HTMLElement', members: WINDOW_HANDLER_MEMBERS });

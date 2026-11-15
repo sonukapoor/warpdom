@@ -33,6 +33,7 @@ import {
 import { writeAttribute, attributeSteps, addAttributeStep, tokenList } from './attributes.js';
 import { liveList, htmlCollectionNames, indexedElement, iterate } from './collections.js';
 import { dispatch, eventConstruct, fieldGetters, eventState } from './events.js';
+import { enumError } from './idl-messages.js';
 import { parseInteger } from './reflect.js';
 import { directionality } from './directionality.js';
 
@@ -610,7 +611,8 @@ const SELECT_ONLY_TYPES = new Set([
   'color',
   'file',
 ]);
-const SELECTION_MODES = new Set(['select', 'start', 'end', 'preserve']);
+const SELECTION_MODE_LIST = ['select', 'start', 'end', 'preserve'];
+const SELECTION_MODES = new Set(SELECTION_MODE_LIST);
 const selectionInterface = (el) => (isTag(el, 'textarea') ? 'HTMLTextAreaElement' : 'HTMLInputElement');
 
 // The select event (HTML 4.10.21.2): select(), setSelectionRange(), the
@@ -699,7 +701,7 @@ const selectionMembers = {
     const mode = selectMode === undefined ? 'preserve' : String(selectMode);
     if (!SELECTION_MODES.has(mode))
       throw new TypeError(
-        `Failed to execute 'setRangeText' on '${iface}': parameter 4 '${mode}' is not a valid enumeration value for SelectionMode`,
+        `Failed to execute 'setRangeText' on '${iface}': ${enumError(windowOf(this)[S].compat.idlMessages31, 4, [], mode, SELECTION_MODE_LIST, 'SelectionMode')}`,
       );
     if (!selectionApplies(this))
       throw domError("The input element's type does not support selection.", 'InvalidStateError');

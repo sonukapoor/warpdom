@@ -299,5 +299,23 @@ const emptyTextScenario = (w) => {
   out.push(color(kept));
   return out;
 };
-for (const jsdom of [20, 22, 25, 27, 28, 29, 30])
+for (const jsdom of [20, 22, 25, 27, 28, 29, 30, 31])
   parity(`selectors: :empty with text children, text changes (jsdom ${jsdom})`, emptyTextScenario, { jsdom });
+
+// :link and :any-link on SVG links: an href, and from jsdom 31 an
+// xlink:href too (black box, 30.1.3 and 31.0.1; #269).
+for (const jsdom of [30, 31])
+  parity(
+    `selectors: :link on SVG links (jsdom ${jsdom})`,
+    (w) => {
+      const d = w.document;
+      d.body.innerHTML =
+        '<svg><a id="h" href="#x"></a><a id="x" xlink:href="#y"></a><a id="n"></a></svg><a id="a" href="#z"></a>';
+      return [
+        [...d.querySelectorAll(':link')].map((e) => e.id),
+        [...d.querySelectorAll(':any-link')].map((e) => e.id),
+        d.getElementById('x').matches('a:link'),
+      ];
+    },
+    { jsdom },
+  );

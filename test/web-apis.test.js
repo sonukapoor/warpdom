@@ -14,7 +14,7 @@ import { snapshotWindow, resetWindow } from '../src/reset.js';
 import { S } from '../src/internal.js';
 import { parity, html } from './parity.js';
 
-const VERSIONS = [20, 22, 25, 26, 30];
+const VERSIONS = [20, 22, 25, 26, 30, 31];
 const attempt = (fn) => {
   try {
     const value = fn();

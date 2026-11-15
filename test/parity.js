@@ -20,7 +20,7 @@ const URL_ = 'http://localhost:3000/page';
 // console.error (after the load, so outside the scenario's capture).
 // 27 to 29 too, as only a few tests use them.
 const DOMS = { 25: JSDOM25, 26: JSDOM26, 30: JSDOM };
-// 23 and 24 (23.2.0 and 24.1.3, cssstyle 4.6.0) and '30.1.3' (the jsdom30
+// 23 and 24 (23.2.0 and 24.1.3, cssstyle 4.6.0), 31 (31.0.1) and '30.1.3' (the jsdom30
 // alias) too.
 const LAZY = {
   20: 'jsdom20',
@@ -32,6 +32,7 @@ const LAZY = {
   28: 'jsdom28',
   29: 'jsdom29',
   '30.1.3': 'jsdom30',
+  31: 'jsdom31',
 };
 async function domFor(jsdom) {
   if (!DOMS[jsdom] && LAZY[jsdom]) {
@@ -55,6 +56,7 @@ const PROFILES = {
   29: { jsdom: '29.1.1' },
   30: { jsdom: JSDOM30 },
   '30.1.3': { jsdom: '30.1.3' },
+  31: { jsdom: '31.0.1' },
 };
 // runScripts: as Vitest's jsdom environment (false: a window made without).
 export function parity(name, scenario, { jsdom = 30, url = URL_, runScripts = 'dangerously' } = {}) {
