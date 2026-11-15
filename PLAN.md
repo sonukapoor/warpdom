@@ -7201,6 +7201,30 @@ and form feeds on main, and jsdom 23 to 30 keep them too (`1\fvar(--a)`;
 jsdom 30's setProperty() and attribute turn them into line feeds before,
 as warpdom does), so flexOrder checks for var() before it normalizes.
 
+## 2026-11-15: the last of the 1.0 parity triage: #157, #159 and #162 (branch fix/1-0-last-triage)
+
+#312's triage covered 18 issues, but #157, #159 and #162 were missed. An
+audit of every item (black box, on main at 034fc8c) found 19 matching
+jsdom now, 2 already listed, and 16 gaps. Two gaps, not in the issues,
+are things real suites can hit, and both are fixed here:
+- jsdom 27 and 28 empty a style attribute, cssText or a rule's cssText
+  when a normal `background` is followed by most other properties
+  (`background: red; display: none` declares nothing). The properties
+  that may follow it come from a sweep of every property with `initial`
+  and with `1px solid red` (27.4.0 and 28.1.0). The check runs once after
+  the loop, on the merged declarations.
+- From 28.1 a name not in lowercase declares nothing there (`COLOR:
+  blue`); jsdom 27 lowercased it. This replaces most of the listed "name
+  repeated in another case" entry.
+The other gaps are narrow and now listed in differences.md: priority
+tokens in sheets, `!important` with `var(` in a string (27.4), jsdom 20
+to 26's sheet objects (#159), two computed values, and the order jsdom
+27 to 30 write `border` declarations in from parsed text (a serializer
+difference, of a piece with the listed shorthand rewrite).
+Attribute parsing (bench157.mjs, 100,000 setAttribute calls, 5
+interleaved runs, medians, node 22.17.1): jsdom 30 profile 149.8 ms on
+main, 150.7 ms here; jsdom 27 160.3 to 151.4 ms (blocks emptied).
+
 ## 2026-11-15: jsdom 31, part 1: the profile and what is not CSS (branch feat/269-jsdom31, #269)
 
 jsdom 31.0.1 against main's newest profile: 188 of the default (jsdom 30)
@@ -7231,7 +7255,9 @@ Against jsdom 31.0.1: 169 of the default parity tests differ now, all CSS
 (computed values with var() substituted, the inline declaration model,
 backgrounds, CSSOM, media list serialization, inheritance through the
 flat tree: a slotted element inherits from its slot). Those are the next
-parts. Found on the way and filed: focus inside iframes differs in every
+parts. One to keep in mind there: jsdom 31 lowercases a property name in
+a style attribute again (`COLOR: blue` is `color: blue`), where 28.1 to
+30 drop it (#319); the 31 profile drops it until css.js models 31. Found on the way and filed: focus inside iframes differs in every
 version (#320).
 Load (bench/load.js, 5 interleaved runs of its 7-process median, node
 22.17.1): cold load 28.7 ms on main, 29.1 ms here (idl-messages.js and
