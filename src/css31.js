@@ -36,7 +36,8 @@ function shorthandsOf(longhand) {
       const pa = a.startsWith('-'),
         pb = b.startsWith('-');
       if (pa !== pb) return pa ? 1 : -1;
-      return a < b ? -1 : a > b ? 1 : 0;
+      if (a === b) return 0;
+      return a < b ? -1 : 1;
     });
     for (const name of names)
       for (const l of SHORTHANDS31[name]) {
