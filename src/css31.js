@@ -107,8 +107,14 @@ export function expand31(name, value, raw = value) {
   const found = new Map();
   for (let i = 1; i < pairs.length; i++) found.set(pairs[i][0], pairs[i][1]);
   if (found.has('background-repeat')) {
-    const [x, y] = repeatXY(found.get('background-repeat'));
-    found.set('background-repeat-x', x).set('background-repeat-y', y);
+    const xs = [],
+      ys = [];
+    for (const layer of layersOf(found.get('background-repeat'))) {
+      const [x, y] = repeatXY(layer);
+      xs.push(x);
+      ys.push(y);
+    }
+    found.set('background-repeat-x', xs.join(', ')).set('background-repeat-y', ys.join(', '));
   }
   if (name === 'font') fontKeywords(raw, found);
   return longhands.map((l) => [l, found.has(l) ? longhandValue(l, found.get(l)) : initialOf(l), src]);
@@ -232,6 +238,45 @@ COMPOSERS.border = (v) => {
   return omitting(BORDER_INITIALS)([v[0], v[4], v[8]]);
 };
 COMPOSERS['border-image'] = omitting(IMAGE_INITIALS);
+// background-repeat-x and -y as one value.
+function repeatOf(x, y) {
+  if (x === y) return x;
+  if (x === 'repeat' && y === 'no-repeat') return 'repeat-x';
+  if (x === 'no-repeat' && y === 'repeat') return 'repeat-y';
+  return `${x} ${y}`;
+}
+COMPOSERS['background-repeat'] = ([x, y]) => {
+  const xs = layersOf(x),
+    ys = layersOf(y);
+  return xs.length !== ys.length ? '' : xs.map((v, i) => repeatOf(v, ys[i])).join(', ');
+};
+// background: layer by layer (jsdom 31's longhands: image, position x and
+// y, size, repeat x and y, attachment, origin, clip, color, blend mode),
+// each part left out at its initial value, the color in the last layer;
+// one of initial values alone is none.
+COMPOSERS.background = (v) => {
+  if (v[10] !== 'normal') return '';
+  const lists = v.slice(0, 9).map(layersOf);
+  const count = lists[0].length;
+  if (lists.some((list) => list.length !== count)) return '';
+  const layers = [];
+  for (let i = 0; i < count; i++) {
+    const [image, x, y, size, rx, ry, attachment, origin, clip] = lists.map((list) => list[i]);
+    const parts = [];
+    if (image !== 'none') parts.push(image);
+    if (x !== '0%' || y !== '0%' || size !== 'auto') parts.push(size === 'auto' ? `${x} ${y}` : `${x} ${y} / ${size}`);
+    const repeat = repeatOf(rx, ry);
+    if (repeat !== 'repeat') parts.push(repeat);
+    if (attachment !== 'scroll') parts.push(attachment);
+    // (a clip is written after its origin: content-box alone is
+    // content-box content-box)
+    if (clip !== 'border-box') parts.push(`${origin} ${clip}`);
+    else if (origin !== 'padding-box') parts.push(origin);
+    if (i === count - 1 && v[9] !== 'transparent') parts.push(v[9]);
+    layers.push(parts.length === 0 ? 'none' : parts.join(' '));
+  }
+  return layers.join(', ');
+};
 // font (its longhands in jsdom 31's order: style, the seven variants,
 // weight, width, size, line-height, family, then six it resets): written
 // when the variants other than caps (normal or small-caps) and the reset
