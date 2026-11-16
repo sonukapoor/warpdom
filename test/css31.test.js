@@ -270,6 +270,14 @@ parity(
       'border-inline-end-radius: 0 4px',
       'corner-top-shape: round bevel',
       'border-radius: 0 4px',
+      'border-top-left-radius:1px 3px;border-top-right-radius:2px 4px;corner-top-left-shape:round;corner-top-right-shape:bevel',
+      'border-top-left-radius:1px;corner-top-left-shape:bevel',
+      'border-radius:1px;corner-shape:bevel',
+      'corner: 1px 2px / 3px bevel scoop',
+      'corner-top: bevel 1px 2px',
+      'corner-top-left: 1px / 2px notch',
+      'corner-block-start: 1px 2px squircle',
+      'margin-top:1px;--a:1;margin-right:1px;margin-bottom:1px;margin-left:1px',
       (s) => {
         s.setProperty('margin', '1px/**/2px');
       },
@@ -278,7 +286,16 @@ parity(
         s.marginLeft = '1px';
       },
     ],
-    ['font-variant', 'border-radius', 'border-top-radius', 'border-top', 'margin'],
+    [
+      'font-variant',
+      'border-radius',
+      'border-top-radius',
+      'border-top',
+      'margin',
+      'corner',
+      'corner-top',
+      'corner-top-left',
+    ],
   ),
   { jsdom: 31 },
 );

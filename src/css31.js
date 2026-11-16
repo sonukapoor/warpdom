@@ -112,7 +112,11 @@ const slashed = (value) =>
 const sides = (p) => [p[0], p[1] ?? p[0], p[2] ?? p[0], p[3] ?? p[1] ?? p[0]];
 // border-radius as its corners (h, or h v).
 // (a radius of 0 is 0px)
-const radius = (part) => words(part).map((x) => (x === '0' ? '0px' : x));
+const radius = (part) => {
+  const list = words(part);
+  for (let i = 0; i < list.length; i++) if (list[i] === '0') list[i] = '0px';
+  return list;
+};
 function radii(value) {
   const [h, v = h] = slashed(value).map((part) => sides(radius(part)));
   return h.map((x, i) => (x === v[i] ? x : `${x} ${v[i]}`));
@@ -128,6 +132,34 @@ const both = (part, list = words(part)) => {
 function cornerPair(value) {
   const [h, v = h] = slashed(value).map((part) => both(part, radius(part)));
   return h.map((x, i) => (x === v[i] ? x : `${x} ${v[i]}`));
+}
+// The corner shorthands (corner, corner-top, corner-top-left): their radii
+// then their shapes, in halves; the shape keywords anywhere, the radii
+// 0px and the shapes round when left out.
+const SHAPE = /^(?:round|scoop|bevel|notch|square|squircle|superellipse\(.*\))$/i;
+const isCorner = (name) => name.startsWith('corner') && !name.endsWith('-shape');
+function corners(value, count) {
+  const shapes = [],
+    rest = [];
+  for (const token of words(value)) (SHAPE.test(token) ? shapes : rest).push(token);
+  const text = rest.join(' ');
+  const n = count / 2;
+  let out;
+  if (text === '') out = new Array(n).fill('0px');
+  else if (n === 4) out = radii(text);
+  else if (n === 2) out = cornerPair(text);
+  else out = [oneCorner(text)];
+  const [first = 'round', second = first, third = first, fourth = second] = shapes.map((x) => x.toLowerCase());
+  if (n === 4) out.push(first, second, third, fourth);
+  else if (n === 2) out.push(first, second);
+  else out.push(first);
+  return out;
+}
+// One corner's radius (1px, 1px 2px, 1px / 2px), written once if both
+// are the same.
+function oneCorner(text) {
+  const [h, v = h] = text.includes('/') ? slashed(text).map((part) => radius(part)[0]) : radius(text);
+  return h === v ? h : `${h} ${v}`;
 }
 
 // font-variant as its longhands (ligatures, caps, alternates, numeric,
@@ -191,6 +223,8 @@ export function expand31(name, value, raw = value) {
   if (name === 'border-image') return borderImage(value).map((v, i) => [longhands[i], v, src]);
   if (name === 'vertical-align') return verticalAlign(value).map((v, i) => [longhands[i], v, src]);
   if (TWO_CORNERS.test(name)) return cornerPair(value).map((v, i) => [longhands[i], v, src]);
+  if (isCorner(name)) return corners(value, longhands.length).map((v, i) => [longhands[i], v, src]);
+  if (name === 'corner-shape') return sides(words(value.toLowerCase())).map((v, i) => [longhands[i], v, src]);
   if (TWO_SHAPES.test(name)) return both(value).map((v, i) => [longhands[i], v.toLowerCase(), src]);
   const pairs = expand(name, value);
   const found = new Map();
@@ -316,6 +350,7 @@ const omitting = (initials) => (values) => {
 const SIDE = /-(?:top|right|bottom|left)(?:-|$)|-(?:top|bottom)-(?:left|right)-radius$/;
 function defaultComposer(name) {
   const longhands = shorthandsTable()[name];
+  if (isCorner(name)) return cornerComposer;
   if (longhands.length === 2 && PAIR.test(name)) return pair;
   return longhands.length === 4 && longhands.every((l) => SIDE.test(l)) ? serializeBox : null;
 }
@@ -440,6 +475,17 @@ const cornersOf = (v) => {
 };
 for (const side of ['top', 'right', 'bottom', 'left', 'block-start', 'block-end', 'inline-start', 'inline-end'])
   ((COMPOSERS[`border-${side}-radius`] = cornersOf), (COMPOSERS[`corner-${side}-shape`] = pair));
+// A corner shorthand: its radii as the radius shorthand of the same
+// corners writes them, then its shapes unless all are round.
+function cornerComposer(v) {
+  const n = v.length / 2;
+  const r = v.slice(0, n),
+    shapes = v.slice(n);
+  if (n === 1) return shapes[0] === 'round' ? oneCorner(r[0]) : `${oneCorner(r[0])} ${shapes[0]}`;
+  const [radiusOf, shapeOf] = n === 4 ? [COMPOSERS['border-radius'], serializeBox] : [cornersOf, pair];
+  if (shapes.every((x) => x === 'round')) return radiusOf(r);
+  return `${radiusOf(r)} ${shapeOf(shapes)}`;
+}
 
 // CSSOM: a shorthand is not written where a declaration between its first
 // and last longhands is of the same logical property group with the other
@@ -496,6 +542,8 @@ function crossesLogical(decls, shorthand) {
       inside = true;
       if (++seen === longhands.size) return false;
     } else if (inside) {
+      // (a custom property is of no group, and is not cached)
+      if (name.startsWith('--')) continue;
       const group = groupOf(name);
       if (group === null) continue;
       const mapping = mappings.get(group.group);
