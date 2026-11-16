@@ -187,6 +187,64 @@ parity(
   { jsdom: 31 },
 );
 
+// Substitution keeps token boundaries: where two tokens would run into
+// one, an empty comment goes between them (CSS Syntax 3, 9; #323 review).
+parity(
+  'jsdom 31: substituted tokens stay apart',
+  (w) => {
+    const toks = [
+      'a',
+      'f(1)',
+      'url(x)',
+      '-',
+      '1',
+      '1%',
+      '1px',
+      '(1)',
+      '#a',
+      '@a',
+      '#',
+      '@',
+      '.',
+      '+',
+      '/',
+      '*',
+      '%',
+      '-->',
+      '"s"',
+      ',',
+    ];
+    const out = [];
+    for (const l of toks) {
+      const el = w.document.body.appendChild(w.document.createElement('div'));
+      el.setAttribute(
+        'style',
+        `--l: ${l}; ${toks.map((r, i) => `--r${i}: ${r}; --b${i}: var(--l)var(--r${i})`).join('; ')}`,
+      );
+      const cs = w.getComputedStyle(el);
+      out.push(toks.map((_, i) => cs.getPropertyValue(`--b${i}`)).join(' | '));
+    }
+    return out;
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: token boundaries around var() in values',
+  computed(
+    [
+      '--a: 1; width: var(--a)px',
+      '--a: 1; --b: x var(--a)0 y',
+      '--a: 1; --b: var(--a)var(--n, px)',
+      '--a: 1; --b: var(--n,)px',
+      '--a: 1; width: calc(var(--a) * 1px)',
+      '--a: a; --b: -var(--a)',
+    ],
+    ['width', '--b'],
+  ),
+  { jsdom: 31 },
+);
+
 // A custom property used twice by the next one, 22 deep: each is
 // substituted once per element, not once per use (#323 review).
 test('jsdom 31: a custom property is substituted once per element', () => {

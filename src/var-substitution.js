@@ -111,6 +111,8 @@ export const hasVarReference = (value) => nextVar(value, 0) !== -1;
 export function substituteVars(value, lookup, context) {
   let out = '';
   let at = 0;
+  // (the kind of out's last token, to keep pieces from running together)
+  let last = null;
   for (let i = nextVar(value, 0); i !== -1; i = nextVar(value, at)) {
     const open = i + 4;
     const end = closing(value, open);
@@ -126,10 +128,128 @@ export function substituteVars(value, lookup, context) {
       replacement = substituteVars(trimSpace(inner.slice(comma + 1)), lookup, context);
       if (replacement === null) return null;
     }
-    out += value.slice(at, i) + replacement;
+    if (i > at) {
+      out += apart(last, value, at, i);
+      last = lastToken(value, at, i);
+    }
+    if (replacement !== '') {
+      out += apart(last, replacement, 0, replacement.length);
+      last = lastToken(replacement, 0, replacement.length);
+    }
     at = end;
   }
-  return at === 0 ? value : out + value.slice(at);
+  if (at === 0) return value;
+  return at < value.length ? out + apart(last, value, at, value.length) : out;
+}
+
+// Token boundaries (CSS Syntax 3, 9, as jsdom 31 serializes: black box,
+// 31.0.1). A piece joined after a token of kind left starts with an empty
+// comment when its first token would otherwise run into that one: 1 then
+// px is 1/**/px, not 1px.
+const WORDS = ['ident', 'function', 'url', '-', 'number', 'percentage', 'dimension', 'CDC'];
+const MERGES = {
+  ident: new Set([...WORDS, '(']),
+  '-': new Set(WORDS),
+  number: new Set(['ident', 'function', 'url', 'number', 'percentage', 'dimension', '%', 'CDC']),
+  dimension: new Set(WORDS),
+  hash: new Set(WORDS),
+  'at-keyword': new Set(WORDS),
+  '#': new Set(WORDS),
+  '@': new Set(['ident', 'function', 'url', '-', 'CDC']),
+  '.': new Set(['number', 'percentage', 'dimension']),
+  '+': new Set(['number', 'percentage', 'dimension']),
+  '/': new Set(['*']),
+};
+
+function apart(left, text, from, to) {
+  const piece = text.slice(from, to);
+  if (left === null || MERGES[left] === undefined) return piece;
+  return MERGES[left].has(token(text, from, to).kind) ? `/**/${piece}` : piece;
+}
+
+// The kind of the last token of text[from, to).
+function lastToken(text, from, to) {
+  let kind = null;
+  for (let i = from; i < to;) {
+    const t = token(text, i, to);
+    kind = t.kind;
+    i = t.end;
+  }
+  return kind;
+}
+
+const isDigit = (c) => c >= 48 && c <= 57;
+const startsName = (c) => (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || c === 95 || c >= 0x80 || c === 92;
+// Whether an identifier starts at i: a name start, or "-" then a name
+// start or "-".
+const startsIdent = (text, i, to) => {
+  const c = text.charCodeAt(i);
+  if (c === 45) return i + 1 < to && (startsName(text.charCodeAt(i + 1)) || text.charCodeAt(i + 1) === 45);
+  return i < to && startsName(c);
+};
+// Whether a number starts at i: a digit, or "." / "+" / "-" before one.
+const startsNumber = (text, i, to) => {
+  const c = text.charCodeAt(i);
+  if (isDigit(c)) return true;
+  const d = i + 1 < to ? text.charCodeAt(i + 1) : 0;
+  if (c === 46) return isDigit(d);
+  if (c === 43 || c === 45) return isDigit(d) || (d === 46 && i + 2 < to && isDigit(text.charCodeAt(i + 2)));
+  return false;
+};
+
+function nameEnd(text, i, to) {
+  while (i < to) {
+    const c = text.charCodeAt(i);
+    if (c === 92) i += 2;
+    else if (isNameCode(c)) i++;
+    else break;
+  }
+  return Math.min(i, to);
+}
+
+// The token at text[i] (before to): its kind, as CSS Syntax 3 names it
+// (a delimiter by its character), and the index past it.
+function token(text, i, to) {
+  const c = text.charCodeAt(i);
+  if (isSpace(c)) {
+    let j = i + 1;
+    while (j < to && isSpace(text.charCodeAt(j))) j++;
+    return { kind: 'whitespace', end: j };
+  }
+  if (c === 47 && text.charCodeAt(i + 1) === 42) return { kind: 'comment', end: Math.min(commentEnd(text, i), to) };
+  if (c === 34 || c === 39) return { kind: 'string', end: Math.min(stringEnd(text, i), to) };
+  if (startsNumber(text, i, to)) {
+    let j = c === 43 || c === 45 ? i + 1 : i;
+    while (j < to && isDigit(text.charCodeAt(j))) j++;
+    if (text.charCodeAt(j) === 46 && j + 1 < to && isDigit(text.charCodeAt(j + 1))) {
+      j++;
+      while (j < to && isDigit(text.charCodeAt(j))) j++;
+    }
+    const e = text.charCodeAt(j) | 32;
+    if (e === 101 && j + 1 < to) {
+      const k = text.charCodeAt(j + 1) === 43 || text.charCodeAt(j + 1) === 45 ? j + 2 : j + 1;
+      if (k < to && isDigit(text.charCodeAt(k))) {
+        j = k;
+        while (j < to && isDigit(text.charCodeAt(j))) j++;
+      }
+    }
+    if (j < to && text.charCodeAt(j) === 37) return { kind: 'percentage', end: j + 1 };
+    if (startsIdent(text, j, to)) return { kind: 'dimension', end: nameEnd(text, j, to) };
+    return { kind: 'number', end: j };
+  }
+  if (c === 45 && text.startsWith('-->', i) && i + 3 <= to) return { kind: 'CDC', end: i + 3 };
+  if (startsIdent(text, i, to)) {
+    const j = nameEnd(text, i, to);
+    if (text.charCodeAt(j) !== 40 || j >= to) return { kind: 'ident', end: j };
+    if (functionAt(text, i, 'url') && !quotedUrl(text, j + 1)) {
+      const close = text.indexOf(')', j + 1);
+      return { kind: 'url', end: close === -1 || close >= to ? to : close + 1 };
+    }
+    return { kind: 'function', end: j + 1 };
+  }
+  if ((c === 35 || c === 64) && i + 1 < to && isNameCode(text.charCodeAt(i + 1)))
+    return { kind: c === 35 ? 'hash' : 'at-keyword', end: nameEnd(text, i + 1, to) };
+  return { kind: text[i], end: i + 1 };
 }
 
 // CSS whitespace (U+00A0 is not: it continues a name).

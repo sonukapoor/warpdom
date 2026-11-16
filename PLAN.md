@@ -7378,6 +7378,11 @@ empty custom property (--b: ;) as a space and a name with U+00A0 as
 written, and drops url(a\)var(--b)) when parsing. Found, not changed
 (1.0 range): jsdom 20 to 30 differ from warpdom on quoted var( text (font:
 16px "var(--a)" in 23 to 26, font-family read through font in all,
-border-image: url("var(--x)") after border in 27 to 30).
+border-image: url("var(--x)") after border in 27 to 30). Later rounds: a
+custom property with var() is substituted once per element (kept with
+the cascaded values; a chain using each one twice was exponential), and
+substituted pieces keep token boundaries (1 then px is 1/**/px, jsdom
+31's pair table). Found for part B: jsdom 31 drops a malformed calc()
+(calc(10 px), calc(1px 2px)) when parsing; warpdom keeps it.
 Load (bench/load.js from the same directory, 5 interleaved runs, node
 22.17.1): cold load 26.9 ms on main, 27.0 ms here.
