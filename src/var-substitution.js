@@ -41,7 +41,12 @@ function commentEnd(value, i) {
 // Whether value has the function name (lower case) at i, in any case,
 // followed by "(", and not as the end of a longer name.
 function functionAt(value, i, name) {
-  if (i > 0 && isNameCode(value.charCodeAt(i - 1))) return false;
+  // (after a name, or after # or @: then it is part of a hash or an
+  // at-keyword, #var( is no var())
+  if (i > 0) {
+    const before = value.charCodeAt(i - 1);
+    if (isNameCode(before) || before === 35 || before === 64) return false;
+  }
   if (value.charCodeAt(i + name.length) !== 40) return false;
   for (let k = 0; k < name.length; k++) if ((value.charCodeAt(i + k) | 32) !== name.charCodeAt(k)) return false;
   return true;

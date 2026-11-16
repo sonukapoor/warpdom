@@ -239,23 +239,28 @@ parity(
       '--a: 1; --b: var(--n,)px',
       '--a: 1; width: calc(var(--a) * 1px)',
       '--a: a; --b: -var(--a)',
+      '--a: 1; --b: #var(--a)',
+      '--a: 1; --b: @var(--a)',
+      '--b: x#var(--a, 2)',
+      '--a: 1; --b: # var(--a)',
+      '--a: 1; --b: #-var(--a) @-var(--a)',
     ],
     ['width', '--b'],
   ),
   { jsdom: 31 },
 );
 
-// A custom property used twice by the next one, 22 deep: each is
-// substituted once per element, not once per use (#323 review).
-test('jsdom 31: a custom property is substituted once per element', () => {
+// A custom property used twice by the next one, 40 deep: each is
+// substituted once per element, not once per use (#323 review). Each one
+// is invalid (var(--missing)), so the values stay short; substituted per
+// use, this would take 2^40 lookups.
+test('jsdom 31: a custom property is substituted once per element', { timeout: 10000 }, () => {
   const w = createWindow({ jsdom: '31.0.1' });
   let text = '--a0: x;';
-  for (let i = 1; i <= 22; i++) text += `--a${i}: var(--a${i - 1}) var(--a${i - 1});`;
+  for (let i = 1; i <= 40; i++) text += `--a${i}: var(--a${i - 1}, y) var(--a${i - 1}, y) var(--missing);`;
   const el = w.document.body.appendChild(w.document.createElement('div'));
-  el.setAttribute('style', text);
-  const start = performance.now();
+  el.setAttribute('style', `${text} --top: var(--a40, ok)`);
   const cs = w.getComputedStyle(el);
-  assert.equal(cs.getPropertyValue('--a3'), 'x x x x x x x x');
-  assert.equal(cs.getPropertyValue('--a22').length, 2 ** 23 - 1);
-  assert.ok(performance.now() - start < 500, `took ${Math.round(performance.now() - start)} ms`);
+  assert.equal(cs.getPropertyValue('--top'), 'ok');
+  assert.equal(cs.getPropertyValue('--a40'), '');
 });
