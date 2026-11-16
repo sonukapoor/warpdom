@@ -250,6 +250,28 @@ parity(
   { jsdom: 31 },
 );
 
+// Escapes: a function or custom property name is read with its escapes
+// decoded (\76 ar( is var(), var(--\62) is --b); an escaped space
+// continues a name (x\ var( is a function named "x var") (#323 review).
+parity(
+  'jsdom 31: escapes in var() and custom property names',
+  computed(
+    [
+      '--b: 1; --a: \\76 ar(--b)',
+      '--b: 1; --a: v\\61r(--b)',
+      '--b: 1; --a: VA\\52(--b)',
+      '--b: 1; --a: var(\\2d-b)',
+      '--b: 1; --a: var(--\\62)',
+      '--b: 1; --a: x\\ var(--b)',
+      '--b: 1; --a: "a\\"var(--b)"',
+      '--b: 1; --a: var(--b)\\,x',
+      '--b: 1; --a: #\\76 ar(--b)',
+    ],
+    ['--a'],
+  ),
+  { jsdom: 31 },
+);
+
 // A custom property used twice by the next one, 40 deep: each is
 // substituted once per element, not once per use (#323 review). Each one
 // is invalid (var(--missing)), so the values stay short; substituted per

@@ -1809,7 +1809,7 @@ export function computedValue(element, property) {
   const value = cascaded(element, name);
   // jsdom 31: a custom property with var() is substituted once, kept with
   // the cascaded values (a chain using each one twice is not exponential).
-  if (custom && compat.computed31 && value !== undefined && HAS_VAR.test(value)) {
+  if (custom && compat.computed31 && value !== undefined && mayHaveVar(value)) {
     const cache = element[S].cascaded;
     const known = cache.customs?.get(name);
     if (known !== undefined) return known;
@@ -1847,7 +1847,7 @@ function longhandValue(element, name, data, custom, compat, value) {
   }
   if (value === undefined && name === 'direction' && uaDirection(element)) return directionality(element);
   if (compat.computed31) {
-    if (value !== undefined && (value.startsWith(PENDING31) || HAS_VAR.test(value))) {
+    if (value !== undefined && (value.startsWith(PENDING31) || mayHaveVar(value))) {
       // A custom property in a cycle, or one whose var() has no value, has
       // none; another property is unset (CSS Custom Properties 1, 3.1).
       value = substitutedValue(element, name, value, custom);
@@ -1894,6 +1894,9 @@ function longhandValue(element, name, data, custom, compat, value) {
 // --- var() substitution (jsdom 31) ---------------------------------------------------
 
 const HAS_VAR = /var\(/i;
+// Whether a value may hold a var() reference: var( as written, or an
+// escape (\76 ar( is one); substituteVars tells.
+const mayHaveVar = (value) => HAS_VAR.test(value) || value.includes('\\');
 // The custom properties being substituted, as element, name pairs: one met
 // again is in a cycle, and every property from it on the stack is then
 // invalid (marked), whatever its fallbacks.
@@ -1964,7 +1967,7 @@ function lineHeightNumber(element, value) {
   let own = cascaded(parent, 'line-height');
   const cache = parent[S].cascaded;
   if (cache.lineHeight !== undefined) return cache.lineHeight;
-  if (own !== undefined && (own.startsWith(PENDING31) || HAS_VAR.test(own)))
+  if (own !== undefined && (own.startsWith(PENDING31) || mayHaveVar(own)))
     own = substitutedValue(parent, 'line-height', own, false) ?? 'unset';
   return (cache.lineHeight = lineHeightNumber(parent, own));
 }

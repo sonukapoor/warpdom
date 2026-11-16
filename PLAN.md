@@ -7383,6 +7383,10 @@ custom property with var() is substituted once per element (kept with
 the cascaded values; a chain using each one twice was exponential), and
 substituted pieces keep token boundaries (1 then px is 1/**/px, jsdom
 31's pair table). Found for part B: jsdom 31 drops a malformed calc()
-(calc(10 px), calc(1px 2px)) when parsing; warpdom keeps it.
+(calc(10 px), calc(1px 2px)) when parsing; warpdom keeps it. Names are read
+with their escapes decoded (\76 ar( is var(), var(--\62) reads --b; an
+escaped space continues a name), hashes and at-keywords are no var().
+Also for part B/C: jsdom 31 decodes escapes in family names (\61 b is
+ab) and drops var\( and an escaped url( holding var() when parsing.
 Load (bench/load.js from the same directory, 5 interleaved runs, node
 22.17.1): cold load 26.9 ms on main, 27.0 ms here.
