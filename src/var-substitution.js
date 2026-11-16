@@ -221,16 +221,16 @@ const MERGES = {
 function apart(left, text, from, to) {
   const piece = text.slice(from, to);
   if (left === null || MERGES[left] === undefined) return piece;
-  return MERGES[left].has(token(text, from, to).kind) ? `/**/${piece}` : piece;
+  token(text, from, to);
+  return MERGES[left].has(tokenKind) ? `/**/${piece}` : piece;
 }
 
 // The kind of the last token of text[from, to).
 function lastToken(text, from, to) {
   let kind = null;
   for (let i = from; i < to;) {
-    const t = token(text, i, to);
-    kind = t.kind;
-    i = t.end;
+    i = token(text, i, to);
+    kind = tokenKind;
   }
   return kind;
 }
@@ -254,6 +254,14 @@ const startsNumber = (text, i, to) => {
   return false;
 };
 
+// token's result: the kind of the token read, and token returns the index
+// past it (no object per token).
+let tokenKind = null;
+const found = (kind, end) => {
+  tokenKind = kind;
+  return end;
+};
+
 // The token at text[i] (before to): its kind, as CSS Syntax 3 names it
 // (a delimiter by its character), and the index past it.
 function token(text, i, to) {
@@ -261,10 +269,10 @@ function token(text, i, to) {
   if (isSpace(c)) {
     let j = i + 1;
     while (j < to && isSpace(text.charCodeAt(j))) j++;
-    return { kind: 'whitespace', end: j };
+    return found('whitespace', j);
   }
-  if (c === 47 && text.charCodeAt(i + 1) === 42) return { kind: 'comment', end: Math.min(commentEnd(text, i), to) };
-  if (c === 34 || c === 39) return { kind: 'string', end: Math.min(stringEnd(text, i), to) };
+  if (c === 47 && text.charCodeAt(i + 1) === 42) return found('comment', Math.min(commentEnd(text, i), to));
+  if (c === 34 || c === 39) return found('string', Math.min(stringEnd(text, i), to));
   if (startsNumber(text, i, to)) {
     let j = c === 43 || c === 45 ? i + 1 : i;
     while (j < to && isDigit(text.charCodeAt(j))) j++;
@@ -280,23 +288,23 @@ function token(text, i, to) {
         while (j < to && isDigit(text.charCodeAt(j))) j++;
       }
     }
-    if (j < to && text.charCodeAt(j) === 37) return { kind: 'percentage', end: j + 1 };
-    if (startsIdent(text, j, to)) return { kind: 'dimension', end: Math.min(wordEnd(text, j), to) };
-    return { kind: 'number', end: j };
+    if (j < to && text.charCodeAt(j) === 37) return found('percentage', j + 1);
+    if (startsIdent(text, j, to)) return found('dimension', Math.min(wordEnd(text, j), to));
+    return found('number', j);
   }
-  if (c === 45 && text.startsWith('-->', i) && i + 3 <= to) return { kind: 'CDC', end: i + 3 };
+  if (c === 45 && text.startsWith('-->', i) && i + 3 <= to) return found('CDC', i + 3);
   if (startsIdent(text, i, to)) {
     const j = Math.min(wordEnd(text, i), to);
-    if (text.charCodeAt(j) !== 40 || j >= to) return { kind: 'ident', end: j };
+    if (text.charCodeAt(j) !== 40 || j >= to) return found('ident', j);
     if (j - i <= 24 && decodeName(text.slice(i, j)).toLowerCase() === 'url' && !quotedUrl(text, j + 1)) {
       const close = text.indexOf(')', j + 1);
-      return { kind: 'url', end: close === -1 || close >= to ? to : close + 1 };
+      return found('url', close === -1 || close >= to ? to : close + 1);
     }
-    return { kind: 'function', end: j + 1 };
+    return found('function', j + 1);
   }
   if ((c === 35 || c === 64) && i + 1 < to && isNameCode(text.charCodeAt(i + 1)))
-    return { kind: c === 35 ? 'hash' : 'at-keyword', end: Math.min(wordEnd(text, i + 1), to) };
-  return { kind: text[i], end: i + 1 };
+    return found(c === 35 ? 'hash' : 'at-keyword', Math.min(wordEnd(text, i + 1), to));
+  return found(text[i], i + 1);
 }
 
 // CSS whitespace (U+00A0 is not: it continues a name).
