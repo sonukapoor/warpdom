@@ -1661,6 +1661,7 @@ export const FEATURE_INTERFACES = [
 // latest 4.x from 23.1 to 26, 5.3 for 27 to 28.0, the latest 6.x for 28.1),
 // later by jsdom's version. null: jsdom 30.1 and later (STYLE_ACCESSORS).
 function styleSurfaceKey(version, css) {
+  if (version[0] >= 31) return 'jsdom31';
   if (version[0] >= 30)
     return before(version, [30, 0, 1]) ? 'jsdom30.0.0' : before(version, [30, 1, 0]) ? 'jsdom30.0.1' : null;
   if (version[0] === 29) return before(version, [29, 1, 0]) ? 'jsdom29.0' : 'jsdom29.1';

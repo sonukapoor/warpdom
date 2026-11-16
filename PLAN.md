@@ -7263,3 +7263,76 @@ Load (bench/load.js, 5 interleaved runs of its 7-process median, node
 22.17.1): cold load 28.7 ms on main, 29.1 ms here (idl-messages.js and
 the flags); first window 2.48 to 2.51 ms; later windows unchanged
 (0.23 ms).
+
+## 2026-11-15: jsdom 31, the CSS parts: plan (#269)
+
+After part 1 (#321), 170 of the default parity tests differ against jsdom
+31.0.1, all CSS; the 31 profile's styles still behave as jsdom 30. Grouped
+by cause (black box probes on 31.0.1; counts overlap):
+- A. The declaration block holds longhands only, as CSSOM has it: a
+  shorthand expands into its longhands, `length`/`item()` list longhands,
+  `cssText` writes a shorthand only when all its longhands are there with
+  one priority; longhands keep their first position; the last !important
+  wins. About 40 tests.
+- B. Declared values serialize canonically: numbers (`.5` is `0.5`), zeros
+  with units in lists, lowercase keywords, `, ` and quoted `url("")`,
+  canonical component order, defaults dropped, aliases under the standard
+  name, family names unquoted, normalized media and selector text. About
+  45.
+- C. Parse errors: a bad-url or bad-string token empties the whole block
+  and reports "Could not parse CSS stylesheet"; custom property edge
+  cases. About 19.
+- D. Computed values: lengths always with units (`0px`), var()
+  substituted (invalid at computed-value time: initial or inherited),
+  every color property as rgb() with channels rounded once and alpha
+  quantized to 8 bits, computed shorthands in short form, initial
+  font-family `monospace`. About 50.
+- E. Cascade context: the UA sheet is a lower origin again (no
+  specificity mixing as in 28.1 to 30), the default color resolved at the
+  root from its color-scheme, shadow trees' sheets scoped, media and
+  @supports evaluated (1024x768), computed styles live and empty for a
+  disconnected element, pseudo-elements, writes throw. About 25.
+- F. CSSOM: CSSPropertyRule, CSSStartingStyleRule,
+  CSSFontFeatureValuesRule; @counter-style descriptor order; webkit
+  aliases; small rule and sheet details. About 12.
+Decision (2026-11-15): model jsdom 31 as it is, quirks included where a
+test can observe them (initial font-family `monospace`, `outline: none`
+read as `medium`, a bad url() emptying its block), as for every earlier
+version; list the ones that differ from browsers in docs/differences.md.
+Order (one PR each, foundational first): A; D1/D2 (units, var()); D3 and
+the root color-scheme; B; C; E1/E4/E5/E6; D4/D5 and shadow scoping; F.
+`NEWEST_MODELED_JSDOM` moves to 31 only when all parts are in.
+
+## 2026-11-15: jsdom 31, CSS part A: the CSSOM block model (branch feat/269-jsdom31-css, #269)
+
+The 31 profile gets its own style surface ('jsdom31', flagged cssom31),
+and its declaration blocks follow css31.js, written from CSSOM and
+checked black box against 31.0.1:
+- A block holds longhands only. A shorthand sets its longhands (jsdom 31's
+  lists, measured by scripts/gen-css31.mjs into src/css31-data.js: 156
+  shorthands, some unlike @webref's, as background with
+  background-repeat-x and -y, or vertical-align); a CSS-wide keyword sets
+  it in each; var() or a system font leaves them pending ('' each, the
+  shorthand read as written while all are).
+- Parsing, a declaration given again replaces the earlier one and moves to
+  the end, unless the earlier is !important and it is not. setProperty()
+  and the accessors change a declaration in place; a write that changes
+  nothing leaves the style attribute alone.
+- cssText writes a run of longhands as the first shorthand, in CSSOM's
+  preferred order (more longhands first), whose longhands are all there
+  with one importance and that has a value. Composed: the box shorthands,
+  pairs (overflow, gap, place-*), flex, outline, border and its sides,
+  border-image, border-radius, background (per layer), background-position
+  and -repeat, font and font-variant. A shorthand not composed yet reads as
+  written while its longhands are the ones that write set.
+- Names jsdom 31 drops (50, keeping their accessors) are dropped; names
+  not in lowercase are lowercased again (28.1 to 30 drop them).
+Values themselves still serialize as jsdom 30 declared them (part B):
+`50% auto` is `50%`, an upper-case or -webkit- gradient is none.
+Against jsdom 31.0.1: 148 of the default parity tests differ now (170
+before).
+Load (bench/load.js, 5 interleaved runs of its 7-process median, node
+22.17.1): cold load 26.1 ms on main, 26.9 ms here; first window 2.29 to
+2.32 ms. The cost is css31.js and its data, kept as one JSON string parsed
+when a jsdom 31 window first needs it (as object literals it was 1.1 ms);
+taken for the jsdom 31 profile, within the 30 to 40 ms budget.

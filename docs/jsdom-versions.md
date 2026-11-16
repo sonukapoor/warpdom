@@ -7,8 +7,9 @@ README, [Which jsdom warpdom behaves like](../README.md#which-jsdom-warpdom-beha
 This page lists what differs between versions, as measured on jsdom's
 releases. warpdom models jsdom 20.0.3 to 30.1.3. jsdom 31 is in progress
 ([#269](https://github.com/sonukapoor/warpdom/issues/269)): the changes
-below marked 31.0.0 are modeled (measured on 31.0.1), while its styles
-and CSSOM still behave as in jsdom 30.
+below marked 31.0.0 are modeled (measured on 31.0.1). Of its styles, the
+declaration block model is (below); values, computed styles and the
+CSSOM still behave as in jsdom 30.
 
 Deliberate differences from jsdom are in
 [differences.md](differences.md).
@@ -101,7 +102,7 @@ takes the window's Blobs), as with jsdom.
 | The properties cssstyle reads as lengths (`width`, `height`, `top`, `margin`, `padding`, `font-size`, `flex-basis`, `border-width`, ...) take px, cm, mm, in, pt, pc, em, ex, ch, rem, vh and vw only (`100dvh`, `10vmin` and `1lh` are invalid there, also in a style sheet's computed style), and `background` no gradients | Before cssstyle 4.2 (jsdom 20 to 22, and 25 with cssstyle 4.1) |
 | `min-content`, `max-content` and `fit-content` are invalid in `width`, `height`, `flex-basis` and `flex` (`fit-content` in `flex-basis` with every cssstyle) | Before cssstyle 4.4 |
 | A gradient whose name is not in lowercase (`LINEAR-GRADIENT(...)`, `Linear-Gradient(...)`) is invalid in `background-image`, and so is a list with one (`url(a.png), LINEAR-GRADIENT(...)`). With cssstyle (jsdom 20 to 26) it is invalid in `background` too, and from cssstyle 4.2 so is a `-webkit-` gradient there | Every version |
-| In a `style` attribute, `cssText` or a rule's `cssText`, a property name not in lowercase declares nothing (`COLOR: blue`, `-WEBKIT-animation: none`, and `width: 1px; Color: blue` is `width: 1px`); a style sheet lowercases it. A custom property's name keeps its case (`--X: 1` is declared) | From 28.1.0 |
+| In a `style` attribute, `cssText` or a rule's `cssText`, a property name not in lowercase declares nothing (`COLOR: blue`, `-WEBKIT-animation: none`, and `width: 1px; Color: blue` is `width: 1px`); a style sheet lowercases it. A custom property's name keeps its case (`--X: 1` is declared). jsdom 31 lowercases it again | 28.1.0 to 30 |
 | In a `style` attribute, `cssText` or a rule's `cssText`, a normal `background` (its name in lowercase, its value without `var()`) followed by a declaration of another property leaves the block empty: `background: red; color: blue` and `background: red; display: none` declare nothing. Names given again are merged first (`color: red; background: red; color: blue` is kept), and these may follow it: the `background`, `margin` and `padding` properties, `border` and its sides, widths, styles and colors, `border-image`, `flex` and `font`. A style sheet keeps the block | 27 and 28 |
 | In `background`, a gradient whose name is not in lowercase, a `-webkit-`, `-moz-` or `-o-` gradient and `NONE` are read as no image: `red LINEAR-GRADIENT(...)` is `background: red`, a layer with nothing else is empty (`url(a.png), LINEAR-GRADIENT(...)` is `url("a.png"), `, its image `none`), and a value with nothing else sets each longhand to its initial value, which `cssText` then lists (`background-image: none; background-position: 0% 0%; ...`, with `background-position-x` and `-y` from 30 when set with `setProperty()` or in a style sheet). In a `style` attribute or `cssText`, a declaration of another property after it leaves the block empty (27 and 28) or drops it (from 29). Several layers are written each as it would be alone, initial values left out | From 27.0.0 |
 | `display` takes any value and keeps it as written. From 27.0.0 it is validated, but keeps the legacy keywords `-webkit-box`, `-webkit-inline-box`, `-webkit-flex`, `-webkit-inline-flex`, `-moz-box`, `-moz-inline-box`, `-moz-inline-stack`, `-ms-inline-flexbox`, `-ms-grid` and `-ms-inline-grid` (in lowercase), inline and computed; others such as `-ms-flexbox` and `-webkit-grid` are dropped | Before 27.0.0 |
@@ -154,6 +155,14 @@ takes the window's Blobs), as with jsdom.
   clone of one from `innerHTML` does not run (a template's contents' still
   do), and `createContextualFragment()`'s scripts run once inserted.
   Before, those clones run and those scripts never do.
+- From 31.0.0 a style declaration block holds longhands only (CSSOM): a
+  shorthand sets each of its longhands (`margin: 1px` is four items),
+  `cssText` writes a shorthand only when all its longhands are there with
+  the same priority, a declaration given again in a style attribute
+  replaces the earlier one at the end unless that one is `!important`,
+  and a write changes a declaration in place. A shorthand with `var()`
+  leaves its longhands empty until one is written (`margin-right: ;`).
+  Before, shorthands are kept as declared next to their longhands.
 - Before 31.0.0 an event path goes through a slottable's last assigned
   slot after it leaves its host, until it is assigned again; from 31.0.0
   only through its assigned slot.

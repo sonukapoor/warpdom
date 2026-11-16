@@ -54,6 +54,7 @@ import {
   replayBox,
   writeBox,
 } from './box-declarations.js';
+import { set31, remove31, value31, priority31, serialize31, dropped31, shorthand31 } from './css31.js';
 
 // backgroundColor -> background-color, webkitAnimation/WebkitAnimation ->
 // -webkit-animation, cssFloat -> float; dashed names map to themselves.
@@ -1122,6 +1123,19 @@ const legacyTarget = (accessor) => cssName(accessor).replace(/^-webkit-/, 'webki
 export function styleSurface(key) {
   let surface = surfaceCache.get(key);
   if (surface !== undefined) return surface;
+  // jsdom 31: its own CSS engine, the CSSOM block model (css31.js).
+  if (key === 'jsdom31') {
+    surface = {
+      key,
+      drops: new Set(dropped31()),
+      writes: new Map(),
+      extras: new Set(),
+      caches: Object.create(null),
+      cssom31: true,
+    };
+    surfaceCache.set(key, surface);
+    return surface;
+  }
   const data = SURFACES[key];
   const from = data.from ? styleSurface(data.from) : null;
   const drops = new Set(from?.drops);
@@ -1138,7 +1152,9 @@ export function styleSurface(key) {
   surfaceCache.set(key, surface);
   return surface;
 }
-const missing = (surface, accessor, name) => surface.drops.has(name) && !surface.writes.has(accessor);
+// (jsdom 31 has accessors for the names it drops)
+const missing = (surface, accessor, name) =>
+  surface.drops.has(name) && !surface.writes.has(accessor) && surface.cssom31 !== true;
 export const missingAccessors = (surface) =>
   STYLE_ACCESSORS.filter((accessor) => missing(surface, accessor, cssName(accessor)));
 const modeOf = (proto) => modes.get(proto) ?? 'spec';
@@ -4096,7 +4112,9 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   // attribute or cssText, a rule's too; a sheet lowercases it (COLOR: blue;
   // black box, 28.1.0 to 30.1.3; 27 lowercases it: importantByWrittenName,
   // which ends there; #157 audit).
+  const cssom31 = surface?.cssom31 === true;
   const casedDropped =
+    !cssom31 &&
     !sheet &&
     context !== 'written' &&
     (mode === 'spec' || (mode === 'jsdom27' && surface?.importantByWrittenName !== true));
@@ -4328,6 +4346,10 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
       important = false;
     }
     if (declared === INVALID || declared === '') continue;
+    if (cssom31) {
+      set31(decls, name, declared === INITIALS ? value : declared, important, true, value);
+      continue;
+    }
     // One that loses its !important is written without it; in a style
     // sheet it is a normal declaration, elsewhere it is still !important
     // to the block's other declarations (masked: black box, jsdom 27 to
@@ -4631,6 +4653,7 @@ MERGED.jsdom27 = MERGED.spec;
 // so most blocks skip merging.
 const MERGEABLE = new Set(MERGED.spec.flatMap(([, longhands]) => longhands));
 function serialize(decls, mode = 'spec') {
+  if (decls.cssom31 === true) return serialize31(decls);
   let merged = null; // longhand -> shorthand to write in its place ('' to skip)
   // An inline style's margin and padding are kept as jsdom keeps them
   // (box-declarations.js): not merged here; from jsdom 27 a shorthand
@@ -4931,6 +4954,7 @@ function backgroundColorOnly(style, value) {
 const valueOf = (style, name) => stateValue(styleState(style), name);
 const stateValue = (s, name) => {
   if (s.computed) return computedOverride(s, name) ?? computed.value(s.element, name);
+  if (s.surface?.cssom31 === true) return value31(s.decls, name);
   const decl = s.decls.get(name);
   if (decl) return decl.value;
   if (s.decls.box !== undefined && isBoxName(name)) return boxValue(s.decls, name);
@@ -4997,6 +5021,7 @@ const RECOMPOSED_LONGHANDS = new Set();
 for (const parts of RECOMPOSED_PARTS.values()) for (const n of parts) RECOMPOSED_LONGHANDS.add(n);
 function readShorthand(style, name, accessor) {
   const s = styleState(style);
+  if (!s.computed && s.surface?.cssom31 === true) return value31(s.decls, name);
   const value = stateValue(s, name);
   if (s.decls.later !== true || s.computed) return value;
   // (jsdom 26's border accessor with no border declared reads
@@ -5533,6 +5558,11 @@ function writtenValue(name, raw, s) {
   const decls = new Map();
   parseInto(decls, `${name}: ${raw}`, s.mode, s.surface, null, true, true);
   for (const declared of decls.values()) if (declared.important || declared.masked === true) return INVALID;
+  // (jsdom 31: the block holds longhands; the shorthand is read from them)
+  if (s.surface?.cssom31 === true && decls.cssom31 === true) {
+    const value = value31(decls, name);
+    return value !== '' && decls.size === (shorthand31(name)?.length ?? 1) ? value : INVALID;
+  }
   const declared = decls.get(name);
   if (declared !== undefined) return decls.size === 1 ? declared.value : INVALID;
   // (parseInto sets a background of initial values as its longhands.)
@@ -5704,11 +5734,38 @@ function separated(raw) {
   return false;
 }
 
+// jsdom 31 (css31.js): '' removes; an invalid value or priority changes
+// nothing.
+function setDeclaration31(style, s, name, value, priority) {
+  // (a name jsdom 31 drops, though it has the accessor: style.cueBefore)
+  if (dropped(s.surface, name)) return;
+  const raw = value === null ? '' : String(value).trim();
+  if (raw === '') {
+    const size = s.decls.size;
+    remove31(s.decls, name);
+    if (s.decls.size !== size) {
+      reindex(style);
+      sync(style);
+    }
+    return;
+  }
+  const lower = String(priority).toLowerCase();
+  if (lower !== '' && lower !== 'important') return;
+  const text = writtenValue(name, raw, s);
+  if (text === INVALID || text === '') return;
+  if (!set31(s.decls, name, text === INITIALS ? raw : text, lower === 'important', false, raw)) return;
+  reindex(style);
+  sync(style);
+}
 function setDeclaration(style, name, value, priority = '', via = 'accessor') {
   const s = styleState(style);
   if (s.computed) {
     if (!mutableComputed(s)) readOnly();
     writeComputed(s, name, value);
+    return;
+  }
+  if (s.surface?.cssom31 === true) {
+    setDeclaration31(style, s, name, value, priority);
     return;
   }
   // [LegacyNullToEmptyString]: null removes the declaration; undefined is
@@ -6028,6 +6085,7 @@ const itemOf = (style, index) => [...styleState(style).decls.keys()][index >>> 0
 function priorityOf(style, name) {
   const decls = styleState(style).decls;
   const key = propertyName(name);
+  if (styleState(style).surface?.cssom31 === true) return priority31(decls, key);
   const important = decls.box !== undefined && isBoxName(key) ? boxPriority(decls, key) : decls.get(key)?.important;
   return important ? 'important' : '';
 }
@@ -6051,6 +6109,7 @@ function removePropertyOf(style, name) {
 // value getPropertyValue reads (a shorthand after a longhand of it is read
 // from the longhands; #313 review).
 function removedValue(style, s, key) {
+  if (s.surface?.cssom31 === true) return value31(s.decls, key);
   if (s.decls.box !== undefined && isBoxName(key)) return boxValue(s.decls, key);
   return s.decls.has(key) ? readShorthand(style, key, false) : '';
 }
@@ -6312,7 +6371,8 @@ export function styleOf(element, proto) {
     const decls = new Map();
     // (An inline style's margin and padding, box-declarations.js; its
     // fields set here in one order, so all such maps have one shape.)
-    decls.box = boxVariant(modeOf(proto));
+    // (none in jsdom 31: css31.js)
+    decls.box = surfaceOf(proto)?.cssom31 === true ? undefined : boxVariant(modeOf(proto));
     decls.boxed = false;
     decls.hidden = undefined;
     decls.rev = 0;
