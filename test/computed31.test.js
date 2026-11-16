@@ -141,3 +141,25 @@ parity(
   ),
   { jsdom: 31 },
 );
+
+// #323 review, second round: a quoted url() is a function whose string
+// may hold ")"; comments in var()'s arguments are no part of the name or
+// the separator; var( in a string in content is text.
+parity(
+  'jsdom 31: quoted url() and comments in var() arguments',
+  computed(
+    [
+      '--a: url("a)var(--missing)")',
+      "--a: url('a)var(--b)'); --b: 1px",
+      '--c: 1px; --b: var(--c/**/, 5px)',
+      '--c: 1px; --b: var(--c/*,*/, 5px)',
+      '--b: var(/**/--c, 5px); --c: 1px',
+      '--b: var( --c /* x */ , 5px); --c: 1px',
+      'content: "var(--missing)"',
+      "content: 'var(--a)'; --a: 'y'",
+      'content: "a" var(--a); --a: "b"',
+    ],
+    ['--a', '--b', 'content'],
+  ),
+  { jsdom: 31 },
+);

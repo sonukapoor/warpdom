@@ -63,8 +63,8 @@ function closing(value, open) {
   return -1;
 }
 
-// The first comma of a var()'s arguments outside nested functions and
-// strings, or -1.
+// The first comma of a var()'s arguments outside nested functions,
+// strings and comments, or -1.
 function topComma(text) {
   let depth = 0;
   for (let i = 0; i < text.length; i++) {
@@ -72,10 +72,19 @@ function topComma(text) {
     if (c === 40) depth++;
     else if (c === 41) depth--;
     else if (c === 34 || c === 39) i = stringEnd(text, i) - 1;
+    else if (c === 47 && text.charCodeAt(i + 1) === 42) i = commentEnd(text, i) - 1;
     else if (c === 92) i++;
     else if (c === 44 && depth === 0) return i;
   }
   return -1;
+}
+
+// Whether the url( arguments starting at i begin, past whitespace, with a
+// quote: url("a") is a function holding a string, not a url token.
+function quotedUrl(value, i) {
+  while (i < value.length && /\s/.test(value[i])) i++;
+  const c = value.charCodeAt(i);
+  return c === 34 || c === 39;
 }
 
 export function substituteVars(value, lookup, context) {
@@ -86,8 +95,9 @@ export function substituteVars(value, lookup, context) {
     if (c === 34 || c === 39) i = stringEnd(value, i) - 1;
     else if (c === 47 && value.charCodeAt(i + 1) === 42) i = commentEnd(value, i) - 1;
     else if (c === 92) i++;
-    else if ((c | 32) === 117 && functionAt(value, i, 'url')) {
-      // (an unquoted url() is one token, kept whole)
+    else if ((c | 32) === 117 && functionAt(value, i, 'url') && !quotedUrl(value, i + 4)) {
+      // (an unquoted url() is one token, kept whole; a quoted one is a
+      // function, its string skipped like any other)
       const end = value.indexOf(')', i + 4);
       i = end === -1 ? value.length : end;
     } else if ((c | 32) === 118 && functionAt(value, i, 'var')) {
@@ -96,7 +106,7 @@ export function substituteVars(value, lookup, context) {
       if (end === -1) return null;
       const inner = value.slice(open, end - 1);
       const comma = topComma(inner);
-      const name = (comma === -1 ? inner : inner.slice(0, comma)).trim();
+      const name = trimEnds(comma === -1 ? inner : inner.slice(0, comma));
       if (!name.startsWith('--')) return null;
       let replacement = lookup(context, name);
       if (replacement === null) return null;
