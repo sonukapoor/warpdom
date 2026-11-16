@@ -272,6 +272,40 @@ parity(
   { jsdom: 31 },
 );
 
+// A custom property's computed value holds at most 65536 tokens; one
+// with more is invalid, so substitution cannot grow without bound
+// (comments are no tokens; #323 review).
+parity(
+  'jsdom 31: a custom property of more than 65536 tokens is invalid',
+  (w) => {
+    const words = (n) => Array(n).fill('x').join(' ');
+    const cases = [
+      `--b: ,${words(32768)}`,
+      `--b: ${words(32769)}`,
+      `--b: ,${'/**/'.repeat(10)}${words(32768)}`,
+      `--d: ${words(32767)}; --b: var(--d) y`,
+      `--d: ${words(32768)}; --b: var(--d) y`,
+      `--b: ${'f()'.repeat(32768)},`,
+      `--b: ${'f()'.repeat(32768)}`,
+      `--b: ${'x'.repeat(100000)}`,
+    ];
+    let chain = '--a0: x;';
+    for (let i = 1; i <= 30; i++) chain += `--a${i}: var(--a${i - 1}) var(--a${i - 1});`;
+    cases.push(`${chain} --b: var(--a30, fallback)`);
+    return cases.map((text) => {
+      const el = w.document.body.appendChild(w.document.createElement('div'));
+      el.setAttribute('style', text);
+      const cs = w.getComputedStyle(el);
+      return [
+        cs.getPropertyValue('--b').length,
+        cs.getPropertyValue('--a15').length,
+        cs.getPropertyValue('--a16').length,
+      ];
+    });
+  },
+  { jsdom: 31 },
+);
+
 // A custom property used twice by the next one, 40 deep: each is
 // substituted once per element, not once per use (#323 review). Each one
 // is invalid (var(--missing)), so the values stay short; substituted per

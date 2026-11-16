@@ -162,6 +162,22 @@ function nextVar(value, from) {
   return -1;
 }
 
+// Whether a custom property's value holds more than 65536 tokens (jsdom
+// 31, black box: such a computed value is invalid, which also bounds a
+// substitution chain that doubles at each step). Comments are no tokens;
+// each token is at least one character, so a shorter value is never
+// counted.
+const MAX_TOKENS = 65536;
+export function tooManyTokens(value) {
+  if (value.length <= MAX_TOKENS) return false;
+  let count = 0;
+  for (let i = 0; i < value.length;) {
+    i = token(value, i, value.length);
+    if (tokenKind !== 'comment' && ++count > MAX_TOKENS) return true;
+  }
+  return false;
+}
+
 // Whether value holds a var() reference (not var( as text).
 export const hasVarReference = (value) => nextVar(value, 0) !== -1;
 

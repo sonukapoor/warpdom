@@ -51,7 +51,7 @@ import {
   FONT_SIZE_KEYWORDS,
   relativeWeight,
 } from './lengths.js';
-import { substituteVars, trimEnds } from './var-substitution.js';
+import { substituteVars, tooManyTokens, trimEnds } from './var-substitution.js';
 import { uaDeclarations, uaValue, uaRuleOver, uaInOrder } from './ua-sheet.js';
 import { documentStyleSheets, ruleArray, ruleListSnapshot, ruleListChanged } from './cssom.js';
 import {
@@ -1856,6 +1856,8 @@ function longhandValue(element, name, data, custom, compat, value) {
         value = 'unset';
       }
     }
+    // (more than 65536 tokens: invalid, as jsdom 31 computes)
+    if (custom && value !== undefined && tooManyTokens(value)) return '';
     if (name === 'line-height') {
       const n = lineHeightNumber(element, value);
       if (n !== null) return `${sixDigits(n * fontPx(computedValue(element, 'font-size')))}px`;

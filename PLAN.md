@@ -7387,6 +7387,10 @@ substituted pieces keep token boundaries (1 then px is 1/**/px, jsdom
 with their escapes decoded (\76 ar( is var(), var(--\62) reads --b; an
 escaped space continues a name), hashes and at-keywords are no var().
 Also for part B/C: jsdom 31 decodes escapes in family names (\61 b is
-ab) and drops var\( and an escaped url( holding var() when parsing.
+ab) and drops var\( and an escaped url( holding var() when parsing. A custom
+property's computed value of more than 65536 tokens (comments not
+counted) is invalid, as in jsdom 31; that also bounds a doubling chain.
+For part C: jsdom 31 drops comments at a custom property's ends when
+parsing (--b: x/**/ is x).
 Load (bench/load.js from the same directory, 5 interleaved runs, node
 22.17.1): cold load 26.9 ms on main, 27.0 ms here.
