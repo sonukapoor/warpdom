@@ -111,8 +111,22 @@ const slashed = (value) =>
 // One to four values as top, right, bottom and left.
 const sides = (p) => [p[0], p[1] ?? p[0], p[2] ?? p[0], p[3] ?? p[1] ?? p[0]];
 // border-radius as its corners (h, or h v).
+// (a radius of 0 is 0px)
+const radius = (part) => words(part).map((x) => (x === '0' ? '0px' : x));
 function radii(value) {
-  const [h, v = h] = slashed(value).map((part) => sides(words(part)));
+  const [h, v = h] = slashed(value).map((part) => sides(radius(part)));
+  return h.map((x, i) => (x === v[i] ? x : `${x} ${v[i]}`));
+}
+// A two-corner shorthand (border-top-radius: 1px 2px / 3px) as its corners,
+// and a two-corner shape (corner-top-shape: round bevel).
+const TWO_CORNERS = /^border-(?:top|right|bottom|left|(?:block|inline)-(?:start|end))-radius$/;
+const TWO_SHAPES = /^corner-(?:top|right|bottom|left|(?:block|inline)-(?:start|end))-shape$/;
+const both = (part, list = words(part)) => {
+  const [a, b = a] = list;
+  return [a, b];
+};
+function cornerPair(value) {
+  const [h, v = h] = slashed(value).map((part) => both(part, radius(part)));
   return h.map((x, i) => (x === v[i] ? x : `${x} ${v[i]}`));
 }
 
@@ -176,6 +190,8 @@ export function expand31(name, value, raw = value) {
   if (name === 'font-variant') return fontVariant(raw).map((v, i) => [longhands[i], v, src]);
   if (name === 'border-image') return borderImage(value).map((v, i) => [longhands[i], v, src]);
   if (name === 'vertical-align') return verticalAlign(value).map((v, i) => [longhands[i], v, src]);
+  if (TWO_CORNERS.test(name)) return cornerPair(value).map((v, i) => [longhands[i], v, src]);
+  if (TWO_SHAPES.test(name)) return both(value).map((v, i) => [longhands[i], v.toLowerCase(), src]);
   const pairs = expand(name, value);
   const found = new Map();
   for (let i = 1; i < pairs.length; i++) found.set(pairs[i][0], pairs[i][1]);
@@ -415,7 +431,7 @@ COMPOSERS['border-radius'] = (v) => {
 };
 // The two-corner shorthands (border-top-radius, border-block-start-radius):
 // the horizontal radii as a pair, then / and the vertical ones if they differ.
-const cornerPair = (v) => {
+const cornersOf = (v) => {
   const [x1, y1 = x1] = words(v[0]),
     [x2, y2 = x2] = words(v[1]);
   const a = pair([x1, x2]),
@@ -423,7 +439,7 @@ const cornerPair = (v) => {
   return a === b ? a : `${a} / ${b}`;
 };
 for (const side of ['top', 'right', 'bottom', 'left', 'block-start', 'block-end', 'inline-start', 'inline-end'])
-  ((COMPOSERS[`border-${side}-radius`] = cornerPair), (COMPOSERS[`corner-${side}-shape`] = pair));
+  ((COMPOSERS[`border-${side}-radius`] = cornersOf), (COMPOSERS[`corner-${side}-shape`] = pair));
 
 // CSSOM: a shorthand is not written where a declaration between its first
 // and last longhands is of the same logical property group with the other
@@ -432,20 +448,27 @@ for (const side of ['top', 'right', 'bottom', 'left', 'block-start', 'block-end'
 // (border-right-width between border-top's longhands).
 const LOGICAL = /-(?:block|inline)(?:-(?:start|end))?(?=-|$)/;
 const PHYSICAL = /-(?:top|right|bottom|left)(?=-|$)/;
-// group|mapping, or null
-const groupOf = (name) => {
-  if (/^(?:top|right|bottom|left)$/.test(name)) return 'inset|physical';
-  if (/^inset-(?:block|inline)/.test(name)) return 'inset|logical';
+// A name's group and mapping ({group, mapping}) or null, classified once
+// per name.
+const CORNER = /^(border|corner)-(?:(top|bottom)-(?:left|right)|(?:start|end)-(?:start|end))-(radius|shape)$/;
+const GROUPS = new Map();
+function classify(name) {
+  if (/^(?:top|right|bottom|left)$/.test(name)) return { group: 'inset', mapping: 'physical' };
+  if (/^inset-(?:block|inline)/.test(name)) return { group: 'inset', mapping: 'logical' };
   // (corners: border-top-left-radius and border-end-end-radius, the
   // corner shapes likewise)
-  const corner = /^(border|corner)-(?:(top|bottom)-(?:left|right)|(?:start|end)-(?:start|end))-(radius|shape)$/.exec(
-    name,
-  );
-  if (corner !== null) return `${corner[1]}-${corner[3]}|${corner[2] === undefined ? 'logical' : 'physical'}`;
-  if (LOGICAL.test(name)) return `${name.replace(LOGICAL, '')}|logical`;
-  if (PHYSICAL.test(name)) return `${name.replace(PHYSICAL, '')}|physical`;
+  const corner = CORNER.exec(name);
+  if (corner !== null)
+    return { group: `${corner[1]}-${corner[3]}`, mapping: corner[2] === undefined ? 'logical' : 'physical' };
+  if (LOGICAL.test(name)) return { group: name.replace(LOGICAL, ''), mapping: 'logical' };
+  if (PHYSICAL.test(name)) return { group: name.replace(PHYSICAL, ''), mapping: 'physical' };
   return null;
-};
+}
+function groupOf(name) {
+  let group = GROUPS.get(name);
+  if (group === undefined) GROUPS.set(name, (group = classify(name)));
+  return group;
+}
 // Per shorthand, built once: its longhands, and the mapping of each
 // group they belong to.
 const LAYOUT = new Map();
@@ -456,7 +479,7 @@ function layoutOf(shorthand) {
     const mappings = new Map();
     for (const l of longhands) {
       const group = groupOf(l);
-      if (group !== null) mappings.set(group.slice(0, group.indexOf('|')), group.slice(group.indexOf('|') + 1));
+      if (group !== null) mappings.set(group.group, group.mapping);
     }
     layout = { longhands, mappings };
     LAYOUT.set(shorthand, layout);
@@ -475,9 +498,8 @@ function crossesLogical(decls, shorthand) {
     } else if (inside) {
       const group = groupOf(name);
       if (group === null) continue;
-      const bar = group.indexOf('|');
-      const mapping = mappings.get(group.slice(0, bar));
-      if (mapping !== undefined && mapping !== group.slice(bar + 1)) return true;
+      const mapping = mappings.get(group.group);
+      if (mapping !== undefined && mapping !== group.mapping) return true;
     }
   }
   return false;

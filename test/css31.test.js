@@ -265,6 +265,11 @@ parity(
       'border-start-start-radius:1px;border-start-end-radius:2px',
       'corner-top-left-shape:round;corner-top-right-shape:round;corner-end-end-shape:bevel;corner-bottom-right-shape:round;corner-bottom-left-shape:round',
       'border-top-width: 1px; border-right-width: 2px; border-top-style: solid; border-top-color: red',
+      'border-top-radius: 1px 2px / 3px',
+      'border-left-radius: 1px / 2px 3px',
+      'border-inline-end-radius: 0 4px',
+      'corner-top-shape: round bevel',
+      'border-radius: 0 4px',
       (s) => {
         s.setProperty('margin', '1px/**/2px');
       },
