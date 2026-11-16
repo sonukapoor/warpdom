@@ -1305,12 +1305,15 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
   if (byValue === undefined) cache.set(name, (byValue = new Map()));
   let out = byValue.get(value);
   if (out === undefined) {
-    legacyColors =
-      surface === null || surface.legacyFont !== 'cssstyle4.1'
-        ? false
-        : mode === 'jsdom20' || mode === 'jsdom22'
-          ? 'cssstyle3'
-          : true;
+    // (jsdom 31: rounded once, alpha in 8 bits)
+    if (surface !== null && surface.cssom31 === true) legacyColors = 'jsdom31';
+    else
+      legacyColors =
+        surface === null || surface.legacyFont !== 'cssstyle4.1'
+          ? false
+          : mode === 'jsdom20' || mode === 'jsdom22'
+            ? 'cssstyle3'
+            : true;
     colorKeywords = surface !== null ? (surface.colors ?? null) : null;
     zeroAsWritten = surface !== null && (surface.key === 'cssstyle5' || surface.key === 'cssstyle5.0');
     numbersAsWritten = surface !== null && surface.key === 'cssstyle5';

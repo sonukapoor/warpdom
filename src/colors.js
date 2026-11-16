@@ -313,15 +313,18 @@ const serialize = (r, g, b, a = 1) =>
   a >= 1 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${serializeAlpha(a)})`;
 
 // An alpha given as a number (rgba(), hsla(), / a): to 3 decimals; legacy
-// as written.
-function serializeNumeric(r, g, b, a, legacy) {
+// as written. out: 'jsdom31' (jsdom 31: in 8 bits, as a hex alpha),
+// 'exact' (channels and alpha as computed, for color-mix()).
+function serializeNumeric(r, g, b, a, legacy, out) {
+  if (out === 'jsdom31') return serialize(r, g, b, a);
+  if (out === 'exact') return `rgba(${r}, ${g}, ${b}, ${a})`;
   const alpha = legacy ? a : Math.round(a * 1000) / 1000;
   return alpha >= 1 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 const fromHex = (n, a = 1) => serialize((n >> 16) & 255, (n >> 8) & 255, n & 255, a);
 
-function hex(text, legacy) {
+function hex(text, legacy, out) {
   const h = text.slice(1);
   if (!/^[0-9a-f]+$/i.test(h)) return null;
   const d = (s) => parseInt(s, 16);
@@ -345,6 +348,7 @@ function hex(text, legacy) {
       return null;
   }
   if (a < 0) return serialize(r, g, b);
+  if (out === 'exact') return `rgba(${r}, ${g}, ${b}, ${a / 255})`;
   // 'floor': jsdom 22.1 to 26's computed value of one cssstyle kept as
   // written (a border side's).
   if (legacy === 'floor')
@@ -381,7 +385,7 @@ const fourDigits = (v) => Math.round(Number(v.toPrecision(4)));
 
 const LEGACY_INTEGER = /^[+-]?\d+$/;
 const LEGACY_PERCENT = /^[+-]?(\d+(?:\.\d*)?|\.\d+)%$/;
-function rgbFunction(inner, round, legacy) {
+function rgbFunction(inner, round, legacy, out) {
   const args = colorArgs(inner);
   if (!args) return null;
   // The comma syntax takes numbers or percentages, not both (CSS Color 4,
@@ -395,7 +399,7 @@ function rgbFunction(inner, round, legacy) {
     : (s) => round(clamp(s.endsWith('%') ? (number(s.slice(0, -1)) * 255) / 100 : number(s), 0, 255));
   const [r, g, b] = args[0].map(channel);
   const a = alphaValue(args[1], legacy);
-  return [r, g, b, a].some(Number.isNaN) ? null : serializeNumeric(r, g, b, a, legacy);
+  return [r, g, b, a].some(Number.isNaN) ? null : serializeNumeric(r, g, b, a, legacy, out);
 }
 
 // CSS Color 4, 7.1: hslToRgb, channels from 0 to 1.
@@ -430,7 +434,7 @@ function hueDegrees(s, legacy) {
   return ((deg % 360) + 360) % 360;
 }
 
-function hslFunction(inner, round, legacy, turns = false) {
+function hslFunction(inner, round, legacy, turns, out) {
   const args = colorArgs(inner);
   if (!args) return null;
   const [hs, ss, ls] = args[0];
@@ -456,11 +460,11 @@ function hslFunction(inner, round, legacy, turns = false) {
   const a = alphaValue(args[1], legacy);
   if ([h, s, l, a].some(Number.isNaN)) return null;
   const [r, g, b] = hslToRgb(h, s, l);
-  return serializeNumeric(round(r * 255), round(g * 255), round(b * 255), a, legacy);
+  return serializeNumeric(round(r * 255), round(g * 255), round(b * 255), a, legacy, out);
 }
 
 // hwb(), modern syntax only (CSS Color 4, 8.1: hwbToRgb).
-function hwbFunction(inner, round) {
+function hwbFunction(inner, round, out) {
   if (inner.includes(',')) return null;
   const args = colorArgs(inner);
   if (!args) return null;
@@ -476,7 +480,7 @@ function hwbFunction(inner, round) {
     bl = 1 - w;
   }
   const rgb = hslToRgb(h, 1, 0.5).map((c) => (c * (1 - w - bl) + w) * 255);
-  return serializeNumeric(round(rgb[0]), round(rgb[1]), round(rgb[2]), a, false);
+  return serializeNumeric(round(rgb[0]), round(rgb[1]), round(rgb[2]), a, false, out);
 }
 
 // The resolved form of one color token, or null when it is not a color
@@ -486,10 +490,16 @@ function hwbFunction(inner, round) {
 // whose hue is read in turns: hsl(120, 50%, 50%) is rgb(64, 64, 64)),
 // 'floor' (jsdom 22.1 to 26's
 // computed value of a hex color cssstyle kept as written: its alpha
-// rounded down to 3 decimals).
+// rounded down to 3 decimals), 'jsdom31' (jsdom 31: channels rounded once,
+// alpha in 8 bits as a hex alpha is: rgba(0, 0, 0, .1234) is rgba(0, 0, 0,
+// 0.12)), 'exact' (channels and alpha not rounded, as color-mix() reads
+// them in jsdom 31).
+const keep = (v) => v;
 export function resolveColor(token, legacy = false) {
   const lower = token.toLowerCase();
-  if (lower[0] === '#') return hex(lower, legacy);
+  const out = legacy === 'jsdom31' || legacy === 'exact' ? legacy : undefined;
+  if (out !== undefined) legacy = false;
+  if (lower[0] === '#') return hex(lower, legacy, out);
   if (lower === 'transparent') return 'rgba(0, 0, 0, 0)';
   const named = NAMED[lower] ?? SYSTEM[lower];
   if (named !== undefined) return fromHex(named);
@@ -499,10 +509,11 @@ export function resolveColor(token, legacy = false) {
   const m = old ? /^(rgba?|hsla?)\((\S(?:.*\S)?)\)$/s.exec(token) : /^(rgba?|hsla?|hwb)\((.*)\)$/s.exec(lower);
   if (!m) return null;
   if (old && (!m[2].includes(',') || /\s,/.test(m[2]))) return null;
-  const round = old ? Math.round : fourDigits;
-  if (m[1] === 'hwb') return hwbFunction(m[2].trim(), round);
-  if (m[1].startsWith('rgb')) return rgbFunction(m[2].trim(), round, old);
-  return hslFunction(m[2].trim(), round, old, legacy === 'cssstyle3');
+  let round = old || out === 'jsdom31' ? Math.round : fourDigits;
+  if (out === 'exact') round = keep;
+  if (m[1] === 'hwb') return hwbFunction(m[2].trim(), round, out);
+  if (m[1].startsWith('rgb')) return rgbFunction(m[2].trim(), round, old, out);
+  return hslFunction(m[2].trim(), round, old, legacy === 'cssstyle3', out);
 }
 
 export const NAMED_COLORS = Object.keys(NAMED);
@@ -513,6 +524,10 @@ export const DARK_SYSTEM_COLORS = Object.assign(
   Object.create(null),
   Object.fromEntries(Object.entries(DARK_SYSTEM).map(([name, n]) => [name, fromHex(n)])),
 );
+// jsdom 31's (black box, 31.0.1): ButtonText white.
+export const DARK_SYSTEM_COLORS_31 = Object.assign(Object.create(null), DARK_SYSTEM_COLORS, {
+  buttontext: 'rgb(255, 255, 255)',
+});
 
 // --- color-mix() (jsdom 29.0.2 and later) -----------------------------------------
 
@@ -551,13 +566,16 @@ const srgbComponent = (text) => (text.endsWith('%') ? Number(text.slice(0, -1)) 
 
 // A computed color as [r, g, b, alpha] in sRGB (channels 0 to 1 but
 // color()'s, which may fall outside), or null. depth: the number of
-// color-mix() it is nested in.
-function colorChannels(text, current, rawAlpha, depth) {
+// color-mix() it is nested in. jsdom 31 (mode 31): as given, not rounded,
+// a system color under the element's color-scheme (dark).
+function colorChannels(text, current, mode, depth, dark) {
   const lower = text.toLowerCase();
   let resolved;
   if (lower === 'currentcolor') resolved = current();
-  else if (lower.startsWith('color-mix(')) resolved = mixColor(text, current, rawAlpha, depth);
-  else resolved = lower.startsWith('color(') ? text : resolveColor(text);
+  else if (lower.startsWith('color-mix(')) resolved = mixColor(text, current, mode, depth, dark);
+  else if (lower.startsWith('color(')) resolved = text;
+  else if (mode !== 31) resolved = resolveColor(text);
+  else resolved = (dark ? DARK_SYSTEM_COLORS_31[lower] : undefined) ?? resolveColor(text, 'exact');
   if (resolved == null || resolved === false) return null;
   let channels;
   const rgb = RGB_SERIALIZED.exec(resolved);
@@ -615,12 +633,16 @@ const sixDigits = (v) => String(Number(v.toPrecision(6)));
 // current: the currentcolor's computed value. A mix nested in 39 others
 // is left as declared (null), so a deeply nested value cannot overflow
 // the stack; jsdom 30 rejects a declaration nested 40 deep (black box,
-// 30.1.2, 30.1.3).
+// 30.1.2, 30.1.3). mode: false (jsdom 29), true (30: the alpha not
+// rounded), 31 (mix31). dark: whether system colors take their dark
+// values (jsdom 31).
 const MIX_DEPTH = 39;
-export function mixColor(token, current, rawAlpha, depth = 0) {
+export function mixColor(token, current, mode, depth = 0, dark = false) {
   const open = token.indexOf('(');
   if (!token.endsWith(')') || depth >= MIX_DEPTH) return null;
   const args = topLevelArgs(token.slice(open + 1, -1));
+  if (mode === 31) return mix31(args, current, depth, dark);
+  const rawAlpha = mode;
   if (args.length !== 3) return false;
   if (!/^in\s+srgb$/i.test(args[0])) return null;
   const [text1, given1] = mixArgument(args[1]);
@@ -633,8 +655,8 @@ export function mixColor(token, current, rawAlpha, depth = 0) {
   if (p1 < 0 || p2 < 0 || p1 > 100 || p2 > 100) return false;
   const sum = p1 + p2;
   if (sum === 0) return false;
-  const c1 = colorChannels(text1, current, rawAlpha, depth + 1);
-  const c2 = colorChannels(text2, current, rawAlpha, depth + 1);
+  const c1 = colorChannels(text1, current, rawAlpha, depth + 1, false);
+  const c2 = colorChannels(text2, current, rawAlpha, depth + 1, false);
   if (c1 === null || c2 === null) return null;
   const w1 = p1 / sum,
     w2 = p2 / sum;
@@ -646,4 +668,48 @@ export function mixColor(token, current, rawAlpha, depth = 0) {
   if (sum < 100) a *= p1 / 100 + p2 / 100;
   const body = `srgb ${channels.map(sixDigits).join(' ')}`;
   return a === 1 ? `color(${body})` : `color(${body} / ${a})`;
+}
+
+// jsdom 31's color-mix() in srgb (black box, 31.0.1), as CSS Color 5
+// mixes: one color or more, each with an optional percentage; the missing
+// percentages share what the given ones leave of 100% (none below 0);
+// each color's weight its percentage over their sum, an even mix at alpha
+// 0 when they add up to 0, the alpha multiplied by their sum when below
+// 100%. The colors as given (hsl() and alpha not rounded first), mixed
+// premultiplied by alpha; channels and alpha to 6 significant digits, the
+// alpha left out when 1. false for a percentage out of 0 to 100.
+function mix31(args, current, depth, dark) {
+  if (args.length < 2 || !/^in\s+srgb$/i.test(args[0])) return null;
+  const n = args.length - 1;
+  const texts = new Array(n);
+  const given = new Array(n);
+  let sumGiven = 0;
+  let missing = 0;
+  for (let i = 0; i < n; i++) {
+    const [text, p] = mixArgument(args[i + 1]);
+    if (p !== null && (p < 0 || p > 100)) return false;
+    texts[i] = text;
+    given[i] = p;
+    if (p === null) missing++;
+    else sumGiven += p;
+  }
+  const share = missing === 0 ? 0 : Math.max(0, 100 - sumGiven) / missing;
+  const sum = sumGiven + share * missing;
+  let alpha = 0;
+  const premultiplied = [0, 0, 0];
+  const plain = [0, 0, 0];
+  for (let i = 0; i < n; i++) {
+    const c = colorChannels(texts[i], current, 31, depth + 1, dark);
+    if (c === null) return null;
+    const w = sum === 0 ? 1 / n : (given[i] ?? share) / sum;
+    alpha += c[3] * w;
+    for (let k = 0; k < 3; k++) {
+      premultiplied[k] += c[k] * c[3] * w;
+      plain[k] += c[k] * w;
+    }
+  }
+  const channels = alpha === 0 ? plain : premultiplied.map((v) => v / alpha);
+  const a = sixDigits(sum < 100 ? (alpha * sum) / 100 : alpha);
+  const body = `srgb ${channels.map(sixDigits).join(' ')}`;
+  return a === '1' ? `color(${body})` : `color(${body} / ${a})`;
 }

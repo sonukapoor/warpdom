@@ -30,7 +30,7 @@ import {
   preprocessCss,
 } from './internal.js';
 import { LONGHANDS, SHORTHANDS, ALIASES } from './css-data.js';
-import { DARK_SYSTEM_COLORS, mixColor, resolveColor, systemColorKind } from './colors.js';
+import { DARK_SYSTEM_COLORS, DARK_SYSTEM_COLORS_31, mixColor, resolveColor, systemColorKind } from './colors.js';
 import {
   segments,
   expand,
@@ -997,12 +997,13 @@ const RAW_KEYWORDS = new Set([
 // body its color is white, its border colors black.
 function currentColor(element) {
   let source = element;
-  if (declaresScheme(element) && !element[S].doc[S].window[S].compat.legacyComputedStyle) {
+  const compat = element[S].doc[S].window[S].compat;
+  if (!compat.legacyComputedStyle && !compat.computed31 && declaresScheme(element)) {
     const parent = inheritParent(element);
     if (parent !== null && inheritsColor(cascaded(element, 'color'))) source = parent;
   }
   const color = computedValue(source, 'color');
-  return color.includes('var(') && !element[S].doc[S].window[S].compat.legacyComputedStyle ? 'rgba(0, 0, 0, 0)' : color;
+  return color.includes('var(') && !compat.legacyComputedStyle ? 'rgba(0, 0, 0, 0)' : color;
 }
 
 // Computes a specified value: colors resolved, currentcolor to the color
@@ -1035,7 +1036,20 @@ function darkScheme(element) {
     }
     if (!declared) return false;
   }
-  return computedValue(element, 'color-scheme') === 'dark';
+  const scheme = computedValue(element, 'color-scheme');
+  return element[S].doc[S].window[S].compat.computed31 ? darkScheme31(scheme) : scheme === 'dark';
+}
+
+// jsdom 31 (black box, 31.0.1): dark where the color-scheme names dark
+// and not light, in any case and order (only dark, dark foo, DARK; not
+// light dark or dark light).
+function darkScheme31(scheme) {
+  let dark = false;
+  for (const word of scheme.toLowerCase().split(/[ \t\n\r\f]+/)) {
+    if (word === 'light') return false;
+    if (word === 'dark') dark = true;
+  }
+  return dark;
 }
 
 // Whether the element declares its own color-scheme (not inherit or
@@ -1205,6 +1219,10 @@ function closingParen(value) {
 // gives the mix alone, a mix it cannot compute transparent); a var()
 // anywhere in the value keeps it as declared.
 function resolvedColorValue(element, name, value, data, compat) {
+  if (compat.computed31) {
+    const color = colorValue31(element, name, value, data);
+    if (color !== null) return color;
+  }
   const token = firstComponent(value);
   const lower = token.toLowerCase();
   let color;
@@ -1232,6 +1250,41 @@ function resolvedColorValue(element, name, value, data, compat) {
     if (color === null) return IDENTIFIER.test(lower) ? 'rgba(0, 0, 0, 0)' : value;
   }
   return color;
+}
+
+// jsdom 31 (black box, 31.0.1): a value of one color, or one keyword, as
+// a whole. currentcolor is the color (the parent's for color), but
+// accent-color, box-shadow-color, fill and stroke keep it, and a mix of
+// it, as declared; a system color takes its dark value where the
+// element's color-scheme is dark (darkScheme31; ButtonText white);
+// color-mix() mixes as CSS Color 5 (colors.js mix31); caret-color and
+// outline-color: auto are the color, other keywords themselves (auto,
+// none, context-fill). null for a value of more components (text-shadow,
+// scrollbar-color, fill with url(): resolvedColorValue's first
+// component).
+const KEEPS_CURRENTCOLOR = new Set(['accent-color', 'box-shadow-color', 'fill', 'stroke']);
+const CURRENTCOLOR_WORD = /currentcolor/i;
+function colorValue31(element, name, value, data) {
+  const lower = value.toLowerCase();
+  if (lower === 'currentcolor') {
+    if (KEEPS_CURRENTCOLOR.has(name)) return lower;
+    return name === 'color' ? inheritedValue(element, 'color', data) : currentColor(element);
+  }
+  if (lower.startsWith('color-mix(')) {
+    if (closingParen(value) !== value.length - 1) return null;
+    if (KEEPS_CURRENTCOLOR.has(name) && CURRENTCOLOR_WORD.test(value)) return value;
+    let currentValue;
+    const current = () =>
+      (currentValue ??= name === 'color' ? inheritedValue(element, 'color', data) : currentColor(element));
+    const mixed = mixColor(value, current, 31, 0, darkScheme(element));
+    return mixed === false ? 'rgba(0, 0, 0, 0)' : (mixed ?? value);
+  }
+  const dark = DARK_SYSTEM_COLORS_31[lower];
+  if (dark !== undefined && darkScheme(element)) return dark;
+  const color = resolveColor(value, 'jsdom31');
+  if (color !== null) return color;
+  if (!IDENTIFIER.test(lower)) return null;
+  return lower === 'auto' && AUTO_CURRENTCOLOR.has(name) ? currentColor(element) : lower;
 }
 
 // --- absolute lengths (jsdom 30) ----------------------------------------------------
@@ -1371,8 +1424,13 @@ function computeValue(element, name, value, data) {
 function initialValue(element, name, data) {
   // Display values other than inline come from the user agent sheet.
   if (name === 'display') return 'inline';
-  // jsdom 29.0.2 and later (black box, to 30.1.3).
-  if (name === 'outline-color') return 'rgba(0, 0, 0, 0)';
+  // jsdom 29.0.2 to 30.1.3 (black box); jsdom 31 currentcolor, and
+  // stop-color black (black box, 31.0.1).
+  if (name === 'outline-color' || name === 'stop-color') {
+    if (element[S].doc[S].window[S].compat.computed31)
+      return name === 'outline-color' ? currentColor(element) : 'rgb(0, 0, 0)';
+    if (name === 'outline-color') return 'rgba(0, 0, 0, 0)';
+  }
   // (jsdom 31: monospace, black box 31.0.1)
   if (name === 'font-family')
     return element[S].doc[S].window[S].compat.computed31 ? 'monospace' : 'depends on user agent';
@@ -1385,9 +1443,12 @@ function initialValue(element, name, data) {
 function inheritedValue(element, name, data) {
   const parent = inheritParent(element);
   if (parent === null) return initialValue(element, name, data);
-  if (data[2] === 1 && name !== 'color' && !element[S].doc[S].window[S].compat.legacyComputedStyle) {
-    const source = colorSource(parent, name, data);
-    return source === null ? currentColor(element) : computedValue(source, name);
+  const compat = element[S].doc[S].window[S].compat;
+  if (data[2] === 1 && name !== 'color' && !compat.legacyComputedStyle) {
+    const source = colorSource(parent, name, data, compat.computed31);
+    if (source !== null) return computedValue(source, name);
+    // jsdom 31 keeps currentcolor so where it keeps it declared.
+    return compat.computed31 && KEEPS_CURRENTCOLOR.has(name) ? 'currentcolor' : currentColor(element);
   }
   // jsdom 29.0.2 and later (black box, to 30.1.3): an inherited color
   // that no element up the chain declares (or one declares initial) is
@@ -1399,10 +1460,12 @@ function inheritedValue(element, name, data) {
   // order of reads and insertions (a border color read before color makes
   // color the parent's; to 30.0.1 a currentcolor under a light element in
   // a dark one, its ancestors not read first, takes the dark one's).
+  // jsdom 31 inherits the parent's color as computed (black box, 31.0.1).
   if (
     name === 'color' &&
-    declaresScheme(element) &&
     !element[S].doc[S].window[S].compat.legacyComputedStyle &&
+    !element[S].doc[S].window[S].compat.computed31 &&
+    declaresScheme(element) &&
     !colorDeclared(parent)
   )
     return initialValue(element, name, data);
@@ -1420,19 +1483,26 @@ function inheritedValue(element, name, data) {
 // value is transparent here: initialValue). Not modeled: jsdom 29.1.1
 // gives a border or border-color shorthand's currentcolor or CSS-wide
 // keyword a fixed color in some cases, which its children inherit.
-const initialCurrentColor = (name, data) => data[0] === 'currentcolor' && name !== 'outline-color';
-function colorSource(element, name, data) {
+// jsdom 31 (black box, 31.0.1): caret-color's and outline-color's auto is
+// currentcolor (colorValue31), their initial value and declared, inherited
+// as the keyword.
+const AUTO_CURRENTCOLOR = new Set(['caret-color', 'outline-color']);
+const initialCurrentColor = (name, data, jsdom31) =>
+  jsdom31
+    ? data[0] === 'currentcolor' || AUTO_CURRENTCOLOR.has(name)
+    : data[0] === 'currentcolor' && name !== 'outline-color';
+function colorSource(element, name, data, jsdom31) {
   for (let e = element; ;) {
     const value = cascaded(e, name);
     const keyword = value?.toLowerCase();
-    if (keyword === 'currentcolor') return null;
+    if (keyword === 'currentcolor' || (jsdom31 && keyword === 'auto' && AUTO_CURRENTCOLOR.has(name))) return null;
     if (keyword === 'inherit' || ((keyword === undefined || keyword === 'unset') && data[1])) {
       const parent = inheritParent(e);
-      if (parent === null) return initialCurrentColor(name, data) ? null : e;
+      if (parent === null) return initialCurrentColor(name, data, jsdom31) ? null : e;
       e = parent;
     } else if (
       (keyword === undefined || keyword === 'initial' || keyword === 'unset') &&
-      initialCurrentColor(name, data)
+      initialCurrentColor(name, data, jsdom31)
     )
       return null;
     else return e;
