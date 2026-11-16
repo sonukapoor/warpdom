@@ -1,7 +1,10 @@
 // jsdom 31's computed values (cascade.js, lengths.js, var-substitution.js),
 // checked against jsdom 31.0.1: var() substituted, 0 lengths as 0px, more
 // units resolved, line-height numbers to px.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
 import { parity } from './parity.js';
+import { createWindow } from '../src/node.js';
 
 // Each case: the element's style attribute, under a parent (section) with
 // its own; the computed values of names.
@@ -183,3 +186,18 @@ parity(
   ),
   { jsdom: 31 },
 );
+
+// A custom property used twice by the next one, 22 deep: each is
+// substituted once per element, not once per use (#323 review).
+test('jsdom 31: a custom property is substituted once per element', () => {
+  const w = createWindow({ jsdom: '31.0.1' });
+  let text = '--a0: x;';
+  for (let i = 1; i <= 22; i++) text += `--a${i}: var(--a${i - 1}) var(--a${i - 1});`;
+  const el = w.document.body.appendChild(w.document.createElement('div'));
+  el.setAttribute('style', text);
+  const start = performance.now();
+  const cs = w.getComputedStyle(el);
+  assert.equal(cs.getPropertyValue('--a3'), 'x x x x x x x x');
+  assert.equal(cs.getPropertyValue('--a22').length, 2 ** 23 - 1);
+  assert.ok(performance.now() - start < 500, `took ${Math.round(performance.now() - start)} ms`);
+});

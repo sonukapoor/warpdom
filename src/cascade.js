@@ -792,6 +792,7 @@ function cascaded(element, name) {
       colorDeclared: undefined,
       rootDark: undefined,
       lineHeight: undefined,
+      customs: undefined,
     };
   } else if (cache.values.has(name)) return cache.values.get(name);
   let value = cascade(element, index, inlineMap, name);
@@ -1805,7 +1806,18 @@ export function computedValue(element, property) {
     if (cache.fontSize !== undefined) return cache.fontSize;
     return (cache.fontSize = longhandValue(element, name, data, false, compat, value));
   }
-  return longhandValue(element, name, data, custom, compat, cascaded(element, name));
+  const value = cascaded(element, name);
+  // jsdom 31: a custom property with var() is substituted once, kept with
+  // the cascaded values (a chain using each one twice is not exponential).
+  if (custom && compat.computed31 && value !== undefined && HAS_VAR.test(value)) {
+    const cache = element[S].cascaded;
+    const known = cache.customs?.get(name);
+    if (known !== undefined) return known;
+    const result = longhandValue(element, name, data, custom, compat, value);
+    (cache.customs ??= new Map()).set(name, result);
+    return result;
+  }
+  return longhandValue(element, name, data, custom, compat, value);
 }
 
 // The hidden attribute hides an element; from jsdom 27 not an embed
