@@ -117,3 +117,27 @@ parity(
   }),
   { jsdom: 31 },
 );
+
+// #323 review: a cycle invalidates each of its properties whatever their
+// fallbacks; var( in a string, a quoted url(), after an escape or in a
+// comment is text; comments at a substituted value's ends go.
+parity(
+  'jsdom 31: var() cycles with fallbacks, and var( as text',
+  computed(
+    [
+      '--a: var(--b, 1px); --b: var(--a); width: var(--a, 5px)',
+      '--a: var(--b); --b: var(--c); --c: var(--b)',
+      '--a: var(--b, 2px); --b: var(--b)',
+      '--a: "var(--missing)"',
+      '--a: var(--missing, "var(--x)")',
+      "--a: url('var(--b)'); --b: 1px",
+      '--a: var(--b) /* var(--c) */; --b: 1px',
+      '--a: x\\var(--b); --b: 1px',
+      '--a: var(--b)/**/; --b: 1px',
+      '--a: /* c */ var(--b); --b: 1px',
+      '--a: var(--b)  /* c */  x; --b: 1px',
+    ],
+    ['width', '--a', '--b', '--c'],
+  ),
+  { jsdom: 31 },
+);

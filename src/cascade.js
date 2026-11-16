@@ -51,7 +51,7 @@ import {
   FONT_SIZE_KEYWORDS,
   relativeWeight,
 } from './lengths.js';
-import { substituteVars } from './var-substitution.js';
+import { substituteVars, trimEnds } from './var-substitution.js';
 import { uaDeclarations, uaValue, uaRuleOver, uaInOrder } from './ua-sheet.js';
 import { documentStyleSheets, ruleArray, ruleListSnapshot, ruleListChanged } from './cssom.js';
 import {
@@ -791,6 +791,7 @@ function cascaded(element, name) {
       scheme: undefined,
       colorDeclared: undefined,
       rootDark: undefined,
+      lineHeight: undefined,
     };
   } else if (cache.values.has(name)) return cache.values.get(name);
   let value = cascade(element, index, inlineMap, name);
@@ -1881,27 +1882,42 @@ function longhandValue(element, name, data, custom, compat, value) {
 // --- var() substitution (jsdom 31) ---------------------------------------------------
 
 const HAS_VAR = /var\(/i;
-// The custom properties being substituted, as [element, name] pairs: one
-// met again is in a cycle.
+// The custom properties being substituted, as element, name pairs: one met
+// again is in a cycle, and every property from it on the stack is then
+// invalid (marked), whatever its fallbacks.
 const substituting = [];
-function inCycle(element, name) {
-  for (let i = 0; i < substituting.length; i += 2)
-    if (substituting[i] === element && substituting[i + 1] === name) return true;
-  return false;
+const cyclic = [];
+function indexOn(list, element, name) {
+  for (let i = 0; i < list.length; i += 2) if (list[i] === element && list[i + 1] === name) return i;
+  return -1;
+}
+// (substituteVars' lookup: context is the element)
+function customLookup(element, name) {
+  const at = indexOn(substituting, element, name);
+  if (at === -1) return computedValue(element, name);
+  for (let i = at; i < substituting.length; i += 2)
+    if (indexOn(cyclic, substituting[i], substituting[i + 1]) === -1) cyclic.push(substituting[i], substituting[i + 1]);
+  return null;
 }
 
 // A value with var() as it computes, or null when invalid at computed-value
 // time: substituted, then (but for a custom property) parsed as the
 // property's declared value; a pending longhand from its shorthand's value.
 function substitutedValue(element, name, value, custom) {
-  const lookup = (other) => (inCycle(element, other) ? null : computedValue(element, other));
   if (custom) {
     substituting.push(element, name);
+    let text;
     try {
-      return substituteVars(value, lookup);
+      text = substituteVars(value, customLookup, element);
     } finally {
       substituting.length -= 2;
     }
+    const mark = indexOn(cyclic, element, name);
+    if (mark !== -1) {
+      cyclic.splice(mark, 2);
+      return null;
+    }
+    return text === null ? null : trimEnds(text);
   }
   let property = name;
   if (value.startsWith(PENDING31)) {
@@ -1909,7 +1925,7 @@ function substitutedValue(element, name, value, custom) {
     property = value.slice(PENDING31.length, at);
     value = value.slice(at + 1);
   }
-  const text = substituteVars(value, lookup);
+  const text = substituteVars(value, customLookup, element);
   if (text === null) return null;
   const window = element[S].doc[S].window;
   const decls = parseDeclarations(`${property}: ${text}`, validationModeOf(window), styleSurfaceOf(window));
@@ -1919,21 +1935,22 @@ function substitutedValue(element, name, value, custom) {
 
 // jsdom 31: line-height as a number (2, calc(2 * 1)) computes to px from
 // the element's own font size, inherited as the number: the number, or
-// null.
+// null. An inherited one is kept with the parent's cascaded values.
 const NUMBER = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i;
 function lineHeightNumber(element, value) {
-  for (let e = element; ;) {
-    const lower = value?.toLowerCase();
-    if (value !== undefined && lower !== 'inherit' && lower !== 'unset') {
-      if (NUMBER.test(value)) return Number(value);
-      return /^calc\(/i.test(value) ? absoluteNumber(value) : null;
-    }
-    e = inheritParent(e);
-    if (e === null) return null;
-    value = cascaded(e, 'line-height');
-    if (value !== undefined && (value.startsWith(PENDING31) || HAS_VAR.test(value)))
-      value = substitutedValue(e, 'line-height', value, false) ?? 'unset';
+  const lower = value?.toLowerCase();
+  if (value !== undefined && lower !== 'inherit' && lower !== 'unset') {
+    if (NUMBER.test(value)) return Number(value);
+    return /^calc\(/i.test(value) ? absoluteNumber(value) : null;
   }
+  const parent = inheritParent(element);
+  if (parent === null) return null;
+  let own = cascaded(parent, 'line-height');
+  const cache = parent[S].cascaded;
+  if (cache.lineHeight !== undefined) return cache.lineHeight;
+  if (own !== undefined && (own.startsWith(PENDING31) || HAS_VAR.test(own)))
+    own = substitutedValue(parent, 'line-height', own, false) ?? 'unset';
+  return (cache.lineHeight = lineHeightNumber(parent, own));
 }
 
 // --- computed shorthands as jsdom 29.0.2 and later read them -------------------------
