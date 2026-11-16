@@ -2006,6 +2006,10 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle, beyondJsdom = fa
     // weights (cascade.js, lengths.js).
     absoluteLengths: version[0] >= 30,
     relativeWeights: !before(version, [30, 1, 0]),
+    // jsdom 31 computes more (black box, 31.0.1; cascade.js): var()
+    // substituted, initial 0 lengths as 0px, the small, large, dynamic
+    // viewport and container units, line-height numbers to px.
+    computed31: version[0] >= 31,
     composedAccessors: version[0] < 27 && (css === null || (css[0] === 4 && !before(css, [4, 4, 0]))),
     // Members jsdom added (black box): crypto.randomUUID() in 22.1.0,
     // TextEncoder and TextDecoder in 27.4.0, Blob's text(), arrayBuffer()

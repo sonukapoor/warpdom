@@ -21,6 +21,15 @@ const VIEWPORT = {
   vmin: Math.min(VIEWPORT_WIDTH, VIEWPORT_HEIGHT) / 100,
   vmax: Math.max(VIEWPORT_WIDTH, VIEWPORT_HEIGHT) / 100,
 };
+// jsdom 31 resolves the small, large and dynamic viewport units and the
+// container units too (no container: the small viewport's), from the same
+// window (ctx.allViewport).
+const VIEWPORT31 = { __proto__: null };
+for (const [unit, px] of Object.entries(VIEWPORT)) {
+  for (const prefix of ['s', 'l', 'd']) VIEWPORT31[prefix + unit] = px;
+  VIEWPORT31[`cq${unit.slice(1)}`] = px;
+}
+
 // Font-relative units: [context length, factor] (ex and ch half an em,
 // cap and ic one).
 const RELATIVE = {
@@ -46,8 +55,8 @@ function unitPx(n, unit, ctx) {
   const abs = ABSOLUTE[u];
   if (abs !== undefined) return n * abs;
   const rel = RELATIVE[u];
-  if (rel !== undefined) return n * rel[1] * ctx[rel[0]]();
-  const vp = VIEWPORT[u];
+  if (rel !== undefined) return n * (u === 'cap' || u === 'rcap' ? (ctx.capRatio ?? 1) : rel[1]) * ctx[rel[0]]();
+  const vp = VIEWPORT[u] ?? (ctx.allViewport === true ? VIEWPORT31[u] : undefined);
   return vp !== undefined ? n * vp : NaN;
 }
 
@@ -187,4 +196,15 @@ export const FONT_SIZE_KEYWORDS = {
 export function relativeWeight(keyword, parent) {
   if (keyword === 'bolder') return parent < 350 ? 400 : parent < 550 ? 700 : parent < 900 ? 900 : parent;
   return parent < 100 ? parent : parent < 550 ? 100 : parent < 750 ? 400 : 700;
+}
+
+const NO_FONT = { em: () => 16, rem: () => 16, lh: () => 16, rlh: () => 16 };
+// The number a math function of numbers alone computes to (calc(2 * 1) is
+// 2), or null.
+export function absoluteNumber(value) {
+  const tokens = tokenize(value);
+  if (tokens === null) return null;
+  // (a length in it makes it no number: its size does not matter)
+  const result = evaluate(tokens, NO_FONT);
+  return result === null || result.n === undefined || !Number.isFinite(result.n) ? null : result.n;
 }

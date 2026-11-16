@@ -1,0 +1,119 @@
+// jsdom 31's computed values (cascade.js, lengths.js, var-substitution.js),
+// checked against jsdom 31.0.1: var() substituted, 0 lengths as 0px, more
+// units resolved, line-height numbers to px.
+import { parity } from './parity.js';
+
+// Each case: the element's style attribute, under a parent (section) with
+// its own; the computed values of names.
+const computed =
+  (cases, names, { parent = '', sheet = '', root = '' } = {}) =>
+  (w) => {
+    const d = w.document;
+    if (sheet) d.head.append(Object.assign(d.createElement('style'), { textContent: sheet }));
+    if (root) d.documentElement.setAttribute('style', root);
+    return cases.map((text) => {
+      const p = d.body.appendChild(d.createElement('section'));
+      p.setAttribute('style', parent);
+      const el = p.appendChild(d.createElement('div'));
+      el.className = 'x';
+      el.setAttribute('style', text);
+      const cs = w.getComputedStyle(el);
+      return [text, ...names.map((n) => `${n}=${cs.getPropertyValue(n)}`)];
+    });
+  };
+
+parity(
+  'jsdom 31: var() is substituted in computed values',
+  computed(
+    [
+      'width: var(--p)',
+      'width: var(--a); --a: var(--p)',
+      'width: calc(var(--p) * 2)',
+      'width: var(--nope)',
+      'width: var(--nope, 3em)',
+      'width: var(--a, var(--p))',
+      'width: var(--a); --a: red',
+      'color: var(--nope)',
+      'color: var(--a); --a: blue',
+      'display: var(--d, block)',
+      'margin-top: var(--A); --A: 3px',
+      'font-size: var(--f); --f: 2em',
+      '--a: var(--b); --b: var(--a); width: var(--a)',
+      '--a: 1px  2px ; --b: var(--a)',
+    ],
+    ['width', 'color', 'display', 'margin-top', 'font-size', '--a', '--b'],
+    { parent: '--p: 7px; color: red' },
+  ),
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: a shorthand with var() computes its longhands from the substituted value',
+  computed(
+    [
+      'margin: var(--m); --m: 1px 2px',
+      'margin: var(--m); --m: red',
+      'padding: var(--nope)',
+      'border: var(--b); --b: 1px solid red',
+      'background: var(--bg); --bg: red',
+      '',
+    ],
+    ['margin-top', 'margin-left', 'padding-top', 'border-top-width', 'border-top-color', 'background-color'],
+    { sheet: '.x:empty { margin: var(--r) } section { --r: 4px }' },
+  ),
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: lengths, zeros, viewport and container units',
+  computed(
+    [
+      '',
+      'margin-top: 0; width: 0',
+      'width: 10svw; height: 10dvh; margin-top: 10lvmax',
+      'width: 10cqw; height: 10cqh; margin-top: 10cqmin',
+      'width: 1cqi; height: 1cqb; margin-top: 10cqmax',
+      'width: 10svi; height: 10dvb',
+      'width: 1cap; height: 1rcap; margin-top: 1ic',
+    ],
+    ['margin-top', 'width', 'height', 'padding-left', 'text-indent', 'outline-offset', 'font-family'],
+    { parent: 'font-size: 20px', root: 'font-size: 10px' },
+  ),
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: line-height numbers to px, lh and rlh from line-heights',
+  computed(
+    [
+      'line-height: 2',
+      'line-height: calc(2 * 1)',
+      'line-height: 0',
+      'line-height: 150%',
+      'line-height: normal',
+      'line-height: var(--l); --l: 3',
+      'font-size: 10px',
+      'width: 1lh',
+      'width: 1lh; line-height: 2',
+      'width: 1lh; line-height: normal',
+      'line-height: 1lh',
+      'font-size: 1lh',
+      'width: 2lh; font-size: 10px',
+      'width: 1rlh',
+      'width: calc(1em + 1lh); line-height: calc(1em + 1lh); font-size: calc(1em + 1lh)',
+      'font-size: math',
+    ],
+    ['width', 'line-height', 'font-size'],
+    { parent: 'font-size: 20px; line-height: 30px', root: 'line-height: 3; font-size: 10px' },
+  ),
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: line-height normal is 1.15 times the font size in lh',
+  computed(['width: 1lh', 'width: 1rlh', 'font-size: 1lh', 'line-height: 1lh'], ['width', 'font-size', 'line-height'], {
+    parent: 'font-size: 20px',
+    root: 'font-size: 10px',
+  }),
+  { jsdom: 31 },
+);

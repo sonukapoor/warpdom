@@ -334,12 +334,15 @@ function shorthandValue(name, entries) {
   }
   if (keyword !== null) return keyword;
   if (pending !== null) return pending.name === name ? pending.value : '';
-  for (const e of entries) if (e.value === '') return '';
+  // (a longhand with var() of its own: CSSOM writes no shorthand)
+  for (const e of entries) if (e.value === '' || VAR_REFERENCE.test(e.value)) return '';
   const values = entries.map((e) => e.value);
   const composer = COMPOSERS[name] ?? defaultComposer(name);
   if (composer !== null) return composer(values, entries);
   return sameSrc !== null && sameSrc.name === name ? sameSrc.value : '';
 }
+
+const VAR_REFERENCE = /var\(/i;
 
 // Composers: the longhands' values (jsdom 31's order) as the shorthand
 // writes them, or ''.
