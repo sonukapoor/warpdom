@@ -30,7 +30,8 @@ const shorthandsTable = () => (data ?? load()).shorthands;
 export const dropped31 = () => (data ?? load()).dropped;
 import { LONGHANDS } from './css-data.js';
 import { expand, serializeBox, segments, CSS_WIDE, topLevelCommaSplit } from './shorthands.js';
-import { hasVarFunction, serializeUrls } from './css-values.js';
+import { serializeUrls } from './css-values.js';
+import { hasVarReference } from './var-substitution.js';
 
 export const shorthand31 = (name) => shorthandsTable()[name];
 export const alias31 = (name) => (data ?? load()).aliases[name] ?? name;
@@ -219,7 +220,7 @@ export function expand31(name, value, raw = value) {
   const lower = value.toLowerCase();
   if (CSS_WIDE.has(lower)) return longhands.map((l) => [l, lower, src]);
   // (a system font too: its longhands are what the system says)
-  if (hasVarFunction(value) || (name === 'font' && SYSTEM_FONT.test(value))) return longhands.map((l) => [l, '', src]);
+  if (hasVarReference(value) || (name === 'font' && SYSTEM_FONT.test(value))) return longhands.map((l) => [l, '', src]);
   if (name === 'border-radius') return radii(value).map((v, i) => [longhands[i], v, src]);
   if (name === 'font-variant') return fontVariant(raw).map((v, i) => [longhands[i], v, src]);
   if (name === 'border-image') return borderImage(value).map((v, i) => [longhands[i], v, src]);
@@ -228,7 +229,7 @@ export function expand31(name, value, raw = value) {
   if (isCorner(name)) return corners(value, longhands.length).map((v, i) => [longhands[i], v, src]);
   if (name === 'corner-shape') return sides(words(value.toLowerCase())).map((v, i) => [longhands[i], v, src]);
   if (TWO_SHAPES.test(name)) return both(value).map((v, i) => [longhands[i], v.toLowerCase(), src]);
-  const pairs = expand(name, value);
+  const pairs = expand(name, value, undefined, true);
   const found = new Map();
   for (let i = 1; i < pairs.length; i++) found.set(pairs[i][0], pairs[i][1]);
   if (name === 'background-repeat') found.set(name, value);
@@ -334,7 +335,8 @@ function shorthandValue(name, entries) {
   }
   if (keyword !== null) return keyword;
   if (pending !== null) return pending.name === name ? pending.value : '';
-  for (const e of entries) if (e.value === '') return '';
+  // (a longhand with var() of its own: CSSOM writes no shorthand)
+  for (const e of entries) if (e.value === '' || hasVarReference(e.value)) return '';
   const values = entries.map((e) => e.value);
   const composer = COMPOSERS[name] ?? defaultComposer(name);
   if (composer !== null) return composer(values, entries);

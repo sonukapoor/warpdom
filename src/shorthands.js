@@ -3,6 +3,7 @@
 // cascade and for reading longhands from a style declaration.
 import { LONGHANDS, SHORTHANDS, ALIASES } from './css-data.js';
 import { resolveColor, NAMED_COLORS } from './colors.js';
+import { hasVarReference } from './var-substitution.js';
 
 // --- values ------------------------------------------------------------------
 
@@ -625,11 +626,11 @@ export function backgroundComponents(value) {
 
 // The longhands a shorthand declaration sets, as [name, value] pairs, or
 // null when it is not expanded.
-function expandShorthand(name, value) {
+function expandShorthand(name, value, tokenVars) {
   const longhands = SHORTHANDS[name];
   const t = words(value);
   if (CSS_WIDE.has(value.toLowerCase())) return longhands.map((l) => [l, value.toLowerCase()]);
-  if (value.includes('var(')) return null;
+  if (value.includes('var(') && (!tokenVars || hasVarReference(value))) return null;
   if (BOX.has(name)) {
     if (longhands.length !== 4 || t.length < 1 || t.length > 4 || value.includes('/')) return null;
     const [top, right = top, bottom = top, left = right] = t;
@@ -758,16 +759,24 @@ function expandShorthand(name, value) {
 // shorthand stays readable whole) and the longhands of an expanded shorthand.
 // fontVariant: the declarations hold cssstyle's font before 4.4 (legacyFont).
 const expansions = new Map();
-export function expand(property, value, fontVariant = undefined) {
+// tokenVars (jsdom 31): only a var() reference stops the expansion, not
+// var( as text in a string or a quoted url().
+export function expand(property, value, fontVariant = undefined, tokenVars = false) {
   const name = ALIASES[property] ?? property;
   if (!SHORTHANDS[name]) return [[name, value]];
   if (fontVariant !== undefined && name === 'font') return [[name, value], ...legacyFontLonghands(value, fontVariant)];
   // (cssstyle before 4.4's flex: its own entries, keyed apart)
   const legacyFlex = fontVariant !== undefined && name === 'flex';
-  const key = legacyFlex ? `legacy-flex:${value}` : `${name}:${value}`;
+  // (jsdom 31's, where var( as text differs: keyed apart too)
+  let key = `${name}:${value}`;
+  if (legacyFlex) key = `legacy-flex:${value}`;
+  else if (tokenVars && value.includes('var(')) key = `31:${key}`;
   let out = expansions.get(key);
   if (!out) {
-    out = [[name, value], ...((legacyFlex ? legacyFlexLonghands(value) : expandShorthand(name, value)) ?? [])];
+    out = [
+      [name, value],
+      ...((legacyFlex ? legacyFlexLonghands(value) : expandShorthand(name, value, tokenVars)) ?? []),
+    ];
     if (expansions.size > 5000) expansions.clear();
     expansions.set(key, out);
   }

@@ -8,8 +8,9 @@ This page lists what differs between versions, as measured on jsdom's
 releases. warpdom models jsdom 20.0.3 to 30.1.3. jsdom 31 is in progress
 ([#269](https://github.com/sonukapoor/warpdom/issues/269)): the changes
 below marked 31.0.0 are modeled (measured on 31.0.1). Of its styles, the
-declaration block model is (below); values, computed styles and the
-CSSOM still behave as in jsdom 30.
+declaration block model and part of the computed values are (below);
+declared values, the rest of the computed styles and the CSSOM still
+behave as in jsdom 30.
 
 Deliberate differences from jsdom are in
 [differences.md](differences.md).
@@ -163,6 +164,21 @@ takes the window's Blobs), as with jsdom.
   and a write changes a declaration in place. A shorthand with `var()`
   leaves its longhands empty until one is written (`margin-right: ;`).
   Before, shorthands are kept as declared next to their longhands.
+- From 31.0.0 computed values substitute `var()`: `width: var(--w)` with
+  `--w: 5px` computes to `5px`, a custom property's computed value is
+  substituted too, and one in a cycle, or a `var()` with no value and no
+  fallback, makes the property `unset` (a custom property empty). A
+  shorthand with `var()` computes its longhands from the substituted
+  value. Before, a value with `var()` computes to itself. Also from 31.0.0:
+  an initial 0 length computes to `0px` (`margin-top`, `padding-left`,
+  `text-indent`; before `0`), the small, large and dynamic viewport units
+  and the container units compute to px (`10svw` is `102.4px`; a
+  container unit is the small viewport's), a `line-height` number computes
+  to px from the element's own font size and is inherited as the number,
+  `lh` and `rlh` are the line-height in px (`normal` 1.15 times the font
+  size; before 1.2), `cap` is 0.905 em, `font-size: math` is the parent's
+  size, and the initial `font-family` is `monospace` (before `depends on
+  user agent`).
 - Before 31.0.0 an event path goes through a slottable's last assigned
   slot after it leaves its host, until it is assigned again; from 31.0.0
   only through its assigned slot.

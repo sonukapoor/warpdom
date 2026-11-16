@@ -7336,3 +7336,61 @@ Load (bench/load.js, 5 interleaved runs of its 7-process median, node
 2.32 ms. The cost is css31.js and its data, kept as one JSON string parsed
 when a jsdom 31 window first needs it (as object literals it was 1.1 ms);
 taken for the jsdom 31 profile, within the 30 to 40 ms budget.
+Merged as #322 (2026-11-16), after four review rounds: font keywords,
+calc() corners, the corner and two-corner radius shorthands, logical
+groups by mapping, commented shorthand writes, font-variant none alone.
+
+## 2026-11-16: jsdom 31, CSS part D1/D2: computed lengths and var() (branch feat/269-jsdom31-computed, #269)
+
+With compat.computed31 (jsdom 31), black box against 31.0.1:
+- var() is substituted at computed-value time (src/var-substitution.js,
+  from CSS Custom Properties 1): a custom property's computed value
+  replaces var(--x), else the fallback; a cycle or a var() with neither
+  makes the value invalid at computed-value time: unset, a custom
+  property ''. The result is parsed as the property's declared value
+  (invalid: unset). A shorthand with var() leaves its longhands pending in
+  the block (part A); the cascade carries them as PENDING31 values with
+  the shorthand and its text, and a longhand computes from the
+  substituted shorthand.
+- An initial 0 length is 0px; the small, large and dynamic viewport units
+  and the container units resolve (1024 x 768, a container unit as the
+  small viewport's); a line-height number computes to px from the
+  element's font size and inherits as the number; lh and rlh read the
+  line-height (normal 1.15 times the font size), cap is 0.905 em;
+  font-size: math is the parent's; the initial font-family is monospace.
+- css31.js: no shorthand is written over a longhand with var() of its own
+  (margin: 1px; margin-top: var(--m) stays four longhands).
+Against jsdom 31.0.1: 137 of the default parity tests differ (148 on
+main). Found on the way, for later parts: jsdom 31 maps the user agent
+sheet's logical properties to physical ones (p's margin-block-start 1em
+gives margin-top 16px; ul padding-left 40px): part E. An upper-case
+VAR() is a var() to jsdom 31 (warpdom drops the declaration): part B.
+Computed gap and vertical-align (a shorthand in 31): D4/D5.
+Review rounds: var( in a string, a comment, a quoted url() or after an
+escape is text, not a reference (also for jsdom 31's shorthand expansion:
+font: 16px "var(--a)" expands; shorthands.js expand takes tokenVars);
+comments in var() arguments and at a substituted value's ends go, CSS
+whitespace only (U+00A0 stays); a cycle invalidates all its members
+whatever their fallbacks; a name that is no custom property's takes the
+fallback; a custom property substituted to nothing is a space, so no
+fallback is taken for it. Left for part C: jsdom 31 keeps a declared
+empty custom property (--b: ;) as a space and a name with U+00A0 as
+written, and drops url(a\)var(--b)) when parsing. Found, not changed
+(1.0 range): jsdom 20 to 30 differ from warpdom on quoted var( text (font:
+16px "var(--a)" in 23 to 26, font-family read through font in all,
+border-image: url("var(--x)") after border in 27 to 30). Later rounds: a
+custom property with var() is substituted once per element (kept with
+the cascaded values; a chain using each one twice was exponential), and
+substituted pieces keep token boundaries (1 then px is 1/**/px, jsdom
+31's pair table). Found for part B: jsdom 31 drops a malformed calc()
+(calc(10 px), calc(1px 2px)) when parsing; warpdom keeps it. Names are read
+with their escapes decoded (\76 ar( is var(), var(--\62) reads --b; an
+escaped space continues a name), hashes and at-keywords are no var().
+Also for part B/C: jsdom 31 decodes escapes in family names (\61 b is
+ab) and drops var\( and an escaped url( holding var() when parsing. A custom
+property's computed value of more than 65536 tokens (comments not
+counted) is invalid, as in jsdom 31; that also bounds a doubling chain.
+For part C: jsdom 31 drops comments at a custom property's ends when
+parsing (--b: x/**/ is x).
+Load (bench/load.js from the same directory, 5 interleaved runs, node
+22.17.1): cold load 26.9 ms on main, 27.0 ms here.

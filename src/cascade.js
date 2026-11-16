@@ -43,7 +43,15 @@ import {
 } from './shorthands.js';
 import { compileRuleSelector } from './selectors.js';
 import { directionality } from './directionality.js';
-import { absoluteLength, mayResolve, sixDigits, FONT_SIZE_KEYWORDS, relativeWeight } from './lengths.js';
+import {
+  absoluteLength,
+  absoluteNumber,
+  mayResolve,
+  sixDigits,
+  FONT_SIZE_KEYWORDS,
+  relativeWeight,
+} from './lengths.js';
+import { substituteVars, tooManyTokens, trimEnds } from './var-substitution.js';
 import { uaDeclarations, uaValue, uaRuleOver, uaInOrder } from './ua-sheet.js';
 import { documentStyleSheets, ruleArray, ruleListSnapshot, ruleListChanged } from './cssom.js';
 import {
@@ -81,6 +89,11 @@ import {
 // (compat.borderVarDrops), border-width, -style and -color declare their
 // longhands pending (black box, 27.4.0 and 28.1.0).
 const PENDING = '\0pending';
+// jsdom 31: a longhand a shorthand with var() set, pending substitution
+// (a block's '' value with its src): the shorthand and its value, which
+// the longhand computes from (pendingValue).
+const PENDING31 = '\0var\0';
+const pending31 = (src) => `${PENDING31}${src.name}\0${src.value}`;
 const HIDE_UA = '\0hide-ua';
 const BORDER_FAMILY = new Set([
   'border',
@@ -134,7 +147,8 @@ function addDeclarations(index, decls, entries, counter, compat) {
   // 30.1.3 does not (#282 review).
   const preprocess = compat?.rulesPreprocessed === true;
   for (const [property, decl] of decls) {
-    const value = preprocess ? preprocessCss(decl.value) : decl.value;
+    let value = preprocess ? preprocessCss(decl.value) : decl.value;
+    if (value === '' && decl.src !== undefined && compat?.computed31) value = pending31(decl.src);
     const important = decl.important && !ordered;
     // A longhand declared as itself (padding-bottom: 7px), not through a
     // shorthand: it meets a pending longhand by order (cascadeByOrder).
@@ -288,7 +302,9 @@ function inlineDeclarations(element) {
   // computes it as declared (see cascadeExpand for 27 to 30.1.2).
   else if (compat.jsdom >= 27 && !compat.clipReparsed && !decls.has('clip') && written.has('clip'))
     decls.set('clip', written.get('clip'));
-  for (const [property, { value, important, masked }] of decls) {
+  for (const [property, decl] of decls) {
+    const { important, masked } = decl;
+    const value = decl.value === '' && decl.src !== undefined && compat.computed31 ? pending31(decl.src) : decl.value;
     // A declaration with var() and !important that lost it (masked,
     // compat.varDropsImportant) is still !important to the attribute's
     // others (strong), not to the cascade.
@@ -775,6 +791,8 @@ function cascaded(element, name) {
       scheme: undefined,
       colorDeclared: undefined,
       rootDark: undefined,
+      lineHeight: undefined,
+      customs: undefined,
     };
   } else if (cache.values.has(name)) return cache.values.get(name);
   let value = cascade(element, index, inlineMap, name);
@@ -1230,11 +1248,20 @@ function documentElementOf(element) {
 // The font sizes a length refers to (lengths.js): em from the element's
 // font size (or its parent's, for font-size), rem from the root's.
 class LengthContext {
-  constructor(element, forFontSize) {
+  // forParent: lengths of font-size, and from jsdom 31 of line-height,
+  // whose em (font-size) and lh (both) are the parent's.
+  constructor(element, forFontSize, forLineHeight = false) {
     this.element = element;
     this.forFontSize = forFontSize;
+    this.forLineHeight = forLineHeight;
     this.emPx = -1;
     this.remPx = -1;
+    // jsdom 31 (black box, 31.0.1): the small, large and dynamic viewport
+    // and container units; lh and rlh the line-height in px, normal 1.15
+    // times the font size; cap 0.905 em.
+    this.jsdom31 = element[S].doc[S].window[S].compat.computed31 === true;
+    this.allViewport = this.jsdom31;
+    this.capRatio = this.jsdom31 ? 0.905 : 1;
   }
   em() {
     if (this.emPx < 0) {
@@ -1251,19 +1278,35 @@ class LengthContext {
     }
     return this.remPx;
   }
-  // line-height normal: 1.2 times the font size.
+  // line-height normal: 1.2 times the font size (jsdom 30).
   lh() {
-    return 1.2 * this.em();
+    if (!this.jsdom31) return 1.2 * this.em();
+    const own = !this.forFontSize && !this.forLineHeight;
+    return lineHeightPx(own ? this.element : inheritParent(this.element));
   }
   rlh() {
-    return 1.2 * this.rem();
+    if (!this.jsdom31) return 1.2 * this.rem();
+    const root = documentElementOf(this.element);
+    return lineHeightPx(root === this.element && (this.forFontSize || this.forLineHeight) ? null : root);
   }
+}
+
+// jsdom 31: an element's line-height in px (null: none, 16px normal).
+function lineHeightPx(element) {
+  if (element === null) return 1.15 * 16;
+  const value = computedValue(element, 'line-height');
+  return value.endsWith('px') ? Number(value.slice(0, -2)) || 0 : 1.15 * fontPx(computedValue(element, 'font-size'));
 }
 
 // jsdom 30: font-size keywords, larger and smaller, percentages and
 // lengths from the parent's font size.
 function absoluteFontSize(element, value) {
   const lower = value.toLowerCase();
+  // (jsdom 31: math is the parent's size)
+  if (lower === 'math' && element[S].doc[S].window[S].compat.computed31) {
+    const parent = inheritParent(element);
+    return parent === null ? '16px' : computedValue(parent, 'font-size');
+  }
   const keyword = FONT_SIZE_KEYWORDS[lower];
   if (keyword !== undefined) return `${keyword}px`;
   if (lower === 'larger' || lower === 'smaller' || value.endsWith('%')) {
@@ -1297,7 +1340,7 @@ function computeValue(element, name, value, data) {
         );
       }
     } else if (mayResolve(value)) {
-      const px = absoluteLength(value, new LengthContext(element, false));
+      const px = absoluteLength(value, new LengthContext(element, false, name === 'line-height'));
       if (px !== null) value = `${sixDigits(px)}px`;
     }
   }
@@ -1330,9 +1373,13 @@ function initialValue(element, name, data) {
   if (name === 'display') return 'inline';
   // jsdom 29.0.2 and later (black box, to 30.1.3).
   if (name === 'outline-color') return 'rgba(0, 0, 0, 0)';
-  if (name === 'font-family') return 'depends on user agent';
+  // (jsdom 31: monospace, black box 31.0.1)
+  if (name === 'font-family')
+    return element[S].doc[S].window[S].compat.computed31 ? 'monospace' : 'depends on user agent';
   if (data[0] === null) return '';
-  return data[0] === '0' ? '0' : computeValue(element, name, data[0], data);
+  // (jsdom 31: 0px)
+  if (data[0] === '0') return data[3] && element[S].doc[S].window[S].compat.computed31 ? '0px' : '0';
+  return computeValue(element, name, data[0], data);
 }
 
 function inheritedValue(element, name, data) {
@@ -1759,7 +1806,18 @@ export function computedValue(element, property) {
     if (cache.fontSize !== undefined) return cache.fontSize;
     return (cache.fontSize = longhandValue(element, name, data, false, compat, value));
   }
-  return longhandValue(element, name, data, custom, compat, cascaded(element, name));
+  const value = cascaded(element, name);
+  // jsdom 31: a custom property with var() is substituted once, kept with
+  // the cascaded values (a chain using each one twice is not exponential).
+  if (custom && compat.computed31 && value !== undefined && mayHaveVar(value)) {
+    const cache = element[S].cascaded;
+    const known = cache.customs?.get(name);
+    if (known !== undefined) return known;
+    const result = longhandValue(element, name, data, custom, compat, value);
+    (cache.customs ??= new Map()).set(name, result);
+    return result;
+  }
+  return longhandValue(element, name, data, custom, compat, value);
 }
 
 // The hidden attribute hides an element; from jsdom 27 not an embed
@@ -1788,9 +1846,26 @@ function longhandValue(element, name, data, custom, compat, value) {
     }
   }
   if (value === undefined && name === 'direction' && uaDirection(element)) return directionality(element);
+  if (compat.computed31) {
+    if (value !== undefined && (value.startsWith(PENDING31) || mayHaveVar(value))) {
+      // A custom property in a cycle, or one whose var() has no value, has
+      // none; another property is unset (CSS Custom Properties 1, 3.1).
+      value = substitutedValue(element, name, value, custom);
+      if (value === null) {
+        if (custom) return '';
+        value = 'unset';
+      }
+    }
+    // (more than 65536 tokens: invalid, as jsdom 31 computes)
+    if (custom && value !== undefined && tooManyTokens(value)) return '';
+    if (name === 'line-height') {
+      const n = lineHeightNumber(element, value);
+      if (n !== null) return `${sixDigits(n * fontPx(computedValue(element, 'font-size')))}px`;
+    }
+  }
   // As in jsdom (20 to 30, black box): a value with var() is not
   // substituted, it computes to itself (and inherits so).
-  if (value !== undefined && !custom && value.includes('var(')) return value;
+  else if (value !== undefined && !custom && value.includes('var(')) return value;
   const keyword = value === undefined ? (data[1] ? 'inherit' : 'initial') : value.toLowerCase();
   switch (keyword) {
     case 'inherit':
@@ -1816,6 +1891,87 @@ function longhandValue(element, name, data, custom, compat, value) {
     default:
       return custom ? value : computeValue(element, name, value, data);
   }
+}
+
+// --- var() substitution (jsdom 31) ---------------------------------------------------
+
+const HAS_VAR = /var\(/i;
+// Whether a value may hold a var() reference: var( as written, or an
+// escape (\76 ar( is one); substituteVars tells.
+const mayHaveVar = (value) => HAS_VAR.test(value) || value.includes('\\');
+// The custom properties being substituted, as element, name pairs: one met
+// again is in a cycle, and every property from it on the stack is then
+// invalid (marked), whatever its fallbacks.
+const substituting = [];
+const cyclic = [];
+function indexOn(list, element, name) {
+  for (let i = 0; i < list.length; i += 2) if (list[i] === element && list[i + 1] === name) return i;
+  return -1;
+}
+// (substituteVars' lookup: context is the element)
+function customLookup(element, name) {
+  const at = indexOn(substituting, element, name);
+  if (at === -1) return computedValue(element, name);
+  for (let i = at; i < substituting.length; i += 2)
+    if (indexOn(cyclic, substituting[i], substituting[i + 1]) === -1) cyclic.push(substituting[i], substituting[i + 1]);
+  return null;
+}
+
+// A value with var() as it computes, or null when invalid at computed-value
+// time: substituted, then (but for a custom property) parsed as the
+// property's declared value; a pending longhand from its shorthand's value.
+function substitutedValue(element, name, value, custom) {
+  if (custom) {
+    substituting.push(element, name);
+    let text;
+    try {
+      text = substituteVars(value, customLookup, element);
+    } finally {
+      substituting.length -= 2;
+    }
+    const mark = indexOn(cyclic, element, name);
+    if (mark !== -1) {
+      cyclic.splice(mark, 2);
+      return null;
+    }
+    if (text === null) return null;
+    // (substituted to nothing, it is a space: set, so var() takes no
+    // fallback for it)
+    const trimmed = trimEnds(text);
+    return trimmed === '' ? ' ' : trimmed;
+  }
+  let property = name;
+  if (value.startsWith(PENDING31)) {
+    const at = value.indexOf('\0', PENDING31.length);
+    property = value.slice(PENDING31.length, at);
+    value = value.slice(at + 1);
+  }
+  const text = substituteVars(value, customLookup, element);
+  if (text === null) return null;
+  const window = element[S].doc[S].window;
+  const decls = parseDeclarations(`${property}: ${text}`, validationModeOf(window), styleSurfaceOf(window));
+  const declared = decls.get(name)?.value;
+  return declared === undefined || declared === '' ? null : declared;
+}
+
+// jsdom 31: line-height as a number (2, calc(2 * 1)) computes to px from
+// the element's own font size, inherited as the number: the number, or
+// null. An inherited one is kept with the parent's cascaded values.
+const NUMBER = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i;
+function lineHeightNumber(element, value) {
+  const lower = value?.toLowerCase();
+  if (value !== undefined && lower !== 'inherit' && lower !== 'unset') {
+    if (NUMBER.test(value)) return Number(value);
+    return /^calc\(/i.test(value) ? absoluteNumber(value) : null;
+  }
+  const parent = inheritParent(element);
+  if (parent === null) return null;
+  let own = cascaded(parent, 'line-height');
+  const cache = parent[S].cascaded;
+  if (cache.lineHeight !== undefined) return cache.lineHeight;
+  if (own !== undefined && (own.startsWith(PENDING31) || mayHaveVar(own)))
+    own = substitutedValue(parent, 'line-height', own, false) ?? 'unset';
+  return (cache.lineHeight = lineHeightNumber(parent, own));
 }
 
 // --- computed shorthands as jsdom 29.0.2 and later read them -------------------------

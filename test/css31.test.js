@@ -315,3 +315,30 @@ test('jsdom 31: a corner radius with a division in calc() keeps its vertical rad
   el.setAttribute('style', 'corner-top-left: calc(1em / 2) 3px');
   assert.equal(el.style.borderTopLeftRadius, 'calc(1em / 2) 3px');
 });
+
+// A longhand with var() of its own: no shorthand is written over it (CSSOM).
+parity(
+  'jsdom 31: no shorthand over a longhand with var()',
+  block(
+    [
+      'margin:1px;margin-top:var(--m)',
+      'margin-top:var(--m);margin-right:var(--m);margin-bottom:var(--m);margin-left:var(--m)',
+      'border-top-width:var(--a);border-top-style:solid;border-top-color:red',
+      'flex-grow:var(--a);flex-shrink:1;flex-basis:auto',
+      'margin:var(--m)',
+    ],
+    ['margin', 'margin-top', 'border-top', 'flex'],
+  ),
+  { jsdom: 31 },
+);
+
+// var( in a string or a quoted url() is no reference: the shorthand
+// expands and is written (#323 review).
+parity(
+  'jsdom 31: var( as text in a shorthand',
+  block(
+    ['font: 16px "var(--label)"', 'background: url("var(--x)")', "margin: 1px; font-family: 'var(--a)'"],
+    ['font', 'font-family', 'background'],
+  ),
+  { jsdom: 31 },
+);
