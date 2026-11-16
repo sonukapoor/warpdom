@@ -158,7 +158,9 @@ function corners(value, count) {
 // One corner's radius (1px, 1px 2px, 1px / 2px), written once if both
 // are the same.
 function oneCorner(text) {
-  const [h, v = h] = text.includes('/') ? slashed(text).map((part) => radius(part)[0]) : radius(text);
+  // (a slash at the top level only: calc(10px / 2) is one radius)
+  const parts = slashed(text);
+  const [h, v = h] = parts.length > 1 ? parts.map((part) => radius(part)[0]) : radius(text);
   return h === v ? h : `${h} ${v}`;
 }
 

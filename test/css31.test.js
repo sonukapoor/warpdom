@@ -1,6 +1,9 @@
 // jsdom 31's declaration blocks (css31.js), checked against jsdom 31.0.1:
 // longhands only, a shorthand written when all its longhands are there.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
 import { parity } from './parity.js';
+import { createWindow } from '../src/node.js';
 
 // Each case: a style attribute's text, or a script run on an element's
 // style (s). The result: cssText, the items, and reads of names.
@@ -276,6 +279,7 @@ parity(
       'corner: 1px 2px / 3px bevel scoop',
       'corner-top: bevel 1px 2px',
       'corner-top-left: 1px / 2px notch',
+      'border-top-left-radius: calc(2% + 10px) 3px; corner-top-left-shape: bevel',
       'corner-block-start: 1px 2px squircle',
       'margin-top:1px;--a:1;margin-right:1px;margin-bottom:1px;margin-left:1px',
       (s) => {
@@ -299,3 +303,15 @@ parity(
   ),
   { jsdom: 31 },
 );
+
+// A slash inside calc() is no radius separator (#322 review). jsdom 31
+// simplifies calc(1em / 2) to calc(0.5em), not modeled yet, so this one is
+// checked on warpdom alone: the vertical radius stays.
+test('jsdom 31: a corner radius with a division in calc() keeps its vertical radius', () => {
+  const w = createWindow({ jsdom: '31.0.1' });
+  const el = w.document.createElement('div');
+  el.setAttribute('style', 'border-top-left-radius: calc(1em / 2) 3px; corner-top-left-shape: bevel');
+  assert.equal(el.style.cssText, 'corner-top-left: calc(1em / 2) 3px bevel;');
+  el.setAttribute('style', 'corner-top-left: calc(1em / 2) 3px');
+  assert.equal(el.style.borderTopLeftRadius, 'calc(1em / 2) 3px');
+});
