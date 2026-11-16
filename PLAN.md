@@ -7300,7 +7300,8 @@ test can observe them (initial font-family `monospace`, `outline: none`
 read as `medium`, a bad url() emptying its block), as for every earlier
 version; list the ones that differ from browsers in docs/differences.md.
 Order (one PR each, foundational first): A; D1/D2 (units, var()); D3 and
-the root color-scheme; B; C; E1/E4/E5/E6; D4/D5 and shadow scoping; F.
+the root color-scheme; B; C; E1/E4/E5/E6; D3b (colors in values of more
+components, 2026-11-16), D4/D5 and shadow scoping; F.
 `NEWEST_MODELED_JSDOM` moves to 31 only when all parts are in.
 
 ## 2026-11-15: jsdom 31, CSS part A: the CSSOM block model (branch feat/269-jsdom31-css, #269)
@@ -7394,3 +7395,68 @@ For part C: jsdom 31 drops comments at a custom property's ends when
 parsing (--b: x/**/ is x).
 Load (bench/load.js from the same directory, 5 interleaved runs, node
 22.17.1): cold load 26.9 ms on main, 27.0 ms here.
+
+## 2026-11-16: jsdom 31, CSS part D3: colors and the root's color-scheme (branch feat/269-jsdom31-colors, #269)
+
+With compat.computed31 (jsdom 31), black box against 31.0.1:
+- Colors resolve with channels rounded once (hsl(102, 53%, 61%) is
+  rgb(134, 208, 103), rgb(113.45, 0, 0) rgb(113, 0, 0)) and the alpha in
+  8 bits, written with the fewest decimals that keep its byte as a hex
+  alpha is (rgba(0, 0, 0, .1234) is 0.12, 0.002 is 0.004), declared and
+  computed alike (colors.js resolveColor 'jsdom31'; css.js legacyColors and
+  compat.legacyColors carry it).
+- The default color is CanvasText under the root's color-scheme, and an
+  element inherits its parent's color as computed (the 29.0.2 to 30 rule,
+  an undeclared color as CanvasText under the element's own color-scheme,
+  is gone); a system color, or color: initial, takes the element's own
+  color-scheme, which is dark when it names dark and not light, in any
+  case and order (only dark, dark foo, DARK; not light dark). ButtonText
+  under dark is white (27 to 30: rgb(255, 255, 155)).
+- Initial values: outline-color and caret-color currentcolor (their auto
+  is currentcolor too, inherited as the keyword), accent-color and
+  scrollbar-color auto, stroke and text-shadow none, stop-color black;
+  other keywords compute to themselves (context-fill, none), not 30's
+  transparent. accent-color, box-shadow-color, fill and stroke keep
+  currentcolor, and a mix of it, as declared (also when inherited).
+- color-mix() in srgb as CSS Color 5 mixes (colors.js mix31): one color or
+  more, the missing percentages sharing what the given ones leave, an
+  even mix at alpha 0 when they add up to 0; the colors as given (hsl()
+  and alpha not rounded first), system colors under the element's
+  color-scheme; channels and alpha to 6 digits, the alpha left out when 1.
+Not modeled: a currentcolor in a mix is the computed color (rounded, alpha
+in 8 bits), where jsdom 31 mixes the color as declared (hsl(0 50% 50% /
+.1234) gives 0.972539 and 0.5617 there, 0.972511 and 0.5615 here); other
+interpolation spaces (oklab) stay as declared.
+Against jsdom 31.0.1: 132 of the default parity tests differ (137 on
+main). Found on the way, for later parts:
+- D3b (next with D4/D5): colors inside values of more components as
+  jsdom 31 computes them: shadows color first with currentcolor left out
+  (text-shadow: 1px 1px red is rgb(255, 0, 0) 1px 1px; 1px 1px
+  currentcolor is 1px 1px; box-shadow inset last), scrollbar-color both
+  colors (currentcolor kept), fill and stroke url("#x") then the color,
+  gradients' colors, a color-mix() followed by other components.
+- Shadow scoping: jsdom 31 inherits through the flat tree (a shadow
+  tree's top from its host, a slotted element from its slot), for every
+  inherited property; warpdom's shadow top has no parent.
+- Part E: display: initial, unset, revert and revert-layer (and inherit
+  through var()) compute to the element's default display (block for a
+  div; warpdom inline or the keyword); form controls' user agent colors
+  (button rgb(51, 51, 51) on rgb(204, 204, 204), input, select and
+  textarea white backgrounds); a logical border color and its physical
+  one cascade together (border-top-color: green; border-block-start-color:
+  lime gives lime).
+- Part B: declared color-mix() written with every percentage (blue 25%,
+  red 75%), color-scheme in canonical order (dark only), keywords in
+  lowercase (Transparent).
+Speed (scratchpad benchcol.mjs: 200 elements, color, background-color,
+border-top-color, outline-color and caret-color read through a fresh
+getComputedStyle, 300 passes; 5 interleaved runs, node 22.17.1, medians):
+the 31 profile 167.5 ms on main, 194.1 ms here, as outline-color and
+caret-color now resolve currentcolor (the element's color, as jsdom 31
+computes them) where 30's constant transparent was; the first three alone
+126.2 ms on main, 104.8 ms here (no color-declared walk). The 30 profile
+164.0 and 168.6 ms (noise). Cold load 31.0 ms on main, 31.3 ms here.
+Review round (#324): an alpha whose byte is 255 is opaque (rgba(1, 2, 3,
+0.999) is rgb(1, 2, 3), declared too); an inherited auto or currentcolor
+given by var() (--a: auto; caret-color: var(--a)) is the keyword, read
+after substitution; darkScheme31 and mix31 read without temporary arrays.

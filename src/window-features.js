@@ -1978,8 +1978,9 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle, beyondJsdom = fa
     legacyFont: css === null || !before(css, [4, 4, 0]) ? null : before(css, [4, 2, 0]) ? 'cssstyle4.1' : 'cssstyle4.2',
     // cssstyle 4.4 and later: the computed style's background and border
     // side accessors compose their longhands (cascade.js legacyAccessorValue).
-    // cssstyle before 4.2: color channels rounded once, no hwb() (colors.js).
-    legacyColors: version[0] < 27 && css !== null && before(css, [4, 2, 0]),
+    // cssstyle before 4.2: color channels rounded once, no hwb() (colors.js);
+    // jsdom 31 'jsdom31': rounded once, alpha in 8 bits.
+    legacyColors: version[0] >= 31 ? 'jsdom31' : version[0] < 27 && css !== null && before(css, [4, 2, 0]),
     // Color keywords as cssstyle writes them (css.js colorKeywords): before
     // 4.4 'css2', in 4.4 and 4.5 'written', later lowercased (null).
     colorKeywords:
