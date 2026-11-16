@@ -1043,11 +1043,17 @@ function darkScheme(element) {
 // jsdom 31 (black box, 31.0.1): dark where the color-scheme names dark
 // and not light, in any case and order (only dark, dark foo, DARK; not
 // light dark or dark light).
+// Read word by word in place (no array per read).
+const isCssSpace = (c) => c === 32 || c === 9 || c === 10 || c === 13 || c === 12;
 function darkScheme31(scheme) {
   let dark = false;
-  for (const word of scheme.toLowerCase().split(/[ \t\n\r\f]+/)) {
-    if (word === 'light') return false;
-    if (word === 'dark') dark = true;
+  for (let i = 0; i < scheme.length;) {
+    while (i < scheme.length && isCssSpace(scheme.charCodeAt(i))) i++;
+    const start = i;
+    while (i < scheme.length && !isCssSpace(scheme.charCodeAt(i))) i++;
+    const length = i - start;
+    if (length === 5 && scheme.slice(start, i).toLowerCase() === 'light') return false;
+    if (length === 4 && scheme.slice(start, i).toLowerCase() === 'dark') dark = true;
   }
   return dark;
 }
@@ -1493,7 +1499,10 @@ const initialCurrentColor = (name, data, jsdom31) =>
     : data[0] === 'currentcolor' && name !== 'outline-color';
 function colorSource(element, name, data, jsdom31) {
   for (let e = element; ;) {
-    const value = cascaded(e, name);
+    let value = cascaded(e, name);
+    // jsdom 31: the keyword var() gives (--a: auto; caret-color: var(--a)).
+    if (jsdom31 && value !== undefined && (value.startsWith(PENDING31) || mayHaveVar(value)))
+      value = substitutedValue(e, name, value, false) ?? 'unset';
     const keyword = value?.toLowerCase();
     if (keyword === 'currentcolor' || (jsdom31 && keyword === 'auto' && AUTO_CURRENTCOLOR.has(name))) return null;
     if (keyword === 'inherit' || ((keyword === undefined || keyword === 'unset') && data[1])) {

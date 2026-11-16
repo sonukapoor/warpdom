@@ -303,14 +303,18 @@ export const systemColorKind = (lower) => (SYSTEM[lower] === undefined ? 0 : CSS
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 // The alpha with the fewest decimals that maps to the same 8-bit value.
+// byte: the alpha's 8-bit value.
+const alphaByte = (a) => Math.round(clamp(a, 0, 1) * 255);
 function serializeAlpha(a) {
-  const byte = Math.round(clamp(a, 0, 1) * 255);
+  const byte = alphaByte(a);
   const short = Math.round((byte / 255) * 100) / 100;
   return String(Math.round(short * 255) === byte ? short : Math.round((byte / 255) * 1000) / 1000);
 }
 
+// Opaque when the alpha's byte is 255 (rgba(1, 2, 3, 0.999) is rgb(1, 2,
+// 3), as jsdom 31 gives it).
 const serialize = (r, g, b, a = 1) =>
-  a >= 1 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${serializeAlpha(a)})`;
+  alphaByte(a) === 255 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${serializeAlpha(a)})`;
 
 // An alpha given as a number (rgba(), hsla(), / a): to 3 decimals; legacy
 // as written. out: 'jsdom31' (jsdom 31: in 8 bits, as a hex alpha),
@@ -681,15 +685,15 @@ export function mixColor(token, current, mode, depth = 0, dark = false) {
 function mix31(args, current, depth, dark) {
   if (args.length < 2 || !/^in\s+srgb$/i.test(args[0])) return null;
   const n = args.length - 1;
-  const texts = new Array(n);
-  const given = new Array(n);
+  // Each argument's [color, percentage] in place of its text (args is this
+  // call's own).
   let sumGiven = 0;
   let missing = 0;
-  for (let i = 0; i < n; i++) {
-    const [text, p] = mixArgument(args[i + 1]);
+  for (let i = 1; i <= n; i++) {
+    const parsed = mixArgument(args[i]);
+    const p = parsed[1];
     if (p !== null && (p < 0 || p > 100)) return false;
-    texts[i] = text;
-    given[i] = p;
+    args[i] = parsed;
     if (p === null) missing++;
     else sumGiven += p;
   }
@@ -698,10 +702,10 @@ function mix31(args, current, depth, dark) {
   let alpha = 0;
   const premultiplied = [0, 0, 0];
   const plain = [0, 0, 0];
-  for (let i = 0; i < n; i++) {
-    const c = colorChannels(texts[i], current, 31, depth + 1, dark);
+  for (let i = 1; i <= n; i++) {
+    const c = colorChannels(args[i][0], current, 31, depth + 1, dark);
     if (c === null) return null;
-    const w = sum === 0 ? 1 / n : (given[i] ?? share) / sum;
+    const w = sum === 0 ? 1 / n : (args[i][1] ?? share) / sum;
     alpha += c[3] * w;
     for (let k = 0; k < 3; k++) {
       premultiplied[k] += c[k] * c[3] * w;

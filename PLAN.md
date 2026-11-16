@@ -7456,3 +7456,7 @@ caret-color now resolve currentcolor (the element's color, as jsdom 31
 computes them) where 30's constant transparent was; the first three alone
 126.2 ms on main, 104.8 ms here (no color-declared walk). The 30 profile
 164.0 and 168.6 ms (noise). Cold load 31.0 ms on main, 31.3 ms here.
+Review round (#324): an alpha whose byte is 255 is opaque (rgba(1, 2, 3,
+0.999) is rgb(1, 2, 3), declared too); an inherited auto or currentcolor
+given by var() (--a: auto; caret-color: var(--a)) is the keyword, read
+after substitution; darkScheme31 and mix31 read without temporary arrays.

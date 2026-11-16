@@ -49,6 +49,8 @@ parity(
     'rgb(0 0 0 / 0.333)',
     'rgb(0 0 0 / 33.3%)',
     'rgba(1, 2, 3, 0.49)',
+    'rgba(1, 2, 3, 0.999)',
+    'hsl(0 50% 50% / 0.9999)',
     'hsl(0 50% 50% / .1234)',
     '#abc8',
     '#0000ff80',
@@ -296,6 +298,22 @@ parity(
         ];
       },
     );
+  },
+  { jsdom: 31 },
+);
+
+// The same through var(): an inherited auto or currentcolor substituted
+// from a custom property is the keyword too (#324 review).
+parity(
+  'jsdom 31: auto and currentcolor through var() inherited as the keyword',
+  (w) => {
+    const d = w.document;
+    const parent = d.body.appendChild(d.createElement('section'));
+    parent.style.cssText =
+      'color: blue; --a: auto; --c: currentcolor; caret-color: var(--a); outline-color: var(--a); accent-color: var(--c); fill: var(--c); text-decoration-color: var(--c)';
+    const el = parent.appendChild(d.createElement('div'));
+    el.style.cssText = 'color: red; outline-color: inherit; text-decoration-color: inherit';
+    return read(w, el, ['caret-color', 'outline-color', 'accent-color', 'fill', 'text-decoration-color']);
   },
   { jsdom: 31 },
 );
