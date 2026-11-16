@@ -163,3 +163,23 @@ parity(
   ),
   { jsdom: 31 },
 );
+
+// #323 review, third round: CSS comments do not nest; only CSS whitespace
+// is trimmed (U+00A0 is a name code point); a custom property that
+// substitutes to nothing is a space, set, so no fallback is taken for it.
+parity(
+  'jsdom 31: comment and whitespace ends, and custom properties substituted to nothing',
+  computed(
+    [
+      '--b: 1px; --a: var(--b) /* outer /* inner */',
+      '--b: 1px; --a: var(--b) /* x */ y /* z */',
+      '--a: var(b, 5px)',
+      '--b: 1px; --a: var(\u00a0--b, 3px)',
+      '--a: var(--n,\u00a05px)',
+      '--c: var(--missing,); width: var(--c, 5px)',
+      '--c: var(--missing, /**/); --a: var(--c, 5px)',
+    ],
+    ['width', '--a', '--c'],
+  ),
+  { jsdom: 31 },
+);

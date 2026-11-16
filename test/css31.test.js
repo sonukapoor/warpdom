@@ -331,3 +331,14 @@ parity(
   ),
   { jsdom: 31 },
 );
+
+// var( in a string or a quoted url() is no reference: the shorthand
+// expands and is written (#323 review).
+parity(
+  'jsdom 31: var( as text in a shorthand',
+  block(
+    ['font: 16px "var(--label)"', 'background: url("var(--x)")', "margin: 1px; font-family: 'var(--a)'"],
+    ['font', 'font-family', 'background'],
+  ),
+  { jsdom: 31 },
+);

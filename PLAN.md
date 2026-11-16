@@ -7366,5 +7366,18 @@ sheet's logical properties to physical ones (p's margin-block-start 1em
 gives margin-top 16px; ul padding-left 40px): part E. An upper-case
 VAR() is a var() to jsdom 31 (warpdom drops the declaration): part B.
 Computed gap and vertical-align (a shorthand in 31): D4/D5.
+Review rounds: var( in a string, a comment, a quoted url() or after an
+escape is text, not a reference (also for jsdom 31's shorthand expansion:
+font: 16px "var(--a)" expands; shorthands.js expand takes tokenVars);
+comments in var() arguments and at a substituted value's ends go, CSS
+whitespace only (U+00A0 stays); a cycle invalidates all its members
+whatever their fallbacks; a name that is no custom property's takes the
+fallback; a custom property substituted to nothing is a space, so no
+fallback is taken for it. Left for part C: jsdom 31 keeps a declared
+empty custom property (--b: ;) as a space and a name with U+00A0 as
+written, and drops url(a\)var(--b)) when parsing. Found, not changed
+(1.0 range): jsdom 20 to 30 differ from warpdom on quoted var( text (font:
+16px "var(--a)" in 23 to 26, font-family read through font in all,
+border-image: url("var(--x)") after border in 27 to 30).
 Load (bench/load.js from the same directory, 5 interleaved runs, node
 22.17.1): cold load 26.9 ms on main, 27.0 ms here.

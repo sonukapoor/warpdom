@@ -87,10 +87,10 @@ function quotedUrl(value, i) {
   return c === 34 || c === 39;
 }
 
-export function substituteVars(value, lookup, context) {
-  let out = '';
-  let at = 0;
-  for (let i = 0; i < value.length; i++) {
+// The index of the next var( reference at or after from, or -1: strings,
+// comments, escapes and unquoted url() tokens skipped.
+function nextVar(value, from) {
+  for (let i = from; i < value.length; i++) {
     const c = value.charCodeAt(i);
     if (c === 34 || c === 39) i = stringEnd(value, i) - 1;
     else if (c === 47 && value.charCodeAt(i + 1) === 42) i = commentEnd(value, i) - 1;
@@ -100,49 +100,80 @@ export function substituteVars(value, lookup, context) {
       // function, its string skipped like any other)
       const end = value.indexOf(')', i + 4);
       i = end === -1 ? value.length : end;
-    } else if ((c | 32) === 118 && functionAt(value, i, 'var')) {
-      const open = i + 4;
-      const end = closing(value, open);
-      if (end === -1) return null;
-      const inner = value.slice(open, end - 1);
-      const comma = topComma(inner);
-      const name = trimEnds(comma === -1 ? inner : inner.slice(0, comma));
-      if (!name.startsWith('--')) return null;
-      let replacement = lookup(context, name);
+    } else if ((c | 32) === 118 && functionAt(value, i, 'var')) return i;
+  }
+  return -1;
+}
+
+// Whether value holds a var() reference (not var( as text).
+export const hasVarReference = (value) => nextVar(value, 0) !== -1;
+
+export function substituteVars(value, lookup, context) {
+  let out = '';
+  let at = 0;
+  for (let i = nextVar(value, 0); i !== -1; i = nextVar(value, at)) {
+    const open = i + 4;
+    const end = closing(value, open);
+    if (end === -1) return null;
+    const inner = value.slice(open, end - 1);
+    const comma = topComma(inner);
+    const name = trimEnds(comma === -1 ? inner : inner.slice(0, comma));
+    // (a name that is no custom property's has no value: the fallback)
+    let replacement = name.startsWith('--') ? lookup(context, name) : '';
+    if (replacement === null) return null;
+    if (replacement === '') {
+      if (comma === -1) return null;
+      replacement = substituteVars(trimSpace(inner.slice(comma + 1)), lookup, context);
       if (replacement === null) return null;
-      if (replacement === '') {
-        if (comma === -1) return null;
-        replacement = substituteVars(inner.slice(comma + 1).trim(), lookup, context);
-        if (replacement === null) return null;
-      }
-      out += value.slice(at, i) + replacement;
-      at = end;
-      i = end - 1;
     }
+    out += value.slice(at, i) + replacement;
+    at = end;
   }
   return at === 0 ? value : out + value.slice(at);
 }
 
-// A substituted custom property's value without the whitespace and
-// comments at its ends (jsdom 31: var(--b) /* c */ is 1px).
-export function trimEnds(value) {
+// CSS whitespace (U+00A0 is not: it continues a name).
+const isSpace = (c) => c === 32 || c === 9 || c === 10 || c === 12 || c === 13;
+
+function trimSpace(value) {
   let start = 0,
     end = value.length;
-  for (;;) {
-    while (start < end && /\s/.test(value[start])) start++;
-    if (value.startsWith('/*', start)) {
-      const close = value.indexOf('*/', start + 2);
-      if (close === -1 || close + 2 > end) break;
-      start = close + 2;
-    } else break;
-  }
-  for (;;) {
-    while (end > start && /\s/.test(value[end - 1])) end--;
-    if (end - start >= 4 && value.startsWith('*/', end - 2)) {
-      const open = value.lastIndexOf('/*', end - 3);
-      if (open < start) break;
-      end = open;
-    } else break;
-  }
+  while (start < end && isSpace(value.charCodeAt(start))) start++;
+  while (end > start && isSpace(value.charCodeAt(end - 1))) end--;
   return value.slice(start, end);
+}
+
+// A substituted custom property's value without the whitespace and
+// comments at its ends (jsdom 31: var(--b) /* c */ is 1px). Comments do
+// not nest: a forward scan finds where each one starts.
+export function trimEnds(value) {
+  let start = 0;
+  // (end: past the last character that is neither whitespace nor in a
+  // comment)
+  let end = 0;
+  for (let i = 0; i < value.length;) {
+    const c = value.charCodeAt(i);
+    if (c === 47 && value.charCodeAt(i + 1) === 42) {
+      const close = value.indexOf('*/', i + 2);
+      if (close === -1) {
+        // (unclosed: kept as text)
+        if (end === 0) start = i;
+        end = value.length;
+        break;
+      }
+      i = close + 2;
+      if (end === 0) start = i;
+    } else if (isSpace(c)) {
+      i++;
+      if (end === 0) start = i;
+    } else if (c === 34 || c === 39) {
+      i = stringEnd(value, i);
+      end = i;
+    } else {
+      // (an escape keeps the next character)
+      i += c === 92 && i + 1 < value.length ? 2 : 1;
+      end = i;
+    }
+  }
+  return end === 0 ? '' : value.slice(start, end);
 }

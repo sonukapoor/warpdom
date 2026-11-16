@@ -1917,7 +1917,11 @@ function substitutedValue(element, name, value, custom) {
       cyclic.splice(mark, 2);
       return null;
     }
-    return text === null ? null : trimEnds(text);
+    if (text === null) return null;
+    // (substituted to nothing, it is a space: set, so var() takes no
+    // fallback for it)
+    const trimmed = trimEnds(text);
+    return trimmed === '' ? ' ' : trimmed;
   }
   let property = name;
   if (value.startsWith(PENDING31)) {
