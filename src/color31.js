@@ -30,7 +30,19 @@ const LAB = {
   oklch: [1, 0.4, 360],
 };
 
+// A nested color jsdom 31 rejects (device-cmyk() in light-dark()) makes
+// the whole value invalid.
+const REJECTED = new Error('rejected');
 export function colorFunction(tok, raw, nested, write) {
+  try {
+    return readColorFunction(tok, raw, nested, write);
+  } catch (error) {
+    if (error === REJECTED) return null;
+    throw error;
+  }
+}
+
+function readColorFunction(tok, raw, nested, write) {
   const name = tok.name;
   if (name === 'device-cmyk') return null;
   if (tok.args.some((arg) => arg.t === 'ident' && arg.v === 'from')) return undefined;
@@ -159,8 +171,9 @@ function colorOrOther(tok, write) {
   if (tok.t === 'ident') return tok.v;
   if (tok.t === 'hash') return resolveColor(`#${tok.v}`, 'jsdom31') ?? `#${tok.v}`;
   if (tok.t === 'function') {
-    const out = colorFunction(tok, null, true, write);
-    if (out !== undefined && out !== null) return out;
+    const out = readColorFunction(tok, null, true, write);
+    if (out === null) throw REJECTED;
+    if (out !== undefined) return out;
   }
   return write(tok);
 }
@@ -200,7 +213,17 @@ function mix(tok, write) {
     const rest = (100 - given.reduce((sum, item) => sum + item.pct, 0)) / (items.length - given.length);
     for (const item of items) if (item.pct === null) item.pct = rest;
   }
-  const half = items.length === 2 && items.every((item) => item.pct === 50);
+  // (a percentage written out of [0, 100] is invalid; percentages all
+  // equal and adding up to 100 or more are left out: red 80%, blue 80% is
+  // red, blue; a filled-in remainder may be negative: red 80%, blue 80%,
+  // green is green -60%)
+  // (a negative one is the remainder this writes, read again: accepted
+  // when every color has a percentage and they add up to 100)
+  const total = given.reduce((sum, item) => sum + item.pct, 0);
+  const remainder = given.length === items.length && Math.abs(total - 100) < 1e-9;
+  if (given.some((item) => item.pct > 100 || (item.pct < 0 && !remainder))) throw REJECTED;
+  const sum = items.reduce((total, item) => total + (item.pct ?? 0), 0);
+  const half = given.length === items.length && sum >= 100 && items.every((item) => item.pct === items[0].pct);
   for (let i = 0; i < colors.length; i++) {
     const item = items[i];
     let text = colorOrOther(item.color, write);

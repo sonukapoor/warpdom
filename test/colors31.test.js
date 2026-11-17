@@ -244,6 +244,7 @@ parity(
       'color-mix(in srgb, blue 0%, red 0%)',
       'color-mix(in srgb, blue 20%, red 20%)',
       'color-mix(in srgb, blue 60%, red 60%)',
+      'color-mix(in srgb, red 70%, blue 70%, green)',
       'color-mix(in srgb, color-mix(in srgb, blue, red), white)',
       'color-mix(in srgb, color(srgb 1 0 0 / 0.5), blue)',
       'color-mix(in srgb, canvastext, red)',

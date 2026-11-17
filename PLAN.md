@@ -7576,3 +7576,13 @@ Against jsdom 31.0.1: 109 of the default parity tests differ (112 on
 main). Cold load (bench/load.js, 5 interleaved runs, node 22.17.1): 30.3
 ms on main, 31.1 ms here (color31.js); declared box-shadow values
 unchanged (scratchpad benchone, 164-181 ms both).
+Review round (#326): color-mix() percentages written out of [0, 100]
+invalid, all equal and adding up to 100 or more left out (red 80%, blue
+80% is red, blue), a negative filled-in remainder mixing in nothing when
+computed (colors.js mix31); a rejected color inside light-dark() or
+color-mix() rejects the value; a gradient's color space takes only its
+name and hue method (in oklab circle at top is circle at center top in
+oklab); a position of four values reorders its side and offset pairs. Not
+modeled: a negative percentage is accepted where all of a mix's
+percentages add up to 100, since warpdom reads its own remainder form
+again (the style attribute); jsdom 31 rejects red 120%, blue -20%.

@@ -283,6 +283,10 @@ function keywordPair(tokens) {
 const transformOrigin = (tokens, text) => list(keywordPair(tokens), text);
 // A <position> of one value: it and center (top is center top).
 function position(tokens, text) {
+  // (four values: each side with its offset, the horizontal pair first:
+  // top 10px left 20px is left 20px top 10px)
+  if (tokens.length === 4 && tokens[0].t === 'ident' && VERTICAL.test(tokens[0].v) && tokens[2].t === 'ident')
+    return list([tokens[2], tokens[3], tokens[0], tokens[1]], text);
   if (tokens.length !== 1) return list(keywordPair(tokens), text);
   const one = component(tokens[0], text);
   return tokens[0].t === 'ident' && VERTICAL.test(tokens[0].v) ? `center ${one}` : `${one} center`;
@@ -471,6 +475,7 @@ function fn(tok, raw, text) {
 // red 10%, red 20%).
 const GRADIENTS = /^(?:repeating-)?(?:linear|radial|conic)-gradient$/;
 const EXTENTS = /^(?:closest-side|closest-corner|farthest-side|farthest-corner)$/;
+const HUES = /^(?:shorter|longer|increasing|decreasing)$/;
 function gradient(tok, text) {
   const groups = [[]];
   for (const arg of tok.args) {
@@ -513,8 +518,10 @@ function prelude(kind, tokens, text) {
       at = [];
       while (i + 1 < tokens.length && !(tokens[i + 1].t === 'ident' && tokens[i + 1].v === 'in')) at.push(tokens[++i]);
     } else if (word === 'in') {
-      while (i + 1 < tokens.length && !(tokens[i + 1].t === 'ident' && /^(?:to|at|from)$/.test(tokens[i + 1].v)))
-        space.push(tokens[++i]);
+      // the color space and, for a polar one, its hue method (longer hue)
+      if (tokens[i + 1]?.t === 'ident') space.push(tokens[++i]);
+      if (tokens[i + 1]?.t === 'ident' && HUES.test(tokens[i + 1].v) && tokens[i + 2]?.v === 'hue')
+        space.push(tokens[++i], tokens[++i]);
     } else if (word === 'circle' || word === 'ellipse') shape = word;
     else if (word !== null && EXTENTS.test(word)) size = [tok];
     else if (kind === 'linear') direction = [tok];

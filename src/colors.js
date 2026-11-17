@@ -691,8 +691,12 @@ function mix31(args, current, depth, dark) {
   let missing = 0;
   for (let i = 1; i <= n; i++) {
     const parsed = mixArgument(args[i]);
+    // (a negative percentage is a remainder jsdom 31 declared, red 80%,
+    // blue 80%, green -60%: it mixes in nothing; written ones out of range
+    // are rejected when declared)
+    if (parsed[1] !== null && parsed[1] < 0) parsed[1] = 0;
     const p = parsed[1];
-    if (p !== null && (p < 0 || p > 100)) return false;
+    if (p !== null && p > 100) return false;
     args[i] = parsed;
     if (p === null) missing++;
     else sumGiven += p;
