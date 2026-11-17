@@ -963,6 +963,7 @@ function matchesWhole(node, tokens) {
 // --- entry point -----------------------------------------------------------------------------
 
 // env(), attr(), inherit() or if() (var() is hasVarFunction's).
+export const hasSubstitution = (tokens) => hasVar(tokens);
 function hasVar(tokens) {
   for (const tok of tokens) {
     if (tok.t === 'function') {

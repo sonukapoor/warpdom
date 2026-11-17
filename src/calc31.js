@@ -20,6 +20,8 @@
 // 'resolution', 'flex' or null for any); undefined when it uses something
 // not read here.
 
+import { isLengthUnit } from './css-values.js';
+
 const CANONICAL = {
   __proto__: null,
   px: ['px', 1],
@@ -53,7 +55,15 @@ const CATEGORY = {
   '%': 'percentage',
 };
 // (a unit to a power, px^2, is a step on the way: a type of its own)
-const categoryOf = (unit) => CATEGORY[unit] ?? (unit.includes('^') ? unit : 'length');
+// (a unit to a power, px^2, is a step on the way: a type of its own; a
+// unit CSS does not have makes the calculation invalid: calc(1foo))
+function categoryOf(unit) {
+  const known = CATEGORY[unit];
+  if (known !== undefined) return known;
+  if (unit.includes('^')) return unit;
+  if (!isLengthUnit(unit)) throw INVALID;
+  return 'length';
+}
 
 const CONSTANTS = { __proto__: null, e: Math.E, pi: Math.PI, infinity: Infinity, '-infinity': -Infinity, nan: NaN };
 
@@ -213,7 +223,12 @@ function stepped(name, args) {
 // others as they are (relative units and percentages are not compared).
 const COMPARABLE = new Set(['', 'px', 'deg', 's', 'hz', 'dppx']);
 function minMax(name, sums) {
-  const pick = name === 'min' ? Math.min : Math.max;
+  // (NaN wins, in any order: min(NaN * 1px, 1px) is NaN * 1px)
+  const least = name === 'min';
+  const pick = (a, b) => {
+    if (Number.isNaN(a) || Number.isNaN(b)) return NaN;
+    return least ? Math.min(a, b) : Math.max(a, b);
+  };
   const args = [];
   const byUnit = new Map();
   // (its arguments of one type: min(1px, 1s) is invalid)
@@ -227,7 +242,7 @@ function minMax(name, sums) {
     if (!one || !COMPARABLE.has(one.unit)) args.push(one ?? sum);
     else if (byUnit.has(one.unit)) {
       const kept = byUnit.get(one.unit);
-      if (pick(kept.v, one.v) !== kept.v) {
+      if (!Object.is(pick(kept.v, one.v), kept.v)) {
         args.splice(args.indexOf(kept), 1);
         byUnit.set(one.unit, one);
         args.push(one);

@@ -7535,4 +7535,7 @@ quotients of typed values resolved for one comparable unit (10px / 2px
 is 5, 1px * 1px / 1px is 1px); others stay as written, where jsdom 31
 reorders them (calc(100% / 2px * 1px) is calc(100% * 1px / 2px) there). Sixth round: percentages
 in a calculation go with lengths only (calc(10% + 1deg) is invalid), and
-clip's edges are lengths only (no 1deg, no calc(10%)).
+clip's edges are lengths only (no 1deg, no calc(10%)). Seventh round: a unit
+CSS does not have makes a calculation invalid (calc(1foo)), NaN wins in
+min() and max() in any order, a clip with var() or env() anywhere is
+kept as written.
