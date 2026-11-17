@@ -7523,4 +7523,9 @@ kept at its initial value when the name or property is that keyword
 auto as an animation duration (spin auto is spin), an escaped CR LF in
 a string as one continuation, the trace cache by shape off where the
 trace checks a numeric bound (font-weight; bounds inside colors do not
-count): box-shadow 150 ms, transform 48 ms.
+count): box-shadow 150 ms, transform 48 ms. Fourth round: auto after the
+duration and the name is the timeline (spin 1s auto is 1s spin), a
+default fill mode or auto duration kept when the name is that keyword
+(1s none forwards, auto auto). Not modeled: jsdom 31 reads the parts by
+its grammar, so spin 1s auto auto is auto 1s spin (1s the delay); here
+the first time is the duration.

@@ -170,6 +170,9 @@ function animation(tokens, text) {
     else if (direction === null && keyword(tok, DIRECTIONS)) direction = tok;
     else if (fill === null && keyword(tok, FILLS)) fill = tok;
     else if (state === null && keyword(tok, PLAY_STATES)) state = tok;
+    // (auto once the duration and the name are there: the timeline, at its
+    // initial value; spin 1s auto is 1s spin)
+    else if (name !== null && tok.t === 'ident' && tok.v === 'auto') continue;
     else name = tok;
   }
   // (none as the name is its initial value: written as none is)
@@ -178,7 +181,8 @@ function animation(tokens, text) {
   const parts = [];
   const hasDelay = delay !== null && delay.v !== 0;
   const autoDuration = duration !== null && duration.t === 'ident';
-  if ((duration !== null && !autoDuration) || hasDelay)
+  // (auto kept when the name is auto: auto auto)
+  if ((duration !== null && (!autoDuration || clashes((tok) => tok.t === 'ident' && tok.v === 'auto'))) || hasDelay)
     parts.push(duration === null || autoDuration ? (duration?.v ?? '0s') : component(duration, text));
   if (easing !== null && (!(easing.t === 'ident' && easing.v === 'ease') || clashes(isEasing)))
     parts.push(component(easing, text));
@@ -187,7 +191,7 @@ function animation(tokens, text) {
     parts.push(component(count, text));
   if (direction !== null && (direction.v !== 'normal' || clashes((tok) => keyword(tok, DIRECTIONS))))
     parts.push(direction.v);
-  if (fill !== null && fill.v !== 'none') parts.push(fill.v);
+  if (fill !== null && (fill.v !== 'none' || clashes((tok) => keyword(tok, FILLS)))) parts.push(fill.v);
   if (state !== null && (state.v !== 'running' || clashes((tok) => keyword(tok, PLAY_STATES)))) parts.push(state.v);
   if (named) parts.push(component(name, text));
   return parts.length === 0 ? 'none' : parts.join(' ');
