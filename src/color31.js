@@ -121,12 +121,35 @@ function readColorFunction(tok, raw, nested, write) {
   const name = tok.name;
   if (name === 'device-cmyk') return null;
   if (tok.args.some((arg) => arg.t === 'ident' && arg.v === 'from')) return undefined;
+  if (LEGACY.test(name) || LAB[name] !== undefined || name === 'color') checkComponents(tok);
   if (LEGACY.test(name)) return legacy(tok, raw, nested, write);
   if (LAB[name] !== undefined) return lab(tok, name);
   if (name === 'color') return colorSpace(tok);
   if (name === 'color-mix') return mix(tok, write);
   if (name === 'light-dark' || name === 'contrast-color') return `${name}(${argList(tok.args, write)})`;
   return undefined;
+}
+
+// Each channel and the alpha is a number, a percentage, none or a math
+// function, and a hue may be an angle too; jsdom 31 rejects anything else
+// (lab(50 20 30 / 0.5px), lab(50px 20 30)).
+const ANGLES = new Set(['deg', 'grad', 'rad', 'turn']);
+function checkComponents(tok) {
+  const { values, alpha } = channels(tok.args);
+  // (the hue's place: first in hsl() and hwb(), third in lch() and oklch();
+  // color() starts with its space)
+  let hue = -1;
+  if (/^(?:hsla?|hwb)$/.test(tok.name)) hue = 0;
+  else if (tok.name === 'lch' || tok.name === 'oklch') hue = 2;
+  const from = tok.name === 'color' ? 1 : 0;
+  const ok = (v, angle) =>
+    v.t === 'number' ||
+    v.t === 'percentage' ||
+    (v.t === 'ident' && v.v === 'none') ||
+    (v.t === 'function' && isMathFunction(v.name)) ||
+    (angle && v.t === 'dimension' && ANGLES.has(v.unit));
+  for (let i = from; i < values.length; i++) if (!ok(values[i], i - from === hue)) throw REJECTED;
+  if (alpha !== null && !ok(alpha, false)) throw REJECTED;
 }
 
 // Channels and alpha: the arguments split at commas or at /.

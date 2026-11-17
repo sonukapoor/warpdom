@@ -7614,4 +7614,7 @@ uncomputed (also on main). Later round: rounding when read is per
 declaration, never for custom properties, and only for percentages inside
 color-mix() (strings and url() skipped, a quoted URL's ")" and escapes
 included), and never in a value with var(), kept as written; the explicit weights are a Set
-(a mix of 4,000 weighted colors is declared in about 20 ms).
+(a mix of 4,000 weighted colors is declared in about 20 ms). A color
+function's channels and alpha must be numbers, percentages, none or math
+functions, a hue may be an angle (lab(50 20 30 / 0.5px) and lab(50px 20
+30) are invalid, as in jsdom 31).
