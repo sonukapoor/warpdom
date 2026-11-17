@@ -466,3 +466,30 @@ parity(
   },
   { jsdom: 31 },
 );
+
+// Filled-in color-mix() percentages are held exactly and read to 6
+// digits: two elements, one with the generated form and one with the same
+// text written by hand, compute differently, as in jsdom 31; a nested mix
+// mixes the exact inner color (#326 review).
+parity(
+  'jsdom 31: generated and hand-written color-mix() percentages, and nested mixes',
+  (w) => {
+    const d = w.document;
+    const a = d.body.appendChild(d.createElement('div'));
+    const b = d.body.appendChild(d.createElement('div'));
+    a.style.backgroundColor = 'color-mix(in srgb, red 0%, blue, green, white)';
+    b.style.backgroundColor = a.style.backgroundColor;
+    const c = d.body.appendChild(d.createElement('div'));
+    c.style.backgroundColor = 'color-mix(in srgb, color-mix(in srgb, red 0%, blue, green, white) 90%, black)';
+    return [
+      a.style.backgroundColor,
+      a.style.cssText,
+      w.getComputedStyle(a).backgroundColor,
+      b.style.backgroundColor,
+      w.getComputedStyle(b).backgroundColor,
+      c.style.backgroundColor,
+      w.getComputedStyle(c).backgroundColor,
+    ];
+  },
+  { jsdom: 31 },
+);

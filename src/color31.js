@@ -30,12 +30,18 @@ export function rereadColors(on) {
   rereading = on;
 }
 
-// The mixes with percentages filled in, written to 6 digits (33.3333%
-// three times, adding up to 99.9999%), each with its exact form: jsdom 31
-// computes from the exact percentages (an opaque mix), while percentages
-// written so by hand keep their alpha multiplier (cascade.js asks here).
-const exactMixes = new Map();
-export const exactMix = (text) => exactMixes.get(text);
+// Filled-in percentages are held at full precision (33.333333333333336%),
+// so that computed values mix the exact ones, as jsdom 31 does, while
+// percentages written by hand to 6 digits keep their alpha multiplier;
+// they are written to 6 digits when read (present31: css31.js, cascade.js).
+const PERCENT = /(?<![\w.-])(-?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)%/gi;
+export function present31(value) {
+  if (!value.includes('color-mix(')) return value;
+  return value.replace(PERCENT, (m, n) => `${number(Number(n))}%`);
+}
+// (more than 6 significant digits: a remainder this filled in, kept so
+// when the value is written again)
+const precise = (v) => number(v) !== String(v);
 
 const number = (v) => (v === 0 ? '0' : String(Number(v.toPrecision(6))));
 const LEGACY = /^(?:rgba?|hsla?|hwb)$/;
@@ -238,24 +244,16 @@ function mix(tok, write) {
   if (given.some((item) => item.pct > 100 || (item.pct < 0 && !rereading))) throw REJECTED;
   const sum = items.reduce((total, item) => total + (item.pct ?? 0), 0);
   const half = given.length === items.length && sum >= 100 && items.every((item) => item.pct === items[0].pct);
-  const exact = out.slice();
   for (let i = 0; i < colors.length; i++) {
     const item = items[i];
     let text = colorOrOther(item.color, write);
-    let full = text;
-    if (mathPct) full = text = colors[i].map((t) => (t === item.color ? text : write(t))).join(' ');
+    if (mathPct) text = colors[i].map((t) => (t === item.color ? text : write(t))).join(' ');
     else if (item.pct !== null && !half) {
-      full = `${text} ${item.pct}%`;
-      text += ` ${number(item.pct)}%`;
+      // (a filled-in one at full precision; one read again as it is)
+      const generated = !given.includes(item) || (rereading && precise(item.pct));
+      text += ` ${generated ? String(item.pct) : number(item.pct)}%`;
     }
     out.push(text);
-    exact.push(full);
   }
-  const written = `color-mix(${out.join(', ')})`;
-  const exactText = `color-mix(${exact.join(', ')})`;
-  if (exactText !== written) {
-    if (exactMixes.size >= 500) exactMixes.clear();
-    exactMixes.set(written, exactText);
-  }
-  return written;
+  return `color-mix(${out.join(', ')})`;
 }

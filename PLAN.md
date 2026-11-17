@@ -7591,8 +7591,13 @@ alpha of none is color(srgb ...), its channels clamped. Third round: a
 remainder declared31.js generated stays when css.js writes the value
 again (canonical31's reread; background: ... repeat); a percentage given
 by any math function (abs(-25%) is calc(25%)), which mix31 reads too;
-filled-in percentages written to 6 digits (33.3333% three times) mix as
-the exact ones they stand for (color31.js remembers the exact form of each
-mix it filled in, cascade.js computes from it, at most 500 kept), while
-the same percentages written by hand keep the alpha multiplier (0.999999),
-as in jsdom 31.
+filled-in percentages are held at full precision in the declaration and
+written to 6 digits when read (present31: getPropertyValue, cssText, a
+mix kept as declared when computed), so a computed value mixes the exact
+ones, as jsdom 31 does, while the same 6-digit text written by hand keeps
+the alpha multiplier (0.999999); a nested mix gives its enclosing one its
+exact channels (colors.js lastMix31); calc() percentages are read by the
+jsdom 31 mix only. Found, not changed here (1.0 range): jsdom 29 and 30
+declare color-mix(in srgb, red calc(25%), blue) as red 25% and compute
+25/75; warpdom's 29 and 30 profiles keep calc(25%) and leave the mix
+uncomputed (also on main).

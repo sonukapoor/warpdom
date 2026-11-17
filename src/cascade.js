@@ -54,7 +54,7 @@ import {
 import { substituteVars, tooManyTokens, trimEnds } from './var-substitution.js';
 import { uaDeclarations, uaValue, uaRuleOver, uaInOrder } from './ua-sheet.js';
 import { documentStyleSheets, ruleArray, ruleListSnapshot, ruleListChanged } from './cssom.js';
-import { exactMix } from './color31.js';
+import { present31 } from './color31.js';
 import {
   parseDeclarations,
   writtenDeclarations,
@@ -1285,11 +1285,11 @@ function colorValue31(element, name, value, data) {
   }
   if (lower.startsWith('color-mix(')) {
     if (closingParen(value) !== value.length - 1) return null;
-    if (KEEPS_CURRENTCOLOR.has(name) && CURRENTCOLOR_WORD.test(value)) return value;
+    if (KEEPS_CURRENTCOLOR.has(name) && CURRENTCOLOR_WORD.test(value)) return present31(value);
     let currentValue;
     const current = () =>
       (currentValue ??= name === 'color' ? inheritedValue(element, 'color', data) : currentColor(element));
-    const mixed = mixColor(exactMix(value) ?? value, current, 31, 0, darkScheme(element));
+    const mixed = mixColor(value, current, 31, 0, darkScheme(element));
     return mixed === false ? 'rgba(0, 0, 0, 0)' : (mixed ?? value);
   }
   const dark = DARK_SYSTEM_COLORS_31[lower];

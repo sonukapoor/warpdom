@@ -17,6 +17,7 @@
 // by the longhands it set): a shorthand warpdom does not compose (yet)
 // reads as written while all its longhands still come from that write.
 import { DATA31 } from './css31-data.js';
+import { present31 } from './color31.js';
 
 // css31-data.js, parsed on first use (objects without a prototype).
 let data = null;
@@ -309,7 +310,9 @@ export function priority31(decls, name) {
 }
 
 // getPropertyValue(): a longhand's value; a shorthand's from its longhands.
-export function value31(decls, name) {
+// (values as read: color-mix() percentages to 6 digits, color31.js)
+export const value31 = (decls, name) => present31(heldValue31(decls, name));
+function heldValue31(decls, name) {
   name = alias31(name);
   const longhands = shorthandsTable()[name];
   if (!longhands) return decls.get(name)?.value ?? '';
@@ -592,7 +595,8 @@ function crossesLogical(decls, shorthand) {
 }
 
 // The block's text (cssText).
-export function serialize31(decls) {
+export const serialize31 = (decls) => present31(heldSerialization31(decls));
+function heldSerialization31(decls) {
   let out = '';
   let done = null;
   const add = (name, value, important) => {
