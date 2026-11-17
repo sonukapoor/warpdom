@@ -407,6 +407,8 @@ parity(
     'color: color-mix(in srgb, red 80%, blue 80%)',
     'color: color-mix(in srgb, red 60%, blue 60%, green 60%)',
     'color: color-mix(in srgb, red 30%, blue 30%)',
+    'color: rgb(255 0 0 / none)',
+    'color: hsl(0 100% 50% / none)',
     'color-scheme: only light dark',
     'color-scheme: only dark',
   ]),
@@ -433,5 +435,29 @@ parity(
       e.setAttribute('style', text);
       return [text, e.style.cssText, e.style.backgroundOrigin, e.style.backgroundClip, e.style.backgroundSize];
     }),
+  { jsdom: 31 },
+);
+
+// The negative remainder color-mix() writes is invalid when read again,
+// as in jsdom 31, but the style object computes from what it holds (#326
+// review).
+parity(
+  'jsdom 31: a color-mix() remainder read again, and computed',
+  (w) => {
+    const e = w.document.body.appendChild(w.document.createElement('div'));
+    const out = [];
+    for (const mix of [
+      'color-mix(in srgb, red 80%, blue 80%, green)',
+      'color-mix(in srgb, red 80%, blue 90%, green, white, black)',
+      'color-mix(in srgb, red 10%, blue, green, white)',
+    ]) {
+      e.removeAttribute('style');
+      e.style.backgroundColor = mix;
+      out.push(e.style.cssText, w.getComputedStyle(e).backgroundColor);
+      e.style.cssText = e.style.cssText;
+      out.push(e.style.cssText, w.getComputedStyle(e).backgroundColor);
+    }
+    return out;
+  },
   { jsdom: 31 },
 );

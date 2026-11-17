@@ -1,9 +1,10 @@
 // Declared color functions as jsdom 31 writes them (black box, 31.0.1;
 // #269 part B2), from CSS Color 4 and 5:
 // - rgb(), hsl() and hwb() resolve to rgb() as declared colors do
-//   (colors.js), but rgb() with none is color(srgb ...) (rgb(none 255 0)
-//   is color(srgb none 1 0)); inside color-mix() they keep their modern
-//   form (rgba(0,0,255,.5) is rgb(0 0 255 / 0.5));
+//   (colors.js), but rgb() with none, also as its alpha, is
+//   color(srgb ...) (rgb(none 255 0) is color(srgb none 1 0)); inside
+//   color-mix() they keep their modern form (rgba(0,0,255,.5) is
+//   rgb(0 0 255 / 0.5));
 // - lab(), lch(), oklab() and oklch(): percentages as numbers (lab's L
 //   100% is 100, a and b 125, lch's chroma 150; oklab's L 1, the others
 //   0.4), L clamped to its range, a hue in degrees within [0, 360), an
@@ -78,7 +79,7 @@ const UNREAD = new Error('unread');
 function legacy(tok, raw, nested, write) {
   const { values, alpha } = channels(tok.args);
   const rgb = tok.name.startsWith('rgb');
-  if (rgb && values.some(isNone)) {
+  if (rgb && (values.some(isNone) || (alpha !== null && isNone(alpha)))) {
     // rgb() with none: color(srgb), channels from 0 to 1
     try {
       const out = values.map((v) => {
@@ -213,15 +214,12 @@ function mix(tok, write) {
     const rest = (100 - given.reduce((sum, item) => sum + item.pct, 0)) / (items.length - given.length);
     for (const item of items) if (item.pct === null) item.pct = rest;
   }
-  // (a percentage written out of [0, 100] is invalid; percentages all
-  // equal and adding up to 100 or more are left out: red 80%, blue 80% is
-  // red, blue; a filled-in remainder may be negative: red 80%, blue 80%,
-  // green is green -60%)
-  // (a negative one is the remainder this writes, read again: accepted
-  // when every color has a percentage and they add up to 100)
-  const total = given.reduce((sum, item) => sum + item.pct, 0);
-  const remainder = given.length === items.length && Math.abs(total - 100) < 1e-9;
-  if (given.some((item) => item.pct > 100 || (item.pct < 0 && !remainder))) throw REJECTED;
+  // (a percentage written out of [0, 100] is invalid, also the negative
+  // remainder this writes when read again, as in jsdom 31; percentages
+  // all equal and adding up to 100 or more are left out: red 80%, blue
+  // 80% is red, blue; a filled-in remainder may be negative: red 80%,
+  // blue 80%, green is green -60%)
+  if (given.some((item) => item.pct < 0 || item.pct > 100)) throw REJECTED;
   const sum = items.reduce((total, item) => total + (item.pct ?? 0), 0);
   const half = given.length === items.length && sum >= 100 && items.every((item) => item.pct === items[0].pct);
   for (let i = 0; i < colors.length; i++) {

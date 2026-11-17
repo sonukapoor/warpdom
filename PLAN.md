@@ -7582,7 +7582,9 @@ invalid, all equal and adding up to 100 or more left out (red 80%, blue
 computed (colors.js mix31); a rejected color inside light-dark() or
 color-mix() rejects the value; a gradient's color space takes only its
 name and hue method (in oklab circle at top is circle at center top in
-oklab); a position of four values reorders its side and offset pairs. Not
-modeled: a negative percentage is accepted where all of a mix's
-percentages add up to 100, since warpdom reads its own remainder form
-again (the style attribute); jsdom 31 rejects red 120%, blue -20%.
+oklab); a position of four values reorders its side and offset pairs. Second
+round: the negative remainder is invalid when read again (cssText =
+cssText drops it, as in jsdom 31), and a jsdom 31 style attribute that
+the style object wrote is computed from the declarations it holds, not
+its text parsed again (cascade.js inlineDeclarations); rgb() with an
+alpha of none is color(srgb ...).
