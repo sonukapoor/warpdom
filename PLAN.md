@@ -7617,4 +7617,10 @@ included), and never in a value with var(), kept as written; the explicit weight
 (a mix of 4,000 weighted colors is declared in about 20 ms). A color
 function's channels and alpha must be numbers, percentages, none or math
 functions, a hue may be an angle (lab(50 20 30 / 0.5px) and lab(50px 20
-30) are invalid, as in jsdom 31).
+30) are invalid, as in jsdom 31), and its structure is checked: three
+channels, a known color() space, one alpha after a /, color-mix() with a
+known space (a hue method only for a polar one) and one or more colors
+each with at most one percentage, light-dark() of two colors and
+contrast-color() of one. A value with env() or attr() is not rounded when
+read either. Left for later: VAR() in capitals is var() to jsdom 31 (kept
+as written there; warpdom drops the declaration).

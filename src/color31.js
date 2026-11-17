@@ -53,8 +53,9 @@ function urlEnd(value, from) {
   return Math.min(i + 1, value.length);
 }
 export function present31(value) {
-  // (a value with var() is kept as written: nothing in it was filled in)
-  if (!value.includes('color-mix(') || hasVarFunction(value)) return value;
+  // (a value with var(), env() or attr() is kept as written: nothing in it
+  // was filled in)
+  if (!value.includes('color-mix(') || hasVarFunction(value) || /\b(?:env|attr)\(/i.test(value)) return value;
   let out = '';
   let depth = 0; // parentheses open inside color-mix() functions
   for (let i = 0; i < value.length;) {
@@ -126,7 +127,12 @@ function readColorFunction(tok, raw, nested, write) {
   if (LAB[name] !== undefined) return lab(tok, name);
   if (name === 'color') return colorSpace(tok);
   if (name === 'color-mix') return mix(tok, write);
-  if (name === 'light-dark' || name === 'contrast-color') return `${name}(${argList(tok.args, write)})`;
+  if (name === 'light-dark' || name === 'contrast-color') {
+    // (two colors in light-dark(), one in contrast-color())
+    const count = tok.args.filter((arg) => arg.t === 'comma').length + 1;
+    if (count !== (name === 'light-dark' ? 2 : 1)) throw REJECTED;
+    return `${name}(${argList(tok.args, write)})`;
+  }
   return undefined;
 }
 
@@ -134,6 +140,21 @@ function readColorFunction(tok, raw, nested, write) {
 // function, and a hue may be an angle too; jsdom 31 rejects anything else
 // (lab(50 20 30 / 0.5px), lab(50px 20 30)).
 const ANGLES = new Set(['deg', 'grad', 'rad', 'turn']);
+const SPACE_NAMES = new Set([
+  'srgb',
+  'srgb-linear',
+  'display-p3',
+  'a98-rgb',
+  'prophoto-rgb',
+  'rec2020',
+  'xyz',
+  'xyz-d50',
+  'xyz-d65',
+]);
+// color-mix()'s interpolation spaces: the rectangular ones and the polar
+const MIX_SPACES = new Set([...SPACE_NAMES, 'lab', 'oklab', 'hsl', 'hwb', 'lch', 'oklch']);
+const POLAR = new Set(['hsl', 'hwb', 'lch', 'oklch']);
+const HUE_METHODS = new Set(['shorter', 'longer', 'increasing', 'decreasing']);
 function checkComponents(tok) {
   const { values, alpha } = channels(tok.args);
   // (the hue's place: first in hsl() and hwb(), third in lch() and oklch();
@@ -142,6 +163,9 @@ function checkComponents(tok) {
   if (/^(?:hsla?|hwb)$/.test(tok.name)) hue = 0;
   else if (tok.name === 'lch' || tok.name === 'oklch') hue = 2;
   const from = tok.name === 'color' ? 1 : 0;
+  // (three channels; color() first names one of CSS Color 4's spaces)
+  if (values.length !== from + 3) throw REJECTED;
+  if (from === 1 && !(values[0].t === 'ident' && SPACE_NAMES.has(values[0].v))) throw REJECTED;
   const ok = (v, angle) =>
     v.t === 'number' ||
     v.t === 'percentage' ||
@@ -160,7 +184,9 @@ function channels(args) {
   if (slash === -1 && parts.length === 4 && args.some((arg) => arg.t === 'comma'))
     return { values: parts.slice(0, 3), alpha: parts[3] };
   if (slash === -1) return { values: parts, alpha: null };
-  return { values: parts.slice(0, slash), alpha: parts[slash + 1] ?? null };
+  // (a / with no alpha, or more than one, is invalid)
+  if (parts.length !== slash + 2) throw REJECTED;
+  return { values: parts.slice(0, slash), alpha: parts[slash + 1] };
 }
 const isNone = (tok) => tok.t === 'ident' && tok.v === 'none';
 // An alpha written: none, or a number (a percentage as one), left out at 1.
@@ -266,6 +292,16 @@ function argList(args, write) {
   out.push(part.join(' '));
   return out.join(', ');
 }
+// A token that can be a color: a keyword resolveColor knows (or
+// currentcolor, transparent), a hex color, or a color function.
+const COLOR_FUNCTIONS =
+  /^(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark|contrast-color|device-cmyk)$/;
+function isColor(tok) {
+  if (tok.t === 'ident') return tok.v === 'currentcolor' || tok.v === 'transparent' || resolveColor(tok.v) !== null;
+  if (tok.t === 'hash') return /^(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(tok.v);
+  return tok.t === 'function' && COLOR_FUNCTIONS.test(tok.name);
+}
+
 function colorOrOther(tok, write) {
   if (tok.t === 'ident') return tok.v;
   if (tok.t === 'hash') return resolveColor(`#${tok.v}`, 'jsdom31') ?? `#${tok.v}`;
@@ -288,7 +324,10 @@ function mix(tok, write) {
   if (groups[0][0]?.t === 'ident' && groups[0][0].v === 'in') {
     const method = groups[0].slice(1);
     let space = method[0]?.t === 'ident' ? method[0].v : null;
-    if (space === null) return undefined;
+    // (a known space, then for a polar one an optional hue method)
+    if (space === null || !MIX_SPACES.has(space)) throw REJECTED;
+    const hue = method.length === 3 && POLAR.has(space) && HUE_METHODS.has(method[1].v) && method[2].v === 'hue';
+    if (method.length !== 1 && !hue) throw REJECTED;
     space = SPACES[space] ?? space;
     const words = [space];
     // (a hue method but shorter, the initial one)
@@ -296,11 +335,15 @@ function mix(tok, write) {
     if (!(space === 'oklab' && words.length === 1)) out.push(`in ${words.join(' ')}`);
     colors = groups.slice(1);
   }
-  // Each color and its percentage, if any (either order).
+  // Each color and its percentage, if any (either order): one or more,
+  // each a color with at most one percentage.
+  if (colors.length === 0) throw REJECTED;
   const items = colors.map((group) => {
+    if (group.length === 0 || group.length > 2) throw REJECTED;
     // (a percentage token or a math function giving one: abs(-25%))
     const pct = group.find((t) => t.t === 'percentage' || (t.t === 'function' && isMathFunction(t.name)));
     const color = group.find((t) => t !== pct);
+    if (color === undefined || !isColor(color) || (group.length === 2 && pct === undefined)) throw REJECTED;
     return { color, pct: pct === undefined || pct.t === 'function' ? null : pct.v };
   });
   if (items.some((item) => item.color === undefined)) return undefined;
