@@ -34,10 +34,48 @@ export function rereadColors(on) {
 // so that computed values mix the exact ones, as jsdom 31 does, while
 // percentages written by hand to 6 digits keep their alpha multiplier;
 // they are written to 6 digits when read (present31: css31.js, cascade.js).
-const PERCENT = /(?<![\w.-])(-?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)%/gi;
+//
+// Only percentages inside a color-mix() function are rounded: strings and
+// url() tokens are skipped (callers leave custom properties alone).
+const NUMBER_PERCENT = /^-?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?%/i;
 export function present31(value) {
   if (!value.includes('color-mix(')) return value;
-  return value.replace(PERCENT, (m, n) => `${number(Number(n))}%`);
+  let out = '';
+  let depth = 0; // parentheses open inside color-mix() functions
+  for (let i = 0; i < value.length;) {
+    const c = value[i];
+    if (c === '"' || c === "'") {
+      let j = i + 1;
+      while (j < value.length && value[j] !== c) j += value[j] === '\\' ? 2 : 1;
+      out += value.slice(i, j + 1);
+      i = j + 1;
+    } else if (/^url\(/i.test(value.slice(i, i + 4)) && !/[\w-]/.test(value[i - 1] ?? '')) {
+      const j = value.indexOf(')', i);
+      const end = j === -1 ? value.length : j + 1;
+      out += value.slice(i, end);
+      i = end;
+    } else if (/^color-mix\(/i.test(value.slice(i, i + 10)) && !/[\w-]/.test(value[i - 1] ?? '')) {
+      out += value.slice(i, i + 10);
+      depth++;
+      i += 10;
+    } else if (depth > 0 && c === '(') {
+      depth++;
+      out += c;
+      i++;
+    } else if (depth > 0 && c === ')') {
+      depth--;
+      out += c;
+      i++;
+    } else if (depth > 0 && !/[\w.-]/.test(value[i - 1] ?? '') && NUMBER_PERCENT.test(value.slice(i, i + 40))) {
+      const m = NUMBER_PERCENT.exec(value.slice(i));
+      out += `${number(Number(m[0].slice(0, -1)))}%`;
+      i += m[0].length;
+    } else {
+      out += c;
+      i++;
+    }
+  }
+  return out;
 }
 // (more than 6 significant digits: a remainder this filled in, kept so
 // when the value is written again)
@@ -230,6 +268,7 @@ function mix(tok, write) {
   });
   if (items.some((item) => item.color === undefined)) return undefined;
   const given = items.filter((item) => item.pct !== null);
+  const givenSet = new Set(given);
   // (a percentage in a math function: written as it is)
   const mathPct = colors.some((group) => group.some((t) => t.t === 'function' && isMathFunction(t.name)));
   if (!mathPct && given.length > 0 && given.length < items.length) {
@@ -250,7 +289,7 @@ function mix(tok, write) {
     if (mathPct) text = colors[i].map((t) => (t === item.color ? text : write(t))).join(' ');
     else if (item.pct !== null && !half) {
       // (a filled-in one at full precision; one read again as it is)
-      const generated = !given.includes(item) || (rereading && precise(item.pct));
+      const generated = !givenSet.has(item) || (rereading && precise(item.pct));
       text += ` ${generated ? String(item.pct) : number(item.pct)}%`;
     }
     out.push(text);

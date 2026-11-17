@@ -7600,4 +7600,7 @@ exact channels (colors.js lastMix31); calc() percentages are read by the
 jsdom 31 mix only. Found, not changed here (1.0 range): jsdom 29 and 30
 declare color-mix(in srgb, red calc(25%), blue) as red 25% and compute
 25/75; warpdom's 29 and 30 profiles keep calc(25%) and leave the mix
-uncomputed (also on main).
+uncomputed (also on main). Later round: rounding when read is per
+declaration, never for custom properties, and only for percentages inside
+color-mix() (strings and url() skipped); the explicit weights are a Set
+(a mix of 4,000 weighted colors is declared in about 20 ms).

@@ -493,3 +493,30 @@ parity(
   },
   { jsdom: 31 },
 );
+
+// Rounding when read applies to percentages in color-mix() only: not to
+// custom properties, strings or url()s (#326 review).
+parity(
+  'jsdom 31: color-mix() percentages rounded when read, nothing else',
+  (w) =>
+    [
+      '--ratio: 12.3456789%; color: color-mix(in srgb, red, blue)',
+      'content: "color-mix(12.3456789%)"; color: color-mix(in srgb, red 0%, blue, green, white)',
+      'background-image: url("color-mix(12.3456789%).png"); color: color-mix(in srgb, red 0%, blue, green, white)',
+    ].map((text) => {
+      const e = w.document.createElement('div');
+      e.setAttribute('style', text);
+      return [e.style.cssText, e.style.getPropertyValue('--ratio'), e.style.color];
+    }),
+  { jsdom: 31 },
+);
+
+test('jsdom 31: a color-mix() of many weighted colors is written in linear time', () => {
+  const w = createWindow({ jsdom: '31.0.1' });
+  const e = w.document.createElement('div');
+  const mix = `color-mix(in srgb, ${Array.from({ length: 4000 }, (_, i) => (i % 2 ? 'red 1%' : 'blue 2%')).join(', ')})`;
+  const start = performance.now();
+  e.style.color = mix;
+  assert.ok(e.style.color.startsWith('color-mix(in srgb, blue 2%, red 1%'));
+  assert.ok(performance.now() - start < 2000);
+});

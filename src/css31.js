@@ -311,7 +311,8 @@ export function priority31(decls, name) {
 
 // getPropertyValue(): a longhand's value; a shorthand's from its longhands.
 // (values as read: color-mix() percentages to 6 digits, color31.js)
-export const value31 = (decls, name) => present31(heldValue31(decls, name));
+export const value31 = (decls, name) =>
+  name.startsWith('--') ? heldValue31(decls, name) : present31(heldValue31(decls, name));
 function heldValue31(decls, name) {
   name = alias31(name);
   const longhands = shorthandsTable()[name];
@@ -595,12 +596,14 @@ function crossesLogical(decls, shorthand) {
 }
 
 // The block's text (cssText).
-export const serialize31 = (decls) => present31(heldSerialization31(decls));
-function heldSerialization31(decls) {
+export function serialize31(decls) {
   let out = '';
   let done = null;
+  // (values as read: color-mix() percentages to 6 digits, custom
+  // properties as they are; color31.js present31)
   const add = (name, value, important) => {
-    out += `${out ? ' ' : ''}${name}: ${value}${important ? ' !important' : ''};`;
+    const shown = name.startsWith('--') ? value : present31(value);
+    out += `${out ? ' ' : ''}${name}: ${shown}${important ? ' !important' : ''};`;
   };
   for (const [name, decl] of decls) {
     if (done?.has(name)) continue;
