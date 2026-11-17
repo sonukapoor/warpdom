@@ -7539,3 +7539,40 @@ clip's edges are lengths only (no 1deg, no calc(10%)). Seventh round: a unit
 CSS does not have makes a calculation invalid (calc(1foo)), NaN wins in
 min() and max() in any order, a clip with var() or env() anywhere is
 kept as written.
+Merged as #325 (2026-11-17), after seven review rounds.
+
+## 2026-11-17: jsdom 31, CSS part B2: gradients, color functions, background boxes (branch feat/269-jsdom31-declared-b2, #269)
+
+With the jsdom 31 surface, black box against 31.0.1:
+- Gradients (declared31.js): the first argument without its initial
+  values (to bottom, ellipse, farthest-corner, a center position, from
+  0deg, in srgb, shorter hue) and in canonical order (direction or shape
+  and size, position, color space); a corner and a position with the
+  horizontal side first, a position of one value with center (at top is
+  at center top), circle left out before one length; a stop of two
+  positions as two stops (red 10% 20% is red 10%, red 20%). jsdom 30's
+  gradient rules no longer run for jsdom 31.
+- Color functions (color31.js): lab(), lch(), oklab() and oklch() with
+  percentages as numbers, L clamped, hues in [0, 360), an alpha of 1
+  left out; color() with its space in lowercase (xyz is xyz-d65);
+  rgb() with none as color(srgb ...); inside color-mix() rgb() and hsl()
+  in their modern form; color-mix() without in oklab and shorter hue,
+  missing percentages filled in, two of 50% left out; light-dark() and
+  contrast-color() with canonical colors; device-cmyk() invalid.
+- color-scheme with only last; a background of initial values written
+  in any case is none (background: REPEAT).
+- The background shorthand: a size of one value gets auto (/ 20px is
+  20px auto); text or border-area as a layer's only box, or before the
+  other box, is the clip with a border-box origin, written alone;
+  padding-box padding-box is written once.
+Not modeled: warpdom computes color-mix() from the declared text, and
+jsdom 31 declares #0000ff80 in a mix as rgba(0, 0, 255, 0.5), so the
+computed mix uses alpha 0.5 where jsdom 31 uses 128/255 (0.75 against
+0.75098; dropped from the colors31 parity list). Left for later: -webkit-
+and -moz- gradients (jsdom 31 keeps them in background-image), x default
+as a family name, an empty string as animation-name; computed gradients
+and the computed background shorthand (D3b, D4).
+Against jsdom 31.0.1: 109 of the default parity tests differ (112 on
+main). Cold load (bench/load.js, 5 interleaved runs, node 22.17.1): 30.3
+ms on main, 31.1 ms here (color31.js); declared box-shadow values
+unchanged (scratchpad benchone, 164-181 ms both).

@@ -331,3 +331,92 @@ parity(
     }),
   { jsdom: 31 },
 );
+
+// Part B2: gradients, color functions, color-scheme and the background
+// shorthand's boxes and sizes, as jsdom 31 declares them.
+parity(
+  'jsdom 31: gradients without their initial values, in canonical order',
+  declared([
+    'background-image: linear-gradient(to bottom, red, blue)',
+    'background-image: linear-gradient(to bottom right, red, blue)',
+    'background-image: linear-gradient(in oklab to right, red, blue)',
+    'background-image: linear-gradient(in srgb to right, red, blue)',
+    'background-image: linear-gradient(in oklch shorter hue, red, blue)',
+    'background-image: linear-gradient(in hsl longer hue, red, blue)',
+    'background-image: LINEAR-GRADIENT(TO RIGHT, RED, Blue)',
+    'background-image: linear-gradient(red 10% 20%, blue 30% 40%)',
+    'background-image: linear-gradient(red 0 20%, blue)',
+    'background-image: radial-gradient(farthest-corner ellipse at center center, red, blue)',
+    'background-image: radial-gradient(circle farthest-corner, red, blue)',
+    'background-image: radial-gradient(circle 10px, red, blue)',
+    'background-image: radial-gradient(farthest-side circle, red, blue)',
+    'background-image: radial-gradient(ellipse 10px 20px, red, blue)',
+    'background-image: radial-gradient(at top, red, blue)',
+    'background-image: radial-gradient(at 10px, red, blue)',
+    'background-image: radial-gradient(at 50% 50%, red, blue)',
+    'background-image: radial-gradient(circle at top in oklab, red, blue)',
+    'background-image: conic-gradient(from 0deg at center center, red, blue)',
+    'background-image: conic-gradient(from 0turn, red, blue)',
+    'background-image: conic-gradient(at top left, red, blue)',
+    'background-image: conic-gradient(red 0deg 90deg, blue)',
+    'background: linear-gradient(to bottom right, red, blue) no-repeat',
+  ]),
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: declared color functions and color-scheme',
+  declared([
+    'color: color-mix(in srgb, blue 25%, red)',
+    'color: color-mix(in srgb, blue 50%, red 50%)',
+    'color: color-mix(in oklab, blue, red)',
+    'color: color-mix(in hsl shorter hue, blue, red)',
+    'color: color-mix(IN SRGB, BLUE, #f00)',
+    'color: color-mix(in srgb, rgba(0,0,255,.5), red)',
+    'color: color-mix(in srgb, blue 10%, red 20%, green)',
+    'color: color-mix(in xyz, blue, red)',
+    'color: color-mix(in srgb, blue calc(25%), red)',
+    'color: lab(50% 20 30 / 50%)',
+    'color: lab(150 20 30)',
+    'color: lch(50% 100% 120)',
+    'color: lch(50 30 -90)',
+    'color: lch(50 30 1rad)',
+    'color: oklab(50% 100% -100%)',
+    'color: oklch(50% 0.1 120deg / .5)',
+    'color: color(srgb 100% 0% 0% / 1)',
+    'color: color(SRGB 1 0 0)',
+    'color: color(xyz 0.5 0.5 0.5)',
+    'color: rgb(255 none 0 / 0.5)',
+    'color: light-dark(RED, #00f)',
+    'color: contrast-color(RED)',
+    'color: rgb(from red r g b)',
+    'color: device-cmyk(0 0 0 1)',
+    'border-color: color-mix(in srgb, red, blue) lab(50% 1 1)',
+    'color-scheme: only light dark',
+    'color-scheme: only dark',
+  ]),
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: the background shorthand: boxes, sizes and initial values',
+  (w) =>
+    [
+      'background: REPEAT',
+      'background: SCROLL',
+      'background: url(a.png) text',
+      'background: text border-box',
+      'background: text padding-box',
+      'background: url(a.png) border-area',
+      'background: url(a.png) text, url(b.png)',
+      'background: url(a.png) 0 0 / 20px no-repeat, red',
+      'background: url(a.png) 0 0 / calc(10px + 1em)',
+      'background: url(a.png); background-origin: padding-box; background-clip: padding-box',
+      'background: url(a.png); background-origin: border-box; background-clip: text',
+    ].map((text) => {
+      const e = w.document.createElement('div');
+      e.setAttribute('style', text);
+      return [text, e.style.cssText, e.style.backgroundOrigin, e.style.backgroundClip, e.style.backgroundSize];
+    }),
+  { jsdom: 31 },
+);

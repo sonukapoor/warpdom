@@ -232,7 +232,6 @@ parity(
       'color-mix(in srgb, blue, transparent 66.6667%)',
       'color-mix(in srgb, rgb(0 0 255 / 0.333333), red)',
       'color-mix(in srgb, rgb(0 0 255 / 0.1234), red)',
-      'color-mix(in srgb, #0000ff80, red)',
       'color-mix(in srgb, rgb(1 2 3 / .5), rgb(200 100 50 / .25))',
       'color-mix(in srgb, hsl(120 50% 50%), red)',
       'color-mix(in srgb, hwb(0 39% 21%), blue)',

@@ -27,6 +27,7 @@ import {
 import { resolveColor } from './colors.js';
 import { TYPE_SYNTAX } from './css-grammar.js';
 import { simplifyMath, mathType } from './calc31.js';
+import { colorFunction } from './color31.js';
 
 // Function names as the specifications write them (translateX), by
 // their lowercase form; built on first use.
@@ -343,8 +344,16 @@ function aspectRatio(tokens, text) {
   return auto ? `auto ${ratio}` : ratio;
 }
 
+// color-scheme: its names in order, only last (only dark is dark only).
+function colorScheme(tokens, text) {
+  const only = tokens.some((tok) => tok.t === 'ident' && tok.v === 'only');
+  const names = tokens.filter((tok) => !(tok.t === 'ident' && tok.v === 'only'));
+  return only ? `${list(names, text)} only` : list(names, text);
+}
+
 const VALUE_RULES = {
   __proto__: null,
+  'color-scheme': colorScheme,
   'aspect-ratio': aspectRatio,
   translate,
   scale,
@@ -440,12 +449,110 @@ function fn(tok, raw, text) {
     return simple ?? `${tok.name}(${list(tok.args, text)})`;
   }
   if (tok.as === 'color') {
+    const out = colorFunction(tok, raw, false, (t) => component(t, text));
+    if (out === null) rejected = true;
+    if (out !== undefined && out !== null) return out;
     if (LEGACY_COLOR.test(tok.name)) return resolveColor(raw, 'jsdom31') ?? raw;
     return raw;
   }
   if (tok.as === 'any' || tok.as === undefined) return raw;
   if (tok.name === 'drop-shadow') return `drop-shadow(${shadow(tok.args, text)})`;
+  if (GRADIENTS.test(tok.name)) return `${tok.name}(${gradient(tok, text)})`;
   return `${functionName(tok.name)}(${list(tok.args, text)})`;
+}
+
+// Gradients (CSS Images 4) as jsdom 31 writes them: the first argument
+// without its initial values (to bottom, ellipse, farthest-corner, a
+// center position, from 0deg, in srgb, shorter hue) and in canonical
+// order (direction or shape and size, position, color space; a corner
+// and a position with the horizontal side first, a position of one value
+// with center: at top is at center top; circle left out before one
+// length), and a color stop of two positions as two stops (red 10% 20% is
+// red 10%, red 20%).
+const GRADIENTS = /^(?:repeating-)?(?:linear|radial|conic)-gradient$/;
+const EXTENTS = /^(?:closest-side|closest-corner|farthest-side|farthest-corner)$/;
+function gradient(tok, text) {
+  const groups = [[]];
+  for (const arg of tok.args) {
+    if (arg.t === 'comma') groups.push([]);
+    else groups[groups.length - 1].push(arg);
+  }
+  const out = [];
+  let from = 0;
+  if (groups[0].length > 0 && groups[0][0].as !== 'color') {
+    const kind = tok.name.replace(/^repeating-/, '').slice(0, -9);
+    const first = prelude(kind, groups[0], text);
+    if (first !== '') out.push(first);
+    from = 1;
+  }
+  for (const group of groups.slice(from)) {
+    // (a stop of two positions: two stops)
+    if (group.length === 3 && group[0].as === 'color') {
+      const color = component(group[0], text);
+      out.push(`${color} ${component(group[1], text)}`, `${color} ${component(group[2], text)}`);
+    } else out.push(list(group, text));
+  }
+  return out.join(', ');
+}
+
+function prelude(kind, tokens, text) {
+  let direction = null; // to's sides, an angle
+  let shape = null;
+  let size = [];
+  let at = null;
+  let space = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i];
+    const word = tok.t === 'ident' ? tok.v : null;
+    if (word === 'to') {
+      direction = [];
+      while (tokens[i + 1]?.t === 'ident' && /^(?:left|right|top|bottom)$/.test(tokens[i + 1].v))
+        direction.push(tokens[++i]);
+    } else if (word === 'from') direction = [tokens[++i]];
+    else if (word === 'at') {
+      at = [];
+      while (i + 1 < tokens.length && !(tokens[i + 1].t === 'ident' && tokens[i + 1].v === 'in')) at.push(tokens[++i]);
+    } else if (word === 'in') {
+      while (i + 1 < tokens.length && !(tokens[i + 1].t === 'ident' && /^(?:to|at|from)$/.test(tokens[i + 1].v)))
+        space.push(tokens[++i]);
+    } else if (word === 'circle' || word === 'ellipse') shape = word;
+    else if (word !== null && EXTENTS.test(word)) size = [tok];
+    else if (kind === 'linear') direction = [tok];
+    else size.push(tok);
+  }
+  const parts = [];
+  if (kind === 'linear' && direction !== null) {
+    if (direction[0]?.t === 'ident') {
+      const sides = keywordPair(direction);
+      const written = sides.map((side) => side.v).join(' ');
+      if (written !== 'bottom') parts.push(`to ${written}`);
+    } else parts.push(component(direction[0], text));
+  }
+  if (kind === 'conic' && direction !== null) {
+    const angle = direction[0];
+    const zero = angle.v === 0 && (angle.t === 'number' || angle.unit === 'deg');
+    if (!zero) parts.push(`from ${component(angle, text)}`);
+  }
+  if (kind === 'radial') {
+    const keyword = size.length === 1 && size[0].t === 'ident';
+    // (circle is the shape of one length; ellipse of two, and the initial
+    // one; farthest-corner the initial size)
+    if (shape === 'circle' && (size.length === 0 || keyword)) parts.push('circle');
+    if (size.length > 0 && !(keyword && size[0].v === 'farthest-corner')) parts.push(list(size, text));
+  }
+  if (at !== null) {
+    const where = position(at, text);
+    if (where !== 'center center' && where !== '50% 50%') parts.push(`at ${where}`);
+  }
+  if (space.length > 0) {
+    // (in srgb and a shorter hue are the initial ones)
+    const kept = space.filter(
+      (t, i) => !(i > 0 && t.t === 'ident' && (t.v === 'shorter' || (t.v === 'hue' && space[i - 1].v === 'shorter'))),
+    );
+    const written = list(kept, text);
+    if (written !== 'srgb') parts.push(`in ${written}`);
+  }
+  return parts.join(' ');
 }
 
 // To 6 significant digits, as JavaScript writes numbers.

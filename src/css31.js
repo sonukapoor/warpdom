@@ -244,6 +244,7 @@ export function expand31(name, value, raw = value) {
     found.set('background-repeat-x', xs.join(', ')).set('background-repeat-y', ys.join(', '));
   }
   if (name === 'font') fontKeywords(raw, found);
+  if (name === 'background') backgroundLayers(value, found);
   // A pair our expansion does not know (margin-inline: 1px 2px): the
   // second value is the first one when left out.
   if (found.size === 0 && longhands.length === 2 && PAIR.test(name)) {
@@ -372,6 +373,35 @@ COMPOSERS['vertical-align'] = ([source, alignment, shift]) => {
 };
 // (per layer: x and y are lists, layer by layer)
 const layersOf = (value) => topLevelCommaSplit(value).map((layer) => layer.trim());
+
+// background's layers as jsdom 31 sets them (black box): a size of one
+// length or percentage gets auto as its height (/ 20px is 20px auto), and
+// text or border-area as a layer's only box is the clip, with border-box
+// as the origin.
+const BOX = /^(?:border-box|padding-box|content-box|text|border-area)$/i;
+const CLIP_ONLY = /^(?:text|border-area)$/i;
+const SIZE_KEYWORD = /^(?:auto|cover|contain)$/i;
+function backgroundLayers(value, found) {
+  const size = found.get('background-size');
+  if (size !== undefined)
+    found.set(
+      'background-size',
+      layersOf(size)
+        .map((layer) => (words(layer).length === 1 && !SIZE_KEYWORD.test(layer) ? `${layer} auto` : layer))
+        .join(', '),
+    );
+  const layers = layersOf(value);
+  const given = found.get('background-origin');
+  const origins = given === undefined ? layers.map(() => 'padding-box') : layersOf(given);
+  let changed = false;
+  const out = origins.map((origin, i) => {
+    const boxes = words(layers[i] ?? '').filter((w) => BOX.test(w));
+    if (boxes.length !== 1 || !CLIP_ONLY.test(boxes[0])) return origin;
+    changed = true;
+    return 'border-box';
+  });
+  if (changed) found.set('background-origin', out.join(', '));
+}
 COMPOSERS['background-position'] = ([x, y]) => {
   const xs = layersOf(x),
     ys = layersOf(y);
@@ -429,8 +459,12 @@ COMPOSERS.background = (v) => {
     if (repeat !== 'repeat') parts.push(repeat);
     if (attachment !== 'scroll') parts.push(attachment);
     // (a clip is written after its origin: content-box alone is
-    // content-box content-box)
-    if (clip !== 'border-box') parts.push(`${origin} ${clip}`);
+    // content-box content-box; but padding-box padding-box is padding-box,
+    // and text or border-area with a border-box origin is written alone,
+    // black box)
+    if (CLIP_ONLY.test(clip) && origin === 'border-box') parts.push(clip);
+    else if (clip === 'padding-box' && origin === 'padding-box') parts.push('padding-box');
+    else if (clip !== 'border-box') parts.push(`${origin} ${clip}`);
     else if (origin !== 'padding-box') parts.push(origin);
     if (i === count - 1 && v[9] !== 'transparent') parts.push(v[9]);
     layers.push(parts.length === 0 ? 'none' : parts.join(' '));
