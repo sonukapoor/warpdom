@@ -7592,4 +7592,7 @@ remainder declared31.js generated stays when css.js writes the value
 again (canonical31's reread; background: ... repeat); a percentage given
 by any math function (abs(-25%) is calc(25%)), which mix31 reads too;
 filled-in percentages written to 6 digits (33.3333% three times) mix as
-exact ones, with no alpha multiplier.
+the exact ones they stand for (color31.js remembers the exact form of each
+mix it filled in, cascade.js computes from it, at most 500 kept), while
+the same percentages written by hand keep the alpha multiplier (0.999999),
+as in jsdom 31.

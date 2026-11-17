@@ -30,6 +30,13 @@ export function rereadColors(on) {
   rereading = on;
 }
 
+// The mixes with percentages filled in, written to 6 digits (33.3333%
+// three times, adding up to 99.9999%), each with its exact form: jsdom 31
+// computes from the exact percentages (an opaque mix), while percentages
+// written so by hand keep their alpha multiplier (cascade.js asks here).
+const exactMixes = new Map();
+export const exactMix = (text) => exactMixes.get(text);
+
 const number = (v) => (v === 0 ? '0' : String(Number(v.toPrecision(6))));
 const LEGACY = /^(?:rgba?|hsla?|hwb)$/;
 const LAB = {
@@ -231,12 +238,24 @@ function mix(tok, write) {
   if (given.some((item) => item.pct > 100 || (item.pct < 0 && !rereading))) throw REJECTED;
   const sum = items.reduce((total, item) => total + (item.pct ?? 0), 0);
   const half = given.length === items.length && sum >= 100 && items.every((item) => item.pct === items[0].pct);
+  const exact = out.slice();
   for (let i = 0; i < colors.length; i++) {
     const item = items[i];
     let text = colorOrOther(item.color, write);
-    if (mathPct) text = colors[i].map((t) => (t === item.color ? text : write(t))).join(' ');
-    else if (item.pct !== null && !half) text += ` ${number(item.pct)}%`;
+    let full = text;
+    if (mathPct) full = text = colors[i].map((t) => (t === item.color ? text : write(t))).join(' ');
+    else if (item.pct !== null && !half) {
+      full = `${text} ${item.pct}%`;
+      text += ` ${number(item.pct)}%`;
+    }
     out.push(text);
+    exact.push(full);
   }
-  return `color-mix(${out.join(', ')})`;
+  const written = `color-mix(${out.join(', ')})`;
+  const exactText = `color-mix(${exact.join(', ')})`;
+  if (exactText !== written) {
+    if (exactMixes.size >= 500) exactMixes.clear();
+    exactMixes.set(written, exactText);
+  }
+  return written;
 }

@@ -704,18 +704,14 @@ function mix31(args, current, depth, dark) {
     else sumGiven += p;
   }
   const share = missing === 0 ? 0 : Math.max(0, 100 - sumGiven) / missing;
-  const total = sumGiven + share * missing;
-  // (filled-in thirds written to 6 digits, 33.3333% three times, add up
-  // to 99.9999%: as declared, jsdom 31 mixes the exact ones, so weights are
-  // taken from the total and no alpha multiplier applies)
-  const sum = Math.abs(total - 100) < 0.001 ? 100 : total;
+  const sum = sumGiven + share * missing;
   let alpha = 0;
   const premultiplied = [0, 0, 0];
   const plain = [0, 0, 0];
   for (let i = 1; i <= n; i++) {
     const c = colorChannels(args[i][0], current, 31, depth + 1, dark);
     if (c === null) return null;
-    const w = total === 0 ? 1 / n : (args[i][1] ?? share) / total;
+    const w = sum === 0 ? 1 / n : (args[i][1] ?? share) / sum;
     alpha += c[3] * w;
     for (let k = 0; k < 3; k++) {
       premultiplied[k] += c[k] * c[3] * w;
