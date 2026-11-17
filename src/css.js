@@ -1344,7 +1344,8 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
       canonical = written;
       if (written !== null && isSpecMode(mode)) written = identValue(name, written);
       // (a quote is rare: most values skip this)
-      if (written !== null && isSpecMode(mode) && (written.includes('"') || written.includes("'"))) {
+      // (not jsdom 31's: declared31.js has written its strings)
+      if (written !== null && isSpecMode(mode) && !cssom31 && (written.includes('"') || written.includes("'"))) {
         const strings = stringsWritten(name, written, surface);
         if (strings === STRING_FINAL) out = finalString;
         else written = strings;

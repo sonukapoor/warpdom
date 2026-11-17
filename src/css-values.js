@@ -1232,7 +1232,9 @@ export function traceValue(name, value) {
     else out = mathRefused ? false : null;
     if (byShape !== null) {
       if (byShape.size >= 1000) byShape.clear();
-      byShape.set(shape, out === tokens ? labelsOf(tokens, []) : out);
+      // (not a value that did not match: a numeric bound may be why,
+      // font-weight: 1001.1, and another of its shape may match)
+      if (out !== null) byShape.set(shape, out === tokens ? labelsOf(tokens, []) : out);
     }
     return out;
   } catch (error) {

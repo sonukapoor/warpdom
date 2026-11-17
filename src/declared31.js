@@ -39,6 +39,16 @@ function functionName(lower) {
 let keywords = null;
 let rejected = false;
 export function canonical31(name, value) {
+  // (fails open, as validation does: a value this does not handle stays
+  // as it is rather than breaking the write)
+  try {
+    return canonical(name, value);
+  } catch {
+    return value;
+  }
+}
+
+function canonical(name, value) {
   if (name === 'clip') return clip(value);
   const tokens = traceValue(name, value);
   if (tokens === false) return null;
@@ -106,18 +116,22 @@ function transition(tokens, text) {
     if (isTime(tok)) {
       if (duration === null) duration = tok;
       else delay = tok;
-    } else if (isEasing(tok)) easing = tok;
+    } else if (isEasing(tok) && easing === null) easing = tok;
     else if (tok.t === 'ident' && (tok.v === 'normal' || tok.v === 'allow-discrete')) behavior = tok;
     else property = tok;
   }
   const parts = [];
-  if (property !== null && property.v !== 'all') parts.push(component(property, text));
+  // (a property named as an easing goes last, after the easing kept)
+  const named = property !== null && isEasing(property);
+  if (property !== null && property.v !== 'all' && !named) parts.push(component(property, text));
   const hasDelay = delay !== null && delay.v !== 0;
   if ((duration !== null && duration.v !== 0) || hasDelay)
     parts.push(duration === null ? '0s' : component(duration, text));
-  if (easing !== null && !(easing.t === 'ident' && easing.v === 'ease')) parts.push(component(easing, text));
+  // (kept when the property would read as one: ease ease)
+  if (easing !== null && !(easing.t === 'ident' && easing.v === 'ease' && !named)) parts.push(component(easing, text));
   if (hasDelay) parts.push(component(delay, text));
   if (behavior !== null && behavior.v !== 'normal') parts.push('allow-discrete');
+  if (named) parts.push(component(property, text));
   return parts.length === 0 ? 'all' : parts.join(' ');
 }
 
@@ -141,8 +155,13 @@ function animation(tokens, text) {
     if (isTime(tok)) {
       if (duration === null) duration = tok;
       else delay = tok;
-    } else if (isEasing(tok)) easing = tok;
-    else if (tok.t === 'number' || (tok.t === 'ident' && tok.v === 'infinite')) count = tok;
+    } else if (isEasing(tok) && easing === null) easing = tok;
+    else if (
+      tok.t === 'number' ||
+      (tok.t === 'function' && tok.as === 'number') ||
+      (tok.t === 'ident' && tok.v === 'infinite')
+    )
+      count = tok;
     else if (tok.t === 'ident' && direction === null && DIRECTIONS.test(tok.v)) direction = tok;
     else if (tok.t === 'ident' && fill === null && FILLS.test(tok.v)) fill = tok;
     else if (tok.t === 'ident' && state === null && PLAY_STATES.test(tok.v)) state = tok;
@@ -151,9 +170,11 @@ function animation(tokens, text) {
   const parts = [];
   const hasDelay = delay !== null && delay.v !== 0;
   if (duration !== null || hasDelay) parts.push(duration === null ? '0s' : component(duration, text));
-  if (easing !== null && !(easing.t === 'ident' && easing.v === 'ease')) parts.push(component(easing, text));
+  // (kept when the name would read as one: ease ease)
+  if (easing !== null && !(easing.t === 'ident' && easing.v === 'ease' && !(name !== null && isEasing(name))))
+    parts.push(component(easing, text));
   if (hasDelay) parts.push(component(delay, text));
-  if (count !== null && count.v !== 1) parts.push(component(count, text));
+  if (count !== null && !(count.t === 'number' && count.v === 1)) parts.push(component(count, text));
   if (direction !== null && direction.v !== 'normal') parts.push(direction.v);
   if (fill !== null && fill.v !== 'none') parts.push(fill.v);
   if (state !== null && state.v !== 'running') parts.push(state.v);
@@ -175,7 +196,7 @@ function clip(value) {
   const tokens = tokenizeValue(value);
   if (tokens === null || tokens.length !== 1) return tokens === null ? value : null;
   const [tok] = tokens;
-  if (tok.t === 'ident' && tok.v === 'auto') return 'auto';
+  if (tok.t === 'ident' && (tok.v === 'auto' || CSS_WIDE.test(tok.v))) return tok.v;
   if (tok.t !== 'function' || tok.name !== 'rect') return null;
   const commas = tok.args.some((arg) => arg.t === 'comma');
   const edges = commas ? tok.args.filter((arg, i) => i % 2 === 0) : tok.args;
@@ -194,6 +215,7 @@ function clip(value) {
   return rejected ? null : `rect(${out.join(commas ? ', ' : ' ')})`;
 }
 const AUTO = new Set(['auto']);
+const CSS_WIDE = /^(?:initial|inherit|unset|revert|revert-layer)$/;
 
 // translate: a 0 z left out, then a 0 y (1px 0 0 is 1px).
 function translate(tokens, text) {
@@ -207,6 +229,8 @@ function translate(tokens, text) {
 // (2 2 1 is 2, 50% 50% 0.5).
 function scale(tokens, text) {
   if (tokens.length === 1 && tokens[0].t === 'ident') return tokens[0].v;
+  // (a math function: each written, nothing left out)
+  if (tokens.some((tok) => tok.t === 'function')) return list(tokens, text);
   const values = tokens.map((tok) => (tok.t === 'percentage' ? tok.v / 100 : tok.v));
   if (values.length === 3 && values[2] === 1) values.pop();
   if (values.length === 2 && values[1] === values[0]) values.pop();

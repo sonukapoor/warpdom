@@ -213,3 +213,44 @@ test('jsdom 31: long lists trace in linear time', () => {
   assert.equal(e.style.getPropertyValue('font-family'), families);
   assert.ok(performance.now() - start < 2000);
 });
+
+// #325 review: math functions in scale and in an iteration count, min()
+// of two types, number functions' argument counts, an easing keyword as
+// the name, clip's CSS-wide keywords, backslashes in a family name.
+parity(
+  'jsdom 31: review cases of declared values',
+  declared([
+    'scale: calc(2)',
+    'scale: calc(50%) 2',
+    'animation: spin 1s calc(2)',
+    'animation: calc(2) 1s spin',
+    'animation: 1s ease ease',
+    'transition: 1s ease ease',
+    'transition: linear 1s ease-in',
+    'width: min(1px, 1s)',
+    'width: calc(min(1px, 1em) + 1s)',
+    'width: min(10%, 1px)',
+    'opacity: sqrt(4, 9)',
+    'opacity: pow(2)',
+    'opacity: sqrt(4)',
+    'clip: inherit',
+    'clip: INITIAL',
+    'clip: var(--c)',
+    'font-family: "a\\\\b c"',
+    'content: "a\\\\b"',
+  ]),
+  { jsdom: 31 },
+);
+
+// A value that fails a numeric bound does not decide how a value of its
+// shape is read (#325 review).
+parity(
+  'jsdom 31: a value out of range, then one of its shape',
+  (w) => {
+    const e = w.document.createElement('div');
+    e.style.setProperty('font-weight', '1001.1');
+    e.style.setProperty('font-weight', '123.4567');
+    return e.style.fontWeight;
+  },
+  { jsdom: 31 },
+);

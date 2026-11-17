@@ -97,13 +97,16 @@ export function simplifyMath(tok, expected) {
 // it has only those, null for a sum of functions only (add() has checked
 // that there is one).
 function typeOf(sum) {
-  let type = null;
+  let type = sum.type ?? null;
   for (const unit of sum.terms.keys()) {
     const c = categoryOf(unit);
     if (c !== 'percentage' || type === null) type = c;
   }
   return type;
 }
+// Two types that may meet in a sum or a min(): one, or percentages with
+// another.
+const compatible = (a, b) => a === null || b === null || a === b || a === 'percentage' || b === 'percentage';
 
 function mathFunction(tok) {
   const args = splitArgs(tok.args);
@@ -141,6 +144,8 @@ function mathFunction(tok) {
     default: {
       const fn = NUMBER_FUNCTIONS[tok.name];
       if (fn === undefined) throw UNREAD;
+      const [least, most] = NUMBER_ARITY[tok.name];
+      if (args.length < least || args.length > most) throw INVALID;
       const values = args.map((arg) => resolved(sumOf(arg)));
       if (values.some((a) => !a || a.unit !== '')) throw UNREAD;
       return single('', fn(...values.map((a) => a.v)));
@@ -148,6 +153,15 @@ function mathFunction(tok) {
   }
 }
 
+// Their argument counts (CSS Values 4, 10.4 and 10.5).
+const NUMBER_ARITY = {
+  __proto__: null,
+  pow: [2, 2],
+  sqrt: [1, 1],
+  exp: [1, 1],
+  log: [1, 2],
+  hypot: [1, Infinity],
+};
 const NUMBER_FUNCTIONS = {
   __proto__: null,
   pow: Math.pow,
@@ -187,7 +201,13 @@ function minMax(name, sums) {
   const pick = name === 'min' ? Math.min : Math.max;
   const args = [];
   const byUnit = new Map();
+  // (its arguments of one type: min(1px, 1s) is invalid)
+  let type = null;
   for (const sum of sums) {
+    const t = typeOf(sum);
+    if (!compatible(type, t)) throw INVALID;
+    if (t !== null && t !== 'percentage') type = t;
+    else if (type === null) type = t;
     const one = resolved(sum);
     if (!one || !COMPARABLE.has(one.unit)) args.push(one ?? sum);
     else if (byUnit.has(one.unit)) {
@@ -204,7 +224,7 @@ function minMax(name, sums) {
   }
   if (args.length === 1 && args[0].terms === undefined) return single(args[0].unit, args[0].v);
   const written = args.map((arg) => serialize(arg.terms === undefined ? single(arg.unit, arg.v) : arg, false));
-  return { terms: new Map(), others: [`${name}(${written.join(', ')})`] };
+  return { terms: new Map(), others: [`${name}(${written.join(', ')})`], type };
 }
 
 // The sum's one term ({ unit, v }) when it is one, else null.
@@ -304,7 +324,10 @@ function add(a, b) {
     }
     terms.set(unit, (terms.get(unit) ?? 0) + v);
   }
-  return { terms, others: [...a.others, ...b.others] };
+  const ta = typeOf(a);
+  const tb = typeOf(b);
+  if (!compatible(ta, tb)) throw INVALID;
+  return { terms, others: [...a.others, ...b.others], type: a.type ?? b.type ?? null };
 }
 function scale(sum, k) {
   if (sum.others.length !== 0) throw UNREAD;

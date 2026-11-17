@@ -7506,3 +7506,13 @@ a value first seen in the 31 profile is now read against its grammar
 and 29.4 ms (the stored values are the longer canonical ones). The 30
 profile is unchanged. Cold load 28.4 ms on main, 29.2 ms here (two
 modules, declared31.js and calc31.js).
+Review round (#325): scale and an iteration count with a math function
+(scale: calc(2) threw), min() and max() of two types invalid also inside
+a sum (min(1px, 1s)), number functions with their argument counts
+(sqrt(4, 9) invalid), an easing keyword as the animation name or the
+transition property kept readable (1s ease ease; the property last),
+clip's CSS-wide keywords, family names not passed through 30's string
+rules again (a backslash stayed), a trace that does not match not cached
+by shape (font-weight: 1001.1 then 123.4567); declared31.js fails open.
+Against jsdom 31.0.1 now 112 (132 on main); 20,000 new box-shadow
+values 153 ms, transform 49 ms.
