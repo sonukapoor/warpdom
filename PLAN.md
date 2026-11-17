@@ -7587,4 +7587,9 @@ round: the negative remainder is invalid when read again (cssText =
 cssText drops it, as in jsdom 31), and a jsdom 31 style attribute that
 the style object wrote is computed from the declarations it holds, not
 its text parsed again (cascade.js inlineDeclarations); rgb() with an
-alpha of none is color(srgb ...).
+alpha of none is color(srgb ...), its channels clamped. Third round: a
+remainder declared31.js generated stays when css.js writes the value
+again (canonical31's reread; background: ... repeat); a percentage given
+by any math function (abs(-25%) is calc(25%)), which mix31 reads too;
+filled-in percentages written to 6 digits (33.3333% three times) mix as
+exact ones, with no alpha multiplier.

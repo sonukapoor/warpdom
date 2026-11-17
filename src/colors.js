@@ -600,20 +600,22 @@ function colorChannels(text, current, mode, depth, dark) {
 // order. Split at the last (or first) whitespace rather than by a regular
 // expression around the color, which backtracks quadratically on a long
 // run of whitespace.
-const PERCENTAGE = new RegExp(`^(${NUMBER})%$`, 'i');
+// (also calc() of a percentage, as jsdom 31 declares a math function's:
+// abs(-25%) is calc(25%))
+const PERCENTAGE = new RegExp(`^(?:(${NUMBER})%|calc\\((${NUMBER})%\\))$`, 'i');
 const isSpace = (c) => c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
 function mixArgument(text) {
   let i = text.length - 1;
   while (i >= 0 && !isSpace(text[i])) i--;
   if (i > 0) {
     const m = PERCENTAGE.exec(text.slice(i + 1));
-    if (m !== null) return [text.slice(0, i).trimEnd(), Number(m[1])];
+    if (m !== null) return [text.slice(0, i).trimEnd(), Number(m[1] ?? m[2])];
   }
   i = 0;
   while (i < text.length && !isSpace(text[i])) i++;
   if (i < text.length) {
     const n = PERCENTAGE.exec(text.slice(0, i));
-    if (n !== null) return [text.slice(i).trimStart(), Number(n[1])];
+    if (n !== null) return [text.slice(i).trimStart(), Number(n[1] ?? n[2])];
   }
   return [text, null];
 }
@@ -702,14 +704,18 @@ function mix31(args, current, depth, dark) {
     else sumGiven += p;
   }
   const share = missing === 0 ? 0 : Math.max(0, 100 - sumGiven) / missing;
-  const sum = sumGiven + share * missing;
+  const total = sumGiven + share * missing;
+  // (filled-in thirds written to 6 digits, 33.3333% three times, add up
+  // to 99.9999%: as declared, jsdom 31 mixes the exact ones, so weights are
+  // taken from the total and no alpha multiplier applies)
+  const sum = Math.abs(total - 100) < 0.001 ? 100 : total;
   let alpha = 0;
   const premultiplied = [0, 0, 0];
   const plain = [0, 0, 0];
   for (let i = 1; i <= n; i++) {
     const c = colorChannels(args[i][0], current, 31, depth + 1, dark);
     if (c === null) return null;
-    const w = sum === 0 ? 1 / n : (args[i][1] ?? share) / sum;
+    const w = total === 0 ? 1 / n : (args[i][1] ?? share) / total;
     alpha += c[3] * w;
     for (let k = 0; k < 3; k++) {
       premultiplied[k] += c[k] * c[3] * w;

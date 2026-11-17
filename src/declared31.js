@@ -27,7 +27,7 @@ import {
 import { resolveColor } from './colors.js';
 import { TYPE_SYNTAX } from './css-grammar.js';
 import { simplifyMath, mathType } from './calc31.js';
-import { colorFunction } from './color31.js';
+import { colorFunction, rereadColors } from './color31.js';
 
 // Function names as the specifications write them (translateX), by
 // their lowercase form; built on first use.
@@ -47,13 +47,18 @@ function functionName(lower) {
 // function of another type: width: calc(0)).
 let keywords = null;
 let rejected = false;
-export function canonical31(name, value) {
+// reread: the value is one this wrote itself (css.js writes a value
+// again after jsdom 30's rules), so a remainder it generated stays.
+export function canonical31(name, value, reread = false) {
   // (fails open, as validation does: a value this does not handle stays
   // as it is rather than breaking the write)
+  rereadColors(reread);
   try {
     return canonical(name, value);
   } catch {
     return value;
+  } finally {
+    rereadColors(false);
   }
 }
 

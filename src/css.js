@@ -1398,7 +1398,7 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
     }
     // jsdom 31 writes each component in canonical form (declared31.js)
     if (cssom31 && typeof out === 'string' && out !== '' && out !== canonical && !name.startsWith('--'))
-      out = canonical31(name, out) ?? INVALID;
+      out = canonical31(name, out, true) ?? INVALID;
     if (byValue.size >= 500) byValue.clear();
     byValue.set(value, out);
   }

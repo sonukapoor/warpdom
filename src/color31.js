@@ -20,6 +20,15 @@
 // not read here (relative colors: rgb(from red r g b)). write writes a
 // token in canonical form (declared31.js).
 import { resolveColor } from './colors.js';
+import { isMathFunction } from './css-values.js';
+
+// Set while declared31.js writes again a value it wrote itself: a negative
+// color-mix() remainder it generated is then kept (fresh input with one is
+// invalid, as in jsdom 31).
+let rereading = false;
+export function rereadColors(on) {
+  rereading = on;
+}
 
 const number = (v) => (v === 0 ? '0' : String(Number(v.toPrecision(6))));
 const LEGACY = /^(?:rgba?|hsla?|hwb)$/;
@@ -84,9 +93,10 @@ function legacy(tok, raw, nested, write) {
     try {
       const out = values.map((v) => {
         if (isNone(v)) return 'none';
-        if (v.t === 'percentage') return number(v.v / 100);
+        // (clamped as rgb() clamps: rgb(300 -20 0 / none) is 1 0 0)
+        if (v.t === 'percentage') return number(Math.min(Math.max(v.v, 0), 100) / 100);
         if (v.t !== 'number') throw UNREAD;
-        return number(v.v / 255);
+        return number(Math.min(Math.max(v.v, 0), 255) / 255);
       });
       return `color(srgb ${out.join(' ')}${alphaText(alpha)})`;
     } catch {
@@ -200,16 +210,15 @@ function mix(tok, write) {
   }
   // Each color and its percentage, if any (either order).
   const items = colors.map((group) => {
-    const pct = group.find((t) => t.t === 'percentage');
+    // (a percentage token or a math function giving one: abs(-25%))
+    const pct = group.find((t) => t.t === 'percentage' || (t.t === 'function' && isMathFunction(t.name)));
     const color = group.find((t) => t !== pct);
-    return { color, pct: pct === undefined ? null : pct.v };
+    return { color, pct: pct === undefined || pct.t === 'function' ? null : pct.v };
   });
   if (items.some((item) => item.color === undefined)) return undefined;
   const given = items.filter((item) => item.pct !== null);
   // (a percentage in a math function: written as it is)
-  const mathPct = colors.some((group) =>
-    group.some((t) => t.t === 'function' && /^(?:calc|min|max|clamp)$/.test(t.name)),
-  );
+  const mathPct = colors.some((group) => group.some((t) => t.t === 'function' && isMathFunction(t.name)));
   if (!mathPct && given.length > 0 && given.length < items.length) {
     const rest = (100 - given.reduce((sum, item) => sum + item.pct, 0)) / (items.length - given.length);
     for (const item of items) if (item.pct === null) item.pct = rest;
@@ -219,7 +228,7 @@ function mix(tok, write) {
   // all equal and adding up to 100 or more are left out: red 80%, blue
   // 80% is red, blue; a filled-in remainder may be negative: red 80%,
   // blue 80%, green is green -60%)
-  if (given.some((item) => item.pct < 0 || item.pct > 100)) throw REJECTED;
+  if (given.some((item) => item.pct > 100 || (item.pct < 0 && !rereading))) throw REJECTED;
   const sum = items.reduce((total, item) => total + (item.pct ?? 0), 0);
   const half = given.length === items.length && sum >= 100 && items.every((item) => item.pct === items[0].pct);
   for (let i = 0; i < colors.length; i++) {
