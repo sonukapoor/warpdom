@@ -7533,4 +7533,6 @@ invalid (it replaced the valid one before it), the end closes a function
 or string left open (rect(1px, 2px, 3px, 4px is valid), products and
 quotients of typed values resolved for one comparable unit (10px / 2px
 is 5, 1px * 1px / 1px is 1px); others stay as written, where jsdom 31
-reorders them (calc(100% / 2px * 1px) is calc(100% * 1px / 2px) there).
+reorders them (calc(100% / 2px * 1px) is calc(100% * 1px / 2px) there). Sixth round: percentages
+in a calculation go with lengths only (calc(10% + 1deg) is invalid), and
+clip's edges are lengths only (no 1deg, no calc(10%)).

@@ -15,10 +15,10 @@
 // - colors as declared colors are (rgb(), named colors in lowercase);
 // - math functions simplified (calc31.js).
 // A value whose grammar is not read here stays as it is.
-import { traceValue, readEscapes, keywordsOf, tokenizeValue, hasVarFunction } from './css-values.js';
+import { traceValue, readEscapes, keywordsOf, tokenizeValue, hasVarFunction, isLengthUnit } from './css-values.js';
 import { resolveColor } from './colors.js';
 import { TYPE_SYNTAX } from './css-grammar.js';
-import { simplifyMath } from './calc31.js';
+import { simplifyMath, mathType } from './calc31.js';
 
 // Function names as the specifications write them (translateX), by
 // their lowercase form; built on first use.
@@ -224,7 +224,12 @@ function clip(value) {
   const out = [];
   for (const edge of edges) {
     if (edge.t === 'ident' && edge.v === 'auto') out.push('auto');
-    else if (edge.t === 'dimension' || (edge.t === 'number' && edge.v === 0) || edge.t === 'function') {
+    // (lengths only: no percentage, no other type, in a math function too)
+    else if (
+      (edge.t === 'dimension' && isLengthUnit(edge.unit)) ||
+      (edge.t === 'number' && edge.v === 0) ||
+      (edge.t === 'function' && mathType(edge) === 'length')
+    ) {
       edge.as = 'length';
       out.push(component(edge, value));
     } else return null;

@@ -107,7 +107,13 @@ function typeOf(sum) {
 }
 // Two types that may meet in a sum or a min(): one, or percentages with
 // another.
-const compatible = (a, b) => a === null || b === null || a === b || a === 'percentage' || b === 'percentage';
+// (percentages go with lengths only: calc(10% + 1deg) is invalid)
+const compatible = (a, b) =>
+  a === null ||
+  b === null ||
+  a === b ||
+  (a === 'percentage' && b === 'length') ||
+  (a === 'length' && b === 'percentage');
 
 function mathFunction(tok) {
   const args = splitArgs(tok.args);
@@ -324,18 +330,12 @@ const MATH_NAMES = new Set([
 
 function add(a, b) {
   const terms = new Map(a.terms);
-  for (const [unit, v] of b.terms) {
-    if (terms.size > 0 && categoryOf(unit) !== 'percentage') {
-      for (const u of terms.keys()) {
-        const c = categoryOf(u);
-        if (c !== 'percentage' && c !== categoryOf(unit)) throw INVALID;
-      }
-    }
-    terms.set(unit, (terms.get(unit) ?? 0) + v);
-  }
-  const ta = typeOf(a);
-  const tb = typeOf(b);
-  if (!compatible(ta, tb)) throw INVALID;
+  for (const [unit, v] of b.terms) terms.set(unit, (terms.get(unit) ?? 0) + v);
+  // (every two parts of types that may meet)
+  const types = [a.type ?? null, b.type ?? null];
+  for (const unit of terms.keys()) types.push(categoryOf(unit));
+  for (let i = 0; i < types.length; i++)
+    for (let j = i + 1; j < types.length; j++) if (!compatible(types[i], types[j])) throw INVALID;
   return { terms, others: [...a.others, ...b.others], type: a.type ?? b.type ?? null };
 }
 function scale(sum, k) {
