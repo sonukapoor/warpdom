@@ -55,7 +55,7 @@ function urlEnd(value, from) {
 export function present31(value) {
   // (a value with var(), env() or attr() is kept as written: nothing in it
   // was filled in)
-  if (!value.includes('color-mix(') || hasVarFunction(value) || /\b(?:env|attr)\(/i.test(value)) return value;
+  if (!value.includes('color-mix(') || hasVarFunction(value)) return value;
   let out = '';
   let depth = 0; // parentheses open inside color-mix() functions
   for (let i = 0; i < value.length;) {
@@ -69,6 +69,9 @@ export function present31(value) {
       const end = urlEnd(value, i + 4);
       out += value.slice(i, end);
       i = end;
+    } else if (/^(?:env|attr)\(/i.test(value.slice(i, i + 5)) && !/[\w-]/.test(value[i - 1] ?? '')) {
+      // (env() or attr() outside strings and url(): kept as written)
+      return value;
     } else if (/^color-mix\(/i.test(value.slice(i, i + 10)) && !/[\w-]/.test(value[i - 1] ?? '')) {
       out += value.slice(i, i + 10);
       depth++;

@@ -533,6 +533,8 @@ parity(
       'background-image: url("color-mix(12.3456789%).png"); color: color-mix(in srgb, red 0%, blue, green, white)',
       'background-image: url("a)color-mix(12.3456789%).png"), linear-gradient(color-mix(in srgb, red 0%, blue, green, white), red)',
       'background-image: url(a\\)b.png), linear-gradient(color-mix(in srgb, red 0%, blue, green, white), red)',
+      'background-image: url("env(x).png"), linear-gradient(color-mix(in srgb, red 0%, blue, green, white), red)',
+      'content: "attr(x)"; color: color-mix(in srgb, red 0%, blue, green, white)',
     ].map((text) => {
       const e = w.document.createElement('div');
       e.setAttribute('style', text);
