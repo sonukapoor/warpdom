@@ -126,9 +126,17 @@ function mathFunction(tok) {
       const a = resolved(lo);
       const b = resolved(v);
       const c = resolved(hi);
-      if (a && b && c && a.unit === b.unit && b.unit === c.unit)
+      // (of one type: clamp(1px, 1s, 2px) is invalid; kept with it)
+      let type = null;
+      for (const sum of [lo, v, hi]) {
+        const t = typeOf(sum);
+        if (!compatible(type, t)) throw INVALID;
+        if (t !== null && (t !== 'percentage' || type === null)) type = t;
+      }
+      if (a && b && c && a.unit === b.unit && b.unit === c.unit && COMPARABLE.has(a.unit))
         return single(a.unit, Math.max(a.v, Math.min(b.v, c.v)));
-      throw UNREAD;
+      const written = [lo, v, hi].map((sum) => serialize(sum, false));
+      return { terms: new Map(), others: [`clamp(${written.join(', ')})`], type };
     }
     case 'abs':
     case 'sign': {

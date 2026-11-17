@@ -214,9 +214,10 @@ test('jsdom 31: long lists trace in linear time', () => {
   assert.ok(performance.now() - start < 2000);
 });
 
-// #325 review: math functions in scale and in an iteration count, min()
-// of two types, number functions' argument counts, an easing keyword as
-// the name, clip's CSS-wide keywords, backslashes in a family name.
+// #325 review: math functions in scale, counters and an iteration count,
+// min(), max() and clamp() of two types, number functions' argument
+// counts, a keyword of another part as the name or the property, clip's
+// CSS-wide keywords, backslashes in a family name.
 parity(
   'jsdom 31: review cases of declared values',
   declared([
@@ -236,6 +237,19 @@ parity(
     'clip: inherit',
     'clip: INITIAL',
     'clip: var(--c)',
+    'width: clamp(1px, 1s, 2px)',
+    'width: calc(clamp(1px, 1em, 2px) + 1s)',
+    'width: clamp(1em, 2em, 3em)',
+    'transition: 1s normal normal',
+    'transition: 1s allow-discrete allow-discrete',
+    'transition: 1s ease',
+    'counter-reset: a calc(2)',
+    'counter-increment: a calc(2) b',
+    'animation: 1s infinite infinite',
+    'animation: 1s 1 infinite',
+    'animation: 1s normal normal',
+    'animation: 1s running running',
+    'animation: 1s none none',
     'font-family: "a\\\\b c"',
     'content: "a\\\\b"',
   ]),

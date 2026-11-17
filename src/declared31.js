@@ -100,6 +100,7 @@ const EASINGS = /^(?:ease|linear|ease-in|ease-out|ease-in-out|step-start|step-en
 const isEasing = (tok) =>
   (tok.t === 'ident' && EASINGS.test(tok.v)) ||
   (tok.t === 'function' && (tok.name === 'cubic-bezier' || tok.name === 'steps' || tok.name === 'linear'));
+const BEHAVIORS = /^(?:normal|allow-discrete)$/;
 const isTime = (tok) =>
   (tok.t === 'dimension' && (tok.unit === 's' || tok.unit === 'ms')) || (tok.t === 'function' && tok.as === 'time');
 
@@ -117,20 +118,22 @@ function transition(tokens, text) {
       if (duration === null) duration = tok;
       else delay = tok;
     } else if (isEasing(tok) && easing === null) easing = tok;
-    else if (tok.t === 'ident' && (tok.v === 'normal' || tok.v === 'allow-discrete')) behavior = tok;
+    else if (behavior === null && keyword(tok, BEHAVIORS)) behavior = tok;
     else property = tok;
   }
   const parts = [];
-  // (a property named as an easing goes last, after the easing kept)
-  const named = property !== null && isEasing(property);
+  // (a property named as an easing or a behavior goes last, after that
+  // part kept: 1s ease ease, 1s normal normal)
+  const named = property !== null && (isEasing(property) || keyword(property, BEHAVIORS));
   if (property !== null && property.v !== 'all' && !named) parts.push(component(property, text));
   const hasDelay = delay !== null && delay.v !== 0;
   if ((duration !== null && duration.v !== 0) || hasDelay)
     parts.push(duration === null ? '0s' : component(duration, text));
   // (kept when the property would read as one: ease ease)
-  if (easing !== null && !(easing.t === 'ident' && easing.v === 'ease' && !named)) parts.push(component(easing, text));
+  if (easing !== null && (!(easing.t === 'ident' && easing.v === 'ease') || (property !== null && isEasing(property))))
+    parts.push(component(easing, text));
   if (hasDelay) parts.push(component(delay, text));
-  if (behavior !== null && behavior.v !== 'normal') parts.push('allow-discrete');
+  if (behavior !== null && (behavior.v !== 'normal' || (named && keyword(property, BEHAVIORS)))) parts.push(behavior.v);
   if (named) parts.push(component(property, text));
   return parts.length === 0 ? 'all' : parts.join(' ');
 }
@@ -138,10 +141,16 @@ function transition(tokens, text) {
 // An animation: duration, easing, delay, iteration count, direction, fill
 // mode, play state and name, each left out at its initial value (ease,
 // 0s, 1, normal, none, running, none; the duration is auto), none when
-// every one is.
+// every one is. Each keyword fills its part once, a second one is the
+// name, and the part is then kept even at its initial value, so that the
+// name reads back as one (1s ease ease, 1s 1 infinite, 1s normal normal).
 const DIRECTIONS = /^(?:normal|reverse|alternate|alternate-reverse)$/;
 const FILLS = /^(?:none|forwards|backwards|both)$/;
 const PLAY_STATES = /^(?:running|paused)$/;
+const isNumeric = (tok) =>
+  tok.t === 'number' || (tok.t === 'function' && (tok.as === 'number' || tok.as === 'integer'));
+const isCount = (tok) => isNumeric(tok) || (tok.t === 'ident' && tok.v === 'infinite');
+const keyword = (tok, pattern) => tok.t === 'ident' && pattern.test(tok.v);
 function animation(tokens, text) {
   let duration = null;
   let delay = null;
@@ -155,30 +164,29 @@ function animation(tokens, text) {
     if (isTime(tok)) {
       if (duration === null) duration = tok;
       else delay = tok;
-    } else if (isEasing(tok) && easing === null) easing = tok;
-    else if (
-      tok.t === 'number' ||
-      (tok.t === 'function' && tok.as === 'number') ||
-      (tok.t === 'ident' && tok.v === 'infinite')
-    )
-      count = tok;
-    else if (tok.t === 'ident' && direction === null && DIRECTIONS.test(tok.v)) direction = tok;
-    else if (tok.t === 'ident' && fill === null && FILLS.test(tok.v)) fill = tok;
-    else if (tok.t === 'ident' && state === null && PLAY_STATES.test(tok.v)) state = tok;
+    } else if (easing === null && isEasing(tok)) easing = tok;
+    else if (count === null && isCount(tok)) count = tok;
+    else if (direction === null && keyword(tok, DIRECTIONS)) direction = tok;
+    else if (fill === null && keyword(tok, FILLS)) fill = tok;
+    else if (state === null && keyword(tok, PLAY_STATES)) state = tok;
     else name = tok;
   }
+  // (none as the name is its initial value: written as none is)
+  const named = name !== null && !(name.t === 'ident' && name.v === 'none');
+  const clashes = (test) => named && test(name);
   const parts = [];
   const hasDelay = delay !== null && delay.v !== 0;
   if (duration !== null || hasDelay) parts.push(duration === null ? '0s' : component(duration, text));
-  // (kept when the name would read as one: ease ease)
-  if (easing !== null && !(easing.t === 'ident' && easing.v === 'ease' && !(name !== null && isEasing(name))))
+  if (easing !== null && (!(easing.t === 'ident' && easing.v === 'ease') || clashes(isEasing)))
     parts.push(component(easing, text));
   if (hasDelay) parts.push(component(delay, text));
-  if (count !== null && !(count.t === 'number' && count.v === 1)) parts.push(component(count, text));
-  if (direction !== null && direction.v !== 'normal') parts.push(direction.v);
+  if (count !== null && (!(count.t === 'number' && count.v === 1) || clashes(isCount)))
+    parts.push(component(count, text));
+  if (direction !== null && (direction.v !== 'normal' || clashes((tok) => keyword(tok, DIRECTIONS))))
+    parts.push(direction.v);
   if (fill !== null && fill.v !== 'none') parts.push(fill.v);
-  if (state !== null && state.v !== 'running') parts.push(state.v);
-  if (name !== null && !(name.t === 'ident' && name.v === 'none')) parts.push(component(name, text));
+  if (state !== null && (state.v !== 'running' || clashes((tok) => keyword(tok, PLAY_STATES)))) parts.push(state.v);
+  if (named) parts.push(component(name, text));
   return parts.length === 0 ? 'none' : parts.join(' ');
 }
 
@@ -263,7 +271,7 @@ function counters(fallback) {
     const parts = [];
     for (let i = 0; i < tokens.length; i++) {
       parts.push(component(tokens[i], text));
-      if (tokens[i + 1]?.t === 'number') parts.push(component(tokens[++i], text));
+      if (tokens[i + 1] !== undefined && isNumeric(tokens[i + 1])) parts.push(component(tokens[++i], text));
       else if (tokens[i].t !== 'function') parts.push(fallback);
     }
     return parts.join(' ');

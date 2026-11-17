@@ -7515,4 +7515,8 @@ clip's CSS-wide keywords, family names not passed through 30's string
 rules again (a backslash stayed), a trace that does not match not cached
 by shape (font-weight: 1001.1 then 123.4567); declared31.js fails open.
 Against jsdom 31.0.1 now 112 (132 on main); 20,000 new box-shadow
-values 153 ms, transform 49 ms.
+values 153 ms, transform 49 ms. Second round: clamp() of two types
+invalid and kept typed, counters with a math function as their integer,
+each animation and transition keyword filling its part once, the part
+kept at its initial value when the name or property is that keyword
+(1s infinite infinite, 1s 1 infinite, 1s normal normal).
