@@ -152,7 +152,8 @@ function tokenize(text) {
       out.push({ t: 'delim', v: c, s, e: i + 1 });
       i++;
     }
-    return close ? null : out;
+    // (tracing: the end closes what is open, CSS Syntax 3)
+    return close && !tracing ? null : out;
   }
   return list(null);
 }
@@ -1477,7 +1478,15 @@ function traceRepeat(node, tokens, pos, end) {
 }
 
 // A value's component values (tokenize), or null when it does not read.
-export const tokenizeValue = (value) => tokenize(value);
+// (read as tracing reads it: the end closes strings and functions)
+export function tokenizeValue(value) {
+  tracing = true;
+  try {
+    return tokenize(value);
+  } finally {
+    tracing = false;
+  }
+}
 
 // An identifier's or string's text with its escapes read (CSS Syntax 3).
 export function readEscapes(text) {

@@ -52,7 +52,8 @@ const CATEGORY = {
   '': 'number',
   '%': 'percentage',
 };
-const categoryOf = (unit) => CATEGORY[unit] ?? 'length';
+// (a unit to a power, px^2, is a step on the way: a type of its own)
+const categoryOf = (unit) => CATEGORY[unit] ?? (unit.includes('^') ? unit : 'length');
 
 const CONSTANTS = { __proto__: null, e: Math.E, pi: Math.PI, infinity: Infinity, '-infinity': -Infinity, nan: NaN };
 
@@ -352,12 +353,32 @@ function multiply(a, b) {
   if (k !== null) return scale(a, k);
   const j = numberOf(a);
   if (j !== null) return scale(b, j);
-  throw INVALID;
+  return typed(a, b, 1);
 }
 function divide(a, b) {
   const k = numberOf(b);
-  if (k === null) throw INVALID;
-  return scale(a, 1 / k);
+  if (k !== null) return scale(a, 1 / k);
+  return typed(a, b, -1);
+}
+
+// A product or quotient of two typed values (CSS Values 4, 10.9): of one
+// comparable unit, its powers add up (10px / 2px is 5, 1px * 1px / 1px
+// 1px); others are not resolved here (calc(2em / 1em) stays as written).
+const powerOf = (unit) => {
+  const at = unit.indexOf('^');
+  return at === -1 ? [unit, 1] : [unit.slice(0, at), Number(unit.slice(at + 1))];
+};
+function typed(a, b, sign) {
+  const x = resolved(a);
+  const y = resolved(b);
+  if (!x || !y) throw UNREAD;
+  const [base, p] = powerOf(x.unit);
+  const [other, q] = powerOf(y.unit);
+  if (base !== other || !COMPARABLE.has(base)) throw UNREAD;
+  const power = p + sign * q;
+  const v = sign === 1 ? x.v * y.v : x.v / y.v;
+  if (power === 0) return single('', v);
+  return single(power === 1 ? base : `${base}^${power}`, v);
 }
 
 // To 6 significant digits; infinity and NaN as CSS constants.

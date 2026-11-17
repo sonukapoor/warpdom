@@ -232,6 +232,13 @@ parity(
     'width: min(1px, 1s)',
     'width: calc(min(1px, 1em) + 1s)',
     'width: min(10%, 1px)',
+    'width: calc(10px / 2px * 1px)',
+    'width: calc(1px * 1px / 1px)',
+    'z-index: calc(4px / 2px)',
+    'line-height: calc(2em / 1em)',
+    'width: calc(1px * 1px)',
+    'rotate: calc(1turn / 1deg * 1deg)',
+    'width: calc(1px + 2px',
     'opacity: sqrt(4, 9)',
     'opacity: pow(2)',
     'opacity: sqrt(4)',
@@ -289,3 +296,22 @@ test('jsdom 31: an escaped CR LF in a string', () => {
   assert.equal(canonical31('content', '"a\\\nb"'), '"ab"');
   assert.equal(canonical31('content', '"a\r\nb"'), null);
 });
+
+// A clip that does not read leaves the one before it; the end closes
+// rect() (#325 review).
+parity(
+  'jsdom 31: malformed clip after a valid one',
+  (w) =>
+    [
+      'clip: rect(1px 2px 3px 4px); clip: rect(1px',
+      'clip: auto; clip: rect(1px, 2px, 3px, 4px',
+      'clip: auto; clip: rect(1px 2px 3px 4px))',
+      'clip: auto; clip: "x',
+      'clip: auto; clip: rect(1px 2px 3px [)',
+    ].map((text) => {
+      const e = w.document.createElement('div');
+      e.setAttribute('style', text);
+      return e.style.cssText;
+    }),
+  { jsdom: 31 },
+);

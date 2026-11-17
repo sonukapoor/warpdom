@@ -7528,4 +7528,9 @@ duration and the name is the timeline (spin 1s auto is 1s spin), a
 default fill mode or auto duration kept when the name is that keyword
 (1s none forwards, auto auto). Not modeled: jsdom 31 reads the parts by
 its grammar, so spin 1s auto auto is auto 1s spin (1s the delay); here
-the first time is the duration.
+the first time is the duration. Fifth round: a clip that does not read is
+invalid (it replaced the valid one before it), the end closes a function
+or string left open (rect(1px, 2px, 3px, 4px is valid), products and
+quotients of typed values resolved for one comparable unit (10px / 2px
+is 5, 1px * 1px / 1px is 1px); others stay as written, where jsdom 31
+reorders them (calc(100% / 2px * 1px) is calc(100% * 1px / 2px) there).

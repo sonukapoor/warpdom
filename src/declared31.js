@@ -15,7 +15,7 @@
 // - colors as declared colors are (rgb(), named colors in lowercase);
 // - math functions simplified (calc31.js).
 // A value whose grammar is not read here stays as it is.
-import { traceValue, readEscapes, keywordsOf, tokenizeValue } from './css-values.js';
+import { traceValue, readEscapes, keywordsOf, tokenizeValue, hasVarFunction } from './css-values.js';
 import { resolveColor } from './colors.js';
 import { TYPE_SYNTAX } from './css-grammar.js';
 import { simplifyMath } from './calc31.js';
@@ -209,7 +209,9 @@ function backgroundSize(tokens, text) {
 // (its grammar's <top> and the others are defined in prose).
 function clip(value) {
   const tokens = tokenizeValue(value);
-  if (tokens === null || tokens.length !== 1) return tokens === null ? value : null;
+  // (a value that does not read is invalid, but for var(), kept as written)
+  if (tokens === null) return hasVarFunction(value) ? value : null;
+  if (tokens.length !== 1) return null;
   const [tok] = tokens;
   if (tok.t === 'ident' && (tok.v === 'auto' || CSS_WIDE.test(tok.v))) return tok.v;
   if (tok.t !== 'function' || tok.name !== 'rect') return null;
