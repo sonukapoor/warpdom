@@ -528,3 +528,24 @@ test('jsdom 31: a color-mix() of many weighted colors is written in linear time'
   assert.ok(e.style.color.startsWith('color-mix(in srgb, blue 2%, red 1%'));
   assert.ok(performance.now() - start < 2000);
 });
+
+// The background shorthand reads a color function it cannot resolve alone
+// as the layer's color in jsdom 27 to 30 too, as those versions do
+// (#326 review; lab() with a percentage is left out: jsdom 30 drops it).
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `background: color functions as the layer's color (jsdom ${jsdom})`,
+    (w) =>
+      [
+        'oklch(0.5 0.1 120)',
+        'color(srgb 1 0 0)',
+        'color-mix(in srgb, red, blue)',
+        'light-dark(red, blue)',
+        'url(a.png) color-mix(in srgb, red, blue)',
+      ].map((value) => {
+        const e = w.document.createElement('div');
+        e.style.background = value;
+        return [value, e.style.background, e.style.backgroundColor];
+      }),
+    { jsdom },
+  );
