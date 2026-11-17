@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parity } from './parity.js';
 import { createWindow } from '../src/node.js';
+import { canonical31 } from '../src/declared31.js';
 
 // Each 'property: value' set through setProperty, then read back, and the
 // block's cssText.
@@ -250,6 +251,9 @@ parity(
     'animation: 1s normal normal',
     'animation: 1s running running',
     'animation: 1s none none',
+    'animation: spin auto',
+    'animation: auto 1s spin',
+    'animation: auto',
     'font-family: "a\\\\b c"',
     'content: "a\\\\b"',
   ]),
@@ -264,7 +268,20 @@ parity(
     const e = w.document.createElement('div');
     e.style.setProperty('font-weight', '1001.1');
     e.style.setProperty('font-weight', '123.4567');
-    return e.style.fontWeight;
+    const first = e.style.fontWeight;
+    e.style.setProperty('font-weight', '999.9999');
+    e.style.setProperty('font-weight', '500');
+    e.style.setProperty('font-weight', '1000.0001');
+    return [first, e.style.fontWeight];
   },
   { jsdom: 31 },
 );
+
+// An escaped CR LF in a string is one line continuation; a raw line break
+// makes a bad string (CSS Syntax 3; #325 review). setProperty reads CR LF
+// as LF before this, so the module is checked directly.
+test('jsdom 31: an escaped CR LF in a string', () => {
+  assert.equal(canonical31('content', '"a\\\r\nb"'), '"ab"');
+  assert.equal(canonical31('content', '"a\\\nb"'), '"ab"');
+  assert.equal(canonical31('content', '"a\r\nb"'), null);
+});

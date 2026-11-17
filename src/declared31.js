@@ -139,8 +139,8 @@ function transition(tokens, text) {
 }
 
 // An animation: duration, easing, delay, iteration count, direction, fill
-// mode, play state and name, each left out at its initial value (ease,
-// 0s, 1, normal, none, running, none; the duration is auto), none when
+// mode, play state and name, each left out at its initial value (auto,
+// ease, 0s, 1, normal, none, running, none), none when
 // every one is. Each keyword fills its part once, a second one is the
 // name, and the part is then kept even at its initial value, so that the
 // name reads back as one (1s ease ease, 1s 1 infinite, 1s normal normal).
@@ -161,7 +161,8 @@ function animation(tokens, text) {
   let state = null;
   let name = null;
   for (const tok of tokens) {
-    if (isTime(tok)) {
+    // (auto is a duration, the initial one)
+    if (isTime(tok) || (duration === null && tok.t === 'ident' && tok.v === 'auto')) {
       if (duration === null) duration = tok;
       else delay = tok;
     } else if (easing === null && isEasing(tok)) easing = tok;
@@ -176,7 +177,9 @@ function animation(tokens, text) {
   const clashes = (test) => named && test(name);
   const parts = [];
   const hasDelay = delay !== null && delay.v !== 0;
-  if (duration !== null || hasDelay) parts.push(duration === null ? '0s' : component(duration, text));
+  const autoDuration = duration !== null && duration.t === 'ident';
+  if ((duration !== null && !autoDuration) || hasDelay)
+    parts.push(duration === null || autoDuration ? (duration?.v ?? '0s') : component(duration, text));
   if (easing !== null && (!(easing.t === 'ident' && easing.v === 'ease') || clashes(isEasing)))
     parts.push(component(easing, text));
   if (hasDelay) parts.push(component(delay, text));

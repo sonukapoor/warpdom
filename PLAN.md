@@ -7519,4 +7519,8 @@ values 153 ms, transform 49 ms. Second round: clamp() of two types
 invalid and kept typed, counters with a math function as their integer,
 each animation and transition keyword filling its part once, the part
 kept at its initial value when the name or property is that keyword
-(1s infinite infinite, 1s 1 infinite, 1s normal normal).
+(1s infinite infinite, 1s 1 infinite, 1s normal normal). Third round:
+auto as an animation duration (spin auto is spin), an escaped CR LF in
+a string as one continuation, the trace cache by shape off where the
+trace checks a numeric bound (font-weight; bounds inside colors do not
+count): box-shadow 150 ms, transform 48 ms.

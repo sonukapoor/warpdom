@@ -57,7 +57,10 @@ function tokenize(text) {
         let broken = false;
         while (end < n && text[end] !== c) {
           if (text[end] === '\n' || text[end] === '\r' || text[end] === '\f') broken = true;
-          end += text[end] === '\\' ? 2 : 1;
+          if (text[end] !== '\\') end++;
+          // (an escaped CR LF is one line continuation)
+          else if (text[end + 1] === '\r' && text[end + 2] === '\n') end += 3;
+          else end += 2;
         }
         // (tracing: a string the end closes is one; a line break makes it a
         // bad string)
@@ -1043,31 +1046,32 @@ function shapeOf(value) {
 }
 
 // Does a grammar reach a range bound other than 0 and ±∞?
-function hasFiniteBound(node, seen = new Set()) {
+function hasFiniteBound(node, seen = new Set(), leaves = null) {
   if (!node) return false;
   switch (node.k) {
     case 'type': {
+      if (leaves !== null && leaves.has(node.name)) return false;
       if (node.range && node.range.some((b) => b !== 0 && Number.isFinite(b))) return true;
       if (seen.has(node.name)) return false;
       seen.add(node.name);
-      return hasFiniteBound(typeNode(node.name), seen);
+      return hasFiniteBound(typeNode(node.name), seen, leaves);
     }
     case 'prop': {
       if (seen.has("'" + node.name)) return false;
       seen.add("'" + node.name);
-      return hasFiniteBound(propertyNode(node.name), seen);
+      return hasFiniteBound(propertyNode(node.name), seen, leaves);
     }
     case 'fn':
     case 'block':
-      return hasFiniteBound(node.body, seen);
+      return hasFiniteBound(node.body, seen, leaves);
     case 'rep':
     case 'required':
-      return hasFiniteBound(node.node, seen);
+      return hasFiniteBound(node.node, seen, leaves);
     case 'seq':
     case 'one':
     case 'any':
     case 'all':
-      return node.items.some((item) => hasFiniteBound(item, seen));
+      return node.items.some((item) => hasFiniteBound(item, seen, leaves));
     default:
       return false;
   }
@@ -1209,10 +1213,10 @@ export function traceValue(name, value) {
     if (badString) return false;
     if (!tokens || tokens.length === 0 || hasVar(tokens)) return null;
     // (values that differ only in their numbers trace alike: the labels by
-    // the value's shape, as isValidValue caches validity; a numeric bound
-    // changes whether a value is valid, not how it is read, and validity
-    // is checked after this)
-    const shape = value.includes('\\') ? null : shapeOf(value);
+    // the value's shape, as isValidValue caches validity, unless a bound
+    // the trace checks can tell them apart: font-weight's [1,1000]; one
+    // inside a color, which the trace takes whole, cannot)
+    const shape = value.includes('\\') || readsBound(name) ? null : shapeOf(value);
     let byShape = null;
     if (shape !== null) {
       byShape = traceShapes.get(name);
@@ -1247,6 +1251,15 @@ export function traceValue(name, value) {
   }
 }
 
+// Does tracing the property's values check a numeric bound other than 0
+// and infinity (colors are leaves to it)?
+const COLOR_LEAVES = new Set(['color', 'color-base', 'named-color', 'system-color']);
+const boundsRead = new Map();
+function readsBound(name) {
+  let out = boundsRead.get(name);
+  if (out === undefined) boundsRead.set(name, (out = hasFiniteBound(propertyNode(name), new Set(), COLOR_LEAVES)));
+  return out;
+}
 const traceShapes = new Map(); // name -> shape -> labels | false | null
 // A trace's labels, token by token in document order (into a function's
 // arguments and a block's items after the token itself).
