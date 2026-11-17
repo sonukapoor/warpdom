@@ -20,7 +20,7 @@
 // not read here (relative colors: rgb(from red r g b)). write writes a
 // token in canonical form (declared31.js).
 import { resolveColor } from './colors.js';
-import { isMathFunction } from './css-values.js';
+import { isMathFunction, hasVarFunction } from './css-values.js';
 
 // Set while declared31.js writes again a value it wrote itself: a negative
 // color-mix() remainder it generated is then kept (fresh input with one is
@@ -53,7 +53,8 @@ function urlEnd(value, from) {
   return Math.min(i + 1, value.length);
 }
 export function present31(value) {
-  if (!value.includes('color-mix(')) return value;
+  // (a value with var() is kept as written: nothing in it was filled in)
+  if (!value.includes('color-mix(') || hasVarFunction(value)) return value;
   let out = '';
   let depth = 0; // parentheses open inside color-mix() functions
   for (let i = 0; i < value.length;) {

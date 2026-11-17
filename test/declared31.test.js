@@ -411,6 +411,8 @@ parity(
     'color: rgb(300 -20 0 / none)',
     'color: rgb(120% -5% 0% / none)',
     'color: color-mix(in srgb, red abs(-25%), blue)',
+    'color: color-mix(in srgb, red 12.3456789%, var(--c))',
+    'background: linear-gradient(color-mix(in srgb, red 12.3456789%, var(--c)), red)',
     'color: color-mix(in srgb, red round(25.4%, 1%), blue)',
     'background: linear-gradient(color-mix(in srgb, red 80%, blue 80%, green), black) repeat',
     'color: hsl(0 100% 50% / none)',

@@ -7603,5 +7603,5 @@ declare color-mix(in srgb, red calc(25%), blue) as red 25% and compute
 uncomputed (also on main). Later round: rounding when read is per
 declaration, never for custom properties, and only for percentages inside
 color-mix() (strings and url() skipped, a quoted URL's ")" and escapes
-included); the explicit weights are a Set
+included), and never in a value with var(), kept as written; the explicit weights are a Set
 (a mix of 4,000 weighted colors is declared in about 20 ms).
