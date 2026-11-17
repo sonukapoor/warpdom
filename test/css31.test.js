@@ -304,16 +304,15 @@ parity(
   { jsdom: 31 },
 );
 
-// A slash inside calc() is no radius separator (#322 review). jsdom 31
-// simplifies calc(1em / 2) to calc(0.5em), not modeled yet, so this one is
-// checked on warpdom alone: the vertical radius stays.
+// A slash inside calc() is no radius separator (#322 review): the
+// vertical radius stays (jsdom 31 simplifies calc(1em / 2) to calc(0.5em)).
 test('jsdom 31: a corner radius with a division in calc() keeps its vertical radius', () => {
   const w = createWindow({ jsdom: '31.0.1' });
   const el = w.document.createElement('div');
   el.setAttribute('style', 'border-top-left-radius: calc(1em / 2) 3px; corner-top-left-shape: bevel');
-  assert.equal(el.style.cssText, 'corner-top-left: calc(1em / 2) 3px bevel;');
+  assert.equal(el.style.cssText, 'corner-top-left: calc(0.5em) 3px bevel;');
   el.setAttribute('style', 'corner-top-left: calc(1em / 2) 3px');
-  assert.equal(el.style.borderTopLeftRadius, 'calc(1em / 2) 3px');
+  assert.equal(el.style.borderTopLeftRadius, 'calc(0.5em) 3px');
 });
 
 // A longhand with var() of its own: no shorthand is written over it (CSSOM).

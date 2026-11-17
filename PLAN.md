@@ -7300,7 +7300,8 @@ test can observe them (initial font-family `monospace`, `outline: none`
 read as `medium`, a bad url() emptying its block), as for every earlier
 version; list the ones that differ from browsers in docs/differences.md.
 Order (one PR each, foundational first): A; D1/D2 (units, var()); D3 and
-the root color-scheme; B; C; E1/E4/E5/E6; D3b (colors in values of more
+the root color-scheme; B (B1 components, then B2 gradients and the
+rest, 2026-11-16); C; E1/E4/E5/E6; D3b (colors in values of more
 components, 2026-11-16), D4/D5 and shadow scoping; F.
 `NEWEST_MODELED_JSDOM` moves to 31 only when all parts are in.
 
@@ -7460,3 +7461,81 @@ Review round (#324): an alpha whose byte is 255 is opaque (rgba(1, 2, 3,
 0.999) is rgb(1, 2, 3), declared too); an inherited auto or currentcolor
 given by var() (--a: auto; caret-color: var(--a)) is the keyword, read
 after substitution; darkScheme31 and mix31 read without temporary arrays.
+Merged as #324 (2026-11-16).
+
+## 2026-11-16: jsdom 31, CSS part B1: declared values in canonical form (branch feat/269-jsdom31-declared, #269)
+
+With the jsdom 31 surface, black box against 31.0.1, a declared value is
+written as jsdom 31 writes it (declared31.js), read against the
+property's grammar (css-values.js traceValue: each token labeled with
+what the grammar reads it as; a 0 that could be a number or a length is a
+number, each part as long as it can be):
+- numbers to 6 significant digits (.5 is 0.5, 1234567 1234570), units in
+  lowercase, a 0 read as a length 0px and as an angle 0deg; keywords,
+  predefined counter styles and function names in lowercase (translateX
+  as specified), other identifiers with escapes read (F\4FO is FOO);
+  strings in double quotes (the end closes one; a line break in one makes
+  the declaration invalid), url() quoted; a comma and one space, a /
+  between spaces;
+- family names as identifiers when each word is one and the first is no
+  generic family ("Helvetica Neue" is Helvetica Neue; serif x is invalid,
+  emoji x and fangsong x are names); font keeps a family given twice;
+- per property: shadows color first without currentcolor and trailing
+  0 blur and spread, inset last; transition and animation in canonical
+  order without initial values (all, none when every one is);
+  background-size of one value with auto; translate, scale, transform-
+  origin and object-position (horizontal keyword first, one value with
+  center), counters with their integers, grid lines with omitted ends,
+  clip's rect(), aspect-ratio with auto first and / 1;
+- math functions simplified as CSS Values 4 says (calc31.js): canonical
+  units, terms added up and sorted, products by numbers, min(), max() and
+  clamp() of comparable values (px, deg, s, hz, dppx, numbers; not % or
+  em) resolved or reduced, round(), mod(), rem(), abs(), sign(); a math
+  function of another type or malformed is invalid (width: calc(0)).
+Against jsdom 31.0.1: 114 of the default parity tests differ (132 on
+main). Left for B2: gradients (default direction, shape and position
+left out; to bottom right is to right bottom), declared color-mix() with
+every percentage, color-scheme in canonical order, other color functions
+(lab(50% 20 30) is lab(50 20 30)), x default as a family name (warpdom's
+grammar rejects default there), an empty string as animation-name.
+Speed (scratchpad benchdecl, node 22.17.1, 5 interleaved runs, medians):
+a value first seen in the 31 profile is now read against its grammar
+(labels cached by the value's shape, matches remembered within a trace):
+20,000 new box-shadow values 132 ms on main, 164 ms here; transform 26 and
+53 ms; repeated values (cache hits, six properties, 120,000 sets) 28.3
+and 29.4 ms (the stored values are the longer canonical ones). The 30
+profile is unchanged. Cold load 28.4 ms on main, 29.2 ms here (two
+modules, declared31.js and calc31.js).
+Review round (#325): scale and an iteration count with a math function
+(scale: calc(2) threw), min() and max() of two types invalid also inside
+a sum (min(1px, 1s)), number functions with their argument counts
+(sqrt(4, 9) invalid), an easing keyword as the animation name or the
+transition property kept readable (1s ease ease; the property last),
+clip's CSS-wide keywords, family names not passed through 30's string
+rules again (a backslash stayed), a trace that does not match not cached
+by shape (font-weight: 1001.1 then 123.4567); declared31.js fails open.
+Against jsdom 31.0.1 now 112 (132 on main); 20,000 new box-shadow
+values 153 ms, transform 49 ms. Second round: clamp() of two types
+invalid and kept typed, counters with a math function as their integer,
+each animation and transition keyword filling its part once, the part
+kept at its initial value when the name or property is that keyword
+(1s infinite infinite, 1s 1 infinite, 1s normal normal). Third round:
+auto as an animation duration (spin auto is spin), an escaped CR LF in
+a string as one continuation, the trace cache by shape off where the
+trace checks a numeric bound (font-weight; bounds inside colors do not
+count): box-shadow 150 ms, transform 48 ms. Fourth round: auto after the
+duration and the name is the timeline (spin 1s auto is 1s spin), a
+default fill mode or auto duration kept when the name is that keyword
+(1s none forwards, auto auto). Not modeled: jsdom 31 reads the parts by
+its grammar, so spin 1s auto auto is auto 1s spin (1s the delay); here
+the first time is the duration. Fifth round: a clip that does not read is
+invalid (it replaced the valid one before it), the end closes a function
+or string left open (rect(1px, 2px, 3px, 4px is valid), products and
+quotients of typed values resolved for one comparable unit (10px / 2px
+is 5, 1px * 1px / 1px is 1px); others stay as written, where jsdom 31
+reorders them (calc(100% / 2px * 1px) is calc(100% * 1px / 2px) there). Sixth round: percentages
+in a calculation go with lengths only (calc(10% + 1deg) is invalid), and
+clip's edges are lengths only (no 1deg, no calc(10%)). Seventh round: a unit
+CSS does not have makes a calculation invalid (calc(1foo)), NaN wins in
+min() and max() in any order, a clip with var() or env() anywhere is
+kept as written.
