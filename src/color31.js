@@ -38,6 +38,20 @@ export function rereadColors(on) {
 // Only percentages inside a color-mix() function are rounded: strings and
 // url() tokens are skipped (callers leave custom properties alone).
 const NUMBER_PERCENT = /^-?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?%/i;
+// The index after the url() whose contents start at from: past a quoted
+// URL (its escapes and any ')' in it) or an unquoted one (its escapes).
+function urlEnd(value, from) {
+  let i = from;
+  while (i < value.length && /\s/.test(value[i])) i++;
+  const q = value[i];
+  if (q === '"' || q === "'") {
+    i++;
+    while (i < value.length && value[i] !== q) i += value[i] === '\\' ? 2 : 1;
+    i++;
+  }
+  while (i < value.length && value[i] !== ')') i += value[i] === '\\' ? 2 : 1;
+  return Math.min(i + 1, value.length);
+}
 export function present31(value) {
   if (!value.includes('color-mix(')) return value;
   let out = '';
@@ -50,8 +64,7 @@ export function present31(value) {
       out += value.slice(i, j + 1);
       i = j + 1;
     } else if (/^url\(/i.test(value.slice(i, i + 4)) && !/[\w-]/.test(value[i - 1] ?? '')) {
-      const j = value.indexOf(')', i);
-      const end = j === -1 ? value.length : j + 1;
+      const end = urlEnd(value, i + 4);
       out += value.slice(i, end);
       i = end;
     } else if (/^color-mix\(/i.test(value.slice(i, i + 10)) && !/[\w-]/.test(value[i - 1] ?? '')) {
