@@ -7564,7 +7564,12 @@ With the jsdom 31 surface, black box against 31.0.1:
 - The background shorthand: a size of one value gets auto (/ 20px is
   20px auto); text or border-area as a layer's only box, or before the
   other box, is the clip with a border-box origin, written alone;
-  padding-box padding-box is written once.
+  padding-box padding-box is written once; a color function warpdom does
+  not resolve alone (color-mix(), lab(), light-dark(), ...) is the layer's
+  color (it was dropped, background: none; also on main). Found, not
+  changed (1.0 range, also on main): jsdom 27 to 29 write lab(50% 20 30)
+  in background as lab(50 20 30), and jsdom 30 drops it from background
+  (url("a.png") alone); warpdom's 27 to 30 profiles keep it as written.
 Not modeled: warpdom computes color-mix() from the declared text, and
 jsdom 31 declares #0000ff80 in a mix as rgba(0, 0, 255, 0.5), so the
 computed mix uses alpha 0.5 where jsdom 31 uses 128/255 (0.75 against

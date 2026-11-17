@@ -427,6 +427,10 @@ parity(
   (w) =>
     [
       'background: REPEAT',
+      'background: color-mix(in srgb, red 0%, blue, green, white)',
+      'background: url(a.png) color-mix(in srgb, red 80%, blue 80%, green)',
+      'background: url(a.png) lab(50% 20 30)',
+      'background: light-dark(red, blue)',
       'background: SCROLL',
       'background: url(a.png) text',
       'background: text border-box',

@@ -244,6 +244,11 @@ const LEGACY_FONT_SIZES = new Set([
   'smaller',
 ]);
 const NAMED = new Set([...NAMED_COLORS, 'transparent', 'currentcolor']);
+// A background color: one resolveColor reads, or a color function it
+// cannot resolve alone (color-mix() needs the current color; lab() and
+// the others are kept as declared), as the background shorthand reads it.
+const UNRESOLVED_COLOR = /^(?:color-mix|lab|lch|oklab|oklch|color|light-dark|contrast-color)\(/i;
+const isColorToken = (token) => UNRESOLVED_COLOR.test(token) || resolveColor(token) !== null;
 // The CSS 2 system colors, the ones cssstyle before 4.4 knows.
 const LEGACY_SYSTEM_COLORS = new Set([
   'activeborder',
@@ -558,7 +563,7 @@ function backgroundLayers(value) {
       if (
         n === layers.length - 1 &&
         out.color === null &&
-        (lower === 'currentcolor' || lower === 'transparent' || resolveColor(token) !== null)
+        (lower === 'currentcolor' || lower === 'transparent' || isColorToken(token))
       ) {
         out.color = token;
         i++;
@@ -616,7 +621,7 @@ export function backgroundComponents(value) {
         (POSITION_KEYWORDS.has(tokens[end].toLowerCase()) || isLength(tokens[end]))
       )
         end++;
-    } else if (lower === 'currentcolor' || resolveColor(token) !== null) key = 'background-color';
+    } else if (lower === 'currentcolor' || isColorToken(token)) key = 'background-color';
     if (key === null || out[key] !== null) return null;
     out[key] = tokens.slice(i, end).join(' ');
     i = end;
@@ -735,9 +740,7 @@ function expandShorthand(name, value, tokenVars) {
     if (!layers) {
       // The color, from the final layer; the other longhands reset.
       const parts = topLevelCommaSplit(value);
-      const color = words(parts[parts.length - 1]).find(
-        (w) => w.toLowerCase() === 'currentcolor' || resolveColor(w) !== null,
-      );
+      const color = words(parts[parts.length - 1]).find((w) => w.toLowerCase() === 'currentcolor' || isColorToken(w));
       return longhands.map((l) => [l, l === 'background-color' ? (color ?? initialOf(l)) : initialOf(l)]);
     }
     const list = {
