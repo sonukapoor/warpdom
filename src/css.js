@@ -55,6 +55,7 @@ import {
   writeBox,
 } from './box-declarations.js';
 import { set31, remove31, value31, priority31, serialize31, dropped31, shorthand31 } from './css31.js';
+import { canonical31 } from './declared31.js';
 
 // backgroundColor -> background-color, webkitAnimation/WebkitAnimation ->
 // -webkit-animation, cssFloat -> float; dashed names map to themselves.
@@ -365,6 +366,9 @@ let urlStyle = 'spec';
 // background reads the case itself (NONE sets the initial values:
 // backgroundValue); a custom property keeps its value as written.
 let identsInLowercase = false;
+// jsdom 31 (set by declaredValue): declared31.js has written family names
+// and clip already.
+let values31 = false;
 // An escape's hex digits are matched once (captured in a lookahead, then
 // taken whole), so a run of escapes can't be split up again on failure
 // (exponential backtracking; #278 review); a CR LF after them is one
@@ -1320,6 +1324,11 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
     identsInLowercase = surface !== null && surface.key.startsWith('cssstyle5');
     if (surface === null || !surface.key.startsWith('cssstyle')) urlStyle = 'spec';
     else urlStyle = surface.key.startsWith('cssstyle6') ? 'quotes' : 'written';
+    const cssom31 = surface !== null && surface.cssom31 === true;
+    values31 = cssom31;
+    // (the value as declared31.js wrote it before the rules below: written
+    // again only when they changed it)
+    let canonical = null;
     if (mode === 'page') out = pageDescriptorValue(name, value);
     else if (surface !== null && surface.extras.has(name))
       out = name === 'azimuth' ? azimuthValue(value, surface) : value;
@@ -1329,9 +1338,13 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
     else if (name === 'flex' && isLegacyMode(mode) && /^initial$/i.test(value)) out = '0 1 auto';
     else if (name === 'flex' && isLegacyFlex(surface)) out = legacyFlexValue(value, mode, surface);
     else {
-      let written = isSpecMode(mode) ? identValue(name, value) : value;
+      // (jsdom 31: read in canonical form first, so escapes, quotes and
+      // spacing are its own before the rules below)
+      let written = cssom31 ? canonical31(name, value) : value;
+      canonical = written;
+      if (written !== null && isSpecMode(mode)) written = identValue(name, written);
       // (a quote is rare: most values skip this)
-      if (isSpecMode(mode) && (written.includes('"') || written.includes("'"))) {
+      if (written !== null && isSpecMode(mode) && (written.includes('"') || written.includes("'"))) {
         const strings = stringsWritten(name, written, surface);
         if (strings === STRING_FINAL) out = finalString;
         else written = strings;
@@ -1380,6 +1393,9 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
       )
         out = INVALID;
     }
+    // jsdom 31 writes each component in canonical form (declared31.js)
+    if (cssom31 && typeof out === 'string' && out !== '' && out !== canonical && !name.startsWith('--'))
+      out = canonical31(name, out) ?? INVALID;
     if (byValue.size >= 500) byValue.clear();
     byValue.set(value, out);
   }
@@ -2358,7 +2374,7 @@ function versionedValue(name, value, mode, surface) {
     if (background !== undefined) return background;
   }
   if (BORDER_SHORTHAND.has(name)) return borderValue(name, value, mode);
-  if (name === 'clip') return clipValue(value, mode);
+  if (name === 'clip') return values31 ? value : clipValue(value, mode);
   // jsdom 30 keeps outline as written (colors, numbers, order), a 0 as 0px
   // and a single number canonical (01px is 1px).
   if (name === 'outline' && mode === 'spec') {
@@ -3414,10 +3430,11 @@ function serializeDeclared(name, value, mode) {
     // jsdom 27 and later keep a value with var() as written: no quotes,
     // no generic-keyword check (#279 review).
     if (hasVarFunction(value)) return value;
+    if (values31 && !font) return value;
     genericFirst = false;
     // (font leaves out a family given twice after its first, as written;
     // #264 item 86)
-    const out = font ? serializeFont(canonicalNumbers(value), onceFamilies) : quotedFamilies(value);
+    const out = font ? serializeFont(canonicalNumbers(value), values31 ? null : onceFamilies) : quotedFamilies(value);
     return genericFirst ? INVALID : out;
   }
   // cssstyle before 4.3.1 (jsdom 20 to 25) keeps lengths, percentages and

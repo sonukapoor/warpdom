@@ -16,6 +16,7 @@
 // percentage, angle, time or resolution is, without checking their insides.
 import { PROPERTY_SYNTAX, TYPE_SYNTAX } from './css-grammar.js';
 import { resolveColor } from './colors.js';
+import { mathType } from './calc31.js';
 import { ALIASES } from './css-data.js';
 
 // --- tokens --------------------------------------------------------------------------------
@@ -53,35 +54,43 @@ function tokenize(text) {
       if (c === '"' || c === "'") {
         // An escaped quote doesn't end the string ("a\\"b"; #279 review).
         let end = i + 1;
-        while (end < n && text[end] !== c) end += text[end] === '\\' ? 2 : 1;
-        if (end >= n) return null;
-        out.push({ t: 'string' });
+        let broken = false;
+        while (end < n && text[end] !== c) {
+          if (text[end] === '\n' || text[end] === '\r' || text[end] === '\f') broken = true;
+          end += text[end] === '\\' ? 2 : 1;
+        }
+        // (tracing: a string the end closes is one; a line break makes it a
+        // bad string)
+        if (end >= n && !tracing) return null;
+        if (broken && tracing) badString = true;
+        out.push({ t: 'string', s: i, e: Math.min(end + 1, n), closed: end < n });
         i = end + 1;
         continue;
       }
       if (c === ',') {
-        out.push({ t: 'comma' });
+        out.push({ t: 'comma', s: i, e: i + 1 });
         i++;
         continue;
       }
       if (c === '(' || c === '[' || c === '{') {
-        i++;
+        const s = i++;
         const items = list(c === '(' ? ')' : c === '[' ? ']' : '}');
         if (!items) return null;
-        out.push({ t: 'block', open: c, items });
+        out.push({ t: 'block', open: c, items, s, e: i });
         continue;
       }
       if (c === '#') {
         const m = IDENT_CHARS.exec(text.slice(i + 1));
         if (m) {
-          out.push({ t: 'hash', v: m[0] });
+          out.push({ t: 'hash', v: m[0], s: i, e: i + 1 + m[0].length });
           i += 1 + m[0].length;
           continue;
         }
-        out.push({ t: 'delim', v: c });
+        out.push({ t: 'delim', v: c, s: i, e: i + 1 });
         i++;
         continue;
       }
+      const s = i;
       const rest = text.slice(i);
       const num = NUMBER.exec(rest);
       if (num && !(c === '-' && /^-[a-zA-Z_-]/.test(rest)) && !(c === '+' && /^\+[a-zA-Z]/.test(rest))) {
@@ -89,17 +98,17 @@ function tokenize(text) {
         const v = Number(num[0]);
         const int = /^[+-]?\d+$/.test(num[0]);
         if (text[i] === '%') {
-          out.push({ t: 'percentage', v });
           i++;
+          out.push({ t: 'percentage', v, s, e: i });
           continue;
         }
         const unit = IDENT_CHARS.exec(text.slice(i));
         if (unit && IDENT_START.test(text.slice(i, i + 2))) {
-          out.push({ t: 'dimension', v, unit: unit[0].toLowerCase() });
           i += unit[0].length;
+          out.push({ t: 'dimension', v, unit: unit[0].toLowerCase(), s, e: i });
           continue;
         }
-        out.push({ t: 'number', v, int });
+        out.push({ t: 'number', v, int, s, e: i });
         continue;
       }
       const m = IDENT_START.test(rest.slice(0, 2)) ? IDENT_CHARS.exec(rest) : null;
@@ -114,7 +123,7 @@ function tokenize(text) {
             // one url token here (CSS Syntax makes the quoted form a function).
             const url = readUrl(text, i, newlineSpaces);
             if (url === null) return null;
-            out.push({ t: 'url' });
+            out.push({ t: 'url', url: url.url, s, e: url.end });
             i = url.end;
             continue;
           }
@@ -131,13 +140,13 @@ function tokenize(text) {
           const args = list(')');
           if (inMath) math--;
           if (!args) return null;
-          out.push({ t: 'function', name: lower, args });
+          out.push({ t: 'function', name: lower, args, s, e: i });
           continue;
         }
-        out.push({ t: 'ident', v: name.toLowerCase() });
+        out.push({ t: 'ident', v: name.toLowerCase(), s, e: i });
         continue;
       }
-      out.push({ t: 'delim', v: c });
+      out.push({ t: 'delim', v: c, s, e: i + 1 });
       i++;
     }
     return close ? null : out;
@@ -706,6 +715,10 @@ function union(a, b) {
 }
 
 function match(node, tokens, pos) {
+  return memo === null ? matchNode(node, tokens, pos) : ends(node, tokens, pos);
+}
+
+function matchNode(node, tokens, pos) {
   switch (node.k) {
     case 'kw': {
       const tok = tokens[pos];
@@ -721,7 +734,10 @@ function match(node, tokens, pos) {
       return matchType(node, tokens, pos);
     case 'prop': {
       const p = propertyNode(node.name);
-      if (!p) throw UNKNOWN;
+      if (!p) {
+        if (lenient) return [];
+        throw UNKNOWN;
+      }
       return match(p, tokens, pos);
     }
     case 'fn': {
@@ -795,7 +811,10 @@ function matchType(node, tokens, pos) {
   const fn = name.endsWith('()') ? name.slice(0, -2).toLowerCase() : null;
   if (fn && tok.t === 'function' && tok.name !== fn) return [];
   const sub = typeNode(name);
-  if (!sub) throw UNKNOWN;
+  if (!sub) {
+    if (lenient) return [];
+    throw UNKNOWN;
+  }
   // Ranges on non-primitive types (<length-percentage [0,∞]>): checked on
   // the numeric tokens they consume.
   const ends = match(sub, tokens, pos);
@@ -1165,5 +1184,352 @@ export function validationReason(name, value) {
   } catch (error) {
     if (error === UNKNOWN) return 'unknown';
     throw error;
+  }
+}
+
+// --- tracing (jsdom 31's declared values, declared31.js) -----------------------------------
+// traceValue(name, value): the value's tokens, each labeled with what the
+// property's grammar reads it as (tok.as: 'kw', a primitive type's name,
+// 'color', 'url', 'lit', 'fn', 'any'), and a family name's first token
+// with the index after its last (tok.family); null when the value does not
+// match or the grammar reaches a rule not implemented here, false when it
+// is invalid where the grammar alone would not say so: a math function of
+// another type (calc(0) where a length is), a line break in a string.
+// The labels follow one way the value matches: each part as long as it
+// can be, as a parser reads (flex: 0 0 is a grow and a shrink).
+export function traceValue(name, value) {
+  newlineSpaces = name === 'background-image';
+  const node = propertyNode(name);
+  if (!node) return null;
+  try {
+    tracing = true;
+    badString = false;
+    const tokens = tokenize(value);
+    tracing = false;
+    if (badString) return false;
+    if (!tokens || tokens.length === 0 || hasVar(tokens)) return null;
+    // (values that differ only in their numbers trace alike: the labels by
+    // the value's shape, as isValidValue caches validity; a numeric bound
+    // changes whether a value is valid, not how it is read, and validity
+    // is checked after this)
+    const shape = value.includes('\\') ? null : shapeOf(value);
+    let byShape = null;
+    if (shape !== null) {
+      byShape = traceShapes.get(name);
+      if (byShape === undefined) traceShapes.set(name, (byShape = new Map()));
+      const labels = byShape.get(shape);
+      if (labels !== undefined) {
+        if (labels === false || labels === null) return labels;
+        relabel(tokens, labels, 0);
+        return tokens;
+      }
+    }
+    lenient = true;
+    mathRefused = false;
+    memo = new Map();
+    let out;
+    if (trace(node, tokens, 0, tokens.length)) out = tokens;
+    else out = mathRefused ? false : null;
+    if (byShape !== null) {
+      if (byShape.size >= 1000) byShape.clear();
+      byShape.set(shape, out === tokens ? labelsOf(tokens, []) : out);
+    }
+    return out;
+  } catch (error) {
+    if (error === UNKNOWN) return null;
+    throw error;
+  } finally {
+    lenient = false;
+    tracing = false;
+    memo = null;
+  }
+}
+
+const traceShapes = new Map(); // name -> shape -> labels | false | null
+// A trace's labels, token by token in document order (into a function's
+// arguments and a block's items after the token itself).
+function labelsOf(tokens, out) {
+  for (const tok of tokens) {
+    out.push(tok.as, tok.family);
+    if (tok.t === 'function') labelsOf(tok.args, out);
+    else if (tok.t === 'block') labelsOf(tok.items, out);
+  }
+  return out;
+}
+function relabel(tokens, labels, at) {
+  for (const tok of tokens) {
+    if (labels[at] !== undefined) tok.as = labels[at];
+    if (labels[at + 1] !== undefined) tok.family = labels[at + 1];
+    at += 2;
+    if (tok.t === 'function') at = relabel(tok.args, labels, at);
+    else if (tok.t === 'block') at = relabel(tok.items, labels, at);
+  }
+  return at;
+}
+
+// Where a node can end, remembered for the trace (a trace asks again for
+// the parts of what it matched): tokens -> node -> ends by position.
+let memo = null;
+function ends(node, tokens, pos) {
+  let byNode = memo.get(tokens);
+  if (byNode === undefined) memo.set(tokens, (byNode = new Map()));
+  let byPos = byNode.get(node);
+  if (byPos === undefined) byNode.set(node, (byPos = []));
+  let out = byPos[pos];
+  if (out === undefined) byPos[pos] = out = matchNode(node, tokens, pos);
+  return out;
+}
+// Set while tracing: a string the end closes is read (CSS Syntax 3), and
+// badString notes a line break in one.
+let tracing = false;
+let badString = false;
+// Whether tracing refused a math function for its type (or as invalid).
+let mathRefused = false;
+// While tracing, a rule not implemented here matches nothing (the value
+// may still match another way), rather than accepting everything.
+let lenient = false;
+
+function trace(node, tokens, pos, end) {
+  switch (node.k) {
+    case 'kw':
+    case 'lit':
+      if (end !== pos + 1 || !ends(node, tokens, pos).includes(end)) return false;
+      tokens[pos].as = node.k;
+      return true;
+    case 'type':
+      return traceType(node, tokens, pos, end);
+    case 'prop': {
+      const p = propertyNode(node.name);
+      if (!p) throw UNKNOWN;
+      return trace(p, tokens, pos, end);
+    }
+    case 'fn':
+    case 'block': {
+      if (end !== pos + 1 || !ends(node, tokens, pos).includes(end)) return false;
+      const tok = tokens[pos];
+      tok.as = 'fn';
+      const inner = node.k === 'fn' ? tok.args : tok.items;
+      return node.body ? trace(node.body, inner, 0, inner.length) : true;
+    }
+    case 'seq':
+      return traceSeq(node.items, 0, tokens, pos, end);
+    case 'one': {
+      // A 0 that could be a <number> or a <length> is a <number> (CSS
+      // Values 4, 6.2): an alternative of numbers first.
+      const zero = end === pos + 1 && tokens[pos].t === 'number' && tokens[pos].v === 0;
+      const items = zero ? [...node.items].sort((a, b) => isNumberType(b) - isNumberType(a)) : node.items;
+      for (const item of items) if (ends(item, tokens, pos).includes(end) && trace(item, tokens, pos, end)) return true;
+      return false;
+    }
+    case 'any':
+    case 'all':
+      return traceUnordered(node, tokens, pos, end);
+    case 'rep':
+      return traceRepeat(node, tokens, pos, end);
+    case 'required':
+      return end > pos && trace(node.node, tokens, pos, end);
+    default:
+      throw UNKNOWN;
+  }
+}
+
+function traceType(node, tokens, pos, end) {
+  if (!ends(node, tokens, pos).includes(end)) return false;
+  const { name } = node;
+  const tok = tokens[pos];
+  if (PRIMITIVES[name] || ANY_ONE.has(name)) {
+    // (a math function: read as the type its result is of)
+    if (isMath(tok) && MATH_TYPES[name] !== undefined) {
+      const type = mathType(tok);
+      if (type !== undefined && type !== MATH_TYPES[name] && !(type === 'percentage' && name === 'length')) {
+        mathRefused = true;
+        return false;
+      }
+    }
+    tok.as = name;
+    return true;
+  }
+  if (name === 'color' || name === 'color-base' || name === 'named-color' || name === 'system-color') {
+    tok.as = 'color';
+    return true;
+  }
+  if (name === 'url') {
+    tok.as = 'url';
+    return true;
+  }
+  if (name === 'declaration-value' || name === 'any-value') {
+    for (let i = pos; i < end; i++) tokens[i].as = 'any';
+    return true;
+  }
+  const sub = typeNode(name);
+  if (!sub) throw UNKNOWN;
+  if (!trace(sub, tokens, pos, end)) return false;
+  if (name === 'font-family-name' || name === 'family-name') tok.family = end;
+  return true;
+}
+
+const isNumberType = (node) => Number(node.k === 'type' && (node.name === 'number' || node.name === 'integer'));
+
+const MATH_TYPES = {
+  __proto__: null,
+  number: 'number',
+  integer: 'number',
+  length: 'length',
+  percentage: 'percentage',
+  angle: 'angle',
+  time: 'time',
+  frequency: 'frequency',
+  resolution: 'resolution',
+  flex: 'flex',
+};
+
+function traceSeq(items, i, tokens, pos, end) {
+  if (i === items.length) return pos === end;
+  const item = items[i];
+  const found = ends(item, tokens, pos);
+  const elided =
+    item.k === 'lit' && item.v === ',' && (pos === 0 || pos === tokens.length || tokens[pos - 1]?.t === 'comma');
+  if (elided && !found.includes(pos)) found.unshift(pos);
+  for (let k = found.length - 1; k >= 0; k--) {
+    const p = found[k];
+    if (p > end) continue;
+    if (p === pos && elided && item.k === 'lit') {
+      if (traceSeq(items, i + 1, tokens, p, end)) return true;
+      continue;
+    }
+    if (trace(item, tokens, pos, p) && traceSeq(items, i + 1, tokens, p, end)) return true;
+  }
+  return false;
+}
+
+function traceUnordered(node, tokens, pos, end) {
+  const { items } = node;
+  const all = node.k === 'all';
+  const failed = new Set();
+  const go = (p, used, count) => {
+    if (p === end) {
+      if (!all) return count > 0;
+      for (let i = 0; i < items.length; i++)
+        if (!(used & (1 << i)) && !ends(items[i], tokens, p).includes(p)) return false;
+      return true;
+    }
+    const key = p * 65536 + used;
+    if (failed.has(key)) return false;
+    for (let i = 0; i < items.length; i++) {
+      if (used & (1 << i)) continue;
+      // (longest first, as a parser reads)
+      const found = ends(items[i], tokens, p);
+      for (let k = found.length - 1; k >= 0; k--) {
+        const e = found[k];
+        if (e === p || e > end) continue;
+        if (go(e, used | (1 << i), count + 1) && trace(items[i], tokens, p, e)) return true;
+      }
+    }
+    failed.add(key);
+    return false;
+  };
+  return go(pos, 0, 0);
+}
+
+function traceRepeat(node, tokens, pos, end) {
+  if (node.comma && node.min === 1 && node.max === Infinity) {
+    const inner = innerCommaList(node);
+    if (inner !== null) return traceRepeat(inner, tokens, pos, end);
+  }
+  const { min, max, comma } = node;
+  const failed = new Set();
+  const go = (count, p) => {
+    if (p === end && count >= min) return true;
+    if (count >= max) return false;
+    const key = Math.min(count, min) * 65536 + p;
+    if (max === Infinity && failed.has(key)) return false;
+    let start = p;
+    if (comma && count > 0) {
+      if (tokens[p]?.t !== 'comma') return false;
+      tokens[p].as = 'lit';
+      start = p + 1;
+    }
+    const found = ends(node.node, tokens, start);
+    for (let k = found.length - 1; k >= 0; k--) {
+      const e = found[k];
+      if (e > end || (e === start && count >= min)) continue;
+      if (go(count + 1, e) && trace(node.node, tokens, start, e)) return true;
+    }
+    if (max === Infinity) failed.add(key);
+    return false;
+  };
+  return go(0, pos);
+}
+
+// A value's component values (tokenize), or null when it does not read.
+export const tokenizeValue = (value) => tokenize(value);
+
+// An identifier's or string's text with its escapes read (CSS Syntax 3).
+export function readEscapes(text) {
+  if (!text.includes('\\')) return text;
+  let out = '';
+  for (let i = 0; i < text.length;) {
+    if (text[i] !== '\\') out += text[i++];
+    else if (i + 1 >= text.length) i++;
+    else if (text[i + 1] === '\n' || text[i + 1] === '\f') i += 2;
+    else if (text[i + 1] === '\r') i += text[i + 2] === '\n' ? 3 : 2;
+    else i = readEscape(text, i, (cp) => (out += cp));
+  }
+  return out;
+}
+
+// The keywords a property's grammar reaches (lowercase), and the
+// predefined counter styles where it reaches <counter-style-name> (CSS
+// Counter Styles 3, 9): jsdom 31 writes an identifier that is one in
+// lowercase, also where the grammar reads it as a name (animation-name:
+// NONE is none, list-style-type: Square square).
+const COUNTER_STYLES =
+  'decimal decimal-leading-zero arabic-indic armenian upper-armenian lower-armenian bengali cambodian khmer ' +
+  'cjk-decimal devanagari georgian gujarati gurmukhi hebrew kannada lao malayalam mongolian myanmar oriya ' +
+  'persian lower-roman upper-roman tamil telugu thai tibetan lower-alpha lower-latin upper-alpha upper-latin ' +
+  'lower-greek hiragana hiragana-iroha katakana katakana-iroha disc circle square disclosure-open ' +
+  'disclosure-closed cjk-earthly-branch cjk-heavenly-stem japanese-informal japanese-formal ' +
+  'korean-hangul-formal korean-hanja-informal korean-hanja-formal simp-chinese-informal simp-chinese-formal ' +
+  'trad-chinese-informal trad-chinese-formal ethiopic-numeric';
+const keywordSets = new Map();
+export function keywordsOf(name) {
+  let set = keywordSets.get(name);
+  if (set === undefined) {
+    set = new Set();
+    collectKeywords(propertyNode(name), set, new Set());
+    keywordSets.set(name, set);
+  }
+  return set;
+}
+function collectKeywords(node, set, seen) {
+  if (!node) return;
+  switch (node.k) {
+    case 'kw':
+      set.add(node.v);
+      return;
+    case 'type':
+      if (seen.has(node.name)) return;
+      seen.add(node.name);
+      if (node.name === 'counter-style-name') for (const style of COUNTER_STYLES.split(' ')) set.add(style);
+      collectKeywords(typeNode(node.name), set, seen);
+      return;
+    case 'prop':
+      if (seen.has("'" + node.name)) return;
+      seen.add("'" + node.name);
+      collectKeywords(propertyNode(node.name), set, seen);
+      return;
+    case 'fn':
+    case 'block':
+      collectKeywords(node.body, set, seen);
+      return;
+    case 'rep':
+    case 'required':
+      collectKeywords(node.node, set, seen);
+      return;
+    case 'seq':
+    case 'one':
+    case 'any':
+    case 'all':
+      for (const item of node.items) collectKeywords(item, set, seen);
   }
 }
