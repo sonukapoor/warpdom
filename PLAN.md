@@ -7900,3 +7900,29 @@ value token (1/**/00px) splits it in jsdom 31, whose text joins the
 pieces re-serialized ((min-width: 10px)) and does not match; warpdom
 reads it as two components (only through the CSSOM: a sheet drops its
 comments first).
+Merged as #329 (2026-11-18).
+
+## 2026-11-18: jsdom 31, CSS part E4b: @layer and @scope (branch feat/269-jsdom31-layers, #269)
+
+jsdom 31's cascade, black box on 31.0.1 (46 cases; cascade.js):
+- @layer (CSS Cascade 5): layers ordered by first appearance across the
+  sheets (blocks and statements, dotted names, anonymous layers apart; a
+  layer named only in a @media or @supports that does not apply is not
+  ordered); normal declarations: a layer's sublayers before its own
+  rules, the unlayered ones last; !important ones the other way round,
+  the style attribute's over them all. revert-layer rolls back to the
+  layers below (from the attribute: to the rules), then to the user agent
+  sheet.
+- @scope (CSS Cascade 6): a scoped selector without :scope or & has
+  :where(:scope) before it (& is :scope); it matches from a root (an
+  ancestor or the element matching the start; no start: the sheet's
+  element's parent), not at or past the limit; proximity (hops from the
+  nearest root) decides after specificity, an unscoped rule's being the
+  farthest.
+- Precedence everywhere, the logical pairs too: level, layer, specificity,
+  proximity, order (win31, beats31; the first winner is kept in an object
+  made once).
+Speed (e-bcas.mjs, 5 interleaved runs): the 31 profile 348.7 ms on main,
+351.0 ms here; the 30 profile 257.4 and 251.9 ms (noise).
+Against jsdom 31.0.1: 77 of the default parity tests differ (none of
+them uses layers or scopes; layers31.test.js does).

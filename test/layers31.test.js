@@ -1,0 +1,122 @@
+// jsdom 31's @layer and @scope in the cascade (cascade.js layerKeys,
+// scopedMatch, ruleWinner31), checked against jsdom 31.0.1.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { parity } from './parity.js';
+import { createWindow } from '../src/node.js';
+
+const HTML =
+  '<div class="a" id="a"><div class="b" id="b"><p id="p1">x</p><div class="a" id="a2"><p id="p2">y</p></div></div><p id="p3">z</p></div>' +
+  '<p id="p4">w</p><div id="t" class="c"><p>x</p></div>';
+const IDS = ['a', 'b', 'p1', 'a2', 'p2', 'p3', 'p4', 't'];
+// Each [css, style attribute of #t]: the color and margin-top of each element.
+const cases = (list) => (w) => {
+  const d = w.document;
+  return list.map(([css, attr]) => {
+    d.head.innerHTML = `<style>${css}</style>`;
+    d.body.innerHTML = HTML;
+    if (attr) d.getElementById('t').setAttribute('style', attr);
+    return [
+      css,
+      attr ?? '',
+      ...IDS.map((id) => {
+        const cs = w.getComputedStyle(d.getElementById(id));
+        return `${cs.color} ${cs.marginTop}`;
+      }),
+    ];
+  });
+};
+
+parity(
+  'jsdom 31: @layer: unlayered over layered, later layers over earlier, !important the other way round',
+  cases([
+    ['@layer a { #t { color: red } } div { color: blue }'],
+    ['@layer a { .c.c.c { color: red } } div { color: blue }'],
+    ['@layer a { #t { color: red !important } } div { color: blue !important }'],
+    ['@layer a, b; @layer b { div { color: red } } @layer a { #t { color: blue } }'],
+    ['@layer a, b; @layer b { div { color: red !important } } @layer a { div { color: blue !important } }'],
+    [
+      '@layer a { div { color: red !important } } @layer b { div { color: blue !important } } div { color: green !important }',
+    ],
+    ['@layer { div { color: red } } @layer { div { color: blue } }'],
+    ['@layer a { @layer x { div { color: red } } div { color: blue } }'],
+    ['@layer a.x { div { color: red } } @layer a { div { color: blue } }'],
+    ['@layer b { div { color: red } } @layer a { div { color: blue } } @layer b { #t { color: green } }'],
+    ['@layer a { div { color: red } } @layer b { div { color: blue } } @layer a { div { color: green } }'],
+    ['@layer b { div { color: red } } @layer a.x { div { color: blue } } @layer a { div { color: green } }'],
+    ['@layer a { @layer x { div { color: red } } } @layer b { @layer x { div { color: blue } } }'],
+    ['@layer a.x { div { color: red } } @layer a.y { div { color: blue } } @layer a.x { #t { color: green } }'],
+    ['@media print { @layer b {} } @layer a { div { color: red } } @layer b { div { color: blue } }'],
+    ['@layer a { #t { color: red !important } }', 'color: blue !important'],
+    ['@layer a { #t { color: red !important } }', 'color: blue'],
+    ['@layer { div { margin-top: 3px } } @layer { div { margin-block-start: 5px } }'],
+    ['@layer a { div { margin-block-start: 5px } } div { margin-top: 3px }'],
+  ]),
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: revert-layer rolls back to the layers below, then to the user agent sheet',
+  cases([
+    ['@layer a { div { color: red } } @layer b { div { color: revert-layer } }'],
+    ['@layer a { div { color: red } } div { color: revert-layer }'],
+    ['@layer a { div { color: red } } @layer b { div { color: revert-layer } } div { color: revert-layer }'],
+    ['@layer a { div { color: red } }', 'color: revert-layer'],
+    ['@layer a { p { margin-top: 5px } } p { margin-top: revert-layer }'],
+    ['@layer a { p { margin-top: 5px } } @layer b { p { margin-top: revert-layer } }'],
+    ['@layer a { p { margin-top: revert-layer } }'],
+  ]),
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: @scope: roots, limits, :scope and &, proximity after specificity',
+  cases([
+    ['@scope (.a) { p { color: red } }'],
+    ['@scope (.a) to (.b) { p { color: red } }'],
+    ['@scope (.a) to (.b) { :scope { color: red } .b { color: blue } }'],
+    ['@scope (.a) { :scope p { color: red } }'],
+    ['@scope (.a) { & p { color: red } }'],
+    ['@scope (.a) { .a p { color: red } }'],
+    ['@scope (.a) { p { color: red } } @scope (.b) { p { color: blue } }'],
+    ['@scope (.b) { p { color: blue } } @scope (.a) { p { color: red } }'],
+    ['@scope (.a) { p { color: red } } p { color: blue }'],
+    ['p { color: blue } @scope (.a) { p { color: red } }'],
+    ['#p1 { color: blue } @scope (.a) { p { color: red } }'],
+    ['@scope (.a) { p { color: red !important } } p { color: blue !important }'],
+    ['@scope (.a) { :scope > p { color: red } }'],
+    ['@scope (#a) to (:scope > .b) { p { color: red } }'],
+    ['@scope (.a, .b) { p { color: red } }'],
+    ['@media screen { @scope (.a) { p { color: red } } }'],
+    ['@scope (.a) { @media screen { p { color: red } } }'],
+    ['@scope (.a) { :scope { color: red } }'],
+    ['@scope { p { color: red } }'],
+    ['@layer x { @scope (.a) { p { color: red } } } p { color: blue }'],
+  ]),
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: a layer added through the CSSOM',
+  (w) => {
+    const d = w.document;
+    d.head.innerHTML = '<style>div { color: blue }</style>';
+    d.body.innerHTML = '<div id="t"></div>';
+    const out = [w.getComputedStyle(d.getElementById('t')).color];
+    d.styleSheets[0].insertRule('@layer a { #t { color: red } }', 0);
+    out.push(w.getComputedStyle(d.getElementById('t')).color);
+    d.styleSheets[0].deleteRule(1);
+    out.push(w.getComputedStyle(d.getElementById('t')).color);
+    return out;
+  },
+  { jsdom: 31 },
+);
+
+test('jsdom 30 does not apply @layer and @scope rules', () => {
+  const w = createWindow({ jsdom: '30.1.3' });
+  const d = w.document;
+  d.head.innerHTML = '<style>@layer a { #t { color: red } } @scope (div) { p { color: red } }</style>';
+  d.body.innerHTML = '<div id="t"><p></p></div>';
+  assert.equal(w.getComputedStyle(d.getElementById('t')).color, 'rgb(0, 0, 0)');
+  assert.equal(w.getComputedStyle(d.querySelector('p')).color, 'rgb(0, 0, 0)');
+});
