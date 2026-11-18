@@ -7886,3 +7886,8 @@ nothing at its top level (--x, a !important and --x, a)b are
 unsupported); in a condition only a final !important is allowed ((--x:
 a!b) is not); CSS.supports(condition) closes what is left open at the
 end ((display: grid is supported).
+Closer look after the fifth round: the depth limit skips an unquoted
+url()'s parentheses (one token; a sheet with url(((( was dropped).
+Found, not this part (main too): a string broken by a newline in a
+sheet (a { content: "x NEWLINE } b {} c {}) leaves jsdom 31 three rules,
+warpdom one (part C's recovery).
