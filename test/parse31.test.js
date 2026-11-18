@@ -116,6 +116,8 @@ parity(
     'color: \\72 ed',
     'color: r\\65 d',
     'width: 1p\\78',
+    'width: 1\\65 m',
+    'width: 1\\45 M',
     'display: \\62 lock',
     'font-family: \\61 b',
     'content: "\\61 b"',
