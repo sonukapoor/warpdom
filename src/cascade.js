@@ -54,6 +54,7 @@ import {
 import { substituteVars, tooManyTokens, trimEnds } from './var-substitution.js';
 import { uaDeclarations, uaDeclarations31, uaValue, uaRule, uaRuleOver, uaInOrder } from './ua-sheet.js';
 import { findSlot } from './slots.js';
+import { decodeEscapes } from './conditions31.js';
 import { flowOf, isLogical, isLogicalGroup, partnerOf } from './logical.js';
 import {
   documentStyleSheets,
@@ -223,8 +224,9 @@ function layerNamed(layers, parent, name) {
     return layers.length - 1;
   }
   let at = parent;
-  for (const part of name.split('.')) {
-    const key = part.trim();
+  // (escapes decoded: \61 is a; an escaped dot is part of a name)
+  for (const part of name.split(/(?<!\\)\./)) {
+    const key = decodeEscapes(part.trim());
     let id = layers[at].children.get(key);
     if (id === undefined) {
       layers.push(newLayer(at));
@@ -287,6 +289,13 @@ function scopedSelector(text) {
     })
     .join(', ');
 }
+// Whether the name after a : is scope, escapes decoded (:sc\6f pe).
+const NAME_AT =
+  /^-?(?:[a-zA-Z_]|\\[0-9a-fA-F]{1,6}[ \t\n\r\f]?|\\[^\n0-9a-fA-F])(?:[a-zA-Z0-9_-]|\\[0-9a-fA-F]{1,6}[ \t\n\r\f]?|\\[^\n0-9a-fA-F])*/;
+function isScopeToken(text, at) {
+  const m = NAME_AT.exec(text.slice(at, at + 64));
+  return m !== null && decodeEscapes(m[0]).toLowerCase() === 'scope';
+}
 // A selector with its & tokens as :scope, and whether it has & or :scope,
 // outside strings and attribute selectors ([data-v="&"] is no &).
 function scopeTokens(selector) {
@@ -315,7 +324,7 @@ function scopeTokens(selector) {
       out += ':scope';
       scoped = true;
     } else {
-      if (c === ':' && /^:scope(?![\w-])/i.test(selector.slice(i))) scoped = true;
+      if (c === ':' && isScopeToken(selector, i + 1)) scoped = true;
       out += c;
     }
   }
@@ -1263,13 +1272,14 @@ function copy31(to, from) {
   to.proximity = from.proximity;
   to.order = from.order;
 }
-// cut: 0, or the level (2 or 4) of a revert-layer being rolled back, and
-// below: the layer it rolls back from; only that level's rules of lower
-// layers are then looked at (none: level -1).
+// cut: 0, or the level of a revert-layer being rolled back (2 or 4: a
+// rule's, below: the layer it rolls back from; 3 or 5: the style
+// attribute's, to every layer of the rules); only those rules are then
+// looked at (none: level -1).
 function winner31(element, index, inlineMap, name, window, cut = 0, below = Infinity) {
   const lists = index.get(name);
   if (cut !== 0) {
-    const list = cut === 4 ? lists?.important : lists?.normal;
+    const list = cut >= 4 ? lists?.important : lists?.normal;
     if (list?.length && ruleWinner31(list, element, index.scoped, cut, below)) return win31Value;
     return won31(-1, 0, 0, Infinity, 0, undefined);
   }
@@ -1277,12 +1287,9 @@ function winner31(element, index, inlineMap, name, window, cut = 0, below = Infi
   const rule = ua.important === null ? undefined : uaRule(ua.important, element);
   if (rule !== undefined) return won31(6, 0, rule.specificity, Infinity, rule.order, rule.value);
   const inline = inlineMap?.get(name);
-  // (revert-layer in the attribute: the rules' value, of every layer)
-  if (inline?.important && !REVERT_LAYER.test(inline.value))
-    return won31(5, 0, 0, Infinity, inline.order, inline.value);
+  if (inline?.important) return won31(5, 0, 0, Infinity, inline.order, inline.value);
   if (lists?.important.length && ruleWinner31(lists.important, element, index.scoped, 4, Infinity)) return win31Value;
-  if (inline !== undefined && !inline.important && !REVERT_LAYER.test(inline.value))
-    return won31(3, 0, 0, Infinity, inline.order, inline.value);
+  if (inline !== undefined && !inline.important) return won31(3, 0, 0, Infinity, inline.order, inline.value);
   if (lists?.normal.length && ruleWinner31(lists.normal, element, index.scoped, 2, Infinity)) return win31Value;
   return userAgent31(element, name, window, ua);
 }
@@ -1351,9 +1358,13 @@ function cascade31(element, index, inlineMap, name, window) {
   // revert-layer in a rule that wins: the pair's winner among the layers
   // below (both names: margin-top: revert-layer rolls margin-block-start
   // back too), then the user agent sheet's (revert).
-  while ((win31.level === 2 || win31.level === 4) && REVERT_LAYER.test(value)) {
+  // (in the style attribute, the rules': the attribute's later declaration
+  // of the pair wins first, margin-block-start: 5px after margin-top:
+  // revert-layer stays)
+  while (win31.level >= 2 && win31.level <= 5 && REVERT_LAYER.test(value)) {
     const cut = win31.level;
-    value = pair31(element, index, inlineMap, name, partner, window, cut, win31.layer);
+    const below = cut === 2 || cut === 4 ? win31.layer : Infinity;
+    value = pair31(element, index, inlineMap, name, partner, window, cut, below);
     if (win31.level === -1) {
       won31(cut, 0, 0, Infinity, 0, undefined);
       value = 'revert';

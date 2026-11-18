@@ -7936,3 +7936,9 @@ revert-layer with margin-block-start in the same layer gives the layer
 below's margin-top), the winner of both names among the layers below
 found each round (pair31). Speed after the round: 340.4 ms on main,
 343.9 ms here (noise).
+Second round: the style attribute's revert-layer is a candidate of the
+pair like its other declarations (the attribute's later one wins first),
+then rolls both names back to the rules (to the !important rules from an
+!important one); layer names are read with their escapes decoded (\61 is
+a; an escaped dot is part of a name); an escaped :scope (:sc\6f pe) is
+:scope.

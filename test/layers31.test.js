@@ -161,3 +161,32 @@ parity(
   },
   { jsdom: 31 },
 );
+
+// Second review round (#330).
+parity(
+  "jsdom 31: the style attribute's revert-layer across a logical pair; escaped layer names and :scope",
+  (w) => {
+    const d = w.document;
+    const out = [];
+    for (const [css, attr] of [
+      ['div { margin-top: 3px }', 'margin-block-start: 5px; margin-top: revert-layer'],
+      ['div { margin-top: 3px }', 'margin-top: revert-layer; margin-block-start: 5px'],
+      ['div { margin-top: 3px !important }', 'margin-block-start: 5px !important; margin-top: revert-layer !important'],
+    ]) {
+      d.head.innerHTML = `<style>${css}</style>`;
+      d.body.innerHTML = `<div id="t" style="${attr}"></div>`;
+      out.push([attr, w.getComputedStyle(d.getElementById('t')).marginTop]);
+    }
+    for (const css of [
+      '@layer a { #t { color: red } } @layer \\61 { div { color: blue } }',
+      '@layer a\\.b { #t { color: red } } @layer a { @layer b { div { color: blue } } } @layer a.b { div { color: green } }',
+      '@scope (div) { :sc\\6f pe { color: red } }',
+    ]) {
+      d.head.innerHTML = `<style>${css}</style>`;
+      d.body.innerHTML = '<div id="t"></div>';
+      out.push([css, w.getComputedStyle(d.getElementById('t')).color]);
+    }
+    return out;
+  },
+  { jsdom: 31 },
+);
