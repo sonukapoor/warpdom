@@ -417,7 +417,8 @@ function value(name, text, discreteOk) {
   }
   const n = NUMBER.exec(text);
   if (n === null) return null;
-  const unit = text.slice(n[0].length).toLowerCase();
+  // (a unit's escapes decoded: 100\70 x is 100px)
+  const unit = decodeEscapes(text.slice(n[0].length)).toLowerCase();
   const num = Number(n[0]);
   if (type === 'length') {
     if (unit === '') return num === 0 ? { text: '0px', value: 0 } : null;

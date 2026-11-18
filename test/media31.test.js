@@ -655,3 +655,24 @@ test('jsdom 31: parentheses in comments, strings, escapes and unquoted url() do 
   });
   assert.deepEqual(counts, [2, 2, 2, 2, 2, 2, 2, 2, 0, 0]);
 });
+
+// Escaped units (#329, a closer look).
+parity(
+  'jsdom 31: escaped units in media features',
+  (w) => {
+    const d = w.document;
+    d.head.innerHTML = '<style>@media print {}</style>';
+    const rule = d.styleSheets[0].cssRules[0];
+    return [
+      '(min-width: 100\\70 x)',
+      '(min-width: 100p\\x)',
+      '(width: 64\\65 m)',
+      '(min-resolution: 1\\64 ppx)',
+      '(min-width: 1\\30 0px)',
+    ].map((q) => {
+      rule.media.mediaText = q;
+      return [q, rule.matches, rule.media.mediaText];
+    });
+  },
+  { jsdom: 31 },
+);

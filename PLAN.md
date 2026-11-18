@@ -7894,3 +7894,9 @@ warpdom one (part C's recovery).
 Sixth round: the depth limit finds a url() token with urlTokenEnd (css-
 values.js): url not part of a longer name (myurl( and #url( nest), any
 case, escapes skipped.
+Closer look after the sixth round: a unit's escapes are decoded in media
+features (100\70 x is 100px). Not modeled: a comment inside a feature's
+value token (1/**/00px) splits it in jsdom 31, whose text joins the
+pieces re-serialized ((min-width: 10px)) and does not match; warpdom
+reads it as two components (only through the CSSOM: a sheet drops its
+comments first).
