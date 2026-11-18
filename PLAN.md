@@ -7674,7 +7674,7 @@ for the parse errors jsdom 31 has; other profiles do not run it, and
 bench:hot has no style members. Cold load 29.6 ms on main, 30.1 ms here
 (parse31.js).
 Against jsdom 31.0.1: 98 of the default parity tests differ (108 on
-main).
+main; 96 after the review rounds).
 Review round (#327): VAR() is var() only for a property jsdom 31 knows
 (not-a-property: VAR(--x) is dropped); an empty custom property marks
 the declaration only when it is held (--x: red !important; --x:; keeps
@@ -7687,3 +7687,10 @@ with no backslash (style attribute parse 1.48 us here, 1.34 us on main,
 31 keeps a nested rule (CSS Nesting) in a style rule's block (.a {
 @media x { color: red } left: 1px }); warpdom drops it, keeping the
 declarations after it (main drops those too).
+Second review round (#327): a custom property's name is written as an
+identifier (--a\3a b is --a\:b, CSSOM's serialize an identifier); an
+unquoted url() left open is closed at the end, and a string left open
+loses a backslash left at its end before its quote ("a\ is "a");
+non-printable characters make an unquoted url() a bad url; an escaped
+CRLF in a string is one line break (the accessor path is not
+preprocessed); \- in a value stays escaped (font-family: \- is "-").

@@ -199,12 +199,14 @@ function url(text, start, i) {
         i++;
       }
     } else {
-      if (c === 34 || c === 39 || c === 40) bad = true;
+      // (a quote, a parenthesis or a non-printable character)
+      if (c === 34 || c === 39 || c === 40 || c <= 8 || c === 11 || (c >= 14 && c <= 31) || c === 127) bad = true;
       i++;
     }
   }
-  if (i < n) i++;
-  push(bad ? BAD_URL : URL, start, i, 0);
+  const closed = i < n;
+  if (closed) i++;
+  push(bad ? BAD_URL : URL, start, i, closed ? 1 : 0);
   return i;
 }
 
@@ -233,7 +235,10 @@ function tokenize(text) {
           bad = true;
           break;
         }
-        i += d === 92 && i + 1 < n ? 2 : 1;
+        // (an escape; an escaped CRLF is one line break, not preprocessed
+        // as an accessor gives it; #327 review)
+        if (d !== 92 || i + 1 >= n) i++;
+        else i += text.charCodeAt(i + 1) === 13 && text.charCodeAt(i + 2) === 10 ? 3 : 2;
       }
       const closed = !bad && i < n;
       if (closed) i++;
@@ -414,10 +419,7 @@ function declaration(text, from, to, closing) {
       }
     // (a string and the blocks left open, closed: only when the value
     // runs to the end; "a b is "a b")
-    if (to === count && !important) {
-      if (TYPE[last] === STRING && CLOSED[last] === 0) value += text[START[last]];
-      value += closing;
-    }
+    if (to === count && !important) value = closedAtEnd(text, last, value) + closing;
   }
   const empty = custom && value === '';
   return { name, value: empty ? ' ' : value, important, custom, empty };
@@ -436,7 +438,10 @@ function tokenText(text, k) {
   if (type === IDENT || type === FUNCTION) {
     const nameEnds = type === FUNCTION ? end - 1 : end;
     const name = decode(text, start, nameEnds);
-    return LETTERS.test(name) && !/^-?[0-9]/.test(name) ? name + text.slice(nameEnds, end) : text.slice(start, end);
+    // (\- stays: - alone is no identifier; #327 review)
+    return LETTERS.test(name) && name !== '-' && !/^-?[0-9]/.test(name)
+      ? name + text.slice(nameEnds, end)
+      : text.slice(start, end);
   }
   if (type === NUMBER) {
     let unit = start;
@@ -468,17 +473,51 @@ export function parseValue31(text, custom = false) {
   return decl.empty ? '' : decl.value;
 }
 
-// What a value given on its own needs at its end to be closed: a comment's
-// */, a string's quote, the blocks' closers (setProperty('--x', '(a') is
-// (a)). css.js adds it to a custom property's value, kept as written.
-export function closing31(text) {
+// A value whose last token is k, closed there: a string's quote (a
+// backslash left at its end dropped first: "a\ is "a"), an unquoted url's
+// ), a comment's */ (#327 review).
+function closedAtEnd(text, k, value) {
+  if (k < 0 || CLOSED[k] === 1) return value;
+  const type = TYPE[k];
+  if (type === STRING) {
+    let slashes = 0;
+    while (value.charCodeAt(value.length - 1 - slashes) === 92) slashes++;
+    return (slashes % 2 === 1 ? value.slice(0, -1) : value) + text[START[k]];
+  }
+  if (type === URL) return `${value})`;
+  if (type === COMMENT) return `${value}*/`;
+  return value;
+}
+
+// A value given on its own, closed at its end as a declaration list closes
+// it: a comment, a string, an unquoted url and the blocks left open
+// (setProperty('--x', '(a') is (a)). css.js uses it for a custom
+// property's value, kept as written.
+export function closed31(text) {
   tokenize(text);
   untilSemicolon(text, 0);
-  let out = '';
-  const last = count - 1;
-  if (last >= 0 && CLOSED[last] === 0) {
-    if (TYPE[last] === COMMENT) out = '*/';
-    else if (TYPE[last] === STRING) out = text[START[last]];
-  }
+  const out = closedAtEnd(text, count - 1, text);
   return depth > 0 ? out + closers() : out;
+}
+
+// A property name as CSSOM serializes an identifier (--a:b is --a\:b).
+const PLAIN_NAME = /^(?:--|-?[A-Za-z_\u0080-\uffff])[A-Za-z0-9_\u0080-\uffff-]*$/;
+export function serializeName31(name) {
+  if (PLAIN_NAME.test(name)) return name;
+  let out = '';
+  for (let i = 0; i < name.length; i++) {
+    const c = name.charCodeAt(i);
+    if (c === 0) out += '\uFFFD';
+    else if (
+      (c >= 1 && c <= 31) ||
+      c === 127 ||
+      (i === 0 && isDigit(c)) ||
+      (i === 1 && isDigit(c) && name.charCodeAt(0) === 45)
+    )
+      out += `\\${c.toString(16)} `;
+    else if (i === 0 && c === 45 && name.length === 1) out += '\\-';
+    else if (c >= 128 || isName(c)) out += name[i];
+    else out += `\\${name[i]}`;
+  }
+  return out;
 }

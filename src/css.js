@@ -56,7 +56,7 @@ import {
 } from './box-declarations.js';
 import { set31, remove31, value31, priority31, serialize31, dropped31, shorthand31 } from './css31.js';
 import { canonical31 } from './declared31.js';
-import { closing31, parseDeclarationList31, parseValue31 } from './parse31.js';
+import { closed31, parseDeclarationList31, parseValue31 } from './parse31.js';
 import { hasVarReference } from './var-substitution.js';
 
 // backgroundColor -> background-color, webkitAnimation/WebkitAnimation ->
@@ -5628,7 +5628,7 @@ function writtenValue(name, raw, s) {
     if (value === null) return INVALID;
     // (a custom property set so keeps its comments, closed: --x: /*a*/ a,
     // (a is (a))
-    raw = name.startsWith('--') ? raw + closing31(raw) : value;
+    raw = name.startsWith('--') ? closed31(raw) : value;
   }
   // (a value kept as written keeps its comments, before it too: #264
   // item 87)

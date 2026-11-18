@@ -261,3 +261,45 @@ test('jsdom 31: many short declarations', () => {
   assert.equal(e.style.length, 20000);
   assert.ok(performance.now() - start < 2000);
 });
+
+// #327 review, second round: custom property names serialized as
+// identifiers, an unquoted url(), a string ending in a backslash and a
+// comment closed at the end, non-printables in url(), an escaped CRLF in
+// a string, \- in a value.
+parity(
+  'jsdom 31: names, closing and escapes read again',
+  (w) => {
+    const s = w.document.createElement('div').style;
+    const again = (text) => {
+      s.cssText = text;
+      const first = s.cssText;
+      s.cssText = s.cssText;
+      return [text, first, s.cssText];
+    };
+    const out = [
+      again('--a\\3a b: red; left: 1px'),
+      again('--\\31 a: 1'),
+      again('--\\-: 1'),
+      again('--a\\ b: 1'),
+      again('--x: url(a.png'),
+      again('background-image: url(a.png'),
+      again('--x: "a\\'),
+      again('--x: "a\\\\'),
+      again('--x: url(a\u0001b); left: 1px'),
+      again('background-image: url(a\u0001b); left: 1px'),
+      again('font-family: \\-'),
+      again('font-family: \\-a'),
+    ];
+    s.cssText = '';
+    s.setProperty('--x', 'url(a.png');
+    s.setProperty('color', 'red');
+    s.setProperty('--y', '"a\\');
+    s.setProperty('font-family', '\\-');
+    out.push(s.cssText);
+    s.cssText = '';
+    s.content = '"a\\\r\nb"';
+    out.push(s.cssText);
+    return out;
+  },
+  { jsdom: 31 },
+);

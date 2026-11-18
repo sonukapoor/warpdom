@@ -18,6 +18,7 @@
 // reads as written while all its longhands still come from that write.
 import { DATA31 } from './css31-data.js';
 import { present31 } from './color31.js';
+import { serializeName31 } from './parse31.js';
 
 // css31-data.js, parsed on first use (objects without a prototype).
 let data = null;
@@ -602,8 +603,10 @@ export function serialize31(decls) {
   // (values as read: color-mix() percentages to 6 digits, custom
   // properties as they are; color31.js present31)
   const add = (name, value, important) => {
-    const shown = name.startsWith('--') ? value : present31(value);
-    out += `${out ? ' ' : ''}${name}: ${shown}${important ? ' !important' : ''};`;
+    // (a custom property's name as an identifier: --a\3a b is --a\:b)
+    const custom = name.startsWith('--');
+    const shown = custom ? value : present31(value);
+    out += `${out ? ' ' : ''}${custom ? serializeName31(name) : name}: ${shown}${important ? ' !important' : ''};`;
   };
   for (const [name, decl] of decls) {
     if (done?.has(name)) continue;
