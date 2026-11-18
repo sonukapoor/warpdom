@@ -825,7 +825,13 @@ export function supportedDeclaration31(name, value, declaration, important) {
   if (name === '--') return false;
   // (comments are not the value's: --x: /* ; */ is fine)
   value = withoutComments(value);
-  if (name.startsWith('--')) return !topLevelSemicolon(value);
+  // (no ! at its top level but a priority where a condition has the
+  // declaration, and no closer of nothing: --x, a !important, --x, a)b
+  // and (--x: a!b) are unsupported, (--x: a !important) is)
+  if (name.startsWith('--')) {
+    const own = important ? value.replace(/!\s*important\s*$/i, '') : value;
+    return !topLevelSemicolon(own) && !strayTopLevel(own);
+  }
   let text = value.trim();
   if (important) text = text.replace(/!\s*important\s*$/i, '').trim();
   return text !== '' && !topLevelSemicolon(text) && declaration(name, text);
@@ -833,6 +839,52 @@ export function supportedDeclaration31(name, value, declaration, important) {
 
 // Whether a value has a ; outside strings and blocks ("a;b" is one
 // string).
+function strayTopLevel(text) {
+  let depth = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"' || c === "'") {
+      i++;
+      while (i < text.length && text[i] !== c) i += text[i] === '\\' ? 2 : 1;
+    } else if (c === '\\') i++;
+    else if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') {
+      if (--depth < 0) return true;
+    } else if (c === '!' && depth === 0) return true;
+  }
+  return false;
+}
+
+// CSS.supports(condition): what is left open at the end (a string, a
+// block, a function) closed there, as CSS Syntax reads input (black box,
+// 31.0.1: (display: grid is supported).
+export function closedAtEnd31(text) {
+  const open = [];
+  let quote = '';
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"' || c === "'") {
+      let j = i + 1;
+      while (j < text.length && text[j] !== c) j += text[j] === '\\' ? 2 : 1;
+      if (j >= text.length) {
+        quote = c;
+        break;
+      }
+      i = j;
+    } else if (c === '\\') i++;
+    else if (c === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      if (end < 0) break;
+      i = end + 1;
+    } else if (c === '(') open.push(')');
+    else if (c === '[') open.push(']');
+    else if (c === '{') open.push('}');
+    else if ((c === ')' || c === ']' || c === '}') && open[open.length - 1] === c) open.pop();
+  }
+  if (open.length === 0 && quote === '') return text;
+  return text + quote + open.reverse().join('');
+}
+
 function topLevelSemicolon(text) {
   let depth = 0;
   for (let i = 0; i < text.length; i++) {

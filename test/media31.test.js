@@ -600,3 +600,33 @@ test('jsdom 31: a long run of hex escapes in a condition is read in linear time'
   assert.equal(w.CSS.supports(condition), false);
   assert.ok(performance.now() - start < 500);
 });
+
+// Custom properties in CSS.supports, and input left open (#329, a closer look).
+parity(
+  'jsdom 31: CSS.supports with custom property values and conditions left open',
+  (w) =>
+    [
+      ['--x', ')'],
+      ['--x', 'a)b'],
+      ['--x', '}'],
+      ['--x', '('],
+      ['--x', '"a'],
+      ['--x', '!important'],
+      ['--x', 'a !important'],
+      ['--x', 'a!b'],
+      ['--x', '(!)'],
+      ['--x', '{;}'],
+      ['(--x: !important)'],
+      ['(--x: a !important)'],
+      ['(--x: a!b)'],
+      ['(--x: "a)'],
+      ['(display: grid'],
+      ['not (display: foo'],
+      ['(display: grid) and (color: red'],
+      ['selector(div'],
+      ['((display: grid)'],
+      ['(--x: (a'],
+      ['not ([)'],
+    ].map((args) => [args, w.CSS.supports(...args)]),
+  { jsdom: 31 },
+);

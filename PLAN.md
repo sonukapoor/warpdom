@@ -7880,3 +7880,9 @@ Fourth round: a hex escape in an identifier reads its digits one way only
 (the identifier patterns backtracked exponentially on a long run of
 escapes: 221 ms for nine); -- alone is no property name in
 CSS.supports.
+Closer look after the fourth round (custom properties): a custom
+property's value given alone to CSS.supports has no ! and no closer of
+nothing at its top level (--x, a !important and --x, a)b are
+unsupported); in a condition only a final !important is allowed ((--x:
+a!b) is not); CSS.supports(condition) closes what is left open at the
+end ((display: grid is supported).

@@ -2,7 +2,7 @@
 // CSSStyleProperties (an accessor per CSS property name), as in jsdom 30.
 // Declarations are kept in order in a Map, and every change is written back to
 // the element's style attribute; a new style attribute re-parses them.
-import { parseSupports31, supportsHold31, supportedDeclaration31 } from './conditions31.js';
+import { parseSupports31, supportsHold31, supportedDeclaration31, closedAtEnd31 } from './conditions31.js';
 import {
   S,
   state,
@@ -4926,7 +4926,7 @@ export const supportsRuleMatches = (text) => supportsCondition(String(text), () 
 // it, a custom property's value supported but for a ; in it.
 function supports31(args, matchesSelector, declaration) {
   if (args.length >= 2) return supportedDeclaration31(String(args[0]), String(args[1]), declaration, false);
-  const text = String(args[0]);
+  const text = closedAtEnd31(String(args[0]));
   const hold = (node) => node !== null && supportsHold31(node, declaration, matchesSelector);
   // A bare declaration is treated as if wrapped in parentheses.
   return hold(parseSupports31(text)) || hold(parseSupports31(`(${text})`));
