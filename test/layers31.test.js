@@ -211,3 +211,32 @@ parity(
     }),
   { jsdom: 31 },
 );
+
+// Fourth review round (#330).
+parity(
+  'jsdom 31: an !important revert-layer rolls back to the normal declarations below; an escaped backslash in a layer name',
+  (w) =>
+    [
+      '@layer a { div { color: red } } @layer b { div { color: revert-layer !important } }',
+      '@layer a { div { color: red } } div { color: revert-layer !important }',
+      '@layer b { div { color: blue } } @layer b { div { color: revert-layer !important } } @layer a { div { color: red } }',
+      '@layer a\\\\.b { #t { color: red } } @layer z { div { color: blue } } @layer a\\\\ { @layer b { div { color: green } } }',
+    ].map((css) => {
+      w.document.head.innerHTML = `<style>${css}</style>`;
+      w.document.body.innerHTML = '<div id="t"></div>';
+      return [css, w.getComputedStyle(w.document.getElementById('t')).color];
+    }),
+  { jsdom: 31 },
+);
+
+test('jsdom 31: deeply nested @scope rules are matched without exponential work', () => {
+  const w = createWindow({ jsdom: '31.0.1' });
+  const d = w.document;
+  // (roots alternate between .a and .b, with limits that never apply)
+  const open = Array.from({ length: 30 }, (_, i) => `@scope (.${i % 2 ? 'b' : 'a'}) to (.stop) { `).join('');
+  d.head.innerHTML = `<style>${open}p { color: red }${' }'.repeat(30)}</style>`;
+  d.body.innerHTML = '<div class="a b"><div class="a"><div class="b"><p id="p"></p></div></div></div>';
+  const start = performance.now();
+  assert.equal(w.getComputedStyle(d.getElementById('p')).color, 'rgb(255, 0, 0)');
+  assert.ok(performance.now() - start < 500);
+});

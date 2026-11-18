@@ -225,7 +225,7 @@ function layerNamed(layers, parent, name) {
   }
   let at = parent;
   // (escapes decoded: \61 is a; an escaped dot is part of a name)
-  for (const part of name.split(/(?<!\\)\./)) {
+  for (const part of layerParts(name)) {
     const key = decodeEscapes(part.trim());
     let id = layers[at].children.get(key);
     if (id === undefined) {
@@ -236,6 +236,21 @@ function layerNamed(layers, parent, name) {
     at = id;
   }
   return at;
+}
+// A layer name's parts: split at its dots, an escaped character (\\ too)
+// being part of a part (a\\.b is a\ and b, a\.b one part).
+function layerParts(name) {
+  const parts = [];
+  let start = 0;
+  for (let i = 0; i < name.length; i++) {
+    if (name[i] === '\\') i++;
+    else if (name[i] === '.') {
+      parts.push(name.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(name.slice(start));
+  return parts;
 }
 // Each layer's precedence: a layer's sublayers come before its own rules,
 // in the order they appeared, the unlayered rules last; !important
@@ -359,8 +374,11 @@ let proximity31 = Infinity;
 function scopedMatch(match, scope) {
   return (el) => {
     let hops = 0;
+    // (checks of the enclosing scopes kept for this match only: nested
+    // scopes would repeat them, exponentially)
+    const memo = scope.outer === null ? null : new Map();
     for (let root = el; root !== null; root = inheritParent(root), hops++) {
-      if (!scopeHas(scope, root, el)) continue;
+      if (!scopeHas(scope, root, el, memo)) continue;
       if (match(el, { scope: root })) {
         proximity31 = hops;
         return true;
@@ -372,13 +390,23 @@ function scopedMatch(match, scope) {
 // Whether root is a root of scope that has el in it: it matches the start
 // (no start: is the owner), el is not at or past the limit from it, and
 // both are in the enclosing scope.
-function scopeHas(scope, root, el) {
+function scopeHas(scope, root, el, memo) {
   if (scope.start === null ? root !== scope.owner : !scope.start.some((s) => s.match(root, NO_SCOPE))) return false;
   if (scope.end !== null && limited(scope.end, root, el, { scope: root })) return false;
   if (scope.outer === null) return true;
   for (let outer = root; outer !== null; outer = inheritParent(outer))
-    if (scopeHas(scope.outer, outer, root) && scopeHas(scope.outer, outer, el)) return true;
+    if (outerHas(scope.outer, outer, root, memo) && (el === root || outerHas(scope.outer, outer, el, memo)))
+      return true;
   return false;
+}
+function outerHas(scope, root, el, memo) {
+  let byScope = memo.get(scope);
+  if (byScope === undefined) memo.set(scope, (byScope = new Map()));
+  let byRoot = byScope.get(root);
+  if (byRoot === undefined) byScope.set(root, (byRoot = new Map()));
+  let known = byRoot.get(el);
+  if (known === undefined) byRoot.set(el, (known = scopeHas(scope, root, el, memo)));
+  return known;
 }
 // Whether an element is at or past a scope's limit from a root.
 function limited(end, root, el, ctx) {
@@ -394,6 +422,7 @@ function buildIndex(sheets, mode, compat, lists, doc = null) {
   index.textDependent = false;
   index.readsScheme = false;
   index.scoped = false;
+  index.layerCount = 1;
   const counter = { n: 0 };
   // jsdom 31: the layer and @scope the walk is in (layers: CSS Cascade 5;
   // layer 0 is the unlayered one).
@@ -483,6 +512,7 @@ function buildIndex(sheets, mode, compat, lists, doc = null) {
     // (layers, then specificity, then order; scope proximity comes after
     // specificity when the cascade reads the lists: cascade31)
     const keys = layerKeys(layers);
+    index.layerCount = layers.length;
     for (const lists of index.values()) {
       for (const e of lists.normal) e.layer = keys.normal[e.layer];
       for (const e of lists.important) e.layer = keys.important[e.layer];
@@ -1364,10 +1394,19 @@ function cascade31(element, index, inlineMap, name, window) {
   // (in the style attribute, the rules': the attribute's later declaration
   // of the pair wins first, margin-block-start: 5px after margin-top:
   // revert-layer stays)
+  // An !important one with no !important declaration below rolls back to
+  // the normal ones of the layers below (black box, 31.0.1: @layer a {
+  // color: red } @layer b { color: revert-layer !important } is red).
   while (win31.level >= 2 && win31.level <= 5 && REVERT_LAYER.test(value)) {
     const cut = win31.level;
-    const below = cut === 2 || cut === 4 ? win31.layer : Infinity;
+    const layer = win31.layer;
+    const below = cut === 2 || cut === 4 ? layer : Infinity;
     value = pair31(element, index, inlineMap, name, partner, window, cut, below);
+    if (win31.level === -1 && cut >= 4) {
+      // (the layer's normal precedence: !important keys run the other way)
+      const normalBelow = cut === 4 ? index.layerCount - 1 - layer : Infinity;
+      value = pair31(element, index, inlineMap, name, partner, window, cut === 4 ? 2 : 3, normalBelow);
+    }
     if (win31.level === -1) {
       won31(cut, 0, 0, Infinity, 0, undefined);
       value = 'revert';

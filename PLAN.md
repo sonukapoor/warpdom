@@ -7946,3 +7946,10 @@ Third round: rolled back from the style attribute, the rule found keeps
 its own level (2 or 4), so its own revert-layer rolls back below its
 layer (the read looped: div { color: revert-layer } with style="color:
 revert-layer").
+Fourth round: an !important revert-layer with no !important declaration
+below rolls back to the normal declarations of the layers below it (in
+normal order: @layer a { color: red } @layer b { color: revert-layer
+!important } is red), then to the user agent sheet; a layer name's parts
+are split at dots outside escapes (a\\.b is a\ and b); the enclosing
+scopes' checks are kept for one match (nested @scope rules took
+exponential time: 15 ms at 20 levels, now 0.5 ms).
