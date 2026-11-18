@@ -207,10 +207,11 @@ function mediaApplies(rule, mode, compat) {
 
 // lists: what was read of rule lists a test can change without the CSSOM
 // knowing (ruleListSnapshot).
-function buildIndex(sheets, mode, compat, lists) {
+function buildIndex(sheets, mode, compat, lists, doc = null) {
   const index = new Map();
   index.inOrder = new InOrderIndex();
   index.textDependent = false;
+  index.readsScheme = false;
   const counter = { n: 0 };
   const addRule = (rule) => {
     let entries;
@@ -226,12 +227,17 @@ function buildIndex(sheets, mode, compat, lists) {
   // applied (<style media="print">), and grouping rules nest: @media
   // where it matches (conditions31.js), @supports where it holds
   // (conditions31.js), at any depth. (@layer and @scope: not yet.)
+  // (an index whose media read the document's color scheme, its meta
+  // color-scheme, is made again when the tree changes: ruleIndex)
+  const readsScheme = () => {
+    index.readsScheme = true;
+  };
   const walk31 = (rules, ss) => {
     for (const rule of rules) {
       const proto = Object.getPrototypeOf(rule);
       if (proto === ss.protos.CSSStyleRule) addRule(rule);
       else if (
-        (proto === ss.protos.CSSMediaRule && mediaMatches(rule[S].media)) ||
+        (proto === ss.protos.CSSMediaRule && mediaMatches(rule[S].media, doc, readsScheme)) ||
         (proto === ss.protos.CSSSupportsRule && supportsMatches(rule))
       ) {
         const snapshot = ruleListSnapshot(rule);
@@ -244,7 +250,7 @@ function buildIndex(sheets, mode, compat, lists) {
     const ss = sheet[S];
     if (ss.disabled) continue;
     if (compat?.computed31) {
-      if (ss.media === undefined || ss.media === null || mediaMatches(ss.media)) walk31(ss.rules, ss);
+      if (ss.media === undefined || ss.media === null || mediaMatches(ss.media, doc, readsScheme)) walk31(ss.rules, ss);
       continue;
     }
     for (const rule of ss.rules) {
@@ -295,11 +301,12 @@ function ruleIndex(element) {
   if (cached && cached.treeRev === treeRev && cached.styleRev === styleRev && cached.cssomRev === cssomChanges.rev)
     return cached.index;
   const sheets = documentStyleSheets(es.doc)[S].items();
-  const reuse = cached && cached.cssomRev === cssomChanges.rev && sameSheets(cached.sheets, sheets);
+  const reuse =
+    cached && cached.cssomRev === cssomChanges.rev && !cached.index.readsScheme && sameSheets(cached.sheets, sheets);
   const lists = reuse ? cached.lists : [];
   let index = EMPTY;
   if (reuse) index = cached.index;
-  else if (sheets.length) index = buildIndex(sheets, validationModeOf(ds.window), ds.window[S].compat, lists);
+  else if (sheets.length) index = buildIndex(sheets, validationModeOf(ds.window), ds.window[S].compat, lists, es.doc);
   ds.cascade = { treeRev, styleRev, cssomRev: cssomChanges.rev, sheets: sheets.slice(), index, lists };
   return index;
 }

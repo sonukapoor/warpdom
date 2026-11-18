@@ -4828,14 +4828,23 @@ export function escapeIdentifier(value) {
 export const supportsDeclaration = (property, value, mode = 'spec', surface = null) => {
   const name = String(property).toLowerCase();
   const text = String(value).trim();
-  return text !== '' && declaredValue(name, text, mode, surface) !== INVALID;
+  // (not a name the profile drops: jsdom 31's cue-before)
+  return text !== '' && !dropped(surface, name) && declaredValue(name, text, mode, surface) !== INVALID;
 };
 // The check with a profile's CSS rules (jsdom 31: its style surface, so a
 // string in calc() is invalid).
+// (CSSStyleProperties read on the first check: the prototype is made
+// lazily, and a window may never check a declaration)
 export function supportsDeclarationOf(protos) {
-  const mode = modeOf(protos.CSSStyleProperties),
-    surface = surfaceOf(protos.CSSStyleProperties);
-  return (property, value) => supportsDeclaration(property, value, mode, surface);
+  let mode = null,
+    surface = null;
+  return (property, value) => {
+    if (mode === null) {
+      mode = modeOf(protos.CSSStyleProperties);
+      surface = surfaceOf(protos.CSSStyleProperties);
+    }
+    return supportsDeclaration(property, value, mode, surface);
+  };
 }
 
 // A <supports-condition> (CSS Conditional Rules): not / and / or, (decl),

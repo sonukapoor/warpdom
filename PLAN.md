@@ -7841,3 +7841,23 @@ Load (bench/load.js, 7 interleaved runs, node 22.17.1, medians): cold
 load 30.0 ms on main, 31.3 ms here. Reason: the module (one, merged from
 two: each module costs the loader about 0.5 ms; 0.3 ms is its own).
 Against jsdom 31.0.1: 77 of the default parity tests differ (83 on main).
+Review round (#329), each reproduced on 31.0.1: prefers-color-scheme
+reads the document's first meta color-scheme (dark when it lists dark
+and not light; live: an index whose media read it is made again with the
+tree); a math value must be the whole value ((width: calc(1024px) junk)
+is general enclosed) and a calculation is compared unrounded; only CSS
+whitespace is trimmed (U+00A0 is text); a ] or } closing nothing makes a
+media query not all and drops a @supports rule; a parenthesized
+condition may start with a function ((selector(div))); env() of the
+names jsdom 31 knows; selector() with known pseudo-elements only, an
+escaped comma is no list; a custom property's ; inside a string is
+fine; a name the profile drops is unsupported (cue-before); a style
+element's media attribute sets its sheet's media in place when written
+(an attribute step); MediaList: queries compared as written, two queries
+deleted as none, a value converted before the list is cleared; a style
+sheet nested more than 128 deep has no rules (jsdom 31 also reports
+"Could not parse CSS stylesheet", not modeled); CSSStyleProperties is
+read on the first declaration check, not at window creation.
+Cold load after the round (7 interleaved runs, load average 4): 35.7 ms
+on main, 37.1 ms here (the module, as above); window creation 3.17 and
+3.15 ms.

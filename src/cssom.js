@@ -36,6 +36,7 @@ import { liveList, iterate } from './collections.js';
 import { fallbackBaseURL } from './base-url.js';
 import { urlTokenEnd } from './css-values.js';
 import { compileRuleSelector } from './selectors.js';
+import { addAttributeStep } from './attributes.js';
 import {
   serializeMedium31,
   mediumMatches31,
@@ -383,6 +384,7 @@ function validMediaQuery(query) {
 // Queries compare equal when they differ only in whitespace around
 // parentheses and colons (jsdom keeps (min-width:480px) as written).
 const mediumKey = (query) => query.replace(/\s*([:()])\s*/g, '$1');
+const same = (query) => query;
 
 function normalizeMedium(text) {
   const query = String(text).trim().replace(/\s+/g, ' ').toLowerCase();
@@ -512,8 +514,32 @@ const isNamespace = (rule) => isA(rule, 'CSSNamespaceRule');
 // A list of rules. At the top level of a sheet @import rules must come
 // first, then @namespace rules; inside other rules both are dropped (CSS
 // Cascade 5, CSS Namespaces 3).
+// jsdom 31 (black box, 31.0.1): a style sheet whose blocks ((, [ and {)
+// nest more than 128 deep has no rules ("Could not parse CSS
+// stylesheet"); a rule added through the CSSOM has no such limit.
+const MAX_DEPTH31 = 128;
+function tooDeep(text) {
+  let depth = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"' || c === "'") {
+      i++;
+      while (i < text.length && text[i] !== c && text[i] !== '\n') i += text[i] === '\\' ? 2 : 1;
+    } else if (c === '\\') i++;
+    else if (c === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      if (end < 0) return false;
+      i = end + 1;
+    } else if (c === '(' || c === '[' || c === '{') {
+      if (++depth > MAX_DEPTH31) return true;
+    } else if ((c === ')' || c === ']' || c === '}') && depth > 0) depth--;
+  }
+  return false;
+}
+
 function ruleList(protos, body, sheet, parent) {
   const rules = [];
+  if (parent === null && MEDIA31.has(protos.MediaList) && tooDeep(body ?? '')) return rules;
   let prefixOnly = parent === null; // only @import and @namespace rules so far
   let namespaces = false;
   for (const record of parseRules(body ?? '', false, nestedBlocks(protos))) {
@@ -1133,15 +1159,17 @@ function mediaList(protos, text) {
   const list = liveList(protos.MediaList, () => items);
   list[S].list = items;
   list[S].sources = MEDIA31.has(protos.MediaList) ? [] : null;
+  if (list[S].sources !== null && !mediaStep) addMediaStep();
   setMediaText(list, text);
   return list;
 }
 
 function setMediaText(list, text) {
   const { list: items, sources } = list[S];
+  // (converted first: a value whose toString() throws leaves the list)
+  const value = String(text ?? '');
   items.length = 0;
   if (sources !== null) sources.length = 0;
-  const value = String(text ?? '');
   if (value.trim() === '') return;
   for (const medium of splitMedia(value)) {
     if (sources === null) items.push(normalizeMedium(medium));
@@ -1169,11 +1197,45 @@ function selectorKnown(text) {
 
 // Whether a media list matches: as jsdom 31 evaluates queries; before,
 // as jsdom 29 and 30 do (no media features: an empty list, all or screen).
-export function mediaMatches(list) {
+// doc: the document whose color scheme prefers-color-scheme reads.
+// readsScheme: called when the answer depends on that scheme.
+export function mediaMatches(list, doc = null, readsScheme = null) {
   const { list: items, sources } = list[S];
   if (items.length === 0) return true;
-  if (sources !== null) return sources.some(mediumMatches31);
+  if (sources !== null) {
+    let dark;
+    const isDark = () => {
+      readsScheme?.();
+      return (dark ??= darkScheme(doc));
+    };
+    for (const source of sources) if (mediumMatches31(source, isDark)) return true;
+    return false;
+  }
   return items.includes('all') || items.includes('screen');
+}
+
+// Whether a document's color scheme is dark (black box, 31.0.1): its first
+// meta name=color-scheme lists dark and not light (dark, only dark; light
+// dark is light).
+function darkScheme(doc) {
+  if (doc === null) return false;
+  for (let n = doc[S].first; n; n = nextInTree(n, doc)) {
+    const s = n[S];
+    if (s.type !== ELEMENT_NODE || s.tag !== 'meta' || s.ns !== HTML_NS) continue;
+    if (s.attrs.get('name')?.toLowerCase() !== 'color-scheme') continue;
+    const words = (s.attrs.get('content') ?? '').toLowerCase().split(/[ \t\n\r\f]+/);
+    return words.includes('dark') && !words.includes('light');
+  }
+  return false;
+}
+
+// The document a rule's sheet belongs to, or null.
+function ruleDocument(rule) {
+  for (let sheet = rule[S].sheet; sheet; sheet = sheet[S].parentSheet) {
+    const owner = sheet[S].ownerNode;
+    if (owner) return owner[S].type === 9 ? owner : owner[S].doc;
+  }
+  return null;
 }
 
 // --- style sheets -----------------------------------------------------------------------
@@ -1277,18 +1339,24 @@ export function styleElementSheet(el) {
     });
     s.sheetText = text;
     s.sheetRev = s.rev;
-    s.sheetMedia = s.attrs.get('media') ?? '';
-  } else if (s.sheet[S].media[S].sources !== null) {
-    // jsdom 31 (black box, 31.0.1): a media attribute set later changes
-    // the sheet's media in place (its title stays).
-    const media = s.attrs.get('media') ?? '';
-    if (s.sheetMedia !== media) {
-      setMediaText(s.sheet[S].media, media);
-      s.sheetMedia = media;
-      cssomChanges.rev++;
-    }
   }
   return s.sheet;
+}
+
+// jsdom 31 (black box, 31.0.1): a style element's media attribute, when
+// set, sets its sheet's media in place, even to the value it had (its
+// title stays). Registered with the first jsdom 31 media list (the
+// attribute module is in an import cycle with this one).
+let mediaStep = false;
+function addMediaStep() {
+  mediaStep = true;
+  addAttributeStep('media', (el, old, value) => {
+    const s = el[S];
+    const sheet = s.tag === 'style' && s.ns === HTML_NS ? s.sheet : undefined;
+    if (!sheet || sheet[S].media[S].sources === null) return;
+    setMediaText(sheet[S].media, value ?? '');
+    cssomChanges.rev++;
+  });
 }
 
 const isStyleElement = (n) => n[S].type === ELEMENT_NODE && n[S].tag === 'style' && n[S].ns === HTML_NS;
@@ -1720,7 +1788,7 @@ export const CSSOM_INTERFACES = [
       mediaMember,
       {
         get matches() {
-          return mediaMatches(state(this).media);
+          return mediaMatches(state(this).media, ruleDocument(this));
         },
       },
     ],
@@ -2067,7 +2135,9 @@ export const CSSOM_INTERFACES = [
         if (text.trim() === '' || queries.length !== 1) return;
         const sources = state(this).sources;
         const m = sources === null ? normalizeMedium(queries[0]) : serializeMedium31(queries[0].trim());
-        if (!list.some((q) => mediumKey(q) === mediumKey(m))) {
+        // (jsdom 31 compares the queries as written)
+        const key = sources === null ? mediumKey : same;
+        if (!list.some((q) => key(q) === key(m))) {
           list.push(m);
           sources?.push(queries[0].trim());
           cssomChanges.rev++;
@@ -2078,10 +2148,13 @@ export const CSSOM_INTERFACES = [
         const list = state(this).list;
         required(arguments.length, 1, 'MediaList', 'deleteMedium');
         const sources = state(this).sources;
-        const m = mediumKey(sources === null ? normalizeMedium(medium) : serializeMedium31(String(medium).trim()));
+        // (jsdom 31: an argument of more than one query removes nothing)
+        if (sources !== null && splitMedia(String(medium)).length !== 1) return;
+        const key = sources === null ? mediumKey : same;
+        const m = key(sources === null ? normalizeMedium(medium) : serializeMedium31(String(medium).trim()));
         let removed = false;
         for (let i = list.length - 1; i >= 0; i--)
-          if (mediumKey(list[i]) === m) {
+          if (key(list[i]) === m) {
             list.splice(i, 1);
             sources?.splice(i, 1);
             removed = true;

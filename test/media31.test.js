@@ -316,6 +316,21 @@ const CONDITIONS = [
   'foo',
   '(display: grid) and (color: red) or (x: y)',
   'not not (x: y)',
+  // review round (#329)
+  '(selector(div))',
+  '(font-tech(variations))',
+  'env(safe-area-inset-top)',
+  'env(SAFE-AREA-MAX-INSET-LEFT)',
+  'env(viewport-segment-width)',
+  'env(foo)',
+  'env(safe-area-inset-top, 1px)',
+  'selector(div::not-a-real-pseudo)',
+  'selector(div::-webkit-scrollbar)',
+  'selector(div::part(x))',
+  'selector(.a\\,b)',
+  '(--x: "a;b")',
+  '(--x: a;b)',
+  '(cue-before: none)',
 ];
 
 parity(
@@ -370,4 +385,104 @@ test('jsdom 30 keeps media features unevaluated and @supports rules unapplied', 
   assert.equal(cs.backgroundColor, 'rgba(0, 0, 0, 0)');
   assert.equal(d.styleSheets[0].cssRules[0].matches, false);
   assert.equal(d.styleSheets[0].cssRules[0].media.mediaText, '(min-width: 100px)');
+});
+
+// Review round (#329).
+parity(
+  "jsdom 31: prefers-color-scheme reads the document's meta color-scheme, live",
+  (w) => {
+    const d = w.document;
+    const out = [];
+    for (const content of ['dark', 'light', 'light dark', 'dark light', 'only dark', 'DARK', 'dark foo', '']) {
+      d.head.innerHTML = `<meta name="color-scheme" content="${content}"><style>@media (prefers-color-scheme: dark) { #t { color: red } } @media (prefers-color-scheme: light) { #t { background-color: red } }</style>`;
+      d.body.innerHTML = '<div id="t"></div>';
+      const cs = w.getComputedStyle(d.getElementById('t'));
+      out.push([content, d.styleSheets[0].cssRules[0].matches, cs.color, cs.backgroundColor]);
+    }
+    d.head.innerHTML = '<style>@media (prefers-color-scheme: dark) { #t { color: red } }</style>';
+    const rule = d.styleSheets[0].cssRules[0];
+    out.push([rule.matches, w.getComputedStyle(d.getElementById('t')).color]);
+    const meta = d.createElement('meta');
+    meta.name = 'color-scheme';
+    meta.content = 'dark';
+    d.head.append(meta);
+    out.push([rule.matches, w.getComputedStyle(d.getElementById('t')).color]);
+    d.head.innerHTML =
+      '<meta name="color-scheme" content="light"><meta name="color-scheme" content="dark"><style>@media (prefers-color-scheme: dark) {}</style>';
+    out.push(d.styleSheets[0].cssRules[0].matches);
+    return out;
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  "jsdom 31: a style element's media attribute and its sheet's media list",
+  (w) => {
+    const d = w.document;
+    d.head.innerHTML = '<style media="screen">#t { color: red }</style>';
+    d.body.innerHTML = '<div id="t"></div>';
+    const style = d.querySelector('style');
+    const media = style.sheet.media;
+    style.media = 'print';
+    const out = [media.mediaText];
+    media.mediaText = 'print';
+    style.media = 'screen';
+    out.push(media.mediaText, w.getComputedStyle(d.getElementById('t')).color);
+    return out;
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: MediaList edits: queries compared as written, two queries deleted as none, a throwing value',
+  (w) => {
+    const d = w.document;
+    d.head.innerHTML = '<style>@media foo("a( b") {} @media not all {} @media print {}</style>';
+    const [a, b, c] = [...d.styleSheets[0].cssRules].map((r) => r.media);
+    a.appendMedium('foo("a(b")');
+    b.deleteMedium('screen, print');
+    try {
+      c.mediaText = {
+        toString() {
+          throw new Error('x');
+        },
+      };
+    } catch {
+      // (the list stays)
+    }
+    return [a.mediaText, b.mediaText, c.mediaText];
+  },
+  { jsdom: 31 },
+);
+
+// (jsdom 31 also reports "Could not parse CSS stylesheet" for these, which
+// warpdom does not: values measured on 31.0.1)
+test('jsdom 31: a style sheet nested more than 128 deep has no rules', () => {
+  const w = createWindow({ jsdom: '31.0.1' });
+  const d = w.document;
+  const nest = (n) => `${'('.repeat(n)}a${')'.repeat(n)}`;
+  const counts = [127, 128, 129, 5000].map((n) => {
+    d.head.innerHTML = `<style>x { --v: ${nest(n)}; } @media ${nest(n)} { b { color: red } } c {}</style>`;
+    return d.styleSheets[0].cssRules.length;
+  });
+  assert.deepEqual(counts, [3, 0, 0, 0]);
+  const e = d.createElement('div');
+  e.setAttribute('style', `--v: ${nest(200)}; color: red`);
+  assert.equal(e.style.length, 2);
+});
+
+test('jsdom 31: a ] or } closing nothing in a @supports condition drops the rule', () => {
+  const w = createWindow({ jsdom: '31.0.1' });
+  const d = w.document;
+  d.head.innerHTML =
+    '<style>@supports not (]) { #t { color: red } } @supports not (}) {} @supports not (x: y) {}</style>';
+  d.body.innerHTML = '<div id="t"></div>';
+  assert.equal(d.styleSheets[0].cssRules.length, 1);
+  assert.equal(w.getComputedStyle(d.getElementById('t')).color, 'rgb(0, 0, 0)');
+});
+
+test('jsdom 31: a query nested thousands deep does not throw', () => {
+  const deep = `${'('.repeat(20000)}color${')'.repeat(20000)}`;
+  assert.equal(typeof serializeMedium31(deep), 'string');
+  assert.equal(mediumMatches31(deep), false);
 });

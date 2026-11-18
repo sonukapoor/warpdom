@@ -93,7 +93,7 @@ function components(text) {
     }
     if (c === '(') {
       const end = closing(text, i);
-      if (end < 0) return null;
+      if (end < 0 || strayCloser(text, i + 1, end)) return null;
       out.push({ group: text.slice(i + 1, end) });
       i = end + 1;
       continue;
@@ -129,7 +129,30 @@ function closing(text, open) {
   return -1;
 }
 
-const collapse = (text) => text.trim().replace(/[ \t\n\r\f]+/g, ' ');
+// CSS whitespace only (U+00A0 is text: (width: 1024px\u00a0) is general
+// enclosed).
+const cssTrim = (text) => text.replace(/^[ \t\n\r\f]+|[ \t\n\r\f]+$/g, '');
+// Whether text[from...to] has a ] or } that closes nothing (strings
+// skipped): the query or condition does not parse (black box, 31.0.1:
+// @media (]) is not all, @supports not (]) drops its rule).
+function strayCloser(text, from, to) {
+  let square = 0,
+    curly = 0;
+  for (let i = from; i < to; i++) {
+    const c = text[i];
+    if (c === '"' || c === "'") {
+      i++;
+      while (i < to && text[i] !== c) i += text[i] === '\\' ? 2 : 1;
+    } else if (c === '\\') i++;
+    else if (c === '[') square++;
+    else if (c === '{') curly++;
+    else if (c === ']' && --square < 0) return true;
+    else if (c === '}' && --curly < 0) return true;
+  }
+  return false;
+}
+
+const collapse = (text) => cssTrim(text).replace(/[ \t\n\r\f]+/g, ' ');
 
 // --- the grammar -------------------------------------------------------------------------
 
@@ -204,20 +227,24 @@ function inParens(part) {
 
 const OPS = /(<=|>=|<|>|=)/;
 function feature(inner) {
-  const text = inner.trim();
+  const text = cssTrim(inner);
   const colon = text.indexOf(':');
   if (colon >= 0 && !/[<>=]/.test(text)) {
-    let name = text.slice(0, colon).trim().toLowerCase();
+    let name = cssTrim(text.slice(0, colon)).toLowerCase();
     if (!IDENT_ONLY.test(name)) return null;
     let prefix = '';
     if ((name.startsWith('min-') || name.startsWith('max-')) && RANGE[name.slice(4)] !== undefined) {
       prefix = name.slice(0, 3);
       name = name.slice(4);
     }
-    const v = value(name, text.slice(colon + 1).trim(), prefix === '');
+    const v = value(name, cssTrim(text.slice(colon + 1)), prefix === '');
     if (v === null) return null;
     const actual = actualOf(name);
-    const test = v.value === null ? UNKNOWN : compare(actual, PREFIX_OPS[prefix], v.value, name);
+    let test = v.value === null ? UNKNOWN : compare(actual, PREFIX_OPS[prefix], v.value, name);
+    if (name === 'prefers-color-scheme') {
+      usesScheme = true;
+      test = v.value === 'dark' ? DARK : LIGHT;
+    }
     return { kind: 'feature', text: `(${prefix ? `${prefix}-` : ''}${name}: ${v.text})`, test };
   }
   if (IDENT_ONLY.test(text)) {
@@ -226,7 +253,7 @@ function feature(inner) {
     return { kind: 'feature', text: `(${name})`, test: booleanOf(name) };
   }
   // A range: value op name, name op value, value op name op value.
-  const pieces = text.split(OPS).map((p) => p.trim());
+  const pieces = text.split(OPS).map(cssTrim);
   if (pieces.length !== 3 && pieces.length !== 5) return null;
   let nameAt = 2;
   if (pieces.length === 3 && IDENT_ONLY.test(pieces[0]) && RANGE[pieces[0].toLowerCase()]) nameAt = 0;
@@ -266,7 +293,12 @@ const PREFIX_OPS = { '': '=', min: '>=', max: '<=' };
 
 const TRUE = 1,
   FALSE = 0,
-  UNKNOWN = 2;
+  UNKNOWN = 2,
+  // prefers-color-scheme: the document's (evaluate: dark)
+  DARK = 3,
+  LIGHT = 4;
+// Whether the query being read uses prefers-color-scheme.
+let usesScheme = false;
 
 const actualOf = (name) => (RANGE[name] !== undefined ? RANGE[name][1] : DISCRETE[name][1]);
 
@@ -325,8 +357,8 @@ function value(name, text, discreteOk) {
   if (type === undefined) return null;
   if (type === 'ratio') {
     const slash = topLevelSlash(text);
-    const a = number(slash < 0 ? text : text.slice(0, slash).trim());
-    const b = slash < 0 ? { text: '1', value: 1 } : number(text.slice(slash + 1).trim());
+    const a = number(slash < 0 ? text : cssTrim(text.slice(0, slash)));
+    const b = slash < 0 ? { text: '1', value: 1 } : number(cssTrim(text.slice(slash + 1)));
     if (a === null || b === null || a.value < 0 || b.value < 0) return null;
     const ratio = a.value === 0 && b.value === 0 ? NaN : a.value / b.value;
     return { text: `${a.text} / ${b.text}`, value: ratio };
@@ -337,13 +369,15 @@ function value(name, text, discreteOk) {
     return { text: n.text, value: n.integer ? n.value : null };
   }
   if (MATH.test(text)) {
-    const tok = tokenizeValue(text)?.[0];
-    if (tok === undefined) return null;
+    const tok = oneToken(text);
+    if (tok === null) return null;
     const simplified = simplifyMath(tok, type);
     // (no percentages: a media feature has nothing they are of)
     if (typeof simplified !== 'string' || simplified.includes('%')) return null;
     let v = null;
-    if (type === 'length') v = absoluteLength(fontUnits(simplified), LENGTH_CONTEXT);
+    // (from the calculation as written: its text keeps 6 digits)
+    if (type === 'length')
+      v = absoluteLength(fontUnits(text), LENGTH_CONTEXT) ?? absoluteLength(fontUnits(simplified), LENGTH_CONTEXT);
     else {
       const m = mathValue(tok);
       v = m !== null && RESOLUTION[m.unit] !== undefined ? m.v * RESOLUTION[m.unit] : null;
@@ -363,6 +397,12 @@ function value(name, text, discreteOk) {
   const factor = RESOLUTION[unit];
   return factor === undefined ? null : { text: `${sixDigits(num)}${unit}`, value: num * factor };
 }
+// A value of one token (a math function alone), or null.
+function oneToken(text) {
+  const tokens = tokenizeValue(text);
+  return tokens?.length === 1 ? tokens[0] : null;
+}
+
 function topLevelSlash(text) {
   let depth = 0;
   for (let i = 0; i < text.length; i++) {
@@ -378,8 +418,8 @@ const RESOLUTION = { __proto__: null, dppx: 1, x: 1, dpi: 1 / 96, dpcm: 2.54 / 9
 // A number, or a math function of numbers: { text, value, integer }.
 function number(text) {
   if (MATH.test(text)) {
-    const tok = tokenizeValue(text)?.[0];
-    const simplified = tok === undefined ? undefined : simplifyMath(tok, 'number');
+    const tok = oneToken(text);
+    const simplified = tok === null ? undefined : simplifyMath(tok, 'number');
     if (typeof simplified !== 'string') return null;
     const m = mathValue(tok);
     return m === null || m.unit !== '' ? null : { text: simplified, value: m.v, integer: Number.isInteger(m.v) };
@@ -398,22 +438,22 @@ const fontUnits = (text) => text.replace(/(\d)(r?)ch\b/gi, '$1$2ic');
 
 // --- evaluation and serialization ------------------------------------------------------------
 
-function evaluate(node) {
+function evaluate(node, dark) {
   switch (node.kind) {
     case 'type': {
       let result = MATCHING_TYPES.has(node.type) ? TRUE : FALSE;
-      if (node.condition !== null && result === TRUE) result = evaluate(node.condition);
+      if (node.condition !== null && result === TRUE) result = evaluate(node.condition, dark);
       if (result === UNKNOWN) return UNKNOWN;
       return node.not ? 1 - result : result;
     }
     case 'not': {
-      const r = evaluate(node.of);
+      const r = evaluate(node.of, dark);
       return r === UNKNOWN ? UNKNOWN : 1 - r;
     }
     case 'and': {
       let result = TRUE;
       for (const n of node.of) {
-        const r = evaluate(n);
+        const r = evaluate(n, dark);
         if (r === FALSE) return FALSE;
         if (r === UNKNOWN) result = UNKNOWN;
       }
@@ -422,15 +462,17 @@ function evaluate(node) {
     case 'or': {
       let result = FALSE;
       for (const n of node.of) {
-        const r = evaluate(n);
+        const r = evaluate(n, dark);
         if (r === TRUE) return TRUE;
         if (r === UNKNOWN) result = UNKNOWN;
       }
       return result;
     }
     case 'parens':
-      return evaluate(node.of);
+      return evaluate(node.of, dark);
     case 'feature':
+      if (node.test === DARK) return dark() ? TRUE : FALSE;
+      if (node.test === LIGHT) return dark() ? FALSE : TRUE;
       return node.test;
     default:
       return UNKNOWN;
@@ -459,33 +501,46 @@ function serialize(node) {
   }
 }
 
+// A query read: { node, scheme } (node null when it does not parse;
+// scheme: whether it uses prefers-color-scheme). Text nested too deep to
+// read here (thousands of parentheses; jsdom 31 drops a style sheet nested
+// over 128 deep, cssom.js) is general enclosed text.
+function read(text) {
+  usesScheme = false;
+  let node;
+  try {
+    node = query(text);
+  } catch (error) {
+    if (!(error instanceof RangeError)) throw error;
+    node = { kind: 'enclosed', text: collapse(text) };
+  }
+  return { node, scheme: usesScheme };
+}
+
 // One query as jsdom 31 writes it ("not all" when it does not parse).
 export function serializeMedium31(text) {
-  const node = query(String(text));
+  const { node } = read(String(text));
   return node === null ? 'not all' : serialize(node);
 }
 
 // Whether a query matches, read as written (jsdom 31 evaluates the
 // values given, not the 6 digits it writes: (width: 1024.0000001px) is
-// written (width: 1024px) and does not match). Cached by text: a page has
-// few.
-const matched = new Map();
-export function mediumMatches31(text) {
-  let result = matched.get(text);
-  if (result === undefined) {
-    const node = query(text);
-    result = node !== null && evaluate(node) === TRUE;
-    if (matched.size > 1000) matched.clear();
-    matched.set(text, result);
+// written (width: 1024px) and does not match). dark(): whether the
+// document's color scheme is dark (its first meta color-scheme), asked
+// only by prefers-color-scheme. Read queries are kept by text: a page has
+// few; the result too where it is the same in every document.
+const queries = new Map();
+const NO_DARK = () => false;
+export function mediumMatches31(text, dark = NO_DARK) {
+  let entry = queries.get(text);
+  if (entry === undefined) {
+    entry = read(text);
+    entry.result = entry.node === null || entry.scheme ? null : evaluate(entry.node, NO_DARK) === TRUE;
+    if (queries.size > 1000) queries.clear();
+    queries.set(text, entry);
   }
-  return result;
-}
-
-// Whether a media list matches: empty, or one of its queries.
-export function mediaListMatches31(list) {
-  if (list.length === 0) return true;
-  for (let i = 0; i < list.length; i++) if (mediumMatches31(list[i])) return true;
-  return false;
+  if (entry.result !== null) return entry.result;
+  return entry.node !== null && evaluate(entry.node, dark) === TRUE;
 }
 
 // --- @supports ---------------------------------------------------------------------------
@@ -645,11 +700,14 @@ function supportsCondition(parts) {
 function supportsInParens(part) {
   if (part === undefined || part.ident !== undefined) return null;
   if (part.fn !== undefined) return { kind: 'fn', name: part.fn.toLowerCase(), fn: part.fn, arg: part.inner };
+  if (strayCloser(part.group, 0, part.group.length)) return null;
   const nested = supportsComponents(part.group);
+  // (a condition in parentheses: one that starts with a group, not or a
+  // function, (selector(div)) too)
   if (
     nested !== null &&
     nested.length > 0 &&
-    (nested[0].group !== undefined || nested[0].ident?.toLowerCase() === 'not')
+    (nested[0].group !== undefined || nested[0].fn !== undefined || nested[0].ident?.toLowerCase() === 'not')
   ) {
     const of = supportsCondition(nested);
     if (of !== null) return { kind: 'parens', of };
@@ -675,7 +733,8 @@ export function serializeSupports31(node) {
       return `(${node.text})`;
     default: {
       const arg = node.arg.trim();
-      if (node.name === 'font-tech' || node.name === 'font-format') return `${node.name}(${arg.toLowerCase()})`;
+      if (node.name === 'font-tech' || node.name === 'font-format' || node.name === 'env')
+        return `${node.name}(${arg.toLowerCase()})`;
       if (node.name === 'selector' || node.name === 'at-rule') return `${node.name}(${arg})`;
       return `${node.fn}(${node.arg})`;
     }
@@ -705,7 +764,9 @@ export function supportsHold31(node, declaration, selector) {
       const arg = node.arg.trim();
       switch (node.name) {
         case 'selector':
-          return arg !== '' && !hasTopLevelComma(arg) && !/::-webkit-/i.test(arg) && selector(arg);
+          return arg !== '' && !hasTopLevelComma(arg) && knownPseudoElements(arg) && selector(arg);
+        case 'env':
+          return ENV.has(arg.toLowerCase());
         case 'font-tech':
           return FONT_TECH.has(arg.toLowerCase());
         case 'font-format':
@@ -723,17 +784,85 @@ export function supportsHold31(node, declaration, selector) {
 // with no ; in its value, another property with a valid value (!important
 // allowed where it is a condition's).
 export function supportedDeclaration31(name, value, declaration, important) {
-  if (name.startsWith('--')) return !value.includes(';');
+  if (name.startsWith('--')) return !topLevelSemicolon(value);
   let text = value.trim();
   if (important) text = text.replace(/!\s*important\s*$/i, '').trim();
-  return text !== '' && !text.includes(';') && declaration(name, text);
+  return text !== '' && !topLevelSemicolon(text) && declaration(name, text);
 }
+
+// Whether a value has a ; outside strings and blocks ("a;b" is one
+// string).
+function topLevelSemicolon(text) {
+  let depth = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"' || c === "'") {
+      i++;
+      while (i < text.length && text[i] !== c) i += text[i] === '\\' ? 2 : 1;
+    } else if (c === '\\') i++;
+    else if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') depth--;
+    else if (c === ';' && depth <= 0) return true;
+  }
+  return false;
+}
+
+// selector(): the pseudo-elements jsdom 31 knows (black box, 31.0.1;
+// ::-webkit-scrollbar, ::cue and made-up names are not).
+const PSEUDO_ELEMENTS = new Set([
+  'before',
+  'after',
+  'first-line',
+  'first-letter',
+  'marker',
+  'placeholder',
+  'selection',
+  'backdrop',
+  'file-selector-button',
+  'part(',
+  'slotted(',
+  'highlight(',
+  'grammar-error',
+  'spelling-error',
+  'target-text',
+  'details-content',
+  'view-transition',
+  'view-transition-group(',
+  'view-transition-image-pair(',
+  'view-transition-old(',
+  'view-transition-new(',
+  'column',
+  'scroll-marker',
+  'scroll-marker-group',
+  'scroll-button(',
+  'picker(',
+  'picker-icon',
+  'checkmark',
+  'search-text',
+]);
+const PSEUDO_ELEMENT = /::(-?[a-zA-Z_][a-zA-Z0-9_-]*)(\()?/g;
+function knownPseudoElements(text) {
+  for (const m of text.matchAll(PSEUDO_ELEMENT))
+    if (!PSEUDO_ELEMENTS.has(m[1].toLowerCase() + (m[2] ?? ''))) return false;
+  return true;
+}
+
+// env(): the names jsdom 31 knows, alone (no fallback).
+const ENV = new Set([
+  'preferred-text-scale',
+  ...['top', 'right', 'bottom', 'left'].flatMap((s) => [`safe-area-inset-${s}`, `safe-area-max-inset-${s}`]),
+  ...['width', 'height', 'top', 'right', 'bottom', 'left'].map((s) => `viewport-segment-${s}`),
+]);
 
 function hasTopLevelComma(text) {
   let depth = 0;
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
-    if (c === '(' || c === '[') depth++;
+    if (c === '\\') i++;
+    else if (c === '"' || c === "'") {
+      i++;
+      while (i < text.length && text[i] !== c) i += text[i] === '\\' ? 2 : 1;
+    } else if (c === '(' || c === '[') depth++;
     else if (c === ')' || c === ']') depth--;
     else if (c === ',' && depth === 0) return true;
   }
