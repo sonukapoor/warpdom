@@ -134,6 +134,8 @@ function readColorFunction(tok, raw, nested, write) {
     // (two colors in light-dark(), one in contrast-color())
     const count = tok.args.filter((arg) => arg.t === 'comma').length + 1;
     if (count !== (name === 'light-dark' ? 2 : 1)) throw REJECTED;
+    // (each argument one color)
+    if (tok.args.length !== count * 2 - 1) throw REJECTED;
     return `${name}(${argList(tok.args, write)})`;
   }
   return undefined;
@@ -159,6 +161,15 @@ const MIX_SPACES = new Set([...SPACE_NAMES, 'lab', 'oklab', 'hsl', 'hwb', 'lch',
 const POLAR = new Set(['hsl', 'hwb', 'lch', 'oklch']);
 const HUE_METHODS = new Set(['shorter', 'longer', 'increasing', 'decreasing']);
 function checkComponents(tok) {
+  // (commas only in the legacy rgb() and hsl() syntax, between every
+  // component, and then hsl()'s saturation and lightness are percentages)
+  const commas = tok.args.filter((arg) => arg.t === 'comma').length;
+  if (commas > 0) {
+    if (!/^(?:rgba?|hsla?)$/.test(tok.name)) throw REJECTED;
+    const parts = tok.args.filter((arg) => arg.t !== 'comma');
+    if (commas !== parts.length - 1 || tok.args.some((arg, i) => (i % 2 === 1) !== (arg.t === 'comma'))) throw REJECTED;
+    if (tok.name.startsWith('hsl') && !(parts[1]?.t === 'percentage' && parts[2]?.t === 'percentage')) throw REJECTED;
+  }
   const { values, alpha } = channels(tok.args);
   // (the hue's place: first in hsl() and hwb(), third in lch() and oklch();
   // color() starts with its space)
