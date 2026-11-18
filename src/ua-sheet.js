@@ -213,6 +213,118 @@ fieldset { border: groove 2px rgb(204, 204, 204); min-inline-size: min-content }
 marquee { text-align: initial; overflow: hidden !important }
 `;
 
+// jsdom 31: the rendering section as it now reads, margins and the hidden
+// attribute included, with jsdom's form control colors (black box,
+// 31.0.1). It is a lower origin than the page's (cascade.js cascade31).
+const HTML31 = `
+area, base, basefont, datalist, head, link, meta, noembed, noframes, param, rp, script, style, template, title { display: none }
+[hidden]:not([hidden="until-found" i]):not(embed) { display: none }
+[hidden="until-found" i]:not(embed) { content-visibility: hidden }
+embed[hidden] { display: inline; height: 0; width: 0 }
+input[type="hidden" i] { display: none !important }
+html, body { display: block }
+address, blockquote, center, dialog, div, figure, figcaption, footer, form, header, hr, legend, listing, main, p, plaintext, pre, search,
+  xmp { display: block }
+blockquote, figure, listing, p, plaintext, pre, xmp { margin-block: 1em }
+blockquote, figure { margin-inline: 40px }
+address { font-style: italic }
+listing, plaintext, pre, xmp { font-family: monospace; white-space: pre }
+dialog:not([open]) { display: none }
+dialog { position: absolute; inset-inline-start: 0; inset-inline-end: 0; width: fit-content; height: fit-content; margin: auto; border: solid;
+  padding: 1em; background-color: Canvas; color: CanvasText }
+[popover]:not(:popover-open):not(dialog[open]) { display: none }
+[popover] { position: fixed; inset: 0; width: fit-content; height: fit-content; margin: auto; border: solid; padding: 0.25em; overflow: auto;
+  color: CanvasText; background-color: Canvas }
+slot { display: contents }
+cite, dfn, em, i, var { font-style: italic }
+b, strong { font-weight: bolder }
+code, kbd, samp, tt { font-family: monospace }
+big { font-size: larger }
+small { font-size: smaller }
+sub { vertical-align: sub }
+sup { vertical-align: super }
+sub, sup { line-height: normal; font-size: smaller }
+ruby { display: ruby }
+rt { display: ruby-text }
+:link { color: LinkText }
+:visited { color: VisitedText }
+:link, :visited { text-decoration: underline; cursor: pointer }
+mark { background: yellow; color: black }
+abbr[title], acronym[title] { text-decoration: dotted underline }
+ins, u { text-decoration: underline }
+del, s, strike { text-decoration: line-through }
+nobr { white-space: nowrap }
+address, blockquote, center, div, figure, figcaption, footer, form, header, hr, legend, listing, main, p, plaintext, pre, summary, xmp,
+  article, aside, h1, h2, h3, h4, h5, h6, hgroup, nav, section, search, table, caption, colgroup, col, thead, tbody, tfoot, tr, td, th,
+  dir, dd, dl, dt, menu, ol, ul, li, bdi, output, [dir="ltr" i], [dir="rtl" i], [dir="auto" i] { unicode-bidi: isolate }
+bdo, bdo[dir] { unicode-bidi: isolate-override }
+article, aside, h1, h2, h3, h4, h5, h6, hgroup, nav, section { display: block }
+h1 { margin-block: 0.67em; font-size: 2em; font-weight: bold }
+h2 { margin-block: 0.83em; font-size: 1.5em; font-weight: bold }
+h3 { margin-block: 1em; font-size: 1.17em; font-weight: bold }
+h4 { margin-block: 1.33em; font-size: 1em; font-weight: bold }
+h5 { margin-block: 1.67em; font-size: 0.83em; font-weight: bold }
+h6 { margin-block: 2.33em; font-size: 0.67em; font-weight: bold }
+dir, dd, dl, dt, menu, ol, ul { display: block }
+li { display: list-item; text-align: match-parent }
+dir, dl, menu, ol, ul { margin-block: 1em }
+:is(dir, dl, menu, ol, ul) :is(dir, dl, menu, ol, ul) { margin-block: 0 }
+dd { margin-inline-start: 40px }
+dir, menu, ol, ul { padding-inline-start: 40px }
+ol, ul, menu { counter-reset: list-item }
+ol { list-style-type: decimal }
+dir, menu, ul { list-style-type: disc }
+:is(dir, menu, ol, ul) :is(dir, menu, ul) { list-style-type: circle }
+:is(dir, menu, ol, ul) :is(dir, menu, ol, ul) :is(dir, menu, ul) { list-style-type: square }
+table { display: table }
+caption { display: table-caption }
+colgroup { display: table-column-group }
+col { display: table-column }
+thead { display: table-header-group }
+tbody { display: table-row-group }
+tfoot { display: table-footer-group }
+tr { display: table-row }
+td, th { display: table-cell }
+table { box-sizing: border-box; border-spacing: 2px; border-collapse: separate; text-indent: initial }
+td, th { padding: 1px }
+th { font-weight: bold }
+caption { text-align: center }
+thead, tbody, tfoot, table > tr { vertical-align: middle }
+tr, td, th { vertical-align: inherit }
+input, select, button, textarea { letter-spacing: initial; word-spacing: initial; line-height: initial; text-transform: initial;
+  text-indent: initial; text-shadow: initial; appearance: auto }
+input:not([type="image" i], [type="range" i], [type="checkbox" i], [type="radio" i]) { overflow: clip !important; overflow-clip-margin: 0 !important }
+input, select, textarea { text-align: initial }
+input:is([type="reset" i], [type="button" i], [type="submit" i]), button { text-align: center }
+input, button { display: inline-block }
+input[type="hidden" i], input[type="file" i], input[type="image" i] { appearance: none }
+input:is([type="radio" i], [type="checkbox" i], [type="reset" i], [type="button" i], [type="submit" i], [type="color" i], [type="search" i]),
+  select, button { box-sizing: border-box }
+textarea { white-space: pre-wrap }
+select { display: inline-block }
+option, optgroup { display: block }
+optgroup { font-weight: bolder }
+input:not([type="checkbox" i], [type="radio" i], [type="file" i], [type="range" i]) { align-content: unsafe center }
+input:not([type="hidden" i], [type="checkbox" i], [type="radio" i], [type="file" i], [type="image" i], [type="range" i]), select, textarea {
+  color: FieldText; background-color: Field }
+input:is([type="button" i], [type="submit" i], [type="reset" i], [type="color" i]), button { align-content: center; color: ButtonText;
+  background-color: ButtonFace; border-color: ButtonBorder }
+input[type="image" i] { overflow: clip !important; overflow-clip-margin: content-box !important }
+fieldset { display: block; margin-inline: 2px; border: groove 2px ThreeDFace; padding-block: 0.35em 0.625em; padding-inline: 0.75em;
+  min-inline-size: min-content }
+legend { padding-inline: 2px }
+details, summary { display: block }
+details > summary:first-of-type { display: list-item; counter-increment: list-item 0; list-style: disclosure-closed inside }
+details[open] > summary:first-of-type { list-style-type: disclosure-open }
+hr { color: gray; border-style: inset; border-width: 1px; margin-block: 0.5em; margin-inline: auto; overflow: hidden }
+iframe { border: 2px inset }
+video { object-fit: contain }
+marquee { display: inline-block; text-align: initial; overflow: hidden !important }
+meter, progress { appearance: auto }
+`;
+
+const SHEETS = { legacy: LEGACY, html: HTML, html31: HTML31 };
+
 const SIMPLE = /^[a-z][a-z0-9]*$/;
 
 // An attribute a selector without a subject tag requires ('popover' for
@@ -254,9 +366,9 @@ function selectorList(text) {
 
 const bySpecificityThenOrder = (a, b) => b.specificity - a.specificity || b.order - a.order;
 
-// The tag a selector's rightmost compound requires ('input' for
-// input[type="hidden" i], 'rt' for ruby > rt), or null ([dir], :link).
-function subjectTag(selector) {
+// A selector's rightmost compound (input[type="hidden" i] for itself,
+// rt for ruby > rt).
+function subjectOf(selector) {
   let depth = 0,
     start = 0;
   for (let i = 0; i < selector.length; i++) {
@@ -265,7 +377,22 @@ function subjectTag(selector) {
     else if (c === ')' || c === ']') depth--;
     else if (depth === 0 && (c === ' ' || c === '>' || c === '+' || c === '~')) start = i + 1;
   }
-  return /^[a-z][a-z0-9]*/.exec(selector.slice(start))?.[0] ?? null;
+  return selector.slice(start);
+}
+
+// The tags a selector's rightmost compound requires: its tag ('input' for
+// input[type="hidden" i]), or those of an :is() of type selectors it
+// starts with (:is(dir, menu, ul) for ... :is(dir, menu, ul)); null when
+// it requires none ([dir], :link).
+const IS_TAGS = /^:is\(([a-z0-9, ]+)\)/;
+function subjectTags(selector) {
+  const subject = subjectOf(selector);
+  const tag = /^[a-z][a-z0-9]*/.exec(subject)?.[0];
+  if (tag !== undefined) return [tag];
+  const list = IS_TAGS.exec(subject)?.[1]
+    .split(',')
+    .map((t) => t.trim());
+  return list !== undefined && list.every((t) => SIMPLE.test(t)) ? list : null;
 }
 
 // A property's declarations at one importance: the rules of single type
@@ -311,9 +438,9 @@ function compiledRule(rule) {
     } catch {
       continue;
     }
-    const tag = subjectTag(selector);
+    const tags = subjectTags(selector);
     for (const { match, specificity } of compiled)
-      complex.push({ match, specificity, tag, attribute: tag === null ? subjectAttribute(selector) : null });
+      complex.push({ match, specificity, tags, attribute: tags === null ? subjectAttribute(selector) : null });
   }
   return (rule.compiled = { simple, complex });
 }
@@ -355,15 +482,20 @@ function declarationsOf(index, name) {
       const entry = important ? (slot.important ??= newEntry()) : (slot.normal ??= newEntry());
       const { simple, complex } = compiledRule(decl.rule);
       for (const tag of simple) entry.tags.set(tag, { specificity: 1, order: decl.order, value: v, via });
-      for (const { match, specificity, tag, attribute } of complex) {
-        let list = entry.any;
-        if (tag !== null) {
-          list = entry.byTag.get(tag);
-          if (!list) entry.byTag.set(tag, (list = []));
-        } else if (attribute === null) entry.anyAttributes = null;
+      for (const { match, specificity, tags, attribute } of complex) {
+        const rule = { match, specificity, order: decl.order, value: v, via };
+        if (tags !== null) {
+          for (const tag of tags) {
+            let list = entry.byTag.get(tag);
+            if (!list) entry.byTag.set(tag, (list = []));
+            list.push(rule);
+          }
+          continue;
+        }
+        if (attribute === null) entry.anyAttributes = null;
         else if (entry.anyAttributes !== null && !entry.anyAttributes.includes(attribute))
           entry.anyAttributes.push(attribute);
-        list.push({ match, specificity, order: decl.order, value: v, via });
+        entry.any.push(rule);
       }
     }
   }
@@ -388,7 +520,7 @@ function firstRule(list, element) {
 function lookup(entry, element) {
   const tag = element[S].tag;
   const own = firstRule(entry.byTag.get(tag), element);
-  const any = entry.any.length ? firstRule(entry.any, element) : null;
+  const any = entry.any.length && hasAny(element[S].attrs, entry.anyAttributes) ? firstRule(entry.any, element) : null;
   const rule = own === null ? any : any === null || bySpecificityThenOrder(own, any) <= 0 ? own : any;
   return rule ?? entry.tags.get(tag);
 }
@@ -401,7 +533,9 @@ function indexFor(window, expand) {
   const ws = window[S];
   const mode = validationModeOf(window),
     surface = styleSurfaceOf(window);
-  const generation = ws.compat.jsdom >= 27 ? 'html' : 'legacy';
+  let generation = 'legacy';
+  if (ws.compat.jsdom >= 31) generation = 'html31';
+  else if (ws.compat.jsdom >= 27) generation = 'html';
   const key = `${generation} ${mode}`;
   let cache = indexes;
   if (surface !== null) {
@@ -409,7 +543,7 @@ function indexFor(window, expand) {
     if (!cache) surfaceIndexes.set(surface, (cache = new Map()));
   }
   let index = cache.get(key);
-  if (!index) cache.set(key, (index = sheetIndex(generation === 'html' ? HTML : LEGACY, mode, surface, expand)));
+  if (!index) cache.set(key, (index = sheetIndex(SHEETS[generation], mode, surface, expand)));
   return (ws.uaIndex = index);
 }
 
@@ -483,6 +617,10 @@ export function uaInOrder(window, key, names, expand) {
   lists.set(key, list);
   return list;
 }
+
+// The rule that declares a value for an element, or undefined: {
+// specificity, order, value }.
+export const uaRule = (entry, element) => lookup(entry, element) ?? undefined;
 
 // A declaration's value for an element, or undefined.
 export const uaValue = (entry, element) => (entry === null ? undefined : lookup(entry, element)?.value);
