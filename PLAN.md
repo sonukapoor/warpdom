@@ -7962,3 +7962,29 @@ selectors with parentheses of their own ((:is(.a, .b)), (div:has(> p)));
 a start or end the selector engine does not know drops the rule ((.a)),
 and to( is a function, not to and a ( (cssom.js scopePrelude31; older
 profiles keep the earlier parse).
+Merged as #330 (2026-11-18).
+
+## 2026-11-18: jsdom 31, CSS part E5: computed style objects (branch feat/269-jsdom31-live, #269)
+
+Decision (2026-11-18): pseudo-elements are part E6 of their own (jsdom
+31 cascades pseudo-element rules: #t::before { color: blue } gives the
+::before style blue; unknown ones, ::part() and ::slotted() are empty).
+jsdom 31's computed style objects, black box on 31.0.1:
+- Empty outside the rendered tree: a disconnected element, one in a
+  document without a window, a shadow host's child not assigned to a slot
+  ('' for every property, no items; cascade.js rendered31, kept with the
+  element's cascaded values). Live: the object follows the element (empty
+  once removed, its rule edits read at once).
+- Its items: every longhand jsdom 31 computes (544: warpdom's longhands
+  but jsdom 31's shorthands, aliases and dropped names; unprefixed first,
+  each group in code unit order), then the custom properties the element
+  has, its own and inherited, in code unit order (names31). The indexed
+  properties are defined when length is read (iteration reads it first).
+- Read-only: every write throws NoModificationAllowedError, the accessors'
+  too (28.1 to 30 let a setter change the value).
+Found, for the shadow scoping part: a shadow tree's own sheets and the
+document's (kept after rule edits, a kept element moved).
+Speed (e-bcas.mjs, 7 interleaved runs): the 31 profile 340.7 ms on main,
+351.7 ms here (the rendered tree check, kept per element; it was 7% read
+before the cascaded values); the 30 profile 253.1 and 255.4 ms (noise).
+Against jsdom 31.0.1: 68 of the default parity tests differ (77 on main).

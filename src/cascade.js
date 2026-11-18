@@ -65,6 +65,7 @@ import {
   supportsMatches,
 } from './cssom.js';
 import { present31 } from './color31.js';
+import { shorthand31, alias31, dropped31 } from './css31.js';
 import {
   parseDeclarations,
   writtenDeclarations,
@@ -1114,6 +1115,8 @@ function cascadeCache(element) {
       rootDark: undefined,
       lineHeight: undefined,
       customs: undefined,
+      // (whether the element is in the rendered tree, jsdom 31: styleValue)
+      rendered: ds.window[S].compat.computed31 ? undefined : true,
       flow: -1,
       flowText: false,
       flowTextRev: 0,
@@ -2865,6 +2868,19 @@ function observedShorthand(element, name) {
 // jsdom 27 and later: background-position from its x and y (set by
 // background too: background: red gives 0% 0%).
 function styleValue(element, property) {
+  const value = styleValueOf(element, property);
+  // jsdom 31 (black box, 31.0.1): an element outside the rendered tree has
+  // an empty computed style (checked after the value: reading it made the
+  // element's cascaded values current, which keep the answer; true from
+  // the start in other profiles).
+  const cache = element[S].cascaded;
+  if (cache !== undefined && cache.rendered !== true) {
+    cache.rendered ??= inRenderedTree(element);
+    if (!cache.rendered) return '';
+  }
+  return value;
+}
+function styleValueOf(element, property) {
   if (LONGHANDS[property] !== undefined) return computedValue(element, property);
   const compat = element[S].doc[S].window[S].compat;
   if (compat.jsdom >= 27 && !property.startsWith('--')) {
@@ -2881,3 +2897,68 @@ export const isDisplayNone = (element) => computedValue(element, 'display') === 
 
 computed.value = styleValue;
 computed.accessor = legacyAccessorValue;
+computed.names31 = names31;
+
+// --- jsdom 31: the computed style's items and the rendered tree ----------------------
+
+// Whether an element is in the rendered tree (black box, 31.0.1): connected,
+// in a document with a window, and in the flat tree (a shadow host's child
+// assigned to a slot, a shadow root's children under their host). Else its
+// computed style is empty: '' for every property, no items. Kept with the
+// element's cascaded values.
+function rendered31(element) {
+  const cache = cascadeCache(element);
+  cache.rendered ??= inRenderedTree(element);
+  return cache.rendered;
+}
+function inRenderedTree(element) {
+  if (element[S].doc[S].noView === true) return false;
+  for (let n = element; ;) {
+    const p = n[S].parent;
+    if (p === null) return false;
+    const ps = p[S];
+    if (ps.type === DOCUMENT_NODE) return true;
+    if (ps.type === ELEMENT_NODE) {
+      if (ps.shadowRoot && findSlot(n) === null) return false;
+      n = p;
+    } else if (ps.shadow === true) n = ps.host;
+    else return false;
+  }
+}
+
+// The computed style's items (black box, 31.0.1): every longhand jsdom 31
+// computes (its longhands, not its shorthands, aliases or the names it
+// drops), unprefixed ones first, each group in code unit order; then the
+// custom properties the element has (its own and inherited), in code unit
+// order. None outside the rendered tree.
+let longhands31 = null;
+const NO_NAMES = Object.freeze([]);
+function names31(element) {
+  if (!rendered31(element)) return NO_NAMES;
+  longhands31 ??= computedLonghands31();
+  const customs = new Set();
+  for (let e = element; e !== null; e = inheritParent(e)) {
+    for (const name of ruleIndex(e).keys()) if (name.startsWith('--')) customs.add(name);
+    const inline = inlineDeclarations(e);
+    if (inline !== null) for (const name of inline.keys()) if (name.startsWith('--')) customs.add(name);
+  }
+  if (customs.size === 0) return longhands31;
+  const own = [...customs].filter((name) => computedValue(element, name) !== '').sort(byCodeUnits);
+  return own.length === 0 ? longhands31 : longhands31.concat(own);
+}
+function byCodeUnits(a, b) {
+  if (a === b) return 0;
+  return a < b ? -1 : 1;
+}
+function computedLonghands31() {
+  const dropped = new Set(dropped31());
+  const names = Object.keys(LONGHANDS).filter(
+    (name) => shorthand31(name) === undefined && !dropped.has(name) && alias31(name) === name,
+  );
+  return names.sort((a, b) => {
+    const pa = a.startsWith('-'),
+      pb = b.startsWith('-');
+    if (pa === pb) return byCodeUnits(a, b);
+    return pa ? 1 : -1;
+  });
+}

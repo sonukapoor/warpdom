@@ -4776,6 +4776,19 @@ function serialize(decls, mode = 'spec') {
 // Computed values come from cascade.js, which registers itself here (it
 // imports the selector engine, which imports back into this module).
 export const computed = { value: null };
+// jsdom 31: a computed style's items (cascade.js names31).
+const computedNames = (s) => computed.names31(s.element);
+const computed31 = (s) => s.computed && s.element[S].doc[S].window[S].compat.computed31 === true;
+// The items, as indexed properties too (defined when the length is read:
+// Array.prototype.values reads it first; a computed style is made for
+// each getComputedStyle() call, and most never have their items read).
+function computedLength31(style, s) {
+  const names = computedNames(s);
+  for (let i = 0; i < names.length; i++) if (style[i] !== names[i]) defineIndex(style, i, names[i]);
+  for (let j = names.length; j < s.indexed; j++) delete style[j];
+  s.indexed = names.length;
+  return names.length;
+}
 
 // Write the declarations back to the element's style attribute (CSSOM:
 // update style attribute, which sets the attribute: MutationObserver
@@ -4991,6 +5004,9 @@ function computedOverride(s, name) {
 }
 
 function writeComputed(s, name, value) {
+  // jsdom 31 (black box, 31.0.1): every write throws, the accessors' too
+  // (style.color = 'blue', cssFloat).
+  if (computed31(s)) readOnly();
   const raw = value === null ? '' : String(value).trim();
   if (mutableComputed(s)) {
     // As on el.style (black box, jsdom 20 to 28.0.0): an empty value removes
@@ -6207,7 +6223,11 @@ function pageDescriptors() {
 }
 
 // CSSStyleDeclaration's operations, shared by the interface's variants.
-const itemOf = (style, index) => [...styleState(style).decls.keys()][index >>> 0] ?? '';
+const itemOf = (style, index) => {
+  const s = styleState(style);
+  if (computed31(s)) return computedNames(s)[index >>> 0] ?? '';
+  return [...s.decls.keys()][index >>> 0] ?? '';
+};
 function priorityOf(style, name) {
   const decls = styleState(style).decls;
   const key = propertyName(name);
@@ -6353,7 +6373,9 @@ export const CSS_INTERFACES = [
         sync(this);
       },
       get length() {
-        return styleState(this).decls.size;
+        const s = styleState(this);
+        if (computed31(s)) return computedLength31(this, s);
+        return s.decls.size;
       },
       get parentRule() {
         return styleState(this).parentRule ?? null;
