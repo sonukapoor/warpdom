@@ -486,3 +486,50 @@ test('jsdom 31: a query nested thousands deep does not throw', () => {
   assert.equal(typeof serializeMedium31(deep), 'string');
   assert.equal(mediumMatches31(deep), false);
 });
+
+// Second review round (#329).
+parity(
+  'jsdom 31: comments, escaped quotes and strings in media lists and CSS.supports; deleteMedium converts once',
+  (w) => {
+    const d = w.document;
+    d.head.innerHTML = '<style>@media print {} @media screen, print {}</style>';
+    const [a, b] = [...d.styleSheets[0].cssRules].map((r) => r.media);
+    const out = [];
+    for (const text of ['foo("a\\"b")', 'screen /* comment */ and (color)', '/* c */ (color)']) {
+      a.mediaText = text;
+      out.push([text, a.mediaText, d.styleSheets[0].cssRules[0].matches]);
+    }
+    let calls = 0;
+    b.deleteMedium({
+      toString() {
+        return calls++ ? 'print' : 'screen';
+      },
+    });
+    out.push([b.mediaText, calls]);
+    for (const c of [
+      '(display: grid) /* comment */ and (color: red)',
+      '/* a */ (display: grid)',
+      'selector([data-label="::made-up"])',
+      'selector([data-label="::before"])',
+      'not (x: "a\\"b")',
+    ])
+      out.push([c, w.CSS.supports(c)]);
+    return out;
+  },
+  { jsdom: 31 },
+);
+
+// (jsdom 31 reports "Could not parse CSS stylesheet" for the sheets here:
+// values measured on 31.0.1)
+test('jsdom 31: a ] or } closing nothing in a function invalidates a query or a @supports prelude', () => {
+  const w = createWindow({ jsdom: '31.0.1' });
+  const d = w.document;
+  d.head.innerHTML =
+    '<style>@media foo(]) {} @media (color) and foo(}x) {} @supports not foo(]) {} @supports not foo(}) {}</style>';
+  const rules = [...d.styleSheets[0].cssRules];
+  assert.deepEqual(
+    rules.map((r) => r.media?.mediaText),
+    ['not all', 'not all'],
+  );
+  assert.equal(w.CSS.supports('not foo(])'), false);
+});

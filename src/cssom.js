@@ -2148,10 +2148,12 @@ export const CSSOM_INTERFACES = [
         const list = state(this).list;
         required(arguments.length, 1, 'MediaList', 'deleteMedium');
         const sources = state(this).sources;
-        // (jsdom 31: an argument of more than one query removes nothing)
-        if (sources !== null && splitMedia(String(medium)).length !== 1) return;
+        // (jsdom 31: converted once; an argument of more than one query
+        // removes nothing)
+        if (sources !== null) medium = String(medium);
+        if (sources !== null && splitMedia(medium).length !== 1) return;
         const key = sources === null ? mediumKey : same;
-        const m = key(sources === null ? normalizeMedium(medium) : serializeMedium31(String(medium).trim()));
+        const m = key(sources === null ? normalizeMedium(medium) : serializeMedium31(medium.trim()));
         let removed = false;
         for (let i = list.length - 1; i >= 0; i--)
           if (key(list[i]) === m) {

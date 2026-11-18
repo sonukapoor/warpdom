@@ -103,7 +103,7 @@ function components(text) {
     const after = i + ident[0].length;
     if (text[after] === '(') {
       const end = closing(text, after);
-      if (end < 0) return null;
+      if (end < 0 || strayCloser(text, after + 1, end)) return null;
       out.push({ fn: text.slice(i, end + 1) });
       i = end + 1;
       continue;
@@ -120,10 +120,11 @@ function closing(text, open) {
   for (let i = open; i < text.length; i++) {
     const c = text[i];
     if (c === '"' || c === "'") {
-      const end = text.indexOf(c, i + 1);
-      if (end < 0) return -1;
-      i = end;
-    } else if (c === '(') depth++;
+      i++;
+      while (i < text.length && text[i] !== c) i += text[i] === '\\' ? 2 : 1;
+      if (i >= text.length) return -1;
+    } else if (c === '\\') i++;
+    else if (c === '(') depth++;
     else if (c === ')' && --depth === 0) return i;
   }
   return -1;
@@ -132,6 +133,30 @@ function closing(text, open) {
 // CSS whitespace only (U+00A0 is text: (width: 1024px\u00a0) is general
 // enclosed).
 const cssTrim = (text) => text.replace(/^[ \t\n\r\f]+|[ \t\n\r\f]+$/g, '');
+// Text with its comments as spaces (strings kept): a comment separates
+// components (screen /* x */ and (color) is screen and (color)).
+function withoutComments(text) {
+  if (!text.includes('/*')) return text;
+  let out = '';
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"' || c === "'") {
+      let j = i + 1;
+      while (j < text.length && text[j] !== c) j += text[j] === '\\' ? 2 : 1;
+      out += text.slice(i, j + 1);
+      i = j;
+    } else if (c === '\\') {
+      out += text.slice(i, i + 2);
+      i++;
+    } else if (c === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      out += ' ';
+      i = end < 0 ? text.length : end + 1;
+    } else out += c;
+  }
+  return out;
+}
+
 // Whether text[from...to] has a ] or } that closes nothing (strings
 // skipped): the query or condition does not parse (black box, 31.0.1:
 // @media (]) is not all, @supports not (]) drops its rule).
@@ -509,7 +534,7 @@ function read(text) {
   usesScheme = false;
   let node;
   try {
-    node = query(text);
+    node = query(withoutComments(text));
   } catch (error) {
     if (!(error instanceof RangeError)) throw error;
     node = { kind: 'enclosed', text: collapse(text) };
@@ -640,7 +665,7 @@ function supportsComponents(text) {
     const after = i + ident[0].length;
     if (text[after] === '(') {
       const end = supportsClosing(text, after);
-      if (end < 0) return null;
+      if (end < 0 || strayCloser(text, after + 1, end)) return null;
       out.push({ fn: ident[0], inner: text.slice(after + 1, end) });
       i = end + 1;
       continue;
@@ -717,7 +742,7 @@ function supportsInParens(part) {
 
 // A prelude's condition, or null when the rule is dropped.
 export function parseSupports31(text) {
-  return supportsCondition(supportsComponents(String(text)));
+  return supportsCondition(supportsComponents(withoutComments(String(text))));
 }
 
 export function serializeSupports31(node) {
@@ -840,9 +865,11 @@ const PSEUDO_ELEMENTS = new Set([
   'checkmark',
   'search-text',
 ]);
+const STRING = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g;
 const PSEUDO_ELEMENT = /::(-?[a-zA-Z_][a-zA-Z0-9_-]*)(\()?/g;
 function knownPseudoElements(text) {
-  for (const m of text.matchAll(PSEUDO_ELEMENT))
+  // (::x in a string is no pseudo-element)
+  for (const m of text.replace(STRING, '""').matchAll(PSEUDO_ELEMENT))
     if (!PSEUDO_ELEMENTS.has(m[1].toLowerCase() + (m[2] ?? ''))) return false;
   return true;
 }

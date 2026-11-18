@@ -7861,3 +7861,8 @@ read on the first declaration check, not at window creation.
 Cold load after the round (7 interleaved runs, load average 4): 35.7 ms
 on main, 37.1 ms here (the module, as above); window creation 3.17 and
 3.15 ms.
+Second round: comments separate components (screen /* x */ and (color)
+is screen and (color); CSS.supports reads them so), an escaped quote
+stays in its string, a function's ] or } closing nothing invalidates too,
+::x inside a string is no pseudo-element, deleteMedium converts its
+argument once.
