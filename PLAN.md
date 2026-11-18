@@ -7681,7 +7681,9 @@ the declaration only when it is held (--x: red !important; --x:; keeps
 red); an at-rule ends at a ; or at the } of its block (@media x { ... }
 left: 1px keeps left); a run of comments is one separator
 (1px/**//**/2px); backslash searches bounded to their span (a search to
-the end of the text per name was quadratic). Found, not modeled: jsdom
+the end of the text per name was quadratic), and skipped for a text
+with no backslash (style attribute parse 1.48 us here, 1.34 us on main,
+7 interleaved runs at a load average of 17). Found, not modeled: jsdom
 31 keeps a nested rule (CSS Nesting) in a style rule's block (.a {
 @media x { color: red } left: 1px }); warpdom drops it, keeping the
 declarations after it (main drops those too).

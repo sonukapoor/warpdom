@@ -130,7 +130,10 @@ function nameEnd(text, i) {
 // The index of the first backslash from start to end, or -1 (bounded: a
 // search to the end of the text for each name would be quadratic; #327
 // review).
+// (none searched for when the text tokenized has no backslash at all)
+let slashes = false;
 function firstSlash(text, start, end) {
+  if (!slashes) return -1;
   for (let k = start; k < end; k++) if (text.charCodeAt(k) === 92) return k;
   return -1;
 }
@@ -207,6 +210,7 @@ function url(text, start, i) {
 
 function tokenize(text) {
   count = 0;
+  slashes = text.indexOf('\\') !== -1;
   const n = text.length;
   let i = 0;
   while (i < n) {
