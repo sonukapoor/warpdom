@@ -7695,4 +7695,5 @@ non-printable characters make an unquoted url() a bad url; an escaped
 CRLF in a string is one line break (the accessor path is not
 preprocessed); \- in a value stays escaped (font-family: \- is "-").
 Third round: a unit decoded from escapes may start with e (1\65 m is
-1em; letters alone cannot be read as an exponent).
+1em; letters alone cannot be read as an exponent). A unit decoded to e alone before a + stays escaped (1\65+3px is not
+1e+3px).

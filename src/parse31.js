@@ -447,7 +447,10 @@ function tokenText(text, k) {
     let unit = start;
     while (unit < end && !startsIdent(text, unit)) unit++;
     const name = unit < end ? decode(text, unit, end) : '';
-    return /^[A-Za-z]+$/.test(name) ? text.slice(start, unit) + name : text.slice(start, end);
+    // (an e alone before a + stays escaped: 1\65+3px is no 1e+3px; #327
+    // review)
+    const exponent = (name === 'e' || name === 'E') && text.charCodeAt(end) === 43;
+    return /^[A-Za-z]+$/.test(name) && !exponent ? text.slice(start, unit) + name : text.slice(start, end);
   }
   // (a hash: #\66 ff is #fff)
   if (type === HASH) {
