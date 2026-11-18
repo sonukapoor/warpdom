@@ -366,3 +366,15 @@ test('jsdom 31: a deep tree finds its flow without a call per ancestor', () => {
   e.style.marginBlockStart = '1px';
   assert.equal(w.getComputedStyle(e).marginTop, '1px');
 });
+
+// (#328 review: the flow found first, while win31 holds nothing)
+parity(
+  "jsdom 31: a physical !important declaration over its logical partner, read before the element's flow",
+  (w) => {
+    const d = w.document;
+    d.body.innerHTML =
+      '<div style="writing-mode: vertical-rl; margin-block-start: 5px; margin-right: 9px !important"></div>';
+    return w.getComputedStyle(d.body.firstChild).marginRight;
+  },
+  { jsdom: 31 },
+);

@@ -1039,8 +1039,10 @@ function won31(level, specificity, order, value) {
   return value;
 }
 function cascade31(element, index, inlineMap, name, window) {
-  let value = winner31(element, index, inlineMap, name, window);
+  // (the flow first: finding it reads computed values, which cascade too
+  // and overwrite win31)
   const partner = isLogicalGroup(name) ? partnerOf(name, flow31(element)) : null;
+  let value = winner31(element, index, inlineMap, name, window);
   if (partner !== null) {
     const { level, specificity, order } = win31;
     const other = winner31(element, index, inlineMap, partner, window);

@@ -7793,3 +7793,7 @@ parent is its assigned slot, a shadow root's child's its host;
 overscroll-behavior is a logical group; partner names are kept per flow.
 Speed after the round, same benchmark (load average 4): main 258.0 ms,
 before the round 342.3 ms, after 346.9 ms (noise).
+Second round: the flow is found before a pair's first winner (finding it
+cascades writing-mode and the others, which overwrote that winner's
+level: margin-right: 9px !important lost to margin-block-start: 5px when
+read first).
