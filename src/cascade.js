@@ -54,6 +54,7 @@ import {
 import { substituteVars, tooManyTokens, trimEnds } from './var-substitution.js';
 import { uaDeclarations, uaDeclarations31, uaValue, uaRule, uaRuleOver, uaInOrder } from './ua-sheet.js';
 import { findSlot } from './slots.js';
+import { decodeEscapes } from './conditions31.js';
 import { flowOf, isLogical, isLogicalGroup, partnerOf } from './logical.js';
 import {
   documentStyleSheets,
@@ -147,7 +148,9 @@ function cascadeExpand(property, value, legacyFont, compat = null) {
   return expand(property, value, legacyFont);
 }
 
-function addDeclarations(index, decls, entries, counter, compat) {
+// layer: the entry's layer (jsdom 31: an id while the index is built,
+// then its precedence, layerKeys); scope: its @scope, or null.
+function addDeclarations(index, decls, entries, counter, compat, layer = 0, scope = null) {
   // Before jsdom 28.1.0 !important in a style rule counts for nothing
   // (documentOrder); to 29.1.1 a declaration with var() is parsed without
   // it (compat.varDropsImportant, css.js parseInto).
@@ -180,6 +183,8 @@ function addDeclarations(index, decls, entries, counter, compat) {
           important,
           direct,
           from,
+          layer,
+          scope,
         });
     }
   }
@@ -205,6 +210,215 @@ function mediaApplies(rule, mode, compat) {
   return list.length === 0 || list.includes('all') || list.includes('screen');
 }
 
+// --- jsdom 31: @layer and @scope (black box, 31.0.1; CSS Cascade 5 and 6) ---------------
+
+// A layer: its sublayers by name (an anonymous one under a key of its own),
+// in the order they first appear; 0 is the unlayered one.
+const newLayer = (parent) => ({ parent, children: new Map() });
+// The layer a name (a.b too) names under parent, made when first named;
+// '' an anonymous one.
+function layerNamed(layers, parent, name) {
+  if (name === '') {
+    layers.push(newLayer(parent));
+    layers[parent].children.set(Symbol('anonymous'), layers.length - 1);
+    return layers.length - 1;
+  }
+  let at = parent;
+  // (escapes decoded: \61 is a; an escaped dot is part of a name)
+  for (const part of layerParts(name)) {
+    const key = decodeEscapes(part.trim());
+    let id = layers[at].children.get(key);
+    if (id === undefined) {
+      layers.push(newLayer(at));
+      id = layers.length - 1;
+      layers[at].children.set(key, id);
+    }
+    at = id;
+  }
+  return at;
+}
+// A layer name's parts: split at its dots, an escaped character (\\ too)
+// being part of a part (a\\.b is a\ and b, a\.b one part).
+function layerParts(name) {
+  const parts = [];
+  let start = 0;
+  for (let i = 0; i < name.length; i++) {
+    if (name[i] === '\\') i++;
+    else if (name[i] === '.') {
+      parts.push(name.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(name.slice(start));
+  return parts;
+}
+// Each layer's precedence: a layer's sublayers come before its own rules,
+// in the order they appeared, the unlayered rules last; !important
+// declarations the other way round.
+function layerKeys(layers) {
+  const rank = new Array(layers.length);
+  let n = 0;
+  const visit = (id) => {
+    for (const child of layers[id].children.values()) visit(child);
+    rank[id] = n++;
+  };
+  visit(0);
+  return { normal: rank, important: rank.map((r) => n - 1 - r) };
+}
+const byLayerThenSpecificity = (a, b) => b.layer - a.layer || b.specificity - a.specificity || b.order - a.order;
+
+// A @scope rule's scope: { start, end (compiled selector lists, or null),
+// owner (with no start: the parent of the sheet's element) }; null when a
+// selector does not compile.
+// outer: the enclosing @scope's, or null (a nested scope's roots and
+// elements are in it too).
+function scopeOf(rule, ss, outer) {
+  const { start, end } = rule[S];
+  try {
+    const owner = ss.ownerNode?.[S].parent ?? null;
+    return {
+      // (& in a prelude is :scope: the enclosing scope's root for a start,
+      // this scope's for an end)
+      start: start === null ? null : compileRuleSelector(scopeTokens(start).text),
+      end: end === null ? null : compileRuleSelector(scopeTokens(end).text),
+      owner: owner !== null && owner[S].type === ELEMENT_NODE ? owner : null,
+      outer,
+    };
+  } catch {
+    return null;
+  }
+}
+// Whether a scope's selectors read text (:empty, :dir(auto)): the index is
+// then made again when text changes (cascadeCache).
+const scopeReadsText = (scope) =>
+  scope !== null &&
+  (scope.start?.some((e) => e.text) === true || scope.end?.some((e) => e.text) === true || scopeReadsText(scope.outer));
+
+// A scoped rule's selectors: :scope implied before each that has neither
+// :scope nor & (CSS Cascade 6: .b in @scope (.a) is :where(:scope) .b);
+// & is :scope.
+function scopedSelector(text) {
+  return splitSelectorList(text)
+    .map((selector) => {
+      const own = selector.trim();
+      const { text: replaced, scoped } = scopeTokens(own);
+      return scoped ? replaced : `:where(:scope) ${own}`;
+    })
+    .join(', ');
+}
+// Whether the name after a : is scope, escapes decoded (:sc\6f pe).
+const NAME_AT =
+  /^-?(?:[a-zA-Z_]|\\(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))[ \t\n\r\f]?|\\[^\n0-9a-fA-F])(?:[a-zA-Z0-9_-]|\\(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))[ \t\n\r\f]?|\\[^\n0-9a-fA-F])*/;
+function isScopeToken(text, at) {
+  const m = NAME_AT.exec(text.slice(at, at + 64));
+  return m !== null && decodeEscapes(m[0]).toLowerCase() === 'scope';
+}
+// A selector with its & tokens as :scope, and whether it has & or :scope,
+// outside strings and attribute selectors ([data-v="&"] is no &).
+function scopeTokens(selector) {
+  let out = '',
+    scoped = false;
+  for (let i = 0; i < selector.length; i++) {
+    const c = selector[i];
+    if (c === '\\') {
+      out += selector.slice(i, i + 2);
+      i++;
+    } else if (c === '"' || c === "'" || c === '[') {
+      const close = c === '[' ? ']' : c;
+      let j = i + 1;
+      while (j < selector.length && selector[j] !== close) {
+        const q = selector[j];
+        if (q === '\\') j++;
+        else if (c === '[' && (q === '"' || q === "'")) {
+          j++;
+          while (j < selector.length && selector[j] !== q) j += selector[j] === '\\' ? 2 : 1;
+        }
+        j++;
+      }
+      out += selector.slice(i, j + 1);
+      i = j;
+    } else if (c === '&') {
+      out += ':scope';
+      scoped = true;
+    } else {
+      if (c === ':' && isScopeToken(selector, i + 1)) scoped = true;
+      out += c;
+    }
+  }
+  return { text: out, scoped };
+}
+function splitSelectorList(text) {
+  const out = [];
+  let depth = 0,
+    start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '\\') i++;
+    else if (c === '"' || c === "'") {
+      i++;
+      while (i < text.length && text[i] !== c) i += text[i] === '\\' ? 2 : 1;
+    } else if (c === '(' || c === '[') depth++;
+    else if (c === ')' || c === ']') depth--;
+    else if (c === ',' && depth === 0) {
+      out.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  out.push(text.slice(start));
+  return out;
+}
+
+// A scoped selector's match: an element the selector matches from one of
+// its scope roots (an ancestor or itself matching start), not at or past
+// the scope's limit (an element matching end, from that root); the nearest
+// root gives the element's proximity (proximity31).
+let proximity31 = Infinity;
+function scopedMatch(match, scope) {
+  return (el) => {
+    let hops = 0;
+    // (checks of the enclosing scopes kept for this match only: nested
+    // scopes would repeat them, exponentially)
+    const memo = scope.outer === null ? null : new Map();
+    for (let root = el; root !== null; root = inheritParent(root), hops++) {
+      if (!scopeHas(scope, root, el, memo)) continue;
+      if (match(el, { scope: root })) {
+        proximity31 = hops;
+        return true;
+      }
+    }
+    return false;
+  };
+}
+// Whether root is a root of scope that has el in it: it matches the start
+// (no start: is the owner), el is not at or past the limit from it, and
+// both are in the enclosing scope.
+function scopeHas(scope, root, el, memo) {
+  if (scope.end !== null && limited(scope.end, root, el, { scope: root })) return false;
+  if (scope.outer === null) return startMatches(scope, root, NO_SCOPE);
+  // (a nested scope's start is matched with :scope the enclosing root)
+  for (let outer = root; outer !== null; outer = inheritParent(outer)) {
+    if (!outerHas(scope.outer, outer, root, memo) || !startMatches(scope, root, { scope: outer })) continue;
+    if (el === root || outerHas(scope.outer, outer, el, memo)) return true;
+  }
+  return false;
+}
+const startMatches = (scope, root, ctx) =>
+  scope.start === null ? root === scope.owner : scope.start.some((s) => s.match(root, ctx));
+function outerHas(scope, root, el, memo) {
+  let byScope = memo.get(scope);
+  if (byScope === undefined) memo.set(scope, (byScope = new Map()));
+  let byRoot = byScope.get(root);
+  if (byRoot === undefined) byScope.set(root, (byRoot = new Map()));
+  let known = byRoot.get(el);
+  if (known === undefined) byRoot.set(el, (known = scopeHas(scope, root, el, memo)));
+  return known;
+}
+// Whether an element is at or past a scope's limit from a root.
+function limited(end, root, el, ctx) {
+  for (let e = el; e !== null && e !== root; e = inheritParent(e)) if (end.some((s) => s.match(e, ctx))) return true;
+  return false;
+}
+
 // lists: what was read of rule lists a test can change without the CSSOM
 // knowing (ruleListSnapshot).
 function buildIndex(sheets, mode, compat, lists, doc = null) {
@@ -212,21 +426,33 @@ function buildIndex(sheets, mode, compat, lists, doc = null) {
   index.inOrder = new InOrderIndex();
   index.textDependent = false;
   index.readsScheme = false;
+  index.scoped = false;
+  index.layerCount = 1;
   const counter = { n: 0 };
+  // jsdom 31: the layer and @scope the walk is in (layers: CSS Cascade 5;
+  // layer 0 is the unlayered one).
+  const layers = [newLayer(null)];
+  let layer = 0,
+    scope = null;
   const addRule = (rule) => {
     let entries;
     try {
-      entries = compileRuleSelector(rule[S].selectorText);
+      entries = compileRuleSelector(scope === null ? rule[S].selectorText : scopedSelector(rule[S].selectorText));
     } catch {
       return;
     }
     for (const entry of entries) if (entry.text) index.textDependent = true;
-    addDeclarations(index, rule[S].style[S].decls, entries, counter, compat);
+    if (scope !== null) {
+      index.scoped = true;
+      entries = entries.map((entry) => ({ ...entry, match: scopedMatch(entry.match, scope) }));
+    }
+    addDeclarations(index, rule[S].style[S].decls, entries, counter, compat, layer, scope);
   };
   // jsdom 31 (black box, 31.0.1): a sheet whose media do not match is not
   // applied (<style media="print">), and grouping rules nest: @media
   // where it matches (conditions31.js), @supports where it holds
-  // (conditions31.js), at any depth. (@layer and @scope: not yet.)
+  // (conditions31.js), at any depth; @layer blocks and statements order
+  // the layers, @scope rules are scoped (layerNamed, scopeOf).
   // (an index whose media read the document's color scheme, its meta
   // color-scheme, is made again when the tree changes: ruleIndex)
   const readsScheme = () => {
@@ -236,13 +462,30 @@ function buildIndex(sheets, mode, compat, lists, doc = null) {
     for (const rule of rules) {
       const proto = Object.getPrototypeOf(rule);
       if (proto === ss.protos.CSSStyleRule) addRule(rule);
+      else if (proto === ss.protos.CSSLayerStatementRule)
+        for (const name of rule[S].nameList) layerNamed(layers, layer, name);
       else if (
         (proto === ss.protos.CSSMediaRule && mediaMatches(rule[S].media, doc, readsScheme)) ||
-        (proto === ss.protos.CSSSupportsRule && supportsMatches(rule))
+        (proto === ss.protos.CSSSupportsRule && supportsMatches(rule)) ||
+        proto === ss.protos.CSSLayerBlockRule ||
+        proto === ss.protos.CSSScopeRule
       ) {
         const snapshot = ruleListSnapshot(rule);
         if (snapshot) lists.push(snapshot);
+        const outerLayer = layer,
+          outerScope = scope;
+        if (proto === ss.protos.CSSLayerBlockRule) layer = layerNamed(layers, layer, rule[S].name);
+        else if (proto === ss.protos.CSSScopeRule) {
+          scope = scopeOf(rule, ss, outerScope);
+          if (scope === null) {
+            scope = outerScope;
+            continue;
+          }
+          if (scopeReadsText(scope)) index.textDependent = true;
+        }
         walk31(ruleArray(rule), ss);
+        layer = outerLayer;
+        scope = outerScope;
       }
     }
   };
@@ -270,10 +513,22 @@ function buildIndex(sheets, mode, compat, lists, doc = null) {
   // (.a.b td { color: red !important } td { color: blue !important } gives
   // blue); before, every declaration applies in document order. jsdom 31
   // gives red.
+  if (compat?.computed31) {
+    // (layers, then specificity, then order; scope proximity comes after
+    // specificity when the cascade reads the lists: cascade31)
+    const keys = layerKeys(layers);
+    index.layerCount = layers.length;
+    for (const lists of index.values()) {
+      for (const e of lists.normal) e.layer = keys.normal[e.layer];
+      for (const e of lists.important) e.layer = keys.important[e.layer];
+      lists.normal.sort(byLayerThenSpecificity);
+      lists.important.sort(byLayerThenSpecificity);
+    }
+    return index;
+  }
   for (const lists of index.values()) {
     lists.normal.sort(compat?.documentOrder ? byOrder : bySpecificityThenOrder);
-    // (jsdom 31 by specificity again, black box 31.0.1)
-    lists.important.sort(compat?.computed31 ? bySpecificityThenOrder : byOrder);
+    lists.important.sort(byOrder);
   }
   return index;
 }
@@ -1042,72 +1297,151 @@ const contains = (property, other) =>
 // it, in the element's writing mode and direction (logical.js): the
 // winner of the two sets both. The winner's level, specificity and order
 // go to win31.
-const win31 = { level: 0, specificity: 0, order: 0 };
-function winner31(element, index, inlineMap, name, window) {
-  const ua = uaDeclarations31(window, name, cascadeExpand, element);
-  let rule = ua.important === null ? undefined : uaRule(ua.important, element);
-  if (rule !== undefined) return won31(6, rule.specificity, rule.order, rule.value);
-  const inline = inlineMap?.get(name);
-  if (inline?.important) return won31(5, 0, inline.order, inline.value);
+const win31 = { level: 0, layer: 0, specificity: 0, proximity: Infinity, order: 0 };
+// (a first winner kept while the partner's is found: no object per read)
+const saved31 = { level: 0, layer: 0, specificity: 0, proximity: Infinity, order: 0 };
+function copy31(to, from) {
+  to.level = from.level;
+  to.layer = from.layer;
+  to.specificity = from.specificity;
+  to.proximity = from.proximity;
+  to.order = from.order;
+}
+// cut: 0, or the level of a revert-layer being rolled back (2 or 4: a
+// rule's, below: the layer it rolls back from; 3 or 5: the style
+// attribute's, to every layer of the rules); only those rules are then
+// looked at (none: level -1).
+function winner31(element, index, inlineMap, name, window, cut = 0, below = Infinity) {
   const lists = index.get(name);
-  if (lists?.important.length) {
-    const entry = firstMatchEntry(lists.important, element);
-    if (entry !== undefined) return won31(4, entry.specificity, entry.order, entry.value);
+  if (cut !== 0) {
+    // (the rule found has its own level, 2 or 4: rolled back from the
+    // attribute, a rule's revert-layer then rolls back below its layer)
+    const level = cut >= 4 ? 4 : 2;
+    const list = level === 4 ? lists?.important : lists?.normal;
+    if (list?.length && ruleWinner31(list, element, index.scoped, level, below)) return win31Value;
+    return won31(-1, 0, 0, Infinity, 0, undefined);
   }
-  if (inline !== undefined) return won31(3, 0, inline.order, inline.value);
-  if (lists?.normal.length) {
-    const entry = firstMatchEntry(lists.normal, element);
-    if (entry !== undefined) return won31(2, entry.specificity, entry.order, entry.value);
-  }
+  const ua = uaDeclarations31(window, name, cascadeExpand, element);
+  const rule = ua.important === null ? undefined : uaRule(ua.important, element);
+  if (rule !== undefined) return won31(6, 0, rule.specificity, Infinity, rule.order, rule.value);
+  const inline = inlineMap?.get(name);
+  if (inline?.important) return won31(5, 0, 0, Infinity, inline.order, inline.value);
+  if (lists?.important.length && ruleWinner31(lists.important, element, index.scoped, 4, Infinity)) return win31Value;
+  if (inline !== undefined && !inline.important) return won31(3, 0, 0, Infinity, inline.order, inline.value);
+  if (lists?.normal.length && ruleWinner31(lists.normal, element, index.scoped, 2, Infinity)) return win31Value;
   return userAgent31(element, name, window, ua);
 }
+// The rule that wins in a list (sorted by layer, specificity and order)
+// among the layers below below, its scope proximity next to specificity
+// (scoped: the index has @scope rules). Whether one did; it is then in
+// win31 and win31Value.
+let win31Value;
+function ruleWinner31(list, element, scoped, level, below) {
+  let best,
+    bestProximity = Infinity;
+  for (const e of list) {
+    if (e.layer >= below) continue;
+    if (best !== undefined && (e.layer !== best.layer || e.specificity !== best.specificity)) break;
+    if (e.value === HIDE_UA) continue;
+    proximity31 = Infinity;
+    if (!e.match(element, NO_SCOPE)) continue;
+    const proximity = e.scope === null ? Infinity : proximity31;
+    if (best === undefined || proximity < bestProximity) {
+      best = e;
+      bestProximity = proximity;
+    }
+    if (!scoped) break;
+  }
+  if (best === undefined) return false;
+  win31Value = won31(level, best.layer, best.specificity, bestProximity, best.order, best.value);
+  return true;
+}
+const REVERT_LAYER = /^\s*revert-layer\s*$/i;
 // The user agent sheet's normal declaration (also where the page's
 // declaration that won is revert).
 function userAgent31(element, name, window, ua = uaDeclarations31(window, name, cascadeExpand, element)) {
   const rule = ua.normal === null ? undefined : uaRule(ua.normal, element);
-  if (rule !== undefined) return won31(1, rule.specificity, rule.order, rule.value);
-  return won31(0, 0, 0, undefined);
+  if (rule !== undefined) return won31(1, 0, rule.specificity, Infinity, rule.order, rule.value);
+  return won31(0, 0, 0, Infinity, 0, undefined);
 }
-function won31(level, specificity, order, value) {
+function won31(level, layer, specificity, proximity, order, value) {
   win31.level = level;
+  win31.layer = layer;
   win31.specificity = specificity;
+  win31.proximity = proximity;
   win31.order = order;
   return value;
+}
+// The winner of a name and, in a logical group, its partner (pair31).
+function pair31(element, index, inlineMap, name, partner, window, cut, below) {
+  const value = winner31(element, index, inlineMap, name, window, cut, below);
+  if (partner === null) return value;
+  copy31(saved31, win31);
+  const other = winner31(element, index, inlineMap, partner, window, cut, below);
+  if (!beats31(saved31)) {
+    copy31(win31, saved31);
+    return value;
+  }
+  // A longhand pending substitution computes from its shorthand by its own
+  // name: the partner's (pending31).
+  return other !== undefined && other.startsWith(PENDING31)
+    ? `${PENDING31}\0${partner}\0${other.slice(PENDING31.length)}`
+    : other;
 }
 function cascade31(element, index, inlineMap, name, window) {
   // (the flow first: finding it reads computed values, which cascade too
   // and overwrite win31)
   const partner = isLogicalGroup(name) ? partnerOf(name, flow31(element)) : null;
-  let value = winner31(element, index, inlineMap, name, window);
-  if (partner !== null) {
-    const { level, specificity, order } = win31;
-    const other = winner31(element, index, inlineMap, partner, window);
-    if (beats31(level, specificity, order))
-      // A longhand pending substitution computes from its shorthand by its
-      // own name: the partner's (pending31).
-      value = other.startsWith(PENDING31) ? `${PENDING31}\0${partner}\0${other.slice(PENDING31.length)}` : other;
-    else won31(level, specificity, order, value);
+  let value = pair31(element, index, inlineMap, name, partner, window, 0, Infinity);
+  // revert-layer in a rule that wins: the pair's winner among the layers
+  // below (both names: margin-top: revert-layer rolls margin-block-start
+  // back too), then the user agent sheet's (revert).
+  // (in the style attribute, the rules': the attribute's later declaration
+  // of the pair wins first, margin-block-start: 5px after margin-top:
+  // revert-layer stays)
+  // An !important one with no !important declaration below rolls back to
+  // the normal ones of the layers below (black box, 31.0.1: @layer a {
+  // color: red } @layer b { color: revert-layer !important } is red).
+  while (win31.level >= 2 && win31.level <= 5 && REVERT_LAYER.test(value)) {
+    const cut = win31.level;
+    const layer = win31.layer;
+    const below = cut === 2 || cut === 4 ? layer : Infinity;
+    value = pair31(element, index, inlineMap, name, partner, window, cut, below);
+    if (win31.level === -1 && cut >= 4) {
+      // (the layer's normal precedence: !important keys run the other way)
+      const normalBelow = cut === 4 ? index.layerCount - 1 - layer : Infinity;
+      value = pair31(element, index, inlineMap, name, partner, window, cut === 4 ? 2 : 3, normalBelow);
+    }
+    if (win31.level === -1) {
+      won31(cut, 0, 0, Infinity, 0, undefined);
+      value = 'revert';
+    }
   }
-  // revert and revert-layer (no layers yet) in the page's declarations:
-  // the user agent sheet's value, of the pair too (black box, 31.0.1: p {
-  // margin-top: revert } gives 16px, a div's 0px).
+  // revert in the page's declarations: the user agent sheet's value, of
+  // the pair too (black box, 31.0.1: p { margin-top: revert } gives 16px, a
+  // div's 0px).
   if (win31.level >= 2 && win31.level <= 5 && REVERT.test(value)) {
     value = userAgent31(element, name, window);
     if (partner !== null) {
-      const { level, specificity, order } = win31;
+      copy31(saved31, win31);
       const other = userAgent31(element, partner, window);
-      if (!beats31(level, specificity, order)) return value;
+      if (!beats31(saved31)) return value;
       return other;
     }
   }
   return value;
 }
 const REVERT = /^\s*revert(?:-layer)?\s*$/i;
-// Whether win31 beats a winner of this level, specificity and order.
-const beats31 = (level, specificity, order) =>
-  win31.level > level ||
-  (win31.level === level &&
-    (win31.specificity > specificity || (win31.specificity === specificity && win31.order > order)));
+// Whether win31 beats another winner (level, layer, specificity, scope
+// proximity, order).
+const beats31 = (o) =>
+  win31.level > o.level ||
+  (win31.level === o.level &&
+    (win31.layer > o.layer ||
+      (win31.layer === o.layer &&
+        (win31.specificity > o.specificity ||
+          (win31.specificity === o.specificity &&
+            (win31.proximity < o.proximity || (win31.proximity === o.proximity && win31.order > o.order)))))));
 
 // An element's flow (logical.js), kept with its cascaded values.
 // writing-mode, direction and text-orientation inherit: an element that

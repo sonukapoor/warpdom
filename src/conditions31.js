@@ -938,7 +938,7 @@ const STRING = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g;
 const PSEUDO_ELEMENT =
   /::((?:-?[a-zA-Z_]|\\(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))[ \t\n\r\f]?|\\[^\n0-9a-fA-F])(?:[a-zA-Z0-9_-]|\\(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))[ \t\n\r\f]?|\\[^\n0-9a-fA-F])*)(\()?/g;
 // A name with its escapes decoded (::b\65 fore is ::before).
-const decodeEscapes = (name) =>
+export const decodeEscapes = (name) =>
   name.replace(/\\([0-9a-fA-F]{1,6})[ \t\n\r\f]?|\\(.)/g, (m, hex, ch) =>
     hex === undefined ? ch : String.fromCodePoint(Math.min(parseInt(hex, 16), 0x10ffff) || 0xfffd),
   );

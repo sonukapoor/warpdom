@@ -7900,3 +7900,65 @@ value token (1/**/00px) splits it in jsdom 31, whose text joins the
 pieces re-serialized ((min-width: 10px)) and does not match; warpdom
 reads it as two components (only through the CSSOM: a sheet drops its
 comments first).
+Merged as #329 (2026-11-18).
+
+## 2026-11-18: jsdom 31, CSS part E4b: @layer and @scope (branch feat/269-jsdom31-layers, #269)
+
+jsdom 31's cascade, black box on 31.0.1 (46 cases; cascade.js):
+- @layer (CSS Cascade 5): layers ordered by first appearance across the
+  sheets (blocks and statements, dotted names, anonymous layers apart; a
+  layer named only in a @media or @supports that does not apply is not
+  ordered); normal declarations: a layer's sublayers before its own
+  rules, the unlayered ones last; !important ones the other way round,
+  the style attribute's over them all. revert-layer rolls back to the
+  layers below (from the attribute: to the rules), then to the user agent
+  sheet.
+- @scope (CSS Cascade 6): a scoped selector without :scope or & has
+  :where(:scope) before it (& is :scope); it matches from a root (an
+  ancestor or the element matching the start; no start: the sheet's
+  element's parent), not at or past the limit; proximity (hops from the
+  nearest root) decides after specificity, an unscoped rule's being the
+  farthest.
+- Precedence everywhere, the logical pairs too: level, layer, specificity,
+  proximity, order (win31, beats31; the first winner is kept in an object
+  made once).
+Speed (e-bcas.mjs, 5 interleaved runs): the 31 profile 348.7 ms on main,
+351.0 ms here; the 30 profile 257.4 and 251.9 ms (noise).
+Against jsdom 31.0.1: 77 of the default parity tests differ (none of
+them uses layers or scopes; layers31.test.js does).
+Review round (#330), each reproduced on 31.0.1: & and :scope are found as
+tokens, outside strings and attribute selectors ([data-v="&"] stays, &
+is replaced where :scope is there too); a nested @scope's roots and
+elements are in the enclosing scope, within its limit; a scope whose
+start or end reads text (:empty) makes the index text-dependent;
+revert-layer rolls a logical pair back together (margin-top:
+revert-layer with margin-block-start in the same layer gives the layer
+below's margin-top), the winner of both names among the layers below
+found each round (pair31). Speed after the round: 340.4 ms on main,
+343.9 ms here (noise).
+Second round: the style attribute's revert-layer is a candidate of the
+pair like its other declarations (the attribute's later one wins first),
+then rolls both names back to the rules (to the !important rules from an
+!important one); layer names are read with their escapes decoded (\61 is
+a; an escaped dot is part of a name); an escaped :scope (:sc\6f pe) is
+:scope.
+Third round: rolled back from the style attribute, the rule found keeps
+its own level (2 or 4), so its own revert-layer rolls back below its
+layer (the read looped: div { color: revert-layer } with style="color:
+revert-layer").
+Fourth round: an !important revert-layer with no !important declaration
+below rolls back to the normal declarations of the layers below it (in
+normal order: @layer a { color: red } @layer b { color: revert-layer
+!important } is red), then to the user agent sheet; a layer name's parts
+are split at dots outside escapes (a\\.b is a\ and b); the enclosing
+scopes' checks are kept for one match (nested @scope rules took
+exponential time: 15 ms at 20 levels, now 0.5 ms).
+Closer look after the fourth round: a nested @scope's start is matched
+with :scope the enclosing scope's root, and & in a prelude is :scope
+(@scope (.outer) { @scope (:scope > .inner) { ... } } applies to the
+outer's child .inner only).
+Closer look after the fifth round: jsdom 31's @scope prelude takes
+selectors with parentheses of their own ((:is(.a, .b)), (div:has(> p)));
+a start or end the selector engine does not know drops the rule ((.a)),
+and to( is a function, not to and a ( (cssom.js scopePrelude31; older
+profiles keep the earlier parse).

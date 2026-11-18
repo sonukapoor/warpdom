@@ -813,8 +813,12 @@ function createRule(protos, record, sheet, parentRule) {
   } else if (at === 'container' && body !== null) {
     rule = makeRule(protos, 'CSSContainerRule', sheet, parentRule, containerParts(prelude));
   } else if (at === 'scope' && body !== null) {
-    // [ ( <scope-start> ) ]? [ to ( <scope-end> ) ]?
-    const m = /^(?:\(([^()]*)\))?\s*(?:to\s*\(([^()]*)\))?$/is.exec(prelude);
+    // [ ( <scope-start> ) ]? [ to ( <scope-end> ) ]?; jsdom 31 (black box,
+    // 31.0.1) takes selectors with parentheses of their own ((:is(.a, .b)),
+    // (div:has(> p))), and to( is a function, not to and a (.
+    const m = MEDIA31.has(protos.MediaList)
+      ? scopePrelude31(prelude)
+      : /^(?:\(([^()]*)\))?\s*(?:to\s*\(([^()]*)\))?$/is.exec(prelude);
     if (!m) return null;
     rule = makeRule(protos, 'CSSScopeRule', sheet, parentRule, {
       prelude,
@@ -1150,6 +1154,56 @@ function deleteRule(owner, index) {
   cssomChanges.rev++;
   ruleListsChanged(owner[S].protos);
   detach(rule);
+}
+
+// A @scope prelude's [, start, end] (each undefined when left out), or
+// null: ( selector ) with balanced parentheses, then to ( selector ).
+function scopePrelude31(text) {
+  let i = 0;
+  const ws = () => {
+    while (i < text.length && /[ \t\n\r\f]/.test(text[i])) i++;
+  };
+  const group = () => {
+    if (text[i] !== '(') return undefined;
+    const start = i + 1;
+    let depth = 0;
+    for (; i < text.length; i++) {
+      const c = text[i];
+      if (c === '\\') i++;
+      else if (c === '"' || c === "'") {
+        i++;
+        while (i < text.length && text[i] !== c) i += text[i] === '\\' ? 2 : 1;
+      } else if (c === '(') depth++;
+      else if (c === ')' && --depth === 0) {
+        i++;
+        return text.slice(start, i - 1);
+      }
+    }
+    return null;
+  };
+  ws();
+  const start = group();
+  if (start === null) return null;
+  ws();
+  let end;
+  if (/^to(?![\w-]|\()/i.test(text.slice(i))) {
+    i += 2;
+    ws();
+    end = group();
+    if (end === undefined || end === null) return null;
+    ws();
+  }
+  if (i !== text.length) return null;
+  // (selectors the engine knows: ((.a)) drops the rule; & is :scope)
+  for (const selector of [start, end])
+    if (selector !== undefined) {
+      try {
+        compileRuleSelector(selector.replace(/&/g, ':scope'));
+      } catch {
+        return null;
+      }
+    }
+  return [text, start, end];
 }
 
 // --- media lists ----------------------------------------------------------------------
