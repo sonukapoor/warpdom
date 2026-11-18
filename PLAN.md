@@ -7797,3 +7797,8 @@ Second round: the flow is found before a pair's first winner (finding it
 cascades writing-mode and the others, which overwrote that winner's
 level: margin-right: 9px !important lost to margin-block-start: 5px when
 read first).
+Third round: a dir=auto input's or textarea's value decides its
+direction as text does: value writes, resets and type changes advance
+the document's textRev (forms.js valueChanged). Checked, not changed:
+display: inline flow-root list-item blockified is list-item in jsdom 31
+(not flow-root list-item).

@@ -378,3 +378,21 @@ parity(
   },
   { jsdom: 31 },
 );
+
+// (#328 review: a dir=auto control's value decides its direction too)
+parity(
+  "jsdom 31: a dir=auto control's value moves its logical margins",
+  (w) => {
+    const d = w.document;
+    d.body.innerHTML =
+      '<input dir="auto" style="margin-inline-start: 5px"><textarea dir="auto" style="margin-inline-start: 5px"></textarea>';
+    const controls = [...d.body.children];
+    const read = () => controls.map((e) => [w.getComputedStyle(e).marginLeft, w.getComputedStyle(e).marginRight]);
+    for (const e of controls) e.value = 'a';
+    const out = [read()];
+    for (const e of controls) e.value = 'א';
+    out.push(read());
+    return out;
+  },
+  { jsdom: 31 },
+);

@@ -442,6 +442,14 @@ function inputValue(el) {
   }
 }
 
+// A control's value changed: like text, it can change a dir=auto
+// element's direction and selector matches (:invalid), which computed
+// styles read (cascade.js cascadeCache, keyed on textRev where they do).
+function valueChanged(el) {
+  const ds = el[S].doc[S];
+  ds.textRev = (ds.textRev ?? 0) + 1;
+}
+
 function setInputValue(el, value) {
   const s = el[S];
   const type = inputType(el);
@@ -450,6 +458,7 @@ function setInputValue(el, value) {
       const old = inputValue(el);
       s.value = sanitize(el, type, value);
       s.dirtyValue = true;
+      valueChanged(el);
       if (s.value !== old) {
         s.selStart = s.selEnd = s.value.length;
         s.selDir = 'none';
@@ -502,6 +511,7 @@ attributeSteps.set('type', (el, old, value) => {
   if (to === 'radio' && checkedness(el)) uncheckGroup(el);
   if (fromMode === 'value') {
     const current = sanitize(el, from, s.value ?? attr(el, 'value') ?? '');
+    valueChanged(el);
     if (toMode === 'value') {
       s.value = current;
       return undefined;
@@ -513,6 +523,7 @@ attributeSteps.set('type', (el, old, value) => {
   } else if (toMode === 'value') {
     s.value = undefined;
     s.dirtyValue = false;
+    valueChanged(el);
   }
   return undefined;
 });
@@ -634,6 +645,7 @@ function setControlValueRaw(el, value) {
   if (isTag(el, 'textarea')) s.value = value;
   else s.value = sanitize(el, inputType(el), value);
   s.dirtyValue = true;
+  valueChanged(el);
 }
 
 function setSelectionRange(el, start, end, direction = 'none') {
@@ -1327,6 +1339,7 @@ function resetControl(el) {
     case 'input':
       s.dirtyValue = false;
       s.value = undefined;
+      valueChanged(el);
       s.dirtyChecked = false;
       s.checked = undefined;
       if (inputType(el) === 'radio' && has(el, 'checked')) setCheckedness(el, true);
@@ -1334,6 +1347,7 @@ function resetControl(el) {
     case 'textarea':
       s.dirtyValue = false;
       s.value = undefined;
+      valueChanged(el);
       break;
     case 'select':
       for (const o of listOfOptions(el)) {
@@ -1956,6 +1970,7 @@ export const FORM_MEMBERS = new Map([
         const old = textareaValue(this);
         s.value = normalizeNewlines(str(v));
         s.dirtyValue = true;
+        valueChanged(this);
         if (s.value !== old) {
           s.selStart = s.selEnd = s.value.length;
           s.selDir = 'none';
