@@ -240,3 +240,24 @@ test('jsdom 31: deeply nested @scope rules are matched without exponential work'
   assert.equal(w.getComputedStyle(d.getElementById('p')).color, 'rgb(255, 0, 0)');
   assert.ok(performance.now() - start < 500);
 });
+
+// :scope and & in a nested scope's prelude (#330, a closer look).
+parity(
+  "jsdom 31: a nested @scope's start reads :scope and & as the enclosing root",
+  (w) => {
+    const d = w.document;
+    return [
+      '@scope (.outer) { @scope (:scope > .inner) { p { color: red } } }',
+      '@scope (.outer) { @scope (& > .inner) { p { color: red } } }',
+      '@scope (.outer) { @scope (.inner) to (:scope > .x) { p { color: red } } }',
+      '@scope (.outer) { @scope (.inner) { :scope { color: red } } }',
+      '@scope (.outer) to (:scope > div > .inner) { p { color: red } }',
+    ].map((css) => {
+      d.head.innerHTML = `<style>${css}</style>`;
+      d.body.innerHTML =
+        '<div class="outer"><div class="inner" id="i1"><p id="a"></p></div><div><div class="inner" id="i2"><p id="b"></p></div></div></div><div class="inner"><p id="c"></p></div>';
+      return [css, ...['a', 'b', 'c', 'i1', 'i2'].map((id) => w.getComputedStyle(d.getElementById(id)).color)];
+    });
+  },
+  { jsdom: 31 },
+);

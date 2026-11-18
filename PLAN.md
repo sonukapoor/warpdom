@@ -7953,3 +7953,7 @@ normal order: @layer a { color: red } @layer b { color: revert-layer
 are split at dots outside escapes (a\\.b is a\ and b); the enclosing
 scopes' checks are kept for one match (nested @scope rules took
 exponential time: 15 ms at 20 levels, now 0.5 ms).
+Closer look after the fourth round: a nested @scope's start is matched
+with :scope the enclosing scope's root, and & in a prelude is :scope
+(@scope (.outer) { @scope (:scope > .inner) { ... } } applies to the
+outer's child .inner only).

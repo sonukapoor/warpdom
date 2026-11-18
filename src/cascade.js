@@ -277,8 +277,10 @@ function scopeOf(rule, ss, outer) {
   try {
     const owner = ss.ownerNode?.[S].parent ?? null;
     return {
-      start: start === null ? null : compileRuleSelector(start),
-      end: end === null ? null : compileRuleSelector(end),
+      // (& in a prelude is :scope: the enclosing scope's root for a start,
+      // this scope's for an end)
+      start: start === null ? null : compileRuleSelector(scopeTokens(start).text),
+      end: end === null ? null : compileRuleSelector(scopeTokens(end).text),
       owner: owner !== null && owner[S].type === ELEMENT_NODE ? owner : null,
       outer,
     };
@@ -391,14 +393,17 @@ function scopedMatch(match, scope) {
 // (no start: is the owner), el is not at or past the limit from it, and
 // both are in the enclosing scope.
 function scopeHas(scope, root, el, memo) {
-  if (scope.start === null ? root !== scope.owner : !scope.start.some((s) => s.match(root, NO_SCOPE))) return false;
   if (scope.end !== null && limited(scope.end, root, el, { scope: root })) return false;
-  if (scope.outer === null) return true;
-  for (let outer = root; outer !== null; outer = inheritParent(outer))
-    if (outerHas(scope.outer, outer, root, memo) && (el === root || outerHas(scope.outer, outer, el, memo)))
-      return true;
+  if (scope.outer === null) return startMatches(scope, root, NO_SCOPE);
+  // (a nested scope's start is matched with :scope the enclosing root)
+  for (let outer = root; outer !== null; outer = inheritParent(outer)) {
+    if (!outerHas(scope.outer, outer, root, memo) || !startMatches(scope, root, { scope: outer })) continue;
+    if (el === root || outerHas(scope.outer, outer, el, memo)) return true;
+  }
   return false;
 }
+const startMatches = (scope, root, ctx) =>
+  scope.start === null ? root === scope.owner : scope.start.some((s) => s.match(root, ctx));
 function outerHas(scope, root, el, memo) {
   let byScope = memo.get(scope);
   if (byScope === undefined) memo.set(scope, (byScope = new Map()));
