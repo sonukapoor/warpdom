@@ -132,3 +132,21 @@ test('jsdom 31: iterating a computed style reads its items once per step, not al
   for (let i = 0; i < 20; i++) assert.equal([...cs].length, 545);
   assert.ok(performance.now() - start < 500);
 });
+
+// A child assigned to a slot that is not rendered itself (#331 review).
+parity(
+  'jsdom 31: a host child assigned to a slot in a nested host, rendered or not',
+  (w) => {
+    const d = w.document;
+    const read = (innerShadow) => {
+      const outer = d.body.appendChild(d.createElement('div'));
+      const inner = outer.attachShadow({ mode: 'open' }).appendChild(d.createElement('section'));
+      inner.attachShadow({ mode: 'open' }).innerHTML = innerShadow;
+      const slot = inner.appendChild(d.createElement('slot'));
+      const child = outer.appendChild(d.createElement('span'));
+      return [w.getComputedStyle(child).display, w.getComputedStyle(slot).display];
+    };
+    return [read('<p></p>'), read('<slot></slot>')];
+  },
+  { jsdom: 31 },
+);

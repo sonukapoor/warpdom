@@ -2920,8 +2920,14 @@ function inRenderedTree(element) {
     const ps = p[S];
     if (ps.type === DOCUMENT_NODE) return true;
     if (ps.type === ELEMENT_NODE) {
-      if (ps.shadowRoot && findSlot(n) === null) return false;
-      n = p;
+      // (a host's child: through the slot it is assigned to, whose own
+      // place decides: a slot in a nested host's unassigned children is
+      // not rendered either)
+      if (ps.shadowRoot) {
+        const slot = findSlot(n);
+        if (slot === null) return false;
+        n = slot;
+      } else n = p;
     } else if (ps.shadow === true) n = ps.host;
     else return false;
   }

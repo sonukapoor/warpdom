@@ -7997,3 +7997,6 @@ rebuilt them each time). Element styles' own indexed properties are
 defined over the getters. Not modeled: the items are not own properties
 (Object.keys() of a computed style is empty in warpdom), and past 1024.
 Speed after the round: 344.1 ms on main, 353.7 ms here.
+Second round: a host's child is in the rendered tree through the slot it
+is assigned to, whose own place decides (a slot among a nested host's
+unassigned children is not rendered, nor what is assigned to it).
