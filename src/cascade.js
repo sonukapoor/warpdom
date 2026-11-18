@@ -53,7 +53,7 @@ import {
 } from './lengths.js';
 import { substituteVars, tooManyTokens, trimEnds } from './var-substitution.js';
 import { uaDeclarations, uaDeclarations31, uaValue, uaRule, uaRuleOver, uaInOrder } from './ua-sheet.js';
-import { findSlot } from './slots.js';
+import { findSlot, assignedNodes } from './slots.js';
 import { decodeEscapes } from './conditions31.js';
 import { flowOf, isLogical, isLogicalGroup, partnerOf } from './logical.js';
 import {
@@ -2927,7 +2927,12 @@ function inRenderedTree(element) {
         const slot = findSlot(n);
         if (slot === null) return false;
         n = slot;
-      } else n = p;
+      } else {
+        // (a slot's own children are its fallback, not rendered while
+        // nodes are assigned to it: text too)
+        if (ps.tag === 'slot' && ps.ns === HTML_NS && assignedNodes(p).length > 0) return false;
+        n = p;
+      }
     } else if (ps.shadow === true) n = ps.host;
     else return false;
   }

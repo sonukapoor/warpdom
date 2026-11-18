@@ -8000,3 +8000,5 @@ Speed after the round: 344.1 ms on main, 353.7 ms here.
 Second round: a host's child is in the rendered tree through the slot it
 is assigned to, whose own place decides (a slot among a nested host's
 unassigned children is not rendered, nor what is assigned to it).
+Third round: a slot's own children are its fallback, not in the rendered
+tree while nodes (text too) are assigned to it.

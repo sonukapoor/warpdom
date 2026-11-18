@@ -150,3 +150,29 @@ parity(
   },
   { jsdom: 31 },
 );
+
+// A slot's fallback content while nodes are assigned to it (#331 review).
+parity(
+  "jsdom 31: a slot's fallback content is not rendered while nodes are assigned to it",
+  (w) => {
+    const d = w.document;
+    const host = d.body.appendChild(d.createElement('div'));
+    const root = host.attachShadow({ mode: 'open' });
+    root.innerHTML = '<slot><span id="f"></span></slot><slot name="x"><b id="g"></b></slot>';
+    const read = () => ['f', 'g'].map((id) => w.getComputedStyle(root.getElementById(id)).display);
+    const out = [read()];
+    const child = host.appendChild(d.createElement('i'));
+    out.push(read(), w.getComputedStyle(child).display);
+    child.remove();
+    out.push(read());
+    const text = host.appendChild(d.createTextNode('x'));
+    out.push(read());
+    host.appendChild(d.createTextNode('  '));
+    text.remove();
+    out.push(read());
+    d.body.insertAdjacentHTML('beforeend', '<slot><span id="s"></span></slot>');
+    out.push(w.getComputedStyle(d.getElementById('s')).display);
+    return out;
+  },
+  { jsdom: 31 },
+);
