@@ -627,7 +627,9 @@ export function serialize31(decls) {
         written = true;
         break;
       }
-    if (!written) add(name, decl.value, decl.important);
+    // (a custom property read empty, --x:;, is written --x: ; though it
+    // reads ' ', as in jsdom 31)
+    if (!written) add(name, decl.parsedEmpty === true ? '' : decl.value, decl.important);
   }
   return out;
 }
