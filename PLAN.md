@@ -7866,3 +7866,9 @@ is screen and (color); CSS.supports reads them so), an escaped quote
 stays in its string, a function's ] or } closing nothing invalidates too,
 ::x inside a string is no pseudo-element, deleteMedium converts its
 argument once.
+Third round (Copilot's previously missed items, each probed): a [ or {
+left open in a condition makes it fail (not ([) is false); comments in a
+two-argument CSS.supports() value are not the value's (--x, /* ; */ is
+supported); pseudo-element names are checked with their escapes decoded
+(::b\65 fore is ::before). Checked, not changed: 6000 parentheses make
+CSS.supports() throw a RangeError in jsdom 31 too.

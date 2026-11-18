@@ -174,7 +174,8 @@ function strayCloser(text, from, to) {
     else if (c === ']' && --square < 0) return true;
     else if (c === '}' && --curly < 0) return true;
   }
-  return false;
+  // (a [ or { left open too: not ([) is false)
+  return square !== 0 || curly !== 0;
 }
 
 const collapse = (text) => cssTrim(text).replace(/[ \t\n\r\f]+/g, ' ');
@@ -809,6 +810,8 @@ export function supportsHold31(node, declaration, selector) {
 // with no ; in its value, another property with a valid value (!important
 // allowed where it is a condition's).
 export function supportedDeclaration31(name, value, declaration, important) {
+  // (comments are not the value's: --x: /* ; */ is fine)
+  value = withoutComments(value);
   if (name.startsWith('--')) return !topLevelSemicolon(value);
   let text = value.trim();
   if (important) text = text.replace(/!\s*important\s*$/i, '').trim();
@@ -866,11 +869,17 @@ const PSEUDO_ELEMENTS = new Set([
   'search-text',
 ]);
 const STRING = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g;
-const PSEUDO_ELEMENT = /::(-?[a-zA-Z_][a-zA-Z0-9_-]*)(\()?/g;
+const PSEUDO_ELEMENT =
+  /::((?:-?[a-zA-Z_]|\\[0-9a-fA-F]{1,6}[ \t\n\r\f]?|\\[^\n0-9a-fA-F])(?:[a-zA-Z0-9_-]|\\[0-9a-fA-F]{1,6}[ \t\n\r\f]?|\\[^\n0-9a-fA-F])*)(\()?/g;
+// A name with its escapes decoded (::b\65 fore is ::before).
+const decodeEscapes = (name) =>
+  name.replace(/\\([0-9a-fA-F]{1,6})[ \t\n\r\f]?|\\(.)/g, (m, hex, ch) =>
+    hex === undefined ? ch : String.fromCodePoint(Math.min(parseInt(hex, 16), 0x10ffff) || 0xfffd),
+  );
 function knownPseudoElements(text) {
   // (::x in a string is no pseudo-element)
   for (const m of text.replace(STRING, '""').matchAll(PSEUDO_ELEMENT))
-    if (!PSEUDO_ELEMENTS.has(m[1].toLowerCase() + (m[2] ?? ''))) return false;
+    if (!PSEUDO_ELEMENTS.has(decodeEscapes(m[1]).toLowerCase() + (m[2] ?? ''))) return false;
   return true;
 }
 

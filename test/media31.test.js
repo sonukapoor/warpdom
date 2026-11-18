@@ -533,3 +533,19 @@ test('jsdom 31: a ] or } closing nothing in a function invalidates a query or a 
   );
   assert.equal(w.CSS.supports('not foo(])'), false);
 });
+
+// Third review round (#329).
+parity(
+  'jsdom 31: CSS.supports with a block left open, comments in a value, escaped pseudo-element names',
+  (w) =>
+    [
+      ['not foo([)'],
+      ['not ([)'],
+      ['not ({)'],
+      ['--x', '/* ; */'],
+      ['--x', '/* ( */ ;'],
+      ['selector(div::b\\65 fore)'],
+      ['selector(div::\\6d ade-up)'],
+    ].map((args) => [args, w.CSS.supports(...args)]),
+  { jsdom: 31 },
+);
