@@ -7623,6 +7623,8 @@ known space (a hue method only for a polar one) and one or more colors
 each with at most one percentage, light-dark() of two colors and
 contrast-color() of one; commas only in rgb()'s and hsl()'s legacy
 syntax, between every component, with hsl()'s saturation and lightness
-percentages there. A value with env() or attr() (outside strings
+percentages there (a math function giving one counts); rgb(), hsl() and
+hwb() with math functions resolve (hsl(120, calc(50%), 50%) is rgb(64,
+191, 64)), percentages in a channel comparing in min() and max(). A value with env() or attr() (outside strings
 and url()) is not rounded when read either. Left for later: VAR() in capitals is var() to jsdom 31 (kept
 as written there; warpdom drops the declaration).

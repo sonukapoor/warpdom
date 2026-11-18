@@ -21,6 +21,7 @@
 // token in canonical form (declared31.js).
 import { resolveColor } from './colors.js';
 import { isMathFunction, hasVarFunction } from './css-values.js';
+import { mathType, mathValue } from './calc31.js';
 
 // Set while declared31.js writes again a value it wrote itself: a negative
 // color-mix() remainder it generated is then kept (fresh input with one is
@@ -168,7 +169,9 @@ function checkComponents(tok) {
     if (!/^(?:rgba?|hsla?)$/.test(tok.name)) throw REJECTED;
     const parts = tok.args.filter((arg) => arg.t !== 'comma');
     if (commas !== parts.length - 1 || tok.args.some((arg, i) => (i % 2 === 1) !== (arg.t === 'comma'))) throw REJECTED;
-    if (tok.name.startsWith('hsl') && !(parts[1]?.t === 'percentage' && parts[2]?.t === 'percentage')) throw REJECTED;
+    const percentage = (t) =>
+      t?.t === 'percentage' || (t?.t === 'function' && isMathFunction(t.name) && mathType(t) === 'percentage');
+    if (tok.name.startsWith('hsl') && !(percentage(parts[1]) && percentage(parts[2]))) throw REJECTED;
   }
   const { values, alpha } = channels(tok.args);
   // (the hue's place: first in hsl() and hwb(), third in lch() and oklch();
@@ -213,6 +216,29 @@ function alphaText(tok) {
 }
 const UNREAD = new Error('unread');
 
+// The function's text with each math function that is one term written as
+// that term (hsl(120, calc(50%), 50%) is hsl(120, 50%, 50%)), for
+// resolveColor, which reads no math.
+function withMathValues(tok, raw) {
+  if (!tok.args.some((arg) => arg.t === 'function' && isMathFunction(arg.name))) return raw;
+  let out = '';
+  for (const arg of tok.args) {
+    if (arg.t === 'comma') {
+      out += ', ';
+      continue;
+    }
+    if (out !== '' && !out.endsWith(', ')) out += ' ';
+    const value = arg.t === 'function' && isMathFunction(arg.name) ? mathValue(arg) : null;
+    if (value !== null) out += `${value.v}${value.unit}`;
+    else if (arg.t === 'delim' || arg.t === 'ident') out += arg.v;
+    else if (arg.t === 'number') out += String(arg.v);
+    else if (arg.t === 'percentage') out += `${arg.v}%`;
+    else if (arg.t === 'dimension') out += `${arg.v}${arg.unit}`;
+    else return raw;
+  }
+  return `${tok.name}(${out})`;
+}
+
 function legacy(tok, raw, nested, write) {
   const { values, alpha } = channels(tok.args);
   const rgb = tok.name.startsWith('rgb');
@@ -231,7 +257,7 @@ function legacy(tok, raw, nested, write) {
       return undefined;
     }
   }
-  if (!nested) return resolveColor(raw, 'jsdom31') ?? undefined;
+  if (!nested) return resolveColor(withMathValues(tok, raw), 'jsdom31') ?? undefined;
   // In color-mix(): the modern form, rgb() for rgba() and hsl() for hsla().
   const name = tok.name.replace(/a$/, '');
   const written = values.map((v) => write(v)).join(' ');
