@@ -7876,3 +7876,7 @@ Closer look after the third round: identifiers are read with their
 escapes decoded in media queries (\73 creen is screen, (m\in-width: ...)
 min-width) and in @supports keywords, function and property names
 (n\6f t, sel\65 ctor(), (\64 isplay: grid)).
+Fourth round: a hex escape in an identifier reads its digits one way only
+(the identifier patterns backtracked exponentially on a long run of
+escapes: 221 ms for nine); -- alone is no property name in
+CSS.supports.

@@ -81,9 +81,10 @@ const OFF = new Set(['none', 'no-preference', '0']);
 
 // A query's top-level components: { ident }, { group: inner text } for
 // (...), { fn: text } for name(...); null when something else is there.
-// (escapes included: \73 creen is screen)
+// (escapes included: \73 creen is screen; a hex escape reads its digits
+// one way only, so a long run of them does not backtrack)
 const IDENT =
-  /^-?(?:[a-zA-Z_]|\\[0-9a-fA-F]{1,6}[ \t\n\r\f]?|\\[^\n0-9a-fA-F])(?:[a-zA-Z0-9_-]|\\[0-9a-fA-F]{1,6}[ \t\n\r\f]?|\\[^\n0-9a-fA-F])*/;
+  /^-?(?:[a-zA-Z_]|\\(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))[ \t\n\r\f]?|\\[^\n0-9a-fA-F])(?:[a-zA-Z0-9_-]|\\(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))[ \t\n\r\f]?|\\[^\n0-9a-fA-F])*/;
 function components(text) {
   const out = [];
   let i = 0;
@@ -318,7 +319,7 @@ function feature(inner) {
   return { kind: 'feature', text: `(${out.join(' ')})`, test };
 }
 const IDENT_ONLY =
-  /^-?(?:[a-zA-Z_]|\\[0-9a-fA-F]{1,6}[ \t\n\r\f]?|\\[^\n0-9a-fA-F])(?:[a-zA-Z0-9_-]|\\[0-9a-fA-F]{1,6}[ \t\n\r\f]?|\\[^\n0-9a-fA-F])*$/;
+  /^-?(?:[a-zA-Z_]|\\(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))[ \t\n\r\f]?|\\[^\n0-9a-fA-F])(?:[a-zA-Z0-9_-]|\\(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))[ \t\n\r\f]?|\\[^\n0-9a-fA-F])*$/;
 const PREFIX_OPS = { '': '=', min: '>=', max: '<=' };
 
 const TRUE = 1,
@@ -820,6 +821,8 @@ export function supportsHold31(node, declaration, selector) {
 // with no ; in its value, another property with a valid value (!important
 // allowed where it is a condition's).
 export function supportedDeclaration31(name, value, declaration, important) {
+  // (-- alone is no property name)
+  if (name === '--') return false;
   // (comments are not the value's: --x: /* ; */ is fine)
   value = withoutComments(value);
   if (name.startsWith('--')) return !topLevelSemicolon(value);
@@ -880,7 +883,7 @@ const PSEUDO_ELEMENTS = new Set([
 ]);
 const STRING = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g;
 const PSEUDO_ELEMENT =
-  /::((?:-?[a-zA-Z_]|\\[0-9a-fA-F]{1,6}[ \t\n\r\f]?|\\[^\n0-9a-fA-F])(?:[a-zA-Z0-9_-]|\\[0-9a-fA-F]{1,6}[ \t\n\r\f]?|\\[^\n0-9a-fA-F])*)(\()?/g;
+  /::((?:-?[a-zA-Z_]|\\(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))[ \t\n\r\f]?|\\[^\n0-9a-fA-F])(?:[a-zA-Z0-9_-]|\\(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))[ \t\n\r\f]?|\\[^\n0-9a-fA-F])*)(\()?/g;
 // A name with its escapes decoded (::b\65 fore is ::before).
 const decodeEscapes = (name) =>
   name.replace(/\\([0-9a-fA-F]{1,6})[ \t\n\r\f]?|\\(.)/g, (m, hex, ch) =>

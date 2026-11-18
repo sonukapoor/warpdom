@@ -585,3 +585,18 @@ parity(
   },
   { jsdom: 31 },
 );
+
+// Fourth review round (#329).
+parity(
+  'jsdom 31: CSS.supports with -- alone as the name',
+  (w) => [w.CSS.supports('--', '1'), w.CSS.supports('(--: 1)'), w.CSS.supports('--x', '1')],
+  { jsdom: 31 },
+);
+
+test('jsdom 31: a long run of hex escapes in a condition is read in linear time', () => {
+  const w = createWindow({ jsdom: '31.0.1' });
+  const condition = `(${'\\aaaaaa'.repeat(5000)}!: 1)`;
+  const start = performance.now();
+  assert.equal(w.CSS.supports(condition), false);
+  assert.ok(performance.now() - start < 500);
+});
