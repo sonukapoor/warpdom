@@ -54,6 +54,7 @@ import {
 import { substituteVars, tooManyTokens, trimEnds } from './var-substitution.js';
 import { uaDeclarations, uaValue, uaRuleOver, uaInOrder } from './ua-sheet.js';
 import { documentStyleSheets, ruleArray, ruleListSnapshot, ruleListChanged } from './cssom.js';
+import { present31 } from './color31.js';
 import {
   parseDeclarations,
   writtenDeclarations,
@@ -288,12 +289,18 @@ function inlineDeclarations(element) {
   const mode = validationModeOf(es.doc[S].window);
   const written = writtenDeclarations(element, text);
   const compat = es.doc[S].window[S].compat;
-  const decls = parseDeclarations(
-    written === null ? text : cascadeText(written, text, compat.jsdom === 27),
-    mode,
-    styleSurfaceOf(es.doc[S].window),
-    written !== null,
-  );
+  // (jsdom 31 computes from the declarations its style object holds, not
+  // their serialization read again: color-mix(in srgb, red 80%, blue 80%,
+  // green) is declared with green -60%, which a parse would reject)
+  const decls =
+    written !== null && compat.computed31
+      ? written
+      : parseDeclarations(
+          written === null ? text : cascadeText(written, text, compat.jsdom === 27),
+          mode,
+          styleSurfaceOf(es.doc[S].window),
+          written !== null,
+        );
   // A style attribute as parsed (not one a style write serialized), from
   // jsdom 27: margin and padding as its style object holds them.
   if (written === null) parsedBox(decls, mode);
@@ -1278,7 +1285,7 @@ function colorValue31(element, name, value, data) {
   }
   if (lower.startsWith('color-mix(')) {
     if (closingParen(value) !== value.length - 1) return null;
-    if (KEEPS_CURRENTCOLOR.has(name) && CURRENTCOLOR_WORD.test(value)) return value;
+    if (KEEPS_CURRENTCOLOR.has(name) && CURRENTCOLOR_WORD.test(value)) return present31(value);
     let currentValue;
     const current = () =>
       (currentValue ??= name === 'color' ? inheritedValue(element, 'color', data) : currentColor(element));

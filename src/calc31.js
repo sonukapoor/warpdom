@@ -90,6 +90,24 @@ export function mathType(tok) {
   }
 }
 
+// A math function's value when it is one term ({ unit, v }: unit '' for
+// a number, '%' for a percentage), else null. For a color's channel, where
+// percentages have one base, so they compare too (hsl(120, min(50%, 60%),
+// 50%) is hsl(120, 50%, 50%), as in jsdom 31).
+let percentagesCompare = false;
+const comparable = (unit) => COMPARABLE.has(unit) || (percentagesCompare && unit === '%');
+export function mathValue(tok) {
+  percentagesCompare = true;
+  try {
+    return resolved(mathFunction(tok));
+  } catch (error) {
+    if (error === INVALID || error === UNREAD) return null;
+    throw error;
+  } finally {
+    percentagesCompare = false;
+  }
+}
+
 export function simplifyMath(tok, expected) {
   try {
     const sum = mathFunction(tok);
@@ -150,7 +168,7 @@ function mathFunction(tok) {
         if (!compatible(type, t)) throw INVALID;
         if (t !== null && (t !== 'percentage' || type === null)) type = t;
       }
-      if (a && b && c && a.unit === b.unit && b.unit === c.unit && COMPARABLE.has(a.unit))
+      if (a && b && c && a.unit === b.unit && b.unit === c.unit && comparable(a.unit))
         return single(a.unit, Math.max(a.v, Math.min(b.v, c.v)));
       const written = [lo, v, hi].map((sum) => serialize(sum, false));
       return { terms: new Map(), others: [`clamp(${written.join(', ')})`], type };
@@ -239,7 +257,7 @@ function minMax(name, sums) {
     if (t !== null && t !== 'percentage') type = t;
     else if (type === null) type = t;
     const one = resolved(sum);
-    if (!one || !COMPARABLE.has(one.unit)) args.push(one ?? sum);
+    if (!one || !comparable(one.unit)) args.push(one ?? sum);
     else if (byUnit.has(one.unit)) {
       const kept = byUnit.get(one.unit);
       if (!Object.is(pick(kept.v, one.v), kept.v)) {
@@ -389,7 +407,7 @@ function typed(a, b, sign) {
   if (!x || !y) throw UNREAD;
   const [base, p] = powerOf(x.unit);
   const [other, q] = powerOf(y.unit);
-  if (base !== other || !COMPARABLE.has(base)) throw UNREAD;
+  if (base !== other || !comparable(base)) throw UNREAD;
   const power = p + sign * q;
   const v = sign === 1 ? x.v * y.v : x.v / y.v;
   if (power === 0) return single('', v);

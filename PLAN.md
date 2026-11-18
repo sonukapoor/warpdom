@@ -7539,3 +7539,92 @@ clip's edges are lengths only (no 1deg, no calc(10%)). Seventh round: a unit
 CSS does not have makes a calculation invalid (calc(1foo)), NaN wins in
 min() and max() in any order, a clip with var() or env() anywhere is
 kept as written.
+Merged as #325 (2026-11-17), after seven review rounds.
+
+## 2026-11-17: jsdom 31, CSS part B2: gradients, color functions, background boxes (branch feat/269-jsdom31-declared-b2, #269)
+
+With the jsdom 31 surface, black box against 31.0.1:
+- Gradients (declared31.js): the first argument without its initial
+  values (to bottom, ellipse, farthest-corner, a center position, from
+  0deg, in srgb, shorter hue) and in canonical order (direction or shape
+  and size, position, color space); a corner and a position with the
+  horizontal side first, a position of one value with center (at top is
+  at center top), circle left out before one length; a stop of two
+  positions as two stops (red 10% 20% is red 10%, red 20%). jsdom 30's
+  gradient rules no longer run for jsdom 31.
+- Color functions (color31.js): lab(), lch(), oklab() and oklch() with
+  percentages as numbers, L clamped, hues in [0, 360), an alpha of 1
+  left out; color() with its space in lowercase (xyz is xyz-d65);
+  rgb() with none as color(srgb ...); inside color-mix() rgb() and hsl()
+  in their modern form; color-mix() without in oklab and shorter hue,
+  missing percentages filled in, two of 50% left out; light-dark() and
+  contrast-color() with canonical colors; device-cmyk() invalid.
+- color-scheme with only last; a background of initial values written
+  in any case is none (background: REPEAT).
+- The background shorthand: a size of one value gets auto (/ 20px is
+  20px auto); text or border-area as a layer's only box, or before the
+  other box, is the clip with a border-box origin, written alone;
+  padding-box padding-box is written once; a color function warpdom does
+  not resolve alone (color-mix(), lab(), light-dark(), ...) is the layer's
+  color (it was dropped, background: none; also on main). The shorthand
+  reading is shared, so this also brings warpdom's 27 to 30 profiles to
+  jsdom's result there (background: color-mix(...), light-dark(),
+  oklch(), color() set background-color; 15 cases that differed on main). Found, not
+  changed (1.0 range, also on main): jsdom 27 to 29 write lab(50% 20 30)
+  in background as lab(50 20 30), and jsdom 30 drops it from background
+  (url("a.png") alone; background: lab(50% 20 30) declares nothing,
+  only with a percentage L); warpdom's 27 to 30 profiles keep it as
+  written, and with this change also as background-color.
+Not modeled: warpdom computes color-mix() from the declared text, and
+jsdom 31 declares #0000ff80 in a mix as rgba(0, 0, 255, 0.5), so the
+computed mix uses alpha 0.5 where jsdom 31 uses 128/255 (0.75 against
+0.75098; dropped from the colors31 parity list). Left for later: -webkit-
+and -moz- gradients (jsdom 31 keeps them in background-image), x default
+as a family name, an empty string as animation-name; computed gradients
+and the computed background shorthand (D3b, D4).
+Against jsdom 31.0.1: 109 of the default parity tests differ (112 on
+main). Cold load (bench/load.js, 5 interleaved runs, node 22.17.1): 30.3
+ms on main, 31.1 ms here (color31.js); declared box-shadow values
+unchanged (scratchpad benchone, 164-181 ms both).
+Review round (#326): color-mix() percentages written out of [0, 100]
+invalid, all equal and adding up to 100 or more left out (red 80%, blue
+80% is red, blue), a negative filled-in remainder mixing in nothing when
+computed (colors.js mix31); a rejected color inside light-dark() or
+color-mix() rejects the value; a gradient's color space takes only its
+name and hue method (in oklab circle at top is circle at center top in
+oklab); a position of four values reorders its side and offset pairs. Second
+round: the negative remainder is invalid when read again (cssText =
+cssText drops it, as in jsdom 31), and a jsdom 31 style attribute that
+the style object wrote is computed from the declarations it holds, not
+its text parsed again (cascade.js inlineDeclarations); rgb() with an
+alpha of none is color(srgb ...), its channels clamped. Third round: a
+remainder declared31.js generated stays when css.js writes the value
+again (canonical31's reread; background: ... repeat); a percentage given
+by any math function (abs(-25%) is calc(25%)), which mix31 reads too;
+filled-in percentages are held at full precision in the declaration and
+written to 6 digits when read (present31: getPropertyValue, cssText, a
+mix kept as declared when computed), so a computed value mixes the exact
+ones, as jsdom 31 does, while the same 6-digit text written by hand keeps
+the alpha multiplier (0.999999); a nested mix gives its enclosing one its
+exact channels (colors.js lastMix31); calc() percentages are read by the
+jsdom 31 mix only. Found, not changed here (1.0 range): jsdom 29 and 30
+declare color-mix(in srgb, red calc(25%), blue) as red 25% and compute
+25/75; warpdom's 29 and 30 profiles keep calc(25%) and leave the mix
+uncomputed (also on main). Later round: rounding when read is per
+declaration, never for custom properties, and only for percentages inside
+color-mix() (strings and url() skipped, a quoted URL's ")" and escapes
+included), and never in a value with var(), kept as written; the explicit weights are a Set
+(a mix of 4,000 weighted colors is declared in about 20 ms). A color
+function's channels and alpha must be numbers, percentages, none or math
+functions, a hue may be an angle (lab(50 20 30 / 0.5px) and lab(50px 20
+30) are invalid, as in jsdom 31), and its structure is checked: three
+channels, a known color() space, one alpha after a /, color-mix() with a
+known space (a hue method only for a polar one) and one or more colors
+each with at most one percentage, light-dark() of two colors and
+contrast-color() of one; commas only in rgb()'s and hsl()'s legacy
+syntax, between every component, with hsl()'s saturation and lightness
+percentages there (a math function giving one counts); rgb(), hsl() and
+hwb() with math functions resolve (hsl(120, calc(50%), 50%) is rgb(64,
+191, 64)), percentages in a channel comparing in min() and max(). A value with env() or attr() (outside strings
+and url()) is not rounded when read either. Left for later: VAR() in capitals is var() to jsdom 31 (kept
+as written there; warpdom drops the declaration).

@@ -572,12 +572,23 @@ const srgbComponent = (text) => (text.endsWith('%') ? Number(text.slice(0, -1)) 
 // color()'s, which may fall outside), or null. depth: the number of
 // color-mix() it is nested in. jsdom 31 (mode 31): as given, not rounded,
 // a system color under the element's color-scheme (dark).
+// The exact channels and alpha of the last jsdom 31 mix (mix31), which an
+// enclosing mix takes instead of the mix's 6-digit text, as jsdom 31 does.
+let lastMix31 = null;
 function colorChannels(text, current, mode, depth, dark) {
   const lower = text.toLowerCase();
   let resolved;
   if (lower === 'currentcolor') resolved = current();
-  else if (lower.startsWith('color-mix(')) resolved = mixColor(text, current, mode, depth, dark);
-  else if (lower.startsWith('color(')) resolved = text;
+  else if (lower.startsWith('color-mix(')) {
+    lastMix31 = null;
+    resolved = mixColor(text, current, mode, depth, dark);
+    if (mode === 31 && typeof resolved === 'string' && lastMix31 !== null) {
+      const exact = lastMix31;
+      lastMix31 = null;
+      exact[3] = Math.min(1, Math.max(0, exact[3]));
+      return exact.every(Number.isFinite) ? exact : null;
+    }
+  } else if (lower.startsWith('color(')) resolved = text;
   else if (mode !== 31) resolved = resolveColor(text);
   else resolved = (dark ? DARK_SYSTEM_COLORS_31[lower] : undefined) ?? resolveColor(text, 'exact');
   if (resolved == null || resolved === false) return null;
@@ -600,20 +611,23 @@ function colorChannels(text, current, mode, depth, dark) {
 // order. Split at the last (or first) whitespace rather than by a regular
 // expression around the color, which backtracks quadratically on a long
 // run of whitespace.
+// (jsdom 31 also calc() of a percentage, as it declares a math
+// function's: abs(-25%) is calc(25%))
 const PERCENTAGE = new RegExp(`^(${NUMBER})%$`, 'i');
+const PERCENTAGE_31 = new RegExp(`^(?:(${NUMBER})%|calc\\((${NUMBER})%\\))$`, 'i');
 const isSpace = (c) => c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
-function mixArgument(text) {
+function mixArgument(text, percentage = PERCENTAGE) {
   let i = text.length - 1;
   while (i >= 0 && !isSpace(text[i])) i--;
   if (i > 0) {
-    const m = PERCENTAGE.exec(text.slice(i + 1));
-    if (m !== null) return [text.slice(0, i).trimEnd(), Number(m[1])];
+    const m = percentage.exec(text.slice(i + 1));
+    if (m !== null) return [text.slice(0, i).trimEnd(), Number(m[1] ?? m[2])];
   }
   i = 0;
   while (i < text.length && !isSpace(text[i])) i++;
   if (i < text.length) {
-    const n = PERCENTAGE.exec(text.slice(0, i));
-    if (n !== null) return [text.slice(i).trimStart(), Number(n[1])];
+    const n = percentage.exec(text.slice(0, i));
+    if (n !== null) return [text.slice(i).trimStart(), Number(n[1] ?? n[2])];
   }
   return [text, null];
 }
@@ -690,9 +704,13 @@ function mix31(args, current, depth, dark) {
   let sumGiven = 0;
   let missing = 0;
   for (let i = 1; i <= n; i++) {
-    const parsed = mixArgument(args[i]);
+    const parsed = mixArgument(args[i], PERCENTAGE_31);
+    // (a negative percentage is a remainder jsdom 31 declared, red 80%,
+    // blue 80%, green -60%: it mixes in nothing; written ones out of range
+    // are rejected when declared)
+    if (parsed[1] !== null && parsed[1] < 0) parsed[1] = 0;
     const p = parsed[1];
-    if (p !== null && (p < 0 || p > 100)) return false;
+    if (p !== null && p > 100) return false;
     args[i] = parsed;
     if (p === null) missing++;
     else sumGiven += p;
@@ -713,7 +731,9 @@ function mix31(args, current, depth, dark) {
     }
   }
   const channels = alpha === 0 ? plain : premultiplied.map((v) => v / alpha);
-  const a = sixDigits(sum < 100 ? (alpha * sum) / 100 : alpha);
+  const finalAlpha = sum < 100 ? (alpha * sum) / 100 : alpha;
+  lastMix31 = [...channels, finalAlpha];
+  const a = sixDigits(finalAlpha);
   const body = `srgb ${channels.map(sixDigits).join(' ')}`;
   return a === '1' ? `color(${body})` : `color(${body} / ${a})`;
 }

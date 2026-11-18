@@ -17,6 +17,7 @@
 // by the longhands it set): a shorthand warpdom does not compose (yet)
 // reads as written while all its longhands still come from that write.
 import { DATA31 } from './css31-data.js';
+import { present31 } from './color31.js';
 
 // css31-data.js, parsed on first use (objects without a prototype).
 let data = null;
@@ -244,6 +245,7 @@ export function expand31(name, value, raw = value) {
     found.set('background-repeat-x', xs.join(', ')).set('background-repeat-y', ys.join(', '));
   }
   if (name === 'font') fontKeywords(raw, found);
+  if (name === 'background') backgroundLayers(value, found);
   // A pair our expansion does not know (margin-inline: 1px 2px): the
   // second value is the first one when left out.
   if (found.size === 0 && longhands.length === 2 && PAIR.test(name)) {
@@ -308,7 +310,10 @@ export function priority31(decls, name) {
 }
 
 // getPropertyValue(): a longhand's value; a shorthand's from its longhands.
-export function value31(decls, name) {
+// (values as read: color-mix() percentages to 6 digits, color31.js)
+export const value31 = (decls, name) =>
+  name.startsWith('--') ? heldValue31(decls, name) : present31(heldValue31(decls, name));
+function heldValue31(decls, name) {
   name = alias31(name);
   const longhands = shorthandsTable()[name];
   if (!longhands) return decls.get(name)?.value ?? '';
@@ -372,6 +377,35 @@ COMPOSERS['vertical-align'] = ([source, alignment, shift]) => {
 };
 // (per layer: x and y are lists, layer by layer)
 const layersOf = (value) => topLevelCommaSplit(value).map((layer) => layer.trim());
+
+// background's layers as jsdom 31 sets them (black box): a size of one
+// length or percentage gets auto as its height (/ 20px is 20px auto), and
+// text or border-area as a layer's only box is the clip, with border-box
+// as the origin.
+const BOX = /^(?:border-box|padding-box|content-box|text|border-area)$/i;
+const CLIP_ONLY = /^(?:text|border-area)$/i;
+const SIZE_KEYWORD = /^(?:auto|cover|contain)$/i;
+function backgroundLayers(value, found) {
+  const size = found.get('background-size');
+  if (size !== undefined)
+    found.set(
+      'background-size',
+      layersOf(size)
+        .map((layer) => (words(layer).length === 1 && !SIZE_KEYWORD.test(layer) ? `${layer} auto` : layer))
+        .join(', '),
+    );
+  const layers = layersOf(value);
+  const given = found.get('background-origin');
+  const origins = given === undefined ? layers.map(() => 'padding-box') : layersOf(given);
+  let changed = false;
+  const out = origins.map((origin, i) => {
+    const boxes = words(layers[i] ?? '').filter((w) => BOX.test(w));
+    if (boxes.length !== 1 || !CLIP_ONLY.test(boxes[0])) return origin;
+    changed = true;
+    return 'border-box';
+  });
+  if (changed) found.set('background-origin', out.join(', '));
+}
 COMPOSERS['background-position'] = ([x, y]) => {
   const xs = layersOf(x),
     ys = layersOf(y);
@@ -429,8 +463,12 @@ COMPOSERS.background = (v) => {
     if (repeat !== 'repeat') parts.push(repeat);
     if (attachment !== 'scroll') parts.push(attachment);
     // (a clip is written after its origin: content-box alone is
-    // content-box content-box)
-    if (clip !== 'border-box') parts.push(`${origin} ${clip}`);
+    // content-box content-box; but padding-box padding-box is padding-box,
+    // and text or border-area with a border-box origin is written alone,
+    // black box)
+    if (CLIP_ONLY.test(clip) && origin === 'border-box') parts.push(clip);
+    else if (clip === 'padding-box' && origin === 'padding-box') parts.push('padding-box');
+    else if (clip !== 'border-box') parts.push(`${origin} ${clip}`);
     else if (origin !== 'padding-box') parts.push(origin);
     if (i === count - 1 && v[9] !== 'transparent') parts.push(v[9]);
     layers.push(parts.length === 0 ? 'none' : parts.join(' '));
@@ -561,8 +599,11 @@ function crossesLogical(decls, shorthand) {
 export function serialize31(decls) {
   let out = '';
   let done = null;
+  // (values as read: color-mix() percentages to 6 digits, custom
+  // properties as they are; color31.js present31)
   const add = (name, value, important) => {
-    out += `${out ? ' ' : ''}${name}: ${value}${important ? ' !important' : ''};`;
+    const shown = name.startsWith('--') ? value : present31(value);
+    out += `${out ? ' ' : ''}${name}: ${shown}${important ? ' !important' : ''};`;
   };
   for (const [name, decl] of decls) {
     if (done?.has(name)) continue;

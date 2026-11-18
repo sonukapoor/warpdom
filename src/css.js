@@ -1290,6 +1290,8 @@ const INVALID = null;
 // layer of it (backgroundLayer). Symbols, so that no value (a custom
 // property's, kept as written) is taken for one.
 const INITIALS = Symbol('initials');
+// A background of initial values, jsdom 31: as declared31.js writes it.
+const initials31 = (name, value) => canonical31(name, value) ?? value;
 const IMAGE_DROPPED = Symbol('dropped');
 const declaredCaches = {
   spec: new Map(),
@@ -1396,7 +1398,7 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
     }
     // jsdom 31 writes each component in canonical form (declared31.js)
     if (cssom31 && typeof out === 'string' && out !== '' && out !== canonical && !name.startsWith('--'))
-      out = canonical31(name, out) ?? INVALID;
+      out = canonical31(name, out, true) ?? INVALID;
     if (byValue.size >= 500) byValue.clear();
     byValue.set(value, out);
   }
@@ -2752,12 +2754,19 @@ const BG_CLIP_ONLY = new Set(['text', 'border-area']);
 // once when the same, nothing for the initial padding-box border-box.
 function backgroundBoxes(boxes, pre29) {
   if (pre29) return boxes[0] === 'border-box' || boxes[0] === 'padding-box' ? boxes : [boxes[0], boxes[0]];
-  const own = boxes.length === 2 && BG_CLIP_ONLY.has(boxes[0]) ? boxes.slice(1) : boxes;
+  // (jsdom 31: a clip-only box first is still the clip, text border-box
+  // is border-box text)
+  let own = boxes;
+  if (boxes.length === 2 && BG_CLIP_ONLY.has(boxes[0])) own = values31 ? [boxes[1], boxes[0]] : boxes.slice(1);
   let [origin, clip] = own;
-  // One box is both, except a clip-only box (text is padding-box text).
+  // One box is both, except a clip-only box (text is padding-box text;
+  // jsdom 31: text alone, its origin border-box, css31.js).
   if (own.length === 1) {
     clip = origin;
-    if (BG_CLIP_ONLY.has(clip)) origin = 'padding-box';
+    if (BG_CLIP_ONLY.has(clip)) {
+      if (values31) return [clip];
+      origin = 'padding-box';
+    }
   }
   if (origin === clip) return [origin];
   return origin === 'padding-box' && clip === 'border-box' ? [] : [origin, clip];
@@ -3488,7 +3497,8 @@ function serializeDeclared(name, value, mode) {
     // from 28.1 (urlStyle not 'written') a value that is one gradient
     // (mask-image: url(a.png), linear-gradient(to bottom, red, blue) is
     // kept as written); never in a value with var() (black box, #264).
-    if (isSpecMode(mode) && name !== 'border-image' && /(min|max|clamp|gradient)\(/i.test(value))
+    // (not jsdom 31's: declared31.js has written them)
+    if (isSpecMode(mode) && !values31 && name !== 'border-image' && /(min|max|clamp|gradient)\(/i.test(value))
       value = functionArguments(
         value,
         (name === 'background' || name === 'background-image' || (urlStyle !== 'written' && oneFunction(value))) &&
@@ -4368,7 +4378,7 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
     }
     if (declared === INVALID || declared === '') continue;
     if (cssom31) {
-      set31(decls, name, declared === INITIALS ? value : declared, important, true, value);
+      set31(decls, name, declared === INITIALS ? initials31(name, value) : declared, important, true, value);
       continue;
     }
     // One that loses its !important is written without it; in a style
@@ -5774,7 +5784,8 @@ function setDeclaration31(style, s, name, value, priority) {
   if (lower !== '' && lower !== 'important') return;
   const text = writtenValue(name, raw, s);
   if (text === INVALID || text === '') return;
-  if (!set31(s.decls, name, text === INITIALS ? raw : text, lower === 'important', false, raw)) return;
+  if (!set31(s.decls, name, text === INITIALS ? initials31(name, raw) : text, lower === 'important', false, raw))
+    return;
   reindex(style);
   sync(style);
 }

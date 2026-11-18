@@ -331,3 +331,258 @@ parity(
     }),
   { jsdom: 31 },
 );
+
+// Part B2: gradients, color functions, color-scheme and the background
+// shorthand's boxes and sizes, as jsdom 31 declares them.
+parity(
+  'jsdom 31: gradients without their initial values, in canonical order',
+  declared([
+    'background-image: linear-gradient(to bottom, red, blue)',
+    'background-image: linear-gradient(to bottom right, red, blue)',
+    'background-image: linear-gradient(in oklab to right, red, blue)',
+    'background-image: linear-gradient(in srgb to right, red, blue)',
+    'background-image: linear-gradient(in oklch shorter hue, red, blue)',
+    'background-image: linear-gradient(in hsl longer hue, red, blue)',
+    'background-image: LINEAR-GRADIENT(TO RIGHT, RED, Blue)',
+    'background-image: linear-gradient(red 10% 20%, blue 30% 40%)',
+    'background-image: linear-gradient(red 0 20%, blue)',
+    'background-image: radial-gradient(farthest-corner ellipse at center center, red, blue)',
+    'background-image: radial-gradient(circle farthest-corner, red, blue)',
+    'background-image: radial-gradient(circle 10px, red, blue)',
+    'background-image: radial-gradient(farthest-side circle, red, blue)',
+    'background-image: radial-gradient(ellipse 10px 20px, red, blue)',
+    'background-image: radial-gradient(at top, red, blue)',
+    'background-image: radial-gradient(at 10px, red, blue)',
+    'background-image: radial-gradient(at 50% 50%, red, blue)',
+    'background-image: radial-gradient(circle at top in oklab, red, blue)',
+    'background-image: conic-gradient(from 0deg at center center, red, blue)',
+    'background-image: conic-gradient(from 0turn, red, blue)',
+    'background-image: conic-gradient(at top left, red, blue)',
+    'background-image: conic-gradient(red 0deg 90deg, blue)',
+    'background-image: radial-gradient(in srgb circle, red, blue)',
+    'background-image: linear-gradient(in oklab 90deg, red, blue)',
+    'background-image: radial-gradient(in oklab circle at top, red, blue)',
+    'background-image: radial-gradient(in hsl longer hue circle, red, blue)',
+    'background-image: radial-gradient(at top 10px left 20px, red, blue)',
+    'background-image: conic-gradient(at bottom 5% right 10px, red, blue)',
+    'object-position: top 10px left 20px',
+    'background: linear-gradient(to bottom right, red, blue) no-repeat',
+  ]),
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: declared color functions and color-scheme',
+  declared([
+    'color: color-mix(in srgb, blue 25%, red)',
+    'color: color-mix(in srgb, blue 50%, red 50%)',
+    'color: color-mix(in oklab, blue, red)',
+    'color: color-mix(in hsl shorter hue, blue, red)',
+    'color: color-mix(IN SRGB, BLUE, #f00)',
+    'color: color-mix(in srgb, rgba(0,0,255,.5), red)',
+    'color: color-mix(in srgb, blue 10%, red 20%, green)',
+    'color: color-mix(in xyz, blue, red)',
+    'color: color-mix(in srgb, blue calc(25%), red)',
+    'color: lab(50% 20 30 / 50%)',
+    'color: lab(150 20 30)',
+    'color: lch(50% 100% 120)',
+    'color: lch(50 30 -90)',
+    'color: lch(50 30 1rad)',
+    'color: oklab(50% 100% -100%)',
+    'color: oklch(50% 0.1 120deg / .5)',
+    'color: color(srgb 100% 0% 0% / 1)',
+    'color: color(SRGB 1 0 0)',
+    'color: color(xyz 0.5 0.5 0.5)',
+    'color: rgb(255 none 0 / 0.5)',
+    'color: light-dark(RED, #00f)',
+    'color: contrast-color(RED)',
+    'color: rgb(from red r g b)',
+    'color: device-cmyk(0 0 0 1)',
+    'border-color: color-mix(in srgb, red, blue) lab(50% 1 1)',
+    'color: light-dark(device-cmyk(0 0 0 1), red)',
+    'color: color-mix(in srgb, device-cmyk(0 0 0 1), red)',
+    'color: color-mix(in srgb, red 80%, blue 80%, green)',
+    'color: color-mix(in srgb, red -10%, blue)',
+    'color: color-mix(in srgb, red 150%, blue)',
+    'color: color-mix(in srgb, red 80%, blue 80%)',
+    'color: color-mix(in srgb, red 60%, blue 60%, green 60%)',
+    'color: color-mix(in srgb, red 30%, blue 30%)',
+    'color: rgb(255 0 0 / none)',
+    'color: rgb(300 -20 0 / none)',
+    'color: lab(50 20 30 / 0.5px)',
+    'color: color(srgb 1 0 0 / 50deg)',
+    'color: lab(50px 20 30)',
+    'color: rgb(none 0 0 / 0.5px)',
+    'color: hsl(120px 50% 50%)',
+    'color: hwb(0.5turn 0% 0%)',
+    'color: color-mix(in srgb, lab(50px 20 30), red)',
+    'color: lab(50 20)',
+    'color: color(srgb 1 0 0 0)',
+    'color: color(foo 1 0 0)',
+    'color: rgb(1 2)',
+    'color: lab(50 20 30 /)',
+    'color: lab(50 20 30 / 0.5 0.5)',
+    'color: color-mix(in srgb)',
+    'color: color-mix(srgb, red, blue)',
+    'color: color-mix(in foo, red, blue)',
+    'color: color-mix(in srgb red, blue)',
+    'color: color-mix(in srgb longer hue, red, blue)',
+    'color: color-mix(in srgb, red 25% 30%, blue)',
+    'color: light-dark(red)',
+    'color: contrast-color(red, blue)',
+    'color: lab(50, 20, 30)',
+    'color: hwb(0, 0%, 0%)',
+    'color: hsl(120, 50, 50)',
+    'color: hsl(120, 50%, 50%)',
+    'color: hsl(120, calc(50%), 50%)',
+    'color: hsla(120, 50%, calc(50%), .5)',
+    'color: hsl(120, calc(50), 50%)',
+    'color: hsl(120, min(50%, 60%), 50%)',
+    'color: rgb(calc(100%), 0%, 0%)',
+    'color: hsl(calc(60deg * 2) 50% 50%)',
+    'color: rgb(255 0 0 / calc(0.5))',
+    'color: rgb(255, 0, 0,)',
+    'color: contrast-color(red blue)',
+    'color: color-mix(in srgb, red 12.3456789%, env(x))',
+    'color: rgb(120% -5% 0% / none)',
+    'color: color-mix(in srgb, red abs(-25%), blue)',
+    'color: color-mix(in srgb, red 12.3456789%, var(--c))',
+    'background: linear-gradient(color-mix(in srgb, red 12.3456789%, var(--c)), red)',
+    'color: color-mix(in srgb, red round(25.4%, 1%), blue)',
+    'background: linear-gradient(color-mix(in srgb, red 80%, blue 80%, green), black) repeat',
+    'color: hsl(0 100% 50% / none)',
+    'color-scheme: only light dark',
+    'color-scheme: only dark',
+  ]),
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: the background shorthand: boxes, sizes and initial values',
+  (w) =>
+    [
+      'background: REPEAT',
+      'background: color-mix(in srgb, red 0%, blue, green, white)',
+      'background: url(a.png) color-mix(in srgb, red 80%, blue 80%, green)',
+      'background: url(a.png) lab(50% 20 30)',
+      'background: light-dark(red, blue)',
+      'background: SCROLL',
+      'background: url(a.png) text',
+      'background: text border-box',
+      'background: text padding-box',
+      'background: url(a.png) border-area',
+      'background: url(a.png) text, url(b.png)',
+      'background: url(a.png) 0 0 / 20px no-repeat, red',
+      'background: url(a.png) 0 0 / calc(10px + 1em)',
+      'background: url(a.png); background-origin: padding-box; background-clip: padding-box',
+      'background: url(a.png); background-origin: border-box; background-clip: text',
+    ].map((text) => {
+      const e = w.document.createElement('div');
+      e.setAttribute('style', text);
+      return [text, e.style.cssText, e.style.backgroundOrigin, e.style.backgroundClip, e.style.backgroundSize];
+    }),
+  { jsdom: 31 },
+);
+
+// The negative remainder color-mix() writes is invalid when read again,
+// as in jsdom 31, but the style object computes from what it holds (#326
+// review).
+parity(
+  'jsdom 31: a color-mix() remainder read again, and computed',
+  (w) => {
+    const e = w.document.body.appendChild(w.document.createElement('div'));
+    const out = [];
+    for (const mix of [
+      'color-mix(in srgb, red 80%, blue 80%, green)',
+      'color-mix(in srgb, red 80%, blue 90%, green, white, black)',
+      'color-mix(in srgb, red 10%, blue, green, white)',
+    ]) {
+      e.removeAttribute('style');
+      e.style.backgroundColor = mix;
+      out.push(e.style.cssText, w.getComputedStyle(e).backgroundColor);
+      e.style.cssText = e.style.cssText;
+      out.push(e.style.cssText, w.getComputedStyle(e).backgroundColor);
+    }
+    return out;
+  },
+  { jsdom: 31 },
+);
+
+// Filled-in color-mix() percentages are held exactly and read to 6
+// digits: two elements, one with the generated form and one with the same
+// text written by hand, compute differently, as in jsdom 31; a nested mix
+// mixes the exact inner color (#326 review).
+parity(
+  'jsdom 31: generated and hand-written color-mix() percentages, and nested mixes',
+  (w) => {
+    const d = w.document;
+    const a = d.body.appendChild(d.createElement('div'));
+    const b = d.body.appendChild(d.createElement('div'));
+    a.style.backgroundColor = 'color-mix(in srgb, red 0%, blue, green, white)';
+    b.style.backgroundColor = a.style.backgroundColor;
+    const c = d.body.appendChild(d.createElement('div'));
+    c.style.backgroundColor = 'color-mix(in srgb, color-mix(in srgb, red 0%, blue, green, white) 90%, black)';
+    return [
+      a.style.backgroundColor,
+      a.style.cssText,
+      w.getComputedStyle(a).backgroundColor,
+      b.style.backgroundColor,
+      w.getComputedStyle(b).backgroundColor,
+      c.style.backgroundColor,
+      w.getComputedStyle(c).backgroundColor,
+    ];
+  },
+  { jsdom: 31 },
+);
+
+// Rounding when read applies to percentages in color-mix() only: not to
+// custom properties, strings or url()s (#326 review).
+parity(
+  'jsdom 31: color-mix() percentages rounded when read, nothing else',
+  (w) =>
+    [
+      '--ratio: 12.3456789%; color: color-mix(in srgb, red, blue)',
+      'content: "color-mix(12.3456789%)"; color: color-mix(in srgb, red 0%, blue, green, white)',
+      'background-image: url("color-mix(12.3456789%).png"); color: color-mix(in srgb, red 0%, blue, green, white)',
+      'background-image: url("a)color-mix(12.3456789%).png"), linear-gradient(color-mix(in srgb, red 0%, blue, green, white), red)',
+      'background-image: url(a\\)b.png), linear-gradient(color-mix(in srgb, red 0%, blue, green, white), red)',
+      'background-image: url("env(x).png"), linear-gradient(color-mix(in srgb, red 0%, blue, green, white), red)',
+      'content: "attr(x)"; color: color-mix(in srgb, red 0%, blue, green, white)',
+    ].map((text) => {
+      const e = w.document.createElement('div');
+      e.setAttribute('style', text);
+      return [e.style.cssText, e.style.getPropertyValue('--ratio'), e.style.color];
+    }),
+  { jsdom: 31 },
+);
+
+test('jsdom 31: a color-mix() of many weighted colors is written in linear time', () => {
+  const w = createWindow({ jsdom: '31.0.1' });
+  const e = w.document.createElement('div');
+  const mix = `color-mix(in srgb, ${Array.from({ length: 4000 }, (_, i) => (i % 2 ? 'red 1%' : 'blue 2%')).join(', ')})`;
+  const start = performance.now();
+  e.style.color = mix;
+  assert.ok(e.style.color.startsWith('color-mix(in srgb, blue 2%, red 1%'));
+  assert.ok(performance.now() - start < 2000);
+});
+
+// The background shorthand reads a color function it cannot resolve alone
+// as the layer's color in jsdom 27 to 30 too, as those versions do
+// (#326 review; lab() with a percentage is left out: jsdom 30 drops it).
+for (const jsdom of [27, 28, 29, 30])
+  parity(
+    `background: color functions as the layer's color (jsdom ${jsdom})`,
+    (w) =>
+      [
+        'oklch(0.5 0.1 120)',
+        'color(srgb 1 0 0)',
+        'color-mix(in srgb, red, blue)',
+        'light-dark(red, blue)',
+        'url(a.png) color-mix(in srgb, red, blue)',
+      ].map((value) => {
+        const e = w.document.createElement('div');
+        e.style.background = value;
+        return [value, e.style.background, e.style.backgroundColor];
+      }),
+    { jsdom },
+  );
