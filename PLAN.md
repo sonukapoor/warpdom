@@ -7802,3 +7802,101 @@ direction as text does: value writes, resets and type changes advance
 the document's textRev (forms.js valueChanged). Checked, not changed:
 display: inline flow-root list-item blockified is list-item in jsdom 31
 (not flow-root list-item).
+Merged as #328 (2026-11-18).
+
+## 2026-11-18: jsdom 31, CSS part E4a: media queries and @supports (branch feat/269-jsdom31-media, #269)
+
+Decision (2026-11-18): E4 in two PRs: E4a (this: media queries and
+@supports evaluated, written as jsdom 31 writes them, applied at any
+depth; a style element's media) and E4b (@layer, with Cascade 5's layer
+order and revert-layer, and @scope with its proximity: both applied by
+jsdom 31, black box).
+conditions31.js, black box on 31.0.1 (179 queries, 47 conditions):
+- Media queries as Media Queries 4 and 5 read them, at jsdom's 1024 x 768
+  screen: 1dppx, 8 bits per color, a fine pointer that hovers, scripting,
+  no preferences, the browser display mode; the device 0 x 0
+  (device-aspect-ratio alone true, matching 0 / 0 only); em, rem, ch and
+  ic 16px (ch is half an em in computed values, as jsdom 31 has it), ex
+  8px, lh 18.4px, cap 14.48px. Unknown (an unknown feature, a value of
+  the wrong type, % in calc()) is false, and stays unknown under not. A
+  query is evaluated as written, its text kept to 6 digits ((width:
+  1024.0000001px) is written (width: 1024px) and does not match).
+- Written: known features lowercase as name: value (ranges a < name <=
+  b), canonical values (0 is 0px, .5em 0.5em, ratios a / b, math
+  simplified: calc(101px)), all and a condition as the condition; other
+  text as written, trimmed and collapsed ((hover:BOGUS)); a query that
+  does not parse "not all".
+- @supports as CSS Conditional Rules 5: declarations checked with the
+  profile's rules (!important allowed; a custom property's value fine but
+  for a ;), selector() of one complex selector, font-tech(), font-format()
+  and at-rule() by their lists, anything else false. A prelude that does
+  not parse drops the rule; conditionText with lowercase keywords.
+  CSS.supports alike.
+- The cascade applies @media and @supports rules where they match, at any
+  depth, and skips a style sheet whose media do not match; a style
+  element's media attribute set later changes its sheet's media in place.
+Not modeled: selector(:-webkit-autofill) is true in jsdom 31 (warpdom's
+engine does not know it).
+Load (bench/load.js, 7 interleaved runs, node 22.17.1, medians): cold
+load 30.0 ms on main, 31.3 ms here. Reason: the module (one, merged from
+two: each module costs the loader about 0.5 ms; 0.3 ms is its own).
+Against jsdom 31.0.1: 77 of the default parity tests differ (83 on main).
+Review round (#329), each reproduced on 31.0.1: prefers-color-scheme
+reads the document's first meta color-scheme (dark when it lists dark
+and not light; live: an index whose media read it is made again with the
+tree); a math value must be the whole value ((width: calc(1024px) junk)
+is general enclosed) and a calculation is compared unrounded; only CSS
+whitespace is trimmed (U+00A0 is text); a ] or } closing nothing makes a
+media query not all and drops a @supports rule; a parenthesized
+condition may start with a function ((selector(div))); env() of the
+names jsdom 31 knows; selector() with known pseudo-elements only, an
+escaped comma is no list; a custom property's ; inside a string is
+fine; a name the profile drops is unsupported (cue-before); a style
+element's media attribute sets its sheet's media in place when written
+(an attribute step); MediaList: queries compared as written, two queries
+deleted as none, a value converted before the list is cleared; a style
+sheet nested more than 128 deep has no rules (jsdom 31 also reports
+"Could not parse CSS stylesheet", not modeled); CSSStyleProperties is
+read on the first declaration check, not at window creation.
+Cold load after the round (7 interleaved runs, load average 4): 35.7 ms
+on main, 37.1 ms here (the module, as above); window creation 3.17 and
+3.15 ms.
+Second round: comments separate components (screen /* x */ and (color)
+is screen and (color); CSS.supports reads them so), an escaped quote
+stays in its string, a function's ] or } closing nothing invalidates too,
+::x inside a string is no pseudo-element, deleteMedium converts its
+argument once.
+Third round (Copilot's previously missed items, each probed): a [ or {
+left open in a condition makes it fail (not ([) is false); comments in a
+two-argument CSS.supports() value are not the value's (--x, /* ; */ is
+supported); pseudo-element names are checked with their escapes decoded
+(::b\65 fore is ::before). Checked, not changed: 6000 parentheses make
+CSS.supports() throw a RangeError in jsdom 31 too.
+Closer look after the third round: identifiers are read with their
+escapes decoded in media queries (\73 creen is screen, (m\in-width: ...)
+min-width) and in @supports keywords, function and property names
+(n\6f t, sel\65 ctor(), (\64 isplay: grid)).
+Fourth round: a hex escape in an identifier reads its digits one way only
+(the identifier patterns backtracked exponentially on a long run of
+escapes: 221 ms for nine); -- alone is no property name in
+CSS.supports.
+Closer look after the fourth round (custom properties): a custom
+property's value given alone to CSS.supports has no ! and no closer of
+nothing at its top level (--x, a !important and --x, a)b are
+unsupported); in a condition only a final !important is allowed ((--x:
+a!b) is not); CSS.supports(condition) closes what is left open at the
+end ((display: grid is supported).
+Closer look after the fifth round: the depth limit skips an unquoted
+url()'s parentheses (one token; a sheet with url(((( was dropped).
+Found, not this part (main too): a string broken by a newline in a
+sheet (a { content: "x NEWLINE } b {} c {}) leaves jsdom 31 three rules,
+warpdom one (part C's recovery).
+Sixth round: the depth limit finds a url() token with urlTokenEnd (css-
+values.js): url not part of a longer name (myurl( and #url( nest), any
+case, escapes skipped.
+Closer look after the sixth round: a unit's escapes are decoded in media
+features (100\70 x is 100px). Not modeled: a comment inside a feature's
+value token (1/**/00px) splits it in jsdom 31, whose text joins the
+pieces re-serialized ((min-width: 10px)) and does not match; warpdom
+reads it as two components (only through the CSSOM: a sheet drops its
+comments first).

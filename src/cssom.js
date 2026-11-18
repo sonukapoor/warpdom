@@ -27,6 +27,7 @@ import {
   nestedBlocks,
   isLegacyMode,
   supportsRuleMatches,
+  supportsDeclarationOf,
   replayDeclarations,
   parsedPlain,
 } from './css.js';
@@ -34,6 +35,15 @@ import { cssomDeclaration, cssomEntries, blockEntries, simpleText, withoutCommen
 import { liveList, iterate } from './collections.js';
 import { fallbackBaseURL } from './base-url.js';
 import { urlTokenEnd } from './css-values.js';
+import { compileRuleSelector } from './selectors.js';
+import { addAttributeStep } from './attributes.js';
+import {
+  serializeMedium31,
+  mediumMatches31,
+  parseSupports31,
+  serializeSupports31,
+  supportsHold31,
+} from './conditions31.js';
 
 // WebIDL: an operation called with fewer arguments than it requires throws.
 function required(count, n, iface, method) {
@@ -374,6 +384,7 @@ function validMediaQuery(query) {
 // Queries compare equal when they differ only in whitespace around
 // parentheses and colons (jsdom keeps (min-width:480px) as written).
 const mediumKey = (query) => query.replace(/\s*([:()])\s*/g, '$1');
+const same = (query) => query;
 
 function normalizeMedium(text) {
   const query = String(text).trim().replace(/\s+/g, ' ').toLowerCase();
@@ -503,8 +514,36 @@ const isNamespace = (rule) => isA(rule, 'CSSNamespaceRule');
 // A list of rules. At the top level of a sheet @import rules must come
 // first, then @namespace rules; inside other rules both are dropped (CSS
 // Cascade 5, CSS Namespaces 3).
+// jsdom 31 (black box, 31.0.1): a style sheet whose blocks ((, [ and {)
+// nest more than 128 deep has no rules ("Could not parse CSS
+// stylesheet"); a rule added through the CSSOM has no such limit.
+const MAX_DEPTH31 = 128;
+function tooDeep(text) {
+  let depth = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"' || c === "'") {
+      i++;
+      while (i < text.length && text[i] !== c && text[i] !== '\n') i += text[i] === '\\' ? 2 : 1;
+    } else if (c === '\\') i++;
+    else if (c === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      if (end < 0) return false;
+      i = end + 1;
+    } else if (c === '(' && urlTokenEnd(text, i) >= 0) {
+      // (an unquoted url() is one token: its parentheses do not nest;
+      // urlTokenEnd: url not part of a longer name, escapes skipped)
+      i = urlTokenEnd(text, i) - 1;
+    } else if (c === '(' || c === '[' || c === '{') {
+      if (++depth > MAX_DEPTH31) return true;
+    } else if ((c === ')' || c === ']' || c === '}') && depth > 0) depth--;
+  }
+  return false;
+}
+
 function ruleList(protos, body, sheet, parent) {
   const rules = [];
+  if (parent === null && MEDIA31.has(protos.MediaList) && tooDeep(body ?? '')) return rules;
   let prefixOnly = parent === null; // only @import and @namespace rules so far
   let namespaces = false;
   for (const record of parseRules(body ?? '', false, nestedBlocks(protos))) {
@@ -763,7 +802,14 @@ function createRule(protos, record, sheet, parentRule) {
     rule = makeRule(protos, 'CSSMediaRule', sheet, parentRule, {});
     rule[S].media = mediaList(protos, prelude);
   } else if (at === 'supports' && body !== null) {
-    rule = makeRule(protos, 'CSSSupportsRule', sheet, parentRule, { conditionText: prelude });
+    // jsdom 31: a condition that does not parse drops the rule, one that
+    // does is written as it has it (conditions31.js).
+    const node = MEDIA31.has(protos.MediaList) ? parseSupports31(prelude) : null;
+    if (node === null && MEDIA31.has(protos.MediaList)) return null;
+    rule = makeRule(protos, 'CSSSupportsRule', sheet, parentRule, {
+      conditionText: node === null ? prelude : serializeSupports31(node),
+    });
+    rule[S].supports31 = node;
   } else if (at === 'container' && body !== null) {
     rule = makeRule(protos, 'CSSContainerRule', sheet, parentRule, containerParts(prelude));
   } else if (at === 'scope' && body !== null) {
@@ -1108,19 +1154,92 @@ function deleteRule(owner, index) {
 
 // --- media lists ----------------------------------------------------------------------
 
+// jsdom 31 (conditions31.js): its queries written and evaluated as Media
+// Queries 4 and 5 have them; sources keeps each one as given, which is
+// what is evaluated.
+const MEDIA31 = new WeakSet();
 function mediaList(protos, text) {
   const items = [];
   const list = liveList(protos.MediaList, () => items);
   list[S].list = items;
+  list[S].sources = MEDIA31.has(protos.MediaList) ? [] : null;
+  if (list[S].sources !== null && !mediaStep) addMediaStep();
   setMediaText(list, text);
   return list;
 }
 
 function setMediaText(list, text) {
-  const items = list[S].list;
-  items.length = 0;
+  const { list: items, sources } = list[S];
+  // (converted first: a value whose toString() throws leaves the list)
   const value = String(text ?? '');
-  if (value.trim() !== '') for (const medium of splitMedia(value)) items.push(normalizeMedium(medium));
+  items.length = 0;
+  if (sources !== null) sources.length = 0;
+  if (value.trim() === '') return;
+  for (const medium of splitMedia(value)) {
+    if (sources === null) items.push(normalizeMedium(medium));
+    else {
+      items.push(serializeMedium31(medium.trim()));
+      sources.push(medium.trim());
+    }
+  }
+}
+
+// Whether a supports rule's condition holds (jsdom 31: conditions31.js).
+export function supportsMatches(rule) {
+  const s = rule[S];
+  if (s.supports31 === null || s.supports31 === undefined) return supportsRuleMatches(s.conditionText);
+  return supportsHold31(s.supports31, supportsDeclarationOf(s.protos), selectorKnown);
+}
+function selectorKnown(text) {
+  try {
+    compileRuleSelector(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Whether a media list matches: as jsdom 31 evaluates queries; before,
+// as jsdom 29 and 30 do (no media features: an empty list, all or screen).
+// doc: the document whose color scheme prefers-color-scheme reads.
+// readsScheme: called when the answer depends on that scheme.
+export function mediaMatches(list, doc = null, readsScheme = null) {
+  const { list: items, sources } = list[S];
+  if (items.length === 0) return true;
+  if (sources !== null) {
+    let dark;
+    const isDark = () => {
+      readsScheme?.();
+      return (dark ??= darkScheme(doc));
+    };
+    for (const source of sources) if (mediumMatches31(source, isDark)) return true;
+    return false;
+  }
+  return items.includes('all') || items.includes('screen');
+}
+
+// Whether a document's color scheme is dark (black box, 31.0.1): its first
+// meta name=color-scheme lists dark and not light (dark, only dark; light
+// dark is light).
+function darkScheme(doc) {
+  if (doc === null) return false;
+  for (let n = doc[S].first; n; n = nextInTree(n, doc)) {
+    const s = n[S];
+    if (s.type !== ELEMENT_NODE || s.tag !== 'meta' || s.ns !== HTML_NS) continue;
+    if (s.attrs.get('name')?.toLowerCase() !== 'color-scheme') continue;
+    const words = (s.attrs.get('content') ?? '').toLowerCase().split(/[ \t\n\r\f]+/);
+    return words.includes('dark') && !words.includes('light');
+  }
+  return false;
+}
+
+// The document a rule's sheet belongs to, or null.
+function ruleDocument(rule) {
+  for (let sheet = rule[S].sheet; sheet; sheet = sheet[S].parentSheet) {
+    const owner = sheet[S].ownerNode;
+    if (owner) return owner[S].type === 9 ? owner : owner[S].doc;
+  }
+  return null;
 }
 
 // --- style sheets -----------------------------------------------------------------------
@@ -1226,6 +1345,22 @@ export function styleElementSheet(el) {
     s.sheetRev = s.rev;
   }
   return s.sheet;
+}
+
+// jsdom 31 (black box, 31.0.1): a style element's media attribute, when
+// set, sets its sheet's media in place, even to the value it had (its
+// title stays). Registered with the first jsdom 31 media list (the
+// attribute module is in an import cycle with this one).
+let mediaStep = false;
+function addMediaStep() {
+  mediaStep = true;
+  addAttributeStep('media', (el, old, value) => {
+    const s = el[S];
+    const sheet = s.tag === 'style' && s.ns === HTML_NS ? s.sheet : undefined;
+    if (!sheet || sheet[S].media[S].sources === null) return;
+    setMediaText(sheet[S].media, value ?? '');
+    cssomChanges.rev++;
+  });
 }
 
 const isStyleElement = (n) => n[S].type === ELEMENT_NODE && n[S].tag === 'style' && n[S].ns === HTML_NS;
@@ -1657,8 +1792,7 @@ export const CSSOM_INTERFACES = [
       mediaMember,
       {
         get matches() {
-          const list = state(this).media[S].list;
-          return list.length === 0 || list.includes('all') || list.includes('screen');
+          return mediaMatches(state(this).media, ruleDocument(this));
         },
       },
     ],
@@ -1673,7 +1807,7 @@ export const CSSOM_INTERFACES = [
     parent: 'CSSConditionRule',
     members: {
       get matches() {
-        return supportsRuleMatches(state(this).conditionText);
+        return supportsMatches(this);
       },
     },
   },
@@ -1977,6 +2111,7 @@ export const CSSOM_INTERFACES = [
     // Not iterable before jsdom 29 (black box 20.0.3 to 28.1.0: no @@iterator).
     compat(proto, { jsdom }) {
       if (jsdom < 29) delete proto[Symbol.iterator];
+      if (jsdom >= 31) MEDIA31.add(proto);
     },
     members: {
       get mediaText() {
@@ -2002,9 +2137,13 @@ export const CSSOM_INTERFACES = [
         const text = String(medium);
         const queries = splitMedia(text);
         if (text.trim() === '' || queries.length !== 1) return;
-        const m = normalizeMedium(queries[0]);
-        if (!list.some((q) => mediumKey(q) === mediumKey(m))) {
+        const sources = state(this).sources;
+        const m = sources === null ? normalizeMedium(queries[0]) : serializeMedium31(queries[0].trim());
+        // (jsdom 31 compares the queries as written)
+        const key = sources === null ? mediumKey : same;
+        if (!list.some((q) => key(q) === key(m))) {
           list.push(m);
+          sources?.push(queries[0].trim());
           cssomChanges.rev++;
         }
       },
@@ -2012,11 +2151,18 @@ export const CSSOM_INTERFACES = [
       deleteMedium(medium) {
         const list = state(this).list;
         required(arguments.length, 1, 'MediaList', 'deleteMedium');
-        const m = mediumKey(normalizeMedium(medium));
+        const sources = state(this).sources;
+        // (jsdom 31: converted once; an argument of more than one query
+        // removes nothing)
+        if (sources !== null) medium = String(medium);
+        if (sources !== null && splitMedia(medium).length !== 1) return;
+        const key = sources === null ? mediumKey : same;
+        const m = key(sources === null ? normalizeMedium(medium) : serializeMedium31(medium.trim()));
         let removed = false;
         for (let i = list.length - 1; i >= 0; i--)
-          if (mediumKey(list[i]) === m) {
+          if (key(list[i]) === m) {
             list.splice(i, 1);
+            sources?.splice(i, 1);
             removed = true;
           }
         if (!removed) throw domError(`Failed to delete '${medium}'.`, 'NotFoundError');

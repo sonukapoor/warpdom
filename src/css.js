@@ -2,6 +2,7 @@
 // CSSStyleProperties (an accessor per CSS property name), as in jsdom 30.
 // Declarations are kept in order in a Map, and every change is written back to
 // the element's style attribute; a new style attribute re-parses them.
+import { parseSupports31, supportsHold31, supportedDeclaration31, closedAtEnd31 } from './conditions31.js';
 import {
   S,
   state,
@@ -4824,11 +4825,27 @@ export function escapeIdentifier(value) {
 
 // CSS.supports(property, value): a supported property with a valid value
 // (the same check as style declarations; jsdom 30 validates too).
-const supportsDeclaration = (property, value) => {
+export const supportsDeclaration = (property, value, mode = 'spec', surface = null) => {
   const name = String(property).toLowerCase();
   const text = String(value).trim();
-  return text !== '' && declaredValue(name, text, 'spec') !== INVALID;
+  // (not a name the profile drops: jsdom 31's cue-before)
+  return text !== '' && !dropped(surface, name) && declaredValue(name, text, mode, surface) !== INVALID;
 };
+// The check with a profile's CSS rules (jsdom 31: its style surface, so a
+// string in calc() is invalid).
+// (CSSStyleProperties read on the first check: the prototype is made
+// lazily, and a window may never check a declaration)
+export function supportsDeclarationOf(protos) {
+  let mode = null,
+    surface = null;
+  return (property, value) => {
+    if (mode === null) {
+      mode = modeOf(protos.CSSStyleProperties);
+      surface = surfaceOf(protos.CSSStyleProperties);
+    }
+    return supportsDeclaration(property, value, mode, surface);
+  };
+}
 
 // A <supports-condition> (CSS Conditional Rules): not / and / or, (decl),
 // nested conditions and selector(); unknown syntax is false.
@@ -4905,7 +4922,17 @@ const ruleDeclaration = (property, value) => {
 };
 export const supportsRuleMatches = (text) => supportsCondition(String(text), () => false, ruleDeclaration);
 
-export function cssNamespace(matchesSelector) {
+// jsdom 31 (conditions31.js): a condition as CSS Conditional Rules 5 has
+// it, a custom property's value supported but for a ; in it.
+function supports31(args, matchesSelector, declaration) {
+  if (args.length >= 2) return supportedDeclaration31(String(args[0]), String(args[1]), declaration, false);
+  const text = closedAtEnd31(String(args[0]));
+  const hold = (node) => node !== null && supportsHold31(node, declaration, matchesSelector);
+  // A bare declaration is treated as if wrapped in parentheses.
+  return hold(parseSupports31(text)) || hold(parseSupports31(`(${text})`));
+}
+
+export function cssNamespace(matchesSelector, declaration31 = null) {
   const namespace = {
     escape(ident) {
       if (arguments.length === 0)
@@ -4915,6 +4942,7 @@ export function cssNamespace(matchesSelector) {
     supports(...args) {
       if (args.length === 0)
         throw new TypeError("Failed to execute 'supports' on 'CSS': 1 argument required, but only 0 present.");
+      if (declaration31 !== null) return supports31(args, matchesSelector, declaration31);
       if (args.length >= 2) return supportsDeclaration(args[0], args[1]);
       const text = String(args[0]);
       // A bare declaration is treated as if wrapped in parentheses.
