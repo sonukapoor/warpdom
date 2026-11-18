@@ -34,7 +34,7 @@
 // in specificity order. A sheet is split once per CSS mode and style
 // surface; a property's declarations are parsed and indexed when it is
 // first read.
-import { S } from './internal.js';
+import { S, HTML_NS, SVG_NS } from './internal.js';
 import { compileRuleSelector } from './selectors.js';
 import { parseDeclarations, validationModeOf, styleSurfaceOf } from './css.js';
 import { SHORTHANDS } from './css-data.js';
@@ -215,7 +215,9 @@ marquee { text-align: initial; overflow: hidden !important }
 
 // jsdom 31: the rendering section as it now reads, margins and the hidden
 // attribute included, with jsdom's form control colors (black box,
-// 31.0.1). It is a lower origin than the page's (cascade.js cascade31).
+// 31.0.1). It is a lower origin than the page's (cascade.js cascade31),
+// and applies to HTML elements only (the standard's @namespace): an SVG
+// title or a foreign div is inline. SVG elements have SVG31's rules.
 const HTML31 = `
 area, base, basefont, datalist, head, link, meta, noembed, noframes, param, rp, script, style, template, title { display: none }
 [hidden]:not([hidden="until-found" i]):not(embed) { display: none }
@@ -258,6 +260,8 @@ address, blockquote, center, div, figure, figcaption, footer, form, header, hr, 
   article, aside, h1, h2, h3, h4, h5, h6, hgroup, nav, section, search, table, caption, colgroup, col, thead, tbody, tfoot, tr, td, th,
   dir, dd, dl, dt, menu, ol, ul, li, bdi, output, [dir="ltr" i], [dir="rtl" i], [dir="auto" i] { unicode-bidi: isolate }
 bdo, bdo[dir] { unicode-bidi: isolate-override }
+input[dir="auto" i]:is([type="search" i], [type="tel" i], [type="url" i], [type="email" i]), textarea[dir="auto" i], pre[dir="auto" i] {
+  unicode-bidi: plaintext }
 article, aside, h1, h2, h3, h4, h5, h6, hgroup, nav, section { display: block }
 h1 { margin-block: 0.67em; font-size: 2em; font-weight: bold }
 h2 { margin-block: 0.83em; font-size: 1.5em; font-weight: bold }
@@ -323,7 +327,14 @@ marquee { display: inline-block; text-align: initial; overflow: hidden !importan
 meter, progress { appearance: auto }
 `;
 
-const SHEETS = { legacy: LEGACY, html: HTML, html31: HTML31 };
+// jsdom 31's rules for SVG elements (black box, 31.0.1): an inner svg's
+// overflow, a link's cursor (xlink:href too).
+const SVG31 = `
+svg:not(:root) { overflow: hidden }
+a:link, a:visited { cursor: pointer }
+`;
+
+const SHEETS = { legacy: LEGACY, html: HTML, html31: HTML31, svg31: SVG31 };
 
 const SIMPLE = /^[a-z][a-z0-9]*$/;
 
@@ -529,12 +540,13 @@ function lookup(entry, element) {
 // and later).
 const indexes = new Map();
 const surfaceIndexes = new WeakMap();
-function indexFor(window, expand) {
+function indexFor(window, expand, svg = false) {
   const ws = window[S];
   const mode = validationModeOf(window),
     surface = styleSurfaceOf(window);
   let generation = 'legacy';
-  if (ws.compat.jsdom >= 31) generation = 'html31';
+  if (svg) generation = 'svg31';
+  else if (ws.compat.jsdom >= 31) generation = 'html31';
   else if (ws.compat.jsdom >= 27) generation = 'html';
   const key = `${generation} ${mode}`;
   let cache = indexes;
@@ -544,6 +556,7 @@ function indexFor(window, expand) {
   }
   let index = cache.get(key);
   if (!index) cache.set(key, (index = sheetIndex(SHEETS[generation], mode, surface, expand)));
+  if (svg) return (ws.uaSvgIndex = index);
   return (ws.uaIndex = index);
 }
 
@@ -556,6 +569,15 @@ function indexFor(window, expand) {
 export function uaDeclarations(window, name, expand) {
   if (name.startsWith('--')) return NONE;
   return declarationsOf(window[S].uaIndex ?? indexFor(window, expand), name);
+}
+
+// jsdom 31: those of the sheet for an element's namespace (none for one
+// neither HTML's nor SVG's).
+export function uaDeclarations31(window, name, expand, element) {
+  const ns = element[S].ns;
+  if (ns === HTML_NS) return uaDeclarations(window, name, expand);
+  if (ns !== SVG_NS || name.startsWith('--')) return NONE;
+  return declarationsOf(window[S].uaSvgIndex ?? indexFor(window, expand, true), name);
 }
 
 // The rule that declares a value for an element when it is more specific

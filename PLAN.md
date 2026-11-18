@@ -7775,3 +7775,21 @@ float, the parent's display), as jsdom 31 does them. Tried and dropped
 before finding the flow, and a tag-level test before the partner's
 cascade. Cold load 31.4 ms on main, 31.2 ms here.
 Against jsdom 31.0.1: 83 of the default parity tests differ (94 on main).
+Review round (#328), each reproduced on 31.0.1: the user agent sheet
+applies to HTML elements only (an SVG title or hidden g is inline, a
+foreign div inline), SVG ones have two rules (svg:not(:root) overflow:
+hidden, a:link cursor: pointer, xlink:href too); unicode-bidi: plaintext
+for pre, textarea and the text inputs with dir=auto; revert and
+revert-layer in the page's declarations roll back to the user agent
+sheet's value, of the logical pair too (p { margin-top: revert } is
+16px); a logical property reads its physical one's computed value
+(margin-block-start: inherit takes the parent's margin-top, not its
+margin-block-start); the flow reads text-orientation (upright makes
+vertical-rl and vertical-lr ltr) and all, is kept until text changes when
+a dir=auto or bdi direction decides it, and is found in a loop over the
+ancestors (jsdom 31 overflows its stack at a depth of 3000; not
+modeled); the root's display: contents is block; a flex item's box
+parent is its assigned slot, a shadow root's child's its host;
+overscroll-behavior is a logical group; partner names are kept per flow.
+Speed after the round, same benchmark (load average 4): main 258.0 ms,
+before the round 342.3 ms, after 346.9 ms (noise).

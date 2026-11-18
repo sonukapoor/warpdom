@@ -52,8 +52,9 @@ import {
   relativeWeight,
 } from './lengths.js';
 import { substituteVars, tooManyTokens, trimEnds } from './var-substitution.js';
-import { uaDeclarations, uaValue, uaRule, uaRuleOver, uaInOrder } from './ua-sheet.js';
-import { flowOf, isLogicalGroup, partnerOf } from './logical.js';
+import { uaDeclarations, uaDeclarations31, uaValue, uaRule, uaRuleOver, uaInOrder } from './ua-sheet.js';
+import { findSlot } from './slots.js';
+import { flowOf, isLogical, isLogicalGroup, partnerOf } from './logical.js';
 import { documentStyleSheets, ruleArray, ruleListSnapshot, ruleListChanged } from './cssom.js';
 import { present31 } from './color31.js';
 import {
@@ -775,7 +776,15 @@ function cascadeCache(element) {
   // tree as it was, not those matches.
   const textRev = index.textDependent === true ? (ds.textRev ?? 0) : 0;
   const inlineMap = inlineDeclarations(element);
-  if (!cache || cache.index !== index || cache.rev !== rev || cache.textRev !== textRev || cache.inline !== inlineMap) {
+  if (
+    !cache ||
+    cache.index !== index ||
+    cache.rev !== rev ||
+    cache.textRev !== textRev ||
+    cache.inline !== inlineMap ||
+    // (a jsdom 31 flow from a direction its text decides, flow31)
+    (cache.flowText && cache.flowTextRev !== (ds.textRev ?? 0))
+  ) {
     const kept = keptStyles(ds);
     let detached = kept;
     // Whether colorDeclared may keep its answer with these values: they
@@ -815,6 +824,8 @@ function cascadeCache(element) {
       lineHeight: undefined,
       customs: undefined,
       flow: -1,
+      flowText: false,
+      flowTextRev: 0,
     };
   }
   return cache;
@@ -997,7 +1008,7 @@ const contains = (property, other) =>
 // go to win31.
 const win31 = { level: 0, specificity: 0, order: 0 };
 function winner31(element, index, inlineMap, name, window) {
-  const ua = uaDeclarations(window, name, cascadeExpand);
+  const ua = uaDeclarations31(window, name, cascadeExpand, element);
   let rule = ua.important === null ? undefined : uaRule(ua.important, element);
   if (rule !== undefined) return won31(6, rule.specificity, rule.order, rule.value);
   const inline = inlineMap?.get(name);
@@ -1012,7 +1023,12 @@ function winner31(element, index, inlineMap, name, window) {
     const entry = firstMatchEntry(lists.normal, element);
     if (entry !== undefined) return won31(2, entry.specificity, entry.order, entry.value);
   }
-  rule = ua.normal === null ? undefined : uaRule(ua.normal, element);
+  return userAgent31(element, name, window, ua);
+}
+// The user agent sheet's normal declaration (also where the page's
+// declaration that won is revert).
+function userAgent31(element, name, window, ua = uaDeclarations31(window, name, cascadeExpand, element)) {
+  const rule = ua.normal === null ? undefined : uaRule(ua.normal, element);
   if (rule !== undefined) return won31(1, rule.specificity, rule.order, rule.value);
   return won31(0, 0, 0, undefined);
 }
@@ -1023,44 +1039,99 @@ function won31(level, specificity, order, value) {
   return value;
 }
 function cascade31(element, index, inlineMap, name, window) {
-  const value = winner31(element, index, inlineMap, name, window);
-  if (!isLogicalGroup(name)) return value;
-  const { level, specificity, order } = win31;
-  const partner = partnerOf(name, flow31(element));
-  const other = winner31(element, index, inlineMap, partner, window);
-  if (
-    win31.level < level ||
-    (win31.level === level &&
-      (win31.specificity < specificity || (win31.specificity === specificity && win31.order <= order)))
-  )
-    return value;
-  // A longhand pending substitution computes from its shorthand by its own
-  // name: the partner's (pending31).
-  return other.startsWith(PENDING31) ? `${PENDING31}\0${partner}\0${other.slice(PENDING31.length)}` : other;
+  let value = winner31(element, index, inlineMap, name, window);
+  const partner = isLogicalGroup(name) ? partnerOf(name, flow31(element)) : null;
+  if (partner !== null) {
+    const { level, specificity, order } = win31;
+    const other = winner31(element, index, inlineMap, partner, window);
+    if (beats31(level, specificity, order))
+      // A longhand pending substitution computes from its shorthand by its
+      // own name: the partner's (pending31).
+      value = other.startsWith(PENDING31) ? `${PENDING31}\0${partner}\0${other.slice(PENDING31.length)}` : other;
+    else won31(level, specificity, order, value);
+  }
+  // revert and revert-layer (no layers yet) in the page's declarations:
+  // the user agent sheet's value, of the pair too (black box, 31.0.1: p {
+  // margin-top: revert } gives 16px, a div's 0px).
+  if (win31.level >= 2 && win31.level <= 5 && REVERT.test(value)) {
+    value = userAgent31(element, name, window);
+    if (partner !== null) {
+      const { level, specificity, order } = win31;
+      const other = userAgent31(element, partner, window);
+      if (!beats31(level, specificity, order)) return value;
+      return other;
+    }
+  }
+  return value;
 }
+const REVERT = /^\s*revert(?:-layer)?\s*$/i;
+// Whether win31 beats a winner of this level, specificity and order.
+const beats31 = (level, specificity, order) =>
+  win31.level > level ||
+  (win31.level === level &&
+    (win31.specificity > specificity || (win31.specificity === specificity && win31.order > order)));
 
-// An element's flow (logical.js), kept with its cascaded values. Both
-// properties inherit: an element that declares neither (nor has a
-// direction of its own, uaDirection) has its parent's. Where no rule
-// declares either, one whose style attribute names neither declares
-// neither.
-const FLOW_NAMES = /writing-mode|direction|\\/i;
+// An element's flow (logical.js), kept with its cascaded values.
+// writing-mode, direction and text-orientation inherit: an element that
+// declares none of them (nor has a direction of its own, uaDirection) has
+// its parent's. Where no rule declares one, an element whose style
+// attribute names none (all sets them too) declares none. A flow found
+// from a direction its text decides (dir=auto, bdi), the element's or an
+// ancestor's, is kept until text changes (flowText). Ancestors are walked
+// in a loop, the flow found then given to each of them.
+const FLOW_NAMES = /writing-mode|direction|text-orientation|all|\\/i;
+const FLOW_PROPERTIES = ['writing-mode', 'direction', 'text-orientation', 'all'];
 function flow31(element) {
   const cache = cascadeCache(element);
   if (cache.flow !== -1) return cache.flow;
-  let own = uaDirection(element);
-  if (!own) {
-    if (cache.index.has('writing-mode') || cache.index.has('direction'))
-      own = cascaded(element, 'writing-mode') !== undefined || cascaded(element, 'direction') !== undefined;
-    else own = cache.inline !== null && FLOW_NAMES.test(element[S].attrs.get('style'));
+  let flow = 0,
+    text = false;
+  for (let e = element; e !== null; e = inheritParent(e)) {
+    const c = e === element ? cache : cascadeCache(e);
+    if (c.flow !== -1) {
+      flow = c.flow;
+      text = c.flowText;
+      break;
+    }
+    if (ownFlow(e, c)) {
+      flow = flowOf(
+        computedValue(e, 'writing-mode'),
+        computedValue(e, 'direction'),
+        computedValue(e, 'text-orientation'),
+      );
+      text = autoDirection(e) || flowTextAbove(e);
+      break;
+    }
   }
-  let flow = 0;
-  if (own) flow = flowOf(computedValue(element, 'writing-mode'), computedValue(element, 'direction'));
-  else {
-    const parent = inheritParent(element);
-    if (parent !== null) flow = flow31(parent);
+  const rev = element[S].doc[S].textRev ?? 0;
+  for (let e = element; e !== null; e = inheritParent(e)) {
+    const c = e === element ? cache : e[S].cascaded;
+    if (c.flow !== -1) break;
+    c.flow = flow;
+    c.flowText = text;
+    c.flowTextRev = rev;
+    if (ownFlow(e, c)) break;
   }
-  return (cache.flow = flow);
+  return flow;
+}
+function ownFlow(element, cache) {
+  if (uaDirection(element)) return true;
+  for (const name of FLOW_PROPERTIES)
+    if (cache.index.has(name)) return FLOW_PROPERTIES.some((n) => cascaded(element, n) !== undefined);
+  return cache.inline !== null && FLOW_NAMES.test(element[S].attrs.get('style'));
+}
+// A direction found from the element's text.
+function autoDirection(element) {
+  if (!uaDirection(element)) return false;
+  const dir = element[S].attrs.get('dir')?.toLowerCase();
+  return dir !== 'ltr' && dir !== 'rtl';
+}
+// Whether an inherited part of the flow comes from text: an ancestor's.
+function flowTextAbove(element) {
+  const parent = inheritParent(element);
+  if (parent === null) return false;
+  flow31(parent);
+  return parent[S].cascaded.flowText;
 }
 
 // --- computed values ------------------------------------------------------------------
@@ -1978,6 +2049,9 @@ export function computedValue(element, property) {
   const data = custom ? CUSTOM : LONGHANDS[name];
   if (!data) return shorthandValue(element, name);
   const compat = element[S].doc[S].window[S].compat;
+  // jsdom 31: a logical property is its physical one's value (inherit
+  // takes the parent's physical one, black box 31.0.1).
+  if (compat.computed31 && isLogical(name)) return computedValue(element, partnerOf(name, flow31(element)));
   // jsdom 30: em lengths read the font sizes of the element and its
   // ancestors; each element's is kept with its cascaded values (dropped
   // with them on any tree, attribute or style sheet change).
@@ -2024,17 +2098,19 @@ const BLOCKIFIED = new Map([
 ]);
 const FLEX_OR_GRID = /^(?:inline-)?(?:flex|grid)$/;
 function blockified31(element, value) {
-  let block = BLOCKIFIED.get(value);
+  const root = element[S].parent?.[S].type === DOCUMENT_NODE;
+  // (the root's contents is block too)
+  let block = root && value === 'contents' ? 'block' : BLOCKIFIED.get(value);
   if (block === undefined) {
     if (value.startsWith('table-') || value.startsWith('ruby-')) block = 'block';
     else if (value.startsWith('inline ') && value.endsWith(' list-item')) block = 'list-item';
     else return value;
   }
-  if (element[S].parent?.[S].type === DOCUMENT_NODE || blockifies31(element)) return block;
+  if (root || blockifies31(element)) return block;
   // A flex or grid item: its parent box's, past display: contents. (A
   // parent whose cascaded display names none of these, nor inherits or
   // substitutes one, is not a container.)
-  for (let parent = inheritParent(element); parent !== null; parent = inheritParent(parent)) {
+  for (let parent = boxParent31(element); parent !== null; parent = boxParent31(parent)) {
     const declared = cascaded(parent, 'display');
     if (declared === undefined || !MAY_CONTAIN.test(declared)) return value;
     const display = displayOf31(parent);
@@ -2043,6 +2119,16 @@ function blockified31(element, value) {
   return value;
 }
 const MAY_CONTAIN = /flex|grid|contents|inherit|unset|revert|var\(|\\/i;
+// The element whose box holds an element's: the slot it is assigned to, its
+// parent, or the host of the shadow root it is a child of (black box, 31.0.1:
+// a shadow root's span in a flex host is block, a host's child in a block
+// slot inline).
+function boxParent31(element) {
+  const p = element[S].parent;
+  if (p === null) return null;
+  if (p[S].type === ELEMENT_NODE) return (p[S].shadowRoot && findSlot(element)) || p;
+  return p[S].shadow === true ? p[S].host : null;
+}
 // Position and float are not inherited: undeclared, they are static and none.
 const blockifies31 = (element) => {
   if (cascaded(element, 'position') !== undefined) {

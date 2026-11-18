@@ -262,3 +262,107 @@ test('logical properties: the partner in each flow, both ways', () => {
   // An unknown writing mode is horizontal-tb.
   assert.equal(flowOf('tb-rl', 'ltr'), ltr);
 });
+
+// Review round (#328).
+parity(
+  'jsdom 31: revert and revert-layer in the page roll back to the user agent sheet, of the pair too',
+  cases([
+    [
+      'p { margin-top: 3px } .r { margin-top: revert }',
+      '<p class="r"></p><div class="r"></div><p style="margin-block-start: revert"></p><p style="margin-top: 2px; margin-block-start: revert"></p>' +
+        '<div style="color: red"><b style="color: revert"></b><div style="display: revert"></div><span style="display: revert-layer"></span></div>',
+      ['margin-top', 'margin-block-start', 'color', 'display'],
+    ],
+  ]),
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: the flow of logical properties: inherit, all, text-orientation, dir=auto text',
+  (w) => {
+    const d = w.document;
+    d.body.innerHTML =
+      '<div style="writing-mode: vertical-rl; margin-top: 2px; margin-right: 7px"><div id="c" style="writing-mode: horizontal-tb; margin-block-start: inherit"></div></div>' +
+      '<div style="writing-mode: vertical-rl"><span id="b" style="all: initial; margin-block-start: 5px"></span></div>' +
+      '<div style="text-orientation: upright; writing-mode: vertical-rl"><span id="k" style="direction: rtl; margin-inline-start: 4px"></span></div>' +
+      '<div id="a" dir="auto" style="margin-inline-start: 5px">a<span id="s" style="padding-inline-start: 3px"></span></div>';
+    const read = (id) => {
+      const cs = w.getComputedStyle(d.getElementById(id));
+      return [
+        'margin-top',
+        'margin-right',
+        'margin-bottom',
+        'margin-left',
+        'margin-block-start',
+        'padding-left',
+        'padding-right',
+      ].map((p) => cs.getPropertyValue(p));
+    };
+    const out = ['c', 'b', 'k', 'a', 's'].map(read);
+    for (const mode of ['vertical-rl', 'vertical-lr', 'sideways-rl', 'sideways-lr', 'horizontal-tb']) {
+      d.getElementById('k').parentNode.style.writingMode = mode;
+      out.push(read('k'));
+    }
+    d.getElementById('a').firstChild.data = 'א';
+    out.push(read('a'), read('s'));
+    return out;
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: the user agent sheet applies to HTML elements, SVG ones have their own rules',
+  (w) => {
+    const d = w.document;
+    d.body.innerHTML =
+      '<svg><title>t</title><style></style><g hidden dir="rtl"></g><a href="#x"></a><a xlink:href="#x"><text>t</text></a><a></a><svg></svg></svg>' +
+      '<div style="color: red"><svg><a href="#x"></a></svg></div><pre dir="auto"></pre><pre></pre><textarea dir="auto"></textarea><input dir="auto" type="search">';
+    const foreign = d.body.appendChild(d.createElementNS('urn:x', 'div'));
+    foreign.setAttribute('dir', 'rtl');
+    return [...d.body.querySelectorAll('*')].map((e) => {
+      const cs = w.getComputedStyle(e);
+      return [e.localName, cs.display, cs.color, cs.cursor, cs.overflowX, cs.unicodeBidi];
+    });
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: display blockified: the root, slots and shadow roots',
+  (w) => {
+    const d = w.document;
+    d.body.innerHTML =
+      '<div id="h" style="display: flex"><span id="s">x</span></div><div id="g" style="display: grid"></div>';
+    d.getElementById('h').attachShadow({ mode: 'open' }).innerHTML = '<slot style="display: block"></slot><b>q</b>';
+    d.getElementById('g').attachShadow({ mode: 'open' }).innerHTML = '<i>q</i>';
+    const out = [
+      w.getComputedStyle(d.getElementById('s')).display,
+      w.getComputedStyle(d.getElementById('h').shadowRoot.querySelector('b')).display,
+      w.getComputedStyle(d.getElementById('g').shadowRoot.querySelector('i')).display,
+    ];
+    d.documentElement.style.display = 'contents';
+    out.push(w.getComputedStyle(d.documentElement).display);
+    return out;
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: overscroll-behavior is a logical property group',
+  cases([
+    [
+      '',
+      '<div style="overscroll-behavior-inline: contain"></div><div style="writing-mode: vertical-lr; overscroll-behavior-block: none"></div><div style="overscroll-behavior-y: contain"></div>',
+      ['overscroll-behavior-x', 'overscroll-behavior-y', 'overscroll-behavior-inline', 'overscroll-behavior-block'],
+    ],
+  ]),
+  { jsdom: 31 },
+);
+
+test('jsdom 31: a deep tree finds its flow without a call per ancestor', () => {
+  const w = createWindow({ jsdom: '31.0.1' });
+  let e = w.document.body;
+  for (let i = 0; i < 20000; i++) e = e.appendChild(w.document.createElement('div'));
+  e.style.marginBlockStart = '1px';
+  assert.equal(w.getComputedStyle(e).marginTop, '1px');
+});

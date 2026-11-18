@@ -5,7 +5,8 @@
 // margin-block-start: 3px, gives margin-top 3px). jsdom 31 cascades them
 // so (black box, 31.0.1: margins, paddings, inset, border widths, styles
 // and colors, sizes, overflow, corner radii, scroll margins and paddings,
-// overflow-clip-margin, contain-intrinsic sizes, in every writing mode).
+// overflow-clip-margin, contain-intrinsic sizes, overscroll-behavior, in
+// every writing mode).
 //
 // A flow is a number: writing mode * 2 + (direction rtl ? 1 : 0), the
 // writing modes being horizontal-tb (0), vertical-rl (1), vertical-lr
@@ -13,9 +14,12 @@
 
 const WRITING_MODES = ['horizontal-tb', 'vertical-rl', 'vertical-lr', 'sideways-rl', 'sideways-lr'];
 
-export function flowOf(writingMode, direction) {
+// (text-orientation: upright makes vertical-rl and vertical-lr ltr, as
+// CSS Writing Modes 4 has it and jsdom 31 maps them)
+export function flowOf(writingMode, direction, orientation) {
   const mode = WRITING_MODES.indexOf(writingMode);
-  return (mode < 0 ? 0 : mode) * 2 + (direction === 'rtl' ? 1 : 0);
+  const upright = (mode === 1 || mode === 2) && orientation === 'upright';
+  return (mode < 0 ? 0 : mode) * 2 + (direction === 'rtl' && !upright ? 1 : 0);
 }
 
 // The physical sides of block-start, block-end, inline-start and
@@ -71,23 +75,28 @@ const AXIS_GROUPS = [
     ['overflow-inline', 'overflow-block'],
     ['overflow-x', 'overflow-y'],
   ],
+  [
+    ['overscroll-behavior-inline', 'overscroll-behavior-block'],
+    ['overscroll-behavior-x', 'overscroll-behavior-y'],
+  ],
 ];
 
-// name -> { kind: 'side' | 'axis' | 'corner', logical, group, index }
+// name -> { kind: 'side' | 'axis' | 'corner', logical, group, index,
+// partners (its partner in each flow, filled on first use) }
 let table = null;
 function build() {
   table = new Map();
   for (const group of SIDE_GROUPS) {
     const [lp, pp, suffix] = group;
     for (let i = 0; i < 4; i++) {
-      table.set(lp + LOGICAL_SIDES[i] + suffix, { kind: 'side', logical: true, group, index: i });
-      table.set(pp + PHYSICAL_SIDES[i] + suffix, { kind: 'side', logical: false, group, index: i });
+      table.set(lp + LOGICAL_SIDES[i] + suffix, { kind: 'side', logical: true, group, index: i, partners: null });
+      table.set(pp + PHYSICAL_SIDES[i] + suffix, { kind: 'side', logical: false, group, index: i, partners: null });
     }
   }
   for (const group of AXIS_GROUPS)
     for (let i = 0; i < 2; i++) {
-      table.set(group[0][i], { kind: 'axis', logical: true, group, index: i });
-      table.set(group[1][i], { kind: 'axis', logical: false, group, index: i });
+      table.set(group[0][i], { kind: 'axis', logical: true, group, index: i, partners: null });
+      table.set(group[1][i], { kind: 'axis', logical: false, group, index: i, partners: null });
     }
   // border-<block side>-<inline side>-radius, border-<top|bottom>-<left|right>-radius
   for (let b = 0; b < 2; b++)
@@ -98,6 +107,7 @@ function build() {
         logical: true,
         group: null,
         index: b * 2 + i,
+        partners: null,
       });
       const vertical = ['top', 'bottom'][b],
         horizontal = ['left', 'right'][i];
@@ -106,6 +116,7 @@ function build() {
         logical: false,
         group: null,
         index: b * 2 + i,
+        partners: null,
       });
     }
 }
@@ -116,6 +127,12 @@ export function isLogicalGroup(name) {
   return table.has(name);
 }
 
+// Whether a property is a logical one of a group.
+export function isLogical(name) {
+  if (table === null) build();
+  return table.get(name)?.logical === true;
+}
+
 // The property that shares a cascade with name in flow (the physical one
 // a logical property maps to, the logical one that maps to a physical
 // one), or null.
@@ -123,6 +140,11 @@ export function partnerOf(name, flow) {
   if (table === null) build();
   const entry = table.get(name);
   if (entry === undefined) return null;
+  const partners = (entry.partners ??= new Array(SIDES.length).fill(null));
+  return (partners[flow] ??= partner(entry, flow));
+}
+
+function partner(entry, flow) {
   const sides = SIDES[flow];
   const vertical = flow >= 2;
   if (entry.kind === 'side') {
