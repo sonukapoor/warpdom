@@ -218,3 +218,46 @@ test('jsdom 31: long and deeply nested declaration lists', () => {
   assert.equal(e.style.getPropertyValue('--o').length, 10000);
   assert.ok(performance.now() - start < 2000);
 });
+
+// #327 review: an unknown property with VAR(), an empty custom property
+// after an important one, an at-rule ending at its block, a run of
+// comments.
+parity(
+  'jsdom 31: review cases of declaration lists',
+  attribute([
+    'not-a-property: VAR(--x); left: 1px',
+    'background-image: VAR(--a); top: 1px',
+    '--x: red !important; --x:;',
+    '--x:; --x: red',
+    '@unknown {} color: red; width: 1px',
+    '@media x { color: red } left: 1px; color: blue',
+    '@unknown; color: red',
+    '@x (a; b) { c } color: red',
+    '@x [a { b } ] color: red; left: 1px',
+    'margin: 1px/**//**/2px',
+    'margin: 1px/**/ /**/2px',
+    'color: /**//**/red',
+  ]),
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: review cases of setProperty() values',
+  set([
+    ['not-a-property', 'VAR(--x)'],
+    ['margin', '1px/**//**/2px'],
+  ]),
+  { jsdom: 31 },
+);
+
+// Many short declarations parse in linear time (no search to the end of
+// the text per name).
+test('jsdom 31: many short declarations', () => {
+  const w = createWindow({ jsdom: '31.0.1' });
+  const e = w.document.createElement('div');
+  const text = Array.from({ length: 20000 }, (_, i) => `--v${i}: a`).join(';');
+  const start = performance.now();
+  e.setAttribute('style', text);
+  assert.equal(e.style.length, 20000);
+  assert.ok(performance.now() - start < 2000);
+});

@@ -7675,3 +7675,13 @@ bench:hot has no style members. Cold load 29.6 ms on main, 30.1 ms here
 (parse31.js).
 Against jsdom 31.0.1: 98 of the default parity tests differ (108 on
 main).
+Review round (#327): VAR() is var() only for a property jsdom 31 knows
+(not-a-property: VAR(--x) is dropped); an empty custom property marks
+the declaration only when it is held (--x: red !important; --x:; keeps
+red); an at-rule ends at a ; or at the } of its block (@media x { ... }
+left: 1px keeps left); a run of comments is one separator
+(1px/**//**/2px); backslash searches bounded to their span (a search to
+the end of the text per name was quadratic). Found, not modeled: jsdom
+31 keeps a nested rule (CSS Nesting) in a style rule's block (.a {
+@media x { color: red } left: 1px }); warpdom drops it, keeping the
+declarations after it (main drops those too).

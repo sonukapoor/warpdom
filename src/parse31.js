@@ -127,10 +127,17 @@ function nameEnd(text, i) {
     else return i;
   }
 }
+// The index of the first backslash from start to end, or -1 (bounded: a
+// search to the end of the text for each name would be quadratic; #327
+// review).
+function firstSlash(text, start, end) {
+  for (let k = start; k < end; k++) if (text.charCodeAt(k) === 92) return k;
+  return -1;
+}
 // An identifier's text from start to end, its escapes read.
 function decode(text, start, end) {
-  const slash = text.indexOf('\\', start);
-  if (slash === -1 || slash >= end) return text.slice(start, end);
+  const slash = firstSlash(text, start, end);
+  if (slash === -1) return text.slice(start, end);
   let out = text.slice(start, slash);
   let i = slash;
   while (i < end) {
@@ -143,8 +150,7 @@ function decode(text, start, end) {
 }
 // Whether the identifier from start to end is word (lowercase), in any case.
 function identIs(text, start, end, word) {
-  const slash = text.indexOf('\\', start);
-  if (slash !== -1 && slash < end) return decode(text, start, end).toLowerCase() === word;
+  if (firstSlash(text, start, end) !== -1) return decode(text, start, end).toLowerCase() === word;
   if (end - start !== word.length) return false;
   // (| 32: an ASCII letter in lowercase)
   for (let k = 0; k < word.length; k++) if ((text.charCodeAt(start + k) | 32) !== word.charCodeAt(k)) return false;
@@ -302,6 +308,25 @@ function untilSemicolon(text, k) {
   return k;
 }
 
+// The index of the ; or of the } closing the block that ends the at-rule
+// at k (or the end).
+function atRuleEnd(text, k) {
+  depth = 0;
+  for (; k < count; k++) {
+    const type = TYPE[k];
+    if (type === SEMI && depth === 0) return k;
+    if (type === OPEN || type === FUNCTION) open(opener(text, k));
+    else if (type === CLOSE && depth > 0) {
+      const top = STACK[depth - 1];
+      if ((top === VAR ? 41 : top) === text.charCodeAt(START[k])) {
+        depth--;
+        if (depth === 0 && top === 125) return k;
+      }
+    }
+  }
+  return k;
+}
+
 const meaningful = (k) => TYPE[k] !== WS && TYPE[k] !== COMMENT;
 
 export function parseDeclarationList31(text) {
@@ -314,12 +339,14 @@ export function parseDeclarationList31(text) {
       k++;
       continue;
     }
-    const end = untilSemicolon(text, k);
+    // (an at-rule ends at a ; or at the } of its block, whichever comes
+    // first: @media x { color: red } left: 1px keeps left; #327 review)
+    const end = type === AT ? atRuleEnd(text, k) : untilSemicolon(text, k);
     if (type === IDENT) {
       const decl = declaration(text, k, end, end === count && depth > 0 ? closers() : '');
       if (decl !== null) out.push(decl);
     }
-    // (an at-rule or anything else up to the ; is skipped)
+    // (an at-rule, or anything else up to the ;, is skipped)
     k = end + 1;
   }
   return out;
@@ -367,14 +394,19 @@ function declaration(text, from, to, closing) {
   const custom = name.startsWith('--');
   let value = '';
   if (last >= first) {
-    const slash = text.indexOf('\\', START[first]);
-    if (custom || (plain && (slash === -1 || slash >= END[last]))) value = text.slice(START[first], END[last]);
+    if (custom || (plain && firstSlash(text, START[first], END[last]) === -1))
+      value = text.slice(START[first], END[last]);
     else
       // (a comment between two components is a space, else nothing:
       // 1px/**/2px is 1px 2px; names with their escapes read)
       for (k = first; k <= last; k++) {
         if (TYPE[k] !== COMMENT) value += tokenText(text, k);
-        else if (meaningful(k - 1) && meaningful(k + 1)) value += ' ';
+        else if (TYPE[k - 1] !== COMMENT) {
+          // (a run of comments is one: 1px/**//**/2px; #327 review)
+          let after = k + 1;
+          while (after <= last && TYPE[after] === COMMENT) after++;
+          if (meaningful(k - 1) && meaningful(after)) value += ' ';
+        }
       }
     // (a string and the blocks left open, closed: only when the value
     // runs to the end; "a b is "a b")
@@ -394,8 +426,8 @@ const LETTERS = /^[A-Za-z_-][A-Za-z0-9_-]*$/;
 function tokenText(text, k) {
   const start = START[k];
   const end = END[k];
-  const slash = text.indexOf('\\', start);
-  if (slash === -1 || slash >= end) return text.slice(start, end);
+  const slash = firstSlash(text, start, end);
+  if (slash === -1) return text.slice(start, end);
   const type = TYPE[k];
   if (type === IDENT || type === FUNCTION) {
     const nameEnds = type === FUNCTION ? end - 1 : end;

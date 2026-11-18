@@ -1335,8 +1335,15 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
     let canonical = null;
     if (mode === 'page') out = pageDescriptorValue(name, value);
     // (jsdom 31: var() in any case, VAR(--a), is var(), kept as written as
-    // a value with var() is)
-    else if (cssom31 && !name.startsWith('--') && !hasVarFunction(value) && hasVarReference(value)) out = value;
+    // a value with var() is, for a property it knows; #327 review)
+    else if (
+      cssom31 &&
+      !name.startsWith('--') &&
+      (isKnownProperty(name) || surface.extras.has(name)) &&
+      !hasVarFunction(value) &&
+      hasVarReference(value)
+    )
+      out = value;
     else if (surface !== null && surface.extras.has(name))
       out = name === 'azimuth' ? azimuthValue(value, surface) : value;
     else if (!isKnownProperty(name)) out = INVALID;
@@ -4470,7 +4477,7 @@ function parseInto31(decls, text, mode, surface, asWritten) {
     if (dropped(surface, name)) continue;
     const declared = declaredValue(name, decl.value, mode, surface);
     if (declared === INVALID || declared === '') continue;
-    set31(
+    const stored = set31(
       decls,
       name,
       declared === INITIALS ? initials31(name, decl.value) : declared,
@@ -4478,7 +4485,9 @@ function parseInto31(decls, text, mode, surface, asWritten) {
       true,
       decl.value,
     );
-    if (decl.empty) decls.get(name).parsedEmpty = true;
+    // (only when it is held: --x: red !important; --x:; keeps red; #327
+    // review)
+    if (decl.empty && stored) decls.get(name).parsedEmpty = true;
   }
 }
 
