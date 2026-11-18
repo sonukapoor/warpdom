@@ -390,14 +390,18 @@ function declaration(text, from, to, closing) {
   // right in a var()'s arguments makes it invalid.
   depth = 0;
   let plain = true;
+  let withVar = false;
   for (k = first; k <= last; k++) {
     const type = TYPE[k];
     if (type === BAD_STRING || type === BAD_URL) return null;
     if (type === COMMENT) plain = false;
     else if (type === DELIM) {
       if (text.charCodeAt(START[k]) === 33 && (depth === 0 || STACK[depth - 1] === VAR)) return null;
-    } else if (type === OPEN || type === FUNCTION) open(opener(text, k));
-    else if (type === CLOSE) {
+    } else if (type === OPEN || type === FUNCTION) {
+      const code = opener(text, k);
+      if (code === VAR) withVar = true;
+      open(code);
+    } else if (type === CLOSE) {
       const top = depth === 0 ? 0 : STACK[depth - 1];
       if ((top === VAR ? 41 : top) !== text.charCodeAt(START[k])) return null;
       depth--;
@@ -407,7 +411,9 @@ function declaration(text, from, to, closing) {
   const custom = name.startsWith('--');
   let value = '';
   if (last >= first) {
-    if (custom || (plain && firstSlash(text, START[first], END[last]) === -1))
+    // (a value with var() keeps its comments as written, as a custom
+    // property's: var(--a /*b*/ c); #327 review)
+    if (custom || withVar || (plain && firstSlash(text, START[first], END[last]) === -1))
       value = text.slice(START[first], END[last]);
     else
       // (a comment between two components is a space, else nothing:
@@ -423,7 +429,7 @@ function declaration(text, from, to, closing) {
       }
     // (a string and the blocks left open, closed: only when the value
     // runs to the end; "a b is "a b")
-    if (to === count && !important) value = closedAtEnd(text, last, value) + closing;
+    if (to === count && !important) value = closedAtEnd(text, last, value, custom || withVar) + closing;
   }
   const empty = custom && value === '';
   return { name, value: empty ? ' ' : value, important, custom, empty };
@@ -483,10 +489,12 @@ export function parseValue31(text, custom = false) {
 // A value whose last token is k, closed there: a string's quote (a
 // backslash left at its end dropped first: "a\ is "a"), an unquoted url's
 // ), a comment's */ (#327 review).
-function closedAtEnd(text, k, value) {
+function closedAtEnd(text, k, value, comments = true) {
   if (k < 0) return value;
   const type = TYPE[k];
-  if (type === COMMENT) return CLOSED[k] === 1 ? value : `${value}*/`;
+  // (a comment closed only where the value keeps its comments; in another
+  // it is gone: calc(1px /*b is calc(1px); #327 review)
+  if (type === COMMENT) return CLOSED[k] === 1 || !comments ? value : `${value}*/`;
   let slashes = 0;
   while (value.charCodeAt(value.length - 1 - slashes) === 92) slashes++;
   const escaped = slashes % 2 === 1;

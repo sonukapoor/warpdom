@@ -7702,3 +7702,11 @@ whitespace and comments at the end are its own (--x: (a /* b is (a /*
 b*/), setProperty('--x', '(a ') is (a ), trimmed31); a backslash at the
 very end is an escape for U+FFFD (a\ is a\uFFFD), and escapes that
 decode to non-ASCII letters are read in a value (\e9 t\e9).
+Fifth round: a normal property's value with var() keeps its comments
+as written, as a custom property's (var(--a /*b*/ c); comments at its
+ends go from a declaration list, stay from setProperty(), as on main),
+and a comment left open at the end is closed only where comments are
+kept (calc(1px /*b is calc(1px), var(--a /*b is var(--a /*b*/)). Found,
+not modeled: jsdom 31 drops a comment left open right after a name in
+var() (var(--a/*b is var(--a); warpdom gives var(--a/*b*/), main
+var(--a/*b).

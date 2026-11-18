@@ -345,3 +345,38 @@ parity(
   ]),
   { jsdom: 31 },
 );
+
+// #327 review: comments in a value with var(), and a comment left open
+// where comments are not kept.
+parity(
+  'jsdom 31: comments in a value with var()',
+  attribute([
+    'background-image: var(--a /*b',
+    'color: var(--a /*b*/ c)',
+    'color: var(--a/*b*/c)',
+    'color: var(--a) /*b*/ c',
+    'color: var(--a /*b*/)',
+    'color: var(--a)/*b*/ red',
+    'color: var(--a) /*b*/',
+    'color: var(--a)/*x*/',
+    'color: /*a*/var(--a)',
+    'color: var(--a, /*b',
+    'margin: calc(1px /*b',
+    'margin: 1px /*b',
+  ]),
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: comments in a value with var() set by a script',
+  (w) => {
+    const s = w.document.createElement('div').style;
+    s.setProperty('background-image', 'var(--a /*b');
+    s.setProperty('color', 'var(--a) /*x*/');
+    const set = s.cssText;
+    s.cssText = '';
+    s.color = 'var(--a)/*x*/';
+    return [set, s.cssText];
+  },
+  { jsdom: 31 },
+);

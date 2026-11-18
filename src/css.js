@@ -5628,7 +5628,9 @@ function writtenValue(name, raw, s) {
     if (value === null) return INVALID;
     // (a custom property set so keeps its comments, closed: --x: /*a*/ a,
     // (a is (a))
-    raw = name.startsWith('--') ? closed31(raw) : value;
+    // (and so does a value with var(), as on main: var(--a) /*x*/; #327
+    // review)
+    raw = name.startsWith('--') || hasVarReference(raw) ? closed31(raw) : value;
   }
   // (a value kept as written keeps its comments, before it too: #264
   // item 87)
