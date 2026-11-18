@@ -52,7 +52,9 @@ import {
   relativeWeight,
 } from './lengths.js';
 import { substituteVars, tooManyTokens, trimEnds } from './var-substitution.js';
-import { uaDeclarations, uaValue, uaRuleOver, uaInOrder } from './ua-sheet.js';
+import { uaDeclarations, uaDeclarations31, uaValue, uaRule, uaRuleOver, uaInOrder } from './ua-sheet.js';
+import { findSlot } from './slots.js';
+import { flowOf, isLogical, isLogicalGroup, partnerOf } from './logical.js';
 import { documentStyleSheets, ruleArray, ruleListSnapshot, ruleListChanged } from './cssom.js';
 import { present31 } from './color31.js';
 import {
@@ -231,10 +233,12 @@ function buildIndex(sheets, mode, compat, lists) {
   // From jsdom 28.1.0 (black box, 28.1.0 to 30.1.3) the later of two
   // !important declarations wins, whatever their selectors' specificity
   // (.a.b td { color: red !important } td { color: blue !important } gives
-  // blue); before, every declaration applies in document order.
+  // blue); before, every declaration applies in document order. jsdom 31
+  // gives red.
   for (const lists of index.values()) {
     lists.normal.sort(compat?.documentOrder ? byOrder : bySpecificityThenOrder);
-    lists.important.sort(byOrder);
+    // (jsdom 31 by specificity again, black box 31.0.1)
+    lists.important.sort(compat?.computed31 ? bySpecificityThenOrder : byOrder);
   }
   return index;
 }
@@ -309,6 +313,7 @@ function inlineDeclarations(element) {
   // computes it as declared (see cascadeExpand for 27 to 30.1.2).
   else if (compat.jsdom >= 27 && !compat.clipReparsed && !decls.has('clip') && written.has('clip'))
     decls.set('clip', written.get('clip'));
+  let order = 0;
   for (const [property, decl] of decls) {
     const { important, masked } = decl;
     const value = decl.value === '' && decl.src !== undefined && compat.computed31 ? pending31(decl.src) : decl.value;
@@ -347,9 +352,13 @@ function inlineDeclarations(element) {
       if (!strong && prior?.strong) continue;
       if (v === HIDE_UA && prior !== undefined) continue;
       // via: the declaration's property (cascadeInOrder).
+      // (order: the declaration's place in the attribute, for jsdom 31's
+      // logical property groups, cascade31)
       map.set(
         name,
-        v === PENDING ? { value: v, important, strong, from: shorthand } : { value: v, important, strong, via: from },
+        v === PENDING
+          ? { value: v, important, strong, from: shorthand, via: undefined, order: order++ }
+          : { value: v, important, strong, from: undefined, via: from, order: order++ },
       );
     }
   }
@@ -735,6 +744,17 @@ class OrderedBlock {
 // Cached per element until the document's rules, tree or attributes, or
 // its style attribute change.
 function cascaded(element, name) {
+  const cache = cascadeCache(element);
+  if (cache.values.has(name)) return cache.values.get(name);
+  let value = cascade(element, cache.index, cache.inline, name);
+  if (value === PENDING) value = undefined;
+  cache.values.set(name, value);
+  return value;
+}
+
+// An element's cascaded values, as they now are (dropped and started again
+// when they are no longer).
+function cascadeCache(element) {
   const es = element[S];
   const ds = es.doc[S];
   let cache = es.cascaded;
@@ -747,13 +767,8 @@ function cascaded(element, name) {
     cache.doc === ds &&
     cache.detachedRev === ds.detachedRev &&
     cache.cssomRev === keptCssomRev(ds, cache.kept)
-  ) {
-    if (cache.values.has(name)) return cache.values.get(name);
-    let value = cascade(element, cache.index, cache.inline, name);
-    if (value === PENDING) value = undefined;
-    cache.values.set(name, value);
-    return value;
-  }
+  )
+    return cache;
   const index = ruleIndex(element);
   const rev = ds.treeRev ?? 0;
   // Text data changes too (internal.js replaceData) when a rule's selector
@@ -761,7 +776,15 @@ function cascaded(element, name) {
   // tree as it was, not those matches.
   const textRev = index.textDependent === true ? (ds.textRev ?? 0) : 0;
   const inlineMap = inlineDeclarations(element);
-  if (!cache || cache.index !== index || cache.rev !== rev || cache.textRev !== textRev || cache.inline !== inlineMap) {
+  if (
+    !cache ||
+    cache.index !== index ||
+    cache.rev !== rev ||
+    cache.textRev !== textRev ||
+    cache.inline !== inlineMap ||
+    // (a jsdom 31 flow from a direction its text decides, flow31)
+    (cache.flowText && cache.flowTextRev !== (ds.textRev ?? 0))
+  ) {
     const kept = keptStyles(ds);
     let detached = kept;
     // Whether colorDeclared may keep its answer with these values: they
@@ -800,12 +823,12 @@ function cascaded(element, name) {
       rootDark: undefined,
       lineHeight: undefined,
       customs: undefined,
+      flow: -1,
+      flowText: false,
+      flowTextRev: 0,
     };
-  } else if (cache.values.has(name)) return cache.values.get(name);
-  let value = cascade(element, index, inlineMap, name);
-  if (value === PENDING) value = undefined;
-  cache.values.set(name, value);
-  return value;
+  }
+  return cache;
 }
 
 // jsdom 21 and later (black box, 22 to 30 measured) compute a disconnected
@@ -851,6 +874,7 @@ function keptCssomRev(ds, kept) {
 // for cascaded).
 function cascade(element, index, inlineMap, name) {
   const window = element[S].doc[S].window;
+  if (window[S].compat.computed31) return cascade31(element, index, inlineMap, name, window);
   const ua = uaDeclarations(window, name, cascadeExpand);
   uaHidden = false;
   let inline = inlineMap?.get(name);
@@ -970,6 +994,148 @@ const contains = (property, other) =>
   property === other ||
   (SHORTHANDS[property] !== undefined && SHORTHANDS[other].every((l) => SHORTHANDS[property].includes(l)));
 
+// jsdom 31 (black box, 31.0.1): CSS Cascade 5's origins and importance,
+// highest first: the user agent sheet's !important declarations (a style
+// attribute's display: block !important leaves an input[type=hidden]
+// hidden), the style attribute's !important ones, the page's rules'
+// !important ones, the style attribute's, the page's rules', the user
+// agent sheet's (* { display: inline } makes a div inline, .x { display:
+// block } shows an element with hidden); among rules by specificity, then
+// order; in the attribute by order. A property of a logical property
+// group shares its cascade with the property it maps to, or that maps to
+// it, in the element's writing mode and direction (logical.js): the
+// winner of the two sets both. The winner's level, specificity and order
+// go to win31.
+const win31 = { level: 0, specificity: 0, order: 0 };
+function winner31(element, index, inlineMap, name, window) {
+  const ua = uaDeclarations31(window, name, cascadeExpand, element);
+  let rule = ua.important === null ? undefined : uaRule(ua.important, element);
+  if (rule !== undefined) return won31(6, rule.specificity, rule.order, rule.value);
+  const inline = inlineMap?.get(name);
+  if (inline?.important) return won31(5, 0, inline.order, inline.value);
+  const lists = index.get(name);
+  if (lists?.important.length) {
+    const entry = firstMatchEntry(lists.important, element);
+    if (entry !== undefined) return won31(4, entry.specificity, entry.order, entry.value);
+  }
+  if (inline !== undefined) return won31(3, 0, inline.order, inline.value);
+  if (lists?.normal.length) {
+    const entry = firstMatchEntry(lists.normal, element);
+    if (entry !== undefined) return won31(2, entry.specificity, entry.order, entry.value);
+  }
+  return userAgent31(element, name, window, ua);
+}
+// The user agent sheet's normal declaration (also where the page's
+// declaration that won is revert).
+function userAgent31(element, name, window, ua = uaDeclarations31(window, name, cascadeExpand, element)) {
+  const rule = ua.normal === null ? undefined : uaRule(ua.normal, element);
+  if (rule !== undefined) return won31(1, rule.specificity, rule.order, rule.value);
+  return won31(0, 0, 0, undefined);
+}
+function won31(level, specificity, order, value) {
+  win31.level = level;
+  win31.specificity = specificity;
+  win31.order = order;
+  return value;
+}
+function cascade31(element, index, inlineMap, name, window) {
+  // (the flow first: finding it reads computed values, which cascade too
+  // and overwrite win31)
+  const partner = isLogicalGroup(name) ? partnerOf(name, flow31(element)) : null;
+  let value = winner31(element, index, inlineMap, name, window);
+  if (partner !== null) {
+    const { level, specificity, order } = win31;
+    const other = winner31(element, index, inlineMap, partner, window);
+    if (beats31(level, specificity, order))
+      // A longhand pending substitution computes from its shorthand by its
+      // own name: the partner's (pending31).
+      value = other.startsWith(PENDING31) ? `${PENDING31}\0${partner}\0${other.slice(PENDING31.length)}` : other;
+    else won31(level, specificity, order, value);
+  }
+  // revert and revert-layer (no layers yet) in the page's declarations:
+  // the user agent sheet's value, of the pair too (black box, 31.0.1: p {
+  // margin-top: revert } gives 16px, a div's 0px).
+  if (win31.level >= 2 && win31.level <= 5 && REVERT.test(value)) {
+    value = userAgent31(element, name, window);
+    if (partner !== null) {
+      const { level, specificity, order } = win31;
+      const other = userAgent31(element, partner, window);
+      if (!beats31(level, specificity, order)) return value;
+      return other;
+    }
+  }
+  return value;
+}
+const REVERT = /^\s*revert(?:-layer)?\s*$/i;
+// Whether win31 beats a winner of this level, specificity and order.
+const beats31 = (level, specificity, order) =>
+  win31.level > level ||
+  (win31.level === level &&
+    (win31.specificity > specificity || (win31.specificity === specificity && win31.order > order)));
+
+// An element's flow (logical.js), kept with its cascaded values.
+// writing-mode, direction and text-orientation inherit: an element that
+// declares none of them (nor has a direction of its own, uaDirection) has
+// its parent's. Where no rule declares one, an element whose style
+// attribute names none (all sets them too) declares none. A flow found
+// from a direction its text decides (dir=auto, bdi), the element's or an
+// ancestor's, is kept until text changes (flowText). Ancestors are walked
+// in a loop, the flow found then given to each of them.
+const FLOW_NAMES = /writing-mode|direction|text-orientation|all|\\/i;
+const FLOW_PROPERTIES = ['writing-mode', 'direction', 'text-orientation', 'all'];
+function flow31(element) {
+  const cache = cascadeCache(element);
+  if (cache.flow !== -1) return cache.flow;
+  let flow = 0,
+    text = false;
+  for (let e = element; e !== null; e = inheritParent(e)) {
+    const c = e === element ? cache : cascadeCache(e);
+    if (c.flow !== -1) {
+      flow = c.flow;
+      text = c.flowText;
+      break;
+    }
+    if (ownFlow(e, c)) {
+      flow = flowOf(
+        computedValue(e, 'writing-mode'),
+        computedValue(e, 'direction'),
+        computedValue(e, 'text-orientation'),
+      );
+      text = autoDirection(e) || flowTextAbove(e);
+      break;
+    }
+  }
+  const rev = element[S].doc[S].textRev ?? 0;
+  for (let e = element; e !== null; e = inheritParent(e)) {
+    const c = e === element ? cache : e[S].cascaded;
+    if (c.flow !== -1) break;
+    c.flow = flow;
+    c.flowText = text;
+    c.flowTextRev = rev;
+    if (ownFlow(e, c)) break;
+  }
+  return flow;
+}
+function ownFlow(element, cache) {
+  if (uaDirection(element)) return true;
+  for (const name of FLOW_PROPERTIES)
+    if (cache.index.has(name)) return FLOW_PROPERTIES.some((n) => cascaded(element, n) !== undefined);
+  return cache.inline !== null && FLOW_NAMES.test(element[S].attrs.get('style'));
+}
+// A direction found from the element's text.
+function autoDirection(element) {
+  if (!uaDirection(element)) return false;
+  const dir = element[S].attrs.get('dir')?.toLowerCase();
+  return dir !== 'ltr' && dir !== 'rtl';
+}
+// Whether an inherited part of the flow comes from text: an ancestor's.
+function flowTextAbove(element) {
+  const parent = inheritParent(element);
+  if (parent === null) return false;
+  flow31(parent);
+  return parent[S].cascaded.flowText;
+}
+
 // --- computed values ------------------------------------------------------------------
 
 // The parent element, for inheritance: as in jsdom (black box, 20.0.3 to
@@ -984,6 +1150,7 @@ const FONT_SIZES = { medium: '16px' };
 const FONT_WEIGHTS = { normal: '400', bold: '700' };
 const BORDER_WIDTHS = { thin: '1px', medium: '3px', thick: '5px' };
 const BORDER_WIDTH = /^border-(top|right|bottom|left)-width$/;
+const LOGICAL_BORDER_WIDTH = /^border-(block|inline)-(start|end)-width$/;
 const NO_BORDER = new Set(['none', 'hidden']);
 const RAW_KEYWORDS = new Set([
   'font-weight',
@@ -1410,7 +1577,8 @@ function computeValue(element, name, value, data) {
       if (px !== null) value = `${sixDigits(px)}px`;
     }
   }
-  if (!RAW_KEYWORDS.has(name)) return value;
+  // (jsdom 31: the logical border widths too, black box 31.0.1)
+  if (!RAW_KEYWORDS.has(name) && !(compat.computed31 && LOGICAL_BORDER_WIDTH.test(name))) return value;
   // jsdom before 29.0.2 (black box, 20 to 29.0.1) keeps these keywords as
   // declared too (font-weight: bold, border-top-width: thin).
   if (compat.legacyComputedStyle) return value;
@@ -1424,7 +1592,7 @@ function computeValue(element, name, value, data) {
   }
   if (name === 'font-size') return FONT_SIZES[value.toLowerCase()] ?? value;
   if (name === 'font-weight') return FONT_WEIGHTS[value.toLowerCase()] ?? value;
-  if (BORDER_WIDTH.test(name)) {
+  if (BORDER_WIDTH.test(name) || LOGICAL_BORDER_WIDTH.test(name)) {
     const style = computedValue(element, name.replace('-width', '-style')).toLowerCase();
     if (style === 'none' || style === 'hidden') return '0px';
     return BORDER_WIDTHS[value.toLowerCase()] ?? value;
@@ -1883,6 +2051,9 @@ export function computedValue(element, property) {
   const data = custom ? CUSTOM : LONGHANDS[name];
   if (!data) return shorthandValue(element, name);
   const compat = element[S].doc[S].window[S].compat;
+  // jsdom 31: a logical property is its physical one's value (inherit
+  // takes the parent's physical one, black box 31.0.1).
+  if (compat.computed31 && isLogical(name)) return computedValue(element, partnerOf(name, flow31(element)));
   // jsdom 30: em lengths read the font sizes of the element and its
   // ancestors; each element's is kept with its cascaded values (dropped
   // with them on any tree, attribute or style sheet change).
@@ -1903,8 +2074,81 @@ export function computedValue(element, property) {
     (cache.customs ??= new Map()).set(name, result);
     return result;
   }
+  if (name === 'display' && compat.computed31)
+    return blockified31(element, longhandValue(element, name, data, custom, compat, value));
   return longhandValue(element, name, data, custom, compat, value);
 }
+
+// jsdom 31 (black box, 31.0.1) blockifies display (CSS Display 3, 2.7): of
+// the root element, of an absolutely positioned or floated one, and of a
+// flex or grid container's children (through display: contents); inline
+// and inline-block are block, inline-flex flex, a table part block, ruby
+// block ruby.
+const BLOCKIFIED = new Map([
+  ['inline', 'block'],
+  ['inline-block', 'block'],
+  ['run-in', 'block'],
+  ['inline-table', 'table'],
+  ['inline-flex', 'flex'],
+  ['inline-grid', 'grid'],
+  ['ruby', 'block ruby'],
+  ['inline-list-item', 'list-item'],
+  ['-webkit-inline-box', 'block'],
+  ['flow', 'block'],
+  ['math', 'block'],
+  ['inline math', 'block'],
+]);
+const FLEX_OR_GRID = /^(?:inline-)?(?:flex|grid)$/;
+function blockified31(element, value) {
+  const root = element[S].parent?.[S].type === DOCUMENT_NODE;
+  // (the root's contents is block too)
+  let block = root && value === 'contents' ? 'block' : BLOCKIFIED.get(value);
+  if (block === undefined) {
+    if (value.startsWith('table-') || value.startsWith('ruby-')) block = 'block';
+    else if (value.startsWith('inline ') && value.endsWith(' list-item')) block = 'list-item';
+    else return value;
+  }
+  if (root || blockifies31(element)) return block;
+  // A flex or grid item: its parent box's, past display: contents. (A
+  // parent whose cascaded display names none of these, nor inherits or
+  // substitutes one, is not a container.)
+  for (let parent = boxParent31(element); parent !== null; parent = boxParent31(parent)) {
+    const declared = cascaded(parent, 'display');
+    if (declared === undefined || !MAY_CONTAIN.test(declared)) return value;
+    const display = displayOf31(parent);
+    if (display !== 'contents') return FLEX_OR_GRID.test(display) ? block : value;
+  }
+  return value;
+}
+const MAY_CONTAIN = /flex|grid|contents|inherit|unset|revert|var\(|\\/i;
+// The element whose box holds an element's: the slot it is assigned to, its
+// parent, or the host of the shadow root it is a child of (black box, 31.0.1:
+// a shadow root's span in a flex host is block, a host's child in a block
+// slot inline).
+function boxParent31(element) {
+  const p = element[S].parent;
+  if (p === null) return null;
+  if (p[S].type === ELEMENT_NODE) return (p[S].shadowRoot && findSlot(element)) || p;
+  return p[S].shadow === true ? p[S].host : null;
+}
+// Position and float are not inherited: undeclared, they are static and none.
+const blockifies31 = (element) => {
+  if (cascaded(element, 'position') !== undefined) {
+    const position = computedValue(element, 'position');
+    if (position === 'absolute' || position === 'fixed') return true;
+  }
+  return cascaded(element, 'float') !== undefined && computedValue(element, 'float') !== 'none';
+};
+// An element's display before blockification.
+const displayOf31 = (element) =>
+  longhandValue(
+    element,
+    'display',
+    LONGHANDS.display,
+    false,
+    element[S].doc[S].window[S].compat,
+    cascaded(element, 'display'),
+  );
 
 // The hidden attribute hides an element; from jsdom 27 not an embed
 // (embed[hidden] is inline in the user agent sheet).
@@ -2026,17 +2270,25 @@ function substitutedValue(element, name, value, custom) {
     const trimmed = trimEnds(text);
     return trimmed === '' ? ' ' : trimmed;
   }
-  let property = name;
+  let property = name,
+    longhand = name;
   if (value.startsWith(PENDING31)) {
-    const at = value.indexOf('\0', PENDING31.length);
-    property = value.slice(PENDING31.length, at);
+    let from = PENDING31.length;
+    // (a logical group's partner, cascade31: \0 and the longhand first)
+    if (value.charCodeAt(from) === 0) {
+      const at = value.indexOf('\0', from + 1);
+      longhand = value.slice(from + 1, at);
+      from = at + 1;
+    }
+    const at = value.indexOf('\0', from);
+    property = value.slice(from, at);
     value = value.slice(at + 1);
   }
   const text = substituteVars(value, customLookup, element);
   if (text === null) return null;
   const window = element[S].doc[S].window;
   const decls = parseDeclarations(`${property}: ${text}`, validationModeOf(window), styleSurfaceOf(window));
-  const declared = decls.get(name)?.value;
+  const declared = decls.get(longhand)?.value;
   return declared === undefined || declared === '' ? null : declared;
 }
 

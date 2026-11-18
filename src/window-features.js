@@ -2117,6 +2117,7 @@ export function setupWindow(window, { url: initial = 'about:blank', fastFrames =
   ws.fastFrames = fastFrames === true;
   ws.url = new URL(initial);
   ws.uaIndex = undefined; // the user agent sheet's index (ua-sheet.js)
+  ws.uaSvgIndex = undefined; // jsdom 31's SVG one
   // DOMException is the platform's (shared by all windows); its subclass too.
   window.DOMException = DOMException;
   window.QuotaExceededError = QuotaExceededError;

@@ -7301,7 +7301,7 @@ read as `medium`, a bad url() emptying its block), as for every earlier
 version; list the ones that differ from browsers in docs/differences.md.
 Order (one PR each, foundational first): A; D1/D2 (units, var()); D3 and
 the root color-scheme; B (B1 components, then B2 gradients and the
-rest, 2026-11-16); C; E1/E4/E5/E6; D3b (colors in values of more
+rest, 2026-11-16); C; E1, E4, E5/E6 (three PRs, 2026-11-18); D3b (colors in values of more
 components, 2026-11-16), D4/D5 and shadow scoping; F.
 `NEWEST_MODELED_JSDOM` moves to 31 only when all parts are in.
 
@@ -7710,3 +7710,95 @@ kept (calc(1px /*b is calc(1px), var(--a /*b is var(--a /*b*/)). Found,
 not modeled: jsdom 31 drops a comment left open right after a name in
 var() (var(--a/*b is var(--a); warpdom gives var(--a/*b*/), main
 var(--a/*b).
+Merged as #327 (2026-11-17).
+
+## 2026-11-18: jsdom 31, CSS part E1: the cascade's origins, logical properties, the user agent sheet (branch feat/269-jsdom31-cascade, #269)
+
+Decision (2026-11-18): part E in three PRs, as E1 alone grew to the
+cascade's core: E1 (this); E4 (@media and @supports evaluated, media text
+normalized); E5/E6 (computed styles live and empty for a disconnected
+element or one outside the flat tree, pseudo-elements, writes throw).
+jsdom 31's cascade, black box on 31.0.1 (cascade.js cascade31):
+- The user agent sheet is a lower origin again: CSS Cascade 5's order,
+  its !important declarations first (they win over the page's and the
+  style attribute's !important ones: input[type=hidden] stays hidden),
+  then the attribute's !important, the rules' !important, the
+  attribute's, the rules', the user agent sheet's. * { display: inline }
+  makes a div inline, .x { display: block } shows an element with hidden.
+  !important rules meet by specificity again (28.1 to 30 by order).
+- Logical properties (logical.js): each shares its cascade with the
+  physical property it maps to in the element's writing mode and
+  direction (margins, paddings, inset, border widths, styles and colors,
+  sizes, overflow, corner radii, scroll margins and paddings,
+  overflow-clip-margin, contain-intrinsic sizes; all five writing modes,
+  225 mappings checked): the winner of the two sets both. A pending
+  partner computes from its shorthand by its own name. The flow is
+  inherited, kept with the cascaded values.
+- Its user agent sheet (ua-sheet.js HTML31): the rendering section as it
+  now reads (margin-block and margin-inline on headings, paragraphs,
+  lists, figure, blockquote, hr, fieldset and dd; [hidden] and
+  until-found, which is content-visibility: hidden; :link LinkText; no
+  sectioned h1 sizes), with jsdom's form control rules: Field and
+  FieldText on text inputs, select and textarea, ButtonFace, ButtonText
+  and ButtonBorder on buttons and color inputs, align-content (unsafe)
+  center, select inline-block, option and optgroup block, the image
+  input's overflow: clip and overflow-clip-margin: content-box
+  !important.
+- display is blockified (CSS Display 3, 2.7): of the root, of an
+  absolutely positioned or floated element, of a flex or grid item
+  (through display: contents; -webkit-box is no container); inline-flex
+  is flex, a table part block, ruby block ruby.
+- Logical border widths compute to 0px without a border style.
+ua-sheet.js also indexes a rule whose subject is an :is() of type
+selectors by those tags, and skips attribute-bound rules ([popover],
+:link) for an element without the attributes (lookup, as uaRuleOver).
+Found, for D4/D5: warpdom's jsdom 31 blocks set every longhand of
+text-decoration, text-align, white-space, list-style,
+overflow-clip-margin and the logical border shorthands
+(border-block-start, border-inline-color, ...) to its initial value
+(text-decoration: underline reads text-decoration-line none; main too),
+and the computed style reads text-align, white-space, vertical-align and
+overflow as longhands; jsdom 31 writes display math, flow and
+inline-list-item as inline, block and inline-list-item (part B). Not
+modeled: writing-mode: tb-rl makes jsdom 31's getComputedStyle() throw
+a TypeError on read.
+Speed (scratchpad e-bcas.mjs: 320 elements, display, visibility, color,
+margin-top, padding-left and font-weight through a fresh
+getComputedStyle, an attribute set each pass, 300 passes; 5 interleaved
+runs, node 22.17.1, medians): the 31 profile 250.9 ms on main, 325.3 ms
+here; the 30 profile 250.5 and 247.4 ms (unchanged). Reason: jsdom 31
+computes more. About 28 ms of the 75 are the user agent sheet's em
+margins now computed (headings, p, ul); the rest the logical partner of
+each margin and padding read and the blockification reads (position,
+float, the parent's display), as jsdom 31 does them. Tried and dropped
+(no gain): testing a group's other properties for any declaration
+before finding the flow, and a tag-level test before the partner's
+cascade. Cold load 31.4 ms on main, 31.2 ms here.
+Against jsdom 31.0.1: 83 of the default parity tests differ (94 on main).
+Review round (#328), each reproduced on 31.0.1: the user agent sheet
+applies to HTML elements only (an SVG title or hidden g is inline, a
+foreign div inline), SVG ones have two rules (svg:not(:root) overflow:
+hidden, a:link cursor: pointer, xlink:href too); unicode-bidi: plaintext
+for pre, textarea and the text inputs with dir=auto; revert and
+revert-layer in the page's declarations roll back to the user agent
+sheet's value, of the logical pair too (p { margin-top: revert } is
+16px); a logical property reads its physical one's computed value
+(margin-block-start: inherit takes the parent's margin-top, not its
+margin-block-start); the flow reads text-orientation (upright makes
+vertical-rl and vertical-lr ltr) and all, is kept until text changes when
+a dir=auto or bdi direction decides it, and is found in a loop over the
+ancestors (jsdom 31 overflows its stack at a depth of 3000; not
+modeled); the root's display: contents is block; a flex item's box
+parent is its assigned slot, a shadow root's child's its host;
+overscroll-behavior is a logical group; partner names are kept per flow.
+Speed after the round, same benchmark (load average 4): main 258.0 ms,
+before the round 342.3 ms, after 346.9 ms (noise).
+Second round: the flow is found before a pair's first winner (finding it
+cascades writing-mode and the others, which overwrote that winner's
+level: margin-right: 9px !important lost to margin-block-start: 5px when
+read first).
+Third round: a dir=auto input's or textarea's value decides its
+direction as text does: value writes, resets and type changes advance
+the document's textRev (forms.js valueChanged). Checked, not changed:
+display: inline flow-root list-item blockified is list-item in jsdom 31
+(not flow-root list-item).
