@@ -120,3 +120,44 @@ test('jsdom 30 does not apply @layer and @scope rules', () => {
   assert.equal(w.getComputedStyle(d.getElementById('t')).color, 'rgb(0, 0, 0)');
   assert.equal(w.getComputedStyle(d.querySelector('p')).color, 'rgb(0, 0, 0)');
 });
+
+// Review round (#330).
+parity(
+  'jsdom 31: @scope: & and :scope as tokens, nested scopes, text-dependent roots; revert-layer across a logical pair',
+  (w) => {
+    const d = w.document;
+    const color = (id) => w.getComputedStyle(d.getElementById(id)).color;
+    const out = [];
+    d.head.innerHTML = '<style>@scope (.a) { [data-v="&"] { color: red } }</style>';
+    d.body.innerHTML = '<div class="a"><p data-v="&" id="p"></p></div>';
+    out.push(color('p'));
+    d.head.innerHTML = '<style>@scope (.a) { [data-v=":scope"] { color: red } }</style>';
+    d.body.innerHTML = '<div class="a" data-v=":scope" id="r"><p data-v=":scope" id="p"></p></div>';
+    out.push(color('r'), color('p'));
+    d.head.innerHTML = '<style>@scope (.a) { :scope > & p, & > p { color: red } }</style>';
+    d.body.innerHTML = '<div class="a"><div><p id="p"></p></div><p id="q"></p></div>';
+    out.push(color('p'), color('q'));
+    d.head.innerHTML = '<style>@scope (.outer) to (.stop) { @scope (.inner) { p { color: red } } }</style>';
+    d.body.innerHTML =
+      '<div class="inner"><p id="a"></p></div><div class="outer"><div class="stop"><div class="inner"><p id="b"></p></div></div><div class="inner"><p id="c"></p></div></div>';
+    out.push(color('a'), color('b'), color('c'));
+    d.head.innerHTML = '<style>@scope (:empty) { :scope { color: red } }</style>';
+    d.body.innerHTML = '<div id="x"></div>';
+    const text = d.createTextNode('');
+    d.getElementById('x').append(text);
+    out.push(color('x'));
+    text.data = 'hi';
+    out.push(color('x'));
+    for (const css of [
+      '@layer a { div { margin-top: 3px } } @layer b { div { margin-block-start: 5px; margin-top: revert-layer } }',
+      '@layer a { div { margin-block-start: 3px } } @layer b { div { margin-top: 5px; margin-block-start: revert-layer } }',
+      '@layer a { div { margin-top: 1px } } @layer b { div { margin-top: revert-layer } } @layer c { div { margin-block-start: revert-layer } }',
+    ]) {
+      d.head.innerHTML = `<style>${css}</style>`;
+      d.body.innerHTML = '<div id="t"></div>';
+      out.push([css, w.getComputedStyle(d.getElementById('t')).marginTop]);
+    }
+    return out;
+  },
+  { jsdom: 31 },
+);

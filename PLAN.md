@@ -7926,3 +7926,13 @@ Speed (e-bcas.mjs, 5 interleaved runs): the 31 profile 348.7 ms on main,
 351.0 ms here; the 30 profile 257.4 and 251.9 ms (noise).
 Against jsdom 31.0.1: 77 of the default parity tests differ (none of
 them uses layers or scopes; layers31.test.js does).
+Review round (#330), each reproduced on 31.0.1: & and :scope are found as
+tokens, outside strings and attribute selectors ([data-v="&"] stays, &
+is replaced where :scope is there too); a nested @scope's roots and
+elements are in the enclosing scope, within its limit; a scope whose
+start or end reads text (:empty) makes the index text-dependent;
+revert-layer rolls a logical pair back together (margin-top:
+revert-layer with margin-block-start in the same layer gives the layer
+below's margin-top), the winner of both names among the layers below
+found each round (pair31). Speed after the round: 340.4 ms on main,
+343.9 ms here (noise).

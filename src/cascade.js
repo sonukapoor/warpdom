@@ -253,7 +253,9 @@ const byLayerThenSpecificity = (a, b) => b.layer - a.layer || b.specificity - a.
 // A @scope rule's scope: { start, end (compiled selector lists, or null),
 // owner (with no start: the parent of the sheet's element) }; null when a
 // selector does not compile.
-function scopeOf(rule, ss) {
+// outer: the enclosing @scope's, or null (a nested scope's roots and
+// elements are in it too).
+function scopeOf(rule, ss, outer) {
   const { start, end } = rule[S];
   try {
     const owner = ss.ownerNode?.[S].parent ?? null;
@@ -261,11 +263,17 @@ function scopeOf(rule, ss) {
       start: start === null ? null : compileRuleSelector(start),
       end: end === null ? null : compileRuleSelector(end),
       owner: owner !== null && owner[S].type === ELEMENT_NODE ? owner : null,
+      outer,
     };
   } catch {
     return null;
   }
 }
+// Whether a scope's selectors read text (:empty, :dir(auto)): the index is
+// then made again when text changes (cascadeCache).
+const scopeReadsText = (scope) =>
+  scope !== null &&
+  (scope.start?.some((e) => e.text) === true || scope.end?.some((e) => e.text) === true || scopeReadsText(scope.outer));
 
 // A scoped rule's selectors: :scope implied before each that has neither
 // :scope nor & (CSS Cascade 6: .b in @scope (.a) is :where(:scope) .b);
@@ -274,11 +282,44 @@ function scopedSelector(text) {
   return splitSelectorList(text)
     .map((selector) => {
       const own = selector.trim();
-      if (/:scope\b/i.test(own)) return own;
-      if (own.includes('&')) return own.replaceAll('&', ':scope');
-      return `:where(:scope) ${own}`;
+      const { text: replaced, scoped } = scopeTokens(own);
+      return scoped ? replaced : `:where(:scope) ${own}`;
     })
     .join(', ');
+}
+// A selector with its & tokens as :scope, and whether it has & or :scope,
+// outside strings and attribute selectors ([data-v="&"] is no &).
+function scopeTokens(selector) {
+  let out = '',
+    scoped = false;
+  for (let i = 0; i < selector.length; i++) {
+    const c = selector[i];
+    if (c === '\\') {
+      out += selector.slice(i, i + 2);
+      i++;
+    } else if (c === '"' || c === "'" || c === '[') {
+      const close = c === '[' ? ']' : c;
+      let j = i + 1;
+      while (j < selector.length && selector[j] !== close) {
+        const q = selector[j];
+        if (q === '\\') j++;
+        else if (c === '[' && (q === '"' || q === "'")) {
+          j++;
+          while (j < selector.length && selector[j] !== q) j += selector[j] === '\\' ? 2 : 1;
+        }
+        j++;
+      }
+      out += selector.slice(i, j + 1);
+      i = j;
+    } else if (c === '&') {
+      out += ':scope';
+      scoped = true;
+    } else {
+      if (c === ':' && /^:scope(?![\w-])/i.test(selector.slice(i))) scoped = true;
+      out += c;
+    }
+  }
+  return { text: out, scoped };
 }
 function splitSelectorList(text) {
   const out = [];
@@ -310,16 +351,25 @@ function scopedMatch(match, scope) {
   return (el) => {
     let hops = 0;
     for (let root = el; root !== null; root = inheritParent(root), hops++) {
-      if (scope.start === null ? root !== scope.owner : !scope.start.some((s) => s.match(root, NO_SCOPE))) continue;
-      const ctx = { scope: root };
-      if (scope.end !== null && limited(scope.end, root, el, ctx)) continue;
-      if (match(el, ctx)) {
+      if (!scopeHas(scope, root, el)) continue;
+      if (match(el, { scope: root })) {
         proximity31 = hops;
         return true;
       }
     }
     return false;
   };
+}
+// Whether root is a root of scope that has el in it: it matches the start
+// (no start: is the owner), el is not at or past the limit from it, and
+// both are in the enclosing scope.
+function scopeHas(scope, root, el) {
+  if (scope.start === null ? root !== scope.owner : !scope.start.some((s) => s.match(root, NO_SCOPE))) return false;
+  if (scope.end !== null && limited(scope.end, root, el, { scope: root })) return false;
+  if (scope.outer === null) return true;
+  for (let outer = root; outer !== null; outer = inheritParent(outer))
+    if (scopeHas(scope.outer, outer, root) && scopeHas(scope.outer, outer, el)) return true;
+  return false;
 }
 // Whether an element is at or past a scope's limit from a root.
 function limited(end, root, el, ctx) {
@@ -383,11 +433,12 @@ function buildIndex(sheets, mode, compat, lists, doc = null) {
           outerScope = scope;
         if (proto === ss.protos.CSSLayerBlockRule) layer = layerNamed(layers, layer, rule[S].name);
         else if (proto === ss.protos.CSSScopeRule) {
-          scope = scopeOf(rule, ss);
+          scope = scopeOf(rule, ss, outerScope);
           if (scope === null) {
             scope = outerScope;
             continue;
           }
+          if (scopeReadsText(scope)) index.textDependent = true;
         }
         walk31(ruleArray(rule), ss);
         layer = outerLayer;
@@ -1212,57 +1263,53 @@ function copy31(to, from) {
   to.proximity = from.proximity;
   to.order = from.order;
 }
-function winner31(element, index, inlineMap, name, window) {
+// cut: 0, or the level (2 or 4) of a revert-layer being rolled back, and
+// below: the layer it rolls back from; only that level's rules of lower
+// layers are then looked at (none: level -1).
+function winner31(element, index, inlineMap, name, window, cut = 0, below = Infinity) {
+  const lists = index.get(name);
+  if (cut !== 0) {
+    const list = cut === 4 ? lists?.important : lists?.normal;
+    if (list?.length && ruleWinner31(list, element, index.scoped, cut, below)) return win31Value;
+    return won31(-1, 0, 0, Infinity, 0, undefined);
+  }
   const ua = uaDeclarations31(window, name, cascadeExpand, element);
-  let rule = ua.important === null ? undefined : uaRule(ua.important, element);
+  const rule = ua.important === null ? undefined : uaRule(ua.important, element);
   if (rule !== undefined) return won31(6, 0, rule.specificity, Infinity, rule.order, rule.value);
   const inline = inlineMap?.get(name);
-  const lists = index.get(name);
   // (revert-layer in the attribute: the rules' value, of every layer)
   if (inline?.important && !REVERT_LAYER.test(inline.value))
     return won31(5, 0, 0, Infinity, inline.order, inline.value);
-  if (lists?.important.length && ruleWinner31(lists.important, element, index.scoped, 4)) return win31Value;
+  if (lists?.important.length && ruleWinner31(lists.important, element, index.scoped, 4, Infinity)) return win31Value;
   if (inline !== undefined && !inline.important && !REVERT_LAYER.test(inline.value))
     return won31(3, 0, 0, Infinity, inline.order, inline.value);
-  if (lists?.normal.length && ruleWinner31(lists.normal, element, index.scoped, 2)) return win31Value;
+  if (lists?.normal.length && ruleWinner31(lists.normal, element, index.scoped, 2, Infinity)) return win31Value;
   return userAgent31(element, name, window, ua);
 }
-// The rule that wins in a list (sorted by layer, specificity and order), its
-// scope proximity next to specificity (scoped: the index has @scope rules);
-// revert-layer gives way to the lower layers' (black box, 31.0.1), and to
-// the user agent sheet when there are none (revert). Whether one did; it
-// is then in win31 and win31Value.
+// The rule that wins in a list (sorted by layer, specificity and order)
+// among the layers below below, its scope proximity next to specificity
+// (scoped: the index has @scope rules). Whether one did; it is then in
+// win31 and win31Value.
 let win31Value;
-function ruleWinner31(list, element, scoped, level) {
-  let below = Infinity;
-  for (;;) {
-    let best,
-      bestProximity = Infinity;
-    for (const e of list) {
-      if (e.layer >= below) continue;
-      if (best !== undefined && (e.layer !== best.layer || e.specificity !== best.specificity)) break;
-      if (e.value === HIDE_UA) continue;
-      proximity31 = Infinity;
-      if (!e.match(element, NO_SCOPE)) continue;
-      const proximity = e.scope === null ? Infinity : proximity31;
-      if (best === undefined || proximity < bestProximity) {
-        best = e;
-        bestProximity = proximity;
-      }
-      if (!scoped) break;
+function ruleWinner31(list, element, scoped, level, below) {
+  let best,
+    bestProximity = Infinity;
+  for (const e of list) {
+    if (e.layer >= below) continue;
+    if (best !== undefined && (e.layer !== best.layer || e.specificity !== best.specificity)) break;
+    if (e.value === HIDE_UA) continue;
+    proximity31 = Infinity;
+    if (!e.match(element, NO_SCOPE)) continue;
+    const proximity = e.scope === null ? Infinity : proximity31;
+    if (best === undefined || proximity < bestProximity) {
+      best = e;
+      bestProximity = proximity;
     }
-    if (best === undefined) {
-      if (below === Infinity) return false;
-      // (no lower layer: revert)
-      win31Value = won31(level, 0, 0, Infinity, 0, 'revert');
-      return true;
-    }
-    if (!REVERT_LAYER.test(best.value)) {
-      win31Value = won31(level, best.layer, best.specificity, bestProximity, best.order, best.value);
-      return true;
-    }
-    below = best.layer;
+    if (!scoped) break;
   }
+  if (best === undefined) return false;
+  win31Value = won31(level, best.layer, best.specificity, bestProximity, best.order, best.value);
+  return true;
 }
 const REVERT_LAYER = /^\s*revert-layer\s*$/i;
 // The user agent sheet's normal declaration (also where the page's
@@ -1280,23 +1327,41 @@ function won31(level, layer, specificity, proximity, order, value) {
   win31.order = order;
   return value;
 }
+// The winner of a name and, in a logical group, its partner (pair31).
+function pair31(element, index, inlineMap, name, partner, window, cut, below) {
+  const value = winner31(element, index, inlineMap, name, window, cut, below);
+  if (partner === null) return value;
+  copy31(saved31, win31);
+  const other = winner31(element, index, inlineMap, partner, window, cut, below);
+  if (!beats31(saved31)) {
+    copy31(win31, saved31);
+    return value;
+  }
+  // A longhand pending substitution computes from its shorthand by its own
+  // name: the partner's (pending31).
+  return other !== undefined && other.startsWith(PENDING31)
+    ? `${PENDING31}\0${partner}\0${other.slice(PENDING31.length)}`
+    : other;
+}
 function cascade31(element, index, inlineMap, name, window) {
   // (the flow first: finding it reads computed values, which cascade too
   // and overwrite win31)
   const partner = isLogicalGroup(name) ? partnerOf(name, flow31(element)) : null;
-  let value = winner31(element, index, inlineMap, name, window);
-  if (partner !== null) {
-    copy31(saved31, win31);
-    const other = winner31(element, index, inlineMap, partner, window);
-    if (beats31(saved31))
-      // A longhand pending substitution computes from its shorthand by its
-      // own name: the partner's (pending31).
-      value = other.startsWith(PENDING31) ? `${PENDING31}\0${partner}\0${other.slice(PENDING31.length)}` : other;
-    else copy31(win31, saved31);
+  let value = pair31(element, index, inlineMap, name, partner, window, 0, Infinity);
+  // revert-layer in a rule that wins: the pair's winner among the layers
+  // below (both names: margin-top: revert-layer rolls margin-block-start
+  // back too), then the user agent sheet's (revert).
+  while ((win31.level === 2 || win31.level === 4) && REVERT_LAYER.test(value)) {
+    const cut = win31.level;
+    value = pair31(element, index, inlineMap, name, partner, window, cut, win31.layer);
+    if (win31.level === -1) {
+      won31(cut, 0, 0, Infinity, 0, undefined);
+      value = 'revert';
+    }
   }
-  // revert (and revert-layer with no lower layer) in the page's
-  // declarations: the user agent sheet's value, of the pair too (black box,
-  // 31.0.1: p { margin-top: revert } gives 16px, a div's 0px).
+  // revert in the page's declarations: the user agent sheet's value, of
+  // the pair too (black box, 31.0.1: p { margin-top: revert } gives 16px, a
+  // div's 0px).
   if (win31.level >= 2 && win31.level <= 5 && REVERT.test(value)) {
     value = userAgent31(element, name, window);
     if (partner !== null) {
