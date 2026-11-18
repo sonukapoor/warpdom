@@ -549,3 +549,39 @@ parity(
     ].map((args) => [args, w.CSS.supports(...args)]),
   { jsdom: 31 },
 );
+
+// Escaped identifiers are read decoded (#329, a closer look).
+parity(
+  'jsdom 31: escapes in media queries and @supports conditions',
+  (w) => {
+    const d = w.document;
+    const out = [];
+    for (const q of [
+      '(m\\in-width: 100px)',
+      '\\73 creen',
+      '(\\77 idth: 1024px)',
+      '(hover: \\68 over)',
+      'sc\\72 een and (color)',
+    ])
+      out.push([
+        q,
+        ...(() => {
+          d.head.innerHTML = `<style>@media ${q} {}</style>`;
+          const rule = d.styleSheets[0].cssRules[0];
+          return [rule.matches, rule.media.mediaText];
+        })(),
+      ]);
+    for (const c of [
+      'n\\6f t (x: y)',
+      '(display: grid) \\61 nd (color: red)',
+      'sel\\65 ctor(div)',
+      '(\\64 isplay: grid)',
+    ]) {
+      d.head.innerHTML = `<style>@supports ${c} {}</style>`;
+      const rule = d.styleSheets[0].cssRules[0];
+      out.push([c, rule?.matches, rule?.conditionText, w.CSS.supports(c)]);
+    }
+    return out;
+  },
+  { jsdom: 31 },
+);

@@ -81,7 +81,9 @@ const OFF = new Set(['none', 'no-preference', '0']);
 
 // A query's top-level components: { ident }, { group: inner text } for
 // (...), { fn: text } for name(...); null when something else is there.
-const IDENT = /^-?[a-zA-Z_][a-zA-Z0-9_-]*/;
+// (escapes included: \73 creen is screen)
+const IDENT =
+  /^-?(?:[a-zA-Z_]|\\[0-9a-fA-F]{1,6}[ \t\n\r\f]?|\\[^\n0-9a-fA-F])(?:[a-zA-Z0-9_-]|\\[0-9a-fA-F]{1,6}[ \t\n\r\f]?|\\[^\n0-9a-fA-F])*/;
 function components(text) {
   const out = [];
   let i = 0;
@@ -108,7 +110,7 @@ function components(text) {
       i = end + 1;
       continue;
     }
-    out.push({ ident: ident[0] });
+    out.push({ ident: decodeEscapes(ident[0]) });
     i = after;
   }
   return out;
@@ -258,6 +260,7 @@ function feature(inner) {
   if (colon >= 0 && !/[<>=]/.test(text)) {
     let name = cssTrim(text.slice(0, colon)).toLowerCase();
     if (!IDENT_ONLY.test(name)) return null;
+    name = decodeEscapes(name).toLowerCase();
     let prefix = '';
     if ((name.startsWith('min-') || name.startsWith('max-')) && RANGE[name.slice(4)] !== undefined) {
       prefix = name.slice(0, 3);
@@ -274,7 +277,7 @@ function feature(inner) {
     return { kind: 'feature', text: `(${prefix ? `${prefix}-` : ''}${name}: ${v.text})`, test };
   }
   if (IDENT_ONLY.test(text)) {
-    const name = text.toLowerCase();
+    const name = decodeEscapes(text).toLowerCase();
     if (RANGE[name] === undefined && DISCRETE[name] === undefined) return null;
     return { kind: 'feature', text: `(${name})`, test: booleanOf(name) };
   }
@@ -282,8 +285,8 @@ function feature(inner) {
   const pieces = text.split(OPS).map(cssTrim);
   if (pieces.length !== 3 && pieces.length !== 5) return null;
   let nameAt = 2;
-  if (pieces.length === 3 && IDENT_ONLY.test(pieces[0]) && RANGE[pieces[0].toLowerCase()]) nameAt = 0;
-  const name = pieces[nameAt].toLowerCase();
+  if (pieces.length === 3 && IDENT_ONLY.test(pieces[0]) && RANGE[decodeEscapes(pieces[0]).toLowerCase()]) nameAt = 0;
+  const name = decodeEscapes(pieces[nameAt]).toLowerCase();
   if (RANGE[name] === undefined) return null;
   if (pieces.length === 5) {
     const a = pieces[1],
@@ -314,7 +317,8 @@ function feature(inner) {
   }
   return { kind: 'feature', text: `(${out.join(' ')})`, test };
 }
-const IDENT_ONLY = /^-?[a-zA-Z_][a-zA-Z0-9_-]*$/;
+const IDENT_ONLY =
+  /^-?(?:[a-zA-Z_]|\\[0-9a-fA-F]{1,6}[ \t\n\r\f]?|\\[^\n0-9a-fA-F])(?:[a-zA-Z0-9_-]|\\[0-9a-fA-F]{1,6}[ \t\n\r\f]?|\\[^\n0-9a-fA-F])*$/;
 const PREFIX_OPS = { '': '=', min: '>=', max: '<=' };
 
 const TRUE = 1,
@@ -376,7 +380,7 @@ function value(name, text, discreteOk) {
   const discrete = DISCRETE[name];
   if (discrete !== undefined) {
     if (!discreteOk) return null;
-    const v = text.toLowerCase();
+    const v = decodeEscapes(text).toLowerCase();
     return discrete[0].includes(v) ? { text: v, value: v } : null;
   }
   const type = RANGE[name]?.[0];
@@ -667,11 +671,11 @@ function supportsComponents(text) {
     if (text[after] === '(') {
       const end = supportsClosing(text, after);
       if (end < 0 || strayCloser(text, after + 1, end)) return null;
-      out.push({ fn: ident[0], inner: text.slice(after + 1, end) });
+      out.push({ fn: decodeEscapes(ident[0]), inner: text.slice(after + 1, end) });
       i = end + 1;
       continue;
     }
-    out.push({ ident: ident[0] });
+    out.push({ ident: decodeEscapes(ident[0]) });
     i = after;
   }
   return out;
@@ -783,8 +787,14 @@ export function supportsHold31(node, declaration, selector) {
       const colon = node.text.indexOf(':');
       if (colon < 0) return false;
       const name = node.text.slice(0, colon).trim();
-      if (!/^-?[a-zA-Z_][a-zA-Z0-9_-]*$/.test(name) && !name.startsWith('--')) return false;
-      return supportedDeclaration31(name, node.text.slice(colon + 1), declaration, true);
+      if (!IDENT_ONLY.test(name) && !name.startsWith('--')) return false;
+      // (an escaped name is read decoded: \64 isplay is display)
+      return supportedDeclaration31(
+        name.startsWith('--') ? name : decodeEscapes(name),
+        node.text.slice(colon + 1),
+        declaration,
+        true,
+      );
     }
     default: {
       const arg = node.arg.trim();

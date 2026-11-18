@@ -7872,3 +7872,7 @@ two-argument CSS.supports() value are not the value's (--x, /* ; */ is
 supported); pseudo-element names are checked with their escapes decoded
 (::b\65 fore is ::before). Checked, not changed: 6000 parentheses make
 CSS.supports() throw a RangeError in jsdom 31 too.
+Closer look after the third round: identifiers are read with their
+escapes decoded in media queries (\73 creen is screen, (m\in-width: ...)
+min-width) and in @supports keywords, function and property names
+(n\6f t, sel\65 ctor(), (\64 isplay: grid)).
