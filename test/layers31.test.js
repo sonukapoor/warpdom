@@ -190,3 +190,24 @@ parity(
   },
   { jsdom: 31 },
 );
+
+// Third review round (#330): rolled back from the attribute to a rule's
+// revert-layer (this read hung).
+parity(
+  'jsdom 31: revert-layer in the style attribute and in the rule it rolls back to',
+  (w) =>
+    [
+      ['div { color: revert-layer }', 'color: revert-layer'],
+      ['div { color: revert-layer !important }', 'color: revert-layer !important'],
+      ['@layer a { div { color: red } } div { color: revert-layer }', 'color: revert-layer'],
+      [
+        '@layer a { div { color: red !important } } @layer b { div { color: revert-layer !important } }',
+        'color: revert-layer !important',
+      ],
+    ].map(([css, attr]) => {
+      w.document.head.innerHTML = `<style>${css}</style>`;
+      w.document.body.innerHTML = `<div id="t" style="${attr}"></div>`;
+      return [css, attr, w.getComputedStyle(w.document.getElementById('t')).color];
+    }),
+  { jsdom: 31 },
+);

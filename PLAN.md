@@ -7942,3 +7942,7 @@ then rolls both names back to the rules (to the !important rules from an
 !important one); layer names are read with their escapes decoded (\61 is
 a; an escaped dot is part of a name); an escaped :scope (:sc\6f pe) is
 :scope.
+Third round: rolled back from the style attribute, the rule found keeps
+its own level (2 or 4), so its own revert-layer rolls back below its
+layer (the read looped: div { color: revert-layer } with style="color:
+revert-layer").

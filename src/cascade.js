@@ -1279,8 +1279,11 @@ function copy31(to, from) {
 function winner31(element, index, inlineMap, name, window, cut = 0, below = Infinity) {
   const lists = index.get(name);
   if (cut !== 0) {
-    const list = cut >= 4 ? lists?.important : lists?.normal;
-    if (list?.length && ruleWinner31(list, element, index.scoped, cut, below)) return win31Value;
+    // (the rule found has its own level, 2 or 4: rolled back from the
+    // attribute, a rule's revert-layer then rolls back below its layer)
+    const level = cut >= 4 ? 4 : 2;
+    const list = level === 4 ? lists?.important : lists?.normal;
+    if (list?.length && ruleWinner31(list, element, index.scoped, level, below)) return win31Value;
     return won31(-1, 0, 0, Infinity, 0, undefined);
   }
   const ua = uaDeclarations31(window, name, cascadeExpand, element);
