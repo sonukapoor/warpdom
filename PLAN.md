@@ -7957,3 +7957,8 @@ Closer look after the fourth round: a nested @scope's start is matched
 with :scope the enclosing scope's root, and & in a prelude is :scope
 (@scope (.outer) { @scope (:scope > .inner) { ... } } applies to the
 outer's child .inner only).
+Closer look after the fifth round: jsdom 31's @scope prelude takes
+selectors with parentheses of their own ((:is(.a, .b)), (div:has(> p)));
+a start or end the selector engine does not know drops the rule ((.a)),
+and to( is a function, not to and a ( (cssom.js scopePrelude31; older
+profiles keep the earlier parse).

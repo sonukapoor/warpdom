@@ -261,3 +261,26 @@ parity(
   },
   { jsdom: 31 },
 );
+
+// @scope preludes with functional selectors (#330, a closer look). (jsdom
+// 31 reports "Could not parse CSS stylesheet" for the dropped ones, so this
+// is no parity test: values measured on 31.0.1.)
+test('jsdom 31: @scope preludes with parentheses of their own', () => {
+  const w = createWindow({ jsdom: '31.0.1' });
+  const d = w.document;
+  const read = (css) => {
+    d.head.innerHTML = `<style>${css}</style>`;
+    d.body.innerHTML = '<div class="a"><p id="p"></p></div>';
+    const rule = d.styleSheets[0].cssRules[0];
+    return [rule ? [rule.start, rule.end] : null, w.getComputedStyle(d.getElementById('p')).color];
+  };
+  const red = 'rgb(255, 0, 0)',
+    black = 'rgb(0, 0, 0)';
+  assert.deepEqual(read('@scope (:is(.a, .b)) { p { color: red } }'), [[':is(.a, .b)', null], red]);
+  assert.deepEqual(read('@scope (.a) to (:not(.a)) { p { color: red } }'), [['.a', ':not(.a)'], black]);
+  assert.deepEqual(read('@scope (div:has(> p)) { p { color: red } }'), [['div:has(> p)', null], red]);
+  assert.deepEqual(read('@scope (:nth-child(1 of .a)) { p { color: red } }'), [[':nth-child(1 of .a)', null], red]);
+  assert.deepEqual(read('@scope ((.a)) { p { color: red } }'), [null, black]);
+  assert.deepEqual(read('@scope (.a)to(.b) { p { color: red } }'), [null, black]);
+  assert.deepEqual(read('@scope to (.b) { p { color: red } }'), [[null, '.b'], black]);
+});
