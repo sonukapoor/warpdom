@@ -7891,3 +7891,6 @@ url()'s parentheses (one token; a sheet with url(((( was dropped).
 Found, not this part (main too): a string broken by a newline in a
 sheet (a { content: "x NEWLINE } b {} c {}) leaves jsdom 31 three rules,
 warpdom one (part C's recovery).
+Sixth round: the depth limit finds a url() token with urlTokenEnd (css-
+values.js): url not part of a longer name (myurl( and #url( nest), any
+case, escapes skipped.

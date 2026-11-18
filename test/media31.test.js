@@ -644,9 +644,14 @@ test('jsdom 31: parentheses in comments, strings, escapes and unquoted url() do 
     `a { background: url(${open}) } b {}`,
     `a { background: url("${open}") } b {}`,
     `a[title="${open}"] {} b {}`,
+    // (a name ending in url is no url(): myurl( and #url( nest)
+    `a { --v: URL(${open}) } b {}`,
+    `a { --v: url(a\\)${open}) } b {}`,
+    `a { --v: myurl(${open}${')'.repeat(200)}) } b {}`,
+    `a { --v: #url(${open}${')'.repeat(200)}) } b {}`,
   ].map((css) => {
     w.document.head.innerHTML = `<style>${css}</style>`;
     return w.document.styleSheets[0].cssRules.length;
   });
-  assert.deepEqual(counts, [2, 2, 2, 2, 2, 2]);
+  assert.deepEqual(counts, [2, 2, 2, 2, 2, 2, 2, 2, 0, 0]);
 });
