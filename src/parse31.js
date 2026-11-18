@@ -79,7 +79,8 @@ const isDigit = (c) => c >= 48 && c <= 57;
 const isNameStart = (c) => (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || c === 95 || c >= 128;
 const isName = (c) => isNameStart(c) || isDigit(c) || c === 45;
 const isHex = (c) => isDigit(c) || (c >= 97 && c <= 102) || (c >= 65 && c <= 70);
-const validEscape = (text, i) => text.charCodeAt(i) === 92 && i + 1 < text.length && text.charCodeAt(i + 1) !== 10;
+// (a backslash at the end is one too, for U+FFFD; #327 review)
+const validEscape = (text, i) => text.charCodeAt(i) === 92 && text.charCodeAt(i + 1) !== 10;
 function startsIdent(text, i) {
   const c = text.charCodeAt(i);
   if (c === 45) {
@@ -101,6 +102,7 @@ function startsNumber(text, i) {
 // The index after the escape at text[i] (a backslash).
 function escapeEnd(text, i) {
   let j = i + 1;
+  if (j >= text.length) return j;
   if (!isHex(text.charCodeAt(j))) return j + (text.codePointAt(j) > 0xffff ? 2 : 1);
   const stop = j + 6;
   while (j < stop && isHex(text.charCodeAt(j))) j++;
@@ -368,8 +370,10 @@ function declaration(text, from, to, closing) {
   // The value's tokens, without whitespace and comments at the ends.
   let first = k + 1;
   while (first < to && !meaningful(first)) first++;
+  // (in a block left open at the end, whitespace and comments at the end
+  // are the block's: --x: (a /* b is (a /* b*/); #327 review)
   let last = to - 1;
-  while (last >= first && !meaningful(last)) last--;
+  if (closing === '') while (last >= first && !meaningful(last)) last--;
   // !important at the end, read again while it ends so (not inside a
   // block left open at the end: --v: [a; !important is [a; !important])
   let important = false;
@@ -428,7 +432,7 @@ function declaration(text, from, to, closing) {
 // A token's text in a value, an identifier's, a hash's or a unit's escapes read when
 // it still reads the same (r\65 d is red, 1p\78 is 1px; \31 0px, an
 // identifier, is kept as written).
-const LETTERS = /^[A-Za-z_-][A-Za-z0-9_-]*$/;
+const LETTERS = /^[A-Za-z_\u0080-\uffff-][A-Za-z0-9_\u0080-\uffff-]*$/;
 function tokenText(text, k) {
   const start = START[k];
   const end = END[k];
@@ -480,16 +484,34 @@ export function parseValue31(text, custom = false) {
 // backslash left at its end dropped first: "a\ is "a"), an unquoted url's
 // ), a comment's */ (#327 review).
 function closedAtEnd(text, k, value) {
-  if (k < 0 || CLOSED[k] === 1) return value;
+  if (k < 0) return value;
   const type = TYPE[k];
+  if (type === COMMENT) return CLOSED[k] === 1 ? value : `${value}*/`;
+  let slashes = 0;
+  while (value.charCodeAt(value.length - 1 - slashes) === 92) slashes++;
+  const escaped = slashes % 2 === 1;
   if (type === STRING) {
-    let slashes = 0;
-    while (value.charCodeAt(value.length - 1 - slashes) === 92) slashes++;
-    return (slashes % 2 === 1 ? value.slice(0, -1) : value) + text[START[k]];
+    if (CLOSED[k] === 1) return value;
+    return (escaped ? value.slice(0, -1) : value) + text[START[k]];
   }
-  if (type === URL) return `${value})`;
-  if (type === COMMENT) return `${value}*/`;
-  return value;
+  // (a backslash at the very end is an escape for U+FFFD: a\ is a\uFFFD;
+  // #327 review)
+  const out = escaped ? `${value.slice(0, -1)}\uFFFD` : value;
+  return type === URL && CLOSED[k] === 0 ? `${out})` : out;
+}
+
+// A custom property's value given on its own without the whitespace at
+// its ends, but at its end only when no block, string or comment is left
+// open there (setProperty('--x', '(a ') is (a ); #327 review).
+export function trimmed31(text) {
+  const start = text.trimStart();
+  const end = start.trimEnd();
+  if (end.length === start.length) return end;
+  tokenize(start);
+  untilSemicolon(start, 0);
+  const k = count - 1;
+  const open = depth > 0 || (CLOSED[k] === 0 && (TYPE[k] === COMMENT || TYPE[k] === STRING));
+  return open ? start : end;
 }
 
 // A value given on its own, closed at its end as a declaration list closes

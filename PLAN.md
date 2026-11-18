@@ -7697,3 +7697,8 @@ preprocessed); \- in a value stays escaped (font-family: \- is "-").
 Third round: a unit decoded from escapes may start with e (1\65 m is
 1em; letters alone cannot be read as an exponent). A unit decoded to e alone before a + stays escaped (1\65+3px is not
 1e+3px).
+Fourth round: in a block, string or comment left open at the end,
+whitespace and comments at the end are its own (--x: (a /* b is (a /*
+b*/), setProperty('--x', '(a ') is (a ), trimmed31); a backslash at the
+very end is an escape for U+FFFD (a\ is a\uFFFD), and escapes that
+decode to non-ASCII letters are read in a value (\e9 t\e9).

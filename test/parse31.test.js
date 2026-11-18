@@ -309,3 +309,39 @@ parity(
   },
   { jsdom: 31 },
 );
+
+// #327 review, closer look: whitespace and comments at the end of a block
+// left open are the block's, a backslash at the very end is an escape for
+// U+FFFD.
+parity(
+  'jsdom 31: the end of a value left open',
+  attribute([
+    '--x: (a ',
+    '--x: (a  /*c*/  ',
+    '--x: (a /* b',
+    '--x: [a /**/',
+    '--x: (a\\',
+    '--x: a\\',
+    '--x: a \\',
+    '--x: "a" \\',
+    '--x: url(a\\',
+    'font-family: a\\',
+    'font-family: a \\',
+    'font-family: \\e9 t\\e9',
+    'background-image: var(--a ',
+  ]),
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: a custom property set with a block left open',
+  set([
+    ['--x', '(a '],
+    ['--x', '(a /* b'],
+    ['--x', 'a\\'],
+    ['--x', '"a  '],
+    ['--x', 'a /* b  '],
+    ['--x', '  a  '],
+  ]),
+  { jsdom: 31 },
+);

@@ -56,7 +56,7 @@ import {
 } from './box-declarations.js';
 import { set31, remove31, value31, priority31, serialize31, dropped31, shorthand31 } from './css31.js';
 import { canonical31 } from './declared31.js';
-import { closed31, parseDeclarationList31, parseValue31 } from './parse31.js';
+import { closed31, parseDeclarationList31, parseValue31, trimmed31 } from './parse31.js';
 import { hasVarReference } from './var-substitution.js';
 
 // backgroundColor -> background-color, webkitAnimation/WebkitAnimation ->
@@ -5823,7 +5823,8 @@ function separated(raw) {
 function setDeclaration31(style, s, name, value, priority) {
   // (a name jsdom 31 drops, though it has the accessor: style.cueBefore)
   if (dropped(s.surface, name)) return;
-  let raw = value === null ? '' : String(value).trim();
+  let raw = value === null ? '' : String(value);
+  raw = name.startsWith('--') ? trimmed31(raw) : raw.trim();
   // (a custom property set to whitespace is one space: setProperty('--x',
   // ' '), as in jsdom 31)
   if (raw === '' && name.startsWith('--') && value !== null && String(value) !== '') raw = ' ';
