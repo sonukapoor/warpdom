@@ -291,7 +291,7 @@ function scopedSelector(text) {
 }
 // Whether the name after a : is scope, escapes decoded (:sc\6f pe).
 const NAME_AT =
-  /^-?(?:[a-zA-Z_]|\\[0-9a-fA-F]{1,6}[ \t\n\r\f]?|\\[^\n0-9a-fA-F])(?:[a-zA-Z0-9_-]|\\[0-9a-fA-F]{1,6}[ \t\n\r\f]?|\\[^\n0-9a-fA-F])*/;
+  /^-?(?:[a-zA-Z_]|\\(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))[ \t\n\r\f]?|\\[^\n0-9a-fA-F])(?:[a-zA-Z0-9_-]|\\(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))[ \t\n\r\f]?|\\[^\n0-9a-fA-F])*/;
 function isScopeToken(text, at) {
   const m = NAME_AT.exec(text.slice(at, at + 64));
   return m !== null && decodeEscapes(m[0]).toLowerCase() === 'scope';
