@@ -7988,3 +7988,12 @@ Speed (e-bcas.mjs, 7 interleaved runs): the 31 profile 340.7 ms on main,
 351.7 ms here (the rendered tree check, kept per element; it was 7% read
 before the cascaded values); the 30 profile 253.1 and 255.4 ms (noise).
 Against jsdom 31.0.1: 68 of the default parity tests differ (77 on main).
+Review round (#331): the indexed items are getters on the jsdom 31
+window's style prototype (made at its first computed style), reading the
+element's current names, so cs[0] works before the length is read and
+is gone once the element is removed; the names are kept with the
+element's cascaded values (iteration reads the length at each step: it
+rebuilt them each time). Element styles' own indexed properties are
+defined over the getters. Not modeled: the items are not own properties
+(Object.keys() of a computed style is empty in warpdom), and past 1024.
+Speed after the round: 344.1 ms on main, 353.7 ms here.

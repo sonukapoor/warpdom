@@ -104,3 +104,31 @@ test('jsdom 30 keeps its computed style writes and items', () => {
   assert.equal(cs.position, 'relative');
   assert.equal(cs.length, 0);
 });
+
+// Review round (#331).
+parity(
+  "jsdom 31: a computed style's indexed items, read directly and after its element is removed; element styles beside them",
+  (w) => {
+    const d = w.document;
+    d.body.innerHTML = '<div id="t" style="color: red; --a: 1"></div>';
+    const e = d.getElementById('t');
+    const cs = w.getComputedStyle(e);
+    const out = [cs[0], cs[543], cs[544], cs[545]];
+    e.style.marginTop = '1px';
+    out.push(e.style[0], e.style[1], e.style[2], e.style[3], e.style.length);
+    e.remove();
+    out.push(cs[0], cs.length, cs.item(0));
+    return out;
+  },
+  { jsdom: 31 },
+);
+
+test('jsdom 31: iterating a computed style reads its items once per step, not all of them again', () => {
+  const w = createWindow({ jsdom: '31.0.1' });
+  const e = w.document.body.appendChild(w.document.createElement('div'));
+  e.style.setProperty('--a', '1');
+  const cs = w.getComputedStyle(e);
+  const start = performance.now();
+  for (let i = 0; i < 20; i++) assert.equal([...cs].length, 545);
+  assert.ok(performance.now() - start < 500);
+});

@@ -4671,7 +4671,11 @@ function hasBadString(value) {
 // read-only ones (jsdom 30, WebIDL) put the object's elements in dictionary
 // mode, which made every style write ~15% slower.
 function defineIndex(style, i, name) {
-  style[i] = name;
+  // (jsdom 31: its prototype has indexed getters for computed styles,
+  // which an assignment would hit)
+  if (INDEXED31.has(Object.getPrototypeOf(style)))
+    Object.defineProperty(style, i, { value: name, writable: true, enumerable: true, configurable: true });
+  else style[i] = name;
 }
 function reindex(style) {
   const s = styleState(style);
@@ -4779,15 +4783,30 @@ export const computed = { value: null };
 // jsdom 31: a computed style's items (cascade.js names31).
 const computedNames = (s) => computed.names31(s.element);
 const computed31 = (s) => s.computed && s.element[S].doc[S].window[S].compat.computed31 === true;
-// The items, as indexed properties too (defined when the length is read:
-// Array.prototype.values reads it first; a computed style is made for
-// each getComputedStyle() call, and most never have their items read).
-function computedLength31(style, s) {
-  const names = computedNames(s);
-  for (let i = 0; i < names.length; i++) if (style[i] !== names[i]) defineIndex(style, i, names[i]);
-  for (let j = names.length; j < s.indexed; j++) delete style[j];
-  s.indexed = names.length;
-  return names.length;
+// The items as indexed properties too: getters on the prototype (made
+// once per window, at its first computed style), reading the element's
+// current names, which its cascaded values keep (a computed style is made
+// for each getComputedStyle() call and most never have their items read;
+// Array.prototype.values reads the length at each step). Own properties of
+// the declaration blocks sharing the prototype come first. Not modeled:
+// they are not the object's own (Object.keys() is empty), and items past
+// INDEXED31_COUNT.
+const INDEXED31 = new WeakSet();
+const INDEXED31_COUNT = 1024;
+function indexed31(proto) {
+  if (INDEXED31.has(proto)) return;
+  INDEXED31.add(proto);
+  for (let i = 0; i < INDEXED31_COUNT; i++)
+    Object.defineProperty(proto, i, {
+      get() {
+        const s = STYLE_SLOT.has(this) ? styleState(this) : undefined;
+        return s !== undefined && computed31(s) ? computedNames(s)[i] : undefined;
+      },
+      set(value) {
+        Object.defineProperty(this, i, { value, writable: true, enumerable: true, configurable: true });
+      },
+      configurable: true,
+    });
 }
 
 // Write the declarations back to the element's style attribute (CSSOM:
@@ -4967,6 +4986,7 @@ export function cssNamespace(matchesSelector, declaration31 = null) {
 }
 
 export function computedStyle(element, proto) {
+  if (element[S].doc[S].window[S].compat.computed31) indexed31(proto);
   const style = Object.create(proto);
   initStyleState(style, {
     element,
@@ -6374,7 +6394,7 @@ export const CSS_INTERFACES = [
       },
       get length() {
         const s = styleState(this);
-        if (computed31(s)) return computedLength31(this, s);
+        if (computed31(s)) return computedNames(s).length;
         return s.decls.size;
       },
       get parentRule() {

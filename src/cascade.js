@@ -1117,6 +1117,7 @@ function cascadeCache(element) {
       customs: undefined,
       // (whether the element is in the rendered tree, jsdom 31: styleValue)
       rendered: ds.window[S].compat.computed31 ? undefined : true,
+      names: undefined,
       flow: -1,
       flowText: false,
       flowTextRev: 0,
@@ -2933,8 +2934,15 @@ function inRenderedTree(element) {
 // order. None outside the rendered tree.
 let longhands31 = null;
 const NO_NAMES = Object.freeze([]);
+// (kept with the element's cascaded values: iteration reads them at each
+// step)
 function names31(element) {
   if (!rendered31(element)) return NO_NAMES;
+  const cache = element[S].cascaded;
+  if (cache.names !== undefined) return cache.names;
+  return (cache.names = namesNow31(element));
+}
+function namesNow31(element) {
   longhands31 ??= computedLonghands31();
   const customs = new Set();
   for (let e = element; e !== null; e = inheritParent(e)) {
