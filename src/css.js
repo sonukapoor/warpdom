@@ -56,6 +56,8 @@ import {
 } from './box-declarations.js';
 import { set31, remove31, value31, priority31, serialize31, dropped31, shorthand31 } from './css31.js';
 import { canonical31 } from './declared31.js';
+import { closed31, parseDeclarationList31, parseValue31, trimmed31 } from './parse31.js';
+import { hasVarReference } from './var-substitution.js';
 
 // backgroundColor -> background-color, webkitAnimation/WebkitAnimation ->
 // -webkit-animation, cssFloat -> float; dashed names map to themselves.
@@ -1332,6 +1334,16 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
     // again only when they changed it)
     let canonical = null;
     if (mode === 'page') out = pageDescriptorValue(name, value);
+    // (jsdom 31: var() in any case, VAR(--a), is var(), kept as written as
+    // a value with var() is, for a property it knows; #327 review)
+    else if (
+      cssom31 &&
+      !name.startsWith('--') &&
+      (isKnownProperty(name) || surface.extras.has(name)) &&
+      !hasVarFunction(value) &&
+      hasVarReference(value)
+    )
+      out = value;
     else if (surface !== null && surface.extras.has(name))
       out = name === 'azimuth' ? azimuthValue(value, surface) : value;
     else if (!isKnownProperty(name)) out = INVALID;
@@ -4087,6 +4099,11 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   const sheet = replay || counting || context === 'sheet';
   const inRule = sheet || context === 'rule';
   if (!replay) decls.clear();
+  // jsdom 31: CSS Syntax 3's declaration list (parse31.js)
+  if (surface?.cssom31 === true && !replay) {
+    parseInto31(decls, text, mode, surface, asWritten);
+    return;
+  }
   // From jsdom 27 (a rule's cssText from 27.1.0) the first !important
   // declaration of a property wins: a later one, !important or not, is
   // dropped (color: red !important; color: blue !important is red; black
@@ -4447,6 +4464,31 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   releaseScan(list);
   if (clears && carried !== null && carried.includes(':')) decls.clear();
   if (counting) decls.plain = !unnamed && (named === decls.size || (!prioritized && plainNames(names)));
+}
+
+// A declaration list as jsdom 31 reads it (parse31.js), each declaration
+// then as any other: its name (custom properties keep their case, others
+// are lowercased), its value through declaredValue, the block's model
+// through set31.
+function parseInto31(decls, text, mode, surface, asWritten) {
+  const source = asWritten ? String(text ?? '') : preprocessCss(String(text ?? ''));
+  for (const decl of parseDeclarationList31(source)) {
+    const name = decl.custom ? decl.name : decl.name.toLowerCase();
+    if (dropped(surface, name)) continue;
+    const declared = declaredValue(name, decl.value, mode, surface);
+    if (declared === INVALID || declared === '') continue;
+    const stored = set31(
+      decls,
+      name,
+      declared === INITIALS ? initials31(name, decl.value) : declared,
+      decl.important,
+      true,
+      decl.value,
+    );
+    // (only when it is held: --x: red !important; --x:; keeps red; #327
+    // review)
+    if (decl.empty && stored) decls.get(name).parsedEmpty = true;
+  }
 }
 
 // jsdom 27 and 28 (black box, 27.4.0 and 28.1.0; #157 audit): in a style
@@ -5576,7 +5618,20 @@ function legacyBorderResets(decls, name, value, mode, sidesOnly = false) {
 // A comment at the end of a value, or at its start (#264 item 87).
 const EDGE_COMMENT = /\*\/[ \t\n\r\f]*$/;
 const LEADING_COMMENT = /^[ \t\n\r\f]*\/\*/;
+// (characters that can make a value read differently as CSS Syntax 3
+// reads it: the others need no look)
+const SYNTAX_SENSITIVE = /[/;"'()[\]{}\\!]/;
 function writtenValue(name, raw, s) {
+  // (jsdom 31: one value as CSS Syntax 3 reads it, parse31.js)
+  if (s.surface?.cssom31 === true && SYNTAX_SENSITIVE.test(raw)) {
+    const value = parseValue31(raw, name.startsWith('--'));
+    if (value === null) return INVALID;
+    // (a custom property set so keeps its comments, closed: --x: /*a*/ a,
+    // (a is (a))
+    // (and so does a value with var(), as on main: var(--a) /*x*/; #327
+    // review)
+    raw = name.startsWith('--') || hasVarReference(raw) ? closed31(raw) : value;
+  }
   // (a value kept as written keeps its comments, before it too: #264
   // item 87)
   const text = declaredValue(name, raw, s.mode, s.surface);
@@ -5770,7 +5825,11 @@ function separated(raw) {
 function setDeclaration31(style, s, name, value, priority) {
   // (a name jsdom 31 drops, though it has the accessor: style.cueBefore)
   if (dropped(s.surface, name)) return;
-  const raw = value === null ? '' : String(value).trim();
+  let raw = value === null ? '' : String(value);
+  raw = name.startsWith('--') ? trimmed31(raw) : raw.trim();
+  // (a custom property set to whitespace is one space: setProperty('--x',
+  // ' '), as in jsdom 31)
+  if (raw === '' && name.startsWith('--') && value !== null && String(value) !== '') raw = ' ';
   if (raw === '') {
     const size = s.decls.size;
     remove31(s.decls, name);
@@ -5784,8 +5843,15 @@ function setDeclaration31(style, s, name, value, priority) {
   if (lower !== '' && lower !== 'important') return;
   const text = writtenValue(name, raw, s);
   if (text === INVALID || text === '') return;
-  if (!set31(s.decls, name, text === INITIALS ? initials31(name, raw) : text, lower === 'important', false, raw))
+  // (written by a script now, not read empty: --x:  ; when it is one
+  // space, even if the value is the same)
+  const held = s.decls.get(name);
+  const wasEmpty = held?.parsedEmpty === true;
+  if (wasEmpty) held.parsedEmpty = false;
+  if (!set31(s.decls, name, text === INITIALS ? initials31(name, raw) : text, lower === 'important', false, raw)) {
+    if (wasEmpty) sync(style);
     return;
+  }
   reindex(style);
   sync(style);
 }

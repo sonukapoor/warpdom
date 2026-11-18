@@ -7628,3 +7628,85 @@ hwb() with math functions resolve (hsl(120, calc(50%), 50%) is rgb(64,
 191, 64)), percentages in a channel comparing in min() and max(). A value with env() or attr() (outside strings
 and url()) is not rounded when read either. Left for later: VAR() in capitals is var() to jsdom 31 (kept
 as written there; warpdom drops the declaration).
+
+## 2026-11-17: jsdom 31, CSS part C: declaration lists as CSS Syntax 3 reads them (branch feat/269-jsdom31-parse, #269)
+
+With the jsdom 31 surface, a style attribute, cssText, a rule's block and
+a value given to setProperty() or an accessor are read by parse31.js
+(CSS Syntax 3's tokenizer and "parse a list of declarations", written
+from the spec, black box against 31.0.1); each declaration then goes
+through declaredValue and set31 as before (css.js parseInto31). The 26
+to 30 profiles keep the old splitter.
+- A string ending at a line break is a bad string, so the next quote
+  starts one that runs to the end; an unquoted url() with whitespace, a
+  quote or a parenthesis inside is a bad url. A value with either is
+  invalid (--x: url(a b.png) too), as is a ), ] or } that closes nothing
+  (var(--a)) ) and a ! outside blocks or right in var()'s arguments not
+  followed by important (red !b, var(--c, a !b)); a ! in a block is kept
+  (--x: [a !b]).
+- A ; inside (), [] or {} belongs to the value; blocks, a string and a
+  comment left open at the end are closed there (var(--a is var(--a),
+  "a b is "a b", setProperty('--x', '(a') is (a)); an !important inside
+  a block left open is no priority (--v: [a; !important]).
+- !important in any case at the end, read again while it ends so
+  (red !important!important is important).
+- Comments: a custom property's value without those at its ends; in
+  other values a comment between two components is a space (1px/**/2px).
+  A custom property read as nothing (--x:;) holds one space and is
+  written --x: ; ; one set to whitespace by a script is written --x:  ;
+  (decl.parsedEmpty).
+- Names with their escapes read (--\61 b is --ab), and in a normal
+  property's value identifiers, hashes and units too (\72 ed is red,
+  1p\78 is 1px, #\66 ff is #fff), when the text still reads the same
+  (\31 0px stays); an escape takes CRLF after it as one whitespace.
+- var() in any case (VAR(--a)) is var(), kept as written.
+Found, not modeled: jsdom 31 logs "Could not parse CSS stylesheet" for a
+sheet with a bad string, a bad url, a closer of nothing or a block left
+open in a rule (the rules come out the same); warpdom logs nothing, in
+any profile.
+Performance: tokens go into typed arrays reused from call to call
+(type, start, end, closed), no object per token; names are decoded only
+where needed. A style attribute read under the jsdom 31 profile costs
+1.41 us against 1.26 us on main (scratchpad e-bparse, 5 interleaved
+runs, node 22.17.1; a first version with token objects was 1.74 us):
+the price of tokenizing whitespace and comments the old splitter skipped,
+for the parse errors jsdom 31 has; other profiles do not run it, and
+bench:hot has no style members. Cold load 29.6 ms on main, 30.1 ms here
+(parse31.js).
+Against jsdom 31.0.1: 98 of the default parity tests differ (108 on
+main; 96 after the review rounds).
+Review round (#327): VAR() is var() only for a property jsdom 31 knows
+(not-a-property: VAR(--x) is dropped); an empty custom property marks
+the declaration only when it is held (--x: red !important; --x:; keeps
+red); an at-rule ends at a ; or at the } of its block (@media x { ... }
+left: 1px keeps left); a run of comments is one separator
+(1px/**//**/2px); backslash searches bounded to their span (a search to
+the end of the text per name was quadratic), and skipped for a text
+with no backslash (style attribute parse 1.48 us here, 1.34 us on main,
+7 interleaved runs at a load average of 17). Found, not modeled: jsdom
+31 keeps a nested rule (CSS Nesting) in a style rule's block (.a {
+@media x { color: red } left: 1px }); warpdom drops it, keeping the
+declarations after it (main drops those too).
+Second review round (#327): a custom property's name is written as an
+identifier (--a\3a b is --a\:b, CSSOM's serialize an identifier); an
+unquoted url() left open is closed at the end, and a string left open
+loses a backslash left at its end before its quote ("a\ is "a");
+non-printable characters make an unquoted url() a bad url; an escaped
+CRLF in a string is one line break (the accessor path is not
+preprocessed); \- in a value stays escaped (font-family: \- is "-").
+Third round: a unit decoded from escapes may start with e (1\65 m is
+1em; letters alone cannot be read as an exponent). A unit decoded to e alone before a + stays escaped (1\65+3px is not
+1e+3px).
+Fourth round: in a block, string or comment left open at the end,
+whitespace and comments at the end are its own (--x: (a /* b is (a /*
+b*/), setProperty('--x', '(a ') is (a ), trimmed31); a backslash at the
+very end is an escape for U+FFFD (a\ is a\uFFFD), and escapes that
+decode to non-ASCII letters are read in a value (\e9 t\e9).
+Fifth round: a normal property's value with var() keeps its comments
+as written, as a custom property's (var(--a /*b*/ c); comments at its
+ends go from a declaration list, stay from setProperty(), as on main),
+and a comment left open at the end is closed only where comments are
+kept (calc(1px /*b is calc(1px), var(--a /*b is var(--a /*b*/)). Found,
+not modeled: jsdom 31 drops a comment left open right after a name in
+var() (var(--a/*b is var(--a); warpdom gives var(--a/*b*/), main
+var(--a/*b).
