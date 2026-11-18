@@ -630,3 +630,23 @@ parity(
     ].map((args) => [args, w.CSS.supports(...args)]),
   { jsdom: 31 },
 );
+
+// The depth limit counts blocks only (#329, a closer look).
+parity(
+  'jsdom 31: parentheses in comments, strings, escapes and unquoted url() do not count toward the depth limit',
+  (w) => {
+    const open = '('.repeat(200);
+    return [
+      `/* ${open} */ a {} b {}`,
+      `a { content: "${open}" } b {}`,
+      `a { --v: ${'\\('.repeat(200)} } b {}`,
+      `a { background: url(${open}) } b {}`,
+      `a { background: url("${open}") } b {}`,
+      `a[title="${open}"] {} b {}`,
+    ].map((css) => {
+      w.document.head.innerHTML = `<style>${css}</style>`;
+      return w.document.styleSheets[0].cssRules.length;
+    });
+  },
+  { jsdom: 31 },
+);

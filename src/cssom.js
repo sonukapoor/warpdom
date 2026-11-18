@@ -518,6 +518,8 @@ const isNamespace = (rule) => isA(rule, 'CSSNamespaceRule');
 // nest more than 128 deep has no rules ("Could not parse CSS
 // stylesheet"); a rule added through the CSSOM has no such limit.
 const MAX_DEPTH31 = 128;
+const URL_START = /^url$/i;
+const UNQUOTED = /^[ \t\n\r\f]*[^"' \t\n\r\f]/;
 function tooDeep(text) {
   let depth = 0;
   for (let i = 0; i < text.length; i++) {
@@ -530,6 +532,11 @@ function tooDeep(text) {
       const end = text.indexOf('*/', i + 2);
       if (end < 0) return false;
       i = end + 1;
+    } else if (c === '(' && URL_START.test(text.slice(Math.max(0, i - 3), i)) && UNQUOTED.test(text.slice(i + 1))) {
+      // (an unquoted url() is one token: its parentheses do not nest)
+      const end = text.indexOf(')', i + 1);
+      if (end < 0) return false;
+      i = end;
     } else if (c === '(' || c === '[' || c === '{') {
       if (++depth > MAX_DEPTH31) return true;
     } else if ((c === ')' || c === ']' || c === '}') && depth > 0) depth--;
