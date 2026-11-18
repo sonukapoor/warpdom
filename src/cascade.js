@@ -55,7 +55,14 @@ import { substituteVars, tooManyTokens, trimEnds } from './var-substitution.js';
 import { uaDeclarations, uaDeclarations31, uaValue, uaRule, uaRuleOver, uaInOrder } from './ua-sheet.js';
 import { findSlot } from './slots.js';
 import { flowOf, isLogical, isLogicalGroup, partnerOf } from './logical.js';
-import { documentStyleSheets, ruleArray, ruleListSnapshot, ruleListChanged } from './cssom.js';
+import {
+  documentStyleSheets,
+  ruleArray,
+  ruleListSnapshot,
+  ruleListChanged,
+  mediaMatches,
+  supportsMatches,
+} from './cssom.js';
 import { present31 } from './color31.js';
 import {
   parseDeclarations,
@@ -188,7 +195,7 @@ const bySpecificityThenOrder = (a, b) => b.specificity - a.specificity || b.orde
 const byOrder = (a, b) => b.order - a.order;
 
 // Whether the style rules of a top-level @media rule apply, as in jsdom
-// (which evaluates no media features): jsdom 29 and later apply a list
+// before 31 (which evaluates no media features): jsdom 29 and later apply a list
 // with an empty, "all" or "screen" query; before (black box, 20.0.0 to
 // 28.1.0) one with "screen". Rules inside other grouping rules never
 // apply, as in jsdom.
@@ -215,9 +222,31 @@ function buildIndex(sheets, mode, compat, lists) {
     for (const entry of entries) if (entry.text) index.textDependent = true;
     addDeclarations(index, rule[S].style[S].decls, entries, counter, compat);
   };
+  // jsdom 31 (black box, 31.0.1): a sheet whose media do not match is not
+  // applied (<style media="print">), and grouping rules nest: @media
+  // where it matches (conditions31.js), @supports where it holds
+  // (conditions31.js), at any depth. (@layer and @scope: not yet.)
+  const walk31 = (rules, ss) => {
+    for (const rule of rules) {
+      const proto = Object.getPrototypeOf(rule);
+      if (proto === ss.protos.CSSStyleRule) addRule(rule);
+      else if (
+        (proto === ss.protos.CSSMediaRule && mediaMatches(rule[S].media)) ||
+        (proto === ss.protos.CSSSupportsRule && supportsMatches(rule))
+      ) {
+        const snapshot = ruleListSnapshot(rule);
+        if (snapshot) lists.push(snapshot);
+        walk31(ruleArray(rule), ss);
+      }
+    }
+  };
   for (const sheet of sheets) {
     const ss = sheet[S];
     if (ss.disabled) continue;
+    if (compat?.computed31) {
+      if (ss.media === undefined || ss.media === null || mediaMatches(ss.media)) walk31(ss.rules, ss);
+      continue;
+    }
     for (const rule of ss.rules) {
       const proto = Object.getPrototypeOf(rule);
       if (proto === ss.protos.CSSStyleRule) addRule(rule);

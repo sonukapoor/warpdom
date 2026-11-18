@@ -7802,3 +7802,42 @@ direction as text does: value writes, resets and type changes advance
 the document's textRev (forms.js valueChanged). Checked, not changed:
 display: inline flow-root list-item blockified is list-item in jsdom 31
 (not flow-root list-item).
+Merged as #328 (2026-11-18).
+
+## 2026-11-18: jsdom 31, CSS part E4a: media queries and @supports (branch feat/269-jsdom31-media, #269)
+
+Decision (2026-11-18): E4 in two PRs: E4a (this: media queries and
+@supports evaluated, written as jsdom 31 writes them, applied at any
+depth; a style element's media) and E4b (@layer, with Cascade 5's layer
+order and revert-layer, and @scope with its proximity: both applied by
+jsdom 31, black box).
+conditions31.js, black box on 31.0.1 (179 queries, 47 conditions):
+- Media queries as Media Queries 4 and 5 read them, at jsdom's 1024 x 768
+  screen: 1dppx, 8 bits per color, a fine pointer that hovers, scripting,
+  no preferences, the browser display mode; the device 0 x 0
+  (device-aspect-ratio alone true, matching 0 / 0 only); em, rem, ch and
+  ic 16px (ch is half an em in computed values, as jsdom 31 has it), ex
+  8px, lh 18.4px, cap 14.48px. Unknown (an unknown feature, a value of
+  the wrong type, % in calc()) is false, and stays unknown under not. A
+  query is evaluated as written, its text kept to 6 digits ((width:
+  1024.0000001px) is written (width: 1024px) and does not match).
+- Written: known features lowercase as name: value (ranges a < name <=
+  b), canonical values (0 is 0px, .5em 0.5em, ratios a / b, math
+  simplified: calc(101px)), all and a condition as the condition; other
+  text as written, trimmed and collapsed ((hover:BOGUS)); a query that
+  does not parse "not all".
+- @supports as CSS Conditional Rules 5: declarations checked with the
+  profile's rules (!important allowed; a custom property's value fine but
+  for a ;), selector() of one complex selector, font-tech(), font-format()
+  and at-rule() by their lists, anything else false. A prelude that does
+  not parse drops the rule; conditionText with lowercase keywords.
+  CSS.supports alike.
+- The cascade applies @media and @supports rules where they match, at any
+  depth, and skips a style sheet whose media do not match; a style
+  element's media attribute set later changes its sheet's media in place.
+Not modeled: selector(:-webkit-autofill) is true in jsdom 31 (warpdom's
+engine does not know it).
+Load (bench/load.js, 7 interleaved runs, node 22.17.1, medians): cold
+load 30.0 ms on main, 31.3 ms here. Reason: the module (one, merged from
+two: each module costs the loader about 0.5 ms; 0.3 ms is its own).
+Against jsdom 31.0.1: 77 of the default parity tests differ (83 on main).

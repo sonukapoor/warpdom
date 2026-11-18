@@ -21,7 +21,7 @@ import {
   hiddenSlot,
 } from './internal.js';
 import { dispatch, reportError } from './events.js';
-import { computedStyle, cssNamespace } from './css.js';
+import { computedStyle, cssNamespace, supportsDeclarationOf } from './css.js';
 import './cascade.js';
 import { compile } from './selectors.js';
 import { QuotaExceededError } from './storage.js';
@@ -2165,14 +2165,17 @@ export function setupWindow(window, { url: initial = 'about:blank', fastFrames =
   });
   // The CSS namespace object (CSS.escape, CSS.supports).
   Object.defineProperty(window, 'CSS', {
-    value: cssNamespace((selector) => {
-      try {
-        compile(selector);
-        return true;
-      } catch {
-        return false;
-      }
-    }),
+    value: cssNamespace(
+      (selector) => {
+        try {
+          compile(selector);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      ws.compat.jsdom >= 31 ? supportsDeclarationOf(ws.protos) : null,
+    ),
     writable: true,
     configurable: true,
   });

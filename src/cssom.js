@@ -27,6 +27,7 @@ import {
   nestedBlocks,
   isLegacyMode,
   supportsRuleMatches,
+  supportsDeclarationOf,
   replayDeclarations,
   parsedPlain,
 } from './css.js';
@@ -34,6 +35,14 @@ import { cssomDeclaration, cssomEntries, blockEntries, simpleText, withoutCommen
 import { liveList, iterate } from './collections.js';
 import { fallbackBaseURL } from './base-url.js';
 import { urlTokenEnd } from './css-values.js';
+import { compileRuleSelector } from './selectors.js';
+import {
+  serializeMedium31,
+  mediumMatches31,
+  parseSupports31,
+  serializeSupports31,
+  supportsHold31,
+} from './conditions31.js';
 
 // WebIDL: an operation called with fewer arguments than it requires throws.
 function required(count, n, iface, method) {
@@ -763,7 +772,14 @@ function createRule(protos, record, sheet, parentRule) {
     rule = makeRule(protos, 'CSSMediaRule', sheet, parentRule, {});
     rule[S].media = mediaList(protos, prelude);
   } else if (at === 'supports' && body !== null) {
-    rule = makeRule(protos, 'CSSSupportsRule', sheet, parentRule, { conditionText: prelude });
+    // jsdom 31: a condition that does not parse drops the rule, one that
+    // does is written as it has it (conditions31.js).
+    const node = MEDIA31.has(protos.MediaList) ? parseSupports31(prelude) : null;
+    if (node === null && MEDIA31.has(protos.MediaList)) return null;
+    rule = makeRule(protos, 'CSSSupportsRule', sheet, parentRule, {
+      conditionText: node === null ? prelude : serializeSupports31(node),
+    });
+    rule[S].supports31 = node;
   } else if (at === 'container' && body !== null) {
     rule = makeRule(protos, 'CSSContainerRule', sheet, parentRule, containerParts(prelude));
   } else if (at === 'scope' && body !== null) {
@@ -1108,19 +1124,56 @@ function deleteRule(owner, index) {
 
 // --- media lists ----------------------------------------------------------------------
 
+// jsdom 31 (conditions31.js): its queries written and evaluated as Media
+// Queries 4 and 5 have them; sources keeps each one as given, which is
+// what is evaluated.
+const MEDIA31 = new WeakSet();
 function mediaList(protos, text) {
   const items = [];
   const list = liveList(protos.MediaList, () => items);
   list[S].list = items;
+  list[S].sources = MEDIA31.has(protos.MediaList) ? [] : null;
   setMediaText(list, text);
   return list;
 }
 
 function setMediaText(list, text) {
-  const items = list[S].list;
+  const { list: items, sources } = list[S];
   items.length = 0;
+  if (sources !== null) sources.length = 0;
   const value = String(text ?? '');
-  if (value.trim() !== '') for (const medium of splitMedia(value)) items.push(normalizeMedium(medium));
+  if (value.trim() === '') return;
+  for (const medium of splitMedia(value)) {
+    if (sources === null) items.push(normalizeMedium(medium));
+    else {
+      items.push(serializeMedium31(medium.trim()));
+      sources.push(medium.trim());
+    }
+  }
+}
+
+// Whether a supports rule's condition holds (jsdom 31: conditions31.js).
+export function supportsMatches(rule) {
+  const s = rule[S];
+  if (s.supports31 === null || s.supports31 === undefined) return supportsRuleMatches(s.conditionText);
+  return supportsHold31(s.supports31, supportsDeclarationOf(s.protos), selectorKnown);
+}
+function selectorKnown(text) {
+  try {
+    compileRuleSelector(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Whether a media list matches: as jsdom 31 evaluates queries; before,
+// as jsdom 29 and 30 do (no media features: an empty list, all or screen).
+export function mediaMatches(list) {
+  const { list: items, sources } = list[S];
+  if (items.length === 0) return true;
+  if (sources !== null) return sources.some(mediumMatches31);
+  return items.includes('all') || items.includes('screen');
 }
 
 // --- style sheets -----------------------------------------------------------------------
@@ -1224,6 +1277,16 @@ export function styleElementSheet(el) {
     });
     s.sheetText = text;
     s.sheetRev = s.rev;
+    s.sheetMedia = s.attrs.get('media') ?? '';
+  } else if (s.sheet[S].media[S].sources !== null) {
+    // jsdom 31 (black box, 31.0.1): a media attribute set later changes
+    // the sheet's media in place (its title stays).
+    const media = s.attrs.get('media') ?? '';
+    if (s.sheetMedia !== media) {
+      setMediaText(s.sheet[S].media, media);
+      s.sheetMedia = media;
+      cssomChanges.rev++;
+    }
   }
   return s.sheet;
 }
@@ -1657,8 +1720,7 @@ export const CSSOM_INTERFACES = [
       mediaMember,
       {
         get matches() {
-          const list = state(this).media[S].list;
-          return list.length === 0 || list.includes('all') || list.includes('screen');
+          return mediaMatches(state(this).media);
         },
       },
     ],
@@ -1673,7 +1735,7 @@ export const CSSOM_INTERFACES = [
     parent: 'CSSConditionRule',
     members: {
       get matches() {
-        return supportsRuleMatches(state(this).conditionText);
+        return supportsMatches(this);
       },
     },
   },
@@ -1977,6 +2039,7 @@ export const CSSOM_INTERFACES = [
     // Not iterable before jsdom 29 (black box 20.0.3 to 28.1.0: no @@iterator).
     compat(proto, { jsdom }) {
       if (jsdom < 29) delete proto[Symbol.iterator];
+      if (jsdom >= 31) MEDIA31.add(proto);
     },
     members: {
       get mediaText() {
@@ -2002,9 +2065,11 @@ export const CSSOM_INTERFACES = [
         const text = String(medium);
         const queries = splitMedia(text);
         if (text.trim() === '' || queries.length !== 1) return;
-        const m = normalizeMedium(queries[0]);
+        const sources = state(this).sources;
+        const m = sources === null ? normalizeMedium(queries[0]) : serializeMedium31(queries[0].trim());
         if (!list.some((q) => mediumKey(q) === mediumKey(m))) {
           list.push(m);
+          sources?.push(queries[0].trim());
           cssomChanges.rev++;
         }
       },
@@ -2012,11 +2077,13 @@ export const CSSOM_INTERFACES = [
       deleteMedium(medium) {
         const list = state(this).list;
         required(arguments.length, 1, 'MediaList', 'deleteMedium');
-        const m = mediumKey(normalizeMedium(medium));
+        const sources = state(this).sources;
+        const m = mediumKey(sources === null ? normalizeMedium(medium) : serializeMedium31(String(medium).trim()));
         let removed = false;
         for (let i = list.length - 1; i >= 0; i--)
           if (mediumKey(list[i]) === m) {
             list.splice(i, 1);
+            sources?.splice(i, 1);
             removed = true;
           }
         if (!removed) throw domError(`Failed to delete '${medium}'.`, 'NotFoundError');
