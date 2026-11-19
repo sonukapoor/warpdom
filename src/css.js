@@ -4671,7 +4671,12 @@ function hasBadString(value) {
 // read-only ones (jsdom 30, WebIDL) put the object's elements in dictionary
 // mode, which made every style write ~15% slower.
 function defineIndex(style, i, name) {
-  style[i] = name;
+  // (a new index where the prototype has jsdom 31's indexed getters, which
+  // have no setter: defined, still writable, as above; jsdom 31's own are
+  // read-only, not modeled for that reason)
+  if (i >= styleState(style).indexed && INDEXED31.has(Object.getPrototypeOf(style)))
+    Object.defineProperty(style, i, { value: name, writable: true, enumerable: true, configurable: true });
+  else style[i] = name;
 }
 function reindex(style) {
   const s = styleState(style);
@@ -4776,6 +4781,33 @@ function serialize(decls, mode = 'spec') {
 // Computed values come from cascade.js, which registers itself here (it
 // imports the selector engine, which imports back into this module).
 export const computed = { value: null };
+// jsdom 31: a computed style's items (cascade.js names31).
+const computedNames = (s) => computed.names31(s.element);
+const computed31 = (s) => s.computed && s.element[S].doc[S].window[S].compat.computed31 === true;
+// The items as indexed properties too: getters on the prototype (made
+// once per window, at its first computed style), reading the element's
+// current names, which its cascaded values keep (a computed style is made
+// for each getComputedStyle() call and most never have their items read;
+// Array.prototype.values reads the length at each step). Own properties of
+// the declaration blocks sharing the prototype come first. Not modeled:
+// they are not the object's own (Object.keys() is empty), and items past
+// INDEXED31_COUNT.
+const INDEXED31 = new WeakSet();
+const INDEXED31_COUNT = 1024;
+function indexed31(proto) {
+  if (INDEXED31.has(proto)) return;
+  INDEXED31.add(proto);
+  for (let i = 0; i < INDEXED31_COUNT; i++)
+    Object.defineProperty(proto, i, {
+      get() {
+        const s = STYLE_SLOT.has(this) ? styleState(this) : undefined;
+        return s !== undefined && computed31(s) ? computedNames(s)[i] : undefined;
+      },
+      // (no setter: the items are read-only, an assignment throws in strict
+      // code and is ignored otherwise, as in jsdom 31)
+      configurable: true,
+    });
+}
 
 // Write the declarations back to the element's style attribute (CSSOM:
 // update style attribute, which sets the attribute: MutationObserver
@@ -4954,6 +4986,7 @@ export function cssNamespace(matchesSelector, declaration31 = null) {
 }
 
 export function computedStyle(element, proto) {
+  if (element[S].doc[S].window[S].compat.computed31) indexed31(proto);
   const style = Object.create(proto);
   initStyleState(style, {
     element,
@@ -4991,6 +5024,9 @@ function computedOverride(s, name) {
 }
 
 function writeComputed(s, name, value) {
+  // jsdom 31 (black box, 31.0.1): every write throws, the accessors' too
+  // (style.color = 'blue', cssFloat).
+  if (computed31(s)) readOnly();
   const raw = value === null ? '' : String(value).trim();
   if (mutableComputed(s)) {
     // As on el.style (black box, jsdom 20 to 28.0.0): an empty value removes
@@ -6207,7 +6243,11 @@ function pageDescriptors() {
 }
 
 // CSSStyleDeclaration's operations, shared by the interface's variants.
-const itemOf = (style, index) => [...styleState(style).decls.keys()][index >>> 0] ?? '';
+const itemOf = (style, index) => {
+  const s = styleState(style);
+  if (computed31(s)) return computedNames(s)[index >>> 0] ?? '';
+  return [...s.decls.keys()][index >>> 0] ?? '';
+};
 function priorityOf(style, name) {
   const decls = styleState(style).decls;
   const key = propertyName(name);
@@ -6353,7 +6393,9 @@ export const CSS_INTERFACES = [
         sync(this);
       },
       get length() {
-        return styleState(this).decls.size;
+        const s = styleState(this);
+        if (computed31(s)) return computedNames(s).length;
+        return s.decls.size;
       },
       get parentRule() {
         return styleState(this).parentRule ?? null;

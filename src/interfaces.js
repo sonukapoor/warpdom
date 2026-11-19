@@ -577,6 +577,10 @@ function attachShadow(element, init) {
     clonable: !!init.clonable,
   });
   es.shadowRoot = shadow;
+  // jsdom 31: the host's children leave the rendered tree until slotted
+  // (cascade.js rendered31), so computed styles kept for them are dropped.
+  const ds = es.doc[S];
+  if (ds.window?.[S].compat.computed31) ds.treeRev = (ds.treeRev ?? 0) + 1;
   return shadow;
 }
 
