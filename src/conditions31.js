@@ -903,7 +903,7 @@ function topLevelSemicolon(text) {
 
 // selector(): the pseudo-elements jsdom 31 knows (black box, 31.0.1;
 // ::-webkit-scrollbar, ::cue and made-up names are not).
-const PSEUDO_ELEMENTS = new Set([
+export const PSEUDO_ELEMENTS = new Set([
   'before',
   'after',
   'first-line',
@@ -938,9 +938,12 @@ const STRING = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g;
 const PSEUDO_ELEMENT =
   /::((?:-?[a-zA-Z_]|\\(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))[ \t\n\r\f]?|\\[^\n0-9a-fA-F])(?:[a-zA-Z0-9_-]|\\(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))[ \t\n\r\f]?|\\[^\n0-9a-fA-F])*)(\()?/g;
 // A name with its escapes decoded (::b\65 fore is ::before).
+// An escape's code point: U+FFFD for zero, a surrogate or one past
+// U+10FFFF (CSS Syntax, consume an escaped code point).
+const escapedCodePoint = (cp) => (cp === 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff) ? 0xfffd : cp);
 export const decodeEscapes = (name) =>
-  name.replace(/\\([0-9a-fA-F]{1,6})[ \t\n\r\f]?|\\(.)/g, (m, hex, ch) =>
-    hex === undefined ? ch : String.fromCodePoint(Math.min(parseInt(hex, 16), 0x10ffff) || 0xfffd),
+  name.replace(/\\([0-9a-fA-F]{1,6})(?:\r\n|[ \t\n\r\f])?|\\(.)/g, (m, hex, ch) =>
+    hex === undefined ? ch : String.fromCodePoint(escapedCodePoint(parseInt(hex, 16))),
   );
 function knownPseudoElements(text) {
   // (::x in a string is no pseudo-element)

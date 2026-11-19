@@ -22,7 +22,7 @@ import {
 } from './internal.js';
 import { dispatch, reportError } from './events.js';
 import { computedStyle, cssNamespace, supportsDeclarationOf } from './css.js';
-import './cascade.js';
+import { pseudoName31, pseudoNode31 } from './cascade.js';
 import { compile } from './selectors.js';
 import { QuotaExceededError } from './storage.js';
 import { navigate, traverse } from './navigation.js';
@@ -461,6 +461,11 @@ export const WINDOW_MEMBERS = {
     const ws = state(this);
     if (!element?.[S]?.attrs)
       throw new TypeError("Failed to execute 'getComputedStyle' on 'Window': parameter 1 is not of type 'Element'.");
+    // jsdom 31 computes pseudo-elements (cascade.js pseudoNode31).
+    if (ws.compat.computed31) {
+      const name = pseudoElt == null ? '' : pseudoName31(String(pseudoElt));
+      return computedStyle(name === '' ? element : pseudoNode31(element, name, ws), ws.protos.CSSStyleProperties);
+    }
     if (pseudoElt != null && pseudoElt !== '') ws.notImplemented(pseudoElementMessage(ws.compat.jsdom));
     return computedStyle(element, ws.protos.CSSStyleProperties);
   },

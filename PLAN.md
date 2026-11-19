@@ -8009,3 +8009,150 @@ writable, as decided for speed above defineIndex (jsdom 31's are
 read-only too: tried and measured, style writes 22.4 ms to 38.7 ms, not
 modeled), a new one defined over the getters. attachShadow() takes the
 host's children out of the rendered tree (treeRev, jsdom 31 only).
+Merged as #331 (2026-11-19).
+
+## 2026-11-19: jsdom 31, CSS part E6: pseudo-elements (branch feat/269-jsdom31-pseudo, #269)
+
+jsdom 31's getComputedStyle(element, pseudo), black box on 31.0.1 (28
+cases; cascade.js pseudoName31, pseudoNode31):
+- The argument: '', no colon (before) or null is the element's own style;
+  ::name of the pseudo-elements jsdom 31 knows (case-insensitive; the
+  legacy :before, :after, :first-line and :first-letter too) its style;
+  any other (::foo, ::part(x), ::slotted(a), ::-webkit-scrollbar, a space
+  after it) an empty one.
+- A pseudo-element is computed as a child of its element: a node of no
+  namespace, never in the tree, whose parent is the element (inherited
+  values and inherit take the element's; a flex or grid element's
+  pseudo-elements are blockified), with its own rules: selectors ending
+  in a pseudo-element (single-colon legacy ones too) match its
+  originating element, a pseudo-element's specificity added
+  (index.pseudo); :hover and the others match as for the element.
+- content: normal is none for ::before and ::after, and for ::marker but
+  a list item's; attr() is a string of the attribute's value (the
+  originating element's; "" when missing, or the string fallback;
+  another fallback, or more than a name, makes it normal), the element's
+  own content too.
+- User agent rules: ::marker unicode-bidi isolate, tabular-nums, white-
+  space pre; dialog::backdrop rgba(0, 0, 0, 0.1); a file input's
+  ::file-selector-button align-content center.
+Not modeled: text-align (the computed shorthand, D4/D5).
+Review round (#332): a selector's pseudo-element is its last colon outside
+strings, brackets, parentheses and escapes (.x\:before is a class), any
+CSS whitespace or a combinator before it gives a descendant (p\n::before
+is p *::before); a pseudo-element follows its element into another
+document (its values cascaded again there: none in a document without a
+view); ruleIndex gives a pseudo-element its own index (with the
+document's metadata), so its flow (direction), custom property names
+and color-scheme read its own rules; content with attr() is written
+again token by token (strings double-quoted, one space between tokens;
+attr( in a string is text, a ")" fallback a string). Found, not changed
+(also on main): light-dark() in a computed color stays unresolved in the
+jsdom 31 profile, for any element (part D3b).
+Speed after that round (node 22.17.1, scratchpad e-bcas, 7 interleaved
+runs, medians): computed reads 359.7 ms on main, 367.4 ms on the branch
+in the jsdom 31 profile (+2%, near noise: ruleIndex's pseudo-element
+check and the adoption check in cascadeCache, one property read per
+cascade lookup each), jsdom 30 unchanged (265.5 vs 267.2 ms).
+Second round (#332, Copilot's previously missed items): a pseudo-element
+name's escapes are decoded (p::b\65 fore is ::before, in a rule and in
+getComputedStyle's argument; the rule's validity is checked with each
+pseudo-element written as its name, which replaces the legacy-colon
+rewrite); attr()'s text is written with css.js cssString (control
+characters as \a and the like); @scope's root and limits are checked
+against the originating element (the scope wrapper inside originating).
+Third round (#332): the whitespace ending a hex escape belongs to the
+name (#\78 ::before is #x::before; one more space is a descendant);
+:before(x) and the other legacy names with arguments are no
+pseudo-element (an empty style); a slash in content is a token of its
+own (attr(id)/attr(title) is "p" / "alt").
+Fourth round (#332): a pseudo-element's node is made with the window's
+own factory (window state createElementNS, raw), not
+document.createElementNS, which a test may replace (jsdom 31 computes
+the style with it replaced); the base selector is trimmed of CSS
+whitespace only (CodeRabbit). Found, not changed (also on main, part F):
+jsdom 31 keeps a leading U+00A0 in a rule's selectorText (" .t", a type
+selector that matches nothing) where warpdom's CSSOM trims it with
+String.trim, so  .t { color: blue } applies here in the jsdom 31
+profile (jsdom 30 applies it too).
+Fifth round (#332, Copilot's closer-look areas): a backslash before a
+newline in a string of content with attr() continues it (nothing);
+attr()'s name is any CSS identifier (non-ASCII, escapes decoded, a
+leading - or --), only ASCII letters lowercased on an HTML element, a
+namespace prefix (a|b) reading as missing and *|id making the value
+normal. Pseudo-elements of SVG, MathML and other namespaces already
+matched (a parity test now).
+Sixth round (#332): attr()'s identifier pattern read a hex escape's
+digits several ways, so a name of many \aaaaaa escapes that fails to
+match took exponential time (5x per escape); an escape is now six
+digits, or fewer with no digit after them (as in conditions31.js), and
+200 escapes take 0.2 ms. Found, not changed (also on main, value
+validation): jsdom 31 rejects a ! inside attr() when the value is set
+(content: attr(a!) keeps the previous value); warpdom accepts it.
+Seventh round (#332, Copilot's closer-look areas): an escape of zero, a
+surrogate or a code point past U+10FFFF is U+FFFD (conditions31.js
+decodeEscapes, shared with media queries and layer names; it capped at
+U+10FFFF and kept surrogates); ::file-selector-button's user agent rule
+holds for an HTML input only. Found, not changed (also on main, set-time
+serialization): jsdom 31 keeps attr(\110000) as written, warpdom writes
+attr(�).
+Eighth round (#332, Copilot's closer look: quadratic parsing): attr()'s
+fallback was matched by a lazy group before trailing whitespace, so a
+long string fallback took quadratic time (13, 52, 190 ms for 5, 10, 20
+thousand spaces); the regex now reads the name only and the fallback is
+found and trimmed by hand (0.2 ms for 100 thousand).
+Ninth round (#332): a CR LF after a hex escape is one newline (both end
+the escape; #\78 CR LF ::before is #x::before, not a descendant's).
+Found, not changed (CSSOM, part F): jsdom 31 writes that rule's
+selectorText as #x::before; warpdom keeps it as written.
+Tenth round (#332, Copilot's closer-look areas, 51 cases probed): a
+functional pseudo-element's argument is one CSS identifier, escapes
+decoded, its case kept (::highlight(X) is not ::highlight(x)); anything
+else (empty, two words, a number, a string, *) is none.
+::before::marker and ::after::marker are the marker of that
+pseudo-element (a node whose parent is the ::before or ::after node, so
+it inherits from it, with the element as its origin for selectors,
+attr() and the user agent rules); a rule with any other pseudo-element
+right after another (::marker::before) is dropped whole. Not modeled:
+jsdom 31's ::view-transition-group(*) rules apply to every name
+(warpdom's pseudo-element indexes are per name; merging wildcard rules
+would need their in-order records merged too, and tests rarely style
+view transitions). Found, not changed (CSSOM, part F): jsdom 31 drops
+those rules from cssRules when parsing; warpdom keeps them (its cascade
+ignores them).
+Eleventh round (#332): a rule's validity is checked with a placeholder
+for a pseudo-element's decoded argument (::highlight(\28) decodes to a
+parenthesis, which dropped the rule, its other selectors too); the
+decoded argument stays the index key.
+Twelfth round (#332): only before::marker and after::marker are chains
+(a set, CHAINS); a functional pseudo-element whose decoded argument
+holds :: (::highlight(a\:\:b)) inherits from its element, not from a
+made-up parent pseudo-element.
+Thirteenth round (#332, Copilot's closer-look areas): :before::marker
+and :after::marker (a legacy first part) are chains too; a CR LF after
+a hex escape is one whitespace in decodeEscapes (conditions31.js, shared
+with media queries and layer names) and in the identifier pattern for
+attr() names and pseudo-element arguments.
+Fourteenth round (#332, Copilot's closer look: escaped punctuation): a
+pseudo-element's name is read as identifiers first and their escapes
+decoded after (it decoded first, then parsed), so an escaped colon or
+parenthesis is part of the name (::before\::marker, ::highlight\28 x\29,
+::bef\:ore, ::\3a before are none, as in jsdom 31); a function left
+open at the end of getComputedStyle()'s argument is closed there
+(::highlight(x\29 is ::highlight(x\29), whose argument is x)). Found,
+not changed (also on main, jsdom 30 too: selector validation, 1.0
+range): warpdom accepts unknown pseudo-elements in selectors, so
+.a, #x::foo { } keeps .a and querySelectorAll('.a, #x::foo') matches;
+jsdom drops the rule and throws a SyntaxError.
+Fifteenth round (#332, Copilot's closer look: attr() fallbacks and
+adjacent strings): a missing attribute's fallback is content tokens in
+its place (several strings, adjacent ones too, a slash, counter() and
+other functions, nested attr(), quote keywords; an identifier or a
+length makes the value normal; an empty fallback after the comma is
+normal too). The content tokenizer is one pass over the value with an
+index (contentAt31, attrAt31): nested fallbacks are not sliced and
+read again (that was quadratic: 85 ms for 3000 deep), and a present
+attribute's fallback is skipped in one scan. Past 256 nested fallbacks
+the value is normal (not modeled: jsdom 31 overflows its stack from
+about a thousand). Found, not changed (also on main, set-time strings):
+jsdom 31 accepts a CR LF ending an escape inside a string
+("\61 CR LF b" is "ab"); warpdom rejects the declaration.

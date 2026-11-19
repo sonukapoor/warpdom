@@ -2309,7 +2309,7 @@ function stringsClosed(value) {
 }
 const STRING_ESCAPED = /["\\\0-\x1f\x7f]/;
 // CSSOM's serialize a string.
-function cssString(text) {
+export function cssString(text) {
   if (!STRING_ESCAPED.test(text)) return `"${text}"`;
   let out = '"';
   for (const c of text) {

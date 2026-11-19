@@ -54,7 +54,7 @@ import {
 import { substituteVars, tooManyTokens, trimEnds } from './var-substitution.js';
 import { uaDeclarations, uaDeclarations31, uaValue, uaRule, uaRuleOver, uaInOrder } from './ua-sheet.js';
 import { findSlot, assignedNodes } from './slots.js';
-import { decodeEscapes } from './conditions31.js';
+import { decodeEscapes, PSEUDO_ELEMENTS } from './conditions31.js';
 import { flowOf, isLogical, isLogicalGroup, partnerOf } from './logical.js';
 import {
   documentStyleSheets,
@@ -76,6 +76,7 @@ import {
   styleSurfaceOf,
   isLegacyMode,
   EXPANDED_SHORTHANDS,
+  cssString,
 } from './css.js';
 
 // --- the rule index ------------------------------------------------------------------
@@ -420,6 +421,379 @@ function limited(end, root, el, ctx) {
   return false;
 }
 
+// --- jsdom 31: pseudo-elements ------------------------------------------------------
+
+// A pseudo-element's name from getComputedStyle()'s argument (black box,
+// 31.0.1): '' for the element's own style ('', no colon, null), null for
+// one jsdom 31 does not know (its style is empty: ::foo, ::part(x),
+// ::slotted(a), a space after it); :before, :after, :first-line and
+// :first-letter as ::.
+const LEGACY_PSEUDO = new Set(['before', 'after', 'first-line', 'first-letter']);
+const NOT_COMPUTED = new Set(['part(', 'slotted(']);
+// ::before::marker and ::after::marker (:before::marker too): the marker
+// of a ::before or ::after (black box, 31.0.1; other chains are none)
+const CHAINS = new Set(['before::marker', 'after::marker']);
+export function pseudoName31(text) {
+  if (!text.startsWith(':')) return '';
+  // (read as identifiers first, then their escapes decoded: ::b\65 fore
+  // is ::before, but an escaped colon or parenthesis is part of the name,
+  // ::before\::marker or ::highlight\28 x\29 none)
+  const chained = CHAINED.exec(text);
+  if (chained !== null) {
+    const first = decodeEscapes(chained[1]).toLowerCase();
+    const key = `${first}::${decodeEscapes(chained[2]).toLowerCase()}`;
+    return CHAINS.has(key) ? key : null;
+  }
+  const m = PSEUDO_NAME.exec(text);
+  // (the legacy single-colon ones take no arguments: :before(x) is none)
+  if (m === null || (m[1] === ':' && m[3] !== undefined)) return null;
+  // (a function left open at the end is closed there, as CSS closes one at
+  // the end of its input: ::highlight(x\29 is ::highlight(x\29))
+  let args = m[3];
+  if (args !== undefined) {
+    args = args.slice(1);
+    if (args.endsWith(')') && !escapedAt(args, args.length - 1)) args = args.slice(0, -1);
+  }
+  const name = decodeEscapes(m[2]).toLowerCase();
+  if (m[3] === undefined)
+    return (m[1] === ':' ? LEGACY_PSEUDO.has(name) : PSEUDO_ELEMENTS.has(name) && !NOT_COMPUTED.has(name))
+      ? name
+      : null;
+  // (a functional one's argument: one identifier, escapes decoded, its
+  // case kept: ::highlight(X) is not ::highlight(x))
+  const key = `${name}(`;
+  if (!PSEUDO_ELEMENTS.has(key) || NOT_COMPUTED.has(key)) return null;
+  const arg = pseudoArgument(args);
+  return arg === null ? null : `${key}${arg})`;
+}
+function pseudoArgument(text) {
+  let start = 0;
+  let end = text.length;
+  while (start < end && isCssSpace(text.charCodeAt(start))) start++;
+  while (end > start && literalSpace(text, end - 1)) end--;
+  const arg = text.slice(start, end);
+  return PSEUDO_ARGUMENT.test(arg) ? decodeEscapes(arg) : null;
+}
+// A selector's pseudo-element at its end: { base (the originating
+// element's selector), name }, or null. Its colon is the last one outside
+// strings, brackets, parentheses and escapes (.x\\:before is a class);
+// CSS whitespace or a combinator before it makes the base any element
+// there (p ::before, p >\t::before).
+const escapedAt = (text, i) => {
+  let n = 0;
+  while (i - n > 0 && text[i - n - 1] === '\\') n++;
+  return n % 2 === 1;
+};
+// Whether the whitespace at i ends a hexadecimal escape (\\78 ), as part
+// of its identifier: only one, after one to six digits.
+const isHexDigit = (c) => (c >= 48 && c <= 57) || (c >= 65 && c <= 70) || (c >= 97 && c <= 102);
+function endsHexEscape(text, i) {
+  // (CR LF is one newline: its LF ends the escape when its CR does)
+  if (text[i] === '\n' && i > 0 && text[i - 1] === '\r') i--;
+  for (let k = 1; k <= 7 && i - k >= 0; k++) {
+    if (text[i - k] === '\\') return k > 1 && !escapedAt(text, i - k);
+    if (!isHexDigit(text.charCodeAt(i - k))) return false;
+  }
+  return false;
+}
+// CSS whitespace at i that is no part of an identifier.
+const literalSpace = (text, i) => isCssSpace(text.charCodeAt(i)) && !escapedAt(text, i) && !endsHexEscape(text, i);
+function stringEnd(text, i) {
+  const quote = text[i];
+  for (i++; i < text.length; i++) {
+    if (text[i] === '\\') i++;
+    else if (text[i] === quote) return i + 1;
+  }
+  return text.length;
+}
+function pseudoTail31(selector) {
+  let end = selector.length;
+  while (end > 0 && literalSpace(selector, end - 1)) end--;
+  let colon = -1;
+  let previous = -1;
+  let depth = 0;
+  for (let i = 0; i < end; i++) {
+    const c = selector[i];
+    if (c === '\\') i++;
+    else if (c === '"' || c === "'") i = stringEnd(selector, i) - 1;
+    else if (c === '(' || c === '[') depth++;
+    else if (c === ')' || c === ']') depth--;
+    else if (c === ':' && depth === 0) {
+      previous = colon;
+      colon = i;
+      if (selector[i + 1] === ':') i++;
+    }
+  }
+  if (colon < 0) return null;
+  let name = pseudoName31(selector.slice(colon, end));
+  if (name === null || name === '') return null;
+  // (a pseudo-element right after another: ::before::marker, or a rule
+  // that matches nothing, INVALID_TAIL)
+  if (previous >= 0) {
+    const before = pseudoName31(selector.slice(previous, colon));
+    if (before !== null && before !== '') {
+      const chained = pseudoName31(selector.slice(previous, end));
+      if (!CHAINS.has(chained)) return INVALID_TAIL;
+      name = chained;
+      colon = previous;
+    }
+  }
+  let stop = colon;
+  while (stop > 0 && literalSpace(selector, stop - 1)) stop--;
+  let start = 0;
+  while (start < stop && literalSpace(selector, start)) start++;
+  const base = selector.slice(start, stop);
+  const last = base.charCodeAt(base.length - 1);
+  const bare =
+    base === '' || stop < colon || ((last === 62 || last === 43 || last === 126) && !escapedAt(base, base.length - 1));
+  return { base: bare ? `${base} *`.trim() : base, name };
+}
+function pseudoTarget() {
+  const target = new Map();
+  target.inOrder = new InOrderIndex();
+  target.textDependent = false;
+  target.readsScheme = false;
+  target.scoped = false;
+  target.layerCount = 1;
+  target.pseudo = null;
+  target.noPseudo = null;
+  return target;
+}
+function pseudoIndex(index, name) {
+  index.pseudo ??= new Map();
+  let target = index.pseudo.get(name);
+  if (target === undefined) index.pseudo.set(name, (target = pseudoTarget()));
+  return target;
+}
+const INVALID_TAIL = { base: '', name: '' };
+// (a decoded argument, already checked, as a placeholder when the rule's
+// selector is checked: \28 decodes to a parenthesis)
+const DECODED_ARGUMENT = /\(.*\)$/s;
+const originating = (match) => (node, ctx) => match(node[S].origin, ctx);
+// A pseudo-element's own rules in the document's index (one without any
+// still one per index, so that its cascaded values go with the index's).
+function indexOf31(element, index) {
+  const target = index.pseudo?.get(element[S].pseudo);
+  if (target !== undefined) return target;
+  if (index.noPseudo == null) {
+    index.noPseudo = pseudoTarget();
+    index.noPseudo.textDependent = index.textDependent === true;
+    index.noPseudo.readsScheme = index.readsScheme === true;
+    index.noPseudo.layerCount = index.layerCount ?? 1;
+  }
+  return index.noPseudo;
+}
+// A pseudo-element follows its element into another document (adoptTree
+// moves the tree only): its values are cascaded again there.
+function followElement31(node) {
+  const s = node[S];
+  const doc = s.origin[S].doc;
+  if (s.doc !== doc) {
+    s.doc = doc;
+    s.cascaded = undefined;
+  }
+}
+
+// The node a pseudo-element's computed style reads (getComputedStyle(el,
+// '::before')): an element of no namespace, never in the tree, whose
+// parent is the originating element (it inherits from it, and its box is
+// its child's: a flex container's ::before is blockified); kept per
+// element and name. name null: one jsdom 31 does not know, never rendered.
+const PSEUDO_NS = 'urn:warpdom:pseudo-element';
+const pseudoNodes = new WeakMap();
+export function pseudoNode31(element, name, ws) {
+  let byName = pseudoNodes.get(element);
+  if (byName === undefined) pseudoNodes.set(element, (byName = new Map()));
+  const key = name ?? '\0unknown';
+  let node = byName.get(key);
+  if (node === undefined) {
+    // (the window's own factory: no method a test may have replaced)
+    node = ws.createElementNS(PSEUDO_NS, 'pseudo', element[S].doc, true);
+    // (a chained one's parent is its ::before or ::after, which it
+    // inherits from; its origin, the element, is what selectors match)
+    // (only the two chains: a functional one's decoded argument may hold
+    // :: too, ::highlight(a\:\:b))
+    const chain = CHAINS.has(key) ? key.indexOf('::') : -1;
+    node[S].parent = chain < 0 ? element : pseudoNode31(element, key.slice(0, chain), ws);
+    node[S].origin = element;
+    node[S].pseudo = key;
+    node[S].kind = chain < 0 ? key : key.slice(chain + 2);
+    byName.set(key, node);
+  }
+  return node;
+}
+// content's attr() as a string of the attribute's value, the originating
+// element's for a pseudo-element (black box, 31.0.1: attr(id) is "p", a
+// missing attribute "" or its string fallback; another fallback, or more
+// than a name, makes the value normal). The value is written again token
+// by token: strings double-quoted, one space between tokens; an attr( in
+// a string is text.
+const ATTR = /attr\(/i;
+// (a backslash before a newline continues the string: nothing)
+const stringText = (token) =>
+  decodeEscapes(
+    token
+      .slice(1, token.length > 1 && token.endsWith(token[0]) && !escapedAt(token, token.length - 1) ? -1 : undefined)
+      .replace(CONTINUATION, ''),
+  );
+const CONTINUATION = /\\(?:\r\n|[\n\r\f])/g;
+function attrContent31(node, value) {
+  if (!ATTR.test(value)) return value;
+  const element = node[S].pseudo === undefined ? node : node[S].origin;
+  const out = [];
+  return contentAt31(element, value, 0, out, 0) === value.length ? out.join(' ') : 'normal';
+}
+// The tokens of a content value with attr() from i, written into out, in
+// one pass over the value (nested fallbacks too); the index where they
+// end (at a fallback's closing parenthesis), or -1 when the value is
+// normal. fallback: how deep in missing attributes' fallbacks (0: none),
+// whose tokens take their place and must be content too (strings, a
+// slash, functions, quote keywords; not another identifier or a length:
+// black box, 31.0.1). Past MAX_FALLBACKS the value is normal (jsdom 31
+// overflows its stack there, from about a thousand).
+const MAX_FALLBACKS = 256;
+const QUOTE_KEYWORDS = new Set(['open-quote', 'close-quote', 'no-open-quote', 'no-close-quote']);
+const ATTR_OPEN = /attr\(/iy;
+function contentAt31(element, value, i, out, fallback) {
+  if (fallback > MAX_FALLBACKS) return -1;
+  while (i < value.length) {
+    const c = value[i];
+    if (isCssSpace(value.charCodeAt(i))) {
+      i++;
+      continue;
+    }
+    if (fallback && c === ')') return i;
+    if (c === '"' || c === "'") {
+      const end = stringEnd(value, i);
+      out.push(cssString(stringText(value.slice(i, end))));
+      i = end;
+      continue;
+    }
+    // (the slash before alternative text, a token of its own)
+    if (c === '/') {
+      out.push('/');
+      i++;
+      continue;
+    }
+    ATTR_OPEN.lastIndex = i;
+    if (ATTR_OPEN.test(value)) {
+      i = attrAt31(element, value, i + 5, out, fallback);
+      if (i < 0) return -1;
+      continue;
+    }
+    // (another token: to a space, string or slash, or the parenthesis
+    // closing it)
+    const j = tokenEnd(value, i);
+    if (j === i) return -1;
+    const token = value.slice(i, j);
+    if (fallback && !token.endsWith(')') && !QUOTE_KEYWORDS.has(token.toLowerCase())) return -1;
+    out.push(token);
+    i = j;
+  }
+  return fallback ? -1 : i;
+}
+function tokenEnd(value, i) {
+  let depth = 0;
+  for (; i < value.length; i++) {
+    const d = value[i];
+    if (d === '\\') i++;
+    else if (d === '"' || d === "'") {
+      if (depth === 0) return i;
+      i = stringEnd(value, i) - 1;
+    } else if (d === '(') depth++;
+    else if (d === ')') {
+      if (depth === 0) return i;
+      if (--depth === 0) return i + 1;
+    } else if (depth === 0 && (d === '/' || isCssSpace(value.charCodeAt(i)))) return i;
+  }
+  return i;
+}
+// The index of the parenthesis closing a function whose arguments go on
+// from i (strings and nested functions skipped), or the value's length.
+function closingParenthesis(value, i) {
+  let depth = 0;
+  for (; i < value.length; i++) {
+    const d = value[i];
+    if (d === '\\') i++;
+    else if (d === '"' || d === "'") i = stringEnd(value, i) - 1;
+    else if (d === '(') depth++;
+    else if (d === ')' && depth-- === 0) return i;
+  }
+  return i;
+}
+// An attr() whose arguments start at i: its value as a string into out,
+// or its fallback's tokens; the index after its closing parenthesis, or
+// -1. (A present attribute's fallback is skipped in one scan.)
+function attrAt31(element, value, i, out, depth) {
+  ATTR_NAME.lastIndex = i;
+  const m = ATTR_NAME.exec(value);
+  if (m === null) return -1;
+  let j = i + m[0].length;
+  if (value[j] !== ')' && value[j] !== ',') return -1;
+  const es = element[S];
+  const name = decodeEscapes(m[2]);
+  const text = m[1] !== undefined ? undefined : es.attrs.get(es.ns === HTML_NS ? asciiLower(name) : name);
+  if (text !== undefined) {
+    out.push(cssString(text));
+    if (value[j] === ',') j = closingParenthesis(value, j + 1);
+    return value[j] === ')' ? j + 1 : -1;
+  }
+  if (value[j] === ')') {
+    out.push('""');
+    return j + 1;
+  }
+  // (an empty fallback after the comma: normal)
+  const before = out.length;
+  j = contentAt31(element, value, j + 1, out, depth + 1);
+  return j < 0 || value[j] !== ')' || out.length === before ? -1 : j + 1;
+}
+// attr()'s arguments: a CSS identifier (non-ASCII, escapes, a leading -
+// or --), after an optional namespace prefix, then a fallback. Black box,
+// 31.0.1: a prefixed name (a|b) reads as missing, *|id makes the value
+// normal; only ASCII letters are lowercased on an HTML element.
+// (a hex escape read one way only: six digits, or fewer and no digit
+// after them, so that no run of digits splits into several escapes)
+const ESCAPE = String.raw`\\(?:(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))(?:\r\n|[ \t\n\r\f])?|[^\n\r\f0-9a-fA-F])`;
+const IDENT = String.raw`(?:--|-?(?:[A-Za-z_]|[^\x00-\x7f]|${ESCAPE}))(?:[\w-]|[^\x00-\x7f]|${ESCAPE})*`;
+// (the name only: the fallback after it is found by hand, so that a long
+// one is read in one pass)
+const ATTR_NAME = new RegExp(String.raw`[ \t\n\r\f]*(?:(${IDENT})\|)?(${IDENT})[ \t\n\r\f]*`, 'sy');
+const PSEUDO_ARGUMENT = new RegExp(String.raw`^${IDENT}$`, 's');
+const PSEUDO_NAME = new RegExp(String.raw`^(::?)(${IDENT})(\(.*)?$`, 's');
+const CHAINED = new RegExp(String.raw`^::?(${IDENT})::(${IDENT})$`, 's');
+const asciiLower = (text) => text.replace(/[A-Z]+/g, (m) => m.toLowerCase());
+function pseudoContent31(node, value) {
+  if (value !== 'normal') return value;
+  const pseudo = node[S].kind;
+  if (pseudo === 'before' || pseudo === 'after') return 'none';
+  if (pseudo === 'marker' && !computedValue(node[S].parent, 'display').endsWith('list-item')) return 'none';
+  return value;
+}
+// The user agent sheet's rules for pseudo-elements (black box, 31.0.1).
+function pseudoUserAgent31(node, name) {
+  const pseudo = node[S].kind;
+  const parent = node[S].origin[S];
+  if (pseudo === 'marker') return MARKER_UA[name];
+  if (pseudo === 'backdrop' && name === 'background-color' && parent.tag === 'dialog' && parent.ns === HTML_NS)
+    return 'rgba(0, 0, 0, 0.1)';
+  if (
+    pseudo === 'file-selector-button' &&
+    name === 'align-content' &&
+    parent.tag === 'input' &&
+    parent.ns === HTML_NS &&
+    parent.attrs.get('type')?.toLowerCase() === 'file'
+  )
+    return 'center';
+  return undefined;
+}
+const MARKER_UA = {
+  __proto__: null,
+  'unicode-bidi': 'isolate',
+  'font-variant-numeric': 'tabular-nums',
+  'white-space-collapse': 'preserve',
+  'text-wrap-mode': 'nowrap',
+};
+
 // lists: what was read of rule lists a test can change without the CSSOM
 // knowing (ruleListSnapshot).
 function buildIndex(sheets, mode, compat, lists, doc = null) {
@@ -429,25 +803,62 @@ function buildIndex(sheets, mode, compat, lists, doc = null) {
   index.readsScheme = false;
   index.scoped = false;
   index.layerCount = 1;
+  index.pseudo = null;
+  index.noPseudo = null;
   const counter = { n: 0 };
   // jsdom 31: the layer and @scope the walk is in (layers: CSS Cascade 5;
   // layer 0 is the unlayered one).
   const layers = [newLayer(null)];
   let layer = 0,
     scope = null;
-  const addRule = (rule) => {
+  // A rule's declarations for the selectors that compile; target: the
+  // index (or a pseudo-element's, pseudoIndex).
+  const addSelectors = (text, rule, target, pseudo) => {
     let entries;
     try {
-      entries = compileRuleSelector(scope === null ? rule[S].selectorText : scopedSelector(rule[S].selectorText));
+      entries = compileRuleSelector(scope === null ? text : scopedSelector(text));
     } catch {
-      return;
+      return false;
     }
     for (const entry of entries) if (entry.text) index.textDependent = true;
     if (scope !== null) {
-      index.scoped = true;
+      target.scoped = true;
       entries = entries.map((entry) => ({ ...entry, match: scopedMatch(entry.match, scope) }));
     }
-    addDeclarations(index, rule[S].style[S].decls, entries, counter, compat, layer, scope);
+    // (a pseudo-element's selector matches its originating element, scope
+    // limits too, with a pseudo-element's specificity added)
+    if (pseudo) entries = entries.map((e) => ({ ...e, match: originating(e.match), specificity: e.specificity + 1 }));
+    addDeclarations(target, rule[S].style[S].decls, entries, counter, compat, layer, scope);
+    return true;
+  };
+  const addRule = (rule) => {
+    const text = rule[S].selectorText;
+    // jsdom 31: selectors ending in a pseudo-element apply to it, through
+    // its own index (index.pseudo; black box, 31.0.1)
+    if (compat?.computed31 && text.includes(':')) {
+      // (the list valid as a whole, each pseudo-element read as its name:
+      // :before and the other legacy ones, ::b\65 fore)
+      const selectors = splitSelectorList(text);
+      const tails = selectors.map(pseudoTail31);
+      if (tails.includes(INVALID_TAIL)) return;
+      const valid = selectors.map((sel, i) =>
+        tails[i] === null ? sel : `${tails[i].base}::${tails[i].name.replace(DECODED_ARGUMENT, '(x)')}`,
+      );
+      try {
+        compileRuleSelector(scope === null ? valid.join(',') : scopedSelector(valid.join(',')));
+      } catch {
+        return;
+      }
+      const plain = [];
+      for (let i = 0; i < selectors.length; i++) {
+        const tail = tails[i];
+        if (tail === null) plain.push(selectors[i]);
+        else addSelectors(tail.base, rule, pseudoIndex(index, tail.name), true);
+      }
+      if (plain.length) addSelectors(plain.join(','), rule, index, false);
+      return;
+    }
+    addSelectors(text, rule, index, false);
   };
   // jsdom 31 (black box, 31.0.1): a sheet whose media do not match is not
   // applied (<style media="print">), and grouping rules nest: @media
@@ -519,11 +930,16 @@ function buildIndex(sheets, mode, compat, lists, doc = null) {
     // specificity when the cascade reads the lists: cascade31)
     const keys = layerKeys(layers);
     index.layerCount = layers.length;
-    for (const lists of index.values()) {
-      for (const e of lists.normal) e.layer = keys.normal[e.layer];
-      for (const e of lists.important) e.layer = keys.important[e.layer];
-      lists.normal.sort(byLayerThenSpecificity);
-      lists.important.sort(byLayerThenSpecificity);
+    for (const target of [index, ...(index.pseudo?.values() ?? [])]) {
+      target.layerCount = layers.length;
+      target.textDependent = index.textDependent;
+      target.readsScheme = index.readsScheme;
+      for (const lists of target.values()) {
+        for (const e of lists.normal) e.layer = keys.normal[e.layer];
+        for (const e of lists.important) e.layer = keys.important[e.layer];
+        lists.normal.sort(byLayerThenSpecificity);
+        lists.important.sort(byLayerThenSpecificity);
+      }
     }
     return index;
   }
@@ -548,6 +964,11 @@ const EMPTY = new Map();
 // calls this again, and a module-level one would keep its document (and
 // window) alive after the window is gone (#165).
 function ruleIndex(element) {
+  if (element[S].pseudo === undefined) return documentIndex(element);
+  followElement31(element);
+  return indexOf31(element, documentIndex(element));
+}
+function documentIndex(element) {
   const es = element[S];
   const ds = es.doc[S];
   const cached = ds.cascade;
@@ -1048,6 +1469,7 @@ function cascaded(element, name) {
 // when they are no longer).
 function cascadeCache(element) {
   const es = element[S];
+  if (es.pseudo !== undefined) followElement31(element);
   const ds = es.doc[S];
   let cache = es.cascaded;
   // A disconnected element's values stay as they were, and from jsdom 21
@@ -1364,6 +1786,10 @@ const REVERT_LAYER = /^\s*revert-layer\s*$/i;
 // The user agent sheet's normal declaration (also where the page's
 // declaration that won is revert).
 function userAgent31(element, name, window, ua = uaDeclarations31(window, name, cascadeExpand, element)) {
+  if (element[S].pseudo !== undefined) {
+    const value = pseudoUserAgent31(element, name);
+    return value === undefined ? won31(0, 0, 0, Infinity, 0, undefined) : won31(1, 0, 0, Infinity, 0, value);
+  }
   const rule = ua.normal === null ? undefined : uaRule(ua.normal, element);
   if (rule !== undefined) return won31(1, 0, rule.specificity, Infinity, rule.order, rule.value);
   return won31(0, 0, 0, Infinity, 0, undefined);
@@ -2450,6 +2876,12 @@ export function computedValue(element, property) {
   }
   if (name === 'display' && compat.computed31)
     return blockified31(element, longhandValue(element, name, data, custom, compat, value));
+  // (a pseudo-element's content: normal is none for ::before and ::after,
+  // and for a ::marker but a list item's, black box 31.0.1)
+  if (name === 'content' && compat.computed31) {
+    const content = attrContent31(element, longhandValue(element, name, data, custom, compat, value));
+    return element[S].pseudo === undefined ? content : pseudoContent31(element, content);
+  }
   return longhandValue(element, name, data, custom, compat, value);
 }
 
@@ -2501,6 +2933,7 @@ const MAY_CONTAIN = /flex|grid|contents|inherit|unset|revert|var\(|\\/i;
 // slot inline).
 function boxParent31(element) {
   const p = element[S].parent;
+  if (element[S].pseudo !== undefined) return p;
   if (p === null) return null;
   if (p[S].type === ELEMENT_NODE) return (p[S].shadowRoot && findSlot(element)) || p;
   return p[S].shadow === true ? p[S].host : null;
@@ -2913,8 +3346,15 @@ function rendered31(element) {
   return cache.rendered;
 }
 function inRenderedTree(element) {
+  if (element[S].pseudo !== undefined) followElement31(element);
   if (element[S].doc[S].noView === true) return false;
-  for (let n = element; ;) {
+  let n = element;
+  // (a pseudo-element: its element's; one jsdom 31 does not know, none)
+  if (n[S].pseudo !== undefined) {
+    if (n[S].pseudo === '\0unknown') return false;
+    n = n[S].origin;
+  }
+  for (;;) {
     const p = n[S].parent;
     if (p === null) return false;
     const ps = p[S];
