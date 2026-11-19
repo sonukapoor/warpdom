@@ -559,6 +559,9 @@ function pseudoIndex(index, name) {
   return target;
 }
 const INVALID_TAIL = { base: '', name: '' };
+// (a decoded argument, already checked, as a placeholder when the rule's
+// selector is checked: \28 decodes to a parenthesis)
+const DECODED_ARGUMENT = /\(.*\)$/s;
 const originating = (match) => (node, ctx) => match(node[S].origin, ctx);
 // A pseudo-element's own rules in the document's index (one without any
 // still one per index, so that its cascaded values go with the index's).
@@ -787,7 +790,9 @@ function buildIndex(sheets, mode, compat, lists, doc = null) {
       const selectors = splitSelectorList(text);
       const tails = selectors.map(pseudoTail31);
       if (tails.includes(INVALID_TAIL)) return;
-      const valid = selectors.map((sel, i) => (tails[i] === null ? sel : `${tails[i].base}::${tails[i].name}`));
+      const valid = selectors.map((sel, i) =>
+        tails[i] === null ? sel : `${tails[i].base}::${tails[i].name.replace(DECODED_ARGUMENT, '(x)')}`,
+      );
       try {
         compileRuleSelector(scope === null ? valid.join(',') : scopedSelector(valid.join(',')));
       } catch {

@@ -8119,3 +8119,7 @@ would need their in-order records merged too, and tests rarely style
 view transitions). Found, not changed (CSSOM, part F): jsdom 31 drops
 those rules from cssRules when parsing; warpdom keeps them (its cascade
 ignores them).
+Eleventh round (#332): a rule's validity is checked with a placeholder
+for a pseudo-element's decoded argument (::highlight(\28) decodes to a
+parenthesis, which dropped the rule, its other selectors too); the
+decoded argument stays the index key.

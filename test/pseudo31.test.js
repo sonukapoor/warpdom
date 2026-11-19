@@ -542,3 +542,29 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  "jsdom 31: an escaped parenthesis, comma or backslash in a pseudo-element's argument keeps the rule, its other selectors too",
+  (w) => {
+    const d = w.document;
+    d.head.innerHTML =
+      '<style>.o, #x::highlight(\\28) { color: red; --a: 1 } .p, #x::highlight(a\\,b) { color: blue }' +
+      ' .q, #x::highlight(\\29 x) { color: green } .r, #x::highlight(\\5c) { color: lime }</style>';
+    d.body.innerHTML =
+      '<div id="x" class="o"></div><i id="p" class="p"></i><b id="q" class="q"></b><u id="r" class="r"></u>';
+    const x = d.getElementById('x');
+    const g = (el, pseudo) => w.getComputedStyle(el, pseudo).color;
+    return [
+      g(x),
+      g(d.getElementById('p')),
+      g(d.getElementById('q')),
+      g(d.getElementById('r')),
+      g(x, '::highlight(\\28)'),
+      w.getComputedStyle(x, '::highlight(\\28)').getPropertyValue('--a'),
+      g(x, '::highlight(a\\,b)'),
+      g(x, '::highlight(\\29 x)'),
+      g(x, '::highlight(\\5c)'),
+    ];
+  },
+  { jsdom: 31 },
+);
