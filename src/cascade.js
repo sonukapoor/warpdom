@@ -460,6 +460,8 @@ const escapedAt = (text, i) => {
 // of its identifier: only one, after one to six digits.
 const isHexDigit = (c) => (c >= 48 && c <= 57) || (c >= 65 && c <= 70) || (c >= 97 && c <= 102);
 function endsHexEscape(text, i) {
+  // (CR LF is one newline: its LF ends the escape when its CR does)
+  if (text[i] === '\n' && i > 0 && text[i - 1] === '\r') i--;
   for (let k = 1; k <= 7 && i - k >= 0; k++) {
     if (text[i - k] === '\\') return k > 1 && !escapedAt(text, i - k);
     if (!isHexDigit(text.charCodeAt(i - k))) return false;

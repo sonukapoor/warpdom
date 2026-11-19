@@ -8100,3 +8100,7 @@ fallback was matched by a lazy group before trailing whitespace, so a
 long string fallback took quadratic time (13, 52, 190 ms for 5, 10, 20
 thousand spaces); the regex now reads the name only and the fallback is
 found and trimmed by hand (0.2 ms for 100 thousand).
+Ninth round (#332): a CR LF after a hex escape is one newline (both end
+the escape; #\78 CR LF ::before is #x::before, not a descendant's).
+Found, not changed (CSSOM, part F): jsdom 31 writes that rule's
+selectorText as #x::before; warpdom keeps it as written.

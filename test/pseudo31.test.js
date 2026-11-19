@@ -445,3 +445,28 @@ test('jsdom 31: a long attr() fallback is read in linear time', () => {
   assert.equal(w.getComputedStyle(p).content.length, 100002);
   assert.ok(performance.now() - start < 1000);
 });
+
+parity(
+  'jsdom 31: a CR LF ending a hex escape before a pseudo-element is one newline',
+  (w) => {
+    const d = w.document;
+    const style = d.createElement('style');
+    style.textContent =
+      '#\\78\r\n::before { color: red } #\\78\r\n\r\n::after { color: blue } #\\78\r::marker { color: green }';
+    d.head.appendChild(style);
+    d.body.innerHTML = '<div id="x"><span id="s"></span></div>';
+    const sheet = d.styleSheets[0];
+    sheet.insertRule('#\\78\r\n::first-line { color: lime }', sheet.cssRules.length);
+    const g = (id, pseudo) => w.getComputedStyle(d.getElementById(id), pseudo).color;
+    return [
+      g('x', '::before'),
+      g('s', '::before'),
+      g('x', '::after'),
+      g('s', '::after'),
+      g('x', '::marker'),
+      g('x', '::first-line'),
+      g('s', '::first-line'),
+    ];
+  },
+  { jsdom: 31 },
+);
