@@ -8002,3 +8002,10 @@ is assigned to, whose own place decides (a slot among a nested host's
 unassigned children is not rendered, nor what is assigned to it).
 Third round: a slot's own children are its fallback, not in the rendered
 tree while nodes (text too) are assigned to it.
+Closer look after the third round: a computed style's indexed items are
+read-only (the prototype getters have no setter: cs[0] = 'x' throws in
+strict code, as in jsdom 31); element styles' own indexed properties stay
+writable, as decided for speed above defineIndex (jsdom 31's are
+read-only too: tried and measured, style writes 22.4 ms to 38.7 ms, not
+modeled), a new one defined over the getters. attachShadow() takes the
+host's children out of the rendered tree (treeRev, jsdom 31 only).

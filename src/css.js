@@ -4671,9 +4671,10 @@ function hasBadString(value) {
 // read-only ones (jsdom 30, WebIDL) put the object's elements in dictionary
 // mode, which made every style write ~15% slower.
 function defineIndex(style, i, name) {
-  // (jsdom 31: its prototype has indexed getters for computed styles,
-  // which an assignment would hit)
-  if (INDEXED31.has(Object.getPrototypeOf(style)))
+  // (a new index where the prototype has jsdom 31's indexed getters, which
+  // have no setter: defined, still writable, as above; jsdom 31's own are
+  // read-only, not modeled for that reason)
+  if (i >= styleState(style).indexed && INDEXED31.has(Object.getPrototypeOf(style)))
     Object.defineProperty(style, i, { value: name, writable: true, enumerable: true, configurable: true });
   else style[i] = name;
 }
@@ -4802,9 +4803,8 @@ function indexed31(proto) {
         const s = STYLE_SLOT.has(this) ? styleState(this) : undefined;
         return s !== undefined && computed31(s) ? computedNames(s)[i] : undefined;
       },
-      set(value) {
-        Object.defineProperty(this, i, { value, writable: true, enumerable: true, configurable: true });
-      },
+      // (no setter: the items are read-only, an assignment throws in strict
+      // code and is ignored otherwise, as in jsdom 31)
       configurable: true,
     });
 }

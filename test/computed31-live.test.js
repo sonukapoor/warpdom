@@ -176,3 +176,37 @@ parity(
   },
   { jsdom: 31 },
 );
+
+// A closer look (#331): indexed writes; a shadow root attached later.
+parity(
+  "jsdom 31: a computed style's indexed items are read-only; attaching a shadow root takes the host's children out",
+  (w) => {
+    'use strict';
+    const d = w.document;
+    d.body.innerHTML = '<div id="t" style="color: red"><span id="s"></span></div>';
+    const t = d.getElementById('t');
+    const cs = w.getComputedStyle(t);
+    let write;
+    try {
+      cs[0] = 'x';
+      write = 'ok';
+    } catch (error) {
+      write = error.name;
+    }
+    const out = [write, cs[0]];
+    // (an element style after the computed one's getters exist)
+    t.style.marginTop = '1px';
+    t.style.width = '2px';
+    t.style.removeProperty('color');
+    t.style.height = '3px';
+    out.push(t.style[0], t.style[1], t.style[2], t.style[3], t.style.length);
+    const span = d.getElementById('s');
+    out.push(w.getComputedStyle(span).display);
+    t.attachShadow({ mode: 'open' });
+    out.push(w.getComputedStyle(span).display, w.getComputedStyle(span).length);
+    t.shadowRoot.innerHTML = '<slot></slot>';
+    out.push(w.getComputedStyle(span).display);
+    return out;
+  },
+  { jsdom: 31 },
+);
