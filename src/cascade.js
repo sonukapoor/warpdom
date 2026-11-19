@@ -638,7 +638,9 @@ function attrContent31(node, value) {
 // or --), after an optional namespace prefix, then a fallback. Black box,
 // 31.0.1: a prefixed name (a|b) reads as missing, *|id makes the value
 // normal; only ASCII letters are lowercased on an HTML element.
-const ESCAPE = String.raw`\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f0-9a-fA-F])`;
+// (a hex escape read one way only: six digits, or fewer and no digit
+// after them, so that no run of digits splits into several escapes)
+const ESCAPE = String.raw`\\(?:(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))[ \t\n\r\f]?|[^\n\r\f0-9a-fA-F])`;
 const IDENT = String.raw`(?:--|-?(?:[A-Za-z_]|[^\x00-\x7f]|${ESCAPE}))(?:[\w-]|[^\x00-\x7f]|${ESCAPE})*`;
 const ATTR_ARGS = new RegExp(
   String.raw`^[ \t\n\r\f]*(?:(${IDENT})\|)?(${IDENT})[ \t\n\r\f]*(?:,[ \t\n\r\f]*(.*?))?[ \t\n\r\f]*$`,

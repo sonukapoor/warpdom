@@ -8081,3 +8081,10 @@ leading - or --), only ASCII letters lowercased on an HTML element, a
 namespace prefix (a|b) reading as missing and *|id making the value
 normal. Pseudo-elements of SVG, MathML and other namespaces already
 matched (a parity test now).
+Sixth round (#332): attr()'s identifier pattern read a hex escape's
+digits several ways, so a name of many \aaaaaa escapes that fails to
+match took exponential time (5x per escape); an escape is now six
+digits, or fewer with no digit after them (as in conditions31.js), and
+200 escapes take 0.2 ms. Found, not changed (also on main, value
+validation): jsdom 31 rejects a ! inside attr() when the value is set
+(content: attr(a!) keeps the previous value); warpdom accepts it.

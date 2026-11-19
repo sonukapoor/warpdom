@@ -369,3 +369,24 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  "jsdom 31: attr()'s name with many hex escapes",
+  (w) => {
+    const p = w.document.body.appendChild(w.document.createElement('p'));
+    return [`attr(\\31 ${'\\aaaaaa'.repeat(3)})`, `attr(\\31 ${'\\aaaaaa'.repeat(2)}\\aaaaaaa)`].map((content) => {
+      p.style.content = content;
+      return [p.style.content, w.getComputedStyle(p).content];
+    });
+  },
+  { jsdom: 31 },
+);
+
+test("jsdom 31: an attr() name of many hex escapes is read in linear time (each escape's digits read one way)", () => {
+  const w = createWindow({ jsdom: '31.0.1' });
+  const p = w.document.body.appendChild(w.document.createElement('p'));
+  p.style.content = `attr(\\31 ${'\\aaaaaa'.repeat(40)}!)`;
+  const start = performance.now();
+  assert.equal(w.getComputedStyle(p).content, 'normal');
+  assert.ok(performance.now() - start < 1000);
+});
