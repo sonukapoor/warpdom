@@ -8095,3 +8095,8 @@ U+10FFFF and kept surrogates); ::file-selector-button's user agent rule
 holds for an HTML input only. Found, not changed (also on main, set-time
 serialization): jsdom 31 keeps attr(\110000) as written, warpdom writes
 attr(�).
+Eighth round (#332, Copilot's closer look: quadratic parsing): attr()'s
+fallback was matched by a lazy group before trailing whitespace, so a
+long string fallback took quadratic time (13, 52, 190 ms for 5, 10, 20
+thousand spaces); the regex now reads the name only and the fallback is
+found and trimmed by hand (0.2 ms for 100 thousand).

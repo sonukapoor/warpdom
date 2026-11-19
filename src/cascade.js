@@ -642,19 +642,24 @@ function attrContent31(node, value) {
 // after them, so that no run of digits splits into several escapes)
 const ESCAPE = String.raw`\\(?:(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))[ \t\n\r\f]?|[^\n\r\f0-9a-fA-F])`;
 const IDENT = String.raw`(?:--|-?(?:[A-Za-z_]|[^\x00-\x7f]|${ESCAPE}))(?:[\w-]|[^\x00-\x7f]|${ESCAPE})*`;
-const ATTR_ARGS = new RegExp(
-  String.raw`^[ \t\n\r\f]*(?:(${IDENT})\|)?(${IDENT})[ \t\n\r\f]*(?:,[ \t\n\r\f]*(.*?))?[ \t\n\r\f]*$`,
-  's',
-);
+// (the name only: the fallback after it is found by hand, so that a long
+// one is read in one pass)
+const ATTR_NAME = new RegExp(String.raw`^[ \t\n\r\f]*(?:(${IDENT})\|)?(${IDENT})[ \t\n\r\f]*`, 's');
 const asciiLower = (text) => text.replace(/[A-Z]+/g, (m) => m.toLowerCase());
 function attrText31(element, args) {
-  const m = ATTR_ARGS.exec(args);
+  const m = ATTR_NAME.exec(args);
   if (m === null) return null;
+  const rest = m[0].length;
+  if (rest < args.length && args[rest] !== ',') return null;
   const es = element[S];
   const name = decodeEscapes(m[2]);
   const text = m[1] !== undefined ? undefined : es.attrs.get(es.ns === HTML_NS ? asciiLower(name) : name);
   if (text !== undefined) return text;
-  const fallback = m[3] ?? '';
+  let start = rest + 1;
+  let end = args.length;
+  while (start < end && isCssSpace(args.charCodeAt(start))) start++;
+  while (end > start && isCssSpace(args.charCodeAt(end - 1))) end--;
+  const fallback = start < end ? args.slice(start, end) : '';
   if (fallback === '') return '';
   if ((fallback[0] === '"' || fallback[0] === "'") && stringEnd(fallback, 0) === fallback.length)
     return stringText(fallback);

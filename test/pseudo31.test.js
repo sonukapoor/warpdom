@@ -436,3 +436,12 @@ parity(
   },
   { jsdom: 31 },
 );
+
+test('jsdom 31: a long attr() fallback is read in linear time', () => {
+  const w = createWindow({ jsdom: '31.0.1' });
+  const p = w.document.body.appendChild(w.document.createElement('p'));
+  p.style.content = `attr(x, "${' '.repeat(100000)}" )`;
+  const start = performance.now();
+  assert.equal(w.getComputedStyle(p).content.length, 100002);
+  assert.ok(performance.now() - start < 1000);
+});
