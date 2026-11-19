@@ -108,3 +108,82 @@ test("jsdom 30 gives a pseudo-element the element's own style", () => {
   const e = w.document.body.appendChild(w.document.createElement('div'));
   assert.equal(w.getComputedStyle(e, '::before').display, 'block');
 });
+
+parity(
+  "jsdom 31: a selector's pseudo-element is found by tokens: an escaped colon is a class, any whitespace a descendant",
+  (w) => {
+    const d = w.document;
+    d.head.innerHTML =
+      '<style>.x\\:before { color: red } p\n::before { color: lime } p >\t::before { color: blue }</style>';
+    d.body.innerHTML = '<div class="x:before" id="t"></div><p id="p"><span id="s"></span></p>';
+    const g = (id, pseudo) => w.getComputedStyle(d.getElementById(id), pseudo).color;
+    return [g('t'), g('p', '::before'), g('s', '::before'), g('s')];
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  "jsdom 31: a pseudo-element's style follows its element into another document and back",
+  (w) => {
+    const d = w.document;
+    d.head.innerHTML = '<style>p::before { color: red }</style>';
+    d.body.innerHTML = '<p id="p"></p>';
+    const p = d.getElementById('p');
+    const cs = w.getComputedStyle(p, '::before');
+    const out = [cs.color];
+    const other = d.implementation.createHTMLDocument('');
+    other.head.innerHTML = '<style>p::before { color: blue }</style>';
+    other.body.appendChild(p);
+    out.push(cs.color);
+    d.body.appendChild(p);
+    out.push(cs.color, w.getComputedStyle(p, '::before').color);
+    return out;
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  "jsdom 31: a pseudo-element's own rules decide its flow and custom properties",
+  (w) => {
+    const d = w.document;
+    d.head.innerHTML = '<style>p::before { direction: rtl; margin-inline-start: 5px; --k: 1 }</style>';
+    d.body.innerHTML = '<p id="p"></p>';
+    const p = d.getElementById('p');
+    w.getComputedStyle(p).color;
+    const cs = w.getComputedStyle(p, '::before');
+    const names = [];
+    for (let i = 0; i < cs.length; i++) if (cs.item(i).startsWith('--')) names.push(cs.item(i));
+    return [cs.marginLeft, cs.marginRight, cs.length, names, cs.getPropertyValue('--k')];
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: content with attr() is written again by tokens; attr( in a string is text',
+  (w) => {
+    const d = w.document;
+    d.body.innerHTML = '<p id="p" d=\'q"\\r\'></p>';
+    const p = d.getElementById('p');
+    return [
+      '"attr(id)"',
+      'attr(missing, ")")',
+      '"(" attr(id)',
+      "'a)' attr(id)",
+      "'a' attr(id)",
+      '"x\\"attr(id)" attr(id)',
+      "attr(missing, 'f')",
+      'attr(missing,"a)b") \'c\'',
+      'ATTR(id)',
+      'attr( id )',
+      'attr(id)attr(id)',
+      '"a\\\\" attr(id)',
+      'attr(d)',
+      'attr(missing, "x\\"y")',
+      "attr(id) counter(x) 'z'",
+    ].map((content) => {
+      p.style.content = content;
+      return [content, w.getComputedStyle(p).content, w.getComputedStyle(p, '::before').content];
+    });
+  },
+  { jsdom: 31 },
+);

@@ -8036,3 +8036,15 @@ cases; cascade.js pseudoName31, pseudoNode31):
   space pre; dialog::backdrop rgba(0, 0, 0, 0.1); a file input's
   ::file-selector-button align-content center.
 Not modeled: text-align (the computed shorthand, D4/D5).
+Review round (#332): a selector's pseudo-element is its last colon outside
+strings, brackets, parentheses and escapes (.x\:before is a class), any
+CSS whitespace or a combinator before it gives a descendant (p\n::before
+is p *::before); a pseudo-element follows its element into another
+document (its values cascaded again there: none in a document without a
+view); ruleIndex gives a pseudo-element its own index (with the
+document's metadata), so its flow (direction), custom property names
+and color-scheme read its own rules; content with attr() is written
+again token by token (strings double-quoted, one space between tokens;
+attr( in a string is text, a ")" fallback a string). Found, not changed
+(also on main): light-dark() in a computed color stays unresolved in the
+jsdom 31 profile, for any element (part D3b).
