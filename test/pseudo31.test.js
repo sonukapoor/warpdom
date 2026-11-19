@@ -187,3 +187,49 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  "jsdom 31: a pseudo-element's name with escapes, in a rule and in getComputedStyle()",
+  (w) => {
+    const d = w.document;
+    d.head.innerHTML =
+      '<style>p::b\\65 fore { color: red } p::AFT\\45 R { color: blue } p:\\62 efore { margin-top: 3px }</style>';
+    d.body.innerHTML = '<p id="p"></p>';
+    const p = d.getElementById('p');
+    const g = (pseudo) => w.getComputedStyle(p, pseudo);
+    return [g('::before').color, g('::after').color, g('::before').marginTop, g('::b\\65 fore').color, g().color];
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  "jsdom 31: attr()'s text escapes control characters as a CSS string",
+  (w) => {
+    const d = w.document;
+    d.body.innerHTML = '<p id="p"></p>';
+    const p = d.getElementById('p');
+    p.setAttribute('data-l', 'a\nb\tc\u0001d\u007fe');
+    p.style.content = 'attr(data-l)';
+    const out = [w.getComputedStyle(p).content];
+    p.style.content = 'attr(x, "q\\a r")';
+    out.push(w.getComputedStyle(p).content);
+    return out;
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  "jsdom 31: @scope limits a pseudo-element's rules by its originating element",
+  (w) => {
+    const d = w.document;
+    d.head.innerHTML =
+      '<style>@scope (.a) to (:not(.a)) { :scope::before { color: red } } @scope (.b) { :scope::after { color: blue } .c::before { color: green } }' +
+      ' @scope (.d) to (.e) { span::before { color: lime } }</style>';
+    d.body.innerHTML =
+      '<p class="a" id="p"></p><div class="b" id="b"><span class="c" id="c"></span></div>' +
+      '<div class="d"><span id="s1"></span><div class="e"><span id="s2"></span></div></div>';
+    const g = (id, pseudo) => w.getComputedStyle(d.getElementById(id), pseudo).color;
+    return [g('p', '::before'), g('b', '::after'), g('c', '::before'), g('s1', '::before'), g('s2', '::before')];
+  },
+  { jsdom: 31 },
+);

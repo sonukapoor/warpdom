@@ -76,6 +76,7 @@ import {
   styleSurfaceOf,
   isLegacyMode,
   EXPANDED_SHORTHANDS,
+  cssString,
 } from './css.js';
 
 // --- the rule index ------------------------------------------------------------------
@@ -428,10 +429,14 @@ function limited(end, root, el, ctx) {
 // ::slotted(a), a space after it); :before, :after, :first-line and
 // :first-letter as ::.
 const LEGACY_PSEUDO = new Set(['before', 'after', 'first-line', 'first-letter']);
-const LEGACY_COLON = /(^|[^:\\]):(before|after|first-line|first-letter)(?![\w-])/gi;
 const NOT_COMPUTED = new Set(['part(', 'slotted(']);
 export function pseudoName31(text) {
   if (!text.startsWith(':')) return '';
+  // (its name's escapes decoded: ::b\65 fore is ::before)
+  if (text.includes('\\')) {
+    const open = text.indexOf('(');
+    text = open < 0 ? decodeEscapes(text) : decodeEscapes(text.slice(0, open)) + text.slice(open);
+  }
   const m = /^(::?)([a-zA-Z][a-zA-Z0-9-]*)(\(.*\))?$/s.exec(text);
   if (m === null) return null;
   const name = m[2].toLowerCase();
@@ -553,7 +558,6 @@ export function pseudoNode31(element, name) {
 // by token: strings double-quoted, one space between tokens; an attr( in
 // a string is text.
 const ATTR = /attr\(/i;
-const cssString = (text) => `"${text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 const stringText = (token) =>
   decodeEscapes(
     token.slice(
@@ -677,13 +681,13 @@ function buildIndex(sheets, mode, compat, lists, doc = null) {
       return false;
     }
     for (const entry of entries) if (entry.text) index.textDependent = true;
-    // (a pseudo-element's selector matches its originating element, with a
-    // pseudo-element's specificity added)
-    if (pseudo) entries = entries.map((e) => ({ ...e, match: originating(e.match), specificity: e.specificity + 1 }));
     if (scope !== null) {
       target.scoped = true;
       entries = entries.map((entry) => ({ ...entry, match: scopedMatch(entry.match, scope) }));
     }
+    // (a pseudo-element's selector matches its originating element, scope
+    // limits too, with a pseudo-element's specificity added)
+    if (pseudo) entries = entries.map((e) => ({ ...e, match: originating(e.match), specificity: e.specificity + 1 }));
     addDeclarations(target, rule[S].style[S].decls, entries, counter, compat, layer, scope);
     return true;
   };
@@ -692,18 +696,20 @@ function buildIndex(sheets, mode, compat, lists, doc = null) {
     // jsdom 31: selectors ending in a pseudo-element apply to it, through
     // its own index (index.pseudo; black box, 31.0.1)
     if (compat?.computed31 && text.includes(':')) {
-      // (the list valid as a whole; :before and the other legacy
-      // pseudo-elements written with one colon too)
-      const valid = text.replace(LEGACY_COLON, '$1::$2');
+      // (the list valid as a whole, each pseudo-element read as its name:
+      // :before and the other legacy ones, ::b\65 fore)
+      const selectors = splitSelectorList(text);
+      const tails = selectors.map(pseudoTail31);
+      const valid = selectors.map((sel, i) => (tails[i] === null ? sel : `${tails[i].base}::${tails[i].name}`));
       try {
-        compileRuleSelector(scope === null ? valid : scopedSelector(valid));
+        compileRuleSelector(scope === null ? valid.join(',') : scopedSelector(valid.join(',')));
       } catch {
         return;
       }
       const plain = [];
-      for (const selector of splitSelectorList(text)) {
-        const tail = pseudoTail31(selector);
-        if (tail === null) plain.push(selector);
+      for (let i = 0; i < selectors.length; i++) {
+        const tail = tails[i];
+        if (tail === null) plain.push(selectors[i]);
         else addSelectors(tail.base, rule, pseudoIndex(index, tail.name), true);
       }
       if (plain.length) addSelectors(plain.join(','), rule, index, false);

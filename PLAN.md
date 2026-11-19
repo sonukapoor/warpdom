@@ -8048,3 +8048,15 @@ again token by token (strings double-quoted, one space between tokens;
 attr( in a string is text, a ")" fallback a string). Found, not changed
 (also on main): light-dark() in a computed color stays unresolved in the
 jsdom 31 profile, for any element (part D3b).
+Speed after that round (node 22.17.1, scratchpad e-bcas, 7 interleaved
+runs, medians): computed reads 359.7 ms on main, 367.4 ms on the branch
+in the jsdom 31 profile (+2%, near noise: ruleIndex's pseudo-element
+check and the adoption check in cascadeCache, one property read per
+cascade lookup each), jsdom 30 unchanged (265.5 vs 267.2 ms).
+Second round (#332, Copilot's previously missed items): a pseudo-element
+name's escapes are decoded (p::b\65 fore is ::before, in a rule and in
+getComputedStyle's argument; the rule's validity is checked with each
+pseudo-element written as its name, which replaces the legacy-colon
+rewrite); attr()'s text is written with css.js cssString (control
+characters as \a and the like); @scope's root and limits are checked
+against the originating element (the scope wrapper inside originating).
