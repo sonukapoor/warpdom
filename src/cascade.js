@@ -438,7 +438,8 @@ export function pseudoName31(text) {
     text = open < 0 ? decodeEscapes(text) : decodeEscapes(text.slice(0, open)) + text.slice(open);
   }
   const m = /^(::?)([a-zA-Z][a-zA-Z0-9-]*)(\(.*\))?$/s.exec(text);
-  if (m === null) return null;
+  // (the legacy single-colon ones take no arguments: :before(x) is none)
+  if (m === null || (m[1] === ':' && m[3] !== undefined)) return null;
   const name = m[2].toLowerCase();
   const key = m[3] === undefined ? name : `${name}(`;
   if (m[1] === ':' ? !LEGACY_PSEUDO.has(name) : !PSEUDO_ELEMENTS.has(key) || NOT_COMPUTED.has(key)) return null;
@@ -454,6 +455,18 @@ const escapedAt = (text, i) => {
   while (i - n > 0 && text[i - n - 1] === '\\') n++;
   return n % 2 === 1;
 };
+// Whether the whitespace at i ends a hexadecimal escape (\\78 ), as part
+// of its identifier: only one, after one to six digits.
+const isHexDigit = (c) => (c >= 48 && c <= 57) || (c >= 65 && c <= 70) || (c >= 97 && c <= 102);
+function endsHexEscape(text, i) {
+  for (let k = 1; k <= 7 && i - k >= 0; k++) {
+    if (text[i - k] === '\\') return k > 1 && !escapedAt(text, i - k);
+    if (!isHexDigit(text.charCodeAt(i - k))) return false;
+  }
+  return false;
+}
+// CSS whitespace at i that is no part of an identifier.
+const literalSpace = (text, i) => isCssSpace(text.charCodeAt(i)) && !escapedAt(text, i) && !endsHexEscape(text, i);
 function stringEnd(text, i) {
   const quote = text[i];
   for (i++; i < text.length; i++) {
@@ -464,7 +477,7 @@ function stringEnd(text, i) {
 }
 function pseudoTail31(selector) {
   let end = selector.length;
-  while (end > 0 && isCssSpace(selector.charCodeAt(end - 1)) && !escapedAt(selector, end - 1)) end--;
+  while (end > 0 && literalSpace(selector, end - 1)) end--;
   let colon = -1;
   let depth = 0;
   for (let i = 0; i < end; i++) {
@@ -482,7 +495,7 @@ function pseudoTail31(selector) {
   const name = pseudoName31(selector.slice(colon, end));
   if (name === null || name === '') return null;
   let stop = colon;
-  while (stop > 0 && isCssSpace(selector.charCodeAt(stop - 1)) && !escapedAt(selector, stop - 1)) stop--;
+  while (stop > 0 && literalSpace(selector, stop - 1)) stop--;
   const base = selector.slice(0, stop).trimStart();
   const last = base.charCodeAt(base.length - 1);
   const bare =
@@ -581,6 +594,12 @@ function attrContent31(node, value) {
       i = end;
       continue;
     }
+    // (the slash before alternative text, a token of its own)
+    if (c === '/') {
+      out.push('/');
+      i++;
+      continue;
+    }
     // (a token: to a space or string, or the parenthesis closing it)
     let j = i;
     let depth = 0;
@@ -596,7 +615,7 @@ function attrContent31(node, value) {
           j++;
           break;
         }
-      } else if (depth === 0 && isCssSpace(value.charCodeAt(j))) break;
+      } else if (depth === 0 && (d === '/' || isCssSpace(value.charCodeAt(j)))) break;
     }
     const token = value.slice(i, j);
     i = j;

@@ -8060,3 +8060,8 @@ pseudo-element written as its name, which replaces the legacy-colon
 rewrite); attr()'s text is written with css.js cssString (control
 characters as \a and the like); @scope's root and limits are checked
 against the originating element (the scope wrapper inside originating).
+Third round (#332): the whitespace ending a hex escape belongs to the
+name (#\78 ::before is #x::before; one more space is a descendant);
+:before(x) and the other legacy names with arguments are no
+pseudo-element (an empty style); a slash in content is a token of its
+own (attr(id)/attr(title) is "p" / "alt").

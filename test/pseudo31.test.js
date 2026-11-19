@@ -233,3 +233,46 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31: the whitespace ending a hex escape is part of the name before a pseudo-element; one more is a descendant',
+  (w) => {
+    const d = w.document;
+    d.head.innerHTML =
+      '<style>#\\78 ::before { color: red } #\\78  ::after { color: blue } .a, #\\78 ::first-line { color: green }</style>';
+    d.body.innerHTML = '<div id="x"><span id="s"></span></div>';
+    const g = (id, pseudo) => w.getComputedStyle(d.getElementById(id), pseudo).color;
+    return [g('x', '::before'), g('x', '::after'), g('s', '::after'), g('x', '::first-line')];
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: legacy pseudo-elements with arguments give an empty style',
+  (w) => {
+    const d = w.document;
+    d.body.innerHTML = '<div id="x"></div>';
+    const x = d.getElementById('x');
+    return [':before(x)', ':after()', '::before(x)', ':first-line(a)', ':before'].map((pseudo) => {
+      const cs = w.getComputedStyle(x, pseudo);
+      return [pseudo, cs.length, cs.display];
+    });
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: attr() on both sides of a slash without spaces',
+  (w) => {
+    const d = w.document;
+    d.body.innerHTML = '<p id="p" title="alt"></p>';
+    const p = d.getElementById('p');
+    return ['attr(id)/attr(title)', 'attr(id) /attr(title)', '"a"/"b"', 'attr(id)/"x"', '"a"/attr(title)'].map(
+      (content) => {
+        p.style.content = content;
+        return [content, w.getComputedStyle(p).content];
+      },
+    );
+  },
+  { jsdom: 31 },
+);
