@@ -575,13 +575,14 @@ export function pseudoNode31(element, name, ws) {
 // by token: strings double-quoted, one space between tokens; an attr( in
 // a string is text.
 const ATTR = /attr\(/i;
+// (a backslash before a newline continues the string: nothing)
 const stringText = (token) =>
   decodeEscapes(
-    token.slice(
-      1,
-      token.length > 1 && token.endsWith(token[0]) && !escapedAt(token, token.length - 1) ? -1 : undefined,
-    ),
+    token
+      .slice(1, token.length > 1 && token.endsWith(token[0]) && !escapedAt(token, token.length - 1) ? -1 : undefined)
+      .replace(CONTINUATION, ''),
   );
+const CONTINUATION = /\\(?:\r\n|[\n\r\f])/g;
 function attrContent31(node, value) {
   if (!ATTR.test(value)) return value;
   const element = node[S].pseudo === undefined ? node : node[S].parent;
@@ -633,14 +634,25 @@ function attrContent31(node, value) {
   }
   return out.join(' ');
 }
-const ATTR_ARGS = /^[ \t\n\r\f]*([A-Za-z_][\w-]*)[ \t\n\r\f]*(?:,[ \t\n\r\f]*(.*?))?[ \t\n\r\f]*$/s;
+// attr()'s arguments: a CSS identifier (non-ASCII, escapes, a leading -
+// or --), after an optional namespace prefix, then a fallback. Black box,
+// 31.0.1: a prefixed name (a|b) reads as missing, *|id makes the value
+// normal; only ASCII letters are lowercased on an HTML element.
+const ESCAPE = String.raw`\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f0-9a-fA-F])`;
+const IDENT = String.raw`(?:--|-?(?:[A-Za-z_]|[^\x00-\x7f]|${ESCAPE}))(?:[\w-]|[^\x00-\x7f]|${ESCAPE})*`;
+const ATTR_ARGS = new RegExp(
+  String.raw`^[ \t\n\r\f]*(?:(${IDENT})\|)?(${IDENT})[ \t\n\r\f]*(?:,[ \t\n\r\f]*(.*?))?[ \t\n\r\f]*$`,
+  's',
+);
+const asciiLower = (text) => text.replace(/[A-Z]+/g, (m) => m.toLowerCase());
 function attrText31(element, args) {
   const m = ATTR_ARGS.exec(args);
   if (m === null) return null;
   const es = element[S];
-  const text = es.attrs.get(es.ns === HTML_NS ? m[1].toLowerCase() : m[1]);
+  const name = decodeEscapes(m[2]);
+  const text = m[1] !== undefined ? undefined : es.attrs.get(es.ns === HTML_NS ? asciiLower(name) : name);
   if (text !== undefined) return text;
-  const fallback = m[2] ?? '';
+  const fallback = m[3] ?? '';
   if (fallback === '') return '';
   if ((fallback[0] === '"' || fallback[0] === "'") && stringEnd(fallback, 0) === fallback.length)
     return stringText(fallback);

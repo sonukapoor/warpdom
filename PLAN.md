@@ -8074,3 +8074,10 @@ jsdom 31 keeps a leading U+00A0 in a rule's selectorText (" .t", a type
 selector that matches nothing) where warpdom's CSSOM trims it with
 String.trim, so  .t { color: blue } applies here in the jsdom 31
 profile (jsdom 30 applies it too).
+Fifth round (#332, Copilot's closer-look areas): a backslash before a
+newline in a string of content with attr() continues it (nothing);
+attr()'s name is any CSS identifier (non-ASCII, escapes decoded, a
+leading - or --), only ASCII letters lowercased on an HTML element, a
+namespace prefix (a|b) reading as missing and *|id making the value
+normal. Pseudo-elements of SVG, MathML and other namespaces already
+matched (a parity test now).

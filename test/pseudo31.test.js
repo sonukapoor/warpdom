@@ -294,3 +294,78 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31: a backslash before a newline continues a string in content with attr()',
+  (w) => {
+    const d = w.document;
+    d.body.innerHTML = '<p id="p"></p>';
+    const p = d.getElementById('p');
+    return ['"a\\\nb" attr(id)', 'attr(x, "q\\\nr")', '"a\\\r\nb" attr(id)'].map((content) => {
+      p.style.content = content;
+      return [content, w.getComputedStyle(p).content];
+    });
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  "jsdom 31: attr()'s name is any CSS identifier, ASCII lowercased, a namespace prefix reading as missing",
+  (w) => {
+    const d = w.document;
+    d.body.innerHTML = '<p id="p"></p>';
+    const p = d.getElementById('p');
+    p.setAttribute('data-ü', 'U');
+    p.setAttribute('1x', 'N');
+    p.setAttribute('-a', 'D');
+    p.setAttribute('_b', 'B');
+    p.setAttribute('a\\b', 'E');
+    return [
+      'attr(data-ü)',
+      'attr(\\31 x)',
+      'attr(-a)',
+      'attr(_b)',
+      'attr(--c)',
+      'attr(a\\\\b)',
+      'attr(DATA-Ü)',
+      'attr(a|b)',
+      'attr(*|id)',
+    ].map((content) => {
+      p.style.content = content;
+      return [content, w.getComputedStyle(p).content];
+    });
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: pseudo-elements of SVG, MathML and other namespaces',
+  (w) => {
+    const d = w.document;
+    d.head.innerHTML =
+      '<style>svg::before { content: "s"; color: red } circle::after { content: attr(r) } y::before { color: blue } svg { --k: 1 }' +
+      ' circle::before { content: attr(viewBox) } svg::after { content: attr(viewbox) } math::marker { color: green }</style>';
+    d.body.innerHTML =
+      '<svg id="sv" viewBox="0 0 1 1"><circle id="c" r="4" viewBox="q"></circle></svg><math id="m"></math>';
+    const other = d.body.appendChild(d.createElementNS('urn:x', 'y'));
+    const g = (el, pseudo, name) => w.getComputedStyle(el, pseudo).getPropertyValue(name);
+    const sv = d.getElementById('sv');
+    const c = d.getElementById('c');
+    const m = d.getElementById('m');
+    return [
+      g(sv, '::before', 'color'),
+      g(sv, '::before', 'content'),
+      g(sv, '::before', 'display'),
+      g(c, '::after', 'content'),
+      g(c, '::before', 'content'),
+      g(sv, '::after', 'content'),
+      g(sv, '::before', '--k'),
+      g(other, '::before', 'display'),
+      g(other, '::before', 'color'),
+      g(m, '::marker', 'color'),
+      g(m, '::before', 'display'),
+      w.getComputedStyle(other, '::before').length,
+    ];
+  },
+  { jsdom: 31 },
+);
