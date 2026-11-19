@@ -8156,3 +8156,41 @@ the value is normal (not modeled: jsdom 31 overflows its stack from
 about a thousand). Found, not changed (also on main, set-time strings):
 jsdom 31 accepts a CR LF ending an escape inside a string
 ("\61 CR LF b" is "ab"); warpdom rejects the declaration.
+Merged as #332 (2026-11-19). Found there, filed as #333 (2026-11-19):
+unknown pseudo-elements in selectors are accepted where jsdom throws a
+SyntaxError (querySelectorAll, matches; all versions) and drops the
+rule (jsdom 27 and later): selector validation for 1.0.
+
+## 2026-11-19: jsdom 31, CSS part D3b: colors inside values (branch feat/269-jsdom31-colors, #269)
+
+jsdom 31's computed colors in values of more components, and
+light-dark(), black box on 31.0.1 (cascade.js, colorValue31,
+componentsValue31, textShadow31, gradientColors31; light and dark
+color-schemes):
+- light-dark(a, b) in any color property: a, or b where the element's
+  color-scheme is dark, computed as that color (a system color by the
+  scheme, a mix computed, currentcolor the color); where it picks
+  currentcolor in a property that keeps it (accent-color, fill, stroke,
+  and a color among other components) the function stays as declared.
+- A color among other components: currentcolor kept, a color-mix() of it
+  or a light-dark() that picks it kept as declared, others computed.
+- text-shadow: each shadow its color first (none for currentcolor), then
+  its lengths in px (em, rem, calc()), a 0px blur left out.
+- scrollbar-color: both colors; fill and stroke with url(): the url()
+  and its fallback's color (none and other keywords kept).
+- Gradients in any property (background-image, mask-image,
+  border-image-source, list-style-image): each color stop's color as
+  above (transparent rgba(0, 0, 0, 0)); strings and url()s skipped.
+Results: of 51 detailed and 55 broad cases, all match but box-shadow,
+the text-decoration shorthand's color and image-set(). Against jsdom
+31.0.1, 61 default parity tests differ (66 on main).
+Speed (node 22.17.1, scratchpad e-bcas, 7 interleaved runs, medians):
+computed reads 375.4 ms on main, 373.7 ms on the branch in the jsdom 31
+profile; the gradient check runs only for values with a function.
+Not here, for D4/D5: box-shadow is a shorthand in jsdom 31 (box-shadow-
+color, -offset, -blur, -spread, -position, lists), its computed value
+from them (rgb(255, 0, 0) 1px 2px 3px 4px inset); warpdom declares it
+whole and computes none. Found, for later parts: image-set() computes as
+image-set(url("a.png") 1dppx); a relative url() in a computed value is
+resolved against the document's URL (url("a.png") in a document at
+http://localhost:3000/ computes as url("http://localhost:3000/a.png")).

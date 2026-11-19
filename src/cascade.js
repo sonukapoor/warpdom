@@ -2200,6 +2200,8 @@ function closingParen(value) {
 // anywhere in the value keeps it as declared.
 function resolvedColorValue(element, name, value, data, compat) {
   if (compat.computed31) {
+    const components = componentsValue31(element, name, value, data);
+    if (components !== null) return components;
     const color = colorValue31(element, name, value, data);
     if (color !== null) return color;
   }
@@ -2246,6 +2248,15 @@ const KEEPS_CURRENTCOLOR = new Set(['accent-color', 'box-shadow-color', 'fill', 
 const CURRENTCOLOR_WORD = /currentcolor/i;
 function colorValue31(element, name, value, data) {
   const lower = value.toLowerCase();
+  // light-dark(): its light or dark color as computed, by the element's
+  // color-scheme; one that keeps currentcolor keeps the function as
+  // declared (black box, 31.0.1)
+  if (lower.startsWith('light-dark(')) {
+    const picked = lightDark31(element, value);
+    if (picked === null) return null;
+    const color = colorValue31(element, name, picked, data);
+    return color === 'currentcolor' ? value : color;
+  }
   if (lower === 'currentcolor') {
     if (KEEPS_CURRENTCOLOR.has(name)) return lower;
     return name === 'color' ? inheritedValue(element, 'color', data) : currentColor(element);
@@ -2265,6 +2276,130 @@ function colorValue31(element, name, value, data) {
   if (color !== null) return color;
   if (!IDENTIFIER.test(lower)) return null;
   return lower === 'auto' && AUTO_CURRENTCOLOR.has(name) ? currentColor(element) : lower;
+}
+
+// light-dark(a, b): a, or b where the element's color-scheme is dark; null
+// for other arguments.
+function lightDark31(element, value) {
+  const end = closingParen(value);
+  if (end !== value.length - 1) return null;
+  const args = splitTopLevel(value.slice(value.indexOf('(') + 1, end), 44);
+  if (args.length !== 2) return null;
+  return darkScheme(element) ? args[1] : args[0];
+}
+
+// A value's parts at a separator (code) outside parentheses and strings,
+// trimmed of CSS whitespace.
+function splitTopLevel(value, separator) {
+  const parts = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    if (c === 92) i++;
+    else if (c === 34 || c === 39) i = stringEnd(value, i) - 1;
+    else if (c === 40) depth++;
+    else if (c === 41) depth--;
+    else if (depth === 0 && (separator === 32 ? isCssSpace(c) : c === separator)) {
+      if (separator !== 32 || i > start) parts.push(value.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  if (separator !== 32 || start < value.length) parts.push(value.slice(start).trim());
+  return separator === 32 ? parts.filter((part) => part !== '') : parts;
+}
+
+// One color among a value's components as jsdom 31 computes it (black
+// box, 31.0.1): currentcolor kept, a mix of it or a light-dark() that
+// picks it kept as declared, other colors computed; null for a component
+// that is no color.
+function componentColor31(element, token, data) {
+  const lower = token.toLowerCase();
+  if (lower === 'currentcolor') return 'currentcolor';
+  if (
+    !lower.startsWith('light-dark(') &&
+    !lower.startsWith('color-mix(') &&
+    DARK_SYSTEM_COLORS_31[lower] === undefined &&
+    resolveColor(token, 'jsdom31') === null
+  )
+    return null;
+  return colorValue31(element, 'fill', token, data);
+}
+
+// The colors of a value of more components (jsdom 31, black box 31.0.1);
+// null for a value colorValue31 computes as a whole.
+// - text-shadow: each shadow its color first (none for currentcolor),
+//   then its lengths in px, a 0px blur left out;
+// - scrollbar-color: both colors;
+// - fill and stroke: the url() and its fallback's color (or keyword).
+function componentsValue31(element, name, value, data) {
+  if (name === 'text-shadow') return value.toLowerCase() === 'none' ? null : textShadow31(element, value, data);
+  if (name === 'scrollbar-color' || ((name === 'fill' || name === 'stroke') && /^url\(/i.test(value))) {
+    const parts = splitTopLevel(value, 32);
+    if (parts.length < 2) return null;
+    return parts.map((part) => componentColor31(element, part, data) ?? part).join(' ');
+  }
+  return null;
+}
+function textShadow31(element, value, data) {
+  const shadows = [];
+  let ctx = null;
+  for (const shadow of splitTopLevel(value, 44)) {
+    let color = null;
+    const lengths = [];
+    for (const part of splitTopLevel(shadow, 32)) {
+      const c = componentColor31(element, part, data);
+      if (c !== null) {
+        color = c;
+        continue;
+      }
+      ctx ??= new LengthContext(element, false);
+      const px = part === '0' ? 0 : absoluteLength(part, ctx);
+      lengths.push(px === null ? part : `${sixDigits(px)}px`);
+    }
+    if (lengths.length === 3 && lengths[2] === '0px') lengths.pop();
+    if (color !== null && color !== 'currentcolor') lengths.unshift(color);
+    shadows.push(lengths.join(' '));
+  }
+  return shadows.join(', ');
+}
+
+// jsdom 31 computes the colors in a value's gradients (any property:
+// background-image, mask-image, border-image-source, list-style-image;
+// black box, 31.0.1): each color stop's color as componentColor31 does.
+const GRADIENT = /gradient\(/i;
+const GRADIENT_AT = /(?:repeating-)?(?:linear|radial|conic)-gradient\(/iy;
+const URL_AT = /url\(/iy;
+function gradientColors31(element, value, data) {
+  let out = '';
+  let from = 0;
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    // (strings and url()s skipped: url("gradient(red).png") is a file name)
+    if (c === 92) i++;
+    else if (c === 34 || c === 39) i = stringEnd(value, i) - 1;
+    else {
+      URL_AT.lastIndex = i;
+      if (URL_AT.test(value)) {
+        i = closingParenthesis(value, i + 4);
+        continue;
+      }
+      GRADIENT_AT.lastIndex = i;
+      if (!GRADIENT_AT.test(value)) continue;
+      const open = GRADIENT_AT.lastIndex - 1;
+      const close = closingParenthesis(value, open + 1);
+      if (close >= value.length) break;
+      const stops = splitTopLevel(value.slice(open + 1, close), 44).map((stop) =>
+        splitTopLevel(stop, 32)
+          .map((part) => componentColor31(element, part, data) ?? part)
+          .join(' '),
+      );
+      out += `${value.slice(from, open + 1)}${stops.join(', ')})`;
+      from = close + 1;
+      i = close;
+    }
+  }
+  return out + value.slice(from);
 }
 
 // --- absolute lengths (jsdom 30) ----------------------------------------------------
@@ -2356,8 +2491,11 @@ function absoluteFontSize(element, value) {
 }
 
 function computeValue(element, name, value, data) {
-  if (data[2]) value = computeColors(element, name, value, data);
   const compat = element[S].doc[S].window[S].compat;
+  // (most values have no function: the regex only where one is)
+  if (compat.computed31 && value.indexOf('(') > 0 && GRADIENT.test(value))
+    value = gradientColors31(element, value, data);
+  if (data[2]) value = computeColors(element, name, value, data);
   // A 0 length: 0px from jsdom 28.1.0, as declared before (text-indent: 0).
   if (data[3] && value === '0' && compat.zeroLengths) return '0px';
   // jsdom 30 computes lengths to px (lengths.js), font sizes too; from
