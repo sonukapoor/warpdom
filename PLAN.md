@@ -8123,3 +8123,7 @@ Eleventh round (#332): a rule's validity is checked with a placeholder
 for a pseudo-element's decoded argument (::highlight(\28) decodes to a
 parenthesis, which dropped the rule, its other selectors too); the
 decoded argument stays the index key.
+Twelfth round (#332): only before::marker and after::marker are chains
+(a set, CHAINS); a functional pseudo-element whose decoded argument
+holds :: (::highlight(a\:\:b)) inherits from its element, not from a
+made-up parent pseudo-element.

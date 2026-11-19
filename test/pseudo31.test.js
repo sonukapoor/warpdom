@@ -568,3 +568,28 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31: a functional pseudo-element whose argument decodes to :: is no chain',
+  (w) => {
+    const d = w.document;
+    d.head.innerHTML =
+      '<style>#x::highlight(a\\:\\:b) { margin-top: inherit; color: red } #x::highlight(before\\:\\:marker) { --k: 1 }' +
+      ' .o, #x::highlight(a\\:\\:b) { --o: 1 }</style>';
+    d.body.innerHTML = '<div id="x" class="o" style="margin-top: 7px"></div>';
+    const x = d.getElementById('x');
+    const s = w.getComputedStyle(x, '::highlight(a\\:\\:b)');
+    const t = w.getComputedStyle(x, '::highlight(before\\:\\:marker)');
+    return [
+      s.marginTop,
+      s.color,
+      s.unicodeBidi,
+      s.getPropertyValue('--o'),
+      t.unicodeBidi,
+      t.getPropertyValue('--k'),
+      t.length,
+      w.getComputedStyle(x).getPropertyValue('--o'),
+    ];
+  },
+  { jsdom: 31 },
+);

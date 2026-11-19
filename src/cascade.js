@@ -434,6 +434,7 @@ const PSEUDO_NAME = /^(::?)([a-zA-Z][a-zA-Z0-9-]*)(?:\((.*)\))?$/s;
 // ::before::marker and ::after::marker: the marker of a ::before or
 // ::after (black box, 31.0.1; other chains are none)
 const CHAINED = /^::(before|after)::marker$/i;
+const CHAINS = new Set(['before::marker', 'after::marker']);
 export function pseudoName31(text) {
   if (!text.startsWith(':')) return '';
   // (its name's escapes decoded: ::b\65 fore is ::before)
@@ -526,7 +527,7 @@ function pseudoTail31(selector) {
     const before = pseudoName31(selector.slice(previous, colon));
     if (before !== null && before !== '') {
       const chained = pseudoName31(selector.slice(previous, end));
-      if (chained === null || !chained.includes('::')) return INVALID_TAIL;
+      if (!CHAINS.has(chained)) return INVALID_TAIL;
       name = chained;
       colon = previous;
     }
@@ -604,7 +605,9 @@ export function pseudoNode31(element, name, ws) {
     node = ws.createElementNS(PSEUDO_NS, 'pseudo', element[S].doc, true);
     // (a chained one's parent is its ::before or ::after, which it
     // inherits from; its origin, the element, is what selectors match)
-    const chain = key.indexOf('::');
+    // (only the two chains: a functional one's decoded argument may hold
+    // :: too, ::highlight(a\:\:b))
+    const chain = CHAINS.has(key) ? key.indexOf('::') : -1;
     node[S].parent = chain < 0 ? element : pseudoNode31(element, key.slice(0, chain), ws);
     node[S].origin = element;
     node[S].pseudo = key;
