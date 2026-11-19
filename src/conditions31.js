@@ -942,7 +942,7 @@ const PSEUDO_ELEMENT =
 // U+10FFFF (CSS Syntax, consume an escaped code point).
 const escapedCodePoint = (cp) => (cp === 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff) ? 0xfffd : cp);
 export const decodeEscapes = (name) =>
-  name.replace(/\\([0-9a-fA-F]{1,6})[ \t\n\r\f]?|\\(.)/g, (m, hex, ch) =>
+  name.replace(/\\([0-9a-fA-F]{1,6})(?:\r\n|[ \t\n\r\f])?|\\(.)/g, (m, hex, ch) =>
     hex === undefined ? ch : String.fromCodePoint(escapedCodePoint(parseInt(hex, 16))),
   );
 function knownPseudoElements(text) {

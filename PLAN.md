@@ -8127,3 +8127,8 @@ Twelfth round (#332): only before::marker and after::marker are chains
 (a set, CHAINS); a functional pseudo-element whose decoded argument
 holds :: (::highlight(a\:\:b)) inherits from its element, not from a
 made-up parent pseudo-element.
+Thirteenth round (#332, Copilot's closer-look areas): :before::marker
+and :after::marker (a legacy first part) are chains too; a CR LF after
+a hex escape is one whitespace in decodeEscapes (conditions31.js, shared
+with media queries and layer names) and in the identifier pattern for
+attr() names and pseudo-element arguments.

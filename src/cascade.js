@@ -431,9 +431,9 @@ function limited(end, root, el, ctx) {
 const LEGACY_PSEUDO = new Set(['before', 'after', 'first-line', 'first-letter']);
 const NOT_COMPUTED = new Set(['part(', 'slotted(']);
 const PSEUDO_NAME = /^(::?)([a-zA-Z][a-zA-Z0-9-]*)(?:\((.*)\))?$/s;
-// ::before::marker and ::after::marker: the marker of a ::before or
-// ::after (black box, 31.0.1; other chains are none)
-const CHAINED = /^::(before|after)::marker$/i;
+// ::before::marker and ::after::marker (:before::marker too): the marker
+// of a ::before or ::after (black box, 31.0.1; other chains are none)
+const CHAINED = /^::?(before|after)::marker$/i;
 const CHAINS = new Set(['before::marker', 'after::marker']);
 export function pseudoName31(text) {
   if (!text.startsWith(':')) return '';
@@ -688,7 +688,7 @@ function attrContent31(node, value) {
 // normal; only ASCII letters are lowercased on an HTML element.
 // (a hex escape read one way only: six digits, or fewer and no digit
 // after them, so that no run of digits splits into several escapes)
-const ESCAPE = String.raw`\\(?:(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))[ \t\n\r\f]?|[^\n\r\f0-9a-fA-F])`;
+const ESCAPE = String.raw`\\(?:(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))(?:\r\n|[ \t\n\r\f])?|[^\n\r\f0-9a-fA-F])`;
 const IDENT = String.raw`(?:--|-?(?:[A-Za-z_]|[^\x00-\x7f]|${ESCAPE}))(?:[\w-]|[^\x00-\x7f]|${ESCAPE})*`;
 // (the name only: the fallback after it is found by hand, so that a long
 // one is read in one pass)

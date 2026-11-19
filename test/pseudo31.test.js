@@ -593,3 +593,43 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31: legacy :before::marker chains, and a CR LF ending an escape in names and arguments',
+  (w) => {
+    const d = w.document;
+    const selectors = [
+      '#x:before::marker',
+      '#x:after::marker',
+      '#x::part(a)::before',
+      '#x::before:hover',
+      '#x:hover::before',
+      '#x::first-letter::marker',
+      '#x:first-letter::marker',
+      '#x::slotted(p)::before',
+      '#x::before::marker:hover',
+      '#x::marker:hover',
+      '#x::before::BEFORE',
+      '.o',
+    ];
+    const style = d.createElement('style');
+    style.textContent =
+      selectors.map((s, i) => `${s}, .k${i} { --r${i}: 1 }`).join('\n') +
+      '\n#x::b\\65\r\nfore { color: red } #x::highlight(\\61\r\nb) { color: blue } .z { content: attr(\\64\r\na) }';
+    d.head.appendChild(style);
+    d.body.innerHTML = `<div id="x" da="V" class="z ${selectors.map((s, i) => `k${i}`).join(' ')}"></div>`;
+    const x = d.getElementById('x');
+    const cs = w.getComputedStyle(x);
+    return [
+      selectors.map((s, i) => [s, cs.getPropertyValue(`--r${i}`)]),
+      w.getComputedStyle(x, '::before::marker').getPropertyValue('--r0'),
+      w.getComputedStyle(x, '::after::marker').getPropertyValue('--r1'),
+      w.getComputedStyle(x, '::before').color,
+      w.getComputedStyle(x, '::b\\65\r\nfore').color,
+      w.getComputedStyle(x, '::highlight(ab)').color,
+      w.getComputedStyle(x, '::highlight(\\61\r\nb)').color,
+      cs.content,
+    ];
+  },
+  { jsdom: 31 },
+);
