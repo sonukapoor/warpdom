@@ -8132,3 +8132,14 @@ and :after::marker (a legacy first part) are chains too; a CR LF after
 a hex escape is one whitespace in decodeEscapes (conditions31.js, shared
 with media queries and layer names) and in the identifier pattern for
 attr() names and pseudo-element arguments.
+Fourteenth round (#332, Copilot's closer look: escaped punctuation): a
+pseudo-element's name is read as identifiers first and their escapes
+decoded after (it decoded first, then parsed), so an escaped colon or
+parenthesis is part of the name (::before\::marker, ::highlight\28 x\29,
+::bef\:ore, ::\3a before are none, as in jsdom 31); a function left
+open at the end of getComputedStyle()'s argument is closed there
+(::highlight(x\29 is ::highlight(x\29), whose argument is x)). Found,
+not changed (also on main, jsdom 30 too: selector validation, 1.0
+range): warpdom accepts unknown pseudo-elements in selectors, so
+.a, #x::foo { } keeps .a and querySelectorAll('.a, #x::foo') matches;
+jsdom drops the rule and throws a SyntaxError.

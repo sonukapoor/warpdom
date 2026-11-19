@@ -633,3 +633,42 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  "jsdom 31: an escaped colon or parenthesis is part of a pseudo-element's name, not syntax",
+  (w) => {
+    const d = w.document;
+    const pseudos = [
+      '::before\\::marker',
+      '::before\\3a\\3a marker',
+      '::highlight\\28 x\\29',
+      '::highlight\\(x\\)',
+      '::bef\\:ore',
+      ':\\:before',
+      '::before\\ ',
+      '::highlight(x\\29',
+      '::highlight(\\29)',
+      '::b\\65 fore',
+      '::highlight(a\\)b)',
+      '::\\3a before',
+    ];
+    // (::highlight(x\29 leaves its parenthesis open: as a rule it would
+    // take the rest of its sheet, which jsdom reports as a parse error)
+    const rules = pseudos.filter((p) => p !== '::highlight(x\\29');
+    for (const text of [...rules.map((p) => `#x${p} { --r${pseudos.indexOf(p)}: 1 }`), '#x::before { --b: 1 }']) {
+      const style = d.createElement('style');
+      style.textContent = text;
+      d.head.appendChild(style);
+    }
+    d.body.innerHTML = '<div id="x"></div>';
+    const x = d.getElementById('x');
+    const customs = (pseudo) => {
+      const cs = w.getComputedStyle(x, pseudo);
+      const names = [];
+      for (let i = 0; i < cs.length; i++) if (cs.item(i).startsWith('--')) names.push(cs.item(i));
+      return [pseudo, cs.length, names];
+    };
+    return [...pseudos, '::before', '::before::marker', '::highlight(x)', '::highlight())'].map(customs);
+  },
+  { jsdom: 31 },
+);

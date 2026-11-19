@@ -430,25 +430,31 @@ function limited(end, root, el, ctx) {
 // :first-letter as ::.
 const LEGACY_PSEUDO = new Set(['before', 'after', 'first-line', 'first-letter']);
 const NOT_COMPUTED = new Set(['part(', 'slotted(']);
-const PSEUDO_NAME = /^(::?)([a-zA-Z][a-zA-Z0-9-]*)(?:\((.*)\))?$/s;
 // ::before::marker and ::after::marker (:before::marker too): the marker
 // of a ::before or ::after (black box, 31.0.1; other chains are none)
-const CHAINED = /^::?(before|after)::marker$/i;
 const CHAINS = new Set(['before::marker', 'after::marker']);
 export function pseudoName31(text) {
   if (!text.startsWith(':')) return '';
-  // (its name's escapes decoded: ::b\65 fore is ::before)
-  const open = text.indexOf('(');
-  let head = open < 0 ? text : text.slice(0, open);
-  if (head.includes('\\')) head = decodeEscapes(head);
-  if (open < 0) {
-    const chained = CHAINED.exec(head);
-    if (chained !== null) return `${chained[1].toLowerCase()}::marker`;
+  // (read as identifiers first, then their escapes decoded: ::b\65 fore
+  // is ::before, but an escaped colon or parenthesis is part of the name,
+  // ::before\::marker or ::highlight\28 x\29 none)
+  const chained = CHAINED.exec(text);
+  if (chained !== null) {
+    const first = decodeEscapes(chained[1]).toLowerCase();
+    const key = `${first}::${decodeEscapes(chained[2]).toLowerCase()}`;
+    return CHAINS.has(key) ? key : null;
   }
-  const m = PSEUDO_NAME.exec(open < 0 ? head : head + text.slice(open));
+  const m = PSEUDO_NAME.exec(text);
   // (the legacy single-colon ones take no arguments: :before(x) is none)
   if (m === null || (m[1] === ':' && m[3] !== undefined)) return null;
-  const name = m[2].toLowerCase();
+  // (a function left open at the end is closed there, as CSS closes one at
+  // the end of its input: ::highlight(x\29 is ::highlight(x\29))
+  let args = m[3];
+  if (args !== undefined) {
+    args = args.slice(1);
+    if (args.endsWith(')') && !escapedAt(args, args.length - 1)) args = args.slice(0, -1);
+  }
+  const name = decodeEscapes(m[2]).toLowerCase();
   if (m[3] === undefined)
     return (m[1] === ':' ? LEGACY_PSEUDO.has(name) : PSEUDO_ELEMENTS.has(name) && !NOT_COMPUTED.has(name))
       ? name
@@ -457,7 +463,7 @@ export function pseudoName31(text) {
   // case kept: ::highlight(X) is not ::highlight(x))
   const key = `${name}(`;
   if (!PSEUDO_ELEMENTS.has(key) || NOT_COMPUTED.has(key)) return null;
-  const arg = pseudoArgument(m[3]);
+  const arg = pseudoArgument(args);
   return arg === null ? null : `${key}${arg})`;
 }
 function pseudoArgument(text) {
@@ -694,6 +700,8 @@ const IDENT = String.raw`(?:--|-?(?:[A-Za-z_]|[^\x00-\x7f]|${ESCAPE}))(?:[\w-]|[
 // one is read in one pass)
 const ATTR_NAME = new RegExp(String.raw`^[ \t\n\r\f]*(?:(${IDENT})\|)?(${IDENT})[ \t\n\r\f]*`, 's');
 const PSEUDO_ARGUMENT = new RegExp(String.raw`^${IDENT}$`, 's');
+const PSEUDO_NAME = new RegExp(String.raw`^(::?)(${IDENT})(\(.*)?$`, 's');
+const CHAINED = new RegExp(String.raw`^::?(${IDENT})::(${IDENT})$`, 's');
 const asciiLower = (text) => text.replace(/[A-Z]+/g, (m) => m.toLowerCase());
 function attrText31(element, args) {
   const m = ATTR_NAME.exec(args);
