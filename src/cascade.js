@@ -678,6 +678,7 @@ function pseudoUserAgent31(node, name) {
     pseudo === 'file-selector-button' &&
     name === 'align-content' &&
     parent.tag === 'input' &&
+    parent.ns === HTML_NS &&
     parent.attrs.get('type')?.toLowerCase() === 'file'
   )
     return 'center';

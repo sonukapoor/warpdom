@@ -8088,3 +8088,10 @@ digits, or fewer with no digit after them (as in conditions31.js), and
 200 escapes take 0.2 ms. Found, not changed (also on main, value
 validation): jsdom 31 rejects a ! inside attr() when the value is set
 (content: attr(a!) keeps the previous value); warpdom accepts it.
+Seventh round (#332, Copilot's closer-look areas): an escape of zero, a
+surrogate or a code point past U+10FFFF is U+FFFD (conditions31.js
+decodeEscapes, shared with media queries and layer names; it capped at
+U+10FFFF and kept surrogates); ::file-selector-button's user agent rule
+holds for an HTML input only. Found, not changed (also on main, set-time
+serialization): jsdom 31 keeps attr(\110000) as written, warpdom writes
+attr(�).

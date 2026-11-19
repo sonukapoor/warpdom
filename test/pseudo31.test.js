@@ -390,3 +390,49 @@ test("jsdom 31: an attr() name of many hex escapes is read in linear time (each 
   assert.equal(w.getComputedStyle(p).content, 'normal');
   assert.ok(performance.now() - start < 1000);
 });
+
+parity(
+  'jsdom 31: escapes of zero, a surrogate or past U+10FFFF are U+FFFD in attr() names and strings',
+  (w) => {
+    const d = w.document;
+    d.body.innerHTML = '<p id="p"></p>';
+    const p = d.getElementById('p');
+    p.setAttribute('�', 'R');
+    p.setAttribute('\u{10ffff}', 'M');
+    return [
+      'attr(\\110000)',
+      'attr(\\d800)',
+      'attr(\\10ffff)',
+      'attr(\\0)',
+      'attr(x, "\\110000")',
+      'attr(x, "\\d800")',
+      'attr(x, "\\0")',
+      '"\\d800" attr(x)',
+    ].map((content) => {
+      p.style.content = content;
+      return [content, w.getComputedStyle(p).content];
+    });
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: user agent rules for pseudo-elements hold for HTML elements only',
+  (w) => {
+    const d = w.document;
+    const make = (ns, tag) => {
+      const e = d.body.appendChild(d.createElementNS(ns, tag));
+      e.setAttribute('type', 'file');
+      return e;
+    };
+    const g = (el, pseudo, name) => w.getComputedStyle(el, pseudo).getPropertyValue(name);
+    return [
+      g(make('urn:x', 'input'), '::file-selector-button', 'align-content'),
+      g(make('http://www.w3.org/2000/svg', 'input'), '::file-selector-button', 'align-content'),
+      g(make('http://www.w3.org/1999/xhtml', 'input'), '::file-selector-button', 'align-content'),
+      g(make('urn:x', 'dialog'), '::backdrop', 'background-color'),
+      g(make('urn:x', 'li'), '::marker', 'content'),
+    ];
+  },
+  { jsdom: 31 },
+);
