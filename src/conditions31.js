@@ -903,7 +903,7 @@ function topLevelSemicolon(text) {
 
 // selector(): the pseudo-elements jsdom 31 knows (black box, 31.0.1;
 // ::-webkit-scrollbar, ::cue and made-up names are not).
-const PSEUDO_ELEMENTS = new Set([
+export const PSEUDO_ELEMENTS = new Set([
   'before',
   'after',
   'first-line',

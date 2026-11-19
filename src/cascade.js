@@ -54,7 +54,7 @@ import {
 import { substituteVars, tooManyTokens, trimEnds } from './var-substitution.js';
 import { uaDeclarations, uaDeclarations31, uaValue, uaRule, uaRuleOver, uaInOrder } from './ua-sheet.js';
 import { findSlot, assignedNodes } from './slots.js';
-import { decodeEscapes } from './conditions31.js';
+import { decodeEscapes, PSEUDO_ELEMENTS } from './conditions31.js';
 import { flowOf, isLogical, isLogicalGroup, partnerOf } from './logical.js';
 import {
   documentStyleSheets,
@@ -420,6 +420,141 @@ function limited(end, root, el, ctx) {
   return false;
 }
 
+// --- jsdom 31: pseudo-elements ------------------------------------------------------
+
+// A pseudo-element's name from getComputedStyle()'s argument (black box,
+// 31.0.1): '' for the element's own style ('', no colon, null), null for
+// one jsdom 31 does not know (its style is empty: ::foo, ::part(x),
+// ::slotted(a), a space after it); :before, :after, :first-line and
+// :first-letter as ::.
+const LEGACY_PSEUDO = new Set(['before', 'after', 'first-line', 'first-letter']);
+const LEGACY_COLON = /(^|[^:\\]):(before|after|first-line|first-letter)(?![\w-])/gi;
+const NOT_COMPUTED = new Set(['part(', 'slotted(']);
+export function pseudoName31(text) {
+  if (!text.startsWith(':')) return '';
+  const m = /^(::?)([a-zA-Z][a-zA-Z0-9-]*)(\(.*\))?$/s.exec(text);
+  if (m === null) return null;
+  const name = m[2].toLowerCase();
+  const key = m[3] === undefined ? name : `${name}(`;
+  if (m[1] === ':' ? !LEGACY_PSEUDO.has(name) : !PSEUDO_ELEMENTS.has(key) || NOT_COMPUTED.has(key)) return null;
+  return m[3] === undefined ? name : `${name}${m[3].toLowerCase()}`;
+}
+// A selector's pseudo-element at its end: { base (the originating
+// element's selector), name }, or null.
+const PSEUDO_TAIL = /^(.*?)(::?)([a-zA-Z][a-zA-Z0-9-]*(?:\([^)]*\))?)[ \t\n\r\f]*$/s;
+function pseudoTail31(selector) {
+  const m = PSEUDO_TAIL.exec(selector);
+  if (m === null) return null;
+  const name = pseudoName31(`${m[2]}${m[3]}`);
+  if (name === null || name === '') return null;
+  let base = m[1].trim();
+  if (base === '' || /[>+~ ]$/.test(m[1])) base = `${base} *`.trim();
+  return { base, name };
+}
+function pseudoIndex(index, name) {
+  index.pseudo ??= new Map();
+  let target = index.pseudo.get(name);
+  if (target === undefined) {
+    target = new Map();
+    target.inOrder = new InOrderIndex();
+    target.scoped = false;
+    target.layerCount = 1;
+    target.pseudo = null;
+    index.pseudo.set(name, target);
+  }
+  return target;
+}
+const originating = (match) => (node, ctx) => match(node[S].parent, ctx);
+// The index a node's cascade reads: a pseudo-element's own.
+const NO_PSEUDO_RULES = Object.assign(new Map(), { scoped: false, layerCount: 1, pseudo: null });
+const indexOf31 = (element, index) =>
+  element[S].pseudo === undefined ? index : (index.pseudo?.get(element[S].pseudo) ?? NO_PSEUDO_RULES);
+
+// The node a pseudo-element's computed style reads (getComputedStyle(el,
+// '::before')): an element of no namespace, never in the tree, whose
+// parent is the originating element (it inherits from it, and its box is
+// its child's: a flex container's ::before is blockified); kept per
+// element and name. name null: one jsdom 31 does not know, never rendered.
+const PSEUDO_NS = 'urn:warpdom:pseudo-element';
+const pseudoNodes = new WeakMap();
+export function pseudoNode31(element, name) {
+  let byName = pseudoNodes.get(element);
+  if (byName === undefined) pseudoNodes.set(element, (byName = new Map()));
+  const key = name ?? '\0unknown';
+  let node = byName.get(key);
+  if (node === undefined) {
+    node = element[S].doc.createElementNS(PSEUDO_NS, 'pseudo');
+    node[S].parent = element;
+    node[S].pseudo = key;
+    byName.set(key, node);
+  }
+  return node;
+}
+// content's attr() as a string of the attribute's value, the originating
+// element's for a pseudo-element (black box, 31.0.1: attr(id) is "p", a
+// missing attribute "" or its string fallback; another fallback, or more
+// than a name, makes the value normal).
+const ATTR = /attr\(/i;
+function attrContent31(node, value) {
+  if (!ATTR.test(value)) return value;
+  const element = node[S].pseudo === undefined ? node : node[S].parent;
+  let out = '';
+  let i = 0;
+  for (;;) {
+    const at = value.slice(i).search(ATTR);
+    if (at < 0) return out + value.slice(i);
+    const open = i + at + 5;
+    const close = value.indexOf(')', open);
+    if (close < 0) return 'normal';
+    const m = /^[ \t\n\r\f]*([A-Za-z_][\w-]*)[ \t\n\r\f]*(?:,[ \t\n\r\f]*(.*?))?[ \t\n\r\f]*$/s.exec(
+      value.slice(open, close),
+    );
+    if (m === null) return 'normal';
+    const es = element[S];
+    const key = es.ns === HTML_NS ? m[1].toLowerCase() : m[1];
+    let text = es.attrs.get(key);
+    if (text === undefined) {
+      const fallback = m[2] ?? '';
+      if (fallback === '') text = '';
+      else if (/^"(?:[^"\\]|\\.)*"$|^'(?:[^'\\]|\\.)*'$/s.test(fallback))
+        text = fallback.slice(1, -1).replace(/\\(.)/gs, '$1');
+      else return 'normal';
+    }
+    out += value.slice(i, i + at) + `"${text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+    i = close + 1;
+  }
+}
+function pseudoContent31(node, value) {
+  if (value !== 'normal') return value;
+  const pseudo = node[S].pseudo;
+  if (pseudo === 'before' || pseudo === 'after') return 'none';
+  if (pseudo === 'marker' && !computedValue(node[S].parent, 'display').endsWith('list-item')) return 'none';
+  return value;
+}
+// The user agent sheet's rules for pseudo-elements (black box, 31.0.1).
+function pseudoUserAgent31(node, name) {
+  const pseudo = node[S].pseudo;
+  const parent = node[S].parent[S];
+  if (pseudo === 'marker') return MARKER_UA[name];
+  if (pseudo === 'backdrop' && name === 'background-color' && parent.tag === 'dialog' && parent.ns === HTML_NS)
+    return 'rgba(0, 0, 0, 0.1)';
+  if (
+    pseudo === 'file-selector-button' &&
+    name === 'align-content' &&
+    parent.tag === 'input' &&
+    parent.attrs.get('type')?.toLowerCase() === 'file'
+  )
+    return 'center';
+  return undefined;
+}
+const MARKER_UA = {
+  __proto__: null,
+  'unicode-bidi': 'isolate',
+  'font-variant-numeric': 'tabular-nums',
+  'white-space-collapse': 'preserve',
+  'text-wrap-mode': 'nowrap',
+};
+
 // lists: what was read of rule lists a test can change without the CSSOM
 // knowing (ruleListSnapshot).
 function buildIndex(sheets, mode, compat, lists, doc = null) {
@@ -429,25 +564,56 @@ function buildIndex(sheets, mode, compat, lists, doc = null) {
   index.readsScheme = false;
   index.scoped = false;
   index.layerCount = 1;
+  index.pseudo = null;
   const counter = { n: 0 };
   // jsdom 31: the layer and @scope the walk is in (layers: CSS Cascade 5;
   // layer 0 is the unlayered one).
   const layers = [newLayer(null)];
   let layer = 0,
     scope = null;
-  const addRule = (rule) => {
+  // A rule's declarations for the selectors that compile; target: the
+  // index (or a pseudo-element's, pseudoIndex).
+  const addSelectors = (text, rule, target, pseudo) => {
     let entries;
     try {
-      entries = compileRuleSelector(scope === null ? rule[S].selectorText : scopedSelector(rule[S].selectorText));
+      entries = compileRuleSelector(scope === null ? text : scopedSelector(text));
     } catch {
-      return;
+      return false;
     }
     for (const entry of entries) if (entry.text) index.textDependent = true;
+    // (a pseudo-element's selector matches its originating element, with a
+    // pseudo-element's specificity added)
+    if (pseudo) entries = entries.map((e) => ({ ...e, match: originating(e.match), specificity: e.specificity + 1 }));
     if (scope !== null) {
-      index.scoped = true;
+      target.scoped = true;
       entries = entries.map((entry) => ({ ...entry, match: scopedMatch(entry.match, scope) }));
     }
-    addDeclarations(index, rule[S].style[S].decls, entries, counter, compat, layer, scope);
+    addDeclarations(target, rule[S].style[S].decls, entries, counter, compat, layer, scope);
+    return true;
+  };
+  const addRule = (rule) => {
+    const text = rule[S].selectorText;
+    // jsdom 31: selectors ending in a pseudo-element apply to it, through
+    // its own index (index.pseudo; black box, 31.0.1)
+    if (compat?.computed31 && text.includes(':')) {
+      // (the list valid as a whole; :before and the other legacy
+      // pseudo-elements written with one colon too)
+      const valid = text.replace(LEGACY_COLON, '$1::$2');
+      try {
+        compileRuleSelector(scope === null ? valid : scopedSelector(valid));
+      } catch {
+        return;
+      }
+      const plain = [];
+      for (const selector of splitSelectorList(text)) {
+        const tail = pseudoTail31(selector);
+        if (tail === null) plain.push(selector);
+        else addSelectors(tail.base, rule, pseudoIndex(index, tail.name), true);
+      }
+      if (plain.length) addSelectors(plain.join(','), rule, index, false);
+      return;
+    }
+    addSelectors(text, rule, index, false);
   };
   // jsdom 31 (black box, 31.0.1): a sheet whose media do not match is not
   // applied (<style media="print">), and grouping rules nest: @media
@@ -519,11 +685,14 @@ function buildIndex(sheets, mode, compat, lists, doc = null) {
     // specificity when the cascade reads the lists: cascade31)
     const keys = layerKeys(layers);
     index.layerCount = layers.length;
-    for (const lists of index.values()) {
-      for (const e of lists.normal) e.layer = keys.normal[e.layer];
-      for (const e of lists.important) e.layer = keys.important[e.layer];
-      lists.normal.sort(byLayerThenSpecificity);
-      lists.important.sort(byLayerThenSpecificity);
+    for (const target of [index, ...(index.pseudo?.values() ?? [])]) {
+      target.layerCount = layers.length;
+      for (const lists of target.values()) {
+        for (const e of lists.normal) e.layer = keys.normal[e.layer];
+        for (const e of lists.important) e.layer = keys.important[e.layer];
+        lists.normal.sort(byLayerThenSpecificity);
+        lists.important.sort(byLayerThenSpecificity);
+      }
     }
     return index;
   }
@@ -1364,6 +1533,10 @@ const REVERT_LAYER = /^\s*revert-layer\s*$/i;
 // The user agent sheet's normal declaration (also where the page's
 // declaration that won is revert).
 function userAgent31(element, name, window, ua = uaDeclarations31(window, name, cascadeExpand, element)) {
+  if (element[S].pseudo !== undefined) {
+    const value = pseudoUserAgent31(element, name);
+    return value === undefined ? won31(0, 0, 0, Infinity, 0, undefined) : won31(1, 0, 0, Infinity, 0, value);
+  }
   const rule = ua.normal === null ? undefined : uaRule(ua.normal, element);
   if (rule !== undefined) return won31(1, 0, rule.specificity, Infinity, rule.order, rule.value);
   return won31(0, 0, 0, Infinity, 0, undefined);
@@ -1393,6 +1566,8 @@ function pair31(element, index, inlineMap, name, partner, window, cut, below) {
     : other;
 }
 function cascade31(element, index, inlineMap, name, window) {
+  // (a pseudo-element: its own rules)
+  index = indexOf31(element, index);
   // (the flow first: finding it reads computed values, which cascade too
   // and overwrite win31)
   const partner = isLogicalGroup(name) ? partnerOf(name, flow31(element)) : null;
@@ -2450,6 +2625,12 @@ export function computedValue(element, property) {
   }
   if (name === 'display' && compat.computed31)
     return blockified31(element, longhandValue(element, name, data, custom, compat, value));
+  // (a pseudo-element's content: normal is none for ::before and ::after,
+  // and for a ::marker but a list item's, black box 31.0.1)
+  if (name === 'content' && compat.computed31) {
+    const content = attrContent31(element, longhandValue(element, name, data, custom, compat, value));
+    return element[S].pseudo === undefined ? content : pseudoContent31(element, content);
+  }
   return longhandValue(element, name, data, custom, compat, value);
 }
 
@@ -2501,6 +2682,7 @@ const MAY_CONTAIN = /flex|grid|contents|inherit|unset|revert|var\(|\\/i;
 // slot inline).
 function boxParent31(element) {
   const p = element[S].parent;
+  if (element[S].pseudo !== undefined) return p;
   if (p === null) return null;
   if (p[S].type === ELEMENT_NODE) return (p[S].shadowRoot && findSlot(element)) || p;
   return p[S].shadow === true ? p[S].host : null;
@@ -2914,7 +3096,13 @@ function rendered31(element) {
 }
 function inRenderedTree(element) {
   if (element[S].doc[S].noView === true) return false;
-  for (let n = element; ;) {
+  let n = element;
+  // (a pseudo-element: its element's; one jsdom 31 does not know, none)
+  if (n[S].pseudo !== undefined) {
+    if (n[S].pseudo === '\0unknown') return false;
+    n = n[S].parent;
+  }
+  for (;;) {
     const p = n[S].parent;
     if (p === null) return false;
     const ps = p[S];

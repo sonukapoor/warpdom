@@ -8009,3 +8009,30 @@ writable, as decided for speed above defineIndex (jsdom 31's are
 read-only too: tried and measured, style writes 22.4 ms to 38.7 ms, not
 modeled), a new one defined over the getters. attachShadow() takes the
 host's children out of the rendered tree (treeRev, jsdom 31 only).
+Merged as #331 (2026-11-19).
+
+## 2026-11-19: jsdom 31, CSS part E6: pseudo-elements (branch feat/269-jsdom31-pseudo, #269)
+
+jsdom 31's getComputedStyle(element, pseudo), black box on 31.0.1 (28
+cases; cascade.js pseudoName31, pseudoNode31):
+- The argument: '', no colon (before) or null is the element's own style;
+  ::name of the pseudo-elements jsdom 31 knows (case-insensitive; the
+  legacy :before, :after, :first-line and :first-letter too) its style;
+  any other (::foo, ::part(x), ::slotted(a), ::-webkit-scrollbar, a space
+  after it) an empty one.
+- A pseudo-element is computed as a child of its element: a node of no
+  namespace, never in the tree, whose parent is the element (inherited
+  values and inherit take the element's; a flex or grid element's
+  pseudo-elements are blockified), with its own rules: selectors ending
+  in a pseudo-element (single-colon legacy ones too) match its
+  originating element, a pseudo-element's specificity added
+  (index.pseudo); :hover and the others match as for the element.
+- content: normal is none for ::before and ::after, and for ::marker but
+  a list item's; attr() is a string of the attribute's value (the
+  originating element's; "" when missing, or the string fallback;
+  another fallback, or more than a name, makes it normal), the element's
+  own content too.
+- User agent rules: ::marker unicode-bidi isolate, tabular-nums, white-
+  space pre; dialog::backdrop rgba(0, 0, 0, 0.1); a file input's
+  ::file-selector-button align-content center.
+Not modeled: text-align (the computed shorthand, D4/D5).
