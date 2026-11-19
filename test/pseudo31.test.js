@@ -672,3 +672,55 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  "jsdom 31: a missing attribute's fallback is content tokens in its place",
+  (w) => {
+    const d = w.document;
+    d.body.innerHTML = '<p id="p" title="T"></p>';
+    const p = d.getElementById('p');
+    return [
+      'attr(x, "a" "b")',
+      'attr(x, "a""b")',
+      'attr(x, "a" 3px)',
+      'attr(x, "a" counter(c))',
+      'attr(x, a)',
+      'attr(x, "a" / "b")',
+      'attr(x, "a" attr(title))',
+      'attr(title, "a" "b")',
+      'attr(title, "a" (b) ")")',
+      'attr(x, "a"  "b"  )',
+      'attr(x, "a" \'b\')',
+      'attr(x, open-quote "a")',
+      'attr(x, attr(y, "z"))',
+      'attr(x, attr(y, q))',
+      'attr(x, "(" attr(title))',
+      'attr(x, "a") "b"',
+      'attr(x, attr(title) ")") attr(title)',
+      'attr(x,)',
+      'attr(x, )',
+      'attr(title,)',
+      'attr(x)',
+      'attr(x, attr(y))',
+      'attr(x, attr(y,))',
+      `${'attr(x, '.repeat(100)}"z"${')'.repeat(100)}`,
+    ].map((content) => {
+      p.style.content = 'normal';
+      p.style.content = content;
+      return [content, w.getComputedStyle(p).content];
+    });
+  },
+  { jsdom: 31 },
+);
+
+test('jsdom 31: attr() fallbacks nested past 256 deep make the value normal, read in linear time (jsdom 31 overflows its stack)', () => {
+  const w = createWindow({ jsdom: '31.0.1' });
+  const p = w.document.body.appendChild(w.document.createElement('p'));
+  const nested = (n) => `${'attr(x, '.repeat(n)}"z"${')'.repeat(n)}`;
+  p.style.content = nested(256);
+  assert.equal(w.getComputedStyle(p).content, '"z"');
+  p.style.content = nested(20000);
+  const start = performance.now();
+  assert.equal(w.getComputedStyle(p).content, 'normal');
+  assert.ok(performance.now() - start < 1000);
+});

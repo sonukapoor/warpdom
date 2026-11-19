@@ -8143,3 +8143,16 @@ not changed (also on main, jsdom 30 too: selector validation, 1.0
 range): warpdom accepts unknown pseudo-elements in selectors, so
 .a, #x::foo { } keeps .a and querySelectorAll('.a, #x::foo') matches;
 jsdom drops the rule and throws a SyntaxError.
+Fifteenth round (#332, Copilot's closer look: attr() fallbacks and
+adjacent strings): a missing attribute's fallback is content tokens in
+its place (several strings, adjacent ones too, a slash, counter() and
+other functions, nested attr(), quote keywords; an identifier or a
+length makes the value normal; an empty fallback after the comma is
+normal too). The content tokenizer is one pass over the value with an
+index (contentAt31, attrAt31): nested fallbacks are not sliced and
+read again (that was quadratic: 85 ms for 3000 deep), and a present
+attribute's fallback is skipped in one scan. Past 256 nested fallbacks
+the value is normal (not modeled: jsdom 31 overflows its stack from
+about a thousand). Found, not changed (also on main, set-time strings):
+jsdom 31 accepts a CR LF ending an escape inside a string
+("\61 CR LF b" is "ab"); warpdom rejects the declaration.

@@ -641,12 +641,28 @@ function attrContent31(node, value) {
   if (!ATTR.test(value)) return value;
   const element = node[S].pseudo === undefined ? node : node[S].origin;
   const out = [];
-  for (let i = 0; i < value.length;) {
+  return contentAt31(element, value, 0, out, 0) === value.length ? out.join(' ') : 'normal';
+}
+// The tokens of a content value with attr() from i, written into out, in
+// one pass over the value (nested fallbacks too); the index where they
+// end (at a fallback's closing parenthesis), or -1 when the value is
+// normal. fallback: how deep in missing attributes' fallbacks (0: none),
+// whose tokens take their place and must be content too (strings, a
+// slash, functions, quote keywords; not another identifier or a length:
+// black box, 31.0.1). Past MAX_FALLBACKS the value is normal (jsdom 31
+// overflows its stack there, from about a thousand).
+const MAX_FALLBACKS = 256;
+const QUOTE_KEYWORDS = new Set(['open-quote', 'close-quote', 'no-open-quote', 'no-close-quote']);
+const ATTR_OPEN = /attr\(/iy;
+function contentAt31(element, value, i, out, fallback) {
+  if (fallback > MAX_FALLBACKS) return -1;
+  while (i < value.length) {
     const c = value[i];
     if (isCssSpace(value.charCodeAt(i))) {
       i++;
       continue;
     }
+    if (fallback && c === ')') return i;
     if (c === '"' || c === "'") {
       const end = stringEnd(value, i);
       out.push(cssString(stringText(value.slice(i, end))));
@@ -659,34 +675,77 @@ function attrContent31(node, value) {
       i++;
       continue;
     }
-    // (a token: to a space or string, or the parenthesis closing it)
-    let j = i;
-    let depth = 0;
-    for (; j < value.length; j++) {
-      const d = value[j];
-      if (d === '\\') j++;
-      else if (d === '"' || d === "'") {
-        if (depth === 0) break;
-        j = stringEnd(value, j) - 1;
-      } else if (d === '(') depth++;
-      else if (d === ')') {
-        if (--depth === 0) {
-          j++;
-          break;
-        }
-      } else if (depth === 0 && (d === '/' || isCssSpace(value.charCodeAt(j)))) break;
-    }
-    const token = value.slice(i, j);
-    i = j;
-    if (!/^attr\(/i.test(token)) {
-      out.push(token);
+    ATTR_OPEN.lastIndex = i;
+    if (ATTR_OPEN.test(value)) {
+      i = attrAt31(element, value, i + 5, out, fallback);
+      if (i < 0) return -1;
       continue;
     }
-    const text = token.endsWith(')') ? attrText31(element, token.slice(5, -1)) : null;
-    if (text === null) return 'normal';
-    out.push(cssString(text));
+    // (another token: to a space, string or slash, or the parenthesis
+    // closing it)
+    const j = tokenEnd(value, i);
+    if (j === i) return -1;
+    const token = value.slice(i, j);
+    if (fallback && !token.endsWith(')') && !QUOTE_KEYWORDS.has(token.toLowerCase())) return -1;
+    out.push(token);
+    i = j;
   }
-  return out.join(' ');
+  return fallback ? -1 : i;
+}
+function tokenEnd(value, i) {
+  let depth = 0;
+  for (; i < value.length; i++) {
+    const d = value[i];
+    if (d === '\\') i++;
+    else if (d === '"' || d === "'") {
+      if (depth === 0) return i;
+      i = stringEnd(value, i) - 1;
+    } else if (d === '(') depth++;
+    else if (d === ')') {
+      if (depth === 0) return i;
+      if (--depth === 0) return i + 1;
+    } else if (depth === 0 && (d === '/' || isCssSpace(value.charCodeAt(i)))) return i;
+  }
+  return i;
+}
+// The index of the parenthesis closing a function whose arguments go on
+// from i (strings and nested functions skipped), or the value's length.
+function closingParenthesis(value, i) {
+  let depth = 0;
+  for (; i < value.length; i++) {
+    const d = value[i];
+    if (d === '\\') i++;
+    else if (d === '"' || d === "'") i = stringEnd(value, i) - 1;
+    else if (d === '(') depth++;
+    else if (d === ')' && depth-- === 0) return i;
+  }
+  return i;
+}
+// An attr() whose arguments start at i: its value as a string into out,
+// or its fallback's tokens; the index after its closing parenthesis, or
+// -1. (A present attribute's fallback is skipped in one scan.)
+function attrAt31(element, value, i, out, depth) {
+  ATTR_NAME.lastIndex = i;
+  const m = ATTR_NAME.exec(value);
+  if (m === null) return -1;
+  let j = i + m[0].length;
+  if (value[j] !== ')' && value[j] !== ',') return -1;
+  const es = element[S];
+  const name = decodeEscapes(m[2]);
+  const text = m[1] !== undefined ? undefined : es.attrs.get(es.ns === HTML_NS ? asciiLower(name) : name);
+  if (text !== undefined) {
+    out.push(cssString(text));
+    if (value[j] === ',') j = closingParenthesis(value, j + 1);
+    return value[j] === ')' ? j + 1 : -1;
+  }
+  if (value[j] === ')') {
+    out.push('""');
+    return j + 1;
+  }
+  // (an empty fallback after the comma: normal)
+  const before = out.length;
+  j = contentAt31(element, value, j + 1, out, depth + 1);
+  return j < 0 || value[j] !== ')' || out.length === before ? -1 : j + 1;
 }
 // attr()'s arguments: a CSS identifier (non-ASCII, escapes, a leading -
 // or --), after an optional namespace prefix, then a fallback. Black box,
@@ -698,30 +757,11 @@ const ESCAPE = String.raw`\\(?:(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F])
 const IDENT = String.raw`(?:--|-?(?:[A-Za-z_]|[^\x00-\x7f]|${ESCAPE}))(?:[\w-]|[^\x00-\x7f]|${ESCAPE})*`;
 // (the name only: the fallback after it is found by hand, so that a long
 // one is read in one pass)
-const ATTR_NAME = new RegExp(String.raw`^[ \t\n\r\f]*(?:(${IDENT})\|)?(${IDENT})[ \t\n\r\f]*`, 's');
+const ATTR_NAME = new RegExp(String.raw`[ \t\n\r\f]*(?:(${IDENT})\|)?(${IDENT})[ \t\n\r\f]*`, 'sy');
 const PSEUDO_ARGUMENT = new RegExp(String.raw`^${IDENT}$`, 's');
 const PSEUDO_NAME = new RegExp(String.raw`^(::?)(${IDENT})(\(.*)?$`, 's');
 const CHAINED = new RegExp(String.raw`^::?(${IDENT})::(${IDENT})$`, 's');
 const asciiLower = (text) => text.replace(/[A-Z]+/g, (m) => m.toLowerCase());
-function attrText31(element, args) {
-  const m = ATTR_NAME.exec(args);
-  if (m === null) return null;
-  const rest = m[0].length;
-  if (rest < args.length && args[rest] !== ',') return null;
-  const es = element[S];
-  const name = decodeEscapes(m[2]);
-  const text = m[1] !== undefined ? undefined : es.attrs.get(es.ns === HTML_NS ? asciiLower(name) : name);
-  if (text !== undefined) return text;
-  let start = rest + 1;
-  let end = args.length;
-  while (start < end && isCssSpace(args.charCodeAt(start))) start++;
-  while (end > start && isCssSpace(args.charCodeAt(end - 1))) end--;
-  const fallback = start < end ? args.slice(start, end) : '';
-  if (fallback === '') return '';
-  if ((fallback[0] === '"' || fallback[0] === "'") && stringEnd(fallback, 0) === fallback.length)
-    return stringText(fallback);
-  return null;
-}
 function pseudoContent31(node, value) {
   if (value !== 'normal') return value;
   const pseudo = node[S].kind;
