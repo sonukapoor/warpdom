@@ -470,3 +470,75 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  "jsdom 31: a functional pseudo-element's argument is one identifier, escapes decoded, its case kept",
+  (w) => {
+    const d = w.document;
+    const pseudos = [
+      '::highlight(x)',
+      '::highlight(X)',
+      '::HIGHLIGHT(x)',
+      '::highlight(\\78)',
+      '::highlight()',
+      '::highlight(a b)',
+      '::highlight( x )',
+      '::highlight(1)',
+      '::highlight("x")',
+      '::view-transition-group(*)',
+      '::view-transition-old(x)',
+      '::picker(select)',
+    ];
+    const style = d.createElement('style');
+    style.textContent = pseudos.map((p, i) => `#x${p} { --r${i}: 1 }`).join('\n');
+    d.head.appendChild(style);
+    d.body.innerHTML = '<div id="x"></div>';
+    const x = d.getElementById('x');
+    return pseudos.map((p, i) => {
+      const cs = w.getComputedStyle(x, p);
+      return [p, cs.length, cs.display, cs.getPropertyValue(`--r${i}`)];
+    });
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  "jsdom 31: ::before::marker and ::after::marker are their pseudo-element's marker; other chains are none",
+  (w) => {
+    const d = w.document;
+    const style = d.createElement('style');
+    style.textContent =
+      '#x::before::marker { --a: 1; color: red } #x::marker { --b: 1 } #x::before { --c: 1; color: blue; display: list-item }' +
+      ' #x::after::marker { --d: 1 } #x::marker::before { --j: 1 } #x::marker::before, #x::after { --m: 1 }';
+    d.head.appendChild(style);
+    d.body.innerHTML = '<div id="x" title="T"></div>';
+    const x = d.getElementById('x');
+    const show = (pseudo) => {
+      const cs = w.getComputedStyle(x, pseudo);
+      const customs = [];
+      for (let i = 0; i < cs.length; i++) if (cs.item(i).startsWith('--')) customs.push(cs.item(i));
+      return [pseudo, cs.length, customs, cs.color, cs.content, cs.unicodeBidi, cs.display];
+    };
+    const out = [
+      '::before::marker',
+      '::after::marker',
+      '::BEFORE::MARKER',
+      '::b\\65 fore::marker',
+      '::marker',
+      '::before',
+      '::after',
+      '::before::after',
+      '::marker::before',
+      '::before ::marker',
+    ].map(show);
+    x.style.content = 'attr(title)';
+    out.push(show('::before::marker'));
+    const live = w.getComputedStyle(x, '::before::marker');
+    d.implementation.createHTMLDocument('').body.appendChild(x);
+    out.push(live.color);
+    d.body.appendChild(x);
+    out.push(live.color);
+    return out;
+  },
+  { jsdom: 31 },
+);

@@ -8104,3 +8104,18 @@ Ninth round (#332): a CR LF after a hex escape is one newline (both end
 the escape; #\78 CR LF ::before is #x::before, not a descendant's).
 Found, not changed (CSSOM, part F): jsdom 31 writes that rule's
 selectorText as #x::before; warpdom keeps it as written.
+Tenth round (#332, Copilot's closer-look areas, 51 cases probed): a
+functional pseudo-element's argument is one CSS identifier, escapes
+decoded, its case kept (::highlight(X) is not ::highlight(x)); anything
+else (empty, two words, a number, a string, *) is none.
+::before::marker and ::after::marker are the marker of that
+pseudo-element (a node whose parent is the ::before or ::after node, so
+it inherits from it, with the element as its origin for selectors,
+attr() and the user agent rules); a rule with any other pseudo-element
+right after another (::marker::before) is dropped whole. Not modeled:
+jsdom 31's ::view-transition-group(*) rules apply to every name
+(warpdom's pseudo-element indexes are per name; merging wildcard rules
+would need their in-order records merged too, and tests rarely style
+view transitions). Found, not changed (CSSOM, part F): jsdom 31 drops
+those rules from cssRules when parsing; warpdom keeps them (its cascade
+ignores them).

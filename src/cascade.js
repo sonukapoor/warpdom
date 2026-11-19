@@ -430,21 +430,42 @@ function limited(end, root, el, ctx) {
 // :first-letter as ::.
 const LEGACY_PSEUDO = new Set(['before', 'after', 'first-line', 'first-letter']);
 const NOT_COMPUTED = new Set(['part(', 'slotted(']);
-const PSEUDO_NAME = /^(::?)([a-zA-Z][a-zA-Z0-9-]*)(\(.*\))?$/s;
+const PSEUDO_NAME = /^(::?)([a-zA-Z][a-zA-Z0-9-]*)(?:\((.*)\))?$/s;
+// ::before::marker and ::after::marker: the marker of a ::before or
+// ::after (black box, 31.0.1; other chains are none)
+const CHAINED = /^::(before|after)::marker$/i;
 export function pseudoName31(text) {
   if (!text.startsWith(':')) return '';
   // (its name's escapes decoded: ::b\65 fore is ::before)
-  if (text.includes('\\')) {
-    const open = text.indexOf('(');
-    text = open < 0 ? decodeEscapes(text) : decodeEscapes(text.slice(0, open)) + text.slice(open);
+  const open = text.indexOf('(');
+  let head = open < 0 ? text : text.slice(0, open);
+  if (head.includes('\\')) head = decodeEscapes(head);
+  if (open < 0) {
+    const chained = CHAINED.exec(head);
+    if (chained !== null) return `${chained[1].toLowerCase()}::marker`;
   }
-  const m = PSEUDO_NAME.exec(text);
+  const m = PSEUDO_NAME.exec(open < 0 ? head : head + text.slice(open));
   // (the legacy single-colon ones take no arguments: :before(x) is none)
   if (m === null || (m[1] === ':' && m[3] !== undefined)) return null;
   const name = m[2].toLowerCase();
-  const key = m[3] === undefined ? name : `${name}(`;
-  if (m[1] === ':' ? !LEGACY_PSEUDO.has(name) : !PSEUDO_ELEMENTS.has(key) || NOT_COMPUTED.has(key)) return null;
-  return m[3] === undefined ? name : `${name}${m[3].toLowerCase()}`;
+  if (m[3] === undefined)
+    return (m[1] === ':' ? LEGACY_PSEUDO.has(name) : PSEUDO_ELEMENTS.has(name) && !NOT_COMPUTED.has(name))
+      ? name
+      : null;
+  // (a functional one's argument: one identifier, escapes decoded, its
+  // case kept: ::highlight(X) is not ::highlight(x))
+  const key = `${name}(`;
+  if (!PSEUDO_ELEMENTS.has(key) || NOT_COMPUTED.has(key)) return null;
+  const arg = pseudoArgument(m[3]);
+  return arg === null ? null : `${key}${arg})`;
+}
+function pseudoArgument(text) {
+  let start = 0;
+  let end = text.length;
+  while (start < end && isCssSpace(text.charCodeAt(start))) start++;
+  while (end > start && literalSpace(text, end - 1)) end--;
+  const arg = text.slice(start, end);
+  return PSEUDO_ARGUMENT.test(arg) ? decodeEscapes(arg) : null;
 }
 // A selector's pseudo-element at its end: { base (the originating
 // element's selector), name }, or null. Its colon is the last one outside
@@ -482,6 +503,7 @@ function pseudoTail31(selector) {
   let end = selector.length;
   while (end > 0 && literalSpace(selector, end - 1)) end--;
   let colon = -1;
+  let previous = -1;
   let depth = 0;
   for (let i = 0; i < end; i++) {
     const c = selector[i];
@@ -490,13 +512,25 @@ function pseudoTail31(selector) {
     else if (c === '(' || c === '[') depth++;
     else if (c === ')' || c === ']') depth--;
     else if (c === ':' && depth === 0) {
+      previous = colon;
       colon = i;
       if (selector[i + 1] === ':') i++;
     }
   }
   if (colon < 0) return null;
-  const name = pseudoName31(selector.slice(colon, end));
+  let name = pseudoName31(selector.slice(colon, end));
   if (name === null || name === '') return null;
+  // (a pseudo-element right after another: ::before::marker, or a rule
+  // that matches nothing, INVALID_TAIL)
+  if (previous >= 0) {
+    const before = pseudoName31(selector.slice(previous, colon));
+    if (before !== null && before !== '') {
+      const chained = pseudoName31(selector.slice(previous, end));
+      if (chained === null || !chained.includes('::')) return INVALID_TAIL;
+      name = chained;
+      colon = previous;
+    }
+  }
   let stop = colon;
   while (stop > 0 && literalSpace(selector, stop - 1)) stop--;
   let start = 0;
@@ -524,7 +558,8 @@ function pseudoIndex(index, name) {
   if (target === undefined) index.pseudo.set(name, (target = pseudoTarget()));
   return target;
 }
-const originating = (match) => (node, ctx) => match(node[S].parent, ctx);
+const INVALID_TAIL = { base: '', name: '' };
+const originating = (match) => (node, ctx) => match(node[S].origin, ctx);
 // A pseudo-element's own rules in the document's index (one without any
 // still one per index, so that its cascaded values go with the index's).
 function indexOf31(element, index) {
@@ -542,7 +577,7 @@ function indexOf31(element, index) {
 // moves the tree only): its values are cascaded again there.
 function followElement31(node) {
   const s = node[S];
-  const doc = s.parent[S].doc;
+  const doc = s.origin[S].doc;
   if (s.doc !== doc) {
     s.doc = doc;
     s.cascaded = undefined;
@@ -564,8 +599,13 @@ export function pseudoNode31(element, name, ws) {
   if (node === undefined) {
     // (the window's own factory: no method a test may have replaced)
     node = ws.createElementNS(PSEUDO_NS, 'pseudo', element[S].doc, true);
-    node[S].parent = element;
+    // (a chained one's parent is its ::before or ::after, which it
+    // inherits from; its origin, the element, is what selectors match)
+    const chain = key.indexOf('::');
+    node[S].parent = chain < 0 ? element : pseudoNode31(element, key.slice(0, chain), ws);
+    node[S].origin = element;
     node[S].pseudo = key;
+    node[S].kind = chain < 0 ? key : key.slice(chain + 2);
     byName.set(key, node);
   }
   return node;
@@ -587,7 +627,7 @@ const stringText = (token) =>
 const CONTINUATION = /\\(?:\r\n|[\n\r\f])/g;
 function attrContent31(node, value) {
   if (!ATTR.test(value)) return value;
-  const element = node[S].pseudo === undefined ? node : node[S].parent;
+  const element = node[S].pseudo === undefined ? node : node[S].origin;
   const out = [];
   for (let i = 0; i < value.length;) {
     const c = value[i];
@@ -647,6 +687,7 @@ const IDENT = String.raw`(?:--|-?(?:[A-Za-z_]|[^\x00-\x7f]|${ESCAPE}))(?:[\w-]|[
 // (the name only: the fallback after it is found by hand, so that a long
 // one is read in one pass)
 const ATTR_NAME = new RegExp(String.raw`^[ \t\n\r\f]*(?:(${IDENT})\|)?(${IDENT})[ \t\n\r\f]*`, 's');
+const PSEUDO_ARGUMENT = new RegExp(String.raw`^${IDENT}$`, 's');
 const asciiLower = (text) => text.replace(/[A-Z]+/g, (m) => m.toLowerCase());
 function attrText31(element, args) {
   const m = ATTR_NAME.exec(args);
@@ -669,15 +710,15 @@ function attrText31(element, args) {
 }
 function pseudoContent31(node, value) {
   if (value !== 'normal') return value;
-  const pseudo = node[S].pseudo;
+  const pseudo = node[S].kind;
   if (pseudo === 'before' || pseudo === 'after') return 'none';
   if (pseudo === 'marker' && !computedValue(node[S].parent, 'display').endsWith('list-item')) return 'none';
   return value;
 }
 // The user agent sheet's rules for pseudo-elements (black box, 31.0.1).
 function pseudoUserAgent31(node, name) {
-  const pseudo = node[S].pseudo;
-  const parent = node[S].parent[S];
+  const pseudo = node[S].kind;
+  const parent = node[S].origin[S];
   if (pseudo === 'marker') return MARKER_UA[name];
   if (pseudo === 'backdrop' && name === 'background-color' && parent.tag === 'dialog' && parent.ns === HTML_NS)
     return 'rgba(0, 0, 0, 0.1)';
@@ -745,6 +786,7 @@ function buildIndex(sheets, mode, compat, lists, doc = null) {
       // :before and the other legacy ones, ::b\65 fore)
       const selectors = splitSelectorList(text);
       const tails = selectors.map(pseudoTail31);
+      if (tails.includes(INVALID_TAIL)) return;
       const valid = selectors.map((sel, i) => (tails[i] === null ? sel : `${tails[i].base}::${tails[i].name}`));
       try {
         compileRuleSelector(scope === null ? valid.join(',') : scopedSelector(valid.join(',')));
@@ -3254,7 +3296,7 @@ function inRenderedTree(element) {
   // (a pseudo-element: its element's; one jsdom 31 does not know, none)
   if (n[S].pseudo !== undefined) {
     if (n[S].pseudo === '\0unknown') return false;
-    n = n[S].parent;
+    n = n[S].origin;
   }
   for (;;) {
     const p = n[S].parent;
