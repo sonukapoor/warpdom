@@ -464,7 +464,7 @@ export const WINDOW_MEMBERS = {
     // jsdom 31 computes pseudo-elements (cascade.js pseudoNode31).
     if (ws.compat.computed31) {
       const name = pseudoElt == null ? '' : pseudoName31(String(pseudoElt));
-      return computedStyle(name === '' ? element : pseudoNode31(element, name), ws.protos.CSSStyleProperties);
+      return computedStyle(name === '' ? element : pseudoNode31(element, name, ws), ws.protos.CSSStyleProperties);
     }
     if (pseudoElt != null && pseudoElt !== '') ws.notImplemented(pseudoElementMessage(ws.compat.jsdom));
     return computedStyle(element, ws.protos.CSSStyleProperties);

@@ -430,6 +430,7 @@ function limited(end, root, el, ctx) {
 // :first-letter as ::.
 const LEGACY_PSEUDO = new Set(['before', 'after', 'first-line', 'first-letter']);
 const NOT_COMPUTED = new Set(['part(', 'slotted(']);
+const PSEUDO_NAME = /^(::?)([a-zA-Z][a-zA-Z0-9-]*)(\(.*\))?$/s;
 export function pseudoName31(text) {
   if (!text.startsWith(':')) return '';
   // (its name's escapes decoded: ::b\65 fore is ::before)
@@ -437,7 +438,7 @@ export function pseudoName31(text) {
     const open = text.indexOf('(');
     text = open < 0 ? decodeEscapes(text) : decodeEscapes(text.slice(0, open)) + text.slice(open);
   }
-  const m = /^(::?)([a-zA-Z][a-zA-Z0-9-]*)(\(.*\))?$/s.exec(text);
+  const m = PSEUDO_NAME.exec(text);
   // (the legacy single-colon ones take no arguments: :before(x) is none)
   if (m === null || (m[1] === ':' && m[3] !== undefined)) return null;
   const name = m[2].toLowerCase();
@@ -496,7 +497,9 @@ function pseudoTail31(selector) {
   if (name === null || name === '') return null;
   let stop = colon;
   while (stop > 0 && literalSpace(selector, stop - 1)) stop--;
-  const base = selector.slice(0, stop).trimStart();
+  let start = 0;
+  while (start < stop && literalSpace(selector, start)) start++;
+  const base = selector.slice(start, stop);
   const last = base.charCodeAt(base.length - 1);
   const bare =
     base === '' || stop < colon || ((last === 62 || last === 43 || last === 126) && !escapedAt(base, base.length - 1));
@@ -551,13 +554,14 @@ function followElement31(node) {
 // element and name. name null: one jsdom 31 does not know, never rendered.
 const PSEUDO_NS = 'urn:warpdom:pseudo-element';
 const pseudoNodes = new WeakMap();
-export function pseudoNode31(element, name) {
+export function pseudoNode31(element, name, ws) {
   let byName = pseudoNodes.get(element);
   if (byName === undefined) pseudoNodes.set(element, (byName = new Map()));
   const key = name ?? '\0unknown';
   let node = byName.get(key);
   if (node === undefined) {
-    node = element[S].doc.createElementNS(PSEUDO_NS, 'pseudo');
+    // (the window's own factory: no method a test may have replaced)
+    node = ws.createElementNS(PSEUDO_NS, 'pseudo', element[S].doc, true);
     node[S].parent = element;
     node[S].pseudo = key;
     byName.set(key, node);

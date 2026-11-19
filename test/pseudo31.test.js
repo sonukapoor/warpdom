@@ -276,3 +276,21 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  "jsdom 31: a pseudo-element's style calls no method a test replaced",
+  (w) => {
+    const d = w.document;
+    d.body.innerHTML = '<div id="x"></div>';
+    const x = d.getElementById('x');
+    let calls = 0;
+    const patched = function () {
+      calls++;
+      throw new Error('patched');
+    };
+    w.Document.prototype.createElementNS = patched;
+    w.Document.prototype.createElement = patched;
+    return [w.getComputedStyle(x, '::before').display, calls, x.childNodes.length];
+  },
+  { jsdom: 31 },
+);

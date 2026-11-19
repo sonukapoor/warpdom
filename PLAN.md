@@ -8065,3 +8065,12 @@ name (#\78 ::before is #x::before; one more space is a descendant);
 :before(x) and the other legacy names with arguments are no
 pseudo-element (an empty style); a slash in content is a token of its
 own (attr(id)/attr(title) is "p" / "alt").
+Fourth round (#332): a pseudo-element's node is made with the window's
+own factory (window state createElementNS, raw), not
+document.createElementNS, which a test may replace (jsdom 31 computes
+the style with it replaced); the base selector is trimmed of CSS
+whitespace only (CodeRabbit). Found, not changed (also on main, part F):
+jsdom 31 keeps a leading U+00A0 in a rule's selectorText (" .t", a type
+selector that matches nothing) where warpdom's CSSOM trims it with
+String.trim, so  .t { color: blue } applies here in the jsdom 31
+profile (jsdom 30 applies it too).
