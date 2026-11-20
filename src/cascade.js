@@ -2254,8 +2254,11 @@ function colorValue31(element, name, value, data) {
   if (lower.startsWith('light-dark(')) {
     const picked = lightDark31(element, value);
     if (picked === null) return null;
+    // (a color it does not compute, lab() or color(), as declared; one
+    // that keeps currentcolor, a mix of it too, keeps the function)
     const color = colorValue31(element, name, picked, data);
-    return color === 'currentcolor' ? value : color;
+    if (color === null) return picked;
+    return color === 'currentcolor' || (KEEPS_CURRENTCOLOR.has(name) && CURRENTCOLOR_WORD.test(color)) ? value : color;
   }
   if (lower === 'currentcolor') {
     if (KEEPS_CURRENTCOLOR.has(name)) return lower;

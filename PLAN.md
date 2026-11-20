@@ -8194,3 +8194,8 @@ whole and computes none. Found, for later parts: image-set() computes as
 image-set(url("a.png") 1dppx); a relative url() in a computed value is
 resolved against the document's URL (url("a.png") in a document at
 http://localhost:3000/ computes as url("http://localhost:3000/a.png")).
+Review round (#334): light-dark() picking a color colorValue31 does not
+compute (color(), lab(), oklch()) gives that color as declared, not the
+function; in a property that keeps currentcolor, a picked mix of
+currentcolor keeps the function too (fill, accent-color, and a color
+among other components).

@@ -125,3 +125,25 @@ parity(
   ]),
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31: light-dark() picking a color it does not compute, or a mix of currentcolor',
+  run([
+    ['color', 'light-dark(color(srgb 1 0 0), blue)'],
+    ['color', 'light-dark(lab(50% 20 30), blue)'],
+    ['color', 'light-dark(oklch(0.5 0.1 120), blue)'],
+    ['background-color', 'light-dark(color(display-p3 1 0 0), red)'],
+    ['fill', 'light-dark(color-mix(in srgb, currentcolor, red), blue)'],
+    ['fill', 'light-dark(blue, color-mix(in srgb, currentcolor, red))'],
+    ['accent-color', 'light-dark(color-mix(in srgb, currentcolor, red), blue)'],
+    ['color', 'light-dark(color-mix(in srgb, currentcolor, red), blue)'],
+    ['fill', 'light-dark(light-dark(red, currentcolor), blue)'],
+    ['text-shadow', '1px 1px light-dark(lab(50% 20 30), blue)'],
+    ['background-image', 'linear-gradient(light-dark(color(srgb 1 0 0), blue), lab(50% 20 30))'],
+    ['scrollbar-color', 'lab(50% 20 30) light-dark(color(srgb 1 0 0), blue)'],
+    ['color', 'lab(50% 20 30)'],
+    ['fill', 'url(#x) lab(50% 20 30)'],
+    ['text-shadow', '1px 1px oklch(0.5 0.1 120)'],
+  ]),
+  { jsdom: 31 },
+);
