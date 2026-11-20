@@ -147,3 +147,18 @@ parity(
   ]),
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31: text-shadow with lab(), color() and other color functions, and a blur that computes to 0px',
+  run([
+    ['text-shadow', 'lab(50 20 30) 1px 2px calc(1em - 20px)'],
+    ['text-shadow', '1px 2px calc(1em - 20px) red'],
+    ['text-shadow', 'color(srgb 1 0 0) 1px 2px 0px'],
+    ['text-shadow', '1px 2px 0 oklch(0.5 0.1 120)'],
+    ['text-shadow', '1px 2px 3px lab(50% 20 30)'],
+    ['text-shadow', 'hwb(120 10% 10%) 1px 1px 0'],
+    ['text-shadow', 'rgb(1 2 3 / 50%) 1px 1px 0'],
+    ['text-shadow', '1px 2px calc(1px - 1px) currentcolor'],
+  ]),
+  { jsdom: 31 },
+);

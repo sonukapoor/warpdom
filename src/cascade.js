@@ -2312,6 +2312,7 @@ function splitTopLevel(value, separator) {
   return separator === 32 ? parts.filter((part) => part !== '') : parts;
 }
 
+const COLOR_FUNCTION = /^(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|device-cmyk)\(/;
 // One color among a value's components as jsdom 31 computes it (black
 // box, 31.0.1): currentcolor kept, a mix of it or a light-dark() that
 // picks it kept as declared, other colors computed; null for a component
@@ -2319,14 +2320,18 @@ function splitTopLevel(value, separator) {
 function componentColor31(element, token, data) {
   const lower = token.toLowerCase();
   if (lower === 'currentcolor') return 'currentcolor';
+  // (a color function colorValue31 does not compute, lab() or color(),
+  // is a color as declared)
+  const modern = COLOR_FUNCTION.test(lower);
   if (
+    !modern &&
     !lower.startsWith('light-dark(') &&
     !lower.startsWith('color-mix(') &&
     DARK_SYSTEM_COLORS_31[lower] === undefined &&
     resolveColor(token, 'jsdom31') === null
   )
     return null;
-  return colorValue31(element, 'fill', token, data);
+  return colorValue31(element, 'fill', token, data) ?? (modern ? token : null);
 }
 
 // The colors of a value of more components (jsdom 31, black box 31.0.1);

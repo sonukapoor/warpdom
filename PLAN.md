@@ -8199,3 +8199,7 @@ compute (color(), lab(), oklch()) gives that color as declared, not the
 function; in a property that keeps currentcolor, a picked mix of
 currentcolor keeps the function too (fill, accent-color, and a color
 among other components).
+Second round (#334, Copilot's previously missed item): a color function
+colorValue31 does not compute (lab(), color(), oklch()) is a color among
+a value's components, kept as declared (it was counted as a length, so
+text-shadow kept a blur computing to 0px).
