@@ -236,3 +236,48 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31: contrast-color() reads exact channels, math functions in channels, and D50 colors adapted to D65',
+  (w) => {
+    const p = w.document.body.appendChild(w.document.createElement('p'));
+    return [
+      'rgb(46.05% 46.05% 46.05%)',
+      'color(srgb 0.4605 0.4605 0.4605)',
+      'rgb(117.4 117.4 117.4)',
+      'rgb(117.5 117.5 117.5)',
+      'hsl(0 0% 46.05%)',
+      'hwb(0 46.05% 53.95%)',
+      'light-dark(rgb(46.05% 46.05% 46.05%), black)',
+      'oklab(calc(0.6) 0 0)',
+      'oklch(calc(0.6) 0 0)',
+      'oklab(0.6 calc(0.1) 0)',
+      'oklab(calc(0.5 + 0.1) 0 0)',
+      'oklab(min(0.6, 0.7) 0 0)',
+      'oklch(0.6 0.1 calc(60 * 2))',
+      'lab(calc(50%) 0 0)',
+      'lab(calc(40% + 10%) 0 0)',
+      'color(srgb calc(0.5) 0.5 0.5)',
+      'color(display-p3 calc(0.2 * 2) 0.5 0.5)',
+      'color(xyz-d50 0.3 0.18 0.02)',
+      'color(xyz-d50 0.18 0.18 0.18)',
+      'color(xyz-d50 0.02 0.18 0.3)',
+      'lab(50% 60 40)',
+      'lab(48% 60 40)',
+      'lab(52% -60 40)',
+      'lch(50% 80 30)',
+      'lch(49% 80 250)',
+      'lab(49.5% 30 -30)',
+      'lab(50% 100% -100%)',
+      'lch(50% 100% 30deg)',
+      'oklch(0.6 40% 120deg)',
+      'color(prophoto-rgb 0.6 0.3 0.2)',
+      'color(prophoto-rgb 0.3 0.45 0.5)',
+    ].map((color) => {
+      p.style.color = '';
+      p.style.color = `contrast-color(${color})`;
+      return [color, w.getComputedStyle(p).color];
+    });
+  },
+  { jsdom: 31 },
+);

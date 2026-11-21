@@ -2273,8 +2273,22 @@ function colorValue31(element, name, value, data) {
   // keeps currentcolor keeps the function as declared
   if (lower.startsWith('contrast-color(')) {
     if (closingParen(value) !== value.length - 1) return null;
-    const inner = value.slice(value.indexOf('(') + 1, -1).trim();
-    const color = colorValue31(element, name, inner, data) ?? inner;
+    let inner = value.slice(value.indexOf('(') + 1, -1).trim();
+    // (light-dark() picked first, so that its color keeps its exact
+    // channels; colorValue31 rounds rgb(), hsl() and hwb(): only
+    // currentcolor, mixes, system and named colors go through it)
+    for (let depth = 0; depth < 32 && inner.toLowerCase().startsWith('light-dark('); depth++) {
+      inner = lightDark31(element, inner);
+      if (inner === null) return null;
+    }
+    const innerLower = inner.toLowerCase();
+    const color =
+      innerLower === 'currentcolor' ||
+      innerLower.startsWith('color-mix(') ||
+      innerLower.startsWith('contrast-color(') ||
+      IDENTIFIER.test(innerLower)
+        ? (colorValue31(element, name, inner, data) ?? inner)
+        : inner;
     if (color === 'currentcolor' || (KEEPS_CURRENTCOLOR.has(name) && CURRENTCOLOR_WORD.test(color))) return value;
     const y = luminance31(color);
     if (y === null) return null;
@@ -2301,23 +2315,28 @@ function colorValue31(element, name, value, data) {
   return lower === 'auto' && AUTO_CURRENTCOLOR.has(name) ? currentColor(element) : lower;
 }
 
-// A computed color's relative luminance (WCAG 2, CIE Y), or null: sRGB
-// colors from their channels; lab() and lch() from L; oklab() and oklch()
-// through linear sRGB; color() spaces through their transfer function and
-// the Y row of their RGB to XYZ matrix.
+// A computed color's relative luminance (WCAG 2: CIE Y under D65), or
+// null for a color it cannot read: sRGB colors from their exact channels;
+// oklab() and oklch() through linear sRGB; lab(), lch(), xyz-d50 and
+// prophoto-rgb (D50) through XYZ adapted to D65, as jsdom 31 reads them
+// (black box, 31.0.1); other color() spaces through their transfer
+// function and the Y row of their RGB to XYZ matrix. Channels may be
+// numbers, percentages, none, or calc() of one of them.
 const linear = (c) => (Math.abs(c) <= 0.04045 ? c / 12.92 : Math.sign(c) * ((Math.abs(c) + 0.055) / 1.055) ** 2.4);
+// (Y of an XYZ D50 color after Bradford adaptation to D65)
+const d65Y = (x, y, z) => -0.0283697093338637 * x + 1.0099953980813041 * y + 0.021041441191917323 * z;
+const PROPHOTO_Y = [
+  d65Y(0.7977604896723027, 0.2880711282292934, 0),
+  d65Y(0.13518583717574031, 0.7118432178101014, 0),
+  d65Y(0.0313493495815248, 0.00008565396060525902, 0.8251046025104601),
+];
 const COLOR_SPACES = {
   __proto__: null,
   srgb: [linear, 0.2126, 0.7152, 0.0722],
   'srgb-linear': [(c) => c, 0.2126, 0.7152, 0.0722],
   'display-p3': [linear, 0.2289746, 0.6917385, 0.0792869],
   'a98-rgb': [(c) => Math.sign(c) * Math.abs(c) ** (563 / 256), 0.2973769, 0.6273491, 0.0752741],
-  'prophoto-rgb': [
-    (c) => (Math.abs(c) <= 1 / 32 ? c / 16 : Math.sign(c) * Math.abs(c) ** 1.8),
-    0.2880748,
-    0.7118352,
-    0.0000899,
-  ],
+  'prophoto-rgb': [(c) => (Math.abs(c) <= 1 / 32 ? c / 16 : Math.sign(c) * Math.abs(c) ** 1.8), ...PROPHOTO_Y],
   rec2020: [
     (c) => (Math.abs(c) < 0.081243 ? c / 4.5 : Math.sign(c) * ((Math.abs(c) + 0.099297) / 1.099297) ** (1 / 0.45)),
     0.2627002,
@@ -2325,42 +2344,67 @@ const COLOR_SPACES = {
     0.0593017,
   ],
 };
-const COLOR_ARGS = /^([a-z0-9-]+)\(([^/)]*)/i;
-// (a channel: a number, a percentage of its range, none as 0)
+// (a math function of numbers, or of percentages only: lengths.js)
+const MATH_CALL = /^[a-z-]+\(/i;
 function channel(text, range = 1) {
+  if (MATH_CALL.test(text)) {
+    if (!text.includes('%')) return absoluteNumber(text) ?? NaN;
+    const percent = absoluteNumber(text.replace(/%/g, ''));
+    return percent === null ? NaN : (percent / 100) * range;
+  }
   if (text.toLowerCase() === 'none') return 0;
-  return text.endsWith('%') ? (Number(text.slice(0, -1)) / 100) * range : Number(text);
+  if (text.endsWith('%')) return (Number(text.slice(0, -1)) / 100) * range;
+  return Number(text.replace(/deg$/i, ''));
+}
+// lab() to the D65 Y (CIE Lab with a D50 white).
+const CHROMA_RANGE = { __proto__: null, lab: 125, lch: 150, oklab: 0.4, oklch: 0.4 };
+function labY(l, a, b) {
+  const kappa = 24389 / 27;
+  const epsilon = 216 / 24389;
+  const fy = (l + 16) / 116;
+  const f = (t) => (t ** 3 > epsilon ? t ** 3 : (116 * t - 16) / kappa);
+  const x = f(fy + a / 500) * (0.3457 / 0.3585);
+  const y = l > kappa * epsilon ? fy ** 3 : l / kappa;
+  const z = f(fy - b / 200) * ((1 - 0.3457 - 0.3585) / 0.3585);
+  return d65Y(x, y, z);
 }
 function luminance31(color) {
-  const m = COLOR_ARGS.exec(color);
-  const fn = m?.[1].toLowerCase();
-  const args = m === null ? [] : m[2].trim().split(/[ \t\n\r\f]+/);
+  const open = color.indexOf('(');
   let y = null;
-  if (fn === 'lab' || fn === 'lch') {
-    const l = Math.min(100, Math.max(0, channel(args[0], 100)));
-    y = l > 8 ? ((l + 16) / 116) ** 3 : l / 903.2963;
-  } else if (fn === 'oklab' || fn === 'oklch') {
-    const l = channel(args[0]);
-    let a = channel(args[1], 0.4);
-    let b = channel(args[2], 0.4);
-    if (fn === 'oklch') {
-      const h = ((args[2].toLowerCase() === 'none' ? 0 : parseFloat(args[2])) * Math.PI) / 180;
-      [a, b] = [a * Math.cos(h), a * Math.sin(h)];
-    }
-    const L = (l + 0.3963377774 * a + 0.2158037573 * b) ** 3;
-    const M = (l - 0.1055613458 * a - 0.0638541728 * b) ** 3;
-    const S = (l - 0.0894841775 * a - 1.291485548 * b) ** 3;
-    const r = 4.0767416621 * L - 3.3077115913 * M + 0.2309699292 * S;
-    const g = -1.2684380046 * L + 2.6097574011 * M - 0.3413193965 * S;
-    const bl = -0.0041960863 * L - 0.7034186147 * M + 1.707614701 * S;
-    y = 0.2126 * r + 0.7152 * g + 0.0722 * bl;
-  } else if (fn === 'color') {
-    const space = args[0].toLowerCase();
-    const rgb = args.slice(1, 4).map((c) => channel(c));
-    if (space === 'xyz' || space === 'xyz-d65' || space === 'xyz-d50') y = rgb[1];
-    else if (COLOR_SPACES[space] !== undefined) {
-      const [transfer, kr, kg, kb] = COLOR_SPACES[space];
-      y = kr * transfer(rgb[0]) + kg * transfer(rgb[1]) + kb * transfer(rgb[2]);
+  if (open > 0 && closingParen(color) === color.length - 1) {
+    const fn = color.slice(0, open).trim().toLowerCase();
+    const args = splitTopLevel(splitTopLevel(color.slice(open + 1, -1), 47)[0], 32);
+    if (fn === 'lab' || fn === 'lch' || fn === 'oklab' || fn === 'oklch') {
+      if (args.length !== 3) return null;
+      const ok = fn.startsWith('ok');
+      const l = channel(args[0], ok ? 1 : 100);
+      // (100% of a and b: 0.4 in oklab(), 125 in lab(); of chroma: 0.4, 150)
+      let a = channel(args[1], CHROMA_RANGE[fn]);
+      let b = channel(args[2], ok ? 0.4 : 125);
+      if (fn === 'lch' || fn === 'oklch') {
+        const h = (channel(args[2]) * Math.PI) / 180;
+        [a, b] = [a * Math.cos(h), a * Math.sin(h)];
+      }
+      if (!ok) y = labY(Math.min(100, Math.max(0, l)), a, b);
+      else {
+        const L = (l + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+        const M = (l - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+        const S = (l - 0.0894841775 * a - 1.291485548 * b) ** 3;
+        const r = 4.0767416621 * L - 3.3077115913 * M + 0.2309699292 * S;
+        const g = -1.2684380046 * L + 2.6097574011 * M - 0.3413193965 * S;
+        const bl = -0.0041960863 * L - 0.7034186147 * M + 1.707614701 * S;
+        y = 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+      }
+    } else if (fn === 'color') {
+      if (args.length !== 4) return null;
+      const space = args[0].toLowerCase();
+      const [r, g, b] = args.slice(1).map((c) => channel(c));
+      if (space === 'xyz' || space === 'xyz-d65') y = g;
+      else if (space === 'xyz-d50') y = d65Y(r, g, b);
+      else if (COLOR_SPACES[space] !== undefined) {
+        const [transfer, kr, kg, kb] = COLOR_SPACES[space];
+        y = kr * transfer(r) + kg * transfer(g) + kb * transfer(b);
+      }
     }
   }
   if (y === null) {

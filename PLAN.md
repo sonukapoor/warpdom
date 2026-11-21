@@ -8216,3 +8216,12 @@ spaces through their transfer function and the Y row of their matrix
 54 cases match, near the threshold in every space too. It also counts
 as a color among other components (text-shadow drops a 0px blur after
 it).
+Fourth round (#334): contrast-color() reads exact channels
+(colorValue31 rounds rgb(), hsl() and hwb(): only currentcolor, mixes,
+system and named colors go through it, light-dark() picked first), so
+rgb(46.05% 46.05% 46.05%) is black as in jsdom 31; channels may be math
+functions (lengths.js absoluteNumber; of percentages only as a
+percentage), and arguments are split at the top level (calc() in an
+oklab() channel threw); lab(), lch(), xyz-d50 and prophoto-rgb (D50)
+go through XYZ adapted to D65 (Bradford) before their Y is read, as
+jsdom 31 does (CodeRabbit). 31 more cases match.
