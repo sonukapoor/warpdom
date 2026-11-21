@@ -30,7 +30,14 @@ import {
   preprocessCss,
 } from './internal.js';
 import { LONGHANDS, SHORTHANDS, ALIASES } from './css-data.js';
-import { DARK_SYSTEM_COLORS, DARK_SYSTEM_COLORS_31, mixColor, resolveColor, systemColorKind } from './colors.js';
+import {
+  DARK_SYSTEM_COLORS,
+  DARK_SYSTEM_COLORS_31,
+  mixColor,
+  resolveColor,
+  srgbChannels31,
+  systemColorKind,
+} from './colors.js';
 import {
   segments,
   expand,
@@ -2200,6 +2207,8 @@ function closingParen(value) {
 // anywhere in the value keeps it as declared.
 function resolvedColorValue(element, name, value, data, compat) {
   if (compat.computed31) {
+    const components = componentsValue31(element, name, value, data);
+    if (components !== null) return components;
     const color = colorValue31(element, name, value, data);
     if (color !== null) return color;
   }
@@ -2246,6 +2255,45 @@ const KEEPS_CURRENTCOLOR = new Set(['accent-color', 'box-shadow-color', 'fill', 
 const CURRENTCOLOR_WORD = /currentcolor/i;
 function colorValue31(element, name, value, data) {
   const lower = value.toLowerCase();
+  // light-dark(): its light or dark color as computed, by the element's
+  // color-scheme; one that keeps currentcolor keeps the function as
+  // declared (black box, 31.0.1)
+  if (lower.startsWith('light-dark(')) {
+    const picked = lightDark31(element, value);
+    if (picked === null) return null;
+    // (a color it does not compute, lab() or color(), as declared; one
+    // that keeps currentcolor, a mix of it too, keeps the function)
+    const color = colorValue31(element, name, picked, data);
+    if (color === null) return picked;
+    return color === 'currentcolor' || (KEEPS_CURRENTCOLOR.has(name) && CURRENTCOLOR_WORD.test(color)) ? value : color;
+  }
+  // contrast-color(c): white or black, whichever contrasts more with c
+  // (WCAG 2 contrast, alpha left out; black 4.62 against 4.54 at #767676,
+  // white at #757575: black box, 31.0.1); c computed first, so one that
+  // keeps currentcolor keeps the function as declared
+  if (lower.startsWith('contrast-color(')) {
+    if (closingParen(value) !== value.length - 1) return null;
+    let inner = value.slice(value.indexOf('(') + 1, -1).trim();
+    // (light-dark() picked first, so that its color keeps its exact
+    // channels; colorValue31 rounds rgb(), hsl() and hwb(): only
+    // currentcolor, mixes, system and named colors go through it)
+    for (let depth = 0; depth < 32 && inner.toLowerCase().startsWith('light-dark('); depth++) {
+      inner = lightDark31(element, inner);
+      if (inner === null) return null;
+    }
+    const innerLower = inner.toLowerCase();
+    const color =
+      innerLower === 'currentcolor' ||
+      innerLower.startsWith('color-mix(') ||
+      innerLower.startsWith('contrast-color(') ||
+      IDENTIFIER.test(innerLower)
+        ? (colorValue31(element, name, inner, data) ?? inner)
+        : inner;
+    if (color === 'currentcolor' || (KEEPS_CURRENTCOLOR.has(name) && CURRENTCOLOR_WORD.test(color))) return value;
+    const y = luminance31(color);
+    if (y === null) return null;
+    return (y + 0.05) / 0.05 > 1.05 / (y + 0.05) ? 'rgb(0, 0, 0)' : 'rgb(255, 255, 255)';
+  }
   if (lower === 'currentcolor') {
     if (KEEPS_CURRENTCOLOR.has(name)) return lower;
     return name === 'color' ? inheritedValue(element, 'color', data) : currentColor(element);
@@ -2265,6 +2313,236 @@ function colorValue31(element, name, value, data) {
   if (color !== null) return color;
   if (!IDENTIFIER.test(lower)) return null;
   return lower === 'auto' && AUTO_CURRENTCOLOR.has(name) ? currentColor(element) : lower;
+}
+
+// A computed color's relative luminance (WCAG 2: CIE Y under D65), or
+// null for a color it cannot read: sRGB colors from their exact channels;
+// oklab() and oklch() through linear sRGB; lab(), lch(), xyz-d50 and
+// prophoto-rgb (D50) through XYZ adapted to D65, as jsdom 31 reads them
+// (black box, 31.0.1); other color() spaces through their transfer
+// function and the Y row of their RGB to XYZ matrix. Channels may be
+// numbers, percentages, none, or calc() of one of them.
+const linear = (c) => (Math.abs(c) <= 0.04045 ? c / 12.92 : Math.sign(c) * ((Math.abs(c) + 0.055) / 1.055) ** 2.4);
+// (Y of an XYZ D50 color after Bradford adaptation to D65)
+const d65Y = (x, y, z) => -0.0283697093338637 * x + 1.0099953980813041 * y + 0.021041441191917323 * z;
+const PROPHOTO_Y = [
+  d65Y(0.7977604896723027, 0.2880711282292934, 0),
+  d65Y(0.13518583717574031, 0.7118432178101014, 0),
+  d65Y(0.0313493495815248, 0.00008565396060525902, 0.8251046025104601),
+];
+const COLOR_SPACES = {
+  __proto__: null,
+  srgb: [linear, 0.2126, 0.7152, 0.0722],
+  'srgb-linear': [(c) => c, 0.2126, 0.7152, 0.0722],
+  'display-p3': [linear, 0.2289746, 0.6917385, 0.0792869],
+  'a98-rgb': [(c) => Math.sign(c) * Math.abs(c) ** (563 / 256), 0.2973769, 0.6273491, 0.0752741],
+  'prophoto-rgb': [(c) => (Math.abs(c) <= 1 / 32 ? c / 16 : Math.sign(c) * Math.abs(c) ** 1.8), ...PROPHOTO_Y],
+  rec2020: [
+    (c) => (Math.abs(c) < 0.081243 ? c / 4.5 : Math.sign(c) * ((Math.abs(c) + 0.099297) / 1.099297) ** (1 / 0.45)),
+    0.2627002,
+    0.6779981,
+    0.0593017,
+  ],
+};
+// (a math function of numbers, or of percentages only: lengths.js)
+const MATH_CALL = /^[a-z-]+\(/i;
+function channel(text, range = 1) {
+  if (MATH_CALL.test(text)) {
+    if (!text.includes('%')) return absoluteNumber(text) ?? NaN;
+    const percent = absoluteNumber(text.replace(/%/g, ''));
+    return percent === null ? NaN : (percent / 100) * range;
+  }
+  if (text.toLowerCase() === 'none') return 0;
+  if (text.endsWith('%')) return (Number(text.slice(0, -1)) / 100) * range;
+  return Number(text.replace(/deg$/i, ''));
+}
+// lab() to the D65 Y (CIE Lab with a D50 white).
+const CHROMA_RANGE = { __proto__: null, lab: 125, lch: 150, oklab: 0.4, oklch: 0.4 };
+function labY(l, a, b) {
+  const kappa = 24389 / 27;
+  const epsilon = 216 / 24389;
+  const fy = (l + 16) / 116;
+  const f = (t) => (t ** 3 > epsilon ? t ** 3 : (116 * t - 16) / kappa);
+  const x = f(fy + a / 500) * (0.3457 / 0.3585);
+  const y = l > kappa * epsilon ? fy ** 3 : l / kappa;
+  const z = f(fy - b / 200) * ((1 - 0.3457 - 0.3585) / 0.3585);
+  return d65Y(x, y, z);
+}
+function luminance31(color) {
+  const open = color.indexOf('(');
+  let y = null;
+  if (open > 0 && closingParen(color) === color.length - 1) {
+    const fn = color.slice(0, open).trim().toLowerCase();
+    const args = splitTopLevel(splitTopLevel(color.slice(open + 1, -1), 47)[0], 32);
+    if (fn === 'lab' || fn === 'lch' || fn === 'oklab' || fn === 'oklch') {
+      if (args.length !== 3) return null;
+      const ok = fn.startsWith('ok');
+      const l = channel(args[0], ok ? 1 : 100);
+      // (100% of a and b: 0.4 in oklab(), 125 in lab(); of chroma: 0.4, 150)
+      let a = channel(args[1], CHROMA_RANGE[fn]);
+      let b = channel(args[2], ok ? 0.4 : 125);
+      if (fn === 'lch' || fn === 'oklch') {
+        const h = (channel(args[2]) * Math.PI) / 180;
+        [a, b] = [a * Math.cos(h), a * Math.sin(h)];
+      }
+      if (!ok) y = labY(Math.min(100, Math.max(0, l)), a, b);
+      else {
+        const L = (l + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+        const M = (l - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+        const S = (l - 0.0894841775 * a - 1.291485548 * b) ** 3;
+        const r = 4.0767416621 * L - 3.3077115913 * M + 0.2309699292 * S;
+        const g = -1.2684380046 * L + 2.6097574011 * M - 0.3413193965 * S;
+        const bl = -0.0041960863 * L - 0.7034186147 * M + 1.707614701 * S;
+        y = 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+      }
+    } else if (fn === 'color') {
+      if (args.length !== 4) return null;
+      const space = args[0].toLowerCase();
+      const [r, g, b] = args.slice(1).map((c) => channel(c));
+      if (space === 'xyz' || space === 'xyz-d65') y = g;
+      else if (space === 'xyz-d50') y = d65Y(r, g, b);
+      else if (COLOR_SPACES[space] !== undefined) {
+        const [transfer, kr, kg, kb] = COLOR_SPACES[space];
+        y = kr * transfer(r) + kg * transfer(g) + kb * transfer(b);
+      }
+    }
+  }
+  if (y === null) {
+    const channels = srgbChannels31(color);
+    if (channels === null) return null;
+    const [r, g, b] = channels.map((c) => Math.min(1, Math.max(0, c)));
+    y = 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+  }
+  return Number.isFinite(y) ? Math.min(1, Math.max(0, y)) : null;
+}
+
+// light-dark(a, b): a, or b where the element's color-scheme is dark; null
+// for other arguments.
+function lightDark31(element, value) {
+  const end = closingParen(value);
+  if (end !== value.length - 1) return null;
+  const args = splitTopLevel(value.slice(value.indexOf('(') + 1, end), 44);
+  if (args.length !== 2) return null;
+  return darkScheme(element) ? args[1] : args[0];
+}
+
+// A value's parts at a separator (code) outside parentheses and strings,
+// trimmed of CSS whitespace.
+function splitTopLevel(value, separator) {
+  const parts = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    if (c === 92) i++;
+    else if (c === 34 || c === 39) i = stringEnd(value, i) - 1;
+    else if (c === 40) depth++;
+    else if (c === 41) depth--;
+    else if (depth === 0 && (separator === 32 ? isCssSpace(c) : c === separator)) {
+      if (separator !== 32 || i > start) parts.push(value.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  if (separator !== 32 || start < value.length) parts.push(value.slice(start).trim());
+  return separator === 32 ? parts.filter((part) => part !== '') : parts;
+}
+
+const COLOR_FUNCTION = /^(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|device-cmyk|contrast-color)\(/;
+// One color among a value's components as jsdom 31 computes it (black
+// box, 31.0.1): currentcolor kept, a mix of it or a light-dark() that
+// picks it kept as declared, other colors computed; null for a component
+// that is no color.
+function componentColor31(element, token, data) {
+  const lower = token.toLowerCase();
+  if (lower === 'currentcolor') return 'currentcolor';
+  // (a color function colorValue31 does not compute, lab() or color(),
+  // is a color as declared)
+  const modern = COLOR_FUNCTION.test(lower);
+  if (
+    !modern &&
+    !lower.startsWith('light-dark(') &&
+    !lower.startsWith('color-mix(') &&
+    DARK_SYSTEM_COLORS_31[lower] === undefined &&
+    resolveColor(token, 'jsdom31') === null
+  )
+    return null;
+  return colorValue31(element, 'fill', token, data) ?? (modern ? token : null);
+}
+
+// The colors of a value of more components (jsdom 31, black box 31.0.1);
+// null for a value colorValue31 computes as a whole.
+// - text-shadow: each shadow its color first (none for currentcolor),
+//   then its lengths in px, a 0px blur left out;
+// - scrollbar-color: both colors;
+// - fill and stroke: the url() and its fallback's color (or keyword).
+function componentsValue31(element, name, value, data) {
+  if (name === 'text-shadow') return value.toLowerCase() === 'none' ? null : textShadow31(element, value, data);
+  if (name === 'scrollbar-color' || ((name === 'fill' || name === 'stroke') && /^url\(/i.test(value))) {
+    const parts = splitTopLevel(value, 32);
+    if (parts.length < 2) return null;
+    return parts.map((part) => componentColor31(element, part, data) ?? part).join(' ');
+  }
+  return null;
+}
+function textShadow31(element, value, data) {
+  const shadows = [];
+  let ctx = null;
+  for (const shadow of splitTopLevel(value, 44)) {
+    let color = null;
+    const lengths = [];
+    for (const part of splitTopLevel(shadow, 32)) {
+      const c = componentColor31(element, part, data);
+      if (c !== null) {
+        color = c;
+        continue;
+      }
+      ctx ??= new LengthContext(element, false);
+      const px = part === '0' ? 0 : absoluteLength(part, ctx);
+      lengths.push(px === null ? part : `${sixDigits(px)}px`);
+    }
+    if (lengths.length === 3 && lengths[2] === '0px') lengths.pop();
+    if (color !== null && color !== 'currentcolor') lengths.unshift(color);
+    shadows.push(lengths.join(' '));
+  }
+  return shadows.join(', ');
+}
+
+// jsdom 31 computes the colors in a value's gradients (any property:
+// background-image, mask-image, border-image-source, list-style-image;
+// black box, 31.0.1): each color stop's color as componentColor31 does.
+const GRADIENT = /gradient\(/i;
+const GRADIENT_AT = /(?:repeating-)?(?:linear|radial|conic)-gradient\(/iy;
+const URL_AT = /url\(/iy;
+function gradientColors31(element, value, data) {
+  let out = '';
+  let from = 0;
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    // (strings and url()s skipped: url("gradient(red).png") is a file name)
+    if (c === 92) i++;
+    else if (c === 34 || c === 39) i = stringEnd(value, i) - 1;
+    else {
+      URL_AT.lastIndex = i;
+      if (URL_AT.test(value)) {
+        i = closingParenthesis(value, i + 4);
+        continue;
+      }
+      GRADIENT_AT.lastIndex = i;
+      if (!GRADIENT_AT.test(value)) continue;
+      const open = GRADIENT_AT.lastIndex - 1;
+      const close = closingParenthesis(value, open + 1);
+      if (close >= value.length) break;
+      const stops = splitTopLevel(value.slice(open + 1, close), 44).map((stop) =>
+        splitTopLevel(stop, 32)
+          .map((part) => componentColor31(element, part, data) ?? part)
+          .join(' '),
+      );
+      out += `${value.slice(from, open + 1)}${stops.join(', ')})`;
+      from = close + 1;
+      i = close;
+    }
+  }
+  return out + value.slice(from);
 }
 
 // --- absolute lengths (jsdom 30) ----------------------------------------------------
@@ -2356,8 +2634,11 @@ function absoluteFontSize(element, value) {
 }
 
 function computeValue(element, name, value, data) {
-  if (data[2]) value = computeColors(element, name, value, data);
   const compat = element[S].doc[S].window[S].compat;
+  // (most values have no function: the regex only where one is)
+  if (compat.computed31 && value.indexOf('(') > 0 && GRADIENT.test(value))
+    value = gradientColors31(element, value, data);
+  if (data[2]) value = computeColors(element, name, value, data);
   // A 0 length: 0px from jsdom 28.1.0, as declared before (text-indent: 0).
   if (data[3] && value === '0' && compat.zeroLengths) return '0px';
   // jsdom 30 computes lengths to px (lengths.js), font sizes too; from

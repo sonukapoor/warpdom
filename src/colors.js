@@ -607,6 +607,10 @@ function colorChannels(text, current, mode, depth, dark) {
   return channels.every(Number.isFinite) ? channels : null;
 }
 
+// A computed color's sRGB channels [r, g, b, alpha] (0 to 1), or null for
+// one this module does not convert (lab(), oklch(), color(display-p3)).
+export const srgbChannels31 = (text) => colorChannels(text, () => null, 31, 0, false);
+
 // A color-mix() argument: a color and an optional percentage, in either
 // order. Split at the last (or first) whitespace rather than by a regular
 // expression around the color, which backtracks quadratically on a long
