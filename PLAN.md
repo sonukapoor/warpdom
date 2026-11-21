@@ -8203,3 +8203,16 @@ Second round (#334, Copilot's previously missed item): a color function
 colorValue31 does not compute (lab(), color(), oklch()) is a color among
 a value's components, kept as declared (it was counted as a length, so
 text-shadow kept a blur computing to 0px).
+Third round (#334, Copilot's previously missed item: contrast-color() in
+text-shadow): jsdom 31 computes contrast-color() (black box, 31.0.1):
+black or white, whichever has the greater WCAG 2 contrast with the color
+(black at #767676, white at #757575), alpha left out, the color computed
+first (currentcolor, light-dark(), system colors, mixes); a property
+that keeps currentcolor keeps contrast-color(currentcolor) as declared.
+Luminance (cascade.js luminance31): sRGB colors from their channels,
+lab() and lch() from L, oklab() and oklch() through linear sRGB, color()
+spaces through their transfer function and the Y row of their matrix
+(srgb, srgb-linear, display-p3, a98-rgb, prophoto-rgb, rec2020, xyz);
+54 cases match, near the threshold in every space too. It also counts
+as a color among other components (text-shadow drops a 0px blur after
+it).

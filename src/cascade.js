@@ -30,7 +30,14 @@ import {
   preprocessCss,
 } from './internal.js';
 import { LONGHANDS, SHORTHANDS, ALIASES } from './css-data.js';
-import { DARK_SYSTEM_COLORS, DARK_SYSTEM_COLORS_31, mixColor, resolveColor, systemColorKind } from './colors.js';
+import {
+  DARK_SYSTEM_COLORS,
+  DARK_SYSTEM_COLORS_31,
+  mixColor,
+  resolveColor,
+  srgbChannels31,
+  systemColorKind,
+} from './colors.js';
 import {
   segments,
   expand,
@@ -2260,6 +2267,19 @@ function colorValue31(element, name, value, data) {
     if (color === null) return picked;
     return color === 'currentcolor' || (KEEPS_CURRENTCOLOR.has(name) && CURRENTCOLOR_WORD.test(color)) ? value : color;
   }
+  // contrast-color(c): white or black, whichever contrasts more with c
+  // (WCAG 2 contrast, alpha left out; black 4.62 against 4.54 at #767676,
+  // white at #757575: black box, 31.0.1); c computed first, so one that
+  // keeps currentcolor keeps the function as declared
+  if (lower.startsWith('contrast-color(')) {
+    if (closingParen(value) !== value.length - 1) return null;
+    const inner = value.slice(value.indexOf('(') + 1, -1).trim();
+    const color = colorValue31(element, name, inner, data) ?? inner;
+    if (color === 'currentcolor' || (KEEPS_CURRENTCOLOR.has(name) && CURRENTCOLOR_WORD.test(color))) return value;
+    const y = luminance31(color);
+    if (y === null) return null;
+    return (y + 0.05) / 0.05 > 1.05 / (y + 0.05) ? 'rgb(0, 0, 0)' : 'rgb(255, 255, 255)';
+  }
   if (lower === 'currentcolor') {
     if (KEEPS_CURRENTCOLOR.has(name)) return lower;
     return name === 'color' ? inheritedValue(element, 'color', data) : currentColor(element);
@@ -2279,6 +2299,77 @@ function colorValue31(element, name, value, data) {
   if (color !== null) return color;
   if (!IDENTIFIER.test(lower)) return null;
   return lower === 'auto' && AUTO_CURRENTCOLOR.has(name) ? currentColor(element) : lower;
+}
+
+// A computed color's relative luminance (WCAG 2, CIE Y), or null: sRGB
+// colors from their channels; lab() and lch() from L; oklab() and oklch()
+// through linear sRGB; color() spaces through their transfer function and
+// the Y row of their RGB to XYZ matrix.
+const linear = (c) => (Math.abs(c) <= 0.04045 ? c / 12.92 : Math.sign(c) * ((Math.abs(c) + 0.055) / 1.055) ** 2.4);
+const COLOR_SPACES = {
+  __proto__: null,
+  srgb: [linear, 0.2126, 0.7152, 0.0722],
+  'srgb-linear': [(c) => c, 0.2126, 0.7152, 0.0722],
+  'display-p3': [linear, 0.2289746, 0.6917385, 0.0792869],
+  'a98-rgb': [(c) => Math.sign(c) * Math.abs(c) ** (563 / 256), 0.2973769, 0.6273491, 0.0752741],
+  'prophoto-rgb': [
+    (c) => (Math.abs(c) <= 1 / 32 ? c / 16 : Math.sign(c) * Math.abs(c) ** 1.8),
+    0.2880748,
+    0.7118352,
+    0.0000899,
+  ],
+  rec2020: [
+    (c) => (Math.abs(c) < 0.081243 ? c / 4.5 : Math.sign(c) * ((Math.abs(c) + 0.099297) / 1.099297) ** (1 / 0.45)),
+    0.2627002,
+    0.6779981,
+    0.0593017,
+  ],
+};
+const COLOR_ARGS = /^([a-z0-9-]+)\(([^/)]*)/i;
+// (a channel: a number, a percentage of its range, none as 0)
+function channel(text, range = 1) {
+  if (text.toLowerCase() === 'none') return 0;
+  return text.endsWith('%') ? (Number(text.slice(0, -1)) / 100) * range : Number(text);
+}
+function luminance31(color) {
+  const m = COLOR_ARGS.exec(color);
+  const fn = m?.[1].toLowerCase();
+  const args = m === null ? [] : m[2].trim().split(/[ \t\n\r\f]+/);
+  let y = null;
+  if (fn === 'lab' || fn === 'lch') {
+    const l = Math.min(100, Math.max(0, channel(args[0], 100)));
+    y = l > 8 ? ((l + 16) / 116) ** 3 : l / 903.2963;
+  } else if (fn === 'oklab' || fn === 'oklch') {
+    const l = channel(args[0]);
+    let a = channel(args[1], 0.4);
+    let b = channel(args[2], 0.4);
+    if (fn === 'oklch') {
+      const h = ((args[2].toLowerCase() === 'none' ? 0 : parseFloat(args[2])) * Math.PI) / 180;
+      [a, b] = [a * Math.cos(h), a * Math.sin(h)];
+    }
+    const L = (l + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+    const M = (l - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+    const S = (l - 0.0894841775 * a - 1.291485548 * b) ** 3;
+    const r = 4.0767416621 * L - 3.3077115913 * M + 0.2309699292 * S;
+    const g = -1.2684380046 * L + 2.6097574011 * M - 0.3413193965 * S;
+    const bl = -0.0041960863 * L - 0.7034186147 * M + 1.707614701 * S;
+    y = 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+  } else if (fn === 'color') {
+    const space = args[0].toLowerCase();
+    const rgb = args.slice(1, 4).map((c) => channel(c));
+    if (space === 'xyz' || space === 'xyz-d65' || space === 'xyz-d50') y = rgb[1];
+    else if (COLOR_SPACES[space] !== undefined) {
+      const [transfer, kr, kg, kb] = COLOR_SPACES[space];
+      y = kr * transfer(rgb[0]) + kg * transfer(rgb[1]) + kb * transfer(rgb[2]);
+    }
+  }
+  if (y === null) {
+    const channels = srgbChannels31(color);
+    if (channels === null) return null;
+    const [r, g, b] = channels.map((c) => Math.min(1, Math.max(0, c)));
+    y = 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+  }
+  return Number.isFinite(y) ? Math.min(1, Math.max(0, y)) : null;
 }
 
 // light-dark(a, b): a, or b where the element's color-scheme is dark; null
@@ -2312,7 +2403,7 @@ function splitTopLevel(value, separator) {
   return separator === 32 ? parts.filter((part) => part !== '') : parts;
 }
 
-const COLOR_FUNCTION = /^(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|device-cmyk)\(/;
+const COLOR_FUNCTION = /^(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|device-cmyk|contrast-color)\(/;
 // One color among a value's components as jsdom 31 computes it (black
 // box, 31.0.1): currentcolor kept, a mix of it or a light-dark() that
 // picks it kept as declared, other colors computed; null for a component

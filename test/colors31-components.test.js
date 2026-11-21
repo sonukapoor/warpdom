@@ -162,3 +162,77 @@ parity(
   ]),
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31: contrast-color() is black or white, whichever contrasts more, alone and among other components',
+  run([
+    ['color', 'contrast-color(red)'],
+    ['color', 'contrast-color(black)'],
+    ['color', 'contrast-color(white)'],
+    ['color', 'contrast-color(navy)'],
+    ['color', 'contrast-color(yellow)'],
+    ['color', 'contrast-color(#777)'],
+    ['color', 'contrast-color(#767676)'],
+    ['color', 'contrast-color(#757575)'],
+    ['color', 'contrast-color(rgb(0 0 0 / 0))'],
+    ['color', 'contrast-color(currentcolor)'],
+    ['color', 'contrast-color(light-dark(white, black))'],
+    ['color', 'contrast-color(color-mix(in srgb, red, blue))'],
+    ['color', 'contrast-color(lab(50% 20 30))'],
+    ['color', 'contrast-color(lab(49% 0 0))'],
+    ['color', 'contrast-color(lch(60% 30 120))'],
+    ['color', 'contrast-color(ButtonText)'],
+    ['background-color', 'contrast-color(blue)'],
+    ['fill', 'contrast-color(currentcolor)'],
+    ['accent-color', 'contrast-color(currentcolor)'],
+    ['fill', 'contrast-color(red)'],
+    ['scrollbar-color', 'contrast-color(red) blue'],
+    ['background-image', 'linear-gradient(contrast-color(black), red)'],
+    ['text-shadow', 'contrast-color(currentcolor) 1px 1px'],
+    ['text-shadow', 'contrast-color(red) 1px 2px calc(1em - 20px)'],
+    ['text-shadow', '1px 2px 0 contrast-color(white)'],
+    ['text-shadow', '1px 1px contrast-color(light-dark(red, blue))'],
+    ['color', 'contrast-color(oklch(0.5 0.1 120))'],
+    ['color', 'contrast-color(color(display-p3 1 1 1))'],
+    ['color', 'contrast-color(color(srgb 0.2 0.2 0.2))'],
+    ['color', 'contrast-color(hsl(0 0% 46%))'],
+  ]),
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: contrast-color() near the threshold in every color space',
+  (w) => {
+    const p = w.document.body.appendChild(w.document.createElement('p'));
+    return [
+      'oklch(0.62 0.1 120)',
+      'oklch(0.6 0 0)',
+      'oklch(0.58 0 0)',
+      'oklab(0.6 0.1 -0.1)',
+      'oklab(60% 0 0)',
+      'oklch(55% 40% 30)',
+      'color(display-p3 0.46 0.46 0.46)',
+      'color(display-p3 0.47 0.47 0.47)',
+      'color(srgb-linear 0.18 0.18 0.18)',
+      'color(srgb-linear 0.19 0.19 0.19)',
+      'color(rec2020 0.5 0.5 0.5)',
+      'color(a98-rgb 0.47 0.47 0.47)',
+      'color(prophoto-rgb 0.4 0.4 0.4)',
+      'color(prophoto-rgb 0.45 0.45 0.45)',
+      'color(xyz 0.18 0.18 0.18)',
+      'color(xyz-d50 0.19 0.19 0.19)',
+      'lab(49.5% 0 0)',
+      'lab(48% 0 0)',
+      'lch(50% 0 0)',
+      'lab(none 0 0)',
+      'oklch(none 0 0)',
+      'color(srgb none 1 1)',
+      'color(srgb 0.46 0.46 0.46 / 0.5)',
+      'rgb(118 118 118 / 50%)',
+    ].map((color) => {
+      p.style.color = `contrast-color(${color})`;
+      return [color, w.getComputedStyle(p).color];
+    });
+  },
+  { jsdom: 31 },
+);
