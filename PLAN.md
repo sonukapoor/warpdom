@@ -8406,3 +8406,61 @@ nor composes, whose longhands stay initial (container, grid and
 grid-template, mask, offset, font-synthesis, line-clamp, the rule
 families, the timelines, all; offset-position's declared canonical
 form, center top for top), then shadow scoping, then F.
+
+## 2026-11-23: jsdom 31, CSS part D5a: container, text-box, font-synthesis, line-clamp, offset (branch feat/269-jsdom31-more-shorthands, #269)
+
+Shorthands warpdom's jsdom 31 profile neither expanded nor composed: a
+declared value left their longhands at their initial values (container:
+a / size read container-name none), and getComputedStyle read jsdom
+30's keyword values. Expanders and composers in shorthands31.js, black
+box on 31.0.1 (the composed computed value follows from D4b):
+- container: names, then / and the type (normal left out; scroll-state
+  after size: a / scroll-state size is a / size scroll-state);
+- text-box: normal and none are none auto (written normal); an edge
+  alone trims both sides (cap alphabetic), a trim alone has the auto
+  edge;
+- font-synthesis: the keywords given are auto, the others none (none
+  when all are);
+- line-clamp: none is auto, no-ellipsis, normal; a count clamps
+  (collapse) with an ellipsis, or the string or no-ellipsis after it;
+- offset: a position, a path (none, a shape or url()) with a distance
+  and rotation after it, / and the anchor; written without the initial
+  values, normal when nothing is left, none kept before a distance or
+  rotation (none 10px); offset-rotate auto or reverse first.
+Initial values in the jsdom 31 profile (cascade.js INITIALS31):
+max-lines auto, continue normal (with column-width auto from D4b);
+offset-anchor computes its keywords to percentages as offset-position.
+Results: the broad probe (scratchpad d4b-all.mjs) 502/649 to 523/649,
+none worse; the full suite with parity against jsdom 31 (e-m31.sh)
+unchanged at 5 failures (none about these shorthands).
+Not modeled: path() and ray() in their canonical form (path("M0,0
+L10,10") is path("M 0 0 L 10 10"), ray(closest-side 45deg) is
+ray(45deg); offset-path and clip-path too); a math function computed in
+max-lines (calc(2) is 2); a basic shape's position in its canonical
+form (circle(10px at left top) is circle(10px at 0% 0%)).
+Review round (#337): line-clamp takes the count and the ellipsis in
+either order ("more" 3 is 3 "more"); offset takes a shape or url() and
+a coordinate box in either order, the box written after the shape and
+border-box left out with one (border-box circle(50%) 10px is
+circle(50%) 10px); the font-synthesis and offset composers build their
+string without temporary arrays. Found on the way, two places where
+@webref/css's grammar is narrower than what jsdom 31 follows, now
+overridden in css-values.js (TYPE_FIXES, PROPERTY_FIXES; the generated
+css-grammar.js stays as generated): circle() takes one length or
+percentage as its radius (CSS Shapes 1 <shape-radius>: clip-path,
+shape-outside and offset-path rejected circle(50%)), and block-ellipsis
+is no-ellipsis | ellipsis | <string> (the Overflow 4 draft jsdom 31
+follows: line-clamp: 2 ellipsis is valid, auto and auto 2 are not).
+Second round (#337): those overrides are the jsdom 31 profile's only.
+css-values.js keeps two compiled grammars with their caches (useGrammar31
+switches them; css.js's declaredValue reads a jsdom 31 value under jsdom
+31's and restores the previous one): jsdom 30 keeps webref's
+(block-ellipsis: auto valid, ellipsis not, shape-outside: circle(50%)
+invalid, as jsdom 30.1.3). Not modeled, as on main: jsdom 30 accepts
+circle(50%) in clip-path and offset-path (warpdom's jsdom 30 profile
+rejects it).
+Third round (#337, previously missed): text-box: none keeps an edge
+given with it (none cap alphabetic, written so; normal only for none
+auto).
+Next: grid and grid-template, mask (D5b), then the rule and timeline
+families and all (D5c), shadow scoping, F.

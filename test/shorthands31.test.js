@@ -125,6 +125,66 @@ const CASES = {
     '1px 2px inset 3px',
   ],
   '-webkit-text-stroke': ['1px red', 'red 2px', '0 red', '1px', '1px currentcolor', 'currentcolor', '0px'],
+  container: [
+    'none',
+    'a',
+    'a / size',
+    'a b / inline-size',
+    'inline-size',
+    'none / size',
+    'scroll-state',
+    'a / scroll-state size',
+    'A / SIZE',
+  ],
+  'text-box': [
+    'normal',
+    'none',
+    'trim-both',
+    'cap alphabetic',
+    'trim-start text',
+    'trim-end',
+    'text alphabetic',
+    'none cap alphabetic',
+    'cap alphabetic none',
+    'none text',
+    'none auto',
+  ],
+  'font-synthesis': ['none', 'weight', 'style small-caps', 'weight style small-caps position', 'position'],
+  'line-clamp': [
+    'none',
+    '3',
+    '3 "…"',
+    '1 no-ellipsis',
+    'no-ellipsis 3',
+    '"more" 3',
+    'ellipsis 2',
+    '2 ellipsis',
+    'auto 2',
+    'auto',
+  ],
+  offset: [
+    'none',
+    'auto',
+    '10px 20px',
+    'left top',
+    'ray(45deg) 10px auto 30deg',
+    'url(#p)',
+    'ray(45deg) 10px reverse 30deg / left top',
+    'auto ray(45deg)',
+    '10px 20px url(#p) 50%',
+    'url(#p) 30deg',
+    'none 10px',
+    'none / left top',
+    'auto / 10px 20px',
+    'url(#p) 10px 30deg reverse',
+    'LEFT TOP',
+    'circle(50%) border-box 10px',
+    'border-box circle(50%) 10px',
+    'content-box circle(50%)',
+    'border-box',
+    'circle(50%) 10px',
+    'left top inset(10px) padding-box 5px auto',
+  ],
   'column-rule': ['1px solid red', 'currentcolor', 'none', 'thick', 'medium none currentcolor'],
   transition: [
     'opacity 1s',
@@ -387,6 +447,38 @@ parity(
       out.push(['transition', value, p.style.transition, p.style.transitionProperty]);
     }
     return out;
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  "jsdom 30 keeps webref's grammar where jsdom 31's differs, after jsdom 31 values are read (#337 review)",
+  (w) => {
+    const p = w.document.body.appendChild(w.document.createElement('p'));
+    return [
+      ['block-ellipsis', 'auto'],
+      ['block-ellipsis', 'ellipsis'],
+      ['line-clamp', 'auto'],
+      ['line-clamp', '2 ellipsis'],
+      ['shape-outside', 'circle(50%)'],
+    ].map(([name, value]) => {
+      p.removeAttribute('style');
+      p.style.setProperty(name, value);
+      return [name, value, p.style.getPropertyValue(name)];
+    });
+  },
+);
+
+parity(
+  'jsdom 31: text-box none keeps its edge for a later trim (#337 review)',
+  (w) => {
+    const p = w.document.body.appendChild(w.document.createElement('p'));
+    p.style.setProperty('text-box-trim', 'none');
+    p.style.setProperty('text-box-edge', 'cap alphabetic');
+    const composed = p.style.getPropertyValue('text-box');
+    p.style.setProperty('text-box', 'none cap alphabetic');
+    p.style.setProperty('text-box-trim', 'trim-both');
+    return [composed, p.style.getPropertyValue('text-box'), p.style.getPropertyValue('text-box-edge')];
   },
   { jsdom: 31 },
 );
