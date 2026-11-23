@@ -258,7 +258,7 @@ const CASES = {
     '10% 20%, 30% 40%',
     'entry, exit 10%',
   ],
-  'timeline-trigger-active-range': ['auto', 'entry', 'auto 20%', 'auto, entry', '20% auto'],
+  'timeline-trigger-active-range': ['auto', 'entry', 'auto 20%', 'auto, entry', '20% auto', '20%', '20% normal'],
   'contain-intrinsic-size': ['10px', '10px 20px', 'auto 10px', 'auto 10px auto 20px', 'none'],
   'animation-delay': ['1s', '1s 2s', '1s, 2s 3s'],
   marker: ['none', 'url(#m)'],
@@ -673,6 +673,20 @@ parity(
       p.style.setProperty('text-spacing-trim', trim);
       p.style.setProperty('text-autospace', autospace);
       return [trim, autospace, p.style.getPropertyValue('text-spacing'), p.style.cssText];
+    });
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: timeline-trigger-active-range round-trips through cssText (#339 review)',
+  (w) => {
+    const p = w.document.body.appendChild(w.document.createElement('p'));
+    const q = w.document.body.appendChild(w.document.createElement('p'));
+    return ['20%', '20% auto', '20% normal', 'entry 10%', 'auto'].map((value) => {
+      p.setAttribute('style', `timeline-trigger-active-range: ${value}`);
+      q.style.cssText = p.style.cssText;
+      return [value, p.style.cssText, q.style.getPropertyValue('timeline-trigger-active-range-end')];
     });
   },
   { jsdom: 31 },

@@ -631,7 +631,9 @@ const rangePart = (name, offset, drop) => {
 // (normal, and auto in timeline-trigger-active-range, are whole ranges:
 // no offset attaches to them, and alone they are the end too)
 const WHOLE_RANGES = new Set(['normal', 'auto']);
-function rangeLayer(layer) {
+// (whole: the end after a start without a range name, normal; auto in
+// timeline-trigger-active-range: 20% is 20% auto there)
+function rangeLayer(layer, whole) {
   const groups = [];
   for (const token of words(layer)) {
     const isOffset = isLength(token) || isMath(token);
@@ -643,19 +645,20 @@ function rangeLayer(layer) {
   if (groups.length === 0 || groups.length > 2) return null;
   const [start, end] = groups;
   const part = (group, drop) => (WHOLE_RANGES.has(group.name) ? group.name : rangePart(group.name, group.offset, drop));
-  return [part(start, '0%'), end === undefined ? (start.name ?? 'normal') : part(end, '100%')];
+  return [part(start, '0%'), end === undefined ? (start.name ?? whole) : part(end, '100%')];
 }
-EXPANDERS31['animation-range'] = (value) => {
+const expandRanges = (whole) => (value) => {
   const starts = [];
   const ends = [];
   for (const layer of layersOf(value)) {
-    const range = rangeLayer(layer);
+    const range = rangeLayer(layer, whole);
     if (range === null) return null;
     starts.push(range[0]);
     ends.push(range[1]);
   }
   return [starts.join(', '), ends.join(', ')];
 };
+EXPANDERS31['animation-range'] = expandRanges('normal');
 // (the end left out when it is the start's range name alone)
 // (layer by layer; lists of different lengths are left as longhands. The
 // end left out when it is the start's range name alone, or normal after
@@ -1318,7 +1321,7 @@ for (const edge of ['start', 'end']) {
 // (timeline-trigger's ranges: as animation-range, layer by layer: a
 // start and an end, each a range name with an offset, an offset, normal
 // or auto; the end the start's name when left out)
-EXPANDERS31['timeline-trigger-activation-range'] = EXPANDERS31['animation-range'];
+EXPANDERS31['timeline-trigger-activation-range'] = expandRanges('normal');
 COMPOSERS31['timeline-trigger-activation-range'] = composeRanges('normal');
-EXPANDERS31['timeline-trigger-active-range'] = EXPANDERS31['animation-range'];
+EXPANDERS31['timeline-trigger-active-range'] = expandRanges('auto');
 COMPOSERS31['timeline-trigger-active-range'] = composeRanges('auto');

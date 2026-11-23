@@ -8540,6 +8540,9 @@ ranges no offset attaches to (normal 10% is normal then 10%) and the
 end auto left out after an unnamed start in the active range (20%
 auto is 20%). Second round: text-spacing is written with auto only as
 both longhands (normal / auto, trim-start / auto: '', as jsdom 31).
+Third round: the active range's end after an offset alone is auto
+(20% is 20% auto there; normal in animation-range and the activation
+range), in the expander as in the composer.
 Not modeled: timeline-trigger and all (their computed values), with
 path() normalization (offset) and system fonts (font) the probe's 8
 remaining cases.
