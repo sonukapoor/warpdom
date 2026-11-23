@@ -112,6 +112,8 @@ parity(
       read('background-position-x: center, calc(50% + 10px), right calc(10% + 5px)', ['background-position-x']),
       read('background-position: center, calc(50% + 10px) top', ['background-position']),
       read('offset-position: calc(50% + 10px) top', ['offset-position']),
+      read('background-position-x: center, max(10%, 5px), right min(10%, 5px)', ['background-position-x']),
+      read('offset-position: clamp(1px, 10%, 5px) top', ['offset-position']),
       read('offset-position: center', ['offset-position']),
       read('offset-position: left top', ['offset-position']),
       read('offset-position: Center LEFT', ['offset-position']),

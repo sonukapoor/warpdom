@@ -8389,6 +8389,12 @@ Third round (#336, previously missed): a position calc() with a
 percentage (calc(50% + 10px)) stays as declared, and the other layers
 are still converted (center, calc(50% + 10px) is 50%, calc(50% +
 10px)); from the right or bottom it is calc(100% - (10% + 5px)).
+Fourth round (#336, Copilot's closer look): min(), max() and clamp()
+too (calc(100% - min(10%, 5px)) from the right). Not modeled, found on
+the way and not specific to positions: jsdom 31 resolves the lengths
+inside a math function with a percentage (width: calc(10% + 1em) is
+calc(10% + 20px), max(10%, 1em) is max(10%, 20px)); warpdom keeps them
+as declared, for every property (a computed-values item for later).
 Speed after the round (same benchmark): jsdom 30 profile 90.6 ms on
 main, 90.9 ms here; jsdom 31 193.5 and 193.9 ms.
 Next, D5: the shorthands warpdom's jsdom 31 profile neither expands
