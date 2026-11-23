@@ -281,3 +281,43 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31: contrast-color() reads hue angles and math in rgb(), hsl(), hwb(), lch() and oklch()',
+  (w) => {
+    const p = w.document.body.appendChild(w.document.createElement('p'));
+    return [
+      'oklch(0.6 0.1 calc(120deg))',
+      'oklch(0.6 0.1 calc(120))',
+      'oklch(calc(0.6) 0.1 0.33turn)',
+      'oklch(calc(0.6) 0.1 2.1rad)',
+      'oklch(calc(0.6) 0.1 133grad)',
+      'lch(calc(50%) 80 1.4rad)',
+      'lch(50% 80 calc(0.5turn))',
+      'lch(49% 80 calc(250deg))',
+      'oklch(0.6 0.1 calc(1turn / 3))',
+      'rgb(calc(128) 128 128)',
+      'rgb(calc(117.4) 117.4 117.4)',
+      'rgb(calc(46.05%) 46.05% 46.05%)',
+      'hsl(0 0% calc(46.05%))',
+      'hsl(calc(0deg) 0% 46%)',
+      'hsl(calc(120) 50% 46%)',
+      'hwb(calc(0) 46.05% 53.95%)',
+      'hwb(0 calc(46.05%) 53.95%)',
+      'rgb(calc(128), 128, 128)',
+      'rgba(calc(117.4), 117.4, 117.4, 0.5)',
+      'hsla(calc(0), 0%, 46.05%, 1)',
+      'rgb(min(130, 200) 130 130)',
+      'hsl(0.33turn 50% 40%)',
+      'hsl(calc(0.33turn) 50% 40%)',
+      'hwb(calc(2rad) 20% 20%)',
+      'rgb(none 128 128)',
+      'hsl(none 0% 46.05%)',
+    ].map((color) => {
+      p.style.color = '';
+      p.style.color = `contrast-color(${color})`;
+      return [color, w.getComputedStyle(p).color];
+    });
+  },
+  { jsdom: 31 },
+);

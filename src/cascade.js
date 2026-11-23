@@ -2356,6 +2356,38 @@ function channel(text, range = 1) {
   if (text.endsWith('%')) return (Number(text.slice(0, -1)) / 100) * range;
   return Number(text.replace(/deg$/i, ''));
 }
+// A hue in degrees: a number, an angle (deg, turn, rad, grad), none, or a
+// math function of them (calc(1turn / 3)); NaN otherwise.
+const ANGLE = /([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)(deg|turn|rad|grad)\b/gi;
+const DEGREES = { __proto__: null, deg: 1, turn: 360, rad: 180 / Math.PI, grad: 0.9 };
+const toDegrees = (text) => text.replace(ANGLE, (m, n, unit) => String(Number(n) * DEGREES[unit.toLowerCase()]));
+function hue(text) {
+  if (text.toLowerCase() === 'none') return 0;
+  if (MATH_CALL.test(text)) return absoluteNumber(toDegrees(text)) ?? NaN;
+  return Number(toDegrees(text));
+}
+// The sRGB channels (0 to 1) of rgb(), hsl() and hwb() from their exact
+// arguments (math functions in them too), or null.
+function srgbFunction(fn, args) {
+  if (args.length !== 3) return null;
+  if (fn === 'rgb' || fn === 'rgba') return args.map((c) => channel(c, 255) / 255);
+  const h = (((hue(args[0]) % 360) + 360) % 360) / 360;
+  const x = channel(args[1], 100) / 100;
+  const y = channel(args[2], 100) / 100;
+  if (fn === 'hwb') {
+    if (x + y >= 1) return [x / (x + y), x / (x + y), x / (x + y)];
+    return hslChannels(h, 1, 0.5).map((c) => c * (1 - x - y) + x);
+  }
+  return hslChannels(h, Math.min(1, Math.max(0, x)), Math.min(1, Math.max(0, y)));
+}
+function hslChannels(h, s, l) {
+  const f = (n) => {
+    const k = (n + h * 12) % 12;
+    return l - s * Math.min(l, 1 - l) * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+  };
+  return [f(0), f(8), f(4)];
+}
+
 // lab() to the D65 Y (CIE Lab with a D50 white).
 const CHROMA_RANGE = { __proto__: null, lab: 125, lch: 150, oklab: 0.4, oklch: 0.4 };
 function labY(l, a, b) {
@@ -2373,8 +2405,16 @@ function luminance31(color) {
   let y = null;
   if (open > 0 && closingParen(color) === color.length - 1) {
     const fn = color.slice(0, open).trim().toLowerCase();
-    const args = splitTopLevel(splitTopLevel(color.slice(open + 1, -1), 47)[0], 32);
-    if (fn === 'lab' || fn === 'lch' || fn === 'oklab' || fn === 'oklch') {
+    const body = color.slice(open + 1, -1);
+    // (the legacy syntax: commas outside parentheses, the alpha fourth)
+    const commas = splitTopLevel(body, 44);
+    const args = commas.length > 1 ? commas.slice(0, 3) : splitTopLevel(splitTopLevel(body, 47)[0], 32);
+    if (fn === 'rgb' || fn === 'rgba' || fn === 'hsl' || fn === 'hsla' || fn === 'hwb') {
+      const rgb = srgbFunction(fn.replace(/a$/, ''), args);
+      if (rgb === null) return null;
+      const [r, g, b] = rgb.map((c) => Math.min(1, Math.max(0, c)));
+      y = 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+    } else if (fn === 'lab' || fn === 'lch' || fn === 'oklab' || fn === 'oklch') {
       if (args.length !== 3) return null;
       const ok = fn.startsWith('ok');
       const l = channel(args[0], ok ? 1 : 100);
@@ -2382,7 +2422,7 @@ function luminance31(color) {
       let a = channel(args[1], CHROMA_RANGE[fn]);
       let b = channel(args[2], ok ? 0.4 : 125);
       if (fn === 'lch' || fn === 'oklch') {
-        const h = (channel(args[2]) * Math.PI) / 180;
+        const h = (hue(args[2]) * Math.PI) / 180;
         [a, b] = [a * Math.cos(h), a * Math.sin(h)];
       }
       if (!ok) y = labY(Math.min(100, Math.max(0, l)), a, b);

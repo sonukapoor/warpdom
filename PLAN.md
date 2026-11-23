@@ -8225,3 +8225,9 @@ percentage), and arguments are split at the top level (calc() in an
 oklab() channel threw); lab(), lch(), xyz-d50 and prophoto-rgb (D50)
 go through XYZ adapted to D65 (Bradford) before their Y is read, as
 jsdom 31 does (CodeRabbit). 31 more cases match.
+Fifth round (#334): contrast-color() reads hues as angles (deg, turn,
+rad, grad, a number, none, or math of them: calc(1turn / 3)) in hsl(),
+hwb(), lch() and oklch(), and rgb(), hsl() and hwb() from their exact
+arguments with math in them (they went through the color parsers, which
+do not evaluate math), the legacy comma syntax too (commas outside
+parentheses only: min(0.6, 0.7) is one channel). 26 more cases match.
