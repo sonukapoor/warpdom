@@ -8236,3 +8236,10 @@ blackness before contrast-color() reads them; jsdom 31.0.1 does not
 (contrast-color(hwb(200 -100% 0%)) is white there, the clamped
 hwb(200 0% 0%) black), so they stay as declared, now a parity test
 with out-of-range hsl() and rgb() channels too.
+Seventh round (#334, Copilot's closer-look areas): light-dark() and
+contrast-color() inside color-mix() are resolved before mixing
+(resolveNested31: a light-dark() by its pick, so that currentcolor stays
+for the mix; a property that keeps currentcolor keeps the mix as
+declared when one is left); percentage math in channels already matched
+(now in the parity test). Not modeled, as before: a mix in another
+interpolation space (in oklab) stays as declared.

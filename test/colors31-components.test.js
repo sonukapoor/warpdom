@@ -344,3 +344,27 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31: light-dark() and contrast-color() inside color-mix() are resolved before mixing',
+  run([
+    ['color', 'color-mix(in srgb, light-dark(red, blue), white)'],
+    ['color', 'color-mix(in srgb, currentcolor, white)'],
+    ['color', 'color-mix(in srgb, contrast-color(black), red)'],
+    ['color', 'contrast-color(color-mix(in srgb, light-dark(white, black), white))'],
+    ['color', 'contrast-color(color-mix(in srgb, currentcolor, black))'],
+    ['fill', 'color-mix(in srgb, light-dark(red, currentcolor), white)'],
+    ['background-color', 'color-mix(in srgb, ButtonText, white)'],
+    ['color', 'light-dark(color-mix(in srgb, red, blue), contrast-color(red))'],
+    ['color', 'color-mix(in srgb, light-dark(light-dark(red, green), blue) 30%, white)'],
+    ['accent-color', 'color-mix(in srgb, contrast-color(currentcolor), red)'],
+    ['color', 'color-mix(in srgb, color-mix(in srgb, light-dark(red, blue), white), black)'],
+    ['text-shadow', '1px 1px color-mix(in srgb, light-dark(red, blue), white)'],
+    ['background-image', 'linear-gradient(color-mix(in srgb, light-dark(red, blue), white), red)'],
+    ['color', 'contrast-color(rgb(calc(50% * 2) 0 0))'],
+    ['color', 'contrast-color(rgb(calc(46.05% * 1) 46.05% 46.05%))'],
+    ['color', 'contrast-color(hsl(0 0% calc(92.1% / 2)))'],
+    ['color', 'contrast-color(oklab(calc(120% / 2) 0 0))'],
+  ]),
+  { jsdom: 31 },
+);

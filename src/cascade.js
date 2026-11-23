@@ -2300,11 +2300,15 @@ function colorValue31(element, name, value, data) {
   }
   if (lower.startsWith('color-mix(')) {
     if (closingParen(value) !== value.length - 1) return null;
-    if (KEEPS_CURRENTCOLOR.has(name) && CURRENTCOLOR_WORD.test(value)) return present31(value);
+    // (light-dark() and contrast-color() in the mix resolved first: the
+    // mix of the colors they give; one that keeps currentcolor keeps the
+    // mix as declared, black box 31.0.1)
+    const colors = NESTED_CONTEXT.test(value) ? resolveNested31(element, name, value, data, 0) : value;
+    if (KEEPS_CURRENTCOLOR.has(name) && CURRENTCOLOR_WORD.test(colors)) return present31(value);
     let currentValue;
     const current = () =>
       (currentValue ??= name === 'color' ? inheritedValue(element, 'color', data) : currentColor(element));
-    const mixed = mixColor(value, current, 31, 0, darkScheme(element));
+    const mixed = mixColor(colors, current, 31, 0, darkScheme(element));
     return mixed === false ? 'rgba(0, 0, 0, 0)' : (mixed ?? value);
   }
   const dark = DARK_SYSTEM_COLORS_31[lower];
@@ -2454,6 +2458,38 @@ function luminance31(color) {
     y = 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
   }
   return Number.isFinite(y) ? Math.min(1, Math.max(0, y)) : null;
+}
+
+// A value with every light-dark() and contrast-color() in it replaced by
+// the color it gives (a light-dark() by its pick, so that currentcolor
+// stays for the mix to resolve), strings skipped.
+const NESTED_CONTEXT = /(?:light-dark|contrast-color)\(/i;
+const NESTED_AT = /(light-dark|contrast-color)\(/iy;
+function resolveNested31(element, name, value, data, depth) {
+  let out = '';
+  let from = 0;
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    if (c === 92) i++;
+    else if (c === 34 || c === 39) i = stringEnd(value, i) - 1;
+    else {
+      NESTED_AT.lastIndex = i;
+      const m = NESTED_AT.exec(value);
+      if (m === null || (i > 0 && /[\w-]/.test(value[i - 1]))) continue;
+      const end = closingParenthesis(value, NESTED_AT.lastIndex);
+      if (end >= value.length) break;
+      const token = value.slice(i, end + 1);
+      let color;
+      if (m[1].toLowerCase() === 'light-dark') {
+        const picked = lightDark31(element, token);
+        color = picked === null || depth > 32 ? token : resolveNested31(element, name, picked, data, depth + 1);
+      } else color = colorValue31(element, name, token, data) ?? token;
+      out += value.slice(from, i) + color;
+      from = end + 1;
+      i = end;
+    }
+  }
+  return out + value.slice(from);
 }
 
 // light-dark(a, b): a, or b where the element's color-scheme is dark; null
