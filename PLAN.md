@@ -8156,3 +8156,90 @@ the value is normal (not modeled: jsdom 31 overflows its stack from
 about a thousand). Found, not changed (also on main, set-time strings):
 jsdom 31 accepts a CR LF ending an escape inside a string
 ("\61 CR LF b" is "ab"); warpdom rejects the declaration.
+Merged as #332 (2026-11-19). Found there, filed as #333 (2026-11-19):
+unknown pseudo-elements in selectors are accepted where jsdom throws a
+SyntaxError (querySelectorAll, matches; all versions) and drops the
+rule (jsdom 27 and later): selector validation for 1.0.
+
+## 2026-11-19: jsdom 31, CSS part D3b: colors inside values (branch feat/269-jsdom31-colors, #269)
+
+jsdom 31's computed colors in values of more components, and
+light-dark(), black box on 31.0.1 (cascade.js, colorValue31,
+componentsValue31, textShadow31, gradientColors31; light and dark
+color-schemes):
+- light-dark(a, b) in any color property: a, or b where the element's
+  color-scheme is dark, computed as that color (a system color by the
+  scheme, a mix computed, currentcolor the color); where it picks
+  currentcolor in a property that keeps it (accent-color, fill, stroke,
+  and a color among other components) the function stays as declared.
+- A color among other components: currentcolor kept, a color-mix() of it
+  or a light-dark() that picks it kept as declared, others computed.
+- text-shadow: each shadow its color first (none for currentcolor), then
+  its lengths in px (em, rem, calc()), a 0px blur left out.
+- scrollbar-color: both colors; fill and stroke with url(): the url()
+  and its fallback's color (none and other keywords kept).
+- Gradients in any property (background-image, mask-image,
+  border-image-source, list-style-image): each color stop's color as
+  above (transparent rgba(0, 0, 0, 0)); strings and url()s skipped.
+Results: of 51 detailed and 55 broad cases, all match but box-shadow,
+the text-decoration shorthand's color and image-set(). Against jsdom
+31.0.1, 61 default parity tests differ (66 on main).
+Speed (node 22.17.1, scratchpad e-bcas, 7 interleaved runs, medians):
+computed reads 375.4 ms on main, 373.7 ms on the branch in the jsdom 31
+profile; the gradient check runs only for values with a function.
+Not here, for D4/D5: box-shadow is a shorthand in jsdom 31 (box-shadow-
+color, -offset, -blur, -spread, -position, lists), its computed value
+from them (rgb(255, 0, 0) 1px 2px 3px 4px inset); warpdom declares it
+whole and computes none. Found, for later parts: image-set() computes as
+image-set(url("a.png") 1dppx); a relative url() in a computed value is
+resolved against the document's URL (url("a.png") in a document at
+http://localhost:3000/ computes as url("http://localhost:3000/a.png")).
+Review round (#334): light-dark() picking a color colorValue31 does not
+compute (color(), lab(), oklch()) gives that color as declared, not the
+function; in a property that keeps currentcolor, a picked mix of
+currentcolor keeps the function too (fill, accent-color, and a color
+among other components).
+Second round (#334, Copilot's previously missed item): a color function
+colorValue31 does not compute (lab(), color(), oklch()) is a color among
+a value's components, kept as declared (it was counted as a length, so
+text-shadow kept a blur computing to 0px).
+Third round (#334, Copilot's previously missed item: contrast-color() in
+text-shadow): jsdom 31 computes contrast-color() (black box, 31.0.1):
+black or white, whichever has the greater WCAG 2 contrast with the color
+(black at #767676, white at #757575), alpha left out, the color computed
+first (currentcolor, light-dark(), system colors, mixes); a property
+that keeps currentcolor keeps contrast-color(currentcolor) as declared.
+Luminance (cascade.js luminance31): sRGB colors from their channels,
+lab() and lch() from L, oklab() and oklch() through linear sRGB, color()
+spaces through their transfer function and the Y row of their matrix
+(srgb, srgb-linear, display-p3, a98-rgb, prophoto-rgb, rec2020, xyz);
+54 cases match, near the threshold in every space too. It also counts
+as a color among other components (text-shadow drops a 0px blur after
+it).
+Fourth round (#334): contrast-color() reads exact channels
+(colorValue31 rounds rgb(), hsl() and hwb(): only currentcolor, mixes,
+system and named colors go through it, light-dark() picked first), so
+rgb(46.05% 46.05% 46.05%) is black as in jsdom 31; channels may be math
+functions (lengths.js absoluteNumber; of percentages only as a
+percentage), and arguments are split at the top level (calc() in an
+oklab() channel threw); lab(), lch(), xyz-d50 and prophoto-rgb (D50)
+go through XYZ adapted to D65 (Bradford) before their Y is read, as
+jsdom 31 does (CodeRabbit). 31 more cases match.
+Fifth round (#334): contrast-color() reads hues as angles (deg, turn,
+rad, grad, a number, none, or math of them: calc(1turn / 3)) in hsl(),
+hwb(), lch() and oklch(), and rgb(), hsl() and hwb() from their exact
+arguments with math in them (they went through the color parsers, which
+do not evaluate math), the legacy comma syntax too (commas outside
+parentheses only: min(0.6, 0.7) is one channel). 26 more cases match.
+Sixth round (#334): Copilot suggested clamping hwb() whiteness and
+blackness before contrast-color() reads them; jsdom 31.0.1 does not
+(contrast-color(hwb(200 -100% 0%)) is white there, the clamped
+hwb(200 0% 0%) black), so they stay as declared, now a parity test
+with out-of-range hsl() and rgb() channels too.
+Seventh round (#334, Copilot's closer-look areas): light-dark() and
+contrast-color() inside color-mix() are resolved before mixing
+(resolveNested31: a light-dark() by its pick, so that currentcolor stays
+for the mix; a property that keeps currentcolor keeps the mix as
+declared when one is left); percentage math in channels already matched
+(now in the parity test). Not modeled, as before: a mix in another
+interpolation space (in oklab) stays as declared.
