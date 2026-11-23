@@ -227,6 +227,10 @@ const CASES = {
     'url(a.png) 0% 0% / 10px',
     'url(a.png) no-clip',
     'url(a.png) no-clip padding-box',
+    'url(a.png) top left',
+    'url(a.png) top 5px left 10px',
+    'url(a.png) center left',
+    'url(a.png) bottom center',
     'url(a.png) padding-box no-clip',
     'url(a.png) repeat-y round',
   ],
@@ -570,6 +574,32 @@ parity(
           ];
         }),
     );
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: mask, offset positions are written horizontal side first (#338 review)',
+  (w) => {
+    const p = w.document.body.appendChild(w.document.createElement('p'));
+    return [
+      ['mask-position', 'top left'],
+      ['mask-position', 'center left, bottom'],
+      ['offset-position', 'top left'],
+      ['offset-position', 'top'],
+      ['offset-position', 'normal'],
+      ['offset-anchor', 'top left'],
+      ['offset-anchor', 'auto'],
+      ['offset', 'top left'],
+      ['offset', 'top 5px left 10px'],
+      ['offset', 'top'],
+      ['offset', 'left'],
+      ['offset', '10px url(#p)'],
+    ].map(([name, value]) => {
+      p.removeAttribute('style');
+      p.style.setProperty(name, value);
+      return [name, value, p.style.getPropertyValue(name), w.getComputedStyle(p).getPropertyValue(name)];
+    });
   },
   { jsdom: 31 },
 );

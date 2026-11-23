@@ -778,13 +778,7 @@ EXPANDERS31.offset = (value) => {
     else if (!started) position.push(t === 'auto' || t === 'normal' || POSITION_WORDS.has(t) ? t : token);
     else return null;
   }
-  return [
-    position.length === 0 ? 'normal' : position.join(' '),
-    pathOf(shape, box),
-    distance,
-    rotateOrder(rotate),
-    anchor || 'auto',
-  ];
+  return [offsetPosition(position), pathOf(shape, box), distance, rotateOrder(rotate), anchor || 'auto'];
 };
 function pathOf(shape, box) {
   if (shape === null) return box ?? 'none';
@@ -984,10 +978,29 @@ function maskLayer(layer) {
     else if (image === 'none') image = t === 'none' ? t : token;
     else return null;
   }
-  let pos = '0% 0%';
+  return maskParts(image, maskPosition(position), size, repeat, boxes, composite, mode);
+}
+// (one value is paired with center; the horizontal side first: top left
+// is left top, top 5px left 10px left 10px top 5px)
+function maskPosition(position) {
+  if (position.length === 0) return '0% 0%';
   if (position.length === 1)
-    pos = /^(?:top|bottom)$/.test(position[0]) ? `center ${position[0]}` : `${position[0]} center`;
-  else if (position.length > 1) pos = position.join(' ');
+    return /^(?:top|bottom)$/.test(position[0]) ? `center ${position[0]}` : `${position[0]} center`;
+  return horizontalFirst(position);
+}
+// (offset: normal and auto as they are, a position as mask's)
+function offsetPosition(position) {
+  if (position.length === 0) return 'normal';
+  if (position.length === 1 && (position[0] === 'normal' || position[0] === 'auto')) return position[0];
+  return maskPosition(position);
+}
+function horizontalFirst(position) {
+  const [a, b] = position;
+  if (position.length === 4 && /^(?:top|bottom)$/.test(a)) return [position[2], position[3], a, b].join(' ');
+  if (position.length === 2 && (/^(?:top|bottom)$/.test(a) || /^(?:left|right)$/.test(b))) return `${b} ${a}`;
+  return position.join(' ');
+}
+function maskParts(image, pos, size, repeat, boxes, composite, mode) {
   // (no-clip is a clip only, before or after the origin: the origin
   // stays border-box without one)
   const noClip = boxes.indexOf('no-clip');

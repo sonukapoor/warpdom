@@ -8496,7 +8496,10 @@ Review round (#338): no-clip before an origin box (no-clip padding-box
 is padding-box no-clip); areas over rows none are not written
 (grid-template: none then grid-template-areas: "a" leaves '', as in
 jsdom 31, not "a" none), nor over columns with repeat() or subgrid
-(the area form takes an explicit track list only).
+(the area form takes an explicit track list only). Positions are
+written horizontal side first in mask, mask-position, offset-position
+and offset-anchor (top left is left top, top 5px left 10px is left 10px
+top 5px, top is center top), as warpdom's object-position already was.
 Not modeled: an empty line-name set ([] 10px is 10px in jsdom 31) and
 span as a line name (invalid in jsdom 31).
 Next: the rule and timeline families and all (D5c), shadow scoping, F.
