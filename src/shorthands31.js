@@ -21,7 +21,7 @@ export const COMPOSERS31 = { __proto__: null };
 
 // --- text-decoration: line, thickness, style, color -----------------------------------
 
-const DECORATION_LINES = new Set(['underline', 'overline', 'line-through', 'blink']);
+const DECORATION_LINES = new Set(['underline', 'overline', 'line-through', 'blink', 'spelling-error', 'grammar-error']);
 const DECORATION_STYLES = new Set(['solid', 'double', 'dotted', 'dashed', 'wavy']);
 EXPANDERS31['text-decoration'] = (value) => {
   const lines = [];
@@ -273,14 +273,16 @@ EXPANDERS31['box-shadow'] = (value) => {
   }
   return out.map((list) => list.join(', '));
 };
+// (none is written with the color set after it, other than transparent:
+// box-shadow: none then box-shadow-color: red is red none, black box 31.0.1)
 COMPOSERS31['box-shadow'] = ([color, offset, blur, spread, position]) => {
-  if (offset === 'none') return 'none';
   const lists = [color, offset, blur, spread, position].map(layersOf);
   if (lists.some((list) => list.length !== lists[1].length)) return '';
   return lists[1]
     .map((o, i) => {
       const parts = [];
-      if (lists[0][i] !== 'currentcolor') parts.push(lists[0][i]);
+      const c = lists[0][i];
+      if (c !== 'currentcolor' && !(o === 'none' && c === 'transparent')) parts.push(c);
       parts.push(o);
       if (lists[3][i] !== '0px') parts.push(lists[2][i], lists[3][i]);
       else if (lists[2][i] !== '0px') parts.push(lists[2][i]);
@@ -311,25 +313,32 @@ EXPANDERS31['vertical-align'] = (value) => {
 
 // --- columns: width, count, height ---------------------------------------------------
 
+// (width and count, then / and the height; a number or a math function
+// of numbers is the count)
 EXPANDERS31.columns = (value) => {
+  const [main, height = 'auto'] = segments(value.trim(), /\//)
+    .filter((part, i) => i % 2 === 0)
+    .map((part) => part.trim());
   let width = 'auto';
   let count = 'auto';
-  for (const token of words(value)) {
+  for (const token of words(main)) {
     if (lower(token) === 'auto') continue;
-    if (isNumber(token)) count = token;
+    if (isNumber(token) || isMathNumber(token)) count = token;
     else width = token;
   }
-  return [width, count, 'auto'];
+  return [width, count, height || 'auto'];
 };
 COMPOSERS31.columns = ([width, count, height]) => {
-  if (height !== 'auto') return '';
   const parts = [width, count].filter((v) => v !== 'auto');
-  return parts.length === 0 ? 'auto' : parts.join(' ');
+  const main = parts.length === 0 ? 'auto' : parts.join(' ');
+  return height === 'auto' ? main : `${main} / ${height}`;
 };
 
 // --- grid-area, grid-row, grid-column: start and end lines ---------------------------
 
-const isIdent = (line) => /^-?[a-z_][\w-]*$/i.test(line) && !/^(?:auto|span)$/i.test(line);
+// (a custom ident: -- or a letter, _ or non-ASCII first; not auto or span)
+const isIdent = (line) =>
+  /^(?:--|-?(?:[a-z_]|[^\x00-\x7f]|\\.))(?:[\w-]|[^\x00-\x7f]|\\.)*$/i.test(line) && !/^(?:auto|span)$/i.test(line);
 const gridLines = (value) =>
   segments(value.trim(), /\//)
     .filter((part, i) => i % 2 === 0)

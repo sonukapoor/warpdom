@@ -15,6 +15,9 @@ const CASES = {
     'blink',
     'underline 10%',
     'currentcolor overline',
+    'spelling-error',
+    'grammar-error',
+    'spelling-error red',
   ],
   'text-align': ['center', 'justify', 'start', 'end', 'left', 'right', 'match-parent', 'justify-all'],
   'white-space': [
@@ -70,10 +73,35 @@ const CASES = {
     'first',
     'calc(1px + 2px)',
   ],
-  columns: ['2 100px', '2', '100px', 'auto', 'auto 3', '3 auto'],
-  'grid-area': ['1 / 2', '1', 'a', 'a / b', '1 / 2 / 3 / 4', 'span 2 / 3', 'auto'],
-  'grid-row': ['1', '1 / 3', 'a', 'span 2'],
-  'grid-column': ['2 / span 3', 'b / c'],
+  columns: [
+    '2 100px',
+    '2',
+    '100px',
+    'auto',
+    'auto 3',
+    '3 auto',
+    'calc(2)',
+    '100px 2 / 300px',
+    '2 / 300px',
+    'auto / auto',
+    '100px / 50px',
+    'calc(2) 100px',
+  ],
+  'grid-area': [
+    '1 / 2',
+    '1',
+    'a',
+    'a / b',
+    '1 / 2 / 3 / 4',
+    'span 2 / 3',
+    'auto',
+    '--hero',
+    '名',
+    '--hero / b',
+    '名 / 2',
+  ],
+  'grid-row': ['1', '1 / 3', 'a', 'span 2', '--a', '名'],
+  'grid-column': ['2 / span 3', 'b / c', '--x / 3'],
   'box-shadow': [
     '1px 2px 3px 4px red inset, 5px 6px blue',
     'none',
@@ -155,3 +183,33 @@ for (const [name, values] of Object.entries(CASES)) {
     { jsdom: 31 },
   );
 }
+
+parity(
+  'jsdom 31: box-shadow none is written with a color set after it, other than transparent',
+  (w) => {
+    const p = w.document.body.appendChild(w.document.createElement('p'));
+    return [
+      [
+        ['box-shadow', 'none'],
+        ['box-shadow-color', 'red'],
+      ],
+      [
+        ['box-shadow', 'none'],
+        ['box-shadow-position', 'inset'],
+      ],
+      [
+        ['box-shadow', '1px 1px'],
+        ['box-shadow-color', 'transparent'],
+      ],
+      [
+        ['box-shadow', 'none'],
+        ['box-shadow-blur', '2px'],
+      ],
+    ].map((writes) => {
+      p.removeAttribute('style');
+      for (const [name, value] of writes) p.style.setProperty(name, value);
+      return [writes, p.style.cssText, p.style.boxShadow];
+    });
+  },
+  { jsdom: 31 },
+);

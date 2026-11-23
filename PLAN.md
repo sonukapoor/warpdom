@@ -8288,3 +8288,11 @@ accepts it: validity is decided before expansion). Speed: style writes
 20.9 ms here in the jsdom 31 profile, jsdom 30 15.3 and 15.2.
 The jsdom 31 parity measurement (scratchpad e-m31.sh, parity()'s default
 version switched to 31) was rebuilt: its patch file was gone.
+Review round (#335): spelling-error and grammar-error are
+text-decoration lines; columns reads its height after a slash (100px 2
+/ 300px) and a math function of numbers as the count (calc(2)), and
+writes a height after the slash; grid lines take any custom ident
+(--hero, non-ASCII) as a name that repeats; box-shadow's none is
+written with a color set after it, other than transparent (box-shadow:
+none then box-shadow-color: red is red none, as jsdom 31 writes it; the
+review suggested writing the longhands instead).
