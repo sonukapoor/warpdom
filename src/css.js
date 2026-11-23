@@ -25,6 +25,7 @@ import {
   isMathFunction,
   isNameCode,
   isValidValue,
+  useGrammar31,
   readUrl,
   serializeUrls,
   takesNamesOrStrings,
@@ -1331,6 +1332,8 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
     else urlStyle = surface.key.startsWith('cssstyle6') ? 'quotes' : 'written';
     const cssom31 = surface !== null && surface.cssom31 === true;
     values31 = cssom31;
+    // (jsdom 31's grammar while this value is read; the previous one after)
+    const previousGrammar = useGrammar31(cssom31);
     // (the value as declared31.js wrote it before the rules below: written
     // again only when they changed it)
     let canonical = null;
@@ -1412,6 +1415,7 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
     // jsdom 31 writes each component in canonical form (declared31.js)
     if (cssom31 && typeof out === 'string' && out !== '' && out !== canonical && !name.startsWith('--'))
       out = canonical31(name, out, true) ?? INVALID;
+    useGrammar31(previousGrammar);
     if (byValue.size >= 500) byValue.clear();
     byValue.set(value, out);
   }

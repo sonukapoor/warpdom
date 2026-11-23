@@ -438,3 +438,21 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  "jsdom 30 keeps webref's grammar where jsdom 31's differs, after jsdom 31 values are read (#337 review)",
+  (w) => {
+    const p = w.document.body.appendChild(w.document.createElement('p'));
+    return [
+      ['block-ellipsis', 'auto'],
+      ['block-ellipsis', 'ellipsis'],
+      ['line-clamp', 'auto'],
+      ['line-clamp', '2 ellipsis'],
+      ['shape-outside', 'circle(50%)'],
+    ].map(([name, value]) => {
+      p.removeAttribute('style');
+      p.style.setProperty(name, value);
+      return [name, value, p.style.getPropertyValue(name)];
+    });
+  },
+);

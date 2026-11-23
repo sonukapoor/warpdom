@@ -671,9 +671,36 @@ const ANY_ONE = new Set(['custom-property-name']);
 // match(node, tokens, pos) returns the positions where node can end when it
 // starts at pos (sorted, unique). Comma lists accept the grammar's commas.
 
-const compiled = new Map(); // name -> node | null (unsupported)
+let compiled = new Map(); // name -> node | null (unsupported)
 
-// Where @webref/css's grammar is narrower than the standard jsdom follows:
+// The jsdom 31 profile's grammar differs from @webref/css's in places
+// (below); its compiled grammar and the caches derived from it are kept
+// apart from the other profiles', which keep webref's (jsdom 30 rejects
+// shape-outside: circle(50%) and block-ellipsis: ellipsis). css.js
+// switches to it while it reads a jsdom 31 declared value.
+let grammar31 = false;
+const CACHES = [{}, {}];
+export function useGrammar31(on) {
+  const previous = grammar31;
+  if (on === previous) return previous;
+  const [from, to] = on ? CACHES : [CACHES[1], CACHES[0]];
+  Object.assign(from, { compiled, propertyNodes, entries, takesNames, boundsRead, traceShapes, keywordSets });
+  if (to.compiled === undefined)
+    Object.assign(to, {
+      compiled: new Map(),
+      propertyNodes: new Map(),
+      entries: new Map(),
+      takesNames: new Map(),
+      boundsRead: new Map(),
+      traceShapes: new Map(),
+      keywordSets: new Map(),
+    });
+  ({ compiled, propertyNodes, entries, takesNames, boundsRead, traceShapes, keywordSets } = to);
+  grammar31 = on;
+  return previous;
+}
+
+// Where @webref/css's grammar is narrower than the standard jsdom 31 follows:
 // circle()'s radius is CSS Shapes 1's <shape-radius>, one length or
 // percentage (circle(50%); webref's <radial-size> takes a percentage
 // only in pairs, as ellipse() does).
@@ -690,7 +717,7 @@ function typeNode(name) {
   if (compiled.has(name)) return compiled.get(name);
   compiled.set(name, null); // recursion guard
   let node = null;
-  const syntax = TYPE_FIXES[name] ?? TYPE_SYNTAX[name];
+  const syntax = (grammar31 ? TYPE_FIXES[name] : undefined) ?? TYPE_SYNTAX[name];
   if (syntax) {
     try {
       node = parseGrammar(syntax);
@@ -702,13 +729,13 @@ function typeNode(name) {
   return node;
 }
 
-const propertyNodes = new Map();
+let propertyNodes = new Map();
 function propertyNode(name) {
   if (ALIASES[name]) name = ALIASES[name]; // -webkit-transform: transform's grammar
   if (propertyNodes.has(name)) return propertyNodes.get(name);
   propertyNodes.set(name, null);
   let node = null;
-  const syntax = PROPERTY_FIXES[name] ?? PROPERTY_SYNTAX[name];
+  const syntax = (grammar31 ? PROPERTY_FIXES[name] : undefined) ?? PROPERTY_SYNTAX[name];
   if (syntax) {
     try {
       node = parseGrammar(syntax);
@@ -1094,7 +1121,7 @@ function hasFiniteBound(node, seen = new Set(), leaves = null) {
 
 // Per property: its grammar and its shape cache (null: not shaped), in one
 // lookup.
-const entries = new Map();
+let entries = new Map();
 function entryOf(name) {
   let entry = entries.get(name);
   if (entry === undefined) {
@@ -1166,7 +1193,7 @@ export const isMathFunction = (name) => MATH.has(name);
 // written (css.js, black box, #187). A property without a grammar does.
 const NAME_TYPES = new Set(['custom-ident', 'dashed-ident', 'string']);
 const TYPE_REFERENCE = /<('?)([a-z-]+)'?(?:\s*\[[^\]]*\])?>/g;
-const takesNames = new Map();
+let takesNames = new Map();
 function reachesNames(syntax, seen) {
   for (const [, quoted, type] of syntax.matchAll(TYPE_REFERENCE)) {
     if (NAME_TYPES.has(type)) return true;
@@ -1269,13 +1296,13 @@ export function traceValue(name, value) {
 // Does tracing the property's values check a numeric bound other than 0
 // and infinity (colors are leaves to it)?
 const COLOR_LEAVES = new Set(['color', 'color-base', 'named-color', 'system-color']);
-const boundsRead = new Map();
+let boundsRead = new Map();
 function readsBound(name) {
   let out = boundsRead.get(name);
   if (out === undefined) boundsRead.set(name, (out = hasFiniteBound(propertyNode(name), new Set(), COLOR_LEAVES)));
   return out;
 }
-const traceShapes = new Map(); // name -> shape -> labels | false | null
+let traceShapes = new Map(); // name -> shape -> labels | false | null
 // A trace's labels, token by token in document order (into a function's
 // arguments and a block's items after the token itself).
 function labelsOf(tokens, out) {
@@ -1529,7 +1556,7 @@ const COUNTER_STYLES =
   'disclosure-closed cjk-earthly-branch cjk-heavenly-stem japanese-informal japanese-formal ' +
   'korean-hangul-formal korean-hanja-informal korean-hanja-formal simp-chinese-informal simp-chinese-formal ' +
   'trad-chinese-informal trad-chinese-formal ethiopic-numeric';
-const keywordSets = new Map();
+let keywordSets = new Map();
 export function keywordsOf(name) {
   let set = keywordSets.get(name);
   if (set === undefined) {

@@ -8451,5 +8451,13 @@ percentage as its radius (CSS Shapes 1 <shape-radius>: clip-path,
 shape-outside and offset-path rejected circle(50%)), and block-ellipsis
 is no-ellipsis | ellipsis | <string> (the Overflow 4 draft jsdom 31
 follows: line-clamp: 2 ellipsis is valid, auto and auto 2 are not).
+Second round (#337): those overrides are the jsdom 31 profile's only.
+css-values.js keeps two compiled grammars with their caches (useGrammar31
+switches them; css.js's declaredValue reads a jsdom 31 value under jsdom
+31's and restores the previous one): jsdom 30 keeps webref's
+(block-ellipsis: auto valid, ellipsis not, shape-outside: circle(50%)
+invalid, as jsdom 30.1.3). Not modeled, as on main: jsdom 30 accepts
+circle(50%) in clip-path and offset-path (warpdom's jsdom 30 profile
+rejects it).
 Next: grid and grid-template, mask (D5b), then the rule and timeline
 families and all (D5c), shadow scoping, F.
