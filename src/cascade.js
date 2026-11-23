@@ -72,7 +72,7 @@ import {
   supportsMatches,
 } from './cssom.js';
 import { present31 } from './color31.js';
-import { shorthand31, alias31, dropped31 } from './css31.js';
+import { shorthand31, alias31, dropped31, composed31 } from './css31.js';
 import {
   parseDeclarations,
   writtenDeclarations,
@@ -2709,8 +2709,112 @@ function absoluteFontSize(element, value) {
   return px === null ? value : `${sixDigits(px)}px`;
 }
 
+// jsdom 31's own computed values for some longhands (black box, 31.0.1):
+// - outline and rule widths: thin, medium and thick in px, whatever the
+//   style (outline-width 3px for none);
+// - font-width: keywords as percentages (condensed 75%);
+// - outline-color: auto stays auto with outline-style auto, else the
+//   current color;
+// - box-shadow-color: each layer's color, but currentcolor and
+//   transparent kept as keywords (currentcolor, rgb(255, 0, 0));
+// - background-position-x and -y, offset-position: keywords as
+//   percentages (center 50%, left top 0% 0%).
+// null for the others.
+const outlineAuto31 = (element) =>
+  computedValue(element, 'outline-style').toLowerCase() === 'auto' ? 'auto' : currentColor(element);
+const LINE_WIDTH31 = new Set(['outline-width', 'column-rule-width', 'row-rule-width']);
+const FONT_WIDTHS31 = {
+  __proto__: null,
+  'ultra-condensed': '50%',
+  'extra-condensed': '62.5%',
+  condensed: '75%',
+  'semi-condensed': '87.5%',
+  normal: '100%',
+  'semi-expanded': '112.5%',
+  expanded: '125%',
+  'extra-expanded': '150%',
+  'ultra-expanded': '200%',
+};
+const Y_KEYWORD = new Set(['top', 'bottom']);
+const COMPUTED31 = new Set([
+  ...LINE_WIDTH31,
+  'font-width',
+  'outline-color',
+  'box-shadow-color',
+  'background-position-x',
+  'background-position-y',
+  'offset-position',
+]);
+function computed31(element, name, value, data) {
+  if (!COMPUTED31.has(name)) return null;
+  const lower = value.toLowerCase();
+  if (LINE_WIDTH31.has(name)) return BORDER_WIDTHS[lower] ?? null;
+  if (name === 'font-width') return FONT_WIDTHS31[lower] ?? null;
+  if (name === 'outline-color' && lower === 'auto') return outlineAuto31(element);
+  if (name === 'box-shadow-color') {
+    return topLevelCommaSplit(value)
+      .map((layer) => {
+        const color = layer.trim();
+        const keyword = color.toLowerCase();
+        return keyword === 'currentcolor' || keyword === 'transparent'
+          ? keyword
+          : computeColors(element, name, color, data);
+      })
+      .join(', ');
+  }
+  if (name === 'background-position-x' || name === 'background-position-y') {
+    const layers = topLevelCommaSplit(value).map((layer) => edge31(element, tokens31(layer.trim())));
+    return layers.includes(null) ? null : layers.join(', ');
+  }
+  if (name === 'offset-position') return position31(element, tokens31(value.trim()));
+  return null;
+}
+// A position's x or y: a keyword as a percentage, a length in px, an
+// offset from the left or top that length, from the right or bottom 100%
+// less it (calc(100% - 10px); 90% for 10%; calc(100% + 0px) for 0). null
+// when not one of these.
+const X_KEYWORD = new Set(['left', 'right']);
+const tokens31 = (value) => segments(value).filter((_, i) => i % 2 === 0);
+function edge31(element, words) {
+  if (words.length > 2) return null;
+  const [first, offset] = words;
+  const percent = POSITION_PERCENT[first.toLowerCase()];
+  if (offset === undefined) return percent ?? length31(element, first);
+  const keyword = first.toLowerCase();
+  const length = length31(element, offset);
+  if (percent === undefined || keyword === 'center' || length === null) return null;
+  if (keyword === 'left' || keyword === 'top') return length;
+  if (length.endsWith('%')) return `${sixDigits(100 - Number(length.slice(0, -1)))}%`;
+  const px = Number(length.slice(0, -2));
+  return px > 0 ? `calc(100% - ${length})` : `calc(100% + ${sixDigits(-px)}px)`;
+}
+function length31(element, text) {
+  if (text.endsWith('%')) return Number.isNaN(Number(text.slice(0, -1))) ? null : text;
+  if (text === '0') return '0px';
+  const px = absoluteLength(text, new LengthContext(element, false));
+  return px === null ? null : `${sixDigits(px)}px`;
+}
+// offset-position: one or two keywords or lengths (a vertical keyword
+// first, or a horizontal one second, is read as y), or two edges with
+// their offsets; normal and auto as they are.
+function position31(element, words) {
+  let x, y;
+  if (words.length <= 2) {
+    [x, y] = [words[0], words[1] ?? 'center'].map((w) => [w]);
+  } else if (words.length === 4) [x, y] = [words.slice(0, 2), words.slice(2)];
+  else return null;
+  if (Y_KEYWORD.has(x[0].toLowerCase()) || X_KEYWORD.has(y[0].toLowerCase())) [x, y] = [y, x];
+  const px = edge31(element, x),
+    py = edge31(element, y);
+  return px === null || py === null ? null : `${px} ${py}`;
+}
+
 function computeValue(element, name, value, data) {
   const compat = element[S].doc[S].window[S].compat;
+  if (compat.computed31) {
+    const own = computed31(element, name, value, data);
+    if (own !== null) return own;
+  }
   // (most values have no function: the regex only where one is)
   if (compat.computed31 && value.indexOf('(') > 0 && GRADIENT.test(value))
     value = gradientColors31(element, value, data);
@@ -2769,6 +2873,8 @@ function initialValue(element, name, data) {
       return name === 'outline-color' ? currentColor(element) : 'rgb(0, 0, 0)';
     if (name === 'outline-color') return 'rgba(0, 0, 0, 0)';
   }
+  // (jsdom 31: auto, black box 31.0.1)
+  if (name === 'column-width' && element[S].doc[S].window[S].compat.computed31) return 'auto';
   // (jsdom 31: monospace, black box 31.0.1)
   if (name === 'font-family')
     return element[S].doc[S].window[S].compat.computed31 ? 'monospace' : 'depends on user agent';
@@ -2783,6 +2889,9 @@ function inheritedValue(element, name, data) {
   if (parent === null) return initialValue(element, name, data);
   const compat = element[S].doc[S].window[S].compat;
   if (data[2] === 1 && name !== 'color' && !compat.legacyComputedStyle) {
+    // (jsdom 31: outline-color auto is inherited as auto, black box 31.0.1)
+    if (compat.computed31 && name === 'outline-color' && computedValue(parent, name) === 'auto')
+      return outlineAuto31(element);
     const source = colorSource(parent, name, data, compat.computed31);
     if (source !== null) return computedValue(source, name);
     // jsdom 31 keeps currentcolor so where it keeps it declared.
@@ -3677,11 +3786,44 @@ function styleValueOf(element, property) {
   if (compat.jsdom >= 27 && !property.startsWith('--')) {
     const lower = property.toLowerCase();
     const name = ALIASES[lower] ?? lower;
+    // (jsdom 31: from its computed longhands where warpdom composes it)
+    const longhands = compat.computed31 ? shorthand31(name) : undefined;
+    const composed =
+      longhands === undefined
+        ? null
+        : composed31(
+            name,
+            longhands.map((l) => shorthandInput31(element, l)),
+          );
+    if (composed !== null) return composed;
     if (!compat.legacyComputedStyle) {
       if (SHORTHANDS[name] !== undefined) return observedShorthand(element, name);
     } else if (name === 'background-position') return observedShorthand(element, name);
   }
   return computedValue(element, property);
+}
+
+// jsdom 31 (black box, 31.0.1) composes a computed shorthand from its
+// computed longhands, but font from weight 400 as normal and its width
+// as a keyword (condensed for 75%), and text-decoration from a
+// currentcolor color (as specified: left out) as currentcolor.
+const FONT_WIDTH_KEYWORDS31 = Object.fromEntries(Object.entries(FONT_WIDTHS31).map(([k, v]) => [v, k]));
+const CURRENT31 = new Set(['currentcolor', 'initial', 'unset']);
+function shorthandInput31(element, longhand) {
+  if (longhand === 'text-decoration-color') {
+    // (inherit: as the parent specifies it)
+    let e = element;
+    let own = cascaded(e, longhand);
+    while (own?.toLowerCase() === 'inherit' && inheritParent(e) !== null) {
+      e = inheritParent(e);
+      own = cascaded(e, longhand);
+    }
+    if (own === undefined || CURRENT31.has(own.toLowerCase())) return 'currentcolor';
+  }
+  const value = computedValue(element, longhand);
+  if (longhand === 'font-weight') return value === '400' ? 'normal' : value;
+  if (longhand === 'font-width') return FONT_WIDTH_KEYWORDS31[value] ?? value;
+  return value;
 }
 
 export const isDisplayNone = (element) => computedValue(element, 'display') === 'none';

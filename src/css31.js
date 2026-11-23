@@ -425,6 +425,10 @@ COMPOSERS.border = (v) => {
 };
 // border-image: source, slice / width / outset, repeat; a width or an
 // outset keeps the slice and the slashes before it (100% / / 1px).
+// (jsdom 31 leaves out the initial values: column-rule: currentcolor is
+// medium, black box 31.0.1)
+COMPOSERS['column-rule'] = omitting(BORDER_INITIALS);
+COMPOSERS['-webkit-text-stroke'] = omitting(['0px', 'currentcolor']);
 COMPOSERS['border-image'] = ([source, slice, width, outset, repeat]) => {
   const parts = [];
   if (source !== 'none') parts.push(source);
@@ -636,4 +640,17 @@ export function serialize31(decls) {
     if (!written) add(name, decl.parsedEmpty === true ? '' : decl.value, decl.important);
   }
   return out;
+}
+
+// getComputedStyle(element).getPropertyValue(shorthand) in jsdom 31: the
+// shorthand from its computed longhands' values (jsdom 31's order), as
+// the declaration block writes it, '' when it cannot be written, null
+// when warpdom has no composer for it.
+export function composed31(name, values) {
+  const composer = COMPOSERS[name] ?? defaultComposer(name);
+  if (composer === null) return null;
+  return composer(
+    values,
+    values.map((value) => ({ value, important: false, src: undefined })),
+  );
 }
