@@ -672,3 +672,135 @@ COMPOSERS31['animation-range'] = ([start, end]) => {
     })
     .join(', ');
 };
+
+// --- container: name, type ---------------------------------------------------------
+
+// (names, then / and the type; a type left out is normal)
+// (scroll-state after size or inline-size: a / scroll-state size is
+// a / size scroll-state)
+EXPANDERS31.container = (value) => {
+  const [names, type = 'normal'] = slashed(value);
+  const types = words(type);
+  const scroll = types.findIndex((t) => lower(t) === 'scroll-state');
+  if (scroll !== -1 && types.length === 2) types.push(types.splice(scroll, 1)[0]);
+  return [names || 'none', types.join(' ') || 'normal'];
+};
+COMPOSERS31.container = ([name, type]) => (lower(type) === 'normal' ? name : `${name} / ${type}`);
+
+// --- text-box: trim, edge ------------------------------------------------------------
+
+// (normal and none: none and auto; an edge alone trims both sides; a trim
+// alone has the auto edge)
+const TRIMS = new Set(['none', 'trim-start', 'trim-end', 'trim-both']);
+EXPANDERS31['text-box'] = (value) => {
+  let trim = null;
+  const edge = [];
+  for (const token of words(value)) {
+    const t = lower(token);
+    if (t === 'normal') return ['none', 'auto'];
+    if (TRIMS.has(t)) trim = t;
+    else edge.push(t);
+  }
+  if (trim === 'none') return ['none', 'auto'];
+  return [trim ?? 'trim-both', edge.length === 0 ? 'auto' : edge.join(' ')];
+};
+COMPOSERS31['text-box'] = ([trim, edge]) => {
+  if (trim === 'none') return edge === 'auto' ? 'normal' : '';
+  if (edge === 'auto') return trim;
+  return trim === 'trim-both' ? edge : `${trim} ${edge}`;
+};
+
+// --- font-synthesis: weight, style, small-caps, position --------------------------
+
+// (the keywords given are auto, the others none)
+const SYNTHESES = ['weight', 'style', 'small-caps', 'position'];
+EXPANDERS31['font-synthesis'] = (value) => {
+  const given = new Set(words(value).map(lower));
+  return SYNTHESES.map((name) => (given.has(name) ? 'auto' : 'none'));
+};
+COMPOSERS31['font-synthesis'] = (values) => {
+  if (values.some((v) => v !== 'auto' && v !== 'none')) return '';
+  const on = SYNTHESES.filter((_, i) => values[i] === 'auto');
+  return on.length === 0 ? 'none' : on.join(' ');
+};
+
+// --- line-clamp: max-lines, block-ellipsis, continue -------------------------------
+
+// (none: auto, no-ellipsis, normal; a count clamps with an ellipsis, or
+// the string or no-ellipsis after it)
+EXPANDERS31['line-clamp'] = (value) => {
+  const [count, ellipsis = 'ellipsis', ...rest] = words(value);
+  if (lower(count) === 'none' && ellipsis === 'ellipsis') return ['auto', 'no-ellipsis', 'normal'];
+  if (rest.length > 0 || !(isNumber(count) || isMath(count))) return null;
+  return [
+    count,
+    lower(ellipsis) === 'no-ellipsis' || lower(ellipsis) === 'ellipsis' ? lower(ellipsis) : ellipsis,
+    'collapse',
+  ];
+};
+COMPOSERS31['line-clamp'] = ([count, ellipsis, mode]) => {
+  if (count === 'auto' && ellipsis === 'no-ellipsis' && mode === 'normal') return 'none';
+  if (mode !== 'collapse' || count === 'auto') return '';
+  return ellipsis === 'ellipsis' ? count : `${count} ${ellipsis}`;
+};
+
+// --- offset: position, path, distance, rotate, anchor ------------------------------
+
+// (a position, a path with a distance and a rotation after it, then / and
+// the anchor; none alone is the path, normal the position)
+const PATH_FUNCTION = /^(?:path|ray|url|inset|circle|ellipse|polygon|rect|xywh|shape)\(/i;
+const BOXES = new Set(['content-box', 'padding-box', 'border-box', 'fill-box', 'stroke-box', 'view-box', 'margin-box']);
+const isAngle = (t) =>
+  /^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?(?:deg|grad|rad|turn)$/i.test(t) ||
+  (isMath(t) && /\d(?:deg|grad|rad|turn)\b/i.test(t));
+EXPANDERS31.offset = (value) => {
+  const [main, anchor = 'auto'] = slashed(value);
+  const position = [];
+  const path = [];
+  let distance = '0px';
+  const rotate = [];
+  for (const token of words(main)) {
+    const t = lower(token);
+    if (
+      path.length === 0 &&
+      rotate.length === 0 &&
+      distance === '0px' &&
+      (t === 'none' || PATH_FUNCTION.test(token) || BOXES.has(t))
+    )
+      path.push(t === 'none' ? t : token);
+    else if (path.length > 0 && (t === 'auto' || t === 'reverse' || isAngle(token)))
+      rotate.push(t === 'auto' || t === 'reverse' ? t : token);
+    else if (path.length > 0 && (isLength(token) || isMath(token))) distance = token === '0' ? '0px' : token;
+    else if (path.length === 0) position.push(t === 'auto' || t === 'normal' || POSITION_WORDS.has(t) ? t : token);
+    else return null;
+  }
+  return [
+    position.length === 0 ? 'normal' : position.join(' '),
+    path.length === 0 ? 'none' : path.join(' '),
+    distance,
+    rotateOrder(rotate),
+    anchor || 'auto',
+  ];
+};
+const POSITION_WORDS = new Set(['left', 'right', 'top', 'bottom', 'center']);
+// (offset-rotate: auto or reverse first, then the angle)
+function rotateOrder(parts) {
+  if (parts.length === 0) return 'auto';
+  const keyword = parts.find((p) => p === 'auto' || p === 'reverse');
+  const angle = parts.find((p) => p !== 'auto' && p !== 'reverse');
+  if (keyword === undefined) return angle;
+  return angle === undefined ? keyword : `${keyword} ${angle}`;
+}
+COMPOSERS31.offset = ([position, path, distance, rotate, anchor]) => {
+  const parts = [];
+  if (position !== 'normal') parts.push(position);
+  // (none is written when a distance or rotation follows it: none 10px)
+  if (path !== 'none' || distance !== '0px' || rotate !== 'auto') {
+    parts.push(path);
+    if (distance !== '0px') parts.push(distance);
+    if (rotate !== 'auto') parts.push(rotate);
+  }
+  // (nothing but the anchor: normal)
+  const head = parts.length === 0 ? 'normal' : parts.join(' ');
+  return anchor === 'auto' ? head : `${head} / ${anchor}`;
+};

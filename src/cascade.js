@@ -2744,6 +2744,7 @@ const COMPUTED31 = new Set([
   'background-position-x',
   'background-position-y',
   'offset-position',
+  'offset-anchor',
 ]);
 function computed31(element, name, value, data) {
   if (!COMPUTED31.has(name)) return null;
@@ -2766,7 +2767,7 @@ function computed31(element, name, value, data) {
     const layers = topLevelCommaSplit(value).map((layer) => edge31(element, tokens31(layer.trim())));
     return layers.includes(null) ? null : layers.join(', ');
   }
-  if (name === 'offset-position') return position31(element, tokens31(value.trim()));
+  if (name === 'offset-position' || name === 'offset-anchor') return position31(element, tokens31(value.trim()));
   return null;
 }
 // A position's x or y: a keyword as a percentage, a length in px, an
@@ -2872,6 +2873,8 @@ function computeValue(element, name, value, data) {
   return value;
 }
 
+const INITIALS31 = { __proto__: null, 'column-width': 'auto', 'max-lines': 'auto', continue: 'normal' };
+
 // Initial values are computed too, except that an initial 0 stays 0, as
 // in jsdom (margin-top: 0, but margin: 0 auto gives margin-top: 0px).
 function initialValue(element, name, data) {
@@ -2885,8 +2888,11 @@ function initialValue(element, name, data) {
       return name === 'outline-color' ? outlineAuto31(element) : 'rgb(0, 0, 0)';
     if (name === 'outline-color') return 'rgba(0, 0, 0, 0)';
   }
-  // (jsdom 31: auto, black box 31.0.1)
-  if (name === 'column-width' && element[S].doc[S].window[S].compat.computed31) return 'auto';
+  // (jsdom 31: column-width and max-lines auto, continue normal, black box 31.0.1)
+  if (element[S].doc[S].window[S].compat.computed31) {
+    const own = INITIALS31[name];
+    if (own !== undefined) return own;
+  }
   // (jsdom 31: monospace, black box 31.0.1)
   if (name === 'font-family')
     return element[S].doc[S].window[S].compat.computed31 ? 'monospace' : 'depends on user agent';

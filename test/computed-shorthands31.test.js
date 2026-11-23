@@ -60,6 +60,11 @@ const CASES = {
   columns: ['2', '10px', '10px 3'],
   transition: ['opacity 1s', 'all 0s', 'color 1s ease-in 2s, opacity 2s'],
   animation: ['spin 2s infinite', 'none', 'a 1s ease-in 2s 3 reverse both paused'],
+  container: ['a', 'a / size', 'none / size'],
+  'text-box': ['trim-both', 'cap alphabetic', 'trim-start text'],
+  'font-synthesis': ['none', 'weight', 'style small-caps'],
+  'line-clamp': ['none', '3', '3 "…"'],
+  offset: ['none', 'auto', '10px 20px', 'left top', 'ray(45deg) 10px reverse 30deg / left top', 'url(#p) 30deg'],
   'grid-area': ['1 / 2', 'a', 'span 2'],
 };
 
