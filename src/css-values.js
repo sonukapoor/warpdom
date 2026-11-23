@@ -673,11 +673,24 @@ const ANY_ONE = new Set(['custom-property-name']);
 
 const compiled = new Map(); // name -> node | null (unsupported)
 
+// Where @webref/css's grammar is narrower than the standard jsdom follows:
+// circle()'s radius is CSS Shapes 1's <shape-radius>, one length or
+// percentage (circle(50%); webref's <radial-size> takes a percentage
+// only in pairs, as ellipse() does).
+const TYPE_FIXES = {
+  __proto__: null,
+  'circle()': 'circle( [ <radial-extent> | <length-percentage [0,∞]> ]? [ at <position> ]? )',
+};
+// block-ellipsis as the Overflow 4 draft jsdom 31 follows has it:
+// ellipsis, not auto (line-clamp: 2 ellipsis; line-clamp: auto 2 is
+// invalid, black box 31.0.1).
+const PROPERTY_FIXES = { __proto__: null, 'block-ellipsis': 'no-ellipsis | ellipsis | <string>' };
+
 function typeNode(name) {
   if (compiled.has(name)) return compiled.get(name);
   compiled.set(name, null); // recursion guard
   let node = null;
-  const syntax = TYPE_SYNTAX[name];
+  const syntax = TYPE_FIXES[name] ?? TYPE_SYNTAX[name];
   if (syntax) {
     try {
       node = parseGrammar(syntax);
@@ -695,7 +708,7 @@ function propertyNode(name) {
   if (propertyNodes.has(name)) return propertyNodes.get(name);
   propertyNodes.set(name, null);
   let node = null;
-  const syntax = PROPERTY_SYNTAX[name];
+  const syntax = PROPERTY_FIXES[name] ?? PROPERTY_SYNTAX[name];
   if (syntax) {
     try {
       node = parseGrammar(syntax);

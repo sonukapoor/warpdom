@@ -63,8 +63,16 @@ const CASES = {
   container: ['a', 'a / size', 'none / size'],
   'text-box': ['trim-both', 'cap alphabetic', 'trim-start text'],
   'font-synthesis': ['none', 'weight', 'style small-caps'],
-  'line-clamp': ['none', '3', '3 "…"'],
-  offset: ['none', 'auto', '10px 20px', 'left top', 'ray(45deg) 10px reverse 30deg / left top', 'url(#p) 30deg'],
+  'line-clamp': ['none', '3', '3 "…"', '"more" 3'],
+  offset: [
+    'none',
+    'auto',
+    '10px 20px',
+    'left top',
+    'ray(45deg) 10px reverse 30deg / left top',
+    'url(#p) 30deg',
+    'border-box circle(50%) 10px',
+  ],
   'grid-area': ['1 / 2', 'a', 'span 2'],
 };
 
@@ -203,6 +211,21 @@ parity(
     const p = d.body.appendChild(d.createElement('p'));
     p.setAttribute('style', 'text-decoration: inherit');
     return [d.documentElement, d.body, p].map((e) => w.getComputedStyle(e).getPropertyValue('text-decoration'));
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: circle() takes one length or percentage as its radius (#337 review)',
+  (w) => {
+    const p = w.document.body.appendChild(w.document.createElement('p'));
+    return ['clip-path', 'shape-outside', 'offset-path'].flatMap((name) =>
+      ['circle(50%)', 'circle(10px)', 'circle(50% at 10px 20px)', 'circle(-5%)', 'circle(10% 20%)'].map((v) => {
+        p.removeAttribute('style');
+        p.style.setProperty(name, v);
+        return [name, v, p.style.getPropertyValue(name), w.getComputedStyle(p).getPropertyValue(name)];
+      }),
+    );
   },
   { jsdom: 31 },
 );

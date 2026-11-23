@@ -719,9 +719,12 @@ EXPANDERS31['font-synthesis'] = (value) => {
   return SYNTHESES.map((name) => (given.has(name) ? 'auto' : 'none'));
 };
 COMPOSERS31['font-synthesis'] = (values) => {
-  if (values.some((v) => v !== 'auto' && v !== 'none')) return '';
-  const on = SYNTHESES.filter((_, i) => values[i] === 'auto');
-  return on.length === 0 ? 'none' : on.join(' ');
+  let out = '';
+  for (let i = 0; i < SYNTHESES.length; i++) {
+    if (values[i] === 'auto') out = out === '' ? SYNTHESES[i] : `${out} ${SYNTHESES[i]}`;
+    else if (values[i] !== 'none') return '';
+  }
+  return out === '' ? 'none' : out;
 };
 
 // --- line-clamp: max-lines, block-ellipsis, continue -------------------------------
@@ -729,14 +732,14 @@ COMPOSERS31['font-synthesis'] = (values) => {
 // (none: auto, no-ellipsis, normal; a count clamps with an ellipsis, or
 // the string or no-ellipsis after it)
 EXPANDERS31['line-clamp'] = (value) => {
-  const [count, ellipsis = 'ellipsis', ...rest] = words(value);
-  if (lower(count) === 'none' && ellipsis === 'ellipsis') return ['auto', 'no-ellipsis', 'normal'];
-  if (rest.length > 0 || !(isNumber(count) || isMath(count))) return null;
-  return [
-    count,
-    lower(ellipsis) === 'no-ellipsis' || lower(ellipsis) === 'ellipsis' ? lower(ellipsis) : ellipsis,
-    'collapse',
-  ];
+  const tokens = words(value);
+  if (tokens.length === 1 && lower(tokens[0]) === 'none') return ['auto', 'no-ellipsis', 'normal'];
+  // (the count and the ellipsis in either order: "more" 3 is 3 "more")
+  const at = tokens.findIndex((t) => isNumber(t) || isMath(t));
+  if (at === -1 || tokens.length > 2) return null;
+  const ellipsis = tokens.length === 2 ? tokens[1 - at] : 'ellipsis';
+  const keyword = lower(ellipsis);
+  return [tokens[at], keyword === 'no-ellipsis' || keyword === 'ellipsis' ? keyword : ellipsis, 'collapse'];
 };
 COMPOSERS31['line-clamp'] = ([count, ellipsis, mode]) => {
   if (count === 'auto' && ellipsis === 'no-ellipsis' && mode === 'normal') return 'none';
@@ -753,35 +756,39 @@ const BOXES = new Set(['content-box', 'padding-box', 'border-box', 'fill-box', '
 const isAngle = (t) =>
   /^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?(?:deg|grad|rad|turn)$/i.test(t) ||
   (isMath(t) && /\d(?:deg|grad|rad|turn)\b/i.test(t));
+// (a shape or url() and a box in either order: the box after the shape,
+// border-box left out with one, black box 31.0.1)
 EXPANDERS31.offset = (value) => {
   const [main, anchor = 'auto'] = slashed(value);
   const position = [];
-  const path = [];
+  let shape = null;
+  let box = null;
   let distance = '0px';
   const rotate = [];
   for (const token of words(main)) {
     const t = lower(token);
-    if (
-      path.length === 0 &&
-      rotate.length === 0 &&
-      distance === '0px' &&
-      (t === 'none' || PATH_FUNCTION.test(token) || BOXES.has(t))
-    )
-      path.push(t === 'none' ? t : token);
-    else if (path.length > 0 && (t === 'auto' || t === 'reverse' || isAngle(token)))
+    const started = shape !== null || box !== null;
+    const open = rotate.length === 0 && distance === '0px';
+    if (open && shape === null && (t === 'none' || PATH_FUNCTION.test(token))) shape = t === 'none' ? t : token;
+    else if (open && box === null && shape !== 'none' && BOXES.has(t)) box = t;
+    else if (started && (t === 'auto' || t === 'reverse' || isAngle(token)))
       rotate.push(t === 'auto' || t === 'reverse' ? t : token);
-    else if (path.length > 0 && (isLength(token) || isMath(token))) distance = token === '0' ? '0px' : token;
-    else if (path.length === 0) position.push(t === 'auto' || t === 'normal' || POSITION_WORDS.has(t) ? t : token);
+    else if (started && (isLength(token) || isMath(token))) distance = token === '0' ? '0px' : token;
+    else if (!started) position.push(t === 'auto' || t === 'normal' || POSITION_WORDS.has(t) ? t : token);
     else return null;
   }
   return [
     position.length === 0 ? 'normal' : position.join(' '),
-    path.length === 0 ? 'none' : path.join(' '),
+    pathOf(shape, box),
     distance,
     rotateOrder(rotate),
     anchor || 'auto',
   ];
 };
+function pathOf(shape, box) {
+  if (shape === null) return box ?? 'none';
+  return box === null || box === 'border-box' ? shape : `${shape} ${box}`;
+}
 const POSITION_WORDS = new Set(['left', 'right', 'top', 'bottom', 'center']);
 // (offset-rotate: auto or reverse first, then the angle)
 function rotateOrder(parts) {
@@ -792,15 +799,14 @@ function rotateOrder(parts) {
   return angle === undefined ? keyword : `${keyword} ${angle}`;
 }
 COMPOSERS31.offset = ([position, path, distance, rotate, anchor]) => {
-  const parts = [];
-  if (position !== 'normal') parts.push(position);
+  let head = position === 'normal' ? '' : position;
   // (none is written when a distance or rotation follows it: none 10px)
   if (path !== 'none' || distance !== '0px' || rotate !== 'auto') {
-    parts.push(path);
-    if (distance !== '0px') parts.push(distance);
-    if (rotate !== 'auto') parts.push(rotate);
+    head = head === '' ? path : `${head} ${path}`;
+    if (distance !== '0px') head = `${head} ${distance}`;
+    if (rotate !== 'auto') head = `${head} ${rotate}`;
   }
   // (nothing but the anchor: normal)
-  const head = parts.length === 0 ? 'normal' : parts.join(' ');
+  if (head === '') head = 'normal';
   return anchor === 'auto' ? head : `${head} / ${anchor}`;
 };

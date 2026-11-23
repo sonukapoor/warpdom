@@ -8436,7 +8436,20 @@ unchanged at 5 failures (none about these shorthands).
 Not modeled: path() and ray() in their canonical form (path("M0,0
 L10,10") is path("M 0 0 L 10 10"), ray(closest-side 45deg) is
 ray(45deg); offset-path and clip-path too); a math function computed in
-max-lines (calc(2) is 2); line-clamp: auto is invalid in jsdom 31
-(warpdom accepts it).
+max-lines (calc(2) is 2); a basic shape's position in its canonical
+form (circle(10px at left top) is circle(10px at 0% 0%)).
+Review round (#337): line-clamp takes the count and the ellipsis in
+either order ("more" 3 is 3 "more"); offset takes a shape or url() and
+a coordinate box in either order, the box written after the shape and
+border-box left out with one (border-box circle(50%) 10px is
+circle(50%) 10px); the font-synthesis and offset composers build their
+string without temporary arrays. Found on the way, two places where
+@webref/css's grammar is narrower than what jsdom 31 follows, now
+overridden in css-values.js (TYPE_FIXES, PROPERTY_FIXES; the generated
+css-grammar.js stays as generated): circle() takes one length or
+percentage as its radius (CSS Shapes 1 <shape-radius>: clip-path,
+shape-outside and offset-path rejected circle(50%)), and block-ellipsis
+is no-ellipsis | ellipsis | <string> (the Overflow 4 draft jsdom 31
+follows: line-clamp: 2 ellipsis is valid, auto and auto 2 are not).
 Next: grid and grid-template, mask (D5b), then the rule and timeline
 families and all (D5c), shadow scoping, F.
