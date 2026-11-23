@@ -2880,8 +2880,9 @@ function initialValue(element, name, data) {
   // jsdom 29.0.2 to 30.1.3 (black box); jsdom 31 currentcolor, and
   // stop-color black (black box, 31.0.1).
   if (name === 'outline-color' || name === 'stop-color') {
+    // (outline-color's initial auto: auto with outline-style auto)
     if (element[S].doc[S].window[S].compat.computed31)
-      return name === 'outline-color' ? currentColor(element) : 'rgb(0, 0, 0)';
+      return name === 'outline-color' ? outlineAuto31(element) : 'rgb(0, 0, 0)';
     if (name === 'outline-color') return 'rgba(0, 0, 0, 0)';
   }
   // (jsdom 31: auto, black box 31.0.1)

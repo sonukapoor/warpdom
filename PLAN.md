@@ -8395,6 +8395,10 @@ the way and not specific to positions: jsdom 31 resolves the lengths
 inside a math function with a percentage (width: calc(10% + 1em) is
 calc(10% + 20px), max(10%, 1em) is max(10%, 20px)); warpdom keeps them
 as declared, for every property (a computed-values item for later).
+Fifth round (#336, closer look): outline-color's initial value (not
+declared, initial, unset) is auto with outline-style auto, as a
+declared auto (outline-style: auto reads outline 3px auto); the
+CSS-wide keywords (revert, revert-layer) checked, as jsdom 31.
 Speed after the round (same benchmark): jsdom 30 profile 90.6 ms on
 main, 90.9 ms here; jsdom 31 193.5 and 193.9 ms.
 Next, D5: the shorthands warpdom's jsdom 31 profile neither expands

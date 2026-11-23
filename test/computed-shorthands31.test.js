@@ -123,6 +123,11 @@ parity(
       read('offset-position: normal', ['offset-position']),
       read('outline: 1px solid', ['outline-color']),
       read('outline: none', ['outline-color']),
+      read('outline-style: auto', ['outline', 'outline-color']),
+      read('outline-style: auto; outline-color: initial', ['outline', 'outline-color']),
+      read('outline-style: auto; outline-color: unset', ['outline', 'outline-color']),
+      read('outline: revert', ['outline']),
+      read('box-shadow: revert-layer', ['box-shadow']),
     ];
   },
   { jsdom: 31 },
