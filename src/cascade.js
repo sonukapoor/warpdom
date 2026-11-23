@@ -2785,14 +2785,19 @@ function edge31(element, words) {
   if (percent === undefined || keyword === 'center' || length === null) return null;
   if (keyword === 'left' || keyword === 'top') return length;
   if (length.endsWith('%')) return `${sixDigits(100 - Number(length.slice(0, -1)))}%`;
+  // (a calc() of a percentage and a length stays one: calc(100% - (10% + 5px)))
+  if (CALC.test(length)) return `calc(100% - (${length.slice(5, -1)}))`;
   const px = Number(length.slice(0, -2));
   return px > 0 ? `calc(100% - ${length})` : `calc(100% + ${sixDigits(-px)}px)`;
 }
+// (a calc() that does not resolve to px, with a percentage, as declared)
+const CALC = /^calc\(.*\)$/is;
 function length31(element, text) {
   if (text.endsWith('%')) return Number.isNaN(Number(text.slice(0, -1))) ? null : text;
   if (text === '0') return '0px';
   const px = absoluteLength(text, new LengthContext(element, false));
-  return px === null ? null : `${sixDigits(px)}px`;
+  if (px !== null) return `${sixDigits(px)}px`;
+  return CALC.test(text) ? text : null;
 }
 // offset-position: one or two keywords or lengths (a vertical keyword
 // first, or a horizontal one second, is read as y), or two edges with

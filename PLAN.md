@@ -8385,6 +8385,10 @@ style solid gives the child's color in jsdom 31 as here (a test pins
 it); the parent's computed value is cached, not recomputed per child.
 Second round (#336, Copilot's previously missed item): text-decoration:
 inherit at the root (no parent) composes from the initial color, none.
+Third round (#336, previously missed): a position calc() with a
+percentage (calc(50% + 10px)) stays as declared, and the other layers
+are still converted (center, calc(50% + 10px) is 50%, calc(50% +
+10px)); from the right or bottom it is calc(100% - (10% + 5px)).
 Speed after the round (same benchmark): jsdom 30 profile 90.6 ms on
 main, 90.9 ms here; jsdom 31 193.5 and 193.9 ms.
 Next, D5: the shorthands warpdom's jsdom 31 profile neither expands
