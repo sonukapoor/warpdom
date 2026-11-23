@@ -861,6 +861,8 @@ function composeTemplate(rows, columns, areas) {
     if (rows === 'none' && columns === 'none') return 'none';
     return `${rows} / ${columns}`;
   }
+  // (rows none cannot go with areas: '' for grid-template-areas: "a" alone)
+  if (lower(rows) === 'none') return '';
   const strings = words(areas);
   const parts = [];
   let i = 0;

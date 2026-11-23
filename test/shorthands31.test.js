@@ -527,3 +527,27 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31: grid-template and grid with areas over rows none are not written (#338 review)',
+  (w) => {
+    const p = w.document.body.appendChild(w.document.createElement('p'));
+    return [
+      ['grid-template: none', '"a"'],
+      ['grid: none', '"a"'],
+      ['grid-template: 10px / 1fr', '"a" "b"'],
+      ['grid-template: 10px 20px / 1fr', '"a" "b"'],
+    ].map(([base, areas]) => {
+      p.setAttribute('style', base);
+      p.style.setProperty('grid-template-areas', areas);
+      return [
+        base,
+        areas,
+        p.style.getPropertyValue('grid-template'),
+        p.style.getPropertyValue('grid'),
+        p.style.cssText,
+      ];
+    });
+  },
+  { jsdom: 31 },
+);
