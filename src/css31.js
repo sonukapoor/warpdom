@@ -222,7 +222,7 @@ export function expand31(name, value, raw = value) {
   // (shorthands jsdom 30's expansion does not know: shorthands31.js)
   const own = EXPANDERS31[name];
   if (own !== undefined) {
-    const values = own(value);
+    const values = own(value, raw);
     if (values !== null) return values.map((v, i) => [longhands[i], longhandValue(longhands[i], v), src]);
   }
   if (TWO_CORNERS.test(name)) return cornerPair(value).map((v, i) => [longhands[i], v, src]);

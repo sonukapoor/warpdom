@@ -8315,3 +8315,10 @@ case of every name as written (--Accent, OPACITY: jsdom 31 does, also
 for property names). Not modeled: start and end lists of different
 lengths are left as longhands, where jsdom 31 writes a combined value
 (animation-range: normal normal, normal).
+Fourth round (#335): a transition property that clashes with a keyword
+does so in any case (NORMAL, ALLOW-DISCRETE: the behavior is written
+before it); and a token that ends up as a transition property or an
+animation name keeps its spelling as written (expand31 passes the value
+as given to the expanders: canonical31 lowercases keywords, so 1s normal
+NORMAL read the property normal; written tokens are matched to the
+canonical ones by text, as canonical31 may reorder them).

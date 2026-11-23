@@ -418,13 +418,27 @@ const isMathNumber = (t) => isMath(t) && !/\d\s*(?:m?s|%|[a-z]+)\b/i.test(t.repl
 // second ease is the name.
 // after: a slot tried once the name is taken (animation's timeline: auto
 // is the duration, then the name, then the timeline).
-function readLayer(layer, slots, nameSlot, after = null) {
+// rawLayer: the layer as written, whose token a name or property keeps
+// (canonical31 has lowercased keywords: in 1s normal NORMAL the property
+// is NORMAL).
+function readLayer(layer, slots, nameSlot, after = null, rawLayer = null) {
   const values = new Map();
-  for (const token of words(layer)) {
+  const tokens = words(layer);
+  // (canonical31 may reorder: each token takes the first unused written
+  // token equal to it but for case, or stays as it is)
+  const pool = rawLayer === null ? [] : words(rawLayer);
+  const raws = tokens.map((token) => {
+    const at = pool.findIndex((r) => r !== null && lower(r) === lower(token));
+    if (at < 0) return token;
+    const raw = pool[at];
+    pool[at] = null;
+    return raw;
+  });
+  for (const [i, token] of tokens.entries()) {
     const t = lower(token);
     const slot = slots.find(([name, accepts]) => !values.has(name) && accepts(token, t));
-    if (slot !== undefined) values.set(slot[0], slot[2](token, t));
-    else if (!values.has(nameSlot)) values.set(nameSlot, t === 'none' ? 'none' : token);
+    if (slot !== undefined) values.set(slot[0], slot[2](token, t, raws[i]));
+    else if (!values.has(nameSlot)) values.set(nameSlot, t === 'none' ? 'none' : raws[i]);
     else if (after !== null && !values.has(after[0]) && after[1](token, t)) values.set(after[0], after[2](token, t));
     else return null;
   }
@@ -438,14 +452,21 @@ const TRANSITION_SLOTS = [
   ['timing', (token) => EASINGS.test(token), easing],
   ['behavior', (token, t) => t === 'normal' || t === 'allow-discrete', (token, t) => t],
   // (the name as written: jsdom 31 keeps its case, --Accent and OPACITY alike)
-  ['property', (token, t) => isIdent(token) && t !== 'initial', (token) => token],
+  ['property', (token, t) => isIdent(token) && t !== 'initial', (token, t, raw) => raw],
 ];
 const TRANSITION_DEFAULTS = { duration: '0s', timing: 'ease', delay: '0s', behavior: 'normal', property: 'all' };
-EXPANDERS31.transition = (value) => {
+// (the layers as written, matched to value's by position: canonical31
+// keeps the layers' order)
+const rawLayers = (value, raw) => {
+  const layers = layersOf(raw);
+  return layers.length === layersOf(value).length ? layers : null;
+};
+EXPANDERS31.transition = (value, raw = value) => {
   const out = [[], [], [], [], []];
-  for (const layer of layersOf(value)) {
+  const written = rawLayers(value, raw);
+  for (const [i, layer] of layersOf(value).entries()) {
     // (the property slot last: a keyword of another slot takes that slot first)
-    const values = readLayer(layer, TRANSITION_SLOTS, 'property');
+    const values = readLayer(layer, TRANSITION_SLOTS, 'property', null, written?.[i] ?? null);
     if (values === null) return null;
     const get = (k) => values.get(k) ?? TRANSITION_DEFAULTS[k];
     ['duration', 'timing', 'delay', 'behavior', 'property'].forEach((k, i) => out[i].push(get(k)));
@@ -455,7 +476,8 @@ EXPANDERS31.transition = (value) => {
 // (a property named like another slot's keyword goes last, after that slot written out)
 function transitionClash(property) {
   if (EASINGS.test(property)) return 'timing';
-  return property === 'normal' || property === 'allow-discrete' ? 'behavior' : null;
+  // (in any case: NORMAL clashes too, and keeps its spelling)
+  return lower(property) === 'normal' || lower(property) === 'allow-discrete' ? 'behavior' : null;
 }
 COMPOSERS31.transition = ([duration, timing, delay, behavior, property]) => {
   const lists = [duration, timing, delay, behavior, property].map(layersOf);
@@ -508,10 +530,11 @@ const ANIMATION_DEFAULTS = {
   timeline: 'auto',
 };
 const TIMELINE_SLOT = ['timeline', (token, t) => t === 'auto', (token, t) => t];
-EXPANDERS31.animation = (value) => {
+EXPANDERS31.animation = (value, raw = value) => {
   const out = [...ANIMATION_ORDER, 'timeline'].map(() => []);
-  for (const layer of layersOf(value)) {
-    const values = readLayer(layer, ANIMATION_SLOTS, 'name', TIMELINE_SLOT);
+  const written = rawLayers(value, raw);
+  for (const [i, layer] of layersOf(value).entries()) {
+    const values = readLayer(layer, ANIMATION_SLOTS, 'name', TIMELINE_SLOT, written?.[i] ?? null);
     if (values === null) return null;
     [...ANIMATION_ORDER, 'timeline'].forEach((k, i) => out[i].push(values.get(k) ?? ANIMATION_DEFAULTS[k]));
   }

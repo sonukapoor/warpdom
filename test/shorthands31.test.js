@@ -338,3 +338,40 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31: a transition property or animation name that clashes with a keyword keeps its spelling, and cssText reads back',
+  (w) => {
+    const p = w.document.body.appendChild(w.document.createElement('p'));
+    const out = [];
+    for (const property of ['NORMAL', 'ALLOW-DISCRETE', 'Ease', 'LINEAR', 'normal']) {
+      p.removeAttribute('style');
+      p.style.transition = 'opacity 1s';
+      p.style.transitionProperty = property;
+      const copy = w.document.createElement('p');
+      copy.style.cssText = p.style.cssText;
+      out.push([property, p.style.cssText, copy.style.transitionProperty]);
+    }
+    for (const value of [
+      '1s Ease Ease',
+      '1s ease EASE',
+      '1s Infinite INFINITE',
+      'x 1s',
+      'X 1s',
+      '1s NORMAL normal',
+      '1s none NONE',
+      'Spin 1s, Fade 2s',
+    ]) {
+      p.removeAttribute('style');
+      p.style.animation = value;
+      out.push(['animation', value, p.style.animation, p.style.animationName]);
+    }
+    for (const value of ['1s EASE EASE', '1s Normal NORMAL', 'Opacity 1s, Color 2s']) {
+      p.removeAttribute('style');
+      p.style.transition = value;
+      out.push(['transition', value, p.style.transition, p.style.transitionProperty]);
+    }
+    return out;
+  },
+  { jsdom: 31 },
+);
