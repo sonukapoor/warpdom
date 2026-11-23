@@ -861,8 +861,10 @@ function composeTemplate(rows, columns, areas) {
     if (rows === 'none' && columns === 'none') return 'none';
     return `${rows} / ${columns}`;
   }
-  // (rows none cannot go with areas: '' for grid-template-areas: "a" alone)
+  // (rows none cannot go with areas: '' for grid-template-areas: "a" alone;
+  // nor columns that are not an explicit track list: repeat(), subgrid)
   if (lower(rows) === 'none') return '';
+  if (words(columns).some((t) => /^(?:repeat\(|subgrid$)/i.test(t))) return '';
   const strings = words(areas);
   const parts = [];
   let i = 0;

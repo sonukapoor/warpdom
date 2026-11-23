@@ -551,3 +551,25 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31: an area template over repeat() or subgrid columns is not written (#338 review)',
+  (w) => {
+    const p = w.document.body.appendChild(w.document.createElement('p'));
+    return ['repeat(2, 1fr)', 'subgrid', 'repeat(auto-fill, 10px)', '1fr repeat(2, 10px)', 'minmax(10px, 1fr)'].flatMap(
+      (cols) =>
+        ['grid-template: "a" 10px / 1fr', 'grid-template: 10px / 1fr'].map((base) => {
+          p.setAttribute('style', base);
+          p.style.setProperty('grid-template-columns', cols);
+          return [
+            base,
+            cols,
+            p.style.getPropertyValue('grid-template'),
+            p.style.getPropertyValue('grid'),
+            p.style.cssText,
+          ];
+        }),
+    );
+  },
+  { jsdom: 31 },
+);
