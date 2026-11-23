@@ -8459,5 +8459,8 @@ switches them; css.js's declaredValue reads a jsdom 31 value under jsdom
 invalid, as jsdom 30.1.3). Not modeled, as on main: jsdom 30 accepts
 circle(50%) in clip-path and offset-path (warpdom's jsdom 30 profile
 rejects it).
+Third round (#337, previously missed): text-box: none keeps an edge
+given with it (none cap alphabetic, written so; normal only for none
+auto).
 Next: grid and grid-template, mask (D5b), then the rule and timeline
 families and all (D5c), shadow scoping, F.

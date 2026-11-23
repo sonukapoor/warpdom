@@ -136,7 +136,19 @@ const CASES = {
     'a / scroll-state size',
     'A / SIZE',
   ],
-  'text-box': ['normal', 'none', 'trim-both', 'cap alphabetic', 'trim-start text', 'trim-end', 'text alphabetic'],
+  'text-box': [
+    'normal',
+    'none',
+    'trim-both',
+    'cap alphabetic',
+    'trim-start text',
+    'trim-end',
+    'text alphabetic',
+    'none cap alphabetic',
+    'cap alphabetic none',
+    'none text',
+    'none auto',
+  ],
   'font-synthesis': ['none', 'weight', 'style small-caps', 'weight style small-caps position', 'position'],
   'line-clamp': [
     'none',
@@ -455,4 +467,18 @@ parity(
       return [name, value, p.style.getPropertyValue(name)];
     });
   },
+);
+
+parity(
+  'jsdom 31: text-box none keeps its edge for a later trim (#337 review)',
+  (w) => {
+    const p = w.document.body.appendChild(w.document.createElement('p'));
+    p.style.setProperty('text-box-trim', 'none');
+    p.style.setProperty('text-box-edge', 'cap alphabetic');
+    const composed = p.style.getPropertyValue('text-box');
+    p.style.setProperty('text-box', 'none cap alphabetic');
+    p.style.setProperty('text-box-trim', 'trim-both');
+    return [composed, p.style.getPropertyValue('text-box'), p.style.getPropertyValue('text-box-edge')];
+  },
+  { jsdom: 31 },
 );

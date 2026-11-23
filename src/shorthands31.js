@@ -689,8 +689,8 @@ COMPOSERS31.container = ([name, type]) => (lower(type) === 'normal' ? name : `${
 
 // --- text-box: trim, edge ------------------------------------------------------------
 
-// (normal and none: none and auto; an edge alone trims both sides; a trim
-// alone has the auto edge)
+// (normal and none alone: none and auto; an edge alone trims both sides;
+// a trim alone, none too, has the auto edge)
 const TRIMS = new Set(['none', 'trim-start', 'trim-end', 'trim-both']);
 EXPANDERS31['text-box'] = (value) => {
   let trim = null;
@@ -701,11 +701,11 @@ EXPANDERS31['text-box'] = (value) => {
     if (TRIMS.has(t)) trim = t;
     else edge.push(t);
   }
-  if (trim === 'none') return ['none', 'auto'];
   return [trim ?? 'trim-both', edge.length === 0 ? 'auto' : edge.join(' ')];
 };
 COMPOSERS31['text-box'] = ([trim, edge]) => {
-  if (trim === 'none') return edge === 'auto' ? 'normal' : '';
+  // (none keeps an edge given with it: none cap alphabetic)
+  if (trim === 'none') return edge === 'auto' ? 'normal' : `none ${edge}`;
   if (edge === 'auto') return trim;
   return trim === 'trim-both' ? edge : `${trim} ${edge}`;
 };
