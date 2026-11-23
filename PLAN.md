@@ -8373,6 +8373,18 @@ Not modeled: -webkit-text-stroke rejects the width keywords in jsdom 31
 computes its color to rgba(0, 0, 0, 0) where none alone keeps
 transparent (the declared values are the same); relative url() in
 computed values (as before).
+Review round (#336): text-decoration's color is checked as specified
+after var() substitution (--td: underline; text-decoration: var(--td)
+is underline; a var() giving currentcolor too, inherited as well);
+background-repeat, a legacy longhand and a shorthand in jsdom 31, is
+read as the shorthand (repeat-x, not repeat; text-box too, which D5
+expands); the composer is looked up before any longhand is computed
+(all reads none) and composers get the values only (no entries
+objects). Not reproduced: an inherited outline-color with the parent's
+style solid gives the child's color in jsdom 31 as here (a test pins
+it); the parent's computed value is cached, not recomputed per child.
+Speed after the round (same benchmark): jsdom 30 profile 90.6 ms on
+main, 90.9 ms here; jsdom 31 193.5 and 193.9 ms.
 Next, D5: the shorthands warpdom's jsdom 31 profile neither expands
 nor composes, whose longhands stay initial (container, grid and
 grid-template, mask, offset, font-synthesis, line-clamp, the rule

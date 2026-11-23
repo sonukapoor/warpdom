@@ -72,7 +72,7 @@ import {
   supportsMatches,
 } from './cssom.js';
 import { present31 } from './color31.js';
-import { shorthand31, alias31, dropped31, composed31 } from './css31.js';
+import { shorthand31, alias31, dropped31, composer31 } from './css31.js';
 import {
   parseDeclarations,
   writtenDeclarations,
@@ -3780,22 +3780,18 @@ function styleValue(element, property) {
   }
   return value;
 }
+// (jsdom 31: background-repeat and text-box are shorthands, read as such)
+const LONGHAND_SHORTHANDS31 = new Set(['background-repeat', 'text-box']);
 function styleValueOf(element, property) {
-  if (LONGHANDS[property] !== undefined) return computedValue(element, property);
   const compat = element[S].doc[S].window[S].compat;
+  if (LONGHANDS[property] !== undefined && !(compat.computed31 && LONGHAND_SHORTHANDS31.has(property)))
+    return computedValue(element, property);
   if (compat.jsdom >= 27 && !property.startsWith('--')) {
     const lower = property.toLowerCase();
     const name = ALIASES[lower] ?? lower;
     // (jsdom 31: from its computed longhands where warpdom composes it)
-    const longhands = compat.computed31 ? shorthand31(name) : undefined;
-    const composed =
-      longhands === undefined
-        ? null
-        : composed31(
-            name,
-            longhands.map((l) => shorthandInput31(element, l)),
-          );
-    if (composed !== null) return composed;
+    const composer = compat.computed31 ? composer31(name) : null;
+    if (composer !== null) return composer(shorthand31(name).map((l) => shorthandInput31(element, l)));
     if (!compat.legacyComputedStyle) {
       if (SHORTHANDS[name] !== undefined) return observedShorthand(element, name);
     } else if (name === 'background-position') return observedShorthand(element, name);
@@ -3809,14 +3805,19 @@ function styleValueOf(element, property) {
 // currentcolor color (as specified: left out) as currentcolor.
 const FONT_WIDTH_KEYWORDS31 = Object.fromEntries(Object.entries(FONT_WIDTHS31).map(([k, v]) => [v, k]));
 const CURRENT31 = new Set(['currentcolor', 'initial', 'unset']);
+function specified31(element, name) {
+  const value = cascaded(element, name);
+  if (value === undefined || !(value.startsWith(PENDING31) || mayHaveVar(value))) return value;
+  return substitutedValue(element, name, value, false) ?? 'unset';
+}
 function shorthandInput31(element, longhand) {
   if (longhand === 'text-decoration-color') {
-    // (inherit: as the parent specifies it)
+    // (inherit: as the parent specifies it; var() substituted first)
     let e = element;
-    let own = cascaded(e, longhand);
+    let own = specified31(e, longhand);
     while (own?.toLowerCase() === 'inherit' && inheritParent(e) !== null) {
       e = inheritParent(e);
-      own = cascaded(e, longhand);
+      own = specified31(e, longhand);
     }
     if (own === undefined || CURRENT31.has(own.toLowerCase())) return 'currentcolor';
   }

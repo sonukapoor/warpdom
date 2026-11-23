@@ -487,7 +487,7 @@ COMPOSERS.background = (v) => {
 // ones are initial, and the width is a keyword. A system font reads as
 // written while its longhands are the ones it set.
 const FONT_RESETS = ['normal', 'auto', 'normal', 'auto', 'none', 'normal'];
-COMPOSERS.font = (v, entries) => {
+COMPOSERS.font = (v) => {
   for (const i of [1, 3, 4, 5, 6, 7]) if (v[i] !== 'normal') return '';
   if (v[2] !== 'normal' && v[2] !== 'small-caps') return '';
   for (let i = 0; i < 6; i++) if (v[13 + i] !== FONT_RESETS[i]) return '';
@@ -643,14 +643,7 @@ export function serialize31(decls) {
 }
 
 // getComputedStyle(element).getPropertyValue(shorthand) in jsdom 31: the
-// shorthand from its computed longhands' values (jsdom 31's order), as
-// the declaration block writes it, '' when it cannot be written, null
-// when warpdom has no composer for it.
-export function composed31(name, values) {
-  const composer = COMPOSERS[name] ?? defaultComposer(name);
-  if (composer === null) return null;
-  return composer(
-    values,
-    values.map((value) => ({ value, important: false, src: undefined })),
-  );
-}
+// composer that writes the shorthand from its computed longhands' values
+// (jsdom 31's order) as the declaration block does ('' when it cannot be
+// written), null when warpdom has none for it.
+export const composer31 = (name) => COMPOSERS[name] ?? (shorthandsTable()[name] ? defaultComposer(name) : null);

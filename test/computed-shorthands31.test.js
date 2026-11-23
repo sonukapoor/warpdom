@@ -145,3 +145,37 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31: computed shorthands with var(), and background-repeat read as a shorthand (#336 review)',
+  (w) => {
+    const div = w.document.body.appendChild(w.document.createElement('div'));
+    const p = div.appendChild(w.document.createElement('p'));
+    const read = (parent, child, name) => {
+      div.setAttribute('style', parent);
+      p.setAttribute('style', child);
+      return [parent, child, name, w.getComputedStyle(p).getPropertyValue(name)];
+    };
+    return [
+      read('', '--td: underline; text-decoration: var(--td)', 'text-decoration'),
+      read('', '--c: currentcolor; text-decoration: underline var(--c)', 'text-decoration'),
+      read('', '--c: red; text-decoration: underline var(--c)', 'text-decoration'),
+      read('', '--x: oops; text-decoration-line: underline; text-decoration-color: var(--x)', 'text-decoration'),
+      read(
+        '--c: currentcolor; text-decoration-line: underline; text-decoration-color: var(--c)',
+        'text-decoration: inherit',
+        'text-decoration',
+      ),
+      read('', 'background-repeat: repeat-x', 'background-repeat'),
+      read('', 'background-repeat: repeat-x', 'BACKGROUND-REPEAT'),
+      read('', 'background-repeat: space round, no-repeat', 'background-repeat'),
+      read('', '', 'background-repeat'),
+      read(
+        'color: red; outline-color: auto; outline-style: solid',
+        'outline-color: inherit; outline-style: auto',
+        'outline',
+      ),
+    ];
+  },
+  { jsdom: 31 },
+);
