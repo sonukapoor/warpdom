@@ -6,7 +6,8 @@
 // Decoration, Lists, Overflow, Logical Properties, Inline Layout, Grid,
 // Multicol, Transitions, Animations and Borders 4, checked black box
 // against jsdom 31.0.1 (#269 part D4).
-// A value's parts at a separator outside strings, parentheses and escapes
+// A value's parts at a separator outside strings, parentheses, brackets
+// ([b c], grid line names) and escapes
 // (\, in a name, the whitespace ending \31 , and \/ are part of it),
 // trimmed; whitespace runs are one separator.
 const isSpace = (c) => c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
@@ -28,8 +29,8 @@ function split(value, isSeparator) {
       }
     } else if (c === '"' || c === "'") {
       for (i++; i < value.length && value[i] !== c; i++) if (value[i] === '\\') i++;
-    } else if (c === '(') depth++;
-    else if (c === ')') depth--;
+    } else if (c === '(' || c === '[') depth++;
+    else if (c === ')' || c === ']') depth--;
     else if (depth === 0 && isSeparator(c)) {
       parts.push(value.slice(start, i).trim());
       start = i + 1;
@@ -777,13 +778,7 @@ EXPANDERS31.offset = (value) => {
     else if (!started) position.push(t === 'auto' || t === 'normal' || POSITION_WORDS.has(t) ? t : token);
     else return null;
   }
-  return [
-    position.length === 0 ? 'normal' : position.join(' '),
-    pathOf(shape, box),
-    distance,
-    rotateOrder(rotate),
-    anchor || 'auto',
-  ];
+  return [offsetPosition(position), pathOf(shape, box), distance, rotateOrder(rotate), anchor || 'auto'];
 };
 function pathOf(shape, box) {
   if (shape === null) return box ?? 'none';
@@ -809,4 +804,239 @@ COMPOSERS31.offset = ([position, path, distance, rotate, anchor]) => {
   // (nothing but the anchor: normal)
   if (head === '') head = 'normal';
   return anchor === 'auto' ? head : `${head} / ${anchor}`;
+};
+
+// --- grid-template: rows, columns, areas; grid: those and the auto flow ----------
+
+// (none; rows / columns; or rows of an area string each, a size and line
+// names around it, then / and the columns: the areas are the strings, the
+// rows the sizes, auto when left out, with their names)
+const isString = (t) => t[0] === '"' || t[0] === "'";
+const isNames = (t) => t[0] === '[';
+function gridTemplate(value) {
+  const [rowsPart, columns = 'none', ...rest] = slashed(value);
+  if (rest.length > 0) return null;
+  if (lower(rowsPart) === 'none' && columns === 'none') return ['none', 'none', 'none'];
+  const tokens = words(rowsPart);
+  if (!tokens.some(isString)) return [rowsPart || 'none', columns || 'none', 'none'];
+  const areas = [];
+  const rows = [];
+  let row = null;
+  for (const token of tokens) {
+    if (isString(token)) {
+      if (row !== null) rows.push(row);
+      row = { before: pendingNames, size: 'auto', after: '' };
+      pendingNames = '';
+      areas.push(token);
+    } else if (isNames(token)) {
+      if (row === null || (row.size !== 'auto' && row.after !== '') || row.after !== '') pendingNames = token;
+      else row.after = token;
+    } else if (row !== null && row.size === 'auto' && row.after === '') row.size = token;
+    else return null;
+  }
+  rows.push(row);
+  // (names next to each other are one set: [b] [c] is [b c])
+  const rowList = rows
+    .map((r) => [r.before, r.size, r.after].filter((p) => p !== '').join(' '))
+    .join(' ')
+    .replace(/\]\s+\[/g, ' ');
+  return [rowList, columns || 'none', areas.join(' ')];
+}
+let pendingNames = '';
+EXPANDERS31['grid-template'] = (value) => {
+  pendingNames = '';
+  const out = gridTemplate(value);
+  return out !== null && pendingNames === '' ? out : null;
+};
+// (the area form back: each area string with its row's size, auto left
+// out, and names; '' when the rows are not one size per string)
+function composeTemplate(rows, columns, areas) {
+  if (areas === 'none') {
+    if (rows === 'none' && columns === 'none') return 'none';
+    return `${rows} / ${columns}`;
+  }
+  // (rows none cannot go with areas: '' for grid-template-areas: "a" alone;
+  // nor columns that are not an explicit track list: repeat(), subgrid)
+  if (lower(rows) === 'none') return '';
+  if (words(columns).some((t) => /^(?:repeat\(|subgrid$)/i.test(t))) return '';
+  const strings = words(areas);
+  const parts = [];
+  let i = 0;
+  let names = [];
+  for (const token of words(rows)) {
+    if (isNames(token)) {
+      names.push(token);
+      continue;
+    }
+    if (i >= strings.length || /^(?:repeat|subgrid|masonry)\b/i.test(token)) return '';
+    // (between two rows: the previous one's names after it, then this
+    // one's before its string)
+    if (i > 0 && names.length > 0) parts.push(names.shift());
+    parts.push(...names, strings[i++]);
+    names = [];
+    if (lower(token) !== 'auto') parts.push(token);
+  }
+  parts.push(...names);
+  if (i !== strings.length) return '';
+  const head = parts.join(' ');
+  return columns === 'none' ? head : `${head} / ${columns}`;
+}
+COMPOSERS31['grid-template'] = ([rows, columns, areas]) => composeTemplate(rows, columns, areas);
+
+// grid: a template (the auto flow at row, auto, auto), or auto-flow on one
+// side: auto-flow [dense] [rows] / columns, rows / auto-flow [dense]
+// [columns]. (row dense is dense)
+EXPANDERS31.grid = (value) => {
+  const [first, second, ...rest] = slashed(value);
+  if (rest.length > 0) return null;
+  const flowSide = (part) => words(part ?? '').some((t) => lower(t) === 'auto-flow');
+  const flow = (part) => {
+    let dense = false;
+    const sizes = [];
+    for (const token of words(part)) {
+      const t = lower(token);
+      if (t === 'dense') dense = true;
+      else if (t !== 'auto-flow') sizes.push(token);
+    }
+    return { dense, size: sizes.length === 0 ? 'auto' : sizes.join(' ') };
+  };
+  if (flowSide(first)) {
+    const f = flow(first);
+    return ['none', second || 'none', 'none', f.dense ? 'dense' : 'row', f.size, 'auto'];
+  }
+  if (second !== undefined && flowSide(second)) {
+    const f = flow(second);
+    return [first || 'none', 'none', 'none', f.dense ? 'column dense' : 'column', 'auto', f.size];
+  }
+  pendingNames = '';
+  const template = gridTemplate(value);
+  if (template === null || pendingNames !== '') return null;
+  return [...template, 'row', 'auto', 'auto'];
+};
+COMPOSERS31.grid = ([rows, columns, areas, flow, autoRows, autoColumns]) => {
+  const f = lower(flow);
+  if (f === 'row' && autoRows === 'auto' && autoColumns === 'auto') return composeTemplate(rows, columns, areas);
+  if (areas !== 'none') return '';
+  if ((f === 'row' || f === 'dense' || f === 'row dense') && rows === 'none' && autoColumns === 'auto') {
+    let side = f === 'row' ? 'auto-flow' : 'auto-flow dense';
+    if (autoRows !== 'auto') side = `${side} ${autoRows}`;
+    return `${side} / ${columns}`;
+  }
+  if ((f === 'column' || f === 'column dense') && columns === 'none' && autoRows === 'auto') {
+    let side = f === 'column' ? 'auto-flow' : 'auto-flow dense';
+    if (autoColumns !== 'auto') side = `${side} ${autoColumns}`;
+    return `${rows} / ${side}`;
+  }
+  return '';
+};
+
+// --- mask: its layers (image, position / size, repeat, origin, clip,
+// composite, mode), mask-border reset -------------------------------------------------
+
+// (one box is the origin and the clip, two are origin then clip; a
+// position of one keyword or length is paired with center)
+const MASK_REPEATS = new Set(['repeat-x', 'repeat-y', 'repeat', 'space', 'round', 'no-repeat']);
+const MASK_BOXES = new Set(['content-box', 'padding-box', 'border-box', 'fill-box', 'stroke-box', 'view-box']);
+const COMPOSITES = new Set(['add', 'subtract', 'intersect', 'exclude']);
+const MASK_MODES = new Set(['alpha', 'luminance', 'match-source']);
+const MASK_BORDER = ['none', '0', 'auto', '0', 'stretch', 'alpha'];
+const POSITION_KEYWORDS = new Set(['left', 'right', 'top', 'bottom', 'center']);
+const isSizeWord = (t) => lower(t) === 'auto' || isLength(t) || isMath(t);
+function maskLayer(layer) {
+  const [main, ...after] = slashed(layer);
+  if (after.length > 1) return null;
+  let image = 'none';
+  const position = [];
+  let size = 'auto';
+  const repeat = [];
+  const boxes = [];
+  let composite = 'add';
+  let mode = 'match-source';
+  const tokens = words(main);
+  // (the size: the words after the slash that are sizes; the rest of the layer follows)
+  let rest = [];
+  if (after.length === 1) {
+    const sizeWords = words(after[0]);
+    // (cover or contain alone, or one or two lengths or auto)
+    const cover = sizeWords.length > 0 && /^(?:cover|contain)$/i.test(sizeWords[0]);
+    let n = cover ? 1 : 0;
+    while (!cover && n < 2 && n < sizeWords.length && isSizeWord(sizeWords[n])) n++;
+    if (n === 0) return null;
+    // (one length is that width and an auto height)
+    size =
+      n === 1 && !cover && lower(sizeWords[0]) !== 'auto' ? `${sizeWords[0]} auto` : sizeWords.slice(0, n).join(' ');
+    rest = sizeWords.slice(n);
+  }
+  for (const token of [...tokens, ...rest]) {
+    const t = lower(token);
+    if (MASK_REPEATS.has(t)) repeat.push(t);
+    else if (MASK_BOXES.has(t) || t === 'no-clip') boxes.push(t);
+    else if (COMPOSITES.has(t)) composite = t;
+    else if (MASK_MODES.has(t)) mode = t;
+    else if (POSITION_KEYWORDS.has(t) || isLength(token) || isMath(token))
+      position.push(POSITION_KEYWORDS.has(t) ? t : token);
+    else if (image === 'none') image = t === 'none' ? t : token;
+    else return null;
+  }
+  return maskParts(image, maskPosition(position), size, repeat, boxes, composite, mode);
+}
+// (one value is paired with center; the horizontal side first: top left
+// is left top, top 5px left 10px left 10px top 5px)
+function maskPosition(position) {
+  if (position.length === 0) return '0% 0%';
+  if (position.length === 1)
+    return /^(?:top|bottom)$/.test(position[0]) ? `center ${position[0]}` : `${position[0]} center`;
+  return horizontalFirst(position);
+}
+// (offset: normal and auto as they are, a position as mask's)
+function offsetPosition(position) {
+  if (position.length === 0) return 'normal';
+  if (position.length === 1 && (position[0] === 'normal' || position[0] === 'auto')) return position[0];
+  return maskPosition(position);
+}
+function horizontalFirst(position) {
+  const [a, b] = position;
+  if (position.length === 4 && /^(?:top|bottom)$/.test(a)) return [position[2], position[3], a, b].join(' ');
+  if (position.length === 2 && (/^(?:top|bottom)$/.test(a) || /^(?:left|right)$/.test(b))) return `${b} ${a}`;
+  return position.join(' ');
+}
+function maskParts(image, pos, size, repeat, boxes, composite, mode) {
+  // (no-clip is a clip only, before or after the origin: the origin
+  // stays border-box without one)
+  const noClip = boxes.indexOf('no-clip');
+  if (noClip !== -1) boxes.splice(noClip, 1);
+  if (boxes.length > (noClip === -1 ? 2 : 1) || boxes.includes('no-clip')) return null;
+  const origin = boxes[0] ?? 'border-box';
+  const clip = noClip !== -1 ? 'no-clip' : (boxes[1] ?? origin);
+  return [image, pos, size, repeat.join(' ') || 'repeat', origin, clip, composite, mode];
+}
+EXPANDERS31.mask = (value) => {
+  const out = [[], [], [], [], [], [], [], []];
+  for (const layer of layersOf(value)) {
+    const parts = maskLayer(layer);
+    if (parts === null || parts.includes(null)) return null;
+    parts.forEach((p, i) => out[i].push(p));
+  }
+  return [...out.map((list) => list.join(', ')), ...MASK_BORDER];
+};
+COMPOSERS31.mask = (values) => {
+  for (let i = 0; i < MASK_BORDER.length; i++) if (values[8 + i] !== MASK_BORDER[i]) return '';
+  const lists = values.slice(0, 8).map(layersOf);
+  const count = lists[0].length;
+  if (lists.some((list) => list.length !== count)) return '';
+  const layers = [];
+  for (let i = 0; i < count; i++) {
+    const [image, position, size, repeat, origin, clip, composite, mode] = lists.map((list) => list[i]);
+    let out = image === 'none' ? '' : image;
+    const add = (part) => (out = out === '' ? part : `${out} ${part}`);
+    if (size !== 'auto') add(`${position} / ${size}`);
+    else if (position !== '0% 0%') add(position);
+    if (repeat !== 'repeat') add(repeat);
+    if (origin === 'border-box' && clip === 'no-clip') add(clip);
+    else if (origin !== 'border-box' || clip !== 'border-box') add(origin === clip ? origin : `${origin} ${clip}`);
+    if (composite !== 'add') add(composite);
+    if (mode !== 'match-source') add(mode);
+    layers.push(out === '' ? 'none' : out);
+  }
+  return layers.join(', ');
 };

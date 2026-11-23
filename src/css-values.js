@@ -491,6 +491,14 @@ function parseGrammar(syntax) {
       const range = m[2] !== undefined ? [rangeBound(m[2], -Infinity), rangeBound(m[3], Infinity)] : null;
       return { k: 'type', name: m[1], range };
     }
+    // ('[' ... ']': a [] block, which the value's tokens hold whole: <line-names>)
+    if (s.startsWith("'['", i)) {
+      i += 3;
+      const body = parseOptionalBody("'");
+      if (!s.startsWith("]'", i)) throw new Unsupported('bracket block');
+      i += 2;
+      return { k: 'block', open: '[', body };
+    }
     if (c === "'") {
       const end = s.indexOf("'", i + 1);
       const v = s.slice(i + 1, end);

@@ -8464,3 +8464,42 @@ given with it (none cap alphabetic, written so; normal only for none
 auto).
 Next: grid and grid-template, mask (D5b), then the rule and timeline
 families and all (D5c), shadow scoping, F.
+
+## 2026-11-24: jsdom 31, CSS part D5b: grid, grid-template and mask (branch feat/269-jsdom31-grid-mask, #269)
+
+Shorthands the jsdom 31 profile neither expanded nor composed (their
+longhands stayed initial); expanders and composers in shorthands31.js
+(CSS Grid 2, Masking 1), black box on 31.0.1:
+- grid-template: none; rows / columns; or rows of an area string each,
+  with a size (auto left out) and line names around it, then / and the
+  columns (areas: the strings; rows: the sizes with their names, names
+  next to each other one set: [b] [c] is [b c]). Composed back the same
+  way; '' when the rows are not one size per string (repeat()).
+- grid: a template (auto flow row, auto, auto) or auto-flow on one side:
+  auto-flow [dense] [rows] / columns (grid-auto-flow row, dense for row
+  dense), rows / auto-flow [dense] [columns] (column, column dense);
+  composed as a template when the auto flow is initial (auto-flow / 1fr
+  is none / 1fr).
+- mask: layers of image, position / size (one keyword or length paired
+  with center; one length a width and an auto height), repeat, origin,
+  clip (one box both; no-clip a clip only), composite and mode, written
+  without their initial values; mask-border reset to its initial values
+  (the shorthand is written only while they are).
+Found on the way: the grammar matcher never matched line names, '['
+<custom-ident>* ']' (the value's tokens hold [x] as one block): parsed
+now as a [] block (css-values.js), for every profile (jsdom 30.1.3 and
+26 accept grid-template-rows: [x] 10px [y]; warpdom rejected it).
+mask-position computes keywords to percentages per layer.
+Results: the broad probe 523/649 to 536/649, none worse; the full suite
+with parity against jsdom 31 unchanged at 5 failures.
+Review round (#338): no-clip before an origin box (no-clip padding-box
+is padding-box no-clip); areas over rows none are not written
+(grid-template: none then grid-template-areas: "a" leaves '', as in
+jsdom 31, not "a" none), nor over columns with repeat() or subgrid
+(the area form takes an explicit track list only). Positions are
+written horizontal side first in mask, mask-position, offset-position
+and offset-anchor (top left is left top, top 5px left 10px is left 10px
+top 5px, top is center top), as warpdom's object-position already was.
+Not modeled: an empty line-name set ([] 10px is 10px in jsdom 31) and
+span as a line name (invalid in jsdom 31).
+Next: the rule and timeline families and all (D5c), shadow scoping, F.

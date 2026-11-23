@@ -2717,8 +2717,8 @@ function absoluteFontSize(element, value) {
 //   current color;
 // - box-shadow-color: each layer's color, but currentcolor and
 //   transparent kept as keywords (currentcolor, rgb(255, 0, 0));
-// - background-position-x and -y, offset-position: keywords as
-//   percentages (center 50%, left top 0% 0%).
+// - background-position-x and -y, offset-position, offset-anchor and
+//   mask-position (per layer): keywords as percentages (center 50%, left top 0% 0%).
 // null for the others.
 const outlineAuto31 = (element) =>
   computedValue(element, 'outline-style').toLowerCase() === 'auto' ? 'auto' : currentColor(element);
@@ -2745,6 +2745,7 @@ const COMPUTED31 = new Set([
   'background-position-y',
   'offset-position',
   'offset-anchor',
+  'mask-position',
 ]);
 function computed31(element, name, value, data) {
   if (!COMPUTED31.has(name)) return null;
@@ -2768,6 +2769,10 @@ function computed31(element, name, value, data) {
     return layers.includes(null) ? null : layers.join(', ');
   }
   if (name === 'offset-position' || name === 'offset-anchor') return position31(element, tokens31(value.trim()));
+  if (name === 'mask-position') {
+    const layers = topLevelCommaSplit(value).map((layer) => position31(element, tokens31(layer.trim())));
+    return layers.includes(null) ? null : layers.join(', ');
+  }
   return null;
 }
 // A position's x or y: a keyword as a percentage, a length in px, an

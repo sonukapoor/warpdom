@@ -73,6 +73,14 @@ const CASES = {
     'url(#p) 30deg',
     'border-box circle(50%) 10px',
   ],
+  'grid-template': ['100px / 50px', '"a b" / 1fr 2fr', 'none / 1fr'],
+  grid: ['100px / 50px', 'auto-flow dense 10px / 1fr', '1fr / auto-flow 20px'],
+  mask: [
+    'none',
+    'linear-gradient(red, blue) no-repeat center / contain',
+    'linear-gradient(red, blue) luminance',
+    'none, linear-gradient(red, blue) 10px 20px repeat-x alpha',
+  ],
   'grid-area': ['1 / 2', 'a', 'span 2'],
 };
 

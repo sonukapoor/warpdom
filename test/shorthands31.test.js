@@ -185,6 +185,55 @@ const CASES = {
     'circle(50%) 10px',
     'left top inset(10px) padding-box 5px auto',
   ],
+  'grid-template': [
+    'none',
+    '100px / 50px',
+    '"a b" / 1fr 2fr',
+    '"a" 10px "b" 20px / 1fr',
+    '[x] "a" 10px [y] / 1fr',
+    '[x] 10px [y] / [c] 1fr',
+    'none / 1fr',
+    '1fr / none',
+    'repeat(2, 1fr) / auto',
+    '"a" "b"',
+    '"a b" auto "c d" 1fr / auto 1fr',
+    '[a] "x" 10px [b] [c] "y" 20px [d] / 1fr',
+    '"x" 10px [b] [c] "y"',
+    '"x" [b] "y"',
+  ],
+  grid: [
+    'none',
+    '100px / 50px',
+    'auto-flow / 1fr',
+    'auto-flow dense 10px / 1fr',
+    '1fr / auto-flow 20px',
+    '"a" 10px / 20px',
+    'repeat(3, 10px) / auto-flow dense',
+    'dense auto-flow / 1fr',
+    'auto-flow 10px 20px / 1fr',
+    '1fr / auto-flow',
+  ],
+  mask: [
+    'none',
+    'url(a.png)',
+    'url(a.png) no-repeat center / contain',
+    'linear-gradient(red, blue) luminance',
+    'url(a.png) padding-box',
+    'url(a.png) border-box content-box',
+    'url(a.png) subtract',
+    'url(a.png), linear-gradient(red, blue) 10px 20px repeat-x alpha',
+    'url(a.png) left',
+    'url(a.png) top',
+    'url(a.png) 0% 0% / 10px',
+    'url(a.png) no-clip',
+    'url(a.png) no-clip padding-box',
+    'url(a.png) top left',
+    'url(a.png) top 5px left 10px',
+    'url(a.png) center left',
+    'url(a.png) bottom center',
+    'url(a.png) padding-box no-clip',
+    'url(a.png) repeat-y round',
+  ],
   'column-rule': ['1px solid red', 'currentcolor', 'none', 'thick', 'medium none currentcolor'],
   transition: [
     'opacity 1s',
@@ -479,6 +528,78 @@ parity(
     p.style.setProperty('text-box', 'none cap alphabetic');
     p.style.setProperty('text-box-trim', 'trim-both');
     return [composed, p.style.getPropertyValue('text-box'), p.style.getPropertyValue('text-box-edge')];
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: grid-template and grid with areas over rows none are not written (#338 review)',
+  (w) => {
+    const p = w.document.body.appendChild(w.document.createElement('p'));
+    return [
+      ['grid-template: none', '"a"'],
+      ['grid: none', '"a"'],
+      ['grid-template: 10px / 1fr', '"a" "b"'],
+      ['grid-template: 10px 20px / 1fr', '"a" "b"'],
+    ].map(([base, areas]) => {
+      p.setAttribute('style', base);
+      p.style.setProperty('grid-template-areas', areas);
+      return [
+        base,
+        areas,
+        p.style.getPropertyValue('grid-template'),
+        p.style.getPropertyValue('grid'),
+        p.style.cssText,
+      ];
+    });
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: an area template over repeat() or subgrid columns is not written (#338 review)',
+  (w) => {
+    const p = w.document.body.appendChild(w.document.createElement('p'));
+    return ['repeat(2, 1fr)', 'subgrid', 'repeat(auto-fill, 10px)', '1fr repeat(2, 10px)', 'minmax(10px, 1fr)'].flatMap(
+      (cols) =>
+        ['grid-template: "a" 10px / 1fr', 'grid-template: 10px / 1fr'].map((base) => {
+          p.setAttribute('style', base);
+          p.style.setProperty('grid-template-columns', cols);
+          return [
+            base,
+            cols,
+            p.style.getPropertyValue('grid-template'),
+            p.style.getPropertyValue('grid'),
+            p.style.cssText,
+          ];
+        }),
+    );
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: mask, offset positions are written horizontal side first (#338 review)',
+  (w) => {
+    const p = w.document.body.appendChild(w.document.createElement('p'));
+    return [
+      ['mask-position', 'top left'],
+      ['mask-position', 'center left, bottom'],
+      ['offset-position', 'top left'],
+      ['offset-position', 'top'],
+      ['offset-position', 'normal'],
+      ['offset-anchor', 'top left'],
+      ['offset-anchor', 'auto'],
+      ['offset', 'top left'],
+      ['offset', 'top 5px left 10px'],
+      ['offset', 'top'],
+      ['offset', 'left'],
+      ['offset', '10px url(#p)'],
+    ].map(([name, value]) => {
+      p.removeAttribute('style');
+      p.style.setProperty(name, value);
+      return [name, value, p.style.getPropertyValue(name), w.getComputedStyle(p).getPropertyValue(name)];
+    });
   },
   { jsdom: 31 },
 );

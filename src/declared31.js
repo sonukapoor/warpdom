@@ -305,6 +305,12 @@ function position(tokens, text) {
   return tokens[0].t === 'ident' && VERTICAL.test(tokens[0].v) ? `center ${one}` : `${one} center`;
 }
 
+// (offset-position and offset-anchor: normal and auto as they are)
+const keywordOrPosition = (tokens, text) =>
+  tokens.length === 1 && tokens[0].t === 'ident' && (tokens[0].v === 'normal' || tokens[0].v === 'auto')
+    ? tokens[0].v
+    : position(tokens, text);
+
 // counter-reset, -set and -increment: each name with its integer (0, or 1
 // for counter-increment; reversed(a) without one).
 function counters(fallback) {
@@ -376,6 +382,8 @@ const VALUE_RULES = {
   scale,
   'transform-origin': transformOrigin,
   'object-position': position,
+  'offset-position': keywordOrPosition,
+  'offset-anchor': keywordOrPosition,
   'counter-reset': counters('0'),
   'counter-set': counters('0'),
   'counter-increment': counters('1'),
@@ -391,6 +399,7 @@ const LAYER_RULES = {
   transition,
   animation,
   'background-size': backgroundSize,
+  'mask-position': position,
 };
 
 function list(tokens, text) {
