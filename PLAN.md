@@ -8296,3 +8296,14 @@ writes a height after the slash; grid lines take any custom ident
 written with a color set after it, other than transparent (box-shadow:
 none then box-shadow-color: red is red none, as jsdom 31 writes it; the
 review suggested writing the longhands instead).
+Second round (#335, Copilot's previously missed items): the shorthands'
+values are split into words, layers and grid lines outside strings,
+parentheses and escapes (a\,b is one animation name, a\/b one grid
+line, the whitespace ending \31 part of the name), and a custom ident
+may start with an escape (\31 foo repeats into the omitted grid lines;
+a transition property \31 x). Found on the way: animation-range set
+both longhands to normal (another shorthand jsdom 30's expansion does
+not know); now expanded (a range name and an offset each, the start's
+0% and the end's 100% left out, an end left out the start's name) and
+composed (the end left out when it is the start's range name, or
+normal after an unnamed start).

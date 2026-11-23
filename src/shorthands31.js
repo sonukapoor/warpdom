@@ -6,10 +6,41 @@
 // Decoration, Lists, Overflow, Logical Properties, Inline Layout, Grid,
 // Multicol, Transitions, Animations and Borders 4, checked black box
 // against jsdom 31.0.1 (#269 part D4).
-import { segments, topLevelCommaSplit } from './shorthands.js';
-
-const words = (value) => segments(value.trim(), /\s/).filter((part, i) => i % 2 === 0 && part !== '');
-const layersOf = (value) => topLevelCommaSplit(value).map((layer) => layer.trim());
+// A value's parts at a separator outside strings, parentheses and escapes
+// (\, in a name, the whitespace ending \31 , and \/ are part of it),
+// trimmed; whitespace runs are one separator.
+const isSpace = (c) => c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
+const isHex = (c) => /^[0-9a-f]$/i.test(c);
+function split(value, isSeparator) {
+  const parts = [];
+  let start = 0;
+  let depth = 0;
+  for (let i = 0; i < value.length; i++) {
+    const c = value[i];
+    if (c === '\\') {
+      // (an escape: up to six hex digits and one whitespace after them, or one character)
+      let j = i + 1;
+      while (j < value.length && j - i <= 6 && isHex(value[j])) j++;
+      if (j === i + 1) i = j;
+      else {
+        if (value[j] === '\r' && value[j + 1] === '\n') j++;
+        i = j < value.length && isSpace(value[j]) ? j : j - 1;
+      }
+    } else if (c === '"' || c === "'") {
+      for (i++; i < value.length && value[i] !== c; i++) if (value[i] === '\\') i++;
+    } else if (c === '(') depth++;
+    else if (c === ')') depth--;
+    else if (depth === 0 && isSeparator(c)) {
+      parts.push(value.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  parts.push(value.slice(start).trim());
+  return parts;
+}
+const words = (value) => split(value, isSpace).filter((part) => part !== '');
+const layersOf = (value) => split(value, (c) => c === ',');
+const slashed = (value) => split(value, (c) => c === '/');
 const lower = (s) => s.toLowerCase();
 const isLength = (t) => /^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?(?:[a-z]+|%)$/i.test(t) || /^0+(?:\.0*)?$/.test(t);
 const isNumber = (t) => /^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/i.test(t);
@@ -316,9 +347,7 @@ EXPANDERS31['vertical-align'] = (value) => {
 // (width and count, then / and the height; a number or a math function
 // of numbers is the count)
 EXPANDERS31.columns = (value) => {
-  const [main, height = 'auto'] = segments(value.trim(), /\//)
-    .filter((part, i) => i % 2 === 0)
-    .map((part) => part.trim());
+  const [main, height = 'auto'] = slashed(value);
   let width = 'auto';
   let count = 'auto';
   for (const token of words(main)) {
@@ -336,13 +365,15 @@ COMPOSERS31.columns = ([width, count, height]) => {
 
 // --- grid-area, grid-row, grid-column: start and end lines ---------------------------
 
-// (a custom ident: -- or a letter, _ or non-ASCII first; not auto or span)
-const isIdent = (line) =>
-  /^(?:--|-?(?:[a-z_]|[^\x00-\x7f]|\\.))(?:[\w-]|[^\x00-\x7f]|\\.)*$/i.test(line) && !/^(?:auto|span)$/i.test(line);
-const gridLines = (value) =>
-  segments(value.trim(), /\//)
-    .filter((part, i) => i % 2 === 0)
-    .map((part) => part.trim());
+// (a custom ident: -- or a letter, _, non-ASCII or an escape first; not
+// auto or span. An escape's hex digits are read one way only.)
+const ESCAPE = String.raw`\\(?:(?:[0-9a-f]{6}|[0-9a-f]{1,5}(?![0-9a-f]))(?:\r\n|[ \t\n\r\f])?|[^\n\r\f0-9a-f])`;
+const IDENT = new RegExp(
+  String.raw`^(?:--|-?(?:[a-z_]|[^\x00-\x7f]|${ESCAPE}))(?:[\w-]|[^\x00-\x7f]|${ESCAPE})*$`,
+  'i',
+);
+const isIdent = (line) => IDENT.test(line) && !/^(?:auto|span)$/i.test(line);
+const gridLines = slashed;
 // (a line left out: the line before it when that is a custom ident, else auto)
 const otherwise = (line) => (isIdent(line) ? line : 'auto');
 EXPANDERS31['grid-area'] = (value) => {
@@ -406,7 +437,7 @@ const TRANSITION_SLOTS = [
   ['delay', (token) => isTime(token), (token) => token],
   ['timing', (token) => EASINGS.test(token), easing],
   ['behavior', (token, t) => t === 'normal' || t === 'allow-discrete', (token, t) => t],
-  ['property', (token, t) => /^-?[a-z_][\w-]*$/i.test(token) && t !== 'initial', (token, t) => t],
+  ['property', (token, t) => isIdent(token) && t !== 'initial', (token, t) => (/\\/.test(token) ? token : t)],
 ];
 const TRANSITION_DEFAULTS = { duration: '0s', timing: 'ease', delay: '0s', behavior: 'normal', property: 'all' };
 EXPANDERS31.transition = (value) => {
@@ -521,4 +552,42 @@ COMPOSERS31.animation = (values) => {
 COMPOSERS31['flex-flow'] = ([direction, wrap]) => {
   const parts = [direction, wrap].filter((v, i) => v !== ['row', 'nowrap'][i]);
   return parts.length === 0 ? direction : parts.join(' ');
+};
+
+// --- animation-range: start, end ---------------------------------------------------
+
+// Each a range name (normal, cover, contain, entry, exit, ...) and an
+// offset, either left out; the start's 0% and the end's 100% are left
+// out (entry 0% is entry); an end left out is the start's name, or normal
+// (black box, 31.0.1: entry 10% is entry 10% and entry).
+const rangePart = (name, offset, drop) => {
+  if (name === null) return offset ?? 'normal';
+  return offset === null || offset === drop ? name : `${name} ${offset}`;
+};
+EXPANDERS31['animation-range'] = (value) => {
+  const groups = [];
+  for (const token of words(value)) {
+    const isOffset = isLength(token) || isMath(token);
+    const last = groups[groups.length - 1];
+    if (isOffset && last !== undefined && last.offset === null) last.offset = token;
+    else groups.push(isOffset ? { name: null, offset: token } : { name: lower(token), offset: null });
+  }
+  if (groups.length === 0 || groups.length > 2) return null;
+  const [start, end] = groups;
+  const part = (group, drop) => {
+    if (group.name === 'normal' && group.offset === null) return 'normal';
+    return rangePart(group.name === 'normal' ? null : group.name, group.offset, drop);
+  };
+  const startName = start.name === 'normal' ? null : start.name;
+  return [part(start, '0%'), end === undefined ? (startName ?? 'normal') : part(end, '100%')];
+};
+// (the end left out when it is the start's range name alone)
+COMPOSERS31['animation-range'] = ([start, end]) => {
+  const strip = (part, drop) => (part.endsWith(` ${drop}`) ? part.slice(0, -drop.length - 1) : part);
+  const s = strip(start, '0%');
+  const e = strip(end, '100%');
+  const first = words(s)[0];
+  // (no range name in the start: an end of normal is left out too, 10%)
+  const named = !isLength(first) && !isMath(first);
+  return e === first || (!named && e === 'normal') ? s : `${s} ${e}`;
 };

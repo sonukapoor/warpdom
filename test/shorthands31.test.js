@@ -213,3 +213,87 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31: escaped names stay whole in transition, animation, list-style and grid shorthands',
+  (w) => {
+    const p = w.document.body.appendChild(w.document.createElement('p'));
+    const out = [];
+    for (const [name, value] of [
+      ['animation', '\\31 slide 1s'],
+      ['animation', 'a\\,b 1s'],
+      ['animation', 'a\\ b 2s'],
+      ['animation', 'x 1s, y\\,z 2s'],
+      ['transition', 'a\\,b 1s'],
+      ['transition', '\\31 x 1s'],
+      ['grid-area', 'a\\/b'],
+      ['grid-area', '\\31 foo'],
+      ['grid-area', '\\31 foo / b'],
+      ['grid-row', 'a\\/b'],
+      ['grid-row', '\\31 foo'],
+      ['grid-column', '\\31 foo / 3'],
+      ['list-style', '\\31 x inside'],
+    ]) {
+      p.removeAttribute('style');
+      p.style.setProperty(name, value);
+      out.push([name, value, p.style.getPropertyValue(name), p.style.cssText]);
+    }
+    // (composed from list longhands set one by one)
+    p.removeAttribute('style');
+    p.style.animation = 'x 1s';
+    p.style.setProperty('animation-name', 'a\\,b');
+    out.push(['animation-name', p.style.animation, p.style.cssText]);
+    p.style.setProperty('animation-name', 'a, b');
+    out.push(['animation-name', p.style.animation, p.style.cssText]);
+    return out;
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: animation-range sets its start and end, and is written from them',
+  (w) => {
+    const p = w.document.body.appendChild(w.document.createElement('p'));
+    const out = [];
+    for (const [start, end] of [
+      ['normal', 'normal'],
+      ['entry 10%', 'normal'],
+      ['normal', 'exit 90%'],
+      ['entry 0%', 'entry 100%'],
+      ['20%', '80%'],
+      ['cover 0%', 'cover 100%'],
+      ['entry 10%', 'entry'],
+    ]) {
+      p.removeAttribute('style');
+      p.style.setProperty('animation-range-start', start);
+      p.style.setProperty('animation-range-end', end);
+      out.push([start, end, p.style.cssText]);
+    }
+    for (const value of [
+      'normal',
+      'entry 10%',
+      'entry 10% exit 90%',
+      'cover',
+      'contain 0% contain 100%',
+      'normal exit',
+      '20% 80%',
+      'entry',
+      'entry entry',
+      'normal normal',
+      'exit 50px',
+      'cover 10% 90%',
+      '10%',
+    ]) {
+      p.removeAttribute('style');
+      p.style.setProperty('animation-range', value);
+      out.push([
+        value,
+        p.style.cssText,
+        p.style.getPropertyValue('animation-range-start'),
+        p.style.getPropertyValue('animation-range-end'),
+      ]);
+    }
+    return out;
+  },
+  { jsdom: 31 },
+);
