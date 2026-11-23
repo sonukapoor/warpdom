@@ -628,20 +628,22 @@ const rangePart = (name, offset, drop) => {
 };
 // (one layer: offsets attach to a range name before them, never to
 // normal, which is a whole range: normal 80% is normal and 80%)
+// (normal, and auto in timeline-trigger-active-range, are whole ranges:
+// no offset attaches to them, and alone they are the end too)
+const WHOLE_RANGES = new Set(['normal', 'auto']);
 function rangeLayer(layer) {
   const groups = [];
   for (const token of words(layer)) {
     const isOffset = isLength(token) || isMath(token);
     const last = groups[groups.length - 1];
-    if (isOffset && last !== undefined && last.offset === null && last.name !== null && last.name !== 'normal')
+    if (isOffset && last !== undefined && last.offset === null && last.name !== null && !WHOLE_RANGES.has(last.name))
       last.offset = token;
     else groups.push(isOffset ? { name: null, offset: token } : { name: lower(token), offset: null });
   }
   if (groups.length === 0 || groups.length > 2) return null;
   const [start, end] = groups;
-  const part = (group, drop) => (group.name === 'normal' ? 'normal' : rangePart(group.name, group.offset, drop));
-  const startName = start.name === 'normal' ? null : start.name;
-  return [part(start, '0%'), end === undefined ? (startName ?? 'normal') : part(end, '100%')];
+  const part = (group, drop) => (WHOLE_RANGES.has(group.name) ? group.name : rangePart(group.name, group.offset, drop));
+  return [part(start, '0%'), end === undefined ? (start.name ?? 'normal') : part(end, '100%')];
 }
 EXPANDERS31['animation-range'] = (value) => {
   const starts = [];
@@ -658,21 +660,26 @@ EXPANDERS31['animation-range'] = (value) => {
 // (layer by layer; lists of different lengths are left as longhands. The
 // end left out when it is the start's range name alone, or normal after
 // a start without one; 20% 20% stays.)
-COMPOSERS31['animation-range'] = ([start, end]) => {
-  const starts = layersOf(start);
-  const ends = layersOf(end);
-  if (starts.length !== ends.length) return '';
-  const strip = (part, drop) => (part.endsWith(` ${drop}`) ? part.slice(0, -drop.length - 1) : part);
-  return starts
-    .map((startPart, i) => {
-      const s = strip(startPart, '0%');
-      const e = strip(ends[i], '100%');
-      const first = words(s)[0];
-      const named = !isLength(first) && !isMath(first);
-      return (named && e === first) || (!named && e === 'normal') ? s : `${s} ${e}`;
-    })
-    .join(', ');
-};
+// (whole: the end left out after a start without a range name, normal,
+// auto for timeline-trigger-active-range: 20% auto is 20%)
+const composeRanges =
+  (whole) =>
+  ([start, end]) => {
+    const starts = layersOf(start);
+    const ends = layersOf(end);
+    if (starts.length !== ends.length) return '';
+    const strip = (part, drop) => (part.endsWith(` ${drop}`) ? part.slice(0, -drop.length - 1) : part);
+    return starts
+      .map((startPart, i) => {
+        const s = strip(startPart, '0%');
+        const e = strip(ends[i], '100%');
+        const first = words(s)[0];
+        const named = !isLength(first) && !isMath(first);
+        return (named && e === first) || (!named && e === whole) ? s : `${s} ${e}`;
+      })
+      .join(', ');
+  };
+COMPOSERS31['animation-range'] = composeRanges('normal');
 
 // --- container: name, type ---------------------------------------------------------
 
@@ -1155,8 +1162,10 @@ function timeline(withInset) {
     for (const layer of layersOf(value)) {
       const [name, ...rest] = words(layer);
       if (name === undefined) return null;
+      // (the axis before or after the inset: --a 10px x is --a x 10px)
       let axis = 'block';
-      if (rest.length > 0 && AXES.has(lower(rest[0]))) axis = lower(rest.shift());
+      const at = rest.findIndex((t) => AXES.has(lower(t)));
+      if (at !== -1) axis = lower(rest.splice(at, 1)[0]);
       if (!withInset && rest.length > 0) return null;
       names.push(lower(name) === 'none' ? 'none' : name);
       axes.push(axis);
@@ -1304,21 +1313,10 @@ for (const edge of ['start', 'end']) {
   }
 }
 
-// (timeline-trigger's ranges: a start and an end, each a range name with
-// an offset, an offset, normal or auto; the end the start when left out)
-function ranges(value) {
-  const groups = [];
-  for (const token of words(value)) {
-    const offset = isLength(token) || isMath(token);
-    const last = groups[groups.length - 1];
-    if (offset && last !== undefined && last.length === 1 && !isLength(last[0]) && !isMath(last[0])) last.push(token);
-    else groups.push([offset ? token : lower(token)]);
-  }
-  if (groups.length === 0 || groups.length > 2) return null;
-  const [start, end = start] = groups.map((g) => g.join(' '));
-  return [start, end];
-}
-for (const name of ['timeline-trigger-activation-range', 'timeline-trigger-active-range']) {
-  EXPANDERS31[name] = ranges;
-  COMPOSERS31[name] = pairOf;
-}
+// (timeline-trigger's ranges: as animation-range, layer by layer: a
+// start and an end, each a range name with an offset, an offset, normal
+// or auto; the end the start's name when left out)
+EXPANDERS31['timeline-trigger-activation-range'] = EXPANDERS31['animation-range'];
+COMPOSERS31['timeline-trigger-activation-range'] = composeRanges('normal');
+EXPANDERS31['timeline-trigger-active-range'] = EXPANDERS31['animation-range'];
+COMPOSERS31['timeline-trigger-active-range'] = composeRanges('auto');

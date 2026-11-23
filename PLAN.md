@@ -8532,6 +8532,13 @@ box on 31.0.1, in shorthands31.js:
   end range, the end the start).
 Results: the broad probe 536/649 to 641/649, none worse; the full suite
 with parity against jsdom 31 unchanged at 5 failures.
+Review round (#339): view-timeline's axis before or after the inset
+(--a 10px x is --a x 10px); the trigger ranges are animation-range's
+expander and composer (layer by layer; the end left out the start's
+name: entry, exit 10% ends entry, exit), with normal and auto whole
+ranges no offset attaches to (normal 10% is normal then 10%) and the
+end auto left out after an unnamed start in the active range (20%
+auto is 20%).
 Not modeled: timeline-trigger and all (their computed values), with
 path() normalization (offset) and system fonts (font) the probe's 8
 remaining cases.
