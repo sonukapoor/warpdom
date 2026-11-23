@@ -321,3 +321,26 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31: contrast-color() reads out-of-range hwb(), hsl() and rgb() channels as declared, not clamped',
+  (w) => {
+    const p = w.document.body.appendChild(w.document.createElement('p'));
+    return [
+      'hwb(200 -100% 0%)',
+      'hwb(200 0% 0%)',
+      'hwb(200 calc(-100%) 0%)',
+      'hwb(0 150% 0%)',
+      'hwb(0 0% -50%)',
+      'hwb(0 46.05% 120%)',
+      'hsl(0 -10% 46.05%)',
+      'hsl(0 0% 146%)',
+      'rgb(300 -20 128)',
+    ].map((color) => {
+      p.style.color = '';
+      p.style.color = `contrast-color(${color})`;
+      return [color, w.getComputedStyle(p).color];
+    });
+  },
+  { jsdom: 31 },
+);

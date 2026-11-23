@@ -8231,3 +8231,8 @@ hwb(), lch() and oklch(), and rgb(), hsl() and hwb() from their exact
 arguments with math in them (they went through the color parsers, which
 do not evaluate math), the legacy comma syntax too (commas outside
 parentheses only: min(0.6, 0.7) is one channel). 26 more cases match.
+Sixth round (#334): Copilot suggested clamping hwb() whiteness and
+blackness before contrast-color() reads them; jsdom 31.0.1 does not
+(contrast-color(hwb(200 -100% 0%)) is white there, the clamped
+hwb(200 0% 0%) black), so they stay as declared, now a parity test
+with out-of-range hsl() and rgb() channels too.
