@@ -8492,6 +8492,8 @@ now as a [] block (css-values.js), for every profile (jsdom 30.1.3 and
 mask-position computes keywords to percentages per layer.
 Results: the broad probe 523/649 to 536/649, none worse; the full suite
 with parity against jsdom 31 unchanged at 5 failures.
+Review round (#338): no-clip before an origin box (no-clip padding-box
+is padding-box no-clip).
 Not modeled: an empty line-name set ([] 10px is 10px in jsdom 31) and
 span as a line name (invalid in jsdom 31).
 Next: the rule and timeline families and all (D5c), shadow scoping, F.

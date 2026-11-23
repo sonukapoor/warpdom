@@ -984,11 +984,14 @@ function maskLayer(layer) {
   if (position.length === 1)
     pos = /^(?:top|bottom)$/.test(position[0]) ? `center ${position[0]}` : `${position[0]} center`;
   else if (position.length > 1) pos = position.join(' ');
-  // (no-clip is a clip only: the origin stays border-box)
-  if (boxes[0] === 'no-clip') boxes.unshift('border-box');
-  if (boxes.length > 2 || (boxes.length === 2 && boxes[0] === 'no-clip')) return null;
+  // (no-clip is a clip only, before or after the origin: the origin
+  // stays border-box without one)
+  const noClip = boxes.indexOf('no-clip');
+  if (noClip !== -1) boxes.splice(noClip, 1);
+  if (boxes.length > (noClip === -1 ? 2 : 1) || boxes.includes('no-clip')) return null;
   const origin = boxes[0] ?? 'border-box';
-  return [image, pos, size, repeat.join(' ') || 'repeat', origin, boxes[1] ?? origin, composite, mode];
+  const clip = noClip !== -1 ? 'no-clip' : (boxes[1] ?? origin);
+  return [image, pos, size, repeat.join(' ') || 'repeat', origin, clip, composite, mode];
 }
 EXPANDERS31.mask = (value) => {
   const out = [[], [], [], [], [], [], [], []];

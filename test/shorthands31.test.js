@@ -226,6 +226,8 @@ const CASES = {
     'url(a.png) top',
     'url(a.png) 0% 0% / 10px',
     'url(a.png) no-clip',
+    'url(a.png) no-clip padding-box',
+    'url(a.png) padding-box no-clip',
     'url(a.png) repeat-y round',
   ],
   'column-rule': ['1px solid red', 'currentcolor', 'none', 'thick', 'medium none currentcolor'],
