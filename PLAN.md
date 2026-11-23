@@ -8243,3 +8243,82 @@ for the mix; a property that keeps currentcolor keeps the mix as
 declared when one is left); percentage math in channels already matched
 (now in the parity test). Not modeled, as before: a mix in another
 interpolation space (in oklab) stays as declared.
+Merged as #334 (2026-11-23). Not modeled there (math functions
+warpdom's evaluator, lengths.js, does not have yet): round(), atan2()
+and trigonometry in a contrast-color() channel leave the value as
+declared (jsdom 31 computes them). Still open from D3b: image-set()
+computes as image-set(url("a.png") 1dppx), and a relative url() in a
+computed value resolves against the document's URL. Filed from part E6
+(2026-11-19): #333, unknown pseudo-elements in selectors (all versions).
+
+## 2026-11-23: jsdom 31, CSS part D4a: shorthands jsdom 30's expansion does not know (branch feat/269-jsdom31-expansion, #269)
+
+warpdom's jsdom 31 blocks set every longhand of these shorthands to its
+initial value (jsdom 30's expansion, shorthands.js, does not know them:
+text-decoration: underline read text-decoration-line none). New
+shorthands31.js: an expander per shorthand (a declared value to its
+longhands, in css31-data.js order) and a composer (the longhands written
+back as the shorthand, jsdom 31's canonical form), black box on 31.0.1:
+- text-decoration (line, thickness, style, color), text-align (all,
+  last; justify-all, match-parent), white-space (collapse, wrap mode,
+  trim; pre, pre-wrap, ... as keywords), text-wrap, caret,
+  text-emphasis, list-style (none fills the type, then the image;
+  written position, image, type without initials), overflow-clip-margin
+  and its axes (the box first), the logical borders (border-block,
+  border-inline-start, border-block-color, ...), box-shadow (its five
+  list longhands; none is transparent, none, 0px, 0px, outset), columns,
+  grid-area, grid-row and grid-column (a line left out repeats a custom
+  ident before it, else auto);
+- transition and animation, read token by token: each token fills the
+  first empty slot that takes it (two times: duration then delay; auto
+  is animation's duration, then its name, then its timeline; calc(2) an
+  iteration count), a keyword whose slot is taken is the name or
+  property (1s ease ease); written in jsdom 31's order without defaults,
+  but a name or property that is another slot's keyword keeps that slot
+  written (1s 1 infinite) and goes last; steps(n, end) is steps(n);
+- vertical-align: top, center, bottom, sub and super are baseline
+  shifts (vertical-align: top reads baseline-shift top), middle,
+  text-top and text-bottom alignments; first or last alone reads first.
+- flex-flow written without its initial parts (row wrap is wrap).
+Results: 132 reference values (longhands, shorthand and cssText), 58
+broad cases and 51 transition/animation edge cases match, but one: not
+modeled, animation: none none spin is invalid in jsdom 31 (warpdom
+accepts it: validity is decided before expansion). Speed: style writes
+(scratchpad e-bwrite, 5 interleaved runs, medians) 20.7 ms on main,
+20.9 ms here in the jsdom 31 profile, jsdom 30 15.3 and 15.2.
+The jsdom 31 parity measurement (scratchpad e-m31.sh, parity()'s default
+version switched to 31) was rebuilt: its patch file was gone.
+Review round (#335): spelling-error and grammar-error are
+text-decoration lines; columns reads its height after a slash (100px 2
+/ 300px) and a math function of numbers as the count (calc(2)), and
+writes a height after the slash; grid lines take any custom ident
+(--hero, non-ASCII) as a name that repeats; box-shadow's none is
+written with a color set after it, other than transparent (box-shadow:
+none then box-shadow-color: red is red none, as jsdom 31 writes it; the
+review suggested writing the longhands instead).
+Second round (#335, Copilot's previously missed items): the shorthands'
+values are split into words, layers and grid lines outside strings,
+parentheses and escapes (a\,b is one animation name, a\/b one grid
+line, the whitespace ending \31 part of the name), and a custom ident
+may start with an escape (\31 foo repeats into the omitted grid lines;
+a transition property \31 x). Found on the way: animation-range set
+both longhands to normal (another shorthand jsdom 30's expansion does
+not know); now expanded (a range name and an offset each, the start's
+0% and the end's 100% left out, an end left out the start's name) and
+composed (the end left out when it is the start's range name, or
+normal after an unnamed start).
+Third round (#335): animation-range is expanded and composed layer by
+layer; an offset attaches to a range name but never to normal (normal
+80% is normal and 80%); 20% 20% keeps both offsets (the end is left out
+only after a start with a range name); transition-property keeps the
+case of every name as written (--Accent, OPACITY: jsdom 31 does, also
+for property names). Not modeled: start and end lists of different
+lengths are left as longhands, where jsdom 31 writes a combined value
+(animation-range: normal normal, normal).
+Fourth round (#335): a transition property that clashes with a keyword
+does so in any case (NORMAL, ALLOW-DISCRETE: the behavior is written
+before it); and a token that ends up as a transition property or an
+animation name keeps its spelling as written (expand31 passes the value
+as given to the expanders: canonical31 lowercases keywords, so 1s normal
+NORMAL read the property normal; written tokens are matched to the
+canonical ones by text, as canonical31 may reorder them).
