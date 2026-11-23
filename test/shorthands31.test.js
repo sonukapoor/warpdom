@@ -654,3 +654,26 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31: text-spacing is written with auto only as both longhands (#339 review)',
+  (w) => {
+    const p = w.document.body.appendChild(w.document.createElement('p'));
+    return [
+      ['normal', 'auto'],
+      ['auto', 'normal'],
+      ['space-all', 'normal'],
+      ['normal', 'no-autospace'],
+      ['auto', 'no-autospace'],
+      ['trim-start', 'auto'],
+      ['space-all', 'auto'],
+      ['auto', 'auto'],
+    ].map(([trim, autospace]) => {
+      p.removeAttribute('style');
+      p.style.setProperty('text-spacing-trim', trim);
+      p.style.setProperty('text-autospace', autospace);
+      return [trim, autospace, p.style.getPropertyValue('text-spacing'), p.style.cssText];
+    });
+  },
+  { jsdom: 31 },
+);

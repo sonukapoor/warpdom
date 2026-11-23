@@ -1284,6 +1284,8 @@ EXPANDERS31['text-spacing'] = (value) => {
 };
 COMPOSERS31['text-spacing'] = ([trim, autospace]) => {
   if (trim === autospace && (trim === 'normal' || trim === 'auto')) return trim;
+  // (auto only as both: normal / auto, trim-start / auto are not written)
+  if (trim === 'auto' || autospace === 'auto') return '';
   if (trim === 'space-all' && autospace === 'no-autospace') return 'none';
   if (autospace === 'normal') return trim;
   return trim === 'normal' ? autospace : `${trim} ${autospace}`;
