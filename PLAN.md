@@ -8243,3 +8243,48 @@ for the mix; a property that keeps currentcolor keeps the mix as
 declared when one is left); percentage math in channels already matched
 (now in the parity test). Not modeled, as before: a mix in another
 interpolation space (in oklab) stays as declared.
+Merged as #334 (2026-11-23). Not modeled there (math functions
+warpdom's evaluator, lengths.js, does not have yet): round(), atan2()
+and trigonometry in a contrast-color() channel leave the value as
+declared (jsdom 31 computes them). Still open from D3b: image-set()
+computes as image-set(url("a.png") 1dppx), and a relative url() in a
+computed value resolves against the document's URL. Filed from part E6
+(2026-11-19): #333, unknown pseudo-elements in selectors (all versions).
+
+## 2026-11-23: jsdom 31, CSS part D4a: shorthands jsdom 30's expansion does not know (branch feat/269-jsdom31-expansion, #269)
+
+warpdom's jsdom 31 blocks set every longhand of these shorthands to its
+initial value (jsdom 30's expansion, shorthands.js, does not know them:
+text-decoration: underline read text-decoration-line none). New
+shorthands31.js: an expander per shorthand (a declared value to its
+longhands, in css31-data.js order) and a composer (the longhands written
+back as the shorthand, jsdom 31's canonical form), black box on 31.0.1:
+- text-decoration (line, thickness, style, color), text-align (all,
+  last; justify-all, match-parent), white-space (collapse, wrap mode,
+  trim; pre, pre-wrap, ... as keywords), text-wrap, caret,
+  text-emphasis, list-style (none fills the type, then the image;
+  written position, image, type without initials), overflow-clip-margin
+  and its axes (the box first), the logical borders (border-block,
+  border-inline-start, border-block-color, ...), box-shadow (its five
+  list longhands; none is transparent, none, 0px, 0px, outset), columns,
+  grid-area, grid-row and grid-column (a line left out repeats a custom
+  ident before it, else auto);
+- transition and animation, read token by token: each token fills the
+  first empty slot that takes it (two times: duration then delay; auto
+  is animation's duration, then its name, then its timeline; calc(2) an
+  iteration count), a keyword whose slot is taken is the name or
+  property (1s ease ease); written in jsdom 31's order without defaults,
+  but a name or property that is another slot's keyword keeps that slot
+  written (1s 1 infinite) and goes last; steps(n, end) is steps(n);
+- vertical-align: top, center, bottom, sub and super are baseline
+  shifts (vertical-align: top reads baseline-shift top), middle,
+  text-top and text-bottom alignments; first or last alone reads first.
+- flex-flow written without its initial parts (row wrap is wrap).
+Results: 132 reference values (longhands, shorthand and cssText), 58
+broad cases and 51 transition/animation edge cases match, but one: not
+modeled, animation: none none spin is invalid in jsdom 31 (warpdom
+accepts it: validity is decided before expansion). Speed: style writes
+(scratchpad e-bwrite, 5 interleaved runs, medians) 20.7 ms on main,
+20.9 ms here in the jsdom 31 profile, jsdom 30 15.3 and 15.2.
+The jsdom 31 parity measurement (scratchpad e-m31.sh, parity()'s default
+version switched to 31) was rebuilt: its patch file was gone.

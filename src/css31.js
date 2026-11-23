@@ -34,6 +34,7 @@ import { LONGHANDS } from './css-data.js';
 import { expand, serializeBox, segments, CSS_WIDE, topLevelCommaSplit } from './shorthands.js';
 import { serializeUrls } from './css-values.js';
 import { hasVarReference } from './var-substitution.js';
+import { EXPANDERS31, COMPOSERS31 } from './shorthands31.js';
 
 export const shorthand31 = (name) => shorthandsTable()[name];
 export const alias31 = (name) => (data ?? load()).aliases[name] ?? name;
@@ -206,14 +207,6 @@ function borderImage(value) {
 }
 
 const PAIR = /-(?:block|inline)$/;
-// vertical-align as baseline-source, alignment-baseline and baseline-shift:
-// a length or percentage is the shift, a keyword the alignment.
-function verticalAlign(value) {
-  const lower = value.trim().toLowerCase();
-  if (/^[-+]?[\d.]|^[a-z-]+\(/.test(lower)) return ['auto', 'baseline', longhandValue('baseline-shift', value.trim())];
-  return ['auto', lower, '0px'];
-}
-
 // The longhands a shorthand's declared value sets, in jsdom 31's order:
 // [[longhand, value], ...], with their src.
 export function expand31(name, value, raw = value) {
@@ -226,7 +219,12 @@ export function expand31(name, value, raw = value) {
   if (name === 'border-radius') return radii(value).map((v, i) => [longhands[i], v, src]);
   if (name === 'font-variant') return fontVariant(raw).map((v, i) => [longhands[i], v, src]);
   if (name === 'border-image') return borderImage(value).map((v, i) => [longhands[i], v, src]);
-  if (name === 'vertical-align') return verticalAlign(value).map((v, i) => [longhands[i], v, src]);
+  // (shorthands jsdom 30's expansion does not know: shorthands31.js)
+  const own = EXPANDERS31[name];
+  if (own !== undefined) {
+    const values = own(value);
+    if (values !== null) return values.map((v, i) => [longhands[i], longhandValue(longhands[i], v), src]);
+  }
   if (TWO_CORNERS.test(name)) return cornerPair(value).map((v, i) => [longhands[i], v, src]);
   if (isCorner(name)) return corners(value, longhands.length).map((v, i) => [longhands[i], v, src]);
   if (name === 'corner-shape') return sides(words(value.toLowerCase())).map((v, i) => [longhands[i], v, src]);
@@ -369,12 +367,15 @@ for (const name of ['margin', 'padding', 'inset', 'border-width', 'border-style'
 for (const name of ['overflow', 'gap', 'place-items', 'place-content', 'place-self', 'overscroll-behavior'])
   COMPOSERS[name] = pair;
 COMPOSERS.flex = (v) => v.join(' ');
+Object.assign(COMPOSERS, COMPOSERS31);
 // vertical-align: the shift, or the alignment keyword when it is 0px (a
 // shift wins over another alignment: top then baseline-shift: 2px is 2px).
 // A baseline source other than auto comes first (first top).
 COMPOSERS['vertical-align'] = ([source, alignment, shift]) => {
   const value = shift === '0px' ? alignment : shift;
-  return source === 'auto' ? value : `${source} ${value}`;
+  // (first and last alone at the default alignment: first)
+  if (source === 'auto') return value;
+  return value === 'baseline' ? source : `${source} ${value}`;
 };
 // (per layer: x and y are lists, layer by layer)
 const layersOf = (value) => topLevelCommaSplit(value).map((layer) => layer.trim());
