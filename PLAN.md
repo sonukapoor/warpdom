@@ -8383,6 +8383,8 @@ expands); the composer is looked up before any longhand is computed
 objects). Not reproduced: an inherited outline-color with the parent's
 style solid gives the child's color in jsdom 31 as here (a test pins
 it); the parent's computed value is cached, not recomputed per child.
+Second round (#336, Copilot's previously missed item): text-decoration:
+inherit at the root (no parent) composes from the initial color, none.
 Speed after the round (same benchmark): jsdom 30 profile 90.6 ms on
 main, 90.9 ms here; jsdom 31 193.5 and 193.9 ms.
 Next, D5: the shorthands warpdom's jsdom 31 profile neither expands

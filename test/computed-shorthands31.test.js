@@ -179,3 +179,15 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31: text-decoration inherit at the root is the initial value (#336 review)',
+  (w) => {
+    const d = w.document;
+    d.documentElement.setAttribute('style', 'color: rgb(1, 2, 3); text-decoration: inherit');
+    const p = d.body.appendChild(d.createElement('p'));
+    p.setAttribute('style', 'text-decoration: inherit');
+    return [d.documentElement, d.body, p].map((e) => w.getComputedStyle(e).getPropertyValue('text-decoration'));
+  },
+  { jsdom: 31 },
+);

@@ -3804,7 +3804,8 @@ function styleValueOf(element, property) {
 // as a keyword (condensed for 75%), and text-decoration from a
 // currentcolor color (as specified: left out) as currentcolor.
 const FONT_WIDTH_KEYWORDS31 = Object.fromEntries(Object.entries(FONT_WIDTHS31).map(([k, v]) => [v, k]));
-const CURRENT31 = new Set(['currentcolor', 'initial', 'unset']);
+// (inherit left at the root: the initial value)
+const CURRENT31 = new Set(['currentcolor', 'initial', 'unset', 'inherit']);
 function specified31(element, name) {
   const value = cascaded(element, name);
   if (value === undefined || !(value.startsWith(PENDING31) || mayHaveVar(value))) return value;
