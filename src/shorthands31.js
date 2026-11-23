@@ -282,30 +282,54 @@ for (const axis of ['block', 'inline']) {
 
 // --- box-shadow: color, offset, blur, spread, position (lists) ---------------------
 
+// (a layer: a color, the offset (none, or two lengths) with a blur and a
+// spread after it, and inset, in any order; the color is transparent
+// when the offset is none, else currentcolor, black box 31.0.1)
 EXPANDERS31['box-shadow'] = (value) => {
-  if (lower(value.trim()) === 'none') return ['transparent', 'none', '0px', '0px', 'outset'];
   const out = [[], [], [], [], []];
   for (const layer of layersOf(value)) {
-    let color = 'currentcolor';
-    let position = 'outset';
-    const lengths = [];
-    for (const token of words(layer)) {
-      const t = lower(token);
-      if (t === 'inset') position = t;
-      else if (isLength(token) || isMath(token)) lengths.push(token === '0' ? '0px' : token);
-      else color = token;
-    }
-    if (lengths.length < 2) return null;
-    out[0].push(color);
-    out[1].push(`${lengths[0]} ${lengths[1]}`);
-    out[2].push(lengths[2] ?? '0px');
-    out[3].push(lengths[3] ?? '0px');
-    out[4].push(position);
+    const shadow = shadowLayer(words(layer));
+    if (shadow === null) return null;
+    shadow.forEach((v, i) => out[i].push(v));
   }
   return out.map((list) => list.join(', '));
 };
-// (none is written with the color set after it, other than transparent:
-// box-shadow: none then box-shadow-color: red is red none, black box 31.0.1)
+function shadowLayer(tokens) {
+  let color = null;
+  let position = 'outset';
+  let offset = null;
+  const extra = [];
+  // (whether blur and spread may still follow the offset)
+  let open = false;
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    const t = lower(token);
+    const length = isLength(token) || isMath(token);
+    if (t === 'inset' && position === 'outset') {
+      position = t;
+      open = false;
+    } else if (t === 'none' && offset === null) {
+      offset = t;
+      open = true;
+    } else if (length && offset === null) {
+      const next = tokens[i + 1];
+      if (next === undefined || !(isLength(next) || isMath(next))) return null;
+      offset = `${zero(token)} ${zero(next)}`;
+      i++;
+      open = true;
+    } else if (length && open && extra.length < 2) extra.push(zero(token));
+    else if (!length && t !== 'none' && t !== 'inset' && color === null) {
+      color = token;
+      open = false;
+    } else return null;
+  }
+  if (offset === null) return null;
+  color ??= offset === 'none' ? 'transparent' : 'currentcolor';
+  return [color, offset, extra[0] ?? '0px', extra[1] ?? '0px', position];
+}
+const zero = (token) => (token === '0' ? '0px' : token);
+// (none is written with its color, other than transparent: box-shadow:
+// none then box-shadow-color: red is red none, black box 31.0.1)
 COMPOSERS31['box-shadow'] = ([color, offset, blur, spread, position]) => {
   const lists = [color, offset, blur, spread, position].map(layersOf);
   if (lists.some((list) => list.length !== lists[1].length)) return '';
@@ -313,7 +337,8 @@ COMPOSERS31['box-shadow'] = ([color, offset, blur, spread, position]) => {
     .map((o, i) => {
       const parts = [];
       const c = lists[0][i];
-      if (c !== 'currentcolor' && !(o === 'none' && c === 'transparent')) parts.push(c);
+      // (currentcolor is left out but before none; transparent before none)
+      if (o === 'none' ? c !== 'transparent' : c !== 'currentcolor') parts.push(c);
       parts.push(o);
       if (lists[3][i] !== '0px') parts.push(lists[2][i], lists[3][i]);
       else if (lists[2][i] !== '0px') parts.push(lists[2][i]);
@@ -321,6 +346,18 @@ COMPOSERS31['box-shadow'] = ([color, offset, blur, spread, position]) => {
       return parts.join(' ');
     })
     .join(', ');
+};
+
+// --- -webkit-text-stroke: width, color --------------------------------------------
+
+EXPANDERS31['-webkit-text-stroke'] = (value) => {
+  let width = '0px';
+  let color = 'currentcolor';
+  for (const token of words(value)) {
+    if (isLength(token) || isMath(token)) width = zero(token);
+    else color = token;
+  }
+  return [width, color];
 };
 
 // --- vertical-align: baseline source, alignment, shift ------------------------------

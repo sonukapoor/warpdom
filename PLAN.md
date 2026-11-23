@@ -8322,3 +8322,87 @@ animation name keeps its spelling as written (expand31 passes the value
 as given to the expanders: canonical31 lowercases keywords, so 1s normal
 NORMAL read the property normal; written tokens are matched to the
 canonical ones by text, as canonical31 may reorder them).
+
+## 2026-11-23: jsdom 31, CSS part D4b: computed shorthands (branch feat/269-jsdom31-computed-shorthands, #269)
+
+jsdom 31 reads getComputedStyle(element).getPropertyValue(shorthand)
+composed from the shorthand's computed longhands (margin: 1px 2px,
+font: 700 12px / 18px serif, box-shadow: rgb(255, 0, 0) 1px 2px 3px,
+background with its color last); warpdom's jsdom 31 profile used jsdom
+30's rules (declared value, keyword values or ''). Decision: in the
+jsdom 31 profile a shorthand is composed from its computed longhands
+(css31-data.js order) by the declared side's composers (css31.js
+composed31, the same COMPOSERS as the CSSOM serialization), as jsdom 31
+does; a shorthand without a composer keeps the jsdom 30 rules, which
+give jsdom 31's keyword values for grid, size and the others.
+Composer inputs (cascade.js shorthandInput31, black box 31.0.1): font
+weight 400 is normal and font-width a keyword (75% condensed);
+text-decoration-color, when specified (or inherited as specified) as
+currentcolor, initial or not at all, is currentcolor, which the
+composer leaves out (underline currentcolor is underline, underline
+rgb(1, 2, 3) keeps it).
+Computed longhands fixed on the way (cascade.js computed31):
+- outline, column-rule and row-rule widths: thin, medium, thick in px
+  whatever the style (outline: none is 3px rgb(1, 2, 3));
+- font-width: keywords as percentages; column-width: initial auto;
+- outline-color: auto stays auto while outline-style is auto, else the
+  current color; inherited as auto (then resolved the same way);
+- box-shadow-color: per layer, currentcolor and transparent kept as
+  keywords (box-shadow with nothing declared is currentcolor none);
+- background-position-x/-y and offset-position: keywords as
+  percentages, an edge offset from right or bottom as calc(100% - 10px)
+  (90% for 10%, calc(100% + 0px) for 0), lengths in px, center left
+  read as 0% 50%.
+Declared side fixed on the way: box-shadow's none is the offset (CSS
+Backgrounds 4), a layer keeps its color (none red is red none;
+currentcolor none too), inset, and a blur and spread after it (none 1px
+1px), per layer (none, 1px 1px); -webkit-text-stroke is expanded (it
+set its initial longhands) and, with column-rule, composed without its
+initial values (column-rule: currentcolor is medium).
+Results: the broad probe (scratchpad d4b-all.mjs: every jsdom 31
+shorthand undeclared, initial, inherit and 0 to 7 values) 127/649 on
+main, 502/649 here, none worse; the full suite with parity against
+jsdom 31 (e-m31.sh) 12 failures to 5, none new. Speed (scratchpad
+bench-cs.mjs: 30000 rounds of a style change and five computed reads,
+6 interleaved runs, medians, node 22.17.1): jsdom 30 profile 92.6 ms on
+main, 94.4 ms here (+1.9%, within noise: one more branch per shorthand
+read); jsdom 31 profile 199.7 and 199.8 ms.
+Not modeled: -webkit-text-stroke rejects the width keywords in jsdom 31
+(thin red is invalid; warpdom accepts it); font with a system font
+(menu: jsdom 31 computes 16px monospace); box-shadow: none transparent
+computes its color to rgba(0, 0, 0, 0) where none alone keeps
+transparent (the declared values are the same); relative url() in
+computed values (as before).
+Review round (#336): text-decoration's color is checked as specified
+after var() substitution (--td: underline; text-decoration: var(--td)
+is underline; a var() giving currentcolor too, inherited as well);
+background-repeat, a legacy longhand and a shorthand in jsdom 31, is
+read as the shorthand (repeat-x, not repeat; text-box too, which D5
+expands); the composer is looked up before any longhand is computed
+(all reads none) and composers get the values only (no entries
+objects). Not reproduced: an inherited outline-color with the parent's
+style solid gives the child's color in jsdom 31 as here (a test pins
+it); the parent's computed value is cached, not recomputed per child.
+Second round (#336, Copilot's previously missed item): text-decoration:
+inherit at the root (no parent) composes from the initial color, none.
+Third round (#336, previously missed): a position calc() with a
+percentage (calc(50% + 10px)) stays as declared, and the other layers
+are still converted (center, calc(50% + 10px) is 50%, calc(50% +
+10px)); from the right or bottom it is calc(100% - (10% + 5px)).
+Fourth round (#336, Copilot's closer look): min(), max() and clamp()
+too (calc(100% - min(10%, 5px)) from the right). Not modeled, found on
+the way and not specific to positions: jsdom 31 resolves the lengths
+inside a math function with a percentage (width: calc(10% + 1em) is
+calc(10% + 20px), max(10%, 1em) is max(10%, 20px)); warpdom keeps them
+as declared, for every property (a computed-values item for later).
+Fifth round (#336, closer look): outline-color's initial value (not
+declared, initial, unset) is auto with outline-style auto, as a
+declared auto (outline-style: auto reads outline 3px auto); the
+CSS-wide keywords (revert, revert-layer) checked, as jsdom 31.
+Speed after the round (same benchmark): jsdom 30 profile 90.6 ms on
+main, 90.9 ms here; jsdom 31 193.5 and 193.9 ms.
+Next, D5: the shorthands warpdom's jsdom 31 profile neither expands
+nor composes, whose longhands stay initial (container, grid and
+grid-template, mask, offset, font-synthesis, line-clamp, the rule
+families, the timelines, all; offset-position's declared canonical
+form, center top for top), then shadow scoping, then F.

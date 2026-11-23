@@ -92,19 +92,27 @@ function layers(tokens, text, rule) {
 // A shadow: its color first (none for currentcolor), the lengths without
 // a trailing 0 spread and then 0 blur, inset last (box-shadow: inset 0 0
 // 2px 0 #000 is rgb(0, 0, 0) 0px 0px 2px inset).
+// A box-shadow layer with none (the offset, CSS Backgrounds 4) keeps its
+// color, currentcolor too, and the blur and spread after it: none red is
+// red none (the box-shadow composer writes it from the longhands).
 function shadow(tokens, text) {
   let color = '';
   let inset = false;
+  let none = false;
   const lengths = [];
   for (const tok of tokens) {
-    if (tok.as === 'color') color = tok.t === 'ident' && tok.v === 'currentcolor' ? '' : component(tok, text);
+    if (tok.as === 'color') color = tok;
     else if (tok.t === 'ident' && tok.v === 'inset') inset = true;
-    else if (tok.t === 'ident' && tok.v === 'none') return 'none';
+    else if (tok.t === 'ident' && tok.v === 'none') none = true;
     else lengths.push(tok);
   }
-  if (lengths.length === 4 && lengths[3].v === 0) lengths.pop();
-  if (lengths.length === 3 && lengths[2].v === 0) lengths.pop();
-  const parts = color === '' ? [] : [color];
+  if (none && tokens.length === 1) return 'none';
+  if (!none && lengths.length === 4 && lengths[3].v === 0) lengths.pop();
+  if (!none && lengths.length === 3 && lengths[2].v === 0) lengths.pop();
+  const parts = [];
+  if (color !== '' && (none || !(color.t === 'ident' && color.v === 'currentcolor')))
+    parts.push(component(color, text));
+  if (none) parts.push('none');
   for (const tok of lengths) parts.push(component(tok, text));
   if (inset) parts.push('inset');
   return parts.join(' ');

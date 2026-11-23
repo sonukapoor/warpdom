@@ -425,6 +425,10 @@ COMPOSERS.border = (v) => {
 };
 // border-image: source, slice / width / outset, repeat; a width or an
 // outset keeps the slice and the slashes before it (100% / / 1px).
+// (jsdom 31 leaves out the initial values: column-rule: currentcolor is
+// medium, black box 31.0.1)
+COMPOSERS['column-rule'] = omitting(BORDER_INITIALS);
+COMPOSERS['-webkit-text-stroke'] = omitting(['0px', 'currentcolor']);
 COMPOSERS['border-image'] = ([source, slice, width, outset, repeat]) => {
   const parts = [];
   if (source !== 'none') parts.push(source);
@@ -483,7 +487,7 @@ COMPOSERS.background = (v) => {
 // ones are initial, and the width is a keyword. A system font reads as
 // written while its longhands are the ones it set.
 const FONT_RESETS = ['normal', 'auto', 'normal', 'auto', 'none', 'normal'];
-COMPOSERS.font = (v, entries) => {
+COMPOSERS.font = (v) => {
   for (const i of [1, 3, 4, 5, 6, 7]) if (v[i] !== 'normal') return '';
   if (v[2] !== 'normal' && v[2] !== 'small-caps') return '';
   for (let i = 0; i < 6; i++) if (v[13 + i] !== FONT_RESETS[i]) return '';
@@ -637,3 +641,9 @@ export function serialize31(decls) {
   }
   return out;
 }
+
+// getComputedStyle(element).getPropertyValue(shorthand) in jsdom 31: the
+// composer that writes the shorthand from its computed longhands' values
+// (jsdom 31's order) as the declaration block does ('' when it cannot be
+// written), null when warpdom has none for it.
+export const composer31 = (name) => COMPOSERS[name] ?? (shorthandsTable()[name] ? defaultComposer(name) : null);
