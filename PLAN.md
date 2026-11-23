@@ -8503,3 +8503,36 @@ top 5px, top is center top), as warpdom's object-position already was.
 Not modeled: an empty line-name set ([] 10px is 10px in jsdom 31) and
 span as a line name (invalid in jsdom 31).
 Next: the rule and timeline families and all (D5c), shadow scoping, F.
+
+## 2026-11-24: jsdom 31, CSS part D5c: the gap rules, timelines and the other remaining shorthands (branch feat/269-jsdom31-rules-timelines, #269)
+
+The last shorthands the jsdom 31 profile neither expanded nor composed
+(their longhands stayed initial; the computed shorthand read ''), black
+box on 31.0.1, in shorthands31.js:
+- the gap rules (CSS Gaps 1): rule (row and column alike, as
+  border-block's start and end), row-rule (as column-rule), rule-width,
+  -style, -color, -break and -visibility-items (one value for both,
+  written while equal), the insets: -cap and -junction (a start and an
+  end, the end the start), *-rule-inset (caps / junctions, the
+  junctions the caps; one value when all four are equal, else in full:
+  5px / 10px is 5px 5px / 10px 10px), rule-inset (rows and columns
+  alike), *-inset-start and -end (one value for cap and junction);
+- contain-intrinsic-size (a width and a height, auto with one, the
+  height the width), interest-delay (start and end), animation-delay
+  (per layer a start and an end, 0s left out), marker (start, mid and
+  end alike), border-block-clip and border-inline-clip;
+- scroll-timeline and view-timeline (per layer a name, an axis, block
+  left out, view-timeline's inset, auto left out), position-try (an
+  order, normal left out, then the fallbacks);
+- mask-border (as border-image with a mode: slice 0, width auto and
+  outset 0 when left out; 30 / / 5px for an outset alone);
+- text-spacing (normal, none as space-all no-autospace, auto; else the
+  trim and autospace keywords), text-decoration-skip (none and auto);
+- timeline-trigger-activation-range and -active-range (a start and an
+  end range, the end the start).
+Results: the broad probe 536/649 to 641/649, none worse; the full suite
+with parity against jsdom 31 unchanged at 5 failures.
+Not modeled: timeline-trigger and all (their computed values), with
+path() normalization (offset) and system fonts (font) the probe's 8
+remaining cases.
+Next: shadow scoping, then F.
