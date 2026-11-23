@@ -297,3 +297,44 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31: animation-range layers, normal without an offset, equal offsets, and transition property case',
+  (w) => {
+    const p = w.document.body.appendChild(w.document.createElement('p'));
+    const out = [];
+    for (const [start, end] of [
+      ['20%', '20%'],
+      ['entry 10%, cover', 'exit, contain'],
+      ['10%', 'normal'],
+      ['normal', 'normal'],
+    ]) {
+      p.removeAttribute('style');
+      p.style.setProperty('animation-range-start', start);
+      p.style.setProperty('animation-range-end', end);
+      out.push([start, end, p.style.cssText]);
+    }
+    for (const value of [
+      'entry 10% exit 90%, cover 20% contain 80%',
+      'normal 80%',
+      'normal, entry',
+      'entry, 10% 20%',
+    ]) {
+      p.removeAttribute('style');
+      p.style.setProperty('animation-range', value);
+      out.push([
+        value,
+        p.style.cssText,
+        p.style.getPropertyValue('animation-range-start'),
+        p.style.getPropertyValue('animation-range-end'),
+      ]);
+    }
+    for (const value of ['--Accent 1s', '--Accent 1s, Opacity 2s', 'OPACITY 1s']) {
+      p.removeAttribute('style');
+      p.style.setProperty('transition', value);
+      out.push([value, p.style.cssText, p.style.getPropertyValue('transition-property')]);
+    }
+    return out;
+  },
+  { jsdom: 31 },
+);

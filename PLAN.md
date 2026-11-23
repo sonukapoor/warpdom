@@ -8307,3 +8307,11 @@ not know); now expanded (a range name and an offset each, the start's
 0% and the end's 100% left out, an end left out the start's name) and
 composed (the end left out when it is the start's range name, or
 normal after an unnamed start).
+Third round (#335): animation-range is expanded and composed layer by
+layer; an offset attaches to a range name but never to normal (normal
+80% is normal and 80%); 20% 20% keeps both offsets (the end is left out
+only after a start with a range name); transition-property keeps the
+case of every name as written (--Accent, OPACITY: jsdom 31 does, also
+for property names). Not modeled: start and end lists of different
+lengths are left as longhands, where jsdom 31 writes a combined value
+(animation-range: normal normal, normal).
