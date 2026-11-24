@@ -189,4 +189,23 @@ for (const jsdom of [30, 31]) {
     },
     { jsdom },
   );
+
+  parity(
+    `jsdom ${jsdom}: a slotted element's inherited values after its shadow tree's sheets change (#340 review)`,
+    (w) => {
+      const d = w.document;
+      const cs = (e, p) => w.getComputedStyle(e).getPropertyValue(p);
+      d.body.innerHTML = '<div id=host><span id=s>s</span></div>';
+      const root = d.getElementById('host').attachShadow({ mode: 'open' });
+      root.innerHTML = '<style>slot { font-size: 10px }</style><slot></slot>';
+      const span = d.getElementById('s');
+      const out = [cs(span, 'font-size')];
+      root.firstChild.firstChild.data = 'slot { font-size: 30px }';
+      out.push(cs(span, 'font-size'));
+      root.styleSheets?.[0]?.cssRules[0].style.setProperty('font-size', '31px');
+      out.push(cs(span, 'font-size'));
+      return out;
+    },
+    { jsdom },
+  );
 }

@@ -981,10 +981,11 @@ const EMPTY = new Map();
 // jsdom 31 (black box, 31.0.1): each tree's own sheets, the document's
 // for its elements and a shadow root's for its tree's (a pseudo-element:
 // its element's).
-// (whether the last ruleIndex was a shadow tree's, jsdom 31: cascadeCache)
-let shadowTree31 = false;
+// (whether the last ruleIndex was in a document whose trees style each
+// other, jsdom 31: cascadeCache)
+let crossTree31 = false;
 function ruleIndex(element) {
-  shadowTree31 = false;
+  crossTree31 = false;
   if (element[S].pseudo === undefined)
     return element[S].doc[S].shadowHosts === true ? treeIndex(element) : documentIndex(element);
   followElement31(element);
@@ -994,11 +995,9 @@ function ruleIndex(element) {
 function treeIndex(element) {
   const ds = element[S].doc[S];
   if (ds.window[S].compat.treeScopedSheets === true) {
+    crossTree31 = true;
     const root = rootOf(element);
-    if (root[S].shadow === true) {
-      shadowTree31 = true;
-      return sheetIndex(root[S], ds, root, element[S].doc);
-    }
+    if (root[S].shadow === true) return sheetIndex(root[S], ds, root, element[S].doc);
   }
   return documentIndex(element);
 }
@@ -1541,11 +1540,13 @@ function cascadeCache(element) {
   // can match by text (:dir(auto), a textarea's :invalid): they leave the
   // tree as it was, not those matches.
   const textRev = index.textDependent === true ? (ds.textRev ?? 0) : 0;
-  // A shadow tree's values inherit from its host, which other trees' rules
-  // style: any style text, CSSOM or text change in the document drops them
-  // (its own index says nothing about the other trees'; #340 review). The
-  // counters only grow, so their sum changes when any of them does.
-  const outerRev = shadowTree31 ? 1 + (ds.styleRev ?? 0) + cssomChanges.rev + (ds.textRev ?? 0) : 0;
+  // In a document with shadow trees, values inherit across trees (a shadow
+  // tree's top from its host, a slotted element from its slot), which
+  // other trees' rules style: any style text, CSSOM or text change in the
+  // document drops them (the element's own index says nothing about the
+  // other trees'; #340 review). The counters only grow, so their sum
+  // changes when any of them does.
+  const outerRev = crossTree31 ? 1 + (ds.styleRev ?? 0) + cssomChanges.rev + (ds.textRev ?? 0) : 0;
   const inlineMap = inlineDeclarations(element);
   if (
     !cache ||

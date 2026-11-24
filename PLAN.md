@@ -8582,11 +8582,15 @@ not a slot; a host moved into another document (an iframe's) marks that
 document as having shadow roots (internal.js adoptTree), and a shadow
 root's sheet list and rule index are kept per document (the one it is in
 when read).
-Second review round: a shadow tree's cascade caches also drop on any
-style text, CSSOM or text change in the document (its own index says
-nothing about the rules that style its host, in other trees), so values
-inherited from the host do not go stale; only for elements in shadow
-trees, the document's own elements are checked as before (one summed
+Second review round: in a document with shadow trees (jsdom 31
+profile), cascade caches also drop on any style text, CSSOM or text
+change in the document: values inherit across trees (a shadow tree's top
+from its host, a slotted element from its slot), and an element's own
+index says nothing about the rules that style the other trees; documents
+without shadow roots are checked as before (a third round extended it
+from shadow-tree elements to slotted ones: 6 interleaved runs, medians,
+jsdom 30 profile 96.9 ms before and 97.6 after, jsdom 31 215.5 and
+213.9) (one summed
 revision field; bench-cs.mjs, 7 interleaved runs, medians: jsdom 30
 profile 99.4 ms before, 97.1 after; jsdom 31 218.7 and 217.5; a first
 version with three fields was 2-3% slower); @scope roots and limits walk DOM
