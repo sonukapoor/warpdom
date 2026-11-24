@@ -1528,12 +1528,14 @@ test('XMLHttpRequest tests: a test server does not share its port with another p
 // (20 inconclusive attempts): startServer() rejects without leaving a
 // listener open (one would keep node --test running).
 test('XMLHttpRequest tests: a test server whose loopback probe fails leaves no listener open', async () => {
-  // The other program's port is one a listener on every address can take
-  // too: one in a few dozen on macOS is in use there (by another program,
-  // over IPv6), and startServer() would then move to another port with no
-  // probe at all.
+  // The other program's port is, where the system lets a listener on every
+  // address share a port with a loopback one (macOS), one it can take: one
+  // in a few dozen is in use there (by another program, over IPv6), and
+  // startServer() would move to another port with no probe at all. Where it
+  // cannot (Linux), no port is: startServer() moves to a port of its own,
+  // where its loopback listener meets its own wildcard one and probes.
   let other;
-  for (let attempt = 0; ; attempt++) {
+  for (let attempt = 0; attempt < 20; attempt++) {
     other = http.createServer((req, res) => res.end('other program'));
     await new Promise((resolve) => other.listen(0, '127.0.0.1', resolve));
     const wildcard = http.createServer();
@@ -1545,8 +1547,7 @@ test('XMLHttpRequest tests: a test server whose loopback probe fails leaves no l
       await new Promise((resolve) => wildcard.close(resolve));
       break;
     }
-    await new Promise((resolve) => other.close(resolve));
-    if (attempt === 20) assert.fail('no port free on every address beside 127.0.0.1');
+    if (attempt < 19) await new Promise((resolve) => other.close(resolve));
   }
   // A closed listener stays listed for a turn or two of the event loop.
   const listeners = async () => {
