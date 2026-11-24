@@ -1905,11 +1905,14 @@ function winner31(element, index, inlineMap, name, window, cut = 0, below = Infi
   // context, before the style attribute and layers, the innermost tree's
   // !important ones first, the outer tree's normal ones first (black box,
   // 31.0.1: a :host rule's !important declaration wins over the host's
-  // style attribute's, the document's normal rule over a :host one).
+  // style attribute's, the document's normal rule over a :host one). Each
+  // context its own level, so that a logical property and its physical
+  // one meet by context first too (pair31; #342 review).
   const inner = innerIndexes31(element);
   for (let i = inner.length - 1; i >= 0; i--) {
     const own = inner[i].get(name);
-    if (own?.important.length && ruleWinner31(own.important, element, false, 5.5, Infinity)) return win31Value;
+    if (own?.important.length && ruleWinner31(own.important, element, false, 5.5 + i / 1000, Infinity))
+      return win31Value;
   }
   const inline = inlineMap?.get(name);
   if (inline?.important) return won31(5, 0, 0, Infinity, inline.order, inline.value);
@@ -1918,7 +1921,7 @@ function winner31(element, index, inlineMap, name, window, cut = 0, below = Infi
   if (lists?.normal.length && ruleWinner31(lists.normal, element, index.scoped, 2, Infinity)) return win31Value;
   for (let i = 0; i < inner.length; i++) {
     const own = inner[i].get(name);
-    if (own?.normal.length && ruleWinner31(own.normal, element, false, 1.5, Infinity)) return win31Value;
+    if (own?.normal.length && ruleWinner31(own.normal, element, false, 1.5 - i / 1000, Infinity)) return win31Value;
   }
   return userAgent31(element, name, window, ua);
 }
@@ -2015,9 +2018,9 @@ function cascade31(element, index, inlineMap, name, window) {
   // revert in the page's declarations: the user agent sheet's value, of
   // the pair too (black box, 31.0.1: p { margin-top: revert } gives 16px, a
   // div's 0px).
-  // (a shadow tree's rule for an element outside it, 1.5 or 5.5: revert-
-  // layer there rolls back to the user agent sheet too)
-  if (win31.level >= 1.5 && win31.level <= 5.5 && REVERT.test(value)) {
+  // (a shadow tree's rule for an element outside it, about 1.5 or 5.5:
+  // revert-layer there rolls back to the user agent sheet too)
+  if (win31.level > 1 && win31.level < 6 && REVERT.test(value)) {
     value = userAgent31(element, name, window);
     if (partner !== null) {
       copy31(saved31, win31);
@@ -2085,10 +2088,12 @@ function flow31(element) {
 }
 function ownFlow(element, cache) {
   if (uaDirection(element)) return true;
-  for (const name of FLOW_PROPERTIES)
-    if (cache.index.has(name)) return FLOW_PROPERTIES.some((n) => cascaded(element, n) !== undefined);
+  // (its rules', a shadow tree's for it too: :host, ::slotted(), #342 review)
+  if (declaresFlow(cache.index) || innerIndexes31(element).some(declaresFlow))
+    return FLOW_PROPERTIES.some((n) => cascaded(element, n) !== undefined);
   return cache.inline !== null && FLOW_NAMES.test(element[S].attrs.get('style'));
 }
+const declaresFlow = (index) => FLOW_PROPERTIES.some((name) => index.has(name));
 // A direction found from the element's text.
 function autoDirection(element) {
   if (!uaDirection(element)) return false;
@@ -2183,7 +2188,9 @@ function darkScheme(element) {
       const inline = inlineDeclarations(n);
       declared =
         (n !== element && n[S].cascaded?.index !== index) ||
-        (inline !== null && (inline.has('color-scheme') || inline.has('all')));
+        (inline !== null && (inline.has('color-scheme') || inline.has('all'))) ||
+        // (a shadow tree's rules for it: :host, ::slotted(), #342 review)
+        innerIndexes31(n).length > 0;
     }
     if (!declared) return false;
   }
@@ -4092,6 +4099,9 @@ function namesNow31(element) {
   const customs = new Set();
   for (let e = element; e !== null; e = inheritParent(e)) {
     for (const name of ruleIndex(e).keys()) if (name.startsWith('--')) customs.add(name);
+    // (a shadow tree's rules for it: :host, ::slotted(), #342 review)
+    for (const inner of innerIndexes31(e))
+      for (const name of inner.keys()) if (name.startsWith('--')) customs.add(name);
     const inline = inlineDeclarations(e);
     if (inline !== null) for (const name of inline.keys()) if (name.startsWith('--')) customs.add(name);
   }

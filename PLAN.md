@@ -8644,4 +8644,12 @@ test/host-slotted31.test.js):
   slower: the rules that now apply are matched and their values computed
   (main gives none of them); the slot index is rebuilt as often as on
   main (101 times in 100 rounds, both), two more lookups per round.
+Review round (#342): the code that reads an element's index for one
+property besides winner31 reads these rules too: color-scheme's fast
+path (darkScheme: a :host { color-scheme: dark } host's light-dark()),
+the custom property names a computed style lists (namesNow31), whether
+the element has a flow of its own (ownFlow: :host { direction: rtl }
+maps margin-inline-start to the right); each context has a level of its
+own (1.5 - i/1000, 5.5 + i/1000), so that a logical property and its
+physical one meet by context first (pair31).
 Next: S3 (adoptedStyleSheets), then F.

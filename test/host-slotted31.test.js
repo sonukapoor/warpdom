@@ -200,4 +200,41 @@ for (const jsdom of [30, 31]) {
     },
     { jsdom },
   );
+
+  parity(
+    `jsdom ${jsdom}: :host and ::slotted() rules for color-scheme, custom property names, the flow and logical properties (#342 review)`,
+    (w) => {
+      const d = w.document;
+      const cs = (e, p) => w.getComputedStyle(e).getPropertyValue(p);
+      d.body.innerHTML =
+        '<p>p</p><div id=h1></div><div id=h2></div><div id=h3><span id=s>s</span></div><div id=h4><em class=x id=e>e</em></div>';
+      cs(d.querySelector('p'), 'color');
+      cs(d.body, 'color');
+      const h1 = d.getElementById('h1');
+      const r1 = h1.attachShadow({ mode: 'open' });
+      r1.innerHTML =
+        '<style>:host { color-scheme: dark; background-color: light-dark(rgb(255, 255, 255), rgb(0, 0, 0)); color: light-dark(rgb(1, 1, 1), rgb(2, 2, 2)) }</style><b>b</b>';
+      const out = [cs(h1, 'color-scheme'), cs(h1, 'background-color'), cs(r1.querySelector('b'), 'color')];
+      const h2 = d.getElementById('h2');
+      const r2 = h2.attachShadow({ mode: 'open' });
+      r2.innerHTML = '<style>:host { --host: 1; --b: 2 }</style><i>i</i>';
+      const names = (e) => [...w.getComputedStyle(e)].filter((n) => n.startsWith('--')).join(' ');
+      out.push(cs(h2, '--host'), names(h2), names(r2.querySelector('i')));
+      const h3 = d.getElementById('h3');
+      h3.attachShadow({ mode: 'open' }).innerHTML =
+        '<style>:host { direction: rtl; margin-inline-start: 5px } ::slotted(span) { writing-mode: vertical-rl; margin-block-start: 3px; display: block }</style><slot></slot>';
+      const span = d.getElementById('s');
+      out.push(cs(h3, 'direction'), cs(h3, 'margin-left'), cs(h3, 'margin-right'));
+      out.push(cs(span, 'writing-mode'), cs(span, 'margin-top'), cs(span, 'margin-right'), cs(span, 'margin-left'));
+      const r4 = d.getElementById('h4').attachShadow({ mode: 'open' });
+      r4.innerHTML =
+        '<style>::slotted(em) { margin-top: 1px } ::slotted(em) { margin-inline-start: 3px !important }</style><div id=in><slot></slot></div>';
+      r4.getElementById('in').attachShadow({ mode: 'open' }).innerHTML =
+        '<style>::slotted(*) { margin-block-start: 2px; margin-left: 4px !important }</style><slot></slot>';
+      const em = d.getElementById('e');
+      out.push(cs(em, 'margin-top'), cs(em, 'margin-left'));
+      return out;
+    },
+    { jsdom },
+  );
 }
