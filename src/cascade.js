@@ -981,7 +981,10 @@ const EMPTY = new Map();
 // jsdom 31 (black box, 31.0.1): each tree's own sheets, the document's
 // for its elements and a shadow root's for its tree's (a pseudo-element:
 // its element's).
+// (whether the last ruleIndex was a shadow tree's, jsdom 31: cascadeCache)
+let shadowTree31 = false;
 function ruleIndex(element) {
+  shadowTree31 = false;
   if (element[S].pseudo === undefined)
     return element[S].doc[S].shadowHosts === true ? treeIndex(element) : documentIndex(element);
   followElement31(element);
@@ -992,7 +995,10 @@ function treeIndex(element) {
   const ds = element[S].doc[S];
   if (ds.window[S].compat.treeScopedSheets === true) {
     const root = rootOf(element);
-    if (root[S].shadow === true) return sheetIndex(root[S], ds, root, element[S].doc);
+    if (root[S].shadow === true) {
+      shadowTree31 = true;
+      return sheetIndex(root[S], ds, root, element[S].doc);
+    }
   }
   return documentIndex(element);
 }
@@ -1030,10 +1036,6 @@ function sheetIndex(holder, ds, root, doc) {
   let index = EMPTY;
   if (reuse) index = cached.index;
   else if (sheets.length) index = buildIndex(sheets, validationModeOf(ds.window), ds.window[S].compat, lists, doc);
-  // (a tree without sheets rebuilt after a CSSOM edit elsewhere: a new
-  // identity, so its elements' cascade caches, which compare the index, do
-  // not keep values inherited before the edit; #340 review)
-  else if (cached) index = new Map();
   holder.cascade = { doc, treeRev, styleRev, cssomRev: cssomChanges.rev, sheets: sheets.slice(), index, lists };
   return index;
 }
@@ -1539,10 +1541,16 @@ function cascadeCache(element) {
   // can match by text (:dir(auto), a textarea's :invalid): they leave the
   // tree as it was, not those matches.
   const textRev = index.textDependent === true ? (ds.textRev ?? 0) : 0;
+  // A shadow tree's values inherit from its host, which other trees' rules
+  // style: any style text, CSSOM or text change in the document drops them
+  // (its own index says nothing about the other trees'; #340 review). The
+  // counters only grow, so their sum changes when any of them does.
+  const outerRev = shadowTree31 ? 1 + (ds.styleRev ?? 0) + cssomChanges.rev + (ds.textRev ?? 0) : 0;
   const inlineMap = inlineDeclarations(element);
   if (
     !cache ||
     cache.index !== index ||
+    cache.outerRev !== outerRev ||
     cache.rev !== rev ||
     cache.textRev !== textRev ||
     cache.inline !== inlineMap ||
@@ -1572,6 +1580,7 @@ function cascadeCache(element) {
       index,
       rev,
       textRev,
+      outerRev,
       inline: inlineMap,
       values: new Map(),
       detached,

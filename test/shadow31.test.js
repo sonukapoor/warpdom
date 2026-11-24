@@ -155,4 +155,38 @@ for (const jsdom of [30, 31]) {
     },
     { jsdom },
   );
+
+  parity(
+    `jsdom ${jsdom}: a shadow tree's inherited values after style text, text and outer shadow tree changes (#340 review)`,
+    (w) => {
+      const d = w.document;
+      const cs = (e, p) => w.getComputedStyle(e).getPropertyValue(p);
+      d.head.innerHTML =
+        '<style>#host { font-size: 20px }</style><style>#h2 { font-size: 10px } #h2:empty { font-size: 20px }</style>';
+      d.body.innerHTML = '<div id=host></div><div id=h2></div><div id=h3></div>';
+      const host = d.getElementById('host');
+      host.attachShadow({ mode: 'open' }).innerHTML = '<b id=b>b</b>';
+      const b = host.shadowRoot.getElementById('b');
+      const out = [cs(b, 'font-size')];
+      d.head.firstChild.firstChild.data = '#host { font-size: 33px }';
+      out.push(cs(b, 'font-size'));
+      const h2 = d.getElementById('h2');
+      const text = h2.appendChild(d.createTextNode(''));
+      h2.attachShadow({ mode: 'open' }).innerHTML = '<i id=i>i</i>';
+      const i = h2.shadowRoot.getElementById('i');
+      out.push(cs(i, 'font-size'));
+      text.data = 'x';
+      out.push(cs(h2, 'font-size'), cs(i, 'font-size'));
+      const outer = d.getElementById('h3').attachShadow({ mode: 'open' });
+      outer.innerHTML = '<style>section { font-size: 15px }</style><section id=sec></section>';
+      const inner = outer.getElementById('sec').attachShadow({ mode: 'open' });
+      inner.innerHTML = '<u id=u>u</u>';
+      const u = inner.getElementById('u');
+      out.push(cs(u, 'font-size'));
+      outer.firstChild.firstChild.data = 'section { font-size: 17px }';
+      out.push(cs(u, 'font-size'));
+      return out;
+    },
+    { jsdom },
+  );
 }
