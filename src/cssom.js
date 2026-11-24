@@ -1511,12 +1511,15 @@ export function documentStyleSheets(doc) {
 export function shadowStyleSheets(root) {
   const rs = root[S];
   if (!rs.styleSheetList) {
-    const ds = rs.doc[S];
-    rs.styleSheetList = liveList(ds.window[S].protos.StyleSheetList, () => {
+    // (the root's document when read: its host may move to another one)
+    rs.styleSheetList = liveList(rs.doc[S].window[S].protos.StyleSheetList, () => {
+      const ds = rs.doc[S];
       const rev = ds.treeRev ?? 0;
       const textRev = ds.styleRev ?? 0;
-      if (rs.styleSheetsRev === rev && rs.styleSheetsTextRev === textRev) return rs.styleSheets;
+      if (rs.styleSheetsDoc === ds && rs.styleSheetsRev === rev && rs.styleSheetsTextRev === textRev)
+        return rs.styleSheets;
       rs.styleSheets = styleElementsOf(root, true).map(styleElementSheet).filter(Boolean);
+      rs.styleSheetsDoc = ds;
       rs.styleSheetsRev = rev;
       rs.styleSheetsTextRev = textRev;
       return rs.styleSheets;

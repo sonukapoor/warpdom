@@ -1007,7 +1007,14 @@ function sheetIndex(holder, ds, root, doc) {
   if (cached?.lists.some(ruleListChanged)) cssomChanges.rev++;
   const treeRev = ds.treeRev ?? 0;
   const styleRev = ds.styleRev ?? 0;
-  if (cached && cached.treeRev === treeRev && cached.styleRev === styleRev && cached.cssomRev === cssomChanges.rev)
+  // (a shadow root's: in the document it is in now, its host may move)
+  if (
+    cached &&
+    cached.doc === doc &&
+    cached.treeRev === treeRev &&
+    cached.styleRev === styleRev &&
+    cached.cssomRev === cssomChanges.rev
+  )
     return cached.index;
   const sheets = (root === null ? documentStyleSheets(doc) : shadowStyleSheets(root))[S].items();
   const reuse =
@@ -1016,7 +1023,7 @@ function sheetIndex(holder, ds, root, doc) {
   let index = EMPTY;
   if (reuse) index = cached.index;
   else if (sheets.length) index = buildIndex(sheets, validationModeOf(ds.window), ds.window[S].compat, lists, doc);
-  holder.cascade = { treeRev, styleRev, cssomRev: cssomChanges.rev, sheets: sheets.slice(), index, lists };
+  holder.cascade = { doc, treeRev, styleRev, cssomRev: cssomChanges.rev, sheets: sheets.slice(), index, lists };
   return index;
 }
 
@@ -1982,7 +1989,8 @@ function inheritParent(element) {
   const ps = p[S];
   if (ps.type === ELEMENT_NODE) {
     if (ps.shadowRoot == null || ps.doc[S].window[S].compat.treeScopedSheets !== true) return p;
-    return findSlot(element);
+    // (a host's pseudo-element: the host, not a slot)
+    return element[S].pseudo !== undefined ? p : findSlot(element);
   }
   return ps.shadow === true && ps.doc[S].window[S].compat.treeScopedSheets === true ? ps.host : null;
 }

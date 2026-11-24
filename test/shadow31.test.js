@@ -96,4 +96,41 @@ for (const jsdom of [30, 31]) {
     },
     { jsdom },
   );
+
+  parity(
+    `jsdom ${jsdom}: a host's pseudo-elements, and a host moved into another document (#340 review)`,
+    (w) => {
+      const d = w.document;
+      const out = {};
+      d.head.innerHTML = '<style>#h2::before { content: "x" } #h3::after { content: "y" }</style>';
+      d.body.innerHTML =
+        '<div id=h2 style="color: rgb(255, 0, 0); --v: 3px"><span>l</span></div><iframe id=f></iframe>';
+      const h2 = d.getElementById('h2');
+      h2.attachShadow({ mode: 'open' }).innerHTML = '<i>no default slot</i>';
+      out.before = [
+        w.getComputedStyle(h2, '::before').color,
+        w.getComputedStyle(h2, '::before').getPropertyValue('--v'),
+      ];
+      const h3 = d.body.appendChild(d.createElement('div'));
+      h3.id = 'h3';
+      h3.style.color = 'rgb(0, 0, 255)';
+      h3.attachShadow({ mode: 'open' }).innerHTML = '<slot style="color: rgb(9, 9, 9)"></slot>';
+      out.after = w.getComputedStyle(h3, '::after').color;
+      const frame = d.getElementById('f');
+      const fd = frame.contentDocument;
+      const fw = frame.contentWindow;
+      fd.head.innerHTML = '<style>b { word-spacing: 9px }</style>';
+      const host = d.createElement('div');
+      const root = host.attachShadow({ mode: 'open' });
+      root.innerHTML = '<style>b { text-transform: uppercase }</style><b id=b>b</b>';
+      const sheets = root.styleSheets;
+      fd.body.appendChild(host);
+      const b = root.getElementById('b');
+      out.moved = [fw.getComputedStyle(b).textTransform, fw.getComputedStyle(b).wordSpacing, sheets?.length];
+      root.appendChild(fd.createElement('style')).textContent = 'b { font-style: italic }';
+      out.added = [sheets?.length, root.styleSheets?.length, fw.getComputedStyle(b).fontStyle];
+      return out;
+    },
+    { jsdom },
+  );
 }

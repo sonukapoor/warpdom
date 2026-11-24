@@ -8577,4 +8577,9 @@ jsdom 30 profile 94.0 ms on main, 93.4 here; jsdom 31 205.7 and 207.1
 (a first version, the document's index reached through the per-tree
 lookup, was 4% slower in the jsdom 31 profile; the document's fast path
 is kept as it was).
+Review round (#340): a host's pseudo-elements inherit from the host,
+not a slot; a host moved into another document (an iframe's) marks that
+document as having shadow roots (internal.js adoptTree), and a shadow
+root's sheet list and rule index are kept per document (the one it is in
+when read).
 Next: S2 (:host, ::slotted()), S3 (adoptedStyleSheets), then F.
