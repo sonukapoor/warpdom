@@ -65,6 +65,7 @@ import { decodeEscapes, PSEUDO_ELEMENTS } from './conditions31.js';
 import { flowOf, isLogical, isLogicalGroup, partnerOf } from './logical.js';
 import {
   documentStyleSheets,
+  shadowStyleSheets,
   ruleArray,
   ruleListSnapshot,
   ruleListChanged,
@@ -388,7 +389,7 @@ function scopedMatch(match, scope) {
     // (checks of the enclosing scopes kept for this match only: nested
     // scopes would repeat them, exponentially)
     const memo = scope.outer === null ? null : new Map();
-    for (let root = el; root !== null; root = inheritParent(root), hops++) {
+    for (let root = el; root !== null; root = scopeParent(root), hops++) {
       if (!scopeHas(scope, root, el, memo)) continue;
       if (match(el, { scope: root })) {
         proximity31 = hops;
@@ -405,7 +406,7 @@ function scopeHas(scope, root, el, memo) {
   if (scope.end !== null && limited(scope.end, root, el, { scope: root })) return false;
   if (scope.outer === null) return startMatches(scope, root, NO_SCOPE);
   // (a nested scope's start is matched with :scope the enclosing root)
-  for (let outer = root; outer !== null; outer = inheritParent(outer)) {
+  for (let outer = root; outer !== null; outer = scopeParent(outer)) {
     if (!outerHas(scope.outer, outer, root, memo) || !startMatches(scope, root, { scope: outer })) continue;
     if (el === root || outerHas(scope.outer, outer, el, memo)) return true;
   }
@@ -424,8 +425,15 @@ function outerHas(scope, root, el, memo) {
 }
 // Whether an element is at or past a scope's limit from a root.
 function limited(end, root, el, ctx) {
-  for (let e = el; e !== null && e !== root; e = inheritParent(e)) if (end.some((s) => s.match(e, ctx))) return true;
+  for (let e = el; e !== null && e !== root; e = scopeParent(e)) if (end.some((s) => s.match(e, ctx))) return true;
   return false;
+}
+// A scope's roots and limits are DOM ancestors in the element's own tree,
+// not the flat tree's (jsdom 31, black box: a slot is not a slotted
+// element's scope root or limit, #340 review).
+function scopeParent(element) {
+  const p = element[S].parent;
+  return p !== null && p[S].type === ELEMENT_NODE ? p : null;
 }
 
 // --- jsdom 31: pseudo-elements ------------------------------------------------------
@@ -970,10 +978,28 @@ const EMPTY = new Map();
 // getComputedStyle() run from a test's cssRules getter (ruleListChanged)
 // calls this again, and a module-level one would keep its document (and
 // window) alive after the window is gone (#165).
+// jsdom 31 (black box, 31.0.1): each tree's own sheets, the document's
+// for its elements and a shadow root's for its tree's (a pseudo-element:
+// its element's).
+// (whether the last ruleIndex was in a document whose trees style each
+// other, jsdom 31: cascadeCache)
+let crossTree31 = false;
 function ruleIndex(element) {
-  if (element[S].pseudo === undefined) return documentIndex(element);
+  crossTree31 = false;
+  if (element[S].pseudo === undefined)
+    return element[S].doc[S].shadowHosts === true ? treeIndex(element) : documentIndex(element);
   followElement31(element);
-  return indexOf31(element, documentIndex(element));
+  return indexOf31(element, treeIndex(element[S].origin));
+}
+// (a document with shadow roots: jsdom 31 reads the element's tree)
+function treeIndex(element) {
+  const ds = element[S].doc[S];
+  if (ds.window[S].compat.treeScopedSheets === true) {
+    crossTree31 = true;
+    const root = rootOf(element);
+    if (root[S].shadow === true) return sheetIndex(root[S], ds, root, element[S].doc);
+  }
+  return documentIndex(element);
 }
 function documentIndex(element) {
   const es = element[S];
@@ -984,14 +1010,32 @@ function documentIndex(element) {
   const styleRev = ds.styleRev ?? 0;
   if (cached && cached.treeRev === treeRev && cached.styleRev === styleRev && cached.cssomRev === cssomChanges.rev)
     return cached.index;
-  const sheets = documentStyleSheets(es.doc)[S].items();
+  return sheetIndex(ds, ds, null, es.doc);
+}
+// (holder: whose cascade cache: the document's state, or a shadow root's
+// with its root; its sheet list read only when the cache does not hold)
+function sheetIndex(holder, ds, root, doc) {
+  const cached = holder.cascade;
+  if (cached?.lists.some(ruleListChanged)) cssomChanges.rev++;
+  const treeRev = ds.treeRev ?? 0;
+  const styleRev = ds.styleRev ?? 0;
+  // (a shadow root's: in the document it is in now, its host may move)
+  if (
+    cached &&
+    cached.doc === doc &&
+    cached.treeRev === treeRev &&
+    cached.styleRev === styleRev &&
+    cached.cssomRev === cssomChanges.rev
+  )
+    return cached.index;
+  const sheets = (root === null ? documentStyleSheets(doc) : shadowStyleSheets(root))[S].items();
   const reuse =
     cached && cached.cssomRev === cssomChanges.rev && !cached.index.readsScheme && sameSheets(cached.sheets, sheets);
   const lists = reuse ? cached.lists : [];
   let index = EMPTY;
   if (reuse) index = cached.index;
-  else if (sheets.length) index = buildIndex(sheets, validationModeOf(ds.window), ds.window[S].compat, lists, es.doc);
-  ds.cascade = { treeRev, styleRev, cssomRev: cssomChanges.rev, sheets: sheets.slice(), index, lists };
+  else if (sheets.length) index = buildIndex(sheets, validationModeOf(ds.window), ds.window[S].compat, lists, doc);
+  holder.cascade = { doc, treeRev, styleRev, cssomRev: cssomChanges.rev, sheets: sheets.slice(), index, lists };
   return index;
 }
 
@@ -1496,10 +1540,20 @@ function cascadeCache(element) {
   // can match by text (:dir(auto), a textarea's :invalid): they leave the
   // tree as it was, not those matches.
   const textRev = index.textDependent === true ? (ds.textRev ?? 0) : 0;
+  // In a document with shadow trees, values inherit across trees (a shadow
+  // tree's top from its host, a slotted element from its slot), which
+  // other trees' rules style: any style text, CSSOM or text change in the
+  // document drops them (the element's own index says nothing about the
+  // other trees'; #340 review). The counters only grow, so their sum
+  // changes when any of them does.
+  const outerRev = crossTree31 ? 1 + (ds.styleRev ?? 0) + cssomChanges.rev + (ds.textRev ?? 0) : 0;
   const inlineMap = inlineDeclarations(element);
   if (
     !cache ||
+    // (moved to another document: its counters say nothing about these)
+    cache.doc !== ds ||
     cache.index !== index ||
+    cache.outerRev !== outerRev ||
     cache.rev !== rev ||
     cache.textRev !== textRev ||
     cache.inline !== inlineMap ||
@@ -1529,6 +1583,7 @@ function cascadeCache(element) {
       index,
       rev,
       textRev,
+      outerRev,
       inline: inlineMap,
       values: new Map(),
       detached,
@@ -1948,9 +2003,19 @@ function flowTextAbove(element) {
 // The parent element, for inheritance: as in jsdom (black box, 20.0.3 to
 // 30.1.3) a shadow root's children inherit nothing from its host (a host
 // with color: red or visibility: hidden leaves them black and visible).
+// jsdom 31 (black box, 31.0.1) inherits through the flat tree: a shadow
+// root's children from its host, a host's child from the slot it is
+// assigned to (none when it is not: it is not rendered).
 function inheritParent(element) {
   const p = element[S].parent;
-  return p !== null && p[S].type === ELEMENT_NODE ? p : null;
+  if (p === null) return null;
+  const ps = p[S];
+  if (ps.type === ELEMENT_NODE) {
+    if (ps.shadowRoot == null || ps.doc[S].window[S].compat.treeScopedSheets !== true) return p;
+    // (a host's pseudo-element: the host, not a slot)
+    return element[S].pseudo !== undefined ? p : findSlot(element);
+  }
+  return ps.shadow === true && ps.doc[S].window[S].compat.treeScopedSheets === true ? ps.host : null;
 }
 
 const FONT_SIZES = { medium: '16px' };

@@ -780,7 +780,12 @@ function adoptTree(node, oldDoc, doc) {
     if (s.observers !== undefined && s.observers.length !== 0 && oldDoc !== doc)
       moveObserverCount(s.observers, oldDoc, doc);
     if (s.content) adopt(s.content, templateContentsOwner(doc));
-    if (s.shadowRoot) adoptTree(s.shadowRoot, oldDoc, doc);
+    if (s.shadowRoot) {
+      // (a document with shadow roots: cascade.js ruleIndex looks up each
+      // element's tree)
+      doc[S].shadowHosts = true;
+      adoptTree(s.shadowRoot, oldDoc, doc);
+    }
   }
   // Live ranges inside the adopted subtree now follow the new document's
   // mutations.

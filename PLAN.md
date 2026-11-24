@@ -8547,3 +8547,56 @@ Not modeled: timeline-trigger and all (their computed values), with
 path() normalization (offset) and system fonts (font) the probe's 8
 remaining cases.
 Next: shadow scoping, then F.
+
+## 2026-11-24: jsdom 31, shadow scoping S1: each tree's sheets, inheritance through the flat tree (branch feat/269-jsdom31-shadow, #269)
+
+jsdom 31 scopes style sheets by tree and inherits through the flat tree
+(black box, 31.0.1); jsdom 20 to 30 apply every sheet to every element
+and inherit through the DOM tree (a shadow root's children inherit
+nothing). Shadow scoping is split in three PRs: S1 (this one), S2
+:host, :host() and ::slotted() (the selector engine has none of them),
+S3 adoptedStyleSheets (Document and ShadowRoot, constructed sheets in
+the cascade).
+S1, in the jsdom 31 profile (compat.treeScopedSheets):
+- document.styleSheets lists the document tree's <style> sheets only, in
+  tree order; ShadowRoot.styleSheets (new, jsdom 31 only) its own tree's
+  (cssom.js shadowStyleSheets), cached as the document's list;
+- each element's rules are its tree's: the document's index, or its
+  shadow root's (cascade.js ruleIndex, treeIndex; the index cached on
+  the root as the document's is, rebuilt on the same revisions; a
+  pseudo-element's from its element's tree). A document without shadow
+  roots (shadowHosts, set by attachShadow) skips the root lookup;
+- inheritance through the flat tree (inheritParent): a shadow root's
+  children from the host, a host's child from the slot it is assigned to,
+  none when it is not (it is not rendered: its computed style is empty).
+Results: tests/shadow31.test.js (sheets by tree, after sheet, text, rule
+and slot changes, nested trees; on jsdom 30 and 31); the full suite with
+parity against jsdom 31 from 5 failures to 4 (the shadow sheets after
+removals one fixed). Speed (bench-cs.mjs, 6 interleaved runs, medians):
+jsdom 30 profile 94.0 ms on main, 93.4 here; jsdom 31 205.7 and 207.1
+(a first version, the document's index reached through the per-tree
+lookup, was 4% slower in the jsdom 31 profile; the document's fast path
+is kept as it was).
+Review round (#340): a host's pseudo-elements inherit from the host,
+not a slot; a host moved into another document (an iframe's) marks that
+document as having shadow roots (internal.js adoptTree), and a shadow
+root's sheet list and rule index are kept per document (the one it is in
+when read).
+Second review round: in a document with shadow trees (jsdom 31
+profile), cascade caches also drop on any style text, CSSOM or text
+change in the document: values inherit across trees (a shadow tree's top
+from its host, a slotted element from its slot), and an element's own
+index says nothing about the rules that style the other trees; documents
+without shadow roots are checked as before (a third round extended it
+from shadow-tree elements to slotted ones: 6 interleaved runs, medians,
+jsdom 30 profile 96.9 ms before and 97.6 after, jsdom 31 215.5 and
+213.9) (one summed
+revision field; bench-cs.mjs, 7 interleaved runs, medians: jsdom 30
+profile 99.4 ms before, 97.1 after; jsdom 31 218.7 and 217.5; a first
+version with three fields was 2-3% slower); @scope roots and limits walk DOM
+ancestors (scopeParent), not the flat tree, as in jsdom 31 (a slot is
+not a slotted element's limit).
+An element's connected cascade cache also compares its document (as
+the detached one did): a host moved into a document whose counters
+match keeps no values from the old one.
+Next: S2 (:host, ::slotted()), S3 (adoptedStyleSheets), then F.

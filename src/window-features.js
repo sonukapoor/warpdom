@@ -1858,6 +1858,10 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle, beyondJsdom = fa
     // too (cssom.js documentStyleSheets). In every version the document's
     // sheets apply in shadow trees (cascade.js ruleIndex).
     shadowSheets: !before(version, [30, 1, 2]),
+    // jsdom 31 (black box, 31.0.1): each tree has its own sheets, the
+    // document's in document.styleSheets, a shadow root's in its
+    // styleSheets, each applying in its own tree (cascade.js ruleIndex).
+    treeScopedSheets: version[0] >= 31,
     // From 21 to 30.1.1 (black box: 21.1.2 to 29.1.1 measured; 20.0.3 and
     // 30.1.2 do not) an element's computed style, once read, is kept until
     // the document's own tree changes (a node inserted or removed, an
