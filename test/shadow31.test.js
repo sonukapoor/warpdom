@@ -133,4 +133,26 @@ for (const jsdom of [30, 31]) {
     },
     { jsdom },
   );
+
+  parity(
+    `jsdom ${jsdom}: a sheetless shadow tree after a document rule edit, and @scope through slots (#340 review)`,
+    (w) => {
+      const d = w.document;
+      const cs = (e, p) => w.getComputedStyle(e).getPropertyValue(p);
+      d.head.innerHTML =
+        '<style>#host { font-size: 20px } @scope (#sc) to (.stop) { span { margin-top: 7px } } @scope (.stop) { span { padding-top: 3px } }</style>';
+      d.body.innerHTML = '<div id=host></div><div id=sc><span id=ls>l</span></div>';
+      const host = d.getElementById('host');
+      host.attachShadow({ mode: 'open' }).innerHTML = '<b id=b>b</b>';
+      const b = host.shadowRoot.getElementById('b');
+      const out = [cs(b, 'font-size')];
+      d.styleSheets[0].cssRules[0].style.fontSize = '33px';
+      out.push(cs(host, 'font-size'), cs(b, 'font-size'));
+      d.getElementById('sc').attachShadow({ mode: 'open' }).innerHTML = '<div class=stop><slot></slot></div>';
+      const ls = d.getElementById('ls');
+      out.push(cs(ls, 'margin-top'), cs(ls, 'padding-top'));
+      return out;
+    },
+    { jsdom },
+  );
 }

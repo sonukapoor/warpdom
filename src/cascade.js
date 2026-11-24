@@ -389,7 +389,7 @@ function scopedMatch(match, scope) {
     // (checks of the enclosing scopes kept for this match only: nested
     // scopes would repeat them, exponentially)
     const memo = scope.outer === null ? null : new Map();
-    for (let root = el; root !== null; root = inheritParent(root), hops++) {
+    for (let root = el; root !== null; root = scopeParent(root), hops++) {
       if (!scopeHas(scope, root, el, memo)) continue;
       if (match(el, { scope: root })) {
         proximity31 = hops;
@@ -406,7 +406,7 @@ function scopeHas(scope, root, el, memo) {
   if (scope.end !== null && limited(scope.end, root, el, { scope: root })) return false;
   if (scope.outer === null) return startMatches(scope, root, NO_SCOPE);
   // (a nested scope's start is matched with :scope the enclosing root)
-  for (let outer = root; outer !== null; outer = inheritParent(outer)) {
+  for (let outer = root; outer !== null; outer = scopeParent(outer)) {
     if (!outerHas(scope.outer, outer, root, memo) || !startMatches(scope, root, { scope: outer })) continue;
     if (el === root || outerHas(scope.outer, outer, el, memo)) return true;
   }
@@ -425,8 +425,15 @@ function outerHas(scope, root, el, memo) {
 }
 // Whether an element is at or past a scope's limit from a root.
 function limited(end, root, el, ctx) {
-  for (let e = el; e !== null && e !== root; e = inheritParent(e)) if (end.some((s) => s.match(e, ctx))) return true;
+  for (let e = el; e !== null && e !== root; e = scopeParent(e)) if (end.some((s) => s.match(e, ctx))) return true;
   return false;
+}
+// A scope's roots and limits are DOM ancestors in the element's own tree,
+// not the flat tree's (jsdom 31, black box: a slot is not a slotted
+// element's scope root or limit, #340 review).
+function scopeParent(element) {
+  const p = element[S].parent;
+  return p !== null && p[S].type === ELEMENT_NODE ? p : null;
 }
 
 // --- jsdom 31: pseudo-elements ------------------------------------------------------
@@ -1023,6 +1030,10 @@ function sheetIndex(holder, ds, root, doc) {
   let index = EMPTY;
   if (reuse) index = cached.index;
   else if (sheets.length) index = buildIndex(sheets, validationModeOf(ds.window), ds.window[S].compat, lists, doc);
+  // (a tree without sheets rebuilt after a CSSOM edit elsewhere: a new
+  // identity, so its elements' cascade caches, which compare the index, do
+  // not keep values inherited before the edit; #340 review)
+  else if (cached) index = new Map();
   holder.cascade = { doc, treeRev, styleRev, cssomRev: cssomChanges.rev, sheets: sheets.slice(), index, lists };
   return index;
 }

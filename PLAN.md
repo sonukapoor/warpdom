@@ -8582,4 +8582,9 @@ not a slot; a host moved into another document (an iframe's) marks that
 document as having shadow roots (internal.js adoptTree), and a shadow
 root's sheet list and rule index are kept per document (the one it is in
 when read).
+Second review round: a shadow tree without sheets gets a new empty
+index when rebuilt after a CSSOM edit, so its elements' cascade caches
+drop values inherited before the edit; @scope roots and limits walk DOM
+ancestors (scopeParent), not the flat tree, as in jsdom 31 (a slot is
+not a slotted element's limit).
 Next: S2 (:host, ::slotted()), S3 (adoptedStyleSheets), then F.
