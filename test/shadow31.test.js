@@ -3,7 +3,11 @@
 // inheritance follows the flat tree (a shadow tree's top from its host, a
 // slotted element from its slot). jsdom 30 applies every sheet everywhere
 // and inherits through the DOM tree; the same scenarios run on both.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
 import { parity } from './parity.js';
+import { createWindow } from '../src/node.js';
+import { S } from '../src/internal.js';
 
 const tree = (w) => {
   const d = w.document;
@@ -209,3 +213,24 @@ for (const jsdom of [30, 31]) {
     { jsdom },
   );
 }
+
+// A host moved into another document whose counters match the ones its
+// shadow child's values were cached with (padded here through internals):
+// the values are the new document's (#340 review).
+test("jsdom 31: a moved host's shadow child, with the counters of both documents equal", () => {
+  const w = createWindow({ jsdom: '31.0.1' });
+  const d = w.document;
+  d.body.innerHTML = '<main style="font-size: 20px"><div id=host></div></main><iframe></iframe>';
+  const fw = d.querySelector('iframe').contentWindow;
+  const fd = fw.document;
+  fd.body.innerHTML = '<main style="font-size: 40px"></main>';
+  const host = d.getElementById('host');
+  host.attachShadow({ mode: 'open' }).innerHTML = '<b>b</b>';
+  const b = host.shadowRoot.firstChild;
+  assert.equal(w.getComputedStyle(b).fontSize, '20px');
+  const cached = b[S].cascaded.rev;
+  while ((fd[S].treeRev ?? 0) + 1 < cached) fd.body.appendChild(fd.createComment(''));
+  fd.querySelector('main').appendChild(host);
+  assert.equal(fd[S].treeRev, cached);
+  assert.equal(fw.getComputedStyle(b).fontSize, '40px');
+});

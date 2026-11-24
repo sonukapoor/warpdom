@@ -1550,6 +1550,8 @@ function cascadeCache(element) {
   const inlineMap = inlineDeclarations(element);
   if (
     !cache ||
+    // (moved to another document: its counters say nothing about these)
+    cache.doc !== ds ||
     cache.index !== index ||
     cache.outerRev !== outerRev ||
     cache.rev !== rev ||

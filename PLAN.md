@@ -8596,4 +8596,7 @@ profile 99.4 ms before, 97.1 after; jsdom 31 218.7 and 217.5; a first
 version with three fields was 2-3% slower); @scope roots and limits walk DOM
 ancestors (scopeParent), not the flat tree, as in jsdom 31 (a slot is
 not a slotted element's limit).
+An element's connected cascade cache also compares its document (as
+the detached one did): a host moved into a document whose counters
+match keeps no values from the old one.
 Next: S2 (:host, ::slotted()), S3 (adoptedStyleSheets), then F.
