@@ -628,51 +628,61 @@ const rangePart = (name, offset, drop) => {
 };
 // (one layer: offsets attach to a range name before them, never to
 // normal, which is a whole range: normal 80% is normal and 80%)
-function rangeLayer(layer) {
+// (normal, and auto in timeline-trigger-active-range, are whole ranges:
+// no offset attaches to them, and alone they are the end too)
+const WHOLE_RANGES = new Set(['normal', 'auto']);
+// (whole: the end after a start without a range name, normal; auto in
+// timeline-trigger-active-range: 20% is 20% auto there)
+function rangeLayer(layer, whole) {
   const groups = [];
   for (const token of words(layer)) {
     const isOffset = isLength(token) || isMath(token);
     const last = groups[groups.length - 1];
-    if (isOffset && last !== undefined && last.offset === null && last.name !== null && last.name !== 'normal')
+    if (isOffset && last !== undefined && last.offset === null && last.name !== null && !WHOLE_RANGES.has(last.name))
       last.offset = token;
     else groups.push(isOffset ? { name: null, offset: token } : { name: lower(token), offset: null });
   }
   if (groups.length === 0 || groups.length > 2) return null;
   const [start, end] = groups;
-  const part = (group, drop) => (group.name === 'normal' ? 'normal' : rangePart(group.name, group.offset, drop));
-  const startName = start.name === 'normal' ? null : start.name;
-  return [part(start, '0%'), end === undefined ? (startName ?? 'normal') : part(end, '100%')];
+  const part = (group, drop) => (WHOLE_RANGES.has(group.name) ? group.name : rangePart(group.name, group.offset, drop));
+  return [part(start, '0%'), end === undefined ? (start.name ?? whole) : part(end, '100%')];
 }
-EXPANDERS31['animation-range'] = (value) => {
+const expandRanges = (whole) => (value) => {
   const starts = [];
   const ends = [];
   for (const layer of layersOf(value)) {
-    const range = rangeLayer(layer);
+    const range = rangeLayer(layer, whole);
     if (range === null) return null;
     starts.push(range[0]);
     ends.push(range[1]);
   }
   return [starts.join(', '), ends.join(', ')];
 };
+EXPANDERS31['animation-range'] = expandRanges('normal');
 // (the end left out when it is the start's range name alone)
 // (layer by layer; lists of different lengths are left as longhands. The
 // end left out when it is the start's range name alone, or normal after
 // a start without one; 20% 20% stays.)
-COMPOSERS31['animation-range'] = ([start, end]) => {
-  const starts = layersOf(start);
-  const ends = layersOf(end);
-  if (starts.length !== ends.length) return '';
-  const strip = (part, drop) => (part.endsWith(` ${drop}`) ? part.slice(0, -drop.length - 1) : part);
-  return starts
-    .map((startPart, i) => {
-      const s = strip(startPart, '0%');
-      const e = strip(ends[i], '100%');
-      const first = words(s)[0];
-      const named = !isLength(first) && !isMath(first);
-      return (named && e === first) || (!named && e === 'normal') ? s : `${s} ${e}`;
-    })
-    .join(', ');
-};
+// (whole: the end left out after a start without a range name, normal,
+// auto for timeline-trigger-active-range: 20% auto is 20%)
+const composeRanges =
+  (whole) =>
+  ([start, end]) => {
+    const starts = layersOf(start);
+    const ends = layersOf(end);
+    if (starts.length !== ends.length) return '';
+    const strip = (part, drop) => (part.endsWith(` ${drop}`) ? part.slice(0, -drop.length - 1) : part);
+    return starts
+      .map((startPart, i) => {
+        const s = strip(startPart, '0%');
+        const e = strip(ends[i], '100%');
+        const first = words(s)[0];
+        const named = !isLength(first) && !isMath(first);
+        return (named && e === first) || (!named && e === whole) ? s : `${s} ${e}`;
+      })
+      .join(', ');
+  };
+COMPOSERS31['animation-range'] = composeRanges('normal');
 
 // --- container: name, type ---------------------------------------------------------
 
@@ -1040,3 +1050,278 @@ COMPOSERS31.mask = (values) => {
   }
   return layers.join(', ');
 };
+
+// --- gap rules (CSS Gaps 1): rule, row-rule and their parts ------------------------
+
+// (rule: row and column alike, as border-block's start and end; a pair
+// of row and column longhands written only while they are equal)
+EXPANDERS31['row-rule'] = border;
+COMPOSERS31['row-rule'] = omitting(BORDER_INITIALS);
+EXPANDERS31.rule = EXPANDERS31['border-block'];
+COMPOSERS31.rule = COMPOSERS31['border-block'];
+const both = (value) => [value, value];
+for (const part of ['width', 'style', 'color', 'break', 'visibility-items']) {
+  EXPANDERS31[`rule-${part}`] = (value) => both(part === 'width' || part === 'color' ? value : lower(value));
+  COMPOSERS31[`rule-${part}`] = same;
+}
+// (insets: a start and an end, the end the start when left out; a
+// rule-inset-cap or -junction for rows and columns alike)
+const startEnd = (value) => {
+  const [start, end = start, ...rest] = words(value);
+  return rest.length > 0 ? null : [start, end];
+};
+const pairOf = ([a, b]) => (a === b ? a : `${a} ${b}`);
+for (const kind of ['cap', 'junction']) {
+  for (const axis of ['row', 'column']) {
+    EXPANDERS31[`${axis}-rule-inset-${kind}`] = startEnd;
+    COMPOSERS31[`${axis}-rule-inset-${kind}`] = pairOf;
+  }
+  // (row start, column start, row end, column end)
+  EXPANDERS31[`rule-inset-${kind}`] = (value) => {
+    const pair = startEnd(value);
+    return pair === null ? null : [pair[0], pair[0], pair[1], pair[1]];
+  };
+  COMPOSERS31[`rule-inset-${kind}`] = ([rs, cs, re, ce]) => (rs === cs && re === ce ? pairOf([rs, re]) : '');
+}
+// (the caps, then / and the junctions, the caps when left out; written
+// as one value when all four are equal, else in full: 5px / 10px is 5px
+// 5px / 10px 10px)
+function insets(value) {
+  const [caps, junctions = caps, ...rest] = slashed(value);
+  const cap = startEnd(caps);
+  const junction = startEnd(junctions);
+  return rest.length > 0 || cap === null || junction === null ? null : [...cap, ...junction];
+}
+const composeInsets = ([cs, ce, js, je]) => (cs === ce && ce === js && js === je ? cs : `${cs} ${ce} / ${js} ${je}`);
+for (const axis of ['row', 'column']) {
+  EXPANDERS31[`${axis}-rule-inset`] = insets;
+  COMPOSERS31[`${axis}-rule-inset`] = composeInsets;
+}
+EXPANDERS31['rule-inset'] = (value) => {
+  const four = insets(value);
+  return four === null ? null : four.flatMap(both);
+};
+COMPOSERS31['rule-inset'] = (v) => {
+  for (let i = 0; i < 8; i += 2) if (v[i] !== v[i + 1]) return '';
+  return composeInsets([v[0], v[2], v[4], v[6]]);
+};
+
+// --- pairs and triples of one value ----------------------------------------------
+
+// (contain-intrinsic-size: a width and a height, each none, a length or
+// auto with one; the height the width when left out)
+EXPANDERS31['contain-intrinsic-size'] = (value) => {
+  const sizes = [];
+  let pending = '';
+  for (const token of words(value)) {
+    if (lower(token) === 'auto') pending = 'auto ';
+    else {
+      sizes.push(pending + (lower(token) === 'none' ? 'none' : token));
+      pending = '';
+    }
+  }
+  if (pending !== '' || sizes.length === 0 || sizes.length > 2) return null;
+  return [sizes[0], sizes[1] ?? sizes[0]];
+};
+COMPOSERS31['contain-intrinsic-size'] = pairOf;
+// (interest-delay: start and end, the end the start when left out)
+EXPANDERS31['interest-delay'] = (value) => startEnd(lower(value) === 'normal' ? 'normal' : value);
+COMPOSERS31['interest-delay'] = pairOf;
+// (animation-delay: per layer a start and an end, 0s when left out)
+EXPANDERS31['animation-delay'] = (value) => {
+  const starts = [];
+  const ends = [];
+  for (const layer of layersOf(value)) {
+    const [start, end = '0s', ...rest] = words(layer);
+    if (start === undefined || rest.length > 0) return null;
+    starts.push(start);
+    ends.push(end);
+  }
+  return [starts.join(', '), ends.join(', ')];
+};
+COMPOSERS31['animation-delay'] = ([starts, ends]) => {
+  const s = layersOf(starts);
+  const e = layersOf(ends);
+  if (s.length !== e.length) return '';
+  return s.map((start, i) => (e[i] === '0s' ? start : `${start} ${e[i]}`)).join(', ');
+};
+EXPANDERS31.marker = (value) => [value, value, value];
+COMPOSERS31.marker = same;
+for (const axis of ['block', 'inline']) {
+  EXPANDERS31[`border-${axis}-clip`] = (value) => both(value);
+  COMPOSERS31[`border-${axis}-clip`] = same;
+}
+
+// --- scroll-timeline, view-timeline, position-try --------------------------------
+
+// (per layer a name, then an axis, block when left out; view-timeline's
+// inset after it, auto when left out; written without them)
+const AXES = new Set(['block', 'inline', 'x', 'y']);
+function timeline(withInset) {
+  return (value) => {
+    const names = [];
+    const axes = [];
+    const insetList = [];
+    for (const layer of layersOf(value)) {
+      const [name, ...rest] = words(layer);
+      if (name === undefined) return null;
+      // (the axis before or after the inset: --a 10px x is --a x 10px)
+      let axis = 'block';
+      const at = rest.findIndex((t) => AXES.has(lower(t)));
+      if (at !== -1) axis = lower(rest.splice(at, 1)[0]);
+      if (!withInset && rest.length > 0) return null;
+      names.push(lower(name) === 'none' ? 'none' : name);
+      axes.push(axis);
+      insetList.push(rest.length === 0 ? 'auto' : rest.join(' '));
+    }
+    const out = [names.join(', '), axes.join(', ')];
+    return withInset ? [...out, insetList.join(', ')] : out;
+  };
+}
+function composeTimeline([names, axes, insetList]) {
+  const n = layersOf(names);
+  const a = layersOf(axes);
+  const ins = insetList === undefined ? null : layersOf(insetList);
+  if (a.length !== n.length || (ins !== null && ins.length !== n.length)) return '';
+  return n
+    .map((name, i) => {
+      let out = name;
+      if (a[i] !== 'block') out = `${out} ${a[i]}`;
+      if (ins !== null && ins[i] !== 'auto') out = `${out} ${ins[i]}`;
+      return out;
+    })
+    .join(', ');
+}
+EXPANDERS31['scroll-timeline'] = timeline(false);
+COMPOSERS31['scroll-timeline'] = composeTimeline;
+EXPANDERS31['view-timeline'] = timeline(true);
+COMPOSERS31['view-timeline'] = composeTimeline;
+// (position-try: an order, normal when left out, then the fallbacks)
+const TRY_ORDERS = new Set(['normal', 'most-width', 'most-height', 'most-block-size', 'most-inline-size']);
+EXPANDERS31['position-try'] = (value) => {
+  const tokens = words(value);
+  const order = tokens.length > 1 && TRY_ORDERS.has(lower(tokens[0])) ? lower(tokens[0]) : 'normal';
+  const fallbacks =
+    order === 'normal' && !TRY_ORDERS.has(lower(tokens[0])) ? value : value.trim().slice(tokens[0].length).trim();
+  return [order, lower(fallbacks) === 'none' ? 'none' : fallbacks];
+};
+COMPOSERS31['position-try'] = ([order, fallbacks]) => (order === 'normal' ? fallbacks : `${order} ${fallbacks}`);
+
+// --- mask-border: source, slice, width, outset, repeat, mode -------------------
+
+// (as border-image, with a mode; slice 0, width auto and outset 0 when
+// left out)
+const MASK_BORDER_REPEATS = new Set(['stretch', 'repeat', 'round', 'space']);
+EXPANDERS31['mask-border'] = (value) => {
+  const [main, ...after] = slashed(value);
+  if (after.length > 2) return null;
+  // (after a slash: the width or outset's lengths, numbers and auto; the
+  // words after them are the value's other parts, round luminance)
+  const tail = [];
+  const sizes = after.map((part, i) => {
+    const tokens = words(part);
+    // (an empty width before the outset: 30 / / 5px)
+    if (tokens.length === 0) return i < after.length - 1 ? '' : null;
+    let n = 0;
+    while (
+      n < tokens.length &&
+      n < 4 &&
+      (isLength(tokens[n]) || isNumber(tokens[n]) || isMath(tokens[n]) || lower(tokens[n]) === 'auto')
+    )
+      n++;
+    if (i < after.length - 1 && n < tokens.length) n = -1;
+    tail.push(...tokens.slice(Math.max(n, 0)));
+    return n <= 0 ? null : tokens.slice(0, n).join(' ');
+  });
+  if (sizes.includes(null)) return null;
+  const [width = '', outset = ''] = sizes;
+  let source = 'none';
+  const slice = [];
+  const repeat = [];
+  let mode = 'alpha';
+  for (const token of [...words(main), ...tail]) {
+    const t = lower(token);
+    if (t === 'alpha' || t === 'luminance') mode = t;
+    else if (MASK_BORDER_REPEATS.has(t)) repeat.push(t);
+    else if (t === 'fill' || isNumber(token) || /%$/.test(token) || isMath(token)) slice.push(t === 'fill' ? t : token);
+    else if (source === 'none') source = t === 'none' ? t : token;
+    else return null;
+  }
+  return [source, slice.join(' ') || '0', width || 'auto', outset || '0', repeat.join(' ') || 'stretch', mode];
+};
+COMPOSERS31['mask-border'] = ([source, slice, width, outset, repeat, mode]) => {
+  let out = source;
+  if (slice !== '0' || width !== 'auto' || outset !== '0') out = `${out} ${slice}`;
+  if (width !== 'auto') out = `${out} / ${width}`;
+  if (outset !== '0') out = width === 'auto' ? `${out} / / ${outset}` : `${out} / ${outset}`;
+  if (repeat !== 'stretch') out = `${out} ${repeat}`;
+  if (mode !== 'alpha') out = `${out} ${mode}`;
+  return out;
+};
+
+// --- text-spacing, text-decoration-skip ------------------------------------------
+
+// (text-spacing: normal, none (space-all no-autospace) or auto as both;
+// else the trim keywords and the autospace ones)
+const TRIM_SPACINGS = new Set([
+  'space-all',
+  'trim-all',
+  'trim-start',
+  'space-start',
+  'trim-both',
+  'trim-end',
+  'space-end',
+  'allow-end',
+  'space-first',
+  'trim-adjacent',
+  'trim-auto',
+]);
+EXPANDERS31['text-spacing'] = (value) => {
+  const tokens = words(lower(value));
+  if (tokens.length === 1 && tokens[0] === 'normal') return ['normal', 'normal'];
+  if (tokens.length === 1 && tokens[0] === 'none') return ['space-all', 'no-autospace'];
+  if (tokens.length === 1 && tokens[0] === 'auto') return ['auto', 'auto'];
+  const trim = tokens.filter((t) => TRIM_SPACINGS.has(t));
+  const autospace = tokens.filter((t) => !TRIM_SPACINGS.has(t));
+  return [trim.join(' ') || 'normal', autospace.join(' ') || 'normal'];
+};
+COMPOSERS31['text-spacing'] = ([trim, autospace]) => {
+  if (trim === autospace && (trim === 'normal' || trim === 'auto')) return trim;
+  // (auto only as both: normal / auto, trim-start / auto are not written)
+  if (trim === 'auto' || autospace === 'auto') return '';
+  if (trim === 'space-all' && autospace === 'no-autospace') return 'none';
+  if (autospace === 'normal') return trim;
+  return trim === 'normal' ? autospace : `${trim} ${autospace}`;
+};
+// (text-decoration-skip: none and auto only)
+const SKIP_NONE = ['no-skip', 'none', 'none', 'none'];
+const SKIP_AUTO = ['auto', 'none', 'start end', 'auto'];
+EXPANDERS31['text-decoration-skip'] = (value) => {
+  const t = lower(value.trim());
+  if (t === 'none') return SKIP_NONE;
+  return t === 'auto' ? SKIP_AUTO : null;
+};
+COMPOSERS31['text-decoration-skip'] = (values) => {
+  if (values.every((v, i) => v === SKIP_NONE[i])) return 'none';
+  return values.every((v, i) => v === SKIP_AUTO[i]) ? 'auto' : '';
+};
+
+// (rule-inset-start and -end, and their row and column ones: one value
+// for the cap and the junction, written while they are equal)
+for (const edge of ['start', 'end']) {
+  for (const prefix of ['rule', 'row-rule', 'column-rule']) {
+    EXPANDERS31[`${prefix}-inset-${edge}`] = (value) => {
+      if (words(value).length !== 1) return null;
+      return prefix === 'rule' ? [value, value, value, value] : [value, value];
+    };
+    COMPOSERS31[`${prefix}-inset-${edge}`] = same;
+  }
+}
+
+// (timeline-trigger's ranges: as animation-range, layer by layer: a
+// start and an end, each a range name with an offset, an offset, normal
+// or auto; the end the start's name when left out)
+EXPANDERS31['timeline-trigger-activation-range'] = expandRanges('normal');
+COMPOSERS31['timeline-trigger-activation-range'] = composeRanges('normal');
+EXPANDERS31['timeline-trigger-active-range'] = expandRanges('auto');
+COMPOSERS31['timeline-trigger-active-range'] = composeRanges('auto');

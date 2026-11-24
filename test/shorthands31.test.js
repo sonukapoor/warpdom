@@ -234,6 +234,57 @@ const CASES = {
     'url(a.png) padding-box no-clip',
     'url(a.png) repeat-y round',
   ],
+  rule: ['1px solid red', 'none', 'red', 'thick dashed'],
+  'row-rule': ['1px solid red', 'currentcolor'],
+  'rule-width': ['1px', 'thin'],
+  'rule-style': ['solid'],
+  'rule-color': ['red'],
+  'rule-break': ['intersection', 'none'],
+  'rule-visibility-items': ['between', 'all'],
+  'rule-inset': ['5px', '5px 10px', '5px / 10px', '5px 10px / 1px 2px'],
+  'rule-inset-cap': ['5px', '5px 10px'],
+  'rule-inset-junction': ['5px', '5px 10px'],
+  'column-rule-inset': ['5px', '5px 10px', '5px / 10px'],
+  'column-rule-inset-cap': ['5px', '5px 10px'],
+  'row-rule-inset-junction': ['5px', '5px 10px'],
+  'rule-inset-start': ['5px'],
+  'column-rule-inset-end': ['5px'],
+  'timeline-trigger-activation-range': [
+    'entry',
+    'cover 10% contain 90%',
+    'normal',
+    '10% 20%',
+    'normal 10%',
+    '10% 20%, 30% 40%',
+    'entry, exit 10%',
+  ],
+  'timeline-trigger-active-range': ['auto', 'entry', 'auto 20%', 'auto, entry', '20% auto', '20%', '20% normal'],
+  'contain-intrinsic-size': ['10px', '10px 20px', 'auto 10px', 'auto 10px auto 20px', 'none'],
+  'animation-delay': ['1s', '1s 2s', '1s, 2s 3s'],
+  marker: ['none', 'url(#m)'],
+  'interest-delay': ['1s', '1s 2s', 'normal'],
+  'border-block-clip': ['none'],
+  'scroll-timeline': ['--a', '--a x', 'none block', '--a, --b inline'],
+  'view-timeline': [
+    '--a',
+    '--a x 10px',
+    '--a auto 10px',
+    '--a 5px',
+    '--a 10px x',
+    '--a 10px 20px inline',
+    '--a x auto',
+  ],
+  'position-try': ['--a', 'most-width --a, --b', 'none', 'normal --a'],
+  'mask-border': [
+    'url(a.png) 30',
+    'none',
+    'url(a.png) 30 / 10px round luminance',
+    'url(a.png) 30 fill / 10px / 2px round space',
+    'url(a.png) 30 / / 5px',
+    'linear-gradient(red, blue) 10% 20% luminance',
+  ],
+  'text-spacing': ['normal', 'none', 'trim-start no-autospace', 'auto', 'space-all'],
+  'text-decoration-skip': ['none', 'auto'],
   'column-rule': ['1px solid red', 'currentcolor', 'none', 'thick', 'medium none currentcolor'],
   transition: [
     'opacity 1s',
@@ -599,6 +650,43 @@ parity(
       p.removeAttribute('style');
       p.style.setProperty(name, value);
       return [name, value, p.style.getPropertyValue(name), w.getComputedStyle(p).getPropertyValue(name)];
+    });
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: text-spacing is written with auto only as both longhands (#339 review)',
+  (w) => {
+    const p = w.document.body.appendChild(w.document.createElement('p'));
+    return [
+      ['normal', 'auto'],
+      ['auto', 'normal'],
+      ['space-all', 'normal'],
+      ['normal', 'no-autospace'],
+      ['auto', 'no-autospace'],
+      ['trim-start', 'auto'],
+      ['space-all', 'auto'],
+      ['auto', 'auto'],
+    ].map(([trim, autospace]) => {
+      p.removeAttribute('style');
+      p.style.setProperty('text-spacing-trim', trim);
+      p.style.setProperty('text-autospace', autospace);
+      return [trim, autospace, p.style.getPropertyValue('text-spacing'), p.style.cssText];
+    });
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31: timeline-trigger-active-range round-trips through cssText (#339 review)',
+  (w) => {
+    const p = w.document.body.appendChild(w.document.createElement('p'));
+    const q = w.document.body.appendChild(w.document.createElement('p'));
+    return ['20%', '20% auto', '20% normal', 'entry 10%', 'auto'].map((value) => {
+      p.setAttribute('style', `timeline-trigger-active-range: ${value}`);
+      q.style.cssText = p.style.cssText;
+      return [value, p.style.cssText, q.style.getPropertyValue('timeline-trigger-active-range-end')];
     });
   },
   { jsdom: 31 },
