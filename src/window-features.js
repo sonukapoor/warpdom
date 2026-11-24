@@ -23,7 +23,7 @@ import {
 import { dispatch, reportError } from './events.js';
 import { computedStyle, cssNamespace, supportsDeclarationOf } from './css.js';
 import { pseudoName31, pseudoNode31 } from './cascade.js';
-import { compile } from './selectors.js';
+import { compile, compileRuleSelector } from './selectors.js';
 import { QuotaExceededError } from './storage.js';
 import { navigate, traverse } from './navigation.js';
 import { VERSION } from './version.js';
@@ -2177,7 +2177,10 @@ export function setupWindow(window, { url: initial = 'about:blank', fastFrames =
     value: cssNamespace(
       (selector) => {
         try {
-          compile(selector);
+          // (jsdom 31: as its cascade reads a shadow tree's rules,
+          // :host-context() too; #342 review)
+          if (ws.compat.jsdom >= 31) compileRuleSelector(selector, true);
+          else compile(selector);
           return true;
         } catch {
           return false;

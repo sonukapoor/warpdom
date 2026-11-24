@@ -281,4 +281,32 @@ for (const jsdom of [30, 31]) {
     },
     { jsdom },
   );
+
+  parity(
+    `jsdom ${jsdom}: @supports selector() and CSS.supports() with :host-context() (#342 review)`,
+    (w) => {
+      const d = w.document;
+      d.body.innerHTML = '<div id=h class=a><i>i</i></div>';
+      const host = d.getElementById('h');
+      host.attachShadow({ mode: 'open' }).innerHTML =
+        '<style>@supports selector(:host-context(.a)) { :host { margin-top: 1px } } @supports selector(:host) { :host { margin-left: 1px } } @supports not selector(:host-context(.a)) { :host { padding-top: 1px } } @supports selector(::slotted(i)) { ::slotted(i) { margin-top: 2px } }</style><slot></slot>';
+      const cs = (e, p) => w.getComputedStyle(e).getPropertyValue(p);
+      const out = [
+        cs(host, 'margin-top'),
+        cs(host, 'margin-left'),
+        cs(host, 'padding-top'),
+        cs(host.firstChild, 'margin-top'),
+      ];
+      // (jsdom 30's CSS.supports() knows none of these; warpdom's jsdom 30
+      // profile takes :host, :host() and ::slotted(), as on main)
+      if (jsdom === 31)
+        out.push(
+          ...['selector(:host-context(.a))', 'selector(:host)', 'selector(:host(.a))', 'selector(::slotted(i))'].map(
+            (t) => w.CSS.supports(t),
+          ),
+        );
+      return out;
+    },
+    { jsdom },
+  );
 }

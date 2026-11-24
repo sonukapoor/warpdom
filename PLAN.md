@@ -8670,4 +8670,11 @@ after its sheet changed, until the host was read again. Found, not
 changed (also on main): jsdom 30.1.3 resolves light-dark() in a computed
 color to its first color; warpdom's jsdom 30 profile leaves it as
 written.
+Fourth round (2026-11-24): in jsdom 31, @supports selector() and
+CSS.supports() read a selector as its cascade does (compileRuleSelector
+with host scoping), so selector(:host-context(.a)) holds and a shadow
+tree's guarded rules apply. Found, not changed (also on main):
+selector(:is(::slotted(i))) is true in warpdom, false in jsdom 31; jsdom
+30's CSS.supports() rejects :host, :host() and ::slotted(), warpdom's
+jsdom 30 profile takes them.
 Next: S3 (adoptedStyleSheets), then F.

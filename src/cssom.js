@@ -1244,9 +1244,11 @@ export function supportsMatches(rule) {
   if (s.supports31 === null || s.supports31 === undefined) return supportsRuleMatches(s.conditionText);
   return supportsHold31(s.supports31, supportsDeclarationOf(s.protos), selectorKnown);
 }
+// (jsdom 31: as its cascade reads a shadow tree's rules, :host-context()
+// too; #342 review)
 function selectorKnown(text) {
   try {
-    compileRuleSelector(text);
+    compileRuleSelector(text, true);
     return true;
   } catch {
     return false;
