@@ -8652,4 +8652,15 @@ the element has a flow of its own (ownFlow: :host { direction: rtl }
 maps margin-inline-start to the right); each context has a level of its
 own (1.5 - i/1000, 5.5 + i/1000), so that a logical property and its
 physical one meet by context first (pair31).
+Second round (2026-11-24, jsdom 31.0.1 black box): ::slotted(:host),
+::slotted(:host-context(body)) and ::slotted(:host(i)) style nothing
+(none of the slotted elements is featureless); ::slotted() in :is() is a
+pseudo-element like ::before there, dropped from the forgiving list with
+no specificity. The parser reads ::slotted() as its own kind only in
+jsdom 31's cascade and at a list's top level, so jsdom 30 and the DOM API
+read selectors as on main. (jsdom 30 counts ::slotted(#x) in :is() in
+specificity; not modeled, as before.) Not changed: @scope (#w) {
+::slotted(i) { ... } } styles nothing in jsdom 31, which warpdom gives
+already (the rule goes to the ordinary index, where ::slotted() matches
+no element).
 Next: S3 (adoptedStyleSheets), then F.

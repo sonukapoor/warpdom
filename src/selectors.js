@@ -39,6 +39,7 @@ class Parser {
   constructor(text) {
     this.text = preprocess(text);
     this.i = 0;
+    this.depth = 0; // selector lists open: 1 at the top level
   }
 
   peek(offset = 0) {
@@ -122,11 +123,16 @@ class Parser {
   // selector-list := complex ( ',' complex )*
   list(relative = false) {
     const items = [];
-    do {
-      this.skipWs();
-      items.push(this.complex(relative));
-      this.skipWs();
-    } while (this.peek() === ',' && ++this.i);
+    this.depth++;
+    try {
+      do {
+        this.skipWs();
+        items.push(this.complex(relative));
+        this.skipWs();
+      } while (this.peek() === ',' && ++this.i);
+    } finally {
+      this.depth--;
+    }
     return items;
   }
 
@@ -203,9 +209,14 @@ class Parser {
           this.i++;
           const name = this.ident();
           if (name === null) this.fail();
-          // (::slotted(<compound>): the cascade's, in a shadow tree's
-          // rules, shadowRule; no element matches it here either)
-          const slotted = name.toLowerCase() === 'slotted' && this.peek() === '(' ? this.slotted() : null;
+          // (::slotted(<compound>): jsdom 31's cascade's, in a shadow
+          // tree's rules, shadowRule; no element matches it here either.
+          // In a pseudo-class's argument, and before jsdom 31, it is a
+          // pseudo-element like the others: no specificity, #342 review.)
+          const slotted =
+            hostScoping && this.depth === 1 && name.toLowerCase() === 'slotted' && this.peek() === '('
+              ? this.slotted()
+              : null;
           if (slotted !== null) tests.push(slotted);
           else {
             if (this.peek() === '(') this.skipBalanced();
@@ -269,20 +280,25 @@ class Parser {
   // A forgiving selector list (:is, :where): an invalid item is dropped.
   forgivingList() {
     const items = [];
-    for (;;) {
-      this.skipWs();
-      const start = this.i;
-      try {
-        const item = this.complex(false);
+    this.depth++;
+    try {
+      for (;;) {
         this.skipWs();
-        if (this.peek() !== ',' && this.peek() !== ')') this.fail();
-        items.push(item);
-      } catch {
-        this.i = start;
-        this.skipItem();
+        const start = this.i;
+        try {
+          const item = this.complex(false);
+          this.skipWs();
+          if (this.peek() !== ',' && this.peek() !== ')') this.fail();
+          items.push(item);
+        } catch {
+          this.i = start;
+          this.skipItem();
+        }
+        if (this.peek() !== ',') return items;
+        this.i++;
       }
-      if (this.peek() !== ',') return items;
-      this.i++;
+    } finally {
+      this.depth--;
     }
   }
 
@@ -1102,9 +1118,12 @@ function shadowRuleOf(text) {
   const at = last.tests.findIndex((t) => t.kind === 'slotted');
   if (at < 0 || at !== last.tests.length - 1) return null;
   const slotPart = { type: last.type, tests: last.tests.slice(0, at) };
+  // (an argument of :host or :host-context() alone: no element is
+  // featureless, #342 review)
+  const arg = last.tests[at].arg;
   return {
     kind: 'slotted',
-    match: compileCompound(last.tests[at].arg),
+    match: arg.tests.some(isHostTest) ? () => false : compileCompound(arg),
     slot: compileComplex({ ...complex, parts: [...parts.slice(0, -1), slotPart] }),
     specificity,
   };

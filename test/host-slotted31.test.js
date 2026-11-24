@@ -130,6 +130,17 @@ const CASES = [
     'margin-top margin-left',
   ],
   ['', ':host { display: inline-block } ::slotted(b) { display: block }', '<b>b</b>', 'host', 'display'],
+  // (#342 review) host-only arguments of ::slotted() match no element; a
+  // ::slotted() in :is() is a pseudo-element there, with no specificity
+  [
+    '',
+    '::slotted(:host) { margin-top: 9px } ::slotted(:host-context(body)) { margin-left: 9px } ::slotted(:host(i)) { margin-right: 9px }',
+    '<i>x</i>',
+    'i',
+    'margin-top margin-left margin-right',
+  ],
+  [':is(.a, ::slotted(#x)) { margin-top: 1px } .a.a { margin-top: 2px }', '', '', 'host', 'margin-top'],
+  ['', '@scope (#w) { ::slotted(i) { margin-top: 1px } }', '<i>x</i>', 'i', 'margin-top'],
 ];
 
 const read = (w, [documentCss, shadowCss, light, which, properties]) => {
@@ -150,9 +161,10 @@ const read = (w, [documentCss, shadowCss, light, which, properties]) => {
 
 // (jsdom 30 matches some compounds of :host and other selectors, as it
 // applies the shadow tree's sheet to the document too: .a:host no,
-// :host(.a):host(div) yes; warpdom's jsdom 30 profile does not model
-// those, as before; jsdom 31 only)
-const JSDOM31_ONLY = new Set([11, 12]);
+// :host(.a):host(div) yes; and it counts ::slotted(#x) in :is() in
+// specificity; warpdom's jsdom 30 profile does not model those, as
+// before; jsdom 31 only)
+const JSDOM31_ONLY = new Set([11, 12, 32]);
 
 for (const jsdom of [30, 31]) {
   parity(
