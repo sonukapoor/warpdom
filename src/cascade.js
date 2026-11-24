@@ -2094,7 +2094,10 @@ function ownFlow(element, cache) {
     return FLOW_PROPERTIES.some((n) => cascaded(element, n) !== undefined);
   return cache.inline !== null && FLOW_NAMES.test(element[S].attrs.get('style'));
 }
-const declaresFlow = (index) => FLOW_PROPERTIES.some((name) => index.has(name));
+function declaresFlow(index) {
+  for (let i = 0; i < FLOW_PROPERTIES.length; i++) if (index.has(FLOW_PROPERTIES[i])) return true;
+  return false;
+}
 // A direction found from the element's text.
 function autoDirection(element) {
   if (!uaDirection(element)) return false;
