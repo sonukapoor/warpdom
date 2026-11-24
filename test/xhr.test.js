@@ -1528,8 +1528,26 @@ test('XMLHttpRequest tests: a test server does not share its port with another p
 // (20 inconclusive attempts): startServer() rejects without leaving a
 // listener open (one would keep node --test running).
 test('XMLHttpRequest tests: a test server whose loopback probe fails leaves no listener open', async () => {
-  const other = http.createServer((req, res) => res.end('other program'));
-  await new Promise((resolve) => other.listen(0, '127.0.0.1', resolve));
+  // The other program's port is one a listener on every address can take
+  // too: one in a few dozen on macOS is in use there (by another program,
+  // over IPv6), and startServer() would then move to another port with no
+  // probe at all.
+  let other;
+  for (let attempt = 0; ; attempt++) {
+    other = http.createServer((req, res) => res.end('other program'));
+    await new Promise((resolve) => other.listen(0, '127.0.0.1', resolve));
+    const wildcard = http.createServer();
+    const free = await new Promise((resolve) => {
+      wildcard.once('error', () => resolve(false));
+      wildcard.listen(other.address().port, () => resolve(true));
+    });
+    if (free) {
+      await new Promise((resolve) => wildcard.close(resolve));
+      break;
+    }
+    await new Promise((resolve) => other.close(resolve));
+    if (attempt === 20) assert.fail('no port free on every address beside 127.0.0.1');
+  }
   // A closed listener stays listed for a turn or two of the event loop.
   const listeners = async () => {
     for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve));
@@ -1542,7 +1560,15 @@ test('XMLHttpRequest tests: a test server whose loopback probe fails leaves no l
     throw new Error('probe failed');
   };
   try {
-    await assert.rejects(startServer({ port: other.address().port, probe }), /probe failed/);
+    // (a server that starts after all is closed: left open, it would keep
+    // node --test running)
+    await assert.rejects(
+      startServer({ port: other.address().port, probe }).then(async (srv) => {
+        await srv.close();
+        return srv;
+      }),
+      /probe failed/,
+    );
     assert.ok(probed);
     assert.equal(await listeners(), before);
   } finally {
