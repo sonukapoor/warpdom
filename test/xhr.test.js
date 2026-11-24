@@ -1528,8 +1528,27 @@ test('XMLHttpRequest tests: a test server does not share its port with another p
 // (20 inconclusive attempts): startServer() rejects without leaving a
 // listener open (one would keep node --test running).
 test('XMLHttpRequest tests: a test server whose loopback probe fails leaves no listener open', async () => {
-  const other = http.createServer((req, res) => res.end('other program'));
-  await new Promise((resolve) => other.listen(0, '127.0.0.1', resolve));
+  // The other program's port is, where the system lets a listener on every
+  // address share a port with a loopback one (macOS), one it can take: one
+  // in a few dozen is in use there (by another program, over IPv6), and
+  // startServer() would move to another port with no probe at all. Where it
+  // cannot (Linux), no port is: startServer() moves to a port of its own,
+  // where its loopback listener meets its own wildcard one and probes.
+  let other;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    other = http.createServer((req, res) => res.end('other program'));
+    await new Promise((resolve) => other.listen(0, '127.0.0.1', resolve));
+    const wildcard = http.createServer();
+    const free = await new Promise((resolve) => {
+      wildcard.once('error', () => resolve(false));
+      wildcard.listen(other.address().port, () => resolve(true));
+    });
+    if (free) {
+      await new Promise((resolve) => wildcard.close(resolve));
+      break;
+    }
+    if (attempt < 19) await new Promise((resolve) => other.close(resolve));
+  }
   // A closed listener stays listed for a turn or two of the event loop.
   const listeners = async () => {
     for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve));
@@ -1542,7 +1561,15 @@ test('XMLHttpRequest tests: a test server whose loopback probe fails leaves no l
     throw new Error('probe failed');
   };
   try {
-    await assert.rejects(startServer({ port: other.address().port, probe }), /probe failed/);
+    // (a server that starts after all is closed: left open, it would keep
+    // node --test running)
+    await assert.rejects(
+      startServer({ port: other.address().port, probe }).then(async (srv) => {
+        await srv.close();
+        return srv;
+      }),
+      /probe failed/,
+    );
     assert.ok(probed);
     assert.equal(await listeners(), before);
   } finally {
