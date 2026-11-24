@@ -65,6 +65,7 @@ import { decodeEscapes, PSEUDO_ELEMENTS } from './conditions31.js';
 import { flowOf, isLogical, isLogicalGroup, partnerOf } from './logical.js';
 import {
   documentStyleSheets,
+  shadowStyleSheets,
   ruleArray,
   ruleListSnapshot,
   ruleListChanged,
@@ -970,10 +971,23 @@ const EMPTY = new Map();
 // getComputedStyle() run from a test's cssRules getter (ruleListChanged)
 // calls this again, and a module-level one would keep its document (and
 // window) alive after the window is gone (#165).
+// jsdom 31 (black box, 31.0.1): each tree's own sheets, the document's
+// for its elements and a shadow root's for its tree's (a pseudo-element:
+// its element's).
 function ruleIndex(element) {
-  if (element[S].pseudo === undefined) return documentIndex(element);
+  if (element[S].pseudo === undefined)
+    return element[S].doc[S].shadowHosts === true ? treeIndex(element) : documentIndex(element);
   followElement31(element);
-  return indexOf31(element, documentIndex(element));
+  return indexOf31(element, treeIndex(element[S].origin));
+}
+// (a document with shadow roots: jsdom 31 reads the element's tree)
+function treeIndex(element) {
+  const ds = element[S].doc[S];
+  if (ds.window[S].compat.treeScopedSheets === true) {
+    const root = rootOf(element);
+    if (root[S].shadow === true) return sheetIndex(root[S], ds, root, element[S].doc);
+  }
+  return documentIndex(element);
 }
 function documentIndex(element) {
   const es = element[S];
@@ -984,14 +998,25 @@ function documentIndex(element) {
   const styleRev = ds.styleRev ?? 0;
   if (cached && cached.treeRev === treeRev && cached.styleRev === styleRev && cached.cssomRev === cssomChanges.rev)
     return cached.index;
-  const sheets = documentStyleSheets(es.doc)[S].items();
+  return sheetIndex(ds, ds, null, es.doc);
+}
+// (holder: whose cascade cache: the document's state, or a shadow root's
+// with its root; its sheet list read only when the cache does not hold)
+function sheetIndex(holder, ds, root, doc) {
+  const cached = holder.cascade;
+  if (cached?.lists.some(ruleListChanged)) cssomChanges.rev++;
+  const treeRev = ds.treeRev ?? 0;
+  const styleRev = ds.styleRev ?? 0;
+  if (cached && cached.treeRev === treeRev && cached.styleRev === styleRev && cached.cssomRev === cssomChanges.rev)
+    return cached.index;
+  const sheets = (root === null ? documentStyleSheets(doc) : shadowStyleSheets(root))[S].items();
   const reuse =
     cached && cached.cssomRev === cssomChanges.rev && !cached.index.readsScheme && sameSheets(cached.sheets, sheets);
   const lists = reuse ? cached.lists : [];
   let index = EMPTY;
   if (reuse) index = cached.index;
-  else if (sheets.length) index = buildIndex(sheets, validationModeOf(ds.window), ds.window[S].compat, lists, es.doc);
-  ds.cascade = { treeRev, styleRev, cssomRev: cssomChanges.rev, sheets: sheets.slice(), index, lists };
+  else if (sheets.length) index = buildIndex(sheets, validationModeOf(ds.window), ds.window[S].compat, lists, doc);
+  holder.cascade = { treeRev, styleRev, cssomRev: cssomChanges.rev, sheets: sheets.slice(), index, lists };
   return index;
 }
 
@@ -1948,9 +1973,18 @@ function flowTextAbove(element) {
 // The parent element, for inheritance: as in jsdom (black box, 20.0.3 to
 // 30.1.3) a shadow root's children inherit nothing from its host (a host
 // with color: red or visibility: hidden leaves them black and visible).
+// jsdom 31 (black box, 31.0.1) inherits through the flat tree: a shadow
+// root's children from its host, a host's child from the slot it is
+// assigned to (none when it is not: it is not rendered).
 function inheritParent(element) {
   const p = element[S].parent;
-  return p !== null && p[S].type === ELEMENT_NODE ? p : null;
+  if (p === null) return null;
+  const ps = p[S];
+  if (ps.type === ELEMENT_NODE) {
+    if (ps.shadowRoot == null || ps.doc[S].window[S].compat.treeScopedSheets !== true) return p;
+    return findSlot(element);
+  }
+  return ps.shadow === true && ps.doc[S].window[S].compat.treeScopedSheets === true ? ps.host : null;
 }
 
 const FONT_SIZES = { medium: '16px' };

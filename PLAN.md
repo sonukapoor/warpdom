@@ -8547,3 +8547,34 @@ Not modeled: timeline-trigger and all (their computed values), with
 path() normalization (offset) and system fonts (font) the probe's 8
 remaining cases.
 Next: shadow scoping, then F.
+
+## 2026-11-24: jsdom 31, shadow scoping S1: each tree's sheets, inheritance through the flat tree (branch feat/269-jsdom31-shadow, #269)
+
+jsdom 31 scopes style sheets by tree and inherits through the flat tree
+(black box, 31.0.1); jsdom 20 to 30 apply every sheet to every element
+and inherit through the DOM tree (a shadow root's children inherit
+nothing). Shadow scoping is split in three PRs: S1 (this one), S2
+:host, :host() and ::slotted() (the selector engine has none of them),
+S3 adoptedStyleSheets (Document and ShadowRoot, constructed sheets in
+the cascade).
+S1, in the jsdom 31 profile (compat.treeScopedSheets):
+- document.styleSheets lists the document tree's <style> sheets only, in
+  tree order; ShadowRoot.styleSheets (new, jsdom 31 only) its own tree's
+  (cssom.js shadowStyleSheets), cached as the document's list;
+- each element's rules are its tree's: the document's index, or its
+  shadow root's (cascade.js ruleIndex, treeIndex; the index cached on
+  the root as the document's is, rebuilt on the same revisions; a
+  pseudo-element's from its element's tree). A document without shadow
+  roots (shadowHosts, set by attachShadow) skips the root lookup;
+- inheritance through the flat tree (inheritParent): a shadow root's
+  children from the host, a host's child from the slot it is assigned to,
+  none when it is not (it is not rendered: its computed style is empty).
+Results: tests/shadow31.test.js (sheets by tree, after sheet, text, rule
+and slot changes, nested trees; on jsdom 30 and 31); the full suite with
+parity against jsdom 31 from 5 failures to 4 (the shadow sheets after
+removals one fixed). Speed (bench-cs.mjs, 6 interleaved runs, medians):
+jsdom 30 profile 94.0 ms on main, 93.4 here; jsdom 31 205.7 and 207.1
+(a first version, the document's index reached through the per-tree
+lookup, was 4% slower in the jsdom 31 profile; the document's fast path
+is kept as it was).
+Next: S2 (:host, ::slotted()), S3 (adoptedStyleSheets), then F.

@@ -58,7 +58,7 @@ import {
 } from './event-handlers.js';
 import { CUSTOM_ELEMENT_INTERFACES, ATTACH_INTERNALS_MEMBERS, BRAILLE_MEMBERS, lookUp } from './custom-elements.js';
 import { RANGE_INTERFACES, newRange, getSelection, splitText, normalize } from './ranges.js';
-import { CSSOM_INTERFACES, STYLE_ELEMENT_MEMBERS, documentStyleSheets } from './cssom.js';
+import { CSSOM_INTERFACES, STYLE_ELEMENT_MEMBERS, documentStyleSheets, shadowStyleSheets } from './cssom.js';
 import { FOCUS_MEMBERS, DOCUMENT_FOCUS_MEMBERS } from './focus.js';
 import { FORM_INTERFACES, FORM_MEMBERS, clickMember, labelsMember, cloneFormState } from './forms.js';
 import {
@@ -577,6 +577,9 @@ function attachShadow(element, init) {
     clonable: !!init.clonable,
   });
   es.shadowRoot = shadow;
+  // (a document with shadow roots looks up each element's tree for its
+  // sheets: cascade.js ruleIndex)
+  es.doc[S].shadowHosts = true;
   // jsdom 31: the host's children leave the rendered tree until slotted
   // (cascade.js rendered31), so computed styles kept for them are dropped.
   const ds = es.doc[S];
@@ -1431,9 +1434,17 @@ export const INTERFACES = [
           const candidate = retarget(focused, this);
           return rootOf(candidate) === this ? candidate : null;
         },
+        // The shadow tree's own sheets (jsdom 31: cssom.js shadowStyleSheets).
+        get styleSheets() {
+          shadowState(this);
+          return shadowStyleSheets(this);
+        },
       },
       { onslotchange: GLOBAL_HANDLER_MEMBERS.onslotchange },
     ),
+    compat(proto, compat) {
+      if (!compat.treeScopedSheets) delete proto.styleSheets;
+    },
   },
   {
     name: 'CharacterData',

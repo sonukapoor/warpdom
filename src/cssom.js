@@ -1424,7 +1424,8 @@ const byStamp = (a, b) => (a[S].sheetStamp ?? 0) - (b[S].sheetStamp ?? 0);
 // The <style> elements of the document and its shadow trees in tree order:
 // when there are any in shadow trees, as records { el } (for
 // shadowIncludingOrder).
-function styleElementsOf(doc) {
+// (scoped: jsdom 31, the tree's own <style> elements only)
+function styleElementsOf(doc, scoped = false) {
   const records = [];
   let inShadow = false;
   const walk = (root) => {
@@ -1432,7 +1433,7 @@ function styleElementsOf(doc) {
       const s = n[S];
       if (s.type !== ELEMENT_NODE) continue;
       if (s.tag === 'style' && s.ns === HTML_NS) records.push(n);
-      if (s.shadowRoot != null) {
+      if (s.shadowRoot != null && !scoped) {
         const before = records.length;
         walk(s.shadowRoot);
         if (records.length !== before) inShadow = true;
@@ -1477,6 +1478,7 @@ export function documentStyleSheets(doc) {
     // list reads its items at every step, as jsdom's does, so rebuilding
     // them each time made a pass over n sheets quadratic.
     const byCreation = ds.window[S].compat.sheetsByCreation;
+    const scoped = ds.window[S].compat.treeScopedSheets === true;
     ds.styleSheetList = liveList(ds.window[S].protos.StyleSheetList, () => {
       const rev = ds.treeRev ?? 0;
       const textRev = ds.styleRev ?? 0;
@@ -1484,7 +1486,7 @@ export function documentStyleSheets(doc) {
       // (by creation too with shadow trees' sheets)
       const styleRev = byCreation || ds.shadowStyleSheets === true ? textRev : 0;
       if (ds.styleElementsRev !== rev || ds.styleElementsStyleRev !== styleRev) {
-        let els = styleElementsOf(doc);
+        let els = styleElementsOf(doc, scoped);
         ds.shadowStyleSheets = els.length !== 0 && els[0].el !== undefined;
         if (byCreation) {
           if (ds.shadowStyleSheets) els = els.map((r) => r.el);
@@ -1501,6 +1503,26 @@ export function documentStyleSheets(doc) {
     });
   }
   return ds.styleSheetList;
+}
+
+// A shadow root's styleSheets (jsdom 31, black box 31.0.1): its own tree's
+// <style> sheets in tree order, not its nested shadow trees'; kept until
+// the tree or a style element's text changes, as the document's.
+export function shadowStyleSheets(root) {
+  const rs = root[S];
+  if (!rs.styleSheetList) {
+    const ds = rs.doc[S];
+    rs.styleSheetList = liveList(ds.window[S].protos.StyleSheetList, () => {
+      const rev = ds.treeRev ?? 0;
+      const textRev = ds.styleRev ?? 0;
+      if (rs.styleSheetsRev === rev && rs.styleSheetsTextRev === textRev) return rs.styleSheets;
+      rs.styleSheets = styleElementsOf(root, true).map(styleElementSheet).filter(Boolean);
+      rs.styleSheetsRev = rev;
+      rs.styleSheetsTextRev = textRev;
+      return rs.styleSheets;
+    });
+  }
+  return rs.styleSheetList;
 }
 
 // A sheet's owner node, after checking that its <style> element still has
