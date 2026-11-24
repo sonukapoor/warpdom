@@ -8663,4 +8663,11 @@ specificity; not modeled, as before.) Not changed: @scope (#w) {
 ::slotted(i) { ... } } styles nothing in jsdom 31, which warpdom gives
 already (the rule goes to the ordinary index, where ::slotted() matches
 no element).
+Third round (2026-11-24): a computed style's custom property names read
+each ancestor's shadow-tree rules through its values as they now are
+(cascadeCache first): a shadow child listed a host's old :host names
+after its sheet changed, until the host was read again. Found, not
+changed (also on main): jsdom 30.1.3 resolves light-dark() in a computed
+color to its first color; warpdom's jsdom 30 profile leaves it as
+written.
 Next: S3 (adoptedStyleSheets), then F.

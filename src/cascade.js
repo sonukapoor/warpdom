@@ -591,6 +591,11 @@ const slottedMatch = (match, slot, root) => (el, ctx) => {
 // tree's), kept with its cascaded values. A pseudo-element's are its
 // element's trees' rules for it.
 const NO_INNER = [];
+// (a shadow root's index for an element, or for its pseudo-element name)
+function treeIndex31(root, ds, doc, name) {
+  const index = sheetIndex(root[S], ds, root, doc);
+  return name === undefined ? index : (index.pseudo?.get(name) ?? null);
+}
 function innerIndexes31(element) {
   const es = element[S];
   const cache = es.cascaded;
@@ -600,17 +605,13 @@ function innerIndexes31(element) {
   if (ds.shadowHosts === true && ds.window[S].compat.treeScopedSheets === true) {
     const base = es.pseudo === undefined ? element : es.origin;
     const name = es.pseudo;
-    const of = (root) => {
-      const index = sheetIndex(root[S], ds, root, es.doc);
-      return name === undefined ? index : (index.pseudo?.get(name) ?? null);
-    };
     for (let slot = findSlot(base); slot !== null; slot = findSlot(slot)) {
-      const rules = of(rootOf(slot))?.slottedRules;
+      const rules = treeIndex31(rootOf(slot), ds, es.doc, name)?.slottedRules;
       if (rules != null) (inner === NO_INNER ? (inner = []) : inner).push(rules);
     }
     const own = base[S].shadowRoot;
     if (own != null) {
-      const rules = of(own)?.hostRules;
+      const rules = treeIndex31(own, ds, es.doc, name)?.hostRules;
       if (rules != null) (inner === NO_INNER ? (inner = []) : inner).push(rules);
     }
   }
@@ -4099,7 +4100,9 @@ function namesNow31(element) {
   const customs = new Set();
   for (let e = element; e !== null; e = inheritParent(e)) {
     for (const name of ruleIndex(e).keys()) if (name.startsWith('--')) customs.add(name);
-    // (a shadow tree's rules for it: :host, ::slotted(), #342 review)
+    // (a shadow tree's rules for it: :host, ::slotted(), #342 review;
+    // with the ancestor's values as they now are, which keep them)
+    cascadeCache(e);
     for (const inner of innerIndexes31(e))
       for (const name of inner.keys()) if (name.startsWith('--')) customs.add(name);
     const inline = inlineDeclarations(e);

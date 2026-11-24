@@ -249,4 +249,36 @@ for (const jsdom of [30, 31]) {
     },
     { jsdom },
   );
+
+  parity(
+    `jsdom ${jsdom}: a shadow child's custom property names after its host's :host rules change (#342 review)`,
+    (w) => {
+      const d = w.document;
+      d.body.innerHTML = '<div id=h></div>';
+      const host = d.getElementById('h');
+      const root = host.attachShadow({ mode: 'open' });
+      root.innerHTML = '<style>:host { --old: 1 }</style><i>i</i>';
+      const style = root.querySelector('style');
+      const child = root.querySelector('i');
+      const names = (e) => [...w.getComputedStyle(e)].filter((n) => n.startsWith('--')).join(' ');
+      const color = (e) => w.getComputedStyle(e).getPropertyValue('color');
+      const out = [w.getComputedStyle(host).getPropertyValue('--old')];
+      // (the child's names read before the host's values again)
+      style.textContent = ':host { --new: 2 }';
+      out.push(names(child), w.getComputedStyle(host).getPropertyValue('--new'));
+      style.textContent = ':host { --new: 2; --added: 1 }';
+      const cs = w.getComputedStyle(child);
+      out.push(names(child), cs.length === [...cs].length);
+      // color-scheme on the host, after its values were read (jsdom 31
+      // only: jsdom 30 resolves light-dark() to its first color, which
+      // warpdom's jsdom 30 profile does not, as on main)
+      if (jsdom === 31) {
+        out.push(color(host), color(child));
+        style.textContent = ':host { color-scheme: dark } i { color: light-dark(rgb(1, 1, 1), rgb(2, 2, 2)) }';
+        out.push(color(child));
+      }
+      return out;
+    },
+    { jsdom },
+  );
 }
